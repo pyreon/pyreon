@@ -22,7 +22,7 @@ import { exprHasOptionalLink, exprReferencesIdent, isReReadableExpr } from './ex
 import type { ComponentIR, DeclIR, ExprIR, ExtDecl, ExtModuleItem, ModuleDeclIR, StatementIR, StructIR, TypeIR } from './types'
 import { rootReceiverName } from './expr-lowering'
 import { ECMASCRIPT_MATH_CONSTANTS } from './math-lowering'
-import { findFunctionLowering, pluginItemType, findService, pluginCallReadType, pluginExprMemberType, pluginMemberReadType, pluginMethodReturnType, pluginExprSeedsModuleConst, pluginExprType } from './registry-lookup'
+import { findFunctionLowering, pluginItemType, findService, pluginCallReadType, pluginValueType, pluginExprMemberType, pluginMemberReadType, pluginMethodReturnType, pluginExprSeedsModuleConst, pluginExprType } from './registry-lookup'
 
 export interface InferenceCtx {
   /** Signal name → declared type. Filled from the component's decls. */
@@ -705,6 +705,32 @@ export function normalizeNumericAlias(t: TypeIR): TypeIR {
   return t.kind === 'typeRef' && (t.name === 'Double' || t.name === 'Float')
     ? { kind: 'number', float: true }
     : t
+}
+
+/**
+ * The value kind of a JS `a || b` that the native emitters can lower faithfully, or `null`.
+ *
+ * JS `||` produces a VALUE from truthiness: `Number(v) || 0` (the NaN/zero guard on a parsed field) and
+ * `name() || 'anon'` (the empty-string default). Swift and Kotlin `||` are Bool-only, so these were passed through
+ * verbatim and warned. They lower when falsiness has a single native test and both sides agree on a type:
+ *
+ * - `'int'`: non-optional integer on both sides; falsy is `== 0`.
+ * - `'double'`: a number on both sides with at least one Double; falsy is `== 0 || isNaN`. An Int side is widened,
+ *   which is what JS produces (`0 || 0.5` is `0.5`).
+ * - `'string'`: falsy is empty.
+ *
+ * The left operand is evaluated ONCE (the emitters bind it) and the right only when the left is falsy, as in JS.
+ * An optional, a union, an object, or mismatched kinds stay on the named warning: their falsiness or result type
+ * has no single native spelling.
+ */
+export function logicalOrValueKind(left: TypeIR, right: TypeIR): 'int' | 'double' | 'string' | null {
+  const l = normalizeNumericAlias(left)
+  const r = normalizeNumericAlias(right)
+  if (l.kind === 'string' && r.kind === 'string') return 'string'
+  if (l.kind === 'number' && r.kind === 'number') {
+    return l.float === true || r.float === true ? 'double' : 'int'
+  }
+  return null
 }
 
 export function classifyOptionalCondition(
@@ -1390,6 +1416,10 @@ export function inferTypeValue(expr: ExprIR, ctx: InferenceCtx): TypeIR {
         if (sig) return sig
         const cmp = ctx.computeds.get(expr.callee.name)
         if (cmp) return cmp
+        // …and the bare call of a CALLABLE plugin declaration (`tags()` on a `useUrlState`), typed by its owner.
+        const ext = ctx.extDecls?.get(expr.callee.name)
+        const declared = ext === undefined ? undefined : pluginValueType(ext)
+        if (declared !== undefined) return declared
         // …and a zero-arg HELPER call. The helper lookup below was gated on
         // `args.length >= 1`, so `f()` on a no-argument helper fell through
         // to `unknown` — the arity gate was an accident of where the helper
@@ -1858,7 +1888,8 @@ export function inferTypeValue(expr: ExprIR, ctx: InferenceCtx): TypeIR {
         if (field) return field
       }
       if (objType.kind === 'array') {
-        // `.length` and `.at()` etc. — minimal coverage for now.
+        // Property reads only: `length` is the sole array property. Methods
+        // such as `.at()` are typed in the call branch.
         if (expr.property === 'length') return { kind: 'number' }
       }
       // `s.length` on a string → number (Swift `.count`). Without this,
@@ -1960,6 +1991,13 @@ export function inferTypeValue(expr: ExprIR, ctx: InferenceCtx): TypeIR {
         // literal side (`quotes.data() ?? []` → the `[]` array type).
         if (unwrapped.kind !== 'unknown' && !typeIsOptional(unwrapped)) return unwrapped
         return inferType(expr.right, ctx)
+      }
+      if (expr.kind === 'logical' && expr.op === '||') {
+        // A value-producing `a || b` the emitters lower (see `logicalOrValueKind`) has the operands' type, not Bool.
+        const k = logicalOrValueKind(inferType(expr.left, ctx), inferType(expr.right, ctx))
+        if (k === 'string') return { kind: 'string' }
+        if (k === 'int') return { kind: 'number' }
+        if (k === 'double') return { kind: 'number', float: true }
       }
       return { kind: 'boolean' }
     case 'unary': {

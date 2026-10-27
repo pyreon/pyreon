@@ -304,7 +304,7 @@ export function App() {
   return (<Stack><Press onPress={() => {}}><Text>{() => String(form.values().email)}</Text></Press></Stack>)
 }`)
     expect(
-      r.warnings.some((w) => w.includes('no top-level zodSchema/valibotSchema/arkTypeSchema declaration')),
+      r.warnings.some((w) => w.includes('no top-level zodSchema/valibotSchema/arktypeSchema declaration')),
     ).toBe(true)
   })
 })

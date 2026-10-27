@@ -150,7 +150,7 @@ describe('Math.round matches JS on both targets', () => {
     expect(r.code).toContain(') + 0.5).rounded(.down)')
     expect(r.code).not.toMatch(/\)\)\.rounded\(\)/)
   })
-  it('Kotlin is unchanged — java.lang.Math.round IS floor(x + 0.5)', () => {
+  it('Kotlin keeps java.lang.Math.round (IS floor(x + 0.5)), widened to Double', () => {
     const r = kotlinOf(APP(`  const out = computed(() => Math.round(-0.5))`))
     expect(r.code).toContain('Math.round(')
   })
@@ -185,11 +185,19 @@ describe('toFixed is locale-INVARIANT on Android', () => {
 })
 
 describe('`||` / `&&` on a non-boolean operand is loud', () => {
-  it('warns by name and names the fix', () => {
+  it('warns by name and names the fix when the operands disagree on a type', () => {
+    // A same-kind `s() || "anon"` now LOWERS (native-value-logical-or.test.ts); number-or-string has no single
+    // native result type, so it stays loud.
+    const src = APP(`  const n = signal(0)\n  const out = computed(() => n() || "none")`, 'out()')
+    for (const r of [swiftOf(src), kotlinOf(src)]) {
+      expect(r.warnings.join(' ')).toContain('with a non-boolean left operand (`number`)')
+      expect(r.warnings.join(' ')).toContain('Use `??`')
+    }
+  })
+  it('a same-kind string default lowers silently', () => {
     const src = APP(`  const out = computed(() => s() || "anon")`, 'out()')
     for (const r of [swiftOf(src), kotlinOf(src)]) {
-      expect(r.warnings.join(' ')).toContain('with a non-boolean left operand (`string`)')
-      expect(r.warnings.join(' ')).toContain('Use `??`')
+      expect(r.warnings.filter((w) => w.includes('non-boolean'))).toEqual([])
     }
   })
   it('a genuinely boolean `&&` stays silent', () => {

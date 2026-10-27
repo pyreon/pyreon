@@ -5,7 +5,7 @@ import { join, resolve } from 'node:path'
 // The delta the check inflates an off-gating measurement by. Imported rather
 // than re-typed as `0.011`: a hand-copied literal is a second source of truth
 // that silently stops matching the thing it describes.
-import { GZIP_PLATFORM_DELTA } from '../../../../../scripts/check-bundle-budgets'
+import { diagnoseMeasurement, GZIP_PLATFORM_DELTA } from '../../../../../scripts/check-bundle-budgets'
 
 /**
  * Subprocess regression test for `scripts/check-bundle-budgets.ts`
@@ -404,37 +404,33 @@ describe('scripts/check-bundle-budgets.ts failure surfacing', () => {
     const json = runCheck(testDir).json as JsonOutput
     const barrel = json.measured.find((m) => m.name === '@pyreon-test/barrel-fixture')
     expect(barrel).toBeDefined()
-    expect(json.repaired).toContain('@pyreon-test/barrel-fixture')
     expect(json.unmeasurable).toHaveLength(0)
-
-    // Calibrate against the BROKEN measurement rather than a hand-typed
-    // threshold: the same fixture, measured the old way, is the stub this gate
-    // used to report. Asserting a multiple of it survives the fixture being
-    // resized later, which a literal byte count would not.
-    const brokenJson = runCheck(testDir, { PYREON_BUDGETS_NO_REPAIR: '1' }).json as JsonOutput
-    const broken = brokenJson.unmeasurable.find((u) => u.name === '@pyreon-test/barrel-fixture')
-    expect(broken).toBeDefined()
-    expect(barrel!.raw).toBeGreaterThan(broken!.raw * 4)
+    // The OUTCOME, not the mechanism. Under a bundler with the dangling-export
+    // bug (bun <= 1.4.0) the barrel-safe repair produces this number; under a
+    // fixed one (bun 1.4.4+) the direct build does. Either way the measured
+    // size must be the implementation, never the ~38 B export-clause stub.
+    // The chunk's two reachable helpers alone exceed 4x that stub.
+    expect(barrel!.raw).toBeGreaterThan(38 * 4)
   })
 
-  it('reports an unmeasurable bundle as a FAILURE, never as a small size', () => {
-    // The load-bearing half. If the repair above ever stops working, the gate
-    // must go red and say why — not quietly report a fictional few hundred
-    // bytes that any budget trivially satisfies. `PYREON_BUDGETS_NO_REPAIR`
-    // simulates that state so the detector can be asserted directly.
-    testDir = setupFixturePackagesDir({ barrelPackage: true })
-    const { status, json } = runCheck(testDir, { PYREON_BUDGETS_NO_REPAIR: '1' })
-    const entry = (json as JsonOutput).unmeasurable.find(
-      (u) => u.name === '@pyreon-test/barrel-fixture',
-    )
-    expect(entry).toBeDefined()
-    expect(entry!.reason).toContain('not a valid module')
-    expect(entry!.reason).toContain('re-export barrel')
-    // Excluded from `measured`, so no budget can be compared against it.
-    expect((json as JsonOutput).measured.map((m) => m.name)).not.toContain(
-      '@pyreon-test/barrel-fixture',
-    )
-    expect(status).toBe(1)
+  it('reports an un-importable bundle as unmeasurable, never as a small size', () => {
+    // The load-bearing half. If a bundler ever again emits a module whose
+    // export clause names bindings that do not exist, the gate must go red and
+    // say why rather than report a fictional few dozen bytes that any budget
+    // trivially satisfies. This is the EXACT output bun 1.4.0 produced for the
+    // barrel fixture above (captured, not hand-written): the bindings were
+    // dropped and only the export clause survived. bun 1.4.4 no longer
+    // produces it, so the detector is asserted against the captured bytes;
+    // the end-to-end "unmeasurable => status 1" path is exercised by the
+    // gutted-fixture spec below.
+    const bun140Output = '// @bun\nexport{o as alpha,p as beta};\n'
+    const reason = diagnoseMeasurement(bun140Output, bun140Output.length, { reachBytes: 6000 })
+    expect(reason).not.toBeNull()
+    expect(reason).toContain('not a valid module')
+    expect(reason).toContain('re-export barrel')
+    // A valid bundle of the same exports is NOT flagged.
+    const valid = '// @bun\nfunction o(t){return t}function p(t){return t}export{o as alpha,p as beta};\n'
+    expect(diagnoseMeasurement(valid, 6000, { reachBytes: 6000 })).toBeNull()
   })
 
   it('reports a VALID bundle that nevertheless lost its implementation', () => {

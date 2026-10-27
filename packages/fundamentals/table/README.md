@@ -256,7 +256,7 @@ The exhaustive upstream inventory ships in the package:
 
 ## Re-exports from `@tanstack/table-core`
 
-The TanStack Table **author** surface is re-exported — all 16 features
+The TanStack Table **author** surface is re-exported — all 17 features
 (`rowSortingFeature`, `columnFilteringFeature`, …), every row model
 (`createSortedRowModel`, `createFilteredRowModel`, `createPaginatedRowModel`, …), every
 built-in filter / sort / aggregation function, plus `tableFeatures`, `stockFeatures`,

@@ -45,6 +45,9 @@ export const BUN_LOCKFILE_SUPPORT: Record<string, readonly number[]> = {
   // pins 1.4.0) against today's version-1 lockfile. Writes 3: the lockfile on
   // #3433 was written by 1.4 and carried 3.
   '1.4.0': [1, 3],
+  // Reads 3: `bun install --frozen-lockfile` under 1.4.4 accepts the version-3
+  // lockfile 1.4.0 wrote, and 1.4.4 writes 3 itself.
+  '1.4.4': [1, 3],
 }
 
 export interface LockfileVerdict {

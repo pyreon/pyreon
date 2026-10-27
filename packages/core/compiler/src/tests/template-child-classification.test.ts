@@ -113,7 +113,7 @@ const x = signal('a')
   it('cast bare-signal child auto-calls like the uncast form', () => {
     const uncast = js(`${SIG}const App = () => <div>{name}</div>`)
     expect(js(`${SIG}const App = () => <div>{(name) as never}</div>`)).toBe(uncast)
-    expect(uncast).toContain('bindPolymorphicText(() => (name()), __t0, __root)')
+    expect(uncast).toContain('_bindText(name,')
   })
 
   it('cast static literal child bakes byte-identically to the plain literal', () => {

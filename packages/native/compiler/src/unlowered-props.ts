@@ -166,13 +166,13 @@ export function bakedPropDynamicWarning(
  * emitted verbatim with no warning, which makes the commonest JS defaulting
  * idiom a silent mis-emit.
  *
- * NOT auto-desugared, deliberately. `a || b` → `a == <falsy> ? b : a` needs (i)
- * a per-type notion of falsy (`''`, `0`, `NaN`, `null`), and (ii) a guarantee
- * that `a` is safely re-evaluable — it is often a call. The repo already made
- * this call for the `||=` sibling, whose corpus entry records that "a naive
- * parse-time desugar … is UNSOUND". A warning that names the operand type and
- * the two working spellings is the honest lowering until a type-aware one
- * exists.
+ * A same-kind `||` over a number or a string now LOWERS instead (see
+ * `logicalOrValueKind` in infer-type.ts): the emitters know the type, so falsy
+ * has one native test, and they bind the left operand once rather than
+ * re-evaluating it — the two reasons a parse-time desugar was unsound (the
+ * `||=` sibling's corpus entry). What still reaches this warning is the rest:
+ * `&&` (its value is usually the FALSY left operand, which has no useful native
+ * type), an optional or union operand, or two sides of different kinds.
  *
  * Gated on a PROVABLY non-Bool operand: an operand the inferer cannot resolve
  * stays silent, because a genuinely-boolean expression whose type is merely

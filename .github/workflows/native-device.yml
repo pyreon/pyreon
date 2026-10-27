@@ -771,7 +771,7 @@ jobs:
           packages: platform-tools
 
       - name: Install Gradle (pinned distribution + sha256)
-        # The android examples pin AGP 8.13.2 (needs Gradle 8.13+) but ship no
+        # The android examples pin AGP 9.4.1 (needs Gradle 9.6+) but ship no
         # `gradlew` wrapper, so install Gradle directly. KEEP THIS IN LOCKSTEP
         # WITH AGP: raising AGP without raising GRADLE_VERSION fails at
         # `com.android.internal.version-check` with "Minimum supported Gradle
@@ -784,8 +784,8 @@ jobs:
         # Bump GRADLE_SHA256 when bumping GRADLE_VERSION — the official `.sha256`
         # is at services.gradle.org/distributions/gradle-<V>-bin.zip.sha256.
         env:
-          GRADLE_VERSION: '8.14.5'
-          GRADLE_SHA256: '6f74b601422d6d6fc4e1f9a1ab6522f642c2fdcbc15ae33ebd30ba3d7198e854'
+          GRADLE_VERSION: '9.8.2'
+          GRADLE_SHA256: '21bd5da2de49b642904077f38c0efdc7778e92b3ed0889392dca61b97e389607'
         run: |
           set -euo pipefail
           ZIP="gradle-${GRADLE_VERSION}-bin.zip"

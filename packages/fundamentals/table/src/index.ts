@@ -6,7 +6,7 @@
 // retired 40 of 51 runtime exports) and it leaked genuine internals
 // (`_getVisibleLeafColumns`, `noop`, `getMemoOptions`, …) into our API.
 //
-// This list is everything a table AUTHOR needs — all 16 features, every row
+// This list is everything a table AUTHOR needs — all 17 features, every row
 // model, every built-in filter/sort/aggregation fn, the helpers — minus
 // adapter-construction plumbing (`constructTable`/`constructRow`/…, `memo`,
 // `assignTableAPIs`, the `core*Feature` objects), which `useTable` owns.

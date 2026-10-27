@@ -1,9 +1,11 @@
 // How `@pyreon/i18n` crosses to native: `const i18n = createI18n({ locale, messages, fallbackLocale? })`
 // (from `@pyreon/i18n/core`) becomes the `PyreonI18n` reactive container both runtimes ship — an `@State` on
-// SwiftUI, a `remember {}` on Compose — seeded with the literal locale and message table. `i18n.t(key)` and
-// `i18n.locale` flow through unchanged because the runtime container defines them; only the interpolating
-// two-argument `t(key, { count })` needs a lowering, because the generic object-literal emit builds a struct
-// (or a one-field labelled tuple, a Swift PARSE error) where the runtime takes a dictionary.
+// SwiftUI, a `remember {}` on Compose — seeded with the literal locale and message table. `i18n.t(key)` flows
+// through unchanged because the runtime container defines it. Two shapes need a lowering: the interpolating
+// two-argument `t(key, { count })`, because the generic object-literal emit builds a struct (or a one-field
+// labelled tuple, a Swift PARSE error) where the runtime takes a dictionary; and the signal READ
+// `i18n.locale()`, because the runtime's `locale` is a property, not a function. The WRITE
+// `i18n.locale.set('de')` already emits as `i18n.locale = "de"`, which the runtime's settable property takes.
 //
 // The runtimes resolve CLDR plural categories (`zero`/`one`/`two`/`few`/`many`/`other`, then `_other`, then the
 // bare key) from a baked CLDR rule table, and the active locale is writable: `i18n.locale.set('pl')` already
@@ -161,7 +163,7 @@ type ObjectExpr = Extract<ExprIR, { kind: 'object' }>
  * `i18n.t('items', { count: n() })` — the VALUES argument is an object literal the runtime takes as a
  * dictionary (`t(_:_:[String: …])` / `t(key, Map<String, Any?>)`). The general object-literal emit would
  * build a struct, or a labelled tuple (a single-field one is a Swift PARSE error), in this call position.
- * Every other call on the binding (`t(key)`, `locale`, `setLocale`) flows through unchanged.
+ * `t(key)` flows through unchanged; the `locale()` read is {@link localeRead}.
  */
 function interpolatedT(
   site: ReceiverSite,
@@ -188,9 +190,9 @@ function interpolatedT(
 }
 
 /**
- * `i18n.locale()` — the web reads the locale signal by CALLING it; both runtimes expose `locale` as a
- * property (observable on Swift, `mutableStateOf`-backed on Compose), so the call drops its parens. Without
- * this the emit was `i18n.locale()`, which compiles on neither target.
+ * `i18n.locale()` — on the web `locale` is a signal, so it is read by calling it. Natively it is a property of
+ * the container, and the verbatim call does not compile on either target (Swift cannot call a `String`; Kotlin
+ * reports "expression 'locale' cannot be invoked as a function").
  */
 function localeRead(site: ReceiverSite, ctx: { ident(name: string): string }): string | undefined {
   if (site.kind !== 'call') return undefined

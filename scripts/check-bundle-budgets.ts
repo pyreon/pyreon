@@ -42,6 +42,7 @@ import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, wr
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { gzipSync } from 'node:zlib'
+import { staticClosureCode } from './bundle-static-closure'
 import { parseSync, Visitor } from 'oxc-parser'
 
 import { isUpdateMode, shouldLowerUnscoped } from './bundle-budget-policy'
@@ -68,7 +69,7 @@ declare const Bun: {
   }): Promise<{
     success: boolean
     logs: unknown[]
-    outputs: Array<{ kind: string; text(): Promise<string> }>
+    outputs: Array<{ kind: string; path: string; text(): Promise<string> }>
   }>
 }
 
@@ -690,6 +691,13 @@ export function suggestedBudget(measured: number): number {
  *    drops them as unused and leaves the export clause dangling. Seven
  *    packages were measuring an un-importable stub this way.
  *
+ *    The bundler bug behind it is FIXED in bun 1.4.4: the same barrel now
+ *    bundles to the real implementation (measured: 38 B un-importable under
+ *    1.4.0, 246 B valid under 1.4.4). The detector stays, because the gate's
+ *    whole job is to never report a number it cannot stand behind, and a
+ *    future bundler can regress the same way; with a fixed bundler the
+ *    barrel-safe repair below simply never triggers.
+ *
  * 2. **Reach ratio (a heuristic backstop).** A bundle whose raw bytes are a
  *    negligible fraction of the code the entry statically reaches did not pull
  *    the implementation in. This exists to catch a future variant that is
@@ -714,7 +722,12 @@ export function suggestedBudget(measured: number): number {
  * bundle that could not be imported. Signal 1 is the detector; signal 2 is
  * defence in depth, not a substitute.
  */
-function diagnoseMeasurement(code: string, raw: number, pkg: PackageInfo): string | null {
+/** @internal exported for unit testing — see check-bundle-budgets-failures.test.ts */
+export function diagnoseMeasurement(
+  code: string,
+  raw: number,
+  pkg: Pick<PackageInfo, 'reachBytes'>,
+): string | null {
   const unbound = unboundExportSpecifiers(code)
   if (unbound.length > 0) {
     const shown = unbound.slice(0, 4).join(', ')
@@ -809,11 +822,13 @@ async function buildEntry(
     if (!result.success) {
       return { error: result.logs.map((l) => String(l)).join('\n') }
     }
-    // Pick ONLY the entry-point output (kind: 'entry-point') —
-    // ignore split chunks emitted from dynamic imports.
-    const out = result.outputs.find((o) => o.kind === 'entry-point')
-    if (!out) return { error: 'no entry-point output' }
-    return { code: await out.text() }
+    // The entry-point output PLUS every chunk it imports statically; chunks
+    // behind a dynamic import() stay out. Measuring the entry file alone made
+    // the number depend on where the bundler happened to draw chunk
+    // boundaries — see bundle-static-closure.ts.
+    const code = await staticClosureCode(result.outputs)
+    if (code === null) return { error: 'no entry-point output' }
+    return { code }
   } catch (err) {
     return { error: err instanceof Error ? err.message : String(err) }
   }

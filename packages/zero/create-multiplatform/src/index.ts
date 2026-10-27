@@ -14,11 +14,13 @@
 import { existsSync, readdirSync } from 'node:fs'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
-import { buildScaffold } from './scaffold'
+import { buildScaffold, validateScheme } from './scaffold'
 
 export interface CliArgs {
   name: string
   dir: string
+  /** `--scheme`: the URL scheme the app is opened by. Absent = the project's identifier. */
+  scheme?: string
 }
 
 /**
@@ -125,7 +127,7 @@ export function validateTargetDir(targetDir: string): void {
 /** Parse argv (after `node script`) into a name + target dir. */
 /** Single source for the usage line — the help path and the missing-name
  *  error path must not drift apart. */
-export const USAGE = 'Usage: create-multiplatform <project-name> [--dir <path>]'
+export const USAGE = 'Usage: create-multiplatform <project-name> [--dir <path>] [--scheme <url-scheme>]'
 
 /** True when the user explicitly asked for help. */
 export function wantsHelp(argv: string[]): boolean {
@@ -135,10 +137,18 @@ export function wantsHelp(argv: string[]): boolean {
 export function parseArgs(argv: string[]): CliArgs {
   let name: string | undefined
   let dir: string | undefined
+  let scheme: string | undefined
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]
     if (a === '--dir' || a === '-d') {
       dir = argv[++i]
+    } else if (a === '--scheme') {
+      scheme = argv[++i]
+      if (scheme === undefined || scheme.startsWith('-')) {
+        throw new Error('[create-multiplatform] --scheme needs a value (for example --scheme myapp).')
+      }
+    } else if (a !== undefined && a.startsWith('--scheme=')) {
+      scheme = a.slice('--scheme='.length)
     } else if (a !== undefined && !a.startsWith('-') && name === undefined) {
       name = a
     }
@@ -146,12 +156,16 @@ export function parseArgs(argv: string[]): CliArgs {
   if (name === undefined || name.length === 0) {
     throw new Error(USAGE)
   }
-  return { name, dir: dir ?? name }
+  return { name, dir: dir ?? name, ...(scheme !== undefined ? { scheme } : {}) }
 }
 
 /** Write the scaffold's file tree under `targetDir`. */
-export async function writeScaffold(name: string, targetDir: string): Promise<string[]> {
-  const files = buildScaffold({ name })
+export async function writeScaffold(
+  name: string,
+  targetDir: string,
+  scheme?: string,
+): Promise<string[]> {
+  const files = buildScaffold({ name, ...(scheme !== undefined ? { scheme } : {}) })
   const root = resolve(targetDir)
   for (const f of files) {
     const full = join(root, f.path)
@@ -174,12 +188,14 @@ export async function main(argv: string[]): Promise<void> {
     console.log(USAGE)
     return
   }
-  const { name, dir } = parseArgs(argv)
+  const { name, dir, scheme } = parseArgs(argv)
   // Phase D4: validate BEFORE writing — fail fast with actionable
   // error rather than producing a broken scaffold.
   validateProjectName(name)
   validateTargetDir(dir)
-  const written = await writeScaffold(name, dir)
+  // buildScaffold validates the scheme too; doing it here fails BEFORE any file is written.
+  if (scheme !== undefined) validateScheme(scheme)
+  const written = await writeScaffold(name, dir, scheme)
   // The native toolchain (@pyreon/native-cli, the Swift/Kotlin runtimes and
   // routers) publishes to npm alongside this scaffolder — same fixed release
   // group — so `npm install` resolves every declared dependency. The

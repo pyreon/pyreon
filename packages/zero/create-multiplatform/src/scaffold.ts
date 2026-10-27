@@ -29,6 +29,52 @@ export interface ScaffoldOptions {
    *  `@main` struct, the Gradle `rootProject.name`, the bundle id, and the
    *  web `<title>`. */
   name: string
+  /** The URL scheme the app is opened by (`myapp` → `myapp://item/42`). Defaults to the project's identifier. */
+  scheme?: string
+}
+
+/**
+ * Schemes that belong to the platform or to web links, never to one app. `http`/`https` are the
+ * universal-link / app-link case, which needs a verified domain and is configured separately.
+ */
+const RESERVED_SCHEMES = new Set([
+  'http',
+  'https',
+  'file',
+  'ftp',
+  'data',
+  'javascript',
+  'mailto',
+  'tel',
+  'sms',
+  'about',
+  'blob',
+  'ws',
+  'wss',
+])
+
+/**
+ * A URL scheme must match RFC 3986 (`ALPHA *( ALPHA / DIGIT / "+" / "-" / "." )`); lower-cased, because
+ * Android matches the scheme case-sensitively and iOS lower-cases it.
+ */
+export function validateScheme(scheme: string): string {
+  const s = scheme.trim().toLowerCase()
+  if (!/^[a-z][a-z0-9+.-]*$/.test(s)) {
+    throw new Error(
+      `[create-multiplatform] invalid URL scheme "${scheme}" — it must start with a letter and contain only letters, digits, "+", "-" or "." (for example "myapp").`,
+    )
+  }
+  if (RESERVED_SCHEMES.has(s)) {
+    throw new Error(
+      `[create-multiplatform] "${s}" is not a valid app URL scheme — it belongs to the platform or to web links. Pick a scheme unique to your app (for example "myapp").`,
+    )
+  }
+  return s
+}
+
+/** The scheme an app gets when none is chosen: its identifier, prefixed when that does not start with a letter. */
+export function defaultScheme(leaf: string): string {
+  return /^[a-z]/.test(leaf) ? leaf : `app${leaf}`
 }
 
 /** `my-app` → `MyApp` (PascalCase; used for the Swift struct + display name). */
@@ -58,6 +104,7 @@ export function buildScaffold(opts: ScaffoldOptions): FileSpec[] {
   const androidPkg = `com.example.${leaf}`
   const androidPkgPath = androidPkg.replace(/\./g, '/')
   const bundleId = `com.example.${pascal}`
+  const scheme = validateScheme(opts.scheme ?? defaultScheme(leaf))
 
   const files: FileSpec[] = []
   const add = (path: string, content: string) => files.push({ path, content })
@@ -349,6 +396,11 @@ targets:
       path: Info.plist
       properties:
         CFBundleShortVersionString: 0.0.1
+        # Inbound deep links: \`${scheme}://…\` opens the app (PyreonDeepLink forwards it to the router).
+        CFBundleURLTypes:
+          - CFBundleURLName: ${bundleId}
+            CFBundleURLSchemes:
+              - ${scheme}
         CFBundleVersion: '1'
         LSRequiresIPhoneOS: true
         UILaunchScreen: {}
@@ -366,6 +418,7 @@ targets:
     'ios/Sources/Main.swift',
     `// @main entry point. SwiftUI App protocol — the canonical iOS entrypoint.
 import SwiftUI
+import PyreonRouter
 
 // \`SwiftUI.App\` (fully qualified) — the emitted component from
 // src/App.tsx is \`struct App: View\`, which shadows the bare \`App\`
@@ -376,6 +429,13 @@ struct ${pascal}App: SwiftUI.App {
     var body: some Scene {
         WindowGroup {
             ContentView()
+                // Inbound deep links: a custom-scheme URL (\`${scheme}://item/42\`) and a universal link both
+                // land here. Only the PATH is used, so the router opens at \`/item/42\`. Safe with no
+                // route configured: a link that matches nothing falls through to the router's not-found.
+                .onOpenURL { PyreonDeepLink.receive($0) }
+                .onContinueUserActivity(NSUserActivityTypeBrowsingWeb) { activity in
+                    if let url = activity.webpageURL { PyreonDeepLink.receive(url) }
+                }
         }
     }
 }
@@ -414,6 +474,17 @@ struct ContentView: View {
     <string>0.0.1</string>
     <key>CFBundleVersion</key>
     <string>1</string>
+    <key>CFBundleURLTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleURLName</key>
+            <string>${bundleId}</string>
+            <key>CFBundleURLSchemes</key>
+            <array>
+                <string>${scheme}</string>
+            </array>
+        </dict>
+    </array>
     <key>LSRequiresIPhoneOS</key>
     <true/>
     <key>UILaunchScreen</key>
@@ -471,14 +542,22 @@ include(":app")
   )
   add(
     'android/build.gradle.kts',
-    `plugins {
-    id("com.android.application") version "8.7.0" apply false
-    kotlin("android") version "2.0.21" apply false
+    `// AGP 9 runs Kotlin itself ("built-in Kotlin"), so there is no
+// kotlin("android") plugin. The Compose compiler plugin must match the Kotlin
+// Gradle plugin exactly, so KGP is pinned on the classpath to the same version.
+buildscript {
+    dependencies {
+        classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:2.4.21")
+    }
+}
+
+plugins {
+    id("com.android.application") version "9.4.1" apply false
     // The Pyreon Kotlin runtime sources use @Serializable (useFetch /
     // loader payloads); the app module applies this plugin, so its
     // version must be declared (apply false) at the root or Gradle can't
     // resolve "org.jetbrains.kotlin.plugin.serialization".
-    kotlin("plugin.serialization") version "2.0.21" apply false
+    kotlin("plugin.serialization") version "2.4.21" apply false
 }
 `,
   )
@@ -498,18 +577,17 @@ import java.util.Properties
 
 plugins {
     id("com.android.application")
-    kotlin("android")
     kotlin("plugin.serialization")
-    id("org.jetbrains.kotlin.plugin.compose") version "2.0.21"
+    id("org.jetbrains.kotlin.plugin.compose") version "2.4.21"
 }
 
 android {
     namespace = "${androidPkg}"
-    compileSdk = 35
+    compileSdk = 37
     defaultConfig {
         applicationId = "${bundleId}"
         minSdk = 26
-        targetSdk = 35
+        targetSdk = 36
         versionCode = 1
         versionName = "0.0.1"
     }
@@ -570,7 +648,6 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-    kotlinOptions { jvmTarget = "17" }
 
     // The Pyreon Kotlin runtimes ship source-only via npm (no AAR), so
     // their src/main/kotlin dirs are extra source roots. The resolved,
@@ -600,8 +677,8 @@ android {
 }
 
 dependencies {
-    implementation(platform("androidx.compose:compose-bom:2024.10.01"))
-    implementation("androidx.activity:activity-compose:1.9.3")
+    implementation(platform("androidx.compose:compose-bom:2026.09.00"))
+    implementation("androidx.activity:activity-compose:1.13.0")
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.foundation:foundation")
     implementation("androidx.compose.material3:material3")
@@ -609,9 +686,9 @@ dependencies {
     implementation("androidx.compose.runtime:runtime-saveable")
     // Required by the Pyreon Kotlin runtime sources (srcDir above):
     // useFetch/loader need kotlinx-serialization + coroutines; storage needs core-ktx.
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
-    implementation("androidx.core:core-ktx:1.13.1")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.12.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
+    implementation("androidx.core:core-ktx:1.19.1")
     // <Icon> emit references Icons.Filled.* at compile time (core set).
     implementation("androidx.compose.material:material-icons-core")
     // Remote <Image src="http…"> → Coil's AsyncImage.
@@ -623,11 +700,11 @@ dependencies {
     // template was last touched, masked because scaffolds install the runtime
     // from npm, which lagged the workspace — the next release would have
     // shipped every scaffolded Android app broken.
-    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("com.squareup.okhttp3:okhttp:5.5.1")
     // media3 — PyreonVideoPlayerAndroid.kt (<Video> primitive) imports
     // androidx.media3.*. Same deal; R8 strips unused classes from release.
-    implementation("androidx.media3:media3-exoplayer:1.4.1")
-    implementation("androidx.media3:media3-ui:1.4.1")
+    implementation("androidx.media3:media3-exoplayer:1.11.1")
+    implementation("androidx.media3:media3-ui:1.11.1")
 }
 
 // Re-run the .tsx → .kt compile on every build (mirrors iOS preBuildScript).
@@ -636,6 +713,14 @@ tasks.register<Exec>("pyreonCompile") {
     commandLine("bash", "scripts/build-android.sh")
 }
 tasks.named("preBuild") { dependsOn("pyreonCompile") }
+
+// Kotlin 2.4 made the old \`kotlinOptions\` DSL an error; configure the
+// Kotlin extension directly (outside android {}).
+kotlin {
+    compilerOptions {
+        jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
+    }
+}
 `,
   )
   add(
@@ -677,7 +762,7 @@ tasks.named("preBuild") { dependsOn("pyreonCompile") }
 # reflection-sensitive dependency is kotlinx-serialization (useFetch /
 # loader payloads), which ships its own keep rules
 # (META-INF/com.android.tools/r8/kotlinx-serialization-r8.pro) that R8
-# applies automatically. A real \`./gradlew assembleRelease\` with
+# applies automatically. A real \`gradle assembleRelease\` with
 # minify enabled builds clean against the runtime out of the box.
 #
 # Add keep rules for YOUR app's own reflection / serialization here, e.g.:
@@ -703,11 +788,21 @@ tasks.named("preBuild") { dependsOn("pyreonCompile") }
         <activity
             android:name="${androidPkg}.MainActivity"
             android:exported="true"
+            android:launchMode="singleTop"
             android:configChanges="keyboard|keyboardHidden|orientation|screenLayout|screenSize|smallestScreenSize|uiMode"
             android:theme="@android:style/Theme.Material.Light.NoActionBar">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <!-- Inbound deep links: \`${scheme}://item/42\` opens the app (MainActivity forwards the intent to
+                 PyreonDeepLink). singleTop above delivers a link to the RUNNING activity via onNewIntent
+                 instead of stacking a second copy. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="${scheme}" />
             </intent-filter>
         </activity>
     </application>
@@ -719,6 +814,7 @@ tasks.named("preBuild") { dependsOn("pyreonCompile") }
     `// Root activity — mounts the Pyreon-emitted App() from generated/App.kt.
 package ${androidPkg}
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -728,6 +824,7 @@ import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTagsAsResourceId
+import com.pyreon.router.PyreonDeepLink
 import ${androidPkg}.generated.App
 
 // ComponentActivity (NOT plain android.app.Activity) — Compose's
@@ -740,15 +837,26 @@ import ${androidPkg}.generated.App
 //  - testTagsAsResourceId: Compose exposes data-testid (Modifier.testTag) only
 //    to its own test rules unless this is set; with it, UI Automator and so
 //    Maestro can select by id: on Android exactly as on iOS.
+//
+// Deep links: a link that LAUNCHES the app arrives on the launch intent (onCreate); one sent to the
+// running app arrives in onNewIntent (the manifest's singleTop). Both go to PyreonDeepLink, which hands
+// the path to the router. The launch intent is only read on a FRESH start: after a recreate the same
+// intent is still attached, and replaying it would navigate the user back to the link.
 @OptIn(ExperimentalComposeUiApi::class)
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (savedInstanceState == null) PyreonDeepLink.receive(intent?.data)
         setContent {
             Box(Modifier.safeDrawingPadding().semantics { testTagsAsResourceId = true }) {
                 App()
             }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        PyreonDeepLink.receive(intent.data)
     }
 }
 `,
@@ -848,11 +956,13 @@ npm run build:ios  # src/App.tsx → ios/generated/App.swift
 cd ios && xcodegen generate && open ${pascal}.xcodeproj
 \`\`\`
 
-## Android (requires the Android SDK + Gradle)
+## Android (requires the Android SDK, JDK 17+, and Gradle 9.6+ on PATH)
+
+No Gradle wrapper is generated; use a system \`gradle\` (e.g. \`brew install gradle\`).
 
 \`\`\`bash
 npm run build:android   # src/App.tsx → android/.../generated/App.kt
-cd android && ./gradlew assembleDebug
+cd android && gradle assembleDebug
 \`\`\`
 
 Edit \`src/App.tsx\` — every target re-compiles from that single file.

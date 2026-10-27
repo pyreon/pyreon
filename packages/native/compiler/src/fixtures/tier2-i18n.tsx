@@ -8,20 +8,18 @@
 //     (Swift `["name": "Ada"]` / Kotlin `mapOf("name" to "Ada")`), and
 //     the runtime's two-arg overload does the `{{name}}` replacement
 //   - i18n.t("items", { count: n() }) PLURALS — the runtime resolves
-//     `items_one` / `items_other` from the `count` value (v1: en-style
-//     one/other; full Intl.PluralRules category parity is a documented
-//     follow-up)
-//   - i18n.locale read (plain property access)
+//     `items_one` / `items_other` from the `count` value (en-style
+//     one/other; zero/few/many are not supported)
+//   - i18n.locale() READ → the runtime's `locale` property
+//   - i18n.locale.set("de") WRITE → an assignment to that property, so a
+//     language switcher works and every t() read re-renders
 //
-// Deferred (documented follow-ups, each its own PR):
-//   - i18n.setLocale("de") / i18n.locale.set("de") writes
-//   - Plural categories beyond one/other (few/many/zero)
-//   - Async namespace loading
-//   - <Trans> component for rich JSX interpolation
+// Not supported: plural categories beyond one/other, async namespace
+// loading, <Trans>.
 
 import { createI18n } from '@pyreon/i18n/core'
 import { signal } from '@pyreon/reactivity'
-import { Stack, Text } from '@pyreon/primitives'
+import { Button, Stack, Text } from '@pyreon/primitives'
 
 export function Greeting() {
   const i18n = createI18n({
@@ -53,6 +51,9 @@ export function Greeting() {
       <Text>{i18n.t('farewell')}</Text>
       <Text>{i18n.t('greet', { name: 'Ada' })}</Text>
       <Text>{i18n.t('items', { count: count() })}</Text>
+      <Text>{i18n.locale()}</Text>
+      <Button onPress={() => i18n.locale.set('de')}>Deutsch</Button>
+      <Button onPress={() => i18n.locale.set('en')}>English</Button>
     </Stack>
   )
 }

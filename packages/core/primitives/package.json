@@ -49,7 +49,7 @@
     "prepublishOnly": "bun run build"
   },
   "devDependencies": {
-    "@happy-dom/global-registrator": "21.0.3",
+    "@happy-dom/global-registrator": "21.0.4",
     "@pyreon/manifest": "workspace:*",
     "@pyreon/native-compiler": "workspace:*",
     "@pyreon/runtime-dom": "workspace:^",
@@ -58,7 +58,7 @@
     "@pyreon/vitest-config": "workspace:*",
     "@vitest/browser-playwright": "^5.0.5",
     "happy-dom": "^21.0.4",
-    "rolldown": "^1.2.14"
+    "rolldown": "^1.2.15"
   },
   "peerDependencies": {
     "@pyreon/core": "workspace:^",

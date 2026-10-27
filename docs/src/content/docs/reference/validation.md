@@ -15,7 +15,7 @@ The stack-wide validation gate — the library-agnostic contract every Pyreon da
 
 Standard Schema adapters (zod/valibot/arktype are JS libraries), so the adapters themselves stay web; the declarative schema FORMS lower to native validators (Gap-4 v1)
 
-**What crosses natively:** the `zodSchema(z.object({…}))` / `valibotSchema(...)` / `arkTypeSchema(...)` declaration forms, emitted as native field validators
+**What crosses natively:** the `zodSchema(z.object({…}))` / `valibotSchema(...)` / `arktypeSchema(...)` declaration forms, emitted as native field validators
 
 See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multiplatform libraries](/docs/multiplatform-libraries) for every package's tier.
 

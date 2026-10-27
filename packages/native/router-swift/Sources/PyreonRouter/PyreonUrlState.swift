@@ -89,6 +89,63 @@ func pyreonUrlNumber(_ raw: String, _ fallback: Double) -> Double {
     return v
 }
 
+/// JS `String(v)` for a number: a whole Double prints WITHOUT a trailing `.0`
+/// (Swift's own `String(1.0)` gives "1.0"). Fractional values and exponent forms
+/// (below 1e-6, from 1e21) still use the target's own spelling. Shared by the scalar Double binding
+/// and the number-list bindings so one value serializes one way everywhere.
+func pyreonUrlFormatDouble(_ value: Double) -> String {
+    // JS prints the non-finite values by name; Swift's own `String(Double.infinity)` is "inf".
+    if value.isNaN { return "NaN" }
+    if value.isInfinite { return value < 0 ? "-Infinity" : "Infinity" }
+    // A whole number prints as plain digits below 1e21 (JS switches to exponent form there); `%.0f` is exact for them.
+    if value.rounded() == value && value.magnitude < 1e21 { return String(format: "%.0f", value) }
+    return String(value)
+}
+
+// MARK: - list codec
+//
+// The web's comma format (`inferSerializer`, url-state/src/serializers.ts): the
+// elements join with `,`, and an element that itself holds `,` or `%` is
+// escaped (`%` -> `%25` FIRST so the escape stays reversible, then `,` -> `%2C`).
+// Decoding touches only those two sequences, so a pre-existing `?tags=50%` still
+// reads `50%`; `%2c` is accepted case-insensitively, `%25` only as written.
+
+func pyreonUrlEscapeElement(_ s: String) -> String {
+    guard s.contains("%") || s.contains(",") else { return s }
+    return s.replacingOccurrences(of: "%", with: "%25").replacingOccurrences(of: ",", with: "%2C")
+}
+
+func pyreonUrlUnescapeElement(_ s: String) -> String {
+    guard s.contains("%") else { return s }
+    return s.replacingOccurrences(of: "%2C", with: ",", options: .caseInsensitive)
+        .replacingOccurrences(of: "%25", with: "%")
+}
+
+/// `''` is the EMPTY list (not one empty element); otherwise every comma splits,
+/// empties included (`"a,,b"` is three elements, as JS `split(',')` makes it).
+func pyreonUrlSplitList(_ raw: String) -> [String] {
+    if raw.isEmpty { return [] }
+    return raw.split(separator: ",", omittingEmptySubsequences: false).map { pyreonUrlUnescapeElement(String($0)) }
+}
+
+func pyreonUrlJoinList(_ parts: [String]) -> String {
+    parts.map(pyreonUrlEscapeElement).joined(separator: ",")
+}
+
+/// One bad element makes the WHOLE list fall back to the default (the web's
+/// `INVALID` rule): a URL is untrusted, so a wrong-typed element must not reach
+/// app state. NaN is the "invalid" sentinel here, which `pyreonUrlNumber`
+/// already returns for every spelling JS reads as NaN, and for blank text.
+func pyreonUrlListNumbers(_ raw: String) -> [Double]? {
+    var out: [Double] = []
+    for part in pyreonUrlSplitList(raw) {
+        let n = pyreonUrlNumber(part, .nan)
+        if n.isNaN { return nil }
+        out.append(n)
+    }
+    return out
+}
+
 /// Int-valued search parameter. See `pyreonUrlNumber` for the decode.
 @available(iOS 17.0, macOS 14.0, *)
 public struct PyreonUrlStateInt {
@@ -135,12 +192,7 @@ public struct PyreonUrlStateDouble {
         guard let raw = router?.query[key] else { return defaultValue }
         return pyreonUrlNumber(raw, defaultValue)
     }
-    public func set(_ value: Double) {
-        let s = value.rounded() == value && value.magnitude < 1e15
-            ? String(Int(value))
-            : String(value)
-        router?.setQueryParam(key, s)
-    }
+    public func set(_ value: Double) { router?.setQueryParam(key, pyreonUrlFormatDouble(value)) }
     public func clear() { router?.setQueryParam(key, nil) }
 }
 
@@ -165,5 +217,98 @@ public struct PyreonUrlStateBool {
         }
     }
     public func set(_ value: Bool) { router?.setQueryParam(key, value ? "true" : "false") }
+    public func clear() { router?.setQueryParam(key, nil) }
+}
+
+/// String-list search parameter (`useUrlState('tags', ['a'])`, or an empty
+/// default, which carries no element type so stays strings, as on the web).
+@available(iOS 17.0, macOS 14.0, *)
+public struct PyreonUrlStateStrings {
+    let router: PyreonRouter?
+    let key: String
+    let defaultValue: [String]
+    public init(router: PyreonRouter?, key: String, defaultValue: [String]) {
+        self.router = router
+        self.key = key
+        self.defaultValue = defaultValue
+    }
+    public func callAsFunction() -> [String] {
+        guard let raw = router?.query[key] else { return defaultValue }
+        return pyreonUrlSplitList(raw)
+    }
+    public func set(_ value: [String]) { router?.setQueryParam(key, pyreonUrlJoinList(value)) }
+    public func clear() { router?.setQueryParam(key, nil) }
+}
+
+/// Int-list search parameter. An element must be a whole number inside the JS
+/// safe-integer range, exactly like the scalar Int binding; anything else
+/// makes the whole list fall back to the default.
+@available(iOS 17.0, macOS 14.0, *)
+public struct PyreonUrlStateInts {
+    let router: PyreonRouter?
+    let key: String
+    let defaultValue: [Int]
+    public init(router: PyreonRouter?, key: String, defaultValue: [Int]) {
+        self.router = router
+        self.key = key
+        self.defaultValue = defaultValue
+    }
+    public func callAsFunction() -> [Int] {
+        guard let raw = router?.query[key], let nums = pyreonUrlListNumbers(raw) else { return defaultValue }
+        var out: [Int] = []
+        for n in nums {
+            guard n.rounded() == n, n >= -9007199254740991, n <= 9007199254740991 else { return defaultValue }
+            out.append(Int(n))
+        }
+        return out
+    }
+    public func set(_ value: [Int]) { router?.setQueryParam(key, pyreonUrlJoinList(value.map { String($0) })) }
+    public func clear() { router?.setQueryParam(key, nil) }
+}
+
+/// Double-list search parameter.
+@available(iOS 17.0, macOS 14.0, *)
+public struct PyreonUrlStateDoubles {
+    let router: PyreonRouter?
+    let key: String
+    let defaultValue: [Double]
+    public init(router: PyreonRouter?, key: String, defaultValue: [Double]) {
+        self.router = router
+        self.key = key
+        self.defaultValue = defaultValue
+    }
+    public func callAsFunction() -> [Double] {
+        guard let raw = router?.query[key], let nums = pyreonUrlListNumbers(raw) else { return defaultValue }
+        return nums
+    }
+    public func set(_ value: [Double]) { router?.setQueryParam(key, pyreonUrlJoinList(value.map(pyreonUrlFormatDouble))) }
+    public func clear() { router?.setQueryParam(key, nil) }
+}
+
+/// Bool-list search parameter. Each element decodes like the scalar Bool
+/// (true/1, false/0); any other element makes the whole list the default.
+@available(iOS 17.0, macOS 14.0, *)
+public struct PyreonUrlStateBools {
+    let router: PyreonRouter?
+    let key: String
+    let defaultValue: [Bool]
+    public init(router: PyreonRouter?, key: String, defaultValue: [Bool]) {
+        self.router = router
+        self.key = key
+        self.defaultValue = defaultValue
+    }
+    public func callAsFunction() -> [Bool] {
+        guard let raw = router?.query[key] else { return defaultValue }
+        var out: [Bool] = []
+        for part in pyreonUrlSplitList(raw) {
+            switch part {
+            case "true", "1": out.append(true)
+            case "false", "0": out.append(false)
+            default: return defaultValue
+            }
+        }
+        return out
+    }
+    public func set(_ value: [Bool]) { router?.setQueryParam(key, pyreonUrlJoinList(value.map { $0 ? "true" : "false" })) }
     public func clear() { router?.setQueryParam(key, nil) }
 }

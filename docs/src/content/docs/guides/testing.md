@@ -216,14 +216,7 @@ await findByText('write tests')
 - **DOM components** → vitest with `environment: 'happy-dom'` for fast unit coverage.
 - **Anything that runs in a real browser in production** (renderers, the router, UI/styling, compat layers) → **also** a real-Chromium smoke test, because happy-dom is a polyfill, not a browser. Interaction tests (`fireEvent`-driven) belong in a real browser — Pyreon's event delegation only fires for bubbling events in a real event loop.
 
-Every package uses the shared vitest helper — never a hand-rolled `mergeConfig`:
-
-```ts
-import { defineNodeConfig } from '@pyreon/vitest-config'
-export default defineNodeConfig({ category: 'fundamentals', environment: 'happy-dom' })
-```
-
-Browser configs use `defineBrowserConfig`.
+If you contribute to the Pyreon monorepo itself: every package there uses the repo's private `@pyreon/vitest-config` helper (`defineNodeConfig` / `defineBrowserConfig`) rather than a hand-rolled `mergeConfig`. It is not published to npm — in your own app, use a plain `vitest.config.ts`.
 
 ## Bisect-verify regression tests
 

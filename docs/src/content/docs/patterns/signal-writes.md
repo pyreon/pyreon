@@ -59,11 +59,14 @@ function Counter(props: { n: Signal<number> }) {
 ```
 
 ```tsx
-// BROKEN — reading inside setup captures the initial value
+// BROKEN — reading inside setup into a `let` captures the initial value
 const Counter = (props) => {
-  const initial = props.count()  // static
+  let initial = props.count()    // static: the compiler only inlines `const`s
   return <div>{initial}</div>    // never updates
 }
+// (`const initial = props.count()` would stay reactive in JSX — the compiler
+// inlines a props-derived `const` at its use sites — but only in JSX; read
+// inside an effect or handler it is still a one-time snapshot.)
 
 // FIX — read inside the reactive expression
 const Counter = (props) => {

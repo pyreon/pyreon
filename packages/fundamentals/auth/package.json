@@ -61,8 +61,8 @@
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
     "@types/oidc-provider": "9.12.1",
-    "bun-types": "^1.4.3",
-    "oidc-provider": "9.12.2"
+    "bun-types": "^1.4.4",
+    "oidc-provider": "9.13.0"
   },
   "publishConfig": {
     "access": "public"

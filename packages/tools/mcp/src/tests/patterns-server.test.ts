@@ -26,6 +26,8 @@ describe('MCP server — get_pattern tool', () => {
     try {
       const text = await callTool(client, 'get_pattern', { name: 'dev-warnings' })
       expect(text).toContain('# Dev-mode warnings')
+      // The recommended gate, plus the two shapes it warns against.
+      expect(text).toContain("process.env.NODE_ENV !== 'production'")
       expect(text).toContain('import.meta.env?.DEV')
       expect(text).toContain('typeof process')
       // Seealso footer is rendered.

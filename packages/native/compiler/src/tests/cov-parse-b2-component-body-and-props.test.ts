@@ -60,10 +60,20 @@ describe('parse.ts — useHotkey argument validation', () => {
     expect(r.warnings.join('\n')).toContain("useHotkey('nope+zz') — two base keys")
   })
 
-  it('warns when the handler declares a KeyboardEvent parameter', () => {
-    const r = swift(body("  useHotkey('mod+k', (e) => n.set(1))"))
+  it('warns when the handler READS its KeyboardEvent parameter', () => {
+    // Native has no KeyboardEvent, so a handler that reads it would run with
+    // its event-dependent logic quietly wrong. (A parameter that is declared
+    // but never used, or only used for preventDefault/stopPropagation, lowers —
+    // see hotkey-lowering.test.ts.)
+    const r = swift(body("  useHotkey('mod+k', (e) => n.set(e.shiftKey ? 1 : 2))"))
     expect(r.warnings.join('\n')).toContain('handler takes a KeyboardEvent parameter')
     expect(r.code).not.toContain('.keyboardShortcut(')
+  })
+
+  it('lowers a handler that declares the event parameter but never uses it', () => {
+    const r = swift(body("  useHotkey('mod+k', (e) => n.set(1))"))
+    expect(r.warnings.join('\n')).not.toContain('KeyboardEvent')
+    expect(r.code).toContain('.keyboardShortcut(')
   })
 
   it('lowers a BLOCK-bodied handler as well as an expression-bodied one', () => {

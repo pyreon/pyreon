@@ -19,6 +19,12 @@ import { join } from 'node:path'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import pyreonPlugin, { plainMarkerLocalNames, type PyreonPluginOptions } from '../index'
 
+// A signal read compiles to `name()` in expression position and to the direct
+// `_bindText(name, …)` binding when it is the sole text child (`<div>{name}</div>`).
+// Either one means the name was recognised as a signal.
+const readsSignal = (code: string | undefined, name: string): boolean =>
+  new RegExp(`\\b${name}\\(\\)|_bindText\\(${name},`).test(code ?? '')
+
 type ConfigHook = (
   userConfig: Record<string, unknown>,
   env: { command: string; isSsrBuild?: boolean },
@@ -131,7 +137,7 @@ export function App() { return <div>{count}</div> }`
       './store': join(root, 'src/store.ts'),
     })
     expect(result).toBeDefined()
-    expect(result!.code).toMatch(/count\(\)/)
+    expect(readsSignal(result!.code, 'count')).toBe(true)
   })
 
   it('registers `export let cfg = state.raw({…})` and DEEP `export let u = state({…})` exports', async () => {
@@ -180,7 +186,7 @@ export function App() { return <div>{total}</div> }`
     })
     // `total` must NOT be auto-called (it is not a signal).
     const code = result?.code ?? appSource
-    expect(code).not.toMatch(/total\(\)/)
+    expect(readsSignal(code, 'total')).toBe(false)
   })
 })
 
@@ -332,6 +338,7 @@ describe('HMR state preservation for plain modules', () => {
     await runBuildStart(plugin)
     const src = `'use plain'
 import { state } from '@pyreon/core/plain'
+
 let count = state(0)
 export const View = () => <button onClick={() => { count++ }}>{count}</button>
 `

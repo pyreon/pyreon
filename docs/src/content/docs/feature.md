@@ -134,11 +134,11 @@ const tasks = defineFeature({
 | Property        | Type                              | Required | Description                                                                                                |
 | --------------- | --------------------------------- | -------- | ---------------------------------------------------------------------------------------------------------- |
 | `name`          | `string`                          | Yes      | Unique feature name. Used as the `@pyreon/store` ID and the query-key namespace.                           |
-| `schema`        | validation schema                 | Yes      | Zod, or any Standard Schema (Valibot / ArkType / `s`) — see [Validators & introspection](#validators-introspection). Zod's `_output` infers the entity type. |
+| `schema`        | validation schema or field-type map | Yes    | Zod, or any Standard Schema (Valibot / ArkType / `s`) — see [Validators & introspection](#validators-introspection). Zod's `_output` infers the entity type. Alternatively a literal field-type map (`{ id: 'string', done: 'boolean' }`) — no validator, but the only form the native compiler can introspect (see [Multiplatform](#multiplatform)). |
 | `api`           | `string`                          | Yes      | REST base path, e.g. `'/api/tasks'`. Endpoint URLs derive from RESTful conventions.                        |
 | `initialValues` | `Partial<TValues>`                | No       | Override the schema-derived defaults used to seed `useForm` create-mode.                                   |
 | `validate`      | `SchemaValidateFn<TValues>`       | No       | Custom validation function. When provided, replaces auto-detection from the schema.                        |
-| `fetcher`       | `typeof fetch`                    | No       | Custom fetch (auth headers, base URL rewriting, mocking). Defaults to global `fetch`.                      |
+| `fetcher`       | `typeof fetch`                    | No       | Custom fetch (auth headers, base URL rewriting, mocking). Defaults to global `fetch`. Requests go through an [`@pyreon/http`](/docs/http) client built on it. |
 
 ### Return Value
 
@@ -152,14 +152,16 @@ const tasks = defineFeature({
 | `fields`      | `FieldInfo[]`                                                       | Schema fields introspected at definition time.             |
 | `queryKey`    | `(suffix?: string \| number) => QueryKey`                           | Namespaced query-key factory: `['tasks']` / `['tasks', 5]`. |
 | `useList`     | `(opts?: ListOptions) => UseQueryResult<TValues[]>`                 | Fetch a list (optionally paginated / filtered).            |
-| `useById`     | `(id: string \| number) => UseQueryResult<TValues>`                 | Fetch one entity by ID.                                    |
+| `useById`     | `(id: string \| number \| (() => string \| number \| null \| undefined)) => UseQueryResult<TValues>` | Fetch one entity by ID. An accessor re-keys and refetches when it changes, and stays idle while nullish. |
 | `useSearch`   | `(term: Signal<string>, opts?: ListOptions) => UseQueryResult<TValues[]>` | Reactive search keyed on a signal.                  |
 | `useCreate`   | `() => UseMutationResult<TValues, unknown, Partial<TValues>>`       | Create mutation (`POST`).                                  |
 | `useUpdate`   | `() => UseMutationResult<TValues, unknown, { id; data }>`           | Update mutation (`PUT`) with optimistic cache updates.     |
 | `useDelete`   | `() => UseMutationResult<void, unknown, string \| number>`          | Delete mutation (`DELETE`).                                |
-| `useForm`     | `(opts?: FeatureFormOptions) => FormState<TValues>`                 | Form with create / edit modes + schema validation.         |
+| `useForm`     | `(opts?: FeatureFormOptions) => FeatureFormState<TValues>`          | Form with create / edit modes + schema validation. Adds `isLoading` / `loadError` to `FormState`. |
 | `useTable`    | `(data, opts?: FeatureTableOptions) => FeatureTableResult<TValues>` | Table with schema-inferred columns.                        |
 | `useStore`    | `() => StoreApi<FeatureStore<TValues>>`                             | Reactive client-side cache.                                |
+| `Table`       | `(props: TableProps<TValues>) => VNodeChild`                        | Renders a `useTable()` result: `<feature.Table of={table} sortable? cell? empty? class? />`. `cell` overrides cells per column id with `({ value, row }) => VNodeChild`. |
+| `Field`       | `(props: FieldProps<TValues>) => VNodeChild`                        | Renders one schema field (label, typed control, error) from the form: `<feature.Field form={form} name="title" />`; `label` / `type` / `options` / `placeholder` / `class` / `inputClass` override the derived values. |
 
 ### Validators & introspection
 
@@ -482,8 +484,8 @@ function EditTask(props: { id: string }) {
 }
 ```
 
-:::warning
-There is no separate `isLoadingInitial` signal. In edit mode the form sets **`isSubmitting`** to `true` while the initial fetch is in flight, then back to `false` once the fields are populated. Gate your loading UI on `form.isSubmitting()`.
+:::note
+In edit mode `form.isLoading()` is `true` while the record is fetched (and `isSubmitting` is also held `true`, so `<Submit>` stays disabled). If the load fails, `form.loadError()` holds the error and submitting is refused, so a blank form is never `PUT` over the real record.
 :::
 
 The auto-fetch is unmount-safe: if the component unmounts before the `getById` promise settles (route nav, list re-render), the late resolution is dropped — no write to a disposed form.
@@ -823,12 +825,12 @@ const useDashboard = defineStore('dashboard', () => {
 | Hook                                     | Returns                                                  | Notes                                                  |
 | ---------------------------------------- | -------------------------------------------------------- | ------------------------------------------------------ |
 | `useList(opts?)`                         | `UseQueryResult<TValues[]>`                              | `GET /api`. `opts`: `ListOptions`.                     |
-| `useById(id)`                            | `UseQueryResult<TValues>`                                | `GET /api/:id`. Disabled when `id` is nullish.         |
+| `useById(id)`                            | `UseQueryResult<TValues>`                                | `GET /api/:id`. `id` may be a value or an accessor; disabled while nullish. |
 | `useSearch(term, opts?)`                 | `UseQueryResult<TValues[]>`                              | `GET /api?q=…`. `term` is a `Signal<string>`.          |
 | `useCreate()`                            | `UseMutationResult<TValues, _, Partial<TValues>>`        | `POST /api`. Invalidates list on success.              |
 | `useUpdate()`                            | `UseMutationResult<TValues, _, { id, data }>`            | `PUT /api/:id`. Optimistic; rolls back on error.       |
 | `useDelete()`                            | `UseMutationResult<void, _, string \| number>`           | `DELETE /api/:id`. Invalidates list on success.        |
-| `useForm(opts?)`                         | `FormState<TValues>`                                     | Create / edit form. `opts`: `FeatureFormOptions`.      |
+| `useForm(opts?)`                         | `FeatureFormState<TValues>`                              | Create / edit form. `opts`: `FeatureFormOptions`.      |
 | `useTable(data, opts?)`                  | `FeatureTableResult<TValues>`                            | `data` is an array or accessor. `opts`: `FeatureTableOptions`. |
 | `useStore()`                             | `StoreApi<FeatureStore<TValues>>`                        | Singleton cache. State on `.store`.                    |
 
@@ -841,10 +843,16 @@ const useDashboard = defineStore('dashboard', () => {
 | `extractFields(schema)`      | `(schema: unknown) => FieldInfo[]`                       | Introspect a schema's fields.                         |
 | `defaultInitialValues(fields)` | `(fields: FieldInfo[]) => Record<string, unknown>`     | Seed create-mode values from extracted fields.        |
 | `featureTableFeatures`       | `TableFeatures`                                          | The static v9 feature set every `useTable` builds with. |
+| `createFieldComponent(fields)` | `(fields: FieldInfo[]) => (props: FieldProps) => VNodeChild` | Build a `Field` component for any field list (what `feature.Field` is). |
+| `createTableComponent()`     | `() => (props: TableProps) => VNodeChild`                | Build a `Table` component (what `feature.Table` is).   |
 
 ### Exported types
 
-`Feature`, `FeatureConfig`, `FeatureFormOptions`, `FeatureStore`, `FeatureTableOptions`, `FeatureTableResult`, `FeatureTableFeatures`, `InferSchemaValues`, `ListOptions`, `FieldInfo`, `FieldType`, `ReferenceSchema`.
+`Feature`, `FeatureConfig`, `FeatureFormOptions`, `FeatureFormState`, `FeatureStore`, `FeatureTableOptions`, `FeatureTableResult`, `FeatureTableFeatures`, `InferSchemaValues`, `ListOptions`, `FieldInfo`, `FieldType`, `ReferenceSchema`, `FieldProps`, `TableProps`, `CellContext`.
+
+## Multiplatform
+
+The runtime half — the generated hooks, the network fetcher, and form / validator integration — runs on the web. On iOS and Android (PMTC), the declaration half crosses: `defineFeature({ name, schema })` with a **literal field-type map** (`schema: { id: 'string', done: 'boolean' }`) emits a Codable struct plus a module-scope constant carrying `name` and `initialValues`, reachable under the source binding name (`Todo.name`). A runtime schema (Zod / Valibot / ArkType) is not introspected there and warns by name. Swift and Kotlin share one namespace for types and values, so a file cannot declare both `const Todo = defineFeature(...)` and a type named `Todo`.
 
 ## Why
 

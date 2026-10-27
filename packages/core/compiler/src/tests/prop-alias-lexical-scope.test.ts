@@ -105,11 +105,11 @@ const CASES: Case[] = [
   // ── same class, other name-keyed registries: a FUNCTION-local signal ─────
   // `signalVars` leaked the same way — a sibling's `const s = signal(0)` made
   // an imported / module / free `s` auto-call (`s is not a function`).
-  { name: 'signal: sibling import of the same name', src: SIG + `import { s } from './x'\nexport function B() { return <b>{s}</b> }`, check: (o) => { expect(from(o, 'function B')).not.toContain('s()'); expect(from(o, 'function A')).toContain('s()') } },
-  { name: 'signal: sibling module const of the same name', src: SIG + `const s = 'm'\nexport function B() { return <b>{s}</b> }`, check: (o) => expect(from(o, 'function B')).not.toContain('s()') },
-  { name: 'signal: sibling free reference', src: SIG + `export function B() { return <b>{s}</b> }`, check: (o) => expect(from(o, 'function B')).not.toContain('s()') },
-  { name: 'signal: sibling declares its OWN signal of that name', src: SIG + `export function B() { const s = signal(1); return <b>{s}</b> }`, check: (o) => { expect(from(o, 'function A')).toContain('s()'); expect(from(o, 'function B')).toContain('s()') } },
-  { name: 'signal: a MODULE-level signal stays visible inside functions', src: `const s = signal(0)\nexport function A() { return <i>{s}</i> }\nexport function B() { return <b>{s}</b> }`, check: (o) => { expect(from(o, 'function A')).toContain('s()'); expect(from(o, 'function B')).toContain('s()') } },
+  { name: 'signal: sibling import of the same name', src: SIG + `import { s } from './x'\nexport function B() { return <b>{s}</b> }`, check: (o) => { expect(from(o, 'function B')).not.toMatch(/\bs\(\)|_bindText\(s,/); expect(from(o, 'function A')).toContain('_bindText(s,') } },
+  { name: 'signal: sibling module const of the same name', src: SIG + `const s = 'm'\nexport function B() { return <b>{s}</b> }`, check: (o) => expect(from(o, 'function B')).not.toMatch(/\bs\(\)|_bindText\(s,/) },
+  { name: 'signal: sibling free reference', src: SIG + `export function B() { return <b>{s}</b> }`, check: (o) => expect(from(o, 'function B')).not.toMatch(/\bs\(\)|_bindText\(s,/) },
+  { name: 'signal: sibling declares its OWN signal of that name', src: SIG + `export function B() { const s = signal(1); return <b>{s}</b> }`, check: (o) => { expect(from(o, 'function A')).toContain('_bindText(s,'); expect(from(o, 'function B')).toContain('_bindText(s,') } },
+  { name: 'signal: a MODULE-level signal stays visible inside functions', src: `const s = signal(0)\nexport function A() { return <i>{s}</i> }\nexport function B() { return <b>{s}</b> }`, check: (o) => { expect(from(o, 'function A')).toContain('_bindText(s,'); expect(from(o, 'function B')).toContain('_bindText(s,') } },
 ]
 
 describe('prop-derived aliases resolve by lexical binding (#3815)', () => {

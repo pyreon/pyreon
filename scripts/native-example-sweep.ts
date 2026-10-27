@@ -144,6 +144,10 @@ function unresolvedSymbol(error: string | undefined): string | 'any-member' | un
   const named = /cannot find (?:type )?'([^']+)' in scope|unresolved reference '([^']+)'/.exec(error)
   if (named) return named[1] ?? named[2]
   if (/value of type 'Any' has no member/.test(error)) return 'any-member'
+  // Kotlin's spelling of the same thing: a type argument fed by an undeclared type or value (`useFlow<WorkflowData>`
+  // with no `WorkflowData`, `computed(() => price() * qty())` with no `price`) cannot be inferred. Verified by
+  // declaring the missing piece: both then compile, so this is the fragment, not the compiler.
+  if (/cannot infer type for type parameter/.test(error)) return 'any-member'
   return undefined
 }
 

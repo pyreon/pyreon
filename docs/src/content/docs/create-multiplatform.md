@@ -14,36 +14,61 @@ The generator and the generated project structure are verified end-to-end (file 
 ## Quick start
 
 ```bash
-npx create-multiplatform my-app
+npm create @pyreon/multiplatform@latest my-app
+# or: npx @pyreon/create-multiplatform my-app
 cd my-app
 npm install
 
 npm run dev             # web (Vite dev server)
-npm run build:ios       # src/App.tsx → ios/generated/App.swift, then xcodegen + Xcode
-npm run build:android   # src/App.tsx → android/.../generated/App.kt, then Gradle
+npm run build:ios       # src/App.tsx → ios/generated/App.swift (then: cd ios && xcodegen generate)
+npm run build:android   # src/App.tsx → android/.../generated/App.kt (then: cd android && gradle assembleDebug)
 ```
+
+The unscoped `npx create-multiplatform` does not work: `npx` resolves a package name, and the package is `@pyreon/create-multiplatform` (`create-multiplatform` is only its bin name). `pyreon new --native` runs the same scaffolder.
 
 ## CLI usage
 
 ```text
-create-multiplatform <project-name> [--dir <path>]
+create-multiplatform <project-name> [--dir <path>] [--scheme <url-scheme>]
 ```
 
 | Arg | Description |
 | --- | --- |
 | `<project-name>` | Required. Also the directory scaffolded into unless `--dir` overrides it. Must be lowercase kebab-case (starts with a letter, letters/digits/hyphens only, no consecutive or trailing hyphens, 1-50 chars) — the name propagates into the Xcode project name and the Gradle module id, both stricter than an npm package name. An invalid name fails with a suggested fix. |
 | `--dir <path>` / `-d <path>` | Scaffold into a directory other than `<project-name>`. |
+| `--scheme <url-scheme>` | The custom URL scheme the app registers for deep links. Defaults to the project's identifier (`my-app` → `myapp`). See [Deep links](#deep-links). |
 | `--help` / `-h` | Print usage and exit 0. |
 
 ```bash
-npx create-multiplatform my-app --dir ./apps/my-app
+npx @pyreon/create-multiplatform my-app --dir ./apps/my-app
 ```
 
-The target directory must not already exist and be non-empty — a `.git`-only directory is fine (the `mkdir my-app && cd my-app && npx create-multiplatform .` flow), but scaffolding refuses to overwrite a directory that already has real content in it.
+The target directory must not already exist and be non-empty — a `.git`-only directory is fine (the `mkdir my-app && cd my-app && npx @pyreon/create-multiplatform .` flow), but scaffolding refuses to overwrite a directory that already has real content in it.
 
-Scaffolded scripts, beyond `dev` / `build:ios` / `build:android`: `preview` (Vite preview), `lint` (`pyreon-lint .`, including the opt-in `portable` `@pyreon/lint` rule group scoped to `src/App.tsx` — it flags a shared-source construct PMTC can't lower to native, before a build tries and fails), `release:keystore` (generates a self-signed Android release keystore if absent), and `release:android` (ensures the keystore, then produces a signed, R8-minified release APK via `gradle assembleRelease`).
+Scaffolded scripts, beyond `dev` / `build:ios` / `build:android`: `build` (`vite build`), `preview` (Vite preview), `lint` (`pyreon-lint .`, including the opt-in `portable` `@pyreon/lint` rule group scoped to `src/App.tsx` — it flags a shared-source construct PMTC can't lower to native, before a build tries and fails), `release:keystore` (generates a self-signed Android release keystore if absent), `release:android` (ensures the keystore, then produces a signed, R8-minified release APK via `gradle assembleRelease`), and `e2e:ios` / `e2e:android` (build, install and launch with `pyreon-native dev --target=<ios|android> --once`, then run the Maestro flows in `.maestro/`).
 
 The project also ships `AGENTS.md`, `CLAUDE.md` and `.mcp.json`: instructions for AI coding assistants (the commands above, the native-subset rules, where the capability matrix lives) and the Pyreon MCP server registration, matching what `create-zero` scaffolds for web apps.
+
+## Deep links
+
+Every generated app can be opened at a route by URL, with no setup. The scheme defaults to the project's identifier (`my-app` → `myapp://`); choose another with `--scheme`:
+
+```bash
+npx @pyreon/create-multiplatform my-app --scheme acme   # acme://item/42
+```
+
+The host files forward every inbound URL to the router: iOS through `.onOpenURL` (and a universal link through `onContinueUserActivity`), Android through the launch intent and `onNewIntent` (the activity is `singleTop`, so a link sent to the running app reaches it instead of stacking a second copy). The scheme is registered for both: `CFBundleURLTypes` on iOS, a `VIEW`/`BROWSABLE` intent filter on Android.
+
+How a URL becomes a route: for a **custom scheme** the host is the first route segment, so `acme://item/42` opens `/item/42` and `acme://about` opens `/about`. For a **web link** the host is the domain and is ignored: `https://example.com/item/42` also opens `/item/42`. Query and fragment are dropped, and a URL that yields nothing opens `/`.
+
+Try it on a running simulator or emulator:
+
+```bash
+xcrun simctl openurl booted "myapp://item/42"
+adb shell am start -a android.intent.action.VIEW -d "myapp://item/42"
+```
+
+Not generated: verified web links (universal links on iOS, `autoVerify` app links on Android). They need a domain you control, an Associated Domains entitlement and an `assetlinks.json` / `apple-app-site-association` file, so they stay a manual step. The forwarding for them is already in place; only the entitlement, the manifest filter and the hosted association file are missing.
 
 ## What gets generated
 
@@ -51,31 +76,39 @@ A project sharing **one canonical-primitive source** across three targets:
 
 ```
 my-app/
+  package.json
   src/
     App.tsx                 # the ONE source (uses @pyreon/primitives)
     entry-web.tsx           # web mount entry
   index.html
   vite.config.ts
   tsconfig.json
+  .pyreonlintrc.json        # enables the `portable` lint rules for src/
+  .maestro/counter.yaml     # on-device E2E flow (npm run e2e:ios / e2e:android)
+  AGENTS.md  CLAUDE.md  .mcp.json  README.md  .gitignore
   ios/
-    project.yml             # xcodegen spec
+    project.yml             # xcodegen spec (a pre-build phase runs scripts/build-ios.sh)
     Sources/
-      App.swift             # SwiftUI app shell
-      ContentView.swift     # imports generated/App.swift
+      Main.swift            # SwiftUI @main app shell + deep-link forwarding
+      ContentView.swift     # mounts the generated App()
     Info.plist
     generated/              # PMTC output — `npm run build:ios` populates this
       App.swift
   android/
     settings.gradle.kts
     build.gradle.kts
+    gradle.properties
     app/
       build.gradle.kts
+      proguard-rules.pro  proguard-test-rules.pro  proguard-releasetest-keep.pro
+      src/main/AndroidManifest.xml
       src/main/kotlin/.../MainActivity.kt
       src/main/kotlin/.../generated/  # PMTC output
         App.kt
   scripts/
-    build-ios.sh            # invokes `pyreon-native build --target swift`
-    build-android.sh        # invokes `pyreon-native build --target kotlin`
+    build-ios.sh            # pyreon-native wire --ios-out + build --target=ios
+    build-android.sh        # pyreon-native build --target=android --kotlin-package=… + wire --android-out
+    ensure-release-keystore.sh
 ```
 
 `src/App.tsx` uses the canonical [`@pyreon/primitives`](/docs/primitives) vocabulary (`<Stack>`, `<Text>`, `<Button>`, etc.). The web build auto-imports the DOM runtimes; the iOS and Android scripts run `pyreon-native build` to compile the same source to SwiftUI / Compose.
@@ -83,19 +116,16 @@ my-app/
 ## What "one source" means in practice
 
 ```tsx
-// src/App.tsx — runs on all three targets unchanged
-import { Stack, Inline, Text, Button } from '@pyreon/primitives'
+// src/App.tsx as scaffolded — runs on all three targets unchanged
 import { signal } from '@pyreon/reactivity'
+import { Stack, Text, Button } from '@pyreon/primitives'
 
 export function App() {
   const count = signal(0)
   return (
-    <Stack gap="md" padding="md">
-      <Text size="lg">Count: {() => count()}</Text>
-      <Inline gap="sm">
-        <Button onPress={() => count.update((n) => n + 1)}>Increment</Button>
-        <Button variant="secondary" onPress={() => count.set(0)}>Reset</Button>
-      </Inline>
+    <Stack gap="md" align="center">
+      <Text data-testid="count">{count}</Text>
+      <Button data-testid="increment" onPress={() => count.set(count() + 1)}>Increment</Button>
     </Stack>
   )
 }
@@ -104,7 +134,7 @@ export function App() {
 | Target | Render path |
 |---|---|
 | **Web** | Vite + `@pyreon/runtime-dom` + the real `@pyreon/primitives` web implementations. |
-| **iOS** | PMTC reads `src/App.tsx`, emits `ios/generated/App.swift` with SwiftUI `VStack` / `HStack` / `Text` / `Button` primitives. Xcode builds the resulting Swift package. |
+| **iOS** | PMTC reads `src/App.tsx`, emits `ios/generated/App.swift` with SwiftUI `VStack` / `HStack` / `Text` / `Button` primitives. Xcode builds the project xcodegen generates from `ios/project.yml`. |
 | **Android** | PMTC reads `src/App.tsx`, emits `android/.../generated/App.kt` with Compose `Column` / `Row` / `Text` / `Button`. Gradle builds the resulting Compose app. |
 
 ## Toolchain requirements
@@ -113,7 +143,7 @@ export function App() {
 |---|---|
 | Web | Bun / Node 18+ |
 | iOS | macOS, Xcode 15+, xcodegen (`brew install xcodegen`) |
-| Android | JDK 17, Android SDK, Gradle (handled by the wrapper) |
+| Android | JDK 17, Android SDK, and `gradle` on `PATH` (no Gradle wrapper is generated) |
 
 The web target requires no platform-specific toolchain. iOS and Android targets are opt-in — you can scaffold the project and only build the web target if you don't need native immediately.
 

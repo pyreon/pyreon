@@ -61,7 +61,7 @@
     "@pyreon/reactivity": "workspace:^"
   },
   "devDependencies": {
-    "@happy-dom/global-registrator": "21.0.3",
+    "@happy-dom/global-registrator": "21.0.4",
     "@pyreon/compiler": "workspace:^",
     "@pyreon/manifest": "workspace:*",
     "@pyreon/runtime-server": "workspace:^",
@@ -71,7 +71,7 @@
     "@vitest/browser-playwright": "^5.0.5",
     "esbuild": "^0.28.2",
     "happy-dom": "^21.0.4",
-    "rolldown": "^1.2.14",
+    "rolldown": "^1.2.15",
     "vite": "^8.3.5"
   },
   "publishConfig": {

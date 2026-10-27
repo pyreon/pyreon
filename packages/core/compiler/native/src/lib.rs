@@ -292,6 +292,18 @@ const HOLE_SENTINEL: char = '\u{0}';
 /// JSX transform and the `<template>` parser decode them identically), a bare
 /// `&` and `"` are escaped, and line terminators become numeric entities (the
 /// template HTML is a double-quoted JS string that escapes only `\\` and `"`).
+/// oxc 0.155 made string-literal values a `JSStr`: canonical WTF-8, so a
+/// string can hold a LONE SURROGATE (`"\uD800"`), which a Rust `str` cannot.
+/// Valid text borrows as-is. A lone surrogate becomes U+FFFD, which is what
+/// any UTF-8 output writes for it — the same bytes the JS backend's string
+/// ends up as once encoded — so the two backends agree on the emitted text.
+pub(crate) fn js_text<'a>(s: oxc_str::JSStr<'a>) -> std::borrow::Cow<'a, str> {
+    match s.as_str() {
+        Some(v) => std::borrow::Cow::Borrowed(v),
+        None => std::borrow::Cow::Owned(String::from_utf16_lossy(&s.encode_utf16().collect::<Vec<u16>>())),
+    }
+}
+
 fn escape_html_attr(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     for (i, ch) in s.char_indices() {
@@ -743,8 +755,8 @@ struct Ctx<'a> {
     /// `selector(k) ? a : b` ternary auto-promotion to `.subscribe(k, m => ...)`.
     /// See JS backend's `selectorVars` for parity.
     selector_vars: FxHashSet<String>,
-    /// Shadowed selector names — populated by find_shadowing logic in
-    /// future PR. Currently always empty (matches JS backend's TODO).
+    /// Shadowed selector names. Currently always empty (the JS backend's
+    /// `shadowedSelectors` set is likewise never populated).
     shadowed_selectors: FxHashSet<String>,
     /// Bindings whose initializer is DIRECTLY a JSX element/fragment
     /// (optionally parenthesized) — e.g. `const header = <h1/>`. A bare
@@ -6244,17 +6256,17 @@ fn ssr_provably_safe_url(node: &Expression) -> bool {
     let node = unwrap_type_layers(node);
     match node {
         Expression::StringLiteral(s) => {
-            let v = s.value.as_str();
+            let v = js_text(s.value);
             v.chars()
                 .next()
                 .map_or(false, |c| ssr_url_char_safe(c as u32))
         }
         Expression::TemplateLiteral(t) => {
-            let raw = t.quasis.first().map_or("", |q| {
+            let raw = t.quasis.first().map_or(std::borrow::Cow::Borrowed(""), |q| {
                 q.value
                     .cooked
                     .as_ref()
-                    .map_or(q.value.raw.as_str(), |a| a.as_str())
+                    .map_or(std::borrow::Cow::Borrowed(q.value.raw.as_str()), |a| js_text(*a))
             });
             raw.chars()
                 .next()
@@ -6425,7 +6437,7 @@ fn ssr_bake_string_attr_text(name: &str, value: &str) -> Option<String> {
 /// JS `ssrStaticStringValue`.
 fn ssr_static_string_value(expr: &Expression) -> Option<String> {
     if let Expression::StringLiteral(s) = unwrap_type_layers(expr) {
-        return Some(s.value.to_string());
+        return Some(js_text(s.value).into_owned());
     }
     None
 }
@@ -6493,7 +6505,8 @@ fn ssr_serialize_attr(
         }
         // Raw JSX string-literal value (`title="…"`). Entity-safety bail.
         Some(JSXAttributeValue::StringLiteral(s)) => {
-            let v = s.value.as_str();
+            let v = js_text(s.value);
+            let v = v.as_ref();
             if v.contains('&') {
                 return false;
             }
@@ -6524,7 +6537,7 @@ fn ssr_serialize_attr(
             if !has_upper {
                 match expr {
                     Expression::StringLiteral(s) => {
-                        if ssr_bake_string_attr(buf, name, s.value.as_str()) {
+                        if ssr_bake_string_attr(buf, name, &js_text(s.value)) {
                             return true;
                         }
                     }
@@ -8615,7 +8628,7 @@ fn static_attr_to_html(expr: &Expression, html_attr_name: &str, tag: &str) -> Op
             if is_select_value {
                 return None;
             }
-            Some(format!(" {}=\"{}\"", html_attr_name, escape_literal_attr(&s.value)))
+            Some(format!(" {}=\"{}\"", html_attr_name, escape_literal_attr(&js_text(s.value))))
         }
         Expression::NumericLiteral(n) => {
             if is_select_value {
@@ -8646,7 +8659,7 @@ fn static_attr_to_html(expr: &Expression, html_attr_name: &str, tag: &str) -> Op
                 Some(cooked) => Some(format!(
                     " {}=\"{}\"",
                     html_attr_name,
-                    escape_literal_attr(cooked.as_str())
+                    escape_literal_attr(&js_text(*cooked))
                 )),
                 None => None,
             }
@@ -8704,8 +8717,8 @@ fn try_direct_signal_ref(
     // `.direct`) take this path; selectors and arbitrary identifiers stay
     // general. Use id.name (NOT slice_expr — the auto-call rewrite would yield
     // `active()`); the caller emits the 2-arg form (no `this` to preserve).
-    // SCOPED to the ATTRIBUTE path (`allow_bare_signal`) — the text-child path
-    // keeps its existing emission for bare signals; see the JS twin.
+    // Both the attribute path and the text-child path opt in (`{count}` and
+    // `{count()}` are the same read); see the JS twin.
     if allow_bare_signal {
         if let Expression::Identifier(id) = inner {
             if is_active_signal(id.name.as_str(), ctx) {
@@ -8943,7 +8956,7 @@ fn emit_dynamic_attr(
         ),
     );
     // attr path opts into bare-signal direct binding (class={active}); the text
-    // call site below does NOT (allow_bare_signal=false).
+    // call site does too.
     let direct_ref = try_direct_signal_ref(expr_node, true, ctx);
     if let Some((signal_name, is_member, receiver)) = direct_ref {
         tb.needs_bind_direct = true;
@@ -9071,11 +9084,11 @@ fn attr_initializer_to_html(
             if ((tag == "select" || tag == "textarea") && html_attr_name == "value")
                 || (tag == "input" && html_attr_name == "indeterminate")
             {
-                let line = attr_setter(html_attr_name, var_name, &escape_js_string(&s.value), tag, tb);
+                let line = attr_setter(html_attr_name, var_name, &escape_js_string(&js_text(s.value)), tag, tb);
                 tb.bind_lines.push(line);
                 return String::new();
             }
-            format!(" {}=\"{}\"", html_attr_name, escape_html_attr(&s.value))
+            format!(" {}=\"{}\"", html_attr_name, escape_html_attr(&js_text(s.value)))
         }
         Some(JSXAttributeValue::ExpressionContainer(c)) => {
             match jsx_expr_as_expression(&c.expression) {
@@ -9161,7 +9174,7 @@ fn push_text(flat: &mut Vec<FlatChild<'_>>, html: String) {
 /// `literalChildText` — the predicate is identical by construction.
 fn literal_child_text(expr: &Expression<'_>) -> Option<String> {
     match expr {
-        Expression::StringLiteral(s) => Some(s.value.to_string()),
+        Expression::StringLiteral(s) => Some(js_text(s.value).into_owned()),
         Expression::NumericLiteral(n) => n.raw.as_ref().and_then(|r| bakeable_number_raw(r.as_str())),
         Expression::NullLiteral(_) => Some(String::new()),
         Expression::BooleanLiteral(_) => Some(String::new()),
@@ -9169,7 +9182,7 @@ fn literal_child_text(expr: &Expression<'_>) -> Option<String> {
         Expression::TemplateLiteral(t) if t.expressions.is_empty() => t
             .quasis
             .first()
-            .and_then(|q| q.value.cooked.as_ref().map(|c| c.to_string())),
+            .and_then(|q| q.value.cooked.as_ref().map(|c| js_text(*c).into_owned())),
         _ => None,
     }
 }
@@ -9289,8 +9302,8 @@ fn emit_reactive_text_child(
         let (expr, _) = tb.chain_from_captured(&canonical);
         tb.capture_ref(t_var.clone(), &expr, canonical);
     }
-    // text-child path keeps existing bare-signal emission (allow_bare_signal=false).
-    let direct_ref = try_direct_signal_ref(expr_node, false, ctx);
+    // Bare signals opt in here too: `{count}` emits the same `_bindText` as `{count()}`.
+    let direct_ref = try_direct_signal_ref(expr_node, true, ctx);
     if let Some((signal_name, is_member, receiver)) = direct_ref {
         tb.needs_bind_text = true;
         let d = tb.next_disp();
@@ -10284,7 +10297,7 @@ fn detect_collapsible_shape(
                 let v = a.value.as_ref()?; // boolean attr (no value) → bail
                 match v {
                     JSXAttributeValue::StringLiteral(lit) => {
-                        props.insert(name, lit.value.to_string());
+                        props.insert(name, js_text(lit.value).into_owned());
                     }
                     _ => return None, // {expr} / dynamic → bail
                 }
@@ -10414,7 +10427,7 @@ fn detect_partial_collapsible_shape(
                 let v = a.value.as_ref()?; // boolean attr (no value) → bail
                 match v {
                     JSXAttributeValue::StringLiteral(lit) => {
-                        props.insert(name, lit.value.to_string());
+                        props.insert(name, js_text(lit.value).into_owned());
                     }
                     JSXAttributeValue::ExpressionContainer(c) => {
                         // ONLY an `on[A-Z]…` handler in a `{expr}` container is
@@ -10558,7 +10571,7 @@ fn detect_dynamic_collapsible_shape(
                 let v = a.value.as_ref()?; // boolean attr (no value) → bail
                 match v {
                     JSXAttributeValue::StringLiteral(lit) => {
-                        props.insert(name, lit.value.to_string());
+                        props.insert(name, js_text(lit.value).into_owned());
                     }
                     JSXAttributeValue::ExpressionContainer(c) => {
                         let expr = match jsx_expr_as_expression(&c.expression) {
@@ -10590,8 +10603,8 @@ fn detect_dynamic_collapsible_shape(
                                     name,
                                     cond_start: test_sp.start,
                                     cond_end: test_sp.end,
-                                    value_truthy: cons.value.to_string(),
-                                    value_falsy: alt.value.to_string(),
+                                    value_truthy: js_text(cons.value).into_owned(),
+                                    value_falsy: js_text(alt.value).into_owned(),
                                 });
                                 continue;
                             }
@@ -10779,7 +10792,7 @@ fn detect_static_element_child(el: &JSXElement) -> Option<StaticChildNode> {
                 let v = a.value.as_ref()?; // boolean attr → bail
                 match v {
                     JSXAttributeValue::StringLiteral(lit) => {
-                        props.insert(name, lit.value.to_string());
+                        props.insert(name, js_text(lit.value).into_owned());
                     }
                     _ => return None, // {expr} / dynamic → bail
                 }
@@ -10885,7 +10898,7 @@ fn detect_element_child_collapsible_shape(
                 let v = a.value.as_ref()?; // boolean attr → bail
                 match v {
                     JSXAttributeValue::StringLiteral(lit) => {
-                        props.insert(name, lit.value.to_string());
+                        props.insert(name, js_text(lit.value).into_owned());
                     }
                     _ => return None, // {expr} / handler / dynamic → bail
                 }

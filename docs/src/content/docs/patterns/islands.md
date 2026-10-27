@@ -16,7 +16,7 @@ If the WHOLE page is interactive (a typical SPA dashboard), use full SSR + hydra
 
 ```tsx
 // src/islands.ts — declarations
-import { island } from '@pyreon/server'
+import { island } from '@pyreon/server/client'   // never the @pyreon/server barrel in client code
 
 export const Counter = island(() => import('./components/Counter'), {
   name: 'Counter',

@@ -15,7 +15,7 @@ Reactive keyboard shortcut management for Pyreon. Register global or scoped shor
 
 keyboard-shortcut layer over DOM KeyboardEvent. The REGISTRY half (registerHotkey / scopes / conflict reporting) is web; the `useHotkey` authoring hook lowers — see nativeFrontend
 
-**What crosses natively:** `useHotkey('mod+s', () => { … })` with a LITERAL shortcut and an inline zero-arg handler — lowers to a SwiftUI `.keyboardShortcut` on a hidden zero-size Button and a Compose focused key handler on the component root. `mod` resolves per platform (Command on iOS, Ctrl on Android). A computed shortcut, a handler taking the KeyboardEvent, or a comma-separated combo LIST each warn by name and are dropped
+**What crosses natively:** `useHotkey('mod+s', () => { … })` with a LITERAL shortcut and an inline handler that takes no parameter, or whose only use of the `KeyboardEvent` is `e.preventDefault()` / `e.stopPropagation()` (no browser default exists to suppress on a native key binding, so those statements are dropped) — lowers to a SwiftUI `.keyboardShortcut` on a hidden zero-size Button and a Compose focused key handler on the component root. `mod` resolves per platform (Command on iOS, Ctrl on Android). A computed shortcut, a handler that READS the KeyboardEvent (`e.key`, `e.shiftKey`, passing `e` on), or a comma-separated combo LIST each warn by name and are dropped
 
 See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multiplatform libraries](/docs/multiplatform-libraries) for every package's tier.
 

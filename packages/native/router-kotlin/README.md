@@ -19,7 +19,7 @@ Seven Kotlin sources under `src/main/kotlin/com/pyreon/router/`:
 | `Link.kt` | `PyreonLink(to) { navigate -> ... }` — exposes the navigate action to a caller-supplied clickable wrapper, deliberately keeping this package free of `androidx.compose.material*` (see "Why caller-wraps-clickable" below). |
 | `Hooks.kt` | `useNavigate()`, `useParams()`, `useLoaderData<T>()` — `@Composable` functions reading from `LocalPyreonRouter`. |
 | `RouteLoader.kt` | `PyreonRouteLoader` — wraps a route's Composable, running its `loader` once on first composition and storing the result via `router.setLoaderData`. |
-| `PyreonDeepLink.kt` | A process-wide inbound deep-link channel. `PyreonDeepLink.receive(uri: Uri?)` (call from the launch `Intent` and `onNewIntent`) delivers a URI's path to the currently-live router, or holds it as pending for the next router constructed (a cold launch). |
+| `PyreonDeepLink.kt` | A process-wide inbound deep-link channel. `PyreonDeepLink.receive(uri: Uri?)` (call from the launch `Intent` and `onNewIntent`) delivers a URI's route path (a custom scheme's host is its first segment: `myapp://item/42` is `/item/42`; a web link's host is its domain and is ignored) to the currently-live router, or holds it as pending for the next router constructed (a cold launch). |
 
 ## API parity with `@pyreon/router`
 

@@ -123,7 +123,7 @@ export interface MathCallInput {
   /**
    * Per-argument "is this provably a floating-point value?", from the
    * emitter's own inference. Used only to decide Double promotion for the
-   * variadic `max`/`min` and to leave a Kotlin `floor`/`ceil`/`round` over a
+   * variadic `max`/`min` and to leave a Kotlin `floor`/`ceil` over a
    * Double argument on its existing (compiling, string-locked) passthrough.
    */
   readonly argIsFloat: readonly boolean[]
@@ -258,7 +258,21 @@ export function lowerMathCall(input: MathCallInput): MathLowering {
   // java.lang.Math has no overload and kotlinc reports an argument type
   // mismatch. Claim ONLY the failing half so the Double emit (and the test
   // that pins its string) is byte-identical.
-  if (!swift && (member === 'floor' || member === 'ceil' || member === 'round')) {
+  // `round` is claimed for EVERY argument: `java.lang.Math.round(double)`
+  // returns a LONG, while JS `Math.round` returns a NUMBER and `inferMathCall`
+  // types it Double (as it does floor/ceil/trunc, and as the Swift emit
+  // produces). Left as a Long, the inferred and emitted types disagreed:
+  // `derivedStateOf { Math.round(x * 100) }` then fed `pyreonNumString(Double)`
+  // and kotlinc rejected it ("actual type is 'Long', but 'Double' was
+  // expected"), and `Math.round(a) * 0.5` silently became Long arithmetic
+  // nowhere. `.toDouble()` keeps java's rounding rule, which IS JS's
+  // (`floor(x + 0.5)`, without the 0.49999999999999994 bug a hand-written
+  // `floor(x + 0.5)` has).
+  if (!swift && member === 'round') {
+    const arg = input.argIsFloat[0] === true ? a : dbl(target, a)
+    return { code: `Math.round(${arg}).toDouble()` }
+  }
+  if (!swift && (member === 'floor' || member === 'ceil')) {
     if (input.argIsFloat[0] === true) return null
     return { code: `Math.${member}(${dbl(target, a)})` }
   }

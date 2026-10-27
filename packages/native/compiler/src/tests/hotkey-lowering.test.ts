@@ -114,13 +114,41 @@ export function C() {
     expect(kotlin.code).toContain('Key.S')
   })
 
-  it('refuses a handler that takes the KeyboardEvent BY NAME', () => {
-    // Native has no KeyboardEvent. Emitting a binding that silently ignores the
-    // parameter would be worse than refusing: the handler would run with its
-    // event-dependent logic quietly wrong.
-    const evt = src(`useHotkey('mod+s', (e) => { e.preventDefault() })`)
-    const w = transform(evt, { target: 'swift' }).warnings
-    expect(w.some((x) => x.includes('KeyboardEvent parameter'))).toBe(true)
+  it('lowers a handler whose ONLY use of the event is suppressing the browser default', () => {
+    // `mod+s` handlers all write `e.preventDefault()`. There is no browser
+    // default to suppress on a native key binding, so the statement is a
+    // no-op there and the hotkey must still bind.
+    const code = src(`useHotkey('mod+s', (e) => { e.preventDefault(); e.stopPropagation(); count.set(count() + 1) })`)
+    for (const target of ['swift', 'kotlin'] as const) {
+      const r = transform(code, { target })
+      expect(r.warnings.filter((x) => x.includes('useHotkey'))).toEqual([])
+      expect(r.code).not.toContain('preventDefault')
+      expect(r.code).not.toContain('stopPropagation')
+    }
+    expect(transform(code, { target: 'swift' }).code).toContain('.keyboardShortcut')
+    expect(transform(code, { target: 'kotlin' }).code).toContain('Key.S')
+  })
+
+  it('lowers a handler that declares the event parameter but never uses it', () => {
+    for (const body of [`(e) => count.set(count() + 1)`, `(_e) => { count.set(1) }`]) {
+      const w = transform(src(`useHotkey('mod+s', ${body})`), { target: 'swift' }).warnings
+      expect(w.filter((x) => x.includes('useHotkey')), body).toEqual([])
+    }
+  })
+
+  it('still refuses a handler that READS the KeyboardEvent BY NAME', () => {
+    // Native has no KeyboardEvent. A binding that silently ignored a read of
+    // the parameter would run with its event-dependent logic quietly wrong.
+    for (const body of [
+      `(e) => { if (e.shiftKey) count.set(1) }`,
+      `(e) => { e.preventDefault(); log(e.key) }`,
+      `(e) => { handle(e) }`,
+      `(e) => { const k = e; k.preventDefault() }`,
+      `(e) => log(e.key)`,
+    ]) {
+      const w = transform(src(`useHotkey('mod+s', ${body})`), { target: 'swift' }).warnings
+      expect(w.some((x) => x.includes('KeyboardEvent parameter')), body).toBe(true)
+    }
   })
 
   it('refuses a comma-separated combo LIST BY NAME', () => {

@@ -64,8 +64,8 @@
   "devDependencies": {
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
-    "@storybook/builder-vite": "^10.6.2",
-    "storybook": "^10.6.2"
+    "@storybook/builder-vite": "^10.6.4",
+    "storybook": "^10.6.4"
   },
   "publishConfig": {
     "access": "public"

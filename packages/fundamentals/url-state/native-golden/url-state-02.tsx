@@ -6,7 +6,7 @@ const dynamicKey = 'a' + 'b'
 export function Rejected(props: { key: string; def: number }) {
   const a = useUrlState(props.key, 'x')
   const b = useUrlState('b', props.def)
-  const c = useUrlState('c', [1, 2])
+  const c = useUrlState('c', [1, 'a'])
   const d = useUrlState('d', { a: 1 })
   // oxlint-disable-next-line no-loss-of-precision -- the overflowing literal IS the shape under test
   const e = useUrlState('e', 1e999)

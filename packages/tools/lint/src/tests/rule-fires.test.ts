@@ -752,7 +752,7 @@ const FIXTURES: Record<string, Fixture> = {
   'pyreon/rx-prefer-pipe': {
     file: 'src/a.ts',
     bad: `import { map, filter } from '@pyreon/rx'\nexport const out = map(filter(src, (x) => x > 1), (x) => x * 2)`,
-    good: `import { pipe, map, filter } from '@pyreon/rx'\nexport const out = pipe(src, filter((x) => x > 1), map((x) => x * 2))`,
+    good: `import { pipe } from '@pyreon/rx'\nexport const out = pipe(src, (xs) => xs.filter((x) => x > 1), (xs) => xs.map((x) => x * 2))`,
   },
   'pyreon/i18n-prefer-trans-for-rich-jsx': {
     file: 'src/a.tsx',

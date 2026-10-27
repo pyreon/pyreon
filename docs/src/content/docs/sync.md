@@ -168,6 +168,8 @@ The `initial` value is **create-if-missing only**: if the key already exists (hy
 **`initial` is not "set to this value."** It is create-if-missing. A persisted or peer value is authoritative; `initial` only seeds an absent key. If you need to *force* a value, call `.set` after creation.
 :::
 
+When a transport is attached, the seed write is **deferred until the transport's first sync**, then re-checked: a value that arrived from a peer in the meantime wins and no seed is written. `initial` still shows as the local value straight away. Without the deferral, a fresh peer's default could win the CRDT tie-break against a real value from another device. One case remains: two *fresh* peers seeding an empty room with different defaults for the same key still tie-break — gate app-level defaults behind `await transport.whenSynced()`.
+
 :::note
 Scalar `syncedSignal` is for strings, numbers, and booleans. You *can* store a whole object/array, but it is compared by reference, so any change is a coarse whole-value replace that re-fires per replace — and last-writer-wins drops the loser. For collaborative collections, reach for `syncedText` / `syncedList` (below).
 :::
@@ -420,16 +422,18 @@ const transport = connectViaWebSocket(
   {
     reconnect: true,        // default
     maxBackoffMs: 10_000,   // default cap on backoff
-    onConnect: () => console.log('synced'),
+    onConnect: () => console.log('socket open'), // open, not yet synced — use whenSynced()
     onDisconnect: () => console.log('offline'),
   },
 )
 
 transport.connected    // boolean — whether the socket is currently open
+transport.synced()     // reactive — true once the first sync round-trip completed
+await transport.whenSynced() // rejects on a 4401 refusal or after disconnect()
 transport.disconnect() // close + stop reconnecting (idempotent)
 ```
 
-`WebSocketTransportOptions`: `reconnect?`, `maxBackoffMs?`, `WebSocketImpl?`, `onConnect?`, `onDisconnect?`. The transport handle is `{ disconnect(); connected }`.
+`WebSocketTransportOptions`: `reconnect?`, `maxBackoffMs?`, `WebSocketImpl?`, `onConnect?`, `onDisconnect?`. The transport handle is `{ disconnect(); connected; synced(); whenSynced() }`. `synced` resets to `false` across a disconnect and becomes `true` again after each reconnect's round-trip.
 
 :::warning
 **Auth rides the query string, not a header.** Browser `WebSocket`s cannot set request headers, so put the token in the URL (`?token=…`); the relay's `authorize` hook reads it.
@@ -603,7 +607,7 @@ Sync is a powerful capability, but be precise about what it does and doesn't gua
 - **It is not free weight.** A synced app ships `yjs` (~40KB min+gz) + `y-indexeddb` + `y-protocols` + the WebSocket client on top of the runtime — realistically **~60KB+ gzipped**. It is off the core hot path (an opt-in `/yjs` import) and justified by the capability, but a synced Pyreon app is not a "smaller than Solid" app.
 - **Presence is O(N) in peer count.** Every awareness change rebuilds the full peers snapshot and re-runs each `others()` consumer — fine for dozens of collaborators, but throttle cursor publishes for large swarms (a v1 limit).
 - **Authorization is table-stakes.** The relay's default allows everything; production must gate per room/doc. Whole-document CRDTs make partial access hard — use per-doc rooms or permission-scoped sub-docs.
-- **Native (PMTC) sync is out of near-term scope.** The `CrdtAdapter` seam keeps a future Loro-via-FFI engine door open, but compiler WebSocket-emit + a native WS runtime + a CRDT-via-FFI engine are not in scope yet.
+- **Native (PMTC) sync covers scalars.** On iOS and Android, `syncedSignal({ doc, key, initial })` over a `PyreonCrdtDoc` lowers to the native `PyreonSyncedSignal` (String / Double / Bool, create-if-missing, remote-op reactivity). `syncedText` / `syncedList` / awareness and the Yjs transports stay web; native cross-device transport is tracked.
 
 ## API reference
 
@@ -626,6 +630,21 @@ Sync is a powerful capability, but be precise about what it does and doesn't gua
 | `fakeAdapter` | constant | A shared `FakeCrdtAdapter` instance. |
 | `connectFakeDocs(a, b)` | function | Link two in-memory fake docs; returns `{ disconnect() }`. |
 
+#### The dependency-free LWW engine
+
+The root entry also ships a pure-TypeScript engine with no `yjs`: a last-writer-wins scalar map that converges by construction (a Lamport clock plus a deterministic actor tie-break). It is the engine the native JS-runtime bridge embeds for multiplatform sync. Rich text and lists stay on `@pyreon/sync/yjs`.
+
+| Export | Kind | Summary |
+| --- | --- | --- |
+| `PyreonCrdtDoc` / `PyreonCrdtAdapter` / `pyreonAdapter` | class / class / constant | The LWW `CrdtDoc` (`new PyreonCrdtDoc(actor)`) and its adapter. Works with `syncedSignal` / `syncedStore`. |
+| `createActorId()` | function | A random per-peer id (persist it per install — it is the tie-breaker). |
+| `PyreonCrdtOp` | type | One stamped register write — the wire unit. |
+| `connectPyreonSync(doc, channel)` | function | JSON transport over any string duplex: sends full state on open, then local ops. Returns `{ disconnect() }`. |
+| `webSocketChannel(url, WebSocketImpl?)` | function | A `SyncChannel` over a WebSocket. |
+| `SyncChannel` / `WebSocketLike` / `PyreonSyncWebSocketCtor` | type | The channel interface (`send` / `onMessage` / `onOpen` / `close`) and WebSocket shapes. |
+| `createNativeSyncHost({ actor, url?, WebSocketImpl? })` | function | The bridge a native JS runtime drives: `observe(map, key, cb)`, `set(map, key, value)`, `has(map, key)`, `destroy()`. |
+| `NativeSyncHost` / `NativeSyncHostOptions` | type | Its handle and options. |
+
 ### `@pyreon/sync/yjs` (engine)
 
 | Export | Kind | Summary |
@@ -642,7 +661,7 @@ Sync is a powerful capability, but be precise about what it does and doesn't gua
 | `getDocAwareness(doc)` / `peekDocAwareness(doc)` | function | The doc's `Awareness` (get-or-create / peek). Advanced. |
 | `persistViaIndexedDB(doc, dbName)` | function | Offline durability (browser-only). Returns `YjsPersistence`. |
 | `connectViaBroadcastChannel(doc, name)` | function | Same-origin cross-tab transport; `{ disconnect() }`. |
-| `connectViaWebSocket(doc, url, options?)` | function | Cross-device transport (auto-reconnect); `{ disconnect(); connected }`. |
+| `connectViaWebSocket(doc, url, options?)` | function | Cross-device transport (auto-reconnect); `{ disconnect(); connected; synced(); whenSynced() }`. |
 | `connectYDocs(a, b)` | function | In-memory peer link (real-Yjs; models reconnect convergence); `{ disconnect() }`. |
 | `WebSocketTransport` / `WebSocketTransportOptions` | type | Transport handle + options. |
 | `YjsPersistence` | type | `{ whenSynced; destroy() }`. |
@@ -655,3 +674,4 @@ Sync is a powerful capability, but be precise about what it does and doesn't gua
 | `SyncServerOptions` | type | `{ port?; host?; server?; authorize? }`. |
 | `SyncServer` | type | `{ port; rooms; close() }`. |
 | `AuthorizeContext` | type | `{ room; token; req }` passed to `authorize`. |
+| `AuthorizeResult` | type | `boolean \| 'read' \| 'write'` — `'read'` admits a read-only client (its document updates are dropped); `false` rejects (close 4401). |

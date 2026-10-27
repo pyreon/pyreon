@@ -56,16 +56,16 @@
     }
   },
   "devDependencies": {
-    "@happy-dom/global-registrator": "21.0.3",
+    "@happy-dom/global-registrator": "21.0.4",
     "@pyreon/manifest": "workspace:*",
     "@pyreon/native-compiler": "workspace:*",
     "@pyreon/runtime-server": "workspace:^",
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
-    "bun-types": "^1.4.3",
+    "bun-types": "^1.4.4",
     "fake-indexeddb": "^6.2.6",
     "jotai": "^3.0.1",
-    "zustand": "^5.0.15"
+    "zustand": "^5.0.16"
   },
   "publishConfig": {
     "access": "public"

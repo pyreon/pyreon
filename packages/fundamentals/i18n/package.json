@@ -67,13 +67,13 @@
     }
   },
   "devDependencies": {
-    "@happy-dom/global-registrator": "21.0.3",
+    "@happy-dom/global-registrator": "21.0.4",
     "@pyreon/manifest": "workspace:*",
     "@pyreon/native-compiler": "workspace:*",
     "@pyreon/runtime-dom": "workspace:^",
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
-    "i18next": "^26.5.3"
+    "i18next": "^26.5.11"
   },
   "publishConfig": {
     "access": "public"

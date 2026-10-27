@@ -15,6 +15,6 @@
 export interface FieldMetaDefnIR {
   /** Top-level binding name (e.g. `emailField`). */
   bindingName: string
-  /** Literal meta fields (string values only in v1). */
-  meta: { name: string; value: string }[]
+  /** Literal meta fields. A number lowers to `Int` when it is a whole number in 32-bit range, else `Double`. */
+  meta: { name: string; value: string | number | boolean }[]
 }

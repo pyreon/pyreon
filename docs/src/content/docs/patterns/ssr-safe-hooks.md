@@ -80,5 +80,5 @@ Hooks are cheap on SSR — they return sensible defaults (0, null, false) so the
 ## Related
 
 - Detector: `raw-add-event-listener` / `raw-remove-event-listener` — the MCP `validate` tool flags raw DOM-listener registrations that should use `useEventListener`
-- Reference: `@pyreon/hooks` — 30+ SSR-safe hooks
+- Reference: `@pyreon/hooks` — 65 hooks
 - Anti-pattern: "Browser-only helpers called from event handlers without an explicit SSR guard"

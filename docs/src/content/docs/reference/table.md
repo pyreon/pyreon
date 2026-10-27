@@ -7,7 +7,7 @@ description: "Pyreon adapter for TanStack Table — reactive options, signal-dri
 
 > **Generated** from `table`'s `src/manifest.ts` — the same source that powers `llms.txt` and MCP `get_api`. Do not edit this page by hand; edit the manifest. For the conceptual guide, see [table](/docs/table).
 
-Reactive TanStack Table v9 adapter for Pyreon. Options are passed as a function so signal reads inside (data, columns, state) automatically re-sync the table when any tracked signal changes. Returns the Table instance directly: its state lives in Pyreon signals through v9's pluggable reactivity seam, so reads track natively inside templates and effects. Re-exports the TanStack Table author surface — all 16 features, every row model and built-in fn — as an explicit, curated list.
+Reactive TanStack Table v9 adapter for Pyreon. Options are passed as a function so signal reads inside (data, columns, state) automatically re-sync the table when any tracked signal changes. Returns the Table instance directly: its state lives in Pyreon signals through v9's pluggable reactivity seam, so reads track natively inside templates and effects. Re-exports the TanStack Table author surface — all 17 features, every row model and built-in fn — as an explicit, curated list.
 
 ## Multiplatform
 
@@ -275,7 +275,7 @@ table.toggleSort('name'); table.setFilter('li')
 
 > **Note:** Options must be a FUNCTION `() => TableOptions<T>`, not a plain object. Signal reads inside the function are tracked reactively — changing any tracked signal re-syncs the table automatically.
 
-> **Re-exports:** The TanStack Table author surface is re-exported from `@pyreon/table` — all 16 features (rowSortingFeature, columnFilteringFeature, …), every row model (createSortedRowModel, createFilteredRowModel, createPaginatedRowModel, …), every built-in filter/sort/aggregation fn, plus `tableFeatures`/`stockFeatures`. All types are re-exported too. Import from `@pyreon/table`, not `@tanstack/table-core`. The runtime list is explicit and curated (not `export *`) so an upstream major is OUR migration, not yours, and adapter-construction internals never leak.
+> **Re-exports:** The TanStack Table author surface is re-exported from `@pyreon/table` — all 17 features (rowSortingFeature, columnFilteringFeature, …), every row model (createSortedRowModel, createFilteredRowModel, createPaginatedRowModel, …), every built-in filter/sort/aggregation fn, plus `tableFeatures`/`stockFeatures`. All types are re-exported too. Import from `@pyreon/table`, not `@tanstack/table-core`. The runtime list is explicit and curated (not `export *`) so an upstream major is OUR migration, not yours, and adapter-construction internals never leak.
 
 > **Computed return:** useTable returns the Table INSTANCE (v9), not a Computed — there is no `table()` call. Its state lives in Pyreon signals, so reading it inside a reactive scope subscribes: `<For each={() => table.getRowModel().rows}>` makes the list reactive. The v8 accessor form was only ever a workaround for v8 having no reactivity seam.
 

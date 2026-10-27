@@ -40,6 +40,8 @@ The Lens is not a linter guess — it's the **actual compiler output**. `analyze
 
 `@pyreon/lint`'s LSP server (`pyreon-lint --lsp`) serves those verdicts as [`textDocument/inlayHint`](https://microsoft.github.io/language-server-protocol/) responses — the standard editor protocol for inline type-like annotations.
 
+The same pass also returns `footgun` findings — anti-patterns from `detectPyreonPatterns` such as `props-destructured` or `signal-write-as-call`. The LSP server publishes these as warning diagnostics (source `pyreon-lens`, code = the detector code) rather than inlay hints.
+
 ## Enable it in your editor
 
 The Lens rides the same `pyreon-lint --lsp` server as [Live Program Inlay Hints](/docs/lpih) — set that up once and you get both:

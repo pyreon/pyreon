@@ -54,6 +54,24 @@ describe('Tier-2 — @pyreon/i18n/core Strategy-B emit (Gap 4 PR-3, v1)', () => 
     expect(result.code).toContain('i18n.t("farewell")')
   })
 
+  // Switching language: the web reads `i18n.locale()` (a signal) and writes
+  // `i18n.locale.set('de')`. Natively `locale` is a settable property, so the
+  // read drops the call and the write becomes an assignment. The verbatim call
+  // and a read-only property both failed to compile, silently, on both targets.
+  it('Swift: locale() reads the property and locale.set() assigns it', () => {
+    const result = transform(readFileSync(FIXTURE, 'utf8'), { target: 'swift' })
+    expect(result.code).toContain('Text(verbatim: "\\(i18n.locale)")')
+    expect(result.code).toContain('i18n.locale = "de"')
+    expect(result.code).not.toContain('i18n.locale()')
+  })
+
+  it('Kotlin: locale() reads the property and locale.set() assigns it', () => {
+    const result = transform(readFileSync(FIXTURE, 'utf8'), { target: 'kotlin' })
+    expect(result.code).toContain('"${i18n.locale}"')
+    expect(result.code).toContain('i18n.locale = "de"')
+    expect(result.code).not.toContain('i18n.locale()')
+  })
+
   it('emits NO silent-drop warning for createI18n post-port (Gap 4 PR-1 diagnostic does not fire here)', () => {
     // Once PR #1444 is rebased to drop createI18n from its diagnostic
     // list (this PR ships the real port), the warning vanishes. This

@@ -49,7 +49,7 @@ export default function TodoList() {
 
 <Example file="./examples/tutorial/todo-1-list" />
 
-Two things to notice. First, `each={todos}` takes the **signal itself**, not `todos()` — `<For>` subscribes to it and re-runs when the array changes. Second, the `by` key is required for efficient updates; without it, every change re-creates the whole list.
+Two things to notice. First, `each={todos}` takes the **signal itself**, not `todos()` — `<For>` subscribes to it and re-runs when the array changes. Second, `by` is required — the key it returns is what lets `<For>` reconcile rows (reuse, move, remove) instead of rebuilding them.
 
 ## Step 2 — Add items
 

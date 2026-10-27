@@ -9,9 +9,8 @@
 import type { StubAugmentation } from '@pyreon/native-compiler/plugin-api'
 
 export const I18N_SWIFT_STUBS = `public final class PyreonI18n {
-  // A CLASS with a settable \`locale\`, like the real @Observable runtime:
-  // \`i18n.locale.set('pl')\` lowers to \`i18n.locale = "pl"\` inside a view
-  // closure, which a struct stub would reject as mutating an immutable self.
+  // A settable locale, as in the real (@Observable final class) runtime:
+  // \`i18n.locale.set('de')\` lowers to an assignment, \`i18n.locale()\` to a read.
   public var locale: String
   // fallbackLocale is OPTIONAL and DEFAULTED in the real PyreonI18n. The stub
   // made it required, so \`createI18n({ locale, messages })\` — the two-argument
