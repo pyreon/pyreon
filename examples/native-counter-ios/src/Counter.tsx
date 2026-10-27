@@ -468,6 +468,11 @@ export function Counter() {
           (_other), 1 → "1 Stück" (_one), 2 → "2 Stücke" (_other). */}
       <Text data-testid="i18n-interp">{i18n.t('welcome', { name: 'Vit' })}</Text>
       <Text data-testid="i18n-plural">{i18n.t('items', { count: count })}</Text>
+      {/* Switching language: the web writes `i18n.locale.set('en')` and reads
+          `i18n.locale()`; natively both lower to the container's settable
+          `locale` property, so every t() above re-translates in place. */}
+      <Text data-testid="i18n-locale">{i18n.locale()}</Text>
+      <Button data-testid="i18n-switch-en" onPress={() => i18n.locale.set('en')}>Switch to English</Button>
       <Text>Power: {power()}</Text>
       <Text>Notes: {noteCount}</Text>
       <Text>Lock: {lockStatus}</Text>
