@@ -2902,20 +2902,14 @@ function tryComponentFromTopLevel(node: AnyNode, ctx: ParseCtx): ComponentIR | n
         } else {
           bodyStmts = [{ kind: 'expr', expr: parseExpr(cb.body, ctx) }]
         }
-        // A returned CLEANUP fn (onMount's unmount contract) is not emitted
-        // in v1 — strip it (a bare `return <closure>` inside .onAppear /
-        // LaunchedEffect would be a type error) + warn NAMED.
-        const kept = bodyStmts.filter((st) => {
-          const isCleanupReturn =
-            st.kind === 'return' && st.expr !== undefined && st.expr.kind === 'arrow'
-          if (isCleanupReturn) {
-            ctx.warnings.push(
-              `Component ${name}: onMount returned a cleanup function — unmount cleanup is not emitted natively yet (the mount body IS). Move teardown to the host, or track the follow-up.`,
-            )
-          }
-          return !isCleanupReturn
-        })
-        decls.push({ kind: 'on-mount', body: kept })
+        // A returned CLEANUP fn (onMount's unmount contract) runs when the view goes away: Swift
+        // `.onDisappear`, Kotlin `DisposableEffect`'s `onDispose`. It is stripped from the mount body either
+        // way — a bare `return <closure>` inside `.onAppear` / `LaunchedEffect` would be a type error.
+        const cleanup = onMountCleanup(cb, name, ctx)
+        const kept = bodyStmts.filter(
+          (st) => !(st.kind === 'return' && st.expr !== undefined && st.expr.kind === 'arrow'),
+        )
+        decls.push({ kind: 'on-mount', body: kept, ...(cleanup !== undefined ? { cleanup } : {}) })
       } else if (call?.type === 'CallExpression') {
         // A bare CALL statement (`effect(...)`, a stray side-effecting
         // call) has no native lowering — dropped + NAMED warning, so the
@@ -3255,6 +3249,79 @@ function hasNestedValueReturns(fn: AnyNode, name: string, ctx: ParseCtx): boolea
     (a.type === 'Literal' && a.value === null) || (a.type === 'Identifier' && a.name === 'undefined')
   if (!nonViewAnno && args.every(isNullish)) return false
   return !args.some(astContainsJsx)
+}
+
+/**
+ * The teardown an `onMount` callback returns, as statements — or `undefined` (and a named warning) when there is none
+ * that can lower. Only a TOP-LEVEL `return () => { … }` is a teardown: a conditional one would need the mount body's
+ * control flow to decide at unmount time. And the teardown must not read a local the mount body declared: on the web
+ * the returned closure captures it, but the native mount and unmount hooks are separate closures (Swift
+ * `.onAppear` / `.onDisappear`), so the value would not be there. Keep that state in a signal instead.
+ */
+function onMountCleanup(cb: AnyNode, component: string, ctx: ParseCtx): StatementIR[] | undefined {
+  if (cb.body?.type !== 'BlockStatement') return undefined
+  const top = (cb.body.body as AnyNode[] | undefined) ?? []
+  const isClosure = (n: AnyNode | undefined): boolean =>
+    n?.type === 'ArrowFunctionExpression' || n?.type === 'FunctionExpression'
+  const ret = top.find((st) => st.type === 'ReturnStatement' && isClosure(st.argument))
+  if (ret === undefined) return undefined
+  const fn = ret.argument as AnyNode
+  const mountLocals = new Set<string>()
+  for (const st of top) {
+    if (st.type !== 'VariableDeclaration') continue
+    for (const d of (st.declarations as AnyNode[] | undefined) ?? []) collectPatternNames(d.id, mountLocals)
+  }
+  const read = new Set<string>()
+  const visit = (n: unknown): void => {
+    if (!n || typeof n !== 'object') return
+    if (Array.isArray(n)) {
+      for (const x of n) visit(x)
+      return
+    }
+    const node = n as AnyNode
+    if (node.type === 'Identifier' && typeof node.name === 'string') read.add(node.name)
+    for (const key of Object.keys(node)) {
+      if (key === 'type' || key === 'loc' || key === 'range' || key === 'span' || key === 'start' || key === 'end') {
+        continue
+      }
+      visit(node[key])
+    }
+  }
+  visit(fn.body)
+  const captured = [...mountLocals].filter((n) => read.has(n))
+  if (captured.length > 0) {
+    ctx.warnings.push(
+      `Component ${component}: onMount's cleanup reads ${captured.map((n) => `\`${n}\``).join(', ')}, declared in the mount body. On the web the returned closure captures it, but native runs mount and unmount as separate hooks, so it would not be there — the cleanup was NOT emitted. Keep that value in a signal declared beside the component's other state, and read it from the cleanup.`,
+    )
+    return undefined
+  }
+  return fn.body?.type === 'BlockStatement'
+    ? parseStatementBlock(fn.body, ctx)
+    : [{ kind: 'expr', expr: parseExpr(fn.body, ctx) }]
+}
+
+/** Every name a binding pattern declares (`a`, `{ b, c: d }`, `[e, ...f]`). */
+function collectPatternNames(pattern: AnyNode | undefined, out: Set<string>): void {
+  if (!pattern) return
+  switch (pattern.type) {
+    case 'Identifier':
+      out.add(pattern.name as string)
+      return
+    case 'ObjectPattern':
+      for (const p of (pattern.properties as AnyNode[] | undefined) ?? []) {
+        collectPatternNames(p.type === 'RestElement' ? p.argument : p.value, out)
+      }
+      return
+    case 'ArrayPattern':
+      for (const e of (pattern.elements as AnyNode[] | undefined) ?? []) collectPatternNames(e, out)
+      return
+    case 'RestElement':
+      collectPatternNames(pattern.argument, out)
+      return
+    case 'AssignmentPattern':
+      collectPatternNames(pattern.left, out)
+      return
+  }
 }
 
 /** Whether an AST subtree contains a JSX element or fragment. */

@@ -2020,6 +2020,13 @@ function emitSwiftComponent(c: ComponentIR): string {
     lines.push(`      .onAppear {`)
     lines.push(bodyLines)
     lines.push(`      }`)
+    // The teardown `onMount` returned: runs when the view goes away, pairing with `.onAppear` re-running the body
+    // when it comes back.
+    if (d.cleanup !== undefined) {
+      lines.push(`      .onDisappear {`)
+      lines.push(d.cleanup.map((st) => `        ${emitSwiftStatement(st, 8)}`).join('\n'))
+      lines.push(`      }`)
+    }
   }
   // A plugin's own declarations may release what they hold when the view goes away
   // (`useFlow` disposes its listeners; a caller-owned `createFlow` does not).
