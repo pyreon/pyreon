@@ -277,9 +277,10 @@ function objectExprToStyleObject(
   }
   if (dropped.length > 0) {
     warnings.push(
-      `rocketstyle(...) '${compName}' ${where}: non-literal value(s) [${dropped.join(', ')}] — a theme ` +
-        `token / expression (e.g. t.color.primary) is not yet lowered to native (dropped). Use a literal ` +
-        `for now; compile-time theme-token resolution is a tracked follow-up.`,
+      `rocketstyle(...) '${compName}' ${where}: non-literal value(s) [${dropped.join(', ')}] — neither a ` +
+        `literal nor a theme token the native frontend can resolve, so dropped on native. A token such as ` +
+        `t.color.primary resolves when the theme defines it; a runtime expression cannot. Use a literal or a ` +
+        `theme token.`,
     )
   }
   return { kind: 'object', fields, spreads: [] }
