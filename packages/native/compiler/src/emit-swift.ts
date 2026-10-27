@@ -2378,8 +2378,14 @@ function resolveSwiftStructFields(
   synth: SwiftSynthCtx | undefined,
 ): { name: string; type: TypeIR }[] {
   if (elem.kind === 'object') return elem.fields
-  if (elem.kind === 'typeRef' && synth) {
-    const s = synth.structs.find((st) => st.name === elem.name)
+  if (elem.kind === 'typeRef') {
+    // A file-level `type X = { … }` / `interface X` is a DECLARED struct, not one synthesised for this component —
+    // the Kotlin resolver has always checked both; this one only checked the component's own, so `rowFields` came
+    // back empty for every declared type.
+    const s =
+      synth?.structs.find((st) => st.name === elem.name) ??
+      _structDefs.find((st) => st.name === elem.name) ??
+      _synthExprStructs.find((st) => st.name === elem.name)
     if (s) return s.fields
   }
   return []

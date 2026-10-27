@@ -271,11 +271,13 @@ describe('parse.ts — component-scope destructuring', () => {
     expect(swift(body('  const d = useLoaderData<{ x: string }>()')).warnings.join('\n')).not.toContain(
       'useLoaderData',
     )
-    expect(swift(body('  const { x } = useLoaderData<{ x: string }>()')).warnings.join('\n')).toContain(
-      '`const { ... } = useLoaderData<T>()`',
+    // The object destructure lowers too (one accessor per field)…
+    expect(swift(body('  const { x } = useLoaderData<{ x: string }>()')).warnings.join('\n')).not.toContain(
+      'useLoaderData',
     )
+    // …and any other binding shape is named.
     expect(swift(body('  const [a] = useLoaderData<{ x: string }>()')).warnings.join('\n')).toContain(
-      'useLoaderData<T>() declared (`useLoaderData<T>()`)',
+      'this binding shape is neither, so it was not lowered',
     )
   })
 
