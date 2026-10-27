@@ -69,7 +69,7 @@ declare const Bun: {
   }): Promise<{
     success: boolean
     logs: unknown[]
-    outputs: Array<{ kind: string; text(): Promise<string> }>
+    outputs: Array<{ kind: string; path: string; text(): Promise<string> }>
   }>
 }
 
