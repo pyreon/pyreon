@@ -8138,9 +8138,8 @@ function emitSwiftLayoutModifiers(
  *
  * `justify` is intentionally NOT mapped to a VStack/HStack init arg —
  * SwiftUI doesn't have a single-arg equivalent (you typically insert
- * Spacer() children for distribution). Deferred to a future arc; v1
- * accepts the prop at the type level but produces no modifier on
- * Swift (silent no-op for now; non-blocking).
+ * Spacer() children for distribution). The prop is accepted at the type
+ * level and produces no modifier on Swift; a warning names it.
  */
 function emitSwiftStack(
   e: Extract<ExprIR, { kind: 'jsx-element' }>,

@@ -7,10 +7,9 @@ import type { I18nRoutingConfig } from './i18n-routing'
 // `@pyreon/zero` keep working. The previous duplicate `interface
 // LoaderContext` (with a `request: Request` field that was never
 // populated by the actually-constructed runtime ctx) was a
-// typed-but-unimplemented bug class — caught by `audit-types`. If
-// SSR loaders need access to the request, plumb it through the
-// router-level `LoaderContext` in a follow-up PR; do NOT add fields
-// here that the runtime doesn't populate.
+// typed-but-unimplemented bug class — caught by `audit-types`. The
+// request is exposed by the router-level `LoaderContext.request`; do NOT
+// add fields here that the runtime doesn't populate.
 export type { LoaderContext }
 
 // ─── Route module conventions ────────────────────────────────────────────────

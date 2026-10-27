@@ -89,8 +89,8 @@ export interface IRocketStyleComponent<
   // calculated final props
   //
   // `OA extends infer O` distributes over OA's union branches — future-proofs
-  // against the overload-aware `ExtractProps` (follow-up PR); for today's
-  // single-typed OA the distribution collapses to a single branch.
+  // against the overload-aware `ExtractProps`; for a single-typed OA the
+  // distribution collapses to a single branch.
   //
   // **OA-overlapping EA keys are widened**. When `.attrs({ tag: 'a' })` sets
   // a default for `tag` on a wrapper whose OA has `tag: HTMLTags`, we strip
