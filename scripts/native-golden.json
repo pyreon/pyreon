@@ -2952,12 +2952,12 @@
       "warnings": 0
     },
     "golden-fixture:form-plugin-declines.tsx|swift": {
-      "sha": "4a08dd37e6236b8630386229fdc4ad883adc948cea0cba8a81743e64b5436303",
+      "sha": "a4ef2347b172f19d2ac85721842866e1f47f4158ab05dabc38954ad06229eea6",
       "bytes": 244,
       "warnings": 8
     },
     "golden-fixture:form-plugin-declines.tsx|kotlin": {
-      "sha": "f4747a0f77fe633e2299dd114f875dd445cdced27abb84df96880198572a2941",
+      "sha": "874d8c3ed3d94fbd5f87a839a07313d2cc064e6fcd260c0266452837ff7d8ea6",
       "bytes": 288,
       "warnings": 8
     },
@@ -7172,12 +7172,12 @@
       "warnings": 0
     },
     "golden-fixture:validate-67.tsx|swift": {
-      "sha": "d3eaa7253b52852030c1e9dc7ff3374ec69371396587b5919b27e8f5cbbf1b42",
+      "sha": "97b10f79417a030f3a8e738593c029257bb522540623e0809ba4c8c26a0dab99",
       "bytes": 244,
       "warnings": 1
     },
     "golden-fixture:validate-67.tsx|kotlin": {
-      "sha": "ce867dabfaa6d6e11280b7712bf37b549185331a04805d4461ad7af453698d6c",
+      "sha": "58d3f499dd9ff6fd160d6f659e5239b7a7ebd719623501ca9fc6cdfb2d5b5d16",
       "bytes": 256,
       "warnings": 1
     },

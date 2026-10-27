@@ -23,7 +23,7 @@ const router = createRouter({
       loader: async ({ params }) => api.fetchUser(params.id),
       loaderKey: ({ params }) => `user-${params.id}`,  // for cache identity
     },
-    { path: '/admin', name: 'admin', component: Admin, guard: adminOnly },
+    { path: '/admin', name: 'admin', component: Admin, beforeEnter: adminOnly },
   ],
 })
 
@@ -31,8 +31,8 @@ function App() {
   return (
     <RouterProvider router={router}>
       <nav>
-        <RouterLink name="home">Home</RouterLink>
-        <RouterLink name="user" params={{ id: '42' }}>User 42</RouterLink>
+        <RouterLink to="/">Home</RouterLink>
+        <RouterLink to="/user/42">User 42</RouterLink>
       </nav>
       <RouterView />
     </RouterProvider>
@@ -51,10 +51,10 @@ router.push({ name: 'typo' })        // TS error at compile time
 
 ## Key APIs
 
-- `router.push({ name, params?, search? })` — navigate forward (history entry added)
+- `router.push(path)` or `router.push({ name, params?, query? })` — navigate forward (history entry added)
 - `router.replace(...)` — navigate without adding a history entry
 - `useRoute()` — signal that reads the current resolved route
-- `useIsActive(path, exact?)` — `Signal<boolean>` for active-link styling
+- `useIsActive(path, exact?)` — a `() => boolean` getter for active-link styling
 - `useTypedSearchParams({ page: 'number' })` — coerced + typed query params
 - `router.invalidateLoader(key?)` — clear loader cache entries
 
@@ -62,7 +62,7 @@ router.push({ name: 'typo' })        // TS error at compile time
 
 ## Why
 
-Pyreon's router is context-based + signal-driven. Routes are resolved into `Signal<ResolvedRoute>` so `RouterView` re-renders only when the route changes, not when unrelated state changes. Typed routes catch dead navigation calls at compile time — a rename in the routes array surfaces as a TypeScript error across every `router.push` / `<RouterLink name>` site.
+Pyreon's router is context-based + signal-driven. Routes are resolved into `Signal<ResolvedRoute>` so `RouterView` re-renders only when the route changes, not when unrelated state changes. Typed routes catch dead navigation calls at compile time — a rename in the routes array surfaces as a TypeScript error across every named `router.push({ name })` call. (`<RouterLink>` takes a path string in `to`; with a registered route map, a mistyped path is a type error too.)
 
 ## Anti-pattern
 

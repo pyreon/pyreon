@@ -29,7 +29,7 @@ yarn add @pyreon/permissions
 
 :::
 
-Peer dependencies: `@pyreon/reactivity`, `@pyreon/core`.
+Peer dependencies: `@pyreon/reactivity`, `@pyreon/core` (plus the optional `@pyreon/native-compiler`, for multiplatform builds).
 
 ## Quick Start
 
@@ -167,8 +167,8 @@ can.all('posts.read', 'posts.create') // true if both granted
 can.any('posts.update', 'posts.delete') // true if either granted
 ```
 
-:::note[`all` / `any` do not take a context argument]
-`can.all(...keys)` and `can.any(...keys)` accept only permission keys — they evaluate each key with no context, so any predicate they touch receives `undefined`. For an instance-level check, use the single-key form `can(key, context)`. (Only `can(key, context?)`, `can.not(key, context?)`, and `can.assert(key, context?, message?)` accept a context argument.)
+:::note[Passing a context to `all` / `any`]
+The rest-args form `can.all('a', 'b')` passes no context — any predicate it touches receives `undefined`. To pass one, use the array form: `can.all(['posts.read', 'posts.update'], post)` / `can.any([...], post)` hands `post` to every predicate.
 :::
 
 ## Reactive Gating in JSX
@@ -608,8 +608,8 @@ Returns a callable `Permissions` instance.
 | ------------------------------- | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
 | `can(key, context?)`            | `boolean`                                | Check a permission. Reactive in effects/computeds/JSX. Passes `context` to a predicate; a throwing predicate → denied. |
 | `can.not(key, context?)`        | `boolean`                                | Inverse — `true` when the permission is denied.                                                                    |
-| `can.all(...keys)`              | `boolean`                                | `true` only if every key is granted. No context argument.                                                          |
-| `can.any(...keys)`              | `boolean`                                | `true` if at least one key is granted. No context argument.                                                        |
+| `can.all(...keys)` / `can.all(keys[], context?)` | `boolean`               | `true` only if every key is granted. The array form passes `context` to every predicate.                           |
+| `can.any(...keys)` / `can.any(keys[], context?)` | `boolean`               | `true` if at least one key is granted. The array form passes `context` to every predicate.                         |
 | `can.set(map)`                  | `void`                                   | Replace the entire permission map. Reactive reads update.                                                          |
 | `can.patch(map)`                | `void`                                   | Merge `map` into the current permissions; unlisted keys are preserved. Reactive reads update.                      |
 | `can.clear()`                   | `void`                                   | Remove all permissions (deny everything). Equivalent to `can.set({})`.                                             |
@@ -627,9 +627,10 @@ Returns a callable `Permissions` instance.
 
 Resolution is **most-specific-first**: exact → `prefix.*` → `prefix.**` (nearest ancestor first) → `*` → `false`. A more-specific exact/`**` deny overrides a broader grant.
 
-### Context (`@pyreon/core`)
+### Context
 
 | API                                    | Returns       | Description                                                                              |
 | -------------------------------------- | ------------- | ---------------------------------------------------------------------------------------- |
 | `<PermissionsProvider value={can}>`    | `VNodeChild`  | Provide a `Permissions` instance to descendants. The prop is **`value`**.                |
 | `usePermissions()`                     | `Permissions` | Read the nearest provided instance. **Throws** if no `<PermissionsProvider>` is mounted. |
+| `usePermissions(grants)`               | `Permissions` | Self-contained instance seeded with `grants` (`readonly string[]`); needs no provider. Works on all three targets. |

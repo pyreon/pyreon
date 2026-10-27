@@ -285,12 +285,14 @@ Use `image: false` when you handle image optimization via a third-party CDN prov
 
 | Field | Type | Default | Description |
 |---|---|---|---|
-| `formats` | `('avif' \| 'webp' \| 'jpg' \| 'png')[]` | `['avif', 'webp']` | Output formats for `<picture>` sources. Fallback is the source format. |
+| `formats` | `('avif' \| 'webp' \| 'jpeg' \| 'png')[]` | `['webp']` | Output formats for `<picture>` sources. Fallback is the source format. |
 | `quality` | `number \| Partial<Record<Format, number>>` | `80` | Per-format quality. Object form: `{ avif: 55, webp: 75 }`. |
 | `placeholder` | `'blur' \| 'color' \| 'none'` | `'blur'` | LQIP strategy. `color` uses sharp's dominant-color SVG swatch; `none` skips entirely. |
-| `widths` | `number[]` | `[640, 1080, 1920]` | Responsive srcset widths. |
+| `widths` | `number[]` | `[640, 1024, 1920]` | Responsive srcset widths. |
+| `outDir` | `string` | `'assets/img'` | Output directory for processed images. |
+| `placeholderSize` | `number` | `16` | Blur placeholder size in px (`'blur'` strategy only). |
+| `include` | `RegExp` | `/\.(jpe?g\|png\|webp\|avif)$/i` | File patterns to process. |
 | `cdn` | `(src, opts) => string \| undefined` | — | CDN URL builder. See `cdnProviders` for built-ins (Cloudinary, Vercel). |
-| `cacheDir` | `string` | `'node_modules/.cache/pyreon-images'` | Where sharp writes optimized images during build. |
 | `svg` | `boolean \| SvgOptions` | `false` | Enable `?component` import for inline SVGs. |
 
 ### `font`

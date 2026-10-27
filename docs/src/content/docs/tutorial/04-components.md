@@ -27,7 +27,7 @@ The example below proves it — the body logs once, but the reactive thunk re-ru
 
 **The key idea:** because the body runs once, two things follow that trip up newcomers:
 
-- **Read `props.x` *in* the reactive scope**, not at the top. `const { x } = props` (or `const v = props.x`) captures the value once and never updates. Read `props.x` inside the JSX/effect, or use `splitProps`.
+- **Read `props.x` *in* the reactive scope**, not at the top. `const { x } = props` (or `let v = props.x`) captures the value once and never updates. A `const v = props.x` used in JSX does stay reactive — the compiler inlines `props.x` back at the use site — but only in JSX; inside an effect or handler it is still a snapshot. Reading `props.x` directly (or using `splitProps`) is the clearest form.
 - **Pass props as expressions.** `<Child value={count()} />` is reactive (the compiler wraps it); destructuring on the way in freezes it.
 
 This is the opposite of React's model (where the function re-runs every render). Once it clicks, everything else in Pyreon follows from it.

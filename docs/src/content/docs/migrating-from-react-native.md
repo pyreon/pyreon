@@ -71,7 +71,7 @@ Event names are one per concept: `onPress` everywhere (not `onClick` on one plat
 | `useLocalSearchParams()` | `useParams()` |
 | Loaders (Expo Router data APIs) | route `loader` + `useLoaderData()` |
 | Stack / tab navigators | `RouterProvider` + `RouterView`; the [router demo](/docs/multiplatform) covers nav, typed params, guards and loaders |
-| Deep links | `useLinking`; the matrix lists deep links as not yet proven for navigation |
+| Deep links | Inbound links route through the router (device-proven on iOS and Android, cold and warm); `useLinking` opens outbound URLs |
 
 ## Device APIs: expo-* to Pyreon hooks
 
@@ -89,7 +89,7 @@ The compiler recognizes a fixed set of hooks. The [capability matrix](/docs/mult
 | `expo-sharing` / `Share` | `useShare` |
 | `expo-image-picker`, `expo-document-picker` | `useImagePicker`, `useFilePicker` |
 | `expo-linking` | `useLinking` |
-| `expo-network` / NetInfo | `useNetworkStatus`, `useOnline` |
+| `expo-network` / NetInfo | `useOnline` |
 | Auth flows (`expo-auth-session`) | `useAuth` |
 | `fetch`, `react-query` | `useFetch`, `useQuery` |
 | WebSocket | `useWebSocket` |
@@ -120,4 +120,4 @@ For anything not on this list, `useNativeModule('Name')` calls a Swift or Kotlin
 4. Run the native CLI `check` command to see every construct the compiler cannot lower, and fix those by name.
 5. Keep your web app on `@pyreon/zero`; it shares the same components and state.
 
-Start from `npx create-multiplatform my-app` — see [`@pyreon/create-multiplatform`](/docs/create-multiplatform).
+Start from `npx @pyreon/create-multiplatform@latest my-app` (or `pyreon new my-app --native`) — see [`@pyreon/create-multiplatform`](/docs/create-multiplatform).

@@ -60,8 +60,8 @@ The build copies the production template (`dist/server/template.html`, with hash
 ## Caching, headers, env
 
 - **CDN adapters** scope a 1-year `immutable` rule to `<base><assetsDir>/*` (your hashed chunks).
-- **CSP** — `cspMiddleware({ directives })` with `useNonce()` for inline scripts.
-- **Env validation** — `validateEnv({ PORT: 3000, API_KEY: String })`; `publicEnv()` for the client-safe subset.
+- **CSP** — `cspMiddleware({ directives })` with `useNonce()` for inline scripts (both from `@pyreon/zero/csp`).
+- **Env validation** — `validateEnv({ PORT: 3000, API_KEY: String })`; `publicEnv()` for the client-safe subset (both from `@pyreon/zero/env`).
 - **ISR revalidation** — `Adapter.revalidate(path)` per platform (Vercel POSTs to a handler, Cloudflare purges the edge cache, Netlify triggers a build hook).
 
 ## Common pitfalls

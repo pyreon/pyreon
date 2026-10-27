@@ -193,7 +193,7 @@ Six presets ship from `@pyreon/kinetic` directly — `fade`, `scaleIn`, `slideUp
 import { kinetic } from '@pyreon/kinetic'
 import { fadeUp } from '@pyreon/kinetic-presets'
 
-const Hero = kinetic('div').preset(fadeUp())
+const Hero = kinetic('div').preset(fadeUp)
 ```
 
 ### Lifecycle callbacks

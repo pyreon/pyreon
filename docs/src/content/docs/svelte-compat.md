@@ -804,7 +804,7 @@ nativeCompat(ThemeProvider) // route through h() directly — no compat wrapper
 ```
 
 See the [native marker contract](/docs/native-compat) for the full
-rules. The 24 framework components that ship marked (RouterView,
+rules. The framework components that ship marked (RouterView,
 PyreonUI, FormProvider, …) work automatically — this is only for
 user-defined Pyreon-flavored helpers in compat-scaffolded apps.
 

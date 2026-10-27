@@ -61,6 +61,24 @@ The reactivity is equivalent; you read `count()` and write `count.set(...)` / `c
 
 `{#if}` → `<Show>` / ternary; `{#each ... (key)}` → keyed `<For>`; `on:click` / `onclick` → `onClick`; `class:active` → `class={{ active: ... }}`; `bind:value` → `value={s} onInput={(e) => s.set(e.currentTarget.value)}`; `{x}` → `{() => x()}`.
 
+## Prefer Svelte-style mutation? Plain Mode
+
+Pyreon has an experimental compile-time dialect, [Plain Mode](/docs/plain-mode), that reads much like Svelte 5 runes: a module with the `'use plain'` directive (or that imports from `@pyreon/core/plain`) reads state without `()` and writes it with `=` / `++`, and the compiler rewrites it to ordinary signals.
+
+```tsx
+'use plain'
+import { state, derived } from '@pyreon/core/plain'
+
+let count = state(0)
+const doubled = derived(count * 2)
+
+export const Counter = () => (
+  <button onClick={() => count++}>{count} / {doubled}</button>
+)
+```
+
+The rest of this page uses classic Pyreon (`signal` + `.set`), which is what every other page documents.
+
 ## Incremental migration
 
 `@pyreon/svelte-compat` runs Svelte-shaped APIs on the Pyreon runtime — port a component tree gradually. One contract worth knowing: a compat store subscribed in a component body must be plain-subscriber-backed, not a Pyreon signal, or it freezes after the first write (the compat layer handles its own stores correctly). See its docs page for the limitation matrix.

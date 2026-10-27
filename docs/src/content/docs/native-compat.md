@@ -3,9 +3,9 @@ title: 'Native marker contract'
 description: How nativeCompat() lets Pyreon framework components compose correctly inside react/preact/vue/solid-compat apps.
 ---
 
-`nativeCompat()` from `@pyreon/core` is the contract that makes Pyreon framework components — `RouterView`, `PyreonUI`, `FormProvider`, `QueryClientProvider`, `Toaster`, and 19 others — work correctly when composed inside an app scaffolded with `--compat=react|preact|vue|solid`.
+`nativeCompat()` from `@pyreon/core` is the contract that makes Pyreon framework components — `RouterView`, `PyreonUI`, `FormProvider`, `QueryClientProvider`, `Toaster`, and every other framework provider/boundary component — work correctly when composed inside an app scaffolded with `--compat=react|preact|vue|solid`.
 
-If you're a Pyreon user just consuming framework components, **you don't need to do anything** — the 24 components ship marked. This page explains what the marker is, why it exists, and when *you* might need to call it on your own helpers.
+If you're a Pyreon user just consuming framework components, **you don't need to do anything** — the framework's components ship marked. This page explains what the marker is, why it exists, and when *you* might need to call it on your own helpers.
 
 <PackageBadge name="@pyreon/core" href="/docs/core" />
 
@@ -61,27 +61,29 @@ The marker uses `Symbol.for(...)` (a registry symbol) so `@pyreon/core` doesn't 
 
 ## Components shipped marked
 
-24 framework components carry the marker today, across 13 packages:
+These public components carry the marker today (33 across 17 packages):
 
 | Package | Components |
 |---|---|
-| `@pyreon/core` | `ErrorBoundary` |
+| `@pyreon/core` | `ErrorBoundary`, `Suspense`, `ColorModeProvider` |
 | `@pyreon/runtime-dom` | `Transition`, `TransitionGroup`, `KeepAlive` |
 | `@pyreon/router` | `RouterProvider`, `RouterView`, `RouterLink` |
 | `@pyreon/head` | `HeadProvider` |
-| `@pyreon/query` | `QueryClientProvider`, `QueryErrorResetBoundary` |
+| `@pyreon/query` | `QueryClientProvider`, `QueryErrorResetBoundary`, `HydrationBoundary`, `IsRestoringProvider`, `PersistQueryClientProvider`, `QueryDevtools` |
 | `@pyreon/i18n` | `I18nProvider` |
 | `@pyreon/form` | `FormProvider`, `Form`, `Submit` |
 | `@pyreon/permissions` | `PermissionsProvider` |
 | `@pyreon/toast` | `Toaster` |
-| `@pyreon/ui-core` | `PyreonUI`, `CoreProvider` |
-| `@pyreon/unistyle` | `UnistyleProvider` |
+| `@pyreon/a11y` | `RouteAnnouncer` |
+| `@pyreon/charts` | `ChartThemeProvider` |
+| `@pyreon/ui-core` | `PyreonUI`, `Provider` |
+| `@pyreon/unistyle` | `Provider` |
 | `@pyreon/styler` | `ThemeProvider` |
 | `@pyreon/rocketstyle` | `Provider` |
 | `@pyreon/coolgrid` | `Container`, `Row` |
-| `@pyreon/elements` | `Overlay`, `OverlayContextProvider` |
+| `@pyreon/elements` | `Overlay`, `OverlayProvider` |
 
-Internal Provider components (`CoreProvider`, `UnistyleProvider`, `RocketstyleProvider`, `OverlayContextProvider`) are also marked even though they're `@internal` / `@deprecated`. Reason: `PyreonUI`'s JSX body still routes through the active jsx() runtime in compat-mode apps — any unmarked Provider rendered inside `PyreonUI`'s body would get wrapped, swallowing its `provide()` call before reaching descendants.
+Internal pieces are marked too: the router's default chrome layout, and the wrappers the compat layers build (`createContext` providers, `lazy`/async components). The low-level Provider components (`Provider` from ui-core / unistyle / rocketstyle, `OverlayProvider`) are marked even though they're `@internal` / `@deprecated`. Reason: `PyreonUI`'s JSX body still routes through the active jsx() runtime in compat-mode apps — any unmarked Provider rendered inside `PyreonUI`'s body would get wrapped, swallowing its `provide()` call before reaching descendants.
 
 ## When *you* need to mark a component
 

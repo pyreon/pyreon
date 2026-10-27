@@ -48,10 +48,10 @@ Both adapters wrap the **same** `@tanstack/query-core` (pinned to one version tr
 | --- | --- | --- |
 | **Cross-component** — one component reads only `status`, one only `data` → flip `data` | `status` skips, `data` re-runs (**1**) | `status` skips, `data` re-renders (**1**) — 🤝 tie (tracked-props) |
 | **Intra-component** — one component reads all 8 fields → flip `data` | **0** component re-runs · **1** field-derivation | **1** whole-component re-render · **8** field-derivations + VDOM reconcile |
-| **Time to reflect the change in the DOM** | synchronous fine-grained patch | macrotask-batched render + reconcile — Pyreon **4.6×** faster |
+| **Time to reflect the change in the DOM** | synchronous fine-grained patch | macrotask-batched render + reconcile — Pyreon faster; see [Benchmarks](/docs/benchmarks) for current measurements |
 | **Mount a 1-query component → first DOM** | 🤝 tie | 🤝 tie |
 
-The honest reads: react-query is **not** naive — its tracked-props make it field-aware _across_ components (the cross-component row is a genuine tie). Pyreon's structural win is _within_ a component (fine-grained signals vs whole-component re-render) and steady-state per-update latency (synchronous fine-grained patch vs macrotask-batched VDOM reconcile). Mounting is comparable. (Figures from the 2026-09-23 full run, recorded in `BENCHMARKS.md`; this suite runs in happy-dom — a JavaScript DOM, not a browser — so the counts and ratios are the signal, not absolute times.)
+The honest reads: react-query is **not** naive — its tracked-props make it field-aware _across_ components (the cross-component row is a genuine tie). Pyreon's structural win is _within_ a component (fine-grained signals vs whole-component re-render) and steady-state per-update latency (synchronous fine-grained patch vs macrotask-batched VDOM reconcile). Mounting is comparable. (See [Benchmarks](/docs/benchmarks) for current measurements; this suite runs in happy-dom — a JavaScript DOM, not a browser — so the counts and ratios are the signal, not absolute times.)
 
 ### Lazy signal allocation
 
@@ -96,7 +96,7 @@ mount(<App />, document.getElementById('app')!)
 
 `QueryClientProvider` internally:
 
-1. Pushes the `QueryClient` onto Pyreon's context stack so all descendants can access it via `useQueryClient()`.
+1. Provides the `QueryClient` to its subtree via `provide()`, so all descendants can read it with `useQueryClient()`.
 2. Calls `client.mount()` on mount -- this activates window focus refetching and online/offline handling.
 3. Calls `client.unmount()` on unmount -- this unsubscribes `focusManager` and `onlineManager`.
 
@@ -1356,6 +1356,11 @@ The following are re-exported from `@tanstack/query-core` for convenience:
 | `hashKey`                        | Hash a query key                          |
 | `isCancelledError`               | Check if an error is a cancellation       |
 | `CancelledError`                 | Cancellation error class                  |
+| `skipToken`                      | Type-safe way to disable a query (`queryFn: skipToken`) |
+| `focusManager` / `onlineManager` / `notifyManager` | query-core's focus, online and batching managers |
+| `matchQuery` / `matchMutation` / `replaceEqualDeep` | Filter-matching and structural-sharing utilities |
+| `isServer`                       | query-core's server-environment flag      |
+| `QueryObserver` / `InfiniteQueryObserver` / `MutationObserver` / `QueriesObserver` | Observer classes, for driving query-core directly |
 
 Type re-exports include `QueryKey`, `QueryFilters`, `MutationFilters`, `DehydratedState`, `FetchQueryOptions`, `InvalidateQueryFilters`, `InvalidateOptions`, `RefetchQueryFilters`, `RefetchOptions`, and `QueryClientConfig`.
 
@@ -1377,6 +1382,24 @@ Type re-exports include `QueryKey`, `QueryFilters`, `MutationFilters`, `Dehydrat
 | `useIsMutating`              | Signal tracking in-flight mutation count      |
 | `QueryErrorResetBoundary`    | Error reset boundary component                |
 | `useQueryErrorResetBoundary` | Access error reset function                   |
+| `useSuspenseQueries`         | `useQueries` shaped for a `QuerySuspense` boundary |
+| `defineQueries`              | Named parallel queries: `defineQueries({ user: () => ({…}), posts: () => ({…}) })` returns `{ user, posts }` results |
+| `useMutationState`           | `Signal` of mutation states matching a filter (`useMutationState(() => ({ filters, select }))`) |
+| `usePrefetchQuery` / `usePrefetchInfiniteQuery` | Prefetch at setup if the key is not cached yet (options function, read once) |
+| `HydrationBoundary`          | Hydrate a dehydrated `state` into the client before rendering children |
+| `IsRestoringProvider` / `useIsRestoring` | Reactive "the persisted cache is being restored" flag |
+| `useSubscription`            | WebSocket → query cache (see below)           |
+| `useSSE`                     | Server-Sent Events → query cache              |
+| `useStream`                  | Async-iterable stream (SSE / NDJSON) as reactive state (see below) |
+
+### Subpaths
+
+- **`@pyreon/query/devtools`** — `<QueryDevtools client? initialIsOpen? buttonPosition? position? errorTypes? shadowDOMTarget?>`, the TanStack Query devtools panel.
+- **`@pyreon/query/persist`** — `<PersistQueryClientProvider client persistOptions onSuccess? onError?>` (a `QueryClientProvider` that restores the cache on mount and keeps it persisted), `createSyncStoragePersister` / `createAsyncStoragePersister`, and the query-persist-client-core functions (`persistQueryClient`, `persistQueryClientRestore`, `persistQueryClientSave`, `persistQueryClientSubscribe`, `experimental_createQueryPersister`, `removeOldestQuery`).
+
+### Multiplatform
+
+The full client wraps TanStack Query, a JavaScript runtime cache, so `QueryClient` configuration, devtools, and infinite / suspense queries are web only. On iOS and Android (PMTC), `useQuery` (key + fetcher, loading / error / data state) lowers to the native `PyreonQuery` runtime, and `useStream` over `openEventStream` / `openNdjsonStream` lowers to `PyreonStream`.
 
 ## WebSocket Subscriptions — `useSubscription()`
 
@@ -1528,3 +1551,10 @@ streaming operation, built on this hook.
 | `UseSubscriptionOptions`         | Options for `useSubscription`                              |
 | `UseSubscriptionResult`          | Return type of `useSubscription`                           |
 | `SubscriptionStatus`             | `'connecting' \| 'connected' \| 'disconnected' \| 'error'` |
+| `UseSSEOptions` / `UseSSEResult` / `SSEStatus` | Options, result and status of `useSSE` (`SSEStatus` adds `'failed'`) |
+| `UseStreamOptions` / `UseStreamResult` / `StreamSource` / `StreamSourceContext` / `StreamState` | Types for `useStream` |
+| `UseMutationStateOptions`        | Options for `useMutationState`                             |
+| `UseQueryOptions` / `MutationOptions` | Options for `useQuery` / `useMutation`                |
+| `UseSuspenseQueriesResult`       | Return type of `useSuspenseQueries`                        |
+| `QueryData` / `QueryError`       | Extract the data / error type from a query result         |
+| `HydrationBoundaryProps` / `IsRestoringProviderProps` | Props for those components                |
