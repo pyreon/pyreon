@@ -296,10 +296,12 @@ final class PyreonTasksUITests: XCTestCase {
     /// Tap `element` at a point the KEYBOARD does not cover. After typing into
     /// one hosted editor the software keyboard stays up, and a tap at an
     /// element's centre can land on the keyboard instead: focus then stays in
-    /// the PREVIOUS editor and the next `typeText` goes there. That is how
-    /// `test_hostedEditorsRoundTrip` flaked (CodeMirror kept focus, so TipTap's
-    /// edit counter never moved). Scroll until part of the element sits above
-    /// the keyboard, then tap the middle of that visible part.
+    /// the PREVIOUS editor and the next `typeText` goes there. Pass the element
+    /// that actually takes focus (an editable node), not its container: a tap on
+    /// non-editable page area fails the same way, which is what kept
+    /// `test_hostedEditorsRoundTrip` flaking after this helper first landed.
+    /// Scroll until part of the element sits above the keyboard, then tap the
+    /// middle of that visible part.
     private func tapAboveKeyboard(_ element: XCUIElement, in app: XCUIApplication, maxScrolls: Int = 6) {
         let scroller = app.scrollViews.firstMatch
         for _ in 0...maxScrolls {
@@ -603,8 +605,12 @@ final class PyreonTasksUITests: XCTestCase {
 
         // REVERSE: typing reaches native as the document's JSON text.
         scrollIntoView(richView, in: app, maxSwipes: 16)
-        // NOT a centre tap: the keyboard from the CodeMirror step is still up.
-        tapAboveKeyboard(richView, in: app)
+        // Tap the editable PARAGRAPH, not the web view. TipTap's contenteditable is only as tall as its
+        // content, so a tap in the middle of the web view lands on blank page area that cannot take focus,
+        // and CodeMirror (focused by the step above) keeps receiving the keystrokes. `tapAboveKeyboard`
+        // because that step's keyboard is still up and may cover the paragraph.
+        scrollIntoView(richReplaced, in: app, maxSwipes: 16)
+        tapAboveKeyboard(richReplaced, in: app)
         app.typeText("ZZ")
         let typingDeadline = Date().addingTimeInterval(15)
         while Date() < typingDeadline && (Int(richEdits.label) ?? 0) <= richEditsAfterPush {
