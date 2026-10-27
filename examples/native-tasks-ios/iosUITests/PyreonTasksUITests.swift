@@ -293,6 +293,34 @@ final class PyreonTasksUITests: XCTestCase {
     /// A no-op when no software keyboard is up — a CI runner with a hardware
     /// keyboard attached may never raise one, in which case nothing was
     /// covered.
+    /// Tap `element` at a point the KEYBOARD does not cover. After typing into
+    /// one hosted editor the software keyboard stays up, and a tap at an
+    /// element's centre can land on the keyboard instead: focus then stays in
+    /// the PREVIOUS editor and the next `typeText` goes there. That is how
+    /// `test_hostedEditorsRoundTrip` flaked (CodeMirror kept focus, so TipTap's
+    /// edit counter never moved). Scroll until part of the element sits above
+    /// the keyboard, then tap the middle of that visible part.
+    private func tapAboveKeyboard(_ element: XCUIElement, in app: XCUIApplication, maxScrolls: Int = 6) {
+        let scroller = app.scrollViews.firstMatch
+        for _ in 0...maxScrolls {
+            let frame = element.frame
+            let keyboardTop = app.keyboards.count > 0 ? app.keyboards.firstMatch.frame.minY : app.windows.firstMatch.frame.maxY
+            let visibleBottom = min(frame.maxY, keyboardTop) - 8
+            if visibleBottom - frame.minY >= 24 {
+                let y = (frame.minY + visibleBottom) / 2 - frame.minY
+                element.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0))
+                    .withOffset(CGVector(dx: 0, dy: y))
+                    .tap()
+                return
+            }
+            // Not enough of it is above the keyboard: drag the content up a little.
+            let target: XCUIElement = scroller.exists ? scroller : app
+            target.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.6))
+                .press(forDuration: 0.05, thenDragTo: target.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.35)))
+        }
+        XCTFail("\(element) never had a tappable area above the keyboard")
+    }
+
     private func dismissKeyboard(_ app: XCUIApplication) {
         guard app.keyboards.count > 0 else { return }
         for label in ["Return", "return", "Done", "done", "Go", "go", "Search"] {
@@ -575,13 +603,14 @@ final class PyreonTasksUITests: XCTestCase {
 
         // REVERSE: typing reaches native as the document's JSON text.
         scrollIntoView(richView, in: app, maxSwipes: 16)
-        richView.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        // NOT a centre tap: the keyboard from the CodeMirror step is still up.
+        tapAboveKeyboard(richView, in: app)
         app.typeText("ZZ")
         let typingDeadline = Date().addingTimeInterval(15)
         while Date() < typingDeadline && (Int(richEdits.label) ?? 0) <= richEditsAfterPush {
             RunLoop.current.run(until: Date().addingTimeInterval(0.3))
         }
-        XCTAssertGreaterThan(Int(richEdits.label) ?? 0, richEditsAfterPush, "typing in TipTap never reached the native signal (edits label: \(richEdits.label))")
+        XCTAssertGreaterThan(Int(richEdits.label) ?? 0, richEditsAfterPush, "typing in TipTap never reached the native signal (edits label: \(richEdits.label); CodeMirror value, in case the keystrokes went there instead: \(codeValue.label))")
     }
 
     func test_grammarBarSelectionAfterPartialVisibility() throws {
