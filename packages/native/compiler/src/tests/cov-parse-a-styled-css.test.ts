@@ -54,6 +54,20 @@ describe('styled() tag recognition', () => {
     expect(swift(mod("const Boxy = styled('div')`padding: 4px;`"))).not.toContain('.padding(4)')
   })
 
+  it('the member form `styled.div` is named the same way, not as a generic tagged template', () => {
+    // The web's Proxy form names an HTML tag by construction, so it can never lower. It used to fall through to
+    // the core's "tagged template literal is not supported", which names the wrong cause.
+    const src = mod('const Boxy = styled.div`padding: 4px;`')
+    const w = warnings(src)
+    expect(w.some((m) => m.includes("styled.div on 'Boxy'") && m.includes("'div' has no native"))).toBe(true)
+    expect(swift(src)).not.toContain('.padding(4)')
+  })
+
+  it('a member form on something OTHER than `styled` is not a styled() declaration', () => {
+    const src = mod('const Boxy = theme.div`padding: 4px;`')
+    expect(warnings(src).some((m) => m.includes('has no native primitive'))).toBe(false)
+  })
+
   it('a non-canonical IDENTIFIER argument is named the same way', () => {
     const w = warnings(mod('const Boxy = styled(MyThing)`padding: 4px;`'))
     expect(w.some((m) => m.includes("styled(MyThing) on 'Boxy'"))).toBe(true)
