@@ -707,6 +707,32 @@ export function normalizeNumericAlias(t: TypeIR): TypeIR {
     : t
 }
 
+/**
+ * The value kind of a JS `a || b` that the native emitters can lower faithfully, or `null`.
+ *
+ * JS `||` produces a VALUE from truthiness: `Number(v) || 0` (the NaN/zero guard on a parsed field) and
+ * `name() || 'anon'` (the empty-string default). Swift and Kotlin `||` are Bool-only, so these were passed through
+ * verbatim and warned. They lower when falsiness has a single native test and both sides agree on a type:
+ *
+ * - `'int'`: non-optional integer on both sides; falsy is `== 0`.
+ * - `'double'`: a number on both sides with at least one Double; falsy is `== 0 || isNaN`. An Int side is widened,
+ *   which is what JS produces (`0 || 0.5` is `0.5`).
+ * - `'string'`: falsy is empty.
+ *
+ * The left operand is evaluated ONCE (the emitters bind it) and the right only when the left is falsy, as in JS.
+ * An optional, a union, an object, or mismatched kinds stay on the named warning: their falsiness or result type
+ * has no single native spelling.
+ */
+export function logicalOrValueKind(left: TypeIR, right: TypeIR): 'int' | 'double' | 'string' | null {
+  const l = normalizeNumericAlias(left)
+  const r = normalizeNumericAlias(right)
+  if (l.kind === 'string' && r.kind === 'string') return 'string'
+  if (l.kind === 'number' && r.kind === 'number') {
+    return l.float === true || r.float === true ? 'double' : 'int'
+  }
+  return null
+}
+
 export function classifyOptionalCondition(
   e: ExprIR,
   ctx: InferenceCtx,
@@ -1960,6 +1986,13 @@ export function inferTypeValue(expr: ExprIR, ctx: InferenceCtx): TypeIR {
         // literal side (`quotes.data() ?? []` → the `[]` array type).
         if (unwrapped.kind !== 'unknown' && !typeIsOptional(unwrapped)) return unwrapped
         return inferType(expr.right, ctx)
+      }
+      if (expr.kind === 'logical' && expr.op === '||') {
+        // A value-producing `a || b` the emitters lower (see `logicalOrValueKind`) has the operands' type, not Bool.
+        const k = logicalOrValueKind(inferType(expr.left, ctx), inferType(expr.right, ctx))
+        if (k === 'string') return { kind: 'string' }
+        if (k === 'int') return { kind: 'number' }
+        if (k === 'double') return { kind: 'number', float: true }
       }
       return { kind: 'boolean' }
     case 'unary': {
