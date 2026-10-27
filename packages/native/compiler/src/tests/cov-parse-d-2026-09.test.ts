@@ -598,9 +598,12 @@ describe('parse.ts — parseStatement: destructures outside a braced block (fixe
     expect(r.warnings.join('\n')).toContain(W)
   })
 
-  it('a switch case that destructures warns the same way', () => {
+  it('a flat destructure in a switch case LOWERS, as it does in a braced block', () => {
+    // Case bodies go through the block walker now, so the flat-destructure
+    // expansion applies there too instead of dropping the declaration.
     const r = swift(helper('let n = 0; switch (n) { case 1: const { b } = o; break } return n'))
-    expect(r.warnings.join('\n')).toContain(W)
+    expect(r.warnings.join('\n')).not.toContain(W)
+    expect(r.code).toMatch(/let b = __pyDestr\d+\.b/)
   })
 
   it('an un-braced multi-declarator var warns as a multi-declarator', () => {
