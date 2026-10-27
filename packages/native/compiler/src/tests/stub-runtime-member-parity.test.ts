@@ -64,7 +64,6 @@ const REPO = join(import.meta.dirname ?? __dirname, '..', '..', '..', '..', '..'
 // — so it silently excused the target where the member was already fine.
 const KNOWN_NARROW: Record<'swift' | 'kotlin', ReadonlySet<string>> = {
   swift: new Set([
-    'PyreonA11y.setAnnouncer',
     'PyreonAppState.isMonitoring',
     'PyreonAppState.update',
     'PyreonCrashReporter.isMonitoring',
@@ -74,7 +73,6 @@ const KNOWN_NARROW: Record<'swift' | 'kotlin', ReadonlySet<string>> = {
     'PyreonGeolocation.locationManagerDidChangeAuthorization',
     'PyreonGeolocation.update',
     'PyreonHttp.buildURLRequest',
-    'PyreonHttp.install',
     'PyreonI18n.fallbackLocale',
     'PyreonI18n.messages',
     'PyreonNetworkStatus.isMonitoring',
@@ -91,7 +89,6 @@ const KNOWN_NARROW: Record<'swift' | 'kotlin', ReadonlySet<string>> = {
     'PyreonPushNotifications.tokenReceived',
     'PyreonQuery.staleSeconds',
     'PyreonToast.defaultDuration',
-    'PyreonToast.defaultDurationMillis',
     'PyreonToast.maxToasts',
     'PyreonToast.remove',
     'PyreonWebSocket.closed',
@@ -99,22 +96,14 @@ const KNOWN_NARROW: Record<'swift' | 'kotlin', ReadonlySet<string>> = {
     'PyreonWebSocket.opened',
     'PyreonWebSocket.received',
     'PyreonWebView.body',
-    'PyreonWebView.makeUIView',
-    'PyreonWebView.updateUIView',
   ]),
   kotlin: new Set([
-    'PyreonA11y.setAnnouncer',
     'PyreonAppState.isMonitoring',
     'PyreonAppState.start',
     'PyreonAppState.stop',
     'PyreonAppState.update',
     'PyreonCrashReporter.isMonitoring',
     'PyreonFetch.load',
-    'PyreonGeolocation.locationManager',
-    'PyreonGeolocation.locationManagerDidChangeAuthorization',
-    'PyreonHttp.buildURLRequest',
-    'PyreonI18n.fallbackLocale',
-    'PyreonI18n.messages',
     'PyreonNetworkStatus.isMonitoring',
     'PyreonNetworkStatus.start',
     'PyreonNetworkStatus.stop',
@@ -128,8 +117,6 @@ const KNOWN_NARROW: Record<'swift' | 'kotlin', ReadonlySet<string>> = {
     'PyreonPushNotifications.notificationReceived',
     'PyreonPushNotifications.start',
     'PyreonQuery.load',
-    'PyreonQuery.staleSeconds',
-    'PyreonToast.defaultDuration',
     'PyreonToast.defaultDurationMillis',
     'PyreonToast.remove',
     'PyreonWebSocket.closed',
@@ -308,13 +295,15 @@ describe('every stubbed runtime type declares the members its runtime does', () 
           const dot = entry.lastIndexOf('.')
           if (entry.slice(0, dot) !== type) continue
           const member = entry.slice(dot + 1)
-          // Stale iff the runtime still has it AND the stub now does too.
-          if (real.has(member) && stubbed.has(member)) stale.push(entry)
+          // Stale if the stub now declares it (nothing is narrow any more), OR the
+          // runtime no longer has it (nothing to excuse — and if the member came
+          // back later without a stub, the entry would silently excuse that).
+          if (!real.has(member) || stubbed.has(member)) stale.push(entry)
         }
       }
       expect(
         stale.sort(),
-        `KNOWN_NARROW.${kind} entries that are no longer narrow — the stub declares them now, so the entry only serves to excuse a future removal. Delete: ${stale.join(', ')}`,
+        `KNOWN_NARROW.${kind} entries that excuse nothing — the stub declares the member now, or the runtime no longer has it; either way the entry only serves to hide a future drift. Delete: ${stale.join(', ')}`,
       ).toEqual([])
     })
   }
