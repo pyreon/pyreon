@@ -74,21 +74,18 @@ describe('useUrlState lowering', () => {
     expect(transform(SRC, { target: 'kotlin' }).warnings).toHaveLength(0)
   })
 
-  // This spec used to assert `useUrlState('page', 1)` was DECLINED, which was
-  // the v1 limit rather than the invariant. The invariant it was protecting —
-  // never silently coerce a default the emit has no codec for — is what is
-  // asserted here, now against the shapes that genuinely have none: the web
-  // infers a comma-join for an array and a JSON codec for an object, and there
-  // is no native type to decode either INTO at this call site.
-  it('declines an array or object default rather than coercing it', () => {
-    for (const def of ['[]', "['a']", '{}', '{ a: 1 }']) {
+  // The invariant this spec protects — never silently coerce a default the emit has no codec for — now applies to the
+  // shapes that genuinely have none: the web infers a JSON codec for an object, and there is no native type to decode
+  // it INTO at this call site. (An array of scalar literals DOES lower — see "list defaults" below.)
+  it('declines an object default rather than coercing it', () => {
+    for (const def of ['{}', '{ a: 1 }']) {
       const src = `import { useUrlState } from '@pyreon/url-state'
 import { Stack } from '@pyreon/primitives'
 export function C() { const p = useUrlState('tags', ${def}); return (<Stack />) }`
       const { code, warnings } = transform(src, { target: 'swift' })
       expect(code, def).not.toContain('PyreonUrlState')
       expect(
-        warnings.some((w) => w.includes('STRING, NUMBER or BOOLEAN default')),
+        warnings.some((w) => w.includes('STRING, NUMBER or BOOLEAN default') && w.includes('JSON codec')),
         def,
       ).toBe(true)
     }
@@ -200,8 +197,12 @@ export function C() { const o = useUrlState('o', -3); return (<Stack><Text>{\`\$
   // number WITHOUT a trailing `.0`. Both targets' own toString would emit
   // "1.0" and produce `?zoom=1.0` where the web writes `?zoom=1`.
   it('serializes a whole Double without a trailing .0 on both targets', () => {
-    expect(RUNTIME_SWIFT).toContain('String(Int(value))')
-    expect(RUNTIME_KOTLIN).toContain('value.toLong().toString()')
+    // The scalar Double `set` and every number-list `set` share ONE formatter, and its behaviour (a whole number prints
+    // as digits, never "1.0") is asserted by EXECUTION in `native-url-state-list-parity.test.ts`.
+    expect(RUNTIME_SWIFT).toContain('router?.setQueryParam(key, pyreonUrlFormatDouble(value))')
+    expect(RUNTIME_KOTLIN).toContain('router?.setQueryParam(key, pyreonUrlFormatDouble(value))')
+    expect(RUNTIME_SWIFT).toContain('String(format: "%.0f", value)')
+    expect(RUNTIME_KOTLIN).toContain('java.math.BigDecimal(value).toPlainString()')
   })
 
   // The web's boolean decode is true/1 → true, false/0 → false, anything else
@@ -266,6 +267,115 @@ export function C() { const o = useUrlState('o', -3); return (<Stack><Text>{\`\$
 
   it.skipIf(!isKotlincAvailable())('compiles against kotlinc (Kotlin)', () => {
     const r = validateKotlin(transform(TYPED_SRC, { target: 'kotlin' }).code)
+    expect(r.ok, r.error).toBe(true)
+  })
+})
+
+// ─── List defaults ──────────────────────────────────────────────────────────
+//
+// `useUrlState('tags', ['a', 'b'])` is a list binding over the web's comma format. The element type is read off the
+// literals the way the web reads it off the first element (`inferElementCodec`); an empty array carries none, so it
+// stays strings. The codec itself is asserted by EXECUTION in `native-url-state-list-parity.test.ts`; this covers the
+// lowering and — the part that needed a compiler change — the TYPE of `tags()`, without which a method chained onto
+// it lowers with an unknown receiver (`.length` stays `.length` where Swift needs `.count`).
+
+const LIST_SRC = `import { useUrlState } from '@pyreon/url-state'
+import { Stack, Text, Button } from '@pyreon/primitives'
+export function C() {
+  const tags = useUrlState('tags', ['a', 'b'])
+  const ids = useUrlState('ids', [1, 2])
+  const zs = useUrlState('zs', [1.5, 2])
+  const fl = useUrlState('fl', [true, false])
+  const none = useUrlState('none', [])
+  const add = () => tags.set([...tags(), 'c'])
+  return (<Stack><Text>{\`\${tags().length} \${ids().length} \${zs().length} \${fl().length} \${none().length}\`}</Text><Button onPress={add}>x</Button></Stack>)
+}`
+
+describe('useUrlState list defaults', () => {
+  it('picks the list binding from the literals (Swift)', () => {
+    const { code, warnings } = transform(LIST_SRC, { target: 'swift' })
+    expect(warnings).toHaveLength(0)
+    expect(code).toContain('PyreonUrlStateStrings(router: pyreonRouter, key: "tags", defaultValue: ["a", "b"])')
+    expect(code).toContain('PyreonUrlStateInts(router: pyreonRouter, key: "ids", defaultValue: [1, 2])')
+    // A whole number inside a fractional list is spelled as a Double, so the literal types on both targets.
+    expect(code).toContain('PyreonUrlStateDoubles(router: pyreonRouter, key: "zs", defaultValue: [1.5, 2.0])')
+    expect(code).toContain('PyreonUrlStateBools(router: pyreonRouter, key: "fl", defaultValue: [true, false])')
+    // An empty default has no element type: strings, as on the web.
+    expect(code).toContain('PyreonUrlStateStrings(router: pyreonRouter, key: "none", defaultValue: [])')
+  })
+
+  it('picks the list binding from the literals (Kotlin)', () => {
+    const { code, warnings } = transform(LIST_SRC, { target: 'kotlin' })
+    expect(warnings).toHaveLength(0)
+    expect(code).toContain('PyreonUrlStateStrings(LocalPyreonRouter.current, "tags", listOf("a", "b"))')
+    expect(code).toContain('PyreonUrlStateInts(LocalPyreonRouter.current, "ids", listOf(1, 2))')
+    expect(code).toContain('PyreonUrlStateDoubles(LocalPyreonRouter.current, "zs", listOf(1.5, 2.0))')
+    expect(code).toContain('PyreonUrlStateBools(LocalPyreonRouter.current, "fl", listOf(true, false))')
+    expect(code).toContain('PyreonUrlStateStrings(LocalPyreonRouter.current, "none", listOf())')
+  })
+
+  // The compiler change: the bare `tags()` call of a callable declaration is TYPED by its owner (`DeclTyping.value`).
+  // `slice` is the receiver-type-dependent method: it lowers to a copy only when the receiver is KNOWN to be an array
+  // (`Array(x)` / `x.toList()`), and is emitted verbatim — which neither target accepts — when the receiver is unknown.
+  // (`length` is not the witness: it lowers by name, so it passes with or without the typing.)
+  const SLICE_SRC = `import { useUrlState } from '@pyreon/url-state'
+import { Stack, Text } from '@pyreon/primitives'
+import { For } from '@pyreon/core'
+export function C() {
+  const tags = useUrlState('tags', ['a', 'b'])
+  const copy = tags().slice()
+  const head = tags().slice(0, 1)
+  return (<Stack><For each={copy} by={(t) => t}>{(t) => <Text>{t}</Text>}</For><For each={head} by={(t) => t}>{(t) => <Text>{t}</Text>}</For></Stack>)
+}`
+
+  it('types the bare call, so a receiver-typed method chained onto it lowers (Swift)', () => {
+    const { code } = transform(SLICE_SRC, { target: 'swift' })
+    expect(code).toContain('let copy = Array(tags())')
+    expect(code).not.toContain('.slice(')
+    if (isSwiftcAvailable()) {
+      const r = validateSwiftWithStubs(code)
+      expect(r.ok, r.error).toBe(true)
+    }
+  })
+
+  it('types the bare call, so a receiver-typed method chained onto it lowers (Kotlin)', () => {
+    const { code } = transform(SLICE_SRC, { target: 'kotlin' })
+    expect(code).toContain('val copy = tags().toList()')
+    expect(code).not.toContain('tags().slice()')
+    if (isKotlincAvailable()) {
+      const r = validateKotlin(code)
+      expect(r.ok, r.error).toBe(true)
+    }
+  })
+
+  it('lowers the spread of a list binding to a concatenation', () => {
+    expect(transform(LIST_SRC, { target: 'swift' }).code).toContain('tags.set((tags() + ["c"]))')
+  })
+
+  it('declines an array it cannot type, naming the reason', () => {
+    for (const def of ["['a', 1]", '[1, true]', '[[1], [2]]', '[{ a: 1 }]', '[x]', "[...['a']]", '[1e999]']) {
+      const src = `import { useUrlState } from '@pyreon/url-state'
+import { Stack } from '@pyreon/primitives'
+export function C() { const x = 1; const p = useUrlState('tags', ${def}); return (<Stack />) }`
+      const { code, warnings } = transform(src, { target: 'swift' })
+      expect(code, def).not.toContain('PyreonUrlState')
+      expect(warnings.some((w) => w.includes('STRING, NUMBER or BOOLEAN default')), def).toBe(true)
+    }
+  })
+
+  it('declares no helper for a list binding either', () => {
+    for (const target of ['swift', 'kotlin'] as const) {
+      expect(transform(LIST_SRC, { target }).code, target).not.toMatch(HELPER_DECL)
+    }
+  })
+
+  it.skipIf(!isSwiftcAvailable())('typechecks against swiftc (Swift)', () => {
+    const r = validateSwiftWithStubs(transform(LIST_SRC, { target: 'swift' }).code)
+    expect(r.ok, r.error).toBe(true)
+  })
+
+  it.skipIf(!isKotlincAvailable())('compiles against kotlinc (Kotlin)', () => {
+    const r = validateKotlin(transform(LIST_SRC, { target: 'kotlin' }).code)
     expect(r.ok, r.error).toBe(true)
   })
 })

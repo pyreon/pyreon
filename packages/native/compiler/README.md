@@ -183,8 +183,9 @@ transparent? }]`. `<PyreonUI mode>` / `<ColorModeProvider mode>` (and a plugin's
   `requestSources`, `topLevel` + `items` (slots `bindings` / `models` / `declarations` / `data`),
   `methodCalls` + `exprs`, `callExprs`, `refineStructs`, `finishModule`,
   `rewriteElement`, `destructureCalls`, `componentOnlyCalls`, `persistence` and
-  `stubs`. `DeclEmitter.typing` types both the call read (`callRead`) and the
-  property read (`member`) of a declaration's container.
+  `stubs`. `DeclEmitter.typing` types the call read (`callRead`), the
+  property read (`member`) and, for a `callable` declaration, the BARE call of the binding itself (`value` — `tags()`
+  on a `useUrlState('tags', ['a'])`), so a receiver-typed method chained onto it (`tags().slice()`) lowers.
 
 `SUPPORTED_PLUGIN_API_VERSIONS` lists every version this compiler loads.
 
