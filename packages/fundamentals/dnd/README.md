@@ -209,7 +209,24 @@ The signal-driven layer adds **near-zero overhead** over calling pdnd directly. 
 
 ## Native (iOS / Android)
 
-`useSortable({ items, by, onReorder })` lowers to the `PyreonSortableState` engine on SwiftUI and Compose, and `ref={s.containerRef}` / `ref={s.itemRef(key)}` to the drag view modifiers (list reorder within one list — cross-list boards and the element-getter hooks have no native lowering). The compile-time half ships in this package (`src/native-plugin/`, declared in `package.json` as `pyreon.native.plugin` and discovered by `pyreon native`), not in `@pyreon/native-compiler`. `--no-plugins` builds treat the package like any unclaimed library.
+`useSortable({ items, by, onReorder })` lowers to the `PyreonSortableState` engine on SwiftUI and Compose, and `ref={s.containerRef}` / `ref={s.itemRef(key)}` to the drag view modifiers (list reorder within one list — cross-list boards have no native lowering).
+
+`useDraggable` and `useDroppable` lower too, with `ref={d.ref}` as the platform drag source / drop target:
+
+```tsx
+type Card = { id: string; kind: string }
+
+const { ref: dragRef, isDragging } = useDraggable({ data: { id: card.id, kind: 'card' } })
+const { ref: dropRef, isOver, overEdge } = useDroppable({
+  edges: ['top', 'bottom'],
+  canDrop: (src: Card) => src.kind === 'card',
+  onDrop: (src: Card, loc) => move(src.id, loc.edge),
+})
+```
+
+The payload crosses as JSON, so the two hooks share no type: a draggable carries the object literal it was written with, and a droppable decodes it into the type its `onDrop` / `canDrop` source parameter is **annotated** with (`(src: Card) => …` — required, and reported when missing). Honest limits, each reported by name at the declaration: SwiftUI reports no drag start / end / cancel callback, so `onDragStart` / `onDragEnd` do not lower and `isDragging` clears on the next drop (not on a cancelled drag); `onDragEnter` cannot receive the source (read `isOver()`); `canDrop` runs when the drop lands, not while hovering; `preview`, `handle`, `element` and `sticky` are not used natively. `useDragMonitor` and `useFileDrop` have no native lowering.
+
+The compile-time half ships in this package (`src/native-plugin/`, declared in `package.json` as `pyreon.native.plugin` and discovered by `pyreon native`), not in `@pyreon/native-compiler`. `--no-plugins` builds treat the package like any unclaimed library.
 
 ## Documentation
 

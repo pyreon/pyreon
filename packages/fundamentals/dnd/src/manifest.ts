@@ -11,9 +11,9 @@ export default defineManifest({
   multiplatform: {
     tier: 'web-only',
     rationale:
-      '`useSortable` now lowers to the native PyreonSortableState engine (list reorder, the highest-value case); the element-getter hooks (useDraggable/useDroppable), the page-global useDragMonitor and the OS-file useFileDrop stay web — they are pdnd/DOM-shaped, not gesture-shaped',
+      '`useSortable` (list reorder), `useDraggable` and `useDroppable` lower to native drag engines; the page-global useDragMonitor and the OS-file useFileDrop stay web — they are not gesture-shaped',
     nativeFrontend:
-      'PyreonSortableState — `useSortable` list reorder, via SwiftUI .draggable/.dropDestination and Compose long-press drag',
+      'PyreonSortableState (`useSortable` list reorder) and PyreonDraggableState / PyreonDroppableState (`useDraggable` / `useDroppable`, `ref={d.ref}` as the platform drag source / drop target) — via SwiftUI .onDrag/.onDrop and Compose dragAndDropSource/dragAndDropTarget',
   },
   longExample: `import { signal } from '@pyreon/reactivity'
 import { For } from '@pyreon/core'

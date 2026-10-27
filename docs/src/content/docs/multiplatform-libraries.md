@@ -157,7 +157,7 @@ The table below comes from each package manifest. `shared` describes an authorin
 | `@pyreon/compiler` | the web JSX compiler + build tooling itself; the native sibling is @pyreon/native-compiler — nothing here ships to an app runtime |
 | `@pyreon/config` | build-time config shape read by the tooling that assembles an app — never part of a rendered app on any target |
 | `@pyreon/connector-document` | bridges ui-components to @pyreon/document extraction — both ends are web/document engines |
-| `@pyreon/dnd` | `useSortable` now lowers to the native PyreonSortableState engine (list reorder, the highest-value case); the element-getter hooks (useDraggable/useDroppable), the page-global useDragMonitor and the OS-file useFileDrop stay web — they are pdnd/DOM-shaped, not gesture-shaped |
+| `@pyreon/dnd` | `useSortable` (list reorder), `useDraggable` and `useDroppable` lower to native drag engines; the page-global useDragMonitor and the OS-file useFileDrop stay web — they are not gesture-shaped |
 | `@pyreon/document` | wraps pdfmake/docx/exceljs/pptxgenjs (browser/node document engines); no native lowering. Build the file on a server and fetch it (useFetch / @pyreon/http lower), or hand the result to the platform share sheet (useShare lowers). |
 | `@pyreon/document-primitives` | document-authoring primitives feeding the pdfmake/docx renderers |
 | `@pyreon/feature` | CRUD composite over query/form/store/validation. The RUNTIME half stays web — the generated hooks (useList / useById / useCreate / useUpdate / useDelete / useSearch), the network fetcher, and validator/form integration all lower only when every dependency does. The DECLARATION half already crosses (see nativeFrontend) |
