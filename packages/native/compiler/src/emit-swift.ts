@@ -2618,14 +2618,53 @@ function emitSwiftDecl(
     const bodyLines = inlinedStmts.map((s) => `    ${emitSwiftStatement(s, 4)}`).join('\n')
     _exprInferCtx.locals = savedLocals
     _activeInferCtx.locals = savedLocalsAct3
-    return [`private var ${swiftIdent(d.name)}: ${swiftReturnType} {`, bodyLines, `  }`].join('\n')
+    const last = inlinedStmts[inlinedStmts.length - 1]
+    const annotated =
+      inferred.kind === 'unknown' && last?.kind === 'return' && last.expr !== undefined
+        ? annotateComputedLiteral(d.name, last.expr, inferCtx)
+        : null
+    return [`private var ${swiftIdent(d.name)}: ${annotated ?? swiftReturnType} {`, bodyLines, `  }`].join('\n')
   }
   // Legacy single-expression shape — same pre-computed lookup. Inline any
   // referenced value-consts (body-local `let`s the struct-level computed
   // can't see) so the emitted getter compiles.
-  const inferred = inferCtx.computeds.get(d.name) ?? inferType(d.expr!, inferCtx)
+  // A precomputed `unknown` is re-inferred here: an EARLIER computed returning an object literal may have registered
+  // its synthesized struct since (`annotateComputedLiteral`), so `stats().sum + 1` now resolves.
+  const pre = inferCtx.computeds.get(d.name)
+  const inferred = pre === undefined || pre.kind === 'unknown' ? inferType(d.expr!, inferCtx) : pre
   const swiftReturnType = swiftType(inferred)
-  return `private var ${swiftIdent(d.name)}: ${swiftReturnType} { ${emitSwiftExpr(inlineValueConsts(d.expr!), 0)} }`
+  const value = emitSwiftExpr(inlineValueConsts(d.expr!), 0)
+  const annotated = inferred.kind === 'unknown' ? annotateComputedLiteral(d.name, d.expr!, inferCtx) : null
+  if (annotated === null && inferred.kind !== 'unknown') inferCtx.computeds.set(d.name, inferred)
+  return `private var ${swiftIdent(d.name)}: ${annotated ?? swiftReturnType} { ${value} }`
+}
+
+/**
+ * A computed whose value is an object literal (or an array of same-shaped ones) has no NAMED type to infer — the
+ * emit synthesizes `__ObjN` for it — so its getter was annotated `Any`, and the first field read on it failed the
+ * typecheck (`value of type 'Any' has no member 'sum'`) with no warning. Kotlin never had this: `derivedStateOf`
+ * infers its own type. Resolve the struct the VALUE emit already used (called after it, so this is a dedup lookup
+ * that cannot move `__ObjN` numbering — the signal twin, `synthSwiftSignalAnnotation`, makes the same argument), and
+ * register its fields + the computed's type so a downstream `stats().sum` infers too.
+ */
+function annotateComputedLiteral(
+  name: string,
+  expr: ExprIR,
+  inferCtx: ReturnType<typeof buildInferenceCtx>,
+): string | null {
+  let ex = expr
+  while (ex.kind === 'paren') ex = ex.inner
+  const anno = synthSwiftSignalAnnotation(ex)
+  if (anno === null) return null
+  const isArray = anno.startsWith('[')
+  const structName = isArray ? anno.slice(1, -1) : anno
+  const st = [..._declaredStructs, ..._synthExprStructs].find((x) => x.name === structName)
+  if (st !== undefined && !inferCtx.structs.has(structName)) {
+    inferCtx.structs.set(structName, new Map(st.fields.map((f) => [f.name, f.type])))
+  }
+  const ref: TypeIR = { kind: 'typeRef', name: structName, args: [] }
+  inferCtx.computeds.set(name, isArray ? { kind: 'array', element: ref } : ref)
+  return anno
 }
 
 /**
