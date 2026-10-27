@@ -8,8 +8,8 @@
 // from running the real web engine), so a reorder produces the same list
 // everywhere while each platform keeps its own gesture.
 //
-// Scope is deliberately ONE hook. useDraggable/useDroppable (imperative
-// element-getter registration), useDragMonitor (a page-global drag bus) and
+// This file covers `useSortable`. useDraggable/useDroppable lowered later
+// (native-dnd-drag-drop.test.ts); useDragMonitor (a page-global drag bus) and
 // useFileDrop (OS-level file DnD) have no native analogue and MUST keep
 // warning by name — several specs below assert exactly that, so the crossing
 // can never quietly over-claim.
@@ -144,10 +144,11 @@ describe('@pyreon/dnd useSortable → native', () => {
   })
 
   describe('the unlowered members STILL warn by name', () => {
-    // Never silence a warning you did not earn: these four are NOT lowered, so
+    // Never silence a warning you did not earn: these two are NOT lowered, so
     // each must keep naming itself. A regression here would let an author ship
-    // an app whose drag silently does nothing on device.
-    for (const hook of ['useDraggable', 'useDroppable', 'useDragMonitor', 'useFileDrop']) {
+    // an app whose drag silently does nothing on device. (useDraggable and
+    // useDroppable lowered later — see native-dnd-drag-drop.test.ts.)
+    for (const hook of ['useDragMonitor', 'useFileDrop']) {
       it(`${hook} warns that it has no native lowering`, () => {
         const src = `import { ${hook} } from '@pyreon/dnd'
 import { Stack } from '@pyreon/primitives'
@@ -160,12 +161,14 @@ export function App() { return (<Stack />) }`
       })
     }
 
-    it('their advice NAMES useSortable as the member that does cross', () => {
-      const src = `import { useDraggable } from '@pyreon/dnd'
+    it('their advice NAMES the members that do cross', () => {
+      const src = `import { useDragMonitor } from '@pyreon/dnd'
 import { Stack } from '@pyreon/primitives'
 export function App() { return (<Stack />) }`
       const w = transform(src, { target: 'swift' }).warnings.join('\n')
       expect(w).toContain('useSortable')
+      expect(w).toContain('useDraggable')
+      expect(w).toContain('useDroppable')
       expect(w).toContain('DOES lower')
     })
   })

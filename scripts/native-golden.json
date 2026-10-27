@@ -1922,42 +1922,42 @@
       "warnings": 0
     },
     "golden-fixture:dnd-25.tsx|swift": {
-      "sha": "dd9106d4443ee09187d73dd6419a230c90208396789d056a6859465a9e3e6588",
+      "sha": "1f739f9bcae22ebb043a125c01e0be2c77c0e32d22f3fea2c829a8ba667b7d3c",
       "bytes": 62,
-      "warnings": 1
+      "warnings": 0
     },
     "golden-fixture:dnd-25.tsx|kotlin": {
-      "sha": "c669e3296e71c75dd5031bed73067cc6ef8cfcd56b80f4eab17adf3b0d0a84fd",
+      "sha": "39540507d5a8f4f10d4609ad102e990f1e63d53454ba39943d0f75ce47c0102c",
       "bytes": 128,
-      "warnings": 1
+      "warnings": 0
     },
     "golden-fixture:dnd-26.tsx|swift": {
-      "sha": "9d48ecfffd42c3acf48bec9e883fade347c405f8df8c7c6171661e2eb094b663",
+      "sha": "1f739f9bcae22ebb043a125c01e0be2c77c0e32d22f3fea2c829a8ba667b7d3c",
       "bytes": 62,
-      "warnings": 1
+      "warnings": 0
     },
     "golden-fixture:dnd-26.tsx|kotlin": {
-      "sha": "fc4fd1b1108d270adc800321389bd40e05005730d56adb62612bddaf68aabdb5",
+      "sha": "39540507d5a8f4f10d4609ad102e990f1e63d53454ba39943d0f75ce47c0102c",
       "bytes": 128,
-      "warnings": 1
+      "warnings": 0
     },
     "golden-fixture:dnd-27.tsx|swift": {
-      "sha": "a07a2188e5d8ec668021d1ec4aa5d650a445aa9152840ef7eaf502ae05651c7d",
+      "sha": "5b3fa430e602f738377ac0a209f5c5982a7d7f0baa57e2d9284dbfd03f1f1301",
       "bytes": 62,
       "warnings": 1
     },
     "golden-fixture:dnd-27.tsx|kotlin": {
-      "sha": "1242e3885c16add85ed0566019f40005576834505b620f1aba77d9b184fa42fe",
+      "sha": "f4dc840ea24ec3ec4bb95d44fd35546500823ec7d609a507234495a5d9899504",
       "bytes": 128,
       "warnings": 1
     },
     "golden-fixture:dnd-28.tsx|swift": {
-      "sha": "26199760a1d6fe104db90e58b2ecee936442b5f6948b974cbfef3cfcf7ddc1d3",
+      "sha": "68e93ce0e2f40e2bf6192697d6ba33be596cca1fbd16e5cb6ec7f222de3f3ee5",
       "bytes": 62,
       "warnings": 1
     },
     "golden-fixture:dnd-28.tsx|kotlin": {
-      "sha": "f5c464d25a972de7012f7c1b1b7b00e8540fd2e16743077bb55c529ab0f36167",
+      "sha": "0b49ef610abce22a6d29184da03cc1a4a36bd719c2ac3c55daa599ea42892d2f",
       "bytes": 128,
       "warnings": 1
     },
@@ -2080,6 +2080,26 @@
       "sha": "ec21138273211860fec8b8e58f1b570765bed366e5fadc22b4a568df3a983b30",
       "bytes": 677,
       "warnings": 1
+    },
+    "golden-fixture:dnd-41.tsx|swift": {
+      "sha": "ceef58f74863ad9ae38a90462e8a15799071313429ecf806a573ce8e99a18d24",
+      "bytes": 942,
+      "warnings": 0
+    },
+    "golden-fixture:dnd-41.tsx|kotlin": {
+      "sha": "2b056156d21b43e8272e52d6a47099e6e0eadfa19c10ec55c55772a0be1ba856",
+      "bytes": 950,
+      "warnings": 0
+    },
+    "golden-fixture:dnd-42.tsx|swift": {
+      "sha": "870cdea0a3df63faf337735f806f8cec11f70dc128f37b6f1de1d6a4f95371a1",
+      "bytes": 713,
+      "warnings": 0
+    },
+    "golden-fixture:dnd-42.tsx|kotlin": {
+      "sha": "1822c4d2b43ae801aca7b6e531c252704bc24862cfe27c2205f7162bda72a418",
+      "bytes": 701,
+      "warnings": 0
     },
     "golden-fixture:element-lowering-user.tsx|swift": {
       "sha": "020962f01e4f1c10f692ef8dc829bae3d0f8eeb4b9a0020df12277d1a791d391",
@@ -7782,13 +7802,13 @@
       "warnings": 0
     },
     "registry:@pyreon/dnd|swift": {
-      "sha": "d5503c1e9d5f7b9fd891d03cc78e54beae767b22a66bf49d734eb5b211ff14f3",
-      "bytes": 445,
+      "sha": "f00ae50b5f5946a62ddfd9c7329f96954e3b931ecb069f14a7ba9c93e282fad9",
+      "bytes": 1024,
       "warnings": 0
     },
     "registry:@pyreon/dnd|kotlin": {
-      "sha": "51572f1dd279d89760c48a2b503454bc6c4fb8fc4296b39d7c898e913c7d5086",
-      "bytes": 414,
+      "sha": "fb2d3db05a2ded73c9d1af8702a178930ce5e6b8f0232c516685c6303757893c",
+      "bytes": 955,
       "warnings": 0
     },
     "registry:@pyreon/kinetic|swift": {

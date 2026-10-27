@@ -86,5 +86,8 @@ struct PyreonSortableTests {
         check(horizontal.edgeAt(CGPoint(x: 95, y: 20), in: box) == .right, "horizontal right half")
 
         print("PyreonSortableTests: OK")
+
+        // The drag/drop twin has no entry point of its own (one @main per test directory).
+        PyreonDragDropTests.runAll()
     }
 }
