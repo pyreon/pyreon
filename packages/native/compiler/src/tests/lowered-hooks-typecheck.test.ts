@@ -201,6 +201,19 @@ const USAGES: ReadonlyArray<readonly [string, string, string]> = [
     'const rows = signal<Resp[]>([]); const s = useSortable({ items: () => rows(), ' +
       'by: (r: Resp) => r.text, onReorder: (next: Resp[]) => rows.set(next) })',
   ],
+  // The destructured spellings, with the ANNOTATED source parameter the droppable decodes into — a droppable
+  // without it deliberately warns and stays web, so type-checking that shape would prove the opposite.
+  [
+    'useDraggable',
+    '@pyreon/dnd',
+    'const { isDragging } = useDraggable({ data: { id: "c1", n: 3 } }); const d = isDragging()',
+  ],
+  [
+    'useDroppable',
+    '@pyreon/dnd',
+    'const { isOver } = useDroppable({ edges: ["top"], canDrop: (r: Resp) => r.text === "x", ' +
+      'onDrop: (r: Resp, loc) => { const e = loc.edge } }); const o = isOver()',
+  ],
   ['useSizeClass', '@pyreon/hooks', 'const s = useSizeClass()'],
   ['useStorage', '@pyreon/hooks', 'const s = useStorage("k", "")'],
   ['useWebSocket', '@pyreon/hooks', 'const w = useWebSocket("wss://x.dev")'],
