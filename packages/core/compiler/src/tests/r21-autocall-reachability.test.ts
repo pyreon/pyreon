@@ -176,7 +176,7 @@ describe('R21 — template-path bindings unaffected by the bare-skip', () => {
     // The template path binds the value auto-called (`s1()`) — the
     // bare-skip applies ONLY to re-emitted (h-composed) regions.
     const out = t(wrap(`<div>{s1}</div>`))
-    expect(out).toContain('bindPolymorphicText(() => (s1()), __t0')
+    expect(out).toContain('_bindText(s1,')
   })
 
   test('bare signal class attr keeps _bindDirect', () => {

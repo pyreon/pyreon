@@ -139,7 +139,7 @@ describe('signal auto-call — every binding form shadows', () => {
   }
 
   it('a same-named `signal()` re-declaration is NOT a shadow (the carve-out survives)', () => {
-    expect(both(`${SIG}const c = signal(1)\nfunction f() { const c = signal(2); return <p>{c}</p> }`)).toContain('c()')
+    expect(both(`${SIG}const c = signal(1)\nfunction f() { const c = signal(2); return <p>{c}</p> }`)).toContain('_bindText(c,')
   })
 })
 

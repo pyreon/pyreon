@@ -5062,10 +5062,11 @@ export function transformJSX_JS(
       // Use the raw identifier NAME, not `sliceExpr` — the signal-auto-call
       // records a source replacement (`active` → `active()`), so slicing this
       // node's range would yield `active()`; we want the bare `active`.
-      // SCOPED to the ATTRIBUTE path (`allowBareSignal`) — the text-child path
-      // keeps its existing emission for bare signals (the dominant
-      // `<div>{name}</div>` shape); promoting THAT to `_bindText` is a
-      // larger, separately-measured change, not this fix.
+      // Both the attribute path and the text-child path opt in: `{count}` and
+      // `{count()}` are the same read, so they emit the same `_bindText`.
+      // `_bindText` is text-FIRST, not text-only (it upgrades to a subtree
+      // mount on the first VNode-shaped value), so it covers every value a
+      // bare signal child can hold, exactly like the general path did.
       if (allowBareSignal && inner.type === 'Identifier' && isActiveSignal(inner.name)) {
         return { ref: inner.name, isMember: false, receiver: null }
       }
@@ -5392,7 +5393,7 @@ export function transformJSX_JS(
       // `allowBareSignal` — an attribute value that is a bare signal
       // (`class={active}`) binds directly, matching the accessor form
       // `class={() => active()}` (byte-identical). The text-child call site
-      // below intentionally does NOT opt in (see tryDirectSignalRef).
+      // opts in the same way.
       const directRef = tryDirectSignalRef(exprNode, true)
       if (directRef) {
         needsBindDirectImport = true
@@ -5659,7 +5660,7 @@ export function transformJSX_JS(
         const canonical = canonicalWalk(canonicalBase(varName), 0, true)
         captureRef(tVar, chainFromCaptured(canonical).expr, canonical)
       }
-      const directRef = tryDirectSignalRef(exprNode)
+      const directRef = tryDirectSignalRef(exprNode, true)
       if (directRef) {
         needsBindTextImport = true
         const d = nextDisp()
