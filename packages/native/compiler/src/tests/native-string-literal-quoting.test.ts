@@ -105,9 +105,8 @@ describe('identifiers that are not identifiers', () => {
   it('Kotlin struct fields and named arguments are backticked on BOTH declaration paths', () => {
     const c = code('kotlin')
     expect(c).toContain('data class AppO(val `my-key`: Long, val `class`: Long, val plain: String)')
-    // `filename` marks a multi-file build, so the synthesized name carries a
-    // per-module suffix (`__Obj0_<tag>`).
-    expect(c).toMatch(/__Obj0_\w+\(`my-key` = 1L, `class` = 4L, plain = "x"\)/)
+    // The literal is the signal's own state class, so it constructs `AppO`.
+    expect(c).toContain('AppO(`my-key` = 1L, `class` = 4L, plain = "x")')
     expect(c).not.toMatch(/\bmy-key: Int/)
   })
 })

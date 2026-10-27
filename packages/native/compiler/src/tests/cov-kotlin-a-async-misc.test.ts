@@ -191,7 +191,7 @@ export function App() {
   const t = createTableState({ data: () => rows(), columns: [{ id: 'name' }] })
   return (<Stack><For each={t.rows()}>{(u) => <Text>{u.name}</Text>}</For></Stack>)
 }`).code
-    expect(out).toContain('PyreonTableState<__Obj0>')
+    expect(out).toContain('PyreonTableState<AppRow>')
     expect(out).toContain('PyreonCell.Str(it.name)')
   })
 })

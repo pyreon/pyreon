@@ -70,7 +70,7 @@ describe('createTableState — Kotlin lowering', () => {
   const r = transform(usersTable, { target: 'kotlin' })
 
   it('emits a remembered PyreonTableState over the row struct with codegen columns', () => {
-    expect(r.code).toContain('PyreonTableState<__Obj0>({ users }, listOf(')
+    expect(r.code).toContain('PyreonTableState<UsersTableUser>({ users }, listOf(')
     expect(r.code).toContain('PyreonTableColumn("name") { PyreonCell.Str(it.name) }')
     expect(r.code).toContain('PyreonTableColumn("age") { PyreonCell.Num((it.age).toDouble()) }')
     expect(r.code).toContain(', 10)') // pageSize
