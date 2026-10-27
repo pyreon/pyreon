@@ -71,7 +71,7 @@ describe('useUrlState key resolution', () => {
 
   it('the default-value warning reports the RESOLVED key, not the identifier', () => {
     // Otherwise the message names a symbol rather than the key it stands for.
-    const r = run(`const TAGS = 'tags'`, `useUrlState(TAGS, [])`)
+    const r = run(`const TAGS = 'tags'`, `useUrlState(TAGS, {})`)
     expect(r.warnings[0]).toContain('"tags"')
     expect(r.warnings[0]).not.toContain('TAGS')
   })
