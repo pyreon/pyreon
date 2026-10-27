@@ -23,8 +23,8 @@
 // - **Kotlin** real HTTP needs OkHttp / `java.net.http` — a dependency the
 //   minimal `kotlinc`-against-Compose-stubs gate CAN'T provide. So the app
 //   wires a [PyreonHttpExecutor] (OkHttp-backed); the container / emit calls
-//   `executor.send(request)`. This keeps the file SDK-free. An OkHttp-backed
-//   convenience is a Phase-2+ Android-CI follow-up.
+//   `executor.send(request)`. This keeps the file SDK-free. The OkHttp-backed
+//   executor lives in PyreonHttpOkHttp.kt.
 //
 // NOTE the body asymmetry: Swift uses `Data?` (arbitrary bytes); Kotlin uses
 // `String?` (UTF-8 text — the dominant JSON case) to avoid a `ByteArray`-in-

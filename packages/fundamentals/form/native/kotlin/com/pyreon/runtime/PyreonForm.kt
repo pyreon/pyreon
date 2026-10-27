@@ -16,7 +16,7 @@
 // validation are the compiler-emit and `@pyreon/validation` layers' job.
 // This is the per-service runtime PORT (the PyreonFetch / PyreonStorage
 // pattern); the `useForm` / `useField` / `<Form>` / `<Submit>` emit builds
-// on this contract in a follow-up. Coroutine-free + dependency-light, so
+// on this contract. Coroutine-free + dependency-light, so
 // it unit-tests synchronously with no Compose host.
 
 package com.pyreon.runtime

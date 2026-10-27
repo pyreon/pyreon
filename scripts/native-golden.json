@@ -3222,14 +3222,14 @@
       "warnings": 2
     },
     "golden-fixture:http-10.tsx|swift": {
-      "sha": "68e9b2ea52ad6c48bb34527e862bbf187a93d285db0165d3b00df8bb85cc74a7",
+      "sha": "cc900c4e92549d46dec6ebc13236b625643e32cf352c2e79446eaa22238d1744",
       "bytes": 246,
-      "warnings": 1
+      "warnings": 0
     },
     "golden-fixture:http-10.tsx|kotlin": {
-      "sha": "4488dab487d059e37f21c011f8eeea2e87994bb734e6133c52e29db4e36f608e",
+      "sha": "45979e90ed49d95b361ee52dee3c8eec8e35dc1eb2fe813e60a4bd3e607a08da",
       "bytes": 225,
-      "warnings": 1
+      "warnings": 0
     },
     "golden-fixture:http-11.tsx|swift": {
       "sha": "07e955824155eabc75478b0118e7a03cab85ea3041f8c5a5b08680777edc7eaa",

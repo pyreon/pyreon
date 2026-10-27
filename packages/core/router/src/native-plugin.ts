@@ -38,9 +38,11 @@ const recognizeLoader: CallRecognizer = (_call, ctx) => {
     )
     return null
   }
-  ctx.report(
-    `useLoaderData<T>() declared (${bindingDesc}) — PMTC ships READ-ONLY emit (Phase B6): the binding reads PyreonRouter.loaderData[currentPath] cast to T. Auto-loader emit (firing a route's \`loader\` on navigation) is future work — populate loaderData via the runtime container's \`setLoaderData(path, value)\` method from your native host code today. Reference: docs/src/content/docs/multiplatform.md → "Loader auto-emit is intentionally deferred, not forgotten."`,
-  )
+  // The single-binding read is fully supported: it lowers to a read of the
+  // runtime's loader data, which a route's `loader` populates on appear (the
+  // route-array parser extracts the loader; both emitters call
+  // `setLoaderData`). A loader shape that cannot lower warns at the route
+  // itself, so there is nothing to report here.
   return { type: 'loader', payload: { type: ctx.typeArg() } as unknown as ExtPayload }
 }
 const recognizePattern: CallRecognizer = (_call, ctx) => {

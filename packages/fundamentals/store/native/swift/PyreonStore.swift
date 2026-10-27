@@ -9,7 +9,7 @@
 //     })
 //
 //     useCounter().store.count()         // read
-//     useCounter().store.count.set(5)    // write — deferred to v2
+//     useCounter().store.count.set(5)    // write
 //
 // Native v1 emits a per-store singleton class extending this base
 // pattern. PMTC generates a `PyreonStore_counter` class with @Observable

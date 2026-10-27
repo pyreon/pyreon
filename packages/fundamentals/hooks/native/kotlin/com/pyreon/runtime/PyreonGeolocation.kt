@@ -39,13 +39,13 @@
 //   source the APP wires: its `FusedLocationProviderClient` callback forwards
 //   fixes to [update] / failures to [fail] / permission changes to
 //   [authorize], and returns an unregister thunk stored for [stop]. This
-//   keeps the file Android-SDK-free + kotlinc-stub compatible. A
-//   `FusedLocationProviderClient`-backed convenience overload is a Phase-2+
-//   Android-CI follow-up.
+//   keeps the file Android-SDK-free + kotlinc-stub compatible. The
+//   Android-backed source lives in PyreonGeolocationAndroid.kt
+//   (`AndroidLocationSource` / `rememberPyreonGeolocation()`).
 //
 // The pure container is enough to unit-test the state machine, validate the
-// kotlinc surface, and back the `useGeolocation` compiler emit (a follow-up
-// — the PyreonFetch / PyreonNetworkStatus per-service-port pattern).
+// kotlinc surface, and back the `useGeolocation` compiler emit (the
+// PyreonFetch / PyreonNetworkStatus per-service-port pattern).
 
 package com.pyreon.runtime
 
@@ -157,8 +157,7 @@ public class PyreonGeolocation {
      * events to the [GeolocationHandlers] thunks (which drive the pure
      * transitions), and returns an unregister thunk stored for [stop].
      * Keeping the source injected keeps this file Android-SDK-free
-     * (kotlinc-stub compatible); a FusedLocationProviderClient convenience
-     * overload is a Phase-2+ Android-CI follow-up.
+     * (kotlinc-stub compatible).
      *
      * Idempotent — a second call while already tracking is a no-op; the
      * supplied [register] is NOT invoked a second time.

@@ -963,9 +963,7 @@ public func pyreonCollectFlowEdgeMarkers(_ edges: [PyreonFlowEdge], defaultMarke
 /// Default node box when a node declares no explicit width/height — the
 /// SAME `150×40` fallback `DEFAULT_NODE_WIDTH`/`DEFAULT_NODE_HEIGHT` use on
 /// web (`edges.ts`), so `fitView` frames the graph identically on every
-/// target even before real measured sizes are wired in (a Phase 2 follow-up:
-/// a per-node `GeometryReader` writing its real size back, mirroring the web
-/// `measurements` map).
+/// target for nodes that have not been measured yet.
 public let pyreonFlowDefaultNodeWidth: Double = 150
 public let pyreonFlowDefaultNodeHeight: Double = 40
 

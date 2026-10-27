@@ -267,8 +267,9 @@ describe('parse.ts — component-scope destructuring', () => {
   })
 
   it('separates the useLoaderData identifier / destructure / other-shape diagnostics', () => {
-    expect(swift(body('  const d = useLoaderData<{ x: string }>()')).warnings.join('\n')).toContain(
-      '`const d = useLoaderData<T>()`',
+    // The single-binding read lowers and is populated by the route's loader, so it does not warn.
+    expect(swift(body('  const d = useLoaderData<{ x: string }>()')).warnings.join('\n')).not.toContain(
+      'useLoaderData',
     )
     expect(swift(body('  const { x } = useLoaderData<{ x: string }>()')).warnings.join('\n')).toContain(
       '`const { ... } = useLoaderData<T>()`',

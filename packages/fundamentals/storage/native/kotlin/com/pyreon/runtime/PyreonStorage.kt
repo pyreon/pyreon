@@ -46,23 +46,14 @@
 //
 // ## Implementation status
 //
-// **Stub-backed for now.** The PyreonStorageBackend interface below is
-// the abstraction over the storage layer; only `InMemoryBackend` ships
-// here. The real `DataStoreBackend` implementation requires the Android
-// SDK (Context + androidx.datastore.preferences) and CAN'T be built
-// without it — `kotlinc` against the minimal Compose stubs in
-// @pyreon/native-compiler only validates the API surface, not the
-// real DataStore wiring. Documented as a Phase 2+ follow-up that
-// needs Android CI infrastructure to verify end-to-end.
-//
-// The InMemoryBackend is enough to:
-// - Unit-test the Codable round-trip via kotlinx-serialization
-// - Validate the kotlinc surface
-// - Provide a reasonable stub for Composable previews + isolated tests
-//
-// Real apps wire DataStoreBackend in their Application.onCreate or a
-// Hilt module. The compiler emit can target either backend through
-// the same rememberPyreonStorage entry point.
+// The PyreonStorageBackend interface below is the abstraction over the
+// storage layer. The process default is file-backed (see
+// PyreonStorageAndroid.kt / PyreonStorageBackends.kt); `InMemoryBackend`
+// remains for unit tests (Codable round-trip via kotlinx-serialization),
+// the kotlinc surface check, and Composable previews. Apps that need a
+// different store assign their own backend in Application.onCreate; the
+// compiler emit targets any backend through the same rememberPyreonStorage
+// entry point.
 
 package com.pyreon.runtime
 

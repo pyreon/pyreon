@@ -785,9 +785,6 @@ export function tryNamespacedSchemaDefnFromTopLevel(
  *
  * Schema modifier chains (`z.string().min(2).email()`) are unwrapped
  * at the head of the chain — we look for the BASE z.X() call.
- *
- * v1 emits shape only — no runtime validation methods. v2 follow-up
- * will add `.parse()` + `.safeParse()` runtime + constraint enforcement.
  */
 export function tryZodSchemaDefnFromTopLevel(
   node: AnyNode,

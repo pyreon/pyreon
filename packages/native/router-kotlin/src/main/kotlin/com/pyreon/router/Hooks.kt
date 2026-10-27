@@ -80,7 +80,7 @@ public fun useParams(): Map<String, String> {
  * stored for the current path, the cast fails, or the call is outside a
  * [RouterProvider] tree — the defensive default matching the web side.
  *
- * Compiler emit (a follow-up to this runtime contract):
+ * Compiler emit:
  * ```tsx
  * const user = useLoaderData<User>()
  * ↓

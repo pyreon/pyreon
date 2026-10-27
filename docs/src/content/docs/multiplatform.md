@@ -880,7 +880,7 @@ runtime addition is ~30 LOC per target; no compiler changes.
 > **`router.redirect()` throw-pattern** (#1109), and the **typed
 > `params` prop** (synthesized per-component struct/data class +
 > dispatcher construction from the matched segments) are all **landed**.
-> Loader auto-emit and a typed `useParams<T>()` hook generic are planned.
+> Route loaders auto-run on native too (see "Loader auto-emit" above). A typed `useParams<T>()` hook generic is planned.
 
 ## Bundled images — the asset pipeline
 

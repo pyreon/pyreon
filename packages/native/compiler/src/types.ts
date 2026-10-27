@@ -258,10 +258,6 @@ export type DeclIR =
    * `useAuth<User>()` is generic (carries `userType`); the rest are non-generic.
    * `useWebSocket(url)` captures the string URL literal arg.
    */
-  // NOTE: `useSecureStorage` is intentionally NOT an emitted decl kind — its
-  // parse path warns + drops (the Kotlin secret store needs an app-injected
-  // backend; auto-instantiation isn't clean cross-target). Documented
-  // follow-up; see parse.ts.
   /**
    * Phase 5b — a plain VALUE const in a component body: `const a = 5 + 3`,
    * `const label = 'Total: '`, `const doubled = base * 2`. Previously dropped
