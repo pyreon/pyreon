@@ -2667,8 +2667,8 @@
       "warnings": 0
     },
     "golden-fixture:flow-45.tsx|kotlin": {
-      "sha": "2e2537bc3b2fb6d02db3990427ff6f24fe96d7c6ec65ec43fbfb98cb17c3b841",
-      "bytes": 19286,
+      "sha": "e1cf3ef65900bfedb0298ab0ca9d0721d9a2fd7f9915a5209fd3d79f2cd38605",
+      "bytes": 19352,
       "warnings": 0
     },
     "golden-fixture:flow-46.tsx|swift": {
@@ -2677,8 +2677,8 @@
       "warnings": 1
     },
     "golden-fixture:flow-46.tsx|kotlin": {
-      "sha": "7c81523eef477f344999029a7e354c0c8ef3ba64f65fc6238fef5fbe42100e17",
-      "bytes": 162426,
+      "sha": "36df44b5a9cd155b90767045eeb9658c90591f296c26b41e7e8c58ca6453e038",
+      "bytes": 162492,
       "warnings": 0
     },
     "golden-fixture:flow-47.tsx|swift": {
@@ -7337,8 +7337,8 @@
       "warnings": 0
     },
     "example:native-counter-ios/Counter.tsx|kotlin": {
-      "sha": "2e2537bc3b2fb6d02db3990427ff6f24fe96d7c6ec65ec43fbfb98cb17c3b841",
-      "bytes": 19286,
+      "sha": "e1cf3ef65900bfedb0298ab0ca9d0721d9a2fd7f9915a5209fd3d79f2cd38605",
+      "bytes": 19352,
       "warnings": 0
     },
     "example:native-finance/FinanceApp.tsx|swift": {
@@ -7367,8 +7367,8 @@
       "warnings": 1
     },
     "example:native-tasks/TasksApp.tsx|kotlin": {
-      "sha": "1a61b808227785c43eac5ebaef386be461c6184650427bb0ddabbf1d8f0b2bd4",
-      "bytes": 165174,
+      "sha": "a116c0e3da793800b9bb17309303bffcb43ec4e5a4d197be313b0d2a8355c254",
+      "bytes": 165240,
       "warnings": 0
     },
     "example:native-todomvc-ios/TodoApp.tsx|swift": {

@@ -4182,7 +4182,7 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
           // which breaks ties toward POSITIVE infinity. They disagree on every
           // negative half — executed on real toolchains over
           // [-0.5, -1.5, 2.5, -2.5]: JS/Kotlin `0 -1 3 -2`, `.rounded()`
-          // `-1 -2 3 -3`. Kotlin needs no remap: `java.lang.Math.round` is
+          // `-1 -2 3 -3`. Kotlin keeps `java.lang.Math.round` (widened to Double in math-lowering — it returns Long): it is
           // SPECIFIED as `floor(x + 0.5)`, so it already matches JS (correct,
           // if by a coincidence of Java's own choice of rule).
           case 'round':
