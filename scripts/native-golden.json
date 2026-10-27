@@ -2162,12 +2162,12 @@
       "warnings": 0
     },
     "golden-fixture:feature-03.tsx|swift": {
-      "sha": "d2524b91e95cc12ad503b7371f0abb26ac59702a5e8dd753f05cf0a88578ae9a",
+      "sha": "ab94141e242f09bb17b5e3d4b1b1d773cf17daf136d7914240f7d71c8f3f350f",
       "bytes": 1416,
       "warnings": 9
     },
     "golden-fixture:feature-03.tsx|kotlin": {
-      "sha": "2decd93f8c84cca1a1cde3ac40b7ae4fe59b59852559dc0aa9876c4d56030435",
+      "sha": "55c5f7eaf9b90a6f96ee09fff465dc3941539489a542aa2281bb6c8f45d68bed",
       "bytes": 1514,
       "warnings": 8
     },

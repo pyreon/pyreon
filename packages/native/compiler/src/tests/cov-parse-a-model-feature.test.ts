@@ -244,9 +244,15 @@ describe('defineFeature({ name, schema })', () => {
     expect(has(feat(`{ name: NAME, schema: { a: 'string' } }`), '`name` field is missing')).toBe(true)
   })
 
-  it('a non-literal `schema` is declined, and names the literal map shape', () => {
-    const src = feat(`{ name: 'todo', schema: z.object({}) }`)
+  it('a non-literal `schema` is declined, and names the shapes that lower', () => {
+    const src = feat(`{ name: 'todo', schema: shape }`)
     expect(has(src, '`schema` is not a literal object')).toBe(true)
+    expect(emitsFeature(src)).toBe(false)
+  })
+
+  it('an EMPTY validator object has no fields to carry and is declined the same way', () => {
+    const src = feat(`{ name: 'todo', schema: z.object({}) }`)
+    expect(has(src, 'no recognized schema fields')).toBe(true)
     expect(emitsFeature(src)).toBe(false)
   })
 
