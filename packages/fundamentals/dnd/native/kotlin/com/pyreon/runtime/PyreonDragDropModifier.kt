@@ -5,7 +5,6 @@ import android.content.ClipDescription
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.draganddrop.dragAndDropSource
 import androidx.compose.foundation.draganddrop.dragAndDropTarget
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
@@ -51,16 +50,10 @@ fun Modifier.pyreonDraggable(state: PyreonDraggableState): Modifier =
     if (state.isDisabled()) {
         this
     } else {
-        this.dragAndDropSource {
-            detectTapGestures(
-                onLongPress = {
-                    startTransfer(
-                        DragAndDropTransferData(
-                            clipData = ClipData.newPlainText(PYREON_DRAG_LABEL, state.begin()),
-                        ),
-                    )
-                },
-            )
+        // The transfer-data overload: Compose starts the drag itself after a long press and calls this with the press
+        // position, so there is no gesture detector to write (and none to get wrong).
+        this.dragAndDropSource { _ ->
+            DragAndDropTransferData(clipData = ClipData.newPlainText(PYREON_DRAG_LABEL, state.begin()))
         }
     }
 
