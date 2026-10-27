@@ -148,7 +148,7 @@ describe('jsx.ts — `isBareDomBinding`: bare signals stay bare only for DOM tar
   })
 
   it('a bare signal DOM child is auto-called inside the emitted accessor', () => {
-    expect(t('export const A = () => <div>{count}</div>')).toContain('() => (count())')
+    expect(t('export const A = () => <div>{count}</div>')).toContain('_bindText(count,')
   })
 
   it('a bare signal under a MEMBER-tag parent is auto-called (not a DOM target)', () => {
