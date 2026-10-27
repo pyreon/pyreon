@@ -596,6 +596,9 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
     refine({ structs, items: moduleItems, decodes: ctx.responseDecodes })
   }
 
+  // With every Int→Double refinement above settled, name the decode-type fields that are STILL the integer default.
+  warnIntegerDecodeFields(structs, ctx.responseDecodes, ctx.warnings)
+
   // Same evidence as the pass above, for the shape that has no StructIR to
   // attach it to: an inline object generic (`signal<{ price: number }[]>([{
   // price: 2.5 }])`) is synthesised into a struct by the EMITTERS, so the
@@ -1605,6 +1608,72 @@ function collectObjectLiterals(e: ExprIR): Extract<ExprIR, { kind: 'object' }>[]
   if (e.kind === 'object') return [e]
   if (e.kind === 'array') return e.elements.flatMap(collectObjectLiterals)
   return []
+}
+
+/** `id`, `userId`, `user_id`, `userID` — the field names the integer default is right for by construction. */
+const isIdShapedField = (name: string): boolean => name === 'id' || /(?:[a-z0-9]Id|ID|_id)$/.test(name)
+
+/**
+ * Issue #3956 item 1: a struct a native fetch DECODES INTO whose `number` field is still the integer
+ * default (Swift `Int` / Kotlin `Long`) after every refinement. TS `number` carries no int/float
+ * distinction, so a fractional JSON value (`1.2`) fails the WHOLE decode and `data` stays empty on
+ * iOS and Android — silently, while the web accepts the same payload. Defaulting to Double instead
+ * would break every id-shaped field and change all existing output, so this only WARNS, once per
+ * struct, naming the fields and the `type Double = number` fix.
+ *
+ * Walks array elements, optional/union branches and nested struct fields. A decode whose `response`
+ * names a schema is skipped: the schema already settled each field (`s.number()` → Double), so an
+ * integer that survives it is the schema's `.int()` — evidence, not a default. An id-shaped field is
+ * never flagged, and a field typed `Int` (`type Int = number`) is the author saying "whole number".
+ */
+function warnIntegerDecodeFields(
+  structs: readonly StructIR[],
+  decodes: ParseCtx['responseDecodes'],
+  warnings: string[],
+): void {
+  if (structs.length === 0 || decodes.length === 0) return
+  const byName = new Map(structs.map((s) => [s.name, s]))
+  const visited = new Set<string>()
+  const ordered: StructIR[] = []
+  const visit = (t: TypeIR): void => {
+    switch (t.kind) {
+      case 'array':
+      case 'set':
+        visit(t.element)
+        return
+      case 'union':
+        for (const b of t.branches) visit(b)
+        return
+      case 'typeRef': {
+        const s = byName.get(t.name)
+        if (s === undefined || s.external === true || visited.has(s.name)) return
+        visited.add(s.name)
+        ordered.push(s)
+        for (const f of s.fields) visit(f.type)
+        return
+      }
+      default:
+        return
+    }
+  }
+  for (const d of decodes) if (d.response === undefined) visit(d.type)
+  const isInteger = (t: TypeIR): boolean =>
+    (t.kind === 'number' && t.float !== true) ||
+    (t.kind === 'array' && isInteger(t.element)) ||
+    (t.kind === 'union' &&
+      t.branches.some((b) => b.kind !== 'null' && b.kind !== 'undefined') &&
+      t.branches.every((b) => b.kind === 'null' || b.kind === 'undefined' || isInteger(b)))
+  for (const s of ordered) {
+    // An id is the case the integer default exists for, and it is in nearly every response type — warning on it would bury the
+    // fields that matter and fail every zero-warning gate over a correct lowering.
+    const fields = s.fields.filter((f) => isInteger(f.type) && !isIdShapedField(f.name)).map((f) => f.name)
+    if (fields.length === 0) continue
+    const named = fields.map((f) => `\`${f}\``).join(', ')
+    const fixes = fields.map((f) => `\`${f}: Double\``).join(', ')
+    warnings.push(
+      `A native fetch decodes its response into \`${s.name}\`, whose ${fields.length === 1 ? 'field' : 'fields'} ${named} ${fields.length === 1 ? 'is' : 'are'} \`number\` and lowers to an INTEGER (Swift \`Int\` / Kotlin \`Long\`) — TS \`number\` carries no int/float distinction. If the JSON can carry a fractional value (\`1.2\`), the WHOLE response fails to decode and \`data\` stays empty on iOS and Android, silently. Declare \`type Double = number\` and type it ${fixes}. If it is always a whole number, declare \`type Int = number\` and type it \`Int\` to say so (an \`id\` / \`…Id\` field is never flagged).`,
+    )
+  }
 }
 
 /**
