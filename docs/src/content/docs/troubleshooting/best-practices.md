@@ -49,7 +49,7 @@ Options are read once. Pass a function so `queryKey` can track signals: `useQuer
 
 ### Nested `@pyreon/rx` transforms
 
-[`pyreon/rx-prefer-pipe`]: `map(filter(src, p), f)` creates a computed per step. Use `pipe(src, filter(p), map(f))`.
+[`pyreon/rx-prefer-pipe`]: `map(filter(src, p), f)` creates a computed per step. Use `pipe(src, (xs) => xs.filter(p), (xs) => xs.map(f))` — pipe steps are plain functions; rx transforms are data-first, not curried, so `pipe(src, filter(p))` does not work.
 
 ---
 

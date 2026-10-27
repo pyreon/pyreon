@@ -8,8 +8,12 @@ import { isProjectDependency } from '../../utils/project-deps'
  *
  * Nesting rx collection transforms — `map(filter(src, f), g)`,
  * `sortBy(map(...), ...)` — creates one intermediate `Computed` per
- * wrapped call. `pipe(src, filter(...), map(...))` composes the chain
- * into a SINGLE computed that re-derives once per source change.
+ * wrapped call. `pipe(src, (xs) => xs.filter(p), (xs) => xs.map(f))`
+ * composes the chain into a SINGLE computed that re-derives once per source
+ * change. The steps are PLAIN functions: the rx collection transforms are
+ * data-first `(source, fn)`, not curried operators, so
+ * `pipe(src, filter(p), map(f))` does not work and the message must never
+ * suggest it.
  *
  * Conservative by design: fires only when BOTH the outer and the inner
  * callee names are in the known rx collection-transform set AND the
@@ -84,7 +88,7 @@ export const rxPreferPipe: Rule = {
         }
 
         context.report({
-          message: `Nested rx transforms \`${callee.name}(${firstArg.callee.name}(...))\` allocate an intermediate Computed per wrap — compose via \`pipe(src, ${firstArg.callee.name}(...), ${callee.name}(...))\` for a single computed.`,
+          message: `Nested rx transforms \`${callee.name}(${firstArg.callee.name}(...))\` allocate an intermediate Computed per wrap — compose them in one \`pipe(src, (xs) => …, (xs) => …)\` for a single computed. pipe steps are plain functions — rx transforms are not curried, so \`pipe(src, ${firstArg.callee.name}(…))\` does not work.`,
           span: getSpan(node),
         })
       },

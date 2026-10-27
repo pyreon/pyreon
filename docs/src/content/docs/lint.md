@@ -702,7 +702,7 @@ Auto-gated on a `@pyreon/rx` dependency.
 
 | Rule                    | Severity | Description                                                                                  |
 | ------------------------- | -------- | -------------------------------------------------------------------------------------------- |
-| `pyreon/rx-prefer-pipe` | info     | Nested rx transforms (`map(filter(src, …), …)`) — compose via `pipe(src, filter(…), map(…))` for a single computed instead of N |
+| `pyreon/rx-prefer-pipe` | info     | Nested rx transforms (`map(filter(src, …), …)`) — compose in one `pipe(src, (xs) => …, (xs) => …)` (plain-function steps; rx transforms are not curried) for a single computed instead of N |
 
 ### I18n (1) ᵒ
 

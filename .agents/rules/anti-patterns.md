@@ -932,7 +932,7 @@ These rules are off in `recommended`/`strict`/`app`/`lib` and enabled by the `be
 - **Positive `tabIndex`** [`pyreon/no-positive-tabindex`, auto-fixable]: `tabIndex > 0` breaks natural tab order. Use `0` or `-1`.
 - **Raw `<img>` in a `@pyreon/zero` app** [`pyreon/prefer-zero-image`]: use `@pyreon/zero`'s `<Image>` for lazy-loading, `srcset` and a blur placeholder.
 - **`useQuery` options as an object literal** `[detector: query-options-as-function]`: options are read once. Pass a function so `queryKey` can track signals: `useQuery(() => ({ queryKey: [id()], queryFn }))`. `useMutation` takes a plain object.
-- **Nested `@pyreon/rx` transforms** [`pyreon/rx-prefer-pipe`]: `map(filter(src, p), f)` creates a computed per step. Use `pipe(src, filter(p), map(f))`.
+- **Nested `@pyreon/rx` transforms** [`pyreon/rx-prefer-pipe`]: `map(filter(src, p), f)` creates a computed per step. Use `pipe(src, (xs) => xs.filter(p), (xs) => xs.map(f))` — pipe steps are plain functions; rx transforms are data-first, not curried, so `pipe(src, filter(p))` does not work.
 - **Signal read in `useForm({ initialValues })`** [`pyreon/no-signal-in-form-initial-values`]: `initialValues` is read once, so `{ name: user() }` is a snapshot. Pass the plain value, or use `form.setFieldValue` for dynamic defaults.
 - **`{t('…')}` interleaved with JSX** [`pyreon/i18n-prefer-trans-for-rich-jsx`]: when a translation sits beside element siblings (`<p>{t('cta')} <a>…</a></p>`), use `@pyreon/i18n`'s `<Trans>`. Plain `<h1>{t('title')}</h1>` is fine.
 - **Manual `new URLSearchParams(...)` in a router app** [`pyreon/prefer-typed-search-params`]: use `useTypedSearchParams({ page: 'number', q: 'string' })` from `@pyreon/router` (typed, coerced, NaN-guarded, SSR-safe).
