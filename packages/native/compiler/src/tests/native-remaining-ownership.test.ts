@@ -33,8 +33,7 @@ const fixtures = [
 describe.each(['swift', 'kotlin'] as const)('remaining owning plugins compile on %s', (target) => {
   it.each(fixtures)('$name', (fixture) => {
     const r = transform(fixture.source, { target, filename: 'App.tsx' })
-    if (fixture.name === 'router hooks') expect(r.warnings).toHaveLength(1)
-    else expect(r.warnings).toEqual([])
+    expect(r.warnings).toEqual([])
     const code = r.code + '\n' + (fixture[target] ?? '')
     const verdict = target === 'swift' ? validateSwiftWithStubs(code) : validateKotlin(code)
     expect(verdict.ok, verdict.error).toBe(true)
