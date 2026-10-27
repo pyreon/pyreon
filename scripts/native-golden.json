@@ -312,13 +312,13 @@
       "warnings": 0
     },
     "fixture:tier2-i18n.tsx|swift": {
-      "sha": "8fa8ec402050380b2dfc606bb7ffe6073a145b61fdd52b9d3b5317b8a68e0f0a",
-      "bytes": 705,
+      "sha": "5ef51503c3b8bb796d404065ae899ed2c8193630d97abe4447c8ab8eb0d350f0",
+      "bytes": 838,
       "warnings": 0
     },
     "fixture:tier2-i18n.tsx|kotlin": {
-      "sha": "571fd26acf3e0d6c2f2ed7b00d0fa25aa138da1168d8cae2e1e54572a560f859",
-      "bytes": 821,
+      "sha": "58598a2c45a232b0303c442e6d022a1324d889a36ecab85c61c278530fff013d",
+      "bytes": 1005,
       "warnings": 0
     },
     "fixture:tier2-machine.tsx|swift": {
@@ -7342,13 +7342,13 @@
       "warnings": 0
     },
     "example:native-counter-ios/Counter.tsx|swift": {
-      "sha": "e4b8ab298013a6aac6b45caaff70d61cdb0b1bcef811308fa80a01cf27b0bf58",
-      "bytes": 18651,
+      "sha": "39b1652b44d0343af931aeff4d177bd00d2aeb2306b358dd3ba322063e86e35c",
+      "bytes": 18836,
       "warnings": 0
     },
     "example:native-counter-ios/Counter.tsx|kotlin": {
-      "sha": "e1cf3ef65900bfedb0298ab0ca9d0721d9a2fd7f9915a5209fd3d79f2cd38605",
-      "bytes": 19352,
+      "sha": "b9b7ecf7015f910a8c4bb37dc9a6b71d130cf30fa28f802dab1fef0e2e1f43d9",
+      "bytes": 19570,
       "warnings": 0
     },
     "example:native-finance/FinanceApp.tsx|swift": {

@@ -6,9 +6,12 @@
 //     val i18n = createI18n({ locale: 'en', messages: { en: { hello: 'Hi' } } })
 //     i18n.t("hello")              // 'Hi'
 //
-// Scope (v1): single-argument `t(key)` lookup; locale writes,
-// interpolation values, pluralization, namespaces, async loading are
-// deferred follow-ups.
+// Supported: `t(key)` with fallback locale, `t(key, values)` with
+// `{{name}}` interpolation and one/other plurals, and switching the
+// active locale (`i18n.locale.set('de')` on the web lowers to an
+// assignment to `locale`; reads recompose because it is Compose state).
+// Not supported: the full CLDR plural categories (zero/few/many), async
+// namespace loading, `<Trans>`, `addMessages()`.
 
 package com.pyreon.runtime
 
@@ -21,8 +24,16 @@ class PyreonI18n(
 ) {
     private val _locale = mutableStateOf(initialLocale)
 
-    /** Currently-active locale. Read-only in v1. */
-    val locale: String get() = _locale.value
+    /**
+     * Currently-active locale. Settable: `i18n.locale.set("de")` on the web
+     * lowers to `i18n.locale = "de"`, and every composable reading `t(...)`
+     * recomposes because the value is Compose state.
+     */
+    var locale: String
+        get() = _locale.value
+        set(value) {
+            _locale.value = value
+        }
 
     /**
      * `i18n.t("hello")` — look up the translation for `key` in the
@@ -47,8 +58,8 @@ class PyreonI18n(
      *  - When `values["count"]` is present, the plural-suffixed key is
      *    tried FIRST: `key_one` when count == 1, else `key_other`,
      *    falling back to the bare key. v1 ships the one/other pair
-     *    (en-style cardinal rules); full Intl.PluralRules category
-     *    parity (few/many/zero) is a documented follow-up.
+     *    (en-style cardinal rules); the full Intl.PluralRules category
+     *    set (few/many/zero) is not supported.
      *
      * PMTC emits `t('items', { count: n() })` as
      * `t("items", mapOf("count" to n))` — the object-literal argument
