@@ -103,13 +103,15 @@ public object PyreonHttpOkHttp : PyreonHttpExecutor {
             .firstOrNull { it.key.equals("Content-Type", ignoreCase = true) }
             ?.value
             ?.toMediaTypeOrNull()
+        // Bytes, not the String overload: `String.toRequestBody(type)` APPENDS
+        // "; charset=utf-8" to a type that has none, so `application/json` went
+        // out as `application/json; charset=utf-8` — not what the web sends, and
+        // the fixture server reflected the difference. The caller's Content-Type
+        // must reach the wire exactly as written.
         val upload = request.upload
         val body: RequestBody? = when {
             upload != null -> streamed(upload, contentType)
             request.method == PyreonHttpMethod.GET -> null
-            // The ByteArray overload, NOT `String.toRequestBody`: the String one appends
-            // `; charset=utf-8` to a type that has none, so `application/json` went out as
-            // `application/json; charset=utf-8` — not what `fetch` sends for the same call.
             request.method == PyreonHttpMethod.DELETE -> request.body?.toByteArray(Charsets.UTF_8)?.toRequestBody(contentType)
             else -> (request.body ?: "").toByteArray(Charsets.UTF_8).toRequestBody(contentType)
         }

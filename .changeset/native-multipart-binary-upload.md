@@ -18,4 +18,3 @@ Native apps can upload picked images and files (#3979).
 - `useImagePicker().pick()`, `useFilePicker().pick()` and `useCamera().capture()` are now typed as `String?` natively. `if (uri === null) return` therefore narrows the URI for the code after it on iOS. Before, every later read was an optional and failed to compile.
 - Fixed: an early `return` inside an event handler did not compile on Android. Kotlin forbids a bare `return` in a lambda. An async handler now emits `return@launch`, and a plain handler is labelled.
 - Fixed: on iOS, a value of a type declared at file scope, such as `interface Meta { … }`, was not recognized as a struct inside a request. iOS and Android could therefore encode the same field differently.
-- Fixed: on Android a string request body went out typed `application/json; charset=utf-8` (OkHttp's String overload appends a charset). It is now sent with exactly the Content-Type the call chose, as `fetch` sends it.
