@@ -733,9 +733,12 @@ describe('Round-3 audit — diagnostic warnings for silently-broken shapes', () 
       )
       // Computed (not stored) because @Environment isn't readable at
       // stored-let-init time. Same constraint useParams documents.
+      // NON-optional, as on the web: the body is gated on the data existing,
+      // and PyreonRouteLoader holds the route back until it does.
       expect(result.code).toContain(
-        'private var data: User? { useLoaderData(router: pyreonRouter) }',
+        'private var data: User { useLoaderData(router: pyreonRouter)! }',
       )
+      expect(result.code).toContain('if (useLoaderData(router: pyreonRouter) as User?) != nil {')
       // Component also gains the @Environment injection.
       expect(result.code).toContain(
         '@Environment(\\.pyreonRouter) private var pyreonRouter: PyreonRouter?',
@@ -755,10 +758,11 @@ describe('Round-3 audit — diagnostic warnings for silently-broken shapes', () 
       // Kotlin's `useLoaderData<T>()` is reified — reads
       // LocalPyreonRouter.current internally; no env injection
       // needed at the Composable level.
-      expect(result.code).toContain('val data = useLoaderData<User>()')
+      // `?: return`: the composable runs once the data exists, so `data` is non-null after.
+      expect(result.code).toContain('val data = useLoaderData<User>() ?: return')
     })
 
-    it('B6 destructure form STILL silent-drops (intentional — opaque T can\'t destructure)', () => {
+    it('B6 destructure form LOWERS, one non-optional accessor per field', () => {
       const result = transform(
         `
         export function ProfilePage() {
@@ -768,23 +772,15 @@ describe('Round-3 audit — diagnostic warnings for silently-broken shapes', () 
         `,
         { target: 'swift' },
       )
-      // Destructure-form warning has different wording (no "READ-ONLY emit")
-      expect(
-        result.warnings.some(
-          (w) =>
-            w.includes('useLoaderData') &&
-            w.includes('destructure form not yet emitted'),
-        ),
-      ).toBe(true)
-      // The binding does NOT emit (destructure path returns null).
-      expect(result.code).not.toContain('useLoaderData(router:')
+      expect(result.warnings.filter((w) => w.includes('useLoaderData'))).toEqual([])
+      expect(result.code).toContain('private var name: String { __pyreonLoaderData.name }')
     })
 
-    it('warns with destructure-form binding description', () => {
+    it('a destructure shape that does not lower (a nested pattern) warns by name', () => {
       const result = transform(
         `
         export function ProfilePage() {
-          const { user } = useLoaderData<{ user: User }>()
+          const { user: { name } } = useLoaderData<{ user: User }>()
           return <Text>Hi</Text>
         }
         `,
@@ -792,9 +788,7 @@ describe('Round-3 audit — diagnostic warnings for silently-broken shapes', () 
       )
       expect(
         result.warnings.some(
-          (w) =>
-            w.includes('useLoaderData') &&
-            w.includes('{ ... } = useLoaderData'),
+          (w) => w.includes('useLoaderData<T>()') && w.includes('only a plain or renamed field'),
         ),
       ).toBe(true)
     })
@@ -812,8 +806,8 @@ describe('Round-3 audit — diagnostic warnings for silently-broken shapes', () 
       )
       // Both bindings emit as reads and neither warns.
       expect(result.warnings.filter((w) => w.includes('useLoaderData'))).toEqual([])
-      expect(result.code).toContain('private var userData: User?')
-      expect(result.code).toContain('private var settingsData: Settings?')
+      expect(result.code).toContain('private var userData: User {')
+      expect(result.code).toContain('private var settingsData: Settings {')
     })
 
     it('does NOT warn for `router.loaderData()` direct read (different API — no diagnostic needed)', () => {
