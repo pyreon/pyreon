@@ -90,16 +90,14 @@ describe('<Audio> — the same bake/warn split, with no frame', () => {
     expect(tx(`<Audio src="/a.mp3" volume={9} />`).code).toContain('volume: 1')
   })
 
-  it('a NEGATIVE literal volume is a unary expression, so it is a NAMED loss, not a clamp', () => {
-    // `-4` parses as a unary expression rather than a numeric literal, so
-    // `readStaticAttr` does not see a static value — the lower clamp
-    // (`Math.max(0, …)`) is therefore unreachable from source. The prop is
-    // dropped, and the dynamic-prop guard says so rather than going silent.
+  it('a NEGATIVE literal volume clamps to 0, as the web primitive does', () => {
+    // `-4` parses as a unary minus over a literal. The static-attribute reader
+    // used to treat that as dynamic, so the prop was dropped with a warning —
+    // and the native player ran at full volume where the web clamps to 0
+    // (silent). It now folds to a static -4, which clamps like any other value.
     const { code, warnings } = tx(`<Audio src="/a.mp3" volume={-4} />`)
-    expect(code).not.toContain('volume:')
-    expect(warnings.some((w) => w.includes('<Audio volume> was given a non-static value'))).toBe(
-      true,
-    )
+    expect(code).toContain('volume: 0')
+    expect(warnings.some((w) => w.includes('<Audio volume>'))).toBe(false)
   })
 
   it('a DYNAMIC src bails; each dynamic boolean and volume warns', () => {
