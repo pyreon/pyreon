@@ -148,9 +148,17 @@ describe('parse.ts — returnContainsJsx / helper-vs-component classification', 
     expect(logi.code).not.toContain('func row(')
   })
 
-  it('warns when a camelCase function returns NOTHING (no return statement)', () => {
+  // A camelCase function that returns nothing is a VOID HELPER (it used to be dropped as a component with no
+  // return, leaving every call to it uncompilable); a PascalCase one is a component missing its JSX and still warns.
+  it('lowers a camelCase function that returns NOTHING as a void helper', () => {
     const r = swift(`export function noop(x: number) { }` + APP)
-    expect(r.warnings.join('\n')).toContain('Component noop: no return statement found; skipping.')
+    expect(r.warnings.join('\n')).not.toContain('no return statement found')
+    expect(r.code).toContain('func noop(_ x: Int) {')
+  })
+
+  it('still warns when a PascalCase function returns nothing', () => {
+    const r = swift(`export function Noop(x: number) { }` + APP)
+    expect(r.warnings.join('\n')).toContain('Component Noop: no return statement found; skipping.')
   })
 })
 
@@ -271,11 +279,13 @@ describe('parse.ts — component-scope destructuring', () => {
     expect(swift(body('  const d = useLoaderData<{ x: string }>()')).warnings.join('\n')).not.toContain(
       'useLoaderData',
     )
-    expect(swift(body('  const { x } = useLoaderData<{ x: string }>()')).warnings.join('\n')).toContain(
-      '`const { ... } = useLoaderData<T>()`',
+    // The object destructure lowers too (one accessor per field)…
+    expect(swift(body('  const { x } = useLoaderData<{ x: string }>()')).warnings.join('\n')).not.toContain(
+      'useLoaderData',
     )
+    // …and any other binding shape is named.
     expect(swift(body('  const [a] = useLoaderData<{ x: string }>()')).warnings.join('\n')).toContain(
-      'useLoaderData<T>() declared (`useLoaderData<T>()`)',
+      'this binding shape is neither, so it was not lowered',
     )
   })
 

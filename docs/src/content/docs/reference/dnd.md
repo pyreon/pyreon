@@ -13,9 +13,9 @@ Signal-driven drag and drop for Pyreon. A thin wrapper over Atlassian's `pragmat
 
 **Tier:** Web-only — the browser package; the native story is stated below
 
-`useSortable` now lowers to the native PyreonSortableState engine (list reorder, the highest-value case); the element-getter hooks (useDraggable/useDroppable), the page-global useDragMonitor and the OS-file useFileDrop stay web — they are pdnd/DOM-shaped, not gesture-shaped
+`useSortable` (list reorder), `useDraggable` and `useDroppable` lower to native drag engines; the page-global useDragMonitor and the OS-file useFileDrop stay web — they are not gesture-shaped
 
-**What crosses natively:** PyreonSortableState — `useSortable` list reorder, via SwiftUI .draggable/.dropDestination and Compose long-press drag
+**What crosses natively:** PyreonSortableState (`useSortable` list reorder) and PyreonDraggableState / PyreonDroppableState (`useDraggable` / `useDroppable`, `ref={d.ref}` as the platform drag source / drop target) — via SwiftUI .onDrag/.onDrop and Compose dragAndDropSource/dragAndDropTarget
 
 See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multiplatform libraries](/docs/multiplatform-libraries) for every package's tier.
 

@@ -82,6 +82,7 @@ import { liftSlotParamStructs, planViewBlock } from './render-slots'
 import { disambiguateValueTypeNames } from './value-type-namespaces'
 import { DEFAULT_THEME, mergeTheme, parseThemeDefinition, type ThemeTable } from './theme-native'
 import { typeShapeKey, lowerRouteParams } from './expr-utils'
+import { bodyReturnsValue } from './async-function'
 
 // oxc-parser's typed AST is rich; for Phase 0 we walk it loosely via
 // `any` to keep the parser readable. As the IR coverage grows we can
@@ -595,6 +596,9 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
   for (const { refine } of activeRegistries().items.structRefinements) {
     refine({ structs, items: moduleItems, decodes: ctx.responseDecodes })
   }
+
+  // With every Int→Double refinement above settled, name the decode-type fields that are STILL the integer default.
+  warnIntegerDecodeFields(structs, ctx.responseDecodes, ctx.warnings)
 
   // Same evidence as the pass above, for the shape that has no StructIR to
   // attach it to: an inline object generic (`signal<{ price: number }[]>([{
@@ -1598,6 +1602,72 @@ function collectObjectLiterals(e: ExprIR): Extract<ExprIR, { kind: 'object' }>[]
   if (e.kind === 'object') return [e]
   if (e.kind === 'array') return e.elements.flatMap(collectObjectLiterals)
   return []
+}
+
+/** `id`, `userId`, `user_id`, `userID` — the field names the integer default is right for by construction. */
+const isIdShapedField = (name: string): boolean => name === 'id' || /(?:[a-z0-9]Id|ID|_id)$/.test(name)
+
+/**
+ * Issue #3956 item 1: a struct a native fetch DECODES INTO whose `number` field is still the integer
+ * default (Swift `Int` / Kotlin `Long`) after every refinement. TS `number` carries no int/float
+ * distinction, so a fractional JSON value (`1.2`) fails the WHOLE decode and `data` stays empty on
+ * iOS and Android — silently, while the web accepts the same payload. Defaulting to Double instead
+ * would break every id-shaped field and change all existing output, so this only WARNS, once per
+ * struct, naming the fields and the `type Double = number` fix.
+ *
+ * Walks array elements, optional/union branches and nested struct fields. A decode whose `response`
+ * names a schema is skipped: the schema already settled each field (`s.number()` → Double), so an
+ * integer that survives it is the schema's `.int()` — evidence, not a default. An id-shaped field is
+ * never flagged, and a field typed `Int` (`type Int = number`) is the author saying "whole number".
+ */
+function warnIntegerDecodeFields(
+  structs: readonly StructIR[],
+  decodes: ParseCtx['responseDecodes'],
+  warnings: string[],
+): void {
+  if (structs.length === 0 || decodes.length === 0) return
+  const byName = new Map(structs.map((s) => [s.name, s]))
+  const visited = new Set<string>()
+  const ordered: StructIR[] = []
+  const visit = (t: TypeIR): void => {
+    switch (t.kind) {
+      case 'array':
+      case 'set':
+        visit(t.element)
+        return
+      case 'union':
+        for (const b of t.branches) visit(b)
+        return
+      case 'typeRef': {
+        const s = byName.get(t.name)
+        if (s === undefined || s.external === true || visited.has(s.name)) return
+        visited.add(s.name)
+        ordered.push(s)
+        for (const f of s.fields) visit(f.type)
+        return
+      }
+      default:
+        return
+    }
+  }
+  for (const d of decodes) if (d.response === undefined) visit(d.type)
+  const isInteger = (t: TypeIR): boolean =>
+    (t.kind === 'number' && t.float !== true) ||
+    (t.kind === 'array' && isInteger(t.element)) ||
+    (t.kind === 'union' &&
+      t.branches.some((b) => b.kind !== 'null' && b.kind !== 'undefined') &&
+      t.branches.every((b) => b.kind === 'null' || b.kind === 'undefined' || isInteger(b)))
+  for (const s of ordered) {
+    // An id is the case the integer default exists for, and it is in nearly every response type — warning on it would bury the
+    // fields that matter and fail every zero-warning gate over a correct lowering.
+    const fields = s.fields.filter((f) => isInteger(f.type) && !isIdShapedField(f.name)).map((f) => f.name)
+    if (fields.length === 0) continue
+    const named = fields.map((f) => `\`${f}\``).join(', ')
+    const fixes = fields.map((f) => `\`${f}: Double\``).join(', ')
+    warnings.push(
+      `A native fetch decodes its response into \`${s.name}\`, whose ${fields.length === 1 ? 'field' : 'fields'} ${named} ${fields.length === 1 ? 'is' : 'are'} \`number\` and lowers to an INTEGER (Swift \`Int\` / Kotlin \`Long\`) — TS \`number\` carries no int/float distinction. If the JSON can carry a fractional value (\`1.2\`), the WHOLE response fails to decode and \`data\` stays empty on iOS and Android, silently. Declare \`type Double = number\` and type it ${fixes}. If it is always a whole number, declare \`type Int = number\` and type it \`Int\` to say so (an \`id\` / \`…Id\` field is never flagged).`,
+    )
+  }
 }
 
 /**
@@ -3051,6 +3121,10 @@ function tryComponentFromTopLevel(node: AnyNode, ctx: ParseCtx): ComponentIR | n
     // with a "Component … no return statement found" warning, while the call to it stayed in the emit and failed
     // to compile on both targets. The helper path already lowers control flow; route it there.
     if (hasNestedValueReturns(fn, name, ctx)) return collectHelper()
+    // Nor does a function with no value return at all have to be a component: `function notify(msg: string) {
+    // toast(msg) }` is a side-effect helper, and it was dropped the same way. A component must return JSX, so a
+    // lowercase function with no value return and no JSX anywhere is a VOID helper.
+    if (isVoidHelper(fn, name)) return collectHelper()
     for (const w of deferredPropsWarnings) ctx.warnings.push(w)
     ctx.warnings.push(`Component ${name}: no return statement found; skipping.`)
     return null
@@ -3257,6 +3331,47 @@ function hasNestedValueReturns(fn: AnyNode, name: string, ctx: ParseCtx): boolea
   return !args.some(astContainsJsx)
 }
 
+/**
+ * A top-level function that returns no value: a lowercase name (a PascalCase one is a component by convention, and one
+ * with no return is a component missing its JSX, which keeps its warning), no JSX anywhere in the body, and no
+ * `return` carrying a value in its own body (a bare `return;` is fine; nested functions' returns are theirs).
+ */
+function isVoidHelper(fn: AnyNode, name: string): boolean {
+  const first = name.charAt(0)
+  if (first !== first.toLowerCase() || first === first.toUpperCase()) return false
+  if (astContainsJsx(fn.body)) return false
+  let valueReturn = false
+  const visit = (node: unknown): void => {
+    if (valueReturn || !node || typeof node !== 'object') return
+    if (Array.isArray(node)) {
+      for (const n of node) visit(n)
+      return
+    }
+    const n = node as AnyNode
+    if (
+      n.type === 'FunctionDeclaration' ||
+      n.type === 'FunctionExpression' ||
+      n.type === 'ArrowFunctionExpression' ||
+      n.type === 'ClassDeclaration' ||
+      n.type === 'ClassExpression'
+    ) {
+      return
+    }
+    if (n.type === 'ReturnStatement') {
+      if (n.argument) valueReturn = true
+      return
+    }
+    for (const key of Object.keys(n)) {
+      if (key === 'type' || key === 'loc' || key === 'range' || key === 'span' || key === 'start' || key === 'end') {
+        continue
+      }
+      visit(n[key])
+    }
+  }
+  visit(fn.body?.body)
+  return !valueReturn
+}
+
 /** Whether an AST subtree contains a JSX element or fragment. */
 function astContainsJsx(node: unknown): boolean {
   if (!node || typeof node !== 'object') return false
@@ -3329,6 +3444,9 @@ function refineHelperReturns(
     // Int×Double-coerced) body. A non-number annotation (string/boolean/struct)
     // is unambiguous → kept as-is.
     if (h.returnType.kind !== 'unknown' && h.returnType.kind !== 'number') continue
+    // A body with no `return <value>` is a VOID helper: an `unknown` return already emits as a plain `func` / `fun`
+    // with no result type, which is exactly right. There is nothing to infer, and failing to infer it must not drop it.
+    if (h.returnType.kind === 'unknown' && !bodyReturnsValue(h.body)) continue
     const inferred = inferReturnType(h.params, h.body, ctx)
     if (inferred.kind === 'unknown') {
       if (h.returnType.kind === 'number') continue // keep the `number` annotation

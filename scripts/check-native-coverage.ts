@@ -738,7 +738,7 @@ export function C() {
     name: '@pyreon/feature',
     mechanism: 'partial',
     rationale:
-      'CRUD composite. The RUNTIME half stays web — generated hooks (useList / useById / useCreate / useUpdate / useDelete / useSearch), the network fetcher and validator/form integration lower only when every dependency does. The DECLARATION half crosses today: the literal field-type map emits a Codable struct + a module-scope const with `name` and `initialValues` on both targets. A Zod / Valibot / ArkType schema is not introspected and warns by name.',
+      'CRUD composite. The RUNTIME half stays web — generated hooks (useList / useById / useCreate / useUpdate / useDelete / useSearch), the network fetcher and validator/form integration lower only when every dependency does. The DECLARATION half crosses today: the literal field-type map emits a Codable struct + a module-scope const with `name` and `initialValues` on both targets. An object literal of scalar validators (`z.object({ id: z.string() })`) lowers the same way, with unenforced constraints reported by name; a schema held in a variable, `v.pipe(…)` and ArkType warn by name.',
     snippet: `import { defineFeature } from '@pyreon/feature'
 import { Stack, Text } from '@pyreon/primitives'
 const Todo = defineFeature({
@@ -900,10 +900,11 @@ export function C() {
     name: '@pyreon/dnd',
     mechanism: 'partial',
     rationale:
-      'the pdnd/DOM-shaped surface stays web (useDraggable / useDroppable are element-getter hooks, useDragMonitor is page-global, useFileDrop is an OS file picker — each still warns BY NAME). List REORDER is gesture-shaped rather than DOM-shaped, and it lowers: useSortable becomes a co-located PyreonSortableState engine on both targets. The full contract is required — items, a single-param `by`, and an arrow `onReorder`; a partial one warns naming the exact prop.',
-    snippet: `import { useSortable } from '@pyreon/dnd'
+      'the pdnd/DOM-shaped surface stays web (useDragMonitor is a page-global drag bus, useFileDrop is an OS file picker — each still warns BY NAME). Three hooks lower: useSortable becomes a co-located PyreonSortableState engine; useDraggable({ data }) / useDroppable({ canDrop, onDrop, edges }) become PyreonDraggableState / PyreonDroppableState with `ref={d.ref}` as the platform drag source / drop target, the payload crossing as JSON and decoded into the ANNOTATED type of the onDrop source parameter. What cannot cross warns by name (onDragStart / onDragEnd / preview / handle on a draggable, onDragEnter with a source, sticky) — SwiftUI reports no drag start/end/cancel callback, so isDragging clears on the next drop rather than on a cancel. The sortable contract is required in full — items, a single-param `by`, and an arrow `onReorder`.',
+    snippet: `import { useSortable, useDraggable, useDroppable } from '@pyreon/dnd'
 import { Stack, Text } from '@pyreon/primitives'
 interface Row { id: string; label: string }
+type Card = { id: string; kind: string }
 export function C() {
   const items = signal<Row[]>([])
   const s = useSortable({
@@ -911,7 +912,12 @@ export function C() {
     by: (item: Row) => item.id,
     onReorder: (next: Row[]) => items.set(next),
   })
-  return (<Stack><Text>x</Text></Stack>)
+  const { ref: dragRef } = useDraggable({ data: { id: 'c1', kind: 'card' } })
+  const { ref: dropRef } = useDroppable({
+    canDrop: (src: Card) => src.kind === 'card',
+    onDrop: (src: Card) => items.set([]),
+  })
+  return (<Stack><Text ref={dragRef}>x</Text><Stack ref={dropRef}><Text>y</Text></Stack></Stack>)
 }`,
   },
   {

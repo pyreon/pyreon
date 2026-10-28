@@ -46,8 +46,15 @@ export interface UseFilePickerResult {
    * Present the platform document picker and resolve the picked file's URI, or
    * `null` if the user cancelled. Never rejects — an unavailable picker also
    * resolves `null`.
+   *
+   * `accept` limits which files can be chosen, in the `<input accept>`
+   * vocabulary: MIME types (`'application/pdf'`), wildcards (`'image/*'`) and
+   * extensions (`'.csv'`). Omitted or empty means any file. On iOS each entry
+   * maps to a UTType and on Android to the MIME types the system picker takes;
+   * an entry a platform cannot resolve widens that pick to any file rather than
+   * hiding the one the user wants.
    */
-  pick: () => Promise<string | null>
+  pick: (accept?: readonly string[]) => Promise<string | null>
   /**
    * Whether a file picker is available. Web: whether there is a DOM to mount
    * the file input into. Native: always `true` — the runtime's `pick` collapses
@@ -70,17 +77,18 @@ export interface UseFilePickerResult {
  * const status = signal<'idle' | 'picked' | 'cancelled'>('idle')
  *
  * <button onClick={async () => {
- *   const uri = await files.pick()
+ *   const uri = await files.pick(['application/pdf', '.csv'])
  *   status.set(uri === null ? 'cancelled' : 'picked')
  * }}>Pick a file</button>
  * ```
  */
 export function useFilePicker(): UseFilePickerResult {
-  // No `accept` filter — a document picker accepts any file type, so this
-  // picker needs no configuration beyond the shared defaults.
-  const pick = createFilePicker(() => {})
+  // The hook configures nothing; `accept` is per pick, so one picker can ask
+  // for different types from different buttons.
+  const base = createFilePicker(() => {})
   return {
-    pick,
+    pick: (accept) =>
+      base(accept !== undefined && accept.length > 0 ? (input) => (input.accept = accept.join(',')) : undefined),
     isAvailable: () => isClient,
   }
 }

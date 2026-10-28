@@ -24,6 +24,7 @@ import {
   type StatementIR,
   type TypeIR,
 } from '@pyreon/native-compiler/plugin-api'
+import { dragDropCalls, dragDropDecls, dragDropRef } from './drag-drop'
 import { dndStubs } from './stubs'
 
 // biome-ignore lint/suspicious/noExplicitAny: ESTree nodes are read structurally, as in the compiler.
@@ -227,12 +228,16 @@ const bindsSortable = (ctx: EmitContext) => (name: string) => ctx.decls(DND_PLUG
  */
 const sortableRefs: RefModifierLowering = {
   swift(ref, _el, ctx) {
+    const dragDrop = dragDropRef(ref, ctx, (modifier, name) => `.${modifier}(${name})`)
+    if (dragDrop !== undefined) return dragDrop
     const binding = classifyRef(ref, bindsSortable(ctx))
     if (binding === null) return undefined
     const state = ctx.ident(binding.state)
     return binding.kind === 'container' ? `.pyreonSortableContainer(${state})` : `.pyreonSortableItem(${state}, key: ${swiftKey(ctx, binding.key, 0)})`
   },
   kotlin(ref, _el, ctx) {
+    const dragDrop = dragDropRef(ref, ctx, (modifier, name) => `.${modifier}(${name})`)
+    if (dragDrop !== undefined) return dragDrop
     const binding = classifyRef(ref, bindsSortable(ctx))
     if (binding === null) return undefined
     const state = ctx.ident(binding.state)
@@ -248,21 +253,20 @@ export const dndPlugin: CompilerPlugin = {
   name: DND_PLUGIN_NAME,
   apiVersion: 2,
   modules: ['@pyreon/dnd'],
-  calls: { useSortable: recognizeSortable },
-  decls: { [SORTABLE_TYPE]: sortableDecl },
+  calls: { useSortable: recognizeSortable, ...dragDropCalls },
+  // `const { ref, isOver } = useDroppable(…)` aliases onto the declaration like any other lowered hook.
+  destructureCalls: ['useDraggable', 'useDroppable'],
+  decls: { [SORTABLE_TYPE]: sortableDecl, ...dragDropDecls },
   refModifiers: sortableRefs,
-  // `useSortable` lowers; the rest do not, and the reasons differ per hook rather than per package — so name the one
-  // that crosses instead of letting the blanket "web-only" line imply none do.
-  //
-  // useDraggable / useDroppable take `element: () => HTMLElement | null` — an imperative DOM-registration shape with no
-  // declarative analogue on either target. useDragMonitor is a page-global drag bus neither SwiftUI nor Compose
-  // exposes. useFileDrop is an OS-level file drag between apps (iPad multitasking / Android multi-window), a different
-  // model entirely.
+  // `useSortable`, `useDraggable` and `useDroppable` lower; the rest do not, and the reasons differ per hook rather
+  // than per package — so name the ones that cross instead of letting the blanket "web-only" line imply none do.
+  // useDragMonitor is a page-global drag bus neither SwiftUI nor Compose exposes; useFileDrop is an OS-level file drag
+  // between apps (iPad multitasking / Android multi-window), a different model entirely.
   unlowered: {
     '@pyreon/dnd': {
-      supported: ['useSortable'],
+      supported: ['useSortable', 'useDraggable', 'useDroppable'],
       advice:
-        '`useSortable({ items, by, onReorder })` DOES lower — it emits the native PyreonSortableState engine, and `ref={s.containerRef}` / `ref={s.itemRef(key)}` become SwiftUI .draggable/.dropDestination + Compose long-press drag modifiers. The element-getter hooks (useDraggable/useDroppable) are imperative DOM registration, useDragMonitor is a page-global drag bus, and useFileDrop is OS-level file DnD — none of the three has a native analogue',
+        '`useSortable({ items, by, onReorder })` DOES lower (the native PyreonSortableState engine), and so do `useDraggable({ data })` and `useDroppable({ canDrop, onDrop, edges })` — `ref={d.ref}` becomes the platform drag source / drop target, the payload crossing as JSON and decoded into the ANNOTATED type of the `onDrop` source parameter. useDragMonitor is a page-global drag bus and useFileDrop is OS-level file DnD — neither has a native analogue',
     },
   },
   stubs: dndStubs,

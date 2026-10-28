@@ -31,6 +31,7 @@
 package com.pyreon
 
 import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.graphics.asAndroidBitmap
@@ -1503,6 +1504,22 @@ class TasksAppInstrumentedTest {
         composeRule
             .onNodeWithTag("toolkit-perm")
             .assertTextEquals("true")
+        // a11y: `announce(i18n.t('saved'))` reaches TalkBack. Android speaks a
+        // live region that is ON SCREEN, so the compiler wraps an announcing
+        // component in PyreonA11yHost; before it did, `announce` compiled and
+        // silently did nothing. Assert the message lands in a POLITE live
+        // region (the call passes no politeness), which is what TalkBack reads.
+        composeRule
+            .onNodeWithTag("toolkit-save")
+            .performScrollTo()
+            .performClick()
+        val politeSaved = SemanticsMatcher("a polite live region announcing 'Saved'") { node ->
+            node.config.getOrNull(SemanticsProperties.LiveRegion) == LiveRegionMode.Polite &&
+                node.config.getOrNull(SemanticsProperties.ContentDescription)?.firstOrNull() == "Saved"
+        }
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            composeRule.onAllNodes(politeSaved, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
+        }
         // crash reporting: recorded, then PROVEN persisted by reading the app's
         // own files dir from the test process.
         //

@@ -105,11 +105,34 @@ fun testOnResultWithNoPendingPickIsANoOp() {
     files.onResult(null)
 }
 
+fun testAcceptMapsToOpenDocumentMimeTypes() {
+    val m = { a: List<String> -> PyreonFilePicker.mimeTypesFor(a).toList() }
+    // No filter: any document.
+    check(m(emptyList()) == listOf("*/*")) { "no filter must accept any document, got ${m(emptyList())}" }
+    // MIME types and wildcards pass through as-is.
+    check(m(listOf("application/pdf", "image/*")) == listOf("application/pdf", "image/*")) {
+        "MIME types and wildcards pass through, got ${m(listOf("application/pdf", "image/*"))}"
+    }
+    // Extensions map (case-insensitively, trimmed); csv carries both provider spellings.
+    check(m(listOf(" .CSV ")) == listOf("text/csv", "text/comma-separated-values")) {
+        "an extension maps to its MIME types, got ${m(listOf(" .CSV "))}"
+    }
+    // Duplicates collapse.
+    check(m(listOf(".jpg", ".jpeg", "image/jpeg")) == listOf("image/jpeg")) {
+        "duplicate MIME types collapse, got ${m(listOf(".jpg", ".jpeg", "image/jpeg"))}"
+    }
+    // An unknown extension or a malformed entry WIDENS rather than narrows: a
+    // too-narrow filter would hide the file the user is looking for.
+    check(m(listOf("application/pdf", ".weird")) == listOf("*/*")) { "an unknown extension must widen to any document" }
+    check(m(listOf("pdf")) == listOf("*/*")) { "a bare word (no dot, no slash) must widen to any document" }
+}
+
 fun main() {
     testPickWithNoLauncherResolvesNull()
     testPickSuspendsUntilResultArrives()
     testCancelledPickResolvesNull()
     testSecondPickSettlesTheFirstAsCancelled()
     testOnResultWithNoPendingPickIsANoOp()
+    testAcceptMapsToOpenDocumentMimeTypes()
     println("[PyreonFilePickerTest] all smoke tests passed")
 }

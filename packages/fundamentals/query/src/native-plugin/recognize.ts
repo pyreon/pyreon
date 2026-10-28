@@ -362,6 +362,9 @@ export function recognizeQuery(_call: CallSite, ctx: ParseContext): ExtDeclSpec 
     }
     return null
   }
+  // A fetched (not direct-value) query decodes its response into `type`, with no schema to settle its number fields: record it
+  // so the core can name an integer-default field a fractional payload would fail to decode (#3956).
+  if (valueExpr === undefined) ctx.recordDecode(type, undefined)
   return queryDecl({
     type,
     queryKey,

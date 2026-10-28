@@ -820,7 +820,7 @@ public struct PyreonBiometrics {
 public struct PyreonImagePicker { public init() {}; public func pick() async -> String? { nil }; public func isAvailable() -> Bool { true } }
 // M3.8 document picker. Same async optional-String surface as the image picker
 // (nil = cancelled) — an emit that drops the optionality fails here.
-public struct PyreonFilePicker { public init() {}; public func pick() async -> String? { nil }; public func isAvailable() -> Bool { true } }
+public struct PyreonFilePicker { public init() {}; public func pick(_ accept: [String] = []) async -> String? { nil }; public func isAvailable() -> Bool { true } }
 // AppStorage - SwiftUI's own wrapper, which a persisted signal (\`useStorage\`) emits for SCALAR
 // values (a struct value routes to the library's own PyreonAppStorage instead). Stripped
 // along with \`import SwiftUI\`, so without this the whole scalar path was
@@ -952,6 +952,14 @@ public func useParams(router: PyreonRouter?) -> [String: String] { [:] }
 // found the other two. The parity test below now enforces the whole SET rather
 // than waiting for a fourth to be discovered by hand.
 public func useLoaderData<T>(router: PyreonRouter?) -> T? { nil }
+// A FOURTH: router-swift's PyreonRouteLoader (the host a loader-bearing route's
+// component is wrapped in) was never stubbed, because no example had a route
+// loader until the router demo gained one. Mirrors RouteLoader.swift's init.
+@available(iOS 17.0, macOS 14.0, *)
+public struct PyreonRouteLoader<Content: View>: View {
+    public init(path: String, load: @escaping () -> Any, @ViewBuilder content: @escaping () -> Content) {}
+    public var body: some View { EmptyView() }
+}
 // BEGIN runtime mirror: native/router-swift/Sources/PyreonRouter/PyreonUrlState.swift
 @available(iOS 17.0, macOS 14.0, *)
 public struct PyreonUrlState {
