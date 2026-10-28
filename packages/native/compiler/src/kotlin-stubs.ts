@@ -340,6 +340,10 @@ fun TextField(
   visualTransformation: VisualTransformation = VisualTransformation.None,
   keyboardOptions: KeyboardOptions = KeyboardOptions(),
   keyboardActions: KeyboardActions = KeyboardActions(),
+  // The real Material defaults: singleLine=false is WHY the emit states it.
+  singleLine: Boolean = false,
+  maxLines: Int = if (singleLine) 1 else Int.MAX_VALUE,
+  minLines: Int = 1,
 ) {
   // Type-check-only stub. Real Compose Material renders an outlined
   // text input bound to the value/onValueChange pair. Canonical-

@@ -11,6 +11,7 @@
 import { lowerWebViewDomStorage } from './webview-options'
 import { classifyFallback, unconsumedSlotWarning } from './jsx-slot-attrs'
 import { swiftStr } from './string-literals'
+import { resolveFieldShape } from './field-shape'
 import {
   allServices,
   bindServices,
@@ -111,8 +112,10 @@ import {
   classifyOptionalCondition,
   emptyInferenceCtx,
   indexedArrayCallback,
+  inferMapFromPairsType,
   inferReturnType,
   inferType,
+  mapFromPairsTypeProblem,
   logicalOrValueKind,
   normalizeNumericAlias,
   inferTypeValue,
@@ -4010,6 +4013,60 @@ function emitSwiftIndexedClosure(
   }
 }
 
+/**
+ * `new Map(src.map((x) => [k, v]))` → `Dictionary(src.map { x in (k, v) },
+ * uniquingKeysWith: { _, last in last })`. The plain `Dictionary(uniqueKeysWithValues:)`
+ * TRAPS on a repeated key; JS `Map` keeps the last value, which the uniquing
+ * closure reproduces. `x` is bound to the source's element type while the two
+ * halves emit, so a type-gated lowering inside them sees a typed receiver.
+ */
+function emitSwiftMapFromPairs(
+  e: Extract<ExprIR, { kind: 'new-collection' }>,
+  pairs: NonNullable<Extract<ExprIR, { kind: 'new-collection' }>['pairsFrom']>,
+  indent: number,
+): string {
+  const mt =
+    e.keyType !== undefined && e.valueType !== undefined
+      ? ({ kind: 'map', key: e.keyType, value: e.valueType } as const)
+      : inferMapFromPairsType(pairs, _activeInferCtx)
+  const problem = mapFromPairsTypeProblem(mt)
+  if (problem !== null) {
+    const w = `\`new Map(src.map((x) => [key, value]))\` cannot lower to a native dictionary: ${problem}.`
+    if (!_emitWarnings.includes(w)) _emitWarnings.push(w)
+  }
+  const src = emitSwiftExpr(pairs.source, indent)
+  const srcT = inferType(pairs.source, _activeInferCtx)
+  const elT = srcT.kind === 'array' || srcT.kind === 'set' ? srcT.element : undefined
+  const p = pairs.param
+  const had: [boolean, TypeIR | undefined, boolean, TypeIR | undefined] = [
+    _exprInferCtx.locals.has(p),
+    _exprInferCtx.locals.get(p),
+    _activeInferCtx.locals.has(p),
+    _activeInferCtx.locals.get(p),
+  ]
+  if (elT !== undefined) {
+    _exprInferCtx.locals.set(p, elT)
+    _activeInferCtx.locals.set(p, elT)
+  }
+  const prevEnum = _activeEnumType
+  _activeEnumType = undefined
+  try {
+    const k = withExpectedType(mt.kind === 'map' ? mt.key : undefined, () =>
+      emitSwiftExpr(pairs.key, indent),
+    )
+    const v = withExpectedType(mt.kind === 'map' ? mt.value : undefined, () =>
+      emitSwiftExpr(pairs.value, indent),
+    )
+    return `Dictionary(${src}.map { ${swiftIdent(p)} in (${k}, ${v}) }, uniquingKeysWith: { _, last in last })`
+  } finally {
+    _activeEnumType = prevEnum
+    if (had[0]) _exprInferCtx.locals.set(p, had[1]!)
+    else _exprInferCtx.locals.delete(p)
+    if (had[2]) _activeInferCtx.locals.set(p, had[3]!)
+    else _activeInferCtx.locals.delete(p)
+  }
+}
+
 function emitSwiftExpr(e: ExprIR, indent: number): string {
   switch (e.kind) {
     case 'literal':
@@ -4664,12 +4721,30 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         {
           const recvT = inferType(e.callee.object, _activeInferCtx)
           if (recvT.kind === 'map') {
-            if (prop === 'set' && e.args.length === 2)
-              return `${obj}[${argExprs[0]!}] = ${argExprs[1]!}`
-            if (prop === 'get' && e.args.length === 1) return `${obj}[${argExprs[0]!}]`
-            if (prop === 'has' && e.args.length === 1) return `(${obj}[${argExprs[0]!}] != nil)`
+            // Key / value args are emitted under the MAP's own key and value
+            // types, not whatever expectation the surrounding expression
+            // carries. Without this a comparison against an enum-valued map
+            // (`m.get('a') === 'done'`) leaked the enum expectation into the
+            // KEY and emitted `m[.a]`; the value arg of `.set` gets the value
+            // type so a literal lowers to the declared struct / enum.
+            // The surrounding enum context is CLEARED first: `withExpectedType` sets
+            // it for an enum type but never unsets an outer one.
+            const typedArg = (i: number, t: TypeIR): string => {
+              const prevEnum = _activeEnumType
+              _activeEnumType = undefined
+              try {
+                return withExpectedType(t, () => emitSwiftExpr(e.args[i]!, indent))
+              } finally {
+                _activeEnumType = prevEnum
+              }
+            }
+            const k = (i: number) => typedArg(i, recvT.key)
+            const v = (i: number) => typedArg(i, recvT.value)
+            if (prop === 'set' && e.args.length === 2) return `${obj}[${k(0)}] = ${v(1)}`
+            if (prop === 'get' && e.args.length === 1) return `${obj}[${k(0)}]`
+            if (prop === 'has' && e.args.length === 1) return `(${obj}[${k(0)}] != nil)`
             if (prop === 'delete' && e.args.length === 1)
-              return `${obj}${objDot}removeValue(forKey: ${argExprs[0]!})`
+              return `${obj}${objDot}removeValue(forKey: ${k(0)})`
             if (prop === 'clear' && e.args.length === 0) return `${obj}${objDot}removeAll()`
           }
           if (recvT.kind === 'set') {
@@ -5889,6 +5964,7 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       // the statement emit (collections force `var` — subscript-assign and
       // insert are mutating).
       if (e.collection === 'map') {
+        if (e.pairsFrom !== undefined) return emitSwiftMapFromPairs(e, e.pairsFrom, indent)
         // Seeded `new Map([[k,v],…])` → a dict literal `[k: v, …]`.
         if (e.entries && e.entries.length > 0) {
           const body = e.entries
@@ -9240,13 +9316,30 @@ function emitSwiftField(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: num
     return emitSwiftGeneric(e, indent)
   }
 
-  let result = swiftFieldViewExpr(e, placeholder, textArg)
+  // `multiline` / `lines` — resolved by the helper both emitters share, so the
+  // text-area decision (and what a text area drops) cannot drift per target.
+  const shape = resolveFieldShape(e, readStaticAttr)
+  _emitWarnings.push(...shape.warnings)
+  let result: string
+  if (shape.multiline) {
+    // `axis: .vertical` makes the field wrap and take newlines; `.lineLimit(n,
+    // reservesSpace: true)` makes it exactly `n` rows tall and scroll past them
+    // — a web `<textarea rows=n>`, not an auto-growing field. Both are iOS 16;
+    // the runtime targets 17.
+    const lines =
+      shape.lines.kind === 'static'
+        ? String(shape.lines.n)
+        : `max(1, Int(${emitSwiftExpr(shape.lines.expr, 0)}))`
+    result = `TextField(${placeholder}, text: ${textArg}, axis: .vertical)\n${' '.repeat(indent + 2)}.lineLimit(${lines}, reservesSpace: true)`
+  } else {
+    result = swiftFieldViewExpr(e, placeholder, textArg)
+  }
 
   // onSubmit modifier (Pyreon canonical event for keyboard "done").
   const onSubmit = e.attrs.find(
     (a): a is Extract<AttrIR, { kind: 'event' }> => a.kind === 'event' && a.name === 'submit',
   )
-  if (onSubmit) {
+  if (onSubmit && shape.honourSubmit) {
     result += `\n${' '.repeat(indent + 2)}.onSubmit ${emitSwiftAction(onSubmit.handler, indent + 2)}`
   }
   // `kind` → the software KEYBOARD. The web gets this free from `<input type>`;
@@ -9258,7 +9351,7 @@ function emitSwiftField(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: num
   //
   // `password` is deliberately absent from the map: it selects SecureField, and
   // a masked field keeps the default keyboard.
-  const kindForKeyboard = readStaticAttr(e, 'kind')
+  const kindForKeyboard = shape.honourKind ? readStaticAttr(e, 'kind') : undefined
   const kb = typeof kindForKeyboard === 'string' ? FIELD_KEYBOARD_SWIFT[kindForKeyboard] : undefined
   if (kb !== undefined) {
     result += `\n${' '.repeat(indent + 2)}.keyboardType(${kb})`

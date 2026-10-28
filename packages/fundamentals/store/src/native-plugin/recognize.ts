@@ -1,5 +1,5 @@
-import type { DeclIR, ExprIR, ModuleParseContext, TypeIR } from '@pyreon/native-compiler/plugin-api'
-import type { StoreIR } from './types'
+import type { DeclIR, ExprIR, ModuleParseContext, StatementIR, TypeIR } from '@pyreon/native-compiler/plugin-api'
+import type { StoreComputed, StoreIR } from './types'
 
 // biome-ignore lint/suspicious/noExplicitAny: ESTree nodes are read structurally.
 type AnyNode = any
@@ -84,7 +84,7 @@ export function recognizeStore(
   // Two shapes: BlockStatement with return, or expression body (`() => ({...})`)
   let returnObj: AnyNode | undefined
   const signalDecls: { name: string; type: TypeIR; initial: ExprIR }[] = []
-  const computedDecls: { name: string; expr: ExprIR }[] = []
+  const computedDecls: StoreComputed[] = []
   const methodDecls: Extract<DeclIR, { kind: 'function' }>[] = []
 
   if (body?.type === 'BlockStatement') {
@@ -109,18 +109,43 @@ export function recognizeStore(
           const calleeName = declInit.callee?.name as string | undefined
           if (calleeName === 'computed') {
             const arg = (declInit.arguments as AnyNode[] | undefined)?.[0]
-            if (
-              arg?.type !== 'ArrowFunctionExpression' ||
-              arg.body?.type === 'BlockStatement'
-            ) {
-              // Block-body computeds in stores are a v3 follow-up —
-              // bail LOUDLY (whole-store) rather than drop one decl.
+            if (arg?.type !== 'ArrowFunctionExpression' && arg?.type !== 'FunctionExpression') {
               ctx.report(
-                `defineStore \`${hookName}\`: computed \`${name}\` must be an expression-body arrow (\`computed(() => expr)\`) in v2. Falling back to silent-drop.`,
+                `defineStore \`${hookName}\`: computed \`${name}\` must be an inline arrow (\`computed(() => expr)\` or \`computed(() => { …; return value })\`); a reference to a function declared elsewhere has no native lowering. Falling back to silent-drop.`,
               )
               return null
             }
-            computedDecls.push({ name, expr: ctx.expr(arg.body) })
+            if (((arg.params as AnyNode[] | undefined)?.length ?? 0) > 0) {
+              ctx.report(
+                `defineStore \`${hookName}\`: computed \`${name}\` takes parameters; a store computed is a parameterless derivation (\`computed(() => …)\`). Falling back to silent-drop.`,
+              )
+              return null
+            }
+            // An explicit `computed<T>(…)` names the getter's native type —
+            // the escape hatch when the body's return cannot be inferred.
+            const declared = ctx.typeArgs(declInit)[0]
+            const type = declared === undefined || declared.kind === 'unknown' ? undefined : declared
+            if (arg.body?.type === 'BlockStatement') {
+              // Block body: parse through the SAME statement IR a component
+              // computed / store method uses, so the emitters render it with
+              // the shared statement emitter (`ctx.statements`).
+              const fn = ctx.functionDeclaration(name, arg)
+              const only = fn.body.length === 1 ? fn.body[0] : undefined
+              if (only?.kind === 'return' && only.expr !== undefined) {
+                // `computed(() => { return x })` — keep the compact form.
+                computedDecls.push(type === undefined ? { name, expr: only.expr } : { name, expr: only.expr, type })
+              } else if (!fn.body.some(returnsValue)) {
+                ctx.report(
+                  `defineStore \`${hookName}\`: computed \`${name}\` has a block body that never returns a value. Falling back to silent-drop.`,
+                )
+                return null
+              } else {
+                computedDecls.push(type === undefined ? { name, body: fn.body } : { name, body: fn.body, type })
+              }
+              continue
+            }
+            const expr = ctx.expr(arg.body)
+            computedDecls.push(type === undefined ? { name, expr } : { name, expr, type })
             continue
           }
           if (calleeName !== 'signal') continue
@@ -215,3 +240,12 @@ export function recognizeStore(
   return result
 }
 
+/** Whether a statement (or a statement list nested in it — `if` branches, loop bodies) is a `return <value>`. */
+function returnsValue(stmt: StatementIR): boolean {
+  if (stmt.kind === 'return') return stmt.expr !== undefined
+  if (stmt.kind === 'if') return stmt.then.some(returnsValue) || (stmt.elseBody?.some(returnsValue) ?? false)
+  // Statement-list fields only (`body` of a loop) — never descend into an
+  // expression, whose nested closures carry their own `return`s.
+  const nested = (stmt as { body?: unknown }).body
+  return Array.isArray(nested) && (nested as StatementIR[]).some(returnsValue)
+}

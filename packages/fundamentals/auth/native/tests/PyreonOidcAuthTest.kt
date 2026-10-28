@@ -294,7 +294,30 @@ fun testUrlConnectionTransport() {
     }
 }
 
+/**
+ * An explicitly built metadata (no discovery) with an http token endpoint is refused at
+ * USE — before any request is sent — exactly like the web `postToken`.
+ */
+fun testTokenEndpointHttpsAtUse() {
+    var sent = 0
+    val transport = PyreonAuthTransport { sent++; PyreonAuthResponse(500) }
+    val meta = PyreonOidcMetadata(issuer = "http://evil.example", authorizationEndpoint = "https://idp.example/auth", tokenEndpoint = "http://evil.example/token")
+    for (call in listOf<() -> Unit>(
+        { PyreonOidcClient.refresh(meta, "app", "rt", transport) },
+        { PyreonOidcClient.exchangeCode(meta, "app", PyreonAuthFlow("s", "n", "v", "r", "http://evil.example", 0), "code", transport) },
+    )) {
+        val e = runCatching(call).exceptionOrNull()
+        check(e is PyreonAuthError && e.code == "insecure_url") { "http token endpoint must be refused, got $e" }
+    }
+    check(sent == 0) { "no request may reach an http token endpoint (sent $sent)" }
+    // Loopback http stays allowed for local development.
+    val local = meta.copy(tokenEndpoint = "http://127.0.0.1:8080/token")
+    val e = runCatching { PyreonOidcClient.refresh(local, "app", "rt", transport) }.exceptionOrNull()
+    check(sent == 1 && (e as? PyreonAuthError)?.code == "token_exchange_failed") { "loopback reaches the transport: $e" }
+}
+
 fun main() {
+    testTokenEndpointHttpsAtUse()
     testUrlConnectionTransport()
     testSignInRehydrateRefresh()
     testFailures()

@@ -8,7 +8,9 @@ import {
   discover,
   exchangeCode,
   generateCodeVerifier,
+  oauth2,
   parseCallback,
+  refreshTokens,
   safeReturnTo,
 } from '../index'
 import type { OidcMetadata } from '../index'
@@ -81,6 +83,35 @@ describe('discover', () => {
     for (const body of [null, [], 'str', 42, { issuer: 'https://idp.example' }]) {
       await expect(discover('https://idp.example', () => json(body)), JSON.stringify(body)).rejects.toBeInstanceOf(AuthError)
     }
+  })
+})
+
+describe('explicit metadata — https enforced at use (no discovery ran)', () => {
+  const evil = oauth2('http://evil.example', 'http://evil.example/auth', 'http://evil.example/token')
+
+  it('refuses an http authorization_endpoint', async () => {
+    await expect(beginAuthorization(evil, client)).rejects.toMatchObject({ code: 'insecure_url' })
+  })
+
+  it('never POSTs the code, verifier or refresh token to an http token_endpoint', async () => {
+    const httpsAuth = { ...evil, authorization_endpoint: 'https://idp.example/auth' }
+    const { flow } = await beginAuthorization(httpsAuth, client)
+    let sent = 0
+    const fetchImpl = () => {
+      sent++
+      return json({ access_token: 'at', token_type: 'Bearer' })
+    }
+    await expect(exchangeCode(httpsAuth, client, flow, 'code', fetchImpl)).rejects.toMatchObject({ code: 'insecure_url' })
+    await expect(refreshTokens(httpsAuth, client, 'rt', fetchImpl)).rejects.toMatchObject({ code: 'insecure_url' })
+    expect(sent).toBe(0)
+  })
+
+  it('still allows loopback http for local development, like discover', async () => {
+    const local = oauth2('http://localhost:8080', 'http://localhost:8080/auth', 'http://127.0.0.1:8080/token')
+    const { flow, url } = await beginAuthorization(local, client)
+    expect(new URL(url).protocol).toBe('http:')
+    const tokens = await exchangeCode(local, client, flow, 'code', () => json({ access_token: 'at', token_type: 'Bearer' }))
+    expect(tokens.access_token).toBe('at')
   })
 })
 

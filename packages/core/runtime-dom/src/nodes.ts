@@ -19,14 +19,25 @@ import { effect, effectScope, getContextOwner, getCurrentScope, runUntracked, ru
  * lets `mountChild` return a no-op remover there. A `<Portal>` inside the
  * subtree removes its own bracketed range directly, never through
  * `detachNode`, so a portaled node in a live target is still removed.
+ *
+ * The window is SCOPED to the detaching parent: only a node inside that
+ * parent's subtree leaves with it. A row cleanup can tear down an UNRELATED
+ * tree (a row's `onUnmount` disposing a separate root), and that tree's nodes
+ * must still be removed — so the window records the parent rather than being
+ * a module-wide on/off switch. Nested windows (an inner `<For>` torn down from
+ * an outer row) save and RESTORE the outer parent, never reset it.
  */
-let bulkDetachDepth = 0
+let bulkDetachParent: Node | null = null
 
 /** Remove `node` from its parent, unless a bulk detach makes it redundant. */
 export function detachNode(node: Node): void {
-  if (bulkDetachDepth > 0) return
   const p = node.parentNode
-  if (p && p.nodeType !== 11 /* DocumentFragment — FW-3 */) p.removeChild(node)
+  if (!p || p.nodeType === 11 /* DocumentFragment — FW-3 */) return
+  const bulk = bulkDetachParent
+  // A row's own root sits directly in the parent (one compare); a node deeper
+  // inside a row (a reactive text inside a cell) takes the `contains` walk.
+  if (bulk !== null && (p === bulk || bulk.contains(p))) return
+  p.removeChild(node)
 }
 
 // Dev-mode gate: see `pyreon/no-process-dev-gate` lint rule for why this
@@ -1511,14 +1522,28 @@ export function mountFor<T>(
         const a = pendingAdoption
         pendingAdoption = null
         if (n > 0) {
+          // An adopted row's callback is owned exactly like a client-mounted
+          // row's (`renderInto`): it runs under the row collector, and the
+          // scope it fills stops with the row. adoptRows calls renderItem then
+          // setEntry once per row, in that order, so the scope is handed from
+          // one to the other through `adoptScope`. (adoptRows verifies every
+          // key BEFORE calling renderItem, so a null result never leaves a
+          // row callback run and unowned.)
+          let adoptScope: EffectScope | null = null
           const keys = a.adoptRows({
             items: items as unknown[],
             n,
             getKey: getKey as (item: unknown) => string | number,
-            renderItem: renderItem as (item: unknown) => unknown,
+            renderItem: (item: unknown) => {
+              const { result, scope } = runRowCallback(() => renderItem(item as T))
+              adoptScope = scope
+              return result
+            },
             tailMarker,
             setEntry: (key, entryAnchor, cleanup, pos, end) => {
-              cache.set(key, { anchor: entryAnchor, cleanup, pos, end, seen: 0 })
+              const rowCleanup = withRowScope(adoptScope, cleanup)
+              adoptScope = null
+              cache.set(key, { anchor: entryAnchor, cleanup: rowCleanup, pos, end, seen: 0 })
               cleanupCount++
             },
           })
@@ -1555,10 +1580,12 @@ export function mountFor<T>(
 
   return () => {
     e.dispose()
-    if (parentRemovesUnit) {
+    const unitParent = parentRemovesUnit ? startMarker.parentNode : null
+    if (unitParent !== null) {
       // The parent element leaves the document as a unit right after this, so
       // the rows' own removals are redundant (see `detachNode`).
-      bulkDetachDepth++
+      const prevBulk = bulkDetachParent
+      bulkDetachParent = unitParent
       try {
         if (cleanupCount > 0) {
           for (const entry of cache.values()) {
@@ -1569,7 +1596,7 @@ export function mountFor<T>(
           }
         }
       } finally {
-        bulkDetachDepth--
+        bulkDetachParent = prevBulk
       }
       cache = new Map()
       cleanupCount = 0

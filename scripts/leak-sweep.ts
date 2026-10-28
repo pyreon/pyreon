@@ -37,6 +37,7 @@ import { chromium, type Page } from 'playwright'
 import { journeys } from '../examples/perf-dashboard/src/journeys'
 import { linearRegression } from './leak-audit'
 import { forceGcTwice, HEAP_AUDIT_CHROMIUM_ARGS } from './perf/heap'
+import { toPageLike } from './perf/page-like'
 import { startServer as startViteServer } from './perf/server'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
@@ -79,10 +80,9 @@ async function runOneCycle(page: Page, name: string): Promise<void> {
   if (!fn) {
     throw new Error(`[leak-sweep] unknown journey "${name}" — not in perf-dashboard's journeys catalog`)
   }
-  // The journey functions are typed against the `PageLike` interface
-  // (click / fill / waitForSelector / evaluate / reload) — a strict
-  // subset of Playwright's Page. Pass our real `Page` through.
-  await fn(page as unknown as Parameters<typeof fn>[0])
+  // Through the adapter, never the raw Page: a journey's waits must not leave Playwright handles pinning DOM — see
+  // page-like.ts for the false leak a raw Page produced.
+  await fn(toPageLike(page))
 }
 
 async function sampleHeap(page: Page): Promise<number> {
