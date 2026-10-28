@@ -214,6 +214,27 @@ fun testI18nCldrAndLocaleSwitch() {
     check(i18n.t("files", mapOf("count" to 3)) == "other") { "ar few missing -> _other" }
 }
 
+// The BARE key is the singular (`one`) form; `_other` only beats it for a
+// non-`one` category — same order as the web createI18n.
+fun testI18nBareKeyIsSingular() {
+    val i18n = PyreonI18n(
+        initialLocale = "en",
+        messages = mapOf(
+            "en" to mapOf("item" to "{{count}} item", "item_other" to "{{count}} items", "lone_other" to "{{count}} lones"),
+            "fr" to mapOf("item" to "{{count}} item", "item_other" to "{{count}} items"),
+            "cs" to mapOf("file" to "{{count}} soubor", "file_other" to "{{count}} souborů"),
+        ),
+    )
+    check(i18n.t("item", mapOf("count" to 1)) == "1 item") { "en 1 -> bare singular, not _other" }
+    check(i18n.t("item", mapOf("count" to 2)) == "2 items") { "en 2 -> _other" }
+    check(i18n.t("lone", mapOf("count" to 1)) == "1 lones") { "one with no singular form -> _other last resort" }
+    i18n.locale = "fr"
+    check(i18n.t("item", mapOf("count" to 0)) == "0 item") { "fr 0 (CLDR one) -> bare singular" }
+    i18n.locale = "cs"
+    check(i18n.t("file", mapOf("count" to 1)) == "1 soubor") { "cs 1 -> bare singular" }
+    check(i18n.t("file", mapOf("count" to 3)) == "3 souborů") { "cs few missing -> _other before the bare singular" }
+}
+
 fun testPluralCaseTable() {
     for ((locale, count, expected) in pluralCases) {
         val got = PyreonPluralRules.select(locale, count)
@@ -227,6 +248,7 @@ fun main() {
     testI18nInterpolation()
     testI18nPlurals()
     testI18nCldrAndLocaleSwitch()
+    testI18nBareKeyIsSingular()
     testPluralCaseTable()
     println("PyreonI18nTest: all checks passed")
 }

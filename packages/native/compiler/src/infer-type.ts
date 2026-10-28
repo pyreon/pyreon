@@ -495,6 +495,20 @@ export function buildInferenceCtx(
   for (const d of decls) {
     if (d.kind === 'value') ctx.valueConsts.set(d.name, inferType(d.expr, ctx))
   }
+  // Pass 1.6: a `signal(new Map(src.map((x) => [k, v])))` with no generic
+  // arguments reaches here typed `unknown` — parse has no inference context to
+  // bind `x`. Type it now (signals and value-consts are both known), or every
+  // read of it — `idx().get(k)` — misses the Map lowerings and emits verbatim.
+  for (const d of decls) {
+    if (
+      d.kind === 'signal' &&
+      d.type.kind === 'unknown' &&
+      d.initial.kind === 'new-collection' &&
+      d.initial.pairsFrom !== undefined
+    ) {
+      ctx.signals.set(d.name, inferType(d.initial, ctx))
+    }
+  }
   // Pass 2: infer computeds. A computed can reference signals AND
   // other computeds declared above it in source order; we infer
   // top-to-bottom so by the time we hit `total = computed(() => a() + doubled())`,
@@ -1275,6 +1289,46 @@ function inferMathCall(expr: ExprIR, ctx: InferenceCtx): TypeIR | null {
   return null
 }
 
+/**
+ * The `[K: V]` type of `new Map(src.map((x) => [k, v]))`: bind `x` to the
+ * source's element type, then type each half of the pair. Returns `unknown`
+ * when the source is not a typed array — the emitter names that case.
+ */
+export function inferMapFromPairsType(
+  pairs: { source: ExprIR; param: string; key: ExprIR; value: ExprIR },
+  ctx: InferenceCtx,
+): TypeIR {
+  const srcT = inferType(pairs.source, ctx)
+  if (srcT.kind !== 'array' && srcT.kind !== 'set') return { kind: 'unknown' }
+  const scratch: InferenceCtx = { ...ctx, locals: new Map(ctx.locals) }
+  scratch.locals.set(pairs.param, srcT.element)
+  return { kind: 'map', key: inferType(pairs.key, scratch), value: inferType(pairs.value, scratch) }
+}
+
+/**
+ * Why an inferred `new Map(src.map(...))` type has no native dictionary form,
+ * or `null` when it does. Shared by both emitters so the two targets warn with
+ * the same words. The key must be a scalar (a native dictionary key is
+ * Hashable); the value a scalar, a named struct / enum, or an array of those —
+ * an anonymous object or a union has no type name to put in `[K: V]`.
+ */
+export function mapFromPairsTypeProblem(t: TypeIR): string | null {
+  const scalar = (x: TypeIR): boolean =>
+    x.kind === 'number' || x.kind === 'string' || x.kind === 'boolean'
+  const value = (x: TypeIR): boolean =>
+    scalar(x) ||
+    (x.kind === 'typeRef' && x.args.length === 0) ||
+    (x.kind === 'array' && value(x.element))
+  if (t.kind !== 'map') {
+    return 'the source is not a typed array, so the key and value types cannot be inferred — annotate it (`new Map<K, V>(…)`) or type the array'
+  }
+  if (!scalar(t.key)) return 'the key is not a scalar (number/string/boolean) — a native dictionary key must be Hashable'
+  if (!value(t.value)) {
+    return 'the value is not a scalar, a named struct/enum, or an array of those — declare its shape as a top-level `type X = { … }`'
+  }
+  return null
+}
+
 export function inferType(expr: ExprIR, ctx: InferenceCtx): TypeIR {
   const resolved = inferTypeValue(expr, ctx)
   // Every property read after an optional link can short-circuit to undefined.
@@ -1314,7 +1368,11 @@ export function inferTypeValue(expr: ExprIR, ctx: InferenceCtx): TypeIR {
       return pluginExprType(expr, (e) => inferType(e, ctx)) ?? { kind: 'unknown' }
     case 'new-collection': {
       if (expr.collection === 'map') {
-        return { kind: 'map', key: expr.keyType!, value: expr.valueType! }
+        if (expr.keyType !== undefined && expr.valueType !== undefined) {
+          return { kind: 'map', key: expr.keyType, value: expr.valueType }
+        }
+        if (expr.pairsFrom !== undefined) return inferMapFromPairsType(expr.pairsFrom, ctx)
+        return { kind: 'unknown' }
       }
       if (expr.elementType !== undefined) return { kind: 'set', element: expr.elementType }
       // `new Set(arr)` — element type from the seed array.

@@ -136,7 +136,10 @@ export async function beginAuthorization(
     issuer: meta.issuer,
     createdAt: now,
   }
-  const u = new URL(meta.authorization_endpoint)
+  // Checked at USE, not only in `discover`: metadata passed explicitly (`oauth2(…)`,
+  // a hand-written object) never went through discovery, and the authorize URL
+  // carries the PKCE challenge, state and nonce.
+  const u = new URL(assertHttps(meta.authorization_endpoint, 'authorization_endpoint').href)
   u.searchParams.set('response_type', 'code')
   u.searchParams.set('client_id', client.clientId)
   u.searchParams.set('redirect_uri', client.redirectUri)
@@ -209,6 +212,9 @@ async function postToken(
   body: Record<string, string>,
   fetchImpl: FetchLike,
 ): Promise<TokenResponse> {
+  // The POST carries the code + PKCE verifier (or a refresh token): never over
+  // cleartext, whether the metadata came from discovery or was passed explicitly.
+  assertHttps(meta.token_endpoint, 'token_endpoint')
   const res = await send(fetchImpl, meta.token_endpoint, {
     method: 'POST',
     redirect: 'error',

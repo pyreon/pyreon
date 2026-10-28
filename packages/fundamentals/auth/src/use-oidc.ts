@@ -37,6 +37,13 @@ export interface UseOidcOptions {
  * A reactive OIDC session with the SAME surface on web, iOS and Android: every member is
  * read as a call (`auth.status()`), and the strings it returns — status spellings and error
  * codes — are identical on all three targets.
+ *
+ * Persistence is NOT the same. Native keeps the session in the Keychain / Keystore, so a
+ * relaunch is still signed in. The web holds tokens in memory only, so a reload starts at
+ * `signedOut` — deliberately: tokens in `localStorage` / `sessionStorage` are readable by
+ * any script on the page, which makes one XSS bug a stolen long-lived session. Call
+ * `signIn()` again on load (silent while the provider session lasts), or keep the session
+ * server-side behind an HttpOnly cookie (`signSession`).
  */
 export interface UseOidcResult {
   /** `signedOut` | `signingIn` | `signedIn` | `error`. */
