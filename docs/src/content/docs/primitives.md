@@ -1,6 +1,6 @@
 ---
 title: '@pyreon/primitives'
-description: 'The canonical multi-platform UI vocabulary — 18 primitives plus Transition, TransitionGroup, WebView and per-platform escape hatches, each compiled to DOM, SwiftUI and Compose from one source.'
+description: 'The canonical multi-platform UI vocabulary — 19 primitives plus Transition, TransitionGroup, WebView and per-platform escape hatches, each compiled to DOM, SwiftUI and Compose from one source.'
 ---
 
 # @pyreon/primitives
@@ -24,12 +24,13 @@ bun add @pyreon/primitives @pyreon/core @pyreon/reactivity @pyreon/runtime-dom
 | **Layout** | [`Stack`](#stack), [`Inline`](#inline), [`Layer`](#layer), [`Scroll`](#scroll), [`Spacer`](#spacer) | dedicated emitters |
 | **Content** | [`Text`](#text), [`Heading`](#heading), [`Image`](#image), [`Audio`](#audio), [`Video`](#video), [`Icon`](#icon) | dedicated emitters |
 | **Interaction** | [`Button`](#button), [`Press`](#press), [`Link`](#link), [`Gesture`](#gesture) | dedicated emitters |
+| **Drawing** | [`Canvas`](#canvas) (+ `CanvasRect`, `CanvasCircle`, `CanvasLine`, `CanvasPath`, `CanvasText`) | dedicated emitters |
 | **Input** | [`Field`](#field), [`Toggle`](#toggle), [`Modal`](#modal) | dedicated emitters |
 | **Animation** | [`Transition`](#transition), [`TransitionGroup`](#transitiongroup) | dedicated emitters |
 | **Web content** | [`WebView`](#webview) | native web host |
 | **Escape hatches** | [`Web`, `NativeIOS`, `NativeAndroid`](#escape-hatches) | per-target branch |
 
-The first four groups are the **18 canonical primitives**, the UI vocabulary
+The first five groups are the **19 canonical primitives** (the canvas shapes are children of `Canvas`, not members), the UI vocabulary
 the compiler treats as its own. The compiler's list lives in
 `packages/native/compiler/src/canonical-primitives.ts` (`CANONICAL_PRIMITIVES`),
 and a test checks that it matches what this package exports. The animation
@@ -615,6 +616,63 @@ each update back into the next one (the compiler warns about this).
 During a two-finger gesture the pan follows the centre point of the fingers on
 web and Android, and the first finger on iOS, because SwiftUI's `DragGesture`
 tracks a single touch.
+
+### Canvas
+
+A fixed-size vector drawing surface. Its children are the shape primitives,
+drawn in source order (later ones on top) in the canvas's own coordinates:
+`(0, 0)` is the top-left corner, y points down, and units are px on the web,
+pt on iOS and dp on Android. Anything outside the canvas is clipped.
+
+| Shape | Props |
+| --- | --- |
+| `CanvasRect` | `x`, `y`, `width`, `height`, `radius?` |
+| `CanvasCircle` | `cx`, `cy`, `r` |
+| `CanvasLine` | `x1`, `y1`, `x2`, `y2` (stroke only) |
+| `CanvasPath` | `d`: SVG path data, every command (M L H V C S Q T A Z, absolute and relative) |
+| `CanvasText` | `x`, `y` (the top-left of the text), `size?` (default 14), text as children |
+
+Every shape takes `fill`, `stroke` and `strokeWidth` (`CanvasLine` and
+`CanvasText` take only the ones that apply). A colour is a theme token or a
+`#hex` literal. A shape with neither `fill` nor `stroke` is filled with the
+`text` colour, and a stroke defaults to a width of 1.
+
+```tsx
+// @check
+import { Canvas, CanvasCircle, CanvasPath, CanvasRect, CanvasText } from '@pyreon/primitives'
+import { For } from '@pyreon/core'
+import { signal } from '@pyreon/reactivity'
+
+export function SeatMap() {
+  const taken = signal([{ id: 1, x: 40 }, { id: 2, x: 80 }])
+  return (
+    <Canvas width={240} height={140} background="surface">
+      <CanvasRect x={10} y={10} width={220} height={30} radius={6} fill="muted" />
+      <CanvasText x={90} y={18} size={12}>Stage</CanvasText>
+      <For each={taken()} by={(s) => s.id}>
+        {(s) => <CanvasCircle cx={s.x} cy={90} r={10} fill="danger" />}
+      </For>
+      <CanvasPath d="M10 130 L230 130" stroke="text" strokeWidth={2} />
+    </Canvas>
+  )
+}
+```
+
+Shapes are ordinary JSX children, so `For`, `Show` and signal-driven props such
+as `d={trail()}` work inside a canvas. To make a drawing pannable and zoomable,
+put the canvas inside a [`Gesture`](#gesture) and drive its transform props.
+
+- **Web**: a `position: relative` box; each shape is its own absolutely
+  positioned `<svg>` layer (so shapes can sit next to `For` and `Show`).
+- **iOS**: `PyreonCanvas { … }`, a clipped top-leading `ZStack` of SwiftUI
+  `Path`s. `CanvasPath` data is parsed by the runtime, arcs included.
+- **Android**: `PyreonCanvas { … }`, a clipped `Box` of Compose `Canvas` draw
+  layers. `CanvasPath` data goes through androidx's `PathParser`.
+
+Text inside a canvas is `CanvasText`. A plain `Text` would be laid out rather
+than placed at coordinates. For a static vector asset, a `CanvasPath` with the
+asset's path data is the multiplatform option; `Image` does not render SVG
+files on native.
 
 ### Link
 

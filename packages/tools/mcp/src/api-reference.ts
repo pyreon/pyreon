@@ -1355,11 +1355,26 @@ const base = signal(1.0)
 >
   <Stack scale={zoom()}><Text>Floor plan</Text></Stack>
 </Gesture>`,
-    notes: 'A region that recognises CONTINUOUS gestures and reports their values. Every value is CUMULATIVE since the gesture began; each gesture delivers one `start`, any number of `change`, then one `end` (also on cancel). Pan, pinch and rotate run SIMULTANEOUSLY, and nothing is reported until the pointer passes the touch slop (10px/pt, the platform slop on Android), so a `<Press>` inside still gets its taps. Web: pointer events on a `touch-action: none` div (capture taken only once claimed); iOS: `PyreonGesture` (simultaneous `DragGesture`/`MagnifyGesture`/`RotateGesture`); Android: `PyreonGesture` (one `pointerInput` loop over `calculatePan`/`calculateZoom`/`calculateRotation`). Drive content with the transform props (`translateX`/`translateY`/`scale`/`rotate`), which every primitive accepts and which update in place. Known divergence: a two-finger pan follows the centroid on web/Android and the first finger on iOS. See also: Press, Stack.',
+    notes: 'A region that recognises CONTINUOUS gestures and reports their values. Every value is CUMULATIVE since the gesture began; each gesture delivers one `start`, any number of `change`, then one `end` (also on cancel). Pan, pinch and rotate run SIMULTANEOUSLY, and nothing is reported until the pointer passes the touch slop (10px/pt, the platform slop on Android), so a `<Press>` inside still gets its taps. Web: pointer events on a `touch-action: none` div (capture taken only once claimed); iOS: `PyreonGesture` (simultaneous `DragGesture`/`MagnifyGesture`/`RotateGesture`); Android: `PyreonGesture` (one `pointerInput` loop over `calculatePan`/`calculateZoom`/`calculateRotation`). Drive content with the transform props (`translateX`/`translateY`/`scale`/`rotate`), which every primitive accepts and which update in place. Known divergence: a two-finger pan follows the centroid on web/Android and the first finger on iOS. See also: Press, Stack, Canvas.',
     mistakes: `- Putting \`scale\`/\`translateX\` on the \`<Gesture>\` ITSELF — the values are measured in its own coordinate space and feed back into themselves; transform a CHILD (the compiler warns)
 - Treating \`e.scale\` / \`e.dx\` as a per-frame DELTA — they are cumulative since the gesture began; multiply/add your committed base, and commit it on \`phase === "end"\`
 - Using \`<Press onSwipeLeft>\` for free dragging — swipe is a discrete end-of-gesture verdict; \`<Gesture onPan>\` reports the live translation
 - Expecting pinch/rotate from one pointer — they begin only once two pointers are down`,
+  },
+
+  'primitives/Canvas': {
+    signature: '(props: { width: number; height: number; background?: ColorToken; children }) => VNode — children: CanvasRect { x, y, width, height, radius? } · CanvasCircle { cx, cy, r } · CanvasLine { x1, y1, x2, y2 } · CanvasPath { d } · CanvasText { x, y, size? }, each with fill?/stroke?/strokeWidth? (token or #hex)',
+    example: `<Canvas width={200} height={120} background="surface">
+  <CanvasRect x={10} y={10} width={80} height={50} radius={6} fill="primary" />
+  <CanvasCircle cx={150} cy={40} r={20} fill="#16a34a" stroke="text" strokeWidth={2} />
+  <CanvasPath d="M10 100 L190 100" stroke="text" strokeWidth={2} />
+  <CanvasText x={110} y={80} size={14}>Hall A</CanvasText>
+</Canvas>`,
+    notes: 'A fixed-size, clipped vector drawing surface. Children are the shape primitives, drawn in source order (later on top) in the canvas coordinates: (0,0) top-left, y down, px/pt/dp. Shapes are ordinary JSX children, so `<For>`, `<Show>` and signal-driven props (`d={trail()}`, `width={w()}`) work inside. Paint: `fill`/`stroke` take a colour token or a `#hex` literal; with neither, a shape is filled with `text`; `<CanvasLine>` is stroke-only (default `text`, width 1). `<CanvasPath d>` takes full SVG path data (M L H V C S Q T A Z, absolute + relative). `<CanvasText>` places the TOP-LEFT of its text at (x, y) on every target. Web: one absolutely positioned `<svg>` layer per shape; iOS: `PyreonCanvas { PyreonShape(PyreonCanvasPath.rect(…)) }` (a runtime SVG parser for `d`); Android: `PyreonCanvas { PyreonShape(PyreonShapeSpec.Rect(…)) }` (androidx `PathParser` for `d`). Pair with `<Gesture>` + transform props for a pannable / zoomable plan. See also: Gesture, Image.',
+    mistakes: `- Using a shape outside a \`<Canvas>\` — shapes draw in the canvas coordinate space and fill its frame on native
+- Passing a CSS colour name (\`fill="tomato"\`) — only colour tokens and \`#hex\` literals resolve on native (the compiler warns)
+- Expecting \`<CanvasText y>\` to be the BASELINE — it is the top-left of the text on every target
+- Reaching for lowercase \`<svg>\`/\`<path>\` for cross-platform drawing — those are DOM elements; the Canvas shapes are the multiplatform vocabulary`,
   },
 
   'primitives/Link': {

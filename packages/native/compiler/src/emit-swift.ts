@@ -9,6 +9,7 @@
 // computed properties. Phase 1 grows a real inference pass.
 
 import { GESTURE_EVENT_NAMES, GESTURE_EVENTS } from './gesture-events'
+import { CANVAS_SHAPES, isCanvasShape, shapeColorLiteral } from './canvas-shapes'
 import type { GestureEventName } from './gesture-events'
 import { lowerWebViewDomStorage } from './webview-options'
 import { classifyFallback, unconsumedSlotWarning } from './jsx-slot-attrs'
@@ -6564,6 +6565,9 @@ function emitSwiftJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numbe
   if (tag === 'Modal') return emitSwiftModal(e, indent)
   if (tag === 'Press') return emitSwiftPress(e, indent)
   if (tag === 'Gesture') return emitSwiftGesture(e, indent)
+  if (tag === 'Canvas') return emitSwiftCanvas(e, indent)
+  if (tag === 'CanvasText') return emitSwiftCanvasText(e, indent)
+  if (isCanvasShape(tag)) return emitSwiftCanvasShape(e)
   if (tag === 'Field') return emitSwiftField(e, indent)
   if (tag === 'Toggle') return emitSwiftToggle(e, indent)
   // Lowercase DOM tags a plugin gives meaning inside its own renderers (a flow's `<path>` / `<svg>`).
@@ -8039,6 +8043,8 @@ const SWIFT_CONTAINER_TAGS = new Set([
   // PyreonGesture WRAPS its content, so SwiftUI flattens it out of the
   // accessibility tree exactly like a plain stack.
   'Gesture',
+  // PyreonCanvas is a ZStack.
+  'Canvas',
 ])
 
 /**
@@ -9217,6 +9223,105 @@ function emitSwiftGesture(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: n
   const pad = ' '.repeat(indent + 2)
   const contentLines = e.children.map((c) => pad + emitSwiftChild(c, indent + 2)).join('\n')
   return `${head} {\n${contentLines}\n${' '.repeat(indent)}}${tail}`
+}
+
+/**
+ * A numeric shape / canvas prop as a Swift `Double` argument. A literal is
+ * passed bare; an expression is wrapped in `Double(…)` because a signal written
+ * only with integers is an `Int` here and the runtime builders take Double.
+ * Absent → `fallback`, or a named warning and `0` for a required prop.
+ */
+function swiftCanvasNumber(
+  e: Extract<ExprIR, { kind: 'jsx-element' }>,
+  prop: string,
+  fallback: number | undefined,
+): string {
+  const a = e.attrs.find(
+    (x): x is Extract<AttrIR, { kind: 'attr' }> => x.kind === 'attr' && x.name === prop,
+  )
+  if (a === undefined) {
+    if (fallback !== undefined) return String(fallback)
+    _emitWarnings.push(`<${e.tag}> is missing its required \`${prop}\` prop — drawn with ${prop}=0 on native.`)
+    return '0'
+  }
+  const v = unwrapAccessorArrow(a.value)
+  if (v.kind === 'literal' && typeof v.value === 'number') return String(v.value)
+  if (v.kind === 'unary' && v.op === '-' && v.argument.kind === 'literal' && typeof v.argument.value === 'number') {
+    return `-${v.argument.value}`
+  }
+  return `Double(${emitSwiftExpr(v, 0)})`
+}
+
+/** A shape colour prop (token / `#hex`, static or a two-literal ternary) → `Color(…)` or undefined. */
+function swiftShapeColor(e: Extract<ExprIR, { kind: 'jsx-element' }>, prop: string): string | undefined {
+  return swiftStylingValue(e, prop, (v) => {
+    const c = shapeColorLiteral(String(v), 'swift')
+    if (c !== null) return c
+    _emitWarnings.push(
+      `<${e.tag} ${prop}="${String(v)}">: not a colour token or #hex literal — drawn with the \`text\` colour on native.`,
+    )
+    return resolveColor('text', 'swift')
+  })
+}
+
+/**
+ * `<Canvas width height>` → `PyreonCanvas(width:height:) { … }`
+ * (@pyreon/native-runtime-swift): a clipped top-leading ZStack, so every child
+ * draws in the canvas's own coordinates. The generic tail carries background,
+ * testid, a11y and transforms.
+ */
+function emitSwiftCanvas(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
+  const head = `PyreonCanvas(width: ${swiftCanvasNumber(e, 'width', undefined)}, height: ${swiftCanvasNumber(e, 'height', undefined)})`
+  const tail = emitSwiftLayoutModifiers(e)
+  if (e.children.length === 0) return `${head} { EmptyView() }${tail}`
+  const pad = ' '.repeat(indent + 2)
+  const contentLines = e.children.map((c) => pad + emitSwiftChild(c, indent + 2)).join('\n')
+  return `${head} {\n${contentLines}\n${' '.repeat(indent)}}${tail}`
+}
+
+/**
+ * A `<Canvas>` shape → `PyreonShape(<path builder>, fill:, stroke:, lineWidth:)`.
+ * With no paint at all a shape is filled with the `text` colour (the web impl
+ * applies the same rule), and `<CanvasLine>` is only ever stroked.
+ */
+function emitSwiftCanvasShape(e: Extract<ExprIR, { kind: 'jsx-element' }>): string {
+  const spec = CANVAS_SHAPES[e.tag]!
+  const args = spec.args.map((arg) => {
+    let value: string
+    if (arg.kind === 'string') {
+      const a = e.attrs.find(
+        (x): x is Extract<AttrIR, { kind: 'attr' }> => x.kind === 'attr' && x.name === arg.prop,
+      )
+      if (a === undefined) {
+        _emitWarnings.push(`<${e.tag}> is missing its required \`${arg.prop}\` prop — nothing is drawn on native.`)
+        value = '""'
+      } else {
+        value = emitSwiftExpr(unwrapAccessorArrow(a.value), 0)
+      }
+    } else {
+      value = swiftCanvasNumber(e, arg.prop, arg.default)
+    }
+    return arg.label === '' ? value : `${arg.label}: ${value}`
+  })
+  const fill = spec.strokeOnly ? undefined : swiftShapeColor(e, 'fill')
+  let stroke = swiftShapeColor(e, 'stroke')
+  if (spec.strokeOnly && stroke === undefined) stroke = resolveColor('text', 'swift')
+  const fillArg = fill ?? (stroke === undefined ? resolveColor('text', 'swift') : 'nil')
+  const width = stroke === undefined ? '0' : swiftCanvasNumber(e, 'strokeWidth', 1)
+  return `PyreonShape(${spec.swift}(${args.join(', ')}), fill: ${fillArg}, stroke: ${stroke ?? 'nil'}, lineWidth: ${width})`
+}
+
+/**
+ * `<CanvasText x y size fill>` → `PyreonCanvasText(x:y:size:color:) { Text(…) }`.
+ * The content is the ordinary `<Text>` emit (interpolation, signal reads); the
+ * runtime positions its TOP-LEFT at (x, y), the same as the web's
+ * `dominant-baseline="hanging"`.
+ */
+function emitSwiftCanvasText(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
+  const text = emitSwiftText({ kind: 'jsx-element', tag: 'Text', attrs: [], children: e.children }, indent + 2)
+  const color = swiftShapeColor(e, 'fill') ?? resolveColor('text', 'swift')
+  const head = `PyreonCanvasText(x: ${swiftCanvasNumber(e, 'x', undefined)}, y: ${swiftCanvasNumber(e, 'y', undefined)}, size: ${swiftCanvasNumber(e, 'size', 14)}, color: ${color})`
+  return `${head} {\n${' '.repeat(indent + 2)}${text}\n${' '.repeat(indent)}}`
 }
 
 function emitSwiftPress(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {

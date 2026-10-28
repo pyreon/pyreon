@@ -928,6 +928,28 @@ public struct PyreonRotateEvent: Equatable {
   public let degrees: Double
   public let phase: String
 }
+// PyreonCanvas + shapes — mirror of runtime-swift PyreonCanvas.swift (the
+// <Canvas> primitive). Path stands in for SwiftUI's Path: the emit only ever
+// hands one from a PyreonCanvasPath builder straight to PyreonShape.
+public struct Path { public init() {} }
+public enum PyreonCanvasPath {
+  public static func rect(x: Double, y: Double, width: Double, height: Double, radius: Double) -> Path { Path() }
+  public static func circle(cx: Double, cy: Double, r: Double) -> Path { Path() }
+  public static func line(x1: Double, y1: Double, x2: Double, y2: Double) -> Path { Path() }
+  public static func svg(_ d: String) -> Path { Path() }
+}
+public struct PyreonShape: View {
+  public init(_ path: Path, fill: Color?, stroke: Color?, lineWidth: Double) {}
+  public typealias Body = Never
+}
+public struct PyreonCanvas<Content: View>: View {
+  public init(width: Double, height: Double, @ViewBuilder content: () -> Content) {}
+  public typealias Body = Never
+}
+public struct PyreonCanvasText<Content: View>: View {
+  public init(x: Double, y: Double, size: Double, color: Color, @ViewBuilder content: () -> Content) {}
+  public typealias Body = Never
+}
 public struct PyreonGesture<Content: View>: View {
   public init(
     onPan: ((PyreonPanEvent) -> Void)? = nil,

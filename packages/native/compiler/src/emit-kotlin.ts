@@ -5,6 +5,7 @@
 // `derivedStateOf { ... }`, JSX elements to Composable function calls.
 
 import { GESTURE_EVENT_NAMES, GESTURE_EVENTS } from './gesture-events'
+import { CANVAS_SHAPES, isCanvasShape, shapeColorLiteral } from './canvas-shapes'
 import type { GestureEventName } from './gesture-events'
 import { classifyFallback, unconsumedSlotWarning } from './jsx-slot-attrs'
 import { lowerWebViewDomStorage } from './webview-options'
@@ -5294,6 +5295,9 @@ function emitKotlinJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
   if (tag === 'Modal') return emitKotlinModal(e, indent)
   if (tag === 'Press') return emitKotlinPress(e, indent)
   if (tag === 'Gesture') return emitKotlinGesture(e, indent)
+  if (tag === 'Canvas') return emitKotlinCanvas(e, indent)
+  if (tag === 'CanvasText') return emitKotlinCanvasText(e, indent)
+  if (isCanvasShape(tag)) return emitKotlinCanvasShape(e)
   if (tag === 'Field') return emitKotlinField(e, indent)
   if (tag === 'Toggle') return emitKotlinToggle(e, indent)
   // Lowercase DOM tags a plugin gives meaning inside its own renderers (a flow's `<path>` / `<svg>`).
@@ -7675,6 +7679,91 @@ function emitKotlinGesture(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
   const pad = ' '.repeat(indent + 2)
   const contentLines = e.children.map((c) => pad + emitKotlinChild(c, indent + 2)).join('\n')
   return `${head} {\n${contentLines}\n${' '.repeat(indent)}}`
+}
+
+/**
+ * A numeric shape / canvas prop as a Kotlin `Double` argument. An integer
+ * literal gains `.0` (Kotlin does not widen an Int literal to a Double
+ * parameter); an expression is converted with `.toDouble()` since a signal
+ * written only with integers is a `Long` here.
+ */
+function kotlinCanvasNumber(
+  e: Extract<ExprIR, { kind: 'jsx-element' }>,
+  prop: string,
+  fallback: number | undefined,
+): string {
+  const lit = (v: number): string => (Number.isInteger(v) ? `${v}.0` : String(v))
+  const a = e.attrs.find(
+    (x): x is Extract<AttrIR, { kind: 'attr' }> => x.kind === 'attr' && x.name === prop,
+  )
+  if (a === undefined) {
+    if (fallback !== undefined) return lit(fallback)
+    _emitWarnings.push(`<${e.tag}> is missing its required \`${prop}\` prop — drawn with ${prop}=0 on native.`)
+    return '0.0'
+  }
+  const v = unwrapAccessorArrow(a.value)
+  if (v.kind === 'literal' && typeof v.value === 'number') return lit(v.value)
+  if (v.kind === 'unary' && v.op === '-' && v.argument.kind === 'literal' && typeof v.argument.value === 'number') {
+    return `-${lit(v.argument.value)}`
+  }
+  return `(${emitKotlinExpr(v, 0)}).toDouble()`
+}
+
+/** A shape colour prop (token / `#hex`, static or a two-literal ternary) → `Color(…)` or undefined. */
+function kotlinShapeColor(e: Extract<ExprIR, { kind: 'jsx-element' }>, prop: string): string | undefined {
+  return kotlinStylingValue(e, prop, (v) => {
+    const c = shapeColorLiteral(String(v), 'kotlin')
+    if (c !== null) return c
+    _emitWarnings.push(
+      `<${e.tag} ${prop}="${String(v)}">: not a colour token or #hex literal — drawn with the \`text\` colour on native.`,
+    )
+    return resolveColor('text', 'kotlin')
+  })
+}
+
+/** `<Canvas width height>` → `PyreonCanvas(width = …, height = …, modifier = …) { … }`. */
+function emitKotlinCanvas(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
+  const args = [
+    `width = ${kotlinCanvasNumber(e, 'width', undefined)}`,
+    `height = ${kotlinCanvasNumber(e, 'height', undefined)}`,
+  ]
+  const modifier = emitKotlinLayoutModifier(e)
+  if (modifier !== '') args.push(`modifier = ${modifier}`)
+  const head = `PyreonCanvas(${args.join(', ')})`
+  if (e.children.length === 0) return `${head} {}`
+  const pad = ' '.repeat(indent + 2)
+  const contentLines = e.children.map((c) => pad + emitKotlinChild(c, indent + 2)).join('\n')
+  return `${head} {\n${contentLines}\n${' '.repeat(indent)}}`
+}
+
+/** A `<Canvas>` shape → `PyreonShape(PyreonShapeSpec.X(…), fill =, stroke =, strokeWidth =)`. Same paint rules as Swift. */
+function emitKotlinCanvasShape(e: Extract<ExprIR, { kind: 'jsx-element' }>): string {
+  const spec = CANVAS_SHAPES[e.tag]!
+  const args = spec.args.map((arg) => {
+    if (arg.kind === 'number') return kotlinCanvasNumber(e, arg.prop, arg.default)
+    const a = e.attrs.find(
+      (x): x is Extract<AttrIR, { kind: 'attr' }> => x.kind === 'attr' && x.name === arg.prop,
+    )
+    if (a === undefined) {
+      _emitWarnings.push(`<${e.tag}> is missing its required \`${arg.prop}\` prop — nothing is drawn on native.`)
+      return '""'
+    }
+    return emitKotlinExpr(unwrapAccessorArrow(a.value), 0)
+  })
+  const fill = spec.strokeOnly ? undefined : kotlinShapeColor(e, 'fill')
+  let stroke = kotlinShapeColor(e, 'stroke')
+  if (spec.strokeOnly && stroke === undefined) stroke = resolveColor('text', 'kotlin')
+  const fillArg = fill ?? (stroke === undefined ? resolveColor('text', 'kotlin') : 'null')
+  const width = stroke === undefined ? '0.0' : kotlinCanvasNumber(e, 'strokeWidth', 1)
+  return `PyreonShape(${spec.kotlin}(${args.join(', ')}), fill = ${fillArg}, stroke = ${stroke ?? 'null'}, strokeWidth = ${width})`
+}
+
+/** `<CanvasText x y size fill>` → `PyreonCanvasText(x =, y =, size =, color =) { Text(…) }`. */
+function emitKotlinCanvasText(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
+  const text = emitKotlinText({ kind: 'jsx-element', tag: 'Text', attrs: [], children: e.children }, indent + 2)
+  const color = kotlinShapeColor(e, 'fill') ?? resolveColor('text', 'kotlin')
+  const head = `PyreonCanvasText(x = ${kotlinCanvasNumber(e, 'x', undefined)}, y = ${kotlinCanvasNumber(e, 'y', undefined)}, size = ${kotlinCanvasNumber(e, 'size', 14)}, color = ${color})`
+  return `${head} {\n${' '.repeat(indent + 2)}${text}\n${' '.repeat(indent)}}`
 }
 
 function emitKotlinPress(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {

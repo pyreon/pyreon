@@ -1,6 +1,6 @@
 ---
 title: 'Multiplatform app (one source → web + iOS + Android)'
-summary: 'Write ONE .tsx that PMTC compiles to SwiftUI + Compose. Stay inside the supported declarative subset + the 18 canonical primitives. @pyreon/charts (first-party engine, <Chart> + marks) and @pyreon/flow render natively; @pyreon/query lowers ONLY useQuery (+ useStream) — useMutation / useInfiniteQuery / useQueryClient do not; web-only packages (code editor, rich-text, table) run only via a <WebView>. Knowing the boundary is how you build native correctly first-try.'
+summary: 'Write ONE .tsx that PMTC compiles to SwiftUI + Compose. Stay inside the supported declarative subset + the 19 canonical primitives. @pyreon/charts (first-party engine, <Chart> + marks) and @pyreon/flow render natively; @pyreon/query lowers ONLY useQuery (+ useStream) — useMutation / useInfiniteQuery / useQueryClient do not; web-only packages (code editor, rich-text, table) run only via a <WebView>. Knowing the boundary is how you build native correctly first-try.'
 seeAlso: [routing-setup, state-management, data-fetching]
 ---
 
@@ -8,7 +8,7 @@ seeAlso: [routing-setup, state-management, data-fetching]
 
 ## The golden rule (read this first)
 
-**PMTC compiles your COMPONENT SOURCE — signals, the 18 canonical primitives, a fixed hook set, and a narrow declarative TS subset — to SwiftUI (iOS) and Jetpack Compose (Android). It does NOT transpile npm packages to native.** So a multiplatform app is built from: the canonical primitives + reactivity + the ported hooks/services, written in the supported TS subset. Anything outside that compiles for web but **silently breaks or drops on native**. Build inside the lane and it works first-try; step outside and it won't.
+**PMTC compiles your COMPONENT SOURCE — signals, the 19 canonical primitives, a fixed hook set, and a narrow declarative TS subset — to SwiftUI (iOS) and Jetpack Compose (Android). It does NOT transpile npm packages to native.** So a multiplatform app is built from: the canonical primitives + reactivity + the ported hooks/services, written in the supported TS subset. Anything outside that compiles for web but **silently breaks or drops on native**. Build inside the lane and it works first-try; step outside and it won't.
 
 > Status: native PMTC is **demo-quality, not production-ready**. The one authoritative number is the gated capability matrix in [multiplatform.md](../multiplatform) (`check-multiplatform-matrix` fails CI when its headline disagrees with its table) — do not quote a score from memory. Per-PR validation compiles every emitted fixture with `swiftc` (typecheck against stubs, plus the real SDK on macOS) and `kotlinc`-against-stubs; the iOS/Android device builds of the gated example apps are required checks, so a capability no gated app exercises ships on stub-typecheck strength. Treat the rules below as hard constraints, not suggestions.
 
@@ -20,7 +20,7 @@ import { Stack, Inline, Text, Heading, Button, Press, Field, Toggle,
 import { signal, computed, effect } from '@pyreon/reactivity'
 ```
 
-Use **`@pyreon/primitives`** (the multiplatform layer), NOT `@pyreon/elements` / `@pyreon/ui-components` (those are web-only, CSS-in-JS-coupled). The 18 canonical primitives below are the native UI vocabulary, alongside `<Transition>`/`<TransitionGroup>`, `<WebView>` and the `<Web>`/`<NativeIOS>`/`<NativeAndroid>` escape hatches (full per-primitive reference: [primitives](/docs/primitives)):
+Use **`@pyreon/primitives`** (the multiplatform layer), NOT `@pyreon/elements` / `@pyreon/ui-components` (those are web-only, CSS-in-JS-coupled). The 19 canonical primitives below are the native UI vocabulary, alongside `<Transition>`/`<TransitionGroup>`, `<WebView>` and the `<Web>`/`<NativeIOS>`/`<NativeAndroid>` escape hatches (full per-primitive reference: [primitives](/docs/primitives)):
 
 | Primitive | Web | iOS | Android | Notes |
 |---|---|---|---|---|
@@ -99,7 +99,7 @@ import { defineStore } from '@pyreon/store'        // → PyreonStore
 import { useNavigate, useParams, useLoaderData } from '@pyreon/router'
 ```
 
-Native-ported: reactivity, the 18 canonical primitives, `store`, `machine`, `state-tree`, `i18n`, `form`, `permissions`, `storage`, `charts`, `flow`, the router (nested routes, `beforeEnter`, per-route `loader`), and a fixed subset of `@pyreon/hooks` (`useFetch`, `useOnline`, `useClipboard`, `useColorScheme`, `useAppState`, plus device hooks such as `useGeolocation` / `useShare` / `useWakeLock`). The authoritative lowered-hook list is `NATIVE_LOWERED_HOOKS` in `packages/native/compiler/src/parse.ts`; a hook outside it warns that it has no native lowering.
+Native-ported: reactivity, the 19 canonical primitives, `store`, `machine`, `state-tree`, `i18n`, `form`, `permissions`, `storage`, `charts`, `flow`, the router (nested routes, `beforeEnter`, per-route `loader`), and a fixed subset of `@pyreon/hooks` (`useFetch`, `useOnline`, `useClipboard`, `useColorScheme`, `useAppState`, plus device hooks such as `useGeolocation` / `useShare` / `useWakeLock`). The authoritative lowered-hook list is `NATIVE_LOWERED_HOOKS` in `packages/native/compiler/src/parse.ts`; a hook outside it warns that it has no native lowering.
 
 ## Data on native: `useFetch` vs `useQuery`
 

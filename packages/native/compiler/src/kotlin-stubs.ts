@@ -951,6 +951,27 @@ fun PyreonLink(to: String, content: @Composable (navigate: () -> Unit) -> Unit) 
   content { }
 }
 
+// PyreonCanvas + shapes — mirror of @pyreon/native-runtime-kotlin's PyreonCanvas.kt.
+sealed class PyreonShapeSpec {
+  data class Rect(val x: Double, val y: Double, val width: Double, val height: Double, val radius: Double) : PyreonShapeSpec()
+  data class Circle(val cx: Double, val cy: Double, val r: Double) : PyreonShapeSpec()
+  data class Line(val x1: Double, val y1: Double, val x2: Double, val y2: Double) : PyreonShapeSpec()
+  data class Svg(val d: String) : PyreonShapeSpec()
+}
+@Composable
+@Suppress("UNUSED_PARAMETER")
+fun PyreonCanvas(width: Double, height: Double, modifier: Modifier = Modifier, content: @Composable () -> Unit) {
+  content()
+}
+@Composable
+@Suppress("UNUSED_PARAMETER")
+fun PyreonShape(shape: PyreonShapeSpec, fill: Color? = null, stroke: Color? = null, strokeWidth: Double = 0.0) {}
+@Composable
+@Suppress("UNUSED_PARAMETER")
+fun PyreonCanvasText(x: Double, y: Double, size: Double, color: Color, content: @Composable () -> Unit) {
+  content()
+}
+
 // PyreonGesture + its payloads — mirror of @pyreon/native-runtime-kotlin's
 // PyreonGesture.kt / PyreonGestureCore.kt (the <Gesture> primitive).
 data class PyreonPanEvent(val dx: Double, val dy: Double, val x: Double, val y: Double, val phase: String)
