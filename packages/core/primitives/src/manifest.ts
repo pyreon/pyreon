@@ -2,7 +2,7 @@ import { defineManifest } from '@pyreon/manifest'
 
 /**
  * `@pyreon/primitives` — the canonical MULTIPLATFORM UI vocabulary. These
- * 17 canonical primitives (+ `<Transition>`/`<TransitionGroup>`, `<WebView>`
+ * 18 canonical primitives (+ `<Transition>`/`<TransitionGroup>`, `<WebView>`
  * and the `<Web>`/`<NativeIOS>`/`<NativeAndroid>` escape hatches) are the
  * ONLY UI layer that compiles to web DOM + iOS
  * SwiftUI + Android Compose from one source via PMTC. This manifest is the
@@ -15,18 +15,18 @@ export default defineManifest({
   name: '@pyreon/primitives',
   title: 'Canonical Multiplatform Primitives',
   tagline:
-    '17 canonical cross-platform UI primitives that compile to DOM + SwiftUI + Compose from one .tsx: Stack, Inline, Layer, Scroll, Spacer (layout); Text, Heading, Image, Audio, Video, Icon (content); Button, Press, Link (interaction); Field, Toggle, Modal (input). Plus <Transition>/<TransitionGroup> (animation), <WebView> (host a web-only component natively, bidirectional bridge) and <Web>/<NativeIOS>/<NativeAndroid> escape hatches.',
+    '18 canonical cross-platform UI primitives that compile to DOM + SwiftUI + Compose from one .tsx: Stack, Inline, Layer, Scroll, Spacer (layout); Text, Heading, Image, Audio, Video, Icon (content); Button, Press, Link (interaction); Field, Toggle, Select, Modal (input). Plus <Transition>/<TransitionGroup> (animation), <WebView> (host a web-only component natively, bidirectional bridge) and <Web>/<NativeIOS>/<NativeAndroid> escape hatches.',
   description:
     'The multiplatform UI vocabulary for Pyreon. ONE canonical name per concept (`<Stack>` not `<View>`/`<VStack>`/`<div>`; `onPress` everywhere, not `onClick` vs `action:`). Web renders real DOM via `@pyreon/runtime-dom`; on iOS/Android the PMTC compiler intercepts the JSX at build time and emits idiomatic SwiftUI / Compose (the import is a type-anchor on native). Tokens-first styling (`padding={4}`, `gap="md"`) resolves through the theme per target. No responsive props in v1 — apps needing responsive web use `@pyreon/elements` directly; animation is `<Transition>` / `<TransitionGroup>`. CRITICAL boundary for native: PMTC compiles your component SOURCE in a narrow declarative TS subset, NOT npm libraries — see `get_pattern({ name: "multiplatform" })` for the supported subset + the silent-failure cliff.',
   category: 'browser',
   multiplatform: {
     tier: 'shared',
     rationale:
-      "the 17 canonical primitives: real web DOM runtime AND SwiftUI/Compose emit — the compiler's native target vocabulary",
+      "the 18 canonical primitives: real web DOM runtime AND SwiftUI/Compose emit — the compiler's native target vocabulary",
   },
   features: [
     'Native compiler tooling: primitivesPlugin from @pyreon/primitives/native-plugin owns hook recognition and Swift/Kotlin lowering; the native CLI discovers it through pyreon.native.plugin, and direct compiler callers install it explicitly',
-    '17 canonical primitives compile to web DOM + iOS SwiftUI + Android Compose from one .tsx',
+    '18 canonical primitives compile to web DOM + iOS SwiftUI + Android Compose from one .tsx',
     'One canonical name + event per concept — `<Stack>` (not View/VStack/div), `onPress` everywhere',
     'Tokens-first styling (`padding={4}`, `gap="md"`) resolves through the theme per target',
     'PMTC compiles your component SOURCE in a narrow declarative TS subset — NOT npm libraries',
@@ -267,6 +267,23 @@ export function App() {
       example: `<Toggle value={enabled()} onChange={(v) => enabled.set(v)} />`,
       mistakes: ['Using `onPress`/`onClick` — Toggle uses `onChange(next: boolean)`'],
       seeAlso: ['Field'],
+    },
+    {
+      name: 'Select',
+      kind: 'component',
+      signature:
+        "(props: { value: string | (() => string); options: SelectOption[] | (() => SelectOption[]); onChange: (next: string) => void; placeholder?: string; disabled?: boolean }) => VNode",
+      summary:
+        "Single choice from a list with the platform's own picker: web `<select>`, iOS a menu-style `Picker`, Android a Material 3 `ExposedDropdownMenuBox` (the runtimes' `PyreonSelect`). `options` is `{ value, label, disabled? }[]` (`SelectOption`); `value` is the chosen option's `value`, and `''` — or any value no option has — selects nothing, which shows the `placeholder`. A disabled option is listed but not selectable, and the placeholder can never be chosen again. Every user choice goes through `onChange`.",
+      example: `const fruit = signal('')
+<Select value={fruit()} options={[{ value: 'apple', label: 'Apple' }, { value: 'pear', label: 'Pear', disabled: true }]} onChange={(v) => fruit.set(v)} placeholder="Pick a fruit" />`,
+      mistakes: [
+        'Using `onChangeText` or `onInput` — Select reports a choice with `onChange(next: string)`',
+        'Numeric option values — a `<select>` value is a string on every target; convert at the edges',
+        'A renamed type import (`import type { SelectOption as Opt }`) — the native runtimes name the type `SelectOption`, so the compiler warns',
+        "Building options natively from objects with other field names — a native picker reads `value`, `label` and `disabled`; map to that shape (`xs.map((x) => ({ value: x.id, label: x.name }))`)",
+      ],
+      seeAlso: ['Field', 'Toggle'],
     },
     {
       name: 'Modal',

@@ -1367,6 +1367,17 @@ type Props = ExtractProps<typeof Iterator>
     mistakes: '- Using `onPress`/`onClick` — Toggle uses `onChange(next: boolean)`',
   },
 
+  'primitives/Select': {
+    signature: '(props: { value: string | (() => string); options: SelectOption[] | (() => SelectOption[]); onChange: (next: string) => void; placeholder?: string; disabled?: boolean }) => VNode',
+    example: `const fruit = signal('')
+<Select value={fruit()} options={[{ value: 'apple', label: 'Apple' }, { value: 'pear', label: 'Pear', disabled: true }]} onChange={(v) => fruit.set(v)} placeholder="Pick a fruit" />`,
+    notes: `Single choice from a list with the platform's own picker: web \`<select>\`, iOS a menu-style \`Picker\`, Android a Material 3 \`ExposedDropdownMenuBox\` (the runtimes' \`PyreonSelect\`). \`options\` is \`{ value, label, disabled? }[]\` (\`SelectOption\`); \`value\` is the chosen option's \`value\`, and \`''\` — or any value no option has — selects nothing, which shows the \`placeholder\`. A disabled option is listed but not selectable, and the placeholder can never be chosen again. Every user choice goes through \`onChange\`. See also: Field, Toggle.`,
+    mistakes: `- Using \`onChangeText\` or \`onInput\` — Select reports a choice with \`onChange(next: string)\`
+- Numeric option values — a \`<select>\` value is a string on every target; convert at the edges
+- A renamed type import (\`import type { SelectOption as Opt }\`) — the native runtimes name the type \`SelectOption\`, so the compiler warns
+- Building options natively from objects with other field names — a native picker reads \`value\`, \`label\` and \`disabled\`; map to that shape (\`xs.map((x) => ({ value: x.id, label: x.name }))\`)`,
+  },
+
   'primitives/Modal': {
     signature: '(props: { open: boolean | (() => boolean); onClose: () => void; children }) => VNode',
     example: '<Modal open={showSheet()} onClose={() => showSheet.set(false)}><Stack>{/* sheet body */}</Stack></Modal>',

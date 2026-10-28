@@ -1,11 +1,12 @@
 import { signal } from '@pyreon/reactivity'
 import {
-  Stack, Inline, Layer, Scroll, Text, Image, Video, Audio, Transition, Link, Modal, Press,
+  Stack, Inline, Layer, Scroll, Text, Image, Video, Audio, Transition, Link, Modal, Press, Select,
 } from '@pyreon/primitives'
 
 export function ProbeApp() {
   const open = signal(false)
   const shown = signal(true)
+  const fruit = signal('')
   return (
     <Stack margin={4} marginX={2} marginY={1} padding={2} background="primary" radius="md">
       <Inline margin={2} gap={2}>
@@ -26,6 +27,7 @@ export function ProbeApp() {
       </Transition>
       <Link to="/next" data-testid="probe-link" accessibilityLabel="Go next">next</Link>
       <Press onPress={() => open.set(true)} disabled><Text>tap</Text></Press>
+      <Select value={fruit()} options={[{ value: 'a', label: 'Apple' }, { value: 'p', label: 'Pear', disabled: true }]} onChange={(v) => fruit.set(v)} placeholder="Fruit" data-testid="probe-select" />
       <Modal open={open()} onClose={() => open.set(false)} data-testid="probe-modal" accessibilityLabel="Dialog">
         <Text>modal body</Text>
       </Modal>

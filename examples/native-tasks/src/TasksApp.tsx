@@ -132,8 +132,10 @@ import {
   Icon,
   Scroll,
   Modal,
+  Select,
   WebView,
 } from '@pyreon/primitives'
+import type { SelectOption } from '@pyreon/primitives'
 import { createRouter, useNavigate, RouterProvider, RouterView } from '@pyreon/router'
 import { Background, Controls, Flow, Handle, MiniMap, Position, createFlow } from '@pyreon/flow'
 import type { EdgeComponentProps, NodeComponentProps } from '@pyreon/flow'
@@ -338,6 +340,9 @@ function TasksPage() {
           </Button>
           <Button onPress={() => navigate('/flow-scale')} data-testid="tasks-flow-scale">
             Flow scale
+          </Button>
+          <Button onPress={() => navigate('/select')} data-testid="tasks-select">
+            Select
           </Button>
         </Stack>
         <Stack gap={2}>
@@ -1908,6 +1913,49 @@ function ToolkitScreen() {
   )
 }
 
+// `<Select>` (#3980): a single choice from a list with the platform's own
+// picker — a menu `Picker` on iOS, a Material 3 exposed dropdown on Android, a
+// `<select>` on the web. The device tests choose an option through the real
+// control (value control -> program), then write the signal and read the
+// control (program -> control), and check that a disabled option cannot be
+// chosen. The list is a typed `SelectOption[]` signal, so it reaches the
+// runtime as-is, and it can be replaced: "Citrus only" swaps the options while
+// the selection is kept when it is still present.
+function SelectScreen() {
+  const navigate = useNavigate()
+  const fruit = signal('')
+  const options = signal<SelectOption[]>([
+    { value: 'apple', label: 'Apple' },
+    { value: 'banana', label: 'Banana' },
+    { value: 'durian', label: 'Durian', disabled: true },
+    { value: 'lemon', label: 'Lemon' },
+  ])
+  return (
+    <Stack gap={3} padding={4} data-testid="select-page">
+      <Select
+        value={fruit()}
+        options={options()}
+        onChange={(v) => fruit.set(v)}
+        placeholder="Pick a fruit"
+        data-testid="select-fruit"
+      />
+      <Text data-testid="select-value">{fruit().length === 0 ? 'none' : fruit()}</Text>
+      <Button onPress={() => fruit.set('banana')} data-testid="select-set-banana">
+        Choose banana
+      </Button>
+      <Button
+        onPress={() => options.set([{ value: 'lemon', label: 'Lemon' }, { value: 'lime', label: 'Lime' }])}
+        data-testid="select-citrus"
+      >
+        Citrus only
+      </Button>
+      <Button onPress={() => navigate('/tasks')} data-testid="select-back">
+        Back
+      </Button>
+    </Stack>
+  )
+}
+
 // ── App root ──
 
 export function TasksApp() {
@@ -1957,6 +2005,11 @@ export function TasksApp() {
       {
         path: '/streams',
         component: StreamsScreen,
+        beforeEnter: () => useApp().store.isAuthed(),
+      },
+      {
+        path: '/select',
+        component: SelectScreen,
         beforeEnter: () => useApp().store.isAuthed(),
       },
       {

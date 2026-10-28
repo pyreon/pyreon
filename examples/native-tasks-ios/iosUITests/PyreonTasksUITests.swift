@@ -441,6 +441,66 @@ final class PyreonTasksUITests: XCTestCase {
         XCTAssertTrue(app.otherElements["tasks-page"].firstMatch.waitForExistence(timeout: 15), "streams-back did not return to tasks")
     }
 
+    /// `<Select>` (#3980) on the device: the native menu `Picker`.
+    ///
+    /// Control -> program: choosing "Apple" in the real menu must write
+    /// `apple` through `onChange`. Program -> control: writing the signal must
+    /// move the control. A disabled option ("Durian") is listed but cannot be
+    /// chosen, as `<option disabled>` on the web. Replacing the option list with
+    /// one that lacks the current value shows the placeholder while the signal
+    /// keeps its value — the web `<select>` semantics.
+    func test_selectChoosesThroughTheNativePicker() throws {
+        let app = XCUIApplication()
+        app.launch()
+        let username = app.textFields["login-username"].firstMatch
+        XCTAssertTrue(username.waitForExistence(timeout: 30), "Username field missing")
+        username.tap()
+        username.typeText("abcde")
+        dismissKeyboard(app)
+        app.buttons["login-submit"].firstMatch.tap()
+        XCTAssertTrue(app.otherElements["tasks-page"].firstMatch.waitForExistence(timeout: 20), "Tasks page did not render after login")
+
+        let nav = app.buttons["tasks-select"].firstMatch
+        XCTAssertTrue(nav.waitForExistence(timeout: 15), "Select button missing on tasks page")
+        tapAfterScrolling(nav, in: app)
+        XCTAssertTrue(app.otherElements["select-page"].firstMatch.waitForExistence(timeout: 15), "Select page did not render")
+
+        let value = app.staticTexts["select-value"].firstMatch
+        XCTAssertTrue(waitForLabel(value, "none", timeout: 10), "initial selection: '\(value.label)'")
+        let picker = app.descendants(matching: .any).matching(identifier: "select-fruit").firstMatch
+        XCTAssertTrue(picker.waitForExistence(timeout: 10), "picker missing:\n\(app.debugDescription)")
+
+        // Control -> program, through the real menu.
+        picker.tap()
+        let apple = app.buttons["Apple"].firstMatch
+        if !apple.waitForExistence(timeout: 5) { print("DIAG-SELECT menu:\n\(app.debugDescription)") }
+        XCTAssertTrue(apple.exists, "the menu did not open with the options")
+        // The disabled option is listed but not enabled.
+        let durian = app.buttons["Durian"].firstMatch
+        XCTAssertTrue(durian.exists, "a disabled option must still be listed")
+        XCTAssertFalse(durian.isEnabled, "a disabled option must not be selectable")
+        apple.tap()
+        XCTAssertTrue(waitForLabel(value, "apple", timeout: 10), "choosing Apple did not reach onChange: '\(value.label)'")
+
+        // Program -> control.
+        app.buttons["select-set-banana"].firstMatch.tap()
+        XCTAssertTrue(waitForLabel(value, "banana", timeout: 10), "signal write: '\(value.label)'")
+        let showsBanana = NSPredicate { _, _ in
+            (picker.value as? String)?.contains("Banana") == true || picker.label.contains("Banana")
+        }
+        expectation(for: showsBanana, evaluatedWith: nil)
+        waitForExpectations(timeout: 10)
+
+        // A list without the current value: the signal keeps it, the control shows the placeholder.
+        app.buttons["select-citrus"].firstMatch.tap()
+        let showsPlaceholder = NSPredicate { _, _ in
+            (picker.value as? String)?.contains("Pick a fruit") == true || picker.label.contains("Pick a fruit")
+        }
+        expectation(for: showsPlaceholder, evaluatedWith: nil)
+        waitForExpectations(timeout: 10)
+        XCTAssertEqual(value.label, "banana", "replacing the options must not write the value")
+    }
+
     /// Crash reporting, device-proven in the only way that means anything: a
     /// REAL process restart.
     ///

@@ -261,6 +261,11 @@ abstract class KSerializer<T> {
   abstract val descriptor: Any
 }
 
+// The real annotation's targets and parameter (PyreonSelectOption is @Serializable,
+// so an emitted @Serializable struct may hold one).
+@Target(AnnotationTarget.PROPERTY, AnnotationTarget.CLASS, AnnotationTarget.TYPE)
+annotation class Serializable(val with: kotlin.reflect.KClass<out KSerializer<*>> = KSerializer::class)
+
 inline fun <reified T> serializer(): KSerializer<T> {
   @Suppress("UNCHECKED_CAST")
   return object : KSerializer<T>() {
@@ -1015,6 +1020,80 @@ abstract class WebSocketListener {
 }
 `
 
+// PyreonSelect-specific stubs — the Compose UI / foundation / Material 3
+// (1.4) surface the composable uses, mirrored by NAME and parameter type for
+// every member it touches (the real functions carry more defaulted parameters;
+// the call sites name every argument, so omitting an unused default cannot
+// mask a wrong one). The composable RUNS on the emulator, against the real
+// Material 3, in the tasks showcase's `/select` page test.
+const SELECT_COMPOSE_UI_STUBS = `package androidx.compose.ui
+interface Modifier {
+    companion object : Modifier
+}
+`
+const SELECT_COMPOSE_LAYOUT_STUBS = `package androidx.compose.foundation.layout
+import androidx.compose.ui.Modifier
+interface ColumnScope
+fun Modifier.fillMaxWidth(fraction: Float = 1f): Modifier = this
+`
+const SELECT_MATERIAL3_STUBS = `package androidx.compose.material3
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+@RequiresOptIn(level = RequiresOptIn.Level.WARNING)
+annotation class ExperimentalMaterial3Api
+@JvmInline
+value class ExposedDropdownMenuAnchorType private constructor(private val name: String) {
+    companion object {
+        val PrimaryNotEditable = ExposedDropdownMenuAnchorType("PrimaryNotEditable")
+        val PrimaryEditable = ExposedDropdownMenuAnchorType("PrimaryEditable")
+        val SecondaryEditable = ExposedDropdownMenuAnchorType("SecondaryEditable")
+    }
+}
+abstract class ExposedDropdownMenuBoxScope {
+    abstract fun Modifier.menuAnchor(type: ExposedDropdownMenuAnchorType, enabled: Boolean = true): Modifier
+    @Composable
+    fun ExposedDropdownMenu(
+        expanded: Boolean,
+        onDismissRequest: () -> Unit,
+        modifier: Modifier = Modifier,
+        content: @Composable ColumnScope.() -> Unit,
+    ) {}
+}
+@ExperimentalMaterial3Api
+@Composable
+fun ExposedDropdownMenuBox(
+    expanded: Boolean,
+    onExpandedChange: (Boolean) -> Unit,
+    modifier: Modifier = Modifier,
+    content: @Composable ExposedDropdownMenuBoxScope.() -> Unit,
+) {}
+object ExposedDropdownMenuDefaults {
+    @Composable
+    fun TrailingIcon(expanded: Boolean, modifier: Modifier = Modifier) {}
+}
+@Composable
+fun OutlinedTextField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    readOnly: Boolean = false,
+    placeholder: (@Composable () -> Unit)? = null,
+    trailingIcon: (@Composable () -> Unit)? = null,
+    singleLine: Boolean = false,
+) {}
+@Composable
+fun DropdownMenuItem(
+    text: @Composable () -> Unit,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+) {}
+@Composable
+fun Text(text: String, modifier: Modifier = Modifier) {}
+`
+
 // PyreonHttpOkHttp-specific stubs — the okhttp3 4.x REQUEST/RESPONSE surface,
 // mirrored EXACTLY. Deliberately SEPARATE from OKHTTP3_STUBS above (which
 // mirrors the websocket surface): each service compiles alone against only its
@@ -1431,6 +1510,15 @@ try {
     // The scheduler hops the user's body to the main looper before running it.
     writeFileSync(join(tempDir, 'AndroidOsHandler.kt'), ANDROID_OS_RATELIMIT_HANDLER_STUBS, 'utf8')
   }
+  const selectStubs =
+    SERVICE === 'PyreonSelect'
+      ? [join(tempDir, 'SelectComposeUi.kt'), join(tempDir, 'SelectComposeLayout.kt'), join(tempDir, 'SelectMaterial3.kt')]
+      : []
+  if (SERVICE === 'PyreonSelect') {
+    writeFileSync(selectStubs[0]!, SELECT_COMPOSE_UI_STUBS, 'utf8')
+    writeFileSync(selectStubs[1]!, SELECT_COMPOSE_LAYOUT_STUBS, 'utf8')
+    writeFileSync(selectStubs[2]!, SELECT_MATERIAL3_STUBS, 'utf8')
+  }
   const okhttpHttpPath = join(tempDir, 'OkHttp3Http.kt')
   if (SERVICE === 'PyreonHttpOkHttp') {
     writeFileSync(okhttpHttpPath, OKHTTP3_HTTP_STUBS, 'utf8')
@@ -1744,6 +1832,7 @@ try {
         ...notifStubs,
         ...okhttpExtras,
         ...okhttpHttpExtras,
+        ...selectStubs,
         ...geolocationAndroidExtras,
         ...networkAndroidExtras,
         ...pushAndroidExtras,
@@ -1777,6 +1866,7 @@ try {
         ...notifStubs,
         ...okhttpExtras,
         ...okhttpHttpExtras,
+        ...selectStubs,
         ...geolocationAndroidExtras,
         ...networkAndroidExtras,
         ...pushAndroidExtras,

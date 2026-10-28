@@ -41,6 +41,7 @@ const USAGES: ReadonlyArray<readonly [string, string]> = [
   ['Link', '<Link to="/x"><Text>l</Text></Link>'],
   ['Field', '<Field value="" onChangeText={() => {}} />'],
   ['Toggle', '<Toggle value={true} onChange={() => {}} />'],
+  ['Select', `<Select value="a" options={[{ value: 'a', label: 'A' }]} onChange={() => {}} />`],
   ['Modal', '<Modal open={true} onClose={() => {}}><Text>m</Text></Modal>'],
 ]
 
