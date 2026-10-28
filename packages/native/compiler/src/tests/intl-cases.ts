@@ -6,22 +6,27 @@
  * Two tiers, and the split is the honest part:
  *
  * - `STABLE` cases must match EXACTLY on every platform. They were chosen by
- *   measurement, not by hope: each one agrees between V8, Apple Foundation
- *   (macOS and the iOS 18.5 Simulator) and Android's ICU (API 35). A STABLE
- *   case that stops matching is a regression in the lowering — or a platform
- *   data change, which deserves a look either way.
+ *   measurement, not by hope: each one agrees between V8 (Node 26, ICU 78 /
+ *   CLDR 48), Apple Foundation (macOS 26, where `intl-differential.test.ts`
+ *   runs them) and Android's ICU (the API 33 emulator, `IntlDifferentialTest`).
+ *   A STABLE case that stops matching is a regression in the lowering — or a
+ *   platform data change, which deserves a look either way.
  * - `SWEEP` cases are the broad matrix (many locales × every style). They are
- *   formatted and REPORTED, not asserted: each platform ships its own CLDR
- *   release, so the web itself does not agree with itself here (Safari and
- *   Chrome differ on ~22% of the date-style sweep, measured against
- *   JavaScriptCore). The sweep keeps the size of that gap visible.
+ *   formatted and REPORTED, with a loose tripwire, not asserted case by case:
+ *   each platform ships its own CLDR release, so the web does not agree with
+ *   itself here either (Safari's JavaScriptCore and V8 differ on ~22% of a
+ *   date-style sweep). Measured against V8: iOS (macOS Foundation) 46/240 dates
+ *   and 1/72 numbers differ; Android API 33 35/240 and 6/72. Against Safari the
+ *   iOS runtime differs on 0/350.
  *
- * Measured divergences worth knowing, all CLDR-data, none algorithmic:
+ * Measured divergences worth knowing, all CLDR data, none algorithmic:
  * Apple joins a MEDIUM date and a time with "at" in English and "à" in French
  * where V8 uses ", "; `en-AU` short dates carry a four-digit year on Apple;
  * `en-IN` writes "am" in V8 and "AM" on Apple; `de-AT` groups with a period on
  * Apple and a space in V8; `ja-JP` yen is the fullwidth "￥" in V8 and "¥" on
- * Apple.
+ * Apple. Android API 33 drops the "at"-style connectors V8 has for long and full
+ * dates in several locales (it, pt-BR, sv-SE, cs-CZ, ru-RU, es), and groups
+ * four-digit currency amounts where V8 does not (es-ES, it-IT, pl-PL).
  */
 
 export type IntlCaseKind = 'datetime' | 'number'

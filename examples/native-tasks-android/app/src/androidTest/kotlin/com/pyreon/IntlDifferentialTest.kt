@@ -46,7 +46,7 @@ class IntlDifferentialTest {
         val numberOff = differing(numbers)
         Log.i(tag, "Android vs V8: dates ${dateOff.size}/${dates.size} differ, numbers ${numberOff.size}/${numbers.size} differ")
         (dateOff + numberOff).take(40).forEach { Log.i(tag, "  ${it.id}: native '${it.native()}' / web '${it.web}'") }
-        assertTrue("date sweep: ${dateOff.size}/${dates.size} differ", dateOff.size.toDouble() / dates.size < 0.45)
+        assertTrue("date sweep: ${dateOff.size}/${dates.size} differ", dateOff.size.toDouble() / dates.size < 0.3)
         assertTrue("number sweep: ${numberOff.size}/${numbers.size} differ", numberOff.size.toDouble() / numbers.size < 0.12)
     }
 }

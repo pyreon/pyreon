@@ -4088,7 +4088,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
             // the Swift backend.
             if (e.args.length === 0) {
               _emitWarnings.push(
-                '.toLocaleString() has no native locale-formatting equivalent — emitting a plain string conversion (no grouping separators). Format the value explicitly if you need grouping.',
+                '.toLocaleString() reached the emitter unlowered — the built-in `ecmascript-intl` plugin (which lowers it to PyreonNumberFormat) is not active in this compiler. Emitting a plain string conversion (no locale, no grouping).',
               )
               return `(${obj}).toString()`
             }

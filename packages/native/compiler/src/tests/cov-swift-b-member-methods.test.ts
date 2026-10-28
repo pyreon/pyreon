@@ -297,22 +297,10 @@ describe('Swift member-call lowering — arity and receiver-type guards', () => 
     expect(shape.some((x) => x.toLowerCase().includes('sort'))).toBe(true)
   })
 
-  it('toLocaleString(): degrades to String(x) with a NAMED warning; an argument falls through', () => {
-    const out = sw(`  const a = computed(() => n().toLocaleString())`)
-    expect(out).toContain('String(n)')
-    expect(
-      warnings(`  const a = computed(() => n().toLocaleString())`).some((x) =>
-        x.includes('.toLocaleString() has no native locale-formatting equivalent'),
-      ),
-    ).toBe(true)
-
-    const withArg = sw(`  const a = computed(() => n().toLocaleString('en'))`)
-    expect(withArg).toContain('n.toLocaleString("en")')
-    expect(
-      warnings(`  const a = computed(() => n().toLocaleString('en'))`).some((x) =>
-        x.startsWith('`.toLocaleString(…)` on a number with 1 argument has no Swift lowering'),
-      ),
-    ).toBe(true)
+  it('toLocaleString() and toLocaleString(locale) lower to the Intl number formatter (#3980)', () => {
+    expect(sw(`  const a = computed(() => n().toLocaleString())`)).toContain('PyreonNumberFormat().format(Double(n))')
+    expect(sw(`  const a = computed(() => n().toLocaleString('en'))`)).toContain('PyreonNumberFormat(locale: "en").format(Double(n))')
+    expect(warnings(`  const a = computed(() => n().toLocaleString('en'))`).some((x) => x.includes('toLocaleString'))).toBe(false)
   })
 })
 

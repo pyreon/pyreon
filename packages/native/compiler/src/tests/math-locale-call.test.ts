@@ -8,9 +8,8 @@
 // Double-numeric-type support (these specs assert the EMIT mapping,
 // which is correct regardless).
 //
-// toLocaleString: no native locale-number-formatting equivalent on
-// either target — degrade to a plain string conversion (valid, loses
-// grouping) + a warning, rather than a silent invalid emit.
+// toLocaleString: lowers to the runtimes' locale-aware number formatter
+// through the built-in Intl plugin (#3980).
 
 import { describe, expect, it } from 'vitest'
 import { transform } from './first-party-plugins'
@@ -72,16 +71,19 @@ describe('Math.* namespace emit (Swift mapping)', () => {
   })
 })
 
-describe('.toLocaleString() — degrade + warn', () => {
-  it('Swift: → String(x) + warning', () => {
+describe('.toLocaleString() — the device-locale number formatter (#3980)', () => {
+  // It used to degrade to a plain String(x) with a warning — no grouping, no
+  // locale. It now lowers through the built-in Intl plugin exactly as the web
+  // formats it: the device locale, ECMA-402 defaults.
+  it('Swift: → PyreonNumberFormat().format(x), no warning', () => {
     const r = transform(SRC('n().toLocaleString()'), { target: 'swift' })
-    expect(r.code).toContain('String(n)')
+    expect(r.code).toContain('PyreonNumberFormat().format(Double(n))')
     expect(r.code).not.toContain('.toLocaleString()')
-    expect(r.warnings.some((w) => w.includes('toLocaleString'))).toBe(true)
+    expect(r.warnings.some((w) => w.includes('toLocaleString'))).toBe(false)
   })
-  it('Kotlin: → (x).toString() + warning', () => {
+  it('Kotlin: → PyreonNumberFormat().format(x), no warning', () => {
     const r = transform(SRC('n().toLocaleString()'), { target: 'kotlin' })
-    expect(r.code).toContain('(n).toString()')
-    expect(r.warnings.some((w) => w.includes('toLocaleString'))).toBe(true)
+    expect(r.code).toContain('PyreonNumberFormat().format((n).toDouble())')
+    expect(r.warnings.some((w) => w.includes('toLocaleString'))).toBe(false)
   })
 })

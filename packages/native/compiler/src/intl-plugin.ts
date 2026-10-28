@@ -96,6 +96,8 @@ interface FormatterPayload {
 /** `fmt.format(x)`: `args[0]` is the formatter (an identifier or an inline formatter), `args[1]` the value. */
 interface FormatPayload {
   readonly formatter: 'datetime' | 'number'
+  /** `x.toLocaleString(…)` on a receiver that is not `new Date(ms)` — typed at emit time. */
+  readonly fromToLocaleString?: boolean
 }
 
 const formatterPayload = (e: ExtExprIR): FormatterPayload => e.payload as unknown as FormatterPayload
@@ -370,7 +372,9 @@ function recognizeToLocale(entry: DateTimeEntry): MethodCallRecognizer {
     }
     return {
       type: FORMAT,
-      payload: asPayload({ formatter: kind }),
+      payload: asPayload(
+        date === undefined ? { formatter: kind, fromToLocaleString: true } : { formatter: kind },
+      ),
       args: [formatter, date ?? ctx.expr(site.receiver as AnyNode)],
     }
   }
@@ -412,9 +416,35 @@ const formatterExpr: ExprEmitter = {
   },
 }
 
+/**
+ * `toLocaleString` exists on every JavaScript value, so the parser cannot know
+ * a receiver is a NUMBER — it only knows it is not `new Date(ms)`. The type is
+ * known here: a string returns itself and a boolean its `String()` (both are
+ * what JavaScript's `toLocaleString` does for them), a number — or a value of
+ * unknown type, the overwhelmingly common case — is formatted, and an array or
+ * object is named rather than formatted as a number it is not.
+ */
+function emitFormat(e: ExtExprIR, ctx: EmitContext, target: 'swift' | 'kotlin'): string {
+  const value = e.args[1]!
+  const p = e.payload as unknown as FormatPayload
+  if (p.formatter === 'number' && p.fromToLocaleString === true) {
+    const t = ctx.inferType(value)
+    const k = t.kind === 'union' ? t.branches.find((b) => b.kind !== 'undefined' && b.kind !== 'null')?.kind : t.kind
+    if (k === 'string') return ctx.expr(value)
+    if (k === 'boolean') return target === 'swift' ? `String(${ctx.expr(value)})` : `(${ctx.expr(value)}).toString()`
+    if (k === 'array' || k === 'map' || k === 'set' || k === 'typeRef' || k === 'object') {
+      ctx.warn(
+        `\`.toLocaleString()\` on a ${k === 'typeRef' || k === 'object' ? 'struct' : k} has no native lowering — only a number (locale-formatted), a string and a boolean lower. Format the elements yourself (\`xs.map((x) => x.toLocaleString()).join(',')\`).`,
+      )
+      return target === 'swift' ? `String(describing: ${ctx.expr(value)})` : `(${ctx.expr(value)}).toString()`
+    }
+  }
+  return `${ctx.expr(e.args[0]!)}.format(${ctx.argument(value, DOUBLE)})`
+}
+
 const formatExpr: ExprEmitter = {
-  swift: (e, ctx) => `${ctx.expr(e.args[0]!)}.format(${ctx.argument(e.args[1]!, DOUBLE)})`,
-  kotlin: (e, ctx) => `${ctx.expr(e.args[0]!)}.format(${ctx.argument(e.args[1]!, DOUBLE)})`,
+  swift: (e, ctx) => emitFormat(e, ctx, 'swift'),
+  kotlin: (e, ctx) => emitFormat(e, ctx, 'kotlin'),
   typing: { type: () => ({ kind: 'string' }) },
 }
 

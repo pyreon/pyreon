@@ -189,9 +189,10 @@ describe.runIf(isDarwin && isSwiftcAvailable())('Intl on iOS — the runtime aga
     console.info(
       `[intl-differential] iOS vs V8: dates ${dateOff.length}/${dates.length} differ, numbers ${numberOff.length}/${numbers.length} differ`,
     )
-    // Tripwires, sized well above the measured CLDR gap (dates ~25%, numbers
-    // ~3% on macOS 26) and far below what a broken lowering produces.
-    expect(dateOff.length / dates.length).toBeLessThan(0.45)
+    // Tripwires, above the measured CLDR gap (dates 19%, numbers 1% on macOS 26)
+    // and far below what a broken lowering produces (a lost skeleton or rounding
+    // mode moves most of the sweep).
+    expect(dateOff.length / dates.length).toBeLessThan(0.3)
     expect(numberOff.length / numbers.length).toBeLessThan(0.12)
   })
 
