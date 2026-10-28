@@ -4,9 +4,9 @@
 //
 // The callee is whatever local name the file imported `toast` as (`import { toast as notify }`), so no registry
 // can key it by name: the plugin's `scanModule` records the local names and its `callExprs` recognizer matches a
-// call against them. The message is the first argument; a literal `duration` (ms) in the second-argument options
-// object sets the auto-dismiss (0 = persistent); the other options (`onDismiss`, `description`, `icon`, `action`)
-// are dropped in v1, and the preset method carries the type. `loading` has no distinct native variant, so it is
+// call against them. The message is the first argument; in the second-argument options object a literal `duration`
+// (ms) sets the auto-dismiss (0 = persistent) and a literal `dismissible: false` hides the card's dismiss button; the
+// other options (`onDismiss`, `description`, `icon`, `action`) are dropped, and the preset method carries the type. `loading` has no distinct native variant, so it is
 // an info toast.
 
 import {
@@ -34,6 +34,8 @@ const REAL_UNLOWERED: ReadonlySet<string> = new Set(['update', 'dismiss', 'remov
 interface ToastPayload {
   readonly toastType: string
   readonly durationMillis?: number
+  /** Only ever `false` — true is the runtime default and is not emitted. */
+  readonly dismissible?: false
 }
 
 const payloadOf = (e: ExtExprIR): ToastPayload => e.payload as unknown as ToastPayload
@@ -90,6 +92,7 @@ const recognizeToast: CallExprRecognizer = (site, ctx) => {
   const message = argNodes[0] ? ctx.expr(argNodes[0]) : ({ kind: 'literal', value: '' } as const)
   // A literal `duration` (ms) in the options object → auto-dismiss.
   let durationMillis: number | undefined
+  let dismissible: false | undefined
   const opts = argNodes[1]
   if (opts?.type === 'ObjectExpression') {
     for (const prop of (opts.properties as AnyNode[] | undefined) ?? []) {
@@ -102,11 +105,18 @@ const recognizeToast: CallExprRecognizer = (site, ctx) => {
       if (key === 'duration' && (val?.type === 'Literal' || val?.type === 'NumericLiteral') && typeof val.value === 'number') {
         durationMillis = val.value
       }
+      if (key === 'dismissible' && (val?.type === 'Literal' || val?.type === 'BooleanLiteral') && val.value === false) {
+        dismissible = false
+      }
     }
   }
   return {
     type: TOAST_EXPR,
-    payload: durationMillis !== undefined ? { toastType, durationMillis } : { toastType },
+    payload: {
+      toastType,
+      ...(durationMillis !== undefined ? { durationMillis } : {}),
+      ...(dismissible === false ? { dismissible } : {}),
+    },
     args: [message],
   }
 }
@@ -114,15 +124,17 @@ const recognizeToast: CallExprRecognizer = (site, ctx) => {
 const toastExpr: ExprEmitter = {
   // `toast("x")` → `PyreonToast.shared.add("x", type: "…")`; a literal duration (ms) is converted to seconds.
   swift(e, ctx) {
-    const { toastType, durationMillis } = payloadOf(e)
+    const { toastType, durationMillis, dismissible } = payloadOf(e)
     const duration = durationMillis !== undefined ? `, duration: ${durationMillis / 1000}` : ''
-    return `PyreonToast.shared.add(${ctx.expr(e.args[0]!)}, type: ${ctx.stringLiteral(toastType)}${duration})`
+    const closeButton = dismissible === false ? ', dismissible: false' : ''
+    return `PyreonToast.shared.add(${ctx.expr(e.args[0]!)}, type: ${ctx.stringLiteral(toastType)}${duration}${closeButton})`
   },
   // → `PyreonToast.add("x", "…")`; a literal duration is a `Long` of milliseconds.
   kotlin(e, ctx) {
-    const { toastType, durationMillis } = payloadOf(e)
+    const { toastType, durationMillis, dismissible } = payloadOf(e)
     const duration = durationMillis !== undefined ? `, ${durationMillis}L` : ''
-    return `PyreonToast.add(${ctx.expr(e.args[0]!)}, ${ctx.stringLiteral(toastType)}${duration})`
+    const closeButton = dismissible === false ? ', dismissible = false' : ''
+    return `PyreonToast.add(${ctx.expr(e.args[0]!)}, ${ctx.stringLiteral(toastType)}${duration}${closeButton})`
   },
   // The node was a closed `toast-call` compiler kind before it moved here; the struct names the compiler derives
   // from an expression's shape hash it under that name, so emitted names did not move.

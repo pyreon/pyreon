@@ -18,8 +18,8 @@
 // the toast type's color, 14sp medium text; `max` most-recent toasts, `gap`
 // between them, `offset` from the screen edge. Error and warning toasts are
 // announced assertively, info and success politely — the web's alert/status
-// split. Enter is animated; a dismissed toast is removed without a leave
-// animation.
+// split. Cards fade in and, when dismissed or expired, fade out; a dismissible
+// card (the default, as on the web) has a dismiss button.
 //
 // Imports the real Compose UI, so it sits outside the stub harness
 // (`kotlinSdkOnly` in package.json); the Android device gate compiles it.
@@ -29,6 +29,12 @@ package com.pyreon.runtime
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.getValue
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.IntrinsicSize
@@ -114,6 +120,12 @@ internal class PyreonToastPositionProvider(
     }
 }
 
+/** One card the toaster is showing: entering, settled, or leaving. */
+private class PyreonShownToast(val item: PyreonToastItem) {
+    val progress = Animatable(0f)
+    var leaving by mutableStateOf(false)
+}
+
 /**
  * The `<Toaster />` overlay. Defaults are the web `ToasterProps` defaults;
  * `duration` (ms) sets the queue's default auto-dismiss, null keeps it.
@@ -127,14 +139,26 @@ public fun PyreonToaster(
     duration: Long? = null,
 ) {
     // The web prop: the default auto-dismiss (ms) for toasts that set none.
-    // Applied before the empty-queue return, so it is in place for the first toast.
+    // Applied before any early return, so it is in place for the first toast.
     LaunchedEffect(duration) {
         if (duration != null) PyreonToast.defaultDurationMillis = duration
     }
     // Reading the MutableState subscribes this composable: it recomposes as
     // toasts are added and expire.
-    val visible = PyreonToast.toasts.value.takeLast(max.coerceAtLeast(0L).toInt())
-    if (visible.isEmpty()) return
+    val queue = PyreonToast.toasts.value.takeLast(max.coerceAtLeast(0L).toInt())
+    // What is ON SCREEN, which outlives the queue by one leave animation: a
+    // card that left the queue stays here, marked leaving, until it has faded.
+    val shown = remember { mutableStateListOf<PyreonShownToast>() }
+    LaunchedEffect(queue) {
+        val ids = queue.mapTo(HashSet()) { it.id }
+        for (item in queue) {
+            if (shown.none { it.item.id == item.id }) shown.add(PyreonShownToast(item))
+        }
+        for (card in shown) {
+            if (card.item.id !in ids) card.leaving = true
+        }
+    }
+    if (queue.isEmpty() && shown.isEmpty()) return
     val (bottom, horizontal) = parseToastPosition(position)
     val offsetPx = with(LocalDensity.current) { offset.dp.roundToPx() }
     val provider = remember(bottom, horizontal, offsetPx) {
@@ -149,43 +173,67 @@ public fun PyreonToaster(
                 else -> Alignment.End
             },
         ) {
-            visible.forEach { item -> key(item.id) { PyreonToastCard(item) } }
+            shown.forEach { card ->
+                key(card.item.id) { PyreonToastCard(card, onGone = { shown.remove(card) }) }
+            }
         }
     }
 }
 
 @Composable
-private fun PyreonToastCard(item: PyreonToastItem) {
-    // Enter: fade in and settle 8dp, the web's `--entering` → visible transition.
-    val progress = remember { Animatable(0f) }
-    LaunchedEffect(Unit) { progress.animateTo(1f, tween(durationMillis = 200)) }
+private fun PyreonToastCard(card: PyreonShownToast, onGone: () -> Unit) {
+    val item = card.item
+    // Enter: fade in and settle 8dp, the web's `--entering` -> visible
+    // transition. Leave: the reverse, then the card is dropped.
+    LaunchedEffect(card.leaving) {
+        if (card.leaving) {
+            card.progress.animateTo(0f, tween(durationMillis = 200))
+            onGone()
+        } else {
+            card.progress.animateTo(1f, tween(durationMillis = 200))
+        }
+    }
     val shift = with(LocalDensity.current) { 8.dp.toPx() }
     val shape = RoundedCornerShape(8.dp)
     Row(
         modifier = Modifier
             .graphicsLayer {
-                alpha = progress.value
-                translationY = (1f - progress.value) * -shift
+                alpha = card.progress.value
+                translationY = (1f - card.progress.value) * -shift
             }
             .widthIn(max = 360.dp)
             .shadow(6.dp, shape)
             .clip(shape)
             .background(Color.White)
-            .height(IntrinsicSize.Min)
-            .testTag("pyreon-toast")
-            .semantics {
-                liveRegion = if (item.type == "error" || item.type == "warning") {
-                    LiveRegionMode.Assertive
-                } else {
-                    LiveRegionMode.Polite
-                }
-            },
+            .height(IntrinsicSize.Min),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(modifier = Modifier.width(4.dp).fillMaxHeight().background(toastAccent(item.type)))
         BasicText(
             text = item.message,
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+            modifier = Modifier
+                .weight(1f, fill = false)
+                .padding(horizontal = 16.dp, vertical = 12.dp)
+                .testTag("pyreon-toast")
+                .semantics {
+                    liveRegion = if (item.type == "error" || item.type == "warning") {
+                        LiveRegionMode.Assertive
+                    } else {
+                        LiveRegionMode.Polite
+                    }
+                },
             style = TextStyle(color = Color(0xFF1A1A1A), fontSize = 14.sp, fontWeight = FontWeight.Medium),
         )
+        if (item.dismissible) {
+            BasicText(
+                text = "\u00D7",
+                modifier = Modifier
+                    .clickable { PyreonToast.dismiss(item.id) }
+                    .padding(start = 4.dp, end = 12.dp, top = 8.dp, bottom = 8.dp)
+                    .testTag("pyreon-toast-dismiss")
+                    .semantics { contentDescription = "Dismiss" },
+                style = TextStyle(color = Color(0xFF9CA3AF), fontSize = 16.sp),
+            )
+        }
     }
 }

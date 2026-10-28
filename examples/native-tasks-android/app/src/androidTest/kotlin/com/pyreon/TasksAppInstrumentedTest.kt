@@ -1590,11 +1590,17 @@ class TasksAppInstrumentedTest {
         // `<Toaster />` sits beside the RouterView. Until the router emit kept
         // RouterView's siblings, the Toaster was dropped on Android entirely:
         // every toast() compiled and showed nothing.
-        val savedToast = hasTestTag("pyreon-toast") and hasAnyDescendant(hasText("Saved"))
+        val savedToast = hasTestTag("pyreon-toast") and hasText("Saved")
         composeRule.waitUntil(timeoutMillis = 5_000) {
             composeRule.onAllNodes(savedToast, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
         }
-        composeRule.runOnUiThread { PyreonToast.clear() }
+        // dismiss: the card's button removes it (after its leave animation).
+        composeRule
+            .onNode(hasTestTag("pyreon-toast-dismiss"), useUnmergedTree = true)
+            .performClick()
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            composeRule.onAllNodes(savedToast, useUnmergedTree = true).fetchSemanticsNodes().isEmpty()
+        }
         PyreonToast.defaultDurationMillis = 1
         val politeSaved = SemanticsMatcher("a polite live region announcing 'Saved'") { node ->
             node.config.getOrNull(SemanticsProperties.LiveRegion) == LiveRegionMode.Polite &&

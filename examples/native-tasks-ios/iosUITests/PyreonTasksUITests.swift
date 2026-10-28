@@ -1661,6 +1661,15 @@ final class PyreonTasksUITests: XCTestCase {
             toastCard.label.contains("Saved"),
             "the toast reads '\(toastCard.label)', expected 'Saved'"
         )
+        // dismiss: the card's button removes it. The overlay window claims touches
+        // only inside a card, so this tap reaching the button also proves the
+        // card is hit-testable while the rest of the screen passes through.
+        let dismissToast = app.buttons["pyreon-toast-dismiss"].firstMatch
+        XCTAssertTrue(dismissToast.waitForExistence(timeout: 3), "the toast has no dismiss button")
+        dismissToast.tap()
+        let gone = NSPredicate(format: "exists == false")
+        expectation(for: gone, evaluatedWith: toastCard)
+        waitForExpectations(timeout: 3)
         // sync: the CRDT-backed signal was RENDERED but asserted by neither device
         // test until now -- built, shipped, never verified, which is the class
         // this whole arc is about.

@@ -11,7 +11,8 @@
 // pass-through window above the app. `<Toaster />` itself renders nothing; it
 // installs the window when it appears and leaves it installed, like the web
 // Toaster mounted at the app root. The window is hidden while the queue is
-// empty and passes every touch through to the app.
+// empty, and claims a touch only inside a toast card — every other touch
+// falls through to the app.
 //
 // Mirrors the web stylesheet: a white card, 8pt corners, a 4pt accent strip in
 // the toast type's color, 14pt medium text; `max` most-recent toasts, `gap`
@@ -90,10 +91,14 @@ func pyreonToastAccent(_ type: String) -> Color {
 @available(iOS 17.0, macOS 14.0, *)
 public struct PyreonToastStack: View {
     let config: PyreonToasterConfig
+    /// Receives every visible card's frame in global coordinates (the overlay
+    /// window claims touches only inside them).
+    let onCardFrames: (([CGRect]) -> Void)?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    public init(config: PyreonToasterConfig) {
+    public init(config: PyreonToasterConfig, onCardFrames: (([CGRect]) -> Void)? = nil) {
         self.config = config
+        self.onCardFrames = onCardFrames
     }
 
     public var body: some View {
@@ -101,6 +106,11 @@ public struct PyreonToastStack: View {
         VStack(alignment: config.stackAlignment, spacing: config.gap) {
             ForEach(visible) { item in
                 PyreonToastCard(item: item)
+                    .background(
+                        GeometryReader { geo in
+                            Color.clear.preference(key: PyreonToastFramesKey.self, value: [geo.frame(in: .global)])
+                        }
+                    )
                     .transition(
                         reduceMotion
                             ? .opacity
@@ -111,6 +121,15 @@ public struct PyreonToastStack: View {
         .padding(config.offset)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: config.frameAlignment)
         .animation(.easeOut(duration: 0.2), value: visible.map(\.id))
+        .onPreferenceChange(PyreonToastFramesKey.self) { frames in onCardFrames?(frames) }
+    }
+}
+
+/// Collects the visible cards' global frames.
+struct PyreonToastFramesKey: PreferenceKey {
+    static var defaultValue: [CGRect] { [] }
+    static func reduce(value: inout [CGRect], nextValue: () -> [CGRect]) {
+        value.append(contentsOf: nextValue())
     }
 }
 
@@ -126,14 +145,29 @@ struct PyreonToastCard: View {
                 .foregroundStyle(Color(red: 0x1A / 255, green: 0x1A / 255, blue: 0x1A / 255))
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
+                .accessibilityIdentifier("pyreon-toast")
+            if item.dismissible {
+                Button {
+                    PyreonToast.shared.dismiss(item.id)
+                } label: {
+                    Text("\u{00D7}")
+                        .font(.system(size: 16))
+                        .foregroundStyle(Color(red: 0x9C / 255, green: 0xA3 / 255, blue: 0xAF / 255))
+                        .padding(.leading, 4)
+                        .padding(.trailing, 12)
+                        .padding(.vertical, 8)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Dismiss")
+                .accessibilityIdentifier("pyreon-toast-dismiss")
+            }
         }
         .fixedSize(horizontal: false, vertical: true)
         .frame(maxWidth: 360, alignment: .leading)
         .background(Color.white)
         .clipShape(RoundedRectangle(cornerRadius: 8))
         .shadow(color: .black.opacity(0.15), radius: 6, y: 4)
-        .accessibilityElement(children: .combine)
-        .accessibilityIdentifier("pyreon-toast")
+        .accessibilityElement(children: .contain)
         .onAppear {
             var announcement = AttributedString(item.message)
             announcement.accessibilitySpeechAnnouncementPriority =
@@ -186,14 +220,14 @@ final class PyreonToastOverlay {
             PyreonToast.shared.defaultDuration = duration / 1000
         }
         if let host {
-            host.rootView = PyreonToastStack(config: config)
+            host.rootView = makeStack(config)
             return
         }
         let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
         guard let scene = scenes.first(where: { $0.activationState == .foregroundActive }) ?? scenes.first else {
             return
         }
-        let host = UIHostingController(rootView: PyreonToastStack(config: config))
+        let host = UIHostingController(rootView: makeStack(config))
         host.view.backgroundColor = .clear
         let window = PyreonPassThroughWindow(windowScene: scene)
         window.windowLevel = .alert + 1
@@ -202,6 +236,12 @@ final class PyreonToastOverlay {
         self.window = window
         self.host = host
         track()
+    }
+
+    private func makeStack(_ config: PyreonToasterConfig) -> PyreonToastStack {
+        PyreonToastStack(config: config) { [weak self] frames in
+            self?.window?.cardFrames = frames
+        }
     }
 
     /// Show the window while toasts exist; hide it once the queue empties,
@@ -230,11 +270,17 @@ final class PyreonToastOverlay {
     }
 }
 
-/// A window that never claims a touch: every touch falls through to the app
-/// beneath. A native toast carries no buttons (no dismiss or action yet), so
-/// nothing in it needs input, and a card must not swallow a tap meant for the
-/// control it happens to cover.
+/// A window that claims a touch only inside a toast card; every other touch
+/// falls through to the app beneath. The cards' frames come from the SwiftUI
+/// stack itself rather than from UIKit hit-testing, which inside a SwiftUI
+/// host can resolve any point to the hosting view and so cannot tell a card
+/// from the empty space around it.
 final class PyreonPassThroughWindow: UIWindow {
-    override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? { nil }
+    var cardFrames: [CGRect] = []
+
+    override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
+        guard cardFrames.contains(where: { $0.contains(point) }) else { return nil }
+        return super.hitTest(point, with: event)
+    }
 }
 #endif

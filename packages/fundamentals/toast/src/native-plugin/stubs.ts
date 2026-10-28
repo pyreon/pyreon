@@ -15,12 +15,13 @@ public struct PyreonToastItem: Identifiable {
   public let id: String
   public let message: String
   public let type: String
+  public let dismissible: Bool
 }
 public final class PyreonToast {
   public static let shared = PyreonToast()
   public private(set) var toasts: [PyreonToastItem] = []
   @discardableResult
-  public func add(_ message: String, type: String = "info", duration: TimeInterval? = nil) -> String { "" }
+  public func add(_ message: String, type: String = "info", duration: TimeInterval? = nil, dismissible: Bool = true) -> String { "" }
   public func dismiss(_ id: String) {}
   public func clear() {}
 }
@@ -35,11 +36,11 @@ public struct PyreonToaster: View {
 export const TOAST_KOTLIN_STUBS = `// PyreonToast — mirror of runtime-kotlin's PyreonToast.kt surface the emit
 // touches: the object singleton, \`toasts\` (a MutableState<List<Item>> the
 // \`<Toaster/>\` forEach iterates, each item carrying \`message\`), and \`add\`.
-data class PyreonToastItem(val id: String, val message: String, val type: String)
+data class PyreonToastItem(val id: String, val message: String, val type: String, val dismissible: Boolean = true)
 object PyreonToast {
   val toasts: MutableState<List<PyreonToastItem>> = mutableStateOf(emptyList())
   var maxToasts: Long = 50L
-  fun add(message: String, type: String = "info", durationMillis: Long? = null): String = ""
+  fun add(message: String, type: String = "info", durationMillis: Long? = null, dismissible: Boolean = true): String = ""
   fun dismiss(id: String) {}
   fun clear() {}
 }

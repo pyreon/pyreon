@@ -105,6 +105,31 @@ export function App() {
     }
   })
 
+  const NOT_DISMISSIBLE = `
+import { Stack, Press, Text } from '@pyreon/primitives'
+import { toast, Toaster } from '@pyreon/toast'
+export function App() {
+  return (
+    <Stack>
+      <Press onPress={() => toast.error("Locked", { dismissible: false, duration: 0 })}><Text>x</Text></Press>
+      <Press onPress={() => toast("Normal", { dismissible: true })}><Text>y</Text></Press>
+      <Toaster />
+    </Stack>
+  )
+}
+`
+
+  it('a literal dismissible: false hides the dismiss button; true is the default and is not emitted', () => {
+    const swift = transform(NOT_DISMISSIBLE, { target: 'swift' })
+    expect(swift.warnings).toEqual([])
+    expect(swift.code).toContain('PyreonToast.shared.add("Locked", type: "error", duration: 0, dismissible: false)')
+    expect(swift.code).toContain('PyreonToast.shared.add("Normal", type: "info")')
+    const kotlin = transform(NOT_DISMISSIBLE, { target: 'kotlin' })
+    expect(kotlin.warnings).toEqual([])
+    expect(kotlin.code).toContain('PyreonToast.add("Locked", "error", 0L, dismissible = false)')
+    expect(kotlin.code).toContain('PyreonToast.add("Normal", "info")')
+  })
+
   it('a non-finite or negative duration is persistent (0), as on the web', () => {
     const src = `
 import { Stack } from '@pyreon/primitives'
@@ -146,14 +171,14 @@ export function P() {
   })
 
   it.runIf(isSwiftcAvailable())('Swift emit typechecks against the stubs', () => {
-    for (const src of [SRC, CONFIGURED]) {
+    for (const src of [SRC, CONFIGURED, NOT_DISMISSIBLE]) {
       const v = validateSwiftWithStubs(transform(src, { target: 'swift' }).code)
       expect(v.ok, v.error).toBe(true)
     }
   })
 
   it.runIf(isKotlincAvailable())('Kotlin emit typechecks against the stubs', () => {
-    for (const src of [SRC, CONFIGURED]) {
+    for (const src of [SRC, CONFIGURED, NOT_DISMISSIBLE]) {
       const v = validateKotlin(transform(src, { target: 'kotlin' }).code)
       expect(v.ok, v.error).toBe(true)
     }
