@@ -1375,6 +1375,15 @@ function emitKotlinComponent(c: ComponentIR): string {
     lines.push(`  LaunchedEffect(Unit) {`)
     lines.push(bodyLines)
     lines.push(`  }`)
+    // The teardown `onMount` returned: runs when the composable leaves composition. A separate effect, so the mount
+    // body keeps its LaunchedEffect semantics.
+    if (d.cleanup !== undefined) {
+      lines.push(`  DisposableEffect(Unit) {`)
+      lines.push(`    onDispose {`)
+      lines.push(d.cleanup.map((st) => `      ${emitKotlinStatement(st, 6, ctx)}`).join('\n'))
+      lines.push(`    }`)
+      lines.push(`  }`)
+    }
   }
   // A plugin's own declarations may release what they hold when the composable leaves composition
   // (`useFlow` disposes its listeners; a caller-owned `createFlow` does not).
