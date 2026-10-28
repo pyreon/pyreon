@@ -1356,6 +1356,9 @@ fun <I, O> rememberLauncherForActivityResult(
 class PyreonRouter {
   var currentPath: String = "/"
   fun push(path: String) { currentPath = path }
+  // Global guards, mirroring the real PyreonRouter (see the Swift stub).
+  val beforeEachGuards: MutableList<(String) -> Boolean> = mutableListOf()
+  val afterEachHooks: MutableList<(String) -> Unit> = mutableListOf()
   // Search parameters, mirroring the real PyreonRouter. useUrlState lowers to
   // a class over these two; a stub missing them would reject a correct emit.
   val query: MutableState<Map<String, String>> = mutableStateOf(emptyMap())

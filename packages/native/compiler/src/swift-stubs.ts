@@ -941,6 +941,10 @@ public final class PyreonRouter {
   // keeping the OPTIONAL return is load-bearing: an emit that forgets to unwrap
   // it must fail here, not silently on-device.
   public static func matchPath(_ path: String, _ pattern: String) -> [String: String]? { nil }
+  // Global guards, mirroring the real PyreonRouter: the emit appends named guard functions here. Missing, every
+  // \`beforeEach\` / \`afterEach\` emit failed the gate while compiling against the real runtime.
+  public var beforeEachGuards: [(String) -> Bool] = []
+  public var afterEachHooks: [(String) -> Void] = []
   // Search parameters, mirroring the real PyreonRouter. useUrlState lowers to
   // a value type over these two, so a stub missing them would reject a correct
   // emit — the subset-stub failure, which manufactures bugs exactly as a

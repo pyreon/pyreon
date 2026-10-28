@@ -923,14 +923,17 @@ function App(){
 }`
 
 describe('parse.ts — router global guards + route loaders', () => {
-  it('names an inline / member / other-shape global guard instead of dropping it silently', () => {
+  // An inline guard now LOWERS (a synthesized helper — see native-router-guard-shapes.test.ts); the shapes that still
+  // cannot are named, never dropped silently.
+  it('lowers an inline global guard and names a member / other-shape one instead of dropping it silently', () => {
     const r = swift(
       routerSrc(
         `{ routes: [{ path: '/', component: Home }], beforeEach: [authGuard, (to) => true, guards.auth, 'x'] }`,
       ),
     )
     const w = warn(r)
-    expect(w).toContain('router `beforeEach`: an inline function guard is not lowered')
+    expect(w).not.toContain('an inline function guard is not lowered')
+    expect(r.code).toMatch(/beforeEachGuards\.append\(__pyreonGuard\d+\)/)
     expect(w).toContain('router `beforeEach`: a member expression guard')
     expect(w).toContain('router `beforeEach`: a Literal guard')
   })

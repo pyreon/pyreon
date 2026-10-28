@@ -1319,4 +1319,24 @@ final class PyreonRouterDemoUITests: XCTestCase {
             "onMount ran without the loader data (observed: \(app.staticTexts["loaded-mounted"].firstMatch.label))"
         )
     }
+
+    /// A global `beforeEach` guard written INLINE (`(to) => to.path !== GUARDED_PATH`) blocks navigation in the real
+    /// native router. Before, an inline guard was dropped with a warning, so this route was reachable on iOS.
+    func test_inlineBeforeEachGuardBlocksNavigation() throws {
+        let app = XCUIApplication()
+        app.launch()
+        XCTAssertTrue(app.otherElements["home-page"].firstMatch.waitForExistence(timeout: 30), "Home page did not render")
+        app.buttons["Go to About"].tap()
+        XCTAssertTrue(app.otherElements["about-page"].firstMatch.waitForExistence(timeout: 15), "About page did not render")
+        app.buttons["Try guarded"].tap()
+        // The guard answers synchronously; give a blocked navigation every chance to (wrongly) render.
+        XCTAssertFalse(
+            app.otherElements["guarded-page"].firstMatch.waitForExistence(timeout: 3),
+            "The beforeEach guard did not block /guarded"
+        )
+        XCTAssertTrue(app.otherElements["about-page"].firstMatch.exists, "A blocked navigation must leave the current page")
+        // And the guard blocks only that path: an allowed navigation still goes through.
+        app.buttons["View loaded"].tap()
+        XCTAssertTrue(app.otherElements["loaded-page"].firstMatch.waitForExistence(timeout: 15), "An allowed navigation was blocked")
+    }
 }
