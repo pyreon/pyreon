@@ -1523,7 +1523,11 @@ function inferTypeFromInitial(initial: ExprIR): TypeIR {
   // type. Mirrors `inferType`'s own `new-collection` case in infer-type.ts.
   if (initial.kind === 'new-collection') {
     if (initial.collection === 'map') {
-      return { kind: 'map', key: initial.keyType!, value: initial.valueType! }
+      // The index-by form without generic arguments is typed by binding its
+      // callback parameter, which needs the inference context this structural
+      // pass does not have.
+      if (initial.keyType === undefined || initial.valueType === undefined) return { kind: 'unknown' }
+      return { kind: 'map', key: initial.keyType, value: initial.valueType }
     }
     if (initial.elementType !== undefined) {
       return { kind: 'set', element: initial.elementType }
@@ -6228,6 +6232,90 @@ function locOf(node: AnyNode, ctx: ParseCtx): string {
  * AND how to express the intent inside the supported subset, and the CLI
  * already prints `result.warnings`, so the developer actually sees it.
  */
+/**
+ * Whether a `Map` VALUE type has a concrete native spelling on both targets.
+ * A dictionary value needs no Hashable/Equatable conformance — only a type
+ * swiftc/kotlinc can name. That is a scalar, a struct/enum this file declares
+ * (`type X = { … }` / `interface X { … }` / a string-literal union — all
+ * synthesized into a Swift struct/enum and a Kotlin data class/enum), or an
+ * array of those (the group-by idiom, `Map<string, Todo[]>`). An INLINE object
+ * type (`Map<string, { x: number }>`) has no name to put in the dictionary
+ * type, and an imported/unknown typeRef is not synthesized into this module —
+ * both stay a named warning.
+ */
+/**
+ * Recognise the index-by idiom `src.map((x) => [key, value])` as the argument
+ * of `new Map(…)`. The callback must take exactly ONE identifier parameter (the
+ * index form `(x, i) =>` has no native twin here) and return a two-element
+ * array literal, either as its expression body or as a single `return`. Any
+ * other argument shape returns `null` and falls through to the literal-pair /
+ * warning paths.
+ */
+function tryParseMapFromPairs(
+  arg: AnyNode | undefined,
+  ctx: ParseCtx,
+): { source: ExprIR; param: string; key: ExprIR; value: ExprIR } | null {
+  if (arg?.type !== 'CallExpression') return null
+  const callee = arg.callee as AnyNode
+  if (callee?.type !== 'MemberExpression' || callee.computed) return null
+  if (callee.property?.type !== 'Identifier' || callee.property.name !== 'map') return null
+  if ((arg.arguments?.length ?? 0) !== 1) return null
+  const fnNode = arg.arguments[0] as AnyNode
+  if (fnNode?.type !== 'ArrowFunctionExpression' && fnNode?.type !== 'FunctionExpression') return null
+  const params = (fnNode.params as AnyNode[] | undefined) ?? []
+  if (params.length !== 1 || params[0]?.type !== 'Identifier') return null
+  let bodyNode = fnNode.body as AnyNode
+  if (bodyNode?.type === 'BlockStatement') {
+    const stmts = (bodyNode.body as AnyNode[] | undefined) ?? []
+    if (stmts.length !== 1 || stmts[0]?.type !== 'ReturnStatement') return null
+    bodyNode = stmts[0].argument as AnyNode
+  }
+  while (bodyNode?.type === 'ParenthesizedExpression') bodyNode = bodyNode.expression as AnyNode
+  if (bodyNode?.type !== 'ArrayExpression') return null
+  const els = (bodyNode.elements as AnyNode[] | undefined) ?? []
+  if (els.length !== 2 || !els[0] || !els[1]) return null
+  if (els[0].type === 'SpreadElement' || els[1].type === 'SpreadElement') return null
+  // Parse the arrow as a whole so its parameter scoping (shadowing, signal
+  // auto-call suppression) is exactly what any other callback gets.
+  const fn = parseExpr(fnNode, ctx)
+  if (fn.kind !== 'arrow' || fn.params.length !== 1) return null
+  const body =
+    fn.stmts !== undefined && fn.stmts.length === 1 && fn.stmts[0]!.kind === 'return'
+      ? (fn.stmts[0] as Extract<StatementIR, { kind: 'return' }>).expr
+      : fn.body
+  if (body === undefined || body.kind !== 'array' || body.elements.length !== 2) return null
+  return {
+    source: parseExpr(callee.object as AnyNode, ctx),
+    param: fn.params[0]!,
+    key: body.elements[0]!,
+    value: body.elements[1]!,
+  }
+}
+
+function isNativeMapValueType(t: TypeIR, ctx: ParseCtx): boolean {
+  if (t.kind === 'number' || t.kind === 'string' || t.kind === 'boolean') return true
+  if (t.kind === 'array') return isNativeMapValueType(t.element, ctx)
+  if (t.kind === 'typeRef' && t.args.length === 0) {
+    return ctx.objectTypeAliases.has(t.name) || ctx.enumTypeNames.has(t.name)
+  }
+  return false
+}
+
+function describeMapValueType(t: TypeIR): string {
+  switch (t.kind) {
+    case 'object':
+      return '{ … }'
+    case 'typeRef':
+      return t.name
+    case 'array':
+      return `${describeMapValueType(t.element)}[]`
+    case 'union':
+      return 'a union'
+    default:
+      return t.kind
+  }
+}
+
 function unsupportedExpr(
   ctx: ParseCtx,
   node: AnyNode,
@@ -6923,17 +7011,51 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
       if (calleeName === 'Map' && (node.arguments?.length ?? 0) === 0 && typeArgs.length === 2) {
         const keyType = parseTypeAnnotation(typeArgs[0]!, ctx)
         const valueType = parseTypeAnnotation(typeArgs[1]!, ctx)
-        if (!isNativeScalarType(keyType) || !isNativeScalarType(valueType)) {
+        if (!isNativeScalarType(keyType)) {
           return unsupportedExpr(
             ctx,
             node,
-            `\`new Map<...>()\` with a non-scalar key or value type`,
-            'only scalar (number/string/boolean) keys and values lower to a native dictionary in v1 — model richer maps behind a `<Web>` escape hatch, or use a scalar-keyed struct array.',
+            `\`new Map<...>()\` with a non-scalar key type`,
+            'only scalar (number/string/boolean) keys lower to a native dictionary — a native dictionary key must be Hashable. Key the map by a scalar id instead.',
+          )
+        }
+        if (!isNativeMapValueType(valueType, ctx)) {
+          return unsupportedExpr(
+            ctx,
+            node,
+            `\`new Map<K, ${describeMapValueType(valueType)}>()\` (a map value that is not a scalar, a locally-declared struct, or an array of those)`,
+            'a native dictionary value must name a concrete native type — declare the value shape as a top-level `type X = { … }` / `interface X { … }` in this file and use `new Map<K, X>()`, or keep the map behind a `<Web>` escape hatch.',
           )
         }
         return { kind: 'new-collection', collection: 'map', keyType, valueType }
       }
       if (calleeName === 'Map' && (node.arguments?.length ?? 0) === 1) {
+        const pairs = tryParseMapFromPairs(node.arguments[0] as AnyNode, ctx)
+        if (pairs !== null) {
+          if (typeArgs.length === 2) {
+            const keyType = parseTypeAnnotation(typeArgs[0]!, ctx)
+            const valueType = parseTypeAnnotation(typeArgs[1]!, ctx)
+            if (!isNativeScalarType(keyType) || !isNativeMapValueType(valueType, ctx)) {
+              return unsupportedExpr(
+                ctx,
+                node,
+                `\`new Map<K, ${describeMapValueType(valueType)}>(…)\` (a non-scalar key, or a value that is not a scalar, a locally-declared struct, or an array of those)`,
+                'a native dictionary needs a scalar (Hashable) key and a value of a concrete native type — declare the value shape as a top-level `type X = { … }` in this file.',
+              )
+            }
+            return {
+              kind: 'new-collection',
+              collection: 'map',
+              keyType,
+              valueType,
+              pairsFrom: pairs,
+            }
+          }
+          // Unannotated: the key / value types come from binding `param` to the
+          // source's element type at inference (see infer-type.ts); the emitter
+          // checks the inferred types and warns by name when one has no native form.
+          return { kind: 'new-collection', collection: 'map', pairsFrom: pairs }
+        }
         // Seeded `new Map([[k, v], …])` → a native dict literal. The arg must be
         // an array of 2-element `[key, value]` pairs; key AND value must be
         // scalar (a native dictionary key needs Hashable, and value is held to

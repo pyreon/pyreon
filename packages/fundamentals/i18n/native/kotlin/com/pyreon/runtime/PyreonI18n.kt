@@ -61,8 +61,9 @@ class PyreonI18n(
     /**
      * Two-arg `t(key, values)` — interpolation + plurals, mirroring the web
      * contract: `{{name}}` placeholders, and when `values["count"]` is present
-     * the candidates `key_zero` (count == 0 only), `key_<CLDR category>`,
-     * `key_other`, then the bare `key`.
+     * the candidates `key_zero` (count == 0 only), `key_<CLDR category>`, then
+     * — the bare key being the singular form — `key` before `key_other` when
+     * the category is `one`, and `key_other` before `key` otherwise.
      */
     fun t(key: String, values: Map<String, Any?>): String {
         var candidates = listOf(key)
@@ -71,9 +72,14 @@ class PyreonI18n(
             val count = (raw as? Number)?.toDouble() ?: raw?.toString()?.toDoubleOrNull() ?: Double.NaN
             val suffixes = LinkedHashSet<String>()
             if (count == 0.0) suffixes.add("zero")
-            suffixes.add(PyreonPluralRules.select(_locale.value, count))
-            suffixes.add("other")
-            candidates = suffixes.map { "${key}_$it" } + key
+            val category = PyreonPluralRules.select(_locale.value, count)
+            suffixes.add(category)
+            // The bare key IS the singular form: for `one` it beats `_other`.
+            candidates = suffixes.map { "${key}_$it" } + when (category) {
+                "one" -> listOf(key, "${key}_other")
+                "other" -> listOf(key)
+                else -> listOf("${key}_other", key)
+            }
         }
         var out = lookup(candidates) ?: key
         for ((name, value) in values) {

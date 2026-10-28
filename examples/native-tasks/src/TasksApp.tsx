@@ -359,6 +359,9 @@ function TasksPage() {
           <Button onPress={() => navigate('/intl')} data-testid="tasks-intl">
             Intl
           </Button>
+          <Button onPress={() => navigate('/fields')} data-testid="tasks-fields">
+            Fields
+          </Button>
           <Button onPress={logout} data-testid="tasks-logout">
             Logout
           </Button>
@@ -1942,6 +1945,51 @@ function IntlScreen() {
         Show in UTC
       </Button>
       <Button onPress={() => navigate('/tasks')} data-testid="intl-back">
+          Back
+        </Button>
+      </Stack>
+    )
+  }
+
+// `<Field multiline lines>` (#3980): a text area on every target — a
+// `<textarea rows>` on the web, `TextField(axis: .vertical)` + `.lineLimit(n,
+// reservesSpace: true)` on iOS, `minLines`/`maxLines` on Android. The device
+// tests prove the text round-trips both ways (typed newlines reach the signal,
+// a programmatic write reaches the control) and that `lines` sets the HEIGHT —
+// measured against the single-line field beside it, and re-measured after a
+// reactive `lines` change.
+function FieldsScreen() {
+  const navigate = useNavigate()
+  const notes = signal('')
+  const rows = signal(4)
+  const single = signal('')
+  return (
+    <Stack gap={3} padding={4} data-testid="fields-page">
+      <Field
+        value={single}
+        onChangeText={(v) => single.set(v)}
+        placeholder="One line"
+        data-testid="fields-single"
+      />
+      <Field
+        multiline
+        lines={rows()}
+        value={notes}
+        onChangeText={(v) => notes.set(v)}
+        placeholder="Notes"
+        data-testid="fields-notes"
+      />
+      <Text data-testid="fields-notes-echo">{notes}</Text>
+      <Text data-testid="fields-notes-length">{String(notes().length)}</Text>
+      <Inline gap={2}>
+        <Button onPress={() => notes.set('alpha\nbeta\ngamma')} data-testid="fields-fill">
+          Fill
+        </Button>
+        <Button onPress={() => rows.set(2)} data-testid="fields-rows-2">
+          Two rows
+        </Button>
+      </Inline>
+      <Button onPress={() => navigate('/tasks')} data-testid="fields-back">
         Back
       </Button>
     </Stack>
@@ -2002,6 +2050,11 @@ export function TasksApp() {
       {
         path: '/intl',
         component: IntlScreen,
+        beforeEnter: () => useApp().store.isAuthed(),
+      },
+      {
+        path: '/fields',
+        component: FieldsScreen,
         beforeEnter: () => useApp().store.isAuthed(),
       },
       {

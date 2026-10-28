@@ -626,6 +626,18 @@ export type ExprIR =
        * from the first entry.
        */
       entries?: [ExprIR, ExprIR][]
+      /**
+       * `new Map(src.map((x) => [key, value]))` — the index-by idiom. `source`
+       * is the iterated array, `param` the callback's element binding, and
+       * `key` / `value` the two halves of the returned pair (evaluated with
+       * `param` bound). Lowers to Swift `Dictionary(src.map { x in (k, v) },
+       * uniquingKeysWith: { _, last in last })` / Kotlin
+       * `src.associate { x -> k to v }.toMutableMap()` — both keep the LAST
+       * value for a repeated key, as JS `Map` does. `keyType` / `valueType`
+       * are set only when the construction carries generic arguments;
+       * otherwise inference binds `param` to the source's element type.
+       */
+      pairsFrom?: { source: ExprIR; param: string; key: ExprIR; value: ExprIR }
     }
   | {
       kind: 'binary'
