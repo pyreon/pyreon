@@ -25,6 +25,7 @@ import { isKotlincAvailable, isSwiftcAvailable } from '../validate'
  */
 
 const SWIFT_SRC = join(__dirname, '../../../runtime-swift/Sources/PyreonRuntime/PyreonHttp.swift')
+const SWIFT_JSON_SRC = join(__dirname, '../../../runtime-swift/Sources/PyreonRuntime/PyreonJSON.swift')
 const KOTLIN_SRC = join(
   __dirname,
   '../../../runtime-kotlin/src/main/kotlin/com/pyreon/runtime/PyreonHttp.kt',
@@ -196,7 +197,10 @@ describe('PyreonURL.encodePathParam -- parity with encodeURIComponent', () => {
   it.skipIf(!isSwiftcAvailable())('the SHIPPED Swift encoder matches, executed', () => {
     const got = withTempDir('pyreon-url-parity-swift-', (dir) => {
       const casesPath = join(dir, 'cases.txt')
+      // `PyreonURL` formats a query NUMBER through `PyreonJSON.jsNumber`, so the shipped JSON file compiles alongside.
       const harness = `import Foundation
+
+${readFileSync(SWIFT_JSON_SRC, 'utf8').replace(/^import .*$/gm, '')}
 
 ${extractPyreonURL(SWIFT_SRC, 'public enum PyreonURL {')}
 

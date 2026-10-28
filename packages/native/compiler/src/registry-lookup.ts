@@ -743,6 +743,11 @@ export function pluginExprMemberType(e: ExtExprIR, property: string): TypeIR | u
   return activeRegistries().items.exprEmitter(e.plugin, e.type)?.typing?.member?.(e, property)
 }
 
+/** Whether `e` is a plugin expression its owner declared FALLIBLE (`ExprEmitter.throws`). */
+export function isThrowingPluginExpr(e: ExprIR): boolean {
+  return e.kind === 'ext-expr' && activeRegistries().items.exprEmitter(e.plugin, e.type)?.throws === true
+}
+
 /** Render an `ext-expr` on `target` through its owner's emitter. */
 export function lowerPluginExpr(e: ExtExprIR, target: 'swift', ctx: () => SwiftEmitContext): string
 export function lowerPluginExpr(

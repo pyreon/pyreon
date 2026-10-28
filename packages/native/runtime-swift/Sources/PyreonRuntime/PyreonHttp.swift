@@ -164,6 +164,37 @@ public enum PyreonHttp {
         }
         return PyreonHttpResponse(status: status, headers: headers, body: data)
     }
+
+    /// `send`, then REJECT a non-2xx — what awaiting an `@pyreon/http`
+    /// endpoint call means on the web (`throwHttpErrors` defaults to true).
+    /// The compiler emits `try await PyreonHttp.call(…)` for an endpoint
+    /// awaited in an event handler; the response is returned for a caller
+    /// that wants it, and is otherwise discarded.
+    @discardableResult
+    public static func call(
+        _ request: PyreonHttpRequest,
+        session: URLSession = .shared
+    ) async throws -> PyreonHttpResponse {
+        let response = try await send(request, session: session)
+        guard response.isOK else { throw PyreonHttpError.badStatus(response.status) }
+        return response
+    }
+
+    /// An endpoint call that is NOT awaited — on the web, a Promise nobody
+    /// reads: the request goes out, the handler moves on, a rejection is
+    /// unhandled. The request is an ARGUMENT, so it is built from the values
+    /// of the moment of the call, before the handler continues; only the send
+    /// is deferred. A failure is reported to the log, as the web reports an
+    /// unhandled rejection.
+    public static func fire(_ request: PyreonHttpRequest, session: URLSession = .shared) {
+        _Concurrency.Task {
+            do {
+                try await call(request, session: session)
+            } catch {
+                print("[Pyreon] Unhandled error in an endpoint call: \(error)")
+            }
+        }
+    }
 }
 
 /// URL construction shared with the generated fetch/query call sites.
@@ -226,5 +257,97 @@ public enum PyreonURL {
             return encodePathParam(String(Int64(value)))
         }
         return encodePathParam(String(value))
+    }
+
+    // MARK: - Query strings
+
+    /// A query string built at RUNTIME, matching the web's `buildQuery`
+    /// (`@pyreon/http` → `URLSearchParams`) byte for byte.
+    ///
+    /// `pairs` alternates a key and its value, in SOURCE order — the order the
+    /// web appends them. A value is written the way the web writes it:
+    ///
+    /// - `nil` (a JavaScript `null` / `undefined`) drops the pair;
+    /// - an array repeats the key once per non-nil element (`tag=a&tag=b`);
+    /// - a number is JavaScript's `String(number)` (`1`, not `1.0`);
+    /// - a boolean is `true` / `false`.
+    ///
+    /// Each key and value is application/x-www-form-urlencoded — a space is `+`
+    /// and only `*-._` and ASCII alphanumerics stay literal — which is NOT the
+    /// path encoding (`encodePathParam`): the same character differs by
+    /// position. Returns `""` when every pair was dropped, else `joiner` (`?`,
+    /// or `&` when the path already carries a query) followed by the pairs.
+    public static func query(_ joiner: String, _ pairs: Any?...) -> String {
+        var out: [String] = []
+        var index = 0
+        while index + 1 < pairs.count {
+            if let key = pairs[index] as? String {
+                for value in queryValues(pairs[index + 1]) {
+                    out.append(formEncode(key) + "=" + formEncode(value))
+                }
+            }
+            index += 2
+        }
+        return out.isEmpty ? "" : joiner + out.joined(separator: "&")
+    }
+
+    /// The strings one query value contributes: none for `nil`, one per element for an array.
+    static func queryValues(_ value: Any?) -> [String] {
+        guard let present = unwrap(value) else { return [] }
+        if let list = present as? [Any?] {
+            return list.compactMap { unwrap($0).map(jsString) }
+        }
+        if let list = present as? [Any] {
+            return list.compactMap { unwrap($0).map(jsString) }
+        }
+        return [jsString(present)]
+    }
+
+    /// An `Any` that holds an `Optional` (Swift boxes `String?` that way) unwrapped, `nil` for an absent one.
+    static func unwrap(_ value: Any?) -> Any? {
+        guard let value else { return nil }
+        let mirror = Mirror(reflecting: value)
+        if mirror.displayStyle == .optional {
+            return mirror.children.first.flatMap { unwrap($0.value) }
+        }
+        return value
+    }
+
+    /// JavaScript's `String(value)` for the scalar shapes a query value takes.
+    static func jsString(_ value: Any) -> String {
+        switch value {
+        case let s as String: return s
+        case let b as Bool: return b ? "true" : "false"
+        // Integers before floating point: an integer is already whole, and must never take a bridging cast.
+        case let i as Int: return String(i)
+        case let i as Int64: return String(i)
+        case let i as Int32: return String(i)
+        case let d as Double: return jsNumberString(d)
+        case let f as Float: return jsNumberString(Double(f))
+        default: return String(describing: value)
+        }
+    }
+
+    /// `String(number)`: the `JSON.stringify` digits for a finite value, JavaScript's spelling otherwise.
+    static func jsNumberString(_ value: Double) -> String {
+        if value.isNaN { return "NaN" }
+        if value.isInfinite { return value < 0 ? "-Infinity" : "Infinity" }
+        return PyreonJSON.jsNumber(value)
+    }
+
+    /// The application/x-www-form-urlencoded byte serializer `URLSearchParams` uses.
+    static func formEncode(_ text: String) -> String {
+        var out = ""
+        for byte in text.utf8 {
+            switch byte {
+            case 0x2A, 0x2D, 0x2E, 0x5F, 0x30...0x39, 0x41...0x5A, 0x61...0x7A:
+                out.unicodeScalars.append(Unicode.Scalar(byte))
+            case 0x20:
+                out += "+"
+            default:
+                out += String(format: "%%%02X", byte)
+            }
+        }
+        return out
     }
 }

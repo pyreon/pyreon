@@ -441,6 +441,68 @@ final class PyreonTasksUITests: XCTestCase {
         XCTAssertTrue(app.otherElements["tasks-page"].firstMatch.waitForExistence(timeout: 15), "streams-back did not return to tasks")
     }
 
+    /// Requests that carry what the user ENTERED (#3978), asserted on what the
+    /// fixture server REFLECTS — the wire, not the app's idea of what it sent.
+    ///
+    /// The draft is typed, mutated, then cleared by the same handler: a request
+    /// that read its values late (or a body baked at compile time) shows up as
+    /// the wrong name. The awaited direct call must resolve (`sent`), and a
+    /// rejected one must end its handler before the next statement
+    /// (`failing`, never `unreachable`).
+    func test_requestsCarryRuntimeValuesAndRejectNon2xx() throws {
+        let app = XCUIApplication()
+        app.launch()
+        let username = app.textFields["login-username"].firstMatch
+        XCTAssertTrue(username.waitForExistence(timeout: 30), "Username field missing")
+        username.tap()
+        username.typeText("abcde")
+        dismissKeyboard(app)
+        app.buttons["login-submit"].firstMatch.tap()
+        XCTAssertTrue(app.otherElements["tasks-page"].firstMatch.waitForExistence(timeout: 20), "Tasks page did not render after login")
+
+        let nav = app.buttons["tasks-requests"].firstMatch
+        XCTAssertTrue(nav.waitForExistence(timeout: 15), "Requests button missing on tasks page")
+        tapAfterScrolling(nav, in: app)
+        XCTAssertTrue(app.scrollViews["requests-page"].firstMatch.waitForExistence(timeout: 15)
+            || app.otherElements["requests-page"].firstMatch.waitForExistence(timeout: 5), "Requests page did not render")
+
+        let draft = app.textFields["req-draft"].firstMatch
+        XCTAssertTrue(draft.waitForExistence(timeout: 10), "draft field missing")
+        draft.tap()
+        draft.typeText("Grace Hopper")
+        dismissKeyboard(app)
+        tapAfterScrolling(app.buttons["req-mutate"].firstMatch, in: app)
+
+        let status = app.staticTexts["req-status"].firstMatch
+        if !waitForLabel(status, "Status: success", timeout: 30) {
+            print("DIAG-REQUESTS:\n\(app.debugDescription)")
+        }
+        XCTAssertEqual(status.label, "Status: success", "the mutation did not succeed")
+        XCTAssertEqual(app.staticTexts["req-method"].firstMatch.label, "Method: POST")
+        XCTAssertEqual(app.staticTexts["req-query"].firstMatch.label, "Query: tag=Grace+Hopper&page=3")
+        XCTAssertEqual(app.staticTexts["req-type"].firstMatch.label, "Type: application/json")
+        XCTAssertEqual(app.staticTexts["req-client"].firstMatch.label, "Client: pyreon")
+        // The call-level onSuccess wrote the reflected body: JSON.stringify byte for byte.
+        XCTAssertTrue(waitForLabel(app.staticTexts["req-body"].firstMatch, #"Body: {"name":"Grace Hopper","n":2}"#, timeout: 10),
+                      "reflected body: '\(app.staticTexts["req-body"].firstMatch.label)'")
+
+        tapAfterScrolling(app.buttons["req-fail"].firstMatch, in: app)
+        XCTAssertTrue(waitForLabel(app.staticTexts["req-fail-status"].firstMatch, "Failing: rejected", timeout: 20),
+                      "a 500 did not put the mutation in error: '\(app.staticTexts["req-fail-status"].firstMatch.label)'")
+
+        let direct = app.staticTexts["req-direct-status"].firstMatch
+        tapAfterScrolling(app.buttons["req-direct"].firstMatch, in: app)
+        XCTAssertTrue(waitForLabel(direct, "Direct: sent", timeout: 20), "the awaited endpoint call did not resolve: '\(direct.label)'")
+        tapAfterScrolling(app.buttons["req-direct-fail"].firstMatch, in: app)
+        XCTAssertTrue(waitForLabel(direct, "Direct: failing", timeout: 10), "the failing handler did not start: '\(direct.label)'")
+        // Give a wrongly-continuing handler time to reach its next statement.
+        Thread.sleep(forTimeInterval: 3)
+        XCTAssertEqual(direct.label, "Direct: failing", "a rejected await did not end the handler")
+
+        tapAfterScrolling(app.buttons["requests-back"].firstMatch, in: app)
+        XCTAssertTrue(app.otherElements["tasks-page"].firstMatch.waitForExistence(timeout: 15), "requests-back did not return to tasks")
+    }
+
     /// Crash reporting, device-proven in the only way that means anything: a
     /// REAL process restart.
     ///

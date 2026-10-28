@@ -625,6 +625,46 @@ class TasksAppInstrumentedTest {
         assertTagDisplayed("tasks-page", "after streams-back (/streams -> /tasks)")
     }
 
+    /**
+     * Requests that carry what the user ENTERED (#3978), asserted on what the
+     * fixture server REFLECTS. The draft is typed, mutated, then cleared by the
+     * same handler, so a request that read its values late shows the wrong
+     * name. A rejected await must end its handler (and must not crash the app,
+     * which an exception escaping `launch` would).
+     */
+    @Test
+    fun requestsCarryRuntimeValuesAndRejectNon2xx() {
+        composeRule.onNodeWithTag("login-username").performTextInput("abcde")
+        composeRule.onNodeWithTag("login-submit").performClick()
+        assertTagDisplayed("tasks-page", "after login-submit")
+        composeRule.onNodeWithTag("tasks-requests").performClick()
+        assertTagDisplayed("requests-page", "after tasks-requests (/tasks -> /requests)")
+
+        composeRule.onNodeWithTag("req-draft").performScrollTo().performTextInput("Grace Hopper")
+        composeRule.onNodeWithTag("req-mutate").performScrollTo().performClick()
+        waitForTagText("req-status", "Status: success")
+        composeRule.onNodeWithTag("req-method").assertTextEquals("Method: POST")
+        composeRule.onNodeWithTag("req-query").assertTextEquals("Query: tag=Grace+Hopper&page=3")
+        composeRule.onNodeWithTag("req-type").assertTextEquals("Type: application/json")
+        composeRule.onNodeWithTag("req-client").assertTextEquals("Client: pyreon")
+        waitForTagText("req-body", "Body: {\"name\":\"Grace Hopper\",\"n\":2}")
+
+        composeRule.onNodeWithTag("req-fail").performScrollTo().performClick()
+        waitForTagText("req-fail-status", "Failing: rejected")
+
+        composeRule.onNodeWithTag("req-direct").performScrollTo().performClick()
+        waitForTagText("req-direct-status", "Direct: sent")
+        composeRule.onNodeWithTag("req-direct-fail").performScrollTo().performClick()
+        waitForTagText("req-direct-status", "Direct: failing")
+        // Give a wrongly-continuing handler time to reach its next statement.
+        Thread.sleep(3000)
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("req-direct-status").assertTextEquals("Direct: failing")
+
+        composeRule.onNodeWithTag("requests-back").performScrollTo().performClick()
+        assertTagDisplayed("tasks-page", "after requests-back (/requests -> /tasks)")
+    }
+
     @Test
     fun authGateStoreMutationAndTypedParamsDetail() {
         // Phase 1: login — flips the store's auth flag; the beforeEnter

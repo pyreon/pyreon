@@ -22,6 +22,7 @@ import {
   type ParseContext,
   type ResolvedRequest,
 } from '@pyreon/native-compiler/plugin-api'
+import { scanCallRoles } from './call'
 
 // biome-ignore lint/suspicious/noExplicitAny: ESTree nodes are read structurally, as in the compiler.
 type AnyNode = any
@@ -158,11 +159,13 @@ function buildQueryString(entries: readonly (readonly [string, string])[]): stri
  * parameter that silently disappears from the native request is a data bug,
  * not a missing feature.
  */
+type QueryEntry = readonly [key: string, value: string | { readonly runtime: AnyNode }]
+
 function readQueryEntries(
   obj: AnyNode | undefined,
   onUnlowerable: (key: string) => void,
-): Array<[string, string]> {
-  const out: Array<[string, string]> = []
+): QueryEntry[] {
+  const out: QueryEntry[] = []
   if (obj === undefined) return out
   if (obj.type !== 'ObjectExpression') {
     onUnlowerable('query')
@@ -195,11 +198,17 @@ function readQueryEntries(
       continue
     }
     const scalar = literalScalar(v)
-    if (scalar === undefined) {
+    if (scalar !== undefined) {
+      out.push([key, String(scalar)])
+      continue
+    }
+    // An object literal (a nested query) has no default serialization this resolver mirrors; anything else is a
+    // RUNTIME value the caller may or may not be able to honour (see `resolveEndpointParts`).
+    if (v === undefined || v.type === 'ObjectExpression' || v.type === 'ArrayExpression') {
       onUnlowerable(key)
       continue
     }
-    out.push([key, String(scalar)])
+    out.push([key, { runtime: v }])
   }
   return out
 }
@@ -240,6 +249,43 @@ function readLiteralHeaders(
   return out
 }
 
+
+/** One per-call header: a literal value, an explicit omission (`null` / `undefined`), or a runtime expression. */
+type HeaderEntry = readonly [name: string, value: string | null | { readonly runtime: AnyNode }]
+
+/**
+ * Read a CALL-SITE `headers` object. Mirrors the web's `HeaderValues`: a string is sent as written, a number or
+ * boolean as `String(value)` (computed here exactly — the literal is a JS value), a `null` / `undefined` OMITS the
+ * header (and removes a declared one), and anything else is a runtime value for the caller to emit or refuse.
+ */
+function readCallHeaders(obj: AnyNode, onUnlowerable: (what: string) => void): HeaderEntry[] {
+  const out: HeaderEntry[] = []
+  if (obj.type !== 'ObjectExpression') {
+    onUnlowerable('headers')
+    return out
+  }
+  for (const prop of (obj.properties as AnyNode[] | undefined) ?? []) {
+    if (prop.type === 'SpreadElement') {
+      onUnlowerable('headers (spread)')
+      continue
+    }
+    if (hasDynamicKey(prop)) {
+      onUnlowerable('headers (computed key)')
+      continue
+    }
+    const key = propName(prop)
+    if (key === undefined) continue
+    const v = prop.value as AnyNode | undefined
+    if (isNullishLiteral(v)) {
+      out.push([key, null])
+      continue
+    }
+    const scalar = literalScalar(v)
+    if (scalar !== undefined) out.push([key, String(scalar)])
+    else out.push([key, { runtime: v as AnyNode }])
+  }
+  return out
+}
 
 /**
  * Endpoint CALL-SITE options that lower to native. Every other key on the call
@@ -437,6 +483,8 @@ function resolveEndpointParts(
   allowRuntimeParams = false,
   /** The caller consumes the RAW body as a stream (`useStream`). */
   streaming = false,
+  /** The caller emits a runtime `json` body (`bodyExpr`) and runtime header values (`headerExprs`). */
+  runtimeValues = false,
 ): ResolvedRequest | null {
   const def = facts.endpoints.get(endpointName)
   if (!def) return null
@@ -559,10 +607,40 @@ function resolveEndpointParts(
   // --- query -------------------------------------------------------------
   const queryEntries = readQueryEntries(readObjectProp(arg, 'query'), (key) => {
     warn(
-      `query parameter \`${key}\` is not a string/number/boolean literal (or an array of them), so it cannot be baked into the compile-time URL — it is OMITTED on iOS and Android.`,
+      `query parameter \`${key}\` is a nested object or an array holding a non-literal, which has no native serialization — it is OMITTED on iOS and Android. Pass a scalar or an array of scalars.`,
     )
   })
-  const qs = buildQueryString(queryEntries)
+  const runtimeQuery = queryEntries.some(([, v]) => typeof v !== 'string')
+  let sawRuntimeQuery = false
+  // A runtime query value is honourable wherever the request is built at RUNTIME: by a re-running caller (a keyed
+  // query, a stream), or by one that builds it exactly once at the moment the web evaluates the call (`useFetch`,
+  // whose promise source the web also evaluates once, at setup).
+  if (runtimeQuery && !allowRuntimeParams && !runtimeValues) {
+    const name = queryEntries.find(([, v]) => typeof v !== 'string')?.[0] ?? ''
+    warn(
+      `query parameter \`${name}\` is a runtime value, and \`useFetch\` lowers to a ONE-SHOT native task — the query would be fixed at its first value. Use \`useQuery(() => ${endpointName}.query({ query: { ${name} } }))\` instead: its native harness is keyed on the URL, so it re-fetches when the value changes. This call stays web.`,
+    )
+    return null
+  }
+  if (runtimeQuery) {
+    // The query is serialized at RUNTIME by \`PyreonURL.query\`, which mirrors the
+    // web's \`buildQuery\` (URLSearchParams: form-encoding, an array repeating
+    // its key, \`null\` / \`undefined\` dropped, JS \`String()\` for a number). Every
+    // pair goes through it — the literal ones too — so source ORDER is kept.
+    sawRuntimeQuery = true
+    const args: ExprIR[] = [{ kind: 'literal', value: url.includes('?') ? '&' : '?' }]
+    for (const [key, value] of queryEntries) {
+      args.push({ kind: 'literal', value: key })
+      args.push(typeof value === 'string' ? { kind: 'literal', value } : ctx.expr(value.runtime))
+    }
+    exprs.push({
+      kind: 'call',
+      callee: { kind: 'member', object: { kind: 'identifier', name: 'PyreonURL' }, property: 'query' },
+      args,
+    })
+    quasis.push('')
+  }
+  const qs = runtimeQuery ? '' : buildQueryString(queryEntries as (readonly [string, string])[])
   // Mirrors the web's `buildUrl`: a path template that already carries a `?`
   // takes `&`, and the leading `?` is stripped from the serialized query.
   //
@@ -577,35 +655,79 @@ function resolveEndpointParts(
   }
 
   // --- headers -----------------------------------------------------------
-  // A per-call `headers` REPLACES the declaration's, mirroring the web's
-  // `args?.headers ?? options.headers`.
+  // Mirrors the web's `mergeHeaders(declared, call)`: with no per-call headers
+  // the declared set goes out as written; with no declared set the call's do;
+  // with both, the call's are laid OVER the declared ones by lower-cased name
+  // (a `null` / `undefined` call value removes the declared header). This used
+  // to REPLACE the declared set wholesale — the web's behaviour before it was
+  // fixed to stop dropping a declared `content-type` the moment a caller
+  // passed any header at all — so the two platforms disagreed.
   const callHeadersNode = readObjectProp(arg, 'headers')
-  let headers: Record<string, string> =
-    callHeadersNode === undefined
-      ? { ...def.declHeaders }
-      : readLiteralHeaders(callHeadersNode, (what) => {
-          warn(
-            `\`${what}\` is not a string literal, so it cannot be baked into the native request — it is OMITTED on iOS and Android.`,
-          )
-        })
+  let headers: Record<string, string> = { ...def.declHeaders }
+  const headerExprs: Record<string, ExprIR> = {}
+  if (callHeadersNode !== undefined && !isNullishLiteral(callHeadersNode)) {
+    const entries = readCallHeaders(callHeadersNode, (what) => {
+      warn(
+        `\`${what}\` cannot be read at compile time, so it is OMITTED on iOS and Android — write the headers as an object literal.`,
+      )
+    })
+    const merging = Object.keys(def.declHeaders).length > 0
+    if (merging) {
+      headers = {}
+      for (const [k, v] of Object.entries(def.declHeaders)) headers[k.toLowerCase()] = v
+    }
+    for (const [name, value] of entries) {
+      const key = merging ? name.toLowerCase() : name
+      delete headers[key]
+      delete headerExprs[key]
+      if (value === null) continue
+      if (typeof value === 'string') {
+        headers[key] = value
+        continue
+      }
+      if (!runtimeValues) {
+        warn(
+          `header \`${name}\` is a runtime value, and this hook bakes its request at compile time — it is OMITTED on iOS and Android. Pass a literal, or make the request from \`useQuery\` / \`useMutation\`, which build it when they run.`,
+        )
+        continue
+      }
+      headerExprs[key] = ctx.expr(value.runtime)
+    }
+  }
+  const hasHeader = (name: string): boolean =>
+    [...Object.keys(headers), ...Object.keys(headerExprs)].some((k) => k.toLowerCase() === name)
 
   // --- json body ---------------------------------------------------------
   const jsonNode = readObjectProp(arg, 'json')
   let body: string | undefined
+  let bodyExpr: ExprIR | undefined
   if (jsonNode !== undefined && !isNullishLiteral(jsonNode)) {
     const literal = readJsonLiteral(jsonNode)
-    if (literal === undefined) {
-      warn(
-        'the `json` body must be a literal (object / array / string / number / boolean / null) to be baked into the native request; the request is sent with NO body on iOS and Android.',
-      )
-    } else {
+    const arith = unwrapTypeLayers(jsonNode) as AnyNode
+    const nanLiteral =
+      arith?.type === 'UnaryExpression' && typeof literalScalar(arith.argument as AnyNode) === 'string'
+    if (literal !== undefined) {
       body = JSON.stringify(literal.value)
-      // The web sets `content-type: application/json` unless the caller already
-      // declared one. `Headers` matches case-insensitively and lowercases the
-      // name it stores, so mirror both halves.
-      if (!Object.keys(headers).some((k) => k.toLowerCase() === 'content-type')) {
-        headers = { ...headers, 'content-type': 'application/json' }
-      }
+    } else if (nanLiteral) {
+      // `-'a'` is NaN on the web — `JSON.stringify` writes `null` — and is not a value the native serializer accepts.
+      warn('the `json` body is a unary operator over a string, which is NaN on the web — write the value you mean to send. The request is sent with NO body on iOS and Android.')
+    } else if (runtimeValues) {
+      // A RUNTIME body — `json: { email: email() }`, `json: draft`. Serialized
+      // when the request is built, through the `JSON.stringify` lowering: the
+      // runtimes' web-identical serializer (key order = the source literal's,
+      // ECMAScript number and string formatting), so the bytes on the wire
+      // match the web's `JSON.stringify(json)`.
+      bodyExpr = { kind: 'json-stringify', arg: ctx.expr(jsonNode) }
+    } else {
+      warn(
+        'the `json` body is a runtime value, and this hook bakes its request at compile time — the request is sent with NO body on iOS and Android. Pass a literal, or make the request from `useQuery` / `useMutation`, which serialize the body when they run.',
+      )
+    }
+    // The web sets `content-type: application/json` unless the caller already
+    // declared one. `Headers` matches case-insensitively and lowercases the
+    // name it stores, so mirror both halves.
+    if ((body !== undefined || bodyExpr !== undefined) && !hasHeader('content-type')) {
+      headers = { ...headers, 'content-type': 'application/json' }
     }
   }
 
@@ -636,10 +758,18 @@ function resolveEndpointParts(
     )
   }
 
-  const extras: { urlExpr?: ExprIR; headers?: Record<string, string>; body?: string } = {}
-  if (sawRuntimeParam) extras.urlExpr = { kind: 'template', quasis, exprs }
+  const extras: {
+    urlExpr?: ExprIR
+    headers?: Record<string, string>
+    headerExprs?: Record<string, ExprIR>
+    body?: string
+    bodyExpr?: ExprIR
+  } = {}
+  if (sawRuntimeParam || sawRuntimeQuery) extras.urlExpr = { kind: 'template', quasis, exprs }
   if (Object.keys(headers).length > 0) extras.headers = headers
+  if (Object.keys(headerExprs).length > 0) extras.headerExprs = headerExprs
   if (body !== undefined) extras.body = body
+  if (bodyExpr !== undefined) extras.bodyExpr = bodyExpr
   return { url, method: def.method, ...extras, ...(def.responseSchema !== undefined ? { response: def.responseSchema } : {}) }
 }
 
@@ -664,6 +794,8 @@ export function scanHttp(scan: ModuleScan): void {
   const body = scan.body as AnyNode[]
   collectHttpClients(body, scan, facts)
   collectEndpointDefs(body, facts)
+  // Where each endpoint CALL sits (awaited in a handler, fired, value-used) — see `call.ts`.
+  scanCallRoles(body, facts.endpoints, scan)
   if (facts.clients.size > 0 || facts.endpoints.size > 0) {
     scan.skipTopLevel((node) => isHttpMetadataNode(node as AnyNode, facts))
   }
@@ -675,8 +807,16 @@ export const httpRequestSource = {
   resolve: (
     name: string,
     arg: AnyNode | undefined,
-    options: { allowRuntimeParams: boolean; streaming: boolean },
+    options: { allowRuntimeParams: boolean; streaming: boolean; runtimeValues?: boolean | undefined },
     ctx: ParseContext,
   ): ResolvedRequest | null =>
-    resolveEndpointParts(name, arg, ctx, httpFacts(ctx), options.allowRuntimeParams, options.streaming),
+    resolveEndpointParts(
+      name,
+      arg,
+      ctx,
+      httpFacts(ctx),
+      options.allowRuntimeParams,
+      options.streaming,
+      options.runtimeValues === true,
+    ),
 }

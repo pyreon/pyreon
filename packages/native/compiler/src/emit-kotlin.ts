@@ -6,7 +6,13 @@
 
 import { classifyFallback, unconsumedSlotWarning } from './jsx-slot-attrs'
 import { lowerWebViewDomStorage } from './webview-options'
-import { asyncValueReturnWarning, bodyReturnsValue } from './async-function'
+import {
+  asyncValueReturnWarning,
+  bodyAwaitsFallible,
+  bodyReturnsValue,
+  indentLines,
+  KOTLIN_UNHANDLED_ASYNC,
+} from './async-function'
 import { kotlinStr } from './string-literals'
 import {
   bindServices,
@@ -20,6 +26,7 @@ import {
   lowerPluginAssignValue,
   lowerPluginFunction,
   lowerPluginIdentifier,
+  isThrowingPluginExpr,
   lowerPluginExpr,
   moduleFieldValidators,
   pluginValueBinding,
@@ -2138,7 +2145,11 @@ function emitKotlinFunction(d: Extract<DeclIR, { kind: 'function' }>, ctx: Kotli
       if (m !== null) {
         _hasAsyncHandler = true
         const inner = m[2]!.split('\n').map((l) => `  ${l}`).join('\n')
-        return `${m[1]}\n    ${PYREON_ASYNC_SCOPE}.launch {\n${inner}\n    }\n  }`
+        // A fallible await (a request) must not escape `launch`: uncaught there it crashes the app.
+        const launched = bodyAwaitsFallible(d.body, isThrowingPluginExpr)
+          ? `      try {\n${indentLines(inner, 4)}\n      } ${KOTLIN_UNHANDLED_ASYNC}`
+          : inner
+        return `${m[1]}\n    ${PYREON_ASYNC_SCOPE}.launch {\n${launched}\n    }\n  }`
       }
       return sync
     }
@@ -5009,6 +5020,10 @@ function kotlinEmitContext(indent: number): KotlinEmitContext {
         }
       },
       intArg: kotlinIntArg,
+      coroutineScope: () => {
+        _hasAsyncHandler = true
+        return PYREON_ASYNC_SCOPE
+      },
     },
     indent,
   )
@@ -5617,6 +5632,9 @@ function emitKotlinAction(handler: ExprIR, indent: number): string {
         handler.params.length === 0 ? '{' : `{ ${handler.params.map(kotlinIdent).join(', ')} ->`
       if (isAsync) {
         _hasAsyncHandler = true
+        if (bodyAwaitsFallible(handler.stmts, isThrowingPluginExpr)) {
+          return `${head}\n${pad}${PYREON_ASYNC_SCOPE}.launch {\n${pad}  try {\n${indentLines(lines, 4)}\n${pad}  } ${KOTLIN_UNHANDLED_ASYNC}\n${pad}}\n${' '.repeat(indent)}}`
+        }
         return `${head}\n${pad}${PYREON_ASYNC_SCOPE}.launch {\n${lines}\n${pad}}\n${' '.repeat(indent)}}`
       }
       return `${head}\n${lines}\n${' '.repeat(indent)}}`
@@ -5647,14 +5665,14 @@ function emitKotlinAction(handler: ExprIR, indent: number): string {
     if (handler.params.length === 0) {
       if (handler.async === true) {
         _hasAsyncHandler = true
-        return `{ ${PYREON_ASYNC_SCOPE}.launch { ${emitKotlinExpr(handler.body, indent)} } }`
+        return `{ ${PYREON_ASYNC_SCOPE}.launch { ${kotlinLaunchBody(handler.body, indent)} } }`
       }
       return `{ ${emitKotlinExpr(handler.body, indent)} }`
     }
     const paramList = handler.params.map(kotlinIdent).join(', ')
     if (handler.async === true) {
       _hasAsyncHandler = true
-      return `{ ${paramList} -> ${PYREON_ASYNC_SCOPE}.launch { ${emitKotlinExpr(handler.body, indent)} } }`
+      return `{ ${paramList} -> ${PYREON_ASYNC_SCOPE}.launch { ${kotlinLaunchBody(handler.body, indent)} } }`
     }
     return `{ ${paramList} -> ${emitKotlinExpr(handler.body, indent)} }`
   }
@@ -5674,6 +5692,12 @@ function emitKotlinAction(handler: ExprIR, indent: number): string {
     return `{ ${kotlinIdent(handler.property)}() }`
   }
   return `{ ${emitKotlinExpr(handler, indent)} }`
+}
+
+/** A single-expression async handler's coroutine body; a fallible await is caught so it cannot crash the app. */
+function kotlinLaunchBody(body: ExprIR, indent: number): string {
+  const inner = emitKotlinExpr(body, indent)
+  return bodyAwaitsFallible(body, isThrowingPluginExpr) ? `try { ${inner} } ${KOTLIN_UNHANDLED_ASYNC}` : inner
 }
 
 /**

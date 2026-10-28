@@ -393,6 +393,34 @@ The client covers the common path; these are the building blocks underneath it.
 
 The client itself is web/Node only — the transport and middleware run on `fetch`. On iOS and Android (PMTC), same-file endpoint calls lower to the native networking runtime instead: `useFetch<T>(getUser({ params: { id: '1' } }))` becomes a `PyreonFetch`, `useQuery<T>(() => getUser.query({ params: { id: '1' } }))` a cached `PyreonQuery`, and `useStream` over `openEventStream` / `openNdjsonStream` with a same-file endpoint a `PyreonStream`. A computed `baseUrl` stays web.
 
+### Sending what the user entered
+
+A request can carry runtime values, and they are read at the moment the web reads them:
+
+```tsx
+const api = createHttp({ baseUrl: 'https://example.com/api' })
+const signIn = api.endpoint('POST /session')
+const saveProfile = api.endpoint('PUT /profile/:id')
+
+function SignIn() {
+  const email = signal('')
+  const save = useMutation<Profile>(saveProfile.mutation())
+
+  const submit = async () => {
+    // Lowers to PyreonHttp.call: a non-2xx rejects and ends the handler here.
+    await signIn({ json: { email: email() }, headers: { 'x-client': 'app' } })
+    save.mutate({ params: { id: 'me' }, json: { email: email() } })
+  }
+  // …
+}
+```
+
+- **`json`** is serialized by the web-identical `JSON.stringify` lowering (key order, number and string formatting all match), and `content-type: application/json` is added unless you set one.
+- **Runtime header and query values** go out as the web would send them — the query through `PyreonURL.query`, which mirrors `buildQuery` byte for byte (form-encoding, an array repeating its key, `null` / `undefined` dropped). Header values must be strings; a nullable one is refused with the fix.
+- **An awaited endpoint call** in an `async` event handler lowers to `PyreonHttp.call`; a failure ends the handler and is reported (logged), never crashing the app. An un-awaited call is sent fire-and-forget. Reading the awaited value (`const user = await signIn(…)`) has no decode type natively and is refused by name — use `useMutation<T>(ep.mutation())` and `await save.mutateAsync(…)`.
+- **`useMutation`** builds each request at the `mutate` / `mutateAsync` call site. The latest call owns `data` / `error` / `status`; `onSuccess` / `onError` / `onSettled` run in TanStack's order at both layers. When the view goes away nothing is written and no callback runs, but the request itself is not aborted (a write the server may already have committed is never torn mid-flight). `invalidates`, `onMutate` and `retry` are named in a warning rather than lowered.
+- **Known divergence:** natively an awaited call does not decode the response, so a 2xx whose body is not JSON resolves; the web's `.json()` rejects it.
+
 ## Relationship to the rest of the framework
 
 - **`@pyreon/query`** — owns caching, dedup-by-key and invalidation. Use `endpoint.query()` so the key and the URL cannot drift, and so TanStack's `AbortSignal` is forwarded.

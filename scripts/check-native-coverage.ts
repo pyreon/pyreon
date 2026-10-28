@@ -507,14 +507,21 @@ export function C() {
   {
     name: '@pyreon/query',
     mechanism: 'native-container',
-    rationale: 'useQuery<T>(() => ({ queryKey, queryFn, staleTime })) lowers to a native PyreonQuery over the query runtime.',
+    rationale:
+      'useQuery<T>(() => ({ queryKey, queryFn, staleTime })) lowers to a native PyreonQuery over the query runtime, and useMutation<T>(endpoint.mutation()) to a native PyreonMutation whose mutate / mutateAsync build the request at the call site from runtime values.',
     requiresCoSource: true,
-    snippet: `import { useQuery } from '@pyreon/query'
-import { Stack, Text } from '@pyreon/primitives'
+    snippet: `import { useMutation, useQuery } from '@pyreon/query'
+import { createHttp } from '@pyreon/http'
+import { signal } from '@pyreon/reactivity'
+import { Stack, Text, Button } from '@pyreon/primitives'
 interface Todo { id: number; title: string }
+const api = createHttp({ baseUrl: 'https://api.example.com' })
+const saveTodo = api.endpoint('POST /todos')
 export function C() {
+  const title = signal('milk')
   const q = useQuery<Todo>(() => ({ queryKey: ['todo', 1], queryFn: () => fetch('https://api.example.com/todos/1').then((r) => r.json()), staleTime: 60000 }))
-  return (<Stack><Text>{q.data}</Text></Stack>)
+  const save = useMutation<Todo>(saveTodo.mutation())
+  return (<Stack><Text>{q.data}</Text><Text>{save.data()?.title ?? ''}</Text><Button onPress={() => save.mutate({ json: { title: title() } }, { onSuccess: (t) => title.set(t.title) })}>save</Button></Stack>)
 }`,
   },
   {
@@ -685,20 +692,27 @@ export function C() { return (<Stack><Text>{cache.size}</Text></Stack>) }`,
     name: '@pyreon/http',
     mechanism: 'partial',
     rationale:
-      'the CLIENT (middleware, interceptors) stays web, but same-file endpoint calls DO lower: createHttp({ baseUrl }) + api.endpoint(…) resolve through useFetch/useQuery to native PyreonFetch/PyreonQuery, and useStream over openEventStream/openNdjsonStream to the co-located PyreonStream runtime (SSE + NDJSON, reconnect with Last-Event-ID). Verified zero-warning on both targets; the snippet exercises BOTH so the real-runtime batch compiles each.',
+      'the CLIENT (middleware, interceptors) stays web, but same-file endpoint calls DO lower: createHttp({ baseUrl }) + api.endpoint(…) resolve through useFetch/useQuery to native PyreonFetch/PyreonQuery, an endpoint awaited in an async event handler (`await ep({ json, query, headers })`, every value read at the call) to a native PyreonHttp.call that rejects a non-2xx and ends the handler, and useStream over openEventStream/openNdjsonStream to the co-located PyreonStream runtime (SSE + NDJSON, reconnect with Last-Event-ID). Verified zero-warning on both targets; the snippet exercises BOTH so the real-runtime batch compiles each.',
     snippet: `import { createHttp } from '@pyreon/http'
 import { openEventStream, type SseEvent } from '@pyreon/http/stream'
 import { useFetch } from '@pyreon/hooks'
 import { useStream } from '@pyreon/query'
-import { Stack, Text } from '@pyreon/primitives'
+import { signal } from '@pyreon/reactivity'
+import { Stack, Text, Button } from '@pyreon/primitives'
 interface User { id: number; name: string }
 const api = createHttp({ baseUrl: 'https://api.example.com' })
 const getUser = api.endpoint('GET /users/:id')
+const rename = api.endpoint('PATCH /users/:id')
 const feed = api.endpoint('GET /users/:id/feed', { responseType: 'stream' })
 export function C() {
+  const name = signal('Ada')
   const req = useFetch<User>(getUser({ params: { id: '1' } }))
   const live = useStream<SseEvent<User>>((ctx) => openEventStream((c) => feed({ params: { id: '1' }, signal: c.signal, headers: c.headers }), { signal: ctx.signal, onStatus: ctx.onStatus }))
-  return (<Stack><Text>{req.data}</Text><Text>{live.latest()?.data.name ?? ''}</Text></Stack>)
+  const submit = async () => {
+    await rename({ params: { id: '1' }, query: { notify: true }, json: { name: name() }, headers: { 'x-client': name() } })
+    name.set('')
+  }
+  return (<Stack><Text>{req.data}</Text><Text>{live.latest()?.data.name ?? ''}</Text><Button onPress={submit}>rename</Button></Stack>)
 }`,
   },
   {

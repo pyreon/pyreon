@@ -65,3 +65,117 @@ export function sendableHeaderExprs(
   }
   return out
 }
+
+/**
+ * The parts of one HTTP request a plugin emits, with the URL already rendered as target text (a string literal, or an
+ * interpolation of a runtime template). Literal and runtime halves of headers / body are kept apart so each target can
+ * write the literal ones as constants.
+ */
+export interface HttpRequestParts {
+  readonly method?: string | undefined
+  /** Target text of the URL expression. */
+  readonly url: string
+  readonly headers?: Readonly<Record<string, string>> | undefined
+  /** Runtime header values; a nullable or non-string one is refused with a named warning (see {@link sendableHeaderExprs}). */
+  readonly headerExprs?: Readonly<Record<string, ExprIR>> | undefined
+  /** A literal body. */
+  readonly body?: string | undefined
+  /** A runtime body, an expression of type `string`, evaluated as the request is built. */
+  readonly bodyExpr?: ExprIR | undefined
+}
+
+/** What the request writers read of an emit context. */
+interface RequestEmitCtx {
+  expr(e: ExprIR, at?: number): string
+  stringLiteral(value: string): string
+  inferType(e: ExprIR): TypeIR
+  warn(message: string): void
+}
+
+/**
+ * The Content-Type `fetch` sends for a STRING body the caller gave no type for — the Fetch standard's "extract a body"
+ * step (`text/plain;charset=UTF-8`). URLSession and OkHttp have no such default (URLSession can even pick
+ * `application/x-www-form-urlencoded`), so without it the same `useFetch(url, { method: 'POST', body })` reached a
+ * server with a different content type per platform.
+ */
+const FETCH_STRING_BODY_TYPE = 'text/plain;charset=UTF-8'
+
+function withDefaultContentType(p: HttpRequestParts): HttpRequestParts {
+  if (p.body === undefined && p.bodyExpr === undefined) return p
+  const names = [...Object.keys(p.headers ?? {}), ...Object.keys(p.headerExprs ?? {})]
+  if (names.some((n) => n.toLowerCase() === 'content-type')) return p
+  return { ...p, headers: { ...p.headers, 'content-type': FETCH_STRING_BODY_TYPE } }
+}
+
+/**
+ * A runtime body, when it can be sent: an expression typed `string` (what the web's `init.body` must be, and what
+ * `PyreonHttpRequest` carries). A type inference could not settle is let through — the native compiler is then the
+ * judge. Anything else is refused with the fix rather than sending `[object Object]`-shaped text.
+ */
+function sendableBodyExpr(expr: ExprIR | undefined, ctx: RequestEmitCtx, where: string): ExprIR | undefined {
+  if (expr === undefined) return undefined
+  const t = ctx.inferType(expr)
+  if (t.kind === 'string' || t.kind === 'unknown') return expr
+  ctx.warn(
+    `${where} body must be a string — serialize it first (\`JSON.stringify(value)\`), as the web requires. The request is sent with NO body on iOS and Android.`,
+  )
+  return undefined
+}
+
+/**
+ * The argument list of a Swift `PyreonHttpRequest(…)` — `method: .post, url: …, headers: […], body: …`. One writer for
+ * every request a plugin emits (useFetch, useQuery, useMutation, an awaited endpoint call), so the platforms cannot
+ * drift apart call site by call site. `where` prefixes a refused-header warning.
+ */
+export function swiftHttpRequestArgs(p: HttpRequestParts, ctx: RequestEmitCtx, where: string): string {
+  p = withDefaultContentType({ ...p, bodyExpr: sendableBodyExpr(p.bodyExpr, ctx, where) })
+  const parts = [`method: .${(p.method ?? 'GET').toLowerCase()}`, `url: ${p.url}`]
+  const pairs = [
+    ...Object.entries(p.headers ?? {}).map(([k, v]) => `${ctx.stringLiteral(k)}: ${ctx.stringLiteral(v)}`),
+    ...sendableHeaderExprs(p.headerExprs, ctx, where).map(([k, e]) => `${ctx.stringLiteral(k)}: ${ctx.expr(e, 0)}`),
+  ]
+  if (pairs.length > 0) parts.push(`headers: [${pairs.join(', ')}]`)
+  if (p.body !== undefined) parts.push(`body: Data(${ctx.stringLiteral(p.body)}.utf8)`)
+  else if (p.bodyExpr !== undefined) parts.push(`body: Data((${ctx.expr(p.bodyExpr, 0)}).utf8)`)
+  return parts.join(', ')
+}
+
+/** The Kotlin twin of {@link swiftHttpRequestArgs}: `method = PyreonHttpMethod.POST, url = …, headers = mapOf(…), body = …`. */
+export function kotlinHttpRequestArgs(p: HttpRequestParts, ctx: RequestEmitCtx, where: string): string {
+  p = withDefaultContentType({ ...p, bodyExpr: sendableBodyExpr(p.bodyExpr, ctx, where) })
+  const parts = [`method = PyreonHttpMethod.${(p.method ?? 'GET').toUpperCase()}`, `url = ${p.url}`]
+  const pairs = [
+    ...Object.entries(p.headers ?? {}).map(([k, v]) => `${ctx.stringLiteral(k)} to ${ctx.stringLiteral(v)}`),
+    ...sendableHeaderExprs(p.headerExprs, ctx, where).map(([k, e]) => `${ctx.stringLiteral(k)} to ${ctx.expr(e, 0)}`),
+  ]
+  if (pairs.length > 0) parts.push(`headers = mapOf(${pairs.join(', ')})`)
+  if (p.body !== undefined) parts.push(`body = ${ctx.stringLiteral(p.body)}`)
+  else if (p.bodyExpr !== undefined) parts.push(`body = ${ctx.expr(p.bodyExpr, 0)}`)
+  return parts.join(', ')
+}
+
+/**
+ * The Swift lines that SEND a request and reject a non-2xx, binding `__response`. A non-2xx must throw rather than
+ * decode: an error page handed to `JSONDecoder` reads as "the server sent bad JSON" and hides the status.
+ */
+export function swiftSendLines(requestArgs: string): string[] {
+  return [
+    `let __response = try await PyreonHttp.send(`,
+    `  PyreonHttpRequest(${requestArgs})`,
+    `)`,
+    `guard __response.isOK else {`,
+    `  throw PyreonHttpError.badStatus(__response.status)`,
+    `}`,
+  ]
+}
+
+/** The Kotlin twin of {@link swiftSendLines}: the blocking send moved off the main thread, then the status check. */
+export function kotlinSendLines(requestArgs: string): string[] {
+  return [
+    `val __response = withContext(Dispatchers.IO) {`,
+    // The OkHttp default comes from HERE, as a direct reference: see `PyreonHttp.send` for why it cannot live in the runtime.
+    `  PyreonHttp.send(PyreonHttpRequest(${requestArgs}), fallback = PyreonHttpOkHttp)`,
+    `}`,
+    `if (!__response.isOk) throw PyreonHttpError.BadStatus(__response.status)`,
+  ]
+}

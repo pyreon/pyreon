@@ -3778,6 +3778,13 @@ function moduleParseContextFor(ctx: ParseCtx, owner: string): ModuleParseContext
     addItem: (spec: ExtItemSpec) => {
       ctx.lateModuleItems.push(stampModuleItem(activeRegistries().items, owner, spec))
     },
+    // A request source reads its facts through a ParseContext; an expression-position call has no declaration, so
+    // the facade it gets carries an empty `declName` (a source reports through `report`, never `warn`).
+    requests: {
+      has: (requestName) => parseContextFor('', { arguments: [] }, ctx).requests.has(requestName),
+      resolve: (requestName, arg, options) =>
+        parseContextFor('', { arguments: [] }, ctx).requests.resolve(requestName, arg, options),
+    },
   }
 }
 

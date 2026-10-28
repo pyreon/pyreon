@@ -119,7 +119,42 @@ fun testHttpSendResolvesFallbackThenInstalled() {
 // side has the same single-service boundary. The composition is covered by
 // the (future) useFetch emit's end-to-end device gate.
 
+/** `call` hands the executor the request as built, and REJECTS a non-2xx (the web's `throwHttpErrors` default). */
+fun testHttpCallRejectsNon2xx() {
+    val seen = ArrayList<PyreonHttpRequest>()
+    val exec = object : PyreonHttpExecutor {
+        override fun send(request: PyreonHttpRequest): PyreonHttpResponse {
+            seen.add(request)
+            return PyreonHttpResponse(if (request.url.endsWith("/ok")) 201 else 500)
+        }
+    }
+    val ok = PyreonHttp.call(PyreonHttpRequest(PyreonHttpMethod.POST, "https://h/ok", body = "{}"), fallback = exec)
+    check(ok.status == 201) { "a 2xx resolves" }
+    var threw: PyreonHttpError? = null
+    try {
+        PyreonHttp.call(PyreonHttpRequest(PyreonHttpMethod.POST, "https://h/bad"), fallback = exec)
+    } catch (e: PyreonHttpError.BadStatus) {
+        threw = e
+    }
+    check((threw as? PyreonHttpError.BadStatus)?.status == 500) { "a 500 throws BadStatus(500)" }
+    check(seen.size == 2 && seen[0].body == "{}") { "the request reaches the executor unchanged" }
+}
+
+/** The runtime query builder — byte parity with the web is asserted by the compiler's executed differential test. */
+fun testUrlQuery() {
+    check(PyreonURL.query("?", "q", "a b", "page", 2L, "n", 1.5, "skip", null) == "?q=a+b&page=2&n=1.5") {
+        "form-encoded, JS number text, a null pair dropped"
+    }
+    check(PyreonURL.query("&", "tag", listOf("x", null, "y")) == "&tag=x&tag=y") { "a list repeats its key" }
+    check(PyreonURL.query("?", "a", null) == "") { "every pair dropped -> no `?`" }
+    check(PyreonURL.query("?", "w", 7.0, "e", 1e21, "ninf", Double.NEGATIVE_INFINITY) == "?w=7&e=1e%2B21&ninf=-Infinity") {
+        "whole double, exponent form, non-finite"
+    }
+}
+
 fun main() {
+    testHttpCallRejectsNon2xx()
+    testUrlQuery()
     testHttpGetBuilder()
     testHttpPostBuilder()
     testHttpPostJsonSetsContentType()

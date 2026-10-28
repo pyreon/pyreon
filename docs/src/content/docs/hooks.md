@@ -2134,7 +2134,7 @@ function useFetch<T>(
 ): { data: Signal<T | undefined>; error: Signal<unknown>; isPending: Signal<boolean>; refetch: () => void }
 ```
 
-`source` is a URL, or a promise such as an [`@pyreon/http`](/docs/http) endpoint call (`useFetch(getUser({ params: { id: '1' } }))`). Pass `init` for a non-GET request; on native it lowers to `PyreonHttp`, and the method and body must be literals there. `init.headers` are read once, when the request is built at setup — a value that changes later (a token after sign-in) belongs in `@pyreon/query`, whose `queryFn` builds the request on each run.
+`source` is a URL, or a promise such as an [`@pyreon/http`](/docs/http) endpoint call (`useFetch(getUser({ params: { id: '1' } }))`). Pass `init` for a non-GET request; on native it lowers to `PyreonHttp`; the method must be a literal there, while the body may be any string expression (`JSON.stringify(draft)`), read once at setup like the web reads it. `init.headers` are read once, when the request is built at setup — a value that changes later (a token after sign-in) belongs in `@pyreon/query`, whose `queryFn` builds the request on each run.
 
 ```tsx
 // @check

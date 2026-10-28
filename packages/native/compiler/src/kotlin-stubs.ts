@@ -1105,6 +1105,7 @@ object PyreonHttpOkHttp : PyreonHttpExecutor {
 object PyreonHttp {
   fun install(executor: PyreonHttpExecutor) {}
   fun send(request: PyreonHttpRequest, fallback: PyreonHttpExecutor? = null): PyreonHttpResponse = PyreonHttpResponse(200)
+  fun call(request: PyreonHttpRequest, fallback: PyreonHttpExecutor? = null): PyreonHttpResponse = PyreonHttpResponse(200)
 }
 // PyreonURL — the runtime path-param encoder a templated endpoint URL calls.
 // Mirrors the REAL PyreonURL surface: four overloads (String / Int / Long /
@@ -1116,6 +1117,8 @@ object PyreonURL {
   @JvmStatic fun encodePathParam(value: Int): String = ""
   @JvmStatic fun encodePathParam(value: Long): String = ""
   @JvmStatic fun encodePathParam(value: Double): String = ""
+  @JvmStatic fun query(joiner: String, vararg pairs: Any?): String = ""
+  @JvmStatic fun formEncode(text: String): String = text
 }
 // pyreonNumberString — JS \`String(number)\`, which every Double-typed
 // template interpoland lowers through. Mirrors the real signature.

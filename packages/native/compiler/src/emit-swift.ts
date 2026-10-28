@@ -24,6 +24,7 @@ import {
   lowerPluginAssignValue,
   lowerPluginFunction,
   lowerPluginIdentifier,
+  isThrowingPluginExpr,
   lowerPluginExpr,
   moduleFieldValidators,
   pluginValueBinding,
@@ -92,7 +93,14 @@ import {
   optionalSpreadWarning,
   synthStructName,
 } from './expr-utils'
-import { asyncValueReturnWarning, bodyReturnsValue } from './async-function'
+import {
+  asyncValueReturnWarning,
+  bodyAwaitsFallible,
+  bodyReturnsValue,
+  indentLines,
+  SWIFT_TASK,
+  SWIFT_UNHANDLED_ASYNC,
+} from './async-function'
 import {
   nilCoalesceTernary,
   buildArraySpreadConcat,
@@ -3178,7 +3186,12 @@ function emitSwiftFunction(
         () => emitSwiftExpr(conciseExpr, 0),
       )
       const vis = visibility === 'private' ? 'private ' : ''
-      if (isAsync) return `${vis}func ${swiftIdent(d.name)}(${params}) { Task { ${concise} } }`
+      if (isAsync) {
+        const body = bodyAwaitsFallible(d.body, isThrowingPluginExpr)
+          ? `do { ${concise} } ${SWIFT_UNHANDLED_ASYNC}`
+          : concise
+        return `${vis}func ${swiftIdent(d.name)}(${params}) { ${SWIFT_TASK} { ${body} } }`
+      }
       return `${vis}func ${swiftIdent(d.name)}(${params})${retType} { ${concise} }`
     }
     // Inline component value-consts into the body — a `private func` handler,
@@ -3201,7 +3214,10 @@ function emitSwiftFunction(
     _activeInferCtx.locals = savedActive
     const vis2 = visibility === 'private' ? 'private ' : ''
     if (isAsync) {
-      return `${vis2}func ${swiftIdent(d.name)}(${params}) {\n    Task {\n${bodyLines}\n    }\n  }`
+      const task = bodyAwaitsFallible(d.body, isThrowingPluginExpr)
+        ? `    ${SWIFT_TASK} {\n      do {\n${indentLines(bodyLines, 2)}\n      } ${SWIFT_UNHANDLED_ASYNC}\n    }`
+        : `    ${SWIFT_TASK} {\n${bodyLines}\n    }`
+      return `${vis2}func ${swiftIdent(d.name)}(${params}) {\n${task}\n  }`
     }
     return `${vis2}func ${swiftIdent(d.name)}(${params})${retType} {\n${bodyLines}\n  }`
   } finally {
@@ -4016,6 +4032,9 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       // M4.5: `await x.method()` — emit the `await` keyword before the awaited
       // expression. Only reachable inside an `async` arrow, whose action
       // emitter wraps the body in a `Task { … }` async scope.
+      // A FALLIBLE plugin expression (a request) is `try await`: the enclosing Task body is
+      // wrapped in a `do`/`catch` for it (see `swiftTaskBody`), so a failure ends the handler.
+      if (isThrowingPluginExpr(e.expr)) return `try await ${emitSwiftExpr(e.expr, indent)}`
       return `await ${emitSwiftExpr(e.expr, indent)}`
     case 'ext-expr':
       return lowerPluginExpr(e, 'swift', () => swiftEmitContext(indent))
@@ -7012,7 +7031,10 @@ function emitSwiftAction(handler: ExprIR, indent: number): string {
       _exprInferCtx.locals = savedLocals
       _activeInferCtx.locals = savedLocalsAct6
       if (isAsync) {
-        return `{\n${pad}Task {\n${lines}\n${pad}}\n${' '.repeat(indent)}}`
+        if (bodyAwaitsFallible(inlinedStmts, isThrowingPluginExpr)) {
+          return `{\n${pad}${SWIFT_TASK} {\n${pad}  do {\n${indentLines(lines, 4)}\n${pad}  } ${SWIFT_UNHANDLED_ASYNC}\n${pad}}\n${' '.repeat(indent)}}`
+        }
+        return `{\n${pad}${SWIFT_TASK} {\n${lines}\n${pad}}\n${' '.repeat(indent)}}`
       }
       return `{\n${lines}\n${' '.repeat(indent)}}`
     }
@@ -7028,7 +7050,11 @@ function emitSwiftAction(handler: ExprIR, indent: number): string {
     // M4.5: single-expression async handler (`async () => await x.method()`)
     // still needs the `Task { … }` async scope.
     if (handler.async === true) {
-      return `{ Task { ${emitSwiftExpr(handler.body, indent)} } }`
+      const inner = emitSwiftExpr(handler.body, indent)
+      if (bodyAwaitsFallible(handler.body, isThrowingPluginExpr)) {
+        return `{ ${SWIFT_TASK} { do { ${inner} } ${SWIFT_UNHANDLED_ASYNC} } }`
+      }
+      return `{ ${SWIFT_TASK} { ${inner} } }`
     }
     return `{ ${emitSwiftExpr(handler.body, indent)} }`
   }
