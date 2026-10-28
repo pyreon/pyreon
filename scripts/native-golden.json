@@ -6412,12 +6412,12 @@
       "warnings": 0
     },
     "golden-fixture:toast-22.tsx|swift": {
-      "sha": "bf645989d39834a3e982791c9dde24648005ddd6f6d434751f3efb000c0cda57",
+      "sha": "33c3af4c158c40fb07d9eb78903657edc9de7c1322610937a9c7d94e61fe2df2",
       "bytes": 242,
       "warnings": 1
     },
     "golden-fixture:toast-22.tsx|kotlin": {
-      "sha": "fea803666dd1e38182c554d079eb7d2a3a0f5dce5d55d168bb8ecf781f831e3f",
+      "sha": "49484903f1d797fa2bca20bab0d8081c24452dff5a8909cc60afef4f8fdde0b1",
       "bytes": 363,
       "warnings": 1
     },
