@@ -58,7 +58,9 @@ describe('<Field multiline> — emit', () => {
       `<Field multiline lines={rows()} value={notes} onChangeText={(v) => notes.set(v)} />`,
     )
     expect(swift.code).toContain('.lineLimit(max(1, Int(rows)), reservesSpace: true)')
-    expect(kotlin.code).toContain('minLines = maxOf(1, (rows).toInt()), maxLines = maxOf(1, (rows).toInt())')
+    expect(kotlin.code).toContain(
+      'minLines = maxOf(1, (rows).toInt()), maxLines = maxOf(1, (rows).toInt())',
+    )
     expect(swift.warnings).toEqual([])
     expect(kotlin.warnings).toEqual([])
   })
@@ -68,7 +70,9 @@ describe('<Field multiline> — emit', () => {
       `<Field multiline value={notes()} onChangeText={(v) => notes.set(v)} />`,
     )
     expect(swift.code).toMatch(/TextField\("", text: Binding\([\s\S]*\), axis: \.vertical\)/)
-    expect(kotlin.code).toContain('TextField(value = notes, onValueChange = { v -> notes = v }, singleLine = false')
+    expect(kotlin.code).toContain(
+      'TextField(value = notes, onValueChange = { v -> notes = v }, singleLine = false',
+    )
   })
 
   it('a single-line Field says singleLine on Android — Material defaults to multi-line', () => {
@@ -92,8 +96,14 @@ describe('<Field multiline> — emit', () => {
 describe('<Field multiline> — every shape that cannot lower is NAMED', () => {
   const warnsOnBoth = (jsx: string, needle: RegExp) => {
     const { swift, kotlin } = both(jsx)
-    expect(swift.warnings.some((w) => needle.test(w)), swift.warnings.join('\n')).toBe(true)
-    expect(kotlin.warnings.some((w) => needle.test(w)), kotlin.warnings.join('\n')).toBe(true)
+    expect(
+      swift.warnings.some((w) => needle.test(w)),
+      swift.warnings.join('\n'),
+    ).toBe(true)
+    expect(
+      kotlin.warnings.some((w) => needle.test(w)),
+      kotlin.warnings.join('\n'),
+    ).toBe(true)
     return { swift, kotlin }
   }
 
@@ -169,8 +179,12 @@ describe('<Field multiline> — the emit compiles', () => {
     expect(res.ok, res.error ?? '').toBe(true)
   })
 
-  it.skipIf(!isKotlincAvailable())('Kotlin type-checks', () => {
-    const res = validateKotlin(transform(app(jsx), { target: 'kotlin' }).code)
-    expect(res.ok, res.error ?? '').toBe(true)
-  }, 180_000)
+  it.skipIf(!isKotlincAvailable())(
+    'Kotlin type-checks',
+    () => {
+      const res = validateKotlin(transform(app(jsx), { target: 'kotlin' }).code)
+      expect(res.ok, res.error ?? '').toBe(true)
+    },
+    180_000,
+  )
 })

@@ -17,6 +17,7 @@ import { query } from '@pyreon/test-utils'
 import { afterEach, describe, expect, it } from 'vitest'
 import { h } from '@pyreon/core'
 import { mount } from '@pyreon/runtime-dom'
+import type { FieldProps } from '../types/input'
 import { signal } from '@pyreon/reactivity'
 import {
   Button,
@@ -1149,12 +1150,15 @@ describe('<Field multiline> happy-dom unit', () => {
 
   it('the multiline shape rejects keyboard kinds and onSubmit at the type level', () => {
     const v = signal('')
+    const base = { value: v, onChangeText: (_: string) => {} }
     // @ts-expect-error — a text area has no keyboard kind
-    void h(Field, { value: v, onChangeText: () => {}, multiline: true, kind: 'email' })
+    const withKind: FieldProps = { ...base, multiline: true, kind: 'email' }
     // @ts-expect-error — Enter inserts a newline, so there is no onSubmit
-    void h(Field, { value: v, onChangeText: () => {}, multiline: true, onSubmit: () => {} })
+    const withSubmit: FieldProps = { ...base, multiline: true, onSubmit: () => {} }
     // @ts-expect-error — `lines` belongs to the multiline shape only
-    void h(Field, { value: v, onChangeText: () => {}, lines: 4 })
+    const linesOnInput: FieldProps = { ...base, lines: 4 }
+    const ok: FieldProps[] = [{ ...base, multiline: true, lines: 4, kind: 'text' }, { ...base, kind: 'email' }]
+    expect([withKind, withSubmit, linesOnInput, ...ok]).toHaveLength(5)
   })
 })
 

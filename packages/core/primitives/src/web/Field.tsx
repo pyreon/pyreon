@@ -72,13 +72,14 @@ export const Field = (props: FieldProps): VNode => {
 
   // A text area's Enter inserts a newline, so it never submits — the type
   // forbids `onSubmit` on the multiline shape, and this guards untyped callers.
-  const onKeyDown = !multiline && props.onSubmit
-    ? (e: KeyboardEvent) => {
-        if (e.key === 'Enter') {
-          props.onSubmit?.()
+  const onKeyDown =
+    !multiline && props.onSubmit
+      ? (e: KeyboardEvent) => {
+          if (e.key === 'Enter') {
+            props.onSubmit?.()
+          }
         }
-      }
-    : undefined
+      : undefined
 
   const style: Record<string, string> = {
     padding: '8px 12px',
