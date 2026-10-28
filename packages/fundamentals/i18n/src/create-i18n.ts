@@ -37,10 +37,21 @@ function isUnsafeI18nKey(key: string): boolean {
  *
  * - count === 0 tries an explicit `_zero` form before the CLDR category, so
  *   English can say "No items" even though CLDR has no `zero` category for `en`.
- * - context combines with plural: `key_male_one`, `key_male`, `key_one`, `key`.
- * - a CLDR category with no message of its own falls back to `key_other`
- *   before the bare key (a Czech `few` form not translated yet still shows
- *   a plural, not the raw key). The native runtimes resolve the same order.
+ * - the BARE key is the singular form (i18next convention), so
+ *   `{ item, item_other }` is a complete English pair.
+ * - category `one`: every singular form (`key_one`, bare `key`) is tried
+ *   before any `_other`; `_other` is a last resort only when no singular
+ *   exists at all.
+ * - any other category: a missing category form falls back to `key_other`
+ *   BEFORE the bare singular (an untranslated Czech `few` shows the plural).
+ * - context is the major axis: `key_ctx_*` forms, then plain `key_*` forms.
+ *
+ * Concretely (`?` = only when count === 0):
+ *   one:   [ctx_zero?, ctx_one, ctx, zero?, one, key, ctx_other, other]
+ *   other: [ctx_zero?, ctx_C, ctx_other, ctx, zero?, C, other, key]
+ *
+ * The native runtimes (no context) resolve the same order:
+ *   `key_zero?`, `key_C`, then `key` before `key_other` iff C is `one`.
  *
  * Returns `[keyPath]` unchanged when neither context nor count is present.
  */
@@ -54,21 +65,30 @@ function buildKeyCandidates(
 ): string[] {
   if (!context && !hasCount) return [keyPath]
 
-  const suffixes: string[] = []
+  // Tails appended to each prefix ('' = the bare, singular form). `lastResort`
+  // tails are tried only after every prefix has exhausted `tails`.
+  const tails: string[] = []
+  const lastResort: string[] = []
   if (hasCount) {
-    if (count === 0) suffixes.push('zero')
+    if (count === 0) tails.push('_zero')
     const category = resolvePluralCategory(locale, count as number, pluralRules)
-    if (category !== 'zero') suffixes.push(category)
-    if (category !== 'other') suffixes.push('other')
+    if (category !== 'zero') tails.push(`_${category}`)
+    if (category === 'one') {
+      // Singular: the bare key IS the `one` form; `_other` only as a last resort.
+      tails.push('')
+      lastResort.push('_other')
+    } else {
+      if (category !== 'other') tails.push('_other')
+      tails.push('')
+    }
+  } else {
+    tails.push('')
   }
 
+  const prefixes = context ? [`${keyPath}_${context}`, keyPath] : [keyPath]
   const cands: string[] = []
-  if (context) {
-    for (const s of suffixes) cands.push(`${keyPath}_${context}_${s}`)
-    cands.push(`${keyPath}_${context}`)
-  }
-  for (const s of suffixes) cands.push(`${keyPath}_${s}`)
-  cands.push(keyPath)
+  for (const p of prefixes) for (const t of tails) cands.push(p + t)
+  for (const p of prefixes) for (const t of lastResort) cands.push(p + t)
 
   // At this point context||count held, so there are always ≥2 candidates;
   // dedupe (a CLDR category that equals an explicit suffix, etc.).
@@ -423,11 +443,7 @@ export function createI18n(options: I18nOptions): I18nInstance {
     return resolveTranslation(innerKey, innerValues, depth + 1)
   }
 
-  function resolveTranslation(
-    key: string,
-    values?: InterpolationValues,
-    depth = 0,
-  ): string {
+  function resolveTranslation(key: string, values?: InterpolationValues, depth = 0): string {
     // Subscribe to reactive dependencies
     const currentLocale = locale()
     storeVersion()
@@ -460,7 +476,14 @@ export function createI18n(options: I18nOptions): I18nInstance {
     // Locales are tried along the BCP 47 step-down chain: `en-US` → `en` →
     // fallbackLocale (itself stepped down). A regional locale with only base-
     // language messages used to skip straight to the fallback.
-    const candidates = buildKeyCandidates(keyPath, currentLocale, context, hasCount, count, pluralRules)
+    const candidates = buildKeyCandidates(
+      keyPath,
+      currentLocale,
+      context,
+      hasCount,
+      count,
+      pluralRules,
+    )
     const chain = localeChain(currentLocale)
     for (let li = 0; li < chain.length; li++) {
       const loc = chain[li] as string
