@@ -1644,6 +1644,23 @@ final class PyreonTasksUITests: XCTestCase {
             "true",
             "PyreonPermissions denied a seeded grant"
         )
+        // toast: the overlay shows on a PUSHED screen. `<Toaster />` sits beside
+        // the RouterView, i.e. in the NavigationStack's ROOT content; while it
+        // lowered to an inline stack, a toast fired from a pushed screen like
+        // this one was covered by it and never visible. It now lives in its own
+        // pass-through window above the app.
+        let toolkitSave = app.buttons["toolkit-save"].firstMatch
+        XCTAssertTrue(toolkitSave.waitForExistence(timeout: 10), "Toolkit Save button missing")
+        toolkitSave.tap()
+        let toastCard = app.descendants(matching: .any)["pyreon-toast"].firstMatch
+        XCTAssertTrue(
+            toastCard.waitForExistence(timeout: 3),
+            "toast(i18n.t('saved')) fired on a pushed screen but no toast appeared"
+        )
+        XCTAssertTrue(
+            toastCard.label.contains("Saved"),
+            "the toast reads '\(toastCard.label)', expected 'Saved'"
+        )
         // sync: the CRDT-backed signal was RENDERED but asserted by neither device
         // test until now -- built, shipped, never verified, which is the class
         // this whole arc is about.

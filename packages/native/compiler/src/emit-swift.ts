@@ -7943,6 +7943,17 @@ function readStaticAttr(
   for (const a of e.attrs) {
     if (a.kind === 'attr' && a.name === name) {
       if (a.value.kind === 'literal') return a.value.value as string | number | boolean
+      // `-1` parses as a unary minus over a literal; it is as static as `1`.
+      // Without the fold every negative literal read as dynamic, so a
+      // lowering that needs a literal warned on it or took the dynamic path.
+      if (
+        a.value.kind === 'unary' &&
+        (a.value.op === '-' || a.value.op === '+') &&
+        a.value.argument.kind === 'literal' &&
+        typeof a.value.argument.value === 'number'
+      ) {
+        return a.value.op === '-' ? -a.value.argument.value : a.value.argument.value
+      }
       // Const-ref: `src={API_URL}` where API_URL is a module-level
       // `const` string/number/boolean binding. Resolve it to its
       // literal so naming a constant works as well as inlining it.

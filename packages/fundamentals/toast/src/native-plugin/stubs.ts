@@ -24,6 +24,12 @@ public final class PyreonToast {
   public func dismiss(_ id: String) {}
   public func clear() {}
 }
+// <Toaster /> — the runtime's overlay view (PyreonToaster.swift); same
+// parameters, defaults and order.
+public struct PyreonToaster: View {
+  public init(position: String = "top-right", max: Int = 5, gap: Double = 8, offset: Double = 16, duration: Double? = nil) {}
+  public var body: some View { EmptyView() }
+}
 `
 
 export const TOAST_KOTLIN_STUBS = `// PyreonToast — mirror of runtime-kotlin's PyreonToast.kt surface the emit
@@ -37,10 +43,13 @@ object PyreonToast {
   fun dismiss(id: String) {}
   fun clear() {}
 }
+// <Toaster /> — the runtime's overlay composable (PyreonToaster.kt).
+@Composable
+fun PyreonToaster(position: String = "top-right", max: Long = 5L, gap: Double = 8.0, offset: Double = 16.0, duration: Long? = null) {}
 `
 
 /** The compile-gate stubs, appended only to an emit that names a type they declare. */
 export const toastStubs: StubAugmentation = {
-  swift: (source) => (/\bPyreonToast(?:Item)?\b/.test(source) ? TOAST_SWIFT_STUBS : ''),
-  kotlin: (source) => (/\bPyreonToast(?:Item)?\b/.test(source) ? TOAST_KOTLIN_STUBS : ''),
+  swift: (source) => (/\bPyreonToast(?:Item|er)?\b/.test(source) ? TOAST_SWIFT_STUBS : ''),
+  kotlin: (source) => (/\bPyreonToast(?:Item|er)?\b/.test(source) ? TOAST_KOTLIN_STUBS : ''),
 }

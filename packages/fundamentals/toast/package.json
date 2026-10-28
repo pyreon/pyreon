@@ -78,6 +78,14 @@
     "native": {
       "swift": "native/swift",
       "kotlin": "native/kotlin",
+      "kotlinServices": {
+        "PyreonToast": [
+          "PyreonToast.kt"
+        ]
+      },
+      "kotlinSdkOnly": [
+        "PyreonToaster.kt"
+      ],
       "plugin": "./lib/native-plugin.js",
       "modules": [
         "@pyreon/toast"
