@@ -421,6 +421,37 @@ function SignIn() {
 - **`useMutation`** builds each request at the `mutate` / `mutateAsync` call site. The latest call owns `data` / `error` / `status`; `onSuccess` / `onError` / `onSettled` run in TanStack's order at both layers. When the view goes away nothing is written and no callback runs, but the request itself is not aborted (a write the server may already have committed is never torn mid-flight). `invalidates`, `onMutate` and `retry` are named in a warning rather than lowered.
 - **Known divergence:** natively an awaited call does not decode the response, so a 2xx whose body is not JSON resolves; the web's `.json()` rejects it.
 
+### Uploading a picked file
+
+A picker or the camera hands back a URI — a handle, not the file. `fileFromUri` from `@pyreon/hooks` is the step in between, and the same source sends the same bytes on every platform:
+
+```tsx
+import { fileFromUri, useImagePicker } from '@pyreon/hooks'
+
+const uploadAvatar = api.endpoint('POST /me/avatar')
+
+function AvatarButton() {
+  const picker = useImagePicker()
+  const caption = signal('')
+
+  const change = async () => {
+    const uri = await picker.pick()
+    if (uri === null) return
+    await uploadAvatar({
+      multipart: { avatar: await fileFromUri(uri, { name: 'avatar.jpg' }), caption: caption() },
+    })
+  }
+  // …
+}
+```
+
+- **`multipart`** becomes `PyreonMultipartBody` natively — parts in source order, a struct value as a `JSON.stringify` text part, an array repeating its field, `null` / `undefined` dropped, names and text normalized and escaped as the WHATWG `FormData` serialization does. An executed differential test holds the runtime writer to the bytes the web's `FormData` produces.
+- **Files stream from disk.** A `file://` copy (iOS) or a `content://` document (Android) is read in chunks when the request is sent and never held whole in memory; a `data:` URI is decoded the way `fetch` decodes it.
+- **`body: file`** sends the file's bytes as the whole body, typed by the file (or by a `content-type` you set). A string `body` is a text body.
+- **`form`** is serialized by the web's own `encodeForm` at compile time when every value is a literal, and by `PyreonURL.query` at request time when one is not — both produce the `URLSearchParams` bytes the web sends.
+- `fileFromUri` must be awaited (a Promise in a body is sent as text, so the unawaited call is named). On Android it reads through the app's `ContentResolver`; a URI that names nothing readable rejects, ending the handler.
+- **Not lowered, each named in a warning:** a `multipart` field holding a runtime array of objects (send one field per object or a single `JSON.stringify` value), a nested object in `form`, and passing two body encodings at once (the web throws).
+
 ## Relationship to the rest of the framework
 
 - **`@pyreon/query`** — owns caching, dedup-by-key and invalidation. Use `endpoint.query()` so the key and the URL cannot drift, and so TanStack's `AbortSignal` is forwarded.

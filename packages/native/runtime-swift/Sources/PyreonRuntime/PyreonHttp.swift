@@ -463,17 +463,54 @@ public struct PyreonUploadFile: Sendable {
     static func parseDataURI(_ uri: String) -> (type: String, bytes: Data)? {
         guard let comma = uri.firstIndex(of: ",") else { return nil }
         var meta = String(uri[uri.index(uri.startIndex, offsetBy: 5)..<comma])
-        let payload = String(uri[uri.index(after: comma)...])
-        let base64 = meta.hasSuffix(";base64")
-        if base64 { meta.removeLast(";base64".count) }
+        // Percent-decoded to BYTES, as the Fetch standard does: `%FF` is the byte 0xFF, not invalid UTF-8.
+        let payload = percentDecode(String(uri[uri.index(after: comma)...]))
+        let trimmedMeta = meta.trimmingCharacters(in: .whitespaces)
+        let base64 = trimmedMeta.lowercased().hasSuffix(";base64")
+        if base64 { meta = String(trimmedMeta.dropLast(";base64".count)) }
         let bytes: Data?
         if base64 {
-            bytes = Data(base64Encoded: payload.removingPercentEncoding ?? payload)
+            let text = String(decoding: payload, as: UTF8.self).filter { !$0.isWhitespace }
+            bytes = Data(base64Encoded: text)
         } else {
-            bytes = (payload.removingPercentEncoding ?? payload).data(using: .utf8)
+            bytes = payload
         }
         guard let bytes else { return nil }
-        return (meta.lowercased(), bytes)
+        return (dataURIType(meta), bytes)
+    }
+
+    /// `%XX` → that byte; everything else is its UTF-8 bytes. A malformed escape stays literal, as the Fetch standard keeps it.
+    static func percentDecode(_ text: String) -> Data {
+        let raw = Array(text.utf8)
+        var out = Data(capacity: raw.count)
+        var i = 0
+        func hex(_ c: UInt8) -> UInt8? {
+            switch c {
+            case 0x30...0x39: return c - 0x30
+            case 0x41...0x46: return c - 0x41 + 10
+            case 0x61...0x66: return c - 0x61 + 10
+            default: return nil
+            }
+        }
+        while i < raw.count {
+            if raw[i] == 0x25, i + 2 < raw.count, let hi = hex(raw[i + 1]), let lo = hex(raw[i + 2]) {
+                out.append(hi * 16 + lo)
+                i += 3
+            } else {
+                out.append(raw[i])
+                i += 1
+            }
+        }
+        return out
+    }
+
+    /// The Fetch standard's data-URL type: absent means `text/plain;charset=US-ASCII`, and a bare parameter list
+    /// (`;charset=utf-8`) is a parameter of `text/plain` — what `fetch(uri).blob().type` reports on the web.
+    static func dataURIType(_ meta: String) -> String {
+        let trimmed = meta.trimmingCharacters(in: .whitespaces)
+        if trimmed.isEmpty { return "text/plain;charset=us-ascii" }
+        if trimmed.hasPrefix(";") { return ("text/plain" + trimmed).lowercased() }
+        return trimmed.lowercased()
     }
 
     /// The common upload types by extension — what a browser reports for a
@@ -533,14 +570,22 @@ public struct PyreonMultipartBody: Sendable {
         }
     }
 
+    /// `encodeMultipart` expands ONE level: an array field appends each element as its own part.
     private mutating func add(_ name: String, _ value: Any?) {
+        guard let present = PyreonURL.unwrap(value) else { return }
+        if let list = present as? [Any?] {
+            for item in list { part(name, item) }
+        } else if let list = present as? [Any] {
+            for item in list { part(name, item) }
+        } else {
+            part(name, present)
+        }
+    }
+
+    private mutating func part(_ name: String, _ value: Any?) {
         guard let present = PyreonURL.unwrap(value) else { return }
         if let file = present as? PyreonUploadFile {
             parts.append(Part(name: name, value: .file(file)))
-        } else if let list = present as? [Any?] {
-            for item in list { add(name, item) }
-        } else if let list = present as? [Any] {
-            for item in list { add(name, item) }
         } else {
             parts.append(Part(name: name, value: .text(PyreonURL.jsString(present))))
         }

@@ -119,7 +119,7 @@ import type {
   ZoomWindow,
 } from '@pyreon/charts'
 import { useForm } from '@pyreon/form'
-import { useFetch, useCrashReporter } from '@pyreon/hooks'
+import { fileFromUri, useFetch, useCrashReporter } from '@pyreon/hooks'
 import { defineStore } from '@pyreon/store'
 import { ColorModeProvider, For, Show, Suspense, ErrorBoundary, onMount, useColorMode } from '@pyreon/core'
 import {
@@ -163,6 +163,11 @@ const tickRows = streams.endpoint('GET /ndjson', { responseType: 'stream' })
 // raw body), so each assertion reads the wire, not the app's own idea of what it sent. /boom answers 500.
 const echoPost = streams.endpoint('POST /echo')
 const failingPost = streams.endpoint('POST /boom')
+// #3979: /upload parses a multipart body and reports each part; /echo reflects a raw body.
+const uploadPost = streams.endpoint('POST /upload')
+const rawPut = streams.endpoint('PUT /echo')
+/** A small file the device test can send without a picker — the same bytes on every platform. */
+const NOTE_URI = 'data:text/plain;base64,SGVsbG8gUHlyZW9u'
 
 /** What /echo reflects back. */
 interface EchoReply {
@@ -791,6 +796,17 @@ function RequestsScreen() {
     await echoPost({ json: { name: draft(), n: 2 } })
     direct.set('sent')
   }
+  const upload = useMutation<EchoReply>(uploadPost.mutation())
+  const raw = useMutation<EchoReply>(rawPut.mutation())
+  const sendUpload = async () => {
+    // The step a picker result goes through: a URI is a handle, not the file.
+    const note = await fileFromUri(NOTE_URI, { name: 'note.txt' })
+    upload.mutate({ multipart: { note, caption: draft(), n: [1, 2] } })
+  }
+  const sendRaw = async () => {
+    const note = await fileFromUri(NOTE_URI, { name: 'note.txt' })
+    raw.mutate({ body: note })
+  }
   const sendFailing = async () => {
     direct.set('failing')
     // A non-2xx REJECTS, so the next line never runs: on the web the handler stops here, and natively too.
@@ -830,6 +846,15 @@ function RequestsScreen() {
           Send failing
         </Button>
         <Text data-testid="req-direct-status">{`Direct: ${direct()}`}</Text>
+        <Button onPress={sendUpload} data-testid="req-upload">
+          Upload
+        </Button>
+        <Text data-testid="req-upload-type">{`Upload type: ${upload.data()?.contentType ?? 'none'}`}</Text>
+        <Text data-testid="req-upload-parts">{`Parts: ${upload.data()?.body ?? 'none'}`}</Text>
+        <Button onPress={sendRaw} data-testid="req-raw">
+          Upload raw
+        </Button>
+        <Text data-testid="req-raw-result">{`Raw: ${raw.data()?.method ?? 'none'} ${raw.data()?.contentType ?? ''} ${raw.data()?.body ?? ''}`}</Text>
         <Button onPress={() => navigate('/tasks')} data-testid="requests-back">
           Back to tasks
         </Button>

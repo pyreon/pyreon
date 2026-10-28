@@ -152,7 +152,72 @@ fun testUrlQuery() {
     }
 }
 
+/**
+ * A picked file streams from disk: `from` reads only its name, type and length, the multipart writer copies it past
+ * one read buffer intact, and the length it STATES matches the bytes it writes (OkHttp sends that as Content-Length).
+ * Byte parity with the web's FormData is asserted by the compiler's executed differential test.
+ */
+fun testUploadFileStreamsIntoMultipart() {
+    val bytes = ByteArray(200_003) { ((it * 31 + 7) and 0xff).toByte() }
+    val tmp = java.io.File.createTempFile("pyreon-upload-", ".jpg")
+    try {
+        tmp.writeBytes(bytes)
+        val file = PyreonUploadFiles.from(tmp.toURI().toString())
+        check(file.name == tmp.name && file.type == "image/jpeg" && file.length == bytes.size.toLong()) {
+            "name, type and length come from the file: ${file.name} ${file.type} ${file.length}"
+        }
+        val body = PyreonMultipartBody("avatar", file, "caption", "a\nb", "tag", listOf("x", null, "y"))
+        val out = java.io.ByteArrayOutputStream()
+        body.writeTo(out, "B")
+        val written = out.toByteArray()
+        check(body.contentLength("B") == written.size.toLong()) { "the stated length is the written length" }
+        val text = String(written, Charsets.ISO_8859_1)
+        val start = text.indexOf("\r\n\r\n") + 4
+        val sent = written.copyOfRange(start, start + bytes.size)
+        check(sent.contentEquals(bytes)) { "the file arrives byte for byte" }
+        check(text.contains("name=\"caption\"\r\n\r\na\r\nb\r\n")) { "a text value is newline-normalized" }
+        check(text.split("name=\"tag\"").size == 3) { "a list field repeats its part, its null dropped" }
+        check(text.endsWith("--B--\r\n")) { "the closing delimiter" }
+
+        val unknown = PyreonUploadFile("u.bin", "", null) { java.io.ByteArrayInputStream(byteArrayOf(1, 2)) }
+        check(PyreonMultipartBody("f", unknown).contentLength("B") == null) { "an unknown file size is sent chunked" }
+    } finally {
+        tmp.delete()
+    }
+}
+
+/** A URI that names no readable file rejects, as `fileFromUri` does on the web; `content://` needs the Android overload. */
+fun testUploadFileRejectsUnreadable() {
+    for (uri in listOf("file:///definitely/not/here.png", "content://media/1", "https://x/y.png")) {
+        var threw = false
+        try {
+            PyreonUploadFiles.from(uri)
+        } catch (_: PyreonHttpError.UnreadableFile) {
+            threw = true
+        }
+        check(threw) { "$uri must throw UnreadableFile" }
+    }
+}
+
+/** The upload rides on the request to the executor, built where the call is made. */
+fun testUploadReachesTheExecutor() {
+    var seen: PyreonHttpRequest? = null
+    val exec = object : PyreonHttpExecutor {
+        override fun send(request: PyreonHttpRequest): PyreonHttpResponse {
+            seen = request
+            return PyreonHttpResponse(200)
+        }
+    }
+    val file = PyreonUploadFiles.from("data:text/plain;base64,aGk=")
+    PyreonHttp.call(PyreonHttpRequest(PyreonHttpMethod.PUT, "https://h/blob", upload = PyreonHttpUpload.File(file)), fallback = exec)
+    val up = seen?.upload as? PyreonHttpUpload.File
+    check(up != null && up.file.name == "blob" && up.file.type == "text/plain") { "a raw file body: $up" }
+}
+
 fun main() {
+    testUploadFileStreamsIntoMultipart()
+    testUploadFileRejectsUnreadable()
+    testUploadReachesTheExecutor()
     testHttpCallRejectsNon2xx()
     testUrlQuery()
     testHttpGetBuilder()

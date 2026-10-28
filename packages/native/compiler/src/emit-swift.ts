@@ -2386,8 +2386,12 @@ function resolveSwiftStructFields(
   synth: SwiftSynthCtx | undefined,
 ): { name: string; type: TypeIR }[] {
   if (elem.kind === 'object') return elem.fields
-  if (elem.kind === 'typeRef' && synth) {
-    const s = synth.structs.find((st) => st.name === elem.name)
+  if (elem.kind === 'typeRef') {
+    // A component-synthesized struct, else a file-scope one (`interface Meta { … }`) — the Kotlin resolver's
+    // `_kotlinStructDefs` twin. Without the file scope, `EmitContext.rowFields` reported NO fields for every
+    // declared model on iOS while Android saw them, so the two targets classified the same value differently.
+    const s =
+      synth?.structs.find((st) => st.name === elem.name) ?? _structDefs.find((st) => st.name === elem.name)
     if (s) return s.fields
   }
   return []

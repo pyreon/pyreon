@@ -692,10 +692,10 @@ export function C() { return (<Stack><Text>{cache.size}</Text></Stack>) }`,
     name: '@pyreon/http',
     mechanism: 'partial',
     rationale:
-      'the CLIENT (middleware, interceptors) stays web, but same-file endpoint calls DO lower: createHttp({ baseUrl }) + api.endpoint(…) resolve through useFetch/useQuery to native PyreonFetch/PyreonQuery, an endpoint awaited in an async event handler (`await ep({ json, query, headers })`, every value read at the call) to a native PyreonHttp.call that rejects a non-2xx and ends the handler, and useStream over openEventStream/openNdjsonStream to the co-located PyreonStream runtime (SSE + NDJSON, reconnect with Last-Event-ID). Verified zero-warning on both targets; the snippet exercises BOTH so the real-runtime batch compiles each.',
+      'the CLIENT (middleware, interceptors) stays web, but same-file endpoint calls DO lower: createHttp({ baseUrl }) + api.endpoint(…) resolve through useFetch/useQuery to native PyreonFetch/PyreonQuery, an endpoint awaited in an async event handler (`await ep({ json, query, headers })`, every value read at the call) to a native PyreonHttp.call that rejects a non-2xx and ends the handler, a `multipart` body carrying a picked file (`fileFromUri`) to a streamed PyreonMultipartBody, and useStream over openEventStream/openNdjsonStream to the co-located PyreonStream runtime (SSE + NDJSON, reconnect with Last-Event-ID). Verified zero-warning on both targets; the snippet exercises BOTH so the real-runtime batch compiles each.',
     snippet: `import { createHttp } from '@pyreon/http'
 import { openEventStream, type SseEvent } from '@pyreon/http/stream'
-import { useFetch } from '@pyreon/hooks'
+import { fileFromUri, useFetch, useImagePicker } from '@pyreon/hooks'
 import { useStream } from '@pyreon/query'
 import { signal } from '@pyreon/reactivity'
 import { Stack, Text, Button } from '@pyreon/primitives'
@@ -703,6 +703,7 @@ interface User { id: number; name: string }
 const api = createHttp({ baseUrl: 'https://api.example.com' })
 const getUser = api.endpoint('GET /users/:id')
 const rename = api.endpoint('PATCH /users/:id')
+const uploadAvatar = api.endpoint('POST /users/:id/avatar')
 const feed = api.endpoint('GET /users/:id/feed', { responseType: 'stream' })
 export function C() {
   const name = signal('Ada')
@@ -712,7 +713,13 @@ export function C() {
     await rename({ params: { id: '1' }, query: { notify: true }, json: { name: name() }, headers: { 'x-client': name() } })
     name.set('')
   }
-  return (<Stack><Text>{req.data}</Text><Text>{live.latest()?.data.name ?? ''}</Text><Button onPress={submit}>rename</Button></Stack>)
+  const picker = useImagePicker()
+  const avatar = async () => {
+    const uri = await picker.pick()
+    if (uri === null) return
+    await uploadAvatar({ params: { id: '1' }, multipart: { avatar: await fileFromUri(uri, { name: 'a.jpg' }), caption: name() } })
+  }
+  return (<Stack><Text>{req.data}</Text><Text>{live.latest()?.data.name ?? ''}</Text><Button onPress={submit}>rename</Button><Button onPress={avatar}>avatar</Button></Stack>)
 }`,
   },
   {

@@ -665,6 +665,28 @@ class TasksAppInstrumentedTest {
         assertTagDisplayed("tasks-page", "after requests-back (/requests -> /tasks)")
     }
 
+    /**
+     * #3979: a file resolved by `fileFromUri` goes out as a multipart part and as a raw body. The fixture server
+     * parses the multipart with its own FormData parser and reports each part — filename, part type, contents, the
+     * text field, an array as repeated parts — so this asserts the bytes were readable as sent.
+     */
+    @Test
+    fun uploadsAMultipartFormAndARawFile() {
+        composeRule.onNodeWithTag("login-username").performTextInput("abcde")
+        composeRule.onNodeWithTag("login-submit").performClick()
+        assertTagDisplayed("tasks-page", "after login-submit")
+        composeRule.onNodeWithTag("tasks-requests").performClick()
+        assertTagDisplayed("requests-page", "after tasks-requests (/tasks -> /requests)")
+
+        composeRule.onNodeWithTag("req-draft").performScrollTo().performTextInput("Ada L")
+        composeRule.onNodeWithTag("req-upload").performScrollTo().performClick()
+        waitForTagText("req-upload-parts", "Parts: note=note.txt|text/plain|Hello Pyreon;caption=Ada L;n=1;n=2")
+        composeRule.onNodeWithTag("req-upload-type").assertTextEquals("Upload type: multipart/form-data")
+
+        composeRule.onNodeWithTag("req-raw").performScrollTo().performClick()
+        waitForTagText("req-raw-result", "Raw: PUT text/plain Hello Pyreon")
+    }
+
     @Test
     fun authGateStoreMutationAndTypedParamsDetail() {
         // Phase 1: login — flips the store's auth flag; the beforeEnter

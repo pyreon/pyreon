@@ -2,6 +2,30 @@ import { isClient } from '@pyreon/reactivity'
 import { onHookCleanup } from './lifecycle'
 
 /**
+ * The `File` behind each object URL a picker handed out, so `fileFromUri(uri)` can return the real file — with the
+ * name and type the user's file actually has — rather than an anonymous blob re-read through `fetch`.
+ *
+ * BOUNDED (leak class C): the oldest entry is dropped past {@link PICKED_FILE_LIMIT}. Dropping is safe — the object
+ * URL itself stays valid (pickers never revoke it), so `fileFromUri` still reads the bytes; only the original filename
+ * falls back to the URI's last segment.
+ */
+const PICKED_FILE_LIMIT = 32
+const pickedFiles = new Map<string, File>()
+
+function rememberPickedFile(uri: string, file: File): void {
+  pickedFiles.set(uri, file)
+  if (pickedFiles.size > PICKED_FILE_LIMIT) {
+    const oldest = pickedFiles.keys().next().value
+    if (oldest !== undefined) pickedFiles.delete(oldest)
+  }
+}
+
+/** The `File` a picker produced for `uri`, if it is still remembered. */
+export function pickedFileFor(uri: string): File | undefined {
+  return pickedFiles.get(uri)
+}
+
+/**
  * The one web implementation behind `useCamera` / `useFilePicker` /
  * `useImagePicker`.
  *
@@ -31,30 +55,6 @@ import { onHookCleanup } from './lifecycle'
  * produces. A caller awaiting it is being torn down; handing it `null` lets its
  * existing cancel branch run instead of leaving it awaiting forever.
  */
-/**
- * The `File` behind each object URL a picker handed out, so `fileFromUri(uri)` can return the real file — with the
- * name and type the user's file actually has — rather than an anonymous blob re-read through `fetch`.
- *
- * BOUNDED (leak class C): the oldest entry is dropped past {@link PICKED_FILE_LIMIT}. Dropping is safe — the object
- * URL itself stays valid (pickers never revoke it), so `fileFromUri` still reads the bytes; only the original filename
- * falls back to the URI's last segment.
- */
-const PICKED_FILE_LIMIT = 32
-const pickedFiles = new Map<string, File>()
-
-function rememberPickedFile(uri: string, file: File): void {
-  pickedFiles.set(uri, file)
-  if (pickedFiles.size > PICKED_FILE_LIMIT) {
-    const oldest = pickedFiles.keys().next().value
-    if (oldest !== undefined) pickedFiles.delete(oldest)
-  }
-}
-
-/** The `File` a picker produced for `uri`, if it is still remembered. */
-export function pickedFileFor(uri: string): File | undefined {
-  return pickedFiles.get(uri)
-}
-
 export function createFilePicker(
   configure: (input: HTMLInputElement) => void,
 ): (configureCall?: (input: HTMLInputElement) => void) => Promise<string | null> {

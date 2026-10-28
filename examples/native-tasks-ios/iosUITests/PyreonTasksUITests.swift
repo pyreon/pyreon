@@ -503,6 +503,41 @@ final class PyreonTasksUITests: XCTestCase {
         XCTAssertTrue(app.otherElements["tasks-page"].firstMatch.waitForExistence(timeout: 15), "requests-back did not return to tasks")
     }
 
+    /// #3979: a file resolved by `fileFromUri` goes out as a multipart part and as a raw body. The server parses the
+    /// multipart with its own FormData parser and reports each part, so this asserts the bytes were READABLE as sent —
+    /// the filename, the part type, the file's contents, a text part from the field, and an array as repeated parts.
+    func test_uploadsAMultipartFormAndARawFile() throws {
+        let app = XCUIApplication()
+        app.launch()
+        let username = app.textFields["login-username"].firstMatch
+        XCTAssertTrue(username.waitForExistence(timeout: 30), "Username field missing")
+        username.tap()
+        username.typeText("abcde")
+        dismissKeyboard(app)
+        app.buttons["login-submit"].firstMatch.tap()
+        XCTAssertTrue(app.otherElements["tasks-page"].firstMatch.waitForExistence(timeout: 20), "Tasks page did not render after login")
+        tapAfterScrolling(app.buttons["tasks-requests"].firstMatch, in: app)
+
+        let draft = app.textFields["req-draft"].firstMatch
+        XCTAssertTrue(draft.waitForExistence(timeout: 15), "draft field missing")
+        draft.tap()
+        draft.typeText("Ada L")
+        dismissKeyboard(app)
+
+        tapAfterScrolling(app.buttons["req-upload"].firstMatch, in: app)
+        let parts = app.staticTexts["req-upload-parts"].firstMatch
+        let want = "Parts: note=note.txt|text/plain|Hello Pyreon;caption=Ada L;n=1;n=2"
+        if !waitForLabel(parts, want, timeout: 30) {
+            print("DIAG-UPLOAD:\n\(app.debugDescription)")
+        }
+        XCTAssertEqual(parts.label, want, "the server did not read the multipart body as sent")
+        XCTAssertEqual(app.staticTexts["req-upload-type"].firstMatch.label, "Upload type: multipart/form-data")
+
+        tapAfterScrolling(app.buttons["req-raw"].firstMatch, in: app)
+        let raw = app.staticTexts["req-raw-result"].firstMatch
+        XCTAssertTrue(waitForLabel(raw, "Raw: PUT text/plain Hello Pyreon", timeout: 30), "raw file body: '\(raw.label)'")
+    }
+
     /// Crash reporting, device-proven in the only way that means anything: a
     /// REAL process restart.
     ///

@@ -2094,6 +2094,22 @@ const status = signal<'idle' | 'picked' | 'cancelled'>('idle')
 }}>Pick a photo</button>
 ```
 
+#### `fileFromUri`
+
+Turn the URI a picker or the camera resolved into a file a request can send. A URI is a HANDLE, not the file: passing it straight into a request body sends the URI's text on every platform. On the web it returns the picker's own `File` (its real name and type) when the URI came from one of the pickers above, else it reads the bytes through `fetch`. Under PMTC it lowers to `PyreonUploadFile.from` — on Android through the app's `ContentResolver` — and a request carrying it STREAMS the file from disk, so a large video is never read into memory. Must be awaited; rejects when the URI cannot be read. See [Uploading a picked file](/docs/http#uploading-a-picked-file).
+
+```ts
+fileFromUri(uri: string, options?: { name?: string; type?: string }) => Promise<File>
+```
+
+```tsx
+const uri = await picker.pick()
+if (uri === null) return
+await uploadAvatar({ multipart: { avatar: await fileFromUri(uri, { name: 'avatar.jpg' }), caption: caption() } })
+```
+
+Pass `name` (and `type`) when the server cares: a native picker hands back a temporary copy whose name is not always the original's, so naming it is what makes every platform send the same part.
+
 #### `useSafeArea`
 
 The safe-area insets of the current display — notch / Dynamic Island, home indicator, gesture bar, rounded corners. The one device fact a multiplatform app cannot work around at the app level: without it content draws under the notch, or every screen pads by a hard-coded guess that is wrong on the next device. Returns ONE accessor rather than four because the values move together on rotation and separate accessors invite a torn read. Sources: `env(safe-area-inset-*)` read off an inert probe element on the web (CSS environment variables are not exposed to script any other way — needs `viewport-fit=cover`, and reports zeros without it, which is correct rather than broken), `safeAreaInsets` on iOS, `WindowInsets` on Android.

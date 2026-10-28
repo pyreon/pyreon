@@ -423,15 +423,53 @@ public object PyreonUploadFiles {
         val comma = uri.indexOf(',')
         if (comma < 0) return null
         var meta = uri.substring(5, comma)
-        val payload = java.net.URLDecoder.decode(uri.substring(comma + 1).replace("+", "%2B"), "UTF-8")
-        val base64 = meta.endsWith(";base64")
-        if (base64) meta = meta.removeSuffix(";base64")
+        // Percent-decoded to BYTES, as the Fetch standard does: `%FF` is the byte 0xFF, not a UTF-8 replacement.
+        val payload = percentDecode(uri.substring(comma + 1))
+        val base64 = meta.trimEnd().lowercase().endsWith(";base64")
+        if (base64) meta = meta.trimEnd().dropLast(";base64".length)
         val bytes = try {
-            if (base64) java.util.Base64.getDecoder().decode(payload) else payload.toByteArray(Charsets.UTF_8)
+            if (base64) {
+                java.util.Base64.getDecoder().decode(String(payload, Charsets.ISO_8859_1).filterNot { it.isWhitespace() })
+            } else {
+                payload
+            }
         } catch (_: IllegalArgumentException) {
             return null
         }
-        return meta.lowercase() to bytes
+        return dataUriType(meta) to bytes
+    }
+
+    /** `%XX` → that byte; everything else is its UTF-8 bytes. A malformed escape stays literal, as the Fetch standard keeps it. */
+    internal fun percentDecode(text: String): ByteArray {
+        val raw = text.toByteArray(Charsets.UTF_8)
+        val out = java.io.ByteArrayOutputStream(raw.size)
+        var i = 0
+        while (i < raw.size) {
+            val b = raw[i].toInt() and 0xff
+            if (b == '%'.code && i + 2 < raw.size) {
+                val hi = Character.digit(raw[i + 1].toInt(), 16)
+                val lo = Character.digit(raw[i + 2].toInt(), 16)
+                if (hi >= 0 && lo >= 0) {
+                    out.write(hi * 16 + lo)
+                    i += 3
+                    continue
+                }
+            }
+            out.write(b)
+            i += 1
+        }
+        return out.toByteArray()
+    }
+
+    /**
+     * The Fetch standard's data-URL type: absent means `text/plain;charset=US-ASCII`, and a bare parameter list
+     * (`;charset=utf-8`) is a parameter of `text/plain` -- what `fetch(uri).blob().type` reports on the web.
+     */
+    internal fun dataUriType(meta: String): String {
+        val trimmed = meta.trim()
+        if (trimmed.isEmpty()) return "text/plain;charset=us-ascii"
+        if (trimmed.startsWith(";")) return ("text/plain$trimmed").lowercase()
+        return trimmed.lowercase()
     }
 
     /** The common upload types by extension; unknown is `""`, sent as `application/octet-stream`, as the web does. */
@@ -480,13 +518,19 @@ public class PyreonMultipartBody(vararg pairs: Any?) {
 
     init {
         val out = ArrayList<Part>()
-        fun add(name: String, value: Any?) {
+        fun part(name: String, value: Any?) {
             when (value) {
                 null -> Unit
                 is PyreonUploadFile -> out.add(Part(name, Value.File(value)))
-                is Iterable<*> -> value.forEach { add(name, it) }
-                is Array<*> -> value.forEach { add(name, it) }
                 else -> out.add(Part(name, Value.Text(PyreonURL.jsString(value))))
+            }
+        }
+        // `encodeMultipart` expands ONE level: an array field appends each element as its own part.
+        fun add(name: String, value: Any?) {
+            when (value) {
+                is Iterable<*> -> value.forEach { part(name, it) }
+                is Array<*> -> value.forEach { part(name, it) }
+                else -> part(name, value)
             }
         }
         var index = 0

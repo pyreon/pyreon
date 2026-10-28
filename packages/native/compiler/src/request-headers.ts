@@ -142,9 +142,9 @@ function resolveUpload(
     const name = u.args[i] as ExprIR
     const value = u.args[i + 1] as ExprIR
     const t = value.kind === 'literal' ? undefined : ctx.inferType(value)
-    if (t !== undefined && t.kind === 'array' && isObjectValue(t.element, ctx)) {
+    if (t !== undefined && t.kind === 'array' && (isObjectValue(t.element, ctx) || t.element.kind === 'array')) {
       ctx.warn(
-        `${where} multipart field ${ctx.expr(name, 0)} is an array of objects — each element would be a JSON text part on the web, which is not lowered. It is OMITTED on iOS and Android; send one field per object, or the array as one \`JSON.stringify\` value.`,
+        `${where} multipart field ${ctx.expr(name, 0)} is an array of ${t.element.kind === 'array' ? 'arrays' : 'objects'} — each element would be a JSON text part on the web, which is not lowered. It is OMITTED on iOS and Android; send one field per object, or the array as one \`JSON.stringify\` value.`,
       )
       continue
     }

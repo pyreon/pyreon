@@ -175,6 +175,104 @@ final class PyreonHttpWireTests: XCTestCase {
         XCTAssertEqual(server.received.count, 1)
     }
 
+    /// A file on disk larger than one write chunk, so the streamed copy is exercised past its first read.
+    private func bigFile() throws -> (URL, Data) {
+        var bytes = Data(count: 200_003)
+        for i in 0..<bytes.count { bytes[i] = UInt8((i * 31 + 7) & 0xff) }
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("pyreon-wire-\(UUID().uuidString).jpg")
+        try bytes.write(to: url)
+        return (url, bytes)
+    }
+
+    /// What the emit for `await upload({ multipart: { avatar: await fileFromUri(uri), caption: caption() } })` sends:
+    /// one request, a boundary in the content type, and each part — the file's bytes UNCHANGED — parseable from it.
+    func testMultipartUploadStreamsTheFileAndTheTextParts() async throws {
+        let server = try LoopbackServer()
+        let port = try await server.start()
+        defer { server.stop() }
+        let (fileURL, bytes) = try bigFile()
+        defer { try? FileManager.default.removeItem(at: fileURL) }
+
+        let file = try await PyreonUploadFile.from(fileURL.absoluteString)
+        XCTAssertEqual(file.name, fileURL.lastPathComponent)
+        XCTAssertEqual(file.type, "image/jpeg")
+        try await PyreonHttp.call(PyreonHttpRequest(
+            method: .post,
+            url: "http://127.0.0.1:\(port)/avatar",
+            upload: .multipart(PyreonMultipartBody("avatar", file, "caption", "line1\nline2", "n", 2, "tag", ["a", nil, "b"] as [Any?]))
+        ))
+
+        XCTAssertEqual(server.received.count, 1, "the body is sent once")
+        let wire = WireRequest(try XCTUnwrap(server.received.first))
+        XCTAssertEqual(wire.requestLine, "POST /avatar HTTP/1.1")
+        let type = try XCTUnwrap(wire.headers["content-type"])
+        XCTAssertTrue(type.hasPrefix("multipart/form-data; boundary=----PyreonFormBoundary"), type)
+        let boundary = String(type.dropFirst("multipart/form-data; boundary=".count))
+        XCTAssertEqual(wire.headers["content-length"], String(wire.body.count))
+
+        let parts = Self.parts(of: wire.body, boundary: boundary)
+        XCTAssertEqual(parts.map(\.head), [
+            "Content-Disposition: form-data; name=\"avatar\"; filename=\"\(fileURL.lastPathComponent)\"\r\nContent-Type: image/jpeg",
+            "Content-Disposition: form-data; name=\"caption\"",
+            "Content-Disposition: form-data; name=\"n\"",
+            "Content-Disposition: form-data; name=\"tag\"",
+            "Content-Disposition: form-data; name=\"tag\"",
+        ])
+        XCTAssertEqual(parts[0].body, bytes, "the file arrives byte for byte")
+        XCTAssertEqual(String(decoding: parts[1].body, as: UTF8.self), "line1\r\nline2")
+        XCTAssertEqual(parts.dropFirst(2).map { String(decoding: $0.body, as: UTF8.self) }, ["2", "a", "b"])
+        XCTAssertTrue(wire.body.suffix(boundary.count + 6) == Data("--\(boundary)--\r\n".utf8))
+    }
+
+    /// `await put({ body: await fileFromUri(uri) })` — the raw file is the body, typed by its extension.
+    func testRawFileBodyIsTheFileBytes() async throws {
+        let server = try LoopbackServer()
+        let port = try await server.start()
+        defer { server.stop() }
+        let (fileURL, bytes) = try bigFile()
+        defer { try? FileManager.default.removeItem(at: fileURL) }
+
+        let file = try await PyreonUploadFile.from(fileURL.absoluteString)
+        try await PyreonHttp.call(PyreonHttpRequest(method: .put, url: "http://127.0.0.1:\(port)/blob", upload: .file(file)))
+        let wire = WireRequest(try XCTUnwrap(server.received.first))
+        XCTAssertEqual(wire.requestLine, "PUT /blob HTTP/1.1")
+        XCTAssertEqual(wire.headers["content-type"], "image/jpeg")
+        XCTAssertEqual(wire.body, bytes)
+    }
+
+    /// A URI that names no readable file rejects, as `fileFromUri` does on the web — nothing is sent.
+    func testUnreadableUriRejects() async {
+        do {
+            _ = try await PyreonUploadFile.from("file:///definitely/not/here.png")
+            XCTFail("an unreadable file must throw")
+        } catch let error as PyreonHttpError {
+            XCTAssertEqual(error, .unreadableFile("file:///definitely/not/here.png"))
+        } catch {
+            XCTFail("unexpected \(error)")
+        }
+    }
+
+    /// Split a multipart body into (head, body) per part.
+    static func parts(of body: Data, boundary: String) -> [(head: String, body: Data)] {
+        let delimiter = Data("\r\n--\(boundary)".utf8)
+        var rest = Data("\r\n".utf8) + body
+        var out: [(String, Data)] = []
+        while let range = rest.range(of: delimiter) {
+            let after = rest[range.upperBound...]
+            if after.starts(with: Data("--".utf8)) { break }
+            let partStart = after.index(after.startIndex, offsetBy: 2)
+            let remainder = Data(rest[partStart...])
+            guard let next = remainder.range(of: delimiter),
+                  let headEnd = remainder.range(of: Data("\r\n\r\n".utf8)) else { break }
+            out.append((
+                String(decoding: remainder[..<headEnd.lowerBound], as: UTF8.self),
+                Data(remainder[headEnd.upperBound..<next.lowerBound])
+            ))
+            rest = Data(remainder[next.lowerBound...])
+        }
+        return out
+    }
+
     /// `PyreonURL.query` returns NOTHING (no `?`) when every pair drops, and joins with `&` when asked.
     func testQueryJoinerAndEmpty() {
         XCTAssertEqual(PyreonURL.query("?", "a", nil as String?, "b", nil as Int?), "")

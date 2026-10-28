@@ -15,6 +15,11 @@
 //                content type, the `x-client` header, the raw body — so the
 //                requests screen asserts what reached the wire (#3978).
 //   POST /boom   500, for the rejection path.
+//   POST /upload Parses a multipart body (#3979) with the platform's own
+//                FormData parser and reports each part in order —
+//                `name=filename|type|text` for a file, `name=value` for text —
+//                so the screen asserts the server could READ what was sent.
+//   PUT /echo    The raw-body twin of POST /echo.
 //   GET /health  200 — the CI readiness poll.
 //
 // Stateless by design: the response depends only on the request's headers, so
@@ -38,6 +43,7 @@ const server = createServer((req, res) => {
   // request is preflighted.
   res.setHeader('access-control-allow-origin', '*')
   res.setHeader('access-control-allow-headers', 'accept, last-event-id, content-type, x-client')
+  res.setHeader('access-control-allow-methods', 'GET, POST, PUT, OPTIONS')
   if (req.method === 'OPTIONS') {
     res.writeHead(204)
     res.end()
@@ -46,6 +52,30 @@ const server = createServer((req, res) => {
   if (path === '/health') {
     res.writeHead(200, { 'content-type': 'text/plain' })
     res.end('ok')
+    return
+  }
+  if (path === '/upload') {
+    const chunks: Buffer[] = []
+    req.on('data', (c: Buffer) => chunks.push(c))
+    req.on('end', async () => {
+      const contentType = String(req.headers['content-type'] ?? '')
+      try {
+        const form = await new Response(Buffer.concat(chunks), { headers: { 'content-type': contentType } }).formData()
+        const parts: string[] = []
+        for (const [name, value] of form.entries()) {
+          parts.push(
+            typeof value === 'string' ? `${name}=${value}` : `${name}=${value.name}|${value.type.split(';')[0]}|${await value.text()}`,
+          )
+        }
+        res.writeHead(200, { 'content-type': 'application/json' })
+        res.end(
+          JSON.stringify({ method: req.method ?? '', query: '', contentType: contentType.split(';')[0], client: '', body: parts.join(';') }),
+        )
+      } catch (error) {
+        res.writeHead(400, { 'content-type': 'application/json' })
+        res.end(JSON.stringify({ error: String(error) }))
+      }
+    })
     return
   }
   if (path === '/echo' || path === '/boom') {
