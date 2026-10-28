@@ -216,7 +216,8 @@ export type DeclIR =
    * v1 (named warning). Pre-fix the whole call was a SILENT drop — the
    * component-body walker only handled declarations + return.
    */
-  | { kind: 'on-mount'; body: StatementIR[] }
+  /** `onMount(fn)`. `cleanup` is the body of a returned teardown function, run when the view goes away. */
+  | { kind: 'on-mount'; body: StatementIR[]; cleanup?: StatementIR[] | undefined }
   /**
    * A PLAIN service container (`useShare`, `useLinking`, `useHaptics`,
    * `useNotifications`, `useBiometrics`, `useImagePicker`, `useFilePicker`,

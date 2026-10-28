@@ -2028,6 +2028,13 @@ function emitSwiftComponent(c: ComponentIR): string {
     lines.push(`      .onAppear {`)
     lines.push(bodyLines)
     lines.push(`      }`)
+    // The teardown `onMount` returned: runs when the view goes away, pairing with `.onAppear` re-running the body
+    // when it comes back.
+    if (d.cleanup !== undefined) {
+      lines.push(`      .onDisappear {`)
+      lines.push(d.cleanup.map((st) => `        ${emitSwiftStatement(st, 8)}`).join('\n'))
+      lines.push(`      }`)
+    }
   }
   // A plugin's own declarations may release what they hold when the view goes away
   // (`useFlow` disposes its listeners; a caller-owned `createFlow` does not).
@@ -2386,8 +2393,14 @@ function resolveSwiftStructFields(
   synth: SwiftSynthCtx | undefined,
 ): { name: string; type: TypeIR }[] {
   if (elem.kind === 'object') return elem.fields
-  if (elem.kind === 'typeRef' && synth) {
-    const s = synth.structs.find((st) => st.name === elem.name)
+  if (elem.kind === 'typeRef') {
+    // A file-level `type X = { … }` / `interface X` is a DECLARED struct, not one synthesised for this component —
+    // the Kotlin resolver has always checked both; this one only checked the component's own, so `rowFields` came
+    // back empty for every declared type.
+    const s =
+      synth?.structs.find((st) => st.name === elem.name) ??
+      _structDefs.find((st) => st.name === elem.name) ??
+      _synthExprStructs.find((st) => st.name === elem.name)
     if (s) return s.fields
   }
   return []
