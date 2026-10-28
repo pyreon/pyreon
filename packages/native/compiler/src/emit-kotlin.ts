@@ -8,6 +8,7 @@ import { classifyFallback, unconsumedSlotWarning } from './jsx-slot-attrs'
 import { lowerWebViewDomStorage } from './webview-options'
 import { asyncValueReturnWarning, bodyReturnsValue } from './async-function'
 import { kotlinStr } from './string-literals'
+import { resolveFieldShape } from './field-shape'
 import {
   bindServices,
   emitPluginDecl,
@@ -7794,13 +7795,33 @@ function emitKotlinField(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: nu
   if (placeholderExpr !== undefined) {
     args.push(`placeholder = { Text(${placeholderExpr}) }`)
   }
-  const vtArg = kotlinFieldVisualTransformation(e)
-  if (vtArg !== undefined) {
-    args.push(vtArg)
+  // `multiline` / `lines` — the shared helper (see field-shape.ts) decides, so
+  // Swift and Kotlin cannot disagree about what a text area is.
+  const shape = resolveFieldShape(e, readStaticAttrKotlin)
+  _emitWarnings.push(...shape.warnings)
+  if (shape.multiline) {
+    // Fixed at `lines` rows and scrolling past them — a web `<textarea rows>`.
+    // minLines alone would let it grow without bound; maxLines alone would let
+    // it start at one row.
+    const lines =
+      shape.lines.kind === 'static'
+        ? String(shape.lines.n)
+        : `maxOf(1, (${emitKotlinExpr(shape.lines.expr, 0)}).toInt())`
+    args.push('singleLine = false', `minLines = ${lines}`, `maxLines = ${lines}`)
+  } else {
+    // Material's TextField defaults to singleLine = false: Return inserted a
+    // newline and long input wrapped onto more rows, where the web `<input>`
+    // and the iOS TextField are one line. Say single-line explicitly.
+    args.push('singleLine = true')
+    const vtArg = kotlinFieldVisualTransformation(e)
+    if (vtArg !== undefined) {
+      args.push(vtArg)
+    }
   }
-  const onSubmit = e.attrs.find(
+  const onSubmitAttr = e.attrs.find(
     (a): a is Extract<AttrIR, { kind: 'event' }> => a.kind === 'event' && a.name === 'submit',
   )
+  const onSubmit = shape.honourSubmit ? onSubmitAttr : undefined
   // `kind` → the software KEYBOARD, which the web gets free from `<input type>`
   // and native did not: a phone showed full QWERTY where the same source showed
   // a numeric pad in a browser. Previously deferred on both targets.
@@ -7808,7 +7829,7 @@ function emitKotlinField(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: nu
   // MERGED with the imeAction rather than pushed separately — `KeyboardOptions`
   // is one argument, so a second `keyboardOptions =` would be a duplicate named
   // arg, and building it in two places is how one silently replaces the other.
-  const kindForKeyboard = readStaticAttrKotlin(e, 'kind')
+  const kindForKeyboard = shape.honourKind ? readStaticAttrKotlin(e, 'kind') : undefined
   const kbType =
     typeof kindForKeyboard === 'string' ? FIELD_KEYBOARD_KOTLIN[kindForKeyboard] : undefined
   const kbParts: string[] = []
