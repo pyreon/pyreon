@@ -18,7 +18,7 @@
 import { For, onMount } from '@pyreon/core'
 import { useAppState, useDatabase, useFetch, useOnline, usePush, useSecureStorage, useSizeClass, useWebSocket } from '@pyreon/hooks'
 import { useFieldArray } from '@pyreon/form'
-import { Audio, Button, Heading, Image, Inline, Layer, Link, Press, Spacer, Stack, Text, Video } from '@pyreon/primitives'
+import { Audio, Button, Gesture, Heading, Image, Inline, Layer, Link, Press, Spacer, Stack, Text, Video } from '@pyreon/primitives'
 import { attrs } from '@pyreon/attrs'
 import { Element } from '@pyreon/elements'
 import { Col, Container, Row } from '@pyreon/coolgrid'
@@ -267,6 +267,16 @@ function MotionPage() {
   // so the zone sits in the first screenful on both platforms
   // (coordinate gestures need on-screen bounds — the counter-fold lesson).
   let swipeDir = plainState<string>('none')
+  // Continuous-gesture proof — <Gesture onPan onPinch> + the transform props.
+  // The handlers record a DISCRETE verdict on 'end' (pan direction, pinch
+  // direction) so a real injected gesture is assertable as text, and the
+  // live values drive `translateX` / `scale` on the inner box. Each outcome
+  // reads differently: 'none' (nothing fired), 'right'/'left' (pan fired with
+  // the right SIGN), 'small' (the end delivered without the translation).
+  let panDir = plainState<string>('none')
+  let pinchDir = plainState<string>('none')
+  let panX = plainState(0)
+  let zoom = plainState(1)
   return (
     <Stack gap={3} padding={4} data-testid="motion-page">
       <Text>Motion</Text>
@@ -279,6 +289,29 @@ function MotionPage() {
       >
         <Text>← Swipe this zone →</Text>
       </Press>
+      <Text data-testid="pan-status">Pan: {panDir}</Text>
+      <Text data-testid="pinch-status">Pinch: {pinchDir}</Text>
+      <Gesture
+        data-testid="gesture-zone"
+        onPan={(e) => {
+          panX = e.dx
+          if (e.phase === 'end') {
+            panDir = e.dx > 40 ? 'right' : e.dx < -40 ? 'left' : 'small'
+            panX = 0
+          }
+        }}
+        onPinch={(e) => {
+          zoom = e.scale
+          if (e.phase === 'end') {
+            pinchDir = e.scale > 1.2 ? 'in' : e.scale < 0.8 ? 'out' : 'flat'
+            zoom = 1
+          }
+        }}
+      >
+        <Stack padding={4} background="muted" style={{ width: 300, height: 160 }}>
+          <Text translateX={panX} scale={zoom}>Drag or pinch here</Text>
+        </Stack>
+      </Gesture>
       <Button onPress={() => { boxOn = !boxOn }} data-testid="motion-toggle">
         Toggle Slow Box
       </Button>

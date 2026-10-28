@@ -97,7 +97,7 @@ export const TransitionGroup = (props: TransitionGroupProps): VNode => {
     {
       ...collectPassthroughAttrs(props as unknown as Record<string, unknown>),
       ref: outerRef,
-      style: mergePassthroughStyle(style, props.style),
+      style: mergePassthroughStyle(style, props),
     },
     h('div', { ref: contentRef }, props.children),
   )

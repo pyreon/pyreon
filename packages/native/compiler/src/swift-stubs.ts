@@ -555,6 +555,20 @@ public struct AccessibilityTraits: OptionSet {
 
 // ---- View modifiers ----
 public enum TextTruncationMode { case head, tail, middle }
+// The transform props (translateX/translateY/scale/rotate) lower to these.
+// Mirrors SwiftUI: the anchor defaults to the centre, offset takes CGFloat
+// (so an Int argument fails here, as it does on device), and rotationEffect
+// takes an Angle built with .degrees.
+public struct UnitPoint { public static let center = UnitPoint() }
+public struct Angle {
+  public var degrees: Double = 0
+  public static func degrees(_ d: Double) -> Angle { Angle(degrees: d) }
+}
+extension View {
+  public func offset(x: CGFloat = 0, y: CGFloat = 0) -> some View { self }
+  public func scaleEffect(_ s: CGFloat, anchor: UnitPoint = .center) -> some View { self }
+  public func rotationEffect(_ angle: Angle, anchor: UnitPoint = .center) -> some View { self }
+}
 extension View {
   // CRUX — the EXACT SwiftUI generic constraint. \`value: Any\` would MASK the
   // \`.animation(_:value:)\`-needs-Equatable class (the M2.8 incident). Do not loosen.
@@ -892,6 +906,35 @@ public final class PyreonCrashReporter {
 }
 public struct PyreonLink<Label: View>: View {
   public init(_ to: String, @ViewBuilder label: () -> Label) {}
+  public typealias Body = Never
+}
+// PyreonGesture + its payloads — mirror of runtime-swift PyreonGesture.swift
+// (the <Gesture> primitive). Field names and types are the contract the emit
+// reads (e.dx, e.scale, e.phase), so they are listed exactly.
+public struct PyreonPanEvent: Equatable {
+  public let dx: Double
+  public let dy: Double
+  public let x: Double
+  public let y: Double
+  public let phase: String
+}
+public struct PyreonPinchEvent: Equatable {
+  public let scale: Double
+  public let centerX: Double
+  public let centerY: Double
+  public let phase: String
+}
+public struct PyreonRotateEvent: Equatable {
+  public let degrees: Double
+  public let phase: String
+}
+public struct PyreonGesture<Content: View>: View {
+  public init(
+    onPan: ((PyreonPanEvent) -> Void)? = nil,
+    onPinch: ((PyreonPinchEvent) -> Void)? = nil,
+    onRotate: ((PyreonRotateEvent) -> Void)? = nil,
+    @ViewBuilder content: () -> Content
+  ) {}
   public typealias Body = Never
 }
 public enum PyreonJSON {

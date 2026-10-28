@@ -51,7 +51,7 @@ export const Icon = (props: IconProps): VNode => {
     {
       ...passthrough,
       ...(hasAria ? {} : { 'aria-hidden': 'true' }),
-      style: mergePassthroughStyle(style, props.style),
+      style: mergePassthroughStyle(style, props),
     },
     h('use', { href: `#${props.name}` }),
   )

@@ -11,6 +11,8 @@
 // Native targets (PMTC iOS / Android) ignore the passthrough keys at
 // emit time; they're type-level only there.
 
+import type { TransformProps } from '../types/shared'
+
 const OWN_KEYS_PREFIX_DATA = 'data-'
 const OWN_KEYS_PREFIX_ARIA = 'aria-'
 
@@ -71,16 +73,33 @@ export function collectPassthroughAttrs(
   return out
 }
 
+/** The {@link TransformProps} keys, in their fixed application order. */
+const TRANSFORM_KEYS = ['translateX', 'translateY', 'scale', 'rotate'] as const
+
+/** The props `mergePassthroughStyle` reads: the consumer `style` and the transform props. */
+export interface StyleSourceProps extends TransformProps {
+  style?: string | Record<string, string> | undefined
+}
+
 /**
- * Merge consumer `style` (from passthrough) AFTER the primitive's
- * computed style — consumer overrides win for any key collision.
- * Returns either a string (when consumer passed a string), a merged
- * object, or the primitive's style if no consumer override.
- *
- * String `style` (`<Stack style="color: red">`) is rare but allowed
- * by HTML; we concatenate it onto the primitive's style with `;`.
+ * The CSS `transform` for the {@link TransformProps}, or `undefined` when none
+ * is set. Order matches the native lowerings: CSS applies the list right to
+ * left, so `translate() scale() rotate()` rotates, then scales, then
+ * translates — a translation is not multiplied by the scale.
  */
-export function mergePassthroughStyle(
+export function transformCss(props: TransformProps): string | undefined {
+  const tx = props.translateX
+  const ty = props.translateY
+  const s = props.scale
+  const r = props.rotate
+  const parts: string[] = []
+  if (tx !== undefined || ty !== undefined) parts.push(`translate(${tx ?? 0}px, ${ty ?? 0}px)`)
+  if (s !== undefined) parts.push(`scale(${s})`)
+  if (r !== undefined) parts.push(`rotate(${r}deg)`)
+  return parts.length === 0 ? undefined : parts.join(' ')
+}
+
+function mergeStatic(
   computed: Record<string, string>,
   consumer: string | Record<string, string> | undefined,
 ): string | Record<string, string> {
@@ -95,4 +114,35 @@ export function mergePassthroughStyle(
   }
   // Both objects — consumer wins per-key.
   return { ...computed, ...consumer }
+}
+
+/**
+ * Merge consumer `style` (from passthrough) AFTER the primitive's
+ * computed style — consumer overrides win for any key collision.
+ * Returns either a string (when consumer passed a string), a merged
+ * object, or the primitive's style if no consumer override.
+ *
+ * String `style` (`<Stack style="color: red">`) is rare but allowed
+ * by HTML; we concatenate it onto the primitive's style with `;`.
+ *
+ * When any {@link TransformProps} key is PRESENT on `props`, the result is an
+ * ACCESSOR so the transform stays live: the compiler passes `scale={s()}` as a
+ * getter, and reading it here at setup would freeze it at its first value.
+ * Presence is tested with `in`, not by reading, for the same reason. The
+ * transform is applied last, so it wins over a consumer `transform` in
+ * `style`.
+ */
+export function mergePassthroughStyle(
+  computed: Record<string, string>,
+  props: StyleSourceProps,
+): string | Record<string, string> | (() => string | Record<string, string>) {
+  if (!TRANSFORM_KEYS.some((k) => k in props)) return mergeStatic(computed, props.style)
+  return () => {
+    const merged = mergeStatic(computed, props.style)
+    const transform = transformCss(props)
+    if (transform === undefined) return merged
+    return typeof merged === 'string'
+      ? `${merged}; transform: ${transform}`
+      : { ...merged, transform }
+  }
 }

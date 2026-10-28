@@ -51,7 +51,7 @@ export const Text = (props: TextProps): VNode => {
     'span',
     {
       ...collectPassthroughAttrs(props as unknown as Record<string, unknown>),
-      style: mergePassthroughStyle(style, props.style),
+      style: mergePassthroughStyle(style, props),
     },
     props.children,
   )

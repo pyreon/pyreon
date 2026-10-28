@@ -8,6 +8,8 @@
 // Type inference is deliberately naive — numeric assumption for
 // computed properties. Phase 1 grows a real inference pass.
 
+import { GESTURE_EVENT_NAMES, GESTURE_EVENTS } from './gesture-events'
+import type { GestureEventName } from './gesture-events'
 import { lowerWebViewDomStorage } from './webview-options'
 import { classifyFallback, unconsumedSlotWarning } from './jsx-slot-attrs'
 import { swiftStr } from './string-literals'
@@ -6561,6 +6563,7 @@ function emitSwiftJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numbe
   if (tag === 'Audio') return emitSwiftAudio(e, indent)
   if (tag === 'Modal') return emitSwiftModal(e, indent)
   if (tag === 'Press') return emitSwiftPress(e, indent)
+  if (tag === 'Gesture') return emitSwiftGesture(e, indent)
   if (tag === 'Field') return emitSwiftField(e, indent)
   if (tag === 'Toggle') return emitSwiftToggle(e, indent)
   // Lowercase DOM tags a plugin gives meaning inside its own renderers (a flow's `<path>` / `<svg>`).
@@ -8033,7 +8036,51 @@ const SWIFT_CONTAINER_TAGS = new Set([
   'HStack',
   'ZStack',
   'ScrollView',
+  // PyreonGesture WRAPS its content, so SwiftUI flattens it out of the
+  // accessibility tree exactly like a plain stack.
+  'Gesture',
 ])
+
+/**
+ * The {@link TransformProps} (`translateX` / `translateY` / `scale` /
+ * `rotate`) as SwiftUI render-transform modifiers, in the fixed cross-target
+ * order: rotate, then scale, then translate (`.offset` last so a translation is
+ * NOT multiplied by the scale — CSS `translate() scale() rotate()`).
+ *
+ * Every value is wrapped in a numeric conversion. A signal written only with
+ * integers is an `Int` on Swift, and none of these modifiers takes one —
+ * `.offset(x: count)` is "cannot convert Int to CGFloat". `CGFloat(_:)` and
+ * `Double(_:)` accept both Int and Double, so the conversion is correct for
+ * either inferred type. A literal is passed bare (Swift literals coerce).
+ *
+ * A special-case emitter that returns before the generic tail must apply it
+ * itself — generic-tail-completeness.test.ts checks every primitive.
+ */
+function swiftTransformModifiers(e: Extract<ExprIR, { kind: 'jsx-element' }>): string[] {
+  const value = (name: string, conv: string): string | undefined => {
+    const a = e.attrs.find(
+      (x): x is Extract<AttrIR, { kind: 'attr' }> => x.kind === 'attr' && x.name === name,
+    )
+    if (a === undefined) return undefined
+    const v = unwrapAccessorArrow(a.value)
+    if (v.kind === 'literal' && typeof v.value === 'number') return String(v.value)
+    if (v.kind === 'unary' && v.op === '-' && v.argument.kind === 'literal' && typeof v.argument.value === 'number') {
+      return `-${v.argument.value}`
+    }
+    return `${conv}(${emitSwiftExpr(v, 0)})`
+  }
+  const out: string[] = []
+  const rotate = value('rotate', 'Double')
+  if (rotate !== undefined) out.push(`.rotationEffect(.degrees(${rotate}))`)
+  const scale = value('scale', 'CGFloat')
+  if (scale !== undefined) out.push(`.scaleEffect(${scale})`)
+  const tx = value('translateX', 'CGFloat')
+  const ty = value('translateY', 'CGFloat')
+  if (tx !== undefined || ty !== undefined) {
+    out.push(`.offset(${[tx === undefined ? '' : `x: ${tx}`, ty === undefined ? '' : `y: ${ty}`].filter(Boolean).join(', ')})`)
+  }
+  return out
+}
 
 /**
  * The cross-platform a11y vocabulary (`AccessibilityProps`) as SwiftUI
@@ -8161,6 +8208,10 @@ function emitSwiftLayoutModifiers(
   if (marginY !== undefined) {
     parts.push(`.padding(.vertical, ${marginY})`)
   }
+  // Transform props — a RENDER transform of the whole box (background and
+  // margin included), so after everything that draws. See
+  // swiftTransformModifiers.
+  parts.push(...swiftTransformModifiers(e))
   // E3.1 — `data-testid` becomes SwiftUI's `.accessibilityIdentifier()`
   // so the same string the web e2e selects on (`getByTestId`) is also
   // reachable to XCUITest. Other `data-*` attrs are silently dropped
@@ -9125,6 +9176,49 @@ function emitSwiftModal(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: num
  * `onPress` is the canonical Pyreon event name (mapped to `action:`
  * here per the per-platform-event-name table in the plan).
  */
+/**
+ * A `<Gesture onPan|onPinch|onRotate>` handler as a Swift `(PyreonXEvent) -> Void`
+ * closure. The parameter is typed (gesture-events.ts) so `e.dx` infers Double
+ * inside the body; a zero-parameter arrow ignores the event (`_ in`), and a
+ * bare function reference is called with it.
+ */
+function emitSwiftGestureHandler(handler: ExprIR, name: GestureEventName, indent: number): string {
+  if (handler.kind !== 'arrow') {
+    return `{ pyreonEvent in ${emitSwiftExpr(handler, indent)}(pyreonEvent) }`
+  }
+  const param = handler.params[0]
+  if (param === undefined) return `{ _ in${emitSwiftAction(handler, indent).slice(1)}`
+  return withSwiftLocals([[param, GESTURE_EVENTS[name].type]], () =>
+    emitSwiftCallbackArg(handler, indent),
+  )
+}
+
+/**
+ * `<Gesture>` → `PyreonGesture(onPan:onPinch:onRotate:) { … }`
+ * (@pyreon/native-runtime-swift). The runtime owns the recognisers — a
+ * SIMULTANEOUS DragGesture / MagnifyGesture / RotateGesture, each attached only
+ * when its handler is non-nil — and the start/change/end bookkeeping, so the
+ * emit is the handlers and the content. The generic tail carries testid,
+ * a11y and transforms (a transform on the region itself is warned at parse).
+ */
+function emitSwiftGesture(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
+  const args: string[] = []
+  for (const name of GESTURE_EVENT_NAMES) {
+    const attr = e.attrs.find(
+      (a): a is Extract<AttrIR, { kind: 'event' }> => a.kind === 'event' && a.name === name,
+    )
+    if (attr !== undefined) {
+      args.push(`${GESTURE_EVENTS[name].param}: ${emitSwiftGestureHandler(attr.handler, name, indent)}`)
+    }
+  }
+  const head = `PyreonGesture(${args.join(', ')})`
+  const tail = emitSwiftLayoutModifiers(e)
+  if (e.children.length === 0) return `${head} { EmptyView() }${tail}`
+  const pad = ' '.repeat(indent + 2)
+  const contentLines = e.children.map((c) => pad + emitSwiftChild(c, indent + 2)).join('\n')
+  return `${head} {\n${contentLines}\n${' '.repeat(indent)}}${tail}`
+}
+
 function emitSwiftPress(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
   // Recognize both `onPress` (canonical) and the legacy `onClick`
   // shape so PMTC source migrating from the SwiftUI-flavored vocab
@@ -9484,6 +9578,7 @@ function emitSwiftLink(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
   // this emitter, on both targets — the very audit this comment block calls for.
   const a11y = swiftAccessibilityModifiers(e).join('')
   const tail =
+    swiftTransformModifiers(e).join('') +
     (testid === undefined
       ? ''
       : `.accessibilityElement(children: .contain).accessibilityIdentifier(${testid})`) + a11y

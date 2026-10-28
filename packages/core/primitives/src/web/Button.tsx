@@ -79,7 +79,7 @@ export const Button = (props: ButtonProps): VNode => {
   const attrs: Record<string, unknown> = {
     ...collectPassthroughAttrs(props as unknown as Record<string, unknown>),
     type: 'button',
-    style: mergePassthroughStyle(style, props.style),
+    style: mergePassthroughStyle(style, props),
     // onPress is the canonical event; on web it maps to onClick.
     onClick: props.disabled ? undefined : props.onPress,
   }

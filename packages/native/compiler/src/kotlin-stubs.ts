@@ -674,6 +674,11 @@ object Modifier {
   fun fillMaxWidth(fraction: Float = 1f): Modifier = this
   fun fillMaxSize(fraction: Float = 1f): Modifier = this
   fun offset(x: Dp = 0.dp, y: Dp = 0.dp): Modifier = this
+  // The transform props: androidx.compose.ui.draw.scale(Float) / rotate(Float).
+  @Suppress("UNUSED_PARAMETER")
+  fun scale(scale: Float): Modifier = this
+  @Suppress("UNUSED_PARAMETER")
+  fun rotate(degrees: Float): Modifier = this
   // --- Phase P2.2 content: <Icon>/<Image> sizing. Real Compose ships
   // size/width/height from androidx.compose.foundation.layout.
   @Suppress("UNUSED_PARAMETER")
@@ -944,6 +949,23 @@ fun PyreonLink(to: String, content: @Composable (navigate: () -> Unit) -> Unit) 
   // on navigate(). For typecheck-only purposes we just invoke the
   // content with a no-op navigate.
   content { }
+}
+
+// PyreonGesture + its payloads — mirror of @pyreon/native-runtime-kotlin's
+// PyreonGesture.kt / PyreonGestureCore.kt (the <Gesture> primitive).
+data class PyreonPanEvent(val dx: Double, val dy: Double, val x: Double, val y: Double, val phase: String)
+data class PyreonPinchEvent(val scale: Double, val centerX: Double, val centerY: Double, val phase: String)
+data class PyreonRotateEvent(val degrees: Double, val phase: String)
+@Composable
+@Suppress("UNUSED_PARAMETER")
+fun PyreonGesture(
+  onPan: ((PyreonPanEvent) -> Unit)? = null,
+  onPinch: ((PyreonPinchEvent) -> Unit)? = null,
+  onRotate: ((PyreonRotateEvent) -> Unit)? = null,
+  modifier: Modifier = Modifier,
+  content: @Composable () -> Unit,
+) {
+  content()
 }
 
 // PyreonWebView — mirror of @pyreon/native-runtime-kotlin's PyreonWebView.kt
