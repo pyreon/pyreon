@@ -195,10 +195,14 @@
         ],
         "PyreonRateLimit": [
           "PyreonRateLimit.kt"
+        ],
+        "PyreonWebChromePolicy": [
+          "PyreonWebChromePolicy.kt"
         ]
       },
       "kotlinSdkOnly": [
         "PyreonWebView.kt",
+        "PyreonWebChromeAndroid.kt",
         "PyreonSafeAreaAndroid.kt",
         "PyreonDeviceProbesAndroid.kt"
       ]
