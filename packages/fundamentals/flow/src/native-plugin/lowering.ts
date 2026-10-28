@@ -93,7 +93,7 @@ export const HANDLED_FLOW_HOST_PROPS: ReadonlySet<string> = new Set([
 export const HANDLED_FLOW_WEBVIEW_PROPS: ReadonlySet<string> = new Set([
   'graph', 'commands', 'onSelect', 'onMessage', 'onEvent', 'onError', 'html',
   'nodeWidth', 'nodeHeight', 'nodeFill', 'nodeStroke', 'labelColor', 'edgeColor',
-  'background',
+  'background', 'grow',
 ])
 
 /** Every public supporting-component prop is lowered, consumed from native

@@ -1667,10 +1667,8 @@ export function inferTypeValue(expr: ExprIR, ctx: InferenceCtx): TypeIR {
               // it's a concrete array, return it directly (the flattened result).
               // The emit is the generic native `flatMap` (both targets have it) —
               // only the inference lagged (result degraded to `Any`, so a chained
-              // `.length` / typed use failed). A body that doesn't infer to a
-              // concrete array (e.g. the `cond ? [x] : []` filter-map idiom, whose
-              // empty branch has no element type) stays Array<unknown> — a
-              // follow-up needs empty-array-in-ternary unification.
+              // `.length` / typed use failed). The `cond ? [x] : []` filter-map
+              // idiom infers through the ternary case's empty-array unification.
               const cb = expr.args[0]
               if (cb !== undefined && cb.kind === 'arrow' && cb.params.length >= 1) {
                 const scratch: InferenceCtx = { ...ctx, locals: new Map(ctx.locals) }
