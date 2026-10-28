@@ -30,6 +30,17 @@ browser sign-in is a full page load to the provider and back, so an in-memory st
 returns), and when the page that loads IS the redirect it completes the callback itself, removing the code from the
 address bar and history first.
 
+**A reload signs the web session out — on purpose.** The surface is the same on every target; where the session lives is
+not. On iOS and Android the tokens are kept in the Keychain / Keystore and a relaunch is still signed in. In a browser
+the tokens are held in memory only, so a reload or a new tab starts at `signedOut`. Persisting them to `localStorage` /
+`sessionStorage` would hand the access and refresh tokens to any script that runs on the page, which turns one XSS bug
+into a stolen long-lived session; there is deliberately no option for it. To stay signed in across reloads:
+
+- call `auth.signIn()` when the app loads signed out — while the provider still has its own session, the round trip
+  completes without a prompt; or
+- keep the session on your server (a backend-for-frontend): complete the code exchange there and hand the browser a
+  signed, `HttpOnly` cookie with `signSession` / `sessionCookie`, which page scripts cannot read.
+
 Underneath is `createAuth`, which you can use directly — on a server, or to choose the flow store and navigation
 yourself:
 
@@ -92,8 +103,10 @@ These are not defaults because they need storage or policy only the app has.
   }
   ```
 
-  `createAttemptLimiter` is per process and bounded (`maxKeys`, oldest window evicted first). With several instances,
-  keep the same counters in a shared store.
+  `createAttemptLimiter` is per process and bounded by `maxKeys`. A full table never frees a key that is at its limit
+  (that would hand it a fresh budget): it drops an expired window, else the least-used active one, and when every
+  slot is at its limit it refuses the new key instead. Size `maxKeys` above the keys legitimately active in one
+  window. With several instances, keep the same counters in a shared store.
 - **Make sessions revocable.** A signed cookie is valid until it expires. Every session carries a `jti`; pass
   `isRevoked` to `verifySession` and keep revoked ids (logout everywhere, a stolen device) until their `exp`.
 - **Running more than one instance.** `memoryFlowStore` holds pending sign-ins in one process, so a callback that
@@ -114,7 +127,8 @@ browser: `pubKeyCredParams: [{ type: 'public-key', alg: -7 }, { type: 'public-ke
 `PyreonOidcAuth`, which runs the same flow as the web natively: discovery, S256 PKCE with state and nonce, the system
 browser, the code exchange, ID-token verification against the provider's keys (RS256 / ES256), refresh, and provider
 logout. The session lives in the Keychain / Keystore (via `@pyreon/storage`), so the app is still signed in after a
-relaunch, and an expired session with a refresh token refreshes itself on launch.
+relaunch, and an expired session with a refresh token refreshes itself on launch. The web keeps tokens in memory only
+and is signed out after a reload — see "A reload signs the web session out" above.
 
 ```tsx
 import { useOidc } from '@pyreon/auth'

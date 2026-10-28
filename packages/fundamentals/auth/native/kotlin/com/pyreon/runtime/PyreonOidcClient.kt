@@ -145,6 +145,9 @@ public object PyreonOidcClient {
 
     /** POST to the token endpoint and validate the response — the same rules as the web `postToken`. */
     private fun postToken(meta: PyreonOidcMetadata, form: List<Pair<String, String>>, transport: PyreonAuthTransport): PyreonTokenSet {
+        // The POST carries the code + verifier (or a refresh token): https at USE, like
+        // the web, because metadata built directly never went through discovery.
+        PyreonAuthUrl.assertHttps(meta.tokenEndpoint)
         val body = form.joinToString("&") { "${URLEncoder.encode(it.first, "UTF-8")}=${URLEncoder.encode(it.second, "UTF-8")}" }
         val res = send(transport, 
             PyreonAuthRequest.post(
