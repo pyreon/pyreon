@@ -1061,6 +1061,28 @@ class RouterDemoInstrumentedTest {
         composeRule.onNodeWithTag("video-status").assertTextEquals("Video: playing")
     }
 
+    // Route loader data, destructured. The page's fields come from
+    // `const { title, views } = useLoaderData<Loaded>()`, which lowers to an
+    // early `?: return` so the composable (and its onMount LaunchedEffect)
+    // runs only once the loader's data exists — the web's order. Reached via
+    // the deep-link seam, like the lifecycle page, to spend no fold budget.
+    @Test
+    fun routeLoaderDataIsDestructuredAndReadyBeforeMount() {
+        val instr = InstrumentationRegistry.getInstrumentation()
+        composeRule.onNodeWithTag("home-page").assertIsDisplayed()
+        instr.runOnMainSync {
+            com.pyreon.router.PyreonDeepLink.receive(Uri.parse("pyreondemo://loaded"))
+        }
+        composeRule.waitUntil(timeoutMillis = 15_000) {
+            composeRule.onAllNodesWithTag("loaded-page").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithTag("loaded-title").assertTextEquals("Title: Loaded title")
+        composeRule.onNodeWithTag("loaded-views").assertTextEquals("Views: 42")
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodesWithText("Mounted with: Loaded title").fetchSemanticsNodes().isNotEmpty()
+        }
+    }
+
     // Platform APIs — app LIFECYCLE through the REAL Activity lifecycle. The
     // lifecycle page renders the STICKY wasBackgrounded flag;
     // rememberPyreonAppState() observes the hosting Activity via a
