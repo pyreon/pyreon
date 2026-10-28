@@ -1120,6 +1120,10 @@ object PyreonURL {
 // pyreonNumberString — JS \`String(number)\`, which every Double-typed
 // template interpoland lowers through. Mirrors the real signature.
 fun pyreonNumberString(value: Number): String = ""
+// pyreonSlice — JS \`slice\` for a bound whose sign is not known at compile time
+// (runtime-kotlin's PyreonSlice.kt).
+fun <T> pyreonSlice(a: List<T>, start: Long, end: Long? = null): List<T> = a
+fun pyreonSlice(s: String, start: Long, end: Long? = null): String = s
 
 // kotlinx.coroutines surface the emitted fetch harness drives —
 // withContext(Dispatchers.IO) { ... } around the blocking URL read.
