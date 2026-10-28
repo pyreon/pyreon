@@ -1932,4 +1932,131 @@ final class PyreonTasksUITests: XCTestCase {
             "Did not return to login page within 5s after Logout — store flag flip + navigate did not commit"
         )
     }
+
+    // MARK: Hosted web flow — browser chrome + fill sizing (#3982, #3956 item 5)
+
+    /// Login -> tasks -> the /webhost screen.
+    private func navigateToWebHost(_ app: XCUIApplication) {
+        let username = app.textFields["login-username"].firstMatch
+        XCTAssertTrue(username.waitForExistence(timeout: 30), "Username field missing")
+        username.tap()
+        username.typeText("abcde")
+        dismissKeyboard(app)
+        app.buttons["login-submit"].firstMatch.tap()
+        XCTAssertTrue(app.otherElements["tasks-page"].firstMatch.waitForExistence(timeout: 20), "Tasks page did not render after login")
+        let open = app.buttons["tasks-webhost"].firstMatch
+        XCTAssertTrue(open.waitForExistence(timeout: 20), "Web host button missing")
+        open.tap()
+        XCTAssertTrue(app.otherElements["webhost-page"].firstMatch.waitForExistence(timeout: 15), "Web host page did not render")
+    }
+
+    /// A page hosted in `<WebView grow>` on a REAL simulator:
+    ///
+    /// - SIZING: the web view takes the screen height its header and footer
+    ///   leave — far more than the 150-point unsized default — and the page's
+    ///   own viewport (`window.innerHeight`) agrees.
+    /// - alert / confirm / prompt: presented as native alerts by the
+    ///   WKUIDelegate, with the page receiving each answer (without a delegate
+    ///   WebKit drops alert, and confirm/prompt return false/null).
+    /// - geolocation: WebKit's per-site prompt appears and the page gets a
+    ///   position. The location permission and a fixed location are set up by
+    ///   the harness (`simctl privacy grant location` + `simctl location set`).
+    /// - file input: tapping it opens the system chooser (built in on iOS).
+    /// - target="_blank": hands the URL to Safari instead of doing nothing.
+    func test_webHostChromeAndFill() throws {
+        let app = XCUIApplication()
+        app.launch()
+        navigateToWebHost(app)
+
+        let result = app.staticTexts["webhost-result"].firstMatch
+        let web = app.webViews.firstMatch
+        XCTAssertTrue(web.waitForExistence(timeout: 20), "hosted WKWebView missing")
+
+        // ── SIZING ─────────────────────────────────────────────────────────
+        // The page posts its viewport height on load.
+        XCTAssertTrue(waitForLabelContaining(result, "size:", timeout: 20), "page never reported its size (label: \(result.label))")
+        let viewport = Int(result.label.replacingOccurrences(of: "size:", with: "")) ?? 0
+        let frame = web.frame
+        let screen = app.windows.firstMatch.frame
+        XCTAssertGreaterThan(frame.height, 300, "grow did not fill: web view is \(frame.height)pt high (unsized default is 150)")
+        XCTAssertGreaterThan(frame.height, screen.height * 0.5, "grow left most of the screen unused (\(frame.height) of \(screen.height))")
+        XCTAssertGreaterThan(viewport, 300, "the page's own viewport is \(viewport) — the frame grew but the page did not")
+
+        // ── alert ──────────────────────────────────────────────────────────
+        web.buttons["Alert"].firstMatch.tap()
+        let alert = app.alerts.firstMatch
+        XCTAssertTrue(alert.waitForExistence(timeout: 10), "alert() presented nothing")
+        XCTAssertTrue(alert.staticTexts["hello from the page"].exists, "alert shows the page's message")
+        alert.buttons["OK"].tap()
+        XCTAssertTrue(waitForLabel(result, "alert:done", timeout: 10), "alert() never returned (label: \(result.label))")
+
+        // ── confirm: Cancel, then OK ───────────────────────────────────────
+        web.buttons["Confirm"].firstMatch.tap()
+        XCTAssertTrue(alert.waitForExistence(timeout: 10), "confirm() presented nothing")
+        XCTAssertTrue(alert.staticTexts["Proceed?"].exists, "confirm shows the page's question")
+        alert.buttons["Cancel"].tap()
+        XCTAssertTrue(waitForLabel(result, "confirm:false", timeout: 10), "confirm() Cancel (label: \(result.label))")
+        web.buttons["Confirm"].firstMatch.tap()
+        XCTAssertTrue(alert.waitForExistence(timeout: 10), "second confirm() presented nothing")
+        alert.buttons["OK"].tap()
+        XCTAssertTrue(waitForLabel(result, "confirm:true", timeout: 10), "confirm() OK (label: \(result.label))")
+
+        // ── prompt: replace the default text ───────────────────────────────
+        web.buttons["Prompt"].firstMatch.tap()
+        XCTAssertTrue(alert.waitForExistence(timeout: 10), "prompt() presented nothing")
+        let field = alert.textFields.firstMatch
+        XCTAssertTrue(field.exists, "prompt has a text field")
+        XCTAssertEqual(field.value as? String, "guest", "prompt carries the page's default text")
+        field.tap()
+        field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 8) + "pyreon")
+        alert.buttons["OK"].tap()
+        XCTAssertTrue(waitForLabel(result, "prompt:pyreon", timeout: 10), "prompt() OK (label: \(result.label))")
+
+        // ── geolocation ────────────────────────────────────────────────────
+        web.buttons["Locate"].firstMatch.tap()
+        // WebKit asks per site. The app-level permission is pre-granted by the
+        // harness; if it was not, SpringBoard's prompt appears too.
+        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        let deadline = Date().addingTimeInterval(20)
+        while Date() < deadline && !result.label.hasPrefix("geo:ok") && !result.label.hasPrefix("geo:err") {
+            for button in ["Allow", "Allow While Using App", "Allow Once"] {
+                let site = app.alerts.buttons[button].firstMatch
+                if site.exists { site.tap() }
+                let system = springboard.alerts.buttons[button].firstMatch
+                if system.exists { system.tap() }
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.5))
+        }
+        XCTAssertEqual(result.label, "geo:ok", "the page did not get a position")
+
+        // ── target="_blank" ────────────────────────────────────────────────
+        let link = web.links["External link"].firstMatch
+        XCTAssertTrue(link.waitForExistence(timeout: 10), "external link missing: \(app.debugDescription.prefix(2000))")
+        link.tap()
+        let safari = XCUIApplication(bundleIdentifier: "com.apple.mobilesafari")
+        XCTAssertTrue(
+            safari.wait(for: .runningForeground, timeout: 20),
+            "target=_blank did not hand the URL to Safari (page said \(result.label), app state \(app.state.rawValue))"
+        )
+        app.activate()
+        XCTAssertTrue(app.otherElements["webhost-page"].firstMatch.waitForExistence(timeout: 15), "the hosted page was replaced instead of kept")
+
+        // ── file input ─────────────────────────────────────────────────────
+        // WKWebView presents its own chooser on iOS (no delegate needed). Its
+        // options are a menu, not an alert; finding any of them proves the
+        // input is live. Choosing a file needs a photo library / Files content
+        // the simulator does not reliably have, so it is dismissed instead.
+        let fileControl = web.buttons["Pick a file"].firstMatch.exists ? web.buttons["Pick a file"].firstMatch : web.staticTexts["Pick a file"].firstMatch
+        fileControl.tap()
+        let choices = ["Photo Library", "Choose File", "Take Photo", "Take Photo or Video", "Choose Files"]
+        let chooserDeadline = Date().addingTimeInterval(10)
+        var shown: String?
+        while Date() < chooserDeadline && shown == nil {
+            shown = choices.first { app.buttons[$0].exists || app.otherElements[$0].exists || app.staticTexts[$0].exists }
+            if shown == nil { RunLoop.current.run(until: Date().addingTimeInterval(0.3)) }
+        }
+        XCTAssertNotNil(shown, "tapping the file input presented no chooser: \(app.debugDescription.prefix(1500))")
+        // Dismiss: tap outside the menu.
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.05)).tap()
+    }
 }

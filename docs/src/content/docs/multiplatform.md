@@ -372,7 +372,8 @@ Colors accept `#hex` / `#rgb` / `#rrggbbaa` / `rgb()` / `rgba()` (alpha carried 
 **Reactive `style={cond ? {A} : {B}}` lowers too.** A ternary of two object literals lowers each *shared* property to a **reactive conditional-value modifier** — `.background(active ? A : B)` on iOS, `.background(if (active) A else B)` on Android. Because `cond` reads a signal (→ SwiftUI `@State` / Compose `mutableStateOf`), the style **flips on state change with no extra machinery** — the exact reactive mechanism the canonical-prop ternary emit already ships and the counter example device-proves (tap → re-render). This is the plan's make-or-break "dynamic resolution → reactive emit", proven on a primitive's own inline style before it rides on rocketstyle's dimension props.
 
 - A property present in only ONE branch (asymmetric), or a padding box that isn't a single all-sides value in both branches, can't fold into one conditional value — it's emitted from the first branch statically **with a named warning** (never a silent drop). Give both branches the same property with two literal values for a reactive flip.
-- Still out of scope (warned, not silently dropped): a non-ternary dynamic style (`style={obj}`, `cond && {A}`, nested ternary) and any *non-literal field value* (`style={{ padding: n() }}`). Reactive resolution beyond a two-literal ternary is the tracked follow-up.
+- A NESTED ternary whose every leaf is an object literal (`style={a() ? (b() ? {…} : {…}) : {…}}`) lowers the same way, one nested conditional value per property.
+- Still out of scope (warned, not silently dropped): a non-ternary dynamic style (`style={obj}`, `cond && {A}`) and any *non-literal field value* (`style={{ padding: n() }}`).
 
 Both the static and dynamic emits are toolchain-validated (`swiftc -typecheck` against the real SwiftUI SDK + `kotlinc` against the Compose stubs) — the dual-toolchain gate is what caught a Kotlin float-suffix bug (`.alpha((if (c) 1 else 0.7)f)` → invalid; fixed to `1f`/`0.7f` per branch).
 
@@ -422,7 +423,7 @@ function App() {
 
 `<Btn state={active() ? 'primary' : 'danger'}>` **resolves both branches** (`base ∪ static-dims ∪ each state's set`) into a **ternary style value** handed to the connector's reactive path — so each property that differs across the branches lowers to a **conditional-value modifier**: SwiftUI `.background((active) ? Color(…blue) : Color(…red))`, Compose `.background(if (active) Color(0xFF2563EB) else Color(0xFFDC2626))`. Any **static** dimension (`size="large"`) + the theme merge into **both** branches. This is what makes a native rocketstyle component **reactive** rather than static-only — the runtime state flip re-styles in place, no remount.
 
-**Scope:** a canonical-primitive base (`component: Stack`); static string dimensions (the `useBooleans: false` default) merge into one object; **one** dynamic dimension (a ternary of two DECLARED dimension values) lowers to the reactive flip. Declaration values may be literals OR [theme tokens](#theme-token-resolution) (`backgroundColor: t.color.primary`). Remaining follow-up: **≥2 simultaneous** dynamic dimensions (a switch over the dimension-set product) → warns + falls back to the first branch; a ternary whose branches aren't both declared dimension values → warns + drops. Both emits are toolchain-validated.
+**Scope:** a canonical-primitive base (`component: Stack`); static string dimensions (the `useBooleans: false` default) merge into one object; each dynamic dimension (a ternary of two DECLARED dimension values) lowers to a reactive flip, and several at once lower to a nested conditional over their product, so `state` and `size` can both follow signals. Declaration values may be literals OR [theme tokens](#theme-token-resolution) (`backgroundColor: t.color.primary`). A ternary whose branches aren't both declared dimension values → warns + drops. Both emits are toolchain-validated.
 
 #### Dark mode
 
@@ -1411,6 +1412,29 @@ back out. `examples/native-analytics` is the canonical end-to-end proof
 cross-origin remote `src` can't be reached from the parent frame (the
 native targets reach remote content via `evaluateJavaScript` / the script
 handler).
+
+### Sizing and browser chrome
+
+An unsized `<WebView>` is the size of an `<iframe>` with no CSS on every
+target: full width, **150 high**. `grow` takes the free main-axis space of its
+parent `<Stack>` / `<Inline>` — Compose `Modifier.weight(1f)`, a greedy SwiftUI
+frame, `flex: 1 1 150px` on the web — so an embedded web flow can fill the
+rest of a screen. The compiler decides it from the emitted tree (Compose's
+`weight` only compiles as a direct child of a Column / Row), fills both axes
+when the parent is not a stack, and drops `grow` with a named warning inside a
+`<Scroll>` in the same component, where there is no free space to fill. A
+component rendered into a `<Scroll>` ELSEWHERE cannot be seen at compile time;
+on Android its weight then measures to zero, so keep growing views out of
+scrolling pages.
+
+The page inside gets the browser chrome it would get in a browser:
+`<input type="file">` (iOS's chooser; Android's document picker, or the camera
+for `capture`), `alert` / `confirm` / `prompt` as native dialogs, geolocation
+and `getUserMedia` after a per-site prompt — and only for permissions the app
+DECLARES (Info.plist usage strings, AndroidManifest permissions; the scaffold
+lists them commented out) — and `window.open` / `target="_blank"` handed to the
+system browser for `http(s)`, `mailto`, `tel` and `sms`. Device-proven by
+`examples/native-tasks`' `/webhost` screen on both platforms.
 
 ### The `/webview` subpaths — web engines that cross by HOSTING
 

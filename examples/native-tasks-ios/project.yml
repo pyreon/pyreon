@@ -89,6 +89,9 @@ targets:
         # Apple-sanctioned dev exemption for loopback / .local hosts.
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
+        # The /webhost page hosts a page that calls navigator.geolocation;
+        # WKWebView only asks (per site) once the app may ask (#3982).
+        NSLocationWhenInUseUsageDescription: The hosted web page in this demo reads your location.
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: false
         UILaunchScreen: {}

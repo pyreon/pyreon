@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The cache directory a <WebView> capture file input writes into (see the
+     FileProvider in AndroidManifest.xml). Matches the runtime's
+     cacheDir/pyreon-webview/. -->
+<paths>
+    <cache-path name="pyreon_webview" path="pyreon-webview/" />
+</paths>
