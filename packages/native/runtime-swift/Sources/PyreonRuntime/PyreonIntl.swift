@@ -167,11 +167,19 @@ public final class PyreonNumberFormat {
         minimumIntegerDigits: Int? = nil,
         useGrouping: Bool = true
     ) {
-        let key = [
-            locale ?? "", style, currency ?? "", currencyDisplay,
-            minimumFractionDigits.map(String.init) ?? "", maximumFractionDigits.map(String.init) ?? "",
-            minimumIntegerDigits.map(String.init) ?? "", useGrouping ? "1" : "0",
-        ].joined(separator: "\u{1F}")
+        // Spelled out piece by piece: one array literal of ten `.map(String.init)`
+        // expressions is beyond what swiftc can type-check in reasonable time.
+        func digits(_ n: Int?) -> String { n.map { String($0) } ?? "" }
+        var parts: [String] = []
+        parts.append(locale ?? "")
+        parts.append(style)
+        parts.append(currency ?? "")
+        parts.append(currencyDisplay)
+        parts.append(digits(minimumFractionDigits))
+        parts.append(digits(maximumFractionDigits))
+        parts.append(digits(minimumIntegerDigits))
+        parts.append(useGrouping ? "1" : "0")
+        let key = parts.joined(separator: "\u{1F}")
         formatter = numberFormatterCache.value(for: key) {
             let f = NumberFormatter()
             f.locale = locale.map { Locale(identifier: $0) } ?? Locale.current
