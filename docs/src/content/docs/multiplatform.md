@@ -1411,6 +1411,29 @@ cross-origin remote `src` can't be reached from the parent frame (the
 native targets reach remote content via `evaluateJavaScript` / the script
 handler).
 
+### Sizing and browser chrome
+
+An unsized `<WebView>` is the size of an `<iframe>` with no CSS on every
+target: full width, **150 high**. `grow` takes the free main-axis space of its
+parent `<Stack>` / `<Inline>` — Compose `Modifier.weight(1f)`, a greedy SwiftUI
+frame, `flex: 1 1 150px` on the web — so an embedded web flow can fill the
+rest of a screen. The compiler decides it from the emitted tree (Compose's
+`weight` only compiles as a direct child of a Column / Row), fills both axes
+when the parent is not a stack, and drops `grow` with a named warning inside a
+`<Scroll>` in the same component, where there is no free space to fill. A
+component rendered into a `<Scroll>` ELSEWHERE cannot be seen at compile time;
+on Android its weight then measures to zero, so keep growing views out of
+scrolling pages.
+
+The page inside gets the browser chrome it would get in a browser:
+`<input type="file">` (iOS's chooser; Android's document picker, or the camera
+for `capture`), `alert` / `confirm` / `prompt` as native dialogs, geolocation
+and `getUserMedia` after a per-site prompt — and only for permissions the app
+DECLARES (Info.plist usage strings, AndroidManifest permissions; the scaffold
+lists them commented out) — and `window.open` / `target="_blank"` handed to the
+system browser for `http(s)`, `mailto`, `tel` and `sms`. Device-proven by
+`examples/native-tasks`' `/webhost` screen on both platforms.
+
 ### The `/webview` subpaths — web engines that cross by HOSTING
 
 Two packages wrap a web engine that has no native equivalent and cannot

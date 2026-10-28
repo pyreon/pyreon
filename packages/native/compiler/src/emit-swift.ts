@@ -9,6 +9,7 @@
 // computed properties. Phase 1 grows a real inference pass.
 
 import { lowerWebViewDomStorage } from './webview-options'
+import { LayoutScopeTracker, lowerWebViewGrow } from './webview-sizing'
 import { classifyFallback, unconsumedSlotWarning } from './jsx-slot-attrs'
 import { swiftStr } from './string-literals'
 import {
@@ -1012,6 +1013,7 @@ export function emitSwift(
   // A host's `@State` lines are spliced into its component's struct when the component ends; a component that is not a struct (a stateless `@ViewBuilder func`) never reaches that splice, so what it registered must not survive into the next compile.
   _hostStateDecls = []
   _emitWarnings = []
+  _swiftLayout.reset()
   // Per-FILE hook-binding-name sets. They are populated by the pre-pass
   // below (which walks EVERY component at once), so they are file-scoped,
   // not component-scoped — and nothing reset them. Two consequences: the
@@ -6345,6 +6347,7 @@ const swiftWebViewFacade: WebViewFacade = {
   dynamicAttr: dynamicWebViewAttr,
   dataArg: swiftWebViewDataArg,
   messageHandler: emitSwiftMessageHandler,
+  grow: (el, chain) => ({ chain, arg: swiftWebViewGrowArg(el) }),
 }
 
 /**
@@ -6363,7 +6366,17 @@ const swiftHostState: HostStateSlot = {
   freshSuffix: () => ++_swiftHostStateSeq,
 }
 
+/**
+ * Which SwiftUI stack each JSX element is a DIRECT child of — so `<WebView
+ * grow>` grows along its parent's main axis only. See `webview-sizing.ts`.
+ */
+const _swiftLayout = new LayoutScopeTracker()
+
 function emitSwiftJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
+  return _swiftLayout.element(e.tag, () => emitSwiftJsxElement(e, indent))
+}
+
+function emitSwiftJsxElement(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
   const tag = e.tag
 
   // Library elements claimed by a registered element lowering (the built-ins
@@ -6377,7 +6390,8 @@ function emitSwiftJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numbe
   )
   if (lowering !== undefined) {
     const retagged = lowering.retag?.(e, { warn: pushEmitWarning })
-    if (retagged !== undefined) return emitSwiftJsx(retagged, indent)
+    // The retagged element TAKES the place of `e` — same depth, same parent.
+    if (retagged !== undefined) return emitSwiftJsxElement(retagged, indent)
     const emitLowered = lowering.emit?.swift
     if (emitLowered !== undefined) {
       warnUnreadSwiftAttrs(e)
@@ -6386,7 +6400,7 @@ function emitSwiftJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numbe
   }
 
   const rewritten = rewritePluginElement(e, _pluginScope, () => swiftEmitContext(indent))
-  if (rewritten !== undefined) return emitSwiftJsx(rewritten, indent)
+  if (rewritten !== undefined) return emitSwiftJsxElement(rewritten, indent)
 
   warnUnreadSwiftAttrs(e)
 
@@ -8202,7 +8216,9 @@ function emitSwiftStack(
   if (e.children.length === 0) {
     return `${viewName}${initSignature} {}${modifiers}`
   }
-  const contentLines = e.children.map((c) => pad + emitSwiftChild(c, indent + 2)).join('\n')
+  const contentLines = _swiftLayout.children(isRow ? 'row' : 'column', () =>
+    e.children.map((c) => pad + emitSwiftChild(c, indent + 2)).join('\n'),
+  )
   return `${viewName}${initSignature} {\n${contentLines}\n${' '.repeat(indent)}}${modifiers}`
 }
 
@@ -8245,6 +8261,15 @@ function emitSwiftLayer(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: num
  * chain via `emitSwiftLayoutModifiers`.
  */
 function emitSwiftScroll(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
+  // Children are unbounded along the scroll axis — a `<WebView grow>` there has
+  // no free space to take (see webview-sizing.ts).
+  const horizontal = readStaticAttr(e, 'axis') === 'horizontal'
+  return _swiftLayout.scroll(horizontal ? 'horizontal' : 'vertical', horizontal ? 'row' : 'column', () =>
+    emitSwiftScrollBody(e, indent),
+  )
+}
+
+function emitSwiftScrollBody(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
   const axis = readStaticAttr(e, 'axis')
   const initSignature = axis === 'horizontal' ? '(.horizontal)' : ''
   const modifiers = emitSwiftLayoutModifiers(e)
@@ -8520,7 +8545,7 @@ function emitSwiftWebView(e: Extract<ExprIR, { kind: 'jsx-element' }>): string {
   }
   const domStorage = lowerWebViewDomStorage(e, readStaticAttr, 'swift')
   if (domStorage.warning !== undefined) _emitWarnings.push(domStorage.warning)
-  const args = [content, dataArg, onMsgArg, domStorage.arg]
+  const args = [content, dataArg, onMsgArg, domStorage.arg, swiftWebViewGrowArg(e)]
     .filter((a) => a !== undefined)
     .join(', ')
   // The generic tail (`padding`/`margin`, `data-testid` →
@@ -8528,6 +8553,20 @@ function emitSwiftWebView(e: Extract<ExprIR, { kind: 'jsx-element' }>): string {
   // host that returned before it was structurally unassertable by XCUITest —
   // the same class the `<Link>`/`<Toggle>` emitters had.
   return `PyreonWebView(${args})${emitSwiftLayoutModifiers(e)}`
+}
+
+/**
+ * The `grow:` argument of a WebView-family host (`grow: .vertical` /
+ * `.horizontal` / `.both`), or undefined when it keeps the unsized default.
+ * SwiftUI sizing has to happen INSIDE the runtime view: the unsized default is
+ * an exact 150-high frame there, and an outer `.frame(maxHeight: .infinity)`
+ * cannot enlarge a fixed inner frame. Must run while the host element is being
+ * dispatched, since it reads the layout scope. See webview-sizing.ts.
+ */
+function swiftWebViewGrowArg(e: Extract<ExprIR, { kind: 'jsx-element' }>): string | undefined {
+  const grow = lowerWebViewGrow(e.attrs, () => readStaticAttr(e, 'grow'), _swiftLayout, e.tag)
+  if (grow.warning !== undefined) _emitWarnings.push(grow.warning)
+  return grow.axis === undefined ? undefined : `grow: .${grow.axis}`
 }
 
 /**

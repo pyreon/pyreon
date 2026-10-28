@@ -226,6 +226,11 @@ export interface RichTextWebViewProps {
   tiptapScript?: string
   /** `<script src>` for the `window.TT` bundle when not inlined. */
   tiptapSrc?: string
+  /**
+   * Fill the free space of the parent `<Stack>` / `<Inline>` — the `<WebView grow>`
+   * sizing contract, forwarded unchanged. Unsized, the host is 150 high on every target.
+   */
+  grow?: boolean
 }
 
 /**
@@ -281,6 +286,13 @@ export function RichTextWebView(props: RichTextWebViewProps): VNode {
         onChange?.(message)
       }
     }
+  }
+  if (props.grow !== undefined) {
+    Object.defineProperty(webViewProps, 'grow', {
+      enumerable: true,
+      configurable: true,
+      get: (): boolean | undefined => props.grow,
+    })
   }
   return h(WebView as (p: unknown) => VNodeChild, webViewProps) as VNode
 }

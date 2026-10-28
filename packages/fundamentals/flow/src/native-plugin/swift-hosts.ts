@@ -343,5 +343,8 @@ export function emitSwiftFlowWebView(e: Extract<ExprIR, { kind: 'jsx-element' }>
   const onMessage = callbackArgs.length === 0
     ? undefined
     : `onMessage: { pyreonMsg in pyreonDispatchFlowWebViewMessage(pyreonMsg, ${callbackArgs.join(', ')}) }`
-  return `PyreonWebView(html: ${html}, data: ${data}${onMessage ? `, ${onMessage}` : ''})${host.layoutModifiersFor(e, HANDLED_FLOW_WEBVIEW_PROPS)}`
+  // `grow` rides INTO the runtime view (its unsized default is a fixed frame
+  // an outer modifier cannot enlarge) — see WebViewProps.grow.
+  const sized = host.webView.grow(e, host.layoutModifiersFor(e, HANDLED_FLOW_WEBVIEW_PROPS))
+  return `PyreonWebView(html: ${html}, data: ${data}${onMessage ? `, ${onMessage}` : ''}${sized.arg === undefined ? '' : `, ${sized.arg}`})${sized.chain}`
 }

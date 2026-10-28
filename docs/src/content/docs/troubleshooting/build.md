@@ -480,6 +480,24 @@ Stubs must mirror the real surface: a superset masks breakage, a subset manufact
 
 ---
 
+### A stub must mirror an extension's SCOPE, not just its name.
+
+Compose's `Modifier.weight` is an extension on `ColumnScope` / `RowScope`, and `@LayoutScopeMarker` (a DslMarker) cuts the outer scope off inside a nested Box. The Kotlin stub declared `weight` as a plain `Modifier` member, so a weighted call compiled anywhere: a Box grandchild or a component root passed the gate and would fail `gradle assembleDebug`. The stub now declares the scopes, the marker, and `BoxScope`. When a layout decision depends on the parent (`<WebView grow>`, `<Spacer>`), the emitter must know the parent at compile time, and the stub must reject the wrong parent. Lock: `native/compiler/src/tests/webview-grow.test.ts` (the stub rejects a mis-scoped weight).
+
+---
+
+### A SwiftUI representable is greedy, so an "ideal" size is not a default.
+
+`.frame(idealHeight: 150)` only applies when the parent proposes no size; a VStack always proposes one, so the same `<WebView>` filled the screen on iOS and was 150dp on Android. Give the unsized default an exact frame and make filling explicit (`grow`). An outer `.frame(maxHeight: .infinity)` cannot enlarge a fixed inner frame, so sizing passes INTO the runtime view as an argument.
+
+---
+
+### A WebView callback must be answered exactly once on every path.
+
+An Android `onShowFileChooser` `ValueCallback` that is never answered leaves the page's file input dead until the view is recreated; a dropped WKUIDelegate completion handler raises in WebKit. Answer on success, on denial, on dismissal, when a newer request replaces a pending one, and when the view is released. In Swift 6 the WKUIDelegate methods only match with `@MainActor @Sendable` completion types; a "nearly matches optional requirement" warning means WebKit never calls them. Reference: `hooks/native/kotlin/com/pyreon/runtime/PyreonWebChromePolicy.kt` (`PyreonOnceSlot`, `PyreonPermissionQueue`).
+
+---
+
 ### Attach an emitted SwiftUI `.task` to a stable-identity view.
 
 SwiftUI ties a `.task` to its host's identity. On a transparent `Group { if isPending { … } else { … } }` (what `<Suspense>`/`<ErrorBoundary>` emit) the modifier lands on the branch, so every loading/error flip cancels and restarts the task and the fetch never settles. `emit-swift.ts:emitSwiftComponent` wraps fetch-bearing component bodies in a `ZStack`. Kotlin's fetch harness is a `LaunchedEffect(Unit)` sibling and needs no wrapper. `swiftc -typecheck` cannot catch this; only a device run can. Locks: `native/compiler/src/tests/fetch-computed-shapes.test.ts` and the `examples/native-tasks-ios` `lifecycle-page` XCUITest (`lc-quote` and `lc-error` both render).

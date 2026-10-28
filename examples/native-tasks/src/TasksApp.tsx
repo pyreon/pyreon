@@ -356,6 +356,9 @@ function TasksPage() {
           <Button onPress={() => navigate('/streams')} data-testid="tasks-streams">
             Streams
           </Button>
+          <Button onPress={() => navigate('/webhost')} data-testid="tasks-webhost">
+            Web host
+          </Button>
           <Button onPress={logout} data-testid="tasks-logout">
             Logout
           </Button>
@@ -1908,6 +1911,35 @@ function ToolkitScreen() {
   )
 }
 
+// ── Web host (#3982 + #3956 item 5) ──
+//
+// A whole web flow embedded full-screen: the page in assets/webhost/
+// webhost-chrome.html uses the browser chrome a real embedded flow needs (a file
+// input, geolocation, alert/confirm/prompt, a target=_blank link) and reports
+// every outcome back over the reverse bridge, so the device tests read it in a
+// NATIVE Text rather than inside the WebView. The page root is a plain <Stack>
+// (no <Scroll>) and the WebView carries `grow`, so it takes the screen height
+// left over by the header and footer on every target — the sizing case.
+function WebHostScreen() {
+  const navigate = useNavigate()
+  let webResult = state('ready')
+  return (
+    <Stack gap={2} padding={4} data-testid="webhost-page">
+      <Text data-testid="webhost-title">Hosted web flow</Text>
+      <WebView
+        src="webhost-chrome.html"
+        grow
+        onMessage={(m) => { webResult = m }}
+        data-testid="webhost-view"
+      />
+      <Text data-testid="webhost-result">{webResult}</Text>
+      <Button onPress={() => navigate('/tasks')} data-testid="webhost-back">
+        Back to tasks
+      </Button>
+    </Stack>
+  )
+}
+
 // ── App root ──
 
 export function TasksApp() {
@@ -1987,6 +2019,11 @@ export function TasksApp() {
       {
         path: '/flow-scale',
         component: FlowScaleScreen,
+        beforeEnter: () => useApp().store.isAuthed(),
+      },
+      {
+        path: '/webhost',
+        component: WebHostScreen,
         beforeEnter: () => useApp().store.isAuthed(),
       },
     ],
