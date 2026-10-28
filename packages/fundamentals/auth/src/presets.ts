@@ -19,7 +19,7 @@ export function withPreset(preset: Preset, client: Omit<ClientConfig, 'scope'> &
   return { ...client, scope: client.scope ?? preset.scope }
 }
 
-/** Non-OIDC OAuth2 providers have no discovery document — pass endpoints explicitly (https only; checked at use). */
+/** Non-OIDC OAuth2 providers have no discovery document — pass endpoints explicitly (https, or loopback http for local development — enforced where each endpoint is used, by `beginAuthorization` and the token exchange / refresh, on every target). */
 export function oauth2(issuer: string, authorization_endpoint: string, token_endpoint: string): OidcMetadata {
   return { issuer, authorization_endpoint, token_endpoint }
 }

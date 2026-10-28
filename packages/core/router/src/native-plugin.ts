@@ -25,26 +25,72 @@ const recognizeParams: CallRecognizer = (_call, ctx) => {
   )
   return { type: 'params', payload: { hook: 'params' } }
 }
+// `useLoaderData<T>()`. On the web a route's loader runs BEFORE its component renders, so the data is always there.
+// Natively the loader runs on appear and the data arrives a moment later, so the runtime read is optional — and the
+// emit used to hand that optional straight to the author's code: `data.title` failed to compile on both targets, with
+// no warning. The component now renders only once its loader data exists (a body gate on Swift, an early `return` on
+// Kotlin), so every binding below is NON-optional, exactly as on the web.
 const recognizeLoader: CallRecognizer = (_call, ctx) => {
-  const bindingDesc =
-    ctx.pattern === undefined
-      ? `\`const ${ctx.declName} = useLoaderData<T>()\``
-      : ctx.pattern.type === 'ObjectPattern'
-        ? '`const { ... } = useLoaderData<T>()`'
-        : '`useLoaderData<T>()`'
-  if (ctx.pattern !== undefined) {
+  const type = ctx.typeArg()
+  if (ctx.pattern === undefined) return { type: 'loader', payload: { type } as unknown as ExtPayload }
+  if (ctx.pattern.type !== 'ObjectPattern') {
     ctx.report(
-      `useLoaderData<T>() declared (${bindingDesc}) — destructure form not yet emitted on native targets. Use the single-binding shape \`const data = useLoaderData<T>(); …data.x\` instead. Tracked as Phase B+ follow-up.`,
+      `useLoaderData<T>() can be bound to a name (\`const data = useLoaderData<T>()\`) or destructured into fields (\`const { title } = useLoaderData<T>()\`) on native; this binding shape is neither, so it was not lowered.`,
     )
     return null
   }
-  // The single-binding read is fully supported: it lowers to a read of the
-  // runtime's loader data, which a route's `loader` populates on appear (the
-  // route-array parser extracts the loader; both emitters call
-  // `setLoaderData`). A loader shape that cannot lower warns at the route
-  // itself, so there is nothing to report here.
-  return { type: 'loader', payload: { type: ctx.typeArg() } as unknown as ExtPayload }
+  const fields: { key: string; local: string }[] = []
+  for (const prop of (ctx.pattern.properties as
+    | readonly (AstNode & { value?: AstNode & { name?: string } })[]
+    | undefined) ?? []) {
+    if (prop.type !== 'Property') {
+      ctx.report(
+        '`const { …rest } = useLoaderData<T>()`: a rest element is not lowered on native. Name the fields you read, or bind the whole object (`const data = useLoaderData<T>()`).',
+      )
+      return null
+    }
+    if (ctx.hasDynamicKey(prop)) {
+      ctx.warnDynamicKey(prop, '`const { … } = useLoaderData<T>()`')
+      return null
+    }
+    const key = ctx.propKey(prop)
+    if (key === undefined || prop.value?.type !== 'Identifier' || prop.value.name === undefined) {
+      ctx.report(
+        `\`const { ${key ?? '…'}: … } = useLoaderData<T>()\`: only a plain or renamed field (\`{ title }\`, \`{ title: heading }\`) is lowered on native — not a nested pattern or a default. Bind the whole object (\`const data = useLoaderData<T>()\`) and read \`data.${key ?? 'field'}\` instead.`,
+      )
+      return null
+    }
+    fields.push({ key, local: prop.value.name })
+  }
+  return fields.length === 0
+    ? null
+    : { type: 'loader-fields', payload: { type, fields } as unknown as ExtPayload }
 }
+const LOADER_HOLDER = '__pyreonLoaderData'
+const missingLoaderField = (key: string, type: string): string =>
+  `\`const { ${key} } = useLoaderData<${type}>()\`: ${type} declares no field \`${key}\`, so its native type is unknown and the field was not bound. Check the field name, or give useLoaderData a type that declares it.`
+/**
+ * The native type of the loader data. An inline object type (`useLoaderData<{ x: string }>()`) names the struct the
+ * loader's object literal resolves to — the runtime reads the data back with `as? T` / a reified cast, so the two must
+ * be the same type, and a bare `Any` (Kotlin) cannot be read by field at all.
+ */
+const loaderTypeText = (
+  type: TypeIR,
+  ctx: {
+    typeText(t: TypeIR, o?: { synthesize?: boolean | undefined }): string
+    structs: { forTypeFields(f: readonly { name: string; type: TypeIR }[]): string | null }
+  },
+  kotlin = false,
+): string =>
+  (type.kind === 'object' ? ctx.structs.forTypeFields(type.fields) : null) ??
+  ctx.typeText(type, kotlin ? { synthesize: false } : undefined)
+/** The Swift body gate: render only once the route's loader data exists. */
+const loaderGate = (type: string) => ({
+  swift: (_decls: readonly unknown[], ctx: { indent: number }, next: (indent: number) => string): string => {
+    const pad = ' '.repeat(ctx.indent)
+    return [`${pad}if (useLoaderData(router: pyreonRouter) as ${type}?) != nil {`, next(ctx.indent + 2), `${pad}}`].join('\n')
+  },
+})
 const recognizePattern: CallRecognizer = (_call, ctx) => {
   if (ctx.pattern?.type !== 'ObjectPattern') return undefined
   const params: { key: string; local: string }[] = []
@@ -91,10 +137,51 @@ export const routerPlugin: CompilerPlugin = {
     loader: {
       legacyKind: 'useLoaderData',
       usesRouter: true,
+      // Non-optional: the root gate (Swift) / early return (Kotlin) guarantees the data exists before any read.
       swift: (decl, ctx) =>
-        `private var ${ctx.ident(decl.name)}: ${ctx.typeText(decl.payload.type as unknown as TypeIR)}? { useLoaderData(router: pyreonRouter) }`,
+        `private var ${ctx.ident(decl.name)}: ${loaderTypeText(decl.payload.type as unknown as TypeIR, ctx)} { useLoaderData(router: pyreonRouter)! }`,
       kotlin: (decl, ctx) =>
-        `val ${ctx.ident(decl.name)} = useLoaderData<${ctx.typeText(decl.payload.type as unknown as TypeIR, { synthesize: false })}>()`,
+        `val ${ctx.ident(decl.name)} = useLoaderData<${loaderTypeText(decl.payload.type as unknown as TypeIR, ctx, true)}>() ?: return`,
+      root: {
+        swift: (decls, ctx, next) =>
+          loaderGate(loaderTypeText(decls[0]!.payload.type as unknown as TypeIR, ctx)).swift(decls, ctx, next),
+      },
+    },
+    'loader-fields': {
+      legacyKind: 'useLoaderData',
+      legacyName: false,
+      usesRouter: true,
+      swift: (decl, ctx) => {
+        const type = decl.payload.type as unknown as TypeIR
+        const fieldTypes = new Map(ctx.rowFields(type).map((f) => [f.name, f.type]))
+        const lines = [`private var ${LOADER_HOLDER}: ${loaderTypeText(type, ctx)} { useLoaderData(router: pyreonRouter)! }`]
+        for (const f of decl.payload.fields as unknown as { key: string; local: string }[]) {
+          const fieldType = fieldTypes.get(f.key)
+          if (fieldType === undefined) {
+            ctx.warn(missingLoaderField(f.key, loaderTypeText(type, ctx)))
+            continue
+          }
+          lines.push(`private var ${ctx.ident(f.local)}: ${ctx.typeText(fieldType)} { ${LOADER_HOLDER}.${ctx.ident(f.key)} }`)
+        }
+        return lines.join('\n  ')
+      },
+      kotlin: (decl, ctx) => {
+        const type = decl.payload.type as unknown as TypeIR
+        const known = new Set(ctx.rowFields(type).map((f) => f.name))
+        const lines = [`val ${LOADER_HOLDER} = useLoaderData<${loaderTypeText(type, ctx, true)}>() ?: return`]
+        for (const f of decl.payload.fields as unknown as { key: string; local: string }[]) {
+          if (!known.has(f.key)) {
+            ctx.warn(missingLoaderField(f.key, loaderTypeText(type, ctx, true)))
+            continue
+          }
+          lines.push(`val ${ctx.ident(f.local)} = ${LOADER_HOLDER}.${ctx.ident(f.key)}`)
+        }
+        return lines.join('\n  ')
+      },
+      root: {
+        swift: (decls, ctx, next) =>
+          loaderGate(loaderTypeText(decls[0]!.payload.type as unknown as TypeIR, ctx)).swift(decls, ctx, next),
+      },
     },
     'params-fields': {
       legacyKind: 'params-destructure',
