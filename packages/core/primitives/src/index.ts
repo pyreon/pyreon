@@ -43,6 +43,7 @@ export type {
   SingleLineFieldProps,
   ToggleProps,
 } from './types/input'
+export type { SplitProps, TabProps, TabsProps } from './types/navigation'
 export type {
   TransitionEasing,
   TransitionGroupProps,
@@ -58,12 +59,13 @@ export type {
 export { init, resetPrimitivesConfig } from './config'
 export type { PrimitivesInitOptions } from './config'
 
-// ===== Web runtime exports — the 17 canonical primitives =====
+// ===== Web runtime exports — the 19 canonical primitives =====
 //
-// Stack … Modal below are the canonical set; the compiler's
+// Stack … Split below are the canonical set (`<Tab>` excepted — it is
+// `<Tabs>`' entry marker); the compiler's
 // `CANONICAL_PRIMITIVES` (packages/native/compiler/src/canonical-primitives.ts)
 // must list exactly these, and a test there fails if the two disagree. The
-// exports after `Modal` (animation, WebView, escape hatches) are not members.
+// exports after `Split` (animation, WebView, escape hatches) are not members.
 //
 // On native targets these imports are intercepted by the PMTC
 // compiler before the JSX call site reaches runtime — these
@@ -86,6 +88,12 @@ export { Link } from './web/Link'
 export { Field } from './web/Field'
 export { Toggle } from './web/Toggle'
 export { Modal } from './web/Modal'
+// Top-level navigation — a tab bar that keeps each tab's state, and an
+// adaptive list/detail split. `<Tab>` is `<Tabs>`' entry marker, not a
+// standalone primitive.
+export { Tabs } from './web/Tabs'
+export { Tab } from './web/Tabs'
+export { Split } from './web/Split'
 // Animation vocabulary — the ONE import path where `<Transition name>` /
 // `<TransitionGroup>` resolve on every target. PMTC has lowered both to
 // real platform animation since M2.7/M2.8 (SwiftUI `.transition(…)` +

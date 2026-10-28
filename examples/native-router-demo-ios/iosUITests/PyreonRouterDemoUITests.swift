@@ -1319,4 +1319,71 @@ final class PyreonRouterDemoUITests: XCTestCase {
             "onMount ran without the loader data (observed: \(app.staticTexts["loaded-mounted"].firstMatch.label))"
         )
     }
+
+    // Navigation row (#3983) — <Tabs> lowers to TabView, <Split> to a pushed
+    // compact detail. The load-bearing assertions are the STATE ones: the draft
+    // is typed into the Feed tab and the counter lives in a child component's
+    // own `@State` inside the Me tab, so a tab rebuilt on every switch would come
+    // back empty / at 0. Tab bar buttons carry no identifier in SwiftUI, so they
+    // are queried by their label (documented on TabProps).
+    func test_tabsKeepEachTabsStateAndSplitPushesDetail() throws {
+        let app = XCUIApplication()
+        app.launch()
+        XCTAssertTrue(app.otherElements["home-page"].firstMatch.waitForExistence(timeout: 30))
+        app.buttons["home-to-navigation"].tap()
+
+        XCTAssertTrue(
+            app.staticTexts["nav-feed-title"].waitForExistence(timeout: 15),
+            "Feed tab content did not render after navigating to /navigation"
+        )
+        let tabBar = app.tabBars.firstMatch
+        XCTAssertTrue(tabBar.waitForExistence(timeout: 10), "no tab bar — <Tabs> did not lower to a TabView")
+        XCTAssertTrue(tabBar.buttons["Mail"].exists && tabBar.buttons["Me"].exists, "tab bar items missing")
+
+        let draft = app.textFields["nav-feed-draft"]
+        XCTAssertTrue(draft.waitForExistence(timeout: 10))
+        draft.tap()
+        draft.typeText("hello")
+        XCTAssertEqual(app.staticTexts["nav-feed-echo"].label, "Draft: hello")
+
+        tabBar.buttons["Me"].tap()
+        let tap = app.buttons["nav-me-tap"]
+        XCTAssertTrue(tap.waitForExistence(timeout: 10), "Me tab did not render")
+        tap.tap()
+        tap.tap()
+        XCTAssertEqual(tap.label, "Tapped 2")
+
+        tabBar.buttons["Feed"].tap()
+        XCTAssertTrue(app.staticTexts["nav-feed-echo"].waitForExistence(timeout: 10))
+        XCTAssertEqual(
+            app.staticTexts["nav-feed-echo"].label, "Draft: hello",
+            "the Feed tab lost its typed draft across a tab switch"
+        )
+        tabBar.buttons["Me"].tap()
+        XCTAssertTrue(tap.waitForExistence(timeout: 10))
+        XCTAssertEqual(
+            tap.label, "Tapped 2",
+            "the Me tab's child @State reset across a tab switch — the tab was rebuilt"
+        )
+
+        // <Split> on a compact iPhone: list → push detail → system back.
+        tabBar.buttons["Mail"].tap()
+        let row = app.buttons["nav-mail-row-welcome"]
+        XCTAssertTrue(row.waitForExistence(timeout: 10), "Split sidebar did not render")
+        row.tap()
+        let subject = app.staticTexts["nav-mail-subject"]
+        XCTAssertTrue(subject.waitForExistence(timeout: 10), "Split detail was not pushed")
+        XCTAssertEqual(subject.label, "Subject: Welcome")
+        let back = app.navigationBars.buttons.element(boundBy: 0)
+        XCTAssertTrue(back.waitForExistence(timeout: 10), "no navigation back button on the pushed detail")
+        back.tap()
+        XCTAssertTrue(
+            app.buttons["nav-mail-row-invoice"].waitForExistence(timeout: 10),
+            "system back did not return to the Split sidebar"
+        )
+        // onBack cleared the selection, so the row can be picked again.
+        app.buttons["nav-mail-row-invoice"].tap()
+        XCTAssertTrue(subject.waitForExistence(timeout: 10))
+        XCTAssertEqual(subject.label, "Subject: Invoice")
+    }
 }

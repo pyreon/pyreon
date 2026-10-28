@@ -28,7 +28,8 @@
       "kotlin": {
         "dir": "src/main/kotlin",
         "kotlinSdkOnly": [
-          "PyreonChartCanvas.kt"
+          "PyreonChartCanvas.kt",
+          "PyreonNavigation.kt"
         ]
       }
     }

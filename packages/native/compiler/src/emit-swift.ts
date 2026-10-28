@@ -66,6 +66,7 @@ import {
   resolveRadius,
   resolveSpace,
 } from './canonical-primitives'
+import { planSplitSidebar, planTabs } from './navigation-lowering'
 import { intrinsicElementWarning, isIntrinsicElementTag } from './intrinsic-element-warning'
 import {
   buildComponentConstMap,
@@ -6560,6 +6561,8 @@ function emitSwiftJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numbe
   if (tag === 'Video') return emitSwiftVideo(e, indent)
   if (tag === 'Audio') return emitSwiftAudio(e, indent)
   if (tag === 'Modal') return emitSwiftModal(e, indent)
+  if (tag === 'Tabs') return emitSwiftTabs(e, indent)
+  if (tag === 'Split') return emitSwiftSplit(e, indent)
   if (tag === 'Press') return emitSwiftPress(e, indent)
   if (tag === 'Field') return emitSwiftField(e, indent)
   if (tag === 'Toggle') return emitSwiftToggle(e, indent)
@@ -8025,6 +8028,10 @@ function swiftStylingValue(
  * migration contract).
  */
 const SWIFT_CONTAINER_TAGS = new Set([
+  // The navigation primitives WRAP their content, so a bare identifier on
+  // them would be flattened out of the accessibility tree like a VStack's.
+  'Tabs',
+  'Split',
   'Stack',
   'Inline',
   'Layer',
@@ -9109,6 +9116,112 @@ function emitSwiftModal(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: num
     `${inner}set: { if !$0 { ${closeBody} } }\n` +
     `${bindPad})`
   return `Color.clear.frame(width: 0, height: 0).sheet(isPresented: ${binding}) {${content}}${emitSwiftLayoutModifiers(e)}`
+}
+
+/**
+ * Several children in one tab / pane are wrapped in ONE container. A SwiftUI
+ * modifier applied to a multi-view `@ViewBuilder` result is applied to EACH
+ * view, so `.tabItem { … }` over two loose views would create two tabs.
+ */
+function emitSwiftNavPane(children: readonly ChildIR[], indent: number): string {
+  const pad = ' '.repeat(indent)
+  if (children.length === 1) return pad + emitSwiftChild(children[0]!, indent)
+  if (children.length === 0) return `${pad}EmptyView()`
+  const inner = children.map((c) => ' '.repeat(indent + 2) + emitSwiftChild(c, indent + 2)).join('\n')
+  return `${pad}VStack(spacing: 0) {\n${inner}\n${pad}}`
+}
+
+/**
+ * Emit `<Tabs value onChange>` + its `<Tab>` children as the runtime
+ * `PyreonTabs(selection:items:) { pyreonTab in switch pyreonTab { … } }`
+ * (PyreonNavigation.swift → `TabView`). The tab bar is built at compile time
+ * from the literal `<Tab>` entries; each tab's content is one `case`.
+ *
+ * `value` follows `<Toggle>`'s two shapes: a bare signal binds two-way
+ * (`$tab`, `onChange` redundant), any other expression needs `onChange` and
+ * becomes a custom `Binding`.
+ */
+function emitSwiftTabs(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
+  const valueAttr = e.attrs.find(
+    (a): a is Extract<AttrIR, { kind: 'attr' }> => a.kind === 'attr' && a.name === 'value',
+  )
+  const onChange = e.attrs.find(
+    (a): a is Extract<AttrIR, { kind: 'event' }> => a.kind === 'event' && a.name === 'change',
+  )
+  const { tabs, warnings } = planTabs(e)
+  for (const w of warnings) pushEmitWarning(w)
+  let binding: string
+  if (valueAttr !== undefined && valueAttr.value.kind === 'identifier' && _signalNames.has(valueAttr.value.name)) {
+    binding = `$${swiftIdent(valueAttr.value.name)}`
+  } else if (valueAttr !== undefined && onChange !== undefined) {
+    const getExpr = emitSwiftExpr(unwrapAccessorArrow(valueAttr.value), indent)
+    const setter = emitSwiftCallbackArg(onChange.handler, indent + 4)
+    binding = `Binding(get: { ${getExpr} }, set: ${onChange.handler.kind === 'arrow' && onChange.handler.params.length > 0 ? setter : `{ _ in ${stripSwiftClosureBody(setter)} }`})`
+  } else {
+    pushEmitWarning(
+      '<Tabs>: needs `value` bound to a signal (`value={tab}`) or `value` + `onChange` — without one the selection cannot change on iOS, so it renders as an empty view.',
+    )
+    return `EmptyView()${emitSwiftLayoutModifiers(e)}`
+  }
+  if (tabs.length === 0) return `EmptyView()${emitSwiftLayoutModifiers(e)}`
+  // A selection typed by a string-literal union (`signal<Section>('feed')`)
+  // is a native ENUM here, so the tab values must be its cases — the runtime
+  // is generic over the selection type for exactly this reason.
+  const enumType = valueAttr === undefined ? undefined : enumTypeOfExpr(unwrapAccessorArrow(valueAttr.value))
+  const tabValue = (v: string): string => (enumType === undefined ? swiftStr(v) : `${enumType}.${swiftEnumCase(v)}`)
+  const p = ' '.repeat(indent)
+  const itemPad = ' '.repeat(indent + 2)
+  const items = tabs
+    .map((t) => {
+      const label = t.label.kind === 'literal' ? swiftStr(t.label.text) : emitSwiftExpr(t.label.expr, indent + 2)
+      const image = t.icon === undefined ? '' : `, systemImage: ${swiftStr(t.icon.sf)}`
+      return `${itemPad}PyreonTabItem(value: ${tabValue(t.value)}, label: ${label}${image}),`
+    })
+    .join('\n')
+  const cases = tabs
+    .map((t) => `${itemPad}case ${tabValue(t.value)}:\n${emitSwiftNavPane(t.children, indent + 4)}`)
+    .join('\n')
+  return (
+    `PyreonTabs(selection: ${binding}, items: [\n${items}\n${p}]) { pyreonTab in\n` +
+    `${itemPad}switch pyreonTab {\n${cases}\n${itemPad}default:\n${itemPad}  EmptyView()\n${itemPad}}\n` +
+    `${p}}${emitSwiftLayoutModifiers(e)}`
+  )
+}
+
+/**
+ * Emit `<Split sidebar showDetail onBack>detail</Split>` as the runtime
+ * `PyreonSplit(showDetail:onBack:) { sidebar } detail: { detail }`
+ * (PyreonNavigation.swift → `NavigationSplitView`, or a pushed detail on a
+ * compact `NavigationStack`).
+ */
+function emitSwiftSplit(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
+  const showAttr = e.attrs.find(
+    (a): a is Extract<AttrIR, { kind: 'attr' }> => a.kind === 'attr' && a.name === 'showDetail',
+  )
+  const onBack = e.attrs.find(
+    (a): a is Extract<AttrIR, { kind: 'event' }> => a.kind === 'event' && a.name === 'back',
+  )
+  const sidebar = planSplitSidebar(e)
+  if (sidebar.kind === 'unsupported') pushEmitWarning(sidebar.warning)
+  if (showAttr === undefined) {
+    pushEmitWarning(
+      '<Split>: no `showDetail` — on a compact iPhone width the detail can never be shown, only the sidebar.',
+    )
+  }
+  if (onBack === undefined) {
+    pushEmitWarning(
+      '<Split>: no `onBack` — the system back button and swipe-back on a compact width cannot clear your `showDetail` state, so the detail is pushed again on the next render.',
+    )
+  }
+  const show = showAttr === undefined ? 'false' : emitSwiftSignalRead(unwrapAccessorArrow(showAttr.value))
+  const back = onBack === undefined ? '{ }' : emitSwiftAction(onBack.handler, indent + 2)
+  const p = ' '.repeat(indent)
+  const side = emitSwiftNavPane(sidebar.kind === 'view' ? sidebar.children : [], indent + 2)
+  const detail = emitSwiftNavPane(e.children, indent + 2)
+  return (
+    `PyreonSplit(showDetail: ${show}, onBack: ${back}) {\n${side}\n${p}} detail: {\n${detail}\n${p}}` +
+    emitSwiftLayoutModifiers(e)
+  )
 }
 
 /**

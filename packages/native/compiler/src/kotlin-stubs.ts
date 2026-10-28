@@ -764,7 +764,46 @@ object Icons {
     val Warning: ImageVector = ImageVector()
     val Check: ImageVector = ImageVector()
     val Add: ImageVector = ImageVector()
+    val Home: ImageVector = ImageVector()
+    val Email: ImageVector = ImageVector()
+    val Person: ImageVector = ImageVector()
+    val Search: ImageVector = ImageVector()
+    val Settings: ImageVector = ImageVector()
+    val List: ImageVector = ImageVector()
   }
+}
+
+// <Tabs> / <Split> — mirror runtime-kotlin's PyreonNavigation.kt signatures exactly.
+data class PyreonTabItem<T>(
+  val value: T,
+  val label: String,
+  val icon: ImageVector? = null,
+  val testTag: String? = null,
+)
+
+@Composable
+@Suppress("UNUSED_PARAMETER")
+fun <T> PyreonTabs(
+  selected: T,
+  onSelect: (T) -> Unit,
+  items: List<PyreonTabItem<T>>,
+  modifier: Modifier = Modifier,
+  content: @Composable (T) -> Unit,
+) {
+  content(selected)
+}
+
+@Composable
+@Suppress("UNUSED_PARAMETER")
+fun PyreonSplit(
+  showDetail: Boolean,
+  onBack: () -> Unit,
+  modifier: Modifier = Modifier,
+  sidebar: @Composable () -> Unit,
+  detail: @Composable () -> Unit,
+) {
+  sidebar()
+  detail()
 }
 
 @Composable

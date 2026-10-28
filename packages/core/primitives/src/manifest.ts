@@ -2,7 +2,7 @@ import { defineManifest } from '@pyreon/manifest'
 
 /**
  * `@pyreon/primitives` — the canonical MULTIPLATFORM UI vocabulary. These
- * 17 canonical primitives (+ `<Transition>`/`<TransitionGroup>`, `<WebView>`
+ * 19 canonical primitives (+ `<Transition>`/`<TransitionGroup>`, `<WebView>`
  * and the `<Web>`/`<NativeIOS>`/`<NativeAndroid>` escape hatches) are the
  * ONLY UI layer that compiles to web DOM + iOS
  * SwiftUI + Android Compose from one source via PMTC. This manifest is the
@@ -15,18 +15,19 @@ export default defineManifest({
   name: '@pyreon/primitives',
   title: 'Canonical Multiplatform Primitives',
   tagline:
-    '17 canonical cross-platform UI primitives that compile to DOM + SwiftUI + Compose from one .tsx: Stack, Inline, Layer, Scroll, Spacer (layout); Text, Heading, Image, Audio, Video, Icon (content); Button, Press, Link (interaction); Field, Toggle, Modal (input). Plus <Transition>/<TransitionGroup> (animation), <WebView> (host a web-only component natively, bidirectional bridge) and <Web>/<NativeIOS>/<NativeAndroid> escape hatches.',
+    '19 canonical cross-platform UI primitives that compile to DOM + SwiftUI + Compose from one .tsx: Stack, Inline, Layer, Scroll, Spacer (layout); Text, Heading, Image, Audio, Video, Icon (content); Button, Press, Link (interaction); Field, Toggle, Modal (input); Tabs (+ Tab entries), Split (navigation). Plus <Transition>/<TransitionGroup> (animation), <WebView> (host a web-only component natively, bidirectional bridge) and <Web>/<NativeIOS>/<NativeAndroid> escape hatches.',
   description:
     'The multiplatform UI vocabulary for Pyreon. ONE canonical name per concept (`<Stack>` not `<View>`/`<VStack>`/`<div>`; `onPress` everywhere, not `onClick` vs `action:`). Web renders real DOM via `@pyreon/runtime-dom`; on iOS/Android the PMTC compiler intercepts the JSX at build time and emits idiomatic SwiftUI / Compose (the import is a type-anchor on native). Tokens-first styling (`padding={4}`, `gap="md"`) resolves through the theme per target. No responsive props in v1 — apps needing responsive web use `@pyreon/elements` directly; animation is `<Transition>` / `<TransitionGroup>`. CRITICAL boundary for native: PMTC compiles your component SOURCE in a narrow declarative TS subset, NOT npm libraries — see `get_pattern({ name: "multiplatform" })` for the supported subset + the silent-failure cliff.',
   category: 'browser',
   multiplatform: {
     tier: 'shared',
     rationale:
-      "the 17 canonical primitives: real web DOM runtime AND SwiftUI/Compose emit — the compiler's native target vocabulary",
+      "the 19 canonical primitives: real web DOM runtime AND SwiftUI/Compose emit — the compiler's native target vocabulary",
   },
   features: [
     'Native compiler tooling: primitivesPlugin from @pyreon/primitives/native-plugin owns hook recognition and Swift/Kotlin lowering; the native CLI discovers it through pyreon.native.plugin, and direct compiler callers install it explicitly',
-    '17 canonical primitives compile to web DOM + iOS SwiftUI + Android Compose from one .tsx',
+    '19 canonical primitives compile to web DOM + iOS SwiftUI + Android Compose from one .tsx',
+    '`<Tabs>`/`<Tab>` — a tab bar that keeps every visited tab mounted (TabView on iOS, BottomNavigation/NavigationRail by window width on Android, a WAI-ARIA tablist bottom bar / side rail on the web); `<Split>` — a list/detail layout that collapses to one pane on a narrow window',
     'One canonical name + event per concept — `<Stack>` (not View/VStack/div), `onPress` everywhere',
     'Tokens-first styling (`padding={4}`, `gap="md"`) resolves through the theme per target',
     'PMTC compiles your component SOURCE in a narrow declarative TS subset — NOT npm libraries',
@@ -284,6 +285,44 @@ export function App() {
         'Forgetting `onClose` — needed so the platform dismiss gesture updates your signal',
       ],
       seeAlso: ['Layer'],
+    },
+    {
+      name: 'Tabs',
+      kind: 'component',
+      signature:
+        '(props: { value: string | (() => string); onChange: (next: string) => void; children: <Tab> elements }) => VNode',
+      summary:
+        'Top-level tab navigation; children are literal `<Tab value label icon?>` entries whose children are the tab content. Web: the WAI-ARIA tabs pattern (tablist / tab / tabpanel, roving tabindex, arrow keys + Home/End) as a bottom bar below 600px of viewport width and a side rail at 600px+. iOS: `TabView(selection:)` (iOS 18+ `.sidebarAdaptable`, a sidebar on iPad). Android: Material `BottomNavigation` below 600dp of window width, `NavigationRail` at 600dp+ (the `useSizeClass()` breakpoint). A visited tab stays MOUNTED while hidden on every target, so its local state, typed text and scroll position survive switching away and back. Router-agnostic: the selection is your signal; a string-literal-union signal lowers to the native enum.',
+      example: `const tab = signal('feed')
+<Tabs value={tab} onChange={(v) => tab.set(v)}>
+  <Tab value="feed" label="Feed" icon="home"><FeedScreen /></Tab>
+  <Tab value="me" label="Me" icon="person"><ProfileScreen /></Tab>
+</Tabs>`,
+      mistakes: [
+        'Generating the `<Tab>`s with `<For>` or a helper — native targets build the tab bar at compile time, so each `<Tab>` must be written out (anything else is dropped with a warning)',
+        'A computed `<Tab value>` / `label` icon — `value` and `icon` must be string literals (the `value` is the native `case` / `when` branch)',
+        'Expecting `data-testid` on a `<Tab>` to identify the iOS tab bar button — SwiftUI gives tab bar items no identifier; query them by label (it lands on the web button and the Android bar item)',
+        'Placing `<Tabs>` inside a pushed route and expecting the tab bar to stay visible on iOS when a later route is pushed — the router has ONE stack, so a push covers the TabView',
+      ],
+      seeAlso: ['Split', 'Link'],
+    },
+    {
+      name: 'Split',
+      kind: 'component',
+      signature:
+        '(props: { sidebar: VNodeChild; showDetail: boolean | (() => boolean); onBack: () => void; backLabel?: string; children }) => VNode',
+      summary:
+        'Adaptive list/detail layout: `sidebar` is the list, the children are the detail. At 600px/dp of window width and wider both panes show side by side; below it ONE pane shows — the sidebar, or the detail while `showDetail` — and going back calls `onBack` (web back button, iOS navigation back button / swipe-back, Android system back via BackHandler). iOS uses `NavigationSplitView` in a regular-width window and pushes the detail on a compact one, reusing the router\'s NavigationStack when inside one (never nesting a second). Both panes stay mounted on web/Android, so the list keeps its state across a detail visit.',
+      example: `const picked = signal<string | null>(null)
+<Split sidebar={<MessageList onPick={(id) => picked.set(id)} />} showDetail={picked() !== null} onBack={() => picked.set(null)}>
+  <MessageView id={picked()} />
+</Split>`,
+      mistakes: [
+        'Omitting `onBack` — the platform back gesture cannot clear your selection (Android then falls through to the activity and closes the app)',
+        'Leaving the detail empty when nothing is selected — a wide window always shows BOTH panes, so render a placeholder',
+        'Passing a non-JSX `sidebar` (a variable holding a view) — only a JSX literal or an accessor returning one lowers natively',
+      ],
+      seeAlso: ['Tabs'],
     },
     {
       name: 'Transition',

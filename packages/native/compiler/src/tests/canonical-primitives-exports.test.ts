@@ -24,6 +24,8 @@ import { CANONICAL_PRIMITIVES } from '../canonical-primitives'
  * emit, and none is a valid styled()/attrs()/rocketstyle() base.
  */
 const NON_CANONICAL_EXPORTS = new Set([
+  // `<Tabs>`' entry marker — read by the Tabs emitter, never emitted alone.
+  'Tab',
   'Transition',
   'TransitionGroup',
   'WebView',

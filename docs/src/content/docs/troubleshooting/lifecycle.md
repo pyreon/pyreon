@@ -7,6 +7,24 @@ description: "Common lifecycle & cleanup mistakes in Pyreon and how to fix them.
 
 > **Generated** from `.agents/rules/anti-patterns.md` (the same source as MCP `get_anti_patterns`). Each entry is a real mistake + its fix; where a detector code is listed, the linter / `pyreon doctor` / MCP `validate` catches it automatically.
 
+### A "keep it mounted" accessor that re-runs on every switch rebuilds its subtree anyway
+
+The `<Tabs>` web panel first returned `seen ? content : null` from an accessor that read the selection, expecting the second run's IDENTICAL `content` array to be left alone. It was not — `mountReactive` skips a re-run only for a `_tpl` NativeItem (or an array of them), because identity cannot tell "unchanged" from "mutated in place" (`signal.trigger()`). Every tab switch tore the visited panel down and rebuilt it, dropping typed text; caught by a node-identity assertion (`expected <input> to be <input> // Object.is`). **Fix: make the accessor depend only on a latch that changes ONCE** — `computed(() => (seen ||= selected() === v), { equals: Object.is })` — so the boundary runs twice in its life (null → content) and never again. Rule: a subtree that must survive must not sit under an accessor whose dependencies keep changing; "returns the same value" is not a contract a reactive boundary honours. Reference: `packages/core/primitives/src/web/Tabs.tsx`; bisect in `tests/navigation.test.tsx`.
+
+---
+
+### Nesting a second `NavigationStack` (or `NavigationSplitView`) inside the router's
+
+SwiftUI does not support nested stacks, and every Pyreon screen is already inside the one `RouterProvider` creates. A primitive that wants push navigation (`<Split>`'s compact detail) must reuse the enclosing stack (`navigationDestination(isPresented:)` on its content) and create its own only when there is none. The router publishes `\.pyreonRouter` in the environment, which is the only reliable "am I inside a stack?" signal — the reason `PyreonSplit` lives in router-swift, not PyreonRuntime. Reference: `packages/native/router-swift/Sources/PyreonRouter/PyreonNavigation.swift`.
+
+---
+
+### Focusing an element from an effect that runs before the binding which un-hides it
+
+`<Split>` moved focus to its back button when `showDetail` flipped, from a `renderEffect` created at setup — which runs BEFORE the root's `data-split-pane` attribute binding re-applies, so the button was still under `display:none` and real Chromium silently refused the focus. happy-dom does not model it (the unit test passed). Defer the focus to a microtask, and assert focus in real Chromium. Reference: `packages/core/primitives/src/web/Split.tsx` + `tests/navigation.browser.test.tsx`.
+
+---
+
 ### [FIXED, 2026-10] A "nothing removed" shortcut that compares COUNTS (`cache.size === n`) is fooled by a duplicate key.
 
 `<For>`'s pure-reorder fast path skipped its stale-row scan when no row was added and the cache held `n` entries. `[1,2,3] → [2,2,1]` satisfies that (n stays 3) while key 3 is gone, so the removed row stayed in the DOM — a production-visible ghost row (duplicates only warn in dev). Fix: count the DISTINCT cached entries the update keeps (a per-update generation stamp on each entry, set in the `cache.get` pass that already ran) and take the shortcut only when that equals `cache.size`. **Rule: "set A is a superset of set B" can be decided by counting only when the counted side is duplicate-free.** Reference: `runtime-dom/src/nodes.ts:mountNewForEntries`; bisect-locked in `tests/for-duplicate-key-stale-row.test.ts`.

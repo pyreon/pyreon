@@ -34,6 +34,7 @@
 // `Stack`'s with a row default, since the two differ only in axis.
 //
 // Also exported by `@pyreon/primitives` but deliberately NOT members:
+// `Tab` (consumed by `<Tabs>`' emitter, never emitted on its own),
 // `Transition` / `TransitionGroup` (animation wrappers), `WebView` (a native
 // host for web content) and the `Web` / `NativeIOS` / `NativeAndroid` escape
 // hatches. Each has its own dedicated emitter and never reaches generic emit,
@@ -83,6 +84,10 @@ export const CANONICAL_PRIMITIVES = new Set([
   'Field',
   'Toggle',
   'Modal',
+  // Navigation (2) — `<Tab>` is `<Tabs>`' entry marker and never a standalone
+  // element, so it is not a member.
+  'Tabs',
+  'Split',
 ])
 
 export function isCanonicalPrimitive(tag: string): boolean {
@@ -117,6 +122,8 @@ export const SWIFT_NAMES: Record<string, string> = {
   Field: 'TextField', // SecureField when kind="password"
   Toggle: 'Toggle',
   Modal: 'Sheet', // .sheet(isPresented:) modifier-based
+  Tabs: 'PyreonTabs', // TabView(selection:) (+ .sidebarAdaptable on iOS 18)
+  Split: 'PyreonSplit', // NavigationSplitView / compact NavigationStack
 }
 
 /**
@@ -140,6 +147,8 @@ export const KOTLIN_NAMES: Record<string, string> = {
   Field: 'TextField',
   Toggle: 'Switch',
   Modal: 'Dialog',
+  Tabs: 'PyreonTabs', // BottomNavigation / NavigationRail by window width
+  Split: 'PyreonSplit', // two panes / one pane + BackHandler by window width
 }
 
 // ============================================================================

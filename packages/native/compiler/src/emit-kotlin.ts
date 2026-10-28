@@ -58,6 +58,7 @@ import {
   resolveRadius,
   resolveSpace,
 } from './canonical-primitives'
+import { planSplitSidebar, planTabs } from './navigation-lowering'
 import { intrinsicElementWarning, isIntrinsicElementTag } from './intrinsic-element-warning'
 import {
   buildComponentConstMap,
@@ -5290,6 +5291,8 @@ function emitKotlinJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
   if (tag === 'Video') return emitKotlinVideo(e, indent)
   if (tag === 'Audio') return emitKotlinAudio(e, indent)
   if (tag === 'Modal') return emitKotlinModal(e, indent)
+  if (tag === 'Tabs') return emitKotlinTabs(e, indent)
+  if (tag === 'Split') return emitKotlinSplit(e, indent)
   if (tag === 'Press') return emitKotlinPress(e, indent)
   if (tag === 'Field') return emitKotlinField(e, indent)
   if (tag === 'Toggle') return emitKotlinToggle(e, indent)
@@ -7575,6 +7578,132 @@ function emitKotlinModal(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: nu
     (modParts === '' ? '' : `${' '.repeat(indent + 4)}}\n`) +
     `${dialogPad}}\n` +
     `${' '.repeat(indent)}}`
+  )
+}
+
+function pushKotlinNavWarning(w: string): void {
+  if (!_emitWarnings.includes(w)) _emitWarnings.push(w)
+}
+
+/**
+ * One tab / pane body. Several children are wrapped in ONE `Column`: the
+ * runtime hosts each pane in a `Box`, which would otherwise STACK loose
+ * children on top of each other.
+ */
+function emitKotlinNavPane(children: readonly ChildIR[], indent: number): string {
+  const pad = ' '.repeat(indent)
+  if (children.length === 1) return pad + emitKotlinChild(children[0]!, indent)
+  if (children.length === 0) return `${pad}// empty pane`
+  const inner = children.map((c) => ' '.repeat(indent + 2) + emitKotlinChild(c, indent + 2)).join('\n')
+  return `${pad}Column {\n${inner}\n${pad}}`
+}
+
+/**
+ * Emit `<Tabs value onChange>` + its `<Tab>` children as the runtime
+ * `PyreonTabs(selected, onSelect, items, modifier) { pyreonTab -> when … }`
+ * (PyreonNavigation.kt → `BottomNavigation` / `NavigationRail` by window
+ * width). Mirror of `emitSwiftTabs`; the tab bar is built at compile time and
+ * each tab's content is one `when` branch.
+ *
+ * `value` follows `<Toggle>`'s two shapes: a bare signal auto-derives the
+ * write-back when there is no `onChange`; any other expression needs
+ * `onChange`.
+ */
+function emitKotlinTabs(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
+  const valueAttr = e.attrs.find(
+    (a): a is Extract<AttrIR, { kind: 'attr' }> => a.kind === 'attr' && a.name === 'value',
+  )
+  const onChange = e.attrs.find(
+    (a): a is Extract<AttrIR, { kind: 'event' }> => a.kind === 'event' && a.name === 'change',
+  )
+  const { tabs, warnings } = planTabs(e)
+  for (const w of warnings) pushKotlinNavWarning(w)
+  const isSignal =
+    valueAttr !== undefined && valueAttr.value.kind === 'identifier' && _signalNames.has(valueAttr.value.name)
+  if (valueAttr === undefined || (!isSignal && onChange === undefined)) {
+    pushKotlinNavWarning(
+      '<Tabs>: needs `value` bound to a signal (`value={tab}`) or `value` + `onChange` — without one the selection cannot change on Android, so nothing is rendered.',
+    )
+    return '// <Tabs> without a selection binding renders nothing on Android'
+  }
+  const selected = isSignal
+    ? kotlinIdent((valueAttr.value as Extract<ExprIR, { kind: 'identifier' }>).name)
+    : emitKotlinExpr(unwrapAccessorArrow(valueAttr.value), indent + 2)
+  const onSelect = onChange !== undefined ? emitKotlinAction(onChange.handler, indent + 2) : `{ ${selected} = it }`
+  if (tabs.length === 0) return '// <Tabs> with no <Tab> entries renders nothing on Android'
+  // A selection typed by a string-literal union is a native enum class here,
+  // so the tab values must be its entries (the runtime is generic over it).
+  const enumType = enumTypeOfExpr(unwrapAccessorArrow(valueAttr.value))
+  const tabValue = (v: string): string => (enumType === undefined ? kotlinStr(v) : `${enumType}.${kotlinEnumEntry(v)}`)
+  const p = ' '.repeat(indent)
+  const a1 = ' '.repeat(indent + 2)
+  const a2 = ' '.repeat(indent + 4)
+  const items = tabs
+    .map((t) => {
+      const args = [
+        `value = ${tabValue(t.value)}`,
+        `label = ${t.label.kind === 'literal' ? kotlinStr(t.label.text) : emitKotlinExpr(t.label.expr, indent + 4)}`,
+      ]
+      if (t.icon !== undefined) args.push(`icon = Icons.Filled.${t.icon.material}`)
+      if (t.testId !== undefined) args.push(`testTag = ${kotlinStr(t.testId)}`)
+      return `${a2}PyreonTabItem(${args.join(', ')}),`
+    })
+    .join('\n')
+  const modifier = emitKotlinLayoutModifier(e)
+  const branches = tabs
+    .map((t) => `${a2}${tabValue(t.value)} -> {\n${emitKotlinNavPane(t.children, indent + 6)}\n${a2}}`)
+    .join('\n')
+  return (
+    `PyreonTabs(\n` +
+    `${a1}selected = ${selected},\n` +
+    `${a1}onSelect = ${onSelect},\n` +
+    `${a1}items = listOf(\n${items}\n${a1}),\n` +
+    (modifier === '' ? '' : `${a1}modifier = ${modifier},\n`) +
+    `${p}) { pyreonTab ->\n` +
+    `${a1}when (pyreonTab) {\n${branches}\n${a1}}\n` +
+    `${p}}`
+  )
+}
+
+/**
+ * Emit `<Split sidebar showDetail onBack>detail</Split>` as the runtime
+ * `PyreonSplit(showDetail, onBack, modifier, sidebar = { … }) { detail }`
+ * (PyreonNavigation.kt → two panes at 600dp+, else one pane + BackHandler).
+ * Mirror of `emitSwiftSplit`.
+ */
+function emitKotlinSplit(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
+  const showAttr = e.attrs.find(
+    (a): a is Extract<AttrIR, { kind: 'attr' }> => a.kind === 'attr' && a.name === 'showDetail',
+  )
+  const onBack = e.attrs.find(
+    (a): a is Extract<AttrIR, { kind: 'event' }> => a.kind === 'event' && a.name === 'back',
+  )
+  const sidebar = planSplitSidebar(e)
+  if (sidebar.kind === 'unsupported') pushKotlinNavWarning(sidebar.warning)
+  if (showAttr === undefined) {
+    pushKotlinNavWarning(
+      '<Split>: no `showDetail` — on a compact Android width the detail can never be shown, only the sidebar.',
+    )
+  }
+  if (onBack === undefined) {
+    pushKotlinNavWarning(
+      '<Split>: no `onBack` — the system back gesture on a compact Android width cannot leave the detail, so it falls through to the activity (the app closes).',
+    )
+  }
+  const show = showAttr === undefined ? 'false' : emitKotlinSignalRead(unwrapAccessorArrow(showAttr.value))
+  const back = onBack === undefined ? '{}' : emitKotlinAction(onBack.handler, indent + 2)
+  const p = ' '.repeat(indent)
+  const a1 = ' '.repeat(indent + 2)
+  const modifier = emitKotlinLayoutModifier(e)
+  const side = emitKotlinNavPane(sidebar.kind === 'view' ? sidebar.children : [], indent + 4)
+  const detail = emitKotlinNavPane(e.children, indent + 2)
+  return (
+    `PyreonSplit(\n` +
+    `${a1}showDetail = ${show},\n` +
+    `${a1}onBack = ${back},\n` +
+    (modifier === '' ? '' : `${a1}modifier = ${modifier},\n`) +
+    `${a1}sidebar = {\n${side}\n${a1}},\n` +
+    `${p}) {\n${detail}\n${p}}`
   )
 }
 

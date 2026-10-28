@@ -18,7 +18,7 @@
 import { For, onMount } from '@pyreon/core'
 import { useAppState, useDatabase, useFetch, useOnline, usePush, useSecureStorage, useSizeClass, useWebSocket } from '@pyreon/hooks'
 import { useFieldArray } from '@pyreon/form'
-import { Audio, Button, Heading, Image, Inline, Layer, Link, Press, Spacer, Stack, Text, Video } from '@pyreon/primitives'
+import { Audio, Button, Field, Heading, Image, Inline, Layer, Link, Press, Spacer, Split, Stack, Tab, Tabs, Text, Video } from '@pyreon/primitives'
 import { attrs } from '@pyreon/attrs'
 import { Element } from '@pyreon/elements'
 import { Col, Container, Row } from '@pyreon/coolgrid'
@@ -555,6 +555,9 @@ function HomePage() {
       </Inline>
       <Inline gap={2}>
         <Button onPress={() => navigate('/anim')}>View anim</Button>
+        <Button onPress={() => navigate('/navigation')} data-testid="home-to-navigation">
+          View tabs
+        </Button>
       </Inline>
       <Inline gap={2}>
         <Button onPress={() => navigate('/offline')}>View offline</Button>
@@ -627,6 +630,68 @@ function HomePage() {
         <Text data-testid="adaptive-b">B</Text>
       </Stack>
     </Stack>
+  )
+}
+
+// Navigation row (#3983) — <Tabs> + <Split>. What it PROVES on device:
+//   - the tab bar exists and switches (iOS TabView, Android BottomNavigation);
+//   - a visited tab KEEPS its state: the counter lives in a CHILD component's
+//     own local signal (an `@State` / `remember` inside that tab), and the
+//     field's text is typed into the tab, so a tab that were rebuilt on every
+//     switch would come back at 0 / empty;
+//   - <Split> on a phone shows the list, pushes the detail on a row tap, and
+//     the platform's own back (iOS nav back button, Android system back)
+//     returns to the list through `onBack`.
+function TapCounter() {
+  const taps = signal(0)
+  return (
+    <Button onPress={() => taps.set(taps() + 1)} data-testid="nav-me-tap">
+      Tapped {taps()}
+    </Button>
+  )
+}
+
+function NavigationPage() {
+  const tab = signal('feed')
+  const draft = signal('')
+  const picked = signal('')
+  return (
+    <Tabs value={tab} onChange={(v) => tab.set(v)} data-testid="nav-tabs">
+      <Tab value="feed" label="Feed" icon="home" data-testid="nav-tab-feed">
+        <Stack gap={3} padding={4} data-testid="nav-feed">
+          <Text data-testid="nav-feed-title">Feed tab</Text>
+          <Field value={draft} onChangeText={(v) => draft.set(v)} placeholder="Draft" data-testid="nav-feed-draft" />
+          <Text data-testid="nav-feed-echo">Draft: {draft()}</Text>
+        </Stack>
+      </Tab>
+      <Tab value="mail" label="Mail" icon="email" data-testid="nav-tab-mail">
+        <Split
+          sidebar={
+            <Stack gap={2} padding={4} data-testid="nav-mail-list">
+              <Button onPress={() => picked.set('Welcome')} data-testid="nav-mail-row-welcome">
+                Welcome
+              </Button>
+              <Button onPress={() => picked.set('Invoice')} data-testid="nav-mail-row-invoice">
+                Invoice
+              </Button>
+            </Stack>
+          }
+          showDetail={picked() !== ''}
+          onBack={() => picked.set('')}
+          data-testid="nav-mail-split"
+        >
+          <Stack gap={2} padding={4} data-testid="nav-mail-detail">
+            <Text data-testid="nav-mail-subject">Subject: {picked() === '' ? 'none' : picked()}</Text>
+          </Stack>
+        </Split>
+      </Tab>
+      <Tab value="me" label="Me" icon="person" data-testid="nav-tab-me">
+        <Stack gap={3} padding={4} data-testid="nav-me">
+          <Text data-testid="nav-me-title">Me tab</Text>
+          <TapCounter />
+        </Stack>
+      </Tab>
+    </Tabs>
   )
 }
 
@@ -803,6 +868,7 @@ export function RouterApp() {
       { path: '/biglist', component: BigListPage },
       { path: '/a11y', component: A11yPage },
       { path: '/anim', component: AnimPage },
+      { path: '/navigation', component: NavigationPage },
       { path: '/offline', component: OfflinePage },
       { path: '/push', component: PushPage },
       { path: '/lifecycle', component: LifecyclePage },
