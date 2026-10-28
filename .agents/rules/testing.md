@@ -162,6 +162,20 @@ test.beforeEach(async ({ context }) => {
 
 Any functional test can lose component state when another worker's cold imports trigger a dev reload. Keep `@vite/client` loaded for input/click delegation. Use `page.routeWebSocket` before navigation, connect to the real server, and filter only `update` / `full-reload` messages on the `vite-hmr` subprotocol; forward other messages and leave application sockets untouched. Scope this to functional contracts, never HMR proofs. Bisect with a real `server.ws.send({ type: 'full-reload', path: '*' })` message and assert the document stays stable. Apply the filter before navigation for the whole functional spec file, rather than rediscovering the same reload race one assertion at a time. References: the shared hook, debounce and Feature-delete checks in `e2e/fundamentals/new-demos.spec.ts`.
 
+## A heap harness must not hold Playwright handles
+
+`page.waitForSelector()` returns an ElementHandle, and an undisposed handle is a GC root for the whole browser session.
+A heap-slope harness that waits for a "ready" marker every cycle therefore pins one marker per cycle, plus everything
+reachable from it. That reads exactly like a framework leak: the nightly leak sweep was red on 5 journeys for twelve
+days (from 2026-10-16) after a correct runtime change (#3902) left an unmounted `<For>`'s rows attached to their
+detached parent. The marker had pinned only an empty shell before; now it reached the whole list. Nothing in the
+framework held anything, and bisecting the runtime pointed at a commit that was right.
+
+Rules: wait with `page.locator(sel).waitFor()`, which creates no handle; pass journeys a page through an explicit
+adapter (`scripts/perf/page-like.ts`), never `page as unknown as PageLike`. The cast is what hid it: the interface said
+`Promise<void>` while the real method returned a handle. When a leak bisects to a commit that only changes WHEN or
+WHETHER DOM is detached, suspect the harness's own references before the framework's.
+
 ## The native compile-validation suite is verdict-cached
 
 `@pyreon/native-compiler`'s `validate.ts` spawns real `swiftc`/`kotlinc`. Verdicts are content-addressed on disk (`validate-cache.ts`), keyed on validator kind, compiler version, exact stub text and the exact bytes compiled. Real-SDK fixtures also invoke the compilers directly, outside that cache; a warm validator cache does not imply a cheap complete suite.
