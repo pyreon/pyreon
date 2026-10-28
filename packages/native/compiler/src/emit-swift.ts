@@ -11,6 +11,7 @@
 import { lowerWebViewDomStorage } from './webview-options'
 import { classifyFallback, unconsumedSlotWarning } from './jsx-slot-attrs'
 import { swiftStr } from './string-literals'
+import { resolveFieldShape } from './field-shape'
 import {
   allServices,
   bindServices,
@@ -9201,13 +9202,30 @@ function emitSwiftField(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: num
     return emitSwiftGeneric(e, indent)
   }
 
-  let result = swiftFieldViewExpr(e, placeholder, textArg)
+  // `multiline` / `lines` — resolved by the helper both emitters share, so the
+  // text-area decision (and what a text area drops) cannot drift per target.
+  const shape = resolveFieldShape(e, readStaticAttr)
+  _emitWarnings.push(...shape.warnings)
+  let result: string
+  if (shape.multiline) {
+    // `axis: .vertical` makes the field wrap and take newlines; `.lineLimit(n,
+    // reservesSpace: true)` makes it exactly `n` rows tall and scroll past them
+    // — a web `<textarea rows=n>`, not an auto-growing field. Both are iOS 16;
+    // the runtime targets 17.
+    const lines =
+      shape.lines.kind === 'static'
+        ? String(shape.lines.n)
+        : `max(1, Int(${emitSwiftExpr(shape.lines.expr, 0)}))`
+    result = `TextField(${placeholder}, text: ${textArg}, axis: .vertical)\n${' '.repeat(indent + 2)}.lineLimit(${lines}, reservesSpace: true)`
+  } else {
+    result = swiftFieldViewExpr(e, placeholder, textArg)
+  }
 
   // onSubmit modifier (Pyreon canonical event for keyboard "done").
   const onSubmit = e.attrs.find(
     (a): a is Extract<AttrIR, { kind: 'event' }> => a.kind === 'event' && a.name === 'submit',
   )
-  if (onSubmit) {
+  if (onSubmit && shape.honourSubmit) {
     result += `\n${' '.repeat(indent + 2)}.onSubmit ${emitSwiftAction(onSubmit.handler, indent + 2)}`
   }
   // `kind` → the software KEYBOARD. The web gets this free from `<input type>`;
@@ -9219,7 +9237,7 @@ function emitSwiftField(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: num
   //
   // `password` is deliberately absent from the map: it selects SecureField, and
   // a masked field keeps the default keyboard.
-  const kindForKeyboard = readStaticAttr(e, 'kind')
+  const kindForKeyboard = shape.honourKind ? readStaticAttr(e, 'kind') : undefined
   const kb = typeof kindForKeyboard === 'string' ? FIELD_KEYBOARD_SWIFT[kindForKeyboard] : undefined
   if (kb !== undefined) {
     result += `\n${' '.repeat(indent + 2)}.keyboardType(${kb})`

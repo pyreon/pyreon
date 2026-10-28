@@ -625,6 +625,53 @@ class TasksAppInstrumentedTest {
         assertTagDisplayed("tasks-page", "after streams-back (/streams -> /tasks)")
     }
 
+    /**
+     * `<Field multiline lines>` (#3980) — mirror of the iOS
+     * `test_multilineFieldIsATextAreaBothWays`. HEIGHT is measured on the EMPTY
+     * field against the single-line one (a field that grew with content, or
+     * dropped `lines`, would pass a content-filled measurement), then a reactive
+     * `lines` 4 -> 2 must shrink it. VALUE both ways: a signal write must show in
+     * the control, and typed text with a newline must reach the signal.
+     */
+    @Test
+    fun multilineFieldIsATextAreaBothWays() {
+        composeRule.onNodeWithTag("login-username").performTextInput("abcde")
+        composeRule.onNodeWithTag("login-submit").performClick()
+        assertTagDisplayed("tasks-page", "after login-submit")
+        composeRule.onNodeWithTag("tasks-fields").performClick()
+        assertTagDisplayed("fields-page", "after tasks-fields (/tasks -> /fields)")
+
+        fun heightOf(tag: String): Float =
+            composeRule.onNodeWithTag(tag).fetchSemanticsNode().boundsInRoot.height
+        fun fieldText(tag: String): String =
+            composeRule.onNodeWithTag(tag).fetchSemanticsNode().config
+                .getOrNull(SemanticsProperties.EditableText)?.text ?: "<no EditableText>"
+
+        val oneRow = heightOf("fields-single")
+        val fourRows = heightOf("fields-notes")
+        assertTrue("single-line field has no height", oneRow > 0f)
+        assertTrue(
+            "lines=4 did not make the EMPTY field four rows tall (single $oneRow, multiline $fourRows)",
+            fourRows > oneRow * 1.8f,
+        )
+
+        composeRule.onNodeWithTag("fields-fill").performClick()
+        waitForTagText("fields-notes-echo", "alpha\nbeta\ngamma")
+        composeRule.waitForIdle()
+        assertTrue(
+            "the text area does not show the value written to its signal: '${fieldText("fields-notes")}'",
+            fieldText("fields-notes") == "alpha\nbeta\ngamma",
+        )
+
+        composeRule.onNodeWithTag("fields-rows-2").performClick()
+        composeRule.waitUntil(timeoutMillis = 5_000) { heightOf("fields-notes") < fourRows * 0.75f }
+
+        composeRule.onNodeWithTag("fields-notes").performTextInput("\ndelta")
+        waitForTagText("fields-notes-length", "22")
+        val echo = textOf("fields-notes-echo")
+        assertTrue("a typed newline did not reach the signal: '$echo'", echo.contains("\ndelta"))
+    }
+
     @Test
     fun authGateStoreMutationAndTypedParamsDetail() {
         // Phase 1: login — flips the store's auth flag; the beforeEnter

@@ -307,7 +307,8 @@ a warning on every list would be noise.
 
 | Primitive | Web | iOS | Android |
 |-----------|-----|-----|---------|
-| `<Field value onChangeText kind?>` | `<input>` | `TextField` / `SecureField` | `TextField` |
+| `<Field value onChangeText kind?>` | `<input>` | `TextField` / `SecureField` | `TextField(singleLine = true)` |
+| `<Field multiline lines?>` (text area; `lines` = visible rows, default 3; static `multiline`; no `kind`/`onSubmit`) | `<textarea rows>` | `TextField(axis: .vertical)` + `.lineLimit(lines, reservesSpace: true)` | `TextField(singleLine = false, minLines = lines, maxLines = lines)` |
 | `<Toggle value onChange>` | `<input type=checkbox>` | `Toggle` | `Switch` |
 | `<Modal open onClose>` | `<dialog>` | `.sheet(isPresented:)` | `Dialog` |
 

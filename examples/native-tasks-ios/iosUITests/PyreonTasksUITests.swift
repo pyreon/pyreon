@@ -441,6 +441,66 @@ final class PyreonTasksUITests: XCTestCase {
         XCTAssertTrue(app.otherElements["tasks-page"].firstMatch.waitForExistence(timeout: 15), "streams-back did not return to tasks")
     }
 
+    /// `<Field multiline lines>` (#3980) — a text area, proven on the device in
+    /// the two directions a text control has plus the one thing `lines` means.
+    ///
+    /// HEIGHT: `lines={4}` must make the field four rows tall whatever its
+    /// content (`.lineLimit(n, reservesSpace: true)`), so it is measured EMPTY
+    /// against the single-line field above it; then a reactive `lines` change
+    /// to 2 must shrink it. An auto-growing field, or one whose `lines` was
+    /// dropped, reads one row tall and fails the ratio.
+    ///
+    /// VALUE, program -> control: "Fill" writes a three-line string into the
+    /// signal and the control must show it. VALUE, control -> program: typed
+    /// text including a Return must reach the signal, newline and all — on a
+    /// single-line field Return would submit instead, so `delta` landing on its
+    /// own line is the proof that this is a text area.
+    func test_multilineFieldIsATextAreaBothWays() throws {
+        let app = XCUIApplication()
+        app.launch()
+        let username = app.textFields["login-username"].firstMatch
+        XCTAssertTrue(username.waitForExistence(timeout: 30), "Username field missing")
+        username.tap()
+        username.typeText("abcde")
+        dismissKeyboard(app)
+        app.buttons["login-submit"].firstMatch.tap()
+        XCTAssertTrue(app.otherElements["tasks-page"].firstMatch.waitForExistence(timeout: 20), "Tasks page did not render after login")
+
+        let nav = app.buttons["tasks-fields"].firstMatch
+        XCTAssertTrue(nav.waitForExistence(timeout: 15), "Fields button missing on tasks page")
+        tapAfterScrolling(nav, in: app)
+        XCTAssertTrue(app.otherElements["fields-page"].firstMatch.waitForExistence(timeout: 15), "Fields page did not render")
+
+        let single = app.descendants(matching: .any).matching(identifier: "fields-single").firstMatch
+        let notes = app.descendants(matching: .any).matching(identifier: "fields-notes").firstMatch
+        XCTAssertTrue(notes.waitForExistence(timeout: 10), "multiline field missing:\n\(app.debugDescription)")
+        print("DIAG-FIELDS notes type=\(notes.elementType.rawValue) frame=\(notes.frame) single=\(single.frame)")
+
+        let oneRow = single.frame.height
+        let fourRows = notes.frame.height
+        XCTAssertGreaterThan(oneRow, 0, "single-line field has no height")
+        XCTAssertGreaterThan(fourRows, oneRow * 2.5, "lines={4} did not make the EMPTY field four rows tall (single \(oneRow), multiline \(fourRows))")
+
+        // Program -> control.
+        app.buttons["fields-fill"].firstMatch.tap()
+        let echo = app.staticTexts["fields-notes-echo"].firstMatch
+        XCTAssertTrue(waitForLabel(echo, "alpha\nbeta\ngamma", timeout: 10), "signal write did not render: '\(echo.label)'")
+        XCTAssertEqual(notes.value as? String, "alpha\nbeta\ngamma", "the text area does not show the value written to its signal")
+
+        // Reactive `lines`: 4 -> 2 shrinks the field.
+        app.buttons["fields-rows-2"].firstMatch.tap()
+        let deadline = Date().addingTimeInterval(5)
+        while notes.frame.height > fourRows * 0.75 && Date() < deadline { usleep(100_000) }
+        XCTAssertLessThan(notes.frame.height, fourRows * 0.75, "lines 4 -> 2 did not shrink the field (\(fourRows) -> \(notes.frame.height))")
+
+        // Control -> program, newline included.
+        notes.tap()
+        notes.typeText("\ndelta")
+        let length = app.staticTexts["fields-notes-length"].firstMatch
+        XCTAssertTrue(waitForLabel(length, "22", timeout: 10), "typed text did not reach the signal (length '\(length.label)', echo '\(echo.label)')")
+        XCTAssertTrue(echo.label.contains("\ndelta"), "Return did not insert a newline: '\(echo.label)'")
+    }
+
     /// Crash reporting, device-proven in the only way that means anything: a
     /// REAL process restart.
     ///
