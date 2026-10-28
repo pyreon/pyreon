@@ -46,6 +46,7 @@ import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.Until
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.isRoot
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.hasAnyDescendant
@@ -646,12 +647,17 @@ class TasksAppInstrumentedTest {
 
         waitForTagText("dates-day-value", "2026-10-22")
         composeRule.onNodeWithTag("dates-day").performClick()
-        // A day cell is clickable and carries the day number.
-        val day23 = hasText("23") and hasClickAction()
+        // A day cell is clickable. Newer Material3 date pickers hide the digit from
+        // the semantics tree (invisibleToUser) and name the cell by its full date
+        // ("Friday, October 23, 2026") instead, so match either spelling.
+        val day23 = (hasText("23") or hasContentDescription("October 23, 2026", substring = true)) and hasClickAction()
         try {
             composeRule.waitUntil(timeoutMillis = 5_000) { composeRule.onAllNodes(day23).fetchSemanticsNodes().isNotEmpty() }
         } catch (e: Throwable) {
-            throw AssertionError("the date picker dialog did not open:\n" + composeRule.onRoot(useUnmergedTree = true).printToString(), e)
+            // The dialog is its own window, so there are TWO roots: print every one (onRoot() alone throws on two).
+            val roots = composeRule.onAllNodes(isRoot(), useUnmergedTree = true)
+            val dump = (0 until roots.fetchSemanticsNodes().size).joinToString("\n----\n") { roots[it].printToString() }
+            throw AssertionError("the date picker dialog did not open:\n$dump", e)
         }
         composeRule.onAllNodes(day23).onFirst().performClick()
         composeRule.onNodeWithText("OK").performClick()
