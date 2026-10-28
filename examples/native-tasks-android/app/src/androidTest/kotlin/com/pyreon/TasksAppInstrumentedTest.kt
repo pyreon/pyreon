@@ -625,6 +625,30 @@ class TasksAppInstrumentedTest {
         assertTagDisplayed("tasks-page", "after streams-back (/streams -> /tasks)")
     }
 
+    /**
+     * `Intl` (#3980) — mirror of the iOS `test_intlFormatsLikeTheWebAndFollowsARuntimeTimeZone`.
+     * The expected strings are Node's `Intl` output for the same (locale,
+     * options, zone); `android.icu` on the emulator must print them, and a
+     * runtime `timeZone` change must move the same instant.
+     */
+    @Test
+    fun intlFormatsLikeTheWebAndFollowsARuntimeTimeZone() {
+        composeRule.onNodeWithTag("login-username").performTextInput("abcde")
+        composeRule.onNodeWithTag("login-submit").performClick()
+        assertTagDisplayed("tasks-page", "after login-submit")
+        composeRule.onNodeWithTag("tasks-intl").performClick()
+        assertTagDisplayed("intl-page", "after tasks-intl (/tasks -> /intl)")
+
+        waitForTagText("intl-meeting", "22.10.2026, 10:00")
+        composeRule.onNodeWithTag("intl-price").assertTextEquals("$1,234.50")
+        composeRule.onNodeWithTag("intl-qty").assertTextEquals("1.234.567,891")
+        composeRule.onNodeWithTag("intl-day").assertTextEquals("Thursday, October 22")
+        composeRule.onNodeWithTag("intl-percent").assertTextEquals("26%")
+
+        composeRule.onNodeWithTag("intl-utc").performClick()
+        waitForTagText("intl-meeting", "22.10.2026, 08:00")
+    }
+
     @Test
     fun authGateStoreMutationAndTypedParamsDetail() {
         // Phase 1: login — flips the store's auth flag; the beforeEnter

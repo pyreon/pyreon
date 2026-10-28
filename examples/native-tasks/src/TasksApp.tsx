@@ -356,6 +356,9 @@ function TasksPage() {
           <Button onPress={() => navigate('/streams')} data-testid="tasks-streams">
             Streams
           </Button>
+          <Button onPress={() => navigate('/intl')} data-testid="tasks-intl">
+            Intl
+          </Button>
           <Button onPress={logout} data-testid="tasks-logout">
             Logout
           </Button>
@@ -1908,6 +1911,43 @@ function ToolkitScreen() {
   )
 }
 
+// `Intl` (#3980): locale-aware dates and numbers, lowered to Foundation's
+// formatters on iOS and `android.icu` on Android. Every value is pinned to a
+// locale AND a time zone so the device tests can assert exact strings — the
+// differential table (`intl-cases.ts`) shows these agree with the web. The zone
+// is a SIGNAL: "Show in UTC" must move the same instant to another wall-clock
+// time, which only a runtime `timeZone` can do.
+const priceFormat = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' })
+
+function IntlScreen() {
+  const navigate = useNavigate()
+  // 2026-10-22T08:00:00Z — 10:00 in Berlin.
+  const startsAt = signal(1792656000000)
+  const zone = signal('Europe/Berlin')
+  const qty = signal(1234567.891)
+  // Built INSIDE the accessor: on the web a component body runs once, so a
+  // formatter bound in the body would keep the zone it was created with.
+  return (
+    <Stack gap={3} padding={4} data-testid="intl-page">
+      <Text data-testid="intl-meeting">
+        {() => new Intl.DateTimeFormat('de-DE', { dateStyle: 'medium', timeStyle: 'short', timeZone: zone() }).format(startsAt())}
+      </Text>
+      <Text data-testid="intl-price">{priceFormat.format(1234.5)}</Text>
+      <Text data-testid="intl-qty">{qty().toLocaleString('de-DE')}</Text>
+      <Text data-testid="intl-day">
+        {new Date(startsAt()).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', timeZone: zone() })}
+      </Text>
+      <Text data-testid="intl-percent">{(0.256).toLocaleString('en-US', { style: 'percent' })}</Text>
+      <Button onPress={() => zone.set('UTC')} data-testid="intl-utc">
+        Show in UTC
+      </Button>
+      <Button onPress={() => navigate('/tasks')} data-testid="intl-back">
+        Back
+      </Button>
+    </Stack>
+  )
+}
+
 // ── App root ──
 
 export function TasksApp() {
@@ -1957,6 +1997,11 @@ export function TasksApp() {
       {
         path: '/streams',
         component: StreamsScreen,
+        beforeEnter: () => useApp().store.isAuthed(),
+      },
+      {
+        path: '/intl',
+        component: IntlScreen,
         beforeEnter: () => useApp().store.isAuthed(),
       },
       {

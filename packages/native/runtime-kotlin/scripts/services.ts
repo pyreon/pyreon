@@ -49,6 +49,9 @@ export const TYPECHECK_ONLY = new Set([
   'PyreonStorageBackends',
   'PyreonJson',
   'PyreonHttpOkHttp',
+  // android.icu exists only on a device; the emulator RUNS it against the V8
+  // table (examples/native-tasks-android IntlDifferentialTest).
+  'PyreonIntl',
 ])
 
 export interface ServicePlan {
