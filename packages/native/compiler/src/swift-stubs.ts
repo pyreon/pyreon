@@ -940,15 +940,15 @@ public enum PyreonCanvasPath {
 }
 public struct PyreonShape: View {
   public init(_ path: Path, fill: Color?, stroke: Color?, lineWidth: Double) {}
-  public typealias Body = Never
+  public var body: some View { EmptyView() }
 }
 public struct PyreonCanvas<Content: View>: View {
   public init(width: Double, height: Double, @ViewBuilder content: () -> Content) {}
-  public typealias Body = Never
+  public var body: some View { EmptyView() }
 }
 public struct PyreonCanvasText<Content: View>: View {
   public init(x: Double, y: Double, size: Double, color: Color, @ViewBuilder content: () -> Content) {}
-  public typealias Body = Never
+  public var body: some View { EmptyView() }
 }
 public struct PyreonGesture<Content: View>: View {
   public init(
