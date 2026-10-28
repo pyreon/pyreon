@@ -174,199 +174,6 @@ public object PyreonHttp {
     }
 }
 
-/**
- * URL construction shared with the generated fetch/query call sites.
- *
- * A path parameter supplied at RUNTIME cannot be percent-encoded at compile
- * time, so the encoding has to live here -- and it has to agree with the web
- * exactly, or the same call reaches a different URL on each platform.
- *
- * The web spells it `encodeURIComponent(String(value))` (`@pyreon/http`'s
- * `applyPathParams`), so BOTH halves are mirrored: the JavaScript `String()`
- * conversion for the value, then the encode.
- */
-object PyreonURL {
-    private const val UNRESERVED = "-_.!~*'()"
-    private const val HEX = "0123456789ABCDEF"
-
-    /**
-     * Percent-encode one path SEGMENT, matching JavaScript's
-     * `encodeURIComponent`.
-     *
-     * Hand-rolled rather than `URLEncoder.encode`, which is
-     * application/x-www-form-urlencoded: it turns a space into `+` and escapes
-     * `!`, `~`, `*`, `'`, `(` and `)` that `encodeURIComponent` leaves alone.
-     * Using it here would produce a different URL than the web for any of
-     * those characters.
-     *
-     * Note this is the PATH encoder. A query value IS form-encoded, so the
-     * same character differs by position and one encoder for both positions is
-     * wrong in both.
-     */
-    @JvmStatic
-    fun encodePathParam(value: String): String {
-        val out = StringBuilder(value.length)
-        for (byte in value.toByteArray(Charsets.UTF_8)) {
-            val b = byte.toInt() and 0xFF
-            val c = b.toChar()
-            // ASCII alphanumerics only -- a multi-byte character's bytes are
-            // all >= 0x80, so they can never take this branch.
-            val isAsciiAlnum = c in 'a'..'z' || c in 'A'..'Z' || c in '0'..'9'
-            if (isAsciiAlnum || UNRESERVED.indexOf(c) >= 0) {
-                out.append(c)
-            } else {
-                out.append('%').append(HEX[(b shr 4) and 0xF]).append(HEX[b and 0xF])
-            }
-        }
-        return out.toString()
-    }
-
-    /**
-     * Integer overload. Kotlin's `Int.toString()` already matches JavaScript's
-     * `String(number)` for every integral value, so this only encodes.
-     */
-    @JvmStatic
-    fun encodePathParam(value: Int): String = encodePathParam(value.toString())
-
-    /** Long overload -- same reasoning as [encodePathParam] for `Int`. */
-    @JvmStatic
-    fun encodePathParam(value: Long): String = encodePathParam(value.toString())
-
-    /**
-     * Floating-point overload, and the one place the two languages disagree by
-     * default: JavaScript has a single number type, so `String(1.0)` is `"1"`,
-     * while Kotlin's is `"1.0"`. A whole-valued Double is therefore rendered
-     * as an integer, which is what the web would have sent.
-     *
-     * Outside that range the default `toString` is used. Very large magnitudes
-     * (>= 1e21, where JavaScript switches to exponent notation) and the
-     * non-finite values are a KNOWN divergence -- a path parameter is an
-     * identifier, so neither shape occurs in practice, and inventing a
-     * JavaScript number formatter to cover them would be more code than the
-     * case is worth.
-     */
-    @JvmStatic
-    fun encodePathParam(value: Double): String {
-        if (value.isFinite() && value == Math.rint(value) && Math.abs(value) < 1e21) {
-            return encodePathParam(value.toLong().toString())
-        }
-        return encodePathParam(value.toString())
-    }
-
-    /**
-     * A query string built at RUNTIME, matching the web's `buildQuery`
-     * (`@pyreon/http` -> `URLSearchParams`) byte for byte. The Swift
-     * `PyreonURL.query` is its twin.
-     *
-     * [pairs] alternates a key and its value, in SOURCE order -- the order the
-     * web appends them. `null` drops the pair, a list repeats the key per
-     * non-null element, a number is JavaScript's `String(number)` (`1`, not
-     * `1.0`), a boolean `true` / `false`. Keys and values are
-     * application/x-www-form-urlencoded (a space is `+`; only `*-._` and ASCII
-     * alphanumerics stay literal), which is not the path encoding. Returns `""`
-     * when every pair was dropped, else [joiner] (`?`, or `&` when the path
-     * already carries a query) followed by the pairs.
-     */
-    @JvmStatic
-    fun query(joiner: String, vararg pairs: Any?): String {
-        val out = ArrayList<String>()
-        var index = 0
-        while (index + 1 < pairs.size) {
-            val key = pairs[index]
-            if (key is String) {
-                for (value in queryValues(pairs[index + 1])) out.add(formEncode(key) + "=" + formEncode(value))
-            }
-            index += 2
-        }
-        return if (out.isEmpty()) "" else joiner + out.joinToString("&")
-    }
-
-    internal fun queryValues(value: Any?): List<String> = when (value) {
-        null -> emptyList()
-        is Iterable<*> -> value.filterNotNull().map(::jsString)
-        is Array<*> -> value.filterNotNull().map(::jsString)
-        else -> listOf(jsString(value))
-    }
-
-    /** JavaScript's `String(value)` for the scalar shapes a query value takes. */
-    internal fun jsString(value: Any): String = when (value) {
-        is String -> value
-        is Boolean -> if (value) "true" else "false"
-        is Double -> jsNumberString(value)
-        is Float -> jsNumberString(value.toDouble())
-        else -> value.toString()
-    }
-
-    /** `String(number)`: JavaScript's spelling of the non-finite values, else the ECMAScript digits. */
-    internal fun jsNumberString(value: Double): String = when {
-        value.isNaN() -> "NaN"
-        value == Double.POSITIVE_INFINITY -> "Infinity"
-        value == Double.NEGATIVE_INFINITY -> "-Infinity"
-        else -> jsFiniteNumber(value)
-    }
-
-    /**
-     * ECMAScript `Number::toString` for a finite value -- the same algorithm as
-     * `PyreonJson.jsNumber`, repeated here because this file is verified ALONE
-     * against stubs (it must not reference the kotlinx-backed PyreonJson). The
-     * shortest digits that round-trip are SEARCHED with BigDecimal: the JVM's
-     * `Double.toString` was not guaranteed shortest before JDK 19, and Android's
-     * libcore is its own implementation.
-     */
-    private fun jsFiniteNumber(value: Double): String {
-        if (value == 0.0) return "0"
-        val abs = Math.abs(value)
-        val exact = java.math.BigDecimal(abs)
-        var best: java.math.BigDecimal = exact
-        search@ for (p in 1..17) {
-            var chosen: java.math.BigDecimal? = null
-            for (mode in arrayOf(java.math.RoundingMode.HALF_EVEN, java.math.RoundingMode.FLOOR, java.math.RoundingMode.CEILING)) {
-                val c = exact.round(java.math.MathContext(p, mode))
-                if (c.toDouble() != abs) continue
-                val cur = chosen
-                if (cur == null || c.subtract(exact).abs() < cur.subtract(exact).abs()) chosen = c
-            }
-            if (chosen != null) {
-                best = chosen
-                break@search
-            }
-        }
-        val unscaled = best.unscaledValue().toString()
-        val n = unscaled.length - best.scale()
-        val s = unscaled.trimEnd('0').ifEmpty { "0" }
-        val k = s.length
-        val text = when {
-            k <= n && n <= 21 -> s + "0".repeat(n - k)
-            0 < n && n <= 21 -> s.substring(0, n) + "." + s.substring(n)
-            -6 < n && n <= 0 -> "0." + "0".repeat(-n) + s
-            else -> {
-                val e = n - 1
-                val tail = if (k == 1) "" else "." + s.substring(1)
-                s.substring(0, 1) + tail + "e" + (if (e < 0) "-" else "+") + Math.abs(e)
-            }
-        }
-        return (if (value < 0) "-" else "") + text
-    }
-
-    /** The application/x-www-form-urlencoded byte serializer `URLSearchParams` uses. */
-    @JvmStatic
-    fun formEncode(text: String): String {
-        val out = StringBuilder(text.length)
-        for (byte in text.toByteArray(Charsets.UTF_8)) {
-            val b = byte.toInt() and 0xFF
-            val c = b.toChar()
-            val literal = c in 'a'..'z' || c in 'A'..'Z' || c in '0'..'9' || c == '*' || c == '-' || c == '.' || c == '_'
-            when {
-                literal -> out.append(c)
-                b == 0x20 -> out.append('+')
-                else -> out.append('%').append(HEX[(b shr 4) and 0xF]).append(HEX[b and 0xF])
-            }
-        }
-        return out.toString()
-    }
-}
-
-
 // --- Uploads -----------------------------------------------------------------
 
 /** A streamed request body: a file (`body: await fileFromUri(uri)`) or a multipart form. */
@@ -593,5 +400,197 @@ public class PyreonMultipartBody(vararg pairs: Any?) {
         /** A name or filename inside the quoted Content-Disposition parameter. */
         internal fun escape(text: String): String =
             text.replace("\n", "%0A").replace("\r", "%0D").replace("\"", "%22")
+    }
+}
+
+/**
+ * URL construction shared with the generated fetch/query call sites.
+ *
+ * A path parameter supplied at RUNTIME cannot be percent-encoded at compile
+ * time, so the encoding has to live here -- and it has to agree with the web
+ * exactly, or the same call reaches a different URL on each platform.
+ *
+ * The web spells it `encodeURIComponent(String(value))` (`@pyreon/http`'s
+ * `applyPathParams`), so BOTH halves are mirrored: the JavaScript `String()`
+ * conversion for the value, then the encode.
+ */
+object PyreonURL {
+    private const val UNRESERVED = "-_.!~*'()"
+    private const val HEX = "0123456789ABCDEF"
+
+    /**
+     * Percent-encode one path SEGMENT, matching JavaScript's
+     * `encodeURIComponent`.
+     *
+     * Hand-rolled rather than `URLEncoder.encode`, which is
+     * application/x-www-form-urlencoded: it turns a space into `+` and escapes
+     * `!`, `~`, `*`, `'`, `(` and `)` that `encodeURIComponent` leaves alone.
+     * Using it here would produce a different URL than the web for any of
+     * those characters.
+     *
+     * Note this is the PATH encoder. A query value IS form-encoded, so the
+     * same character differs by position and one encoder for both positions is
+     * wrong in both.
+     */
+    @JvmStatic
+    fun encodePathParam(value: String): String {
+        val out = StringBuilder(value.length)
+        for (byte in value.toByteArray(Charsets.UTF_8)) {
+            val b = byte.toInt() and 0xFF
+            val c = b.toChar()
+            // ASCII alphanumerics only -- a multi-byte character's bytes are
+            // all >= 0x80, so they can never take this branch.
+            val isAsciiAlnum = c in 'a'..'z' || c in 'A'..'Z' || c in '0'..'9'
+            if (isAsciiAlnum || UNRESERVED.indexOf(c) >= 0) {
+                out.append(c)
+            } else {
+                out.append('%').append(HEX[(b shr 4) and 0xF]).append(HEX[b and 0xF])
+            }
+        }
+        return out.toString()
+    }
+
+    /**
+     * Integer overload. Kotlin's `Int.toString()` already matches JavaScript's
+     * `String(number)` for every integral value, so this only encodes.
+     */
+    @JvmStatic
+    fun encodePathParam(value: Int): String = encodePathParam(value.toString())
+
+    /** Long overload -- same reasoning as [encodePathParam] for `Int`. */
+    @JvmStatic
+    fun encodePathParam(value: Long): String = encodePathParam(value.toString())
+
+    /**
+     * Floating-point overload, and the one place the two languages disagree by
+     * default: JavaScript has a single number type, so `String(1.0)` is `"1"`,
+     * while Kotlin's is `"1.0"`. A whole-valued Double is therefore rendered
+     * as an integer, which is what the web would have sent.
+     *
+     * Outside that range the default `toString` is used. Very large magnitudes
+     * (>= 1e21, where JavaScript switches to exponent notation) and the
+     * non-finite values are a KNOWN divergence -- a path parameter is an
+     * identifier, so neither shape occurs in practice, and inventing a
+     * JavaScript number formatter to cover them would be more code than the
+     * case is worth.
+     */
+    @JvmStatic
+    fun encodePathParam(value: Double): String {
+        if (value.isFinite() && value == Math.rint(value) && Math.abs(value) < 1e21) {
+            return encodePathParam(value.toLong().toString())
+        }
+        return encodePathParam(value.toString())
+    }
+
+    /**
+     * A query string built at RUNTIME, matching the web's `buildQuery`
+     * (`@pyreon/http` -> `URLSearchParams`) byte for byte. The Swift
+     * `PyreonURL.query` is its twin.
+     *
+     * [pairs] alternates a key and its value, in SOURCE order -- the order the
+     * web appends them. `null` drops the pair, a list repeats the key per
+     * non-null element, a number is JavaScript's `String(number)` (`1`, not
+     * `1.0`), a boolean `true` / `false`. Keys and values are
+     * application/x-www-form-urlencoded (a space is `+`; only `*-._` and ASCII
+     * alphanumerics stay literal), which is not the path encoding. Returns `""`
+     * when every pair was dropped, else [joiner] (`?`, or `&` when the path
+     * already carries a query) followed by the pairs.
+     */
+    @JvmStatic
+    fun query(joiner: String, vararg pairs: Any?): String {
+        val out = ArrayList<String>()
+        var index = 0
+        while (index + 1 < pairs.size) {
+            val key = pairs[index]
+            if (key is String) {
+                for (value in queryValues(pairs[index + 1])) out.add(formEncode(key) + "=" + formEncode(value))
+            }
+            index += 2
+        }
+        return if (out.isEmpty()) "" else joiner + out.joinToString("&")
+    }
+
+    internal fun queryValues(value: Any?): List<String> = when (value) {
+        null -> emptyList()
+        is Iterable<*> -> value.filterNotNull().map(::jsString)
+        is Array<*> -> value.filterNotNull().map(::jsString)
+        else -> listOf(jsString(value))
+    }
+
+    /** JavaScript's `String(value)` for the scalar shapes a query value takes. */
+    internal fun jsString(value: Any): String = when (value) {
+        is String -> value
+        is Boolean -> if (value) "true" else "false"
+        is Double -> jsNumberString(value)
+        is Float -> jsNumberString(value.toDouble())
+        else -> value.toString()
+    }
+
+    /** `String(number)`: JavaScript's spelling of the non-finite values, else the ECMAScript digits. */
+    internal fun jsNumberString(value: Double): String = when {
+        value.isNaN() -> "NaN"
+        value == Double.POSITIVE_INFINITY -> "Infinity"
+        value == Double.NEGATIVE_INFINITY -> "-Infinity"
+        else -> jsFiniteNumber(value)
+    }
+
+    /**
+     * ECMAScript `Number::toString` for a finite value -- the same algorithm as
+     * `PyreonJson.jsNumber`, repeated here because this file is verified ALONE
+     * against stubs (it must not reference the kotlinx-backed PyreonJson). The
+     * shortest digits that round-trip are SEARCHED with BigDecimal: the JVM's
+     * `Double.toString` was not guaranteed shortest before JDK 19, and Android's
+     * libcore is its own implementation.
+     */
+    private fun jsFiniteNumber(value: Double): String {
+        if (value == 0.0) return "0"
+        val abs = Math.abs(value)
+        val exact = java.math.BigDecimal(abs)
+        var best: java.math.BigDecimal = exact
+        search@ for (p in 1..17) {
+            var chosen: java.math.BigDecimal? = null
+            for (mode in arrayOf(java.math.RoundingMode.HALF_EVEN, java.math.RoundingMode.FLOOR, java.math.RoundingMode.CEILING)) {
+                val c = exact.round(java.math.MathContext(p, mode))
+                if (c.toDouble() != abs) continue
+                val cur = chosen
+                if (cur == null || c.subtract(exact).abs() < cur.subtract(exact).abs()) chosen = c
+            }
+            if (chosen != null) {
+                best = chosen
+                break@search
+            }
+        }
+        val unscaled = best.unscaledValue().toString()
+        val n = unscaled.length - best.scale()
+        val s = unscaled.trimEnd('0').ifEmpty { "0" }
+        val k = s.length
+        val text = when {
+            k <= n && n <= 21 -> s + "0".repeat(n - k)
+            0 < n && n <= 21 -> s.substring(0, n) + "." + s.substring(n)
+            -6 < n && n <= 0 -> "0." + "0".repeat(-n) + s
+            else -> {
+                val e = n - 1
+                val tail = if (k == 1) "" else "." + s.substring(1)
+                s.substring(0, 1) + tail + "e" + (if (e < 0) "-" else "+") + Math.abs(e)
+            }
+        }
+        return (if (value < 0) "-" else "") + text
+    }
+
+    /** The application/x-www-form-urlencoded byte serializer `URLSearchParams` uses. */
+    @JvmStatic
+    fun formEncode(text: String): String {
+        val out = StringBuilder(text.length)
+        for (byte in text.toByteArray(Charsets.UTF_8)) {
+            val b = byte.toInt() and 0xFF
+            val c = b.toChar()
+            val literal = c in 'a'..'z' || c in 'A'..'Z' || c in '0'..'9' || c == '*' || c == '-' || c == '.' || c == '_'
+            when {
+                literal -> out.append(c)
+                b == 0x20 -> out.append('+')
+                else -> out.append('%').append(HEX[(b shr 4) and 0xF]).append(HEX[b and 0xF])
+            }
+        }
+        return out.toString()
     }
 }

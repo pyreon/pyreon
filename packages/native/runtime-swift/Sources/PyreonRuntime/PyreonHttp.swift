@@ -252,162 +252,6 @@ public enum PyreonHttp {
     }
 }
 
-/// URL construction shared with the generated fetch/query call sites.
-///
-/// A path parameter supplied at RUNTIME cannot be percent-encoded at compile
-/// time, so the encoding has to live here — and it has to agree with the web
-/// exactly, or the same call reaches a different URL on each platform.
-///
-/// The web spells it `encodeURIComponent(String(value))`
-/// (`@pyreon/http`'s `applyPathParams`), so BOTH halves are mirrored: the
-/// JavaScript `String()` conversion for the value, then the encode.
-public enum PyreonURL {
-    /// The characters `encodeURIComponent` leaves alone: ASCII alphanumerics
-    /// plus `-_.!~*'()`.
-    ///
-    /// Written out rather than taken from `CharacterSet.alphanumerics`, which
-    /// also contains non-ASCII letters (`é`, `日`) — and rather than
-    /// `.urlPathAllowed`, which permits `/`, `&`, `+` and `=`, so a parameter
-    /// containing a slash would silently add a path segment and one containing
-    /// `&` would open a query.
-    private static let unreserved: CharacterSet = {
-        var set = CharacterSet()
-        set.insert(charactersIn: "abcdefghijklmnopqrstuvwxyz")
-        set.insert(charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZ")
-        set.insert(charactersIn: "0123456789")
-        set.insert(charactersIn: "-_.!~*'()")
-        return set
-    }()
-
-    /// Percent-encode one path SEGMENT, matching JavaScript's
-    /// `encodeURIComponent`.
-    ///
-    /// Note this is the PATH encoder. A query value is
-    /// application/x-www-form-urlencoded, where a space is `+` and `'` is
-    /// `%27`; the same character differs by position, so one encoder for both
-    /// positions is wrong in both.
-    public static func encodePathParam(_ value: String) -> String {
-        value.addingPercentEncoding(withAllowedCharacters: unreserved) ?? value
-    }
-
-    /// Integer overload. `String(Int)` already matches JavaScript's
-    /// `String(number)` for every integral value, so this only encodes.
-    public static func encodePathParam(_ value: Int) -> String {
-        encodePathParam(String(value))
-    }
-
-    /// Floating-point overload, and the one place the two languages disagree
-    /// by default: JavaScript has a single number type, so `String(1.0)` is
-    /// `"1"`, while Swift's is `"1.0"`. A whole-valued Double is therefore
-    /// rendered as an integer, which is what the web would have sent.
-    ///
-    /// Outside that range the default description is used. Very large
-    /// magnitudes (≥ 1e21, where JavaScript switches to exponent notation)
-    /// and the non-finite values are a KNOWN divergence — a path parameter is
-    /// an identifier, so neither shape occurs in practice, and inventing a
-    /// JavaScript number formatter to cover them would be more code than the
-    /// case is worth.
-    public static func encodePathParam(_ value: Double) -> String {
-        if value.isFinite, value == value.rounded(), abs(value) < 1e21 {
-            return encodePathParam(String(Int64(value)))
-        }
-        return encodePathParam(String(value))
-    }
-
-    // MARK: - Query strings
-
-    /// A query string built at RUNTIME, matching the web's `buildQuery`
-    /// (`@pyreon/http` → `URLSearchParams`) byte for byte.
-    ///
-    /// `pairs` alternates a key and its value, in SOURCE order — the order the
-    /// web appends them. A value is written the way the web writes it:
-    ///
-    /// - `nil` (a JavaScript `null` / `undefined`) drops the pair;
-    /// - an array repeats the key once per non-nil element (`tag=a&tag=b`);
-    /// - a number is JavaScript's `String(number)` (`1`, not `1.0`);
-    /// - a boolean is `true` / `false`.
-    ///
-    /// Each key and value is application/x-www-form-urlencoded — a space is `+`
-    /// and only `*-._` and ASCII alphanumerics stay literal — which is NOT the
-    /// path encoding (`encodePathParam`): the same character differs by
-    /// position. Returns `""` when every pair was dropped, else `joiner` (`?`,
-    /// or `&` when the path already carries a query) followed by the pairs.
-    public static func query(_ joiner: String, _ pairs: Any?...) -> String {
-        var out: [String] = []
-        var index = 0
-        while index + 1 < pairs.count {
-            if let key = pairs[index] as? String {
-                for value in queryValues(pairs[index + 1]) {
-                    out.append(formEncode(key) + "=" + formEncode(value))
-                }
-            }
-            index += 2
-        }
-        return out.isEmpty ? "" : joiner + out.joined(separator: "&")
-    }
-
-    /// The strings one query value contributes: none for `nil`, one per element for an array.
-    static func queryValues(_ value: Any?) -> [String] {
-        guard let present = unwrap(value) else { return [] }
-        if let list = present as? [Any?] {
-            return list.compactMap { unwrap($0).map(jsString) }
-        }
-        if let list = present as? [Any] {
-            return list.compactMap { unwrap($0).map(jsString) }
-        }
-        return [jsString(present)]
-    }
-
-    /// An `Any` that holds an `Optional` (Swift boxes `String?` that way) unwrapped, `nil` for an absent one.
-    static func unwrap(_ value: Any?) -> Any? {
-        guard let value else { return nil }
-        let mirror = Mirror(reflecting: value)
-        if mirror.displayStyle == .optional {
-            return mirror.children.first.flatMap { unwrap($0.value) }
-        }
-        return value
-    }
-
-    /// JavaScript's `String(value)` for the scalar shapes a query value takes.
-    static func jsString(_ value: Any) -> String {
-        switch value {
-        case let s as String: return s
-        case let b as Bool: return b ? "true" : "false"
-        // Integers before floating point: an integer is already whole, and must never take a bridging cast.
-        case let i as Int: return String(i)
-        case let i as Int64: return String(i)
-        case let i as Int32: return String(i)
-        case let d as Double: return jsNumberString(d)
-        case let f as Float: return jsNumberString(Double(f))
-        default: return String(describing: value)
-        }
-    }
-
-    /// `String(number)`: the `JSON.stringify` digits for a finite value, JavaScript's spelling otherwise.
-    static func jsNumberString(_ value: Double) -> String {
-        if value.isNaN { return "NaN" }
-        if value.isInfinite { return value < 0 ? "-Infinity" : "Infinity" }
-        return PyreonJSON.jsNumber(value)
-    }
-
-    /// The application/x-www-form-urlencoded byte serializer `URLSearchParams` uses.
-    static func formEncode(_ text: String) -> String {
-        var out = ""
-        for byte in text.utf8 {
-            switch byte {
-            case 0x2A, 0x2D, 0x2E, 0x5F, 0x30...0x39, 0x41...0x5A, 0x61...0x7A:
-                out.unicodeScalars.append(Unicode.Scalar(byte))
-            case 0x20:
-                out += "+"
-            default:
-                out += String(format: "%%%02X", byte)
-            }
-        }
-        return out
-    }
-}
-
-
 // MARK: - Uploads
 
 /// A streamed request body: a file (`body: await fileFromUri(uri)`) or a
@@ -641,5 +485,160 @@ public struct PyreonMultipartBody: Sendable {
             put("\r\n")
         }
         put("--\(boundary)--\r\n")
+    }
+}
+
+/// URL construction shared with the generated fetch/query call sites.
+///
+/// A path parameter supplied at RUNTIME cannot be percent-encoded at compile
+/// time, so the encoding has to live here — and it has to agree with the web
+/// exactly, or the same call reaches a different URL on each platform.
+///
+/// The web spells it `encodeURIComponent(String(value))`
+/// (`@pyreon/http`'s `applyPathParams`), so BOTH halves are mirrored: the
+/// JavaScript `String()` conversion for the value, then the encode.
+public enum PyreonURL {
+    /// The characters `encodeURIComponent` leaves alone: ASCII alphanumerics
+    /// plus `-_.!~*'()`.
+    ///
+    /// Written out rather than taken from `CharacterSet.alphanumerics`, which
+    /// also contains non-ASCII letters (`é`, `日`) — and rather than
+    /// `.urlPathAllowed`, which permits `/`, `&`, `+` and `=`, so a parameter
+    /// containing a slash would silently add a path segment and one containing
+    /// `&` would open a query.
+    private static let unreserved: CharacterSet = {
+        var set = CharacterSet()
+        set.insert(charactersIn: "abcdefghijklmnopqrstuvwxyz")
+        set.insert(charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZ")
+        set.insert(charactersIn: "0123456789")
+        set.insert(charactersIn: "-_.!~*'()")
+        return set
+    }()
+
+    /// Percent-encode one path SEGMENT, matching JavaScript's
+    /// `encodeURIComponent`.
+    ///
+    /// Note this is the PATH encoder. A query value is
+    /// application/x-www-form-urlencoded, where a space is `+` and `'` is
+    /// `%27`; the same character differs by position, so one encoder for both
+    /// positions is wrong in both.
+    public static func encodePathParam(_ value: String) -> String {
+        value.addingPercentEncoding(withAllowedCharacters: unreserved) ?? value
+    }
+
+    /// Integer overload. `String(Int)` already matches JavaScript's
+    /// `String(number)` for every integral value, so this only encodes.
+    public static func encodePathParam(_ value: Int) -> String {
+        encodePathParam(String(value))
+    }
+
+    /// Floating-point overload, and the one place the two languages disagree
+    /// by default: JavaScript has a single number type, so `String(1.0)` is
+    /// `"1"`, while Swift's is `"1.0"`. A whole-valued Double is therefore
+    /// rendered as an integer, which is what the web would have sent.
+    ///
+    /// Outside that range the default description is used. Very large
+    /// magnitudes (≥ 1e21, where JavaScript switches to exponent notation)
+    /// and the non-finite values are a KNOWN divergence — a path parameter is
+    /// an identifier, so neither shape occurs in practice, and inventing a
+    /// JavaScript number formatter to cover them would be more code than the
+    /// case is worth.
+    public static func encodePathParam(_ value: Double) -> String {
+        if value.isFinite, value == value.rounded(), abs(value) < 1e21 {
+            return encodePathParam(String(Int64(value)))
+        }
+        return encodePathParam(String(value))
+    }
+
+    // MARK: - Query strings
+
+    /// A query string built at RUNTIME, matching the web's `buildQuery`
+    /// (`@pyreon/http` → `URLSearchParams`) byte for byte.
+    ///
+    /// `pairs` alternates a key and its value, in SOURCE order — the order the
+    /// web appends them. A value is written the way the web writes it:
+    ///
+    /// - `nil` (a JavaScript `null` / `undefined`) drops the pair;
+    /// - an array repeats the key once per non-nil element (`tag=a&tag=b`);
+    /// - a number is JavaScript's `String(number)` (`1`, not `1.0`);
+    /// - a boolean is `true` / `false`.
+    ///
+    /// Each key and value is application/x-www-form-urlencoded — a space is `+`
+    /// and only `*-._` and ASCII alphanumerics stay literal — which is NOT the
+    /// path encoding (`encodePathParam`): the same character differs by
+    /// position. Returns `""` when every pair was dropped, else `joiner` (`?`,
+    /// or `&` when the path already carries a query) followed by the pairs.
+    public static func query(_ joiner: String, _ pairs: Any?...) -> String {
+        var out: [String] = []
+        var index = 0
+        while index + 1 < pairs.count {
+            if let key = pairs[index] as? String {
+                for value in queryValues(pairs[index + 1]) {
+                    out.append(formEncode(key) + "=" + formEncode(value))
+                }
+            }
+            index += 2
+        }
+        return out.isEmpty ? "" : joiner + out.joined(separator: "&")
+    }
+
+    /// The strings one query value contributes: none for `nil`, one per element for an array.
+    static func queryValues(_ value: Any?) -> [String] {
+        guard let present = unwrap(value) else { return [] }
+        if let list = present as? [Any?] {
+            return list.compactMap { unwrap($0).map(jsString) }
+        }
+        if let list = present as? [Any] {
+            return list.compactMap { unwrap($0).map(jsString) }
+        }
+        return [jsString(present)]
+    }
+
+    /// An `Any` that holds an `Optional` (Swift boxes `String?` that way) unwrapped, `nil` for an absent one.
+    static func unwrap(_ value: Any?) -> Any? {
+        guard let value else { return nil }
+        let mirror = Mirror(reflecting: value)
+        if mirror.displayStyle == .optional {
+            return mirror.children.first.flatMap { unwrap($0.value) }
+        }
+        return value
+    }
+
+    /// JavaScript's `String(value)` for the scalar shapes a query value takes.
+    static func jsString(_ value: Any) -> String {
+        switch value {
+        case let s as String: return s
+        case let b as Bool: return b ? "true" : "false"
+        // Integers before floating point: an integer is already whole, and must never take a bridging cast.
+        case let i as Int: return String(i)
+        case let i as Int64: return String(i)
+        case let i as Int32: return String(i)
+        case let d as Double: return jsNumberString(d)
+        case let f as Float: return jsNumberString(Double(f))
+        default: return String(describing: value)
+        }
+    }
+
+    /// `String(number)`: the `JSON.stringify` digits for a finite value, JavaScript's spelling otherwise.
+    static func jsNumberString(_ value: Double) -> String {
+        if value.isNaN { return "NaN" }
+        if value.isInfinite { return value < 0 ? "-Infinity" : "Infinity" }
+        return PyreonJSON.jsNumber(value)
+    }
+
+    /// The application/x-www-form-urlencoded byte serializer `URLSearchParams` uses.
+    static func formEncode(_ text: String) -> String {
+        var out = ""
+        for byte in text.utf8 {
+            switch byte {
+            case 0x2A, 0x2D, 0x2E, 0x5F, 0x30...0x39, 0x41...0x5A, 0x61...0x7A:
+                out.unicodeScalars.append(Unicode.Scalar(byte))
+            case 0x20:
+                out += "+"
+            default:
+                out += String(format: "%%%02X", byte)
+            }
+        }
+        return out
     }
 }

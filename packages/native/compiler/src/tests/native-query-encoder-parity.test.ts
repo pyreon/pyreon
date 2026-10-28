@@ -112,7 +112,11 @@ function withTempDir<T>(prefix: string, fn: (dir: string) => T): T {
   }
 }
 
-/** The shipped `PyreonURL` declaration, lifted out of its runtime file. */
+/**
+ * The shipped `PyreonURL` declaration, lifted out of its runtime file. It is sliced to END OF FILE, so `PyreonURL`
+ * must stay the LAST declaration in both runtime files — anything appended after it is compiled into this harness
+ * without its dependencies (the uploads section did exactly that, and every encoder parity spec failed to compile).
+ */
 const extract = (path: string, opener: string): string => {
   const src = readFileSync(path, 'utf8')
   const at = src.indexOf(opener)

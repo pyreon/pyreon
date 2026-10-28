@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -32,6 +32,22 @@ const SWIFT_JSON_SRC = join(__dirname, '../../../runtime-swift/Sources/PyreonRun
 const KOTLIN_SRC = join(__dirname, '../../../runtime-kotlin/src/main/kotlin/com/pyreon/runtime/PyreonHttp.kt')
 
 const BOUNDARY = 'PyreonParityBoundary'
+
+/**
+ * The upload writer, VERBATIM from the shipped source: `PyreonHttpError` plus everything from the uploads section to
+ * the end of the file (the uploads, then `PyreonURL`, whose `unwrap` / `jsString` the writer calls). Not the whole
+ * file: its transport half needs `URLSession`, which on Linux lives in FoundationNetworking — the writer does not,
+ * so a slice keeps the gate running on the Linux CI lane, where the whole-file compile fails before any byte is
+ * compared.
+ */
+function swiftUploadSource(): string {
+  const src = readFileSync(SWIFT_SRC, 'utf8')
+  const errorAt = src.indexOf('public enum PyreonHttpError')
+  const errorEnd = src.indexOf('\n}\n', errorAt)
+  const uploadsAt = src.indexOf('// MARK: - Uploads')
+  if (errorAt < 0 || errorEnd < 0 || uploadsAt < 0) throw new Error('PyreonHttp.swift no longer has the sections this gate slices')
+  return `import Foundation\n\n${src.slice(errorAt, errorEnd + 3)}\n${src.slice(uploadsAt)}`
+}
 
 interface FilePart {
   readonly uri: string
@@ -187,7 +203,8 @@ describe('PyreonMultipartBody -- parity with the web encodeMultipart + FormData'
 } catch { print("ERROR \\(error)") }`,
         )
         writeFileSync(join(dir, 'main.swift'), `import Foundation\n\n${lines.join('\n')}\n`)
-        execFileSync('swiftc', [SWIFT_SRC, SWIFT_JSON_SRC, join(dir, 'main.swift'), '-o', join(dir, 'run')], {
+        writeFileSync(join(dir, 'PyreonUpload.swift'), swiftUploadSource())
+        execFileSync('swiftc', [join(dir, 'PyreonUpload.swift'), SWIFT_JSON_SRC, join(dir, 'main.swift'), '-o', join(dir, 'run')], {
           stdio: 'pipe',
         })
         return execFileSync(join(dir, 'run'), { encoding: 'utf8' }).split('\n')
