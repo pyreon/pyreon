@@ -105,8 +105,9 @@ public final class PyreonI18n {
     ///
     ///   - `{{name}}` placeholders replace with `values["name"]`.
     ///   - When `values["count"]` is present the candidates are, in order:
-    ///     `key_zero` (count == 0 only), `key_<CLDR category>`, `key_other`,
-    ///     then the bare `key`.
+    ///     `key_zero` (count == 0 only), `key_<CLDR category>`, then — the
+    ///     bare key being the singular form — `key` before `key_other` when the
+    ///     category is `one`, and `key_other` before `key` otherwise.
     public func t(_ key: String, _ values: [String: CustomStringConvertible]) -> String {
         var candidates = [key]
         if let countValue = values["count"] {
@@ -114,8 +115,10 @@ public final class PyreonI18n {
             var suffixes: [String] = []
             if count == 0 { suffixes.append("zero") }
             let category = PyreonPluralRules.select(locale: locale, count: count)
-            for s in [category, "other"] where !suffixes.contains(s) { suffixes.append(s) }
-            candidates = suffixes.map { "\(key)_\($0)" } + [key]
+            if !suffixes.contains(category) { suffixes.append(category) }
+            candidates = suffixes.map { "\(key)_\($0)" }
+            // The bare key IS the singular form: for `one` it beats `_other`.
+            candidates += category == "one" ? [key, "\(key)_other"] : (category == "other" ? [key] : ["\(key)_other", key])
         }
         var out = lookup(candidates) ?? key
         for (name, value) in values {

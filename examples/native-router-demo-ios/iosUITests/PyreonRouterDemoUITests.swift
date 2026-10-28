@@ -1288,4 +1288,35 @@ final class PyreonRouterDemoUITests: XCTestCase {
                 + "(observed: \(app.staticTexts["push-title"].firstMatch.label))"
         )
     }
+
+    /// Route loader data, destructured. The page must render only once the
+    /// loader's data exists (`PyreonRouteLoader` holds it back), with both
+    /// destructured fields read, and its `onMount` must see the loaded title —
+    /// on the web the loader runs before the component mounts, and this is the
+    /// same order. Before, `useLoaderData` reads were optional and did not
+    /// compile, and a destructure was not lowered at all.
+    func test_routeLoaderDataIsDestructuredAndReadyBeforeMount() throws {
+        let app = XCUIApplication()
+        app.launch()
+        XCTAssertTrue(
+            app.otherElements["home-page"].firstMatch.waitForExistence(timeout: 30),
+            "Home page did not render"
+        )
+        app.buttons["Go to About"].tap()
+        XCTAssertTrue(
+            app.otherElements["about-page"].firstMatch.waitForExistence(timeout: 15),
+            "About page did not render"
+        )
+        app.buttons["View loaded"].tap()
+        XCTAssertTrue(
+            app.otherElements["loaded-page"].firstMatch.waitForExistence(timeout: 15),
+            "Loaded page did not render — did the route loader store its data?"
+        )
+        XCTAssertEqual(app.staticTexts["loaded-title"].firstMatch.label, "Title: Loaded title")
+        XCTAssertEqual(app.staticTexts["loaded-views"].firstMatch.label, "Views: 42")
+        XCTAssertTrue(
+            app.staticTexts["Mounted with: Loaded title"].waitForExistence(timeout: 10),
+            "onMount ran without the loader data (observed: \(app.staticTexts["loaded-mounted"].firstMatch.label))"
+        )
+    }
 }

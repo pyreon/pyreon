@@ -15,6 +15,7 @@ import {
   KOTLIN_UNHANDLED_ASYNC,
 } from './async-function'
 import { kotlinStr } from './string-literals'
+import { resolveFieldShape } from './field-shape'
 import {
   bindServices,
   emitPluginDecl,
@@ -100,8 +101,10 @@ import {
   classifyNegativeSlice,
   classifyOptionalCondition,
   indexedArrayCallback,
+  inferMapFromPairsType,
   inferReturnType,
   inferType,
+  mapFromPairsTypeProblem,
   logicalOrValueKind,
   normalizeNumericAlias,
   objectLengthRangeForm,
@@ -1387,6 +1390,15 @@ function emitKotlinComponent(c: ComponentIR): string {
     lines.push(`  LaunchedEffect(Unit) {`)
     lines.push(bodyLines)
     lines.push(`  }`)
+    // The teardown `onMount` returned: runs when the composable leaves composition. A separate effect, so the mount
+    // body keeps its LaunchedEffect semantics.
+    if (d.cleanup !== undefined) {
+      lines.push(`  DisposableEffect(Unit) {`)
+      lines.push(`    onDispose {`)
+      lines.push(d.cleanup.map((st) => `      ${emitKotlinStatement(st, 6, ctx)}`).join('\n'))
+      lines.push(`    }`)
+      lines.push(`  }`)
+    }
   }
   // A plugin's own declarations may release what they hold when the composable leaves composition
   // (`useFlow` disposes its listeners; a caller-owned `createFlow` does not).
@@ -3004,6 +3016,50 @@ function intLiteralAsDouble(x: ExprIR, otherIsDouble: boolean): string | null {
   return `${x === lit ? '' : '-'}${lit.value}.0`
 }
 
+/**
+ * `new Map(src.map((x) => [k, v]))` → `src.associate { x -> k to v }.toMutableMap()`.
+ * `associate` keeps the LAST value for a repeated key (in a LinkedHashMap,
+ * whose order matches JS `Map`'s first-insertion order), and `toMutableMap`
+ * gives the `MutableMap` every other Map lowering produces.
+ */
+function emitKotlinMapFromPairs(
+  e: Extract<ExprIR, { kind: 'new-collection' }>,
+  pairs: NonNullable<Extract<ExprIR, { kind: 'new-collection' }>['pairsFrom']>,
+  indent: number,
+): string {
+  const mt =
+    e.keyType !== undefined && e.valueType !== undefined
+      ? ({ kind: 'map', key: e.keyType, value: e.valueType } as const)
+      : inferMapFromPairsType(pairs, _kotlinExprInferCtx)
+  const problem = mapFromPairsTypeProblem(mt)
+  if (problem !== null) {
+    const w = `\`new Map(src.map((x) => [key, value]))\` cannot lower to a native dictionary: ${problem}.`
+    if (!_emitWarnings.includes(w)) _emitWarnings.push(w)
+  }
+  const src = emitKotlinExpr(pairs.source, indent)
+  const srcT = inferType(pairs.source, _kotlinExprInferCtx)
+  const elT = srcT.kind === 'array' || srcT.kind === 'set' ? srcT.element : undefined
+  const p = pairs.param
+  const had = _kotlinExprInferCtx.locals.has(p)
+  const prev = _kotlinExprInferCtx.locals.get(p)
+  if (elT !== undefined) _kotlinExprInferCtx.locals.set(p, elT)
+  const prevEnum = _activeEnumType
+  _activeEnumType = undefined
+  try {
+    const k = withExpectedTypeKotlin(mt.kind === 'map' ? mt.key : undefined, () =>
+      emitKotlinExpr(pairs.key, indent),
+    )
+    const v = withExpectedTypeKotlin(mt.kind === 'map' ? mt.value : undefined, () =>
+      emitKotlinExpr(pairs.value, indent),
+    )
+    return `${src}.associate { ${kotlinIdent(p)} -> ${k} to ${v} }.toMutableMap()`
+  } finally {
+    _activeEnumType = prevEnum
+    if (had) _kotlinExprInferCtx.locals.set(p, prev!)
+    else _kotlinExprInferCtx.locals.delete(p)
+  }
+}
+
 function emitKotlinExpr(e: ExprIR, indent: number): string {
   switch (e.kind) {
     case 'literal':
@@ -3624,13 +3680,27 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         {
           const recvT = inferType(e.callee.object, _kotlinExprInferCtx)
           if (recvT.kind === 'map') {
-            if (prop === 'set' && e.args.length === 2)
-              return `${obj}[${argExprs[0]!}] = ${argExprs[1]!}`
-            if (prop === 'get' && e.args.length === 1) return `${obj}[${argExprs[0]!}]`
+            // Mirror of the Swift twin: key / value args take the MAP's types,
+            // never the surrounding expectation (an enum comparison leaked
+            // into the key as `m[Status.a]`).
+            // The surrounding enum context is CLEARED first: `withExpectedTypeKotlin` sets
+            // it for an enum type but never unsets an outer one.
+            const typedArg = (i: number, t: TypeIR): string => {
+              const prevEnum = _activeEnumType
+              _activeEnumType = undefined
+              try {
+                return withExpectedTypeKotlin(t, () => emitKotlinExpr(e.args[i]!, indent))
+              } finally {
+                _activeEnumType = prevEnum
+              }
+            }
+            const k = (i: number) => typedArg(i, recvT.key)
+            const v = (i: number) => typedArg(i, recvT.value)
+            if (prop === 'set' && e.args.length === 2) return `${obj}[${k(0)}] = ${v(1)}`
+            if (prop === 'get' && e.args.length === 1) return `${obj}[${k(0)}]`
             if (prop === 'has' && e.args.length === 1)
-              return `${obj}${objDot}containsKey(${argExprs[0]!})`
-            if (prop === 'delete' && e.args.length === 1)
-              return `${obj}${objDot}remove(${argExprs[0]!})`
+              return `${obj}${objDot}containsKey(${k(0)})`
+            if (prop === 'delete' && e.args.length === 1) return `${obj}${objDot}remove(${k(0)})`
             if (prop === 'clear' && e.args.length === 0) return `${obj}${objDot}clear()`
           }
           if (recvT.kind === 'set') {
@@ -4611,6 +4681,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       // Mirror of the Swift emit. `val` is fine on Kotlin (the reference is
       // final; contents mutate through it).
       if (e.collection === 'map') {
+        if (e.pairsFrom !== undefined) return emitKotlinMapFromPairs(e, e.pairsFrom, indent)
         // Seeded `new Map([[k,v],…])` → `mutableMapOf(k to v, …)`.
         if (e.entries && e.entries.length > 0) {
           const body = e.entries
@@ -7779,13 +7850,33 @@ function emitKotlinField(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: nu
   if (placeholderExpr !== undefined) {
     args.push(`placeholder = { Text(${placeholderExpr}) }`)
   }
-  const vtArg = kotlinFieldVisualTransformation(e)
-  if (vtArg !== undefined) {
-    args.push(vtArg)
+  // `multiline` / `lines` — the shared helper (see field-shape.ts) decides, so
+  // Swift and Kotlin cannot disagree about what a text area is.
+  const shape = resolveFieldShape(e, readStaticAttrKotlin)
+  _emitWarnings.push(...shape.warnings)
+  if (shape.multiline) {
+    // Fixed at `lines` rows and scrolling past them — a web `<textarea rows>`.
+    // minLines alone would let it grow without bound; maxLines alone would let
+    // it start at one row.
+    const lines =
+      shape.lines.kind === 'static'
+        ? String(shape.lines.n)
+        : `maxOf(1, (${emitKotlinExpr(shape.lines.expr, 0)}).toInt())`
+    args.push('singleLine = false', `minLines = ${lines}`, `maxLines = ${lines}`)
+  } else {
+    // Material's TextField defaults to singleLine = false: Return inserted a
+    // newline and long input wrapped onto more rows, where the web `<input>`
+    // and the iOS TextField are one line. Say single-line explicitly.
+    args.push('singleLine = true')
+    const vtArg = kotlinFieldVisualTransformation(e)
+    if (vtArg !== undefined) {
+      args.push(vtArg)
+    }
   }
-  const onSubmit = e.attrs.find(
+  const onSubmitAttr = e.attrs.find(
     (a): a is Extract<AttrIR, { kind: 'event' }> => a.kind === 'event' && a.name === 'submit',
   )
+  const onSubmit = shape.honourSubmit ? onSubmitAttr : undefined
   // `kind` → the software KEYBOARD, which the web gets free from `<input type>`
   // and native did not: a phone showed full QWERTY where the same source showed
   // a numeric pad in a browser. Previously deferred on both targets.
@@ -7793,7 +7884,7 @@ function emitKotlinField(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: nu
   // MERGED with the imeAction rather than pushed separately — `KeyboardOptions`
   // is one argument, so a second `keyboardOptions =` would be a duplicate named
   // arg, and building it in two places is how one silently replaces the other.
-  const kindForKeyboard = readStaticAttrKotlin(e, 'kind')
+  const kindForKeyboard = shape.honourKind ? readStaticAttrKotlin(e, 'kind') : undefined
   const kbType =
     typeof kindForKeyboard === 'string' ? FIELD_KEYBOARD_KOTLIN[kindForKeyboard] : undefined
   const kbParts: string[] = []

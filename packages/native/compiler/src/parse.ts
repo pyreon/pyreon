@@ -1523,7 +1523,11 @@ function inferTypeFromInitial(initial: ExprIR): TypeIR {
   // type. Mirrors `inferType`'s own `new-collection` case in infer-type.ts.
   if (initial.kind === 'new-collection') {
     if (initial.collection === 'map') {
-      return { kind: 'map', key: initial.keyType!, value: initial.valueType! }
+      // The index-by form without generic arguments is typed by binding its
+      // callback parameter, which needs the inference context this structural
+      // pass does not have.
+      if (initial.keyType === undefined || initial.valueType === undefined) return { kind: 'unknown' }
+      return { kind: 'map', key: initial.keyType, value: initial.valueType }
     }
     if (initial.elementType !== undefined) {
       return { kind: 'set', element: initial.elementType }
@@ -2972,20 +2976,14 @@ function tryComponentFromTopLevel(node: AnyNode, ctx: ParseCtx): ComponentIR | n
         } else {
           bodyStmts = [{ kind: 'expr', expr: parseExpr(cb.body, ctx) }]
         }
-        // A returned CLEANUP fn (onMount's unmount contract) is not emitted
-        // in v1 — strip it (a bare `return <closure>` inside .onAppear /
-        // LaunchedEffect would be a type error) + warn NAMED.
-        const kept = bodyStmts.filter((st) => {
-          const isCleanupReturn =
-            st.kind === 'return' && st.expr !== undefined && st.expr.kind === 'arrow'
-          if (isCleanupReturn) {
-            ctx.warnings.push(
-              `Component ${name}: onMount returned a cleanup function — unmount cleanup is not emitted natively yet (the mount body IS). Move teardown to the host, or track the follow-up.`,
-            )
-          }
-          return !isCleanupReturn
-        })
-        decls.push({ kind: 'on-mount', body: kept })
+        // A returned CLEANUP fn (onMount's unmount contract) runs when the view goes away: Swift
+        // `.onDisappear`, Kotlin `DisposableEffect`'s `onDispose`. It is stripped from the mount body either
+        // way — a bare `return <closure>` inside `.onAppear` / `LaunchedEffect` would be a type error.
+        const cleanup = onMountCleanup(cb, name, ctx)
+        const kept = bodyStmts.filter(
+          (st) => !(st.kind === 'return' && st.expr !== undefined && st.expr.kind === 'arrow'),
+        )
+        decls.push({ kind: 'on-mount', body: kept, ...(cleanup !== undefined ? { cleanup } : {}) })
       } else if (call?.type === 'CallExpression') {
         // A bare CALL statement (`effect(...)`, a stray side-effecting
         // call) has no native lowering — dropped + NAMED warning, so the
@@ -3329,6 +3327,79 @@ function hasNestedValueReturns(fn: AnyNode, name: string, ctx: ParseCtx): boolea
     (a.type === 'Literal' && a.value === null) || (a.type === 'Identifier' && a.name === 'undefined')
   if (!nonViewAnno && args.every(isNullish)) return false
   return !args.some(astContainsJsx)
+}
+
+/**
+ * The teardown an `onMount` callback returns, as statements — or `undefined` (and a named warning) when there is none
+ * that can lower. Only a TOP-LEVEL `return () => { … }` is a teardown: a conditional one would need the mount body's
+ * control flow to decide at unmount time. And the teardown must not read a local the mount body declared: on the web
+ * the returned closure captures it, but the native mount and unmount hooks are separate closures (Swift
+ * `.onAppear` / `.onDisappear`), so the value would not be there. Keep that state in a signal instead.
+ */
+function onMountCleanup(cb: AnyNode, component: string, ctx: ParseCtx): StatementIR[] | undefined {
+  if (cb.body?.type !== 'BlockStatement') return undefined
+  const top = (cb.body.body as AnyNode[] | undefined) ?? []
+  const isClosure = (n: AnyNode | undefined): boolean =>
+    n?.type === 'ArrowFunctionExpression' || n?.type === 'FunctionExpression'
+  const ret = top.find((st) => st.type === 'ReturnStatement' && isClosure(st.argument))
+  if (ret === undefined) return undefined
+  const fn = ret.argument as AnyNode
+  const mountLocals = new Set<string>()
+  for (const st of top) {
+    if (st.type !== 'VariableDeclaration') continue
+    for (const d of (st.declarations as AnyNode[] | undefined) ?? []) collectPatternNames(d.id, mountLocals)
+  }
+  const read = new Set<string>()
+  const visit = (n: unknown): void => {
+    if (!n || typeof n !== 'object') return
+    if (Array.isArray(n)) {
+      for (const x of n) visit(x)
+      return
+    }
+    const node = n as AnyNode
+    if (node.type === 'Identifier' && typeof node.name === 'string') read.add(node.name)
+    for (const key of Object.keys(node)) {
+      if (key === 'type' || key === 'loc' || key === 'range' || key === 'span' || key === 'start' || key === 'end') {
+        continue
+      }
+      visit(node[key])
+    }
+  }
+  visit(fn.body)
+  const captured = [...mountLocals].filter((n) => read.has(n))
+  if (captured.length > 0) {
+    ctx.warnings.push(
+      `Component ${component}: onMount's cleanup reads ${captured.map((n) => `\`${n}\``).join(', ')}, declared in the mount body. On the web the returned closure captures it, but native runs mount and unmount as separate hooks, so it would not be there — the cleanup was NOT emitted. Keep that value in a signal declared beside the component's other state, and read it from the cleanup.`,
+    )
+    return undefined
+  }
+  return fn.body?.type === 'BlockStatement'
+    ? parseStatementBlock(fn.body, ctx)
+    : [{ kind: 'expr', expr: parseExpr(fn.body, ctx) }]
+}
+
+/** Every name a binding pattern declares (`a`, `{ b, c: d }`, `[e, ...f]`). */
+function collectPatternNames(pattern: AnyNode | undefined, out: Set<string>): void {
+  if (!pattern) return
+  switch (pattern.type) {
+    case 'Identifier':
+      out.add(pattern.name as string)
+      return
+    case 'ObjectPattern':
+      for (const p of (pattern.properties as AnyNode[] | undefined) ?? []) {
+        collectPatternNames(p.type === 'RestElement' ? p.argument : p.value, out)
+      }
+      return
+    case 'ArrayPattern':
+      for (const e of (pattern.elements as AnyNode[] | undefined) ?? []) collectPatternNames(e, out)
+      return
+    case 'RestElement':
+      collectPatternNames(pattern.argument, out)
+      return
+    case 'AssignmentPattern':
+      collectPatternNames(pattern.left, out)
+      return
+  }
 }
 
 /**
@@ -6168,6 +6239,90 @@ function locOf(node: AnyNode, ctx: ParseCtx): string {
  * AND how to express the intent inside the supported subset, and the CLI
  * already prints `result.warnings`, so the developer actually sees it.
  */
+/**
+ * Whether a `Map` VALUE type has a concrete native spelling on both targets.
+ * A dictionary value needs no Hashable/Equatable conformance — only a type
+ * swiftc/kotlinc can name. That is a scalar, a struct/enum this file declares
+ * (`type X = { … }` / `interface X { … }` / a string-literal union — all
+ * synthesized into a Swift struct/enum and a Kotlin data class/enum), or an
+ * array of those (the group-by idiom, `Map<string, Todo[]>`). An INLINE object
+ * type (`Map<string, { x: number }>`) has no name to put in the dictionary
+ * type, and an imported/unknown typeRef is not synthesized into this module —
+ * both stay a named warning.
+ */
+/**
+ * Recognise the index-by idiom `src.map((x) => [key, value])` as the argument
+ * of `new Map(…)`. The callback must take exactly ONE identifier parameter (the
+ * index form `(x, i) =>` has no native twin here) and return a two-element
+ * array literal, either as its expression body or as a single `return`. Any
+ * other argument shape returns `null` and falls through to the literal-pair /
+ * warning paths.
+ */
+function tryParseMapFromPairs(
+  arg: AnyNode | undefined,
+  ctx: ParseCtx,
+): { source: ExprIR; param: string; key: ExprIR; value: ExprIR } | null {
+  if (arg?.type !== 'CallExpression') return null
+  const callee = arg.callee as AnyNode
+  if (callee?.type !== 'MemberExpression' || callee.computed) return null
+  if (callee.property?.type !== 'Identifier' || callee.property.name !== 'map') return null
+  if ((arg.arguments?.length ?? 0) !== 1) return null
+  const fnNode = arg.arguments[0] as AnyNode
+  if (fnNode?.type !== 'ArrowFunctionExpression' && fnNode?.type !== 'FunctionExpression') return null
+  const params = (fnNode.params as AnyNode[] | undefined) ?? []
+  if (params.length !== 1 || params[0]?.type !== 'Identifier') return null
+  let bodyNode = fnNode.body as AnyNode
+  if (bodyNode?.type === 'BlockStatement') {
+    const stmts = (bodyNode.body as AnyNode[] | undefined) ?? []
+    if (stmts.length !== 1 || stmts[0]?.type !== 'ReturnStatement') return null
+    bodyNode = stmts[0].argument as AnyNode
+  }
+  while (bodyNode?.type === 'ParenthesizedExpression') bodyNode = bodyNode.expression as AnyNode
+  if (bodyNode?.type !== 'ArrayExpression') return null
+  const els = (bodyNode.elements as AnyNode[] | undefined) ?? []
+  if (els.length !== 2 || !els[0] || !els[1]) return null
+  if (els[0].type === 'SpreadElement' || els[1].type === 'SpreadElement') return null
+  // Parse the arrow as a whole so its parameter scoping (shadowing, signal
+  // auto-call suppression) is exactly what any other callback gets.
+  const fn = parseExpr(fnNode, ctx)
+  if (fn.kind !== 'arrow' || fn.params.length !== 1) return null
+  const body =
+    fn.stmts !== undefined && fn.stmts.length === 1 && fn.stmts[0]!.kind === 'return'
+      ? (fn.stmts[0] as Extract<StatementIR, { kind: 'return' }>).expr
+      : fn.body
+  if (body === undefined || body.kind !== 'array' || body.elements.length !== 2) return null
+  return {
+    source: parseExpr(callee.object as AnyNode, ctx),
+    param: fn.params[0]!,
+    key: body.elements[0]!,
+    value: body.elements[1]!,
+  }
+}
+
+function isNativeMapValueType(t: TypeIR, ctx: ParseCtx): boolean {
+  if (t.kind === 'number' || t.kind === 'string' || t.kind === 'boolean') return true
+  if (t.kind === 'array') return isNativeMapValueType(t.element, ctx)
+  if (t.kind === 'typeRef' && t.args.length === 0) {
+    return ctx.objectTypeAliases.has(t.name) || ctx.enumTypeNames.has(t.name)
+  }
+  return false
+}
+
+function describeMapValueType(t: TypeIR): string {
+  switch (t.kind) {
+    case 'object':
+      return '{ … }'
+    case 'typeRef':
+      return t.name
+    case 'array':
+      return `${describeMapValueType(t.element)}[]`
+    case 'union':
+      return 'a union'
+    default:
+      return t.kind
+  }
+}
+
 function unsupportedExpr(
   ctx: ParseCtx,
   node: AnyNode,
@@ -6863,17 +7018,51 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
       if (calleeName === 'Map' && (node.arguments?.length ?? 0) === 0 && typeArgs.length === 2) {
         const keyType = parseTypeAnnotation(typeArgs[0]!, ctx)
         const valueType = parseTypeAnnotation(typeArgs[1]!, ctx)
-        if (!isNativeScalarType(keyType) || !isNativeScalarType(valueType)) {
+        if (!isNativeScalarType(keyType)) {
           return unsupportedExpr(
             ctx,
             node,
-            `\`new Map<...>()\` with a non-scalar key or value type`,
-            'only scalar (number/string/boolean) keys and values lower to a native dictionary in v1 — model richer maps behind a `<Web>` escape hatch, or use a scalar-keyed struct array.',
+            `\`new Map<...>()\` with a non-scalar key type`,
+            'only scalar (number/string/boolean) keys lower to a native dictionary — a native dictionary key must be Hashable. Key the map by a scalar id instead.',
+          )
+        }
+        if (!isNativeMapValueType(valueType, ctx)) {
+          return unsupportedExpr(
+            ctx,
+            node,
+            `\`new Map<K, ${describeMapValueType(valueType)}>()\` (a map value that is not a scalar, a locally-declared struct, or an array of those)`,
+            'a native dictionary value must name a concrete native type — declare the value shape as a top-level `type X = { … }` / `interface X { … }` in this file and use `new Map<K, X>()`, or keep the map behind a `<Web>` escape hatch.',
           )
         }
         return { kind: 'new-collection', collection: 'map', keyType, valueType }
       }
       if (calleeName === 'Map' && (node.arguments?.length ?? 0) === 1) {
+        const pairs = tryParseMapFromPairs(node.arguments[0] as AnyNode, ctx)
+        if (pairs !== null) {
+          if (typeArgs.length === 2) {
+            const keyType = parseTypeAnnotation(typeArgs[0]!, ctx)
+            const valueType = parseTypeAnnotation(typeArgs[1]!, ctx)
+            if (!isNativeScalarType(keyType) || !isNativeMapValueType(valueType, ctx)) {
+              return unsupportedExpr(
+                ctx,
+                node,
+                `\`new Map<K, ${describeMapValueType(valueType)}>(…)\` (a non-scalar key, or a value that is not a scalar, a locally-declared struct, or an array of those)`,
+                'a native dictionary needs a scalar (Hashable) key and a value of a concrete native type — declare the value shape as a top-level `type X = { … }` in this file.',
+              )
+            }
+            return {
+              kind: 'new-collection',
+              collection: 'map',
+              keyType,
+              valueType,
+              pairsFrom: pairs,
+            }
+          }
+          // Unannotated: the key / value types come from binding `param` to the
+          // source's element type at inference (see infer-type.ts); the emitter
+          // checks the inferred types and warns by name when one has no native form.
+          return { kind: 'new-collection', collection: 'map', pairsFrom: pairs }
+        }
         // Seeded `new Map([[k, v], …])` → a native dict literal. The arg must be
         // an array of 2-element `[key, value]` pairs; key AND value must be
         // scalar (a native dictionary key needs Hashable, and value is held to

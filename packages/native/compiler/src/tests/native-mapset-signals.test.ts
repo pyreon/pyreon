@@ -27,8 +27,9 @@
 //    in-place content mutation of a `mutableStateOf(mutableSetOf())` is not
 //    observed by Compose recomposition; a snapshot-replace (`seen.set(...)`) is
 //    the reactive path there (documented follow-up).
-//  - WARNS (never a silent mis-emit): non-scalar element/key/value types
-//    (`Set<{...}>`, `Map<string, {...}>` — a non-scalar Swift Set element is a
+//  - WARNS (never a silent mis-emit): non-scalar element/key types and
+//    inline-object Map values (`Set<{...}>`, `Map<string, {...}>` — a NAMED
+//    struct value lowers, see native-map-struct-values; a non-scalar Swift Set element is a
 //    hard `does not conform to Hashable` error), and any seeded
 //    `new Map([...])` shape that is NOT a literal array of scalar pairs
 //    (a computed pair array, a non-pair element, a non-scalar key/value).
@@ -130,7 +131,9 @@ function App() {
     }
   })
 
-  it('WARNS on a non-scalar Map value (Map of structs)', () => {
+  // An INLINE object value type has no name to put in `[K: V]`. A NAMED struct
+  // value now lowers — see native-map-struct-values.test.ts.
+  it('WARNS on an inline-object Map value (no type name to put in the dictionary)', () => {
     const src = `import { Stack, Text } from '@pyreon/primitives'
 function App() {
   const m = signal(new Map<string, { x: number }>())
@@ -138,7 +141,7 @@ function App() {
 }`
     const r = transform(src, { target: 'swift' })
     expect(
-      (r.warnings ?? []).some((w) => w.includes('non-scalar key or value')),
+      (r.warnings ?? []).some((w) => w.includes('new Map<K, { … }>()')),
     ).toBe(true)
   })
 
