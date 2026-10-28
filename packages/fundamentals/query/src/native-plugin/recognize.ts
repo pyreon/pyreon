@@ -245,7 +245,9 @@ export function recognizeQuery(_call: CallSite, ctx: ParseContext): ExtDeclSpec 
       headerExprs?: Record<string, ExprIR>
       body?: string
       bodyExpr?: ExprIR
+      upload?: ExprIR
     } = {}
+    if (resolved.upload !== undefined) eqReq.upload = resolved.upload
     if (resolved.method && resolved.method !== 'GET') eqReq.method = resolved.method
     if (resolved.headers) eqReq.headers = resolved.headers
     if (resolved.headerExprs) eqReq.headerExprs = resolved.headerExprs

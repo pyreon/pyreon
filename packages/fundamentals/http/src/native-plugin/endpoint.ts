@@ -23,6 +23,7 @@ import {
   type ResolvedRequest,
 } from '@pyreon/native-compiler/plugin-api'
 import { scanCallRoles } from './call'
+import { encodeForm } from '../body'
 
 // biome-ignore lint/suspicious/noExplicitAny: ESTree nodes are read structurally, as in the compiler.
 type AnyNode = any
@@ -287,11 +288,121 @@ function readCallHeaders(obj: AnyNode, onUnlowerable: (what: string) => void): H
   return out
 }
 
+/** The markers a `form` / `multipart` / raw `body` travels under to the request writers (see `request-headers.ts`). */
+const MULTIPART_MARKER = '__pyreonMultipart'
+const RAW_BODY_MARKER = '__pyreonRawBody'
+
+/** A literal form value the web's `encodeForm` accepts, else undefined. */
+function formLiteral(node: AnyNode | undefined): unknown {
+  const read = readJsonLiteral(node)
+  return read?.value
+}
+
+/**
+ * A `form` object: all literal → encoded NOW by the web's own `encodeForm`
+ * (the oracle, so the bytes cannot differ); with runtime scalars →
+ * `PyreonURL.query("", …)`, the same URLSearchParams serialization at
+ * request time. A nested object value needs the OpenAPI style machinery and
+ * is named; `undefined` when the whole form cannot be read.
+ */
+function readForm(
+  node: AnyNode,
+  warn: (message: string) => void,
+  ctx: { expr(node: AnyNode): ExprIR },
+): { literal: string } | { expr: ExprIR } | undefined {
+  if (node.type !== 'ObjectExpression') {
+    warn('the `form` body must be an object literal to lower — it is sent with NO body on iOS and Android.')
+    return undefined
+  }
+  const entries: (readonly [string, AnyNode])[] = []
+  let allLiteral = true
+  for (const prop of (node.properties as AnyNode[] | undefined) ?? []) {
+    if (prop.type === 'SpreadElement' || hasDynamicKey(prop)) {
+      warn('a spread or computed key in `form` cannot be read at compile time — the request is sent with NO body on iOS and Android.')
+      return undefined
+    }
+    const key = propName(prop)
+    if (key === undefined) continue
+    const v = prop.value as AnyNode
+    if (v?.type === 'ObjectExpression') {
+      warn(`form field \`${key}\` is a nested object, whose encoding depends on the OpenAPI style — it is sent with NO body on iOS and Android. Flatten it into scalar fields.`)
+      return undefined
+    }
+    if (formLiteral(v) === undefined && !isNullishLiteral(v)) allLiteral = false
+    entries.push([key, v])
+  }
+  if (allLiteral) {
+    const fields: Record<string, unknown> = {}
+    for (const [k, v] of entries) fields[k] = isNullishLiteral(v) ? null : formLiteral(v)
+    return { literal: encodeForm(fields as never).toString() }
+  }
+  const args: ExprIR[] = [{ kind: 'literal', value: '' }]
+  for (const [k, v] of entries) {
+    args.push({ kind: 'literal', value: k })
+    args.push(ctx.expr(v))
+  }
+  return {
+    expr: {
+      kind: 'call',
+      callee: { kind: 'member', object: { kind: 'identifier', name: 'PyreonURL' }, property: 'query' },
+      args,
+    },
+  }
+}
+
+/**
+ * A `multipart` object → the marker call the request writers turn into a
+ * `PyreonMultipartBody`: alternating name / value in SOURCE order (the order
+ * `encodeMultipart` appends). A literal value is written as the web writes it
+ * — a scalar as `String(v)`, an object or array element object as
+ * `JSON.stringify` — and a runtime one is classified at emit.
+ */
+function readMultipart(
+  node: AnyNode,
+  warn: (message: string) => void,
+  ctx: { expr(node: AnyNode): ExprIR },
+): ExprIR | undefined {
+  if (node.type !== 'ObjectExpression') {
+    warn('the `multipart` body must be an object literal to lower — it is sent with NO body on iOS and Android.')
+    return undefined
+  }
+  const args: ExprIR[] = []
+  for (const prop of (node.properties as AnyNode[] | undefined) ?? []) {
+    if (prop.type === 'SpreadElement' || hasDynamicKey(prop)) {
+      warn('a spread or computed key in `multipart` cannot be read at compile time — that part is OMITTED on iOS and Android.')
+      continue
+    }
+    const key = propName(prop)
+    if (key === undefined) continue
+    const v = prop.value as AnyNode
+    if (isNullishLiteral(v)) continue
+    const lit = readJsonLiteral(v)
+    args.push({ kind: 'literal', value: key })
+    if (lit === undefined) {
+      args.push(ctx.expr(v))
+    } else if (Array.isArray(lit.value)) {
+      // An array repeats the field; each element as `encodeMultipart`'s `put` writes it.
+      args.pop()
+      for (const item of lit.value as unknown[]) {
+        if (item === null || item === undefined) continue
+        args.push({ kind: 'literal', value: key })
+        args.push({ kind: 'literal', value: typeof item === 'object' ? JSON.stringify(item) : String(item) })
+      }
+    } else {
+      args.push({
+        kind: 'literal',
+        value: lit.value !== null && typeof lit.value === 'object' ? JSON.stringify(lit.value) : String(lit.value),
+      })
+    }
+  }
+  return { kind: 'call', callee: { kind: 'identifier', name: MULTIPART_MARKER }, args }
+}
+
 /**
  * Endpoint CALL-SITE options that lower to native. Every other key on the call
  * object is reported — see {@link ENDPOINT_UNLOWERABLE_ARGS}.
  */
-const ENDPOINT_LOWERED_ARGS: ReadonlySet<string> = new Set(['params', 'query', 'json', 'headers'])
+const ENDPOINT_LOWERED_ARGS: ReadonlySet<string> = new Set(['params', 'query', 'json', 'headers', 'form', 'multipart', 'body'])
 
 /**
  * Endpoint call-site options with NO native lowering, and why.
@@ -307,9 +418,6 @@ const ENDPOINT_UNLOWERABLE_ARGS: ReadonlyMap<string, string> = new Map([
   ['signal', 'an AbortSignal has no analogue in the emitted fetch harness, which runs to completion'],
   ['timeout', 'PyreonHttpRequest carries no timeout field'],
   ['meta', 'per-call metadata is read by client middleware, which does not lower'],
-  ['form', 'the emitted fetch harness sends a JSON body only; an encoded form body is not built'],
-  ['multipart', 'the emitted fetch harness sends a JSON body only; a multipart body (a file upload) is not built'],
-  ['body', 'the emitted fetch harness sends a JSON body only; a raw Blob / ArrayBuffer / string body is not sent'],
   ['cookies', 'the platform HTTP stacks own the Cookie header; a per-call cookie record is not sent'],
 ])
 
@@ -731,6 +839,63 @@ function resolveEndpointParts(
     }
   }
 
+  // --- form / multipart / raw body ---------------------------------------
+  // The web's `buildBody` takes exactly ONE of json / form / multipart / body
+  // and THROWS for two, so two here are refused rather than one picked.
+  const bodyKeys = ['json', 'form', 'multipart', 'body'].filter((k) => {
+    const v = readObjectProp(arg, k)
+    return v !== undefined && !isNullishLiteral(v)
+  })
+  if (bodyKeys.length > 1) {
+    warn(
+      `the call passes ${bodyKeys.map((k) => `\`${k}\``).join(' and ')} — the web throws for more than one (each is a different encoding of the same body). Pass one. This call stays web.`,
+    )
+    return null
+  }
+  let upload: ExprIR | undefined
+  const formNode = readObjectProp(arg, 'form')
+  if (formNode !== undefined && !isNullishLiteral(formNode)) {
+    const form = readForm(formNode, warn, ctx)
+    if (form !== undefined) {
+      if ('literal' in form) body = form.literal
+      else if (runtimeValues) bodyExpr = form.expr
+      else {
+        warn(
+          'the `form` body holds a runtime value, and this hook bakes its request at compile time — the request is sent with NO body on iOS and Android. Pass literals, or make the request from `useQuery` / `useMutation`.',
+        )
+      }
+      if ((body !== undefined || bodyExpr !== undefined) && !hasHeader('content-type')) {
+        headers = { ...headers, 'content-type': 'application/x-www-form-urlencoded' }
+      }
+    }
+  }
+  const multipartNode = readObjectProp(arg, 'multipart')
+  if (multipartNode !== undefined && !isNullishLiteral(multipartNode)) {
+    // A multipart body (a file upload) is built and streamed when the request
+    // is SENT, so it needs a caller that builds the request at runtime.
+    if (!runtimeValues) {
+      warn(
+        'a `multipart` body is built when the request is sent, and this hook bakes its request at compile time — the request is sent with NO body on iOS and Android. Upload from an event handler (`await ep({ multipart })`) or `useMutation`.',
+      )
+    } else {
+      upload = readMultipart(multipartNode, warn, ctx)
+    }
+  }
+  const rawNode = readObjectProp(arg, 'body')
+  if (rawNode !== undefined && !isNullishLiteral(rawNode)) {
+    const literal = literalScalar(rawNode)
+    if (typeof literal === 'string') body = literal
+    else if (!runtimeValues) {
+      warn(
+        'a runtime `body` is read when the request is sent, and this hook bakes its request at compile time — the request is sent with NO body on iOS and Android. Send it from an event handler or `useMutation`.',
+      )
+    } else {
+      // A string is a text body, a `fileFromUri` file is streamed — decided at
+      // emit, where the value's type is known.
+      upload = { kind: 'call', callee: { kind: 'identifier', name: RAW_BODY_MARKER }, args: [ctx.expr(rawNode)] }
+    }
+  }
+
   // --- everything else ---------------------------------------------------
   // Any option the call site carries that is NOT lowered above gets NAMED. This
   // is the arm that makes the class closed rather than a list of instances: a
@@ -764,7 +929,9 @@ function resolveEndpointParts(
     headerExprs?: Record<string, ExprIR>
     body?: string
     bodyExpr?: ExprIR
+    upload?: ExprIR
   } = {}
+  if (upload !== undefined) extras.upload = upload
   if (sawRuntimeParam || sawRuntimeQuery) extras.urlExpr = { kind: 'template', quasis, exprs }
   if (Object.keys(headers).length > 0) extras.headers = headers
   if (Object.keys(headerExprs).length > 0) extras.headerExprs = headerExprs

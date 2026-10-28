@@ -61,12 +61,12 @@ export function queryLifecycleSwift(decl: ExtDecl, ctx: EmitContext): readonly s
   } else {
     const swiftUrl = d.urlExpr !== undefined ? ctx.expr(d.urlExpr, 0) : ctx.stringLiteral(d.url as string)
     lines.push(`    do {`)
-    if (d.method || d.headers || d.headerExprs || d.body !== undefined || d.bodyExpr !== undefined) {
+    if (d.method || d.headers || d.headerExprs || d.body !== undefined || d.bodyExpr !== undefined || d.upload !== undefined) {
       // A request with a VERB, headers, or a body routes through PyreonHttp — exactly like useFetch's
       // method/headers path. Header and body expressions are evaluated here, inside the harness — i.e.
       // when THIS run builds the request, so a token is current.
       const args = swiftHttpRequestArgs(
-        { method: d.method, url: swiftUrl, headers: d.headers, headerExprs: d.headerExprs, body: d.body, bodyExpr: d.bodyExpr },
+        { method: d.method, url: swiftUrl, headers: d.headers, headerExprs: d.headerExprs, body: d.body, bodyExpr: d.bodyExpr, upload: d.upload },
         ctx,
         `Declaration ${decl.name}: useQuery queryFn fetch`,
       )

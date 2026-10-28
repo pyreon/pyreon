@@ -26,6 +26,8 @@ export interface QueryPayload {
   body?: string
   /** A body only known at runtime (a `json` value, `JSON.stringify(x)`), an expression of type `string` built per run. */
   bodyExpr?: ExprIR
+  /** A streamed body (`multipart` / a raw `body`) from an endpoint `.query()`, built per run. */
+  upload?: ExprIR
 }
 
 /** The payload of a `stream` declaration (see `recognizeStream`). */

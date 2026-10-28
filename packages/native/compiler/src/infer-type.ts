@@ -368,7 +368,8 @@ function widenFloatSignalDecls(
  */
 function serviceTypingKey(d: DeclIR): string | undefined {
   if (d.kind === 'service') {
-    return findService(d.hook)?.optionalFields === undefined ? undefined : d.hook
+    const svc = findService(d.hook)
+    return svc?.optionalFields === undefined && svc?.methodReturns === undefined ? undefined : d.hook
   }
   return undefined
 }
@@ -1373,6 +1374,16 @@ export function inferTypeValue(expr: ExprIR, ctx: InferenceCtx): TypeIR {
       // A plugin-lowered function declares what it returns (`FunctionLowering.returns`). Not when a local of the same name shadows it.
       if (expr.callee.kind === 'identifier' && !ctx.locals.has(expr.callee.name)) {
         const returns = findFunctionLowering(expr.callee.name)?.lowering.returns
+        if (returns !== undefined) return returns
+      }
+      // A method on a service container (`picker.pick()`) — its declared return, when the descriptor states one.
+      if (
+        expr.callee.kind === 'member' &&
+        expr.callee.object.kind === 'identifier' &&
+        !ctx.locals.has(expr.callee.object.name)
+      ) {
+        const svcKey = ctx.services.get(expr.callee.object.name)
+        const returns = svcKey === undefined ? undefined : findService(svcKey)?.methodReturns?.[expr.callee.property]
         if (returns !== undefined) return returns
       }
       if (expr.args.length === 0 && expr.callee.kind === 'member' &&

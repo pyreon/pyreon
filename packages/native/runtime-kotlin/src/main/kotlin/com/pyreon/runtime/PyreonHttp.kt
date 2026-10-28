@@ -47,6 +47,12 @@ public data class PyreonHttpRequest(
     val url: String,
     val headers: Map<String, String> = emptyMap(),
     val body: String? = null,
+    /**
+     * A file or `multipart/form-data` body, STREAMED by the executor rather
+     * than held in memory (a picked video must not be read whole). Takes
+     * precedence over [body].
+     */
+    val upload: PyreonHttpUpload? = null,
 ) {
     public companion object {
         /** A GET request. */
@@ -109,6 +115,9 @@ public sealed class PyreonHttpError(message: String) : Exception(message) {
      * the reader looking at their model types when the real answer is a 404.
      */
     public class BadStatus(public val status: Int) : PyreonHttpError("HTTP $status")
+
+    /** A `fileFromUri` URI that names no readable file, or a scheme the runtime cannot read. */
+    public class UnreadableFile(public val uri: String) : PyreonHttpError("cannot read file: $uri")
 
     /** No executor was installed and no default could be created. */
     public class NoExecutor : PyreonHttpError(
@@ -354,5 +363,191 @@ object PyreonURL {
             }
         }
         return out.toString()
+    }
+}
+
+
+// --- Uploads -----------------------------------------------------------------
+
+/** A streamed request body: a file (`body: await fileFromUri(uri)`) or a multipart form. */
+public sealed class PyreonHttpUpload {
+    public class File(public val file: PyreonUploadFile) : PyreonHttpUpload()
+    public class Multipart(public val body: PyreonMultipartBody) : PyreonHttpUpload()
+}
+
+/**
+ * A file to upload -- what `fileFromUri(uri, { name, type })` lowers to. It
+ * names the file and knows how to OPEN it; nothing is read until the request
+ * is sent, and then it is streamed, so a large picked video is never held in
+ * memory (or read twice).
+ *
+ * [length] is the byte count when the source knows it (a file, an inline
+ * `data:` URI, a content provider reporting its size), else null.
+ */
+public class PyreonUploadFile(
+    public val name: String,
+    public val type: String,
+    public val length: Long?,
+    private val opener: () -> java.io.InputStream,
+) {
+    public fun open(): java.io.InputStream = opener()
+}
+
+/**
+ * Resolving a URI into a [PyreonUploadFile]. `file://` and `data:` are read
+ * here; `content://` needs an Android `ContentResolver` and lives in
+ * `PyreonUploadAndroid.kt`, which delegates the other schemes back to [from].
+ */
+public object PyreonUploadFiles {
+    /** A `file://` or `data:` URI; anything else (or an unreadable file) throws [PyreonHttpError.UnreadableFile]. */
+    public fun from(uri: String, name: String? = null, type: String? = null): PyreonUploadFile {
+        if (uri.startsWith("data:")) {
+            val parsed = parseDataUri(uri) ?: throw PyreonHttpError.UnreadableFile(uri)
+            val bytes = parsed.second
+            return PyreonUploadFile(name ?: "blob", type ?: parsed.first, bytes.size.toLong()) {
+                java.io.ByteArrayInputStream(bytes)
+            }
+        }
+        if (uri.startsWith("file:")) {
+            val file = java.io.File(java.net.URI(uri))
+            if (!file.isFile || !file.canRead()) throw PyreonHttpError.UnreadableFile(uri)
+            return PyreonUploadFile(name ?: file.name, type ?: mimeTypeForExtension(file.extension), file.length()) {
+                java.io.FileInputStream(file)
+            }
+        }
+        throw PyreonHttpError.UnreadableFile(uri)
+    }
+
+    /** `data:[<type>][;base64],<payload>` -- the lower-cased type and the decoded bytes. */
+    internal fun parseDataUri(uri: String): Pair<String, ByteArray>? {
+        val comma = uri.indexOf(',')
+        if (comma < 0) return null
+        var meta = uri.substring(5, comma)
+        val payload = java.net.URLDecoder.decode(uri.substring(comma + 1).replace("+", "%2B"), "UTF-8")
+        val base64 = meta.endsWith(";base64")
+        if (base64) meta = meta.removeSuffix(";base64")
+        val bytes = try {
+            if (base64) java.util.Base64.getDecoder().decode(payload) else payload.toByteArray(Charsets.UTF_8)
+        } catch (_: IllegalArgumentException) {
+            return null
+        }
+        return meta.lowercase() to bytes
+    }
+
+    /** The common upload types by extension; unknown is `""`, sent as `application/octet-stream`, as the web does. */
+    public fun mimeTypeForExtension(ext: String): String = when (ext.lowercase()) {
+        "jpg", "jpeg" -> "image/jpeg"
+        "png" -> "image/png"
+        "gif" -> "image/gif"
+        "webp" -> "image/webp"
+        "heic" -> "image/heic"
+        "heif" -> "image/heif"
+        "svg" -> "image/svg+xml"
+        "pdf" -> "application/pdf"
+        "json" -> "application/json"
+        "txt" -> "text/plain"
+        "csv" -> "text/csv"
+        "html", "htm" -> "text/html"
+        "zip" -> "application/zip"
+        "mp4" -> "video/mp4"
+        "mov" -> "video/quicktime"
+        "m4a" -> "audio/mp4"
+        "mp3" -> "audio/mpeg"
+        "wav" -> "audio/wav"
+        else -> ""
+    }
+}
+
+/**
+ * A `multipart/form-data` body, serialized exactly as the web's `FormData`
+ * (WHATWG) -- the Swift `PyreonMultipartBody` is its twin, `encodeMultipart`
+ * from `@pyreon/http` the oracle.
+ *
+ * Built from alternating name / value arguments in SOURCE order: `null` is
+ * omitted, a list repeats its name, a [PyreonUploadFile] is a file part,
+ * anything else a text part holding JavaScript's `String(value)` (the compiler
+ * serializes an object value with `JSON.stringify` before it gets here).
+ */
+public class PyreonMultipartBody(vararg pairs: Any?) {
+    public sealed class Value {
+        public class Text(public val text: String) : Value()
+        public class File(public val file: PyreonUploadFile) : Value()
+    }
+
+    public class Part(public val name: String, public val value: Value)
+
+    public val parts: List<Part>
+
+    init {
+        val out = ArrayList<Part>()
+        fun add(name: String, value: Any?) {
+            when (value) {
+                null -> Unit
+                is PyreonUploadFile -> out.add(Part(name, Value.File(value)))
+                is Iterable<*> -> value.forEach { add(name, it) }
+                is Array<*> -> value.forEach { add(name, it) }
+                else -> out.add(Part(name, Value.Text(PyreonURL.jsString(value))))
+            }
+        }
+        var index = 0
+        while (index + 1 < pairs.size) {
+            val name = pairs[index]
+            if (name is String) add(name, pairs[index + 1])
+            index += 2
+        }
+        parts = out
+    }
+
+    private fun head(part: Part, boundary: String): ByteArray {
+        val name = escape(normalizeNewlines(part.name))
+        val text = when (val v = part.value) {
+            is Value.Text -> "--$boundary\r\nContent-Disposition: form-data; name=\"$name\"\r\n\r\n"
+            is Value.File -> "--$boundary\r\nContent-Disposition: form-data; name=\"$name\"; filename=\"${escape(v.file.name)}\"\r\n" +
+                "Content-Type: ${v.file.type.ifEmpty { "application/octet-stream" }}\r\n\r\n"
+        }
+        return text.toByteArray(Charsets.UTF_8)
+    }
+
+    /** The exact byte length, or null when a file part's size is unknown (the body is then sent chunked). */
+    public fun contentLength(boundary: String): Long? {
+        var total = 0L
+        for (part in parts) {
+            total += head(part, boundary).size + 2
+            total += when (val v = part.value) {
+                is Value.Text -> normalizeNewlines(v.text).toByteArray(Charsets.UTF_8).size.toLong()
+                is Value.File -> v.file.length ?: return null
+            }
+        }
+        return total + "--$boundary--\r\n".toByteArray(Charsets.UTF_8).size
+    }
+
+    /** Write the body, streaming each file part from its source in chunks. */
+    public fun writeTo(out: java.io.OutputStream, boundary: String) {
+        for (part in parts) {
+            out.write(head(part, boundary))
+            when (val v = part.value) {
+                is Value.Text -> out.write(normalizeNewlines(v.text).toByteArray(Charsets.UTF_8))
+                is Value.File -> v.file.open().use { it.copyTo(out, 64 * 1024) }
+            }
+            out.write("\r\n".toByteArray(Charsets.UTF_8))
+        }
+        out.write("--$boundary--\r\n".toByteArray(Charsets.UTF_8))
+    }
+
+    public companion object {
+        /** A boundary in the shape browsers use; random so it cannot occur in a part. */
+        public fun newBoundary(): String {
+            val alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
+            val random = java.security.SecureRandom()
+            return "----PyreonFormBoundary" + (1..16).map { alphabet[random.nextInt(alphabet.length)] }.joinToString("")
+        }
+
+        /** CR, LF and CRLF all become CRLF -- the spec's newline normalization for names and text values. */
+        internal fun normalizeNewlines(text: String): String =
+            text.replace("\r\n", "\n").replace('\r', '\n').replace("\n", "\r\n")
+
+        /** A name or filename inside the quoted Content-Disposition parameter. */
+        internal fun escape(text: String): String =
+            text.replace("\n", "%0A").replace("\r", "%0D").replace("\"", "%22")
     }
 }

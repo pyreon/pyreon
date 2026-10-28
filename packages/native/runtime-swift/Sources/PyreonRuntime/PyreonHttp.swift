@@ -48,17 +48,23 @@ public struct PyreonHttpRequest: Sendable {
     public var url: String
     public var headers: [String: String]
     public var body: Data?
+    /// A file or `multipart/form-data` body, STREAMED from disk by `send`
+    /// rather than held in memory (a picked video must not be read whole).
+    /// Takes precedence over `body`.
+    public var upload: PyreonHttpUpload?
 
     public init(
         method: PyreonHttpMethod = .get,
         url: String,
         headers: [String: String] = [:],
-        body: Data? = nil
+        body: Data? = nil,
+        upload: PyreonHttpUpload? = nil
     ) {
         self.method = method
         self.url = url
         self.headers = headers
         self.body = body
+        self.upload = upload
     }
 
     /// A GET request.
@@ -125,6 +131,9 @@ public enum PyreonHttpError: Error, Equatable {
     /// reader looking at their model types when the real answer is a 404 or a
     /// 500. The `useFetch` emit checks `isOK` and throws this instead.
     case badStatus(Int)
+    /// A `fileFromUri` URI that names no readable file (or a scheme the
+    /// native runtime cannot read).
+    case unreadableFile(String)
 }
 
 /// The HTTP layer `PyreonFetch`'s injected fetcher uses for richer requests.
@@ -151,10 +160,15 @@ public enum PyreonHttp {
         _ request: PyreonHttpRequest,
         session: URLSession = .shared
     ) async throws -> PyreonHttpResponse {
-        guard let urlRequest = buildURLRequest(request) else {
+        guard var urlRequest = buildURLRequest(request) else {
             throw PyreonHttpError.invalidURL(request.url)
         }
-        let (data, response) = try await session.data(for: urlRequest)
+        let (data, response): (Data, URLResponse)
+        if let upload = request.upload {
+            (data, response) = try await sendUpload(upload, &urlRequest, request.headers, session)
+        } else {
+            (data, response) = try await session.data(for: urlRequest)
+        }
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         var headers: [String: String] = [:]
         if let http = response as? HTTPURLResponse {
@@ -163,6 +177,47 @@ public enum PyreonHttp {
             }
         }
         return PyreonHttpResponse(status: status, headers: headers, body: data)
+    }
+
+    /// Whether the caller already set a header (HTTP names are case-insensitive).
+    static func hasHeader(_ headers: [String: String], _ name: String) -> Bool {
+        headers.keys.contains { $0.caseInsensitiveCompare(name) == .orderedSame }
+    }
+
+    /// Send a streamed body. A file goes out with `upload(for:fromFile:)`
+    /// straight from where it is; a multipart body is serialized to a temp
+    /// file once, streaming each file part from disk, and that is uploaded.
+    /// The Content-Type is what `fetch` sends for the same `body` / `FormData`
+    /// — unless the caller set one, which wins, exactly as on the web.
+    static func sendUpload(
+        _ upload: PyreonHttpUpload,
+        _ urlRequest: inout URLRequest,
+        _ headers: [String: String],
+        _ session: URLSession
+    ) async throws -> (Data, URLResponse) {
+        urlRequest.httpBody = nil
+        switch upload {
+        case .file(let file):
+            if !hasHeader(headers, "content-type"), !file.type.isEmpty {
+                urlRequest.setValue(file.type, forHTTPHeaderField: "Content-Type")
+            }
+            switch file.source {
+            case .file(let url):
+                return try await session.upload(for: urlRequest, fromFile: url)
+            case .bytes(let bytes):
+                return try await session.upload(for: urlRequest, from: bytes)
+            }
+        case .multipart(let body):
+            let boundary = PyreonMultipartBody.newBoundary()
+            if !hasHeader(headers, "content-type") {
+                urlRequest.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+            }
+            let temp = FileManager.default.temporaryDirectory
+                .appendingPathComponent("pyreon-multipart-\(UUID().uuidString)")
+            defer { try? FileManager.default.removeItem(at: temp) }
+            try body.write(to: temp, boundary: boundary)
+            return try await session.upload(for: urlRequest, fromFile: temp)
+        }
     }
 
     /// `send`, then REJECT a non-2xx — what awaiting an `@pyreon/http`
@@ -349,5 +404,197 @@ public enum PyreonURL {
             }
         }
         return out
+    }
+}
+
+
+// MARK: - Uploads
+
+/// A streamed request body: a file (`body: await fileFromUri(uri)`) or a
+/// `multipart/form-data` form (`multipart: { file, caption }`).
+public enum PyreonHttpUpload: Sendable {
+    case file(PyreonUploadFile)
+    case multipart(PyreonMultipartBody)
+}
+
+/// A file to upload — what `fileFromUri(uri, { name, type })` lowers to.
+///
+/// It names the file; it does not hold it. A `file://` file is streamed from
+/// disk when the request is sent, so a large picked video is never read into
+/// memory (and never twice). A `data:` URI is the one inline source.
+public struct PyreonUploadFile: Sendable {
+    public enum Source: Sendable {
+        case file(URL)
+        case bytes(Data)
+    }
+
+    public let source: Source
+    /// The filename a multipart part carries — the web `File.name`.
+    public let name: String
+    /// The MIME type — the web `File.type`; empty when unknown, as on the web.
+    public let type: String
+
+    public init(source: Source, name: String, type: String) {
+        self.source = source
+        self.name = name
+        self.type = type
+    }
+
+    /// Resolve a picker / camera URI. `name` and `type` default to the file's
+    /// own (its last path component, and the type its extension implies); pass
+    /// them to send the same filename from every platform, since a picker's
+    /// temporary copy is not always named like the original.
+    public static func from(_ uri: String, name: String? = nil, type: String? = nil) async throws -> PyreonUploadFile {
+        if uri.hasPrefix("data:") {
+            guard let parsed = parseDataURI(uri) else { throw PyreonHttpError.unreadableFile(uri) }
+            return PyreonUploadFile(source: .bytes(parsed.bytes), name: name ?? "blob", type: type ?? parsed.type)
+        }
+        guard let url = URL(string: uri), url.isFileURL,
+              FileManager.default.isReadableFile(atPath: url.path)
+        else { throw PyreonHttpError.unreadableFile(uri) }
+        return PyreonUploadFile(
+            source: .file(url),
+            name: name ?? url.lastPathComponent,
+            type: type ?? mimeType(forExtension: url.pathExtension)
+        )
+    }
+
+    /// `data:[<type>][;base64],<payload>` — the type, and the decoded bytes.
+    static func parseDataURI(_ uri: String) -> (type: String, bytes: Data)? {
+        guard let comma = uri.firstIndex(of: ",") else { return nil }
+        var meta = String(uri[uri.index(uri.startIndex, offsetBy: 5)..<comma])
+        let payload = String(uri[uri.index(after: comma)...])
+        let base64 = meta.hasSuffix(";base64")
+        if base64 { meta.removeLast(";base64".count) }
+        let bytes: Data?
+        if base64 {
+            bytes = Data(base64Encoded: payload.removingPercentEncoding ?? payload)
+        } else {
+            bytes = (payload.removingPercentEncoding ?? payload).data(using: .utf8)
+        }
+        guard let bytes else { return nil }
+        return (meta.lowercased(), bytes)
+    }
+
+    /// The common upload types by extension — what a browser reports for a
+    /// picked file. An unknown extension is `""`, which a multipart part sends
+    /// as `application/octet-stream`, as the web does.
+    static func mimeType(forExtension ext: String) -> String {
+        switch ext.lowercased() {
+        case "jpg", "jpeg": return "image/jpeg"
+        case "png": return "image/png"
+        case "gif": return "image/gif"
+        case "webp": return "image/webp"
+        case "heic": return "image/heic"
+        case "heif": return "image/heif"
+        case "svg": return "image/svg+xml"
+        case "pdf": return "application/pdf"
+        case "json": return "application/json"
+        case "txt": return "text/plain"
+        case "csv": return "text/csv"
+        case "html", "htm": return "text/html"
+        case "zip": return "application/zip"
+        case "mp4": return "video/mp4"
+        case "mov": return "video/quicktime"
+        case "m4a": return "audio/mp4"
+        case "mp3": return "audio/mpeg"
+        case "wav": return "audio/wav"
+        default: return ""
+        }
+    }
+}
+
+/// A `multipart/form-data` body, serialized exactly as the web's `FormData`
+/// (WHATWG): `encodeMultipart` from `@pyreon/http` is the oracle.
+///
+/// Built from alternating name / value arguments in SOURCE order. A `nil`
+/// value is omitted, an array repeats its name, a `PyreonUploadFile` is a
+/// file part, anything else is a text part holding JavaScript's
+/// `String(value)` (the compiler serializes an object value with
+/// `JSON.stringify` before it gets here, as `encodeMultipart` does).
+public struct PyreonMultipartBody: Sendable {
+    public enum Value: Sendable {
+        case text(String)
+        case file(PyreonUploadFile)
+    }
+
+    public struct Part: Sendable {
+        public let name: String
+        public let value: Value
+    }
+
+    public private(set) var parts: [Part] = []
+
+    public init(_ pairs: Any?...) {
+        var index = 0
+        while index + 1 < pairs.count {
+            if let name = pairs[index] as? String { add(name, pairs[index + 1]) }
+            index += 2
+        }
+    }
+
+    private mutating func add(_ name: String, _ value: Any?) {
+        guard let present = PyreonURL.unwrap(value) else { return }
+        if let file = present as? PyreonUploadFile {
+            parts.append(Part(name: name, value: .file(file)))
+        } else if let list = present as? [Any?] {
+            for item in list { add(name, item) }
+        } else if let list = present as? [Any] {
+            for item in list { add(name, item) }
+        } else {
+            parts.append(Part(name: name, value: .text(PyreonURL.jsString(present))))
+        }
+    }
+
+    /// A boundary in the shape browsers use; random so it cannot occur in a part.
+    public static func newBoundary() -> String {
+        let alphabet = Array("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789")
+        return "----PyreonFormBoundary" + String((0..<16).map { _ in alphabet.randomElement()! })
+    }
+
+    /// CR, LF and CRLF all become CRLF — the spec's newline normalization for names and text values.
+    static func normalizeNewlines(_ text: String) -> String {
+        text.replacingOccurrences(of: "\r\n", with: "\n")
+            .replacingOccurrences(of: "\r", with: "\n")
+            .replacingOccurrences(of: "\n", with: "\r\n")
+    }
+
+    /// A name or filename inside the quoted Content-Disposition parameter.
+    static func escape(_ text: String) -> String {
+        text.replacingOccurrences(of: "\n", with: "%0A")
+            .replacingOccurrences(of: "\r", with: "%0D")
+            .replacingOccurrences(of: "\"", with: "%22")
+    }
+
+    /// Serialize to `url`, streaming each file part from disk in chunks.
+    public func write(to url: URL, boundary: String) throws {
+        FileManager.default.createFile(atPath: url.path, contents: nil)
+        let out = try FileHandle(forWritingTo: url)
+        defer { try? out.close() }
+        func put(_ text: String) { out.write(Data(text.utf8)) }
+        for part in parts {
+            put("--\(boundary)\r\n")
+            let name = Self.escape(Self.normalizeNewlines(part.name))
+            switch part.value {
+            case .text(let text):
+                put("Content-Disposition: form-data; name=\"\(name)\"\r\n\r\n")
+                put(Self.normalizeNewlines(text))
+            case .file(let file):
+                put("Content-Disposition: form-data; name=\"\(name)\"; filename=\"\(Self.escape(file.name))\"\r\n")
+                put("Content-Type: \(file.type.isEmpty ? "application/octet-stream" : file.type)\r\n\r\n")
+                switch file.source {
+                case .bytes(let bytes):
+                    out.write(bytes)
+                case .file(let source):
+                    let input = try FileHandle(forReadingFrom: source)
+                    defer { try? input.close() }
+                    while let chunk = try input.read(upToCount: 64 * 1024), !chunk.isEmpty {
+                        out.write(chunk)
+                    }
+                }
+            }
+            put("\r\n")
+        }
+        put("--\(boundary)--\r\n")
     }
 }

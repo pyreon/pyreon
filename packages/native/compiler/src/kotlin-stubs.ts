@@ -1083,7 +1083,19 @@ data class PyreonHttpRequest(
   val url: String,
   val headers: Map<String, String> = emptyMap(),
   val body: String? = null,
+  val upload: PyreonHttpUpload? = null,
 )
+sealed class PyreonHttpUpload {
+  class File(val file: PyreonUploadFile) : PyreonHttpUpload()
+  class Multipart(val body: PyreonMultipartBody) : PyreonHttpUpload()
+}
+class PyreonUploadFile(val name: String, val type: String, val length: Long?, private val opener: () -> java.io.InputStream)
+class PyreonMultipartBody(vararg pairs: Any?)
+object PyreonUploadFiles {
+  fun from(uri: String, name: String? = null, type: String? = null): PyreonUploadFile = throw UnsupportedOperationException("stub")
+}
+// PyreonUploadAndroid.kt — the content:// resolver the emit calls with the hoisted LocalContext.
+fun PyreonUploadFiles.from(context: Context, uri: String, name: String? = null, type: String? = null): PyreonUploadFile = throw UnsupportedOperationException("stub")
 data class PyreonHttpResponse(
   val status: Int,
   val headers: Map<String, String> = emptyMap(),

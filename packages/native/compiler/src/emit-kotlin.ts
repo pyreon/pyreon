@@ -9,6 +9,7 @@ import { lowerWebViewDomStorage } from './webview-options'
 import {
   asyncValueReturnWarning,
   bodyAwaitsFallible,
+  bodyReturns,
   bodyReturnsValue,
   indentLines,
   KOTLIN_UNHANDLED_ASYNC,
@@ -624,6 +625,9 @@ let _emittingLayoutComponentKotlin = false
  * `val pyreonAsyncScope = rememberCoroutineScope()` at the composable top.
  */
 let _hasAsyncHandler = false
+/** A plugin asked for the composable's Android `Context` (`KotlinEmitContext.androidContext`); hoisted beside the async scope. */
+let _needsAndroidContext = false
+const PYREON_ANDROID_CONTEXT = 'pyreonContext'
 const PYREON_ASYNC_SCOPE = 'pyreonAsyncScope'
 
 /** Pre-pass: collect every layout-parent component name across all router
@@ -1203,6 +1207,7 @@ function emitKotlinComponent(c: ComponentIR): string {
   _asyncDeclsKotlin = []
   // M4.5: fresh per component — set by emitKotlinAction if an async handler emits.
   _hasAsyncHandler = false
+  _needsAndroidContext = false
   // C5.3: reset router-routes map (mirrors Swift emit's same state).
   _routerRoutes = new Map()
   // Phase 2 follow-up — track function-typed props so handler emit
@@ -1348,6 +1353,7 @@ function emitKotlinComponent(c: ComponentIR): string {
   // A component-local `async` function launches on the scope, and a local declaration can only see what precedes it —
   // so the scope goes ABOVE the decls when one of them needs it (an inline handler's goes below, before the JSX).
   const declsNeedAsyncScope = _hasAsyncHandler
+  const declsNeedAndroidContext = _needsAndroidContext
   const declStartIndex = lines.length
   for (const declText of declTexts) {
     lines.push(`  ${declText}`)
@@ -1422,6 +1428,10 @@ function emitKotlinComponent(c: ComponentIR): string {
   // top (rememberCoroutineScope() must run at composable scope, not in a lambda).
   if (_hasAsyncHandler) {
     lines.splice(declsNeedAsyncScope ? declStartIndex : asyncScopeInsertIndex, 0, `  val ${PYREON_ASYNC_SCOPE} = rememberCoroutineScope()`)
+  }
+  // A composition local must be read at composable scope, never inside the `onClick` lambda that uses it.
+  if (_needsAndroidContext) {
+    lines.splice(declsNeedAndroidContext ? declStartIndex : asyncScopeInsertIndex, 0, `  val ${PYREON_ANDROID_CONTEXT} = LocalContext.current`)
   }
   lines.push(`}`)
   _activePropsParamName = undefined
@@ -2137,9 +2147,11 @@ function emitKotlinFunction(d: Extract<DeclIR, { kind: 'function' }>, ctx: Kotli
         only !== undefined && only.kind === 'return' && only.expr !== undefined
           ? [{ kind: 'expr', expr: only.expr }]
           : d.body
+      // The body moves inside `launch { … }`, where a bare `return` is prohibited (it would target the enclosing
+      // composable), so an early return is emitted as `return@launch`.
       const sync = emitKotlinFunction(
         { ...d, async: false, returnType: { kind: 'unknown' }, body },
-        ctx,
+        { ...ctx, lambdaLabel: 'launch' },
       )
       const m = /^(fun [^\n]*\{)\n([\s\S]*)\n {2}\}$/.exec(sync)
       if (m !== null) {
@@ -5024,6 +5036,10 @@ function kotlinEmitContext(indent: number): KotlinEmitContext {
         _hasAsyncHandler = true
         return PYREON_ASYNC_SCOPE
       },
+      androidContext: () => {
+        _needsAndroidContext = true
+        return PYREON_ANDROID_CONTEXT
+      },
     },
     indent,
   )
@@ -5614,7 +5630,17 @@ function emitKotlinAction(handler: ExprIR, indent: number): string {
     // limitation the single-expr path has (it emits via `emitKotlinExpr`,
     // which also doesn't synthesize), so this is not a regression.
     if (handler.stmts !== undefined && handler.stmts.length > 0) {
-      const stmtCtx: KotlinCtx = { synthesizedDataClasses: [], componentName: '' }
+      const isAsync = handler.async === true
+      // A bare `return` is prohibited inside a Kotlin lambda (it would target the enclosing composable). An early
+      // return in an async handler leaves the coroutine (`return@launch`); in a synchronous one the handler lambda
+      // itself is labelled so the return can name it (`pyreonHandler@{ … return@pyreonHandler }`). Only a body that
+      // returns gets the label, so every other handler emits exactly as before.
+      const syncLabel = !isAsync && bodyReturns(handler.stmts) ? KOTLIN_HANDLER_LABEL : undefined
+      const stmtCtx: KotlinCtx = {
+        synthesizedDataClasses: [],
+        componentName: '',
+        ...(isAsync ? { lambdaLabel: 'launch' } : syncLabel !== undefined ? { lambdaLabel: syncLabel } : {}),
+      }
       const pad = ' '.repeat(indent + 2)
       // Seed handler-LOCAL `const`/`let` types into the infer ctx so a later
       // type-dependent emit inside this body resolves them — e.g. `const t =
@@ -5624,12 +5650,14 @@ function emitKotlinAction(handler: ExprIR, indent: number): string {
       // M4.5: an `async () => { await … }` handler wraps its body in
       // `pyreonAsyncScope.launch { … }` (the hoisted rememberCoroutineScope())
       // so a synchronous `onClick: () -> Unit` slot can run suspend calls.
-      const isAsync = handler.async === true
       const bodyIndent = isAsync ? indent + 4 : indent + 2
       const lines = emitKotlinStmtLines(handler.stmts, bodyIndent, stmtCtx).join('\n')
       _kotlinExprInferCtx.locals = savedLocals
+      const labelPrefix = syncLabel === undefined ? '' : `${syncLabel}@`
       const head =
-        handler.params.length === 0 ? '{' : `{ ${handler.params.map(kotlinIdent).join(', ')} ->`
+        handler.params.length === 0
+          ? `${labelPrefix}{`
+          : `${labelPrefix}{ ${handler.params.map(kotlinIdent).join(', ')} ->`
       if (isAsync) {
         _hasAsyncHandler = true
         if (bodyAwaitsFallible(handler.stmts, isThrowingPluginExpr)) {
@@ -5693,6 +5721,9 @@ function emitKotlinAction(handler: ExprIR, indent: number): string {
   }
   return `{ ${emitKotlinExpr(handler, indent)} }`
 }
+
+/** The label a synchronous handler lambda carries when its body returns early (`return@pyreonHandler`). */
+const KOTLIN_HANDLER_LABEL = 'pyreonHandler'
 
 /** A single-expression async handler's coroutine body; a fallible await is caught so it cannot crash the app. */
 function kotlinLaunchBody(body: ExprIR, indent: number): string {

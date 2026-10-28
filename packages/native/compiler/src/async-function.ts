@@ -25,6 +25,19 @@ export function bodyReturnsValue(body: readonly StatementIR[]): boolean {
   return walk(body)
 }
 
+/** Whether `body` contains any `return` (bare or with a value) belonging to THIS function — not one in a nested arrow. */
+export function bodyReturns(body: readonly StatementIR[]): boolean {
+  const walk = (node: unknown): boolean => {
+    if (Array.isArray(node)) return node.some(walk)
+    if (node === null || typeof node !== 'object') return false
+    const n = node as { kind?: string }
+    if (n.kind === 'arrow') return false
+    if (n.kind === 'return') return true
+    return Object.values(node).some(walk)
+  }
+  return walk(body)
+}
+
 /**
  * Whether `body` awaits a FALLIBLE expression belonging to THIS function (`isFallible` says which awaited expressions
  * can fail — a plugin request). Like {@link bodyReturnsValue} the walk stops at a nested arrow: an `await` inside one

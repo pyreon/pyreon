@@ -98,6 +98,11 @@ export interface ResolvedRequest {
    * web-identical `JSON.stringify` lowering). Mutually exclusive with `body`.
    */
   readonly bodyExpr?: ExprIR | undefined
+  /**
+   * A body the request STREAMS (a `multipart` form, or a raw `body` that may be a `fileFromUri` file), as a marker
+   * call the request writers lower (`swiftHttpRequestArgs` / `kotlinHttpRequestArgs`). Exclusive with the others.
+   */
+  readonly upload?: ExprIR | undefined
   /** The same-module schema binding the request's `response` names (evidence for the decode type's `Int`/`Double` fields). */
   readonly response?: { readonly binding: string; readonly array: boolean } | undefined
 }

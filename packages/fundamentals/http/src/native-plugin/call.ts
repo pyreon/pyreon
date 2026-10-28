@@ -115,6 +115,8 @@ interface CallPayload {
   readonly headerExprNames: readonly string[]
   readonly hasUrlExpr: boolean
   readonly hasBodyExpr: boolean
+  /** A streamed body (multipart / file) occupies the slot after the body. */
+  readonly hasUpload?: boolean
 }
 
 /** Recognize an endpoint call in an expression position the scan classified. */
@@ -143,6 +145,7 @@ export const recognizeEndpointCall: CallExprRecognizer = (site, ctx) => {
   const args: ExprIR[] = []
   if (resolved.urlExpr !== undefined) args.push(resolved.urlExpr)
   if (resolved.bodyExpr !== undefined) args.push(resolved.bodyExpr)
+  if (resolved.upload !== undefined) args.push(resolved.upload)
   const headerExprNames = Object.keys(resolved.headerExprs ?? {})
   for (const h of headerExprNames) args.push((resolved.headerExprs as Record<string, ExprIR>)[h] as ExprIR)
   const payload: CallPayload = {
@@ -154,6 +157,7 @@ export const recognizeEndpointCall: CallExprRecognizer = (site, ctx) => {
     headerExprNames,
     hasUrlExpr: resolved.urlExpr !== undefined,
     hasBodyExpr: resolved.bodyExpr !== undefined,
+    ...(resolved.upload !== undefined ? { hasUpload: true } : {}),
   }
   return { type: HTTP_CALL_TYPE, payload: payload as never, args }
 }
@@ -164,6 +168,7 @@ function partsOf(e: ExtExprIR, url: (literal: string | undefined, expr: ExprIR |
   let i = 0
   const urlExpr = p.hasUrlExpr ? e.args[i++] : undefined
   const bodyExpr = p.hasBodyExpr ? e.args[i++] : undefined
+  const upload = p.hasUpload === true ? e.args[i++] : undefined
   const headerExprs: Record<string, ExprIR> = {}
   for (const h of p.headerExprNames) headerExprs[h] = e.args[i++] as ExprIR
   return {
@@ -173,6 +178,7 @@ function partsOf(e: ExtExprIR, url: (literal: string | undefined, expr: ExprIR |
     ...(p.headerExprNames.length > 0 ? { headerExprs } : {}),
     body: p.body,
     bodyExpr,
+    upload,
   }
 }
 

@@ -82,14 +82,77 @@ export interface HttpRequestParts {
   readonly body?: string | undefined
   /** A runtime body, an expression of type `string`, evaluated as the request is built. */
   readonly bodyExpr?: ExprIR | undefined
+  /** A streamed body (`ResolvedRequest.upload`): a multipart form, or a raw body whose type decides at emit. */
+  readonly upload?: ExprIR | undefined
 }
 
 /** What the request writers read of an emit context. */
 interface RequestEmitCtx {
   expr(e: ExprIR, at?: number): string
+  /** The fields of a named type (none for an enum) — `EmitContext.rowFields`. */
+  rowFields?(element: TypeIR): readonly { name: string; type: TypeIR }[]
   stringLiteral(value: string): string
   inferType(e: ExprIR): TypeIR
   warn(message: string): void
+}
+
+/** The marker calls `@pyreon/http`'s resolver wraps a streamed body in (`ResolvedRequest.upload`). */
+const MULTIPART_MARKER = '__pyreonMultipart'
+const RAW_BODY_MARKER = '__pyreonRawBody'
+
+/** Whether `t` is the upload-file type `fileFromUri` produces. */
+const isUploadFile = (t: TypeIR): boolean =>
+  t.kind === 'typeRef' && (t.name === 'PyreonUploadFile' || t.name === 'File' || t.name === 'Blob')
+
+/**
+ * A struct / object value — `encodeMultipart` writes one as a `JSON.stringify` text part. A named type counts only
+ * when it is a STRUCT (it has fields): an enum-typed value is a string on the web and goes out as `String(value)`.
+ */
+function fieldCount(t: TypeIR, ctx: RequestEmitCtx): number {
+  try {
+    return ctx.rowFields?.(t).length ?? 0
+  } catch {
+    return 0
+  }
+}
+
+const isObjectValue = (t: TypeIR, ctx: RequestEmitCtx): boolean =>
+  t.kind === 'object' || (t.kind === 'typeRef' && !isUploadFile(t) && fieldCount(t, ctx) > 0)
+
+/**
+ * What a streamed body becomes on the target: the `PyreonMultipartBody` argument texts, a file to stream, or — for a
+ * raw `body` that turned out to be a string — a plain text body.
+ */
+function resolveUpload(
+  p: HttpRequestParts,
+  ctx: RequestEmitCtx,
+  where: string,
+): { multipart?: string[]; file?: ExprIR; text?: { bodyExpr: ExprIR } } {
+  const u = p.upload
+  if (u === undefined || u.kind !== 'call' || u.callee.kind !== 'identifier') return {}
+  if (u.callee.name === RAW_BODY_MARKER) {
+    const value = u.args[0] as ExprIR
+    const t = ctx.inferType(value)
+    if (isUploadFile(t)) return { file: value }
+    return { text: { bodyExpr: value } }
+  }
+  if (u.callee.name !== MULTIPART_MARKER) return {}
+  const out: string[] = []
+  for (let i = 0; i + 1 < u.args.length; i += 2) {
+    const name = u.args[i] as ExprIR
+    const value = u.args[i + 1] as ExprIR
+    const t = value.kind === 'literal' ? undefined : ctx.inferType(value)
+    if (t !== undefined && t.kind === 'array' && isObjectValue(t.element, ctx)) {
+      ctx.warn(
+        `${where} multipart field ${ctx.expr(name, 0)} is an array of objects — each element would be a JSON text part on the web, which is not lowered. It is OMITTED on iOS and Android; send one field per object, or the array as one \`JSON.stringify\` value.`,
+      )
+      continue
+    }
+    out.push(ctx.expr(name, 0))
+    // An object value is a JSON text part on the web (`encodeMultipart`), serialized by the web-identical stringify.
+    out.push(t !== undefined && isObjectValue(t, ctx) ? ctx.expr({ kind: 'json-stringify', arg: value }, 0) : ctx.expr(value, 0))
+  }
+  return { multipart: out }
 }
 
 /**
@@ -128,7 +191,8 @@ function sendableBodyExpr(expr: ExprIR | undefined, ctx: RequestEmitCtx, where: 
  * drift apart call site by call site. `where` prefixes a refused-header warning.
  */
 export function swiftHttpRequestArgs(p: HttpRequestParts, ctx: RequestEmitCtx, where: string): string {
-  p = withDefaultContentType({ ...p, bodyExpr: sendableBodyExpr(p.bodyExpr, ctx, where) })
+  const upload = resolveUpload(p, ctx, where)
+  p = withDefaultContentType({ ...p, ...upload.text, bodyExpr: sendableBodyExpr(upload.text?.bodyExpr ?? p.bodyExpr, ctx, where) })
   const parts = [`method: .${(p.method ?? 'GET').toLowerCase()}`, `url: ${p.url}`]
   const pairs = [
     ...Object.entries(p.headers ?? {}).map(([k, v]) => `${ctx.stringLiteral(k)}: ${ctx.stringLiteral(v)}`),
@@ -137,12 +201,15 @@ export function swiftHttpRequestArgs(p: HttpRequestParts, ctx: RequestEmitCtx, w
   if (pairs.length > 0) parts.push(`headers: [${pairs.join(', ')}]`)
   if (p.body !== undefined) parts.push(`body: Data(${ctx.stringLiteral(p.body)}.utf8)`)
   else if (p.bodyExpr !== undefined) parts.push(`body: Data((${ctx.expr(p.bodyExpr, 0)}).utf8)`)
+  if (upload.multipart !== undefined) parts.push(`upload: .multipart(PyreonMultipartBody(${upload.multipart.join(', ')}))`)
+  else if (upload.file !== undefined) parts.push(`upload: .file(${ctx.expr(upload.file, 0)})`)
   return parts.join(', ')
 }
 
 /** The Kotlin twin of {@link swiftHttpRequestArgs}: `method = PyreonHttpMethod.POST, url = …, headers = mapOf(…), body = …`. */
 export function kotlinHttpRequestArgs(p: HttpRequestParts, ctx: RequestEmitCtx, where: string): string {
-  p = withDefaultContentType({ ...p, bodyExpr: sendableBodyExpr(p.bodyExpr, ctx, where) })
+  const upload = resolveUpload(p, ctx, where)
+  p = withDefaultContentType({ ...p, ...upload.text, bodyExpr: sendableBodyExpr(upload.text?.bodyExpr ?? p.bodyExpr, ctx, where) })
   const parts = [`method = PyreonHttpMethod.${(p.method ?? 'GET').toUpperCase()}`, `url = ${p.url}`]
   const pairs = [
     ...Object.entries(p.headers ?? {}).map(([k, v]) => `${ctx.stringLiteral(k)} to ${ctx.stringLiteral(v)}`),
@@ -151,6 +218,8 @@ export function kotlinHttpRequestArgs(p: HttpRequestParts, ctx: RequestEmitCtx, 
   if (pairs.length > 0) parts.push(`headers = mapOf(${pairs.join(', ')})`)
   if (p.body !== undefined) parts.push(`body = ${ctx.stringLiteral(p.body)}`)
   else if (p.bodyExpr !== undefined) parts.push(`body = ${ctx.expr(p.bodyExpr, 0)}`)
+  if (upload.multipart !== undefined) parts.push(`upload = PyreonHttpUpload.Multipart(PyreonMultipartBody(${upload.multipart.join(', ')}))`)
+  else if (upload.file !== undefined) parts.push(`upload = PyreonHttpUpload.File(${ctx.expr(upload.file, 0)})`)
   return parts.join(', ')
 }
 

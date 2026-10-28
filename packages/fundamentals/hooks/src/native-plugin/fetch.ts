@@ -55,6 +55,8 @@ interface FetchPayload {
    * the request: on mount, the moment the web's `useFetch` reads `init.body`. Mutually exclusive with `body`.
    */
   readonly bodyExpr?: ExprIR
+  /** A streamed body (`multipart` / a raw `body`) from an endpoint call, built on mount. */
+  readonly upload?: ExprIR
 }
 
 const payloadOf = (d: ExtDecl): FetchPayload => d.payload as unknown as FetchPayload
@@ -90,6 +92,7 @@ export const recognizeFetch: CallRecognizer = (_call, ctx) => {
         body?: string | undefined
         bodyExpr?: ExprIR | undefined
         urlExpr?: ExprIR | undefined
+        upload?: ExprIR | undefined
       }
     | undefined
   if (urlArg?.type === 'CallExpression' && urlArg.callee?.type === 'Identifier' && ctx.requests.has(urlArg.callee.name as string)) {
@@ -130,8 +133,10 @@ export const recognizeFetch: CallRecognizer = (_call, ctx) => {
     body?: string
     bodyExpr?: ExprIR
     urlExpr?: ExprIR
+    upload?: ExprIR
   } = {}
   if (resolvedEndpoint?.urlExpr !== undefined) req.urlExpr = resolvedEndpoint.urlExpr
+  if (resolvedEndpoint?.upload !== undefined) req.upload = resolvedEndpoint.upload
   // An endpoint's verb / headers / json body are the DEFAULTS; an explicit second argument still wins (the loop below overwrites).
   if (resolvedEndpoint?.method) req.method = resolvedEndpoint.method
   if (resolvedEndpoint?.headers) req.headers = resolvedEndpoint.headers
@@ -220,7 +225,13 @@ export const recognizeFetch: CallRecognizer = (_call, ctx) => {
 
 const hasRequestInit = (p: FetchPayload): boolean =>
   Boolean(
-    p.method || p.headers || p.headerExprs || p.body !== undefined || p.bodyExpr !== undefined || p.urlExpr !== undefined,
+    p.method ||
+      p.headers ||
+      p.headerExprs ||
+      p.body !== undefined ||
+      p.bodyExpr !== undefined ||
+      p.urlExpr !== undefined ||
+      p.upload !== undefined,
   )
 
 /** `.task { … }` on the stable-identity host: begin → request → resolve | reject. Lines are relative to the modifier's own indentation. */
@@ -235,7 +246,7 @@ function swiftHarness(d: ExtDecl, ctx: EmitContext): readonly string[] {
     const where = `Declaration ${d.name}: useFetch`
     // Header and body expressions are evaluated as the request is built, inside the harness.
     const args = swiftHttpRequestArgs(
-      { method: p.method, url: p.urlExpr !== undefined ? ctx.expr(p.urlExpr, 0) : swiftStr(p.url), headers: p.headers, headerExprs: p.headerExprs, body: p.body, bodyExpr: p.bodyExpr },
+      { method: p.method, url: p.urlExpr !== undefined ? ctx.expr(p.urlExpr, 0) : swiftStr(p.url), headers: p.headers, headerExprs: p.headerExprs, body: p.body, bodyExpr: p.bodyExpr, upload: p.upload },
       ctx,
       where,
     )
@@ -259,7 +270,7 @@ function kotlinHarness(d: ExtDecl, ctx: EmitContext): readonly string[] {
     // Mirrors the Swift branch one-for-one; `readText()` below cannot express a verb, headers or a body.
     const where = `Declaration ${d.name}: useFetch`
     const args = kotlinHttpRequestArgs(
-      { method: p.method, url: p.urlExpr !== undefined ? ctx.expr(p.urlExpr, 0) : kotlinStr(p.url), headers: p.headers, headerExprs: p.headerExprs, body: p.body, bodyExpr: p.bodyExpr },
+      { method: p.method, url: p.urlExpr !== undefined ? ctx.expr(p.urlExpr, 0) : kotlinStr(p.url), headers: p.headers, headerExprs: p.headerExprs, body: p.body, bodyExpr: p.bodyExpr, upload: p.upload },
       ctx,
       where,
     )

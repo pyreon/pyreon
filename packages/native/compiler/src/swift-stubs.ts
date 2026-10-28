@@ -1317,8 +1317,21 @@ public struct PyreonHttpRequest: Sendable {
     method: PyreonHttpMethod = .get,
     url: String,
     headers: [String: String] = [:],
-    body: Data? = nil
+    body: Data? = nil,
+    upload: PyreonHttpUpload? = nil
   ) {}
+}
+public enum PyreonHttpUpload: Sendable {
+  case file(PyreonUploadFile)
+  case multipart(PyreonMultipartBody)
+}
+public struct PyreonUploadFile: Sendable {
+  public let name: String = ""
+  public let type: String = ""
+  public static func from(_ uri: String, name: String? = nil, type: String? = nil) async throws -> PyreonUploadFile { fatalError() }
+}
+public struct PyreonMultipartBody: Sendable {
+  public init(_ pairs: Any?...) {}
 }
 public struct PyreonHttpResponse: Sendable {
   public let status: Int = 0

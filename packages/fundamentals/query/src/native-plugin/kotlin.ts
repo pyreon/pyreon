@@ -61,12 +61,12 @@ export function queryLifecycleKotlin(decl: ExtDecl, ctx: EmitContext): readonly 
   } else {
     const kotlinUrl = d.urlExpr !== undefined ? ctx.expr(d.urlExpr, 0) : ctx.stringLiteral(d.url as string)
     lines.push(`    try {`)
-    if (d.method || d.headers || d.headerExprs || d.body !== undefined || d.bodyExpr !== undefined) {
+    if (d.method || d.headers || d.headerExprs || d.body !== undefined || d.bodyExpr !== undefined || d.upload !== undefined) {
       // Mirrors the Swift PyreonHttp branch: a request with a VERB, headers, or a body goes through
       // PyreonHttp (readText() can express none of them). Header and body expressions are evaluated
       // here, inside the harness — i.e. when THIS run builds the request, so a token is current.
       const args = kotlinHttpRequestArgs(
-        { method: d.method, url: kotlinUrl, headers: d.headers, headerExprs: d.headerExprs, body: d.body, bodyExpr: d.bodyExpr },
+        { method: d.method, url: kotlinUrl, headers: d.headers, headerExprs: d.headerExprs, body: d.body, bodyExpr: d.bodyExpr, upload: d.upload },
         ctx,
         `Declaration ${decl.name}: useQuery queryFn fetch`,
       )

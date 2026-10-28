@@ -375,6 +375,8 @@ export interface KotlinEmitContextBackend extends EmitContextBackend, EmitContex
   intArg(e: ExprIR, indent: number): string
   /** The composable's coroutine scope binding, hoisted as `rememberCoroutineScope()` because it was asked for. */
   coroutineScope(): string
+  /** The composable's Android `Context`, hoisted as `LocalContext.current` because it was asked for. */
+  androidContext(): string
 }
 
 /**
@@ -395,6 +397,12 @@ export interface KotlinEmitContext extends EmitContext {
    * composition leaves.
    */
   coroutineScope(): string
+  /**
+   * The name of a `LocalContext.current` binding hoisted to the top of the composable, for an expression that needs
+   * an Android `Context` (resolving a `content://` URI) from inside a callback, where a composition local cannot be
+   * read.
+   */
+  androidContext(): string
 }
 
 export function createKotlinEmitContext(
@@ -405,6 +413,7 @@ export function createKotlinEmitContext(
     ...createEmitContext('kotlin', backend, indent),
     intArg: (e, at = indent) => backend.intArg(e, at),
     coroutineScope: () => backend.coroutineScope(),
+    androidContext: () => backend.androidContext(),
   }
 }
 
