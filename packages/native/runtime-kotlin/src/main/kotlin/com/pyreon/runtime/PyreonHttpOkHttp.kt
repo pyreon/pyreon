@@ -107,8 +107,11 @@ public object PyreonHttpOkHttp : PyreonHttpExecutor {
         val body: RequestBody? = when {
             upload != null -> streamed(upload, contentType)
             request.method == PyreonHttpMethod.GET -> null
-            request.method == PyreonHttpMethod.DELETE -> request.body?.toRequestBody(contentType)
-            else -> (request.body ?: "").toRequestBody(contentType)
+            // The ByteArray overload, NOT `String.toRequestBody`: the String one appends
+            // `; charset=utf-8` to a type that has none, so `application/json` went out as
+            // `application/json; charset=utf-8` — not what `fetch` sends for the same call.
+            request.method == PyreonHttpMethod.DELETE -> request.body?.toByteArray(Charsets.UTF_8)?.toRequestBody(contentType)
+            else -> (request.body ?: "").toByteArray(Charsets.UTF_8).toRequestBody(contentType)
         }
         builder.method(request.method.verb, body)
 

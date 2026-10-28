@@ -1110,6 +1110,9 @@ abstract class RequestBody {
     @Suppress("UNUSED_PARAMETER")
     fun String.toRequestBody(contentType: MediaType? = null): RequestBody =
       throw UnsupportedOperationException("stub")
+    @Suppress("UNUSED_PARAMETER")
+    fun ByteArray.toRequestBody(contentType: MediaType? = null, offset: Int = 0, byteCount: Int = size): RequestBody =
+      throw UnsupportedOperationException("stub")
   }
 }
 

@@ -7392,13 +7392,13 @@
       "warnings": 0
     },
     "example:native-tasks/TasksApp.tsx|swift": {
-      "sha": "1541ebdef76d4644303607a8e7e84db53d1f79e939d11f31a94a2edc3fe0fa76",
-      "bytes": 164810,
+      "sha": "1b8f69f9bff46fff95491349473eec32d62f6464445f5bde9dc155ef824f6f3c",
+      "bytes": 166454,
       "warnings": 1
     },
     "example:native-tasks/TasksApp.tsx|kotlin": {
-      "sha": "e10dc4f20c91fec15dbf7c0f3cba5016fe02f07ecd77403874ff4b4daa971027",
-      "bytes": 172112,
+      "sha": "7f7110d65cf2cfd680612d074825e76b4fed6d1430394e03ba85b069330b44e5",
+      "bytes": 174506,
       "warnings": 0
     },
     "example:native-todomvc-ios/TodoApp.tsx|swift": {
@@ -7712,13 +7712,13 @@
       "warnings": 0
     },
     "registry:@pyreon/http|swift": {
-      "sha": "03e826991a1260a1709c0d6de07936ed0e7180d18f4c0fdcaea5518c75cb7e95",
-      "bytes": 1703,
+      "sha": "375131b97ae43b7cc7b67a8846e000e33d4f5c8b4667cb3d68a968caa7687e25",
+      "bytes": 2266,
       "warnings": 0
     },
     "registry:@pyreon/http|kotlin": {
-      "sha": "436fd1cb8341a56d0fd5614405d0b28698540f69e887d0b42e2800651ed83e68",
-      "bytes": 2169,
+      "sha": "43fdd08f30ae4799234ecd2399fd2aa335fcf97b4cce145fbd469dcbc721b7ba",
+      "bytes": 3187,
       "warnings": 0
     },
     "registry:@pyreon/validation|swift": {
