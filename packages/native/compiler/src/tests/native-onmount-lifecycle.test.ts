@@ -81,7 +81,8 @@ describe('P2 — onMount lifecycle lowering (both targets)', () => {
     expect(rk.code).toContain('ws.connect("wss://example.com/feed")')
   })
 
-  it('guard: a returned cleanup fn warns NAMED; the mount body is still emitted', () => {
+  // The teardown now LOWERS (`.onDisappear` / `DisposableEffect`) — see native-onmount-cleanup.test.ts.
+  it('a returned cleanup fn lowers to .onDisappear; the mount body is still emitted, never as `return {`', () => {
     const rc = transform(
       `import { signal, onMount } from '@pyreon/reactivity'
 import { Stack, Text } from '@pyreon/primitives'
@@ -92,8 +93,9 @@ export function App(){
 }`,
       { target: 'swift' },
     )
-    expect(rc.warnings.some((w) => w.includes('cleanup'))).toBe(true)
+    expect(rc.warnings.some((w) => w.includes('cleanup'))).toBe(false)
     expect(rc.code).toContain('count = 5')
+    expect(rc.code).toMatch(/\.onDisappear \{\s+count = 0/)
     expect(rc.code).not.toContain('return {')
   })
   it('guard: a bare `effect(...)` statement warns NAMED (the silent-drop class is closed)', () => {
