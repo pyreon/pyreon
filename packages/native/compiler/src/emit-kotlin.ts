@@ -6,6 +6,7 @@
 
 import { classifyFallback, unconsumedSlotWarning } from './jsx-slot-attrs'
 import { lowerWebViewDomStorage } from './webview-options'
+import { LayoutScopeTracker, lowerWebViewGrow } from './webview-sizing'
 import { asyncValueReturnWarning, bodyReturnsValue } from './async-function'
 import { kotlinStr } from './string-literals'
 import { resolveFieldShape } from './field-shape'
@@ -721,6 +722,7 @@ export function emitKotlin(
   aliasImports: Map<string, { source: string; imported: string }> = new Map(),
 ): { code: string; warnings: string[] } {
   _emitWarnings = []
+  _kotlinLayout.reset()
   _needsKotlinNumString = false
   // Per-FILE hook-binding-name sets. They are populated by the pre-pass
   // below (which walks EVERY component at once), so they are file-scoped,
@@ -5144,6 +5146,7 @@ const kotlinWebViewFacade: WebViewFacade = {
   dynamicAttr: dynamicWebViewAttrKotlin,
   dataArg: kotlinWebViewDataArg,
   messageHandler: emitKotlinMessageHandler,
+  grow: (el, chain) => ({ chain: withKotlinWebViewGrow(el, chain), arg: undefined }),
 }
 
 /**
@@ -5179,7 +5182,18 @@ function warnUnreadKotlinAttrs(e: Extract<ExprIR, { kind: 'jsx-element' }>): voi
   }
 }
 
+/**
+ * Which Compose container each JSX element is a DIRECT child of — so `<WebView
+ * grow>` can emit `Modifier.weight(1f)`, which only compiles inside the
+ * `ColumnScope` / `RowScope` of its parent. See `webview-sizing.ts`.
+ */
+const _kotlinLayout = new LayoutScopeTracker()
+
 function emitKotlinJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
+  return _kotlinLayout.element(e.tag, () => emitKotlinJsxElement(e, indent))
+}
+
+function emitKotlinJsxElement(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
   const tag = e.tag
 
   // Library elements claimed by a registered element lowering — see the Swift
@@ -5191,7 +5205,8 @@ function emitKotlinJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
   )
   if (lowering !== undefined) {
     const retagged = lowering.retag?.(e, { warn: pushEmitWarning })
-    if (retagged !== undefined) return emitKotlinJsx(retagged, indent)
+    // The retagged element TAKES the place of `e` — same depth, same parent.
+    if (retagged !== undefined) return emitKotlinJsxElement(retagged, indent)
     const emitLowered = lowering.emit?.kotlin
     if (emitLowered !== undefined) {
       warnUnreadKotlinAttrs(e)
@@ -5200,7 +5215,7 @@ function emitKotlinJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
   }
 
   const rewritten = rewritePluginElement(e, _pluginScope, () => kotlinEmitContext(indent))
-  if (rewritten !== undefined) return emitKotlinJsx(rewritten, indent)
+  if (rewritten !== undefined) return emitKotlinJsxElement(rewritten, indent)
 
   warnUnreadKotlinAttrs(e)
 
@@ -6773,7 +6788,9 @@ function emitKotlinStack(
   if (e.children.length === 0) {
     return `${composable}${initSignature} {}`
   }
-  const contentLines = e.children.map((c) => pad + emitKotlinChild(c, indent + 2)).join('\n')
+  const contentLines = _kotlinLayout.children(isRow ? 'row' : 'column', () =>
+    e.children.map((c) => pad + emitKotlinChild(c, indent + 2)).join('\n'),
+  )
   return `${composable}${initSignature} {\n${contentLines}\n${' '.repeat(indent)}}`
 }
 
@@ -6946,8 +6963,23 @@ function kotlinWebViewModifierArg(
   e: Extract<ExprIR, { kind: 'jsx-element' }>,
   omit?: ReadonlySet<string>,
 ): string {
-  const chain = emitKotlinLayoutModifier(e, omit)
+  const chain = withKotlinWebViewGrow(e, emitKotlinLayoutModifier(e, omit))
   return chain === '' ? '' : `, modifier = ${chain}`
+}
+
+/**
+ * Prefix a WebView-family host's modifier chain with its `grow` sizing:
+ * `Modifier.weight(1f)` as a DIRECT child of a Column / Row (the only place
+ * the `ColumnScope` / `RowScope` extension compiles), `Modifier.fillMaxSize()`
+ * anywhere else. Must run while the host element is being dispatched, since it
+ * reads the layout scope. See webview-sizing.ts.
+ */
+function withKotlinWebViewGrow(e: Extract<ExprIR, { kind: 'jsx-element' }>, chain: string): string {
+  const grow = lowerWebViewGrow(e.attrs, () => readStaticAttrKotlin(e, 'grow'), _kotlinLayout, e.tag)
+  if (grow.warning !== undefined) _emitWarnings.push(grow.warning)
+  if (grow.axis === undefined) return chain
+  const head = grow.weighted ? 'Modifier.weight(1f)' : 'Modifier.fillMaxSize()'
+  return chain === '' ? head : `${head}${chain.replace(/^Modifier/, '')}`
 }
 
 /**
@@ -7447,6 +7479,14 @@ function containsLazyListDeep(children: readonly ChildIR[]): boolean {
 
 function emitKotlinScroll(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
   const horizontal = readStaticAttrKotlin(e, 'axis') === 'horizontal'
+  // Children are unbounded along the scroll axis — a `<WebView grow>` there has
+  // no free space to take (see webview-sizing.ts).
+  return _kotlinLayout.scroll(horizontal ? 'horizontal' : 'vertical', horizontal ? 'row' : 'column', () =>
+    emitKotlinScrollBody(e, indent, horizontal),
+  )
+}
+
+function emitKotlinScrollBody(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number, horizontal: boolean): string {
   const composable = horizontal ? 'Row' : 'Column'
   const scrollMod = horizontal
     ? '.horizontalScroll(rememberScrollState())'

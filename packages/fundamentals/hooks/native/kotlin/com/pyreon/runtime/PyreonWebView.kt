@@ -48,6 +48,24 @@
 // `html = …` has the `file:///android_asset/` base origin, shared by every
 // inline-`html` host in the app (give pages that need isolation a `src`).
 //
+// ## Browser chrome
+//
+// A WebChromeClient (PyreonWebChromeAndroid.kt) answers what a hosted page
+// needs from the browser around it: `<input type="file">` (the system picker,
+// or the camera for `capture`), `navigator.geolocation` and `getUserMedia`
+// (per-origin consent, then the runtime permission the app DECLARES),
+// `alert` / `confirm` / `prompt`, `window.open` / `target="_blank"` (handed to
+// the system) and fullscreen video. Mirror of the iOS host's WKUIDelegate.
+//
+// ## Sizing
+//
+// Unsized, the host is full width and EXACTLY 150dp high — the `<iframe>`
+// default, identical on iOS and the web. `<WebView grow>` lowers to
+// `Modifier.weight(1f)` as a direct child of a Column / Row (the only place that
+// extension compiles) and `Modifier.fillMaxSize()` elsewhere; the compiler
+// decides, because only it knows the parent. A weighted or filled host arrives
+// with a non-zero minimum height, which the default below leaves alone.
+//
 // ## Policy posture (Play Store / App Store)
 //
 // Intended for HYBRID apps — a substantial native Compose shell with this
@@ -129,6 +147,8 @@ fun PyreonWebView(
     // JS bridge (set once in `factory`) close over it, reading the latest
     // `data` / `onMessage` that `update` writes.
     val state = remember { PyreonWebViewState() }
+    // File chooser / permission launchers must be registered at composition.
+    val chrome = rememberPyreonWebChrome()
     AndroidView(
         // An unsized WebView measures to its content, which is ~18dp for a page
         // whose body is `height: 100%` — so a hosted chart or flow gets no room
@@ -145,6 +165,8 @@ fun PyreonWebView(
         onRelease = {
             PyreonWebViewGroups.leave(state)
             state.webView = null
+            // A pending file chooser / permission / dialog must still be answered.
+            chrome.release()
         },
         factory = { context ->
             WebView(context).apply {
@@ -164,6 +186,11 @@ fun PyreonWebView(
                 @Suppress("SetJavaScriptEnabled")
                 settings.javaScriptEnabled = true
                 settings.domStorageEnabled = domStorage
+                // `target="_blank"` / `window.open` reach onCreateWindow (and are
+                // handed to the system) instead of replacing this page in place.
+                settings.setSupportMultipleWindows(true)
+                settings.setGeolocationEnabled(true)
+                webChromeClient = PyreonWebChromeClient(chrome)
                 // Reverse bridge — the page's `window.pyreonPostMessage(s)`
                 // routes through `window.__pyreonNative.postMessage(s)`
                 // (this JS interface) to the native `onMessage` callback.
