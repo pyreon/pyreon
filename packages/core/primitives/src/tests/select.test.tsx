@@ -9,6 +9,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { h } from '@pyreon/core'
 import { mount } from '@pyreon/runtime-dom'
 import { signal } from '@pyreon/reactivity'
+import { query } from '@pyreon/test-utils'
 import { Select } from '../index'
 import type { SelectOption } from '../index'
 
@@ -31,7 +32,7 @@ function mountSelect(props: Record<string, unknown>): HTMLSelectElement {
     unmount()
     container.remove()
   }
-  return container.querySelector('select') as HTMLSelectElement
+  return query(container, 'select')
 }
 
 const opts = (el: HTMLSelectElement) => [...el.querySelectorAll('option')]

@@ -6,6 +6,7 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { h } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
+import { query } from '@pyreon/test-utils'
 import { flush, mountInBrowser } from '@pyreon/test-utils/browser'
 import { Select } from '../index'
 import type { SelectOption } from '../index'
@@ -25,7 +26,7 @@ afterEach(() => {
 function mountSelect(props: Record<string, unknown>) {
   const { container, unmount } = mountInBrowser(h(Select, props as never))
   cleanup = unmount
-  return container.querySelector('select') as HTMLSelectElement
+  return query(container, 'select')
 }
 
 describe('<Select> — web', () => {
