@@ -125,7 +125,7 @@ The table below comes from each package manifest. `shared` describes an authorin
 | `@pyreon/elements` | Element→Stack and Text lower via elements-native; the rich web-only surfaces (Overlay/Portal/List slots) warn per-construct |
 | `@pyreon/primitives` | the 19 canonical primitives: real web DOM runtime AND SwiftUI/Compose emit — the compiler's native target vocabulary |
 | `@pyreon/reactivity` | L0 of the shared-code model: the package plugin maps signal/computed to native state; PyreonReactivity runtime ports ship on both targets, while bare effect statements require a supported lifecycle hook |
-| `@pyreon/rocketstyle` | rocketstyle-over-primitive chains lower (static cascade + one dynamic dimension) through its package-owned native plugin |
+| `@pyreon/rocketstyle` | rocketstyle-over-primitive chains lower (static cascade + any number of dynamic dimensions) through its package-owned native plugin |
 | `@pyreon/rx` | supported namespace and standalone transforms lower recursively to native collection operations, including import aliases; unsupported methods warn |
 | `@pyreon/sized-map` | pure-logic bounded FIFO/LRU map with no platform edge; `new SizedMap<K, V>(&#123; maxEntries &#125;)` lowers to the co-located PyreonSizedMap runtime on both native targets (a computed cap stays web — the literal is baked into the emit) |
 | `@pyreon/styler` | styled(Prim) factories lower through its package-owned native plugin with shared defineTheme token resolution; the CSS-in-JS runtime is web, the authored patterns compile |

@@ -152,13 +152,13 @@
       "warnings": 0
     },
     "fixture:every-primitive.tsx|swift": {
-      "sha": "2aa62ea1b920c76e6d2bc8b4e8145d347d7b2f8b0eb024d0f202c81a986c83f0",
-      "bytes": 3888,
+      "sha": "6ea606d3b45ba039c1fc1ba41b6009dec017743452f8432d64cd605da33686d7",
+      "bytes": 4232,
       "warnings": 0
     },
     "fixture:every-primitive.tsx|kotlin": {
-      "sha": "5577788cbabeb6a3bf1cab204a7caef1328fec700e3c02f3123c1bb427ed168e",
-      "bytes": 4358,
+      "sha": "9b40f82b70cfd075d0d7a2f2e195c6584d511686c10f1ff334695dd5b2eff474",
+      "bytes": 4724,
       "warnings": 0
     },
     "fixture:lifecycle-errorboundary.tsx|swift": {
@@ -6412,12 +6412,12 @@
       "warnings": 0
     },
     "golden-fixture:toast-22.tsx|swift": {
-      "sha": "bf645989d39834a3e982791c9dde24648005ddd6f6d434751f3efb000c0cda57",
+      "sha": "33c3af4c158c40fb07d9eb78903657edc9de7c1322610937a9c7d94e61fe2df2",
       "bytes": 242,
       "warnings": 1
     },
     "golden-fixture:toast-22.tsx|kotlin": {
-      "sha": "fea803666dd1e38182c554d079eb7d2a3a0f5dce5d55d168bb8ecf781f831e3f",
+      "sha": "49484903f1d797fa2bca20bab0d8081c24452dff5a8909cc60afef4f8fdde0b1",
       "bytes": 363,
       "warnings": 1
     },
@@ -7392,13 +7392,13 @@
       "warnings": 0
     },
     "example:native-tasks/TasksApp.tsx|swift": {
-      "sha": "ef73f752c35da522e18b1abf49b53d31b3ebc15082856672a9735722d9a1923e",
-      "bytes": 160701,
+      "sha": "8ea9fca26d2bd1e382168aabf43ddcd0a6fd9adef84482fe55b8dc5c27e14b70",
+      "bytes": 161828,
       "warnings": 1
     },
     "example:native-tasks/TasksApp.tsx|kotlin": {
-      "sha": "29f7258797415731065d5f106a18d71a16d337c4ffd81ee129bf4d32887b643e",
-      "bytes": 166990,
+      "sha": "be269d0cd45b68ec003114e6088be4fd1b4a50da3958445e7aba2e618fbc35ef",
+      "bytes": 167980,
       "warnings": 0
     },
     "example:native-todomvc-ios/TodoApp.tsx|swift": {
