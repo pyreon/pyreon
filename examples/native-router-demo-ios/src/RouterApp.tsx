@@ -24,7 +24,7 @@ import { Element } from '@pyreon/elements'
 import { Col, Container, Row } from '@pyreon/coolgrid'
 import { state as plainState } from '@pyreon/core/plain'
 import { signal } from '@pyreon/reactivity'
-import { createRouter, useNavigate, RouterProvider, RouterView } from '@pyreon/router'
+import { createRouter, useLoaderData, useNavigate, RouterProvider, RouterView } from '@pyreon/router'
 import { type EchoReply, usePostEcho } from './hooks'
 import { defineTheme, styled } from '@pyreon/styler'
 
@@ -659,6 +659,7 @@ function AboutPage() {
           home scrollable) changes tap discipline for every existing test on
           both platforms and is a deliberate, separate decision. */}
       <Button onPress={() => navigate('/lifecycle')}>View lifecycle</Button>
+      <Button onPress={() => navigate('/loaded')}>View loaded</Button>
       <Button onPress={() => navigate('/')}>Back to Home</Button>
       {/* The keyed list goes LAST: its Compose lowering is a LazyColumn,
           which fills the parent Column's remaining height — siblings after
@@ -763,6 +764,28 @@ function HttpPage() {
   )
 }
 
+// Route loader data, destructured. On the web the loader runs before this page renders; natively it runs on
+// appear, so this page proves three things on device: the page waits for its data instead of rendering without it,
+// the destructured fields lower, and `onMount` sees the data (it runs after the data exists, as on the web).
+type Loaded = { title: string; views: number }
+
+function LoadedPage() {
+  const navigate = useNavigate()
+  const { title, views } = useLoaderData<Loaded>()
+  const mountedWith = signal('')
+  onMount(() => {
+    mountedWith.set(title)
+  })
+  return (
+    <Stack gap={3} padding={4} data-testid="loaded-page">
+      <Text data-testid="loaded-title">Title: {title}</Text>
+      <Text data-testid="loaded-views">Views: {views}</Text>
+      <Text data-testid="loaded-mounted">Mounted with: {mountedWith()}</Text>
+      <Button onPress={() => navigate('/')}>Back to Home</Button>
+    </Stack>
+  )
+}
+
 export function RouterApp() {
   // `mode: 'history'` is web-only (HTML5 pushState + path-based URLs).
   // PMTC's parser only reads `routes` from createRouter's options
@@ -785,6 +808,7 @@ export function RouterApp() {
       { path: '/lifecycle', component: LifecyclePage },
       { path: '/media', component: MediaPage },
       { path: '/http', component: HttpPage },
+      { path: '/loaded', component: LoadedPage, loader: (): Loaded => ({ title: 'Loaded title', views: 42 }) },
     ],
   })
 

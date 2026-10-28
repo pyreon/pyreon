@@ -1130,9 +1130,12 @@ every warning; treat any warning as "this construct is outside v1."
   the seven Phase-5 data/services hooks. `useParams`
   keeps its own per-key lowering (router section). **Still warn-drop:** a
   rest element (`const { data, ...rest } = …`) or a nested pattern
-  (`const { user: { id } } = …`) — v1 lowers all-simple destructures only;
-  and `useLoaderData`'s destructure (its read returns an opaque `T` with no
-  field shape to alias).
+  (`const { user: { id } } = …`) — v1 lowers all-simple destructures only.
+  `useLoaderData<T>()` destructures too (`const { title } = useLoaderData<Post>()`,
+  renames included), one accessor per field of `T`. Its reads are NON-optional, as on
+  the web: the component renders only once its loader data exists (Kotlin returns
+  early, Swift gates the body, and `PyreonRouteLoader` holds the route's component
+  back until the loader has run), so `onMount` sees the data too.
 - **Destructured function/arrow params → lowered.** A helper with a
   destructured param — `const dist = ({ x, y }: Point): number => x + y`,
   `const apply = ({ id }: T) => { remove(id) }` — synthesizes a positional
