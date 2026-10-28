@@ -7,6 +7,8 @@ export function ProbeApp() {
   const open = signal(false)
   const shown = signal(true)
   const day = signal('2026-10-22')
+  const notes = signal('')
+  const rows = signal(4)
   return (
     <Stack margin={4} marginX={2} marginY={1} padding={2} background="primary" radius="md">
       <Inline margin={2} gap={2}>
@@ -30,6 +32,9 @@ export function ProbeApp() {
       <Field kind="date" value={day} onChangeText={(v) => day.set(v)} min="2026-01-01" max="2026-12-31" data-testid="probe-day" />
       <Field kind="time" value={day()} onChangeText={(v) => day.set(v)} placeholder="Time" />
       <Field kind="datetime" value={day} onChangeText={(v) => day.set(v)} disabled />
+      <Field value={notes} onChangeText={(v) => notes.set(v)} kind="email" onSubmit={() => open.set(true)} />
+      <Field multiline value={notes} onChangeText={(v) => notes.set(v)} placeholder="Notes" data-testid="probe-notes" />
+      <Field multiline lines={rows()} value={notes()} onChangeText={(v) => notes.set(v)} />
       <Modal open={open()} onClose={() => open.set(false)} data-testid="probe-modal" accessibilityLabel="Dialog">
         <Text>modal body</Text>
       </Modal>

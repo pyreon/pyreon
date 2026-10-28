@@ -2,7 +2,7 @@
 
 import type { ChildrenProp, HtmlPassthroughProps, ValueOrSignal } from './shared'
 
-/** Props every `<Field>` shape shares. */
+/** Props every `<Field>` shape shares — text, multi-line, or a date / time picker. */
 export interface FieldBaseProps extends HtmlPassthroughProps {
   value: ValueOrSignal<string>
   onChangeText: (next: string) => void
@@ -11,14 +11,40 @@ export interface FieldBaseProps extends HtmlPassthroughProps {
 }
 
 /**
- * A text `<Field>` — the default. `kind` selects the keyboard + autocomplete
- * behavior per platform (e.g. `kind="email"` → email keyboard on iOS/Android,
- * `<input type="email">` on web).
+ * A single-line text `<Field>` — the default. `kind` selects the keyboard +
+ * autocomplete behavior per platform (e.g. `kind="email"` → email keyboard on
+ * iOS/Android, `<input type="email">` on web).
  */
 export interface SingleLineFieldProps extends FieldBaseProps {
+  multiline?: false
+  lines?: never
   kind?: 'text' | 'number' | 'password' | 'email' | 'search' | 'tel' | 'url'
   /** Submit handler — wired to platform keyboard "Done" / Enter behavior. */
   onSubmit?: () => void
+  min?: never
+  max?: never
+}
+
+/**
+ * A multi-line `<Field multiline>` — a text area.
+ *
+ * `lines` is the number of VISIBLE rows (default 3). The field is that many
+ * rows tall on every target and scrolls its content past it, which is what a
+ * `<textarea rows>` does on the web: SwiftUI gets `.lineLimit(lines,
+ * reservesSpace: true)`, Compose `minLines = lines, maxLines = lines`.
+ *
+ * `multiline` is STRUCTURAL (a different element on the web, a different
+ * initializer on iOS), so it must be a static `true`/`false`. Return inserts a
+ * newline, so there is no `onSubmit`, and a text area has no keyboard `kind`
+ * and no date / time picker — `multiline` and a date `kind` are mutually
+ * exclusive.
+ */
+export interface MultilineFieldProps extends FieldBaseProps {
+  multiline: true
+  /** Visible rows; the content scrolls beyond them. Default 3. */
+  lines?: number
+  kind?: 'text'
+  onSubmit?: never
   min?: never
   max?: never
 }
@@ -38,10 +64,12 @@ export interface SingleLineFieldProps extends FieldBaseProps {
  * date that has none.
  *
  * `kind` is STRUCTURAL here (a different control on every target), so it must
- * be static.
+ * be static. A picker is never multi-line.
  */
 export interface DateFieldProps extends FieldBaseProps {
   kind: 'date' | 'time' | 'datetime'
+  multiline?: false
+  lines?: never
   /** Earliest value that can be picked, in the `value` format. */
   min?: string
   /** Latest value that can be picked, in the `value` format. */
@@ -50,14 +78,14 @@ export interface DateFieldProps extends FieldBaseProps {
 }
 
 /**
- * `<Field>` — text, or a date / time picker.
+ * `<Field>` — text input, a text area, or a date / time picker.
  *
  * Per-platform mapping:
- * - Web: `<input type=...>` (`date` / `time` / `datetime-local` for the date kinds)
- * - iOS: `TextField` / `SecureField` (kind="password"); `PyreonDateField` (a `DatePicker`) for the date kinds
- * - Android: `TextField` with `KeyboardOptions`; `PyreonDateField` (Material 3 date / time picker dialogs) for the date kinds
+ * - Web: `<input type=...>`; `<textarea rows>` with `multiline`; `date` / `time` / `datetime-local` for the date kinds
+ * - iOS: `TextField` / `SecureField` (kind="password"); `TextField(axis: .vertical)` with `multiline`; `PyreonDateField` (a `DatePicker`) for the date kinds
+ * - Android: single-line `TextField` with `KeyboardOptions`; `minLines`/`maxLines` with `multiline`; `PyreonDateField` (Material 3 date / time picker dialogs) for the date kinds
  */
-export type FieldProps = SingleLineFieldProps | DateFieldProps
+export type FieldProps = SingleLineFieldProps | MultilineFieldProps | DateFieldProps
 
 /**
  * `<Toggle>` — boolean on/off switch.

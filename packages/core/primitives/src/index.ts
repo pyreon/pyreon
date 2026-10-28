@@ -40,6 +40,7 @@ export type {
   FieldBaseProps,
   FieldProps,
   ModalProps,
+  MultilineFieldProps,
   SingleLineFieldProps,
   ToggleProps,
 } from './types/input'

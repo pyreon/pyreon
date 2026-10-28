@@ -35,7 +35,9 @@ const storeItem: ModuleItemEmitter = {
       const store = storeOf(item)
       const field = store.fields.find(candidate => candidate.name === member.property)
       if (field !== undefined) return field.type
-      if (store.computeds?.some(computed => computed.name === member.property)) {
+      const computed = store.computeds?.find(candidate => candidate.name === member.property)
+      if (computed?.type !== undefined) return computed.type
+      if (computed !== undefined) {
         return infer({ kind: 'call', callee: { kind: 'identifier', name: member.property }, args: [] }, storeScope(item))
       }
       return undefined

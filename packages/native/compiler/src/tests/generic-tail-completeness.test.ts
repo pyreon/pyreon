@@ -46,6 +46,10 @@ const REQUIRED: Record<string, string> = {
   // a different control on both targets (the runtime's PyreonDateField), so it
   // is its own path through the emitter and has to carry the tail separately.
   'Field date': ' kind="date" value={v()} onChangeText={(n) => v.set(n)}',
+  // A SHAPE, not a primitive: the key's first word is the tag. `multiline` is a
+  // different initializer on iOS and different arguments on Android, so it is
+  // its own path through the emitter and has to carry the tail separately.
+  'Field multiline': ' multiline value={v()} onChangeText={(n) => v.set(n)}',
   Toggle: ' value={b()} onChange={(n) => b.set(n)}',
   Modal: ' open onClose={() => {}}',
   // Three that the first version of this file left out — the hardcoded list of
@@ -126,8 +130,8 @@ describe('every canonical primitive carries the cross-cutting props', () => {
       const src = readFileSync(join(typesDir, file), 'utf8')
       for (const m of src.matchAll(/interface (\w+)Props\b[^{]*HtmlPassthroughProps/g)) {
         // A primitive whose props are a UNION of shapes (`FieldProps =
-        // SingleLineFieldProps | DateFieldProps`) declares the shared half as
-        // `FieldBaseProps` — that is still `<Field>`.
+        // SingleLineFieldProps | MultilineFieldProps | DateFieldProps`) declares
+        // the shared half as `FieldBaseProps` — that is still `<Field>`.
         declared.add(m[1]!.replace(/Base$/, ''))
       }
     }

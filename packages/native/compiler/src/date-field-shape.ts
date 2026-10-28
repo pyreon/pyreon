@@ -63,8 +63,17 @@ function isValid(kind: DateFieldKind, v: string): boolean {
 export function resolveDateFieldShape(e: JsxElement, readStatic: ReadStatic): DateFieldShape | undefined {
   const kind = readStatic(e, 'kind')
   if (typeof kind !== 'string' || !DATE_FIELD_KINDS.has(kind)) return undefined
+  // `multiline` wins over a date kind, as on the web (`<textarea>` is chosen
+  // first, and a text area has no picker). The types reject the combination;
+  // the text-area path names the ignored `kind` for an untyped caller.
+  if (readStatic(e, 'multiline') === true) return undefined
   const k = kind as DateFieldKind
   const warnings: string[] = []
+  if (e.attrs.some((a) => a.kind === 'attr' && a.name === 'lines')) {
+    warnings.push(
+      `<Field kind="${k}" lines>: \`lines\` only applies to a \`multiline\` text field — it is IGNORED on a picker, as on the web.`,
+    )
+  }
 
   const bound = (name: 'min' | 'max'): DateBound | undefined => {
     const attr = e.attrs.find(

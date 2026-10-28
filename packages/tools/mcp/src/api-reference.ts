@@ -1353,14 +1353,20 @@ type Props = ExtractProps<typeof Iterator>
   },
 
   'primitives/Field': {
-    signature: `(props: { value: string | (() => string); onChangeText: (next: string) => void; kind?: 'text'|'number'|'password'|'email'|'search'|'tel'|'url'; placeholder?: string; disabled?: boolean; onSubmit?: () => void } | { value: string | (() => string); onChangeText: (next: string) => void; kind: 'date'|'time'|'datetime'; min?: string; max?: string; placeholder?: string; disabled?: boolean }) => VNode`,
-    example: '<Field value={draft()} onChangeText={(t) => draft.set(t)} placeholder="Search…" onSubmit={search} />',
-    notes: `Text input. Web \`<input>\`; iOS/Android \`TextField\`. Handler is \`onChangeText(next)\` (NOT \`onInput\`/\`onChange\`). \`value\` accepts a signal accessor for two-way binding. \`kind="date" | "time" | "datetime"\` makes it the platform picker (web \`<input type=date|time|datetime-local>\`, iOS \`DatePicker\`, Android Material 3 date/time dialogs) over the web's zone-free wall-clock STRING — \`YYYY-MM-DD\` / \`HH:mm\` / \`YYYY-MM-DDTHH:mm\`, \`''\` = no value — bounded by \`min\`/\`max\` in the same format. See also: Toggle.`,
+    signature: `(props: { value: string | (() => string); onChangeText: (next: string) => void; placeholder?: string; disabled?: boolean } & ({ multiline?: false; kind?: 'text'|'number'|'password'|'email'|'search'|'tel'|'url'; onSubmit?: () => void } | { multiline: true; lines?: number } | { kind: 'date'|'time'|'datetime'; min?: string; max?: string })) => VNode`,
+    example: `<Field value={draft()} onChangeText={(t) => draft.set(t)} placeholder="Search…" onSubmit={search} />
+<Field multiline lines={5} value={bio()} onChangeText={(t) => bio.set(t)} placeholder="About you" />
+<Field kind="date" min="2026-01-01" value={due()} onChangeText={(d) => due.set(d)} />`,
+    notes: `Text input. Web \`<input>\`; iOS/Android single-line \`TextField\`. Handler is \`onChangeText(next)\` (NOT \`onInput\`/\`onChange\`). \`value\` accepts a signal accessor for two-way binding. \`multiline\` makes it a text area on every target — web \`<textarea rows>\`, iOS \`TextField(axis: .vertical)\` + \`.lineLimit(lines, reservesSpace: true)\`, Android \`minLines\`/\`maxLines\` — exactly \`lines\` rows tall (default 3) and scrolling past them. \`kind="date" | "time" | "datetime"\` makes it the platform picker (web \`<input type=date|time|datetime-local>\`, iOS \`DatePicker\`, Android Material 3 date/time dialogs) over the web's zone-free wall-clock STRING — \`YYYY-MM-DD\` / \`HH:mm\` / \`YYYY-MM-DDTHH:mm\`, \`''\` = no value — bounded by \`min\`/\`max\` in the same format. \`multiline\` and a date \`kind\` are mutually exclusive. See also: Toggle.`,
     mistakes: `- Using \`onChange\`/\`onInput\` — the canonical handler is \`onChangeText(next: string)\`
 - Forgetting \`value\` is the source of truth — write back via \`onChangeText\` → signal.set
+- A dynamic \`multiline={cond()}\` — it is structural (a different element / initializer), so only a static value lowers natively; branch the element instead
+- Expecting \`onSubmit\` or a keyboard \`kind\` on a \`multiline\` field — Return inserts a newline (as in a \`<textarea>\`), so neither applies; the types reject both and the native compiler warns
+- Expecting a \`multiline\` field to grow with its content — it is a fixed \`lines\` rows tall on every target and scrolls
 - Passing a \`Date\` or epoch number as a date kind's \`value\` — it is the wall-clock STRING (\`"2026-10-22"\`, \`"09:30"\`, \`"2026-10-22T09:30"\`), with no time zone
 - A \`min\`/\`max\` in another format (\`"22/10/2026"\`, \`"9:00"\`) — a browser ignores it, so native drops it too (named warning)
 - \`onSubmit\` on a date kind — a picker has no keyboard submit; the types forbid it and native ignores it with a warning
+- Combining \`multiline\` with a date \`kind\` — a picker is never multi-line; the types reject it
 - Expecting Android to stop the time wheel at a time bound — Material's TimePicker cannot disable hours, so the bound is applied on confirm (snaps to it)`,
   },
 
@@ -5383,13 +5389,14 @@ function dispatch(e: EventOf<typeof light>) { light.send(e) }`,
 })
 // <Button onPress={() => auth.signIn()}>Sign in</Button>
 // <Text>{auth.isAuthenticated() ? auth.claim('email') : auth.status()}</Text>`,
-    notes: 'A reactive OIDC sign-in with the SAME surface on web, iOS and Android — the shared-source entry point. Every member is read as a call (`auth.status()`, `auth.subject()`, `auth.claim("email")`, `auth.accessToken()`, `auth.expiresAt()`, `auth.error()`, `auth.isAuthenticated()`), and the strings it returns (status spellings, error codes) are identical on all three targets. On the web it is `createAuth` with browser defaults: pending sign-ins in `sessionStorage` (they must survive the full-page round trip), navigation by `location.assign`, and on the redirect page the callback is completed automatically, with the code scrubbed from the address bar and history first. In shared source it lowers to the native `PyreonOidcAuth`, which runs the system browser, verifies the ID token against the provider keys, refreshes, and keeps the session in the Keychain / Keystore so the app is still signed in after a relaunch. Options must be static (literals or module consts) because native bakes them in. Call it ONCE at the app root and pass `auth` down. See also: createAuth, sessionStorageFlowStore.',
+    notes: 'A reactive OIDC sign-in with the SAME surface on web, iOS and Android — the shared-source entry point. Every member is read as a call (`auth.status()`, `auth.subject()`, `auth.claim("email")`, `auth.accessToken()`, `auth.expiresAt()`, `auth.error()`, `auth.isAuthenticated()`), and the strings it returns (status spellings, error codes) are identical on all three targets. On the web it is `createAuth` with browser defaults: pending sign-ins in `sessionStorage` (they must survive the full-page round trip), navigation by `location.assign`, and on the redirect page the callback is completed automatically, with the code scrubbed from the address bar and history first. In shared source it lowers to the native `PyreonOidcAuth`, which runs the system browser, verifies the ID token against the provider keys, refreshes, and keeps the session in the Keychain / Keystore so the app is still signed in after a relaunch. Persistence is the one deliberate divergence: the web holds tokens in memory only, so a reload starts at `signedOut` — storing them in `localStorage` / `sessionStorage` would make any XSS bug a stolen long-lived session. Re-run `signIn()` on load (it completes without a prompt while the provider session lasts) or keep the session server-side behind an HttpOnly cookie (`signSession`). Options must be static (literals or module consts) because native bakes them in. Call it ONCE at the app root and pass `auth` down. See also: createAuth, sessionStorageFlowStore.',
     mistakes: `- Omitting \`nativeRedirectUri\` — a native app cannot receive a redirect to the web page unless it is a claimed universal link / App Link; register an app-scheme redirect with the provider
 - Calling useOidc in several components — each call is its own session object; create one at the root and pass it down
 - Building the options at runtime (a prop, a fetch result) — native bakes them at compile time; the call is reported and not emitted
 - Reading \`auth.status\` without calling it — every member is a call on the web
 - Expecting a refresh token without \`offline_access\` in \`scope\` (and, for Google, \`authorizationParams: { access_type: "offline", prompt: "consent" }\`)
-- Forgetting the Android manifest entries for PyreonAuthActivity / PyreonAuthRedirectActivity — without them the redirect never returns to the app`,
+- Forgetting the Android manifest entries for PyreonAuthActivity / PyreonAuthRedirectActivity — without them the redirect never returns to the app
+- Expecting the web session to survive a reload like native does — web tokens live in memory only; re-run \`signIn()\` on load or keep the session server-side behind an HttpOnly cookie, never in \`localStorage\``,
   },
 
   'auth/sessionStorageFlowStore': {
@@ -5473,15 +5480,16 @@ const gate = limiter.attempt(userId)
 if (!gate.allowed) return tooManyRequests(gate.retryAfterMs)
 const r = await verifyTotp(secret, code, { lastUsedStep })
 if (r.ok) limiter.reset(userId)`,
-    notes: 'Fixed-window attempt limiter for brute-forceable checks (TOTP codes, passkey and password attempts): at most `max` attempts per `windowMs` per key, reporting `retryAfterMs` when exhausted; call `reset(key)` after a success. Per process and bounded — expired windows are dropped as they are touched and the table never exceeds `maxKeys` (oldest window evicted first), so a flood of distinct keys cannot grow it without limit. Run several instances? Keep the same counters in a shared store. See also: verifyTotp, verifyAssertion.',
+    notes: 'Fixed-window attempt limiter for brute-forceable checks (TOTP codes, passkey and password attempts): at most `max` attempts per `windowMs` per key, reporting `retryAfterMs` when exhausted; call `reset(key)` after a success. Per process and bounded — expired windows are dropped as they are touched and the table never exceeds `maxKeys`, so a flood of distinct keys cannot grow it without limit. Eviction never frees a blocked key: a full table drops an expired window, else the active window with the fewest attempts, never one at its limit; when every slot is at its limit the NEW key is refused (fail closed), so a key flood can delay first attempts from new keys but never buys a blocked key more guesses — size `maxKeys` above the keys legitimately active in one window. Run several instances? Keep the same counters in a shared store. See also: verifyTotp, verifyAssertion.',
     mistakes: `- Keying only by IP — an attacker rotates addresses; key by account as well
-- Relying on it across instances — each process counts separately`,
+- Relying on it across instances — each process counts separately
+- Setting \`maxKeys\` near the number of keys legitimately active in one window — a full table of blocked windows refuses new keys until the oldest window ends`,
   },
 
   'auth/github': {
     signature: 'OidcMetadata',
     example: 'const auth = createAuth({ metadata: github, client, flows, redirect })',
-    notes: 'Endpoints for GitHub (OAuth2, not OIDC — there is no ID token; read identity from the user API with the access token). `facebook(version)` and `oauth2(issuer, authorize, token)` cover other plain OAuth2 providers. Pass as `createAuth({ metadata })` to skip discovery. Pin the Facebook Graph version you have tested. See also: createAuth, google, keycloak.',
+    notes: 'Endpoints for GitHub (OAuth2, not OIDC — there is no ID token; read identity from the user API with the access token). `facebook(version)` and `oauth2(issuer, authorize, token)` cover other plain OAuth2 providers. Pass as `createAuth({ metadata })` to skip discovery. Explicit endpoints are checked where they are used: the authorization and token endpoints must be https (loopback http allowed for local development) or the call fails with `insecure_url`, on web, iOS and Android alike. Pin the Facebook Graph version you have tested. See also: createAuth, google, keycloak.',
     mistakes: '- Expecting an `id_token` from a non-OIDC provider — fetch the profile with the access token instead',
   },
 

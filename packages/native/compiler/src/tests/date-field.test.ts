@@ -92,6 +92,23 @@ describe('<Field kind="date"> — every shape that cannot lower is NAMED', () =>
     expect(kotlin.code).not.toContain('keyboardActions')
   })
 
+  it('`multiline` wins over a date kind, as on the web — a text area, with `kind` named as ignored', () => {
+    const { swift, kotlin } = warns(
+      `<Field multiline kind="date" value={day} onChangeText={(v) => day.set(v)} />`,
+      /multi-line field has no keyboard kind/,
+    )
+    expect(swift.code).not.toContain('PyreonDateField')
+    expect(swift.code).toContain('axis: .vertical')
+    expect(kotlin.code).not.toContain('PyreonDateField')
+    expect(kotlin.code).toContain('singleLine = false')
+  })
+
+  it('`lines` on a picker is named and ignored, as on the web', () => {
+    const { swift, kotlin } = warns(`<Field kind="time" lines={2} value={at} onChangeText={(v) => at.set(v)} />`, /`lines` only applies/)
+    expect(swift.code).toContain('PyreonDateField')
+    expect(kotlin.code).toContain('PyreonDateField')
+  })
+
   it('a dynamic kind cannot pick a control at compile time', () => {
     const src = `<Field kind={day().length > 0 ? 'date' : 'text'} value={day} onChangeText={(v) => day.set(v)} />`
     const { swift, kotlin } = both(src)
