@@ -13,3 +13,5 @@ Supported options: `dateStyle`, `timeStyle`, `timeZone`, `weekday`, `year`, `mon
 The output agrees with the web except where each platform's locale data differs. On iOS it matched Safari's `Intl` on all 350 cases of the differential table. A curated set of cases matches Chrome/Node exactly on both platforms.
 
 `n.toLocaleString()` with no arguments used to emit a plain `String(n)` with a warning. It now formats with the device locale, as on the web.
+
+`toLocaleString()` on a non-number follows the web too: a string is returned unchanged and a boolean becomes `"true"` / `"false"`. On an array or an object it gets a named warning rather than a number format.
