@@ -382,9 +382,10 @@ public struct EnvironmentValues {
 public enum HorizontalAlignment { case leading, center, trailing }
 public enum VerticalAlignment { case top, center, bottom }
 public enum Alignment { case center, leading, trailing, top, bottom, topLeading, topTrailing, bottomLeading, bottomTrailing }
-// Axis.Set is an OptionSet in real SwiftUI; the stub only needs the horizontal
-// / vertical cases the coolgrid Col fractional-span emit references.
-public struct Axis { public struct Set { public init() {}; public static let horizontal = Set(); public static let vertical = Set() } }
+// Axis is an ENUM in real SwiftUI (\`case horizontal, vertical\`), with the
+// OptionSet \`Axis.Set\` nested inside. The cases are what \`<Field multiline>\`'s
+// \`TextField(_:text:axis:)\` passes; the Set is the coolgrid Col fractional-span emit's.
+public enum Axis { case horizontal, vertical; public struct Set { public init() {}; public static let horizontal = Set(); public static let vertical = Set() } }
 public struct VStack<Content: View>: View {
   public init(alignment: HorizontalAlignment = .center, spacing: Double? = nil, @ViewBuilder content: () -> Content) {}
   public typealias Body = Never
@@ -426,6 +427,9 @@ public struct Toggle<Label: View>: View {
 }
 public struct TextField: View {
   public init(_ title: String, text: Binding<String>) {}
+  // iOS 16 — the \`<Field multiline>\` lowering. Real SwiftUI spells it
+  // \`init<S: StringProtocol>(_ title: S, text: Binding<String>, axis: Axis)\`.
+  public init(_ title: String, text: Binding<String>, axis: Axis) {}
   public typealias Body = Never
 }
 public struct ForEach<Data, ID, Content: View>: View {
@@ -597,6 +601,8 @@ extension View {
   // made a CORRECT emit fail the gate -- a stub NARROWER than the runtime
   // manufactures a bug, exactly as a wider one hides one.
   public func lineLimit(_ number: Int?) -> some View { self }
+  // iOS 16 — \`<Field multiline lines>\`: exactly \`limit\` rows tall, scrolling past them.
+  public func lineLimit(_ limit: Int, reservesSpace: Bool) -> some View { self }
   public func truncationMode(_ mode: TextTruncationMode) -> some View { self }
   // .background(Color(...)) — emitted for any themed backgroundColor
   // (rocketstyle/attrs/styler all reach it). Mirrors SwiftUI's VIEW overload,

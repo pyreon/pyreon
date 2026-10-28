@@ -35,7 +35,16 @@ export type {
 export type { InlineProps, LayerProps, ScrollProps, SpacerProps, StackProps } from './types/layout'
 export type { AudioProps, HeadingProps, IconProps, ImageProps, TextProps, VideoProps } from './types/content'
 export type { ButtonProps, LinkProps, PressProps } from './types/interaction'
-export type { FieldProps, ModalProps, SelectOption, SelectProps, ToggleProps } from './types/input'
+export type {
+  FieldBaseProps,
+  FieldProps,
+  ModalProps,
+  MultilineFieldProps,
+  SelectOption,
+  SelectProps,
+  SingleLineFieldProps,
+  ToggleProps,
+} from './types/input'
 export type {
   TransitionEasing,
   TransitionGroupProps,
