@@ -474,7 +474,6 @@ final class PyreonTasksUITests: XCTestCase {
         let single = app.descendants(matching: .any).matching(identifier: "fields-single").firstMatch
         let notes = app.descendants(matching: .any).matching(identifier: "fields-notes").firstMatch
         XCTAssertTrue(notes.waitForExistence(timeout: 10), "multiline field missing:\n\(app.debugDescription)")
-        print("DIAG-FIELDS notes type=\(notes.elementType.rawValue) frame=\(notes.frame) single=\(single.frame)")
 
         let oneRow = single.frame.height
         let fourRows = notes.frame.height
@@ -487,11 +486,18 @@ final class PyreonTasksUITests: XCTestCase {
         XCTAssertTrue(waitForLabel(echo, "alpha\nbeta\ngamma", timeout: 10), "signal write did not render: '\(echo.label)'")
         XCTAssertEqual(notes.value as? String, "alpha\nbeta\ngamma", "the text area does not show the value written to its signal")
 
-        // Reactive `lines`: 4 -> 2 shrinks the field.
+        // Reactive `lines`: 4 -> 2 must remove exactly two LINE HEIGHTS, measured
+        // independently on the echo, which now holds three lines in the same
+        // body style.
+        let lineHeight = echo.frame.height / 3
         app.buttons["fields-rows-2"].firstMatch.tap()
         let deadline = Date().addingTimeInterval(5)
-        while notes.frame.height > fourRows * 0.75 && Date() < deadline { usleep(100_000) }
-        XCTAssertLessThan(notes.frame.height, fourRows * 0.75, "lines 4 -> 2 did not shrink the field (\(fourRows) -> \(notes.frame.height))")
+        while notes.frame.height >= fourRows && Date() < deadline { usleep(100_000) }
+        let twoRows = notes.frame.height
+        XCTAssertTrue(
+            lineHeight > 0 && (0.8...1.25).contains((fourRows - twoRows) / (2 * lineHeight)),
+            "lines 4 -> 2 did not remove two line heights (four \(fourRows), two \(twoRows), line \(lineHeight))"
+        )
 
         // Control -> program, newline included.
         notes.tap()
@@ -499,6 +505,12 @@ final class PyreonTasksUITests: XCTestCase {
         let length = app.staticTexts["fields-notes-length"].firstMatch
         XCTAssertTrue(waitForLabel(length, "22", timeout: 10), "typed text did not reach the signal (length '\(length.label)', echo '\(echo.label)')")
         XCTAssertTrue(echo.label.contains("\ndelta"), "Return did not insert a newline: '\(echo.label)'")
+
+        // A SINGLE-line field stays one line however long its text — the
+        // contract the Android lowering had to state explicitly.
+        single.tap()
+        single.typeText(String(repeating: "word ", count: 30))
+        XCTAssertEqual(single.frame.height, oneRow, "long text wrapped the single-line field")
     }
 
     /// Crash reporting, device-proven in the only way that means anything: a

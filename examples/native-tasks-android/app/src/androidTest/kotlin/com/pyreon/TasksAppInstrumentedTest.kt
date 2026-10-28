@@ -647,12 +647,16 @@ class TasksAppInstrumentedTest {
             composeRule.onNodeWithTag(tag).fetchSemanticsNode().config
                 .getOrNull(SemanticsProperties.EditableText)?.text ?: "<no EditableText>"
 
+        // A height RATIO says nothing about rows: Material's TextField has 16dp of
+        // padding above and below its text and a 56dp minimum, which a one-line
+        // field already fills. The rows are checked against the LINE HEIGHT
+        // instead (below): lines 4 -> 2 must remove exactly two of them.
         val oneRow = heightOf("fields-single")
         val fourRows = heightOf("fields-notes")
         assertTrue("single-line field has no height", oneRow > 0f)
         assertTrue(
-            "lines=4 did not make the EMPTY field four rows tall (single $oneRow, multiline $fourRows)",
-            fourRows > oneRow * 1.8f,
+            "lines=4 did not make the EMPTY field taller than one row (single $oneRow, multiline $fourRows)",
+            fourRows > oneRow,
         )
 
         composeRule.onNodeWithTag("fields-fill").performClick()
@@ -663,13 +667,31 @@ class TasksAppInstrumentedTest {
             fieldText("fields-notes") == "alpha\nbeta\ngamma",
         )
 
+        // The echo now holds three lines in the same body style: its height is
+        // three line heights, measured independently of the field.
+        val lineHeight = heightOf("fields-notes-echo") / 3f
         composeRule.onNodeWithTag("fields-rows-2").performClick()
-        composeRule.waitUntil(timeoutMillis = 5_000) { heightOf("fields-notes") < fourRows * 0.75f }
+        composeRule.waitUntil(timeoutMillis = 5_000) { heightOf("fields-notes") < fourRows }
+        val twoRows = heightOf("fields-notes")
+        assertTrue(
+            "lines 4 -> 2 did not remove two line heights (four $fourRows, two $twoRows, line $lineHeight)",
+            lineHeight > 0f && (fourRows - twoRows) / (2f * lineHeight) in 0.8f..1.25f,
+        )
 
         composeRule.onNodeWithTag("fields-notes").performTextInput("\ndelta")
         waitForTagText("fields-notes-length", "22")
         val echo = textOf("fields-notes-echo")
         assertTrue("a typed newline did not reach the signal: '$echo'", echo.contains("\ndelta"))
+
+        // A SINGLE-line field stays one line however long its text: Material's
+        // TextField defaults to singleLine = false and used to wrap here, on
+        // Android only, where the web <input> and the iOS TextField scroll.
+        composeRule.onNodeWithTag("fields-single").performTextInput("word ".repeat(30))
+        composeRule.waitForIdle()
+        assertTrue(
+            "long text wrapped the single-line field (${heightOf("fields-single")} vs $oneRow)",
+            heightOf("fields-single") == oneRow,
+        )
     }
 
     @Test
