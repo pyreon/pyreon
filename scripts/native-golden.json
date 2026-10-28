@@ -5692,14 +5692,14 @@
       "warnings": 0
     },
     "golden-fixture:store-module-declines.tsx|swift": {
-      "sha": "8f4fa52173aa8a57f484527f84d25aac40dd0e39e63185a2e07539c15069930a",
-      "bytes": 1309,
-      "warnings": 10
+      "sha": "883c623da2d7d7c3d5de1728250c1ca0c90abcee33484f99187d3b566f35b134",
+      "bytes": 1395,
+      "warnings": 9
     },
     "golden-fixture:store-module-declines.tsx|kotlin": {
-      "sha": "1d418c8c53e9f9ff65004fa5ce39f6591acac38a0512c206ed71fc653914c812",
-      "bytes": 996,
-      "warnings": 18
+      "sha": "d842bc26aebcb851cadb201ebddba950c09b195ad8ed734305ac2cfab64962ac",
+      "bytes": 1025,
+      "warnings": 16
     },
     "golden-fixture:store-module-members.tsx|swift": {
       "sha": "60a7d438a5d3b35fb20597bad1b65e255a1b8a521d6ed991c3b7b1dbec440351",
