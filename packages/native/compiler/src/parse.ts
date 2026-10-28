@@ -4,6 +4,7 @@
 // starter fixtures use are recognised. Anything outside that set is
 // either passed through as unknown or surfaces a warning.
 
+import { THIRD_PARTY_SCHEMA_LIBRARIES } from './verbatim-call-warning'
 import { widenLiteralsInDoubleContexts } from './contextual-double-literals'
 import { forEachExpr } from './expr-walk'
 import { CORE_LOWERED_SURFACE, PLUGIN_OWNED_MODULES } from './plugin-packages'
@@ -1333,12 +1334,22 @@ function collectAliasImports(body: AnyNode[]): Map<string, { source: string; imp
     for (const spec of (node.specifiers as AnyNode[]) ?? []) {
       const local = spec?.local?.name
       const imported = spec?.imported?.name
+      // `import * as v from 'valibot'` has no imported name; the namespace itself is what survives.
+      if (
+        THIRD_PARTY_SCHEMA_LIBRARIES.has(pkg) &&
+        !typeOnlyImport &&
+        (spec as { type?: string }).type === 'ImportNamespaceSpecifier' &&
+        typeof local === 'string'
+      ) {
+        map.set(local, { source: pkg, imported: local })
+        continue
+      }
       if (typeof local !== 'string' || typeof imported !== 'string') continue
       if (isElementLoweringTag(imported)) {
         map.set(local, { source: pkg, imported })
       } else if (
-        pkg.startsWith('@pyreon/') &&
-        !warnedAtImport(imported) &&
+        (THIRD_PARTY_SCHEMA_LIBRARIES.has(pkg) ||
+          (pkg.startsWith('@pyreon/') && !warnedAtImport(imported))) &&
         !typeOnlyImport &&
         (spec as { importKind?: string }).importKind !== 'type' &&
         /^[a-z]/.test(imported) &&
