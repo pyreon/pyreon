@@ -7102,12 +7102,12 @@
       "warnings": 1
     },
     "golden-fixture:validate-58.tsx|swift": {
-      "sha": "5b4d5c9f785d10f64ce3aa53f24715ed67c346976cfd027390f3a5809d5c67bb",
+      "sha": "7863694763b28282fb43b5d64fcc27022d1758dc435f281ae34f6968885a59b1",
       "bytes": 106,
       "warnings": 1
     },
     "golden-fixture:validate-58.tsx|kotlin": {
-      "sha": "89330d7e186d3abb398d3040f018b439de7eb6ccc92c51aa1d8c29be4cb8d86f",
+      "sha": "efb9cb0ca735970c2d78f0d3ffcc15ae96501e4d40a0fe8b1425127a8c8606e5",
       "bytes": 112,
       "warnings": 1
     },

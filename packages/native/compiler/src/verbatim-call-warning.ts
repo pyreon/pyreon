@@ -21,8 +21,7 @@ function escapeRegExp(text: string): string {
 }
 
 /**
- * Third-party schema libraries PMTC reads ONLY through a Pyreon adapter (`zodSchema(z.object({…}))` from
- * `@pyreon/validation`, or the first-party `s` from `@pyreon/validate`). A bare `z.object({…})` outside an adapter is
+ * Third-party schema libraries PMTC reads ONLY through a Pyreon adapter (`zodSchema(z.object({…}))`, or the first-party `s`). A bare `z.object({…})` outside an adapter is
  * not read at all and is re-emitted verbatim — uncompilable Swift / Kotlin with no other diagnostic — so these imports
  * are judged by survival exactly like a Pyreon export.
  */
@@ -112,8 +111,8 @@ export function verbatimPyreonCallWarnings(
       out.push(
         `${shown} (from ${imp.source}) is reproduced verbatim in the emitted Swift/Kotlin, where no such ${calledByAuthor ? 'function' : 'value'} exists, ` +
           `so the native build fails with "cannot find '${imp.imported}' in scope". PMTC reads ${imp.source} only through an adapter: wrap a ` +
-          `top-level schema in \`zodSchema(…)\` / \`valibotSchema(…)\` / \`arktypeSchema(…)\` from \`@pyreon/validation\`, or write the schema with ` +
-          `\`s\` from \`@pyreon/validate\` (its \`safeParse\` / \`parse\` lower), or keep it behind a \`<Web>\` escape hatch.`,
+          `top-level schema in the Pyreon validation adapter for that library (\`zodSchema(…)\` / \`valibotSchema(…)\` / \`arktypeSchema(…)\`), or write the schema ` +
+          `with the first-party \`s\` builder (its \`safeParse\` / \`parse\` lower), or keep it behind a \`<Web>\` escape hatch.`,
       )
       continue
     }

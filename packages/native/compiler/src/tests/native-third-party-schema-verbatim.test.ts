@@ -41,7 +41,7 @@ describe('a schema-library import that survives verbatim is reported by name', (
       const hit = w.find((x) => x.startsWith('z (from zod)'))
       expect(hit, JSON.stringify(w)).toBeDefined()
       expect(hit).toContain('zodSchema')
-      expect(hit).toContain('@pyreon/validate')
+      expect(hit).toContain('first-party')
     })
 
     it(`${target}: a schema an adapter consumed draws NO survival warning`, () => {
