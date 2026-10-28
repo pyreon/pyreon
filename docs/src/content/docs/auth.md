@@ -217,6 +217,8 @@ effect(() => {
 
 On iOS and Android you rarely need this: the native session is restored from the Keychain / Keystore on launch, and an expired session that has a refresh token refreshes itself.
 
+**A reload signs the web session out, on purpose.** In a browser the tokens live in memory only, so a reload or a new tab starts at `signedOut`; native keeps them in the Keychain / Keystore. Writing them to `localStorage` / `sessionStorage` would hand the access and refresh tokens to any script on the page, so one XSS bug becomes a stolen long-lived session — there is no option for it. To stay signed in across reloads, call `auth.signIn()` when the app loads signed out (it completes without a prompt while the provider still has its session), or keep the session on your server and give the browser an `HttpOnly` cookie from `signSession` / `sessionCookie`.
+
 ## Signing out
 
 There are two different things a user can mean by "sign out", and they are different calls:

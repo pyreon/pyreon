@@ -420,21 +420,25 @@ Navigation link. Web → a real `<a href>`; the package has NO router dependency
 ### `Field` `component`
 
 ```ts
-(props: { value: string | (() => string); onChangeText: (next: string) => void; kind?: 'text'|'number'|'password'|'email'|'search'|'tel'|'url'; placeholder?: string; disabled?: boolean; onSubmit?: () => void }) => VNode
+(props: { value: string | (() => string); onChangeText: (next: string) => void; placeholder?: string; disabled?: boolean } & ({ multiline?: false; kind?: 'text'|'number'|'password'|'email'|'search'|'tel'|'url'; onSubmit?: () => void } | { multiline: true; lines?: number })) => VNode
 ```
 
-Text input. Web `<input>`; iOS/Android `TextField`. Handler is `onChangeText(next)` (NOT `onInput`/`onChange`). `value` accepts a signal accessor for two-way binding.
+Text input. Web `<input>`; iOS/Android single-line `TextField`. Handler is `onChangeText(next)` (NOT `onInput`/`onChange`). `value` accepts a signal accessor for two-way binding. `multiline` makes it a text area on every target — web `<textarea rows>`, iOS `TextField(axis: .vertical)` + `.lineLimit(lines, reservesSpace: true)`, Android `minLines`/`maxLines` — exactly `lines` rows tall (default 3) and scrolling past them.
 
 **Example**
 
 ```tsx
 <Field value={draft()} onChangeText={(t) => draft.set(t)} placeholder="Search…" onSubmit={search} />
+<Field multiline lines={5} value={bio()} onChangeText={(t) => bio.set(t)} placeholder="About you" />
 ```
 
 **Common mistakes**
 
 - Using `onChange`/`onInput` — the canonical handler is `onChangeText(next: string)`
 - Forgetting `value` is the source of truth — write back via `onChangeText` → signal.set
+- A dynamic `multiline={cond()}` — it is structural (a different element / initializer), so only a static value lowers natively; branch the element instead
+- Expecting `onSubmit` or a keyboard `kind` on a `multiline` field — Return inserts a newline (as in a `<textarea>`), so neither applies; the types reject both and the native compiler warns
+- Expecting a `multiline` field to grow with its content — it is a fixed `lines` rows tall on every target and scrolls
 
 **See also:** `Toggle`
 

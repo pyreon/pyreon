@@ -214,6 +214,22 @@ struct PyreonI18nTests {
         i18n.locale = "ar"
         eq(i18n.t("files", ["count": 3]), "other", "ar few missing → _other")
 
+        // the BARE key is the singular (`one`) form; `_other` only beats it for
+        // a non-`one` category — same order as the web createI18n
+        i18n = PyreonI18n(locale: "en", messages: [
+            "en": ["item": "{{count}} item", "item_other": "{{count}} items", "lone_other": "{{count}} lones"],
+            "fr": ["item": "{{count}} item", "item_other": "{{count}} items"],
+            "cs": ["file": "{{count}} soubor", "file_other": "{{count}} souborů"],
+        ])
+        eq(i18n.t("item", ["count": 1]), "1 item", "en 1 → bare singular, not _other")
+        eq(i18n.t("item", ["count": 2]), "2 items", "en 2 → _other")
+        eq(i18n.t("lone", ["count": 1]), "1 lones", "one with no singular form → _other last resort")
+        i18n.locale = "fr"
+        eq(i18n.t("item", ["count": 0]), "0 item", "fr 0 (CLDR one) → bare singular")
+        i18n.locale = "cs"
+        eq(i18n.t("file", ["count": 1]), "1 soubor", "cs 1 → bare singular")
+        eq(i18n.t("file", ["count": 3]), "3 souborů", "cs few missing → _other before the bare singular")
+
         // the shared CLDR case table (checked against Intl.PluralRules on the JS side)
         for (locale, count, expected) in pluralCases {
             eq(PyreonPluralRules.select(locale: locale, count: count), expected, "\(locale) \(count)")

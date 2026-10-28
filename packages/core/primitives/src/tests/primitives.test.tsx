@@ -17,6 +17,7 @@ import { query } from '@pyreon/test-utils'
 import { afterEach, describe, expect, it } from 'vitest'
 import { h } from '@pyreon/core'
 import { mount } from '@pyreon/runtime-dom'
+import type { FieldProps } from '../types/input'
 import { signal } from '@pyreon/reactivity'
 import {
   Button,
@@ -1050,6 +1051,114 @@ describe('<Field> happy-dom unit', () => {
     expect(input.disabled).toBe(true)
     expect(input.style.opacity).toBe('0.5')
     unmount()
+  })
+})
+
+describe('<Field multiline> happy-dom unit', () => {
+  it('renders a <textarea> with the default 3 rows and no type attribute', () => {
+    const v = signal('a\nb')
+    const { container, unmount } = mountTest(
+      h(Field, { value: v, onChangeText: (next: string) => v.set(next), multiline: true }),
+    )
+    const area = container.firstElementChild as HTMLTextAreaElement
+    expect(area.tagName).toBe('TEXTAREA')
+    expect(area.getAttribute("rows")).toBe("3")
+    expect(area.getAttribute('type')).toBe(null)
+    expect(area.value).toBe('a\nb')
+    expect(area.style.resize).toBe('none')
+    unmount()
+  })
+
+  it('lines sets the visible rows, reactively', () => {
+    const v = signal('')
+    const lines = signal(5)
+    const { container, unmount } = mountTest(
+      h(Field, {
+        value: v,
+        onChangeText: (next: string) => v.set(next),
+        multiline: true,
+        get lines() {
+          return lines()
+        },
+      } as never),
+    )
+    const area = container.firstElementChild as HTMLTextAreaElement
+    expect(area.getAttribute("rows")).toBe("5")
+    lines.set(2)
+    expect(area.getAttribute("rows")).toBe("2")
+    unmount()
+  })
+
+  it('an out-of-range lines falls back to the default instead of an invalid rows', () => {
+    const v = signal('')
+    const { container, unmount } = mountTest(
+      h(Field, { value: v, onChangeText: (n: string) => v.set(n), multiline: true, lines: 0 }),
+    )
+    expect((container.firstElementChild as HTMLTextAreaElement).getAttribute("rows")).toBe("3")
+    unmount()
+  })
+
+  it('input propagates a multi-line value to onChangeText and writes back', () => {
+    const v = signal('')
+    const { container, unmount } = mountTest(
+      h(Field, { value: v, onChangeText: (next: string) => v.set(next), multiline: true }),
+    )
+    const area = container.firstElementChild as HTMLTextAreaElement
+    area.value = 'line one\nline two'
+    area.dispatchEvent(new Event('input', { bubbles: true }))
+    expect(v()).toBe('line one\nline two')
+    v.set('')
+    expect(area.value).toBe('')
+    unmount()
+  })
+
+  it('Enter does NOT submit a text area, even from an untyped caller', () => {
+    const v = signal('')
+    let submitted = 0
+    const { container, unmount } = mountTest(
+      h(Field, {
+        value: v,
+        onChangeText: (next: string) => v.set(next),
+        multiline: true,
+        onSubmit: () => submitted++,
+      } as never),
+    )
+    const area = container.firstElementChild as HTMLTextAreaElement
+    area.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+    expect(submitted).toBe(0)
+    unmount()
+  })
+
+  it('placeholder, disabled and passthrough attrs reach the text area', () => {
+    const v = signal('')
+    const { container, unmount } = mountTest(
+      h(Field, {
+        value: v,
+        onChangeText: (next: string) => v.set(next),
+        multiline: true,
+        placeholder: 'Notes',
+        disabled: true,
+        'data-testid': 'notes',
+      }),
+    )
+    const area = container.firstElementChild as HTMLTextAreaElement
+    expect(area.placeholder).toBe('Notes')
+    expect(area.disabled).toBe(true)
+    expect(area.getAttribute('data-testid')).toBe('notes')
+    unmount()
+  })
+
+  it('the multiline shape rejects keyboard kinds and onSubmit at the type level', () => {
+    const v = signal('')
+    const base = { value: v, onChangeText: (_: string) => {} }
+    // @ts-expect-error — a text area has no keyboard kind
+    const withKind: FieldProps = { ...base, multiline: true, kind: 'email' }
+    // @ts-expect-error — Enter inserts a newline, so there is no onSubmit
+    const withSubmit: FieldProps = { ...base, multiline: true, onSubmit: () => {} }
+    // @ts-expect-error — `lines` belongs to the multiline shape only
+    const linesOnInput: FieldProps = { ...base, lines: 4 }
+    const ok: FieldProps[] = [{ ...base, multiline: true, lines: 4, kind: 'text' }, { ...base, kind: 'email' }]
+    expect([withKind, withSubmit, linesOnInput, ...ok]).toHaveLength(5)
   })
 })
 

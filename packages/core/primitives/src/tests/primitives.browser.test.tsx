@@ -201,6 +201,24 @@ describe('<Press> — web', () => {
   })
 })
 
+describe('<Field multiline> — web', () => {
+  it('is exactly `lines` rows tall and scrolls past them instead of growing', async () => {
+    const value = signal('1\n2\n3\n4\n5\n6\n7\n8')
+    const { container, unmount } = mountInBrowser(
+      h(Field, { value, onChangeText: (n: string) => value.set(n), multiline: true, lines: 2 }),
+    )
+    const area = container.firstElementChild as HTMLTextAreaElement
+    await flush()
+    const twoRows = area.clientHeight
+    expect(area.scrollHeight).toBeGreaterThan(twoRows)
+    value.set('')
+    await flush()
+    // Emptying it does not shrink it: the height is the prop's, not the content's.
+    expect(area.clientHeight).toBe(twoRows)
+    unmount()
+  })
+})
+
 describe('<Field> — web', () => {
   it('renders an <input> wired to a signal', async () => {
     const value = signal('initial')

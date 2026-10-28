@@ -327,12 +327,43 @@ describe('createAttemptLimiter', () => {
     l.reset('u')
     expect(l.attempt('u').allowed).toBe(true)
   })
-  it('never tracks more than maxKeys', () => {
-    const l = createAttemptLimiter({ max: 1, maxKeys: 10 })
+  it('never tracks more than maxKeys — and a full table of blocked windows refuses newcomers', () => {
+    let t = 0
+    const l = createAttemptLimiter({ max: 1, windowMs: 1000, maxKeys: 10, now: () => t })
     for (let i = 0; i < 1000; i++) l.attempt(`k${i}`)
-    // the oldest keys were evicted, so the earliest attacker key is fresh again,
-    // while the newest is still throttled
-    expect(l.attempt('k999').allowed).toBe(false)
+    // k0..k9 hold the table and are each at their limit. Evicting one would hand it a
+    // fresh budget, so the flood is refused instead — and k0 stays blocked.
+    expect(l.attempt('k0').allowed).toBe(false)
+    expect(l.attempt('k999')).toEqual({ allowed: false, retryAfterMs: 1000 })
+    // Once the windows expire the table frees itself: still bounded, never stuck.
+    t = 1000
+    expect(l.attempt('k999').allowed).toBe(true)
     expect(l.attempt('k0').allowed).toBe(true)
+  })
+
+  it('a flood of distinct keys cannot reset a blocked key (audit repro)', () => {
+    const l = createAttemptLimiter({ max: 5, maxKeys: 100, now: () => 0 })
+    let allowed = 0
+    for (let round = 0; round < 10; round++) {
+      for (let i = 0; i < 6; i++) if (l.attempt('victim').allowed) allowed++
+      for (let i = 0; i < 100; i++) l.attempt(`junk-${round}-${i}`)
+    }
+    expect(allowed).toBe(5)
+  })
+
+  it('a full table evicts the least-used unblocked window, never one at its limit', () => {
+    const l = createAttemptLimiter({ max: 3, maxKeys: 3, now: () => 0 })
+    l.attempt('blocked')
+    l.attempt('blocked')
+    l.attempt('blocked') // at its limit
+    l.attempt('two')
+    l.attempt('two')
+    l.attempt('one')
+    expect(l.attempt('new').allowed).toBe(true) // evicts `one`, the least used
+    expect(l.attempt('blocked').allowed).toBe(false)
+    expect(l.attempt('two')).toEqual({ allowed: true, remaining: 0 }) // kept its count
+    // `blocked` and `two` are now at the limit; only `new` (one attempt) is evictable.
+    expect(l.attempt('newer').allowed).toBe(true)
+    expect(l.attempt('new').allowed).toBe(true) // `new` was evicted: fresh window
   })
 })

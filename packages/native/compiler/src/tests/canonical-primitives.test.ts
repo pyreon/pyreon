@@ -568,7 +568,7 @@ describe('Phase B — <Field> emit', () => {
   // Kotlin assertion fails.
   it('Kotlin: bare <Field value={draft}/> (no onChangeText) auto-binds via { draft = it } (Swift parity)', () => {
     const out = tx(`<Field value={draft}/>`, 'kotlin')
-    expect(out).toContain('TextField(value = draft, onValueChange = { draft = it })')
+    expect(out).toContain('TextField(value = draft, onValueChange = { draft = it }, singleLine = true)')
     expect(out).not.toContain('Field(value = draft)') // no literal-tag fall-through
   })
 
