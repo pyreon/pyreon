@@ -92,8 +92,10 @@ import {
   classifyNegativeSlice,
   classifyOptionalCondition,
   indexedArrayCallback,
+  inferMapFromPairsType,
   inferReturnType,
   inferType,
+  mapFromPairsTypeProblem,
   logicalOrValueKind,
   normalizeNumericAlias,
   objectLengthRangeForm,
@@ -2990,6 +2992,50 @@ function intLiteralAsDouble(x: ExprIR, otherIsDouble: boolean): string | null {
   return `${x === lit ? '' : '-'}${lit.value}.0`
 }
 
+/**
+ * `new Map(src.map((x) => [k, v]))` → `src.associate { x -> k to v }.toMutableMap()`.
+ * `associate` keeps the LAST value for a repeated key (in a LinkedHashMap,
+ * whose order matches JS `Map`'s first-insertion order), and `toMutableMap`
+ * gives the `MutableMap` every other Map lowering produces.
+ */
+function emitKotlinMapFromPairs(
+  e: Extract<ExprIR, { kind: 'new-collection' }>,
+  pairs: NonNullable<Extract<ExprIR, { kind: 'new-collection' }>['pairsFrom']>,
+  indent: number,
+): string {
+  const mt =
+    e.keyType !== undefined && e.valueType !== undefined
+      ? ({ kind: 'map', key: e.keyType, value: e.valueType } as const)
+      : inferMapFromPairsType(pairs, _kotlinExprInferCtx)
+  const problem = mapFromPairsTypeProblem(mt)
+  if (problem !== null) {
+    const w = `\`new Map(src.map((x) => [key, value]))\` cannot lower to a native dictionary: ${problem}.`
+    if (!_emitWarnings.includes(w)) _emitWarnings.push(w)
+  }
+  const src = emitKotlinExpr(pairs.source, indent)
+  const srcT = inferType(pairs.source, _kotlinExprInferCtx)
+  const elT = srcT.kind === 'array' || srcT.kind === 'set' ? srcT.element : undefined
+  const p = pairs.param
+  const had = _kotlinExprInferCtx.locals.has(p)
+  const prev = _kotlinExprInferCtx.locals.get(p)
+  if (elT !== undefined) _kotlinExprInferCtx.locals.set(p, elT)
+  const prevEnum = _activeEnumType
+  _activeEnumType = undefined
+  try {
+    const k = withExpectedTypeKotlin(mt.kind === 'map' ? mt.key : undefined, () =>
+      emitKotlinExpr(pairs.key, indent),
+    )
+    const v = withExpectedTypeKotlin(mt.kind === 'map' ? mt.value : undefined, () =>
+      emitKotlinExpr(pairs.value, indent),
+    )
+    return `${src}.associate { ${kotlinIdent(p)} -> ${k} to ${v} }.toMutableMap()`
+  } finally {
+    _activeEnumType = prevEnum
+    if (had) _kotlinExprInferCtx.locals.set(p, prev!)
+    else _kotlinExprInferCtx.locals.delete(p)
+  }
+}
+
 function emitKotlinExpr(e: ExprIR, indent: number): string {
   switch (e.kind) {
     case 'literal':
@@ -3610,13 +3656,27 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         {
           const recvT = inferType(e.callee.object, _kotlinExprInferCtx)
           if (recvT.kind === 'map') {
-            if (prop === 'set' && e.args.length === 2)
-              return `${obj}[${argExprs[0]!}] = ${argExprs[1]!}`
-            if (prop === 'get' && e.args.length === 1) return `${obj}[${argExprs[0]!}]`
+            // Mirror of the Swift twin: key / value args take the MAP's types,
+            // never the surrounding expectation (an enum comparison leaked
+            // into the key as `m[Status.a]`).
+            // The surrounding enum context is CLEARED first: `withExpectedTypeKotlin` sets
+            // it for an enum type but never unsets an outer one.
+            const typedArg = (i: number, t: TypeIR): string => {
+              const prevEnum = _activeEnumType
+              _activeEnumType = undefined
+              try {
+                return withExpectedTypeKotlin(t, () => emitKotlinExpr(e.args[i]!, indent))
+              } finally {
+                _activeEnumType = prevEnum
+              }
+            }
+            const k = (i: number) => typedArg(i, recvT.key)
+            const v = (i: number) => typedArg(i, recvT.value)
+            if (prop === 'set' && e.args.length === 2) return `${obj}[${k(0)}] = ${v(1)}`
+            if (prop === 'get' && e.args.length === 1) return `${obj}[${k(0)}]`
             if (prop === 'has' && e.args.length === 1)
-              return `${obj}${objDot}containsKey(${argExprs[0]!})`
-            if (prop === 'delete' && e.args.length === 1)
-              return `${obj}${objDot}remove(${argExprs[0]!})`
+              return `${obj}${objDot}containsKey(${k(0)})`
+            if (prop === 'delete' && e.args.length === 1) return `${obj}${objDot}remove(${k(0)})`
             if (prop === 'clear' && e.args.length === 0) return `${obj}${objDot}clear()`
           }
           if (recvT.kind === 'set') {
@@ -4597,6 +4657,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       // Mirror of the Swift emit. `val` is fine on Kotlin (the reference is
       // final; contents mutate through it).
       if (e.collection === 'map') {
+        if (e.pairsFrom !== undefined) return emitKotlinMapFromPairs(e, e.pairsFrom, indent)
         // Seeded `new Map([[k,v],…])` → `mutableMapOf(k to v, …)`.
         if (e.entries && e.entries.length > 0) {
           const body = e.entries
