@@ -2692,8 +2692,8 @@
       "warnings": 0
     },
     "golden-fixture:flow-46.tsx|swift": {
-      "sha": "15e65c63991cdc045faa444b5f69f6c0ac702bea9a934f1e97a8cb19a5e955ae",
-      "bytes": 156468,
+      "sha": "19cd7aafb4016de6bf433400b9fa2976cb5b33df56e37305c2b937388b2ea862",
+      "bytes": 156742,
       "warnings": 1
     },
     "golden-fixture:flow-46.tsx|kotlin": {
@@ -7392,8 +7392,8 @@
       "warnings": 0
     },
     "example:native-tasks/TasksApp.tsx|swift": {
-      "sha": "ad2f1163f832ca91d3cacc0f16682bd82feb05bc091b5f6696b885612a0db8d4",
-      "bytes": 160572,
+      "sha": "556ebc246c39ef1004e8a9fa367224bd3ac5b3a0d918e95524d1d6944f948071",
+      "bytes": 160860,
       "warnings": 1
     },
     "example:native-tasks/TasksApp.tsx|kotlin": {

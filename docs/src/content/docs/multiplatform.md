@@ -758,6 +758,12 @@ const router = createRouter({
 return <RouterProvider router={router}><RouterView /></RouterProvider>
 ```
 
+**Persistent siblings.** Content beside `<RouterView />` (a header, a nav bar,
+a `<Toaster />`) persists across navigation natively, as it does on the web:
+`<RouterView />` becomes the routed slot (the NavigationStack on iOS, the
+route dispatch on Android) wherever it sits, and its siblings render around it
+with the router in scope.
+
 Inside a route component, read path params via destructuring:
 
 ```tsx
