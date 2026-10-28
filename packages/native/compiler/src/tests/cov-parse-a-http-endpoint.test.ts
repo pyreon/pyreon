@@ -280,7 +280,7 @@ describe('endpoint call-site — every other option is NAMED', () => {
 
   it('a known-unlowerable option carries its own reason', () => {
     expect(warns(EP, `ep({ signal: sig })`).some((m) => m.includes('an AbortSignal has no analogue'))).toBe(true)
-    expect(warns(EP, `ep({ meta: m })`).some((m) => m.includes('read by client middleware'))).toBe(true)
+    expect(warns(EP, `ep({ meta: m })`).some((m) => m.includes('read only by custom middleware functions'))).toBe(true)
   })
 
   it('an UNKNOWN option falls back to the generic reason rather than silence', () => {
