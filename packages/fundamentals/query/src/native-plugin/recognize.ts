@@ -232,7 +232,8 @@ export function recognizeQuery(_call: CallSite, ctx: ParseContext): ExtDeclSpec 
       endpointQuery.call.arguments?.[0] as AnyNode | undefined,
       // The query harness re-fetches on key change, so a RUNTIME `:param`
       // is honourable here (and only here — see the flag's own doc).
-      { allowRuntimeParams: true, streaming: false },
+      // The harness passes the client's `use: [...]` to `PyreonHttp.send(…, middleware:)`.
+      { allowRuntimeParams: true, streaming: false, middleware: true },
     )
     if (!resolved) return null
     ctx.recordDecode(type, resolved.response)
@@ -242,10 +243,12 @@ export function recognizeQuery(_call: CallSite, ctx: ParseContext): ExtDeclSpec 
       method?: string
       headers?: Record<string, string>
       body?: string
+      middleware?: ExprIR
     } = {}
     if (resolved.method && resolved.method !== 'GET') eqReq.method = resolved.method
     if (resolved.headers) eqReq.headers = resolved.headers
     if (resolved.body !== undefined) eqReq.body = resolved.body
+    if (resolved.middleware !== undefined) eqReq.middleware = resolved.middleware
     if (resolved.urlExpr !== undefined) {
       eqReq.urlExpr = resolved.urlExpr
       // The cache key MUST carry the runtime parts too. A key built from the

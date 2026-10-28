@@ -132,6 +132,155 @@ final class PyreonRuntimeTests: XCTestCase {
         XCTAssertEqual(try jsonRes.decode(User.self), User(id: 7, name: "x"))
     }
 
+    // MARK: - PyreonHttp client middleware (the lowered `use: [...]` array)
+    //
+    // Mirrors the Kotlin PyreonHttpTest smokes; the cross-language parity
+    // against the WEB middleware is native-http-middleware-parity.test.ts.
+
+    /// One entry per attempt: a status, or -1 for a thrown network error.
+    private final class Scripted {
+        let script: [Int]
+        let headers: [String: String]
+        var seen: [PyreonHttpRequest] = []
+        init(_ script: Int..., headers: [String: String] = [:]) {
+            self.script = script
+            self.headers = headers
+        }
+        func send(_ request: PyreonHttpRequest) throws -> PyreonHttpResponse {
+            let step = script[min(seen.count, script.count - 1)]
+            seen.append(request)
+            if step < 0 { throw URLError(.notConnectedToInternet) }
+            return PyreonHttpResponse(status: step, headers: headers)
+        }
+    }
+
+    private final class Recorder {
+        var sleeps: [Double] = []
+        var lines: [String] = []
+        func env(debug: Bool = true, now: Double = 0) -> PyreonHttpPipelineEnv {
+            PyreonHttpPipelineEnv(
+                sleep: { self.sleeps.append($0) },
+                random: { 0.5 },
+                now: { now },
+                log: { line, _ in self.lines.append(line) },
+                isDebug: debug
+            )
+        }
+    }
+
+    func testMiddlewareBearerReplacesAuthorizationOnce() async throws {
+        let t = Scripted(200)
+        var reads = 0
+        let res = try await PyreonHttpPipeline.run(
+            PyreonHttpRequest.get("https://a.dev/api/u", headers: ["Authorization": "old"]),
+            middleware: [.bearer(baseUrl: "https://a.dev/api", crossOrigin: false, token: { reads += 1; return "tok" })],
+            env: Recorder().env()
+        ) { try t.send($0) }
+        XCTAssertEqual(res.status, 200)
+        XCTAssertEqual(t.seen.first?.headers, ["authorization": "Bearer tok"])
+        XCTAssertEqual(reads, 1)
+    }
+
+    func testMiddlewareBearerNilOrEmptyTokenSendsNoHeader() async throws {
+        for token in [nil, ""] as [String?] {
+            let t = Scripted(200)
+            _ = try await PyreonHttpPipeline.run(
+                PyreonHttpRequest.get("/api/u"),
+                middleware: [.bearer(baseUrl: "/api", crossOrigin: false, token: { token })],
+                env: Recorder().env()
+            ) { try t.send($0) }
+            XCTAssertEqual(t.seen.first?.headers, [:])
+        }
+    }
+
+    func testMiddlewareBearerStaysOnBaseOrigin() async throws {
+        let t = Scripted(200)
+        _ = try await PyreonHttpPipeline.run(
+            PyreonHttpRequest.get("https://evil.dev/x"),
+            middleware: [.bearer(baseUrl: "https://a.dev/api", crossOrigin: false, token: { "tok" })],
+            env: Recorder().env()
+        ) { try t.send($0) }
+        XCTAssertEqual(t.seen.first?.headers, [:])
+    }
+
+    func testMiddlewareRetryReplaysWithBackoff() async throws {
+        let t = Scripted(503, 503, 200)
+        let r = Recorder()
+        let res = try await PyreonHttpPipeline.run(
+            PyreonHttpRequest.get("/api/u"), middleware: [.retry(PyreonRetryPolicy())], env: r.env()
+        ) { try t.send($0) }
+        XCTAssertEqual(res.status, 200)
+        XCTAssertEqual(t.seen.count, 3)
+        XCTAssertEqual(r.sleeps, [750, 1500])
+    }
+
+    func testMiddlewareRetryLimitPostAndRetryAfter() async throws {
+        let t = Scripted(500)
+        let res = try await PyreonHttpPipeline.run(
+            PyreonHttpRequest.get("/x"), middleware: [.retry(PyreonRetryPolicy(limit: 1))], env: Recorder().env()
+        ) { try t.send($0) }
+        XCTAssertEqual(res.status, 500)
+        XCTAssertEqual(t.seen.count, 2)
+
+        let post = Scripted(503)
+        _ = try await PyreonHttpPipeline.run(
+            PyreonHttpRequest.post("/x", body: Data()), middleware: [.retry(PyreonRetryPolicy())], env: Recorder().env()
+        ) { try post.send($0) }
+        XCTAssertEqual(post.seen.count, 1, "POST is never replayed")
+
+        let r = Recorder()
+        let after = Scripted(429, 200, headers: ["Retry-After": "2"])
+        _ = try await PyreonHttpPipeline.run(
+            PyreonHttpRequest.get("/x"),
+            middleware: [.retry(PyreonRetryPolicy(limit: 1, maxDelay: 1500))],
+            env: r.env()
+        ) { try after.send($0) }
+        XCTAssertEqual(r.sleeps, [1500])
+        XCTAssertEqual(PyreonHttpPipeline.parseRetryAfter("Thu, 01 Jan 1970 00:00:10 GMT", now: 4000), 6000)
+        XCTAssertNil(PyreonHttpPipeline.parseRetryAfter("soon", now: 0))
+    }
+
+    func testMiddlewareRetryNetworkErrorsAndCancellation() async throws {
+        let t = Scripted(-1, 200)
+        let res = try await PyreonHttpPipeline.run(
+            PyreonHttpRequest.get("/x"), middleware: [.retry(PyreonRetryPolicy())], env: Recorder().env()
+        ) { try t.send($0) }
+        XCTAssertEqual(res.status, 200)
+
+        var attempts = 0
+        do {
+            _ = try await PyreonHttpPipeline.run(
+                PyreonHttpRequest.get("/x"), middleware: [.retry(PyreonRetryPolicy())], env: Recorder().env()
+            ) { _ in attempts += 1; throw CancellationError() }
+            XCTFail("cancellation must propagate")
+        } catch is CancellationError {
+            XCTAssertEqual(attempts, 1, "a cancelled request is never retried")
+        }
+    }
+
+    func testMiddlewareOrderIsAnOnionAndLoggerRedacts() async throws {
+        var reads = 0
+        let t = Scripted(503, 200)
+        _ = try await PyreonHttpPipeline.run(
+            PyreonHttpRequest.get("/api/x"),
+            middleware: [.retry(PyreonRetryPolicy()), .bearer(baseUrl: "/api", crossOrigin: false, token: { reads += 1; return "t\(reads)" })],
+            env: Recorder().env()
+        ) { try t.send($0) }
+        XCTAssertEqual(t.seen.map { $0.headers["authorization"] }, ["Bearer t1", "Bearer t2"])
+
+        let r = Recorder()
+        _ = try await PyreonHttpPipeline.run(
+            PyreonHttpRequest.get("https://u:p@a.dev/x?token=s#f"), middleware: [.logger(production: false)], env: r.env()
+        ) { _ in PyreonHttpResponse(status: 204) }
+        XCTAssertEqual(r.lines, ["[Pyreon] http GET https://a.dev/x → 204"])
+
+        let quiet = Recorder()
+        _ = try await PyreonHttpPipeline.run(
+            PyreonHttpRequest.get("/x"), middleware: [.logger(production: false)], env: quiet.env(debug: false)
+        ) { _ in PyreonHttpResponse(status: 200) }
+        XCTAssertEqual(quiet.lines, [])
+    }
+
 
     /// The shared schema types every emitted schema struct throws / returns.
     /// Declared once in the runtime so two schema-bearing modules in one

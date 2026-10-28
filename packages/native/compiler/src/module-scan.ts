@@ -90,6 +90,12 @@ export interface ResolvedRequest {
   readonly body?: string | undefined
   /** The same-module schema binding the request's `response` names (evidence for the decode type's `Int`/`Double` fields). */
   readonly response?: { readonly binding: string; readonly array: boolean } | undefined
+  /**
+   * The client's lowered `use: [...]` middleware, as an expression the request's EMITTER passes to the native
+   * `PyreonHttp.send(…, middleware:)`. Only set for a caller that declared {@link RequestOptions.middleware}; a client with
+   * middleware resolved for any other caller is reported and stays web, so no consumer can drop it in silence.
+   */
+  readonly middleware?: ExprIR | undefined
 }
 
 /** What the CALLER can honour. */
@@ -98,6 +104,11 @@ export interface RequestOptions {
   readonly allowRuntimeParams: boolean
   /** The caller consumes the RAW body as a stream. */
   readonly streaming: boolean
+  /**
+   * The caller emits {@link ResolvedRequest.middleware}. Opt-in on purpose: a request source that has middleware to
+   * apply REFUSES a caller that did not declare it (warning by name), rather than handing it a field it would ignore.
+   */
+  readonly middleware?: boolean | undefined
 }
 
 export interface RequestSource {

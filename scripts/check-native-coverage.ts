@@ -685,20 +685,30 @@ export function C() { return (<Stack><Text>{cache.size}</Text></Stack>) }`,
     name: '@pyreon/http',
     mechanism: 'partial',
     rationale:
-      'the CLIENT (middleware, interceptors) stays web, but same-file endpoint calls DO lower: createHttp({ baseUrl }) + api.endpoint(…) resolve through useFetch/useQuery to native PyreonFetch/PyreonQuery, and useStream over openEventStream/openNdjsonStream to the co-located PyreonStream runtime (SSE + NDJSON, reconnect with Last-Event-ID). Verified zero-warning on both targets; the snippet exercises BOTH so the real-runtime batch compiles each.',
+      'imperative client calls (api.get/post) stay web, but same-file endpoint calls DO lower: createHttp({ baseUrl }) + api.endpoint(…) resolve through useFetch/useQuery to native PyreonFetch/PyreonQuery, and useStream over openEventStream/openNdjsonStream to the co-located PyreonStream runtime (SSE + NDJSON, reconnect with Last-Event-ID). A literal `use: [...]` array crosses too — bearer / retry / logger lower to PyreonHttpMiddleware (an onion with the web semantics, parity-tested by execution) and forwardHeaders is the browser no-op; refresh / dedupe / a custom function keep that client web by name, and useStream refuses a middleware client by name. Verified zero-warning on both targets; the snippet exercises all three so the real-runtime batch compiles each.',
     snippet: `import { createHttp } from '@pyreon/http'
+import { bearer, retry, logger, forwardHeaders } from '@pyreon/http/middleware'
 import { openEventStream, type SseEvent } from '@pyreon/http/stream'
 import { useFetch } from '@pyreon/hooks'
-import { useStream } from '@pyreon/query'
+import { useQuery, useStream } from '@pyreon/query'
+import { defineStore } from '@pyreon/store'
+import { signal } from '@pyreon/reactivity'
 import { Stack, Text } from '@pyreon/primitives'
 interface User { id: number; name: string }
+const useSession = defineStore('session', () => {
+  const token = signal('')
+  return { token }
+})
 const api = createHttp({ baseUrl: 'https://api.example.com' })
+const authed = createHttp({ baseUrl: 'https://api.example.com', use: [bearer(() => useSession().store.token()), retry({ limit: 3 }), logger(), forwardHeaders(['cookie'])] })
 const getUser = api.endpoint('GET /users/:id')
+const getMe = authed.endpoint('GET /me')
 const feed = api.endpoint('GET /users/:id/feed', { responseType: 'stream' })
 export function C() {
   const req = useFetch<User>(getUser({ params: { id: '1' } }))
+  const me = useQuery<User>(() => getMe.query())
   const live = useStream<SseEvent<User>>((ctx) => openEventStream((c) => feed({ params: { id: '1' }, signal: c.signal, headers: c.headers }), { signal: ctx.signal, onStatus: ctx.onStatus }))
-  return (<Stack><Text>{req.data}</Text><Text>{live.latest()?.data.name ?? ''}</Text></Stack>)
+  return (<Stack><Text>{req.data}</Text><Text>{me.data()?.name ?? ''}</Text><Text>{live.latest()?.data.name ?? ''}</Text></Stack>)
 }`,
   },
   {

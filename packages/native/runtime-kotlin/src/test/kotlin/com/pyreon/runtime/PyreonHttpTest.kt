@@ -119,7 +119,210 @@ fun testHttpSendResolvesFallbackThenInstalled() {
 // side has the same single-service boundary. The composition is covered by
 // the (future) useFetch emit's end-to-end device gate.
 
+// ── Client middleware (the lowered `use: [...]` array) ─────────────────────
+
+/** A scripted transport: one entry per attempt — a status, or `-1` for a thrown network error. */
+private class Scripted(vararg val script: Int, val headers: Map<String, String> = emptyMap()) {
+    val seen = mutableListOf<PyreonHttpRequest>()
+    fun send(request: PyreonHttpRequest): PyreonHttpResponse {
+        val step = script[seen.size.coerceAtMost(script.size - 1)]
+        seen += request
+        if (step < 0) throw java.io.IOException("offline")
+        return PyreonHttpResponse(step, headers)
+    }
+}
+
+private class Recorder {
+    val sleeps = mutableListOf<Double>()
+    val lines = mutableListOf<String>()
+    fun env(debug: Boolean = true, now: Double = 0.0) = PyreonHttpPipelineEnv(
+        sleep = { sleeps += it },
+        random = { 0.5 },
+        now = { now },
+        log = { line, _ -> lines += line },
+        isDebug = debug,
+    )
+}
+
+fun testMiddlewareBearerSetsHeaderOnce() {
+    val t = Scripted(200)
+    val r = Recorder()
+    var reads = 0
+    val res = PyreonHttpPipeline.run(
+        PyreonHttpRequest.get("https://a.dev/api/u", mapOf("Authorization" to "old")),
+        listOf(PyreonHttpMiddleware.Bearer("https://a.dev/api") { reads++; "tok" }),
+        r.env(),
+    ) { t.send(it) }
+    check(res.status == 200) { "bearer passes the response through" }
+    check(t.seen.single().headers == mapOf("authorization" to "Bearer tok")) {
+        "bearer REPLACES any case-variant of Authorization: ${t.seen.single().headers}"
+    }
+    check(reads == 1) { "token read once" }
+}
+
+fun testMiddlewareBearerNullOrEmptyTokenSendsNoHeader() {
+    for (token in listOf<String?>(null, "")) {
+        val t = Scripted(200)
+        PyreonHttpPipeline.run(
+            PyreonHttpRequest.get("/api/u"),
+            listOf(PyreonHttpMiddleware.Bearer("/api") { token }),
+            Recorder().env(),
+        ) { t.send(it) }
+        check(t.seen.single().headers.isEmpty()) { "token=$token sends no header (not an empty `Bearer `)" }
+    }
+}
+
+fun testMiddlewareBearerStaysOnBaseOrigin() {
+    val t = Scripted(200)
+    PyreonHttpPipeline.run(
+        PyreonHttpRequest.get("https://evil.dev/x"),
+        listOf(PyreonHttpMiddleware.Bearer("https://a.dev/api") { "tok" }),
+        Recorder().env(),
+    ) { t.send(it) }
+    check(t.seen.single().headers.isEmpty()) { "the token does not leave the baseUrl origin" }
+    val t2 = Scripted(200)
+    PyreonHttpPipeline.run(
+        PyreonHttpRequest.get("https://evil.dev/x"),
+        listOf(PyreonHttpMiddleware.Bearer("https://a.dev/api", crossOrigin = true) { "tok" }),
+        Recorder().env(),
+    ) { t2.send(it) }
+    check(t2.seen.single().headers["authorization"] == "Bearer tok") { "crossOrigin = true opts in" }
+}
+
+fun testMiddlewareRetryReplaysWithBackoff() {
+    val t = Scripted(503, 503, 200)
+    val r = Recorder()
+    val res = PyreonHttpPipeline.run(
+        PyreonHttpRequest.get("/api/u"),
+        listOf(PyreonHttpMiddleware.Retry()),
+        r.env(),
+    ) { t.send(it) }
+    check(res.status == 200) { "the third attempt's 200 is returned" }
+    check(t.seen.size == 3) { "two retries: ${t.seen.size}" }
+    // random = 0.5 → base/2 + 0.5·base/2 = 0.75·base, base = 1000·2^(n-1)
+    check(r.sleeps == listOf(750.0, 1500.0)) { "full-jitter backoff: ${r.sleeps}" }
+}
+
+fun testMiddlewareRetryStopsAtLimitAndSkipsPost() {
+    val t = Scripted(500)
+    val res = PyreonHttpPipeline.run(
+        PyreonHttpRequest.get("/x"),
+        listOf(PyreonHttpMiddleware.Retry(PyreonRetryPolicy(limit = 1))),
+        Recorder().env(),
+    ) { t.send(it) }
+    check(res.status == 500 && t.seen.size == 2) { "limit 1 → two attempts, last response returned" }
+
+    val post = Scripted(503)
+    PyreonHttpPipeline.run(
+        PyreonHttpRequest.post("/x", body = "{}"),
+        listOf(PyreonHttpMiddleware.Retry()),
+        Recorder().env(),
+    ) { post.send(it) }
+    check(post.seen.size == 1) { "POST is not idempotent → never replayed" }
+}
+
+fun testMiddlewareRetryAfterAndMaxDelay() {
+    val r = Recorder()
+    val t = Scripted(429, 200, headers = mapOf("Retry-After" to "2"))
+    val res = PyreonHttpPipeline.run(
+        PyreonHttpRequest.get("/x"),
+        listOf(PyreonHttpMiddleware.Retry(PyreonRetryPolicy(limit = 1, maxDelay = 1500.0))),
+        r.env(),
+    ) { t.send(it) }
+    check(res.status == 200 && t.seen.size == 2) { "429 replayed once" }
+    check(r.sleeps == listOf(1500.0)) { "Retry-After 2s capped at maxDelay: ${r.sleeps}" }
+
+    check(PyreonHttpPipeline.parseRetryAfter("Thu, 01 Jan 1970 00:00:10 GMT", now = 4000.0) == 6000.0) {
+        "an HTTP date is a delta from now"
+    }
+    check(PyreonHttpPipeline.parseRetryAfter("soon", now = 0.0) == null) { "unparseable → backoff" }
+    check(PyreonHttpPipeline.parseRetryAfter("   ", now = 0.0) == 0.0) { "whitespace is Number('') = 0" }
+}
+
+fun testMiddlewareRetryNetworkErrors() {
+    val t = Scripted(-1, 200)
+    check(
+        PyreonHttpPipeline.run(PyreonHttpRequest.get("/x"), listOf(PyreonHttpMiddleware.Retry()), Recorder().env()) {
+            t.send(it)
+        }.status == 200,
+    ) { "a transport failure is retried" }
+    val off = Scripted(-1, 200)
+    var threw = false
+    try {
+        PyreonHttpPipeline.run(
+            PyreonHttpRequest.get("/x"),
+            listOf(PyreonHttpMiddleware.Retry(PyreonRetryPolicy(network = false))),
+            Recorder().env(),
+        ) { off.send(it) }
+    } catch (_: java.io.IOException) {
+        threw = true
+    }
+    check(threw && off.seen.size == 1) { "network = false rethrows the first failure" }
+}
+
+fun testMiddlewareOrderIsAnOnion() {
+    // [retry, bearer]: bearer is BELOW retry, so it runs on every attempt.
+    var reads = 0
+    val t = Scripted(503, 200)
+    PyreonHttpPipeline.run(
+        PyreonHttpRequest.get("/api/x"),
+        listOf(PyreonHttpMiddleware.Retry(), PyreonHttpMiddleware.Bearer("/api") { reads++; "t$reads" }),
+        Recorder().env(),
+    ) { t.send(it) }
+    check(reads == 2) { "inner bearer re-runs per attempt" }
+    check(t.seen.map { it.headers["authorization"] } == listOf("Bearer t1", "Bearer t2")) { "fresh token per attempt" }
+}
+
+fun testMiddlewareLogger() {
+    val r = Recorder()
+    PyreonHttpPipeline.run(
+        PyreonHttpRequest.get("https://u:p@a.dev/x?token=s#f"),
+        listOf(PyreonHttpMiddleware.Logger()),
+        r.env(),
+    ) { PyreonHttpResponse(204) }
+    check(r.lines == listOf("[Pyreon] http GET https://a.dev/x → 204")) { "redacted line: ${r.lines}" }
+
+    val quiet = Recorder()
+    PyreonHttpPipeline.run(PyreonHttpRequest.get("/x"), listOf(PyreonHttpMiddleware.Logger()), quiet.env(debug = false)) {
+        PyreonHttpResponse(200)
+    }
+    check(quiet.lines.isEmpty()) { "silent outside a debug build" }
+    PyreonHttpPipeline.run(
+        PyreonHttpRequest.get("/x"),
+        listOf(PyreonHttpMiddleware.Logger(production = true)),
+        quiet.env(debug = false),
+    ) { PyreonHttpResponse(200) }
+    check(quiet.lines.size == 1) { "production = true logs everywhere" }
+}
+
+fun testMiddlewareThroughSend() {
+    val executor = object : PyreonHttpExecutor {
+        var auth: String? = null
+        override fun send(request: PyreonHttpRequest): PyreonHttpResponse {
+            auth = request.headers["authorization"]
+            return PyreonHttpResponse(200)
+        }
+    }
+    PyreonHttp.send(
+        PyreonHttpRequest.get("/api/x"),
+        fallback = executor,
+        middleware = listOf(PyreonHttpMiddleware.Bearer("/api") { "abc" }),
+    )
+    check(executor.auth == "Bearer abc") { "PyreonHttp.send applies the middleware before the executor" }
+}
+
 fun main() {
+    testMiddlewareBearerSetsHeaderOnce()
+    testMiddlewareBearerNullOrEmptyTokenSendsNoHeader()
+    testMiddlewareBearerStaysOnBaseOrigin()
+    testMiddlewareRetryReplaysWithBackoff()
+    testMiddlewareRetryStopsAtLimitAndSkipsPost()
+    testMiddlewareRetryAfterAndMaxDelay()
+    testMiddlewareRetryNetworkErrors()
+    testMiddlewareOrderIsAnOnion()
+    testMiddlewareLogger()
+    // Before the executor-resolution test: `install` is process-wide.
+    testMiddlewareThroughSend()
     testHttpGetBuilder()
     testHttpPostBuilder()
     testHttpPostJsonSetsContentType()

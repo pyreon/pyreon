@@ -42,6 +42,8 @@ interface FetchPayload {
    */
   readonly headerExprs?: Readonly<Record<string, ExprIR>>
   readonly body?: string
+  /** The endpoint client's lowered `use: [...]` middleware (an `@pyreon/http` expression), applied around the request. */
+  readonly middleware?: ExprIR
 }
 
 const payloadOf = (d: ExtDecl): FetchPayload => d.payload as unknown as FetchPayload
@@ -69,11 +71,20 @@ export const recognizeFetch: CallRecognizer = (_call, ctx) => {
   // method, then feeds the path below exactly as if the author had written `useFetch<T>('/api/users/1', { method: 'GET' })`.
   // Reactive params / a non-literal client baseUrl bail (the source pushes the warning) and the call stays web.
   let resolvedUrl: string | undefined
-  let resolvedEndpoint: { method?: string | undefined; headers?: Record<string, string> | undefined; body?: string | undefined } | undefined
+  let resolvedEndpoint:
+    | {
+        method?: string | undefined
+        headers?: Record<string, string> | undefined
+        body?: string | undefined
+        middleware?: ExprIR | undefined
+      }
+    | undefined
   if (urlArg?.type === 'CallExpression' && urlArg.callee?.type === 'Identifier' && ctx.requests.has(urlArg.callee.name as string)) {
     const resolved = ctx.requests.resolve(urlArg.callee.name as string, urlArg.arguments?.[0] as AnyNode | undefined, {
       allowRuntimeParams: false,
       streaming: false,
+      // The harness below passes it to `PyreonHttp.send(…, middleware:)`.
+      middleware: true,
     })
     if (!resolved) return null // warning already pushed; stays web
     ctx.recordDecode(type, resolved.response)
@@ -98,11 +109,18 @@ export const recognizeFetch: CallRecognizer = (_call, ctx) => {
     )
   }
   const initArg = ctx.args[1] as AnyNode | undefined
-  const req: { method?: string; headers?: Record<string, string>; headerExprs?: Record<string, ExprIR>; body?: string } = {}
+  const req: {
+    method?: string
+    headers?: Record<string, string>
+    headerExprs?: Record<string, ExprIR>
+    body?: string
+    middleware?: ExprIR
+  } = {}
   // An endpoint's verb / headers / json body are the DEFAULTS; an explicit second argument still wins (the loop below overwrites).
   if (resolvedEndpoint?.method) req.method = resolvedEndpoint.method
   if (resolvedEndpoint?.headers) req.headers = resolvedEndpoint.headers
   if (resolvedEndpoint?.body !== undefined) req.body = resolvedEndpoint.body
+  if (resolvedEndpoint?.middleware !== undefined) req.middleware = resolvedEndpoint.middleware
   if (initArg) {
     if (initArg.type !== 'ObjectExpression') {
       ctx.warn(`useFetch init must be an object literal to lower to native; got ${initArg.type}. The request will be a plain GET on iOS and Android.`)
@@ -178,7 +196,8 @@ export const recognizeFetch: CallRecognizer = (_call, ctx) => {
   return { type: FETCH_TYPE, payload: { type, url, ...req } as unknown as ExtPayload }
 }
 
-const hasRequestInit = (p: FetchPayload): boolean => Boolean(p.method || p.headers || p.headerExprs || p.body)
+const hasRequestInit = (p: FetchPayload): boolean =>
+  Boolean(p.method || p.headers || p.headerExprs || p.body || p.middleware)
 
 /** `.task { … }` on the stable-identity host: begin → request → resolve | reject. Lines are relative to the modifier's own indentation. */
 function swiftHarness(d: ExtDecl, ctx: EmitContext): readonly string[] {
@@ -199,7 +218,13 @@ function swiftHarness(d: ExtDecl, ctx: EmitContext): readonly string[] {
     if (pairs.length > 0) parts.push(`headers: [${pairs.join(', ')}]`)
     if (p.body !== undefined) parts.push(`body: Data(${swiftStr(p.body)}.utf8)`)
     lines.push(`    let __response = try await PyreonHttp.send(`)
-    lines.push(`      PyreonHttpRequest(${parts.join(', ')})`)
+    if (p.middleware !== undefined) {
+      // The client's `use: [...]`, applied around the request with the web's onion semantics.
+      lines.push(`      PyreonHttpRequest(${parts.join(', ')}),`)
+      lines.push(`      middleware: ${ctx.expr(p.middleware, 0)}`)
+    } else {
+      lines.push(`      PyreonHttpRequest(${parts.join(', ')})`)
+    }
     lines.push(`    )`)
     // A non-2xx must REJECT rather than decode. Handing an error page to JSONDecoder surfaces as a decode failure, which reads as
     // "the server sent bad JSON" and hides the actual status.
@@ -232,7 +257,9 @@ function kotlinHarness(d: ExtDecl, ctx: EmitContext): readonly string[] {
     if (p.body !== undefined) parts.push(`body = ${kotlinStr(p.body)}`)
     lines.push(`    val __response = withContext(Dispatchers.IO) {`)
     // The OkHttp default comes from HERE, as a direct reference: see `PyreonHttp.send` for why it cannot live in the runtime.
-    lines.push(`      PyreonHttp.send(PyreonHttpRequest(${parts.join(', ')}), fallback = PyreonHttpOkHttp)`)
+    // The client's `use: [...]`, applied around the request with the web's onion semantics.
+    const middleware = p.middleware !== undefined ? `, middleware = ${ctx.expr(p.middleware, 0)}` : ''
+    lines.push(`      PyreonHttp.send(PyreonHttpRequest(${parts.join(', ')}), fallback = PyreonHttpOkHttp${middleware})`)
     lines.push(`    }`)
     // A non-2xx REJECTS rather than decoding — handing an error page to the JSON decoder reads as "the server sent bad JSON".
     lines.push(`    if (!__response.isOk) throw PyreonHttpError.BadStatus(__response.status)`)

@@ -61,7 +61,7 @@ export function queryLifecycleKotlin(decl: ExtDecl, ctx: EmitContext): readonly 
   } else {
     const kotlinUrl = d.urlExpr !== undefined ? ctx.expr(d.urlExpr, 0) : ctx.stringLiteral(d.url as string)
     lines.push(`    try {`)
-    if (d.method || d.headers || d.headerExprs || d.body) {
+    if (d.method || d.headers || d.headerExprs || d.body || d.middleware) {
       // Mirrors the Swift PyreonHttp branch: a request with a VERB, headers, or a body goes through
       // PyreonHttp (readText() can express none of them).
       const parts = [`method = PyreonHttpMethod.${(d.method ?? 'GET').toUpperCase()}`, `url = ${kotlinUrl}`]
@@ -74,7 +74,9 @@ export function queryLifecycleKotlin(decl: ExtDecl, ctx: EmitContext): readonly 
       if (d.body !== undefined) parts.push(`body = ${ctx.stringLiteral(d.body)}`)
       lines.push(`      val __response = withContext(Dispatchers.IO) {`)
       // The OkHttp default comes from HERE, as a direct reference: see `PyreonHttp.send` for why it cannot live in the runtime.
-      lines.push(`        PyreonHttp.send(PyreonHttpRequest(${parts.join(', ')}), fallback = PyreonHttpOkHttp)`)
+      // The client's `use: [...]`, applied around the request with the web's onion semantics.
+      const middleware = d.middleware !== undefined ? `, middleware = ${ctx.expr(d.middleware, 0)}` : ''
+      lines.push(`        PyreonHttp.send(PyreonHttpRequest(${parts.join(', ')}), fallback = PyreonHttpOkHttp${middleware})`)
       lines.push(`      }`)
       lines.push(`      if (!__response.isOk) throw PyreonHttpError.BadStatus(__response.status)`)
       lines.push(`      ${name}.resolve(PyreonFetchJson.decodeFromString<${ctx.typeText(d.type)}>(__response.body))`)

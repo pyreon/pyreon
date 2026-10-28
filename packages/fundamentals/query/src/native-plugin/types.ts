@@ -24,6 +24,8 @@ export interface QueryPayload {
    */
   headerExprs?: Record<string, ExprIR>
   body?: string
+  /** The endpoint client's lowered `use: [...]` middleware (an `@pyreon/http` expression), applied around the request. */
+  middleware?: ExprIR
 }
 
 /** The payload of a `stream` declaration (see `recognizeStream`). */

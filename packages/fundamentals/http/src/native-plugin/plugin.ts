@@ -1,5 +1,6 @@
 import { type CompilerPlugin, type MethodCallRecognizer } from '@pyreon/native-compiler/plugin-api'
 import { httpFacts, httpRequestSource, scanHttp } from './endpoint'
+import { MIDDLEWARE_EXPR, middlewareExprEmitter } from './middleware'
 import { HTTP_PLUGIN_NAME } from './names'
 
 export { HTTP_PLUGIN_NAME }
@@ -40,6 +41,8 @@ export const httpPlugin: CompilerPlugin = {
   modules: ['@pyreon/http'],
   scanModule: scanHttp,
   requestSources: [httpRequestSource],
+  // A client's lowered `use: [...]` array — see `middleware.ts`.
+  exprs: { [MIDDLEWARE_EXPR]: middlewareExprEmitter },
   methodCalls: Object.fromEntries(
     ['get', 'post', 'put', 'patch', 'delete', 'head', 'options', 'request'].map((m) => [m, recognizeClientCall]),
   ),
@@ -55,7 +58,7 @@ export const httpPlugin: CompilerPlugin = {
       // import, reactive params on `useFetch`) still fails native.
       supported: ['createHttp'],
       advice:
-        'a same-file `const api = createHttp({ baseUrl })` + `const e = api.endpoint(\'GET /users/:id\')` DOES lower — `useFetch<T>(e({ params: { id: \'1\' } }))` resolves to a native fetch of the templated URL via PyreonFetch, and `useQuery<T>(() => e.query({ params: { id: \'1\' } }))` lowers to PyreonQuery. What stays web: reactive params and a computed baseUrl',
+        'a same-file `const api = createHttp({ baseUrl })` + `const e = api.endpoint(\'GET /users/:id\')` DOES lower — `useFetch<T>(e({ params: { id: \'1\' } }))` resolves to a native fetch of the templated URL via PyreonFetch, and `useQuery<T>(() => e.query({ params: { id: \'1\' } }))` lowers to PyreonQuery. What stays web: reactive params on useFetch and a computed baseUrl. Middleware lowers only from INSIDE a literal `createHttp({ use: [bearer(…), retry(…), logger()] })` array — used anywhere else it stays web',
     },
   },
 }

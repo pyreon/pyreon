@@ -61,7 +61,7 @@ export function queryLifecycleSwift(decl: ExtDecl, ctx: EmitContext): readonly s
   } else {
     const swiftUrl = d.urlExpr !== undefined ? ctx.expr(d.urlExpr, 0) : ctx.stringLiteral(d.url as string)
     lines.push(`    do {`)
-    if (d.method || d.headers || d.headerExprs || d.body) {
+    if (d.method || d.headers || d.headerExprs || d.body || d.middleware) {
       // A request with a VERB, headers, or a body routes through PyreonHttp — exactly like useFetch's
       // method/headers path.
       const method = (d.method ?? 'GET').toLowerCase()
@@ -74,7 +74,13 @@ export function queryLifecycleSwift(decl: ExtDecl, ctx: EmitContext): readonly s
       if (pairs.length > 0) parts.push(`headers: [${pairs.join(', ')}]`)
       if (d.body !== undefined) parts.push(`body: Data(${ctx.stringLiteral(d.body)}.utf8)`)
       lines.push(`      let __response = try await PyreonHttp.send(`)
-      lines.push(`        PyreonHttpRequest(${parts.join(', ')})`)
+      if (d.middleware !== undefined) {
+        // The client's `use: [...]`, applied around the request with the web's onion semantics.
+        lines.push(`        PyreonHttpRequest(${parts.join(', ')}),`)
+        lines.push(`        middleware: ${ctx.expr(d.middleware, 0)}`)
+      } else {
+        lines.push(`        PyreonHttpRequest(${parts.join(', ')})`)
+      }
       lines.push(`      )`)
       lines.push(`      guard __response.isOK else {`)
       lines.push(`        throw PyreonHttpError.badStatus(__response.status)`)
