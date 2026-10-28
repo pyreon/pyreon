@@ -935,7 +935,7 @@ public struct PyreonGesture<Content: View>: View {
     onRotate: ((PyreonRotateEvent) -> Void)? = nil,
     @ViewBuilder content: () -> Content
   ) {}
-  public typealias Body = Never
+  public var body: some View { EmptyView() }
 }
 public enum PyreonJSON {
   public static func encode<T>(_ value: T) -> String { "" }
