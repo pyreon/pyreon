@@ -8,6 +8,7 @@ import { classifyFallback, unconsumedSlotWarning } from './jsx-slot-attrs'
 import { lowerWebViewDomStorage } from './webview-options'
 import { asyncValueReturnWarning, bodyReturnsValue } from './async-function'
 import { kotlinStr } from './string-literals'
+import { resolveDateFieldShape, type DateBound } from './date-field-shape'
 import {
   bindServices,
   emitPluginDecl,
@@ -7726,6 +7727,33 @@ function emitKotlinField(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: nu
   const onValueChange =
     formBinding?.onChange ??
     (onChangeText ? emitKotlinAction(onChangeText.handler, indent + 2) : `{ ${sig} = it }`)
+
+  // A date / time kind is a different control — the runtime's PyreonDateField
+  // (Material 3 date / time picker dialogs) over the same String value. Mirror
+  // of the Swift branch; decided by date-field-shape.ts.
+  const dateShape = resolveDateFieldShape(e, readStaticAttrKotlin)
+  if (dateShape !== undefined) {
+    _emitWarnings.push(...dateShape.warnings)
+    const bound = (b: DateBound | undefined) =>
+      b === undefined ? undefined : b.kind === 'static' ? kotlinStr(b.value) : emitKotlinExpr(b.expr, 0)
+    const KIND: Record<string, string> = { date: 'Date', time: 'Time', datetime: 'DateTime' }
+    const dateArgs = [
+      `value = ${valueExpr}`,
+      `onValueChange = ${onValueChange}`,
+      `kind = PyreonDateFieldKind.${KIND[dateShape.kind]}`,
+    ]
+    const min = bound(dateShape.min)
+    const max = bound(dateShape.max)
+    if (min !== undefined) dateArgs.push(`min = ${min}`)
+    if (max !== undefined) dateArgs.push(`max = ${max}`)
+    const placeholderDate = kotlinFieldPlaceholder(e)
+    if (placeholderDate !== undefined) dateArgs.push(`placeholder = ${placeholderDate}`)
+    const enabledDate = kotlinEnabledArg(e)
+    if (enabledDate) dateArgs.push(enabledDate)
+    const modDate = emitKotlinLayoutModifier(e)
+    if (modDate) dateArgs.push(`modifier = ${modDate}`)
+    return `PyreonDateField(${dateArgs.join(', ')})`
+  }
 
   const args: string[] = [`value = ${valueExpr}`, `onValueChange = ${onValueChange}`]
 

@@ -54,6 +54,9 @@ import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.printToString
 import androidx.compose.ui.test.assertContentDescriptionContains
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.hasContentDescriptionExactly
+import androidx.compose.ui.test.onFirst
+import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
@@ -623,6 +626,54 @@ class TasksAppInstrumentedTest {
 
         composeRule.onNodeWithTag("streams-back").performClick()
         assertTagDisplayed("tasks-page", "after streams-back (/streams -> /tasks)")
+    }
+
+    /**
+     * `<Field kind="date" | "time" | "datetime">` (#3980) — mirror of the iOS
+     * `test_dateFieldsPickThroughTheNativeDatePicker`, through Material 3's real
+     * date and time picker dialogs: pick a day (control -> program, the web's
+     * `YYYY-MM-DD` reaches the signal), write the signal (program -> control,
+     * the field shows the day in the device's format), and confirm a time in an
+     * EMPTY time field.
+     */
+    @Test
+    fun dateFieldsPickThroughTheNativeDatePicker() {
+        composeRule.onNodeWithTag("login-username").performTextInput("abcde")
+        composeRule.onNodeWithTag("login-submit").performClick()
+        assertTagDisplayed("tasks-page", "after login-submit")
+        composeRule.onNodeWithTag("tasks-dates").performClick()
+        assertTagDisplayed("dates-page", "after tasks-dates (/tasks -> /dates)")
+
+        waitForTagText("dates-day-value", "2026-10-22")
+        composeRule.onNodeWithTag("dates-day").performClick()
+        // A day cell is clickable and carries the day number.
+        val day23 = hasText("23") and hasClickAction()
+        try {
+            composeRule.waitUntil(timeoutMillis = 5_000) { composeRule.onAllNodes(day23).fetchSemanticsNodes().isNotEmpty() }
+        } catch (e: Throwable) {
+            throw AssertionError("the date picker dialog did not open:\n" + composeRule.onRoot(useUnmergedTree = true).printToString(), e)
+        }
+        composeRule.onAllNodes(day23).onFirst().performClick()
+        composeRule.onNodeWithText("OK").performClick()
+        waitForTagText("dates-day-value", "2026-10-23")
+
+        composeRule.onNodeWithTag("dates-christmas").performClick()
+        waitForTagText("dates-day-value", "2026-12-25")
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            composeRule.onAllNodes(hasText("Dec 25, 2026", substring = true)).fetchSemanticsNodes().isNotEmpty()
+        }
+
+        composeRule.onNodeWithTag("dates-time-value").assertTextEquals("empty")
+        composeRule.onAllNodes(hasText("Pick a time")).fetchSemanticsNodes().let {
+            assertTrue("the empty time field does not show its placeholder", it.isNotEmpty())
+        }
+        composeRule.onNodeWithTag("dates-time").performClick()
+        composeRule.waitUntil(timeoutMillis = 5_000) { composeRule.onAllNodes(hasText("OK")).fetchSemanticsNodes().isNotEmpty() }
+        composeRule.onNodeWithText("OK").performClick()
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            Regex("^\\d{2}:\\d{2}$").matches(textOf("dates-time-value"))
+        }
+        composeRule.onNodeWithTag("dates-when-value").assertTextEquals("2026-10-22T09:30")
     }
 
     @Test

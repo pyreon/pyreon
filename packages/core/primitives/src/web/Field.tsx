@@ -18,7 +18,14 @@ const KIND_TO_TYPE: Record<string, string> = {
   search: 'search',
   tel: 'tel',
   url: 'url',
+  date: 'date',
+  time: 'time',
+  // The web's own zone-free wall-clock input: its value is `YYYY-MM-DDTHH:mm`,
+  // exactly the `datetime` value contract.
+  datetime: 'datetime-local',
 }
+
+const DATE_KINDS: ReadonlySet<string> = new Set(['date', 'time', 'datetime'])
 
 /**
  * `<Field>` — text input.
@@ -55,7 +62,9 @@ export const Field = (props: FieldProps): VNode => {
     props.onChangeText(target.value)
   }
 
-  const onKeyDown = props.onSubmit
+  // A date picker has no keyboard submit natively; the type forbids it, and
+  // this keeps an untyped caller's Enter from meaning something only on the web.
+  const onKeyDown = props.onSubmit && !DATE_KINDS.has(kind)
     ? (e: KeyboardEvent) => {
         if (e.key === 'Enter') {
           props.onSubmit?.()
@@ -90,6 +99,13 @@ export const Field = (props: FieldProps): VNode => {
   }
   if (onKeyDown !== undefined) attrs.onKeyDown = onKeyDown
   if (props.placeholder !== undefined) attrs.placeholder = props.placeholder
+  if (DATE_KINDS.has(kind)) {
+    // Bounds of what can be picked, in the value's own format. Read through
+    // thunks so a reactive bound stays live.
+    const p = props as { min?: string; max?: string }
+    if (p.min !== undefined) attrs.min = () => (props as { min?: string }).min
+    if (p.max !== undefined) attrs.max = () => (props as { max?: string }).max
+  }
   if (props.disabled) attrs.disabled = true
   return h('input', attrs)
 }

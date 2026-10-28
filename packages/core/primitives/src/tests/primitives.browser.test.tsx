@@ -201,6 +201,35 @@ describe('<Press> — web', () => {
   })
 })
 
+describe('<Field kind="date" | "time" | "datetime"> — web', () => {
+  it('the value is the wall-clock string, both ways', async () => {
+    for (const [kind, sample] of [['date', '2026-10-22'], ['time', '09:30'], ['datetime', '2026-10-22T09:30']] as const) {
+      const value = signal<string>(sample)
+      const { container, unmount } = mountInBrowser(h(Field, { value, onChangeText: (n: string) => value.set(n), kind }))
+      const input = container.firstElementChild as HTMLInputElement
+      await flush()
+      expect(input.value).toBe(sample)
+      // A value the browser would hold after a pick reaches onChangeText unchanged.
+      input.value = kind === 'time' ? '17:45' : kind === 'date' ? '2027-01-02' : '2027-01-02T17:45'
+      input.dispatchEvent(new Event('input', { bubbles: true }))
+      await flush()
+      expect(value()).toBe(input.value)
+      unmount()
+    }
+  })
+
+  it('min / max bound the input — an out-of-range value is a range underflow', async () => {
+    const value = signal('2025-12-31')
+    const { container, unmount } = mountInBrowser(
+      h(Field, { value, onChangeText: (n: string) => value.set(n), kind: 'date', min: '2026-01-01', max: '2026-12-31' }),
+    )
+    const input = container.firstElementChild as HTMLInputElement
+    await flush()
+    expect(input.validity.rangeUnderflow).toBe(true)
+    unmount()
+  })
+})
+
 describe('<Field> — web', () => {
   it('renders an <input> wired to a signal', async () => {
     const value = signal('initial')

@@ -21,4 +21,11 @@ export type {
 export type { InlineProps, LayerProps, ScrollProps, SpacerProps, StackProps } from './layout'
 export type { HeadingProps, IconProps, ImageProps, TextProps } from './content'
 export type { ButtonProps, LinkProps, PressProps } from './interaction'
-export type { FieldProps, ModalProps, ToggleProps } from './input'
+export type {
+  DateFieldProps,
+  FieldBaseProps,
+  FieldProps,
+  ModalProps,
+  SingleLineFieldProps,
+  ToggleProps,
+} from './input'

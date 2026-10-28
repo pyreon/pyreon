@@ -42,6 +42,10 @@ const REQUIRED: Record<string, string> = {
   Press: ' onPress={() => {}}',
   Link: ' to="/x"',
   Field: ' value={v()} onChangeText={(n) => v.set(n)}',
+  // A SHAPE, not a primitive: the key's first word is the tag. A date kind is
+  // a different control on both targets (the runtime's PyreonDateField), so it
+  // is its own path through the emitter and has to carry the tail separately.
+  'Field date': ' kind="date" value={v()} onChangeText={(n) => v.set(n)}',
   Toggle: ' value={b()} onChange={(n) => b.set(n)}',
   Modal: ' open onClose={() => {}}',
   // Three that the first version of this file left out — the hardcoded list of
@@ -76,8 +80,12 @@ const CROSS_CUTTING = {
   },
 } as const
 
-const emit = (tag: string, attr: string, target: 'swift' | 'kotlin'): string => {
-  const base = REQUIRED[tag] ?? ''
+/** `'Field date'` → `Field`: the tag a REQUIRED shape key renders. */
+const tagOf = (shape: string): string => shape.split(' ')[0]!
+
+const emit = (shape: string, attr: string, target: 'swift' | 'kotlin'): string => {
+  const base = REQUIRED[shape] ?? ''
+  const tag = tagOf(shape)
   const el = TAKES_CHILDREN.has(tag)
     ? `<${tag}${base} ${attr}>x</${tag}>`
     : `<${tag}${base} ${attr} />`
@@ -117,13 +125,16 @@ describe('every canonical primitive carries the cross-cutting props', () => {
       if (!file.endsWith('.ts')) continue
       const src = readFileSync(join(typesDir, file), 'utf8')
       for (const m of src.matchAll(/interface (\w+)Props\b[^{]*HtmlPassthroughProps/g)) {
-        declared.add(m[1]!)
+        // A primitive whose props are a UNION of shapes (`FieldProps =
+        // SingleLineFieldProps | DateFieldProps`) declares the shared half as
+        // `FieldBaseProps` — that is still `<Field>`.
+        declared.add(m[1]!.replace(/Base$/, ''))
       }
     }
     expect(declared.size).toBeGreaterThan(0)
-    const covered = new Set(Object.keys(REQUIRED))
+    const covered = new Set(Object.keys(REQUIRED).map(tagOf))
     expect([...declared].filter((d) => !covered.has(d)).sort()).toEqual([])
-    expect(cells).toHaveLength(covered.size * 3 * 2)
+    expect(cells).toHaveLength(Object.keys(REQUIRED).length * 3 * 2)
   })
 
   it.each(cells)('$tag carries $prop on $target', ({ tag, prop, spec, target }) => {
@@ -133,9 +144,10 @@ describe('every canonical primitive carries the cross-cutting props', () => {
 })
 
 describe('and pays nothing when they are absent', () => {
-  it.each(Object.keys(REQUIRED))('%s without them emits no a11y machinery', (tag) => {
+  it.each(Object.keys(REQUIRED))('%s without them emits no a11y machinery', (shape) => {
     // The wrapper `<Modal>` grew for its tag must not appear on a plain modal.
-    const base = REQUIRED[tag] ?? ''
+    const base = REQUIRED[shape] ?? ''
+    const tag = tagOf(shape)
     const el = TAKES_CHILDREN.has(tag) ? `<${tag}${base}>x</${tag}>` : `<${tag}${base} />`
     const src = `import { signal } from '@pyreon/reactivity'
 import { Stack, Inline, Layer, Scroll, Spacer, Text, Heading, Image, Icon, Button, Press, Link, Field, Toggle, Modal, Transition, Audio, Video } from '@pyreon/primitives'

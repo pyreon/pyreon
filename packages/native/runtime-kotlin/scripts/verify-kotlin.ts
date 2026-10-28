@@ -1128,6 +1128,165 @@ class ActivityResultContracts {
 }
 `
 
+// PyreonDateField-specific stubs — the Android / Compose UI / foundation /
+// Material 3 (1.4) surface the date / time field uses, by NAME and parameter
+// type for every member it touches (the real functions carry more defaulted
+// parameters; the call sites name every argument, so an omitted unused default
+// cannot mask a wrong one). The composable RUNS on the emulator against the
+// real Material 3, in the tasks showcase's /dates page test.
+const DATEFIELD_ANDROID_STUBS = `package android.content
+open class Context
+`
+const DATEFIELD_ANDROID_R_STUBS = `package android
+object R {
+    object string {
+        const val ok: Int = 17039370
+        const val cancel: Int = 17039360
+    }
+}
+`
+const DATEFIELD_ANDROID_FORMAT_STUBS = `package android.text.format
+import android.content.Context
+open class DateFormat {
+    companion object {
+        @JvmStatic fun is24HourFormat(context: Context): Boolean = true
+    }
+}
+`
+const DATEFIELD_COMPOSE_UI_STUBS = `package androidx.compose.ui
+interface Modifier {
+    companion object : Modifier
+}
+`
+const DATEFIELD_COMPOSE_PLATFORM_STUBS = `package androidx.compose.ui.platform
+import android.content.Context
+import androidx.compose.runtime.Composable
+object LocalContext {
+    val current: Context @Composable get() = Context()
+}
+`
+const DATEFIELD_COMPOSE_RES_STUBS = `package androidx.compose.ui.res
+import androidx.compose.runtime.Composable
+@Composable fun stringResource(id: Int): String = ""
+`
+const DATEFIELD_COMPOSE_GRAPHICS_STUBS = `package androidx.compose.ui.graphics.vector
+class ImageVector
+`
+const DATEFIELD_FOUNDATION_STUBS = `package androidx.compose.foundation
+import androidx.compose.ui.Modifier
+fun Modifier.clickable(enabled: Boolean = true, onClick: () -> Unit): Modifier = this
+`
+const DATEFIELD_LAYOUT_STUBS = `package androidx.compose.foundation.layout
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+interface ColumnScope
+interface BoxScope {
+    fun Modifier.matchParentSize(): Modifier = this
+}
+interface RowScope {
+    fun Modifier.weight(weight: Float, fill: Boolean = true): Modifier = this
+}
+fun Modifier.fillMaxWidth(fraction: Float = 1f): Modifier = this
+@Composable fun Box(modifier: Modifier = Modifier, content: @Composable BoxScope.() -> Unit) {}
+// The content-less overload real Compose has, for a box that is only a modifier.
+@Composable fun Box(modifier: Modifier) {}
+@Composable fun Row(modifier: Modifier = Modifier, content: @Composable RowScope.() -> Unit) {}
+`
+const DATEFIELD_ICONS_STUBS = `package androidx.compose.material.icons
+object Icons {
+    object Filled
+}
+`
+const DATEFIELD_ICONS_FILLED_STUBS = `package androidx.compose.material.icons.filled
+import androidx.compose.material.icons.Icons
+import androidx.compose.ui.graphics.vector.ImageVector
+val Icons.Filled.Clear: ImageVector get() = ImageVector()
+`
+const DATEFIELD_MATERIAL3_STUBS = `package androidx.compose.material3
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
+@RequiresOptIn(level = RequiresOptIn.Level.WARNING)
+annotation class ExperimentalMaterial3Api
+interface SelectableDates {
+    fun isSelectableDate(utcTimeMillis: Long): Boolean = true
+    fun isSelectableYear(year: Int): Boolean = true
+}
+interface DatePickerState {
+    var selectedDateMillis: Long?
+}
+interface TimePickerState {
+    val hour: Int
+    val minute: Int
+}
+@ExperimentalMaterial3Api
+@Composable
+fun rememberDatePickerState(
+    initialSelectedDateMillis: Long? = null,
+    selectableDates: SelectableDates = object : SelectableDates {},
+): DatePickerState = object : DatePickerState { override var selectedDateMillis: Long? = null }
+@ExperimentalMaterial3Api
+@Composable
+fun rememberTimePickerState(initialHour: Int = 0, initialMinute: Int = 0, is24Hour: Boolean = true): TimePickerState =
+    object : TimePickerState { override val hour = initialHour; override val minute = initialMinute }
+@ExperimentalMaterial3Api
+@Composable
+fun DatePicker(state: DatePickerState, modifier: Modifier = Modifier) {}
+@ExperimentalMaterial3Api
+@Composable
+fun TimePicker(state: TimePickerState, modifier: Modifier = Modifier) {}
+@ExperimentalMaterial3Api
+@Composable
+fun DatePickerDialog(
+    onDismissRequest: () -> Unit,
+    confirmButton: @Composable () -> Unit,
+    modifier: Modifier = Modifier,
+    dismissButton: (@Composable () -> Unit)? = null,
+    content: @Composable ColumnScope.() -> Unit,
+) {}
+@Composable
+fun AlertDialog(
+    onDismissRequest: () -> Unit,
+    confirmButton: @Composable () -> Unit,
+    modifier: Modifier = Modifier,
+    dismissButton: (@Composable () -> Unit)? = null,
+    text: (@Composable () -> Unit)? = null,
+) {}
+@Composable
+fun TextButton(onClick: () -> Unit, modifier: Modifier = Modifier, content: @Composable () -> Unit) {}
+@Composable
+fun IconButton(onClick: () -> Unit, modifier: Modifier = Modifier, content: @Composable () -> Unit) {}
+@Composable
+fun Icon(imageVector: ImageVector, contentDescription: String?, modifier: Modifier = Modifier) {}
+@Composable
+fun OutlinedTextField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    readOnly: Boolean = false,
+    placeholder: (@Composable () -> Unit)? = null,
+    singleLine: Boolean = false,
+) {}
+@Composable
+fun Text(text: String, modifier: Modifier = Modifier) {}
+`
+const DATEFIELD_STUB_FILES: ReadonlyArray<readonly [string, string]> = [
+  ['DateFieldAndroidContent.kt', DATEFIELD_ANDROID_STUBS],
+  ['DateFieldAndroidR.kt', DATEFIELD_ANDROID_R_STUBS],
+  ['DateFieldAndroidFormat.kt', DATEFIELD_ANDROID_FORMAT_STUBS],
+  ['DateFieldComposeUi.kt', DATEFIELD_COMPOSE_UI_STUBS],
+  ['DateFieldComposePlatform.kt', DATEFIELD_COMPOSE_PLATFORM_STUBS],
+  ['DateFieldComposeRes.kt', DATEFIELD_COMPOSE_RES_STUBS],
+  ['DateFieldComposeGraphics.kt', DATEFIELD_COMPOSE_GRAPHICS_STUBS],
+  ['DateFieldFoundation.kt', DATEFIELD_FOUNDATION_STUBS],
+  ['DateFieldLayout.kt', DATEFIELD_LAYOUT_STUBS],
+  ['DateFieldIcons.kt', DATEFIELD_ICONS_STUBS],
+  ['DateFieldIconsFilled.kt', DATEFIELD_ICONS_FILLED_STUBS],
+  ['DateFieldMaterial3.kt', DATEFIELD_MATERIAL3_STUBS],
+]
+
 const KOTLINX_COROUTINES_STUBS = `package kotlinx.coroutines
 
 import kotlin.coroutines.CoroutineContext
@@ -1430,6 +1589,17 @@ try {
   if (SERVICE === 'PyreonRateLimit') {
     // The scheduler hops the user's body to the main looper before running it.
     writeFileSync(join(tempDir, 'AndroidOsHandler.kt'), ANDROID_OS_RATELIMIT_HANDLER_STUBS, 'utf8')
+  }
+  // PyreonDateField compiles beside the pure value module it is built on.
+  const dateFieldStubs =
+    SERVICE === 'PyreonDateField'
+      ? [
+          ...DATEFIELD_STUB_FILES.map(([name]) => join(tempDir, name)),
+          resolve(PACKAGE_ROOT, 'src/main/kotlin/com/pyreon/runtime/PyreonDateValue.kt'),
+        ]
+      : []
+  if (SERVICE === 'PyreonDateField') {
+    for (const [name, text] of DATEFIELD_STUB_FILES) writeFileSync(join(tempDir, name), text, 'utf8')
   }
   const okhttpHttpPath = join(tempDir, 'OkHttp3Http.kt')
   if (SERVICE === 'PyreonHttpOkHttp') {
@@ -1744,6 +1914,7 @@ try {
         ...notifStubs,
         ...okhttpExtras,
         ...okhttpHttpExtras,
+        ...dateFieldStubs,
         ...geolocationAndroidExtras,
         ...networkAndroidExtras,
         ...pushAndroidExtras,
@@ -1777,6 +1948,7 @@ try {
         ...notifStubs,
         ...okhttpExtras,
         ...okhttpHttpExtras,
+        ...dateFieldStubs,
         ...geolocationAndroidExtras,
         ...networkAndroidExtras,
         ...pushAndroidExtras,

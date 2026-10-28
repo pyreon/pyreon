@@ -11,6 +11,7 @@
 import { lowerWebViewDomStorage } from './webview-options'
 import { classifyFallback, unconsumedSlotWarning } from './jsx-slot-attrs'
 import { swiftStr } from './string-literals'
+import { resolveDateFieldShape, type DateBound } from './date-field-shape'
 import {
   allServices,
   bindServices,
@@ -9212,6 +9213,29 @@ function emitSwiftField(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: num
     textArg = `Binding(\n${inner}get: { ${getExpr} },\n${inner}set: { ${handlerParam} in ${writeBody} }\n${pad})`
   } else {
     return emitSwiftGeneric(e, indent)
+  }
+
+  // A date / time kind is a different control — the runtime's PyreonDateField
+  // (a SwiftUI DatePicker) over the same String binding. Decided by the helper
+  // both emitters share (date-field-shape.ts).
+  const dateShape = resolveDateFieldShape(e, readStaticAttr)
+  if (dateShape !== undefined) {
+    _emitWarnings.push(...dateShape.warnings)
+    const bound = (b: DateBound | undefined) =>
+      b === undefined ? undefined : b.kind === 'static' ? swiftStr(b.value) : emitSwiftExpr(b.expr, 0)
+    const args = [`value: ${textArg}`, `kind: .${dateShape.kind}`]
+    const min = bound(dateShape.min)
+    const max = bound(dateShape.max)
+    if (min !== undefined) args.push(`min: ${min}`)
+    if (max !== undefined) args.push(`max: ${max}`)
+    if (e.attrs.some((a) => a.kind === 'attr' && a.name === 'placeholder')) {
+      args.push(`placeholder: ${placeholder}`)
+    }
+    let dateResult = `PyreonDateField(${args.join(', ')})`
+    const disabledDate = swiftDisabledModifier(e)
+    if (disabledDate) dateResult += `\n${' '.repeat(indent + 2)}${disabledDate}`
+    dateResult += emitSwiftLayoutModifiers(e)
+    return dateResult
   }
 
   let result = swiftFieldViewExpr(e, placeholder, textArg)
