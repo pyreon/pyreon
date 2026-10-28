@@ -194,6 +194,13 @@ function primitiveMatrix(): Group {
 
   const bodies = new Map<string, string>()
   for (const m of all.matchAll(/export (?:interface|type) (\w+?)(?:Props)?\b[^{=]*\{([\s\S]*?)\n\}/g)) bodies.set(m[1]!, m[2]!)
+  // A primitive whose props are a UNION of shapes (`type FieldProps = SingleLineFieldProps |
+  // MultilineFieldProps`) has no body of its own: its props are every member's. Without this the
+  // primitive silently drops out of the matrix, and the matrix stops reaching the shapes it guards.
+  for (const m of all.matchAll(/export type (\w+?)Props\s*=\s*(\w+Props(?:\s*\|\s*\w+Props)+)/g)) {
+    const members = m[2]!.split('|').map((x) => x.trim().replace(/Props$/, ''))
+    bodies.set(m[1]!, members.map((x) => bodies.get(x) ?? '').join('\n'))
+  }
 
   const propValues = (body: string): [string, string[]][] => {
     const found: [string, string[]][] = []
@@ -214,7 +221,7 @@ function primitiveMatrix(): Group {
   }
 
   const shared = ['BaseLayout', 'Accessibility'].flatMap((n) => propValues(bodies.get(n) ?? ''))
-  const primitives = ['Stack', 'Inline', 'Layer', 'Scroll', 'Spacer', 'Text', 'Heading', 'Image', 'Icon', 'Button', 'Press', 'Link', 'Field', 'Toggle', 'Modal', 'Transition', 'Video', 'Audio']
+  const primitives = ['Stack', 'Inline', 'Layer', 'Scroll', 'Spacer', 'Text', 'Heading', 'Image', 'Icon', 'Button', 'Press', 'Link', 'Field', 'Select', 'Toggle', 'Modal', 'Transition', 'Video', 'Audio']
   const cases: string[] = []
   let n = 0
   const attrFor = (name: string, v: string) => (v.startsWith("'") ? `${name}=${v.replace(/'/g, '"')}` : `${name}={${v}}`)
@@ -224,6 +231,7 @@ function primitiveMatrix(): Group {
     Audio: 'src="https://x.test/a.mp3"',
     Link: 'to="/x"',
     Field: 'value="" onChangeText={() => {}}',
+    Select: `value="a" options={[{ value: 'a', label: 'A' }]} onChange={() => {}}`,
     Toggle: 'value={true} onChange={() => {}}',
     Modal: 'open={true} onClose={() => {}}',
     Press: 'onPress={() => {}}',
