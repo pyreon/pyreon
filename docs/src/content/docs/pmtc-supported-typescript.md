@@ -145,6 +145,27 @@ function deleteAt(index: number) { items.value.splice(index, 1) }
 | Default parameters (`function fn(a = 1)`) | ✅ Full | Emitted as a native default argument |
 | Rest parameters (`function fn(...args)`) | ⚠️ Warns | Take an array parameter instead |
 
+### ✅ Collections (`Map` / `Set`)
+
+```ts
+type Todo = { id: string; title: string }
+const byId = new Map<string, Todo>()
+byId.set(t.id, t)
+byId.get(id)?.title
+const index = new Map(todos().map((t) => [t.id, t]))
+```
+
+| Shape | Status | Notes |
+|---|---|---|
+| `new Map<K, V>()` — scalar `K`, `V` a scalar, a struct/enum declared in this file, or an array of those | ✅ Full | Swift `[K: V]()` / Kotlin `mutableMapOf<K, V>()` |
+| `new Map([[k, v], …])` with literal scalar pairs | ✅ Full | Native dictionary literal |
+| `new Map(src.map((x) => [key, value]))` | ✅ Full | Swift `Dictionary(…, uniquingKeysWith: { _, last in last })` / Kotlin `associate { … }.toMutableMap()` — last value wins for a repeated key, as in JS |
+| `.get` / `.set` / `.has` / `.delete` / `.clear` / `.size` | ✅ Full | |
+| `new Set<T>()` / `new Set(arr)` with scalar elements | ✅ Full | |
+| Non-scalar `Map` key or `Set` element | ⚠️ Warns | A native key/element must be Hashable — key by a scalar id |
+| Inline object (`Map<K, { x: number }>`) or imported value type | ⚠️ Warns | Declare the value shape as a top-level `type X = { … }` in the file |
+| `for (const [k, v] of map)` | ⚠️ Warns | Destructured for-of binding is not lowered |
+
 ### ✅ Reactive prop access
 
 ```tsx
