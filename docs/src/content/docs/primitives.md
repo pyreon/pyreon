@@ -575,16 +575,17 @@ export function Nav() {
 
 ### Field
 
-A single-line text input.
+A single-line text input, or a date / time picker (see [Dates and times](#dates-and-times)).
 
 | Prop | Type | Default |
 | --- | --- | --- |
 | `value` | `string` (or a signal read) (required) | — |
 | `onChangeText` | `(next: string) => void` (required) | — |
-| `kind` | `'text' \| 'number' \| 'password' \| 'email' \| 'search' \| 'tel' \| 'url'` | `'text'` |
+| `kind` | `'text' \| 'number' \| 'password' \| 'email' \| 'search' \| 'tel' \| 'url' \| 'date' \| 'time' \| 'datetime'` | `'text'` |
 | `placeholder` | `string` | — |
 | `disabled` | `boolean` | `false` |
-| `onSubmit` | `() => void` | — |
+| `onSubmit` | `() => void` (not on date kinds) | — |
+| `min` / `max` | `string` in the kind's value format (date kinds only) | — |
 
 ```tsx
 // @check
@@ -623,6 +624,56 @@ export function EmailForm() {
 Done action on Android (`ImeAction.Done`). **Both `value` and `onChangeText`
 are required on native.** Without them the element can't be lowered and the
 compiler warns.
+
+#### Dates and times
+
+`kind="date"`, `kind="time"` and `kind="datetime"` turn the field into the
+platform's own picker. The value is the same zone-free wall-clock **string** an
+`<input type="date" | "time" | "datetime-local">` produces, on every target:
+
+| `kind` | Value format | Example | Web `type` | iOS | Android |
+| --- | --- | --- | --- | --- | --- |
+| `date` | `YYYY-MM-DD` | `"2026-10-22"` | `date` | `DatePicker` (`.date`) | Material 3 `DatePickerDialog` |
+| `time` | `HH:mm` (24-hour) | `"09:30"` | `time` | `DatePicker` (`.hourAndMinute`) | Material 3 `TimePicker` |
+| `datetime` | `YYYY-MM-DDTHH:mm` | `"2026-10-22T09:30"` | `datetime-local` | `DatePicker` (both) | date dialog, then time dialog |
+
+- `''` means **no value**. The web input is then empty; natively the field shows
+  the `placeholder` (or the locale's date pattern) and a tap starts at the
+  current date or time. A clear button returns it to `''`.
+- `min` / `max` are strings in the SAME format and bound what can be picked. A
+  static bound in the wrong format (or a date that does not exist, like
+  `"2026-02-30"`) is ignored by a browser, so the compiler drops it on iOS and
+  Android too, with a named warning. `min` after `max` is kept but named.
+- There is no time zone: the string is the wall-clock value the user picked,
+  read in the device's zone. Convert to an instant yourself if you need one.
+- **Android caveat:** Material's time picker cannot disable hours, so a time
+  bound is applied when the choice is confirmed (an out-of-range time snaps to
+  the bound). iOS stops the wheel at the bound, and the web marks it invalid.
+- `onSubmit` is not allowed on a date kind (a picker has no keyboard submit) —
+  the types forbid it and the compiler names it.
+
+```tsx
+// @check
+import { Stack, Field, Text } from '@pyreon/primitives'
+import { signal } from '@pyreon/reactivity'
+
+export function Booking() {
+  const day = signal('')
+  return (
+    <Stack gap="sm">
+      <Field
+        kind="date"
+        placeholder="Pick a day"
+        min="2026-01-01"
+        max="2026-12-31"
+        value={day()}
+        onChangeText={(d) => day.set(d)}
+      />
+      <Text>{day() === '' ? 'No day yet' : day()}</Text>
+    </Stack>
+  )
+}
+```
 
 ### Toggle
 

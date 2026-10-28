@@ -152,13 +152,13 @@
       "warnings": 0
     },
     "fixture:every-primitive.tsx|swift": {
-      "sha": "229370db993483bfc3252b3054ffee65b9c6ea03d1e4106f480c95480382218e",
-      "bytes": 2500,
+      "sha": "3d71b2a71e94dab8624cb32a3e44c184deb76d1efbbd7ff7470b972d661ee3c3",
+      "bytes": 2886,
       "warnings": 0
     },
     "fixture:every-primitive.tsx|kotlin": {
-      "sha": "6ac1cc3fdd14b95c3d806cef42bcfe7add8ab5c4d65f809a6721a5522797d3c8",
-      "bytes": 2685,
+      "sha": "b28fadba1de44397d7a5ff2740a46fc5fc46a3c9e61884abc87b51dcbb23c342",
+      "bytes": 3165,
       "warnings": 0
     },
     "fixture:lifecycle-errorboundary.tsx|swift": {
@@ -7392,13 +7392,13 @@
       "warnings": 0
     },
     "example:native-tasks/TasksApp.tsx|swift": {
-      "sha": "d90c412e856aef50fd138ca7801badb753b54bafd68770b077f1165d10eaddf9",
-      "bytes": 159191,
+      "sha": "330462a20f52019a5f7117c49947b271bfe1fe6add4392fa389e227b5830088f",
+      "bytes": 160777,
       "warnings": 1
     },
     "example:native-tasks/TasksApp.tsx|kotlin": {
-      "sha": "2d5351b9fbc95d00841f560281f5f9afd763067f8551a8b0f63103a15fcd2b59",
-      "bytes": 165263,
+      "sha": "ce64e01ce7e68c163205db69d73281632d80bd8faf118003a445716a881ea2b0",
+      "bytes": 166937,
       "warnings": 0
     },
     "example:native-todomvc-ios/TodoApp.tsx|swift": {
