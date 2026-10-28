@@ -820,7 +820,7 @@ public struct PyreonBiometrics {
 public struct PyreonImagePicker { public init() {}; public func pick() async -> String? { nil }; public func isAvailable() -> Bool { true } }
 // M3.8 document picker. Same async optional-String surface as the image picker
 // (nil = cancelled) — an emit that drops the optionality fails here.
-public struct PyreonFilePicker { public init() {}; public func pick() async -> String? { nil }; public func isAvailable() -> Bool { true } }
+public struct PyreonFilePicker { public init() {}; public func pick(_ accept: [String] = []) async -> String? { nil }; public func isAvailable() -> Bool { true } }
 // AppStorage - SwiftUI's own wrapper, which a persisted signal (\`useStorage\`) emits for SCALAR
 // values (a struct value routes to the library's own PyreonAppStorage instead). Stripped
 // along with \`import SwiftUI\`, so without this the whole scalar path was
