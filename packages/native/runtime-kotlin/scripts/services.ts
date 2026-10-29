@@ -52,6 +52,8 @@ export const TYPECHECK_ONLY = new Set([
   // android.icu exists only on a device; the emulator RUNS it against the V8
   // table (examples/native-tasks-android IntlDifferentialTest).
   'PyreonIntl',
+  // Resolves `content://` through a real ContentResolver: nothing to run without a device.
+  'PyreonUploadAndroid',
 ])
 
 export interface ServicePlan {

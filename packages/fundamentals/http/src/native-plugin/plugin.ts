@@ -1,4 +1,5 @@
 import { type CompilerPlugin, type MethodCallRecognizer } from '@pyreon/native-compiler/plugin-api'
+import { endpointCallExpr, HTTP_CALL_TYPE, recognizeEndpointCall } from './call'
 import { httpFacts, httpRequestSource, scanHttp } from './endpoint'
 import { HTTP_PLUGIN_NAME } from './names'
 
@@ -40,6 +41,9 @@ export const httpPlugin: CompilerPlugin = {
   modules: ['@pyreon/http'],
   scanModule: scanHttp,
   requestSources: [httpRequestSource],
+  // `await signIn({ json })` in an event handler, and a fired `track({ json })` — see `call.ts`.
+  callExprs: recognizeEndpointCall,
+  exprs: { [HTTP_CALL_TYPE]: endpointCallExpr },
   methodCalls: Object.fromEntries(
     ['get', 'post', 'put', 'patch', 'delete', 'head', 'options', 'request'].map((m) => [m, recognizeClientCall]),
   ),
