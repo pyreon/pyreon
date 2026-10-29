@@ -6488,6 +6488,15 @@ fn ssr_serialize_attr(
     if tag == "textarea" && name == "value" {
         return false;
     }
+    // `<textarea defaultValue>`: the default IS the text content. Mirrors JS.
+    if tag == "textarea" && name == "defaultValue" {
+        return false;
+    }
+    // Property-only props have no content attribute; `renderProp` drops them.
+    // The lowercase ones would otherwise be baked as an attribute. Mirrors JS.
+    if name == "indeterminate" || name == "volume" {
+        return true;
+    }
     let is_aria = name.as_bytes().first() == Some(&97) && name.starts_with("aria-");
     let has_upper = name.bytes().any(|b| b.is_ascii_uppercase());
 

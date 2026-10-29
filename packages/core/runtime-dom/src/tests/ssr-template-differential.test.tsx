@@ -722,6 +722,34 @@ describe('SSR fast path — a prefilled <textarea> renders its value as CONTENT'
   }
 })
 
+/**
+ * Props the client sets as a PROPERTY that maps onto a different content
+ * attribute, or onto none. The camelCase-to-kebab fallback serialized them as
+ * attributes no browser reads (`default-value="x"`), so the server HTML
+ * disagreed with what a client mount produces for the same props. Both paths
+ * (compiled `_ssr` and the h() renderer) must emit the same bytes.
+ */
+describe('SSR — props with a different content attribute, or none', () => {
+  const cases: [string, string, Record<string, unknown>, () => VNode, string[], string[]][] = [
+    ['input defaultValue is the value attribute', `const Node = <input defaultValue={v} />`, { v: 'x' }, () => h('input', { defaultValue: 'x' }), ['value="x"'], ['default-value']],
+    ['input defaultChecked is the checked attribute', `const Node = <input type="checkbox" defaultChecked />`, {}, () => h('input', { type: 'checkbox', defaultChecked: true }), [' checked'], ['default-checked']],
+    ['textarea defaultValue is the text content', `const Node = <textarea defaultValue={v} />`, { v: 'draft' }, () => h('textarea', { defaultValue: 'draft' }), ['>draft</textarea>'], ['default-value', 'value=']],
+    ['textarea value wins over defaultValue', `const Node = <textarea value={v} defaultValue="old" />`, { v: 'new' }, () => h('textarea', { value: 'new', defaultValue: 'old' }), ['>new</textarea>'], ['old']],
+    ['media defaultMuted is the muted attribute', `const Node = <video defaultMuted />`, {}, () => h('video', { defaultMuted: true }), [' muted'], ['default-muted']],
+    ['property-only props serialize nothing', `const Node = <video currentTime={3} volume={0.5} playbackRate={2} />`, {}, () => h('video', { currentTime: 3, volume: 0.5, playbackRate: 2 }), ['<video></video>'], ['current', 'volume', 'playback']],
+    ['indeterminate serializes nothing', `const Node = <input type="checkbox" indeterminate />`, {}, () => h('input', { type: 'checkbox', indeterminate: true }), ['<input type="checkbox"'], ['indeterminate']],
+  ]
+  for (const [name, src, deps, oracle, has, hasNot] of cases) {
+    test(name, async () => {
+      const compiled = await renderToString(evalSsr(src, deps) as VNode)
+      const direct = await renderToString(oracle())
+      expect(compiled).toBe(direct)
+      for (const x of has) expect(direct).toContain(x)
+      for (const x of hasNot) expect(direct).not.toContain(x)
+    })
+  }
+})
+
 describe('SSR fast path — conditional DOM-element operand is lowered (optimization fired)', () => {
   const lowered: Array<[string, string]> = [
     ['cond && <el> sole', `const N = <div>{on && <span class="badge">{x}</span>}</div>`],
