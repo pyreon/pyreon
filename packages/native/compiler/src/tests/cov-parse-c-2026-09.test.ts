@@ -147,15 +147,15 @@ describe('parse.ts — parseFetchInitObject (queryFn fetch init)', () => {
     expect(r.code).toContain('"auth": "c"')
   })
 
-  it('warns by name for a non-literal method / body / headers and skips odd keys', () => {
+  it('warns by name for a non-literal method / headers, lowers a runtime body, and skips odd keys', () => {
     const r = fi(`{ method: m, body: b(), headers: h, [dyn]: 1, 2: 'x', ...spread }`)
     const w = warn(r)
     expect(w).toContain(
       'useQuery queryFn fetch method must be a string literal to lower to native; got Identifier',
     )
-    expect(w).toContain(
-      'useQuery queryFn fetch body must be a string literal to lower to native; got CallExpression',
-    )
+    // A runtime body is built when the harness runs, as the web's queryFn builds it (#3978).
+    expect(w).not.toContain('fetch body must be')
+    expect(r.code).toContain('body: Data((b).utf8)')
     expect(w).toContain(
       'useQuery queryFn fetch headers must be an object literal to lower to native; got Identifier',
     )

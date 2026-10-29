@@ -1337,8 +1337,21 @@ public struct PyreonHttpRequest: Sendable {
     method: PyreonHttpMethod = .get,
     url: String,
     headers: [String: String] = [:],
-    body: Data? = nil
+    body: Data? = nil,
+    upload: PyreonHttpUpload? = nil
   ) {}
+}
+public enum PyreonHttpUpload: Sendable {
+  case file(PyreonUploadFile)
+  case multipart(PyreonMultipartBody)
+}
+public struct PyreonUploadFile: Sendable {
+  public let name: String = ""
+  public let type: String = ""
+  public static func from(_ uri: String, name: String? = nil, type: String? = nil) async throws -> PyreonUploadFile { fatalError() }
+}
+public struct PyreonMultipartBody: Sendable {
+  public init(_ pairs: Any?...) {}
 }
 public struct PyreonHttpResponse: Sendable {
   public let status: Int = 0
@@ -1356,6 +1369,11 @@ public enum PyreonHttp {
   public static func send(_ request: PyreonHttpRequest) async throws -> PyreonHttpResponse {
     PyreonHttpResponse()
   }
+  @discardableResult
+  public static func call(_ request: PyreonHttpRequest) async throws -> PyreonHttpResponse {
+    PyreonHttpResponse()
+  }
+  public static func fire(_ request: PyreonHttpRequest) {}
 }
 // PyreonURL — the runtime path-param encoder a templated endpoint URL calls.
 // Mirrors the REAL PyreonURL surface: three overloads (String / Int / Double),
@@ -1366,6 +1384,7 @@ public enum PyreonURL {
   public static func encodePathParam(_ value: String) -> String { value }
   public static func encodePathParam(_ value: Int) -> String { "" }
   public static func encodePathParam(_ value: Double) -> String { "" }
+  public static func query(_ joiner: String, _ pairs: Any?...) -> String { "" }
 }
 // pyreonNumberString — JS \`String(number)\`, which every Double-typed
 // template interpoland lowers through. Mirrors the real overload pair.

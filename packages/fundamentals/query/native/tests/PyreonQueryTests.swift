@@ -10,7 +10,7 @@ struct PyreonQueryTests {
         if !cond { fatalError("PyreonQueryTests: \(message)") }
     }
 
-    static func main() {
+    static func main() async {
         guard #available(iOS 17.0, macOS 14.0, *) else {
             print("[PyreonQueryTests] skipped (needs iOS 17 / macOS 14 for @Observable)")
             return
@@ -92,5 +92,7 @@ struct PyreonQueryTests {
         }
 
         print("[PyreonQueryTests] all assertions passed")
+        // The package's other suites share this one entry point (the gate compiles every test file together).
+        await runPyreonMutationTests()
     }
 }

@@ -47,6 +47,12 @@ public data class PyreonHttpRequest(
     val url: String,
     val headers: Map<String, String> = emptyMap(),
     val body: String? = null,
+    /**
+     * A file or `multipart/form-data` body, STREAMED by the executor rather
+     * than held in memory (a picked video must not be read whole). Takes
+     * precedence over [body].
+     */
+    val upload: PyreonHttpUpload? = null,
 ) {
     public companion object {
         /** A GET request. */
@@ -110,6 +116,9 @@ public sealed class PyreonHttpError(message: String) : Exception(message) {
      */
     public class BadStatus(public val status: Int) : PyreonHttpError("HTTP $status")
 
+    /** A `fileFromUri` URI that names no readable file, or a scheme the runtime cannot read. */
+    public class UnreadableFile(public val uri: String) : PyreonHttpError("cannot read file: $uri")
+
     /** No executor was installed and no default could be created. */
     public class NoExecutor : PyreonHttpError(
         "no PyreonHttpExecutor installed — call PyreonHttp.install(executor) " +
@@ -150,6 +159,247 @@ public object PyreonHttp {
     public fun send(request: PyreonHttpRequest, fallback: PyreonHttpExecutor? = null): PyreonHttpResponse {
         val exec = executor ?: fallback ?: throw PyreonHttpError.NoExecutor()
         return exec.send(request)
+    }
+
+    /**
+     * [send], then REJECT a non-2xx -- what awaiting an `@pyreon/http`
+     * endpoint call means on the web (`throwHttpErrors` defaults to true). The
+     * compiler emits it, off the main thread, for an endpoint awaited in an
+     * event handler. Blocking, like [send].
+     */
+    public fun call(request: PyreonHttpRequest, fallback: PyreonHttpExecutor? = null): PyreonHttpResponse {
+        val response = send(request, fallback)
+        if (!response.isOk) throw PyreonHttpError.BadStatus(response.status)
+        return response
+    }
+}
+
+// --- Uploads -----------------------------------------------------------------
+
+/** A streamed request body: a file (`body: await fileFromUri(uri)`) or a multipart form. */
+public sealed class PyreonHttpUpload {
+    public class File(public val file: PyreonUploadFile) : PyreonHttpUpload()
+    public class Multipart(public val body: PyreonMultipartBody) : PyreonHttpUpload()
+}
+
+/**
+ * A file to upload -- what `fileFromUri(uri, { name, type })` lowers to. It
+ * names the file and knows how to OPEN it; nothing is read until the request
+ * is sent, and then it is streamed, so a large picked video is never held in
+ * memory (or read twice).
+ *
+ * [length] is the byte count when the source knows it (a file, an inline
+ * `data:` URI, a content provider reporting its size), else null.
+ */
+public class PyreonUploadFile(
+    public val name: String,
+    public val type: String,
+    public val length: Long?,
+    private val opener: () -> java.io.InputStream,
+) {
+    public fun open(): java.io.InputStream = opener()
+}
+
+/**
+ * Resolving a URI into a [PyreonUploadFile]. `file://` and `data:` are read
+ * here; `content://` needs an Android `ContentResolver` and lives in
+ * `PyreonUploadAndroid.kt`, which delegates the other schemes back to [from].
+ */
+public object PyreonUploadFiles {
+    /** A `file://` or `data:` URI; anything else (or an unreadable file) throws [PyreonHttpError.UnreadableFile]. */
+    public fun from(uri: String, name: String? = null, type: String? = null): PyreonUploadFile {
+        if (uri.startsWith("data:")) {
+            val parsed = parseDataUri(uri) ?: throw PyreonHttpError.UnreadableFile(uri)
+            val bytes = parsed.second
+            return PyreonUploadFile(name ?: "blob", type ?: parsed.first, bytes.size.toLong()) {
+                java.io.ByteArrayInputStream(bytes)
+            }
+        }
+        if (uri.startsWith("file:")) {
+            val file = java.io.File(java.net.URI(uri))
+            if (!file.isFile || !file.canRead()) throw PyreonHttpError.UnreadableFile(uri)
+            return PyreonUploadFile(name ?: file.name, type ?: mimeTypeForExtension(file.extension), file.length()) {
+                java.io.FileInputStream(file)
+            }
+        }
+        throw PyreonHttpError.UnreadableFile(uri)
+    }
+
+    /** `data:[<type>][;base64],<payload>` -- the lower-cased type and the decoded bytes. */
+    internal fun parseDataUri(uri: String): Pair<String, ByteArray>? {
+        val comma = uri.indexOf(',')
+        if (comma < 0) return null
+        var meta = uri.substring(5, comma)
+        // Percent-decoded to BYTES, as the Fetch standard does: `%FF` is the byte 0xFF, not a UTF-8 replacement.
+        val payload = percentDecode(uri.substring(comma + 1))
+        val base64 = meta.trimEnd().lowercase().endsWith(";base64")
+        if (base64) meta = meta.trimEnd().dropLast(";base64".length)
+        val bytes = try {
+            if (base64) {
+                java.util.Base64.getDecoder().decode(String(payload, Charsets.ISO_8859_1).filterNot { it.isWhitespace() })
+            } else {
+                payload
+            }
+        } catch (_: IllegalArgumentException) {
+            return null
+        }
+        return dataUriType(meta) to bytes
+    }
+
+    /** `%XX` → that byte; everything else is its UTF-8 bytes. A malformed escape stays literal, as the Fetch standard keeps it. */
+    internal fun percentDecode(text: String): ByteArray {
+        val raw = text.toByteArray(Charsets.UTF_8)
+        val out = java.io.ByteArrayOutputStream(raw.size)
+        var i = 0
+        while (i < raw.size) {
+            val b = raw[i].toInt() and 0xff
+            if (b == '%'.code && i + 2 < raw.size) {
+                val hi = Character.digit(raw[i + 1].toInt(), 16)
+                val lo = Character.digit(raw[i + 2].toInt(), 16)
+                if (hi >= 0 && lo >= 0) {
+                    out.write(hi * 16 + lo)
+                    i += 3
+                    continue
+                }
+            }
+            out.write(b)
+            i += 1
+        }
+        return out.toByteArray()
+    }
+
+    /**
+     * The Fetch standard's data-URL type: absent means `text/plain;charset=US-ASCII`, and a bare parameter list
+     * (`;charset=utf-8`) is a parameter of `text/plain` -- what `fetch(uri).blob().type` reports on the web.
+     */
+    internal fun dataUriType(meta: String): String {
+        val trimmed = meta.trim()
+        if (trimmed.isEmpty()) return "text/plain;charset=us-ascii"
+        if (trimmed.startsWith(";")) return ("text/plain$trimmed").lowercase()
+        return trimmed.lowercase()
+    }
+
+    /** The common upload types by extension; unknown is `""`, sent as `application/octet-stream`, as the web does. */
+    public fun mimeTypeForExtension(ext: String): String = when (ext.lowercase()) {
+        "jpg", "jpeg" -> "image/jpeg"
+        "png" -> "image/png"
+        "gif" -> "image/gif"
+        "webp" -> "image/webp"
+        "heic" -> "image/heic"
+        "heif" -> "image/heif"
+        "svg" -> "image/svg+xml"
+        "pdf" -> "application/pdf"
+        "json" -> "application/json"
+        "txt" -> "text/plain"
+        "csv" -> "text/csv"
+        "html", "htm" -> "text/html"
+        "zip" -> "application/zip"
+        "mp4" -> "video/mp4"
+        "mov" -> "video/quicktime"
+        "m4a" -> "audio/mp4"
+        "mp3" -> "audio/mpeg"
+        "wav" -> "audio/wav"
+        else -> ""
+    }
+}
+
+/**
+ * A `multipart/form-data` body, serialized exactly as the web's `FormData`
+ * (WHATWG) -- the Swift `PyreonMultipartBody` is its twin, `encodeMultipart`
+ * from `@pyreon/http` the oracle.
+ *
+ * Built from alternating name / value arguments in SOURCE order: `null` is
+ * omitted, a list repeats its name, a [PyreonUploadFile] is a file part,
+ * anything else a text part holding JavaScript's `String(value)` (the compiler
+ * serializes an object value with `JSON.stringify` before it gets here).
+ */
+public class PyreonMultipartBody(vararg pairs: Any?) {
+    public sealed class Value {
+        public class Text(public val text: String) : Value()
+        public class File(public val file: PyreonUploadFile) : Value()
+    }
+
+    public class Part(public val name: String, public val value: Value)
+
+    public val parts: List<Part>
+
+    init {
+        val out = ArrayList<Part>()
+        fun part(name: String, value: Any?) {
+            when (value) {
+                null -> Unit
+                is PyreonUploadFile -> out.add(Part(name, Value.File(value)))
+                else -> out.add(Part(name, Value.Text(PyreonURL.jsString(value))))
+            }
+        }
+        // `encodeMultipart` expands ONE level: an array field appends each element as its own part.
+        fun add(name: String, value: Any?) {
+            when (value) {
+                is Iterable<*> -> value.forEach { part(name, it) }
+                is Array<*> -> value.forEach { part(name, it) }
+                else -> part(name, value)
+            }
+        }
+        var index = 0
+        while (index + 1 < pairs.size) {
+            val name = pairs[index]
+            if (name is String) add(name, pairs[index + 1])
+            index += 2
+        }
+        parts = out
+    }
+
+    private fun head(part: Part, boundary: String): ByteArray {
+        val name = escape(normalizeNewlines(part.name))
+        val text = when (val v = part.value) {
+            is Value.Text -> "--$boundary\r\nContent-Disposition: form-data; name=\"$name\"\r\n\r\n"
+            is Value.File -> "--$boundary\r\nContent-Disposition: form-data; name=\"$name\"; filename=\"${escape(v.file.name)}\"\r\n" +
+                "Content-Type: ${v.file.type.ifEmpty { "application/octet-stream" }}\r\n\r\n"
+        }
+        return text.toByteArray(Charsets.UTF_8)
+    }
+
+    /** The exact byte length, or null when a file part's size is unknown (the body is then sent chunked). */
+    public fun contentLength(boundary: String): Long? {
+        var total = 0L
+        for (part in parts) {
+            total += head(part, boundary).size + 2
+            total += when (val v = part.value) {
+                is Value.Text -> normalizeNewlines(v.text).toByteArray(Charsets.UTF_8).size.toLong()
+                is Value.File -> v.file.length ?: return null
+            }
+        }
+        return total + "--$boundary--\r\n".toByteArray(Charsets.UTF_8).size
+    }
+
+    /** Write the body, streaming each file part from its source in chunks. */
+    public fun writeTo(out: java.io.OutputStream, boundary: String) {
+        for (part in parts) {
+            out.write(head(part, boundary))
+            when (val v = part.value) {
+                is Value.Text -> out.write(normalizeNewlines(v.text).toByteArray(Charsets.UTF_8))
+                is Value.File -> v.file.open().use { it.copyTo(out, 64 * 1024) }
+            }
+            out.write("\r\n".toByteArray(Charsets.UTF_8))
+        }
+        out.write("--$boundary--\r\n".toByteArray(Charsets.UTF_8))
+    }
+
+    public companion object {
+        /** A boundary in the shape browsers use; random so it cannot occur in a part. */
+        public fun newBoundary(): String {
+            val alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
+            val random = java.security.SecureRandom()
+            return "----PyreonFormBoundary" + (1..16).map { alphabet[random.nextInt(alphabet.length)] }.joinToString("")
+        }
+
+        /** CR, LF and CRLF all become CRLF -- the spec's newline normalization for names and text values. */
+        internal fun normalizeNewlines(text: String): String =
+            text.replace("\r\n", "\n").replace('\r', '\n').replace("\n", "\r\n")
+
+        /** A name or filename inside the quoted Content-Disposition parameter. */
+        internal fun escape(text: String): String =
+            text.replace("\n", "%0A").replace("\r", "%0D").replace("\"", "%22")
     }
 }
 
@@ -230,5 +480,117 @@ object PyreonURL {
             return encodePathParam(value.toLong().toString())
         }
         return encodePathParam(value.toString())
+    }
+
+    /**
+     * A query string built at RUNTIME, matching the web's `buildQuery`
+     * (`@pyreon/http` -> `URLSearchParams`) byte for byte. The Swift
+     * `PyreonURL.query` is its twin.
+     *
+     * [pairs] alternates a key and its value, in SOURCE order -- the order the
+     * web appends them. `null` drops the pair, a list repeats the key per
+     * non-null element, a number is JavaScript's `String(number)` (`1`, not
+     * `1.0`), a boolean `true` / `false`. Keys and values are
+     * application/x-www-form-urlencoded (a space is `+`; only `*-._` and ASCII
+     * alphanumerics stay literal), which is not the path encoding. Returns `""`
+     * when every pair was dropped, else [joiner] (`?`, or `&` when the path
+     * already carries a query) followed by the pairs.
+     */
+    @JvmStatic
+    fun query(joiner: String, vararg pairs: Any?): String {
+        val out = ArrayList<String>()
+        var index = 0
+        while (index + 1 < pairs.size) {
+            val key = pairs[index]
+            if (key is String) {
+                for (value in queryValues(pairs[index + 1])) out.add(formEncode(key) + "=" + formEncode(value))
+            }
+            index += 2
+        }
+        return if (out.isEmpty()) "" else joiner + out.joinToString("&")
+    }
+
+    internal fun queryValues(value: Any?): List<String> = when (value) {
+        null -> emptyList()
+        is Iterable<*> -> value.filterNotNull().map(::jsString)
+        is Array<*> -> value.filterNotNull().map(::jsString)
+        else -> listOf(jsString(value))
+    }
+
+    /** JavaScript's `String(value)` for the scalar shapes a query value takes. */
+    internal fun jsString(value: Any): String = when (value) {
+        is String -> value
+        is Boolean -> if (value) "true" else "false"
+        is Double -> jsNumberString(value)
+        is Float -> jsNumberString(value.toDouble())
+        else -> value.toString()
+    }
+
+    /** `String(number)`: JavaScript's spelling of the non-finite values, else the ECMAScript digits. */
+    internal fun jsNumberString(value: Double): String = when {
+        value.isNaN() -> "NaN"
+        value == Double.POSITIVE_INFINITY -> "Infinity"
+        value == Double.NEGATIVE_INFINITY -> "-Infinity"
+        else -> jsFiniteNumber(value)
+    }
+
+    /**
+     * ECMAScript `Number::toString` for a finite value -- the same algorithm as
+     * `PyreonJson.jsNumber`, repeated here because this file is verified ALONE
+     * against stubs (it must not reference the kotlinx-backed PyreonJson). The
+     * shortest digits that round-trip are SEARCHED with BigDecimal: the JVM's
+     * `Double.toString` was not guaranteed shortest before JDK 19, and Android's
+     * libcore is its own implementation.
+     */
+    private fun jsFiniteNumber(value: Double): String {
+        if (value == 0.0) return "0"
+        val abs = Math.abs(value)
+        val exact = java.math.BigDecimal(abs)
+        var best: java.math.BigDecimal = exact
+        search@ for (p in 1..17) {
+            var chosen: java.math.BigDecimal? = null
+            for (mode in arrayOf(java.math.RoundingMode.HALF_EVEN, java.math.RoundingMode.FLOOR, java.math.RoundingMode.CEILING)) {
+                val c = exact.round(java.math.MathContext(p, mode))
+                if (c.toDouble() != abs) continue
+                val cur = chosen
+                if (cur == null || c.subtract(exact).abs() < cur.subtract(exact).abs()) chosen = c
+            }
+            if (chosen != null) {
+                best = chosen
+                break@search
+            }
+        }
+        val unscaled = best.unscaledValue().toString()
+        val n = unscaled.length - best.scale()
+        val s = unscaled.trimEnd('0').ifEmpty { "0" }
+        val k = s.length
+        val text = when {
+            k <= n && n <= 21 -> s + "0".repeat(n - k)
+            0 < n && n <= 21 -> s.substring(0, n) + "." + s.substring(n)
+            -6 < n && n <= 0 -> "0." + "0".repeat(-n) + s
+            else -> {
+                val e = n - 1
+                val tail = if (k == 1) "" else "." + s.substring(1)
+                s.substring(0, 1) + tail + "e" + (if (e < 0) "-" else "+") + Math.abs(e)
+            }
+        }
+        return (if (value < 0) "-" else "") + text
+    }
+
+    /** The application/x-www-form-urlencoded byte serializer `URLSearchParams` uses. */
+    @JvmStatic
+    fun formEncode(text: String): String {
+        val out = StringBuilder(text.length)
+        for (byte in text.toByteArray(Charsets.UTF_8)) {
+            val b = byte.toInt() and 0xFF
+            val c = b.toChar()
+            val literal = c in 'a'..'z' || c in 'A'..'Z' || c in '0'..'9' || c == '*' || c == '-' || c == '.' || c == '_'
+            when {
+                literal -> out.append(c)
+                b == 0x20 -> out.append('+')
+                else -> out.append('%').append(HEX[(b shr 4) and 0xF]).append(HEX[b and 0xF])
+            }
+        }
+        return out.toString()
     }
 }

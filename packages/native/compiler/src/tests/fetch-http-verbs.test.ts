@@ -114,12 +114,12 @@ describe('useFetch init — non-literals WARN rather than silently degrading', (
     expect(w.some((m) => /plain GET/.test(m))).toBe(true)
   })
 
-  it('warns when the body is not a string literal (the JSON.stringify shape)', () => {
+  it('a JSON.stringify body lowers, read once at mount like the web reads init.body (#3978)', () => {
     const w = warnings(
       src(`const p = useFetch<Item>('http://h/i', { method: 'POST', body: JSON.stringify(o) })`),
     )
-    expect(w.some((m) => /body must be a string literal/.test(m))).toBe(true)
-    expect(w.some((m) => /NO body/.test(m))).toBe(true)
+    expect(w.some((m) => /body must be/.test(m))).toBe(false)
+    expect(w.some((m) => /NO body/.test(m))).toBe(false)
   })
 
   it('names an init option that has no native equivalent', () => {
