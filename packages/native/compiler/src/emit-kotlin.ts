@@ -100,6 +100,7 @@ import {
   buildModuleConstTypes,
   arrayFromMapRewrite,
   classifyNegativeSlice,
+  sliceBoundsAreLiteral,
   classifyOptionalCondition,
   indexedArrayCallback,
   inferMapFromPairsType,
@@ -3950,6 +3951,18 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
             //   slice()     → a copy (toList() for List; the String itself)
             // Negative indices (rare in JS) fall through to the generic emit.
             const sliceObjType = inferType(e.callee.object, _kotlinExprInferCtx)
+            // A bound whose sign is not known at compile time: JavaScript's semantics, from the runtime.
+            if (!sliceBoundsAreLiteral(e.args)) {
+              const inner = sliceObjType.kind === 'union'
+                ? (sliceObjType.branches.find((b) => b.kind !== 'undefined' && b.kind !== 'null') ?? sliceObjType)
+                : sliceObjType
+              if (inner.kind === 'string' || inner.kind === 'array') {
+                const rest = argExprs.map((a) => `(${a}).toLong()`).join(', ')
+                return objDot === '?.'
+                  ? `${obj}?.let { pyreonSlice(it, ${rest}) }`
+                  : `pyreonSlice(${obj}, ${rest})`
+              }
+            }
             const noNegative = e.args.every((a) => a.kind !== 'unary')
             // Negative-index idioms (Kotlin drop/take count from the front):
             //   slice(-m)    → takeLast(m)   (last m)

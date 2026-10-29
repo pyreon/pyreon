@@ -1058,6 +1058,17 @@ export function buildArraySpreadConcat(
 }
 
 /**
+ * Whether every `slice` bound is a numeric LITERAL (optionally negated), so its sign is known at compile time. Only
+ * then may `slice` lower to the platform's own operations: `dropFirst(n)` / `suffix(n)` / `drop(n)` / `takeLast(n)`
+ * trap or throw on a negative `n`, while JavaScript reads a negative bound as counting from the end. Any other bound
+ * goes through the runtime's `pyreonSlice`, which has JavaScript's semantics.
+ */
+export function sliceBoundsAreLiteral(args: readonly ExprIR[]): boolean {
+  const lit = (a: ExprIR): boolean => a.kind === 'literal' && typeof a.value === 'number'
+  return args.every((a) => lit(a) || (a.kind === 'unary' && a.op === '-' && lit(a.argument)))
+}
+
+/**
  * Classify the two dominant NEGATIVE-index `.slice` idioms so the emitters can
  * lower them (Swift/Kotlin `.slice`/`.drop`/`.take` count from the FRONT and
  * can't take a JS negative-from-the-end index). Target-neutral — returns the

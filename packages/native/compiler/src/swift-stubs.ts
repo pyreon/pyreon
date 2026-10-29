@@ -1390,6 +1390,10 @@ public enum PyreonURL {
 // template interpoland lowers through. Mirrors the real overload pair.
 public func pyreonNumberString(_ v: Double) -> String { "" }
 public func pyreonNumberString(_ v: Int) -> String { "" }
+// pyreonSlice — JS \`slice\` for a bound whose sign is not known at compile time
+// (runtime-swift's PyreonSlice.swift).
+public func pyreonSlice<T>(_ a: [T], _ start: Int, _ end: Int? = nil) -> [T] { a }
+public func pyreonSlice(_ s: String, _ start: Int, _ end: Int? = nil) -> String { s }
 public final class PyreonDatabase {
   public init() {}
   public func insert(_ collection: String, _ record: PyreonRecord) {}

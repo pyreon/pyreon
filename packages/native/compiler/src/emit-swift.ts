@@ -109,6 +109,7 @@ import {
   buildInferenceCtx,
   buildModuleConstTypes,
   classifyNegativeSlice,
+  sliceBoundsAreLiteral,
   arrayFromMapRewrite,
   classifyOptionalCondition,
   emptyInferenceCtx,
@@ -5139,6 +5140,11 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
               // survived → `value of type 'String' has no member 'slice'`.
               const optional = e.callee.optional === true
               const recv = optional ? '$0' : obj
+              // A bound whose sign is not known at compile time: JavaScript's semantics, from the runtime.
+              if (!sliceBoundsAreLiteral(e.args)) {
+                const body = `pyreonSlice(${[recv, ...argExprs].join(', ')})`
+                return optional ? `${obj}.map { ${body} }` : body
+              }
               // Negative-index idioms (Swift indices count from the front):
               //   slice(-m)    → suffix(m)    (last m)
               //   slice(0, -n) → dropLast(n)  (drop last n)

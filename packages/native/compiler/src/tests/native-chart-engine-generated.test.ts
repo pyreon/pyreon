@@ -39,6 +39,9 @@ const CANVAS_KT = 'packages/native/runtime-kotlin/src/main/kotlin/com/pyreon/run
 // The engine prints numbers through the runtime's JS-faithful formatter.
 const NUMBER_SWIFT = 'packages/native/runtime-swift/Sources/PyreonRuntime/PyreonNumber.swift'
 const NUMBER_KT = 'packages/native/runtime-kotlin/src/main/kotlin/com/pyreon/runtime/PyreonNumber.kt'
+// ...and slices with a runtime bound through its JS-faithful `pyreonSlice`.
+const SLICE_SWIFT = 'packages/native/runtime-swift/Sources/PyreonRuntime/PyreonSlice.swift'
+const SLICE_KT = 'packages/native/runtime-kotlin/src/main/kotlin/com/pyreon/runtime/PyreonSlice.kt'
 const withoutPackage = (code: string): string =>
   code
     .split('\n')
@@ -73,7 +76,7 @@ describe('native chart engine — generated, drift-locked, compile-proven', () =
   })
 
   it.skipIf(!isSwiftUIAvailable())('iOS: canvas + engine typecheck as one unit', () => {
-    const r = validateSwiftTypecheck(read(CANVAS_SWIFT) + '\n' + read(NUMBER_SWIFT) + '\n' + read(SWIFT_OUT))
+    const r = validateSwiftTypecheck(read(CANVAS_SWIFT) + '\n' + read(NUMBER_SWIFT) + '\n' + read(SLICE_SWIFT) + '\n' + read(SWIFT_OUT))
     expect(r.ok, r.error ?? '').toBe(true)
   }, 30_000)
 
@@ -89,7 +92,7 @@ describe('native chart engine — generated, drift-locked, compile-proven', () =
       .split('\n')
       .filter((l) => !l.startsWith('package '))
       .join('\n')
-    const r = validateKotlin(decls.join('\n') + '\n' + withoutPackage(read(NUMBER_KT)) + '\n' + engineBody)
+    const r = validateKotlin(decls.join('\n') + '\n' + withoutPackage(read(NUMBER_KT)) + '\n' + withoutPackage(read(SLICE_KT)) + '\n' + engineBody)
     expect(r.ok, r.error ?? '').toBe(true)
   }, 90_000)
 })
