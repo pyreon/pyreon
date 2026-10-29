@@ -104,7 +104,7 @@ export const Modal = (props: ModalProps): VNode => {
       ref,
       onCancel,
       onClick,
-      style: mergePassthroughStyle(style, props.style),
+      style: mergePassthroughStyle(style, props),
     },
     props.children,
   )

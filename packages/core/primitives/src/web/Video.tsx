@@ -45,6 +45,6 @@ export const Video = (props: VideoProps): VNode => {
     onPlaying: notify('playing'),
     onPause: notify('paused'),
     onWaiting: notify('waiting'),
-    style: mergePassthroughStyle(style, props.style),
+    style: mergePassthroughStyle(style, props),
   })
 }

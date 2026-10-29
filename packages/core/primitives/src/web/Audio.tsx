@@ -42,6 +42,6 @@ export const Audio = (props: AudioProps): VNode => {
     onPlaying: notify('playing'),
     onPause: notify('paused'),
     onWaiting: notify('waiting'),
-    style: mergePassthroughStyle({}, props.style),
+    style: mergePassthroughStyle({}, props),
   })
 }

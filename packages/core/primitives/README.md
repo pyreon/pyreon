@@ -2,7 +2,7 @@
 
 > Canonical multi-platform UI primitives — semantic vocabulary that compiles to DOM (web), SwiftUI (iOS), and Compose (Android). The Pyreon Multi-Target story.
 
-**Status:** experimental, and further along than this line used to say. All **20** primitives now have real web implementations, and PMTC emits them for iOS + Android: the **17** canonical UI primitives, the two animation wrappers (`<Transition>` / `<TransitionGroup>`) and `<WebView>`. Per-capability native maturity (what is device-proven vs merely emitted) lives in the multiplatform tier table, not here — it moves per release and a copy in this file would go stale, which is exactly what happened to the sentence this replaced.
+**Status:** experimental, and further along than this line used to say. All **21** primitives now have real web implementations, and PMTC emits them for iOS + Android: the **18** canonical UI primitives, the two animation wrappers (`<Transition>` / `<TransitionGroup>`) and `<WebView>`. Per-capability native maturity (what is device-proven vs merely emitted) lives in the multiplatform tier table, not here — it moves per release and a copy in this file would go stale, which is exactly what happened to the sentence this replaced.
 
 ## What this is
 
@@ -29,8 +29,8 @@ On the **web target** this compiles via `@pyreon/runtime-dom` to DOM (the implem
 
 ## The primitives
 
-All 20 have a real web implementation in `src/web/` — there is no
-type-definition-only tier any more. The 17 canonical UI primitives are listed
+All 21 have a real web implementation in `src/web/` — there is no
+type-definition-only tier any more. The 18 canonical UI primitives are listed
 below (the compiler's `CANONICAL_PRIMITIVES` set, drift-locked against this
 package's exports); the other three are `<WebView>` and the animation
 wrappers `<Transition>` / `<TransitionGroup>` (see [Animation](#animation)).
@@ -53,6 +53,7 @@ the [primitives docs page](../../../docs/src/content/docs/primitives.md).
 | `<Button>` | `<button>` | 4 variants (primary/secondary/ghost/danger) |
 | `<Press>` | `<div role="button" tabindex="0">` | ARIA-button keyboard contract + long-press polyfill |
 | `<Link>` | `<a href>` | Router-agnostic: `init({ navigate })` upgrades internal links to SPA navigation |
+| `<Gesture>` | `<div style="touch-action: none">` + pointer events | Continuous pan / pinch / rotate with cumulative values and `start`/`change`/`end` phases; drive content with the `translateX`/`translateY`/`scale`/`rotate` props every primitive accepts |
 | `<Field>` | `<input>` | `kind` prop selects type (text/email/password/etc.) |
 | `<Toggle>` | `<input type="checkbox" role="switch">` | Switch semantics |
 | `<Modal>` | `<dialog>` via `showModal()` | Focus trap, backdrop and Escape from the browser; closing always goes through `onClose` |
@@ -99,7 +100,7 @@ transition *longhands* are ever assigned, so a consumer's own
 2. **One canonical event name per concept.** `onPress` everywhere (not `onClick` on web + `action:` on iOS).
 3. **Tokens-first styling.** `padding={4}` / `gap="md"` resolve via theme. No raw pixels.
 4. **Pyreon idioms preserved.** Existing `<For>` / `<Show>` / `<Match>` control flow stays.
-5. **Minimal first; expand from real-world usage.** 17 canonical primitives; more when demanded.
+5. **Minimal first; expand from real-world usage.** 18 canonical primitives; more when demanded.
 
 ## Per-platform import resolution
 

@@ -41,7 +41,7 @@
   "@pyreon/native-compiler": 410112,
   "@pyreon/permissions": 1536,
   "@pyreon/preact-compat": 1613,
-  "@pyreon/primitives": 6784,
+  "@pyreon/primitives": 7510,
   "@pyreon/query": 4400,
   "@pyreon/react-compat": 3584,
   "@pyreon/reactivity": 8219,

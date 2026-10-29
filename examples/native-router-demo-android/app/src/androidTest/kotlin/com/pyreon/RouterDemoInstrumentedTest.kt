@@ -48,6 +48,8 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.pinch
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.test.swipeLeft
 import androidx.compose.ui.test.swipeUp
 import androidx.compose.ui.test.swipeRight
@@ -871,6 +873,34 @@ class RouterDemoInstrumentedTest {
         composeRule.onNodeWithTag("swipe-zone").performClick()
         composeRule.waitUntil(timeoutMillis = 10_000) {
             composeRule.onAllNodesWithText("Swiped: tap").fetchSemanticsNodes().isNotEmpty()
+        }
+    }
+
+    // Continuous gestures — <Gesture onPan onPinch>, injected as REAL Compose
+    // touch input (performTouchInput drives the pointer pipeline the runtime's
+    // awaitEachGesture loop reads). The verdict is written on the 'end' phase,
+    // so 'right' / 'in' prove start→change→end arrived with the right sign.
+    @Test
+    fun continuousGesturesReportPanAndPinch() {
+        composeRule.onNodeWithTag("home-page").assertIsDisplayed()
+        composeRule.onNodeWithText("View motion").performClick()
+        composeRule.onNodeWithTag("pan-status").assertTextEquals("Pan: none")
+
+        composeRule.onNodeWithTag("gesture-zone").performTouchInput { swipeRight() }
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodesWithText("Pan: right").fetchSemanticsNodes().isNotEmpty()
+        }
+
+        composeRule.onNodeWithTag("gesture-zone").performTouchInput {
+            pinch(
+                start0 = center - Offset(20f, 0f),
+                end0 = center - Offset(width * 0.4f, 0f),
+                start1 = center + Offset(20f, 0f),
+                end1 = center + Offset(width * 0.4f, 0f),
+            )
+        }
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodesWithText("Pinch: in").fetchSemanticsNodes().isNotEmpty()
         }
     }
 

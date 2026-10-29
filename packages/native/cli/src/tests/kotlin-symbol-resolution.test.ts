@@ -89,7 +89,7 @@ const MODIFIER_MEMBERS: Record<string, string[]> = {
   ],
   'androidx.compose.ui.platform': ['testTag'],
   'androidx.compose.foundation': ['background', 'border', 'clickable', 'combinedClickable', 'verticalScroll', 'horizontalScroll', 'focusable'],
-  'androidx.compose.ui.draw': ['clip', 'alpha'],
+  'androidx.compose.ui.draw': ['clip', 'alpha', 'scale', 'rotate'],
   'androidx.compose.ui.semantics': ['semantics', 'clearAndSetSemantics'],
   'androidx.compose.ui.focus': ['focusRequester'],
   'androidx.compose.ui.input.key': ['onPreviewKeyEvent'],
