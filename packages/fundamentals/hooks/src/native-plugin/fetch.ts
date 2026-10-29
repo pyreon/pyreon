@@ -11,7 +11,10 @@
 import {
   classifyHeaderValue,
   hasDynamicKey,
-  sendableHeaderExprs,
+  kotlinHttpRequestArgs,
+  kotlinSendLines,
+  swiftHttpRequestArgs,
+  swiftSendLines,
   kotlinStr,
   staticPropKey,
   swiftStr,
@@ -34,6 +37,11 @@ export const FETCH_TYPE = 'fetch'
 interface FetchPayload {
   readonly type: TypeIR
   readonly url: string
+  /**
+   * The URL as a runtime TEMPLATE, when a query value is only known at runtime (`ep({ query: { q: search() } })`):
+   * serialized as the harness builds the request — on mount, the moment the web evaluates the endpoint call.
+   */
+  readonly urlExpr?: ExprIR
   readonly method?: string
   readonly headers?: Readonly<Record<string, string>>
   /**
@@ -42,6 +50,13 @@ interface FetchPayload {
    */
   readonly headerExprs?: Readonly<Record<string, ExprIR>>
   readonly body?: string
+  /**
+   * A body only known at runtime — `JSON.stringify(draft)`, a string a signal holds — evaluated when the harness builds
+   * the request: on mount, the moment the web's `useFetch` reads `init.body`. Mutually exclusive with `body`.
+   */
+  readonly bodyExpr?: ExprIR
+  /** A streamed body (`multipart` / a raw `body`) from an endpoint call, built on mount. */
+  readonly upload?: ExprIR
 }
 
 const payloadOf = (d: ExtDecl): FetchPayload => d.payload as unknown as FetchPayload
@@ -69,11 +84,24 @@ export const recognizeFetch: CallRecognizer = (_call, ctx) => {
   // method, then feeds the path below exactly as if the author had written `useFetch<T>('/api/users/1', { method: 'GET' })`.
   // Reactive params / a non-literal client baseUrl bail (the source pushes the warning) and the call stays web.
   let resolvedUrl: string | undefined
-  let resolvedEndpoint: { method?: string | undefined; headers?: Record<string, string> | undefined; body?: string | undefined } | undefined
+  let resolvedEndpoint:
+    | {
+        method?: string | undefined
+        headers?: Record<string, string> | undefined
+        headerExprs?: Record<string, ExprIR> | undefined
+        body?: string | undefined
+        bodyExpr?: ExprIR | undefined
+        urlExpr?: ExprIR | undefined
+        upload?: ExprIR | undefined
+      }
+    | undefined
   if (urlArg?.type === 'CallExpression' && urlArg.callee?.type === 'Identifier' && ctx.requests.has(urlArg.callee.name as string)) {
     const resolved = ctx.requests.resolve(urlArg.callee.name as string, urlArg.arguments?.[0] as AnyNode | undefined, {
       allowRuntimeParams: false,
       streaming: false,
+      // The harness builds the request on mount — when the web evaluates the endpoint call — so a runtime body or
+      // header value is read at the same moment on every target.
+      runtimeValues: true,
     })
     if (!resolved) return null // warning already pushed; stays web
     ctx.recordDecode(type, resolved.response)
@@ -98,11 +126,23 @@ export const recognizeFetch: CallRecognizer = (_call, ctx) => {
     )
   }
   const initArg = ctx.args[1] as AnyNode | undefined
-  const req: { method?: string; headers?: Record<string, string>; headerExprs?: Record<string, ExprIR>; body?: string } = {}
+  const req: {
+    method?: string
+    headers?: Record<string, string>
+    headerExprs?: Record<string, ExprIR>
+    body?: string
+    bodyExpr?: ExprIR
+    urlExpr?: ExprIR
+    upload?: ExprIR
+  } = {}
+  if (resolvedEndpoint?.urlExpr !== undefined) req.urlExpr = resolvedEndpoint.urlExpr
+  if (resolvedEndpoint?.upload !== undefined) req.upload = resolvedEndpoint.upload
   // An endpoint's verb / headers / json body are the DEFAULTS; an explicit second argument still wins (the loop below overwrites).
   if (resolvedEndpoint?.method) req.method = resolvedEndpoint.method
   if (resolvedEndpoint?.headers) req.headers = resolvedEndpoint.headers
+  if (resolvedEndpoint?.headerExprs) req.headerExprs = { ...resolvedEndpoint.headerExprs }
   if (resolvedEndpoint?.body !== undefined) req.body = resolvedEndpoint.body
+  if (resolvedEndpoint?.bodyExpr !== undefined) req.bodyExpr = resolvedEndpoint.bodyExpr
   if (initArg) {
     if (initArg.type !== 'ObjectExpression') {
       ctx.warn(`useFetch init must be an object literal to lower to native; got ${initArg.type}. The request will be a plain GET on iOS and Android.`)
@@ -125,14 +165,16 @@ export const recognizeFetch: CallRecognizer = (_call, ctx) => {
           }
           req.method = String(value.value).toUpperCase()
         } else if (key === 'body') {
-          if (!isStringLiteral(value)) {
-            // A `JSON.stringify(obj)` body is the obvious next shape and is NOT supported — say so rather than sending an empty body.
-            ctx.warn(
-              `useFetch body must be a string literal to lower to native; got ${value?.type ?? 'nothing'}. The request will be sent with NO body on iOS and Android.`,
-            )
-            continue
+          delete req.body
+          delete req.bodyExpr
+          if (isStringLiteral(value)) {
+            req.body = String(value.value)
+          } else if (value !== undefined) {
+            // A runtime body — `JSON.stringify(draft)` (the web-identical serializer), or any string expression. The
+            // web reads `init.body` ONCE, at setup; the harness builds the request once, on mount — the same moment.
+            // Its type is judged at emit, where inference can see it.
+            req.bodyExpr = ctx.expr(value)
           }
-          req.body = String(value.value)
         } else if (key === 'headers') {
           if (value?.type !== 'ObjectExpression') {
             ctx.warn(
@@ -142,7 +184,7 @@ export const recognizeFetch: CallRecognizer = (_call, ctx) => {
           }
           // An endpoint's literal headers are the defaults; an explicit header of the same name wins.
           const headers: Record<string, string> = { ...req.headers }
-          const headerExprs: Record<string, ExprIR> = {}
+          const headerExprs: Record<string, ExprIR> = { ...req.headerExprs }
           for (const h of (value.properties as AnyNode[] | undefined) ?? []) {
             if (h.type !== 'Property') continue
             if (hasDynamicKey(h)) {
@@ -155,8 +197,10 @@ export const recognizeFetch: CallRecognizer = (_call, ctx) => {
             if (!hv) continue
             // A runtime value is kept as an expression; its type is judged at emit time, where inference can see it.
             const v = classifyHeaderValue(hv, ctx)
-            if (v.kind === 'literal') headers[hk] = v.value
-            else {
+            if (v.kind === 'literal') {
+              headers[hk] = v.value
+              delete headerExprs[hk]
+            } else {
               delete headers[hk]
               headerExprs[hk] = v.expr
             }
@@ -164,6 +208,7 @@ export const recognizeFetch: CallRecognizer = (_call, ctx) => {
           if (Object.keys(headers).length > 0) req.headers = headers
           else delete req.headers
           if (Object.keys(headerExprs).length > 0) req.headerExprs = headerExprs
+          else delete req.headerExprs
         } else {
           // `signal`, `credentials`, `mode`, … are web-fetch options with no native analogue. Naming them beats dropping them silently.
           ctx.warn(`useFetch init option "${key}" has no native equivalent and is ignored on iOS and Android.`)
@@ -178,7 +223,16 @@ export const recognizeFetch: CallRecognizer = (_call, ctx) => {
   return { type: FETCH_TYPE, payload: { type, url, ...req } as unknown as ExtPayload }
 }
 
-const hasRequestInit = (p: FetchPayload): boolean => Boolean(p.method || p.headers || p.headerExprs || p.body)
+const hasRequestInit = (p: FetchPayload): boolean =>
+  Boolean(
+    p.method ||
+      p.headers ||
+      p.headerExprs ||
+      p.body !== undefined ||
+      p.bodyExpr !== undefined ||
+      p.urlExpr !== undefined ||
+      p.upload !== undefined,
+  )
 
 /** `.task { … }` on the stable-identity host: begin → request → resolve | reject. Lines are relative to the modifier's own indentation. */
 function swiftHarness(d: ExtDecl, ctx: EmitContext): readonly string[] {
@@ -189,23 +243,15 @@ function swiftHarness(d: ExtDecl, ctx: EmitContext): readonly string[] {
     // A request with a VERB, headers, or a body goes through PyreonHttp — the runtime that has shipped on both targets with full verb
     // support. The bare-GET path below is left alone deliberately: it is device-proven, and re-routing it would put a proven path
     // behind a brand-new Android executor.
-    const method = (p.method ?? 'GET').toLowerCase()
-    const parts = [`method: .${method}`, `url: ${swiftStr(p.url)}`]
-    const pairs = [
-      ...Object.entries(p.headers ?? {}).map(([k, v]) => `${swiftStr(k)}: ${swiftStr(v)}`),
-      // Evaluated as the request is built, inside the harness.
-      ...sendableHeaderExprs(p.headerExprs, ctx, `Declaration ${d.name}: useFetch`).map(([k, e]) => `${swiftStr(k)}: ${ctx.expr(e, 0)}`),
-    ]
-    if (pairs.length > 0) parts.push(`headers: [${pairs.join(', ')}]`)
-    if (p.body !== undefined) parts.push(`body: Data(${swiftStr(p.body)}.utf8)`)
-    lines.push(`    let __response = try await PyreonHttp.send(`)
-    lines.push(`      PyreonHttpRequest(${parts.join(', ')})`)
-    lines.push(`    )`)
-    // A non-2xx must REJECT rather than decode. Handing an error page to JSONDecoder surfaces as a decode failure, which reads as
-    // "the server sent bad JSON" and hides the actual status.
-    lines.push(`    guard __response.isOK else {`)
-    lines.push(`      throw PyreonHttpError.badStatus(__response.status)`)
-    lines.push(`    }`)
+    const where = `Declaration ${d.name}: useFetch`
+    // Header and body expressions are evaluated as the request is built, inside the harness.
+    const args = swiftHttpRequestArgs(
+      { method: p.method, url: p.urlExpr !== undefined ? ctx.expr(p.urlExpr, 0) : swiftStr(p.url), headers: p.headers, headerExprs: p.headerExprs, body: p.body, bodyExpr: p.bodyExpr, upload: p.upload },
+      ctx,
+      where,
+    )
+    // A non-2xx must REJECT rather than decode (see `swiftSendLines`).
+    for (const line of swiftSendLines(args)) lines.push(`    ${line}`)
     lines.push(`    ${name}.resolve(try __response.decode(${ctx.typeText(p.type)}.self))`)
   } else {
     lines.push(`    let (bytes, _) = try await URLSession.shared.data(from: URL(string: ${swiftStr(p.url)})!)`)
@@ -222,20 +268,14 @@ function kotlinHarness(d: ExtDecl, ctx: EmitContext): readonly string[] {
   const lines: string[] = [`LaunchedEffect(Unit) {`, `  ${name}.begin()`, `  try {`]
   if (hasRequestInit(p)) {
     // Mirrors the Swift branch one-for-one; `readText()` below cannot express a verb, headers or a body.
-    const parts = [`method = PyreonHttpMethod.${(p.method ?? 'GET').toUpperCase()}`, `url = ${kotlinStr(p.url)}`]
-    const pairs = [
-      ...Object.entries(p.headers ?? {}).map(([k, v]) => `${kotlinStr(k)} to ${kotlinStr(v)}`),
-      // Evaluated as the request is built, inside the harness.
-      ...sendableHeaderExprs(p.headerExprs, ctx, `Declaration ${d.name}: useFetch`).map(([k, e]) => `${kotlinStr(k)} to ${ctx.expr(e, 0)}`),
-    ]
-    if (pairs.length > 0) parts.push(`headers = mapOf(${pairs.join(', ')})`)
-    if (p.body !== undefined) parts.push(`body = ${kotlinStr(p.body)}`)
-    lines.push(`    val __response = withContext(Dispatchers.IO) {`)
-    // The OkHttp default comes from HERE, as a direct reference: see `PyreonHttp.send` for why it cannot live in the runtime.
-    lines.push(`      PyreonHttp.send(PyreonHttpRequest(${parts.join(', ')}), fallback = PyreonHttpOkHttp)`)
-    lines.push(`    }`)
-    // A non-2xx REJECTS rather than decoding — handing an error page to the JSON decoder reads as "the server sent bad JSON".
-    lines.push(`    if (!__response.isOk) throw PyreonHttpError.BadStatus(__response.status)`)
+    const where = `Declaration ${d.name}: useFetch`
+    const args = kotlinHttpRequestArgs(
+      { method: p.method, url: p.urlExpr !== undefined ? ctx.expr(p.urlExpr, 0) : kotlinStr(p.url), headers: p.headers, headerExprs: p.headerExprs, body: p.body, bodyExpr: p.bodyExpr, upload: p.upload },
+      ctx,
+      where,
+    )
+    // A non-2xx REJECTS rather than decoding (see `kotlinSendLines`).
+    for (const line of kotlinSendLines(args)) lines.push(`    ${line}`)
     lines.push(`    ${name}.resolve(PyreonFetchJson.decodeFromString<${ctx.typeText(p.type)}>(__response.body))`)
   } else {
     lines.push(`    val body = withContext(Dispatchers.IO) { java.net.URL(${kotlinStr(p.url)}).readText() }`)

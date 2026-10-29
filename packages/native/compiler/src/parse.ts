@@ -653,6 +653,8 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
   // type — dropping the v1 annotation requirement. Runs after all structs are
   // built (a helper param/return can reference a declared struct). A body whose
   // type still can't be determined is warned + dropped (never a broken emit).
+  // Router guards are shaped first: their parameter is the native path, which return inference needs.
+  lowerRouterGuards(components, ctx.helperFns, ctx.warnings, buildInferenceCtx([], structs, [], undefined, undefined, moduleConsts))
   refineHelperReturns(ctx.helperFns, structs, ctx.warnings, moduleConsts)
   for (const helper of ctx.helperFns) helperReturnSeed.set(helper.name, helper.returnType)
 
@@ -3849,6 +3851,13 @@ function moduleParseContextFor(ctx: ParseCtx, owner: string): ModuleParseContext
     addItem: (spec: ExtItemSpec) => {
       ctx.lateModuleItems.push(stampModuleItem(activeRegistries().items, owner, spec))
     },
+    // A request source reads its facts through a ParseContext; an expression-position call has no declaration, so
+    // the facade it gets carries an empty `declName` (a source reports through `report`, never `warn`).
+    requests: {
+      has: (requestName) => parseContextFor('', { arguments: [] }, ctx).requests.has(requestName),
+      resolve: (requestName, arg, options) =>
+        parseContextFor('', { arguments: [] }, ctx).requests.resolve(requestName, arg, options),
+    },
   }
 }
 
@@ -4394,8 +4403,8 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     // config. Captures IDENTIFIER REFS only (conservative shape);
     // inline arrow bodies are dropped here, same as per-route
     // beforeEnter bails non-arrow-expression shapes.
-    const beforeEach = tryExtractGuardRefArray(init.arguments?.[0], 'beforeEach', ctx.warnings)
-    const afterEach = tryExtractGuardRefArray(init.arguments?.[0], 'afterEach', ctx.warnings)
+    const beforeEach = tryExtractGuardRefArray(init.arguments?.[0], 'beforeEach', ctx.warnings, ctx)
+    const afterEach = tryExtractGuardRefArray(init.arguments?.[0], 'afterEach', ctx.warnings, ctx)
     const decl: DeclIR = { kind: 'router', name }
     if (routes !== null) decl.routes = routes
     if (beforeEach.length > 0) decl.beforeEach = beforeEach
@@ -4666,19 +4675,208 @@ function tryExtractRoutes(arg: AnyNode | undefined, ctx: ParseCtx): RouteIR[] | 
   return parseRouteArray(routesProp.value, ctx)
 }
 
+/** Globals an inline guard may read without capturing anything from the component. */
+const GUARD_GLOBALS = new Set([
+  'Math', 'Number', 'String', 'Boolean', 'JSON', 'Array', 'Object', 'Date', 'undefined', 'NaN', 'Infinity',
+  'parseInt', 'parseFloat', 'isNaN', 'isFinite', 'console',
+])
+
 /**
- * Global-guards helper — extracts identifier refs from a `beforeEach: [fn1, fn2]`
- * / `afterEach: [fn1]` field on the createRouter config. Returns an empty
- * array if the field is absent / non-array / contains no identifier refs
- * (each silently dropped). Conservative: only IDENTIFIER REFS land in
- * the result; inline arrow bodies and member expressions are dropped
- * because they'd need closure-emit + capture machinery the per-route
- * boolean-guard shape doesn't carry into this PR.
+ * An inline `beforeEach` / `afterEach` guard, as a synthesized file-level helper. Returns its name, or `undefined` after
+ * a named warning when it cannot be one. A file-level function sees only its parameters and the module's own bindings,
+ * so an arrow that reads a local of the component creating the router (`isAuthed` from a hook) stays a warning:
+ * lowering it would read nothing, or the wrong thing. The parameter shape is settled later, with the named guards, in
+ * `lowerRouterGuards`.
+ */
+function inlineGuardHelper(fn: AnyNode, key: string, ctx: ParseCtx): string | undefined {
+  const warn = (why: string): undefined => {
+    ctx.warnings.push(
+      `[pyreon-native] router \`${key}\`: an inline guard is not lowered to native — ${why} ` +
+        `It is dropped, so the navigation is NOT gated on iOS/Android.`,
+    )
+    return undefined
+  }
+  if (fn.async === true) return warn('an async guard has no native lowering (native guards answer synchronously).')
+  const params = (fn.params as AnyNode[] | undefined) ?? []
+  if (params.some((p) => p?.type !== 'Identifier')) {
+    return warn('its parameters must be plain names (`(to) => …`, `(to, from) => …`).')
+  }
+  const allowed = new Set<string>([...params.map((p) => p.name as string), ...ctx.moduleBindings.keys(), ...GUARD_GLOBALS])
+  const captured = [...freeIdentifiers(fn.body)].filter((n) => !allowed.has(n))
+  if (captured.length > 0) {
+    return warn(
+      `it reads ${captured.map((n) => `\`${n}\``).join(', ')}, which is not a parameter or a module-level name, and a ` +
+        `native guard runs outside the component. Move that state to module level, or name the guard function.`,
+    )
+  }
+  // Numbered within THIS file (never a module-level counter: the name would then depend on how many files the
+  // process compiled before, and the same source would emit differently run to run).
+  const name = `__pyreonGuard${ctx.helperFns.filter((h) => h.name.startsWith('__pyreonGuard')).length}`
+  ctx.helperFns.push(tryFunctionDecl(name, fn, ctx))
+  return name
+}
+
+/** The identifiers a function body reads from outside itself (property names and its own declarations excluded). */
+function freeIdentifiers(body: AnyNode): Set<string> {
+  const read = new Set<string>()
+  const declared = new Set<string>()
+  const visit = (node: unknown, parentKey?: string, parent?: AnyNode): void => {
+    if (!node || typeof node !== 'object') return
+    if (Array.isArray(node)) {
+      for (const n of node) visit(n, parentKey, parent)
+      return
+    }
+    const n = node as AnyNode
+    if (n.type === 'Identifier') {
+      const isProp =
+        (parent?.type === 'MemberExpression' && parentKey === 'property' && parent.computed !== true) ||
+        (parent?.type === 'Property' && parentKey === 'key' && parent.computed !== true)
+      if (!isProp) read.add(n.name as string)
+      return
+    }
+    if (n.type === 'VariableDeclarator') bindingNames(n.id, declared)
+    if (n.type === 'ArrowFunctionExpression' || n.type === 'FunctionExpression') {
+      for (const p of (n.params as AnyNode[] | undefined) ?? []) bindingNames(p, declared)
+    }
+    for (const k of Object.keys(n)) {
+      if (k === 'type' || k === 'loc' || k === 'range' || k === 'span' || k === 'start' || k === 'end') continue
+      visit(n[k], k, n)
+    }
+  }
+  visit(body)
+  for (const d of declared) read.delete(d)
+  return read
+}
+
+/** Every name a binding pattern declares (`a`, `{ b, c: d }`, `[e, ...f]`, `g = 1`). */
+function bindingNames(pattern: AnyNode | undefined, out: Set<string>): void {
+  if (!pattern) return
+  if (pattern.type === 'Identifier') out.add(pattern.name as string)
+  else if (pattern.type === 'ObjectPattern') {
+    for (const p of (pattern.properties as AnyNode[] | undefined) ?? []) bindingNames(p.type === 'RestElement' ? p.argument : p.value, out)
+  } else if (pattern.type === 'ArrayPattern') {
+    for (const e of (pattern.elements as AnyNode[] | undefined) ?? []) bindingNames(e, out)
+  } else if (pattern.type === 'RestElement') bindingNames(pattern.argument, out)
+  else if (pattern.type === 'AssignmentPattern') bindingNames(pattern.left, out)
+}
+
+/**
+ * The guards of every router, shaped for native. A web guard is `(to, from) => boolean | …` over route OBJECTS; the
+ * native routers call it with the target PATH. So `to.path` reads the path, an unused `from` is dropped (the native
+ * call passes one argument), and a `beforeEach` guard answers a boolean. Another member of `to` (`params`, `query`,
+ * `meta`), a read of `from`, or a returned redirect has no native counterpart: that guard is warned and dropped —
+ * never kept half-lowered. Named and inline guards go through the same pass, because they are the same thing.
+ */
+function lowerRouterGuards(
+  components: readonly { decls: DeclIR[] }[],
+  helperFns: Extract<DeclIR, { kind: 'function' }>[],
+  warnings: string[],
+  inferCtx: ReturnType<typeof buildInferenceCtx>,
+): void {
+  for (const component of components) {
+    for (const decl of component.decls) {
+      if (decl.kind !== 'router') continue
+      for (const key of ['beforeEach', 'afterEach'] as const) {
+        const names = decl[key]
+        if (names === undefined) continue
+        const kept = names.filter((name) => {
+          const fn = helperFns.find((h) => h.name === name)
+          if (fn === undefined || lowerGuardFn(fn, key, warnings, inferCtx)) return true
+          // A dropped INLINE guard leaves nothing behind: its synthesized helper existed only to be this guard, and
+          // emitted half-lowered it would not compile. A named function is the author's own and stays.
+          if (name.startsWith('__pyreonGuard')) helperFns.splice(helperFns.indexOf(fn), 1)
+          return false
+        })
+        if (kept.length > 0) decl[key] = kept
+        else delete decl[key]
+      }
+    }
+  }
+}
+
+/** Whether a returned expression can evaluate to a string literal — through `? :` branches and `&&` / `||` / `??`. */
+function returnsString(e: unknown): boolean {
+  const x = e as { kind?: string; value?: unknown; then?: unknown; otherwise?: unknown; left?: unknown; right?: unknown }
+  if (x?.kind === 'literal') return typeof x.value === 'string'
+  if (x?.kind === 'ternary') return returnsString(x.then) || returnsString(x.otherwise)
+  if (x?.kind === 'logical') return returnsString(x.left) || returnsString(x.right)
+  return false
+}
+
+function lowerGuardFn(
+  fn: Extract<DeclIR, { kind: 'function' }>,
+  key: string,
+  warnings: string[],
+  inferCtx: ReturnType<typeof buildInferenceCtx>,
+): boolean {
+  const label = fn.name.startsWith('__pyreonGuard') ? 'an inline guard' : `guard \`${fn.name}\``
+  const drop = (why: string): false => {
+    warnings.push(
+      `[pyreon-native] router \`${key}\`: ${label} ${why} It is dropped, so the navigation is NOT gated on iOS/Android.`,
+    )
+    return false
+  }
+  const to = fn.params[0]?.name
+  const from = fn.params[1]?.name
+  if (fn.params.length > 2) return drop('takes more than (to, from).')
+  const otherMembers = new Set<string>()
+  let readsFrom = false
+  let redirects = false
+  const visit = (node: unknown): void => {
+    if (!node || typeof node !== 'object') return
+    if (Array.isArray(node)) {
+      for (const n of node) visit(n)
+      return
+    }
+    const n = node as Record<string, unknown>
+    if (n.kind === 'member' && (n.object as { kind?: string; name?: string } | undefined)?.kind === 'identifier') {
+      const obj = (n.object as { name: string }).name
+      if (obj === to && n.property === 'path') {
+        // `to.path` IS the native argument.
+        delete n.object
+        delete n.property
+        delete n.optional
+        n.kind = 'identifier'
+        n.name = to
+        return
+      }
+      if (obj === to) otherMembers.add(String(n.property))
+    }
+    if (n.kind === 'identifier' && from !== undefined && n.name === from) readsFrom = true
+    if (n.kind === 'return' && n.expr !== undefined && returnsString(n.expr)) redirects = true
+    for (const v of Object.values(n)) visit(v)
+  }
+  visit(fn.body)
+  if (otherMembers.size > 0) {
+    return drop(
+      `reads ${[...otherMembers].map((m) => `\`${to}.${m}\``).join(', ')}; a native guard receives only the target path (\`${to}.path\`).`,
+    )
+  }
+  if (readsFrom) return drop(`reads \`${from}\`; a native guard receives only the target.`)
+  if (fn.params.length === 2) fn.params.length = 1
+  if (fn.params[0] !== undefined) fn.params[0].type = { kind: 'string' }
+  if (key === 'beforeEach') {
+    // A web guard may also return a redirect path (or nothing). Native answers allow/block only, so anything the body
+    // can return that is not a boolean is refused here, by name, rather than emitted into a `-> Bool` it cannot fit.
+    const returned = inferReturnType(fn.params, fn.body, inferCtx)
+    if (redirects || (returned.kind !== 'boolean' && returned.kind !== 'unknown')) {
+      return drop('can return something other than true / false (a redirect path?); a native guard answers allow or block.')
+    }
+    fn.returnType = { kind: 'boolean' }
+  }
+  return true
+}
+
+/**
+ * Global-guards helper — the guard names on a `beforeEach: [fn1, (to) => …]` / `afterEach: [fn1]` field of the
+ * createRouter config. A named reference is kept as is; an inline function is synthesized into a file-level helper
+ * (see `inlineGuardHelper`) and its generated name kept. Anything else is warned and dropped.
  */
 function tryExtractGuardRefArray(
   arg: AnyNode | undefined,
   key: string,
   warnings?: string[],
+  ctx?: ParseCtx,
 ): string[] {
   if (!arg || arg.type !== 'ObjectExpression') return []
   const props = arg.properties as AnyNode[] | undefined
@@ -4693,8 +4891,14 @@ function tryExtractGuardRefArray(
       out.push(el.name as string)
       continue
     }
-    // A non-identifier element (inline arrow, member access) is NOT lowered:
-    // closure-emit + capture machinery is a tracked follow-up. But dropping it
+    // An inline guard becomes a synthesized file-level helper, referenced by name like any other — the emitters and
+    // runtimes see exactly the shape a named guard has. Warned and dropped (inside) when it cannot be one.
+    if (ctx && (el?.type === 'ArrowFunctionExpression' || el?.type === 'FunctionExpression')) {
+      const name = inlineGuardHelper(el, key, ctx)
+      if (name !== undefined) out.push(name)
+      continue
+    }
+    // Anything else (a member access, a call) is NOT lowered. Dropping it
     // SILENTLY is the wrong failure mode — an inline `beforeEach: [(to) =>
     // isAuthed()]` would leave the navigation ungated on native with no signal,
     // a security foot-gun. Warn by name so the author extracts it to a named
@@ -4711,8 +4915,8 @@ function tryExtractGuardRefArray(
       warnings.push(
         `[pyreon-native] router \`${key}\`: ${shape} guard is not lowered to native — ` +
           `global router guards accept a NAMED function reference (\`${key}: [authGuard]\`). ` +
-          `An inline guard is dropped, so the navigation is NOT gated on iOS/Android. ` +
-          `Extract it to a named function. (Closure-emit is a tracked follow-up.)`,
+          `It is dropped, so the navigation is NOT gated on iOS/Android. ` +
+          `Use a named function or an inline arrow.`,
       )
     }
   }
@@ -4730,7 +4934,12 @@ function parseRouteArray(arr: AnyNode | undefined, ctx: ParseCtx): RouteIR[] | n
   if (!arr || arr.type !== 'ArrayExpression') return null
   const out: RouteIR[] = []
   for (const el of (arr.elements as AnyNode[] | undefined) ?? []) {
-    if (!el || el.type !== 'ObjectExpression') return null
+    if (!el || el.type !== 'ObjectExpression') {
+      ctx.warnings.push(
+        `A \`createRouter\` route is not an object literal (${el ? el.type : 'a hole'}) — the native router table is built at compile time, and the compiler never emits a partial one, so this router has NO routes on iOS/Android. Write each route as an inline \`{ path, component }\` object.`,
+      )
+      return null
+    }
     const elProps = el.properties as AnyNode[] | undefined
     if (!elProps) return null
     let path: string | undefined
@@ -4740,6 +4949,7 @@ function parseRouteArray(arr: AnyNode | undefined, ctx: ParseCtx): RouteIR[] | n
     let children: RouteIR[] | undefined
     let loader: ExprIR | undefined
     let loaderUsesParams = false
+    let unresolvedPath: string | undefined
     for (const p of elProps) {
       if (p?.type !== 'Property') continue
       // A computed key could be `path` / `component` / a guard — unknowable,
@@ -4750,20 +4960,19 @@ function parseRouteArray(arr: AnyNode | undefined, ctx: ParseCtx): RouteIR[] | n
       }
       const key = staticPropKey(p)
       if (key === 'path') {
-        const v = p.value
-        if ((v?.type === 'Literal' || v?.type === 'StringLiteral') && typeof v.value === 'string') {
-          path = v.value
-        }
+        // A shared constant (`path: ADMIN_PATH`) is as static as an inline literal, and is the ordinary way to
+        // write a path that a guard or a `navigate()` call also names.
+        const resolved = staticStringArg(p.value, ctx)
+        if (resolved !== null) path = resolved
+        else if (p.value) unresolvedPath = ctx.source.slice(p.value.start as number, p.value.end as number)
       } else if (key === 'component') {
         component = parseExpr(p.value, ctx)
       } else if (key === 'redirect') {
         // Phase 3 — only a literal redirect target is captured. Function
         // redirects / `throw redirect()` are a later arc; they leave
         // `redirect` undefined here so the route still needs a component.
-        const v = p.value
-        if ((v?.type === 'Literal' || v?.type === 'StringLiteral') && typeof v.value === 'string') {
-          redirect = v.value
-        }
+        const resolved = staticStringArg(p.value, ctx)
+        if (resolved !== null) redirect = resolved
       } else if (key === 'beforeEnter') {
         // Phase 3 — boolean guard. Only an arrow with an EXPRESSION body
         // (`() => isAuthed()`) is captured; the body becomes the inline
@@ -4837,10 +5046,21 @@ function parseRouteArray(arr: AnyNode | undefined, ctx: ParseCtx): RouteIR[] | n
     }
     // A route must render SOMETHING: its own component, a redirect target,
     // OR child routes (a pure layout grouping with no index component).
-    if (
-      path === undefined ||
-      (component === undefined && redirect === undefined && children === undefined)
-    ) {
+    // The compiler never emits a partial route table, so any route it cannot read costs the WHOLE router its
+    // dispatch. That must be loud: it used to be silent, and a single `path: SOME_CONST` shipped a router that
+    // rendered only its home page on both native targets.
+    if (path === undefined) {
+      ctx.warnings.push(
+        unresolvedPath !== undefined
+          ? `A \`createRouter\` route's \`path\` (\`${unresolvedPath}\`) is not a string known at compile time — the native router table is built statically, so this router has NO routes on iOS/Android. Use a string literal or a module-level \`const X = '/path'\`.`
+          : 'A `createRouter` route has no `path` — the native router table needs one per route, so this router has NO routes on iOS/Android.',
+      )
+      return null
+    }
+    if (component === undefined && redirect === undefined && children === undefined) {
+      ctx.warnings.push(
+        `\`createRouter\` route "${path}" has no \`component\`, literal \`redirect\` or \`children\` the native router can render, so this router has NO routes on iOS/Android.`,
+      )
       return null
     }
     const route: RouteIR = { path }

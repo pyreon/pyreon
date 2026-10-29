@@ -76,7 +76,7 @@ describe('endpoint DSL — a literal `json` body lowers to the native request', 
     expect(r.code).not.toContain('application/json')
   })
 
-  it('warns by name when the body is not a literal, rather than sending none', () => {
+  it('a runtime body is serialized when the request is built, rather than sent as none (#3978)', () => {
     const r = swift(`
 import { createHttp } from '@pyreon/http'
 import { useFetch } from '@pyreon/query'
@@ -91,8 +91,8 @@ export function S() {
   return <Stack><Text>{u.data()?.id ?? ''}</Text></Stack>
 }
 `)
-    expect(r.warnings.some((w) => w.includes('`json` body must be a literal'))).toBe(true)
-    expect(r.warnings.some((w) => w.includes('NO body on iOS and Android'))).toBe(true)
+    expect(r.warnings).toEqual([])
+    expect(r.code).toMatch(/body: Data\(\(PyreonJSON\.stringify\(\w+\(name: name\)\)\)\.utf8\)/)
   })
 })
 
@@ -109,8 +109,9 @@ describe('endpoint DSL — `headers` lower from the call AND the declaration', (
     expect(r.code).toContain('"X-App": "pyreon"')
   })
 
-  it('lets a per-call headers object REPLACE the declaration, like the web does', () => {
-    // The web is `args?.headers ?? options.headers` — a replace, not a merge.
+  it('lays a per-call headers object OVER the declaration, like the web mergeHeaders does', () => {
+    // The web used to replace (`args?.headers ?? options.headers`) and now merges by lower-cased name; the
+    // native resolver had kept the old replace, so the two platforms disagreed.
     const r = swift(
       app(
         `{ headers: { 'X-Call': 'y' } }`,
@@ -118,11 +119,10 @@ describe('endpoint DSL — `headers` lower from the call AND the declaration', (
       ),
     )
     expect(r.warnings).toEqual([])
-    expect(r.code).toContain('"X-Call": "y"')
-    expect(r.code).not.toContain('X-App')
+    expect(r.code).toContain('headers: ["x-app": "x", "x-call": "y"')
   })
 
-  it('names a header value it cannot bake instead of omitting it silently', () => {
+  it('a runtime header value is evaluated when the request is built (#3978)', () => {
     const r = swift(`
 import { createHttp } from '@pyreon/http'
 import { useFetch } from '@pyreon/query'
@@ -137,7 +137,8 @@ export function S() {
   return <Stack><Text>{u.data()?.id ?? ''}</Text></Stack>
 }
 `)
-    expect(r.warnings.some((w) => w.includes('`headers.X-Tok`'))).toBe(true)
+    expect(r.warnings).toEqual([])
+    expect(r.code).toContain('"X-Tok": tok')
   })
 })
 

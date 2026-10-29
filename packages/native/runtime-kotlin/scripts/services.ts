@@ -52,6 +52,8 @@ export const TYPECHECK_ONLY = new Set([
   // A Material 3 composable: it RUNS on the emulator (the tasks showcase's
   // /select page), and is typechecked here against the mirrored M3 surface.
   'PyreonSelect',
+  // Resolves `content://` through a real ContentResolver: nothing to run without a device.
+  'PyreonUploadAndroid',
 ])
 
 export interface ServicePlan {

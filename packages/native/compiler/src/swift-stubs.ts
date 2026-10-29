@@ -936,10 +936,12 @@ public struct PyreonParseResult<T> {
 public func pyreonSchemaInput<T: Encodable>(_ value: T) -> [String: Any] { [:] }
 public func pyreonSchemaInput(_ value: [String: Any]) -> [String: Any] { value }
 public func pyreonSchemaValue<T: Encodable>(_ value: T) -> Any { value }
+// Mirror of PyreonWebView.swift's public surface, parameter ORDER included —
+// Swift labels are positional, so a stub that reorders them accepts a call
+// the real runtime rejects.
+public enum PyreonWebViewGrow { case vertical, horizontal, both }
 public struct PyreonWebView: View {
-  // Emit shapes: (src:data:onMessage:), (html:), (html:data:onMessage:) — all
-  // params optional so every shape resolves; arg TYPES stay faithful.
-  public init(src: String? = nil, html: String? = nil, data: String? = nil, onMessage: ((String) -> Void)? = nil, domStorage: Bool = true) {}
+  public init(html: String? = nil, src: String? = nil, data: String? = nil, onMessage: ((String) -> Void)? = nil, domStorage: Bool = true, grow: PyreonWebViewGrow? = nil) {}
   public typealias Body = Never
 }
 
@@ -954,6 +956,10 @@ public final class PyreonRouter {
   // keeping the OPTIONAL return is load-bearing: an emit that forgets to unwrap
   // it must fail here, not silently on-device.
   public static func matchPath(_ path: String, _ pattern: String) -> [String: String]? { nil }
+  // Global guards, mirroring the real PyreonRouter: the emit appends named guard functions here. Missing, every
+  // \`beforeEach\` / \`afterEach\` emit failed the gate while compiling against the real runtime.
+  public var beforeEachGuards: [(String) -> Bool] = []
+  public var afterEachHooks: [(String) -> Void] = []
   // Search parameters, mirroring the real PyreonRouter. useUrlState lowers to
   // a value type over these two, so a stub missing them would reject a correct
   // emit — the subset-stub failure, which manufactures bugs exactly as a
@@ -1346,8 +1352,21 @@ public struct PyreonHttpRequest: Sendable {
     method: PyreonHttpMethod = .get,
     url: String,
     headers: [String: String] = [:],
-    body: Data? = nil
+    body: Data? = nil,
+    upload: PyreonHttpUpload? = nil
   ) {}
+}
+public enum PyreonHttpUpload: Sendable {
+  case file(PyreonUploadFile)
+  case multipart(PyreonMultipartBody)
+}
+public struct PyreonUploadFile: Sendable {
+  public let name: String = ""
+  public let type: String = ""
+  public static func from(_ uri: String, name: String? = nil, type: String? = nil) async throws -> PyreonUploadFile { fatalError() }
+}
+public struct PyreonMultipartBody: Sendable {
+  public init(_ pairs: Any?...) {}
 }
 public struct PyreonHttpResponse: Sendable {
   public let status: Int = 0
@@ -1365,6 +1384,11 @@ public enum PyreonHttp {
   public static func send(_ request: PyreonHttpRequest) async throws -> PyreonHttpResponse {
     PyreonHttpResponse()
   }
+  @discardableResult
+  public static func call(_ request: PyreonHttpRequest) async throws -> PyreonHttpResponse {
+    PyreonHttpResponse()
+  }
+  public static func fire(_ request: PyreonHttpRequest) {}
 }
 // PyreonURL — the runtime path-param encoder a templated endpoint URL calls.
 // Mirrors the REAL PyreonURL surface: three overloads (String / Int / Double),
@@ -1375,6 +1399,7 @@ public enum PyreonURL {
   public static func encodePathParam(_ value: String) -> String { value }
   public static func encodePathParam(_ value: Int) -> String { "" }
   public static func encodePathParam(_ value: Double) -> String { "" }
+  public static func query(_ joiner: String, _ pairs: Any?...) -> String { "" }
 }
 // pyreonNumberString — JS \`String(number)\`, which every Double-typed
 // template interpoland lowers through. Mirrors the real overload pair.

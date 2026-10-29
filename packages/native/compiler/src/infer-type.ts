@@ -368,7 +368,8 @@ function widenFloatSignalDecls(
  */
 function serviceTypingKey(d: DeclIR): string | undefined {
   if (d.kind === 'service') {
-    return findService(d.hook)?.optionalFields === undefined ? undefined : d.hook
+    const svc = findService(d.hook)
+    return svc?.optionalFields === undefined && svc?.methodReturns === undefined ? undefined : d.hook
   }
   return undefined
 }
@@ -1433,6 +1434,16 @@ export function inferTypeValue(expr: ExprIR, ctx: InferenceCtx): TypeIR {
         const returns = findFunctionLowering(expr.callee.name)?.lowering.returns
         if (returns !== undefined) return returns
       }
+      // A method on a service container (`picker.pick()`) — its declared return, when the descriptor states one.
+      if (
+        expr.callee.kind === 'member' &&
+        expr.callee.object.kind === 'identifier' &&
+        !ctx.locals.has(expr.callee.object.name)
+      ) {
+        const svcKey = ctx.services.get(expr.callee.object.name)
+        const returns = svcKey === undefined ? undefined : findService(svcKey)?.methodReturns?.[expr.callee.property]
+        if (returns !== undefined) return returns
+      }
       if (expr.args.length === 0 && expr.callee.kind === 'member' &&
         expr.callee.object.kind === 'identifier' && expr.callee.object.name === ctx.signalReceiver &&
         !ctx.locals.has(expr.callee.object.name)) {
@@ -1656,10 +1667,8 @@ export function inferTypeValue(expr: ExprIR, ctx: InferenceCtx): TypeIR {
               // it's a concrete array, return it directly (the flattened result).
               // The emit is the generic native `flatMap` (both targets have it) —
               // only the inference lagged (result degraded to `Any`, so a chained
-              // `.length` / typed use failed). A body that doesn't infer to a
-              // concrete array (e.g. the `cond ? [x] : []` filter-map idiom, whose
-              // empty branch has no element type) stays Array<unknown> — a
-              // follow-up needs empty-array-in-ternary unification.
+              // `.length` / typed use failed). The `cond ? [x] : []` filter-map
+              // idiom infers through the ternary case's empty-array unification.
               const cb = expr.args[0]
               if (cb !== undefined && cb.kind === 'arrow' && cb.params.length >= 1) {
                 const scratch: InferenceCtx = { ...ctx, locals: new Map(ctx.locals) }

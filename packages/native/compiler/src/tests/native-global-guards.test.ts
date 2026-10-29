@@ -18,7 +18,7 @@
 //            } }`
 //
 // Conservative parse: only IDENTIFIER REFS captured. Inline arrow
-// bodies (`beforeEach: [(p) => isAuthed()]`) are NOT lowered (closure-
+// bodies (`beforeEach: [(p) => isAuthed()]`) now lower too (native-router-guard-shapes.test.ts) — (formerly closure-
 // emit + capture machinery is a follow-up) but now WARN by name rather
 // than dropping silently — a vanished guard would leave the route
 // ungated on native, a security foot-gun.
@@ -128,7 +128,7 @@ describe('Round-2 follow-up — global beforeEach / afterEach guards on createRo
   })
 
   describe('parser — conservative shape', () => {
-    it('inline arrow bodies in beforeEach are NOT lowered but WARN by name (not a silent drop)', () => {
+    it('inline arrow guards in beforeEach LOWER to a synthesized helper (no longer dropped)', () => {
       const res = transform(
         `
         function HomePage() { return <Text>x</Text> }
@@ -139,16 +139,10 @@ describe('Round-2 follow-up — global beforeEach / afterEach guards on createRo
         `,
         { target: 'swift' },
       )
-      // Emit still drops it (closure-emit is a follow-up) → bare init.
-      expect(res.code).toContain('@State private var router = PyreonRouter()')
-      expect(res.code).not.toContain('beforeEachGuards.append')
-      // …but it is no longer SILENT: a named warning points at the fix. A
-      // dropped inline guard would leave the route ungated on native — a
-      // security foot-gun — so the failure mode must be visible.
-      const warn = res.warnings.find((w) => w.includes('router `beforeEach`'))
-      expect(warn, 'expected a named warning for the dropped inline guard').toBeTruthy()
-      expect(warn).toContain('inline function')
-      expect(warn).toContain('NOT gated')
+      // A dropped inline guard left the route ungated on native — a security foot-gun. It is now a file-level helper
+      // wired like a named guard (the shapes that still cannot lower warn: native-router-guard-shapes.test.ts).
+      expect(res.code).toMatch(/r\.beforeEachGuards\.append\(__pyreonGuard\d+\)/)
+      expect(res.warnings.filter((w) => w.includes('router `beforeEach`'))).toEqual([])
     })
 
     it('a NAMED-function beforeEach guard lowers with no warning (control)', () => {
