@@ -6985,6 +6985,31 @@ function emitSwiftText(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
   return `${result}${emitSwiftLayoutModifiers(e)}`
 }
 
+/**
+ * Whether a `<Button>`'s children are a text label: text and expressions only,
+ * with no JSX anywhere inside them. Such a label is ONE string on the web
+ * (`Tapped {n}` reads "Tapped 2"), so it must lower to ONE native Text —
+ * the same fusion `<Text>` applies. Emitting a view per child split it: two
+ * Texts in a Compose Button announce as two fragments and match no single
+ * string, and a SwiftUI Button label with several views is a TupleView laid
+ * out per view rather than as one running label.
+ */
+function buttonLabelIsTextOnly(children: readonly ChildIR[]): boolean {
+  if (children.length === 0) return false
+  const hasJsx = (n: unknown): boolean => {
+    if (n === null || typeof n !== 'object') return false
+    if (Array.isArray(n)) return n.some(hasJsx)
+    const k = (n as { kind?: unknown }).kind
+    if (k === 'jsx-element' || k === 'jsx-fragment') return true
+    return Object.values(n).some(hasJsx)
+  }
+  return children.every(
+    (c) =>
+      c.kind === 'text' ||
+      (!hasJsx(c.expr) && jsxHelperCallName(resolveAccessorChild(c.expr), _jsxFnNames) === null),
+  )
+}
+
 function emitSwiftButton(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
   // <Button onClick={() => …}>Label</Button>  →  Button("Label") { … }
   // Phase B: also accept the canonical `onPress` event name (per
@@ -7005,6 +7030,11 @@ function emitSwiftButton(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: nu
   let result: string
   if (labelText !== null) {
     result = `Button(${swiftStr(labelText)}) ${action}`
+  } else if (buttonLabelIsTextOnly(e.children)) {
+    // A mixed text label (`Tapped {n}`): one fused Text, built exactly as
+    // `<Text>` builds it.
+    const label = emitSwiftText({ kind: 'jsx-element', tag: 'Text', attrs: [], children: e.children }, indent + 2)
+    result = `Button(action: ${action}) {\n${' '.repeat(indent + 2)}${label}\n${' '.repeat(indent)}}`
   } else {
     // Complex content; emit Button { action } label: { content }.
     const pad = ' '.repeat(indent + 2)

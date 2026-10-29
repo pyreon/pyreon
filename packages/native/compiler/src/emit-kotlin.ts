@@ -5590,6 +5590,31 @@ function sanitizeKotlinFontName(name: string): string {
   return /^[0-9]/.test(cleaned) ? `_${cleaned}` : cleaned
 }
 
+/**
+ * Whether a `<Button>`'s children are a text label: text and expressions only,
+ * with no JSX anywhere inside them. Such a label is ONE string on the web
+ * (`Tapped {n}` reads "Tapped 2"), so it must lower to ONE native Text —
+ * the same fusion `<Text>` applies. Emitting a view per child split it: two
+ * Texts in a Compose Button announce as two fragments and match no single
+ * string, and a SwiftUI Button label with several views is a TupleView laid
+ * out per view rather than as one running label.
+ */
+function buttonLabelIsTextOnly(children: readonly ChildIR[]): boolean {
+  if (children.length === 0) return false
+  const hasJsx = (n: unknown): boolean => {
+    if (n === null || typeof n !== 'object') return false
+    if (Array.isArray(n)) return n.some(hasJsx)
+    const k = (n as { kind?: unknown }).kind
+    if (k === 'jsx-element' || k === 'jsx-fragment') return true
+    return Object.values(n).some(hasJsx)
+  }
+  return children.every(
+    (c) =>
+      c.kind === 'text' ||
+      (!hasJsx(c.expr) && jsxHelperCallName(resolveAccessorChild(c.expr), _jsxFnNames) === null),
+  )
+}
+
 function emitKotlinButton(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
   // Phase B: accept canonical `onPress` AND legacy `onClick` event names
   // — same Compose Button shape (`onClick = ...`) either way. The
@@ -5630,6 +5655,12 @@ function emitKotlinButton(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: n
   const pad = ' '.repeat(indent + 2)
   if (labelText !== null) {
     return `${variant.composable}(${buttonArgs}) {\n${pad}Text(${kotlinStr(labelText)})\n${' '.repeat(indent)}}`
+  }
+  if (buttonLabelIsTextOnly(e.children)) {
+    // A mixed text label (`Tapped {n}`): one fused Text, built exactly as
+    // `<Text>` builds it.
+    const label = emitKotlinText({ kind: 'jsx-element', tag: 'Text', attrs: [], children: e.children }, indent + 2)
+    return `${variant.composable}(${buttonArgs}) {\n${pad}${label}\n${' '.repeat(indent)}}`
   }
   const contentLines = e.children.map((c) => pad + emitKotlinChild(c, indent + 2)).join('\n')
   return `${variant.composable}(${buttonArgs}) {\n${contentLines}\n${' '.repeat(indent)}}`
