@@ -4,6 +4,7 @@
 // starter fixtures use are recognised. Anything outside that set is
 // either passed through as unknown or surfaces a warning.
 
+import { GESTURE_EVENTS, isGestureEventName } from './gesture-events'
 import { widenLiteralsInDoubleContexts } from './contextual-double-literals'
 import { forEachExpr } from './expr-walk'
 import { CORE_LOWERED_SURFACE, PLUGIN_OWNED_MODULES } from './plugin-packages'
@@ -7412,6 +7413,7 @@ function parseJsxElement(node: AnyNode, ctx: ParseCtx): ExprIR {
   // that the parser now NAMES the missing prop in `result.warnings`,
   // so consumers (CLI, IDE, build scripts) can surface it. Failing
   // loud BEFORE swiftc/kotlinc is the diagnostic-quality win.
+  typeGestureHandlerParams(tag, attrs)
   warnIfMissingRequiredProp(tag, attrs, ctx)
 
   // Round-3 audit fix: when a render callback inside <For>/<Show>
@@ -7516,6 +7518,26 @@ function warnIfHookInsideRenderCallback(
  * needs the signal-name set which isn't available at parse time
  * (lives in the emit context). Tracked as a separate follow-up.
  */
+/**
+ * Stamp the payload type onto each `<Gesture onPan|onPinch|onRotate>` handler's
+ * parameter, so the float-widening pass and the closure emitters type `e.dx`
+ * as a Double. See gesture-events.ts for why the parser, not an emitter, owns
+ * this. An explicit annotation is overwritten on purpose: it can only name the
+ * package's `PanEvent`, which the compiler cannot resolve, and the payload's
+ * shape is fixed by the runtime rather than by the author.
+ */
+function typeGestureHandlerParams(tag: string, attrs: AttrIR[]): void {
+  if (tag !== 'Gesture') return
+  for (const a of attrs) {
+    if (a.kind !== 'event' || !isGestureEventName(a.name)) continue
+    const h = a.handler
+    if (h.kind !== 'arrow' || h.params.length === 0) continue
+    const types = [...(h.paramTypes ?? [])]
+    types[0] = GESTURE_EVENTS[a.name].type
+    h.paramTypes = types
+  }
+}
+
 function warnIfMissingRequiredProp(tag: string, attrs: AttrIR[], ctx: ParseCtx): void {
   const hasAttr = (name: string): boolean => attrs.some((a) => a.kind === 'attr' && a.name === name)
   if (tag === 'Icon' && !hasAttr('name')) {
@@ -7554,6 +7576,23 @@ function warnIfMissingRequiredProp(tag: string, attrs: AttrIR[], ctx: ParseCtx):
     ctx.warnings.push(
       '<Press> without an `onPress`, `onLongPress`, or `onSwipeLeft`/`onSwipeRight` handler emits a no-op clickable element on both targets (button with empty action / Box with no-op clickable modifier). Add `onPress={fn}` or use the plain primitive directly.',
     )
+  }
+
+  // <Gesture> with no handler recognises nothing; with a transform on ITSELF
+  // its reported values feed back into its own coordinate space (see
+  // GestureProps). Both type-check, so both are named here.
+  if (tag === 'Gesture') {
+    if (!attrs.some((a) => a.kind === 'event' && isGestureEventName(a.name))) {
+      ctx.warnings.push(
+        '<Gesture> without an `onPan`, `onPinch` or `onRotate` handler recognises nothing on any target. Add a handler, or drop the wrapper.',
+      )
+    }
+    const own = ['translateX', 'translateY', 'scale', 'rotate'].filter(hasAttr)
+    if (own.length > 0) {
+      ctx.warnings.push(
+        `<Gesture ${own.join(' ')}>: a transform on the <Gesture> region itself moves the coordinate space its gestures are measured in, so each update feeds back into the next. Put the transform on a CHILD of <Gesture> instead.`,
+      )
+    }
   }
 
   // <Link prefetch=…> — accepted in the web type, silently dropped

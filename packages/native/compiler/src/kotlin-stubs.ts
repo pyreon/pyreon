@@ -701,6 +701,11 @@ object Modifier {
   fun fillMaxWidth(fraction: Float = 1f): Modifier = this
   fun fillMaxSize(fraction: Float = 1f): Modifier = this
   fun offset(x: Dp = 0.dp, y: Dp = 0.dp): Modifier = this
+  // The transform props: androidx.compose.ui.draw.scale(Float) / rotate(Float).
+  @Suppress("UNUSED_PARAMETER")
+  fun scale(scale: Float): Modifier = this
+  @Suppress("UNUSED_PARAMETER")
+  fun rotate(degrees: Float): Modifier = this
   // --- Phase P2.2 content: <Icon>/<Image> sizing. Real Compose ships
   // size/width/height from androidx.compose.foundation.layout.
   @Suppress("UNUSED_PARAMETER")
@@ -971,6 +976,44 @@ fun PyreonLink(to: String, content: @Composable (navigate: () -> Unit) -> Unit) 
   // on navigate(). For typecheck-only purposes we just invoke the
   // content with a no-op navigate.
   content { }
+}
+
+// PyreonCanvas + shapes — mirror of @pyreon/native-runtime-kotlin's PyreonCanvas.kt.
+sealed class PyreonShapeSpec {
+  data class Rect(val x: Double, val y: Double, val width: Double, val height: Double, val radius: Double) : PyreonShapeSpec()
+  data class Circle(val cx: Double, val cy: Double, val r: Double) : PyreonShapeSpec()
+  data class Line(val x1: Double, val y1: Double, val x2: Double, val y2: Double) : PyreonShapeSpec()
+  data class Svg(val d: String) : PyreonShapeSpec()
+}
+@Composable
+@Suppress("UNUSED_PARAMETER")
+fun PyreonCanvas(width: Double, height: Double, modifier: Modifier = Modifier, content: @Composable () -> Unit) {
+  content()
+}
+@Composable
+@Suppress("UNUSED_PARAMETER")
+fun PyreonShape(shape: PyreonShapeSpec, fill: Color? = null, stroke: Color? = null, strokeWidth: Double = 0.0) {}
+@Composable
+@Suppress("UNUSED_PARAMETER")
+fun PyreonCanvasText(x: Double, y: Double, size: Double, color: Color, content: @Composable () -> Unit) {
+  content()
+}
+
+// PyreonGesture + its payloads — mirror of @pyreon/native-runtime-kotlin's
+// PyreonGesture.kt / PyreonGestureCore.kt (the <Gesture> primitive).
+data class PyreonPanEvent(val dx: Double, val dy: Double, val x: Double, val y: Double, val phase: String)
+data class PyreonPinchEvent(val scale: Double, val centerX: Double, val centerY: Double, val phase: String)
+data class PyreonRotateEvent(val degrees: Double, val phase: String)
+@Composable
+@Suppress("UNUSED_PARAMETER")
+fun PyreonGesture(
+  onPan: ((PyreonPanEvent) -> Unit)? = null,
+  onPinch: ((PyreonPinchEvent) -> Unit)? = null,
+  onRotate: ((PyreonRotateEvent) -> Unit)? = null,
+  modifier: Modifier = Modifier,
+  content: @Composable () -> Unit,
+) {
+  content()
 }
 
 // PyreonWebView — mirror of @pyreon/native-runtime-kotlin's PyreonWebView.kt

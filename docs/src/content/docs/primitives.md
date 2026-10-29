@@ -1,6 +1,6 @@
 ---
 title: '@pyreon/primitives'
-description: 'The canonical multi-platform UI vocabulary — 17 primitives plus Transition, TransitionGroup, WebView and per-platform escape hatches, each compiled to DOM, SwiftUI and Compose from one source.'
+description: 'The canonical multi-platform UI vocabulary — 19 primitives plus Transition, TransitionGroup, WebView and per-platform escape hatches, each compiled to DOM, SwiftUI and Compose from one source.'
 ---
 
 # @pyreon/primitives
@@ -23,13 +23,14 @@ bun add @pyreon/primitives @pyreon/core @pyreon/reactivity @pyreon/runtime-dom
 | --- | --- | --- |
 | **Layout** | [`Stack`](#stack), [`Inline`](#inline), [`Layer`](#layer), [`Scroll`](#scroll), [`Spacer`](#spacer) | dedicated emitters |
 | **Content** | [`Text`](#text), [`Heading`](#heading), [`Image`](#image), [`Audio`](#audio), [`Video`](#video), [`Icon`](#icon) | dedicated emitters |
-| **Interaction** | [`Button`](#button), [`Press`](#press), [`Link`](#link) | dedicated emitters |
+| **Interaction** | [`Button`](#button), [`Press`](#press), [`Link`](#link), [`Gesture`](#gesture) | dedicated emitters |
+| **Drawing** | [`Canvas`](#canvas) (+ `CanvasRect`, `CanvasCircle`, `CanvasLine`, `CanvasPath`, `CanvasText`) | dedicated emitters |
 | **Input** | [`Field`](#field), [`Toggle`](#toggle), [`Modal`](#modal) | dedicated emitters |
 | **Animation** | [`Transition`](#transition), [`TransitionGroup`](#transitiongroup) | dedicated emitters |
 | **Web content** | [`WebView`](#webview) | native web host |
 | **Escape hatches** | [`Web`, `NativeIOS`, `NativeAndroid`](#escape-hatches) | per-target branch |
 
-The first four groups are the **17 canonical primitives**, the UI vocabulary
+The first five groups are the **19 canonical primitives** (the canvas shapes are children of `Canvas`, not members), the UI vocabulary
 the compiler treats as its own. The compiler's list lives in
 `packages/native/compiler/src/canonical-primitives.ts` (`CANONICAL_PRIMITIVES`),
 and a test checks that it matches what this package exports. The animation
@@ -71,6 +72,23 @@ Every primitive except `WebView` accepts these, and each target converts them:
 
 Prefer the three `accessibility*` props over raw `aria-*`, because only they
 reach the native accessibility trees.
+
+### Transforms
+
+Every primitive except `WebView` also accepts four transform props. They move,
+scale and rotate the rendered element about its centre without affecting
+layout, so siblings do not reflow. Values can be signal reads and update in
+place, which is how [`Gesture`](#gesture) values drive content.
+
+| Prop | Web | iOS | Android |
+| --- | --- | --- | --- |
+| `translateX`, `translateY` | `transform: translate(…px, …px)` | `.offset(x:y:)` | `Modifier.offset(x, y)` |
+| `scale` | `transform: scale(…)` | `.scaleEffect(…)` | `Modifier.scale(…)` |
+| `rotate` (degrees, clockwise) | `transform: rotate(…deg)` | `.rotationEffect(.degrees(…))` | `Modifier.rotate(…)` |
+
+The order is the same on every target: rotate, then scale, then translate. A
+translation is therefore not multiplied by the scale. On iOS a value read from
+an integer signal is converted to `CGFloat`/`Double` for you.
 
 ### Signals
 
@@ -532,6 +550,129 @@ export function SwipeCard() {
 - **Android**: `Box(Modifier.combinedClickable(onClick, onLongClick))` (or
   `Modifier.clickable`) plus `detectHorizontalDragGestures` for the swipes
   (same 40dp rule).
+
+### Gesture
+
+Reports continuous gestures (pan, pinch and rotate) so their values can drive
+content. Discrete gestures (tap, long press, swipe) belong on `Press`.
+
+| Prop | Type |
+| --- | --- |
+| `onPan` | `(e: { dx, dy, x, y, phase }) => void` |
+| `onPinch` | `(e: { scale, centerX, centerY, phase }) => void` |
+| `onRotate` | `(e: { degrees, phase }) => void` |
+
+Every value is cumulative since the gesture began: `dx`/`dy` are the
+translation so far, `scale` is `1` until the fingers move apart, and `degrees`
+is positive clockwise. `x`/`y` and `centerX`/`centerY` are in the region's own
+coordinates. Each gesture delivers one `'start'`, any number of `'change'`,
+then one `'end'`, including when the system cancels it. Pinch and rotate begin
+only once two pointers are down.
+
+```tsx
+// @check
+import { Gesture, Stack, Text } from '@pyreon/primitives'
+import { signal } from '@pyreon/reactivity'
+
+export function FloorPlan() {
+  const zoom = signal(1.0)
+  const baseZoom = signal(1.0)
+  const x = signal(0.0)
+  const baseX = signal(0.0)
+  return (
+    <Gesture
+      onPinch={(e) => {
+        zoom.set(baseZoom() * e.scale)
+        if (e.phase === 'end') baseZoom.set(zoom())
+      }}
+      onPan={(e) => {
+        x.set(baseX() + e.dx)
+        if (e.phase === 'end') baseX.set(x())
+      }}
+    >
+      <Stack translateX={x()} scale={zoom()} padding={4} background="muted">
+        <Text>Drag or pinch</Text>
+      </Stack>
+    </Gesture>
+  )
+}
+```
+
+Put the transform on a child, as above, not on the `Gesture` itself. The values
+are measured in the region's own coordinates, so transforming the region feeds
+each update back into the next one (the compiler warns about this).
+
+- **Web**: a `<div style="touch-action: none">` driven by pointer events.
+  Pointer capture is taken only once a gesture passes the 10px slop, so a
+  button inside the region still receives its click.
+- **iOS**: `PyreonGesture { … }`: a simultaneous `DragGesture`,
+  `MagnifyGesture` and `RotateGesture`. Only the gestures you pass a handler
+  for take part.
+- **Android**: `PyreonGesture { … }`: one `pointerInput` loop over
+  `calculatePan`, `calculateZoom` and `calculateRotation`, which consumes the
+  pointer only past the platform touch slop (so a `verticalScroll` around it
+  does not also scroll).
+
+During a two-finger gesture the pan follows the centre point of the fingers on
+web and Android, and the first finger on iOS, because SwiftUI's `DragGesture`
+tracks a single touch.
+
+### Canvas
+
+A fixed-size vector drawing surface. Its children are the shape primitives,
+drawn in source order (later ones on top) in the canvas's own coordinates:
+`(0, 0)` is the top-left corner, y points down, and units are px on the web,
+pt on iOS and dp on Android. Anything outside the canvas is clipped.
+
+| Shape | Props |
+| --- | --- |
+| `CanvasRect` | `x`, `y`, `width`, `height`, `radius?` |
+| `CanvasCircle` | `cx`, `cy`, `r` |
+| `CanvasLine` | `x1`, `y1`, `x2`, `y2` (stroke only) |
+| `CanvasPath` | `d`: SVG path data, every command (M L H V C S Q T A Z, absolute and relative) |
+| `CanvasText` | `x`, `y` (the top-left of the text), `size?` (default 14), text as children |
+
+Every shape takes `fill`, `stroke` and `strokeWidth` (`CanvasLine` and
+`CanvasText` take only the ones that apply). A colour is a theme token or a
+`#hex` literal. A shape with neither `fill` nor `stroke` is filled with the
+`text` colour, and a stroke defaults to a width of 1.
+
+```tsx
+// @check
+import { Canvas, CanvasCircle, CanvasPath, CanvasRect, CanvasText } from '@pyreon/primitives'
+import { For } from '@pyreon/core'
+import { signal } from '@pyreon/reactivity'
+
+export function SeatMap() {
+  const taken = signal([{ id: 1, x: 40 }, { id: 2, x: 80 }])
+  return (
+    <Canvas width={240} height={140} background="surface">
+      <CanvasRect x={10} y={10} width={220} height={30} radius={6} fill="muted" />
+      <CanvasText x={90} y={18} size={12}>Stage</CanvasText>
+      <For each={taken()} by={(s) => s.id}>
+        {(s) => <CanvasCircle cx={s.x} cy={90} r={10} fill="danger" />}
+      </For>
+      <CanvasPath d="M10 130 L230 130" stroke="text" strokeWidth={2} />
+    </Canvas>
+  )
+}
+```
+
+Shapes are ordinary JSX children, so `For`, `Show` and signal-driven props such
+as `d={trail()}` work inside a canvas. To make a drawing pannable and zoomable,
+put the canvas inside a [`Gesture`](#gesture) and drive its transform props.
+
+- **Web**: a `position: relative` box; each shape is its own absolutely
+  positioned `<svg>` layer (so shapes can sit next to `For` and `Show`).
+- **iOS**: `PyreonCanvas { … }`, a clipped top-leading `ZStack` of SwiftUI
+  `Path`s. `CanvasPath` data is parsed by the runtime, arcs included.
+- **Android**: `PyreonCanvas { … }`, a clipped `Box` of Compose `Canvas` draw
+  layers. `CanvasPath` data goes through androidx's `PathParser`.
+
+Text inside a canvas is `CanvasText`. A plain `Text` would be laid out rather
+than placed at coordinates. For a static vector asset, a `CanvasPath` with the
+asset's path data is the multiplatform option; `Image` does not render SVG
+files on native.
 
 ### Link
 

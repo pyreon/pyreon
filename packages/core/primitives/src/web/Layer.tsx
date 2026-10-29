@@ -40,7 +40,7 @@ export const Layer = (props: LayerProps): VNode => {
     'div',
     {
       ...collectPassthroughAttrs(props as unknown as Record<string, unknown>),
-      style: mergePassthroughStyle(style, props.style),
+      style: mergePassthroughStyle(style, props),
     },
     props.children,
   )

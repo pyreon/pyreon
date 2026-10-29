@@ -131,6 +131,36 @@ export interface AccessibilityProps {
 }
 
 /**
+ * Visual transform props every canonical primitive accepts. They move, scale
+ * and rotate the RENDERED element about its centre without affecting layout
+ * (siblings do not reflow) — the shape gesture-driven content needs.
+ *
+ * Values may be reactive (`translateX={x()}`); each target updates the
+ * transform in place.
+ *
+ * | prop         | web                        | iOS (PMTC)                  | Android (PMTC)        |
+ * | ------------ | -------------------------- | --------------------------- | --------------------- |
+ * | `translateX` | `transform: translate(…)`  | `.offset(x:)`               | `Modifier.offset(x)`  |
+ * | `translateY` | `transform: translate(…)`  | `.offset(y:)`               | `Modifier.offset(y)`  |
+ * | `scale`      | `transform: scale(…)`      | `.scaleEffect(…)`           | `Modifier.scale(…)`   |
+ * | `rotate`     | `transform: rotate(…deg)`  | `.rotationEffect(.degrees)` | `Modifier.rotate(…)`  |
+ *
+ * Order is fixed on every target: rotate, then scale, then translate — so a
+ * translation is NOT multiplied by the scale (CSS `translate() scale()
+ * rotate()`).
+ */
+export interface TransformProps {
+  /** Horizontal offset in px (web) / pt (iOS) / dp (Android). */
+  translateX?: number
+  /** Vertical offset in px / pt / dp. Positive = downward. */
+  translateY?: number
+  /** Uniform scale factor; `1` = unchanged. */
+  scale?: number
+  /** Rotation in degrees; positive = clockwise. */
+  rotate?: number
+}
+
+/**
  * Standard HTML pass-through attrs every primitive accepts. The web
  * impls forward these to the rendered DOM node verbatim; native
  * targets ignore them at PMTC emit time (the iOS/Android compilers
@@ -152,7 +182,7 @@ export interface AccessibilityProps {
  * earlier impls that omitted passthrough — the gap that motivated this
  * surface.
  */
-export interface HtmlPassthroughProps extends AccessibilityProps {
+export interface HtmlPassthroughProps extends AccessibilityProps, TransformProps {
   // Mapped key types make TS accept ANY `data-`/`aria-`-prefixed key
   // without needing each one enumerated. Values match the HTML
   // attribute model (string | number | boolean | undefined).

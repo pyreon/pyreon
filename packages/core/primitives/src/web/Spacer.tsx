@@ -22,6 +22,6 @@ import { collectPassthroughAttrs, mergePassthroughStyle } from './passthrough'
 export const Spacer = (props: SpacerProps): VNode => {
   return h('div', {
     ...collectPassthroughAttrs(props as unknown as Record<string, unknown>),
-    style: mergePassthroughStyle({ flex: '1 1 auto' }, props.style),
+    style: mergePassthroughStyle({ flex: '1 1 auto' }, props),
   })
 }

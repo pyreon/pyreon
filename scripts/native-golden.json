@@ -152,13 +152,13 @@
       "warnings": 0
     },
     "fixture:every-primitive.tsx|swift": {
-      "sha": "01c93d1cd69613545e5b1763ee928fda5570b366070ef0990d33e7bcae073e60",
-      "bytes": 3346,
+      "sha": "2de486ba1d0e59c8836e4ac2b9f3f8cbe3f01af54fb29718588172a307b41981",
+      "bytes": 5859,
       "warnings": 0
     },
     "fixture:every-primitive.tsx|kotlin": {
-      "sha": "359d17b374fdc0fafc0690a14b4a0768dc87ae2a97562e5937959bf6c68b36f7",
-      "bytes": 3736,
+      "sha": "ee8b6e7d62b1e8a1697739580eb86235caccb41d1dbedb027cdbd3e85283573e",
+      "bytes": 5710,
       "warnings": 0
     },
     "fixture:lifecycle-errorboundary.tsx|swift": {
@@ -7382,13 +7382,13 @@
       "warnings": 0
     },
     "example:native-router-demo-ios/RouterApp.tsx|swift": {
-      "sha": "a84514a883ed04c7ef773e9db4980b457c8b6f8ac471a3d39138da1c3a468748",
-      "bytes": 21424,
+      "sha": "d600d85cdf2d5bd3ece8190eb091bf631aeff6fe6296a0aefb2ffa9114babaa7",
+      "bytes": 23477,
       "warnings": 0
     },
     "example:native-router-demo-ios/RouterApp.tsx|kotlin": {
-      "sha": "bbab1397482c0e63a914f52dc69d3edb70d5051a611fd7d063b87688f05f569c",
-      "bytes": 19633,
+      "sha": "6466160864b69fefaa6d5ba5ff034c0a7712001141e2ba4a10dc67b59dda0361",
+      "bytes": 21285,
       "warnings": 0
     },
     "example:native-tasks/TasksApp.tsx|swift": {

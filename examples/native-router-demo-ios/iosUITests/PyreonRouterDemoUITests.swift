@@ -622,6 +622,46 @@ final class PyreonRouterDemoUITests: XCTestCase {
         )
     }
 
+    // Continuous gestures — <Gesture onPan onPinch>, injected as REAL
+    // XCUITest gestures (a coordinate press-and-drag through the compositor,
+    // and a two-finger pinch). The handlers record a discrete verdict only on
+    // the 'end' phase, so each assertion proves the whole start/change/end
+    // sequence reached the shared source with the right SIGN: 'right' needs a
+    // positive cumulative dx past 40pt, 'in' a cumulative scale above 1.2.
+    func test_continuousGesturesReportPanAndPinch() throws {
+        let app = XCUIApplication()
+        app.launch()
+
+        XCTAssertTrue(
+            app.otherElements["home-page"].firstMatch.waitForExistence(timeout: 30),
+            "Home page did not render"
+        )
+        app.buttons["View motion"].tap()
+        let zone = app.otherElements["gesture-zone"].firstMatch
+        XCTAssertTrue(zone.waitForExistence(timeout: 15), "gesture zone missing")
+        XCTAssertTrue(app.staticTexts["Pan: none"].firstMatch.exists, "pan should start at none")
+        // The vector <Canvas> inside the region renders (its <CanvasText> label
+        // is a real Text in the accessibility tree).
+        XCTAssertTrue(
+            app.staticTexts["Drag or pinch here"].firstMatch.waitForExistence(timeout: 5),
+            "the <Canvas> inside the gesture zone did not render its CanvasText"
+        )
+
+        let from = zone.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.5))
+        let to = zone.coordinate(withNormalizedOffset: CGVector(dx: 0.8, dy: 0.5))
+        from.press(forDuration: 0.1, thenDragTo: to)
+        XCTAssertTrue(
+            app.staticTexts["Pan: right"].firstMatch.waitForExistence(timeout: 5),
+            "a rightward drag did not end as 'right' (status: \(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Pan:'")).firstMatch.label))"
+        )
+
+        zone.pinch(withScale: 2.5, velocity: 1)
+        XCTAssertTrue(
+            app.staticTexts["Pinch: in"].firstMatch.waitForExistence(timeout: 5),
+            "a spreading pinch did not end as 'in' (status: \(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Pinch:'")).firstMatch.label))"
+        )
+    }
+
     // Lists-at-scale row — 10,000 keyed rows through <Scroll><For>. Three
     // claims, each separable: (1) CREATION at scale — Row 0 renders inside
     // the timeout (an EAGER 10k build hangs far past it); (2) LAZINESS —

@@ -29,8 +29,26 @@ export type {
   Justify,
   Radius,
   Space,
+  TransformProps,
   ValueOrSignal,
 } from './types/shared'
+export type {
+  GesturePhase,
+  GestureProps,
+  PanEvent,
+  PinchEvent,
+  RotateEvent,
+} from './types/gesture'
+export type {
+  CanvasCircleProps,
+  CanvasLineProps,
+  CanvasPathProps,
+  CanvasProps,
+  CanvasRectProps,
+  CanvasTextProps,
+  ShapeColor,
+  ShapePaintProps,
+} from './types/canvas'
 
 export type { InlineProps, LayerProps, ScrollProps, SpacerProps, StackProps } from './types/layout'
 export type { AudioProps, HeadingProps, IconProps, ImageProps, TextProps, VideoProps } from './types/content'
@@ -58,7 +76,7 @@ export type {
 export { init, resetPrimitivesConfig } from './config'
 export type { PrimitivesInitOptions } from './config'
 
-// ===== Web runtime exports — the 17 canonical primitives =====
+// ===== Web runtime exports — the canonical primitives =====
 //
 // Stack … Modal below are the canonical set; the compiler's
 // `CANONICAL_PRIMITIVES` (packages/native/compiler/src/canonical-primitives.ts)
@@ -82,6 +100,8 @@ export { Video } from './web/Video'
 export { Icon } from './web/Icon'
 export { Button } from './web/Button'
 export { Press } from './web/Press'
+export { Gesture } from './web/Gesture'
+export { Canvas } from './web/Canvas'
 export { Link } from './web/Link'
 export { Field } from './web/Field'
 export { Toggle } from './web/Toggle'
@@ -104,6 +124,9 @@ export type { EscapeHatchProps } from './types/escape-hatch'
 // web content; an `<iframe>` on web. The path to using web-only-rich viz
 // (charts / flow / tables) inside a native shell.
 export { WebView } from './web/WebView'
+
+// ===== Canvas shapes — children of <Canvas>, each with its own emitter =====
+export { CanvasRect, CanvasCircle, CanvasLine, CanvasPath, CanvasText } from './web/Canvas'
 export type { WebViewProps } from './types/webview'
 // Guest-side glue for the WebView bridge — the reusable other half of the
 // WebView-host pattern. A web-only-rich component built as a self-contained

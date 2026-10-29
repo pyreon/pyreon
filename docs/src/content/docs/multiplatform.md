@@ -60,13 +60,13 @@ Same source. Three idiomatic outputs (web rendered live; iOS/Android emitted as 
 
 ## What runs on native — and what's web-only (read this first)
 
-**PMTC compiles your component *source* — the 17 canonical primitives, `signal`/`computed`/`effect`, and a fixed set of hooks — to SwiftUI/Compose. It does NOT transpile npm packages to native.** So a package runs on iOS/Android only if it is pure reactive logic **with a Swift/Kotlin runtime port** the compiler recognizes. Anything bound to the DOM, a `<canvas>`, the CSSOM, or a JS-only rendering vendor is **web-only by architecture** — no compiler setting changes that.
+**PMTC compiles your component *source* — the 19 canonical primitives, `signal`/`computed`/`effect`, and a fixed set of hooks — to SwiftUI/Compose. It does NOT transpile npm packages to native.** So a package runs on iOS/Android only if it is pure reactive logic **with a Swift/Kotlin runtime port** the compiler recognizes. Anything bound to the DOM, a `<canvas>`, the CSSOM, or a JS-only rendering vendor is **web-only by architecture** — no compiler setting changes that.
 
 **The fixed hook set is not a ceiling on platform capability.** For anything the framework does not ship — Bluetooth, ARKit, a vendor SDK — [`useNativeModule`](#layer-4-platform-escape-hatches) lowers to a Swift/Kotlin class *you* provide, so adding a platform API is an app-level change rather than a framework PR.
 
 **✅ Runs on web + iOS + Android today** (real runtime ports + compiler emit):
 
-- `@pyreon/reactivity` (signal/computed/effect), `@pyreon/primitives` (the 17 canonical primitives)
+- `@pyreon/reactivity` (signal/computed/effect), `@pyreon/primitives` (the 19 canonical primitives)
 - `@pyreon/store`, `@pyreon/machine`, `@pyreon/state-tree`, `@pyreon/i18n`, `@pyreon/permissions`, `@pyreon/rx` (the supported transforms lower to native collection operations; unsupported methods warn)
 - the authoring patterns of the ui-system: `@pyreon/elements` (`Element` → `Stack`, `Text`), `@pyreon/styler` (`styled(Prim)`), `@pyreon/rocketstyle` (chains over a primitive), `@pyreon/attrs`, `@pyreon/coolgrid` (`Container`/`Row`/`Col`) and `@pyreon/ui-core` (`<PyreonUI>`). Their CSS-in-JS runtime stays on the web; the compiler lowers the authored patterns, and web-only constructs (`Overlay`, `Portal`, `List` slots) warn per construct
 - `@pyreon/form` (validated forms — **device-proven**), `@pyreon/storage` (platform-storage backend)
@@ -168,10 +168,11 @@ The cross-platform vocabulary. 17 semantic primitives, documented one by one on 
 |----------|-----------|
 | Layout | `<Stack>`, `<Inline>`, `<Layer>`, `<Scroll>`, `<Spacer>` |
 | Content | `<Text>`, `<Heading>`, `<Image>`, `<Audio>`, `<Video>`, `<Icon>` |
-| Interaction | `<Button>`, `<Press>`, `<Link>` |
+| Interaction | `<Button>`, `<Press>`, `<Link>`, `<Gesture>` |
+| Drawing | `<Canvas>` (+ `CanvasRect`, `CanvasCircle`, `CanvasLine`, `CanvasPath`, `CanvasText`) |
 | Input | `<Field>`, `<Toggle>`, `<Modal>` |
-| Animation (not in the 17) | `<Transition>`, `<TransitionGroup>` |
-| Web content (not in the 17) | `<WebView>` |
+| Animation (not in the 19) | `<Transition>`, `<TransitionGroup>` |
+| Web content (not in the 19) | `<WebView>` |
 | Control flow | **Lowers to native:** `<For>`, `<Show>`, `<Suspense>`, `<ErrorBoundary>` (verified against the Swift stub type-check). **Does NOT:** `<Switch>`/`<Match>`, `<Dynamic>`, `<Portal>` — and `<Index>` — which fall through to the generic component emit and reproduce the tag verbatim (`Switch { Match(when:) { … } }`), so the native build fails with "cannot find 'Switch' in scope". Each now WARNS at compile time with a concrete alternative (nested `<Show>`; `<Modal>`; `<For each by>`). This row previously listed all eight as supported, which is how four of them stayed silently broken |
 
 Designed for cross-platform from scratch. Semantic names (`<Stack>` not `<View>` / `<VStack>` / `<div>`). One canonical event name per concept (`onPress` everywhere). Tokens-first styling (`padding={4}` resolves via theme).
@@ -302,6 +303,13 @@ a warning on every list would be noise.
 | `<Button onPress>` (styled CTA) | `<button>` | `Button` | `Button` |
 | `<Press onPress>` (un-styled wrapper) | `<div onClick role=button>` | `Button { }` no chrome | `Box(clickable)` |
 | `<Link to external?>` (router-agnostic) | `<a href>` + SPA-nav when `init({ navigate })` is wired | `PyreonLink(to) { … }` (pushes on the native router) | `Box(clickable + navigate)` |
+| `<Gesture onPan onPinch onRotate>` (continuous gestures; cumulative values + `start`/`change`/`end`) | `<div style="touch-action:none">` + pointer events | `PyreonGesture { … }` | `PyreonGesture { … }` |
+| `<Canvas width height>` + `CanvasRect` / `CanvasCircle` / `CanvasLine` / `CanvasPath d` / `CanvasText` (vector drawing) | `<div>` + one `<svg>` layer per shape | `PyreonCanvas { PyreonShape(Path) … }` | `PyreonCanvas { PyreonShape(...) … }` (Compose `Canvas`) |
+
+Every primitive also takes `translateX` / `translateY` / `scale` / `rotate`
+(reactive): web `transform`, iOS `.offset` / `.scaleEffect` /
+`.rotationEffect`, Android `Modifier.offset` / `.scale` / `.rotate`. That is how
+gesture values drive content — see [Primitives → Gesture](/docs/primitives#gesture).
 
 ### Input
 
@@ -321,6 +329,7 @@ One canonical event name per concept; the compiler maps it to the platform-nativ
 | Tap | `onPress` | `onClick` | `action:` | `onClick =` |
 | Long press | `onLongPress` | polyfill | `.onLongPressGesture` | `combinedClickable(onLongClick)` |
 | Swipe | `onSwipeLeft` / `onSwipeRight` | pointer-delta polyfill | `.highPriorityGesture(DragGesture)` | `pointerInput { detectHorizontalDragGestures }` |
+| Pan / pinch / rotate | `<Gesture onPan onPinch onRotate>` | pointer events, `touch-action: none` | simultaneous `DragGesture` / `MagnifyGesture` / `RotateGesture` | one `pointerInput` loop (`calculatePan` / `calculateZoom` / `calculateRotation`) |
 | Text change | `onChangeText` | `onInput` | text binding | `onValueChange` |
 | Submit | `onSubmit` | form `onSubmit` | `.onSubmit { }` | `keyboardActions onDone` |
 | Focus / blur | `onFocus` / `onBlur` | same | `.focused()` | `onFocusChanged` |
@@ -1222,7 +1231,7 @@ previously vanished silently.)
 `<For>` remains the idiom for RENDERING a list; these loops are for
 in-body data work.
 
-**JSX**: the 17 canonical primitives, `<For each by>`, `<Show when>`,
+**JSX**: the 19 canonical primitives, `<For each by>`, `<Show when>`,
 `<Suspense fallback>`, `<ErrorBoundary fallback>`, `<KeepAlive when>`,
 `<Transition show>`, `<Modal open>`, `<RouterProvider>`/`<RouterView>`/
 `<Link>`. `data-testid` flows to `accessibilityIdentifier` / `testTag`
@@ -1777,7 +1786,7 @@ The runtime packages exist, with one reactive container per data/service hook:
 
 - Compiler source: `packages/native/compiler/src/` — `emit-swift.ts` / `emit-kotlin.ts` per-target emit; `canonical-primitives.ts` shared name maps + token resolution
 - Native runtime packages: `packages/native/runtime-swift/`, `packages/native/runtime-kotlin/`
-- Web runtime: `packages/core/primitives/src/web/` — all 17 canonical primitives plus `Transition`, `TransitionGroup`, `WebView` and the escape hatches
+- Web runtime: `packages/core/primitives/src/web/` — all 19 canonical primitives plus `Transition`, `TransitionGroup`, `WebView` and the escape hatches
 - Example apps: `examples/native-todomvc-{ios,android,web}/` + `examples/native-router-demo-{ios,web}/` — `native-router-demo-ios` ships a full XcodeGen host shell (#1105) so `bash scripts/build.sh` produces a buildable Xcode project, not a source-only stub. `examples/native-todomvc-web/README.md` was also corrected (#1106) so it no longer references a fictional `src/TodoApp.tsx` — the one-source contract (Phase E3) keeps the shared TodoApp source in `examples/native-todomvc-ios/src/`.
 - Native validation gates: `.github/workflows/native-validate.yml` (compiler fixtures and real-SDK Swift typechecks) and `.github/workflows/native-device.yml` (example builds and Simulator/emulator tests); selected automatically for relevant PRs, with nightly and manual runs. The `native-device` label forces every device lane.
 - `.agents/guides/multiplatform/README.md` — agent-context summary of the layered model

@@ -4,6 +4,9 @@
 // `var x by remember { mutableStateOf(initial) }`, computeds to
 // `derivedStateOf { ... }`, JSX elements to Composable function calls.
 
+import { GESTURE_EVENT_NAMES, GESTURE_EVENTS } from './gesture-events'
+import { CANVAS_SHAPES, isCanvasShape, shapeColorLiteral } from './canvas-shapes'
+import type { GestureEventName } from './gesture-events'
 import { classifyFallback, unconsumedSlotWarning } from './jsx-slot-attrs'
 import { lowerWebViewDomStorage } from './webview-options'
 import { LayoutScopeTracker, lowerWebViewGrow } from './webview-sizing'
@@ -5337,6 +5340,10 @@ function emitKotlinJsxElement(e: Extract<ExprIR, { kind: 'jsx-element' }>, inden
   if (tag === 'Audio') return emitKotlinAudio(e, indent)
   if (tag === 'Modal') return emitKotlinModal(e, indent)
   if (tag === 'Press') return emitKotlinPress(e, indent)
+  if (tag === 'Gesture') return emitKotlinGesture(e, indent)
+  if (tag === 'Canvas') return emitKotlinCanvas(e, indent)
+  if (tag === 'CanvasText') return emitKotlinCanvasText(e, indent)
+  if (isCanvasShape(tag)) return emitKotlinCanvasShape(e)
   if (tag === 'Field') return emitKotlinField(e, indent)
   if (tag === 'Toggle') return emitKotlinToggle(e, indent)
   // Lowercase DOM tags a plugin gives meaning inside its own renderers (a flow's `<path>` / `<svg>`).
@@ -6631,6 +6638,49 @@ function kotlinAccessibilityHiddenModifier(e: Extract<ExprIR, { kind: 'jsx-eleme
  */
 const EMPTY_OMIT: ReadonlySet<string> = new Set()
 
+/**
+ * The {@link TransformProps} as Compose modifiers, in the fixed cross-target
+ * order. Compose applies a chain OUTSIDE-IN, so the translation comes FIRST
+ * (`Modifier.offset(…).scale(…).rotate(…)`): it moves the already-scaled box,
+ * and is therefore not multiplied by the scale — the same visual result as the
+ * Swift `.rotationEffect().scaleEffect().offset()` chain written in reverse.
+ *
+ * `offset` takes `Dp` (`Int.dp` / `Double.dp` both exist), `scale` / `rotate`
+ * take `Float`, so an expression is converted rather than assumed — a signal
+ * written only with integers is an `Int` here. A special-case emitter that
+ * returns before the generic tail must apply these itself
+ * (generic-tail-completeness.test.ts checks every primitive).
+ */
+function kotlinTransformModifiers(e: Extract<ExprIR, { kind: 'jsx-element' }>): string[] {
+  const value = (name: string): { lit?: number; expr?: string } | undefined => {
+    const a = e.attrs.find(
+      (x): x is Extract<AttrIR, { kind: 'attr' }> => x.kind === 'attr' && x.name === name,
+    )
+    if (a === undefined) return undefined
+    const v = unwrapAccessorArrow(a.value)
+    if (v.kind === 'literal' && typeof v.value === 'number') return { lit: v.value }
+    if (v.kind === 'unary' && v.op === '-' && v.argument.kind === 'literal' && typeof v.argument.value === 'number') {
+      return { lit: -v.argument.value }
+    }
+    return { expr: emitKotlinExpr(v, 0) }
+  }
+  const dp = (v: { lit?: number; expr?: string }): string =>
+    v.lit !== undefined ? `(${v.lit}).dp` : `(${v.expr}).dp`
+  const float = (v: { lit?: number; expr?: string }): string =>
+    v.lit !== undefined ? `${v.lit}f` : `(${v.expr}).toFloat()`
+  const out: string[] = []
+  const tx = value('translateX')
+  const ty = value('translateY')
+  if (tx !== undefined || ty !== undefined) {
+    out.push(`.offset(${[tx === undefined ? '' : `x = ${dp(tx)}`, ty === undefined ? '' : `y = ${dp(ty)}`].filter(Boolean).join(', ')})`)
+  }
+  const scale = value('scale')
+  if (scale !== undefined) out.push(`.scale(${float(scale)})`)
+  const rotate = value('rotate')
+  if (rotate !== undefined) out.push(`.rotate(${float(rotate)})`)
+  return out
+}
+
 function emitKotlinLayoutModifier(
   e: Extract<ExprIR, { kind: 'jsx-element' }>,
   // Attrs the HOST consumes itself (a hosted `<FlowWebView background>` is
@@ -6644,6 +6694,9 @@ function emitKotlinLayoutModifier(
   // `omit.has(…)` arm that no host ever reaches.
   const stylingValue = (name: string, resolve: Parameters<typeof kotlinStylingValue>[2]) =>
     omit.has(name) ? undefined : kotlinStylingValue(e, name, resolve)
+  // Transform props — a render transform of the WHOLE box, so outermost of
+  // all (see kotlinTransformModifiers for why translation leads).
+  parts.push(...kotlinTransformModifiers(e))
   // `margin` — the OUTERMOST inset, so it goes FIRST.
   //
   // Compose's `Modifier` chain applies outside-IN: the leading entries wrap
@@ -7649,6 +7702,7 @@ function emitKotlinModal(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: nu
   // present, so a plain `<Modal>` is byte-identical to before.
   const testid = readStringAttrExprKotlin(e, 'data-testid', 0)
   const modParts =
+    kotlinTransformModifiers(e).join('') +
     kotlinAccessibilityLabelModifier(e).join('') +
     (testid === undefined ? '' : `.testTag(${testid})`) +
     kotlinAccessibilityHiddenModifier(e).join('')
@@ -7682,6 +7736,131 @@ function emitKotlinModal(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: nu
  * Accepts both canonical `onPress` and legacy `onClick` to ease
  * migration from existing PMTC source.
  */
+/**
+ * A `<Gesture onPan|onPinch|onRotate>` handler as a Kotlin `(PyreonXEvent) -> Unit`
+ * lambda, its parameter typed (gesture-events.ts) so `e.dx` infers Double. A
+ * zero-parameter arrow becomes a lambda that ignores its single argument (Kotlin
+ * binds it to `it`), and a bare function reference is called with the event.
+ */
+function emitKotlinGestureHandler(handler: ExprIR, name: GestureEventName, indent: number): string {
+  if (handler.kind !== 'arrow') {
+    return `{ pyreonEvent -> ${emitKotlinExpr(handler, indent)}(pyreonEvent) }`
+  }
+  const param = handler.params[0]
+  if (param === undefined) return emitKotlinAction(handler, indent)
+  return withKotlinLocals([[param, GESTURE_EVENTS[name].type]], () => emitKotlinAction(handler, indent))
+}
+
+/**
+ * `<Gesture>` → `PyreonGesture(onPan = …, modifier = …) { … }`
+ * (@pyreon/native-runtime-kotlin). The runtime runs one `pointerInput` loop
+ * over calculatePan / calculateZoom / calculateRotation and owns the
+ * start/change/end bookkeeping (`PyreonGestureTracker`).
+ */
+function emitKotlinGesture(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
+  const args: string[] = []
+  for (const name of GESTURE_EVENT_NAMES) {
+    const attr = e.attrs.find(
+      (a): a is Extract<AttrIR, { kind: 'event' }> => a.kind === 'event' && a.name === name,
+    )
+    if (attr !== undefined) {
+      args.push(`${GESTURE_EVENTS[name].param} = ${emitKotlinGestureHandler(attr.handler, name, indent)}`)
+    }
+  }
+  const modifier = emitKotlinLayoutModifier(e)
+  if (modifier !== '') args.push(`modifier = ${modifier}`)
+  const head = `PyreonGesture(${args.join(', ')})`
+  if (e.children.length === 0) return `${head} {}`
+  const pad = ' '.repeat(indent + 2)
+  const contentLines = e.children.map((c) => pad + emitKotlinChild(c, indent + 2)).join('\n')
+  return `${head} {\n${contentLines}\n${' '.repeat(indent)}}`
+}
+
+/**
+ * A numeric shape / canvas prop as a Kotlin `Double` argument. An integer
+ * literal gains `.0` (Kotlin does not widen an Int literal to a Double
+ * parameter); an expression is converted with `.toDouble()` since a signal
+ * written only with integers is a `Long` here.
+ */
+function kotlinCanvasNumber(
+  e: Extract<ExprIR, { kind: 'jsx-element' }>,
+  prop: string,
+  fallback: number | undefined,
+): string {
+  const lit = (v: number): string => (Number.isInteger(v) ? `${v}.0` : String(v))
+  const a = e.attrs.find(
+    (x): x is Extract<AttrIR, { kind: 'attr' }> => x.kind === 'attr' && x.name === prop,
+  )
+  if (a === undefined) {
+    if (fallback !== undefined) return lit(fallback)
+    _emitWarnings.push(`<${e.tag}> is missing its required \`${prop}\` prop — drawn with ${prop}=0 on native.`)
+    return '0.0'
+  }
+  const v = unwrapAccessorArrow(a.value)
+  if (v.kind === 'literal' && typeof v.value === 'number') return lit(v.value)
+  if (v.kind === 'unary' && v.op === '-' && v.argument.kind === 'literal' && typeof v.argument.value === 'number') {
+    return `-${lit(v.argument.value)}`
+  }
+  return `(${emitKotlinExpr(v, 0)}).toDouble()`
+}
+
+/** A shape colour prop (token / `#hex`, static or a two-literal ternary) → `Color(…)` or undefined. */
+function kotlinShapeColor(e: Extract<ExprIR, { kind: 'jsx-element' }>, prop: string): string | undefined {
+  return kotlinStylingValue(e, prop, (v) => {
+    const c = shapeColorLiteral(String(v), 'kotlin')
+    if (c !== null) return c
+    _emitWarnings.push(
+      `<${e.tag} ${prop}="${String(v)}">: not a colour token or #hex literal — drawn with the \`text\` colour on native.`,
+    )
+    return resolveColor('text', 'kotlin')
+  })
+}
+
+/** `<Canvas width height>` → `PyreonCanvas(width = …, height = …, modifier = …) { … }`. */
+function emitKotlinCanvas(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
+  const args = [
+    `width = ${kotlinCanvasNumber(e, 'width', undefined)}`,
+    `height = ${kotlinCanvasNumber(e, 'height', undefined)}`,
+  ]
+  const modifier = emitKotlinLayoutModifier(e)
+  if (modifier !== '') args.push(`modifier = ${modifier}`)
+  const head = `PyreonCanvas(${args.join(', ')})`
+  if (e.children.length === 0) return `${head} {}`
+  const pad = ' '.repeat(indent + 2)
+  const contentLines = e.children.map((c) => pad + emitKotlinChild(c, indent + 2)).join('\n')
+  return `${head} {\n${contentLines}\n${' '.repeat(indent)}}`
+}
+
+/** A `<Canvas>` shape → `PyreonShape(PyreonShapeSpec.X(…), fill =, stroke =, strokeWidth =)`. Same paint rules as Swift. */
+function emitKotlinCanvasShape(e: Extract<ExprIR, { kind: 'jsx-element' }>): string {
+  const spec = CANVAS_SHAPES[e.tag]!
+  const args = spec.args.map((arg) => {
+    if (arg.kind === 'number') return kotlinCanvasNumber(e, arg.prop, arg.default)
+    const a = e.attrs.find(
+      (x): x is Extract<AttrIR, { kind: 'attr' }> => x.kind === 'attr' && x.name === arg.prop,
+    )
+    if (a === undefined) {
+      _emitWarnings.push(`<${e.tag}> is missing its required \`${arg.prop}\` prop — nothing is drawn on native.`)
+      return '""'
+    }
+    return emitKotlinExpr(unwrapAccessorArrow(a.value), 0)
+  })
+  const fill = spec.strokeOnly ? undefined : kotlinShapeColor(e, 'fill')
+  let stroke = kotlinShapeColor(e, 'stroke')
+  if (spec.strokeOnly && stroke === undefined) stroke = resolveColor('text', 'kotlin')
+  const fillArg = fill ?? (stroke === undefined ? resolveColor('text', 'kotlin') : 'null')
+  const width = stroke === undefined ? '0.0' : kotlinCanvasNumber(e, 'strokeWidth', 1)
+  return `PyreonShape(${spec.kotlin}(${args.join(', ')}), fill = ${fillArg}, stroke = ${stroke ?? 'null'}, strokeWidth = ${width})`
+}
+
+/** `<CanvasText x y size fill>` → `PyreonCanvasText(x =, y =, size =, color =) { Text(…) }`. */
+function emitKotlinCanvasText(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
+  const text = emitKotlinText({ kind: 'jsx-element', tag: 'Text', attrs: [], children: e.children }, indent + 2)
+  const color = kotlinShapeColor(e, 'fill') ?? resolveColor('text', 'kotlin')
+  const head = `PyreonCanvasText(x = ${kotlinCanvasNumber(e, 'x', undefined)}, y = ${kotlinCanvasNumber(e, 'y', undefined)}, size = ${kotlinCanvasNumber(e, 'size', 14)}, color = ${color})`
+  return `${head} {\n${' '.repeat(indent + 2)}${text}\n${' '.repeat(indent)}}`
+}
+
 function emitKotlinPress(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
   const handler = e.attrs.find(
     (a): a is Extract<AttrIR, { kind: 'event' }> =>
@@ -8074,7 +8253,11 @@ function emitKotlinLink(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: num
   // the life of this emitter, on the one element where an icon or the word
   // "here" is a normal thing to write.
   const mod =
-    'Modifier.clickable { navigate() }' +
+    // Transforms first: Compose applies the chain outside-in, so the link's
+    // tap target moves (and scales) with what it draws.
+    'Modifier' +
+    kotlinTransformModifiers(e).join('') +
+    '.clickable { navigate() }' +
     kotlinAccessibilityLabelModifier(e).join('') +
     (testid === undefined ? '' : `.testTag(${testid})`) +
     kotlinAccessibilityHiddenModifier(e).join('')
