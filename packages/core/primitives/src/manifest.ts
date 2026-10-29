@@ -247,17 +247,23 @@ export function App() {
       name: 'Field',
       kind: 'component',
       signature:
-        "(props: { value: string | (() => string); onChangeText: (next: string) => void; placeholder?: string; disabled?: boolean } & ({ multiline?: false; kind?: 'text'|'number'|'password'|'email'|'search'|'tel'|'url'; onSubmit?: () => void } | { multiline: true; lines?: number })) => VNode",
+        "(props: { value: string | (() => string); onChangeText: (next: string) => void; placeholder?: string; disabled?: boolean } & ({ multiline?: false; kind?: 'text'|'number'|'password'|'email'|'search'|'tel'|'url'; onSubmit?: () => void } | { multiline: true; lines?: number } | { kind: 'date'|'time'|'datetime'; min?: string; max?: string })) => VNode",
       summary:
-        'Text input. Web `<input>`; iOS/Android single-line `TextField`. Handler is `onChangeText(next)` (NOT `onInput`/`onChange`). `value` accepts a signal accessor for two-way binding. `multiline` makes it a text area on every target — web `<textarea rows>`, iOS `TextField(axis: .vertical)` + `.lineLimit(lines, reservesSpace: true)`, Android `minLines`/`maxLines` — exactly `lines` rows tall (default 3) and scrolling past them.',
+        'Text input. Web `<input>`; iOS/Android single-line `TextField`. Handler is `onChangeText(next)` (NOT `onInput`/`onChange`). `value` accepts a signal accessor for two-way binding. `multiline` makes it a text area on every target — web `<textarea rows>`, iOS `TextField(axis: .vertical)` + `.lineLimit(lines, reservesSpace: true)`, Android `minLines`/`maxLines` — exactly `lines` rows tall (default 3) and scrolling past them. `kind="date" | "time" | "datetime"` makes it the platform picker (web `<input type=date|time|datetime-local>`, iOS `DatePicker`, Android Material 3 date/time dialogs) over the web\'s zone-free wall-clock STRING — `YYYY-MM-DD` / `HH:mm` / `YYYY-MM-DDTHH:mm`, `\'\'` = no value — bounded by `min`/`max` in the same format. `multiline` and a date `kind` are mutually exclusive.',
       example: `<Field value={draft()} onChangeText={(t) => draft.set(t)} placeholder="Search…" onSubmit={search} />
-<Field multiline lines={5} value={bio()} onChangeText={(t) => bio.set(t)} placeholder="About you" />`,
+<Field multiline lines={5} value={bio()} onChangeText={(t) => bio.set(t)} placeholder="About you" />
+<Field kind="date" min="2026-01-01" value={due()} onChangeText={(d) => due.set(d)} />`,
       mistakes: [
         'Using `onChange`/`onInput` — the canonical handler is `onChangeText(next: string)`',
         'Forgetting `value` is the source of truth — write back via `onChangeText` → signal.set',
         'A dynamic `multiline={cond()}` — it is structural (a different element / initializer), so only a static value lowers natively; branch the element instead',
         'Expecting `onSubmit` or a keyboard `kind` on a `multiline` field — Return inserts a newline (as in a `<textarea>`), so neither applies; the types reject both and the native compiler warns',
         'Expecting a `multiline` field to grow with its content — it is a fixed `lines` rows tall on every target and scrolls',
+        'Passing a `Date` or epoch number as a date kind\'s `value` — it is the wall-clock STRING (`"2026-10-22"`, `"09:30"`, `"2026-10-22T09:30"`), with no time zone',
+        'A `min`/`max` in another format (`"22/10/2026"`, `"9:00"`) — a browser ignores it, so native drops it too (named warning)',
+        '`onSubmit` on a date kind — a picker has no keyboard submit; the types forbid it and native ignores it with a warning',
+        'Combining `multiline` with a date `kind` — a picker is never multi-line; the types reject it',
+        'Expecting Android to stop the time wheel at a time bound — Material\'s TimePicker cannot disable hours, so the bound is applied on confirm (snaps to it)',
       ],
       seeAlso: ['Toggle'],
     },

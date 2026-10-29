@@ -218,6 +218,12 @@ public final class PyreonAudioState {
   public func pause() {}
   public func stop() {}
 }
+// <Field kind="date" | "time" | "datetime"> — runtime-swift PyreonDateField.swift, exactly.
+public enum PyreonDateFieldKind: Sendable { case date, time, datetime }
+public struct PyreonDateField: View {
+  public init(value: Binding<String>, kind: PyreonDateFieldKind, min: String? = nil, max: String? = nil, placeholder: String? = nil) {}
+  public var body: some View { EmptyView() }
+}
 public struct PyreonAudioPlayer: View {
   public init(
     url: URL?,

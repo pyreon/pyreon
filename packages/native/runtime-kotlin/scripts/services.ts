@@ -43,6 +43,10 @@ export const EXEMPT: Record<string, string> = {
  * the mode of 22 services, with no principled basis for the difference.
  */
 export const TYPECHECK_ONLY = new Set([
+  // A Material 3 composable: it RUNS on the emulator (the tasks showcase's
+  // /dates page), and is typechecked here against the mirrored M3 surface. Its
+  // value contract (PyreonDateValue) is pure and RUNS on the JVM.
+  'PyreonDateField',
   // Only the BASE runtimes remain in this package; the feature runtimes (store,
   // machine, model, storage, and the hook services + their Android/OkHttp
   // variants) co-located into their own packages, verified by the co-source gate.

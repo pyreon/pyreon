@@ -441,6 +441,71 @@ final class PyreonTasksUITests: XCTestCase {
         XCTAssertTrue(app.otherElements["tasks-page"].firstMatch.waitForExistence(timeout: 15), "streams-back did not return to tasks")
     }
 
+    /// `<Field kind="date" | "time" | "datetime">` (#3980) on the device: the
+    /// runtime's `PyreonDateField`, a SwiftUI `DatePicker`.
+    ///
+    /// Control -> program: a day picked in the real calendar reaches the signal
+    /// as the web's `YYYY-MM-DD`. Program -> control: writing the signal moves
+    /// the picker. An EMPTY field has no picker (a `DatePicker` cannot be
+    /// empty): it shows its placeholder, and tapping it starts a value.
+    func test_dateFieldsPickThroughTheNativeDatePicker() throws {
+        let app = XCUIApplication()
+        app.launch()
+        let username = app.textFields["login-username"].firstMatch
+        XCTAssertTrue(username.waitForExistence(timeout: 30), "Username field missing")
+        username.tap()
+        username.typeText("abcde")
+        dismissKeyboard(app)
+        app.buttons["login-submit"].firstMatch.tap()
+        XCTAssertTrue(app.otherElements["tasks-page"].firstMatch.waitForExistence(timeout: 20), "Tasks page did not render after login")
+
+        let nav = app.buttons["tasks-dates"].firstMatch
+        XCTAssertTrue(nav.waitForExistence(timeout: 15), "Dates button missing on tasks page")
+        tapAfterScrolling(nav, in: app)
+        XCTAssertTrue(app.otherElements["dates-page"].firstMatch.waitForExistence(timeout: 15), "Dates page did not render")
+
+        let dayValue = app.staticTexts["dates-day-value"].firstMatch
+        XCTAssertTrue(waitForLabel(dayValue, "2026-10-22", timeout: 10), "initial: '\(dayValue.label)'")
+        let dayField = app.otherElements["dates-day"].firstMatch
+        XCTAssertTrue(dayField.waitForExistence(timeout: 10), "date field missing:\n\(app.debugDescription)")
+        let picker = dayField.datePickers.firstMatch
+        XCTAssertTrue(picker.exists, "the date field holds no DatePicker:\n\(dayField.debugDescription)")
+
+        // Control -> program: open the calendar and pick the 23rd.
+        picker.tap()
+        let day23 = app.buttons.matching(NSPredicate(format: "label CONTAINS 'October 23'")).firstMatch
+        if !day23.waitForExistence(timeout: 5) { print("DIAG-DATES calendar:\n\(app.debugDescription)") }
+        XCTAssertTrue(day23.exists, "the calendar did not open")
+        day23.tap()
+        XCTAssertTrue(waitForLabel(dayValue, "2026-10-23", timeout: 10), "a picked day did not reach the signal: '\(dayValue.label)'")
+        // Close the calendar popover.
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.04)).tap()
+
+        // Program -> control.
+        tapAfterScrolling(app.buttons["dates-christmas"].firstMatch, in: app)
+        XCTAssertTrue(waitForLabel(dayValue, "2026-12-25", timeout: 10), "signal write: '\(dayValue.label)'")
+        let showsChristmas = NSPredicate { _, _ in
+            let v = (picker.value as? String) ?? ""
+            return v.contains("Dec 25") || v.contains("December 25") || picker.label.contains("Dec 25")
+        }
+        expectation(for: showsChristmas, evaluatedWith: nil)
+        waitForExpectations(timeout: 10)
+
+        // An empty time field shows its placeholder; tapping it starts a value.
+        let timeValue = app.staticTexts["dates-time-value"].firstMatch
+        XCTAssertEqual(timeValue.label, "empty")
+        let start = app.buttons["Pick a time"].firstMatch
+        XCTAssertTrue(start.exists, "the empty time field does not show its placeholder")
+        start.tap()
+        let startedNow = NSPredicate { _, _ in timeValue.label.range(of: "^\\d{2}:\\d{2}$", options: .regularExpression) != nil }
+        expectation(for: startedNow, evaluatedWith: nil)
+        waitForExpectations(timeout: 10)
+        XCTAssertTrue(app.otherElements["dates-time"].firstMatch.datePickers.firstMatch.exists, "a started time field shows a picker")
+
+        // The datetime field round-trips its initial value untouched.
+        XCTAssertEqual(app.staticTexts["dates-when-value"].firstMatch.label, "2026-10-22T09:30")
+    }
+
     /// Requests that carry what the user ENTERED (#3978), asserted on what the
     /// fixture server REFLECTS — the wire, not the app's idea of what it sent.
     ///

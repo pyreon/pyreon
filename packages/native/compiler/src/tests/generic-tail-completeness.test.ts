@@ -42,6 +42,10 @@ const REQUIRED: Record<string, string> = {
   Press: ' onPress={() => {}}',
   Link: ' to="/x"',
   Field: ' value={v()} onChangeText={(n) => v.set(n)}',
+  // A SHAPE, not a primitive: the key's first word is the tag. A date kind is
+  // a different control on both targets (the runtime's PyreonDateField), so it
+  // is its own path through the emitter and has to carry the tail separately.
+  'Field date': ' kind="date" value={v()} onChangeText={(n) => v.set(n)}',
   // A SHAPE, not a primitive: the key's first word is the tag. `multiline` is a
   // different initializer on iOS and different arguments on Android, so it is
   // its own path through the emitter and has to carry the tail separately.
@@ -80,7 +84,7 @@ const CROSS_CUTTING = {
   },
 } as const
 
-/** `'Field multiline'` → `Field`: the tag a REQUIRED shape key renders. */
+/** `'Field date'` → `Field`: the tag a REQUIRED shape key renders. */
 const tagOf = (shape: string): string => shape.split(' ')[0]!
 
 const emit = (shape: string, attr: string, target: 'swift' | 'kotlin'): string => {
@@ -126,8 +130,8 @@ describe('every canonical primitive carries the cross-cutting props', () => {
       const src = readFileSync(join(typesDir, file), 'utf8')
       for (const m of src.matchAll(/interface (\w+)Props\b[^{]*HtmlPassthroughProps/g)) {
         // A primitive whose props are a UNION of shapes (`FieldProps =
-        // SingleLineFieldProps | MultilineFieldProps`) declares the shared half
-        // as `FieldBaseProps` — that is still `<Field>`.
+        // SingleLineFieldProps | MultilineFieldProps | DateFieldProps`) declares
+        // the shared half as `FieldBaseProps` — that is still `<Field>`.
         declared.add(m[1]!.replace(/Base$/, ''))
       }
     }

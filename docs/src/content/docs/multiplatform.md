@@ -309,6 +309,7 @@ a warning on every list would be noise.
 |-----------|-----|-----|---------|
 | `<Field value onChangeText kind?>` | `<input>` | `TextField` / `SecureField` | `TextField(singleLine = true)` |
 | `<Field multiline lines?>` (text area; `lines` = visible rows, default 3; static `multiline`; no `kind`/`onSubmit`) | `<textarea rows>` | `TextField(axis: .vertical)` + `.lineLimit(lines, reservesSpace: true)` | `TextField(singleLine = false, minLines = lines, maxLines = lines)` |
+| `<Field kind="date" \| "time" \| "datetime" min? max?>` | `<input type=date \| time \| datetime-local>` | `DatePicker` | Material 3 date / time picker dialogs |
 | `<Toggle value onChange>` | `<input type=checkbox>` | `Toggle` | `Switch` |
 | `<Modal open onClose>` | `<dialog>` | `.sheet(isPresented:)` | `Dialog` |
 

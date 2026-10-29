@@ -7,6 +7,12 @@ description: "Common lifecycle & cleanup mistakes in Pyreon and how to fix them.
 
 > **Generated** from `.agents/rules/anti-patterns.md` (the same source as MCP `get_anti_patterns`). Each entry is a real mistake + its fix; where a detector code is listed, the linter / `pyreon doctor` / MCP `validate` catches it automatically.
 
+### Lowering a web input whose value can be EMPTY onto a native control that cannot be — the "no value" state has to be designed, not inherited
+
+(`<Field kind="date">`, #3980): `<input type="date">` holds `""` until the user picks, but SwiftUI's `DatePicker` and Compose's `DatePickerState` always hold a date. Binding the empty string straight through has no faithful outcome: the picker shows a date the user never chose, or the parse fails. **Rule: when the web control's value domain includes "nothing", the native lowering needs an explicit empty state — a placeholder control that only becomes the picker on first interaction, plus a clear action back to `""` — and that state must be a device-tested path of its own.** The same audit applies to bounds: Material's `TimePicker` has no way to disable hours, so a `min`/`max` that the web enforces in the control is applied on CONFIRM on Android; say so in the docs rather than implying parity. Reference: `packages/native/runtime-swift/Sources/PyreonRuntime/PyreonDateField.swift` + `runtime-kotlin/.../PyreonDateField.kt`.
+
+---
+
 ### [FIXED, 2026-10] A "nothing removed" shortcut that compares COUNTS (`cache.size === n`) is fooled by a duplicate key.
 
 `<For>`'s pure-reorder fast path skipped its stale-row scan when no row was added and the cache held `n` entries. `[1,2,3] → [2,2,1]` satisfies that (n stays 3) while key 3 is gone, so the removed row stayed in the DOM — a production-visible ghost row (duplicates only warn in dev). Fix: count the DISTINCT cached entries the update keeps (a per-update generation stamp on each entry, set in the `cache.get` pass that already ran) and take the shortcut only when that equals `cache.size`. **Rule: "set A is a superset of set B" can be decided by counting only when the counted side is duplicate-free.** Reference: `runtime-dom/src/nodes.ts:mountNewForEntries`; bisect-locked in `tests/for-duplicate-key-stale-row.test.ts`.

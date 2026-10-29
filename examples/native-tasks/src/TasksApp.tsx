@@ -351,6 +351,9 @@ function TasksPage() {
           <Button onPress={() => navigate('/lifecycle')} data-testid="tasks-lifecycle">
             Lifecycle
           </Button>
+          <Button onPress={() => navigate('/dates')} data-testid="tasks-dates">
+            Dates
+          </Button>
           <Button onPress={() => navigate('/flow')} data-testid="tasks-flow">
             Flow
           </Button>
@@ -2017,6 +2020,43 @@ function ToolkitScreen() {
   )
 }
 
+// `<Field kind="date" | "time" | "datetime">` (#3980): the platform's own
+// picker — a `DatePicker` on iOS, Material 3 date / time dialogs on Android,
+// `<input type="date">` on the web — with the web's wall-clock string as the
+// value everywhere. The device tests pick a day through the real control
+// (control -> program), write the signal and read the control (program ->
+// control), and start an EMPTY time field, which has no picker until a value
+// exists.
+function DatesScreen() {
+  const navigate = useNavigate()
+  const day = signal('2026-10-22')
+  const slot = signal('')
+  const meet = signal('2026-10-22T09:30')
+  return (
+    <Stack gap={3} padding={4} data-testid="dates-page">
+      <Field
+        kind="date"
+        value={day}
+        onChangeText={(v) => day.set(v)}
+        min="2026-01-01"
+        max="2026-12-31"
+        data-testid="dates-day"
+      />
+      <Text data-testid="dates-day-value">{day}</Text>
+      <Field kind="time" value={slot} onChangeText={(v) => slot.set(v)} placeholder="Pick a time" data-testid="dates-time" />
+      <Text data-testid="dates-time-value">{slot().length === 0 ? 'empty' : slot()}</Text>
+      <Field kind="datetime" value={meet} onChangeText={(v) => meet.set(v)} data-testid="dates-when" />
+      <Text data-testid="dates-when-value">{meet}</Text>
+      <Button onPress={() => day.set('2026-12-25')} data-testid="dates-christmas">
+        Christmas
+      </Button>
+      <Button onPress={() => navigate('/tasks')} data-testid="dates-back">
+        Back
+      </Button>
+    </Stack>
+  )
+}
+
 // ── Web host (#3982 + #3956 item 5) ──
 //
 // A whole web flow embedded full-screen: the page in assets/webhost/
@@ -2155,6 +2195,11 @@ export function TasksApp() {
       {
         path: '/lifecycle',
         component: LifecycleScreen,
+        beforeEnter: () => useApp().store.isAuthed(),
+      },
+      {
+        path: '/dates',
+        component: DatesScreen,
         beforeEnter: () => useApp().store.isAuthed(),
       },
       {

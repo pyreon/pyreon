@@ -6,6 +6,7 @@ import {
 export function ProbeApp() {
   const open = signal(false)
   const shown = signal(true)
+  const day = signal('2026-10-22')
   const notes = signal('')
   const rows = signal(4)
   return (
@@ -32,6 +33,9 @@ export function ProbeApp() {
       </Transition>
       <Link to="/next" data-testid="probe-link" accessibilityLabel="Go next">next</Link>
       <Press onPress={() => open.set(true)} disabled><Text>tap</Text></Press>
+      <Field kind="date" value={day} onChangeText={(v) => day.set(v)} min="2026-01-01" max="2026-12-31" data-testid="probe-day" />
+      <Field kind="time" value={day()} onChangeText={(v) => day.set(v)} placeholder="Time" />
+      <Field kind="datetime" value={day} onChangeText={(v) => day.set(v)} disabled />
       <Field value={notes} onChangeText={(v) => notes.set(v)} kind="email" onSubmit={() => open.set(true)} />
       <Field multiline value={notes} onChangeText={(v) => notes.set(v)} placeholder="Notes" data-testid="probe-notes" />
       <Field multiline lines={rows()} value={notes()} onChangeText={(v) => notes.set(v)} />

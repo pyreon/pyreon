@@ -1054,6 +1054,86 @@ describe('<Field> happy-dom unit', () => {
   })
 })
 
+describe('<Field kind="date" | "time" | "datetime"> happy-dom unit', () => {
+  it('maps each kind to the browser input whose value is the contract', () => {
+    for (const [kind, type] of [['date', 'date'], ['time', 'time'], ['datetime', 'datetime-local']] as const) {
+      const v = signal('')
+      const { container, unmount } = mountTest(h(Field, { value: v, onChangeText: (n: string) => v.set(n), kind }))
+      expect((container.firstElementChild as HTMLInputElement).getAttribute('type')).toBe(type)
+      unmount()
+    }
+  })
+
+  it('min / max reach the input, reactively', () => {
+    const v = signal('2026-10-22')
+    const lo = signal('2026-01-01')
+    const { container, unmount } = mountTest(
+      h(Field, {
+        value: v,
+        onChangeText: (n: string) => v.set(n),
+        kind: 'date',
+        get min() {
+          return lo()
+        },
+        max: '2026-12-31',
+      } as never),
+    )
+    const input = container.firstElementChild as HTMLInputElement
+    expect(input.getAttribute('min')).toBe('2026-01-01')
+    expect(input.getAttribute('max')).toBe('2026-12-31')
+    lo.set('2026-06-01')
+    expect(input.getAttribute('min')).toBe('2026-06-01')
+    unmount()
+  })
+
+  it('a text kind never gets min / max, and a date kind never submits on Enter', () => {
+    const v = signal('')
+    let submitted = 0
+    const { container, unmount } = mountTest(
+      h(Field, { value: v, onChangeText: (n: string) => v.set(n), kind: 'date', onSubmit: () => submitted++ } as never),
+    )
+    const input = container.firstElementChild as HTMLInputElement
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+    expect(submitted).toBe(0)
+    unmount()
+    const text = mountTest(h(Field, { value: v, onChangeText: () => {}, min: '1' } as never))
+    expect((text.container.firstElementChild as HTMLInputElement).hasAttribute('min')).toBe(false)
+    text.unmount()
+  })
+
+  it('the date shape rejects onSubmit, and the text shape rejects min / max, at the type level', () => {
+    const base = { value: signal(''), onChangeText: (_: string) => {} }
+    // @ts-expect-error — a picker has no keyboard submit
+    const a: FieldProps = { ...base, kind: 'date', onSubmit: () => {} }
+    // @ts-expect-error — bounds belong to the date kinds
+    const b: FieldProps = { ...base, kind: 'email', min: '1' }
+    const ok: FieldProps = { ...base, kind: 'datetime', min: '2026-10-22T09:00' }
+    expect([a, b, ok]).toHaveLength(3)
+  })
+
+  it('an untyped multiline + date kind is a text area, with no picker bounds (multiline wins, as natively)', () => {
+    const v = signal('')
+    const { container, unmount } = mountTest(
+      h(Field, { value: v, onChangeText: (n: string) => v.set(n), multiline: true, kind: 'date', min: '2026-01-01' } as never),
+    )
+    const el = container.firstElementChild as HTMLTextAreaElement
+    expect(el.tagName).toBe('TEXTAREA')
+    expect(el.hasAttribute('min')).toBe(false)
+    unmount()
+  })
+
+  it('multiline and a date kind are mutually exclusive at the type level', () => {
+    const base = { value: signal(''), onChangeText: (_: string) => {} }
+    // @ts-expect-error — a picker is never multi-line
+    const a: FieldProps = { ...base, multiline: true, kind: 'date' }
+    // @ts-expect-error — bounds belong to the date kinds, not a text area
+    const b: FieldProps = { ...base, multiline: true, min: '2026-01-01' }
+    // @ts-expect-error — `lines` belongs to the multiline shape only
+    const c: FieldProps = { ...base, kind: 'time', lines: 2 }
+    expect([a, b, c]).toHaveLength(3)
+  })
+})
+
 describe('<Field multiline> happy-dom unit', () => {
   it('renders a <textarea> with the default 3 rows and no type attribute', () => {
     const v = signal('a\nb')

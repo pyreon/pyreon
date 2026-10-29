@@ -36,6 +36,7 @@ export type { InlineProps, LayerProps, ScrollProps, SpacerProps, StackProps } fr
 export type { AudioProps, HeadingProps, IconProps, ImageProps, TextProps, VideoProps } from './types/content'
 export type { ButtonProps, LinkProps, PressProps } from './types/interaction'
 export type {
+  DateFieldProps,
   FieldBaseProps,
   FieldProps,
   ModalProps,
