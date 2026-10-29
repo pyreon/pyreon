@@ -218,6 +218,21 @@ public final class PyreonAudioState {
   public func pause() {}
   public func stop() {}
 }
+// <Select> — runtime-swift PyreonSelect.swift, exactly: the option is
+// Hashable/Identifiable/Codable with an OPTIONAL disabled (TS \`disabled?\`), and
+// SelectOption is the alias @pyreon/primitives exports.
+public struct PyreonSelectOption: Hashable, Identifiable, Codable {
+  public var value: String
+  public var label: String
+  public var disabled: Bool?
+  public var id: String { value }
+  public init(value: String, label: String, disabled: Bool? = nil) { self.value = value; self.label = label; self.disabled = disabled }
+}
+public typealias SelectOption = PyreonSelectOption
+public struct PyreonSelect: View {
+  public init(selection: Binding<String>, options: [PyreonSelectOption], placeholder: String? = nil) {}
+  public var body: some View { EmptyView() }
+}
 public struct PyreonAudioPlayer: View {
   public init(
     url: URL?,

@@ -40,6 +40,8 @@ export type {
   FieldProps,
   ModalProps,
   MultilineFieldProps,
+  SelectOption,
+  SelectProps,
   SingleLineFieldProps,
   ToggleProps,
 } from './types/input'
@@ -58,7 +60,7 @@ export type {
 export { init, resetPrimitivesConfig } from './config'
 export type { PrimitivesInitOptions } from './config'
 
-// ===== Web runtime exports — the 17 canonical primitives =====
+// ===== Web runtime exports — the 18 canonical primitives =====
 //
 // Stack … Modal below are the canonical set; the compiler's
 // `CANONICAL_PRIMITIVES` (packages/native/compiler/src/canonical-primitives.ts)
@@ -85,6 +87,7 @@ export { Press } from './web/Press'
 export { Link } from './web/Link'
 export { Field } from './web/Field'
 export { Toggle } from './web/Toggle'
+export { Select } from './web/Select'
 export { Modal } from './web/Modal'
 // Animation vocabulary — the ONE import path where `<Transition name>` /
 // `<TransitionGroup>` resolve on every target. PMTC has lowered both to

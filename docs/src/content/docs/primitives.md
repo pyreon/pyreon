@@ -1,6 +1,6 @@
 ---
 title: '@pyreon/primitives'
-description: 'The canonical multi-platform UI vocabulary — 17 primitives plus Transition, TransitionGroup, WebView and per-platform escape hatches, each compiled to DOM, SwiftUI and Compose from one source.'
+description: 'The canonical multi-platform UI vocabulary — 18 primitives plus Transition, TransitionGroup, WebView and per-platform escape hatches, each compiled to DOM, SwiftUI and Compose from one source.'
 ---
 
 # @pyreon/primitives
@@ -24,12 +24,12 @@ bun add @pyreon/primitives @pyreon/core @pyreon/reactivity @pyreon/runtime-dom
 | **Layout** | [`Stack`](#stack), [`Inline`](#inline), [`Layer`](#layer), [`Scroll`](#scroll), [`Spacer`](#spacer) | dedicated emitters |
 | **Content** | [`Text`](#text), [`Heading`](#heading), [`Image`](#image), [`Audio`](#audio), [`Video`](#video), [`Icon`](#icon) | dedicated emitters |
 | **Interaction** | [`Button`](#button), [`Press`](#press), [`Link`](#link) | dedicated emitters |
-| **Input** | [`Field`](#field), [`Toggle`](#toggle), [`Modal`](#modal) | dedicated emitters |
+| **Input** | [`Field`](#field), [`Toggle`](#toggle), [`Select`](#select), [`Modal`](#modal) | dedicated emitters |
 | **Animation** | [`Transition`](#transition), [`TransitionGroup`](#transitiongroup) | dedicated emitters |
 | **Web content** | [`WebView`](#webview) | native web host |
 | **Escape hatches** | [`Web`, `NativeIOS`, `NativeAndroid`](#escape-hatches) | per-target branch |
 
-The first four groups are the **17 canonical primitives**, the UI vocabulary
+The first four groups are the **18 canonical primitives**, the UI vocabulary
 the compiler treats as its own. The compiler's list lives in
 `packages/native/compiler/src/canonical-primitives.ts` (`CANONICAL_PRIMITIVES`),
 and a test checks that it matches what this package exports. The animation
@@ -652,6 +652,54 @@ export function WifiSetting() {
 
 - **Web**: `<input type="checkbox" role="switch">`.
 - **iOS**: `Toggle("", isOn: Binding(…))`. **Android**: `Switch(checked = …, onCheckedChange = …)`.
+
+### Select
+
+A single choice from a list, with each platform's own picker: a `<select>` on
+the web, a menu-style `Picker` on iOS, a Material 3 exposed dropdown on Android.
+
+| Prop | Type |
+| --- | --- |
+| `value` | `string` (or a signal read) (required) — the chosen option's `value`; `''` selects nothing |
+| `options` | `SelectOption[]` — `{ value: string; label: string; disabled?: boolean }` (required) |
+| `onChange` | `(next: string) => void` (required) |
+| `placeholder` | `string` — shown while nothing is selected |
+| `disabled` | `boolean` |
+
+A value that no option has selects nothing, and the placeholder is shown in its
+place on every target (blank without one). The placeholder cannot be chosen
+again once something is, and a `disabled` option is listed but not selectable.
+Every choice the user makes goes through `onChange`; the control shows whatever
+`value` you pass back.
+
+```tsx
+// @check
+import { Stack, Select, Text } from '@pyreon/primitives'
+import type { SelectOption } from '@pyreon/primitives'
+import { signal } from '@pyreon/reactivity'
+
+export function FruitPicker() {
+  const fruit = signal('')
+  const options = signal<SelectOption[]>([
+    { value: 'apple', label: 'Apple' },
+    { value: 'durian', label: 'Durian', disabled: true },
+  ])
+  return (
+    <Stack gap="sm">
+      <Select value={fruit()} options={options()} onChange={(v) => fruit.set(v)} placeholder="Pick a fruit" />
+      <Text>{fruit() || 'nothing yet'}</Text>
+    </Stack>
+  )
+}
+```
+
+On native, a list typed `SelectOption[]` reaches the runtime as it is. A list of
+your own type is mapped to it, which reads `value`, `label` and — when your type
+declares it — `disabled`; a type without `value` and `label` is a named compiler
+warning.
+
+- **Web**: `<select>`, with a disabled empty `<option>` carrying the placeholder.
+- **iOS**: `PyreonSelect` — `Picker(selection:…).pickerStyle(.menu)`. **Android**: `PyreonSelect` — `ExposedDropdownMenuBox` with a read-only field.
 
 ### Modal
 

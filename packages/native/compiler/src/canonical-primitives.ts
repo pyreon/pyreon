@@ -79,9 +79,10 @@ export const CANONICAL_PRIMITIVES = new Set([
   'Button',
   'Press',
   'Link',
-  // Input (3)
+  // Input (4)
   'Field',
   'Toggle',
+  'Select',
   'Modal',
 ])
 
@@ -116,6 +117,7 @@ export const SWIFT_NAMES: Record<string, string> = {
   Link: 'PyreonLink', // pushes onto the native router (@pyreon/native-router-swift)
   Field: 'TextField', // SecureField when kind="password"
   Toggle: 'Toggle',
+  Select: 'PyreonSelect', // a menu-style Picker (runtime-swift PyreonSelect.swift)
   Modal: 'Sheet', // .sheet(isPresented:) modifier-based
 }
 
@@ -139,6 +141,7 @@ export const KOTLIN_NAMES: Record<string, string> = {
   Link: 'PyreonLink', // wraps a Box(Modifier.clickable { navigate() }) (@pyreon/native-router-kotlin)
   Field: 'TextField',
   Toggle: 'Switch',
+  Select: 'PyreonSelect', // a Material 3 ExposedDropdownMenuBox (runtime-kotlin PyreonSelect.kt)
   Modal: 'Dialog',
 }
 

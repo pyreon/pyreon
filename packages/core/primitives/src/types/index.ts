@@ -26,6 +26,8 @@ export type {
   FieldProps,
   ModalProps,
   MultilineFieldProps,
+  SelectOption,
+  SelectProps,
   SingleLineFieldProps,
   ToggleProps,
 } from './input'

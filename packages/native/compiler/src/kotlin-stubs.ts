@@ -1733,6 +1733,19 @@ class PyreonAudioState(engine: AudioEngine) {
   fun pause() {}
   fun stop() {}
 }
+// <Select> — runtime-kotlin PyreonSelect.kt, exactly.
+@Serializable
+data class PyreonSelectOption(var value: String, var label: String, var disabled: Boolean? = null)
+typealias SelectOption = PyreonSelectOption
+@Composable
+fun PyreonSelect(
+  value: String,
+  options: List<PyreonSelectOption>,
+  onChange: (String) -> Unit,
+  modifier: Modifier = Modifier,
+  placeholder: String? = null,
+  enabled: Boolean = true,
+) {}
 @Composable
 fun PyreonAudioPlayer(
   url: String,

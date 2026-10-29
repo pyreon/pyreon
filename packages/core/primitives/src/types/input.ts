@@ -1,4 +1,4 @@
-// Input primitive type definitions — Field / Toggle / Modal.
+// Input primitive type definitions — Field / Toggle / Select / Modal.
 
 import type { ChildrenProp, HtmlPassthroughProps, ValueOrSignal } from './shared'
 
@@ -64,6 +64,35 @@ export type FieldProps = SingleLineFieldProps | MultilineFieldProps
 export interface ToggleProps extends HtmlPassthroughProps {
   value: ValueOrSignal<boolean>
   onChange: (next: boolean) => void
+  disabled?: boolean
+}
+
+/** One choice of a `<Select>`. `value` is what `onChange` reports; `label` is what the user sees. */
+export interface SelectOption {
+  value: string
+  label: string
+  /** Shown but not selectable — `<option disabled>` on the web. */
+  disabled?: boolean
+}
+
+/**
+ * `<Select>` — choose one value from a list, with the platform's own picker.
+ *
+ * `value` is the selected option's `value`; `''` (or any value no option has)
+ * means nothing is selected, and the `placeholder` — when given — is shown in
+ * its place. The placeholder is never selectable again, as an
+ * `<option value="" disabled>` is not on the web.
+ *
+ * Per-platform mapping:
+ * - Web: `<select>` with an `<option>` per entry (and a disabled placeholder option)
+ * - iOS: `Picker(…).pickerStyle(.menu)` — a native menu picker
+ * - Android: Material 3 `ExposedDropdownMenuBox` — a read-only field that opens a menu
+ */
+export interface SelectProps extends HtmlPassthroughProps {
+  value: ValueOrSignal<string>
+  options: ValueOrSignal<readonly SelectOption[]>
+  onChange: (next: string) => void
+  placeholder?: string
   disabled?: boolean
 }
 

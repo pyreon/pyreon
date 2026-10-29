@@ -13,6 +13,7 @@ import { LayoutScopeTracker, lowerWebViewGrow } from './webview-sizing'
 import { classifyFallback, unconsumedSlotWarning } from './jsx-slot-attrs'
 import { swiftStr } from './string-literals'
 import { resolveFieldShape } from './field-shape'
+import { resolveSelectOptions } from './select-shape'
 import {
   allServices,
   bindServices,
@@ -4635,7 +4636,19 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
             _activeEnumType = enumType
           }
         }
-        const value = e.args[0] ? emitSwiftExpr(e.args[0], indent) : '0'
+        // The written value is typed by the SIGNAL, not by its own shape: an
+        // object literal in `options.set([{ value, label }])` must construct
+        // the signal's element type. Typed by shape alone it took the first
+        // struct whose fields matched exactly — in a file that also imports
+        // @pyreon/charts that was the chart engine's `PolarTick`, assigned to a
+        // `[SelectOption]` state (a type error the initializer did not have,
+        // because a declaration IS typed by its annotation).
+        const targetType = inferType(e.callee.object, _activeInferCtx)
+        const value = e.args[0]
+          ? withExpectedType(targetType.kind === 'unknown' ? undefined : targetType, () =>
+              emitSwiftExpr(e.args[0]!, indent),
+            )
+          : '0'
         if (prevEnumType !== undefined || _activeEnumType !== undefined) {
           _activeEnumType = prevEnumType
         }
@@ -6596,6 +6609,7 @@ function emitSwiftJsxElement(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent
   if (tag === 'Press') return emitSwiftPress(e, indent)
   if (tag === 'Field') return emitSwiftField(e, indent)
   if (tag === 'Toggle') return emitSwiftToggle(e, indent)
+  if (tag === 'Select') return emitSwiftSelect(e, indent)
   // Lowercase DOM tags a plugin gives meaning inside its own renderers (a flow's `<path>` / `<svg>`).
   const intrinsic = lowerPluginIntrinsic(e, 'swift', () => swiftEmitContext(indent))
   if (intrinsic !== undefined) return intrinsic
@@ -9401,6 +9415,83 @@ function emitSwiftField(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: num
   if (disabledMod) {
     result += `\n${' '.repeat(indent + 2)}${disabledMod}`
   }
+  result += emitSwiftLayoutModifiers(e)
+  return result
+}
+
+/**
+ * `<Select value options onChange placeholder? disabled?>` → the runtime's
+ * `PyreonSelect` (a menu-style `Picker`). The option list is resolved by the
+ * helper both emitters share (`select-shape.ts`).
+ *
+ * Writes always go through `onChange`, even for a bare-signal `value`: the web
+ * calls `onChange` for every user choice, so a `$signal` projection — which
+ * would write the signal and skip the handler — would drop whatever else the
+ * handler does.
+ */
+function emitSwiftSelect(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
+  const attr = (n: string) =>
+    e.attrs.find((a): a is Extract<AttrIR, { kind: 'attr' }> => a.kind === 'attr' && a.name === n)
+  const valueAttr = attr('value')
+  const onChange = e.attrs.find(
+    (a): a is Extract<AttrIR, { kind: 'event' }> => a.kind === 'event' && a.name === 'change',
+  )
+  if (valueAttr === undefined || onChange === undefined) {
+    _emitWarnings.push(
+      '<Select> needs both `value` and `onChange` to lower — without them there is no selection to show or write. Rendered as nothing on iOS.',
+    )
+    return 'EmptyView()'
+  }
+  const optionsAttr = attr('options')
+  const optionsExpr = optionsAttr === undefined ? undefined : unwrapAccessorArrow(optionsAttr.value)
+  const elementType = (() => {
+    if (optionsExpr === undefined) return undefined
+    const t = inferType(optionsExpr, _activeInferCtx)
+    return t.kind === 'array' ? t.element : undefined
+  })()
+  const shape = resolveSelectOptions(optionsExpr, elementType, (name) => _structDefs.find((d) => d.name === name))
+  _emitWarnings.push(...shape.warnings)
+  const pad = ' '.repeat(indent + 2)
+  const inner = ' '.repeat(indent + 4)
+  let options: string
+  if (shape.options === null) {
+    options = '[]'
+  } else if (shape.options.kind === 'literal') {
+    const items = shape.options.items.map((it) => {
+      const disabled = it.disabled !== undefined ? `, disabled: ${emitSwiftExpr(it.disabled, indent + 4)}` : ''
+      return `PyreonSelectOption(value: ${emitSwiftExpr(it.value, indent + 4)}, label: ${emitSwiftExpr(it.label, indent + 4)}${disabled})`
+    })
+    options = items.length === 0 ? '[]' : `[\n${items.map((i) => inner + i).join(',\n')}\n${pad}]`
+  } else if (shape.options.kind === 'passthrough') {
+    options = emitSwiftExpr(shape.options.source, indent + 2)
+  } else {
+    const disabled =
+      shape.options.disabled === 'optional'
+        ? ', disabled: $0.disabled ?? false'
+        : shape.options.disabled === 'required'
+          ? ', disabled: $0.disabled'
+          : ''
+    options = `(${emitSwiftExpr(shape.options.source, indent + 2)}).map { PyreonSelectOption(value: $0.value, label: $0.label${disabled}) }`
+  }
+  const getExpr = emitSwiftExpr(unwrapAccessorArrow(valueAttr.value), indent + 4)
+  const writeBody = stripSwiftClosureBody(emitSwiftAction(onChange.handler, indent + 4))
+  const param =
+    onChange.handler.kind === 'arrow' && onChange.handler.params.length > 0
+      ? swiftIdent(onChange.handler.params[0]!)
+      : '_'
+  const placeholder = (() => {
+    const stat = readStaticAttr(e, 'placeholder')
+    if (typeof stat === 'string') return `, placeholder: ${swiftStr(stat)}`
+    const a = attr('placeholder')
+    return a !== undefined ? `, placeholder: ${emitSwiftExpr(unwrapAccessorArrow(a.value), 0)}` : ''
+  })()
+  let result =
+    `PyreonSelect(\n` +
+    `${pad}selection: Binding(get: { ${getExpr} }, set: { ${param} in ${writeBody} }),\n` +
+    `${pad}options: ${options}${placeholder}\n` +
+    `${' '.repeat(indent)})`
+  const disabledMod = swiftDisabledModifier(e)
+  if (disabledMod) result += `\n${pad}${disabledMod}`
   result += emitSwiftLayoutModifiers(e)
   return result
 }

@@ -17,6 +17,7 @@ import {
 } from './async-function'
 import { kotlinStr } from './string-literals'
 import { resolveFieldShape } from './field-shape'
+import { resolveSelectOptions } from './select-shape'
 import {
   bindServices,
   emitPluginDecl,
@@ -3569,7 +3570,13 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
             _activeEnumType = enumType
           }
         }
-        const value = e.args[0] ? emitKotlinExpr(e.args[0], indent) : '0'
+        // Typed by the SIGNAL, not by the literal's shape — see the Swift twin.
+        const targetType = inferType(e.callee.object, _kotlinExprInferCtx)
+        const value = e.args[0]
+          ? withExpectedTypeKotlin(targetType.kind === 'unknown' ? undefined : targetType, () =>
+              emitKotlinExpr(e.args[0]!, indent),
+            )
+          : '0'
         if (prevEnumType !== undefined || _activeEnumType !== undefined) {
           _activeEnumType = prevEnumType
         }
@@ -5339,6 +5346,7 @@ function emitKotlinJsxElement(e: Extract<ExprIR, { kind: 'jsx-element' }>, inden
   if (tag === 'Press') return emitKotlinPress(e, indent)
   if (tag === 'Field') return emitKotlinField(e, indent)
   if (tag === 'Toggle') return emitKotlinToggle(e, indent)
+  if (tag === 'Select') return emitKotlinSelect(e, indent)
   // Lowercase DOM tags a plugin gives meaning inside its own renderers (a flow's `<path>` / `<svg>`).
   const intrinsic = lowerPluginIntrinsic(e, 'kotlin', () => kotlinEmitContext(indent))
   if (intrinsic !== undefined) return intrinsic
@@ -7952,6 +7960,69 @@ function emitKotlinField(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: nu
   const fieldModifier = emitKotlinLayoutModifier(e)
   if (fieldModifier) args.push(`modifier = ${fieldModifier}`)
   return `TextField(${args.join(', ')})`
+}
+
+/**
+ * `<Select value options onChange placeholder? disabled?>` → the runtime's
+ * `PyreonSelect` composable (a Material 3 `ExposedDropdownMenuBox`). Mirror of
+ * `emitSwiftSelect`; the option list comes from the shared `select-shape.ts`.
+ */
+function emitKotlinSelect(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
+  const attr = (n: string) =>
+    e.attrs.find((a): a is Extract<AttrIR, { kind: 'attr' }> => a.kind === 'attr' && a.name === n)
+  const valueAttr = attr('value')
+  const onChange = e.attrs.find(
+    (a): a is Extract<AttrIR, { kind: 'event' }> => a.kind === 'event' && a.name === 'change',
+  )
+  if (valueAttr === undefined || onChange === undefined) {
+    _emitWarnings.push(
+      '<Select> needs both `value` and `onChange` to lower — without them there is no selection to show or write. Rendered as nothing on Android.',
+    )
+    return 'Box {}'
+  }
+  const optionsAttr = attr('options')
+  const optionsExpr = optionsAttr === undefined ? undefined : unwrapAccessorArrow(optionsAttr.value)
+  const elementType = (() => {
+    if (optionsExpr === undefined) return undefined
+    const t = inferType(optionsExpr, _kotlinExprInferCtx)
+    return t.kind === 'array' ? t.element : undefined
+  })()
+  const shape = resolveSelectOptions(optionsExpr, elementType, (name) => _kotlinStructDefs.find((d) => d.name === name))
+  _emitWarnings.push(...shape.warnings)
+  let options: string
+  if (shape.options === null) {
+    options = 'emptyList()'
+  } else if (shape.options.kind === 'literal') {
+    const items = shape.options.items.map((it) => {
+      const disabled = it.disabled !== undefined ? `, disabled = ${emitKotlinExpr(it.disabled, indent + 2)}` : ''
+      return `PyreonSelectOption(value = ${emitKotlinExpr(it.value, indent + 2)}, label = ${emitKotlinExpr(it.label, indent + 2)}${disabled})`
+    })
+    options = items.length === 0 ? 'emptyList()' : `listOf(${items.join(', ')})`
+  } else if (shape.options.kind === 'passthrough') {
+    options = emitKotlinExpr(shape.options.source, indent + 2)
+  } else {
+    const disabled =
+      shape.options.disabled === 'optional'
+        ? ', disabled = it.disabled ?: false'
+        : shape.options.disabled === 'required'
+          ? ', disabled = it.disabled'
+          : ''
+    options = `(${emitKotlinExpr(shape.options.source, indent + 2)}).map { PyreonSelectOption(value = it.value, label = it.label${disabled}) }`
+  }
+  const args = [
+    `value = ${emitKotlinExpr(unwrapAccessorArrow(valueAttr.value), indent + 2)}`,
+    `options = ${options}`,
+    `onChange = ${emitKotlinAction(onChange.handler, indent + 2)}`,
+  ]
+  const stat = readStaticAttrKotlin(e, 'placeholder')
+  const placeholderAttr = attr('placeholder')
+  if (typeof stat === 'string') args.push(`placeholder = ${kotlinStr(stat)}`)
+  else if (placeholderAttr !== undefined) args.push(`placeholder = ${emitKotlinExpr(unwrapAccessorArrow(placeholderAttr.value), 0)}`)
+  const enabledArg = kotlinEnabledArg(e)
+  if (enabledArg) args.push(enabledArg)
+  const modifier = emitKotlinLayoutModifier(e)
+  if (modifier) args.push(`modifier = ${modifier}`)
+  return `PyreonSelect(${args.join(', ')})`
 }
 
 /**
