@@ -25,12 +25,17 @@ import { isKotlincAvailable, isSwiftcAvailable } from '../validate'
  */
 
 const SWIFT_SRC = join(__dirname, '../../../runtime-swift/Sources/PyreonRuntime/PyreonHttp.swift')
+const SWIFT_JSON_SRC = join(__dirname, '../../../runtime-swift/Sources/PyreonRuntime/PyreonJSON.swift')
 const KOTLIN_SRC = join(
   __dirname,
   '../../../runtime-kotlin/src/main/kotlin/com/pyreon/runtime/PyreonHttp.kt',
 )
 
-/** The shipped `PyreonURL` declaration, lifted out of its runtime file. */
+/**
+ * The shipped `PyreonURL` declaration, lifted out of its runtime file. It is sliced to END OF FILE, so `PyreonURL`
+ * must stay the LAST declaration in both runtime files — anything appended after it is compiled into this harness
+ * without its dependencies (the uploads section did exactly that, and every encoder parity spec failed to compile).
+ */
 function extractPyreonURL(path: string, opener: string): string {
   const src = readFileSync(path, 'utf8')
   const at = src.indexOf(opener)
@@ -196,7 +201,10 @@ describe('PyreonURL.encodePathParam -- parity with encodeURIComponent', () => {
   it.skipIf(!isSwiftcAvailable())('the SHIPPED Swift encoder matches, executed', () => {
     const got = withTempDir('pyreon-url-parity-swift-', (dir) => {
       const casesPath = join(dir, 'cases.txt')
+      // `PyreonURL` formats a query NUMBER through `PyreonJSON.jsNumber`, so the shipped JSON file compiles alongside.
       const harness = `import Foundation
+
+${readFileSync(SWIFT_JSON_SRC, 'utf8').replace(/^import .*$/gm, '')}
 
 ${extractPyreonURL(SWIFT_SRC, 'public enum PyreonURL {')}
 

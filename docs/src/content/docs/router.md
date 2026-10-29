@@ -1330,6 +1330,16 @@ const removeHook = router.afterEach((to, from) => {
 removeHook()
 ```
 
+Guards can also be declared with the routes. They run before any registered with `router.beforeEach()`, and this is the form that also crosses to iOS and Android, where there is no imperative registration:
+
+```ts
+const router = createRouter({
+  routes,
+  beforeEach: [(to) => to.path !== '/admin' || isAdmin()],
+  afterEach: [(to) => analytics.trackPageView(to.path)],
+})
+```
+
 `afterEach` hooks run after the navigation has committed. They receive `to` and `from` resolved routes but cannot affect the navigation. Errors thrown in `afterEach` hooks are caught and logged.
 
 #### Per-Route Guards

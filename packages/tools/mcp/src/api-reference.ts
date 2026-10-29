@@ -1432,11 +1432,15 @@ const base = signal(1.0)
   },
 
   'primitives/WebView': {
-    signature: '(props: { html?: string; src?: string; data?: unknown; onMessage?: (message: string) => void }) => VNode',
+    signature: '(props: { html?: string; src?: string; data?: unknown; onMessage?: (message: string) => void; domStorage?: boolean; grow?: boolean }) => VNode',
     example: '<WebView html={CHART_HTML} data={metrics()} onMessage={(m) => selected.set(m)} />',
-    notes: 'Host a web page/component natively (WKWebView on iOS, Android WebView; `<iframe srcdoc>` on web). THE escape hatch for web-only packages (flow/code/document) on native — they run inside the WebView. Bidirectional bridge: `data` is pushed in as `window.__pyreonData` (+ a `pyreondata` event, live, no reload); the page calls `window.pyreonPostMessage(payload)` → your `onMessage` closure. `domStorage` (default true, native-only literal) keeps `localStorage` available in the hosted page (Android disables it by default; `false` opts out). See also: Web, connectWebHost.',
+    notes: `Host a web page/component natively (WKWebView on iOS, Android WebView; \`<iframe srcdoc>\` on web). THE escape hatch for web-only packages (flow/code/document) on native — they run inside the WebView. Bidirectional bridge: \`data\` is pushed in as \`window.__pyreonData\` (+ a \`pyreondata\` event, live, no reload); the page calls \`window.pyreonPostMessage(payload)\` → your \`onMessage\` closure. \`domStorage\` (default true, native-only literal) keeps \`localStorage\` available in the hosted page (Android disables it by default; \`false\` opts out). SIZING: unsized it is the \`<iframe>\` default on every target — full width, 150 high; \`grow\` (literal, native) takes the free main-axis space of its parent \`<Stack>\`/\`<Inline>\` (\`Modifier.weight(1f)\` / a greedy SwiftUI frame / \`flex: 1 1 150px\`), fills a non-stack parent, and keeps 150 inside a \`<Scroll>\` (warned + dropped on native). BROWSER CHROME works natively: \`<input type=file>\` (picker, or camera for \`capture\` via the app's FileProvider), \`alert\`/\`confirm\`/\`prompt\` as native dialogs, geolocation / camera / microphone after a per-site consent AND only for permissions the app declares (AndroidManifest / Info.plist usage string), \`window.open\` / \`target=_blank\` handed to the system browser for http(s)/mailto/tel/sms. See also: Web, connectWebHost.`,
     mistakes: `- Using it for core UI (nav/forms/lists) — pays WebView boot + bundle cost; use native primitives there. Reserve <WebView> for self-contained web-island panes (editors/diagrams)
-- Expecting native look-and-feel — content renders as a web view, not native widgets`,
+- Expecting native look-and-feel — content renders as a web view, not native widgets
+- Expecting an unsized WebView to fill the screen — it is 150 high on every target (the iframe default); pass \`grow\` as a direct child of the \`<Stack>\` whose remaining space it should take
+- Putting \`grow\` inside a \`<Scroll>\` — there is no free space to fill; native drops it with a warning and the view stays 150 high
+- Expecting a hosted page to read the location or camera without declaring it — add the permission (AndroidManifest) / usage string (Info.plist); an undeclared one is denied and logged
+- Expecting \`target="_blank"\` to open inside the view — it hands the URL to the system browser (http(s)/mailto/tel/sms only), keeping the hosted page in place`,
   },
 
   'primitives/connectWebHost': {
@@ -1818,7 +1822,7 @@ return json({ data: result.data }) // keyed by matched-chain index`,
     { path: "settings", component: Settings },
   ]},
 ])`,
-    notes: 'Create a router instance with route records, guards, middleware, and mode configuration. Accepts either an array of route records (shorthand) or a full `RouterOptions` object with `routes`, `mode` (`"history"` | `"hash"`), `scrollBehavior`, `beforeEach`, `afterEach`, and `middleware`. The returned `Router` is generic over route names for typed programmatic navigation. See also: RouterProvider, useRouter, useRoute.',
+    notes: 'Create a router instance with route records, guards, middleware, and mode configuration. Accepts either an array of route records (shorthand) or a full `RouterOptions` object with `routes`, `mode` (`"history"` | `"hash"`), `scrollBehavior`, and global `beforeEach` / `afterEach` guard arrays (which run before any added later with `router.beforeEach()` / `router.afterEach()`, and are the form the native targets lower). Middleware is per-route (`RouteRecord.middleware`), not a router option. The returned `Router` is generic over route names for typed programmatic navigation. See also: RouterProvider, useRouter, useRoute.',
     mistakes: `- \`createRouter({ routes: [...], mode: "hash" })\` and using \`window.location.hash\` elsewhere — hash mode uses \`history.pushState\`, not \`location.hash\`. Reading \`location.hash\` directly will not reflect router state
 - Defining route paths without leading \`/\` in root routes — all root-level paths must start with \`/\`
 - Using \`redirect: "/target"\` with a guard on the same route — redirects bypass guards. Use \`beforeEnter\` to conditionally redirect instead
@@ -5085,13 +5089,30 @@ const status = signal<'idle' | 'picked' | 'cancelled'>('idle')
   const uri = await picker.pick()
   status.set(uri === null ? 'cancelled' : 'picked')
 }}>Pick a photo</button>`,
-    notes: `Pick an image from the device's photo library — PHPickerViewController (iOS), the Android Photo Picker (\`PickVisualMedia\`), a hidden file input (web). The SECOND async-result hook (after \`useBiometrics\`): \`pick()\` returns a \`Promise<string | null>\` you \`await\`, resolving a URI string or \`null\` when the user cancels; it never rejects. Under PMTC the async-await lowering wraps the awaiting handler in a Swift \`Task { … }\` / Kotlin \`pyreonAsyncScope.launch { … }\`. Requires NO photo-library permission on either native platform — both system pickers run out of process and hand back only the chosen asset, so there is no Info.plist usage description and no Android runtime permission to request. See also: useBiometrics, useShare.`,
+    notes: `Pick an image from the device's photo library — PHPickerViewController (iOS), the Android Photo Picker (\`PickVisualMedia\`), a hidden file input (web). The SECOND async-result hook (after \`useBiometrics\`): \`pick()\` returns a \`Promise<string | null>\` you \`await\`, resolving a URI string or \`null\` when the user cancels; it never rejects. Under PMTC the async-await lowering wraps the awaiting handler in a Swift \`Task { … }\` / Kotlin \`pyreonAsyncScope.launch { … }\`. Requires NO photo-library permission on either native platform — both system pickers run out of process and hand back only the chosen asset, so there is no Info.plist usage description and no Android runtime permission to request. See also: useBiometrics, useShare, fileFromUri.`,
     mistakes: `- Testing the result for TRUTHINESS (\`uri ? … : …\`) instead of comparing to null (\`uri === null\`). JS truthiness is not a native Bool — the explicit null comparison is what PMTC lowers to \`uri == nil\` (Swift) / \`uri == null\` (Kotlin), and it is also correct on the web (an empty-string URI is not a cancellation).
 - Calling \`picker.pick()\` WITHOUT \`await\` inside a plain (non-async) handler — it returns a \`Promise<string | null>\`, not a URI. Mark the handler \`async\` and \`await\` it (PMTC wraps that async handler in a native \`Task\`/coroutine scope; a sync action slot cannot await).
 - Treating the returned URI as a stable, persistable path. It is an opaque, platform-shaped, EPHEMERAL handle — a \`file://\` temp copy on iOS, a \`content://\` URI on Android, a \`blob:\` object URL on the web. Hand it to an image view or an upload; do not store it and expect it to resolve later.
 - Requesting a photo-library permission before calling \`pick()\`. Neither platform needs one — asking for it is a policy liability (App Store / Play review scrutiny) for zero benefit, and is exactly what the out-of-process pickers exist to avoid.
 - Expecting a cancellation to reject. It resolves \`null\`, so a \`try/catch\` around \`pick()\` will never see the cancel path — branch on the result instead.
 - Forgetting to revoke the web object URL when picking repeatedly in a long-lived view. The web fallback returns \`URL.createObjectURL(file)\`; call \`URL.revokeObjectURL(uri)\` once the image is no longer displayed if you pick many times, or the blobs accumulate for the page lifetime.`,
+  },
+
+  'hooks/fileFromUri': {
+    signature: 'fileFromUri(uri: string, options?: { name?: string; type?: string }) => Promise<File>',
+    example: `const picker = useImagePicker()
+const uploadAvatar = api.endpoint('POST /me/avatar')
+
+const change = async () => {
+  const uri = await picker.pick()
+  if (uri === null) return
+  await uploadAvatar({ multipart: { avatar: await fileFromUri(uri, { name: 'avatar.jpg' }), caption: caption() } })
+}`,
+    notes: `Turn the URI a picker or the camera resolved into a file a request can send. A URI is a HANDLE, not the file: passing it straight into a request body sends the URI's text on every platform. Web: the picker's own \`File\` (real name and type) when the URI came from \`useImagePicker\` / \`useFilePicker\` / \`useCamera\`, else the bytes read through \`fetch\` (\`blob:\`, \`data:\`, same-origin). Under PMTC it lowers to \`PyreonUploadFile.from\` (Android reads through the app's \`ContentResolver\`), and a \`@pyreon/http\` request carrying it in \`multipart\` or as its \`body\` STREAMS the file from disk when sent — a large video is never read into memory. Rejects when the URI cannot be read. See also: useImagePicker, useFilePicker, useCamera.`,
+    mistakes: `- Putting the picker URI itself in the body (\`multipart: { avatar: uri }\`). That sends the URI as a TEXT part on every platform — the server receives a path string, not the image.
+- Calling it without \`await\`. On the web it returns a Promise, and a Promise in a body is sent as \`[object Promise]\`; PMTC names the unawaited call instead of lowering it.
+- Relying on the default filename. A native picker hands back a temporary copy whose name is not always the original (an iOS photo arrives as a UUID-named \`.jpg\`), so pass \`name\` when the server cares — that is what makes every platform send the same part.
+- Resolving the file long before the request. It is a handle to an ephemeral picker copy; resolve and send it in the same handler.`,
   },
 
   'hooks/useBiometrics': {

@@ -104,7 +104,7 @@ return json({ data: result.data }) // keyed by matched-chain index`,
       kind: 'function',
       signature: 'createRouter(options: RouterOptions | RouteRecord[]): Router',
       summary:
-        'Create a router instance with route records, guards, middleware, and mode configuration. Accepts either an array of route records (shorthand) or a full `RouterOptions` object with `routes`, `mode` (`"history"` | `"hash"`), `scrollBehavior`, `beforeEach`, `afterEach`, and `middleware`. The returned `Router` is generic over route names for typed programmatic navigation.',
+        'Create a router instance with route records, guards, middleware, and mode configuration. Accepts either an array of route records (shorthand) or a full `RouterOptions` object with `routes`, `mode` (`"history"` | `"hash"`), `scrollBehavior`, and global `beforeEach` / `afterEach` guard arrays (which run before any added later with `router.beforeEach()` / `router.afterEach()`, and are the form the native targets lower). Middleware is per-route (`RouteRecord.middleware`), not a router option. The returned `Router` is generic over route names for typed programmatic navigation.',
       example: `const router = createRouter([
   { path: "/", component: Home },
   { path: "/user/:id", component: User, loader: ({ params }) => fetchUser(params.id) },

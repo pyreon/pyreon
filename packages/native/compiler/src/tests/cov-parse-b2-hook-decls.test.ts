@@ -110,13 +110,13 @@ describe('parse.ts — useFetch request init', () => {
     expect(r.warnings.join('\n')).toContain('useFetch init must be an object literal to lower to native; got Literal')
   })
 
-  it('warns when method / body are not string literals', () => {
+  it('warns when method is not a string literal; a runtime body lowers (#3978)', () => {
     expect(swift(body(`  declare const m: string\n  const q = useFetch<Resp>('https://x', { method: m })`)).warnings.join('\n')).toContain(
       'useFetch method must be a string literal',
     )
-    expect(
-      swift(body(`  const q = useFetch<Resp>('https://x', { method: 'POST', body: JSON.stringify({a:1}) })`)).warnings.join('\n'),
-    ).toContain('useFetch body must be a string literal')
+    const r = swift(body(`  const q = useFetch<Resp>('https://x', { method: 'POST', body: JSON.stringify({a:1}) })`))
+    expect(r.warnings.join('\n')).not.toContain('body must be')
+    expect(r.code).toMatch(/body: Data\(\(PyreonJSON\.stringify\(/)
   })
 
   it('warns when headers is not an object literal, and per non-literal header value', () => {

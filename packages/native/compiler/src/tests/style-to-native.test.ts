@@ -286,7 +286,7 @@ describe('dynamic inline style → reactive conditional modifiers (emit)', () =>
 
   it('a non-ternary dynamic style still warns + drops (style={obj})', () => {
     const { warnings } = dynSwift(`<Stack style={someObj}><Text>x</Text></Stack>`)
-    expect(warnings.join('\n')).toMatch(/only a static inline-style object literal, or a two-branch ternary/)
+    expect(warnings.join('\n')).toMatch(/only a static inline-style object literal, or a ternary whose branches are object literals/)
   })
 })
 

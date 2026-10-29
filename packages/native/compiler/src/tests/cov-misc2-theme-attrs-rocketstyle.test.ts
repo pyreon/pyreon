@@ -423,14 +423,14 @@ export function App({ hot }: { hot: boolean }) { return (${usage}) }`
     expect(w).toContain('a dynamic dimension must be a ternary of TWO DECLARED state values')
   })
 
-  it('warns and falls back to the FIRST branch when TWO dimensions are dynamic', () => {
-    const w = swift(
+  it('lowers TWO dynamic dimensions without a warning (a nested conditional over their product)', () => {
+    const r = swift(
       src(
         `<Btn state={hot ? 'danger' : 'primary'} size={hot ? 'large' : 'small'}><Text>x</Text></Btn>`,
       ),
-    ).warnings.join('\n')
-    expect(w).toContain('more than one dynamic dimension prop')
-    expect(w).toContain('resolved to its FIRST branch')
+    )
+    expect(r.warnings).toEqual([])
+    expect(r.code).toMatch(/\(hot\) \? \(\(hot\) \? /)
   })
 })
 

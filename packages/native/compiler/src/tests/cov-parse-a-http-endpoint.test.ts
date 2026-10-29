@@ -145,10 +145,9 @@ describe('endpoint call-site `query`', () => {
     expect(bakedUrl(EP, `ep({ query: { tag: ['a', null, 'b'] } })`)).toBe('"/api/users?tag=a&tag=b"')
   })
 
-  it('a non-literal value is NAMED by key, and the parameter is omitted', () => {
-    const w = warns(EP, `ep({ query: { page: runtime } })`)
-    expect(w.some((m) => m.includes('query parameter `page`'))).toBe(true)
-    expect(bakedUrl(EP, `ep({ query: { page: runtime } })`)).toBe('"/api/users"')
+  it('a runtime value is serialized at request time by PyreonURL.query (#3978)', () => {
+    expect(warns(EP, `ep({ query: { page: runtime } })`)).toEqual([])
+    expect(run(EP, `ep({ query: { page: runtime } })`).code).toContain('"/api/users\\(PyreonURL.query("?", "page", runtime))"')
   })
 
   it('a non-literal ARRAY ELEMENT is named by its key', () => {
@@ -228,33 +227,35 @@ describe('endpoint call-site `json` and `headers`', () => {
     expect(run(`const ep = api.endpoint('POST /users')`, `ep({ json: null })`).warnings).toEqual([])
   })
 
-  it('a non-literal body element is named', () => {
-    expect(warns(`const ep = api.endpoint('POST /users')`, `ep({ json: [runtime] })`)
-      .some((m) => m.includes('the `json` body must be a literal'))).toBe(true)
+  it('a runtime body is serialized by the JSON.stringify lowering (#3978)', () => {
+    expect(warns(`const ep = api.endpoint('POST /users')`, `ep({ json: [runtime] })`)).toEqual([])
+    expect(run(`const ep = api.endpoint('POST /users')`, `ep({ json: [runtime] })`).code).toContain(
+      'body: Data((PyreonJSON.stringify([runtime])).utf8)',
+    )
   })
 
-  it('a COMPUTED key inside the body makes it unreadable', () => {
+  it('a COMPUTED key inside the body is named (a struct needs static field names)', () => {
     expect(warns(`const ep = api.endpoint('POST /users')`, `ep({ json: { [k]: 1 } })`)
-      .some((m) => m.includes('the `json` body must be a literal'))).toBe(true)
+      .some((m) => m.includes('Computed object keys'))).toBe(true)
   })
 
-  it('a unary operator over a non-number is not a literal', () => {
-    expect(warns(`const ep = api.endpoint('POST /users')`, `ep({ json: -'a' })`)
-      .some((m) => m.includes('the `json` body must be a literal'))).toBe(true)
+  it('a unary operator over a string (NaN on the web) is named and sends no body', () => {
+    const r = run(`const ep = api.endpoint('POST /users')`, `ep({ json: -'a' })`)
+    expect(r.warnings.some((m) => m.includes('unary operator over a string'))).toBe(true)
+    expect(r.code).not.toContain('body: Data')
   })
 
-  it('a per-call `headers` REPLACES the declaration\'s, mirroring the web', () => {
+  it('a per-call `headers` MERGES over the declaration\'s, as the web mergeHeaders does', () => {
     const r = run(
       `const ep = api.endpoint('POST /users', { headers: { 'x-decl': 'd' } })`,
       `ep({ headers: { 'x-call': 'c' } })`,
     )
-    expect(r.code).toContain('"x-call"')
-    expect(r.code).not.toContain('"x-decl"')
+    expect(r.code).toContain('headers: ["x-decl": "d", "x-call": "c"]')
   })
 
-  it('a non-string call header is named by key', () => {
-    expect(warns(`const ep = api.endpoint('POST /users')`, `ep({ headers: { 'x-a': 1 } })`)
-      .some((m) => m.includes('`headers.x-a`'))).toBe(true)
+  it('a number call header is sent as String(value), as the web sends it', () => {
+    expect(warns(`const ep = api.endpoint('POST /users')`, `ep({ headers: { 'x-a': 1 } })`)).toEqual([])
+    expect(run(`const ep = api.endpoint('POST /users')`, `ep({ headers: { 'x-a': 1 } })`).code).toContain('"x-a": "1"')
   })
 
   it('a `headers` that is not an object literal is named', () => {

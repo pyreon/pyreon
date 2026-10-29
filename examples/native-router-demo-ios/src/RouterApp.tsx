@@ -700,6 +700,7 @@ function AboutPage() {
           both platforms and is a deliberate, separate decision. */}
       <Button onPress={() => navigate('/lifecycle')}>View lifecycle</Button>
       <Button onPress={() => navigate('/loaded')}>View loaded</Button>
+      <Button onPress={() => navigate('/guarded')}>Try guarded</Button>
       <Button onPress={() => navigate('/')}>Back to Home</Button>
       {/* The keyed list goes LAST: its Compose lowering is a LazyColumn,
           which fills the parent Column's remaining height — siblings after
@@ -807,6 +808,18 @@ function HttpPage() {
 // Route loader data, destructured. On the web the loader runs before this page renders; natively it runs on
 // appear, so this page proves three things on device: the page waits for its data instead of rendering without it,
 // the destructured fields lower, and `onMount` sees the data (it runs after the data exists, as on the web).
+// A global guard, written inline the way most apps write one. It blocks one path; the device tests try to reach it
+// and assert they stay where they were — the guard runs in the real native router on iOS and Android.
+const GUARDED_PATH = '/guarded'
+
+function GuardedPage() {
+  return (
+    <Stack gap={3} padding={4} data-testid="guarded-page">
+      <Text>This page is behind a beforeEach guard and must never render.</Text>
+    </Stack>
+  )
+}
+
 type Loaded = { title: string; views: number }
 
 function LoadedPage() {
@@ -849,7 +862,9 @@ export function RouterApp() {
       { path: '/media', component: MediaPage },
       { path: '/http', component: HttpPage },
       { path: '/loaded', component: LoadedPage, loader: (): Loaded => ({ title: 'Loaded title', views: 42 }) },
+      { path: GUARDED_PATH, component: GuardedPage },
     ],
+    beforeEach: [(to) => to.path !== GUARDED_PATH],
   })
 
   return (

@@ -608,10 +608,10 @@ A container that animates its own SIZE as rows enter and leave the keyed list in
 ### `WebView` `component`
 
 ```ts
-(props: { html?: string; src?: string; data?: unknown; onMessage?: (message: string) => void }) => VNode
+(props: { html?: string; src?: string; data?: unknown; onMessage?: (message: string) => void; domStorage?: boolean; grow?: boolean }) => VNode
 ```
 
-Host a web page/component natively (WKWebView on iOS, Android WebView; `<iframe srcdoc>` on web). THE escape hatch for web-only packages (flow/code/document) on native — they run inside the WebView. Bidirectional bridge: `data` is pushed in as `window.__pyreonData` (+ a `pyreondata` event, live, no reload); the page calls `window.pyreonPostMessage(payload)` → your `onMessage` closure. `domStorage` (default true, native-only literal) keeps `localStorage` available in the hosted page (Android disables it by default; `false` opts out).
+Host a web page/component natively (WKWebView on iOS, Android WebView; `<iframe srcdoc>` on web). THE escape hatch for web-only packages (flow/code/document) on native — they run inside the WebView. Bidirectional bridge: `data` is pushed in as `window.__pyreonData` (+ a `pyreondata` event, live, no reload); the page calls `window.pyreonPostMessage(payload)` → your `onMessage` closure. `domStorage` (default true, native-only literal) keeps `localStorage` available in the hosted page (Android disables it by default; `false` opts out). SIZING: unsized it is the `<iframe>` default on every target — full width, 150 high; `grow` (literal, native) takes the free main-axis space of its parent `<Stack>`/`<Inline>` (`Modifier.weight(1f)` / a greedy SwiftUI frame / `flex: 1 1 150px`), fills a non-stack parent, and keeps 150 inside a `<Scroll>` (warned + dropped on native). BROWSER CHROME works natively: `<input type=file>` (picker, or camera for `capture` via the app's FileProvider), `alert`/`confirm`/`prompt` as native dialogs, geolocation / camera / microphone after a per-site consent AND only for permissions the app declares (AndroidManifest / Info.plist usage string), `window.open` / `target=_blank` handed to the system browser for http(s)/mailto/tel/sms.
 
 **Example**
 
@@ -623,6 +623,10 @@ Host a web page/component natively (WKWebView on iOS, Android WebView; `<iframe 
 
 - Using it for core UI (nav/forms/lists) — pays WebView boot + bundle cost; use native primitives there. Reserve &lt;WebView&gt; for self-contained web-island panes (editors/diagrams)
 - Expecting native look-and-feel — content renders as a web view, not native widgets
+- Expecting an unsized WebView to fill the screen — it is 150 high on every target (the iframe default); pass `grow` as a direct child of the `<Stack>` whose remaining space it should take
+- Putting `grow` inside a `<Scroll>` — there is no free space to fill; native drops it with a warning and the view stays 150 high
+- Expecting a hosted page to read the location or camera without declaring it — add the permission (AndroidManifest) / usage string (Info.plist); an undeclared one is denied and logged
+- Expecting `target="_blank"` to open inside the view — it hands the URL to the system browser (http(s)/mailto/tel/sms only), keeping the hosted page in place
 
 **See also:** `Web` · `connectWebHost`
 

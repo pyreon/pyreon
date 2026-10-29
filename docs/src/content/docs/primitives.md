@@ -922,6 +922,7 @@ page sends back.
 | `data` | any JSON value, re-sent when it changes |
 | `onMessage` | `(message: string) => void` |
 | `domStorage` | `boolean`, default `true`; native only, literal value |
+| `grow` | `boolean`, default `false`; literal value on native |
 
 ```tsx
 // @check
@@ -952,6 +953,41 @@ export function ChartHost() {
   WebKit cannot switch Web Storage off). Storage is per origin; every page
   loaded with inline `html` shares the app's `file:///android_asset/` origin on
   Android, so give a page that needs isolated storage a `src`.
+- **Sizing**: without `grow` a web view is what an `<iframe>` with no CSS is,
+  on every target: as wide as its parent and **150 high**. With `grow` it takes
+  the free space of its parent `<Stack>` (height) or `<Inline>` (width) after
+  the siblings, and several growing views share it equally. Outside a stack it
+  fills its parent. Inside a `<Scroll>` there is no free space to take, so it
+  stays 150 high (the compiler warns and drops the prop). On the web, a root
+  `<Stack>` only has free height when the page gives it one (`height: 100vh`),
+  which a native screen always does.
+
+  ```tsx
+  <Stack>
+    <Text>Checkout</Text>
+    <WebView src="https://shop.example/checkout" grow />
+  </Stack>
+  ```
+
+- **Browser chrome**: what a hosted page asks of the browser around it works on
+  iOS and Android, not only on the web:
+
+  | page uses | iOS | Android |
+  | --- | --- | --- |
+  | `<input type="file">` | the system chooser | the document picker; the camera for `capture` (needs the scaffold's FileProvider) |
+  | `alert` / `confirm` / `prompt` | a native alert | a native dialog |
+  | `navigator.geolocation` | WebKit's per-site prompt | a per-site prompt, then the runtime permission |
+  | `getUserMedia` | WebKit's per-site prompt | a per-site prompt, then the runtime permission |
+  | `window.open`, `target="_blank"` | opened in the system browser | opened in the system browser |
+
+  Location, camera and microphone need the app to declare them: an Info.plist
+  usage string (`NSLocationWhenInUseUsageDescription`, `NSCameraUsageDescription`,
+  `NSMicrophoneUsageDescription`) and the AndroidManifest permission
+  (`ACCESS_FINE_LOCATION`, `CAMERA`, `RECORD_AUDIO`). The `create-multiplatform`
+  scaffold lists them commented out; uncomment the ones your pages use. An
+  undeclared one is refused, and Android logs which entry to add. Only
+  `http(s)`, `mailto`, `tel` and `sms` links are handed to the system, so a
+  hosted page cannot launch other apps through a custom scheme.
 - Inside the page, `connectWebHost()` from this package reads the data
   (`window.__pyreonData`, updated on each `pyreondata` event) and sends messages
   back. See the [multiplatform guide](/docs/multiplatform) for the full pattern.

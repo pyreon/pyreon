@@ -991,7 +991,29 @@ const status = signal<'idle' | 'picked' | 'cancelled'>('idle')
         'Expecting a cancellation to reject. It resolves `null`, so a `try/catch` around `pick()` will never see the cancel path — branch on the result instead.',
         'Forgetting to revoke the web object URL when picking repeatedly in a long-lived view. The web fallback returns `URL.createObjectURL(file)`; call `URL.revokeObjectURL(uri)` once the image is no longer displayed if you pick many times, or the blobs accumulate for the page lifetime.',
       ],
-      seeAlso: ['useBiometrics', 'useShare'],
+      seeAlso: ['useBiometrics', 'useShare', 'fileFromUri'],
+    },
+    {
+      name: 'fileFromUri',
+      kind: 'function',
+      signature: 'fileFromUri(uri: string, options?: { name?: string; type?: string }) => Promise<File>',
+      summary:
+        "Turn the URI a picker or the camera resolved into a file a request can send. A URI is a HANDLE, not the file: passing it straight into a request body sends the URI's text on every platform. Web: the picker's own `File` (real name and type) when the URI came from `useImagePicker` / `useFilePicker` / `useCamera`, else the bytes read through `fetch` (`blob:`, `data:`, same-origin). Under PMTC it lowers to `PyreonUploadFile.from` (Android reads through the app's `ContentResolver`), and a `@pyreon/http` request carrying it in `multipart` or as its `body` STREAMS the file from disk when sent — a large video is never read into memory. Rejects when the URI cannot be read.",
+      example: `const picker = useImagePicker()
+const uploadAvatar = api.endpoint('POST /me/avatar')
+
+const change = async () => {
+  const uri = await picker.pick()
+  if (uri === null) return
+  await uploadAvatar({ multipart: { avatar: await fileFromUri(uri, { name: 'avatar.jpg' }), caption: caption() } })
+}`,
+      mistakes: [
+        'Putting the picker URI itself in the body (`multipart: { avatar: uri }`). That sends the URI as a TEXT part on every platform — the server receives a path string, not the image.',
+        'Calling it without `await`. On the web it returns a Promise, and a Promise in a body is sent as `[object Promise]`; PMTC names the unawaited call instead of lowering it.',
+        'Relying on the default filename. A native picker hands back a temporary copy whose name is not always the original (an iOS photo arrives as a UUID-named `.jpg`), so pass `name` when the server cares — that is what makes every platform send the same part.',
+        'Resolving the file long before the request. It is a handle to an ephemeral picker copy; resolve and send it in the same handler.',
+      ],
+      seeAlso: ['useImagePicker', 'useFilePicker', 'useCamera'],
     },
     {
       name: 'useBiometrics',
