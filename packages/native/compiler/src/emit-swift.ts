@@ -7989,6 +7989,17 @@ function readStaticAttr(
   for (const a of e.attrs) {
     if (a.kind === 'attr' && a.name === name) {
       if (a.value.kind === 'literal') return a.value.value as string | number | boolean
+      // `-1` parses as a unary minus over a literal; it is as static as `1`.
+      // Without the fold every negative literal read as dynamic, so a
+      // lowering that needs a literal warned on it or took the dynamic path.
+      if (
+        a.value.kind === 'unary' &&
+        (a.value.op === '-' || a.value.op === '+') &&
+        a.value.argument.kind === 'literal' &&
+        typeof a.value.argument.value === 'number'
+      ) {
+        return a.value.op === '-' ? -a.value.argument.value : a.value.argument.value
+      }
       // Const-ref: `src={API_URL}` where API_URL is a module-level
       // `const` string/number/boolean binding. Resolve it to its
       // literal so naming a constant works as well as inlining it.
@@ -9655,7 +9666,35 @@ function emitSwiftRouterProvider(
   }
 
   let result: string
-  if (e.children.length === 0) {
+  // With routes known and `<RouterView />` sharing the content with SIBLINGS (a
+  // header, a nav bar, a `<Toaster />`), the RouterView alone becomes the
+  // navigation stack and the siblings render AROUND it, as written. Inside the
+  // stack's root, a sibling was covered the moment any screen was pushed — on
+  // the web it persists across navigation. The router is provided to the
+  // whole tree so a sibling (a header link) can still navigate. A lone
+  // RouterView keeps the shape below unchanged.
+  const meaningful = e.children.filter((c) => !(c.kind === 'text' && c.value.trim() === ''))
+  const loneRouterView =
+    meaningful.length === 1 &&
+    meaningful[0]!.kind === 'expr' &&
+    meaningful[0]!.expr.kind === 'jsx-element' &&
+    meaningful[0]!.expr.tag === 'RouterView'
+  if (routes !== undefined && routesBlock !== '' && !loneRouterView && subtreeHasRouterViewSwift(e.children)) {
+    const home = _activeHomeRouteSwift ?? 'RouterView()'
+    const table = routes
+    const prevSlot = _activeRouterSlotSwift
+    _activeRouterSlotSwift = (at) =>
+      `RouterProvider(router: ${routerExpr}) {\n${' '.repeat(at + 2)}${home}${emitSwiftNavigationDestination(table, at + 4)}\n${' '.repeat(at)}}`
+    try {
+      const body =
+        meaningful.length === 1
+          ? emitSwiftChild(meaningful[0]!, indent)
+          : `VStack(spacing: 0) {\n${meaningful.map((c) => pad + emitSwiftChild(c, indent + 2)).join('\n')}\n${' '.repeat(indent)}}`
+      result = `${body}\n${' '.repeat(indent)}.environment(\\.pyreonRouter, ${routerExpr})`
+    } finally {
+      _activeRouterSlotSwift = prevSlot
+    }
+  } else if (e.children.length === 0) {
     result = `RouterProvider(router: ${routerExpr}) { }`
   } else {
     const contentLines = e.children.map((c) => pad + emitSwiftChild(c, indent + 2)).join('\n')
@@ -10036,10 +10075,30 @@ function emitSwiftRouterView(
   if (_emittingLayoutComponentSwift) {
     return `content()`
   }
+  // The routed slot of a RouterProvider whose RouterView has siblings: the
+  // navigation stack itself, emitted here so the siblings stay outside it.
+  if (_activeRouterSlotSwift !== null) {
+    return _activeRouterSlotSwift(_indent)
+  }
   if (_activeHomeRouteSwift !== null) {
     return _activeHomeRouteSwift
   }
   return `RouterView()`
+}
+
+/**
+ * The navigation stack for the `<RouterProvider>` currently emitting, when its
+ * RouterView has siblings; null otherwise. Saved and restored per provider.
+ */
+let _activeRouterSlotSwift: ((indent: number) => string) | null = null
+
+/** Whether a `<RouterView />` appears anywhere in this JSX subtree. */
+function subtreeHasRouterViewSwift(node: unknown): boolean {
+  if (node === null || typeof node !== 'object') return false
+  if (Array.isArray(node)) return node.some(subtreeHasRouterViewSwift)
+  const n = node as { kind?: unknown; tag?: unknown }
+  if (n.kind === 'jsx-element' && n.tag === 'RouterView') return true
+  return Object.values(node).some(subtreeHasRouterViewSwift)
 }
 
 /**

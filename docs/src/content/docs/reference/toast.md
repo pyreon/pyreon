@@ -15,7 +15,7 @@ Imperative toast notifications for Pyreon. Call `toast()` from anywhere in your 
 
 **Tier:** Web-only — the browser package; the native story is stated below
 
-the core `toast(...)` + `<Toaster>` now lower to the native PyreonToast runtime (v1); the rich surface (toast.promise/update, options, animation) stays web
+the core `toast(...)` + `<Toaster>` lower to the native PyreonToast runtime: a screen-anchored overlay (a pass-through window on iOS, a window-anchored Popup on Android) styled per type, honouring literal position / max / gap / offset / duration, animating in and out, with a dismiss button (a literal `dismissible: false` hides it), and visible on every screen; the rich surface (toast.promise/update, description / icon / action, onDismiss, the hover/focus countdown pause) stays web
 
 **What crosses natively:** PyreonToast — the imperative `toast(...)` calls and `<Toaster />`
 

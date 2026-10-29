@@ -4,9 +4,9 @@
 //
 // The callee is whatever local name the file imported `toast` as (`import { toast as notify }`), so no registry
 // can key it by name: the plugin's `scanModule` records the local names and its `callExprs` recognizer matches a
-// call against them. The message is the first argument; a literal `duration` (ms) in the second-argument options
-// object sets the auto-dismiss (0 = persistent); the other options (`onDismiss`, `description`, `icon`, `action`)
-// are dropped in v1, and the preset method carries the type. `loading` has no distinct native variant, so it is
+// call against them. The message is the first argument; in the second-argument options object a literal `duration`
+// (ms) sets the auto-dismiss (0 = persistent) and a literal `dismissible: false` hides the card's dismiss button; the
+// other options (`onDismiss`, `description`, `icon`, `action`) are dropped, and the preset method carries the type. `loading` has no distinct native variant, so it is
 // an info toast.
 
 import {
@@ -34,6 +34,8 @@ const REAL_UNLOWERED: ReadonlySet<string> = new Set(['update', 'dismiss', 'remov
 interface ToastPayload {
   readonly toastType: string
   readonly durationMillis?: number
+  /** Only ever `false` — true is the runtime default and is not emitted. */
+  readonly dismissible?: false
 }
 
 const payloadOf = (e: ExtExprIR): ToastPayload => e.payload as unknown as ToastPayload
@@ -90,6 +92,7 @@ const recognizeToast: CallExprRecognizer = (site, ctx) => {
   const message = argNodes[0] ? ctx.expr(argNodes[0]) : ({ kind: 'literal', value: '' } as const)
   // A literal `duration` (ms) in the options object → auto-dismiss.
   let durationMillis: number | undefined
+  let dismissible: false | undefined
   const opts = argNodes[1]
   if (opts?.type === 'ObjectExpression') {
     for (const prop of (opts.properties as AnyNode[] | undefined) ?? []) {
@@ -102,11 +105,18 @@ const recognizeToast: CallExprRecognizer = (site, ctx) => {
       if (key === 'duration' && (val?.type === 'Literal' || val?.type === 'NumericLiteral') && typeof val.value === 'number') {
         durationMillis = val.value
       }
+      if (key === 'dismissible' && (val?.type === 'Literal' || val?.type === 'BooleanLiteral') && val.value === false) {
+        dismissible = false
+      }
     }
   }
   return {
     type: TOAST_EXPR,
-    payload: durationMillis !== undefined ? { toastType, durationMillis } : { toastType },
+    payload: {
+      toastType,
+      ...(durationMillis !== undefined ? { durationMillis } : {}),
+      ...(dismissible === false ? { dismissible } : {}),
+    },
     args: [message],
   }
 }
@@ -114,53 +124,129 @@ const recognizeToast: CallExprRecognizer = (site, ctx) => {
 const toastExpr: ExprEmitter = {
   // `toast("x")` → `PyreonToast.shared.add("x", type: "…")`; a literal duration (ms) is converted to seconds.
   swift(e, ctx) {
-    const { toastType, durationMillis } = payloadOf(e)
+    const { toastType, durationMillis, dismissible } = payloadOf(e)
     const duration = durationMillis !== undefined ? `, duration: ${durationMillis / 1000}` : ''
-    return `PyreonToast.shared.add(${ctx.expr(e.args[0]!)}, type: ${ctx.stringLiteral(toastType)}${duration})`
+    const closeButton = dismissible === false ? ', dismissible: false' : ''
+    return `PyreonToast.shared.add(${ctx.expr(e.args[0]!)}, type: ${ctx.stringLiteral(toastType)}${duration}${closeButton})`
   },
   // → `PyreonToast.add("x", "…")`; a literal duration is a `Long` of milliseconds.
   kotlin(e, ctx) {
-    const { toastType, durationMillis } = payloadOf(e)
+    const { toastType, durationMillis, dismissible } = payloadOf(e)
     const duration = durationMillis !== undefined ? `, ${durationMillis}L` : ''
-    return `PyreonToast.add(${ctx.expr(e.args[0]!)}, ${ctx.stringLiteral(toastType)}${duration})`
+    const closeButton = dismissible === false ? ', dismissible = false' : ''
+    return `PyreonToast.add(${ctx.expr(e.args[0]!)}, ${ctx.stringLiteral(toastType)}${duration}${closeButton})`
   },
   // The node was a closed `toast-call` compiler kind before it moved here; the struct names the compiler derives
   // from an expression's shape hash it under that name, so emitted names did not move.
   legacyHash: (e) => ({ kind: TOAST_EXPR, message: e.args[0], ...payloadOf(e) }),
 }
 
+/** The web `ToastPosition` values, the only ones the native toaster understands. */
+const TOAST_POSITIONS: ReadonlySet<string> = new Set([
+  'top-left',
+  'top-center',
+  'top-right',
+  'bottom-left',
+  'bottom-center',
+  'bottom-right',
+])
+
+/** `<Toaster>`'s props, as literal values. Absent props keep the runtime default. */
+interface ToasterArgs {
+  position?: string
+  max?: number
+  gap?: number
+  offset?: number
+  duration?: number
+}
+
+/** The element a lowering receives (not exported by the plugin API by name). */
+type JsxElementIR = Parameters<NonNullable<NonNullable<ElementLowering['emit']>['swift']>>[0]
+
+type StaticReader = {
+  staticAttr(el: JsxElementIR, name: string): string | number | boolean | undefined
+  warn(message: string): void
+}
+
 /**
- * `<Toaster />` → a native overlay over the reactive `PyreonToast` queue. Reading the queue subscribes the
- * view (an `@Observable` on SwiftUI, a `MutableState` on Compose), so it re-renders as toasts appear and expire.
- * v1: a vertical stack of the active messages, placed where the app puts it (typically the root); positioning,
- * per-type styling and enter/leave animation are a follow-up.
+ * Read `<Toaster>`'s props. Each must be a literal (or a const resolving to one):
+ * the overlay is configured once, so a dynamic or invalid value is warned BY NAME
+ * and that prop keeps its default, rather than vanishing silently.
+ */
+function toasterArgs(el: JsxElementIR, ctx: StaticReader): ToasterArgs {
+  const out: ToasterArgs = {}
+  const present = new Set(
+    el.attrs.flatMap((a) => (a.kind === 'attr' ? [a.name] : [])),
+  )
+  const bad = (name: string, why: string): void =>
+    ctx.warn(`[pyreon-native] <Toaster ${name}> ${why} — the native toaster keeps its default ${name}.`)
+  if (present.has('position')) {
+    const v = ctx.staticAttr(el, 'position')
+    if (typeof v === 'string' && TOAST_POSITIONS.has(v)) out.position = v
+    else bad('position', v === undefined ? 'is not a literal' : `must be one of ${[...TOAST_POSITIONS].join(' / ')}`)
+  }
+  for (const name of ['max', 'gap', 'offset', 'duration'] as const) {
+    if (!present.has(name)) continue
+    const v = ctx.staticAttr(el, name)
+    if (typeof v !== 'number') {
+      bad(name, 'is not a literal number')
+      continue
+    }
+    const integral = name === 'max' || name === 'duration'
+    // The web treats a non-finite or negative duration as persistent (0).
+    if (name === 'duration' && (!Number.isFinite(v) || v < 0)) {
+      out.duration = 0
+      continue
+    }
+    if (!Number.isFinite(v) || v < 0 || (integral && !Number.isInteger(v))) {
+      bad(name, integral ? 'must be a non-negative integer' : 'must be a non-negative number')
+      continue
+    }
+    out[name] = v
+  }
+  for (const a of el.attrs) {
+    if (a.kind !== 'attr') ctx.warn('[pyreon-native] a spread on <Toaster> is not lowered — only literal position / max / gap / offset / duration props configure the native toaster.')
+  }
+  return out
+}
+
+/** A Kotlin `Double` literal (`8` would be an `Int` and fail to typecheck). */
+const kotlinDouble = (n: number): string => (Number.isInteger(n) ? `${n}.0` : String(n))
+
+/**
+ * `<Toaster />` → the runtime's screen-anchored overlay. On the web the Toaster
+ * is a `position: fixed` portal: no layout space, a screen corner, stays put
+ * across navigation. It used to lower to an inline `VStack` / `Column` of
+ * `Text`s, which pushed the layout, sat wherever the tag was written, and on
+ * iOS vanished on every pushed screen (the tag sits in the NavigationStack's
+ * root). `PyreonToaster` is an overlay window on iOS and a window-anchored
+ * `Popup` on Android, styled after the web stylesheet. Arguments keep the
+ * runtime's parameter order, which Swift's labelled arguments require.
  */
 const toasterElements: readonly ElementLowering[] = [
   {
     module: '@pyreon/toast',
     tags: ['Toaster'],
     emit: {
-      swift(_el, ctx) {
-        const p = ctx.pad(ctx.indent + 2)
-        const pi = ctx.pad(ctx.indent + 4)
-        return (
-          `VStack(spacing: 8) {\n` +
-          `${p}ForEach(PyreonToast.shared.toasts, id: \\.id) { __toast in\n` +
-          `${pi}Text(__toast.message)\n` +
-          `${p}}\n` +
-          `${ctx.pad(ctx.indent)}}`
-        )
+      swift(el, ctx) {
+        const a = toasterArgs(el, ctx)
+        const args: string[] = []
+        if (a.position !== undefined) args.push(`position: ${ctx.stringLiteral(a.position)}`)
+        if (a.max !== undefined) args.push(`max: ${a.max}`)
+        if (a.gap !== undefined) args.push(`gap: ${a.gap}`)
+        if (a.offset !== undefined) args.push(`offset: ${a.offset}`)
+        if (a.duration !== undefined) args.push(`duration: ${a.duration}`)
+        return `PyreonToaster(${args.join(', ')})`
       },
-      kotlin(_el, ctx) {
-        const p = ctx.pad(ctx.indent + 2)
-        const pi = ctx.pad(ctx.indent + 4)
-        return (
-          `Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {\n` +
-          `${p}PyreonToast.toasts.value.forEach { __toast ->\n` +
-          `${pi}Text(text = __toast.message)\n` +
-          `${p}}\n` +
-          `${ctx.pad(ctx.indent)}}`
-        )
+      kotlin(el, ctx) {
+        const a = toasterArgs(el, ctx)
+        const args: string[] = []
+        if (a.position !== undefined) args.push(`position = ${ctx.stringLiteral(a.position)}`)
+        if (a.max !== undefined) args.push(`max = ${a.max}L`)
+        if (a.gap !== undefined) args.push(`gap = ${kotlinDouble(a.gap)}`)
+        if (a.offset !== undefined) args.push(`offset = ${kotlinDouble(a.offset)}`)
+        if (a.duration !== undefined) args.push(`duration = ${a.duration}L`)
+        return `PyreonToaster(${args.join(', ')})`
       },
     },
   },

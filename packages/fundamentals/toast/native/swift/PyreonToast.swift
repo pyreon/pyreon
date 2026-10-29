@@ -28,10 +28,13 @@ public struct PyreonToastItem: Identifiable, Equatable, Sendable {
     public let message: String
     /// `"info" | "success" | "warning" | "error"` — drives the overlay's color.
     public let type: String
-    public init(id: String, message: String, type: String) {
+    /// Shows the card's dismiss button. Default true, as on the web.
+    public let dismissible: Bool
+    public init(id: String, message: String, type: String, dismissible: Bool = true) {
         self.id = id
         self.message = message
         self.type = type
+        self.dismissible = dismissible
     }
 }
 
@@ -62,10 +65,10 @@ public final class PyreonToast {
     /// until dismissed). The id is a monotonic counter, NOT a timestamp, so two
     /// `add()`s in the same millisecond get distinct ids.
     @discardableResult
-    public func add(_ message: String, type: String = "info", duration: TimeInterval? = nil) -> String {
+    public func add(_ message: String, type: String = "info", duration: TimeInterval? = nil, dismissible: Bool = true) -> String {
         counter += 1
         let id = "toast-\(counter)"
-        toasts.append(PyreonToastItem(id: id, message: message, type: type))
+        toasts.append(PyreonToastItem(id: id, message: message, type: type, dismissible: dismissible))
         // Bound the stack: drop the oldest beyond the cap.
         if toasts.count > maxToasts {
             toasts.removeFirst(toasts.count - maxToasts)
