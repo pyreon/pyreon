@@ -1,5 +1,60 @@
 # @pyreon/http
 
+## 0.54.0
+
+### Minor Changes
+
+- [#4065](https://github.com/pyreon/pyreon/pull/4065) [`1cc7355`](https://github.com/pyreon/pyreon/commit/1cc7355def1b6470e1ac7961469e4608c819f79a) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `createHttp({ use: [...] })` middleware now crosses to iOS and Android.
+
+  Until now the client's `use` array was never read by the native compiler, so an endpoint call on a `use: [bearer(...)]` client lowered to a native request with no `Authorization` header, and a `retry()` client to one that never retried — on both targets, with no warning.
+
+  A literal `use` array now lowers when its entries are statically readable: `bearer(() => useSession().store.token(), { crossOrigin })`, `retry({ limit, methods, statuses, network, respectRetryAfter, maxDelay })` and `logger({ production })` become a `PyreonHttpMiddleware` list that the `useFetch` and `useQuery` harnesses pass to `PyreonHttp.send(…, middleware:)`. Both runtimes apply it as an onion with the web's semantics — array order, the same full-jitter backoff and `Retry-After` handling, the same header replacement and `baseUrl` origin boundary — and a differential test runs the web middleware and both native runtimes on 28 shared scenarios. `forwardHeaders` lowers to nothing, as it does in a browser.
+
+  Anything that cannot lower — `refresh`, `dedupe`, a custom middleware function, a `backoff` or `log` callback, a non-literal option, a token that reads a file-scope `signal()` — now keeps every call on that client on the web, with a warning naming the entry, instead of producing a request the web would never send. `useStream` refuses a client with middleware by name.
+
+  On Android, `logger()` cannot see the app's `BuildConfig`; set `PyreonHttpPipelineEnv.debugBuild = BuildConfig.DEBUG` at startup to silence it in release builds.
+
+- [#4061](https://github.com/pyreon/pyreon/pull/4061) [`fd8d8ec`](https://github.com/pyreon/pyreon/commit/fd8d8ec5b359691205defe02c7184f5a331ae155) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Native apps can upload picked images and files ([#3979](https://github.com/pyreon/pyreon/issues/3979)).
+
+  - New `fileFromUri(uri, { name, type })` in `@pyreon/hooks` turns the URI a picker or the camera returned into a file a request can send. On the web it returns the picker's own `File`, with its real name and type, or reads the URI through `fetch`. On iOS and Android it becomes a `PyreonUploadFile`. Android reads `content://` URIs through the app's `ContentResolver`. The file is streamed from disk when the request is sent, so a large video is never held in memory.
+  - An endpoint call's `multipart` body lowers to the new `PyreonMultipartBody`. Parts keep source order. A struct value is sent as a `JSON.stringify` text part, and an array sends one part per element. Names, filenames and text values are normalized and escaped the way `FormData` does it. An executed test checks the runtime writer byte for byte against the web's `FormData` on both targets.
+  - `body: file` sends the file's bytes as the whole body, typed by the file. A string `body` is a text body.
+  - A `form` body is encoded by the web's own `encodeForm` at compile time when every value is a literal. When a value is only known at runtime, `PyreonURL.query` encodes it when the request is sent.
+  - A `data:` URI is decoded the way `fetch` decodes it: percent escapes become raw bytes, `;base64` matches in any case, and a URI with no type defaults to `text/plain;charset=US-ASCII`.
+  - Named warnings: an unawaited `fileFromUri`, two body encodings in one call, a runtime array of objects in `multipart`, and a nested object in `form`.
+  - `useImagePicker().pick()`, `useFilePicker().pick()` and `useCamera().capture()` are now typed as `String?` natively. `if (uri === null) return` therefore narrows the URI for the code after it on iOS. Before, every later read was an optional and failed to compile.
+  - Fixed: an early `return` inside an event handler did not compile on Android. Kotlin forbids a bare `return` in a lambda. An async handler now emits `return@launch`, and a plain handler is labelled.
+  - Fixed: on iOS, a value of a type declared at file scope, such as `interface Meta { … }`, was not recognized as a struct inside a request. iOS and Android could therefore encode the same field differently.
+
+- [#4061](https://github.com/pyreon/pyreon/pull/4061) [`fd8d8ec`](https://github.com/pyreon/pyreon/commit/fd8d8ec5b359691205defe02c7184f5a331ae155) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Native requests can now carry what the user entered ([#3978](https://github.com/pyreon/pyreon/issues/3978)).
+
+  - `useMutation` lowers on iOS and Android. `useMutation<T>(endpoint.mutation())` and `useMutation({ mutationFn: (vars) => endpoint({ json: vars }) })` become a `PyreonMutation` container with `mutate`, `mutateAsync`, `reset` and `data` / `error` / `status` / `isPending` / `isSuccess` / `isError` / `isIdle`. Each request is built where `mutate` is called, so it carries the values of that moment. The latest call owns the state, and `onSuccess` / `onError` / `onSettled` run in TanStack Query's order at both layers. When the view goes away nothing is written and no callback runs; the request itself is not aborted. `invalidates`, `onMutate` and `retry` produce a named warning.
+  - An endpoint awaited in an `async` event handler (`await signIn({ json: { email: email() } })`) lowers to the new `PyreonHttp.call`. A non-2xx rejects and ends the handler there; the failure is reported to the log instead of crashing the app on Android. A call that is not awaited is sent fire-and-forget. Reading the awaited value has no decode type natively and gets a warning pointing at `useMutation<T>`.
+  - Endpoint calls accept runtime values: a `json` body (serialized byte for byte like the web's `JSON.stringify`), header values, and query values. Query values are serialized at request time by the new `PyreonURL.query`, which matches the web's `buildQuery`.
+  - `useFetch` and a `useQuery` `fetch` accept a runtime `body` (`JSON.stringify(draft)`).
+  - Per-call headers now merge over an endpoint's declared headers, as the web does. Before, they replaced them. A number or boolean header value is sent as its string, and a `null` one removes the header.
+  - A string body sent without a content type now gets `text/plain;charset=UTF-8`, the Fetch standard default. Before, iOS, Android and the web each sent something different.
+
+### Patch Changes
+
+- [#3916](https://github.com/pyreon/pyreon/pull/3916) [`84d95f8`](https://github.com/pyreon/pyreon/commit/84d95f86cd0239bb77ce96c2108e05bcbf02c4b6) Thanks [@vitbokisch](https://github.com/vitbokisch)! - A request with a timeout or a caller `signal` no longer registers and removes an `abort` event listener for each body read. The client watches its own abort link with a plain callback instead, since every abort of that signal goes through the client (the timer or the forwarded caller abort). This saves ~190 ns per read: the `GET with 5s timeout` benchmark row went from 1.72–1.94 µs to 1.57–1.58 µs, which ties ofetch where it was 1.1–1.2× ahead.
+
+- [#3909](https://github.com/pyreon/pyreon/pull/3909) [`d8cacf8`](https://github.com/pyreon/pyreon/commit/d8cacf879dd4a61fe0cd4f46141e6d511a6b27cb) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Creating a client without `use` or `meta` no longer allocates an empty middleware array and meta object for it; those are shared, read-only values. `createHttp({ baseUrl, headers })` measured ~153 → ~118 ns, level with ofetch.
+
+- [#4009](https://github.com/pyreon/pyreon/pull/4009) [`282ed1a`](https://github.com/pyreon/pyreon/commit/282ed1ae49ab3f6be24cdcc290de97654ab42c2b) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Documentation only, corrected from the docs accuracy audit. These texts feed `llms.txt`, the MCP reference and the generated docs:
+
+  - `@pyreon/validation`: the native-tier note spelled the ArkType adapter `arkTypeSchema`; the export is `arktypeSchema`.
+  - `@pyreon/http`: the native note said `useQuery` over an endpoint lowers with literal params only. A runtime path param now lowers too, encoded at request time and keying the cache; only `useFetch` needs literal params.
+  - `@pyreon/feature`: the `schema` doc comment said a runtime schema must have `safeParseAsync`. Any Standard Schema validator (Zod, Valibot, ArkType) is detected through `~standard`.
+
+- [#3973](https://github.com/pyreon/pyreon/pull/3973) [`784e46a`](https://github.com/pyreon/pyreon/commit/784e46a486c2ccb16728117c392f0194b563fd66) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Native output that failed to compile with no warning now warns. A documented-example sweep (`scripts/native-example-sweep.ts`: every package's `api[].example` through the real compiler, then swiftc and kotlinc) found 134 such cases; this takes the count that names a Pyreon export to 4, all of them documentation fragments or Kotlin-specific. The "has NO native lowering" check is now decided per export instead of per module, so a module with a hand-kept `unsupported` list (`@pyreon/reactivity`, `@pyreon/core`) no longer lets `isClient`, `getCurrentScope`, `createRef<T>()` and similar through; it also covers generic calls, bare references, and a Pyreon type used as an annotation (`(s: TransitionStage) => …`). `@pyreon/http` names an imperative call on a `createHttp` client (`api.get(…)`) with the endpoint → `useFetch` alternative, and a `createHttp` declared inside a component body.
+
+  The native compile-validation cache no longer stores a killed compiler as a real rejection (`kotlinc`'s wrapper script exits 137 when its JVM is OOM-killed; the swiftc driver exits 1 with `compile command failed due to signal N`), and evicts such entries already stored, so one loaded run can no longer turn a passing compile into a permanent red test.
+
+- Updated dependencies [[`597eff1`](https://github.com/pyreon/pyreon/commit/597eff15a534373d09bb290e8749608611b8319f), [`f8a9770`](https://github.com/pyreon/pyreon/commit/f8a97700f3fbd9c0f497824e6beb4d18ecad6f13), [`457c9ce`](https://github.com/pyreon/pyreon/commit/457c9cebd6583f88cdb309f35b1dba6ae6fc8044), [`02da900`](https://github.com/pyreon/pyreon/commit/02da900bf63421da6d2bcea6a45c1dfa43691168), [`6e62c7d`](https://github.com/pyreon/pyreon/commit/6e62c7d0c5dda0f2a275c140aadc1bc4c29a9835), [`b2ad72e`](https://github.com/pyreon/pyreon/commit/b2ad72e34e901aa634f5ba91867cf71ed96a823a), [`02da900`](https://github.com/pyreon/pyreon/commit/02da900bf63421da6d2bcea6a45c1dfa43691168), [`1cc7355`](https://github.com/pyreon/pyreon/commit/1cc7355def1b6470e1ac7961469e4608c819f79a), [`52aa984`](https://github.com/pyreon/pyreon/commit/52aa984f840f760ea305457bed722fb3d2d3b01a), [`282ed1a`](https://github.com/pyreon/pyreon/commit/282ed1ae49ab3f6be24cdcc290de97654ab42c2b), [`7e39941`](https://github.com/pyreon/pyreon/commit/7e39941a6fe07657c5fc010ee4d0985dc26675d9), [`a0ab9cf`](https://github.com/pyreon/pyreon/commit/a0ab9cf627a21fc83c746e0aaf1312aabe6cf0b1), [`ad2a8de`](https://github.com/pyreon/pyreon/commit/ad2a8de7bfde34680e3f33e2b203ac62b2b04b88), [`a503e83`](https://github.com/pyreon/pyreon/commit/a503e837a25e93b61e3f2b9e1b55144c06157e22), [`7740e2f`](https://github.com/pyreon/pyreon/commit/7740e2fe6bd8b35d142075d5ebe1b8b236ae525c), [`9ad118e`](https://github.com/pyreon/pyreon/commit/9ad118ec46145a24d960863d3d96b4fb6392fe5a), [`6906adf`](https://github.com/pyreon/pyreon/commit/6906adf78bbac38802fdbd1829efcdc24ed25448), [`1ece4c0`](https://github.com/pyreon/pyreon/commit/1ece4c0cd31a8ed21b14ad41fe794969f2a80d18), [`08bcee8`](https://github.com/pyreon/pyreon/commit/08bcee866ba0fbd0fbf876a1ecdf8e709a1244f3), [`6aef1c9`](https://github.com/pyreon/pyreon/commit/6aef1c91c0b8d30530cf36adaaf5ef7116ea9ad0), [`310bf91`](https://github.com/pyreon/pyreon/commit/310bf91f6673d747a77e1996647673fce725d0db), [`09262fa`](https://github.com/pyreon/pyreon/commit/09262fa053d7c995f64bb26e351b7f7492f16c30), [`1a7ccdd`](https://github.com/pyreon/pyreon/commit/1a7ccdda20096710a2486f67e97025776552f3f5), [`f31f903`](https://github.com/pyreon/pyreon/commit/f31f903baa6b09cbe66afa07a48202b7fcfe6c92), [`6eff04e`](https://github.com/pyreon/pyreon/commit/6eff04ee8bd5b35b2f981a6fa006dc00a15300f9), [`0902367`](https://github.com/pyreon/pyreon/commit/0902367dc7c94b66247e7e9e837f604b971644e1), [`1f751e7`](https://github.com/pyreon/pyreon/commit/1f751e77167667c463904f2cc4e12a7061743ed4), [`fd8d8ec`](https://github.com/pyreon/pyreon/commit/fd8d8ec5b359691205defe02c7184f5a331ae155), [`db8c255`](https://github.com/pyreon/pyreon/commit/db8c255cea867d0bd092ab377629a47c5cdaaefe), [`22ca310`](https://github.com/pyreon/pyreon/commit/22ca310101833666295f7d941509b4c7467f89d0), [`d55ecbb`](https://github.com/pyreon/pyreon/commit/d55ecbb061f0599836fc4385b5d694854e47a935), [`760cbef`](https://github.com/pyreon/pyreon/commit/760cbefcbbd7378413f1020a1b33740c60b0ec5e), [`fd8d8ec`](https://github.com/pyreon/pyreon/commit/fd8d8ec5b359691205defe02c7184f5a331ae155), [`04ccbe7`](https://github.com/pyreon/pyreon/commit/04ccbe7d34879d554e35524a03f5e2f5761775fb), [`02da900`](https://github.com/pyreon/pyreon/commit/02da900bf63421da6d2bcea6a45c1dfa43691168), [`784e46a`](https://github.com/pyreon/pyreon/commit/784e46a486c2ccb16728117c392f0194b563fd66), [`6e1a7be`](https://github.com/pyreon/pyreon/commit/6e1a7be711eb7858ad5612df5c0062a2a427c194), [`eab5598`](https://github.com/pyreon/pyreon/commit/eab5598203c2973217cf815a47c7a27567e268fa), [`03b6bfa`](https://github.com/pyreon/pyreon/commit/03b6bfa460bca4b9512ea411a5eaef79033dc1b8), [`6ea59b1`](https://github.com/pyreon/pyreon/commit/6ea59b115639d71b3645b267c9572185a9d52a63), [`24bbbfd`](https://github.com/pyreon/pyreon/commit/24bbbfded6d857f8c638da7d059c6eadf13bb977), [`0468605`](https://github.com/pyreon/pyreon/commit/0468605d9b72eefcbdbc2dba0d2d6f86dcb19ee2), [`bc1cc7e`](https://github.com/pyreon/pyreon/commit/bc1cc7e05362f41dea5786f9b74cc39d0188984d), [`bd75ce2`](https://github.com/pyreon/pyreon/commit/bd75ce2c2c44c44759197de1fccdc78f013c3bce), [`71fe560`](https://github.com/pyreon/pyreon/commit/71fe5608b1d95b7df6f550281a278290e33a0f90), [`2de6084`](https://github.com/pyreon/pyreon/commit/2de6084df506180f468f9674fa341fea50044574)]:
+  - @pyreon/native-compiler@0.54.0
+  - @pyreon/validation@0.54.0
+
 ## 0.53.0
 
 ### Minor Changes
@@ -180,7 +235,7 @@
   below, just caught before push instead of by CI. The one other consumer
   pinning past 20.11.6 — `@happy-dom/global-registrator` in
   `examples/benchmark`, whose own 20.13.2 release requires `happy-dom
-^20.13.2` as a peer — is reverted to `^20.11.6` alongside it, so the whole
+  ^20.13.2` as a peer — is reverted to `^20.11.6` alongside it, so the whole
   graph resolves to one version again.
 
   `examples/benchmark`'s framework competitors were refreshed too so the
@@ -210,7 +265,7 @@
   2.31.1 → 3.0.1 and `@changesets/changelog-github` 0.7.0 → 1.0.0 stay put:
   1.0.0 ships `"type": "module"` with no CJS export, and this repo's own
   `.changeset/resilient-changelog.cjs` does `require('@changesets/changelog-
-github')` — bumping it would break `changeset version` at release time with
+  github')` — bumping it would break `changeset version` at release time with
   `ERR_REQUIRE_ESM`, verified by reading the published package's `exports`
   map, not assumed. The root `uuid` override stays at `11.1.1` for the same
   reason, one level removed: it force-pins a transitive dep of `exceljs`
@@ -224,7 +279,7 @@ github')` — bumping it would break `changeset version` at release time with
   3.17.8 in this branch's first pass (a routine-looking override edit, not
   vetted as carefully as the deps above), and it broke
   `@pyreon/virtual`'s real-Chromium `repositions a STAYING row below when row 0
-is remeasured taller` test deterministically (3/3 local runs, plus 3/3 CI
+  is remeasured taller` test deterministically (3/3 local runs, plus 3/3 CI
   retries) — bisected down to virtual-core's own 3.17.7 "synchronous
   notification for scroll compensation" change, not to anything else in this
   branch (ruled out `@tanstack/react-virtual`, unrelated — not imported by this

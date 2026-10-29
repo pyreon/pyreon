@@ -1,5 +1,24 @@
 # @pyreon/zero
 
+## 0.54.0
+
+### Patch Changes
+
+- [#3942](https://github.com/pyreon/pyreon/pull/3942) [`457c9ce`](https://github.com/pyreon/pyreon/commit/457c9cebd6583f88cdb309f35b1dba6ae6fc8044) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Dependency updates to the latest releases: oxc-parser 0.155, CodeMirror (autocomplete 6.20.4, language 6.13.1, merge 6.12.3, view 6.43.15), TanStack Query 5.104.5, TanStack Virtual core 3.19.6, Tiptap 3.32, Vite 8.3.4, Shiki 4.5, axe-core 4.14, @capsizecss/metrics 4.4 and the MCP SDK 1.32.1.
+
+- [#4009](https://github.com/pyreon/pyreon/pull/4009) [`282ed1a`](https://github.com/pyreon/pyreon/commit/282ed1ae49ab3f6be24cdcc290de97654ab42c2b) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Documentation only: the `ZeroConfig.middleware` doc comment said middleware passed to `zero({ middleware })` is applied to every route. It is not: middleware is code and cannot cross into the server bundle, so the option is dropped with a build warning. The comment now says so and points to `createServer({ middleware })`.
+- Updated dependencies [[`f69d6cf`](https://github.com/pyreon/pyreon/commit/f69d6cfeb1f3245e0c5751660401cd69980145f6), [`f2aa2d6`](https://github.com/pyreon/pyreon/commit/f2aa2d640518bbc7de093bdbe431225a61e7efe9), [`45331c6`](https://github.com/pyreon/pyreon/commit/45331c6da11881c67d3698ecda3c46aa647c73b0), [`afe40fb`](https://github.com/pyreon/pyreon/commit/afe40fb53e70a06e5cba99b8279765d2d9a74332), [`d4ba7e4`](https://github.com/pyreon/pyreon/commit/d4ba7e445a76b23f225cdc949926e4db04b30a60), [`6e900a6`](https://github.com/pyreon/pyreon/commit/6e900a6b521faac38acb3cf77fe897253b28ca69), [`e182184`](https://github.com/pyreon/pyreon/commit/e1821841cc91ffcd2e4aec5b29f4e985f66d2b46), [`f31485c`](https://github.com/pyreon/pyreon/commit/f31485c7eb6d1eaf402bfd6554bb9165da118012), [`8ab3c24`](https://github.com/pyreon/pyreon/commit/8ab3c2429ca05366eca87a5c4575b1ccd3c78ac8), [`457c9ce`](https://github.com/pyreon/pyreon/commit/457c9cebd6583f88cdb309f35b1dba6ae6fc8044), [`3ee9faf`](https://github.com/pyreon/pyreon/commit/3ee9faf79ed0d9492c4bbc23f57cabb12791abf8), [`956a521`](https://github.com/pyreon/pyreon/commit/956a5214e0208b883767aee1d91acefefe7c1557), [`6b7085a`](https://github.com/pyreon/pyreon/commit/6b7085a6bad6e48c7a764d0f502e755ed54aaf8e), [`eae9e20`](https://github.com/pyreon/pyreon/commit/eae9e20bdbb2190213e68963afeb732ae71bf543), [`34fc2b5`](https://github.com/pyreon/pyreon/commit/34fc2b5cbffff3edb2b84a3fc96423c804d6a9f4), [`bed3ef0`](https://github.com/pyreon/pyreon/commit/bed3ef0fc388e45f2baf0641554770c3b19b86d9), [`871f6f0`](https://github.com/pyreon/pyreon/commit/871f6f0925f4793441138947c8834fe0b6b426d2), [`1e1c9b7`](https://github.com/pyreon/pyreon/commit/1e1c9b7c54cb7c02d30e64e86da5d823cb3595e4), [`871f6f0`](https://github.com/pyreon/pyreon/commit/871f6f0925f4793441138947c8834fe0b6b426d2), [`c21ab54`](https://github.com/pyreon/pyreon/commit/c21ab54734096ac2613f998f5eba3f05dfe8c094), [`02da900`](https://github.com/pyreon/pyreon/commit/02da900bf63421da6d2bcea6a45c1dfa43691168), [`8352284`](https://github.com/pyreon/pyreon/commit/83522844ecd1be24638f89126c25dbd0e6926e84), [`b1f9bfe`](https://github.com/pyreon/pyreon/commit/b1f9bfe4a5200225b6076044d310b1fcc2d0383e), [`5abcb2d`](https://github.com/pyreon/pyreon/commit/5abcb2d51816c8e114b0755cf761ba58a4ea8db5), [`0902367`](https://github.com/pyreon/pyreon/commit/0902367dc7c94b66247e7e9e837f604b971644e1), [`739844a`](https://github.com/pyreon/pyreon/commit/739844adaecdb37d139d594793bdedf4da203a6c), [`38f7aaa`](https://github.com/pyreon/pyreon/commit/38f7aaa8ee7f73c168d66b4e53f24d7f85e62ee4), [`87ccdb5`](https://github.com/pyreon/pyreon/commit/87ccdb56ca5247dcfbb1309c7875d65204549b0d), [`9018b4b`](https://github.com/pyreon/pyreon/commit/9018b4b2ef3fb50b6eacbdca9f9e553ad0efb541), [`3f1009e`](https://github.com/pyreon/pyreon/commit/3f1009eb66fbf6aac01a9b74c096d747bd6f5e6c), [`ab90ebc`](https://github.com/pyreon/pyreon/commit/ab90ebc06667adb17efd936df98ffd1067f48527), [`09262fa`](https://github.com/pyreon/pyreon/commit/09262fa053d7c995f64bb26e351b7f7492f16c30), [`700a06c`](https://github.com/pyreon/pyreon/commit/700a06c75804dd488000db0cb7716f421d997823), [`2979e47`](https://github.com/pyreon/pyreon/commit/2979e47ade6278c73a0f50ba5120bef21cb01139), [`7ed6c99`](https://github.com/pyreon/pyreon/commit/7ed6c9995eb87a26aaef6b0f8c7526a6291e3b4e), [`143e288`](https://github.com/pyreon/pyreon/commit/143e2887ff318a8e0842774eb2e320f085253400), [`f703796`](https://github.com/pyreon/pyreon/commit/f703796329d51f218ea10190b95d7c3f166e41f5), [`c3bd80c`](https://github.com/pyreon/pyreon/commit/c3bd80c467ce940c0298ab6b85eabb5fd0463ef6), [`c655989`](https://github.com/pyreon/pyreon/commit/c6559893e81150811adf41052b550d58e196d43a), [`4c56327`](https://github.com/pyreon/pyreon/commit/4c5632769f5df19db831799298b3713577751957), [`c5d086d`](https://github.com/pyreon/pyreon/commit/c5d086df30d65a4628525283a10bdb9ad9fb2bab)]:
+  - @pyreon/compiler@0.54.0
+  - @pyreon/runtime-dom@0.54.0
+  - @pyreon/vite-plugin@0.54.0
+  - @pyreon/reactivity@0.54.0
+  - @pyreon/head@0.54.0
+  - @pyreon/runtime-server@0.54.0
+  - @pyreon/core@0.54.0
+  - @pyreon/router@0.54.0
+  - @pyreon/sized-map@0.54.0
+  - @pyreon/server@0.54.0
+
 ## 0.53.0
 
 ### Patch Changes
@@ -1382,7 +1401,7 @@
 - [#1625](https://github.com/pyreon/pyreon/pull/1625) [`b96f66e`](https://github.com/pyreon/pyreon/commit/b96f66e8ed85a14353b7e203a6e4ae5f438f977e) Thanks [@vitbokisch](https://github.com/vitbokisch)! - The node + bun deploy adapters' emitted server entry now honors `$PORT` at
   runtime, falling back to the build-time configured port (default 3000).
   Previously the port was baked into `server.listen(3000, …)` / `Bun.serve({
-port: 3000 })` and `process.env.PORT` was ignored — breaking the standard
+  port: 3000 })` and `process.env.PORT` was ignored — breaking the standard
   convention every Node/Bun PaaS relies on (Vercel, Heroku, Cloud Run, Render,
   Fly, CI runners all inject `$PORT`). A set-but-empty `PORT` falls back to the
   configured port; `PORT=0` binds an ephemeral port.
@@ -2320,7 +2339,7 @@ port: 3000 })` and `process.env.PORT` was ignored — breaking the standard
 - [#1318](https://github.com/pyreon/pyreon/pull/1318) [`88a42f7`](https://github.com/pyreon/pyreon/commit/88a42f7620f4c9a4a3df0d6b730294a4f91c94ae) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix(zero): inner SSR/SSG sub-build inherits `build.assetsInlineLimit` + `assetsDir` from the outer config
 
   The SSG/SSR/ISR plugins run a programmatic inner `vite build` with `configFile:
-false` (it must not re-load and re-run the user's whole `vite.config.ts`). As a
+  false` (it must not re-load and re-run the user's whole `vite.config.ts`). As a
   side effect the inner build also dropped the user's `build.assetsInlineLimit`,
   falling back to Vite's 4 KB default — so a `<= 4 KB` image the client build
   emitted as a hashed file (`/assets/logo-HASH.png`) was inlined as a `data:` URI
@@ -2417,7 +2436,7 @@ false` (it must not re-load and re-run the user's whole `vite.config.ts`). As a
   while still preserving a deliberate `noindex` / `none` directive verbatim.
 
   Closes the bokisch.com 0.27.1 Lighthouse finding (`<meta name="robots"
-content="index, follow">` on the live `/404.html`). Applies to both the
+  content="index, follow">` on the live `/404.html`). Applies to both the
   runtime SSR path (`render404Page`) and the SSG build path
   (`__renderNotFound`) since they share this boundary.
 
@@ -2681,7 +2700,7 @@ content="index, follow">` on the live `/404.html`). Applies to both the
 
   Bisect-verified: revert the path-skip → `examples/chat`'s
   `/api/history/general` returns 404 (smoke fails with `messages
-visible: 0`); restored → 200 + history loads + 60 messages render.
+  visible: 0`); restored → 200 + history loads + 60 messages render.
   The chat audit example is the canonical test case (no prior audit
   hit this — only the streaming-primitive surface area surfaces it).
 
@@ -2793,7 +2812,7 @@ visible: 0`); restored → 200 + history loads + 60 messages render.
   - W4 verified: `/throw` test route surfaces "Intentional test error..."
     message + stack in the rendered body + `console.error`
   - W1 verified: scaffold output of `create-pyreon-app w1-test-2 --features
-query` has zero `app.store.` or `useAppStore` references
+    query` has zero `app.store.` or `useAppStore` references
   - W6 verified: `page.on('console')` warning capture returns empty on every
     page load (previously: one warning per page)
 
@@ -3798,7 +3817,7 @@ query` has zero `app.store.` or `useAppStore` references
     (2 specs) — 3 and 5 mounted ThemeToggles register exactly ONE
     matchMedia listener. **Bisect-verified**: reverted refcount logic
     in `initTheme` → both specs fail with `expected 1 times, but got
-3 times` / `got 5 times`; restored → 2/2 pass.
+    3 times` / `got 5 times`; restored → 2/2 pass.
   - `packages/zero/zero/src/tests/isr-revalidate-timer-leak-repro.test.ts`
     (1 spec) — 5 successful revalidations leave zero pending revalidate
     timers (instruments `globalThis.setTimeout` / `clearTimeout`).
@@ -3856,7 +3875,7 @@ query` has zero `app.store.` or `useAppStore` references
 
   Same exact shape as [#734](https://github.com/pyreon/pyreon/issues/734)'s `isr.ts revalidate()` fix. Two sites in
   `ssg-plugin.ts` ran `Promise.race([work, new Promise((_, reject) =>
-setTimeout(reject, 30_000))])` without clearing the timer when `work`
+  setTimeout(reject, 30_000))])` without clearing the timer when `work`
   won the race:
 
   - `renderOne(p)` — per-path SSG render (line 1156)
@@ -3915,7 +3934,7 @@ setTimeout(reject, 30_000))])` without clearing the timer when `work`
     writes → spec fails with `expected '<base64 nonce>' to be ''`;
     restored → 16/16 csp tests pass.
   - ssg-plugin fix is **mechanical copy-paste** of the same `let
-timeoutId; try { ... } finally { if (timeoutId) clearTimeout }`
+    timeoutId; try { ... } finally { if (timeoutId) clearTimeout }`
     shape proven by [#734](https://github.com/pyreon/pyreon/issues/734)'s `isr-revalidate-timer-leak-repro.test.ts`.
     A dedicated test would require extracting `renderOne` from inside
     `closeBundle`'s closure (significant refactor); the isr.ts test
@@ -4143,12 +4162,12 @@ timeoutId; try { ... } finally { if (timeoutId) clearTimeout }`
   One generated file, one `createNamedIcon` import, a strictly-typed component
   PER set under **namespaced** names so two sets never clash: `ui` →
   `<UiIcon>` + `type UiIconName`, `brand` → `<BrandIcon>` + `type
-BrandIconName`. Per-set binding prefixes (`ui_check` / `brand_check`) keep two
+  BrandIconName`. Per-set binding prefixes (`ui_check` / `brand_check`) keep two
   sets sharing a glyph filename collision-free. `mode` is per-set (a colorful
   brand set can be `image` while the system set stays `inline`).
 
   `dir` and `sets` are mutually exclusive — the plugin throws `[Pyreon]
-iconsPlugin: provide EXACTLY ONE of dir or sets` at config time if both or
+  iconsPlugin: provide EXACTLY ONE of dir or sets` at config time if both or
   neither is given. The dev watcher watches every set's folder; regeneration is
   still idempotent. New exports: `IconSetConfig`, `NamedSetInput`,
   `generateNamedIconSetsSource`, `componentNameFromSetKey` (server entry);
@@ -4190,7 +4209,7 @@ iconsPlugin: provide EXACTLY ONE of dir or sets` at config time if both or
   ```
 
   The generated file calls `createNamedIcon(REGISTRY)`, so `keyof typeof
-REGISTRY` IS the type surface — zero per-app wiring. It writes a **real file**
+  REGISTRY` IS the type surface — zero per-app wiring. It writes a **real file**
   (not a virtual module) deliberately: the published `@pyreon/zero` can't
   `import` a plugin virtual module (Rolldown resolves static imports before
   plugin `resolveId` — the same constraint that makes islands need
@@ -4491,7 +4510,7 @@ REGISTRY` IS the type surface — zero per-app wiring. It writes a **real file**
     hard-fail in SSR rather than silently no-op.
   - `no-dom-in-setup`: added the same early-return-on-typeof-document/window
     guard tracking that `no-window-in-ssr` already had — `if (typeof document
-=== 'undefined') return …` at function head implicitly guards the rest
+    === 'undefined') return …` at function head implicitly guards the rest
     of the body for both rules now.
   - `BROWSER_GLOBALS`: removed `fetch`. It's a universal global in Node 18+,
     Bun, Deno, browsers, and edge runtimes. Code using `fetch` isn't

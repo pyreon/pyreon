@@ -1,5 +1,62 @@
 # @pyreon/native-runtime-swift
 
+## 0.54.0
+
+### Minor Changes
+
+- [#4065](https://github.com/pyreon/pyreon/pull/4065) [`1cc7355`](https://github.com/pyreon/pyreon/commit/1cc7355def1b6470e1ac7961469e4608c819f79a) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `createHttp({ use: [...] })` middleware now crosses to iOS and Android.
+
+  Until now the client's `use` array was never read by the native compiler, so an endpoint call on a `use: [bearer(...)]` client lowered to a native request with no `Authorization` header, and a `retry()` client to one that never retried — on both targets, with no warning.
+
+  A literal `use` array now lowers when its entries are statically readable: `bearer(() => useSession().store.token(), { crossOrigin })`, `retry({ limit, methods, statuses, network, respectRetryAfter, maxDelay })` and `logger({ production })` become a `PyreonHttpMiddleware` list that the `useFetch` and `useQuery` harnesses pass to `PyreonHttp.send(…, middleware:)`. Both runtimes apply it as an onion with the web's semantics — array order, the same full-jitter backoff and `Retry-After` handling, the same header replacement and `baseUrl` origin boundary — and a differential test runs the web middleware and both native runtimes on 28 shared scenarios. `forwardHeaders` lowers to nothing, as it does in a browser.
+
+  Anything that cannot lower — `refresh`, `dedupe`, a custom middleware function, a `backoff` or `log` callback, a non-literal option, a token that reads a file-scope `signal()` — now keeps every call on that client on the web, with a warning naming the entry, instead of producing a request the web would never send. `useStream` refuses a client with middleware by name.
+
+  On Android, `logger()` cannot see the app's `BuildConfig`; set `PyreonHttpPipelineEnv.debugBuild = BuildConfig.DEBUG` at startup to silence it in release builds.
+
+- [#4062](https://github.com/pyreon/pyreon/pull/4062) [`1ece4c0`](https://github.com/pyreon/pyreon/commit/1ece4c0cd31a8ed21b14ad41fe794969f2a80d18) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Add the `<Gesture>` primitive and transform props ([#3985](https://github.com/pyreon/pyreon/issues/3985)).
+
+  `<Gesture onPan onPinch onRotate>` reports continuous gestures with cumulative values (`dx`/`dy`/`x`/`y`, `scale`/`centerX`/`centerY`, `degrees`) and a `start` / `change` / `end` phase. Pan, pinch and rotate run at the same time, and nothing is reported until the pointer passes the touch slop, so a button inside the region still receives taps. It lowers to pointer events on the web, simultaneous `DragGesture` / `MagnifyGesture` / `RotateGesture` on iOS (`PyreonGesture`), and one `pointerInput` loop on Android (`PyreonGesture`).
+
+  Every primitive now accepts `translateX`, `translateY`, `scale` and `rotate`. Values can be signal reads and update in place: CSS `transform` on the web, `.offset` / `.scaleEffect` / `.rotationEffect` on iOS, `Modifier.offset` / `.scale` / `.rotate` on Android. The order is the same on every target (rotate, then scale, then translate).
+
+  The native compiler now honours a closure parameter's declared type when it widens signals to `Double`, so `x.set(e.dx)` in a gesture handler no longer leaves `x` an `Int`.
+
+- [#4061](https://github.com/pyreon/pyreon/pull/4061) [`fd8d8ec`](https://github.com/pyreon/pyreon/commit/fd8d8ec5b359691205defe02c7184f5a331ae155) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Native apps can upload picked images and files ([#3979](https://github.com/pyreon/pyreon/issues/3979)).
+
+  - New `fileFromUri(uri, { name, type })` in `@pyreon/hooks` turns the URI a picker or the camera returned into a file a request can send. On the web it returns the picker's own `File`, with its real name and type, or reads the URI through `fetch`. On iOS and Android it becomes a `PyreonUploadFile`. Android reads `content://` URIs through the app's `ContentResolver`. The file is streamed from disk when the request is sent, so a large video is never held in memory.
+  - An endpoint call's `multipart` body lowers to the new `PyreonMultipartBody`. Parts keep source order. A struct value is sent as a `JSON.stringify` text part, and an array sends one part per element. Names, filenames and text values are normalized and escaped the way `FormData` does it. An executed test checks the runtime writer byte for byte against the web's `FormData` on both targets.
+  - `body: file` sends the file's bytes as the whole body, typed by the file. A string `body` is a text body.
+  - A `form` body is encoded by the web's own `encodeForm` at compile time when every value is a literal. When a value is only known at runtime, `PyreonURL.query` encodes it when the request is sent.
+  - A `data:` URI is decoded the way `fetch` decodes it: percent escapes become raw bytes, `;base64` matches in any case, and a URI with no type defaults to `text/plain;charset=US-ASCII`.
+  - Named warnings: an unawaited `fileFromUri`, two body encodings in one call, a runtime array of objects in `multipart`, and a nested object in `form`.
+  - `useImagePicker().pick()`, `useFilePicker().pick()` and `useCamera().capture()` are now typed as `String?` natively. `if (uri === null) return` therefore narrows the URI for the code after it on iOS. Before, every later read was an optional and failed to compile.
+  - Fixed: an early `return` inside an event handler did not compile on Android. Kotlin forbids a bare `return` in a lambda. An async handler now emits `return@launch`, and a plain handler is labelled.
+  - Fixed: on iOS, a value of a type declared at file scope, such as `interface Meta { … }`, was not recognized as a struct inside a request. iOS and Android could therefore encode the same field differently.
+
+- [#4061](https://github.com/pyreon/pyreon/pull/4061) [`fd8d8ec`](https://github.com/pyreon/pyreon/commit/fd8d8ec5b359691205defe02c7184f5a331ae155) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Native requests can now carry what the user entered ([#3978](https://github.com/pyreon/pyreon/issues/3978)).
+
+  - `useMutation` lowers on iOS and Android. `useMutation<T>(endpoint.mutation())` and `useMutation({ mutationFn: (vars) => endpoint({ json: vars }) })` become a `PyreonMutation` container with `mutate`, `mutateAsync`, `reset` and `data` / `error` / `status` / `isPending` / `isSuccess` / `isError` / `isIdle`. Each request is built where `mutate` is called, so it carries the values of that moment. The latest call owns the state, and `onSuccess` / `onError` / `onSettled` run in TanStack Query's order at both layers. When the view goes away nothing is written and no callback runs; the request itself is not aborted. `invalidates`, `onMutate` and `retry` produce a named warning.
+  - An endpoint awaited in an `async` event handler (`await signIn({ json: { email: email() } })`) lowers to the new `PyreonHttp.call`. A non-2xx rejects and ends the handler there; the failure is reported to the log instead of crashing the app on Android. A call that is not awaited is sent fire-and-forget. Reading the awaited value has no decode type natively and gets a warning pointing at `useMutation<T>`.
+  - Endpoint calls accept runtime values: a `json` body (serialized byte for byte like the web's `JSON.stringify`), header values, and query values. Query values are serialized at request time by the new `PyreonURL.query`, which matches the web's `buildQuery`.
+  - `useFetch` and a `useQuery` `fetch` accept a runtime `body` (`JSON.stringify(draft)`).
+  - Per-call headers now merge over an endpoint's declared headers, as the web does. Before, they replaced them. A number or boolean header value is sent as its string, and a `null` one removes the header.
+  - A string body sent without a content type now gets `text/plain;charset=UTF-8`, the Fetch standard default. Before, iOS, Android and the web each sent something different.
+
+### Patch Changes
+
+- [#3899](https://github.com/pyreon/pyreon/pull/3899) [`597cdf7`](https://github.com/pyreon/pyreon/commit/597cdf7d050ea8782625e360054787aaf5addb3e) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Marks accept a column. `line(prices)`, `bars(values)` and the other single-channel marks take a `Float64Array` or `number[]` in place of an accessor, and `<PlotChart>`'s `data` is optional when every mark is a column (the chart has one row per index of the longest column). A column resolves with an indexed read rather than a function call per row, and a plain `number[]` of the chart's length whose entries are all numbers or `NaN` is used as the series without a copy (a typed array, a short array or one holding an infinity is copied once). Against uPlot 1.6 with the same `number[]` input, a 1M-point line now mounts in a statistical tie (14.9ms each, from 22.8ms), a 10k-point line is 1.14× behind (was 1.35×), and updates are 2–2.5× faster. New `Column` and `YChannel` types are exported from `@pyreon/charts/engine`. The native lowering does not read columns yet and warns on one.
+
+  Faster `<PlotChart>` mounts. For a chart over 200 rows, both the accessible table and the canvas's spoken description (`aria-label`) are now BUILT after the first paint rather than before it; the canvas carries its title until then, and a server render still describes in full. The y-extent scan runs as a seed pass plus a bare min/max loop (V8 1.48 → 0.53ms over 1M values). The M4 decimation scan reads the scale and band constants once instead of per point (same arithmetic, bit-identical output; 16–18% faster on V8, 35–40% on JavaScriptCore). The generated Swift and Kotlin engines carry both engine changes. Measured on a 1M-point line mount: 22.8ms → 19.6ms.
+
+  New `density` prop on `<PlotChart>` and `<Chart>`: `'fine'` (the default, two M4 decimation columns per CSS pixel) or `'device'` (one per device pixel, uPlot's trade: about half the points on a 1× display, a faster mount, and a measurably coarser noisy line). Web only; native warns and keeps the default.
+
+- [#3912](https://github.com/pyreon/pyreon/pull/3912) [`550ab23`](https://github.com/pyreon/pyreon/commit/550ab230b1e96bb8a5af6a418450df622d961ba6) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Line decimation finds each pixel column's end once per column instead of testing every point, and checks for gaps inside that same pass instead of a separate scan first. The output is bit-identical. A 1,000,000-point line given as a column mounts in ~12.5 ms instead of ~14.6 ms in Chromium, now ahead of uPlot; the native chart engines carry the same change.
+
+- [#4047](https://github.com/pyreon/pyreon/pull/4047) [`6e1a7be`](https://github.com/pyreon/pyreon/commit/6e1a7be711eb7858ad5612df5c0062a2a427c194) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `slice` with a bound held in a variable now behaves like JavaScript on iOS and Android, instead of crashing when the value is negative.
+
+  Literal bounds still lower to the platform's own operations (`slice(-2)` → `suffix(2)` / `takeLast(2)`), because the sign is known at compile time. A variable bound took the same path, and `dropFirst` / `suffix` / `drop` / `takeLast` trap or throw on a negative count, while JavaScript reads a negative bound as counting from the end. `slice(n, -m)` did not lower at all. Any bound whose sign isn't known at compile time now goes through a new runtime helper, `pyreonSlice`, which has JavaScript's exact semantics: negative bounds count from the end, bounds clamp, and start ≥ end is empty.
+
 ## 0.53.0
 
 ### Patch Changes
@@ -272,7 +329,7 @@
 
   `map` now takes a third shape, `GeoShape[]`, which is that union already
   normalised to rings — and that shape crosses. A `<MapChart map={SHAPES}
-values={{ A: 5 }}>` emits `layoutGeoShapes` / `renderGeo` / `hitGeoIndex` /
+  values={{ A: 5 }}>` emits `layoutGeoShapes` / `renderGeo` / `hitGeoIndex` /
   `geoTip` over the generated engine on both targets, with the tap, the tooltip
   and the theme defaults every other family host already had. An inline `values`
   record becomes the crossing `[GeoValue]` at compile time (the shape
@@ -573,7 +630,7 @@ values={{ A: 5 }}>` emits `layoutGeoShapes` / `renderGeo` / `hitGeoIndex` /
 
 - [#2727](https://github.com/pyreon/pyreon/pull/2727) [`2b5be05`](https://github.com/pyreon/pyreon/commit/2b5be059737e000aa8ccd7d481242816f235075e) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Add the `repository` field npm provenance requires. All six packages were
   rejected from the 0.51.0 release with a 422 (`"repository.url" is "",
-expected to match "https://github.com/pyreon/pyreon"`) — `--provenance`
+  expected to match "https://github.com/pyreon/pyreon"`) — `--provenance`
   publishing validates the field against the OIDC attestation, so its absence
   is a publish blocker, not cosmetic metadata.
 

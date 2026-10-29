@@ -1,5 +1,25 @@
 # @pyreon/table
 
+## 0.54.0
+
+### Patch Changes
+
+- [#3886](https://github.com/pyreon/pyreon/pull/3886) [`68f34cf`](https://github.com/pyreon/pyreon/commit/68f34cffff172460caddc244245ab886bd3a339d) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Cell rendering is cheaper. `flexRenderCell` builds an untracked copy of each cell's context on every render, and it copied every property descriptor to do it. table-core builds that context as a plain object of data properties, so a spread gives the same object about 13× faster. Measured on the table benchmark at 1,000 rows: mount 53.5ms → 48.2ms, single-cell update 0.237ms → 0.225ms. A context with any other prototype keeps the descriptor copy.
+
+- [#3917](https://github.com/pyreon/pyreon/pull/3917) [`31c7220`](https://github.com/pyreon/pyreon/commit/31c7220e3781cb2cdedf51ffbd6374da1d34a301) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `flexRenderCell` builds a cell renderer's context directly instead of asking table-core for one and then copying it. When a cell's `getContext` returns table-core's core context (checked once per `getContext` function), each cell now costs one object and two closures instead of two objects and four. Other context shapes keep the copying path. In real Chromium, mounting a 1,000 × 6 table went from 31.7 ms to 29.5–29.8 ms (react-table with memoized rows: 28.5–29.4 ms), and replacing all rows from 26.4 ms to 24.7–24.8 ms.
+
+- [#4008](https://github.com/pyreon/pyreon/pull/4008) [`80c147b`](https://github.com/pyreon/pyreon/commit/80c147b0929eddaf33d5fa832d0f48aba869bf0d) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Documentation only: `@pyreon/table` re-exports all 17 TanStack Table v9 stock features, not 16 as the README, manifest (and so `llms.txt` / the MCP reference) stated. A new test ties the stated count and the re-export list to TanStack's own `stockFeatures`.
+
+- [#3900](https://github.com/pyreon/pyreon/pull/3900) [`cc6f3b6`](https://github.com/pyreon/pyreon/commit/cc6f3b6cfcf2bc6b9e995edfe39216562f9ce5b0) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `flexRenderCell` reuses the cells its row's `visibleCells` call just looked up, instead of walking the row model and the column map again for every cell. The reuse is tagged with the row's version signal, so any data, column or structural change (a sort included) forces a fresh lookup. Measured against @tanstack/react-table with memoized rows (happy-dom, 1,000 rows): mount 47.8 → 43.2ms, replace 9.5 → 7.9ms (now a tie), sort 8.6 → 7.3ms, single-cell update now 1.2× faster.
+
+- [#3914](https://github.com/pyreon/pyreon/pull/3914) [`9172b13`](https://github.com/pyreon/pyreon/commit/9172b130f1bcefe7be9e3201d6b236f1f127932e) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Sorting a table no longer re-runs every cell. A sort moves the same rows into a new order, and `<For>` moves their DOM, so `useTable` now bumps only rows whose data or row object changed instead of every row. A flat sort re-runs no cells. In real Chromium, sorting 1,000 rows × 6 columns went from 23.0–23.5 ms to 19.2–19.3 ms, which puts it ahead of react-table with memoized rows (20.8 ms) instead of 1.07–1.13× behind.
+
+- [#3915](https://github.com/pyreon/pyreon/pull/3915) [`d169cbd`](https://github.com/pyreon/pyreon/commit/d169cbd73129fa55fc35ec9ea9d788e914ec94ac) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Fix: a cell that reads `row.subRows` now shows the sorted order when a sort reorders only a row's sub-rows. `flexRenderCell` and `visibleCells` looked rows up through `getRowModel().rowsById`, which table-core's sorted model takes from the pre-sort model, so they got the unsorted row. They now use the row object from the current model, and `useTable` refreshes a row whose sub-rows changed order.
+- Updated dependencies [[`597eff1`](https://github.com/pyreon/pyreon/commit/597eff15a534373d09bb290e8749608611b8319f), [`f8a9770`](https://github.com/pyreon/pyreon/commit/f8a97700f3fbd9c0f497824e6beb4d18ecad6f13), [`457c9ce`](https://github.com/pyreon/pyreon/commit/457c9cebd6583f88cdb309f35b1dba6ae6fc8044), [`02da900`](https://github.com/pyreon/pyreon/commit/02da900bf63421da6d2bcea6a45c1dfa43691168), [`956a521`](https://github.com/pyreon/pyreon/commit/956a5214e0208b883767aee1d91acefefe7c1557), [`6e62c7d`](https://github.com/pyreon/pyreon/commit/6e62c7d0c5dda0f2a275c140aadc1bc4c29a9835), [`b2ad72e`](https://github.com/pyreon/pyreon/commit/b2ad72e34e901aa634f5ba91867cf71ed96a823a), [`1e1c9b7`](https://github.com/pyreon/pyreon/commit/1e1c9b7c54cb7c02d30e64e86da5d823cb3595e4), [`02da900`](https://github.com/pyreon/pyreon/commit/02da900bf63421da6d2bcea6a45c1dfa43691168), [`1cc7355`](https://github.com/pyreon/pyreon/commit/1cc7355def1b6470e1ac7961469e4608c819f79a), [`52aa984`](https://github.com/pyreon/pyreon/commit/52aa984f840f760ea305457bed722fb3d2d3b01a), [`5abcb2d`](https://github.com/pyreon/pyreon/commit/5abcb2d51816c8e114b0755cf761ba58a4ea8db5), [`7e39941`](https://github.com/pyreon/pyreon/commit/7e39941a6fe07657c5fc010ee4d0985dc26675d9), [`a0ab9cf`](https://github.com/pyreon/pyreon/commit/a0ab9cf627a21fc83c746e0aaf1312aabe6cf0b1), [`ad2a8de`](https://github.com/pyreon/pyreon/commit/ad2a8de7bfde34680e3f33e2b203ac62b2b04b88), [`a503e83`](https://github.com/pyreon/pyreon/commit/a503e837a25e93b61e3f2b9e1b55144c06157e22), [`7740e2f`](https://github.com/pyreon/pyreon/commit/7740e2fe6bd8b35d142075d5ebe1b8b236ae525c), [`9ad118e`](https://github.com/pyreon/pyreon/commit/9ad118ec46145a24d960863d3d96b4fb6392fe5a), [`6906adf`](https://github.com/pyreon/pyreon/commit/6906adf78bbac38802fdbd1829efcdc24ed25448), [`1ece4c0`](https://github.com/pyreon/pyreon/commit/1ece4c0cd31a8ed21b14ad41fe794969f2a80d18), [`08bcee8`](https://github.com/pyreon/pyreon/commit/08bcee866ba0fbd0fbf876a1ecdf8e709a1244f3), [`6aef1c9`](https://github.com/pyreon/pyreon/commit/6aef1c91c0b8d30530cf36adaaf5ef7116ea9ad0), [`310bf91`](https://github.com/pyreon/pyreon/commit/310bf91f6673d747a77e1996647673fce725d0db), [`09262fa`](https://github.com/pyreon/pyreon/commit/09262fa053d7c995f64bb26e351b7f7492f16c30), [`1a7ccdd`](https://github.com/pyreon/pyreon/commit/1a7ccdda20096710a2486f67e97025776552f3f5), [`f31f903`](https://github.com/pyreon/pyreon/commit/f31f903baa6b09cbe66afa07a48202b7fcfe6c92), [`6eff04e`](https://github.com/pyreon/pyreon/commit/6eff04ee8bd5b35b2f981a6fa006dc00a15300f9), [`0902367`](https://github.com/pyreon/pyreon/commit/0902367dc7c94b66247e7e9e837f604b971644e1), [`1f751e7`](https://github.com/pyreon/pyreon/commit/1f751e77167667c463904f2cc4e12a7061743ed4), [`fd8d8ec`](https://github.com/pyreon/pyreon/commit/fd8d8ec5b359691205defe02c7184f5a331ae155), [`db8c255`](https://github.com/pyreon/pyreon/commit/db8c255cea867d0bd092ab377629a47c5cdaaefe), [`22ca310`](https://github.com/pyreon/pyreon/commit/22ca310101833666295f7d941509b4c7467f89d0), [`d55ecbb`](https://github.com/pyreon/pyreon/commit/d55ecbb061f0599836fc4385b5d694854e47a935), [`760cbef`](https://github.com/pyreon/pyreon/commit/760cbefcbbd7378413f1020a1b33740c60b0ec5e), [`fd8d8ec`](https://github.com/pyreon/pyreon/commit/fd8d8ec5b359691205defe02c7184f5a331ae155), [`04ccbe7`](https://github.com/pyreon/pyreon/commit/04ccbe7d34879d554e35524a03f5e2f5761775fb), [`02da900`](https://github.com/pyreon/pyreon/commit/02da900bf63421da6d2bcea6a45c1dfa43691168), [`784e46a`](https://github.com/pyreon/pyreon/commit/784e46a486c2ccb16728117c392f0194b563fd66), [`6e1a7be`](https://github.com/pyreon/pyreon/commit/6e1a7be711eb7858ad5612df5c0062a2a427c194), [`eab5598`](https://github.com/pyreon/pyreon/commit/eab5598203c2973217cf815a47c7a27567e268fa), [`03b6bfa`](https://github.com/pyreon/pyreon/commit/03b6bfa460bca4b9512ea411a5eaef79033dc1b8), [`6ea59b1`](https://github.com/pyreon/pyreon/commit/6ea59b115639d71b3645b267c9572185a9d52a63), [`24bbbfd`](https://github.com/pyreon/pyreon/commit/24bbbfded6d857f8c638da7d059c6eadf13bb977), [`0468605`](https://github.com/pyreon/pyreon/commit/0468605d9b72eefcbdbc2dba0d2d6f86dcb19ee2), [`bc1cc7e`](https://github.com/pyreon/pyreon/commit/bc1cc7e05362f41dea5786f9b74cc39d0188984d), [`bd75ce2`](https://github.com/pyreon/pyreon/commit/bd75ce2c2c44c44759197de1fccdc78f013c3bce), [`71fe560`](https://github.com/pyreon/pyreon/commit/71fe5608b1d95b7df6f550281a278290e33a0f90), [`38f7aaa`](https://github.com/pyreon/pyreon/commit/38f7aaa8ee7f73c168d66b4e53f24d7f85e62ee4), [`87ccdb5`](https://github.com/pyreon/pyreon/commit/87ccdb56ca5247dcfbb1309c7875d65204549b0d), [`9018b4b`](https://github.com/pyreon/pyreon/commit/9018b4b2ef3fb50b6eacbdca9f9e553ad0efb541), [`3f1009e`](https://github.com/pyreon/pyreon/commit/3f1009eb66fbf6aac01a9b74c096d747bd6f5e6c), [`c655989`](https://github.com/pyreon/pyreon/commit/c6559893e81150811adf41052b550d58e196d43a), [`2de6084`](https://github.com/pyreon/pyreon/commit/2de6084df506180f468f9674fa341fea50044574)]:
+  - @pyreon/native-compiler@0.54.0
+  - @pyreon/reactivity@0.54.0
+  - @pyreon/core@0.54.0
+
 ## 0.53.0
 
 ### Minor Changes
@@ -55,7 +75,7 @@
 
   - **`@pyreon/cli`** (`runDistributionGate`, i.e. `pyreon doctor` + the
     `check-distribution` CI gate): a new rule, `distribution/native-source-not-
-shipped`, fails any package that declares `pyreon.native` but omits the
+    shipped`, fails any package that declares `pyreon.native` but omits the
     declared native source dirs from `files`. This is the class of bug above —
     a co-located port that builds in-repo but is absent from npm. It surfaced two
     real instances (`@pyreon/sync`, `@pyreon/table`), both fixed here.
@@ -146,7 +166,7 @@ shipped`, fails any package that declares `pyreon.native` but omits the
   below, just caught before push instead of by CI. The one other consumer
   pinning past 20.11.6 — `@happy-dom/global-registrator` in
   `examples/benchmark`, whose own 20.13.2 release requires `happy-dom
-^20.13.2` as a peer — is reverted to `^20.11.6` alongside it, so the whole
+  ^20.13.2` as a peer — is reverted to `^20.11.6` alongside it, so the whole
   graph resolves to one version again.
 
   `examples/benchmark`'s framework competitors were refreshed too so the
@@ -176,7 +196,7 @@ shipped`, fails any package that declares `pyreon.native` but omits the
   2.31.1 → 3.0.1 and `@changesets/changelog-github` 0.7.0 → 1.0.0 stay put:
   1.0.0 ships `"type": "module"` with no CJS export, and this repo's own
   `.changeset/resilient-changelog.cjs` does `require('@changesets/changelog-
-github')` — bumping it would break `changeset version` at release time with
+  github')` — bumping it would break `changeset version` at release time with
   `ERR_REQUIRE_ESM`, verified by reading the published package's `exports`
   map, not assumed. The root `uuid` override stays at `11.1.1` for the same
   reason, one level removed: it force-pins a transitive dep of `exceljs`
@@ -190,7 +210,7 @@ github')` — bumping it would break `changeset version` at release time with
   3.17.8 in this branch's first pass (a routine-looking override edit, not
   vetted as carefully as the deps above), and it broke
   `@pyreon/virtual`'s real-Chromium `repositions a STAYING row below when row 0
-is remeasured taller` test deterministically (3/3 local runs, plus 3/3 CI
+  is remeasured taller` test deterministically (3/3 local runs, plus 3/3 CI
   retries) — bisected down to virtual-core's own 3.17.7 "synchronous
   notification for scroll compensation" change, not to anything else in this
   branch (ruled out `@tanstack/react-virtual`, unrelated — not imported by this

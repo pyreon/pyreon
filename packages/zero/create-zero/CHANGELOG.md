@@ -1,5 +1,11 @@
 # create-zero
 
+## 0.54.0
+
+### Patch Changes
+
+- [#4001](https://github.com/pyreon/pyreon/pull/4001) [`1ba51e2`](https://github.com/pyreon/pyreon/commit/1ba51e28cfce2b35e57232a8405dc8541bfc1723) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Scaffolded Dockerfiles use the current base images: `node:26-alpine` (Node 26 becomes the active LTS line on 2026-10-28) for the node adapter, and the latest `oven/bun:1` digest for the bun adapter. Both stay pinned by sha256 digest.
+
 ## 0.53.0
 
 No changes in this release.
@@ -394,7 +400,7 @@ No changes in this release.
 - [#1588](https://github.com/pyreon/pyreon/pull/1588) [`b59c7b0`](https://github.com/pyreon/pyreon/commit/b59c7b07f782e0ae0be2dda144e152504cdef7b7) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix(create-zero): interactive "Custom — pick features one by one" no longer crashes
 
   Picking the Custom feature preset crashed with `TypeError: Cannot read
-properties of undefined (reading 'label')`. The `state` and `ui` feature
+  properties of undefined (reading 'label')`. The `state` and `ui` feature
   categories (and the `full` preset) referenced `state-tree` / `coolgrid`, but
   those keys were never defined in `FEATURES` — so the grouped-multiselect builder
   dereferenced `undefined`. The `full` preset was broken the same way for any
@@ -588,7 +594,7 @@ properties of undefined (reading 'label')`. The `state` and `ui` feature
   - W4 verified: `/throw` test route surfaces "Intentional test error..."
     message + stack in the rendered body + `console.error`
   - W1 verified: scaffold output of `create-pyreon-app w1-test-2 --features
-query` has zero `app.store.` or `useAppStore` references
+    query` has zero `app.store.` or `useAppStore` references
   - W6 verified: `page.on('console')` warning capture returns empty on every
     page load (previously: one warning per page)
 

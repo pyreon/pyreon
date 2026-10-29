@@ -1,5 +1,20 @@
 # @pyreon/zero-content
 
+## 0.54.0
+
+### Patch Changes
+
+- [#3942](https://github.com/pyreon/pyreon/pull/3942) [`457c9ce`](https://github.com/pyreon/pyreon/commit/457c9cebd6583f88cdb309f35b1dba6ae6fc8044) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Dependency updates to the latest releases: oxc-parser 0.155, CodeMirror (autocomplete 6.20.4, language 6.13.1, merge 6.12.3, view 6.43.15), TanStack Query 5.104.5, TanStack Virtual core 3.19.6, Tiptap 3.32, Vite 8.3.4, Shiki 4.5, axe-core 4.14, @capsizecss/metrics 4.4 and the MCP SDK 1.32.1.
+
+- [#3932](https://github.com/pyreon/pyreon/pull/3932) [`7a48e20`](https://github.com/pyreon/pyreon/commit/7a48e207b860b0f259a91867698f3ed280963417) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `content.config.ts` now loads in dev even when Vite's SSR module graph evaluates a second copy of the `@pyreon/*` packages it imports. The config loader runs inside the same singleton-sentinel silent window `@pyreon/zero` already uses for its own `ssrLoadModule` calls. Before this, the sentinel threw `Multiple instances of @pyreon/reactivity detected`, the config failed to load, and collection type generation was skipped. This happened on every dev-server start of the repo's own docs site.
+- Updated dependencies [[`f31485c`](https://github.com/pyreon/pyreon/commit/f31485c7eb6d1eaf402bfd6554bb9165da118012), [`457c9ce`](https://github.com/pyreon/pyreon/commit/457c9cebd6583f88cdb309f35b1dba6ae6fc8044), [`956a521`](https://github.com/pyreon/pyreon/commit/956a5214e0208b883767aee1d91acefefe7c1557), [`6b7085a`](https://github.com/pyreon/pyreon/commit/6b7085a6bad6e48c7a764d0f502e755ed54aaf8e), [`eae9e20`](https://github.com/pyreon/pyreon/commit/eae9e20bdbb2190213e68963afeb732ae71bf543), [`34fc2b5`](https://github.com/pyreon/pyreon/commit/34fc2b5cbffff3edb2b84a3fc96423c804d6a9f4), [`bed3ef0`](https://github.com/pyreon/pyreon/commit/bed3ef0fc388e45f2baf0641554770c3b19b86d9), [`871f6f0`](https://github.com/pyreon/pyreon/commit/871f6f0925f4793441138947c8834fe0b6b426d2), [`1e1c9b7`](https://github.com/pyreon/pyreon/commit/1e1c9b7c54cb7c02d30e64e86da5d823cb3595e4), [`871f6f0`](https://github.com/pyreon/pyreon/commit/871f6f0925f4793441138947c8834fe0b6b426d2), [`c21ab54`](https://github.com/pyreon/pyreon/commit/c21ab54734096ac2613f998f5eba3f05dfe8c094), [`02da900`](https://github.com/pyreon/pyreon/commit/02da900bf63421da6d2bcea6a45c1dfa43691168), [`b1f9bfe`](https://github.com/pyreon/pyreon/commit/b1f9bfe4a5200225b6076044d310b1fcc2d0383e), [`5abcb2d`](https://github.com/pyreon/pyreon/commit/5abcb2d51816c8e114b0755cf761ba58a4ea8db5), [`0902367`](https://github.com/pyreon/pyreon/commit/0902367dc7c94b66247e7e9e837f604b971644e1), [`38f7aaa`](https://github.com/pyreon/pyreon/commit/38f7aaa8ee7f73c168d66b4e53f24d7f85e62ee4), [`87ccdb5`](https://github.com/pyreon/pyreon/commit/87ccdb56ca5247dcfbb1309c7875d65204549b0d), [`9018b4b`](https://github.com/pyreon/pyreon/commit/9018b4b2ef3fb50b6eacbdca9f9e553ad0efb541), [`3f1009e`](https://github.com/pyreon/pyreon/commit/3f1009eb66fbf6aac01a9b74c096d747bd6f5e6c), [`ab90ebc`](https://github.com/pyreon/pyreon/commit/ab90ebc06667adb17efd936df98ffd1067f48527), [`09262fa`](https://github.com/pyreon/pyreon/commit/09262fa053d7c995f64bb26e351b7f7492f16c30), [`700a06c`](https://github.com/pyreon/pyreon/commit/700a06c75804dd488000db0cb7716f421d997823), [`2979e47`](https://github.com/pyreon/pyreon/commit/2979e47ade6278c73a0f50ba5120bef21cb01139), [`143e288`](https://github.com/pyreon/pyreon/commit/143e2887ff318a8e0842774eb2e320f085253400), [`c3bd80c`](https://github.com/pyreon/pyreon/commit/c3bd80c467ce940c0298ab6b85eabb5fd0463ef6), [`c655989`](https://github.com/pyreon/pyreon/commit/c6559893e81150811adf41052b550d58e196d43a), [`4c56327`](https://github.com/pyreon/pyreon/commit/4c5632769f5df19db831799298b3713577751957), [`282ed1a`](https://github.com/pyreon/pyreon/commit/282ed1ae49ab3f6be24cdcc290de97654ab42c2b)]:
+  - @pyreon/runtime-dom@0.54.0
+  - @pyreon/zero@0.54.0
+  - @pyreon/reactivity@0.54.0
+  - @pyreon/head@0.54.0
+  - @pyreon/core@0.54.0
+  - @pyreon/router@0.54.0
+
 ## 0.53.0
 
 ### Patch Changes
@@ -161,7 +176,7 @@
   **1. `~~strikethrough~~` was dropped.** It parses to an mdast `delete` node,
   which `emit-jsx` had no arm for, so it fell to the unhandled-node default —
   which drops the subtree. Pages that write `~~the old claim~~ Here is why it no
-longer holds` rendered the explanation with its subject missing.
+  longer holds` rendered the explanation with its subject missing.
 
   **2. A single `~` meaning "approximately" could strike out whole paragraphs.**
   GFM's default treats `~x~` as strikethrough, so two "approximately" figures in
@@ -171,7 +186,7 @@ longer holds` rendered the explanation with its subject missing.
 
   **3. `remark-directive` claimed `:word` in ordinary prose.** An inline text
   directive was also unhandled, so `display:none` lost `none` and `map 1:1 to
-every target` lost a `1`. Inline (`:name`) and leaf (`::name`) directives now
+  every target` lost a `1`. Inline (`:name`) and leaf (`::name`) directives now
   render as the source text — the container (`:::name`) forms the callouts and
   code groups use are untouched.
 
@@ -547,7 +562,7 @@ every target` lost a `1`. Inline (`:name`) and leaf (`::name`) directives now
 
   Navigating into the docs (e.g. clicking "Docs" from the landing page) threw
   `[Pyreon] <CodeBlock> threw during setup: HierarchyRequestError: Failed to
-execute 'insertBefore' …` — once per code block — leaving the code samples
+  execute 'insertBefore' …` — once per code block — leaving the code samples
   rendered broken on first navigation.
 
   Root cause: `<CodeBlock>` conditionally rendered its filename header and
@@ -820,7 +835,7 @@ execute 'insertBefore' …` — once per code block — leaving the code samples
     blockquote site description.
 
   - **Plugin auto-emit** via `content({ seo: { baseUrl, sitemap, rss,
-llms } })`. `closeBundle` walks the accumulated collection
+    llms } })`. `closeBundle` walks the accumulated collection
     entries and writes `dist/sitemap.xml`, `dist/rss.xml`, and
     `dist/llms.txt` per opt-in flags. Per-collection URL overrides
     (`collectionUrls: { blog: '/news' }`) and skip-collection
@@ -1228,7 +1243,7 @@ llms } })`. `closeBundle` walks the accumulated collection
   The plugin now writes `dist/search-index.json` (catalog) +
   `dist/search-index-<collection>.json` (per-collection chunk) during the
   build's `closeBundle` hook — closing the long-standing `// PR 5: search
-index emission` TODO at the top of `src/plugin.ts`.
+  index emission` TODO at the top of `src/plugin.ts`.
 
   Per-collection entries are accumulated by `transform()` for every
   `.md` / `.mdx` file under a collection's path. The body text is

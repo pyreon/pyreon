@@ -1,5 +1,27 @@
 # @pyreon/store
 
+## 0.54.0
+
+### Minor Changes
+
+- [#4051](https://github.com/pyreon/pyreon/pull/4051) [`7645ce6`](https://github.com/pyreon/pyreon/commit/7645ce6f69bcfa23a20b9a4fdccc989c65129adf) Thanks [@vitbokisch](https://github.com/vitbokisch)! - A block-body `computed` inside a `defineStore` setup now lowers to native code instead of bailing the whole store. `computed(() => { const xs = tasks(); if (filter() === 'done') return xs.filter(…); return xs })` emits a multi-statement getter on the store singleton (Swift `var visible: [Task] { … }`, Kotlin `val visible: List<Task> get() { … }`), parsed and emitted through the same statement IR and statement emitter a component computed and a store method already use. A single-return block keeps the compact getter. An explicit `computed<T>(…)` types the getter when the return cannot be inferred; when it can't and there is no annotation, the emit warns by name and asks for one. Shapes that still cannot lower warn by name: a computed whose argument is a reference rather than an inline arrow, a parameterised computed, and a block body that never returns a value.
+
+- [#3918](https://github.com/pyreon/pyreon/pull/3918) [`fd13e6c`](https://github.com/pyreon/pyreon/commit/fd13e6cef72d5bac2729e12ea52f609fb0357d55) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Setup stores are now instances of an internal class instead of one large closure. The store's internal helpers are shared prototype methods instead of ~10 fresh closures per store. Measured: creating a store is ~15% faster (`bench:stores` setup 640–660 → 520–580 ns) and each store retains 42% less heap (3,129 → 1,819 B). An action call is ~1 ns slower (reads its listener set off the instance). The gzipped bundle grows ~220 B (3.26 → 3.48 KB): a minifier renames closure variables but not property names.
+
+  **Breaking:** the object a store hook returns is no longer a plain object, and code that treats it as one sees a different shape.
+
+  - `{ ...api }` (and `Object.assign({}, api)`) no longer contains `state` — `state` is now a getter on the prototype, which a spread does not copy. Read `api.state` instead (it was already a one-time snapshot when spread).
+  - `Object.keys(api)`, `Object.entries(api)`, a spread, and `JSON.stringify(api)` now also include the store's internal bookkeeping fields (`_scope`, `_raw`, `_signalKeys`, `_subscribers`, …), and `JSON.stringify(api)` no longer includes `state`. These fields are not public API — do not read or write them, and do not enumerate the store object. To serialize a store, use `JSON.stringify(api.state)`; to get the public surface, name it explicitly (`const { store, id, patch, subscribe, onAction, reset, dispose } = api`).
+
+  `patch` / `subscribe` / `onAction` / `reset` / `dispose` are still own properties bound to their store, so destructuring them, passing them detached (`onClick={api.reset}`) and spreading them all keep working.
+
+### Patch Changes
+
+- Updated dependencies [[`597eff1`](https://github.com/pyreon/pyreon/commit/597eff15a534373d09bb290e8749608611b8319f), [`f8a9770`](https://github.com/pyreon/pyreon/commit/f8a97700f3fbd9c0f497824e6beb4d18ecad6f13), [`457c9ce`](https://github.com/pyreon/pyreon/commit/457c9cebd6583f88cdb309f35b1dba6ae6fc8044), [`02da900`](https://github.com/pyreon/pyreon/commit/02da900bf63421da6d2bcea6a45c1dfa43691168), [`956a521`](https://github.com/pyreon/pyreon/commit/956a5214e0208b883767aee1d91acefefe7c1557), [`6e62c7d`](https://github.com/pyreon/pyreon/commit/6e62c7d0c5dda0f2a275c140aadc1bc4c29a9835), [`b2ad72e`](https://github.com/pyreon/pyreon/commit/b2ad72e34e901aa634f5ba91867cf71ed96a823a), [`1e1c9b7`](https://github.com/pyreon/pyreon/commit/1e1c9b7c54cb7c02d30e64e86da5d823cb3595e4), [`02da900`](https://github.com/pyreon/pyreon/commit/02da900bf63421da6d2bcea6a45c1dfa43691168), [`1cc7355`](https://github.com/pyreon/pyreon/commit/1cc7355def1b6470e1ac7961469e4608c819f79a), [`52aa984`](https://github.com/pyreon/pyreon/commit/52aa984f840f760ea305457bed722fb3d2d3b01a), [`282ed1a`](https://github.com/pyreon/pyreon/commit/282ed1ae49ab3f6be24cdcc290de97654ab42c2b), [`7e39941`](https://github.com/pyreon/pyreon/commit/7e39941a6fe07657c5fc010ee4d0985dc26675d9), [`a0ab9cf`](https://github.com/pyreon/pyreon/commit/a0ab9cf627a21fc83c746e0aaf1312aabe6cf0b1), [`ad2a8de`](https://github.com/pyreon/pyreon/commit/ad2a8de7bfde34680e3f33e2b203ac62b2b04b88), [`a503e83`](https://github.com/pyreon/pyreon/commit/a503e837a25e93b61e3f2b9e1b55144c06157e22), [`7740e2f`](https://github.com/pyreon/pyreon/commit/7740e2fe6bd8b35d142075d5ebe1b8b236ae525c), [`9ad118e`](https://github.com/pyreon/pyreon/commit/9ad118ec46145a24d960863d3d96b4fb6392fe5a), [`6906adf`](https://github.com/pyreon/pyreon/commit/6906adf78bbac38802fdbd1829efcdc24ed25448), [`1ece4c0`](https://github.com/pyreon/pyreon/commit/1ece4c0cd31a8ed21b14ad41fe794969f2a80d18), [`08bcee8`](https://github.com/pyreon/pyreon/commit/08bcee866ba0fbd0fbf876a1ecdf8e709a1244f3), [`6aef1c9`](https://github.com/pyreon/pyreon/commit/6aef1c91c0b8d30530cf36adaaf5ef7116ea9ad0), [`310bf91`](https://github.com/pyreon/pyreon/commit/310bf91f6673d747a77e1996647673fce725d0db), [`09262fa`](https://github.com/pyreon/pyreon/commit/09262fa053d7c995f64bb26e351b7f7492f16c30), [`1a7ccdd`](https://github.com/pyreon/pyreon/commit/1a7ccdda20096710a2486f67e97025776552f3f5), [`f31f903`](https://github.com/pyreon/pyreon/commit/f31f903baa6b09cbe66afa07a48202b7fcfe6c92), [`6eff04e`](https://github.com/pyreon/pyreon/commit/6eff04ee8bd5b35b2f981a6fa006dc00a15300f9), [`0902367`](https://github.com/pyreon/pyreon/commit/0902367dc7c94b66247e7e9e837f604b971644e1), [`1f751e7`](https://github.com/pyreon/pyreon/commit/1f751e77167667c463904f2cc4e12a7061743ed4), [`fd8d8ec`](https://github.com/pyreon/pyreon/commit/fd8d8ec5b359691205defe02c7184f5a331ae155), [`db8c255`](https://github.com/pyreon/pyreon/commit/db8c255cea867d0bd092ab377629a47c5cdaaefe), [`22ca310`](https://github.com/pyreon/pyreon/commit/22ca310101833666295f7d941509b4c7467f89d0), [`d55ecbb`](https://github.com/pyreon/pyreon/commit/d55ecbb061f0599836fc4385b5d694854e47a935), [`760cbef`](https://github.com/pyreon/pyreon/commit/760cbefcbbd7378413f1020a1b33740c60b0ec5e), [`fd8d8ec`](https://github.com/pyreon/pyreon/commit/fd8d8ec5b359691205defe02c7184f5a331ae155), [`04ccbe7`](https://github.com/pyreon/pyreon/commit/04ccbe7d34879d554e35524a03f5e2f5761775fb), [`02da900`](https://github.com/pyreon/pyreon/commit/02da900bf63421da6d2bcea6a45c1dfa43691168), [`784e46a`](https://github.com/pyreon/pyreon/commit/784e46a486c2ccb16728117c392f0194b563fd66), [`6e1a7be`](https://github.com/pyreon/pyreon/commit/6e1a7be711eb7858ad5612df5c0062a2a427c194), [`eab5598`](https://github.com/pyreon/pyreon/commit/eab5598203c2973217cf815a47c7a27567e268fa), [`03b6bfa`](https://github.com/pyreon/pyreon/commit/03b6bfa460bca4b9512ea411a5eaef79033dc1b8), [`6ea59b1`](https://github.com/pyreon/pyreon/commit/6ea59b115639d71b3645b267c9572185a9d52a63), [`24bbbfd`](https://github.com/pyreon/pyreon/commit/24bbbfded6d857f8c638da7d059c6eadf13bb977), [`0468605`](https://github.com/pyreon/pyreon/commit/0468605d9b72eefcbdbc2dba0d2d6f86dcb19ee2), [`bc1cc7e`](https://github.com/pyreon/pyreon/commit/bc1cc7e05362f41dea5786f9b74cc39d0188984d), [`bd75ce2`](https://github.com/pyreon/pyreon/commit/bd75ce2c2c44c44759197de1fccdc78f013c3bce), [`71fe560`](https://github.com/pyreon/pyreon/commit/71fe5608b1d95b7df6f550281a278290e33a0f90), [`87ccdb5`](https://github.com/pyreon/pyreon/commit/87ccdb56ca5247dcfbb1309c7875d65204549b0d), [`9018b4b`](https://github.com/pyreon/pyreon/commit/9018b4b2ef3fb50b6eacbdca9f9e553ad0efb541), [`3f1009e`](https://github.com/pyreon/pyreon/commit/3f1009eb66fbf6aac01a9b74c096d747bd6f5e6c), [`2de6084`](https://github.com/pyreon/pyreon/commit/2de6084df506180f468f9674fa341fea50044574)]:
+  - @pyreon/native-compiler@0.54.0
+  - @pyreon/reactivity@0.54.0
+  - @pyreon/validation@0.54.0
+
 ## 0.53.0
 
 ### Minor Changes
@@ -401,7 +423,7 @@
 
 - [#1931](https://github.com/pyreon/pyreon/pull/1931) [`e08cf4b`](https://github.com/pyreon/pyreon/commit/e08cf4b9650f6e6c172b690eff2b192acc0ecb9a) Thanks [@vitbokisch](https://github.com/vitbokisch)! - docs: fix the broken devtools example in the README. It imported a
   non-existent `storeRegistry` symbol (`import { storeRegistry } from
-'@pyreon/store/devtools'`) — the actual `@pyreon/store/devtools` API is
+  '@pyreon/store/devtools'`) — the actual `@pyreon/store/devtools` API is
   `getRegisteredStores()` / `getStoreById(id)` / `onStoreChange(listener)`.
   The documented snippet threw `undefined is not iterable`; corrected to the
   real API. No runtime change.
@@ -445,7 +467,7 @@
   per-entry `[k,v]` tuple arrays).
 
   Measured (`bench:stores`, Apple M3, NODE_ENV=production, per-op isolated): `patch
-2 fields` **106ns → 49ns — now ~1.3× faster than Zustand (66ns), previously ~1.8×
+  2 fields` **106ns → 49ns — now ~1.3× faster than Zustand (66ns), previously ~1.8×
   slower**. The with-subscriber notify path is unchanged (locked by the existing
   `type: 'patch'` notification tests); 142 store tests pass.
 

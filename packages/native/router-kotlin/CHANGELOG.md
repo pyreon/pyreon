@@ -1,5 +1,19 @@
 # @pyreon/native-router-kotlin
 
+## 0.54.0
+
+### Minor Changes
+
+- [#3994](https://github.com/pyreon/pyreon/pull/3994) [`7c3272f`](https://github.com/pyreon/pyreon/commit/7c3272f02ad33482300c744f72ec7b7b34ab2ae3) Thanks [@vitbokisch](https://github.com/vitbokisch)! - A custom-scheme deep link now keeps its host as the first route segment: `myapp://item/42` opens `/item/42` (it used to open `/42`, because the host was folded in only when the path was empty). A web link is unchanged: `https://example.com/item/42` still opens `/item/42`, since its host is the domain. This is a breaking change for an app that relied on a placeholder host, such as `pyreon://app/users/42` opening `/users/42`: that link now opens `/app/users/42`, so drop the placeholder (`pyreon://users/42`). Found by running a real link on a simulator; neither runtime had a test for the URL-to-path step, and both now do.
+
+### Patch Changes
+
+- [#4015](https://github.com/pyreon/pyreon/pull/4015) [`bc1cc7e`](https://github.com/pyreon/pyreon/commit/bc1cc7e05362f41dea5786f9b74cc39d0188984d) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Native: `useUrlState('tags', ['a', 'b'])` now lowers on iOS and Android. An array default of string, number or boolean literals of one type becomes a list binding over the web's comma format, element type taken from the literals the way the web takes it from the first element (an empty array stays strings). The codec matches the web's byte for byte, including the `,` / `%` escaping, a blank or malformed element resetting the whole list to the default, and `?tags=` reading as the empty list; it is asserted by executing the shipped Swift and Kotlin against `inferSerializer`. An Int list holds whole numbers only, like the scalar Int binding. A mixed array, a non-literal element and an object default still stay web, each with a named warning.
+
+  To make a method chained onto the binding lower correctly (`tags().slice()` was emitted verbatim, which neither target accepts), a callable declaration can now type its bare call (`DeclEmitter.typing.value`).
+
+  Also: a whole `Double` above 1e15 now serializes as its digits (`9007199254740991`, not `9.007199254740991E15` / `9007199254740991.0`), and Swift prints `Infinity` / `-Infinity` / `NaN` like JS rather than `inf`. Fractional values and exponent forms (below 1e-6, from 1e21) still use each target's own spelling.
+
 ## 0.53.0
 
 No changes in this release.
@@ -145,7 +159,7 @@ No changes in this release.
 
 - [#2727](https://github.com/pyreon/pyreon/pull/2727) [`2b5be05`](https://github.com/pyreon/pyreon/commit/2b5be059737e000aa8ccd7d481242816f235075e) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Add the `repository` field npm provenance requires. All six packages were
   rejected from the 0.51.0 release with a 422 (`"repository.url" is "",
-expected to match "https://github.com/pyreon/pyreon"`) — `--provenance`
+  expected to match "https://github.com/pyreon/pyreon"`) — `--provenance`
   publishing validates the field against the OIDC attestation, so its absence
   is a publish blocker, not cosmetic metadata.
 

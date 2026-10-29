@@ -1,5 +1,28 @@
 # @pyreon/rocketstyle
 
+## 0.54.0
+
+### Minor Changes
+
+- [#4055](https://github.com/pyreon/pyreon/pull/4055) [`03b6bfa`](https://github.com/pyreon/pyreon/commit/03b6bfa460bca4b9512ea411a5eaef79033dc1b8) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Several dynamic rocketstyle dimensions now lower natively. A component with both `state` and `size` driven by signals used to warn and freeze every dimension at its first branch, so it never reacted on iOS or Android. Each point of the dimension product now resolves as a nested ternary, and the style connector folds that into one nested conditional value per property (Swift `cond ? … : …`, Compose `if (cond) … else …`, and a nested Compose `color` argument for Text).
+
+  The same path makes an inline nested style ternary lower, where it used to be dropped: `style={a() ? (b() ? {…} : {…}) : {…}}`. A property present on only some leaves is still warned, as before.
+
+### Patch Changes
+
+- [#3943](https://github.com/pyreon/pyreon/pull/3943) [`38f7aaa`](https://github.com/pyreon/pyreon/commit/38f7aaa8ee7f73c168d66b4e53f24d7f85e62ee4) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Each rocketstyle component now merges its local context with its props and drops the reserved styling keys in one pass, instead of building a merged copy and then copying it again. The resulting props object is identical.
+
+- [#4024](https://github.com/pyreon/pyreon/pull/4024) [`1451442`](https://github.com/pyreon/pyreon/commit/14514429cefc2d68a138d4520a70bbba577fdc06) Thanks [@vitbokisch](https://github.com/vitbokisch)! - The native warning for a dropped rocketstyle style value no longer says that theme-token resolution is "a tracked follow-up" and that you should use a literal "for now". Theme tokens such as `t.color.primary` do resolve on native when the theme defines them. The warning now says the value was neither a literal nor a resolvable theme token, and to use one of the two.
+
+- [#3939](https://github.com/pyreon/pyreon/pull/3939) [`a5635c1`](https://github.com/pyreon/pyreon/commit/a5635c178584d49173d2f47740abcc30f7b4fe49) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Rocketstyle components mount faster. The theme attributes each component instance reads (`theme`, `mode`, `isDark`, `isLight`) are now a small class with prototype getters instead of an object literal with getters, which V8 is slow to create. Server-rendering 200 rocketstyle components dropped from about 952 µs to about 802 µs on Node (−16%), and by 5–10% on Bun. The getters still read the reactive theme context on every access, so tracking is unchanged.
+- Updated dependencies [[`597eff1`](https://github.com/pyreon/pyreon/commit/597eff15a534373d09bb290e8749608611b8319f), [`f8a9770`](https://github.com/pyreon/pyreon/commit/f8a97700f3fbd9c0f497824e6beb4d18ecad6f13), [`457c9ce`](https://github.com/pyreon/pyreon/commit/457c9cebd6583f88cdb309f35b1dba6ae6fc8044), [`02da900`](https://github.com/pyreon/pyreon/commit/02da900bf63421da6d2bcea6a45c1dfa43691168), [`956a521`](https://github.com/pyreon/pyreon/commit/956a5214e0208b883767aee1d91acefefe7c1557), [`6e62c7d`](https://github.com/pyreon/pyreon/commit/6e62c7d0c5dda0f2a275c140aadc1bc4c29a9835), [`b2ad72e`](https://github.com/pyreon/pyreon/commit/b2ad72e34e901aa634f5ba91867cf71ed96a823a), [`1e1c9b7`](https://github.com/pyreon/pyreon/commit/1e1c9b7c54cb7c02d30e64e86da5d823cb3595e4), [`02da900`](https://github.com/pyreon/pyreon/commit/02da900bf63421da6d2bcea6a45c1dfa43691168), [`1cc7355`](https://github.com/pyreon/pyreon/commit/1cc7355def1b6470e1ac7961469e4608c819f79a), [`52aa984`](https://github.com/pyreon/pyreon/commit/52aa984f840f760ea305457bed722fb3d2d3b01a), [`5abcb2d`](https://github.com/pyreon/pyreon/commit/5abcb2d51816c8e114b0755cf761ba58a4ea8db5), [`7e39941`](https://github.com/pyreon/pyreon/commit/7e39941a6fe07657c5fc010ee4d0985dc26675d9), [`a0ab9cf`](https://github.com/pyreon/pyreon/commit/a0ab9cf627a21fc83c746e0aaf1312aabe6cf0b1), [`ad2a8de`](https://github.com/pyreon/pyreon/commit/ad2a8de7bfde34680e3f33e2b203ac62b2b04b88), [`a503e83`](https://github.com/pyreon/pyreon/commit/a503e837a25e93b61e3f2b9e1b55144c06157e22), [`7740e2f`](https://github.com/pyreon/pyreon/commit/7740e2fe6bd8b35d142075d5ebe1b8b236ae525c), [`9ad118e`](https://github.com/pyreon/pyreon/commit/9ad118ec46145a24d960863d3d96b4fb6392fe5a), [`6906adf`](https://github.com/pyreon/pyreon/commit/6906adf78bbac38802fdbd1829efcdc24ed25448), [`1ece4c0`](https://github.com/pyreon/pyreon/commit/1ece4c0cd31a8ed21b14ad41fe794969f2a80d18), [`08bcee8`](https://github.com/pyreon/pyreon/commit/08bcee866ba0fbd0fbf876a1ecdf8e709a1244f3), [`6aef1c9`](https://github.com/pyreon/pyreon/commit/6aef1c91c0b8d30530cf36adaaf5ef7116ea9ad0), [`310bf91`](https://github.com/pyreon/pyreon/commit/310bf91f6673d747a77e1996647673fce725d0db), [`09262fa`](https://github.com/pyreon/pyreon/commit/09262fa053d7c995f64bb26e351b7f7492f16c30), [`1a7ccdd`](https://github.com/pyreon/pyreon/commit/1a7ccdda20096710a2486f67e97025776552f3f5), [`f31f903`](https://github.com/pyreon/pyreon/commit/f31f903baa6b09cbe66afa07a48202b7fcfe6c92), [`6eff04e`](https://github.com/pyreon/pyreon/commit/6eff04ee8bd5b35b2f981a6fa006dc00a15300f9), [`0902367`](https://github.com/pyreon/pyreon/commit/0902367dc7c94b66247e7e9e837f604b971644e1), [`1f751e7`](https://github.com/pyreon/pyreon/commit/1f751e77167667c463904f2cc4e12a7061743ed4), [`fd8d8ec`](https://github.com/pyreon/pyreon/commit/fd8d8ec5b359691205defe02c7184f5a331ae155), [`db8c255`](https://github.com/pyreon/pyreon/commit/db8c255cea867d0bd092ab377629a47c5cdaaefe), [`22ca310`](https://github.com/pyreon/pyreon/commit/22ca310101833666295f7d941509b4c7467f89d0), [`d55ecbb`](https://github.com/pyreon/pyreon/commit/d55ecbb061f0599836fc4385b5d694854e47a935), [`760cbef`](https://github.com/pyreon/pyreon/commit/760cbefcbbd7378413f1020a1b33740c60b0ec5e), [`fd8d8ec`](https://github.com/pyreon/pyreon/commit/fd8d8ec5b359691205defe02c7184f5a331ae155), [`04ccbe7`](https://github.com/pyreon/pyreon/commit/04ccbe7d34879d554e35524a03f5e2f5761775fb), [`02da900`](https://github.com/pyreon/pyreon/commit/02da900bf63421da6d2bcea6a45c1dfa43691168), [`784e46a`](https://github.com/pyreon/pyreon/commit/784e46a486c2ccb16728117c392f0194b563fd66), [`6e1a7be`](https://github.com/pyreon/pyreon/commit/6e1a7be711eb7858ad5612df5c0062a2a427c194), [`eab5598`](https://github.com/pyreon/pyreon/commit/eab5598203c2973217cf815a47c7a27567e268fa), [`03b6bfa`](https://github.com/pyreon/pyreon/commit/03b6bfa460bca4b9512ea411a5eaef79033dc1b8), [`6ea59b1`](https://github.com/pyreon/pyreon/commit/6ea59b115639d71b3645b267c9572185a9d52a63), [`24bbbfd`](https://github.com/pyreon/pyreon/commit/24bbbfded6d857f8c638da7d059c6eadf13bb977), [`0468605`](https://github.com/pyreon/pyreon/commit/0468605d9b72eefcbdbc2dba0d2d6f86dcb19ee2), [`bc1cc7e`](https://github.com/pyreon/pyreon/commit/bc1cc7e05362f41dea5786f9b74cc39d0188984d), [`bd75ce2`](https://github.com/pyreon/pyreon/commit/bd75ce2c2c44c44759197de1fccdc78f013c3bce), [`71fe560`](https://github.com/pyreon/pyreon/commit/71fe5608b1d95b7df6f550281a278290e33a0f90), [`38f7aaa`](https://github.com/pyreon/pyreon/commit/38f7aaa8ee7f73c168d66b4e53f24d7f85e62ee4), [`87ccdb5`](https://github.com/pyreon/pyreon/commit/87ccdb56ca5247dcfbb1309c7875d65204549b0d), [`9018b4b`](https://github.com/pyreon/pyreon/commit/9018b4b2ef3fb50b6eacbdca9f9e553ad0efb541), [`3f1009e`](https://github.com/pyreon/pyreon/commit/3f1009eb66fbf6aac01a9b74c096d747bd6f5e6c), [`e5f746d`](https://github.com/pyreon/pyreon/commit/e5f746db830031c6c011ca518d629a0ff5f8ac77), [`c655989`](https://github.com/pyreon/pyreon/commit/c6559893e81150811adf41052b550d58e196d43a), [`8106e81`](https://github.com/pyreon/pyreon/commit/8106e81d8f6915d18f40a65574edaa2f604e2337), [`2de6084`](https://github.com/pyreon/pyreon/commit/2de6084df506180f468f9674fa341fea50044574)]:
+  - @pyreon/native-compiler@0.54.0
+  - @pyreon/reactivity@0.54.0
+  - @pyreon/core@0.54.0
+  - @pyreon/ui-core@0.54.0
+  - @pyreon/styler@0.54.0
+  - @pyreon/sized-map@0.54.0
+
 ## 0.53.0
 
 ### Patch Changes
@@ -445,7 +468,7 @@
   So `@pyreon/attrs` and `@pyreon/rocketstyle` each hand-rolled it
   (`utils/attrs.ts:removeUndefinedProps`) — byte-identical bodies. **And the
   `@pyreon/attrs` copy historically shipped as a value-copy** (`result[key] =
-props[key]`), which fires getter-shaped reactive props at HOC-setup time and
+  props[key]`), which fires getter-shaped reactive props at HOC-setup time and
   collapses the live signal to a static snapshot — silently breaking reactive-prop
   forwarding for any consumer using `attrs(Component)` directly (its own docstring
   records this). Two divergent copies of an operation core should own = the exact
@@ -928,7 +951,7 @@ props[key]`), which fires getter-shaped reactive props at HOC-setup time and
   **Bisect-verified-with-restore**:
 
   - Disabled `_isDynamic` cache → `× returns cached result on subsequent
-calls without rescanning values` fires; restored → 425/425 pass.
+    calls without rescanning values` fires; restored → 425/425 pass.
   - Disabled `_staticResolved` cache → 2 lock-in specs fire; restored →
     425/425 pass.
 
@@ -1005,7 +1028,7 @@ calls without rescanning values` fires; restored → 425/425 pass.
     the memo grow unbounded
 
   Reverted `RS_MEMO_CAP` to 32 → the first two specs fail with `expected
-N to be 0` (N=64 and N=100 respectively); control spec stays green
+  N to be 0` (N=64 and N=100 respectively); control spec stays green
   (workload still exceeds cap=32, just by less). Restored to 128 →
   3/3 pass.
 
@@ -1274,7 +1297,7 @@ N to be 0` (N=64 and N=100 respectively); control spec stays green
     the component body throws, so any regression that causes the
     extractor to invoke it fails immediately with a real error.
     Additionally, gating Path B (`else if (false && typeof type ===
-'function')`) → Path B + reactive accessor tests fail, 2/5.
+    'function')`) → Path B + reactive accessor tests fail, 2/5.
     Restored, 5/5 pass.
 
   Also removes the three packages from `PHASE_5_PENDING_PACKAGES` in
