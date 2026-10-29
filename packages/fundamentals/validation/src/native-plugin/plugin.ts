@@ -3,6 +3,7 @@ import {
   type CallRecognizer,
   type CompilerPlugin,
 } from '@pyreon/native-compiler/plugin-api'
+import { finishValidation, lowerMultiDeclarator, recognizeValidationMethodCall, scanValidationBindings } from './bound'
 import { VALIDATION_PLUGIN_NAME } from './names'
 import {
   SCHEMA_ADAPTERS,
@@ -11,6 +12,7 @@ import {
   tryZodSchemaDefnFromTopLevel,
   warnUnloweredSchemaAdapter,
 } from './recognize'
+import { safeParseExpr } from './safe-parse'
 import { createSchemaItem, createSchemaStructRefinement, schemaItemSpec } from './schema'
 
 export { VALIDATION_PLUGIN_NAME }
@@ -23,12 +25,11 @@ export { VALIDATION_PLUGIN_NAME }
 const tier2: CallRecognizer = (call, ctx) => {
   const bindingName = ctx.declName
   ctx.report(
-    `${call.callee}() declared (@pyreon/validation, binding: \`${bindingName}\`) — Tier-2 package on native: parser ` +
-      `recognition + runtime port not yet shipped. Setup function will not run on iOS/Android; downstream ` +
-      `uses of \`${bindingName}\` emit as unresolved references and may fail swiftc/kotlinc validation. ` +
-      `Use a per-target adapter (Layer 4: <NativeIOS> / <NativeAndroid>) to provide the same surface natively, ` +
-      `or keep this code in a \`<Web>\`-only branch. Tracked in audit Gap 4; see ` +
-      `docs/src/content/docs/multiplatform-libraries.md → "Tier 2 — pure-logic packages."`,
+    `${call.callee}() declared (@pyreon/validation, binding: \`${bindingName}\`) in a position that does not lower — ` +
+      `only a TOP-LEVEL \`const ${bindingName} = ${call.callee}(…)\` with an inline literal schema becomes a native ` +
+      `struct, so a schema declared inside a component body / function, or a \`*Field\` helper, emits as an unresolved ` +
+      `reference and fails swiftc/kotlinc. Hoist the declaration to the top of the file (it reads no component state), ` +
+      `or keep the call in a \`<Web>\`-only branch.`,
   )
   return null
 }
@@ -49,6 +50,7 @@ export const validationPlugin: CompilerPlugin = {
   apiVersion: 2,
   modules: ['@pyreon/validation'],
   scanModule(scan) {
+    scanValidationBindings(scan)
     // The unlowered-module warning runs before the declarations are recognized, so "does a schema lower?" is
     // answered syntactically here: any adapter call at the top level means the blanket line would print directly
     // above the struct it denies.
@@ -63,6 +65,9 @@ export const validationPlugin: CompilerPlugin = {
     }
   },
   topLevel(node, ctx) {
+    // `const a = zodSchema(…), b = zodSchema(…)`: the one-declarator recognizers below would decline it.
+    const multi = lowerMultiDeclarator(node, ctx)
+    if (multi !== undefined) return multi
     const hit =
       tryZodSchemaDefnFromTopLevel(node, ctx) ??
       tryValibotSchemaDefnFromTopLevel(node, ctx) ??
@@ -78,6 +83,9 @@ export const validationPlugin: CompilerPlugin = {
     return undefined
   },
   items: { schema: createSchemaItem({ declaredBy: 'zodSchema/valibotSchema/arktypeSchema' }) },
+  methodCalls: { '*': recognizeValidationMethodCall },
+  exprs: { safeParse: safeParseExpr },
+  finishModule: finishValidation,
   refineStructs: createSchemaStructRefinement(VALIDATION_PLUGIN_NAME),
   // Every recognizer here only CLAIMS the call (`null`) and declares nothing, so there is no declaration type to emit.
   decls: {},
@@ -97,7 +105,7 @@ export const validationPlugin: CompilerPlugin = {
       // ABOVE that struct in the same output — telling an author to wrap
       // working code in a `<Web>` escape hatch.
       advice:
-        'a TOP-LEVEL `const X = zodSchema(z.object({ … }))` DOES lower — it emits a native struct with parse/safeParse. What stays web-only is the runtime surface around it (inline `.parse()` on an expression, `standardSchemaToValidator`, the async validate path)',
+        'a TOP-LEVEL `const X = zodSchema(z.object({ … }))` DOES lower — it emits a native struct with parse/safeParse, and `X.safeParse(v)` / `zodSchema(z.object({ … })).safeParse(v)` lower to the web\'s `{ success, data }` result (several schemas may share one `const a = …, b = …` statement). What stays web-only: `.parse()` (throws), a schema declared inside a component body (hoist it), a non-literal schema argument, `.refine` / `.transform` / `.default` / `.preprocess` chains (named per field), `standardSchemaToValidator` and the async validate path',
     },
   },
 }

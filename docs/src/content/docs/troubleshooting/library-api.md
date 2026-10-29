@@ -169,3 +169,9 @@ A 27-package audit of `packages/fundamentals` (PRs #3642–#3653) found the same
 `toast`'s `duration: Infinity` dismissed after ~1ms, and `query`'s uncapped exponential reconnect backoff passed the limit and turned into a reconnect storm. **Rule: cap and jitter every computed delay; treat a non-finite duration as "never", not as a number.**
 
 ---
+
+### A schema-chain walker that handles the modifiers it knows and ignores the rest is a silent validation bypass
+
+(`@pyreon/validation` native lowering, 2026-10). The walker's `if (name === 'min') … else if (name === 'email') …` chain had no `else`, so `.refine()` / `.transform()` / `.default()` / `.nonempty()` / `.trim()` / a non-literal `.min(n)` vanished: the emit compiled, `warnings` was empty, and the device accepted input the web rejects. A sibling shape: the recognizers read `declarators[0]` and bailed on `length !== 1`, so `const a = zodSchema(…), b = zodSchema(…)` fell to a VERBATIM emit that compiles on neither target; and a declared schema's `.safeParse(x)` was a static method called through the instance (the `s` DSL had the lowering, the adapters did not). **Rules: a modifier chain needs an explicit `else` that names the dropped modifier (allowlist the genuinely no-op ones: `describe`/`brand`/`readonly`); a one-declarator recognizer must split a multi-declarator statement or warn, never fall through; a lowering that exists in one sibling plugin belongs in the shared model package so the other does not re-derive it.** Every lowering here is proven by compiling the emit (stub swiftc + kotlinc, uncached) — zero warnings is not evidence. Reference: `validation/src/native-plugin/{bound,recognize,safe-parse}.ts` + `native/compiler/src/tests/native-validation-bound-safeparse.test.ts`.
+
+---
