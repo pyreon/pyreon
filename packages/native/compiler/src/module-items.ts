@@ -27,6 +27,7 @@
 
 import type { ThemeTable } from './theme-native'
 import { isJson, type AstNode } from './call-lowering'
+import type { RequestOptions, ResolvedRequest } from './module-scan'
 import type {
   EmitContext,
   KotlinEmitContext,
@@ -98,6 +99,15 @@ export interface ModuleParseContext {
   typeArgs(node: AstNode): TypeIR[]
   /** The source location of `node` as the compiler spells it in its own messages (`file.tsx:3:14`), for a message that names a call. */
   loc(node: AstNode): string
+  /**
+   * Requests plugins can resolve from a call of a binding they recorded (see `CompilerPlugin.requestSources`) — the
+   * same resolver a declaration recognizer reads through `ParseContext.requests`, for a call met in an EXPRESSION
+   * (an awaited `signIn({ json })`, a `save.mutate({ json })`) rather than a declaration initializer.
+   */
+  readonly requests: {
+    has(name: string): boolean
+    resolve(name: string, arg: AstNode | undefined, options: RequestOptions): ResolvedRequest | null
+  }
   /**
    * Add an item found OUTSIDE a declaration (a schema synthesized from an inline `s.object({ … }).safeParse(x)`).
    * Appended after every declaration-level item, in the order added.
@@ -262,6 +272,14 @@ export type CallExprRecognizer = (
 export interface ExprEmitter {
   swift(e: ExtExprIR, ctx: SwiftEmitContext): string
   kotlin(e: ExtExprIR, ctx: KotlinEmitContext): string
+  /**
+   * The expression is an async call that can FAIL — a request whose rejection, on the web, aborts the `async`
+   * function awaiting it and surfaces as an unhandled rejection. Swift emits the awaited form as `try await …`
+   * (the plugin's text carries neither keyword), and the core wraps the enclosing `Task` / coroutine body so a
+   * failure ends the handler there and is reported, instead of a Kotlin `launch` crashing the app with an
+   * uncaught exception. Only meaningful under `await`; the plugin is responsible for refusing an un-awaited use.
+   */
+  readonly throws?: boolean | undefined
   /** How expressions over the node are typed (without it the node is `unknown`). */
   readonly typing?:
     | {

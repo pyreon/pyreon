@@ -1091,6 +1091,29 @@ class RouterDemoInstrumentedTest {
         composeRule.onNodeWithTag("video-status").assertTextEquals("Video: playing")
     }
 
+    // A global beforeEach guard written INLINE (`(to) => to.path !== GUARDED_PATH`) blocks navigation in the real
+    // native router — including a deep link, which goes through the same guard chain. Before, an inline guard was
+    // dropped with a warning, so the route was reachable on Android. An allowed deep link afterwards proves the guard
+    // blocks only its path, and that the blocked one was processed (links are handled in order).
+    @Test
+    fun inlineBeforeEachGuardBlocksNavigation() {
+        val instr = InstrumentationRegistry.getInstrumentation()
+        composeRule.onNodeWithTag("home-page").assertIsDisplayed()
+        instr.runOnMainSync {
+            com.pyreon.router.PyreonDeepLink.receive(Uri.parse("pyreondemo://guarded"))
+        }
+        instr.runOnMainSync {
+            com.pyreon.router.PyreonDeepLink.receive(Uri.parse("pyreondemo://loaded"))
+        }
+        composeRule.waitUntil(timeoutMillis = 15_000) {
+            composeRule.onAllNodesWithTag("loaded-page").fetchSemanticsNodes().isNotEmpty()
+        }
+        org.junit.Assert.assertTrue(
+            "the beforeEach guard did not block /guarded",
+            composeRule.onAllNodesWithTag("guarded-page").fetchSemanticsNodes().isEmpty(),
+        )
+    }
+
     // Route loader data, destructured. The page's fields come from
     // `const { title, views } = useLoaderData<Loaded>()`, which lowers to an
     // early `?: return` so the composable (and its onMount LaunchedEffect)

@@ -15,7 +15,7 @@ Pyreon adapter for TanStack Query. Fine-grained signals per observer field (data
 
 wraps TanStack Query (a JS runtime cache), so the full client — QueryClient config, devtools, infinite/suspense queries — stays web; `useQuery` itself lowers to the PyreonQuery runtime
 
-**What crosses natively:** PyreonQuery — `useQuery` (key + fetcher, loading/error/data state); PyreonStream — `useStream` over `openEventStream` / `openNdjsonStream` (SSE + NDJSON, reconnect with Last-Event-ID)
+**What crosses natively:** PyreonQuery — `useQuery` (key + fetcher, loading/error/data state); PyreonMutation — `useMutation<T>(ep.mutation())` or `useMutation({ mutationFn: (vars) => ep({ json: vars }) })` with `mutate` / `mutateAsync` / `reset` and data/error/status (the request is built at the call site from runtime values; the latest call owns the state; TanStack callback order; `invalidates` / `onMutate` / `retry` are named, not lowered); PyreonStream — `useStream` over `openEventStream` / `openNdjsonStream` (SSE + NDJSON, reconnect with Last-Event-ID)
 
 See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multiplatform libraries](/docs/multiplatform-libraries) for every package's tier.
 

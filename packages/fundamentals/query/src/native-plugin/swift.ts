@@ -1,7 +1,7 @@
 // The Swift half of the `@pyreon/query` lowering: the `@State` containers and the `.task` harnesses
 // that drive them. Every harness is a pure function of the declaration's payload.
 
-import { sendableHeaderExprs, type EmitContext, type ExtDecl } from '@pyreon/native-compiler/plugin-api'
+import { swiftHttpRequestArgs, swiftSendLines, type EmitContext, type ExtDecl } from '@pyreon/native-compiler/plugin-api'
 import type { QueryPayload, StreamPayload } from './types'
 
 const query = (d: ExtDecl): QueryPayload => d.payload as unknown as QueryPayload
@@ -61,24 +61,16 @@ export function queryLifecycleSwift(decl: ExtDecl, ctx: EmitContext): readonly s
   } else {
     const swiftUrl = d.urlExpr !== undefined ? ctx.expr(d.urlExpr, 0) : ctx.stringLiteral(d.url as string)
     lines.push(`    do {`)
-    if (d.method || d.headers || d.headerExprs || d.body) {
+    if (d.method || d.headers || d.headerExprs || d.body !== undefined || d.bodyExpr !== undefined || d.upload !== undefined) {
       // A request with a VERB, headers, or a body routes through PyreonHttp — exactly like useFetch's
-      // method/headers path.
-      const method = (d.method ?? 'GET').toLowerCase()
-      const parts = [`method: .${method}`, `url: ${swiftUrl}`]
-      const pairs = [
-        ...Object.entries(d.headers ?? {}).map(([k, v]) => `${ctx.stringLiteral(k)}: ${ctx.stringLiteral(v)}`),
-        // Evaluated here, inside the harness — i.e. when THIS run builds the request, so a token is current.
-        ...sendableHeaderExprs(d.headerExprs, ctx, `Declaration ${decl.name}: useQuery queryFn fetch`).map(([k, e]) => `${ctx.stringLiteral(k)}: ${ctx.expr(e, 0)}`),
-      ]
-      if (pairs.length > 0) parts.push(`headers: [${pairs.join(', ')}]`)
-      if (d.body !== undefined) parts.push(`body: Data(${ctx.stringLiteral(d.body)}.utf8)`)
-      lines.push(`      let __response = try await PyreonHttp.send(`)
-      lines.push(`        PyreonHttpRequest(${parts.join(', ')})`)
-      lines.push(`      )`)
-      lines.push(`      guard __response.isOK else {`)
-      lines.push(`        throw PyreonHttpError.badStatus(__response.status)`)
-      lines.push(`      }`)
+      // method/headers path. Header and body expressions are evaluated here, inside the harness — i.e.
+      // when THIS run builds the request, so a token is current.
+      const args = swiftHttpRequestArgs(
+        { method: d.method, url: swiftUrl, headers: d.headers, headerExprs: d.headerExprs, body: d.body, bodyExpr: d.bodyExpr, upload: d.upload },
+        ctx,
+        `Declaration ${decl.name}: useQuery queryFn fetch`,
+      )
+      for (const line of swiftSendLines(args)) lines.push(`      ${line}`)
       lines.push(`      ${name}.resolve(try __response.decode(${ctx.typeText(d.type)}.self))`)
     } else {
       lines.push(`      let (bytes, _) = try await URLSession.shared.data(from: URL(string: ${swiftUrl})!)`)
