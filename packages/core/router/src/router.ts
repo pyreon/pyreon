@@ -533,8 +533,10 @@ export function createRouter<TNames extends string = string>(
   // Pre-built O(1) name → record index. Computed once at startup.
   const nameIndex = buildNameIndex(routes)
 
-  const guards: NavigationGuard[] = []
-  const afterHooks: AfterEachHook[] = []
+  // Seeded from the `beforeEach` / `afterEach` options, so a guard can be declared with the routes — the form the native
+  // targets lower (they have no imperative registration). `router.beforeEach()` appends after these.
+  const guards: NavigationGuard[] = [...(opts.beforeEach ?? [])]
+  const afterHooks: AfterEachHook[] = [...(opts.afterEach ?? [])]
   const scrollManager = new ScrollManager(scrollBehavior)
 
   // Navigation generation counter — cancels in-flight navigations when a newer

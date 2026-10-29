@@ -49,6 +49,8 @@ export const TYPECHECK_ONLY = new Set([
   'PyreonStorageBackends',
   'PyreonJson',
   'PyreonHttpOkHttp',
+  // Resolves `content://` through a real ContentResolver: nothing to run without a device.
+  'PyreonUploadAndroid',
 ])
 
 export interface ServicePlan {

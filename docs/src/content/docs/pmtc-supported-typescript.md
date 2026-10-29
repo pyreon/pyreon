@@ -201,13 +201,13 @@ return <RouterProvider router={router}><RouterView /></RouterProvider>
 
 | Shape | Status | Notes |
 |---|---|---|
-| `createRouter({ routes: [...] })` | ✅ Full | Routes extracted; non-literal arrays silently drop |
-| `{ path: '/x', component: Identifier }` | ✅ Full | Both fields required; non-literal path silently dropped |
+| `createRouter({ routes: [...] })` | ✅ Full | Routes extracted. A route the compiler cannot read costs the router its whole table (it never emits a partial one), and is warned by name |
+| `{ path: '/x', component: Identifier }` | ✅ Full | `path` (and `redirect`) may be a string literal or a module-level `const X = '/x'`; anything else is warned by name |
 | A route component's `params` prop (`props: { params: { id: string } }` or a named `params: UserParams`) | ✅ Full | Constructed from the matched path (`UserParams(id: params["id"] ?? "")`). Flat `string` / `number` / `boolean` fields only; a nested field passes the raw map, which the native build rejects by name |
 | `beforeEnter: () => expr` (expression-body) | ✅ Full | A5 PR #1242 wired into runtime |
 | `beforeEnter: () => { … }` (block-body) | ❌ Warning | PR #1136 — "Per-route beforeEnter is a block-body arrow — only expression-body arrows are extracted; this route emits UNGUARDED." |
-| `beforeEach: [identifier, identifier]` | ✅ Full | A4-shipped runtime; identifier args land, inline-arrow args silently dropped |
-| `afterEach: [identifier]` | ✅ Full | Same shape as `beforeEach` |
+| `beforeEach: [guard, (to) => to.path !== '/admin']` | ✅ Full | Named and inline guards both lower; `to.path` reads the target path and an unused `from` is dropped. A guard that reads `to.params`/`to.query`/`from`, returns a redirect, is async, or captures a component local is warned by name and dropped. The web router honours the same option |
+| `afterEach: [hook, (to) => track(to.path)]` | ✅ Full | Same shape as `beforeEach` |
 | `children: [...]` | ✅ Full | A4.5 PR #1243 — nested routes with depth-tracked `<RouterView />` |
 | `notFoundComponent: Identifier` | ✅ Full | A6 PR #1239 — wildcard-404 fallback |
 | `redirect: '/login'` | 🟡 Phase B6 | Not yet extracted; use `router.redirect('/login')` at runtime |
