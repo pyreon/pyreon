@@ -50,6 +50,8 @@ interface FetchPayload {
    */
   readonly headerExprs?: Readonly<Record<string, ExprIR>>
   readonly body?: string
+  /** The endpoint client's lowered `use: [...]` middleware (an `@pyreon/http` expression), applied around the request. */
+  readonly middleware?: ExprIR
   /**
    * A body only known at runtime — `JSON.stringify(draft)`, a string a signal holds — evaluated when the harness builds
    * the request: on mount, the moment the web's `useFetch` reads `init.body`. Mutually exclusive with `body`.
@@ -93,6 +95,7 @@ export const recognizeFetch: CallRecognizer = (_call, ctx) => {
         bodyExpr?: ExprIR | undefined
         urlExpr?: ExprIR | undefined
         upload?: ExprIR | undefined
+        middleware?: ExprIR | undefined
       }
     | undefined
   if (urlArg?.type === 'CallExpression' && urlArg.callee?.type === 'Identifier' && ctx.requests.has(urlArg.callee.name as string)) {
@@ -100,8 +103,10 @@ export const recognizeFetch: CallRecognizer = (_call, ctx) => {
       allowRuntimeParams: false,
       streaming: false,
       // The harness builds the request on mount — when the web evaluates the endpoint call — so a runtime body or
-      // header value is read at the same moment on every target.
+      // header value is read at the same moment on every target. It also passes the client's middleware to
+      // `PyreonHttp.send(…, middleware:)`.
       runtimeValues: true,
+      middleware: true,
     })
     if (!resolved) return null // warning already pushed; stays web
     ctx.recordDecode(type, resolved.response)
@@ -134,6 +139,7 @@ export const recognizeFetch: CallRecognizer = (_call, ctx) => {
     bodyExpr?: ExprIR
     urlExpr?: ExprIR
     upload?: ExprIR
+    middleware?: ExprIR
   } = {}
   if (resolvedEndpoint?.urlExpr !== undefined) req.urlExpr = resolvedEndpoint.urlExpr
   if (resolvedEndpoint?.upload !== undefined) req.upload = resolvedEndpoint.upload
@@ -142,6 +148,7 @@ export const recognizeFetch: CallRecognizer = (_call, ctx) => {
   if (resolvedEndpoint?.headers) req.headers = resolvedEndpoint.headers
   if (resolvedEndpoint?.headerExprs) req.headerExprs = { ...resolvedEndpoint.headerExprs }
   if (resolvedEndpoint?.body !== undefined) req.body = resolvedEndpoint.body
+  if (resolvedEndpoint?.middleware !== undefined) req.middleware = resolvedEndpoint.middleware
   if (resolvedEndpoint?.bodyExpr !== undefined) req.bodyExpr = resolvedEndpoint.bodyExpr
   if (initArg) {
     if (initArg.type !== 'ObjectExpression') {
@@ -231,7 +238,8 @@ const hasRequestInit = (p: FetchPayload): boolean =>
       p.body !== undefined ||
       p.bodyExpr !== undefined ||
       p.urlExpr !== undefined ||
-      p.upload !== undefined,
+      p.upload !== undefined ||
+      p.middleware !== undefined,
   )
 
 /** `.task { … }` on the stable-identity host: begin → request → resolve | reject. Lines are relative to the modifier's own indentation. */
@@ -250,8 +258,9 @@ function swiftHarness(d: ExtDecl, ctx: EmitContext): readonly string[] {
       ctx,
       where,
     )
-    // A non-2xx must REJECT rather than decode (see `swiftSendLines`).
-    for (const line of swiftSendLines(args)) lines.push(`    ${line}`)
+    // A non-2xx must REJECT rather than decode (see `swiftSendLines`). The client's `use: [...]`, when present, is applied
+    // around the request with the web's onion semantics.
+    for (const line of swiftSendLines(args, p.middleware !== undefined ? ctx.expr(p.middleware, 0) : undefined)) lines.push(`    ${line}`)
     lines.push(`    ${name}.resolve(try __response.decode(${ctx.typeText(p.type)}.self))`)
   } else {
     lines.push(`    let (bytes, _) = try await URLSession.shared.data(from: URL(string: ${swiftStr(p.url)})!)`)
@@ -275,7 +284,7 @@ function kotlinHarness(d: ExtDecl, ctx: EmitContext): readonly string[] {
       where,
     )
     // A non-2xx REJECTS rather than decoding (see `kotlinSendLines`).
-    for (const line of kotlinSendLines(args)) lines.push(`    ${line}`)
+    for (const line of kotlinSendLines(args, p.middleware !== undefined ? ctx.expr(p.middleware, 0) : undefined)) lines.push(`    ${line}`)
     lines.push(`    ${name}.resolve(PyreonFetchJson.decodeFromString<${ctx.typeText(p.type)}>(__response.body))`)
   } else {
     lines.push(`    val body = withContext(Dispatchers.IO) { java.net.URL(${kotlinStr(p.url)}).readText() }`)

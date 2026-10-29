@@ -1147,8 +1147,28 @@ object PyreonHttpOkHttp : PyreonHttpExecutor {
 }
 object PyreonHttp {
   fun install(executor: PyreonHttpExecutor) {}
-  fun send(request: PyreonHttpRequest, fallback: PyreonHttpExecutor? = null): PyreonHttpResponse = PyreonHttpResponse(200)
+  fun send(
+    request: PyreonHttpRequest,
+    fallback: PyreonHttpExecutor? = null,
+    middleware: List<PyreonHttpMiddleware> = emptyList(),
+  ): PyreonHttpResponse = PyreonHttpResponse(200)
   fun call(request: PyreonHttpRequest, fallback: PyreonHttpExecutor? = null): PyreonHttpResponse = PyreonHttpResponse(200)
+}
+// The lowered \`createHttp({ use: [...] })\` middleware. Mirrors the REAL
+// PyreonHttp.kt surface: \`maxDelay\` is a Double, every policy field is
+// defaulted, and the middleware are nested classes of a sealed class.
+data class PyreonRetryPolicy(
+  val limit: Int = 2,
+  val methods: List<String> = emptyList(),
+  val statuses: List<Int> = emptyList(),
+  val network: Boolean = true,
+  val respectRetryAfter: Boolean = true,
+  val maxDelay: Double = 30_000.0,
+)
+sealed class PyreonHttpMiddleware {
+  class Bearer(val baseUrl: String, val crossOrigin: Boolean = false, val token: () -> String?) : PyreonHttpMiddleware()
+  class Retry(val policy: PyreonRetryPolicy = PyreonRetryPolicy()) : PyreonHttpMiddleware()
+  class Logger(val production: Boolean = false) : PyreonHttpMiddleware()
 }
 // PyreonURL — the runtime path-param encoder a templated endpoint URL calls.
 // Mirrors the REAL PyreonURL surface: four overloads (String / Int / Long /

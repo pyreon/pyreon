@@ -3492,12 +3492,12 @@
       "warnings": 1
     },
     "golden-fixture:http-35.tsx|swift": {
-      "sha": "20eb82eb9763b97507162b3781ae77351c371ff31d8b5733fa238b8f380f1534",
+      "sha": "6f89e4295fde3951f8b133ed3dc18811d6bfa21be66749b4b0723907247c552f",
       "bytes": 610,
       "warnings": 1
     },
     "golden-fixture:http-35.tsx|kotlin": {
-      "sha": "af0fbcfa7fa1412f44e317dedc9054cc998950cc4b7b5782a98c3b901dea8874",
+      "sha": "7d60843b0d6c4d962d9e2c0ee8a83afdaa42462b8aa8c6ac509032cecdfc6adc",
       "bytes": 698,
       "warnings": 1
     },
@@ -3650,6 +3650,26 @@
       "sha": "52d287b187403a1ea79d68170646d968bf525552318e79e94875e3587ca15089",
       "bytes": 151,
       "warnings": 1
+    },
+    "golden-fixture:http-middleware-01.tsx|swift": {
+      "sha": "06fd64a7194677a93527ff0f98581af81fa018d99e17fc7a5f8cbd16f060c1c2",
+      "bytes": 2227,
+      "warnings": 0
+    },
+    "golden-fixture:http-middleware-01.tsx|kotlin": {
+      "sha": "5447189348881846b2d590707af445927400806863d3c590523d43a5ebe4a7f4",
+      "bytes": 2323,
+      "warnings": 0
+    },
+    "golden-fixture:http-middleware-02.tsx|swift": {
+      "sha": "0bba2b1e034d3fec9549240d57cbb907c2d2ba7818cd417a17dcf445fdb81207",
+      "bytes": 164,
+      "warnings": 3
+    },
+    "golden-fixture:http-middleware-02.tsx|kotlin": {
+      "sha": "92e17a9434f8a65fdbc2dff98ad1976eb41d8d65a3a733df2817b4457e8a4a6e",
+      "bytes": 227,
+      "warnings": 3
     },
     "golden-fixture:i18n-01.tsx|swift": {
       "sha": "e7e2fbc47d57f55daf10a10444d5a80e36854626eb7fed6ba2ded11b779e3649",
@@ -4242,12 +4262,12 @@
       "warnings": 1
     },
     "golden-fixture:query-09.tsx|swift": {
-      "sha": "30044cd61ecffe2bc97b57e2aefca919283b7a205ef8c2fa7e3abd308e6d03bf",
+      "sha": "0b5a479754c1dde9e591e3dbd3f1283a2b4f046cdb332fd94b8851b0fe499217",
       "bytes": 752,
       "warnings": 3
     },
     "golden-fixture:query-09.tsx|kotlin": {
-      "sha": "53da1e6fc183bcdfccac6a93d1546e7ab884321f4f8e13d978e57024f62ca56e",
+      "sha": "01bf1a7c4524a4e601607ad96257dd71b0107e01d2d2d93918522327931fab2a",
       "bytes": 885,
       "warnings": 3
     },
@@ -7712,13 +7732,13 @@
       "warnings": 0
     },
     "registry:@pyreon/http|swift": {
-      "sha": "375131b97ae43b7cc7b67a8846e000e33d4f5c8b4667cb3d68a968caa7687e25",
-      "bytes": 2266,
+      "sha": "dace32c865d41e8d6797c5729ec2807eba16ec90e299b7d06d0ea37c7adff938",
+      "bytes": 3311,
       "warnings": 0
     },
     "registry:@pyreon/http|kotlin": {
-      "sha": "43fdd08f30ae4799234ecd2399fd2aa335fcf97b4cce145fbd469dcbc721b7ba",
-      "bytes": 3187,
+      "sha": "9f7c2187fe57174e20db9dd6c3a687b5fd5fe3b8086763a2f383a63e12e11d6c",
+      "bytes": 4195,
       "warnings": 0
     },
     "registry:@pyreon/validation|swift": {

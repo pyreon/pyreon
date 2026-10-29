@@ -61,7 +61,7 @@ export function queryLifecycleKotlin(decl: ExtDecl, ctx: EmitContext): readonly 
   } else {
     const kotlinUrl = d.urlExpr !== undefined ? ctx.expr(d.urlExpr, 0) : ctx.stringLiteral(d.url as string)
     lines.push(`    try {`)
-    if (d.method || d.headers || d.headerExprs || d.body !== undefined || d.bodyExpr !== undefined || d.upload !== undefined) {
+    if (d.method || d.headers || d.headerExprs || d.body !== undefined || d.bodyExpr !== undefined || d.upload !== undefined || d.middleware !== undefined) {
       // Mirrors the Swift PyreonHttp branch: a request with a VERB, headers, or a body goes through
       // PyreonHttp (readText() can express none of them). Header and body expressions are evaluated
       // here, inside the harness — i.e. when THIS run builds the request, so a token is current.
@@ -70,7 +70,8 @@ export function queryLifecycleKotlin(decl: ExtDecl, ctx: EmitContext): readonly 
         ctx,
         `Declaration ${decl.name}: useQuery queryFn fetch`,
       )
-      for (const line of kotlinSendLines(args)) lines.push(`      ${line}`)
+      // The client's `use: [...]`, when present, is applied around the request with the web's onion semantics.
+      for (const line of kotlinSendLines(args, d.middleware !== undefined ? ctx.expr(d.middleware, 0) : undefined)) lines.push(`      ${line}`)
       lines.push(`      ${name}.resolve(PyreonFetchJson.decodeFromString<${ctx.typeText(d.type)}>(__response.body))`)
     } else {
       lines.push(`      val body = withContext(Dispatchers.IO) { java.net.URL(${kotlinUrl}).readText() }`)

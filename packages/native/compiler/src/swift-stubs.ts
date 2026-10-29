@@ -1369,11 +1369,35 @@ public enum PyreonHttp {
   public static func send(_ request: PyreonHttpRequest) async throws -> PyreonHttpResponse {
     PyreonHttpResponse()
   }
+  public static func send(
+    _ request: PyreonHttpRequest,
+    middleware: [PyreonHttpMiddleware]
+  ) async throws -> PyreonHttpResponse {
+    PyreonHttpResponse()
+  }
   @discardableResult
   public static func call(_ request: PyreonHttpRequest) async throws -> PyreonHttpResponse {
     PyreonHttpResponse()
   }
   public static func fire(_ request: PyreonHttpRequest) {}
+}
+// The lowered \`createHttp({ use: [...] })\` middleware. Mirrors the REAL
+// PyreonHttp.swift surface: \`maxDelay\` is a Double, every policy field is
+// defaulted, and a bearer token is a plain \`() -> String?\` (an enum payload, so escaping).
+public struct PyreonRetryPolicy {
+  public init(
+    limit: Int = 2,
+    methods: [String] = [],
+    statuses: [Int] = [],
+    network: Bool = true,
+    respectRetryAfter: Bool = true,
+    maxDelay: Double = 30_000
+  ) {}
+}
+public enum PyreonHttpMiddleware {
+  case bearer(baseUrl: String, crossOrigin: Bool, token: () -> String?)
+  case retry(PyreonRetryPolicy)
+  case logger(production: Bool)
 }
 // PyreonURL — the runtime path-param encoder a templated endpoint URL calls.
 // Mirrors the REAL PyreonURL surface: three overloads (String / Int / Double),

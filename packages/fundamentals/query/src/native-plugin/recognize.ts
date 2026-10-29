@@ -232,8 +232,9 @@ export function recognizeQuery(_call: CallSite, ctx: ParseContext): ExtDeclSpec 
       endpointQuery.call.arguments?.[0] as AnyNode | undefined,
       // The query harness re-fetches on key change, so a RUNTIME `:param`
       // is honourable here (and only here — see the flag's own doc).
-      // A runtime body / header is built per run, inside the harness — when the web's queryFn builds it.
-      { allowRuntimeParams: true, streaming: false, runtimeValues: true },
+      // A runtime body / header is built per run, inside the harness — when the web's queryFn builds it. The harness also
+      // passes the client's `use: [...]` to `PyreonHttp.send(…, middleware:)`.
+      { allowRuntimeParams: true, streaming: false, runtimeValues: true, middleware: true },
     )
     if (!resolved) return null
     ctx.recordDecode(type, resolved.response)
@@ -244,6 +245,7 @@ export function recognizeQuery(_call: CallSite, ctx: ParseContext): ExtDeclSpec 
       headers?: Record<string, string>
       headerExprs?: Record<string, ExprIR>
       body?: string
+      middleware?: ExprIR
       bodyExpr?: ExprIR
       upload?: ExprIR
     } = {}
@@ -252,6 +254,7 @@ export function recognizeQuery(_call: CallSite, ctx: ParseContext): ExtDeclSpec 
     if (resolved.headers) eqReq.headers = resolved.headers
     if (resolved.headerExprs) eqReq.headerExprs = resolved.headerExprs
     if (resolved.body !== undefined) eqReq.body = resolved.body
+    if (resolved.middleware !== undefined) eqReq.middleware = resolved.middleware
     if (resolved.bodyExpr !== undefined) eqReq.bodyExpr = resolved.bodyExpr
     if (resolved.urlExpr !== undefined) {
       eqReq.urlExpr = resolved.urlExpr

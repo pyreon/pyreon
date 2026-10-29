@@ -227,10 +227,13 @@ export function kotlinHttpRequestArgs(p: HttpRequestParts, ctx: RequestEmitCtx, 
  * The Swift lines that SEND a request and reject a non-2xx, binding `__response`. A non-2xx must throw rather than
  * decode: an error page handed to `JSONDecoder` reads as "the server sent bad JSON" and hides the status.
  */
-export function swiftSendLines(requestArgs: string): string[] {
+export function swiftSendLines(requestArgs: string, middleware?: string): string[] {
   return [
     `let __response = try await PyreonHttp.send(`,
-    `  PyreonHttpRequest(${requestArgs})`,
+    // The client's `use: [...]`, applied around the request with the web's onion semantics.
+    ...(middleware !== undefined
+      ? [`  PyreonHttpRequest(${requestArgs}),`, `  middleware: ${middleware}`]
+      : [`  PyreonHttpRequest(${requestArgs})`]),
     `)`,
     `guard __response.isOK else {`,
     `  throw PyreonHttpError.badStatus(__response.status)`,
@@ -239,11 +242,12 @@ export function swiftSendLines(requestArgs: string): string[] {
 }
 
 /** The Kotlin twin of {@link swiftSendLines}: the blocking send moved off the main thread, then the status check. */
-export function kotlinSendLines(requestArgs: string): string[] {
+export function kotlinSendLines(requestArgs: string, middleware?: string): string[] {
   return [
     `val __response = withContext(Dispatchers.IO) {`,
     // The OkHttp default comes from HERE, as a direct reference: see `PyreonHttp.send` for why it cannot live in the runtime.
-    `  PyreonHttp.send(PyreonHttpRequest(${requestArgs}), fallback = PyreonHttpOkHttp)`,
+    // The client's `use: [...]`, applied around the request with the web's onion semantics.
+    `  PyreonHttp.send(PyreonHttpRequest(${requestArgs}), fallback = PyreonHttpOkHttp${middleware !== undefined ? `, middleware = ${middleware}` : ''})`,
     `}`,
     `if (!__response.isOk) throw PyreonHttpError.BadStatus(__response.status)`,
   ]

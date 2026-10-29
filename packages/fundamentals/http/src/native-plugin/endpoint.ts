@@ -22,6 +22,7 @@ import {
   type ParseContext,
   type ResolvedRequest,
 } from '@pyreon/native-compiler/plugin-api'
+import { middlewareExpr, middlewareNames, scanClientMiddleware, type ClientMiddleware } from './middleware'
 import { scanCallRoles } from './call'
 import { encodeForm } from '../body'
 
@@ -56,13 +57,15 @@ export interface HttpFacts {
   readonly clients: Map<string, string>
   /** Endpoint binding → its declaration. */
   readonly endpoints: Map<string, EndpointDef>
+  /** Client binding → its scanned `use: [...]` middleware (absent = none). */
+  readonly middleware: Map<string, ClientMiddleware>
 }
 
 const FACTS_KEY = '@pyreon/http:facts'
 
 /** The facts this file's scan recorded. Other plugins read them through the request source, never this. */
 export function httpFacts(source: { fileState<T>(key: string, init: () => T): T }): HttpFacts {
-  return source.fileState<HttpFacts>(FACTS_KEY, () => ({ clients: new Map(), endpoints: new Map() }))
+  return source.fileState<HttpFacts>(FACTS_KEY, () => ({ clients: new Map(), endpoints: new Map(), middleware: new Map() }))
 }
 
 /**
@@ -417,7 +420,7 @@ const ENDPOINT_LOWERED_ARGS: ReadonlySet<string> = new Set(['params', 'query', '
 const ENDPOINT_UNLOWERABLE_ARGS: ReadonlyMap<string, string> = new Map([
   ['signal', 'an AbortSignal has no analogue in the emitted fetch harness, which runs to completion'],
   ['timeout', 'PyreonHttpRequest carries no timeout field'],
-  ['meta', 'per-call metadata is read by client middleware, which does not lower'],
+  ['meta', 'per-call metadata is read only by custom middleware functions, which do not lower — the built-in bearer/retry/logger read none'],
   ['cookies', 'the platform HTTP stacks own the Cookie header; a per-call cookie record is not sent'],
 ])
 
@@ -464,6 +467,9 @@ function collectHttpClients(body: AnyNode[], scan: ModuleScan, facts: HttpFacts)
         scan.lowered('*', sch.name)
       }
       facts.clients.set(name, baseUrl)
+      // Read once here: the array is file-scope metadata, like the client. Its bearer tokens are lowered per call site.
+      const mw = scanClientMiddleware(cfg, scan)
+      if (mw.entries.length > 0 || mw.unlowerable.length > 0) facts.middleware.set(name, mw)
     }
   }
 }
@@ -593,6 +599,8 @@ function resolveEndpointParts(
   streaming = false,
   /** The caller emits a runtime `json` body (`bodyExpr`) and runtime header values (`headerExprs`). */
   runtimeValues = false,
+  /** The caller emits `ResolvedRequest.middleware` (see `RequestOptions.middleware`). */
+  allowMiddleware = false,
 ): ResolvedRequest | null {
   const def = facts.endpoints.get(endpointName)
   if (!def) return null
@@ -611,6 +619,24 @@ function resolveEndpointParts(
   }
   const warn = (message: string): void => {
     ctx.report(`endpoint ${endpointName}: ${message}`)
+  }
+
+  // --- client middleware -------------------------------------------------
+  //
+  // Decided BEFORE anything else is lowered: a client whose `use` array cannot be honoured keeps the call on the web
+  // rather than sending a request the web would not send (no token, no retry). Every unlowerable entry is named.
+  const mw = facts.middleware.get(def.clientName)
+  if (mw !== undefined && mw.unlowerable.length > 0) {
+    for (const why of mw.unlowerable) {
+      warn(`client ${def.clientName}'s \`use\` middleware cannot lower to iOS/Android: ${why}. This call stays web.`)
+    }
+    return null
+  }
+  if (mw !== undefined && mw.entries.length > 0 && !allowMiddleware) {
+    warn(
+      `client ${def.clientName} applies middleware (${middlewareNames(mw)}) on the web, and this ${streaming ? '`useStream`' : 'caller'} does not apply client middleware natively — lowering it would send a request without them. Read the endpoint with \`useFetch\` or \`useQuery\`, which do. This call stays web.`,
+    )
+    return null
   }
 
   // --- path params -------------------------------------------------------
@@ -930,9 +956,12 @@ function resolveEndpointParts(
     body?: string
     bodyExpr?: ExprIR
     upload?: ExprIR
+    middleware?: ExprIR
   } = {}
   if (upload !== undefined) extras.upload = upload
   if (sawRuntimeParam || sawRuntimeQuery) extras.urlExpr = { kind: 'template', quasis, exprs }
+  const middleware = mw !== undefined ? middlewareExpr(mw, baseUrl, ctx) : undefined
+  if (middleware !== undefined) extras.middleware = middleware
   if (Object.keys(headers).length > 0) extras.headers = headers
   if (Object.keys(headerExprs).length > 0) extras.headerExprs = headerExprs
   if (body !== undefined) extras.body = body
@@ -974,7 +1003,7 @@ export const httpRequestSource = {
   resolve: (
     name: string,
     arg: AnyNode | undefined,
-    options: { allowRuntimeParams: boolean; streaming: boolean; runtimeValues?: boolean | undefined },
+    options: { allowRuntimeParams: boolean; streaming: boolean; runtimeValues?: boolean | undefined; middleware?: boolean | undefined },
     ctx: ParseContext,
   ): ResolvedRequest | null =>
     resolveEndpointParts(
@@ -985,5 +1014,6 @@ export const httpRequestSource = {
       options.allowRuntimeParams,
       options.streaming,
       options.runtimeValues === true,
+      options.middleware === true,
     ),
 }
