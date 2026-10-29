@@ -1166,6 +1166,29 @@ object PyreonURL {
 // pyreonNumberString — JS \`String(number)\`, which every Double-typed
 // template interpoland lowers through. Mirrors the real signature.
 fun pyreonNumberString(value: Number): String = ""
+// Intl.DateTimeFormat / Intl.NumberFormat — the real PyreonIntl.kt surface,
+// exactly: every parameter defaulted and named, values taken as Number.
+class PyreonDateTimeFormat(
+  locale: String? = null,
+  dateStyle: String? = null,
+  timeStyle: String? = null,
+  skeleton: String? = null,
+  timeZone: String? = null,
+) {
+  fun format(epochMs: Number): String = ""
+}
+class PyreonNumberFormat(
+  locale: String? = null,
+  style: String = "decimal",
+  currency: String? = null,
+  currencyDisplay: String = "symbol",
+  minimumFractionDigits: Int? = null,
+  maximumFractionDigits: Int? = null,
+  minimumIntegerDigits: Int? = null,
+  useGrouping: Boolean = true,
+) {
+  fun format(value: Number): String = ""
+}
 
 // kotlinx.coroutines surface the emitted fetch harness drives —
 // withContext(Dispatchers.IO) { ... } around the blocking URL read.

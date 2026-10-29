@@ -7,6 +7,12 @@ description: "Common testing mistakes in Pyreon and how to fix them."
 
 > **Generated** from `.agents/rules/anti-patterns.md` (the same source as MCP `get_anti_patterns`). Each entry is a real mistake + its fix; where a detector code is listed, the linter / `pyreon doctor` / MCP `validate` catches it automatically.
 
+### Treating "the web" as one oracle for a locale-data API — V8 and JSC disagree, so a differential test needs a stated reference engine
+
+(the native Intl lowering, #3980): `Intl.DateTimeFormat` / `NumberFormat` output is CLDR DATA, and each engine ships its own CLDR + its own skeleton matcher. Measured on the same 350 cases: iOS Foundation vs Safari's JSC differed on **0**, iOS vs Node's V8 on **46/240 dates + 1/72 numbers**, Android ICU vs V8 on 35/240 + 6/72. A test that asserts "native == `new Intl.DateTimeFormat(...)` in Node" is therefore asserting "native == Chrome", and reads a correct Apple lowering as a bug. **Rules: (1) name the reference engine and split the corpus — a STABLE table that every engine agrees on (asserted EXACTLY) and a SWEEP measured against a tripwire ratio, with each recorded divergence classified (data vs lowering); (2) normalize only what an engine normalizes itself (V8 already turns U+202F NNBSP into a space; do the same, nothing more); (3) a tripwire ratio is a regression lock, not a pass criterion — keep it a little above the measured figure and record the figure.** Reference: `packages/native/compiler/src/tests/intl-cases.ts` (header records the measured divergences) + `intl-differential.test.ts` + Android `IntlDifferentialTest.kt`.
+
+---
+
 ### A controlled clock cannot preserve state across a dev reload
 
 Parallel cold imports can make Vite reset a hydrated document mid-assertion. Keep `@vite/client` for real event delegation; filter only update/reload messages on its HMR socket for functional tests. Forward other traffic, assert document identity (history events can repeat), and bisect with a real Vite reload message. Reference: `e2e/fundamentals/new-demos.spec.ts`.

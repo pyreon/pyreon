@@ -159,9 +159,10 @@ describe('conflicts are load-time errors naming both owners', () => {
     expect(() => bad([{ module: 'm', tags: ['A'], retag: 1 }])).toThrow(/retag must be a function/)
   })
 
-  it('built-in plugins are marked builtIn — and none ship: every library is discovered', () => {
+  it('built-in plugins are marked builtIn — and only the language surface ships: every library is discovered', () => {
     expect(BUILT_IN_PLUGINS.every((p) => p.builtIn === true)).toBe(true)
-    expect(BUILT_IN_PLUGINS).toHaveLength(0)
+    // `Intl` belongs to JavaScript, not to a package, so there is nothing to discover it from.
+    expect(BUILT_IN_PLUGINS.map((p) => p.name)).toEqual(['ecmascript-intl'])
   })
 })
 

@@ -1390,6 +1390,18 @@ public enum PyreonURL {
 // template interpoland lowers through. Mirrors the real overload pair.
 public func pyreonNumberString(_ v: Double) -> String { "" }
 public func pyreonNumberString(_ v: Int) -> String { "" }
+// Intl.DateTimeFormat / Intl.NumberFormat — the real PyreonIntl.swift surface,
+// exactly: every parameter defaulted, labelled, in declaration order.
+public final class PyreonDateTimeFormat {
+  public init(locale: String? = nil, dateStyle: String? = nil, timeStyle: String? = nil, skeleton: String? = nil, timeZone: String? = nil) {}
+  public func format(_ epochMs: Double) -> String { "" }
+  public func format(_ epochMs: Int) -> String { "" }
+}
+public final class PyreonNumberFormat {
+  public init(locale: String? = nil, style: String = "decimal", currency: String? = nil, currencyDisplay: String = "symbol", minimumFractionDigits: Int? = nil, maximumFractionDigits: Int? = nil, minimumIntegerDigits: Int? = nil, useGrouping: Bool = true) {}
+  public func format(_ value: Double) -> String { "" }
+  public func format(_ value: Int) -> String { "" }
+}
 public final class PyreonDatabase {
   public init() {}
   public func insert(_ collection: String, _ record: PyreonRecord) {}

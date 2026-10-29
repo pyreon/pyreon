@@ -254,12 +254,14 @@ describe('2e. number methods: a radix on an integer and a dynamic digit count lo
     expect(sw.warnings).toEqual([])
     expect(kt.warnings).toEqual([])
   })
-  it('a Double radix and a locale argument have no lowering — named', () => {
+  it('a Double radix has no lowering — named; a locale argument now lowers (Intl, #3980)', () => {
     const src = methods(`  const d = signal(1.5)\n  const a = d().toString(2)\n  const b = d().toLocaleString('en')`, '<Text>{a}{b}</Text>')
     for (const [target, r] of [['Swift', swift(src)], ['Kotlin', kotlin(src)]] as const) {
       expect(r.warnings.some((w) => w.startsWith(`\`.toString(…)\` on a number with 1 argument has no ${target} lowering`))).toBe(true)
-      expect(r.warnings.some((w) => w.startsWith(`\`.toLocaleString(…)\` on a number with 1 argument has no ${target} lowering`))).toBe(true)
+      expect(r.warnings.some((w) => w.includes('toLocaleString'))).toBe(false)
     }
+    expect(swift(src).code).toContain('PyreonNumberFormat(locale: "en").format(d)')
+    expect(kotlin(src).code).toContain('PyreonNumberFormat(locale = "en").format(d)')
   })
   it.skipIf(!isSwiftcAvailable())('swiftc accepts them', () => {
     const r = validateSwiftWithStubs(sw.code)

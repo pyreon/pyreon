@@ -34,6 +34,11 @@ describe('check-compiler-boundary — countSource', () => {
     expect(countSource(`if (n === 'useOnline' || n === "useShare") {}`, contract).hooks).toBe(2)
     expect(countSource('const useOnline = 1', contract).hooks).toBe(0)
   })
+
+  it('does not count a platform option that only LOOKS like a hook (ECMA-402 useGrouping)', () => {
+    expect(countSource(`if (key === 'useGrouping') put('useGrouping', false)`, contract).hooks).toBe(0)
+    expect(countSource(`'useGrouping' === k || k === 'useGroupingX'`, contract).hooks).toBe(1)
+  })
 })
 
 describe('check-compiler-boundary — compareToBaseline / tighten', () => {
