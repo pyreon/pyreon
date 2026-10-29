@@ -87,7 +87,22 @@ export interface ResolvedRequest {
   readonly urlExpr?: ExprIR | undefined
   readonly method: string
   readonly headers?: Record<string, string> | undefined
+  /**
+   * Header values that are RUNTIME expressions (a token, a signal read), evaluated when the request is built — the
+   * moment the web evaluates the call's `headers`. A name here never also appears in `headers`.
+   */
+  readonly headerExprs?: Record<string, ExprIR> | undefined
   readonly body?: string | undefined
+  /**
+   * A body that is only known at RUNTIME, as an expression of type `string` (a `json` value serialized through the
+   * web-identical `JSON.stringify` lowering). Mutually exclusive with `body`.
+   */
+  readonly bodyExpr?: ExprIR | undefined
+  /**
+   * A body the request STREAMS (a `multipart` form, or a raw `body` that may be a `fileFromUri` file), as a marker
+   * call the request writers lower (`swiftHttpRequestArgs` / `kotlinHttpRequestArgs`). Exclusive with the others.
+   */
+  readonly upload?: ExprIR | undefined
   /** The same-module schema binding the request's `response` names (evidence for the decode type's `Int`/`Double` fields). */
   readonly response?: { readonly binding: string; readonly array: boolean } | undefined
   /**
@@ -109,6 +124,12 @@ export interface RequestOptions {
    * apply REFUSES a caller that did not declare it (warning by name), rather than handing it a field it would ignore.
    */
   readonly middleware?: boolean | undefined
+  /**
+   * The caller EMITS `bodyExpr` and `headerExprs` — a runtime `json` body or header value. Opt-in, because a source
+   * that resolved them for a caller that ignores them would drop them in silence; without it they are reported and
+   * omitted, as before.
+   */
+  readonly runtimeValues?: boolean | undefined
 }
 
 export interface RequestSource {

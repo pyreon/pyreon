@@ -1,4 +1,5 @@
 import { type CompilerPlugin, type MethodCallRecognizer } from '@pyreon/native-compiler/plugin-api'
+import { endpointCallExpr, HTTP_CALL_TYPE, recognizeEndpointCall } from './call'
 import { httpFacts, httpRequestSource, scanHttp } from './endpoint'
 import { MIDDLEWARE_EXPR, middlewareExprEmitter } from './middleware'
 import { HTTP_PLUGIN_NAME } from './names'
@@ -42,7 +43,9 @@ export const httpPlugin: CompilerPlugin = {
   scanModule: scanHttp,
   requestSources: [httpRequestSource],
   // A client's lowered `use: [...]` array — see `middleware.ts`.
-  exprs: { [MIDDLEWARE_EXPR]: middlewareExprEmitter },
+  // `await signIn({ json })` in an event handler, and a fired `track({ json })` — see `call.ts`.
+  callExprs: recognizeEndpointCall,
+  exprs: { [MIDDLEWARE_EXPR]: middlewareExprEmitter, [HTTP_CALL_TYPE]: endpointCallExpr },
   methodCalls: Object.fromEntries(
     ['get', 'post', 'put', 'patch', 'delete', 'head', 'options', 'request'].map((m) => [m, recognizeClientCall]),
   ),

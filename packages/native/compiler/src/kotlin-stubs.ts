@@ -201,14 +201,43 @@ fun LazyColumn(content: LazyListScope.() -> Unit) {
   LazyListScope().content()
 }
 
+// ColumnScope / RowScope — \`Modifier.weight\` is an extension on THESE scopes in
+// real Compose, not a member of Modifier, so it only compiles as a DIRECT child
+// of a Column / Row content lambda. The stub declares it the same way: a
+// Modifier-member weight accepted a weighted call ANYWHERE and masked the exact
+// "weight outside its scope" error the device build reports.
+// \`@LayoutScopeMarker\` is a DslMarker in real Compose: inside a nested scope
+// lambda (a Box inside a Column) the OUTER ColumnScope stops being an implicit
+// receiver, so \`weight\` does not resolve there either. Without the marker the
+// stub would accept a grandchild's weight that the device build rejects.
+@DslMarker
+annotation class LayoutScopeMarker
+
+@LayoutScopeMarker
+interface BoxScope
+private object StubBoxScope : BoxScope
+
+@LayoutScopeMarker
+interface ColumnScope {
+  @Suppress("UNUSED_PARAMETER")
+  fun Modifier.weight(weight: Float, fill: Boolean = true): Modifier = this
+}
+@LayoutScopeMarker
+interface RowScope {
+  @Suppress("UNUSED_PARAMETER")
+  fun Modifier.weight(weight: Float, fill: Boolean = true): Modifier = this
+}
+private object StubColumnScope : ColumnScope
+private object StubRowScope : RowScope
+
 @Composable
 fun Column(
   modifier: Modifier = Modifier,
   verticalArrangement: Arrangement.Vertical = Arrangement.Top,
   horizontalAlignment: Alignment.Horizontal = Alignment.Start,
-  content: @Composable () -> Unit = {},
+  content: @Composable ColumnScope.() -> Unit = {},
 ) {
-  content()
+  StubColumnScope.content()
 }
 
 // --- K4: layout containers used by TodoMVC after the K3 SwiftUI→Compose mapping ---
@@ -228,18 +257,18 @@ fun Row(
   modifier: Modifier = Modifier,
   horizontalArrangement: Arrangement.Horizontal = Arrangement.Start,
   verticalAlignment: Alignment.Vertical = Alignment.Top,
-  content: @Composable () -> Unit = {},
+  content: @Composable RowScope.() -> Unit = {},
 ) {
-  content()
+  StubRowScope.content()
 }
 
 @Composable
 fun Box(
   modifier: Modifier = Modifier,
   contentAlignment: Alignment = Alignment.TopStart,
-  content: @Composable () -> Unit = {},
+  content: @Composable BoxScope.() -> Unit = {},
 ) {
-  content()
+  StubBoxScope.content()
 }
 
 // BoxWithConstraints — the container-sized host the chart-host emit uses
@@ -666,8 +695,6 @@ object Modifier {
   fun pointerInput(key: Any?, block: suspend PointerInputScope.() -> Unit): Modifier = this
   fun pointerInput(key1: Any?, key2: Any?, block: suspend PointerInputScope.() -> Unit): Modifier = this
   fun pointerInput(vararg keys: Any?, block: suspend PointerInputScope.() -> Unit): Modifier = this
-  @Suppress("UNUSED_PARAMETER")
-  fun weight(weight: Float): Modifier = this
   // coolgrid Col fractional span maps to fillMaxWidth(size/12f). Real Compose
   // ships it from androidx.compose.foundation.layout.
   @Suppress("UNUSED_PARAMETER")
@@ -1087,7 +1114,19 @@ data class PyreonHttpRequest(
   val url: String,
   val headers: Map<String, String> = emptyMap(),
   val body: String? = null,
+  val upload: PyreonHttpUpload? = null,
 )
+sealed class PyreonHttpUpload {
+  class File(val file: PyreonUploadFile) : PyreonHttpUpload()
+  class Multipart(val body: PyreonMultipartBody) : PyreonHttpUpload()
+}
+class PyreonUploadFile(val name: String, val type: String, val length: Long?, private val opener: () -> java.io.InputStream)
+class PyreonMultipartBody(vararg pairs: Any?)
+object PyreonUploadFiles {
+  fun from(uri: String, name: String? = null, type: String? = null): PyreonUploadFile = throw UnsupportedOperationException("stub")
+}
+// PyreonUploadAndroid.kt — the content:// resolver the emit calls with the hoisted LocalContext.
+fun PyreonUploadFiles.from(context: Context, uri: String, name: String? = null, type: String? = null): PyreonUploadFile = throw UnsupportedOperationException("stub")
 data class PyreonHttpResponse(
   val status: Int,
   val headers: Map<String, String> = emptyMap(),
@@ -1113,6 +1152,7 @@ object PyreonHttp {
     fallback: PyreonHttpExecutor? = null,
     middleware: List<PyreonHttpMiddleware> = emptyList(),
   ): PyreonHttpResponse = PyreonHttpResponse(200)
+  fun call(request: PyreonHttpRequest, fallback: PyreonHttpExecutor? = null): PyreonHttpResponse = PyreonHttpResponse(200)
 }
 // The lowered \`createHttp({ use: [...] })\` middleware. Mirrors the REAL
 // PyreonHttp.kt surface: \`maxDelay\` is a Double, every policy field is
@@ -1140,6 +1180,8 @@ object PyreonURL {
   @JvmStatic fun encodePathParam(value: Int): String = ""
   @JvmStatic fun encodePathParam(value: Long): String = ""
   @JvmStatic fun encodePathParam(value: Double): String = ""
+  @JvmStatic fun query(joiner: String, vararg pairs: Any?): String = ""
+  @JvmStatic fun formEncode(text: String): String = text
 }
 // pyreonNumberString — JS \`String(number)\`, which every Double-typed
 // template interpoland lowers through. Mirrors the real signature.
@@ -1349,6 +1391,9 @@ fun <I, O> rememberLauncherForActivityResult(
 class PyreonRouter {
   var currentPath: String = "/"
   fun push(path: String) { currentPath = path }
+  // Global guards, mirroring the real PyreonRouter (see the Swift stub).
+  val beforeEachGuards: MutableList<(String) -> Boolean> = mutableListOf()
+  val afterEachHooks: MutableList<(String) -> Unit> = mutableListOf()
   // Search parameters, mirroring the real PyreonRouter. useUrlState lowers to
   // a class over these two; a stub missing them would reject a correct emit.
   val query: MutableState<Map<String, String>> = mutableStateOf(emptyMap())

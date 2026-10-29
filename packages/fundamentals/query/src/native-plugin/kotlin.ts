@@ -1,7 +1,7 @@
 // The Kotlin half of the `@pyreon/query` lowering: the `remember`ed containers and the
 // `LaunchedEffect` / `DisposableEffect` harnesses that drive them.
 
-import { sendableHeaderExprs, type EmitContext, type ExtDecl } from '@pyreon/native-compiler/plugin-api'
+import { kotlinHttpRequestArgs, kotlinSendLines, type EmitContext, type ExtDecl } from '@pyreon/native-compiler/plugin-api'
 import type { QueryPayload, StreamPayload } from './types'
 
 const query = (d: ExtDecl): QueryPayload => d.payload as unknown as QueryPayload
@@ -61,24 +61,17 @@ export function queryLifecycleKotlin(decl: ExtDecl, ctx: EmitContext): readonly 
   } else {
     const kotlinUrl = d.urlExpr !== undefined ? ctx.expr(d.urlExpr, 0) : ctx.stringLiteral(d.url as string)
     lines.push(`    try {`)
-    if (d.method || d.headers || d.headerExprs || d.body || d.middleware) {
+    if (d.method || d.headers || d.headerExprs || d.body !== undefined || d.bodyExpr !== undefined || d.upload !== undefined || d.middleware !== undefined) {
       // Mirrors the Swift PyreonHttp branch: a request with a VERB, headers, or a body goes through
-      // PyreonHttp (readText() can express none of them).
-      const parts = [`method = PyreonHttpMethod.${(d.method ?? 'GET').toUpperCase()}`, `url = ${kotlinUrl}`]
-      const pairs = [
-        ...Object.entries(d.headers ?? {}).map(([k, v]) => `${ctx.stringLiteral(k)} to ${ctx.stringLiteral(v)}`),
-        // Evaluated here, inside the harness — i.e. when THIS run builds the request, so a token is current.
-        ...sendableHeaderExprs(d.headerExprs, ctx, `Declaration ${decl.name}: useQuery queryFn fetch`).map(([k, e]) => `${ctx.stringLiteral(k)} to ${ctx.expr(e, 0)}`),
-      ]
-      if (pairs.length > 0) parts.push(`headers = mapOf(${pairs.join(', ')})`)
-      if (d.body !== undefined) parts.push(`body = ${ctx.stringLiteral(d.body)}`)
-      lines.push(`      val __response = withContext(Dispatchers.IO) {`)
-      // The OkHttp default comes from HERE, as a direct reference: see `PyreonHttp.send` for why it cannot live in the runtime.
-      // The client's `use: [...]`, applied around the request with the web's onion semantics.
-      const middleware = d.middleware !== undefined ? `, middleware = ${ctx.expr(d.middleware, 0)}` : ''
-      lines.push(`        PyreonHttp.send(PyreonHttpRequest(${parts.join(', ')}), fallback = PyreonHttpOkHttp${middleware})`)
-      lines.push(`      }`)
-      lines.push(`      if (!__response.isOk) throw PyreonHttpError.BadStatus(__response.status)`)
+      // PyreonHttp (readText() can express none of them). Header and body expressions are evaluated
+      // here, inside the harness — i.e. when THIS run builds the request, so a token is current.
+      const args = kotlinHttpRequestArgs(
+        { method: d.method, url: kotlinUrl, headers: d.headers, headerExprs: d.headerExprs, body: d.body, bodyExpr: d.bodyExpr, upload: d.upload },
+        ctx,
+        `Declaration ${decl.name}: useQuery queryFn fetch`,
+      )
+      // The client's `use: [...]`, when present, is applied around the request with the web's onion semantics.
+      for (const line of kotlinSendLines(args, d.middleware !== undefined ? ctx.expr(d.middleware, 0) : undefined)) lines.push(`      ${line}`)
       lines.push(`      ${name}.resolve(PyreonFetchJson.decodeFromString<${ctx.typeText(d.type)}>(__response.body))`)
     } else {
       lines.push(`      val body = withContext(Dispatchers.IO) { java.net.URL(${kotlinUrl}).readText() }`)

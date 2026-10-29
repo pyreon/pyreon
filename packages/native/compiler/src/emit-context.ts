@@ -95,6 +95,14 @@ export interface WebViewFacade {
   dataArg(value: ExprIR): string
   /** A `(message) => …` handler as the target's message callback. */
   messageHandler(handler: ExprIR): string
+  /**
+   * Apply the host's `grow` sizing (see `WebViewProps.grow`). `chain` is the
+   * host's layout modifier text; the result carries it back (on Kotlin with
+   * `Modifier.weight(1f)` / `Modifier.fillMaxSize()` prepended) plus the extra
+   * constructor `arg` (on Swift, `grow: .vertical`). Must be called while the
+   * host element is being dispatched — it reads the layout scope.
+   */
+  grow(el: JsxElementIR, chain: string): { readonly chain: string; readonly arg: string | undefined }
 }
 
 /** The emitter state a plugin-facing context reads beyond the basics — what a real emitter supplies and a toy backend may omit. */
@@ -373,6 +381,10 @@ export interface SwiftEmitContext extends EmitContext {
 export interface KotlinEmitContextBackend extends EmitContextBackend, EmitContextBackendExtras {
   /** `kotlinIntArg` — an argument to an `Int`-only Kotlin API. */
   intArg(e: ExprIR, indent: number): string
+  /** The composable's coroutine scope binding, hoisted as `rememberCoroutineScope()` because it was asked for. */
+  coroutineScope(): string
+  /** The composable's Android `Context`, hoisted as `LocalContext.current` because it was asked for. */
+  androidContext(): string
 }
 
 /**
@@ -386,6 +398,19 @@ export interface KotlinEmitContext extends EmitContext {
    * narrows at exactly the call that needs it; a literal is emitted bare.
    */
   intArg(e: ExprIR, at?: number): string
+  /**
+   * The name of the composable's `rememberCoroutineScope()` binding, for an expression that must LAUNCH work from a
+   * synchronous callback (`onClick = { scope.launch { … } }`). Asking for it is what hoists the binding to the top of
+   * the composable — the same scope an inline `async` handler launches on — so the work is cancelled when the
+   * composition leaves.
+   */
+  coroutineScope(): string
+  /**
+   * The name of a `LocalContext.current` binding hoisted to the top of the composable, for an expression that needs
+   * an Android `Context` (resolving a `content://` URI) from inside a callback, where a composition local cannot be
+   * read.
+   */
+  androidContext(): string
 }
 
 export function createKotlinEmitContext(
@@ -395,6 +420,8 @@ export function createKotlinEmitContext(
   return {
     ...createEmitContext('kotlin', backend, indent),
     intArg: (e, at = indent) => backend.intArg(e, at),
+    coroutineScope: () => backend.coroutineScope(),
+    androidContext: () => backend.androidContext(),
   }
 }
 
@@ -464,6 +491,7 @@ export function createEmitContext(
       dynamicAttr: () => missing('webView'),
       dataArg: () => missing('webView'),
       messageHandler: () => missing('webView'),
+      grow: () => missing('webView'),
     },
     fileState: (key, init) => (backend.fileState ?? (() => missing('fileState')))(key, init),
     layoutModifiersFor: (el, handled) =>

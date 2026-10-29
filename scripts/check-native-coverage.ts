@@ -507,14 +507,21 @@ export function C() {
   {
     name: '@pyreon/query',
     mechanism: 'native-container',
-    rationale: 'useQuery<T>(() => ({ queryKey, queryFn, staleTime })) lowers to a native PyreonQuery over the query runtime.',
+    rationale:
+      'useQuery<T>(() => ({ queryKey, queryFn, staleTime })) lowers to a native PyreonQuery over the query runtime, and useMutation<T>(endpoint.mutation()) to a native PyreonMutation whose mutate / mutateAsync build the request at the call site from runtime values.',
     requiresCoSource: true,
-    snippet: `import { useQuery } from '@pyreon/query'
-import { Stack, Text } from '@pyreon/primitives'
+    snippet: `import { useMutation, useQuery } from '@pyreon/query'
+import { createHttp } from '@pyreon/http'
+import { signal } from '@pyreon/reactivity'
+import { Stack, Text, Button } from '@pyreon/primitives'
 interface Todo { id: number; title: string }
+const api = createHttp({ baseUrl: 'https://api.example.com' })
+const saveTodo = api.endpoint('POST /todos')
 export function C() {
+  const title = signal('milk')
   const q = useQuery<Todo>(() => ({ queryKey: ['todo', 1], queryFn: () => fetch('https://api.example.com/todos/1').then((r) => r.json()), staleTime: 60000 }))
-  return (<Stack><Text>{q.data}</Text></Stack>)
+  const save = useMutation<Todo>(saveTodo.mutation())
+  return (<Stack><Text>{q.data}</Text><Text>{save.data()?.title ?? ''}</Text><Button onPress={() => save.mutate({ json: { title: title() } }, { onSuccess: (t) => title.set(t.title) })}>save</Button></Stack>)
 }`,
   },
   {
@@ -685,15 +692,15 @@ export function C() { return (<Stack><Text>{cache.size}</Text></Stack>) }`,
     name: '@pyreon/http',
     mechanism: 'partial',
     rationale:
-      'imperative client calls (api.get/post) stay web, but same-file endpoint calls DO lower: createHttp({ baseUrl }) + api.endpoint(…) resolve through useFetch/useQuery to native PyreonFetch/PyreonQuery, and useStream over openEventStream/openNdjsonStream to the co-located PyreonStream runtime (SSE + NDJSON, reconnect with Last-Event-ID). A literal `use: [...]` array crosses too — bearer / retry / logger lower to PyreonHttpMiddleware (an onion with the web semantics, parity-tested by execution) and forwardHeaders is the browser no-op; refresh / dedupe / a custom function keep that client web by name, and useStream refuses a middleware client by name. Verified zero-warning on both targets; the snippet exercises all three so the real-runtime batch compiles each.',
+      'imperative client calls (api.get/post) stay web, but same-file endpoint calls DO lower: createHttp({ baseUrl }) + api.endpoint(…) resolve through useFetch/useQuery to native PyreonFetch/PyreonQuery, an endpoint awaited in an async event handler (`await ep({ json, query, headers })`, every value read at the call) to a native PyreonHttp.call that rejects a non-2xx and ends the handler, a `multipart` body carrying a picked file (`fileFromUri`) to a streamed PyreonMultipartBody, and useStream over openEventStream/openNdjsonStream to the co-located PyreonStream runtime (SSE + NDJSON, reconnect with Last-Event-ID). A literal `use: [...]` array crosses too — bearer / retry / logger lower to PyreonHttpMiddleware (an onion with the web semantics, parity-tested by execution) and forwardHeaders is the browser no-op; refresh / dedupe / a custom function keep that client web by name, and useStream refuses a middleware client by name. Verified zero-warning on both targets; the snippet exercises all of it so the real-runtime batch compiles each.',
     snippet: `import { createHttp } from '@pyreon/http'
 import { bearer, retry, logger, forwardHeaders } from '@pyreon/http/middleware'
 import { openEventStream, type SseEvent } from '@pyreon/http/stream'
-import { useFetch } from '@pyreon/hooks'
+import { fileFromUri, useFetch, useImagePicker } from '@pyreon/hooks'
 import { useQuery, useStream } from '@pyreon/query'
 import { defineStore } from '@pyreon/store'
 import { signal } from '@pyreon/reactivity'
-import { Stack, Text } from '@pyreon/primitives'
+import { Stack, Text, Button } from '@pyreon/primitives'
 interface User { id: number; name: string }
 const useSession = defineStore('session', () => {
   const token = signal('')
@@ -703,12 +710,25 @@ const api = createHttp({ baseUrl: 'https://api.example.com' })
 const authed = createHttp({ baseUrl: 'https://api.example.com', use: [bearer(() => useSession().store.token()), retry({ limit: 3 }), logger(), forwardHeaders(['cookie'])] })
 const getUser = api.endpoint('GET /users/:id')
 const getMe = authed.endpoint('GET /me')
+const rename = api.endpoint('PATCH /users/:id')
+const uploadAvatar = api.endpoint('POST /users/:id/avatar')
 const feed = api.endpoint('GET /users/:id/feed', { responseType: 'stream' })
 export function C() {
+  const name = signal('Ada')
   const req = useFetch<User>(getUser({ params: { id: '1' } }))
   const me = useQuery<User>(() => getMe.query())
   const live = useStream<SseEvent<User>>((ctx) => openEventStream((c) => feed({ params: { id: '1' }, signal: c.signal, headers: c.headers }), { signal: ctx.signal, onStatus: ctx.onStatus }))
-  return (<Stack><Text>{req.data}</Text><Text>{me.data()?.name ?? ''}</Text><Text>{live.latest()?.data.name ?? ''}</Text></Stack>)
+  const submit = async () => {
+    await rename({ params: { id: '1' }, query: { notify: true }, json: { name: name() }, headers: { 'x-client': name() } })
+    name.set('')
+  }
+  const picker = useImagePicker()
+  const avatar = async () => {
+    const uri = await picker.pick()
+    if (uri === null) return
+    await uploadAvatar({ params: { id: '1' }, multipart: { avatar: await fileFromUri(uri, { name: 'a.jpg' }), caption: name() } })
+  }
+  return (<Stack><Text>{req.data}</Text><Text>{me.data()?.name ?? ''}</Text><Text>{live.latest()?.data.name ?? ''}</Text><Button onPress={submit}>rename</Button><Button onPress={avatar}>avatar</Button></Stack>)
 }`,
   },
   {

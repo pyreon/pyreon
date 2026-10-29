@@ -626,6 +626,46 @@ class TasksAppInstrumentedTest {
     }
 
     /**
+     * Requests that carry what the user ENTERED (#3978), asserted on what the
+     * fixture server REFLECTS. The draft is typed, mutated, then cleared by the
+     * same handler, so a request that read its values late shows the wrong
+     * name. A rejected await must end its handler (and must not crash the app,
+     * which an exception escaping `launch` would).
+     */
+    @Test
+    fun requestsCarryRuntimeValuesAndRejectNon2xx() {
+        composeRule.onNodeWithTag("login-username").performTextInput("abcde")
+        composeRule.onNodeWithTag("login-submit").performClick()
+        assertTagDisplayed("tasks-page", "after login-submit")
+        composeRule.onNodeWithTag("tasks-requests").performClick()
+        assertTagDisplayed("requests-page", "after tasks-requests (/tasks -> /requests)")
+
+        composeRule.onNodeWithTag("req-draft").performScrollTo().performTextInput("Grace Hopper")
+        composeRule.onNodeWithTag("req-mutate").performScrollTo().performClick()
+        waitForTagText("req-status", "Status: success")
+        composeRule.onNodeWithTag("req-method").assertTextEquals("Method: POST")
+        composeRule.onNodeWithTag("req-query").assertTextEquals("Query: tag=Grace+Hopper&page=3")
+        composeRule.onNodeWithTag("req-type").assertTextEquals("Type: application/json")
+        composeRule.onNodeWithTag("req-client").assertTextEquals("Client: pyreon")
+        waitForTagText("req-body", "Body: {\"name\":\"Grace Hopper\",\"n\":2}")
+
+        composeRule.onNodeWithTag("req-fail").performScrollTo().performClick()
+        waitForTagText("req-fail-status", "Failing: rejected")
+
+        composeRule.onNodeWithTag("req-direct").performScrollTo().performClick()
+        waitForTagText("req-direct-status", "Direct: sent")
+        composeRule.onNodeWithTag("req-direct-fail").performScrollTo().performClick()
+        waitForTagText("req-direct-status", "Direct: failing")
+        // Give a wrongly-continuing handler time to reach its next statement.
+        Thread.sleep(3000)
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("req-direct-status").assertTextEquals("Direct: failing")
+
+        composeRule.onNodeWithTag("requests-back").performScrollTo().performClick()
+        assertTagDisplayed("tasks-page", "after requests-back (/requests -> /tasks)")
+    }
+
+    /**
      * `<Field multiline lines>` (#3980) — mirror of the iOS
      * `test_multilineFieldIsATextAreaBothWays`. HEIGHT is measured on the EMPTY
      * field against the single-line one (a field that grew with content, or
@@ -692,6 +732,28 @@ class TasksAppInstrumentedTest {
             "long text wrapped the single-line field (${heightOf("fields-single")} vs $oneRow)",
             heightOf("fields-single") == oneRow,
         )
+    }
+
+    /**
+     * #3979: a file resolved by `fileFromUri` goes out as a multipart part and as a raw body. The fixture server
+     * parses the multipart with its own FormData parser and reports each part — filename, part type, contents, the
+     * text field, an array as repeated parts — so this asserts the bytes were readable as sent.
+     */
+    @Test
+    fun uploadsAMultipartFormAndARawFile() {
+        composeRule.onNodeWithTag("login-username").performTextInput("abcde")
+        composeRule.onNodeWithTag("login-submit").performClick()
+        assertTagDisplayed("tasks-page", "after login-submit")
+        composeRule.onNodeWithTag("tasks-requests").performClick()
+        assertTagDisplayed("requests-page", "after tasks-requests (/tasks -> /requests)")
+
+        composeRule.onNodeWithTag("req-draft").performScrollTo().performTextInput("Ada L")
+        composeRule.onNodeWithTag("req-upload").performScrollTo().performClick()
+        waitForTagText("req-upload-parts", "Parts: note=note.txt|text/plain|Hello Pyreon;caption=Ada L;n=1;n=2")
+        composeRule.onNodeWithTag("req-upload-type").assertTextEquals("Upload type: multipart/form-data")
+
+        composeRule.onNodeWithTag("req-raw").performScrollTo().performClick()
+        waitForTagText("req-raw-result", "Raw: PUT text/plain Hello Pyreon")
     }
 
     @Test
@@ -1756,5 +1818,163 @@ class TasksAppInstrumentedTest {
             .performClick()
 
         assertTagDisplayed("login-page", "after tasks-logout (/tasks -> /login)")
+    }
+
+    // ── Hosted web flow: browser chrome + fill sizing (#3982, #3956 item 5) ─────────────────────────────────
+
+    /** Wait until the native result readout satisfies [ok], with the readout in the failure message. */
+    private fun waitForWebResult(what: String, timeoutMs: Long = 20_000, ok: (String) -> Boolean) {
+        try {
+            composeRule.waitUntil(timeoutMillis = timeoutMs) { ok(textOf("webhost-result")) }
+        } catch (e: Throwable) {
+            throw AssertionError("$what — webhost-result is '${textOf("webhost-result")}'", e)
+        }
+    }
+
+    /** Click a control INSIDE the WebView by its accessible text (the WebView is opaque to Compose). */
+    private fun clickInPage(device: UiDevice, text: String) {
+        val control = device.wait(Until.findObject(By.text(text)), 20_000)
+        assertTrue("'$text' not found in the hosted page; visible: ${webTexts(device)}", control != null)
+        control!!.click()
+    }
+
+    /** Click a NATIVE dialog button (AlertDialog) by its text. */
+    private fun clickDialog(device: UiDevice, text: String) {
+        // Case-insensitive: the platform AlertDialog theme renders button labels in caps.
+        val label = java.util.regex.Pattern.compile("(?i)" + java.util.regex.Pattern.quote(text))
+        val button = device.wait(Until.findObject(By.text(label).clazz("android.widget.Button")), 10_000)
+        assertTrue("dialog button '$text' never appeared; visible: ${webTexts(device)}", button != null)
+        button!!.click()
+    }
+
+    /**
+     * A page hosted in `<WebView grow>` on a real emulator. Before #3982 the
+     * Android host had NO WebChromeClient, so every one of these silently did
+     * nothing: the file input never opened a picker, geolocation was never
+     * answered, alert/confirm/prompt had no UI (confirm returned false), and a
+     * target=_blank link replaced the page in place. Before #3956 item 5 the view
+     * was a fixed 150dp however much room the screen had.
+     */
+    @Test
+    fun webHostChromeAndFill() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val pkg = composeRule.activity.packageName
+        // The page's position request goes through the RUNTIME permission flow.
+        // Granting it up front isolates what is under test — the per-site consent
+        // dialog and the WebView callback being answered — from the system's own
+        // permission UI, which differs per API level.
+        instrumentation.uiAutomation.grantRuntimePermission(pkg, android.Manifest.permission.ACCESS_FINE_LOCATION)
+        instrumentation.uiAutomation.grantRuntimePermission(pkg, android.Manifest.permission.ACCESS_COARSE_LOCATION)
+        val device = UiDevice.getInstance(instrumentation)
+
+        composeRule.onNodeWithTag("login-username").performTextInput("abcde")
+        composeRule.onNodeWithTag("login-submit").performClick()
+        assertTagDisplayed("tasks-page", "after login-submit")
+        dismissSoftKeyboard(device)
+        composeRule.onNodeWithTag("tasks-webhost").performClick()
+        assertTagDisplayed("webhost-page", "after tasks-webhost")
+
+        // ── SIZING ───────────────────────────────────────────────────────────────────────────────
+        waitForWebResult("the page never reported its viewport", 120_000) { it.startsWith("size:") }
+        val viewportCss = textOf("webhost-result").removePrefix("size:").toIntOrNull() ?: 0
+        val density = composeRule.activity.resources.displayMetrics.density
+        val viewDp = composeRule.onNodeWithTag("webhost-view").fetchSemanticsNode().size.height / density
+        val screenDp = composeRule.activity.resources.displayMetrics.heightPixels / density
+        assertTrue("grow did not fill: the WebView is ${viewDp}dp (unsized default 150dp)", viewDp > 300f)
+        assertTrue("grow left most of the screen unused: ${viewDp}dp of ${screenDp}dp", viewDp > screenDp * 0.5f)
+        assertTrue("the page's own viewport is ${viewportCss}px — the slot grew but the page did not", viewportCss > 300)
+
+        // ── alert ────────────────────────────────────────────────────────────────────────────────
+        clickInPage(device, "Alert")
+        assertTrue("alert() showed no dialog", device.wait(Until.hasObject(By.text("hello from the page")), 10_000))
+        clickDialog(device, "OK")
+        waitForWebResult("alert() never returned") { it == "alert:done" }
+
+        // ── confirm: Cancel, then OK ─────────────────────────────────────────────────────────────
+        clickInPage(device, "Confirm")
+        assertTrue("confirm() showed no dialog", device.wait(Until.hasObject(By.text("Proceed?")), 10_000))
+        clickDialog(device, "Cancel")
+        waitForWebResult("confirm() Cancel") { it == "confirm:false" }
+        clickInPage(device, "Confirm")
+        clickDialog(device, "OK")
+        waitForWebResult("confirm() OK") { it == "confirm:true" }
+
+        // ── prompt: replace the default text ─────────────────────────────────────────────────────
+        clickInPage(device, "Prompt")
+        val field = device.wait(Until.findObject(By.clazz("android.widget.EditText")), 10_000)
+        assertTrue("prompt() showed no text field", field != null)
+        assertTrue("prompt carries the page's default text (was '${field!!.text}')", field.text == "guest")
+        field.text = "pyreon"
+        clickDialog(device, "OK")
+        waitForWebResult("prompt() OK") { it == "prompt:pyreon" }
+
+        // ── geolocation: deny at the per-site prompt, then allow ─────────────────────────────────
+        clickInPage(device, "Locate")
+        assertTrue(
+            "no per-site location prompt; visible: ${webTexts(device)}",
+            device.wait(Until.hasObject(By.textContains("wants to use your location")), 15_000),
+        )
+        clickDialog(device, "Don't allow")
+        waitForWebResult("a refused location request must fail with PERMISSION_DENIED") { it == "geo:err:1" }
+        clickInPage(device, "Locate")
+        assertTrue("no second location prompt", device.wait(Until.hasObject(By.textContains("wants to use your location")), 15_000))
+        clickDialog(device, "Allow")
+        // Allowed: the request is ANSWERED. Whether a fix arrives depends on the
+        // emulator's location provider, so "answered" is the contract asserted;
+        // without a WebChromeClient the request is never answered at all, and
+        // PERMISSION_DENIED (1) here would mean the grant did not reach the page.
+        waitForWebResult("an allowed location request was never answered", 30_000) {
+            it == "geo:ok" || it == "geo:err:2" || it == "geo:err:3"
+        }
+        android.util.Log.i("PyreonWebHostTest", "allowed location request answered: ${textOf("webhost-result")}")
+
+        // ── file input ───────────────────────────────────────────────────────────────────────────
+        // A real file to pick: written to Downloads through MediaStore (no permission needed on
+        // API 29+), so the system picker has something to offer.
+        val pickName = "pyreon-pick-${System.currentTimeMillis()}.txt"
+        run {
+            val resolver = composeRule.activity.contentResolver
+            val values = android.content.ContentValues().apply {
+                put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, pickName)
+                put(android.provider.MediaStore.MediaColumns.MIME_TYPE, "text/plain")
+            }
+            val uri = resolver.insert(android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)!!
+            resolver.openOutputStream(uri)!!.use { it.write("picked from the host".toByteArray()) }
+        }
+        clickInPage(device, "Pick a file")
+        val picker = java.util.regex.Pattern.compile(".*documentsui.*")
+        assertTrue(
+            "tapping the file input opened no picker; visible: ${webTexts(device)}",
+            device.wait(Until.hasObject(By.pkg(picker)), 15_000),
+        )
+        // Cancel first. A cancelled chooser must still be ANSWERED: if it were not,
+        // WebView would never ask again and the second tap below would open nothing.
+        device.pressBack()
+        assertTrue("the picker did not close", device.wait(Until.gone(By.pkg(picker)), 10_000))
+        clickInPage(device, "Pick a file")
+        assertTrue("the file input was dead after a cancelled pick", device.wait(Until.hasObject(By.pkg(picker)), 15_000))
+        // Now pick the file. The picker opens on Recent, which lists a just-written download;
+        // if a build opens elsewhere, go to Downloads through the roots drawer.
+        var file = device.wait(Until.findObject(By.text(pickName)), 8_000)
+        if (file == null) {
+            device.findObject(By.desc(java.util.regex.Pattern.compile("(?i)show roots")))?.click()
+            device.wait(Until.findObject(By.text(java.util.regex.Pattern.compile("(?i)downloads"))), 5_000)?.click()
+            file = device.wait(Until.findObject(By.text(pickName)), 10_000)
+        }
+        assertTrue("the picker never listed $pickName; visible: ${webTexts(device)}", file != null)
+        file!!.click()
+        waitForWebResult("the picked file never reached the page's <input type=file>", 20_000) { it == "file:1:$pickName" }
+
+        // ── target="_blank" ──────────────────────────────────────────────────────────────────────
+        clickInPage(device, "External link")
+        val leaveBy = SystemClock.uptimeMillis() + 20_000
+        while (device.currentPackageName == pkg && SystemClock.uptimeMillis() < leaveBy) SystemClock.sleep(250)
+        assertTrue(
+            "target=_blank did not hand the URL to another app (foreground: ${device.currentPackageName})",
+            device.currentPackageName != pkg,
+        )
+        device.pressBack()
+        assertTrue("did not return to the app", device.wait(Until.hasObject(By.pkg(pkg).depth(0)), 20_000))
+        assertTagDisplayed("webhost-page", "the hosted page must be kept, not replaced by the link")
     }
 }
