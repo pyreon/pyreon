@@ -1771,7 +1771,7 @@ describe('escape-hatch primitives — web runtime', () => {
 })
 
 describe('<WebView> happy-dom unit (web = iframe host)', () => {
-  it('src → <iframe src=…> filling its container', () => {
+  it('src → <iframe src=…>, full width, iframe-default height unless it grows', () => {
     // `about:blank`: a remote-looking src makes happy-dom start a real fetch
     // that outlives the worker teardown ("AsyncTaskManager has been
     // destroyed"); the attribute mapping under test is URL-agnostic.
@@ -1780,8 +1780,17 @@ describe('<WebView> happy-dom unit (web = iframe host)', () => {
     expect(frame.tagName).toBe('IFRAME')
     expect(frame.getAttribute('src')).toBe('about:blank')
     expect(frame.style.width).toBe('100%')
-    expect(frame.style.height).toBe('100%')
+    // Unsized is the <iframe> default (150px, measured in the browser suite) —
+    // the size the native hosts pin to. It used to be `height: 100%`, which
+    // filled a sized container on web while the same source was 150 on
+    // Android; filling is now the explicit `grow` (#3956 item 5).
+    expect(frame.style.height).toBe('')
     unmount()
+    const grown = mountTest(h(WebView, { src: 'about:blank', grow: true }))
+    const g = grown.container.firstElementChild as HTMLIFrameElement
+    expect(g.style.height).toBe('100%')
+    expect(g.style.flex).toBe('1 1 150px')
+    grown.unmount()
   })
 
   it('html → <iframe srcdoc=…>', () => {

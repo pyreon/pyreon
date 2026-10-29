@@ -45,6 +45,44 @@
 // NON-persistent data store — storage still exists but nothing survives the
 // view. Read once at creation (changing it later has no effect).
 //
+// ## Sizing (`grow:`)
+//
+// Unsized, the view is what an `<iframe>` with no CSS is on the web: as wide as
+// its parent and EXACTLY 150 points high, on every target (see
+// `WebViewProps.grow`). `grow:` takes the free space of the parent stack along
+// the axis PMTC passes — `.vertical` in a VStack, `.horizontal` in an HStack,
+// `.both` anywhere else — and keeps the 150 ideal where the parent proposes no
+// size (a ScrollView), which is what the web and Android hosts do too.
+//
+// The 150 is applied INSIDE this view on purpose: an outer
+// `.frame(maxHeight: .infinity)` cannot enlarge a fixed inner frame, so the
+// sizing has to be an argument rather than a modifier the caller adds.
+//
+// ## Browser chrome (`WKUIDelegate`)
+//
+// A `WKWebView` with no `uiDelegate` drops `alert()`, answers `confirm()` with
+// false and `prompt()` with null, and ignores `window.open` / `target="_blank"`.
+// The coordinator is the delegate:
+//
+// - `alert` / `confirm` / `prompt` present a `UIAlertController` (an `NSAlert`
+//   on macOS) titled with the calling frame's host, as Safari does. Every
+//   completion handler is answered exactly once — with the platform default
+//   when there is nothing to present on (a view not in a window) — because
+//   WebKit raises if one is dropped.
+// - `window.open` / `target="_blank"` hand the URL to the SYSTEM (the browser,
+//   Mail, the dialler) instead of replacing the hosted page — an embedded
+//   checkout must not be navigated away from by its own "terms" link. Only
+//   `http(s)`, `mailto`, `tel` and `sms` are handed over; anything else
+//   (`javascript:`, `file:`, a custom scheme) is refused, so a hosted page cannot
+//   launch arbitrary apps. WebKit only calls this for a user gesture.
+// - File input needs no delegate on iOS (the system picker is built in); on
+//   macOS `runOpenPanelWith` presents an `NSOpenPanel`.
+// - Geolocation / camera / microphone go through WebKit's own permission
+//   prompts once the APP is allowed to ask: declare
+//   `NSLocationWhenInUseUsageDescription` (and `NSCameraUsageDescription` /
+//   `NSMicrophoneUsageDescription` for `getUserMedia`) in Info.plist. Without
+//   the key iOS never asks, and the page's request fails.
+//
 // ## Policy posture (App Store / Play Store)
 //
 // The intended use is a HYBRID: a substantial native shell (the canonical
@@ -74,6 +112,7 @@ public struct PyreonWebView: View {
     private let data: String?
     private let onMessage: ((String) -> Void)?
     private let domStorage: Bool
+    private let grow: PyreonWebViewGrow?
 
     /// `html` — inline HTML to render (e.g. an ECharts page). `src` — a
     /// LOCAL bundled asset name (preferred, policy-safe) or a remote URL.
@@ -83,15 +122,19 @@ public struct PyreonWebView: View {
     /// callback invoked with the string the page sends via
     /// `window.pyreonPostMessage(...)` (the reverse bridge). `domStorage` —
     /// `true` (default) keeps WebKit's persistent `localStorage`; `false` uses
-    /// a non-persistent data store (see the file header).
+    /// a non-persistent data store (see the file header). `grow` — `nil`
+    /// (default) is the 150-high iframe default; an axis takes the parent
+    /// stack's free space along it (see the file header).
     public init(
         html: String? = nil,
         src: String? = nil,
         data: String? = nil,
         onMessage: ((String) -> Void)? = nil,
-        domStorage: Bool = true
+        domStorage: Bool = true,
+        grow: PyreonWebViewGrow? = nil
     ) {
         self.domStorage = domStorage
+        self.grow = grow
         self.html = html
         self.src = src
         self.data = data
@@ -99,19 +142,70 @@ public struct PyreonWebView: View {
     }
 
     public var body: some View {
-        // An unsized WebView inside a ScrollView gets no height to lay out in,
-        // so a hosted chart or flow page has nothing to draw into and a tap at
-        // its centre lands on nothing. The web `<iframe>` falls back to the CSS
-        // replaced-element default of 150px in the same spot, so that is the
-        // IDEAL height here: used only when the parent proposes none, which
-        // leaves an explicit `.frame(height:)` from the caller in charge.
-        _PyreonWebViewBridge(html: html, src: src, data: data, onMessage: onMessage, domStorage: domStorage)
-            .frame(idealHeight: pyreonWebViewDefaultHeight)
+        // A WKWebView is GREEDY in SwiftUI: unsized, it takes whatever a VStack
+        // offers, so the same source filled the screen on iOS while it was 150
+        // high on Android and the web. The unsized default is therefore an
+        // exact frame, and filling is the explicit `grow` the caller opts into.
+        _PyreonWebViewFrame(
+            content: _PyreonWebViewBridge(html: html, src: src, data: data, onMessage: onMessage, domStorage: domStorage),
+            grow: grow
+        )
     }
+}
+
+/// The axis a `PyreonWebView` grows along — the parent stack's main axis, or
+/// `.both` when the parent is not a stack. PMTC picks it from the emitted tree.
+public enum PyreonWebViewGrow: Sendable {
+    case vertical
+    case horizontal
+    case both
 }
 
 /// The CSS replaced-element default height the web `<iframe>` falls back to.
 let pyreonWebViewDefaultHeight: CGFloat = 150
+
+/// The frame the sizing contract maps to. Pure layout, kept apart from the
+/// representable so the policy is one switch. `idealHeight` is what a
+/// ScrollView (which proposes no height) resolves a growing view to.
+private struct _PyreonWebViewFrame<Content: View>: View {
+    let content: Content
+    let grow: PyreonWebViewGrow?
+
+    @ViewBuilder var body: some View {
+        switch grow {
+        case nil:
+            content.frame(height: pyreonWebViewDefaultHeight)
+        case .vertical:
+            content.frame(minHeight: 0, idealHeight: pyreonWebViewDefaultHeight, maxHeight: .infinity)
+        case .horizontal:
+            content.frame(minWidth: 0, maxWidth: .infinity).frame(height: pyreonWebViewDefaultHeight)
+        case .both:
+            content.frame(
+                minWidth: 0, maxWidth: .infinity,
+                minHeight: 0, idealHeight: pyreonWebViewDefaultHeight, maxHeight: .infinity
+            )
+        }
+    }
+}
+
+/// Schemes a page may hand to the SYSTEM through `window.open` /
+/// `target="_blank"`. Everything else is refused: `javascript:` and `file:` have
+/// no business leaving the view, and a custom scheme would let any hosted page
+/// launch any installed app.
+let pyreonWebViewExternalSchemes: Set<String> = ["http", "https", "mailto", "tel", "sms"]
+
+/// Whether `url` may be opened outside the view (see `pyreonWebViewExternalSchemes`).
+func pyreonWebViewMayOpenExternally(_ url: URL?) -> Bool {
+    guard let scheme = url?.scheme?.lowercased() else { return false }
+    return pyreonWebViewExternalSchemes.contains(scheme)
+}
+
+/// The title of a JS dialog: the calling frame's host, as Safari shows it
+/// ("example.com"), or none for a page with no host (inline `html`, a file).
+func pyreonWebViewDialogTitle(host: String?) -> String? {
+    guard let host, !host.isEmpty else { return nil }
+    return host
+}
 
 /// The script-message handler name the injected `window.pyreonPostMessage`
 /// shim forwards to (`window.webkit.messageHandlers.pyreonNative`).
@@ -128,7 +222,7 @@ private let _pyreonReverseBridgeShim =
 /// the `WKScriptMessageHandler` for the reverse bridge: a page calling
 /// `window.pyreonPostMessage(s)` lands in `userContentController(_:didReceive:)`.
 /// One per hosted webview (created via `makeCoordinator`).
-final class _PyreonWebViewCoordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
+final class _PyreonWebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler {
     var latestData: String?
     var loaded = false
     /// The hosted WKWebView — a sibling relay evaluates into it.
@@ -158,7 +252,96 @@ final class _PyreonWebViewCoordinator: NSObject, WKNavigationDelegate, WKScriptM
         onMessage?(body)
     }
 
-    deinit { _PyreonWebViewGroups.shared.leave(self) }
+    // No `deinit` leave: the registry holds members WEAKLY, so a coordinator
+    // that dies without `dismantleUIView` simply drops out of its table, and the
+    // registry prunes tables whose members are all gone. A `deinit` cannot
+    // touch the main-actor registry anyway (deinit is nonisolated — an error in
+    // the Swift 6 language mode).
+
+    // MARK: WKUIDelegate — see "Browser chrome" in the file header.
+
+    func webView(
+        _ webView: WKWebView,
+        runJavaScriptAlertPanelWithMessage message: String,
+        initiatedByFrame frame: WKFrameInfo,
+        completionHandler: @escaping @MainActor @Sendable () -> Void
+    ) {
+        _pyreonPresentDialog(
+            on: webView,
+            title: pyreonWebViewDialogTitle(host: frame.securityOrigin.host),
+            message: message,
+            kind: .alert,
+            completion: { _ in completionHandler() }
+        )
+    }
+
+    func webView(
+        _ webView: WKWebView,
+        runJavaScriptConfirmPanelWithMessage message: String,
+        initiatedByFrame frame: WKFrameInfo,
+        completionHandler: @escaping @MainActor @Sendable (Bool) -> Void
+    ) {
+        _pyreonPresentDialog(
+            on: webView,
+            title: pyreonWebViewDialogTitle(host: frame.securityOrigin.host),
+            message: message,
+            kind: .confirm,
+            completion: { result in completionHandler(result != nil) }
+        )
+    }
+
+    func webView(
+        _ webView: WKWebView,
+        runJavaScriptTextInputPanelWithPrompt prompt: String,
+        defaultText: String?,
+        initiatedByFrame frame: WKFrameInfo,
+        completionHandler: @escaping @MainActor @Sendable (String?) -> Void
+    ) {
+        _pyreonPresentDialog(
+            on: webView,
+            title: pyreonWebViewDialogTitle(host: frame.securityOrigin.host),
+            message: prompt,
+            kind: .prompt(defaultText: defaultText),
+            completion: completionHandler
+        )
+    }
+
+    /// `window.open` / `target="_blank"`: hand the URL to the system and create
+    /// NO second web view (returning nil tells WebKit the window was handled).
+    func webView(
+        _ webView: WKWebView,
+        createWebViewWith configuration: WKWebViewConfiguration,
+        for navigationAction: WKNavigationAction,
+        windowFeatures: WKWindowFeatures
+    ) -> WKWebView? {
+        let url = navigationAction.request.url
+        if pyreonWebViewMayOpenExternally(url), let url {
+            _pyreonOpenExternally(url)
+        }
+        return nil
+    }
+
+    #if canImport(AppKit) && !canImport(UIKit)
+    /// macOS: `<input type="file">` needs a panel (iOS has its own picker).
+    func webView(
+        _ webView: WKWebView,
+        runOpenPanelWith parameters: WKOpenPanelParameters,
+        initiatedByFrame frame: WKFrameInfo,
+        completionHandler: @escaping @MainActor @Sendable ([URL]?) -> Void
+    ) {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = parameters.allowsMultipleSelection
+        panel.canChooseDirectories = parameters.allowsDirectories
+        panel.canChooseFiles = true
+        if let window = webView.window {
+            panel.beginSheetModal(for: window) { response in
+                completionHandler(response == .OK ? panel.urls : nil)
+            }
+        } else {
+            completionHandler(panel.runModal() == .OK ? panel.urls : nil)
+        }
+    }
+    #endif
 
     /// Push the latest JSON into `window.__pyreonData` + fire `pyreondata`.
     /// No-op until the page has finished loading or when there's no data.
@@ -174,8 +357,11 @@ final class _PyreonWebViewCoordinator: NSObject, WKNavigationDelegate, WKScriptM
 /// a page that posted `{"__pyreonWebViewGroup":1,"join":"g"}` receives what
 /// its group siblings relay, through `window.__pyreonWebViewGroupMessage(s)`.
 /// Mirrors the web `<WebView>` host and the Android runtime byte-for-byte
-/// in protocol. Members are held weakly and removed by IDENTITY on leave,
-/// dismantle and deinit; an emptied group is dropped.
+/// in protocol. Members are held weakly and removed by IDENTITY on leave and
+/// dismantle; an emptied group (no LIVE member left) is dropped. Main-actor
+/// isolated: every caller is a WebKit / SwiftUI callback on the main thread,
+/// and the Swift 6 language mode requires a shared mutable singleton to say so.
+@MainActor
 final class _PyreonWebViewGroups {
     static let shared = _PyreonWebViewGroups()
     private var members: [String: NSHashTable<_PyreonWebViewCoordinator>] = [:]
@@ -201,6 +387,9 @@ final class _PyreonWebViewGroups {
     func join(_ coordinator: _PyreonWebViewCoordinator, group: String) {
         if coordinator.group == group { return }
         leave(coordinator)
+        // Drop groups whose members all died without a dismantle (weak refs
+        // only), so the map stays bounded by the LIVE grouped hosts.
+        members = members.filter { !$0.value.allObjects.isEmpty }
         let table = members[group] ?? NSHashTable<_PyreonWebViewCoordinator>.weakObjects()
         table.add(coordinator)
         members[group] = table
@@ -212,7 +401,7 @@ final class _PyreonWebViewGroups {
         coordinator.group = nil
         guard let table = members[group] else { return }
         table.remove(coordinator)
-        if table.count == 0 { members[group] = nil }
+        if table.allObjects.isEmpty { members[group] = nil }
     }
 
     private func relay(_ message: String, in group: String, from coordinator: _PyreonWebViewCoordinator) {
@@ -234,6 +423,7 @@ final class _PyreonWebViewGroups {
 /// changed; always refresh the coordinator's latest data + push it (the
 /// push is a no-op until loaded, and the coordinator re-pushes on
 /// `didFinish`). Shared by the UIKit + AppKit representables.
+@MainActor
 private func _syncPyreonWebView(
     _ webView: WKWebView,
     coordinator: _PyreonWebViewCoordinator,
@@ -258,6 +448,7 @@ private func _syncPyreonWebView(
 /// navigation delegate (data push) AND the reverse-bridge script-message
 /// handler, and a document-start user script defines
 /// `window.pyreonPostMessage`. Shared by the UIKit + AppKit representables.
+@MainActor
 private func _makePyreonWebView(coordinator: _PyreonWebViewCoordinator, domStorage: Bool) -> WKWebView {
     let contentController = WKUserContentController()
     contentController.add(coordinator, name: _pyreonMessageHandlerName)
@@ -273,9 +464,108 @@ private func _makePyreonWebView(coordinator: _PyreonWebViewCoordinator, domStora
     if !domStorage { config.websiteDataStore = .nonPersistent() }
     let webView = WKWebView(frame: .zero, configuration: config)
     webView.navigationDelegate = coordinator
+    // Without a UI delegate WebKit drops alert/confirm/prompt and window.open.
+    webView.uiDelegate = coordinator
     coordinator.webView = webView
     return webView
 }
+
+/// The three JS dialog shapes. `completion` receives nil for a cancelled
+/// confirm / prompt, a value (the text, or "" for a confirmed confirm / alert)
+/// otherwise.
+enum _PyreonDialogKind {
+    case alert
+    case confirm
+    case prompt(defaultText: String?)
+}
+
+#if canImport(UIKit)
+/// The view controller to present on: the window's root, walked up through
+/// whatever it is already presenting.
+@MainActor
+private func _pyreonTopViewController(for view: UIView) -> UIViewController? {
+    var top = view.window?.rootViewController
+    while let presented = top?.presentedViewController { top = presented }
+    return top
+}
+
+@MainActor
+private func _pyreonPresentDialog(
+    on webView: WKWebView,
+    title: String?,
+    message: String,
+    kind: _PyreonDialogKind,
+    completion: @escaping (String?) -> Void
+) {
+    // No window means nothing can present it. Answer with what dismissing the
+    // dialog would have produced, rather than leaving WebKit's handler pending.
+    guard let presenter = _pyreonTopViewController(for: webView) else {
+        if case .alert = kind { completion("") } else { completion(nil) }
+        return
+    }
+    let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
+    switch kind {
+    case .alert:
+        alert.addAction(UIAlertAction(title: "OK", style: .default) { _ in completion("") })
+    case .confirm:
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel) { _ in completion(nil) })
+        alert.addAction(UIAlertAction(title: "OK", style: .default) { _ in completion("") })
+    case .prompt(let defaultText):
+        alert.addTextField { field in field.text = defaultText }
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel) { _ in completion(nil) })
+        alert.addAction(UIAlertAction(title: "OK", style: .default) { [weak alert] _ in
+            completion(alert?.textFields?.first?.text ?? "")
+        })
+    }
+    presenter.present(alert, animated: true)
+}
+
+@MainActor
+private func _pyreonOpenExternally(_ url: URL) {
+    UIApplication.shared.open(url)
+}
+#elseif canImport(AppKit)
+@MainActor
+private func _pyreonPresentDialog(
+    on webView: WKWebView,
+    title: String?,
+    message: String,
+    kind: _PyreonDialogKind,
+    completion: @escaping (String?) -> Void
+) {
+    let alert = NSAlert()
+    alert.messageText = title ?? ""
+    alert.informativeText = message
+    alert.addButton(withTitle: "OK")
+    var field: NSTextField?
+    switch kind {
+    case .alert:
+        break
+    case .confirm:
+        alert.addButton(withTitle: "Cancel")
+    case .prompt(let defaultText):
+        alert.addButton(withTitle: "Cancel")
+        let input = NSTextField(frame: NSRect(x: 0, y: 0, width: 240, height: 24))
+        input.stringValue = defaultText ?? ""
+        alert.accessoryView = input
+        field = input
+    }
+    let finish: (NSApplication.ModalResponse) -> Void = { response in
+        let ok = response == .alertFirstButtonReturn
+        if case .alert = kind { completion("") } else { completion(ok ? (field?.stringValue ?? "") : nil) }
+    }
+    if let window = webView.window {
+        alert.beginSheetModal(for: window, completionHandler: finish)
+    } else {
+        finish(alert.runModal())
+    }
+}
+
+@MainActor
+private func _pyreonOpenExternally(_ url: URL) {
+    NSWorkspace.shared.open(url)
+}
+#endif
 
 #if canImport(UIKit)
 private struct _PyreonWebViewBridge: UIViewRepresentable {
@@ -320,6 +610,7 @@ private struct _PyreonWebViewBridge: NSViewRepresentable {
 /// Shared load logic. `html` → `loadHTMLString`; `src` → a bundled local
 /// file (resolved against `Bundle.main`, the policy-safe path) falling
 /// back to a remote `URL`.
+@MainActor
 private func _loadPyreonWebView(_ webView: WKWebView, html: String?, src: String?) {
     if let html {
         webView.loadHTMLString(html, baseURL: Bundle.main.bundleURL)
@@ -337,13 +628,20 @@ private func _loadPyreonWebView(_ webView: WKWebView, html: String?, src: String
 // WebKit unavailable (e.g. a headless Linux toolchain) — render nothing
 // so the package still compiles. Real targets (iOS / macOS) always have
 // WebKit.
+public enum PyreonWebViewGrow: Sendable {
+    case vertical
+    case horizontal
+    case both
+}
+
 public struct PyreonWebView: View {
     public init(
         html: String? = nil,
         src: String? = nil,
         data: String? = nil,
         onMessage: ((String) -> Void)? = nil,
-        domStorage: Bool = true
+        domStorage: Bool = true,
+        grow: PyreonWebViewGrow? = nil
     ) {}
     public var body: some View { EmptyView() }
 }

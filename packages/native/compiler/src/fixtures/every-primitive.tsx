@@ -1,6 +1,6 @@
 import { signal } from '@pyreon/reactivity'
 import {
-  Stack, Inline, Layer, Scroll, Text, Image, Video, Audio, Transition, Link, Modal, Press, Field,
+  Stack, Inline, Layer, Scroll, Text, Image, Video, Audio, Transition, Link, Modal, Press, WebView, Field,
 } from '@pyreon/primitives'
 
 export function ProbeApp() {
@@ -13,8 +13,12 @@ export function ProbeApp() {
     <Stack margin={4} marginX={2} marginY={1} padding={2} background="primary" radius="md">
       <Inline margin={2} gap={2}>
         <Text color="primary" size="lg" weight="bold">hello</Text>
+        <WebView html="<p>row</p>" grow data-testid="probe-web-row" />
       </Inline>
+      <WebView src="probe.html" data-testid="probe-web" />
+      <WebView src="probe.html" grow padding={1} data-testid="probe-web-grow" />
       <Layer margin={1}>
+        <WebView html="<p>layer</p>" grow />
         <Image src="https://x.test/a.png" alt="remote cover" fit="cover" />
       </Layer>
       <Scroll margin={1} axis="horizontal">
