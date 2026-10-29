@@ -232,7 +232,8 @@ export function recognizeQuery(_call: CallSite, ctx: ParseContext): ExtDeclSpec 
       endpointQuery.call.arguments?.[0] as AnyNode | undefined,
       // The query harness re-fetches on key change, so a RUNTIME `:param`
       // is honourable here (and only here — see the flag's own doc).
-      { allowRuntimeParams: true, streaming: false },
+      // A runtime body / header is built per run, inside the harness — when the web's queryFn builds it.
+      { allowRuntimeParams: true, streaming: false, runtimeValues: true },
     )
     if (!resolved) return null
     ctx.recordDecode(type, resolved.response)
@@ -241,11 +242,17 @@ export function recognizeQuery(_call: CallSite, ctx: ParseContext): ExtDeclSpec 
       queryKeyExpr?: ExprIR
       method?: string
       headers?: Record<string, string>
+      headerExprs?: Record<string, ExprIR>
       body?: string
+      bodyExpr?: ExprIR
+      upload?: ExprIR
     } = {}
+    if (resolved.upload !== undefined) eqReq.upload = resolved.upload
     if (resolved.method && resolved.method !== 'GET') eqReq.method = resolved.method
     if (resolved.headers) eqReq.headers = resolved.headers
+    if (resolved.headerExprs) eqReq.headerExprs = resolved.headerExprs
     if (resolved.body !== undefined) eqReq.body = resolved.body
+    if (resolved.bodyExpr !== undefined) eqReq.bodyExpr = resolved.bodyExpr
     if (resolved.urlExpr !== undefined) {
       eqReq.urlExpr = resolved.urlExpr
       // The cache key MUST carry the runtime parts too. A key built from the
@@ -923,6 +930,7 @@ interface FetchInitFields {
   headers?: Record<string, string>
   headerExprs?: Record<string, ExprIR>
   body?: string
+  bodyExpr?: ExprIR
 }
 
 function parseFetchInitObject(
@@ -959,13 +967,13 @@ function parseFetchInitObject(
       }
       req.method = String(value!.value).toUpperCase()
     } else if (key === 'body') {
-      if (!isStringLit) {
-        ctx.report(
-          `Declaration ${name}: useQuery queryFn fetch body must be a string literal to lower to native; got ${value?.type ?? 'nothing'}. The request will be sent with NO body.`,
-        )
-        continue
+      if (isStringLit) {
+        req.body = String(value!.value)
+      } else if (value !== undefined) {
+        // A runtime body (`JSON.stringify(filter())`), built each time the harness runs — when the
+        // web's queryFn builds it. Its string type is judged at emit time.
+        req.bodyExpr = ctx.expr(value)
       }
-      req.body = String(value!.value)
     } else if (key === 'headers') {
       if (value?.type !== 'ObjectExpression') {
         ctx.report(
