@@ -1,5 +1,33 @@
 # @pyreon/runtime-server
 
+## 0.54.0
+
+### Minor Changes
+
+- [#3946](https://github.com/pyreon/pyreon/pull/3946) [`871f6f0`](https://github.com/pyreon/pyreon/commit/871f6f0925f4793441138947c8834fe0b6b426d2) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `<For>` SSR output is now about half as many DOM nodes for a typical list. A leading run of single-element rows (a table body, a list) no longer gets a `<!--k:KEY-->` comment before every row. Their keys travel once, space-separated, on the closing marker instead: `<!--/pyreon-for:k0 k1 …-->`. This covers component rows too, when the component renders one element: `<For>{(r) => <Row r={r} />}</For>` is classified by what `Row` returned, including compiled `_ssr` output and components that wrap another component. From the first row of any other shape (a fragment, an accessor such as the reactive-conditional component return, text, or an async or still-loading component), every row keeps its own marker as before, because those rows can span any number of nodes.
+
+  The string renderer, the stream renderer and the compiled `_ssrForKeyed` fast path emit identical bytes. Hydration rebuilds the row table from both forms and still verifies every key before adopting anything. A list whose keys don't match is re-rendered, exactly as before. The previous format (a marker before every row) still hydrates, so a cached prerendered page keeps working after an upgrade.
+
+  Measured on the 1,000-row hydration benchmark (real Chromium, n=60, the same session for both arms): Pyreon goes from 6.33 ms (a tie with Vue at 6.26 ms) to 6.11 ms, an outright first place (Vue 6.31 ms, CIs disjoint). The framework walk drops from 1.31 ms to 1.17 ms, and the browser's layout flush gets cheaper with fewer nodes to lay out. The HTML is smaller too.
+
+  The server and client halves must be the same version. Every app already ships both from one build, and `@pyreon/*` releases as a fixed version group.
+
+  The `runtime-server.for.keyMarker` dev counter now counts only rows that get their own marker, so it reads 0 for a plain table.
+
+### Patch Changes
+
+- [#3934](https://github.com/pyreon/pyreon/pull/3934) [`6b7085a`](https://github.com/pyreon/pyreon/commit/6b7085a6bad6e48c7a764d0f502e755ed54aaf8e) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Faster HTML/XML escaping. The head, runtime-server and document (`escapeXml`) escapers now use a native regex search to find the first character that needs escaping, then run their character loop only from there. `@pyreon/head` used to walk every character of every title and attribute value. On Node 26 / Bun 1.4 that measured 2.8× / 1.8× faster for short clean strings, about 15× / 9× faster for long ones, and 1.36× / 1.28× faster for strings that do need escaping. In the head benchmark, serializing 20 meta tags went from 8.6–9.3 µs to 7.4–7.5 µs. Output is unchanged; new tests check all three escapers against a reference across 5,000 generated strings each.
+
+- [#3931](https://github.com/pyreon/pyreon/pull/3931) [`7ed6c99`](https://github.com/pyreon/pyreon/commit/7ed6c9995eb87a26aaef6b0f8c7526a6291e3b4e) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Compiled SSR templates no longer scan numeric attribute values for HTML escapes. A number's string form never contains a character that needs escaping, and numeric ids and counts are the most common generic attribute on list rows. In the 1,000-row cross-framework SSR benchmark, Pyreon's render dropped by about 12%, with byte-identical output. The `decodeKeyFromMarker` docs now say correctly that hydration does read the per-item `<!--k:KEY-->` markers.
+
+- [`f703796`](https://github.com/pyreon/pyreon/commit/f703796329d51f218ea10190b95d7c3f166e41f5) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Streaming SSR: a `<Suspense>` boundary inside a `<For>` component row, or inside another `<Suspense>`, now resolves in place.
+
+  The boundary's wrapper was written straight to the main stream while the content around it was still buffered (a `<For>` row waiting for its key-marker decision, or an outer boundary's resolved children). The wrapper landed empty and outside its row, so the resolved content was swapped in beside the row and the fallback never went away. The wrapper is now written in place, and a boundary emits its swap only once its target is in the document. The `<For>` case was a regression in this release cycle; the nested case predates it.
+
+- Updated dependencies [[`956a521`](https://github.com/pyreon/pyreon/commit/956a5214e0208b883767aee1d91acefefe7c1557), [`1e1c9b7`](https://github.com/pyreon/pyreon/commit/1e1c9b7c54cb7c02d30e64e86da5d823cb3595e4), [`5abcb2d`](https://github.com/pyreon/pyreon/commit/5abcb2d51816c8e114b0755cf761ba58a4ea8db5), [`38f7aaa`](https://github.com/pyreon/pyreon/commit/38f7aaa8ee7f73c168d66b4e53f24d7f85e62ee4), [`87ccdb5`](https://github.com/pyreon/pyreon/commit/87ccdb56ca5247dcfbb1309c7875d65204549b0d), [`9018b4b`](https://github.com/pyreon/pyreon/commit/9018b4b2ef3fb50b6eacbdca9f9e553ad0efb541), [`3f1009e`](https://github.com/pyreon/pyreon/commit/3f1009eb66fbf6aac01a9b74c096d747bd6f5e6c), [`c655989`](https://github.com/pyreon/pyreon/commit/c6559893e81150811adf41052b550d58e196d43a)]:
+  - @pyreon/reactivity@0.54.0
+  - @pyreon/core@0.54.0
+
 ## 0.53.0
 
 ### Patch Changes

@@ -1,5 +1,15 @@
 # @pyreon/example-native-finance
 
+## 0.50.4
+
+### Patch Changes
+
+- Updated dependencies [[`597eff1`](https://github.com/pyreon/pyreon/commit/597eff15a534373d09bb290e8749608611b8319f), [`597cdf7`](https://github.com/pyreon/pyreon/commit/597cdf7d050ea8782625e360054787aaf5addb3e), [`550ab23`](https://github.com/pyreon/pyreon/commit/550ab230b1e96bb8a5af6a418450df622d961ba6), [`305a5b9`](https://github.com/pyreon/pyreon/commit/305a5b90404a0819b3d9670b1e49fd4d47c12e80), [`550ab23`](https://github.com/pyreon/pyreon/commit/550ab230b1e96bb8a5af6a418450df622d961ba6), [`457c9ce`](https://github.com/pyreon/pyreon/commit/457c9cebd6583f88cdb309f35b1dba6ae6fc8044), [`49812de`](https://github.com/pyreon/pyreon/commit/49812de13525787c1be46fdac3ec7f78000f6595), [`457c9ce`](https://github.com/pyreon/pyreon/commit/457c9cebd6583f88cdb309f35b1dba6ae6fc8044), [`3ee9faf`](https://github.com/pyreon/pyreon/commit/3ee9faf79ed0d9492c4bbc23f57cabb12791abf8), [`b2ad72e`](https://github.com/pyreon/pyreon/commit/b2ad72e34e901aa634f5ba91867cf71ed96a823a), [`84d95f8`](https://github.com/pyreon/pyreon/commit/84d95f86cd0239bb77ce96c2108e05bcbf02c4b6), [`d8cacf8`](https://github.com/pyreon/pyreon/commit/d8cacf879dd4a61fe0cd4f46141e6d511a6b27cb), [`1cc7355`](https://github.com/pyreon/pyreon/commit/1cc7355def1b6470e1ac7961469e4608c819f79a), [`282ed1a`](https://github.com/pyreon/pyreon/commit/282ed1ae49ab3f6be24cdcc290de97654ab42c2b), [`9ad118e`](https://github.com/pyreon/pyreon/commit/9ad118ec46145a24d960863d3d96b4fb6392fe5a), [`1a7ccdd`](https://github.com/pyreon/pyreon/commit/1a7ccdda20096710a2486f67e97025776552f3f5), [`fd8d8ec`](https://github.com/pyreon/pyreon/commit/fd8d8ec5b359691205defe02c7184f5a331ae155), [`7d58552`](https://github.com/pyreon/pyreon/commit/7d58552d7a2c14731effb2ecf2698d94a46ae32d), [`fd8d8ec`](https://github.com/pyreon/pyreon/commit/fd8d8ec5b359691205defe02c7184f5a331ae155), [`04ccbe7`](https://github.com/pyreon/pyreon/commit/04ccbe7d34879d554e35524a03f5e2f5761775fb), [`784e46a`](https://github.com/pyreon/pyreon/commit/784e46a486c2ccb16728117c392f0194b563fd66), [`2de6084`](https://github.com/pyreon/pyreon/commit/2de6084df506180f468f9674fa341fea50044574)]:
+  - @pyreon/hooks@0.54.0
+  - @pyreon/query@0.54.0
+  - @pyreon/charts@0.54.0
+  - @pyreon/http@0.54.0
+
 ## 0.50.3
 
 ### Patch Changes

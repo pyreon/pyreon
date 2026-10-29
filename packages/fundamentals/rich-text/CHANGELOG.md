@@ -1,5 +1,38 @@
 # @pyreon/rich-text
 
+## 0.54.0
+
+### Minor Changes
+
+- [#3953](https://github.com/pyreon/pyreon/pull/3953) [`02da900`](https://github.com/pyreon/pyreon/commit/02da900bf63421da6d2bcea6a45c1dfa43691168) Thanks [@vitbokisch](https://github.com/vitbokisch)! - The CodeMirror and TipTap editors now work in a native app. `<CodeWebView>` and `<RichTextWebView>` previously compiled to Swift and Kotlin with no warning but called a function that does not exist on either platform, so a native build failed. They now lower to a native `<WebView>` hosting the same editor, and the page it loads is built for you.
+
+  - **`@pyreon/code`, `@pyreon/rich-text`:** new `./native-plugin` entry. `<CodeWebView state onChange onError>` and `<RichTextWebView …>` lower to `<WebView src data onMessage>`. `pyreon-native assets` builds `pyreon-code-host.html` / `pyreon-richtext-host.html` from the CodeMirror or TipTap installed in the app (CodeMirror uses whichever `@codemirror/lang-*` grammars are installed; TipTap uses StarterKit). Every other export of each package warns by name, so `createEditor(...)` no longer compiles to nothing in silence.
+    - New `onError` prop on both components. A host failure (engine missing, a throwing extension) now reaches the app instead of leaving a blank frame.
+    - Without `html` or an engine script the components load the same conventionally named page on every target, so `pyreon-native assets --target=web` serves it on the web.
+    - **Breaking, rich-text:** `onChange` now receives the document as TipTap JSON **text** (a string), not an object, and `state.content` accepts that string (or HTML) back. A native handler cannot hold a JSON object, so the string is the one shape identical on every target. Use `JSON.parse(text)` on web if you want the object.
+    - The reverse channel uses plain `v:` / `c:` / `e:` prefixes instead of a JSON envelope; a custom `html` host that still posts the old envelope keeps working.
+  - **`@pyreon/native-compiler`:** plugins can declare `webHosts` to contribute the pages a lowered `<WebView src>` loads. The builder receives `bundleScript` on its context (bundles a host entry with the app's `esbuild` or `rolldown`; also exported as `bundleWebHostScript` from the main entry) and the plugin API gains `retagHostedWebView`. The bundler is injected rather than imported because loading the app's bundler is a computed dynamic import, which a plugin's scanned dependency graph must not contain.
+  - **`@pyreon/native-cli`:** `pyreon-native assets` also builds the web-host pages of every plugin the app source imports (`--app`, `--app-source`, `--no-plugins`). A missing bundler fails the command with the install instruction.
+  - **Fix, `@pyreon/native-compiler`:** the parameter of `<WebView onMessage={(m) => …}>` is now a `String`. `m.slice(2)` and similar were emitted verbatim on Swift (`value of type 'String' has no member 'slice'`) with no warning, while Kotlin compiled.
+
+- [#4052](https://github.com/pyreon/pyreon/pull/4052) [`2de6084`](https://github.com/pyreon/pyreon/commit/2de6084df506180f468f9674fa341fea50044574) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `<WebView>` now hosts a whole web flow on iOS and Android: the page gets the browser chrome it would get in a browser, and the view can fill the screen.
+
+  Browser chrome ([#3982](https://github.com/pyreon/pyreon/issues/3982)). The Android host had no `WebChromeClient`, so a hosted page's `<input type="file">` never opened a picker, `navigator.geolocation` was never answered, `alert()` / `confirm()` / `prompt()` showed nothing, and `getUserMedia` was denied. The iOS host had no `WKUIDelegate`, so the dialogs were dropped and `window.open` / `target="_blank"` did nothing. Both now answer all of them: the system file chooser (on Android the document picker, or the camera for `capture`), native dialogs titled with the page's host, a per-site prompt for location / camera / microphone followed by the runtime permission, and `http(s)` / `mailto` / `tel` / `sms` links from `window.open` / `target="_blank"` handed to the system browser instead of replacing the hosted page. Location, camera and microphone are only granted when the app declares them (Info.plist usage string, AndroidManifest permission); an undeclared one is refused, and Android logs the entry to add. The `create-multiplatform` scaffold now declares the FileProvider the camera writes through, and lists the permissions and usage strings commented out.
+
+  Sizing ([#3956](https://github.com/pyreon/pyreon/issues/3956), item 5). An unsized `<WebView>` is now the `<iframe>` default on every target: full width and 150 high. iOS used to fill whatever a stack offered while Android was 150dp, and the web filled a sized container. The new `grow` prop takes the free main-axis space of the parent `<Stack>` / `<Inline>` (Compose `Modifier.weight(1f)`, a greedy SwiftUI frame, `flex: 1 1 150px` on the web) and fills a non-stack parent. Inside a `<Scroll>` there is no free space, so the compiler drops `grow` with a named warning. `<CodeWebView>`, `<RichTextWebView>` and `<FlowWebView>` forward `grow` too.
+
+  Breaking for apps that relied on the old defaults: on iOS an unsized `<WebView>` in a stack is no longer stretched to fill it, and on the web the iframe no longer has `height: 100%`. Add `grow` where a web view should fill its parent.
+
+### Patch Changes
+
+- [#3942](https://github.com/pyreon/pyreon/pull/3942) [`457c9ce`](https://github.com/pyreon/pyreon/commit/457c9cebd6583f88cdb309f35b1dba6ae6fc8044) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Dependency updates to the latest releases: oxc-parser 0.155, CodeMirror (autocomplete 6.20.4, language 6.13.1, merge 6.12.3, view 6.43.15), TanStack Query 5.104.5, TanStack Virtual core 3.19.6, Tiptap 3.32, Vite 8.3.4, Shiki 4.5, axe-core 4.14, @capsizecss/metrics 4.4 and the MCP SDK 1.32.1.
+- Updated dependencies [[`597eff1`](https://github.com/pyreon/pyreon/commit/597eff15a534373d09bb290e8749608611b8319f), [`f8a9770`](https://github.com/pyreon/pyreon/commit/f8a97700f3fbd9c0f497824e6beb4d18ecad6f13), [`f31485c`](https://github.com/pyreon/pyreon/commit/f31485c7eb6d1eaf402bfd6554bb9165da118012), [`457c9ce`](https://github.com/pyreon/pyreon/commit/457c9cebd6583f88cdb309f35b1dba6ae6fc8044), [`02da900`](https://github.com/pyreon/pyreon/commit/02da900bf63421da6d2bcea6a45c1dfa43691168), [`956a521`](https://github.com/pyreon/pyreon/commit/956a5214e0208b883767aee1d91acefefe7c1557), [`6e62c7d`](https://github.com/pyreon/pyreon/commit/6e62c7d0c5dda0f2a275c140aadc1bc4c29a9835), [`b2ad72e`](https://github.com/pyreon/pyreon/commit/b2ad72e34e901aa634f5ba91867cf71ed96a823a), [`eae9e20`](https://github.com/pyreon/pyreon/commit/eae9e20bdbb2190213e68963afeb732ae71bf543), [`34fc2b5`](https://github.com/pyreon/pyreon/commit/34fc2b5cbffff3edb2b84a3fc96423c804d6a9f4), [`bed3ef0`](https://github.com/pyreon/pyreon/commit/bed3ef0fc388e45f2baf0641554770c3b19b86d9), [`871f6f0`](https://github.com/pyreon/pyreon/commit/871f6f0925f4793441138947c8834fe0b6b426d2), [`1e1c9b7`](https://github.com/pyreon/pyreon/commit/1e1c9b7c54cb7c02d30e64e86da5d823cb3595e4), [`871f6f0`](https://github.com/pyreon/pyreon/commit/871f6f0925f4793441138947c8834fe0b6b426d2), [`c21ab54`](https://github.com/pyreon/pyreon/commit/c21ab54734096ac2613f998f5eba3f05dfe8c094), [`02da900`](https://github.com/pyreon/pyreon/commit/02da900bf63421da6d2bcea6a45c1dfa43691168), [`1cc7355`](https://github.com/pyreon/pyreon/commit/1cc7355def1b6470e1ac7961469e4608c819f79a), [`52aa984`](https://github.com/pyreon/pyreon/commit/52aa984f840f760ea305457bed722fb3d2d3b01a), [`b1f9bfe`](https://github.com/pyreon/pyreon/commit/b1f9bfe4a5200225b6076044d310b1fcc2d0383e), [`5abcb2d`](https://github.com/pyreon/pyreon/commit/5abcb2d51816c8e114b0755cf761ba58a4ea8db5), [`7e39941`](https://github.com/pyreon/pyreon/commit/7e39941a6fe07657c5fc010ee4d0985dc26675d9), [`a0ab9cf`](https://github.com/pyreon/pyreon/commit/a0ab9cf627a21fc83c746e0aaf1312aabe6cf0b1), [`ad2a8de`](https://github.com/pyreon/pyreon/commit/ad2a8de7bfde34680e3f33e2b203ac62b2b04b88), [`a503e83`](https://github.com/pyreon/pyreon/commit/a503e837a25e93b61e3f2b9e1b55144c06157e22), [`7740e2f`](https://github.com/pyreon/pyreon/commit/7740e2fe6bd8b35d142075d5ebe1b8b236ae525c), [`9ad118e`](https://github.com/pyreon/pyreon/commit/9ad118ec46145a24d960863d3d96b4fb6392fe5a), [`6906adf`](https://github.com/pyreon/pyreon/commit/6906adf78bbac38802fdbd1829efcdc24ed25448), [`1ece4c0`](https://github.com/pyreon/pyreon/commit/1ece4c0cd31a8ed21b14ad41fe794969f2a80d18), [`08bcee8`](https://github.com/pyreon/pyreon/commit/08bcee866ba0fbd0fbf876a1ecdf8e709a1244f3), [`6aef1c9`](https://github.com/pyreon/pyreon/commit/6aef1c91c0b8d30530cf36adaaf5ef7116ea9ad0), [`310bf91`](https://github.com/pyreon/pyreon/commit/310bf91f6673d747a77e1996647673fce725d0db), [`09262fa`](https://github.com/pyreon/pyreon/commit/09262fa053d7c995f64bb26e351b7f7492f16c30), [`1a7ccdd`](https://github.com/pyreon/pyreon/commit/1a7ccdda20096710a2486f67e97025776552f3f5), [`f31f903`](https://github.com/pyreon/pyreon/commit/f31f903baa6b09cbe66afa07a48202b7fcfe6c92), [`6eff04e`](https://github.com/pyreon/pyreon/commit/6eff04ee8bd5b35b2f981a6fa006dc00a15300f9), [`0902367`](https://github.com/pyreon/pyreon/commit/0902367dc7c94b66247e7e9e837f604b971644e1), [`1f751e7`](https://github.com/pyreon/pyreon/commit/1f751e77167667c463904f2cc4e12a7061743ed4), [`fd8d8ec`](https://github.com/pyreon/pyreon/commit/fd8d8ec5b359691205defe02c7184f5a331ae155), [`db8c255`](https://github.com/pyreon/pyreon/commit/db8c255cea867d0bd092ab377629a47c5cdaaefe), [`22ca310`](https://github.com/pyreon/pyreon/commit/22ca310101833666295f7d941509b4c7467f89d0), [`d55ecbb`](https://github.com/pyreon/pyreon/commit/d55ecbb061f0599836fc4385b5d694854e47a935), [`760cbef`](https://github.com/pyreon/pyreon/commit/760cbefcbbd7378413f1020a1b33740c60b0ec5e), [`fd8d8ec`](https://github.com/pyreon/pyreon/commit/fd8d8ec5b359691205defe02c7184f5a331ae155), [`04ccbe7`](https://github.com/pyreon/pyreon/commit/04ccbe7d34879d554e35524a03f5e2f5761775fb), [`02da900`](https://github.com/pyreon/pyreon/commit/02da900bf63421da6d2bcea6a45c1dfa43691168), [`784e46a`](https://github.com/pyreon/pyreon/commit/784e46a486c2ccb16728117c392f0194b563fd66), [`6e1a7be`](https://github.com/pyreon/pyreon/commit/6e1a7be711eb7858ad5612df5c0062a2a427c194), [`eab5598`](https://github.com/pyreon/pyreon/commit/eab5598203c2973217cf815a47c7a27567e268fa), [`03b6bfa`](https://github.com/pyreon/pyreon/commit/03b6bfa460bca4b9512ea411a5eaef79033dc1b8), [`6ea59b1`](https://github.com/pyreon/pyreon/commit/6ea59b115639d71b3645b267c9572185a9d52a63), [`24bbbfd`](https://github.com/pyreon/pyreon/commit/24bbbfded6d857f8c638da7d059c6eadf13bb977), [`0468605`](https://github.com/pyreon/pyreon/commit/0468605d9b72eefcbdbc2dba0d2d6f86dcb19ee2), [`bc1cc7e`](https://github.com/pyreon/pyreon/commit/bc1cc7e05362f41dea5786f9b74cc39d0188984d), [`bd75ce2`](https://github.com/pyreon/pyreon/commit/bd75ce2c2c44c44759197de1fccdc78f013c3bce), [`71fe560`](https://github.com/pyreon/pyreon/commit/71fe5608b1d95b7df6f550281a278290e33a0f90), [`38f7aaa`](https://github.com/pyreon/pyreon/commit/38f7aaa8ee7f73c168d66b4e53f24d7f85e62ee4), [`87ccdb5`](https://github.com/pyreon/pyreon/commit/87ccdb56ca5247dcfbb1309c7875d65204549b0d), [`9018b4b`](https://github.com/pyreon/pyreon/commit/9018b4b2ef3fb50b6eacbdca9f9e553ad0efb541), [`3f1009e`](https://github.com/pyreon/pyreon/commit/3f1009eb66fbf6aac01a9b74c096d747bd6f5e6c), [`ab90ebc`](https://github.com/pyreon/pyreon/commit/ab90ebc06667adb17efd936df98ffd1067f48527), [`2979e47`](https://github.com/pyreon/pyreon/commit/2979e47ade6278c73a0f50ba5120bef21cb01139), [`143e288`](https://github.com/pyreon/pyreon/commit/143e2887ff318a8e0842774eb2e320f085253400), [`c3bd80c`](https://github.com/pyreon/pyreon/commit/c3bd80c467ce940c0298ab6b85eabb5fd0463ef6), [`c655989`](https://github.com/pyreon/pyreon/commit/c6559893e81150811adf41052b550d58e196d43a), [`4c56327`](https://github.com/pyreon/pyreon/commit/4c5632769f5df19db831799298b3713577751957), [`2de6084`](https://github.com/pyreon/pyreon/commit/2de6084df506180f468f9674fa341fea50044574)]:
+  - @pyreon/native-compiler@0.54.0
+  - @pyreon/runtime-dom@0.54.0
+  - @pyreon/reactivity@0.54.0
+  - @pyreon/primitives@0.54.0
+  - @pyreon/core@0.54.0
+
 ## 0.53.0
 
 ### Patch Changes
@@ -67,7 +100,7 @@
   below, just caught before push instead of by CI. The one other consumer
   pinning past 20.11.6 — `@happy-dom/global-registrator` in
   `examples/benchmark`, whose own 20.13.2 release requires `happy-dom
-^20.13.2` as a peer — is reverted to `^20.11.6` alongside it, so the whole
+  ^20.13.2` as a peer — is reverted to `^20.11.6` alongside it, so the whole
   graph resolves to one version again.
 
   `examples/benchmark`'s framework competitors were refreshed too so the
@@ -97,7 +130,7 @@
   2.31.1 → 3.0.1 and `@changesets/changelog-github` 0.7.0 → 1.0.0 stay put:
   1.0.0 ships `"type": "module"` with no CJS export, and this repo's own
   `.changeset/resilient-changelog.cjs` does `require('@changesets/changelog-
-github')` — bumping it would break `changeset version` at release time with
+  github')` — bumping it would break `changeset version` at release time with
   `ERR_REQUIRE_ESM`, verified by reading the published package's `exports`
   map, not assumed. The root `uuid` override stays at `11.1.1` for the same
   reason, one level removed: it force-pins a transitive dep of `exceljs`
@@ -111,7 +144,7 @@ github')` — bumping it would break `changeset version` at release time with
   3.17.8 in this branch's first pass (a routine-looking override edit, not
   vetted as carefully as the deps above), and it broke
   `@pyreon/virtual`'s real-Chromium `repositions a STAYING row below when row 0
-is remeasured taller` test deterministically (3/3 local runs, plus 3/3 CI
+  is remeasured taller` test deterministically (3/3 local runs, plus 3/3 CI
   retries) — bisected down to virtual-core's own 3.17.7 "synchronous
   notification for scroll compensation" change, not to anything else in this
   branch (ruled out `@tanstack/react-virtual`, unrelated — not imported by this
@@ -210,7 +243,7 @@ is remeasured taller` test deterministically (3/3 local runs, plus 3/3 CI
   the three original formulas (nested containers, mark-split blocks,
   whitespace-only / empty text, headings). Bisect-verified: a no-separator block
   merge (the classic single-pass hazard) fails it (`words seed=3: expected 17 to
-be 21`).
+  be 21`).
 
 - [#3557](https://github.com/pyreon/pyreon/pull/3557) [`5c60743`](https://github.com/pyreon/pyreon/commit/5c60743c32bac8c46279fccacc5a51126b183832) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Stop publishing the build's bundle-analysis report.
 

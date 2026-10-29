@@ -1,5 +1,25 @@
 # @pyreon/document
 
+## 0.54.0
+
+### Patch Changes
+
+- [#3935](https://github.com/pyreon/pyreon/pull/3935) [`d321f13`](https://github.com/pyreon/pyreon/commit/d321f138f0c36f99434a9b5d83160d2b13a89680) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Faster `html` and `email` rendering. The single-declaration style helper used for every table cell now builds its `prop:value` directly. Before, it allocated a one-key object and ran `Object.entries`, an array and a `join`, even when the value was unset and the result was empty. Rendering a 500-row report got about 2.5× faster in `html` (230 → 84–98 µs) and about 3× faster in `email` (210–221 → 71–72 µs). Sanitizing still goes through one shared function, and output is byte-identical in all 16 string formats, including adversarial style values.
+
+- [#3936](https://github.com/pyreon/pyreon/pull/3936) [`a1114db`](https://github.com/pyreon/pyreon/commit/a1114db6c3050235333bb5b13666f53ea3b2c8de) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Faster `md`, `slack`, `teams` and `csv` rendering. Text with nothing to escape is now returned as-is from the Markdown table-cell, Slack mrkdwn, Teams and Discord escapers, instead of always going through two or three `replace` passes. A 500-row report renders about 1.85× faster in `md` (131–139 µs → 71–72 µs) and in `slack` (177–184 µs → 94–100 µs), and about 15% faster in `teams`. Output is byte-identical. `csv` checks the formula-injection prefix with a character-code test instead of an anchored regex, and only doubles quotes when a quote is present (about 20% faster).
+
+- [#3941](https://github.com/pyreon/pyreon/pull/3941) [`1fa0bf7`](https://github.com/pyreon/pyreon/commit/1fa0bf75529fa5c011a97314f9b59899b0f0d485) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Server-side PDF rendering no longer fails on documents containing PNG images with pdfmake 0.3.12. That release's browser build decodes PNGs through a Web `Worker`, which Node, Bun and Deno don't have, so `render(doc, 'pdf')` threw `Worker is not defined`. The PDF renderer now loads pdfmake's Node entry on the server and keeps the browser build in browsers.
+
+- [#3934](https://github.com/pyreon/pyreon/pull/3934) [`6b7085a`](https://github.com/pyreon/pyreon/commit/6b7085a6bad6e48c7a764d0f502e755ed54aaf8e) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Faster HTML/XML escaping. The head, runtime-server and document (`escapeXml`) escapers now use a native regex search to find the first character that needs escaping, then run their character loop only from there. `@pyreon/head` used to walk every character of every title and attribute value. On Node 26 / Bun 1.4 that measured 2.8× / 1.8× faster for short clean strings, about 15× / 9× faster for long ones, and 1.36× / 1.28× faster for strings that do need escaping. In the head benchmark, serializing 20 meta tags went from 8.6–9.3 µs to 7.4–7.5 µs. Output is unchanged; new tests check all three escapers against a reference across 5,000 generated strings each.
+
+- [#3953](https://github.com/pyreon/pyreon/pull/3953) [`02da900`](https://github.com/pyreon/pyreon/commit/02da900bf63421da6d2bcea6a45c1dfa43691168) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `@pyreon/head` now compiles for iOS and Android. A native app has no document `<head>`, so `useHead(...)` lowers to nothing and `<HeadProvider>` is transparent: shared source that sets a page title for the web build builds natively instead of failing on a web-only import. The head context and the server-render helpers have no native equivalent and still warn by name. New `./native-plugin` entry.
+
+  `@pyreon/virtual` and `@pyreon/document` stay web-only, but their native warning now names the route: `@pyreon/virtual` points at `<Scroll>` with a lone `<For>` child (LazyVStack on iOS, LazyColumn on Android, verified by a regression spec that also compiles it on both toolchains, and by the existing warning for the nested shape Compose rejects at measure time), and `@pyreon/document` points at fetching the file from a server or handing it to the share sheet.
+
+- Updated dependencies [[`956a521`](https://github.com/pyreon/pyreon/commit/956a5214e0208b883767aee1d91acefefe7c1557), [`1e1c9b7`](https://github.com/pyreon/pyreon/commit/1e1c9b7c54cb7c02d30e64e86da5d823cb3595e4), [`5abcb2d`](https://github.com/pyreon/pyreon/commit/5abcb2d51816c8e114b0755cf761ba58a4ea8db5), [`38f7aaa`](https://github.com/pyreon/pyreon/commit/38f7aaa8ee7f73c168d66b4e53f24d7f85e62ee4), [`87ccdb5`](https://github.com/pyreon/pyreon/commit/87ccdb56ca5247dcfbb1309c7875d65204549b0d), [`9018b4b`](https://github.com/pyreon/pyreon/commit/9018b4b2ef3fb50b6eacbdca9f9e553ad0efb541), [`3f1009e`](https://github.com/pyreon/pyreon/commit/3f1009eb66fbf6aac01a9b74c096d747bd6f5e6c), [`c655989`](https://github.com/pyreon/pyreon/commit/c6559893e81150811adf41052b550d58e196d43a)]:
+  - @pyreon/reactivity@0.54.0
+  - @pyreon/core@0.54.0
+
 ## 0.53.0
 
 ### Patch Changes
@@ -75,7 +95,7 @@
   gate did not scan.
 
   Each node now brands on its export via `/* @__PURE__ */ Object.assign(fn, {
-_documentType })` (same identity, `_documentType` still an own property read
+  _documentType })` (same identity, `_documentType` still an own property read
   identically by `extractDocumentTree`). Measured on the nodes module: a
   `Text`-only import drops **1949 → 626 bytes (−68%)**; the full barrel grows
   2996 → 3288 (+292, the accepted subset-vs-whole trade — most consumers use a

@@ -1,5 +1,33 @@
 # @pyreon/create-multiplatform
 
+## 0.54.0
+
+### Minor Changes
+
+- [#3999](https://github.com/pyreon/pyreon/pull/3999) [`fc00911`](https://github.com/pyreon/pyreon/commit/fc009119b79f1c97ca4bd8d19c4a076962aa7226) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Scaffolded Android apps now build on the current Android stack: AGP 9.4.1 (needs Gradle 9.6+), Kotlin 2.4.21, compileSdk 37, Compose BOM 2026.09.00, and current androidx, kotlinx, okhttp 5 and media3 releases. The template was previously on AGP 8.7 and Kotlin 2.0.21, and its `kotlinOptions` block is an error under Kotlin 2.4.
+
+  AGP 9 runs Kotlin itself, so the generated build no longer applies `kotlin("android")`. JVM target configuration moves to `kotlin { compilerOptions { … } }`. Existing apps that upgrade need Gradle 9.6 or newer.
+
+  The generated README no longer tells you to run `./gradlew`: no Gradle wrapper is generated, so it now says to use a system `gradle` (9.6+) and shows `gradle assembleDebug`.
+
+- [#3958](https://github.com/pyreon/pyreon/pull/3958) [`1f0208a`](https://github.com/pyreon/pyreon/commit/1f0208a1d6e55b41d65972f4ba0ab17ab4911810) Thanks [@vitbokisch](https://github.com/vitbokisch)! - The multi-platform scaffold now ships AI-agent files, matching `create-zero`: `AGENTS.md` and `CLAUDE.md` (the project's commands, the native-subset rules, and where the capability matrix lives) and a `.mcp.json` that registers the Pyreon MCP server. A spec ties every `bun run <script>` named in the instructions to the scripts in the generated `package.json`, so the guidance cannot drift from the scaffold.
+
+- [#3964](https://github.com/pyreon/pyreon/pull/3964) [`a59a409`](https://github.com/pyreon/pyreon/commit/a59a4090c8108d1b7fa92eaf60aed465d81f0e73) Thanks [@vitbokisch](https://github.com/vitbokisch)! - The scaffold is now ready for on-device end-to-end testing with Maestro: the sample app carries `data-testid` values, a `.maestro/counter.yaml` flow runs unchanged on iOS and Android, and `e2e:ios` / `e2e:android` scripts build and launch the app (`pyreon-native dev --once`) before running the flows. `MainActivity` now exposes test tags as Android resource ids (without it, `id:` selectors match nothing on Android) and pads for the system bars (on Android 15+ the top of the screen otherwise sits under the status bar). Verified by running the flow with Maestro on an iOS 18.5 simulator and an API 35 emulator. The scripts need a `@pyreon/native-cli` that ships `dev`, so they work from the release that contains this change.
+
+- [#3994](https://github.com/pyreon/pyreon/pull/3994) [`7c3272f`](https://github.com/pyreon/pyreon/commit/7c3272f02ad33482300c744f72ec7b7b34ab2ae3) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Generated apps can be opened by URL out of the box ([#3984](https://github.com/pyreon/pyreon/issues/3984)). The iOS host forwards `onOpenURL` and universal links to `PyreonDeepLink`, the Android host forwards the launch intent and `onNewIntent` (the activity is now `singleTop`), and both register a URL scheme, which defaults to the project's identifier (`my-app` becomes `myapp://`) and can be chosen with `--scheme`. Previously the runtime could receive a link but the generated hosts never called it and declared no scheme, so every app had to hand-edit the Swift, the Kotlin and the manifest. Verified on an iOS 18 simulator and an Android API 35 emulator, cold start and warm. Verified web links (universal links / `autoVerify` app links) are not generated: they need a domain you control.
+
+### Patch Changes
+
+- [#4009](https://github.com/pyreon/pyreon/pull/4009) [`282ed1a`](https://github.com/pyreon/pyreon/commit/282ed1ae49ab3f6be24cdcc290de97654ab42c2b) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Documentation only: the README told users to run `npx create-multiplatform`, which resolves an unscoped npm package that does not exist. It now uses `npm create @pyreon/multiplatform@latest` / `npx @pyreon/create-multiplatform`.
+
+- [#4052](https://github.com/pyreon/pyreon/pull/4052) [`2de6084`](https://github.com/pyreon/pyreon/commit/2de6084df506180f468f9674fa341fea50044574) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `<WebView>` now hosts a whole web flow on iOS and Android: the page gets the browser chrome it would get in a browser, and the view can fill the screen.
+
+  Browser chrome ([#3982](https://github.com/pyreon/pyreon/issues/3982)). The Android host had no `WebChromeClient`, so a hosted page's `<input type="file">` never opened a picker, `navigator.geolocation` was never answered, `alert()` / `confirm()` / `prompt()` showed nothing, and `getUserMedia` was denied. The iOS host had no `WKUIDelegate`, so the dialogs were dropped and `window.open` / `target="_blank"` did nothing. Both now answer all of them: the system file chooser (on Android the document picker, or the camera for `capture`), native dialogs titled with the page's host, a per-site prompt for location / camera / microphone followed by the runtime permission, and `http(s)` / `mailto` / `tel` / `sms` links from `window.open` / `target="_blank"` handed to the system browser instead of replacing the hosted page. Location, camera and microphone are only granted when the app declares them (Info.plist usage string, AndroidManifest permission); an undeclared one is refused, and Android logs the entry to add. The `create-multiplatform` scaffold now declares the FileProvider the camera writes through, and lists the permissions and usage strings commented out.
+
+  Sizing ([#3956](https://github.com/pyreon/pyreon/issues/3956), item 5). An unsized `<WebView>` is now the `<iframe>` default on every target: full width and 150 high. iOS used to fill whatever a stack offered while Android was 150dp, and the web filled a sized container. The new `grow` prop takes the free main-axis space of the parent `<Stack>` / `<Inline>` (Compose `Modifier.weight(1f)`, a greedy SwiftUI frame, `flex: 1 1 150px` on the web) and fills a non-stack parent. Inside a `<Scroll>` there is no free space, so the compiler drops `grow` with a named warning. `<CodeWebView>`, `<RichTextWebView>` and `<FlowWebView>` forward `grow` too.
+
+  Breaking for apps that relied on the old defaults: on iOS an unsized `<WebView>` in a stack is no longer stretched to fill it, and on the web the iframe no longer has `height: 100%`. Add `grow` where a web view should fill its parent.
+
 ## 0.53.0
 
 ### Patch Changes
