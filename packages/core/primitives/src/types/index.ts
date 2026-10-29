@@ -29,3 +29,4 @@ export type {
   SingleLineFieldProps,
   ToggleProps,
 } from './input'
+export type { SplitProps, TabProps, TabsProps } from './navigation'

@@ -46,6 +46,7 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeLeft
@@ -1274,4 +1275,44 @@ class RouterDemoInstrumentedTest {
             "connectivityManagerSaysOnline=${connectivityManagerSaysOnline()}"
     }
 
+
+    // Navigation row (#3983) — <Tabs> lowers to PyreonTabs (BottomNavigation on
+    // a phone-width window), <Split> to PyreonSplit (one pane + BackHandler).
+    // The STATE assertions are the load-bearing ones: the draft is typed into
+    // the Feed tab and the counter is a `remember` inside a CHILD composable of
+    // the Me tab, so a `when (selected)` that recomposed each tab from scratch
+    // would bring both back empty / at 0. A hidden tab's subtree is
+    // semantics-cleared, which is why its nodes are absent rather than hidden.
+    @Test
+    fun tabsKeepEachTabsStateAndSplitHonoursSystemBack() {
+        composeRule.onNodeWithTag("home-to-navigation").performClick()
+        composeRule.onNodeWithTag("nav-feed-title").assertIsDisplayed()
+        composeRule.onNodeWithTag("nav-tab-me").assertIsDisplayed()
+
+        composeRule.onNodeWithTag("nav-feed-draft").performTextInput("hello")
+        composeRule.onNodeWithTag("nav-feed-echo").assertTextEquals("Draft: hello")
+
+        composeRule.onNodeWithTag("nav-tab-me").performClick()
+        composeRule.onNodeWithTag("nav-feed-echo").assertDoesNotExist()
+        composeRule.onNodeWithTag("nav-me-tap").performClick()
+        composeRule.onNodeWithTag("nav-me-tap").performClick()
+        composeRule.onNodeWithTag("nav-me-tap").assert(hasText("Tapped 2"))
+
+        composeRule.onNodeWithTag("nav-tab-feed").performClick()
+        composeRule.onNodeWithTag("nav-feed-echo").assertTextEquals("Draft: hello")
+        composeRule.onNodeWithTag("nav-tab-me").performClick()
+        composeRule.onNodeWithTag("nav-me-tap").assert(hasText("Tapped 2"))
+
+        // <Split> on a compact width: list → detail → system back → list.
+        composeRule.onNodeWithTag("nav-tab-mail").performClick()
+        composeRule.onNodeWithTag("nav-mail-row-welcome").performClick()
+        composeRule.onNodeWithTag("nav-mail-subject").assertTextEquals("Subject: Welcome")
+        composeRule.onNodeWithTag("nav-mail-row-invoice").assertDoesNotExist()
+        composeRule.runOnUiThread { composeRule.activity.onBackPressedDispatcher.onBackPressed() }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("nav-mail-row-invoice").assertIsDisplayed()
+        composeRule.onNodeWithTag("home-page").assertDoesNotExist()
+        composeRule.onNodeWithTag("nav-mail-row-invoice").performClick()
+        composeRule.onNodeWithTag("nav-mail-subject").assertTextEquals("Subject: Invoice")
+    }
 }

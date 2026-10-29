@@ -1378,6 +1378,32 @@ type Props = ExtractProps<typeof Iterator>
     mistakes: '- Forgetting `onClose` — needed so the platform dismiss gesture updates your signal',
   },
 
+  'primitives/Tabs': {
+    signature: '(props: { value: string | (() => string); onChange: (next: string) => void; children: <Tab> elements }) => VNode',
+    example: `const tab = signal('feed')
+<Tabs value={tab} onChange={(v) => tab.set(v)}>
+  <Tab value="feed" label="Feed" icon="home"><FeedScreen /></Tab>
+  <Tab value="me" label="Me" icon="person"><ProfileScreen /></Tab>
+</Tabs>`,
+    notes: 'Top-level tab navigation; children are literal `<Tab value label icon?>` entries whose children are the tab content. Web: the WAI-ARIA tabs pattern (tablist / tab / tabpanel, roving tabindex, arrow keys + Home/End) as a bottom bar below 600px of viewport width and a side rail at 600px+. iOS: `TabView(selection:)` (iOS 18+ `.sidebarAdaptable`, a sidebar on iPad). Android: Material `BottomNavigation` below 600dp of window width, `NavigationRail` at 600dp+ (the `useSizeClass()` breakpoint). A visited tab stays MOUNTED while hidden on every target, so its local state, typed text and scroll position survive switching away and back. Router-agnostic: the selection is your signal; a string-literal-union signal lowers to the native enum. See also: Split, Link.',
+    mistakes: `- Generating the \`<Tab>\`s with \`<For>\` or a helper — native targets build the tab bar at compile time, so each \`<Tab>\` must be written out (anything else is dropped with a warning)
+- A computed \`<Tab value>\` / \`label\` icon — \`value\` and \`icon\` must be string literals (the \`value\` is the native \`case\` / \`when\` branch)
+- Expecting \`data-testid\` on a \`<Tab>\` to identify the iOS tab bar button — SwiftUI gives tab bar items no identifier; query them by label (it lands on the web button and the Android bar item)
+- Placing \`<Tabs>\` inside a pushed route and expecting the tab bar to stay visible on iOS when a later route is pushed — the router has ONE stack, so a push covers the TabView`,
+  },
+
+  'primitives/Split': {
+    signature: '(props: { sidebar: VNodeChild; showDetail: boolean | (() => boolean); onBack: () => void; backLabel?: string; children }) => VNode',
+    example: `const picked = signal<string | null>(null)
+<Split sidebar={<MessageList onPick={(id) => picked.set(id)} />} showDetail={picked() !== null} onBack={() => picked.set(null)}>
+  <MessageView id={picked()} />
+</Split>`,
+    notes: `Adaptive list/detail layout: \`sidebar\` is the list, the children are the detail. At 600px/dp of window width and wider both panes show side by side; below it ONE pane shows — the sidebar, or the detail while \`showDetail\` — and going back calls \`onBack\` (web back button, iOS navigation back button / swipe-back, Android system back via BackHandler). iOS uses \`NavigationSplitView\` in a regular-width window and pushes the detail on a compact one, reusing the router's NavigationStack when inside one (never nesting a second). Both panes stay mounted on web/Android, so the list keeps its state across a detail visit. See also: Tabs.`,
+    mistakes: `- Omitting \`onBack\` — the platform back gesture cannot clear your selection (Android then falls through to the activity and closes the app)
+- Leaving the detail empty when nothing is selected — a wide window always shows BOTH panes, so render a placeholder
+- Passing a non-JSX \`sidebar\` (a variable holding a view) — only a JSX literal or an accessor returning one lowers natively`,
+  },
+
   'primitives/Transition': {
     signature: `(props: { show: boolean | (() => boolean); name?: 'fade' | 'scale-in' | 'slide-up' | 'slide-down' | 'slide-left' | 'slide-right'; duration?: number; easing?: 'linear' | 'ease-in' | 'ease-out' | 'ease-in-out'; enterDuration?: number; leaveDuration?: number; enterEasing?: TransitionEasing; leaveEasing?: TransitionEasing; children }) => VNode`,
     example: '<Transition name="slide-up" show={isOpen()} enterDuration={200} leaveDuration={400}><Panel /></Transition>',
