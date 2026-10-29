@@ -20,7 +20,7 @@
 import { execFileSync } from 'node:child_process'
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { delimiter, dirname, join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { bearer, logger, retry } from '@pyreon/http/middleware'
 import { compose } from '../../../../fundamentals/http/src/chain'
@@ -34,6 +34,8 @@ import { transform } from './first-party-plugins'
 import { isKotlincAvailable, isSwiftcAvailable } from '../validate'
 
 const SWIFT_SRC = join(__dirname, '../../../runtime-swift/Sources/PyreonRuntime/PyreonHttp.swift')
+/** `PyreonHttp.swift` renders a JS number through `PyreonJSON.jsNumber`, so the real file has to be compiled beside it. */
+const SWIFT_JSON_SRC = join(__dirname, '../../../runtime-swift/Sources/PyreonRuntime/PyreonJSON.swift')
 const KOTLIN_SRC = join(
   __dirname,
   '../../../runtime-kotlin/src/main/kotlin/com/pyreon/runtime/PyreonHttp.kt',
@@ -479,10 +481,15 @@ ${SCENARIOS.map((_, i) => `out.append(await scenario${i}())`).join('\n')}
 print(out.joined(separator: "\\n"))
 `
         writeFileSync(join(dir, 'main.swift'), harness)
-        writeFileSync(join(dir, 'PyreonHttp.swift'), readFileSync(SWIFT_SRC, 'utf8'))
+        // On Linux swiftc, URLSession / URLRequest / HTTPURLResponse live in FoundationNetworking, not Foundation (the
+        // same shim `validate.ts` prepends to emitted files); on macOS the `#if` is a no-op.
+        writeFileSync(
+          join(dir, 'PyreonHttp.swift'),
+          `#if canImport(FoundationNetworking)\nimport FoundationNetworking\n#endif\n${readFileSync(SWIFT_SRC, 'utf8')}`,
+        )
         execFileSync(
           'swiftc',
-          [join(dir, 'main.swift'), join(dir, 'PyreonHttp.swift'), '-o', join(dir, 'run')],
+          [join(dir, 'main.swift'), join(dir, 'PyreonHttp.swift'), SWIFT_JSON_SRC, '-o', join(dir, 'run')],
           {
             stdio: 'pipe',
           },
@@ -522,7 +529,8 @@ fun main() {
         execFileSync(
           'kotlinc',
           [join(dir, 'Main.kt'), KOTLIN_SRC, '-include-runtime', '-d', join(dir, 'out.jar')],
-          { stdio: 'pipe' },
+          // `kotlinc` is a script that needs a `java` on PATH; a Mac's brewed JDK is off PATH, so put its bin dir first.
+          { stdio: 'pipe', env: { ...process.env, PATH: `${java.includes('/') ? dirname(java) + delimiter : ''}${process.env.PATH ?? ''}` } },
         )
         return execFileSync(java, ['-cp', join(dir, 'out.jar'), 'com.pyreon.runtime.MainKt'], {
           encoding: 'utf8',
