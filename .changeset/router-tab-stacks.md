@@ -1,5 +1,6 @@
 ---
 '@pyreon/router': minor
+'@pyreon/compiler': minor
 '@pyreon/primitives': minor
 '@pyreon/native-compiler': minor
 '@pyreon/native-router-swift': minor
@@ -19,3 +20,5 @@ Add per-tab back stacks for tab-bar apps: `createRouter({ tabs })` with `<Tabs r
 - **Deep links** select the tab whose root prefixes the path and push it there, on all three targets.
 
 The native compiler lowers `tabs` (an array literal of string-literal `{ name, root }`). A `<Tab value>` that names no configured tab, a tab whose root matches no top-level literal route, and a `<RouterView />` outside a `<Tab>` are named in warnings. A signal-bound `<Tabs value onChange>` is unchanged.
+
+`pyreon doctor diagnose` / MCP `diagnose` explain the two router-tab warnings (`selectTab` of an unknown tab, `<Tabs router>` on a router without `tabs`).
