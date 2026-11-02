@@ -41,6 +41,7 @@ const REQUIRED: Record<string, string> = {
   Button: ' onPress={() => {}}',
   Press: ' onPress={() => {}}',
   Link: ' to="/x"',
+  Gesture: ' onPan={() => {}}',
   Field: ' value={v()} onChangeText={(n) => v.set(n)}',
   // A SHAPE, not a primitive: the key's first word is the tag. `multiline` is a
   // different initializer on iOS and different arguments on Android, so it is
@@ -55,12 +56,20 @@ const REQUIRED: Record<string, string> = {
   Transition: ' show={b()}',
   Audio: ' src="https://x.test/a.mp3"',
   Video: ' src="https://x.test/a.mp4"',
+  Tabs: ' value={v()} onChange={(n) => v.set(n)}',
+  Split: ' sidebar={<Text>s</Text>} showDetail={b()} onBack={() => {}}',
 }
 
 const TAKES_CHILDREN = new Set([
   'Stack', 'Inline', 'Layer', 'Scroll', 'Button', 'Press', 'Link', 'Modal', 'Text', 'Heading',
-  'Transition',
+  'Transition', 'Gesture', 'Tabs', 'Split',
 ])
+
+/** A primitive whose children must be specific entries: `<Tabs>` without a
+ *  `<Tab>` rightly renders nothing on Android, leaving no element to carry the tail. */
+const CHILD: Record<string, string> = {
+  Tabs: '<Tab value="a" label="A"><Text>a</Text></Tab>',
+}
 
 const CROSS_CUTTING = {
   accessibilityLabel: {
@@ -78,6 +87,13 @@ const CROSS_CUTTING = {
     swift: /accessibilityIdentifier\("TID"\)/,
     kotlin: /testTag\("TID"\)/,
   },
+  // The TransformProps, on HtmlPassthroughProps beside the a11y vocabulary —
+  // so every special-case emitter has to carry them as well.
+  transform: {
+    attr: 'rotate={7}',
+    swift: /rotationEffect\(\.degrees\(7\)\)/,
+    kotlin: /\.rotate\(7f\)/,
+  },
 } as const
 
 /** `'Field multiline'` → `Field`: the tag a REQUIRED shape key renders. */
@@ -87,10 +103,10 @@ const emit = (shape: string, attr: string, target: 'swift' | 'kotlin'): string =
   const base = REQUIRED[shape] ?? ''
   const tag = tagOf(shape)
   const el = TAKES_CHILDREN.has(tag)
-    ? `<${tag}${base} ${attr}>x</${tag}>`
+    ? `<${tag}${base} ${attr}>${CHILD[tag] ?? 'x'}</${tag}>`
     : `<${tag}${base} ${attr} />`
   const src = `import { signal } from '@pyreon/reactivity'
-import { Stack, Inline, Layer, Scroll, Spacer, Text, Heading, Image, Icon, Button, Press, Link, Field, Toggle, Modal, Transition, Audio, Video } from '@pyreon/primitives'
+import { Stack, Inline, Layer, Scroll, Spacer, Text, Heading, Image, Icon, Button, Press, Link, Field, Toggle, Modal, Transition, Audio, Video, Gesture, Tabs, Tab, Split } from '@pyreon/primitives'
 export function C() {
   const v = signal('')
   const b = signal(false)
@@ -134,7 +150,7 @@ describe('every canonical primitive carries the cross-cutting props', () => {
     expect(declared.size).toBeGreaterThan(0)
     const covered = new Set(Object.keys(REQUIRED).map(tagOf))
     expect([...declared].filter((d) => !covered.has(d)).sort()).toEqual([])
-    expect(cells).toHaveLength(Object.keys(REQUIRED).length * 3 * 2)
+    expect(cells).toHaveLength(Object.keys(REQUIRED).length * Object.keys(CROSS_CUTTING).length * 2)
   })
 
   it.each(cells)('$tag carries $prop on $target', ({ tag, prop, spec, target }) => {
@@ -148,15 +164,16 @@ describe('and pays nothing when they are absent', () => {
     // The wrapper `<Modal>` grew for its tag must not appear on a plain modal.
     const base = REQUIRED[shape] ?? ''
     const tag = tagOf(shape)
-    const el = TAKES_CHILDREN.has(tag) ? `<${tag}${base}>x</${tag}>` : `<${tag}${base} />`
+    const el = TAKES_CHILDREN.has(tag) ? `<${tag}${base}>${CHILD[tag] ?? 'x'}</${tag}>` : `<${tag}${base} />`
     const src = `import { signal } from '@pyreon/reactivity'
-import { Stack, Inline, Layer, Scroll, Spacer, Text, Heading, Image, Icon, Button, Press, Link, Field, Toggle, Modal, Transition, Audio, Video } from '@pyreon/primitives'
+import { Stack, Inline, Layer, Scroll, Spacer, Text, Heading, Image, Icon, Button, Press, Link, Field, Toggle, Modal, Transition, Audio, Video, Gesture, Tabs, Tab, Split } from '@pyreon/primitives'
 export function C() { const v = signal(''); const b = signal(false); return <Stack>${el}</Stack> }`
     for (const target of ['swift', 'kotlin'] as const) {
       const out = transform(src, { target }).code
       expect(out).not.toContain('accessibilityIdentifier')
       expect(out).not.toContain('testTag')
       expect(out).not.toContain('clearAndSetSemantics')
+      expect(out).not.toMatch(/rotationEffect|scaleEffect|\.rotate\(|\.scale\(/)
     }
   })
 })

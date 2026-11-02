@@ -30,7 +30,13 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /** One active toast; `id` keys a Compose `LazyColumn`/`Column` over the stack. */
-public data class PyreonToastItem(val id: String, val message: String, val type: String)
+/** `dismissible` (default true, as on the web) shows the card's dismiss button. */
+public data class PyreonToastItem(
+    val id: String,
+    val message: String,
+    val type: String,
+    val dismissible: Boolean = true,
+)
 
 public object PyreonToast {
     /** The live stack, oldest first. A `<Toaster />` reads `.value` to recompose. */
@@ -51,10 +57,15 @@ public object PyreonToast {
      * (default `defaultDurationMillis`; 0 keeps it until dismissed). The id is a
      * monotonic counter, so two adds in the same tick get distinct ids.
      */
-    public fun add(message: String, type: String = "info", durationMillis: Long? = null): String {
+    public fun add(
+        message: String,
+        type: String = "info",
+        durationMillis: Long? = null,
+        dismissible: Boolean = true,
+    ): String {
         counter += 1
         val id = "toast-$counter"
-        var next = toasts.value + PyreonToastItem(id, message, type)
+        var next = toasts.value + PyreonToastItem(id, message, type, dismissible)
         if (next.size > maxToasts) next = next.takeLast(maxToasts.toInt())
         toasts.value = next
         val ttl = durationMillis ?: defaultDurationMillis

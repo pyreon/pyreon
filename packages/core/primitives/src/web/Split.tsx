@@ -72,7 +72,7 @@ export const Split = (props: SplitProps): VNode => {
       ...collectPassthroughAttrs(props as unknown as Record<string, unknown>),
       class: props.class === undefined ? 'pyreon-split' : `pyreon-split ${props.class}`,
       'data-split-pane': () => (showDetail() ? 'detail' : 'sidebar'),
-      style: mergePassthroughStyle({}, props.style),
+      style: mergePassthroughStyle({}, props),
     },
     h('style', null, SPLIT_CSS),
     h('div', { class: 'pyreon-split__sidebar' }, props.sidebar),

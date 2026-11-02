@@ -30,6 +30,8 @@ export const EXEMPT: Record<string, string> = {
   PyreonAssets: 'needs android.util.Log + androidx.compose.ui.text.font stubs',
   PyreonChartCanvas:
     'Compose Canvas + android.graphics.Paint — real-SDK surface, device-gate territory (the kotlinSdkOnly twin in package.json)',
+  PyreonGesture:
+    'Compose pointerInput + awaitEachGesture + calculatePan/Zoom/Rotation — real-SDK surface, device-gate territory (the kotlinSdkOnly twin in package.json); its state machine lives in the dependency-free PyreonGestureCore, which IS verified and RUN',
   PyreonNavigation:
     'Material BottomNavigation / NavigationRail + androidx.activity BackHandler — real-SDK Compose surface, device-gate territory (the kotlinSdkOnly twin in package.json)',
   PyreonChartEngine:

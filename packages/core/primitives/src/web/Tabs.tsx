@@ -204,7 +204,7 @@ export const Tabs = (props: TabsProps): VNode => {
     {
       ...collectPassthroughAttrs(props as unknown as Record<string, unknown>),
       class: props.class === undefined ? 'pyreon-tabs' : `pyreon-tabs ${props.class}`,
-      style: mergePassthroughStyle({}, props.style),
+      style: mergePassthroughStyle({}, props),
     },
     h('style', null, TABS_CSS),
     h('div', { role: 'tablist', class: 'pyreon-tabs__list', onKeyDown }, ...buttons),

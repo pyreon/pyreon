@@ -1339,8 +1339,27 @@ type Props = ExtractProps<typeof Iterator>
   'primitives/Press': {
     signature: '(props: { onPress: () => void; onLongPress?: () => void; onSwipeLeft?: () => void; onSwipeRight?: () => void; disabled?: boolean; children }) => VNode',
     example: '<Press onPress={() => select(item)}><Card item={item} /></Press>',
-    notes: 'Unstyled tap target (no chrome). Web `<div role="button">`; iOS `Button {}` (plain); Android `Box(clickable)`. Use to make arbitrary content tappable; supports `onLongPress` and `onSwipeLeft`/`onSwipeRight` (horizontally-dominant ≥40px swipe — iOS high-priority DragGesture, Android direction-locked drag detector, web pointer-delta polyfill; taps still fire `onPress`). See also: Button.',
+    notes: 'Unstyled tap target (no chrome). Web `<div role="button">`; iOS `Button {}` (plain); Android `Box(clickable)`. Use to make arbitrary content tappable; supports `onLongPress` and `onSwipeLeft`/`onSwipeRight` (horizontally-dominant ≥40px swipe — iOS high-priority DragGesture, Android direction-locked drag detector, web pointer-delta polyfill; taps still fire `onPress`). See also: Button, Gesture.',
     mistakes: '- Using `<Press>` for a primary action — use `<Button>` for styled CTAs',
+  },
+
+  'primitives/Gesture': {
+    signature: `(props: { onPan?: (e: { dx: number; dy: number; x: number; y: number; phase: 'start'|'change'|'end' }) => void; onPinch?: (e: { scale: number; centerX: number; centerY: number; phase }) => void; onRotate?: (e: { degrees: number; phase }) => void; children }) => VNode`,
+    example: `const zoom = signal(1.0)
+const base = signal(1.0)
+<Gesture
+  onPinch={(e) => {
+    zoom.set(base() * e.scale)
+    if (e.phase === 'end') base.set(zoom())
+  }}
+>
+  <Stack scale={zoom()}><Text>Floor plan</Text></Stack>
+</Gesture>`,
+    notes: 'A region that recognises CONTINUOUS gestures and reports their values. Every value is CUMULATIVE since the gesture began; each gesture delivers one `start`, any number of `change`, then one `end` (also on cancel). Pan, pinch and rotate run SIMULTANEOUSLY, and nothing is reported until the pointer passes the touch slop (10px/pt, the platform slop on Android), so a `<Press>` inside still gets its taps. Web: pointer events on a `touch-action: none` div (capture taken only once claimed); iOS: `PyreonGesture` (simultaneous `DragGesture`/`MagnifyGesture`/`RotateGesture`); Android: `PyreonGesture` (one `pointerInput` loop over `calculatePan`/`calculateZoom`/`calculateRotation`). Drive content with the transform props (`translateX`/`translateY`/`scale`/`rotate`), which every primitive accepts and which update in place. Known divergence: a two-finger pan follows the centroid on web/Android and the first finger on iOS. See also: Press, Stack.',
+    mistakes: `- Putting \`scale\`/\`translateX\` on the \`<Gesture>\` ITSELF — the values are measured in its own coordinate space and feed back into themselves; transform a CHILD (the compiler warns)
+- Treating \`e.scale\` / \`e.dx\` as a per-frame DELTA — they are cumulative since the gesture began; multiply/add your committed base, and commit it on \`phase === "end"\`
+- Using \`<Press onSwipeLeft>\` for free dragging — swipe is a discrete end-of-gesture verdict; \`<Gesture onPan>\` reports the live translation
+- Expecting pinch/rotate from one pointer — they begin only once two pointers are down`,
   },
 
   'primitives/Link': {

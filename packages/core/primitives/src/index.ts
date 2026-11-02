@@ -29,8 +29,16 @@ export type {
   Justify,
   Radius,
   Space,
+  TransformProps,
   ValueOrSignal,
 } from './types/shared'
+export type {
+  GesturePhase,
+  GestureProps,
+  PanEvent,
+  PinchEvent,
+  RotateEvent,
+} from './types/gesture'
 
 export type { InlineProps, LayerProps, ScrollProps, SpacerProps, StackProps } from './types/layout'
 export type { AudioProps, HeadingProps, IconProps, ImageProps, TextProps, VideoProps } from './types/content'
@@ -59,7 +67,7 @@ export type {
 export { init, resetPrimitivesConfig } from './config'
 export type { PrimitivesInitOptions } from './config'
 
-// ===== Web runtime exports — the 19 canonical primitives =====
+// ===== Web runtime exports — the 20 canonical primitives =====
 //
 // Stack … Split below are the canonical set (`<Tab>` excepted — it is
 // `<Tabs>`' entry marker); the compiler's
@@ -84,6 +92,7 @@ export { Video } from './web/Video'
 export { Icon } from './web/Icon'
 export { Button } from './web/Button'
 export { Press } from './web/Press'
+export { Gesture } from './web/Gesture'
 export { Link } from './web/Link'
 export { Field } from './web/Field'
 export { Toggle } from './web/Toggle'

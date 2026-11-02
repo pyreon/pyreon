@@ -179,6 +179,20 @@ public enum PyreonHttp {
         return PyreonHttpResponse(status: status, headers: headers, body: data)
     }
 
+    /// Execute `request` through the client's lowered middleware, outermost
+    /// first — what an `@pyreon/http` endpoint call on a
+    /// `createHttp({ use: [...] })` client lowers to. The chain semantics are
+    /// `PyreonHttpPipeline`'s; the transport is `send(_:session:)`.
+    public static func send(
+        _ request: PyreonHttpRequest,
+        middleware: [PyreonHttpMiddleware],
+        session: URLSession = .shared
+    ) async throws -> PyreonHttpResponse {
+        try await PyreonHttpPipeline.run(request, middleware: middleware) { req in
+            try await send(req, session: session)
+        }
+    }
+
     /// Whether the caller already set a header (HTTP names are case-insensitive).
     static func hasHeader(_ headers: [String: String], _ name: String) -> Bool {
         headers.keys.contains { $0.caseInsensitiveCompare(name) == .orderedSame }
@@ -249,6 +263,296 @@ public enum PyreonHttp {
                 print("[Pyreon] Unhandled error in an endpoint call: \(error)")
             }
         }
+    }
+}
+
+// MARK: - Client middleware
+//
+// The native half of `@pyreon/http`'s `use: [...]` array. The compiler reads a
+// LITERAL `use` array at build time and lowers each statically-readable entry
+// to one case below; anything it cannot read (`refresh`, `dedupe`, a custom
+// function) keeps the whole client's endpoint calls on the web, with a named
+// warning — so a request never silently loses a middleware it has on the web.
+//
+// The semantics mirror `packages/fundamentals/http/src/middleware/*.ts`
+// line for line, and a differential test runs both on the same inputs
+// (`native-http-middleware-parity.test.ts`). Three choices make that hold:
+//
+//   - The chain is a real ONION (`run(index)` → `next()`), not a pre/post
+//     hook pair, so ORDER means the same thing it does on the web:
+//     `[bearer, retry]` reads the token once, `[retry, bearer]` per attempt.
+//   - The request is ONE mutable box shared by the whole chain, because the
+//     web mutates `request.headers` in place. With a value-copy per layer, a
+//     `[retry, bearer]` chain whose token becomes nil would drop the header
+//     on the second attempt where the web still sends the first one.
+//   - Randomness, sleeping, the clock and the log sink come from
+//     `PyreonHttpPipelineEnv`, so the backoff schedule is testable exactly.
+
+/// `retry(...)`'s options, with the web's defaults.
+public struct PyreonRetryPolicy {
+    /// Retries AFTER the initial attempt. Default 2.
+    public var limit: Int
+    /// Wire verbs eligible for a retry. Default: the idempotent methods.
+    public var methods: [String]
+    /// Statuses worth replaying. Default `[408, 413, 429, 500, 502, 503, 504]`.
+    public var statuses: [Int]
+    /// Retry transport failures (offline, DNS). Default `true`.
+    public var network: Bool
+    /// Honour a `Retry-After` response header. Default `true`.
+    public var respectRetryAfter: Bool
+    /// Upper bound for any single wait, in ms. Default 30 000.
+    public var maxDelay: Double
+
+    public static let idempotent: [String] = ["GET", "HEAD", "PUT", "DELETE", "OPTIONS"]
+    public static let retryable: [Int] = [408, 413, 429, 500, 502, 503, 504]
+
+    public init(
+        limit: Int = 2,
+        methods: [String] = PyreonRetryPolicy.idempotent,
+        statuses: [Int] = PyreonRetryPolicy.retryable,
+        network: Bool = true,
+        respectRetryAfter: Bool = true,
+        maxDelay: Double = 30_000
+    ) {
+        self.limit = limit
+        self.methods = methods
+        self.statuses = statuses
+        self.network = network
+        self.respectRetryAfter = respectRetryAfter
+        self.maxDelay = maxDelay
+    }
+}
+
+/// One lowered entry of a client's `use: [...]` array.
+public enum PyreonHttpMiddleware {
+    /// `bearer(() => token, { crossOrigin })`. `token` is called per pass
+    /// through this layer; a nil or empty value sends no header.
+    case bearer(baseUrl: String, crossOrigin: Bool, token: () -> String?)
+    /// `retry({ … })`.
+    case retry(PyreonRetryPolicy)
+    /// `logger({ production })`. Debug builds only, unless `production`.
+    case logger(production: Bool)
+}
+
+/// Everything the pipeline needs from the outside world, injectable for tests.
+public struct PyreonHttpPipelineEnv {
+    /// Wait `ms` milliseconds. Throws when the surrounding task is cancelled.
+    public var sleep: (Double) async throws -> Void
+    /// A uniform value in `[0, 1)` — the backoff jitter.
+    public var random: () -> Double
+    /// Milliseconds since the epoch — the reference for an HTTP-date `Retry-After`.
+    public var now: () -> Double
+    /// Where a `logger` line goes, with the request's duration in ms.
+    public var log: (String, Double) -> Void
+    /// Whether this is a debug build (the native stand-in for the web's
+    /// `NODE_ENV !== 'production'`).
+    public var isDebug: Bool
+
+    public init(
+        sleep: @escaping (Double) async throws -> Void,
+        random: @escaping () -> Double,
+        now: @escaping () -> Double,
+        log: @escaping (String, Double) -> Void,
+        isDebug: Bool
+    ) {
+        self.sleep = sleep
+        self.random = random
+        self.now = now
+        self.log = log
+        self.isDebug = isDebug
+    }
+
+    public static var live: PyreonHttpPipelineEnv {
+        #if DEBUG
+        let debug = true
+        #else
+        let debug = false
+        #endif
+        return PyreonHttpPipelineEnv(
+            sleep: { ms in
+                if ms > 0 { try await Task.sleep(nanoseconds: UInt64(ms * 1_000_000)) }
+            },
+            random: { Double.random(in: 0..<1) },
+            now: { Date().timeIntervalSince1970 * 1000 },
+            log: { line, ms in print("\(line) (\(Int(ms.rounded()))ms)") },
+            isDebug: debug
+        )
+    }
+}
+
+public enum PyreonHttpPipeline {
+    public typealias Transport = (PyreonHttpRequest) async throws -> PyreonHttpResponse
+
+    /// The request as the chain sees it: one box, mutated in place (see above).
+    final class Box {
+        var request: PyreonHttpRequest
+        init(_ request: PyreonHttpRequest) { self.request = request }
+    }
+
+    /// Run `request` through `middleware` (outermost first) into `transport`.
+    public static func run(
+        _ request: PyreonHttpRequest,
+        middleware: [PyreonHttpMiddleware],
+        env: PyreonHttpPipelineEnv = .live,
+        transport: Transport
+    ) async throws -> PyreonHttpResponse {
+        let box = Box(request)
+        return try await dispatch(0, box, middleware, env, transport)
+    }
+
+    static func dispatch(
+        _ index: Int,
+        _ box: Box,
+        _ middleware: [PyreonHttpMiddleware],
+        _ env: PyreonHttpPipelineEnv,
+        _ transport: Transport
+    ) async throws -> PyreonHttpResponse {
+        guard index < middleware.count else { return try await transport(box.request) }
+        func next() async throws -> PyreonHttpResponse {
+            try await dispatch(index + 1, box, middleware, env, transport)
+        }
+        switch middleware[index] {
+        case let .bearer(baseUrl, crossOrigin, token):
+            if !crossOrigin && !targetsBaseOrigin(url: box.request.url, baseUrl: baseUrl) {
+                return try await next()
+            }
+            if let value = token(), !value.isEmpty {
+                setHeader(&box.request.headers, "authorization", "Bearer \(value)")
+            }
+            return try await next()
+        case let .retry(policy):
+            return try await retry(policy, box, env, next)
+        case let .logger(production):
+            if !production && !env.isDebug { return try await next() }
+            let started = env.now()
+            let description = "\(box.request.method.rawValue) \(redactURL(box.request.url))"
+            do {
+                let response = try await next()
+                env.log("[Pyreon] http \(description) → \(response.status)", env.now() - started)
+                return response
+            } catch {
+                env.log("[Pyreon] http \(description) → failed", env.now() - started)
+                throw error
+            }
+        }
+    }
+
+    static func retry(
+        _ policy: PyreonRetryPolicy,
+        _ box: Box,
+        _ env: PyreonHttpPipelineEnv,
+        _ next: () async throws -> PyreonHttpResponse
+    ) async throws -> PyreonHttpResponse {
+        // A native body is bytes in memory, always replayable — the web's
+        // `isReplayable` (a one-shot stream body) has no native counterpart.
+        if policy.limit <= 0 || !policy.methods.contains(box.request.method.rawValue) {
+            return try await next()
+        }
+        var attempt = 0
+        while true {
+            let response: PyreonHttpResponse
+            do {
+                response = try await next()
+            } catch {
+                // Cancellation is never a failure to retry.
+                if isAbort(error) || !policy.network || attempt >= policy.limit { throw error }
+                attempt += 1
+                try await env.sleep(min(defaultBackoff(attempt: attempt, random: env.random()), policy.maxDelay))
+                continue
+            }
+            if !policy.statuses.contains(response.status) { return response }
+            if attempt >= policy.limit { return response }
+            attempt += 1
+            let after = policy.respectRetryAfter
+                ? parseRetryAfter(header(response.headers, "retry-after"), now: env.now())
+                : nil
+            try await env.sleep(min(after ?? defaultBackoff(attempt: attempt, random: env.random()), policy.maxDelay))
+        }
+    }
+
+    /// Exponential backoff with full jitter — the web's `defaultBackoff`.
+    public static func defaultBackoff(attempt: Int, random: Double) -> Double {
+        let base = min(1000 * pow(2, Double(attempt - 1)), 20_000)
+        return (base / 2 + random * (base / 2)).rounded(.toNearestOrAwayFromZero)
+    }
+
+    /// `Retry-After` as delta-seconds or an HTTP date, in ms; nil when absent or unparseable.
+    public static func parseRetryAfter(_ header: String?, now: Double) -> Double? {
+        guard let header, !header.isEmpty else { return nil }
+        let trimmed = header.trimmingCharacters(in: .whitespacesAndNewlines)
+        // JavaScript's `Number('')` (whitespace-only) is 0.
+        if trimmed.isEmpty { return 0 }
+        if trimmed.range(of: #"^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$"#, options: .regularExpression) != nil,
+           let seconds = Double(trimmed), seconds.isFinite
+        {
+            return max(0, seconds * 1000)
+        }
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(identifier: "GMT")
+        formatter.dateFormat = "EEE, dd MMM yyyy HH:mm:ss zzz"
+        guard let date = formatter.date(from: trimmed) else { return nil }
+        return max(0, (date.timeIntervalSince1970 * 1000).rounded() - now)
+    }
+
+    /// The web's `targetsBaseOrigin`: does the request stay on the `baseUrl`'s origin?
+    public static func targetsBaseOrigin(url: String, baseUrl: String) -> Bool {
+        if baseUrl.isEmpty { return true }
+        let trimmed = baseUrl.hasSuffix("/") ? String(baseUrl.dropLast()) : baseUrl
+        if url == trimmed || url.hasPrefix(trimmed + "/") { return true }
+        if !isAbsolute(url) && !isAbsolute(baseUrl) && !url.hasPrefix("//") { return true }
+        guard let a = origin(of: url), let b = origin(of: baseUrl) else { return false }
+        return a == b
+    }
+
+    /// The web's `redactUrl`: no query, no fragment, no userinfo.
+    public static func redactURL(_ url: String) -> String {
+        var base = url
+        if let cut = base.firstIndex(where: { $0 == "?" || $0 == "#" }) { base = String(base[..<cut]) }
+        guard let scheme = base.range(of: #"^[A-Za-z][A-Za-z\d+\-.]*://"#, options: .regularExpression) else {
+            return base
+        }
+        let rest = base[scheme.upperBound...]
+        let authorityEnd = rest.firstIndex(of: "/") ?? rest.endIndex
+        // The web's `[^/@]*@` stops at the FIRST `@` of the authority.
+        guard let at = rest[..<authorityEnd].firstIndex(of: "@") else { return base }
+        return String(base[..<scheme.upperBound]) + String(rest[rest.index(after: at)...])
+    }
+
+    static func isAbort(_ error: Error) -> Bool {
+        if error is CancellationError { return true }
+        if let urlError = error as? URLError, urlError.code == .cancelled { return true }
+        return false
+    }
+
+    static func isAbsolute(_ url: String) -> Bool {
+        url.range(of: #"^[A-Za-z][A-Za-z\d+\-.]*://"#, options: .regularExpression) != nil
+    }
+
+    /// The ORIGIN a URL resolves to, relative to the placeholder origin the
+    /// web uses when there is no `location` (as on a device).
+    static func origin(of url: String) -> String? {
+        let resolved: String
+        if isAbsolute(url) { resolved = url }
+        else if url.hasPrefix("//") { resolved = "http:" + url }
+        else { resolved = "http://pyreon.invalid" }
+        guard let parts = URLComponents(string: resolved), let scheme = parts.scheme?.lowercased(),
+              let host = parts.host?.lowercased()
+        else { return nil }
+        let defaults = ["http": 80, "https": 443, "ws": 80, "wss": 443]
+        if let port = parts.port, port != defaults[scheme] { return "\(scheme)://\(host):\(port)" }
+        return "\(scheme)://\(host)"
+    }
+
+    /// `Headers.set` — replaces every case-variant of `name`.
+    static func setHeader(_ headers: inout [String: String], _ name: String, _ value: String) {
+        for key in headers.keys where key.lowercased() == name { headers.removeValue(forKey: key) }
+        headers[name] = value
+    }
+
+    /// `Headers.get` — case-insensitive.
+    static func header(_ headers: [String: String], _ name: String) -> String? {
+        headers.first(where: { $0.key.lowercased() == name })?.value
     }
 }
 

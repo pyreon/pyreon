@@ -1640,10 +1640,30 @@ class TasksAppInstrumentedTest {
         // component in PyreonA11yHost; before it did, `announce` compiled and
         // silently did nothing. Assert the message lands in a POLITE live
         // region (the call passes no politeness), which is what TalkBack reads.
+        // toast: keep this one toast on screen long enough to assert it. The
+        // harness shortens every toast to 1ms (see shortenToastAutoDismiss), so
+        // make it persistent instead -- 0 schedules NO dismissal, which also
+        // leaves nothing pending for waitForIdle -- and clear it afterwards.
+        PyreonToast.defaultDurationMillis = 0
         composeRule
             .onNodeWithTag("toolkit-save")
             .performScrollTo()
             .performClick()
+        // `<Toaster />` sits beside the RouterView. Until the router emit kept
+        // RouterView's siblings, the Toaster was dropped on Android entirely:
+        // every toast() compiled and showed nothing.
+        val savedToast = hasTestTag("pyreon-toast") and hasText("Saved")
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            composeRule.onAllNodes(savedToast, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
+        }
+        // dismiss: the card's button removes it (after its leave animation).
+        composeRule
+            .onNode(hasTestTag("pyreon-toast-dismiss"), useUnmergedTree = true)
+            .performClick()
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            composeRule.onAllNodes(savedToast, useUnmergedTree = true).fetchSemanticsNodes().isEmpty()
+        }
+        PyreonToast.defaultDurationMillis = 1
         val politeSaved = SemanticsMatcher("a polite live region announcing 'Saved'") { node ->
             node.config.getOrNull(SemanticsProperties.LiveRegion) == LiveRegionMode.Polite &&
                 node.config.getOrNull(SemanticsProperties.ContentDescription)?.firstOrNull() == "Saved"
