@@ -103,7 +103,7 @@ export const Press = (props: PressProps): VNode => {
     tabIndex: props.disabled ? -1 : 0,
     // ARIA attrs are strings, not booleans — set "true" explicitly.
     'aria-disabled': props.disabled ? 'true' : undefined,
-    style: mergePassthroughStyle(computedStyle, props.style),
+    style: mergePassthroughStyle(computedStyle, props),
     onClick,
     onKeyDown,
   }

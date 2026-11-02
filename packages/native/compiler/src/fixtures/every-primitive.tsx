@@ -1,6 +1,6 @@
 import { signal } from '@pyreon/reactivity'
 import {
-  Stack, Inline, Layer, Scroll, Text, Image, Video, Audio, Transition, Link, Modal, Press, WebView, Field, Select,
+  Stack, Inline, Layer, Scroll, Text, Image, Video, Audio, Transition, Link, Modal, Press, WebView, Field, Select, Gesture,
 } from '@pyreon/primitives'
 
 export function ProbeApp() {
@@ -9,6 +9,9 @@ export function ProbeApp() {
   const fruit = signal('')
   const notes = signal('')
   const rows = signal(4)
+  const zoom = signal(1)
+  const dx = signal(0)
+  const turn = signal(0)
   return (
     <Stack margin={4} marginX={2} marginY={1} padding={2} background="primary" radius="md">
       <Inline margin={2} gap={2}>
@@ -34,6 +37,16 @@ export function ProbeApp() {
       <Link to="/next" data-testid="probe-link" accessibilityLabel="Go next">next</Link>
       <Press onPress={() => open.set(true)} disabled><Text>tap</Text></Press>
       <Select value={fruit()} options={[{ value: 'a', label: 'Apple' }, { value: 'p', label: 'Pear', disabled: true }]} onChange={(v) => fruit.set(v)} placeholder="Fruit" data-testid="probe-select" />
+      <Gesture
+        data-testid="probe-gesture"
+        onPan={(e) => dx.set(e.dx)}
+        onPinch={(e) => { zoom.set(e.scale); if (e.phase === 'end') open.set(false) }}
+        onRotate={(e) => turn.set(e.degrees)}
+      >
+        <Layer translateX={dx()} translateY={-4} scale={zoom()} rotate={turn()}>
+          <Text rotate={15}>transformed</Text>
+        </Layer>
+      </Gesture>
       <Field value={notes} onChangeText={(v) => notes.set(v)} kind="email" onSubmit={() => open.set(true)} />
       <Field multiline value={notes} onChangeText={(v) => notes.set(v)} placeholder="Notes" data-testid="probe-notes" />
       <Field multiline lines={rows()} value={notes()} onChangeText={(v) => notes.set(v)} />

@@ -39,6 +39,7 @@ const USAGES: ReadonlyArray<readonly [string, string]> = [
   ['Button', '<Button onPress={() => {}}>b</Button>'],
   ['Press', '<Press onPress={() => {}}><Text>p</Text></Press>'],
   ['Link', '<Link to="/x"><Text>l</Text></Link>'],
+  ['Gesture', '<Gesture onPan={() => {}}><Text>g</Text></Gesture>'],
   ['Field', '<Field value="" onChangeText={() => {}} />'],
   ['Toggle', '<Toggle value={true} onChange={() => {}} />'],
   ['Select', `<Select value="a" options={[{ value: 'a', label: 'A' }]} onChange={() => {}} />`],

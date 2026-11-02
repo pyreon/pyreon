@@ -123,7 +123,7 @@ The table below comes from each package manifest. `shared` describes an authorin
 | `@pyreon/coolgrid` | Container/Row/Col lower (equal-fill + literal fractional Col spans) |
 | `@pyreon/core` | the JSX authoring surface PMTC compiles — For/Show/Suspense/ErrorBoundary lower; Switch/Match/Dynamic/Portal/Index warn with concrete alternatives |
 | `@pyreon/elements` | Element→Stack and Text lower via elements-native; the rich web-only surfaces (Overlay/Portal/List slots) warn per-construct |
-| `@pyreon/primitives` | the 18 canonical primitives: real web DOM runtime AND SwiftUI/Compose emit — the compiler's native target vocabulary |
+| `@pyreon/primitives` | the 19 canonical primitives: real web DOM runtime AND SwiftUI/Compose emit — the compiler's native target vocabulary |
 | `@pyreon/reactivity` | L0 of the shared-code model: the package plugin maps signal/computed to native state; PyreonReactivity runtime ports ship on both targets, while bare effect statements require a supported lifecycle hook |
 | `@pyreon/rocketstyle` | rocketstyle-over-primitive chains lower (static cascade + any number of dynamic dimensions) through its package-owned native plugin |
 | `@pyreon/rx` | supported namespace and standalone transforms lower recursively to native collection operations, including import aliases; unsupported methods warn |
@@ -163,7 +163,7 @@ The table below comes from each package manifest. `shared` describes an authorin
 | `@pyreon/feature` | CRUD composite over query/form/store/validation. The RUNTIME half stays web — the generated hooks (useList / useById / useCreate / useUpdate / useDelete / useSearch), the network fetcher, and validator/form integration all lower only when every dependency does. The DECLARATION half already crosses (see nativeFrontend) |
 | `@pyreon/head` | document `<head>` management — a native app has no document, so there is nothing to describe: `useHead(...)` compiles to nothing and `<HeadProvider>` is transparent (so shared source builds); the head context and SSR helpers have no native equivalent |
 | `@pyreon/hotkeys` | keyboard-shortcut layer over DOM KeyboardEvent. The REGISTRY half (registerHotkey / scopes / conflict reporting) is web; the `useHotkey` authoring hook lowers — see nativeFrontend |
-| `@pyreon/http` | universal web/node HTTP client (WHATWG fetch); the transport (middleware, interceptors) stays web — native networking is the PyreonFetch/PyreonHttp runtime layer, plus the co-located PyreonStream runtime for SSE / NDJSON |
+| `@pyreon/http` | universal web/node HTTP client (WHATWG fetch); the imperative client (api.get/post, custom middleware functions) stays web — native networking is the PyreonFetch/PyreonHttp runtime layer, which applies the lowerable middleware, plus the co-located PyreonStream runtime for SSE / NDJSON |
 | `@pyreon/kinetic` | CSS-transition animation engine (classes + rAF over real CSSOM). The CLASS/style machinery is web; the PRESET vocabulary crosses — see nativeFrontend |
 | `@pyreon/kinetic-presets` | preset pack for the kinetic CSS engine; the presets whose motion exists in the native vocabulary cross — see nativeFrontend |
 | `@pyreon/lathe` | the code generator — build-time tooling that emits app code, not app runtime itself |
@@ -178,7 +178,7 @@ The table below comes from each package manifest. `shared` describes an authorin
 | `@pyreon/sync` | the Yjs engine + IndexedDB/WebSocket transports stay web; the engine-neutral PyreonCrdt core + `syncedSignal` lower to a native runtime, cross-device transport tracked |
 | `@pyreon/table` | the TanStack-backed `useTable` (row model / faceting / virtual sizing) stays web; the dependency-free `createTableState` engine lowers to the native PyreonTableState port, rendered with `<For>` + primitives |
 | `@pyreon/testing` | the web testing kit (Testing-Library parity over the DOM renderer); native testing is XCUITest/Compose-test territory |
-| `@pyreon/toast` | the core `toast(...)` + `<Toaster>` now lower to the native PyreonToast runtime (v1); the rich surface (toast.promise/update, options, animation) stays web |
+| `@pyreon/toast` | the core `toast(...)` + `<Toaster>` lower to the native PyreonToast runtime: a screen-anchored overlay (a pass-through window on iOS, a window-anchored Popup on Android) styled per type, honouring literal position / max / gap / offset / duration, animating in and out, with a dismiss button (a literal `dismissible: false` hides it), and visible on every screen; the rich surface (toast.promise/update, description / icon / action, onDismiss, the hover/focus countdown pause) stays web |
 | `@pyreon/unistyle` | responsive breakpoints + CSS-variable theming over real CSS; native theming is compile-time tokens + the 2-bucket size-class model |
 | `@pyreon/url-state` | the address bar is the web's own surface — history entries, `popstate`, `batchUrlUpdates` and the pluggable serializers stay web; on native the equivalent is the router's search parameters |
 | `@pyreon/validate` | pure-logic schema DSL; the runtime engine (JIT, JSON-schema export, async refinements, the v1/mini compat surfaces) stays web, and inline uses like `s.string().parse(x)` do not lower |

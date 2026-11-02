@@ -51,7 +51,7 @@ export const Select = (props: SelectProps): VNode => {
   // another. A per-option binding is right whichever of the two changes.
   const attrs: Record<string, unknown> = {
     ...collectPassthroughAttrs(props as unknown as Record<string, unknown>),
-    style: mergePassthroughStyle(style, props.style),
+    style: mergePassthroughStyle(style, props),
     onChange,
   }
   if (props.disabled) attrs.disabled = true

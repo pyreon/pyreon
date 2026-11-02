@@ -52,7 +52,7 @@ export const Toggle = (props: ToggleProps): VNode => {
     role: 'switch',
     checked: getValue,
     onChange,
-    style: mergePassthroughStyle(style, props.style),
+    style: mergePassthroughStyle(style, props),
   }
   if (props.disabled) attrs.disabled = true
   return h('input', attrs)
