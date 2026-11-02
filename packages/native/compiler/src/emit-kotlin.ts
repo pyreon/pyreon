@@ -141,7 +141,9 @@ import {
 import {
   extractTextTypography,
   kotlinTextTypographyArgs,
+  PRESSED_STATE_IDENT,
   styleToNativeModifiers,
+  styleUsesPressedState,
 } from './style-to-native'
 import {
   type FlatRouteEntry,
@@ -5624,10 +5626,12 @@ function emitKotlinButton(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: n
   // primitive that dropped the testid (onNodeWithTag("login-submit")
   // found nothing while the Field's tag worked).
   const modifier = emitKotlinLayoutModifier(e)
+  const pressed = kotlinUsesPressedStyle(e)
   const args = [
     `onClick = ${action}`,
     ...(enabledArg ? [enabledArg] : []),
     ...(modifier ? [`modifier = ${modifier}`] : []),
+    ...(pressed ? [`interactionSource = ${PRESS_SOURCE_IDENT}`] : []),
   ]
   // `variant` — the visual role. Compose expresses it by swapping the
   // COMPOSABLE (Button / OutlinedButton / TextButton) rather than by a
@@ -5640,12 +5644,13 @@ function emitKotlinButton(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: n
   const variant = kotlinButtonVariant(e)
   if (variant.colorsArg !== '') args.push(variant.colorsArg)
   const buttonArgs = args.join(', ')
-  const pad = ' '.repeat(indent + 2)
-  if (labelText !== null) {
-    return `${variant.composable}(${buttonArgs}) {\n${pad}Text(${kotlinStr(labelText)})\n${' '.repeat(indent)}}`
-  }
-  const contentLines = e.children.map((c) => pad + emitKotlinChild(c, indent + 2)).join('\n')
-  return `${variant.composable}(${buttonArgs}) {\n${contentLines}\n${' '.repeat(indent)}}`
+  const inner = indent + (pressed ? 2 : 0)
+  const pad = ' '.repeat(inner + 2)
+  const body =
+    labelText !== null
+      ? `${variant.composable}(${buttonArgs}) {\n${pad}Text(${kotlinStr(labelText)})\n${' '.repeat(inner)}}`
+      : `${variant.composable}(${buttonArgs}) {\n${e.children.map((c) => pad + emitKotlinChild(c, inner + 2)).join('\n')}\n${' '.repeat(inner)}}`
+  return pressed ? kotlinWrapPressState(body, indent) : body
 }
 
 /**
@@ -7796,6 +7801,32 @@ function emitKotlinGesture(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
   return `${head} {\n${contentLines}\n${' '.repeat(indent)}}`
 }
 
+/** The interaction-source lambda parameter `PyreonPressState` hands its content. */
+const PRESS_SOURCE_IDENT = '__pySrc'
+
+/**
+ * Whether this pressable's `style` keys on the press state (a rocketstyle
+ * `active:` block — see `PRESSED_STATE_IDENT`). When it does, the element is
+ * wrapped in `PyreonPressState { __pyPressed, __pySrc -> … }`: the runtime
+ * hoists a `MutableInteractionSource`, collects `isPressed` from it, and the
+ * clickable / Button is handed that same source so the state reflects THIS
+ * element's presses. The style condition then reads the lambda parameter.
+ */
+function kotlinUsesPressedStyle(e: Extract<ExprIR, { kind: 'jsx-element' }>): boolean {
+  const styleAttr = e.attrs.find(
+    (a): a is Extract<AttrIR, { kind: 'attr' }> => a.kind === 'attr' && a.name === 'style',
+  )
+  return styleAttr !== undefined && styleUsesPressedState(styleAttr.value)
+}
+
+/** Wrap an emitted pressable in the press-state scope (see above). */
+function kotlinWrapPressState(body: string, indent: number): string {
+  // `body` was emitted one level deeper already; only its first line needs the
+  // indent it would have had as a statement.
+  const ind = ' '.repeat(indent)
+  return `PyreonPressState { ${PRESSED_STATE_IDENT}, ${PRESS_SOURCE_IDENT} ->\n${ind}  ${body}\n${ind}}`
+}
+
 function emitKotlinPress(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
   const handler = e.attrs.find(
     (a): a is Extract<AttrIR, { kind: 'event' }> =>
@@ -7822,7 +7853,12 @@ function emitKotlinPress(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: nu
   // the `disabled={false}` no-op, and a signal-bound expression (negated into
   // Compose's `enabled` sense).
   const enabledArg = kotlinEnabledArg(e)
-  const enabledPrefix = enabledArg === '' ? '' : `${enabledArg}, `
+  // A pressed style needs THIS element's interaction source. The indication is
+  // dropped with it: the author's pressed style is the press feedback, exactly
+  // as on the web, where `:active` styling replaces nothing but adds no ripple.
+  const pressed = kotlinUsesPressedStyle(e)
+  const sourcePrefix = pressed ? `interactionSource = ${PRESS_SOURCE_IDENT}, indication = null, ` : ''
+  const enabledPrefix = `${sourcePrefix}${enabledArg === '' ? '' : `${enabledArg}, `}`
   const clickable = onLongPress
     ? `.combinedClickable(${enabledPrefix}onClick = ${action}, onLongClick = ${emitKotlinAction(onLongPress.handler, indent)})`
     : `.clickable(${enabledPrefix}onClick = ${action})`
@@ -7858,12 +7894,17 @@ function emitKotlinPress(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: nu
   const gestures = `${clickable}${swipeInput}`
   const modifier = layoutModifier !== '' ? `${layoutModifier}${gestures}` : `Modifier${gestures}`
 
-  const pad = ' '.repeat(indent + 2)
+  const pad = ' '.repeat(indent + (pressed ? 4 : 2))
+  let body: string
   if (e.children.length === 0) {
-    return `Box(modifier = ${modifier}) {}`
+    body = `Box(modifier = ${modifier}) {}`
+  } else {
+    const contentLines = e.children
+      .map((c) => pad + emitKotlinChild(c, indent + (pressed ? 4 : 2)))
+      .join('\n')
+    body = `Box(modifier = ${modifier}) {\n${contentLines}\n${' '.repeat(indent + (pressed ? 2 : 0))}}`
   }
-  const contentLines = e.children.map((c) => pad + emitKotlinChild(c, indent + 2)).join('\n')
-  return `Box(modifier = ${modifier}) {\n${contentLines}\n${' '.repeat(indent)}}`
+  return pressed ? kotlinWrapPressState(body, indent) : body
 }
 
 /**

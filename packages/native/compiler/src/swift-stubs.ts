@@ -513,6 +513,26 @@ public struct MagnificationGesture: Gesture {
 // Mirrors the real SwiftUI button styles the variant emit can produce.
 // Listing exactly these (not an open struct) keeps a wrong style name a
 // compile error here rather than a device surprise.
+// SwiftUI's ButtonStyle — the custom-style protocol a pressed style lowers
+// through (PyreonPressStyle). Real: protocol ButtonStyle { associatedtype Body:
+// View; func makeBody(configuration: Configuration) -> Body; typealias
+// Configuration = ButtonStyleConfiguration }.
+public struct ButtonStyleConfiguration {
+  public struct Label: View { public typealias Body = Never }
+  public let label: ButtonStyleConfiguration.Label
+  public let isPressed: Bool
+}
+public protocol ButtonStyle {
+  associatedtype Body: View
+  typealias Configuration = ButtonStyleConfiguration
+  @ViewBuilder func makeBody(configuration: Self.Configuration) -> Self.Body
+}
+// Mirror of @pyreon/native-runtime-swift's PyreonPressStyle.swift.
+public struct PyreonPressStyle<Styled: View>: ButtonStyle {
+  private let styled: (ButtonStyleConfiguration.Label, Bool) -> Styled
+  public init(@ViewBuilder _ styled: @escaping (ButtonStyleConfiguration.Label, Bool) -> Styled) { self.styled = styled }
+  public func makeBody(configuration: Configuration) -> some View { styled(configuration.label, configuration.isPressed) }
+}
 public struct PrimitiveButtonStyleStub {
   public static let plain = PrimitiveButtonStyleStub()
   public static let bordered = PrimitiveButtonStyleStub()
@@ -575,6 +595,7 @@ extension View {
   public func animation<V: Equatable>(_ animation: Animation?, value: V) -> some View { self }
   public func transition(_ t: AnyTransition) -> some View { self }
   public func buttonStyle(_ style: PrimitiveButtonStyleStub) -> some View { self }
+  public func buttonStyle<S: ButtonStyle>(_ style: S) -> some View { self }
   public func tint(_ color: Color?) -> some View { self }
   public func accessibilityIdentifier(_ id: String) -> some View { self }
   // The real SwiftUI signature (WritableKeyPath), so a key path the real SDK

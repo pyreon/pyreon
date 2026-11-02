@@ -518,7 +518,8 @@ You build your **own** components on the ui-system styling frontends (`styled` +
 | Layout (`direction`/`gap`/`align`) | ✅ | via the canonical primitive |
 | Responsive (2-bucket) | ✅ | `useSizeClass()` + a dimension flip → compact/regular (mobile vs expanded), re-flows on rotation/split-screen |
 | Responsive breakpoint arrays (`[xs,sm,md,lg]`) | ❌ | full CSS pixel breakpoints have no native map — use the 2-bucket size class above |
-| `hover` / `focus` pseudo-states | ❌ | pointer-only — desktop-web semantics |
+| `active` / `pressed` pseudo-state | ✅ | an `active: { … }` block on a `Button` or `Press` base → the platform's own press state: iOS a `PyreonPressStyle` ButtonStyle reading `configuration.isPressed` (no drag gesture, so an enclosing ScrollView still scrolls), Android a hoisted `MutableInteractionSource` + `collectIsPressedAsState()` handed to the same `clickable` / `Button`. Blocks cascade like the web's deep merge (a dimension value's plain colour is still beaten by an earlier block's `active`). A property set only while pressed flips back to its CSS initial value (`opacity` 1, background/border transparent, border width 0); one with no fixed initial (`color`, which inherits) is dropped by name. A non-pressable base warns. Android reads the pressed colour off real pixels on device; iOS asserts the tap still fires through the custom style |
+| `hover` / `focus` pseudo-states | ❌ | pointer-only — desktop-web semantics; named in a warning rather than dropped as a "non-literal value" |
 | CSS animations / `keyframes` | ❌ | web-only ("no animations v1") |
 | `@pyreon/elements` Overlay / Portal | ❌ | web-only-rich (Layer 3b) — native uses sheets/dialogs, a separate model |
 

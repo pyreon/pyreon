@@ -584,6 +584,51 @@ class CounterInstrumentedTest {
         }
     }
 
+    // rocketstyle's `active:` block on a Press base, read off REAL PIXELS while
+    // the touch is held. The chip paints solid #1d4ed8 and #dc2626 while
+    // pressed; Compose can capture a node's pixels, so this asserts the
+    // pressed colour itself rather than only that a tap still fires.
+    //
+    // The capture covers the tagged node's bounds — the chip's content area,
+    // inside its padding, where the background shows around the label's glyphs.
+    // A MAJORITY of pixels is asserted rather than one fixed point, so the
+    // text's antialiasing can never decide the result.
+    @Test
+    fun rocketstylePressedStylePaintsWhileHeldAndTheTapStillFires() {
+        val chip = composeRule.onNodeWithTag("press-chip")
+        chip.performScrollTo()
+        composeRule.onNodeWithText("Chip taps: 0").assertExists()
+
+        fun share(r: Int, g: Int, b: Int): Float {
+            composeRule.waitForIdle()
+            val map = chip.captureToImage().toPixelMap()
+            var n = 0
+            for (y in 0 until map.height) for (x in 0 until map.width) {
+                val c = map[x, y]
+                if (abs((c.red * 255).roundToInt() - r) <= 8 &&
+                    abs((c.green * 255).roundToInt() - g) <= 8 &&
+                    abs((c.blue * 255).roundToInt() - b) <= 8
+                ) n++
+            }
+            return n.toFloat() / (map.width * map.height)
+        }
+
+        check(share(0x1d, 0x4e, 0xd8) > 0.5f) { "the chip does not paint its un-pressed #1d4ed8 background" }
+
+        chip.performTouchInput { down(center) }
+        // A clickable inside a scrolling container delays its press interaction
+        // until it is sure the touch is not a scroll; let that timeout pass.
+        composeRule.mainClock.advanceTimeBy(500)
+        check(share(0xdc, 0x26, 0x26) > 0.5f) {
+            "the chip did not paint its active #dc2626 background while held — the pressed style did not reach " +
+                "the view, or the interaction source handed to clickable is not the one PyreonPressState collects"
+        }
+
+        chip.performTouchInput { up() }
+        composeRule.onNodeWithText("Chip taps: 1").assertExists()
+        check(share(0x1d, 0x4e, 0xd8) > 0.5f) { "the chip stayed in its pressed colour after release" }
+    }
+
     // The static half of the style pipeline, asserted through GEOMETRY — the
     // Compose mirror of the iOS `test_rocketstyleSizeDimensionProducesRealGeometry`.
     //
