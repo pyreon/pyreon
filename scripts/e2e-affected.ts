@@ -540,7 +540,7 @@ export function forcesFullRun(path: string, e2eScripts?: ReadonlySet<string>): b
  */
 export function selectSuites(
   changed: string[] | null,
-  opts: { all?: boolean; e2eScripts?: ReadonlySet<string> } = {},
+  opts: { all?: boolean; e2eScripts?: ReadonlySet<string> | undefined } = {},
 ): Suite[] {
   if (opts.all) return SUITES
   if (changed === null) return SUITES // diff failed → safe full run
