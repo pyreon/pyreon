@@ -75,10 +75,11 @@ export const CANONICAL_PRIMITIVES = new Set([
   'Audio',
   'Video',
   'Icon',
-  // Interaction (3)
+  // Interaction (4)
   'Button',
   'Press',
   'Link',
+  'Gesture',
   // Input (3)
   'Field',
   'Toggle',
@@ -114,6 +115,7 @@ export const SWIFT_NAMES: Record<string, string> = {
   Button: 'Button',
   Press: 'Button', // no chrome — emits the trailing-closure-only form
   Link: 'PyreonLink', // pushes onto the native router (@pyreon/native-router-swift)
+  Gesture: 'PyreonGesture', // simultaneous Drag/Magnify/RotateGesture (@pyreon/native-runtime-swift)
   Field: 'TextField', // SecureField when kind="password"
   Toggle: 'Toggle',
   Modal: 'Sheet', // .sheet(isPresented:) modifier-based
@@ -137,6 +139,7 @@ export const KOTLIN_NAMES: Record<string, string> = {
   Button: 'Button',
   Press: 'Box', // Modifier.clickable
   Link: 'PyreonLink', // wraps a Box(Modifier.clickable { navigate() }) (@pyreon/native-router-kotlin)
+  Gesture: 'PyreonGesture', // one pointerInput loop (@pyreon/native-runtime-kotlin)
   Field: 'TextField',
   Toggle: 'Switch',
   Modal: 'Dialog',

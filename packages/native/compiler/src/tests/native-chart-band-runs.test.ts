@@ -99,6 +99,8 @@ for (a, b) in zip(actual${i}, expected${i}) {
           [
             types,
             read(swiftDir + 'PyreonNumber.swift'),
+            // A slice with a runtime bound goes through the runtime's pyreonSlice.
+            read(swiftDir + 'PyreonSlice.swift'),
             read(swiftDir + 'PyreonChartEngine.swift'),
             cases,
           ].join('\n'),
@@ -137,6 +139,7 @@ for (a, b) in zip(actual${i}, expected${i}) {
           kotlinCanvasDataClasses(read(kotlinDir + 'PyreonChartCanvas.kt')).join('\n'),
         )
         writeFileSync(join(dir, 'number.kt'), withoutPackage(read(kotlinDir + 'PyreonNumber.kt')))
+        writeFileSync(join(dir, 'slice.kt'), withoutPackage(read(kotlinDir + 'PyreonSlice.kt')))
         writeFileSync(
           join(dir, 'main.kt'),
           withoutPackage(read(kotlinDir + 'PyreonChartEngine.kt')) +
@@ -150,6 +153,7 @@ for (a, b) in zip(actual${i}, expected${i}) {
             [
               join(dir, 'canvas.kt'),
               join(dir, 'number.kt'),
+              join(dir, 'slice.kt'),
               join(dir, 'main.kt'),
               '-include-runtime',
               '-d',
