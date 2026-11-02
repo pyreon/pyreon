@@ -60,5 +60,32 @@ fun main() {
     PyreonToast.maxToasts = 50
     PyreonToast.clear()
 
+    // onDismiss: fires exactly once when the toast leaves by ANY path (web parity).
+    var gone = mutableListOf<String>()
+    val d1 = PyreonToast.add("a", durationMillis = 0, onDismiss = { gone.add("a") })
+    PyreonToast.dismiss(d1)
+    PyreonToast.dismiss(d1)
+    check(gone == listOf("a"), "dismiss fires onDismiss exactly once")
+    PyreonToast.add("b", durationMillis = 0, onDismiss = { gone.add("b") })
+    PyreonToast.add("c", durationMillis = 0, onDismiss = { gone.add("c") })
+    PyreonToast.clear()
+    check(gone == listOf("a", "b", "c"), "clear fires every onDismiss, oldest first")
+    PyreonToast.maxToasts = 1
+    PyreonToast.add("old", durationMillis = 0, onDismiss = { gone.add("old") })
+    PyreonToast.add("new", durationMillis = 0)
+    check(gone.last() == "old", "eviction by the stack bound fires onDismiss")
+    PyreonToast.maxToasts = 0
+    PyreonToast.add("arrival", durationMillis = 0, onDismiss = { gone.add("arrival") })
+    check(gone.last() == "arrival", "a toast evicted on arrival still fires onDismiss")
+    PyreonToast.maxToasts = 50
+    PyreonToast.clear()
+    gone = mutableListOf()
+    // Re-entrancy: a handler that enqueues a new toast runs once and the new toast stays.
+    val r = PyreonToast.add("r", durationMillis = 0, onDismiss = { gone.add("r"); PyreonToast.add("follow-up", durationMillis = 0) })
+    PyreonToast.dismiss(r)
+    check(gone == listOf("r"), "a re-entrant onDismiss runs once")
+    check(PyreonToast.toasts.value.map { it.message } == listOf("follow-up"), "a toast enqueued from onDismiss stays")
+    PyreonToast.clear()
+
     println("[PyreonToastTest] all smoke tests passed")
 }
