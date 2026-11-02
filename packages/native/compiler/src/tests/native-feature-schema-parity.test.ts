@@ -165,7 +165,9 @@ describe('Todo.schema — web ⇄ native verdicts, executed', () => {
     expect(new Set(CASES.map((c) => webVerdict(c.input))).size).toBeGreaterThan(3)
   })
 
-  it.skipIf(!isSwiftcAvailable())(
+  // The shipped PyreonSchema.swift reads NSNumber booleans through CoreFoundation (CFGetTypeID), which swift-corelibs on
+  // Linux does not have — it is an iOS runtime. So this half runs on the macOS lane only; the Kotlin half runs everywhere.
+  it.skipIf(!isSwiftcAvailable() || process.platform !== 'darwin')(
     'the SHIPPED Swift runtime, driven by the EMITTED struct, agrees with zod',
     () => {
       const got = withTempDir('pyreon-feature-parity-swift-', (dir) => {
