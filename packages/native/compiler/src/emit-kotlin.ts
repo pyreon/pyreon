@@ -5718,7 +5718,13 @@ function kotlinEnabledArg(e: Extract<ExprIR, { kind: 'jsx-element' }>): string {
   // Signal-bound / expression — negate to convert Pyreon's `disabled`
   // semantic to Compose's `enabled`. `emitKotlinSignalRead` handles
   // signal-name membership + plain-identifier emit.
-  return `enabled = !${emitKotlinSignalRead(unwrapAccessorArrow(attr.value))}`
+  //
+  // An OPERATOR expression must be parenthesised: `!` binds tighter than `==`
+  // / `&&` / `?:`, so `disabled={tab() === ''}` emitted `enabled = !tab == ""`
+  // — `!` applied to a String, which does not compile. Swift has no inversion
+  // to get wrong (`.disabled(tab == "")`), so this broke on Android only.
+  const read = emitKotlinSignalRead(unwrapAccessorArrow(attr.value))
+  return /^[A-Za-z_][\w.]*(\(\))?$/.test(read) ? `enabled = !${read}` : `enabled = !(${read})`
 }
 
 function emitKotlinAction(handler: ExprIR, indent: number): string {

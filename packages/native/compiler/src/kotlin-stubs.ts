@@ -632,8 +632,12 @@ object Modifier {
   // androidx.compose.foundation.border(BorderStroke, Shape).
   @Suppress("UNUSED_PARAMETER")
   fun border(border: BorderStroke, shape: Shape): Modifier = this
+  // The REAL androidx.compose.foundation.clickable signature. The stub used to
+  // take only \`onClick\`, which REJECTED the correct \`<Press disabled>\` emit
+  // (\`clickable(enabled = …, onClick = …)\`) — a stub narrower than the real
+  // surface manufactures a failure, so that shape was never compile-verified.
   @Suppress("UNUSED_PARAMETER")
-  fun clickable(onClick: () -> Unit): Modifier = this
+  fun clickable(enabled: Boolean = true, onClickLabel: String? = null, role: Role? = null, onClick: () -> Unit): Modifier = this
   // useHotkey — Compose delivers key events only to a FOCUSED node, so the
   // lowering needs all three of these together. Real Compose spells them
   // Modifier.focusRequester(FocusRequester) / .focusable() /
