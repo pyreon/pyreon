@@ -155,6 +155,24 @@ struct PyreonToastCard: View {
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
+            if let actionLabel = item.actionLabel {
+                // The web stylesheet's `.pyreon-toast__action`: 13px blue on a light border.
+                Button {
+                    PyreonToast.shared.runAction(item.id)
+                } label: {
+                    Text(actionLabel)
+                        .font(.system(size: 13))
+                        .foregroundStyle(Color(red: 0x3B / 255, green: 0x82 / 255, blue: 0xF6 / 255))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 4)
+                                .stroke(Color(red: 0xE5 / 255, green: 0xE7 / 255, blue: 0xEB / 255), lineWidth: 1)
+                        )
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("pyreon-toast-action")
+            }
             if item.dismissible {
                 Button {
                     PyreonToast.shared.dismiss(item.id)

@@ -38,6 +38,8 @@ public data class PyreonToastItem(
     val dismissible: Boolean = true,
     /** Optional secondary line under the message (the web's `description`). */
     val description: String? = null,
+    /** The action button's label; its handler is kept by [PyreonToast]. */
+    val actionLabel: String? = null,
 )
 
 public object PyreonToast {
@@ -51,6 +53,9 @@ public object PyreonToast {
     public var maxToasts: Long = 50L
 
     private var counter = 0
+
+    /** Action handlers by toast id, dropped with the toast so the closure is released. */
+    private val actions = HashMap<String, () -> Unit>()
     // The scope the auto-dismiss coroutine runs on — swappable in tests.
     internal var scope: CoroutineScope = CoroutineScope(Dispatchers.Main)
 
@@ -65,11 +70,25 @@ public object PyreonToast {
         durationMillis: Long? = null,
         dismissible: Boolean = true,
         description: String? = null,
+        actionLabel: String? = null,
+        onAction: (() -> Unit)? = null,
     ): String {
         counter += 1
         val id = "toast-$counter"
-        var next = toasts.value + PyreonToastItem(id, message, type, dismissible, description)
-        if (next.size > maxToasts) next = next.takeLast(maxToasts.toInt())
+        var next = toasts.value + PyreonToastItem(
+            id,
+            message,
+            type,
+            dismissible,
+            description,
+            if (actionLabel != null && onAction != null) actionLabel else null,
+        )
+        if (next.size > maxToasts) {
+            val kept = next.takeLast(maxToasts.toInt())
+            for (dropped in next.dropLast(kept.size)) actions.remove(dropped.id)
+            next = kept
+        }
+        if (actionLabel != null && onAction != null) actions[id] = onAction
         toasts.value = next
         val ttl = durationMillis ?: defaultDurationMillis
         if (ttl > 0) {
@@ -89,10 +108,20 @@ public object PyreonToast {
     /** The hard removal both `dismiss` and the auto-dismiss coroutine call. */
     public fun remove(id: String) {
         toasts.value = toasts.value.filterNot { it.id == id }
+        actions.remove(id)
+    }
+
+    /**
+     * Run a toast's action handler. Like the web, the toast stays until it is
+     * dismissed or expires; a no-op once the toast is gone.
+     */
+    public fun runAction(id: String) {
+        actions[id]?.invoke()
     }
 
     /** Remove every toast. */
     public fun clear() {
         toasts.value = emptyList()
+        actions.clear()
     }
 }
