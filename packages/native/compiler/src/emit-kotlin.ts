@@ -103,6 +103,7 @@ import {
   buildModuleConstTypes,
   arrayFromMapRewrite,
   classifyNegativeSlice,
+  sliceBoundsAreLiteral,
   classifyOptionalCondition,
   indexedArrayCallback,
   inferMapFromPairsType,
@@ -3953,6 +3954,18 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
             //   slice()     → a copy (toList() for List; the String itself)
             // Negative indices (rare in JS) fall through to the generic emit.
             const sliceObjType = inferType(e.callee.object, _kotlinExprInferCtx)
+            // A bound whose sign is not known at compile time: JavaScript's semantics, from the runtime.
+            if (!sliceBoundsAreLiteral(e.args)) {
+              const inner = sliceObjType.kind === 'union'
+                ? (sliceObjType.branches.find((b) => b.kind !== 'undefined' && b.kind !== 'null') ?? sliceObjType)
+                : sliceObjType
+              if (inner.kind === 'string' || inner.kind === 'array') {
+                const rest = argExprs.map((a) => `(${a}).toLong()`).join(', ')
+                return objDot === '?.'
+                  ? `${obj}?.let { pyreonSlice(it, ${rest}) }`
+                  : `pyreonSlice(${obj}, ${rest})`
+              }
+            }
             const noNegative = e.args.every((a) => a.kind !== 'unary')
             // Negative-index idioms (Kotlin drop/take count from the front):
             //   slice(-m)    → takeLast(m)   (last m)
@@ -6589,6 +6602,17 @@ function readStaticAttrKotlin(
   for (const a of e.attrs) {
     if (a.kind === 'attr' && a.name === name) {
       if (a.value.kind === 'literal') return a.value.value as string | number | boolean
+      // `-1` parses as a unary minus over a literal; it is as static as `1`.
+      // Without the fold every negative literal read as dynamic, so a
+      // lowering that needs a literal warned on it or took the dynamic path.
+      if (
+        a.value.kind === 'unary' &&
+        (a.value.op === '-' || a.value.op === '+') &&
+        a.value.argument.kind === 'literal' &&
+        typeof a.value.argument.value === 'number'
+      ) {
+        return a.value.op === '-' ? -a.value.argument.value : a.value.argument.value
+      }
       // Const-ref: `src={API_URL}` → resolve a module-level `const`
       // string/number/boolean binding to its literal. Unknown /
       // component-scope / non-const identifiers aren't in the map →
@@ -8326,15 +8350,47 @@ function emitKotlinRouterProvider(
   if (e.children.length === 0) {
     return `RouterProvider(${routerExpr}) { }`
   }
-  const contentLines = e.children.map((c) => pad + emitKotlinChild(c, indent + 2)).join('\n')
-  // When routes are resolved, the NavHost block REPLACES the bare
-  // content. The user's <RouterView /> typically just marks the spot
-  // where routed content goes; with NavHost it's not needed (NavHost
-  // IS the router-content host on Compose).
+  // With routes resolved and a `<RouterView />` somewhere in the content, the
+  // content emits AS WRITTEN and the RouterView itself becomes the dispatch —
+  // the web contract, where RouterView marks the routed slot and its siblings
+  // (a header, a nav bar, a `<Toaster />`) persist across navigation.
+  // Replacing the whole content with the dispatch dropped every sibling with
+  // no warning: an app's `<Toaster />` beside its RouterView never rendered on
+  // Android, so every `toast()` call compiled and showed nothing.
+  if (routesBlock !== '' && subtreeHasRouterView(e.children)) {
+    const routes = _routerRoutes.get((routerAttr.value as { name: string }).name)!
+    const prevDispatch = _activeRouteDispatchKotlin
+    _activeRouteDispatchKotlin = (at) => emitKotlinRouteDispatch(routes, at).trimStart()
+    try {
+      const lines = e.children.map((c) => pad + emitKotlinChild(c, indent + 2)).join('\n')
+      return `RouterProvider(${routerExpr}) {\n${lines}\n${' '.repeat(indent)}}`
+    } finally {
+      _activeRouteDispatchKotlin = prevDispatch
+    }
+  }
+  // Routes resolved but no `<RouterView />` to mark the slot: the dispatch is
+  // the whole content (the shape every app emitted before siblings were kept).
   if (routesBlock !== '') {
     return `RouterProvider(${routerExpr}) {\n${routesBlock}\n${' '.repeat(indent)}}`
   }
+  const contentLines = e.children.map((c) => pad + emitKotlinChild(c, indent + 2)).join('\n')
   return `RouterProvider(${routerExpr}) {\n${contentLines}\n${' '.repeat(indent)}}`
+}
+
+/**
+ * The route dispatch for the `<RouterProvider>` currently emitting, or null.
+ * `<RouterView />` reads it to emit the dispatch at its own position; saved and
+ * restored around each provider so a nested provider cannot leak its table.
+ */
+let _activeRouteDispatchKotlin: ((indent: number) => string) | null = null
+
+/** Whether a `<RouterView />` appears anywhere in this JSX subtree. */
+function subtreeHasRouterView(node: unknown): boolean {
+  if (node === null || typeof node !== 'object') return false
+  if (Array.isArray(node)) return node.some(subtreeHasRouterView)
+  const n = node as { kind?: unknown; tag?: unknown }
+  if (n.kind === 'jsx-element' && n.tag === 'RouterView') return true
+  return Object.values(node).some(subtreeHasRouterView)
 }
 
 /**
@@ -8613,6 +8669,8 @@ function emitKotlinRouterView(
   if (_emittingLayoutComponentKotlin) {
     return `content()`
   }
+  // Inside a routes-bearing `<RouterProvider>`: this is the routed slot.
+  if (_activeRouteDispatchKotlin !== null) return _activeRouteDispatchKotlin(_indent)
   return `RouterView()`
 }
 
