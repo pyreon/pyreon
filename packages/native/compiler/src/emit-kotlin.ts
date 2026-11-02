@@ -1390,7 +1390,7 @@ function emitKotlinComponent(c: ComponentIR): string {
   for (const d of c.decls) {
     if (d.kind !== 'on-mount') continue
     const saved = seedHandlerLocals(d.body, _kotlinExprInferCtx)
-    const bodyLines = d.body.map((st) => `    ${emitKotlinStatement(st, 4, ctx)}`).join('\n')
+    const bodyLines = emitKotlinStmtLines(d.body, 4, ctx).join('\n')
     _kotlinExprInferCtx.locals = saved
     lines.push(`  LaunchedEffect(Unit) {`)
     lines.push(bodyLines)
@@ -1400,7 +1400,7 @@ function emitKotlinComponent(c: ComponentIR): string {
     if (d.cleanup !== undefined) {
       lines.push(`  DisposableEffect(Unit) {`)
       lines.push(`    onDispose {`)
-      lines.push(d.cleanup.map((st) => `      ${emitKotlinStatement(st, 6, ctx)}`).join('\n'))
+      lines.push(emitKotlinStmtLines(d.cleanup, 6, ctx).join('\n'))
       lines.push(`    }`)
       lines.push(`  }`)
     }
@@ -1696,7 +1696,7 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
     // computed-body emit is the third statement-body path (after handler /
     // function-decl decls). Restored after. Mirror of the Swift side.
     const savedLocals = seedHandlerLocals(d.body, _kotlinExprInferCtx)
-    const bodyLines = d.body.map((s) => `      ${emitKotlinStatement(s, 6, bodyCtx)}`).join('\n')
+    const bodyLines = emitKotlinStmtLines(d.body, 6, bodyCtx).join('\n')
     _kotlinExprInferCtx.locals = savedLocals
     return [`val ${kotlinIdent(d.name)} by remember { derivedStateOf {`, bodyLines, `    } }`].join(
       '\n',
@@ -1886,26 +1886,46 @@ function emitKotlinStmtLines(
   indent: number,
   ctx: KotlinCtx,
 ): string[] {
+  // A local declared in a NESTED list (a loop body, a switch case) is typed as
+  // it is declared, scoped to the list — the callers seed only a body's
+  // top-level locals. Mirror of the Swift side.
+  const saved = _kotlinExprInferCtx.locals
+  _kotlinExprInferCtx.locals = new Map(saved)
+  try {
+    return emitKotlinStmtLinesScoped(stmts, indent, ctx)
+  } finally {
+    _kotlinExprInferCtx.locals = saved
+  }
+}
+
+function emitKotlinStmtLinesScoped(
+  stmts: readonly StatementIR[],
+  indent: number,
+  ctx: KotlinCtx,
+): string[] {
   const pad = ' '.repeat(indent)
   const out: string[] = []
   for (let i = 0; i < stmts.length; i++) {
     const s = stmts[i]!
     const g = planGuard(s, stmts.slice(i + 1), _kotlinExprInferCtx, _activePropsParamName)
     if (g !== null && !kotlinSmartCasts(g.narrowing)) {
-      const exitLines = g.exitBody
-        .map((t) => `${pad}  ${emitKotlinStatement(t, indent + 2, ctx)}`)
-        .join('\n')
+      const exitLines = emitKotlinStmtLines(g.exitBody, indent + 2, ctx).join('\n')
       out.push(
         `${pad}val ${kotlinIdent(g.binder)} = ${kotlinBoundSubject(g.narrowing, indent)} ?: run {\n${exitLines}\n${pad}}`,
       )
       out.push(
         ...withKotlinLocals([[g.binder, g.narrowing.unwrapped]], () =>
-          emitKotlinStmtLines(g.rest, indent, ctx),
+          emitKotlinStmtLinesScoped(g.rest, indent, ctx),
         ),
       )
       return out
     }
     out.push(`${pad}${emitKotlinStatement(s, indent, ctx)}`)
+    if (s.kind === 'let' && !_kotlinExprInferCtx.locals.has(s.name)) {
+      const t = inferType(s.expr, _kotlinExprInferCtx)
+      const typed = t.kind === 'unknown' && s.declaredType !== undefined ? s.declaredType : t
+      if (typeIsOptional(typed)) _kotlinExprInferCtx.locals.set(s.name, typed)
+    }
   }
   return out
 }
@@ -2527,9 +2547,7 @@ function emitKotlinStatement(s: StatementIR, indent: number, ctx: KotlinCtx): st
     case 'while': {
       const pad = ' '.repeat(indent)
       const cond = kotlinCondition(s.cond, (x) => emitKotlinExpr(x, indent))
-      const lines = s.body
-        .map((t) => `${pad}  ${emitKotlinStatement(t, indent + 2, ctx)}`)
-        .join('\n')
+      const lines = emitKotlinStmtLines(s.body, indent + 2, ctx).join('\n')
       // Loop label — Kotlin spells it `outer@ while … { break@outer }`.
       const lbl = s.label !== undefined ? `${kotlinIdent(s.label)}@ ` : ''
       return `${lbl}while (${cond}) {\n${lines}\n${pad}}`
@@ -2537,9 +2555,16 @@ function emitKotlinStatement(s: StatementIR, indent: number, ctx: KotlinCtx): st
     case 'for-of': {
       const pad = ' '.repeat(indent)
       const iter = emitKotlinExpr(s.iterable, indent)
-      const lines = s.body
-        .map((t) => `${pad}  ${emitKotlinStatement(t, indent + 2, ctx)}`)
-        .join('\n')
+      // The item carries the iterated array's element type in the body, so a
+      // narrowing guard over `item.field` can see that it is optional. Mirror
+      // of the Swift for-of.
+      const iterT = inferType(s.iterable, _kotlinExprInferCtx)
+      const hadItem = _kotlinExprInferCtx.locals.has(s.item)
+      const prevItem = _kotlinExprInferCtx.locals.get(s.item)
+      if (iterT.kind === 'array') _kotlinExprInferCtx.locals.set(s.item, iterT.element)
+      const lines = emitKotlinStmtLines(s.body, indent + 2, ctx).join('\n')
+      if (hadItem) _kotlinExprInferCtx.locals.set(s.item, prevItem!)
+      else _kotlinExprInferCtx.locals.delete(s.item)
       const lbl2 = s.label !== undefined ? `${kotlinIdent(s.label)}@ ` : ''
       return `${lbl2}for (${kotlinIdent(s.item)} in ${iter}) {\n${lines}\n${pad}}`
     }
@@ -2594,9 +2619,7 @@ function emitKotlinStatement(s: StatementIR, indent: number, ctx: KotlinCtx): st
       const hadI = _kotlinExprInferCtx.locals.has(s.item)
       const prevI = _kotlinExprInferCtx.locals.get(s.item)
       _kotlinExprInferCtx.locals.set(s.item, { kind: 'number' })
-      const lines = s.body
-        .map((t) => `${pad}  ${emitKotlinStatement(t, indent + 2, ctx)}`)
-        .join('\n')
+      const lines = emitKotlinStmtLines(s.body, indent + 2, ctx).join('\n')
       if (hadI) _kotlinExprInferCtx.locals.set(s.item, prevI!)
       else _kotlinExprInferCtx.locals.delete(s.item)
       // Kotlin `downTo` is inclusive-only — an exclusive descending bound
@@ -2615,9 +2638,7 @@ function emitKotlinStatement(s: StatementIR, indent: number, ctx: KotlinCtx): st
     case 'do-while': {
       const pad = ' '.repeat(indent)
       const cond = kotlinCondition(s.cond, (x) => emitKotlinExpr(x, indent))
-      const lines = s.body
-        .map((t) => `${pad}  ${emitKotlinStatement(t, indent + 2, ctx)}`)
-        .join('\n')
+      const lines = emitKotlinStmtLines(s.body, indent + 2, ctx).join('\n')
       return `do {\n${lines}\n${pad}} while (${cond})`
     }
     case 'switch': {
@@ -2628,9 +2649,7 @@ function emitKotlinStatement(s: StatementIR, indent: number, ctx: KotlinCtx): st
         discT.kind === 'typeRef' && _enumNames.has(discT.name) ? discT.name : undefined
       const caseLines = s.cases
         .map((c) => {
-          const bodyLines = c.body
-            .map((t) => `${pad}    ${emitKotlinStatement(t, indent + 4, ctx)}`)
-            .join('\n')
+          const bodyLines = emitKotlinStmtLines(c.body, indent + 4, ctx).join('\n')
           const body = bodyLines.length > 0 ? `{\n${bodyLines}\n${pad}  }` : '{}'
           if (c.tests.length === 0) return `${pad}  else -> ${body}`
           // ENUM-typed discriminant: emit the case LABELS with the
@@ -2973,7 +2992,7 @@ function emitKotlinIndexedBody(
     }
     const pad = ' '.repeat(indent + 2)
     const savedLocals = seedHandlerLocals(cb.stmts, _kotlinExprInferCtx)
-    const lines = cb.stmts.map((s) => pad + emitKotlinStatement(s, indent + 2, stmtCtx)).join('\n')
+    const lines = emitKotlinStmtLines(cb.stmts, indent + 2, stmtCtx).join('\n')
     _kotlinExprInferCtx.locals = savedLocals
     return `\n${bindIdx === '' ? '' : `${pad}${bindIdx}\n`}${lines}\n${' '.repeat(indent)}`
   }
@@ -3005,8 +3024,12 @@ function emitKotlinPlainCallback(arg: ExprIR, indent: number, label: string): st
 
 /** True when the inferencer proves the operand is a fractional number. */
 function isDoubleOperand(x: ExprIR): boolean {
-  const t = inferType(x, _kotlinExprInferCtx)
-  return t.kind === 'number' && t.float === true
+  // The `type Double = number` alias arrives as a typeRef (a parameter or
+  // local annotated `Double`), and `Double | null` compares the same way:
+  // Kotlin rejects `Double? == Long` exactly as it rejects `Double == Long`.
+  const t = unwrapOptionalType(inferType(x, _kotlinExprInferCtx))
+  if (t.kind === 'number') return t.float === true
+  return t.kind === 'typeRef' && (t.name === 'Double' || t.name === 'Float') && t.args.length === 0
 }
 
 /**
@@ -4644,7 +4667,6 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
                 types.length === e.params.length &&
                 types.every((t) => t !== undefined && t.kind !== 'unknown')
               if (allTyped && e.returnAnnot !== undefined && e.returnAnnot.kind !== 'unknown') {
-                const pad2 = ' '.repeat(indent + 2)
                 const savedAF = seedHandlerLocals(e.stmts, _kotlinExprInferCtx)
                 const pbind: Array<[string, boolean, TypeIR | undefined]> = []
                 e.params.forEach((pn, pi) => {
@@ -4657,9 +4679,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
                   _kotlinExprInferCtx.locals.set(pn, pt)
                 })
                 const fnCtx: KotlinCtx = { synthesizedDataClasses: [], componentName: '' }
-                const lines = e.stmts
-                  .map((st) => `${pad2}${emitKotlinStatement(st, indent + 2, fnCtx)}`)
-                  .join('\n')
+                const lines = emitKotlinStmtLines(e.stmts, indent + 2, fnCtx).join('\n')
                 for (const [pn, had, prev] of pbind.reverse()) {
                   if (had) _kotlinExprInferCtx.locals.set(pn, prev!)
                   else _kotlinExprInferCtx.locals.delete(pn)
@@ -4675,12 +4695,9 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
               )
               return `{ ${ktLambdaParams()} -> Unit }`
             }
-            const pad = ' '.repeat(indent + 2)
             const saved = seedHandlerLocals(e.stmts, _kotlinExprInferCtx)
             const stmtCtx: KotlinCtx = { synthesizedDataClasses: [], componentName: '' }
-            const lines = e.stmts
-              .map((st) => pad + emitKotlinStatement(st, indent + 2, stmtCtx))
-              .join('\n')
+            const lines = emitKotlinStmtLines(e.stmts, indent + 2, stmtCtx).join('\n')
             _kotlinExprInferCtx.locals = saved
             const params = e.params.length > 0 ? `${ktLambdaParams()} ->` : ''
             return `{ ${params}\n${lines}\n${' '.repeat(indent)}}`
@@ -5114,7 +5131,7 @@ function kotlinEmitContext(indent: number): KotlinEmitContext {
                   : { discardReturnValue: control.discardReturnValue }),
               }
         try {
-          return stmts.map((st) => emitKotlinStatement(st, at, callbackCtx))
+          return emitKotlinStmtLines(stmts, at, callbackCtx).map((l) => l.slice(at))
         } finally {
           _kotlinExprInferCtx.locals = saved
         }

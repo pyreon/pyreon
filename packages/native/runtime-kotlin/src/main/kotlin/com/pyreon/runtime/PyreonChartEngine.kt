@@ -1178,7 +1178,7 @@ fun logTicks(d: Domain, r0: Double, r1: Double): List<Tick> {
 fun timeTicks(d: Domain, r0: Double, r1: Double, target: Double, format: ((Double) -> String)? = null): List<Tick> {
     val span = d.max - d.min
     val out: MutableList<Tick> = mutableListOf()
-    if (span <= 0.0 || target <= 0L) {
+    if (span <= 0.0 || target <= 0.0) {
       return out
     }
     val steps = listOf(1000.0, 5000.0, 15000.0, 30000.0, MINUTE, MINUTE * 5.0, MINUTE * 15.0, MINUTE * 30.0, HOUR, HOUR * 3.0, HOUR * 6.0, HOUR * 12.0, DAY, DAY * 7.0, DAY * 30.0, DAY * 90.0, DAY * 365.0)
@@ -3673,8 +3673,11 @@ fun renderChartIn(raw: ChartSpec, measure: (String, Double) -> Double, l: PlotLa
         val y2 = scaleLinear(yDomain, plot.y + plot.h, plot.y, yTo)
         val top = if (y1 < y2) y1 else y2
         out.add(PyreonDrawCmd(kind = "rect", rect = PyreonChartRect(x = plot.x, y = top, w = plot.w, h = (Math.abs(y2 - y1)).toDouble()), fill = withAlpha((a.color ?: t.axis), 0.12)))
-        if (a.label != null) {
-          out.add(PyreonDrawCmd(kind = "text", fill = (a.color ?: t.label), text = a.label, at = PyreonChartPt(x = plot.x + plot.w - 4.0, y = top + 4.0), size = t.fontSize, align = "end", baseline = "top"))
+        when (val label = a.label) {
+          null -> {}
+          else -> {
+            out.add(PyreonDrawCmd(kind = "text", fill = (a.color ?: t.label), text = label, at = PyreonChartPt(x = plot.x + plot.w - 4.0, y = top + 4.0), size = t.fontSize, align = "end", baseline = "top"))
+          }
         }
       }
       val xFrom = (a.xFrom ?: 0.0)
@@ -3685,8 +3688,11 @@ fun renderChartIn(raw: ChartSpec, measure: (String, Double) -> Double, l: PlotLa
         val x2 = span.y
         val left = if (x1 < x2) x1 else x2
         out.add(PyreonDrawCmd(kind = "rect", rect = PyreonChartRect(x = left, y = plot.y, w = (Math.abs(x2 - x1)).toDouble(), h = plot.h), fill = withAlpha((a.color ?: t.axis), 0.12)))
-        if (a.label != null) {
-          out.add(PyreonDrawCmd(kind = "text", fill = (a.color ?: t.label), text = a.label, at = PyreonChartPt(x = left + 4.0, y = plot.y + 4.0), size = t.fontSize, align = "start", baseline = "top"))
+        when (val label = a.label) {
+          null -> {}
+          else -> {
+            out.add(PyreonDrawCmd(kind = "text", fill = (a.color ?: t.label), text = label, at = PyreonChartPt(x = left + 4.0, y = plot.y + 4.0), size = t.fontSize, align = "start", baseline = "top"))
+          }
         }
       }
     }
@@ -8714,7 +8720,7 @@ fun layoutSingleAxis(axis: SingleAxisSpec, points: List<SingleAxisPoint>, box: P
     } else {
       var index = 0L
       for (v in niceTicks(lo, hi, 6L)) {
-        ticks.add(SingleAxisTick(x = px(v), label = (v).toString(), index = index))
+        ticks.add(SingleAxisTick(x = px(v), label = pyreonNumString(v), index = index))
         index += 1
       }
     }
@@ -11326,3 +11332,6 @@ fun binValues(values: List<Double>, count: Double): List<Bin> {
   }
 
 fun binLabel(b: Bin): String = "${plain(b.x0)}–${plain(b.x1)}"
+
+private fun pyreonNumString(v: Double): String =
+    if (v == Math.rint(v) && Math.abs(v) < 1e15) v.toLong().toString() else v.toString()
