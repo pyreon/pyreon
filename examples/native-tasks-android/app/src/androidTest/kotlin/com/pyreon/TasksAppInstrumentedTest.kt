@@ -647,17 +647,23 @@ class TasksAppInstrumentedTest {
 
         waitForTagText("dates-day-value", "2026-10-22")
         composeRule.onNodeWithTag("dates-day").performClick()
-        // A day cell is clickable. Newer Material3 date pickers hide the digit from
-        // the semantics tree (invisibleToUser) and name the cell by its full date
-        // ("Friday, October 23, 2026") instead, so match either spelling.
-        val day23 = (hasText("23") or hasContentDescription("October 23, 2026", substring = true)) and hasClickAction()
+        // The picker is a Dialog — its own window. Wait for its title through the
+        // Compose rule, which searches every window's semantics root, with the same
+        // generous budget the Modal test uses (a Dialog's window can register well
+        // after the tap on a loaded emulator).
+        composeRule.waitUntil(timeoutMillis = 20_000) {
+            composeRule.onAllNodes(hasText("Select date"), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
+        }
+        // Material 3 labels a day cell with its full date ("Friday, October 23,
+        // 2026") and clears the bare digit from semantics (ClearAndSetSemantics),
+        // so a "23" text match finds nothing.
+        val day23 = hasText("October 23, 2026", substring = true) and hasClickAction()
         try {
-            composeRule.waitUntil(timeoutMillis = 5_000) { composeRule.onAllNodes(day23).fetchSemanticsNodes().isNotEmpty() }
+            composeRule.waitUntil(timeoutMillis = 10_000) { composeRule.onAllNodes(day23).fetchSemanticsNodes().isNotEmpty() }
         } catch (e: Throwable) {
-            // The dialog is its own window, so there are TWO roots: print every one (onRoot() alone throws on two).
             val roots = composeRule.onAllNodes(isRoot(), useUnmergedTree = true)
             val dump = (0 until roots.fetchSemanticsNodes().size).joinToString("\n----\n") { roots[it].printToString() }
-            throw AssertionError("the date picker dialog did not open:\n$dump", e)
+            throw AssertionError("the date picker opened but has no day-23 cell:\n$dump", e)
         }
         composeRule.onAllNodes(day23).onFirst().performClick()
         composeRule.onNodeWithText("OK").performClick()
@@ -674,7 +680,7 @@ class TasksAppInstrumentedTest {
             assertTrue("the empty time field does not show its placeholder", it.isNotEmpty())
         }
         composeRule.onNodeWithTag("dates-time").performClick()
-        composeRule.waitUntil(timeoutMillis = 5_000) { composeRule.onAllNodes(hasText("OK")).fetchSemanticsNodes().isNotEmpty() }
+        composeRule.waitUntil(timeoutMillis = 20_000) { composeRule.onAllNodes(hasText("OK")).fetchSemanticsNodes().isNotEmpty() }
         composeRule.onNodeWithText("OK").performClick()
         composeRule.waitUntil(timeoutMillis = 5_000) {
             Regex("^\\d{2}:\\d{2}$").matches(textOf("dates-time-value"))
