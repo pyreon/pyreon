@@ -1,6 +1,6 @@
 import { signal } from '@pyreon/reactivity'
 import {
-  Stack, Inline, Layer, Scroll, Text, Image, Video, Audio, Transition, Link, Modal, Press, WebView, Field,
+  Stack, Inline, Layer, Scroll, Text, Image, Video, Audio, Transition, Link, Modal, Press, WebView, Field, Gesture,
 } from '@pyreon/primitives'
 
 export function ProbeApp() {
@@ -9,6 +9,9 @@ export function ProbeApp() {
   const day = signal('2026-10-22')
   const notes = signal('')
   const rows = signal(4)
+  const zoom = signal(1)
+  const dx = signal(0)
+  const turn = signal(0)
   return (
     <Stack margin={4} marginX={2} marginY={1} padding={2} background="primary" radius="md">
       <Inline margin={2} gap={2}>
@@ -36,6 +39,16 @@ export function ProbeApp() {
       <Field kind="date" value={day} onChangeText={(v) => day.set(v)} min="2026-01-01" max="2026-12-31" data-testid="probe-day" />
       <Field kind="time" value={day()} onChangeText={(v) => day.set(v)} placeholder="Time" />
       <Field kind="datetime" value={day} onChangeText={(v) => day.set(v)} disabled />
+      <Gesture
+        data-testid="probe-gesture"
+        onPan={(e) => dx.set(e.dx)}
+        onPinch={(e) => { zoom.set(e.scale); if (e.phase === 'end') open.set(false) }}
+        onRotate={(e) => turn.set(e.degrees)}
+      >
+        <Layer translateX={dx()} translateY={-4} scale={zoom()} rotate={turn()}>
+          <Text rotate={15}>transformed</Text>
+        </Layer>
+      </Gesture>
       <Field value={notes} onChangeText={(v) => notes.set(v)} kind="email" onSubmit={() => open.set(true)} />
       <Field multiline value={notes} onChangeText={(v) => notes.set(v)} placeholder="Notes" data-testid="probe-notes" />
       <Field multiline lines={rows()} value={notes()} onChangeText={(v) => notes.set(v)} />

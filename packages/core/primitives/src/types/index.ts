@@ -15,8 +15,10 @@ export type {
   Justify,
   Radius,
   Space,
+  TransformProps,
   ValueOrSignal,
 } from './shared'
+export type { GesturePhase, GestureProps, PanEvent, PinchEvent, RotateEvent } from './gesture'
 
 export type { InlineProps, LayerProps, ScrollProps, SpacerProps, StackProps } from './layout'
 export type { HeadingProps, IconProps, ImageProps, TextProps } from './content'

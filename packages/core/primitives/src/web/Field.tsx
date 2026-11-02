@@ -113,7 +113,7 @@ export const Field = (props: FieldProps): VNode => {
   // unwrapped thunk via the getter pattern.
   const attrs: Record<string, unknown> = {
     ...collectPassthroughAttrs(props as unknown as Record<string, unknown>),
-    style: mergePassthroughStyle(style, props.style),
+    style: mergePassthroughStyle(style, props),
     value: getValue,
     onInput,
   }

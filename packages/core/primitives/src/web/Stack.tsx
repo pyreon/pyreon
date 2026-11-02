@@ -67,7 +67,7 @@ export const Stack = (props: StackProps): VNode => {
     'div',
     {
       ...collectPassthroughAttrs(props as unknown as Record<string, unknown>),
-      style: mergePassthroughStyle(computed, props.style),
+      style: mergePassthroughStyle(computed, props),
     },
     props.children,
   )

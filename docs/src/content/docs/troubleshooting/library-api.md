@@ -169,3 +169,9 @@ A 27-package audit of `packages/fundamentals` (PRs #3642–#3653) found the same
 `toast`'s `duration: Infinity` dismissed after ~1ms, and `query`'s uncapped exponential reconnect backoff passed the limit and turned into a reconnect storm. **Rule: cap and jitter every computed delay; treat a non-finite duration as "never", not as a number.**
 
 ---
+
+### [FIXED, 2026-10] A cross-plugin fact a consumer can IGNORE is a silent drop — make it OPT-IN per caller, and have the source refuse a caller that did not opt in
+
+(the `@pyreon/http` client-middleware instance). `createHttp({ use: [...] })` was compile-time metadata only, so an endpoint call on a `use: [bearer(...)]` client lowered to a native request with NO `Authorization` header — the request source resolved URL, verb, headers and body and simply never read `use`. Adding a `middleware` field to `ResolvedRequest` would not have closed the class: `useFetch`, `useQuery` and `useStream` each build their own request, and any of them that did not know the new field would drop it just as silently. **Fix shape: the caller DECLARES it emits the field (`RequestOptions.middleware: true`), and the source REFUSES — warns by name, stays web — a caller that did not**, so `useStream` (which does not apply middleware) gets a named warning instead of a stream without auth. Same rule inside the array: an entry that cannot lower (`refresh`, `dedupe`, a custom function, a `backoff` callback) keeps the WHOLE client web rather than being dropped, because a request without one of its middleware is a different request. Parity with the web middleware is proven by execution (`native-http-middleware-parity.test.ts`: the web chain and both native runtimes, driven by the compiler's own emitted list, on 28 shared scenarios). Reference: `packages/fundamentals/http/src/native-plugin/{middleware,endpoint}.ts`, `PyreonHttpPipeline` in `PyreonHttp.{swift,kt}`.
+
+---
