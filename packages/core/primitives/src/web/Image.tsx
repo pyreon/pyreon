@@ -46,6 +46,6 @@ export const Image = (props: ImageProps): VNode => {
     ...collectPassthroughAttrs(props as unknown as Record<string, unknown>),
     src,
     alt: props.alt,
-    style: mergePassthroughStyle(style, props.style),
+    style: mergePassthroughStyle(style, props),
   })
 }

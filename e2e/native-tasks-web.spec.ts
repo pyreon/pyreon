@@ -231,6 +231,28 @@ test.describe('native-tasks-web — the shared source renders on the third targe
     await expect(page.getByTestId('nd-status')).toHaveText('closed')
   })
 
+  // #3979, web third: the SAME expected strings as the iOS / Android device tests. The web encoder is the
+  // oracle the native writers are proven against byte for byte; this proves the oracle itself reaches a real
+  // server through the shared source — `fileFromUri` + a `multipart` mutation, and a file as a raw PUT body.
+  test('uploads: a multipart form and a raw file body reach the server as sent', async ({ page }) => {
+    await page.goto('/')
+    await page.getByTestId('login-username').fill('ada')
+    await page.getByTestId('login-submit').click()
+    await expect(page.getByTestId('tasks-page')).toBeVisible()
+    await page.getByTestId('tasks-requests').click()
+    await expect(page.getByTestId('requests-page')).toBeVisible()
+
+    await page.getByTestId('req-draft').fill('Ada L')
+    await page.getByTestId('req-upload').click()
+    await expect(page.getByTestId('req-upload-parts')).toHaveText(
+      'Parts: note=note.txt|text/plain|Hello Pyreon;caption=Ada L;n=1;n=2',
+    )
+    await expect(page.getByTestId('req-upload-type')).toHaveText('Upload type: multipart/form-data')
+
+    await page.getByTestId('req-raw').click()
+    await expect(page.getByTestId('req-raw-result')).toHaveText('Raw: PUT text/plain Hello Pyreon')
+  })
+
   test('url-state writes through to the URL', async ({ page }) => {
     // The one behaviour that is genuinely web-specific: on native the router
     // holds the query, on web it must reach `location.search`. A lowering that

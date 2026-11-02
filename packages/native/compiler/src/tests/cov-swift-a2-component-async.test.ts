@@ -41,7 +41,8 @@ export function App() {
 
   it('a VERB, HEADERS or a BODY — any one of the three — routes through PyreonHttp', () => {
     expect(out).toContain(
-      'PyreonHttpRequest(method: .post, url: "https://x/2", headers: ["X-A": "b"], body: Data("{\\"n\\":1}".utf8))',
+      // A string body with no type gets the Fetch standard's default, as the web sends it.
+      'PyreonHttpRequest(method: .post, url: "https://x/2", headers: ["X-A": "b", "content-type": "text/plain;charset=UTF-8"], body: Data("{\\"n\\":1}".utf8))',
     )
     // a verb alone: no headers arm, no body arm
     expect(out).toContain('PyreonHttpRequest(method: .put, url: "https://x/3")')
@@ -89,7 +90,7 @@ export function App(props: { uid: number }) {
   })
 
   it('a query carrying a verb/headers/body routes through PyreonHttp with the status guard', () => {
-    expect(out).toContain('PyreonHttpRequest(method: .post, url: "https://x/m", headers: ["X-E": "f"], body: Data("{}".utf8))')
+    expect(out).toContain('PyreonHttpRequest(method: .post, url: "https://x/m", headers: ["X-E": "f", "content-type": "text/plain;charset=UTF-8"], body: Data("{}".utf8))')
     expect(out).toContain('qm.resolve(try __response.decode(U.self))')
   })
 

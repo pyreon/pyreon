@@ -840,13 +840,13 @@ fun groupDigits(s: String): String {
     val neg = s.length.toLong() > 0L && s[0].toString() == "-"
     val body = if (neg) s.drop(1) else s
     val dot = body.indexOf(".").toLong()
-    val whole = if (dot < 0L) body else body.drop(0).take(maxOf(0, ((dot).toInt()) - (0)))
-    val frac = if (dot < 0L) "" else body.drop((dot).toInt())
+    val whole = if (dot < 0L) body else pyreonSlice(body, (0L).toLong(), (dot).toLong())
+    val frac = if (dot < 0L) "" else pyreonSlice(body, (dot).toLong())
     var out = ""
     var end = whole.length.toLong()
     while (end > 0L) {
       val start = if (end - 3L > 0L) end - 3L else 0L
-      val chunk = whole.drop((start).toInt()).take(maxOf(0, ((end).toInt()) - ((start).toInt())))
+      val chunk = pyreonSlice(whole, (start).toLong(), (end).toLong())
       out = if (out == "") chunk else "${chunk},${out}"
       end = start
     }
@@ -1819,7 +1819,7 @@ fun truncateLabel(text: String, width: Double, size: Double, measure: (String, D
       if (j == 0L) {
         var w = 0.0
         while (sub < line.length.toLong() && w < content) {
-          w = w + measure(line.drop((sub).toInt()).take(maxOf(0, ((sub + 1L).toInt()) - ((sub).toInt()))), size)
+          w = w + measure(pyreonSlice(line, (sub).toLong(), (sub + 1L).toLong()), size)
           sub = sub + 1L
         }
       } else {
@@ -1838,7 +1838,7 @@ fun truncateLabel(text: String, width: Double, size: Double, measure: (String, D
           }
         }
       }
-      line = line.drop(0).take(maxOf(0, ((sub).toInt()) - (0)))
+      line = pyreonSlice(line, (0L).toLong(), (sub).toLong())
       lineW = measure(line, size)
     }
     return line
@@ -2119,7 +2119,7 @@ fun renderRadar(axes: List<RadarAxis>, series: List<RadarSeries>, box: PyreonCha
 fun withAlpha(color: String, alpha: Double): String {
     val a = Math.max(0.0, Math.min(1.0, alpha))
     if (color.startsWith("rgb(") && color.endsWith(")")) {
-      return "rgba(${color.drop(4).take(maxOf(0, ((color.length.toLong() - 1L).toInt()) - (4)))}, ${pyreonNumberString(a)})"
+      return "rgba(${pyreonSlice(color, (4L).toLong(), (color.length.toLong() - 1L).toLong())}, ${pyreonNumberString(a)})"
     }
     if (!color.startsWith("#")) {
       return color

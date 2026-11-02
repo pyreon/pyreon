@@ -1,6 +1,6 @@
 import { signal } from '@pyreon/reactivity'
 import {
-  Stack, Inline, Layer, Scroll, Text, Image, Video, Audio, Transition, Link, Modal, Press, Field,
+  Stack, Inline, Layer, Scroll, Text, Image, Video, Audio, Transition, Link, Modal, Press, WebView, Field, Gesture,
 } from '@pyreon/primitives'
 
 export function ProbeApp() {
@@ -8,12 +8,19 @@ export function ProbeApp() {
   const shown = signal(true)
   const notes = signal('')
   const rows = signal(4)
+  const zoom = signal(1)
+  const dx = signal(0)
+  const turn = signal(0)
   return (
     <Stack margin={4} marginX={2} marginY={1} padding={2} background="primary" radius="md">
       <Inline margin={2} gap={2}>
         <Text color="primary" size="lg" weight="bold">hello</Text>
+        <WebView html="<p>row</p>" grow data-testid="probe-web-row" />
       </Inline>
+      <WebView src="probe.html" data-testid="probe-web" />
+      <WebView src="probe.html" grow padding={1} data-testid="probe-web-grow" />
       <Layer margin={1}>
+        <WebView html="<p>layer</p>" grow />
         <Image src="https://x.test/a.png" alt="remote cover" fit="cover" />
       </Layer>
       <Scroll margin={1} axis="horizontal">
@@ -28,6 +35,16 @@ export function ProbeApp() {
       </Transition>
       <Link to="/next" data-testid="probe-link" accessibilityLabel="Go next">next</Link>
       <Press onPress={() => open.set(true)} disabled><Text>tap</Text></Press>
+      <Gesture
+        data-testid="probe-gesture"
+        onPan={(e) => dx.set(e.dx)}
+        onPinch={(e) => { zoom.set(e.scale); if (e.phase === 'end') open.set(false) }}
+        onRotate={(e) => turn.set(e.degrees)}
+      >
+        <Layer translateX={dx()} translateY={-4} scale={zoom()} rotate={turn()}>
+          <Text rotate={15}>transformed</Text>
+        </Layer>
+      </Gesture>
       <Field value={notes} onChangeText={(v) => notes.set(v)} kind="email" onSubmit={() => open.set(true)} />
       <Field multiline value={notes} onChangeText={(v) => notes.set(v)} placeholder="Notes" data-testid="probe-notes" />
       <Field multiline lines={rows()} value={notes()} onChangeText={(v) => notes.set(v)} />

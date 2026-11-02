@@ -13,7 +13,7 @@ Multi-dimensional style composition for Pyreon components — the styling engine
 
 **Tier:** Shared — the same source runs on web, iOS and Android
 
-rocketstyle-over-primitive chains lower (static cascade + one dynamic dimension) through its package-owned native plugin
+rocketstyle-over-primitive chains lower (static cascade + any number of dynamic dimensions) through its package-owned native plugin
 
 See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multiplatform libraries](/docs/multiplatform-libraries) for every package's tier.
 

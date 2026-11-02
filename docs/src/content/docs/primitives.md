@@ -1,6 +1,6 @@
 ---
 title: '@pyreon/primitives'
-description: 'The canonical multi-platform UI vocabulary — 17 primitives plus Transition, TransitionGroup, WebView and per-platform escape hatches, each compiled to DOM, SwiftUI and Compose from one source.'
+description: 'The canonical multi-platform UI vocabulary — 18 primitives plus Transition, TransitionGroup, WebView and per-platform escape hatches, each compiled to DOM, SwiftUI and Compose from one source.'
 ---
 
 # @pyreon/primitives
@@ -23,13 +23,13 @@ bun add @pyreon/primitives @pyreon/core @pyreon/reactivity @pyreon/runtime-dom
 | --- | --- | --- |
 | **Layout** | [`Stack`](#stack), [`Inline`](#inline), [`Layer`](#layer), [`Scroll`](#scroll), [`Spacer`](#spacer) | dedicated emitters |
 | **Content** | [`Text`](#text), [`Heading`](#heading), [`Image`](#image), [`Audio`](#audio), [`Video`](#video), [`Icon`](#icon) | dedicated emitters |
-| **Interaction** | [`Button`](#button), [`Press`](#press), [`Link`](#link) | dedicated emitters |
+| **Interaction** | [`Button`](#button), [`Press`](#press), [`Link`](#link), [`Gesture`](#gesture) | dedicated emitters |
 | **Input** | [`Field`](#field), [`Toggle`](#toggle), [`Modal`](#modal) | dedicated emitters |
 | **Animation** | [`Transition`](#transition), [`TransitionGroup`](#transitiongroup) | dedicated emitters |
 | **Web content** | [`WebView`](#webview) | native web host |
 | **Escape hatches** | [`Web`, `NativeIOS`, `NativeAndroid`](#escape-hatches) | per-target branch |
 
-The first four groups are the **17 canonical primitives**, the UI vocabulary
+The first four groups are the **18 canonical primitives**, the UI vocabulary
 the compiler treats as its own. The compiler's list lives in
 `packages/native/compiler/src/canonical-primitives.ts` (`CANONICAL_PRIMITIVES`),
 and a test checks that it matches what this package exports. The animation
@@ -71,6 +71,23 @@ Every primitive except `WebView` accepts these, and each target converts them:
 
 Prefer the three `accessibility*` props over raw `aria-*`, because only they
 reach the native accessibility trees.
+
+### Transforms
+
+Every primitive except `WebView` also accepts four transform props. They move,
+scale and rotate the rendered element about its centre without affecting
+layout, so siblings do not reflow. Values can be signal reads and update in
+place, which is how [`Gesture`](#gesture) values drive content.
+
+| Prop | Web | iOS | Android |
+| --- | --- | --- | --- |
+| `translateX`, `translateY` | `transform: translate(…px, …px)` | `.offset(x:y:)` | `Modifier.offset(x, y)` |
+| `scale` | `transform: scale(…)` | `.scaleEffect(…)` | `Modifier.scale(…)` |
+| `rotate` (degrees, clockwise) | `transform: rotate(…deg)` | `.rotationEffect(.degrees(…))` | `Modifier.rotate(…)` |
+
+The order is the same on every target: rotate, then scale, then translate. A
+translation is therefore not multiplied by the scale. On iOS a value read from
+an integer signal is converted to `CGFloat`/`Double` for you.
 
 ### Signals
 
@@ -533,6 +550,72 @@ export function SwipeCard() {
   `Modifier.clickable`) plus `detectHorizontalDragGestures` for the swipes
   (same 40dp rule).
 
+### Gesture
+
+Reports continuous gestures (pan, pinch and rotate) so their values can drive
+content. Discrete gestures (tap, long press, swipe) belong on `Press`.
+
+| Prop | Type |
+| --- | --- |
+| `onPan` | `(e: { dx, dy, x, y, phase }) => void` |
+| `onPinch` | `(e: { scale, centerX, centerY, phase }) => void` |
+| `onRotate` | `(e: { degrees, phase }) => void` |
+
+Every value is cumulative since the gesture began: `dx`/`dy` are the
+translation so far, `scale` is `1` until the fingers move apart, and `degrees`
+is positive clockwise. `x`/`y` and `centerX`/`centerY` are in the region's own
+coordinates. Each gesture delivers one `'start'`, any number of `'change'`,
+then one `'end'`, including when the system cancels it. Pinch and rotate begin
+only once two pointers are down.
+
+```tsx
+// @check
+import { Gesture, Stack, Text } from '@pyreon/primitives'
+import { signal } from '@pyreon/reactivity'
+
+export function FloorPlan() {
+  const zoom = signal(1.0)
+  const baseZoom = signal(1.0)
+  const x = signal(0.0)
+  const baseX = signal(0.0)
+  return (
+    <Gesture
+      onPinch={(e) => {
+        zoom.set(baseZoom() * e.scale)
+        if (e.phase === 'end') baseZoom.set(zoom())
+      }}
+      onPan={(e) => {
+        x.set(baseX() + e.dx)
+        if (e.phase === 'end') baseX.set(x())
+      }}
+    >
+      <Stack translateX={x()} scale={zoom()} padding={4} background="muted">
+        <Text>Drag or pinch</Text>
+      </Stack>
+    </Gesture>
+  )
+}
+```
+
+Put the transform on a child, as above, not on the `Gesture` itself. The values
+are measured in the region's own coordinates, so transforming the region feeds
+each update back into the next one (the compiler warns about this).
+
+- **Web**: a `<div style="touch-action: none">` driven by pointer events.
+  Pointer capture is taken only once a gesture passes the 10px slop, so a
+  button inside the region still receives its click.
+- **iOS**: `PyreonGesture { … }`: a simultaneous `DragGesture`,
+  `MagnifyGesture` and `RotateGesture`. Only the gestures you pass a handler
+  for take part.
+- **Android**: `PyreonGesture { … }`: one `pointerInput` loop over
+  `calculatePan`, `calculateZoom` and `calculateRotation`, which consumes the
+  pointer only past the platform touch slop (so a `verticalScroll` around it
+  does not also scroll).
+
+During a two-finger gesture the pan follows the centre point of the fingers on
+web and Android, and the first finger on iOS, because SwiftUI's `DragGesture`
+tracks a single touch.
+
 ### Link
 
 Navigation to another route.
@@ -781,6 +864,7 @@ page sends back.
 | `data` | any JSON value, re-sent when it changes |
 | `onMessage` | `(message: string) => void` |
 | `domStorage` | `boolean`, default `true`; native only, literal value |
+| `grow` | `boolean`, default `false`; literal value on native |
 
 ```tsx
 // @check
@@ -811,6 +895,41 @@ export function ChartHost() {
   WebKit cannot switch Web Storage off). Storage is per origin; every page
   loaded with inline `html` shares the app's `file:///android_asset/` origin on
   Android, so give a page that needs isolated storage a `src`.
+- **Sizing**: without `grow` a web view is what an `<iframe>` with no CSS is,
+  on every target: as wide as its parent and **150 high**. With `grow` it takes
+  the free space of its parent `<Stack>` (height) or `<Inline>` (width) after
+  the siblings, and several growing views share it equally. Outside a stack it
+  fills its parent. Inside a `<Scroll>` there is no free space to take, so it
+  stays 150 high (the compiler warns and drops the prop). On the web, a root
+  `<Stack>` only has free height when the page gives it one (`height: 100vh`),
+  which a native screen always does.
+
+  ```tsx
+  <Stack>
+    <Text>Checkout</Text>
+    <WebView src="https://shop.example/checkout" grow />
+  </Stack>
+  ```
+
+- **Browser chrome**: what a hosted page asks of the browser around it works on
+  iOS and Android, not only on the web:
+
+  | page uses | iOS | Android |
+  | --- | --- | --- |
+  | `<input type="file">` | the system chooser | the document picker; the camera for `capture` (needs the scaffold's FileProvider) |
+  | `alert` / `confirm` / `prompt` | a native alert | a native dialog |
+  | `navigator.geolocation` | WebKit's per-site prompt | a per-site prompt, then the runtime permission |
+  | `getUserMedia` | WebKit's per-site prompt | a per-site prompt, then the runtime permission |
+  | `window.open`, `target="_blank"` | opened in the system browser | opened in the system browser |
+
+  Location, camera and microphone need the app to declare them: an Info.plist
+  usage string (`NSLocationWhenInUseUsageDescription`, `NSCameraUsageDescription`,
+  `NSMicrophoneUsageDescription`) and the AndroidManifest permission
+  (`ACCESS_FINE_LOCATION`, `CAMERA`, `RECORD_AUDIO`). The `create-multiplatform`
+  scaffold lists them commented out; uncomment the ones your pages use. An
+  undeclared one is refused, and Android logs which entry to add. Only
+  `http(s)`, `mailto`, `tel` and `sms` links are handed to the system, so a
+  hosted page cannot launch other apps through a custom scheme.
 - Inside the page, `connectWebHost()` from this package reads the data
   (`window.__pyreonData`, updated on each `pyreondata` event) and sends messages
   back. See the [multiplatform guide](/docs/multiplatform) for the full pattern.

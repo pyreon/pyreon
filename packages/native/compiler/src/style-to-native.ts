@@ -26,12 +26,15 @@
 //     reactive mechanism the canonical-prop ternary emit already ships. This is
 //     the make-or-break "dynamic resolution → reactive emit" of the native-UI
 //     plan, proven on the simplest case (a primitive's own inline style) before
-//     it is layered onto rocketstyle's dimension props.
+//     it is layered onto rocketstyle's dimension props. A NESTED ternary whose
+//     every leaf is an object literal lowers the same way, one nested
+//     conditional value per property — the shape a rocketstyle component with
+//     several dynamic dimensions resolves to.
 //
 // Out of the DYNAMIC slice (v1, warned not dropped-silently): properties present
-// in only ONE branch (asymmetric), and a padding box that is not a single
-// all-sides value in both branches. Non-ternary dynamic (`style={obj}`,
-// `cond && {A}`, nested ternary) warns + drops.
+// in only SOME branches (asymmetric), and a padding box that is not a single
+// all-sides value in every branch. Non-ternary dynamic (`style={obj}`,
+// `cond && {A}`) warns + drops.
 // ============================================================================
 
 import type { ExprIR } from './types'
@@ -230,7 +233,7 @@ export interface TextTypography {
    * Held as pre-resolved per-branch native color expressions so the emitter can
    * build `color = if (cond) A else B` without re-parsing.
    */
-  conditionalColor?: { cond: ExprIR; whenTrue: string; whenFalse: string }
+  conditionalColor?: ConditionalColor
   /**
    * Letter spacing in points/sp (an absolute value — `0.5` or `'0.5px'`). Maps
    * cleanly 1:1: SwiftUI `.tracking(pt)` and Compose `letterSpacing = pt.sp`
@@ -241,9 +244,26 @@ export interface TextTypography {
   letterSpacing?: number
 }
 
+/**
+ * A reactive Text colour: a decision tree whose leaves are native colour expressions. One level is the common
+ * `cond ? A : B`; deeper trees come from a nested style ternary — what a rocketstyle component with two or more
+ * dynamic dimensions resolves to.
+ */
+export interface ConditionalColor {
+  cond: ExprIR
+  whenTrue: string | ConditionalColor
+  whenFalse: string | ConditionalColor
+}
+
 const TYPOGRAPHY_KEYS = new Set([
   'fontSize', 'fontWeight', 'color', 'textAlign', 'fontStyle', 'letterSpacing',
 ])
+
+/** A nested branch arrives parenthesized (`a ? (b ? {…} : {…}) : {…}`); the parens carry no meaning here. */
+function unparen(e: ExprIR): ExprIR {
+  while (e.kind === 'paren') e = e.inner
+  return e
+}
 
 /** The literal `color` of an object-literal style branch, if it has one. */
 function literalColorOf(e: ExprIR): string | undefined {
@@ -256,14 +276,27 @@ function literalColorOf(e: ExprIR): string | undefined {
   return undefined
 }
 
-/** The same ternary with `color` removed from both branches, so the container
- *  path still lowers whatever else each branch carries. */
-function stripColorFromTernary(t: Extract<ExprIR, { kind: 'ternary' }>): ExprIR {
-  const strip = (e: ExprIR): ExprIR =>
-    e.kind === 'object'
-      ? { kind: 'object', fields: e.fields.filter((f) => f.name !== 'color'), spreads: e.spreads ?? [] }
-      : e
-  return { ...t, then: strip(t.then), otherwise: strip(t.otherwise) }
+/** A style decision tree's colour as native Kotlin colour expressions, or undefined unless EVERY leaf has a
+ *  literal colour that parses (a colour on only some leaves has no value to fall back to). */
+function kotlinColorTree(node: ExprIR): string | ConditionalColor | undefined {
+  const e = unparen(node)
+  if (e.kind === 'ternary') {
+    const whenTrue = kotlinColorTree(e.then)
+    const whenFalse = kotlinColorTree(e.otherwise)
+    return whenTrue !== undefined && whenFalse !== undefined ? { cond: e.cond, whenTrue, whenFalse } : undefined
+  }
+  const c = literalColorOf(e)
+  return c === undefined ? undefined : (parseCssColor(c, 'kotlin') ?? undefined)
+}
+
+/** The same decision tree with `color` removed from every leaf, so the container
+ *  path still lowers whatever else each leaf carries. */
+function stripColorFromTernary(node: ExprIR): ExprIR {
+  const t = unparen(node)
+  if (t.kind === 'ternary') return { ...t, then: stripColorFromTernary(t.then), otherwise: stripColorFromTernary(t.otherwise) }
+  return t.kind === 'object'
+    ? { kind: 'object', fields: t.fields.filter((f) => f.name !== 'color'), spreads: t.spreads ?? [] }
+    : t
 }
 
 /** Split a Text's style object into typography leaves + the remaining style
@@ -279,18 +312,13 @@ export function extractTextTypography(
   // Swift keeps its existing behaviour byte-for-byte (its `.foregroundColor`
   // works on any View, so the style path already handles the ternary).
   if (target === 'kotlin' && styleValue.kind === 'ternary') {
-    const a = literalColorOf(styleValue.then)
-    const b = literalColorOf(styleValue.otherwise)
-    if (a !== undefined && b !== undefined) {
-      const ka = parseCssColor(a, 'kotlin')
-      const kb = parseCssColor(b, 'kotlin')
-      if (ka && kb) {
-        return {
-          typo: { conditionalColor: { cond: styleValue.cond, whenTrue: ka, whenFalse: kb } },
-          // The colour is consumed here; hand the container path the REST of
-          // each branch so padding/background on the same ternary still lower.
-          rest: stripColorFromTernary(styleValue),
-        }
+    const tree = kotlinColorTree(styleValue)
+    if (tree !== undefined && typeof tree !== 'string') {
+      return {
+        typo: { conditionalColor: tree },
+        // The colour is consumed here; hand the container path the REST of
+        // each leaf so padding/background on the same ternary still lower.
+        rest: stripColorFromTernary(styleValue),
       }
     }
   }
@@ -404,8 +432,12 @@ export function kotlinTextTypographyArgs(
     // modifier (Swift's `.foregroundColor` applies to any View, so it needs no
     // equivalent). Rendering the condition is the EMITTER's job, so it arrives
     // as a callback rather than this module reaching into ExprIR emission.
-    const { cond, whenTrue, whenFalse } = typo.conditionalColor
-    args.push(`color = if (${emitCond(cond)}) ${whenTrue} else ${whenFalse}`)
+    const render = (c: ConditionalColor, nested: boolean): string => {
+      const side = (v: string | ConditionalColor): string => (typeof v === 'string' ? v : render(v, true))
+      const expr = `if (${emitCond(c.cond)}) ${side(c.whenTrue)} else ${side(c.whenFalse)}`
+      return nested ? `(${expr})` : expr
+    }
+    args.push(`color = ${render(typo.conditionalColor, false)}`)
   }
   if (typo.textAlign !== undefined && KOTLIN_ALIGN[typo.textAlign]) {
     args.push(`textAlign = ${KOTLIN_ALIGN[typo.textAlign]}`)
@@ -962,12 +994,10 @@ export function styleToNativeModifiers(
     return { modifiers: emitStatic(lo, target), warnings, needsSizeClass: lo.needsSizeClass }
   }
 
-  // DYNAMIC — `style={cond ? {A} : {B}}`
-  if (
-    styleValue.kind === 'ternary' &&
-    styleValue.then.kind === 'object' &&
-    styleValue.otherwise.kind === 'object'
-  ) {
+  // DYNAMIC — `style={cond ? {A} : {B}}`, or a nested ternary whose every leaf is an object literal
+  // (`style={a ? (b ? {…} : {…}) : {…}}`) — the shape a rocketstyle component with several dynamic dimensions
+  // resolves to.
+  if (styleValue.kind === 'ternary' && isStyleTree(styleValue)) {
     if (emitCond === undefined) {
       return {
         modifiers: [],
@@ -976,13 +1006,13 @@ export function styleToNativeModifiers(
         ],
       }
     }
-    return emitDynamic(styleValue.then, styleValue.otherwise, styleValue.cond, target, tag, emitCond)
+    return emitDynamic(styleValue, target, tag, emitCond)
   }
 
   return {
     modifiers: [],
     warnings: [
-      `<${tag} style={…}>: only a static inline-style object literal, or a two-branch ternary of object literals (style={cond ? {…} : {…}}), is lowered to native — this style value was dropped. Reactive style beyond a two-literal ternary is a tracked follow-up.`,
+      `<${tag} style={…}>: only a static inline-style object literal, or a ternary whose branches are object literals or further such ternaries (style={cond ? {…} : {…}}), is lowered to native — this style value was dropped.`,
     ],
   }
 }
@@ -1000,71 +1030,96 @@ function emitStatic(lo: LoweredObject, target: Target): string[] {
     .filter((m): m is string => m !== undefined)
 }
 
-function emitDynamic(
-  thenObj: Extract<ExprIR, { kind: 'object' }>,
-  elseObj: Extract<ExprIR, { kind: 'object' }>,
-  cond: ExprIR,
-  target: Target,
-  tag: string,
-  emitCond: CondEmitter,
-): StyleLowerResult {
-  const a = lowerObject(thenObj.fields, target)
-  const b = lowerObject(elseObj.fields, target)
-  const c = emitCond(cond)
-  const warnings = [...collectWarnings(a, tag), ...collectWarnings(b, tag)]
+/** True when `e` is an object literal, or a ternary whose branches are (recursively) object literals. */
+function isStyleTree(node: ExprIR): boolean {
+  const e = unparen(node)
+  return e.kind === 'object' || (e.kind === 'ternary' && isStyleTree(e.then) && isStyleTree(e.otherwise))
+}
+
+/** A style decision tree with each leaf lowered and each condition rendered once. */
+type LoweredTree =
+  | { kind: 'leaf'; lo: LoweredObject }
+  | { kind: 'node'; cond: string; then: LoweredTree; otherwise: LoweredTree }
+
+function lowerTree(node: ExprIR, target: Target, emitCond: CondEmitter): LoweredTree {
+  const e = unparen(node)
+  if (e.kind === 'ternary') {
+    return {
+      kind: 'node',
+      cond: emitCond(e.cond),
+      then: lowerTree(e.then, target, emitCond),
+      otherwise: lowerTree(e.otherwise, target, emitCond),
+    }
+  }
+  return { kind: 'leaf', lo: lowerObject((e as Extract<ExprIR, { kind: 'object' }>).fields, target) }
+}
+
+function treeLeaves(t: LoweredTree): LoweredObject[] {
+  return t.kind === 'leaf' ? [t.lo] : [...treeLeaves(t.then), ...treeLeaves(t.otherwise)]
+}
+
+/** One conditional value per leaf, nested like the tree — or undefined when any leaf has no value. */
+function foldTree(t: LoweredTree, target: Target, pick: (lo: LoweredObject) => string | undefined): string | undefined {
+  if (t.kind === 'leaf') return pick(t.lo)
+  const a = foldTree(t.then, target, pick)
+  const b = foldTree(t.otherwise, target, pick)
+  return a !== undefined && b !== undefined ? condExpr(target, t.cond, a, b) : undefined
+}
+
+function emitDynamic(styleValue: ExprIR, target: Target, tag: string, emitCond: CondEmitter): StyleLowerResult {
+  const tree = lowerTree(styleValue, target, emitCond)
+  const leaves = treeLeaves(tree)
+  const first = leaves[0]!
+  const warnings = leaves.flatMap((lo) => collectWarnings(lo, tag))
   const asymmetric: string[] = []
   const modifiers: string[] = []
 
   for (const slot of ORDER[target]) {
     if (slot === 'border') {
-      const aHas = a.border.width !== undefined && a.border.color !== undefined
-      const bHas = b.border.width !== undefined && b.border.color !== undefined
-      if (!aHas && !bHas) continue
+      if (!leaves.some((lo) => lo.border.width !== undefined && lo.border.color !== undefined)) continue
       // A border is a COMPOSITE modifier (width+color+shape) — folding a
-      // per-branch conditional into it is a v1 gap. Emit the `then` branch's
+      // per-branch conditional into it is a v1 gap. Emit the first branch's
       // border statically + warn (mirrors asymmetric padding).
-      const stat = emitBorder(a.border, a.radiusValue, target)
+      const stat = emitBorder(first.border, first.radiusValue, target)
       if (stat !== undefined) modifiers.push(stat)
       asymmetric.push('border')
       continue
     }
     if (slot === 'frameConstraints') {
-      const aHas = Object.keys(a.frame).length > 0
-      const bHas = Object.keys(b.frame).length > 0
-      if (!aHas && !bHas) continue
+      if (!leaves.some((lo) => Object.keys(lo.frame).length > 0)) continue
       // min/max constraints combine into one composite frame — a per-branch
-      // conditional isn't foldable in v1. Emit the then-branch + warn.
-      const stat = emitFrameConstraints(a.frame, target)
+      // conditional isn't foldable in v1. Emit the first branch + warn.
+      const stat = emitFrameConstraints(first.frame, target)
       if (stat !== undefined) modifiers.push(stat)
       asymmetric.push('minWidth/minHeight')
       continue
     }
     if (slot === 'padding') {
-      const av = boxAllSides(a.box)
-      const bv = boxAllSides(b.box)
-      const aHas = Object.keys(a.box).length > 0
-      const bHas = Object.keys(b.box).length > 0
-      if (!aHas && !bHas) continue
-      if (av !== null && bv !== null) {
-        const v = condExpr(target, c, String(av), String(bv))
+      if (!leaves.some((lo) => Object.keys(lo.box).length > 0)) continue
+      const v = foldTree(tree, target, (lo) => {
+        const all = boxAllSides(lo.box)
+        return all === null ? undefined : String(all)
+      })
+      if (v !== undefined) {
         modifiers.push(target === 'swift' ? `.padding(${v})` : `.padding(${v}.dp)`)
       } else {
         // A per-side/axis padding differing across branches can't fold into one
-        // conditional value — emit the `then` branch statically and warn.
-        const stat = emitPadding(a.box, target)
+        // conditional value — emit the first branch statically and warn.
+        const stat = emitPadding(first.box, target)
         if (stat !== undefined) modifiers.push(stat)
         asymmetric.push('padding')
       }
       continue
     }
-    const sa = a.slots[slot]
-    const sb = b.slots[slot]
-    if (sa && sb) {
-      modifiers.push(sa.wrap(condExpr(target, c, sa.value, sb.value)))
-    } else if (sa || sb) {
-      // Present in one branch only — emit it statically (from whichever branch
-      // has it) and warn; a conditional "apply-or-not" modifier is a v1 gap.
-      const only = (sa ?? sb)!
+    const holder = leaves.find((lo) => lo.slots[slot] !== undefined)
+    if (holder === undefined) continue
+    const v = foldTree(tree, target, (lo) => lo.slots[slot]?.value)
+    if (v !== undefined) {
+      modifiers.push(holder.slots[slot]!.wrap(v))
+    } else {
+      // Present in only some branches — emit it statically (from the first
+      // branch that has it) and warn; a conditional "apply-or-not" modifier is a v1 gap.
+      const only = holder.slots[slot]!
       modifiers.push(only.wrap(only.value))
       asymmetric.push(slot)
     }

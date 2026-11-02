@@ -40,6 +40,29 @@ public final class PyreonQuery<T> {
 }
 `
 
+export const MUTATION_SWIFT_STUBS = `// PyreonMutation — the container a \`useMutation\` decl emits. Mirrors
+// @pyreon/query/native/swift/PyreonMutation.swift: private(set) result fields,
+// computed status flags, and the two generic call-site entry points taking the
+// already-built request and a send+decode operation.
+public struct PyreonMutationCallbacks<T> {
+  public init(onSuccess: ((T) -> Void)? = nil, onError: ((Error) -> Void)? = nil, onSettled: ((T?, Error?) -> Void)? = nil) {}
+}
+public final class PyreonMutation<T> {
+  public private(set) var data: T?
+  public private(set) var error: Error?
+  public private(set) var status: String = "idle"
+  public var isIdle: Bool { true }
+  public var isPending: Bool { false }
+  public var isSuccess: Bool { false }
+  public var isError: Bool { false }
+  public init() {}
+  public func reset() {}
+  public func mutate<R>(_ input: R, _ operation: @escaping (R) async throws -> T, options: PyreonMutationCallbacks<T> = PyreonMutationCallbacks(), call: PyreonMutationCallbacks<T> = PyreonMutationCallbacks()) {}
+  @discardableResult
+  public func mutateAsync<R>(_ input: R, _ operation: @escaping (R) async throws -> T, options: PyreonMutationCallbacks<T> = PyreonMutationCallbacks(), call: PyreonMutationCallbacks<T> = PyreonMutationCallbacks()) async throws -> T { fatalError() }
+}
+`
+
 export const STREAM_SWIFT_STUBS = `// PyreonStream — what a \`useStream\` decl emits. Mirrors the REAL
 // @pyreon/http/native/swift/PyreonStream.swift surface the emit touches: the
 // @Observable result fields are private(set), the run methods are
@@ -116,6 +139,26 @@ class PyreonQuery<T>(queryKey: String, val staleMillis: Long = 0) {
 
 `
 
+export const MUTATION_KOTLIN_STUBS = `// PyreonMutation — mirror of @pyreon/query/native/kotlin/.../PyreonMutation.kt:
+// MutableState result fields (read \`.value\`), \`begin\` on the calling thread,
+// and the suspend \`run\` / \`runAsync\` the call site launches.
+class PyreonMutationCallbacks<T>(val onSuccess: ((T) -> Unit)? = null, val onError: ((Throwable) -> Unit)? = null, val onSettled: ((T?, Throwable?) -> Unit)? = null)
+class PyreonMutation<T> {
+  val data: MutableState<T?> = mutableStateOf(null)
+  val error: MutableState<Throwable?> = mutableStateOf(null)
+  val status: MutableState<String> = mutableStateOf("idle")
+  val isIdle: MutableState<Boolean> = mutableStateOf(true)
+  val isPending: MutableState<Boolean> = mutableStateOf(false)
+  val isSuccess: MutableState<Boolean> = mutableStateOf(false)
+  val isError: MutableState<Boolean> = mutableStateOf(false)
+  fun reset() {}
+  fun begin(): Int = 0
+  suspend fun <R> run(mine: Int, input: R, operation: suspend (R) -> T, options: PyreonMutationCallbacks<T> = PyreonMutationCallbacks(), call: PyreonMutationCallbacks<T> = PyreonMutationCallbacks()) {}
+  suspend fun <R> runAsync(input: R, operation: suspend (R) -> T, options: PyreonMutationCallbacks<T> = PyreonMutationCallbacks(), call: PyreonMutationCallbacks<T> = PyreonMutationCallbacks()): T = operation(input)
+}
+
+`
+
 export const STREAM_KOTLIN_STUBS = `// PyreonStream — mirror of @pyreon/http/native/kotlin/.../PyreonStream.kt, the
 // surface a \`useStream\` decl emits: MutableState result fields (read
 // \`.value\`), \`restartTick\` the DisposableEffect keys on, and start/stop.
@@ -152,8 +195,10 @@ class PyreonStream<E>(val maxEvents: Long = 1000L, main: java.util.concurrent.Ex
 export const queryStubs: StubAugmentation = {
   swift: (source) =>
     (/\bPyreonQuery\b/.test(source) ? QUERY_SWIFT_STUBS : '') +
+    (/\bPyreonMutation\b/.test(source) ? MUTATION_SWIFT_STUBS : '') +
     (/\bPyreonStream\b/.test(source) ? STREAM_SWIFT_STUBS : ''),
   kotlin: (source) =>
     (/\bPyreonQuery\b/.test(source) ? QUERY_KOTLIN_STUBS : '') +
+    (/\bPyreonMutation\b/.test(source) ? MUTATION_KOTLIN_STUBS : '') +
     (/\bPyreonStream\b/.test(source) ? STREAM_KOTLIN_STUBS : ''),
 }

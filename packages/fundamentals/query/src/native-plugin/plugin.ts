@@ -8,7 +8,20 @@ import {
   type TypeIR,
 } from '@pyreon/native-compiler/plugin-api'
 import { queryDeclKotlin, queryLifecycleKotlin, streamDeclKotlin, streamLifecycleKotlin } from './kotlin'
-import { QUERY_CLIENT_TYPE, QUERY_PLUGIN_NAME, QUERY_TYPE, STREAM_TYPE } from './names'
+import {
+  MUTATE_ASYNC_TYPE,
+  MUTATE_TYPE,
+  MUTATION_FIELDS,
+  mutateAsyncExpr,
+  mutateExpr,
+  mutationDeclKotlin,
+  mutationDeclSwift,
+  mutationFieldType,
+  recognizeMutateCall,
+  recognizeMutation,
+  scanMutations,
+} from './mutation'
+import { MUTATION_TYPE, QUERY_CLIENT_TYPE, QUERY_PLUGIN_NAME, QUERY_TYPE, STREAM_TYPE } from './names'
 import { recognizeQuery, recognizeQueryClient, recognizeStream, scanQuery } from './recognize'
 import { queryStubs } from './stubs'
 import { queryDeclSwift, queryLifecycleSwift, streamDeclSwift, streamLifecycleSwift } from './swift'
@@ -85,6 +98,35 @@ const streamDecl: DeclEmitter = {
   },
 }
 
+/**
+ * `const m = useMutation<T>(ep.mutation())` → a `PyreonMutation<T>` container. It has NO lifecycle harness: nothing runs
+ * at mount. Each `m.mutate(…)` / `m.mutateAsync(…)` call site builds and sends its own request (see `mutation.ts`).
+ */
+const mutationDecl: DeclEmitter = {
+  swift: mutationDeclSwift,
+  kotlin: mutationDeclKotlin,
+  typing: {
+    callRead: (d, property) => mutationFieldType(d, property, true),
+    member: (d, property) => mutationFieldType(d, property, false),
+  },
+}
+
+const mutationReceiver: ReceiverLowering = {
+  swift: {
+    expr(site, ctx) {
+      if (site.kind !== 'call') return undefined
+      const field = fieldOf(site, MUTATION_FIELDS)
+      return field === undefined ? undefined : `${ctx.ident(site.receiver.name)}.${ctx.ident(field)}`
+    },
+  },
+  kotlin: {
+    expr(site, ctx) {
+      const field = fieldOf(site, MUTATION_FIELDS)
+      return field === undefined ? undefined : `${ctx.ident(site.receiver.name)}.${field}.value`
+    },
+  },
+}
+
 /** The query client has no native counterpart: `useQuery` is self-contained, so emitting nothing is the whole lowering. */
 const queryClientDecl: DeclEmitter = { legacyKind: 'query-client', swift: () => '', kotlin: () => '' }
 
@@ -156,19 +198,28 @@ export const queryPlugin: CompilerPlugin = {
   name: QUERY_PLUGIN_NAME,
   apiVersion: 2,
   modules: ['@pyreon/query'],
-  scanModule: scanQuery,
+  scanModule: (scan) => {
+    scanQuery(scan)
+    scanMutations(scan)
+  },
   calls: {
     useQuery: recognizeQuery,
     useStream: recognizeStream,
+    useMutation: recognizeMutation,
     QueryClient: recognizeQueryClient,
   },
+  // A container is view state (`@State` / `remember`), which has no meaning at file scope.
+  componentOnlyCalls: ['useMutation'],
+  methodCalls: { mutate: recognizeMutateCall, mutateAsync: recognizeMutateCall },
+  exprs: { [MUTATE_TYPE]: mutateExpr, [MUTATE_ASYNC_TYPE]: mutateAsyncExpr },
   destructureCalls: ['useQuery'],
   decls: {
     [QUERY_TYPE]: queryDecl,
     [STREAM_TYPE]: streamDecl,
     [QUERY_CLIENT_TYPE]: queryClientDecl,
+    [MUTATION_TYPE]: mutationDecl,
   },
-  receivers: { [QUERY_TYPE]: queryReceiver, [STREAM_TYPE]: streamReceiver },
+  receivers: { [QUERY_TYPE]: queryReceiver, [STREAM_TYPE]: streamReceiver, [MUTATION_TYPE]: mutationReceiver },
   elements: queryElements,
   stubs: queryStubs,
 }

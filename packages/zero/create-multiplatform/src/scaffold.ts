@@ -487,6 +487,19 @@ struct ContentView: View {
     </array>
     <key>LSRequiresIPhoneOS</key>
     <true/>
+    <!-- A page hosted in <WebView> can ask for the location, camera or
+         microphone. WebKit prompts per site, but only once the APP may ask: add
+         the usage string for each capability your hosted pages use. Not added by
+         default, since App Review rejects a usage string the app has no use for.
+         (A file input needs no usage string to pick from the photo library or
+         Files.)
+    <key>NSLocationWhenInUseUsageDescription</key>
+    <string>Pages shown in the app can use your location.</string>
+    <key>NSCameraUsageDescription</key>
+    <string>Pages shown in the app can use the camera.</string>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>Pages shown in the app can use the microphone.</string>
+    -->
     <key>UILaunchScreen</key>
     <dict/>
     <key>UISupportedInterfaceOrientations</key>
@@ -778,9 +791,33 @@ kotlin {
          \`SocketException: socket failed: EPERM\` (a real device-CI
          finding). Harmless for apps that never touch the network. -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- A page hosted in <WebView> can ask for the location, camera or
+         microphone; the runtime asks the user per site, then requests the
+         permission, but ONLY one declared here (an undeclared one is denied and
+         logged). Uncomment what your hosted pages use. Not declared by default:
+         a permission the app never uses still has to be justified to the Play
+         Store.
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    -->
     <application
         android:label="${pascal}"
         android:allowBackup="true">
+        <!-- <WebView>: a file input with "capture" opens the camera, which writes the
+             photo or video through this provider (the runtime looks it up by this
+             exact authority). No permission is involved. Without it, such an input
+             falls back to the file picker. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="\${applicationId}.pyreon.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/pyreon_webview_files" />
+        </provider>
         <!-- configChanges: rotation, a dark-mode switch, a keyboard or window-size
              change would otherwise DESTROY and recreate the activity, and every
              compiler-emitted \`remember { mutableStateOf(...) }\` would start over.
@@ -807,6 +844,17 @@ kotlin {
         </activity>
     </application>
 </manifest>
+`,
+  )
+  add(
+    'android/app/src/main/res/xml/pyreon_webview_files.xml',
+    `<?xml version="1.0" encoding="utf-8"?>
+<!-- The cache directory a <WebView> capture file input writes into (see the
+     FileProvider in AndroidManifest.xml). Matches the runtime's
+     cacheDir/pyreon-webview/. -->
+<paths>
+    <cache-path name="pyreon_webview" path="pyreon-webview/" />
+</paths>
 `,
   )
   add(

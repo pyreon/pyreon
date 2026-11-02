@@ -1399,7 +1399,7 @@ Type re-exports include `QueryKey`, `QueryFilters`, `MutationFilters`, `Dehydrat
 
 ### Multiplatform
 
-The full client wraps TanStack Query, a JavaScript runtime cache, so `QueryClient` configuration, devtools, and infinite / suspense queries are web only. On iOS and Android (PMTC), `useQuery` (key + fetcher, loading / error / data state) lowers to the native `PyreonQuery` runtime, and `useStream` over `openEventStream` / `openNdjsonStream` lowers to `PyreonStream`.
+The full client wraps TanStack Query, a JavaScript runtime cache, so `QueryClient` configuration, devtools, and infinite / suspense queries are web only. On iOS and Android (PMTC), `useQuery` (key + fetcher, loading / error / data state) lowers to the native `PyreonQuery` runtime, `useMutation` over a same-file `@pyreon/http` endpoint (`useMutation<T>(ep.mutation())`, or `mutationFn: (vars) => ep({ json: vars })`) lowers to `PyreonMutation` — each `mutate` / `mutateAsync` builds its request at the call site from runtime values, see [Sending what the user entered](/docs/http#sending-what-the-user-entered) — and `useStream` over `openEventStream` / `openNdjsonStream` lowers to `PyreonStream`.
 
 ## WebSocket Subscriptions — `useSubscription()`
 

@@ -25,7 +25,9 @@ import { DEFAULT_FLOW_WEBVIEW_HOST_HTML } from './webview-host.generated'
  * same class the `<Toggle>` emitter had. Empty when nothing applies.
  */
 export function kotlinWebViewModifierArg(e: Extract<ExprIR, { kind: 'jsx-element' }>, omit?: ReadonlySet<string>): string {
-  const chain = omit === undefined ? host.layoutModifiers(e) : host.layoutModifiersFor(e, omit)
+  const layout = omit === undefined ? host.layoutModifiers(e) : host.layoutModifiersFor(e, omit)
+  // `grow` → `Modifier.weight(1f)` / `fillMaxSize()` — see WebViewProps.grow.
+  const chain = host.webView.grow(e, layout).chain
   return chain === '' ? '' : `, modifier = ${chain}`
 }
 

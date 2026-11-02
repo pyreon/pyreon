@@ -45,11 +45,14 @@ import {
 import type { CompilerPlugin } from '@pyreon/native-compiler/plugin-api'
 import { containerPlugin } from './native-plugin/containers'
 import { fetchDecl, fetchReceiver, FETCH_TYPE, recognizeFetch } from './native-plugin/fetch'
+import { recognizeFileFromUri, scanFileFromUri, UPLOAD_FILE_TYPE, uploadFileExpr } from './native-plugin/upload-file'
 
 const num = { kind: 'number' as const }
 const str = { kind: 'string' as const }
 /** `Error?` on Swift, `Throwable?` on Kotlin — an error OBJECT, never a string. */
 const ERROR_OBJECT = { kind: 'typeRef' as const, name: 'Error', args: [] }
+/** A picker's `pick()` / the camera's `capture()`: the URI, or `null` when the user cancelled. */
+const OPTIONAL_URI = { kind: 'union' as const, branches: [str, { kind: 'null' as const }] }
 
 const nativePlugin = {
   name: '@pyreon/hooks',
@@ -69,6 +72,12 @@ const nativePlugin = {
     useSizeClass: recognizeSizeClass,
   },
   statementCalls: { useInterval: recognizeTimer, useTimeout: recognizeTimer },
+  // `await fileFromUri(uri)` — a picked file to upload (see `upload-file.ts`).
+  scanModule: scanFileFromUri,
+  callExprs: recognizeFileFromUri,
+  exprs: { [UPLOAD_FILE_TYPE]: uploadFileExpr },
+  // The type `fileFromUri` resolves to natively, so a helper typed against it resolves.
+  runtimeTypes: ['PyreonUploadFile'],
   // `const { data, isPending } = useFetch(url)` aliases onto the container.
   destructureCalls: [
     'useFetch',
@@ -163,6 +172,7 @@ const nativePlugin = {
         '    ActivityResultContracts.PickVisualMedia()',
         '  ) { uri -> {id}.onResult(uri?.toString()) }',
       ],
+      methodReturns: { pick: OPTIONAL_URI },
     },
     // M3.8 — document picker over the SAF `OpenDocument` contract; same
     // composition-time registration rule as the image picker.
@@ -175,6 +185,7 @@ const nativePlugin = {
         '    ActivityResultContracts.OpenDocument()',
         '  ) { uri -> {id}.onResult(uri?.toString()) }',
       ],
+      methodReturns: { pick: OPTIONAL_URI },
     },
     // Camera capture. UIImagePickerController presents from the key window, so
     // iOS only needs the presenter; Android assigns the launcher from the
@@ -187,6 +198,7 @@ const nativePlugin = {
         'val {id} = remember { PyreonCamera() }',
         '{id}.launch = rememberCameraLauncher { uri -> {id}.onResult(uri) }',
       ],
+      methodReturns: { capture: OPTIONAL_URI },
     },
     // ── Containers with satellite behaviour (see the vocabulary above) ─────────
 

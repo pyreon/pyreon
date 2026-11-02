@@ -353,24 +353,39 @@ export function _resetObservationCache(): void {
  */
 export function _swiftTypecheckPreamble(source: string): string {
   const imports = source.includes('import SwiftUI') ? '' : 'import SwiftUI\nimport Foundation\n\n'
-  return imports + swiftNumberRuntime(source)
+  return imports + swiftRuntimeHelpers(source)
 }
 
 /**
- * The real `PyreonNumber.swift`, when the source calls `pyreonNumberString`
- * without declaring it. Every Double-typed template interpoland lowers
- * through it — including the generated chart engine's — so a typecheck
- * against real SwiftUI needs it linked like the runtime would. The real file,
- * not a stub, so its behaviour is the one type-checked. Part of the
- * preamble, and therefore of the verdict-cache key.
+ * Free-function runtime helpers the emit calls by name, each with the real
+ * file that declares it. `pyreonNumberString` formats every Double-typed
+ * template interpoland; `pyreonSlice` gives a slice with a runtime bound
+ * JavaScript's semantics. Both appear in ordinary emits AND in the generated
+ * chart engine, so a typecheck against real SwiftUI needs them linked the way
+ * the runtime package links them.
+ *
+ * A table rather than one function per helper: when a new helper is added to
+ * the emit, every real-SDK typecheck needs it at once, and a helper wired into
+ * only some call sites is exactly how ~20 chart-host specs broke together.
  */
-function swiftNumberRuntime(source: string): string {
-  if (!source.includes('pyreonNumberString(') || source.includes('func pyreonNumberString'))
-    return ''
-  const file = readIfPresent(
-    join(NATIVE_PACKAGES_DIR, 'runtime-swift/Sources/PyreonRuntime/PyreonNumber.swift'),
-  )
-  return file === undefined ? '' : `${file.replace(/^import Foundation\n/m, '')}\n`
+const SWIFT_RUNTIME_HELPERS: readonly { readonly name: string; readonly file: string }[] = [
+  { name: 'pyreonNumberString', file: 'PyreonNumber.swift' },
+  { name: 'pyreonSlice', file: 'PyreonSlice.swift' },
+]
+
+/**
+ * The real runtime file for each helper the source calls without declaring.
+ * The real files, not stubs, so their behaviour is the one type-checked. Part
+ * of the preamble, and therefore of the verdict-cache key.
+ */
+function swiftRuntimeHelpers(source: string): string {
+  let out = ''
+  for (const { name, file } of SWIFT_RUNTIME_HELPERS) {
+    if (!source.includes(`${name}(`) || source.includes(`func ${name}`)) continue
+    const text = readIfPresent(join(NATIVE_PACKAGES_DIR, 'runtime-swift/Sources/PyreonRuntime', file))
+    if (text !== undefined) out += `${text.replace(/^import Foundation\n/m, '')}\n`
+  }
+  return out
 }
 
 export function validateSwiftTypecheck(source: string): ValidationResult {

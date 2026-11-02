@@ -39,11 +39,13 @@
 
 package com.pyreon.runtime
 
+import okhttp3.MediaType
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
+import okio.BufferedSink
 
 private val sharedHttpClient: OkHttpClient by lazy { OkHttpClient() }
 
@@ -55,6 +57,39 @@ private val sharedHttpClient: OkHttpClient by lazy { OkHttpClient() }
  * with no setup; `PyreonHttp.install(...)` still overrides it.
  */
 public object PyreonHttpOkHttp : PyreonHttpExecutor {
+    /**
+     * A STREAMED body. The bytes are copied from the file's source into OkHttp's
+     * sink as the request is written, so a large upload is never held in
+     * memory. The Content-Type is what `fetch` sends for the same body (the
+     * file's type; `multipart/form-data` with the boundary) unless the caller
+     * set one, which wins, as on the web. The length is exact when every part
+     * knows its size, as a browser sends it; otherwise the body goes chunked.
+     */
+    private fun streamed(upload: PyreonHttpUpload, callerType: MediaType?): RequestBody = when (upload) {
+        is PyreonHttpUpload.File -> {
+            val file = upload.file
+            object : RequestBody() {
+                override fun contentType(): MediaType? = callerType ?: file.type.toMediaTypeOrNull()
+                override fun contentLength(): Long = file.length ?: -1L
+                override fun writeTo(sink: BufferedSink) {
+                    file.open().use { it.copyTo(sink.outputStream(), 64 * 1024) }
+                }
+            }
+        }
+        is PyreonHttpUpload.Multipart -> {
+            val boundary = PyreonMultipartBody.newBoundary()
+            val form = upload.body
+            object : RequestBody() {
+                override fun contentType(): MediaType? =
+                    callerType ?: "multipart/form-data; boundary=$boundary".toMediaTypeOrNull()
+                override fun contentLength(): Long = form.contentLength(boundary) ?: -1L
+                override fun writeTo(sink: BufferedSink) {
+                    form.writeTo(sink.outputStream(), boundary)
+                }
+            }
+        }
+    }
+
     override fun send(request: PyreonHttpRequest): PyreonHttpResponse {
         val builder = Request.Builder().url(request.url)
         for ((key, value) in request.headers) builder.addHeader(key, value)
@@ -68,10 +103,17 @@ public object PyreonHttpOkHttp : PyreonHttpExecutor {
             .firstOrNull { it.key.equals("Content-Type", ignoreCase = true) }
             ?.value
             ?.toMediaTypeOrNull()
-        val body: RequestBody? = when (request.method) {
-            PyreonHttpMethod.GET -> null
-            PyreonHttpMethod.DELETE -> request.body?.toRequestBody(contentType)
-            else -> (request.body ?: "").toRequestBody(contentType)
+        // Bytes, not the String overload: `String.toRequestBody(type)` APPENDS
+        // "; charset=utf-8" to a type that has none, so `application/json` went
+        // out as `application/json; charset=utf-8` — not what the web sends, and
+        // the fixture server reflected the difference. The caller's Content-Type
+        // must reach the wire exactly as written.
+        val upload = request.upload
+        val body: RequestBody? = when {
+            upload != null -> streamed(upload, contentType)
+            request.method == PyreonHttpMethod.GET -> null
+            request.method == PyreonHttpMethod.DELETE -> request.body?.toByteArray(Charsets.UTF_8)?.toRequestBody(contentType)
+            else -> (request.body ?: "").toByteArray(Charsets.UTF_8).toRequestBody(contentType)
         }
         builder.method(request.method.verb, body)
 

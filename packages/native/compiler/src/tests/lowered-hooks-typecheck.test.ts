@@ -235,6 +235,10 @@ const EXCLUDED: ReadonlyMap<string, string> = new Map([
     'needs module-scope companions this one-hook template cannot express (a `createHttp` client, an endpoint, the `@pyreon/http/stream` opener) — type-checked on both targets, against the stubs AND the real runtime source, in native-use-stream.test.ts.',
   ],
   ['useLoaderData', 'already warns — a documented, disclosed gap rather than a silent one.'],
+  [
+    'useMutation',
+    'needs a module-scope `createHttp` client and endpoint this one-hook template cannot express — type-checked on both targets against the stubs in native-runtime-request-bodies.test.ts, and against the real SDK + runtime through the @pyreon/query coverage snippet in real-runtime-typecheck.test.ts.',
+  ],
 ])
 
 const app = (name: string, mod: string, decl: string) =>

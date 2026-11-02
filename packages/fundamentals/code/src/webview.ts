@@ -221,6 +221,11 @@ export interface CodeWebViewProps {
   codemirrorScript?: string
   /** `<script src>` for the `window.CM` bundle when not inlined. */
   codemirrorSrc?: string
+  /**
+   * Fill the free space of the parent `<Stack>` / `<Inline>` — the `<WebView grow>`
+   * sizing contract, forwarded unchanged. Unsized, the host is 150 high on every target.
+   */
+  grow?: boolean
 }
 
 /**
@@ -276,6 +281,13 @@ export function CodeWebView(props: CodeWebViewProps): VNode {
         onChange?.(message)
       }
     }
+  }
+  if (props.grow !== undefined) {
+    Object.defineProperty(webViewProps, 'grow', {
+      enumerable: true,
+      configurable: true,
+      get: (): boolean | undefined => props.grow,
+    })
   }
   return h(WebView as (p: unknown) => VNodeChild, webViewProps) as VNode
 }

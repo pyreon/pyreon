@@ -4,9 +4,19 @@
 // `var x by remember { mutableStateOf(initial) }`, computeds to
 // `derivedStateOf { ... }`, JSX elements to Composable function calls.
 
+import { GESTURE_EVENT_NAMES, GESTURE_EVENTS } from './gesture-events'
+import type { GestureEventName } from './gesture-events'
 import { classifyFallback, unconsumedSlotWarning } from './jsx-slot-attrs'
 import { lowerWebViewDomStorage } from './webview-options'
-import { asyncValueReturnWarning, bodyReturnsValue } from './async-function'
+import { LayoutScopeTracker, lowerWebViewGrow } from './webview-sizing'
+import {
+  asyncValueReturnWarning,
+  bodyAwaitsFallible,
+  bodyReturns,
+  bodyReturnsValue,
+  indentLines,
+  KOTLIN_UNHANDLED_ASYNC,
+} from './async-function'
 import { kotlinStr } from './string-literals'
 import { resolveFieldShape } from './field-shape'
 import {
@@ -21,6 +31,7 @@ import {
   lowerPluginAssignValue,
   lowerPluginFunction,
   lowerPluginIdentifier,
+  isThrowingPluginExpr,
   lowerPluginExpr,
   moduleFieldValidators,
   pluginValueBinding,
@@ -91,6 +102,7 @@ import {
   buildModuleConstTypes,
   arrayFromMapRewrite,
   classifyNegativeSlice,
+  sliceBoundsAreLiteral,
   classifyOptionalCondition,
   indexedArrayCallback,
   inferMapFromPairsType,
@@ -620,6 +632,9 @@ let _emittingLayoutComponentKotlin = false
  * `val pyreonAsyncScope = rememberCoroutineScope()` at the composable top.
  */
 let _hasAsyncHandler = false
+/** A plugin asked for the composable's Android `Context` (`KotlinEmitContext.androidContext`); hoisted beside the async scope. */
+let _needsAndroidContext = false
+const PYREON_ANDROID_CONTEXT = 'pyreonContext'
 const PYREON_ASYNC_SCOPE = 'pyreonAsyncScope'
 
 /** Pre-pass: collect every layout-parent component name across all router
@@ -721,6 +736,7 @@ export function emitKotlin(
   aliasImports: Map<string, { source: string; imported: string }> = new Map(),
 ): { code: string; warnings: string[] } {
   _emitWarnings = []
+  _kotlinLayout.reset()
   _needsKotlinNumString = false
   // Per-FILE hook-binding-name sets. They are populated by the pre-pass
   // below (which walks EVERY component at once), so they are file-scoped,
@@ -1199,6 +1215,7 @@ function emitKotlinComponent(c: ComponentIR): string {
   _asyncDeclsKotlin = []
   // M4.5: fresh per component — set by emitKotlinAction if an async handler emits.
   _hasAsyncHandler = false
+  _needsAndroidContext = false
   // C5.3: reset router-routes map (mirrors Swift emit's same state).
   _routerRoutes = new Map()
   // Phase 2 follow-up — track function-typed props so handler emit
@@ -1344,6 +1361,7 @@ function emitKotlinComponent(c: ComponentIR): string {
   // A component-local `async` function launches on the scope, and a local declaration can only see what precedes it —
   // so the scope goes ABOVE the decls when one of them needs it (an inline handler's goes below, before the JSX).
   const declsNeedAsyncScope = _hasAsyncHandler
+  const declsNeedAndroidContext = _needsAndroidContext
   const declStartIndex = lines.length
   for (const declText of declTexts) {
     lines.push(`  ${declText}`)
@@ -1427,6 +1445,10 @@ function emitKotlinComponent(c: ComponentIR): string {
   // top (rememberCoroutineScope() must run at composable scope, not in a lambda).
   if (_hasAsyncHandler) {
     lines.splice(declsNeedAsyncScope ? declStartIndex : asyncScopeInsertIndex, 0, `  val ${PYREON_ASYNC_SCOPE} = rememberCoroutineScope()`)
+  }
+  // A composition local must be read at composable scope, never inside the `onClick` lambda that uses it.
+  if (_needsAndroidContext) {
+    lines.splice(declsNeedAndroidContext ? declStartIndex : asyncScopeInsertIndex, 0, `  val ${PYREON_ANDROID_CONTEXT} = LocalContext.current`)
   }
   lines.push(`}`)
   _activePropsParamName = undefined
@@ -2142,15 +2164,21 @@ function emitKotlinFunction(d: Extract<DeclIR, { kind: 'function' }>, ctx: Kotli
         only !== undefined && only.kind === 'return' && only.expr !== undefined
           ? [{ kind: 'expr', expr: only.expr }]
           : d.body
+      // The body moves inside `launch { … }`, where a bare `return` is prohibited (it would target the enclosing
+      // composable), so an early return is emitted as `return@launch`.
       const sync = emitKotlinFunction(
         { ...d, async: false, returnType: { kind: 'unknown' }, body },
-        ctx,
+        { ...ctx, lambdaLabel: 'launch' },
       )
       const m = /^(fun [^\n]*\{)\n([\s\S]*)\n {2}\}$/.exec(sync)
       if (m !== null) {
         _hasAsyncHandler = true
         const inner = m[2]!.split('\n').map((l) => `  ${l}`).join('\n')
-        return `${m[1]}\n    ${PYREON_ASYNC_SCOPE}.launch {\n${inner}\n    }\n  }`
+        // A fallible await (a request) must not escape `launch`: uncaught there it crashes the app.
+        const launched = bodyAwaitsFallible(d.body, isThrowingPluginExpr)
+          ? `      try {\n${indentLines(inner, 4)}\n      } ${KOTLIN_UNHANDLED_ASYNC}`
+          : inner
+        return `${m[1]}\n    ${PYREON_ASYNC_SCOPE}.launch {\n${launched}\n    }\n  }`
       }
       return sync
     }
@@ -3925,6 +3953,18 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
             //   slice()     → a copy (toList() for List; the String itself)
             // Negative indices (rare in JS) fall through to the generic emit.
             const sliceObjType = inferType(e.callee.object, _kotlinExprInferCtx)
+            // A bound whose sign is not known at compile time: JavaScript's semantics, from the runtime.
+            if (!sliceBoundsAreLiteral(e.args)) {
+              const inner = sliceObjType.kind === 'union'
+                ? (sliceObjType.branches.find((b) => b.kind !== 'undefined' && b.kind !== 'null') ?? sliceObjType)
+                : sliceObjType
+              if (inner.kind === 'string' || inner.kind === 'array') {
+                const rest = argExprs.map((a) => `(${a}).toLong()`).join(', ')
+                return objDot === '?.'
+                  ? `${obj}?.let { pyreonSlice(it, ${rest}) }`
+                  : `pyreonSlice(${obj}, ${rest})`
+              }
+            }
             const noNegative = e.args.every((a) => a.kind !== 'unary')
             // Negative-index idioms (Kotlin drop/take count from the front):
             //   slice(-m)    → takeLast(m)   (last m)
@@ -5080,6 +5120,14 @@ function kotlinEmitContext(indent: number): KotlinEmitContext {
         }
       },
       intArg: kotlinIntArg,
+      coroutineScope: () => {
+        _hasAsyncHandler = true
+        return PYREON_ASYNC_SCOPE
+      },
+      androidContext: () => {
+        _needsAndroidContext = true
+        return PYREON_ANDROID_CONTEXT
+      },
     },
     indent,
   )
@@ -5144,6 +5192,7 @@ const kotlinWebViewFacade: WebViewFacade = {
   dynamicAttr: dynamicWebViewAttrKotlin,
   dataArg: kotlinWebViewDataArg,
   messageHandler: emitKotlinMessageHandler,
+  grow: (el, chain) => ({ chain: withKotlinWebViewGrow(el, chain), arg: undefined }),
 }
 
 /**
@@ -5179,7 +5228,18 @@ function warnUnreadKotlinAttrs(e: Extract<ExprIR, { kind: 'jsx-element' }>): voi
   }
 }
 
+/**
+ * Which Compose container each JSX element is a DIRECT child of — so `<WebView
+ * grow>` can emit `Modifier.weight(1f)`, which only compiles inside the
+ * `ColumnScope` / `RowScope` of its parent. See `webview-sizing.ts`.
+ */
+const _kotlinLayout = new LayoutScopeTracker()
+
 function emitKotlinJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
+  return _kotlinLayout.element(e.tag, () => emitKotlinJsxElement(e, indent))
+}
+
+function emitKotlinJsxElement(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
   const tag = e.tag
 
   // Library elements claimed by a registered element lowering — see the Swift
@@ -5191,7 +5251,8 @@ function emitKotlinJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
   )
   if (lowering !== undefined) {
     const retagged = lowering.retag?.(e, { warn: pushEmitWarning })
-    if (retagged !== undefined) return emitKotlinJsx(retagged, indent)
+    // The retagged element TAKES the place of `e` — same depth, same parent.
+    if (retagged !== undefined) return emitKotlinJsxElement(retagged, indent)
     const emitLowered = lowering.emit?.kotlin
     if (emitLowered !== undefined) {
       warnUnreadKotlinAttrs(e)
@@ -5200,7 +5261,7 @@ function emitKotlinJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
   }
 
   const rewritten = rewritePluginElement(e, _pluginScope, () => kotlinEmitContext(indent))
-  if (rewritten !== undefined) return emitKotlinJsx(rewritten, indent)
+  if (rewritten !== undefined) return emitKotlinJsxElement(rewritten, indent)
 
   warnUnreadKotlinAttrs(e)
 
@@ -5291,6 +5352,7 @@ function emitKotlinJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
   if (tag === 'Audio') return emitKotlinAudio(e, indent)
   if (tag === 'Modal') return emitKotlinModal(e, indent)
   if (tag === 'Press') return emitKotlinPress(e, indent)
+  if (tag === 'Gesture') return emitKotlinGesture(e, indent)
   if (tag === 'Field') return emitKotlinField(e, indent)
   if (tag === 'Toggle') return emitKotlinToggle(e, indent)
   // Lowercase DOM tags a plugin gives meaning inside its own renderers (a flow's `<path>` / `<svg>`).
@@ -5670,7 +5732,17 @@ function emitKotlinAction(handler: ExprIR, indent: number): string {
     // limitation the single-expr path has (it emits via `emitKotlinExpr`,
     // which also doesn't synthesize), so this is not a regression.
     if (handler.stmts !== undefined && handler.stmts.length > 0) {
-      const stmtCtx: KotlinCtx = { synthesizedDataClasses: [], componentName: '' }
+      const isAsync = handler.async === true
+      // A bare `return` is prohibited inside a Kotlin lambda (it would target the enclosing composable). An early
+      // return in an async handler leaves the coroutine (`return@launch`); in a synchronous one the handler lambda
+      // itself is labelled so the return can name it (`pyreonHandler@{ … return@pyreonHandler }`). Only a body that
+      // returns gets the label, so every other handler emits exactly as before.
+      const syncLabel = !isAsync && bodyReturns(handler.stmts) ? KOTLIN_HANDLER_LABEL : undefined
+      const stmtCtx: KotlinCtx = {
+        synthesizedDataClasses: [],
+        componentName: '',
+        ...(isAsync ? { lambdaLabel: 'launch' } : syncLabel !== undefined ? { lambdaLabel: syncLabel } : {}),
+      }
       const pad = ' '.repeat(indent + 2)
       // Seed handler-LOCAL `const`/`let` types into the infer ctx so a later
       // type-dependent emit inside this body resolves them — e.g. `const t =
@@ -5680,14 +5752,19 @@ function emitKotlinAction(handler: ExprIR, indent: number): string {
       // M4.5: an `async () => { await … }` handler wraps its body in
       // `pyreonAsyncScope.launch { … }` (the hoisted rememberCoroutineScope())
       // so a synchronous `onClick: () -> Unit` slot can run suspend calls.
-      const isAsync = handler.async === true
       const bodyIndent = isAsync ? indent + 4 : indent + 2
       const lines = emitKotlinStmtLines(handler.stmts, bodyIndent, stmtCtx).join('\n')
       _kotlinExprInferCtx.locals = savedLocals
+      const labelPrefix = syncLabel === undefined ? '' : `${syncLabel}@`
       const head =
-        handler.params.length === 0 ? '{' : `{ ${handler.params.map(kotlinIdent).join(', ')} ->`
+        handler.params.length === 0
+          ? `${labelPrefix}{`
+          : `${labelPrefix}{ ${handler.params.map(kotlinIdent).join(', ')} ->`
       if (isAsync) {
         _hasAsyncHandler = true
+        if (bodyAwaitsFallible(handler.stmts, isThrowingPluginExpr)) {
+          return `${head}\n${pad}${PYREON_ASYNC_SCOPE}.launch {\n${pad}  try {\n${indentLines(lines, 4)}\n${pad}  } ${KOTLIN_UNHANDLED_ASYNC}\n${pad}}\n${' '.repeat(indent)}}`
+        }
         return `${head}\n${pad}${PYREON_ASYNC_SCOPE}.launch {\n${lines}\n${pad}}\n${' '.repeat(indent)}}`
       }
       return `${head}\n${lines}\n${' '.repeat(indent)}}`
@@ -5718,14 +5795,14 @@ function emitKotlinAction(handler: ExprIR, indent: number): string {
     if (handler.params.length === 0) {
       if (handler.async === true) {
         _hasAsyncHandler = true
-        return `{ ${PYREON_ASYNC_SCOPE}.launch { ${emitKotlinExpr(handler.body, indent)} } }`
+        return `{ ${PYREON_ASYNC_SCOPE}.launch { ${kotlinLaunchBody(handler.body, indent)} } }`
       }
       return `{ ${emitKotlinExpr(handler.body, indent)} }`
     }
     const paramList = handler.params.map(kotlinIdent).join(', ')
     if (handler.async === true) {
       _hasAsyncHandler = true
-      return `{ ${paramList} -> ${PYREON_ASYNC_SCOPE}.launch { ${emitKotlinExpr(handler.body, indent)} } }`
+      return `{ ${paramList} -> ${PYREON_ASYNC_SCOPE}.launch { ${kotlinLaunchBody(handler.body, indent)} } }`
     }
     return `{ ${paramList} -> ${emitKotlinExpr(handler.body, indent)} }`
   }
@@ -5745,6 +5822,15 @@ function emitKotlinAction(handler: ExprIR, indent: number): string {
     return `{ ${kotlinIdent(handler.property)}() }`
   }
   return `{ ${emitKotlinExpr(handler, indent)} }`
+}
+
+/** The label a synchronous handler lambda carries when its body returns early (`return@pyreonHandler`). */
+const KOTLIN_HANDLER_LABEL = 'pyreonHandler'
+
+/** A single-expression async handler's coroutine body; a fallible await is caught so it cannot crash the app. */
+function kotlinLaunchBody(body: ExprIR, indent: number): string {
+  const inner = emitKotlinExpr(body, indent)
+  return bodyAwaitsFallible(body, isThrowingPluginExpr) ? `try { ${inner} } ${KOTLIN_UNHANDLED_ASYNC}` : inner
 }
 
 /**
@@ -6512,6 +6598,17 @@ function readStaticAttrKotlin(
   for (const a of e.attrs) {
     if (a.kind === 'attr' && a.name === name) {
       if (a.value.kind === 'literal') return a.value.value as string | number | boolean
+      // `-1` parses as a unary minus over a literal; it is as static as `1`.
+      // Without the fold every negative literal read as dynamic, so a
+      // lowering that needs a literal warned on it or took the dynamic path.
+      if (
+        a.value.kind === 'unary' &&
+        (a.value.op === '-' || a.value.op === '+') &&
+        a.value.argument.kind === 'literal' &&
+        typeof a.value.argument.value === 'number'
+      ) {
+        return a.value.op === '-' ? -a.value.argument.value : a.value.argument.value
+      }
       // Const-ref: `src={API_URL}` → resolve a module-level `const`
       // string/number/boolean binding to its literal. Unknown /
       // component-scope / non-const identifiers aren't in the map →
@@ -6561,6 +6658,49 @@ function kotlinAccessibilityHiddenModifier(e: Extract<ExprIR, { kind: 'jsx-eleme
  */
 const EMPTY_OMIT: ReadonlySet<string> = new Set()
 
+/**
+ * The {@link TransformProps} as Compose modifiers, in the fixed cross-target
+ * order. Compose applies a chain OUTSIDE-IN, so the translation comes FIRST
+ * (`Modifier.offset(…).scale(…).rotate(…)`): it moves the already-scaled box,
+ * and is therefore not multiplied by the scale — the same visual result as the
+ * Swift `.rotationEffect().scaleEffect().offset()` chain written in reverse.
+ *
+ * `offset` takes `Dp` (`Int.dp` / `Double.dp` both exist), `scale` / `rotate`
+ * take `Float`, so an expression is converted rather than assumed — a signal
+ * written only with integers is an `Int` here. A special-case emitter that
+ * returns before the generic tail must apply these itself
+ * (generic-tail-completeness.test.ts checks every primitive).
+ */
+function kotlinTransformModifiers(e: Extract<ExprIR, { kind: 'jsx-element' }>): string[] {
+  const value = (name: string): { lit?: number; expr?: string } | undefined => {
+    const a = e.attrs.find(
+      (x): x is Extract<AttrIR, { kind: 'attr' }> => x.kind === 'attr' && x.name === name,
+    )
+    if (a === undefined) return undefined
+    const v = unwrapAccessorArrow(a.value)
+    if (v.kind === 'literal' && typeof v.value === 'number') return { lit: v.value }
+    if (v.kind === 'unary' && v.op === '-' && v.argument.kind === 'literal' && typeof v.argument.value === 'number') {
+      return { lit: -v.argument.value }
+    }
+    return { expr: emitKotlinExpr(v, 0) }
+  }
+  const dp = (v: { lit?: number; expr?: string }): string =>
+    v.lit !== undefined ? `(${v.lit}).dp` : `(${v.expr}).dp`
+  const float = (v: { lit?: number; expr?: string }): string =>
+    v.lit !== undefined ? `${v.lit}f` : `(${v.expr}).toFloat()`
+  const out: string[] = []
+  const tx = value('translateX')
+  const ty = value('translateY')
+  if (tx !== undefined || ty !== undefined) {
+    out.push(`.offset(${[tx === undefined ? '' : `x = ${dp(tx)}`, ty === undefined ? '' : `y = ${dp(ty)}`].filter(Boolean).join(', ')})`)
+  }
+  const scale = value('scale')
+  if (scale !== undefined) out.push(`.scale(${float(scale)})`)
+  const rotate = value('rotate')
+  if (rotate !== undefined) out.push(`.rotate(${float(rotate)})`)
+  return out
+}
+
 function emitKotlinLayoutModifier(
   e: Extract<ExprIR, { kind: 'jsx-element' }>,
   // Attrs the HOST consumes itself (a hosted `<FlowWebView background>` is
@@ -6574,6 +6714,9 @@ function emitKotlinLayoutModifier(
   // `omit.has(…)` arm that no host ever reaches.
   const stylingValue = (name: string, resolve: Parameters<typeof kotlinStylingValue>[2]) =>
     omit.has(name) ? undefined : kotlinStylingValue(e, name, resolve)
+  // Transform props — a render transform of the WHOLE box, so outermost of
+  // all (see kotlinTransformModifiers for why translation leads).
+  parts.push(...kotlinTransformModifiers(e))
   // `margin` — the OUTERMOST inset, so it goes FIRST.
   //
   // Compose's `Modifier` chain applies outside-IN: the leading entries wrap
@@ -6762,7 +6905,9 @@ function emitKotlinStack(
   if (e.children.length === 0) {
     return `${composable}${initSignature} {}`
   }
-  const contentLines = e.children.map((c) => pad + emitKotlinChild(c, indent + 2)).join('\n')
+  const contentLines = _kotlinLayout.children(isRow ? 'row' : 'column', () =>
+    e.children.map((c) => pad + emitKotlinChild(c, indent + 2)).join('\n'),
+  )
   return `${composable}${initSignature} {\n${contentLines}\n${' '.repeat(indent)}}`
 }
 
@@ -6935,8 +7080,23 @@ function kotlinWebViewModifierArg(
   e: Extract<ExprIR, { kind: 'jsx-element' }>,
   omit?: ReadonlySet<string>,
 ): string {
-  const chain = emitKotlinLayoutModifier(e, omit)
+  const chain = withKotlinWebViewGrow(e, emitKotlinLayoutModifier(e, omit))
   return chain === '' ? '' : `, modifier = ${chain}`
+}
+
+/**
+ * Prefix a WebView-family host's modifier chain with its `grow` sizing:
+ * `Modifier.weight(1f)` as a DIRECT child of a Column / Row (the only place
+ * the `ColumnScope` / `RowScope` extension compiles), `Modifier.fillMaxSize()`
+ * anywhere else. Must run while the host element is being dispatched, since it
+ * reads the layout scope. See webview-sizing.ts.
+ */
+function withKotlinWebViewGrow(e: Extract<ExprIR, { kind: 'jsx-element' }>, chain: string): string {
+  const grow = lowerWebViewGrow(e.attrs, () => readStaticAttrKotlin(e, 'grow'), _kotlinLayout, e.tag)
+  if (grow.warning !== undefined) _emitWarnings.push(grow.warning)
+  if (grow.axis === undefined) return chain
+  const head = grow.weighted ? 'Modifier.weight(1f)' : 'Modifier.fillMaxSize()'
+  return chain === '' ? head : `${head}${chain.replace(/^Modifier/, '')}`
 }
 
 /**
@@ -7436,6 +7596,14 @@ function containsLazyListDeep(children: readonly ChildIR[]): boolean {
 
 function emitKotlinScroll(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
   const horizontal = readStaticAttrKotlin(e, 'axis') === 'horizontal'
+  // Children are unbounded along the scroll axis — a `<WebView grow>` there has
+  // no free space to take (see webview-sizing.ts).
+  return _kotlinLayout.scroll(horizontal ? 'horizontal' : 'vertical', horizontal ? 'row' : 'column', () =>
+    emitKotlinScrollBody(e, indent, horizontal),
+  )
+}
+
+function emitKotlinScrollBody(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number, horizontal: boolean): string {
   const composable = horizontal ? 'Row' : 'Column'
   const scrollMod = horizontal
     ? '.horizontalScroll(rememberScrollState())'
@@ -7554,6 +7722,7 @@ function emitKotlinModal(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: nu
   // present, so a plain `<Modal>` is byte-identical to before.
   const testid = readStringAttrExprKotlin(e, 'data-testid', 0)
   const modParts =
+    kotlinTransformModifiers(e).join('') +
     kotlinAccessibilityLabelModifier(e).join('') +
     (testid === undefined ? '' : `.testTag(${testid})`) +
     kotlinAccessibilityHiddenModifier(e).join('')
@@ -7587,6 +7756,46 @@ function emitKotlinModal(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: nu
  * Accepts both canonical `onPress` and legacy `onClick` to ease
  * migration from existing PMTC source.
  */
+/**
+ * A `<Gesture onPan|onPinch|onRotate>` handler as a Kotlin `(PyreonXEvent) -> Unit`
+ * lambda, its parameter typed (gesture-events.ts) so `e.dx` infers Double. A
+ * zero-parameter arrow becomes a lambda that ignores its single argument (Kotlin
+ * binds it to `it`), and a bare function reference is called with the event.
+ */
+function emitKotlinGestureHandler(handler: ExprIR, name: GestureEventName, indent: number): string {
+  if (handler.kind !== 'arrow') {
+    return `{ pyreonEvent -> ${emitKotlinExpr(handler, indent)}(pyreonEvent) }`
+  }
+  const param = handler.params[0]
+  if (param === undefined) return emitKotlinAction(handler, indent)
+  return withKotlinLocals([[param, GESTURE_EVENTS[name].type]], () => emitKotlinAction(handler, indent))
+}
+
+/**
+ * `<Gesture>` → `PyreonGesture(onPan = …, modifier = …) { … }`
+ * (@pyreon/native-runtime-kotlin). The runtime runs one `pointerInput` loop
+ * over calculatePan / calculateZoom / calculateRotation and owns the
+ * start/change/end bookkeeping (`PyreonGestureTracker`).
+ */
+function emitKotlinGesture(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
+  const args: string[] = []
+  for (const name of GESTURE_EVENT_NAMES) {
+    const attr = e.attrs.find(
+      (a): a is Extract<AttrIR, { kind: 'event' }> => a.kind === 'event' && a.name === name,
+    )
+    if (attr !== undefined) {
+      args.push(`${GESTURE_EVENTS[name].param} = ${emitKotlinGestureHandler(attr.handler, name, indent)}`)
+    }
+  }
+  const modifier = emitKotlinLayoutModifier(e)
+  if (modifier !== '') args.push(`modifier = ${modifier}`)
+  const head = `PyreonGesture(${args.join(', ')})`
+  if (e.children.length === 0) return `${head} {}`
+  const pad = ' '.repeat(indent + 2)
+  const contentLines = e.children.map((c) => pad + emitKotlinChild(c, indent + 2)).join('\n')
+  return `${head} {\n${contentLines}\n${' '.repeat(indent)}}`
+}
+
 function emitKotlinPress(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
   const handler = e.attrs.find(
     (a): a is Extract<AttrIR, { kind: 'event' }> =>
@@ -7979,7 +8188,11 @@ function emitKotlinLink(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: num
   // the life of this emitter, on the one element where an icon or the word
   // "here" is a normal thing to write.
   const mod =
-    'Modifier.clickable { navigate() }' +
+    // Transforms first: Compose applies the chain outside-in, so the link's
+    // tap target moves (and scales) with what it draws.
+    'Modifier' +
+    kotlinTransformModifiers(e).join('') +
+    '.clickable { navigate() }' +
     kotlinAccessibilityLabelModifier(e).join('') +
     (testid === undefined ? '' : `.testTag(${testid})`) +
     kotlinAccessibilityHiddenModifier(e).join('')
@@ -8048,15 +8261,47 @@ function emitKotlinRouterProvider(
   if (e.children.length === 0) {
     return `RouterProvider(${routerExpr}) { }`
   }
-  const contentLines = e.children.map((c) => pad + emitKotlinChild(c, indent + 2)).join('\n')
-  // When routes are resolved, the NavHost block REPLACES the bare
-  // content. The user's <RouterView /> typically just marks the spot
-  // where routed content goes; with NavHost it's not needed (NavHost
-  // IS the router-content host on Compose).
+  // With routes resolved and a `<RouterView />` somewhere in the content, the
+  // content emits AS WRITTEN and the RouterView itself becomes the dispatch —
+  // the web contract, where RouterView marks the routed slot and its siblings
+  // (a header, a nav bar, a `<Toaster />`) persist across navigation.
+  // Replacing the whole content with the dispatch dropped every sibling with
+  // no warning: an app's `<Toaster />` beside its RouterView never rendered on
+  // Android, so every `toast()` call compiled and showed nothing.
+  if (routesBlock !== '' && subtreeHasRouterView(e.children)) {
+    const routes = _routerRoutes.get((routerAttr.value as { name: string }).name)!
+    const prevDispatch = _activeRouteDispatchKotlin
+    _activeRouteDispatchKotlin = (at) => emitKotlinRouteDispatch(routes, at).trimStart()
+    try {
+      const lines = e.children.map((c) => pad + emitKotlinChild(c, indent + 2)).join('\n')
+      return `RouterProvider(${routerExpr}) {\n${lines}\n${' '.repeat(indent)}}`
+    } finally {
+      _activeRouteDispatchKotlin = prevDispatch
+    }
+  }
+  // Routes resolved but no `<RouterView />` to mark the slot: the dispatch is
+  // the whole content (the shape every app emitted before siblings were kept).
   if (routesBlock !== '') {
     return `RouterProvider(${routerExpr}) {\n${routesBlock}\n${' '.repeat(indent)}}`
   }
+  const contentLines = e.children.map((c) => pad + emitKotlinChild(c, indent + 2)).join('\n')
   return `RouterProvider(${routerExpr}) {\n${contentLines}\n${' '.repeat(indent)}}`
+}
+
+/**
+ * The route dispatch for the `<RouterProvider>` currently emitting, or null.
+ * `<RouterView />` reads it to emit the dispatch at its own position; saved and
+ * restored around each provider so a nested provider cannot leak its table.
+ */
+let _activeRouteDispatchKotlin: ((indent: number) => string) | null = null
+
+/** Whether a `<RouterView />` appears anywhere in this JSX subtree. */
+function subtreeHasRouterView(node: unknown): boolean {
+  if (node === null || typeof node !== 'object') return false
+  if (Array.isArray(node)) return node.some(subtreeHasRouterView)
+  const n = node as { kind?: unknown; tag?: unknown }
+  if (n.kind === 'jsx-element' && n.tag === 'RouterView') return true
+  return Object.values(node).some(subtreeHasRouterView)
 }
 
 /**
@@ -8335,6 +8580,8 @@ function emitKotlinRouterView(
   if (_emittingLayoutComponentKotlin) {
     return `content()`
   }
+  // Inside a routes-bearing `<RouterProvider>`: this is the routed slot.
+  if (_activeRouteDispatchKotlin !== null) return _activeRouteDispatchKotlin(_indent)
   return `RouterView()`
 }
 

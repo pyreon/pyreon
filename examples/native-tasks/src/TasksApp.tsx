@@ -47,7 +47,7 @@
 // - **Store computeds/methods in the setup body** — store v1 lowers
 //   signals; derived state lives in component-level `computed` for now.
 
-import { QueryClient, QueryClientProvider, useQuery, useStream } from '@pyreon/query'
+import { QueryClient, QueryClientProvider, useMutation, useQuery, useStream } from '@pyreon/query'
 import { model } from '@pyreon/state-tree'
 import { filter as filter_rx, map } from '@pyreon/rx'
 import { SizedMap } from '@pyreon/sized-map'
@@ -119,7 +119,7 @@ import type {
   ZoomWindow,
 } from '@pyreon/charts'
 import { useForm } from '@pyreon/form'
-import { useFetch, useCrashReporter } from '@pyreon/hooks'
+import { fileFromUri, useFetch, useCrashReporter } from '@pyreon/hooks'
 import { defineStore } from '@pyreon/store'
 import { ColorModeProvider, For, Show, Suspense, ErrorBoundary, onMount, useColorMode } from '@pyreon/core'
 import {
@@ -159,6 +159,24 @@ interface StreamTick {
 const streams = createHttp({ baseUrl: 'http://127.0.0.1:8791' })
 const tickFeed = streams.endpoint('GET /sse', { responseType: 'stream' })
 const tickRows = streams.endpoint('GET /ndjson', { responseType: 'stream' })
+// The requests screen's writes. /echo REFLECTS what reached the server (method, query, content type, a header, the
+// raw body), so each assertion reads the wire, not the app's own idea of what it sent. /boom answers 500.
+const echoPost = streams.endpoint('POST /echo')
+const failingPost = streams.endpoint('POST /boom')
+// #3979: /upload parses a multipart body and reports each part; /echo reflects a raw body.
+const uploadPost = streams.endpoint('POST /upload')
+const rawPut = streams.endpoint('PUT /echo')
+/** A small file the device test can send without a picker — the same bytes on every platform. */
+const NOTE_URI = 'data:text/plain;base64,SGVsbG8gUHlyZW9u'
+
+/** What /echo reflects back. */
+interface EchoReply {
+  method: string
+  query: string
+  contentType: string
+  client: string
+  body: string
+}
 
 // Module-scope monotonic id — same shape as TodoMVC's `nextId`.
 let nextTaskId = 3
@@ -355,6 +373,12 @@ function TasksPage() {
           </Button>
           <Button onPress={() => navigate('/streams')} data-testid="tasks-streams">
             Streams
+          </Button>
+          <Button onPress={() => navigate('/requests')} data-testid="tasks-requests">
+            Requests
+          </Button>
+          <Button onPress={() => navigate('/webhost')} data-testid="tasks-webhost">
+            Web host
           </Button>
           <Button onPress={() => navigate('/fields')} data-testid="tasks-fields">
             Fields
@@ -760,6 +784,88 @@ function StreamsScreen() {
         Back to tasks
       </Button>
     </Stack>
+  )
+}
+
+// Requests that carry what the user ENTERED (#3978): a mutation and an awaited endpoint call, both built from
+// runtime values. The draft is cleared right after `mutate`, so a request that read its values late — or a body
+// baked at compile time — shows up as the wrong name in the reflected body.
+function RequestsScreen() {
+  const navigate = useNavigate()
+  const draft = signal('')
+  const lastBody = signal('none')
+  const direct = signal('idle')
+  const save = useMutation<EchoReply>(echoPost.mutation())
+  const broken = useMutation<EchoReply>(failingPost.mutation())
+  const sendDirect = async () => {
+    direct.set('sending')
+    await echoPost({ json: { name: draft(), n: 2 } })
+    direct.set('sent')
+  }
+  const upload = useMutation<EchoReply>(uploadPost.mutation())
+  const raw = useMutation<EchoReply>(rawPut.mutation())
+  const sendUpload = async () => {
+    // The step a picker result goes through: a URI is a handle, not the file.
+    const note = await fileFromUri(NOTE_URI, { name: 'note.txt' })
+    upload.mutate({ multipart: { note, caption: draft(), n: [1, 2] } })
+  }
+  const sendRaw = async () => {
+    const note = await fileFromUri(NOTE_URI, { name: 'note.txt' })
+    raw.mutate({ body: note })
+  }
+  const sendFailing = async () => {
+    direct.set('failing')
+    // A non-2xx REJECTS, so the next line never runs: on the web the handler stops here, and natively too.
+    await failingPost({ json: { name: draft() } })
+    direct.set('unreachable')
+  }
+  return (
+    <Scroll>
+      <Stack gap={3} padding={4} data-testid="requests-page">
+        <Field value={draft} onChangeText={(v) => draft.set(v)} placeholder="Name" data-testid="req-draft" />
+        <Button
+          onPress={() => {
+            save.mutate(
+              { json: { name: draft(), n: 2 }, query: { tag: draft(), page: 3 }, headers: { 'x-client': 'pyreon' } },
+              { onSuccess: (reply) => lastBody.set(reply.body) },
+            )
+            draft.set('')
+          }}
+          data-testid="req-mutate"
+        >
+          Mutate
+        </Button>
+        <Text data-testid="req-status">{`Status: ${save.status()}`}</Text>
+        <Text data-testid="req-method">{`Method: ${save.data()?.method ?? 'none'}`}</Text>
+        <Text data-testid="req-query">{`Query: ${save.data()?.query ?? 'none'}`}</Text>
+        <Text data-testid="req-type">{`Type: ${save.data()?.contentType ?? 'none'}`}</Text>
+        <Text data-testid="req-client">{`Client: ${save.data()?.client ?? 'none'}`}</Text>
+        <Text data-testid="req-body">{`Body: ${lastBody()}`}</Text>
+        <Button onPress={() => broken.mutate({ json: { name: 'x' } })} data-testid="req-fail">
+          Mutate failing
+        </Button>
+        <Text data-testid="req-fail-status">{`Failing: ${broken.isError() ? 'rejected' : broken.status()}`}</Text>
+        <Button onPress={sendDirect} data-testid="req-direct">
+          Send direct
+        </Button>
+        <Button onPress={sendFailing} data-testid="req-direct-fail">
+          Send failing
+        </Button>
+        <Text data-testid="req-direct-status">{`Direct: ${direct()}`}</Text>
+        <Button onPress={sendUpload} data-testid="req-upload">
+          Upload
+        </Button>
+        <Text data-testid="req-upload-type">{`Upload type: ${upload.data()?.contentType ?? 'none'}`}</Text>
+        <Text data-testid="req-upload-parts">{`Parts: ${upload.data()?.body ?? 'none'}`}</Text>
+        <Button onPress={sendRaw} data-testid="req-raw">
+          Upload raw
+        </Button>
+        <Text data-testid="req-raw-result">{`Raw: ${raw.data()?.method ?? 'none'} ${raw.data()?.contentType ?? ''} ${raw.data()?.body ?? ''}`}</Text>
+        <Button onPress={() => navigate('/tasks')} data-testid="requests-back">
+          Back to tasks
+        </Button>
+      </Stack>
+    </Scroll>
   )
 }
 
@@ -1911,6 +2017,35 @@ function ToolkitScreen() {
   )
 }
 
+// ── Web host (#3982 + #3956 item 5) ──
+//
+// A whole web flow embedded full-screen: the page in assets/webhost/
+// webhost-chrome.html uses the browser chrome a real embedded flow needs (a file
+// input, geolocation, alert/confirm/prompt, a target=_blank link) and reports
+// every outcome back over the reverse bridge, so the device tests read it in a
+// NATIVE Text rather than inside the WebView. The page root is a plain <Stack>
+// (no <Scroll>) and the WebView carries `grow`, so it takes the screen height
+// left over by the header and footer on every target — the sizing case.
+function WebHostScreen() {
+  const navigate = useNavigate()
+  let webResult = state('ready')
+  return (
+    <Stack gap={2} padding={4} data-testid="webhost-page">
+      <Text data-testid="webhost-title">Hosted web flow</Text>
+      <WebView
+        src="webhost-chrome.html"
+        grow
+        onMessage={(m) => { webResult = m }}
+        data-testid="webhost-view"
+      />
+      <Text data-testid="webhost-result">{webResult}</Text>
+      <Button onPress={() => navigate('/tasks')} data-testid="webhost-back">
+        Back to tasks
+        </Button>
+      </Stack>
+    )
+  }
+
 // `<Field multiline lines>` (#3980): a text area on every target — a
 // `<textarea rows>` on the web, `TextField(axis: .vertical)` + `.lineLimit(n,
 // reservesSpace: true)` on iOS, `minLines`/`maxLines` on Android. The device
@@ -2008,6 +2143,11 @@ export function TasksApp() {
         beforeEnter: () => useApp().store.isAuthed(),
       },
       {
+        path: '/requests',
+        component: RequestsScreen,
+        beforeEnter: () => useApp().store.isAuthed(),
+      },
+      {
         path: '/fields',
         component: FieldsScreen,
         beforeEnter: () => useApp().store.isAuthed(),
@@ -2040,6 +2180,11 @@ export function TasksApp() {
       {
         path: '/flow-scale',
         component: FlowScaleScreen,
+        beforeEnter: () => useApp().store.isAuthed(),
+      },
+      {
+        path: '/webhost',
+        component: WebHostScreen,
         beforeEnter: () => useApp().store.isAuthed(),
       },
     ],

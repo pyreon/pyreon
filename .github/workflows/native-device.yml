@@ -667,6 +667,11 @@ jobs:
           set -o pipefail
           bash scripts/build.sh
           xcodegen generate
+          # /webhost geolocation proof: a fixed simulator location, and the app's
+          # location permission pre-granted (the UITest still answers SpringBoard's
+          # prompt if the grant did not take, e.g. before first install).
+          xcrun simctl location "${PYREON_SIM_UDID}" set 37.3349,-122.0090 || true
+          xcrun simctl privacy "${PYREON_SIM_UDID}" grant location com.pyreon.PyreonTasks || true
           mkdir -p "$GITHUB_WORKSPACE/.ci-ios-results"
           xcodebuild test \
             -parallel-testing-enabled NO \
@@ -1225,6 +1230,8 @@ jobs:
             nohup bun "$GITHUB_WORKSPACE/examples/native-tasks/scripts/stream-server.ts" > /tmp/stream-server.log 2>&1 &
             i=0; while ! curl -fsS http://127.0.0.1:8791/health >/dev/null 2>&1; do i=$((i+1)); [ "$i" -ge 30 ] && { echo "stream server FAILED to start within 30s"; cat /tmp/stream-server.log 2>/dev/null || true; exit 1; }; sleep 1; done; echo "stream server OK (ready after ${i}s)"
             adb reverse tcp:8791 tcp:8791
+            # /webhost geolocation proof: give the emulator a fix (the test also accepts an answered-but-unavailable position).
+            adb emu geo fix -122.0090 37.3349 || true
             gradle connectedCheck --stacktrace
             adb -s emulator-5554 emu kill || true; sleep 5; pkill -9 -f '[q]emu-system' || true
 

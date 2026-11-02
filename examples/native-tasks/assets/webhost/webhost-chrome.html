@@ -1,0 +1,69 @@
+<!doctype html>
+<!--
+  Browser-chrome host (#3982) — bundled, loaded by the /webhost screen.
+
+  Each control exercises one thing an embedded web flow needs from the browser
+  around it, and every OUTCOME goes back over the reverse bridge as one short
+  string, so a device test reads it in a native Text. Asserting inside a
+  WKWebView / Android WebView is exactly what XCUITest and the Compose
+  semantics tree cannot do reliably; tapping a labelled button inside one is
+  fine (both expose web content to accessibility).
+
+  Results:  alert:done · confirm:true|false · prompt:<text>|null
+            geo:ok · geo:err:<code> · file:<n>:<names> · file:cancel
+            size:<innerHeight> (posted on load, for the sizing case)
+-->
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  body { margin: 0; font: 16px -apple-system, system-ui, sans-serif; }
+  .row { display: block; width: 100%; box-sizing: border-box; margin: 0 0 6px; padding: 10px; font-size: 16px; }
+</style>
+</head>
+<body>
+  <button class="row" onclick="doAlert()">Alert</button>
+  <button class="row" onclick="doConfirm()">Confirm</button>
+  <button class="row" onclick="doPrompt()">Prompt</button>
+  <button class="row" onclick="doLocate()">Locate</button>
+  <label class="row">Pick a file <input id="file" type="file" aria-label="Pick a file"></label>
+  <a class="row" href="https://example.com/" target="_blank" rel="noopener" onclick="post('link:clicked')">External link</a>
+  <script>
+    // Handler names are prefixed: an inline onclick resolves names against the
+    // BUTTON first, so a global `type()` would hit `button.type` ("submit").
+    // The reverse bridge can arrive AFTER this script runs (Android defines
+    // window.pyreonPostMessage from onPageStarted, asynchronously), so a message
+    // posted before it exists is queued, not dropped.
+    var pending = []
+    function post(m) {
+      if (window.pyreonPostMessage) window.pyreonPostMessage(m)
+      else pending.push(m)
+    }
+    var drain = setInterval(function () {
+      if (!window.pyreonPostMessage) return
+      clearInterval(drain)
+      while (pending.length) window.pyreonPostMessage(pending.shift())
+    }, 50)
+    function doAlert() { alert('hello from the page'); post('alert:done') }
+    function doConfirm() { post('confirm:' + confirm('Proceed?')) }
+    function doPrompt() { var v = prompt('Your name?', 'guest'); post('prompt:' + (v === null ? 'null' : v)) }
+    function doLocate() {
+      post('geo:asking')
+      navigator.geolocation.getCurrentPosition(
+        function () { post('geo:ok') },
+        function (e) { post('geo:err:' + e.code) },
+        { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+      )
+    }
+    var input = document.getElementById('file')
+    input.addEventListener('change', function () {
+      var names = Array.prototype.map.call(input.files, function (f) { return f.name }).join(',')
+      post('file:' + input.files.length + ':' + names)
+    })
+    input.addEventListener('cancel', function () { post('file:cancel') })
+    // The sizing case: the page's own viewport height, as the WebView gave it.
+    function size() { post('size:' + window.innerHeight) }
+    window.addEventListener('load', function () { console.log('pyreon-webhost: loaded'); setTimeout(size, 0) })
+  </script>
+</body>
+</html>

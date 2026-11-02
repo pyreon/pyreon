@@ -170,7 +170,7 @@ describe('the non-lowerable fall-throughs', () => {
   it('a ternary whose THEN branch is not an object literal is not a dynamic style', () => {
     const w = warns(`on() ? someStyle : { padding: 4 }`)
     expect(w).toContain('only a static inline-style object literal')
-    expect(w).toContain('Reactive style beyond a two-literal ternary is a tracked follow-up')
+    expect(w).toContain('object literals or further such ternaries')
   })
 
   it('a ternary whose OTHERWISE branch is not an object literal takes the same arm', () => {

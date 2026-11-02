@@ -2,7 +2,7 @@ import { defineManifest } from '@pyreon/manifest'
 
 /**
  * `@pyreon/primitives` — the canonical MULTIPLATFORM UI vocabulary. These
- * 17 canonical primitives (+ `<Transition>`/`<TransitionGroup>`, `<WebView>`
+ * 18 canonical primitives (+ `<Transition>`/`<TransitionGroup>`, `<WebView>`
  * and the `<Web>`/`<NativeIOS>`/`<NativeAndroid>` escape hatches) are the
  * ONLY UI layer that compiles to web DOM + iOS
  * SwiftUI + Android Compose from one source via PMTC. This manifest is the
@@ -15,18 +15,18 @@ export default defineManifest({
   name: '@pyreon/primitives',
   title: 'Canonical Multiplatform Primitives',
   tagline:
-    '17 canonical cross-platform UI primitives that compile to DOM + SwiftUI + Compose from one .tsx: Stack, Inline, Layer, Scroll, Spacer (layout); Text, Heading, Image, Audio, Video, Icon (content); Button, Press, Link (interaction); Field, Toggle, Modal (input). Plus <Transition>/<TransitionGroup> (animation), <WebView> (host a web-only component natively, bidirectional bridge) and <Web>/<NativeIOS>/<NativeAndroid> escape hatches.',
+    '18 canonical cross-platform UI primitives that compile to DOM + SwiftUI + Compose from one .tsx: Stack, Inline, Layer, Scroll, Spacer (layout); Text, Heading, Image, Audio, Video, Icon (content); Button, Press, Link, Gesture (interaction); Field, Toggle, Modal (input). Plus <Transition>/<TransitionGroup> (animation), <WebView> (host a web-only component natively, bidirectional bridge) and <Web>/<NativeIOS>/<NativeAndroid> escape hatches.',
   description:
     'The multiplatform UI vocabulary for Pyreon. ONE canonical name per concept (`<Stack>` not `<View>`/`<VStack>`/`<div>`; `onPress` everywhere, not `onClick` vs `action:`). Web renders real DOM via `@pyreon/runtime-dom`; on iOS/Android the PMTC compiler intercepts the JSX at build time and emits idiomatic SwiftUI / Compose (the import is a type-anchor on native). Tokens-first styling (`padding={4}`, `gap="md"`) resolves through the theme per target. No responsive props in v1 — apps needing responsive web use `@pyreon/elements` directly; animation is `<Transition>` / `<TransitionGroup>`. CRITICAL boundary for native: PMTC compiles your component SOURCE in a narrow declarative TS subset, NOT npm libraries — see `get_pattern({ name: "multiplatform" })` for the supported subset + the silent-failure cliff.',
   category: 'browser',
   multiplatform: {
     tier: 'shared',
     rationale:
-      "the 17 canonical primitives: real web DOM runtime AND SwiftUI/Compose emit — the compiler's native target vocabulary",
+      "the 18 canonical primitives: real web DOM runtime AND SwiftUI/Compose emit — the compiler's native target vocabulary",
   },
   features: [
     'Native compiler tooling: primitivesPlugin from @pyreon/primitives/native-plugin owns hook recognition and Swift/Kotlin lowering; the native CLI discovers it through pyreon.native.plugin, and direct compiler callers install it explicitly',
-    '17 canonical primitives compile to web DOM + iOS SwiftUI + Android Compose from one .tsx',
+    '18 canonical primitives compile to web DOM + iOS SwiftUI + Android Compose from one .tsx',
     'One canonical name + event per concept — `<Stack>` (not View/VStack/div), `onPress` everywhere',
     'Tokens-first styling (`padding={4}`, `gap="md"`) resolves through the theme per target',
     'PMTC compiles your component SOURCE in a narrow declarative TS subset — NOT npm libraries',
@@ -34,6 +34,7 @@ export default defineManifest({
     '`<Transition>` / `<TransitionGroup>` — the animation vocabulary, lowered to SwiftUI `.transition(…)` and Compose `AnimatedVisibility` (import from HERE; `@pyreon/runtime-dom` is web-only)',
     '`<Web>` / `<NativeIOS>` / `<NativeAndroid>` escape hatches for genuinely per-platform UI',
     '`useNativeModule` FFI — add a platform capability the framework does not ship (Bluetooth, ARKit, a vendor SDK) as an app-level Swift/Kotlin class, no framework PR',
+    '`<Gesture onPan onPinch onRotate>` — continuous gestures (cumulative values + start/change/end phase) lowered to simultaneous SwiftUI Drag/Magnify/RotateGesture and one Compose pointer loop; drive content with the `translateX`/`translateY`/`scale`/`rotate` props every primitive accepts',
     'No responsive props in v1 — responsive web uses `@pyreon/elements` directly',
   ],
   longExample: `import { Stack, Inline, Text, Heading, Button, Field, Toggle } from '@pyreon/primitives'
@@ -227,7 +228,32 @@ export function App() {
         'Unstyled tap target (no chrome). Web `<div role="button">`; iOS `Button {}` (plain); Android `Box(clickable)`. Use to make arbitrary content tappable; supports `onLongPress` and `onSwipeLeft`/`onSwipeRight` (horizontally-dominant ≥40px swipe — iOS high-priority DragGesture, Android direction-locked drag detector, web pointer-delta polyfill; taps still fire `onPress`).',
       example: `<Press onPress={() => select(item)}><Card item={item} /></Press>`,
       mistakes: ['Using `<Press>` for a primary action — use `<Button>` for styled CTAs'],
-      seeAlso: ['Button'],
+      seeAlso: ['Button', 'Gesture'],
+    },
+    {
+      name: 'Gesture',
+      kind: 'component',
+      signature:
+        "(props: { onPan?: (e: { dx: number; dy: number; x: number; y: number; phase: 'start'|'change'|'end' }) => void; onPinch?: (e: { scale: number; centerX: number; centerY: number; phase }) => void; onRotate?: (e: { degrees: number; phase }) => void; children }) => VNode",
+      summary:
+        'A region that recognises CONTINUOUS gestures and reports their values. Every value is CUMULATIVE since the gesture began; each gesture delivers one `start`, any number of `change`, then one `end` (also on cancel). Pan, pinch and rotate run SIMULTANEOUSLY, and nothing is reported until the pointer passes the touch slop (10px/pt, the platform slop on Android), so a `<Press>` inside still gets its taps. Web: pointer events on a `touch-action: none` div (capture taken only once claimed); iOS: `PyreonGesture` (simultaneous `DragGesture`/`MagnifyGesture`/`RotateGesture`); Android: `PyreonGesture` (one `pointerInput` loop over `calculatePan`/`calculateZoom`/`calculateRotation`). Drive content with the transform props (`translateX`/`translateY`/`scale`/`rotate`), which every primitive accepts and which update in place. Known divergence: a two-finger pan follows the centroid on web/Android and the first finger on iOS.',
+      example: `const zoom = signal(1.0)
+const base = signal(1.0)
+<Gesture
+  onPinch={(e) => {
+    zoom.set(base() * e.scale)
+    if (e.phase === 'end') base.set(zoom())
+  }}
+>
+  <Stack scale={zoom()}><Text>Floor plan</Text></Stack>
+</Gesture>`,
+      mistakes: [
+        'Putting `scale`/`translateX` on the `<Gesture>` ITSELF — the values are measured in its own coordinate space and feed back into themselves; transform a CHILD (the compiler warns)',
+        'Treating `e.scale` / `e.dx` as a per-frame DELTA — they are cumulative since the gesture began; multiply/add your committed base, and commit it on `phase === "end"`',
+        'Using `<Press onSwipeLeft>` for free dragging — swipe is a discrete end-of-gesture verdict; `<Gesture onPan>` reports the live translation',
+        'Expecting pinch/rotate from one pointer — they begin only once two pointers are down',
+      ],
+      seeAlso: ['Press', 'Stack'],
     },
     {
       name: 'Link',
@@ -319,13 +345,17 @@ export function App() {
       name: 'WebView',
       kind: 'component',
       signature:
-        '(props: { html?: string; src?: string; data?: unknown; onMessage?: (message: string) => void }) => VNode',
+        '(props: { html?: string; src?: string; data?: unknown; onMessage?: (message: string) => void; domStorage?: boolean; grow?: boolean }) => VNode',
       summary:
-        'Host a web page/component natively (WKWebView on iOS, Android WebView; `<iframe srcdoc>` on web). THE escape hatch for web-only packages (flow/code/document) on native — they run inside the WebView. Bidirectional bridge: `data` is pushed in as `window.__pyreonData` (+ a `pyreondata` event, live, no reload); the page calls `window.pyreonPostMessage(payload)` → your `onMessage` closure. `domStorage` (default true, native-only literal) keeps `localStorage` available in the hosted page (Android disables it by default; `false` opts out).',
+        'Host a web page/component natively (WKWebView on iOS, Android WebView; `<iframe srcdoc>` on web). THE escape hatch for web-only packages (flow/code/document) on native — they run inside the WebView. Bidirectional bridge: `data` is pushed in as `window.__pyreonData` (+ a `pyreondata` event, live, no reload); the page calls `window.pyreonPostMessage(payload)` → your `onMessage` closure. `domStorage` (default true, native-only literal) keeps `localStorage` available in the hosted page (Android disables it by default; `false` opts out). SIZING: unsized it is the `<iframe>` default on every target — full width, 150 high; `grow` (literal, native) takes the free main-axis space of its parent `<Stack>`/`<Inline>` (`Modifier.weight(1f)` / a greedy SwiftUI frame / `flex: 1 1 150px`), fills a non-stack parent, and keeps 150 inside a `<Scroll>` (warned + dropped on native). BROWSER CHROME works natively: `<input type=file>` (picker, or camera for `capture` via the app\'s FileProvider), `alert`/`confirm`/`prompt` as native dialogs, geolocation / camera / microphone after a per-site consent AND only for permissions the app declares (AndroidManifest / Info.plist usage string), `window.open` / `target=_blank` handed to the system browser for http(s)/mailto/tel/sms.',
       example: `<WebView html={CHART_HTML} data={metrics()} onMessage={(m) => selected.set(m)} />`,
       mistakes: [
         'Using it for core UI (nav/forms/lists) — pays WebView boot + bundle cost; use native primitives there. Reserve <WebView> for self-contained web-island panes (editors/diagrams)',
         'Expecting native look-and-feel — content renders as a web view, not native widgets',
+        'Expecting an unsized WebView to fill the screen — it is 150 high on every target (the iframe default); pass `grow` as a direct child of the `<Stack>` whose remaining space it should take',
+        'Putting `grow` inside a `<Scroll>` — there is no free space to fill; native drops it with a warning and the view stays 150 high',
+        'Expecting a hosted page to read the location or camera without declaring it — add the permission (AndroidManifest) / usage string (Info.plist); an undeclared one is denied and logged',
+        'Expecting `target="_blank"` to open inside the view — it hands the URL to the system browser (http(s)/mailto/tel/sms only), keeping the hosted page in place',
       ],
       seeAlso: ['Web', 'connectWebHost'],
     },

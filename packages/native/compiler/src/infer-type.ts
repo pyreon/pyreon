@@ -328,6 +328,30 @@ function widenFloatSignalDecls(
       }
       if (n === null || typeof n !== 'object') return
       const node = n as Record<string, unknown> & { kind?: string }
+      // An arrow with TYPED parameters scopes those types over its body, so a
+      // write that reads one (`x.set(e.dx)` where `e` is a typed gesture
+      // event, `(v: number) => …`) infers from the declared type instead of
+      // `unknown`. Without it the write never proved fractional and `x` stayed
+      // an Int receiving a Double — the emit's own closure binding typed `e`
+      // correctly, so only the DECLARATION was wrong.
+      if (node.kind === 'arrow') {
+        const params = node.params as string[] | undefined
+        const types = node.paramTypes as (TypeIR | undefined)[] | undefined
+        const bound: Array<[string, TypeIR | undefined, boolean]> = []
+        params?.forEach((p, i) => {
+          const t = types?.[i]
+          bound.push([p, ctx.locals.get(p), ctx.locals.has(p)])
+          // An untyped parameter SHADOWS any outer binding of the same name.
+          if (t !== undefined && t.kind !== 'unknown') ctx.locals.set(p, t)
+          else ctx.locals.delete(p)
+        })
+        for (const k of Object.keys(node)) visit(node[k])
+        for (const [p, prev, had] of bound.reverse()) {
+          if (had) ctx.locals.set(p, prev!)
+          else ctx.locals.delete(p)
+        }
+        return
+      }
       if (node.kind === 'call') {
         const callee = node.callee as
           | { kind?: string; property?: string; object?: { kind?: string; name?: string } }
@@ -368,7 +392,8 @@ function widenFloatSignalDecls(
  */
 function serviceTypingKey(d: DeclIR): string | undefined {
   if (d.kind === 'service') {
-    return findService(d.hook)?.optionalFields === undefined ? undefined : d.hook
+    const svc = findService(d.hook)
+    return svc?.optionalFields === undefined && svc?.methodReturns === undefined ? undefined : d.hook
   }
   return undefined
 }
@@ -1057,6 +1082,17 @@ export function buildArraySpreadConcat(
 }
 
 /**
+ * Whether every `slice` bound is a numeric LITERAL (optionally negated), so its sign is known at compile time. Only
+ * then may `slice` lower to the platform's own operations: `dropFirst(n)` / `suffix(n)` / `drop(n)` / `takeLast(n)`
+ * trap or throw on a negative `n`, while JavaScript reads a negative bound as counting from the end. Any other bound
+ * goes through the runtime's `pyreonSlice`, which has JavaScript's semantics.
+ */
+export function sliceBoundsAreLiteral(args: readonly ExprIR[]): boolean {
+  const lit = (a: ExprIR): boolean => a.kind === 'literal' && typeof a.value === 'number'
+  return args.every((a) => lit(a) || (a.kind === 'unary' && a.op === '-' && lit(a.argument)))
+}
+
+/**
  * Classify the two dominant NEGATIVE-index `.slice` idioms so the emitters can
  * lower them (Swift/Kotlin `.slice`/`.drop`/`.take` count from the FRONT and
  * can't take a JS negative-from-the-end index). Target-neutral — returns the
@@ -1433,6 +1469,16 @@ export function inferTypeValue(expr: ExprIR, ctx: InferenceCtx): TypeIR {
         const returns = findFunctionLowering(expr.callee.name)?.lowering.returns
         if (returns !== undefined) return returns
       }
+      // A method on a service container (`picker.pick()`) — its declared return, when the descriptor states one.
+      if (
+        expr.callee.kind === 'member' &&
+        expr.callee.object.kind === 'identifier' &&
+        !ctx.locals.has(expr.callee.object.name)
+      ) {
+        const svcKey = ctx.services.get(expr.callee.object.name)
+        const returns = svcKey === undefined ? undefined : findService(svcKey)?.methodReturns?.[expr.callee.property]
+        if (returns !== undefined) return returns
+      }
       if (expr.args.length === 0 && expr.callee.kind === 'member' &&
         expr.callee.object.kind === 'identifier' && expr.callee.object.name === ctx.signalReceiver &&
         !ctx.locals.has(expr.callee.object.name)) {
@@ -1656,10 +1702,8 @@ export function inferTypeValue(expr: ExprIR, ctx: InferenceCtx): TypeIR {
               // it's a concrete array, return it directly (the flattened result).
               // The emit is the generic native `flatMap` (both targets have it) —
               // only the inference lagged (result degraded to `Any`, so a chained
-              // `.length` / typed use failed). A body that doesn't infer to a
-              // concrete array (e.g. the `cond ? [x] : []` filter-map idiom, whose
-              // empty branch has no element type) stays Array<unknown> — a
-              // follow-up needs empty-array-in-ternary unification.
+              // `.length` / typed use failed). The `cond ? [x] : []` filter-map
+              // idiom infers through the ternary case's empty-array unification.
               const cb = expr.args[0]
               if (cb !== undefined && cb.kind === 'arrow' && cb.params.length >= 1) {
                 const scratch: InferenceCtx = { ...ctx, locals: new Map(ctx.locals) }
