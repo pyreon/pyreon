@@ -36,7 +36,11 @@ describe('<Canvas> — web', () => {
     expect(path.getTotalLength()).toBeCloseTo(Math.hypot(200, 100), 0)
 
     const text = canvas.querySelector('text') as SVGTextElement
-    expect(text.getBoundingClientRect().top - box.top).toBeGreaterThanOrEqual(59)
+    // `y` is the TOP of the text (dominant-baseline: hanging). The glyph box
+    // reaches a little above the hanging line, by a font-dependent amount
+    // (macOS 59+, the ubuntu runner 57.6), so assert the discriminating fact:
+    // on the alphabetic baseline the top would sit a full ascent higher (~46).
+    expect(text.getBoundingClientRect().top - box.top).toBeGreaterThan(54)
     // Every layer fills the canvas, so shapes share one coordinate space.
     for (const svg of canvas.querySelectorAll('svg')) {
       expect(svg.getBoundingClientRect().width).toBe(200)
