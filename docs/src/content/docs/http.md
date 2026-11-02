@@ -393,6 +393,21 @@ The client covers the common path; these are the building blocks underneath it.
 
 The client itself is web/Node only — the transport and middleware run on `fetch`. On iOS and Android (PMTC), same-file endpoint calls lower to the native networking runtime instead: `useFetch<T>(getUser({ params: { id: '1' } }))` becomes a `PyreonFetch`, `useQuery<T>(() => getUser.query({ params: { id: '1' } }))` a cached `PyreonQuery`, and `useStream` over `openEventStream` / `openNdjsonStream` with a same-file endpoint a `PyreonStream`. A computed `baseUrl` stays web.
 
+The client's middleware crosses too, when the `use` array is a literal the compiler can read:
+
+```ts
+const useSession = defineStore('session', () => ({ token: signal('') }))
+
+const api = createHttp({
+  baseUrl: 'https://api.example.com',
+  use: [bearer(() => useSession().store.token()), retry({ limit: 3 }), logger()],
+})
+```
+
+`bearer`, `retry` and `logger` lower to the native `PyreonHttpMiddleware` onion that the `useFetch` and `useQuery` harnesses apply around every request, in array order, with the web semantics: the same backoff (exponential, full jitter, capped at 20 s, then `maxDelay`), `Retry-After` in seconds or as an HTTP date, the idempotent-methods default, a nil or empty token sending no header, the `baseUrl` origin boundary, and a `logger` line that is silent outside a debug build unless `production: true`. A differential test runs the web middleware and both native runtimes on the same inputs and requires identical attempts, headers, waits and log lines. `forwardHeaders` lowers to nothing — on a client there is no inbound request to forward from, exactly as in a browser.
+
+What keeps a client's calls on the web, each with a warning naming the entry: `refresh`, `dedupe`, a custom middleware function, a `backoff` or `log` callback, a non-literal option, a `use` that is not an array literal, and a `bearer` token that reads a file-scope `signal()` (which does not exist natively — keep the token in a store). `useStream`, an awaited endpoint call (`PyreonHttp.call`) and `useMutation` refuse a client with middleware by name rather than sending a request without it. Two native differences are disclosed: on Android, `logger()` cannot see the app's `BuildConfig`, so it logs unless you set `PyreonHttpPipelineEnv.debugBuild = BuildConfig.DEBUG` at startup; and a request body is always replayable natively, so the web's one-shot-stream exception to retry does not arise.
+
 ### Sending what the user entered
 
 A request can carry runtime values, and they are read at the moment the web reads them:

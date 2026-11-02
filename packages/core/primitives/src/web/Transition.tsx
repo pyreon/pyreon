@@ -281,7 +281,7 @@ export const Transition = (props: TransitionProps): VNode => {
       ...collectPassthroughAttrs(props as unknown as Record<string, unknown>),
       ref,
       onTransitionEnd,
-      style: mergePassthroughStyle(style, props.style),
+      style: mergePassthroughStyle(style, props),
     },
     props.children,
   )

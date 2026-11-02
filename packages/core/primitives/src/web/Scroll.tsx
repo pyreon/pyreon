@@ -32,7 +32,7 @@ export const Scroll = (props: ScrollProps): VNode => {
     'div',
     {
       ...collectPassthroughAttrs(props as unknown as Record<string, unknown>),
-      style: mergePassthroughStyle(style, props.style),
+      style: mergePassthroughStyle(style, props),
     },
     props.children,
   )

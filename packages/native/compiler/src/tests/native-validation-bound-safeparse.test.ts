@@ -42,7 +42,7 @@ export function App() {
   return <Button onPress={go}><Text>{msg()}</Text></Button>
 }`
 
-const warn = (src: string, target: 'swift' | 'kotlin') => transform(src, { target }).warnings.map((w) => String(w.message ?? w))
+const warn = (src: string, target: 'swift' | 'kotlin') => transform(src, { target }).warnings.map(String)
 
 describe('several schemas in ONE declaration', () => {
   for (const target of ['swift', 'kotlin'] as const) {

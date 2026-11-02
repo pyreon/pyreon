@@ -328,6 +328,30 @@ function widenFloatSignalDecls(
       }
       if (n === null || typeof n !== 'object') return
       const node = n as Record<string, unknown> & { kind?: string }
+      // An arrow with TYPED parameters scopes those types over its body, so a
+      // write that reads one (`x.set(e.dx)` where `e` is a typed gesture
+      // event, `(v: number) => …`) infers from the declared type instead of
+      // `unknown`. Without it the write never proved fractional and `x` stayed
+      // an Int receiving a Double — the emit's own closure binding typed `e`
+      // correctly, so only the DECLARATION was wrong.
+      if (node.kind === 'arrow') {
+        const params = node.params as string[] | undefined
+        const types = node.paramTypes as (TypeIR | undefined)[] | undefined
+        const bound: Array<[string, TypeIR | undefined, boolean]> = []
+        params?.forEach((p, i) => {
+          const t = types?.[i]
+          bound.push([p, ctx.locals.get(p), ctx.locals.has(p)])
+          // An untyped parameter SHADOWS any outer binding of the same name.
+          if (t !== undefined && t.kind !== 'unknown') ctx.locals.set(p, t)
+          else ctx.locals.delete(p)
+        })
+        for (const k of Object.keys(node)) visit(node[k])
+        for (const [p, prev, had] of bound.reverse()) {
+          if (had) ctx.locals.set(p, prev!)
+          else ctx.locals.delete(p)
+        }
+        return
+      }
       if (node.kind === 'call') {
         const callee = node.callee as
           | { kind?: string; property?: string; object?: { kind?: string; name?: string } }
@@ -1055,6 +1079,17 @@ export function buildArraySpreadConcat(
   if (parts.length === 0) return litWrap('')
   if (parts.length === 1) return parts[0]!
   return `(${parts.join(' + ')})`
+}
+
+/**
+ * Whether every `slice` bound is a numeric LITERAL (optionally negated), so its sign is known at compile time. Only
+ * then may `slice` lower to the platform's own operations: `dropFirst(n)` / `suffix(n)` / `drop(n)` / `takeLast(n)`
+ * trap or throw on a negative `n`, while JavaScript reads a negative bound as counting from the end. Any other bound
+ * goes through the runtime's `pyreonSlice`, which has JavaScript's semantics.
+ */
+export function sliceBoundsAreLiteral(args: readonly ExprIR[]): boolean {
+  const lit = (a: ExprIR): boolean => a.kind === 'literal' && typeof a.value === 'number'
+  return args.every((a) => lit(a) || (a.kind === 'unary' && a.op === '-' && lit(a.argument)))
 }
 
 /**

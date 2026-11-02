@@ -61,7 +61,7 @@ export function queryLifecycleSwift(decl: ExtDecl, ctx: EmitContext): readonly s
   } else {
     const swiftUrl = d.urlExpr !== undefined ? ctx.expr(d.urlExpr, 0) : ctx.stringLiteral(d.url as string)
     lines.push(`    do {`)
-    if (d.method || d.headers || d.headerExprs || d.body !== undefined || d.bodyExpr !== undefined || d.upload !== undefined) {
+    if (d.method || d.headers || d.headerExprs || d.body !== undefined || d.bodyExpr !== undefined || d.upload !== undefined || d.middleware !== undefined) {
       // A request with a VERB, headers, or a body routes through PyreonHttp — exactly like useFetch's
       // method/headers path. Header and body expressions are evaluated here, inside the harness — i.e.
       // when THIS run builds the request, so a token is current.
@@ -70,7 +70,8 @@ export function queryLifecycleSwift(decl: ExtDecl, ctx: EmitContext): readonly s
         ctx,
         `Declaration ${decl.name}: useQuery queryFn fetch`,
       )
-      for (const line of swiftSendLines(args)) lines.push(`      ${line}`)
+      // The client's `use: [...]`, when present, is applied around the request with the web's onion semantics.
+      for (const line of swiftSendLines(args, d.middleware !== undefined ? ctx.expr(d.middleware, 0) : undefined)) lines.push(`      ${line}`)
       lines.push(`      ${name}.resolve(try __response.decode(${ctx.typeText(d.type)}.self))`)
     } else {
       lines.push(`      let (bytes, _) = try await URLSession.shared.data(from: URL(string: ${swiftUrl})!)`)

@@ -701,6 +701,11 @@ object Modifier {
   fun fillMaxWidth(fraction: Float = 1f): Modifier = this
   fun fillMaxSize(fraction: Float = 1f): Modifier = this
   fun offset(x: Dp = 0.dp, y: Dp = 0.dp): Modifier = this
+  // The transform props: androidx.compose.ui.draw.scale(Float) / rotate(Float).
+  @Suppress("UNUSED_PARAMETER")
+  fun scale(scale: Float): Modifier = this
+  @Suppress("UNUSED_PARAMETER")
+  fun rotate(degrees: Float): Modifier = this
   // --- Phase P2.2 content: <Icon>/<Image> sizing. Real Compose ships
   // size/width/height from androidx.compose.foundation.layout.
   @Suppress("UNUSED_PARAMETER")
@@ -973,6 +978,23 @@ fun PyreonLink(to: String, content: @Composable (navigate: () -> Unit) -> Unit) 
   content { }
 }
 
+// PyreonGesture + its payloads — mirror of @pyreon/native-runtime-kotlin's
+// PyreonGesture.kt / PyreonGestureCore.kt (the <Gesture> primitive).
+data class PyreonPanEvent(val dx: Double, val dy: Double, val x: Double, val y: Double, val phase: String)
+data class PyreonPinchEvent(val scale: Double, val centerX: Double, val centerY: Double, val phase: String)
+data class PyreonRotateEvent(val degrees: Double, val phase: String)
+@Composable
+@Suppress("UNUSED_PARAMETER")
+fun PyreonGesture(
+  onPan: ((PyreonPanEvent) -> Unit)? = null,
+  onPinch: ((PyreonPinchEvent) -> Unit)? = null,
+  onRotate: ((PyreonRotateEvent) -> Unit)? = null,
+  modifier: Modifier = Modifier,
+  content: @Composable () -> Unit,
+) {
+  content()
+}
+
 // PyreonWebView — mirror of @pyreon/native-runtime-kotlin's PyreonWebView.kt
 // (the Android WebView host for the <WebView> primitive). Stub so the
 // kotlinc validate gate resolves the \`PyreonWebView(html = …)\` /
@@ -1147,8 +1169,28 @@ object PyreonHttpOkHttp : PyreonHttpExecutor {
 }
 object PyreonHttp {
   fun install(executor: PyreonHttpExecutor) {}
-  fun send(request: PyreonHttpRequest, fallback: PyreonHttpExecutor? = null): PyreonHttpResponse = PyreonHttpResponse(200)
+  fun send(
+    request: PyreonHttpRequest,
+    fallback: PyreonHttpExecutor? = null,
+    middleware: List<PyreonHttpMiddleware> = emptyList(),
+  ): PyreonHttpResponse = PyreonHttpResponse(200)
   fun call(request: PyreonHttpRequest, fallback: PyreonHttpExecutor? = null): PyreonHttpResponse = PyreonHttpResponse(200)
+}
+// The lowered \`createHttp({ use: [...] })\` middleware. Mirrors the REAL
+// PyreonHttp.kt surface: \`maxDelay\` is a Double, every policy field is
+// defaulted, and the middleware are nested classes of a sealed class.
+data class PyreonRetryPolicy(
+  val limit: Int = 2,
+  val methods: List<String> = emptyList(),
+  val statuses: List<Int> = emptyList(),
+  val network: Boolean = true,
+  val respectRetryAfter: Boolean = true,
+  val maxDelay: Double = 30_000.0,
+)
+sealed class PyreonHttpMiddleware {
+  class Bearer(val baseUrl: String, val crossOrigin: Boolean = false, val token: () -> String?) : PyreonHttpMiddleware()
+  class Retry(val policy: PyreonRetryPolicy = PyreonRetryPolicy()) : PyreonHttpMiddleware()
+  class Logger(val production: Boolean = false) : PyreonHttpMiddleware()
 }
 // PyreonURL — the runtime path-param encoder a templated endpoint URL calls.
 // Mirrors the REAL PyreonURL surface: four overloads (String / Int / Long /
@@ -1166,6 +1208,10 @@ object PyreonURL {
 // pyreonNumberString — JS \`String(number)\`, which every Double-typed
 // template interpoland lowers through. Mirrors the real signature.
 fun pyreonNumberString(value: Number): String = ""
+// pyreonSlice — JS \`slice\` for a bound whose sign is not known at compile time
+// (runtime-kotlin's PyreonSlice.kt).
+fun <T> pyreonSlice(a: List<T>, start: Long, end: Long? = null): List<T> = a
+fun pyreonSlice(s: String, start: Long, end: Long? = null): String = s
 
 // kotlinx.coroutines surface the emitted fetch harness drives —
 // withContext(Dispatchers.IO) { ... } around the blocking URL read.

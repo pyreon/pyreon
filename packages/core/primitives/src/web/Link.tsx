@@ -42,7 +42,7 @@ export const Link = (props: LinkProps): VNode => {
         href: props.to,
         target: '_blank',
         rel: 'noopener noreferrer',
-        style: mergePassthroughStyle({}, props.style),
+        style: mergePassthroughStyle({}, props),
       },
       props.children,
     )
@@ -74,7 +74,7 @@ export const Link = (props: LinkProps): VNode => {
       ...passthrough,
       href: props.to,
       onClick,
-      style: mergePassthroughStyle({}, props.style),
+      style: mergePassthroughStyle({}, props),
     },
     props.children,
   )

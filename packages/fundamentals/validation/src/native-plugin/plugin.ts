@@ -25,11 +25,12 @@ export { VALIDATION_PLUGIN_NAME }
 const tier2: CallRecognizer = (call, ctx) => {
   const bindingName = ctx.declName
   ctx.report(
-    `${call.callee}() declared (@pyreon/validation, binding: \`${bindingName}\`) in a position that does not lower — ` +
-      `only a TOP-LEVEL \`const ${bindingName} = ${call.callee}(…)\` with an inline literal schema becomes a native ` +
-      `struct, so a schema declared inside a component body / function, or a \`*Field\` helper, emits as an unresolved ` +
-      `reference and fails swiftc/kotlinc. Hoist the declaration to the top of the file (it reads no component state), ` +
-      `or keep the call in a \`<Web>\`-only branch.`,
+    `${call.callee}() declared (@pyreon/validation, binding: \`${bindingName}\`) — Tier-2 package on native: only a ` +
+      `TOP-LEVEL \`const ${bindingName} = ${call.callee}(…)\` with an inline literal schema becomes a native struct, so ` +
+      `a schema declared inside a component body / function, or a \`*Field\` helper, emits as an unresolved reference ` +
+      `and may fail swiftc/kotlinc validation. Hoist the declaration to the top of the file (it reads no component ` +
+      `state), or use a per-target adapter (Layer 4: <NativeIOS> / <NativeAndroid>), or keep this code in a ` +
+      `\`<Web>\`-only branch. See docs/src/content/docs/multiplatform-libraries.md → "Tier 2 — pure-logic packages."`,
   )
   return null
 }
