@@ -13,6 +13,7 @@
 
 package com.pyreon.router
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.compositionLocalOf
@@ -62,4 +63,35 @@ public fun RouterProvider(
     CompositionLocalProvider(LocalPyreonRouter provides router) {
         content()
     }
+}
+
+/**
+ * One tab of a tab-bar router (`createRouter({ tabs })`): the tab's content,
+ * whose route dispatch reads [PyreonRouter.tabTop] for THIS tab, so a hidden
+ * tab keeps showing its own page while another tab navigates.
+ *
+ * It also owns the system Back for the tab while the tab is active — the
+ * Navigation-Compose multiple-back-stacks convention: Back pops the active
+ * tab's own stack first; at that tab's root it returns to the FIRST tab (the
+ * start destination); on the first tab's root it is left to the system, which
+ * leaves the app. Inactive tabs register a disabled handler, so exactly one
+ * tab answers.
+ */
+@Composable
+public fun PyreonTabStack(
+    router: PyreonRouter,
+    tab: String,
+    content: @Composable () -> Unit,
+) {
+    val active = router.activeTab.value == tab
+    val stack = router.tabPath(tab)
+    val first = router.tabs.firstOrNull()?.name
+    BackHandler(enabled = active && (stack.isNotEmpty() || (first != null && tab != first))) {
+        if (router.tabPath(tab).isNotEmpty()) {
+            router.back()
+        } else if (first != null) {
+            router.selectTab(first)
+        }
+    }
+    content()
 }

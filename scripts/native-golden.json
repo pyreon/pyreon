@@ -221,6 +221,16 @@
       "bytes": 387,
       "warnings": 0
     },
+    "fixture:router-tabs.tsx|swift": {
+      "sha": "064014401c7543d32d4e0edd796b28dde868abd9e9098261515f3ade63333629",
+      "bytes": 2305,
+      "warnings": 0
+    },
+    "fixture:router-tabs.tsx|kotlin": {
+      "sha": "efbac85b8e154cb72aca96d3546d52f5da2eeaaa0c3b047cc3b56705c836e135",
+      "bytes": 2049,
+      "warnings": 0
+    },
     "fixture:rx-full.tsx|swift": {
       "sha": "f4607f8b2d3d842a13d4c77ad70d9fea98fbf202c859fe27fb0e07de6c0bc7b9",
       "bytes": 1706,
@@ -7402,13 +7412,13 @@
       "warnings": 0
     },
     "example:native-router-demo-ios/RouterApp.tsx|swift": {
-      "sha": "40490fb9459803844b21d31f4b9b97af113c6637ee3f921e1d4810f59bee2465",
-      "bytes": 24970,
+      "sha": "1e2020fecb803883b2b06c1556087a61af695a4de712fbe7013f3a6dd75a7374",
+      "bytes": 28629,
       "warnings": 0
     },
     "example:native-router-demo-ios/RouterApp.tsx|kotlin": {
-      "sha": "0145a8dd0b681ae1dc8b090fbcc9c155062ddc800730e81f72fd41348c80f501",
-      "bytes": 23490,
+      "sha": "82613d44edad8367267dcb521bbefb55fcd35b18a9aec61355793e3c500fd574",
+      "bytes": 26673,
       "warnings": 0
     },
     "example:native-tasks/TasksApp.tsx|swift": {

@@ -25,6 +25,12 @@ SwiftUI does not support nested stacks, and every Pyreon screen is already insid
 
 ---
 
+### A shared counter that numbers views in mount order cannot describe PARALLEL stacks
+
+The web `RouterView` claims its depth from `router._viewDepth`, a counter every view bumps at setup — fine for one chain, wrong for N tab panels that each start at depth 0 and mount lazily at different times. Per-tab stacks (#4060) give each tab a context scope (`RouterTabContext`, depth from the scope) instead. Same PR: a per-tab route computed must return the SAME object when a recompute finds the same top path (memoize on the string) — a fresh `ResolvedRoute` passes the equality gate and remounts the hidden tab's page. Reference: `packages/core/router/src/{router.ts,components.tsx}`; bisect-locked in `tests/tab-stacks.test.tsx`.
+
+---
+
 ### [FIXED, 2026-10] A "nothing removed" shortcut that compares COUNTS (`cache.size === n`) is fooled by a duplicate key.
 
 `<For>`'s pure-reorder fast path skipped its stale-row scan when no row was added and the cache held `n` entries. `[1,2,3] → [2,2,1]` satisfies that (n stays 3) while key 3 is gone, so the removed row stayed in the DOM — a production-visible ghost row (duplicates only warn in dev). Fix: count the DISTINCT cached entries the update keeps (a per-update generation stamp on each entry, set in the `cache.get` pass that already ran) and take the shortcut only when that equals `cache.size`. **Rule: "set A is a superset of set B" can be decided by counting only when the counted side is duplicate-free.** Reference: `runtime-dom/src/nodes.ts:mountNewForEntries`; bisect-locked in `tests/for-duplicate-key-stale-row.test.ts`.

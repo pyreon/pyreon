@@ -4410,6 +4410,8 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     if (routes !== null) decl.routes = routes
     if (beforeEach.length > 0) decl.beforeEach = beforeEach
     if (afterEach.length > 0) decl.afterEach = afterEach
+    const tabs = tryExtractRouterTabs(init.arguments?.[0], ctx.warnings)
+    if (tabs !== undefined) decl.tabs = tabs
     return decl
   }
   // `useToggle(initial)` / `useCounter(initial, { min, max })` — pure state
@@ -4873,6 +4875,53 @@ function lowerGuardFn(
  * createRouter config. A named reference is kept as is; an inline function is synthesized into a file-level helper
  * (see `inlineGuardHelper`) and its generated name kept. Anything else is warned and dropped.
  */
+/**
+ * `createRouter({ tabs: [{ name: 'feed', root: '/feed' }, …] })` → the tab
+ * list, or undefined when the config has no `tabs`. Every entry must be an
+ * object LITERAL with string-literal `name` and `root`: the native router is
+ * constructed with them and each `<Tab value>` is matched against `name` at
+ * compile time. Anything else is NAMED and dropped — a tab silently missing
+ * from the router would push every one of its routes into another tab.
+ */
+function tryExtractRouterTabs(arg: AnyNode | undefined, warnings: string[]): { name: string; root: string }[] | undefined {
+  if (!arg || arg.type !== 'ObjectExpression') return undefined
+  const prop = (arg.properties as AnyNode[] | undefined)?.find((p) => p?.type === 'Property' && staticPropKey(p) === 'tabs')
+  if (!prop) return undefined
+  const value = prop.value as AnyNode | undefined
+  if (!value || value.type !== 'ArrayExpression') {
+    warnings.push(
+      '[pyreon-native] createRouter `tabs` must be an array LITERAL of `{ name, root }` objects on iOS/Android — the router is built with them at compile time. Per-tab stacks are DROPPED here, so every route pushes onto one stack.',
+    )
+    return undefined
+  }
+  const out: { name: string; root: string }[] = []
+  const literal = (obj: AnyNode, key: string): string | undefined => {
+    const p = (obj.properties as AnyNode[] | undefined)?.find((x) => x?.type === 'Property' && staticPropKey(x) === key)
+    const v = p?.value as AnyNode | undefined
+    if (v?.type === 'Literal' && typeof v.value === 'string') return v.value as string
+    if (v?.type === 'TemplateLiteral' && (v.expressions as unknown[]).length === 0) {
+      return ((v.quasis as AnyNode[])[0]?.value as { cooked?: string } | undefined)?.cooked
+    }
+    return undefined
+  }
+  for (const el of (value.elements as AnyNode[] | undefined) ?? []) {
+    const name = el?.type === 'ObjectExpression' ? literal(el, 'name') : undefined
+    const root = el?.type === 'ObjectExpression' ? literal(el, 'root') : undefined
+    if (name === undefined || root === undefined) {
+      warnings.push(
+        '[pyreon-native] createRouter `tabs`: each entry must be `{ name: \'…\', root: \'/…\' }` with string-literal name and root — this tab is DROPPED on iOS/Android.',
+      )
+      continue
+    }
+    if (out.some((t) => t.name === name)) {
+      warnings.push(`[pyreon-native] createRouter \`tabs\`: a second tab named ${JSON.stringify(name)} is DROPPED — tab names must be distinct.`)
+      continue
+    }
+    out.push({ name, root })
+  }
+  return out.length > 0 ? out : undefined
+}
+
 function tryExtractGuardRefArray(
   arg: AnyNode | undefined,
   key: string,

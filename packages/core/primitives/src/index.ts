@@ -51,7 +51,7 @@ export type {
   SingleLineFieldProps,
   ToggleProps,
 } from './types/input'
-export type { SplitProps, TabProps, TabsProps } from './types/navigation'
+export type { SplitProps, TabProps, TabsProps, TabsRouter, TabsRouterProps, TabsSignalProps } from './types/navigation'
 export type {
   TransitionEasing,
   TransitionGroupProps,

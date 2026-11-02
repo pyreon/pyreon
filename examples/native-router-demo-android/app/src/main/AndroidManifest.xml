@@ -46,5 +46,13 @@
                 <data android:scheme="pyreondemo" />
             </intent-filter>
         </activity>
+        <!-- The tab-bar router demo (#4060) — a second root, `TabsApp`, so the
+             per-tab-stack device test runs without reshaping RouterApp's
+             screens. Not exported: only the instrumented test launches it. -->
+        <activity
+            android:name="com.pyreon.TabsDemoActivity"
+            android:exported="false"
+            android:configChanges="keyboard|keyboardHidden|orientation|screenLayout|screenSize|smallestScreenSize|uiMode"
+            android:theme="@android:style/Theme.Material.Light.NoActionBar" />
     </application>
 </manifest>

@@ -16,7 +16,7 @@ import { computed, isClient, signal } from '@pyreon/reactivity'
 import { announceRouteChange } from './announcer'
 import { LoaderDataContext, prefetchLoaderData } from './loader'
 import { _setDefaultChromeLayout } from './match'
-import { getActiveRouter, isLazy, RouterContext, setActiveRouter } from './router'
+import { getActiveRouter, isLazy, RouterContext, RouterTabContext, setActiveRouter } from './router'
 import type { LazyComponent, ResolvedRoute, RouteRecord, Router, RouterInstance } from './types'
 import { type CheckHref, classifyHref, toRouterPath } from './typed-routes'
 
@@ -90,13 +90,28 @@ const RouterView: ComponentFn<RouterViewProps> = (props) => {
     useContext(RouterContext)) as RouterInstance | null
   if (!router) return null
 
-  // Claim this view's depth at setup time (depth-first component init order)
-  const depth = router._viewDepth
-  router._viewDepth++
+  // Inside a tab of a tab-bar router (`createRouter({ tabs })`), this view
+  // shows ITS tab's top entry — not the URL's — so a hidden tab keeps its own
+  // page mounted. Depth comes from the tab scope (each tab starts at 0) rather
+  // than the shared counter, which numbers sibling views in mount order and so
+  // cannot describe N parallel stacks.
+  const tabScope = useContext(RouterTabContext)
+  const tab = tabScope !== null && router.activeTab() !== undefined ? tabScope.tab : null
+  let depth: number
+  if (tab !== null) {
+    depth = tabScope!.depth
+    provide(RouterTabContext, { tab, depth: depth + 1 })
+  } else {
+    // Claim this view's depth at setup time (depth-first component init order)
+    depth = router._viewDepth
+    router._viewDepth++
 
-  onUnmount(() => {
-    router._viewDepth--
-  })
+    onUnmount(() => {
+      router._viewDepth--
+    })
+  }
+  const routeOf = (): ResolvedRoute =>
+    tab !== null ? router._tabRoute(tab) : router.currentRoute()
 
   // Root-only, client-only route announcer (a11y — WAI-ARIA / Next.js-style):
   // tell screen-reader users the page changed on each navigation. Registered
@@ -108,6 +123,8 @@ const RouterView: ComponentFn<RouterViewProps> = (props) => {
     onMount(() => {
       let prevPath = router.currentRoute().path
       return router.afterEach((to) => {
+        // Each tab has its own root view; only the active tab's announces.
+        if (tab !== null && router.activeTab() !== tab) return
         if (to.path === prevPath) return // same-path (query/hash) — not a page change
         prevPath = to.path
         announceRouteChange(to.path)
@@ -176,7 +193,7 @@ const RouterView: ComponentFn<RouterViewProps> = (props) => {
   }
   const depthEntry = computed<DepthEntry>(
     () => {
-      const route = router.currentRoute()
+      const route = routeOf()
       const rec = route.matched[depth] ?? null
       if (!rec) return { rec: null, comp: null, errored: false, route, loaderData: undefined }
       // Subscribe to `_loadingSignal` so lazy resolution wakes this

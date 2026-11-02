@@ -932,3 +932,84 @@ export function RouterApp() {
     </RouterProvider>
   )
 }
+
+// Tab-bar router (#4060) — per-tab back stacks. A SECOND root, separate from
+// RouterApp so the existing single-stack screens (and their fold budget on the
+// Android emulator) are untouched: the iOS host shows it when launched with
+// `-pyreonTabsDemo`, the Android host from `TabsDemoActivity`. What it PROVES
+// on device:
+//   - a push from inside a tab stays INSIDE the tab — the tab bar stays
+//     visible (before, the router's one stack wrapped the TabView, so a push
+//     covered the bar);
+//   - switching tabs keeps each tab's stack (Feed is still on the post after a
+//     detour through Me);
+//   - re-tapping the active tab pops it to its root;
+//   - Android: the system Back pops the ACTIVE tab first, then returns to the
+//     first tab from another tab's root.
+function TabFeedHome() {
+  const navigate = useNavigate()
+  return (
+    <Stack gap={3} padding={4} data-testid="tabs-feed-home">
+      <Text data-testid="tabs-feed-title">Feed root</Text>
+      <Button onPress={() => navigate('/feed/post')} data-testid="tabs-feed-open">
+        Open post
+      </Button>
+    </Stack>
+  )
+}
+
+function TabFeedPost() {
+  return (
+    <Stack gap={3} padding={4} data-testid="tabs-feed-post">
+      <Text data-testid="tabs-feed-post-title">Post detail</Text>
+    </Stack>
+  )
+}
+
+function TabMeHome() {
+  const navigate = useNavigate()
+  return (
+    <Stack gap={3} padding={4} data-testid="tabs-me-home">
+      <Text data-testid="tabs-me-title">Me root</Text>
+      <Button onPress={() => navigate('/me/settings')} data-testid="tabs-me-open">
+        Open settings
+      </Button>
+    </Stack>
+  )
+}
+
+function TabMeSettings() {
+  return (
+    <Stack gap={3} padding={4} data-testid="tabs-me-settings">
+      <Text data-testid="tabs-me-settings-title">Settings</Text>
+    </Stack>
+  )
+}
+
+export function TabsApp() {
+  const router = createRouter({
+    mode: 'history',
+    routes: [
+      { path: '/feed', component: TabFeedHome },
+      { path: '/feed/post', component: TabFeedPost },
+      { path: '/me', component: TabMeHome },
+      { path: '/me/settings', component: TabMeSettings },
+    ],
+    tabs: [
+      { name: 'feed', root: '/feed' },
+      { name: 'me', root: '/me' },
+    ],
+  })
+  return (
+    <RouterProvider router={router}>
+      <Tabs router={router} data-testid="tabs-app">
+        <Tab value="feed" label="Feed" icon="home" data-testid="tabs-tab-feed">
+          <RouterView />
+        </Tab>
+        <Tab value="me" label="Me" icon="person" data-testid="tabs-tab-me">
+          <RouterView />
+        </Tab>
+      </Tabs>
+    </RouterProvider>
+  )
+}

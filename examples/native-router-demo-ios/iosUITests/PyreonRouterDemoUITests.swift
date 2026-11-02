@@ -1421,6 +1421,56 @@ final class PyreonRouterDemoUITests: XCTestCase {
         XCTAssertEqual(subject.label, "Subject: Invoice")
     }
 
+    /// Tab-bar router (#4060): `createRouter({ tabs })` + `<Tabs router>` — each tab is its own
+    /// `NavigationStack` inside the `TabView`. Before, the router's one stack wrapped the TabView, so a push from
+    /// inside a tab COVERED the tab bar; here it stays, every tab keeps its stack across a switch, and re-tapping
+    /// the active tab pops it to its root.
+    func test_tabRouterKeepsAStackPerTabAndTheTabBarOnPush() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["-pyreonTabsDemo"]
+        app.launch()
+        XCTAssertTrue(
+            app.staticTexts["tabs-feed-title"].waitForExistence(timeout: 30),
+            "TabsApp did not open on the Feed tab's root"
+        )
+        let tabBar = app.tabBars.firstMatch
+        XCTAssertTrue(tabBar.waitForExistence(timeout: 10), "no tab bar — <Tabs router> did not lower to a TabView")
+
+        // Push inside Feed: the detail renders AND the tab bar is still on screen.
+        app.buttons["tabs-feed-open"].tap()
+        XCTAssertTrue(app.staticTexts["tabs-feed-post-title"].waitForExistence(timeout: 15), "push inside the Feed tab did not render")
+        XCTAssertTrue(
+            tabBar.buttons["Me"].isHittable,
+            "the tab bar is not hittable after a push — the push covered it instead of staying inside the tab"
+        )
+
+        // Switch to Me and push there.
+        tabBar.buttons["Me"].tap()
+        XCTAssertTrue(app.staticTexts["tabs-me-title"].waitForExistence(timeout: 10), "Me tab root did not render")
+        app.buttons["tabs-me-open"].tap()
+        XCTAssertTrue(app.staticTexts["tabs-me-settings-title"].waitForExistence(timeout: 15), "push inside the Me tab did not render")
+
+        // Back to Feed: its stack was kept — still on the post.
+        tabBar.buttons["Feed"].tap()
+        XCTAssertTrue(
+            app.staticTexts["tabs-feed-post-title"].waitForExistence(timeout: 10),
+            "the Feed tab lost its pushed post across a tab switch"
+        )
+
+        // Re-tapping the active tab pops it to its root.
+        tabBar.buttons["Feed"].tap()
+        XCTAssertTrue(app.staticTexts["tabs-feed-title"].waitForExistence(timeout: 10), "re-tapping Feed did not pop to its root")
+        let gone = expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: app.staticTexts["tabs-feed-post-title"])
+        XCTAssertEqual(XCTWaiter().wait(for: [gone], timeout: 10), .completed, "the post is still on the Feed stack after a re-tap")
+
+        // Me still holds its settings page.
+        tabBar.buttons["Me"].tap()
+        XCTAssertTrue(
+            app.staticTexts["tabs-me-settings-title"].waitForExistence(timeout: 10),
+            "the Me tab lost its pushed settings page"
+        )
+    }
+
     /// A global `beforeEach` guard written INLINE (`(to) => to.path !== GUARDED_PATH`) blocks navigation in the real
     /// native router. Before, an inline guard was dropped with a warning, so this route was reachable on iOS.
     func test_inlineBeforeEachGuardBlocksNavigation() throws {
