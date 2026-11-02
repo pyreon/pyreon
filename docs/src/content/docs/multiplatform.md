@@ -68,7 +68,7 @@ Same source. Three idiomatic outputs (web rendered live; iOS/Android emitted as 
 
 - `@pyreon/reactivity` (signal/computed/effect), `@pyreon/primitives` (the 18 canonical primitives)
 - `@pyreon/store`, `@pyreon/machine`, `@pyreon/state-tree`, `@pyreon/i18n`, `@pyreon/permissions`, `@pyreon/rx` (the supported transforms lower to native collection operations; unsupported methods warn)
-- the authoring patterns of the ui-system: `@pyreon/elements` (`Element` → `Stack`, `Text`), `@pyreon/styler` (`styled(Prim)`), `@pyreon/rocketstyle` (chains over a primitive), `@pyreon/attrs`, `@pyreon/coolgrid` (`Container`/`Row`/`Col`) and `@pyreon/ui-core` (`<PyreonUI>`). Their CSS-in-JS runtime stays on the web; the compiler lowers the authored patterns, and web-only constructs (`Overlay`, `Portal`, `List` slots) warn per construct
+- the authoring patterns of the ui-system: `@pyreon/elements` (`Element` → `Stack`, `Text`, `List` → a keyed `Stack` of its rows), `@pyreon/styler` (`styled(Prim)`), `@pyreon/rocketstyle` (chains over a primitive), `@pyreon/attrs`, `@pyreon/coolgrid` (`Container`/`Row`/`Col`) and `@pyreon/ui-core` (`<PyreonUI>`). Their CSS-in-JS runtime stays on the web; the compiler lowers the authored patterns, and web-only constructs (`Overlay`, `Portal`, `List` slots) warn per construct
 - `@pyreon/form` (validated forms — **device-proven**), `@pyreon/storage` (platform-storage backend)
 - `@pyreon/charts`: `<Chart>` and every chart family, as native canvases over the generated engine
 - the native `@pyreon/router` port (`useNavigate`/`useParams`/`useLoaderData`, nested routes, `beforeEnter`)
