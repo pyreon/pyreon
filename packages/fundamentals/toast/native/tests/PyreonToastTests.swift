@@ -63,6 +63,26 @@ struct PyreonToastTests {
         q.runAction(evicted)
         check(ran == 1, "a toast evicted by the stack bound releases its handler")
 
+        // onActionContext: the web's `onClick({ id, dismiss })` — the handler gets
+        // THIS toast's id, so dismissing by it removes that toast (onDismiss once).
+        let k = PyreonToast()
+        var seen: [String] = []
+        var closed = 0
+        let ka = k.add("saved", duration: 0, actionLabel: "Undo", onActionContext: { id in
+            seen.append(id)
+            k.dismiss(id)
+        }, onDismiss: { closed += 1 })
+        _ = k.add("other", duration: 0)
+        check(k.toasts.first { $0.id == ka }?.actionLabel == "Undo", "a context handler shows the action button")
+        k.runAction(ka)
+        check(seen == [ka], "the context handler receives its own toast's id")
+        check(k.toasts.map { $0.message } == ["other"], "dismissing by the handed id removes that toast and no other")
+        check(closed == 1, "dismissing from the action fires onDismiss exactly once")
+        var which = ""
+        let both = k.add("z", duration: 0, actionLabel: "Go", onAction: { which = "plain" }, onActionContext: { _ in which = "context" })
+        k.runAction(both)
+        check(which == "plain", "onAction takes precedence when both are passed")
+
         // onDismiss: fires exactly once when the toast leaves by ANY path (web parity).
         let w = PyreonToast()
         var gone: [String] = []
