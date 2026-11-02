@@ -771,14 +771,20 @@ export function C() {
     name: '@pyreon/feature',
     mechanism: 'partial',
     rationale:
-      'CRUD composite. The RUNTIME half stays web — generated hooks (useList / useById / useCreate / useUpdate / useDelete / useSearch), the network fetcher and validator/form integration lower only when every dependency does. The DECLARATION half crosses today: the literal field-type map emits a Codable struct + a module-scope const with `name` and `initialValues` on both targets. An object literal of scalar validators (`z.object({ id: z.string() })`) lowers the same way, with unenforced constraints reported by name; a schema held in a variable, `v.pipe(…)` and ArkType warn by name.',
+      'CRUD composite. The RUNTIME half stays web — generated hooks (useList / useById / useCreate / useUpdate / useDelete / useSearch), the network fetcher and validator/form integration lower only when every dependency does. The DECLARATION half crosses today: the literal field-type map emits a Codable struct + a module-scope const with `name` and `initialValues` on both targets. An object literal of scalar validators (`z.object({ id: z.string() })`) lowers the same way and ALSO to the validation schema struct, so `Todo.schema.safeParse(x)` enforces the constraints on device (what cannot be enforced — `.refine()`, `.transform()`, `.default()`, `.parse()` — is reported by name); a schema held in a variable, `v.pipe(…)` and ArkType warn by name.',
     snippet: `import { defineFeature } from '@pyreon/feature'
 import { Stack, Text } from '@pyreon/primitives'
+import { signal } from '@pyreon/reactivity'
+import { z } from 'zod'
 const Todo = defineFeature({
   name: 'todo',
-  schema: { id: 'string', title: 'string', done: 'boolean' },
+  schema: z.object({ id: z.string(), title: z.string().min(3), done: z.boolean() }),
 })
-export function C() { return (<Stack><Text>ok</Text></Stack>) }`,
+export function C() {
+  const ok = signal(false)
+  const check = () => { ok.set(Todo.schema.safeParse({ id: 'a', title: 'ab', done: false }).success) }
+  return (<Stack><Text>ok</Text></Stack>)
+}`,
   },
   {
     name: '@pyreon/hotkeys',
