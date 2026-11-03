@@ -2031,7 +2031,7 @@ function emitSwiftComponent(c: ComponentIR): string {
     if (d.kind !== 'on-mount') continue
     const savedLocals = seedHandlerLocals(d.body, _exprInferCtx)
     const savedLocalsAct1 = seedHandlerLocals(d.body, _activeInferCtx)
-    const bodyLines = d.body.map((st) => `        ${emitSwiftStatement(st, 8)}`).join('\n')
+    const bodyLines = emitSwiftStmtLines(d.body, 8).join('\n')
     _exprInferCtx.locals = savedLocals
     _activeInferCtx.locals = savedLocalsAct1
     lines.push(`      .onAppear {`)
@@ -2041,7 +2041,7 @@ function emitSwiftComponent(c: ComponentIR): string {
     // when it comes back.
     if (d.cleanup !== undefined) {
       lines.push(`      .onDisappear {`)
-      lines.push(d.cleanup.map((st) => `        ${emitSwiftStatement(st, 8)}`).join('\n'))
+      lines.push(emitSwiftStmtLines(d.cleanup, 8).join('\n'))
       lines.push(`      }`)
     }
   }
@@ -2645,7 +2645,7 @@ function emitSwiftDecl(
     const inlinedStmts = inlineValueConstsInStmts(d.body)
     const savedLocals = seedHandlerLocals(inlinedStmts, _exprInferCtx)
     const savedLocalsAct3 = seedHandlerLocals(inlinedStmts, _activeInferCtx)
-    const bodyLines = inlinedStmts.map((s) => `    ${emitSwiftStatement(s, 4)}`).join('\n')
+    const bodyLines = emitSwiftStmtLines(inlinedStmts, 4).join('\n')
     _exprInferCtx.locals = savedLocals
     _activeInferCtx.locals = savedLocalsAct3
     const last = inlinedStmts[inlinedStmts.length - 1]
@@ -2861,36 +2861,60 @@ function isClosureInit(e: ExprIR): boolean {
  * `guard let tags = b.tags else { return 0 }` and the rest reading `tags`.
  */
 function emitSwiftStmtLines(stmts: readonly StatementIR[], indent: number): string[] {
-  const saved = _functionNames
-  _functionNames = new Set(saved)
+  // A local declared in a NESTED list (a loop body, a switch case, an if
+  // branch) is typed here as it is declared, scoped to the list. The callers
+  // seed only a body's TOP-LEVEL locals, so `for (const x of xs) { const v =
+  // x; if (v === null) continue; use(v) }` left `v` untyped — the guard could
+  // not see that it is optional, and Swift got `use(v)` with a `Double?`.
+  // The two contexts may be one object, or two sharing one `locals` map; the
+  // scoped copy must keep whatever sharing there was, or a local registered
+  // through one would stop reaching the other.
+  const ctxs = [_exprInferCtx, _activeInferCtx] as const
+  const saved = ctxs.map((c) => c.locals)
+  const exprCopy = new Map(saved[0])
+  _exprInferCtx.locals = exprCopy
+  if (_activeInferCtx !== _exprInferCtx)
+    _activeInferCtx.locals = saved[1] === saved[0] ? exprCopy : new Map(saved[1])
+  // The closure names a list declares are callable for the rest of that list only.
+  const savedFunctions = _functionNames
+  _functionNames = new Set(savedFunctions)
   try {
-    return emitSwiftStmtLinesInner(stmts, indent)
+    return emitSwiftStmtLinesScoped(stmts, indent)
   } finally {
-    _functionNames = saved
+    _functionNames = savedFunctions
+    ctxs.forEach((c, i) => {
+      c.locals = saved[i]!
+    })
   }
 }
 
-function emitSwiftStmtLinesInner(stmts: readonly StatementIR[], indent: number): string[] {
+function emitSwiftStmtLinesScoped(stmts: readonly StatementIR[], indent: number): string[] {
   const pad = ' '.repeat(indent)
   const out: string[] = []
   for (let i = 0; i < stmts.length; i++) {
     const s = stmts[i]!
     const g = planGuard(s, stmts.slice(i + 1), _exprInferCtx, _activePropsParamName)
     if (g !== null) {
-      const exitLines = g.exitBody
-        .map((t) => `${pad}  ${emitSwiftStatement(t, indent + 2)}`)
-        .join('\n')
+      const exitLines = emitSwiftStmtLines(g.exitBody, indent + 2).join('\n')
       out.push(
         `${pad}guard ${swiftBindClause(g.narrowing, g.binder, indent)} else {\n${exitLines}\n${pad}}`,
       )
       out.push(
         ...withSwiftLocals([[g.binder, g.narrowing.unwrapped]], () =>
-          emitSwiftStmtLines(g.rest, indent),
+          emitSwiftStmtLinesScoped(g.rest, indent),
         ),
       )
       return out
     }
     out.push(`${pad}${emitSwiftStatement(s, indent)}`)
+    if (s.kind === 'let') {
+      for (const c of [_exprInferCtx, _activeInferCtx]) {
+        if (c.locals.has(s.name)) continue
+        const t = inferType(s.expr, c)
+        const typed = t.kind === 'unknown' && s.declaredType !== undefined ? s.declaredType : t
+        if (typeIsOptional(typed)) c.locals.set(s.name, typed)
+      }
+    }
   }
   return out
 }
@@ -3501,7 +3525,7 @@ function emitSwiftStatement(s: StatementIR, indent: number): string {
     case 'while': {
       const pad = ' '.repeat(indent)
       const cond = swiftCondition(s.cond, (x) => emitSwiftExpr(x, indent))
-      const lines = s.body.map((t) => `${pad}  ${emitSwiftStatement(t, indent + 2)}`).join('\n')
+      const lines = emitSwiftStmtLines(s.body, indent + 2).join('\n')
       // Loop label — Swift spells it `outer: while … { break outer }`.
       const lbl = s.label !== undefined ? `${swiftIdent(s.label)}: ` : ''
       return `${lbl}while ${cond} {\n${lines}\n${pad}}`
@@ -3515,12 +3539,18 @@ function emitSwiftStatement(s: StatementIR, indent: number): string {
       // unknown, the binary coercion never fired, and swiftc rejected
       // `Int * Double` (Kotlin promotes, so only iOS failed).
       const iterT = inferType(s.iterable, _activeInferCtx)
-      const hadItem = _activeInferCtx.locals.has(s.item)
-      const prevItem = _activeInferCtx.locals.get(s.item)
-      if (iterT.kind === 'array') _activeInferCtx.locals.set(s.item, iterT.element)
-      const lines = s.body.map((t) => `${pad}  ${emitSwiftStatement(t, indent + 2)}`).join('\n')
-      if (hadItem) _activeInferCtx.locals.set(s.item, prevItem!)
-      else _activeInferCtx.locals.delete(s.item)
+      // Both contexts: the narrowing guard reads the expression context, so an
+      // item typed only in the active one could not be seen as optional.
+      const itemCtxs =
+        _exprInferCtx === _activeInferCtx ? [_activeInferCtx] : [_activeInferCtx, _exprInferCtx]
+      const itemSaved = itemCtxs.map((c) => [c.locals.has(s.item), c.locals.get(s.item)] as const)
+      if (iterT.kind === 'array') for (const c of itemCtxs) c.locals.set(s.item, iterT.element)
+      const lines = emitSwiftStmtLines(s.body, indent + 2).join('\n')
+      itemCtxs.forEach((c, i) => {
+        const [had, prev] = itemSaved[i]!
+        if (had) c.locals.set(s.item, prev!)
+        else c.locals.delete(s.item)
+      })
       const lbl = s.label !== undefined ? `${swiftIdent(s.label)}: ` : ''
       return `${lbl}for ${swiftIdent(s.item)} in ${iter} {\n${lines}\n${pad}}`
     }
@@ -3566,7 +3596,7 @@ function emitSwiftStatement(s: StatementIR, indent: number): string {
       const hadItem = _activeInferCtx.locals.has(s.item)
       const prevItem = _activeInferCtx.locals.get(s.item)
       _activeInferCtx.locals.set(s.item, { kind: 'number' })
-      const lines = s.body.map((t) => `${pad}  ${emitSwiftStatement(t, indent + 2)}`).join('\n')
+      const lines = emitSwiftStmtLines(s.body, indent + 2).join('\n')
       if (hadItem) _activeInferCtx.locals.set(s.item, prevItem!)
       else _activeInferCtx.locals.delete(s.item)
       // Swift has no descending range literal — a `down` loop is always a
@@ -3584,7 +3614,7 @@ function emitSwiftStatement(s: StatementIR, indent: number): string {
     case 'do-while': {
       const pad = ' '.repeat(indent)
       const cond = swiftCondition(s.cond, (x) => emitSwiftExpr(x, indent))
-      const lines = s.body.map((t) => `${pad}  ${emitSwiftStatement(t, indent + 2)}`).join('\n')
+      const lines = emitSwiftStmtLines(s.body, indent + 2).join('\n')
       return `repeat {\n${lines}\n${pad}} while ${cond}`
     }
     case 'switch': {
@@ -3595,9 +3625,7 @@ function emitSwiftStatement(s: StatementIR, indent: number): string {
         discT.kind === 'typeRef' && _enumNames.has(discT.name) ? discT.name : undefined
       const caseLines = s.cases
         .map((c) => {
-          const bodyLines = c.body
-            .map((t) => `${pad}    ${emitSwiftStatement(t, indent + 4)}`)
-            .join('\n')
+          const bodyLines = emitSwiftStmtLines(c.body, indent + 4).join('\n')
           // A Swift `case` body cannot be empty — emit `break` as a no-op.
           const body = bodyLines.length > 0 ? bodyLines : `${pad}    break`
           if (c.tests.length === 0) return `${pad}  default:\n${body}`
@@ -4023,11 +4051,10 @@ function emitSwiftIndexedClosure(
   setLocal(idxJs, { kind: 'number' })
   try {
     if (cb.stmts !== undefined && cb.stmts.length > 0) {
-      const pad = ' '.repeat(indent + 2)
       const inlinedStmts = inlineValueConstsInStmts(cb.stmts)
       const savedLocals = seedHandlerLocals(inlinedStmts, _exprInferCtx)
       const savedLocalsAct5 = seedHandlerLocals(inlinedStmts, _activeInferCtx)
-      const lines = inlinedStmts.map((s) => pad + emitSwiftStatement(s, indent + 2)).join('\n')
+      const lines = emitSwiftStmtLines(inlinedStmts, indent + 2).join('\n')
       _exprInferCtx.locals = savedLocals
       _activeInferCtx.locals = savedLocalsAct5
       return `{ (${idx}, ${el}) in\n${lines}\n${' '.repeat(indent)}}`
@@ -5949,7 +5976,6 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
             return e.params.map(swiftIdent).join(', ')
           }
           if (e.stmts !== undefined && e.stmts.length > 0) {
-            const pad = ' '.repeat(indent + 2)
             const inlined = inlineValueConstsInStmts(e.stmts)
             // Bind ANNOTATED closure params into both ctxs — the body's
             // type-gated lowerings otherwise see them as unknown (`pts.count`
@@ -5974,7 +6000,7 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
             }
             const saved = seedHandlerLocals(inlined, _exprInferCtx)
             const savedAct8 = seedHandlerLocals(inlined, _activeInferCtx)
-            const lines = inlined.map((st) => pad + emitSwiftStatement(st, indent + 2)).join('\n')
+            const lines = emitSwiftStmtLines(inlined, indent + 2).join('\n')
             _exprInferCtx.locals = saved
             _activeInferCtx.locals = savedAct8
             for (const [pn, hadE, prevE, hadA, prevA] of paramBind.reverse()) {
@@ -6421,7 +6447,7 @@ function swiftEmitContext(indent: number): SwiftEmitContext {
           seedHandlerLocals([...stmts], _activeInferCtx)
         }
         try {
-          return stmts.map((st) => emitSwiftStatement(st, at))
+          return emitSwiftStmtLines(stmts, at).map((l) => l.slice(at))
         } finally {
           _exprInferCtx.locals = savedA
           _activeInferCtx.locals = savedB
