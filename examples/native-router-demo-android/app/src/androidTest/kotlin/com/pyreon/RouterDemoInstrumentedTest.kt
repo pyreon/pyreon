@@ -885,6 +885,9 @@ class RouterDemoInstrumentedTest {
         composeRule.onNodeWithTag("home-page").assertIsDisplayed()
         composeRule.onNodeWithText("View motion").performClick()
         composeRule.onNodeWithTag("pan-status").assertTextEquals("Pan: none")
+        // The vector <Canvas> inside the region renders its CanvasText label.
+        composeRule.onNodeWithTag("plan-canvas").assertIsDisplayed()
+        composeRule.onNodeWithText("Drag or pinch here").assertExists()
 
         composeRule.onNodeWithTag("gesture-zone").performTouchInput { swipeRight() }
         composeRule.waitUntil(timeoutMillis = 10_000) {

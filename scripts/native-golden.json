@@ -152,13 +152,13 @@
       "warnings": 0
     },
     "fixture:every-primitive.tsx|swift": {
-      "sha": "355f09f2dee8cd6cf371614d988fd5c58d707c51721310afee42fb65570fd911",
-      "bytes": 3935,
+      "sha": "2de486ba1d0e59c8836e4ac2b9f3f8cbe3f01af54fb29718588172a307b41981",
+      "bytes": 5859,
       "warnings": 0
     },
     "fixture:every-primitive.tsx|kotlin": {
-      "sha": "2727545e84ebe7775b3f4d8331a86d0d8930dffb03ca385f62c514d8272888fa",
-      "bytes": 4308,
+      "sha": "ee8b6e7d62b1e8a1697739580eb86235caccb41d1dbedb027cdbd3e85283573e",
+      "bytes": 5710,
       "warnings": 0
     },
     "fixture:lifecycle-errorboundary.tsx|swift": {
@@ -7122,13 +7122,13 @@
       "warnings": 1
     },
     "golden-fixture:validate-58.tsx|swift": {
-      "sha": "b8814ab2a184792d5cd64b400b3b1a54b23763085a142527546514143519611f",
-      "bytes": 106,
+      "sha": "8e3c81be9f4eab9de3d0316ea01a0b1624d636e008d9d87634a7202a6af70a5b",
+      "bytes": 2254,
       "warnings": 0
     },
     "golden-fixture:validate-58.tsx|kotlin": {
-      "sha": "61680228b55413680979cf6d7d60f0f3f6f5cc5d6b1276aed178208bce9f74e4",
-      "bytes": 112,
+      "sha": "72cbad7f3f68a8bf20869b95a9d1338da0cd0cf63333d99dc668d7c46c5347cc",
+      "bytes": 2420,
       "warnings": 0
     },
     "golden-fixture:validate-59.tsx|swift": {
@@ -7242,12 +7242,12 @@
       "warnings": 1
     },
     "golden-fixture:validate-70.tsx|swift": {
-      "sha": "d3915e8756e9d4969bf490a640988de409a4ae5877b0795804e6bce8a98896d9",
+      "sha": "08e3ba6238e840a1bf3d0f96c1ec5054968f9c6cd2a04bfbc85d8d67c0f9f638",
       "bytes": 244,
       "warnings": 14
     },
     "golden-fixture:validate-70.tsx|kotlin": {
-      "sha": "dd8171252a5d245745675a31a1dd2eebddd6ea2e55bdda016fea91a526d05c59",
+      "sha": "ea2adab30b99a9e441a5d841c0a077ae64dd95cf8d740390be20279b029a754f",
       "bytes": 317,
       "warnings": 14
     },
@@ -7402,23 +7402,23 @@
       "warnings": 0
     },
     "example:native-router-demo-ios/RouterApp.tsx|swift": {
-      "sha": "3d1568d1a74cbd853eb706cd99e7ec6ec817c896db8abaa0ae2773057ec21f01",
-      "bytes": 22492,
+      "sha": "d600d85cdf2d5bd3ece8190eb091bf631aeff6fe6296a0aefb2ffa9114babaa7",
+      "bytes": 23477,
       "warnings": 0
     },
     "example:native-router-demo-ios/RouterApp.tsx|kotlin": {
-      "sha": "35ea673472f9ddbaeb351061234d3cc56a26729e8ba8bf2815a758cff64e57ea",
-      "bytes": 20658,
+      "sha": "6466160864b69fefaa6d5ba5ff034c0a7712001141e2ba4a10dc67b59dda0361",
+      "bytes": 21285,
       "warnings": 0
     },
     "example:native-tasks/TasksApp.tsx|swift": {
-      "sha": "b43dfeb7530f56fd3a07812d410a0bcf8de0fd7754bbd7b16807fc2b8c374a65",
-      "bytes": 167763,
+      "sha": "45135ad1f5c9964c57f322c50f5688de6b43c9367a6a0867bd49b89c8c2f284f",
+      "bytes": 169543,
       "warnings": 1
     },
     "example:native-tasks/TasksApp.tsx|kotlin": {
-      "sha": "d70a225dc3d1c89f2172557456eada7d7c901667d55f15d911ec6bac92d17feb",
-      "bytes": 175513,
+      "sha": "51b77ca95349383b1815edb6da60ff4703dd2e8a11d0e25b41903875da6d95bf",
+      "bytes": 177193,
       "warnings": 0
     },
     "example:native-todomvc-ios/TodoApp.tsx|swift": {
@@ -7742,13 +7742,13 @@
       "warnings": 0
     },
     "registry:@pyreon/validation|swift": {
-      "sha": "85265cc31da87c474b7e72642516d430224ff6d6777e9ccb9b645e758f4f53a5",
-      "bytes": 2078,
+      "sha": "483c01106390f2170c507921f568bef760a098645c74bab615e58591286f20f4",
+      "bytes": 4084,
       "warnings": 0
     },
     "registry:@pyreon/validation|kotlin": {
-      "sha": "b5c8641146924b27486bd9bf3934d9fbfbc9783cd1c45867c19d4effc3f5fd60",
-      "bytes": 2170,
+      "sha": "578f02d6c2af2afd4564c70d5025518bb7321d3ca6d3998ef95b77fda2088d8c",
+      "bytes": 4209,
       "warnings": 0
     },
     "registry:@pyreon/url-state|swift": {
@@ -7762,13 +7762,13 @@
       "warnings": 0
     },
     "registry:@pyreon/feature|swift": {
-      "sha": "79793fcea71aa13f0dc573e0f87cfd9b23bfb87583c29d6712c847d84c7fd705",
-      "bytes": 358,
+      "sha": "e691e8bda2b076b907832f575f9b57833219951f12fa8d796c1c9f61ce24537a",
+      "bytes": 2718,
       "warnings": 0
     },
     "registry:@pyreon/feature|kotlin": {
-      "sha": "c4f11da37fe81981c0e3462e4ba5383dbc138c93ac167027f9547cfdfb0b648f",
-      "bytes": 416,
+      "sha": "22f5b14f43f28572c6eb408737bdb40faf033da6f99ccd79e6e47dd3dddb31a9",
+      "bytes": 2781,
       "warnings": 0
     },
     "registry:@pyreon/hotkeys|swift": {
