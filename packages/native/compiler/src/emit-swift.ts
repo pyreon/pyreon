@@ -2845,11 +2845,32 @@ function emitSwiftNarrowedView(
 }
 
 /**
+ * A local declared in a statement list as `const f = () => { … }` is a CLOSURE
+ * on both targets, so a zero-argument call to it must keep its parentheses.
+ * Zero-argument identifier calls otherwise emit bare, because at component
+ * scope `x()` is a signal or computed READ. Without this, `f()` emitted `f`:
+ * a swiftc error on iOS and, worse, a silent no-op on Android.
+ */
+function isClosureInit(e: ExprIR): boolean {
+  return unparenExpr(e).kind === 'arrow'
+}
+
+/**
  * A statement list, with the early-return guard lowered:
  * `if (b.tags === undefined) return 0` followed by reads of `b.tags` →
  * `guard let tags = b.tags else { return 0 }` and the rest reading `tags`.
  */
 function emitSwiftStmtLines(stmts: readonly StatementIR[], indent: number): string[] {
+  const saved = _functionNames
+  _functionNames = new Set(saved)
+  try {
+    return emitSwiftStmtLinesInner(stmts, indent)
+  } finally {
+    _functionNames = saved
+  }
+}
+
+function emitSwiftStmtLinesInner(stmts: readonly StatementIR[], indent: number): string[] {
   const pad = ' '.repeat(indent)
   const out: string[] = []
   for (let i = 0; i < stmts.length; i++) {
@@ -3319,6 +3340,7 @@ function emitSwiftStatement(s: StatementIR, indent: number): string {
       _exprInferCtx.locals.set(s.name, s.declaredType)
       return `var ${swiftIdent(s.name)}: ${swiftType(s.declaredType)}`
     case 'let':
+      if (isClosureInit(s.expr)) _functionNames.add(s.name)
     // `var` when a later `assign` reassigns this local (markReassigned-
     // LocalsMutable), else immutable `let`.
     // A collection local is ALWAYS `var` — subscript-assign (`m[k] = v`)

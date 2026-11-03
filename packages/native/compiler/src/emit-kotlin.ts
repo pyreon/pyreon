@@ -1881,8 +1881,33 @@ function emitKotlinNarrowedAnd(cond: ExprIR, view: ExprIR, indent: number): stri
   return `${kotlinBoundSubject(plan.n, indent)}?.let { ${kotlinIdent(plan.binder)} ->\n${pad}${inner}\n${' '.repeat(indent)}}`
 }
 
+/**
+ * A local declared in a statement list as `const f = () => { … }` is a CLOSURE
+ * on both targets, so a zero-argument call to it must keep its parentheses.
+ * Zero-argument identifier calls otherwise emit bare, because at component
+ * scope `x()` is a signal or computed READ. Without this, `f()` emitted `f`:
+ * a swiftc error on iOS and, worse, a silent no-op on Android.
+ */
+function isClosureInit(e: ExprIR): boolean {
+  return unparenExpr(e).kind === 'arrow'
+}
+
 /** A statement list with the early-return guard lowered (`val x = a.b ?: run { return 0 }`). */
 function emitKotlinStmtLines(
+  stmts: readonly StatementIR[],
+  indent: number,
+  ctx: KotlinCtx,
+): string[] {
+  const saved = _functionNames
+  _functionNames = new Set(saved)
+  try {
+    return emitKotlinStmtLinesInner(stmts, indent, ctx)
+  } finally {
+    _functionNames = saved
+  }
+}
+
+function emitKotlinStmtLinesInner(
   stmts: readonly StatementIR[],
   indent: number,
   ctx: KotlinCtx,
@@ -2336,6 +2361,7 @@ function emitKotlinStatement(s: StatementIR, indent: number, ctx: KotlinCtx): st
       _kotlinExprInferCtx.locals.set(s.name, s.declaredType)
       return `var ${kotlinIdent(s.name)}: ${kotlinType(s.declaredType, ctx)}`
     case 'let':
+      if (isClosureInit(s.expr)) _functionNames.add(s.name)
     // `var` when a later `assign` reassigns this local (markReassigned-
     // LocalsMutable), else immutable `val`.
     {
