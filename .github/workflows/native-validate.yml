@@ -634,7 +634,11 @@ jobs:
     # what lets the FIRST run after a toolchain bump (a cold cache) finish and
     # SAVE, instead of being cancelled before the save step and staying cold
     # forever.
-    timeout-minutes: 90
+    # The nightly runs the FULL suite UNCACHED and needs more than 90: it was
+    # cancelled at the cap on every night from 2026-10-28 to 11-02, so it
+    # checked nothing. PR and push runs execute only the macOS-specific files
+    # (see the test step) and stay well inside 90.
+    timeout-minutes: ${{ github.event_name == 'schedule' && 180 || 90 }}
     permissions:
       contents: read
     steps:
@@ -713,6 +717,7 @@ jobs:
         env:
           PYREON_VALIDATE_CACHE_DIR: ${{ github.workspace }}/.cache/pyreon-native-validate
           PYREON_VALIDATE_NO_CACHE: ${{ github.event_name == 'schedule' && '1' || '0' }}
+          EVENT: ${{ github.event_name }}
         # The macos-15 image now ships kotlinc, which silently turned on hundreds
         # of cold JVM compiles here and pushed this job past its cap. A shim that
         # exits 127 shadows it for THIS step only: the validator reads a non-zero
@@ -720,11 +725,29 @@ jobs:
         # binary, so a stale "available" entry cannot answer for the shim. An env
         # switch was tried first and leaked into the unit tests that fake kotlinc.
         # The co-source step below still runs Kotlin on purpose.
+        #
+        # PRs and pushes run only the files that need macOS (real SwiftUI SDK,
+        # Observation, xcrun, platform branches — selected by content in
+        # scripts/native-macos-test-files.ts) and run them IN PARALLEL. The
+        # package config serializes files only so they can share one Kotlin
+        # compiler JVM, and kotlinc is shimmed out here, so there is nothing
+        # to share. The ~280 stub-validated files this skips are compiled on
+        # Linux with validation REQUIRED; the nightly below still runs all of
+        # them under this runner's newer Swift compiler, once a day.
         run: |
           mkdir -p "$RUNNER_TEMP/no-kotlinc"
           printf '#!/bin/sh\nexit 127\n' > "$RUNNER_TEMP/no-kotlinc/kotlinc"
           chmod +x "$RUNNER_TEMP/no-kotlinc/kotlinc"
-          PATH="$RUNNER_TEMP/no-kotlinc:$PATH" bun run --filter='@pyreon/native-compiler' test
+          export PATH="$RUNNER_TEMP/no-kotlinc:$PATH"
+          cd packages/native/compiler
+          if [ "$EVENT" = "schedule" ] || [ "$EVENT" = "workflow_dispatch" ]; then
+            bunx vitest run
+          else
+            FILES=$(bun ../../../scripts/native-macos-test-files.ts)
+            echo "Running $(echo "$FILES" | wc -l | tr -d ' ') macOS-specific test files in parallel"
+            # shellcheck disable=SC2086 # one path per word, by construction
+            bunx vitest run --fileParallelism $FILES
+          fi
 
       - name: Native coverage — COMPILE every registry snippet
         # The coverage gate normally judges a package by transform WARNINGS and
