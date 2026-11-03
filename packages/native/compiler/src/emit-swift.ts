@@ -9423,7 +9423,7 @@ function emitSwiftTabs(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
   // A selection typed by a string-literal union (`signal<Section>('feed')`)
   // is a native ENUM here, so the tab values must be its cases — the runtime
   // is generic over the selection type for exactly this reason.
-  const enumType = valueAttr === undefined ? undefined : enumTypeOfExpr(unwrapAccessorArrow(valueAttr.value))
+  const enumType = enumTypeOfExpr(unwrapAccessorArrow(valueAttr.value))
   const tabValue = (v: string): string => (enumType === undefined ? swiftStr(v) : `${enumType}.${swiftEnumCase(v)}`)
   const p = ' '.repeat(indent)
   const itemPad = ' '.repeat(indent + 2)
