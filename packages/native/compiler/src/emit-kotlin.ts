@@ -6078,6 +6078,23 @@ function emitKotlinFor(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
       else _kotlinExprInferCtx.locals.delete(param)
     }
   }
+  // An EAGER <For> (`pyreonEager`, set by a lowering whose list is a plain
+  // flex container — elements `<List>`) lays its rows out in the ENCLOSING
+  // Row / Column instead of its own LazyColumn: a LazyColumn inside a Row stacks
+  // the rows vertically, and inside another scrolling or unbounded parent it
+  // measures with infinite height. `key(…)` keeps each row's identity across
+  // updates, as `items(key = …)` does for the lazy form.
+  if (e.attrs.some((a) => a.kind === 'attr' && a.name === FOR_EAGER_ATTR)) {
+    const rowName = kotlinIdent(param)
+    const keyExpr = idPath === 'it' ? rowName : idPath.startsWith('it.') ? `${rowName}.${idPath.slice(3)}` : rowName
+    return (
+      `for (${rowName} in ${items}) {\n` +
+      `${' '.repeat(indent + 2)}key(${keyExpr}) {\n` +
+      `${pad}${bodyText}\n` +
+      `${close}}\n` +
+      `${outerClose}}`
+    )
+  }
   return (
     `LazyColumn {\n` +
     `${' '.repeat(indent + 2)}items(${items}, key = { ${idPath} }) { ${kotlinIdent(param)} ->\n` +
@@ -6086,6 +6103,9 @@ function emitKotlinFor(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
     `${outerClose}}`
   )
 }
+
+/** The marker attribute a lowering sets on a `<For>` it wants laid out eagerly in its parent. */
+export const FOR_EAGER_ATTR = 'pyreonEager'
 
 /** Push an emit warning once (the same site can be reached twice by re-entrant dispatch). */
 /**

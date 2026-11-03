@@ -11,7 +11,7 @@ export default defineManifest({
   multiplatform: {
     tier: 'shared',
     rationale:
-      'Element→Stack and Text lower via elements-native; the rich web-only surfaces (Overlay/Portal/List slots) warn per-construct',
+      'Element→Stack, Text, and List (a keyed Stack of its rows: data + component + itemKey / valueName) lower via elements-native; the rich web-only surfaces (Overlay/Portal, List itemProps/wrapProps/wrapComponent) warn per-construct',
   },
   features: [
     'Element — responsive flexbox block: direction / alignX / alignY / gap / block, beforeContent / afterContent slots, equalBeforeAfter (ResizeObserver-tracked)',

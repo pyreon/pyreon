@@ -179,6 +179,10 @@ enum class TextOverflow { Clip, Ellipsis, Visible }
 @Suppress("UNUSED_PARAMETER")
 fun Text(text: String, style: TextStyle = TextStyle(), color: Color? = null, fontSize: TextUnit = TextUnit(0f), fontWeight: FontWeight? = null, fontStyle: FontStyle? = null, textAlign: TextAlign? = null, fontFamily: FontFamily? = null, letterSpacing: TextUnit = TextUnit(0f), maxLines: Int = Int.MAX_VALUE, overflow: TextOverflow = TextOverflow.Clip, modifier: Modifier = Modifier) {}
 
+// Compose runtime \`key\` (androidx.compose.runtime): identity for an eager <For> row.
+@Composable
+fun key(vararg keys: Any?, block: @Composable () -> Unit) {}
+
 @Composable
 fun Button(
   onClick: () -> Unit,
