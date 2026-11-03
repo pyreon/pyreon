@@ -6,11 +6,22 @@
 //
 // Two schema shapes lower: the LITERAL map (`{ field: 'string' | 'number' | 'boolean' }`) and an object LITERAL of scalar
 // validators (`z.object({ id: z.string(), done: z.boolean() })`, the same shape under another namespace). A scalar field
-// reads through its modifier chain; any chain method the declaration half cannot carry (`.min()`, `.email()`,
-// `.optional()`, …) is reported BY NAME, because the emitted struct holds the field's type and nothing else. A
+// reads through its modifier chain. The emitted struct holds the field's type and nothing else, so the validator object ALSO
+// lowers to the `@pyreon/validation` schema struct (`PyreonZodSchema_<binding>_schema`): `<binding>.schema.safeParse(x)` enforces
+// `.min()`, `.email()`, … on device and returns the web's `{ success, data }`. What no struct can carry (`.refine()`, …) is reported
+// BY NAME by the schema walker; `.parse()` throws and is reported too. A
 // non-literal schema (a variable, `v.pipe(…)`, ArkType), a non-literal name and the CRUD runtime (`useList`,
 // `useById`, …) fall to the Tier-2 diagnostic.
 
+import {
+  createSchemaItem,
+  createSchemaStructRefinement,
+  safeParseExpr,
+  SCHEMA_ITEM_TYPE,
+  schemaItemSpec,
+  schemaOf,
+  tryNamespacedSchemaDefnFromTopLevel,
+} from '@pyreon/validation/native-plugin'
 import {
   KOTLIN_INT,
   hasDynamicKey,
@@ -24,7 +35,10 @@ import {
   unwrapTypeLayers,
   type CompilerPlugin,
   type ExtItemSpec,
+  type MethodCallRecognizer,
+  type ModuleFinish,
   type ModuleItemEmitter,
+  type ModuleScan,
   type TopLevelRecognizer,
 } from '@pyreon/native-compiler/plugin-api'
 
@@ -76,6 +90,99 @@ function validatorObject(node: AnyNode | undefined): AnyNode | undefined {
   return arg?.type === 'ObjectExpression' ? arg : undefined
 }
 
+/** Per-file memory (`fileState`): the compiler never reads it. */
+interface FeatureFacts {
+  /** File-scope `defineFeature` bindings whose `schema` is a validator object, so `<binding>.schema` names a native schema struct. */
+  readonly schemaBindings: Set<string>
+  /** Bindings whose `<binding>.schema.safeParse(x)` lowered — `finishModule` gives each schema its `safeParseResult`. */
+  readonly safeParseBindings: Set<string>
+}
+
+const FACTS_KEY = '@pyreon/feature:facts'
+
+function featureFacts(source: { fileState<T>(key: string, init: () => T): T }): FeatureFacts {
+  return source.fileState<FeatureFacts>(FACTS_KEY, () => ({ schemaBindings: new Set(), safeParseBindings: new Set() }))
+}
+
+/** The name of the native schema struct a feature's validator `schema` lowers to (`PyreonZodSchema_<this>`). */
+const schemaStructName = (bindingName: string): string => `${bindingName}_schema`
+
+/** `defineFeature({ …, schema: <ns>.object({…}) })`'s validator-object node, else `undefined`. */
+function featureValidatorSchema(init: AnyNode | undefined): AnyNode | undefined {
+  if (init?.type !== 'CallExpression' || init.callee?.type !== 'Identifier' || init.callee.name !== 'defineFeature') return undefined
+  const config = ((init.arguments as AnyNode[] | undefined) ?? [])[0]
+  if (config?.type !== 'ObjectExpression') return undefined
+  for (const prop of (config.properties as AnyNode[] | undefined) ?? []) {
+    if ((prop?.type !== 'Property' && prop?.type !== 'ObjectProperty') || staticPropKey(prop) !== 'schema') continue
+    const value = unwrapTypeLayers(prop.value as AnyNode | undefined)
+    return validatorObject(value) !== undefined ? value : undefined
+  }
+  return undefined
+}
+
+/** The pre-pass: record every file-scope feature whose schema is a validator object (a component can sit above the declaration). */
+function scanFeatures(scan: ModuleScan): void {
+  const facts = featureFacts(scan)
+  for (const node of scan.body as readonly AnyNode[]) {
+    for (const d of topLevelDeclarators(node) as readonly AnyNode[]) {
+      if (d.id?.type === 'Identifier' && featureValidatorSchema(d.init as AnyNode) !== undefined) {
+        facts.schemaBindings.add(d.id.name as string)
+      }
+    }
+  }
+}
+
+const SCHEMA_PARSE_THROWS =
+  '`.parse()` THROWS on invalid input, which needs a native error model (try/throw lowering) PMTC does not carry yet. Use `.safeParse(x)` and branch on `.success`.'
+
+/**
+ * `Todo.schema.safeParse(x)` — the feature's own validator, lowered to the schema struct `defineFeature` declares alongside
+ * the feature, so the constraints the web enforces (`.min()`, `.email()`, …) are enforced on device too. The result is
+ * `{ success, data }`, like the web's. Any other member of `Todo.schema` is reported by name; a receiver that is not a feature's
+ * `.schema` falls through.
+ */
+const recognizeFeatureSchemaCall: MethodCallRecognizer = (site, ctx) => {
+  const facts = featureFacts(ctx)
+  if (facts.schemaBindings.size === 0) return undefined
+  const node = site.node as AnyNode
+  const callee = node.callee as AnyNode | undefined
+  if (callee?.type !== 'MemberExpression' || callee.computed || callee.property?.type !== 'Identifier') return undefined
+  const receiver = callee.object as AnyNode
+  if (receiver?.type !== 'MemberExpression' || receiver.computed || receiver.property?.name !== 'schema') return undefined
+  if (receiver.object?.type !== 'Identifier' || !facts.schemaBindings.has(receiver.object.name as string)) return undefined
+  const binding = receiver.object.name as string
+  const method = callee.property.name as string
+  if (method === 'safeParse') {
+    const argNode = (node.arguments as AnyNode[] | undefined)?.[0]
+    const arg = argNode ? ctx.expr(argNode) : { kind: 'object' as const, fields: [] }
+    facts.safeParseBindings.add(binding)
+    return { type: 'safeParse', payload: { schemaName: schemaStructName(binding) }, args: [arg] }
+  }
+  return ctx.unsupported(
+    node,
+    `\`${binding}.schema.${method}(…)\``,
+    method === 'parse'
+      ? SCHEMA_PARSE_THROWS
+      : 'only `.safeParse(x)` on a feature schema lowers to native. Keep this call in a web-only helper.',
+  )
+}
+
+/** Give each feature schema whose `safeParse` lowered the `safeParseResult` that call goes through. */
+const finishFeature: ModuleFinish = ({ items, report, fileState }) => {
+  for (const binding of featureFacts({ fileState }).safeParseBindings) {
+    const name = schemaStructName(binding)
+    const item = items.find(
+      (i) => i.plugin === FEATURE_PLUGIN_NAME && i.type === SCHEMA_ITEM_TYPE && schemaOf(i).bindingName === name,
+    )
+    if (item) schemaOf(item).emitSafeParseResult = true
+    else {
+      report(
+        `\`${binding}.schema.safeParse(…)\` references a feature schema whose validators did not lower to a native struct (see the warning above), so the call cannot compile on iOS/Android.`,
+      )
+    }
+  }
+}
+
 /** `const Todo = defineFeature({ name, schema: { …literal… } })` at file scope, else `undefined` (the node falls through). */
 const recognizeFeature: TopLevelRecognizer = (node, ctx): ExtItemSpec | undefined => {
   const declarators = topLevelDeclarators(node) as readonly AnyNode[]
@@ -125,6 +232,40 @@ const recognizeFeature: TopLevelRecognizer = (node, ctx): ExtItemSpec | undefine
     return undefined
   }
 
+  // A validator-object schema ALSO lowers to the schema struct `@pyreon/validation` emits for `zodSchema(z.object({…}))`, under the
+  // name `<binding>_schema`, so `<binding>.schema.safeParse(x)` enforces on device what the web enforces. The one-declarator
+  // recognizer reads a declaration, so the `z.object(…)` call rides a synthesized one; `inline` keeps the struct from also
+  // claiming a value binding of its own (`Todo.schema` is not a value on native).
+  let schemaItem: ExtItemSpec | undefined
+  if (validators !== undefined && schemaNode !== undefined) {
+    const namespace = unwrapTypeLayers(schemaNode.callee.object as AnyNode)?.name as string | undefined
+    const built =
+      namespace === undefined
+        ? null
+        : tryNamespacedSchemaDefnFromTopLevel(
+            {
+              type: 'VariableDeclaration',
+              kind: 'const',
+              declarations: [
+                {
+                  type: 'VariableDeclarator',
+                  id: { type: 'Identifier', name: schemaStructName(bindingName) },
+                  init: schemaNode,
+                },
+              ],
+            },
+            ctx,
+            null,
+            namespace,
+            'zod',
+          )
+    if (built !== null) {
+      built.inline = true
+      schemaItem = schemaItemSpec(built)
+      ctx.addItem(schemaItem)
+    }
+  }
+
   const fields: FeaturePayload['fields'] = []
   for (const entry of (fieldMap.properties as AnyNode[] | undefined) ?? []) {
     if (entry?.type !== 'Property' && entry?.type !== 'ObjectProperty') continue
@@ -143,7 +284,9 @@ const recognizeFeature: TopLevelRecognizer = (node, ctx): ExtItemSpec | undefine
         )
         continue
       }
-      const dropped = scalar.chain.filter((method) => !CARRIED.has(method))
+      // The schema struct built below carries the constraints (and names what it cannot), so the declaration warns only when
+      // no schema could be built.
+      const dropped = schemaItem === undefined ? scalar.chain.filter((method) => !CARRIED.has(method)) : []
       if (dropped.length > 0) {
         const chained = dropped.map((method) => `.${method}()`).join('')
         ctx.report(
@@ -244,7 +387,12 @@ export const featurePlugin: CompilerPlugin = Object.freeze({
   apiVersion: 2,
   modules: Object.freeze([FEATURE_PLUGIN_NAME]),
   topLevel: recognizeFeature,
-  items: Object.freeze({ [ITEM_TYPE]: featureItem }),
+  items: Object.freeze({ [ITEM_TYPE]: featureItem, [SCHEMA_ITEM_TYPE]: createSchemaItem() }),
+  scanModule: scanFeatures,
+  methodCalls: Object.freeze({ '*': recognizeFeatureSchemaCall }),
+  exprs: Object.freeze({ safeParse: safeParseExpr }),
+  refineStructs: createSchemaStructRefinement(FEATURE_PLUGIN_NAME),
+  finishModule: finishFeature,
   // A `defineFeature` call the top-level recognizer did not lower (a call inside a component body, a destructured binding, a
   // non-literal schema) would emit as an unresolved reference: the compiler's standing Tier-2 diagnostic names this package.
   tier2Calls: Object.freeze(['defineFeature']),

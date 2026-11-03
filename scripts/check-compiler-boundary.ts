@@ -97,7 +97,16 @@ function readOptional(path: string): string | null {
 }
 
 const SPECIFIER = /['"`]@pyreon\/([a-z0-9-]+)/g
-const HOOK_LITERAL = /['"`]use[A-Z][A-Za-z0-9]*['"`]/g
+const HOOK_LITERAL = /['"`](use[A-Z][A-Za-z0-9]*)['"`]/g
+/**
+ * Names that match the `useXxx` shape but are NOT hooks — so they carry no
+ * library knowledge. Each needs the standard or API it comes from; a hook
+ * never belongs here.
+ */
+const NOT_HOOKS: ReadonlySet<string> = new Set([
+  // ECMA-402 `Intl.NumberFormat` option — the platform, not a library.
+  'useGrouping',
+])
 
 function walk(dir: string, out: string[] = []): string[] {
   for (const name of readdirSync(dir)) {
@@ -137,7 +146,9 @@ export function countSource(
     if (skip.has(m[1] as string)) continue
     packages[name] = (packages[name] ?? 0) + 1
   }
-  return { packages, hooks: (source.match(HOOK_LITERAL) ?? []).length }
+  let hooks = 0
+  for (const m of source.matchAll(HOOK_LITERAL)) if (!NOT_HOOKS.has(m[1] as string)) hooks++
+  return { packages, hooks }
 }
 
 export function measure(spec: CompilerSpec, root = REPO_ROOT): { counts: BoundaryCounts; files: FileHit[] } {

@@ -503,6 +503,42 @@ final class PyreonTasksUITests: XCTestCase {
         XCTAssertTrue(app.otherElements["tasks-page"].firstMatch.waitForExistence(timeout: 15), "requests-back did not return to tasks")
     }
 
+    /// `Intl` (#3980) on the device: the emitted `PyreonDateTimeFormat` /
+    /// `PyreonNumberFormat` calls, run by the Simulator's own Foundation, must
+    /// print what the web prints for the same (locale, options, zone) — the
+    /// expected strings are Node's `Intl` output, and the differential table in
+    /// the compiler shows these cases agree on every platform.
+    ///
+    /// The zone is a signal: "Show in UTC" must move the SAME instant to another
+    /// wall-clock time, which a formatter whose zone was fixed at construction
+    /// cannot do.
+    func test_intlFormatsLikeTheWebAndFollowsARuntimeTimeZone() throws {
+        let app = XCUIApplication()
+        app.launch()
+        let username = app.textFields["login-username"].firstMatch
+        XCTAssertTrue(username.waitForExistence(timeout: 30), "Username field missing")
+        username.tap()
+        username.typeText("abcde")
+        dismissKeyboard(app)
+        app.buttons["login-submit"].firstMatch.tap()
+        XCTAssertTrue(app.otherElements["tasks-page"].firstMatch.waitForExistence(timeout: 20), "Tasks page did not render after login")
+
+        let nav = app.buttons["tasks-intl"].firstMatch
+        XCTAssertTrue(nav.waitForExistence(timeout: 15), "Intl button missing on tasks page")
+        tapAfterScrolling(nav, in: app)
+        XCTAssertTrue(app.otherElements["intl-page"].firstMatch.waitForExistence(timeout: 15), "Intl page did not render")
+
+        let meeting = app.staticTexts["intl-meeting"].firstMatch
+        XCTAssertTrue(waitForLabel(meeting, "22.10.2026, 10:00", timeout: 10), "de-DE medium/short in Berlin: '\(meeting.label)'")
+        XCTAssertEqual(app.staticTexts["intl-price"].firstMatch.label, "$1,234.50")
+        XCTAssertEqual(app.staticTexts["intl-qty"].firstMatch.label, "1.234.567,891")
+        XCTAssertEqual(app.staticTexts["intl-day"].firstMatch.label, "Thursday, October 22")
+        XCTAssertEqual(app.staticTexts["intl-percent"].firstMatch.label, "26%")
+
+        app.buttons["intl-utc"].firstMatch.tap()
+        XCTAssertTrue(waitForLabel(meeting, "22.10.2026, 08:00", timeout: 10), "a runtime timeZone change did not reach the formatter: '\(meeting.label)'")
+    }
+
     /// `<Field multiline lines>` (#3980) — a text area, proven on the device in
     /// the two directions a text control has plus the one thing `lines` means.
     ///
