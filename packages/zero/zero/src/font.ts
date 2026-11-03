@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { Plugin } from 'vite'
@@ -493,7 +494,43 @@ export function pickPreloadHrefs(css: string, primarySubset: string, limit: numb
  * rebuild).
  */
 export function fontCacheKey(cssUrl: string, allowedSubsets?: string[]): string {
-  return Buffer.from(`${cssUrl}|subsets=${allowedSubsets?.join(',') ?? ''}`).toString('base64url')
+  // `v2`: entries written before content-addressed file names (see
+  // `selfHostedFontName`) can carry colliding `font` names — never reuse them.
+  return Buffer.from(`v2|${cssUrl}|subsets=${allowedSubsets?.join(',') ?? ''}`).toString('base64url')
+}
+
+const FONT_EXTENSIONS = new Set(['woff2', 'woff', 'ttf', 'otf'])
+
+/**
+ * The file name a downloaded font is self-hosted under.
+ *
+ * A normal gstatic URL ends in a unique, versioned `<id>.woff2`, kept as is.
+ * But Google also serves dynamically subset files at
+ * `https://fonts.gstatic.com/l/font?kit=…`, whose last segment is just
+ * `font`: every such file used to land on ONE name (overwriting each other)
+ * with NO extension, and a static host that maps an extensionless path to a
+ * route answered `/assets/fonts/font` with a 404 — seen in CI, where the docs
+ * build's charts page failed its no-console-error check. Those get a content
+ * hash (unique per file, stable across builds) plus the extension read from
+ * the font's own magic bytes.
+ */
+export function selfHostedFontName(url: string, content: Uint8Array): string {
+  const path = url.split('?')[0] ?? url
+  const base = path.slice(path.lastIndexOf('/') + 1)
+  const dot = base.lastIndexOf('.')
+  if (dot > 0 && FONT_EXTENSIONS.has(base.slice(dot + 1).toLowerCase())) return base
+  const hash = createHash('sha256').update(content).digest('hex').slice(0, 16)
+  return `${hash}.${sniffFontExtension(content)}`
+}
+
+function sniffFontExtension(b: Uint8Array): string {
+  const tag = String.fromCharCode(b[0] ?? 0, b[1] ?? 0, b[2] ?? 0, b[3] ?? 0)
+  if (tag === 'wOF2') return 'woff2'
+  if (tag === 'wOFF') return 'woff'
+  if (tag === 'OTTO') return 'otf'
+  if (tag === '\x00\x01\x00\x00' || tag === 'true') return 'ttf'
+  // The CSS is requested with a woff2-capable User-Agent.
+  return 'woff2'
 }
 
 /**
@@ -545,13 +582,15 @@ async function selfHostFonts(
 
   let rewrittenCss = css
 
-  for (const url of fontUrls) {
-    const urlParts = url.split('/')
-    const fileName = urlParts.at(-1)?.split('?')[0] ?? 'font'
+  // A variable font's ONE file serves several weights, so the same URL
+  // appears in several @font-face blocks: download it once, rewrite every
+  // occurrence (a string `replace` rewrites only the first).
+  for (const url of new Set(fontUrls)) {
     const content = await downloadFontFile(url, signal)
+    const fileName = selfHostedFontName(url, content)
 
     fontFiles.push({ name: fileName, content })
-    rewrittenCss = rewrittenCss.replace(url, `/${fontsSubDir}/${fileName}`)
+    rewrittenCss = rewrittenCss.replaceAll(url, `/${fontsSubDir}/${fileName}`)
   }
 
   // Write cache

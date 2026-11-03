@@ -40,14 +40,14 @@ describe('parse.ts — arktypeSchema recognizer', () => {
     expect(r.warnings).toEqual([])
   })
 
-  it('bails on a MULTI-declarator statement — one binding per schema only', () => {
+  it('a MULTI-declarator statement lowers to ONE struct per schema (the single-declarator walker still bails; the plugin splits the statement)', () => {
     const one = swift(AK + `const a = arktypeSchema(type({ n: 'string' }))`)
     expect(schemaNames(one.code)).toEqual(['PyreonZodSchema_a'])
     const two = swift(
       AK +
         `const a = arktypeSchema(type({ n: 'string' })), b = arktypeSchema(type({ m: 'string' }))`,
     )
-    expect(schemaNames(two.code)).toEqual([])
+    expect(schemaNames(two.code)).toEqual(['PyreonZodSchema_a', 'PyreonZodSchema_b'])
   })
 
   it('bails when the declarator id is a destructuring pattern, not an Identifier', () => {
@@ -133,11 +133,11 @@ describe('parse.ts — arktypeSchema recognizer', () => {
 })
 
 describe('parse.ts — namespaced (zod/valibot) walker: declaration shape', () => {
-  it('bails on a MULTI-declarator statement', () => {
+  it('a MULTI-declarator statement lowers to ONE struct per schema', () => {
     const r = swift(
       Z + `const a = zodSchema(z.object({n:z.string()})), b = zodSchema(z.object({m:z.string()}))`,
     )
-    expect(schemaNames(r.code)).toEqual([])
+    expect(schemaNames(r.code)).toEqual(['PyreonZodSchema_a', 'PyreonZodSchema_b'])
   })
 
   it('bails when the declarator id is a destructuring pattern', () => {
