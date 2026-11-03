@@ -1383,8 +1383,17 @@ final class PyreonRouterDemoUITests: XCTestCase {
         let draft = app.textFields["nav-feed-draft"]
         XCTAssertTrue(draft.waitForExistence(timeout: 10))
         draft.tap()
-        draft.typeText("hello")
+        // Return submits the field, which dismisses the keyboard. The keyboard
+        // has to be gone before the tab switch: iOS lays it OVER the tab bar,
+        // and XCUITest still reports the occluded tab button as existing, so a
+        // tap on "Me" would land on the keyboard and leave the Feed tab on
+        // screen. A user has to dismiss the keyboard first too.
+        draft.typeText("hello\n")
         XCTAssertEqual(app.staticTexts["nav-feed-echo"].label, "Draft: hello")
+        XCTAssertTrue(
+            app.keyboards.firstMatch.waitForNonExistence(timeout: 5),
+            "keyboard still up after Return, so it covers the tab bar"
+        )
 
         tabBar.buttons["Me"].tap()
         let tap = app.buttons["nav-me-tap"]
