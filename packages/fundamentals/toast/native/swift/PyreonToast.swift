@@ -83,12 +83,18 @@ public final class PyreonToast {
     /// until dismissed). The id is a monotonic counter, NOT a timestamp, so two
     /// `add()`s in the same millisecond get distinct ids.
     @discardableResult
-    public func add(_ message: String, type: String = "info", duration: TimeInterval? = nil, dismissible: Bool = true, description: String? = nil, actionLabel: String? = nil, onAction: (() -> Void)? = nil, onDismiss: (() -> Void)? = nil) -> String {
+    ///
+    /// `onActionContext` is the action handler that takes the web's `{ id, dismiss }`
+    /// context: it receives this toast's id (the compiler lowers `dismiss()` to
+    /// `dismiss(id)`). It is used when `onAction` is absent; a tap still leaves the
+    /// toast up unless the handler dismisses it.
+    public func add(_ message: String, type: String = "info", duration: TimeInterval? = nil, dismissible: Bool = true, description: String? = nil, actionLabel: String? = nil, onAction: (() -> Void)? = nil, onActionContext: ((_ id: String) -> Void)? = nil, onDismiss: (() -> Void)? = nil) -> String {
         counter += 1
         let id = "toast-\(counter)"
-        let hasAction = actionLabel != nil && onAction != nil
+        let action: (() -> Void)? = onAction ?? onActionContext.map { handler in { handler(id) } }
+        let hasAction = actionLabel != nil && action != nil
         toasts.append(PyreonToastItem(id: id, message: message, type: type, dismissible: dismissible, description: description, actionLabel: hasAction ? actionLabel : nil))
-        if hasAction, let onAction { actions[id] = onAction }
+        if hasAction, let action { actions[id] = action }
         if let onDismiss { dismissHandlers[id] = onDismiss }
         // Bound the stack: drop the oldest beyond the cap. An evicted toast
         // has left the queue, so its `onDismiss` fires (as on the web).

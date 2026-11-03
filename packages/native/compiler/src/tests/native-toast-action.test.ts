@@ -1,8 +1,8 @@
 // `toast(msg, { action: { label, onClick } })` lowers to the native card's
 // action button. Like the web, a tap runs `onClick` and leaves the toast up.
 //
-// `onClick` must take no arguments: the web hands it `{ id, dismiss }`, which
-// has no native lowering yet, so a handler that declares a parameter — and
+// `onClick` may take the web's `{ id, dismiss }` context (see
+// native-toast-action-context.test.ts). A context used any other way — and
 // every other action shape that cannot lower — is warned by name and the
 // button is dropped while the toast itself still lowers.
 
@@ -52,7 +52,10 @@ describe('toast() action on native', () => {
 
   it('every action shape that cannot lower is warned by name; the toast still lowers', () => {
     const cases: Array<[string, string]> = [
-      ['action: { label: "Undo", onClick: ({ dismiss }) => dismiss() }', 'takes the `{ id, dismiss }` context'],
+      ['action: { label: "Undo", onClick: ({ dismiss, ...rest }) => dismiss() }', 'may only take `id` and `dismiss` by name'],
+      ['action: { label: "Undo", onClick: (t) => keep(t) }', "uses its context's `t` other than"],
+      ['action: { label: "Undo", onClick: ({ dismiss }) => later(dismiss) }', "uses its context's `dismiss` other than"],
+      ['action: { label: "Undo", onClick: (a, b) => {} }', 'not several parameters'],
       ['action: { label: <b>Undo</b>, onClick: () => {} }', 'needs a text `label`'],
       ['action: { onClick: () => {} }', 'needs a text `label`'],
       ['action: { label: "Undo" }', 'needs an inline `onClick` function'],
