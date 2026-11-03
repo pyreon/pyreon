@@ -40,6 +40,7 @@ const USAGES: ReadonlyArray<readonly [string, string]> = [
   ['Press', '<Press onPress={() => {}}><Text>p</Text></Press>'],
   ['Link', '<Link to="/x"><Text>l</Text></Link>'],
   ['Gesture', '<Gesture onPan={() => {}}><Text>g</Text></Gesture>'],
+  ['Canvas', '<Canvas width={10} height={10}><Text>c</Text></Canvas>'],
   ['Field', '<Field value="" onChangeText={() => {}} />'],
   ['Toggle', '<Toggle value={true} onChange={() => {}} />'],
   ['Modal', '<Modal open={true} onClose={() => {}}><Text>m</Text></Modal>'],

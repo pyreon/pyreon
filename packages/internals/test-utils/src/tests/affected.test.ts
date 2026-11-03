@@ -7,6 +7,7 @@ import {
   isRootFile,
   isE2eFile,
   isScriptFile,
+  isWorkflowFile,
   transitiveDependents,
   type Workspace,
   parseFileList,
@@ -539,6 +540,24 @@ describe('computeAffectedFlags', () => {
       ...WS,
       { name: '@pyreon/test-utils', dir: `${ROOT}/packages/internals/test-utils`, deps: [] },
     ]
+
+    it('a non-ci workflow seeds @pyreon/test-utils; ci.yml still forces the full run', () => {
+      // A dependabot action bump touching codeql/release/scorecard used to
+      // re-run all ~60 packages. Only ci.yml defines what these cells do.
+      expect(isWorkflowFile('.github/workflows/codeql.yml')).toBe(true)
+      expect(isWorkflowFile('.github/workflows/ci.yml')).toBe(false)
+      expect(isRootFile('.github/workflows/codeql.yml')).toBe(false)
+      expect(
+        computeAffectedFlags({
+          changed: ['.github/workflows/codeql.yml', '.github/workflows/release.yml'],
+          workspaces: WS_TU,
+          root: ROOT,
+        }),
+      ).toBe('--filter=@pyreon/test-utils')
+      expect(
+        computeAffectedFlags({ changed: ['.github/workflows/ci.yml'], workspaces: WS_TU, root: ROOT }),
+      ).toBe('--filter=*')
+    })
 
     it('a tested script (affected.ts) seeds @pyreon/test-utils, NOT the full suite', () => {
       const out = computeAffectedFlags({

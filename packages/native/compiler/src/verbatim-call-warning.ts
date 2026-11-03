@@ -20,6 +20,13 @@ function escapeRegExp(text: string): string {
   return text.replace(/[\\^$.*+?()[\]{}|]/g, '\\$&')
 }
 
+/**
+ * Third-party schema libraries PMTC reads ONLY through a Pyreon adapter (`zodSchema(z.object({…}))`, or the first-party `s`). A bare `z.object({…})` outside an adapter is
+ * not read at all and is re-emitted verbatim — uncompilable Swift / Kotlin with no other diagnostic — so these imports
+ * are judged by survival exactly like a Pyreon export.
+ */
+export const THIRD_PARTY_SCHEMA_LIBRARIES: ReadonlySet<string> = new Set(['zod', 'valibot', 'arktype'])
+
 /** A function imported from a Pyreon package, by local name (see `collectAliasImports`). */
 export type PyreonFunctionImports = ReadonlyMap<string, { readonly source: string; readonly imported: string }>
 
@@ -71,7 +78,8 @@ export function verbatimPyreonCallWarnings(
   for (const [local, imp] of imports) {
     // Functions only: `collectAliasImports` also tracks JSX tags (`Row`), which the emitters lower into a native
     // composable of the same spelling — a `Row(` in the output is theirs, not a leftover call.
-    if (!/^[a-z]/.test(imp.imported) || !imp.source.startsWith('@pyreon/') || reported.has(imp.imported)) continue
+    const schemaLibrary = THIRD_PARTY_SCHEMA_LIBRARIES.has(imp.source)
+    if (!/^[a-z]/.test(imp.imported) || !(imp.source.startsWith('@pyreon/') || schemaLibrary) || reported.has(imp.imported)) continue
     if (new RegExp(`(?<![\\w$])${escapeRegExp(imp.imported)}(?![\\w$])`).test(existingWarnings.join('\n'))) continue
     const name = escapeRegExp(local)
     // A call of the LOCAL name as written, not a member call (`x.getSnapshot(` is some other object's method) and not
@@ -99,6 +107,15 @@ export function verbatimPyreonCallWarnings(
     // Described the way the AUTHOR used it: a name they called is a function, whatever shape the emit left behind.
     const calledByAuthor = surviveAsCall || callInSource.test(sourceBody)
     const shown = calledByAuthor ? `${imp.imported}()` : imp.imported
+    if (schemaLibrary) {
+      out.push(
+        `${shown} (from ${imp.source}) is reproduced verbatim in the emitted Swift/Kotlin, where no such ${calledByAuthor ? 'function' : 'value'} exists, ` +
+          `so the native build fails with "cannot find '${imp.imported}' in scope". PMTC reads ${imp.source} only through an adapter: wrap a ` +
+          `top-level schema in the Pyreon validation adapter for that library (\`zodSchema(…)\` / \`valibotSchema(…)\` / \`arktypeSchema(…)\`), or write the schema ` +
+          `with the first-party \`s\` builder (its \`safeParse\` / \`parse\` lower), or keep it behind a \`<Web>\` escape hatch.`,
+      )
+      continue
+    }
     out.push(
       `${shown} (from ${imp.source}) has NO native lowering — it is reproduced verbatim in the emitted ` +
         `Swift/Kotlin, where no such ${calledByAuthor ? 'function' : 'value'} exists, so the native build fails with "cannot find '${imp.imported}' in scope". ` +

@@ -144,10 +144,13 @@ describe('Kotlin expr: array/String method lowerings', () => {
     expect(dyn.code).not.toContain('.toFixed(n)')
   })
 
-  it('toLocaleString degrades to toString() with a NAMED warning (no native locale formatting)', () => {
+  it('toLocaleString on a STRING is the string itself, as in JavaScript — not a number format', () => {
     const r = kt(`  const a = computed(() => name().toLocaleString())`)
-    expect(r.code).toContain('(name).toString()')
-    expect(r.warnings.join('\n')).toContain('toLocaleString')
+    expect(r.code).not.toContain('PyreonNumberFormat().format(name')
+    expect(r.code).toContain("derivedStateOf { name }")
+    expect(r.warnings).toEqual([])
+    // …and on a number it is the Intl number formatter (#3980).
+    expect(kt(`  const a = computed(() => xs()[0].toLocaleString())`).code).toContain('PyreonNumberFormat().format(')
   })
 
   it('sort: a Double comparator converts the SIGN via compareTo(0.0); an integer one via compareTo(0L) (its difference is a Long)', () => {
