@@ -122,6 +122,7 @@
     "check-unused-test-imports": "bun scripts/check-unused-test-imports.ts",
     "check-manifest-depth": "bun scripts/check-manifest-depth.ts",
     "check-multiplatform-tier": "bun scripts/check-multiplatform-tier.ts",
+    "gen-native-crossing-table": "bun scripts/gen-native-crossing-table.ts",
     "check-manifest-examples": "bun scripts/check-manifest-examples.ts",
     "check-mcp-docs": "bun scripts/check-mcp-docs.ts",
     "check-pyreon-lint-ratchet": "bun scripts/check-pyreon-lint-ratchet.ts",
