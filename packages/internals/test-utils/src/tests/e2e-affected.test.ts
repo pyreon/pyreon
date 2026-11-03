@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 import {
+  e2eReachableScripts,
   forcesFullRun,
   selectSuites,
   SUITES,
@@ -219,5 +220,59 @@ describe('selectSuites', () => {
         `these SUITES entries name a root script that does not exist, so the cell would fail at run time: ${ghosts.join(', ')}`,
       ).toEqual([])
     })
+  })
+})
+
+// ── `scripts/` forces the full set only when e2e can reach it ──────────────
+// Every native PR updates the native emit golden file under `scripts/`, and
+// the blanket rule ran all 31 web suites for it (9 of 12 open PRs on
+// 2026-11-02). The reachable set is DERIVED from the e2e entry points.
+describe('e2eReachableScripts', () => {
+  const REPO_ROOT = join(import.meta.dirname, '..', '..', '..', '..', '..')
+  const reach = e2eReachableScripts(REPO_ROOT)
+
+  it('reaches the scripts e2e actually runs', () => {
+    for (const p of [
+      'scripts/bootstrap.ts',
+      'scripts/e2e-affected.ts',
+      'scripts/changed-files.ts',
+      'scripts/serve-ssg.ts',
+      'scripts/install-playwright.sh',
+    ]) {
+      expect(reach.has(p), p).toBe(true)
+    }
+  })
+
+  it('does not reach CI gate scripts or their data', () => {
+    for (const p of [
+      'scripts/native-golden.json',
+      'scripts/check-native-golden.ts',
+      'scripts/check-agp-gradle-lockstep.ts',
+      'scripts/check-cache-key-sync.ts',
+    ]) {
+      expect(reach.has(p), p).toBe(false)
+    }
+  })
+
+  it('a reachable script still forces every suite; an unreachable one does not', () => {
+    expect(forcesFullRun('scripts/serve-ssg.ts', reach)).toBe(true)
+    expect(forcesFullRun('scripts/native-golden.json', reach)).toBe(false)
+    expect(
+      selectSuites(['scripts/native-golden.json', 'packages/native/compiler/src/emit-swift.ts'], {
+        e2eScripts: reach,
+      }).length,
+    ).toBeLessThan(SUITES.length)
+  })
+
+  it('without the derived set every scripts/ file stays conservative', () => {
+    expect(forcesFullRun('scripts/native-golden.json')).toBe(true)
+  })
+})
+
+describe('workflow files', () => {
+  it('only ci.yml forces every suite — other workflows cannot change a suite', () => {
+    expect(forcesFullRun('.github/workflows/ci.yml')).toBe(true)
+    expect(forcesFullRun('.github/workflows/codeql.yml')).toBe(false)
+    expect(forcesFullRun('.github/workflows/release.yml')).toBe(false)
   })
 })

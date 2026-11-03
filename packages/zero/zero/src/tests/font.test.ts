@@ -7,6 +7,7 @@ import {
   parseGoogleFamily,
   pickPreloadHrefs,
   resolveGoogleFont,
+  selfHostedFontName,
 } from '../font'
 
 describe('parseGoogleFamily', () => {
@@ -436,5 +437,38 @@ describe('fontCacheKey', () => {
 
   it('is filesystem-safe (base64url — no / or +)', () => {
     expect(fontCacheKey(url, ['latin', 'latin-ext'])).not.toMatch(/[/+]/)
+  })
+})
+
+describe('selfHostedFontName', () => {
+  const woff2 = new Uint8Array([0x77, 0x4f, 0x46, 0x32, 1, 2, 3]) // 'wOF2'
+  const woff2b = new Uint8Array([0x77, 0x4f, 0x46, 0x32, 9, 9, 9])
+
+  it('keeps a normal gstatic file name', () => {
+    expect(
+      selfHostedFontName('https://fonts.gstatic.com/s/inter/v13/UcC73Fw.woff2', woff2),
+    ).toBe('UcC73Fw.woff2')
+  })
+
+  it('gives a dynamically subset `l/font?kit=` file a unique name WITH an extension', () => {
+    // Two different files at the same `…/l/font` path used to collide on the
+    // bare name `font`, which a static host then routed to a 404.
+    const a = selfHostedFontName('https://fonts.gstatic.com/l/font?kit=AAA&skey=1', woff2)
+    const b = selfHostedFontName('https://fonts.gstatic.com/l/font?kit=BBB&skey=2', woff2b)
+    expect(a).toMatch(/^[0-9a-f]{16}\.woff2$/)
+    expect(b).toMatch(/^[0-9a-f]{16}\.woff2$/)
+    expect(a).not.toBe(b)
+  })
+
+  it('is stable for the same bytes', () => {
+    const url = 'https://fonts.gstatic.com/l/font?kit=AAA'
+    expect(selfHostedFontName(url, woff2)).toBe(selfHostedFontName(url, woff2))
+  })
+
+  it('reads the extension from the font bytes', () => {
+    const url = 'https://fonts.gstatic.com/l/font?kit=X'
+    expect(selfHostedFontName(url, new Uint8Array([0x77, 0x4f, 0x46, 0x46]))).toMatch(/\.woff$/)
+    expect(selfHostedFontName(url, new Uint8Array([0x4f, 0x54, 0x54, 0x4f]))).toMatch(/\.otf$/)
+    expect(selfHostedFontName(url, new Uint8Array([0, 1, 0, 0]))).toMatch(/\.ttf$/)
   })
 })
