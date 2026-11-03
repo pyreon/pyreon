@@ -1017,6 +1017,27 @@ fun PyreonLink(to: String, content: @Composable (navigate: () -> Unit) -> Unit) 
   content { }
 }
 
+// PyreonCanvas + shapes — mirror of @pyreon/native-runtime-kotlin's PyreonCanvas.kt.
+sealed class PyreonShapeSpec {
+  data class Rect(val x: Double, val y: Double, val width: Double, val height: Double, val radius: Double) : PyreonShapeSpec()
+  data class Circle(val cx: Double, val cy: Double, val r: Double) : PyreonShapeSpec()
+  data class Line(val x1: Double, val y1: Double, val x2: Double, val y2: Double) : PyreonShapeSpec()
+  data class Svg(val d: String) : PyreonShapeSpec()
+}
+@Composable
+@Suppress("UNUSED_PARAMETER")
+fun PyreonCanvas(width: Double, height: Double, modifier: Modifier = Modifier, content: @Composable () -> Unit) {
+  content()
+}
+@Composable
+@Suppress("UNUSED_PARAMETER")
+fun PyreonShape(shape: PyreonShapeSpec, fill: Color? = null, stroke: Color? = null, strokeWidth: Double = 0.0) {}
+@Composable
+@Suppress("UNUSED_PARAMETER")
+fun PyreonCanvasText(x: Double, y: Double, size: Double, color: Color, content: @Composable () -> Unit) {
+  content()
+}
+
 // PyreonGesture + its payloads — mirror of @pyreon/native-runtime-kotlin's
 // PyreonGesture.kt / PyreonGestureCore.kt (the <Gesture> primitive).
 data class PyreonPanEvent(val dx: Double, val dy: Double, val x: Double, val y: Double, val phase: String)
@@ -1247,6 +1268,29 @@ object PyreonURL {
 // pyreonNumberString — JS \`String(number)\`, which every Double-typed
 // template interpoland lowers through. Mirrors the real signature.
 fun pyreonNumberString(value: Number): String = ""
+// Intl.DateTimeFormat / Intl.NumberFormat — the real PyreonIntl.kt surface,
+// exactly: every parameter defaulted and named, values taken as Number.
+class PyreonDateTimeFormat(
+  locale: String? = null,
+  dateStyle: String? = null,
+  timeStyle: String? = null,
+  skeleton: String? = null,
+  timeZone: String? = null,
+) {
+  fun format(epochMs: Number): String = ""
+}
+class PyreonNumberFormat(
+  locale: String? = null,
+  style: String = "decimal",
+  currency: String? = null,
+  currencyDisplay: String = "symbol",
+  minimumFractionDigits: Int? = null,
+  maximumFractionDigits: Int? = null,
+  minimumIntegerDigits: Int? = null,
+  useGrouping: Boolean = true,
+) {
+  fun format(value: Number): String = ""
+}
 // pyreonSlice — JS \`slice\` for a bound whose sign is not known at compile time
 // (runtime-kotlin's PyreonSlice.kt).
 fun <T> pyreonSlice(a: List<T>, start: Long, end: Long? = null): List<T> = a

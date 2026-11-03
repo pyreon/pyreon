@@ -28,6 +28,8 @@
  */
 export const EXEMPT: Record<string, string> = {
   PyreonAssets: 'needs android.util.Log + androidx.compose.ui.text.font stubs',
+  PyreonCanvas:
+    'Compose Canvas + DrawScope + androidx PathParser — real-SDK surface, device-gate territory (the kotlinSdkOnly twin in package.json)',
   PyreonChartCanvas:
     'Compose Canvas + android.graphics.Paint — real-SDK surface, device-gate territory (the kotlinSdkOnly twin in package.json)',
   PyreonGesture:
@@ -53,6 +55,9 @@ export const TYPECHECK_ONLY = new Set([
   'PyreonStorageBackends',
   'PyreonJson',
   'PyreonHttpOkHttp',
+  // android.icu exists only on a device; the emulator RUNS it against the V8
+  // table (examples/native-tasks-android IntlDifferentialTest).
+  'PyreonIntl',
   // Resolves `content://` through a real ContentResolver: nothing to run without a device.
   'PyreonUploadAndroid',
 ])
