@@ -13,7 +13,7 @@ export default defineManifest({
     rationale:
       'Standard Schema adapters (zod/valibot/arktype are JS libraries), so the adapters themselves stay web; the declarative schema FORMS lower to native validators (Gap-4 v1)',
     nativeFrontend:
-      'the `zodSchema(z.object({…}))` / `valibotSchema(...)` / `arktypeSchema(...)` declaration forms, emitted as native field validators',
+      'the `zodSchema(z.object({…}))` / `valibotSchema(...)` / `arktypeSchema(...)` declaration forms (several per `const a = …, b = …` statement), emitted as native field validators, and `.safeParse(x)` on a declared binding or an inline adapter call, which returns the web\'s `{ success, data }` shape. `.parse()` (throws), a schema declared inside a component body and the `.refine` / `.transform` / `.default` chains stay web and warn by name',
   },
   longExample: `import { useForm } from '@pyreon/form'
 import { z } from 'zod'
