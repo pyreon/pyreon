@@ -197,8 +197,11 @@ describe('@pyreon/compiler/diagnose is browser-safe (no TypeScript compiler API)
     expect(out).not.toContain('SyntaxKind')
     expect(out).not.toContain('createLanguageService')
     // The catalog is pure regex + strings — a self-contained module, so the
-    // browser bundle stays tiny (KBs). `typescript` would balloon it to MBs.
-    expect(out.length).toBeLessThan(200_000)
+    // browser bundle stays small (hundreds of KBs). `typescript` would balloon
+    // it to MBs (~9 MB). This bound is a TS-detection proxy, not a size
+    // budget: the catalog itself reached ~200 KB of plain strings by #4086,
+    // so the bound sits well above the catalog and far below a bundled TS.
+    expect(out.length).toBeLessThan(400_000)
   })
 })
 

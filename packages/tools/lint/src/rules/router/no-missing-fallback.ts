@@ -2,8 +2,12 @@ import type { Rule, VisitorCallbacks } from '../../types'
 import { getSpan } from '../../utils/ast'
 import { extractImportInfo } from '../../utils/imports'
 
+/**
+ * Mirrors the router's own wildcard detection (`match.ts`): `*`, the documented
+ * `(.*)`, and a trailing `*` (incl. a `:name*` splat segment).
+ */
 function isCatchAllPath(value: string): boolean {
-  return value === '*' || value.endsWith('*')
+  return value === '*' || value === '(.*)' || value.endsWith('*')
 }
 
 function getPathValue(prop: any): string | null {

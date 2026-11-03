@@ -13,7 +13,7 @@ The structural layer every styled / rocketstyle component renders through. `Elem
 
 **Tier:** Shared — the same source runs on web, iOS and Android
 
-Element→Stack and Text lower via elements-native; the rich web-only surfaces (Overlay/Portal/List slots) warn per-construct
+Element→Stack, Text, and List (a keyed Stack of its rows: data + component + itemKey / valueName) lower via elements-native; the rich web-only surfaces (Overlay/Portal, List itemProps/wrapProps/wrapComponent) warn per-construct
 
 See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multiplatform libraries](/docs/multiplatform-libraries) for every package's tier.
 

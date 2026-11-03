@@ -5,8 +5,9 @@
 // The callee is whatever local name the file imported `toast` as (`import { toast as notify }`), so no registry
 // can key it by name: the plugin's `scanModule` records the local names and its `callExprs` recognizer matches a
 // call against them. The message is the first argument; in the second-argument options object a literal `duration`
-// (ms) sets the auto-dismiss (0 = persistent) and a literal `dismissible: false` hides the card's dismiss button; the
-// other options (`onDismiss`, `description`, `icon`, `action`) are dropped, and the preset method carries the type. `loading` has no distinct native variant, so it is
+// (ms) sets the auto-dismiss (0 = persistent), a literal `dismissible: false` hides the card's dismiss button, and a
+// text `description` becomes the card's second line. `onDismiss`, `icon`, `action` and a JSX description do not lower
+// yet — each is WARNED by name rather than silently dropped. The preset method carries the type. `loading` has no distinct native variant, so it is
 // an info toast.
 
 import {
@@ -36,6 +37,8 @@ interface ToastPayload {
   readonly durationMillis?: number
   /** Only ever `false` — true is the runtime default and is not emitted. */
   readonly dismissible?: false
+  /** The description is `args[1]` when present. */
+  readonly hasDescription?: true
 }
 
 const payloadOf = (e: ExtExprIR): ToastPayload => e.payload as unknown as ToastPayload
@@ -93,6 +96,7 @@ const recognizeToast: CallExprRecognizer = (site, ctx) => {
   // A literal `duration` (ms) in the options object → auto-dismiss.
   let durationMillis: number | undefined
   let dismissible: false | undefined
+  let description: ReturnType<typeof ctx.expr> | undefined
   const opts = argNodes[1]
   if (opts?.type === 'ObjectExpression') {
     for (const prop of (opts.properties as AnyNode[] | undefined) ?? []) {
@@ -102,11 +106,24 @@ const recognizeToast: CallExprRecognizer = (site, ctx) => {
       }
       const key = staticPropKey(prop)
       const val = prop.value as AnyNode | undefined
-      if (key === 'duration' && (val?.type === 'Literal' || val?.type === 'NumericLiteral') && typeof val.value === 'number') {
-        durationMillis = val.value
-      }
-      if (key === 'dismissible' && (val?.type === 'Literal' || val?.type === 'BooleanLiteral') && val.value === false) {
-        dismissible = false
+      const isLiteral = val?.type === 'Literal' || val?.type === 'NumericLiteral' || val?.type === 'BooleanLiteral'
+      if (key === 'duration') {
+        if (isLiteral && typeof val.value === 'number') durationMillis = val.value
+        else ctx.report(`toast() \`duration\` must be a literal number of milliseconds to lower natively — the toast uses the default auto-dismiss on iOS/Android.`)
+      } else if (key === 'dismissible') {
+        if (isLiteral && typeof val.value === 'boolean') {
+          if (val.value === false) dismissible = false
+        } else {
+          ctx.report(`toast() \`dismissible\` must be a literal boolean to lower natively — the toast keeps its dismiss button on iOS/Android.`)
+        }
+      } else if (key === 'description') {
+        if (val?.type === 'JSXElement' || val?.type === 'JSXFragment') {
+          ctx.report(`toast() \`description\` given as JSX does not lower natively — only text does; the description is DROPPED on iOS/Android.`)
+        } else if (val !== undefined) {
+          description = ctx.expr(val)
+        }
+      } else if (key === 'onDismiss' || key === 'icon' || key === 'action') {
+        ctx.report(`toast() \`${key}\` has no native lowering yet — it is DROPPED on iOS/Android (the toast itself still shows).`)
       }
     }
   }
@@ -116,25 +133,28 @@ const recognizeToast: CallExprRecognizer = (site, ctx) => {
       toastType,
       ...(durationMillis !== undefined ? { durationMillis } : {}),
       ...(dismissible === false ? { dismissible } : {}),
+      ...(description !== undefined ? { hasDescription: true as const } : {}),
     },
-    args: [message],
+    args: description !== undefined ? [message, description] : [message],
   }
 }
 
 const toastExpr: ExprEmitter = {
   // `toast("x")` → `PyreonToast.shared.add("x", type: "…")`; a literal duration (ms) is converted to seconds.
   swift(e, ctx) {
-    const { toastType, durationMillis, dismissible } = payloadOf(e)
+    const { toastType, durationMillis, dismissible, hasDescription } = payloadOf(e)
     const duration = durationMillis !== undefined ? `, duration: ${durationMillis / 1000}` : ''
     const closeButton = dismissible === false ? ', dismissible: false' : ''
-    return `PyreonToast.shared.add(${ctx.expr(e.args[0]!)}, type: ${ctx.stringLiteral(toastType)}${duration}${closeButton})`
+    const detail = hasDescription === true ? `, description: ${ctx.expr(e.args[1]!)}` : ''
+    return `PyreonToast.shared.add(${ctx.expr(e.args[0]!)}, type: ${ctx.stringLiteral(toastType)}${duration}${closeButton}${detail})`
   },
   // → `PyreonToast.add("x", "…")`; a literal duration is a `Long` of milliseconds.
   kotlin(e, ctx) {
-    const { toastType, durationMillis, dismissible } = payloadOf(e)
+    const { toastType, durationMillis, dismissible, hasDescription } = payloadOf(e)
     const duration = durationMillis !== undefined ? `, ${durationMillis}L` : ''
     const closeButton = dismissible === false ? ', dismissible = false' : ''
-    return `PyreonToast.add(${ctx.expr(e.args[0]!)}, ${ctx.stringLiteral(toastType)}${duration}${closeButton})`
+    const detail = hasDescription === true ? `, description = ${ctx.expr(e.args[1]!)}` : ''
+    return `PyreonToast.add(${ctx.expr(e.args[0]!)}, ${ctx.stringLiteral(toastType)}${duration}${closeButton}${detail})`
   },
   // The node was a closed `toast-call` compiler kind before it moved here; the struct names the compiler derives
   // from an expression's shape hash it under that name, so emitted names did not move.
