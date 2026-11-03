@@ -140,12 +140,21 @@ struct PyreonToastCard: View {
     var body: some View {
         HStack(spacing: 0) {
             Rectangle().fill(pyreonToastAccent(item.type)).frame(width: 4)
-            Text(item.message)
-                .font(.system(size: 14, weight: .medium))
-                .foregroundStyle(Color(red: 0x1A / 255, green: 0x1A / 255, blue: 0x1A / 255))
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
-                .accessibilityIdentifier("pyreon-toast")
+            VStack(alignment: .leading, spacing: 2) {
+                Text(item.message)
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(Color(red: 0x1A / 255, green: 0x1A / 255, blue: 0x1A / 255))
+                    .accessibilityIdentifier("pyreon-toast")
+                if let description = item.description {
+                    // The web stylesheet's `.pyreon-toast__description`: 13px, #6b7280.
+                    Text(description)
+                        .font(.system(size: 13))
+                        .foregroundStyle(Color(red: 0x6B / 255, green: 0x72 / 255, blue: 0x80 / 255))
+                        .accessibilityIdentifier("pyreon-toast-description")
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
             if item.dismissible {
                 Button {
                     PyreonToast.shared.dismiss(item.id)

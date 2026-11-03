@@ -209,21 +209,35 @@ private fun PyreonToastCard(card: PyreonShownToast, onGone: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(modifier = Modifier.width(4.dp).fillMaxHeight().background(toastAccent(item.type)))
-        BasicText(
-            text = item.message,
+        Column(
             modifier = Modifier
                 .weight(1f, fill = false)
-                .padding(horizontal = 16.dp, vertical = 12.dp)
-                .testTag("pyreon-toast")
-                .semantics {
-                    liveRegion = if (item.type == "error" || item.type == "warning") {
-                        LiveRegionMode.Assertive
-                    } else {
-                        LiveRegionMode.Polite
-                    }
-                },
-            style = TextStyle(color = Color(0xFF1A1A1A), fontSize = 14.sp, fontWeight = FontWeight.Medium),
-        )
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            BasicText(
+                text = item.message,
+                modifier = Modifier
+                    .testTag("pyreon-toast")
+                    .semantics {
+                        liveRegion = if (item.type == "error" || item.type == "warning") {
+                            LiveRegionMode.Assertive
+                        } else {
+                            LiveRegionMode.Polite
+                        }
+                    },
+                style = TextStyle(color = Color(0xFF1A1A1A), fontSize = 14.sp, fontWeight = FontWeight.Medium),
+            )
+            val description = item.description
+            if (description != null) {
+                // The web stylesheet's `.pyreon-toast__description`: 13px, #6b7280.
+                BasicText(
+                    text = description,
+                    modifier = Modifier.testTag("pyreon-toast-description"),
+                    style = TextStyle(color = Color(0xFF6B7280), fontSize = 13.sp),
+                )
+            }
+        }
         if (item.dismissible) {
             BasicText(
                 text = "\u00D7",
