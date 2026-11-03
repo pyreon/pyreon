@@ -394,6 +394,17 @@ class CounterInstrumentedTest {
         check(animatedElapsed >= 2_000) { "with reduced motion off the 3s zoom animation landed in ${animatedElapsed}ms" }
     }
 
+    // Increment is tapped with a coordinate click that does NOT scroll, and the
+    // count assertions read "Count: N" at the top of the page, so the page is
+    // deliberately left unscrolled. That only works while Increment is on screen:
+    // content added above it pushes it past the fold, the tap lands on nothing,
+    // and every count-driven test then fails on a downstream assertion that
+    // names the wrong cause. Asserting it is displayed first makes that failure
+    // say what actually happened.
+    private fun tapIncrement() {
+        composeRule.onNodeWithText("Increment").assertIsDisplayed().performClick()
+    }
+
     @Test
     fun appLaunchesAndIncrementsCounter() {
         // Phase 1: assert initial render. PMTC emits
@@ -407,9 +418,7 @@ class CounterInstrumentedTest {
         // button. PMTC emits the button as
         // `Button(onClick = { count = count + 1 }) { Text("Increment") }`.
         // Click → Compose recomposes Text with the updated count.
-        composeRule
-            .onNodeWithText("Increment")
-            .performClick()
+        tapIncrement()
 
         composeRule
             .onNodeWithText("Count: 1")
@@ -424,8 +433,8 @@ class CounterInstrumentedTest {
     // declares the changes it handles, so Compose recomposes in place.
     @Test
     fun stateSurvivesRotationAndThemeSwitch() {
-        composeRule.onNodeWithText("Increment").performClick()
-        composeRule.onNodeWithText("Increment").performClick()
+        tapIncrement()
+        tapIncrement()
         composeRule.onNodeWithText("Count: 2").assertIsDisplayed()
         val before = composeRule.activity
         val uiModes = InstrumentationRegistry.getInstrumentation().targetContext
@@ -457,8 +466,8 @@ class CounterInstrumentedTest {
     @Test
     fun longPressResetsCounter() {
         // Drive the count up (0 -> 2) so the reset is observable.
-        composeRule.onNodeWithText("Increment").performClick()
-        composeRule.onNodeWithText("Increment").performClick()
+        tapIncrement()
+        tapIncrement()
         composeRule.onNodeWithText("Count: 2").assertIsDisplayed()
 
         // Semantics action, not a coordinate long-press: the counter column
@@ -721,10 +730,10 @@ class CounterInstrumentedTest {
     fun i18nInterpolationAndPluralsFollowCount() {
         composeRule.onNodeWithText("Hallo Vit!").assertExists()
         composeRule.onNodeWithText("0 Stücke").assertExists()
-        composeRule.onNodeWithText("Increment").performClick()
+        tapIncrement()
         composeRule.waitForIdle()
         composeRule.onNodeWithText("1 Stück").assertExists()
-        composeRule.onNodeWithText("Increment").performClick()
+        tapIncrement()
         composeRule.waitForIdle()
         composeRule.onNodeWithText("2 Stücke").assertExists()
     }
@@ -946,7 +955,7 @@ class CounterInstrumentedTest {
     @Test
     fun rocketstyleComponentRendersAndFlipsOnDevice() {
         composeRule.onNodeWithText("Badge: ok").assertIsDisplayed()
-        repeat(3) { composeRule.onNodeWithText("Increment").performClick() }
+        repeat(3) { tapIncrement() }
         composeRule.waitForIdle()
         composeRule.onNodeWithText("Badge: warn").assertIsDisplayed()
     }
@@ -1292,7 +1301,7 @@ class CounterInstrumentedTest {
         composeRule.onNodeWithTag("rp-plain").assertTextEquals("rp plain 0")
         composeRule.onAllNodesWithTag("rp-footer").assertCountEquals(1)
 
-        repeat(3) { composeRule.onNodeWithText("Increment").performClick() }
+        repeat(3) { tapIncrement() }
         composeRule.waitForIdle()
 
         composeRule.onNodeWithTag("rp-block").assertTextEquals("rp big 6")

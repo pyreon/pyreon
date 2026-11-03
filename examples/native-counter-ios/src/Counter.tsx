@@ -460,9 +460,6 @@ export function Counter() {
           so the device test can assert the flip actually re-rendered (XCUITest
           and Compose cannot read a colour, so the colour itself is proven by
           COMPILING: a wrong Compose constructor arg fails `assembleDebug`). */}
-      <PressChip data-testid="press-chip" onPress={() => { chipTaps = chipTaps + 1 }}>
-        <Text>Chip taps: {chipTaps}</Text>
-      </PressChip>
       <SizedRule size="narrow" data-testid="sized-narrow"><Text>n</Text></SizedRule>
       <SizedRule size="wide" data-testid="sized-wide"><Text>w</Text></SizedRule>
       <StatusBadge state={count > 2 ? 'warn' : 'ok'}>
@@ -598,6 +595,15 @@ export function Counter() {
       <Press onLongPress={() => { count = 0 }} data-testid="reset-zone">
         <Text>Hold to reset</Text>
       </Press>
+      {/* Placed BELOW Increment on purpose. The Android tests tap "Increment"
+          with a plain `performClick`, which injects at the node's coordinates
+          and does not scroll — and Increment sits right at the fold of the
+          emulator viewport. Anything added above it pushes it past the fold,
+          the tap lands on nothing, and every count-driven test fails at once
+          (this chip did exactly that). The press-chip tests scroll to it. */}
+      <PressChip data-testid="press-chip" onPress={() => { chipTaps = chipTaps + 1 }}>
+        <Text>Chip taps: {chipTaps}</Text>
+      </PressChip>
       {/* Core-UI row closure — `Toggle` / `Modal` / `Scroll` were the canonical
           primitives the capability matrix listed as "not individually
           asserted". They all EMIT and typecheck on both targets; what was

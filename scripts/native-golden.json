@@ -7382,12 +7382,12 @@
       "warnings": 0
     },
     "example:native-counter-ios/Counter.tsx|swift": {
-      "sha": "e1b4229e62003e8ad184b1e53fd1c0a46de51f97daff5af22011358bc886980a",
+      "sha": "cde070e84bcec2e6b6b66fa8fc8dbdb7dc5c1d37c82a0670fa0ec3606ebea61e",
       "bytes": 19338,
       "warnings": 0
     },
     "example:native-counter-ios/Counter.tsx|kotlin": {
-      "sha": "eb6e3af70cc1ab5c222dd0acd5707308fa798683f22e4a749ae48290e6bd10e9",
+      "sha": "8372f8818c22f8a6d7f61aed8ca2e4dc0b087a8843899658c7f3cd719c5f28aa",
       "bytes": 20004,
       "warnings": 0
     },
