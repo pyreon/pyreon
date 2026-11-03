@@ -34,6 +34,8 @@ export const EXEMPT: Record<string, string> = {
     'Compose Canvas + android.graphics.Paint — real-SDK surface, device-gate territory (the kotlinSdkOnly twin in package.json)',
   PyreonGesture:
     'Compose pointerInput + awaitEachGesture + calculatePan/Zoom/Rotation — real-SDK surface, device-gate territory (the kotlinSdkOnly twin in package.json); its state machine lives in the dependency-free PyreonGestureCore, which IS verified and RUN',
+  PyreonPressState:
+    'Compose MutableInteractionSource + collectIsPressedAsState — real-SDK surface, device-gate territory (the kotlinSdkOnly twin in package.json); the counter example\'s pressed-style device test exercises it',
   PyreonChartEngine:
     'GENERATED (gen-native-engine.ts) — references the canvas-owned PyreonChartPt/Rect/DrawCmd, so a single-file stub compile would need a drift-prone copy; verified END-TO-END by @pyreon/native-compiler native-chart-engine-generated.test.ts (regenerate + byte-equality + kotlinc compile with the canvas types extracted verbatim)',
 }
