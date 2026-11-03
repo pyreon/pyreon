@@ -85,7 +85,13 @@ export function isRootFile(path: string): boolean {
   // The pinned toolchain: a bun bump runs every test under a different runtime.
   if (path === '.bun-version') return true
   if (/^tsconfig.*\.json$/.test(path)) return true
-  if (path.startsWith('.github/workflows/')) return true
+  // ci.yml defines every cell this decider feeds (setup, env, commands), so a
+  // change there can move any of them. Another workflow file — codeql,
+  // release, scorecard, native-* — runs its OWN jobs on the PR and cannot
+  // change what a typecheck/test cell does; it maps to @pyreon/test-utils
+  // (whose tests parse workflow YAML) via `isWorkflowFile` below instead of
+  // re-running all ~60 packages for a dependabot action bump.
+  if (path === '.github/workflows/ci.yml') return true
   // Shared setup actions can change the runtime/dependency tree of every cell.
   if (path.startsWith('.github/actions/')) return true
   // NOTE: `scripts/` is deliberately NOT a root file. Scripts are standalone
@@ -137,6 +143,16 @@ export function isScriptFile(path: string): boolean {
  */
 export function isE2eFile(path: string): boolean {
   return path.startsWith('e2e/') && /\.(ts|tsx|js|mjs|cjs)$/.test(path)
+}
+
+/**
+ * A workflow file other than ci.yml (which `isRootFile` escalates). Mapped to
+ * @pyreon/test-utils as a leaf: its tests parse the workflow YAML (shell
+ * order, cache-key sync, timeouts, fail-fast). Keeps `affected` non-empty, so
+ * the E2E aggregator's decide/suite agreement holds for a workflow-only PR.
+ */
+export function isWorkflowFile(path: string): boolean {
+  return path.startsWith('.github/workflows/') && path !== '.github/workflows/ci.yml'
 }
 
 /** The package whose tests cover `scripts/**` (affected target for script edits). */
@@ -438,7 +454,7 @@ export function computeAffectedFlags(opts: {
   for (const path of changed) {
     const ws = findOwningWorkspace(path, workspaces, root)
     if (ws) seeds.add(ws.name)
-    else if (hasScriptTestPkg && (isScriptFile(path) || isE2eFile(path))) {
+    else if (hasScriptTestPkg && (isScriptFile(path) || isE2eFile(path) || isWorkflowFile(path))) {
       // `e2e/**` rides the same leaf seed as `scripts/**`: the point is not
       // that test-utils' tests cover the specs (they do not) — it is that
       // `affected` must be NON-EMPTY so Bootstrap runs and the e2e matrix is
