@@ -3,7 +3,7 @@
 // structural `TabsRouter` contract this package types is checked against the
 // router that actually implements it.
 
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { h } from '@pyreon/core'
 import { mount } from '@pyreon/runtime-dom'
 import { createRouter, RouterProvider, RouterView, setActiveRouter } from '@pyreon/router'
@@ -115,5 +115,23 @@ describe('<Tabs router>', () => {
     await flush()
     expect(router!.activeTab()).toBe('me')
     expect(router!.tabStack('feed')).toEqual(['/feed', '/feed/post/1'])
+  })
+  it('warns when the router has no tabs, and selects nothing', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    window.history.replaceState(null, '', '/feed')
+    router = createRouter({ routes, mode: 'history' })
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    const unmount = mount(
+      h(Tabs, { router }, h(Tab, { value: 'feed', label: 'Feed', 'data-testid': 'tab-feed' }, 'x')),
+      container,
+    )
+    cleanup = () => {
+      unmount()
+      container.remove()
+    }
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('this router has no `tabs`'))
+    expect(tabButton(container, 'tab-feed').getAttribute('aria-selected')).toBe('false')
+    warn.mockRestore()
   })
 })

@@ -127,8 +127,9 @@ export const Tabs = (props: TabsProps): VNode => {
   }
 
   const select = (i: number, reselect = false): void => {
-    const entry = tabs[i]
-    if (entry === undefined) return
+    // Callers pass only in-range indices (a rendered button, or a keyboard
+    // step taken modulo the tab count).
+    const entry = tabs[i]!
     if (router !== undefined) {
       if (entry.value !== selected() || reselect) router.selectTab(entry.value)
       return
