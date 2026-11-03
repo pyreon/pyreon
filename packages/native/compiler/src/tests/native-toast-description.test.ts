@@ -50,7 +50,6 @@ describe('toast() description on native', () => {
     const cases: Array<[string, string]> = [
       ['icon: "x"', '`icon` has no native lowering'],
       ['onDismiss: () => {}', '`onDismiss` has no native lowering'],
-      ['action: { label: "Undo", onClick: () => {} }', '`action` has no native lowering'],
       ['description: <b>x</b>', '`description` given as JSX'],
       ['duration: name().length', '`duration` must be a literal'],
       ['dismissible: name() === ""', '`dismissible` must be a literal'],

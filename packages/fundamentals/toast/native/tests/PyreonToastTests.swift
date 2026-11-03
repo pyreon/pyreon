@@ -39,6 +39,30 @@ struct PyreonToastTests {
         check(t.toasts.count == 3, "stack bounded to maxToasts")
         check(t.toasts.map { $0.message } == ["m2", "m3", "m4"], "oldest dropped, newest kept")
 
+        // action: runAction calls the handler and leaves the toast up (as on the
+        // web); the handler is released when the toast goes.
+        let q = PyreonToast()
+        var ran = 0
+        let a = q.add("deleted", duration: 0, actionLabel: "Undo", onAction: { ran += 1 })
+        check(q.toasts.first?.actionLabel == "Undo", "action label carried")
+        q.runAction(a)
+        check(ran == 1, "runAction calls the handler")
+        check(q.toasts.count == 1, "running the action does not dismiss")
+        q.dismiss(a)
+        q.runAction(a)
+        check(ran == 1, "a dismissed toast's handler is released")
+        let orphan = q.add("x", duration: 0, actionLabel: "Orphan")
+        check(q.toasts.first { $0.id == orphan }?.actionLabel == nil, "a label without a handler shows no button")
+        let c = q.add("y", duration: 0, actionLabel: "Undo", onAction: { ran += 1 })
+        q.clear()
+        q.runAction(c)
+        check(ran == 1, "clear releases handlers")
+        q.maxToasts = 1
+        let evicted = q.add("old", duration: 0, actionLabel: "Undo", onAction: { ran += 1 })
+        _ = q.add("new", duration: 0)
+        q.runAction(evicted)
+        check(ran == 1, "a toast evicted by the stack bound releases its handler")
+
         print("[PyreonToastTests] all assertions passed")
     }
 }

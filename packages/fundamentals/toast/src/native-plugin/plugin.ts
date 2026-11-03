@@ -5,9 +5,10 @@
 // The callee is whatever local name the file imported `toast` as (`import { toast as notify }`), so no registry
 // can key it by name: the plugin's `scanModule` records the local names and its `callExprs` recognizer matches a
 // call against them. The message is the first argument; in the second-argument options object a literal `duration`
-// (ms) sets the auto-dismiss (0 = persistent), a literal `dismissible: false` hides the card's dismiss button, and a
-// text `description` becomes the card's second line. `onDismiss`, `icon`, `action` and a JSX description do not lower
-// yet — each is WARNED by name rather than silently dropped. The preset method carries the type. `loading` has no distinct native variant, so it is
+// (ms) sets the auto-dismiss (0 = persistent), a literal `dismissible: false` hides the card's dismiss button, a
+// text `description` becomes the card's second line, and `action: { label, onClick: () => … }` adds an action button.
+// `onDismiss`, `icon`, a JSX description and an `onClick` that takes the `{ id, dismiss }` context do not lower yet —
+// each is WARNED by name rather than silently dropped. The preset method carries the type. `loading` has no distinct native variant, so it is
 // an info toast.
 
 import {
@@ -39,6 +40,8 @@ interface ToastPayload {
   readonly dismissible?: false
   /** The description is `args[1]` when present. */
   readonly hasDescription?: true
+  /** The action's label and handler follow the description (or the message) in `args`. */
+  readonly hasAction?: true
 }
 
 const payloadOf = (e: ExtExprIR): ToastPayload => e.payload as unknown as ToastPayload
@@ -97,6 +100,7 @@ const recognizeToast: CallExprRecognizer = (site, ctx) => {
   let durationMillis: number | undefined
   let dismissible: false | undefined
   let description: ReturnType<typeof ctx.expr> | undefined
+  let action: { label: ReturnType<typeof ctx.expr>; handler: ReturnType<typeof ctx.expr> } | undefined
   const opts = argNodes[1]
   if (opts?.type === 'ObjectExpression') {
     for (const prop of (opts.properties as AnyNode[] | undefined) ?? []) {
@@ -122,7 +126,9 @@ const recognizeToast: CallExprRecognizer = (site, ctx) => {
         } else if (val !== undefined) {
           description = ctx.expr(val)
         }
-      } else if (key === 'onDismiss' || key === 'icon' || key === 'action') {
+      } else if (key === 'action') {
+        action = readAction(val, ctx)
+      } else if (key === 'onDismiss' || key === 'icon') {
         ctx.report(`toast() \`${key}\` has no native lowering yet — it is DROPPED on iOS/Android (the toast itself still shows).`)
       }
     }
@@ -134,27 +140,72 @@ const recognizeToast: CallExprRecognizer = (site, ctx) => {
       ...(durationMillis !== undefined ? { durationMillis } : {}),
       ...(dismissible === false ? { dismissible } : {}),
       ...(description !== undefined ? { hasDescription: true as const } : {}),
+      ...(action !== undefined ? { hasAction: true as const } : {}),
     },
-    args: description !== undefined ? [message, description] : [message],
+    args: [
+      message,
+      ...(description !== undefined ? [description] : []),
+      ...(action !== undefined ? [action.label, action.handler] : []),
+    ],
   }
+}
+
+/**
+ * `action: { label, onClick }` → the native action button. Like the web, a tap
+ * runs `onClick` and leaves the toast up. `onClick` must take no arguments: the
+ * web passes `{ id, dismiss }`, which has no native lowering yet, so a handler
+ * that declares a parameter is warned by name and the action is dropped.
+ */
+function readAction(
+  val: AnyNode | undefined,
+  ctx: Parameters<CallExprRecognizer>[1],
+): { label: ReturnType<typeof ctx.expr>; handler: ReturnType<typeof ctx.expr> } | undefined {
+  const drop = (why: string): undefined => {
+    ctx.report(`toast() \`action\` ${why} — the action button is DROPPED on iOS/Android (the toast itself still shows).`)
+    return undefined
+  }
+  if (val?.type !== 'ObjectExpression') return drop('must be an object literal `{ label, onClick }`')
+  let label: AnyNode | undefined
+  let onClick: AnyNode | undefined
+  for (const prop of (val.properties as AnyNode[] | undefined) ?? []) {
+    const key = hasDynamicKey(prop) ? undefined : staticPropKey(prop)
+    if (key === 'label') label = prop.value
+    else if (key === 'onClick') onClick = prop.method === true ? prop : prop.value
+  }
+  if (label === undefined || label.type === 'JSXElement' || label.type === 'JSXFragment') {
+    return drop('needs a text `label`')
+  }
+  const isFn = onClick?.type === 'ArrowFunctionExpression' || onClick?.type === 'FunctionExpression' || onClick?.type === 'Property'
+  if (onClick === undefined || !isFn) return drop('needs an inline `onClick` function')
+  const params = (onClick.type === 'Property' ? onClick.value?.params : onClick.params) as AnyNode[] | undefined
+  if ((params?.length ?? 0) > 0) {
+    return drop('`onClick` takes the `{ id, dismiss }` context, which has no native lowering yet — use a no-argument `onClick`')
+  }
+  return { label: ctx.expr(label), handler: ctx.expr(onClick.type === 'Property' ? onClick.value : onClick) }
 }
 
 const toastExpr: ExprEmitter = {
   // `toast("x")` → `PyreonToast.shared.add("x", type: "…")`; a literal duration (ms) is converted to seconds.
   swift(e, ctx) {
-    const { toastType, durationMillis, dismissible, hasDescription } = payloadOf(e)
+    const { toastType, durationMillis, dismissible, hasDescription, hasAction } = payloadOf(e)
     const duration = durationMillis !== undefined ? `, duration: ${durationMillis / 1000}` : ''
     const closeButton = dismissible === false ? ', dismissible: false' : ''
     const detail = hasDescription === true ? `, description: ${ctx.expr(e.args[1]!)}` : ''
-    return `PyreonToast.shared.add(${ctx.expr(e.args[0]!)}, type: ${ctx.stringLiteral(toastType)}${duration}${closeButton}${detail})`
+    const at = hasDescription === true ? 2 : 1
+    const act =
+      hasAction === true ? `, actionLabel: ${ctx.expr(e.args[at]!)}, onAction: ${ctx.action(e.args[at + 1]!, 0)}` : ''
+    return `PyreonToast.shared.add(${ctx.expr(e.args[0]!)}, type: ${ctx.stringLiteral(toastType)}${duration}${closeButton}${detail}${act})`
   },
   // → `PyreonToast.add("x", "…")`; a literal duration is a `Long` of milliseconds.
   kotlin(e, ctx) {
-    const { toastType, durationMillis, dismissible, hasDescription } = payloadOf(e)
+    const { toastType, durationMillis, dismissible, hasDescription, hasAction } = payloadOf(e)
     const duration = durationMillis !== undefined ? `, ${durationMillis}L` : ''
     const closeButton = dismissible === false ? ', dismissible = false' : ''
     const detail = hasDescription === true ? `, description = ${ctx.expr(e.args[1]!)}` : ''
-    return `PyreonToast.add(${ctx.expr(e.args[0]!)}, ${ctx.stringLiteral(toastType)}${duration}${closeButton}${detail})`
+    const at = hasDescription === true ? 2 : 1
+    const act =
+      hasAction === true ? `, actionLabel = ${ctx.expr(e.args[at]!)}, onAction = ${ctx.action(e.args[at + 1]!, 0)}` : ''
+    return `PyreonToast.add(${ctx.expr(e.args[0]!)}, ${ctx.stringLiteral(toastType)}${duration}${closeButton}${detail}${act})`
   },
   // The node was a closed `toast-call` compiler kind before it moved here; the struct names the compiler derives
   // from an expression's shape hash it under that name, so emitted names did not move.

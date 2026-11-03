@@ -34,5 +34,31 @@ fun main() {
     )
     PyreonToast.maxToasts = 50 // restore
 
+    // Action: runAction calls the handler and leaves the toast up (as on the web);
+    // the handler is released when the toast goes, so it can never run again.
+    PyreonToast.clear()
+    var ran = 0
+    val a = PyreonToast.add("deleted", durationMillis = 0, actionLabel = "Undo", onAction = { ran += 1 })
+    check(PyreonToast.toasts.value.single().actionLabel == "Undo", "action label carried")
+    PyreonToast.runAction(a)
+    check(ran == 1, "runAction calls the handler")
+    check(PyreonToast.toasts.value.size == 1, "running the action does not dismiss")
+    PyreonToast.dismiss(a)
+    PyreonToast.runAction(a)
+    check(ran == 1, "a dismissed toast's handler is released")
+    val noHandler = PyreonToast.add("x", durationMillis = 0, actionLabel = "Orphan")
+    check(PyreonToast.toasts.value.first { it.id == noHandler }.actionLabel == null, "a label without a handler shows no button")
+    val c = PyreonToast.add("y", durationMillis = 0, actionLabel = "Undo", onAction = { ran += 1 })
+    PyreonToast.clear()
+    PyreonToast.runAction(c)
+    check(ran == 1, "clear releases handlers")
+    PyreonToast.maxToasts = 1
+    val evicted = PyreonToast.add("old", durationMillis = 0, actionLabel = "Undo", onAction = { ran += 1 })
+    PyreonToast.add("new", durationMillis = 0)
+    PyreonToast.runAction(evicted)
+    check(ran == 1, "a toast evicted by the stack bound releases its handler")
+    PyreonToast.maxToasts = 50
+    PyreonToast.clear()
+
     println("[PyreonToastTest] all smoke tests passed")
 }

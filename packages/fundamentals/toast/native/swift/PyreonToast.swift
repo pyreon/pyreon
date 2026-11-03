@@ -32,12 +32,17 @@ public struct PyreonToastItem: Identifiable, Equatable, Sendable {
     public let dismissible: Bool
     /// Optional secondary line under the message (the web's `description`).
     public let description: String?
-    public init(id: String, message: String, type: String, dismissible: Bool = true, description: String? = nil) {
+    /// The action button's label, when the toast has one. Its handler is
+    /// kept by `PyreonToast` (a closure would make the item neither
+    /// `Equatable` nor `Sendable`).
+    public let actionLabel: String?
+    public init(id: String, message: String, type: String, dismissible: Bool = true, description: String? = nil, actionLabel: String? = nil) {
         self.id = id
         self.message = message
         self.type = type
         self.dismissible = dismissible
         self.description = description
+        self.actionLabel = actionLabel
     }
 }
 
@@ -61,6 +66,10 @@ public final class PyreonToast {
 
     @ObservationIgnored private var counter = 0
 
+    /// Action handlers by toast id. Dropped with the toast, so a dismissed
+    /// toast's closure (and whatever it captured) is released.
+    @ObservationIgnored private var actions: [String: () -> Void] = [:]
+
     public init() {}
 
     /// Enqueue a toast; returns its id (for `dismiss`/`update`). Schedules an
@@ -68,12 +77,15 @@ public final class PyreonToast {
     /// until dismissed). The id is a monotonic counter, NOT a timestamp, so two
     /// `add()`s in the same millisecond get distinct ids.
     @discardableResult
-    public func add(_ message: String, type: String = "info", duration: TimeInterval? = nil, dismissible: Bool = true, description: String? = nil) -> String {
+    public func add(_ message: String, type: String = "info", duration: TimeInterval? = nil, dismissible: Bool = true, description: String? = nil, actionLabel: String? = nil, onAction: (() -> Void)? = nil) -> String {
         counter += 1
         let id = "toast-\(counter)"
-        toasts.append(PyreonToastItem(id: id, message: message, type: type, dismissible: dismissible, description: description))
+        let hasAction = actionLabel != nil && onAction != nil
+        toasts.append(PyreonToastItem(id: id, message: message, type: type, dismissible: dismissible, description: description, actionLabel: hasAction ? actionLabel : nil))
+        if hasAction, let onAction { actions[id] = onAction }
         // Bound the stack: drop the oldest beyond the cap.
         if toasts.count > maxToasts {
+            for dropped in toasts.prefix(toasts.count - maxToasts) { actions[dropped.id] = nil }
             toasts.removeFirst(toasts.count - maxToasts)
         }
         let ttl = duration ?? defaultDuration
@@ -101,10 +113,18 @@ public final class PyreonToast {
     /// The hard removal both `dismiss` and the auto-dismiss timer call.
     public func remove(_ id: String) {
         toasts.removeAll { $0.id == id }
+        actions[id] = nil
     }
 
     /// Remove every toast.
     public func clear() {
         toasts.removeAll()
+        actions.removeAll()
+    }
+
+    /// Run a toast's action handler. Like the web, the toast stays until it is
+    /// dismissed or expires; a no-op once the toast is gone.
+    public func runAction(_ id: String) {
+        actions[id]?()
     }
 }
