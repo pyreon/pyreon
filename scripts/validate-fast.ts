@@ -9,6 +9,7 @@
  *   - check-doc-claims      (AGENTS.md doc page count drifted)
  *   - check-docs-content-drops (a docs page renders with text MISSING)
  *   - check-multiplatform-matrix (matrix headline drifted from its own table)
+ *   - gen-native-crossing-table (per-package native crossing table drifted from the coverage registry)
  *   - check-changeset-required (no changeset for published-pkg source change)
  *   - check-no-major-changesets (a `major` bump is illegal while Pyreon is 0.x)
  *   - check-bundle-budgets   (new publishable package missing entry)
@@ -121,6 +122,7 @@ const GATES: Gate[] = [
   // The multiplatform capability matrix's headline must equal its own table's
   // Σ(weight × fraction) — the page once carried three disagreeing self-ratings.
   { name: 'check-multiplatform-matrix', cmd: 'bun scripts/check-multiplatform-matrix.ts' },
+  { name: 'gen-native-crossing-table', cmd: 'bun scripts/gen-native-crossing-table.ts --check' },
   { name: 'check-no-legacy-playground', cmd: 'bun scripts/check-no-legacy-playground.ts' },
   { name: 'check-changeset-required', cmd: 'bun scripts/check-changeset-required.ts' },
   { name: 'check-lockfile-version', cmd: 'bun scripts/check-lockfile-version.ts' },
