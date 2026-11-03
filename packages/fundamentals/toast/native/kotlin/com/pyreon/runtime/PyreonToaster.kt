@@ -29,6 +29,7 @@ package com.pyreon.runtime
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableStateOf
@@ -237,6 +238,20 @@ private fun PyreonToastCard(card: PyreonShownToast, onGone: () -> Unit) {
                     style = TextStyle(color = Color(0xFF6B7280), fontSize = 13.sp),
                 )
             }
+        }
+        val actionLabel = item.actionLabel
+        if (actionLabel != null) {
+            // The web stylesheet's `.pyreon-toast__action`: 13px blue on a light border.
+            BasicText(
+                text = actionLabel,
+                modifier = Modifier
+                    .padding(start = 4.dp)
+                    .border(1.dp, Color(0xFFE5E7EB), RoundedCornerShape(4.dp))
+                    .clickable { PyreonToast.runAction(item.id) }
+                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                    .testTag("pyreon-toast-action"),
+                style = TextStyle(color = Color(0xFF3B82F6), fontSize = 13.sp),
+            )
         }
         if (item.dismissible) {
             BasicText(
