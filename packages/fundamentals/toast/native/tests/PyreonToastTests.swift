@@ -63,6 +63,33 @@ struct PyreonToastTests {
         q.runAction(evicted)
         check(ran == 1, "a toast evicted by the stack bound releases its handler")
 
+        // onDismiss: fires exactly once when the toast leaves by ANY path (web parity).
+        let w = PyreonToast()
+        var gone: [String] = []
+        let d1 = w.add("a", duration: 0, onDismiss: { gone.append("a") })
+        w.dismiss(d1)
+        w.dismiss(d1)
+        check(gone == ["a"], "dismiss fires onDismiss exactly once")
+        _ = w.add("b", duration: 0, onDismiss: { gone.append("b") })
+        _ = w.add("c", duration: 0, onDismiss: { gone.append("c") })
+        w.clear()
+        check(gone == ["a", "b", "c"], "clear fires every onDismiss, oldest first")
+        w.maxToasts = 1
+        _ = w.add("old", duration: 0, onDismiss: { gone.append("old") })
+        _ = w.add("new", duration: 0)
+        check(gone.last == "old", "eviction by the stack bound fires onDismiss")
+        w.maxToasts = 0
+        _ = w.add("arrival", duration: 0, onDismiss: { gone.append("arrival") })
+        check(gone.last == "arrival", "a toast evicted on arrival still fires onDismiss")
+        w.maxToasts = 50
+        w.clear()
+        gone = []
+        // Re-entrancy: a handler that enqueues a new toast runs once and the new toast stays.
+        let r = w.add("r", duration: 0, onDismiss: { gone.append("r"); _ = w.add("follow-up", duration: 0) })
+        w.dismiss(r)
+        check(gone == ["r"], "a re-entrant onDismiss runs once")
+        check(w.toasts.map { $0.message } == ["follow-up"], "a toast enqueued from onDismiss stays")
+
         print("[PyreonToastTests] all assertions passed")
     }
 }
