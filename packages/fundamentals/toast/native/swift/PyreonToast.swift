@@ -32,12 +32,17 @@ public struct PyreonToastItem: Identifiable, Equatable, Sendable {
     public let dismissible: Bool
     /// Optional secondary line under the message (the web's `description`).
     public let description: String?
-    public init(id: String, message: String, type: String, dismissible: Bool = true, description: String? = nil) {
+    /// The action button's label, when the toast has one. Its handler is
+    /// kept by `PyreonToast` (a closure would make the item neither
+    /// `Equatable` nor `Sendable`).
+    public let actionLabel: String?
+    public init(id: String, message: String, type: String, dismissible: Bool = true, description: String? = nil, actionLabel: String? = nil) {
         self.id = id
         self.message = message
         self.type = type
         self.dismissible = dismissible
         self.description = description
+        self.actionLabel = actionLabel
     }
 }
 
@@ -61,6 +66,16 @@ public final class PyreonToast {
 
     @ObservationIgnored private var counter = 0
 
+    /// Action handlers by toast id. Dropped with the toast, so a dismissed
+    /// toast's closure (and whatever it captured) is released.
+    @ObservationIgnored private var actions: [String: () -> Void] = [:]
+
+    /// `onDismiss` handlers by toast id. Like the web, one fires exactly once
+    /// when its toast leaves the queue by ANY path — dismiss, expiry, `clear`,
+    /// or eviction past `maxToasts`. Taken out of the table before it runs, so
+    /// a handler that enqueues or dismisses another toast is re-entrancy safe.
+    @ObservationIgnored private var dismissHandlers: [String: () -> Void] = [:]
+
     public init() {}
 
     /// Enqueue a toast; returns its id (for `dismiss`/`update`). Schedules an
@@ -68,13 +83,19 @@ public final class PyreonToast {
     /// until dismissed). The id is a monotonic counter, NOT a timestamp, so two
     /// `add()`s in the same millisecond get distinct ids.
     @discardableResult
-    public func add(_ message: String, type: String = "info", duration: TimeInterval? = nil, dismissible: Bool = true, description: String? = nil) -> String {
+    public func add(_ message: String, type: String = "info", duration: TimeInterval? = nil, dismissible: Bool = true, description: String? = nil, actionLabel: String? = nil, onAction: (() -> Void)? = nil, onDismiss: (() -> Void)? = nil) -> String {
         counter += 1
         let id = "toast-\(counter)"
-        toasts.append(PyreonToastItem(id: id, message: message, type: type, dismissible: dismissible, description: description))
-        // Bound the stack: drop the oldest beyond the cap.
+        let hasAction = actionLabel != nil && onAction != nil
+        toasts.append(PyreonToastItem(id: id, message: message, type: type, dismissible: dismissible, description: description, actionLabel: hasAction ? actionLabel : nil))
+        if hasAction, let onAction { actions[id] = onAction }
+        if let onDismiss { dismissHandlers[id] = onDismiss }
+        // Bound the stack: drop the oldest beyond the cap. An evicted toast
+        // has left the queue, so its `onDismiss` fires (as on the web).
         if toasts.count > maxToasts {
+            let dropped = toasts.prefix(toasts.count - maxToasts).map(\.id)
             toasts.removeFirst(toasts.count - maxToasts)
+            for droppedId in dropped { release(droppedId) }
         }
         let ttl = duration ?? defaultDuration
         if ttl > 0 {
@@ -100,11 +121,27 @@ public final class PyreonToast {
 
     /// The hard removal both `dismiss` and the auto-dismiss timer call.
     public func remove(_ id: String) {
+        guard toasts.contains(where: { $0.id == id }) else { return }
         toasts.removeAll { $0.id == id }
+        release(id)
     }
 
-    /// Remove every toast.
+    /// Remove every toast; each one's `onDismiss` fires, oldest first.
     public func clear() {
+        let ids = toasts.map(\.id)
         toasts.removeAll()
+        for id in ids { release(id) }
+    }
+
+    /// Drop a departed toast's handlers, then fire its `onDismiss` once.
+    private func release(_ id: String) {
+        actions[id] = nil
+        dismissHandlers.removeValue(forKey: id)?()
+    }
+
+    /// Run a toast's action handler. Like the web, the toast stays until it is
+    /// dismissed or expires; a no-op once the toast is gone.
+    public func runAction(_ id: String) {
+        actions[id]?()
     }
 }

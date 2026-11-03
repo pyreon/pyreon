@@ -161,7 +161,9 @@ import {
 } from './emit-context'
 import {
   extractTextTypography,
+  PRESSED_STATE_IDENT,
   styleToNativeModifiers,
+  styleUsesPressedState,
   swiftTextTypographyModifiers,
 } from './style-to-native'
 import {
@@ -7113,8 +7115,17 @@ function emitSwiftButton(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: nu
   // `danger` matters most: without it a destructive button was
   // indistinguishable from a confirm button, and the visual difference IS
   // the safeguard.
-  result = `${result}${swiftButtonVariantModifier(e)}`
-  const layoutModifiers = emitSwiftLayoutModifiers(e)
+  // A pressed style REPLACES the variant's button style — both decide how the
+  // button draws itself, and only one ButtonStyle can apply. The pressed one
+  // was authored for this component; a variant beside it is named, not mixed.
+  const pressedStyle = swiftPressedStyle(e)
+  if (pressedStyle !== null && e.attrs.some((a) => a.kind === 'attr' && a.name === 'variant')) {
+    _emitWarnings.push(
+      `<Button variant> with a pressed style: the pressed style draws the button on native, so the variant was not applied.`,
+    )
+  }
+  result = `${result}${pressedStyle?.buttonStyle ?? swiftButtonVariantModifier(e)}`
+  const layoutModifiers = emitSwiftLayoutModifiers(pressedStyle?.rest ?? e)
   result = layoutModifiers ? `${result}${layoutModifiers}` : result
   return disabledModifier ? `${result}\n${' '.repeat(indent)}  ${disabledModifier}` : result
 }
@@ -9499,6 +9510,41 @@ function emitSwiftGesture(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: n
 }
 
 /**
+ * A pressable whose `style` keys on the press state (a rocketstyle `active:`
+ * block — see `PRESSED_STATE_IDENT`). The style half is lowered INSIDE a
+ * `PyreonPressStyle` ButtonStyle, whose closure receives the label and
+ * SwiftUI's own `configuration.isPressed` under that name, so the connector's
+ * ordinary reactive-condition path does the rest. The remaining modifiers
+ * (testid, a11y, margin, …) stay on the button itself, where XCUITest and
+ * VoiceOver read them.
+ *
+ * Deliberately a ButtonStyle and not a `DragGesture(minimumDistance: 0)`
+ * tracker: a zero-distance drag attached to a Button blocks the enclosing
+ * ScrollView and can swallow the tap. `isPressed` is the platform's own state —
+ * it ends on scroll-cancel exactly as the button's highlight does.
+ */
+function swiftPressedStyle(
+  e: Extract<ExprIR, { kind: 'jsx-element' }>,
+): { buttonStyle: string; rest: Extract<ExprIR, { kind: 'jsx-element' }> } | null {
+  const styleAttr = e.attrs.find(
+    (a): a is Extract<AttrIR, { kind: 'attr' }> => a.kind === 'attr' && a.name === 'style',
+  )
+  if (styleAttr === undefined || !styleUsesPressedState(styleAttr.value)) return null
+  const { modifiers, warnings, needsSizeClass } = styleToNativeModifiers(
+    styleAttr.value,
+    'swift',
+    e.tag,
+    (cond) => swiftCondition(cond, (x) => emitSwiftExpr(x, 0)),
+  )
+  for (const w of warnings) _emitWarnings.push(w)
+  if (needsSizeClass === true) _usesSizeClass = true
+  return {
+    buttonStyle: `.buttonStyle(PyreonPressStyle { label, ${PRESSED_STATE_IDENT} in label${modifiers.join('')} })`,
+    rest: { ...e, attrs: e.attrs.filter((a) => a !== styleAttr) },
+  }
+}
+
+/**
  * A numeric shape / canvas prop as a Swift `Double` argument. A literal is
  * passed bare; an expression is wrapped in `Double(…)` because a signal written
  * only with integers is an `Int` here and the runtime builders take Double.
@@ -9662,7 +9708,9 @@ function emitSwiftPress(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: num
 
   const pad = ' '.repeat(indent + 2)
   const contentLines = e.children.map((c) => pad + emitSwiftChild(c, indent + 2)).join('\n')
-  const modifiers = emitSwiftLayoutModifiers(e)
+  const pressedStyle = swiftPressedStyle(e)
+  const modifiers = emitSwiftLayoutModifiers(pressedStyle?.rest ?? e)
+  const buttonStyle = pressedStyle?.buttonStyle ?? '.buttonStyle(.plain)'
   // `.buttonStyle(.plain)` strips system chrome; matches the canonical
   // "Press = un-styled clickable wrapper" contract.
   //
@@ -9680,7 +9728,7 @@ function emitSwiftPress(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: num
   // got it right. Uses the existing helper, which already handles the literal,
   // the `disabled={false}` no-op, and a signal-bound expression.
   const disabledMod = swiftDisabledModifier(e)
-  return `Button(action: ${action}) {\n${contentLines}\n${' '.repeat(indent)}}.buttonStyle(.plain)${disabledMod}${modifiers}${longGesture}${swipeGesture}`
+  return `Button(action: ${action}) {\n${contentLines}\n${' '.repeat(indent)}}${buttonStyle}${disabledMod}${modifiers}${longGesture}${swipeGesture}`
 }
 
 /**

@@ -82,6 +82,18 @@ const StatusBadge = rocketstyle()({ component: Text }).states(() => ({
 // Two instances rather than one, asserted RELATIVELY (wide ≈ 2 × narrow): point
 // vs dp vs device scale makes an absolute pixel assertion fragile across
 // simulators, while the RATIO is a property of the emitted style.
+// The PRESSED state — rocketstyle's `active:` block on a Press base. iOS lowers
+// it to a ButtonStyle reading `configuration.isPressed`; Android to a hoisted
+// interaction source + `collectIsPressedAsState()`. Two solid colours so the
+// Android harness can read the press off real pixels while the touch is held;
+// XCUITest cannot read a colour, so iOS asserts the tap still fires through the
+// custom ButtonStyle (the half of this that can break a real app).
+const PressChip = rocketstyle()({ component: Press }).theme(() => ({
+  padding: 12,
+  backgroundColor: '#1d4ed8',
+  active: { backgroundColor: '#dc2626' },
+}))
+
 const SizedRule = rocketstyle()({ component: Stack }).sizes(() => ({
   narrow: { width: 120 },
   wide: { width: 240 },
@@ -146,6 +158,7 @@ function Tally(props: { count: number; children: (n: number) => unknown; footer?
 
 export function Counter() {
   let count = state<number>(0)
+  let chipTaps = state<number>(0)
   // Direct native Flow device proof. This is intentionally NOT the /webview
   // bridge: PMTC emits PyreonFlowView and the app links the package's actual
   // SwiftUI/Compose host, state, geometry, handles, and resize sources. The
@@ -582,6 +595,15 @@ export function Counter() {
       <Press onLongPress={() => { count = 0 }} data-testid="reset-zone">
         <Text>Hold to reset</Text>
       </Press>
+      {/* Placed BELOW Increment on purpose. The Android tests tap "Increment"
+          with a plain `performClick`, which injects at the node's coordinates
+          and does not scroll — and Increment sits right at the fold of the
+          emulator viewport. Anything added above it pushes it past the fold,
+          the tap lands on nothing, and every count-driven test fails at once
+          (this chip did exactly that). The press-chip tests scroll to it. */}
+      <PressChip data-testid="press-chip" onPress={() => { chipTaps = chipTaps + 1 }}>
+        <Text>Chip taps: {chipTaps}</Text>
+      </PressChip>
       {/* Core-UI row closure — `Toggle` / `Modal` / `Scroll` were the canonical
           primitives the capability matrix listed as "not individually
           asserted". They all EMIT and typecheck on both targets; what was
