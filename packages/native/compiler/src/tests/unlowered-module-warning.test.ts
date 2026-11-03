@@ -214,13 +214,21 @@ describe('partial-support packages: only some exports lower', () => {
   for (const [name, imp, jsx] of [
     ['Portal', 'Portal', '<Portal><Text>x</Text></Portal>'],
     ['Overlay', 'Overlay', '<Overlay trigger={() => null} content={() => null} />'],
-    ['List', 'List', '<List data={[1,2]} />'],
   ] as const) {
     it(`elements ${name}: warns`, () => {
       const hit = warns(el(imp, jsx)).find((w) => w.startsWith(`${imp} (from `))
       expect(hit, `no warning; got ${JSON.stringify(warns(el(imp, jsx)))}`).toBeTruthy()
     })
   }
+
+  // <List> LOWERS when it names a component; without one it warns BY NAME
+  // (an inline function or a tag string has no native form) rather than
+  // reporting the whole package as unlowerable.
+  it('elements List without a component warns by name, not as unlowered', () => {
+    const w = warns(el('List', '<List data={[1,2]} />'))
+    expect(w.some((x) => x.includes('must name a component'))).toBe(true)
+    expect(w.filter((x) => x.startsWith('List (from '))).toEqual([])
+  })
 
   it('elements Element stays SILENT — it lowers', () => {
     const src = el('Element', '<Element><Text>x</Text></Element>')

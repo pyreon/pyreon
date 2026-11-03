@@ -179,6 +179,10 @@ enum class TextOverflow { Clip, Ellipsis, Visible }
 @Suppress("UNUSED_PARAMETER")
 fun Text(text: String, style: TextStyle = TextStyle(), color: Color? = null, fontSize: TextUnit = TextUnit(0f), fontWeight: FontWeight? = null, fontStyle: FontStyle? = null, textAlign: TextAlign? = null, fontFamily: FontFamily? = null, letterSpacing: TextUnit = TextUnit(0f), maxLines: Int = Int.MAX_VALUE, overflow: TextOverflow = TextOverflow.Clip, modifier: Modifier = Modifier) {}
 
+// Compose runtime \`key\` (androidx.compose.runtime): identity for an eager <For> row.
+@Composable
+fun key(vararg keys: Any?, block: @Composable () -> Unit) {}
+
 @Composable
 fun Button(
   onClick: () -> Unit,
@@ -632,8 +636,12 @@ object Modifier {
   // androidx.compose.foundation.border(BorderStroke, Shape).
   @Suppress("UNUSED_PARAMETER")
   fun border(border: BorderStroke, shape: Shape): Modifier = this
+  // The REAL androidx.compose.foundation.clickable signature. The stub used to
+  // take only \`onClick\`, which REJECTED the correct \`<Press disabled>\` emit
+  // (\`clickable(enabled = …, onClick = …)\`) — a stub narrower than the real
+  // surface manufactures a failure, so that shape was never compile-verified.
   @Suppress("UNUSED_PARAMETER")
-  fun clickable(onClick: () -> Unit): Modifier = this
+  fun clickable(enabled: Boolean = true, onClickLabel: String? = null, role: Role? = null, onClick: () -> Unit): Modifier = this
   // useHotkey — Compose delivers key events only to a FOCUSED node, so the
   // lowering needs all three of these together. Real Compose spells them
   // Modifier.focusRequester(FocusRequester) / .focusable() /

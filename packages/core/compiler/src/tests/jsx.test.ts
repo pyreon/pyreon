@@ -2757,10 +2757,13 @@ describe('JSX transform — DOM properties use property assignment', () => {
     expect(result).not.toContain('setAttribute("checked"')
   })
 
-  test('static-call value on input routes through _setValue', () => {
-    // Non-signal-direct dynamic expression goes through reactiveBindExprs
+  test('static member value on input routes through _setPropStatic', () => {
+    // A static-position non-literal may hold an ACCESSOR (#4086), so it goes
+    // through `_setPropStatic`, which binds a function live and otherwise
+    // delegates `value` on input/textarea to `_setValue`'s normalizer (the
+    // property + one-time `defaultValue`). Still never an attribute.
     const result = t('<div><input value={x.y} /></div>')
-    expect(result).toContain('_setValue(__e0, x.y)')
+    expect(result).toContain('_setPropStatic(__e0, "value", x.y)')
     expect(result).not.toContain('setAttribute("value"')
   })
 
