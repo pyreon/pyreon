@@ -30,6 +30,12 @@ const NON_CANONICAL_EXPORTS = new Set([
   'Web',
   'NativeIOS',
   'NativeAndroid',
+  // <Canvas>'s shapes: children of a canvas, each with its own emitter.
+  'CanvasRect',
+  'CanvasCircle',
+  'CanvasLine',
+  'CanvasPath',
+  'CanvasText',
 ])
 
 function webComponentExports(): Set<string> {
