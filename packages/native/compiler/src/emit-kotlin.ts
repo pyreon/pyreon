@@ -1898,6 +1898,11 @@ function emitKotlinStmtLines(
   }
 }
 
+/** Whether a guard's exit body contains a `break` or `continue` (at any depth). */
+function exitJumpsOutOfLoop(stmts: readonly StatementIR[]): boolean {
+  return /"kind":"(break|continue)"/.test(JSON.stringify(stmts))
+}
+
 function emitKotlinStmtLinesScoped(
   stmts: readonly StatementIR[],
   indent: number,
@@ -1910,8 +1915,17 @@ function emitKotlinStmtLinesScoped(
     const g = planGuard(s, stmts.slice(i + 1), _kotlinExprInferCtx, _activePropsParamName)
     if (g !== null && !kotlinSmartCasts(g.narrowing)) {
       const exitLines = emitKotlinStmtLines(g.exitBody, indent + 2, ctx).join('\n')
+      const binder = kotlinIdent(g.binder)
+      const subject = kotlinBoundSubject(g.narrowing, indent)
+      // `break` / `continue` inside the `?: run { }` lambda is a non-local
+      // jump that Kotlin only stabilised in 2.2 ("break continue in inline
+      // lambdas is experimental" before it). A loop-jump exit therefore binds
+      // first and tests after: the binder is a local `val`, so the `if` whose
+      // body always exits smart-casts it to non-null on every Kotlin version.
       out.push(
-        `${pad}val ${kotlinIdent(g.binder)} = ${kotlinBoundSubject(g.narrowing, indent)} ?: run {\n${exitLines}\n${pad}}`,
+        exitJumpsOutOfLoop(g.exitBody)
+          ? `${pad}val ${binder} = ${subject}\n${pad}if (${binder} == null) {\n${exitLines}\n${pad}}`
+          : `${pad}val ${binder} = ${subject} ?: run {\n${exitLines}\n${pad}}`,
       )
       out.push(
         ...withKotlinLocals([[g.binder, g.narrowing.unwrapped]], () =>

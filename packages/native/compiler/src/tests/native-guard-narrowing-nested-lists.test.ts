@@ -116,7 +116,12 @@ describe('the guard reaches every statement list', () => {
       /guard let tags = b\.tags else \{\s*continue\s*\}\s*n \+= tags\.count/,
     )
     // A data-class `var` field does not smart-cast, so Kotlin binds it too.
-    expect(kotlin(MEMBER_LOOP).code).toMatch(/val tags = b\.tags \?: run \{\s*continue\s*\}/)
+    // Not `?: run { continue }`: a loop jump inside that lambda is experimental
+    // before Kotlin 2.2, and CI pins kotlinc 2.0. Binding first and testing after
+    // smart-casts the local `val` on every version.
+    const kt = kotlin(MEMBER_LOOP).code
+    expect(kt).toMatch(/val tags = b\.tags\s+if \(tags == null\) \{\s*continue\s*\}\s*n \+= tags\.length/)
+    expect(kt).not.toMatch(/\?: run \{\s*continue/)
   })
 })
 
