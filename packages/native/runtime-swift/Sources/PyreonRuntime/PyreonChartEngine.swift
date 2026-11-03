@@ -3362,10 +3362,10 @@ public func rectCmd(_ rect: PyreonChartRect, _ fill: String, _ corners: [Double]
       if corners == nil && grad == nil {
         return PyreonDrawCmd(kind: "rect", rect: rect, fill: fill)
       }
-      if grad == nil {
+      guard let grad else {
         return PyreonDrawCmd(kind: "rect", rect: rect, fill: fill, corners: corners)
       }
-      if corners == nil {
+      guard let corners else {
         return PyreonDrawCmd(kind: "rect", rect: rect, fill: fill, grad: grad)
       }
       return PyreonDrawCmd(kind: "rect", rect: rect, fill: fill, corners: corners, grad: grad)
@@ -6307,8 +6307,8 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
         let y2 = scaleLinear(yDomain, plot.y + plot.h, plot.y, yTo)
         let top = y1 < y2 ? y1 : y2
         out.append(PyreonDrawCmd(kind: "rect", rect: PyreonChartRect(x: plot.x, y: top, w: plot.w, h: Double(abs(y2 - y1))), fill: withAlpha((a.color ?? t.axis), 0.12)))
-        if a.label != nil {
-          out.append(PyreonDrawCmd(kind: "text", fill: (a.color ?? t.label), text: a.label, at: PyreonChartPt(x: plot.x + plot.w - 4.0, y: top + 4.0), size: t.fontSize, align: "end", baseline: "top"))
+        if let label = a.label {
+          out.append(PyreonDrawCmd(kind: "text", fill: (a.color ?? t.label), text: label, at: PyreonChartPt(x: plot.x + plot.w - 4.0, y: top + 4.0), size: t.fontSize, align: "end", baseline: "top"))
         }
       }
       let xFrom = (a.xFrom ?? 0.0)
@@ -6319,8 +6319,8 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
         let x2 = span.y
         let left = x1 < x2 ? x1 : x2
         out.append(PyreonDrawCmd(kind: "rect", rect: PyreonChartRect(x: left, y: plot.y, w: Double(abs(x2 - x1)), h: plot.h), fill: withAlpha((a.color ?? t.axis), 0.12)))
-        if a.label != nil {
-          out.append(PyreonDrawCmd(kind: "text", fill: (a.color ?? t.label), text: a.label, at: PyreonChartPt(x: left + 4.0, y: plot.y + 4.0), size: t.fontSize, align: "start", baseline: "top"))
+        if let label = a.label {
+          out.append(PyreonDrawCmd(kind: "text", fill: (a.color ?? t.label), text: label, at: PyreonChartPt(x: left + 4.0, y: plot.y + 4.0), size: t.fontSize, align: "start", baseline: "top"))
         }
       }
     }

@@ -36,6 +36,8 @@ public data class PyreonToastItem(
     val message: String,
     val type: String,
     val dismissible: Boolean = true,
+    /** Optional secondary line under the message (the web's `description`). */
+    val description: String? = null,
 )
 
 public object PyreonToast {
@@ -62,10 +64,11 @@ public object PyreonToast {
         type: String = "info",
         durationMillis: Long? = null,
         dismissible: Boolean = true,
+        description: String? = null,
     ): String {
         counter += 1
         val id = "toast-$counter"
-        var next = toasts.value + PyreonToastItem(id, message, type, dismissible)
+        var next = toasts.value + PyreonToastItem(id, message, type, dismissible, description)
         if (next.size > maxToasts) next = next.takeLast(maxToasts.toInt())
         toasts.value = next
         val ttl = durationMillis ?: defaultDurationMillis

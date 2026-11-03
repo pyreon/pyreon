@@ -52,6 +52,11 @@ export {
   // `defaultValue` reflection, so a client-mounted form resets like a hydrated
   // one. Emitted by the compiler for those two tags only.
   applyValueProp as _setValue,
+  // DOM-property bindings (`checked`, `disabled`, …): a function value is an
+  // accessor, as on the h() path. `_setProp` runs inside a reactive binding;
+  // `_setPropStatic` is the static-position form that binds a function live.
+  applyDomProp as _setProp,
+  applyDomPropStatic as _setPropStatic,
   // `dangerouslySetInnerHTML`: raw innerHTML assignment (developer owns
   // sanitization — same as React) with the hydration-adoption first-write
   // skip. Emitted by the compiler for every dangerouslySetInnerHTML binding

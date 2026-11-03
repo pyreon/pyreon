@@ -101,6 +101,14 @@ createRouter({ routes: [{ path: '/', component: Home }, { path: '*', component: 
     expect(find(result, 'pyreon/no-missing-fallback').length).toBe(0)
   })
 
+  // #4084 — `(.*)` is the catch-all the router docs teach.
+  it('recognises the documented (.*) catch-all', () => {
+    const code = `import { createRouter } from '@pyreon/router'
+createRouter({ routes: [{ path: '/', component: Home }, { path: '(.*)', component: NotFound }] })`
+    const result = lintFile('/abs/packages/core/foo/src/x.ts', code, allRules, defaultConfig())
+    expect(find(result, 'pyreon/no-missing-fallback').length).toBe(0)
+  })
+
   it('recognises path ending in * as catch-all', () => {
     const code = `import { createRouter } from '@pyreon/router'
 createRouter({ routes: [{ path: '/', component: Home }, { path: '/blog/*', component: Blog }] })`

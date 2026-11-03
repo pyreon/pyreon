@@ -20,7 +20,7 @@
 // touched.
 
 import { forEachExpr } from './expr-walk'
-import { inferType, type InferenceCtx } from './infer-type'
+import { inferType, typeIsOptional, unwrapOptionalType, type InferenceCtx } from './infer-type'
 import type { ComponentIR, DeclIR, ExprIR, ModuleDeclIR, StatementIR, TypeIR } from './types'
 
 type FunctionDecl = Extract<DeclIR, { kind: 'function' }>
@@ -28,6 +28,13 @@ type FunctionDecl = Extract<DeclIR, { kind: 'function' }>
 /** `Double` as written (`type Double = number` is the documented cross-target alias) or as inferred. */
 function isDouble(t: TypeIR | undefined): boolean {
   if (t === undefined) return false
+  // `Double | null` / `Double?` expects a Double too: a literal passed there is
+  // never the null branch, and Kotlin rejects `1L` for a `Double?` parameter
+  // exactly as it does for a `Double` one.
+  if (t.kind === 'union' && typeIsOptional(t)) {
+    const inner = unwrapOptionalType(t)
+    return inner !== t && isDouble(inner)
+  }
   if (t.kind === 'number') return t.float === true
   return t.kind === 'typeRef' && t.name === 'Double' && t.args.length === 0
 }

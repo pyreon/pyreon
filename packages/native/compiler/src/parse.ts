@@ -183,10 +183,7 @@ interface ParseCtx {
    * warn-dropped (producing an unbound reference) ever record an alias, so a
    * bug here cannot affect any previously-compiling code.
    */
-  hookFieldAliases: Map<
-    string,
-    { object: string; field: string } | { object: string; index: number }
-  >
+  hookFieldAliases: Map<string, { object: string; path: readonly DestructureStep[] }>
   /** Monotonic counter for synthetic hook-destructure container names
    * (`__pyHook0`, `__pyHook1`, …). Reset per top-level node alongside
    * `hookFieldAliases`, so names are unique within one component. */
@@ -4147,20 +4144,14 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     DESTRUCTURE_CONTAINER_HOOKS.has(init.callee.name as string)
   ) {
     const hook = init.callee.name as string
-    const props = (node.id.properties as AnyNode[] | undefined) ?? []
-    // v1 only lowers all-simple destructures: every entry a plain
-    // `{ key }` or renamed `{ key: local }`. A RestElement or a nested
-    // pattern (value not an Identifier) bails the WHOLE lowering so we
-    // never half-bind.
-    const allSimple =
-      props.length > 0 &&
-      props.every(
-        (p) =>
-          p?.type === 'Property' &&
-          staticPropKey(p) !== undefined &&
-          p.value?.type === 'Identifier',
-      )
-    if (allSimple) {
+    // Only a FLAT pattern lowers here: every entry `{ key }` or `{ key: local }`.
+    // A hook result's fields are mostly signal accessors (`data`, `error`), so
+    // a nested pattern (`{ data: { id } }`) would reach into a function — in JS
+    // that reads `undefined` and TS rejects it. A rest element bails too; the
+    // whole lowering bails so we never half-bind.
+    const bindings = destructureBindings(node.id)
+    const flat = bindings !== undefined && [...bindings.values()].every((path) => path.length === 1 && 'field' in path[0]!)
+    if (bindings !== undefined && flat) {
       // Recurse with an Identifier id to reach the normal hook dispatch
       // (every ObjectPattern block above is skipped for an Identifier id),
       // producing e.g. a `fetch` / `geolocation` / `auth` DeclIR named
@@ -4174,18 +4165,14 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
       const containerDecl = tryDeclFromVarDeclarator(synthNode, ctx)
       if (containerDecl) {
         ctx.hookDestructureCounter += 1
-        for (const prop of props) {
-          const key = staticPropKey(prop as AnyNode) as string
-          const local = (prop as AnyNode).value?.name as string
-          ctx.hookFieldAliases.set(local, { object: synthName, field: key })
-        }
+        for (const [local, path] of bindings) ctx.hookFieldAliases.set(local, { object: synthName, path })
         return containerDecl
       }
       // containerDecl null → the hook has no single-binding container
       // Fall through to the warn-drop below.
     }
     ctx.warnings.push(
-      `${hook}() destructure form (\`const { … } = ${hook}(...)\`) was not lowered on native — either the hook has no single-binding container, or the pattern uses a rest element / nested binding (not yet supported). Use the single-binding shape \`const x = ${hook}(...); x.field\` (e.g. \`const q = useFetch(url); q.data()\` / \`q.isPending\`) instead. Tracked as a follow-up.`,
+      `${hook}() destructure form (\`const { … } = ${hook}(...)\`) was not lowered on native — either the hook has no single-binding container, or the pattern is not flat (a rest element, a nested pattern or a default — a hook's fields are mostly signal accessors, which do not destructure). Use the single-binding shape \`const x = ${hook}(...); x.field\` (e.g. \`const q = useFetch(url); q.data()\` / \`q.isPending\`) instead. Tracked as a follow-up.`,
     )
     return null
   }
@@ -4226,17 +4213,9 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   // so we never half-bind. (The destructured object's field must resolve to a
   // known struct for `.field` to typecheck — the anonymous-object-type case
   // stays the separate struct-synthesis gap, no worse than the prior drop.)
-  if (node.id?.type === 'ObjectPattern' && init) {
-    const props = (node.id.properties as AnyNode[] | undefined) ?? []
-    const allSimple =
-      props.length > 0 &&
-      props.every(
-        (p) =>
-          p?.type === 'Property' &&
-          staticPropKey(p) !== undefined &&
-          p.value?.type === 'Identifier',
-      )
-    if (allSimple) {
+  if ((node.id?.type === 'ObjectPattern' || node.id?.type === 'ArrayPattern') && init) {
+    const bindings = destructureBindings(node.id)
+    if (bindings !== undefined) {
       const synthName = `__pyDestr${ctx.hookDestructureCounter}`
       const synthNode = {
         ...node,
@@ -4245,53 +4224,17 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
       const containerDecl = tryDeclFromVarDeclarator(synthNode, ctx)
       if (containerDecl) {
         ctx.hookDestructureCounter += 1
-        for (const prop of props) {
-          const key = staticPropKey(prop as AnyNode) as string
-          const local = (prop as AnyNode).value?.name as string
-          ctx.hookFieldAliases.set(local, { object: synthName, field: key })
-        }
+        for (const [local, path] of bindings) ctx.hookFieldAliases.set(local, { object: synthName, path })
         return containerDecl
       }
     }
     // not lowerable → fall through to the LOUD residual warning below
   }
-  // General local ARRAY destructure — `const [a, b] = <expr>` at COMPONENT
-  // scope (the parallel of the object arm above; the helper/computed BODY
-  // walker has its own block-scoped expansion). Previously this fell through
-  // to the name-based bail (an ArrayPattern id has no `.name`) and was
-  // dropped with NO warning — the emitted body then referenced `a`/`b`
-  // unbound, so swiftc/kotlinc failed with "cannot find 'a' in scope" while
-  // the transform reported zero warnings. Same container+alias approach as
-  // the object arm: synthesize `const __pyDestrN = <expr>` (recurse — value
-  // consts, signal reads, hook results all resolve there) and alias each
-  // element to `__pyDestrN[i]` in parseExpr's Identifier case — the exact IR
-  // of the documented explicit-index shape (`xs()[0]`), so emit + inference
-  // are shared with a proven path on both targets. A hole (`[, b]`), rest
-  // (`[...r]`), default (`[a = 1]`), or nested pattern bails the whole
-  // lowering (allSimple guard) to the residual warning below — never a
-  // half-binding.
-  if (node.id?.type === 'ArrayPattern' && init) {
-    const els = (node.id.elements as (AnyNode | null)[] | undefined) ?? []
-    const allSimple = els.length > 0 && els.every((el) => el?.type === 'Identifier')
-    if (allSimple) {
-      const synthName = `__pyDestr${ctx.hookDestructureCounter}`
-      const synthNode = {
-        ...node,
-        id: { type: 'Identifier', name: synthName },
-      } as AnyNode
-      const containerDecl = tryDeclFromVarDeclarator(synthNode, ctx)
-      if (containerDecl) {
-        ctx.hookDestructureCounter += 1
-        els.forEach((el, i) => {
-          ctx.hookFieldAliases.set((el as AnyNode).name as string, {
-            object: synthName,
-            index: i,
-          })
-        })
-        return containerDecl
-      }
-    }
-  }
+  // (The arm above covers ARRAY patterns too — `const [a, b] = xs()` aliases
+  // each element to `__pyDestrN[i]`, the exact IR of the documented
+  // explicit-index shape. Before it existed an ArrayPattern fell through to
+  // the name-based bail with NO warning, and the body referenced `a`/`b`
+  // unbound.)
   // A component-level destructure that did NOT lower above — a non-simple
   // pattern (nested / rest / default / hole), or a RHS whose single-binding
   // container form yields no decl. Without this, the declaration silently
@@ -6661,23 +6604,7 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
       // are ever in this map, so no previously-compiling code can change.
       {
         const fieldAlias = ctx.hookFieldAliases.get(node.name as string)
-        if (fieldAlias !== undefined) {
-          if ('index' in fieldAlias) {
-            // Array-destructured local (`const [a, b] = xs()`) — rewrite to
-            // `__pyDestrN[i]`, the same IR as the documented explicit-index
-            // shape (`xs()[0]`), so the emit + inference paths are shared.
-            return {
-              kind: 'index',
-              object: { kind: 'identifier', name: fieldAlias.object },
-              index: { kind: 'literal', value: fieldAlias.index },
-            }
-          }
-          return {
-            kind: 'member',
-            object: { kind: 'identifier', name: fieldAlias.object },
-            property: fieldAlias.field,
-          }
-        }
+        if (fieldAlias !== undefined) return destructureAccess(fieldAlias.object, fieldAlias.path)
       }
       return { kind: 'identifier', name: node.name as string }
     case 'CallExpression': {
@@ -7796,4 +7723,58 @@ function parseJsxChild(node: AnyNode, ctx: ParseCtx): ChildIR | null {
     )
   }
   return null
+}
+
+/** One step from a destructured container to a binding: a field, an index, or a trailing array rest. */
+export type DestructureStep = { field: string } | { index: number } | { sliceFrom: number }
+
+/**
+ * Every local a destructuring pattern binds, as a path from the destructured
+ * value — `{ a, b: { c }, d: [e, , f] }` → `a`: `.a`, `c`: `.b.c`, `e`: `.d[0]`,
+ * `f`: `.d[2]`; a trailing `...rest` in an ARRAY pattern is `.slice(n)`, which
+ * is what JS produces. Returns `undefined` for a shape an alias cannot express
+ * faithfully, so the caller bails the WHOLE pattern rather than half-binding:
+ * an OBJECT rest (a new object without the named keys), a default (JS applies
+ * it only for `undefined`, which native cannot tell apart from `null`), a
+ * computed key, or an empty pattern.
+ */
+export function destructureBindings(pattern: AnyNode): Map<string, DestructureStep[]> | undefined {
+  const out = new Map<string, DestructureStep[]>()
+  const walk = (p: AnyNode, path: DestructureStep[]): boolean => {
+    if (p?.type === 'Identifier') {
+      out.set(p.name as string, path)
+      return true
+    }
+    if (p?.type === 'ObjectPattern') {
+      const props = (p.properties as AnyNode[] | undefined) ?? []
+      if (props.length === 0) return false
+      return props.every((prop) => {
+        if (prop?.type !== 'Property') return false
+        const key = staticPropKey(prop)
+        return key !== undefined && walk(prop.value, [...path, { field: key }])
+      })
+    }
+    if (p?.type === 'ArrayPattern') {
+      const els = (p.elements as (AnyNode | null)[] | undefined) ?? []
+      if (els.every((el) => el === null)) return false
+      return els.every((el, i) => {
+        if (el === null) return true
+        if (el.type === 'RestElement') return i === els.length - 1 && walk(el.argument, [...path, { sliceFrom: i }])
+        return walk(el, [...path, { index: i }])
+      })
+    }
+    return false
+  }
+  return walk(pattern, []) && out.size > 0 ? out : undefined
+}
+
+/** The IR for reading a destructured binding: its container followed by each step. */
+function destructureAccess(container: string, path: readonly DestructureStep[]): ExprIR {
+  let e: ExprIR = { kind: 'identifier', name: container }
+  for (const step of path) {
+    if ('field' in step) e = { kind: 'member', object: e, property: step.field }
+    else if ('index' in step) e = { kind: 'index', object: e, index: { kind: 'literal', value: step.index } }
+    else e = { kind: 'call', callee: { kind: 'member', object: e, property: 'slice' }, args: [{ kind: 'literal', value: step.sliceFrom }] }
+  }
+  return e
 }

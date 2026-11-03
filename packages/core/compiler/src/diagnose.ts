@@ -401,6 +401,23 @@ export default defineConfig({
     }),
   },
   {
+    // #4086 residual. The compiled DOM-property sinks `_setProp` /
+    // `_setPropStatic` (a function value in `checked={isOn}` is an ACCESSOR,
+    // as on the h() path) are new runtime-dom exports, so a compiler newer than
+    // the resolved `@pyreon/runtime-dom` names a symbol the user never wrote.
+    pattern:
+      /(?:does not provide an export named|no exported member|is not a function|is not defined)[^\n]*?['"`]?_setProp(?:Static)?\b['"`]?|\b_setProp(?:Static)?[^\n]*?(?:is not a function|is not defined)/,
+    diagnose: () => ({
+      cause:
+        '`_setProp` / `_setPropStatic` are emitted by the compiler for DOM-property bindings (`checked`, `disabled`, `selected`, `multiple`, `readOnly`, `indeterminate`, `value`) whose value is not a literal, so that a FUNCTION held in a named binding (`checked={isOn}`, a helper param, a function-valued prop) is treated as an accessor rather than assigned as-is (which left a checkbox permanently checked). They are exported by `@pyreon/runtime-dom`, so this error means the resolved `@pyreon/runtime-dom` predates the compiler — a version skew, not a bad emit.',
+      fix: 'Align the `@pyreon/*` versions — they ship as one fixed release group. `pyreon info` reports the skew and `pyreon upgrade` aligns it. If you evaluate compiled output by hand (a test harness passing runtime helpers as function arguments), add `_setProp` and `_setPropStatic` to the helpers you provide.',
+      fixCode: `// $ pyreon info      # prints the mismatched versions
+// $ pyreon upgrade   # aligns them`,
+      related:
+        'A named accessor as a CHILD (`<p>{label}</p>`) is mounted reactively by `_setChild`; as a generic attribute it resolves through `_setAttr` once in static position — wrap it (`title={() => label()}`) when the attribute must stay live.',
+    }),
+  },
+  {
     // On `@pyreon/runtime-dom` versions before the explicit-whitespace fix, the
     // hydration cursor skipped EVERY whitespace-only text node as "server
     // formatting", so a client child that was itself `{' '}` found the cursor
