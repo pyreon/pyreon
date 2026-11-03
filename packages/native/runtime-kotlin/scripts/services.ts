@@ -28,6 +28,8 @@
  */
 export const EXEMPT: Record<string, string> = {
   PyreonAssets: 'needs android.util.Log + androidx.compose.ui.text.font stubs',
+  PyreonCanvas:
+    'Compose Canvas + DrawScope + androidx PathParser — real-SDK surface, device-gate territory (the kotlinSdkOnly twin in package.json)',
   PyreonChartCanvas:
     'Compose Canvas + android.graphics.Paint — real-SDK surface, device-gate territory (the kotlinSdkOnly twin in package.json)',
   PyreonGesture:
