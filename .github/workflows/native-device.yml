@@ -925,6 +925,14 @@ jobs:
           arch: x86_64
           profile: pixel_6
           disable-animations: true
+          # An explicit userdata size. pixel_6's default partition is 7.2 GB, and
+          # after Gradle, the restored dependency cache and five apps' build outputs
+          # the runner had 5.5 GB free (2026-11-02, #4056): the emulator exited with
+          # `Not enough space to create userdata partition` and the step waited out
+          # its boot timeout reporting `device not found`, which reads as a flake.
+          # The test apps need a few hundred MB; 4 GB leaves first-boot headroom.
+          # Same value on every emulator step below.
+          disk-size: 4096M
           # working-directory (NOT a `cd` inside `script`): the
           # emulator-runner executes each script LINE from the
           # workspace root, so a multi-line `cd X` + `gradle ...`
@@ -1015,6 +1023,7 @@ jobs:
           arch: x86_64
           profile: pixel_6
           disable-animations: true
+          disk-size: 4096M
           working-directory: examples/native-finance-android
           # LAST line: kill the emulator ourselves. `adb emu kill` alone
           # sometimes leaves qemu running; the action then waits on its
@@ -1058,6 +1067,7 @@ jobs:
           arch: x86_64
           profile: pixel_6
           disable-animations: true
+          disk-size: 4096M
           # working-directory (NOT a `cd` inside `script`): the
           # emulator-runner executes each script LINE from the
           # workspace root, so a multi-line `cd X` + `gradle ...`
@@ -1102,6 +1112,7 @@ jobs:
           arch: x86_64
           profile: pixel_6
           disable-animations: true
+          disk-size: 4096M
           # working-directory (NOT a `cd` inside `script`): the
           # emulator-runner executes each script LINE from the
           # workspace root, so a multi-line `cd X` + `gradle ...`
@@ -1172,6 +1183,7 @@ jobs:
           arch: x86_64
           profile: pixel_6
           disable-animations: true
+          disk-size: 4096M
           # working-directory (NOT a `cd` inside `script`): the
           # emulator-runner executes each script LINE from the
           # workspace root, so a multi-line `cd X` + `gradle ...`
