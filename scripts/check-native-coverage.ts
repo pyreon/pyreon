@@ -735,7 +735,7 @@ export function C() {
     name: '@pyreon/validation',
     mechanism: 'partial',
     rationale:
-      'the zod/valibot/arktype ADAPTERS stay web, but the declarative form DOES lower: a top-level zodSchema(z.object({…})) emits native field validators, and `useForm({ schema })` wires one per string field. Verified zero-warning on both targets; the runtime surface around it (inline .parse(), async validate) stays web.',
+      'the zod/valibot/arktype ADAPTERS stay web, but the declarative form DOES lower: a top-level zodSchema(z.object({…})) emits native field validators, and `useForm({ schema })` wires one per string field. Several schemas may share one `const a = …, b = …` statement, and `.safeParse(x)` on a declared binding or an inline adapter call lowers to the same `{ success, data }` result the web returns. Verified zero-warning on both targets; `.parse()` (throws), a schema declared inside a component body, `.refine/.transform/.default` chains (each named per field) and the async validate path stay web.',
     // The snippet DRIVES A FORM, it does not merely declare the schema.
     // Declaring it alone was the old shape, and it hid the whole gap: the
     // declaration lowered to a struct with a constraint-checking `parse()`
@@ -745,11 +745,14 @@ export function C() {
     snippet: `import { z } from 'zod'
 import { zodSchema } from '@pyreon/validation'
 import { useForm } from '@pyreon/form'
+import { signal } from '@pyreon/reactivity'
 import { Stack, Text, Field, Button } from '@pyreon/primitives'
-const Signup = zodSchema(z.object({ name: z.string().min(3), age: z.number() }))
+const Signup = zodSchema(z.object({ name: z.string().min(3), age: z.number() })), Tag = zodSchema(z.object({ label: z.string().min(1) }))
 export function C() {
   const f = useForm({ initialValues: { name: '' }, schema: Signup, onSubmit: () => {} })
-  return (<Stack><Field value={f.values().name} onChangeText={(v) => f.setFieldValue('name', v)} /><Button onPress={() => f.handleSubmit()}>go</Button><Text>{String(f.isValid())}</Text></Stack>)
+  const tagOk = signal('')
+  const check = () => { tagOk.set(Tag.safeParse({ label: f.values().name }).success ? 'tag ok' : 'tag bad') }
+  return (<Stack><Field value={f.values().name} onChangeText={(v) => f.setFieldValue('name', v)} /><Button onPress={() => f.handleSubmit()}>go</Button><Button onPress={check}>tag</Button><Text>{String(f.isValid())}</Text><Text>{tagOk()}</Text></Stack>)
 }`,
   },
   {
@@ -768,14 +771,20 @@ export function C() {
     name: '@pyreon/feature',
     mechanism: 'partial',
     rationale:
-      'CRUD composite. The RUNTIME half stays web — generated hooks (useList / useById / useCreate / useUpdate / useDelete / useSearch), the network fetcher and validator/form integration lower only when every dependency does. The DECLARATION half crosses today: the literal field-type map emits a Codable struct + a module-scope const with `name` and `initialValues` on both targets. An object literal of scalar validators (`z.object({ id: z.string() })`) lowers the same way, with unenforced constraints reported by name; a schema held in a variable, `v.pipe(…)` and ArkType warn by name.',
+      'CRUD composite. The RUNTIME half stays web — generated hooks (useList / useById / useCreate / useUpdate / useDelete / useSearch), the network fetcher and validator/form integration lower only when every dependency does. The DECLARATION half crosses today: the literal field-type map emits a Codable struct + a module-scope const with `name` and `initialValues` on both targets. An object literal of scalar validators (`z.object({ id: z.string() })`) lowers the same way and ALSO to the validation schema struct, so `Todo.schema.safeParse(x)` enforces the constraints on device (what cannot be enforced — `.refine()`, `.transform()`, `.default()`, `.parse()` — is reported by name); a schema held in a variable, `v.pipe(…)` and ArkType warn by name.',
     snippet: `import { defineFeature } from '@pyreon/feature'
 import { Stack, Text } from '@pyreon/primitives'
+import { signal } from '@pyreon/reactivity'
+import { z } from 'zod'
 const Todo = defineFeature({
   name: 'todo',
-  schema: { id: 'string', title: 'string', done: 'boolean' },
+  schema: z.object({ id: z.string(), title: z.string().min(3), done: z.boolean() }),
 })
-export function C() { return (<Stack><Text>ok</Text></Stack>) }`,
+export function C() {
+  const ok = signal(false)
+  const check = () => { ok.set(Todo.schema.safeParse({ id: 'a', title: 'ab', done: false }).success) }
+  return (<Stack><Text>ok</Text></Stack>)
+}`,
   },
   {
     name: '@pyreon/hotkeys',
