@@ -65,15 +65,16 @@ describe('compiler JSX transform efficiency', () => {
     expect(code).toMatch(/_tpl|_applyProps|spread|\bh\b/)
   })
 
-  it('signal auto-call: bare identifier in JSX text becomes a reactive accessor', () => {
+  it('signal auto-call: bare identifier in JSX text is bound reactively', () => {
     const code = transform(
       `import { signal } from '@pyreon/reactivity'
        const count = signal(0)
        export default () => <div>{count}</div>`,
     )
-    // The auto-call transform should wrap `count` as `() => count()` somewhere.
-    // Match either the literal thunk or the runtime hydration helper.
-    expect(code).toMatch(/count\s*\(\s*\)|\(\s*\)\s*=>\s*count/)
+    // The signal is recognised: a sole text child binds it directly
+    // (`_bindText(count, …)`, the same emit as `{count()}`); other positions
+    // auto-call it as `count()` or wrap it in `() => count()`.
+    expect(code).toMatch(/_bindText\(count,|count\s*\(\s*\)|\(\s*\)\s*=>\s*count/)
   })
 
   it('pure static call (Math.random, etc.) is NOT wrapped in a reactive getter', () => {

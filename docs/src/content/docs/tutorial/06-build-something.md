@@ -17,7 +17,7 @@ That's the foundation everything else builds on. There's no class component, no 
 
 ## Put it together
 
-The **[Build an App tutorial](/docs/build-an-app)** walks you from an empty file to a complete, filterable todo app in six live steps — adding items, toggling completion, derived counts, and a filtered view. Every step is a runnable `<Example>` you can interact with inline.
+The **[Build an App tutorial](/docs/build-an-app)** walks you from an empty file to a complete, filterable todo app in five live steps plus the finished app — adding items, toggling completion, derived counts, and a filtered view. Every step is a runnable `<Example>` you can interact with inline.
 
 ## Then go deeper
 
@@ -30,7 +30,7 @@ Pick the concern you need next — each guide is task-oriented with runnable exa
 - **[Styling & Theming](/docs/guides/styling-theming)** — CSS-in-JS, rocketstyle, dark mode
 - **[SSR, SSG & ISR](/docs/guides/ssr-ssg-isr)** — rendering modes with `@pyreon/zero`
 
-Or browse the **[Examples gallery](/docs/examples)** (42 runnable demos) and the **[Recipes](/docs/recipes)** (copy-paste solutions).
+Or browse the **[Examples gallery](/docs/examples)** (every runnable demo on this site) and the **[Recipes](/docs/recipes)** (copy-paste solutions).
 
 Coming from another framework? The **[migration guides](/docs/migrating-from-react)** map your existing mental model onto Pyreon's.
 

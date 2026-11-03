@@ -8,9 +8,8 @@ import { HTTP_URL_PATTERN, URI_PATTERN } from './url-rule'
 
 /**
  * Gap 4 follow-up — `@pyreon/validation` Zod-schema v1 emit (Swift).
- * Produces a Codable struct + module-scope const. Apps validate at
- * JSON-decode time via Codable; v1 doesn't yet emit runtime .parse()
- * methods (v2 follow-up).
+ * Produces a Codable struct + module-scope const, plus the runtime
+ * parse / safeParse / constraint-check methods.
  *
  *   struct PyreonZodSchema_userSchema: Codable {
  *       var name: String = ""

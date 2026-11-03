@@ -15,10 +15,29 @@ export type {
   Justify,
   Radius,
   Space,
+  TransformProps,
   ValueOrSignal,
 } from './shared'
+export type { GesturePhase, GestureProps, PanEvent, PinchEvent, RotateEvent } from './gesture'
 
 export type { InlineProps, LayerProps, ScrollProps, SpacerProps, StackProps } from './layout'
 export type { HeadingProps, IconProps, ImageProps, TextProps } from './content'
 export type { ButtonProps, LinkProps, PressProps } from './interaction'
-export type { FieldProps, ModalProps, ToggleProps } from './input'
+export type {
+  FieldBaseProps,
+  FieldProps,
+  ModalProps,
+  MultilineFieldProps,
+  SingleLineFieldProps,
+  ToggleProps,
+} from './input'
+export type {
+  CanvasCircleProps,
+  CanvasLineProps,
+  CanvasPathProps,
+  CanvasProps,
+  CanvasRectProps,
+  CanvasTextProps,
+  ShapeColor,
+  ShapePaintProps,
+} from './canvas'

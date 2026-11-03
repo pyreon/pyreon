@@ -24,6 +24,8 @@ import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { chromium, type Page } from 'playwright'
 import { type ServerHandle, startServer as startViteServer, type ServerMode } from './server'
+import type { PageLike } from '../../examples/perf-dashboard/src/journeys'
+import { toPageLike } from './page-like'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO_ROOT = resolve(HERE, '../..')
@@ -91,9 +93,9 @@ async function snapshotCounters(page: Page): Promise<Record<string, number>> {
 // ── Journey catalog ──────────────────────────────────────────────────────────
 
 // Import an example's journey module. Paths are relative to repo root.
-async function loadJourneys(app: string): Promise<Record<string, (page: Page) => Promise<void>>> {
+async function loadJourneys(app: string): Promise<Record<string, (page: PageLike) => Promise<void>>> {
   const mod = (await import(resolve(REPO_ROOT, 'examples', app, 'src', 'journeys.ts'))) as {
-    journeys: Record<string, (page: Page) => Promise<void>>
+    journeys: Record<string, (page: PageLike) => Promise<void>>
   }
   if (!mod.journeys || typeof mod.journeys !== 'object') {
     console.error(`[record] examples/${app}/src/journeys.ts must export a \`journeys\` object`)
@@ -168,7 +170,7 @@ async function main() {
     for (let run = 0; run < args.runs; run++) {
       await resetCounters(page)
       const start = Date.now()
-      await journeyFn(page)
+      await journeyFn(toPageLike(page))
       const wall = Date.now() - start
       const after = await snapshotCounters(page)
       const heap = await page.evaluate(() => {

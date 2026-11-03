@@ -135,7 +135,7 @@ describe('stub ↔ real runtime fidelity (both drift directions)', () => {
     const stub = I18N_SWIFT_STUBS
     // Bounded by the NEXT member rather than the next `}` — the surrounding
     // comment contains braces, and slicing on those cut the init in half.
-    const from = stub.indexOf('public struct PyreonI18n')
+    const from = stub.indexOf('public final class PyreonI18n')
     const init = stub.slice(from, stub.indexOf('public func t(', from))
     expect(init).toContain('fallbackLocale: String? = nil')
     // The exact broken form, named so a revert fails here rather than in a

@@ -201,14 +201,43 @@ fun LazyColumn(content: LazyListScope.() -> Unit) {
   LazyListScope().content()
 }
 
+// ColumnScope / RowScope — \`Modifier.weight\` is an extension on THESE scopes in
+// real Compose, not a member of Modifier, so it only compiles as a DIRECT child
+// of a Column / Row content lambda. The stub declares it the same way: a
+// Modifier-member weight accepted a weighted call ANYWHERE and masked the exact
+// "weight outside its scope" error the device build reports.
+// \`@LayoutScopeMarker\` is a DslMarker in real Compose: inside a nested scope
+// lambda (a Box inside a Column) the OUTER ColumnScope stops being an implicit
+// receiver, so \`weight\` does not resolve there either. Without the marker the
+// stub would accept a grandchild's weight that the device build rejects.
+@DslMarker
+annotation class LayoutScopeMarker
+
+@LayoutScopeMarker
+interface BoxScope
+private object StubBoxScope : BoxScope
+
+@LayoutScopeMarker
+interface ColumnScope {
+  @Suppress("UNUSED_PARAMETER")
+  fun Modifier.weight(weight: Float, fill: Boolean = true): Modifier = this
+}
+@LayoutScopeMarker
+interface RowScope {
+  @Suppress("UNUSED_PARAMETER")
+  fun Modifier.weight(weight: Float, fill: Boolean = true): Modifier = this
+}
+private object StubColumnScope : ColumnScope
+private object StubRowScope : RowScope
+
 @Composable
 fun Column(
   modifier: Modifier = Modifier,
   verticalArrangement: Arrangement.Vertical = Arrangement.Top,
   horizontalAlignment: Alignment.Horizontal = Alignment.Start,
-  content: @Composable () -> Unit = {},
+  content: @Composable ColumnScope.() -> Unit = {},
 ) {
-  content()
+  StubColumnScope.content()
 }
 
 // --- K4: layout containers used by TodoMVC after the K3 SwiftUI→Compose mapping ---
@@ -228,18 +257,18 @@ fun Row(
   modifier: Modifier = Modifier,
   horizontalArrangement: Arrangement.Horizontal = Arrangement.Start,
   verticalAlignment: Alignment.Vertical = Alignment.Top,
-  content: @Composable () -> Unit = {},
+  content: @Composable RowScope.() -> Unit = {},
 ) {
-  content()
+  StubRowScope.content()
 }
 
 @Composable
 fun Box(
   modifier: Modifier = Modifier,
   contentAlignment: Alignment = Alignment.TopStart,
-  content: @Composable () -> Unit = {},
+  content: @Composable BoxScope.() -> Unit = {},
 ) {
-  content()
+  StubBoxScope.content()
 }
 
 // BoxWithConstraints — the container-sized host the chart-host emit uses
@@ -340,6 +369,10 @@ fun TextField(
   visualTransformation: VisualTransformation = VisualTransformation.None,
   keyboardOptions: KeyboardOptions = KeyboardOptions(),
   keyboardActions: KeyboardActions = KeyboardActions(),
+  // The real Material defaults: singleLine=false is WHY the emit states it.
+  singleLine: Boolean = false,
+  maxLines: Int = if (singleLine) 1 else Int.MAX_VALUE,
+  minLines: Int = 1,
 ) {
   // Type-check-only stub. Real Compose Material renders an outlined
   // text input bound to the value/onValueChange pair. Canonical-
@@ -662,14 +695,17 @@ object Modifier {
   fun pointerInput(key: Any?, block: suspend PointerInputScope.() -> Unit): Modifier = this
   fun pointerInput(key1: Any?, key2: Any?, block: suspend PointerInputScope.() -> Unit): Modifier = this
   fun pointerInput(vararg keys: Any?, block: suspend PointerInputScope.() -> Unit): Modifier = this
-  @Suppress("UNUSED_PARAMETER")
-  fun weight(weight: Float): Modifier = this
   // coolgrid Col fractional span maps to fillMaxWidth(size/12f). Real Compose
   // ships it from androidx.compose.foundation.layout.
   @Suppress("UNUSED_PARAMETER")
   fun fillMaxWidth(fraction: Float = 1f): Modifier = this
   fun fillMaxSize(fraction: Float = 1f): Modifier = this
   fun offset(x: Dp = 0.dp, y: Dp = 0.dp): Modifier = this
+  // The transform props: androidx.compose.ui.draw.scale(Float) / rotate(Float).
+  @Suppress("UNUSED_PARAMETER")
+  fun scale(scale: Float): Modifier = this
+  @Suppress("UNUSED_PARAMETER")
+  fun rotate(degrees: Float): Modifier = this
   // --- Phase P2.2 content: <Icon>/<Image> sizing. Real Compose ships
   // size/width/height from androidx.compose.foundation.layout.
   @Suppress("UNUSED_PARAMETER")
@@ -942,6 +978,44 @@ fun PyreonLink(to: String, content: @Composable (navigate: () -> Unit) -> Unit) 
   content { }
 }
 
+// PyreonCanvas + shapes — mirror of @pyreon/native-runtime-kotlin's PyreonCanvas.kt.
+sealed class PyreonShapeSpec {
+  data class Rect(val x: Double, val y: Double, val width: Double, val height: Double, val radius: Double) : PyreonShapeSpec()
+  data class Circle(val cx: Double, val cy: Double, val r: Double) : PyreonShapeSpec()
+  data class Line(val x1: Double, val y1: Double, val x2: Double, val y2: Double) : PyreonShapeSpec()
+  data class Svg(val d: String) : PyreonShapeSpec()
+}
+@Composable
+@Suppress("UNUSED_PARAMETER")
+fun PyreonCanvas(width: Double, height: Double, modifier: Modifier = Modifier, content: @Composable () -> Unit) {
+  content()
+}
+@Composable
+@Suppress("UNUSED_PARAMETER")
+fun PyreonShape(shape: PyreonShapeSpec, fill: Color? = null, stroke: Color? = null, strokeWidth: Double = 0.0) {}
+@Composable
+@Suppress("UNUSED_PARAMETER")
+fun PyreonCanvasText(x: Double, y: Double, size: Double, color: Color, content: @Composable () -> Unit) {
+  content()
+}
+
+// PyreonGesture + its payloads — mirror of @pyreon/native-runtime-kotlin's
+// PyreonGesture.kt / PyreonGestureCore.kt (the <Gesture> primitive).
+data class PyreonPanEvent(val dx: Double, val dy: Double, val x: Double, val y: Double, val phase: String)
+data class PyreonPinchEvent(val scale: Double, val centerX: Double, val centerY: Double, val phase: String)
+data class PyreonRotateEvent(val degrees: Double, val phase: String)
+@Composable
+@Suppress("UNUSED_PARAMETER")
+fun PyreonGesture(
+  onPan: ((PyreonPanEvent) -> Unit)? = null,
+  onPinch: ((PyreonPinchEvent) -> Unit)? = null,
+  onRotate: ((PyreonRotateEvent) -> Unit)? = null,
+  modifier: Modifier = Modifier,
+  content: @Composable () -> Unit,
+) {
+  content()
+}
+
 // PyreonWebView — mirror of @pyreon/native-runtime-kotlin's PyreonWebView.kt
 // (the Android WebView host for the <WebView> primitive). Stub so the
 // kotlinc validate gate resolves the \`PyreonWebView(html = …)\` /
@@ -1083,7 +1157,19 @@ data class PyreonHttpRequest(
   val url: String,
   val headers: Map<String, String> = emptyMap(),
   val body: String? = null,
+  val upload: PyreonHttpUpload? = null,
 )
+sealed class PyreonHttpUpload {
+  class File(val file: PyreonUploadFile) : PyreonHttpUpload()
+  class Multipart(val body: PyreonMultipartBody) : PyreonHttpUpload()
+}
+class PyreonUploadFile(val name: String, val type: String, val length: Long?, private val opener: () -> java.io.InputStream)
+class PyreonMultipartBody(vararg pairs: Any?)
+object PyreonUploadFiles {
+  fun from(uri: String, name: String? = null, type: String? = null): PyreonUploadFile = throw UnsupportedOperationException("stub")
+}
+// PyreonUploadAndroid.kt — the content:// resolver the emit calls with the hoisted LocalContext.
+fun PyreonUploadFiles.from(context: Context, uri: String, name: String? = null, type: String? = null): PyreonUploadFile = throw UnsupportedOperationException("stub")
 data class PyreonHttpResponse(
   val status: Int,
   val headers: Map<String, String> = emptyMap(),
@@ -1104,7 +1190,28 @@ object PyreonHttpOkHttp : PyreonHttpExecutor {
 }
 object PyreonHttp {
   fun install(executor: PyreonHttpExecutor) {}
-  fun send(request: PyreonHttpRequest, fallback: PyreonHttpExecutor? = null): PyreonHttpResponse = PyreonHttpResponse(200)
+  fun send(
+    request: PyreonHttpRequest,
+    fallback: PyreonHttpExecutor? = null,
+    middleware: List<PyreonHttpMiddleware> = emptyList(),
+  ): PyreonHttpResponse = PyreonHttpResponse(200)
+  fun call(request: PyreonHttpRequest, fallback: PyreonHttpExecutor? = null): PyreonHttpResponse = PyreonHttpResponse(200)
+}
+// The lowered \`createHttp({ use: [...] })\` middleware. Mirrors the REAL
+// PyreonHttp.kt surface: \`maxDelay\` is a Double, every policy field is
+// defaulted, and the middleware are nested classes of a sealed class.
+data class PyreonRetryPolicy(
+  val limit: Int = 2,
+  val methods: List<String> = emptyList(),
+  val statuses: List<Int> = emptyList(),
+  val network: Boolean = true,
+  val respectRetryAfter: Boolean = true,
+  val maxDelay: Double = 30_000.0,
+)
+sealed class PyreonHttpMiddleware {
+  class Bearer(val baseUrl: String, val crossOrigin: Boolean = false, val token: () -> String?) : PyreonHttpMiddleware()
+  class Retry(val policy: PyreonRetryPolicy = PyreonRetryPolicy()) : PyreonHttpMiddleware()
+  class Logger(val production: Boolean = false) : PyreonHttpMiddleware()
 }
 // PyreonURL — the runtime path-param encoder a templated endpoint URL calls.
 // Mirrors the REAL PyreonURL surface: four overloads (String / Int / Long /
@@ -1116,10 +1223,39 @@ object PyreonURL {
   @JvmStatic fun encodePathParam(value: Int): String = ""
   @JvmStatic fun encodePathParam(value: Long): String = ""
   @JvmStatic fun encodePathParam(value: Double): String = ""
+  @JvmStatic fun query(joiner: String, vararg pairs: Any?): String = ""
+  @JvmStatic fun formEncode(text: String): String = text
 }
 // pyreonNumberString — JS \`String(number)\`, which every Double-typed
 // template interpoland lowers through. Mirrors the real signature.
 fun pyreonNumberString(value: Number): String = ""
+// Intl.DateTimeFormat / Intl.NumberFormat — the real PyreonIntl.kt surface,
+// exactly: every parameter defaulted and named, values taken as Number.
+class PyreonDateTimeFormat(
+  locale: String? = null,
+  dateStyle: String? = null,
+  timeStyle: String? = null,
+  skeleton: String? = null,
+  timeZone: String? = null,
+) {
+  fun format(epochMs: Number): String = ""
+}
+class PyreonNumberFormat(
+  locale: String? = null,
+  style: String = "decimal",
+  currency: String? = null,
+  currencyDisplay: String = "symbol",
+  minimumFractionDigits: Int? = null,
+  maximumFractionDigits: Int? = null,
+  minimumIntegerDigits: Int? = null,
+  useGrouping: Boolean = true,
+) {
+  fun format(value: Number): String = ""
+}
+// pyreonSlice — JS \`slice\` for a bound whose sign is not known at compile time
+// (runtime-kotlin's PyreonSlice.kt).
+fun <T> pyreonSlice(a: List<T>, start: Long, end: Long? = null): List<T> = a
+fun pyreonSlice(s: String, start: Long, end: Long? = null): String = s
 
 // kotlinx.coroutines surface the emitted fetch harness drives —
 // withContext(Dispatchers.IO) { ... } around the blocking URL read.
@@ -1257,7 +1393,7 @@ class PyreonImagePicker {
 class PyreonFilePicker {
   var launcher: ActivityResultLauncher<Array<String>>? = null
   fun onResult(uri: String?) {}
-  suspend fun pick(): String? = null
+  suspend fun pick(accept: List<String> = emptyList()): String? = null
   fun isAvailable(): Boolean = true
 }
 
@@ -1325,6 +1461,9 @@ fun <I, O> rememberLauncherForActivityResult(
 class PyreonRouter {
   var currentPath: String = "/"
   fun push(path: String) { currentPath = path }
+  // Global guards, mirroring the real PyreonRouter (see the Swift stub).
+  val beforeEachGuards: MutableList<(String) -> Boolean> = mutableListOf()
+  val afterEachHooks: MutableList<(String) -> Unit> = mutableListOf()
   // Search parameters, mirroring the real PyreonRouter. useUrlState lowers to
   // a class over these two; a stub missing them would reject a correct emit.
   val query: MutableState<Map<String, String>> = mutableStateOf(emptyMap())

@@ -28,8 +28,10 @@
 // Swift's `async`.
 //
 // The one delta from the image picker: `OpenDocument`'s launcher input is an
-// `Array<String>` of MIME types (vs `PickVisualMediaRequest`). `pick()` passes
-// `arrayOf("*/*")` — accept any document; a typed filter is a follow-up.
+// `Array<String>` of MIME types (vs `PickVisualMediaRequest`). `pick(accept)`
+// takes the web `<input accept>` vocabulary — MIME types (`application/pdf`),
+// wildcards (`image/*`) and extensions (`.csv`) — and `mimeTypesFor` turns it
+// into that array. No filter means any document (`*/*`).
 //
 // Deps: kotlinx-coroutines + androidx.activity (both already present in every
 // Android example that compiles this srcDir).
@@ -92,8 +94,11 @@ class PyreonFilePicker {
      * Present the system document picker and return the picked file's
      * `content://` URI, or null if the user cancelled (or no launcher is
      * wired). Never throws.
+     *
+     * `accept` limits the selectable files, in the web `<input accept>`
+     * vocabulary (see [mimeTypesFor]); empty means any document.
      */
-    suspend fun pick(): String? {
+    suspend fun pick(accept: List<String> = emptyList()): String? {
         val activeLauncher = launcher ?: return null
         // A second pick() while one is still in flight: settle the older one as
         // cancelled so its caller's await can never hang forever (only one
@@ -101,8 +106,65 @@ class PyreonFilePicker {
         pending?.complete(null)
         val deferred = CompletableDeferred<String?>()
         pending = deferred
-        // "*/*" — accept any document type. A typed filter is a follow-up.
-        activeLauncher.launch(arrayOf("*/*"))
+        activeLauncher.launch(mimeTypesFor(accept))
         return deferred.await()
+    }
+
+    companion object {
+        // Extensions the document providers report under a MIME type. Android's
+        // own MimeTypeMap needs the SDK, and this file compiles without it; an
+        // extension missing here widens to any document rather than hiding the
+        // file the user is looking for.
+        private val EXTENSION_MIME: Map<String, List<String>> = mapOf(
+            "pdf" to listOf("application/pdf"),
+            "csv" to listOf("text/csv", "text/comma-separated-values"),
+            "txt" to listOf("text/plain"),
+            "md" to listOf("text/markdown"),
+            "json" to listOf("application/json"),
+            "xml" to listOf("application/xml", "text/xml"),
+            "html" to listOf("text/html"),
+            "zip" to listOf("application/zip"),
+            "png" to listOf("image/png"),
+            "jpg" to listOf("image/jpeg"),
+            "jpeg" to listOf("image/jpeg"),
+            "gif" to listOf("image/gif"),
+            "webp" to listOf("image/webp"),
+            "heic" to listOf("image/heic"),
+            "svg" to listOf("image/svg+xml"),
+            "mp3" to listOf("audio/mpeg"),
+            "wav" to listOf("audio/wav", "audio/x-wav"),
+            "mp4" to listOf("video/mp4"),
+            "mov" to listOf("video/quicktime"),
+            "doc" to listOf("application/msword"),
+            "docx" to listOf("application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
+            "xls" to listOf("application/vnd.ms-excel"),
+            "xlsx" to listOf("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
+            "ppt" to listOf("application/vnd.ms-powerpoint"),
+            "pptx" to listOf("application/vnd.openxmlformats-officedocument.presentationml.presentation"),
+        )
+
+        /**
+         * The `OpenDocument` MIME array for a web-style `accept` list:
+         * MIME types and wildcards pass through, `.ext` maps via a table.
+         * Anything unrecognised — or an empty list — widens to any document: a filter
+         * that is too broad shows extra files, one that is too narrow hides the
+         * file the user wants.
+         */
+        internal fun mimeTypesFor(accept: List<String>): Array<String> {
+            val out = LinkedHashSet<String>()
+            for (raw in accept) {
+                val entry = raw.trim().lowercase()
+                when {
+                    entry.isEmpty() -> continue
+                    entry.startsWith(".") -> {
+                        val mapped = EXTENSION_MIME[entry.substring(1)] ?: return arrayOf("*/*")
+                        out.addAll(mapped)
+                    }
+                    entry.contains('/') -> out.add(entry)
+                    else -> return arrayOf("*/*")
+                }
+            }
+            return if (out.isEmpty()) arrayOf("*/*") else out.toTypedArray()
+        }
     }
 }

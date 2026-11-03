@@ -3,7 +3,9 @@ title: Pyreon
 description: A signal-based UI framework with fine-grained reactivity and a rich ecosystem.
 ---
 
-Pyreon is a signal-based UI framework that renders directly to the DOM without a virtual DOM. It provides fine-grained reactivity, streaming SSR, a JSX compiler, and compatibility layers for React, Vue, Solid, and Preact.
+Pyreon is a signal-based UI framework that renders directly to the DOM without a virtual DOM. It provides fine-grained reactivity, streaming SSR, a JSX compiler, and compatibility layers for React, Preact, Vue, Solid, and Svelte.
+
+The tables below group the 77 published packages by area; the [package catalog](/docs/package-catalog) lists every one of them.
 
 <div class="flex flex-wrap gap-2 my-6">
   <PackageBadge name="@pyreon/core" href="/docs/core" />
@@ -28,8 +30,10 @@ The foundation — reactivity engine, component model, renderers, router, and bu
 | [@pyreon/server](/docs/server)                 | SSR handler, SSG, island architecture, and middleware       |
 | [@pyreon/vite-plugin](/docs/vite-plugin)       | Vite integration with JSX transform and HMR                 |
 | [@pyreon/typescript](/docs/typescript)         | Shared TypeScript configuration presets                     |
-| [@pyreon/cli](/docs/cli)                       | CLI tools — doctor, generate, and context commands          |
+| [@pyreon/cli](/docs/cli)                       | `pyreon` CLI — doctor, check, add, new, context, lint, info, upgrade, plain |
 | [@pyreon/mcp](/docs/mcp)                       | MCP server for AI-assisted development                      |
+| [@pyreon/primitives](/docs/primitives)         | Canonical multi-platform primitives — compile to DOM, SwiftUI, and Compose |
+| [@pyreon/sized-map](/docs/sized-map)           | Bounded `Map` with FIFO or LRU-on-read eviction             |
 
 ## Compatibility Layers
 
@@ -41,6 +45,7 @@ Use the API you already know, powered by Pyreon's signal engine.
 | [@pyreon/preact-compat](/docs/preact-compat) | Preact API — h(), Component class, signals integration |
 | [@pyreon/solid-compat](/docs/solid-compat)   | SolidJS API — createSignal, createEffect, control flow |
 | [@pyreon/vue-compat](/docs/vue-compat)       | Vue 3 Composition API — ref, computed, reactive, watch |
+| [@pyreon/svelte-compat](/docs/svelte-compat) | Svelte API — stores and lifecycle on Pyreon's engine   |
 
 <CompatMatrix
   features={[
@@ -79,6 +84,11 @@ Signal-native state management, forms, i18n, and data fetching.
 | [@pyreon/storage](/docs/storage)         | Reactive client-side storage — localStorage, sessionStorage, cookies, IndexedDB |
 | [@pyreon/permissions](/docs/permissions) | Type-safe reactive permissions — RBAC, ABAC, feature flags                      |
 | [@pyreon/hotkeys](/docs/hotkeys)         | Keyboard shortcut management with scopes and modifiers                          |
+| [@pyreon/validate](/docs/validate)       | DX layer over Standard Schema — field metadata, reactive parse, error formatting |
+| [@pyreon/http](/docs/http)               | HTTP client under `@pyreon/query` — middleware, typed errors, schema-validated responses |
+| [@pyreon/rx](/docs/rx)                   | Signal-aware transforms — filter, map, sort, group, pipe                        |
+| [@pyreon/url-state](/docs/url-state)     | URL search-param state — signal-backed, type-coerced, SSR-safe                  |
+| [@pyreon/sync](/docs/sync)               | Local-first CRDT sync for signals                                               |
 
 ## Meta-Framework
 
@@ -88,6 +98,9 @@ Zero-config full-stack framework and developer tooling.
 | ---------------------------------------- | --------------------------------------------------------------------------- |
 | [@pyreon/zero](/docs/zero)               | Full-stack meta-framework — file routing, SSR/SSG/ISR, optimized components |
 | [@pyreon/create-zero](/docs/create-zero) | Project scaffolding for new Zero applications                               |
+| [@pyreon/zero-cli](/docs/zero-cli)       | `zero` CLI — dev, build, preview                                            |
+| [@pyreon/zero-content](/docs/zero-content) | Content layer — compile-time `.md` / `.mdx`, typed collections            |
+| [@pyreon/create-multiplatform](/docs/create-multiplatform) | Scaffold a web + iOS + Android app from one source        |
 | [@pyreon/meta](/docs/meta)               | Barrel package re-exporting the full fundamentals ecosystem                 |
 | [@pyreon/storybook](/docs/storybook)     | Storybook renderer for developing and documenting Pyreon components         |
 
@@ -116,17 +129,41 @@ Specialized packages for rich application features.
 
 | Package                            | Description                                                     |
 | ---------------------------------- | --------------------------------------------------------------- |
-| [@pyreon/document](/docs/document) | Universal document rendering — one template, 14+ output formats |
+| [@pyreon/document](/docs/document) | Universal document rendering — one template, 20 output formats  |
 | [@pyreon/charts](/docs/charts)     | Charts on web, iOS and Android from one source |
 | [@pyreon/code](/docs/code)         | Reactive CodeMirror 6 code editor with signals                  |
 | [@pyreon/flow](/docs/flow)         | Reactive flow diagrams with signal-native nodes and auto-layout |
 | [@pyreon/feature](/docs/feature)   | Schema-driven CRUD primitives with auto-generated hooks         |
+| [@pyreon/rich-text](/docs/rich-text) | Reactive WYSIWYG editor over TipTap / ProseMirror             |
+| [@pyreon/dnd](/docs/dnd)           | Signal-driven drag and drop                                     |
+| [@pyreon/toast](/docs/toast)       | Imperative toast notifications, no provider needed              |
+| [@pyreon/a11y](/docs/a11y)         | Announcements, visually-hidden content, stable ARIA ids         |
+| [@pyreon/auth](/docs/auth)         | OIDC sign-in, sessions, TOTP, passkeys, route guards            |
 
 ## Developer Tools
 
 | Package                            | Description                                                        |
 | ---------------------------------- | ------------------------------------------------------------------ |
-| [@pyreon/devtools](/docs/devtools) | Chrome DevTools extension for component tree and signal inspection |
+| [@pyreon/lint](/docs/lint)         | Pyreon-specific linter — 133 rules across 25 categories            |
+| [@pyreon/testing](/docs/guides/testing) | Testing-Library-style render/screen/fireEvent plus reactive matchers |
+| [@pyreon/atlas](/docs/atlas)       | Component workbench — derives and verifies a component catalog     |
+| [@pyreon/loom](/docs/loom)         | Monorepo dependency observatory                                    |
+| [@pyreon/lathe](/docs/lathe)       | OpenAPI in, typed schemas / endpoints / queries out                |
+| [@pyreon/config](/docs/package-catalog) | One `pyreon.config.ts` with a typed section per package       |
+| [@pyreon/devtools](/docs/devtools) | Chrome DevTools extension (built from the monorepo; not published to npm) |
+
+## Native (multiplatform)
+
+The compiler, CLI, and Swift / Kotlin runtimes that take one Pyreon source to SwiftUI and Jetpack Compose. See [Native packages](/docs/native-packages) and [Multiplatform](/docs/multiplatform).
+
+| Package                         | Description                                                |
+| ------------------------------- | ---------------------------------------------------------- |
+| `@pyreon/native-compiler`       | Compiles Pyreon JSX to SwiftUI and Jetpack Compose         |
+| `@pyreon/native-cli`            | `pyreon-native` CLI — builds a source directory to both targets |
+| `@pyreon/native-runtime-swift`  | Swift runtime the emitted SwiftUI code links against       |
+| `@pyreon/native-runtime-kotlin` | Kotlin runtime the emitted Compose code links against      |
+| `@pyreon/native-router-swift`   | `@pyreon/router`'s API for SwiftUI                         |
+| `@pyreon/native-router-kotlin`  | `@pyreon/router`'s API for Jetpack Compose                 |
 
 ## Quick Start
 
@@ -180,5 +217,5 @@ const App = () => (
   </div>
 )
 
-mount(App, document.getElementById('app')!)
+mount(<App />, document.getElementById('app')!)
 ```

@@ -30,15 +30,15 @@
 //     driven by the Compose `LaunchedEffect` harness) one-for-one, so the
 //     two targets stay in lockstep;
 //   - the async HTTP wiring (`loadURL`-style helper + the compiler emit
-//     that calls it) is a follow-up that builds on this contract.
+//     that calls it) builds on this contract.
 //
 // ## Relationship to the PMTC compiler emit
 //
-// A later emit pass detects `const x = useFetch<T>('/url')` and emits a
+// The emit detects `const x = useFetch<T>('/url')` and emits a
 // `PyreonFetch<T>` instance whose `.task { }` awaits the URLSession call
 // and feeds it into `run`; `x.data` / `x.isPending` reads in the
 // component body become `x.data` / `x.isPending` reads on this container.
-// Until that lands, this is usable by hand-written SwiftUI code.
+// It is equally usable by hand-written SwiftUI code.
 
 import Foundation
 import Observation

@@ -367,9 +367,10 @@ public struct EnvironmentValues {
 public enum HorizontalAlignment { case leading, center, trailing }
 public enum VerticalAlignment { case top, center, bottom }
 public enum Alignment { case center, leading, trailing, top, bottom, topLeading, topTrailing, bottomLeading, bottomTrailing }
-// Axis.Set is an OptionSet in real SwiftUI; the stub only needs the horizontal
-// / vertical cases the coolgrid Col fractional-span emit references.
-public struct Axis { public struct Set { public init() {}; public static let horizontal = Set(); public static let vertical = Set() } }
+// Axis is an ENUM in real SwiftUI (\`case horizontal, vertical\`), with the
+// OptionSet \`Axis.Set\` nested inside. The cases are what \`<Field multiline>\`'s
+// \`TextField(_:text:axis:)\` passes; the Set is the coolgrid Col fractional-span emit's.
+public enum Axis { case horizontal, vertical; public struct Set { public init() {}; public static let horizontal = Set(); public static let vertical = Set() } }
 public struct VStack<Content: View>: View {
   public init(alignment: HorizontalAlignment = .center, spacing: Double? = nil, @ViewBuilder content: () -> Content) {}
   public typealias Body = Never
@@ -411,6 +412,9 @@ public struct Toggle<Label: View>: View {
 }
 public struct TextField: View {
   public init(_ title: String, text: Binding<String>) {}
+  // iOS 16 — the \`<Field multiline>\` lowering. Real SwiftUI spells it
+  // \`init<S: StringProtocol>(_ title: S, text: Binding<String>, axis: Axis)\`.
+  public init(_ title: String, text: Binding<String>, axis: Axis) {}
   public typealias Body = Never
 }
 public struct ForEach<Data, ID, Content: View>: View {
@@ -551,6 +555,20 @@ public struct AccessibilityTraits: OptionSet {
 
 // ---- View modifiers ----
 public enum TextTruncationMode { case head, tail, middle }
+// The transform props (translateX/translateY/scale/rotate) lower to these.
+// Mirrors SwiftUI: the anchor defaults to the centre, offset takes CGFloat
+// (so an Int argument fails here, as it does on device), and rotationEffect
+// takes an Angle built with .degrees.
+public struct UnitPoint { public static let center = UnitPoint() }
+public struct Angle {
+  public var degrees: Double = 0
+  public static func degrees(_ d: Double) -> Angle { Angle(degrees: d) }
+}
+extension View {
+  public func offset(x: CGFloat = 0, y: CGFloat = 0) -> some View { self }
+  public func scaleEffect(_ s: CGFloat, anchor: UnitPoint = .center) -> some View { self }
+  public func rotationEffect(_ angle: Angle, anchor: UnitPoint = .center) -> some View { self }
+}
 extension View {
   // CRUX — the EXACT SwiftUI generic constraint. \`value: Any\` would MASK the
   // \`.animation(_:value:)\`-needs-Equatable class (the M2.8 incident). Do not loosen.
@@ -582,6 +600,8 @@ extension View {
   // made a CORRECT emit fail the gate -- a stub NARROWER than the runtime
   // manufactures a bug, exactly as a wider one hides one.
   public func lineLimit(_ number: Int?) -> some View { self }
+  // iOS 16 — \`<Field multiline lines>\`: exactly \`limit\` rows tall, scrolling past them.
+  public func lineLimit(_ limit: Int, reservesSpace: Bool) -> some View { self }
   public func truncationMode(_ mode: TextTruncationMode) -> some View { self }
   // .background(Color(...)) — emitted for any themed backgroundColor
   // (rocketstyle/attrs/styler all reach it). Mirrors SwiftUI's VIEW overload,
@@ -820,7 +840,7 @@ public struct PyreonBiometrics {
 public struct PyreonImagePicker { public init() {}; public func pick() async -> String? { nil }; public func isAvailable() -> Bool { true } }
 // M3.8 document picker. Same async optional-String surface as the image picker
 // (nil = cancelled) — an emit that drops the optionality fails here.
-public struct PyreonFilePicker { public init() {}; public func pick() async -> String? { nil }; public func isAvailable() -> Bool { true } }
+public struct PyreonFilePicker { public init() {}; public func pick(_ accept: [String] = []) async -> String? { nil }; public func isAvailable() -> Bool { true } }
 // AppStorage - SwiftUI's own wrapper, which a persisted signal (\`useStorage\`) emits for SCALAR
 // values (a struct value routes to the library's own PyreonAppStorage instead). Stripped
 // along with \`import SwiftUI\`, so without this the whole scalar path was
@@ -888,6 +908,57 @@ public struct PyreonLink<Label: View>: View {
   public init(_ to: String, @ViewBuilder label: () -> Label) {}
   public typealias Body = Never
 }
+// PyreonGesture + its payloads — mirror of runtime-swift PyreonGesture.swift
+// (the <Gesture> primitive). Field names and types are the contract the emit
+// reads (e.dx, e.scale, e.phase), so they are listed exactly.
+public struct PyreonPanEvent: Equatable {
+  public let dx: Double
+  public let dy: Double
+  public let x: Double
+  public let y: Double
+  public let phase: String
+}
+public struct PyreonPinchEvent: Equatable {
+  public let scale: Double
+  public let centerX: Double
+  public let centerY: Double
+  public let phase: String
+}
+public struct PyreonRotateEvent: Equatable {
+  public let degrees: Double
+  public let phase: String
+}
+// PyreonCanvas + shapes — mirror of runtime-swift PyreonCanvas.swift (the
+// <Canvas> primitive). Path stands in for SwiftUI's Path: the emit only ever
+// hands one from a PyreonCanvasPath builder straight to PyreonShape.
+public struct Path { public init() {} }
+public enum PyreonCanvasPath {
+  public static func rect(x: Double, y: Double, width: Double, height: Double, radius: Double) -> Path { Path() }
+  public static func circle(cx: Double, cy: Double, r: Double) -> Path { Path() }
+  public static func line(x1: Double, y1: Double, x2: Double, y2: Double) -> Path { Path() }
+  public static func svg(_ d: String) -> Path { Path() }
+}
+public struct PyreonShape: View {
+  public init(_ path: Path, fill: Color?, stroke: Color?, lineWidth: Double) {}
+  public var body: some View { EmptyView() }
+}
+public struct PyreonCanvas<Content: View>: View {
+  public init(width: Double, height: Double, @ViewBuilder content: () -> Content) {}
+  public var body: some View { EmptyView() }
+}
+public struct PyreonCanvasText<Content: View>: View {
+  public init(x: Double, y: Double, size: Double, color: Color, @ViewBuilder content: () -> Content) {}
+  public var body: some View { EmptyView() }
+}
+public struct PyreonGesture<Content: View>: View {
+  public init(
+    onPan: ((PyreonPanEvent) -> Void)? = nil,
+    onPinch: ((PyreonPinchEvent) -> Void)? = nil,
+    onRotate: ((PyreonRotateEvent) -> Void)? = nil,
+    @ViewBuilder content: () -> Content
+  ) {}
+  public var body: some View { EmptyView() }
+}
 public enum PyreonJSON {
   public static func encode<T>(_ value: T) -> String { "" }
   // JSON.stringify(x) lowers here. Encodable, as in the runtime.
@@ -915,10 +986,12 @@ public struct PyreonParseResult<T> {
 public func pyreonSchemaInput<T: Encodable>(_ value: T) -> [String: Any] { [:] }
 public func pyreonSchemaInput(_ value: [String: Any]) -> [String: Any] { value }
 public func pyreonSchemaValue<T: Encodable>(_ value: T) -> Any { value }
+// Mirror of PyreonWebView.swift's public surface, parameter ORDER included —
+// Swift labels are positional, so a stub that reorders them accepts a call
+// the real runtime rejects.
+public enum PyreonWebViewGrow { case vertical, horizontal, both }
 public struct PyreonWebView: View {
-  // Emit shapes: (src:data:onMessage:), (html:), (html:data:onMessage:) — all
-  // params optional so every shape resolves; arg TYPES stay faithful.
-  public init(src: String? = nil, html: String? = nil, data: String? = nil, onMessage: ((String) -> Void)? = nil, domStorage: Bool = true) {}
+  public init(html: String? = nil, src: String? = nil, data: String? = nil, onMessage: ((String) -> Void)? = nil, domStorage: Bool = true, grow: PyreonWebViewGrow? = nil) {}
   public typealias Body = Never
 }
 
@@ -933,6 +1006,10 @@ public final class PyreonRouter {
   // keeping the OPTIONAL return is load-bearing: an emit that forgets to unwrap
   // it must fail here, not silently on-device.
   public static func matchPath(_ path: String, _ pattern: String) -> [String: String]? { nil }
+  // Global guards, mirroring the real PyreonRouter: the emit appends named guard functions here. Missing, every
+  // \`beforeEach\` / \`afterEach\` emit failed the gate while compiling against the real runtime.
+  public var beforeEachGuards: [(String) -> Bool] = []
+  public var afterEachHooks: [(String) -> Void] = []
   // Search parameters, mirroring the real PyreonRouter. useUrlState lowers to
   // a value type over these two, so a stub missing them would reject a correct
   // emit — the subset-stub failure, which manufactures bugs exactly as a
@@ -952,6 +1029,14 @@ public func useParams(router: PyreonRouter?) -> [String: String] { [:] }
 // found the other two. The parity test below now enforces the whole SET rather
 // than waiting for a fourth to be discovered by hand.
 public func useLoaderData<T>(router: PyreonRouter?) -> T? { nil }
+// A FOURTH: router-swift's PyreonRouteLoader (the host a loader-bearing route's
+// component is wrapped in) was never stubbed, because no example had a route
+// loader until the router demo gained one. Mirrors RouteLoader.swift's init.
+@available(iOS 17.0, macOS 14.0, *)
+public struct PyreonRouteLoader<Content: View>: View {
+    public init(path: String, load: @escaping () -> Any, @ViewBuilder content: @escaping () -> Content) {}
+    public var body: some View { EmptyView() }
+}
 // BEGIN runtime mirror: native/router-swift/Sources/PyreonRouter/PyreonUrlState.swift
 @available(iOS 17.0, macOS 14.0, *)
 public struct PyreonUrlState {
@@ -1317,8 +1402,21 @@ public struct PyreonHttpRequest: Sendable {
     method: PyreonHttpMethod = .get,
     url: String,
     headers: [String: String] = [:],
-    body: Data? = nil
+    body: Data? = nil,
+    upload: PyreonHttpUpload? = nil
   ) {}
+}
+public enum PyreonHttpUpload: Sendable {
+  case file(PyreonUploadFile)
+  case multipart(PyreonMultipartBody)
+}
+public struct PyreonUploadFile: Sendable {
+  public let name: String = ""
+  public let type: String = ""
+  public static func from(_ uri: String, name: String? = nil, type: String? = nil) async throws -> PyreonUploadFile { fatalError() }
+}
+public struct PyreonMultipartBody: Sendable {
+  public init(_ pairs: Any?...) {}
 }
 public struct PyreonHttpResponse: Sendable {
   public let status: Int = 0
@@ -1336,6 +1434,35 @@ public enum PyreonHttp {
   public static func send(_ request: PyreonHttpRequest) async throws -> PyreonHttpResponse {
     PyreonHttpResponse()
   }
+  public static func send(
+    _ request: PyreonHttpRequest,
+    middleware: [PyreonHttpMiddleware]
+  ) async throws -> PyreonHttpResponse {
+    PyreonHttpResponse()
+  }
+  @discardableResult
+  public static func call(_ request: PyreonHttpRequest) async throws -> PyreonHttpResponse {
+    PyreonHttpResponse()
+  }
+  public static func fire(_ request: PyreonHttpRequest) {}
+}
+// The lowered \`createHttp({ use: [...] })\` middleware. Mirrors the REAL
+// PyreonHttp.swift surface: \`maxDelay\` is a Double, every policy field is
+// defaulted, and a bearer token is a plain \`() -> String?\` (an enum payload, so escaping).
+public struct PyreonRetryPolicy {
+  public init(
+    limit: Int = 2,
+    methods: [String] = [],
+    statuses: [Int] = [],
+    network: Bool = true,
+    respectRetryAfter: Bool = true,
+    maxDelay: Double = 30_000
+  ) {}
+}
+public enum PyreonHttpMiddleware {
+  case bearer(baseUrl: String, crossOrigin: Bool, token: () -> String?)
+  case retry(PyreonRetryPolicy)
+  case logger(production: Bool)
 }
 // PyreonURL — the runtime path-param encoder a templated endpoint URL calls.
 // Mirrors the REAL PyreonURL surface: three overloads (String / Int / Double),
@@ -1346,11 +1473,28 @@ public enum PyreonURL {
   public static func encodePathParam(_ value: String) -> String { value }
   public static func encodePathParam(_ value: Int) -> String { "" }
   public static func encodePathParam(_ value: Double) -> String { "" }
+  public static func query(_ joiner: String, _ pairs: Any?...) -> String { "" }
 }
 // pyreonNumberString — JS \`String(number)\`, which every Double-typed
 // template interpoland lowers through. Mirrors the real overload pair.
 public func pyreonNumberString(_ v: Double) -> String { "" }
 public func pyreonNumberString(_ v: Int) -> String { "" }
+// Intl.DateTimeFormat / Intl.NumberFormat — the real PyreonIntl.swift surface,
+// exactly: every parameter defaulted, labelled, in declaration order.
+public final class PyreonDateTimeFormat {
+  public init(locale: String? = nil, dateStyle: String? = nil, timeStyle: String? = nil, skeleton: String? = nil, timeZone: String? = nil) {}
+  public func format(_ epochMs: Double) -> String { "" }
+  public func format(_ epochMs: Int) -> String { "" }
+}
+public final class PyreonNumberFormat {
+  public init(locale: String? = nil, style: String = "decimal", currency: String? = nil, currencyDisplay: String = "symbol", minimumFractionDigits: Int? = nil, maximumFractionDigits: Int? = nil, minimumIntegerDigits: Int? = nil, useGrouping: Bool = true) {}
+  public func format(_ value: Double) -> String { "" }
+  public func format(_ value: Int) -> String { "" }
+}
+// pyreonSlice — JS \`slice\` for a bound whose sign is not known at compile time
+// (runtime-swift's PyreonSlice.swift).
+public func pyreonSlice<T>(_ a: [T], _ start: Int, _ end: Int? = nil) -> [T] { a }
+public func pyreonSlice(_ s: String, _ start: Int, _ end: Int? = nil) -> String { s }
 public final class PyreonDatabase {
   public init() {}
   public func insert(_ collection: String, _ record: PyreonRecord) {}

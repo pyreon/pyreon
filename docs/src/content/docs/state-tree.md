@@ -244,7 +244,7 @@ u.update('prefs', p => ({ ...p, theme: 'dark' }))           // alt to deepPatch
 
 **Validation rules** mirror `@pyreon/store` schema mode exactly:
 
-- All five `$*` methods validate every write. Invalid input throws (or invokes `onValidationError` if provided). State stays at its previous value on failure.
+- All five methods (`set` / `patch` / `deepPatch` / `update` / `reset`) validate every write. Invalid input throws (or invokes `onValidationError` if provided). State stays at its previous value on failure.
 - Initial is validated once at `model({ schema, initial })` time. Invalid initial throws immediately. Schema defaults + transforms apply — the PARSED value is written to signals.
 - Async validators are unsupported — schemas whose validator returns a Promise are rejected at definition time. Use `@pyreon/form` for async refinements.
 - Schema field names cannot collide with `set` / `patch` / `deepPatch` / `update` / `reset` / `self` proxy keys — `model()` throws at construction with a clear message.
@@ -1571,6 +1571,10 @@ const M = model({ state: { x: 0 } })
   }))
 ```
 
+## Multiplatform
+
+On iOS and Android (PMTC), `model()` lowers to `PyreonModel` singletons on both targets.
+
 ## API Reference
 
 ### `model(config)`
@@ -1578,9 +1582,8 @@ const M = model({ state: { x: 0 } })
 Define a reactive model.
 
 - **`config.state`** -- Default state values. Use `ModelDefinition` values for nested composition.
-- **`config.views`** (`(self) => TViews`) -- Optional. Factory returning computed signals.
-- **`config.actions`** (`(self) => TActions`) -- Optional. Factory returning action functions.
-- **Returns** `ModelDefinition` with `.create()` and `.asHook()` methods.
+- Schema mode instead takes **`config.schema`** + `config.initial?` + `config.onValidationError?` + `config.identifier?`.
+- **Returns** a chainable `ModelDefinition`: `.views(self => …)`, `.actions(self => …)`, `.volatile(self => …)`, `.lifecycle(self => …)`, `.create(initial?)`, `.asHook(id)`. Views and actions are added with these builder methods, not through `config`.
 
 ### `ModelDefinition.create(initial?)`
 
@@ -1610,6 +1613,26 @@ Apply one or more JSON patches to a model instance. Accepts a single `Patch` or 
 
 Intercept action calls. Returns an unsubscribe function. Throws if the argument is not a model instance.
 
+### `onSnapshot(instance, listener)`
+
+Subscribe to snapshot changes. `listener` receives the new snapshot after each mutation. Returns an unsubscribe function.
+
+### `onAction(instance, listener)`
+
+Observe action calls (receives the `ActionCall` descriptor) without intercepting them. Returns an unsubscribe function.
+
+### `destroy(instance)` / `isAlive(instance)` / `clone(instance)` / `getType(instance)`
+
+Lifecycle helpers — described in the `destroy` / `clone` sections above.
+
+### `getParent(node)` / `hasParent(node)` / `isRoot(node)` / `getRoot(node)` / `getPath(node)`
+
+Tree navigation for field-nested models. `getParent` returns `undefined` for a root; `getPath` returns a JSON-pointer-style path from the root.
+
+### `identifier(default?)` / `reference(Type)` / `resolveIdentifier(root, Type, id)`
+
+Identifier fields, references to other model instances, and lookup by identifier. `resolveIdentifier` throws if the type declares no identifier and returns `undefined` when no instance matches.
+
 ### `resetHook(id)`
 
 Destroy a hook singleton by ID. No-op if the ID does not exist.
@@ -1631,10 +1654,15 @@ Destroy all hook singletons.
 | `PatchListener`   | Callback for `onPatch`: `(patch: Patch) => void`                  |
 | `ActionCall`      | Descriptor passed to middleware: `&#123; name, args, path &#125;` |
 | `MiddlewareFn`    | Middleware function signature: `(call, next) => unknown`          |
+| `SnapshotListener` | Callback for `onSnapshot`: `(snapshot) => void`                  |
+| `SchemaModelHelpers` | Schema-mode helpers: `set` / `patch` / `deepPatch` / `update` / `reset` |
+| `DeepPartial`     | Recursive partial used by `deepPatch`                             |
+| `LifecycleHandlers` | Return type of the `.lifecycle()` factory                       |
+| `ReferenceField`  | Field type produced by `reference(Type)`                          |
 
 ## Error Handling
 
-All public functions that accept a model instance (`getSnapshot`, `applySnapshot`, `onPatch`, `applyPatch`, `addMiddleware`) validate their input and throw a descriptive error if called on a non-model-instance:
+All public functions that accept a model instance (`getSnapshot`, `applySnapshot`, `onSnapshot`, `onPatch`, `applyPatch`, `addMiddleware`, `destroy`, `clone`, and the tree helpers such as `getParent` / `getPath`) validate their input and throw a descriptive error if called on a non-model-instance:
 
 ```ts
 getSnapshot({}) // Error: [Pyreon] state-tree getSnapshot: not a model instance
@@ -1643,6 +1671,8 @@ onPatch({}, () => {}) // Error: [Pyreon] state-tree onPatch: not a model instanc
 applyPatch({}, {}) // Error: [Pyreon] state-tree applyPatch: not a model instance
 addMiddleware({}, fn) // Error: [Pyreon] state-tree addMiddleware: not a model instance
 ```
+
+`applyPatch` also throws `[Pyreon] state-tree applyPatch: unsupported op "<op>"` for any operation other than `replace`.
 
 ## Internals
 

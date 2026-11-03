@@ -56,19 +56,96 @@ describe('Gap 4 follow-up — @pyreon/feature v1 emit', () => {
     expect(r.code).toContain('val initialValues = PyreonFeatureSchema_Todo()')
   })
 
-  it('Non-literal schema (Zod) bails to tier2 silent-drop', () => {
+  it('an object literal of scalar validators (Zod) lowers like the literal map', () => {
     const src = `
 import { defineFeature } from '@pyreon/feature'
 import { z } from 'zod'
 
 export const Todo = defineFeature({
   name: 'todo',
-  schema: z.object({ id: z.string() }),
+  schema: z.object({ id: z.string(), title: z.string(), done: z.boolean(), priority: z.number().int() }),
+})
+`
+    const swift = transform(src, { target: 'swift' })
+    expect(swift.warnings).toEqual([])
+    expect(swift.code).toContain('struct PyreonFeatureSchema_Todo: Codable {')
+    expect(swift.code).toContain('var done: Bool = false')
+    expect(swift.code).toContain('var priority: Int = 0')
+    const kotlin = transform(src, { target: 'kotlin' })
+    expect(kotlin.warnings).toEqual([])
+    expect(kotlin.code).toContain('data class PyreonFeatureSchema_Todo(')
+  })
+
+  it.skipIf(!isSwiftcAvailable())('Swift: the validator-object emit type-checks', () => {
+    const src = `
+import { defineFeature } from '@pyreon/feature'
+import { z } from 'zod'
+export const Todo = defineFeature({ name: 'todo', schema: z.object({ id: z.string(), done: z.boolean() }) })
+`
+    const r = validateSwiftWithStubs(transform(src, { target: 'swift' }).code)
+    expect(r.ok, r.error ?? '').toBe(true)
+  })
+
+  it.skipIf(!isKotlincAvailable())('Kotlin: the validator-object emit compiles', () => {
+    const src = `
+import { defineFeature } from '@pyreon/feature'
+import { z } from 'zod'
+export const Todo = defineFeature({ name: 'todo', schema: z.object({ id: z.string(), done: z.boolean() }) })
+`
+    const r = validateKotlin(transform(src, { target: 'kotlin' }).code)
+    expect(r.ok, r.error ?? '').toBe(true)
+  })
+
+  it('a constraint the feature schema struct enforces is no longer reported as dropped; one it cannot enforce still is, BY NAME', () => {
+    // `.min()` / `.optional()` are enforced by the `Todo.schema` struct now, so the declaration no longer claims they are lost.
+    const enforced = `
+import { defineFeature } from '@pyreon/feature'
+import { z } from 'zod'
+
+export const Todo = defineFeature({
+  name: 'todo',
+  schema: z.object({ title: z.string().min(3).optional(), done: z.boolean() }),
+})
+`
+    const r = transform(enforced, { target: 'swift' })
+    expect(r.code).toContain('var title: String = ""')
+    expect(r.warnings.some((x) => x.includes('NOT enforced on device'))).toBe(false)
+    // `.refine()` changes the verdict with arbitrary code, which no native struct can carry: it is still named, never silent.
+    const lost = transform(enforced.replace('.min(3).optional()', '.min(3).refine((v) => v !== "x")'), { target: 'swift' })
+    expect(lost.warnings.some((x) => x.includes('refine'))).toBe(true)
+  })
+
+  it('a non-scalar validator field is dropped by name while its siblings survive', () => {
+    const src = `
+import { defineFeature } from '@pyreon/feature'
+import { z } from 'zod'
+
+export const Todo = defineFeature({
+  name: 'todo',
+  schema: z.object({ id: z.string(), tags: z.array(z.string()) }),
+})
+`
+    const r = transform(src, { target: 'swift' })
+    expect(r.code).toContain('var id: String = ""')
+    // The DECLARATION's own struct drops the field. (The `Todo.schema` struct beside it validates `tags`, so the whole output does mention it.)
+    const declaration = r.code.slice(r.code.indexOf('struct PyreonFeatureSchema_Todo'), r.code.indexOf('enum PyreonFeature_Todo'))
+    expect(declaration).not.toContain('tags')
+    expect(r.warnings.some((x) => x.includes('`tags`') && x.includes('not a scalar validator'))).toBe(true)
+  })
+
+  it('a schema held in a variable still bails to tier2 silent-drop', () => {
+    const src = `
+import { defineFeature } from '@pyreon/feature'
+import { z } from 'zod'
+const shape = z.object({ id: z.string() })
+
+export const Todo = defineFeature({
+  name: 'todo',
+  schema: shape,
 })
 `
     const r = transform(src, { target: 'swift' })
     expect(r.code).not.toContain('PyreonFeatureSchema_Todo')
-    // Warning fires from tryFeatureDefnFromTopLevel about non-literal schema
     const w = r.warnings.find((w) => w.includes('defineFeature') && w.includes('Todo'))
     expect(w).toBeDefined()
   })

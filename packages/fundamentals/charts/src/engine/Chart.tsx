@@ -963,7 +963,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
       ...(m.r !== undefined ? { r: (d: T, i: number) => m.r!(d, gi(i)) } : {}),
     })), theme().palette)
     const resolvedCats = full !== null ? full.categories : resolveCategories(rows, props.x === undefined ? undefined : (d, i) => props.x!(d, gi(i)))
-    const spec: ChartSpec = {
+    return {
     width: w,
     height: hgt,
     ...(props.density === 'device' ? { m4Density: typeof globalThis.devicePixelRatio === 'number' ? globalThis.devicePixelRatio : 1.0 } : {}),
@@ -1005,15 +1005,22 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
       ? { emphasis: { highlight: hoverIdx(), selected: selected().map((g) => visibleIndexOf(g - off, keep)).filter((i) => i >= 0 && i < rows.length) } }
       : {}),
     }
-    // Resolve the value domain ONCE per frame. Unpinned, `resolveYDomain` is a
-    // full scan of every series (stack totals included), and a frame asks for
-    // it from layout, every series' geometry, markers and hit-testing — ten
-    // passes over a 100,000-point line. Filling it in returns the same Domain
-    // each later call computes. Not for a log axis: there a set `yDomain` reads
-    // as an author-pinned range (`logBounds`).
-    if (spec.yDomain === undefined && spec.yScale !== 'log') spec.yDomain = resolveYDomain(spec)
-    return spec
   }
+  /**
+   * Resolve the value domain ONCE per frame, on the spec that is actually
+   * painted. Unpinned, `resolveYDomain` is a full scan of every series (stack
+   * totals included), and a frame asks for it from layout, every series'
+   * geometry, markers and hit-testing — ten passes over a 100,000-point line.
+   * Filling it in returns the same Domain each later call computes.
+   *
+   * It must run on the FINAL spec, after every stage that changes values or
+   * how they aggregate: the update tween (mid-flight values — pinning the
+   * target's domain scaled a shrinking update's bars far past the plot top)
+   * and the magicType stack switch (stack totals). Not for a log axis: there
+   * a set `yDomain` reads as an author-pinned range (`logBounds`).
+   */
+  const withFrameDomain = (spec: ChartSpec): ChartSpec =>
+    spec.yDomain === undefined && spec.yScale !== 'log' ? { ...spec, yDomain: resolveYDomain(spec) } : spec
 
   const draw = (): void => {
     const el = canvas
@@ -1166,7 +1173,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
     if (presetsJson !== untrack(presetBoxesJson)) presetBoxesJson.set(presetsJson)
     const navH = props.navigator === true && features.zoom !== undefined ? 36.0 : 0.0
     bottomOffset = presetH + navH + legendBottom
-    const built = tweened(buildSpec(rows, pw, hgt - top - presetH - navH - legendBottom))
+    const built = withFrameDomain(tweened(buildSpec(rows, pw, hgt - top - presetH - navH - legendBottom)))
     // ONE layout per frame: the paint, the crosshair, the brush band and the
     // focus ring all read it, and the pointer handlers read it from the cache.
     const l = layoutChart(built, measure)
@@ -1452,7 +1459,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
     if (c !== null && c.w === w && c.hgt === hgt) return c
     const ctx = el.getContext('2d')
     if (ctx === null) return null
-    const spec = buildSpec(readData(), plotW > 0.0 ? plotW : w, hgt - topOffset - bottomOffset)
+    const spec = withFrameDomain(buildSpec(readData(), plotW > 0.0 ? plotW : w, hgt - topOffset - bottomOffset))
     return { spec, layout: layoutChart(spec, canvasMeasure(ctx, FONT)) }
   }
   /** The plot rect at the current size (in PLOT space — right of a side legend, under the chrome) — gestures are plot-relative. */

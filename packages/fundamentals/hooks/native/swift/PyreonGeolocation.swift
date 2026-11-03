@@ -39,11 +39,11 @@
 //
 // ## Relationship to the PMTC compiler emit
 //
-// A later emit pass detects `const loc = useGeolocation()` and emits a
+// The emit detects `const loc = useGeolocation()` and emits a
 // `PyreonGeolocation` instance whose `.task { }` calls `start()` on appear
 // and `stop()` on disappear; `loc.latitude` reads in the component body
-// become reads on this container. Until that lands (the per-service-port
-// follow-up), this is usable by hand-written SwiftUI code.
+// become reads on this container. It is equally usable by hand-written
+// SwiftUI code.
 
 import Foundation
 import CoreLocation

@@ -667,6 +667,11 @@ jobs:
           set -o pipefail
           bash scripts/build.sh
           xcodegen generate
+          # /webhost geolocation proof: a fixed simulator location, and the app's
+          # location permission pre-granted (the UITest still answers SpringBoard's
+          # prompt if the grant did not take, e.g. before first install).
+          xcrun simctl location "${PYREON_SIM_UDID}" set 37.3349,-122.0090 || true
+          xcrun simctl privacy "${PYREON_SIM_UDID}" grant location com.pyreon.PyreonTasks || true
           mkdir -p "$GITHUB_WORKSPACE/.ci-ios-results"
           xcodebuild test \
             -parallel-testing-enabled NO \
@@ -809,6 +814,7 @@ jobs:
       # (end of job) — one writer per artifact, and the repo's 10 GB cache
       # budget cannot carry a per-PR copy of a multi-hundred-MB store.
       - name: Restore Gradle dependency cache
+        id: gradle-cache
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
@@ -919,6 +925,14 @@ jobs:
           arch: x86_64
           profile: pixel_6
           disable-animations: true
+          # An explicit userdata size. pixel_6's default partition is 7.2 GB, and
+          # after Gradle, the restored dependency cache and five apps' build outputs
+          # the runner had 5.5 GB free (2026-11-02, #4056): the emulator exited with
+          # `Not enough space to create userdata partition` and the step waited out
+          # its boot timeout reporting `device not found`, which reads as a flake.
+          # The test apps need a few hundred MB; 4 GB leaves first-boot headroom.
+          # Same value on every emulator step below.
+          disk-size: 4096M
           # working-directory (NOT a `cd` inside `script`): the
           # emulator-runner executes each script LINE from the
           # workspace root, so a multi-line `cd X` + `gradle ...`
@@ -1009,6 +1023,7 @@ jobs:
           arch: x86_64
           profile: pixel_6
           disable-animations: true
+          disk-size: 4096M
           working-directory: examples/native-finance-android
           # LAST line: kill the emulator ourselves. `adb emu kill` alone
           # sometimes leaves qemu running; the action then waits on its
@@ -1052,6 +1067,7 @@ jobs:
           arch: x86_64
           profile: pixel_6
           disable-animations: true
+          disk-size: 4096M
           # working-directory (NOT a `cd` inside `script`): the
           # emulator-runner executes each script LINE from the
           # workspace root, so a multi-line `cd X` + `gradle ...`
@@ -1096,6 +1112,7 @@ jobs:
           arch: x86_64
           profile: pixel_6
           disable-animations: true
+          disk-size: 4096M
           # working-directory (NOT a `cd` inside `script`): the
           # emulator-runner executes each script LINE from the
           # workspace root, so a multi-line `cd X` + `gradle ...`
@@ -1166,6 +1183,7 @@ jobs:
           arch: x86_64
           profile: pixel_6
           disable-animations: true
+          disk-size: 4096M
           # working-directory (NOT a `cd` inside `script`): the
           # emulator-runner executes each script LINE from the
           # workspace root, so a multi-line `cd X` + `gradle ...`
@@ -1225,18 +1243,26 @@ jobs:
             nohup bun "$GITHUB_WORKSPACE/examples/native-tasks/scripts/stream-server.ts" > /tmp/stream-server.log 2>&1 &
             i=0; while ! curl -fsS http://127.0.0.1:8791/health >/dev/null 2>&1; do i=$((i+1)); [ "$i" -ge 30 ] && { echo "stream server FAILED to start within 30s"; cat /tmp/stream-server.log 2>/dev/null || true; exit 1; }; sleep 1; done; echo "stream server OK (ready after ${i}s)"
             adb reverse tcp:8791 tcp:8791
+            # /webhost geolocation proof: give the emulator a fix (the test also accepts an answered-but-unavailable position).
+            adb emu geo fix -122.0090 37.3349 || true
             gradle connectedCheck --stacktrace
             adb -s emulator-5554 emu kill || true; sleep 5; pkill -9 -f '[q]emu-system' || true
 
+      # Saved only when the EXACT key missed. The key used to end in
+      # `github.run_id`, so every main run — the nightly included — wrote a
+      # fresh ~650 MB copy of an identical store: four of them sat in the
+      # 10 GB budget at once (2026-11-02), evicting the small, hot verdict
+      # stores first. Identical Gradle files declare identical dependencies,
+      # so an existing entry never needs re-saving.
       - name: Save Gradle dependency cache (main only)
-        if: always() && github.ref == 'refs/heads/main'
+        if: always() && github.ref == 'refs/heads/main' && steps.gradle-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             ~/.gradle/caches/modules-2
             ~/.gradle/caches/jars-9
             ~/.gradle/caches/transforms-4
-          key: gradle-deps-${{ runner.os }}-${{ hashFiles('examples/native-*-android/**/*.gradle.kts', 'examples/native-*-android/gradle.properties') }}-${{ github.run_id }}
+          key: gradle-deps-${{ runner.os }}-${{ hashFiles('examples/native-*-android/**/*.gradle.kts', 'examples/native-*-android/gradle.properties') }}
 
       # The connected-test HTML/XML reports are the ONLY place the
       # failing assertion's line number lives — the gradle console log

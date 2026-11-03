@@ -79,11 +79,13 @@
       "kotlin": "native/kotlin",
       "kotlinServices": {
         "PyreonSortable": [
-          "PyreonSortable.kt"
+          "PyreonSortable.kt",
+          "PyreonDragDrop.kt"
         ]
       },
       "kotlinSdkOnly": [
-        "PyreonSortableModifier.kt"
+        "PyreonSortableModifier.kt",
+        "PyreonDragDropModifier.kt"
       ],
       "plugin": "./lib/native-plugin.js",
       "modules": [

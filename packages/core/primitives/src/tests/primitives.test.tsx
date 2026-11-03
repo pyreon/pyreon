@@ -17,6 +17,7 @@ import { query } from '@pyreon/test-utils'
 import { afterEach, describe, expect, it } from 'vitest'
 import { h } from '@pyreon/core'
 import { mount } from '@pyreon/runtime-dom'
+import type { FieldProps } from '../types/input'
 import { signal } from '@pyreon/reactivity'
 import {
   Button,
@@ -1053,6 +1054,114 @@ describe('<Field> happy-dom unit', () => {
   })
 })
 
+describe('<Field multiline> happy-dom unit', () => {
+  it('renders a <textarea> with the default 3 rows and no type attribute', () => {
+    const v = signal('a\nb')
+    const { container, unmount } = mountTest(
+      h(Field, { value: v, onChangeText: (next: string) => v.set(next), multiline: true }),
+    )
+    const area = container.firstElementChild as HTMLTextAreaElement
+    expect(area.tagName).toBe('TEXTAREA')
+    expect(area.getAttribute("rows")).toBe("3")
+    expect(area.getAttribute('type')).toBe(null)
+    expect(area.value).toBe('a\nb')
+    expect(area.style.resize).toBe('none')
+    unmount()
+  })
+
+  it('lines sets the visible rows, reactively', () => {
+    const v = signal('')
+    const lines = signal(5)
+    const { container, unmount } = mountTest(
+      h(Field, {
+        value: v,
+        onChangeText: (next: string) => v.set(next),
+        multiline: true,
+        get lines() {
+          return lines()
+        },
+      } as never),
+    )
+    const area = container.firstElementChild as HTMLTextAreaElement
+    expect(area.getAttribute("rows")).toBe("5")
+    lines.set(2)
+    expect(area.getAttribute("rows")).toBe("2")
+    unmount()
+  })
+
+  it('an out-of-range lines falls back to the default instead of an invalid rows', () => {
+    const v = signal('')
+    const { container, unmount } = mountTest(
+      h(Field, { value: v, onChangeText: (n: string) => v.set(n), multiline: true, lines: 0 }),
+    )
+    expect((container.firstElementChild as HTMLTextAreaElement).getAttribute("rows")).toBe("3")
+    unmount()
+  })
+
+  it('input propagates a multi-line value to onChangeText and writes back', () => {
+    const v = signal('')
+    const { container, unmount } = mountTest(
+      h(Field, { value: v, onChangeText: (next: string) => v.set(next), multiline: true }),
+    )
+    const area = container.firstElementChild as HTMLTextAreaElement
+    area.value = 'line one\nline two'
+    area.dispatchEvent(new Event('input', { bubbles: true }))
+    expect(v()).toBe('line one\nline two')
+    v.set('')
+    expect(area.value).toBe('')
+    unmount()
+  })
+
+  it('Enter does NOT submit a text area, even from an untyped caller', () => {
+    const v = signal('')
+    let submitted = 0
+    const { container, unmount } = mountTest(
+      h(Field, {
+        value: v,
+        onChangeText: (next: string) => v.set(next),
+        multiline: true,
+        onSubmit: () => submitted++,
+      } as never),
+    )
+    const area = container.firstElementChild as HTMLTextAreaElement
+    area.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+    expect(submitted).toBe(0)
+    unmount()
+  })
+
+  it('placeholder, disabled and passthrough attrs reach the text area', () => {
+    const v = signal('')
+    const { container, unmount } = mountTest(
+      h(Field, {
+        value: v,
+        onChangeText: (next: string) => v.set(next),
+        multiline: true,
+        placeholder: 'Notes',
+        disabled: true,
+        'data-testid': 'notes',
+      }),
+    )
+    const area = container.firstElementChild as HTMLTextAreaElement
+    expect(area.placeholder).toBe('Notes')
+    expect(area.disabled).toBe(true)
+    expect(area.getAttribute('data-testid')).toBe('notes')
+    unmount()
+  })
+
+  it('the multiline shape rejects keyboard kinds and onSubmit at the type level', () => {
+    const v = signal('')
+    const base = { value: v, onChangeText: (_: string) => {} }
+    // @ts-expect-error — a text area has no keyboard kind
+    const withKind: FieldProps = { ...base, multiline: true, kind: 'email' }
+    // @ts-expect-error — Enter inserts a newline, so there is no onSubmit
+    const withSubmit: FieldProps = { ...base, multiline: true, onSubmit: () => {} }
+    // @ts-expect-error — `lines` belongs to the multiline shape only
+    const linesOnInput: FieldProps = { ...base, lines: 4 }
+    const ok: FieldProps[] = [{ ...base, multiline: true, lines: 4, kind: 'text' }, { ...base, kind: 'email' }]
+    expect([withKind, withSubmit, linesOnInput, ...ok]).toHaveLength(5)
+  })
+})
+
 describe('<Toggle> happy-dom unit', () => {
   it('renders an <input type=checkbox> wired to a signal', () => {
     const v = signal(false)
@@ -1582,7 +1691,7 @@ describe('escape-hatch primitives — web runtime', () => {
 })
 
 describe('<WebView> happy-dom unit (web = iframe host)', () => {
-  it('src → <iframe src=…> filling its container', () => {
+  it('src → <iframe src=…>, full width, iframe-default height unless it grows', () => {
     // `about:blank`: a remote-looking src makes happy-dom start a real fetch
     // that outlives the worker teardown ("AsyncTaskManager has been
     // destroyed"); the attribute mapping under test is URL-agnostic.
@@ -1591,8 +1700,17 @@ describe('<WebView> happy-dom unit (web = iframe host)', () => {
     expect(frame.tagName).toBe('IFRAME')
     expect(frame.getAttribute('src')).toBe('about:blank')
     expect(frame.style.width).toBe('100%')
-    expect(frame.style.height).toBe('100%')
+    // Unsized is the <iframe> default (150px, measured in the browser suite) —
+    // the size the native hosts pin to. It used to be `height: 100%`, which
+    // filled a sized container on web while the same source was 150 on
+    // Android; filling is now the explicit `grow` (#3956 item 5).
+    expect(frame.style.height).toBe('')
     unmount()
+    const grown = mountTest(h(WebView, { src: 'about:blank', grow: true }))
+    const g = grown.container.firstElementChild as HTMLIFrameElement
+    expect(g.style.height).toBe('100%')
+    expect(g.style.flex).toBe('1 1 150px')
+    grown.unmount()
   })
 
   it('html → <iframe srcdoc=…>', () => {

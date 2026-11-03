@@ -389,6 +389,17 @@ export type ScrollBehaviorFn = (
 
 export interface RouterOptions {
   routes: RouteRecord[]
+  /**
+   * Global guards, run in order before every navigation, after any per-route `beforeEnter`. Same contract as
+   * `router.beforeEach(guard)`, which appends to this list. Declaring them here is the form that also crosses to
+   * iOS and Android, where there is no imperative registration.
+   *
+   * @example
+   * createRouter({ routes, beforeEach: [(to) => to.path !== '/admin' || isAdmin()] })
+   */
+  beforeEach?: NavigationGuard[]
+  /** Hooks run after every committed navigation. Same contract as `router.afterEach(hook)`, which appends. */
+  afterEach?: AfterEachHook[]
   /** "hash" (default) uses location.hash; "history" uses pushState */
   mode?: 'hash' | 'history'
   /**

@@ -2,6 +2,30 @@ import { isClient } from '@pyreon/reactivity'
 import { onHookCleanup } from './lifecycle'
 
 /**
+ * The `File` behind each object URL a picker handed out, so `fileFromUri(uri)` can return the real file — with the
+ * name and type the user's file actually has — rather than an anonymous blob re-read through `fetch`.
+ *
+ * BOUNDED (leak class C): the oldest entry is dropped past {@link PICKED_FILE_LIMIT}. Dropping is safe — the object
+ * URL itself stays valid (pickers never revoke it), so `fileFromUri` still reads the bytes; only the original filename
+ * falls back to the URI's last segment.
+ */
+const PICKED_FILE_LIMIT = 32
+const pickedFiles = new Map<string, File>()
+
+function rememberPickedFile(uri: string, file: File): void {
+  pickedFiles.set(uri, file)
+  if (pickedFiles.size > PICKED_FILE_LIMIT) {
+    const oldest = pickedFiles.keys().next().value
+    if (oldest !== undefined) pickedFiles.delete(oldest)
+  }
+}
+
+/** The `File` a picker produced for `uri`, if it is still remembered. */
+export function pickedFileFor(uri: string): File | undefined {
+  return pickedFiles.get(uri)
+}
+
+/**
  * The one web implementation behind `useCamera` / `useFilePicker` /
  * `useImagePicker`.
  *
@@ -33,7 +57,7 @@ import { onHookCleanup } from './lifecycle'
  */
 export function createFilePicker(
   configure: (input: HTMLInputElement) => void,
-): () => Promise<string | null> {
+): (configureCall?: (input: HTMLInputElement) => void) => Promise<string | null> {
   /** Abort handles for picks whose sheet is still open. */
   const inFlight = new Set<() => void>()
 
@@ -43,13 +67,15 @@ export function createFilePicker(
     inFlight.clear()
   })
 
-  return () => {
+  // `configureCall` is the per-pick half (`useFilePicker`'s `accept`); `configure` is the hook's fixed half.
+  return (configureCall) => {
     /* v8 ignore next — SSR arm; `isClient` is a module-load constant and this suite runs under happy-dom, so this is unreachable without mocking @pyreon/reactivity (forbidden by the test-environment rules). */
     if (!isClient) return Promise.resolve(null)
     return new Promise<string | null>((resolve) => {
       const input = document.createElement('input')
       input.type = 'file'
       configure(input)
+      configureCall?.(input)
       // Keep the input out of layout: it is only a programmatic trigger.
       input.style.display = 'none'
       document.body.appendChild(input)
@@ -67,7 +93,10 @@ export function createFilePicker(
 
       input.addEventListener('change', () => {
         const file = input.files?.[0]
-        settle(file ? URL.createObjectURL(file) : null)
+        if (!file) return settle(null)
+        const uri = URL.createObjectURL(file)
+        rememberPickedFile(uri, file)
+        settle(uri)
       })
       // Fired when the user dismisses the file dialog without choosing. Not
       // universal across older browsers — the `settled` guard makes a double

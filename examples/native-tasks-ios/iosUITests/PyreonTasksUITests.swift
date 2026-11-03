@@ -304,6 +304,59 @@ final class PyreonTasksUITests: XCTestCase {
         }
     }
 
+    /// Tap a hosted web editor and type into it, retrying until `reached` holds.
+    ///
+    /// Why not a single centre tap: the preceding step typed into CodeMirror, so the software keyboard is still up,
+    /// and `scrollIntoView` only guarantees the view is partly hittable. The view's CENTRE can sit under the keyboard
+    /// or in a layout that is still settling, in which case the tap never focuses the editor and the keystrokes go
+    /// nowhere. That showed up as a first-attempt failure (edits label 0) that only passed on the CI retry. Tapping
+    /// the part of the view that is actually visible above the keyboard, and re-checking that the keystroke arrived,
+    /// removes the dependence on timing.
+    private func typeIntoHostedEditor(
+        _ app: XCUIApplication,
+        view: XCUIElement,
+        text: String,
+        attempts: Int = 4,
+        reached: () -> Bool
+    ) -> Bool {
+        let window = app.windows.firstMatch.frame
+        // Anything above this is the status bar / navigation chrome; a tap there never reaches the page.
+        let topInset = window.minY + 110
+        let scroller = app.scrollViews.firstMatch.exists ? app.scrollViews.firstMatch : app
+        for _ in 0..<attempts {
+            scrollIntoView(view, in: app, maxSwipes: 16)
+            // Bring the WHOLE view into the clear band between the top chrome and the keyboard. Tapping a sliver that
+            // is only partly on screen lands on the chrome (or on whichever editor still holds keyboard focus), so
+            // the keystrokes keep going to the previous editor.
+            var settle = 0
+            while settle < 6 {
+                var bottom = window.maxY
+                if app.keyboards.count > 0 { bottom = min(bottom, app.keyboards.firstMatch.frame.minY) }
+                let frame = view.frame
+                if frame.minY < topInset { scroller.swipeDown() }
+                else if frame.maxY > bottom - 10 { scroller.swipeUp() }
+                else { break }
+                settle += 1
+            }
+            var bottom = window.maxY
+            if app.keyboards.count > 0 { bottom = min(bottom, app.keyboards.firstMatch.frame.minY) }
+            let clear = CGRect(x: view.frame.minX, y: max(view.frame.minY, topInset), width: view.frame.width, height: 0)
+                .union(CGRect(x: view.frame.minX, y: min(view.frame.maxY, bottom - 10), width: view.frame.width, height: 0))
+            guard clear.height >= 40 else { continue }
+            app.coordinate(withNormalizedOffset: .zero)
+                .withOffset(CGVector(dx: clear.midX, dy: clear.midY))
+                .tap()
+            RunLoop.current.run(until: Date().addingTimeInterval(0.6))
+            app.typeText(text)
+            let deadline = Date().addingTimeInterval(6)
+            while Date() < deadline {
+                if reached() { return true }
+                RunLoop.current.run(until: Date().addingTimeInterval(0.3))
+            }
+        }
+        return reached()
+    }
+
     /// Login -> tasks -> toolkit. Factored out because the crash-reporter proof
     /// needs to reach the toolkit page TWICE (once to record, once after a real
     /// relaunch), and duplicating the login flow would be two places to rot.
@@ -386,6 +439,211 @@ final class PyreonTasksUITests: XCTestCase {
 
         tapAfterScrolling(app.buttons["streams-back"].firstMatch, in: app)
         XCTAssertTrue(app.otherElements["tasks-page"].firstMatch.waitForExistence(timeout: 15), "streams-back did not return to tasks")
+    }
+
+    /// Requests that carry what the user ENTERED (#3978), asserted on what the
+    /// fixture server REFLECTS — the wire, not the app's idea of what it sent.
+    ///
+    /// The draft is typed, mutated, then cleared by the same handler: a request
+    /// that read its values late (or a body baked at compile time) shows up as
+    /// the wrong name. The awaited direct call must resolve (`sent`), and a
+    /// rejected one must end its handler before the next statement
+    /// (`failing`, never `unreachable`).
+    func test_requestsCarryRuntimeValuesAndRejectNon2xx() throws {
+        let app = XCUIApplication()
+        app.launch()
+        let username = app.textFields["login-username"].firstMatch
+        XCTAssertTrue(username.waitForExistence(timeout: 30), "Username field missing")
+        username.tap()
+        username.typeText("abcde")
+        dismissKeyboard(app)
+        app.buttons["login-submit"].firstMatch.tap()
+        XCTAssertTrue(app.otherElements["tasks-page"].firstMatch.waitForExistence(timeout: 20), "Tasks page did not render after login")
+
+        let nav = app.buttons["tasks-requests"].firstMatch
+        XCTAssertTrue(nav.waitForExistence(timeout: 15), "Requests button missing on tasks page")
+        tapAfterScrolling(nav, in: app)
+        XCTAssertTrue(app.scrollViews["requests-page"].firstMatch.waitForExistence(timeout: 15)
+            || app.otherElements["requests-page"].firstMatch.waitForExistence(timeout: 5), "Requests page did not render")
+
+        let draft = app.textFields["req-draft"].firstMatch
+        XCTAssertTrue(draft.waitForExistence(timeout: 10), "draft field missing")
+        draft.tap()
+        draft.typeText("Grace Hopper")
+        dismissKeyboard(app)
+        tapAfterScrolling(app.buttons["req-mutate"].firstMatch, in: app)
+
+        let status = app.staticTexts["req-status"].firstMatch
+        if !waitForLabel(status, "Status: success", timeout: 30) {
+            print("DIAG-REQUESTS:\n\(app.debugDescription)")
+        }
+        XCTAssertEqual(status.label, "Status: success", "the mutation did not succeed")
+        XCTAssertEqual(app.staticTexts["req-method"].firstMatch.label, "Method: POST")
+        XCTAssertEqual(app.staticTexts["req-query"].firstMatch.label, "Query: tag=Grace+Hopper&page=3")
+        XCTAssertEqual(app.staticTexts["req-type"].firstMatch.label, "Type: application/json")
+        XCTAssertEqual(app.staticTexts["req-client"].firstMatch.label, "Client: pyreon")
+        // The call-level onSuccess wrote the reflected body: JSON.stringify byte for byte.
+        XCTAssertTrue(waitForLabel(app.staticTexts["req-body"].firstMatch, #"Body: {"name":"Grace Hopper","n":2}"#, timeout: 10),
+                      "reflected body: '\(app.staticTexts["req-body"].firstMatch.label)'")
+
+        tapAfterScrolling(app.buttons["req-fail"].firstMatch, in: app)
+        XCTAssertTrue(waitForLabel(app.staticTexts["req-fail-status"].firstMatch, "Failing: rejected", timeout: 20),
+                      "a 500 did not put the mutation in error: '\(app.staticTexts["req-fail-status"].firstMatch.label)'")
+
+        let direct = app.staticTexts["req-direct-status"].firstMatch
+        tapAfterScrolling(app.buttons["req-direct"].firstMatch, in: app)
+        XCTAssertTrue(waitForLabel(direct, "Direct: sent", timeout: 20), "the awaited endpoint call did not resolve: '\(direct.label)'")
+        tapAfterScrolling(app.buttons["req-direct-fail"].firstMatch, in: app)
+        XCTAssertTrue(waitForLabel(direct, "Direct: failing", timeout: 10), "the failing handler did not start: '\(direct.label)'")
+        // Give a wrongly-continuing handler time to reach its next statement.
+        Thread.sleep(forTimeInterval: 3)
+        XCTAssertEqual(direct.label, "Direct: failing", "a rejected await did not end the handler")
+
+        tapAfterScrolling(app.buttons["requests-back"].firstMatch, in: app)
+        XCTAssertTrue(app.otherElements["tasks-page"].firstMatch.waitForExistence(timeout: 15), "requests-back did not return to tasks")
+    }
+
+    /// `Intl` (#3980) on the device: the emitted `PyreonDateTimeFormat` /
+    /// `PyreonNumberFormat` calls, run by the Simulator's own Foundation, must
+    /// print what the web prints for the same (locale, options, zone) — the
+    /// expected strings are Node's `Intl` output, and the differential table in
+    /// the compiler shows these cases agree on every platform.
+    ///
+    /// The zone is a signal: "Show in UTC" must move the SAME instant to another
+    /// wall-clock time, which a formatter whose zone was fixed at construction
+    /// cannot do.
+    func test_intlFormatsLikeTheWebAndFollowsARuntimeTimeZone() throws {
+        let app = XCUIApplication()
+        app.launch()
+        let username = app.textFields["login-username"].firstMatch
+        XCTAssertTrue(username.waitForExistence(timeout: 30), "Username field missing")
+        username.tap()
+        username.typeText("abcde")
+        dismissKeyboard(app)
+        app.buttons["login-submit"].firstMatch.tap()
+        XCTAssertTrue(app.otherElements["tasks-page"].firstMatch.waitForExistence(timeout: 20), "Tasks page did not render after login")
+
+        let nav = app.buttons["tasks-intl"].firstMatch
+        XCTAssertTrue(nav.waitForExistence(timeout: 15), "Intl button missing on tasks page")
+        tapAfterScrolling(nav, in: app)
+        XCTAssertTrue(app.otherElements["intl-page"].firstMatch.waitForExistence(timeout: 15), "Intl page did not render")
+
+        let meeting = app.staticTexts["intl-meeting"].firstMatch
+        XCTAssertTrue(waitForLabel(meeting, "22.10.2026, 10:00", timeout: 10), "de-DE medium/short in Berlin: '\(meeting.label)'")
+        XCTAssertEqual(app.staticTexts["intl-price"].firstMatch.label, "$1,234.50")
+        XCTAssertEqual(app.staticTexts["intl-qty"].firstMatch.label, "1.234.567,891")
+        XCTAssertEqual(app.staticTexts["intl-day"].firstMatch.label, "Thursday, October 22")
+        XCTAssertEqual(app.staticTexts["intl-percent"].firstMatch.label, "26%")
+
+        app.buttons["intl-utc"].firstMatch.tap()
+        XCTAssertTrue(waitForLabel(meeting, "22.10.2026, 08:00", timeout: 10), "a runtime timeZone change did not reach the formatter: '\(meeting.label)'")
+    }
+
+    /// `<Field multiline lines>` (#3980) — a text area, proven on the device in
+    /// the two directions a text control has plus the one thing `lines` means.
+    ///
+    /// HEIGHT: `lines={4}` must make the field four rows tall whatever its
+    /// content (`.lineLimit(n, reservesSpace: true)`), so it is measured EMPTY
+    /// against the single-line field above it; then a reactive `lines` change
+    /// to 2 must shrink it. An auto-growing field, or one whose `lines` was
+    /// dropped, reads one row tall and fails the ratio.
+    ///
+    /// VALUE, program -> control: "Fill" writes a three-line string into the
+    /// signal and the control must show it. VALUE, control -> program: typed
+    /// text including a Return must reach the signal, newline and all — on a
+    /// single-line field Return would submit instead, so `delta` landing on its
+    /// own line is the proof that this is a text area.
+    func test_multilineFieldIsATextAreaBothWays() throws {
+        let app = XCUIApplication()
+        app.launch()
+        let username = app.textFields["login-username"].firstMatch
+        XCTAssertTrue(username.waitForExistence(timeout: 30), "Username field missing")
+        username.tap()
+        username.typeText("abcde")
+        dismissKeyboard(app)
+        app.buttons["login-submit"].firstMatch.tap()
+        XCTAssertTrue(app.otherElements["tasks-page"].firstMatch.waitForExistence(timeout: 20), "Tasks page did not render after login")
+
+        let nav = app.buttons["tasks-fields"].firstMatch
+        XCTAssertTrue(nav.waitForExistence(timeout: 15), "Fields button missing on tasks page")
+        tapAfterScrolling(nav, in: app)
+        XCTAssertTrue(app.otherElements["fields-page"].firstMatch.waitForExistence(timeout: 15), "Fields page did not render")
+
+        let single = app.descendants(matching: .any).matching(identifier: "fields-single").firstMatch
+        let notes = app.descendants(matching: .any).matching(identifier: "fields-notes").firstMatch
+        XCTAssertTrue(notes.waitForExistence(timeout: 10), "multiline field missing:\n\(app.debugDescription)")
+
+        let oneRow = single.frame.height
+        let fourRows = notes.frame.height
+        XCTAssertGreaterThan(oneRow, 0, "single-line field has no height")
+        XCTAssertGreaterThan(fourRows, oneRow * 2.5, "lines={4} did not make the EMPTY field four rows tall (single \(oneRow), multiline \(fourRows))")
+
+        // Program -> control.
+        app.buttons["fields-fill"].firstMatch.tap()
+        let echo = app.staticTexts["fields-notes-echo"].firstMatch
+        XCTAssertTrue(waitForLabel(echo, "alpha\nbeta\ngamma", timeout: 10), "signal write did not render: '\(echo.label)'")
+        XCTAssertEqual(notes.value as? String, "alpha\nbeta\ngamma", "the text area does not show the value written to its signal")
+
+        // Reactive `lines`: 4 -> 2 must remove exactly two LINE HEIGHTS, measured
+        // independently on the echo, which now holds three lines in the same
+        // body style.
+        let lineHeight = echo.frame.height / 3
+        app.buttons["fields-rows-2"].firstMatch.tap()
+        let deadline = Date().addingTimeInterval(5)
+        while notes.frame.height >= fourRows && Date() < deadline { usleep(100_000) }
+        let twoRows = notes.frame.height
+        XCTAssertTrue(
+            lineHeight > 0 && (0.8...1.25).contains((fourRows - twoRows) / (2 * lineHeight)),
+            "lines 4 -> 2 did not remove two line heights (four \(fourRows), two \(twoRows), line \(lineHeight))"
+        )
+
+        // Control -> program, newline included.
+        notes.tap()
+        notes.typeText("\ndelta")
+        let length = app.staticTexts["fields-notes-length"].firstMatch
+        XCTAssertTrue(waitForLabel(length, "22", timeout: 10), "typed text did not reach the signal (length '\(length.label)', echo '\(echo.label)')")
+        XCTAssertTrue(echo.label.contains("\ndelta"), "Return did not insert a newline: '\(echo.label)'")
+
+        // A SINGLE-line field stays one line however long its text — the
+        // contract the Android lowering had to state explicitly.
+        single.tap()
+        single.typeText(String(repeating: "word ", count: 30))
+        XCTAssertEqual(single.frame.height, oneRow, "long text wrapped the single-line field")
+    }
+
+    /// #3979: a file resolved by `fileFromUri` goes out as a multipart part and as a raw body. The server parses the
+    /// multipart with its own FormData parser and reports each part, so this asserts the bytes were READABLE as sent —
+    /// the filename, the part type, the file's contents, a text part from the field, and an array as repeated parts.
+    func test_uploadsAMultipartFormAndARawFile() throws {
+        let app = XCUIApplication()
+        app.launch()
+        let username = app.textFields["login-username"].firstMatch
+        XCTAssertTrue(username.waitForExistence(timeout: 30), "Username field missing")
+        username.tap()
+        username.typeText("abcde")
+        dismissKeyboard(app)
+        app.buttons["login-submit"].firstMatch.tap()
+        XCTAssertTrue(app.otherElements["tasks-page"].firstMatch.waitForExistence(timeout: 20), "Tasks page did not render after login")
+        tapAfterScrolling(app.buttons["tasks-requests"].firstMatch, in: app)
+
+        let draft = app.textFields["req-draft"].firstMatch
+        XCTAssertTrue(draft.waitForExistence(timeout: 15), "draft field missing")
+        draft.tap()
+        draft.typeText("Ada L")
+        dismissKeyboard(app)
+
+        tapAfterScrolling(app.buttons["req-upload"].firstMatch, in: app)
+        let parts = app.staticTexts["req-upload-parts"].firstMatch
+        let want = "Parts: note=note.txt|text/plain|Hello Pyreon;caption=Ada L;n=1;n=2"
+        if !waitForLabel(parts, want, timeout: 30) {
+            print("DIAG-UPLOAD:\n\(app.debugDescription)")
+        }
+        XCTAssertEqual(parts.label, want, "the server did not read the multipart body as sent")
+        XCTAssertEqual(app.staticTexts["req-upload-type"].firstMatch.label, "Upload type: multipart/form-data")
+
+        tapAfterScrolling(app.buttons["req-raw"].firstMatch, in: app)
+        let raw = app.staticTexts["req-raw-result"].firstMatch
+        XCTAssertTrue(waitForLabel(raw, "Raw: PUT text/plain Hello Pyreon", timeout: 30), "raw file body: '\(raw.label)'")
     }
 
     /// Crash reporting, device-proven in the only way that means anything: a
@@ -574,14 +832,10 @@ final class PyreonTasksUITests: XCTestCase {
         let richEditsAfterPush = Int(richEdits.label) ?? 0
 
         // REVERSE: typing reaches native as the document's JSON text.
-        scrollIntoView(richView, in: app, maxSwipes: 16)
-        richView.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
-        app.typeText("ZZ")
-        let typingDeadline = Date().addingTimeInterval(15)
-        while Date() < typingDeadline && (Int(richEdits.label) ?? 0) <= richEditsAfterPush {
-            RunLoop.current.run(until: Date().addingTimeInterval(0.3))
+        let reached = typeIntoHostedEditor(app, view: richView, text: "ZZ") {
+            (Int(richEdits.label) ?? 0) > richEditsAfterPush
         }
-        XCTAssertGreaterThan(Int(richEdits.label) ?? 0, richEditsAfterPush, "typing in TipTap never reached the native signal (edits label: \(richEdits.label))")
+        XCTAssertTrue(reached, "typing in TipTap never reached the native signal (edits label: \(richEdits.label), keyboardShown: \(app.keyboards.count > 0), view frame: \(richView.frame), code value: \(app.staticTexts["gal-code-value"].firstMatch.label), rich value: \(app.staticTexts["gal-rich-value"].firstMatch.label), focused: \(app.descendants(matching: .any).matching(NSPredicate(format: "hasKeyboardFocus == true")).firstMatch.debugDescription))")
     }
 
     func test_grammarBarSelectionAfterPartialVisibility() throws {
@@ -1523,6 +1777,32 @@ final class PyreonTasksUITests: XCTestCase {
             "true",
             "PyreonPermissions denied a seeded grant"
         )
+        // toast: the overlay shows on a PUSHED screen. `<Toaster />` sits beside
+        // the RouterView, i.e. in the NavigationStack's ROOT content; while it
+        // lowered to an inline stack, a toast fired from a pushed screen like
+        // this one was covered by it and never visible. It now lives in its own
+        // pass-through window above the app.
+        let toolkitSave = app.buttons["toolkit-save"].firstMatch
+        XCTAssertTrue(toolkitSave.waitForExistence(timeout: 10), "Toolkit Save button missing")
+        toolkitSave.tap()
+        let toastCard = app.descendants(matching: .any)["pyreon-toast"].firstMatch
+        XCTAssertTrue(
+            toastCard.waitForExistence(timeout: 3),
+            "toast(i18n.t('saved')) fired on a pushed screen but no toast appeared"
+        )
+        XCTAssertTrue(
+            toastCard.label.contains("Saved"),
+            "the toast reads '\(toastCard.label)', expected 'Saved'"
+        )
+        // dismiss: the card's button removes it. The overlay window claims touches
+        // only inside a card, so this tap reaching the button also proves the
+        // card is hit-testable while the rest of the screen passes through.
+        let dismissToast = app.buttons["pyreon-toast-dismiss"].firstMatch
+        XCTAssertTrue(dismissToast.waitForExistence(timeout: 3), "the toast has no dismiss button")
+        dismissToast.tap()
+        let gone = NSPredicate(format: "exists == false")
+        expectation(for: gone, evaluatedWith: toastCard)
+        waitForExpectations(timeout: 3)
         // sync: the CRDT-backed signal was RENDERED but asserted by neither device
         // test until now -- built, shipped, never verified, which is the class
         // this whole arc is about.
@@ -1713,5 +1993,132 @@ final class PyreonTasksUITests: XCTestCase {
             loginAfterLogout.waitForExistence(timeout: 15),
             "Did not return to login page within 5s after Logout — store flag flip + navigate did not commit"
         )
+    }
+
+    // MARK: Hosted web flow — browser chrome + fill sizing (#3982, #3956 item 5)
+
+    /// Login -> tasks -> the /webhost screen.
+    private func navigateToWebHost(_ app: XCUIApplication) {
+        let username = app.textFields["login-username"].firstMatch
+        XCTAssertTrue(username.waitForExistence(timeout: 30), "Username field missing")
+        username.tap()
+        username.typeText("abcde")
+        dismissKeyboard(app)
+        app.buttons["login-submit"].firstMatch.tap()
+        XCTAssertTrue(app.otherElements["tasks-page"].firstMatch.waitForExistence(timeout: 20), "Tasks page did not render after login")
+        let open = app.buttons["tasks-webhost"].firstMatch
+        XCTAssertTrue(open.waitForExistence(timeout: 20), "Web host button missing")
+        open.tap()
+        XCTAssertTrue(app.otherElements["webhost-page"].firstMatch.waitForExistence(timeout: 15), "Web host page did not render")
+    }
+
+    /// A page hosted in `<WebView grow>` on a REAL simulator:
+    ///
+    /// - SIZING: the web view takes the screen height its header and footer
+    ///   leave — far more than the 150-point unsized default — and the page's
+    ///   own viewport (`window.innerHeight`) agrees.
+    /// - alert / confirm / prompt: presented as native alerts by the
+    ///   WKUIDelegate, with the page receiving each answer (without a delegate
+    ///   WebKit drops alert, and confirm/prompt return false/null).
+    /// - geolocation: WebKit's per-site prompt appears and the page gets a
+    ///   position. The location permission and a fixed location are set up by
+    ///   the harness (`simctl privacy grant location` + `simctl location set`).
+    /// - file input: tapping it opens the system chooser (built in on iOS).
+    /// - target="_blank": hands the URL to Safari instead of doing nothing.
+    func test_webHostChromeAndFill() throws {
+        let app = XCUIApplication()
+        app.launch()
+        navigateToWebHost(app)
+
+        let result = app.staticTexts["webhost-result"].firstMatch
+        let web = app.webViews.firstMatch
+        XCTAssertTrue(web.waitForExistence(timeout: 20), "hosted WKWebView missing")
+
+        // ── SIZING ─────────────────────────────────────────────────────────
+        // The page posts its viewport height on load.
+        XCTAssertTrue(waitForLabelContaining(result, "size:", timeout: 20), "page never reported its size (label: \(result.label))")
+        let viewport = Int(result.label.replacingOccurrences(of: "size:", with: "")) ?? 0
+        let frame = web.frame
+        let screen = app.windows.firstMatch.frame
+        XCTAssertGreaterThan(frame.height, 300, "grow did not fill: web view is \(frame.height)pt high (unsized default is 150)")
+        XCTAssertGreaterThan(frame.height, screen.height * 0.5, "grow left most of the screen unused (\(frame.height) of \(screen.height))")
+        XCTAssertGreaterThan(viewport, 300, "the page's own viewport is \(viewport) — the frame grew but the page did not")
+
+        // ── alert ──────────────────────────────────────────────────────────
+        web.buttons["Alert"].firstMatch.tap()
+        let alert = app.alerts.firstMatch
+        XCTAssertTrue(alert.waitForExistence(timeout: 10), "alert() presented nothing")
+        XCTAssertTrue(alert.staticTexts["hello from the page"].exists, "alert shows the page's message")
+        alert.buttons["OK"].tap()
+        XCTAssertTrue(waitForLabel(result, "alert:done", timeout: 10), "alert() never returned (label: \(result.label))")
+
+        // ── confirm: Cancel, then OK ───────────────────────────────────────
+        web.buttons["Confirm"].firstMatch.tap()
+        XCTAssertTrue(alert.waitForExistence(timeout: 10), "confirm() presented nothing")
+        XCTAssertTrue(alert.staticTexts["Proceed?"].exists, "confirm shows the page's question")
+        alert.buttons["Cancel"].tap()
+        XCTAssertTrue(waitForLabel(result, "confirm:false", timeout: 10), "confirm() Cancel (label: \(result.label))")
+        web.buttons["Confirm"].firstMatch.tap()
+        XCTAssertTrue(alert.waitForExistence(timeout: 10), "second confirm() presented nothing")
+        alert.buttons["OK"].tap()
+        XCTAssertTrue(waitForLabel(result, "confirm:true", timeout: 10), "confirm() OK (label: \(result.label))")
+
+        // ── prompt: replace the default text ───────────────────────────────
+        web.buttons["Prompt"].firstMatch.tap()
+        XCTAssertTrue(alert.waitForExistence(timeout: 10), "prompt() presented nothing")
+        let field = alert.textFields.firstMatch
+        XCTAssertTrue(field.exists, "prompt has a text field")
+        XCTAssertEqual(field.value as? String, "guest", "prompt carries the page's default text")
+        field.tap()
+        field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 8) + "pyreon")
+        alert.buttons["OK"].tap()
+        XCTAssertTrue(waitForLabel(result, "prompt:pyreon", timeout: 10), "prompt() OK (label: \(result.label))")
+
+        // ── geolocation ────────────────────────────────────────────────────
+        web.buttons["Locate"].firstMatch.tap()
+        // WebKit asks per site. The app-level permission is pre-granted by the
+        // harness; if it was not, SpringBoard's prompt appears too.
+        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        let deadline = Date().addingTimeInterval(20)
+        while Date() < deadline && !result.label.hasPrefix("geo:ok") && !result.label.hasPrefix("geo:err") {
+            for button in ["Allow", "Allow While Using App", "Allow Once"] {
+                let site = app.alerts.buttons[button].firstMatch
+                if site.exists { site.tap() }
+                let system = springboard.alerts.buttons[button].firstMatch
+                if system.exists { system.tap() }
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.5))
+        }
+        XCTAssertEqual(result.label, "geo:ok", "the page did not get a position")
+
+        // ── target="_blank" ────────────────────────────────────────────────
+        let link = web.links["External link"].firstMatch
+        XCTAssertTrue(link.waitForExistence(timeout: 10), "external link missing: \(app.debugDescription.prefix(2000))")
+        link.tap()
+        let safari = XCUIApplication(bundleIdentifier: "com.apple.mobilesafari")
+        XCTAssertTrue(
+            safari.wait(for: .runningForeground, timeout: 20),
+            "target=_blank did not hand the URL to Safari (page said \(result.label), app state \(app.state.rawValue))"
+        )
+        app.activate()
+        XCTAssertTrue(app.otherElements["webhost-page"].firstMatch.waitForExistence(timeout: 15), "the hosted page was replaced instead of kept")
+
+        // ── file input ─────────────────────────────────────────────────────
+        // WKWebView presents its own chooser on iOS (no delegate needed). Its
+        // options are a menu, not an alert; finding any of them proves the
+        // input is live. Choosing a file needs a photo library / Files content
+        // the simulator does not reliably have, so it is dismissed instead.
+        let fileControl = web.buttons["Pick a file"].firstMatch.exists ? web.buttons["Pick a file"].firstMatch : web.staticTexts["Pick a file"].firstMatch
+        fileControl.tap()
+        let choices = ["Photo Library", "Choose File", "Take Photo", "Take Photo or Video", "Choose Files"]
+        let chooserDeadline = Date().addingTimeInterval(10)
+        var shown: String?
+        while Date() < chooserDeadline && shown == nil {
+            shown = choices.first { app.buttons[$0].exists || app.otherElements[$0].exists || app.staticTexts[$0].exists }
+            if shown == nil { RunLoop.current.run(until: Date().addingTimeInterval(0.3)) }
+        }
+        XCTAssertNotNil(shown, "tapping the file input presented no chooser: \(app.debugDescription.prefix(1500))")
+        // Dismiss: tap outside the menu.
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.05)).tap()
     }
 }

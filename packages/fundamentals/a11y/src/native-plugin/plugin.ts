@@ -1,8 +1,14 @@
 // How `@pyreon/a11y` crosses to native: the imperative `announce("msg", { politeness })` becomes a call on
-// `PyreonA11y`, the runtime object that speaks a message through VoiceOver (`UIAccessibility.post`) or TalkBack
-// (`announceForAccessibility`). The message is the first argument; an options object's `politeness: 'assertive'`
-// sets `assertive` (default polite); a `clear` option is dropped in v1. The rest of the package (VisuallyHidden /
-// LiveRegion / SkipLink / createA11yId) is DOM-based and has no native lowering.
+// `PyreonA11y`, the runtime object that speaks a message through VoiceOver (`UIAccessibility.post`) or TalkBack. The
+// message is the first argument; an options object's `politeness: 'assertive'` sets `assertive` (default polite); a
+// `clear` option is dropped in v1. The rest of the package (VisuallyHidden / LiveRegion / SkipLink / createA11yId) is
+// DOM-based and has no native lowering.
+//
+// Android has no context-free announcement channel: TalkBack speaks a live region, which has to be ON SCREEN. So a
+// component that announces gets one, in its body: `refineParse` adds a host declaration to every component whose IR
+// contains an `announce(...)` call, and on Kotlin that declaration wraps the component in `PyreonA11yHost`, which
+// registers the announcer while it is composed. iOS needs no host (`UIAccessibility.post` is global), so the Swift
+// emit is empty. Without the host, `announce` compiled and silently did nothing on Android.
 //
 // The callee is whatever local name the file imported `announce` as, so the plugin's `scanModule` records the
 // local names and its `callExprs` recognizer matches a call against them.
@@ -12,9 +18,11 @@ import {
   staticPropKey,
   type CallExprRecognizer,
   type CompilerPlugin,
+  type DeclEmitter,
   type ExprEmitter,
   type ExtExprIR,
   type ModuleScanner,
+  type ParseRefinement,
 } from '@pyreon/native-compiler/plugin-api'
 import { a11yStubs } from './stubs'
 
@@ -77,6 +85,45 @@ const announceExpr: ExprEmitter = {
   legacyHash: (e) => ({ kind: ANNOUNCE_EXPR, message: e.args[0], assertive: assertiveOf(e) }),
 }
 
+const HOST_DECL = 'announce-host'
+
+/** Whether `node` (any IR subtree) contains an `announce(...)` call this plugin recognized. */
+function containsAnnounce(node: unknown): boolean {
+  if (node === null || typeof node !== 'object') return false
+  if (Array.isArray(node)) return node.some(containsAnnounce)
+  const rec = node as Record<string, unknown>
+  if (rec.kind === 'ext-expr' && rec.plugin === A11Y_PLUGIN_NAME && rec.type === ANNOUNCE_EXPR) return true
+  for (const key in rec) if (containsAnnounce(rec[key])) return true
+  return false
+}
+
+/**
+ * Give every component that announces the host Android needs. An announcement inside a file-level helper reaches no
+ * component by IR, so a helper that announces gives the host to every component in the file — over-providing costs
+ * one wrapper, under-providing is the silent no-op this exists to remove.
+ */
+const addAnnounceHosts: ParseRefinement = ({ components, helperFns }) => {
+  const helperAnnounces = helperFns.some(containsAnnounce)
+  for (const component of components) {
+    if (component.decls.some((d) => d.kind === 'ext' && d.plugin === A11Y_PLUGIN_NAME && d.type === HOST_DECL)) continue
+    if (!helperAnnounces && !containsAnnounce(component)) continue
+    component.decls.push({ kind: 'ext', plugin: A11Y_PLUGIN_NAME, type: HOST_DECL, name: '__pyreonA11yHost', payload: {} })
+  }
+}
+
+const announceHostDecl: DeclEmitter = {
+  lifecycleOnly: true,
+  legacyName: true,
+  swift: () => '',
+  kotlin: () => '',
+  root: {
+    kotlin: (_decls, ctx, next) => {
+      const pad = ' '.repeat(ctx.indent)
+      return [`${pad}PyreonA11yHost {`, next(ctx.indent + 2), `${pad}}`].join('\n')
+    },
+  },
+}
+
 /**
  * The `@pyreon/a11y` native plugin. Shipped by `@pyreon/a11y` itself and discovered from its manifest
  * (`pyreon.native.plugin`) when a source file imports the package.
@@ -88,6 +135,8 @@ export const a11yPlugin: CompilerPlugin = {
   scanModule: scanA11y,
   callExprs: recognizeAnnounce,
   exprs: { [ANNOUNCE_EXPR]: announceExpr },
+  refineParse: addAnnounceHosts,
+  decls: { [HOST_DECL]: announceHostDecl },
   // `announce` lowers; the remaining exports are DOM-based. Per export, not per package: a module can be only PARTLY
   // unlowered, and warning on the one that lowers would print "has NO native lowering" above the code that does.
   unlowered: {

@@ -14,15 +14,20 @@ public enum PyreonA11y {
 }
 `
 
-export const A11Y_KOTLIN_STUBS = `// PyreonA11y — mirror of runtime-kotlin's PyreonA11y.kt: the object with an
-// \`announce(message, assertive)\` the imperative \`announce(...)\` call lowers to.
+export const A11Y_KOTLIN_STUBS = `// PyreonA11y — mirror of the a11y Kotlin runtime: the object an imperative
+// \`announce(...)\` call lowers to, and the \`PyreonA11yHost\` composable the
+// emit wraps an announcing component in (PyreonA11yAndroid.kt).
 object PyreonA11y {
+  fun addAnnouncer(fn: (String, Boolean) -> Unit) {}
+  fun removeAnnouncer(fn: (String, Boolean) -> Unit) {}
   fun announce(message: String, assertive: Boolean = false) {}
 }
+@Composable
+fun PyreonA11yHost(content: @Composable () -> Unit) {}
 `
 
 /** The compile-gate stubs, appended only to an emit that names a type they declare. */
 export const a11yStubs: StubAugmentation = {
   swift: (source) => (/\bPyreonA11y\b/.test(source) ? A11Y_SWIFT_STUBS : ''),
-  kotlin: (source) => (/\bPyreonA11y\b/.test(source) ? A11Y_KOTLIN_STUBS : ''),
+  kotlin: (source) => (/\bPyreonA11y(Host)?\b/.test(source) ? A11Y_KOTLIN_STUBS : ''),
 }

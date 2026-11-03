@@ -12,14 +12,14 @@ Wrap the app in `PyreonUI` (from `@pyreon/ui-core`) to provide theme + light/dar
 
 ```tsx
 import { PyreonUI } from '@pyreon/ui-core'
-import theme from '@pyreon/ui-theme'
+import { theme } from './theme'   // your own theme object (colors, spacing, …)
 
 <PyreonUI theme={theme} mode="system">
   <App />
 </PyreonUI>
 ```
 
-`mode` accepts `"light" | "dark" | "system"`. `"system"` reads `prefers-color-scheme` and tracks live; `useMode()` returns the resolved mode as a signal.
+`mode` accepts `"light" | "dark" | "system"`. `"system"` reads `prefers-color-scheme` and tracks live; `useMode()` returns the resolved mode (`'light' | 'dark'`) as a plain value — call it inside a reactive scope to track changes.
 
 Inline component styles with `styled`:
 
@@ -80,13 +80,13 @@ const Root = () => (
 ```
 
 ```tsx
-// BROKEN — augmenting ThemeDefault when @pyreon/ui-theme already did
-// (declares types, causes TS2320 "cannot simultaneously extend")
-declare module '@pyreon/styler' {
+// BROKEN — augmenting rocketstyle's ThemeDefault when a theme library you
+// depend on already did (causes TS2320 "cannot simultaneously extend")
+declare module '@pyreon/rocketstyle' {
   interface ThemeDefault extends MyCustomTheme {}
 }
 
-// Correct — the library already augments; consumer code reads the
+// Correct — when the library already augments, consumer code reads the
 // augmented type directly without re-declaring it.
 ```
 
@@ -97,7 +97,7 @@ const { colors } = useTheme()
 
 // Correct — call the accessor inside reactive scopes:
 const getTheme = useThemeAccessor()
-return <div style={{ color: () => getTheme().colors.primary }}>...</div>
+return <div style={() => ({ color: getTheme().colors.primary })}>...</div>
 ```
 
 ## Related

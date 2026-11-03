@@ -34,11 +34,11 @@
 //
 // ## Relationship to the PMTC compiler emit
 //
-// A later emit pass detects `const auth = useAuth<User>()` and emits a
+// The emit detects `const auth = useAuth<User>()` and emits a
 // `PyreonAuth<User>` instance; `auth.isAuthenticated` / `auth.user` reads in
 // the component body become reads on this container, and the app's sign-in
-// action calls the transitions. Until that lands (the per-service-port
-// follow-up), this is usable by hand-written SwiftUI code.
+// action calls the transitions. It is equally usable by
+// hand-written SwiftUI code.
 
 import Foundation
 import Observation

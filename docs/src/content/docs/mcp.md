@@ -90,7 +90,7 @@ The server speaks JSON-RPC over **stdio**. Point your client at the spawn comman
 bunx @pyreon/mcp
 ```
 
-The published package also installs a `pyreon-mcp` bin, so `bunx pyreon-mcp` (or `npx pyreon-mcp`) is equivalent — handy when testing the server in isolation.
+The published package also installs a `pyreon-mcp` bin, which you can run by that name in a project that has `@pyreon/mcp` installed. To run the server in isolation, use the package name: `bunx @pyreon/mcp` (or `npx @pyreon/mcp`). An unscoped `npx pyreon-mcp` resolves a package named `pyreon-mcp`, which is not this one.
 
 :::tip
 The server makes no network calls and runs no long scans at startup — it returns `initialize` in `<50ms`. The project-scanning tools (`get_routes`, `get_components`) walk your source lazily on first call and cache the result.
@@ -1273,7 +1273,7 @@ The server speaks JSON-RPC over stdio. If the client connected but `tools/list` 
 
 - Verify the client launches the server with Node `>= 18`.
 - Look for `[mcp]` stderr lines in the client's log directory (Claude Code: `~/Library/Logs/Claude/`, Cursor: settings → output panel → "MCP Logs").
-- Test the server in isolation with `bunx pyreon-mcp` and send a JSON-RPC `initialize` frame. If `initialize` succeeds but `tools/list` is empty, file an issue with the stderr output.
+- Test the server in isolation with `bunx @pyreon/mcp` and send a JSON-RPC `initialize` frame. If `initialize` succeeds but `tools/list` is empty, file an issue with the stderr output.
 
 ### `get_pattern` / `get_anti_patterns` / `get_changelog` in a consumer project
 

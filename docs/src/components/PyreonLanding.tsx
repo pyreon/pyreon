@@ -35,7 +35,7 @@ const MECHANISM = [
     n: '03',
     tag: '[]',
     t: 'Zero-alloc mount',
-    d: 'No virtual nodes, no diff array, no per-render allocation. Mount walks the template once and wires bindings straight to the DOM.',
+    d: 'Compiled templates allocate no virtual nodes and no diff array. Mount clones the template once and wires bindings straight to the DOM.',
   },
   {
     n: '04',
@@ -141,11 +141,11 @@ const COMPAT: ReadonlyArray<{ lib: string; lines: ReadonlyArray<ReadonlyArray<To
 ]
 
 const RENDER_MODES = [
-  { tag: 'SSG', d: 'Pre-rendered at build. Static HTML + signal-hydration islands.' },
-  { tag: 'ISR', d: 'Cached, revalidated on demand. CDN-friendly.' },
-  { tag: 'SSR-STREAM', d: 'Server-rendered with streaming Suspense + async components.' },
-  { tag: 'ISLANDS', d: 'Mostly static; interactive parts hydrate independently.' },
+  { tag: 'SSG', d: 'Pre-rendered at build to static HTML, then hydrated.' },
+  { tag: 'ISR', d: 'Server-rendered, cached, revalidated after a TTL or on demand.' },
+  { tag: 'SSR', d: 'Rendered per request — as a string, or streamed with Suspense (ssr.mode).' },
   { tag: 'SPA', d: 'Client-only. Same component model, no server.' },
+  { tag: 'ISLANDS', d: 'Not a mode: island() per component, in any mode. Hydrates independently.' },
 ]
 
 // Internal items carry `to` (RouterLink — base-aware + SPA nav);
@@ -188,7 +188,7 @@ const FOOTER: { h: string; items: FooterItem[] }[] = [
     items: [
       { label: 'GitHub', href: 'https://github.com/pyreon/pyreon' },
       { label: 'Changelog', href: 'https://github.com/pyreon/pyreon/releases' },
-      { label: 'Benchmarks', href: 'https://github.com/pyreon/pyreon/tree/main/examples/benchmark' },
+      { label: 'Benchmarks', href: 'https://github.com/pyreon/pyreon/blob/main/BENCHMARKS.md' },
       { label: 'RFCs', href: 'https://github.com/pyreon/pyreon/discussions' },
     ],
   },
@@ -259,7 +259,7 @@ export function PyreonLanding() {
             <span class="pyreon-pill pyreon-pill--ember">firing</span>
           </div>
           <div class="px-counter">
-            <span class="px-counter-label">$count</span>
+            <span class="px-counter-label">count()</span>
             {/* Remount the digit span on every tick via `<For>` keyed
                 by `pulseKey`. CSS animations don't re-fire when only
                 text content changes — Vue uses `:key="pulseKey"` to
@@ -273,15 +273,15 @@ export function PyreonLanding() {
           <pre class="px-code">
             <span class="c-cm">{`// counter.tsx\n`}</span>
             <span class="c-kw">const</span>{' '}
-            <span class="c-var">$count</span> ={' '}
+            <span class="c-var">count</span> ={' '}
             <span class="c-fn">signal</span>(<span class="c-num">0</span>){'\n'}
             <span class="c-fn">setInterval</span>(() ={'>'}{' '}
-            <span class="c-var">$count</span>.<span class="c-fn">set</span>(
-            <span class="c-var">$count</span>+<span class="c-num">1</span>),{' '}
-            <span class="c-num">2600</span>){'\n'}
-            {'<'}<span class="c-fn">Counter</span>{'>'}
-            {'{'}<span class="c-var">$count</span>{'}'}
-            {'</'}<span class="c-fn">Counter</span>{'>'}
+            <span class="c-var">count</span>.<span class="c-fn">update</span>(
+            <span class="c-var">n</span> ={'>'} <span class="c-var">n</span> +{' '}
+            <span class="c-num">1</span>), <span class="c-num">2600</span>){'\n'}
+            {'<'}<span class="c-fn">span</span>{'>'}
+            {'{'}<span class="c-var">count</span>(){'}'}
+            {'</'}<span class="c-fn">span</span>{'>'}
           </pre>
           <p class="px-demo-foot">
             The wrapping component, the layout, the page — never re-render.
@@ -396,7 +396,7 @@ export function PyreonLanding() {
           <span class="px-rule" />
         </div>
         <h2 class="px-h2">
-          React, Preact, Vue 3, or SolidJS. Pick your dialect.
+          React, Preact, Vue 3, SolidJS, or Svelte. Pick your dialect.
         </h2>
         <p class="px-sub">
           Compatibility layers compile each API down to Pyreon signals.
@@ -438,26 +438,27 @@ export function PyreonLanding() {
         </p>
         <div class="px-zero-grid">
           <div class="px-panel">
-            <div class="px-mono-label">zero.config.ts</div>
+            <div class="px-mono-label">vite.config.ts</div>
             <pre class="px-code">
-              <span class="c-kw">export default</span>{' '}
-              <span class="c-fn">defineConfig</span>({'{'}
+              <span class="c-fn">zero</span>({'{'}
               {'\n  '}
-              <span class="c-var">routes</span>: {'{'}
+              <span class="c-var">mode</span>: <span class="c-str">'ssr'</span>,
+              {'\n  '}
+              <span class="c-var">ssr</span>: {'{'} mode:{' '}
+              <span class="c-str">'stream'</span> {'}'},{'\n  '}
+              <span class="c-var">routeRules</span>: {'{'}
               {'\n    '}
-              <span class="c-str">'/'</span>:{'         {'} render:{' '}
+              <span class="c-str">'/'</span>:{'        {'} renderMode:{' '}
               <span class="c-str">'ssg'</span> {'}'},{'\n    '}
-              <span class="c-str">'/blog/:id'</span>: {'{'} render:{' '}
-              <span class="c-str">'isr'</span>, revalidate:{' '}
-              <span class="c-num">60</span> {'}'},{'\n    '}
-              <span class="c-str">'/feed'</span>:{'     {'} render:{' '}
-              <span class="c-str">'ssr-stream'</span> {'}'},{'\n    '}
-              <span class="c-str">'/app/*'</span>:{'    {'} render:{' '}
-              <span class="c-str">'islands'</span> {'}'},{'\n  '}
+              <span class="c-str">'/blog/**'</span>: {'{'} renderMode:{' '}
+              <span class="c-str">'isr'</span> {'}'},{'\n    '}
+              <span class="c-str">'/app/**'</span>:{'  {'} renderMode:{' '}
+              <span class="c-str">'spa'</span> {'}'},{'\n  '}
               {'}'},{'\n  '}
-              <span class="c-var">ai</span>: {'{'} mcp:{' '}
-              <span class="c-num">true</span>, llmsTxt:{' '}
-              <span class="c-num">true</span> {'}'},{'\n'}
+              <span class="c-var">isr</span>: {'{'} revalidate:{' '}
+              <span class="c-num">60</span> {'}'},{'\n  '}
+              <span class="c-var">ai</span>: {'{'} name, description, origin {'}'},
+              {'\n'}
               {'}'})
             </pre>
           </div>
@@ -483,9 +484,9 @@ export function PyreonLanding() {
         </div>
         <h2 class="px-h2">First-class MCP + llms.txt.</h2>
         <p class="px-sub">
-          Every Pyreon project ships a generated llms.txt manifest and an
-          MCP server exposing typed tools. Agents read your actual source —
-          no prompt scaffolding, no scraping.
+          Zero can generate an llms.txt for your app (zero({'{'} ai {'}'})), and
+          the scaffold can wire the @pyreon/mcp server, so agents query
+          Pyreon's real API surface instead of guessing it.
         </p>
         <div class="px-grid-2">
           <div class="px-panel">
@@ -515,15 +516,15 @@ export function PyreonLanding() {
             </div>
             <pre class="px-code">
               <span class="c-fn">→ get_api</span>(
-              <span class="c-str">{`{ symbol: "createStore" }`}</span>){'\n'}
-              <span class="c-cm">← signature, example, mistakes[],</span>
+              <span class="c-str">{`{ package: "reactivity", symbol: "createStore" }`}</span>){'\n'}
+              <span class="c-cm">← signature, example, notes, mistakes</span>
               {'\n'}
               <span class="c-cm">
-                {'  '}seeAlso, addedIn — straight from the
+                {'  '}— generated from the package manifest,
               </span>
               {'\n'}
               <span class="c-cm">
-                {'  '}package manifest, not a guess.
+                {'  '}not a guess.
               </span>
             </pre>
           </div>

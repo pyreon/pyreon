@@ -3472,13 +3472,13 @@ public func groupDigits(_ s: String) -> String {
     let neg = s.utf16.count > 0 && String(Array(s)[0]) == "-"
     let body = neg ? String(s.dropFirst(1)) : s
     let dot = (body.range(of: ".").map { body.distance(from: body.startIndex, to: $0.lowerBound) } ?? -1)
-    let whole = dot < 0 ? body : String(body.dropFirst(0).prefix(max(0, (dot) - (0))))
-    let frac = dot < 0 ? "" : String(body.dropFirst(dot))
+    let whole = dot < 0 ? body : pyreonSlice(body, 0, dot)
+    let frac = dot < 0 ? "" : pyreonSlice(body, dot)
     var out = ""
     var end = whole.utf16.count
     while end > 0 {
       let start = end - 3 > 0 ? end - 3 : 0
-      let chunk = String(whole.dropFirst(start).prefix(max(0, (end) - (start))))
+      let chunk = pyreonSlice(whole, start, end)
       out = out == "" ? chunk : "\(chunk),\(out)"
       end = start
     }
@@ -4451,7 +4451,7 @@ public func truncateLabel(_ text: String, _ width: Double, _ size: Double, _ mea
       if j == 0 {
         var w = 0.0
         while sub < line.utf16.count && w < content {
-          w = w + measure(String(line.dropFirst(sub).prefix(max(0, (sub + 1) - (sub)))), size)
+          w = w + measure(pyreonSlice(line, sub, sub + 1), size)
           sub = sub + 1
         }
       } else {
@@ -4470,7 +4470,7 @@ public func truncateLabel(_ text: String, _ width: Double, _ size: Double, _ mea
           }
         }
       }
-      line = String(line.dropFirst(0).prefix(max(0, (sub) - (0))))
+      line = pyreonSlice(line, 0, sub)
       lineW = measure(line, size)
     }
     return line
@@ -4751,7 +4751,7 @@ public func renderRadar(_ axes: [RadarAxis], _ series: [RadarSeries], _ box: Pyr
 public func withAlpha(_ color: String, _ alpha: Double) -> String {
     let a = max(0.0, min(1.0, alpha))
     if color.hasPrefix("rgb(") && color.hasSuffix(")") {
-      return "rgba(\(String(color.dropFirst(4).prefix(max(0, (color.utf16.count - 1) - (4))))), \(pyreonNumberString(a)))"
+      return "rgba(\(pyreonSlice(color, 4, color.utf16.count - 1)), \(pyreonNumberString(a)))"
     }
     if !color.hasPrefix("#") {
       return color

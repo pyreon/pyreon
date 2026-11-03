@@ -145,6 +145,27 @@ function deleteAt(index: number) { items.value.splice(index, 1) }
 | Default parameters (`function fn(a = 1)`) | ✅ Full | Emitted as a native default argument |
 | Rest parameters (`function fn(...args)`) | ⚠️ Warns | Take an array parameter instead |
 
+### ✅ Collections (`Map` / `Set`)
+
+```ts
+type Todo = { id: string; title: string }
+const byId = new Map<string, Todo>()
+byId.set(t.id, t)
+byId.get(id)?.title
+const index = new Map(todos().map((t) => [t.id, t]))
+```
+
+| Shape | Status | Notes |
+|---|---|---|
+| `new Map<K, V>()` — scalar `K`, `V` a scalar, a struct/enum declared in this file, or an array of those | ✅ Full | Swift `[K: V]()` / Kotlin `mutableMapOf<K, V>()` |
+| `new Map([[k, v], …])` with literal scalar pairs | ✅ Full | Native dictionary literal |
+| `new Map(src.map((x) => [key, value]))` | ✅ Full | Swift `Dictionary(…, uniquingKeysWith: { _, last in last })` / Kotlin `associate { … }.toMutableMap()` — last value wins for a repeated key, as in JS |
+| `.get` / `.set` / `.has` / `.delete` / `.clear` / `.size` | ✅ Full | |
+| `new Set<T>()` / `new Set(arr)` with scalar elements | ✅ Full | |
+| Non-scalar `Map` key or `Set` element | ⚠️ Warns | A native key/element must be Hashable — key by a scalar id |
+| Inline object (`Map<K, { x: number }>`) or imported value type | ⚠️ Warns | Declare the value shape as a top-level `type X = { … }` in the file |
+| `for (const [k, v] of map)` | ⚠️ Warns | Destructured for-of binding is not lowered |
+
 ### ✅ Reactive prop access
 
 ```tsx
@@ -180,13 +201,13 @@ return <RouterProvider router={router}><RouterView /></RouterProvider>
 
 | Shape | Status | Notes |
 |---|---|---|
-| `createRouter({ routes: [...] })` | ✅ Full | Routes extracted; non-literal arrays silently drop |
-| `{ path: '/x', component: Identifier }` | ✅ Full | Both fields required; non-literal path silently dropped |
+| `createRouter({ routes: [...] })` | ✅ Full | Routes extracted. A route the compiler cannot read costs the router its whole table (it never emits a partial one), and is warned by name |
+| `{ path: '/x', component: Identifier }` | ✅ Full | `path` (and `redirect`) may be a string literal or a module-level `const X = '/x'`; anything else is warned by name |
 | A route component's `params` prop (`props: { params: { id: string } }` or a named `params: UserParams`) | ✅ Full | Constructed from the matched path (`UserParams(id: params["id"] ?? "")`). Flat `string` / `number` / `boolean` fields only; a nested field passes the raw map, which the native build rejects by name |
 | `beforeEnter: () => expr` (expression-body) | ✅ Full | A5 PR #1242 wired into runtime |
 | `beforeEnter: () => { … }` (block-body) | ❌ Warning | PR #1136 — "Per-route beforeEnter is a block-body arrow — only expression-body arrows are extracted; this route emits UNGUARDED." |
-| `beforeEach: [identifier, identifier]` | ✅ Full | A4-shipped runtime; identifier args land, inline-arrow args silently dropped |
-| `afterEach: [identifier]` | ✅ Full | Same shape as `beforeEach` |
+| `beforeEach: [guard, (to) => to.path !== '/admin']` | ✅ Full | Named and inline guards both lower; `to.path` reads the target path and an unused `from` is dropped. A guard that reads `to.params`/`to.query`/`from`, returns a redirect, is async, or captures a component local is warned by name and dropped. The web router honours the same option |
+| `afterEach: [hook, (to) => track(to.path)]` | ✅ Full | Same shape as `beforeEach` |
 | `children: [...]` | ✅ Full | A4.5 PR #1243 — nested routes with depth-tracked `<RouterView />` |
 | `notFoundComponent: Identifier` | ✅ Full | A6 PR #1239 — wildcard-404 fallback |
 | `redirect: '/login'` | 🟡 Phase B6 | Not yet extracted; use `router.redirect('/login')` at runtime |

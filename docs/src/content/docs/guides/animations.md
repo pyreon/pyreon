@@ -41,9 +41,9 @@ An opacity + transform transition, live:
 
 `kinetic(component)` supports four modes:
 
-- `.preset(fadeIn)` — apply a preset from `@pyreon/kinetic-presets` (`fade`, `slideUp`, `scaleIn`, …).
+- `.preset(fade)` — apply a preset from `@pyreon/kinetic-presets` (`fade`, `slideUp`, `scaleIn`, …).
 - `.collapse()` — height-based collapse/expand (accordions).
-- `.stagger({ delay: 50 })` — staggered children.
+- `.stagger({ interval: 50 })` — staggered children (`interval` = ms between children).
 - `.group()` — `TransitionGroup` wrapper for animating list add/remove.
 
 Presets compose: `compose(preset1, preset2)`, and `withDuration(preset, ms)` overrides timing.

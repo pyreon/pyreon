@@ -24,8 +24,9 @@
 // a TERNARY of two resolved objects → the connector's reactive conditional-value
 // path (a native runtime state flip — see resolveRocketstyleUseSite). Literal +
 // theme-token declaration values (`t.color.primary`, via the theme-native
-// frontend) both resolve. Remaining follow-up: ≥2 simultaneous dynamic dims (a
-// switch over the dimension-set PRODUCT) — warns + falls back to the first branch.
+// frontend) both resolve. SEVERAL dynamic dims lower to a NESTED ternary over the
+// dimension-set product (one level per dynamic dim, in declaration order), which
+// the connector folds into one nested conditional value per property.
 // ============================================================================
 
 import {
@@ -234,8 +235,8 @@ function unwrapDimBody(arg: AnyNode | undefined): AnyNode | undefined {
 /**
  * An object literal (`{ backgroundColor: '#2563eb', padding: 8 }`) → a style
  * object ExprIR (camelCase keys already; literal values only). A non-literal
- * value (theme-token member `t.color.primary`, a ternary, a call) → dropped +
- * warned (theme-token resolution is the tracked follow-up).
+ * value that is neither a literal nor a resolvable theme token (a ternary, a
+ * call) → dropped + warned.
  */
 function objectExprToStyleObject(
   obj: AnyNode | undefined,
@@ -277,9 +278,10 @@ function objectExprToStyleObject(
   }
   if (dropped.length > 0) {
     warnings.push(
-      `rocketstyle(...) '${compName}' ${where}: non-literal value(s) [${dropped.join(', ')}] — a theme ` +
-        `token / expression (e.g. t.color.primary) is not yet lowered to native (dropped). Use a literal ` +
-        `for now; compile-time theme-token resolution is a tracked follow-up.`,
+      `rocketstyle(...) '${compName}' ${where}: non-literal value(s) [${dropped.join(', ')}] — neither a ` +
+        `literal nor a theme token the native frontend can resolve, so dropped on native. A token such as ` +
+        `t.color.primary resolves when the theme defines it; a runtime expression cannot. Use a literal or a ` +
+        `theme token.`,
     )
   }
   return { kind: 'object', fields, spreads: [] }
@@ -315,11 +317,12 @@ function literalStringValue(e: ExprIR | undefined): string | null {
  *   connector's dynamic path (`emitDynamic`) so each shared property lowers to a
  *   REACTIVE conditional-value modifier — the native equivalent of a runtime
  *   `state` flip. This reuses the exact `style={cond ? {A} : {B}}` machinery.
+ * - SEVERAL DYNAMIC dims → a NESTED ternary, one level per dynamic dim, whose
+ *   leaves are the resolved objects for each point of the dimension product.
  *
  * `readStaticDim(dim)` → the resolved static string value (or undefined).
  * `readDimAttr(dim)` → the raw attr ExprIR (for ternary detection).
- * `warn` surfaces an unlowerable shape (≥2 dynamic dims → a switch over the
- * dimension-set product is a follow-up; a ternary whose branches aren't both
+ * `warn` surfaces an unlowerable shape (a ternary whose branches aren't both
  * declared dimension values).
  */
 export function resolveRocketstyleUseSite(
@@ -361,28 +364,24 @@ export function resolveRocketstyleUseSite(
 
   if (dynamics.length === 0) return toStyleObject(baseFields)
 
-  if (dynamics.length > 1) {
-    warn?.(
-      `<${rkt.name}>: more than one dynamic dimension prop (${dynamics.map((d) => d.dim).join(', ')}) — a ` +
-        `native switch over the PRODUCT of dimension sets is a tracked follow-up; each dynamic dim was ` +
-        `resolved to its FIRST branch (static). Use at most one dynamic dimension for a reactive flip.`,
-    )
-    for (const d of dynamics) {
-      const set = rkt.dims[d.dim]?.[d.a]
-      if (set) for (const f of set.fields) baseFields.set(f.name, f.value)
+  // A ternary per dynamic dim, nested in declaration order, so every leaf is one point of the dimension-set
+  // PRODUCT: base ∪ static dims ∪ each dynamic dim's chosen set, applied in the same order as the runtime cascade
+  // (a later dimension overrides an earlier one). One dynamic dim is the plain two-object ternary.
+  const resolve = (
+    i: number,
+    fields: Map<string, ExprIR>,
+  ): Extract<ExprIR, { kind: 'object' | 'ternary' }> => {
+    const d = dynamics[i]
+    if (d === undefined) return toStyleObject(fields)
+    const branch = (value: string): Extract<ExprIR, { kind: 'object' | 'ternary' }> => {
+      const m = new Map(fields)
+      const set = rkt.dims[d.dim]?.[value]
+      if (set) for (const f of set.fields) m.set(f.name, f.value)
+      return resolve(i + 1, m)
     }
-    return toStyleObject(baseFields)
+    // `then` is the shared ternary IR branch, not a Promise method.
+    // oxlint-disable-next-line unicorn/no-thenable
+    return { kind: 'ternary', cond: d.cond, then: branch(d.a), otherwise: branch(d.b) }
   }
-
-  // Exactly one dynamic dim → a ternary of the two resolved style objects.
-  const { dim, cond, a, b } = dynamics[0]!
-  const branch = (value: string): Extract<ExprIR, { kind: 'object' }> => {
-    const m = new Map(baseFields)
-    const set = rkt.dims[dim]?.[value]
-    if (set) for (const f of set.fields) m.set(f.name, f.value)
-    return toStyleObject(m)
-  }
-  // `then` is the shared ternary IR branch, not a Promise method.
-  // oxlint-disable-next-line unicorn/no-thenable
-  return { kind: 'ternary', cond, then: branch(a), otherwise: branch(b) }
+  return resolve(0, baseFields)
 }

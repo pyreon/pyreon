@@ -232,7 +232,9 @@ export function recognizeQuery(_call: CallSite, ctx: ParseContext): ExtDeclSpec 
       endpointQuery.call.arguments?.[0] as AnyNode | undefined,
       // The query harness re-fetches on key change, so a RUNTIME `:param`
       // is honourable here (and only here — see the flag's own doc).
-      { allowRuntimeParams: true, streaming: false },
+      // A runtime body / header is built per run, inside the harness — when the web's queryFn builds it. The harness also
+      // passes the client's `use: [...]` to `PyreonHttp.send(…, middleware:)`.
+      { allowRuntimeParams: true, streaming: false, runtimeValues: true, middleware: true },
     )
     if (!resolved) return null
     ctx.recordDecode(type, resolved.response)
@@ -241,11 +243,19 @@ export function recognizeQuery(_call: CallSite, ctx: ParseContext): ExtDeclSpec 
       queryKeyExpr?: ExprIR
       method?: string
       headers?: Record<string, string>
+      headerExprs?: Record<string, ExprIR>
       body?: string
+      middleware?: ExprIR
+      bodyExpr?: ExprIR
+      upload?: ExprIR
     } = {}
+    if (resolved.upload !== undefined) eqReq.upload = resolved.upload
     if (resolved.method && resolved.method !== 'GET') eqReq.method = resolved.method
     if (resolved.headers) eqReq.headers = resolved.headers
+    if (resolved.headerExprs) eqReq.headerExprs = resolved.headerExprs
     if (resolved.body !== undefined) eqReq.body = resolved.body
+    if (resolved.middleware !== undefined) eqReq.middleware = resolved.middleware
+    if (resolved.bodyExpr !== undefined) eqReq.bodyExpr = resolved.bodyExpr
     if (resolved.urlExpr !== undefined) {
       eqReq.urlExpr = resolved.urlExpr
       // The cache key MUST carry the runtime parts too. A key built from the
@@ -362,6 +372,9 @@ export function recognizeQuery(_call: CallSite, ctx: ParseContext): ExtDeclSpec 
     }
     return null
   }
+  // A fetched (not direct-value) query decodes its response into `type`, with no schema to settle its number fields: record it
+  // so the core can name an integer-default field a fractional payload would fail to decode (#3956).
+  if (valueExpr === undefined) ctx.recordDecode(type, undefined)
   return queryDecl({
     type,
     queryKey,
@@ -920,6 +933,7 @@ interface FetchInitFields {
   headers?: Record<string, string>
   headerExprs?: Record<string, ExprIR>
   body?: string
+  bodyExpr?: ExprIR
 }
 
 function parseFetchInitObject(
@@ -956,13 +970,13 @@ function parseFetchInitObject(
       }
       req.method = String(value!.value).toUpperCase()
     } else if (key === 'body') {
-      if (!isStringLit) {
-        ctx.report(
-          `Declaration ${name}: useQuery queryFn fetch body must be a string literal to lower to native; got ${value?.type ?? 'nothing'}. The request will be sent with NO body.`,
-        )
-        continue
+      if (isStringLit) {
+        req.body = String(value!.value)
+      } else if (value !== undefined) {
+        // A runtime body (`JSON.stringify(filter())`), built each time the harness runs — when the
+        // web's queryFn builds it. Its string type is judged at emit time.
+        req.bodyExpr = ctx.expr(value)
       }
-      req.body = String(value!.value)
     } else if (key === 'headers') {
       if (value?.type !== 'ObjectExpression') {
         ctx.report(

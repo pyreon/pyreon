@@ -40,6 +40,27 @@ export default defineConfig({
 })
 ```
 
+## TypeScript Setup
+
+Point TypeScript's JSX at Pyreon. The `@pyreon/typescript` preset sets this for you (`npm install -D @pyreon/typescript`):
+
+```json title="tsconfig.json"
+{
+  "extends": "@pyreon/typescript/app"
+}
+```
+
+Or set the two options by hand:
+
+```json title="tsconfig.json"
+{
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "jsxImportSource": "@pyreon/core"
+  }
+}
+```
+
 ## Your First Component
 
 ```tsx title="src/main.tsx"
@@ -74,7 +95,7 @@ Write to a signal with `signal.set(value)` or `signal.update(fn)` — calling `c
 :::
 
 :::tip{title="Components are functions"}
-Pyreon components are plain functions that return JSX — no `defineComponent` wrapper required. The `defineComponent` helper from `@pyreon/core` exists only for cases that need explicit lifecycle hooks attached to the function reference.
+Pyreon components are plain functions that return JSX — no wrapper required. `@pyreon/core` exports a `defineComponent` helper, but it is a typed identity function: it returns the function unchanged.
 :::
 
 ## HTML Entry Point
@@ -166,13 +187,13 @@ yarn add @pyreon/router
 :::
 
 ```tsx title="src/router.ts"
-import { createRouter } from '@pyreon/router'
+import { createRouter, lazy } from '@pyreon/router'
 
 export const router = createRouter({
   routes: [
-    { path: '/', component: () => import('./pages/Home') },
-    { path: '/about', component: () => import('./pages/About') },
-    { path: '/users/:id', component: () => import('./pages/User') },
+    { path: '/', component: lazy(() => import('./pages/Home')) },
+    { path: '/about', component: lazy(() => import('./pages/About')) },
+    { path: '/users/:id', component: lazy(() => import('./pages/User')) },
   ],
 })
 ```
@@ -217,6 +238,14 @@ yarn add @pyreon/react-compat
 ```
 
 :::
+
+Tell the Vite plugin to compile with React semantics, so components re-render the way React code expects:
+
+```ts title="vite.config.ts"
+export default defineConfig({
+  plugins: [pyreon({ compat: 'react' })],
+})
+```
 
 ```tsx
 import { useState, useEffect, memo } from '@pyreon/react-compat'

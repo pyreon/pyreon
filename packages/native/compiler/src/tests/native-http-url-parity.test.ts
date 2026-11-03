@@ -188,12 +188,11 @@ export function S() {
   return <Stack><Text>{u.data()?.id ?? ''}</Text></Stack>
 }
 `
-  it('warns by name when a query value is not a literal', () => {
+  it('a runtime query value is serialized at request time by PyreonURL.query (#3978)', () => {
     const r = transform(REACTIVE_QUERY, { target: 'swift' })
-    expect(r.warnings.some((w) => w.includes('query parameter `q`'))).toBe(true)
-    // The URL is still emitted — only the un-bakeable parameter is missing, and
-    // the warning is what makes that visible.
-    expect(r.code).toContain('/api/users/1')
+    expect(r.warnings).toEqual([])
+    // useFetch builds its request once, on mount — the moment the web evaluates the endpoint call.
+    expect(r.code).toContain('url: "/api/users/1\\(PyreonURL.query("?", "q", q))"')
   })
 })
 

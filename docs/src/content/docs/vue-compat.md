@@ -900,7 +900,8 @@ Maps to `onUnmount`. Pyreon does not have a separate pre-unmount phase, so `onBe
 | `onUnmounted`     | `onUnmount`    | Identical to `onBeforeUnmount` in Pyreon |
 | `onUpdated`       | `onUpdate`     | Fires after reactive updates             |
 | `onBeforeUpdate`  | Not available  | Use `watch`/`watchEffect` instead        |
-| `onErrorCaptured` | Not available  | Use try/catch in setup                   |
+| `onErrorCaptured` | Exported, never invoked | Stored for compatibility but never called — use `<ErrorBoundary>` from `@pyreon/core` |
+| `onRenderTracked` / `onRenderTriggered` | Exported, no-op | Dev-only hooks with no Pyreon equivalent |
 | `onActivated`     | Not available  | `<KeepAlive>` works (see below) but does not emit activation hooks |
 | `onDeactivated`   | Not available  | `<KeepAlive>` works (see below) but does not emit deactivation hooks |
 

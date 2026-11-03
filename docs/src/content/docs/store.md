@@ -1541,15 +1541,26 @@ Coming from Zustand / Pinia / Jotai / Valtio, several familiar features are abse
 | Async derived-data primitives (async atoms, `loadable`) | Server/async data is `@pyreon/query`'s job. Async ACTIONS are first-class here — `onAction` is thenable-aware. |
 | Whole-store persist middleware (`partialize`, storage adapters) | Per-field `useStorage()` composition (see [Persistence](#persistence)) — you persist exactly the fields you wrap. |
 
+## Multiplatform
+
+On iOS and Android (PMTC), `defineStore` lowers to an `@Observable` singleton (Swift) / a `mutableStateOf`-backed object (Kotlin), so state shared across screens works the same way on all three targets.
+
 ## API Reference
 
-### `defineStore(id, setup)`
+### `defineStore(id, setup, options?)`
 
 Define a store with a unique ID and a setup function.
 
 - **`id`** (`string`) -- Unique identifier for the store. Must be unique across the application.
 - **`setup`** (`() => T`) -- Factory function that returns the store's public API. Runs once per store lifetime (until reset). `T` must extend `Record<string, unknown>`.
+- **`options`** (`StoreOptions`, optional) -- `{ ssr?: boolean }`. `ssr: false` keeps the store out of the SSR state payload and makes it ignore an incoming server snapshot.
 - **Returns** `() => StoreApi<T>` -- A hook function that returns the `StoreApi` wrapping the singleton store state.
+
+### `defineStore(id, schemaConfig)`
+
+Schema form (see the schema section above). `schemaConfig` is `{ schema, initial, setup?, onValidationError?, ssr? }`.
+
+- **Returns** a hook whose result is a `SchemaStoreApi`: the usual `StoreApi` members plus validated writes `set(next)`, `patch(partial)`, `deepPatch(partial)`, `update(key, transformer)` and `reset()`. Each validates through the schema and throws (or calls `onValidationError`) on failure.
 
 ### `StoreApi<T>`
 
@@ -1571,7 +1582,32 @@ The structured result returned by every store hook.
 
 Override the store registry provider for concurrent SSR isolation.
 
-- **`fn`** (`() => Map<string, unknown>`) -- Function that returns the registry map for the current context. Called on every store access.
+- **`fn`** (`() => Map<string, unknown> | undefined`) -- Function that returns the registry map for the current context. Called on every store access. Return `undefined` (for example outside a request) to fall back to the default global registry.
+
+### `dehydrateStores(filter?)`
+
+Serialize the current registry's store state for SSR transfer.
+
+- **`filter`** (`(id: string) => boolean`, optional) -- Include only matching store IDs. Stores defined with `ssr: false` are always skipped.
+- **Returns** `Record<string, Record<string, unknown>>` -- `{ [storeId]: stateSnapshot }`. Escape it before inlining into a `<script>` (escape `<`, U+2028 and U+2029).
+
+### `hydrateStores(data)`
+
+Seed stores from a server snapshot. Call on the client once, before the app mounts. Stores that already exist are patched in place; stores not yet created are seeded on first use. `ssr: false` stores ignore the data.
+
+- **`data`** (`Record<string, Record<string, unknown>>`) -- the object produced by `dehydrateStores()` on the server.
+
+```ts
+// server, after render
+const state = dehydrateStores()
+
+// client entry, before mount
+hydrateStores(window.__PYREON_STORE_STATE__ ?? {})
+```
+
+### `@pyreon/store/devtools`
+
+Introspection helpers for devtools panels: `getRegisteredStores(): string[]`, `getStoreById(id): StoreApi | undefined`, and `onStoreChange(listener): () => void` (fires when a store is added or removed; returns an unsubscribe).
 
 ### `resetStore(id)`
 

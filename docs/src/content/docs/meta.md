@@ -3,7 +3,7 @@ title: '@pyreon/meta'
 description: Barrel package re-exporting the full Pyreon fundamentals ecosystem for convenience.
 ---
 
-`@pyreon/meta` is a barrel package that re-exports the entire Pyreon fundamentals + UI-system ecosystem (store, form, validation, query, table, virtual, i18n, state-tree, feature, charts, code, document, document-primitives, connector-document, flow, hotkeys, machine, permissions, storage, rx, toast, url-state, dnd, hooks, styler, unistyle, elements, coolgrid, kinetic, kinetic-presets, attrs, rocketstyle, ui-core) from a single import. Tree-shakeable end-to-end (every package is `sideEffects: false`), and heavy renderers (PDF/DOCX/XLSX/PPTX in `document`; ECharts in `charts`; CodeMirror grammars in `code`; elkjs in `flow`) stay lazy-loaded at the source — `import { … } from '@pyreon/meta'` does not bundle them.
+`@pyreon/meta` is a barrel package that re-exports the entire Pyreon fundamentals + UI-system ecosystem (store, form, validation, query, table, virtual, state-tree, feature, charts, code, document, document-primitives, connector-document, flow, hotkeys, machine, permissions, storage, rx, toast, url-state, dnd, hooks, styler, unistyle, elements, coolgrid, kinetic, kinetic-presets, attrs, rocketstyle, ui-core) from a single import. Tree-shakeable end-to-end (every package declares `sideEffects`; `@pyreon/unistyle` marks only its entry module, which registers the theme engine), and heavy renderers (PDF/DOCX/XLSX/PPTX in `document`; ECharts in `charts`; CodeMirror grammars in `code`; elkjs in `flow`) stay lazy-loaded at the source — `import { … } from '@pyreon/meta'` does not bundle them.
 
 <PackageBadge name="@pyreon/meta" href="/docs/meta" />
 
@@ -34,7 +34,7 @@ yarn add @pyreon/meta
 Instead of installing each fundamentals package individually:
 
 ```bash
-bun add @pyreon/store @pyreon/form @pyreon/validation @pyreon/query @pyreon/table @pyreon/virtual @pyreon/i18n @pyreon/state-tree @pyreon/feature @pyreon/charts @pyreon/code @pyreon/document @pyreon/flow @pyreon/hotkeys @pyreon/machine @pyreon/permissions @pyreon/storage @pyreon/storybook
+bun add @pyreon/store @pyreon/form @pyreon/validation @pyreon/query @pyreon/table @pyreon/virtual @pyreon/state-tree @pyreon/feature @pyreon/charts @pyreon/code @pyreon/document @pyreon/flow @pyreon/hotkeys @pyreon/machine @pyreon/permissions @pyreon/storage
 ```
 
 You can install `@pyreon/meta` once:
@@ -46,9 +46,6 @@ bun add @pyreon/meta
 All exports are available directly:
 
 ```ts
-import { createStore, createForm, createQuery, createTable } from '@pyreon/meta'
+import { defineStore, useForm, useQuery, useTable } from '@pyreon/meta'
 ```
 
-### Used by `@pyreon/zero`
-
-`@pyreon/meta` is used internally by `@pyreon/zero` to bundle the full fundamentals layer. If you are already using `@pyreon/zero`, you do not need to install `@pyreon/meta` separately — it is included automatically.

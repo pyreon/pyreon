@@ -74,7 +74,7 @@ public func useParams(router: PyreonRouter?) -> [String: String] {
 /// current path, the cast fails, or the router is absent — the defensive
 /// default matching the web side's missing-data behaviour.
 ///
-/// Compiler emit (a follow-up to this runtime contract):
+/// Compiler emit:
 /// ```tsx
 /// const user = useLoaderData<User>()
 /// ↓

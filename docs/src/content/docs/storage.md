@@ -277,7 +277,7 @@ draft.set({ title: 'My Post', body: '...10KB of content...' })
 Note `useIndexedDB` uses its own `debounceMs` option (not `writeDebounceMs`) — IDB writes are always async-debounced.
 
 :::warning[The first render sees the DEFAULT, not the persisted value]
-IndexedDB initialization is asynchronous. The signal starts at `defaultValue` synchronously, then the persisted value flows in on a later tick and updates reactively. If you must have the persisted value *before* first paint, pair it with a synchronous fallback (e.g. a small `useStorage` marker) — or render a loading state until the IDB read settles.
+IndexedDB initialization is asynchronous. The signal starts at `defaultValue` synchronously, then the persisted value flows in on a later tick and updates reactively. `useIndexedDB` returns an `IndexedDBSignal` for exactly this: gate a loading state on `draft.ready()` (reactive — `true` once the initial read settled) or `await draft.whenReady()`, and call `await draft.flush()` before navigating away when the last edit must be on disk (it writes a pending debounced value now).
 :::
 
 :::warning[IndexedDB does not sync across tabs]
@@ -389,7 +389,7 @@ Shared by every hook (and extended by `CookieOptions` / `IndexedDBOptions`):
 | `deserializer`    | `(raw: string) => T`                      | `JSON.parse`     | Parse a stored string back to a value.                                      |
 | `onError`         | `(error: Error) => T \| undefined`        | —                | Called on a deserialize failure (return a fallback / void) OR a WRITE failure (quota / blocked — return ignored, notification). |
 | `version`         | `number`                                  | —                | Persisted-schema version — wraps the value so a later load can `migrate` it. |
-| `migrate`         | `(persisted: unknown, from: number) => T` | —                | Transform a value stored under an older `version` (pre-versioning value is `from = 0`). |
+| `migrate`         | `(persisted: unknown, fromVersion: number) => T` | —         | Transform a value stored under an older `version` (pre-versioning value is `fromVersion = 0`). |
 | `writeDebounceMs` | `number`                                  | `0`              | Coalesce the persist write (localStorage / sessionStorage only).            |
 
 ## Versioned migration — `version` + `migrate`
@@ -549,6 +549,10 @@ const apiKey = useSecure('api-key', '')
 apiKey.set('sk-live-…') // encrypted at rest
 ```
 
+## Multiplatform
+
+On iOS and Android (PMTC), the `useStorage` family lowers to the native storage runtimes — `@PyreonAppStorage` (Swift) and `rememberPyreonStorage` (Kotlin) — with persistence device-proven on both platforms.
+
 ## API Reference
 
 ### Hooks
@@ -558,7 +562,7 @@ apiKey.set('sk-live-…') // encrypted at rest
 | `useStorage(key, default, options?)`       | `<T>(key: string, defaultValue: T, options?: StorageOptions<T>) => StorageSignal<T>`     | localStorage signal, cross-tab synced |
 | `useSessionStorage(key, default, options?)`| `<T>(key: string, defaultValue: T, options?: StorageOptions<T>) => StorageSignal<T>`     | sessionStorage signal, per-tab |
 | `useCookie(key, default, options?)`        | `<T>(key: string, defaultValue: T, options?: CookieOptions<T>) => StorageSignal<T>`      | cookie signal, SSR-readable |
-| `useIndexedDB(key, default, options?)`     | `<T>(key: string, defaultValue: T, options?: IndexedDBOptions<T>) => StorageSignal<T>`   | IndexedDB signal, async-hydrated |
+| `useIndexedDB(key, default, options?)`     | `<T>(key: string, defaultValue: T, options?: IndexedDBOptions<T>) => IndexedDBSignal<T>` | IndexedDB signal, async-hydrated |
 | `useMemoryStorage(key, default, options?)` | `<T>(key: string, defaultValue: T, options?: StorageOptions<T>) => StorageSignal<T>`     | in-memory signal, ephemeral |
 
 ### Factory & SSR
@@ -592,7 +596,8 @@ apiKey.set('sk-live-…') // encrypted at rest
 | Type                  | Shape                                                                                      |
 | --------------------- | ------------------------------------------------------------------------------------------ |
 | `StorageSignal<T>`    | `Signal<T>` extended with `remove(): void`.                                                 |
-| `StorageOptions<T>`   | `{ serializer?, deserializer?, onError?, writeDebounceMs? }`.                                |
+| `StorageOptions<T>`   | `{ serializer?, deserializer?, onError?, version?, migrate?, writeDebounceMs? }`.            |
+| `IndexedDBSignal<T>`  | `StorageSignal<T>` + `{ ready(): boolean; whenReady(): Promise<void>; flush(): Promise<void> }`. |
 | `CookieOptions<T>`    | `StorageOptions<T>` + `{ maxAge?, expires?, path?, domain?, secure?, sameSite? }`.          |
 | `IndexedDBOptions<T>` | `StorageOptions<T>` + `{ dbName?, storeName?, debounceMs? }`.                                |
 | `StorageBackend`      | `{ get(key): string \| null; set(key, value): void; remove(key): void }` (synchronous).    |

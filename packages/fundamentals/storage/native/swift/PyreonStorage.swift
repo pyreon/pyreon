@@ -41,16 +41,11 @@
 //
 // ## Relationship to the PMTC compiler emit
 //
-// The Pyreon compiler currently emits the verbose 14-line bridge inline
-// (per G5 + the Phase 2 Codable-Data PR). The next emit-pass
-// simplification can detect `useStorage<T>('key', default)` calls and
-// emit the one-liner `@PyreonAppStorage` form instead — same persistence,
-// dramatically simpler emit. Tracked as a Phase 2.5 follow-up.
-//
-// Until that emit change lands, this property wrapper is also usable
-// by hand-written SwiftUI code that wants the convenience. The two
-// shapes (inline bridge + property wrapper) coexist; both back onto
-// the same UserDefaults key, so they're interchangeable per-callsite.
+// The storage plugin emits SwiftUI's own `@AppStorage` for the types it
+// can hold and the one-liner `@PyreonAppStorage` form for everything
+// else. This property wrapper is equally usable by hand-written SwiftUI
+// code; all shapes back onto the same UserDefaults key, so they're
+// interchangeable per-callsite.
 //
 // ## Why property wrapper vs free function
 //

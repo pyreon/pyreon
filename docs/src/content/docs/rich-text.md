@@ -3,7 +3,7 @@ title: Rich Text
 description: Reactive WYSIWYG editor for Pyreon — a thin signal-backed layer over TipTap (ProseMirror). Signal document, toolbar primitives, two-way binding, and collaboration via @pyreon/sync.
 ---
 
-`@pyreon/rich-text` is a reactive WYSIWYG editor built as a thin signal-backed layer over [TipTap](https://tiptap.dev) — the MIT, framework-agnostic headless editor framework built on [ProseMirror](https://prosemirror.net). It's the same adapter shape Pyreon uses for [`@pyreon/code`](/docs/code) (CodeMirror) and [`@pyreon/charts`](/docs/charts) (ECharts): wrap a best-in-class headless engine in Pyreon's fine-grained reactivity. The document is a `Signal<JSONContent>`, so the editor composes with the rest of your reactive app like any other signal.
+`@pyreon/rich-text` is a reactive WYSIWYG editor built as a thin signal-backed layer over [TipTap](https://tiptap.dev) — the MIT, framework-agnostic headless editor framework built on [ProseMirror](https://prosemirror.net). It's the same adapter shape Pyreon uses for [`@pyreon/code`](/docs/code) (CodeMirror): wrap a best-in-class headless engine in Pyreon's fine-grained reactivity. The document is a `Signal<JSONContent>`, so the editor composes with the rest of your reactive app like any other signal.
 
 <PackageBadge name="@pyreon/rich-text" href="/docs/rich-text" />
 
@@ -45,7 +45,7 @@ yarn add @pyreon/rich-text
 `@pyreon/rich-text` declares `@pyreon/core`, `@pyreon/reactivity`, **and `@pyreon/runtime-dom`** as peer dependencies. `<RichText>` emits compiled `_tpl()` / `_bind()` calls, which need the DOM runtime — declare all three in your app's dependencies or the editor won't mount.
 :::
 
-The TipTap engine (`@tiptap/core` + `@tiptap/starter-kit`) is **lazy-loaded on mount**, so `@tiptap/*` stays out of your initial bundle — the package's own footprint is ~1.1 KB gzipped. The editing engine downloads only when a `<RichText>` first renders.
+The TipTap engine (`@tiptap/core` + `@tiptap/starter-kit`) is **lazy-loaded on mount**, so `@tiptap/*` stays out of your initial bundle — the package itself is a small wrapper (see [Bundle & lazy-loading](#bundle-lazy-loading)). The editing engine downloads only when a `<RichText>` first renders.
 
 ## The editor instance
 
@@ -96,6 +96,7 @@ Read with `editor.json()` (reactive), write with `editor.json.set(next)`. Do **n
 | --- | --- |
 | `editor.isActive(name, attrs?)` | **Reactive** — whether a mark/node is active at the selection. The toolbar primitive (see below). |
 | `editor.chain()` | The TipTap command chain (or `null` before mount). The escape hatch for every command. |
+| `editor.setContent(content)` | Replace the document with TipTap JSON or an HTML string. Works before mount (HTML is parsed on mount); like `json.set`, not an undo step. |
 | `editor.undo()` / `editor.redo()` | History helpers. |
 | `editor.focus()` / `editor.blur()` | Imperative focus control. |
 | `editor.dispose()` | Tear down the editor + its DOM. Call from `onCleanup` / `onUnmount`. |
@@ -305,7 +306,7 @@ The base package targets the browser (TipTap/ProseMirror need a real DOM). For S
 
 ## Bundle & lazy-loading
 
-The package's own wrapper code is ~1.5 KB gzipped — TipTap is externalized and dynamically imported on mount. Nothing of `@tiptap/*` ships in your initial bundle until a `<RichText>` renders, mirroring how `@pyreon/charts` defers ECharts and `@pyreon/code` defers CodeMirror grammars.
+The package's own wrapper code is ~1.5 KB gzipped — TipTap is externalized and dynamically imported on mount. Nothing of `@tiptap/*` ships in your initial bundle until a `<RichText>` renders, mirroring how `@pyreon/code` defers CodeMirror grammars.
 
 ### Wrapper overhead vs `@tiptap/react`
 
@@ -324,6 +325,21 @@ This is a **bundle** measurement (Rung R1, measured in-repo). Typing-latency and
 
 MIT. TipTap (`@tiptap/core`, `@tiptap/starter-kit`, `@tiptap/pm`) and ProseMirror are MIT throughout. The TipTap **Pro** modules (Cloud, Comments, Content AI, document-conversion) are paid/commercially-licensed and are **not** used.
 
+## Multiplatform
+
+TipTap is a DOM editor, so `<RichText>` is web only. For iOS and Android, `@pyreon/rich-text/webview` hosts the same TipTap (StarterKit) in a native `<WebView>`:
+
+```tsx
+import { RichTextWebView } from '@pyreon/rich-text/webview'
+
+<RichTextWebView
+  state={() => ({ content: doc(), editable: !locked() })}
+  onChange={(json) => doc.set(json)}
+/>
+```
+
+It compiles to `WKWebView` on iOS, an Android `WebView`, and an `<iframe srcdoc>` on the web; `pyreon-native assets` builds the page from the app's installed TipTap. The document crosses as **text** both ways: `onChange` receives the TipTap JSON serialized to a string, and `state.content` accepts that string (or HTML) back, because a native handler cannot hold a JSON object. It is a hosted web editor — WebView start-up cost, no native text-field semantics, and StarterKit only (custom extensions need your own `html` page). `buildRichTextHostHtml({ tiptapScript?, tiptapSrc?, background? })` builds the page yourself. Types: `RichTextWebViewProps`, `RichTextWebViewData`, `BuildRichTextHostHtmlOptions`.
+
 ## API reference
 
-See the generated [`@pyreon/rich-text` API reference](/docs/reference/rich-text) for the full typed surface.
+Exported types include `RichTextConfig`, `RichTextProps`, `BindRichTextToSignalOptions`, `RichTextBinding` and `SignalLike`. See the generated [`@pyreon/rich-text` API reference](/docs/reference/rich-text) for the full typed surface.

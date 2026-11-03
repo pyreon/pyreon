@@ -5,7 +5,7 @@ description: "Tutorial chapter 5 — render dynamic lists with keyed <For> and c
 
 # 5. Lists & conditionals
 
-Because components run once, you don't `.map()` arrays or use `&&` for conditionals the way a re-rendering framework does — those would run once and never update. Pyreon gives you **control-flow components** that are reactive: `<For>` for lists, `<Show>` for conditionals.
+Because components run once, nothing re-renders a list or a branch for you. The compiler does wrap `{todos().map(...)}` and `{cond() && <X />}` in a reactive slot, so they update — but bluntly: every change rebuilds the whole list (no keys, no preserved row DOM), and every flip remounts the branch. Pyreon gives you **control-flow components** that update precisely: `<For>` for lists, `<Show>` for conditionals.
 
 ## Lists — `<For>`
 
@@ -35,7 +35,7 @@ import { Show } from '@pyreon/core'
 
 `when` accepts a signal **or** a plain value. For a quick inline conditional, a reactive thunk works too: `{() => loggedIn() ? <Dashboard /> : <LoginButton />}`.
 
-**The key idea:** `<For>` and `<Show>` are reactive because the framework owns the iteration/branching and updates surgically. A bare `todos().map(...)` in JSX runs once at mount and never reflects later changes — always reach for `<For>` / `<Show>`.
+**The key idea:** `<For>` and `<Show>` are reactive because the framework owns the iteration/branching and updates surgically. A bare `todos().map(...)` in JSX does update, but it rebuilds every row on each change — row DOM, focus and input state are thrown away. `<For by>` reconciles rows instead, so reach for `<For>` / `<Show>`.
 
 > A `<For>` callback's `item` is a runtime value, not reactive props. A bare `item.text` is baked statically (fine when it won't change); for a per-row value that updates, make that field a signal and call it: `item.text()`.
 

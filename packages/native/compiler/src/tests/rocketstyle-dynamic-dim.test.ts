@@ -74,16 +74,38 @@ describe('rocketstyle dynamic dimension — emit', () => {
     expect(warnings.join('\n')).toMatch(/must be a ternary of TWO DECLARED state values/)
   })
 
-  it('warns on ≥2 dynamic dims + falls back to the first branch (static)', () => {
+  it('two dynamic dims lower to a NESTED conditional over the dimension product (Swift)', () => {
     const { code, warnings } = swift(
       render(
         `<Btn state={active() ? 'primary' : 'danger'} size={active() ? 'small' : 'large'}><Text>x</Text></Btn>`,
       ),
     )
-    expect(warnings.join('\n')).toMatch(/more than one dynamic dimension prop/)
-    // Fallback: first branches (primary + small) resolved statically — no ternary.
-    expect(code).toContain('.background(Color(.sRGB, red: 0.145') // primary, static
-    expect(code).not.toContain('? Color')
+    expect(warnings).toEqual([])
+    // padding comes from the SIZE dim (the inner level), background from the STATE dim (the outer level): every
+    // leaf of the product carries both, so both fold into nested conditionals rather than one being dropped.
+    expect(code).toContain('.padding(((active) ? ((active) ? 8 : 16) : ((active) ? 8 : 16)))')
+    expect(code).toMatch(/\.background\(\(\(active\) \? \(\(active\) \? Color/)
+    expect(code).not.toContain('more than one dynamic dimension')
+  })
+
+  it('two dynamic dims lower to a nested if/else (Kotlin)', () => {
+    const { code, warnings } = kotlin(
+      render(
+        `<Btn state={active() ? 'primary' : 'danger'} size={active() ? 'small' : 'large'}><Text>x</Text></Btn>`,
+      ),
+    )
+    expect(warnings).toEqual([])
+    expect(code).toContain('.padding((if (active) (if (active) 8 else 16) else (if (active) 8 else 16)).dp)')
+  })
+
+  it('a dynamic dim still overrides an earlier dimension and the base, leaf by leaf', () => {
+    // state is declared before size, so in the leaf (danger, large) the size padding (16) beats the base (12).
+    const { code } = swift(
+      render(
+        `<Btn state={active() ? 'primary' : 'danger'} size={active() ? 'small' : 'large'}><Text>x</Text></Btn>`,
+      ),
+    )
+    expect(code).not.toContain('.padding(12)')
   })
 })
 

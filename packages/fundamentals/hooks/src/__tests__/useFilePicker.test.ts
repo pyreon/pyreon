@@ -35,7 +35,32 @@ describe('useFilePicker', () => {
     vi.restoreAllMocks()
   })
 
-  it('does not restrict the accept type (a document picker takes any file)', async () => {
+  it('sets the input accept attribute from pick(accept)', async () => {
+    let capturedAccept = ''
+    withFileInput((input) => {
+      capturedAccept = input.accept
+      input.dispatchEvent(new Event('cancel'))
+    })
+    await useFilePicker().pick(['application/pdf', '.csv', 'image/*'])
+    expect(capturedAccept).toBe('application/pdf,.csv,image/*')
+    vi.restoreAllMocks()
+  })
+
+  it('accept is per pick: the same picker can ask for different types', async () => {
+    const seen: string[] = []
+    withFileInput((input) => {
+      seen.push(input.accept)
+      input.dispatchEvent(new Event('cancel'))
+    })
+    const files = useFilePicker()
+    await files.pick(['.pdf'])
+    await files.pick()
+    await files.pick([])
+    expect(seen).toEqual(['.pdf', '', ''])
+    vi.restoreAllMocks()
+  })
+
+  it('does not restrict the accept type when none is given (a document picker takes any file)', async () => {
     // Distinct from useImagePicker (which sets accept="image/*"): the file
     // picker leaves accept unset so any file type is offered.
     let capturedAccept = '<unset-sentinel>'

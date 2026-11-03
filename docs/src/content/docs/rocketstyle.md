@@ -186,18 +186,7 @@ const Button = rs({ name: 'Button', component: Element })
   }))
 ```
 
-Individual **values** can also be callbacks receiving the component's props, for value-level conditional styling:
-
-```tsx
-const Card = rs({ name: 'Card', component: Element })
-  .states({
-    light: { background: '#fff', color: '#333' },
-    dark: (props) => ({
-      background: props.elevated ? '#2d2d2d' : '#1a1a1a',
-      color: '#e0e0e0',
-    }),
-  })
-```
+Dimension **values** are plain style objects; they never receive the component's props. A function written as a value (`dark: (props) => ({ … })`) contributes nothing to the resolved theme — only the dimension-level callback form shown above, which receives the app theme, is evaluated. For prop-driven styling, derive a default prop in `.attrs((props) => …)`, or read props in a `.styles()` interpolation (see below).
 
 ### `.attrs(...)` — default props
 
@@ -228,7 +217,7 @@ Every `.attrs()` value is a **default**, not a required prop — the consumer ca
 ```
 
 :::note{title="Layout props belong in `.attrs()`, CSS in `.theme()`"}
-When you wrap a layout-aware base component (such as `@pyreon/elements`' `Element`, which the `@pyreon/ui-components` bases use), the convention is: **layout props go in `.attrs()`** (`tag`, `direction`, `alignX`, `alignY`, `gap`, `block` — these drive the Element's inner flex layout), and **visual CSS goes in `.theme()`** (colors, spacing, borders, shadows — these style the outer wrapper). A bare `rocketstyle('div')` component only forwards whatever props the wrapped component understands; the layout-prop convention applies through Element-based bases.
+When you wrap a layout-aware base component (such as `@pyreon/elements`' `Element`, which the `@pyreon/ui-components` bases use), the convention is: **layout props go in `.attrs()`** (`tag`, `contentDirection`, `contentAlignX`, `contentAlignY`, `gap`, `block` — these drive the Element's inner flex layout; on a compound Element with `beforeContent`/`afterContent`, the slot axis uses `direction`, `alignX`, `alignY`), and **visual CSS goes in `.theme()`** (colors, spacing, borders, shadows — these style the outer wrapper). A bare `rocketstyle('div')` component only forwards whatever props the wrapped component understands; the layout-prop convention applies through Element-based bases.
 :::
 
 ### `.styles(css => css\`...\`)` — escape hatch to raw CSS

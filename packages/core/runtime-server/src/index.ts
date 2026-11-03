@@ -228,6 +228,35 @@ function flushStream(): void {
 
 const _streamCtxAls = new AsyncLocalStorage<StreamCtx>()
 
+// ─── Buffer frames ────────────────────────────────────────────────────────────
+// Streamed HTML can be held back from the document for a while: a `<For>` row is
+// buffered until its key-marker decision is known, and a `<Suspense>` boundary's
+// resolved children are buffered until its `<template>` is emitted. A boundary
+// written into such a buffer has its target `<div>` OUTSIDE the document until the
+// buffer lands, and its own resolution runs concurrently — so its `__NS` swap
+// could reach the document before its target, find nothing, and leave the
+// fallback up forever. Each buffer is a frame; a boundary remembers the frame it
+// was written into and emits its swap only once that frame, and every frame
+// enclosing it, has reached the document.
+interface BufferFrame {
+  readonly done: Promise<void>
+  readonly release: () => void
+  readonly parent: BufferFrame | undefined
+}
+const _bufferFrameAls = new AsyncLocalStorage<BufferFrame | undefined>()
+
+function openBufferFrame(parent: BufferFrame | undefined): BufferFrame {
+  let release!: () => void
+  const done = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  return { done, release, parent }
+}
+
+async function untilInDocument(frame: BufferFrame | undefined): Promise<void> {
+  for (let f = frame; f !== undefined; f = f.parent) await f.done
+}
+
 // ─── Concurrent SSR context isolation ────────────────────────────────────────
 // Each renderToString call runs in its own ALS store (a fresh empty stack[]).
 // Concurrent requests never share context frames.
@@ -763,18 +792,26 @@ async function streamVNode(vnode: VNode, enqueue: (s: string) => void): Promise<
         leadKeys.push(safeKeyForMarker(key))
       } else if (!marked && isComponentRow(row)) {
         // Classified by its render (see `renderForItems`), so the row streams
-        // into a buffer until the marker decision is known.
+        // into a buffer until the marker decision is known. The buffer is a
+        // frame: a `<Suspense>` inside the row must not swap before it lands.
         let buf = ''
-        const single = await streamComponentNode(row as VNode, (c) => {
-          buf += c
-        })
-        if (single) leadKeys.push(safeKeyForMarker(key))
-        else {
-          marked = true
-          _count('runtime-server.for.keyMarker')
-          enqueue(`<!--k:${safeKeyForMarker(key)}-->`)
+        const frame = openBufferFrame(_bufferFrameAls.getStore())
+        try {
+          const single = await _bufferFrameAls.run(frame, () =>
+            streamComponentNode(row as VNode, (c) => {
+              buf += c
+            }),
+          )
+          if (single) leadKeys.push(safeKeyForMarker(key))
+          else {
+            marked = true
+            _count('runtime-server.for.keyMarker')
+            enqueue(`<!--k:${safeKeyForMarker(key)}-->`)
+          }
+          enqueue(buf)
+        } finally {
+          frame.release()
         }
-        enqueue(buf)
         continue
       } else {
         marked = true
@@ -1061,13 +1098,17 @@ async function streamSuspenseBoundary(vnode: VNode, enqueue: (s: string) => void
   const id = ctx.nextId()
   const { mainEnqueue, nonceAttr } = ctx
 
-  // Emit the swap helper function once (before first use)
-  if (id === 0) mainEnqueue(`<script${nonceAttr}>${SUSPENSE_SWAP_BODY}</script>`)
+  // The wrapper (and the one-time swap helper) go wherever this boundary is being
+  // written — through `enqueue`, like its fallback. Writing them to the main stream
+  // put an empty `<div>` OUTSIDE a buffered `<For>` row and an outer boundary's
+  // template, with the fallback inside, so the swap landed beside the row.
+  const placedIn = _bufferFrameAls.getStore()
+  if (id === 0) enqueue(`<script${nonceAttr}>${SUSPENSE_SWAP_BODY}</script>`)
 
   // Stream the fallback synchronously (no await on children)
-  mainEnqueue(`<div id="pyreon-s-${id}">`)
+  enqueue(`<div id="pyreon-s-${id}">`)
   await streamNode(fallback ?? null, enqueue)
-  mainEnqueue('</div>')
+  enqueue('</div>')
 
   // Capture the context store for the async resolution so it inherits context.
   // `?? []` is defensive — the streaming pipeline always runs inside an active
@@ -1084,6 +1125,9 @@ async function streamSuspenseBoundary(vnode: VNode, enqueue: (s: string) => void
 
   ctx.pending.push(
     _contextAls.run(ctxStore, async () => {
+      // This boundary's resolved children are themselves a buffer: a boundary
+      // nested inside them must wait until this template has been emitted.
+      const ownFrame = openBufferFrame(undefined)
       try {
         ctx.suspenseDepth++
         const buf: string[] = []
@@ -1096,13 +1140,15 @@ async function streamSuspenseBoundary(vnode: VNode, enqueue: (s: string) => void
         if (suspenseTimeoutMs === Infinity) {
           // No-timeout mode: just await children. AbortSignal still
           // applies via the outer drain-loop race in renderToStream.
-          await streamNode(children ?? null, (s) => buf.push(s))
+          await _bufferFrameAls.run(ownFrame, () => streamNode(children ?? null, (s) => buf.push(s)))
           result = 'resolved'
         } else {
           let timeoutId: ReturnType<typeof setTimeout> | undefined
           try {
             result = await Promise.race([
-              streamNode(children ?? null, (s) => buf.push(s)).then(() => 'resolved' as const),
+              _bufferFrameAls
+                .run(ownFrame, () => streamNode(children ?? null, (s) => buf.push(s)))
+                .then(() => 'resolved' as const),
               new Promise<'timeout'>((resolve) => {
                 timeoutId = setTimeout(() => resolve('timeout'), suspenseTimeoutMs)
               }),
@@ -1138,6 +1184,11 @@ async function streamSuspenseBoundary(vnode: VNode, enqueue: (s: string) => void
         // server copy.
         const content = `<!--$-->${buf.join('').replace(/<\/template/gi, '<\\/template')}<!--/$-->`
 
+        // The target `<div>` may still be held in a buffer (a `<For>` row, an outer
+        // boundary's template); a swap that runs before it lands finds nothing.
+        await untilInDocument(placedIn)
+        if (ctx.signal?.aborted) return
+
         // Flush styler CSS collected while resolving this boundary — emit the
         // `<style>` BEFORE the `<template>` so the rules apply before `__NS`
         // swaps in the resolved content. Eliminates FOUC on streaming SSR, where
@@ -1167,6 +1218,10 @@ async function streamSuspenseBoundary(vnode: VNode, enqueue: (s: string) => void
         // Fallback stays visible — no swap script emitted
       } finally {
         ctx.suspenseDepth--
+        // On every exit — resolved, timed out, aborted or failed — so a boundary
+        // nested in this one never waits forever (its swap then simply finds no
+        // target, which is the right outcome when this one never swapped).
+        ownFrame.release()
       }
     }),
   )

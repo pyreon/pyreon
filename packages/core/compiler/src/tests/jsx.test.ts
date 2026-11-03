@@ -2277,10 +2277,10 @@ describe('JSX transform — SSR mode', () => {
 // ─── Signal auto-call in JSX ────────────────────────────────────────────────
 
 describe('JSX transform — signal auto-call', () => {
-  test('bare signal in text child is auto-called', () => {
+  test('bare signal in text child binds the signal directly (same as {name()})', () => {
     const result = t('function C() { const name = signal("Vít"); return <div>{name}</div> }')
-    expect(result).toContain('name()')
-    expect(result).toContain('bindPolymorphicText')
+    expect(result).toContain('_bindText(name,')
+    expect(result).not.toContain('bindPolymorphicText')
   })
 
   test('signal in attribute expression is auto-called', () => {
@@ -2334,15 +2334,15 @@ describe('JSX transform — signal auto-call', () => {
 
   test('non-signal const is NOT auto-called', () => {
     const result = t('function C() { const x = 42; return <div>{x}</div> }')
-    expect(result).not.toContain('x()')
+    expect(result).not.toMatch(/x\(\)|_bindText\(x,/)
   })
 
   test('computed() IS auto-called (same callable pattern as signal)', () => {
     const result = t(
       'function C() { const doubled = computed(() => 2); return <div>{doubled}</div> }',
     )
-    expect(result).toContain('doubled()')
-    expect(result).toContain('bindPolymorphicText')
+    expect(result).toContain('_bindText(doubled,')
+    expect(result).toContain('_bindText(')
   })
 
   test('computed already called is NOT double-called', () => {
@@ -2370,7 +2370,7 @@ describe('JSX transform — signal auto-call', () => {
     // console.log(x) should keep bare x, only JSX usage gets auto-called
     expect(result).toContain('console.log(x)')
     // But JSX usage gets auto-called
-    expect(result).toContain('bindPolymorphicText(() => (x()')
+    expect(result).toContain('_bindText(x,')
   })
 
   test('signal as event handler value IS auto-called (unwraps to the handler fn)', () => {
@@ -2385,20 +2385,20 @@ describe('JSX transform — signal auto-call', () => {
   test('module-scope signal IS tracked and auto-called', () => {
     const result = t('const globalSig = signal(0); function C() { return <div>{globalSig}</div> }')
     // Module-scope signal declarations are tracked by the single-pass walk
-    expect(result).toContain('globalSig()')
+    expect(result).toContain('_bindText(globalSig,')
   })
 
   test('knownSignals option enables cross-module auto-call', () => {
     const code = 'import { count } from "./store"; function App() { return <div>{count}</div> }'
     const result = transformJSX(code, 'test.tsx', { knownSignals: ['count'] }).code
-    expect(result).toContain('count()')
-    expect(result).toContain('bindPolymorphicText')
+    expect(result).toContain('_bindText(count,')
+    expect(result).toContain('_bindText(')
   })
 
   test('knownSignals with alias — local name is used', () => {
     const code = 'import { count as c } from "./store"; function App() { return <div>{c}</div> }'
     const result = transformJSX(code, 'test.tsx', { knownSignals: ['c'] }).code
-    expect(result).toContain('c()')
+    expect(result).toContain('_bindText(c,')
   })
 
   test('knownSignals does not double-call already-called signals', () => {
@@ -2471,7 +2471,7 @@ describe('JSX transform — signal auto-call', () => {
   // the fix doesn't over-correct.
   test('bare signal in JSX text still auto-calls (fix does not over-correct)', () => {
     const result = t('function C() { const count = signal(0); return <div>{count}</div> }')
-    expect(result).toContain('count()')
+    expect(result).toContain('_bindText(count,')
   })
 
   // ── JSX text/expression whitespace (regression) ─────────────────────
@@ -2521,7 +2521,7 @@ describe('JSX transform — signal auto-call', () => {
     `)
     // Inner's show is a plain string, NOT a signal — should NOT be auto-called
     // But App's show IS a signal — should be auto-called
-    expect(result).toContain('show()') // App's usage
+    expect(result).toContain('_bindText(show,') // App's usage
     expect(result).toContain('_setChild(__root, show)') // Inner's usage (static)
   })
 
@@ -2537,7 +2537,7 @@ describe('JSX transform — signal auto-call', () => {
     `)
     // Display's count is a parameter, not the signal
     expect(result).toContain('_setChild(__root, count)') // Display: static
-    expect(result).toContain('bindPolymorphicText(() => (count()') // App: auto-called
+    expect(result).toContain('_bindText(count,') // App: auto-called
   })
 
   test('destructured parameter shadowing signal is NOT auto-called', () => {
@@ -2552,7 +2552,7 @@ describe('JSX transform — signal auto-call', () => {
     `)
     // Greet's name is destructured from props — shadows the signal
     expect(result).toContain('_setChild(__root, name)') // Greet: static
-    expect(result).toContain('bindPolymorphicText(() => (name()') // App: auto-called
+    expect(result).toContain('_bindText(name,') // App: auto-called
   })
 
   test('signal in outer scope is auto-called when NOT shadowed', () => {
@@ -2566,7 +2566,7 @@ describe('JSX transform — signal auto-call', () => {
       }
     `)
     // name is NOT shadowed in Inner — auto-called in both
-    const autoCallCount = (result.match(/name\(\)/g) || []).length
+    const autoCallCount = (result.match(/_bindText\(name,/g) || []).length
     expect(autoCallCount).toBeGreaterThanOrEqual(2)
   })
 
@@ -2582,7 +2582,7 @@ describe('JSX transform — signal auto-call', () => {
     `)
     // Inner's item is array-destructured — shadows the signal
     expect(result).toContain('_setChild(__root, item)') // Inner: static
-    expect(result).toContain('bindPolymorphicText(() => (item()') // App: auto-called
+    expect(result).toContain('_bindText(item,') // App: auto-called
   })
 
   test('signal re-declared as signal in inner scope is still auto-called', () => {
@@ -2597,7 +2597,7 @@ describe('JSX transform — signal auto-call', () => {
       }
     `)
     // Both are signal() calls — both should be auto-called
-    const autoCallCount = (result.match(/count\(\)/g) || []).length
+    const autoCallCount = (result.match(/_bindText\(count,/g) || []).length
     expect(autoCallCount).toBeGreaterThanOrEqual(2)
   })
 
@@ -2619,7 +2619,7 @@ describe('JSX transform — signal auto-call', () => {
     expect(result).toContain('_setChild(__root, show)')
     // B does NOT shadow — auto-called
     // App does NOT shadow — auto-called
-    const autoCallCount = (result.match(/show\(\)/g) || []).length
+    const autoCallCount = (result.match(/_bindText\(show,/g) || []).length
     expect(autoCallCount).toBeGreaterThanOrEqual(2)
   })
 
@@ -2647,7 +2647,7 @@ describe('JSX transform — signal auto-call', () => {
 
   test('signal with no init (const x = signal()) tracked', () => {
     const result = t('function C() { const x = signal(); return <div>{x}</div> }')
-    expect(result).toContain('x()')
+    expect(result).toContain('_bindText(x,')
   })
 
   test('signal in member expression property position is NOT auto-called', () => {
@@ -2667,7 +2667,7 @@ describe('JSX transform — signal auto-call', () => {
       'function C() { const x = signal(0); function Inner() { let x; return <div>{x}</div> } return <div>{x}</div> }',
     )
     // Inner's x is let, not tracked. App's x is signal
-    expect(result).toContain('bindPolymorphicText(() => (x()')
+    expect(result).toContain('_bindText(x,')
   })
 
   test('signal shadowed by let declaration in inner scope', () => {
@@ -2685,7 +2685,7 @@ describe('JSX transform — signal auto-call', () => {
     // (let is not const so it's not in signalVars, but it's also not tracked as shadow)
     // Actually findShadowingNames only checks top-level VariableDeclaration declarations
     // let is VariableDeclaration kind=let — it should shadow
-    expect(result).toContain('bindPolymorphicText(() => (show()') // outer: auto-called
+    expect(result).toContain('_bindText(show,') // outer: auto-called
   })
 
   test('knownSignals with empty array does not crash', () => {
@@ -2707,8 +2707,8 @@ describe('JSX transform — signal auto-call', () => {
     // When a default import resolves to a signal, the local name should be auto-called
     const code = 'import count from "./store"; function App() { return <div>{count}</div> }'
     const result = transformJSX(code, 'test.tsx', { knownSignals: ['count'] }).code
-    expect(result).toContain('count()')
-    expect(result).toContain('bindPolymorphicText')
+    expect(result).toContain('_bindText(count,')
+    expect(result).toContain('_bindText(')
   })
 })
 
@@ -2949,7 +2949,7 @@ describe('JSX transform — walkNode edge cases for scope cleanup', () => {
         return <div>{x}</div>
       }
     `)
-    expect(result).toContain('bindPolymorphicText(() => (x()')
+    expect(result).toContain('_bindText(x,')
   })
 
   test('template emit within scoped function with signal shadowing', () => {
@@ -2966,7 +2966,7 @@ describe('JSX transform — walkNode edge cases for scope cleanup', () => {
     // Nested: count is shadowed, static
     expect(result).toContain('_setChild(__e0, count)')
     // App: count is signal, auto-called
-    expect(result).toContain('bindPolymorphicText(() => (count()')
+    expect(result).toContain('_bindText(count,')
   })
 })
 
@@ -3003,7 +3003,7 @@ describe('JSX transform — signalVars.size > shadowedSignals.size check', () =>
     // `_setClass` class setter)
     expect(result).toContain('_setClass(__root, x + " extra")')
     // App's x IS auto-called
-    expect(result).toContain('bindPolymorphicText(() => (x()')
+    expect(result).toContain('_bindText(x,')
   })
 })
 
@@ -3310,9 +3310,9 @@ describe('JSX transform — additional branch coverage paths', () => {
         </div>
       }
     `)
-    expect(result).toContain('a()')
-    expect(result).toContain('b()')
-    expect(result).toContain('c()')
+    expect(result).toContain('_bindText(a,')
+    expect(result).toContain('_bindText(b,')
+    expect(result).toContain('_bindText(c,')
   })
 
   test('signal auto-call with binary and unary expressions', () => {
@@ -3500,16 +3500,51 @@ describe('bare-signal attribute → _bindDirect (consistency fix)', () => {
     expect(code).not.toContain('_bindDirect(sel,')
   })
 
-  test('SCOPE: bare signal in TEXT child is unchanged (still re-tracking _bind, NOT _bindText)', () => {
-    // The fix is scoped to ATTRIBUTES. Bare-signal text (`<div>{name}</div>` —
-    // the dominant text shape) keeps its existing emission; promoting it to
-    // `_bindText` is a separate, larger change. This locks the scope.
-    const code = transformJSX(
-      `import {signal} from '@pyreon/reactivity'\nconst name=signal('')\nconst A=()=> <div>{name}</div>`,
-      'a.tsx',
-    ).code
-    expect(code).toContain('name()')
-    expect(code).not.toContain('_bindText(name')
+  // A bare signal TEXT child (`<div>{name}</div>`) is the same read as the
+  // called form (`<div>{name()}</div>`), so both take the `_bindText` fast
+  // path. It used to fall through to the general `bindPolymorphicText`.
+  for (const [label, bare, called] of [
+    ['sole text child', '<div>{name}</div>', '<div>{name()}</div>'],
+    ['number signal', '<span>{count}</span>', '<span>{count()}</span>'],
+    ['next to an element', '<div>{name}<b/></div>', '<div>{name()}<b/></div>'],
+  ] as const) {
+    test(`text child, ${label}: bare {sig} === called {sig()} — both backends, byte-identical`, () => {
+      const bareRs = bindLines(transformJSX, bare)
+      const calledRs = bindLines(transformJSX, called)
+      const bareJs = bindLines(transformJSX_JS, bare)
+      expect(bareRs.some((l) => l.includes('_bindText('))).toBe(true)
+      expect(bareRs).toEqual(calledRs)
+      expect(bareJs).toEqual(bareRs)
+    })
+  }
+
+  // The fast path only applies to an identifier that IS the signal. A local
+  // binding that shadows the name is a plain value and must stay on the
+  // general path, or `_bindText` would be handed a non-signal.
+  for (const [label, src] of [
+    ['callback param', 'xs.map((count) => <i>{count}</i>)'],
+    ['destructured param', '(({ count }) => <i>{count}</i>)({ count: 1 })'],
+    ['block-scoped const', '(() => { const count = 5; return <i>{count}</i> })()'],
+  ] as const) {
+    test(`text child, shadowed name (${label}) is NOT direct-bound`, () => {
+      for (const fn of [transformJSX, transformJSX_JS]) {
+        const code = fn(
+          `import {signal} from '@pyreon/reactivity'\nconst count=signal(0)\nconst xs=[1]\nconst A=()=> ${src}`,
+          'a.tsx',
+        ).code
+        expect(code).not.toContain('_bindText(count')
+      }
+    })
+  }
+
+  test('selector identifier in a TEXT child is NOT direct-bound', () => {
+    for (const fn of [transformJSX, transformJSX_JS]) {
+      const code = fn(
+        `import {createSelector,signal} from '@pyreon/reactivity'\nconst sel=createSelector(signal(null))\nconst A=()=> <div>{sel}</div>`,
+        'a.tsx',
+      ).code
+      expect(code).not.toContain('_bindText(sel')
+    }
   })
 })
 

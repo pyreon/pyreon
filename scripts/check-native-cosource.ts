@@ -440,45 +440,47 @@ for (const pkg of pkgs) {
       // primary runtime's basename) selects the stub bundle.
       const ktFiles = filesUnder(pkg.kotlinDir, '.kt')
       const svc = serviceName(ktFiles[0] ?? `${pkg.name}.kt`)
-      const test = pkg.testsDir
-        ? filesUnder(pkg.testsDir, '.kt').find((f) => f.endsWith('Test.kt'))
-        : undefined
-      const args = [verifyKotlin, `--source-dir=${pkg.kotlinDir}`, `--service=${svc}`]
-      if (test) args.push(`--test=${test}`)
-      else args.push('--typecheck-only')
-      const key = verdictKey({
-        compilerVersion: kotlincVersion,
-        harness: test ? kotlinSmokeHarness : kotlinHarness,
-        source: bytesOf(ktFiles),
-        test: test ? bytesOf([test]) : '',
-        typecheckOnly: !test,
-        // See the sibling branch: a typecheck-only outcome and a real
-        // behaviour pass must not share a cache key.
-        smokeRuns: test ? javaRuns : false,
-      })
-      const ok = cachedKotlin(key, `${pkg.name} [kotlin]`, Boolean(test), () => {
-        const r = spawnSync('bun', args, { encoding: 'utf8' })
-        if (r.status !== 0) {
-          console.error(`  ✗ ${pkg.name} [kotlin]:\n${r.stdout}\n${r.stderr}`)
-          return false
-        }
-        const skipped = Boolean(test) && smokeSkipped(r.stdout ?? '')
-        if (skipped && requireNativeValidate) {
-          console.error(
-            `  ✗ ${pkg.name} [kotlin]: the behaviour test only TYPECHECKED — no JDK on PATH, and PYREON_REQUIRE_NATIVE_VALIDATE=1.\n${r.stdout}`,
-          )
-          return false
-        }
-        // Report what HAPPENED, not what the file layout implies. The old line
-        // said "compiled + ran test" whenever a `*Test.kt` existed, whether or
-        // not a JVM was there to run it.
-        console.log(
-          `  ✓ ${pkg.name} [kotlin]` +
-            kotlinOutcomeLabel({ hasTest: Boolean(test), smokeSkipped: skipped }),
-        )
-        return skipped ? 'skipped' : true
-      })
-      if (!ok) failures++
+      // EVERY behaviour test runs. This used to take the first `*Test.kt` only, so a package with two (form:
+      // PyreonFieldArrayTest + PyreonFormTest) silently never ran the second — a green gate over a test that was
+      // never executed. Each test compiles with the whole dir, which is what whole-dir mode means.
+      const tests = pkg.testsDir ? filesUnder(pkg.testsDir, '.kt').filter((f) => f.endsWith('Test.kt')) : []
+      const runs: (string | undefined)[] = tests.length > 0 ? tests : [undefined]
+      for (const test of runs) {
+        const args = [verifyKotlin, `--source-dir=${pkg.kotlinDir}`, `--service=${svc}`]
+        if (test) args.push(`--test=${test}`)
+        else args.push('--typecheck-only')
+        const key = verdictKey({
+          compilerVersion: kotlincVersion,
+          harness: test ? kotlinSmokeHarness : kotlinHarness,
+          source: bytesOf(ktFiles),
+          test: test ? bytesOf([test]) : '',
+          typecheckOnly: !test,
+          // See the sibling branch: a typecheck-only outcome and a real
+          // behaviour pass must not share a cache key.
+          smokeRuns: test ? javaRuns : false,
+        })
+        const label = test ? `${pkg.name} [kotlin · ${test.replace(/^.*\//, '')}]` : `${pkg.name} [kotlin]`
+        const ok = cachedKotlin(key, label, Boolean(test), () => {
+          const r = spawnSync('bun', args, { encoding: 'utf8' })
+          if (r.status !== 0) {
+            console.error(`  ✗ ${label}:\n${r.stdout}\n${r.stderr}`)
+            return false
+          }
+          const skipped = Boolean(test) && smokeSkipped(r.stdout ?? '')
+          if (skipped && requireNativeValidate) {
+            console.error(
+              `  ✗ ${label}: the behaviour test only TYPECHECKED — no JDK on PATH, and PYREON_REQUIRE_NATIVE_VALIDATE=1.\n${r.stdout}`,
+            )
+            return false
+          }
+          // Report what HAPPENED, not what the file layout implies. The old line
+          // said "compiled + ran test" whenever a `*Test.kt` existed, whether or
+          // not a JVM was there to run it.
+          console.log(`  ✓ ${label}` + kotlinOutcomeLabel({ hasTest: Boolean(test), smokeSkipped: skipped }))
+          return skipped ? 'skipped' : true
+        })
+        if (!ok) failures++
+      }
     }
   }
 

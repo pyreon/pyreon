@@ -1015,6 +1015,81 @@ abstract class WebSocketListener {
 }
 `
 
+// PyreonIntl-specific stubs — the android.icu surface PyreonIntl.kt uses,
+// mirrored EXACTLY (member names, nullability, constant values). android.icu is
+// Android's bundled ICU4J (API 24+); the JVM has no equivalent, so the runtime
+// is typechecked here and RUN on the emulator (IntlDifferentialTest, against the
+// V8 oracle table). Java getters/setters appear as Kotlin properties, which is
+// how the source reads them (`f.timeZone = …`, `f.isGroupingUsed = …`).
+const ICU_STUBS = `package android.icu.util
+class ULocale private constructor() {
+    companion object {
+        @JvmStatic fun getDefault(): ULocale = ULocale()
+        @JvmStatic fun forLanguageTag(languageTag: String): ULocale = ULocale()
+    }
+}
+open class TimeZone {
+    companion object {
+        @JvmStatic fun getTimeZone(ID: String): TimeZone = TimeZone()
+        @JvmStatic fun getCanonicalID(ID: String): String? = null
+    }
+}
+open class Currency {
+    companion object {
+        @JvmStatic fun getInstance(theISOCode: String): Currency = Currency()
+    }
+}
+`
+const ICU_TEXT_STUBS = `package android.icu.text
+import android.icu.util.Currency
+import android.icu.util.TimeZone
+import android.icu.util.ULocale
+abstract class DateFormat {
+    var timeZone: TimeZone = TimeZone()
+    fun format(date: java.util.Date): String = ""
+    companion object {
+        const val NONE: Int = -1
+        const val FULL: Int = 0
+        const val LONG: Int = 1
+        const val MEDIUM: Int = 2
+        const val SHORT: Int = 3
+        @JvmStatic fun getDateTimeInstance(dateStyle: Int, timeStyle: Int, locale: ULocale): DateFormat = SimpleDateFormat("", locale)
+    }
+}
+open class SimpleDateFormat(pattern: String, locale: ULocale) : DateFormat()
+open class DateTimePatternGenerator {
+    fun getBestPattern(skeleton: String, options: Int): String = ""
+    companion object {
+        const val MATCH_HOUR_FIELD_LENGTH: Int = 1 shl 11
+        @JvmStatic fun getInstance(uLocale: ULocale): DateTimePatternGenerator = DateTimePatternGenerator()
+    }
+}
+abstract class NumberFormat {
+    var currency: Currency? = null
+    var roundingMode: Int = 6
+    var minimumFractionDigits: Int = 0
+    var maximumFractionDigits: Int = 3
+    var minimumIntegerDigits: Int = 1
+    var isGroupingUsed: Boolean = true
+    fun format(number: Double): String = ""
+    companion object {
+        const val NUMBERSTYLE: Int = 0
+        const val CURRENCYSTYLE: Int = 1
+        const val PERCENTSTYLE: Int = 2
+        const val ISOCURRENCYSTYLE: Int = 5
+        const val PLURALCURRENCYSTYLE: Int = 6
+        @JvmStatic fun getInstance(desiredLocale: ULocale, choice: Int): NumberFormat = object : NumberFormat() {}
+    }
+}
+`
+const ICU_MATH_STUBS = `package android.icu.math
+class BigDecimal {
+    companion object {
+        const val ROUND_HALF_UP: Int = 4
+    }
+}
+`
+
 // PyreonHttpOkHttp-specific stubs — the okhttp3 4.x REQUEST/RESPONSE surface,
 // mirrored EXACTLY. Deliberately SEPARATE from OKHTTP3_STUBS above (which
 // mirrors the websocket surface): each service compiles alone against only its
@@ -1029,6 +1104,67 @@ abstract class WebSocketListener {
 // `Closeable` so `use { }` resolves; `Response.body` is NULLABLE and
 // `string()` consumes the stream; and `Headers` is `Iterable<Pair<String,
 // String>>`, which is what makes the destructuring loop compile.
+// The Android surface PyreonUploadAndroid.kt resolves a `content://` URI through — exactly
+// what that file touches, one file per real package (per-service stubs stay minimal:
+// a superset masks, a subset manufactures failures).
+const UPLOAD_ANDROID_CONTENT_STUBS = `package android.content
+
+import android.database.Cursor
+import android.net.Uri
+
+open class Context {
+  open val applicationContext: Context get() = this
+  open val contentResolver: ContentResolver get() = ContentResolver()
+}
+
+open class ContentResolver {
+  @Suppress("UNUSED_PARAMETER")
+  fun query(uri: Uri, projection: Array<String>?, selection: String?, selectionArgs: Array<String>?, sortOrder: String?): Cursor? = null
+  @Suppress("UNUSED_PARAMETER")
+  fun getType(uri: Uri): String? = null
+  @Suppress("UNUSED_PARAMETER")
+  fun openInputStream(uri: Uri): java.io.InputStream? = null
+}
+`
+
+const UPLOAD_ANDROID_DATABASE_STUBS = `package android.database
+
+interface Cursor : java.io.Closeable {
+  fun moveToFirst(): Boolean
+  fun getColumnIndex(columnName: String): Int
+  fun isNull(columnIndex: Int): Boolean
+  fun getString(columnIndex: Int): String
+  fun getLong(columnIndex: Int): Long
+}
+`
+
+const UPLOAD_ANDROID_NET_STUBS = `package android.net
+
+abstract class Uri {
+  abstract val lastPathSegment: String?
+  companion object {
+    @Suppress("UNUSED_PARAMETER")
+    fun parse(uriString: String): Uri = throw UnsupportedOperationException("stub")
+  }
+}
+`
+
+const UPLOAD_ANDROID_PROVIDER_STUBS = `package android.provider
+
+object OpenableColumns {
+  const val DISPLAY_NAME: String = "_display_name"
+  const val SIZE: String = "_size"
+}
+`
+
+// okio's BufferedSink, exactly as far as a streamed RequestBody uses it: `outputStream()`.
+const OKIO_SINK_STUBS = `package okio
+
+interface BufferedSink {
+  fun outputStream(): java.io.OutputStream
+}
+`
+
 const OKHTTP3_HTTP_STUBS = `package okhttp3
 
 import java.io.Closeable
@@ -1039,10 +1175,18 @@ class MediaType {
   }
 }
 
+// The members a STREAMED body overrides, as declared by OkHttp 4: contentType and
+// writeTo are abstract, contentLength is open with -1 meaning "unknown, send chunked".
 abstract class RequestBody {
+  abstract fun contentType(): MediaType?
+  open fun contentLength(): Long = -1L
+  abstract fun writeTo(sink: okio.BufferedSink)
   companion object {
     @Suppress("UNUSED_PARAMETER")
     fun String.toRequestBody(contentType: MediaType? = null): RequestBody =
+      throw UnsupportedOperationException("stub")
+    @Suppress("UNUSED_PARAMETER")
+    fun ByteArray.toRequestBody(contentType: MediaType? = null, offset: Int = 0, byteCount: Int = size): RequestBody =
       throw UnsupportedOperationException("stub")
   }
 }
@@ -1431,9 +1575,26 @@ try {
     // The scheduler hops the user's body to the main looper before running it.
     writeFileSync(join(tempDir, 'AndroidOsHandler.kt'), ANDROID_OS_RATELIMIT_HANDLER_STUBS, 'utf8')
   }
+  const icuStubs =
+    SERVICE === 'PyreonIntl'
+      ? [join(tempDir, 'IcuUtil.kt'), join(tempDir, 'IcuText.kt'), join(tempDir, 'IcuMath.kt')]
+      : []
+  if (SERVICE === 'PyreonIntl') {
+    writeFileSync(icuStubs[0]!, ICU_STUBS, 'utf8')
+    writeFileSync(icuStubs[1]!, ICU_TEXT_STUBS, 'utf8')
+    writeFileSync(icuStubs[2]!, ICU_MATH_STUBS, 'utf8')
+  }
   const okhttpHttpPath = join(tempDir, 'OkHttp3Http.kt')
+  if (SERVICE === 'PyreonUploadAndroid') {
+    writeFileSync(join(tempDir, 'UploadAndroidContent.kt'), UPLOAD_ANDROID_CONTENT_STUBS, 'utf8')
+    writeFileSync(join(tempDir, 'UploadAndroidDatabase.kt'), UPLOAD_ANDROID_DATABASE_STUBS, 'utf8')
+    writeFileSync(join(tempDir, 'UploadAndroidNet.kt'), UPLOAD_ANDROID_NET_STUBS, 'utf8')
+    writeFileSync(join(tempDir, 'UploadAndroidProvider.kt'), UPLOAD_ANDROID_PROVIDER_STUBS, 'utf8')
+  }
   if (SERVICE === 'PyreonHttpOkHttp') {
     writeFileSync(okhttpHttpPath, OKHTTP3_HTTP_STUBS, 'utf8')
+    // The one okio member a streamed body writes through. Its own file: okio is a separate package.
+    writeFileSync(join(tempDir, 'OkioSink.kt'), OKIO_SINK_STUBS, 'utf8')
   }
 
   const jarPath = join(tempDir, 'pyreon-runtime.jar')
@@ -1717,9 +1878,18 @@ try {
     SERVICE === 'PyreonHttpOkHttp'
       ? [
           okhttpHttpPath,
+          join(tempDir, 'OkioSink.kt'),
           resolve(PACKAGE_ROOT, 'src/main/kotlin/com/pyreon/runtime/PyreonHttp.kt'),
         ]
-      : []
+      : SERVICE === 'PyreonUploadAndroid'
+        ? [
+            join(tempDir, 'UploadAndroidContent.kt'),
+            join(tempDir, 'UploadAndroidDatabase.kt'),
+            join(tempDir, 'UploadAndroidNet.kt'),
+            join(tempDir, 'UploadAndroidProvider.kt'),
+            resolve(PACKAGE_ROOT, 'src/main/kotlin/com/pyreon/runtime/PyreonHttp.kt'),
+          ]
+        : []
 
   const kotlincArgs = typecheckOnly
     ? [
@@ -1744,6 +1914,7 @@ try {
         ...notifStubs,
         ...okhttpExtras,
         ...okhttpHttpExtras,
+        ...icuStubs,
         ...geolocationAndroidExtras,
         ...networkAndroidExtras,
         ...pushAndroidExtras,
@@ -1777,6 +1948,7 @@ try {
         ...notifStubs,
         ...okhttpExtras,
         ...okhttpHttpExtras,
+        ...icuStubs,
         ...geolocationAndroidExtras,
         ...networkAndroidExtras,
         ...pushAndroidExtras,

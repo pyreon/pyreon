@@ -34,7 +34,8 @@ export function Gate() {
 describe('async component function', () => {
   it('Swift wraps the body in Task and keeps the await', () => {
     const r = transform(SRC, { target: 'swift' })
-    expect(r.code).toMatch(/func check\(\) \{\s*Task \{/)
+    // Spelled through its module so an app model named `Task` cannot shadow it.
+    expect(r.code).toMatch(/func check\(\) \{\s*_Concurrency\.Task \{/)
     expect(r.code).toContain('let ok = await bio.authenticate("Unlock")')
     expect(r.warnings ?? []).toEqual([])
   })

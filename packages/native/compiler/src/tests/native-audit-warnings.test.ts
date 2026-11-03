@@ -697,34 +697,24 @@ describe('Round-3 audit — diagnostic warnings for silently-broken shapes', () 
   })
 
   // ====================================================================
-  // Native readiness audit (2026-06, CRIT-4) — useLoaderData silent-drop.
-  // Compiler has no emit for useLoaderData on either target; runtime
-  // PyreonRouter.setLoaderData() ships but loader auto-emit is deferred.
-  // Warn at the call site naming the binding so the silent-drop is
-  // visible to the author at compile time.
+  // useLoaderData<T>() — the single-binding read lowers on both targets and a
+  // route `loader` populates it on appear, so it must NOT warn. (It used to
+  // warn that auto-loading was "future work" long after it shipped.)
   // ====================================================================
-  describe('useLoaderData<T>() silent-drop diagnostic', () => {
-    it('warns naming the binding when `const data = useLoaderData<User>()` at component body scope (Swift target)', () => {
-      const result = transform(
-        `
+  describe('useLoaderData<T>() emit', () => {
+    it('a single-binding `const data = useLoaderData<User>()` emits with no warning', () => {
+      for (const target of ['swift', 'kotlin'] as const) {
+        const result = transform(
+          `
         export function ProfilePage() {
           const data = useLoaderData<User>()
           return <Text>Hi</Text>
         }
         `,
-        { target: 'swift' },
-      )
-      // Phase B6 softened the wording: from "no emit" to
-      // "READ-ONLY emit" — read works via runtime; auto-loader
-      // is still future work.
-      expect(
-        result.warnings.some(
-          (w) =>
-            w.includes('useLoaderData') &&
-            w.includes('const data = useLoaderData') &&
-            w.includes('READ-ONLY emit'),
-        ),
-      ).toBe(true)
+          { target },
+        )
+        expect(result.warnings.filter((w) => w.includes('useLoaderData'))).toEqual([])
+      }
     })
 
     // Phase B6 emit assertions — the binding now EMITS as a real
@@ -743,9 +733,12 @@ describe('Round-3 audit — diagnostic warnings for silently-broken shapes', () 
       )
       // Computed (not stored) because @Environment isn't readable at
       // stored-let-init time. Same constraint useParams documents.
+      // NON-optional, as on the web: the body is gated on the data existing,
+      // and PyreonRouteLoader holds the route back until it does.
       expect(result.code).toContain(
-        'private var data: User? { useLoaderData(router: pyreonRouter) }',
+        'private var data: User { useLoaderData(router: pyreonRouter)! }',
       )
+      expect(result.code).toContain('if (useLoaderData(router: pyreonRouter) as User?) != nil {')
       // Component also gains the @Environment injection.
       expect(result.code).toContain(
         '@Environment(\\.pyreonRouter) private var pyreonRouter: PyreonRouter?',
@@ -765,10 +758,11 @@ describe('Round-3 audit — diagnostic warnings for silently-broken shapes', () 
       // Kotlin's `useLoaderData<T>()` is reified — reads
       // LocalPyreonRouter.current internally; no env injection
       // needed at the Composable level.
-      expect(result.code).toContain('val data = useLoaderData<User>()')
+      // `?: return`: the composable runs once the data exists, so `data` is non-null after.
+      expect(result.code).toContain('val data = useLoaderData<User>() ?: return')
     })
 
-    it('B6 destructure form STILL silent-drops (intentional — opaque T can\'t destructure)', () => {
+    it('B6 destructure form LOWERS, one non-optional accessor per field', () => {
       const result = transform(
         `
         export function ProfilePage() {
@@ -778,42 +772,15 @@ describe('Round-3 audit — diagnostic warnings for silently-broken shapes', () 
         `,
         { target: 'swift' },
       )
-      // Destructure-form warning has different wording (no "READ-ONLY emit")
-      expect(
-        result.warnings.some(
-          (w) =>
-            w.includes('useLoaderData') &&
-            w.includes('destructure form not yet emitted'),
-        ),
-      ).toBe(true)
-      // The binding does NOT emit (destructure path returns null).
-      expect(result.code).not.toContain('useLoaderData(router:')
+      expect(result.warnings.filter((w) => w.includes('useLoaderData'))).toEqual([])
+      expect(result.code).toContain('private var name: String { __pyreonLoaderData.name }')
     })
 
-    it('fires on Kotlin target too (target-independent, parser-level)', () => {
+    it('a destructure shape that does not lower (a nested pattern) warns by name', () => {
       const result = transform(
         `
         export function ProfilePage() {
-          const data = useLoaderData<User>()
-          return <Text>Hi</Text>
-        }
-        `,
-        { target: 'kotlin' },
-      )
-      expect(
-        result.warnings.some(
-          (w) =>
-            w.includes('useLoaderData') &&
-            w.includes('const data = useLoaderData'),
-        ),
-      ).toBe(true)
-    })
-
-    it('warns with destructure-form binding description', () => {
-      const result = transform(
-        `
-        export function ProfilePage() {
-          const { user } = useLoaderData<{ user: User }>()
+          const { user: { name } } = useLoaderData<{ user: User }>()
           return <Text>Hi</Text>
         }
         `,
@@ -821,14 +788,12 @@ describe('Round-3 audit — diagnostic warnings for silently-broken shapes', () 
       )
       expect(
         result.warnings.some(
-          (w) =>
-            w.includes('useLoaderData') &&
-            w.includes('{ ... } = useLoaderData'),
+          (w) => w.includes('useLoaderData<T>()') && w.includes('only a plain or renamed field'),
         ),
       ).toBe(true)
     })
 
-    it('names multiple loader bindings independently when several appear', () => {
+    it('several single-binding loader reads all emit, none warns', () => {
       const result = transform(
         `
         export function DashboardPage() {
@@ -839,18 +804,10 @@ describe('Round-3 audit — diagnostic warnings for silently-broken shapes', () 
         `,
         { target: 'swift' },
       )
-      const useLoaderWarnings = result.warnings.filter((w) =>
-        w.includes('useLoaderData'),
-      )
-      // Both bindings get their own warning so a developer with multiple
-      // loaders can spot which is affected.
-      expect(useLoaderWarnings.length).toBeGreaterThanOrEqual(2)
-      expect(
-        useLoaderWarnings.some((w) => w.includes('userData')),
-      ).toBe(true)
-      expect(
-        useLoaderWarnings.some((w) => w.includes('settingsData')),
-      ).toBe(true)
+      // Both bindings emit as reads and neither warns.
+      expect(result.warnings.filter((w) => w.includes('useLoaderData'))).toEqual([])
+      expect(result.code).toContain('private var userData: User {')
+      expect(result.code).toContain('private var settingsData: Settings {')
     })
 
     it('does NOT warn for `router.loaderData()` direct read (different API — no diagnostic needed)', () => {

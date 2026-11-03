@@ -150,7 +150,17 @@ export {
 export { forEachExpr } from './expr-walk'
 export { unconsumedSlotWarning } from './jsx-slot-attrs'
 export { isNumericLiteralOrNegation, substituteIdentifier } from './expr-utils'
-export { classifyHeaderValue, headerValueProblem, sendableHeaderExprs, type HeaderValue } from './request-headers'
+export {
+  classifyHeaderValue,
+  headerValueProblem,
+  kotlinHttpRequestArgs,
+  kotlinSendLines,
+  sendableHeaderExprs,
+  swiftHttpRequestArgs,
+  swiftSendLines,
+  type HeaderValue,
+  type HttpRequestParts,
+} from './request-headers'
 export { kotlinIdent, kotlinMember, localBase, swiftIdent } from './identifier-safety'
 export { KOTLIN_INT, swiftCodingKeysLines } from './spelling'
 export { kotlinStr, swiftStr } from './string-literals'

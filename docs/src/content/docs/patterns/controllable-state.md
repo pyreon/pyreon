@@ -8,7 +8,7 @@ seeAlso: [signal-writes]
 
 ## The pattern
 
-Use `useControllableState` from `@pyreon/hooks` for any primitive that exposes both controlled (`value` + `onChange`) and uncontrolled (`defaultValue`) props:
+Use `useControllableState` (exported from `@pyreon/core`, and re-exported by `@pyreon/hooks`) for any primitive that exposes both controlled (`value` + `onChange`) and uncontrolled (`defaultValue`) props:
 
 ```tsx
 import { useControllableState } from '@pyreon/hooks'
@@ -20,7 +20,7 @@ function Toggle(props: {
 }) {
   const [checked, setChecked] = useControllableState({
     value: () => props.checked,
-    defaultValue: () => props.defaultChecked ?? false,
+    defaultValue: props.defaultChecked ?? false,
     onChange: props.onChange,
   })
 
@@ -34,8 +34,8 @@ function Toggle(props: {
 
 Key rules:
 
-- Pass `value` and `defaultValue` as **functions**, not values. The function is invoked inside a reactive scope so signal reads track — the hook can't detect prop-driven controlled/uncontrolled transitions without a function.
-- The returned `checked` is a `Signal<boolean>` — call it to read, and call `setChecked` to write.
+- Pass `value` as a **getter** (`() => props.checked`) so the controlled value is re-read inside reactive scopes; passing the value itself reads the prop once (dev mode warns). `defaultValue` is a plain value — it only seeds the internal state.
+- The returned `checked` is a getter `() => boolean` — call it to read, and call `setChecked(next)` (or `setChecked((prev) => next)`) to write.
 - `onChange` is optional in both modes; if omitted and the component is controlled, writes are no-ops (which is exactly what React's controlled contract prescribes).
 
 ## Why
@@ -66,4 +66,4 @@ function Toggle(props) {
 ## Related
 
 - Anti-pattern: "Duplicating controlled/uncontrolled pattern" in `architecture` category
-- Reference API: `useControllableState` in `@pyreon/hooks` — see `get_api({ package: "hooks", symbol: "useControllableState" })`
+- Reference API: `useControllableState` in `@pyreon/core` (re-exported by `@pyreon/hooks`) — see `get_api({ package: "hooks", symbol: "useControllableState" })`

@@ -60,6 +60,37 @@ export interface WebViewProps {
    * web the `<iframe>` follows the browser and this prop is ignored.
    */
   domStorage?: boolean
+  /**
+   * Fill the free space of the parent `<Stack>` / `<Inline>` along its main
+   * axis, the way `<Spacer>` does — the sizing for a web view that should take
+   * the rest of a screen (an embedded checkout, a support form, a map).
+   *
+   * WITHOUT `grow` a web view is the size of an `<iframe>` with no CSS: as wide
+   * as its parent and **150 high** (the CSS replaced-element default), on every
+   * target. With it:
+   *
+   * | parent                  | web                          | iOS                                    | Android                    |
+   * | ----------------------- | ---------------------------- | -------------------------------------- | -------------------------- |
+   * | `<Stack>` (column)      | `flex: 1 1 150px` (height)   | `.frame(maxHeight: .infinity)`         | `Modifier.weight(1f)`      |
+   * | `<Inline>` (row)        | `flex: 1 1 150px` (width)    | `.frame(maxWidth: .infinity)`          | `Modifier.weight(1f)`      |
+   * | anything else           | `height: 100%`               | fills both axes                        | `Modifier.fillMaxSize()`   |
+   *
+   * Siblings keep their own size and several `grow` children share the space
+   * equally. Where the parent has no free space to give — inside a `<Scroll>`
+   * along its scroll axis, or a web container with no height of its own — a
+   * growing view keeps the 150 default instead of collapsing. On native PMTC
+   * warns when it can SEE that (`grow` inside a `<Scroll>` in the same
+   * component) and drops the prop, since `Modifier.weight` in a scrolling
+   * Compose column measures to zero.
+   *
+   * On web the free space is the flex container's: a root `<Stack>` only has
+   * height to share when the page gives it one (`height: 100vh` on the app
+   * root), exactly as a native screen always does.
+   *
+   * Must be a literal `true` / `false` on native (the layout is decided at
+   * compile time); a dynamic value warns and is ignored there.
+   */
+  grow?: boolean
   /** Pass-through `data-*` / `aria-*` / `id` / `class` attrs (web). */
   [key: `data-${string}`]: unknown
   [key: `aria-${string}`]: unknown

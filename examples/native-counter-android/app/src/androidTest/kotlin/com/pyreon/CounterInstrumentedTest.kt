@@ -684,6 +684,24 @@ class CounterInstrumentedTest {
         composeRule.onNodeWithText("2 Stücke").assertExists()
     }
 
+    // Switching language at runtime — the Android half of the iOS
+    // `test_i18nLocaleSwitchRetranslatesInPlace`. `i18n.locale.set('en')`
+    // assigns the container's Compose-state `locale`, so every composable
+    // reading t() recomposes with the English table.
+    @Test
+    fun i18nLocaleSwitchRetranslatesInPlace() {
+        composeRule.onNodeWithText("Greeting: Hallo!").assertExists()
+        composeRule.onNodeWithTag("i18n-locale").assertTextEquals("de")
+
+        composeRule.onNodeWithTag("i18n-switch-en").performScrollTo().performClick()
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithText("Greeting: Hello!").assertExists()
+        composeRule.onNodeWithText("Hi Vit!").assertExists()
+        composeRule.onNodeWithText("Greeting: Hallo!").assertDoesNotExist()
+        composeRule.onNodeWithTag("i18n-locale").assertTextEquals("en")
+    }
+
     // Dark mode (useColorScheme) asserted in the REAL Compose semantics tree —
     // the Android half of the iOS `test_colorSchemeTracksSimulatorAppearance`.
     //

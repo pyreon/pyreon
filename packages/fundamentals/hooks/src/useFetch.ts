@@ -56,9 +56,10 @@ export interface UseFetchResult<T> {
  *
  * Pass `init` for a non-GET request. On native it lowers to `PyreonHttp`
  * (URLSession on iOS, OkHttp on Android) — the layer that carries verbs,
- * headers and a body. The method and body must be literals (PMTC bakes them
- * into the emitted request); a header value may be any string expression,
- * evaluated as the request is built. Anything that cannot cross is named in
+ * headers and a body. The method must be a literal (PMTC bakes it into the
+ * emitted request); the body and a header value may be any string expression
+ * (`JSON.stringify(draft)`), evaluated as the request is built — once, at
+ * mount, the moment this hook reads `init`. Anything that cannot cross is named in
  * a compiler warning, because a request that silently falls back to GET is
  * worse than one that fails to build.
  *

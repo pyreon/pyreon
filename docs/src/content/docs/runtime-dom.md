@@ -261,7 +261,7 @@ const unmount = hydrateRoot(document.getElementById('app')!, <App />)
 
 ```tsx
 // --- server.ts ---
-import { renderToString } from '@pyreon/server'
+import { renderToString } from '@pyreon/runtime-server'
 
 const html = await renderToString(<App />)
 const page = `
@@ -1583,6 +1583,9 @@ In production builds, duplicate `key` values in keyed lists emit a one-time cons
 | `onHydrationMismatch`      | Register a structured hydration-mismatch telemetry callback                                                              |
 | `setupDelegation`          | Install the event-delegation root on a container (needed for a custom mount host, e.g. content mounted into a `<Portal>`) |
 | `nodesForElement`          | Look up the reactive bindings tracked against a given DOM element (devtools/debugging)                                   |
+| `DELEGATED_EVENTS`         | The `Set` of event names handled by the delegation root rather than per-element listeners                                 |
+| `delegatedPropName`        | `delegatedPropName(event)` → the expando key (`__ev_<event>`) a delegated handler is stored under                         |
+| `foreignAttrNamespace`     | The namespace a prefixed attribute (`xlink:href`, `xml:lang`, …) would have had if parsed on that element, or `null`      |
 
 `cx` (compose class names) is re-exported from `@pyreon/core`, not this package.
 
@@ -1613,3 +1616,6 @@ In production builds, duplicate `key` values in keyed lists emit a one-time cons
 | `KeepAliveProps`         | Props for the KeepAlive component       |
 | `DevtoolsComponentEntry` | DevTools component registration entry   |
 | `PyreonDevtools`         | DevTools interface                      |
+| `HydrationMismatchType`  | `'tag' \| 'text' \| 'missing'`           |
+| `HydrationMismatchContext` | Payload passed to an `onHydrationMismatch` handler |
+| `HydrationMismatchHandler` | `(ctx: HydrationMismatchContext) => void` |

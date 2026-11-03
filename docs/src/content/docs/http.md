@@ -77,6 +77,8 @@ The core has **zero dependencies**. Each capability is a separate entry, so an u
 | TanStack adapters | `@pyreon/http/query` |
 | network-free mocking | `@pyreon/http/mock` |
 | per-request SSR context | `@pyreon/http/server` |
+| lossless 64-bit JSON codec | `@pyreon/http/json` |
+| SSE / NDJSON streaming | `@pyreon/http/stream` |
 
 `/server` is the only entry that touches `node:async_hooks`, so it stays out of every browser bundle by construction.
 
@@ -369,6 +371,101 @@ expect(handle.calls).toHaveLength(1)
 ```
 
 A request matching no route falls through to the next layer, so you can stub a couple of endpoints and let the rest hit a real transport.
+
+## Lower-level exports
+
+The client covers the common path; these are the building blocks underneath it.
+
+| Export | Entry | Description |
+| --- | --- | --- |
+| `defineEndpoint(client, spec, options?)` | `@pyreon/http` | Standalone form of `api.endpoint(spec, options)`. |
+| `compose(middleware, transport)` | `@pyreon/http` | Fold a middleware list over a transport into one `Transport`. |
+| `createFetchTransport(fetchImpl?)` / `fetchTransport` / `toHttpResponse(raw, request)` | `@pyreon/http` | The default `fetch`-backed transport, a factory for a custom `fetch`, and the `Response` → `HttpResponse` adapter. |
+| `buildUrl(baseUrl, path, params, query)` / `joinUrl` / `applyPathParams` / `buildQuery` / `isAbsoluteUrl` | `@pyreon/http` | The URL helpers the client uses (encoding included). |
+| `isAbortError(value)` | `@pyreon/http` | True for the client's `AbortError` and for the platform `DOMException` named `AbortError` that `fetch` rejects with. |
+| `getAmbientRequest()` / `resolveAgainstAmbientOrigin(url)` | `@pyreon/http` | Read the in-scope SSR request, and resolve a relative URL against its origin. |
+| `bearer` / `refresh` / `dedupe` / `logger` / `retry` / `forwardHeaders` | `@pyreon/http/middleware` | The shipped middleware (see Middleware above). |
+| `toQueryOptions(client, path, options?)` | `@pyreon/http/query` | `{ queryKey, queryFn }` for an ad-hoc GET without declaring an endpoint. |
+| `runWithRequest(request, fn)` / `getRequest()` | `@pyreon/http/server` | Run code with an ambient request, and read it back. |
+| `isRetryableStreamError(error)` | `@pyreon/http/stream` | The default `shouldRetry` of a stream's reconnect policy. |
+
+## Multiplatform
+
+The client itself is web/Node only — the transport and middleware run on `fetch`. On iOS and Android (PMTC), same-file endpoint calls lower to the native networking runtime instead: `useFetch<T>(getUser({ params: { id: '1' } }))` becomes a `PyreonFetch`, `useQuery<T>(() => getUser.query({ params: { id: '1' } }))` a cached `PyreonQuery`, and `useStream` over `openEventStream` / `openNdjsonStream` with a same-file endpoint a `PyreonStream`. A computed `baseUrl` stays web.
+
+The client's middleware crosses too, when the `use` array is a literal the compiler can read:
+
+```ts
+const useSession = defineStore('session', () => ({ token: signal('') }))
+
+const api = createHttp({
+  baseUrl: 'https://api.example.com',
+  use: [bearer(() => useSession().store.token()), retry({ limit: 3 }), logger()],
+})
+```
+
+`bearer`, `retry` and `logger` lower to the native `PyreonHttpMiddleware` onion that the `useFetch` and `useQuery` harnesses apply around every request, in array order, with the web semantics: the same backoff (exponential, full jitter, capped at 20 s, then `maxDelay`), `Retry-After` in seconds or as an HTTP date, the idempotent-methods default, a nil or empty token sending no header, the `baseUrl` origin boundary, and a `logger` line that is silent outside a debug build unless `production: true`. A differential test runs the web middleware and both native runtimes on the same inputs and requires identical attempts, headers, waits and log lines. `forwardHeaders` lowers to nothing — on a client there is no inbound request to forward from, exactly as in a browser.
+
+What keeps a client's calls on the web, each with a warning naming the entry: `refresh`, `dedupe`, a custom middleware function, a `backoff` or `log` callback, a non-literal option, a `use` that is not an array literal, and a `bearer` token that reads a file-scope `signal()` (which does not exist natively — keep the token in a store). `useStream`, an awaited endpoint call (`PyreonHttp.call`) and `useMutation` refuse a client with middleware by name rather than sending a request without it. Two native differences are disclosed: on Android, `logger()` cannot see the app's `BuildConfig`, so it logs unless you set `PyreonHttpPipelineEnv.debugBuild = BuildConfig.DEBUG` at startup; and a request body is always replayable natively, so the web's one-shot-stream exception to retry does not arise.
+
+### Sending what the user entered
+
+A request can carry runtime values, and they are read at the moment the web reads them:
+
+```tsx
+const api = createHttp({ baseUrl: 'https://example.com/api' })
+const signIn = api.endpoint('POST /session')
+const saveProfile = api.endpoint('PUT /profile/:id')
+
+function SignIn() {
+  const email = signal('')
+  const save = useMutation<Profile>(saveProfile.mutation())
+
+  const submit = async () => {
+    // Lowers to PyreonHttp.call: a non-2xx rejects and ends the handler here.
+    await signIn({ json: { email: email() }, headers: { 'x-client': 'app' } })
+    save.mutate({ params: { id: 'me' }, json: { email: email() } })
+  }
+  // …
+}
+```
+
+- **`json`** is serialized by the web-identical `JSON.stringify` lowering (key order, number and string formatting all match), and `content-type: application/json` is added unless you set one.
+- **Runtime header and query values** go out as the web would send them — the query through `PyreonURL.query`, which mirrors `buildQuery` byte for byte (form-encoding, an array repeating its key, `null` / `undefined` dropped). Header values must be strings; a nullable one is refused with the fix.
+- **An awaited endpoint call** in an `async` event handler lowers to `PyreonHttp.call`; a failure ends the handler and is reported (logged), never crashing the app. An un-awaited call is sent fire-and-forget. Reading the awaited value (`const user = await signIn(…)`) has no decode type natively and is refused by name — use `useMutation<T>(ep.mutation())` and `await save.mutateAsync(…)`.
+- **`useMutation`** builds each request at the `mutate` / `mutateAsync` call site. The latest call owns `data` / `error` / `status`; `onSuccess` / `onError` / `onSettled` run in TanStack's order at both layers. When the view goes away nothing is written and no callback runs, but the request itself is not aborted (a write the server may already have committed is never torn mid-flight). `invalidates`, `onMutate` and `retry` are named in a warning rather than lowered.
+- **Known divergence:** natively an awaited call does not decode the response, so a 2xx whose body is not JSON resolves; the web's `.json()` rejects it.
+
+### Uploading a picked file
+
+A picker or the camera hands back a URI — a handle, not the file. `fileFromUri` from `@pyreon/hooks` is the step in between, and the same source sends the same bytes on every platform:
+
+```tsx
+import { fileFromUri, useImagePicker } from '@pyreon/hooks'
+
+const uploadAvatar = api.endpoint('POST /me/avatar')
+
+function AvatarButton() {
+  const picker = useImagePicker()
+  const caption = signal('')
+
+  const change = async () => {
+    const uri = await picker.pick()
+    if (uri === null) return
+    await uploadAvatar({
+      multipart: { avatar: await fileFromUri(uri, { name: 'avatar.jpg' }), caption: caption() },
+    })
+  }
+  // …
+}
+```
+
+- **`multipart`** becomes `PyreonMultipartBody` natively — parts in source order, a struct value as a `JSON.stringify` text part, an array repeating its field, `null` / `undefined` dropped, names and text normalized and escaped as the WHATWG `FormData` serialization does. An executed differential test holds the runtime writer to the bytes the web's `FormData` produces.
+- **Files stream from disk.** A `file://` copy (iOS) or a `content://` document (Android) is read in chunks when the request is sent and never held whole in memory; a `data:` URI is decoded the way `fetch` decodes it.
+- **`body: file`** sends the file's bytes as the whole body, typed by the file (or by a `content-type` you set). A string `body` is a text body.
+- **`form`** is serialized by the web's own `encodeForm` at compile time when every value is a literal, and by `PyreonURL.query` at request time when one is not — both produce the `URLSearchParams` bytes the web sends.
+- `fileFromUri` must be awaited (a Promise in a body is sent as text, so the unawaited call is named). On Android it reads through the app's `ContentResolver`; a URI that names nothing readable rejects, ending the handler.
+- **Not lowered, each named in a warning:** a `multipart` field holding a runtime array of objects (send one field per object or a single `JSON.stringify` value), a nested object in `form`, and passing two body encodings at once (the web throws).
 
 ## Relationship to the rest of the framework
 

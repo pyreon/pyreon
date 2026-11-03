@@ -264,7 +264,7 @@ const blocks = jsonl.split('\n').map((l) => JSON.parse(l))
 ```
 
 :::note
-For the full structural tree (metadata + nesting preserved) use `'json'`; for the flat, chunk-friendly content stream use `'jsonl'`. Both are pure — no external dependency, no lazy-load.
+For the full structural tree (metadata + nesting preserved) use `'json'`; for the flat, chunk-friendly content stream use `'jsonl'`. Both are pure — no external dependency (each loads as a small lazy chunk).
 :::
 
 ## Primitive × Format Support Matrix
@@ -625,7 +625,7 @@ The primitives in this package build a render-only `DocNode` tree — they don't
 | ----------------------- | ------------------------------------------------------------------------------- | -------------------------------- |
 | `render`                | `(node: DocNode, format: OutputFormat \| string, options?: RenderOptions)`      | `Promise<string \| Uint8Array>`  |
 | `createDocument`        | `(props?: DocumentProps)`                                                        | `DocumentBuilder`                |
-| `download`              | `(node: DocNode, filename: string, options?: RenderOptions)`                    | `Promise<void>` (browser only)   |
+| `download`              | `(node: DocNode \| VNode, filename: string, options?: RenderOptions)`           | `Promise<void>` (browser only)   |
 | `registerRenderer`      | `(format: string, renderer: DocumentRenderer \| (() => Promise<DocumentRenderer>))` | `void`                       |
 | `unregisterRenderer`    | `(format: string)`                                                               | `void`                           |
 | `isDocNode`             | `(value: unknown)`                                                               | `value is DocNode` (type guard)  |
@@ -707,9 +707,13 @@ type OutputFormat =
   | 'md' | 'text' | 'csv' | 'svg'
   | 'slack' | 'teams' | 'discord' | 'telegram'
   | 'notion' | 'confluence' | 'whatsapp' | 'google-chat'
-  | 'json' | 'jsonl' // typed but not built-in — register your own
+  | 'json' | 'jsonl'
 ```
 
 ### Exported types
 
-`DocNode`, `DocChild`, `NodeType`, `DocumentProps`, `DocumentBuilder`, `DocumentRenderer`, `RenderOptions`, `RenderResult`, `ResolvedStyles`, `OutputFormat`, `PageSize`, `PageOrientation`, and the per-primitive prop interfaces (`PageProps`, `SectionProps`, `RowProps`, `ColumnProps`, `HeadingProps`, `TextProps`, `LinkProps`, `ImageProps`, `TableProps`, `TableColumn`, `ListProps`, `ListItemProps`, `CodeProps`, `DividerProps`, `SpacerProps`, `ButtonProps`, `QuoteProps`).
+`DocNode`, `DocChild`, `NodeType`, `DocPrimitive`, `OptionalPropsDocPrimitive`, `BinaryOutputFormat` (`'pdf' | 'docx' | 'xlsx' | 'pptx'`), `TextOutputFormat`, `DocumentProps`, `DocumentBuilder`, `DocumentRenderer`, `RenderOptions`, `RenderResult`, `ResolvedStyles`, `OutputFormat`, `PageSize`, `PageOrientation`, and the per-primitive prop interfaces (`PageProps`, `SectionProps`, `RowProps`, `ColumnProps`, `HeadingProps`, `TextProps`, `LinkProps`, `ImageProps`, `TableProps`, `TableColumn`, `ListProps`, `ListItemProps`, `CodeProps`, `DividerProps`, `SpacerProps`, `ButtonProps`, `QuoteProps`).
+
+## Multiplatform
+
+`@pyreon/document` wraps pdfmake, docx, exceljs and pptxgenjs, which run in the browser or Node, so it does not lower to iOS or Android. From a native app, build the file on a server and fetch it (`useFetch` / `@pyreon/http` lower), or hand a result to the platform share sheet (`useShare` lowers).

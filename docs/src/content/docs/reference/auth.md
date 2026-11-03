@@ -55,7 +55,7 @@ See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multipla
 (opts: UseOidcOptions) => UseOidcResult
 ```
 
-A reactive OIDC sign-in with the SAME surface on web, iOS and Android — the shared-source entry point. Every member is read as a call (`auth.status()`, `auth.subject()`, `auth.claim("email")`, `auth.accessToken()`, `auth.expiresAt()`, `auth.error()`, `auth.isAuthenticated()`), and the strings it returns (status spellings, error codes) are identical on all three targets. On the web it is `createAuth` with browser defaults: pending sign-ins in `sessionStorage` (they must survive the full-page round trip), navigation by `location.assign`, and on the redirect page the callback is completed automatically, with the code scrubbed from the address bar and history first. In shared source it lowers to the native `PyreonOidcAuth`, which runs the system browser, verifies the ID token against the provider keys, refreshes, and keeps the session in the Keychain / Keystore so the app is still signed in after a relaunch. Options must be static (literals or module consts) because native bakes them in. Call it ONCE at the app root and pass `auth` down.
+A reactive OIDC sign-in with the SAME surface on web, iOS and Android — the shared-source entry point. Every member is read as a call (`auth.status()`, `auth.subject()`, `auth.claim("email")`, `auth.accessToken()`, `auth.expiresAt()`, `auth.error()`, `auth.isAuthenticated()`), and the strings it returns (status spellings, error codes) are identical on all three targets. On the web it is `createAuth` with browser defaults: pending sign-ins in `sessionStorage` (they must survive the full-page round trip), navigation by `location.assign`, and on the redirect page the callback is completed automatically, with the code scrubbed from the address bar and history first. In shared source it lowers to the native `PyreonOidcAuth`, which runs the system browser, verifies the ID token against the provider keys, refreshes, and keeps the session in the Keychain / Keystore so the app is still signed in after a relaunch. Persistence is the one deliberate divergence: the web holds tokens in memory only, so a reload starts at `signedOut` — storing them in `localStorage` / `sessionStorage` would make any XSS bug a stolen long-lived session. Re-run `signIn()` on load (it completes without a prompt while the provider session lasts) or keep the session server-side behind an HttpOnly cookie (`signSession`). Options must be static (literals or module consts) because native bakes them in. Call it ONCE at the app root and pass `auth` down.
 
 **Example**
 
@@ -79,6 +79,7 @@ const auth = useOidc({
 - Reading `auth.status` without calling it — every member is a call on the web
 - Expecting a refresh token without `offline_access` in `scope` (and, for Google, `authorizationParams: { access_type: "offline", prompt: "consent" }`)
 - Forgetting the Android manifest entries for PyreonAuthActivity / PyreonAuthRedirectActivity — without them the redirect never returns to the app
+- Expecting the web session to survive a reload like native does — web tokens live in memory only; re-run `signIn()` on load or keep the session server-side behind an HttpOnly cookie, never in `localStorage`
 
 **See also:** `createAuth` · `sessionStorageFlowStore`
 
@@ -284,7 +285,7 @@ const session = await verifySession(cookie, {
 (opts?: AttemptLimiterOptions) => AttemptLimiter
 ```
 
-Fixed-window attempt limiter for brute-forceable checks (TOTP codes, passkey and password attempts): at most `max` attempts per `windowMs` per key, reporting `retryAfterMs` when exhausted; call `reset(key)` after a success. Per process and bounded — expired windows are dropped as they are touched and the table never exceeds `maxKeys` (oldest window evicted first), so a flood of distinct keys cannot grow it without limit. Run several instances? Keep the same counters in a shared store.
+Fixed-window attempt limiter for brute-forceable checks (TOTP codes, passkey and password attempts): at most `max` attempts per `windowMs` per key, reporting `retryAfterMs` when exhausted; call `reset(key)` after a success. Per process and bounded — expired windows are dropped as they are touched and the table never exceeds `maxKeys`, so a flood of distinct keys cannot grow it without limit. Eviction never frees a blocked key: a full table drops an expired window, else the active window with the fewest attempts, never one at its limit; when every slot is at its limit the NEW key is refused (fail closed), so a key flood can delay first attempts from new keys but never buys a blocked key more guesses — size `maxKeys` above the keys legitimately active in one window. Run several instances? Keep the same counters in a shared store.
 
 **Example**
 
@@ -300,6 +301,7 @@ if (r.ok) limiter.reset(userId)
 
 - Keying only by IP — an attacker rotates addresses; key by account as well
 - Relying on it across instances — each process counts separately
+- Setting `maxKeys` near the number of keys legitimately active in one window — a full table of blocked windows refuses new keys until the oldest window ends
 
 **See also:** `verifyTotp` · `verifyAssertion`
 
@@ -311,7 +313,7 @@ if (r.ok) limiter.reset(userId)
 OidcMetadata
 ```
 
-Endpoints for GitHub (OAuth2, not OIDC — there is no ID token; read identity from the user API with the access token). `facebook(version)` and `oauth2(issuer, authorize, token)` cover other plain OAuth2 providers. Pass as `createAuth({ metadata })` to skip discovery. Pin the Facebook Graph version you have tested.
+Endpoints for GitHub (OAuth2, not OIDC — there is no ID token; read identity from the user API with the access token). `facebook(version)` and `oauth2(issuer, authorize, token)` cover other plain OAuth2 providers. Pass as `createAuth({ metadata })` to skip discovery. Explicit endpoints are checked where they are used: the authorization and token endpoints must be https (loopback http allowed for local development) or the call fails with `insecure_url`, on web, iOS and Android alike. Pin the Facebook Graph version you have tested.
 
 **Example**
 

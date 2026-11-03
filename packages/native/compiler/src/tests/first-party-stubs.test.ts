@@ -67,7 +67,7 @@ describe('first-party stub augmentations', () => {
   it('the i18n stubs declare PyreonI18n on the target that names it', () => {
     expect(
       i18nStubs.swift?.('@State private var i18n = PyreonI18n(locale: "en", messages: [:])'),
-    ).toContain('struct PyreonI18n')
+    ).toContain('class PyreonI18n')
     expect(
       i18nStubs.kotlin?.(
         'val i18n = remember { PyreonI18n(initialLocale = "en", messages = mapOf()) }',

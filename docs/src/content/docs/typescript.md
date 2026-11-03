@@ -29,7 +29,7 @@ yarn add -D @pyreon/typescript
 
 :::
 
-It's a dev dependency — the presets are plain JSON config files that TypeScript reads at type-check time. The package declares a peer dependency on `typescript >= 5.9.0`.
+It's a dev dependency — the presets are plain JSON config files that TypeScript reads at type-check time. The package declares a peer dependency on `typescript >=5.9.0 <7.0.0` (TypeScript 7 is excluded).
 
 ## Quick Start
 
@@ -298,7 +298,7 @@ All presets inherit the JSX wiring from base — you never configure it per proj
 - `jsx: "react-jsx"` — the automatic transform. No `import { h } from '@pyreon/core'` boilerplate in every file.
 - `jsxImportSource: "@pyreon/core"` — the transform pulls its factory from `@pyreon/core/jsx-runtime`, so `<div />` produces a Pyreon VNode.
 
-When you use `@pyreon/vite-plugin`, it configures esbuild with the same two settings at *build* time. The preset is what makes `tsc --noEmit` and your editor agree with the bundler at *type-check* time. They're two halves of the same contract — keep them in sync.
+When you use `@pyreon/vite-plugin`, it configures Vite's JSX transform (OXC) with the same automatic runtime and import source at *build* time. The preset is what makes `tsc --noEmit` and your editor agree with the bundler at *type-check* time. They're two halves of the same contract — keep them in sync.
 
 ### Compat layers override `jsxImportSource`
 
@@ -434,8 +434,8 @@ The pre-existing family — `ExtractProps` (multi-overload-aware), `ComponentFn`
 
 ## Versioning & compatibility
 
-- **Peer dependency:** `typescript >= 5.9.0`. The presets use options stable in TypeScript 5.9+ (`module: "Preserve"`, `moduleResolution: "Bundler"`, `verbatimModuleSyntax`).
-- **`@pyreon/core` dependency:** `>= 0.13.0` — for the `@pyreon/core/jsx-runtime` that `jsxImportSource` points at. Your project already depends on `@pyreon/core` if it renders anything.
+- **Peer dependency:** `typescript >=5.9.0 <7.0.0` — TypeScript 7 is excluded. The presets use options stable in TypeScript 5.9+ (`module: "Preserve"`, `moduleResolution: "Bundler"`, `verbatimModuleSyntax`).
+- **`@pyreon/core` dependency:** the same Pyreon release (`^` the current version) — for the `@pyreon/core/jsx-runtime` that `jsxImportSource` points at. Your project already depends on `@pyreon/core` if it renders anything.
 - **`sideEffects: false`** — the presets are pure JSON config; nothing in the package executes.
 
 ## Entry points

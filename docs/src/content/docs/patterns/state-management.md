@@ -46,8 +46,9 @@ export const useCartStore = defineStore('cart', () => {
   return { items, total, add, reset }
 })
 
-// Consumer
-const cart = useCartStore()
+// Consumer — the hook returns a StoreApi; your members live under `.store`
+// (`patch`, `subscribe`, `onAction`, `reset`, `dispose` sit at the top level)
+const cart = useCartStore().store
 cart.add({ id: 'sku-1', price: 10, qty: 2 })
 cart.total()  // 20
 ```
@@ -61,24 +62,23 @@ For state that needs JSON serialisation, undo/redo, or computed views:
 ```ts
 import { model } from '@pyreon/state-tree'
 
+// Each state field is a signal on `self`: read `self.todos()`, write `self.todos.set(...)`.
 const TodoModel = model({
   state: { todos: [] as Todo[], filter: 'all' as 'all' | 'active' | 'done' },
-  views: {
-    visible(self) {
-      if (self.filter === 'all') return self.todos
-      return self.todos.filter((t) => (self.filter === 'done' ? t.done : !t.done))
-    },
-  },
-  actions: {
-    add(self, text: string) {
-      self.todos.push({ id: crypto.randomUUID(), text, done: false })
-    },
-    toggle(self, id: string) {
-      const todo = self.todos.find((t) => t.id === id)
-      if (todo) todo.done = !todo.done
-    },
-  },
 })
+  .views((self) => ({
+    visible: () => {
+      const f = self.filter()
+      if (f === 'all') return self.todos()
+      return self.todos().filter((t) => (f === 'done' ? t.done : !t.done))
+    },
+  }))
+  .actions((self) => ({
+    add: (text: string) =>
+      self.todos.set([...self.todos(), { id: crypto.randomUUID(), text, done: false }]),
+    toggle: (id: string) =>
+      self.todos.set(self.todos().map((t) => (t.id === id ? { ...t, done: !t.done } : t))),
+  }))
 
 const store = TodoModel.create({ todos: [], filter: 'all' })
 store.add('Buy milk')
@@ -105,17 +105,17 @@ function BadApp() {
 export const useCartStore = defineStore('cart', () => ({ /* ...setup */ }))
 
 function GoodApp() {
-  const cart = useCartStore()
+  const cart = useCartStore().store
 }
 ```
 
 ```ts
-// BROKEN — reading store state by destructure at setup
-const { items } = useCartStore()
+// BROKEN — reading store state at setup
+const { items } = useCartStore().store
 const initial = items()   // captures initial value, not reactive
 
-// Correct — keep the store reference, call inside reactive scopes:
-const cart = useCartStore()
+// Correct — keep the signal, call it inside reactive scopes:
+const cart = useCartStore().store
 return <div>{cart.items().length}</div>
 ```
 

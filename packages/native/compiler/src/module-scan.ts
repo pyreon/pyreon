@@ -87,9 +87,30 @@ export interface ResolvedRequest {
   readonly urlExpr?: ExprIR | undefined
   readonly method: string
   readonly headers?: Record<string, string> | undefined
+  /**
+   * Header values that are RUNTIME expressions (a token, a signal read), evaluated when the request is built — the
+   * moment the web evaluates the call's `headers`. A name here never also appears in `headers`.
+   */
+  readonly headerExprs?: Record<string, ExprIR> | undefined
   readonly body?: string | undefined
+  /**
+   * A body that is only known at RUNTIME, as an expression of type `string` (a `json` value serialized through the
+   * web-identical `JSON.stringify` lowering). Mutually exclusive with `body`.
+   */
+  readonly bodyExpr?: ExprIR | undefined
+  /**
+   * A body the request STREAMS (a `multipart` form, or a raw `body` that may be a `fileFromUri` file), as a marker
+   * call the request writers lower (`swiftHttpRequestArgs` / `kotlinHttpRequestArgs`). Exclusive with the others.
+   */
+  readonly upload?: ExprIR | undefined
   /** The same-module schema binding the request's `response` names (evidence for the decode type's `Int`/`Double` fields). */
   readonly response?: { readonly binding: string; readonly array: boolean } | undefined
+  /**
+   * The client's lowered `use: [...]` middleware, as an expression the request's EMITTER passes to the native
+   * `PyreonHttp.send(…, middleware:)`. Only set for a caller that declared {@link RequestOptions.middleware}; a client with
+   * middleware resolved for any other caller is reported and stays web, so no consumer can drop it in silence.
+   */
+  readonly middleware?: ExprIR | undefined
 }
 
 /** What the CALLER can honour. */
@@ -98,6 +119,17 @@ export interface RequestOptions {
   readonly allowRuntimeParams: boolean
   /** The caller consumes the RAW body as a stream. */
   readonly streaming: boolean
+  /**
+   * The caller emits {@link ResolvedRequest.middleware}. Opt-in on purpose: a request source that has middleware to
+   * apply REFUSES a caller that did not declare it (warning by name), rather than handing it a field it would ignore.
+   */
+  readonly middleware?: boolean | undefined
+  /**
+   * The caller EMITS `bodyExpr` and `headerExprs` — a runtime `json` body or header value. Opt-in, because a source
+   * that resolved them for a caller that ignores them would drop them in silence; without it they are reported and
+   * omitted, as before.
+   */
+  readonly runtimeValues?: boolean | undefined
 }
 
 export interface RequestSource {

@@ -4,6 +4,8 @@
 // starter fixtures use are recognised. Anything outside that set is
 // either passed through as unknown or surfaces a warning.
 
+import { GESTURE_EVENTS, isGestureEventName } from './gesture-events'
+import { THIRD_PARTY_SCHEMA_LIBRARIES } from './verbatim-call-warning'
 import { widenLiteralsInDoubleContexts } from './contextual-double-literals'
 import { forEachExpr } from './expr-walk'
 import { CORE_LOWERED_SURFACE, PLUGIN_OWNED_MODULES } from './plugin-packages'
@@ -82,6 +84,7 @@ import { liftSlotParamStructs, planViewBlock } from './render-slots'
 import { disambiguateValueTypeNames } from './value-type-namespaces'
 import { DEFAULT_THEME, mergeTheme, parseThemeDefinition, type ThemeTable } from './theme-native'
 import { typeShapeKey, lowerRouteParams } from './expr-utils'
+import { bodyReturnsValue } from './async-function'
 
 // oxc-parser's typed AST is rich; for Phase 0 we walk it loosely via
 // `any` to keep the parser readable. As the IR coverage grows we can
@@ -596,6 +599,9 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
     refine({ structs, items: moduleItems, decodes: ctx.responseDecodes })
   }
 
+  // With every Int→Double refinement above settled, name the decode-type fields that are STILL the integer default.
+  warnIntegerDecodeFields(structs, ctx.responseDecodes, ctx.warnings)
+
   // Same evidence as the pass above, for the shape that has no StructIR to
   // attach it to: an inline object generic (`signal<{ price: number }[]>([{
   // price: 2.5 }])`) is synthesised into a struct by the EMITTERS, so the
@@ -649,6 +655,8 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
   // type — dropping the v1 annotation requirement. Runs after all structs are
   // built (a helper param/return can reference a declared struct). A body whose
   // type still can't be determined is warned + dropped (never a broken emit).
+  // Router guards are shaped first: their parameter is the native path, which return inference needs.
+  lowerRouterGuards(components, ctx.helperFns, ctx.warnings, buildInferenceCtx([], structs, [], undefined, undefined, moduleConsts))
   refineHelperReturns(ctx.helperFns, structs, ctx.warnings, moduleConsts)
   for (const helper of ctx.helperFns) helperReturnSeed.set(helper.name, helper.returnType)
 
@@ -1329,12 +1337,22 @@ function collectAliasImports(body: AnyNode[]): Map<string, { source: string; imp
     for (const spec of (node.specifiers as AnyNode[]) ?? []) {
       const local = spec?.local?.name
       const imported = spec?.imported?.name
+      // `import * as v from 'valibot'` has no imported name; the namespace itself is what survives.
+      if (
+        THIRD_PARTY_SCHEMA_LIBRARIES.has(pkg) &&
+        !typeOnlyImport &&
+        (spec as { type?: string }).type === 'ImportNamespaceSpecifier' &&
+        typeof local === 'string'
+      ) {
+        map.set(local, { source: pkg, imported: local })
+        continue
+      }
       if (typeof local !== 'string' || typeof imported !== 'string') continue
       if (isElementLoweringTag(imported)) {
         map.set(local, { source: pkg, imported })
       } else if (
-        pkg.startsWith('@pyreon/') &&
-        !warnedAtImport(imported) &&
+        (THIRD_PARTY_SCHEMA_LIBRARIES.has(pkg) ||
+          (pkg.startsWith('@pyreon/') && !warnedAtImport(imported))) &&
         !typeOnlyImport &&
         (spec as { importKind?: string }).importKind !== 'type' &&
         /^[a-z]/.test(imported) &&
@@ -1519,7 +1537,11 @@ function inferTypeFromInitial(initial: ExprIR): TypeIR {
   // type. Mirrors `inferType`'s own `new-collection` case in infer-type.ts.
   if (initial.kind === 'new-collection') {
     if (initial.collection === 'map') {
-      return { kind: 'map', key: initial.keyType!, value: initial.valueType! }
+      // The index-by form without generic arguments is typed by binding its
+      // callback parameter, which needs the inference context this structural
+      // pass does not have.
+      if (initial.keyType === undefined || initial.valueType === undefined) return { kind: 'unknown' }
+      return { kind: 'map', key: initial.keyType, value: initial.valueType }
     }
     if (initial.elementType !== undefined) {
       return { kind: 'set', element: initial.elementType }
@@ -1530,15 +1552,14 @@ function inferTypeFromInitial(initial: ExprIR): TypeIR {
     if (seedT.kind === 'array') return { kind: 'set', element: seedT.element }
     return { kind: 'unknown' }
   }
-  // FLAT object literal → an object TypeIR. The emit synthesizes a struct from
+  // Object literal → an object TypeIR. The emit synthesizes a struct from
   // the shape and annotates the signal with it (instead of `Any`, which can't
   // be a typed value downstream). Paired with the emit-side
   // `_structFieldsToName` registration so the type annotation and the value's
   // struct constructor agree on ONE name (the top-level type emits before the
   // value, so the registration is in time). `signal({ x: 1, y: 2 })` → a
-  // struct, not `Any`. NESTED objects (`{ pt: { x, y } }`) bail — the nested
-  // struct's registration timing diverges from the value emit, so they stay
-  // `Any` (unchanged, no regression); flat record shapes are the dominant case.
+  // struct, not `Any`. Nested objects and array fields are synthesized too (see
+  // `inferFlatObjectType`).
   if (initial.kind === 'object') {
     const flat = inferFlatObjectType(initial)
     if (flat !== null) return flat
@@ -1547,18 +1568,12 @@ function inferTypeFromInitial(initial: ExprIR): TypeIR {
 }
 
 /**
- * Infer a FLAT-SCALAR object literal's TypeIR — every field must be a scalar
- * (number/string/boolean). A spread, an empty object, or any non-scalar field
- * (a nested object, OR an array field) returns null (the caller degrades to
- * `unknown`). Scalar-only is what keeps the type-path / value-path struct-name
- * unification sound on BOTH targets: a nested struct's registration can't be
- * guaranteed before its value emits, and an ARRAY field can't be synthesized
- * by the shared scalar-only `synthLiteralStructName` (Kotlin emits no type
- * annotation, so its value path has no registered struct to fall back to for
- * those). Scalar records — `signal({ x: 1, y: 2 })` and the elements of
- * `signal([{ id: 1, name: "a" }])` — are the dominant shape and are fully
- * supported; array-field / nested objects stay `Any` (unchanged, no
- * regression) pending the Kotlin emit-ordering follow-up.
+ * Infer an object literal's TypeIR. Every field must be synthesizable
+ * (`isSynthesizableFieldType`): a scalar (number/string/boolean), a nested
+ * object, or an array of those. A spread, an empty object, or any other field
+ * (a function, a mixed array, a bare identifier) returns null (the caller
+ * degrades to `unknown`). Covers `signal({ x: 1, y: 2 })` and the elements of
+ * `signal([{ id: 1, name: "a" }])`.
  */
 function inferFlatObjectType(obj: Extract<ExprIR, { kind: 'object' }>): TypeIR | null {
   if ((obj.spreads?.length ?? 0) > 0 || obj.fields.length === 0) return null
@@ -1605,6 +1620,72 @@ function collectObjectLiterals(e: ExprIR): Extract<ExprIR, { kind: 'object' }>[]
   if (e.kind === 'object') return [e]
   if (e.kind === 'array') return e.elements.flatMap(collectObjectLiterals)
   return []
+}
+
+/** `id`, `userId`, `user_id`, `userID` — the field names the integer default is right for by construction. */
+const isIdShapedField = (name: string): boolean => name === 'id' || /(?:[a-z0-9]Id|ID|_id)$/.test(name)
+
+/**
+ * Issue #3956 item 1: a struct a native fetch DECODES INTO whose `number` field is still the integer
+ * default (Swift `Int` / Kotlin `Long`) after every refinement. TS `number` carries no int/float
+ * distinction, so a fractional JSON value (`1.2`) fails the WHOLE decode and `data` stays empty on
+ * iOS and Android — silently, while the web accepts the same payload. Defaulting to Double instead
+ * would break every id-shaped field and change all existing output, so this only WARNS, once per
+ * struct, naming the fields and the `type Double = number` fix.
+ *
+ * Walks array elements, optional/union branches and nested struct fields. A decode whose `response`
+ * names a schema is skipped: the schema already settled each field (`s.number()` → Double), so an
+ * integer that survives it is the schema's `.int()` — evidence, not a default. An id-shaped field is
+ * never flagged, and a field typed `Int` (`type Int = number`) is the author saying "whole number".
+ */
+function warnIntegerDecodeFields(
+  structs: readonly StructIR[],
+  decodes: ParseCtx['responseDecodes'],
+  warnings: string[],
+): void {
+  if (structs.length === 0 || decodes.length === 0) return
+  const byName = new Map(structs.map((s) => [s.name, s]))
+  const visited = new Set<string>()
+  const ordered: StructIR[] = []
+  const visit = (t: TypeIR): void => {
+    switch (t.kind) {
+      case 'array':
+      case 'set':
+        visit(t.element)
+        return
+      case 'union':
+        for (const b of t.branches) visit(b)
+        return
+      case 'typeRef': {
+        const s = byName.get(t.name)
+        if (s === undefined || s.external === true || visited.has(s.name)) return
+        visited.add(s.name)
+        ordered.push(s)
+        for (const f of s.fields) visit(f.type)
+        return
+      }
+      default:
+        return
+    }
+  }
+  for (const d of decodes) if (d.response === undefined) visit(d.type)
+  const isInteger = (t: TypeIR): boolean =>
+    (t.kind === 'number' && t.float !== true) ||
+    (t.kind === 'array' && isInteger(t.element)) ||
+    (t.kind === 'union' &&
+      t.branches.some((b) => b.kind !== 'null' && b.kind !== 'undefined') &&
+      t.branches.every((b) => b.kind === 'null' || b.kind === 'undefined' || isInteger(b)))
+  for (const s of ordered) {
+    // An id is the case the integer default exists for, and it is in nearly every response type — warning on it would bury the
+    // fields that matter and fail every zero-warning gate over a correct lowering.
+    const fields = s.fields.filter((f) => isInteger(f.type) && !isIdShapedField(f.name)).map((f) => f.name)
+    if (fields.length === 0) continue
+    const named = fields.map((f) => `\`${f}\``).join(', ')
+    const fixes = fields.map((f) => `\`${f}: Double\``).join(', ')
+    warnings.push(
+      `A native fetch decodes its response into \`${s.name}\`, whose ${fields.length === 1 ? 'field' : 'fields'} ${named} ${fields.length === 1 ? 'is' : 'are'} \`number\` and lowers to an INTEGER (Swift \`Int\` / Kotlin \`Long\`) — TS \`number\` carries no int/float distinction. If the JSON can carry a fractional value (\`1.2\`), the WHOLE response fails to decode and \`data\` stays empty on iOS and Android, silently. Declare \`type Double = number\` and type it ${fixes}. If it is always a whole number, declare \`type Int = number\` and type it \`Int\` to say so (an \`id\` / \`…Id\` field is never flagged).`,
+    )
+  }
 }
 
 /**
@@ -2909,20 +2990,14 @@ function tryComponentFromTopLevel(node: AnyNode, ctx: ParseCtx): ComponentIR | n
         } else {
           bodyStmts = [{ kind: 'expr', expr: parseExpr(cb.body, ctx) }]
         }
-        // A returned CLEANUP fn (onMount's unmount contract) is not emitted
-        // in v1 — strip it (a bare `return <closure>` inside .onAppear /
-        // LaunchedEffect would be a type error) + warn NAMED.
-        const kept = bodyStmts.filter((st) => {
-          const isCleanupReturn =
-            st.kind === 'return' && st.expr !== undefined && st.expr.kind === 'arrow'
-          if (isCleanupReturn) {
-            ctx.warnings.push(
-              `Component ${name}: onMount returned a cleanup function — unmount cleanup is not emitted natively yet (the mount body IS). Move teardown to the host, or track the follow-up.`,
-            )
-          }
-          return !isCleanupReturn
-        })
-        decls.push({ kind: 'on-mount', body: kept })
+        // A returned CLEANUP fn (onMount's unmount contract) runs when the view goes away: Swift
+        // `.onDisappear`, Kotlin `DisposableEffect`'s `onDispose`. It is stripped from the mount body either
+        // way — a bare `return <closure>` inside `.onAppear` / `LaunchedEffect` would be a type error.
+        const cleanup = onMountCleanup(cb, name, ctx)
+        const kept = bodyStmts.filter(
+          (st) => !(st.kind === 'return' && st.expr !== undefined && st.expr.kind === 'arrow'),
+        )
+        decls.push({ kind: 'on-mount', body: kept, ...(cleanup !== undefined ? { cleanup } : {}) })
       } else if (call?.type === 'CallExpression') {
         // A bare CALL statement (`effect(...)`, a stray side-effecting
         // call) has no native lowering — dropped + NAMED warning, so the
@@ -3002,7 +3077,66 @@ function tryComponentFromTopLevel(node: AnyNode, ctx: ParseCtx): ComponentIR | n
     }
   }
 
+  // Collect this function as a pure-logic HELPER, or name why it cannot be one. Shared by the two helper gates
+  // below: the ordinary one (a top-level `return`) and the nested-return one.
+  const collectHelper = (): null => {
+    // A GENERIC helper (`function first<T>(xs: T[]): T`) can NOT be emitted:
+    // the IR has no generic-parameter representation, so a referenced `T`
+    // degrades to `unknown` and the emitted signature is uncompilable. Keep
+    // it a NAMED warning (the #2090 behavior for the shape helper-emission
+    // doesn't yet cover).
+    const isGeneric = ((fn.typeParameters?.params as AnyNode[] | undefined)?.length ?? 0) > 0
+    if (isGeneric) {
+      ctx.warnings.push(
+        `${name} looks like a GENERIC helper function — PMTC now emits non-generic top-level helper functions natively (Swift \`func\` / Kotlin \`fun\`), but generic type parameters aren't representable in the native IR yet, so \`${name}\` was skipped rather than mis-emitted with unresolved \`${'<T>'}\` types. Drop the generic, or inline the logic into the component that uses it.`,
+      )
+      return null
+    }
+    // A non-generic pure-logic helper: parse it into the same
+    // `DeclIR{kind:'function'}` shape store methods use and collect it — the
+    // parse return threads `helperFns` to both emitters, which emit it at file
+    // scope via the reusable `emitSwiftFunction` / `emitKotlinFunction`. This
+    // REPLACES the #2090 warn+skip: the silent-mis-emit-as-broken-view is now
+    // a faithful native `func`/`fun`. (`number` params map to `Int` — TS has
+    // no `Double` type + no param-level fractional refinement — so an
+    // integer-literal call site needs no Kotlin numeric coercion.)
+    // Collect every non-generic helper. Two shapes previously deferred here
+    // are now HANDLED downstream, so there is no per-collect gate:
+    //   - a missing return annotation → `refineHelperReturns` infers the
+    //     return type from the body (drops the annotation requirement);
+    //   - a FRACTIONAL body (`x * 1.5`, `x / 2`, `Math.sqrt`) → the emitter
+    //     now seeds the helper's Int params into the coercion ctx so the body
+    //     coerces (`Double(x) * 1.5`) AND `refineHelperReturns` refines the
+    //     `number` return to `Double`, so the signature matches (proven on
+    //     both toolchains). Kotlin auto-promotes Int×Double, needing only the
+    //     Double return. A genuinely-un-inferable body is warned + dropped by
+    //     `refineHelperReturns`.
+    if (!unsupportedHelperParams(fn, name, ctx)) ctx.helperFns.push(tryFunctionDecl(name, fn, ctx))
+    // The deferred props warnings were about PARAMETERS, not props. An
+    // unresolvable parameter type still reaches the native signature verbatim,
+    // so it is re-named in helper terms rather than dropped.
+    for (const w of deferredPropsWarnings) {
+      const unresolved = /^Component props type `([^`]+)` can't be resolved/.exec(w)?.[1]
+      if (unresolved !== undefined) {
+        ctx.warnings.push(
+          `Helper function \`${name}\`: parameter type \`${unresolved}\` can't be resolved — PMTC only resolves an object-shape \`type ${unresolved} = { … }\` / \`interface ${unresolved} { … }\` declared in the SAME file, a local string-literal union, or a native primitive. The native \`func\` / \`fun\` names \`${unresolved}\` verbatim, so it fails the build unless the platform itself defines a type of that name. Declare it locally or annotate the parameter with a supported type.`,
+        )
+      }
+    }
+    return null
+  }
+
   if (returnExpr === null) {
+    // No top-level `return` does not mean no return: a helper can return from every branch of an `if`/`else` or a
+    // `switch` (`function label(k: number) { if (k === 1) { return 'one' } else { return 'many' } }`). The
+    // component walk only records top-level returns, so such a helper used to reach the line below and be DROPPED
+    // with a "Component … no return statement found" warning, while the call to it stayed in the emit and failed
+    // to compile on both targets. The helper path already lowers control flow; route it there.
+    if (hasNestedValueReturns(fn, name, ctx)) return collectHelper()
+    // Nor does a function with no value return at all have to be a component: `function notify(msg: string) {
+    // toast(msg) }` is a side-effect helper, and it was dropped the same way. A component must return JSX, so a
+    // lowercase function with no value return and no JSX anywhere is a VOID helper.
+    if (isVoidHelper(fn, name)) return collectHelper()
     for (const w of deferredPropsWarnings) ctx.warnings.push(w)
     ctx.warnings.push(`Component ${name}: no return statement found; skipping.`)
     return null
@@ -3094,50 +3228,7 @@ function tryComponentFromTopLevel(node: AnyNode, ctx: ParseCtx): ComponentIR | n
     !returnContainsJsx(returnExpr) &&
     !returnsNothing
   ) {
-    // A GENERIC helper (`function first<T>(xs: T[]): T`) can NOT be emitted:
-    // the IR has no generic-parameter representation, so a referenced `T`
-    // degrades to `unknown` and the emitted signature is uncompilable. Keep
-    // it a NAMED warning (the #2090 behavior for the shape helper-emission
-    // doesn't yet cover).
-    const isGeneric = ((fn.typeParameters?.params as AnyNode[] | undefined)?.length ?? 0) > 0
-    if (isGeneric) {
-      ctx.warnings.push(
-        `${name} looks like a GENERIC helper function — PMTC now emits non-generic top-level helper functions natively (Swift \`func\` / Kotlin \`fun\`), but generic type parameters aren't representable in the native IR yet, so \`${name}\` was skipped rather than mis-emitted with unresolved \`${'<T>'}\` types. Drop the generic, or inline the logic into the component that uses it.`,
-      )
-      return null
-    }
-    // A non-generic pure-logic helper: parse it into the same
-    // `DeclIR{kind:'function'}` shape store methods use and collect it — the
-    // parse return threads `helperFns` to both emitters, which emit it at file
-    // scope via the reusable `emitSwiftFunction` / `emitKotlinFunction`. This
-    // REPLACES the #2090 warn+skip: the silent-mis-emit-as-broken-view is now
-    // a faithful native `func`/`fun`. (`number` params map to `Int` — TS has
-    // no `Double` type + no param-level fractional refinement — so an
-    // integer-literal call site needs no Kotlin numeric coercion.)
-    // Collect every non-generic helper. Two shapes previously deferred here
-    // are now HANDLED downstream, so there is no per-collect gate:
-    //   - a missing return annotation → `refineHelperReturns` infers the
-    //     return type from the body (drops the annotation requirement);
-    //   - a FRACTIONAL body (`x * 1.5`, `x / 2`, `Math.sqrt`) → the emitter
-    //     now seeds the helper's Int params into the coercion ctx so the body
-    //     coerces (`Double(x) * 1.5`) AND `refineHelperReturns` refines the
-    //     `number` return to `Double`, so the signature matches (proven on
-    //     both toolchains). Kotlin auto-promotes Int×Double, needing only the
-    //     Double return. A genuinely-un-inferable body is warned + dropped by
-    //     `refineHelperReturns`.
-    if (!unsupportedHelperParams(fn, name, ctx)) ctx.helperFns.push(tryFunctionDecl(name, fn, ctx))
-    // The deferred props warnings were about PARAMETERS, not props. An
-    // unresolvable parameter type still reaches the native signature verbatim,
-    // so it is re-named in helper terms rather than dropped.
-    for (const w of deferredPropsWarnings) {
-      const unresolved = /^Component props type `([^`]+)` can't be resolved/.exec(w)?.[1]
-      if (unresolved !== undefined) {
-        ctx.warnings.push(
-          `Helper function \`${name}\`: parameter type \`${unresolved}\` can't be resolved — PMTC only resolves an object-shape \`type ${unresolved} = { … }\` / \`interface ${unresolved} { … }\` declared in the SAME file, a local string-literal union, or a native primitive. The native \`func\` / \`fun\` names \`${unresolved}\` verbatim, so it fails the build unless the platform itself defines a type of that name. Declare it locally or annotate the parameter with a supported type.`,
-        )
-      }
-    }
-    return null
+    return collectHelper()
   }
 
   // Confirmed a genuine component (past the helper carve-out) — NOW emit the
@@ -3197,6 +3288,190 @@ function warnLocalShadowsProp(
  * fragment, conditional root) IS recognized, so a real component can never be
  * misclassified as a helper.
  */
+/**
+ * Whether a function with NO top-level `return` is still a value-returning helper: every `return` sits inside
+ * control flow (`if`/`else`, `switch`, a loop). Uses the same rules as the ordinary helper gate in
+ * `tryComponentFromTopLevel`: a camelCase name, value parameters or a non-view return annotation, and no JSX in any
+ * returned value. All-nullish returns stay a component unless a non-view annotation says otherwise, matching
+ * that gate's `return null` rule.
+ */
+function hasNestedValueReturns(fn: AnyNode, name: string, ctx: ParseCtx): boolean {
+  const first = name.charAt(0)
+  if (first !== first.toLowerCase() || first === first.toUpperCase()) return false
+  const returnAnno = (fn.returnType as { typeAnnotation?: AnyNode } | undefined)?.typeAnnotation
+  const annoText =
+    returnAnno !== undefined ? ctx.source.slice(returnAnno.start as number, returnAnno.end as number).trim() : ''
+  const nonViewAnno =
+    annoText !== '' && !/^(VNodeChild|JSX\.Element|Element|ReactNode|VNode|void|null)$/.test(annoText)
+  if (((fn.params as AnyNode[] | undefined)?.length ?? 0) === 0 && !nonViewAnno) return false
+  const args: AnyNode[] = []
+  let bare = false
+  const visit = (node: unknown): void => {
+    if (!node || typeof node !== 'object') return
+    if (Array.isArray(node)) {
+      for (const n of node) visit(n)
+      return
+    }
+    const n = node as AnyNode
+    // A nested function's returns are its own, not this function's.
+    if (
+      n.type === 'FunctionDeclaration' ||
+      n.type === 'FunctionExpression' ||
+      n.type === 'ArrowFunctionExpression' ||
+      n.type === 'ClassDeclaration' ||
+      n.type === 'ClassExpression'
+    ) {
+      return
+    }
+    if (n.type === 'ReturnStatement') {
+      if (n.argument) args.push(n.argument as AnyNode)
+      else bare = true
+      return
+    }
+    for (const key of Object.keys(n)) {
+      if (key === 'type' || key === 'loc' || key === 'range' || key === 'span' || key === 'start' || key === 'end') {
+        continue
+      }
+      visit(n[key])
+    }
+  }
+  visit(fn.body?.body)
+  if (args.length === 0 || bare) return false
+  const isNullish = (a: AnyNode): boolean =>
+    (a.type === 'Literal' && a.value === null) || (a.type === 'Identifier' && a.name === 'undefined')
+  if (!nonViewAnno && args.every(isNullish)) return false
+  return !args.some(astContainsJsx)
+}
+
+/**
+ * The teardown an `onMount` callback returns, as statements — or `undefined` (and a named warning) when there is none
+ * that can lower. Only a TOP-LEVEL `return () => { … }` is a teardown: a conditional one would need the mount body's
+ * control flow to decide at unmount time. And the teardown must not read a local the mount body declared: on the web
+ * the returned closure captures it, but the native mount and unmount hooks are separate closures (Swift
+ * `.onAppear` / `.onDisappear`), so the value would not be there. Keep that state in a signal instead.
+ */
+function onMountCleanup(cb: AnyNode, component: string, ctx: ParseCtx): StatementIR[] | undefined {
+  if (cb.body?.type !== 'BlockStatement') return undefined
+  const top = (cb.body.body as AnyNode[] | undefined) ?? []
+  const isClosure = (n: AnyNode | undefined): boolean =>
+    n?.type === 'ArrowFunctionExpression' || n?.type === 'FunctionExpression'
+  const ret = top.find((st) => st.type === 'ReturnStatement' && isClosure(st.argument))
+  if (ret === undefined) return undefined
+  const fn = ret.argument as AnyNode
+  const mountLocals = new Set<string>()
+  for (const st of top) {
+    if (st.type !== 'VariableDeclaration') continue
+    for (const d of (st.declarations as AnyNode[] | undefined) ?? []) collectPatternNames(d.id, mountLocals)
+  }
+  const read = new Set<string>()
+  const visit = (n: unknown): void => {
+    if (!n || typeof n !== 'object') return
+    if (Array.isArray(n)) {
+      for (const x of n) visit(x)
+      return
+    }
+    const node = n as AnyNode
+    if (node.type === 'Identifier' && typeof node.name === 'string') read.add(node.name)
+    for (const key of Object.keys(node)) {
+      if (key === 'type' || key === 'loc' || key === 'range' || key === 'span' || key === 'start' || key === 'end') {
+        continue
+      }
+      visit(node[key])
+    }
+  }
+  visit(fn.body)
+  const captured = [...mountLocals].filter((n) => read.has(n))
+  if (captured.length > 0) {
+    ctx.warnings.push(
+      `Component ${component}: onMount's cleanup reads ${captured.map((n) => `\`${n}\``).join(', ')}, declared in the mount body. On the web the returned closure captures it, but native runs mount and unmount as separate hooks, so it would not be there — the cleanup was NOT emitted. Keep that value in a signal declared beside the component's other state, and read it from the cleanup.`,
+    )
+    return undefined
+  }
+  return fn.body?.type === 'BlockStatement'
+    ? parseStatementBlock(fn.body, ctx)
+    : [{ kind: 'expr', expr: parseExpr(fn.body, ctx) }]
+}
+
+/** Every name a binding pattern declares (`a`, `{ b, c: d }`, `[e, ...f]`). */
+function collectPatternNames(pattern: AnyNode | undefined, out: Set<string>): void {
+  if (!pattern) return
+  switch (pattern.type) {
+    case 'Identifier':
+      out.add(pattern.name as string)
+      return
+    case 'ObjectPattern':
+      for (const p of (pattern.properties as AnyNode[] | undefined) ?? []) {
+        collectPatternNames(p.type === 'RestElement' ? p.argument : p.value, out)
+      }
+      return
+    case 'ArrayPattern':
+      for (const e of (pattern.elements as AnyNode[] | undefined) ?? []) collectPatternNames(e, out)
+      return
+    case 'RestElement':
+      collectPatternNames(pattern.argument, out)
+      return
+    case 'AssignmentPattern':
+      collectPatternNames(pattern.left, out)
+      return
+  }
+}
+
+/**
+ * A top-level function that returns no value: a lowercase name (a PascalCase one is a component by convention, and one
+ * with no return is a component missing its JSX, which keeps its warning), no JSX anywhere in the body, and no
+ * `return` carrying a value in its own body (a bare `return;` is fine; nested functions' returns are theirs).
+ */
+function isVoidHelper(fn: AnyNode, name: string): boolean {
+  const first = name.charAt(0)
+  if (first !== first.toLowerCase() || first === first.toUpperCase()) return false
+  if (astContainsJsx(fn.body)) return false
+  let valueReturn = false
+  const visit = (node: unknown): void => {
+    if (valueReturn || !node || typeof node !== 'object') return
+    if (Array.isArray(node)) {
+      for (const n of node) visit(n)
+      return
+    }
+    const n = node as AnyNode
+    if (
+      n.type === 'FunctionDeclaration' ||
+      n.type === 'FunctionExpression' ||
+      n.type === 'ArrowFunctionExpression' ||
+      n.type === 'ClassDeclaration' ||
+      n.type === 'ClassExpression'
+    ) {
+      return
+    }
+    if (n.type === 'ReturnStatement') {
+      if (n.argument) valueReturn = true
+      return
+    }
+    for (const key of Object.keys(n)) {
+      if (key === 'type' || key === 'loc' || key === 'range' || key === 'span' || key === 'start' || key === 'end') {
+        continue
+      }
+      visit(n[key])
+    }
+  }
+  visit(fn.body?.body)
+  return !valueReturn
+}
+
+/** Whether an AST subtree contains a JSX element or fragment. */
+function astContainsJsx(node: unknown): boolean {
+  if (!node || typeof node !== 'object') return false
+  if (Array.isArray(node)) return node.some(astContainsJsx)
+  const n = node as AnyNode
+  if (n.type === 'JSXElement' || n.type === 'JSXFragment') return true
+  for (const key of Object.keys(n)) {
+    if (key === 'type' || key === 'loc' || key === 'range' || key === 'span' || key === 'start' || key === 'end') {
+      continue
+    }
+    if (astContainsJsx(n[key])) return true
+  }
+  return false
+}
+
 function returnContainsJsx(expr: ExprIR): boolean {
   switch (expr.kind) {
     case 'jsx-element':
@@ -3254,6 +3529,9 @@ function refineHelperReturns(
     // Int×Double-coerced) body. A non-number annotation (string/boolean/struct)
     // is unambiguous → kept as-is.
     if (h.returnType.kind !== 'unknown' && h.returnType.kind !== 'number') continue
+    // A body with no `return <value>` is a VOID helper: an `unknown` return already emits as a plain `func` / `fun`
+    // with no result type, which is exactly right. There is nothing to infer, and failing to infer it must not drop it.
+    if (h.returnType.kind === 'unknown' && !bodyReturnsValue(h.body)) continue
     const inferred = inferReturnType(h.params, h.body, ctx)
     if (inferred.kind === 'unknown') {
       if (h.returnType.kind === 'number') continue // keep the `number` annotation
@@ -3585,6 +3863,13 @@ function moduleParseContextFor(ctx: ParseCtx, owner: string): ModuleParseContext
     addItem: (spec: ExtItemSpec) => {
       ctx.lateModuleItems.push(stampModuleItem(activeRegistries().items, owner, spec))
     },
+    // A request source reads its facts through a ParseContext; an expression-position call has no declaration, so
+    // the facade it gets carries an empty `declName` (a source reports through `report`, never `warn`).
+    requests: {
+      has: (requestName) => parseContextFor('', { arguments: [] }, ctx).requests.has(requestName),
+      resolve: (requestName, arg, options) =>
+        parseContextFor('', { arguments: [] }, ctx).requests.resolve(requestName, arg, options),
+    },
   }
 }
 
@@ -3842,8 +4127,7 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   // auto-called read.
   //
   // Faithful + non-regressing by construction: a hook whose single-binding
-  // form produces NO container (e.g. `useSecureStorage`, which warns + drops)
-  // recurses to `null` and FALLS THROUGH to the warn-drop below — so this can
+  // form produces NO container recurses to `null` and FALLS THROUGH to the warn-drop below — so this can
   // only make destructure work where single-binding already works, never
   // worse. Rest elements (`{ data, ...rest }`) and nested patterns
   // (`{ user: { id } }`) also fall through to warn-drop in v1 (no
@@ -3898,7 +4182,7 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
         return containerDecl
       }
       // containerDecl null → the hook has no single-binding container
-      // (e.g. useSecureStorage). Fall through to the warn-drop below.
+      // Fall through to the warn-drop below.
     }
     ctx.warnings.push(
       `${hook}() destructure form (\`const { … } = ${hook}(...)\`) was not lowered on native — either the hook has no single-binding container, or the pattern uses a rest element / nested binding (not yet supported). Use the single-binding shape \`const x = ${hook}(...); x.field\` (e.g. \`const q = useFetch(url); q.data()\` / \`q.isPending\`) instead. Tracked as a follow-up.`,
@@ -4131,8 +4415,8 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     // config. Captures IDENTIFIER REFS only (conservative shape);
     // inline arrow bodies are dropped here, same as per-route
     // beforeEnter bails non-arrow-expression shapes.
-    const beforeEach = tryExtractGuardRefArray(init.arguments?.[0], 'beforeEach', ctx.warnings)
-    const afterEach = tryExtractGuardRefArray(init.arguments?.[0], 'afterEach', ctx.warnings)
+    const beforeEach = tryExtractGuardRefArray(init.arguments?.[0], 'beforeEach', ctx.warnings, ctx)
+    const afterEach = tryExtractGuardRefArray(init.arguments?.[0], 'afterEach', ctx.warnings, ctx)
     const decl: DeclIR = { kind: 'router', name }
     if (routes !== null) decl.routes = routes
     if (beforeEach.length > 0) decl.beforeEach = beforeEach
@@ -4403,19 +4687,208 @@ function tryExtractRoutes(arg: AnyNode | undefined, ctx: ParseCtx): RouteIR[] | 
   return parseRouteArray(routesProp.value, ctx)
 }
 
+/** Globals an inline guard may read without capturing anything from the component. */
+const GUARD_GLOBALS = new Set([
+  'Math', 'Number', 'String', 'Boolean', 'JSON', 'Array', 'Object', 'Date', 'undefined', 'NaN', 'Infinity',
+  'parseInt', 'parseFloat', 'isNaN', 'isFinite', 'console',
+])
+
 /**
- * Global-guards helper — extracts identifier refs from a `beforeEach: [fn1, fn2]`
- * / `afterEach: [fn1]` field on the createRouter config. Returns an empty
- * array if the field is absent / non-array / contains no identifier refs
- * (each silently dropped). Conservative: only IDENTIFIER REFS land in
- * the result; inline arrow bodies and member expressions are dropped
- * because they'd need closure-emit + capture machinery the per-route
- * boolean-guard shape doesn't carry into this PR.
+ * An inline `beforeEach` / `afterEach` guard, as a synthesized file-level helper. Returns its name, or `undefined` after
+ * a named warning when it cannot be one. A file-level function sees only its parameters and the module's own bindings,
+ * so an arrow that reads a local of the component creating the router (`isAuthed` from a hook) stays a warning:
+ * lowering it would read nothing, or the wrong thing. The parameter shape is settled later, with the named guards, in
+ * `lowerRouterGuards`.
+ */
+function inlineGuardHelper(fn: AnyNode, key: string, ctx: ParseCtx): string | undefined {
+  const warn = (why: string): undefined => {
+    ctx.warnings.push(
+      `[pyreon-native] router \`${key}\`: an inline guard is not lowered to native — ${why} ` +
+        `It is dropped, so the navigation is NOT gated on iOS/Android.`,
+    )
+    return undefined
+  }
+  if (fn.async === true) return warn('an async guard has no native lowering (native guards answer synchronously).')
+  const params = (fn.params as AnyNode[] | undefined) ?? []
+  if (params.some((p) => p?.type !== 'Identifier')) {
+    return warn('its parameters must be plain names (`(to) => …`, `(to, from) => …`).')
+  }
+  const allowed = new Set<string>([...params.map((p) => p.name as string), ...ctx.moduleBindings.keys(), ...GUARD_GLOBALS])
+  const captured = [...freeIdentifiers(fn.body)].filter((n) => !allowed.has(n))
+  if (captured.length > 0) {
+    return warn(
+      `it reads ${captured.map((n) => `\`${n}\``).join(', ')}, which is not a parameter or a module-level name, and a ` +
+        `native guard runs outside the component. Move that state to module level, or name the guard function.`,
+    )
+  }
+  // Numbered within THIS file (never a module-level counter: the name would then depend on how many files the
+  // process compiled before, and the same source would emit differently run to run).
+  const name = `__pyreonGuard${ctx.helperFns.filter((h) => h.name.startsWith('__pyreonGuard')).length}`
+  ctx.helperFns.push(tryFunctionDecl(name, fn, ctx))
+  return name
+}
+
+/** The identifiers a function body reads from outside itself (property names and its own declarations excluded). */
+function freeIdentifiers(body: AnyNode): Set<string> {
+  const read = new Set<string>()
+  const declared = new Set<string>()
+  const visit = (node: unknown, parentKey?: string, parent?: AnyNode): void => {
+    if (!node || typeof node !== 'object') return
+    if (Array.isArray(node)) {
+      for (const n of node) visit(n, parentKey, parent)
+      return
+    }
+    const n = node as AnyNode
+    if (n.type === 'Identifier') {
+      const isProp =
+        (parent?.type === 'MemberExpression' && parentKey === 'property' && parent.computed !== true) ||
+        (parent?.type === 'Property' && parentKey === 'key' && parent.computed !== true)
+      if (!isProp) read.add(n.name as string)
+      return
+    }
+    if (n.type === 'VariableDeclarator') bindingNames(n.id, declared)
+    if (n.type === 'ArrowFunctionExpression' || n.type === 'FunctionExpression') {
+      for (const p of (n.params as AnyNode[] | undefined) ?? []) bindingNames(p, declared)
+    }
+    for (const k of Object.keys(n)) {
+      if (k === 'type' || k === 'loc' || k === 'range' || k === 'span' || k === 'start' || k === 'end') continue
+      visit(n[k], k, n)
+    }
+  }
+  visit(body)
+  for (const d of declared) read.delete(d)
+  return read
+}
+
+/** Every name a binding pattern declares (`a`, `{ b, c: d }`, `[e, ...f]`, `g = 1`). */
+function bindingNames(pattern: AnyNode | undefined, out: Set<string>): void {
+  if (!pattern) return
+  if (pattern.type === 'Identifier') out.add(pattern.name as string)
+  else if (pattern.type === 'ObjectPattern') {
+    for (const p of (pattern.properties as AnyNode[] | undefined) ?? []) bindingNames(p.type === 'RestElement' ? p.argument : p.value, out)
+  } else if (pattern.type === 'ArrayPattern') {
+    for (const e of (pattern.elements as AnyNode[] | undefined) ?? []) bindingNames(e, out)
+  } else if (pattern.type === 'RestElement') bindingNames(pattern.argument, out)
+  else if (pattern.type === 'AssignmentPattern') bindingNames(pattern.left, out)
+}
+
+/**
+ * The guards of every router, shaped for native. A web guard is `(to, from) => boolean | …` over route OBJECTS; the
+ * native routers call it with the target PATH. So `to.path` reads the path, an unused `from` is dropped (the native
+ * call passes one argument), and a `beforeEach` guard answers a boolean. Another member of `to` (`params`, `query`,
+ * `meta`), a read of `from`, or a returned redirect has no native counterpart: that guard is warned and dropped —
+ * never kept half-lowered. Named and inline guards go through the same pass, because they are the same thing.
+ */
+function lowerRouterGuards(
+  components: readonly { decls: DeclIR[] }[],
+  helperFns: Extract<DeclIR, { kind: 'function' }>[],
+  warnings: string[],
+  inferCtx: ReturnType<typeof buildInferenceCtx>,
+): void {
+  for (const component of components) {
+    for (const decl of component.decls) {
+      if (decl.kind !== 'router') continue
+      for (const key of ['beforeEach', 'afterEach'] as const) {
+        const names = decl[key]
+        if (names === undefined) continue
+        const kept = names.filter((name) => {
+          const fn = helperFns.find((h) => h.name === name)
+          if (fn === undefined || lowerGuardFn(fn, key, warnings, inferCtx)) return true
+          // A dropped INLINE guard leaves nothing behind: its synthesized helper existed only to be this guard, and
+          // emitted half-lowered it would not compile. A named function is the author's own and stays.
+          if (name.startsWith('__pyreonGuard')) helperFns.splice(helperFns.indexOf(fn), 1)
+          return false
+        })
+        if (kept.length > 0) decl[key] = kept
+        else delete decl[key]
+      }
+    }
+  }
+}
+
+/** Whether a returned expression can evaluate to a string literal — through `? :` branches and `&&` / `||` / `??`. */
+function returnsString(e: unknown): boolean {
+  const x = e as { kind?: string; value?: unknown; then?: unknown; otherwise?: unknown; left?: unknown; right?: unknown }
+  if (x?.kind === 'literal') return typeof x.value === 'string'
+  if (x?.kind === 'ternary') return returnsString(x.then) || returnsString(x.otherwise)
+  if (x?.kind === 'logical') return returnsString(x.left) || returnsString(x.right)
+  return false
+}
+
+function lowerGuardFn(
+  fn: Extract<DeclIR, { kind: 'function' }>,
+  key: string,
+  warnings: string[],
+  inferCtx: ReturnType<typeof buildInferenceCtx>,
+): boolean {
+  const label = fn.name.startsWith('__pyreonGuard') ? 'an inline guard' : `guard \`${fn.name}\``
+  const drop = (why: string): false => {
+    warnings.push(
+      `[pyreon-native] router \`${key}\`: ${label} ${why} It is dropped, so the navigation is NOT gated on iOS/Android.`,
+    )
+    return false
+  }
+  const to = fn.params[0]?.name
+  const from = fn.params[1]?.name
+  if (fn.params.length > 2) return drop('takes more than (to, from).')
+  const otherMembers = new Set<string>()
+  let readsFrom = false
+  let redirects = false
+  const visit = (node: unknown): void => {
+    if (!node || typeof node !== 'object') return
+    if (Array.isArray(node)) {
+      for (const n of node) visit(n)
+      return
+    }
+    const n = node as Record<string, unknown>
+    if (n.kind === 'member' && (n.object as { kind?: string; name?: string } | undefined)?.kind === 'identifier') {
+      const obj = (n.object as { name: string }).name
+      if (obj === to && n.property === 'path') {
+        // `to.path` IS the native argument.
+        delete n.object
+        delete n.property
+        delete n.optional
+        n.kind = 'identifier'
+        n.name = to
+        return
+      }
+      if (obj === to) otherMembers.add(String(n.property))
+    }
+    if (n.kind === 'identifier' && from !== undefined && n.name === from) readsFrom = true
+    if (n.kind === 'return' && n.expr !== undefined && returnsString(n.expr)) redirects = true
+    for (const v of Object.values(n)) visit(v)
+  }
+  visit(fn.body)
+  if (otherMembers.size > 0) {
+    return drop(
+      `reads ${[...otherMembers].map((m) => `\`${to}.${m}\``).join(', ')}; a native guard receives only the target path (\`${to}.path\`).`,
+    )
+  }
+  if (readsFrom) return drop(`reads \`${from}\`; a native guard receives only the target.`)
+  if (fn.params.length === 2) fn.params.length = 1
+  if (fn.params[0] !== undefined) fn.params[0].type = { kind: 'string' }
+  if (key === 'beforeEach') {
+    // A web guard may also return a redirect path (or nothing). Native answers allow/block only, so anything the body
+    // can return that is not a boolean is refused here, by name, rather than emitted into a `-> Bool` it cannot fit.
+    const returned = inferReturnType(fn.params, fn.body, inferCtx)
+    if (redirects || (returned.kind !== 'boolean' && returned.kind !== 'unknown')) {
+      return drop('can return something other than true / false (a redirect path?); a native guard answers allow or block.')
+    }
+    fn.returnType = { kind: 'boolean' }
+  }
+  return true
+}
+
+/**
+ * Global-guards helper — the guard names on a `beforeEach: [fn1, (to) => …]` / `afterEach: [fn1]` field of the
+ * createRouter config. A named reference is kept as is; an inline function is synthesized into a file-level helper
+ * (see `inlineGuardHelper`) and its generated name kept. Anything else is warned and dropped.
  */
 function tryExtractGuardRefArray(
   arg: AnyNode | undefined,
   key: string,
   warnings?: string[],
+  ctx?: ParseCtx,
 ): string[] {
   if (!arg || arg.type !== 'ObjectExpression') return []
   const props = arg.properties as AnyNode[] | undefined
@@ -4430,8 +4903,14 @@ function tryExtractGuardRefArray(
       out.push(el.name as string)
       continue
     }
-    // A non-identifier element (inline arrow, member access) is NOT lowered:
-    // closure-emit + capture machinery is a tracked follow-up. But dropping it
+    // An inline guard becomes a synthesized file-level helper, referenced by name like any other — the emitters and
+    // runtimes see exactly the shape a named guard has. Warned and dropped (inside) when it cannot be one.
+    if (ctx && (el?.type === 'ArrowFunctionExpression' || el?.type === 'FunctionExpression')) {
+      const name = inlineGuardHelper(el, key, ctx)
+      if (name !== undefined) out.push(name)
+      continue
+    }
+    // Anything else (a member access, a call) is NOT lowered. Dropping it
     // SILENTLY is the wrong failure mode — an inline `beforeEach: [(to) =>
     // isAuthed()]` would leave the navigation ungated on native with no signal,
     // a security foot-gun. Warn by name so the author extracts it to a named
@@ -4448,8 +4927,8 @@ function tryExtractGuardRefArray(
       warnings.push(
         `[pyreon-native] router \`${key}\`: ${shape} guard is not lowered to native — ` +
           `global router guards accept a NAMED function reference (\`${key}: [authGuard]\`). ` +
-          `An inline guard is dropped, so the navigation is NOT gated on iOS/Android. ` +
-          `Extract it to a named function. (Closure-emit is a tracked follow-up.)`,
+          `It is dropped, so the navigation is NOT gated on iOS/Android. ` +
+          `Use a named function or an inline arrow.`,
       )
     }
   }
@@ -4467,7 +4946,12 @@ function parseRouteArray(arr: AnyNode | undefined, ctx: ParseCtx): RouteIR[] | n
   if (!arr || arr.type !== 'ArrayExpression') return null
   const out: RouteIR[] = []
   for (const el of (arr.elements as AnyNode[] | undefined) ?? []) {
-    if (!el || el.type !== 'ObjectExpression') return null
+    if (!el || el.type !== 'ObjectExpression') {
+      ctx.warnings.push(
+        `A \`createRouter\` route is not an object literal (${el ? el.type : 'a hole'}) — the native router table is built at compile time, and the compiler never emits a partial one, so this router has NO routes on iOS/Android. Write each route as an inline \`{ path, component }\` object.`,
+      )
+      return null
+    }
     const elProps = el.properties as AnyNode[] | undefined
     if (!elProps) return null
     let path: string | undefined
@@ -4477,6 +4961,7 @@ function parseRouteArray(arr: AnyNode | undefined, ctx: ParseCtx): RouteIR[] | n
     let children: RouteIR[] | undefined
     let loader: ExprIR | undefined
     let loaderUsesParams = false
+    let unresolvedPath: string | undefined
     for (const p of elProps) {
       if (p?.type !== 'Property') continue
       // A computed key could be `path` / `component` / a guard — unknowable,
@@ -4487,20 +4972,19 @@ function parseRouteArray(arr: AnyNode | undefined, ctx: ParseCtx): RouteIR[] | n
       }
       const key = staticPropKey(p)
       if (key === 'path') {
-        const v = p.value
-        if ((v?.type === 'Literal' || v?.type === 'StringLiteral') && typeof v.value === 'string') {
-          path = v.value
-        }
+        // A shared constant (`path: ADMIN_PATH`) is as static as an inline literal, and is the ordinary way to
+        // write a path that a guard or a `navigate()` call also names.
+        const resolved = staticStringArg(p.value, ctx)
+        if (resolved !== null) path = resolved
+        else if (p.value) unresolvedPath = ctx.source.slice(p.value.start as number, p.value.end as number)
       } else if (key === 'component') {
         component = parseExpr(p.value, ctx)
       } else if (key === 'redirect') {
         // Phase 3 — only a literal redirect target is captured. Function
         // redirects / `throw redirect()` are a later arc; they leave
         // `redirect` undefined here so the route still needs a component.
-        const v = p.value
-        if ((v?.type === 'Literal' || v?.type === 'StringLiteral') && typeof v.value === 'string') {
-          redirect = v.value
-        }
+        const resolved = staticStringArg(p.value, ctx)
+        if (resolved !== null) redirect = resolved
       } else if (key === 'beforeEnter') {
         // Phase 3 — boolean guard. Only an arrow with an EXPRESSION body
         // (`() => isAuthed()`) is captured; the body becomes the inline
@@ -4574,10 +5058,21 @@ function parseRouteArray(arr: AnyNode | undefined, ctx: ParseCtx): RouteIR[] | n
     }
     // A route must render SOMETHING: its own component, a redirect target,
     // OR child routes (a pure layout grouping with no index component).
-    if (
-      path === undefined ||
-      (component === undefined && redirect === undefined && children === undefined)
-    ) {
+    // The compiler never emits a partial route table, so any route it cannot read costs the WHOLE router its
+    // dispatch. That must be loud: it used to be silent, and a single `path: SOME_CONST` shipped a router that
+    // rendered only its home page on both native targets.
+    if (path === undefined) {
+      ctx.warnings.push(
+        unresolvedPath !== undefined
+          ? `A \`createRouter\` route's \`path\` (\`${unresolvedPath}\`) is not a string known at compile time — the native router table is built statically, so this router has NO routes on iOS/Android. Use a string literal or a module-level \`const X = '/path'\`.`
+          : 'A `createRouter` route has no `path` — the native router table needs one per route, so this router has NO routes on iOS/Android.',
+      )
+      return null
+    }
+    if (component === undefined && redirect === undefined && children === undefined) {
+      ctx.warnings.push(
+        `\`createRouter\` route "${path}" has no \`component\`, literal \`redirect\` or \`children\` the native router can render, so this router has NO routes on iOS/Android.`,
+      )
       return null
     }
     const route: RouteIR = { path }
@@ -5081,6 +5576,91 @@ function markReassignedLocalsMutable(stmts: StatementIR[]): void {
  * `i++` / `++i` / `i += K` (positive numeric literal K); and the body
  * never REASSIGNS the counter (Swift's range binding is a `let`).
  */
+/**
+ * `for (let i = 0, n = xs.length; i < n; i++)` — the "cache the bound" idiom. A native range loop evaluates its
+ * bound ONCE, which is exactly what caching it in a second declarator achieves in JS, so when every extra
+ * declarator is read in the loop TEST and nowhere else, substituting its initialiser into the test and lowering the canonical
+ * single-counter loop is semantically identical. Returns `node` unchanged when that does not hold — an extra name
+ * used in the body or the update (its value could be read after a mutation), an initialiser that reads the
+ * counter or another extra (its value would differ per iteration once inlined), or a non-identifier binding —
+ * and the caller's warning stands.
+ */
+function withCachedBoundsInlined(node: AnyNode): AnyNode {
+  const init = node.init as AnyNode | undefined
+  const decls = (init?.type === 'VariableDeclaration' ? (init.declarations as AnyNode[] | undefined) : undefined) ?? []
+  if (decls.length < 2 || !node.test) return node
+  const [counter, ...extras] = decls
+  if (counter?.id?.type !== 'Identifier') return node
+  const names = new Set<string>()
+  for (const d of extras) {
+    if (d?.id?.type !== 'Identifier' || !d.init) return node
+    names.add(d.id.name as string)
+  }
+  const replacements = new Map<string, AnyNode>()
+  for (const d of extras) {
+    if (identifiersRead(d.init).some((n) => n === counter.id.name || names.has(n))) return node
+    replacements.set(d.id.name as string, d.init as AnyNode)
+  }
+  if ([...identifiersRead(node.body), ...identifiersRead(node.update)].some((n) => names.has(n))) return node
+  // Every extra name must be READ by the test. An unread one would vanish with the substitution, and with it any
+  // side effect of its initialiser (`for (let i = 0, j = tick(); …)`).
+  const readByTest = new Set(identifiersRead(node.test))
+  if ([...names].some((n) => !readByTest.has(n))) return node
+  return {
+    ...node,
+    init: { ...init, declarations: [counter] },
+    test: substituteIdentifiers(node.test, replacements),
+  }
+}
+
+/** Identifier names READ in a subtree: not a non-computed member property or object key, which are names, not reads. */
+function identifiersRead(node: unknown): string[] {
+  const out: string[] = []
+  const visit = (n: unknown, parentKey?: string, parent?: AnyNode): void => {
+    if (!n || typeof n !== 'object') return
+    if (Array.isArray(n)) {
+      for (const x of n) visit(x, parentKey, parent)
+      return
+    }
+    const a = n as AnyNode
+    if (a.type === 'Identifier') {
+      const isPropertyName =
+        (parent?.type === 'MemberExpression' && parentKey === 'property' && !parent.computed) ||
+        ((parent?.type === 'Property' || parent?.type === 'ObjectProperty') && parentKey === 'key' && !parent.computed)
+      if (!isPropertyName) out.push(a.name as string)
+      return
+    }
+    for (const key of Object.keys(a)) {
+      if (key === 'type' || key === 'loc' || key === 'range' || key === 'span' || key === 'start' || key === 'end') {
+        continue
+      }
+      visit(a[key], key, a)
+    }
+  }
+  visit(node)
+  return out
+}
+
+/** A copy of `node` with every READ of a name in `replacements` swapped for its replacement subtree. */
+function substituteIdentifiers(node: AnyNode, replacements: ReadonlyMap<string, AnyNode>): AnyNode {
+  const visit = (n: unknown, parentKey?: string, parent?: AnyNode): unknown => {
+    if (!n || typeof n !== 'object') return n
+    if (Array.isArray(n)) return n.map((x) => visit(x, parentKey, parent))
+    const a = n as AnyNode
+    if (a.type === 'Identifier') {
+      const isPropertyName =
+        (parent?.type === 'MemberExpression' && parentKey === 'property' && !parent.computed) ||
+        ((parent?.type === 'Property' || parent?.type === 'ObjectProperty') && parentKey === 'key' && !parent.computed)
+      const r = isPropertyName ? undefined : replacements.get(a.name as string)
+      return r ?? a
+    }
+    const copy: Record<string, unknown> = {}
+    for (const key of Object.keys(a)) copy[key] = visit(a[key], key, a)
+    return copy
+  }
+  return visit(node) as AnyNode
+}
+
 function classifyForRange(
   node: AnyNode,
   ctx: ParseCtx,
@@ -5342,8 +5922,14 @@ function parseStatementBody(node: AnyNode, ctx: ParseCtx): StatementIR | null {
       // conditions/updates, a counter REASSIGNED in the body — Swift's
       // range binding is immutable) warns by name; pre-fix EVERY
       // ForStatement warn-dropped the whole loop.
-      const range = classifyForRange(node, ctx)
+      const range = classifyForRange(withCachedBoundsInlined(node), ctx)
       if (range !== null) return range
+      if (((node.init?.declarations as AnyNode[] | undefined)?.length ?? 0) > 1) {
+        ctx.warnings.push(
+          `A \`for\` loop with more than one declarator lowers only in the "cached bound" shape — \`for (let i = 0, n = xs.length; i < n; i++)\`, where every extra name is read in the test and nowhere else, and its initialiser does not read the counter. Here an extra name is unused, used in the body or update, or reads the counter — declare it before the loop instead.`,
+        )
+        return null
+      }
       ctx.warnings.push(
         `Only the canonical count-loop lowers to native (\`for (let i = 0; i < n; i++)\` or the descending \`for (let i = n; i >= 0; i--)\`; \`<=\`/\`>=\`, or \`i += k\`/\`i -= k\` with a positive literal step; the test and update must agree in direction and the counter must not be reassigned in the body) — rewrite this \`for\` as a \`while\` (or \`for…of\`).`,
       )
@@ -5393,12 +5979,21 @@ function parseStatementBody(node: AnyNode, ctx: ParseCtx): StatementIR | null {
         else pendingTests.push(parseExpr(sc.test, ctx))
         const consequent = (sc.consequent as AnyNode[] | undefined) ?? []
         if (consequent.length === 0) continue // empty label — share next body
-        const body: StatementIR[] = []
+        // A braced case body (`case 1: { … }`) is the idiomatic way to scope a
+        // `const` to one case; Swift and Kotlin scope every case body on their
+        // own, so the braces flatten away. The flattened statements then go
+        // through the BLOCK walker, not one `parseStatement` at a time, so the
+        // shapes only it handles (a multi-declarator `const a = 1, b = 2`, a
+        // destructuring declaration) work in a case exactly as in a function
+        // body. Both used to be dropped here.
+        const flat: AnyNode[] = []
         for (const st of consequent) {
-          if (st.type === 'BreakStatement' && !st.label) continue // strip (no fall-through)
-          const parsed = parseStatement(st, ctx)
-          if (parsed) body.push(parsed)
+          if (st.type === 'BlockStatement') flat.push(...((st.body as AnyNode[] | undefined) ?? []))
+          else flat.push(st)
         }
+        // strip a case-level `break` (no fall-through on either target)
+        const kept = flat.filter((st) => !(st.type === 'BreakStatement' && !st.label))
+        const body = parseStatementBlock({ type: 'BlockStatement', body: kept }, ctx)
         cases.push({ tests: pendingDefault ? [] : pendingTests, body })
         pendingTests = []
         pendingDefault = false
@@ -5869,6 +6464,90 @@ function locOf(node: AnyNode, ctx: ParseCtx): string {
  * AND how to express the intent inside the supported subset, and the CLI
  * already prints `result.warnings`, so the developer actually sees it.
  */
+/**
+ * Whether a `Map` VALUE type has a concrete native spelling on both targets.
+ * A dictionary value needs no Hashable/Equatable conformance — only a type
+ * swiftc/kotlinc can name. That is a scalar, a struct/enum this file declares
+ * (`type X = { … }` / `interface X { … }` / a string-literal union — all
+ * synthesized into a Swift struct/enum and a Kotlin data class/enum), or an
+ * array of those (the group-by idiom, `Map<string, Todo[]>`). An INLINE object
+ * type (`Map<string, { x: number }>`) has no name to put in the dictionary
+ * type, and an imported/unknown typeRef is not synthesized into this module —
+ * both stay a named warning.
+ */
+/**
+ * Recognise the index-by idiom `src.map((x) => [key, value])` as the argument
+ * of `new Map(…)`. The callback must take exactly ONE identifier parameter (the
+ * index form `(x, i) =>` has no native twin here) and return a two-element
+ * array literal, either as its expression body or as a single `return`. Any
+ * other argument shape returns `null` and falls through to the literal-pair /
+ * warning paths.
+ */
+function tryParseMapFromPairs(
+  arg: AnyNode | undefined,
+  ctx: ParseCtx,
+): { source: ExprIR; param: string; key: ExprIR; value: ExprIR } | null {
+  if (arg?.type !== 'CallExpression') return null
+  const callee = arg.callee as AnyNode
+  if (callee?.type !== 'MemberExpression' || callee.computed) return null
+  if (callee.property?.type !== 'Identifier' || callee.property.name !== 'map') return null
+  if ((arg.arguments?.length ?? 0) !== 1) return null
+  const fnNode = arg.arguments[0] as AnyNode
+  if (fnNode?.type !== 'ArrowFunctionExpression' && fnNode?.type !== 'FunctionExpression') return null
+  const params = (fnNode.params as AnyNode[] | undefined) ?? []
+  if (params.length !== 1 || params[0]?.type !== 'Identifier') return null
+  let bodyNode = fnNode.body as AnyNode
+  if (bodyNode?.type === 'BlockStatement') {
+    const stmts = (bodyNode.body as AnyNode[] | undefined) ?? []
+    if (stmts.length !== 1 || stmts[0]?.type !== 'ReturnStatement') return null
+    bodyNode = stmts[0].argument as AnyNode
+  }
+  while (bodyNode?.type === 'ParenthesizedExpression') bodyNode = bodyNode.expression as AnyNode
+  if (bodyNode?.type !== 'ArrayExpression') return null
+  const els = (bodyNode.elements as AnyNode[] | undefined) ?? []
+  if (els.length !== 2 || !els[0] || !els[1]) return null
+  if (els[0].type === 'SpreadElement' || els[1].type === 'SpreadElement') return null
+  // Parse the arrow as a whole so its parameter scoping (shadowing, signal
+  // auto-call suppression) is exactly what any other callback gets.
+  const fn = parseExpr(fnNode, ctx)
+  if (fn.kind !== 'arrow' || fn.params.length !== 1) return null
+  const body =
+    fn.stmts !== undefined && fn.stmts.length === 1 && fn.stmts[0]!.kind === 'return'
+      ? (fn.stmts[0] as Extract<StatementIR, { kind: 'return' }>).expr
+      : fn.body
+  if (body === undefined || body.kind !== 'array' || body.elements.length !== 2) return null
+  return {
+    source: parseExpr(callee.object as AnyNode, ctx),
+    param: fn.params[0]!,
+    key: body.elements[0]!,
+    value: body.elements[1]!,
+  }
+}
+
+function isNativeMapValueType(t: TypeIR, ctx: ParseCtx): boolean {
+  if (t.kind === 'number' || t.kind === 'string' || t.kind === 'boolean') return true
+  if (t.kind === 'array') return isNativeMapValueType(t.element, ctx)
+  if (t.kind === 'typeRef' && t.args.length === 0) {
+    return ctx.objectTypeAliases.has(t.name) || ctx.enumTypeNames.has(t.name)
+  }
+  return false
+}
+
+function describeMapValueType(t: TypeIR): string {
+  switch (t.kind) {
+    case 'object':
+      return '{ … }'
+    case 'typeRef':
+      return t.name
+    case 'array':
+      return `${describeMapValueType(t.element)}[]`
+    case 'union':
+      return 'a union'
+    default:
+      return t.kind
+  }
+}
+
 function unsupportedExpr(
   ctx: ParseCtx,
   node: AnyNode,
@@ -6564,17 +7243,51 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
       if (calleeName === 'Map' && (node.arguments?.length ?? 0) === 0 && typeArgs.length === 2) {
         const keyType = parseTypeAnnotation(typeArgs[0]!, ctx)
         const valueType = parseTypeAnnotation(typeArgs[1]!, ctx)
-        if (!isNativeScalarType(keyType) || !isNativeScalarType(valueType)) {
+        if (!isNativeScalarType(keyType)) {
           return unsupportedExpr(
             ctx,
             node,
-            `\`new Map<...>()\` with a non-scalar key or value type`,
-            'only scalar (number/string/boolean) keys and values lower to a native dictionary in v1 — model richer maps behind a `<Web>` escape hatch, or use a scalar-keyed struct array.',
+            `\`new Map<...>()\` with a non-scalar key type`,
+            'only scalar (number/string/boolean) keys lower to a native dictionary — a native dictionary key must be Hashable. Key the map by a scalar id instead.',
+          )
+        }
+        if (!isNativeMapValueType(valueType, ctx)) {
+          return unsupportedExpr(
+            ctx,
+            node,
+            `\`new Map<K, ${describeMapValueType(valueType)}>()\` (a map value that is not a scalar, a locally-declared struct, or an array of those)`,
+            'a native dictionary value must name a concrete native type — declare the value shape as a top-level `type X = { … }` / `interface X { … }` in this file and use `new Map<K, X>()`, or keep the map behind a `<Web>` escape hatch.',
           )
         }
         return { kind: 'new-collection', collection: 'map', keyType, valueType }
       }
       if (calleeName === 'Map' && (node.arguments?.length ?? 0) === 1) {
+        const pairs = tryParseMapFromPairs(node.arguments[0] as AnyNode, ctx)
+        if (pairs !== null) {
+          if (typeArgs.length === 2) {
+            const keyType = parseTypeAnnotation(typeArgs[0]!, ctx)
+            const valueType = parseTypeAnnotation(typeArgs[1]!, ctx)
+            if (!isNativeScalarType(keyType) || !isNativeMapValueType(valueType, ctx)) {
+              return unsupportedExpr(
+                ctx,
+                node,
+                `\`new Map<K, ${describeMapValueType(valueType)}>(…)\` (a non-scalar key, or a value that is not a scalar, a locally-declared struct, or an array of those)`,
+                'a native dictionary needs a scalar (Hashable) key and a value of a concrete native type — declare the value shape as a top-level `type X = { … }` in this file.',
+              )
+            }
+            return {
+              kind: 'new-collection',
+              collection: 'map',
+              keyType,
+              valueType,
+              pairsFrom: pairs,
+            }
+          }
+          // Unannotated: the key / value types come from binding `param` to the
+          // source's element type at inference (see infer-type.ts); the emitter
+          // checks the inferred types and warns by name when one has no native form.
+          return { kind: 'new-collection', collection: 'map', pairsFrom: pairs }
+        }
         // Seeded `new Map([[k, v], …])` → a native dict literal. The arg must be
         // an array of 2-element `[key, value]` pairs; key AND value must be
         // scalar (a native dictionary key needs Hashable, and value is held to
@@ -6711,6 +7424,7 @@ function parseJsxElement(node: AnyNode, ctx: ParseCtx): ExprIR {
   // that the parser now NAMES the missing prop in `result.warnings`,
   // so consumers (CLI, IDE, build scripts) can surface it. Failing
   // loud BEFORE swiftc/kotlinc is the diagnostic-quality win.
+  typeGestureHandlerParams(tag, attrs)
   warnIfMissingRequiredProp(tag, attrs, ctx)
 
   // Round-3 audit fix: when a render callback inside <For>/<Show>
@@ -6815,6 +7529,26 @@ function warnIfHookInsideRenderCallback(
  * needs the signal-name set which isn't available at parse time
  * (lives in the emit context). Tracked as a separate follow-up.
  */
+/**
+ * Stamp the payload type onto each `<Gesture onPan|onPinch|onRotate>` handler's
+ * parameter, so the float-widening pass and the closure emitters type `e.dx`
+ * as a Double. See gesture-events.ts for why the parser, not an emitter, owns
+ * this. An explicit annotation is overwritten on purpose: it can only name the
+ * package's `PanEvent`, which the compiler cannot resolve, and the payload's
+ * shape is fixed by the runtime rather than by the author.
+ */
+function typeGestureHandlerParams(tag: string, attrs: AttrIR[]): void {
+  if (tag !== 'Gesture') return
+  for (const a of attrs) {
+    if (a.kind !== 'event' || !isGestureEventName(a.name)) continue
+    const h = a.handler
+    if (h.kind !== 'arrow' || h.params.length === 0) continue
+    const types = [...(h.paramTypes ?? [])]
+    types[0] = GESTURE_EVENTS[a.name].type
+    h.paramTypes = types
+  }
+}
+
 function warnIfMissingRequiredProp(tag: string, attrs: AttrIR[], ctx: ParseCtx): void {
   const hasAttr = (name: string): boolean => attrs.some((a) => a.kind === 'attr' && a.name === name)
   if (tag === 'Icon' && !hasAttr('name')) {
@@ -6853,6 +7587,23 @@ function warnIfMissingRequiredProp(tag: string, attrs: AttrIR[], ctx: ParseCtx):
     ctx.warnings.push(
       '<Press> without an `onPress`, `onLongPress`, or `onSwipeLeft`/`onSwipeRight` handler emits a no-op clickable element on both targets (button with empty action / Box with no-op clickable modifier). Add `onPress={fn}` or use the plain primitive directly.',
     )
+  }
+
+  // <Gesture> with no handler recognises nothing; with a transform on ITSELF
+  // its reported values feed back into its own coordinate space (see
+  // GestureProps). Both type-check, so both are named here.
+  if (tag === 'Gesture') {
+    if (!attrs.some((a) => a.kind === 'event' && isGestureEventName(a.name))) {
+      ctx.warnings.push(
+        '<Gesture> without an `onPan`, `onPinch` or `onRotate` handler recognises nothing on any target. Add a handler, or drop the wrapper.',
+      )
+    }
+    const own = ['translateX', 'translateY', 'scale', 'rotate'].filter(hasAttr)
+    if (own.length > 0) {
+      ctx.warnings.push(
+        `<Gesture ${own.join(' ')}>: a transform on the <Gesture> region itself moves the coordinate space its gestures are measured in, so each update feeds back into the next. Put the transform on a CHILD of <Gesture> instead.`,
+      )
+    }
   }
 
   // <Link prefetch=…> — accepted in the web type, silently dropped

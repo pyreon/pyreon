@@ -40,7 +40,7 @@ These are not scheduled and may change. They are what the comparison page identi
 1. **Native errors mapped back to the `.tsx` source, and a documented sign-and-submit path for TestFlight and Play.** The rebuild-and-relaunch loop already ships as [`pyreon-native dev`](/docs/native-dev-loop), and on-device flows are covered in [Native E2E Testing](/docs/native-e2e-testing).
 2. **A stronger third-party native story** — more first-party service bindings (payments, push providers, analytics) and a documented way for packages to ship their own `native/` sources, building on `useNativeModule` and the existing native-source resolution in the CLI.
 3. **A documented answer for updates between store releases** — data-driven remote configuration and WebView islands, stated honestly alongside what cannot be done within store rules.
-4. **AI-agent readiness for native projects** — the web scaffold already ships `AGENTS.md`, `CLAUDE.md`, MCP configuration and editor rules; bringing the same to the multi-platform scaffold.
+4. **AI-agent readiness for native projects** — the multi-platform scaffold already writes `AGENTS.md`, `CLAUDE.md` and an `.mcp.json`; the editor-specific rules the web scaffold can generate are not included yet.
 5. **End-to-end test recipes** for generated apps and a CI template for building them.
 
 Progress on the native side is visible in the matrix; progress on everything else is visible in the changelogs. If a gap on this list blocks you, say so in a GitHub issue — it is the most useful input we can get.

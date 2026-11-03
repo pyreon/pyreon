@@ -6,10 +6,9 @@
 // deliverable is the META STRUCT so downstream code can reference
 // labels / hints / placeholders.
 //
-// v2+ deferred:
-//   - Schema introspection (Strategy-A per-validator lowering)
-//   - parseReactive / formatErrors / watchValid runtime
-//   - Non-string meta values (boolean autoFocus, i18n key objects)
+// Meta values: strings, booleans (`autoFocus`) and numbers (`defaultValue`,
+// including a negative and a fractional one) lower as typed struct fields.
+// A value with no compile-time literal is warned about by name and left out.
 //
 // We import + reference `emailSchema` so the source typechecks
 // against the actual @pyreon/validate API even though PMTC drops
@@ -28,4 +27,16 @@ export const emailField = withField(emailSchema, {
 export const passwordField = withField(emailSchema, {
   label: 'Password',
   placeholder: '••••••••',
+  autoFocus: false,
+})
+
+export const ageField = withField(emailSchema, {
+  label: 'Age',
+  defaultValue: 18,
+  autoFocus: true,
+})
+
+export const offsetField = withField(emailSchema, {
+  label: 'Offset',
+  defaultValue: -1.5,
 })

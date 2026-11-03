@@ -29,7 +29,7 @@ yarn add @pyreon/table
 
 :::
 
-TanStack Table core is included as a dependency — the author surface (all 16 features, every row model, every built-in filter / sort / aggregation function, plus every type) is re-exported, so you import everything from `@pyreon/table`.
+TanStack Table core is included as a dependency — the author surface (all 17 features, every row model, every built-in filter / sort / aggregation function, plus every type) is re-exported, so you import everything from `@pyreon/table`.
 
 <Example file="./examples/table/sortable-table" title="Sortable Table" />
 
@@ -75,7 +75,7 @@ A `tableFeatures` object carries three kinds of entry:
 The **core row model is automatic** — there is no `coreRowModel` to register (supply the slot
 only if you have a deliberate custom core model).
 
-### The 16 features
+### The 17 features
 
 | Capability | Feature | Row-model / registry slots |
 | --- | --- | --- |
@@ -114,14 +114,14 @@ exactly that reason. (`flexRenderCell` handles both automatically.)
 
 ### `stockFeatures` — the parity shortcut
 
-`stockFeatures` spreads all 16 features at once. It is useful while migrating or in tests,
+`stockFeatures` spreads all 17 features at once. It is useful while migrating or in tests,
 but it opts you out of tree-shaking, so prefer an explicit set in production:
 
 ```ts
 // @check
 import { tableFeatures, stockFeatures, createSortedRowModel } from '@pyreon/table'
 
-// All 16 features. Row-model slots are still separate — that separation is
+// All 17 features. Row-model slots are still separate — that separation is
 // exactly what keeps a real app's feature set tree-shakeable.
 const features = tableFeatures({
   ...stockFeatures,
@@ -2317,7 +2317,7 @@ upstream major our migration instead of yours, and keeps adapter-construction in
 API — `useTable` owns those. **Types are re-exported wholesale**: they carry no runtime
 weight and you need them for annotations.
 
-### Features (16)
+### Features (17)
 
 `rowSortingFeature`, `columnFilteringFeature`, `globalFilteringFeature`,
 `rowPaginationFeature`, `rowExpandingFeature`, `columnGroupingFeature`,
@@ -2357,15 +2357,22 @@ every built-in. Import the individual `*_name` functions for a smaller bundle.
 
 - `Table`, `Row`, `Cell`, `Column`, `Header`, `HeaderGroup`, `RowModel`
 - `ColumnDef`, `ColumnDefTemplate`, `AccessorColumnDef`, `AccessorFnColumnDef`, `AccessorKeyColumnDef`, `DisplayColumnDef`, `GroupColumnDef`, `IdentifiedColumnDef`
-- `TableFeatures`, `StockFeatures`, `TableOptions`, `TableState`, `RowData`
+- `TableFeatures`, `StockFeatures`, `TableOptions`, `RowData`
 - `SortingState`, `ColumnFiltersState`, `PaginationState`, `RowSelectionState`, `ColumnVisibilityState`, `ColumnOrderState`, `ColumnPinningState`, `ColumnSizingState`, `columnResizingState`, `ExpandedState`, `GroupingState`
-- `SortFn`, `FilterFn`, `AggregationFnDef`, `SortDirection`, `ColumnPinningPosition`
+- `SortFn`, `FilterFn`, `AggregationFnDef`, `ColumnPinningPosition`
 - `CellContext`, `HeaderContext`, `Updater`, `OnChangeFn`
 - And many more
 
 :::warning[Renamed types]
 `VisibilityState` → `ColumnVisibilityState`; `SortingFn` → `SortFn`; `TableOptionsResolved`
 is gone. Every core type now takes `TFeatures` as its first generic parameter.
+:::
+
+:::note[`TableState` and `SortDirection` are the `createTableState` types]
+`@pyreon/table` exports its own `TableState` and `SortDirection` (the
+[`createTableState`](#createtablestateoptions) engine's types), which shadow TanStack's
+same-named types. For TanStack's state record, import `TableState` from
+`@tanstack/table-core`.
 :::
 
 ## API Reference
@@ -2422,3 +2429,65 @@ const table = constructTable({
 
 Such a table has no per-row signal bridge, so `flexRenderCell` subscribes coarsely. Prefer
 `useTable`.
+
+### `visibleCells(table, rowId)`
+
+The visible cells of one row, read through the same per-row signal bridge as
+`flexRenderCell` — so a cells list re-runs only when that row or the column layout changes,
+not on every data edit. Use it as the `each` of the inner `<For>`:
+
+```tsx
+<For each={() => visibleCells(table, row.id)} by={(c) => c.id}>
+  {(cell) => <td>{() => flexRenderCell(table, row.id, cell.column.id)}</td>}
+</For>
+```
+
+A table built with `constructTable` has no bridge; the lookup then stays tracked (coarse but
+correct).
+
+### `createTableState(options)`
+
+A small, dependency-free table engine — sort, filter, paginate and select over plain signals,
+with no TanStack and no DOM. Render it with `<For>` and ordinary elements. A
+`createTableState`-only import tree-shakes TanStack out entirely.
+
+```tsx
+import { createTableState } from '@pyreon/table'
+
+const t = createTableState({
+  data: () => people(),           // an accessor, so a signal source stays reactive
+  columns: [{ id: 'name' }, { id: 'age' }],
+  pageSize: 10,                   // 0 (default) = no pagination
+  rowId: (r) => String(r.id),     // default: the row's index
+})
+
+<For each={() => t.rows()} by={(r) => String(r.id)}>
+  {(r) => <div onClick={() => t.toggleSelected(String(r.id))}>{r.name}</div>}
+</For>
+```
+
+**Options (`TableStateOptions<T>`):** `data` (required accessor), `columns?`
+(`{ id, accessor? }[]` — the accessor defaults to `row[id]`), `pageSize?`, `rowId?`,
+`filterFn?(row, query, columns)` (default: case-insensitive substring over every column).
+
+**Returns (`TableState<T>`):**
+
+| Member | Description |
+| --- | --- |
+| `sortColumn()` / `sortDirection()` | The sorted column id (or `null`) and `'asc' \| 'desc'` |
+| `toggleSort(columnId)` | Cycle none → asc → desc → none |
+| `filterValue()` / `setFilter(query)` | The filter query; setting it resets to page 0 |
+| `page()` / `pageCount()` / `setPage(i)` / `nextPage()` / `prevPage()` | 0-based, clamped pagination |
+| `isSelected(id)` / `toggleSelected(id)` / `clearSelection()` / `selectedIds()` | Selection by row id |
+| `rowId(row, index)` | The id the selection methods key on |
+| `rows()` | The current view: filtered → sorted → paginated |
+| `filteredCount()` | Matches after filtering, before pagination |
+
+Types: `TableStateOptions`, `TableState`, `TableColumn`, `SortDirection`.
+
+## Multiplatform
+
+The TanStack-backed `useTable` (row models, faceting, sizing) is web only. On iOS and Android
+(PMTC), `createTableState({ data, columns, pageSize })` lowers to the native
+`PyreonTableState` port — sort, filter, paginate and select over `<For each={t.rows()}>` —
+for scalar columns using the default `row[id]` accessor.

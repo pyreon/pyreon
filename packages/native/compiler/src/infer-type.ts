@@ -328,6 +328,30 @@ function widenFloatSignalDecls(
       }
       if (n === null || typeof n !== 'object') return
       const node = n as Record<string, unknown> & { kind?: string }
+      // An arrow with TYPED parameters scopes those types over its body, so a
+      // write that reads one (`x.set(e.dx)` where `e` is a typed gesture
+      // event, `(v: number) => …`) infers from the declared type instead of
+      // `unknown`. Without it the write never proved fractional and `x` stayed
+      // an Int receiving a Double — the emit's own closure binding typed `e`
+      // correctly, so only the DECLARATION was wrong.
+      if (node.kind === 'arrow') {
+        const params = node.params as string[] | undefined
+        const types = node.paramTypes as (TypeIR | undefined)[] | undefined
+        const bound: Array<[string, TypeIR | undefined, boolean]> = []
+        params?.forEach((p, i) => {
+          const t = types?.[i]
+          bound.push([p, ctx.locals.get(p), ctx.locals.has(p)])
+          // An untyped parameter SHADOWS any outer binding of the same name.
+          if (t !== undefined && t.kind !== 'unknown') ctx.locals.set(p, t)
+          else ctx.locals.delete(p)
+        })
+        for (const k of Object.keys(node)) visit(node[k])
+        for (const [p, prev, had] of bound.reverse()) {
+          if (had) ctx.locals.set(p, prev!)
+          else ctx.locals.delete(p)
+        }
+        return
+      }
       if (node.kind === 'call') {
         const callee = node.callee as
           | { kind?: string; property?: string; object?: { kind?: string; name?: string } }
@@ -368,7 +392,8 @@ function widenFloatSignalDecls(
  */
 function serviceTypingKey(d: DeclIR): string | undefined {
   if (d.kind === 'service') {
-    return findService(d.hook)?.optionalFields === undefined ? undefined : d.hook
+    const svc = findService(d.hook)
+    return svc?.optionalFields === undefined && svc?.methodReturns === undefined ? undefined : d.hook
   }
   return undefined
 }
@@ -494,6 +519,20 @@ export function buildInferenceCtx(
   // is not resolvable — fine, value-consts are top-level expressions.
   for (const d of decls) {
     if (d.kind === 'value') ctx.valueConsts.set(d.name, inferType(d.expr, ctx))
+  }
+  // Pass 1.6: a `signal(new Map(src.map((x) => [k, v])))` with no generic
+  // arguments reaches here typed `unknown` — parse has no inference context to
+  // bind `x`. Type it now (signals and value-consts are both known), or every
+  // read of it — `idx().get(k)` — misses the Map lowerings and emits verbatim.
+  for (const d of decls) {
+    if (
+      d.kind === 'signal' &&
+      d.type.kind === 'unknown' &&
+      d.initial.kind === 'new-collection' &&
+      d.initial.pairsFrom !== undefined
+    ) {
+      ctx.signals.set(d.name, inferType(d.initial, ctx))
+    }
   }
   // Pass 2: infer computeds. A computed can reference signals AND
   // other computeds declared above it in source order; we infer
@@ -1043,6 +1082,17 @@ export function buildArraySpreadConcat(
 }
 
 /**
+ * Whether every `slice` bound is a numeric LITERAL (optionally negated), so its sign is known at compile time. Only
+ * then may `slice` lower to the platform's own operations: `dropFirst(n)` / `suffix(n)` / `drop(n)` / `takeLast(n)`
+ * trap or throw on a negative `n`, while JavaScript reads a negative bound as counting from the end. Any other bound
+ * goes through the runtime's `pyreonSlice`, which has JavaScript's semantics.
+ */
+export function sliceBoundsAreLiteral(args: readonly ExprIR[]): boolean {
+  const lit = (a: ExprIR): boolean => a.kind === 'literal' && typeof a.value === 'number'
+  return args.every((a) => lit(a) || (a.kind === 'unary' && a.op === '-' && lit(a.argument)))
+}
+
+/**
  * Classify the two dominant NEGATIVE-index `.slice` idioms so the emitters can
  * lower them (Swift/Kotlin `.slice`/`.drop`/`.take` count from the FRONT and
  * can't take a JS negative-from-the-end index). Target-neutral — returns the
@@ -1264,6 +1314,46 @@ function inferMathCall(expr: ExprIR, ctx: InferenceCtx): TypeIR | null {
   return null
 }
 
+/**
+ * The `[K: V]` type of `new Map(src.map((x) => [k, v]))`: bind `x` to the
+ * source's element type, then type each half of the pair. Returns `unknown`
+ * when the source is not a typed array — the emitter names that case.
+ */
+export function inferMapFromPairsType(
+  pairs: { source: ExprIR; param: string; key: ExprIR; value: ExprIR },
+  ctx: InferenceCtx,
+): TypeIR {
+  const srcT = inferType(pairs.source, ctx)
+  if (srcT.kind !== 'array' && srcT.kind !== 'set') return { kind: 'unknown' }
+  const scratch: InferenceCtx = { ...ctx, locals: new Map(ctx.locals) }
+  scratch.locals.set(pairs.param, srcT.element)
+  return { kind: 'map', key: inferType(pairs.key, scratch), value: inferType(pairs.value, scratch) }
+}
+
+/**
+ * Why an inferred `new Map(src.map(...))` type has no native dictionary form,
+ * or `null` when it does. Shared by both emitters so the two targets warn with
+ * the same words. The key must be a scalar (a native dictionary key is
+ * Hashable); the value a scalar, a named struct / enum, or an array of those —
+ * an anonymous object or a union has no type name to put in `[K: V]`.
+ */
+export function mapFromPairsTypeProblem(t: TypeIR): string | null {
+  const scalar = (x: TypeIR): boolean =>
+    x.kind === 'number' || x.kind === 'string' || x.kind === 'boolean'
+  const value = (x: TypeIR): boolean =>
+    scalar(x) ||
+    (x.kind === 'typeRef' && x.args.length === 0) ||
+    (x.kind === 'array' && value(x.element))
+  if (t.kind !== 'map') {
+    return 'the source is not a typed array, so the key and value types cannot be inferred — annotate it (`new Map<K, V>(…)`) or type the array'
+  }
+  if (!scalar(t.key)) return 'the key is not a scalar (number/string/boolean) — a native dictionary key must be Hashable'
+  if (!value(t.value)) {
+    return 'the value is not a scalar, a named struct/enum, or an array of those — declare its shape as a top-level `type X = { … }`'
+  }
+  return null
+}
+
 export function inferType(expr: ExprIR, ctx: InferenceCtx): TypeIR {
   const resolved = inferTypeValue(expr, ctx)
   // Every property read after an optional link can short-circuit to undefined.
@@ -1303,7 +1393,11 @@ export function inferTypeValue(expr: ExprIR, ctx: InferenceCtx): TypeIR {
       return pluginExprType(expr, (e) => inferType(e, ctx)) ?? { kind: 'unknown' }
     case 'new-collection': {
       if (expr.collection === 'map') {
-        return { kind: 'map', key: expr.keyType!, value: expr.valueType! }
+        if (expr.keyType !== undefined && expr.valueType !== undefined) {
+          return { kind: 'map', key: expr.keyType, value: expr.valueType }
+        }
+        if (expr.pairsFrom !== undefined) return inferMapFromPairsType(expr.pairsFrom, ctx)
+        return { kind: 'unknown' }
       }
       if (expr.elementType !== undefined) return { kind: 'set', element: expr.elementType }
       // `new Set(arr)` — element type from the seed array.
@@ -1373,6 +1467,16 @@ export function inferTypeValue(expr: ExprIR, ctx: InferenceCtx): TypeIR {
       // A plugin-lowered function declares what it returns (`FunctionLowering.returns`). Not when a local of the same name shadows it.
       if (expr.callee.kind === 'identifier' && !ctx.locals.has(expr.callee.name)) {
         const returns = findFunctionLowering(expr.callee.name)?.lowering.returns
+        if (returns !== undefined) return returns
+      }
+      // A method on a service container (`picker.pick()`) — its declared return, when the descriptor states one.
+      if (
+        expr.callee.kind === 'member' &&
+        expr.callee.object.kind === 'identifier' &&
+        !ctx.locals.has(expr.callee.object.name)
+      ) {
+        const svcKey = ctx.services.get(expr.callee.object.name)
+        const returns = svcKey === undefined ? undefined : findService(svcKey)?.methodReturns?.[expr.callee.property]
         if (returns !== undefined) return returns
       }
       if (expr.args.length === 0 && expr.callee.kind === 'member' &&
@@ -1598,10 +1702,8 @@ export function inferTypeValue(expr: ExprIR, ctx: InferenceCtx): TypeIR {
               // it's a concrete array, return it directly (the flattened result).
               // The emit is the generic native `flatMap` (both targets have it) —
               // only the inference lagged (result degraded to `Any`, so a chained
-              // `.length` / typed use failed). A body that doesn't infer to a
-              // concrete array (e.g. the `cond ? [x] : []` filter-map idiom, whose
-              // empty branch has no element type) stays Array<unknown> — a
-              // follow-up needs empty-array-in-ternary unification.
+              // `.length` / typed use failed). The `cond ? [x] : []` filter-map
+              // idiom infers through the ternary case's empty-array unification.
               const cb = expr.args[0]
               if (cb !== undefined && cb.kind === 'arrow' && cb.params.length >= 1) {
                 const scratch: InferenceCtx = { ...ctx, locals: new Map(ctx.locals) }
@@ -1888,7 +1990,8 @@ export function inferTypeValue(expr: ExprIR, ctx: InferenceCtx): TypeIR {
         if (field) return field
       }
       if (objType.kind === 'array') {
-        // `.length` and `.at()` etc. — minimal coverage for now.
+        // Property reads only: `length` is the sole array property. Methods
+        // such as `.at()` are typed in the call branch.
         if (expr.property === 'length') return { kind: 'number' }
       }
       // `s.length` on a string → number (Swift `.count`). Without this,

@@ -165,6 +165,27 @@ enum PyreonOidcFlowTests {
         await down.signInNow()
         expect(down.status == PyreonOidcStatus.error && down.error == "network_error", "network_error (\(down.error ?? ""))")
 
+        // Metadata built directly (no discovery) with an http token endpoint is refused at
+        // USE, before any request is sent — the same rule as the web `postToken`.
+        let counting = CountingTransport()
+        let insecure = PyreonOidcMetadata(issuer: "http://evil.example", authorizationEndpoint: "https://idp.example/auth",
+                                          tokenEndpoint: "http://evil.example/token")
+        for (label, call) in [
+            ("refresh", { _ = try await PyreonOidcClient.refresh(insecure, clientId: "app", refreshToken: "rt", transport: counting) }),
+            ("exchangeCode", {
+                let flow = PyreonAuthFlow(state: "s", nonce: "n", codeVerifier: "v", redirectUri: "r", issuer: "http://evil.example", createdAt: 0)
+                _ = try await PyreonOidcClient.exchangeCode(insecure, clientId: "app", flow: flow, code: "c", transport: counting)
+            }),
+        ] as [(String, () async throws -> Void)] {
+            do { try await call(); expect(false, "\(label): http token endpoint accepted") }
+            catch let e as PyreonAuthError { expect(e.code == "insecure_url", "\(label): insecure_url (\(e.code))") }
+        }
+        expect(counting.count == 0, "no request reached an http token endpoint (\(counting.count))")
+        let loopback = PyreonOidcMetadata(issuer: "http://127.0.0.1", authorizationEndpoint: "http://127.0.0.1/auth",
+                                          tokenEndpoint: "http://127.0.0.1:8080/token")
+        _ = try? await PyreonOidcClient.refresh(loopback, clientId: "app", refreshToken: "rt", transport: counting)
+        expect(counting.count == 1, "loopback http still reaches the transport (local development)")
+
         // The user closing the sheet is a cancellation, not an error state.
         let cp = FakeProvider(), cb = FakeBrowser(cp)
         cb.cancel = true
@@ -226,6 +247,11 @@ enum PyreonOidcFlowTests {
 
 final class Clock: @unchecked Sendable {
     var now: TimeInterval = 1000
+}
+
+final class CountingTransport: PyreonAuthTransport, @unchecked Sendable {
+    var count = 0
+    func send(_ request: PyreonAuthRequest) async throws -> PyreonAuthResponse { count += 1; return PyreonAuthResponse(status: 500) }
 }
 
 struct DownTransport: PyreonAuthTransport {

@@ -128,10 +128,13 @@ function mergeProperty(
   } else if (existing?.get) {
     mergeStaticWithGetter(result, key, desc, existing.get)
   } else if (desc.value !== undefined || !existing) {
-    // Both static — later value wins if defined. `existing` (when present) is
-    // a data property this merge created itself, so it is writable and
-    // configurable and the assignment fast path in `_copyProp` replaces it.
-    _copyProp(result, key, desc)
+    // Both static — later value wins if defined. `existing` is a data property
+    // this merge created, so it is configurable — but NOT necessarily writable:
+    // a frozen or read-only earlier source is copied with `writable: false`, and
+    // the assignment fast path in `_copyProp` throws on that in strict mode. A
+    // non-writable existing key is replaced by redefining it instead.
+    if (existing?.writable === false) Object.defineProperty(result, key, { ...desc, configurable: true })
+    else _copyProp(result, key, desc)
   }
 }
 

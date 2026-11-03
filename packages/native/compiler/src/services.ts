@@ -108,6 +108,12 @@ export interface ServiceDescriptor {
    * lowering fires (web renders nothing; native would print `Optional(…)`).
    */
   readonly optionalFields?: Readonly<Record<string, TypeIR>>
+  /**
+   * What a member METHOD returns, by name — the awaited value of `await picker.pick()`. Without it the result is
+   * `unknown`, so `if (uri === null) return` cannot narrow what follows and every later use of `uri` reads the
+   * runtime's optional where a value is required (swiftc: "value of optional type 'String?' must be unwrapped").
+   */
+  readonly methodReturns?: Readonly<Record<string, TypeIR>>
 }
 
 /** Render a descriptor's Kotlin lines for a Kotlin identifier. */

@@ -210,7 +210,9 @@ async function runOneCycle(page: Page, journeyName: string): Promise<void> {
       break
     case 'boot':
       await page.reload({ waitUntil: 'networkidle' })
-      await page.waitForSelector('[data-testid="toggle-theme"]')
+      // locator().waitFor(), not waitForSelector(): the latter returns an ElementHandle that pins DOM for the whole
+      // session and reads as a leak (see scripts/perf/page-like.ts).
+      await page.locator('[data-testid="toggle-theme"]').first().waitFor({ state: 'attached' })
       break
     default:
       throw new Error(

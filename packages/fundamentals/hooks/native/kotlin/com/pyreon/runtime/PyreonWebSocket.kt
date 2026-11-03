@@ -44,12 +44,11 @@
 //   to the supplied handler thunks (`onOpen` / `onMessage` / `onError` /
 //   `onClosed`) and returns a [WebSocketSender] the container drives for
 //   `send` / `close`. This keeps the file Android-SDK-free + kotlinc-stub
-//   compatible. An OkHttp-backed `connect(url)` convenience overload is a
-//   Phase-2+ follow-up that needs Android CI to verify end-to-end.
+//   compatible. The OkHttp-backed transport lives in PyreonWebSocketOkHttp.kt.
 //
 // The pure container is enough to unit-test the state machine, validate the
-// kotlinc surface, and back the `useWebSocket` compiler emit (a follow-up —
-// the PyreonFetch / PyreonNetworkStatus per-service-port pattern).
+// kotlinc surface, and back the `useWebSocket` compiler emit (the
+// PyreonFetch / PyreonNetworkStatus per-service-port pattern).
 
 package com.pyreon.runtime
 
@@ -147,8 +146,7 @@ public class PyreonWebSocket {
      * inbound events to the [WebSocketHandlers] thunks (which drive the pure
      * transitions), and returns a [WebSocketSender] the container stores for
      * [send] / [close]. Keeping the transport injected keeps this file
-     * Android-SDK-free (kotlinc-stub compatible); an OkHttp `connect(url)`
-     * convenience overload is a Phase-2+ Android-CI follow-up.
+     * Android-SDK-free (kotlinc-stub compatible).
      *
      * Idempotent — a second call while already open is a no-op (the existing
      * transport keeps driving the container); the supplied [register] is NOT

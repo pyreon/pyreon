@@ -19,7 +19,7 @@ This page is the map: what you get for free, and how to reach for the rest.
 | Correct ARIA serialization | Boolean `aria-*` render as `"true"`/`"false"`, not presence-only | `@pyreon/runtime-dom`, `@pyreon/runtime-server` |
 | Typed `role` | `AriaRole` autocomplete on every element | `@pyreon/core` |
 | Live-region announcements | `announce()` — zero setup | `@pyreon/a11y` |
-| SPA route announcements | `<RouteAnnouncer>` — one line | `@pyreon/a11y/router` |
+| SPA route announcements | Built into the root `<RouterView>` (on by default); `<RouteAnnouncer>` for custom wording | `@pyreon/router`, `@pyreon/a11y/router` |
 | Multi-platform a11y | `accessibilityLabel` / `accessibilityHidden` / `accessibilityRole` → web + iOS + Android | `@pyreon/primitives` |
 
 ## Forms — automatic label, error, and description wiring
@@ -62,18 +62,18 @@ Use it for things sighted users perceive visually but assistive-tech users need 
 
 ### `<RouteAnnouncer>` — single-page navigations
 
-Client-side navigations change the URL and DOM but fire no page-load event, so screen readers never announce the new page. Drop one `<RouteAnnouncer>` near your router root to close that gap:
+Client-side navigations change the URL and DOM but fire no page-load event, so screen readers never announce the new page. The root `<RouterView>` from `@pyreon/router` already announces route changes by default, so there is nothing to add. Use `<RouteAnnouncer>` only when you want custom wording or politeness — and then turn the built-in off, or every navigation is announced twice:
 
 ```tsx
 import { RouteAnnouncer } from '@pyreon/a11y/router'
 
 <RouterProvider router={router}>
   <RouteAnnouncer />
-  <RouterView />
+  <RouterView announceRouteChanges={false} />
 </RouterProvider>
 ```
 
-It announces each route's `meta.title` (or `"Navigated to <path>"`) to a polite live region. Customise with `format`, or use the `useRouteAnnouncer()` hook form. The router dependency lives only in the `@pyreon/a11y/router` subpath, so importing just `announce` / `VisuallyHidden` from the main entry stays router-free.
+`<RouteAnnouncer>` announces each route's `meta.title` (or `"Navigated to <path>"`) to a polite live region. Customise with `format`, or use the `useRouteAnnouncer()` hook form. The router dependency lives only in the `@pyreon/a11y/router` subpath, so importing just `announce` / `VisuallyHidden` from the main entry stays router-free.
 
 ### `<LiveRegion>` — declarative status
 
@@ -194,4 +194,4 @@ Several are auto-fixable (`pyreon-lint --fix`), and each carries a prescriptive 
 
 ## Summary
 
-Reach for the framework primitives — `@pyreon/form`, `@pyreon/elements` / `@pyreon/ui-primitives`, `@pyreon/primitives`, `@pyreon/kinetic` — and accessibility comes with them. Add `announce()`, `<LiveRegion>`, and a `<RouteAnnouncer>` for the dynamic bits, turn on the opt-in lint rules to guard the conventions, and you have an accessible app by default.
+Reach for the framework primitives — `@pyreon/form`, `@pyreon/elements` / `@pyreon/ui-primitives`, `@pyreon/primitives`, `@pyreon/kinetic` — and accessibility comes with them. Add `announce()` and `<LiveRegion>` for the dynamic bits (route changes are already announced by `<RouterView>`), turn on the opt-in lint rules to guard the conventions, and you have an accessible app by default.

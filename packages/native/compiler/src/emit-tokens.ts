@@ -7,10 +7,9 @@
 // constant table that consumer code references as `PyreonTokens.spacing.md`,
 // `PyreonTokens.color.primary`, etc.
 //
-// The TS-source → ThemeIR step (parsing `@pyreon/ui-theme`'s exports)
-// lands in a follow-up. For Phase 0 the emitter alone is what matters
-// — proves the structural mapping (theme object → Swift struct +
-// Kotlin object) before we wire it to real theme files.
+// The TS-source → ThemeIR step lives in `parse-theme.ts`. For Phase 0 the
+// emitter alone is what matters — proves the structural mapping (theme
+// object → Swift struct + Kotlin object).
 
 export interface ThemeIR {
   /** Top-level groups in the theme (e.g. spacing, color, font). */

@@ -1195,6 +1195,10 @@ export function myLibraryField<T>(schema: MyLibraryFieldSchema<T>): ValidateFn<T
 
 ---
 
+## Multiplatform
+
+The adapters wrap JavaScript schema libraries (zod / valibot / arktype), so they run on the web only. On iOS and Android (PMTC), the declaration forms `zodSchema(z.object({…}))`, `valibotSchema(...)` and `arktypeSchema(...)` written in shared source are emitted as native field validators.
+
 ## API Reference
 
 ### Zod
@@ -1234,6 +1238,11 @@ export function myLibraryField<T>(schema: MyLibraryFieldSchema<T>): ValidateFn<T
 | Function                 | Signature                                                                        | Description                                                                          |
 | ------------------------ | -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
 | `issuesToRecord(issues)` | `<TValues>(issues: ValidationIssue[]) => Partial<Record<keyof TValues, string>>` | Convert `ValidationIssue[]` to a flat field-error record. First error per path wins. |
+| `flattenIssuePath(path)` | `(path: ReadonlyArray<PropertyKey \| { key: PropertyKey }> \| undefined) => string` | Flatten a Standard Schema issue path to a dot string (`['address', 'city']` → `'address.city'`; empty → `''`, the whole-form key). The helper the adapters use. |
+
+### Per-library entry points
+
+Each adapter pair is also importable from its own subpath — `@pyreon/validation/zod` (`zodSchema`, `zodField`), `@pyreon/validation/valibot` (`valibotSchema`, `valibotField`) and `@pyreon/validation/arktype` (`arktypeSchema`, `arktypeField`) — when you want an import that names only one library.
 
 ---
 
@@ -1253,3 +1262,7 @@ These types are **owned by `@pyreon/validation`** (the gate has zero Pyreon deps
 | `InferSchema<S>`              | `S['_infer'] \| S['~standard']['types']['output'] \| Record<string, unknown>`         | Infer field types from an adapter or a raw schema             |
 | `SchemaAdapter<TSchema>`      | `<TValues>(schema: TSchema) => SchemaValidateFn<TValues>`                             | Generic schema adapter type                                   |
 | `FieldAdapter<TSchema>`       | `<T>(schema: TSchema) => ValidateFn<T>`                                               | Generic field adapter type                                   |
+| `SchemaIssue` / `SchemaParseResult` | Aliases of `ValidationIssue` / `ParseResult`                                     | Names used by the store / state-tree schema modes             |
+| `StandardSchemaV1` / `StandardSchemaIssue` / `StandardSchemaResult` | The Standard Schema v1 interface, issue and result types | For typing your own Standard Schema producers or consumers   |
+| `StandardSchemaShape<T>`      | A value carrying `~standard`                                                          | What `isStandardSchema` narrows to                            |
+| `PyreonAdapterShape<T>`       | A value carrying `_infer` + callable `parse`                                          | What `isPyreonAdapter` narrows to                             |

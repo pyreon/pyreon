@@ -135,7 +135,8 @@ export function A() {
   return <Stack><Text>{String(items().length)}</Text></Stack>
 }`,
     swift: ['var price: Double', 'price: 3.0'],
-    kotlin: ['var price: Double', 'price = 3.0'],
+    // Every row is the signal's own data class (`AItem`), not a per-literal `__ObjN`.
+    kotlin: ['data class AItem(val id: Long, val price: Double)', 'price = 3.0'],
   },
   'a number[] generic holding a file-scope Double': {
     src: `const P = 2.5

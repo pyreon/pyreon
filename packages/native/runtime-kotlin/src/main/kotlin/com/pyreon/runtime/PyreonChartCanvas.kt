@@ -53,7 +53,7 @@ import java.util.TimeZone
 
 // The chart draw-list contract — the Kotlin twin of PyreonChartCanvas.swift.
 // The RUNTIME owns these types; the generated PyreonChartEngine geometry
-// (gen-native-chart-engine, follow-up) references them rather than
+// references them rather than
 // re-declaring. Field-for-field the fat-struct lowering of the engine's
 // `DrawCmd` union: `kind` discriminates, variant fields default null.
 data class PyreonChartPt(var x: Double, var y: Double)

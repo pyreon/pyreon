@@ -11,8 +11,8 @@ function gotchaParts(g: Gotcha): { label: string; note: string } {
 
 /**
  * Render a manifest to its one-line `llms.txt` bullet form. Compact by
- * design — the full structured expansion lives in `llms-full.txt`
- * (follow-up PR). Includes peerDeps inline when present and the first
+ * design — the full structured expansion lives in `llms-full.txt`.
+ * Includes peerDeps inline when present and the first
  * `gotcha` as a teaser so the one-liner retains meaningful density.
  *
  * Lives in `@pyreon/manifest` (not in `scripts/gen-docs-core.ts`) because

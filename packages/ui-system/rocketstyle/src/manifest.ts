@@ -11,7 +11,7 @@ export default defineManifest({
   multiplatform: {
     tier: 'shared',
     rationale:
-      'rocketstyle-over-primitive chains lower (static cascade + one dynamic dimension) through its package-owned native plugin',
+      'rocketstyle-over-primitive chains lower (static cascade + any number of dynamic dimensions) through its package-owned native plugin',
   },
   longExample: `import rocketstyle from '@pyreon/rocketstyle'
 import { Element } from '@pyreon/elements'

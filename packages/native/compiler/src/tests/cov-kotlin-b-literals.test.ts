@@ -34,10 +34,10 @@ export function App() {
 
   it('reuses the earlier synthesized data class when only the field TYPES are un-inferable', () => {
     const r = kotlin(APPEND)
-    // The OUTER literal resolves by name-set to the class the initial value
-    // synthesized — not to a fresh `__Obj1`, and not to a bare tuple.
-    expect(r.code).toContain('data class __Obj0(var id: Long, var text: String, var done: Boolean)')
-    expect(r.code).toContain('todos = (todos + listOf(__Obj0(id = 3L, text =')
+    // The OUTER literal resolves by name-set to the class the signal's type
+    // synthesized (`AppTodo`) — not to a fresh `__ObjN`, and not to a bare tuple.
+    expect(r.code).toContain('data class AppTodo(val id: Long, val text: String, val done: Boolean)')
+    expect(r.code).toContain('todos = (todos + listOf(AppTodo(id = 3L, text =')
     expect(r.code).not.toContain('listOf((id = 3')
   })
 
@@ -57,7 +57,7 @@ export function App() {
     const clean = APPEND.replace(`{ a: raw, b: [1, 'x'] }`, 'raw')
     const r = kotlin(clean)
     expect(r.warnings).toEqual([])
-    expect(r.code).toContain('__Obj0(id = 3L, text = raw, done = false)')
+    expect(r.code).toContain('AppTodo(id = 3L, text = raw, done = false)')
   })
 })
 
@@ -131,6 +131,6 @@ export function App() {
   it('a LEGAL key still synthesizes normally — the fix above must not churn this', () => {
     const r = kotlin(flags('postsRead'))
     expect(r.warnings).toEqual([])
-    expect(r.code).toContain('data class __Obj0(var postsRead: Boolean)')
+    expect(r.code).toContain('data class AppF(val postsRead: Boolean)')
   })
 })

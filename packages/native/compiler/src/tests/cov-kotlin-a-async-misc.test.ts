@@ -24,7 +24,8 @@ export function P() {
   return (<Stack><Text>{p.data()?.id ?? 'none'}</Text></Stack>)
 }`).code
     expect(out).toContain(
-      'PyreonHttp.send(PyreonHttpRequest(method = PyreonHttpMethod.POST, url = "https://x.dev/a", headers = mapOf("X-A" to "1"), body = "{}"), fallback = PyreonHttpOkHttp)',
+      // A string body with no type gets the Fetch standard's default, as the web sends it.
+      'PyreonHttp.send(PyreonHttpRequest(method = PyreonHttpMethod.POST, url = "https://x.dev/a", headers = mapOf("X-A" to "1", "content-type" to "text/plain;charset=UTF-8"), body = "{}"), fallback = PyreonHttpOkHttp)',
     )
     // a non-2xx rejects rather than handing an error page to the decoder
     expect(out).toContain('if (!__response.isOk) throw PyreonHttpError.BadStatus(__response.status)')
@@ -71,7 +72,7 @@ export function P() {
   return (<Stack><Text>{q.data()?.id ?? 'n'}</Text></Stack>)
 }`).code
     expect(out).toContain('method = PyreonHttpMethod.POST')
-    expect(out).toContain('headers = mapOf("X-A" to "1")')
+    expect(out).toContain('headers = mapOf("X-A" to "1", "content-type" to "text/plain;charset=UTF-8")')
     expect(out).toContain('body = "{}"')
   })
 })
@@ -191,7 +192,7 @@ export function App() {
   const t = createTableState({ data: () => rows(), columns: [{ id: 'name' }] })
   return (<Stack><For each={t.rows()}>{(u) => <Text>{u.name}</Text>}</For></Stack>)
 }`).code
-    expect(out).toContain('PyreonTableState<__Obj0>')
+    expect(out).toContain('PyreonTableState<AppRow>')
     expect(out).toContain('PyreonCell.Str(it.name)')
   })
 })

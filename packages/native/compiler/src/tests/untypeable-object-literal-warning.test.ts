@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { validateKotlin, validateSwiftWithStubs } from '../validate'
 import { transform } from './first-party-plugins'
 
 /**
@@ -51,12 +52,26 @@ describe('object literal with no synthesizable struct', () => {
     ['an undefined field', `signal({ id: 'a', note: undefined })`, 'carries no type'],
     ['a NESTED empty array', `signal({ id: 'a', meta: { tags: [], n: 1 } })`, 'nested object literal'],
     ['a mixed scalar array', `signal({ id: 'a', xs: [1, 'two'] })`, 'mixes element types'],
-    ['an array of arrays', `signal({ id: 'a', grid: [[1, 2], [3, 4]] })`, 'array of arrays'],
   ])('warns on %s, and says why', (_label, init, because) => {
     const [warning] = warnsFor('', `const g = ${init}`)
     expect(warning, 'the broken shape must warn').toBeDefined()
     expect(warning).toContain(because)
     expect(warning).toContain('signal<Shape>') // the verified remedy
+  })
+
+  // An array of arrays USED to be on the list above. It now lowers on both
+  // targets: the signal's own data class carries `grid: List<List<Long>>` /
+  // `[[Int]]`, so there is no tuple and nothing to warn about.
+  it('an array-of-arrays field lowers to a real class on both targets and compiles', () => {
+    const src = mk('', `const g = signal({ id: 'a', grid: [[1, 2], [3, 4]] })`)
+    const kotlin = transform(src, { target: 'kotlin' })
+    expect(kotlin.warnings.filter((w) => w.includes('no struct could be synthesized'))).toEqual([])
+    expect(kotlin.code).toContain('val grid: List<List<Long>>')
+    const k = validateKotlin(kotlin.code)
+    expect(k.ok, k.error).toBe(true)
+    const swift = transform(src, { target: 'swift' })
+    const s = validateSwiftWithStubs(swift.code)
+    expect(s.ok, s.error).toBe(true)
   })
 
   it('warns on BOTH targets — the shape is broken on both, in different ways', () => {

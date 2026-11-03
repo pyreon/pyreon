@@ -75,12 +75,38 @@ function relayHostGroup(from: HostGroupMember, group: string, message: string): 
   }
 }
 
+/**
+ * The `<iframe>` style for the sizing contract `WebViewProps.grow` documents,
+ * identical in meaning to the native hosts:
+ *
+ * - unsized: full width, and NO height — the iframe's replaced-element default
+ *   of 150px applies, which is exactly what the iOS / Android hosts pin to.
+ *   (This used to be `height: 100%`, which in a sized container filled it on
+ *   web while the same source was 150 on Android — two answers to one prop.)
+ * - `grow`: `flex: 1 1 150px` takes the free main-axis space of a flex parent
+ *   (Stack / Inline); the 150px basis is what keeps it at the default where
+ *   there is no free space (an auto-height container), matching SwiftUI's
+ *   ideal height and Compose's unsized default. `min-*: 0` lets it shrink
+ *   below the basis when the free space is smaller, as a weighted Compose
+ *   child does. `height: 100%` covers a NON-flex parent (Layer, a plain
+ *   element), where `flex` is ignored, and is overridden by the basis inside
+ *   a column.
+ *
+ * `display: block` drops the inline-replaced baseline gap, which the native
+ * hosts never had.
+ */
+function webViewStyle(grow: boolean): string {
+  return grow
+    ? 'border: 0; display: block; width: 100%; height: 100%; flex: 1 1 150px; min-height: 0; min-width: 0'
+    : 'border: 0; display: block; width: 100%'
+}
+
 export function WebView(props: WebViewProps): VNode {
   const attrs: Record<string, unknown> = {
     ...collectPassthroughAttrs(props as Record<string, unknown>),
-    // Fill the container, no chrome — matches the native host's full-bleed
-    // embed.
-    style: 'border: 0; width: 100%; height: 100%',
+    // Read reactively: the sizing contract is the same expression on every
+    // render, and a web build can flip it (native reads it at compile time).
+    style: (): string => webViewStyle(props.grow === true),
   }
   // Accessors, not values: a changed `html`/`src` reloads the page, as the
   // native hosts do, and `onLoad` below re-installs the bridge and re-pushes

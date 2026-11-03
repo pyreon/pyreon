@@ -38,12 +38,11 @@
 //
 // ## Relationship to the PMTC compiler emit
 //
-// A later emit pass detects `const ws = useWebSocket('wss://…')` and emits a
+// The emit detects `const ws = useWebSocket('wss://…')` and emits a
 // `PyreonWebSocket` instance whose `.task { }` calls `connect(to:)` on
 // appear and `close()` on disappear; `ws.lastMessage` / `ws.isConnected`
-// reads in the component body become reads on this container. Until that
-// lands (the per-service-port follow-up, the PyreonFetch / PyreonNetworkStatus
-// pattern), this is usable by hand-written SwiftUI code.
+// reads in the component body become reads on this container. It is equally
+// usable by hand-written SwiftUI code.
 
 import Foundation
 import Observation

@@ -186,7 +186,7 @@ Run Pyreon's project health gates against the project. Delegates to [`@pyreon/cl
 | `--fix` | Auto-fix the fixable findings (e.g. `className` → `class`). |
 | `--json` | Emit machine-readable JSON instead of the formatted report. |
 | `--ci` | CI mode — exit with code `1` when there are errors. |
-| `--full` | Also run the slow gates (`audit-types`, `check-bundle-budgets`). Skipped by default — without it, `zero doctor` prints an `audit-types (enable with --full)`-style line in its Skipped section instead of running them. |
+| `--full` | Also run the slow gates (`audit-types`, `bundle-budgets`). Skipped by default — without it, `zero doctor` prints an `audit-types (enable with --full)`-style line in its Skipped section instead of running them. |
 
 ```bash
 zero doctor                # formatted report against the cwd

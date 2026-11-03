@@ -156,3 +156,80 @@ describe('<WebView> bridges', () => {
     expect(bothFrame.hasAttribute('src')).toBe(false)
   })
 })
+
+/**
+ * The sizing contract (`grow`, #3956 item 5) measured in real layout. Every
+ * expectation here is the number the iOS and Android hosts produce for the same
+ * tree, so the web build cannot quietly mean something else by the same prop.
+ */
+describe('<WebView> sizing', () => {
+  const frameIn = (root: HTMLElement): HTMLIFrameElement => query(root, 'iframe') as HTMLIFrameElement
+  const column = (height: string, ...children: unknown[]) =>
+    h('div', { style: `display: flex; flex-direction: column; width: 320px; height: ${height}` }, ...(children as never[]))
+  const fixed = (px: number) => h('div', { style: `height: ${px}px; flex: none` })
+
+  it('is 150 high when unsized — the iframe default the native hosts pin to — even in a sized column', () => {
+    const m = mountInBrowser(() => column('600px', fixed(100), h(WebView as never, { html: '<p/>' } as never)))
+    const r = frameIn(m.container).getBoundingClientRect()
+    expect(r.height).toBe(150)
+    expect(r.width).toBe(320)
+  })
+
+  it('grow takes exactly the free space a column leaves after its siblings', () => {
+    const m = mountInBrowser(() =>
+      column('600px', fixed(100), h(WebView as never, { html: '<p/>', grow: true } as never), fixed(50)),
+    )
+    expect(frameIn(m.container).getBoundingClientRect().height).toBe(450)
+  })
+
+  it('two growing views share the free space equally', () => {
+    const m = mountInBrowser(() =>
+      column(
+        '500px',
+        fixed(100),
+        h(WebView as never, { html: '<p/>', grow: true } as never),
+        h(WebView as never, { html: '<p/>', grow: true } as never),
+      ),
+    )
+    const [a, b] = Array.from(m.container.querySelectorAll('iframe'))
+    expect(a!.getBoundingClientRect().height).toBe(200)
+    expect(b!.getBoundingClientRect().height).toBe(200)
+  })
+
+  it('grow keeps the 150 default where the parent has no free space (an auto-height column)', () => {
+    const m = mountInBrowser(() => column('auto', fixed(40), h(WebView as never, { html: '<p/>', grow: true } as never)))
+    expect(frameIn(m.container).getBoundingClientRect().height).toBe(150)
+  })
+
+  it('grow fills a sized NON-flex parent (Compose fillMaxSize / SwiftUI both axes)', () => {
+    const m = mountInBrowser(() =>
+      h('div', { style: 'width: 300px; height: 400px' }, h(WebView as never, { html: '<p/>', grow: true } as never)),
+    )
+    expect(frameIn(m.container).getBoundingClientRect().height).toBe(400)
+  })
+
+  it('grow along a ROW takes the free width and leaves the height at the default', () => {
+    const m = mountInBrowser(() =>
+      h(
+        'div',
+        { style: 'display: flex; flex-direction: row; align-items: flex-start; width: 500px' },
+        h('div', { style: 'width: 100px; flex: none' }),
+        h(WebView as never, { html: '<p/>', grow: true } as never),
+      ),
+    )
+    const r = frameIn(m.container).getBoundingClientRect()
+    expect(r.width).toBe(400)
+    expect(r.height).toBe(150)
+  })
+
+  it('flips reactively on web, where the prop is not a compile-time decision', async () => {
+    const grow = signal(false)
+    const m = mountInBrowser(() =>
+      column('600px', h(WebView as never, { html: '<p/>', get grow() { return grow() } } as never)),
+    )
+    expect(frameIn(m.container).getBoundingClientRect().height).toBe(150)
+    grow.set(true)
+    await nextTick()
+    expect(frameIn(m.container).getBoundingClientRect().height).toBe(600)
+  })
+})

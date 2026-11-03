@@ -293,7 +293,7 @@ Full docs: [pyreon.dev/docs/feature](https://pyreon.dev/docs/feature) (or `docs/
 
 ## Native (iOS / Android)
 
-A top-level `defineFeature({ name, schema })` with a literal `{ field: 'string' | 'number' | 'boolean' }` schema lowers to a schema struct plus a binding exposing `name` and `initialValues`; every other shape draws the Tier-2 diagnostic. The compile-time half ships in this package (`src/native-plugin/`, declared in `package.json` as `pyreon.native.plugin` and discovered by `pyreon-native`), not in `@pyreon/native-compiler`.
+A top-level `defineFeature({ name, schema })` lowers to a schema struct plus a binding exposing `name` and `initialValues` when the schema is a literal `{ field: 'string' | 'number' | 'boolean' }` map or an object literal of scalar validators (`z.object({ id: z.string(), done: z.boolean() })`). A chain method the declaration cannot carry (`.min()`, `.email()`, `.optional()`, …) is reported by name and is not enforced on device — validate natively with `@pyreon/validate` or in the handler. Every other shape (a schema in a variable, `v.pipe(…)`, ArkType) draws the Tier-2 diagnostic. The compile-time half ships in this package (`src/native-plugin/`, declared in `package.json` as `pyreon.native.plugin` and discovered by `pyreon-native`), not in `@pyreon/native-compiler`.
 
 ## License
 

@@ -69,9 +69,12 @@ const name = signal('Ada')
 // ✅ reactive — re-runs when name changes
 <h1>{name()}</h1>
 
-// ❌ static — captures the value once, never updates
-<h1>{name}</h1>          // renders the function, not the value
-const n = name()         // captured once; the const won't track
+// ✅ also reactive — inside JSX the compiler auto-calls a bare signal it
+//    can see declared, but the explicit name() is clearer
+<h1>{name}</h1>
+
+// ❌ outside JSX a signal is a function — read it with name().
+const n = name()         // a plain snapshot: it won't track later changes
 ```
 
 And writing is `.set`, not a call:
@@ -134,7 +137,10 @@ function TodoList() {
   const visible = computed(() =>
     todos().filter(t => filter() === 'all' || t.status === filter()),
   )
-  effect(() => { document.title = `${todos().length} todos` })
+  // useHead from @pyreon/head (needs a <HeadProvider>; Zero adds one).
+  // A bare `effect` that writes document.* at setup is flagged by the
+  // no-imperative-effect-on-create lint rule.
+  useHead(() => ({ title: `${todos().length} todos` }))
   return (
     <ul>
       <For each={visible} by={t => t.id}>{t => <li>{t.text}</li>}</For>

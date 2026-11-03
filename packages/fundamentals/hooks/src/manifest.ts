@@ -948,17 +948,18 @@ notifications.notify('Done', 'Your export is ready')`,
       name: 'useFilePicker',
       kind: 'hook',
       signature:
-        'useFilePicker() => { pick: () => Promise<string | null>; isAvailable: () => boolean }',
+        'useFilePicker() => { pick: (accept?: readonly string[]) => Promise<string | null>; isAvailable: () => boolean }',
       summary:
-        'Pick a document/file from the device — UIDocumentPickerViewController (iOS), the Storage Access Framework `OpenDocument` (Android), a hidden file input (web). The document sibling of `useImagePicker` (any file — a PDF, a `.csv`, a `.zip` — not just photos), and the THIRD async-result hook: `pick()` returns a `Promise<string | null>` you `await`, resolving a URI string or `null` when the user cancels; it never rejects. Under PMTC the async-await lowering wraps the awaiting handler in a Swift `Task { … }` / Kotlin `pyreonAsyncScope.launch { … }`. Requires NO storage permission on either native platform — both system pickers run out of process and hand back only the chosen document, so there is no iOS entitlement and no Android runtime permission. Saving/exporting a file is a separate native flow and is intentionally out of scope (tracked follow-up).',
+        'Pick a document/file from the device — UIDocumentPickerViewController (iOS), the Storage Access Framework `OpenDocument` (Android), a hidden file input (web). The document sibling of `useImagePicker` (any file — a PDF, a `.csv`, a `.zip` — not just photos), and the THIRD async-result hook: `pick()` returns a `Promise<string | null>` you `await`, resolving a URI string or `null` when the user cancels; it never rejects. `pick(accept)` limits the choice in the `<input accept>` vocabulary — MIME types (`application/pdf`), wildcards (`image/*`), extensions (`.csv`) — mapped to UTTypes on iOS and MIME types on Android; an entry a platform cannot resolve widens that pick to any file rather than hiding the one the user wants. Under PMTC the async-await lowering wraps the awaiting handler in a Swift `Task { … }` / Kotlin `pyreonAsyncScope.launch { … }`. Requires NO storage permission on either native platform — both system pickers run out of process and hand back only the chosen document, so there is no iOS entitlement and no Android runtime permission. Saving/exporting a file is a separate native flow and is intentionally out of scope (tracked follow-up).',
       example: `const files = useFilePicker()
 const status = signal<'idle' | 'picked' | 'cancelled'>('idle')
 
 <button onClick={async () => {
-  const uri = await files.pick()
+  const uri = await files.pick(['application/pdf', '.csv'])
   status.set(uri === null ? 'cancelled' : 'picked')
-}}>Pick a file</button>`,
+}}>Pick a PDF or CSV</button>`,
       mistakes: [
+        'Treating `accept` as a security boundary. It is a hint to the picker: a platform that cannot resolve an entry widens to any file, and a user can rename a file. Validate the type of what you read.',
         'Testing the result for TRUTHINESS (`uri ? … : …`) instead of comparing to null (`uri === null`). JS truthiness is not a native Bool — the explicit null comparison is what PMTC lowers to `uri == nil` (Swift) / `uri == null` (Kotlin), and it is also correct on the web.',
         'Calling `files.pick()` WITHOUT `await` inside a plain (non-async) handler — it returns a `Promise<string | null>`, not a URI. Mark the handler `async` and `await` it (PMTC wraps that async handler in a native `Task`/coroutine scope; a sync action slot cannot await).',
         'Reaching for `useFilePicker` when you specifically want a PHOTO. Use `useImagePicker` — it opens the photo picker (`PHPickerViewController` / `PickVisualMedia`), which is a better UX for images than the general document browser.',
@@ -990,7 +991,29 @@ const status = signal<'idle' | 'picked' | 'cancelled'>('idle')
         'Expecting a cancellation to reject. It resolves `null`, so a `try/catch` around `pick()` will never see the cancel path — branch on the result instead.',
         'Forgetting to revoke the web object URL when picking repeatedly in a long-lived view. The web fallback returns `URL.createObjectURL(file)`; call `URL.revokeObjectURL(uri)` once the image is no longer displayed if you pick many times, or the blobs accumulate for the page lifetime.',
       ],
-      seeAlso: ['useBiometrics', 'useShare'],
+      seeAlso: ['useBiometrics', 'useShare', 'fileFromUri'],
+    },
+    {
+      name: 'fileFromUri',
+      kind: 'function',
+      signature: 'fileFromUri(uri: string, options?: { name?: string; type?: string }) => Promise<File>',
+      summary:
+        "Turn the URI a picker or the camera resolved into a file a request can send. A URI is a HANDLE, not the file: passing it straight into a request body sends the URI's text on every platform. Web: the picker's own `File` (real name and type) when the URI came from `useImagePicker` / `useFilePicker` / `useCamera`, else the bytes read through `fetch` (`blob:`, `data:`, same-origin). Under PMTC it lowers to `PyreonUploadFile.from` (Android reads through the app's `ContentResolver`), and a `@pyreon/http` request carrying it in `multipart` or as its `body` STREAMS the file from disk when sent — a large video is never read into memory. Rejects when the URI cannot be read.",
+      example: `const picker = useImagePicker()
+const uploadAvatar = api.endpoint('POST /me/avatar')
+
+const change = async () => {
+  const uri = await picker.pick()
+  if (uri === null) return
+  await uploadAvatar({ multipart: { avatar: await fileFromUri(uri, { name: 'avatar.jpg' }), caption: caption() } })
+}`,
+      mistakes: [
+        'Putting the picker URI itself in the body (`multipart: { avatar: uri }`). That sends the URI as a TEXT part on every platform — the server receives a path string, not the image.',
+        'Calling it without `await`. On the web it returns a Promise, and a Promise in a body is sent as `[object Promise]`; PMTC names the unawaited call instead of lowering it.',
+        'Relying on the default filename. A native picker hands back a temporary copy whose name is not always the original (an iOS photo arrives as a UUID-named `.jpg`), so pass `name` when the server cares — that is what makes every platform send the same part.',
+        'Resolving the file long before the request. It is a handle to an ephemeral picker copy; resolve and send it in the same handler.',
+      ],
+      seeAlso: ['useImagePicker', 'useFilePicker', 'useCamera'],
     },
     {
       name: 'useBiometrics',

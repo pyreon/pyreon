@@ -428,3 +428,59 @@ export function App() {
     expect(strip(container.innerHTML)).toBe('<div><i>re</i></div>')
   })
 })
+
+describe('bare signal text child — `{sig}` takes the same `_bindText` path as `{sig()}`', () => {
+  // The signal is declared IN the compiled source so the compiler knows it is
+  // a signal (a global passed in would be an unknown identifier). `out`
+  // hands the instance back to the test.
+  it('a bare number signal renders and updates in place', () => {
+    const out: { count?: { set(v: number): void } } = {}
+    const errors: unknown[] = []
+    const { container, cleanup, code } = compileMountComponent(
+      `
+const count = signal(1)
+out.count = count
+export function App() {
+  return <span>{count}</span>
+}
+`,
+      { out },
+      errors,
+    )
+    expect(code).toContain('_bindText(count,')
+    expect(code).not.toContain('bindPolymorphicText')
+    expect(errors, 'mount errors').toEqual([])
+    const textNode = container.querySelector('span')!.firstChild
+    expect(strip(container.innerHTML)).toBe('<span>1</span>')
+    capturingErrors(errors, () => out.count!.set(2))
+    expect(strip(container.innerHTML)).toBe('<span>2</span>')
+    // Updated in place: the same text node, not a re-mount.
+    expect(container.querySelector('span')!.firstChild).toBe(textNode)
+    expect(errors, 'update errors').toEqual([])
+    cleanup()
+    container.remove()
+  })
+
+  it('a bare signal holding a VNode mounts it, then returns to text', () => {
+    const out: { node?: { set(v: unknown): void } } = {}
+    const errors: unknown[] = []
+    const { container, cleanup } = compileMountComponent(
+      `
+const node = signal(h('b', null, 'hi'))
+out.node = node
+export function App() {
+  return <div>{node}</div>
+}
+`,
+      { out },
+      errors,
+    )
+    expect(errors, 'mount errors').toEqual([])
+    expect(strip(container.innerHTML)).toBe('<div><b>hi</b></div>')
+    capturingErrors(errors, () => out.node!.set('plain'))
+    expect(strip(container.innerHTML)).toBe('<div>plain</div>')
+    expect(errors, 'swap errors').toEqual([])
+    cleanup()
+    container.remove()
+  })
+})

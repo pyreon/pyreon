@@ -32,7 +32,7 @@ function KeyboardShortcuts() {
 useEventListener('click', onDocClick, {}, () => document)
 ```
 
-The `target` getter is resolved **once at setup**, not reactively — it does not re-bind if the value it returns later changes. If you pass `() => buttonEl` and `buttonEl` is still `null` at setup time (the common ref-callback race), the listener silently falls back to `window` instead of erroring. Attach to a stable target, or read a ref that is guaranteed populated by the time `useEventListener` runs.
+The `target` getter is resolved once, not reactively — it does not re-bind if the value it returns later changes. If you pass `() => buttonEl` and `buttonEl` is still `null` at setup time (the common ref-callback race), the getter is resolved again on mount; if it is still `null` then, no listener is attached and a dev-mode warning says so. Attach to a stable target, or read a ref that is populated by mount.
 :::
 
 Targets can be:

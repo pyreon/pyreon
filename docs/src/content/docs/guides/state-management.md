@@ -50,18 +50,16 @@ A list store deriving a count:
 
 ## @pyreon/state-tree
 
-`model({ state, views, actions })` builds a structured model. Instances via `.create(initial?)`, or a singleton hook via `.asHook(id)`.
+`model({ state })` builds a structured model; chain `.views((self) => …)` and `.actions((self) => …)` to add derived values and methods. Each state field is a signal on `self` — read `self.items()`, write `self.items.set(…)`. Instances via `.create(initial?)`, or a singleton hook via `.asHook(id)`.
 
 ```tsx
 import { model } from '@pyreon/state-tree'
 
-const Todos = model({
-  state: () => ({ items: [] as string[] }),
-  views: { count: (self) => self.items.length },
-  actions: {
-    add: (self, text: string) => { self.items = [...self.items, text] },
-  },
-})
+const Todos = model({ state: { items: [] as string[] } })
+  .views((self) => ({ count: () => self.items().length }))
+  .actions((self) => ({
+    add: (text: string) => self.items.set([...self.items(), text]),
+  }))
 
 const todos = Todos.create({ items: ['first'] })
 todos.add('second')

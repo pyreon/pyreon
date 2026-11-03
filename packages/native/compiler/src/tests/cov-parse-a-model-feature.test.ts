@@ -194,10 +194,16 @@ describe('withField(schema, meta)', () => {
     expect(has(src, 'second argument must be a literal meta object')).toBe(true)
   })
 
-  it('a meta object with no STRING-valued entry is declined', () => {
-    const src = wf(`const F = withField(s.string(), { n: 1 })`)
+  it('a meta object with no LITERAL-valued entry is declined', () => {
+    const src = wf(`const k = 1\nconst F = withField(s.string(), { n: k })`)
     expect(has(src, 'no recognized meta fields')).toBe(true)
     expect(emitsMeta(src)).toBe(false)
+  })
+
+  it('a number-valued entry lowers (non-string meta is kept, not declined)', () => {
+    const src = wf(`const F = withField(s.string(), { n: 1 })`)
+    expect(has(src, 'no recognized meta fields')).toBe(false)
+    expect(emitsMeta(src)).toBe(true)
   })
 })
 
@@ -238,9 +244,15 @@ describe('defineFeature({ name, schema })', () => {
     expect(has(feat(`{ name: NAME, schema: { a: 'string' } }`), '`name` field is missing')).toBe(true)
   })
 
-  it('a non-literal `schema` is declined, and names the literal map shape', () => {
-    const src = feat(`{ name: 'todo', schema: z.object({}) }`)
+  it('a non-literal `schema` is declined, and names the shapes that lower', () => {
+    const src = feat(`{ name: 'todo', schema: shape }`)
     expect(has(src, '`schema` is not a literal object')).toBe(true)
+    expect(emitsFeature(src)).toBe(false)
+  })
+
+  it('an EMPTY validator object has no fields to carry and is declined the same way', () => {
+    const src = feat(`{ name: 'todo', schema: z.object({}) }`)
+    expect(has(src, 'no recognized schema fields')).toBe(true)
     expect(emitsFeature(src)).toBe(false)
   })
 

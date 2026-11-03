@@ -29,6 +29,10 @@ yarn add @pyreon/hooks
 
 :::
 
+:::note[Secure-context hooks]
+Eight hooks wrap browser APIs that exist only in a secure context: `useGeolocation`, `useDeviceMotion`, `useAudioRecorder`, `useBluetooth`, `useClipboard`, `useNotifications`, `useShare` and `useWakeLock`. `localhost` is secure, but a phone opening your dev server at `http://192.168.x.x` is not, so the browser simply does not define those APIs there. The hooks dev-warn when they detect an insecure origin. To test on a real device, serve dev over HTTPS — `@pyreon/zero/server`'s `https({ lan: true })` does this.
+:::
+
 ## useToggle
 
 A simple boolean toggle with convenience methods. Useful for disclosure patterns, visibility toggles, and binary UI state.
@@ -1781,7 +1785,7 @@ const view = <div onMouseEnter={t.clear} onMouseLeave={t.reset}>…</div>
 Reactive "5 minutes ago" / "in 2 hours" relative-time string. Auto-updates on a sensible interval (every minute under an hour, every hour under a day, etc.) so the UI stays accurate without manual scheduling. Cleans up the interval on unmount.
 
 ```ts
-(date: Date | (() => Date), opts?: UseTimeAgoOptions) => Signal<string>
+(date: Date | number | (() => Date | number), opts?: UseTimeAgoOptions) => () => string
 ```
 
 ```tsx
@@ -2090,6 +2094,22 @@ const status = signal<'idle' | 'picked' | 'cancelled'>('idle')
 }}>Pick a photo</button>
 ```
 
+#### `fileFromUri`
+
+Turn the URI a picker or the camera resolved into a file a request can send. A URI is a HANDLE, not the file: passing it straight into a request body sends the URI's text on every platform. On the web it returns the picker's own `File` (its real name and type) when the URI came from one of the pickers above, else it reads the bytes through `fetch`. Under PMTC it lowers to `PyreonUploadFile.from` — on Android through the app's `ContentResolver` — and a request carrying it STREAMS the file from disk, so a large video is never read into memory. Must be awaited; rejects when the URI cannot be read. See [Uploading a picked file](/docs/http#uploading-a-picked-file).
+
+```ts
+fileFromUri(uri: string, options?: { name?: string; type?: string }) => Promise<File>
+```
+
+```tsx
+const uri = await picker.pick()
+if (uri === null) return
+await uploadAvatar({ multipart: { avatar: await fileFromUri(uri, { name: 'avatar.jpg' }), caption: caption() } })
+```
+
+Pass `name` (and `type`) when the server cares: a native picker hands back a temporary copy whose name is not always the original's, so naming it is what makes every platform send the same part.
+
 #### `useSafeArea`
 
 The safe-area insets of the current display — notch / Dynamic Island, home indicator, gesture bar, rounded corners. The one device fact a multiplatform app cannot work around at the app level: without it content draws under the notch, or every screen pads by a hard-coded guess that is wrong on the next device. Returns ONE accessor rather than four because the values move together on rotation and separate accessors invite a torn read. Sources: `env(safe-area-inset-*)` read off an inert probe element on the web (CSS environment variables are not exposed to script any other way — needs `viewport-fit=cover`, and reports zeros without it, which is correct rather than broken), `safeAreaInsets` on iOS, `WindowInsets` on Android.
@@ -2124,8 +2144,13 @@ These are the WEB halves of hooks the Pyreon Multi-Target Compiler already lower
 Thin reactive JSON fetch — `{ data, error, isPending, refetch }`, all signals. Fires once at setup (client-only; SSR renders the not-yet-loaded state). Each `refetch()` aborts the previous in-flight request so a slow stale response can never clobber a fresh one; unmount aborts too. Deliberately thinner than `@pyreon/query`: no cache, no dedup, no retries — reach for `@pyreon/query` when you need those. The same call compiles to native `PyreonFetch<T>` containers on iOS/Android via PMTC.
 
 ```ts
-function useFetch<T>(url: string): { data: Signal<T | undefined>; error: Signal<unknown>; isPending: Signal<boolean>; refetch: () => void }
+function useFetch<T>(
+  source: string | PromiseLike<T>,
+  init?: UseFetchInit, // { method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'; headers?: Record<string, string>; body?: string }
+): { data: Signal<T | undefined>; error: Signal<unknown>; isPending: Signal<boolean>; refetch: () => void }
 ```
+
+`source` is a URL, or a promise such as an [`@pyreon/http`](/docs/http) endpoint call (`useFetch(getUser({ params: { id: '1' } }))`). Pass `init` for a non-GET request; on native it lowers to `PyreonHttp`; the method must be a literal there, while the body may be any string expression (`JSON.stringify(draft)`), read once at setup like the web reads it. `init.headers` are read once, when the request is built at setup — a value that changes later (a token after sign-in) belongs in `@pyreon/query`, whose `queryFn` builds the request on each run.
 
 ```tsx
 // @check
@@ -2312,6 +2337,8 @@ onMount(() => crash.start())
 </Show>
 ```
 
+On the web, forward reports to a vendor (Sentry, your own endpoint) with `setCrashTransport(send)` from `@pyreon/hooks`. `send(report: string)` is called with the rehydrated report on `start()` and with each recorded error; pass `undefined` to unset it. It mirrors the native crash-transport registry.
+
 ## API Reference
 
 | Hook                | Signature                                                      | Description                                         |
@@ -2350,7 +2377,7 @@ onMount(() => crash.start())
 | `useThrottledCallback` | `(callback, delay) => callback & { cancel }` | Throttle a callback invocation |
 | `useInterval` | `(callback, delay) => void` | Reactive `setInterval` with auto-cleanup |
 | `useTimeout` | `(callback, delay) => { reset, clear }` | Reactive `setTimeout` with auto-cleanup |
-| `useTimeAgo` | `(date, opts?) => Signal<string>` | Reactive "3 minutes ago"-style relative time string |
+| `useTimeAgo` | `(date, opts?) => () => string` | Reactive "3 minutes ago"-style relative time string |
 | `useBluetooth` | `() => UseBluetoothResult` | Web Bluetooth device scan/connect (SSR/unsupported-safe) |
 | `useDeviceMotion` | `() => UseDeviceMotionResult` | Reactive accelerometer/gyroscope readings |
 | `useSpeech` | `() => UseSpeechResult` | Speech synthesis (`speak`) + recognition |
@@ -2370,7 +2397,7 @@ onMount(() => crash.start())
 | `useImagePicker` | `() => UseImagePickerResult` | Pick an image from the gallery/camera roll |
 | `useSafeArea` | `() => () => SafeAreaInsets` | Reactive safe-area insets (notch-aware) |
 | `useScreenOrientation` | `() => UseScreenOrientationResult` | Reactive orientation + angle (read-only) |
-| `useFetch` | `<T>(url) => UseFetchResult<T>` | Thin reactive JSON fetch — `{ data, error, isPending, refetch }` |
+| `useFetch` | `<T>(source: string \| PromiseLike<T>, init?) => UseFetchResult<T>` | Thin reactive JSON fetch — `{ data, error, isPending, refetch }` |
 | `useSecureStorage` | `() => SecureStorage` | Imperative Keychain/Keystore-backed secret store |
 | `useAuth` | `<User = unknown>() => UseAuthResult<User>` | Shared auth-state container (status/user/error + transitions) |
 | `useDatabase` | `() => UseDatabaseResult` | A tiny local record store (insert/get/all/delete/find/count) |

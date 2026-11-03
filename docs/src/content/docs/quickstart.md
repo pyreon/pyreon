@@ -68,7 +68,7 @@ yarn dev
 Open the printed URL and you have a routed, server-rendered Pyreon app with hot-reload.
 
 :::tip{title="Pick a starting point"}
-Add `-- --template blog` (a markdown content site) or `-- --template monorepo` to start from a richer template, or `-- --preset standard --yes` to skip the prompts. See [Create Zero](/docs/create-zero) for every flag.
+Add `-- --template blog` (a markdown content site), `-- --template dashboard`, or `-- --template monorepo` to start from a richer template, or `-- --preset standard --yes` to skip the prompts. See [Create Zero](/docs/create-zero) for every flag.
 :::
 
 ## Prefer to wire it up by hand?

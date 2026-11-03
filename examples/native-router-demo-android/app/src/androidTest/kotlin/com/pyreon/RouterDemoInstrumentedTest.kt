@@ -48,6 +48,8 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.pinch
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.test.swipeLeft
 import androidx.compose.ui.test.swipeUp
 import androidx.compose.ui.test.swipeRight
@@ -874,6 +876,37 @@ class RouterDemoInstrumentedTest {
         }
     }
 
+    // Continuous gestures — <Gesture onPan onPinch>, injected as REAL Compose
+    // touch input (performTouchInput drives the pointer pipeline the runtime's
+    // awaitEachGesture loop reads). The verdict is written on the 'end' phase,
+    // so 'right' / 'in' prove start→change→end arrived with the right sign.
+    @Test
+    fun continuousGesturesReportPanAndPinch() {
+        composeRule.onNodeWithTag("home-page").assertIsDisplayed()
+        composeRule.onNodeWithText("View motion").performClick()
+        composeRule.onNodeWithTag("pan-status").assertTextEquals("Pan: none")
+        // The vector <Canvas> inside the region renders its CanvasText label.
+        composeRule.onNodeWithTag("plan-canvas").assertIsDisplayed()
+        composeRule.onNodeWithText("Drag or pinch here").assertExists()
+
+        composeRule.onNodeWithTag("gesture-zone").performTouchInput { swipeRight() }
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodesWithText("Pan: right").fetchSemanticsNodes().isNotEmpty()
+        }
+
+        composeRule.onNodeWithTag("gesture-zone").performTouchInput {
+            pinch(
+                start0 = center - Offset(20f, 0f),
+                end0 = center - Offset(width * 0.4f, 0f),
+                start1 = center + Offset(20f, 0f),
+                end1 = center + Offset(width * 0.4f, 0f),
+            )
+        }
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodesWithText("Pinch: in").fetchSemanticsNodes().isNotEmpty()
+        }
+    }
+
     // Lists-at-scale row — the Android half. Same creation + laziness
     // claims as the iOS twin, PLUS the deep jump: performScrollToNode
     // drives the LazyColumn's scroll semantics all the way to Row 9999 —
@@ -1059,6 +1092,51 @@ class RouterDemoInstrumentedTest {
                 .fetchSemanticsNodes().isNotEmpty()
         }
         composeRule.onNodeWithTag("video-status").assertTextEquals("Video: playing")
+    }
+
+    // A global beforeEach guard written INLINE (`(to) => to.path !== GUARDED_PATH`) blocks navigation in the real
+    // native router — including a deep link, which goes through the same guard chain. Before, an inline guard was
+    // dropped with a warning, so the route was reachable on Android. An allowed deep link afterwards proves the guard
+    // blocks only its path, and that the blocked one was processed (links are handled in order).
+    @Test
+    fun inlineBeforeEachGuardBlocksNavigation() {
+        val instr = InstrumentationRegistry.getInstrumentation()
+        composeRule.onNodeWithTag("home-page").assertIsDisplayed()
+        instr.runOnMainSync {
+            com.pyreon.router.PyreonDeepLink.receive(Uri.parse("pyreondemo://guarded"))
+        }
+        instr.runOnMainSync {
+            com.pyreon.router.PyreonDeepLink.receive(Uri.parse("pyreondemo://loaded"))
+        }
+        composeRule.waitUntil(timeoutMillis = 15_000) {
+            composeRule.onAllNodesWithTag("loaded-page").fetchSemanticsNodes().isNotEmpty()
+        }
+        org.junit.Assert.assertTrue(
+            "the beforeEach guard did not block /guarded",
+            composeRule.onAllNodesWithTag("guarded-page").fetchSemanticsNodes().isEmpty(),
+        )
+    }
+
+    // Route loader data, destructured. The page's fields come from
+    // `const { title, views } = useLoaderData<Loaded>()`, which lowers to an
+    // early `?: return` so the composable (and its onMount LaunchedEffect)
+    // runs only once the loader's data exists — the web's order. Reached via
+    // the deep-link seam, like the lifecycle page, to spend no fold budget.
+    @Test
+    fun routeLoaderDataIsDestructuredAndReadyBeforeMount() {
+        val instr = InstrumentationRegistry.getInstrumentation()
+        composeRule.onNodeWithTag("home-page").assertIsDisplayed()
+        instr.runOnMainSync {
+            com.pyreon.router.PyreonDeepLink.receive(Uri.parse("pyreondemo://loaded"))
+        }
+        composeRule.waitUntil(timeoutMillis = 15_000) {
+            composeRule.onAllNodesWithTag("loaded-page").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithTag("loaded-title").assertTextEquals("Title: Loaded title")
+        composeRule.onNodeWithTag("loaded-views").assertTextEquals("Views: 42")
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodesWithText("Mounted with: Loaded title").fetchSemanticsNodes().isNotEmpty()
+        }
     }
 
     // Platform APIs — app LIFECYCLE through the REAL Activity lifecycle. The

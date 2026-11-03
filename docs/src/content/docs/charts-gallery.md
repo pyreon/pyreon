@@ -188,35 +188,10 @@ and nothing else: the chart is one effect over one signal.
 
 ## Against ECharts
 
-The same charts, measured in `examples/benchmark` (`bun run bench:charts` for
-speed, `bun run bench:charts-bundle` for size). These suites landed after the
-2026-09-23 full run recorded in `BENCHMARKS.md`, which lists the charts
-scenario as not yet measured; treat the figures below as single-machine,
-author-run numbers pending that record. Size, gzipped, beyond a bare
-Pyreon app's runtime:
+The same charts are measured against ECharts 6 in `examples/benchmark`
+(`bun run bench:charts` for speed in real Chromium, `bun run bench:charts-bundle`
+for gzipped size). See [Benchmarks](/docs/benchmarks) for current measurements.
 
-| Chart                       | `@pyreon/charts` | ECharts 6, tree-shaken | ECharts 6, whole package |
-| --------------------------- | --------------------- | ---------------------- | ------------------------ |
-| Line                        | 40.9 KB               | 155.9 KB               | 361.1 KB                 |
-| Bar + line, tooltip, legend | 40.9 KB               | 176.8 KB               | —                        |
-| Pie                         | 18.1 KB               | 117.3 KB               | —                        |
-
-Speed, one line chart on an 800×400 canvas. The figures are medians in
-milliseconds from real Chromium with animation off on both sides; absolute
-numbers depend on the machine, so read them for their ratios:
-
-| Operation                    | `PlotChart` | ECharts 6 |
-| ---------------------------- | ----------- | --------- |
-| First render, 100,000 points | **28.2**    | 46.5      |
-| Update all 100,000 points    | **20.2**    | 32.8      |
-| Update one of 1,000 points   | **1.6**     | 2.1       |
-| First render, 1,000 points   | 10.4        | **4.5**   |
-
-The last row is a loss, and it comes from one feature. Pyreon renders an
-offscreen data table (up to 1,000 rows) for screen readers by default; ECharts
-renders none. Without it (`accessibleTable={false}`) the same chart's first
-render is 1.5 ms. The rest is the style and layout of about 3,000 real table
-cells. Skipping that layout is possible, but in Chromium it also removes the
-rows from the accessibility tree, the one place the table is read. That cost
-is what makes the chart readable without sight, and Pyreon keeps it on by
-default.
+Pyreon renders an offscreen data table (up to 1,000 rows) for screen readers by
+default; ECharts renders none. The table fills after the first paint, so it
+stays out of the first frame. `accessibleTable={false}` turns it off.

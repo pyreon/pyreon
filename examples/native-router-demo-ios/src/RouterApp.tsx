@@ -18,13 +18,13 @@
 import { For, onMount } from '@pyreon/core'
 import { useAppState, useDatabase, useFetch, useOnline, usePush, useSecureStorage, useSizeClass, useWebSocket } from '@pyreon/hooks'
 import { useFieldArray } from '@pyreon/form'
-import { Audio, Button, Heading, Image, Inline, Layer, Link, Press, Spacer, Stack, Text, Video } from '@pyreon/primitives'
+import { Audio, Button, Canvas, CanvasCircle, CanvasLine, CanvasPath, CanvasRect, CanvasText, Gesture, Heading, Image, Inline, Layer, Link, Press, Spacer, Stack, Text, Video } from '@pyreon/primitives'
 import { attrs } from '@pyreon/attrs'
 import { Element } from '@pyreon/elements'
 import { Col, Container, Row } from '@pyreon/coolgrid'
 import { state as plainState } from '@pyreon/core/plain'
 import { signal } from '@pyreon/reactivity'
-import { createRouter, useNavigate, RouterProvider, RouterView } from '@pyreon/router'
+import { createRouter, useLoaderData, useNavigate, RouterProvider, RouterView } from '@pyreon/router'
 import { type EchoReply, usePostEcho } from './hooks'
 import { defineTheme, styled } from '@pyreon/styler'
 
@@ -267,6 +267,17 @@ function MotionPage() {
   // so the zone sits in the first screenful on both platforms
   // (coordinate gestures need on-screen bounds — the counter-fold lesson).
   let swipeDir = plainState<string>('none')
+  // Continuous-gesture proof — <Gesture onPan onPinch> + the transform props,
+  // driving a vector <Canvas> (both halves of #3985 on one device page).
+  // The handlers record a DISCRETE verdict on 'end' (pan direction, pinch
+  // direction) so a real injected gesture is assertable as text, and the
+  // live values drive `translateX` / `scale` on the inner box. Each outcome
+  // reads differently: 'none' (nothing fired), 'right'/'left' (pan fired with
+  // the right SIGN), 'small' (the end delivered without the translation).
+  let panDir = plainState<string>('none')
+  let pinchDir = plainState<string>('none')
+  let panX = plainState(0)
+  let zoom = plainState(1)
   return (
     <Stack gap={3} padding={4} data-testid="motion-page">
       <Text>Motion</Text>
@@ -279,6 +290,35 @@ function MotionPage() {
       >
         <Text>← Swipe this zone →</Text>
       </Press>
+      <Text data-testid="pan-status">Pan: {panDir}</Text>
+      <Text data-testid="pinch-status">Pinch: {pinchDir}</Text>
+      <Gesture
+        data-testid="gesture-zone"
+        onPan={(e) => {
+          panX = e.dx
+          if (e.phase === 'end') {
+            panDir = e.dx > 40 ? 'right' : e.dx < -40 ? 'left' : 'small'
+            panX = 0
+          }
+        }}
+        onPinch={(e) => {
+          zoom = e.scale
+          if (e.phase === 'end') {
+            pinchDir = e.scale > 1.2 ? 'in' : e.scale < 0.8 ? 'out' : 'flat'
+            zoom = 1
+          }
+        }}
+      >
+        {/* The floor-plan shape the issue describes: a vector <Canvas> the
+            gesture values pan and zoom, transformed as a CHILD of <Gesture>. */}
+        <Canvas width={300} height={160} background="muted" translateX={panX} scale={zoom} data-testid="plan-canvas">
+          <CanvasRect x={12} y={12} width={120} height={70} radius={8} fill="primary" />
+          <CanvasCircle cx={220} cy={50} r={28} fill="#16a34a" stroke="text" strokeWidth={2} />
+          <CanvasLine x1={12} y1={110} x2={288} y2={110} stroke="surface" strokeWidth={3} />
+          <CanvasPath d="M150 150 L180 120 L210 150 Z" fill="warning" />
+          <CanvasText x={14} y={124} size={14} fill="surface">Drag or pinch here</CanvasText>
+        </Canvas>
+      </Gesture>
       <Button onPress={() => { boxOn = !boxOn }} data-testid="motion-toggle">
         Toggle Slow Box
       </Button>
@@ -659,6 +699,8 @@ function AboutPage() {
           home scrollable) changes tap discipline for every existing test on
           both platforms and is a deliberate, separate decision. */}
       <Button onPress={() => navigate('/lifecycle')}>View lifecycle</Button>
+      <Button onPress={() => navigate('/loaded')}>View loaded</Button>
+      <Button onPress={() => navigate('/guarded')}>Try guarded</Button>
       <Button onPress={() => navigate('/')}>Back to Home</Button>
       {/* The keyed list goes LAST: its Compose lowering is a LazyColumn,
           which fills the parent Column's remaining height — siblings after
@@ -763,6 +805,40 @@ function HttpPage() {
   )
 }
 
+// Route loader data, destructured. On the web the loader runs before this page renders; natively it runs on
+// appear, so this page proves three things on device: the page waits for its data instead of rendering without it,
+// the destructured fields lower, and `onMount` sees the data (it runs after the data exists, as on the web).
+// A global guard, written inline the way most apps write one. It blocks one path; the device tests try to reach it
+// and assert they stay where they were — the guard runs in the real native router on iOS and Android.
+const GUARDED_PATH = '/guarded'
+
+function GuardedPage() {
+  return (
+    <Stack gap={3} padding={4} data-testid="guarded-page">
+      <Text>This page is behind a beforeEach guard and must never render.</Text>
+    </Stack>
+  )
+}
+
+type Loaded = { title: string; views: number }
+
+function LoadedPage() {
+  const navigate = useNavigate()
+  const { title, views } = useLoaderData<Loaded>()
+  const mountedWith = signal('')
+  onMount(() => {
+    mountedWith.set(title)
+  })
+  return (
+    <Stack gap={3} padding={4} data-testid="loaded-page">
+      <Text data-testid="loaded-title">Title: {title}</Text>
+      <Text data-testid="loaded-views">Views: {views}</Text>
+      <Text data-testid="loaded-mounted">Mounted with: {mountedWith()}</Text>
+      <Button onPress={() => navigate('/')}>Back to Home</Button>
+    </Stack>
+  )
+}
+
 export function RouterApp() {
   // `mode: 'history'` is web-only (HTML5 pushState + path-based URLs).
   // PMTC's parser only reads `routes` from createRouter's options
@@ -785,7 +861,10 @@ export function RouterApp() {
       { path: '/lifecycle', component: LifecyclePage },
       { path: '/media', component: MediaPage },
       { path: '/http', component: HttpPage },
+      { path: '/loaded', component: LoadedPage, loader: (): Loaded => ({ title: 'Loaded title', views: 42 }) },
+      { path: GUARDED_PATH, component: GuardedPage },
     ],
+    beforeEach: [(to) => to.path !== GUARDED_PATH],
   })
 
   return (

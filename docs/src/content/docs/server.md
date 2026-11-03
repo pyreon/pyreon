@@ -14,9 +14,9 @@ The package has two entry points:
 | Server | `@pyreon/server`        | Node, Bun, Deno, Cloudflare Workers |
 | Client | `@pyreon/server/client` | Browser                             |
 
-**Server exports:** `createHandler`, `prerender`, `island`, `processTemplate`, `compileTemplate`, `processCompiledTemplate`, `buildScripts`, `buildScriptsFast`, `DEFAULT_TEMPLATE`
+**Server exports:** `createHandler`, `REMOTE_ADDRESS`, `prerender`, `renderPage`, `island`, `serverIsland`, `renderServerIslandFragment`, `getRegisteredServerIslands`, `provideRequestLocals`, `useRequestLocals`, `processTemplate`, `compileTemplate`, `processCompiledTemplate`, `buildScripts`, `DEFAULT_TEMPLATE`
 
-**Client exports:** `startClient`, `hydrateIslands`
+**Client exports:** `startClient`, `hydrateIslands`, `hydrateIslandsAuto`, `island`, `serverIsland`, `activateServerIslands`, `activateServerIslandElement`, `schedulePrefetch`, `scheduleHydration`
 
 <PackageBadge name="@pyreon/server" href="/docs/server" />
 
@@ -113,6 +113,12 @@ interface HandlerOptions {
    * work. Values ≤0 or `NaN` fall back to the default.
    */
   suspenseTimeoutMs?: number
+  /**
+   * The app's base path for subpath deploys. Requests under it are routed
+   * with the prefix removed, and RouterLink hrefs render with the prefix.
+   *   createHandler({ App, routes, base: '/app/' })
+   */
+  base?: string
 }
 ```
 
@@ -122,7 +128,7 @@ Every incoming request goes through these steps:
 
 1. **Middleware pipeline** — each middleware runs in order. Any middleware can short-circuit by returning a `Response` (for redirects, auth checks, etc.).
 2. **Router creation** — a per-request `createRouter` instance is created with the matched URL.
-3. **Loader prefetch** — route loaders run in parallel so data is ready before rendering.
+3. **Preload** — `router.preload(path, request)` resolves the matched route's lazy components and runs its loaders, so the synchronous render produces the final page.
 4. **Render** — the app component tree is rendered to HTML (string or stream mode).
 5. **Head collection** — `@pyreon/head` collects title, meta, and link tags emitted during render.
 6. **Template injection** — head tags, app HTML, and scripts are injected into the HTML template.
@@ -677,7 +683,7 @@ Suppressed (no `data-prefetch` attribute) when `hydrate: 'load'` (loader runs sy
 
 ### Island perf counters
 
-When `@pyreon/perf-harness` is installed, the server-side island machinery emits 7 counters under the `island.*` namespace:
+When `@pyreon/perf-harness` is installed, the client-side island hydration machinery (`@pyreon/server/client`) emits 7 counters under the `island.*` namespace:
 
 | Counter                  | Meaning                                                     |
 | ------------------------ | ----------------------------------------------------------- |
@@ -787,23 +793,7 @@ The four parts correspond to: before `<!--pyreon-head-->`, between head and app,
 
 Throws if the template does not contain `<!--pyreon-app-->`.
 
-### `buildScriptsFast`
-
-A pre-optimized variant of `buildScripts` that accepts a pre-built client entry tag string instead of a path:
-
-```ts
-import { buildClientEntryTag, buildScriptsFast } from '@pyreon/server'
-
-// Once at startup:
-const clientEntryTag = buildClientEntryTag('/client.js')
-
-// Per request:
-const scripts = buildScriptsFast(clientEntryTag, loaderData)
-```
-
-This avoids reconstructing the `<script type="module" src="...">` tag on every request. Used internally by `createHandler`.
-
-> **Note:** `createHandler` uses `compileTemplate` and `buildScriptsFast` internally. You only need these APIs when building custom rendering pipelines.
+> **Note:** `createHandler` uses `compileTemplate` internally (plus an internal pre-built-entry-tag variant of `buildScripts`). You only need these APIs when building custom rendering pipelines.
 
 ---
 
@@ -1077,8 +1067,6 @@ app.listen(3000)
 | `compileTemplate(template)`                    | Pre-split template into parts for fast per-request processing                         |
 | `processCompiledTemplate(compiled, data)`      | Assemble HTML from a pre-compiled template (17x faster on realistic templates)        |
 | `buildScripts(clientEntry, loaderData)`        | Build script tags for client hydration                                                |
-| `buildScriptsFast(clientEntryTag, loaderData)` | Build script tags with a pre-built entry tag (avoids per-request string construction) |
-| `buildClientEntryTag(clientEntry)`             | Build the `<script type="module">` tag string once at startup                         |
 | `DEFAULT_TEMPLATE`                             | Minimal HTML5 template string with all placeholders                                   |
 
 ### Client exports (`@pyreon/server/client`)
@@ -1092,6 +1080,8 @@ app.listen(3000)
 | `serverIsland(loader, options)`   | Client-safe re-export of the server-island declaration                          |
 | `activateServerIslands(base?)`    | Scan the DOM for `<pyreon-server-island>` markers and activate them             |
 | `activateServerIslandElement(el, base?)` | Activate a single server-island marker element                           |
+| `schedulePrefetch(el, loader, strategy)` | Schedule an island chunk prefetch (`'idle'` / `'visible'`); used by `island()`'s self-hydration |
+| `scheduleHydration(el, loader, propsJson, strategy, …)` | Schedule an island hydration per its strategy; used by `island()`'s self-hydration |
 
 ### Type exports
 

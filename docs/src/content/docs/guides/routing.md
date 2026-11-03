@@ -82,7 +82,7 @@ function Logout() {
 - **Redirect from a loader** — `throw redirect('/login')` runs BEFORE the layout renders (SSR returns a real 302/307; CSR replaces). Use this for auth gates instead of an `onMount` push.
 - **404** — `throw notFound()` triggers the nearest `NotFoundBoundary`.
 - **Pending / error** — `pendingComponent` (with `pendingMs` / `pendingMinMs`) shows while a loader runs; `errorComponent` catches render errors.
-- **Guards** — global `beforeEach` / `afterEach`, per-route `beforeEnter`; throw `router.redirect()` inside a guard (re-entry-safe).
+- **Guards** — global `beforeEach` / `afterEach`, per-route `beforeEnter` / `beforeLeave`; return a path string to redirect or `false` to cancel.
 
 ## Common pitfalls
 

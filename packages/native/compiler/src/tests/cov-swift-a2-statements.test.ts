@@ -178,17 +178,26 @@ describe('`switch`', () => {
   })
 
   it('a case whose body emits NOTHING gets `break` — a Swift case body cannot be empty', () => {
-    // A braced case body is an unsupported BlockStatement: it is WARNED, the
-    // case body comes out empty, and the no-op `break` is what keeps the
-    // emitted switch compiling rather than failing on an empty case.
+    // A case holding only `break` has an empty body once the break is
+    // stripped; the no-op `break` keeps the emitted switch compiling.
+    const { code } = sw(`    let i = 0
+    switch (i) {
+      case 2: break
+      default: i = 5
+    }
+    n.set(i)`)
+    expect(code).toContain('case 2:\n        break')
+  })
+
+  it('a braced case body lowers (its statements are not dropped)', () => {
     const { code, warnings } = sw(`    let i = 0
     switch (i) {
       case 2: { i = 9; break }
       default: i = 5
     }
     n.set(i)`)
-    expect(warnings).toContain('Unsupported statement: BlockStatement.')
-    expect(code).toContain('case 2:\n        break')
+    expect(warnings).not.toContain('Unsupported statement: BlockStatement.')
+    expect(code).toContain('case 2:\n        i = 9')
   })
 })
 

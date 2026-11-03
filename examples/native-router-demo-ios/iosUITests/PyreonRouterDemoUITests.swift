@@ -622,6 +622,46 @@ final class PyreonRouterDemoUITests: XCTestCase {
         )
     }
 
+    // Continuous gestures — <Gesture onPan onPinch>, injected as REAL
+    // XCUITest gestures (a coordinate press-and-drag through the compositor,
+    // and a two-finger pinch). The handlers record a discrete verdict only on
+    // the 'end' phase, so each assertion proves the whole start/change/end
+    // sequence reached the shared source with the right SIGN: 'right' needs a
+    // positive cumulative dx past 40pt, 'in' a cumulative scale above 1.2.
+    func test_continuousGesturesReportPanAndPinch() throws {
+        let app = XCUIApplication()
+        app.launch()
+
+        XCTAssertTrue(
+            app.otherElements["home-page"].firstMatch.waitForExistence(timeout: 30),
+            "Home page did not render"
+        )
+        app.buttons["View motion"].tap()
+        let zone = app.otherElements["gesture-zone"].firstMatch
+        XCTAssertTrue(zone.waitForExistence(timeout: 15), "gesture zone missing")
+        XCTAssertTrue(app.staticTexts["Pan: none"].firstMatch.exists, "pan should start at none")
+        // The vector <Canvas> inside the region renders (its <CanvasText> label
+        // is a real Text in the accessibility tree).
+        XCTAssertTrue(
+            app.staticTexts["Drag or pinch here"].firstMatch.waitForExistence(timeout: 5),
+            "the <Canvas> inside the gesture zone did not render its CanvasText"
+        )
+
+        let from = zone.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.5))
+        let to = zone.coordinate(withNormalizedOffset: CGVector(dx: 0.8, dy: 0.5))
+        from.press(forDuration: 0.1, thenDragTo: to)
+        XCTAssertTrue(
+            app.staticTexts["Pan: right"].firstMatch.waitForExistence(timeout: 5),
+            "a rightward drag did not end as 'right' (status: \(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Pan:'")).firstMatch.label))"
+        )
+
+        zone.pinch(withScale: 2.5, velocity: 1)
+        XCTAssertTrue(
+            app.staticTexts["Pinch: in"].firstMatch.waitForExistence(timeout: 5),
+            "a spreading pinch did not end as 'in' (status: \(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Pinch:'")).firstMatch.label))"
+        )
+    }
+
     // Lists-at-scale row — 10,000 keyed rows through <Scroll><For>. Three
     // claims, each separable: (1) CREATION at scale — Row 0 renders inside
     // the timeout (an EAGER 10k build hangs far past it); (2) LAZINESS —
@@ -1287,5 +1327,56 @@ final class PyreonRouterDemoUITests: XCTestCase {
                 + "UNUserNotificationCenter delegate did not reach the container "
                 + "(observed: \(app.staticTexts["push-title"].firstMatch.label))"
         )
+    }
+
+    /// Route loader data, destructured. The page must render only once the
+    /// loader's data exists (`PyreonRouteLoader` holds it back), with both
+    /// destructured fields read, and its `onMount` must see the loaded title —
+    /// on the web the loader runs before the component mounts, and this is the
+    /// same order. Before, `useLoaderData` reads were optional and did not
+    /// compile, and a destructure was not lowered at all.
+    func test_routeLoaderDataIsDestructuredAndReadyBeforeMount() throws {
+        let app = XCUIApplication()
+        app.launch()
+        XCTAssertTrue(
+            app.otherElements["home-page"].firstMatch.waitForExistence(timeout: 30),
+            "Home page did not render"
+        )
+        app.buttons["Go to About"].tap()
+        XCTAssertTrue(
+            app.otherElements["about-page"].firstMatch.waitForExistence(timeout: 15),
+            "About page did not render"
+        )
+        app.buttons["View loaded"].tap()
+        XCTAssertTrue(
+            app.otherElements["loaded-page"].firstMatch.waitForExistence(timeout: 15),
+            "Loaded page did not render — did the route loader store its data?"
+        )
+        XCTAssertEqual(app.staticTexts["loaded-title"].firstMatch.label, "Title: Loaded title")
+        XCTAssertEqual(app.staticTexts["loaded-views"].firstMatch.label, "Views: 42")
+        XCTAssertTrue(
+            app.staticTexts["Mounted with: Loaded title"].waitForExistence(timeout: 10),
+            "onMount ran without the loader data (observed: \(app.staticTexts["loaded-mounted"].firstMatch.label))"
+        )
+    }
+
+    /// A global `beforeEach` guard written INLINE (`(to) => to.path !== GUARDED_PATH`) blocks navigation in the real
+    /// native router. Before, an inline guard was dropped with a warning, so this route was reachable on iOS.
+    func test_inlineBeforeEachGuardBlocksNavigation() throws {
+        let app = XCUIApplication()
+        app.launch()
+        XCTAssertTrue(app.otherElements["home-page"].firstMatch.waitForExistence(timeout: 30), "Home page did not render")
+        app.buttons["Go to About"].tap()
+        XCTAssertTrue(app.otherElements["about-page"].firstMatch.waitForExistence(timeout: 15), "About page did not render")
+        app.buttons["Try guarded"].tap()
+        // The guard answers synchronously; give a blocked navigation every chance to (wrongly) render.
+        XCTAssertFalse(
+            app.otherElements["guarded-page"].firstMatch.waitForExistence(timeout: 3),
+            "The beforeEach guard did not block /guarded"
+        )
+        XCTAssertTrue(app.otherElements["about-page"].firstMatch.exists, "A blocked navigation must leave the current page")
+        // And the guard blocks only that path: an allowed navigation still goes through.
+        app.buttons["View loaded"].tap()
+        XCTAssertTrue(app.otherElements["loaded-page"].firstMatch.waitForExistence(timeout: 15), "An allowed navigation was blocked")
     }
 }

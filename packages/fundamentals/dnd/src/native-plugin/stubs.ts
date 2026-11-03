@@ -50,6 +50,50 @@ extension View {
     _ state: PyreonSortableState<T>
   ) -> some View { self }
 }
+
+// @pyreon/dnd — PyreonDraggableState / PyreonDroppableState and their View modifiers. Mirrors PyreonDragDrop.swift
+// EXACTLY (minus @Observable/@available, the same omission PyreonSortableState documents).
+public enum PyreonDragValue: Equatable {
+  case string(String)
+  case int(Int)
+  case double(Double)
+  case bool(Bool)
+  public init(_ value: String) { self = .string(value) }
+  public init(_ value: Int) { self = .int(value) }
+  public init(_ value: Double) { self = .double(value) }
+  public init(_ value: Bool) { self = .bool(value) }
+}
+public struct PyreonDropLocation: Equatable {
+  public let edge: String?
+  public init(edge: String?) { self.edge = edge }
+}
+public final class PyreonDraggableState {
+  public init() {}
+  public func bind(data: @escaping () -> [String: PyreonDragValue], disabled: @escaping () -> Bool = { false }) {}
+  public func isDragging() -> Bool { false }
+  public func isDisabled() -> Bool { false }
+  public func begin() -> String { "" }
+  public func end() {}
+  public private(set) var dragging = false
+}
+public final class PyreonDroppableState<S: Decodable> {
+  public init(edges: [PyreonDropEdge] = []) {}
+  public func bind(
+    canDrop: @escaping (S) -> Bool = { _ in true },
+    onDrop: @escaping (S, PyreonDropLocation) -> Void = { _, _ in },
+    onDragEnter: @escaping () -> Void = {},
+    onDragLeave: @escaping () -> Void = {}
+  ) {}
+  public func isOver() -> Bool { false }
+  public func overEdge() -> String? { nil }
+  public private(set) var over = false
+  public private(set) var edge: PyreonDropEdge?
+  public let edges: [PyreonDropEdge] = []
+}
+extension View {
+  public func pyreonDraggable(_ state: PyreonDraggableState) -> some View { self }
+  public func pyreonDroppable<S: Decodable>(_ state: PyreonDroppableState<S>) -> some View { self }
+}
 `
 
 export const DND_KOTLIN_STUBS = `// @pyreon/dnd — the PyreonSortableState engine. Mirrors PyreonSortable.kt.
@@ -82,10 +126,46 @@ class PyreonSortableState<T>(
 fun <T> Modifier.pyreonSortableItem(state: PyreonSortableState<T>, key: String): Modifier = this
 @Suppress("UNUSED_PARAMETER")
 fun <T> Modifier.pyreonSortableContainer(state: PyreonSortableState<T>): Modifier = this
+
+// @pyreon/dnd — PyreonDraggableState / PyreonDroppableState. Mirrors PyreonDragDrop.kt; the Modifier extensions it
+// pairs with (PyreonDragDropModifier.kt) are top-level extensions on Modifier in the real runtime, declared the
+// same way here.
+data class PyreonDropLocation(val edge: String?)
+class PyreonDraggableState {
+  fun bind(data: () -> Map<String, Any?>, disabled: () -> Boolean = { false }) {}
+  fun isDragging(): Boolean = false
+  fun isDisabled(): Boolean = false
+  fun begin(): String = ""
+  fun end() {}
+  val dragging: Boolean get() = false
+}
+class PyreonDroppableState<S>(
+  val edges: List<PyreonDropEdge> = emptyList(),
+  decode: (String) -> S?,
+) {
+  fun bind(
+    canDrop: (S) -> Boolean = { true },
+    onDrop: (S, PyreonDropLocation) -> Unit = { _, _ -> },
+    onDragEnter: () -> Unit = {},
+    onDragLeave: () -> Unit = {},
+  ) {}
+  fun isOver(): Boolean = false
+  fun overEdge(): String? = null
+  val over: Boolean get() = false
+  val edge: PyreonDropEdge? get() = null
+}
+inline fun <reified S> pyreonDecodeDrag(text: String): S? = null
+fun Modifier.pyreonDraggable(state: PyreonDraggableState): Modifier = this
+@Suppress("UNUSED_PARAMETER")
+@Composable
+fun <S> Modifier.pyreonDroppable(state: PyreonDroppableState<S>): Modifier = this
 `
 
-/** The `PyreonSortableState` compile-gate stubs, appended only to an emit that names the engine or its modifiers. */
+/** An emit that names any of the sortable / draggable / droppable engines or their View modifiers. */
+const ENGINE = /\bPyreon(?:Sort(?:ableState|Axis)|Draggable(?:State)?|Droppable(?:State)?|DragValue)\b|\bpyreon(?:Sortable(?:Item|Container)|Draggable|Droppable)\b/
+
+/** The `PyreonSortableState` / `PyreonDraggableState` / `PyreonDroppableState` compile-gate stubs, appended only to an emit that names the engine or its modifiers. */
 export const dndStubs: StubAugmentation = {
-  swift: (source) => (/\bPyreonSort(?:ableState|Axis)\b|\bpyreonSortable(?:Item|Container)\b/.test(source) ? DND_SWIFT_STUBS : ''),
-  kotlin: (source) => (/\bPyreonSort(?:ableState|Axis)\b|\bpyreonSortable(?:Item|Container)\b/.test(source) ? DND_KOTLIN_STUBS : ''),
+  swift: (source) => (ENGINE.test(source) ? DND_SWIFT_STUBS : ''),
+  kotlin: (source) => (ENGINE.test(source) ? DND_KOTLIN_STUBS : ''),
 }

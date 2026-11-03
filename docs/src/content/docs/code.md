@@ -3,7 +3,7 @@ title: Code Editor
 description: Reactive code editor for Pyreon — CodeMirror 6 with signal-backed state, minimap, diff editor, tabs, and lazy-loaded languages.
 ---
 
-`@pyreon/code` is a reactive code editor built on [CodeMirror 6](https://codemirror.net). Every piece of editor state — content, language, theme, cursor, selection — is a Pyreon signal, so the editor composes with the rest of your reactive app the same way any other signal does. It ships a canvas-based minimap, a side-by-side diff editor, lazy-loaded language grammars, and a two-way signal binding helper. The core editor measures ~138 KB gzipped (~416 KB minified) — about 7x lighter than Monaco's ~940 KB gzipped core, with each language grammar streaming as a ~40 KB gzipped lazy chunk (reproduce: `bun run --filter=@pyreon/code bench`).
+`@pyreon/code` is a reactive code editor built on [CodeMirror 6](https://codemirror.net). Every piece of editor state — content, language, theme, cursor, selection — is a Pyreon signal, so the editor composes with the rest of your reactive app the same way any other signal does. It ships a canvas-based minimap, a side-by-side diff editor, lazy-loaded language grammars, and a two-way signal binding helper. Language grammars are lazy chunks loaded on demand; see [Bundle Size](#bundle-size) below and [Benchmarks](/docs/benchmarks) for current measurements.
 
 <PackageBadge name="@pyreon/code" href="/docs/code" />
 
@@ -56,7 +56,7 @@ const view = <CodeEditor instance={editor} style="height: 400px" />
 
 ## Signal-Backed State
 
-Four pieces of editor state are **writable signals**, and three are **computed signals** derived from the live view:
+Five pieces of editor state are **writable signals** (plus `focused`, which the editor writes itself), and three are **computed signals** derived from the live view:
 
 ```tsx
 // Writable signals — read reactively, write to drive the editor
@@ -64,6 +64,7 @@ editor.value() // current content (string)
 editor.language() // current language
 editor.theme() // current theme
 editor.readOnly() // read-only state
+editor.editable() // whether the content is interactive at all
 editor.focused() // has focus (read; the editor writes it on focus/blur)
 
 // Computed signals — derived from the live view, read-only
@@ -82,7 +83,10 @@ editor.value.set('new content') // replaces the document
 editor.language.set('python') // lazy-loads + swaps the grammar
 editor.theme.set('dark') // reconfigures the theme extension
 editor.readOnly.set(true) // toggles read-only
+editor.editable.set(false) // pure display: no cursor, no focus
 ```
+
+`readOnly: true` keeps the cursor and selection but blocks edits; `editable: false` removes `contenteditable` entirely, so the editor becomes a display surface.
 
 :::warning[`editor.value` is a signal — `.set()` to write]
 `editor.value` is a `Signal<string>`. Read it with `editor.value()` (reactive — tracks in effects, computeds, and JSX) and write it with `editor.value.set(next)`. Do **not** call `editor.value(newText)` — like any Pyreon signal, calling it with an argument _reads_ and silently ignores the value. The dev build warns on this.
@@ -642,6 +646,7 @@ Returns an `EditorInstance`. See [Configuration](#configuration) for the full `c
 | `theme`                 | `EditorTheme`         | `'light'`   | `'light' \| 'dark' \| Extension`             |
 | `lineNumbers`           | `boolean`             | `true`      | Show line-number gutter                      |
 | `readOnly`              | `boolean`             | `false`     | Read-only mode                               |
+| `editable`              | `boolean`             | `true`      | `false` = no cursor / focus (display surface) |
 | `foldGutter`            | `boolean`             | `true`      | Code folding gutter                          |
 | `bracketMatching`       | `boolean`             | `true`      | Bracket matching + auto-close                |
 | `autocomplete`          | `boolean`             | `true`      | Completion popups                            |
@@ -652,10 +657,12 @@ Returns an `EditorInstance`. See [Configuration](#configuration) for the full `c
 | `emacs`                 | `boolean`             | `false`     | Emacs mode (needs `@replit/codemirror-emacs`)|
 | `tabSize`               | `number`              | `2`         | Indent width in spaces                       |
 | `lineWrapping`          | `boolean`             | `false`     | Soft-wrap long lines                         |
+| `ariaLabel`             | `string`              | `'Code editor'` | Accessible name of the editing textbox   |
 | `placeholder`           | `string`              | —           | Placeholder shown when empty                 |
 | `minimap`               | `boolean`             | `false`     | Canvas code-overview sidebar                 |
 | `extensions`            | `Extension[]`         | `[]`        | Extra raw CodeMirror extensions              |
 | `onChange`              | `(value: string) => void` | —       | Called on every content change               |
+| `onError`               | `(error: Error) => void` | —        | Mount failure (a throwing extension, a failed grammar import). Without it a dev-mode `[Pyreon]` error is logged |
 
 ### `bindEditorToSignal(options)`
 
@@ -681,6 +688,11 @@ Same `BindEditorToSignalOptions<T>` as above; returns `void`. Call inside a comp
 | ---------------------------- | --------------------- | ----------------------------------------------------------------- |
 | `loadLanguage(lang)`         | `Promise<Extension>`  | Lazy-load (+ cache) a grammar; `[]` if the optional pkg is absent |
 | `getAvailableLanguages()`    | `EditorLanguage[]`    | All 20 supported language identifiers                             |
+| `registerLanguage(id, loader)` | `void`              | Register (or replace) a grammar: `registerLanguage('svelte', () => import('@replit/codemirror-lang-svelte').then((m) => m.svelte()))`. `loader` is a `LanguageLoader` (`() => Promise<Extension>`) |
+
+### `openSearchPanel(editor)`
+
+Open the find / replace panel programmatically. Works even with `search: false` (which only drops the keymap). Returns `false` before the editor has mounted.
 
 ### `minimapExtension()`
 
@@ -704,7 +716,23 @@ Returns a CodeMirror `Extension` — the canvas code-overview minimap. Equivalen
 
 ### Exported types
 
-`EditorConfig`, `EditorInstance`, `EditorLanguage`, `EditorTheme`, `GutterMarker`, `CodeEditorProps`, `DiffEditorProps`, `Tab`, `TabbedEditorConfig`, `TabbedEditorInstance`, `TabbedEditorProps`, plus `BindEditorToSignalOptions`, `EditorBinding`, and `SignalLike` from the binding module.
+`EditorConfig`, `EditorInstance`, `EditorLanguage`, `EditorTheme`, `GutterMarker`, `LanguageLoader`, `CodeEditorProps`, `DiffEditorProps`, `Tab`, `TabbedEditorConfig`, `TabbedEditorInstance`, `TabbedEditorProps`, plus `BindEditorToSignalOptions`, `EditorBinding`, and `SignalLike` from the binding module.
+
+## Multiplatform
+
+The editor wraps CodeMirror 6, a DOM engine, so `<CodeEditor>` is web only. For iOS and Android, `@pyreon/code/webview` hosts the same CodeMirror in a native `<WebView>`:
+
+```tsx
+import { CodeWebView } from '@pyreon/code/webview'
+
+<CodeWebView
+  state={() => ({ value: source(), language: 'javascript', readOnly: locked() })}
+  onChange={(v) => source.set(v)}
+  onError={(message) => console.warn(message)}
+/>
+```
+
+It compiles to `WKWebView` on iOS, an Android `WebView`, and an `<iframe srcdoc>` on the web. `pyreon-native assets` builds the hosted page from the app's installed CodeMirror and grammars. It is a hosted web editor, not a native text view: it has WebView start-up cost and no native text-field semantics, and a block-bodied `state` accessor warns and is dropped. `buildCodeHostHtml({ codemirrorScript?, codemirrorSrc?, background? })` builds the page yourself to pass as `html`. Types: `CodeWebViewProps`, `CodeWebViewData`, `BuildCodeHostHtmlOptions`.
 
 ## Bundle Size
 

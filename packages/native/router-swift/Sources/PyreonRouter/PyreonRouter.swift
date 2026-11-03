@@ -182,10 +182,6 @@ public final class PyreonRouter {
     /// record's component (or `notFoundComponent` when no match — see
     /// the wildcard-404 catch-all below; or `EmptyView()` when neither
     /// is configured — the original backward-compat fallback).
-    ///
-    /// Phase A4 ships a flat list; nested-route depth indexing
-    /// (`RouteRecord.children`) lands as A4.5 — separate PR to limit
-    /// blast radius.
     public var routes: [RouteRecord] = []
 
     /// Wildcard-404 catch-all — Phase A6 of the readiness audit. When
@@ -208,8 +204,7 @@ public final class PyreonRouter {
     /// route's loader stores its result here on navigation; `useLoaderData()`
     /// reads the current path's entry. Type-erased (`Any`) because loader
     /// payloads are per-route; `useLoaderData<T>()` casts to the expected type.
-    /// Empty until a loader harness populates it (the harness emit is a
-    /// follow-up — this is the runtime contract it targets).
+    /// Empty until a loader harness populates it.
     public var loaderData: [String: Any] = [:]
 
     /// Round-1 audit fix: insertion-order parallel-array for the LRU

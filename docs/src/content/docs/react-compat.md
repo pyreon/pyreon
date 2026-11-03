@@ -935,47 +935,40 @@ function SelectableList(props: { items: Item[] }) {
 
 #### Lifecycle Hooks
 
-`onMount`, `onUnmount`, and `onUpdate` are re-exported from `@pyreon/core` for cases where you want Pyreon-native lifecycle hooks alongside the React-compatible API.
+`@pyreon/react-compat` does not export `onMount` / `onUnmount` / `onUpdate`. In a React-style component, use `useEffect` (a returned cleanup runs on unmount). Pyreon's own lifecycle hooks come from `@pyreon/core`, and they only work in a component that runs in Pyreon's setup frame — in a compat app that means a component marked with [`nativeCompat()`](/docs/native-compat), because compat-wrapped components run their body inside a re-rendering accessor:
 
 ```tsx
-import { onMount, onUnmount, onUpdate } from '@pyreon/react-compat'
+import { nativeCompat, onMount, onUnmount } from '@pyreon/core'
 
-function MyComponent() {
+const Tracker = nativeCompat(function Tracker() {
   onMount(() => {
     console.log('Mounted')
     return () => console.log('Cleanup from onMount')
   })
-
-  onUnmount(() => {
-    console.log('Unmounted')
-  })
-
-  onUpdate(() => {
-    console.log('A reactive update occurred')
-  })
-
+  onUnmount(() => console.log('Unmounted'))
   return <div>Hello</div>
-}
+})
 ```
 
-#### `useErrorBoundary`
+#### Error boundaries
 
-Re-export of `onErrorCaptured` from `@pyreon/core`. Register a handler for errors thrown in child components.
+There is no `useErrorBoundary` hook. Use the exported `<ErrorBoundary>` component (re-exported from `@pyreon/core`):
 
 ```tsx
-import { useErrorBoundary } from '@pyreon/react-compat'
+import { ErrorBoundary } from '@pyreon/react-compat'
 
 function SafeWrapper(props: { children: VNodeChild }) {
-  const [error, setError] = useState<string | null>(null)
-
-  useErrorBoundary((err) => {
-    setError(String(err))
-    return true // handled
-  })
-
-  return error ? <div class="error">{error}</div> : props.children
+  return (
+    <ErrorBoundary fallback={(err, reset) => <div class="error" onClick={reset}>{String(err)}</div>}>
+      {props.children}
+    </ErrorBoundary>
+  )
 }
 ```
+
+#### Other exports
+
+Also exported, with React semantics: `cloneElement`, `isValidElement`, `useSyncExternalStore`, `useDebugValue` (a no-op), `useActionState`, `use()` (reads a context or unwraps a promise), and `Profiler` (renders its children; `onRender` is not called).
 
 ## DOM Entry Point
 

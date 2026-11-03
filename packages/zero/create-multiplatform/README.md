@@ -5,7 +5,7 @@ Scaffold a multiplatform Pyreon app — **one `src/App.tsx` source** that runs o
 Pyreon Multi-Target Compiler).
 
 ```bash
-npx create-multiplatform my-app
+npm create @pyreon/multiplatform@latest my-app   # or: npx @pyreon/create-multiplatform my-app
 cd my-app
 npm install
 npm run dev          # web (Vite)
@@ -25,12 +25,12 @@ Usage: create-multiplatform <project-name> [--dir <path>]
 | `--dir <path>` / `-d <path>` | Scaffold into a different directory than `<project-name>` (defaults to the project name). |
 | `--help` / `-h` | Print usage and exit 0. |
 
-The target directory must not already exist and be non-empty (a `.git`-only or `.DS_Store`-only directory is fine — the common `mkdir my-app && cd my-app && npx create-multiplatform .` flow). A non-empty existing directory refuses to scaffold rather than overwrite in-progress work.
+The target directory must not already exist and be non-empty (a `.git`-only or `.DS_Store`-only directory is fine — the common `mkdir my-app && cd my-app && npx @pyreon/create-multiplatform .` flow). A non-empty existing directory refuses to scaffold rather than overwrite in-progress work.
 
 ```bash
-npx create-multiplatform my-app
-npx create-multiplatform my-app --dir ./apps/my-app
-npx create-multiplatform --help
+npx @pyreon/create-multiplatform my-app
+npx @pyreon/create-multiplatform my-app --dir ./apps/my-app
+npx @pyreon/create-multiplatform --help
 ```
 
 ## What it generates

@@ -507,14 +507,21 @@ export function C() {
   {
     name: '@pyreon/query',
     mechanism: 'native-container',
-    rationale: 'useQuery<T>(() => ({ queryKey, queryFn, staleTime })) lowers to a native PyreonQuery over the query runtime.',
+    rationale:
+      'useQuery<T>(() => ({ queryKey, queryFn, staleTime })) lowers to a native PyreonQuery over the query runtime, and useMutation<T>(endpoint.mutation()) to a native PyreonMutation whose mutate / mutateAsync build the request at the call site from runtime values.',
     requiresCoSource: true,
-    snippet: `import { useQuery } from '@pyreon/query'
-import { Stack, Text } from '@pyreon/primitives'
+    snippet: `import { useMutation, useQuery } from '@pyreon/query'
+import { createHttp } from '@pyreon/http'
+import { signal } from '@pyreon/reactivity'
+import { Stack, Text, Button } from '@pyreon/primitives'
 interface Todo { id: number; title: string }
+const api = createHttp({ baseUrl: 'https://api.example.com' })
+const saveTodo = api.endpoint('POST /todos')
 export function C() {
+  const title = signal('milk')
   const q = useQuery<Todo>(() => ({ queryKey: ['todo', 1], queryFn: () => fetch('https://api.example.com/todos/1').then((r) => r.json()), staleTime: 60000 }))
-  return (<Stack><Text>{q.data}</Text></Stack>)
+  const save = useMutation<Todo>(saveTodo.mutation())
+  return (<Stack><Text>{q.data}</Text><Text>{save.data()?.title ?? ''}</Text><Button onPress={() => save.mutate({ json: { title: title() } }, { onSuccess: (t) => title.set(t.title) })}>save</Button></Stack>)
 }`,
   },
   {
@@ -685,27 +692,50 @@ export function C() { return (<Stack><Text>{cache.size}</Text></Stack>) }`,
     name: '@pyreon/http',
     mechanism: 'partial',
     rationale:
-      'the CLIENT (middleware, interceptors) stays web, but same-file endpoint calls DO lower: createHttp({ baseUrl }) + api.endpoint(…) resolve through useFetch/useQuery to native PyreonFetch/PyreonQuery, and useStream over openEventStream/openNdjsonStream to the co-located PyreonStream runtime (SSE + NDJSON, reconnect with Last-Event-ID). Verified zero-warning on both targets; the snippet exercises BOTH so the real-runtime batch compiles each.',
+      'imperative client calls (api.get/post) stay web, but same-file endpoint calls DO lower: createHttp({ baseUrl }) + api.endpoint(…) resolve through useFetch/useQuery to native PyreonFetch/PyreonQuery, an endpoint awaited in an async event handler (`await ep({ json, query, headers })`, every value read at the call) to a native PyreonHttp.call that rejects a non-2xx and ends the handler, a `multipart` body carrying a picked file (`fileFromUri`) to a streamed PyreonMultipartBody, and useStream over openEventStream/openNdjsonStream to the co-located PyreonStream runtime (SSE + NDJSON, reconnect with Last-Event-ID). A literal `use: [...]` array crosses too — bearer / retry / logger lower to PyreonHttpMiddleware (an onion with the web semantics, parity-tested by execution) and forwardHeaders is the browser no-op; refresh / dedupe / a custom function keep that client web by name, and useStream refuses a middleware client by name. Verified zero-warning on both targets; the snippet exercises all of it so the real-runtime batch compiles each.',
     snippet: `import { createHttp } from '@pyreon/http'
+import { bearer, retry, logger, forwardHeaders } from '@pyreon/http/middleware'
 import { openEventStream, type SseEvent } from '@pyreon/http/stream'
-import { useFetch } from '@pyreon/hooks'
-import { useStream } from '@pyreon/query'
-import { Stack, Text } from '@pyreon/primitives'
+import { fileFromUri, useFetch, useImagePicker } from '@pyreon/hooks'
+import { useQuery, useStream } from '@pyreon/query'
+import { defineStore } from '@pyreon/store'
+import { signal } from '@pyreon/reactivity'
+import { Stack, Text, Button } from '@pyreon/primitives'
 interface User { id: number; name: string }
+const useSession = defineStore('session', () => {
+  const token = signal('')
+  return { token }
+})
 const api = createHttp({ baseUrl: 'https://api.example.com' })
+const authed = createHttp({ baseUrl: 'https://api.example.com', use: [bearer(() => useSession().store.token()), retry({ limit: 3 }), logger(), forwardHeaders(['cookie'])] })
 const getUser = api.endpoint('GET /users/:id')
+const getMe = authed.endpoint('GET /me')
+const rename = api.endpoint('PATCH /users/:id')
+const uploadAvatar = api.endpoint('POST /users/:id/avatar')
 const feed = api.endpoint('GET /users/:id/feed', { responseType: 'stream' })
 export function C() {
+  const name = signal('Ada')
   const req = useFetch<User>(getUser({ params: { id: '1' } }))
+  const me = useQuery<User>(() => getMe.query())
   const live = useStream<SseEvent<User>>((ctx) => openEventStream((c) => feed({ params: { id: '1' }, signal: c.signal, headers: c.headers }), { signal: ctx.signal, onStatus: ctx.onStatus }))
-  return (<Stack><Text>{req.data}</Text><Text>{live.latest()?.data.name ?? ''}</Text></Stack>)
+  const submit = async () => {
+    await rename({ params: { id: '1' }, query: { notify: true }, json: { name: name() }, headers: { 'x-client': name() } })
+    name.set('')
+  }
+  const picker = useImagePicker()
+  const avatar = async () => {
+    const uri = await picker.pick()
+    if (uri === null) return
+    await uploadAvatar({ params: { id: '1' }, multipart: { avatar: await fileFromUri(uri, { name: 'a.jpg' }), caption: name() } })
+  }
+  return (<Stack><Text>{req.data}</Text><Text>{me.data()?.name ?? ''}</Text><Text>{live.latest()?.data.name ?? ''}</Text><Button onPress={submit}>rename</Button><Button onPress={avatar}>avatar</Button></Stack>)
 }`,
   },
   {
     name: '@pyreon/validation',
     mechanism: 'partial',
     rationale:
-      'the zod/valibot/arktype ADAPTERS stay web, but the declarative form DOES lower: a top-level zodSchema(z.object({…})) emits native field validators, and `useForm({ schema })` wires one per string field. Verified zero-warning on both targets; the runtime surface around it (inline .parse(), async validate) stays web.',
+      'the zod/valibot/arktype ADAPTERS stay web, but the declarative form DOES lower: a top-level zodSchema(z.object({…})) emits native field validators, and `useForm({ schema })` wires one per string field. Several schemas may share one `const a = …, b = …` statement, and `.safeParse(x)` on a declared binding or an inline adapter call lowers to the same `{ success, data }` result the web returns. Verified zero-warning on both targets; `.parse()` (throws), a schema declared inside a component body, `.refine/.transform/.default` chains (each named per field) and the async validate path stay web.',
     // The snippet DRIVES A FORM, it does not merely declare the schema.
     // Declaring it alone was the old shape, and it hid the whole gap: the
     // declaration lowered to a struct with a constraint-checking `parse()`
@@ -715,11 +745,14 @@ export function C() {
     snippet: `import { z } from 'zod'
 import { zodSchema } from '@pyreon/validation'
 import { useForm } from '@pyreon/form'
+import { signal } from '@pyreon/reactivity'
 import { Stack, Text, Field, Button } from '@pyreon/primitives'
-const Signup = zodSchema(z.object({ name: z.string().min(3), age: z.number() }))
+const Signup = zodSchema(z.object({ name: z.string().min(3), age: z.number() })), Tag = zodSchema(z.object({ label: z.string().min(1) }))
 export function C() {
   const f = useForm({ initialValues: { name: '' }, schema: Signup, onSubmit: () => {} })
-  return (<Stack><Field value={f.values().name} onChangeText={(v) => f.setFieldValue('name', v)} /><Button onPress={() => f.handleSubmit()}>go</Button><Text>{String(f.isValid())}</Text></Stack>)
+  const tagOk = signal('')
+  const check = () => { tagOk.set(Tag.safeParse({ label: f.values().name }).success ? 'tag ok' : 'tag bad') }
+  return (<Stack><Field value={f.values().name} onChangeText={(v) => f.setFieldValue('name', v)} /><Button onPress={() => f.handleSubmit()}>go</Button><Button onPress={check}>tag</Button><Text>{String(f.isValid())}</Text><Text>{tagOk()}</Text></Stack>)
 }`,
   },
   {
@@ -738,14 +771,20 @@ export function C() {
     name: '@pyreon/feature',
     mechanism: 'partial',
     rationale:
-      'CRUD composite. The RUNTIME half stays web — generated hooks (useList / useById / useCreate / useUpdate / useDelete / useSearch), the network fetcher and validator/form integration lower only when every dependency does. The DECLARATION half crosses today: the literal field-type map emits a Codable struct + a module-scope const with `name` and `initialValues` on both targets. A Zod / Valibot / ArkType schema is not introspected and warns by name.',
+      'CRUD composite. The RUNTIME half stays web — generated hooks (useList / useById / useCreate / useUpdate / useDelete / useSearch), the network fetcher and validator/form integration lower only when every dependency does. The DECLARATION half crosses today: the literal field-type map emits a Codable struct + a module-scope const with `name` and `initialValues` on both targets. An object literal of scalar validators (`z.object({ id: z.string() })`) lowers the same way and ALSO to the validation schema struct, so `Todo.schema.safeParse(x)` enforces the constraints on device (what cannot be enforced — `.refine()`, `.transform()`, `.default()`, `.parse()` — is reported by name); a schema held in a variable, `v.pipe(…)` and ArkType warn by name.',
     snippet: `import { defineFeature } from '@pyreon/feature'
 import { Stack, Text } from '@pyreon/primitives'
+import { signal } from '@pyreon/reactivity'
+import { z } from 'zod'
 const Todo = defineFeature({
   name: 'todo',
-  schema: { id: 'string', title: 'string', done: 'boolean' },
+  schema: z.object({ id: z.string(), title: z.string().min(3), done: z.boolean() }),
 })
-export function C() { return (<Stack><Text>ok</Text></Stack>) }`,
+export function C() {
+  const ok = signal(false)
+  const check = () => { ok.set(Todo.schema.safeParse({ id: 'a', title: 'ab', done: false }).success) }
+  return (<Stack><Text>ok</Text></Stack>)
+}`,
   },
   {
     name: '@pyreon/hotkeys',
@@ -900,10 +939,11 @@ export function C() {
     name: '@pyreon/dnd',
     mechanism: 'partial',
     rationale:
-      'the pdnd/DOM-shaped surface stays web (useDraggable / useDroppable are element-getter hooks, useDragMonitor is page-global, useFileDrop is an OS file picker — each still warns BY NAME). List REORDER is gesture-shaped rather than DOM-shaped, and it lowers: useSortable becomes a co-located PyreonSortableState engine on both targets. The full contract is required — items, a single-param `by`, and an arrow `onReorder`; a partial one warns naming the exact prop.',
-    snippet: `import { useSortable } from '@pyreon/dnd'
+      'the pdnd/DOM-shaped surface stays web (useDragMonitor is a page-global drag bus, useFileDrop is an OS file picker — each still warns BY NAME). Three hooks lower: useSortable becomes a co-located PyreonSortableState engine; useDraggable({ data }) / useDroppable({ canDrop, onDrop, edges }) become PyreonDraggableState / PyreonDroppableState with `ref={d.ref}` as the platform drag source / drop target, the payload crossing as JSON and decoded into the ANNOTATED type of the onDrop source parameter. What cannot cross warns by name (onDragStart / onDragEnd / preview / handle on a draggable, onDragEnter with a source, sticky) — SwiftUI reports no drag start/end/cancel callback, so isDragging clears on the next drop rather than on a cancel. The sortable contract is required in full — items, a single-param `by`, and an arrow `onReorder`.',
+    snippet: `import { useSortable, useDraggable, useDroppable } from '@pyreon/dnd'
 import { Stack, Text } from '@pyreon/primitives'
 interface Row { id: string; label: string }
+type Card = { id: string; kind: string }
 export function C() {
   const items = signal<Row[]>([])
   const s = useSortable({
@@ -911,7 +951,12 @@ export function C() {
     by: (item: Row) => item.id,
     onReorder: (next: Row[]) => items.set(next),
   })
-  return (<Stack><Text>x</Text></Stack>)
+  const { ref: dragRef } = useDraggable({ data: { id: 'c1', kind: 'card' } })
+  const { ref: dropRef } = useDroppable({
+    canDrop: (src: Card) => src.kind === 'card',
+    onDrop: (src: Card) => items.set([]),
+  })
+  return (<Stack><Text ref={dragRef}>x</Text><Stack ref={dropRef}><Text>y</Text></Stack></Stack>)
 }`,
   },
   {

@@ -1,0 +1,5 @@
+---
+'@pyreon/dnd': minor
+---
+
+`useDraggable` and `useDroppable` now lower to SwiftUI and Compose. `const { ref, isDragging } = useDraggable({ data: { id, kind } })` and `const { ref, isOver, overEdge } = useDroppable({ canDrop, onDrop, edges })` become `PyreonDraggableState` / `PyreonDroppableState` engines, and `ref={d.ref}` becomes the platform drag source (`.onDrag` / `dragAndDropSource`) or drop target (`.onDrop(of:delegate:)` / `dragAndDropTarget`). The payload crosses as JSON, so the two hooks share no type: a draggable carries its object literal and a droppable decodes it into the type its `onDrop` source parameter is annotated with — a missing annotation is reported rather than guessed. What cannot cross warns by name: `onDragStart` / `onDragEnd` / `preview` / `handle` / `element` on a draggable, `data` / `sticky` / `element` and a source-taking `onDragEnter` on a droppable. SwiftUI reports no drag start, end or cancel callback, so `isDragging` clears on the next drop rather than on a cancelled drag, and `canDrop` is evaluated when the drop lands rather than while hovering.

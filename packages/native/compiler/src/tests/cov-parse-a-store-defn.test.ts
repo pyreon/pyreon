@@ -127,17 +127,16 @@ describe('defineStore — the setup BODY statements', () => {
     expect(emitsStore(src)).toBe(false)
   })
 
-  it('a BLOCK-body computed is declined and names the expression-body form', () => {
-    declined(
-      store(`() => { const n = signal(0); const d = computed(() => { return 1 }); return { n, d } }`),
-      'must be an expression-body arrow',
-    )
+  it('a BLOCK-body computed lowers (it used to be declined)', () => {
+    const src = store(`() => { const n = signal(0); const d = computed(() => { const k = n(); return k * 2 }); return { n, d } }`)
+    expect(warnings(src).filter((w) => w.includes('defineStore'))).toEqual([])
+    expect(run(src).code).toContain('var d: Int {')
   })
 
-  it('a computed whose argument is not an arrow at all is declined the same way', () => {
+  it('a computed whose argument is not an arrow at all is declined and names the inline form', () => {
     declined(
       store(`() => { const n = signal(0); const d = computed(fn); return { n, d } }`),
-      'must be an expression-body arrow',
+      'must be an inline arrow',
     )
   })
 })

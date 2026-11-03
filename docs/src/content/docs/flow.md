@@ -129,6 +129,7 @@ When no generic is supplied it defaults to `Record<string, unknown>`.
 | `nodesConnectable`          | `boolean`                                  | `true`  | Whether nodes are connectable by default                             |
 | `nodesSelectable`           | `boolean`                                  | `true`  | Whether nodes are selectable by default                              |
 | `multiSelect`               | `boolean`                                  | `true`  | Allow multi-selection                                                |
+| `historyLimit`              | `number`                                   | `50`    | Undo depth; the oldest checkpoint is dropped past it. Read at each checkpoint, so writing `flow.config.historyLimit` applies from the next one |
 | `nodeExtent`                | `[[minX, minY], [maxX, maxY]]`             | —       | Constrain node positions within bounds                              |
 | `pannable`                  | `boolean`                                  | `true`  | Whether panning is enabled                                           |
 | `zoomable`                  | `boolean`                                  | `true`  | Whether zooming is enabled                                           |
@@ -1335,6 +1336,21 @@ That is a WebView. It has the same costs as any hosted web content:
 
 Give it an explicit height where you can. Without one, it defaults to 150 points (iOS) or 150dp (Android), so it never collapses to zero.
 
+`FlowWebViewProps`:
+
+| Prop | Type | Description |
+| --- | --- | --- |
+| `graph` | `FlowWebViewGraph \| (() => FlowWebViewGraph)` | `{ nodes, edges }`, the same JSON model `<Flow>` renders. A changed value is pushed into the page without a reload. |
+| `commands` | `FlowHostCommand[] \| (() => FlowHostCommand[])` | Once-only viewport commands: `{ id, type: 'fit-view' }` or `{ id, type: 'set-viewport', x, y, zoom }`. An id never runs twice. |
+| `onSelect` | `(payload: FlowSelectPayload) => void` | Node tap: `{ id, data? }`. |
+| `onEvent` | `(event: FlowHostEvent) => void` | Typed events: `node-select`, `edge-select`, `viewport-change`. |
+| `onMessage` | `(payload: unknown) => void` | Every reverse-bridge payload (for a custom host page). |
+| `onError` | `(error: Error) => void` | Errors raised while the hosted renderer starts or updates. |
+| `html` | `string` | Your own host page (e.g. a bundled full `@pyreon/flow` app). Omit for the built-in renderer. |
+| `nodeWidth` / `nodeHeight` / `nodeFill` / `nodeStroke` / `labelColor` / `edgeColor` / `background` | | Built-in renderer styling (defaults 150 / 44 / `#ffffff` / `#c9ced6` / `#1f2933` / `#98a2b3` / `transparent`). |
+
+`buildFlowHostHtml(options?: BuildFlowHostHtmlOptions)` returns the built-in host page as a string (the same styling options), for building it once and passing it as `html`. Types: `FlowWebViewGraph`, `FlowWebViewNode`, `FlowWebViewEdge`, `FlowHostCommand`, `FlowHostEvent`, `FlowSelectPayload`, `FlowWebViewProps`, `BuildFlowHostHtmlOptions`.
+
 ### How this is verified
 
 - **State and algorithms.** Native test fixtures replay shared scenarios against both native engines, with the web engine's own answers as the oracle. Two checks fail when a portable method, or a native config field, has no scenario and no stated reason.
@@ -1391,8 +1407,8 @@ State that lives only in memory, flow graphs included, is lost when the app is c
 | `selectNode(id, additive?)` / `selectEdge(id, additive?)` | `void`                       | Select (positional `additive` boolean)       |
 | `deselectNode(id)` / `clearSelection()` / `selectAll()` | `void`                         | Selection ops                                |
 | `deleteSelected()` / `moveSelectedNodes(dx, dy)`  | `void`                               | Operate on the current selection             |
-| `fitView(ids?, padding?)`                         | `void`                               | Fit all (or given) nodes                     |
-| `zoomTo(z)` / `zoomIn()` / `zoomOut()`            | `void`                               | Zoom (clamped to min/max)                    |
+| `fitView(ids?, padding?, options?)`               | `void`                               | Fit all (or given) nodes; `options.duration` animates |
+| `zoomTo(z, options?)` / `zoomIn()` / `zoomOut()`  | `void`                               | Zoom (clamped to min/max); `options.duration` animates |
 | `panTo(pos)` / `focusNode(id, zoom?)` / `animateViewport(target, ms?)` | `void`         | Move the viewport                            |
 | `isNodeVisible(id)`                               | `boolean`                            | Is the node within the viewport              |
 | `getNodeDimensions(id)`                           | `Dimensions`                         | Effective node box: explicit → measured → 150×40 (`{0,0}` for unknown id) |
@@ -1406,7 +1422,7 @@ State that lives only in memory, flow graphs included, is lost when the app is c
 | `getOverlappingNodes(id)` / `resolveCollisions(id, spacing?)` | `FlowNode[]` / `void`    | Collision detection / resolution             |
 | `setNodeExtent(extent)` / `clampToExtent(pos, w?, h?)` | `void` / `XYPosition`           | Drag boundaries                              |
 | `copySelected()` / `paste(offset?)`               | `void`                               | Clipboard ops                                |
-| `pushHistory()` / `undo()` / `redo()`             | `void`                               | Manual undo/redo (50-snapshot cap)           |
+| `pushHistory()` / `undo()` / `redo()`             | `void`                               | Manual undo/redo (`historyLimit` snapshots, default 50) |
 | `getSnapLines(id, pos, threshold?)`               | `{ x, y, snappedPosition }`          | Helper-line snap targets for a dragged node  |
 | `toJSON()` / `fromJSON(data)`                     | `{ nodes, edges, viewport }` / `void` | Serialize / restore                         |
 | `onConnect` / `onNodesChange` / `onNodeClick` / `onEdgeClick` / `onNodeDragStart` / `onNodeDragEnd` / `onNodeDoubleClick` | `() => void` | Subscribe; returns unsubscribe |

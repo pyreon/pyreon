@@ -527,3 +527,21 @@ interface StateConfig<TState, TEvent> {
 // A transition target: a bare state name (unguarded), or an object with a guard.
 type TransitionConfig<TState> = TState | { target: TState; guard: (payload?: unknown) => boolean }
 ```
+
+## Type Exports
+
+| Type | Description |
+| --- | --- |
+| `Machine<TState, TEvent>` | The instance `createMachine` returns |
+| `MachineConfig<TState, TEvent>` | `createMachine`'s config: `initial` + `states` |
+| `StateConfig<TState, TEvent>` | One state's config (`on`, `always`, `final`) |
+| `TransitionConfig<TState>` | A target state, or `{ target, guard }` |
+| `MachineEvent<TEvent>` | The event object passed to callbacks: `{ type, payload? }` |
+| `EnterCallback<TEvent>` | Callback for `onEnter` / `onExit` / `onDone` |
+| `TransitionCallback<TState, TEvent>` | Callback for `onTransition` |
+| `InferStates<T>` / `InferEvents<T>` | Infer the state / event unions from a config object |
+| `StateOf<M>` / `EventOf<M>` | The state / event union of a machine (or config) |
+
+## Multiplatform
+
+On iOS and Android (PMTC), `createMachine` lowers to the native `PyreonMachine` runtime on both targets (transitions device-asserted).

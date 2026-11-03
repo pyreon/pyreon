@@ -168,6 +168,9 @@ public enum PyreonOidcClient {
         comps.queryItems = form.map { URLQueryItem(name: $0.0, value: $0.1) }
         // URLComponents leaves `+` literal; form encoding must escape it or it reads as a space.
         let body = (comps.percentEncodedQuery ?? "").replacingOccurrences(of: "+", with: "%2B")
+        // The POST carries the code + verifier (or a refresh token): https at USE, like
+        // the web, because metadata built directly never went through discovery.
+        _ = try PyreonAuthURL.assertHttps(meta.tokenEndpoint)
         let req = PyreonAuthRequest(
             method: .post, url: meta.tokenEndpoint,
             headers: ["content-type": "application/x-www-form-urlencoded", "accept": "application/json"],

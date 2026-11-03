@@ -9,11 +9,9 @@
  * Gap 4 follow-up — `@pyreon/validation` Zod-schema v1.
  * Recognizes the simplest `zodSchema(z.object({...}))` pattern and
  * emits a per-binding struct representing the validated shape.
- * v1 supports `z.string()` / `z.number()` / `z.boolean()` fields.
  * Schema-modifier chains (.min(), .max(), .email(), etc.) are
- * accepted at the AST level but their constraints are NOT
- * enforced in the emitted struct — v1 is shape only. v2 follow-up
- * will emit runtime validation methods that honor constraints.
+ * extracted as constraints (see below) and enforced by the emitted
+ * runtime validation methods.
  */
 /**
  * Gap 4 v2.1 — constraint enforcement for emitted schemas.

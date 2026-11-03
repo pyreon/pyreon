@@ -285,6 +285,16 @@ export function conditionalKotlinImports(emitted: string): string {
   if (emitted.includes('.alpha(')) {
     imports.push('import androidx.compose.ui.draw.alpha')
   }
+  // The transform props (`scale` / `rotate` on any primitive) — Modifier
+  // extensions in androidx.compose.ui.draw like `alpha`. Keyed on the CALL so
+  // `scaleIn(` / a `.scale` property read never pulls them. (`offset` is in the
+  // star-imported foundation.layout.)
+  if (/\.scale\(/.test(emitted)) {
+    imports.push('import androidx.compose.ui.draw.scale')
+  }
+  if (/\.rotate\(/.test(emitted)) {
+    imports.push('import androidx.compose.ui.draw.rotate')
+  }
   // `.border(BorderStroke(...))` — inline-`style` borderWidth/borderColor. Both
   // the `border` Modifier extension AND `BorderStroke` live in the ROOT
   // androidx.compose.foundation package (NOT the star-imported sub-packages),

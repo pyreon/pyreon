@@ -9,8 +9,7 @@ import { HTTP_URL_PATTERN, URI_PATTERN } from './url-rule'
 /**
  * Gap 4 follow-up — `@pyreon/validation` Zod-schema v1 emit (Kotlin).
  * Mirror of emitSwiftZodSchema. Produces a data class + module-scope
- * const. Apps validate at JSON-decode via kotlinx.serialization; v1
- * doesn't emit runtime .parse() methods (v2 follow-up).
+ * const, plus the runtime parse / safeParse / constraint-check methods.
  *
  *   data class PyreonZodSchema_userSchema(
  *       var name: String = "",

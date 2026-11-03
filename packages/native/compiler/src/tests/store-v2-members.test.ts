@@ -93,8 +93,11 @@ describe('store v2 — Kotlin (mirror)', () => {
   })
 })
 
-describe('store v2 — conservative bails stay loud', () => {
-  it('a block-body computed bails the WHOLE store with a warning (no broken emit)', () => {
+describe('store v2 — block-body computeds lower', () => {
+  // Was a whole-store bail ("must be an expression-body arrow"); the block
+  // body now lowers through the shared statement IR — see
+  // native-store-block-computed.test.ts for the toolchain-compiled coverage.
+  it('a single-return block body collapses to the compact getter', () => {
     const r = transform(
       `
       import { defineStore } from '@pyreon/store'
@@ -111,6 +114,7 @@ describe('store v2 — conservative bails stay loud', () => {
       `,
       { target: 'swift' },
     )
-    expect((r.warnings ?? []).join(' ')).toContain('expression-body arrow')
+    expect((r.warnings ?? []).join(' ')).not.toContain('defineStore')
+    expect(r.code).toContain('var big: Bool { n > 10 }')
   })
 })

@@ -51,7 +51,7 @@ The scan discovers components (static TypeScript scan + rocketstyle runtime dete
 - **`atlas-catalog.json`** — every component, control, scenario, and verdict as data.
 - **`atlas-agent-guide.md`** — the compact, prescriptive summary an AI assistant reads to know what exists, what's verified, and what's broken.
 
-A failing scenario is a **red exit** — wire `atlas scan` into CI and the catalog gates itself. `--no-mount` keeps the scan static: no component module is imported, so no component code executes (`pyreon.config.ts` is still loaded).
+A failing scenario is a **red exit** — wire `atlas scan` into CI and the catalog gates itself. `--no-mount` keeps the scan static: no component module is imported, so no component code executes (`pyreon.config.ts` is still loaded). `--no-write` runs the scan without writing `atlas-catalog.json` or `atlas-agent-guide.md`.
 
 ### `atlas check` — validate a proposed usage
 
@@ -229,7 +229,7 @@ pyreon atlas verify-browser .
 Reactive coverage and snapshots are claims only a real browser can make, and so is the full axe-core accessibility run. This command boots the workbench headlessly (playwright-core is an **optional** peer — `scan`/`dev` work without it), drives every scenario through the workbench model, and:
 
 - measures **reactive coverage** on the page's own devtools bridge — the same reactivity instance your components run on — reporting how many reactive nodes the scenario created and which never re-fired;
-- runs **axe-core** against the live preview of every scenario and folds the result into the `a11y` verdict: violations fail it (code `axe-violation`, one finding per rule with its impact, help text and first offending node); axe's "needs a human" items are kept as an `axe-incomplete` finding on a pass; a run that could not happen is a `skip` with the reason (`axe-core did not run: …`), never a pass. The scan's static name check is kept — either side failing fails the verdict. `--no-axe` skips it (the verdict then stays the static check, and the summary says so); `--axe-min-impact <minor|moderate|serious|critical>` ignores lower-impact violations. Page-level rules (landmarks, `region`, h1) are off, since a preview is a fragment. Violations do not change the exit code — read the catalog (or `atlas verify --check`); only visual diffs exit non-zero;
+- runs **axe-core** against the live preview of every scenario and folds the result into the `a11y` verdict: violations fail it (code `axe-violation`, one finding per rule with its impact, help text and first offending node); axe's "needs a human" items are kept as an `axe-incomplete` finding on a pass; a run that could not happen is a `skip` with the reason (`axe-core did not run: …`), never a pass. The scan's static name check is kept — either side failing fails the verdict. `--no-axe` skips it (the verdict then stays the static check, and the summary says so); `--axe-min-impact <minor|moderate|serious|critical>` ignores lower-impact violations. The snapshot is captured only once the preview has stopped changing (DOM, geometry and canvas pixels) for `--settle-ms <ms>` (default 300); `--settle-timeout <ms>` (default 5000) caps that wait, and a preview still changing at the cap fails its snapshot (`capture-unsettled`) instead of recording an arbitrary frame. Page-level rules (landmarks, `region`, h1) are off, since a preview is a fragment. Violations do not change the exit code — read the catalog (or `atlas verify --check`); only visual diffs exit non-zero;
 - captures a **visual snapshot** of the preview and compares it against a per-scenario baseline (a perceptual YIQ comparison that forgives anti-aliasing). First run creates baselines; later runs fail on real diffs and write an `.actual.png` beside the baseline, plus a `.diff.png` with the differing pixels in red. `--update-snapshots` re-baselines.
 
 The click-walk **drives handlers without following them**. Anchor navigation, `<a download>` / `mailto:`, form submit and reset, `form.submit()`, `window.open`, `alert` / `confirm` / `prompt` and `history.pushState` are suppressed in-page for the duration (the handlers themselves still run, and see an un-prevented event so router links behave), and the coverage finding says which were suppressed (`interaction-side-effects-suppressed`). What no in-page guard can stop — `location.assign()` / `location.href = …`, which Chromium makes unforgeable — is detected from outside: that scenario's coverage is a **skip** with a `navigated-away` finding naming the destination, the workbench is reloaded, axe and the snapshot still judge the un-interacted render, the summary lists it, and the run carries on to the next scenario. A crash in one scenario's measurement is isolated to that scenario.
@@ -256,7 +256,7 @@ The output directory is **emptied first**, so it must be new, empty, or a previo
 - `atlas dev` uses port 5210, or the next free one; `--port <n>` requires that port.
 - A component whose module fails to load (a syntax error, an unresolvable import) makes `atlas scan` exit non-zero: it was catalogued from its source but none of its checks ran.
 
-## The five-check verify verdict
+## The six-check verify verdict
 
 Every scenario carries a `verify` verdict with three honest states — a check either **passed**, **failed**, or was **skipped** (never counted as verified):
 
@@ -267,6 +267,7 @@ Every scenario carries a `verify` verdict with three honest states — a check e
 | `leak` | repeated mounts don't accumulate reactive-graph nodes past GC | `atlas scan` (needs a GC hook: `bun`, or `node --expose-gc`) |
 | `reactivityCoverage` | reactive nodes measured in real Chromium; findings carry the numbers | `atlas verify-browser` |
 | `snapshot` | the preview matches its visual baseline | `atlas verify-browser` |
+| `ssrParity` | the scenario renders with `renderToString`, hydrates without throwing or reporting a mismatch, and the hydrated DOM equals a fresh client mount | `atlas scan` |
 
 `ok` means *at least one check ran and none failed*. A scenario with zero checks run reports **unverified** — Atlas never claims what it didn't measure.
 

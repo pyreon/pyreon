@@ -90,6 +90,7 @@ export function sharedHost(current: () => EmitContext) {
       dynamicAttr: (el, name) => current().webView.dynamicAttr(el, name),
       dataArg: (value) => current().webView.dataArg(value),
       messageHandler: (handler) => current().webView.messageHandler(handler),
+      grow: (el, chain) => current().webView.grow(el, chain),
     } satisfies WebViewFacade,
   }
 }

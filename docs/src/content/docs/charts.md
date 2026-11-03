@@ -26,7 +26,7 @@ The package has three entries:
 | Entry | For |
 | --- | --- |
 | `@pyreon/charts` | `<Chart>`, its marks, the family components, formatters, theme and linking. The stable surface. |
-| `@pyreon/charts/svg` | `chartToSvg` and every `*ToSvg`: charts as SVG strings with no DOM, for SSR and export. Imported on a server, it also makes every `<Chart>` and every family chart (`<PieChart>`, `<TreemapChart>`, `<SankeyChart>`, …) ship its first frame as SVG in the SSR / SSG HTML. |
+| `@pyreon/charts/svg` | `chartToSvg` and every `*ToSvg`: charts as SVG strings with no DOM, for SSR and export. Imported on a server, it also makes every `<Chart>` and every family chart (`<GaugeChart>`, `<TreemapChart>`, `<SankeyChart>`, …) ship its first frame as SVG in the SSR / SSG HTML. |
 | `@pyreon/charts/engine` | Every layout, hit test and draw-list builder, and the array form `<PlotChart marks>`. Not covered by the stability promise. |
 
 <PackageBadge name="@pyreon/charts" href="/docs/charts" />
@@ -76,9 +76,9 @@ around a mark adds and removes its series like any other Pyreon child.
 The interaction children carry their own code: a chart without `<Zoom>` does
 not bundle the navigator, the presets or the range brush, and one without
 `<Toolbox>` does not bundle the tool strip or the SVG serializer, and one
-without an indicator mark does not bundle the indicator arithmetic. `<Chart>`
-with one `<Line>` is about 44.1 KB gzipped; a pie through `<Arc>` about
-24.7 KB. CI import budgets lock both.
+without an indicator mark does not bundle the indicator arithmetic. CI import
+budgets lock the size of a `<Chart>` with one `<Line>` and of a pie through
+`<Arc>`; see [Benchmarks](/docs/benchmarks) for current measurements.
 
 `<Chart by="id">` gives rows an identity for update animation, like `<For by>`, with D3's data join: a surviving row slides from its old slot to its new one, a new row grows in from the zero line in its slot, and a removed row shrinks out in its old slot. That holds for bars, lines, stacked and grouped bars, in a vertical or horizontal frame, on a log scale and on either axis of a dual-axis chart, and every frame of the morph is drawn with the same geometry and styling the finished chart uses. Areas, bands, waterfalls, scatter and numeric-x charts tween each row from its own previous value, as does an update that changes a series' kind or the orientation. Without `by` rows are matched by position, so a sliding window (drop the oldest, append the newest) animates every bar toward its neighbour's value. On iOS and Android `by` lowers to the spec's `rowKeys`: the engine tags each bar with its row key and the edge it grows from, and the native canvas matches those commands by key, so bars (plain, stacked, grouped, horizontal) slide, grow in and shrink out exactly as on the web, and a line whose points are its rows moves its points by key.
 
@@ -479,8 +479,8 @@ that a graphic exists and nothing about what it shows.
 
 ## Big data
 
-`lttb` (largest-triangle-three-buckets) and `minMaxBuckets` from the same
-subpath decimate large series before charting — downsampling that preserves
+`lttb` (largest-triangle-three-buckets) and `minMaxBuckets` from
+`@pyreon/charts/engine` decimate large series before charting — downsampling that preserves
 the visual shape (peaks and troughs) rather than averaging them away.
 
 ## Hierarchy and relations
@@ -592,7 +592,7 @@ compiler says so by name.
 All the family components — `<GaugeChart>`, `<RadarChart>`, `<BoxplotChart>`,
 `<TreemapChart>`, `<SunburstChart>`, `<TreeChart>`, `<SankeyChart>`,
 `<GraphChart>`, `<RiverChart>`, `<PolarChart>`, `<GanttChart>`,
-`<CalendarChart>`, `<ParallelChart>`, `<MapChart>`, and the four hosts behind
+`<CalendarChart>`, `<ParallelChart>`, `<MapChart>`, `<ChordChart>`, `<SingleAxisChart>`, and the four hosts behind
 `<Arc>`, `<Stage>`, `<Candle>` and `<Cell>` — share one canvas host, so they
 share one prop vocabulary:
 
@@ -689,9 +689,9 @@ Row callbacks (`x`, `by`, tooltips) still run, receiving `undefined` and the
 index. A plain `number[]` of exactly the chart's length is used AS the series —
 no copy — when every entry is a number or `NaN`; the chart never writes into
 it, so don't mutate it in place either (pass a new array to update). A typed
-array, a shorter array, or one holding an infinity is copied once. Measured
-against uPlot 1.6 with the same `number[]` input: a 1M-point line mounts in a
-statistical tie (14.9ms each) and updates 2.5× faster at 100k points.
+array, a shorter array, or one holding an infinity is copied once. See
+[Benchmarks](/docs/benchmarks) for current measurements against uPlot, Chart.js
+and Recharts.
 
 Columns are a web path for now: the native lowering reads marks as
 inline arrows and warns on a column, so shared multiplatform source should keep
@@ -780,7 +780,7 @@ On native the events/actions props warn by name and the chart renders without th
 
 ## Gantt
 
-`<GanttChart tasks>` lays one row per task on a calendar-aligned time axis — the tick unit (day / week / month / quarter / year) is picked from the span — with lane headers per `group`, darker `progress` insets, milestone diamonds, dependency elbows and a dashed `today` marker. `layoutGantt` / `renderGantt` / `hitGantt` / `ganttToSvg` are the pure halves.
+`<GanttChart tasks>` lays one row per task on a calendar-aligned time axis — the tick unit (day / week / month / quarter / year) is picked from the span — with lane headers per `group`, darker `progress` insets, milestone diamonds, dependency elbows and a dashed `today` marker. `layoutGantt` / `renderGantt` / `hitGanttIndex` (from `@pyreon/charts/engine`) and `ganttToSvg` (from `@pyreon/charts/svg`) are the pure halves.
 
 ```tsx
 <GanttChart
@@ -796,7 +796,7 @@ On native the events/actions props warn by name and the chart renders without th
 
 ## Sonification
 
-`sonifyValues(values, { duration, minHz, maxHz, link })` plays a series as pitch over time: one oscillator steps through the values, gaps are silence, `onStep(index)` fires per datum, and a `ChartLink` moves every linked chart's crosshair with the sound. Start it from a click — browsers keep audio suspended until a user gesture.
+`sonifyValues(values, { duration, minHz, maxHz, link })` (from `@pyreon/charts/engine`) plays a series as pitch over time: one oscillator steps through the values, gaps are silence, `onStep(index)` fires per datum, and a `ChartLink` moves every linked chart's crosshair with the sound. Start it from a click — browsers keep audio suspended until a user gesture.
 
 ```tsx
 const sound = sonifyValues(closes, { duration: 3000, link })
@@ -809,10 +809,14 @@ The engine's geometry is **generated into Swift and Kotlin twins**
 (`PyreonChartEngine.swift` / `.kt` in the native runtimes) from the same
 TypeScript sources, drift-locked byte-for-byte in CI and compile-proven with
 the real toolchains. The flat draw-list design is what makes this possible:
-a native canvas executes the same commands the web canvas does. JSX-level
-lowering (writing `<Chart><Arc /></Chart>` in shared source and getting SwiftUI/Compose)
-is landing chart-by-chart — see the
-[multiplatform capability matrix](/docs/multiplatform) for current status.
+a native canvas executes the same commands the web canvas does. Every chart
+component lowers to a native `PyreonChartCanvas` over that draw list: `<Chart>`
+with its marks, and every family component (`<MapChart>` from a precomputed
+`GeoShape[]` — the map registry, raw GeoJSON and `geoShapes()` stay web). Theme
+tokens resolve at compile time. What stays on the web is named at compile time
+(see below): `<Histogram>`'s row reshape, `locale`, `facet`, `density`, column
+inputs, and the event / handle props (`onSelect` taps do cross). See the
+[multiplatform capability matrix](/docs/multiplatform) for device status.
 
 ## How the engine is verified
 
@@ -854,7 +858,7 @@ Each series becomes a mark, each component a child:
 | `tooltip`, `legend`, `dataZoom`, `toolbox` | `<Tooltip />`, `<Legend />`, `<Zoom />`, `<Toolbox />` |
 | `yAxis.axisLabel.formatter` | `<Axis y format={currency('EUR')} />` — one formatter feeds the axis, tooltip and table |
 | `markLine` / `markPoint` | `<Rule>` / `<Label>` |
-| `visualMap` | `visualMap({ domain })` on `<HeatmapChart>`, `<CalendarChart>`, `<MapChart>` |
+| `visualMap` | `visualMap({ domain })` on `<Cell>`, `<CalendarChart>`, `<MapChart>` |
 | `useChart(() => option)` + `chart.instance()` | `<Chart>` reads signals directly; `createChartHandle()` for imperative actions |
 | `<ChartWebView>` on iOS / Android | `<Chart>` itself: it draws natively |
 | `chartsViteAlias()` in `vite.config.ts` | delete it |

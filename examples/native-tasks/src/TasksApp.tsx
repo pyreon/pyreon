@@ -47,7 +47,7 @@
 // - **Store computeds/methods in the setup body** — store v1 lowers
 //   signals; derived state lives in component-level `computed` for now.
 
-import { QueryClient, QueryClientProvider, useQuery, useStream } from '@pyreon/query'
+import { QueryClient, QueryClientProvider, useMutation, useQuery, useStream } from '@pyreon/query'
 import { model } from '@pyreon/state-tree'
 import { filter as filter_rx, map } from '@pyreon/rx'
 import { SizedMap } from '@pyreon/sized-map'
@@ -119,7 +119,7 @@ import type {
   ZoomWindow,
 } from '@pyreon/charts'
 import { useForm } from '@pyreon/form'
-import { useFetch, useCrashReporter } from '@pyreon/hooks'
+import { fileFromUri, useFetch, useCrashReporter } from '@pyreon/hooks'
 import { defineStore } from '@pyreon/store'
 import { ColorModeProvider, For, Show, Suspense, ErrorBoundary, onMount, useColorMode } from '@pyreon/core'
 import {
@@ -159,6 +159,24 @@ interface StreamTick {
 const streams = createHttp({ baseUrl: 'http://127.0.0.1:8791' })
 const tickFeed = streams.endpoint('GET /sse', { responseType: 'stream' })
 const tickRows = streams.endpoint('GET /ndjson', { responseType: 'stream' })
+// The requests screen's writes. /echo REFLECTS what reached the server (method, query, content type, a header, the
+// raw body), so each assertion reads the wire, not the app's own idea of what it sent. /boom answers 500.
+const echoPost = streams.endpoint('POST /echo')
+const failingPost = streams.endpoint('POST /boom')
+// #3979: /upload parses a multipart body and reports each part; /echo reflects a raw body.
+const uploadPost = streams.endpoint('POST /upload')
+const rawPut = streams.endpoint('PUT /echo')
+/** A small file the device test can send without a picker — the same bytes on every platform. */
+const NOTE_URI = 'data:text/plain;base64,SGVsbG8gUHlyZW9u'
+
+/** What /echo reflects back. */
+interface EchoReply {
+  method: string
+  query: string
+  contentType: string
+  client: string
+  body: string
+}
 
 // Module-scope monotonic id — same shape as TodoMVC's `nextId`.
 let nextTaskId = 3
@@ -355,6 +373,18 @@ function TasksPage() {
           </Button>
           <Button onPress={() => navigate('/streams')} data-testid="tasks-streams">
             Streams
+          </Button>
+          <Button onPress={() => navigate('/requests')} data-testid="tasks-requests">
+            Requests
+          </Button>
+          <Button onPress={() => navigate('/webhost')} data-testid="tasks-webhost">
+            Web host
+          </Button>
+          <Button onPress={() => navigate('/intl')} data-testid="tasks-intl">
+            Intl
+          </Button>
+          <Button onPress={() => navigate('/fields')} data-testid="tasks-fields">
+            Fields
           </Button>
           <Button onPress={logout} data-testid="tasks-logout">
             Logout
@@ -757,6 +787,88 @@ function StreamsScreen() {
         Back to tasks
       </Button>
     </Stack>
+  )
+}
+
+// Requests that carry what the user ENTERED (#3978): a mutation and an awaited endpoint call, both built from
+// runtime values. The draft is cleared right after `mutate`, so a request that read its values late — or a body
+// baked at compile time — shows up as the wrong name in the reflected body.
+function RequestsScreen() {
+  const navigate = useNavigate()
+  const draft = signal('')
+  const lastBody = signal('none')
+  const direct = signal('idle')
+  const save = useMutation<EchoReply>(echoPost.mutation())
+  const broken = useMutation<EchoReply>(failingPost.mutation())
+  const sendDirect = async () => {
+    direct.set('sending')
+    await echoPost({ json: { name: draft(), n: 2 } })
+    direct.set('sent')
+  }
+  const upload = useMutation<EchoReply>(uploadPost.mutation())
+  const raw = useMutation<EchoReply>(rawPut.mutation())
+  const sendUpload = async () => {
+    // The step a picker result goes through: a URI is a handle, not the file.
+    const note = await fileFromUri(NOTE_URI, { name: 'note.txt' })
+    upload.mutate({ multipart: { note, caption: draft(), n: [1, 2] } })
+  }
+  const sendRaw = async () => {
+    const note = await fileFromUri(NOTE_URI, { name: 'note.txt' })
+    raw.mutate({ body: note })
+  }
+  const sendFailing = async () => {
+    direct.set('failing')
+    // A non-2xx REJECTS, so the next line never runs: on the web the handler stops here, and natively too.
+    await failingPost({ json: { name: draft() } })
+    direct.set('unreachable')
+  }
+  return (
+    <Scroll>
+      <Stack gap={3} padding={4} data-testid="requests-page">
+        <Field value={draft} onChangeText={(v) => draft.set(v)} placeholder="Name" data-testid="req-draft" />
+        <Button
+          onPress={() => {
+            save.mutate(
+              { json: { name: draft(), n: 2 }, query: { tag: draft(), page: 3 }, headers: { 'x-client': 'pyreon' } },
+              { onSuccess: (reply) => lastBody.set(reply.body) },
+            )
+            draft.set('')
+          }}
+          data-testid="req-mutate"
+        >
+          Mutate
+        </Button>
+        <Text data-testid="req-status">{`Status: ${save.status()}`}</Text>
+        <Text data-testid="req-method">{`Method: ${save.data()?.method ?? 'none'}`}</Text>
+        <Text data-testid="req-query">{`Query: ${save.data()?.query ?? 'none'}`}</Text>
+        <Text data-testid="req-type">{`Type: ${save.data()?.contentType ?? 'none'}`}</Text>
+        <Text data-testid="req-client">{`Client: ${save.data()?.client ?? 'none'}`}</Text>
+        <Text data-testid="req-body">{`Body: ${lastBody()}`}</Text>
+        <Button onPress={() => broken.mutate({ json: { name: 'x' } })} data-testid="req-fail">
+          Mutate failing
+        </Button>
+        <Text data-testid="req-fail-status">{`Failing: ${broken.isError() ? 'rejected' : broken.status()}`}</Text>
+        <Button onPress={sendDirect} data-testid="req-direct">
+          Send direct
+        </Button>
+        <Button onPress={sendFailing} data-testid="req-direct-fail">
+          Send failing
+        </Button>
+        <Text data-testid="req-direct-status">{`Direct: ${direct()}`}</Text>
+        <Button onPress={sendUpload} data-testid="req-upload">
+          Upload
+        </Button>
+        <Text data-testid="req-upload-type">{`Upload type: ${upload.data()?.contentType ?? 'none'}`}</Text>
+        <Text data-testid="req-upload-parts">{`Parts: ${upload.data()?.body ?? 'none'}`}</Text>
+        <Button onPress={sendRaw} data-testid="req-raw">
+          Upload raw
+        </Button>
+        <Text data-testid="req-raw-result">{`Raw: ${raw.data()?.method ?? 'none'} ${raw.data()?.contentType ?? ''} ${raw.data()?.body ?? ''}`}</Text>
+        <Button onPress={() => navigate('/tasks')} data-testid="requests-back">
+          Back to tasks
+        </Button>
+      </Stack>
+    </Scroll>
   )
 }
 
@@ -1908,6 +2020,117 @@ function ToolkitScreen() {
   )
 }
 
+// ── Web host (#3982 + #3956 item 5) ──
+//
+// A whole web flow embedded full-screen: the page in assets/webhost/
+// webhost-chrome.html uses the browser chrome a real embedded flow needs (a file
+// input, geolocation, alert/confirm/prompt, a target=_blank link) and reports
+// every outcome back over the reverse bridge, so the device tests read it in a
+// NATIVE Text rather than inside the WebView. The page root is a plain <Stack>
+// (no <Scroll>) and the WebView carries `grow`, so it takes the screen height
+// left over by the header and footer on every target — the sizing case.
+function WebHostScreen() {
+  const navigate = useNavigate()
+  let webResult = state('ready')
+  return (
+    <Stack gap={2} padding={4} data-testid="webhost-page">
+      <Text data-testid="webhost-title">Hosted web flow</Text>
+      <WebView
+        src="webhost-chrome.html"
+        grow
+        onMessage={(m) => { webResult = m }}
+        data-testid="webhost-view"
+      />
+      <Text data-testid="webhost-result">{webResult}</Text>
+      <Button onPress={() => navigate('/tasks')} data-testid="webhost-back">
+        Back to tasks
+        </Button>
+      </Stack>
+    )
+  }
+
+// `Intl` (#3980): locale-aware dates and numbers, lowered to Foundation's
+// formatters on iOS and `android.icu` on Android. Every value is pinned to a
+// locale AND a time zone so the device tests can assert exact strings — the
+// differential table (`intl-cases.ts`) shows these agree with the web. The zone
+// is a SIGNAL: "Show in UTC" must move the same instant to another wall-clock
+// time, which only a runtime `timeZone` can do.
+const priceFormat = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' })
+
+function IntlScreen() {
+  const navigate = useNavigate()
+  // 2026-10-22T08:00:00Z — 10:00 in Berlin.
+  const startsAt = signal(1792656000000)
+  const zone = signal('Europe/Berlin')
+  const qty = signal(1234567.891)
+  // Built INSIDE the accessor: on the web a component body runs once, so a
+  // formatter bound in the body would keep the zone it was created with.
+  return (
+    <Stack gap={3} padding={4} data-testid="intl-page">
+      <Text data-testid="intl-meeting">
+        {() => new Intl.DateTimeFormat('de-DE', { dateStyle: 'medium', timeStyle: 'short', timeZone: zone() }).format(startsAt())}
+      </Text>
+      <Text data-testid="intl-price">{priceFormat.format(1234.5)}</Text>
+      <Text data-testid="intl-qty">{qty().toLocaleString('de-DE')}</Text>
+      <Text data-testid="intl-day">
+        {new Date(startsAt()).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', timeZone: zone() })}
+      </Text>
+      <Text data-testid="intl-percent">{(0.256).toLocaleString('en-US', { style: 'percent' })}</Text>
+      <Button onPress={() => zone.set('UTC')} data-testid="intl-utc">
+        Show in UTC
+      </Button>
+      <Button onPress={() => navigate('/tasks')} data-testid="intl-back">
+          Back
+        </Button>
+      </Stack>
+    )
+  }
+
+// `<Field multiline lines>` (#3980): a text area on every target — a
+// `<textarea rows>` on the web, `TextField(axis: .vertical)` + `.lineLimit(n,
+// reservesSpace: true)` on iOS, `minLines`/`maxLines` on Android. The device
+// tests prove the text round-trips both ways (typed newlines reach the signal,
+// a programmatic write reaches the control) and that `lines` sets the HEIGHT —
+// measured against the single-line field beside it, and re-measured after a
+// reactive `lines` change.
+function FieldsScreen() {
+  const navigate = useNavigate()
+  const notes = signal('')
+  const rows = signal(4)
+  const single = signal('')
+  return (
+    <Stack gap={3} padding={4} data-testid="fields-page">
+      <Field
+        value={single}
+        onChangeText={(v) => single.set(v)}
+        placeholder="One line"
+        data-testid="fields-single"
+      />
+      <Field
+        multiline
+        lines={rows()}
+        value={notes}
+        onChangeText={(v) => notes.set(v)}
+        placeholder="Notes"
+        data-testid="fields-notes"
+      />
+      <Text data-testid="fields-notes-echo">{notes}</Text>
+      <Text data-testid="fields-notes-length">{String(notes().length)}</Text>
+      <Inline gap={2}>
+        <Button onPress={() => notes.set('alpha\nbeta\ngamma')} data-testid="fields-fill">
+          Fill
+        </Button>
+        <Button onPress={() => rows.set(2)} data-testid="fields-rows-2">
+          Two rows
+        </Button>
+      </Inline>
+      <Button onPress={() => navigate('/tasks')} data-testid="fields-back">
+        Back
+      </Button>
+    </Stack>
+  )
+}
+
 // ── App root ──
 
 export function TasksApp() {
@@ -1960,6 +2183,21 @@ export function TasksApp() {
         beforeEnter: () => useApp().store.isAuthed(),
       },
       {
+        path: '/requests',
+        component: RequestsScreen,
+        beforeEnter: () => useApp().store.isAuthed(),
+      },
+      {
+        path: '/intl',
+        component: IntlScreen,
+        beforeEnter: () => useApp().store.isAuthed(),
+      },
+      {
+        path: '/fields',
+        component: FieldsScreen,
+        beforeEnter: () => useApp().store.isAuthed(),
+      },
+      {
         path: '/lifecycle',
         component: LifecycleScreen,
         beforeEnter: () => useApp().store.isAuthed(),
@@ -1987,6 +2225,11 @@ export function TasksApp() {
       {
         path: '/flow-scale',
         component: FlowScaleScreen,
+        beforeEnter: () => useApp().store.isAuthed(),
+      },
+      {
+        path: '/webhost',
+        component: WebHostScreen,
         beforeEnter: () => useApp().store.isAuthed(),
       },
     ],

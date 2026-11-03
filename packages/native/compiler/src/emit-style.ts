@@ -9,8 +9,7 @@
 //
 // Phase 0 (this PR): minimal IR + emitters with a curated set of
 // CSS-property mappings (background, padding, border-radius,
-// foreground color). The full styler-pipeline parsing (CSS-in-JS
-// tagged template → StyleIR) is a follow-up PR.
+// foreground color).
 
 export interface StyleIR {
   /** Unique identifier — emitted as the ViewModifier struct name (Swift)

@@ -33,13 +33,34 @@ import androidx.compose.runtime.mutableStateOf
  * Process-global query cache, shared across every PyreonQuery instance so
  * two screens reading `["todos"]` hit the same entry. Values are stored as
  * `Any` (the queryKey implies the type; a mismatched cast is a miss).
- * Bounded eviction is a follow-up.
+ *
+ * BOUNDED: past [maxEntries] the least recently used entry is evicted. A
+ * runtime key (a route param, a prop) adds one entry per distinct value, so
+ * an unbounded cache grows for the life of the process. Evicting is always
+ * safe: a live PyreonQuery keeps its own `data`, so an evicted key costs only
+ * a refetch on its next stale check.
  */
 public object PyreonQueryCache {
     private class Entry(val value: Any, val atMillis: Long)
 
-    private val store = HashMap<String, Entry>()
     private val lock = Any()
+    private var limit = 100
+
+    /** The most entries kept before the least recently used is evicted.
+     *  Settable per app (`PyreonQueryCache.maxEntries = 500`); lowering it
+     *  evicts down to the new bound on the next write. */
+    public var maxEntries: Int
+        get() = synchronized(lock) { limit }
+        set(value) = synchronized(lock) { limit = maxOf(1, value) }
+
+    // Access-ordered: get() and put() move a key to the most-recent end, and
+    // removeEldestEntry drops from the other end.
+    private val store = object : LinkedHashMap<String, Entry>(16, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Entry>): Boolean = size > limit
+    }
+
+    /** Number of cached entries (for tests and diagnostics). */
+    public val count: Int get() = synchronized(lock) { store.size }
 
     /** Nanosecond-free clock via System.currentTimeMillis for testability. */
     internal fun now(): Long = System.currentTimeMillis()
@@ -53,6 +74,13 @@ public object PyreonQueryCache {
 
     internal fun write(key: String, value: Any): Unit = synchronized(lock) {
         store[key] = Entry(value, now())
+        // removeEldestEntry drops one entry per put; after maxEntries is
+        // LOWERED there can be more than one to shed.
+        while (store.size > limit) {
+            val eldest = store.keys.iterator()
+            eldest.next()
+            eldest.remove()
+        }
     }
 
     /** Drop a key (invalidation). */

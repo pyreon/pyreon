@@ -26,9 +26,8 @@
 // The connectivity STATE machine (`isOnline` + `update`) is pure and
 // synchronously unit-testable; the `NWPathMonitor` wiring is the thin live
 // edge (constructed but not asserted in tests, same as PyreonFetch's
-// URLSession). The `useOnline` compiler emit builds on this contract in a
-// follow-up — the PyreonFetch / PyreonForm / PyreonPermissions
-// per-service-port pattern.
+// URLSession). The `useOnline` compiler emit builds on this contract — the
+// PyreonFetch / PyreonForm / PyreonPermissions per-service-port pattern.
 
 import Foundation
 import Network

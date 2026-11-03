@@ -21,35 +21,35 @@ const CELL = 'const cell = (v) => <b>{v}</b>\n'
 describe('jsx.ts — signal shadowing by every parameter form', () => {
   it('a bare module-scope signal read is AUTO-CALLED', () => {
     const out = bothAgree(`${SIG}export const A = () => <div>{count}</div>`)
-    expect(out).toContain('count()')
+    expect(out).toContain('_bindText(count,')
   })
 
   it('an IDENTIFIER parameter of the same name shadows it', () => {
     const out = t(`${SIG}function A(count) { return <div>{count}</div> }`)
     expect(out).toContain('_setChild(__root, count)')
-    expect(out).not.toContain('count()')
+    expect(out).not.toMatch(/count\(\)|_bindText\(count,/)
   })
 
   it('an OBJECT-PATTERN parameter shadows it', () => {
     const out = t(`${SIG}function A({ count }) { return <div>{count}</div> }`)
     expect(out).toContain('_setChild(__root, count)')
-    expect(out).not.toContain('count()')
+    expect(out).not.toMatch(/count\(\)|_bindText\(count,/)
   })
 
   it('a RENAMED object-pattern parameter shadows the LOCAL name', () => {
     const out = t(`${SIG}function A({ n: count }) { return <div>{count}</div> }`)
-    expect(out).not.toContain('count()')
+    expect(out).not.toMatch(/count\(\)|_bindText\(count,/)
   })
 
   it('an ARRAY-PATTERN parameter shadows it', () => {
     const out = t(`${SIG}function A([count]) { return <div>{count}</div> }`)
     expect(out).toContain('_setChild(__root, count)')
-    expect(out).not.toContain('count()')
+    expect(out).not.toMatch(/count\(\)|_bindText\(count,/)
   })
 
   it('a DIFFERENTLY-named parameter does NOT shadow it', () => {
     const out = t(`${SIG}function A({ other }) { return <div>{count}</div> }`)
-    expect(out).toContain('count()')
+    expect(out).toContain('_bindText(count,')
   })
 })
 
@@ -57,17 +57,17 @@ describe('jsx.ts — signal shadowing by a body-level declaration', () => {
   it('`let count = 1` in the body shadows the module signal', () => {
     const out = t(`${SIG}function A() { let count = 1; return <div>{count}</div> }`)
     expect(out).toContain('_setChild(__root, count)')
-    expect(out).not.toContain('count()')
+    expect(out).not.toMatch(/count\(\)|_bindText\(count,/)
   })
 
   it('`let count` with NO initializer shadows it too', () => {
     const out = t(`${SIG}function A() { let count; return <div>{count}</div> }`)
-    expect(out).not.toContain('count()')
+    expect(out).not.toMatch(/count\(\)|_bindText\(count,/)
   })
 
   it('a re-declaration that is ITSELF a `signal()` call is NOT a shadow', () => {
     const out = t(`${SIG}function A() { const count = signal(5); return <div>{count}</div> }`)
-    expect(out).toContain('count()')
+    expect(out).toContain('_bindText(count,')
   })
 
   it('a body-level DESTRUCTURING re-declaration IS a shadow (every binding form is)', () => {
@@ -79,9 +79,9 @@ describe('jsx.ts — signal shadowing by a body-level declaration', () => {
     // `for (const x of …)` heads, block-nested `let`, function/class
     // declarations (see `collectFunctionBindings`).
     const out = t(`${SIG}function A() { const { count } = p; return <div>{count}</div> }`)
-    expect(out).not.toContain('count()')
+    expect(out).not.toMatch(/count\(\)|_bindText\(count,/)
     // The parameter form of the same destructure shadows too.
-    expect(t(`${SIG}function A({ count }) { return <div>{count}</div> }`)).not.toContain('count()')
+    expect(t(`${SIG}function A({ count }) { return <div>{count}</div> }`)).not.toMatch(/count\(\)|_bindText\(count,/)
   })
 })
 

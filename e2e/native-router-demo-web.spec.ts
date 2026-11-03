@@ -68,6 +68,29 @@ test.describe('native-router-demo-web — R1 routing runtime contract', () => {
     await expect(page.getByTestId('about-page')).not.toBeVisible()
   })
 
+  test('a route loader\'s data reaches a destructured useLoaderData, and onMount sees it', async ({ page }) => {
+    // The same page the iOS and Android device tests drive: the loader runs before the component renders, so
+    // the destructured fields are present and onMount reads the loaded title.
+    await page.goto('/')
+    await page.getByRole('button', { name: 'Go to About' }).click()
+    await page.getByRole('button', { name: 'View loaded' }).click()
+    await expect(page.getByTestId('loaded-page')).toBeVisible()
+    await expect(page.getByTestId('loaded-title')).toHaveText('Title: Loaded title')
+    await expect(page.getByTestId('loaded-views')).toHaveText('Views: 42')
+    await expect(page.getByTestId('loaded-mounted')).toHaveText('Mounted with: Loaded title')
+  })
+
+  test('an inline beforeEach guard blocks its path and allows the rest', async ({ page }) => {
+    // The same guard the iOS and Android device tests drive.
+    await page.goto('/')
+    await page.getByRole('button', { name: 'Go to About' }).click()
+    await page.getByRole('button', { name: 'Try guarded' }).click()
+    await expect(page.getByTestId('about-page')).toBeVisible()
+    await expect(page.getByTestId('guarded-page')).toHaveCount(0)
+    await page.getByRole('button', { name: 'View loaded' }).click()
+    await expect(page.getByTestId('loaded-page')).toBeVisible()
+  })
+
   test('direct deep-link to /users/42 renders UserPage with params', async ({
     page,
   }) => {

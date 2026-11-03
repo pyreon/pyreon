@@ -1,6 +1,6 @@
 ---
 title: "Canonical Multiplatform Primitives — API Reference"
-description: "17 canonical cross-platform UI primitives that compile to DOM + SwiftUI + Compose from one .tsx: Stack, Inline, Layer, Scroll, Spacer (layout); Text, Heading, I"
+description: "19 canonical cross-platform UI primitives that compile to DOM + SwiftUI + Compose from one .tsx: Stack, Inline, Layer, Scroll, Spacer (layout); Text, Heading, I"
 ---
 
 # @pyreon/primitives — API Reference
@@ -13,14 +13,14 @@ The multiplatform UI vocabulary for Pyreon. ONE canonical name per concept (`<St
 
 **Tier:** Shared — the same source runs on web, iOS and Android
 
-the 17 canonical primitives: real web DOM runtime AND SwiftUI/Compose emit — the compiler's native target vocabulary
+the 19 canonical primitives: real web DOM runtime AND SwiftUI/Compose emit — the compiler's native target vocabulary
 
 See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multiplatform libraries](/docs/multiplatform-libraries) for every package's tier.
 
 ## Features
 
 - Native compiler tooling: primitivesPlugin from @pyreon/primitives/native-plugin owns hook recognition and Swift/Kotlin lowering; the native CLI discovers it through pyreon.native.plugin, and direct compiler callers install it explicitly
-- 17 canonical primitives compile to web DOM + iOS SwiftUI + Android Compose from one .tsx
+- 19 canonical primitives compile to web DOM + iOS SwiftUI + Android Compose from one .tsx
 - One canonical name + event per concept — `<Stack>` (not View/VStack/div), `onPress` everywhere
 - Tokens-first styling (`padding={4}`, `gap="md"`) resolves through the theme per target
 - PMTC compiles your component SOURCE in a narrow declarative TS subset — NOT npm libraries
@@ -28,6 +28,8 @@ See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multipla
 - `<Transition>` / `<TransitionGroup>` — the animation vocabulary, lowered to SwiftUI `.transition(…)` and Compose `AnimatedVisibility` (import from HERE; `@pyreon/runtime-dom` is web-only)
 - `<Web>` / `<NativeIOS>` / `<NativeAndroid>` escape hatches for genuinely per-platform UI
 - `useNativeModule` FFI — add a platform capability the framework does not ship (Bluetooth, ARKit, a vendor SDK) as an app-level Swift/Kotlin class, no framework PR
+- `<Gesture onPan onPinch onRotate>` — continuous gestures (cumulative values + start/change/end phase) lowered to simultaneous SwiftUI Drag/Magnify/RotateGesture and one Compose pointer loop; drive content with the `translateX`/`translateY`/`scale`/`rotate` props every primitive accepts
+- `<Canvas>` + shape children (`CanvasRect`, `CanvasCircle`, `CanvasLine`, `CanvasPath` with SVG path data, `CanvasText`) — vector drawing lowered to stacked `<svg>` layers on web, SwiftUI `Path`s on iOS and Compose draw layers on Android
 - No responsive props in v1 — responsive web uses `@pyreon/elements` directly
 
 ## Complete example
@@ -84,6 +86,8 @@ export function App() {
 | [`Icon`](#icon-component) | component | Icon by canonical name. |
 | [`Button`](#button-component) | component | Styled CTA. |
 | [`Press`](#press-component) | component | Unstyled tap target (no chrome). |
+| [`Gesture`](#gesture-component) | component | A region that recognises CONTINUOUS gestures and reports their values. |
+| [`Canvas`](#canvas-component) | component | A fixed-size, clipped vector drawing surface. |
 | [`Link`](#link-component) | component | Navigation link. |
 | [`Field`](#field-component) | component | Text input. |
 | [`Toggle`](#toggle-component) | component | Boolean switch/checkbox. |
@@ -389,7 +393,71 @@ Unstyled tap target (no chrome). Web `<div role="button">`; iOS `Button {}` (pla
 
 - Using `<Press>` for a primary action — use `<Button>` for styled CTAs
 
-**See also:** `Button`
+**See also:** `Button` · `Gesture`
+
+---
+
+### `Gesture` `component`
+
+```ts
+(props: { onPan?: (e: { dx: number; dy: number; x: number; y: number; phase: 'start'|'change'|'end' }) => void; onPinch?: (e: { scale: number; centerX: number; centerY: number; phase }) => void; onRotate?: (e: { degrees: number; phase }) => void; children }) => VNode
+```
+
+A region that recognises CONTINUOUS gestures and reports their values. Every value is CUMULATIVE since the gesture began; each gesture delivers one `start`, any number of `change`, then one `end` (also on cancel). Pan, pinch and rotate run SIMULTANEOUSLY, and nothing is reported until the pointer passes the touch slop (10px/pt, the platform slop on Android), so a `<Press>` inside still gets its taps. Web: pointer events on a `touch-action: none` div (capture taken only once claimed); iOS: `PyreonGesture` (simultaneous `DragGesture`/`MagnifyGesture`/`RotateGesture`); Android: `PyreonGesture` (one `pointerInput` loop over `calculatePan`/`calculateZoom`/`calculateRotation`). Drive content with the transform props (`translateX`/`translateY`/`scale`/`rotate`), which every primitive accepts and which update in place. Known divergence: a two-finger pan follows the centroid on web/Android and the first finger on iOS.
+
+**Example**
+
+```tsx
+const zoom = signal(1.0)
+const base = signal(1.0)
+<Gesture
+  onPinch={(e) => {
+    zoom.set(base() * e.scale)
+    if (e.phase === 'end') base.set(zoom())
+  }}
+>
+  <Stack scale={zoom()}><Text>Floor plan</Text></Stack>
+</Gesture>
+```
+
+**Common mistakes**
+
+- Putting `scale`/`translateX` on the `<Gesture>` ITSELF — the values are measured in its own coordinate space and feed back into themselves; transform a CHILD (the compiler warns)
+- Treating `e.scale` / `e.dx` as a per-frame DELTA — they are cumulative since the gesture began; multiply/add your committed base, and commit it on `phase === "end"`
+- Using `<Press onSwipeLeft>` for free dragging — swipe is a discrete end-of-gesture verdict; `<Gesture onPan>` reports the live translation
+- Expecting pinch/rotate from one pointer — they begin only once two pointers are down
+
+**See also:** `Press` · `Stack` · `Canvas`
+
+---
+
+### `Canvas` `component`
+
+```ts
+(props: { width: number; height: number; background?: ColorToken; children }) => VNode — children: CanvasRect { x, y, width, height, radius? } · CanvasCircle { cx, cy, r } · CanvasLine { x1, y1, x2, y2 } · CanvasPath { d } · CanvasText { x, y, size? }, each with fill?/stroke?/strokeWidth? (token or #hex)
+```
+
+A fixed-size, clipped vector drawing surface. Children are the shape primitives, drawn in source order (later on top) in the canvas coordinates: (0,0) top-left, y down, px/pt/dp. Shapes are ordinary JSX children, so `<For>`, `<Show>` and signal-driven props (`d={trail()}`, `width={w()}`) work inside. Paint: `fill`/`stroke` take a colour token or a `#hex` literal; with neither, a shape is filled with `text`; `<CanvasLine>` is stroke-only (default `text`, width 1). `<CanvasPath d>` takes full SVG path data (M L H V C S Q T A Z, absolute + relative). `<CanvasText>` places the TOP-LEFT of its text at (x, y) on every target. Web: one absolutely positioned `<svg>` layer per shape; iOS: `PyreonCanvas { PyreonShape(PyreonCanvasPath.rect(…)) }` (a runtime SVG parser for `d`); Android: `PyreonCanvas { PyreonShape(PyreonShapeSpec.Rect(…)) }` (androidx `PathParser` for `d`). Pair with `<Gesture>` + transform props for a pannable / zoomable plan.
+
+**Example**
+
+```tsx
+<Canvas width={200} height={120} background="surface">
+  <CanvasRect x={10} y={10} width={80} height={50} radius={6} fill="primary" />
+  <CanvasCircle cx={150} cy={40} r={20} fill="#16a34a" stroke="text" strokeWidth={2} />
+  <CanvasPath d="M10 100 L190 100" stroke="text" strokeWidth={2} />
+  <CanvasText x={110} y={80} size={14}>Hall A</CanvasText>
+</Canvas>
+```
+
+**Common mistakes**
+
+- Using a shape outside a `<Canvas>` — shapes draw in the canvas coordinate space and fill its frame on native
+- Passing a CSS colour name (`fill="tomato"`) — only colour tokens and `#hex` literals resolve on native (the compiler warns)
+- Expecting `<CanvasText y>` to be the BASELINE — it is the top-left of the text on every target
+- Reaching for lowercase `<svg>`/`<path>` for cross-platform drawing — those are DOM elements; the Canvas shapes are the multiplatform vocabulary
+
+**See also:** `Gesture` · `Image`
 
 ---
 
@@ -420,21 +488,25 @@ Navigation link. Web → a real `<a href>`; the package has NO router dependency
 ### `Field` `component`
 
 ```ts
-(props: { value: string | (() => string); onChangeText: (next: string) => void; kind?: 'text'|'number'|'password'|'email'|'search'|'tel'|'url'; placeholder?: string; disabled?: boolean; onSubmit?: () => void }) => VNode
+(props: { value: string | (() => string); onChangeText: (next: string) => void; placeholder?: string; disabled?: boolean } & ({ multiline?: false; kind?: 'text'|'number'|'password'|'email'|'search'|'tel'|'url'; onSubmit?: () => void } | { multiline: true; lines?: number })) => VNode
 ```
 
-Text input. Web `<input>`; iOS/Android `TextField`. Handler is `onChangeText(next)` (NOT `onInput`/`onChange`). `value` accepts a signal accessor for two-way binding.
+Text input. Web `<input>`; iOS/Android single-line `TextField`. Handler is `onChangeText(next)` (NOT `onInput`/`onChange`). `value` accepts a signal accessor for two-way binding. `multiline` makes it a text area on every target — web `<textarea rows>`, iOS `TextField(axis: .vertical)` + `.lineLimit(lines, reservesSpace: true)`, Android `minLines`/`maxLines` — exactly `lines` rows tall (default 3) and scrolling past them.
 
 **Example**
 
 ```tsx
 <Field value={draft()} onChangeText={(t) => draft.set(t)} placeholder="Search…" onSubmit={search} />
+<Field multiline lines={5} value={bio()} onChangeText={(t) => bio.set(t)} placeholder="About you" />
 ```
 
 **Common mistakes**
 
 - Using `onChange`/`onInput` — the canonical handler is `onChangeText(next: string)`
 - Forgetting `value` is the source of truth — write back via `onChangeText` → signal.set
+- A dynamic `multiline={cond()}` — it is structural (a different element / initializer), so only a static value lowers natively; branch the element instead
+- Expecting `onSubmit` or a keyboard `kind` on a `multiline` field — Return inserts a newline (as in a `<textarea>`), so neither applies; the types reject both and the native compiler warns
+- Expecting a `multiline` field to grow with its content — it is a fixed `lines` rows tall on every target and scrolls
 
 **See also:** `Toggle`
 
@@ -536,10 +608,10 @@ A container that animates its own SIZE as rows enter and leave the keyed list in
 ### `WebView` `component`
 
 ```ts
-(props: { html?: string; src?: string; data?: unknown; onMessage?: (message: string) => void }) => VNode
+(props: { html?: string; src?: string; data?: unknown; onMessage?: (message: string) => void; domStorage?: boolean; grow?: boolean }) => VNode
 ```
 
-Host a web page/component natively (WKWebView on iOS, Android WebView; `<iframe srcdoc>` on web). THE escape hatch for web-only packages (flow/code/document) on native — they run inside the WebView. Bidirectional bridge: `data` is pushed in as `window.__pyreonData` (+ a `pyreondata` event, live, no reload); the page calls `window.pyreonPostMessage(payload)` → your `onMessage` closure. `domStorage` (default true, native-only literal) keeps `localStorage` available in the hosted page (Android disables it by default; `false` opts out).
+Host a web page/component natively (WKWebView on iOS, Android WebView; `<iframe srcdoc>` on web). THE escape hatch for web-only packages (flow/code/document) on native — they run inside the WebView. Bidirectional bridge: `data` is pushed in as `window.__pyreonData` (+ a `pyreondata` event, live, no reload); the page calls `window.pyreonPostMessage(payload)` → your `onMessage` closure. `domStorage` (default true, native-only literal) keeps `localStorage` available in the hosted page (Android disables it by default; `false` opts out). SIZING: unsized it is the `<iframe>` default on every target — full width, 150 high; `grow` (literal, native) takes the free main-axis space of its parent `<Stack>`/`<Inline>` (`Modifier.weight(1f)` / a greedy SwiftUI frame / `flex: 1 1 150px`), fills a non-stack parent, and keeps 150 inside a `<Scroll>` (warned + dropped on native). BROWSER CHROME works natively: `<input type=file>` (picker, or camera for `capture` via the app's FileProvider), `alert`/`confirm`/`prompt` as native dialogs, geolocation / camera / microphone after a per-site consent AND only for permissions the app declares (AndroidManifest / Info.plist usage string), `window.open` / `target=_blank` handed to the system browser for http(s)/mailto/tel/sms.
 
 **Example**
 
@@ -551,6 +623,10 @@ Host a web page/component natively (WKWebView on iOS, Android WebView; `<iframe 
 
 - Using it for core UI (nav/forms/lists) — pays WebView boot + bundle cost; use native primitives there. Reserve &lt;WebView&gt; for self-contained web-island panes (editors/diagrams)
 - Expecting native look-and-feel — content renders as a web view, not native widgets
+- Expecting an unsized WebView to fill the screen — it is 150 high on every target (the iframe default); pass `grow` as a direct child of the `<Stack>` whose remaining space it should take
+- Putting `grow` inside a `<Scroll>` — there is no free space to fill; native drops it with a warning and the view stays 150 high
+- Expecting a hosted page to read the location or camera without declaring it — add the permission (AndroidManifest) / usage string (Info.plist); an undeclared one is denied and logged
+- Expecting `target="_blank"` to open inside the view — it hands the URL to the system browser (http(s)/mailto/tel/sms only), keeping the hosted page in place
 
 **See also:** `Web` · `connectWebHost`
 

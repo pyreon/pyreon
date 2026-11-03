@@ -131,12 +131,17 @@ describe('parse.ts — parseStatement: helper-body loops', () => {
     ['no test', 'for (let i = 0; ; i++) { a += i }'],
     ['no init/test/update', 'for (;;) { break }'],
     ['init is an assignment, not a declaration', 'let i = 0\n for (i = 0; i < 3; i++) { a += 1 }'],
-    ['two declarators', 'for (let i = 0, j = 1; i < 3; i++) { a += 1 }'],
     ['destructured counter', 'for (let [i] = [0]; i < 3; i++) { a += 1 }'],
     ['counter without an initializer', 'for (let i; i < 3; i++) { a += 1 }'],
   ])('a non-canonical for (%s) warns and drops', (_label, loop) => {
     const r = swift(body(loop))
     expect(r.warnings.join('\n')).toContain(RANGE_WARN)
+    expect(r.code).not.toContain('for i in')
+  })
+
+  it('a second declarator that the test does not read warns (its initialiser must not be dropped)', () => {
+    const r = swift(body('for (let i = 0, j = 1; i < 3; i++) { a += 1 }'))
+    expect(r.warnings.join('\n')).toContain('cached bound')
     expect(r.code).not.toContain('for i in')
   })
 
@@ -598,9 +603,12 @@ describe('parse.ts — parseStatement: destructures outside a braced block (fixe
     expect(r.warnings.join('\n')).toContain(W)
   })
 
-  it('a switch case that destructures warns the same way', () => {
+  it('a flat destructure in a switch case LOWERS, as it does in a braced block', () => {
+    // Case bodies go through the block walker now, so the flat-destructure
+    // expansion applies there too instead of dropping the declaration.
     const r = swift(helper('let n = 0; switch (n) { case 1: const { b } = o; break } return n'))
-    expect(r.warnings.join('\n')).toContain(W)
+    expect(r.warnings.join('\n')).not.toContain(W)
+    expect(r.code).toMatch(/let b = __pyDestr\d+\.b/)
   })
 
   it('an un-braced multi-declarator var warns as a multi-declarator', () => {

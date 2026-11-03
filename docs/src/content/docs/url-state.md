@@ -444,6 +444,10 @@ import type {
 import type { UrlRouter } from '@pyreon/url-state' // the setUrlRouter argument shape
 ```
 
+## On iOS and Android
+
+The address bar is the web's own surface, so history entries, `popstate`, `batchUrlUpdates` and custom serializers stay web. On iOS and Android (PMTC), `useUrlState(key, default)` with a literal **string, number or boolean** default lowers to the native router's query parameters (`PyreonRouter.query` / `setQueryParam`), with the same coercion as the web (an integer default lowers to an Int, a fractional one to a Double). Array and object defaults, a non-literal key or default, and the `clearOnDefault` / `debounce` / custom-serializer options stay web.
+
 ## API Reference
 
 ### `useUrlState(key, default, options?)`

@@ -83,7 +83,7 @@ const bindings: ItemBindings = {
  * The emitters, hash lane, name handling and form validators of a `schema` item.
  *
  * `declaredBy` is what the compiler's "no declaration by that name" warning names as the way to declare a
- * schema a form can validate against (`zodSchema/valibotSchema/arkTypeSchema`); only the plugin that owns
+ * schema a form can validate against (`zodSchema/valibotSchema/arktypeSchema`); only the plugin that owns
  * those names supplies it.
  */
 export function createSchemaItem(options: { readonly declaredBy?: string } = {}): ModuleItemEmitter {

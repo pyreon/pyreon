@@ -8,9 +8,14 @@
 // Type inference is deliberately naive — numeric assumption for
 // computed properties. Phase 1 grows a real inference pass.
 
+import { GESTURE_EVENT_NAMES, GESTURE_EVENTS } from './gesture-events'
+import { CANVAS_SHAPES, isCanvasShape, shapeColorLiteral } from './canvas-shapes'
+import type { GestureEventName } from './gesture-events'
 import { lowerWebViewDomStorage } from './webview-options'
+import { LayoutScopeTracker, lowerWebViewGrow } from './webview-sizing'
 import { classifyFallback, unconsumedSlotWarning } from './jsx-slot-attrs'
 import { swiftStr } from './string-literals'
+import { resolveFieldShape } from './field-shape'
 import {
   allServices,
   bindServices,
@@ -24,6 +29,7 @@ import {
   lowerPluginAssignValue,
   lowerPluginFunction,
   lowerPluginIdentifier,
+  isThrowingPluginExpr,
   lowerPluginExpr,
   moduleFieldValidators,
   pluginValueBinding,
@@ -92,19 +98,29 @@ import {
   optionalSpreadWarning,
   synthStructName,
 } from './expr-utils'
-import { asyncValueReturnWarning, bodyReturnsValue } from './async-function'
+import {
+  asyncValueReturnWarning,
+  bodyAwaitsFallible,
+  bodyReturnsValue,
+  indentLines,
+  SWIFT_TASK,
+  SWIFT_UNHANDLED_ASYNC,
+} from './async-function'
 import {
   nilCoalesceTernary,
   buildArraySpreadConcat,
   buildInferenceCtx,
   buildModuleConstTypes,
   classifyNegativeSlice,
+  sliceBoundsAreLiteral,
   arrayFromMapRewrite,
   classifyOptionalCondition,
   emptyInferenceCtx,
   indexedArrayCallback,
+  inferMapFromPairsType,
   inferReturnType,
   inferType,
+  mapFromPairsTypeProblem,
   logicalOrValueKind,
   normalizeNumericAlias,
   inferTypeValue,
@@ -1012,6 +1028,7 @@ export function emitSwift(
   // A host's `@State` lines are spliced into its component's struct when the component ends; a component that is not a struct (a stateless `@ViewBuilder func`) never reaches that splice, so what it registered must not survive into the next compile.
   _hostStateDecls = []
   _emitWarnings = []
+  _swiftLayout.reset()
   // Per-FILE hook-binding-name sets. They are populated by the pre-pass
   // below (which walks EVERY component at once), so they are file-scoped,
   // not component-scoped — and nothing reset them. Two consequences: the
@@ -2020,6 +2037,13 @@ function emitSwiftComponent(c: ComponentIR): string {
     lines.push(`      .onAppear {`)
     lines.push(bodyLines)
     lines.push(`      }`)
+    // The teardown `onMount` returned: runs when the view goes away, pairing with `.onAppear` re-running the body
+    // when it comes back.
+    if (d.cleanup !== undefined) {
+      lines.push(`      .onDisappear {`)
+      lines.push(d.cleanup.map((st) => `        ${emitSwiftStatement(st, 8)}`).join('\n'))
+      lines.push(`      }`)
+    }
   }
   // A plugin's own declarations may release what they hold when the view goes away
   // (`useFlow` disposes its listeners; a caller-owned `createFlow` does not).
@@ -2378,8 +2402,14 @@ function resolveSwiftStructFields(
   synth: SwiftSynthCtx | undefined,
 ): { name: string; type: TypeIR }[] {
   if (elem.kind === 'object') return elem.fields
-  if (elem.kind === 'typeRef' && synth) {
-    const s = synth.structs.find((st) => st.name === elem.name)
+  if (elem.kind === 'typeRef') {
+    // A file-level `type X = { … }` / `interface X` is a DECLARED struct, not one synthesised for this component —
+    // the Kotlin resolver has always checked both; this one only checked the component's own, so `rowFields` came
+    // back empty for every declared type.
+    const s =
+      synth?.structs.find((st) => st.name === elem.name) ??
+      _structDefs.find((st) => st.name === elem.name) ??
+      _synthExprStructs.find((st) => st.name === elem.name)
     if (s) return s.fields
   }
   return []
@@ -3178,7 +3208,12 @@ function emitSwiftFunction(
         () => emitSwiftExpr(conciseExpr, 0),
       )
       const vis = visibility === 'private' ? 'private ' : ''
-      if (isAsync) return `${vis}func ${swiftIdent(d.name)}(${params}) { Task { ${concise} } }`
+      if (isAsync) {
+        const body = bodyAwaitsFallible(d.body, isThrowingPluginExpr)
+          ? `do { ${concise} } ${SWIFT_UNHANDLED_ASYNC}`
+          : concise
+        return `${vis}func ${swiftIdent(d.name)}(${params}) { ${SWIFT_TASK} { ${body} } }`
+      }
       return `${vis}func ${swiftIdent(d.name)}(${params})${retType} { ${concise} }`
     }
     // Inline component value-consts into the body — a `private func` handler,
@@ -3201,7 +3236,10 @@ function emitSwiftFunction(
     _activeInferCtx.locals = savedActive
     const vis2 = visibility === 'private' ? 'private ' : ''
     if (isAsync) {
-      return `${vis2}func ${swiftIdent(d.name)}(${params}) {\n    Task {\n${bodyLines}\n    }\n  }`
+      const task = bodyAwaitsFallible(d.body, isThrowingPluginExpr)
+        ? `    ${SWIFT_TASK} {\n      do {\n${indentLines(bodyLines, 2)}\n      } ${SWIFT_UNHANDLED_ASYNC}\n    }`
+        : `    ${SWIFT_TASK} {\n${bodyLines}\n    }`
+      return `${vis2}func ${swiftIdent(d.name)}(${params}) {\n${task}\n  }`
     }
     return `${vis2}func ${swiftIdent(d.name)}(${params})${retType} {\n${bodyLines}\n  }`
   } finally {
@@ -3981,6 +4019,60 @@ function emitSwiftIndexedClosure(
   }
 }
 
+/**
+ * `new Map(src.map((x) => [k, v]))` → `Dictionary(src.map { x in (k, v) },
+ * uniquingKeysWith: { _, last in last })`. The plain `Dictionary(uniqueKeysWithValues:)`
+ * TRAPS on a repeated key; JS `Map` keeps the last value, which the uniquing
+ * closure reproduces. `x` is bound to the source's element type while the two
+ * halves emit, so a type-gated lowering inside them sees a typed receiver.
+ */
+function emitSwiftMapFromPairs(
+  e: Extract<ExprIR, { kind: 'new-collection' }>,
+  pairs: NonNullable<Extract<ExprIR, { kind: 'new-collection' }>['pairsFrom']>,
+  indent: number,
+): string {
+  const mt =
+    e.keyType !== undefined && e.valueType !== undefined
+      ? ({ kind: 'map', key: e.keyType, value: e.valueType } as const)
+      : inferMapFromPairsType(pairs, _activeInferCtx)
+  const problem = mapFromPairsTypeProblem(mt)
+  if (problem !== null) {
+    const w = `\`new Map(src.map((x) => [key, value]))\` cannot lower to a native dictionary: ${problem}.`
+    if (!_emitWarnings.includes(w)) _emitWarnings.push(w)
+  }
+  const src = emitSwiftExpr(pairs.source, indent)
+  const srcT = inferType(pairs.source, _activeInferCtx)
+  const elT = srcT.kind === 'array' || srcT.kind === 'set' ? srcT.element : undefined
+  const p = pairs.param
+  const had: [boolean, TypeIR | undefined, boolean, TypeIR | undefined] = [
+    _exprInferCtx.locals.has(p),
+    _exprInferCtx.locals.get(p),
+    _activeInferCtx.locals.has(p),
+    _activeInferCtx.locals.get(p),
+  ]
+  if (elT !== undefined) {
+    _exprInferCtx.locals.set(p, elT)
+    _activeInferCtx.locals.set(p, elT)
+  }
+  const prevEnum = _activeEnumType
+  _activeEnumType = undefined
+  try {
+    const k = withExpectedType(mt.kind === 'map' ? mt.key : undefined, () =>
+      emitSwiftExpr(pairs.key, indent),
+    )
+    const v = withExpectedType(mt.kind === 'map' ? mt.value : undefined, () =>
+      emitSwiftExpr(pairs.value, indent),
+    )
+    return `Dictionary(${src}.map { ${swiftIdent(p)} in (${k}, ${v}) }, uniquingKeysWith: { _, last in last })`
+  } finally {
+    _activeEnumType = prevEnum
+    if (had[0]) _exprInferCtx.locals.set(p, had[1]!)
+    else _exprInferCtx.locals.delete(p)
+    if (had[2]) _activeInferCtx.locals.set(p, had[3]!)
+    else _activeInferCtx.locals.delete(p)
+  }
+}
+
 function emitSwiftExpr(e: ExprIR, indent: number): string {
   switch (e.kind) {
     case 'literal':
@@ -4016,6 +4108,9 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       // M4.5: `await x.method()` — emit the `await` keyword before the awaited
       // expression. Only reachable inside an `async` arrow, whose action
       // emitter wraps the body in a `Task { … }` async scope.
+      // A FALLIBLE plugin expression (a request) is `try await`: the enclosing Task body is
+      // wrapped in a `do`/`catch` for it (see `swiftTaskBody`), so a failure ends the handler.
+      if (isThrowingPluginExpr(e.expr)) return `try await ${emitSwiftExpr(e.expr, indent)}`
       return `await ${emitSwiftExpr(e.expr, indent)}`
     case 'ext-expr':
       return lowerPluginExpr(e, 'swift', () => swiftEmitContext(indent))
@@ -4632,12 +4727,30 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         {
           const recvT = inferType(e.callee.object, _activeInferCtx)
           if (recvT.kind === 'map') {
-            if (prop === 'set' && e.args.length === 2)
-              return `${obj}[${argExprs[0]!}] = ${argExprs[1]!}`
-            if (prop === 'get' && e.args.length === 1) return `${obj}[${argExprs[0]!}]`
-            if (prop === 'has' && e.args.length === 1) return `(${obj}[${argExprs[0]!}] != nil)`
+            // Key / value args are emitted under the MAP's own key and value
+            // types, not whatever expectation the surrounding expression
+            // carries. Without this a comparison against an enum-valued map
+            // (`m.get('a') === 'done'`) leaked the enum expectation into the
+            // KEY and emitted `m[.a]`; the value arg of `.set` gets the value
+            // type so a literal lowers to the declared struct / enum.
+            // The surrounding enum context is CLEARED first: `withExpectedType` sets
+            // it for an enum type but never unsets an outer one.
+            const typedArg = (i: number, t: TypeIR): string => {
+              const prevEnum = _activeEnumType
+              _activeEnumType = undefined
+              try {
+                return withExpectedType(t, () => emitSwiftExpr(e.args[i]!, indent))
+              } finally {
+                _activeEnumType = prevEnum
+              }
+            }
+            const k = (i: number) => typedArg(i, recvT.key)
+            const v = (i: number) => typedArg(i, recvT.value)
+            if (prop === 'set' && e.args.length === 2) return `${obj}[${k(0)}] = ${v(1)}`
+            if (prop === 'get' && e.args.length === 1) return `${obj}[${k(0)}]`
+            if (prop === 'has' && e.args.length === 1) return `(${obj}[${k(0)}] != nil)`
             if (prop === 'delete' && e.args.length === 1)
-              return `${obj}${objDot}removeValue(forKey: ${argExprs[0]!})`
+              return `${obj}${objDot}removeValue(forKey: ${k(0)})`
             if (prop === 'clear' && e.args.length === 0) return `${obj}${objDot}removeAll()`
           }
           if (recvT.kind === 'set') {
@@ -5030,6 +5143,11 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
               // survived → `value of type 'String' has no member 'slice'`.
               const optional = e.callee.optional === true
               const recv = optional ? '$0' : obj
+              // A bound whose sign is not known at compile time: JavaScript's semantics, from the runtime.
+              if (!sliceBoundsAreLiteral(e.args)) {
+                const body = `pyreonSlice(${[recv, ...argExprs].join(', ')})`
+                return optional ? `${obj}.map { ${body} }` : body
+              }
               // Negative-index idioms (Swift indices count from the front):
               //   slice(-m)    → suffix(m)    (last m)
               //   slice(0, -n) → dropLast(n)  (drop last n)
@@ -5248,7 +5366,7 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
             // the loss is visible rather than a silent invalid emit.
             if (e.args.length === 0) {
               _emitWarnings.push(
-                '.toLocaleString() has no native locale-formatting equivalent — emitting a plain string conversion (no grouping separators). Format the value explicitly if you need grouping.',
+                '.toLocaleString() reached the emitter unlowered — the built-in `ecmascript-intl` plugin (which lowers it to PyreonNumberFormat) is not active in this compiler. Emitting a plain string conversion (no locale, no grouping).',
               )
               return `String(${obj})`
             }
@@ -5857,6 +5975,7 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       // the statement emit (collections force `var` — subscript-assign and
       // insert are mutating).
       if (e.collection === 'map') {
+        if (e.pairsFrom !== undefined) return emitSwiftMapFromPairs(e, e.pairsFrom, indent)
         // Seeded `new Map([[k,v],…])` → a dict literal `[k: v, …]`.
         if (e.entries && e.entries.length > 0) {
           const body = e.entries
@@ -6332,6 +6451,7 @@ const swiftWebViewFacade: WebViewFacade = {
   dynamicAttr: dynamicWebViewAttr,
   dataArg: swiftWebViewDataArg,
   messageHandler: emitSwiftMessageHandler,
+  grow: (el, chain) => ({ chain, arg: swiftWebViewGrowArg(el) }),
 }
 
 /**
@@ -6350,7 +6470,17 @@ const swiftHostState: HostStateSlot = {
   freshSuffix: () => ++_swiftHostStateSeq,
 }
 
+/**
+ * Which SwiftUI stack each JSX element is a DIRECT child of — so `<WebView
+ * grow>` grows along its parent's main axis only. See `webview-sizing.ts`.
+ */
+const _swiftLayout = new LayoutScopeTracker()
+
 function emitSwiftJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
+  return _swiftLayout.element(e.tag, () => emitSwiftJsxElement(e, indent))
+}
+
+function emitSwiftJsxElement(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
   const tag = e.tag
 
   // Library elements claimed by a registered element lowering (the built-ins
@@ -6364,7 +6494,8 @@ function emitSwiftJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numbe
   )
   if (lowering !== undefined) {
     const retagged = lowering.retag?.(e, { warn: pushEmitWarning })
-    if (retagged !== undefined) return emitSwiftJsx(retagged, indent)
+    // The retagged element TAKES the place of `e` — same depth, same parent.
+    if (retagged !== undefined) return emitSwiftJsxElement(retagged, indent)
     const emitLowered = lowering.emit?.swift
     if (emitLowered !== undefined) {
       warnUnreadSwiftAttrs(e)
@@ -6373,7 +6504,7 @@ function emitSwiftJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numbe
   }
 
   const rewritten = rewritePluginElement(e, _pluginScope, () => swiftEmitContext(indent))
-  if (rewritten !== undefined) return emitSwiftJsx(rewritten, indent)
+  if (rewritten !== undefined) return emitSwiftJsxElement(rewritten, indent)
 
   warnUnreadSwiftAttrs(e)
 
@@ -6472,6 +6603,10 @@ function emitSwiftJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numbe
   if (tag === 'Audio') return emitSwiftAudio(e, indent)
   if (tag === 'Modal') return emitSwiftModal(e, indent)
   if (tag === 'Press') return emitSwiftPress(e, indent)
+  if (tag === 'Gesture') return emitSwiftGesture(e, indent)
+  if (tag === 'Canvas') return emitSwiftCanvas(e, indent)
+  if (tag === 'CanvasText') return emitSwiftCanvasText(e, indent)
+  if (isCanvasShape(tag)) return emitSwiftCanvasShape(e)
   if (tag === 'Field') return emitSwiftField(e, indent)
   if (tag === 'Toggle') return emitSwiftToggle(e, indent)
   // Lowercase DOM tags a plugin gives meaning inside its own renderers (a flow's `<path>` / `<svg>`).
@@ -7012,7 +7147,10 @@ function emitSwiftAction(handler: ExprIR, indent: number): string {
       _exprInferCtx.locals = savedLocals
       _activeInferCtx.locals = savedLocalsAct6
       if (isAsync) {
-        return `{\n${pad}Task {\n${lines}\n${pad}}\n${' '.repeat(indent)}}`
+        if (bodyAwaitsFallible(inlinedStmts, isThrowingPluginExpr)) {
+          return `{\n${pad}${SWIFT_TASK} {\n${pad}  do {\n${indentLines(lines, 4)}\n${pad}  } ${SWIFT_UNHANDLED_ASYNC}\n${pad}}\n${' '.repeat(indent)}}`
+        }
+        return `{\n${pad}${SWIFT_TASK} {\n${lines}\n${pad}}\n${' '.repeat(indent)}}`
       }
       return `{\n${lines}\n${' '.repeat(indent)}}`
     }
@@ -7028,7 +7166,11 @@ function emitSwiftAction(handler: ExprIR, indent: number): string {
     // M4.5: single-expression async handler (`async () => await x.method()`)
     // still needs the `Task { … }` async scope.
     if (handler.async === true) {
-      return `{ Task { ${emitSwiftExpr(handler.body, indent)} } }`
+      const inner = emitSwiftExpr(handler.body, indent)
+      if (bodyAwaitsFallible(handler.body, isThrowingPluginExpr)) {
+        return `{ ${SWIFT_TASK} { do { ${inner} } ${SWIFT_UNHANDLED_ASYNC} } }`
+      }
+      return `{ ${SWIFT_TASK} { ${inner} } }`
     }
     return `{ ${emitSwiftExpr(handler.body, indent)} }`
   }
@@ -7854,6 +7996,17 @@ function readStaticAttr(
   for (const a of e.attrs) {
     if (a.kind === 'attr' && a.name === name) {
       if (a.value.kind === 'literal') return a.value.value as string | number | boolean
+      // `-1` parses as a unary minus over a literal; it is as static as `1`.
+      // Without the fold every negative literal read as dynamic, so a
+      // lowering that needs a literal warned on it or took the dynamic path.
+      if (
+        a.value.kind === 'unary' &&
+        (a.value.op === '-' || a.value.op === '+') &&
+        a.value.argument.kind === 'literal' &&
+        typeof a.value.argument.value === 'number'
+      ) {
+        return a.value.op === '-' ? -a.value.argument.value : a.value.argument.value
+      }
       // Const-ref: `src={API_URL}` where API_URL is a module-level
       // `const` string/number/boolean binding. Resolve it to its
       // literal so naming a constant works as well as inlining it.
@@ -7944,7 +8097,53 @@ const SWIFT_CONTAINER_TAGS = new Set([
   'HStack',
   'ZStack',
   'ScrollView',
+  // PyreonGesture WRAPS its content, so SwiftUI flattens it out of the
+  // accessibility tree exactly like a plain stack.
+  'Gesture',
+  // PyreonCanvas is a ZStack.
+  'Canvas',
 ])
+
+/**
+ * The {@link TransformProps} (`translateX` / `translateY` / `scale` /
+ * `rotate`) as SwiftUI render-transform modifiers, in the fixed cross-target
+ * order: rotate, then scale, then translate (`.offset` last so a translation is
+ * NOT multiplied by the scale — CSS `translate() scale() rotate()`).
+ *
+ * Every value is wrapped in a numeric conversion. A signal written only with
+ * integers is an `Int` on Swift, and none of these modifiers takes one —
+ * `.offset(x: count)` is "cannot convert Int to CGFloat". `CGFloat(_:)` and
+ * `Double(_:)` accept both Int and Double, so the conversion is correct for
+ * either inferred type. A literal is passed bare (Swift literals coerce).
+ *
+ * A special-case emitter that returns before the generic tail must apply it
+ * itself — generic-tail-completeness.test.ts checks every primitive.
+ */
+function swiftTransformModifiers(e: Extract<ExprIR, { kind: 'jsx-element' }>): string[] {
+  const value = (name: string, conv: string): string | undefined => {
+    const a = e.attrs.find(
+      (x): x is Extract<AttrIR, { kind: 'attr' }> => x.kind === 'attr' && x.name === name,
+    )
+    if (a === undefined) return undefined
+    const v = unwrapAccessorArrow(a.value)
+    if (v.kind === 'literal' && typeof v.value === 'number') return String(v.value)
+    if (v.kind === 'unary' && v.op === '-' && v.argument.kind === 'literal' && typeof v.argument.value === 'number') {
+      return `-${v.argument.value}`
+    }
+    return `${conv}(${emitSwiftExpr(v, 0)})`
+  }
+  const out: string[] = []
+  const rotate = value('rotate', 'Double')
+  if (rotate !== undefined) out.push(`.rotationEffect(.degrees(${rotate}))`)
+  const scale = value('scale', 'CGFloat')
+  if (scale !== undefined) out.push(`.scaleEffect(${scale})`)
+  const tx = value('translateX', 'CGFloat')
+  const ty = value('translateY', 'CGFloat')
+  if (tx !== undefined || ty !== undefined) {
+    out.push(`.offset(${[tx === undefined ? '' : `x: ${tx}`, ty === undefined ? '' : `y: ${ty}`].filter(Boolean).join(', ')})`)
+  }
+  return out
+}
 
 /**
  * The cross-platform a11y vocabulary (`AccessibilityProps`) as SwiftUI
@@ -8072,6 +8271,10 @@ function emitSwiftLayoutModifiers(
   if (marginY !== undefined) {
     parts.push(`.padding(.vertical, ${marginY})`)
   }
+  // Transform props — a RENDER transform of the whole box (background and
+  // margin included), so after everything that draws. See
+  // swiftTransformModifiers.
+  parts.push(...swiftTransformModifiers(e))
   // E3.1 — `data-testid` becomes SwiftUI's `.accessibilityIdentifier()`
   // so the same string the web e2e selects on (`getByTestId`) is also
   // reachable to XCUITest. Other `data-*` attrs are silently dropped
@@ -8138,9 +8341,8 @@ function emitSwiftLayoutModifiers(
  *
  * `justify` is intentionally NOT mapped to a VStack/HStack init arg —
  * SwiftUI doesn't have a single-arg equivalent (you typically insert
- * Spacer() children for distribution). Deferred to a future arc; v1
- * accepts the prop at the type level but produces no modifier on
- * Swift (silent no-op for now; non-blocking).
+ * Spacer() children for distribution). The prop is accepted at the type
+ * level and produces no modifier on Swift; a warning names it.
  */
 function emitSwiftStack(
   e: Extract<ExprIR, { kind: 'jsx-element' }>,
@@ -8190,7 +8392,9 @@ function emitSwiftStack(
   if (e.children.length === 0) {
     return `${viewName}${initSignature} {}${modifiers}`
   }
-  const contentLines = e.children.map((c) => pad + emitSwiftChild(c, indent + 2)).join('\n')
+  const contentLines = _swiftLayout.children(isRow ? 'row' : 'column', () =>
+    e.children.map((c) => pad + emitSwiftChild(c, indent + 2)).join('\n'),
+  )
   return `${viewName}${initSignature} {\n${contentLines}\n${' '.repeat(indent)}}${modifiers}`
 }
 
@@ -8233,6 +8437,15 @@ function emitSwiftLayer(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: num
  * chain via `emitSwiftLayoutModifiers`.
  */
 function emitSwiftScroll(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
+  // Children are unbounded along the scroll axis — a `<WebView grow>` there has
+  // no free space to take (see webview-sizing.ts).
+  const horizontal = readStaticAttr(e, 'axis') === 'horizontal'
+  return _swiftLayout.scroll(horizontal ? 'horizontal' : 'vertical', horizontal ? 'row' : 'column', () =>
+    emitSwiftScrollBody(e, indent),
+  )
+}
+
+function emitSwiftScrollBody(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
   const axis = readStaticAttr(e, 'axis')
   const initSignature = axis === 'horizontal' ? '(.horizontal)' : ''
   const modifiers = emitSwiftLayoutModifiers(e)
@@ -8508,7 +8721,7 @@ function emitSwiftWebView(e: Extract<ExprIR, { kind: 'jsx-element' }>): string {
   }
   const domStorage = lowerWebViewDomStorage(e, readStaticAttr, 'swift')
   if (domStorage.warning !== undefined) _emitWarnings.push(domStorage.warning)
-  const args = [content, dataArg, onMsgArg, domStorage.arg]
+  const args = [content, dataArg, onMsgArg, domStorage.arg, swiftWebViewGrowArg(e)]
     .filter((a) => a !== undefined)
     .join(', ')
   // The generic tail (`padding`/`margin`, `data-testid` →
@@ -8516,6 +8729,20 @@ function emitSwiftWebView(e: Extract<ExprIR, { kind: 'jsx-element' }>): string {
   // host that returned before it was structurally unassertable by XCUITest —
   // the same class the `<Link>`/`<Toggle>` emitters had.
   return `PyreonWebView(${args})${emitSwiftLayoutModifiers(e)}`
+}
+
+/**
+ * The `grow:` argument of a WebView-family host (`grow: .vertical` /
+ * `.horizontal` / `.both`), or undefined when it keeps the unsized default.
+ * SwiftUI sizing has to happen INSIDE the runtime view: the unsized default is
+ * an exact 150-high frame there, and an outer `.frame(maxHeight: .infinity)`
+ * cannot enlarge a fixed inner frame. Must run while the host element is being
+ * dispatched, since it reads the layout scope. See webview-sizing.ts.
+ */
+function swiftWebViewGrowArg(e: Extract<ExprIR, { kind: 'jsx-element' }>): string | undefined {
+  const grow = lowerWebViewGrow(e.attrs, () => readStaticAttr(e, 'grow'), _swiftLayout, e.tag)
+  if (grow.warning !== undefined) _emitWarnings.push(grow.warning)
+  return grow.axis === undefined ? undefined : `grow: .${grow.axis}`
 }
 
 /**
@@ -9036,11 +9263,149 @@ function emitSwiftModal(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: num
  *
  * `onPress` is the canonical Pyreon event name (mapped to `action:`
  * here per the per-platform-event-name table in the plan).
- *
- * `onLongPress` not yet wired — defer to a future arc when a real
- * primitive consumer demands it; today it's silently dropped (the
- * type-level surface still accepts it).
  */
+/**
+ * A `<Gesture onPan|onPinch|onRotate>` handler as a Swift `(PyreonXEvent) -> Void`
+ * closure. The parameter is typed (gesture-events.ts) so `e.dx` infers Double
+ * inside the body; a zero-parameter arrow ignores the event (`_ in`), and a
+ * bare function reference is called with it.
+ */
+function emitSwiftGestureHandler(handler: ExprIR, name: GestureEventName, indent: number): string {
+  if (handler.kind !== 'arrow') {
+    return `{ pyreonEvent in ${emitSwiftExpr(handler, indent)}(pyreonEvent) }`
+  }
+  const param = handler.params[0]
+  if (param === undefined) return `{ _ in${emitSwiftAction(handler, indent).slice(1)}`
+  return withSwiftLocals([[param, GESTURE_EVENTS[name].type]], () =>
+    emitSwiftCallbackArg(handler, indent),
+  )
+}
+
+/**
+ * `<Gesture>` → `PyreonGesture(onPan:onPinch:onRotate:) { … }`
+ * (@pyreon/native-runtime-swift). The runtime owns the recognisers — a
+ * SIMULTANEOUS DragGesture / MagnifyGesture / RotateGesture, each attached only
+ * when its handler is non-nil — and the start/change/end bookkeeping, so the
+ * emit is the handlers and the content. The generic tail carries testid,
+ * a11y and transforms (a transform on the region itself is warned at parse).
+ */
+function emitSwiftGesture(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
+  const args: string[] = []
+  for (const name of GESTURE_EVENT_NAMES) {
+    const attr = e.attrs.find(
+      (a): a is Extract<AttrIR, { kind: 'event' }> => a.kind === 'event' && a.name === name,
+    )
+    if (attr !== undefined) {
+      args.push(`${GESTURE_EVENTS[name].param}: ${emitSwiftGestureHandler(attr.handler, name, indent)}`)
+    }
+  }
+  const head = `PyreonGesture(${args.join(', ')})`
+  const tail = emitSwiftLayoutModifiers(e)
+  if (e.children.length === 0) return `${head} { EmptyView() }${tail}`
+  const pad = ' '.repeat(indent + 2)
+  const contentLines = e.children.map((c) => pad + emitSwiftChild(c, indent + 2)).join('\n')
+  return `${head} {\n${contentLines}\n${' '.repeat(indent)}}${tail}`
+}
+
+/**
+ * A numeric shape / canvas prop as a Swift `Double` argument. A literal is
+ * passed bare; an expression is wrapped in `Double(…)` because a signal written
+ * only with integers is an `Int` here and the runtime builders take Double.
+ * Absent → `fallback`, or a named warning and `0` for a required prop.
+ */
+function swiftCanvasNumber(
+  e: Extract<ExprIR, { kind: 'jsx-element' }>,
+  prop: string,
+  fallback: number | undefined,
+): string {
+  const a = e.attrs.find(
+    (x): x is Extract<AttrIR, { kind: 'attr' }> => x.kind === 'attr' && x.name === prop,
+  )
+  if (a === undefined) {
+    if (fallback !== undefined) return String(fallback)
+    _emitWarnings.push(`<${e.tag}> is missing its required \`${prop}\` prop — drawn with ${prop}=0 on native.`)
+    return '0'
+  }
+  const v = unwrapAccessorArrow(a.value)
+  if (v.kind === 'literal' && typeof v.value === 'number') return String(v.value)
+  if (v.kind === 'unary' && v.op === '-' && v.argument.kind === 'literal' && typeof v.argument.value === 'number') {
+    return `-${v.argument.value}`
+  }
+  return `Double(${emitSwiftExpr(v, 0)})`
+}
+
+/** A shape colour prop (token / `#hex`, static or a two-literal ternary) → `Color(…)` or undefined. */
+function swiftShapeColor(e: Extract<ExprIR, { kind: 'jsx-element' }>, prop: string): string | undefined {
+  return swiftStylingValue(e, prop, (v) => {
+    const c = shapeColorLiteral(String(v), 'swift')
+    if (c !== null) return c
+    _emitWarnings.push(
+      `<${e.tag} ${prop}="${String(v)}">: not a colour token or #hex literal — drawn with the \`text\` colour on native.`,
+    )
+    return resolveColor('text', 'swift')
+  })
+}
+
+/**
+ * `<Canvas width height>` → `PyreonCanvas(width:height:) { … }`
+ * (@pyreon/native-runtime-swift): a clipped top-leading ZStack, so every child
+ * draws in the canvas's own coordinates. The generic tail carries background,
+ * testid, a11y and transforms.
+ */
+function emitSwiftCanvas(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
+  const head = `PyreonCanvas(width: ${swiftCanvasNumber(e, 'width', undefined)}, height: ${swiftCanvasNumber(e, 'height', undefined)})`
+  const tail = emitSwiftLayoutModifiers(e)
+  if (e.children.length === 0) return `${head} { EmptyView() }${tail}`
+  const pad = ' '.repeat(indent + 2)
+  const contentLines = e.children.map((c) => pad + emitSwiftChild(c, indent + 2)).join('\n')
+  return `${head} {\n${contentLines}\n${' '.repeat(indent)}}${tail}`
+}
+
+/**
+ * A `<Canvas>` shape → `PyreonShape(<path builder>, fill:, stroke:, lineWidth:)`.
+ * With no paint at all a shape is filled with the `text` colour (the web impl
+ * applies the same rule), and `<CanvasLine>` is only ever stroked.
+ */
+function emitSwiftCanvasShape(e: Extract<ExprIR, { kind: 'jsx-element' }>): string {
+  const spec = CANVAS_SHAPES[e.tag]!
+  const args = spec.args.map((arg) => {
+    let value: string
+    if (arg.kind === 'string') {
+      const a = e.attrs.find(
+        (x): x is Extract<AttrIR, { kind: 'attr' }> => x.kind === 'attr' && x.name === arg.prop,
+      )
+      if (a === undefined) {
+        _emitWarnings.push(`<${e.tag}> is missing its required \`${arg.prop}\` prop — nothing is drawn on native.`)
+        value = '""'
+      } else {
+        value = emitSwiftExpr(unwrapAccessorArrow(a.value), 0)
+      }
+    } else {
+      value = swiftCanvasNumber(e, arg.prop, arg.default)
+    }
+    return arg.label === '' ? value : `${arg.label}: ${value}`
+  })
+  const fill = spec.strokeOnly ? undefined : swiftShapeColor(e, 'fill')
+  let stroke = swiftShapeColor(e, 'stroke')
+  if (spec.strokeOnly && stroke === undefined) stroke = resolveColor('text', 'swift')
+  const fillArg = fill ?? (stroke === undefined ? resolveColor('text', 'swift') : 'nil')
+  const width = stroke === undefined ? '0' : swiftCanvasNumber(e, 'strokeWidth', 1)
+  return `PyreonShape(${spec.swift}(${args.join(', ')}), fill: ${fillArg}, stroke: ${stroke ?? 'nil'}, lineWidth: ${width})`
+}
+
+/**
+ * `<CanvasText x y size fill>` → `PyreonCanvasText(x:y:size:color:) { Text(…) }`.
+ * The content is the ordinary `<Text>` emit (interpolation, signal reads); the
+ * runtime positions its TOP-LEFT at (x, y), the same as the web's
+ * `dominant-baseline="hanging"`.
+ */
+function emitSwiftCanvasText(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
+  const text = emitSwiftText({ kind: 'jsx-element', tag: 'Text', attrs: [], children: e.children }, indent + 2)
+  const color = swiftShapeColor(e, 'fill') ?? resolveColor('text', 'swift')
+  const head = `PyreonCanvasText(x: ${swiftCanvasNumber(e, 'x', undefined)}, y: ${swiftCanvasNumber(e, 'y', undefined)}, size: ${swiftCanvasNumber(e, 'size', 14)}, color: ${color})`
+  return `${head} {\n${' '.repeat(indent + 2)}${text}\n${' '.repeat(indent)}}`
+}
+
 function emitSwiftPress(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
   // Recognize both `onPress` (canonical) and the legacy `onClick`
   // shape so PMTC source migrating from the SwiftUI-flavored vocab
@@ -9206,13 +9571,30 @@ function emitSwiftField(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: num
     return emitSwiftGeneric(e, indent)
   }
 
-  let result = swiftFieldViewExpr(e, placeholder, textArg)
+  // `multiline` / `lines` — resolved by the helper both emitters share, so the
+  // text-area decision (and what a text area drops) cannot drift per target.
+  const shape = resolveFieldShape(e, readStaticAttr)
+  _emitWarnings.push(...shape.warnings)
+  let result: string
+  if (shape.multiline) {
+    // `axis: .vertical` makes the field wrap and take newlines; `.lineLimit(n,
+    // reservesSpace: true)` makes it exactly `n` rows tall and scroll past them
+    // — a web `<textarea rows=n>`, not an auto-growing field. Both are iOS 16;
+    // the runtime targets 17.
+    const lines =
+      shape.lines.kind === 'static'
+        ? String(shape.lines.n)
+        : `max(1, Int(${emitSwiftExpr(shape.lines.expr, 0)}))`
+    result = `TextField(${placeholder}, text: ${textArg}, axis: .vertical)\n${' '.repeat(indent + 2)}.lineLimit(${lines}, reservesSpace: true)`
+  } else {
+    result = swiftFieldViewExpr(e, placeholder, textArg)
+  }
 
   // onSubmit modifier (Pyreon canonical event for keyboard "done").
   const onSubmit = e.attrs.find(
     (a): a is Extract<AttrIR, { kind: 'event' }> => a.kind === 'event' && a.name === 'submit',
   )
-  if (onSubmit) {
+  if (onSubmit && shape.honourSubmit) {
     result += `\n${' '.repeat(indent + 2)}.onSubmit ${emitSwiftAction(onSubmit.handler, indent + 2)}`
   }
   // `kind` → the software KEYBOARD. The web gets this free from `<input type>`;
@@ -9224,7 +9606,7 @@ function emitSwiftField(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: num
   //
   // `password` is deliberately absent from the map: it selects SecureField, and
   // a masked field keeps the default keyboard.
-  const kindForKeyboard = readStaticAttr(e, 'kind')
+  const kindForKeyboard = shape.honourKind ? readStaticAttr(e, 'kind') : undefined
   const kb = typeof kindForKeyboard === 'string' ? FIELD_KEYBOARD_SWIFT[kindForKeyboard] : undefined
   if (kb !== undefined) {
     result += `\n${' '.repeat(indent + 2)}.keyboardType(${kb})`
@@ -9383,6 +9765,7 @@ function emitSwiftLink(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
   // this emitter, on both targets — the very audit this comment block calls for.
   const a11y = swiftAccessibilityModifiers(e).join('')
   const tail =
+    swiftTransformModifiers(e).join('') +
     (testid === undefined
       ? ''
       : `.accessibilityElement(children: .contain).accessibilityIdentifier(${testid})`) + a11y
@@ -9483,7 +9866,35 @@ function emitSwiftRouterProvider(
   }
 
   let result: string
-  if (e.children.length === 0) {
+  // With routes known and `<RouterView />` sharing the content with SIBLINGS (a
+  // header, a nav bar, a `<Toaster />`), the RouterView alone becomes the
+  // navigation stack and the siblings render AROUND it, as written. Inside the
+  // stack's root, a sibling was covered the moment any screen was pushed — on
+  // the web it persists across navigation. The router is provided to the
+  // whole tree so a sibling (a header link) can still navigate. A lone
+  // RouterView keeps the shape below unchanged.
+  const meaningful = e.children.filter((c) => !(c.kind === 'text' && c.value.trim() === ''))
+  const loneRouterView =
+    meaningful.length === 1 &&
+    meaningful[0]!.kind === 'expr' &&
+    meaningful[0]!.expr.kind === 'jsx-element' &&
+    meaningful[0]!.expr.tag === 'RouterView'
+  if (routes !== undefined && routesBlock !== '' && !loneRouterView && subtreeHasRouterViewSwift(e.children)) {
+    const home = _activeHomeRouteSwift ?? 'RouterView()'
+    const table = routes
+    const prevSlot = _activeRouterSlotSwift
+    _activeRouterSlotSwift = (at) =>
+      `RouterProvider(router: ${routerExpr}) {\n${' '.repeat(at + 2)}${home}${emitSwiftNavigationDestination(table, at + 4)}\n${' '.repeat(at)}}`
+    try {
+      const body =
+        meaningful.length === 1
+          ? emitSwiftChild(meaningful[0]!, indent)
+          : `VStack(spacing: 0) {\n${meaningful.map((c) => pad + emitSwiftChild(c, indent + 2)).join('\n')}\n${' '.repeat(indent)}}`
+      result = `${body}\n${' '.repeat(indent)}.environment(\\.pyreonRouter, ${routerExpr})`
+    } finally {
+      _activeRouterSlotSwift = prevSlot
+    }
+  } else if (e.children.length === 0) {
     result = `RouterProvider(router: ${routerExpr}) { }`
   } else {
     const contentLines = e.children.map((c) => pad + emitSwiftChild(c, indent + 2)).join('\n')
@@ -9864,10 +10275,30 @@ function emitSwiftRouterView(
   if (_emittingLayoutComponentSwift) {
     return `content()`
   }
+  // The routed slot of a RouterProvider whose RouterView has siblings: the
+  // navigation stack itself, emitted here so the siblings stay outside it.
+  if (_activeRouterSlotSwift !== null) {
+    return _activeRouterSlotSwift(_indent)
+  }
   if (_activeHomeRouteSwift !== null) {
     return _activeHomeRouteSwift
   }
   return `RouterView()`
+}
+
+/**
+ * The navigation stack for the `<RouterProvider>` currently emitting, when its
+ * RouterView has siblings; null otherwise. Saved and restored per provider.
+ */
+let _activeRouterSlotSwift: ((indent: number) => string) | null = null
+
+/** Whether a `<RouterView />` appears anywhere in this JSX subtree. */
+function subtreeHasRouterViewSwift(node: unknown): boolean {
+  if (node === null || typeof node !== 'object') return false
+  if (Array.isArray(node)) return node.some(subtreeHasRouterViewSwift)
+  const n = node as { kind?: unknown; tag?: unknown }
+  if (n.kind === 'jsx-element' && n.tag === 'RouterView') return true
+  return Object.values(node).some(subtreeHasRouterViewSwift)
 }
 
 /**

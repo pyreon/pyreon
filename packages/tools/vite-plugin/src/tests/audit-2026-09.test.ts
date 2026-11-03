@@ -32,6 +32,13 @@ import pyreonPlugin, {
   type PyreonPluginOptions,
 } from '../index'
 
+// A signal read compiles to `name()` in expression position and to the direct
+// `_bindText(name, …)` binding when it is the sole text child (`<div>{name}</div>`).
+// Either one means the name was recognised as a signal.
+const readsSignal = (code: string | undefined, name: string): boolean =>
+  new RegExp(`\\b${name}\\(\\)|_bindText\\(${name},`).test(code ?? '')
+
+
 type ConfigHook = (c: { root: string }, env: { command: 'build' | 'serve' }) => unknown
 type BuildStartHook = (this: unknown) => Promise<void>
 type TransformHook = (
@@ -92,7 +99,7 @@ describe('a signal store under src/lib/ reaches the registry', () => {
     const plugin = boot()
     await (plugin.buildStart as BuildStartHook).call({})
     const out = await transform(plugin, VIEW, viewPath, { './lib/store': join(root, 'src/lib/store.ts') })
-    expect(out?.code).toContain('count()')
+    expect(readsSignal(out?.code, 'count')).toBe(true)
   })
 
   it('a .ts store is registered when it is TRANSFORMED, not only by the prescan', async () => {
@@ -103,7 +110,7 @@ describe('a signal store under src/lib/ reaches the registry', () => {
     // No buildStart: the prescan never ran (a file created after boot).
     await transform(plugin, STORE, storePath)
     const out = await transform(plugin, VIEW, viewPath, { './lib/store': storePath })
-    expect(out?.code).toContain('count()')
+    expect(readsSignal(out?.code, 'count')).toBe(true)
   })
 })
 

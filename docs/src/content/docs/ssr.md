@@ -231,19 +231,20 @@ Pass these inside `isr: { ... }` on `createServer({ config })`. `revalidate` is 
 | --------------------- | ----------------------------------------------- | --------------------- | ------------------------------------------------------------------------------------ |
 | `revalidate`          | `number`                                        | — (required)          | Seconds before a cached entry is considered stale                                    |
 | `maxEntries`          | `number`                                        | `1000`                | LRU cap on the default in-memory store (ignored when `store` is set)                 |
-| `cacheKey`            | `(req) => string`                               | `pathname + search`   | Cache-key derivation (see [Cache key](#cache-key-two-trade-offs))                   |
+| `cacheKey`            | `(req) => string \| 'path-only'`                | `pathname + search`   | Cache-key derivation (see [Cache key](#cache-key-two-trade-offs)). `'path-only'` keys by pathname and ignores the query string; it does not count as a custom key for the credential checks below |
 | `store`               | `ISRStore`                                       | in-memory `Map`       | Pluggable backing store (Redis / KV / filesystem)                                    |
 | `tagsForRequest`      | `(req) => string[] \| Promise<string[]>`        | none                  | Tags recorded at cache-set time for `revalidateTag` group invalidation               |
 | `revalidateTimeoutMs` | `number`                                        | `30000`               | Max wall-time for one background revalidation before it's abandoned + aborted        |
 | `revalidateRequest`   | `(req) => Request \| null`                      | the original request  | Construct the request used for background revalidation; `null` skips revalidation    |
 | `responseFilter`      | `(res) => Response \| null`                     | none                  | Final say on cacheability; `null` bypasses cache for that render                     |
+| `expireOnTimeout`     | `boolean`                                       | `false`               | On a background-revalidation timeout, drop the stale entry so the next request renders fresh (default keeps serving stale) |
 
 ### Cache key — two trade-offs
 
 The default cache key is `url.pathname + url.search`. Query strings vary the cache (`/posts?id=42` vs `?id=99` are correctly distinct). **Cookies and `Authorization` headers are NOT included by default.**
 
-:::danger{title="Auth-gated content leaks across users with the default key"}
-If a loader reads `cookie` / `Authorization`, the default key serves the *first* user's rendered HTML to every other user (the URL is identical). Either use plain `mode: 'ssr'` for those routes, or supply a `cacheKey` that varies on the session identifier:
+:::warning{title="Credentialed requests are not cached with the default key"}
+With the default key (or `'path-only'`), a request that carries a `Cookie` or `Authorization` header is not cached — it is passed through with `x-isr-cache: BYPASS` — unless the response sets `Cache-Control: public`. This prevents one user's personalized render from being replayed to others, but it also means a page rendered for signed-in users is never cached. For personalized pages that you do want cached, supply a `cacheKey` that varies on the session identifier (or use plain `mode: 'ssr'` for those routes):
 
 ```ts
 isr: {
@@ -264,7 +265,7 @@ isr: { revalidate: 60, cacheKey: (req) => new URL(req.url).pathname }
 ```
 :::
 
-A one-time dev-mode warning fires at handler init when no `cacheKey` is configured — it names both fixes inline. The warning is deduped per handler instance (a busy CMS won't spam logs) and tree-shakes to zero bytes in production via the standard `process.env.NODE_ENV !== 'production'` gate.
+A one-time dev-mode warning fires at handler init when no `cacheKey` is configured — it names both fixes inline. It is deduped per handler instance and tree-shakes out of production builds. The warning for a refused credentialed request is different: it fires in production too (once per handler), because it signals a live misconfiguration.
 
 ### What is and isn't cached
 
@@ -273,8 +274,14 @@ The handler refuses to cache a render whose response matches any of these disqua
 - non-`2xx` status (transient errors / redirects)
 - a `Set-Cookie` header (per-user session state)
 - `Cache-Control: private | no-store | no-cache` (RFC 7234)
+- a `Content-Type` other than `text/html` (API routes and data/fragment endpoints)
+- a `Content-Security-Policy` header carrying a `'nonce-…'` (a nonce must not be replayed)
 - an `Authorization` response header
-- `Vary: Cookie | Authorization | *` **without** an explicit `cacheKey` (with a `cacheKey` you've opted into per-user keying, so this is allowed)
+
+Without a custom `cacheKey` function (the default key or `'path-only'`), additionally:
+
+- any `Vary` token other than `Accept-Encoding` — `Vary: Cookie | Authorization | *` and also `Origin`, `Accept-Language`, …, since the key does not include them
+- a request that carried `Cookie` or `Authorization`, unless the response sets `Cache-Control: public`
 
 `responseFilter` is the final-say override — return the response to cache it, or `null` to bypass:
 

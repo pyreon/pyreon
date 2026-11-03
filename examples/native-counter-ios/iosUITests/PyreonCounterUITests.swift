@@ -1540,6 +1540,34 @@ final class PyreonCounterUITests: XCTestCase {
         )
     }
 
+    // Switching language at runtime. The shared Counter.tsx renders
+    // `{i18n.locale()}` and a button running `i18n.locale.set('en')`. On native
+    // both used to compile to code that could not build (a call on a String, an
+    // assignment to a read-only property); now the read is the container's
+    // `locale` property and the write assigns it. Tapping the button must
+    // re-translate EVERY t() read in place: the plain lookup, the interpolated
+    // one, and the locale label itself.
+    func test_i18nLocaleSwitchRetranslatesInPlace() throws {
+        let app = XCUIApplication()
+        app.launch()
+
+        XCTAssertTrue(
+            app.staticTexts["Greeting: Hallo!"].waitForExistence(timeout: 30),
+            "App did not render the configured German greeting"
+        )
+        XCTAssertEqual(app.staticTexts["i18n-locale"].label, "de", "initial locale is not the configured 'de'")
+
+        app.buttons["i18n-switch-en"].tap()
+
+        XCTAssertTrue(
+            app.staticTexts["Greeting: Hello!"].waitForExistence(timeout: 5),
+            "t('hello') did not re-translate after i18n.locale.set('en')"
+        )
+        XCTAssertTrue(app.staticTexts["Hi Vit!"].exists, "interpolated t() did not re-translate")
+        XCTAssertFalse(app.staticTexts["Greeting: Hallo!"].exists, "the German string is still rendered")
+        XCTAssertEqual(app.staticTexts["i18n-locale"].label, "en", "i18n.locale() did not read the new locale")
+    }
+
     func test_toggleFlipsObservableState() throws {
         let app = XCUIApplication()
         app.launch()

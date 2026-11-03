@@ -1339,8 +1339,42 @@ type Props = ExtractProps<typeof Iterator>
   'primitives/Press': {
     signature: '(props: { onPress: () => void; onLongPress?: () => void; onSwipeLeft?: () => void; onSwipeRight?: () => void; disabled?: boolean; children }) => VNode',
     example: '<Press onPress={() => select(item)}><Card item={item} /></Press>',
-    notes: 'Unstyled tap target (no chrome). Web `<div role="button">`; iOS `Button {}` (plain); Android `Box(clickable)`. Use to make arbitrary content tappable; supports `onLongPress` and `onSwipeLeft`/`onSwipeRight` (horizontally-dominant ≥40px swipe — iOS high-priority DragGesture, Android direction-locked drag detector, web pointer-delta polyfill; taps still fire `onPress`). See also: Button.',
+    notes: 'Unstyled tap target (no chrome). Web `<div role="button">`; iOS `Button {}` (plain); Android `Box(clickable)`. Use to make arbitrary content tappable; supports `onLongPress` and `onSwipeLeft`/`onSwipeRight` (horizontally-dominant ≥40px swipe — iOS high-priority DragGesture, Android direction-locked drag detector, web pointer-delta polyfill; taps still fire `onPress`). See also: Button, Gesture.',
     mistakes: '- Using `<Press>` for a primary action — use `<Button>` for styled CTAs',
+  },
+
+  'primitives/Gesture': {
+    signature: `(props: { onPan?: (e: { dx: number; dy: number; x: number; y: number; phase: 'start'|'change'|'end' }) => void; onPinch?: (e: { scale: number; centerX: number; centerY: number; phase }) => void; onRotate?: (e: { degrees: number; phase }) => void; children }) => VNode`,
+    example: `const zoom = signal(1.0)
+const base = signal(1.0)
+<Gesture
+  onPinch={(e) => {
+    zoom.set(base() * e.scale)
+    if (e.phase === 'end') base.set(zoom())
+  }}
+>
+  <Stack scale={zoom()}><Text>Floor plan</Text></Stack>
+</Gesture>`,
+    notes: 'A region that recognises CONTINUOUS gestures and reports their values. Every value is CUMULATIVE since the gesture began; each gesture delivers one `start`, any number of `change`, then one `end` (also on cancel). Pan, pinch and rotate run SIMULTANEOUSLY, and nothing is reported until the pointer passes the touch slop (10px/pt, the platform slop on Android), so a `<Press>` inside still gets its taps. Web: pointer events on a `touch-action: none` div (capture taken only once claimed); iOS: `PyreonGesture` (simultaneous `DragGesture`/`MagnifyGesture`/`RotateGesture`); Android: `PyreonGesture` (one `pointerInput` loop over `calculatePan`/`calculateZoom`/`calculateRotation`). Drive content with the transform props (`translateX`/`translateY`/`scale`/`rotate`), which every primitive accepts and which update in place. Known divergence: a two-finger pan follows the centroid on web/Android and the first finger on iOS. See also: Press, Stack, Canvas.',
+    mistakes: `- Putting \`scale\`/\`translateX\` on the \`<Gesture>\` ITSELF — the values are measured in its own coordinate space and feed back into themselves; transform a CHILD (the compiler warns)
+- Treating \`e.scale\` / \`e.dx\` as a per-frame DELTA — they are cumulative since the gesture began; multiply/add your committed base, and commit it on \`phase === "end"\`
+- Using \`<Press onSwipeLeft>\` for free dragging — swipe is a discrete end-of-gesture verdict; \`<Gesture onPan>\` reports the live translation
+- Expecting pinch/rotate from one pointer — they begin only once two pointers are down`,
+  },
+
+  'primitives/Canvas': {
+    signature: '(props: { width: number; height: number; background?: ColorToken; children }) => VNode — children: CanvasRect { x, y, width, height, radius? } · CanvasCircle { cx, cy, r } · CanvasLine { x1, y1, x2, y2 } · CanvasPath { d } · CanvasText { x, y, size? }, each with fill?/stroke?/strokeWidth? (token or #hex)',
+    example: `<Canvas width={200} height={120} background="surface">
+  <CanvasRect x={10} y={10} width={80} height={50} radius={6} fill="primary" />
+  <CanvasCircle cx={150} cy={40} r={20} fill="#16a34a" stroke="text" strokeWidth={2} />
+  <CanvasPath d="M10 100 L190 100" stroke="text" strokeWidth={2} />
+  <CanvasText x={110} y={80} size={14}>Hall A</CanvasText>
+</Canvas>`,
+    notes: 'A fixed-size, clipped vector drawing surface. Children are the shape primitives, drawn in source order (later on top) in the canvas coordinates: (0,0) top-left, y down, px/pt/dp. Shapes are ordinary JSX children, so `<For>`, `<Show>` and signal-driven props (`d={trail()}`, `width={w()}`) work inside. Paint: `fill`/`stroke` take a colour token or a `#hex` literal; with neither, a shape is filled with `text`; `<CanvasLine>` is stroke-only (default `text`, width 1). `<CanvasPath d>` takes full SVG path data (M L H V C S Q T A Z, absolute + relative). `<CanvasText>` places the TOP-LEFT of its text at (x, y) on every target. Web: one absolutely positioned `<svg>` layer per shape; iOS: `PyreonCanvas { PyreonShape(PyreonCanvasPath.rect(…)) }` (a runtime SVG parser for `d`); Android: `PyreonCanvas { PyreonShape(PyreonShapeSpec.Rect(…)) }` (androidx `PathParser` for `d`). Pair with `<Gesture>` + transform props for a pannable / zoomable plan. See also: Gesture, Image.',
+    mistakes: `- Using a shape outside a \`<Canvas>\` — shapes draw in the canvas coordinate space and fill its frame on native
+- Passing a CSS colour name (\`fill="tomato"\`) — only colour tokens and \`#hex\` literals resolve on native (the compiler warns)
+- Expecting \`<CanvasText y>\` to be the BASELINE — it is the top-left of the text on every target
+- Reaching for lowercase \`<svg>\`/\`<path>\` for cross-platform drawing — those are DOM elements; the Canvas shapes are the multiplatform vocabulary`,
   },
 
   'primitives/Link': {
@@ -1353,11 +1387,15 @@ type Props = ExtractProps<typeof Iterator>
   },
 
   'primitives/Field': {
-    signature: `(props: { value: string | (() => string); onChangeText: (next: string) => void; kind?: 'text'|'number'|'password'|'email'|'search'|'tel'|'url'; placeholder?: string; disabled?: boolean; onSubmit?: () => void }) => VNode`,
-    example: '<Field value={draft()} onChangeText={(t) => draft.set(t)} placeholder="Search…" onSubmit={search} />',
-    notes: 'Text input. Web `<input>`; iOS/Android `TextField`. Handler is `onChangeText(next)` (NOT `onInput`/`onChange`). `value` accepts a signal accessor for two-way binding. See also: Toggle.',
+    signature: `(props: { value: string | (() => string); onChangeText: (next: string) => void; placeholder?: string; disabled?: boolean } & ({ multiline?: false; kind?: 'text'|'number'|'password'|'email'|'search'|'tel'|'url'; onSubmit?: () => void } | { multiline: true; lines?: number })) => VNode`,
+    example: `<Field value={draft()} onChangeText={(t) => draft.set(t)} placeholder="Search…" onSubmit={search} />
+<Field multiline lines={5} value={bio()} onChangeText={(t) => bio.set(t)} placeholder="About you" />`,
+    notes: 'Text input. Web `<input>`; iOS/Android single-line `TextField`. Handler is `onChangeText(next)` (NOT `onInput`/`onChange`). `value` accepts a signal accessor for two-way binding. `multiline` makes it a text area on every target — web `<textarea rows>`, iOS `TextField(axis: .vertical)` + `.lineLimit(lines, reservesSpace: true)`, Android `minLines`/`maxLines` — exactly `lines` rows tall (default 3) and scrolling past them. See also: Toggle.',
     mistakes: `- Using \`onChange\`/\`onInput\` — the canonical handler is \`onChangeText(next: string)\`
-- Forgetting \`value\` is the source of truth — write back via \`onChangeText\` → signal.set`,
+- Forgetting \`value\` is the source of truth — write back via \`onChangeText\` → signal.set
+- A dynamic \`multiline={cond()}\` — it is structural (a different element / initializer), so only a static value lowers natively; branch the element instead
+- Expecting \`onSubmit\` or a keyboard \`kind\` on a \`multiline\` field — Return inserts a newline (as in a \`<textarea>\`), so neither applies; the types reject both and the native compiler warns
+- Expecting a \`multiline\` field to grow with its content — it is a fixed \`lines\` rows tall on every target and scrolls`,
   },
 
   'primitives/Toggle': {
@@ -1394,11 +1432,15 @@ type Props = ExtractProps<typeof Iterator>
   },
 
   'primitives/WebView': {
-    signature: '(props: { html?: string; src?: string; data?: unknown; onMessage?: (message: string) => void }) => VNode',
+    signature: '(props: { html?: string; src?: string; data?: unknown; onMessage?: (message: string) => void; domStorage?: boolean; grow?: boolean }) => VNode',
     example: '<WebView html={CHART_HTML} data={metrics()} onMessage={(m) => selected.set(m)} />',
-    notes: 'Host a web page/component natively (WKWebView on iOS, Android WebView; `<iframe srcdoc>` on web). THE escape hatch for web-only packages (flow/code/document) on native — they run inside the WebView. Bidirectional bridge: `data` is pushed in as `window.__pyreonData` (+ a `pyreondata` event, live, no reload); the page calls `window.pyreonPostMessage(payload)` → your `onMessage` closure. `domStorage` (default true, native-only literal) keeps `localStorage` available in the hosted page (Android disables it by default; `false` opts out). See also: Web, connectWebHost.',
+    notes: `Host a web page/component natively (WKWebView on iOS, Android WebView; \`<iframe srcdoc>\` on web). THE escape hatch for web-only packages (flow/code/document) on native — they run inside the WebView. Bidirectional bridge: \`data\` is pushed in as \`window.__pyreonData\` (+ a \`pyreondata\` event, live, no reload); the page calls \`window.pyreonPostMessage(payload)\` → your \`onMessage\` closure. \`domStorage\` (default true, native-only literal) keeps \`localStorage\` available in the hosted page (Android disables it by default; \`false\` opts out). SIZING: unsized it is the \`<iframe>\` default on every target — full width, 150 high; \`grow\` (literal, native) takes the free main-axis space of its parent \`<Stack>\`/\`<Inline>\` (\`Modifier.weight(1f)\` / a greedy SwiftUI frame / \`flex: 1 1 150px\`), fills a non-stack parent, and keeps 150 inside a \`<Scroll>\` (warned + dropped on native). BROWSER CHROME works natively: \`<input type=file>\` (picker, or camera for \`capture\` via the app's FileProvider), \`alert\`/\`confirm\`/\`prompt\` as native dialogs, geolocation / camera / microphone after a per-site consent AND only for permissions the app declares (AndroidManifest / Info.plist usage string), \`window.open\` / \`target=_blank\` handed to the system browser for http(s)/mailto/tel/sms. See also: Web, connectWebHost.`,
     mistakes: `- Using it for core UI (nav/forms/lists) — pays WebView boot + bundle cost; use native primitives there. Reserve <WebView> for self-contained web-island panes (editors/diagrams)
-- Expecting native look-and-feel — content renders as a web view, not native widgets`,
+- Expecting native look-and-feel — content renders as a web view, not native widgets
+- Expecting an unsized WebView to fill the screen — it is 150 high on every target (the iframe default); pass \`grow\` as a direct child of the \`<Stack>\` whose remaining space it should take
+- Putting \`grow\` inside a \`<Scroll>\` — there is no free space to fill; native drops it with a warning and the view stays 150 high
+- Expecting a hosted page to read the location or camera without declaring it — add the permission (AndroidManifest) / usage string (Info.plist); an undeclared one is denied and logged
+- Expecting \`target="_blank"\` to open inside the view — it hands the URL to the system browser (http(s)/mailto/tel/sms only), keeping the hosted page in place`,
   },
 
   'primitives/connectWebHost': {
@@ -1780,7 +1822,7 @@ return json({ data: result.data }) // keyed by matched-chain index`,
     { path: "settings", component: Settings },
   ]},
 ])`,
-    notes: 'Create a router instance with route records, guards, middleware, and mode configuration. Accepts either an array of route records (shorthand) or a full `RouterOptions` object with `routes`, `mode` (`"history"` | `"hash"`), `scrollBehavior`, `beforeEach`, `afterEach`, and `middleware`. The returned `Router` is generic over route names for typed programmatic navigation. See also: RouterProvider, useRouter, useRoute.',
+    notes: 'Create a router instance with route records, guards, middleware, and mode configuration. Accepts either an array of route records (shorthand) or a full `RouterOptions` object with `routes`, `mode` (`"history"` | `"hash"`), `scrollBehavior`, and global `beforeEach` / `afterEach` guard arrays (which run before any added later with `router.beforeEach()` / `router.afterEach()`, and are the form the native targets lower). Middleware is per-route (`RouteRecord.middleware`), not a router option. The returned `Router` is generic over route names for typed programmatic navigation. See also: RouterProvider, useRouter, useRoute.',
     mistakes: `- \`createRouter({ routes: [...], mode: "hash" })\` and using \`window.location.hash\` elsewhere — hash mode uses \`history.pushState\`, not \`location.hash\`. Reading \`location.hash\` directly will not reflect router state
 - Defining route paths without leading \`/\` in root routes — all root-level paths must start with \`/\`
 - Using \`redirect: "/target"\` with a guard on the same route — redirects bypass guards. Use \`beforeEnter\` to conditionally redirect instead
@@ -5020,16 +5062,17 @@ notifications.notify('Done', 'Your export is ready')`,
   },
 
   'hooks/useFilePicker': {
-    signature: 'useFilePicker() => { pick: () => Promise<string | null>; isAvailable: () => boolean }',
+    signature: 'useFilePicker() => { pick: (accept?: readonly string[]) => Promise<string | null>; isAvailable: () => boolean }',
     example: `const files = useFilePicker()
 const status = signal<'idle' | 'picked' | 'cancelled'>('idle')
 
 <button onClick={async () => {
-  const uri = await files.pick()
+  const uri = await files.pick(['application/pdf', '.csv'])
   status.set(uri === null ? 'cancelled' : 'picked')
-}}>Pick a file</button>`,
-    notes: 'Pick a document/file from the device — UIDocumentPickerViewController (iOS), the Storage Access Framework `OpenDocument` (Android), a hidden file input (web). The document sibling of `useImagePicker` (any file — a PDF, a `.csv`, a `.zip` — not just photos), and the THIRD async-result hook: `pick()` returns a `Promise<string | null>` you `await`, resolving a URI string or `null` when the user cancels; it never rejects. Under PMTC the async-await lowering wraps the awaiting handler in a Swift `Task { … }` / Kotlin `pyreonAsyncScope.launch { … }`. Requires NO storage permission on either native platform — both system pickers run out of process and hand back only the chosen document, so there is no iOS entitlement and no Android runtime permission. Saving/exporting a file is a separate native flow and is intentionally out of scope (tracked follow-up). See also: useImagePicker, useShare.',
-    mistakes: `- Testing the result for TRUTHINESS (\`uri ? … : …\`) instead of comparing to null (\`uri === null\`). JS truthiness is not a native Bool — the explicit null comparison is what PMTC lowers to \`uri == nil\` (Swift) / \`uri == null\` (Kotlin), and it is also correct on the web.
+}}>Pick a PDF or CSV</button>`,
+    notes: 'Pick a document/file from the device — UIDocumentPickerViewController (iOS), the Storage Access Framework `OpenDocument` (Android), a hidden file input (web). The document sibling of `useImagePicker` (any file — a PDF, a `.csv`, a `.zip` — not just photos), and the THIRD async-result hook: `pick()` returns a `Promise<string | null>` you `await`, resolving a URI string or `null` when the user cancels; it never rejects. `pick(accept)` limits the choice in the `<input accept>` vocabulary — MIME types (`application/pdf`), wildcards (`image/*`), extensions (`.csv`) — mapped to UTTypes on iOS and MIME types on Android; an entry a platform cannot resolve widens that pick to any file rather than hiding the one the user wants. Under PMTC the async-await lowering wraps the awaiting handler in a Swift `Task { … }` / Kotlin `pyreonAsyncScope.launch { … }`. Requires NO storage permission on either native platform — both system pickers run out of process and hand back only the chosen document, so there is no iOS entitlement and no Android runtime permission. Saving/exporting a file is a separate native flow and is intentionally out of scope (tracked follow-up). See also: useImagePicker, useShare.',
+    mistakes: `- Treating \`accept\` as a security boundary. It is a hint to the picker: a platform that cannot resolve an entry widens to any file, and a user can rename a file. Validate the type of what you read.
+- Testing the result for TRUTHINESS (\`uri ? … : …\`) instead of comparing to null (\`uri === null\`). JS truthiness is not a native Bool — the explicit null comparison is what PMTC lowers to \`uri == nil\` (Swift) / \`uri == null\` (Kotlin), and it is also correct on the web.
 - Calling \`files.pick()\` WITHOUT \`await\` inside a plain (non-async) handler — it returns a \`Promise<string | null>\`, not a URI. Mark the handler \`async\` and \`await\` it (PMTC wraps that async handler in a native \`Task\`/coroutine scope; a sync action slot cannot await).
 - Reaching for \`useFilePicker\` when you specifically want a PHOTO. Use \`useImagePicker\` — it opens the photo picker (\`PHPickerViewController\` / \`PickVisualMedia\`), which is a better UX for images than the general document browser.
 - Treating the returned URI as a stable, persistable path. It is an opaque, platform-shaped, EPHEMERAL handle — a \`file://\` temp copy on iOS, a \`content://\` URI on Android, a \`blob:\` object URL on the web. Read it or upload it promptly; do not store it and expect it to resolve later.
@@ -5046,13 +5089,30 @@ const status = signal<'idle' | 'picked' | 'cancelled'>('idle')
   const uri = await picker.pick()
   status.set(uri === null ? 'cancelled' : 'picked')
 }}>Pick a photo</button>`,
-    notes: `Pick an image from the device's photo library — PHPickerViewController (iOS), the Android Photo Picker (\`PickVisualMedia\`), a hidden file input (web). The SECOND async-result hook (after \`useBiometrics\`): \`pick()\` returns a \`Promise<string | null>\` you \`await\`, resolving a URI string or \`null\` when the user cancels; it never rejects. Under PMTC the async-await lowering wraps the awaiting handler in a Swift \`Task { … }\` / Kotlin \`pyreonAsyncScope.launch { … }\`. Requires NO photo-library permission on either native platform — both system pickers run out of process and hand back only the chosen asset, so there is no Info.plist usage description and no Android runtime permission to request. See also: useBiometrics, useShare.`,
+    notes: `Pick an image from the device's photo library — PHPickerViewController (iOS), the Android Photo Picker (\`PickVisualMedia\`), a hidden file input (web). The SECOND async-result hook (after \`useBiometrics\`): \`pick()\` returns a \`Promise<string | null>\` you \`await\`, resolving a URI string or \`null\` when the user cancels; it never rejects. Under PMTC the async-await lowering wraps the awaiting handler in a Swift \`Task { … }\` / Kotlin \`pyreonAsyncScope.launch { … }\`. Requires NO photo-library permission on either native platform — both system pickers run out of process and hand back only the chosen asset, so there is no Info.plist usage description and no Android runtime permission to request. See also: useBiometrics, useShare, fileFromUri.`,
     mistakes: `- Testing the result for TRUTHINESS (\`uri ? … : …\`) instead of comparing to null (\`uri === null\`). JS truthiness is not a native Bool — the explicit null comparison is what PMTC lowers to \`uri == nil\` (Swift) / \`uri == null\` (Kotlin), and it is also correct on the web (an empty-string URI is not a cancellation).
 - Calling \`picker.pick()\` WITHOUT \`await\` inside a plain (non-async) handler — it returns a \`Promise<string | null>\`, not a URI. Mark the handler \`async\` and \`await\` it (PMTC wraps that async handler in a native \`Task\`/coroutine scope; a sync action slot cannot await).
 - Treating the returned URI as a stable, persistable path. It is an opaque, platform-shaped, EPHEMERAL handle — a \`file://\` temp copy on iOS, a \`content://\` URI on Android, a \`blob:\` object URL on the web. Hand it to an image view or an upload; do not store it and expect it to resolve later.
 - Requesting a photo-library permission before calling \`pick()\`. Neither platform needs one — asking for it is a policy liability (App Store / Play review scrutiny) for zero benefit, and is exactly what the out-of-process pickers exist to avoid.
 - Expecting a cancellation to reject. It resolves \`null\`, so a \`try/catch\` around \`pick()\` will never see the cancel path — branch on the result instead.
 - Forgetting to revoke the web object URL when picking repeatedly in a long-lived view. The web fallback returns \`URL.createObjectURL(file)\`; call \`URL.revokeObjectURL(uri)\` once the image is no longer displayed if you pick many times, or the blobs accumulate for the page lifetime.`,
+  },
+
+  'hooks/fileFromUri': {
+    signature: 'fileFromUri(uri: string, options?: { name?: string; type?: string }) => Promise<File>',
+    example: `const picker = useImagePicker()
+const uploadAvatar = api.endpoint('POST /me/avatar')
+
+const change = async () => {
+  const uri = await picker.pick()
+  if (uri === null) return
+  await uploadAvatar({ multipart: { avatar: await fileFromUri(uri, { name: 'avatar.jpg' }), caption: caption() } })
+}`,
+    notes: `Turn the URI a picker or the camera resolved into a file a request can send. A URI is a HANDLE, not the file: passing it straight into a request body sends the URI's text on every platform. Web: the picker's own \`File\` (real name and type) when the URI came from \`useImagePicker\` / \`useFilePicker\` / \`useCamera\`, else the bytes read through \`fetch\` (\`blob:\`, \`data:\`, same-origin). Under PMTC it lowers to \`PyreonUploadFile.from\` (Android reads through the app's \`ContentResolver\`), and a \`@pyreon/http\` request carrying it in \`multipart\` or as its \`body\` STREAMS the file from disk when sent — a large video is never read into memory. Rejects when the URI cannot be read. See also: useImagePicker, useFilePicker, useCamera.`,
+    mistakes: `- Putting the picker URI itself in the body (\`multipart: { avatar: uri }\`). That sends the URI as a TEXT part on every platform — the server receives a path string, not the image.
+- Calling it without \`await\`. On the web it returns a Promise, and a Promise in a body is sent as \`[object Promise]\`; PMTC names the unawaited call instead of lowering it.
+- Relying on the default filename. A native picker hands back a temporary copy whose name is not always the original (an iOS photo arrives as a UUID-named \`.jpg\`), so pass \`name\` when the server cares — that is what makes every platform send the same part.
+- Resolving the file long before the request. It is a handle to an ephemeral picker copy; resolve and send it in the same handler.`,
   },
 
   'hooks/useBiometrics': {
@@ -5378,13 +5438,14 @@ function dispatch(e: EventOf<typeof light>) { light.send(e) }`,
 })
 // <Button onPress={() => auth.signIn()}>Sign in</Button>
 // <Text>{auth.isAuthenticated() ? auth.claim('email') : auth.status()}</Text>`,
-    notes: 'A reactive OIDC sign-in with the SAME surface on web, iOS and Android — the shared-source entry point. Every member is read as a call (`auth.status()`, `auth.subject()`, `auth.claim("email")`, `auth.accessToken()`, `auth.expiresAt()`, `auth.error()`, `auth.isAuthenticated()`), and the strings it returns (status spellings, error codes) are identical on all three targets. On the web it is `createAuth` with browser defaults: pending sign-ins in `sessionStorage` (they must survive the full-page round trip), navigation by `location.assign`, and on the redirect page the callback is completed automatically, with the code scrubbed from the address bar and history first. In shared source it lowers to the native `PyreonOidcAuth`, which runs the system browser, verifies the ID token against the provider keys, refreshes, and keeps the session in the Keychain / Keystore so the app is still signed in after a relaunch. Options must be static (literals or module consts) because native bakes them in. Call it ONCE at the app root and pass `auth` down. See also: createAuth, sessionStorageFlowStore.',
+    notes: 'A reactive OIDC sign-in with the SAME surface on web, iOS and Android — the shared-source entry point. Every member is read as a call (`auth.status()`, `auth.subject()`, `auth.claim("email")`, `auth.accessToken()`, `auth.expiresAt()`, `auth.error()`, `auth.isAuthenticated()`), and the strings it returns (status spellings, error codes) are identical on all three targets. On the web it is `createAuth` with browser defaults: pending sign-ins in `sessionStorage` (they must survive the full-page round trip), navigation by `location.assign`, and on the redirect page the callback is completed automatically, with the code scrubbed from the address bar and history first. In shared source it lowers to the native `PyreonOidcAuth`, which runs the system browser, verifies the ID token against the provider keys, refreshes, and keeps the session in the Keychain / Keystore so the app is still signed in after a relaunch. Persistence is the one deliberate divergence: the web holds tokens in memory only, so a reload starts at `signedOut` — storing them in `localStorage` / `sessionStorage` would make any XSS bug a stolen long-lived session. Re-run `signIn()` on load (it completes without a prompt while the provider session lasts) or keep the session server-side behind an HttpOnly cookie (`signSession`). Options must be static (literals or module consts) because native bakes them in. Call it ONCE at the app root and pass `auth` down. See also: createAuth, sessionStorageFlowStore.',
     mistakes: `- Omitting \`nativeRedirectUri\` — a native app cannot receive a redirect to the web page unless it is a claimed universal link / App Link; register an app-scheme redirect with the provider
 - Calling useOidc in several components — each call is its own session object; create one at the root and pass it down
 - Building the options at runtime (a prop, a fetch result) — native bakes them at compile time; the call is reported and not emitted
 - Reading \`auth.status\` without calling it — every member is a call on the web
 - Expecting a refresh token without \`offline_access\` in \`scope\` (and, for Google, \`authorizationParams: { access_type: "offline", prompt: "consent" }\`)
-- Forgetting the Android manifest entries for PyreonAuthActivity / PyreonAuthRedirectActivity — without them the redirect never returns to the app`,
+- Forgetting the Android manifest entries for PyreonAuthActivity / PyreonAuthRedirectActivity — without them the redirect never returns to the app
+- Expecting the web session to survive a reload like native does — web tokens live in memory only; re-run \`signIn()\` on load or keep the session server-side behind an HttpOnly cookie, never in \`localStorage\``,
   },
 
   'auth/sessionStorageFlowStore': {
@@ -5468,15 +5529,16 @@ const gate = limiter.attempt(userId)
 if (!gate.allowed) return tooManyRequests(gate.retryAfterMs)
 const r = await verifyTotp(secret, code, { lastUsedStep })
 if (r.ok) limiter.reset(userId)`,
-    notes: 'Fixed-window attempt limiter for brute-forceable checks (TOTP codes, passkey and password attempts): at most `max` attempts per `windowMs` per key, reporting `retryAfterMs` when exhausted; call `reset(key)` after a success. Per process and bounded — expired windows are dropped as they are touched and the table never exceeds `maxKeys` (oldest window evicted first), so a flood of distinct keys cannot grow it without limit. Run several instances? Keep the same counters in a shared store. See also: verifyTotp, verifyAssertion.',
+    notes: 'Fixed-window attempt limiter for brute-forceable checks (TOTP codes, passkey and password attempts): at most `max` attempts per `windowMs` per key, reporting `retryAfterMs` when exhausted; call `reset(key)` after a success. Per process and bounded — expired windows are dropped as they are touched and the table never exceeds `maxKeys`, so a flood of distinct keys cannot grow it without limit. Eviction never frees a blocked key: a full table drops an expired window, else the active window with the fewest attempts, never one at its limit; when every slot is at its limit the NEW key is refused (fail closed), so a key flood can delay first attempts from new keys but never buys a blocked key more guesses — size `maxKeys` above the keys legitimately active in one window. Run several instances? Keep the same counters in a shared store. See also: verifyTotp, verifyAssertion.',
     mistakes: `- Keying only by IP — an attacker rotates addresses; key by account as well
-- Relying on it across instances — each process counts separately`,
+- Relying on it across instances — each process counts separately
+- Setting \`maxKeys\` near the number of keys legitimately active in one window — a full table of blocked windows refuses new keys until the oldest window ends`,
   },
 
   'auth/github': {
     signature: 'OidcMetadata',
     example: 'const auth = createAuth({ metadata: github, client, flows, redirect })',
-    notes: 'Endpoints for GitHub (OAuth2, not OIDC — there is no ID token; read identity from the user API with the access token). `facebook(version)` and `oauth2(issuer, authorize, token)` cover other plain OAuth2 providers. Pass as `createAuth({ metadata })` to skip discovery. Pin the Facebook Graph version you have tested. See also: createAuth, google, keycloak.',
+    notes: 'Endpoints for GitHub (OAuth2, not OIDC — there is no ID token; read identity from the user API with the access token). `facebook(version)` and `oauth2(issuer, authorize, token)` cover other plain OAuth2 providers. Pass as `createAuth({ metadata })` to skip discovery. Explicit endpoints are checked where they are used: the authorization and token endpoints must be https (loopback http allowed for local development) or the call fails with `insecure_url`, on web, iOS and Android alike. Pin the Facebook Graph version you have tested. See also: createAuth, google, keycloak.',
     mistakes: '- Expecting an `id_token` from a non-OIDC provider — fetch the profile with the access token instead',
   },
 

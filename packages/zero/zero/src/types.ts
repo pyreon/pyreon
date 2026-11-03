@@ -7,10 +7,9 @@ import type { I18nRoutingConfig } from './i18n-routing'
 // `@pyreon/zero` keep working. The previous duplicate `interface
 // LoaderContext` (with a `request: Request` field that was never
 // populated by the actually-constructed runtime ctx) was a
-// typed-but-unimplemented bug class — caught by `audit-types`. If
-// SSR loaders need access to the request, plumb it through the
-// router-level `LoaderContext` in a follow-up PR; do NOT add fields
-// here that the runtime doesn't populate.
+// typed-but-unimplemented bug class — caught by `audit-types`. The
+// request is exposed by the router-level `LoaderContext.request`; do NOT
+// add fields here that the runtime doesn't populate.
 export type { LoaderContext }
 
 // ─── Route module conventions ────────────────────────────────────────────────
@@ -707,7 +706,12 @@ export interface ZeroConfig {
    */
   i18n?: I18nRoutingConfig
 
-  /** App-level middleware applied to all routes. */
+  /**
+   * NOT applied by the `zero()` plugin. Middleware is code, and the plugin's
+   * config reaches the production server only as serialized data, so a
+   * non-empty array here is dropped with a build warning. Pass middleware to
+   * `createServer({ middleware })` in `src/entry-server.ts` instead.
+   */
   middleware?: Middleware[]
 
   /** Server port for dev/preview. Default: 3000 */

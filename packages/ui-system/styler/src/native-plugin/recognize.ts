@@ -32,6 +32,24 @@ export function parseStyledDefn(
   if (init?.type !== 'TaggedTemplateExpression') return null
   // The tag must be `styled(<Prim>)`.
   const tagCall = unwrapTypeLayers(init.tag)
+  // `styled.div\`…\`` (the web's Proxy form) names an HTML tag by construction, so it can never lower; without
+  // this it fell through to the core's generic "tagged template literal is not supported", which names the wrong
+  // cause. Give it the same explanation as `styled('div')`.
+  if (
+    tagCall?.type === 'MemberExpression' &&
+    tagCall.computed !== true &&
+    tagCall.object?.type === 'Identifier' &&
+    tagCall.object.name === factory &&
+    tagCall.property?.type === 'Identifier'
+  ) {
+    const tag = tagCall.property.name as string
+    ctx.warnings.push(
+      `${factory}.${tag} on '${name}': only styled() wrapping a CANONICAL @pyreon/primitives ` +
+        `component (Stack/Text/Button/Press/Field/…) lowers to native — '${tag}' has no native ` +
+        `primitive, so <${name}> was left unresolved. Wrap a canonical primitive instead (\`${factory}(Stack)\`), or use a Layer-4 adapter.`,
+    )
+    return null
+  }
   if (tagCall?.type !== 'CallExpression') return null
   const callee = tagCall.callee
   if (callee?.type !== 'Identifier' || callee.name !== factory) return null

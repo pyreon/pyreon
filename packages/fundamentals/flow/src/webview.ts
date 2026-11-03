@@ -364,6 +364,11 @@ export interface FlowWebViewProps {
   labelColor?: string
   edgeColor?: string
   background?: string
+  /**
+   * Fill the free space of the parent `<Stack>` / `<Inline>` — the `<WebView grow>`
+   * sizing contract, forwarded unchanged. Unsized, the host is 150 high on every target.
+   */
+  grow?: boolean
 }
 
 /**
@@ -444,6 +449,13 @@ export function FlowWebView(props: FlowWebViewProps): VNode {
         else if ('id' in payload && typeof payload.id === 'string') onEvent({ type: 'node-select', id: payload.id, ...('data' in payload ? { data: payload.data } : {}) })
       }
     }
+  }
+  if (props.grow !== undefined) {
+    Object.defineProperty(webViewProps, 'grow', {
+      enumerable: true,
+      configurable: true,
+      get: (): boolean | undefined => props.grow,
+    })
   }
   return h(WebView as (p: unknown) => VNodeChild, webViewProps) as VNode
 }

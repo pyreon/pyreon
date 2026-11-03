@@ -24,8 +24,7 @@
 //
 // **The connectivity STATE machine ships and is unit-testable** (`isOnline`
 // + `update`). The LIVE monitoring edge differs per platform's toolchain
-// availability — the SAME asymmetry PyreonStorage documents (Swift uses real
-// UserDefaults; Kotlin's real DataStore backend is deferred to Android CI):
+// availability:
 //
 // - **Swift** uses `NWPathMonitor` (Apple's `Network` framework is in the
 //   Swift toolchain) for real `start()` / `stop()` monitoring.
@@ -34,12 +33,12 @@
 //   @pyreon/native-compiler CAN'T provide. So `start(onChange)` here takes
 //   the platform callback the APP wires (its `ConnectivityManager.NetworkCallback`
 //   forwards to `update`), keeping this file Android-SDK-free + kotlinc-stub
-//   compatible. A `ConnectivityManager`-backed convenience overload is a
-//   Phase-2+ follow-up that needs Android CI to verify end-to-end.
+//   compatible. The `ConnectivityManager`-backed wiring lives in
+//   PyreonNetworkStatusAndroid.kt (`rememberPyreonNetworkStatus()`).
 //
 // The pure container is enough to unit-test the state machine, validate the
-// kotlinc surface, and back the `useOnline` compiler emit (a follow-up — the
-// PyreonFetch / PyreonForm / PyreonPermissions per-service-port pattern).
+// kotlinc surface, and back the `useOnline` compiler emit (the PyreonFetch /
+// PyreonForm / PyreonPermissions per-service-port pattern).
 
 package com.pyreon.runtime
 
@@ -66,8 +65,7 @@ public class PyreonNetworkStatus(isOnline: Boolean = true) {
      * platform `ConnectivityManager.NetworkCallback` (or any source) to push
      * connectivity changes, and returns an unregister thunk stored for [stop].
      * Keeping the platform source injected keeps this file Android-SDK-free
-     * (kotlinc-stub compatible); a `ConnectivityManager` convenience overload
-     * is a Phase-2+ Android-CI follow-up.
+     * (kotlinc-stub compatible).
      *
      * Idempotent — a second call while already running is a no-op (the
      * existing platform callback keeps driving `isOnline`); the supplied
