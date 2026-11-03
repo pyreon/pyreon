@@ -934,6 +934,28 @@ public struct PyreonRotateEvent: Equatable {
   public let degrees: Double
   public let phase: String
 }
+// PyreonCanvas + shapes — mirror of runtime-swift PyreonCanvas.swift (the
+// <Canvas> primitive). Path stands in for SwiftUI's Path: the emit only ever
+// hands one from a PyreonCanvasPath builder straight to PyreonShape.
+public struct Path { public init() {} }
+public enum PyreonCanvasPath {
+  public static func rect(x: Double, y: Double, width: Double, height: Double, radius: Double) -> Path { Path() }
+  public static func circle(cx: Double, cy: Double, r: Double) -> Path { Path() }
+  public static func line(x1: Double, y1: Double, x2: Double, y2: Double) -> Path { Path() }
+  public static func svg(_ d: String) -> Path { Path() }
+}
+public struct PyreonShape: View {
+  public init(_ path: Path, fill: Color?, stroke: Color?, lineWidth: Double) {}
+  public var body: some View { EmptyView() }
+}
+public struct PyreonCanvas<Content: View>: View {
+  public init(width: Double, height: Double, @ViewBuilder content: () -> Content) {}
+  public var body: some View { EmptyView() }
+}
+public struct PyreonCanvasText<Content: View>: View {
+  public init(x: Double, y: Double, size: Double, color: Color, @ViewBuilder content: () -> Content) {}
+  public var body: some View { EmptyView() }
+}
 public struct PyreonGesture<Content: View>: View {
   public init(
     onPan: ((PyreonPanEvent) -> Void)? = nil,
@@ -1463,6 +1485,18 @@ public enum PyreonURL {
 // template interpoland lowers through. Mirrors the real overload pair.
 public func pyreonNumberString(_ v: Double) -> String { "" }
 public func pyreonNumberString(_ v: Int) -> String { "" }
+// Intl.DateTimeFormat / Intl.NumberFormat — the real PyreonIntl.swift surface,
+// exactly: every parameter defaulted, labelled, in declaration order.
+public final class PyreonDateTimeFormat {
+  public init(locale: String? = nil, dateStyle: String? = nil, timeStyle: String? = nil, skeleton: String? = nil, timeZone: String? = nil) {}
+  public func format(_ epochMs: Double) -> String { "" }
+  public func format(_ epochMs: Int) -> String { "" }
+}
+public final class PyreonNumberFormat {
+  public init(locale: String? = nil, style: String = "decimal", currency: String? = nil, currencyDisplay: String = "symbol", minimumFractionDigits: Int? = nil, maximumFractionDigits: Int? = nil, minimumIntegerDigits: Int? = nil, useGrouping: Bool = true) {}
+  public func format(_ value: Double) -> String { "" }
+  public func format(_ value: Int) -> String { "" }
+}
 // pyreonSlice — JS \`slice\` for a bound whose sign is not known at compile time
 // (runtime-swift's PyreonSlice.swift).
 public func pyreonSlice<T>(_ a: [T], _ start: Int, _ end: Int? = nil) -> [T] { a }

@@ -35,6 +35,9 @@ describe('lineageOf', () => {
     expect(lineageOf('bun-install-cache-Linux-' + H1)).toBe('bun-install-cache-Linux')
     expect(lineageOf('node-modules-Linux-bun-' + H1)).toBe('node-modules-Linux-bun')
   })
+  it('treats the Gradle dependency store as a family (~650 MB per generation)', () => {
+    expect(lineageOf('gradle-deps-Linux-' + H1)).toBe('gradle-deps-Linux')
+  })
   it('keeps platforms apart', () => {
     expect(lineageOf('bun-install-cache-macOS-' + H1)).not.toBe(
       lineageOf('bun-install-cache-Linux-' + H1),

@@ -1,6 +1,6 @@
 ---
 title: "Canonical Multiplatform Primitives — API Reference"
-description: "18 canonical cross-platform UI primitives that compile to DOM + SwiftUI + Compose from one .tsx: Stack, Inline, Layer, Scroll, Spacer (layout); Text, Heading, I"
+description: "19 canonical cross-platform UI primitives that compile to DOM + SwiftUI + Compose from one .tsx: Stack, Inline, Layer, Scroll, Spacer (layout); Text, Heading, I"
 ---
 
 # @pyreon/primitives — API Reference
@@ -13,14 +13,14 @@ The multiplatform UI vocabulary for Pyreon. ONE canonical name per concept (`<St
 
 **Tier:** Shared — the same source runs on web, iOS and Android
 
-the 18 canonical primitives: real web DOM runtime AND SwiftUI/Compose emit — the compiler's native target vocabulary
+the 19 canonical primitives: real web DOM runtime AND SwiftUI/Compose emit — the compiler's native target vocabulary
 
 See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multiplatform libraries](/docs/multiplatform-libraries) for every package's tier.
 
 ## Features
 
 - Native compiler tooling: primitivesPlugin from @pyreon/primitives/native-plugin owns hook recognition and Swift/Kotlin lowering; the native CLI discovers it through pyreon.native.plugin, and direct compiler callers install it explicitly
-- 18 canonical primitives compile to web DOM + iOS SwiftUI + Android Compose from one .tsx
+- 19 canonical primitives compile to web DOM + iOS SwiftUI + Android Compose from one .tsx
 - One canonical name + event per concept — `<Stack>` (not View/VStack/div), `onPress` everywhere
 - Tokens-first styling (`padding={4}`, `gap="md"`) resolves through the theme per target
 - PMTC compiles your component SOURCE in a narrow declarative TS subset — NOT npm libraries
@@ -29,6 +29,7 @@ See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multipla
 - `<Web>` / `<NativeIOS>` / `<NativeAndroid>` escape hatches for genuinely per-platform UI
 - `useNativeModule` FFI — add a platform capability the framework does not ship (Bluetooth, ARKit, a vendor SDK) as an app-level Swift/Kotlin class, no framework PR
 - `<Gesture onPan onPinch onRotate>` — continuous gestures (cumulative values + start/change/end phase) lowered to simultaneous SwiftUI Drag/Magnify/RotateGesture and one Compose pointer loop; drive content with the `translateX`/`translateY`/`scale`/`rotate` props every primitive accepts
+- `<Canvas>` + shape children (`CanvasRect`, `CanvasCircle`, `CanvasLine`, `CanvasPath` with SVG path data, `CanvasText`) — vector drawing lowered to stacked `<svg>` layers on web, SwiftUI `Path`s on iOS and Compose draw layers on Android
 - No responsive props in v1 — responsive web uses `@pyreon/elements` directly
 
 ## Complete example
@@ -86,6 +87,7 @@ export function App() {
 | [`Button`](#button-component) | component | Styled CTA. |
 | [`Press`](#press-component) | component | Unstyled tap target (no chrome). |
 | [`Gesture`](#gesture-component) | component | A region that recognises CONTINUOUS gestures and reports their values. |
+| [`Canvas`](#canvas-component) | component | A fixed-size, clipped vector drawing surface. |
 | [`Link`](#link-component) | component | Navigation link. |
 | [`Field`](#field-component) | component | Text input. |
 | [`Toggle`](#toggle-component) | component | Boolean switch/checkbox. |
@@ -425,7 +427,37 @@ const base = signal(1.0)
 - Using `<Press onSwipeLeft>` for free dragging — swipe is a discrete end-of-gesture verdict; `<Gesture onPan>` reports the live translation
 - Expecting pinch/rotate from one pointer — they begin only once two pointers are down
 
-**See also:** `Press` · `Stack`
+**See also:** `Press` · `Stack` · `Canvas`
+
+---
+
+### `Canvas` `component`
+
+```ts
+(props: { width: number; height: number; background?: ColorToken; children }) => VNode — children: CanvasRect { x, y, width, height, radius? } · CanvasCircle { cx, cy, r } · CanvasLine { x1, y1, x2, y2 } · CanvasPath { d } · CanvasText { x, y, size? }, each with fill?/stroke?/strokeWidth? (token or #hex)
+```
+
+A fixed-size, clipped vector drawing surface. Children are the shape primitives, drawn in source order (later on top) in the canvas coordinates: (0,0) top-left, y down, px/pt/dp. Shapes are ordinary JSX children, so `<For>`, `<Show>` and signal-driven props (`d={trail()}`, `width={w()}`) work inside. Paint: `fill`/`stroke` take a colour token or a `#hex` literal; with neither, a shape is filled with `text`; `<CanvasLine>` is stroke-only (default `text`, width 1). `<CanvasPath d>` takes full SVG path data (M L H V C S Q T A Z, absolute + relative). `<CanvasText>` places the TOP-LEFT of its text at (x, y) on every target. Web: one absolutely positioned `<svg>` layer per shape; iOS: `PyreonCanvas { PyreonShape(PyreonCanvasPath.rect(…)) }` (a runtime SVG parser for `d`); Android: `PyreonCanvas { PyreonShape(PyreonShapeSpec.Rect(…)) }` (androidx `PathParser` for `d`). Pair with `<Gesture>` + transform props for a pannable / zoomable plan.
+
+**Example**
+
+```tsx
+<Canvas width={200} height={120} background="surface">
+  <CanvasRect x={10} y={10} width={80} height={50} radius={6} fill="primary" />
+  <CanvasCircle cx={150} cy={40} r={20} fill="#16a34a" stroke="text" strokeWidth={2} />
+  <CanvasPath d="M10 100 L190 100" stroke="text" strokeWidth={2} />
+  <CanvasText x={110} y={80} size={14}>Hall A</CanvasText>
+</Canvas>
+```
+
+**Common mistakes**
+
+- Using a shape outside a `<Canvas>` — shapes draw in the canvas coordinate space and fill its frame on native
+- Passing a CSS colour name (`fill="tomato"`) — only colour tokens and `#hex` literals resolve on native (the compiler warns)
+- Expecting `<CanvasText y>` to be the BASELINE — it is the top-left of the text on every target
+- Reaching for lowercase `<svg>`/`<path>` for cross-platform drawing — those are DOM elements; the Canvas shapes are the multiplatform vocabulary
+
+**See also:** `Gesture` · `Image`
 
 ---
 

@@ -640,6 +640,12 @@ final class PyreonRouterDemoUITests: XCTestCase {
         let zone = app.otherElements["gesture-zone"].firstMatch
         XCTAssertTrue(zone.waitForExistence(timeout: 15), "gesture zone missing")
         XCTAssertTrue(app.staticTexts["Pan: none"].firstMatch.exists, "pan should start at none")
+        // The vector <Canvas> inside the region renders (its <CanvasText> label
+        // is a real Text in the accessibility tree).
+        XCTAssertTrue(
+            app.staticTexts["Drag or pinch here"].firstMatch.waitForExistence(timeout: 5),
+            "the <Canvas> inside the gesture zone did not render its CanvasText"
+        )
 
         let from = zone.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.5))
         let to = zone.coordinate(withNormalizedOffset: CGVector(dx: 0.8, dy: 0.5))
