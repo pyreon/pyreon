@@ -6262,14 +6262,14 @@
       "warnings": 3
     },
     "golden-fixture:toast-05.tsx|swift": {
-      "sha": "7c104c321b0ada0593800d1c391941604813d16af78c65b951a1ca93723d349d",
-      "bytes": 116,
-      "warnings": 1
+      "sha": "a1146987f0a7307c5b01c61df267a89be8927bb4a21385fa87ab14e0be0c8f6a",
+      "bytes": 148,
+      "warnings": 0
     },
     "golden-fixture:toast-05.tsx|kotlin": {
-      "sha": "8e3dc73d4dce4fb803564ad65a9729377e0e674f28431e1caacf3050c5181827",
-      "bytes": 195,
-      "warnings": 1
+      "sha": "000394b356fe20569a2fde40986822c22a0e00a11963119769574ae4fae2b715",
+      "bytes": 220,
+      "warnings": 0
     },
     "golden-fixture:toast-06.tsx|swift": {
       "sha": "196b42119e5011d8c06bf7ba5f1752769908701549b91ef1572bd8f26308abbc",

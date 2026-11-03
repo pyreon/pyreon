@@ -58,6 +58,26 @@ fun main() {
     PyreonToast.runAction(evicted)
     check(ran == 1, "a toast evicted by the stack bound releases its handler")
     PyreonToast.maxToasts = 50
+
+    // onActionContext: the web's `onClick({ id, dismiss })` — the handler gets
+    // THIS toast's id, so dismissing by it removes that toast (onDismiss once).
+    PyreonToast.clear()
+    val seen = mutableListOf<String>()
+    var closed = 0
+    val ka = PyreonToast.add("saved", durationMillis = 0, actionLabel = "Undo", onActionContext = { id ->
+        seen += id
+        PyreonToast.dismiss(id)
+    }, onDismiss = { closed += 1 })
+    PyreonToast.add("other", durationMillis = 0)
+    check(PyreonToast.toasts.value.first { it.id == ka }.actionLabel == "Undo", "a context handler shows the action button")
+    PyreonToast.runAction(ka)
+    check(seen == listOf(ka), "the context handler receives its own toast's id")
+    check(PyreonToast.toasts.value.map { it.message } == listOf("other"), "dismissing by the handed id removes that toast and no other")
+    check(closed == 1, "dismissing from the action fires onDismiss exactly once")
+    var which = ""
+    val both = PyreonToast.add("z", durationMillis = 0, actionLabel = "Go", onAction = { which = "plain" }, onActionContext = { _ -> which = "context" })
+    PyreonToast.runAction(both)
+    check(which == "plain", "onAction takes precedence when both are passed")
     PyreonToast.clear()
 
     // onDismiss: fires exactly once when the toast leaves by ANY path (web parity).

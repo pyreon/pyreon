@@ -80,21 +80,27 @@ public object PyreonToast {
         description: String? = null,
         actionLabel: String? = null,
         onAction: (() -> Unit)? = null,
+        // The action handler that takes the web's `{ id, dismiss }` context: it
+        // receives this toast's id (the compiler lowers `dismiss()` to
+        // `dismiss(id)`). Used when `onAction` is absent; a tap leaves the toast up
+        // unless the handler dismisses it.
+        onActionContext: ((id: String) -> Unit)? = null,
         onDismiss: (() -> Unit)? = null,
     ): String {
         counter += 1
         val id = "toast-$counter"
+        val action: (() -> Unit)? = onAction ?: onActionContext?.let { handler -> { handler(id) } }
         var next = toasts.value + PyreonToastItem(
             id,
             message,
             type,
             dismissible,
             description,
-            if (actionLabel != null && onAction != null) actionLabel else null,
+            if (actionLabel != null && action != null) actionLabel else null,
         )
         // Register before bounding the stack, so a toast evicted on arrival
         // (maxToasts = 0) still has its handlers released and onDismiss fired.
-        if (actionLabel != null && onAction != null) actions[id] = onAction
+        if (actionLabel != null && action != null) actions[id] = action
         if (onDismiss != null) dismissHandlers[id] = onDismiss
         var evicted: List<String> = emptyList()
         if (next.size > maxToasts) {

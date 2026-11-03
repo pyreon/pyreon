@@ -23,7 +23,7 @@ public final class PyreonToast {
   public static let shared = PyreonToast()
   public private(set) var toasts: [PyreonToastItem] = []
   @discardableResult
-  public func add(_ message: String, type: String = "info", duration: TimeInterval? = nil, dismissible: Bool = true, description: String? = nil, actionLabel: String? = nil, onAction: (() -> Void)? = nil, onDismiss: (() -> Void)? = nil) -> String { "" }
+  public func add(_ message: String, type: String = "info", duration: TimeInterval? = nil, dismissible: Bool = true, description: String? = nil, actionLabel: String? = nil, onAction: (() -> Void)? = nil, onActionContext: ((_ id: String) -> Void)? = nil, onDismiss: (() -> Void)? = nil) -> String { "" }
   public func runAction(_ id: String) {}
   public func dismiss(_ id: String) {}
   public func clear() {}
@@ -43,7 +43,7 @@ data class PyreonToastItem(val id: String, val message: String, val type: String
 object PyreonToast {
   val toasts: MutableState<List<PyreonToastItem>> = mutableStateOf(emptyList())
   var maxToasts: Long = 50L
-  fun add(message: String, type: String = "info", durationMillis: Long? = null, dismissible: Boolean = true, description: String? = null, actionLabel: String? = null, onAction: (() -> Unit)? = null, onDismiss: (() -> Unit)? = null): String = ""
+  fun add(message: String, type: String = "info", durationMillis: Long? = null, dismissible: Boolean = true, description: String? = null, actionLabel: String? = null, onAction: (() -> Unit)? = null, onActionContext: ((id: String) -> Unit)? = null, onDismiss: (() -> Unit)? = null): String = ""
   fun runAction(id: String) {}
   fun dismiss(id: String) {}
   fun clear() {}
