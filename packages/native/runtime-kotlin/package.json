@@ -30,7 +30,8 @@
         "kotlinSdkOnly": [
           "PyreonCanvas.kt",
           "PyreonChartCanvas.kt",
-          "PyreonGesture.kt"
+          "PyreonGesture.kt",
+          "PyreonPressState.kt"
         ]
       }
     }

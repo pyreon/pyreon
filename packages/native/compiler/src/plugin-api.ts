@@ -148,6 +148,7 @@ export {
   unwrapTypeLayers,
 } from './plugin-ast'
 export { forEachExpr } from './expr-walk'
+export { PRESSED_STATE_IDENT, styleUsesPressedState } from './style-to-native'
 export { unconsumedSlotWarning } from './jsx-slot-attrs'
 export { isNumericLiteralOrNegation, substituteIdentifier } from './expr-utils'
 export {

@@ -976,6 +976,35 @@ function collectWarnings(lo: LoweredObject, tag: string): string[] {
  * the `style` attribute's value: an object literal (STATIC) or a ternary of two
  * object literals (DYNAMIC — needs `emitCond`).
  */
+/**
+ * The condition identifier a style ternary keys on to mean "this pressable is
+ * being pressed". A frontend (rocketstyle's `active:` block) emits
+ * `style={__pyPressed ? {pressed} : {plain}}`; the Button / Press emitters own
+ * the press state and bind this name inside their own scope — a SwiftUI
+ * `ButtonStyle` closure parameter, a Compose interaction-source lambda
+ * parameter — so the connector lowers it like any other reactive condition.
+ * It is reserved: no other position binds it, so a style using it anywhere else
+ * cannot compile, which is the intended failure.
+ */
+export const PRESSED_STATE_IDENT = '__pyPressed'
+
+/** Whether a style value's condition tree references the press state. */
+export function styleUsesPressedState(e: ExprIR): boolean {
+  if (e.kind === 'identifier') return e.name === PRESSED_STATE_IDENT
+  if (e.kind === 'ternary') {
+    return (
+      styleUsesPressedState(e.cond) ||
+      styleUsesPressedState(e.then) ||
+      styleUsesPressedState(e.otherwise)
+    )
+  }
+  if (e.kind === 'unary') return styleUsesPressedState(e.argument)
+  if (e.kind === 'binary' || e.kind === 'logical') {
+    return styleUsesPressedState(e.left) || styleUsesPressedState(e.right)
+  }
+  return false
+}
+
 export function styleToNativeModifiers(
   styleValue: ExprIR,
   target: Target,

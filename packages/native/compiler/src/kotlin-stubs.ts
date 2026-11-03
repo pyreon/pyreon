@@ -188,6 +188,7 @@ fun Button(
   onClick: () -> Unit,
   modifier: Modifier = Modifier,
   enabled: Boolean = true,
+  interactionSource: MutableInteractionSource = MutableInteractionSource(),
   colors: ButtonColorsStub = ButtonColorsStub(),
   content: @Composable () -> Unit,
 ) {
@@ -642,6 +643,15 @@ object Modifier {
   // surface manufactures a failure, so that shape was never compile-verified.
   @Suppress("UNUSED_PARAMETER")
   fun clickable(enabled: Boolean = true, onClickLabel: String? = null, role: Role? = null, onClick: () -> Unit): Modifier = this
+  // The interaction-source overload — what a pressable with a pressed style
+  // lowers to (PyreonPressState hands it the source). Real Compose (1.7+):
+  // clickable(interactionSource: MutableInteractionSource?, indication:
+  // Indication?, enabled = true, onClickLabel, role, onClick). The two
+  // trailing optional params this emit never passes are left out.
+  @Suppress("UNUSED_PARAMETER")
+  fun clickable(interactionSource: MutableInteractionSource?, indication: Indication?, enabled: Boolean = true, onClick: () -> Unit): Modifier = this
+  @Suppress("UNUSED_PARAMETER")
+  fun combinedClickable(interactionSource: MutableInteractionSource?, indication: Indication?, enabled: Boolean = true, onLongClick: (() -> Unit)? = null, onClick: () -> Unit): Modifier = this
   // useHotkey — Compose delivers key events only to a FOCUSED node, so the
   // lowering needs all three of these together. Real Compose spells them
   // Modifier.focusRequester(FocusRequester) / .focusable() /
@@ -984,6 +994,18 @@ fun PyreonLink(to: String, content: @Composable (navigate: () -> Unit) -> Unit) 
   // on navigate(). For typecheck-only purposes we just invoke the
   // content with a no-op navigate.
   content { }
+}
+
+// androidx.compose.foundation.interaction.MutableInteractionSource /
+// androidx.compose.foundation.Indication — only what the pressed-style lowering
+// names (it never constructs either: the source arrives as a lambda param).
+class MutableInteractionSource
+interface Indication
+
+// PyreonPressState — mirror of @pyreon/native-runtime-kotlin's PyreonPressState.kt.
+@Composable
+fun PyreonPressState(content: @Composable (pressed: Boolean, source: MutableInteractionSource) -> Unit) {
+  content(false, MutableInteractionSource())
 }
 
 // PyreonCanvas + shapes — mirror of @pyreon/native-runtime-kotlin's PyreonCanvas.kt.
