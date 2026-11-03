@@ -184,7 +184,7 @@ Instead of a standalone file, you can put the config under a `"pyreonlint"` fiel
 
 #### Discovery order
 
-`loadConfig(cwd)` walks up from the working directory toward the filesystem root, returning the first config it finds. Within each directory the search order is:
+`loadConfig(cwd)` walks up from the working directory toward the filesystem root, returning the nearest config it finds. The walk stops at the repository root (the first ancestor containing `.git`), so a config outside the checkout never applies. Within each directory the search order is:
 
 1. `.pyreonlintrc.json`
 2. `.pyreonlintrc`
