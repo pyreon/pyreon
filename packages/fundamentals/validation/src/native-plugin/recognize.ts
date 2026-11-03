@@ -18,6 +18,59 @@ import type { ZodFieldConstraints, ZodFieldType, ZodSchemaDefnIR } from './ir'
 // biome-ignore lint/suspicious/noExplicitAny: ESTree nodes are read structurally, as in the compiler.
 type AnyNode = any
 
+/**
+ * A modifier that changes nothing a validator observes (documentation / typing only), so lowering without it is
+ * faithful. Every OTHER modifier the walker does not lower changes what the web accepts or returns, so dropping it
+ * silently made a device accept input the web rejects — those are warned by name instead.
+ */
+const NO_RUNTIME_EFFECT_MODIFIERS: ReadonlySet<string> = new Set(['describe', 'brand', 'readonly', 'meta'])
+
+/** The modifiers this walker lowers (or reads at the field level) — everything else is a dropped modifier. */
+const LOWERED_MODIFIERS: ReadonlySet<string> = new Set([
+  'min',
+  'max',
+  'email',
+  'url',
+  'uuid',
+  'regex',
+  'optional',
+  'nullable',
+  'int',
+])
+
+/** A numeric literal argument, folding a unary minus (`.min(-1)` is a `UnaryExpression`, not a `Literal`). */
+function numericLiteral(node: AnyNode | undefined): number | undefined {
+  const n = node ? (unwrapTypeLayers(node) as AnyNode) : undefined
+  if (n?.type === 'Literal' && typeof n.value === 'number') return n.value
+  if (n?.type === 'UnaryExpression' && n.operator === '-') {
+    const inner = numericLiteral(n.argument as AnyNode | undefined)
+    return inner === undefined ? undefined : -inner
+  }
+  return undefined
+}
+
+/**
+ * A modifier the walker met but does not lower: warn BY NAME. `.refine()` / `.transform()` / `.default()` /
+ * `.preprocess()` / `.nonempty()` / `.trim()` … all change what the web accepts or what `parse` returns, and the
+ * native struct checks only type + the constraints that lower — so the device ACCEPTS a value the web rejects.
+ */
+function noteDroppedModifier(modName: string, label: string, ctx: ModuleParseContext): void {
+  if (LOWERED_MODIFIERS.has(modName) || NO_RUNTIME_EFFECT_MODIFIERS.has(modName)) return
+  ctx.report(
+    `${label}: \`.${modName}()\` is NOT lowered to native — the field is validated for its type and the constraints ` +
+      `that lower (.min / .max / .email / .url / .uuid / .regex / .int / .optional / .nullable) only, so a value the web ` +
+      `rejects (or reshapes) through \`.${modName}()\` is accepted unchanged on iOS/Android. Enforce that rule in a ` +
+      `web-only helper or in the handler that submits the value.`,
+  )
+}
+
+/** A `.min(n)` / `.max(n)` whose argument is not a numeric literal cannot be read at compile time. */
+function noteUnreadableBound(modName: string, label: string, ctx: ModuleParseContext): void {
+  ctx.report(
+    `${label}: \`.${modName}(…)\` needs a numeric literal argument to lower natively — this one is not, so the bound is NOT enforced on iOS/Android. Write the number inline (\`.${modName}(3)\`).`,
+  )
+}
+
 function warnDynamicKey(prop: AnyNode, where: string, ctx: ModuleParseContext): void {
   ctx.report(
     `${where}: the computed key \`${dynamicKeyText(prop, ctx)}\` is only known at runtime, so this entry cannot be read at compile time and does not lower to native. Write the key literally (\`{ input: … }\`, not \`{ [kind]: … }\`).`,
@@ -151,6 +204,8 @@ function extractTypeAndConstraints(
   ctx: ModuleParseContext,
   /** `@pyreon/validate`'s `s` DSL, whose `.url()` differs from zod's. */
   pyreonValidate: boolean,
+  /** Names the field in a dropped-modifier warning. */
+  label: string,
 ): { method: string; constraints: ZodFieldConstraints; integer: boolean } | null {
   const constraints: ZodFieldConstraints = {}
   let integer = false
@@ -166,21 +221,13 @@ function extractTypeAndConstraints(
       const modArgs = (cursor.arguments as AnyNode[] | undefined) ?? []
       const firstArg = modArgs[0]
       if (modName === 'min') {
-        if (
-          firstArg &&
-          firstArg.type === 'Literal' &&
-          typeof firstArg.value === 'number'
-        ) {
-          constraints.min = firstArg.value
-        }
+        const n = numericLiteral(firstArg)
+        if (n !== undefined) constraints.min = n
+        else noteUnreadableBound(modName, label, ctx)
       } else if (modName === 'max') {
-        if (
-          firstArg &&
-          firstArg.type === 'Literal' &&
-          typeof firstArg.value === 'number'
-        ) {
-          constraints.max = firstArg.value
-        }
+        const n = numericLiteral(firstArg)
+        if (n !== undefined) constraints.max = n
+        else noteUnreadableBound(modName, label, ctx)
       } else if (modName === 'email') {
         constraints.email = true
       } else if (modName === 'url') {
@@ -193,9 +240,14 @@ function extractTypeAndConstraints(
         if (r) constraints.regex = r
       } else if (modName === 'int') {
         integer = true
+      } else if (modName === 'optional' || modName === 'nullable') {
+        // Applies at the field level only — an optional/nullable array ELEMENT is not part of the lowered contract.
+        ctx.report(
+          `${label}: \`.${modName}()\` on an array element is NOT lowered to native — every element is required and non-null on iOS/Android. Make the array field itself optional, or enforce element nullability in a web-only helper.`,
+        )
+      } else {
+        noteDroppedModifier(modName, label, ctx)
       }
-      // `.optional()` / `.nullable()` are deliberately NOT recognized
-      // here — they apply at the field level, not to inner elements.
       cursor = callee.object as AnyNode
       continue
     }
@@ -545,6 +597,7 @@ export function tryNamespacedSchemaDefnFromTopLevel(
     // Walk the chain twice: once to find the BASE <prefix>.X() call,
     // and once (top-down) to collect constraint modifiers.
     // v2.2 — also collect `.optional()` / `.nullable()` flags.
+    const fieldLabel = `${schemaFn ?? prefix} declaration \`${bindingName}\`: field \`${fieldName}\``
     const constraints: ZodFieldConstraints = {}
     let optional = false
     let integer = false
@@ -562,21 +615,13 @@ export function tryNamespacedSchemaDefnFromTopLevel(
         const modArgs = (cursor.arguments as AnyNode[] | undefined) ?? []
         const firstArg = modArgs[0]
         if (modName === 'min') {
-          if (
-            firstArg &&
-            firstArg.type === 'Literal' &&
-            typeof firstArg.value === 'number'
-          ) {
-            constraints.min = firstArg.value
-          }
+          const n = numericLiteral(firstArg)
+          if (n !== undefined) constraints.min = n
+          else noteUnreadableBound(modName, fieldLabel, ctx)
         } else if (modName === 'max') {
-          if (
-            firstArg &&
-            firstArg.type === 'Literal' &&
-            typeof firstArg.value === 'number'
-          ) {
-            constraints.max = firstArg.value
-          }
+          const n = numericLiteral(firstArg)
+          if (n !== undefined) constraints.max = n
+          else noteUnreadableBound(modName, fieldLabel, ctx)
         } else if (modName === 'email') {
           constraints.email = true
         } else if (modName === 'url') {
@@ -596,6 +641,8 @@ export function tryNamespacedSchemaDefnFromTopLevel(
           // `number().int()` — the ONLY spelling that promises a whole
           // number. A bare `number()` accepts `1.5`.
           integer = true
+        } else {
+          noteDroppedModifier(modName, fieldLabel, ctx)
         }
         cursor = callee.object as AnyNode
         continue
@@ -624,6 +671,11 @@ export function tryNamespacedSchemaDefnFromTopLevel(
     }
     const method = baseCallee.property.name as string
     const hasConstraints = Object.keys(constraints).length > 0
+    if (hasConstraints && method !== 'string' && method !== 'number') {
+      ctx.report(
+        `${fieldLabel}: ${Object.keys(constraints).map((c) => `.${c}()`).join(' / ')} on a ${prefix}.${method}() field is NOT enforced on iOS/Android — only string and number fields carry lowered constraints.`,
+      )
+    }
     if (method === 'string') {
       const entry: ZodSchemaDefnIR['fields'][number] = { name: fieldName, type: 'string' }
       if (hasConstraints) entry.constraints = constraints
@@ -720,7 +772,7 @@ export function tryNamespacedSchemaDefnFromTopLevel(
       }
       // Otherwise: primitive element (with possible per-element constraints)
       const inner = innerArg
-        ? extractTypeAndConstraints(innerArg, prefix, ctx, schemaFn === null)
+        ? extractTypeAndConstraints(innerArg, prefix, ctx, schemaFn === null, `${fieldLabel} (array element)`)
         : null
       let innerType: 'string' | 'number' | 'boolean' | undefined
       if (inner) {
@@ -948,6 +1000,24 @@ export function warnUnloweredSchemaAdapter(node: AnyNode, ctx: ModuleParseContex
   if (init?.type !== 'CallExpression' || init.callee?.type !== 'Identifier') return
   const adapter = init.callee.name as string
   if (!SCHEMA_ADAPTERS.has(adapter)) return
+  // `zodSchema(z.object({…}).refine(…))`: the shape IS inline, but an object-level modifier wraps it, and the walker
+  // reads the bare `z.object(…)` call. Say which modifier, rather than the misleading "not an inline literal".
+  const arg = (init.arguments as AnyNode[] | undefined)?.[0]
+  const wrap = arg?.type === 'CallExpression' ? (arg.callee as AnyNode) : undefined
+  if (
+    wrap?.type === 'MemberExpression' &&
+    !wrap.computed &&
+    wrap.object?.type === 'CallExpression' &&
+    wrap.property?.type === 'Identifier'
+  ) {
+    ctx.report(
+      `\`${adapter}\` declaration \`${d.id.name as string}\`: the object-level \`.${wrap.property.name as string}()\` ` +
+        `wrapping the schema is not lowered, so no native struct is synthesized and the call is reproduced VERBATIM — ` +
+        `the native build then fails on a symbol that exists only in JS. Remove the object-level modifier ` +
+        `(\`${adapter}(z.object({ … }))\`) and enforce that rule in a web-only helper, or validate per field.`,
+    )
+    return
+  }
   ctx.report(
     `\`${adapter}\` declaration \`${d.id.name as string}\`: the schema argument is not an inline ` +
       `literal, so no native struct is synthesized and the call is reproduced VERBATIM — the native ` +
