@@ -7762,13 +7762,13 @@
       "warnings": 0
     },
     "registry:@pyreon/feature|swift": {
-      "sha": "79793fcea71aa13f0dc573e0f87cfd9b23bfb87583c29d6712c847d84c7fd705",
-      "bytes": 358,
+      "sha": "e691e8bda2b076b907832f575f9b57833219951f12fa8d796c1c9f61ce24537a",
+      "bytes": 2718,
       "warnings": 0
     },
     "registry:@pyreon/feature|kotlin": {
-      "sha": "c4f11da37fe81981c0e3462e4ba5383dbc138c93ac167027f9547cfdfb0b648f",
-      "bytes": 416,
+      "sha": "22f5b14f43f28572c6eb408737bdb40faf033da6f99ccd79e6e47dd3dddb31a9",
+      "bytes": 2781,
       "warnings": 0
     },
     "registry:@pyreon/hotkeys|swift": {
