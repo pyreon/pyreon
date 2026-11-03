@@ -1397,8 +1397,19 @@ jobs:
           mkdir -p "$RUNNER_TEMP/wrangler"
           cp scripts/verify-modes-tools/package{,-lock}.json "$RUNNER_TEMP/wrangler/"
           npm ci --prefix "$RUNNER_TEMP/wrangler" --no-audit --no-fund
-          npm audit --prefix "$RUNNER_TEMP/wrangler" --audit-level=high
           echo "bin=$RUNNER_TEMP/wrangler/node_modules/.bin/wrangler" >> "$GITHUB_OUTPUT"
+          # Same rule as Release Build's audit: an advisory published against
+          # this pinned lock blocks only a PR that CHANGES the lock — otherwise
+          # it is a warning, so it cannot red every open PR (and silently skip
+          # Verify Modes with it). Pushes to main stay strict.
+          if ! npm audit --prefix "$RUNNER_TEMP/wrangler" --audit-level=high; then
+            if [ "$GITHUB_EVENT_NAME" = "pull_request" ] && \
+               git diff --quiet HEAD^1 HEAD -- scripts/verify-modes-tools/package-lock.json; then
+              echo "::warning::High-severity advisory in the pinned wrangler toolchain lock, pre-existing on the base — not blocking this PR. Bump scripts/verify-modes-tools/package-lock.json."
+            else
+              exit 1
+            fi
+          fi
       - name: Verify Modes
         if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
         env:
@@ -1652,8 +1663,23 @@ jobs:
       - uses: ./.github/actions/setup-pyreon
         with:
           restore-bootstrap: 'false'
+      # On a PR, block only advisories the PR INTRODUCES. A bare
+      # `bun audit` here once froze every merge for four days: an advisory
+      # published against a dependency already on main turns every open PR
+      # red, docs-only PRs included. Pre-existing advisories surface as
+      # warnings + summary; pushes to main still enforce the full set. The
+      # PR checkout is the merge commit, so its first parent IS the base it
+      # was merged against — one extra level of history is all it needs.
       - name: Reject high-severity dependency advisories
-        run: bun audit --audit-level=high
+        env:
+          IS_PR: ${{ github.event_name == 'pull_request' }}
+        run: |
+          if [ "$IS_PR" = "true" ]; then
+            git fetch --no-tags --quiet --depth=2 origin "$GITHUB_REF"
+            bun scripts/audit-new-advisories.ts --level high --base HEAD^1
+          else
+            bun scripts/audit-new-advisories.ts --level high
+          fi
       - name: Clean full build of every published package (release path)
         run: bun scripts/build-batched.ts
       - name: Pack + validate every manifest (publish dry-run, no upload)

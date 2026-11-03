@@ -491,14 +491,17 @@ export const BUDGET_DATA_FILES: ReadonlySet<string> = new Set([
   'scripts/import-budgets.json',
 ])
 
-export function forcesFullRun(path: string): boolean {
+export function forcesFullRun(path: string, e2eScripts?: ReadonlySet<string>): boolean {
   if (path === 'bun.lock' || path === 'package.json') return true
   if (/^tsconfig.*\.json$/.test(path)) return true
   // Every root `vitest.*.ts` (see `affected.ts:isRootFile` — the two names
   // this used to list no longer exist) and the pinned toolchain.
   if (/^vitest\.[^/]*\.ts$/.test(path)) return true
   if (path === '.bun-version') return true
-  if (path.startsWith('.github/workflows/')) return true
+  // Only ci.yml defines how the e2e suites run (matrix, setup, env). Another
+  // workflow — codeql, release, scorecard — cannot change what a suite does;
+  // a dependabot action bump touching only those used to run all 31 suites.
+  if (path === '.github/workflows/ci.yml') return true
   if (path.startsWith('.github/actions/')) return true
   // The size-budget DATA files are the one exception under `scripts/`: no e2e
   // spec, e2e config, example build, or served page reads them — only the
@@ -508,7 +511,11 @@ export function forcesFullRun(path: string): boolean {
   // suite-runs. A budget file changing still runs whatever suites the PR's
   // OTHER files select, so this narrows only the "unknown blast radius" arm.
   if (BUDGET_DATA_FILES.has(path)) return false
-  if (path.startsWith('scripts/')) return true
+  // With the derived reachable set (`e2eReachableScripts`), a `scripts/` file
+  // forces the full run only when something an e2e suite executes can reach
+  // it. Without it — unit tests, or a derivation that threw — every
+  // `scripts/` file still forces it (the conservative default).
+  if (path.startsWith('scripts/')) return e2eScripts ? e2eScripts.has(path) : true
   if (/^playwright[^/]*\.config\.ts$/.test(path)) return true
   if (path.startsWith('e2e-configs/')) return true
   // Core framework packages underpin essentially every example app.
@@ -533,15 +540,132 @@ export function forcesFullRun(path: string): boolean {
  */
 export function selectSuites(
   changed: string[] | null,
-  opts: { all?: boolean } = {},
+  opts: { all?: boolean; e2eScripts?: ReadonlySet<string> | undefined } = {},
 ): Suite[] {
   if (opts.all) return SUITES
   if (changed === null) return SUITES // diff failed → safe full run
   if (changed.length === 0) return [] // nothing changed → green skip
-  if (changed.some(forcesFullRun)) return SUITES
+  if (changed.some((f) => forcesFullRun(f, opts.e2eScripts))) return SUITES
   return SUITES.filter((s) =>
     changed.some((f) => s.triggers.some((t) => f.startsWith(t))),
   )
+}
+
+// ── Which `scripts/` files can an e2e suite reach? ─────────────────────────
+
+/**
+ * Every `scripts/` path the e2e machinery can execute or read, derived — not
+ * listed — by following references out of the e2e entry points.
+ *
+ * Why: `scripts/` holds ~200 files, most of them CI gates and their data
+ * (`check-*.ts`, the native emit golden file, …) that no e2e suite ever
+ * touches. A blanket "any `scripts/` change runs every suite" made every native
+ * PR — each of which updates that golden file — pay the full 31-suite
+ * web e2e run. Measured 2026-11-02: 9 of 12 open PRs were forced to the full
+ * set by a `scripts/` file outside this set. The per-file exemption for the
+ * budget JSONs was the same fix applied to one name at a time.
+ *
+ * Roots: the e2e configs and specs, playwright configs, the root package's
+ * e2e scripts, the example and docs apps' package scripts and Vite configs,
+ * the shared setup action, and the `install` + `e2e-suite` job blocks of
+ * ci.yml (the workflow itself forces a full run when it changes). From each
+ * root and each reached script, a `scripts/…` path mention or a relative
+ * import is followed transitively. Generous by construction: any mention,
+ * including in a comment, counts as reachable — so a comment in a reachable
+ * file must not spell out the path of a file it means to exclude.
+ */
+export function e2eReachableScripts(repoRoot: string): ReadonlySet<string> {
+  const fs = require('node:fs') as typeof import('node:fs')
+  const path = require('node:path') as typeof import('node:path')
+  const rel = (abs: string): string => path.relative(repoRoot, abs).split(path.sep).join('/')
+  const exists = (p: string): boolean => fs.existsSync(path.join(repoRoot, p))
+  const isDir = (p: string): boolean => {
+    try {
+      return fs.statSync(path.join(repoRoot, p)).isDirectory()
+    } catch {
+      return false
+    }
+  }
+  const walk = (dir: string, out: string[]): void => {
+    const abs = path.join(repoRoot, dir)
+    if (!fs.existsSync(abs)) return
+    for (const e of fs.readdirSync(abs, { withFileTypes: true })) {
+      if (e.name === 'node_modules' || e.name.startsWith('.')) continue
+      const p = `${dir}/${e.name}`
+      if (e.isDirectory()) walk(p, out)
+      else out.push(p)
+    }
+  }
+  const read = (p: string): string => {
+    try {
+      return fs.readFileSync(path.join(repoRoot, p), 'utf8')
+    } catch {
+      return ''
+    }
+  }
+
+  const roots: string[] = []
+  walk('e2e-configs', roots)
+  walk('e2e', roots)
+  walk('.github/actions', roots)
+  for (const f of fs.readdirSync(repoRoot)) if (/^playwright[^/]*\.config\.ts$/.test(f)) roots.push(f)
+  const appDirs = ['docs', ...fs.readdirSync(path.join(repoRoot, 'examples')).map((d) => `examples/${d}`)]
+  for (const d of appDirs) {
+    if (!isDir(d)) continue
+    for (const f of fs.readdirSync(path.join(repoRoot, d)))
+      if (f === 'package.json' || f.startsWith('vite.config.')) roots.push(`${d}/${f}`)
+  }
+
+  const texts: string[] = roots.map(read)
+  const pkg = JSON.parse(read('package.json') || '{}') as { scripts?: Record<string, string> }
+  for (const [k, v] of Object.entries(pkg.scripts ?? {})) if (/e2e/.test(k)) texts.push(v)
+  const ci = read('.github/workflows/ci.yml')
+  for (const job of ['install', 'e2e-suite']) {
+    const m = new RegExp(`\\n  ${job}:\\n([\\s\\S]*?)(?=\\n  [a-z0-9_-]+:\\n|$)`).exec(ci)
+    if (!m) throw new Error(`ci.yml has no \`${job}\` job — update e2eReachableScripts`)
+    texts.push(m[1]!)
+  }
+
+  const found = new Set<string>()
+  const queue: string[] = []
+  const enqueue = (f: string): void => {
+    if (found.has(f)) return
+    found.add(f)
+    queue.push(f)
+  }
+  const add = (p: string): void => {
+    const clean = p.replace(/\/+$/, '').replace(/[.,;:)]+$/, '')
+    const candidates = [clean, `${clean}.ts`, `${clean}.mjs`, `${clean}.js`, `${clean}/index.ts`]
+    for (const c of candidates) {
+      if (!c.startsWith('scripts/')) continue
+      if (isDir(c)) {
+        const files: string[] = []
+        walk(c, files)
+        for (const f of files) enqueue(f)
+        return
+      }
+      if (exists(c)) {
+        enqueue(c)
+        return
+      }
+    }
+  }
+  const scan = (text: string, from?: string): void => {
+    for (const m of text.matchAll(/scripts\/[A-Za-z0-9_./-]+/g)) {
+      // `../../scripts/x` and `./scripts/x` both name the root `scripts/x`.
+      add(m[0])
+    }
+    if (!from) return
+    for (const m of text.matchAll(/(?:from\s+|import\s*\(\s*|require\s*\(\s*)['"](\.{1,2}\/[^'"]+)['"]/g)) {
+      add(rel(path.resolve(path.join(repoRoot, path.dirname(from)), m[1]!)))
+    }
+  }
+  for (const t of texts) scan(t)
+  while (queue.length > 0) {
+    const f = queue.shift()!
+    if (/\.(ts|mts|mjs|js|sh)$/.test(f)) scan(read(f), f)
+  }
+  return found
 }
 
 // ── CLI ────────────────────────────────────────────────────────────────────
@@ -593,7 +717,14 @@ function main(): void {
     }
   }
 
-  const chosen = selectSuites(changed, { all })
+  let e2eScripts: ReadonlySet<string> | undefined
+  try {
+    e2eScripts = e2eReachableScripts(process.cwd())
+  } catch (err) {
+    // Derivation failed → every `scripts/` change forces the full run.
+    console.error(`[e2e-affected] could not derive e2e-reachable scripts: ${String(err)}`)
+  }
+  const chosen = selectSuites(changed, { all, e2eScripts })
 
   if (list) {
     console.log(chosen.map((s) => s.name).join('\n'))
