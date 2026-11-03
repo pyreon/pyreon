@@ -216,7 +216,7 @@ const SHAPE_REMEDY: Readonly<Record<string, string>> = {
   slice: 'use non-negative indices, or a literal negative (`slice(-2)`, `slice(0, -1)`)',
   substring: 'use non-negative indices',
   toString: 'build the string explicitly (`xs.join(",")` for an array; a radix only lowers on an integer)',
-  toLocaleString: 'format the number explicitly — there is no native locale-aware number formatting to lower to',
+  toLocaleString: 'pass at most (locales, options) — `n.toLocaleString(locale, options)` lowers through the built-in Intl plugin',
   toFixed: 'pass one digit count',
 }
 
