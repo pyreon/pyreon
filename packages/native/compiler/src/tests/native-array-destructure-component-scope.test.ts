@@ -12,9 +12,10 @@
 // (recursing into the value-const / signal-read path) and alias each element
 // to `__pyDestrN[i]` in parseExpr's Identifier case — the exact IR of the
 // documented explicit-index shape (`xs()[0]`), so emit and inference ride a
-// proven path on both targets. Non-simple patterns (hole / rest / default /
-// nested) bail to a LOUD residual warning that now also covers the previously
-// silent non-simple component-level OBJECT patterns.
+// proven path on both targets. Holes, a trailing rest and nested patterns
+// now lower too (see native-nested-destructure.test.ts); a DEFAULT or an
+// OBJECT rest still bails to a LOUD residual warning, which also covers the
+// previously silent non-simple component-level OBJECT patterns.
 
 import { describe, expect, it } from 'vitest'
 import { transform } from '../index'
@@ -58,13 +59,8 @@ describe('component-scope flat array destructure lowers (was a silent drop)', ()
     expect(code).toMatch(/__pyDestr\d+\[1\]/)
   })
 
-  it('non-simple array patterns warn by NAME and never half-bind', () => {
-    for (const bad of [
-      'const [a, ...r] = xs()',
-      'const [, b] = xs()',
-      'const [a = 1] = xs()',
-      'const [[a]] = xs()',
-    ]) {
+  it('an array pattern with a default warns by NAME and never half-binds', () => {
+    for (const bad of ['const [a = 1] = xs()', 'const [a, b = 2] = xs()']) {
       const src = FLAT.replace('const [a, b] = xs()', bad).replace(
         '{String(a + b)}',
         '{String(xs().length)}',
@@ -77,12 +73,12 @@ describe('component-scope flat array destructure lowers (was a silent drop)', ()
     }
   })
 
-  it('non-simple component-level OBJECT patterns get the same loud warning (were silent)', () => {
+  it('an OBJECT rest at component level gets the same loud warning (was silent)', () => {
     const src = `import { Stack, Text } from '@pyreon/primitives'
 type Rec = { p: { q: number } }
 function App() {
   const o = signal<Rec>({ p: { q: 1 } })
-  const { p: { q } } = o()
+  const { p, ...others } = o()
   return (<Stack><Text>hello</Text></Stack>)
 }`
     const { warnings } = transform(src, { target: 'swift' })

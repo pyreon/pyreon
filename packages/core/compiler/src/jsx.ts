@@ -1365,6 +1365,8 @@ export function transformJSX_JS(
   let needsSetClassImportGlobal = false
   let needsSetAttrImportGlobal = false
   let needsSetValueImportGlobal = false
+  let needsSetPropImportGlobal = false
+  let needsSetPropStaticImportGlobal = false
   let needsSetHtmlImportGlobal = false
   // Compile-to-string SSR fast path (`options.ssrTemplate`): which
   // `@pyreon/runtime-server` helpers this module used.
@@ -3208,6 +3210,30 @@ export function transformJSX_JS(
   }
 
   /** Strip TS type-only layers + parens that don't affect runtime value. */
+  /** A primitive literal (string/number/boolean/null, a substitution-free
+   *  template, a signed number) — a value that can never be a function. */
+  function isPrimitiveLiteralNode(node: N): boolean {
+    const n = unwrapTypeLayers(node)
+    switch (n.type) {
+      case 'Literal':
+      case 'StringLiteral':
+      case 'NumericLiteral':
+      case 'BooleanLiteral':
+      case 'NullLiteral':
+        return true
+      case 'TemplateLiteral':
+        return (n.expressions?.length ?? 0) === 0
+      case 'UnaryExpression':
+        return (
+          (n.operator === '-' || n.operator === '+') &&
+          (n.argument.type === 'NumericLiteral' ||
+            (n.argument.type === 'Literal' && typeof n.argument.value === 'number'))
+        )
+      default:
+        return false
+    }
+  }
+
   function unwrapTypeLayers(expr: N): N {
     let cur: N = expr
     while (
@@ -4452,6 +4478,8 @@ export function transformJSX_JS(
     if (needsSetClassImportGlobal) runtimeDomImports.push('_setClass')
     if (needsSetAttrImportGlobal) runtimeDomImports.push('_setAttr')
     if (needsSetValueImportGlobal) runtimeDomImports.push('_setValue')
+    if (needsSetPropImportGlobal) runtimeDomImports.push('_setProp')
+    if (needsSetPropStaticImportGlobal) runtimeDomImports.push('_setPropStatic')
     if (needsSetHtmlImportGlobal) runtimeDomImports.push('_setHtml')
     const reactivitySpecs = [
       ...(needsBindImportGlobal ? ['_bind'] : []),
@@ -4743,6 +4771,8 @@ export function transformJSX_JS(
     let needsSetClass = false
     let needsSetAttr = false
     let needsSetValue = false
+    let needsSetProp = false
+    let needsSetPropStatic = false
     let needsSetHtml = false
 
     function nextVar(): string {
@@ -5295,7 +5325,19 @@ export function transformJSX_JS(
       return { expr: sliceExpr(exprNode), isReactive: isDynamic(exprNode) }
     }
 
-    function attrSetter(htmlAttrName: string, varName: string, expr: string, tag: string): string {
+    /**
+     * `resolve` — whether a DOM-property value may be a FUNCTION (an accessor)
+     * and must go through `_setProp`. False only where the value is statically
+     * a primitive (a literal, or the static-position fallthrough that already
+     * excluded every non-literal), where the raw property assignment is exact.
+     */
+    function attrSetter(
+      htmlAttrName: string,
+      varName: string,
+      expr: string,
+      tag: string,
+      resolve = true,
+    ): string {
       // class/style mirror the runtime `applyProp` value-normalization
       // (packages/core/runtime-dom/src/props.ts): a string passes through,
       // but an array/object class goes through `cx()` and an object style is
@@ -5350,7 +5392,17 @@ export function transformJSX_JS(
         needsSetValue = true
         return `_setValue(${varName}, ${expr})`
       }
-      if (DOM_PROPS.has(htmlAttrName)) return `${varName}.${htmlAttrName} = ${expr}`
+      // DOM property (`checked`, `disabled`, …): delegate to the runtime
+      // `_setProp` (= applyDomProp), which resolves a FUNCTION value as an
+      // accessor — the h() path's semantics. A raw `el.checked = isOn` stored
+      // the function itself (always truthy) when `isOn` was a named accessor,
+      // a helper param or a function-valued prop (#4086). This setter runs
+      // inside a reactive binding, so the resolve is tracked.
+      if (DOM_PROPS.has(htmlAttrName)) {
+        if (!resolve) return `${varName}.${htmlAttrName} = ${expr}`
+        needsSetProp = true
+        return `_setProp(${varName}, "${htmlAttrName}", ${expr})`
+      }
       // Generic attribute — delegate to the runtime `_setAttr` (= applyAttrProp)
       // so a compiled DYNAMIC attribute normalizes identically to the h() path
       // (packages/core/runtime-dom/src/props.ts:setStaticProp): null/undefined →
@@ -5381,7 +5433,21 @@ export function transformJSX_JS(
           bindLines.push(`_setStyleOnce(${varName}, ${expr})`)
           return
         }
-        bindLines.push(attrSetter(htmlAttrName, varName, expr, tag))
+        // A DOM property in static position: `_setPropStatic` binds a
+        // FUNCTION value live (a renderEffect, as the h() path does) since no
+        // enclosing binding will re-run it — `checked={isOn}` with a named
+        // accessor follows its signal (#4086). Non-functions assign once.
+        // A primitive LITERAL can never be a function, so it keeps the plain
+        // setter (no helper import, byte-identical to before).
+        if (
+          (DOM_PROPS.has(htmlAttrName) || (htmlAttrName === 'value' && (tag === 'input' || tag === 'textarea'))) &&
+          !isPrimitiveLiteralNode(exprNode)
+        ) {
+          needsSetPropStatic = true
+          bindLines.push(`_setPropStatic(${varName}, "${htmlAttrName}", ${expr})`)
+          return
+        }
+        bindLines.push(attrSetter(htmlAttrName, varName, expr, tag, false))
         return
       }
       lens(
@@ -5502,7 +5568,7 @@ export function transformJSX_JS(
     ): string {
       if (!attr.value) {
         if (tag === 'input' && htmlAttrName === 'indeterminate') {
-          bindLines.push(attrSetter(htmlAttrName, varName, 'true', tag))
+          bindLines.push(attrSetter(htmlAttrName, varName, 'true', tag, false))
           return ''
         }
         return ` ${htmlAttrName}`
@@ -5523,7 +5589,7 @@ export function transformJSX_JS(
         // its text content): a baked attribute mounted an EMPTY textarea.
         if (((tag === 'select' || tag === 'textarea') && htmlAttrName === 'value') ||
           (tag === 'input' && htmlAttrName === 'indeterminate')) {
-          bindLines.push(attrSetter(htmlAttrName, varName, escapeJsString(attr.value.value), tag))
+          bindLines.push(attrSetter(htmlAttrName, varName, escapeJsString(attr.value.value), tag, false))
           return ''
         }
         return ` ${htmlAttrName}="${escapeHtmlAttr(attr.value.value)}"`
@@ -6313,6 +6379,8 @@ export function transformJSX_JS(
     if (needsSetClass) needsSetClassImportGlobal = true
     if (needsSetAttr) needsSetAttrImportGlobal = true
     if (needsSetValue) needsSetValueImportGlobal = true
+    if (needsSetProp) needsSetPropImportGlobal = true
+    if (needsSetPropStatic) needsSetPropStaticImportGlobal = true
     if (needsSetHtml) needsSetHtmlImportGlobal = true
 
     const escaped = html.replace(/\\/g, '\\\\').replace(/"/g, '\\"')

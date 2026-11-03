@@ -823,6 +823,48 @@ export function applyAttrProp(el: Element, key: string, value: unknown): void {
 const DEFAULT_VALUE_INIT = Symbol('pyreon.defaultValueInit')
 
 /**
+ * Compiled sink for a DOM PROPERTY binding (`checked`, `selected`, `disabled`,
+ * `multiple`, `readOnly`, `indeterminate`, and `value` on every element but
+ * `<input>`/`<textarea>`, which go through `applyValueProp`). Exported as
+ * `_setProp` and emitted INSIDE a reactive binding (`_bind`, `renderEffect`,
+ * a selector subscription), so resolving a function here runs in that tracked
+ * frame and the binding stays live.
+ *
+ * WHY a helper rather than the raw `el.checked = expr` the compiler used to
+ * emit: the compiler cannot know whether a NAMED binding holds a value or an
+ * accessor (`checked={isOn}` where `const isOn = () => on()`, a helper param,
+ * a function-valued prop). The raw assignment stored the FUNCTION, which is
+ * truthy, so the box was always checked (#4086). The h() path treats a
+ * function prop as an accessor; this mirrors it.
+ */
+export function applyDomProp(el: Element, key: string, value: unknown): void {
+  if (typeof value === 'function') value = (value as () => unknown)()
+  if (key === 'value' && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA')) {
+    applyValueProp(el, value)
+    return
+  }
+  ;(el as unknown as Record<string, unknown>)[key] = value
+}
+
+/**
+ * The STATIC-position twin of `applyDomProp` (`_setPropStatic`): emitted where
+ * the compiler saw no signal read, so nothing wraps the call in a binding. A
+ * function value there is still an accessor — the h() path wraps it in a
+ * `renderEffect` and so does this, so `checked={isOn}` follows `on()` instead
+ * of resolving once. The effect registers with the active EffectScope (the
+ * component's), so it is disposed with the component like every other
+ * template binding. Non-function values pay one `typeof`.
+ */
+export function applyDomPropStatic(el: Element, key: string, value: unknown): void {
+  if (typeof value === 'function') {
+    const read = value as () => unknown
+    renderEffect(() => applyDomProp(el, key, read()))
+    return
+  }
+  applyDomProp(el, key, value)
+}
+
+/**
  * Apply `value` to a form control, establishing `defaultValue` on the FIRST
  * application only. Exported as `_setValue` for the compiler's template fast
  * path so the compiled and `h()` paths cannot diverge on this attribute class
@@ -854,6 +896,12 @@ const DEFAULT_VALUE_INIT = Symbol('pyreon.defaultValueInit')
  */
 export function applyValueProp(el: Element, value: unknown): void {
   const node = el as HTMLInputElement
+  // A function is an ACCESSOR, exactly as on the h() path (`applyProp`'s
+  // function branch). A named binding — `value={getValue}`, a function-valued
+  // prop — reaches the compiled sink as the function itself, and assigning it
+  // wrote the closure SOURCE into the box. Inside the compiler's reactive
+  // `_bind` wrapper this call is tracked, so the read stays live (#4086).
+  if (typeof value === 'function') value = (value as () => unknown)()
   // Nullish FIRST — the branch `setStaticProp` runs before it ever reaches this
   // helper, and the one the compiled path skipped: `HTMLInputElement.value` is
   // `[LegacyNullToEmptyString]`, which maps `null` → '' but NOT `undefined`, so

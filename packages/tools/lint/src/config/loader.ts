@@ -7,7 +7,8 @@ const CONFIG_FILENAMES = ['.pyreonlintrc.json', '.pyreonlintrc', 'pyreonlint.con
 /**
  * Load a lint config file from the given directory or its parents.
  *
- * Search order:
+ * Walks up from `cwd` to the nearest ancestor that has a config, stopping at the
+ * repository root (`.git`) or the filesystem root. Search order per directory:
  * 1. `.pyreonlintrc.json`
  * 2. `.pyreonlintrc`
  * 3. `pyreonlint.config.json`
@@ -23,14 +24,18 @@ const CONFIG_FILENAMES = ['.pyreonlintrc.json', '.pyreonlintrc', 'pyreonlint.con
  */
 export function loadConfig(cwd: string): LintConfigFile | null {
   let dir = resolve(cwd)
-  const root = dirname(dir)
 
+  // Walk from `cwd` toward the filesystem root and return the NEAREST config.
+  // The walk stops after the repository root (a directory holding `.git`), so a
+  // stray config above the checkout — in a home directory, say — never applies
+  // to a project that does not know about it.
   while (true) {
     const found = searchDirectory(dir)
     if (found !== null) return found
+    if (existsSync(join(dir, '.git'))) break
 
     const parent = dirname(dir)
-    if (parent === dir || parent === root) break
+    if (parent === dir) break
     dir = parent
   }
 
