@@ -1015,6 +1015,81 @@ abstract class WebSocketListener {
 }
 `
 
+// PyreonIntl-specific stubs — the android.icu surface PyreonIntl.kt uses,
+// mirrored EXACTLY (member names, nullability, constant values). android.icu is
+// Android's bundled ICU4J (API 24+); the JVM has no equivalent, so the runtime
+// is typechecked here and RUN on the emulator (IntlDifferentialTest, against the
+// V8 oracle table). Java getters/setters appear as Kotlin properties, which is
+// how the source reads them (`f.timeZone = …`, `f.isGroupingUsed = …`).
+const ICU_STUBS = `package android.icu.util
+class ULocale private constructor() {
+    companion object {
+        @JvmStatic fun getDefault(): ULocale = ULocale()
+        @JvmStatic fun forLanguageTag(languageTag: String): ULocale = ULocale()
+    }
+}
+open class TimeZone {
+    companion object {
+        @JvmStatic fun getTimeZone(ID: String): TimeZone = TimeZone()
+        @JvmStatic fun getCanonicalID(ID: String): String? = null
+    }
+}
+open class Currency {
+    companion object {
+        @JvmStatic fun getInstance(theISOCode: String): Currency = Currency()
+    }
+}
+`
+const ICU_TEXT_STUBS = `package android.icu.text
+import android.icu.util.Currency
+import android.icu.util.TimeZone
+import android.icu.util.ULocale
+abstract class DateFormat {
+    var timeZone: TimeZone = TimeZone()
+    fun format(date: java.util.Date): String = ""
+    companion object {
+        const val NONE: Int = -1
+        const val FULL: Int = 0
+        const val LONG: Int = 1
+        const val MEDIUM: Int = 2
+        const val SHORT: Int = 3
+        @JvmStatic fun getDateTimeInstance(dateStyle: Int, timeStyle: Int, locale: ULocale): DateFormat = SimpleDateFormat("", locale)
+    }
+}
+open class SimpleDateFormat(pattern: String, locale: ULocale) : DateFormat()
+open class DateTimePatternGenerator {
+    fun getBestPattern(skeleton: String, options: Int): String = ""
+    companion object {
+        const val MATCH_HOUR_FIELD_LENGTH: Int = 1 shl 11
+        @JvmStatic fun getInstance(uLocale: ULocale): DateTimePatternGenerator = DateTimePatternGenerator()
+    }
+}
+abstract class NumberFormat {
+    var currency: Currency? = null
+    var roundingMode: Int = 6
+    var minimumFractionDigits: Int = 0
+    var maximumFractionDigits: Int = 3
+    var minimumIntegerDigits: Int = 1
+    var isGroupingUsed: Boolean = true
+    fun format(number: Double): String = ""
+    companion object {
+        const val NUMBERSTYLE: Int = 0
+        const val CURRENCYSTYLE: Int = 1
+        const val PERCENTSTYLE: Int = 2
+        const val ISOCURRENCYSTYLE: Int = 5
+        const val PLURALCURRENCYSTYLE: Int = 6
+        @JvmStatic fun getInstance(desiredLocale: ULocale, choice: Int): NumberFormat = object : NumberFormat() {}
+    }
+}
+`
+const ICU_MATH_STUBS = `package android.icu.math
+class BigDecimal {
+    companion object {
+        const val ROUND_HALF_UP: Int = 4
+    }
+}
+`
+
 // PyreonHttpOkHttp-specific stubs — the okhttp3 4.x REQUEST/RESPONSE surface,
 // mirrored EXACTLY. Deliberately SEPARATE from OKHTTP3_STUBS above (which
 // mirrors the websocket surface): each service compiles alone against only its
@@ -1500,6 +1575,15 @@ try {
     // The scheduler hops the user's body to the main looper before running it.
     writeFileSync(join(tempDir, 'AndroidOsHandler.kt'), ANDROID_OS_RATELIMIT_HANDLER_STUBS, 'utf8')
   }
+  const icuStubs =
+    SERVICE === 'PyreonIntl'
+      ? [join(tempDir, 'IcuUtil.kt'), join(tempDir, 'IcuText.kt'), join(tempDir, 'IcuMath.kt')]
+      : []
+  if (SERVICE === 'PyreonIntl') {
+    writeFileSync(icuStubs[0]!, ICU_STUBS, 'utf8')
+    writeFileSync(icuStubs[1]!, ICU_TEXT_STUBS, 'utf8')
+    writeFileSync(icuStubs[2]!, ICU_MATH_STUBS, 'utf8')
+  }
   const okhttpHttpPath = join(tempDir, 'OkHttp3Http.kt')
   if (SERVICE === 'PyreonUploadAndroid') {
     writeFileSync(join(tempDir, 'UploadAndroidContent.kt'), UPLOAD_ANDROID_CONTENT_STUBS, 'utf8')
@@ -1830,6 +1914,7 @@ try {
         ...notifStubs,
         ...okhttpExtras,
         ...okhttpHttpExtras,
+        ...icuStubs,
         ...geolocationAndroidExtras,
         ...networkAndroidExtras,
         ...pushAndroidExtras,
@@ -1863,6 +1948,7 @@ try {
         ...notifStubs,
         ...okhttpExtras,
         ...okhttpHttpExtras,
+        ...icuStubs,
         ...geolocationAndroidExtras,
         ...networkAndroidExtras,
         ...pushAndroidExtras,
