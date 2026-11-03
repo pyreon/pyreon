@@ -298,10 +298,9 @@ describe('parse.ts — component-scope destructuring', () => {
     expect(arr.warnings).toEqual([])
   })
 
-  it('warns LOUDLY for an array pattern with a hole, a rest, or no elements', () => {
+  it('warns LOUDLY for an array pattern with a default or no elements', () => {
     const msg = 'Component-body destructuring in this shape is not lowered to native'
-    expect(swift(body('  const xs = signal([1,2])\n  const [, b] = xs()')).warnings.join('\n')).toContain(msg)
-    expect(swift(body('  const xs = signal([1,2])\n  const [a, ...r] = xs()')).warnings.join('\n')).toContain(msg)
+    expect(swift(body('  const xs = signal([1,2])\n  const [a = 1] = xs()')).warnings.join('\n')).toContain(msg)
     expect(swift(body('  const xs = signal([1,2])\n  const [] = xs()')).warnings.join('\n')).toContain(msg)
   })
 })
