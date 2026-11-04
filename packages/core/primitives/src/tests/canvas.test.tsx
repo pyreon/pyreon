@@ -93,6 +93,20 @@ describe('<Canvas> web', () => {
     expect(text.textContent).toBe('label')
   })
 
+  it('shape layers are decorative, but a CanvasText layer stays readable by assistive tech', () => {
+    // Native canvases draw text with SwiftUI / Compose `Text`, which VoiceOver
+    // and TalkBack read; the web must not hide the same label.
+    const el = mountCanvas(
+      h(CanvasRect, { x: 0, y: 0, width: 1, height: 1 }),
+      h(CanvasCircle, { cx: 1, cy: 1, r: 1 }),
+      h(CanvasLine, { x1: 0, y1: 0, x2: 1, y2: 1 }),
+      h(CanvasPath, { d: 'M0 0 L1 1' }),
+      h(CanvasText, { x: 0, y: 0 }, 'Stage'),
+    )
+    const layers = [...el.children] as SVGElement[]
+    expect(layers.map((l) => l.getAttribute('aria-hidden'))).toEqual(['true', 'true', 'true', 'true', null])
+  })
+
   it('rect radius defaults to 0, line/text honour their own colour + size', () => {
     const el = mountCanvas(
       h(CanvasRect, { x: 0, y: 0, width: 1, height: 1 }),

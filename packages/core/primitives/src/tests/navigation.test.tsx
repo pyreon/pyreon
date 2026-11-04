@@ -61,6 +61,19 @@ describe('<Tabs>', () => {
     expect(tabs[0]!.querySelector('svg')?.getAttribute('aria-hidden')).toBe('true')
   })
 
+  it('keeps ONE tab tabbable when the value names no tab, and hands it back once one is selected', () => {
+    const tab = signal('')
+    const c = render(threeTabs(tab))
+    const tabs = tabsOf(c)
+    expect(tabs.map((t) => t.getAttribute('aria-selected'))).toEqual(['false', 'false', 'false'])
+    // Every tab at -1 would make the tab bar unreachable by keyboard.
+    expect(tabs.map((t) => t.getAttribute('tabindex'))).toEqual(['0', '-1', '-1'])
+    tab.set('me')
+    expect(tabs.map((t) => t.getAttribute('tabindex'))).toEqual(['-1', '-1', '0'])
+    tab.set('gone')
+    expect(tabs.map((t) => t.getAttribute('tabindex'))).toEqual(['0', '-1', '-1'])
+  })
+
   it('mounts a panel lazily, on its first selection', () => {
     const tab = signal('feed')
     const c = render(threeTabs(tab))

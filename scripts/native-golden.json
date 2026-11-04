@@ -4752,22 +4752,22 @@
       "warnings": 1
     },
     "golden-fixture:query-57.tsx|swift": {
-      "sha": "bf2cfd5c851a52243b1b1f54b3929e2a00585dd5e3ce1e099f1a80e3f5dbd487",
+      "sha": "9fcaf3e5dbdafa6054f084d7c011d9738e0028aa11a00e221b722830636b539b",
       "bytes": 135,
       "warnings": 2
     },
     "golden-fixture:query-57.tsx|kotlin": {
-      "sha": "228b7456a2014d3a297da27e79a1b5ffdc837ee2f58f5132df495f8605c7bc76",
+      "sha": "62da47ca44c6fca88ab5d8657d28b09b8e57397826cdb692264ea7bfa419cdcd",
       "bytes": 226,
       "warnings": 2
     },
     "golden-fixture:query-58.tsx|swift": {
-      "sha": "02be805f454dab5d4acc9232f273efad65fb3fcc1c648257386273b6eefbccf8",
+      "sha": "9271d0866f655d158c0bff541448888b76659c619309f72ca485cfe4e39c669c",
       "bytes": 135,
       "warnings": 2
     },
     "golden-fixture:query-58.tsx|kotlin": {
-      "sha": "e41be4fb9b7b39ae3f4bd1d76a6d3ab3bedd2cc224cdab2751a736f3fa39bad4",
+      "sha": "4f4d085a74c0416d81b4ddb8196641fa99c1acde0cb50a84bcbe1ec32debdc60",
       "bytes": 226,
       "warnings": 2
     },

@@ -35,7 +35,13 @@ public enum PyreonDateValue {
 
     /// The value as a date, or `nil` for `""` and anything not in the format.
     public static func parse(_ value: String, _ kind: PyreonDateFieldKind) -> Date? {
-        guard !value.isEmpty, let parsed = formatter(kind).date(from: value) else { return nil }
+        let f = formatter(kind)
+        // `isLenient = false` does NOT make `DateFormatter` check digit counts:
+        // it reads "2026-2-3", "26-02-03" (year 26) and "9:30" as values,
+        // where a browser's `<input type="date" | "time">` and the Android
+        // runtime reject them as "no value". The ROUND TRIP is the format
+        // check — a string the formatter would not write back is not in it.
+        guard !value.isEmpty, let parsed = f.date(from: value), f.string(from: parsed) == value else { return nil }
         guard kind == .time else { return parsed }
         // `HH:mm` parses onto 2000-01-01; move it onto today.
         var cal = Calendar(identifier: .gregorian)

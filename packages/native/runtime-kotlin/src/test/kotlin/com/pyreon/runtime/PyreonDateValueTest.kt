@@ -20,6 +20,11 @@ fun main() {
     check(PyreonDateValue.parseTime("25:00") == null)
     check(PyreonDateValue.parseDateTime("2026-10-22 09:00") == null)
     check(!PyreonDateValue.isValid("09:00", PyreonDateFieldKind.Date))
+    // Unpadded / short fields are no value, as on the web and iOS.
+    check(PyreonDateValue.parseDate("2026-2-3") == null)
+    check(PyreonDateValue.parseDate("26-02-03") == null)
+    check(PyreonDateValue.parseTime("9:30") == null)
+    check(PyreonDateValue.parseDateTime("2026-10-22T9:30") == null)
 
     // The picker's UTC-midnight day survives a device far from UTC — the
     // classic off-by-one where Oct 22 in Tokyo comes back as Oct 21.

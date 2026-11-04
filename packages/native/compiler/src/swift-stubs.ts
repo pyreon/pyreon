@@ -1662,6 +1662,8 @@ public final class PyreonNumberFormat {
 // (runtime-swift's PyreonSlice.swift).
 public func pyreonSlice<T>(_ a: [T], _ start: Int, _ end: Int? = nil) -> [T] { a }
 public func pyreonSlice(_ s: String, _ start: Int, _ end: Int? = nil) -> String { s }
+public func pyreonSliceIndex(_ d: Double) -> Int { 0 }
+public func pyreonSubstring(_ s: String, _ start: Int, _ end: Int? = nil) -> String { s }
 public final class PyreonDatabase {
   public init() {}
   public func insert(_ collection: String, _ record: PyreonRecord) {}

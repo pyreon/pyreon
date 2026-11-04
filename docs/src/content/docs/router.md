@@ -1366,6 +1366,26 @@ Guards run before navigation commits and can cancel, redirect, or allow navigati
 
 Each group runs in order. If any guard cancels or redirects, subsequent guards do not run.
 
+#### The initial navigation
+
+The first URL a router resolves — a deep link, a reload, the URL an SSR request asked for — goes through the guards too, exactly as Vue Router's initial navigation does. A guarded route reached by typing its URL is gated the same as one reached with `push()`.
+
+- `from` is a START route with no `matched` records, so no `beforeLeave` runs. Route `redirect`, `middleware`, `beforeEnter` and global guards all run.
+- A redirect REPLACES the deep link (it never adds a history entry). On the server it becomes an HTTP redirect: `router.preload(url)`, which every SSR/SSG host calls before rendering, throws the same `redirect()` a loader does.
+- While the guards are pending, and after they cancel, `<RouterView>` renders nothing, so guarded content never reaches the DOM. A cancelled deep link has no previous route to stay on, so return a path (`'/login'`) rather than `false` when you want the user to land somewhere.
+- The guards run on the server **and** on the client. A guard that returns `false` or a path on the server gates the SSR HTML. A guard that **throws** on the server — almost always one reading `window` or `localStorage` — is treated as undecidable there: the server renders, and the client's initial navigation re-runs it and enforces it. Decide explicitly with `isServer` when you can:
+
+  ```ts
+  import { isServer } from '@pyreon/reactivity'
+
+  // The server never renders /admin; the client renders it for an admin.
+  beforeEach: [(to) => to.path !== '/admin' || (!isServer && isAdmin())]
+  ```
+
+  A guard that only knows browser state cannot protect the server's HTML. Gate server-rendered content with a `loader` that throws `redirect()` (loaders receive the `request` and its cookies).
+- Register guards before you mount. Options (`beforeEach: [...]`) and `router.beforeEach()` calls made right after `createRouter` are included; a guard added after the first `<RouterView>` mounts misses the initial navigation.
+- An app with no guards renders on the first pass exactly as before — nothing is deferred. With guards, hydrate after `await router.isReady()` (or `preload`) so the first client render matches the server's. `@pyreon/zero` already does this.
+
 #### Global Guards
 
 ```ts
@@ -2064,7 +2084,7 @@ function App() {
 
 **The `isReady` method:**
 
-`isReady()` returns a promise that resolves once the initial navigation (including guards and loaders) completes. Use it to delay rendering until the router is fully initialized:
+`isReady()` returns a promise that resolves once the initial navigation's guards — and any redirect they trigger — have settled. The initial route's loaders run through `router.preload()` (what SSR hosts and `@pyreon/zero` call) or come from hydrated loader data. Use it to delay rendering until the router is fully initialized:
 
 ```tsx
 const router = createRouter({ routes })

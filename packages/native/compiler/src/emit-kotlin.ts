@@ -11,6 +11,7 @@ import {
   ERROR_MESSAGE_FN,
   ERROR_STRING_FN,
   exprCallsThrowing,
+  rethrowingCallbackArgs,
   KOTLIN_THROWN_PREAMBLE,
   statementsThrowUncaught,
   uncaughtThrowWarning,
@@ -603,6 +604,10 @@ let _functionNames: Set<string> = new Set()
  * into each component's `_functionNames` so a `dbl(21)` call resolves as a
  * free-function call regardless of which component emits it. */
 let _helperFnNames: Set<string> = new Set()
+/** The names a call at module scope resolves as a function call (not a signal read). */
+function moduleFunctionNamesKotlin(): Set<string> {
+  return new Set([..._helperFnNames, ..._moduleViewHelpersKotlin.keys()])
+}
 /** File-scope helper name → return type (parity with the Swift path; Kotlin's
  * `derivedStateOf` mostly self-infers, but a helper call in a typed position
  * still benefits). */
@@ -705,6 +710,9 @@ let _needsKotlinNumString = false
 let _kotlinThrowingFns: ReadonlySet<string> = new Set()
 /** Whether the statement being emitted may throw without terminating the app — the Swift twin's `_swiftThrowCtx`. */
 let _kotlinThrowCtx: 'none' | 'throws' | 'do' = 'none'
+/** Callbacks of a rethrowing array method that keep the enclosing throw context, and the calls carrying them. */
+const _kotlinRethrowingArrows = new Set<ExprIR>()
+const _kotlinRethrowingCalls = new WeakSet<ExprIR>()
 let _needsKotlinThrown = false
 
 function withKotlinThrowCtx<T>(ctx: 'none' | 'throws' | 'do', fn: () => T): T {
@@ -873,6 +881,12 @@ export function emitKotlin(
   _componentPropsMapKotlin = new Map(components.map((c) => [c.name, c.props]))
   _componentSlotsMapKotlin = new Map(components.map((c) => [c.name, slotPropsOf(c)]))
   _moduleViewHelpersKotlin = moduleViewHelpers(moduleDecls)
+  // Module scope (free helper bodies, plugin module items) sees the file's
+  // helper functions as CALLABLE, exactly as a component body does: without
+  // this, a zero-argument helper called from another helper (`String(k())`)
+  // fell through to the signal-read branch and emitted the bare reference
+  // `k` — a swiftc and kotlinc error with no warning.
+  _functionNames = moduleFunctionNamesKotlin()
   _viewHelpersKotlin = new Map(_moduleViewHelpersKotlin)
   // Per-file library preparations (`CompilerPlugin.prepareEmit`): a plugin records what it learns about the
   // file's components and may add components of its own, emitted after the file's.
@@ -1266,7 +1280,7 @@ function emitKotlinComponent(c: ComponentIR): string {
   // Seed with file-scope helper names so a `dbl(21)` call in this component
   // resolves as a free function.
   // File-scope view helpers are CALLED (`row()`), never read like a signal.
-  _functionNames = new Set([..._helperFnNames, ..._moduleViewHelpersKotlin.keys()])
+  _functionNames = moduleFunctionNamesKotlin()
   _zeroArgFnNames = new Set(_zeroArgHelperNames)
   _serviceBindingsKotlin = bindServices(c.decls)
   _asyncDeclsKotlin = []
@@ -1512,7 +1526,7 @@ function emitKotlinComponent(c: ComponentIR): string {
   lines.push(`}`)
   _activePropsParamName = undefined
   _signalNames = new Set()
-  _functionNames = new Set()
+  _functionNames = moduleFunctionNamesKotlin()
   _serviceBindingsKotlin = new Map()
   _asyncDeclsKotlin = []
   _routerRoutes = new Map()
@@ -3222,7 +3236,10 @@ function emitKotlinMapFromPairs(
 
 function emitKotlinExpr(e: ExprIR, indent: number): string {
   // A lambda is its own throw context (see the Swift twin).
-  if (e.kind === 'arrow' && _kotlinThrowCtx !== 'none') return withKotlinThrowCtx('none', () => emitKotlinExpr(e, indent))
+  // A callback of a rethrowing array method (`xs.map { … throw … }`) is not its own throw context: Kotlin's inline
+  // lambdas propagate the exception out of the call, as JS does (see `case 'call'`).
+  if (e.kind === 'arrow' && _kotlinThrowCtx !== 'none' && !_kotlinRethrowingArrows.has(e))
+    return withKotlinThrowCtx('none', () => emitKotlinExpr(e, indent))
   switch (e.kind) {
     case 'literal':
       if (typeof e.value === 'string') {
@@ -3292,6 +3309,19 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         _pushKotlinEmitWarning(uncaughtThrowWarning('`JSON.parse(…)`, which throws on malformed input,'))
       return `PyreonJson.parse<${kotlinType(e.type)}>(${emitKotlinExpr(e.arg, indent)})`
     case 'call': {
+      if (_kotlinThrowCtx !== 'none' && !_kotlinRethrowingCalls.has(e)) {
+        const throwingCallbacks = rethrowingCallbackArgs(e, _kotlinThrowingFns)
+        if (throwingCallbacks.length > 0) {
+          _kotlinRethrowingCalls.add(e)
+          for (const cb of throwingCallbacks) _kotlinRethrowingArrows.add(cb as ExprIR)
+          try {
+            return emitKotlinExpr(e, indent)
+          } finally {
+            _kotlinRethrowingCalls.delete(e)
+            for (const cb of throwingCallbacks) _kotlinRethrowingArrows.delete(cb as ExprIR)
+          }
+        }
+      }
       if (e.callee.kind === 'identifier') {
         if (_kotlinThrowingFns.has(e.callee.name) && _kotlinThrowCtx === 'none')
           _pushKotlinEmitWarning(uncaughtThrowWarning(`The call to \`${e.callee.name}()\`, which can throw,`))
@@ -4368,8 +4398,14 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
               return `${obj}${objDot}repeat(${kotlinIntArg(e.args[0]!, indent)})`
             break
           case 'substring':
+            // Kotlin's `String.substring` throws for a bound past the end, a negative bound and `start > end`,
+            // where JavaScript clamps and swaps — `title.substring(0, 10)` on a shorter title crashed the app.
+            // The runtime's `pyreonSubstring` has JavaScript's semantics; a Double bound truncates via `toLong()`.
             if (e.args.length === 1 || e.args.length === 2) {
-              return `${obj}${objDot}substring(${e.args.map((a) => kotlinIntArg(a, indent)).join(', ')})`
+              const rest = e.args.map((a) => `(${emitKotlinExpr(a, indent)}).toLong()`).join(', ')
+              return objDot === '?.'
+                ? `${obj}?.let { pyreonSubstring(it, ${rest}) }`
+                : `pyreonSubstring(${obj}, ${rest})`
             }
             break
           case 'toLocaleString':

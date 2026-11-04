@@ -22,4 +22,21 @@ final class PyreonSliceTests: XCTestCase {
         XCTAssertEqual(pyreonSlice("hello", 1, -1), "ell")
         XCTAssertEqual(pyreonSlice("hello", -3), "llo")
     }
+
+    func testFractionalBoundMatchesJavaScript() {
+        XCTAssertEqual(pyreonSliceIndex(2.7), 2)
+        XCTAssertEqual(pyreonSliceIndex(-2.7), -2)
+        XCTAssertEqual(pyreonSliceIndex(.nan), 0)
+        XCTAssertEqual(pyreonSliceIndex(.infinity), Int.max)
+        XCTAssertEqual(pyreonSliceIndex(-.infinity), Int.min)
+        XCTAssertEqual(pyreonSlice([1, 2, 3, 4, 5], 0, pyreonSliceIndex(5.0 / 2.0)), [1, 2])
+    }
+
+    func testSubstringMatchesJavaScript() {
+        XCTAssertEqual(pyreonSubstring("hello", 1, 3), "el")
+        XCTAssertEqual(pyreonSubstring("hi", 0, 10), "hi")
+        XCTAssertEqual(pyreonSubstring("hello", 10), "")
+        XCTAssertEqual(pyreonSubstring("hello", -2, 2), "he")
+        XCTAssertEqual(pyreonSubstring("hello", 3, 1), "el")
+    }
 }

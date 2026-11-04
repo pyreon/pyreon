@@ -2365,6 +2365,18 @@ zero({ mode: 'ssg', ssg: { workers: 1 } })`,
       fix: 'Declare matching Swift and Kotlin emitters in the plugin decls map, or return undefined to decline the call. Install package-owned plugins through their native-plugin subpaths when calling createCompiler directly.',
     }),
   },
+  {
+    // The initial navigation (deep link / reload / SSR request URL) runs the
+    // router's guards. On the server a guard reading browser-only state throws.
+    pattern: /(Navigation guard|Route middleware) threw (during SSR )?on the initial navigation/,
+    diagnose: (m) => ({
+      cause: m[2]
+        ? `A ${(m[1] ?? "guard").toLowerCase()} threw while the server evaluated the initial navigation — usually it reads window or localStorage. The server rendered the route and left the decision to the client.`
+        : `A ${(m[1] ?? "guard").toLowerCase()} threw on the client's initial navigation, so the deep link was cancelled and <RouterView> renders nothing.`,
+      fix: "Make the guard decide explicitly per environment: import { isServer } from '@pyreon/reactivity' and return a value on the server (e.g. `!isServer && isAdmin()` keeps the server from rendering a guarded page). To gate server-rendered HTML on a session, throw redirect() from the route's loader, which receives the request.",
+      related: 'Router guards run on the initial navigation (Vue Router model)',
+    }),
+  },
 ]
 
 /** Diagnose an error message and return structured fix information */
