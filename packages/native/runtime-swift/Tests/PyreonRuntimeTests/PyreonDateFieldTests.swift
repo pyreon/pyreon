@@ -24,6 +24,14 @@ final class PyreonDateFieldTests: XCTestCase {
         XCTAssertNil(PyreonDateValue.parse("09:00", .date))
     }
 
+    func testUnpaddedOrShortFieldsAreNoValue() {
+        // DateFormatter accepts these even non-lenient; the web and Android do not.
+        XCTAssertNil(PyreonDateValue.parse("2026-2-3", .date))
+        XCTAssertNil(PyreonDateValue.parse("26-02-03", .date))
+        XCTAssertNil(PyreonDateValue.parse("9:30", .time))
+        XCTAssertNil(PyreonDateValue.parse("2026-10-22T9:30", .datetime))
+    }
+
     func testATimeIsAnchoredToToday() {
         let d = PyreonDateValue.parse("07:30", .time)!
         XCTAssertTrue(Calendar.current.isDateInToday(d))

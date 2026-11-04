@@ -51,8 +51,13 @@ const LAYER_STYLE = {
   'pointer-events': 'none',
 }
 
-function layer(child: VNode): VNode {
-  return h('svg', { style: LAYER_STYLE, 'aria-hidden': 'true' }, child)
+// A geometric shape is decoration, so its layer is `aria-hidden`. TEXT is
+// content: SwiftUI's `Text` and Compose's `Text` inside a native canvas are
+// read by VoiceOver / TalkBack, so the web layer carrying a `CanvasText` must
+// stay in the accessibility tree too, or the same source reads "Stage" on a
+// phone and nothing in a browser.
+function layer(child: VNode, decorative = true): VNode {
+  return h('svg', decorative ? { style: LAYER_STYLE, 'aria-hidden': 'true' } : { style: LAYER_STYLE }, child)
 }
 
 // The attrs are ACCESSORS: the compiler passes `x={px()}` as a getter on
@@ -138,4 +143,5 @@ export const CanvasText = (props: CanvasTextProps): VNode =>
       },
       props.children,
     ),
+    false,
   )
