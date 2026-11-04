@@ -83,9 +83,10 @@ export const CANONICAL_PRIMITIVES = new Set([
   'Gesture',
   // Drawing (1) — its shapes (CanvasRect …) are children with their own emitters, not members
   'Canvas',
-  // Input (3)
+  // Input (4)
   'Field',
   'Toggle',
+  'Select',
   'Modal',
   // Navigation (2) — `<Tab>` is `<Tabs>`' entry marker and never a standalone
   // element, so it is not a member.
@@ -126,6 +127,7 @@ export const SWIFT_NAMES: Record<string, string> = {
   Canvas: 'PyreonCanvas', // clipped top-leading ZStack of Paths (@pyreon/native-runtime-swift)
   Field: 'TextField', // SecureField when kind="password"
   Toggle: 'Toggle',
+  Select: 'PyreonSelect', // a menu-style Picker (runtime-swift PyreonSelect.swift)
   Modal: 'Sheet', // .sheet(isPresented:) modifier-based
   Tabs: 'PyreonTabs', // TabView(selection:) (+ .sidebarAdaptable on iOS 18)
   Split: 'PyreonSplit', // NavigationSplitView / compact NavigationStack
@@ -153,6 +155,7 @@ export const KOTLIN_NAMES: Record<string, string> = {
   Canvas: 'PyreonCanvas', // clipped Box of Canvas draw layers (@pyreon/native-runtime-kotlin)
   Field: 'TextField',
   Toggle: 'Switch',
+  Select: 'PyreonSelect', // a Material 3 ExposedDropdownMenuBox (runtime-kotlin PyreonSelect.kt)
   Modal: 'Dialog',
   Tabs: 'PyreonTabs', // BottomNavigation / NavigationRail by window width
   Split: 'PyreonSplit', // two panes / one pane + BackHandler by window width

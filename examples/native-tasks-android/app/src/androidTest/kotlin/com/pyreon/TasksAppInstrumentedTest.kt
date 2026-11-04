@@ -54,6 +54,7 @@ import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.printToString
 import androidx.compose.ui.test.assertContentDescriptionContains
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
@@ -623,6 +624,46 @@ class TasksAppInstrumentedTest {
 
         composeRule.onNodeWithTag("streams-back").performClick()
         assertTagDisplayed("tasks-page", "after streams-back (/streams -> /tasks)")
+    }
+
+    /**
+     * `<Select>` (#3980) — mirror of the iOS `test_selectChoosesThroughTheNativePicker`,
+     * through the real Material 3 exposed dropdown: open it, see the disabled
+     * option listed but not enabled, choose an option (control -> program),
+     * write the signal (program -> control), and replace the options with a
+     * list that lacks the value (the placeholder shows; the signal keeps it).
+     */
+    @Test
+    fun selectChoosesThroughTheNativePicker() {
+        composeRule.onNodeWithTag("login-username").performTextInput("abcde")
+        composeRule.onNodeWithTag("login-submit").performClick()
+        assertTagDisplayed("tasks-page", "after login-submit")
+        composeRule.onNodeWithTag("tasks-select").performClick()
+        assertTagDisplayed("select-page", "after tasks-select (/tasks -> /select)")
+
+        waitForTagText("select-value", "none")
+        composeRule.onAllNodesWithText("Pick a fruit").fetchSemanticsNodes().let {
+            assertTrue("the placeholder is not shown while nothing is selected", it.isNotEmpty())
+        }
+        composeRule.onNodeWithTag("select-fruit").performClick()
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            composeRule.onAllNodesWithText("Apple").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithText("Durian").assertIsNotEnabled()
+        composeRule.onNodeWithText("Apple").performClick()
+        waitForTagText("select-value", "apple")
+
+        composeRule.onNodeWithTag("select-set-banana").performClick()
+        waitForTagText("select-value", "banana")
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            composeRule.onAllNodesWithText("Banana").fetchSemanticsNodes().isNotEmpty()
+        }
+
+        composeRule.onNodeWithTag("select-citrus").performClick()
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            composeRule.onAllNodesWithText("Pick a fruit").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithTag("select-value").assertTextEquals("banana")
     }
 
     /**

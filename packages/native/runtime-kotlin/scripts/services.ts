@@ -57,6 +57,9 @@ export const TYPECHECK_ONLY = new Set([
   'PyreonStorageBackends',
   'PyreonJson',
   'PyreonHttpOkHttp',
+  // A Material 3 composable: it RUNS on the emulator (the tasks showcase's
+  // /select page), and is typechecked here against the mirrored M3 surface.
+  'PyreonSelect',
   // android.icu exists only on a device; the emulator RUNS it against the V8
   // table (examples/native-tasks-android IntlDifferentialTest).
   'PyreonIntl',

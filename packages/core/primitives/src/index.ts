@@ -58,6 +58,8 @@ export type {
   FieldProps,
   ModalProps,
   MultilineFieldProps,
+  SelectOption,
+  SelectProps,
   SingleLineFieldProps,
   ToggleProps,
 } from './types/input'
@@ -77,7 +79,7 @@ export type {
 export { init, resetPrimitivesConfig } from './config'
 export type { PrimitivesInitOptions } from './config'
 
-// ===== Web runtime exports — the 20 canonical primitives =====
+// ===== Web runtime exports — the 22 canonical primitives =====
 //
 // Stack … Split below are the canonical set (`<Tab>` excepted — it is
 // `<Tabs>`' entry marker); the compiler's
@@ -107,6 +109,7 @@ export { Canvas } from './web/Canvas'
 export { Link } from './web/Link'
 export { Field } from './web/Field'
 export { Toggle } from './web/Toggle'
+export { Select } from './web/Select'
 export { Modal } from './web/Modal'
 // Top-level navigation — a tab bar that keeps each tab's state, and an
 // adaptive list/detail split. `<Tab>` is `<Tabs>`' entry marker, not a

@@ -43,6 +43,7 @@ const USAGES: ReadonlyArray<readonly [string, string]> = [
   ['Canvas', '<Canvas width={10} height={10}><Text>c</Text></Canvas>'],
   ['Field', '<Field value="" onChangeText={() => {}} />'],
   ['Toggle', '<Toggle value={true} onChange={() => {}} />'],
+  ['Select', `<Select value="a" options={[{ value: 'a', label: 'A' }]} onChange={() => {}} />`],
   ['Modal', '<Modal open={true} onClose={() => {}}><Text>m</Text></Modal>'],
   [
     'Tabs',

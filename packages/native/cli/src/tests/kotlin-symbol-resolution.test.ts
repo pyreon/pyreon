@@ -221,7 +221,7 @@ function primitiveMatrix(): Group {
   }
 
   const shared = ['BaseLayout', 'Accessibility'].flatMap((n) => propValues(bodies.get(n) ?? ''))
-  const primitives = ['Stack', 'Inline', 'Layer', 'Scroll', 'Spacer', 'Text', 'Heading', 'Image', 'Icon', 'Button', 'Press', 'Link', 'Field', 'Toggle', 'Modal', 'Transition', 'Video', 'Audio']
+  const primitives = ['Stack', 'Inline', 'Layer', 'Scroll', 'Spacer', 'Text', 'Heading', 'Image', 'Icon', 'Button', 'Press', 'Link', 'Field', 'Select', 'Toggle', 'Modal', 'Transition', 'Video', 'Audio']
   const cases: string[] = []
   let n = 0
   const attrFor = (name: string, v: string) => (v.startsWith("'") ? `${name}=${v.replace(/'/g, '"')}` : `${name}={${v}}`)
@@ -231,6 +231,7 @@ function primitiveMatrix(): Group {
     Audio: 'src="https://x.test/a.mp3"',
     Link: 'to="/x"',
     Field: 'value="" onChangeText={() => {}}',
+    Select: `value="a" options={[{ value: 'a', label: 'A' }]} onChange={() => {}}`,
     Toggle: 'value={true} onChange={() => {}}',
     Modal: 'open={true} onClose={() => {}}',
     Press: 'onPress={() => {}}',
