@@ -5,6 +5,15 @@
 // `derivedStateOf { ... }`, JSX elements to Composable function calls.
 
 import { GESTURE_EVENT_NAMES, GESTURE_EVENTS } from './gesture-events'
+import {
+  computeThrowingFunctions,
+  containsAwait,
+  ERROR_MESSAGE_FN,
+  exprCallsThrowing,
+  KOTLIN_THROWN_PREAMBLE,
+  statementsThrowUncaught,
+  uncaughtThrowWarning,
+} from './throw-lowering'
 import { CANVAS_SHAPES, isCanvasShape, shapeColorLiteral } from './canvas-shapes'
 import type { GestureEventName } from './gesture-events'
 import { classifyFallback, unconsumedSlotWarning } from './jsx-slot-attrs'
@@ -688,6 +697,21 @@ let _emitWarnings: string[] = []
 // the declaration without an "invalid redeclaration" the moment they're
 // compiled together.
 let _needsKotlinNumString = false
+/** The file's helpers that can let an error escape (see throw-lowering.ts). */
+let _kotlinThrowingFns: ReadonlySet<string> = new Set()
+/** Whether the statement being emitted may throw without terminating the app — the Swift twin's `_swiftThrowCtx`. */
+let _kotlinThrowCtx: 'none' | 'throws' | 'do' = 'none'
+let _needsKotlinThrown = false
+
+function withKotlinThrowCtx<T>(ctx: 'none' | 'throws' | 'do', fn: () => T): T {
+  const prev = _kotlinThrowCtx
+  _kotlinThrowCtx = ctx
+  try {
+    return fn()
+  } finally {
+    _kotlinThrowCtx = prev
+  }
+}
 const KOTLIN_NUM_STRING = `private fun pyreonNumString(v: Double): String =
     if (v == Math.rint(v) && Math.abs(v) < 1e15) v.toLong().toString() else v.toString()`
 /**
@@ -767,6 +791,15 @@ export function emitKotlin(
   // that is relying on an accident.
   _serviceBindingsKotlin = new Map()
   _aliasImports = aliasImports
+  // Kotlin exceptions are unchecked, so no signature changes — the set only names the calls that can fail where
+  // nothing catches them (the warning the Swift twin also gives). See throw-lowering.ts.
+  _kotlinThrowingFns = computeThrowingFunctions(
+    [...helperFns, ...components.flatMap((c) => c.decls)].filter(
+      (d): d is Extract<DeclIR, { kind: 'function' }> => d.kind === 'function' && d.async !== true,
+    ),
+  )
+  _kotlinThrowCtx = 'none'
+  _needsKotlinThrown = false
   // File-scope pure-logic helper names — seeded into every component's
   // per-component `_functionNames` reset so a `dbl(21)` call resolves as a
   // free-function call in ANY component.
@@ -971,6 +1004,7 @@ export function emitKotlin(
     componentParts.push(emitKotlinComponent(c))
   // consulted AFTER helper + component emission — the flag is set during it
   if (_needsKotlinNumString) parts.push(KOTLIN_NUM_STRING)
+  if (_needsKotlinThrown) parts.push(KOTLIN_THROWN_PREAMBLE)
   // Emit synthesized anonymous-object data classes (collected during
   // component emit) at module scope — Kotlin allows top-level forward refs.
   for (const s of _synthExprStructs) parts.push(emitKotlinStruct(s))
@@ -2226,6 +2260,11 @@ function kotlinParamType(t: TypeIR, ctx: KotlinCtx | undefined, name: string): s
 }
 
 function emitKotlinFunction(d: Extract<DeclIR, { kind: 'function' }>, ctx: KotlinCtx): string {
+  // Any Kotlin function may throw — the error reaches its caller, as in JavaScript.
+  return withKotlinThrowCtx('throws', () => emitKotlinFunctionBody(d, ctx))
+}
+
+function emitKotlinFunctionBody(d: Extract<DeclIR, { kind: 'function' }>, ctx: KotlinCtx): string {
   // `async` → fire-and-forget on the composition's coroutine scope (the Swift twin wraps in `Task`). Emit the body as a
   // plain synchronous block, then move it inside `pyreonAsyncScope.launch { … }`.
   if (d.async === true) {
@@ -2251,7 +2290,8 @@ function emitKotlinFunction(d: Extract<DeclIR, { kind: 'function' }>, ctx: Kotli
         _hasAsyncHandler = true
         const inner = m[2]!.split('\n').map((l) => `  ${l}`).join('\n')
         // A fallible await (a request) must not escape `launch`: uncaught there it crashes the app.
-        const launched = bodyAwaitsFallible(d.body, isThrowingPluginExpr)
+        const launched =
+          bodyAwaitsFallible(d.body, isThrowingPluginExpr) || statementsThrowUncaught(d.body, _kotlinThrowingFns)
           ? `      try {\n${indentLines(inner, 4)}\n      } ${KOTLIN_UNHANDLED_ASYNC}`
           : inner
         return `${m[1]}\n    ${PYREON_ASYNC_SCOPE}.launch {\n${launched}\n    }\n  }`
@@ -2724,6 +2764,37 @@ function emitKotlinStatement(s: StatementIR, indent: number, ctx: KotlinCtx): st
       // Kotlin `when` as a STATEMENT need not be exhaustive — no forced else.
       return `when (${disc}) {\n${caseLines}\n${pad}}`
     }
+    case 'throw': {
+      if (_kotlinThrowCtx === 'none') _pushKotlinEmitWarning(uncaughtThrowWarning('A `throw`'))
+      if (s.rethrow !== undefined) return `throw ${kotlinIdent(s.rethrow)}`
+      _needsKotlinThrown = true
+      return `throw PyreonThrown(${emitKotlinExpr(s.message ?? { kind: 'literal', value: '' }, indent)})`
+    }
+    case 'try': {
+      const pad = ' '.repeat(indent)
+      const caught = s.catchBody !== undefined
+      const bodyLines = withKotlinThrowCtx(caught ? 'do' : _kotlinThrowCtx, () =>
+        emitKotlinStmtLines(s.body, indent + 2, ctx).join('\n'),
+      )
+      let out = `try {\n${bodyLines}\n${pad}}`
+      if (caught) {
+        const binder = s.catchParam !== undefined ? kotlinIdent(s.catchParam) : 'pyreonCaught'
+        // A catch-all inside a coroutine must not swallow its cancellation, or a disposed composition's work keeps
+        // running. Only a body that suspends can be cancelled there.
+        const cancel = containsAwait(s.body)
+          ? `${pad}  if (${binder} is kotlin.coroutines.cancellation.CancellationException) throw ${binder}\n`
+          : ''
+        const catchLines = emitKotlinStmtLines(s.catchBody!, indent + 2, ctx).join('\n')
+        out += ` catch (${binder}: Exception) {\n${cancel}${catchLines}\n${pad}}`
+      }
+      if (s.finallyBody !== undefined) {
+        const finallyLines = withKotlinThrowCtx('none', () =>
+          emitKotlinStmtLines(s.finallyBody!, indent + 2, ctx).join('\n'),
+        )
+        out += ` finally {\n${finallyLines}\n${pad}}`
+      }
+      return out
+    }
   }
 }
 
@@ -3146,6 +3217,8 @@ function emitKotlinMapFromPairs(
 }
 
 function emitKotlinExpr(e: ExprIR, indent: number): string {
+  // A lambda is its own throw context (see the Swift twin).
+  if (e.kind === 'arrow' && _kotlinThrowCtx !== 'none') return withKotlinThrowCtx('none', () => emitKotlinExpr(e, indent))
   switch (e.kind) {
     case 'literal':
       if (typeof e.value === 'string') {
@@ -3203,6 +3276,11 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       // `PyreonJson.stringify` rewrites those leaves into ECMAScript form.
       return `PyreonJson.stringify(${emitKotlinExpr(e.arg, indent)})`
     case 'call': {
+      if (e.callee.kind === 'identifier') {
+        if (_kotlinThrowingFns.has(e.callee.name) && _kotlinThrowCtx === 'none')
+          _pushKotlinEmitWarning(uncaughtThrowWarning(`The call to \`${e.callee.name}()\`, which can throw,`))
+        if (e.callee.name === ERROR_MESSAGE_FN) _needsKotlinThrown = true
+      }
       // `handle.dispatch(…)` and any other call on a binding a plugin's declaration created.
       const pluginLowered = lowerPluginMemberCall(e, 'kotlin', _pluginScope, () =>
         kotlinEmitContext(indent),
@@ -5842,6 +5920,10 @@ function kotlinEnabledArg(e: Extract<ExprIR, { kind: 'jsx-element' }>): string {
 }
 
 function emitKotlinAction(handler: ExprIR, indent: number): string {
+  return withKotlinThrowCtx('none', () => emitKotlinActionBody(handler, indent))
+}
+
+function emitKotlinActionBody(handler: ExprIR, indent: number): string {
   if (handler.kind === 'arrow') {
     // Multi-statement block body (`() => { a.set(1); b.set(2) }`) — emit
     // EVERY statement. Pre-fix the parse kept only the first statement and
@@ -5873,7 +5955,10 @@ function emitKotlinAction(handler: ExprIR, indent: number): string {
       // `pyreonAsyncScope.launch { … }` (the hoisted rememberCoroutineScope())
       // so a synchronous `onClick: () -> Unit` slot can run suspend calls.
       const bodyIndent = isAsync ? indent + 4 : indent + 2
-      const lines = emitKotlinStmtLines(handler.stmts, bodyIndent, stmtCtx).join('\n')
+      const asyncMayThrow = isAsync && statementsThrowUncaught(handler.stmts, _kotlinThrowingFns)
+      const lines = withKotlinThrowCtx(asyncMayThrow ? 'do' : 'none', () =>
+        emitKotlinStmtLines(handler.stmts!, bodyIndent, stmtCtx).join('\n'),
+      )
       _kotlinExprInferCtx.locals = savedLocals
       const labelPrefix = syncLabel === undefined ? '' : `${syncLabel}@`
       const head =
@@ -5882,7 +5967,7 @@ function emitKotlinAction(handler: ExprIR, indent: number): string {
           : `${labelPrefix}{ ${handler.params.map(kotlinIdent).join(', ')} ->`
       if (isAsync) {
         _hasAsyncHandler = true
-        if (bodyAwaitsFallible(handler.stmts, isThrowingPluginExpr)) {
+        if (bodyAwaitsFallible(handler.stmts, isThrowingPluginExpr) || asyncMayThrow) {
           return `${head}\n${pad}${PYREON_ASYNC_SCOPE}.launch {\n${pad}  try {\n${indentLines(lines, 4)}\n${pad}  } ${KOTLIN_UNHANDLED_ASYNC}\n${pad}}\n${' '.repeat(indent)}}`
         }
         return `${head}\n${pad}${PYREON_ASYNC_SCOPE}.launch {\n${lines}\n${pad}}\n${' '.repeat(indent)}}`
@@ -5930,6 +6015,8 @@ function emitKotlinAction(handler: ExprIR, indent: number): string {
   // mirroring emit-swift.ts:resolveFunctionHandler. Closes the
   // `Button { onRemove }` no-op trap for both handler shapes.
   if (handler.kind === 'identifier' && _functionNames.has(handler.name)) {
+    if (_kotlinThrowingFns.has(handler.name))
+      _pushKotlinEmitWarning(uncaughtThrowWarning(`The handler \`${handler.name}\`, which can throw,`))
     return `{ ${kotlinIdent(handler.name)}() }`
   }
   if (
@@ -5949,8 +6036,11 @@ const KOTLIN_HANDLER_LABEL = 'pyreonHandler'
 
 /** A single-expression async handler's coroutine body; a fallible await is caught so it cannot crash the app. */
 function kotlinLaunchBody(body: ExprIR, indent: number): string {
-  const inner = emitKotlinExpr(body, indent)
-  return bodyAwaitsFallible(body, isThrowingPluginExpr) ? `try { ${inner} } ${KOTLIN_UNHANDLED_ASYNC}` : inner
+  const mayThrow = exprCallsThrowing(body, _kotlinThrowingFns)
+  const inner = withKotlinThrowCtx(mayThrow ? 'do' : 'none', () => emitKotlinExpr(body, indent))
+  return bodyAwaitsFallible(body, isThrowingPluginExpr) || mayThrow
+    ? `try { ${inner} } ${KOTLIN_UNHANDLED_ASYNC}`
+    : inner
 }
 
 /**

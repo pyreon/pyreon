@@ -507,6 +507,25 @@ export type StatementIR =
       discriminant: ExprIR
       cases: { tests: ExprIR[]; body: StatementIR[] }[]
     }
+  /**
+   * `throw new Error(message)` / `throw 'message'` (`message`), or a rethrow of
+   * the enclosing `catch` binding (`throw e` → `rethrow: 'e'`). Kotlin throws a
+   * native exception; Swift throws from a `do` body or a `throws` helper, and
+   * where neither encloses it (an event handler) terminates the way an
+   * uncaught Kotlin exception does — see `throw-lowering.ts`.
+   */
+  | { kind: 'throw'; message?: ExprIR; rethrow?: string }
+  /**
+   * `try { … } catch (e) { … } finally { … }`. `catchBody` is absent for a
+   * `try/finally`; `catchParam` is absent for `catch { … }`.
+   */
+  | {
+      kind: 'try'
+      body: StatementIR[]
+      catchParam?: string
+      catchBody?: StatementIR[]
+      finallyBody?: StatementIR[]
+    }
 
 /** Type annotation, parsed from `signal<T>(...)` generics. */
 export type TypeIR =

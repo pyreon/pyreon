@@ -109,6 +109,14 @@ import {
   SWIFT_UNHANDLED_ASYNC,
 } from './async-function'
 import {
+  computeThrowingFunctions,
+  ERROR_MESSAGE_FN,
+  exprCallsThrowing,
+  statementsThrowUncaught,
+  SWIFT_THROWN_PREAMBLE,
+  uncaughtThrowWarning,
+} from './throw-lowering'
+import {
   nilCoalesceTernary,
   buildArraySpreadConcat,
   buildInferenceCtx,
@@ -1058,6 +1066,15 @@ export function emitSwift(
   // that is relying on an accident.
   _serviceBindings = new Map()
   _aliasImports = aliasImports
+  // Which helpers' Swift signatures carry `throws` — a fixed point over every helper in the file (see
+  // throw-lowering.ts). An `async` function is fire-and-forget, so its own signature never throws.
+  _swiftThrowingFns = computeThrowingFunctions(
+    [...helperFns, ...components.flatMap((c) => c.decls)].filter(
+      (d): d is Extract<DeclIR, { kind: 'function' }> => d.kind === 'function' && d.async !== true,
+    ),
+  )
+  _swiftThrowCtx = 'none'
+  _needsSwiftThrown = false
   // File-scope pure-logic helper names — seeded into every component's
   // per-component `_functionNames` reset so a call `dbl(21)` resolves as a
   // free-function call in ANY component (not a signal read / unknown ref).
@@ -1274,6 +1291,7 @@ export function emitSwift(
   if (_needsSwiftKeepAliveWrapper) parts.push(SWIFT_KEEP_ALIVE_WRAPPER)
   // consulted AFTER helper + component emission — the flag is set during it
   if (_needsSwiftNumString) parts.push(SWIFT_NUM_STRING)
+  if (_needsSwiftThrown) parts.push(SWIFT_THROWN_PREAMBLE)
   for (const cp of componentParts) parts.push(cp)
   _enumNames = new Set()
   _structFieldsToName = new Map()
@@ -2400,6 +2418,15 @@ function inlineValueConstsInStmts(stmts: StatementIR[]): StatementIR[] {
             body: c.body.map(mapStmt),
           })),
         }
+      case 'throw':
+        return s.message ? { ...s, message: inlineValueConsts(s.message) } : s
+      case 'try':
+        return {
+          ...s,
+          body: s.body.map(mapStmt),
+          ...(s.catchBody ? { catchBody: s.catchBody.map(mapStmt) } : {}),
+          ...(s.finallyBody ? { finallyBody: s.finallyBody.map(mapStmt) } : {}),
+        }
     }
   }
   return stmts.map(mapStmt)
@@ -3240,7 +3267,13 @@ function emitSwiftFunction(
   const isAsync = d.async === true
   if (isAsync && bodyReturnsValue(d.body)) _pushSwiftEmitWarning(asyncValueReturnWarning(d.name))
   if (isAsync) returnType = { kind: 'unknown' } as typeof returnType
-  const retType = returnType.kind === 'unknown' ? '' : ` -> ${swiftType(returnType)}`
+  const throwsKw = !isAsync && _swiftThrowingFns.has(d.name) ? ' throws' : ''
+  const retType = `${throwsKw}${returnType.kind === 'unknown' ? '' : ` -> ${swiftType(returnType)}`}`
+  // An async function's body runs inside a `do`/`catch` when it can fail (see below); a sync one throws only when its
+  // signature says so.
+  const asyncMayThrow = isAsync && statementsThrowUncaught(d.body, _swiftThrowingFns)
+  const prevThrowCtx = _swiftThrowCtx
+  _swiftThrowCtx = throwsKw !== '' || asyncMayThrow ? (isAsync ? 'do' : 'throws') : 'none'
   const prevReturnType = _currentReturnType
   _currentReturnType = returnType.kind === 'unknown' ? undefined : returnType
   // Single-statement single-return concise form.
@@ -3281,7 +3314,7 @@ function emitSwiftFunction(
       )
       const vis = visibility === 'private' ? 'private ' : ''
       if (isAsync) {
-        const body = bodyAwaitsFallible(d.body, isThrowingPluginExpr)
+        const body = bodyAwaitsFallible(d.body, isThrowingPluginExpr) || asyncMayThrow
           ? `do { ${concise} } ${SWIFT_UNHANDLED_ASYNC}`
           : concise
         return `${vis}func ${swiftIdent(d.name)}(${params}) { ${SWIFT_TASK} { ${body} } }`
@@ -3308,7 +3341,7 @@ function emitSwiftFunction(
     _activeInferCtx.locals = savedActive
     const vis2 = visibility === 'private' ? 'private ' : ''
     if (isAsync) {
-      const task = bodyAwaitsFallible(d.body, isThrowingPluginExpr)
+      const task = bodyAwaitsFallible(d.body, isThrowingPluginExpr) || asyncMayThrow
         ? `    ${SWIFT_TASK} {\n      do {\n${indentLines(bodyLines, 2)}\n      } ${SWIFT_UNHANDLED_ASYNC}\n    }`
         : `    ${SWIFT_TASK} {\n${bodyLines}\n    }`
       return `${vis2}func ${swiftIdent(d.name)}(${params}) {\n${task}\n  }`
@@ -3316,6 +3349,7 @@ function emitSwiftFunction(
     return `${vis2}func ${swiftIdent(d.name)}(${params})${retType} {\n${bodyLines}\n  }`
   } finally {
     _currentReturnType = prevReturnType
+    _swiftThrowCtx = prevThrowCtx
     for (const s of paramSaved) {
       if (s.had) _activeInferCtx.locals.set(s.name, s.prev!)
       else _activeInferCtx.locals.delete(s.name)
@@ -3674,7 +3708,55 @@ function emitSwiftStatement(s: StatementIR, indent: number): string {
       const defaultClause = hasDefault ? '' : `\n${pad}  default:\n${pad}    break`
       return `switch ${disc} {\n${caseLines}${defaultClause}\n${pad}}`
     }
+    case 'throw': {
+      const thrown =
+        s.rethrow !== undefined
+          ? swiftIdent(s.rethrow)
+          : `PyreonThrown(message: ${emitSwiftExpr(s.message ?? { kind: 'literal', value: '' }, indent)})`
+      if (s.rethrow === undefined) _needsSwiftThrown = true
+      if (_swiftThrowCtx !== 'none') return `throw ${thrown}`
+      _pushSwiftEmitWarning(uncaughtThrowWarning('A `throw`'))
+      return `fatalError(String(describing: ${thrown}))`
+    }
+    case 'try':
+      return emitSwiftTry(s, indent)
   }
+}
+
+/**
+ * `try { B } catch (e) { C } finally { F }` →
+ *
+ *     do {
+ *       defer { F }
+ *       do { B } catch let e { C }
+ *     }
+ *
+ * A `defer` runs when its scope exits by ANY path — falling off the end, `return`, or an error escaping the catch —
+ * which is exactly when JavaScript runs `finally`, and in the same order (after the catch). `B` may throw (it is a
+ * `do` body) only when a catch follows it; otherwise it inherits the enclosing context. The `defer` body cannot
+ * throw at all.
+ */
+function emitSwiftTry(s: Extract<StatementIR, { kind: 'try' }>, indent: number): string {
+  const pad = ' '.repeat(indent)
+  const caught = s.catchBody !== undefined
+  const inner = s.finallyBody !== undefined ? indent + 2 : indent
+  const ipad = ' '.repeat(inner)
+  const bodyLines = withSwiftThrowCtx(caught ? 'do' : _swiftThrowCtx, () =>
+    emitSwiftStmtLines(s.body, caught ? inner + 2 : inner).join('\n'),
+  )
+  let core: string
+  if (caught) {
+    const binder = s.catchParam !== undefined ? ` let ${swiftIdent(s.catchParam)}` : ''
+    const catchLines = emitSwiftStmtLines(s.catchBody!, inner + 2).join('\n')
+    core = `${ipad}do {\n${bodyLines}\n${ipad}} catch${binder} {\n${catchLines}\n${ipad}}`
+  } else {
+    core = bodyLines
+  }
+  if (s.finallyBody === undefined) return core.slice(indent)
+  const finallyLines = withSwiftThrowCtx('none', () =>
+    emitSwiftStmtLines(s.finallyBody!, indent + 4).join('\n'),
+  )
+  return `do {\n${pad}  defer {\n${finallyLines}\n${pad}  }\n${core}\n${pad}}`
 }
 
 /**
@@ -4150,6 +4232,9 @@ function emitSwiftMapFromPairs(
 }
 
 function emitSwiftExpr(e: ExprIR, indent: number): string {
+  // A closure is its own throw context: a throw or throwing call inside it cannot propagate to the enclosing
+  // `throws` helper or `do` body.
+  if (e.kind === 'arrow' && _swiftThrowCtx !== 'none') return withSwiftThrowCtx('none', () => emitSwiftExpr(e, indent))
   switch (e.kind) {
     case 'literal':
       if (typeof e.value === 'string') {
@@ -4199,6 +4284,22 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       // literal's — and writes every leaf the way ECMAScript does.
       return `PyreonJSON.stringify(${emitSwiftExpr(e.arg, indent)})`
     case 'call': {
+      if (
+        e.callee.kind === 'identifier' &&
+        _swiftThrowingFns.has(e.callee.name) &&
+        !_swiftTryWrapping.has(e)
+      ) {
+        _swiftTryWrapping.add(e)
+        try {
+          const call = emitSwiftExpr(e, indent)
+          if (_swiftThrowCtx !== 'none') return `(try ${call})`
+          _pushSwiftEmitWarning(uncaughtThrowWarning(`The call to \`${e.callee.name}()\`, which can throw,`))
+          return `(try! ${call})`
+        } finally {
+          _swiftTryWrapping.delete(e)
+        }
+      }
+      if (e.callee.kind === 'identifier' && e.callee.name === ERROR_MESSAGE_FN) _needsSwiftThrown = true
       // `handle.dispatch(…)` and any other call on a binding a plugin's declaration created.
       const pluginLowered = lowerPluginMemberCall(e, 'swift', _pluginScope, () =>
         swiftEmitContext(indent),
@@ -7236,6 +7337,10 @@ function emitSwiftCallbackArg(handler: ExprIR, indent: number): string {
 }
 
 function emitSwiftAction(handler: ExprIR, indent: number): string {
+  return withSwiftThrowCtx('none', () => emitSwiftActionBody(handler, indent))
+}
+
+function emitSwiftActionBody(handler: ExprIR, indent: number): string {
   // Strip outer arrow if present — Button takes a closure body directly.
   if (handler.kind === 'arrow') {
     // Multi-statement block body (`() => { a.set(1); b.set(2) }`) — emit
@@ -7259,11 +7364,16 @@ function emitSwiftAction(handler: ExprIR, indent: number): string {
       // launch async work. The `await` sub-expressions emit inside it.
       const isAsync = handler.async === true
       const bodyIndent = isAsync ? indent + 4 : indent + 2
-      const lines = emitSwiftStmtLines(inlinedStmts, bodyIndent).join('\n')
+      // An async handler whose body can let an error escape runs it inside the same `do`/`catch` a failing request
+      // gets — the web reports it as an unhandled rejection and stops; so does this.
+      const asyncMayThrow = isAsync && statementsThrowUncaught(inlinedStmts, _swiftThrowingFns)
+      const lines = withSwiftThrowCtx(asyncMayThrow ? 'do' : 'none', () =>
+        emitSwiftStmtLines(inlinedStmts, bodyIndent).join('\n'),
+      )
       _exprInferCtx.locals = savedLocals
       _activeInferCtx.locals = savedLocalsAct6
       if (isAsync) {
-        if (bodyAwaitsFallible(inlinedStmts, isThrowingPluginExpr)) {
+        if (bodyAwaitsFallible(inlinedStmts, isThrowingPluginExpr) || asyncMayThrow) {
           return `{\n${pad}${SWIFT_TASK} {\n${pad}  do {\n${indentLines(lines, 4)}\n${pad}  } ${SWIFT_UNHANDLED_ASYNC}\n${pad}}\n${' '.repeat(indent)}}`
         }
         return `{\n${pad}${SWIFT_TASK} {\n${lines}\n${pad}}\n${' '.repeat(indent)}}`
@@ -7282,8 +7392,9 @@ function emitSwiftAction(handler: ExprIR, indent: number): string {
     // M4.5: single-expression async handler (`async () => await x.method()`)
     // still needs the `Task { … }` async scope.
     if (handler.async === true) {
-      const inner = emitSwiftExpr(handler.body, indent)
-      if (bodyAwaitsFallible(handler.body, isThrowingPluginExpr)) {
+      const asyncMayThrow = exprCallsThrowing(handler.body, _swiftThrowingFns)
+      const inner = withSwiftThrowCtx(asyncMayThrow ? 'do' : 'none', () => emitSwiftExpr(handler.body, indent))
+      if (bodyAwaitsFallible(handler.body, isThrowingPluginExpr) || asyncMayThrow) {
         return `{ ${SWIFT_TASK} { do { ${inner} } ${SWIFT_UNHANDLED_ASYNC} } }`
       }
       return `{ ${SWIFT_TASK} { ${inner} } }`
@@ -7307,6 +7418,11 @@ function emitSwiftAction(handler: ExprIR, indent: number): string {
   // Closes the TodoMVC `Button("Remove") { onRemove }` trap.
   const resolved = resolveFunctionHandler(handler)
   if (resolved !== undefined) {
+    // A throwing helper used directly as a handler: nothing can catch it there.
+    if (_swiftThrowingFns.has(resolved)) {
+      _pushSwiftEmitWarning(uncaughtThrowWarning(`The handler \`${resolved}\`, which can throw,`))
+      return `{ try! ${swiftIdent(resolved)}() }`
+    }
     return `{ ${swiftIdent(resolved)}() }`
   }
   return `{ ${emitSwiftExpr(handler, indent)} }`
@@ -7786,6 +7902,27 @@ let _needsSwiftKeepAliveWrapper = false
 // repeat identically across sibling files in Swift, so each file's own copy
 // stays self-contained without ever colliding with the engine's.
 let _needsSwiftNumString = false
+/** The file's helpers whose Swift signature is `throws`. */
+let _swiftThrowingFns: ReadonlySet<string> = new Set()
+/**
+ * Whether the statement being emitted may throw: inside a `throws` helper, inside a `do` body, or neither (a closure
+ * that cannot throw — an event handler, an effect, a callback). Saved and restored around every scope that changes it.
+ */
+let _swiftThrowCtx: 'none' | 'throws' | 'do' = 'none'
+let _needsSwiftThrown = false
+/** Calls already being wrapped in `try`, so the re-entrant emit of the same call produces the bare form. */
+const _swiftTryWrapping = new WeakSet<ExprIR>()
+
+/** Run `fn` with the throw context set to `ctx`, restoring the previous one. */
+function withSwiftThrowCtx<T>(ctx: 'none' | 'throws' | 'do', fn: () => T): T {
+  const prev = _swiftThrowCtx
+  _swiftThrowCtx = ctx
+  try {
+    return fn()
+  } finally {
+    _swiftThrowCtx = prev
+  }
+}
 const SWIFT_NUM_STRING = `private func pyreonNumString(_ v: Double) -> String {
     v.rounded() == v && v.magnitude < 1e15 ? String(Int(v)) : String(v)
 }`
