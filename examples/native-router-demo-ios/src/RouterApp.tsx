@@ -27,6 +27,7 @@ import { signal } from '@pyreon/reactivity'
 import { createRouter, useLoaderData, useNavigate, RouterProvider, RouterView } from '@pyreon/router'
 import { type EchoReply, usePostEcho } from './hooks'
 import { defineTheme, styled } from '@pyreon/styler'
+import { s } from '@pyreon/validate'
 
 // Styling-row proof — defineTheme tokens driving styled(Prim) layout,
 // GEOMETRY-assertable: the two cards' paddings come from DIFFERENT token
@@ -402,7 +403,7 @@ function MediaPage() {
         muted
         loop
         height={120}
-        onStatusChange={(s) => { videoStatus = s }}
+        onStatusChange={(status) => { videoStatus = status }}
         data-testid="video-player"
       />
       <Text data-testid="video-status">Video: {videoStatus}</Text>
@@ -417,7 +418,7 @@ function MediaPage() {
         src="http://localhost:8790/clip.m4a"
         autoPlay
         loop
-        onStatusChange={(s) => { audioStatus = s }}
+        onStatusChange={(status) => { audioStatus = status }}
         data-testid="audio-player"
       />
       <Text data-testid="audio-status">Audio: {audioStatus}</Text>
@@ -867,10 +868,40 @@ function describeQuantity(raw: string): string {
   return 'qty ' + String(parseQuantity(raw))
 }
 
+// `JSON.parse` decodes into the type the source names — here the helper's return type. It throws on malformed input,
+// so it rides the same error model; an unknown key (`note`) is ignored, as on the web.
+type Order = { sku: string; qty: number }
+
+function readOrder(raw: string): Order {
+  return JSON.parse(raw)
+}
+
+// A schema's `.parse(x)` lowers to the native struct's own `parse`, which throws on invalid input — caught here exactly
+// like `JSON.parse` above. Native's message names the field and rule (`Field 'sku' violated constraint …`).
+const OrderCheck = s.object({ sku: s.string().min(1), qty: s.number() })
+
 function ErrorsPage() {
   const navigate = useNavigate()
   const result = signal('none')
   const finished = signal(0)
+  const decoded = signal('none')
+  const decode = (raw: string) => {
+    try {
+      const order = readOrder(raw)
+      decoded.set(`${order.sku} x${order.qty}`)
+    } catch {
+      decoded.set('malformed')
+    }
+  }
+  const checked = signal('none')
+  const check = (sku: string) => {
+    try {
+      const o = OrderCheck.parse({ sku, qty: 1 })
+      checked.set(`ok ${o.sku}`)
+    } catch (e) {
+      checked.set(`rejected: ${e instanceof Error ? e.message : String(e)}`)
+    }
+  }
   const run = (raw: string) => {
     try {
       result.set(describeQuantity(raw))
@@ -880,7 +911,9 @@ function ErrorsPage() {
       finished.set(finished() + 1)
     }
   }
+  // In a <Scroll>: the page is taller than a phone, and a tap below the fold of a plain column is a silent no-op.
   return (
+    <Scroll>
     <Stack gap={3} padding={4} data-testid="errors-page">
       <Text>Errors</Text>
       <Text data-testid="err-result">Result: {result()}</Text>
@@ -888,8 +921,15 @@ function ErrorsPage() {
       <Button onPress={() => run('3')}>Parse valid</Button>
       <Button onPress={() => run('')}>Parse empty</Button>
       <Button onPress={() => run('-2')}>Parse negative</Button>
+      <Text data-testid="err-json">JSON: {decoded()}</Text>
+      <Button onPress={() => decode('{"sku":"A1","qty":2,"note":"gift"}')}>Decode order</Button>
+      <Button onPress={() => decode('{"sku":')}>Decode malformed</Button>
+      <Text data-testid="err-schema">Schema: {checked()}</Text>
+      <Button onPress={() => check('B7')}>Check order</Button>
+      <Button onPress={() => check('')}>Check empty SKU</Button>
       <Button onPress={() => navigate('/')}>Back to Home</Button>
     </Stack>
+    </Scroll>
   )
 }
 

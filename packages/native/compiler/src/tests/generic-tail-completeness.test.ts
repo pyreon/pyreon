@@ -53,6 +53,7 @@ const REQUIRED: Record<string, string> = {
   // its own path through the emitter and has to carry the tail separately.
   'Field multiline': ' multiline value={v()} onChangeText={(n) => v.set(n)}',
   Toggle: ' value={b()} onChange={(n) => b.set(n)}',
+  Select: " value={v()} options={[{ value: 'a', label: 'A' }]} onChange={(n) => v.set(n)}",
   Modal: ' open onClose={() => {}}',
   // Three that the first version of this file left out — the hardcoded list of
   // 15 was itself the "gate input list is a silent-hole generator" shape, in
@@ -111,7 +112,7 @@ const emit = (shape: string, attr: string, target: 'swift' | 'kotlin'): string =
     ? `<${tag}${base} ${attr}>${CHILD[tag] ?? 'x'}</${tag}>`
     : `<${tag}${base} ${attr} />`
   const src = `import { signal } from '@pyreon/reactivity'
-import { Stack, Inline, Layer, Scroll, Spacer, Text, Heading, Image, Icon, Button, Press, Link, Field, Toggle, Modal, Transition, Audio, Video, Gesture, Canvas, Tabs, Tab, Split } from '@pyreon/primitives'
+import { Stack, Inline, Layer, Scroll, Spacer, Text, Heading, Image, Icon, Button, Press, Link, Field, Toggle, Select, Modal, Transition, Audio, Video, Gesture, Canvas, Tabs, Tab, Split } from '@pyreon/primitives'
 export function C() {
   const v = signal('')
   const b = signal(false)
@@ -171,7 +172,7 @@ describe('and pays nothing when they are absent', () => {
     const tag = tagOf(shape)
     const el = TAKES_CHILDREN.has(tag) ? `<${tag}${base}>${CHILD[tag] ?? 'x'}</${tag}>` : `<${tag}${base} />`
     const src = `import { signal } from '@pyreon/reactivity'
-import { Stack, Inline, Layer, Scroll, Spacer, Text, Heading, Image, Icon, Button, Press, Link, Field, Toggle, Modal, Transition, Audio, Video, Gesture, Canvas, Tabs, Tab, Split } from '@pyreon/primitives'
+import { Stack, Inline, Layer, Scroll, Spacer, Text, Heading, Image, Icon, Button, Press, Link, Field, Toggle, Select, Modal, Transition, Audio, Video, Gesture, Canvas, Tabs, Tab, Split } from '@pyreon/primitives'
 export function C() { const v = signal(''); const b = signal(false); return <Stack>${el}</Stack> }`
     for (const target of ['swift', 'kotlin'] as const) {
       const out = transform(src, { target }).code

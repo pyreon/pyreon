@@ -224,6 +224,21 @@ public struct PyreonDateField: View {
   public init(value: Binding<String>, kind: PyreonDateFieldKind, min: String? = nil, max: String? = nil, placeholder: String? = nil) {}
   public var body: some View { EmptyView() }
 }
+// <Select> — runtime-swift PyreonSelect.swift, exactly: the option is
+// Hashable/Identifiable/Codable with an OPTIONAL disabled (TS \`disabled?\`), and
+// SelectOption is the alias @pyreon/primitives exports.
+public struct PyreonSelectOption: Hashable, Identifiable, Codable {
+  public var value: String
+  public var label: String
+  public var disabled: Bool?
+  public var id: String { value }
+  public init(value: String, label: String, disabled: Bool? = nil) { self.value = value; self.label = label; self.disabled = disabled }
+}
+public typealias SelectOption = PyreonSelectOption
+public struct PyreonSelect: View {
+  public init(selection: Binding<String>, options: [PyreonSelectOption], placeholder: String? = nil) {}
+  public var body: some View { EmptyView() }
+}
 public struct PyreonAudioPlayer: View {
   public init(
     url: URL?,
@@ -1013,15 +1028,32 @@ public enum PyreonJSON {
   public static func encode<T>(_ value: T) -> String { "" }
   // JSON.stringify(x) lowers here. Encodable, as in the runtime.
   public static func stringify<T: Encodable>(_ value: T) -> String { "" }
+  // JSON.parse(s) lowers here — Decodable, and THROWS, as in the runtime.
+  public static func parse<T: Decodable>(_ type: T.Type, _ text: String) throws -> T { fatalError() }
 }
 // PyreonSchema — copied VERBATIM from runtime-swift's PyreonSchema.swift
 // (schema-stub-parity.test.ts asserts it byte-for-byte). Every emitted schema
 // throws / returns these; they live in the runtime so two schema-bearing
 // files in one target cannot both declare them.
-public enum PyreonSchemaError: Error {
+public enum PyreonSchemaError: Error, LocalizedError, CustomStringConvertible {
     case missingOrWrongType(field: String, expected: String)
     case constraintViolation(field: String, rule: String)
     case unknown
+
+    /// The same text Kotlin's PyreonSchemaError carries as its message, so a caught Pet.parse(x) failure
+    /// reads identically on both targets (e.message in the shared source).
+    public var errorDescription: String? {
+        switch self {
+        case let .missingOrWrongType(field, expected):
+            return "Field '\\(field)' missing or wrong type (expected \\(expected))"
+        case let .constraintViolation(field, rule):
+            return "Field '\\(field)' violated constraint '\\(rule)'"
+        case .unknown:
+            return "Schema validation failed"
+        }
+    }
+
+    public var description: String { errorDescription ?? "Schema validation failed" }
 }
 public struct PyreonParseResult<T> {
     public let success: Bool

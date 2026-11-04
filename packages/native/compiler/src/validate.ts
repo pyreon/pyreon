@@ -371,6 +371,13 @@ export function _swiftTypecheckPreamble(source: string): string {
 const SWIFT_RUNTIME_HELPERS: readonly { readonly name: string; readonly file: string }[] = [
   { name: 'pyreonNumberString', file: 'PyreonNumber.swift' },
   { name: 'pyreonSlice', file: 'PyreonSlice.swift' },
+  // `JSON.parse(s)` lowers to `PyreonJSON.parse(T.self, s)`.
+  { name: 'PyreonJSON.parse', file: 'PyreonJSON.swift' },
+  // An emitted schema struct throws / returns these, and its callers convert typed input with `pyreonSchemaInput`.
+  { name: 'PyreonSchemaError.missingOrWrongType', file: 'PyreonSchema.swift' },
+  { name: 'PyreonSchemaError.constraintViolation', file: 'PyreonSchema.swift' },
+  { name: 'pyreonSchemaInput', file: 'PyreonSchema.swift' },
+  { name: 'PyreonParseResult', file: 'PyreonSchema.swift' },
 ]
 
 /**
@@ -380,8 +387,10 @@ const SWIFT_RUNTIME_HELPERS: readonly { readonly name: string; readonly file: st
  */
 function swiftRuntimeHelpers(source: string): string {
   let out = ''
+  const linked = new Set<string>()
   for (const { name, file } of SWIFT_RUNTIME_HELPERS) {
-    if (!source.includes(`${name}(`) || source.includes(`func ${name}`)) continue
+    if (!source.includes(`${name}(`) || source.includes(`func ${name}`) || linked.has(file)) continue
+    linked.add(file)
     const text = readIfPresent(join(NATIVE_PACKAGES_DIR, 'runtime-swift/Sources/PyreonRuntime', file))
     if (text !== undefined) out += `${text.replace(/^import Foundation\n/m, '')}\n`
   }

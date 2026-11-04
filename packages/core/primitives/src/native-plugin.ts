@@ -1,5 +1,11 @@
 /** Package-owned FFI lowering. Runtime imports never load this tooling entry. */
-import type { AstNode, CallRecognizer, CompilerPlugin } from '@pyreon/native-compiler/plugin-api'
+import type {
+  AstNode,
+  CallRecognizer,
+  CompilerModule,
+  CompilerPlugin,
+  StructIR,
+} from '@pyreon/native-compiler/plugin-api'
 export const recognizeNativeModule: CallRecognizer = (_call, ctx) => {
   const name = ctx.declName
   const arg = ctx.args[0] as (AstNode & { value?: unknown }) | undefined
@@ -23,11 +29,45 @@ export const recognizeNativeModule: CallRecognizer = (_call, ctx) => {
   }
   return { type: 'native-module', payload: { moduleName } }
 }
+/**
+ * `SelectOption` — the `<Select options>` element type — as the runtimes
+ * declare it (`PyreonSelectOption`, aliased `SelectOption`, in
+ * runtime-swift / runtime-kotlin). EXTERNAL: it types object literals and
+ * annotations in a file that imports it (`signal<SelectOption[]>([{ value,
+ * label }])` constructs `SelectOption(value:label:)`), and is never declared in
+ * the emit — the runtime already has it. Mirrors `types/input.ts`.
+ */
+export const SELECT_OPTION_STRUCT: StructIR = {
+  name: 'SelectOption',
+  fields: [
+    { name: 'value', type: { kind: 'string' } },
+    { name: 'label', type: { kind: 'string' } },
+    { name: 'disabled', type: { kind: 'union', branches: [{ kind: 'boolean' }, { kind: 'undefined' }] } },
+  ],
+  external: true,
+}
+
 export const primitivesPlugin: CompilerPlugin = {
   name: '@pyreon/primitives',
   apiVersion: 2,
   modules: ['@pyreon/primitives'],
   calls: { useNativeModule: recognizeNativeModule },
+  runtimeTypes: Object.freeze(['SelectOption']),
+  prepareIR(module: CompilerModule) {
+    // Only for a file that imports the type, and never over a local declaration
+    // of the same name (that one is the file's own, and is emitted as such).
+    let imported = false
+    for (const [local, i] of module.typeImports ?? []) {
+      if (i.source !== '@pyreon/primitives' || i.imported !== 'SelectOption') continue
+      if (local === 'SelectOption') imported = true
+      else
+        module.warnings.push(
+          `\`import type { SelectOption as ${local} }\`: the native runtimes name the type \`SelectOption\`, so a RENAMED import emits \`${local}\`, which exists on neither iOS nor Android. Import it as \`SelectOption\`.`,
+        )
+    }
+    if (!imported || module.structs.some((s) => s.name === 'SelectOption')) return
+    module.structs = [...module.structs, SELECT_OPTION_STRUCT]
+  },
   decls: {
     'native-module': {
       legacyKind: 'native-module',

@@ -1105,6 +1105,9 @@ object PyreonJson {
     // JSON.stringify(x) lowers here (web-identical bytes).
     @Suppress("UNUSED_PARAMETER")
     inline fun <reified T> stringify(value: T): String = ""
+    // JSON.parse(s) lowers here (throws PyreonJsonParseError on bad input).
+    @Suppress("UNUSED_PARAMETER", "UNCHECKED_CAST")
+    inline fun <reified T> parse(text: String): T = (null as Any?) as T
 }
 
 // PyreonSchema — copied VERBATIM from runtime-kotlin's PyreonSchema.kt
@@ -1917,6 +1920,19 @@ fun PyreonDateField(
   modifier: Modifier = Modifier,
   min: String? = null,
   max: String? = null,
+  placeholder: String? = null,
+  enabled: Boolean = true,
+) {}
+// <Select> — runtime-kotlin PyreonSelect.kt, exactly.
+@Serializable
+data class PyreonSelectOption(var value: String, var label: String, var disabled: Boolean? = null)
+typealias SelectOption = PyreonSelectOption
+@Composable
+fun PyreonSelect(
+  value: String,
+  options: List<PyreonSelectOption>,
+  onChange: (String) -> Unit,
+  modifier: Modifier = Modifier,
   placeholder: String? = null,
   enabled: Boolean = true,
 ) {}

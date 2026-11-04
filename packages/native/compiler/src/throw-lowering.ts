@@ -15,6 +15,7 @@
 // there too (`fatalError` / `try!`): the two native targets then agree with each other, and the compiler names the
 // position in a warning so the author can add the `try`/`catch` that makes all three agree.
 
+import { syncThrowingPluginExpr } from './registry-lookup'
 import type { ExprIR, StatementIR } from './types'
 
 /** Every nested statement list of `s` — the one place that knows which statement kinds own a body. */
@@ -45,14 +46,17 @@ export const ERROR_MESSAGE_FN = 'pyreonErrorMessage'
 /** `String(e)` for a caught error — `Error: message`, as JavaScript renders it. */
 export const ERROR_STRING_FN = 'pyreonErrorString'
 
-/** Whether `expr` calls one of `throwingFns` OUTSIDE any nested arrow (an arrow's body is its own throw context). */
+/** Whether `expr` calls one of `throwingFns` (or `JSON.parse`, or a plugin call that throws) OUTSIDE any nested arrow (an arrow's body is its own throw context). */
 export function exprCallsThrowing(expr: unknown, throwingFns: ReadonlySet<string>): boolean {
-  if (throwingFns.size === 0) return false
   const walk = (n: unknown): boolean => {
     if (Array.isArray(n)) return n.some(walk)
     if (n === null || typeof n !== 'object') return false
     const node = n as { kind?: string; callee?: { kind?: string; name?: string } }
     if (node.kind === 'arrow') return false
+    // `JSON.parse` throws on malformed input — natively on a shape mismatch too.
+    if (node.kind === 'json-parse') return true
+    // A plugin call that throws synchronously (`Pet.parse(x)`), declared by its owner.
+    if (node.kind === 'ext-expr' && syncThrowingPluginExpr(node as ExprIR) !== undefined) return true
     if (
       node.kind === 'call' &&
       node.callee?.kind === 'identifier' &&
@@ -224,7 +228,7 @@ export const SWIFT_THROWN_PREAMBLE = `private struct PyreonThrown: Error, Custom
     var description: String { "Error: \\(message)" }
 }
 private func ${ERROR_MESSAGE_FN}(_ e: Error) -> String {
-    (e as? PyreonThrown)?.message ?? String(describing: e)
+    (e as? PyreonThrown)?.message ?? (e as? LocalizedError)?.errorDescription ?? String(describing: e)
 }
 private func ${ERROR_STRING_FN}(_ e: Error) -> String { String(describing: e) }`
 

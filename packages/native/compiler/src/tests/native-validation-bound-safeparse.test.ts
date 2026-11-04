@@ -99,17 +99,18 @@ describe('.safeParse() on a declared schema or an inline adapter call', () => {
     }
   })
 
-  it('`.parse()` THROWS, so it is a NAMED warning that points at `.safeParse()` — never a verbatim emit', () => {
+  it('`.parse()` on a binding lowers (throwing); an inline adapter `.parse()` stays a NAMED warning — never a verbatim emit', () => {
     const src = `${HEAD}const a = zodSchema(z.object({ n: z.string() }))
 export function App() {
   const msg = signal('')
   const go = () => { msg.set(a.parse({ n: 'x' }).n) }
   return <Button onPress={go}><Text>{msg()}</Text></Button>
 }`
+    // A declared binding's `.parse()` lowers to the struct's throwing parse; uncaught in a handler, it is warned.
     const w = warn(src, 'swift').join('\n')
-    expect(w).toMatch(/`a\.parse\(…\)` on a @pyreon\/validation schema/)
-    expect(w).toMatch(/safeParse/)
-    // The inline spelling gets the same verdict.
+    expect(w).not.toMatch(/`a\.parse\(…\)` on a @pyreon\/validation schema/)
+    expect(w).toContain('TERMINATES the app')
+    // The INLINE spelling still does not lower, and is named.
     const inline = `${HEAD}export function App() {
   const msg = signal('')
   const go = () => { msg.set(zodSchema(z.object({ n: z.string() })).parse({ n: 'x' }).n) }

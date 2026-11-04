@@ -1,6 +1,6 @@
 import { signal } from '@pyreon/reactivity'
 import {
-  Stack, Inline, Layer, Scroll, Text, Image, Video, Audio, Transition, Link, Modal, Press, WebView, Field, Gesture,
+  Stack, Inline, Layer, Scroll, Text, Image, Video, Audio, Transition, Link, Modal, Press, WebView, Field, Select, Gesture,
   Canvas, CanvasRect, CanvasCircle, CanvasLine, CanvasPath, CanvasText,
   Tabs, Tab, Split,
 } from '@pyreon/primitives'
@@ -10,6 +10,7 @@ export function ProbeApp() {
   const open = signal(false)
   const shown = signal(true)
   const day = signal('2026-10-22')
+  const fruit = signal('')
   const notes = signal('')
   const rows = signal(4)
   const zoom = signal(1)
@@ -46,6 +47,7 @@ export function ProbeApp() {
       <Field kind="date" value={day} onChangeText={(v) => day.set(v)} min="2026-01-01" max="2026-12-31" data-testid="probe-day" />
       <Field kind="time" value={day()} onChangeText={(v) => day.set(v)} placeholder="Time" />
       <Field kind="datetime" value={day} onChangeText={(v) => day.set(v)} disabled />
+      <Select value={fruit()} options={[{ value: 'a', label: 'Apple' }, { value: 'p', label: 'Pear', disabled: true }]} onChange={(v) => fruit.set(v)} placeholder="Fruit" data-testid="probe-select" />
       <Gesture
         data-testid="probe-gesture"
         onPan={(e) => dx.set(e.dx)}

@@ -1160,6 +1160,34 @@ final class PyreonRouterDemoUITests: XCTestCase {
             "A RangeError's interpolated message was not carried"
         )
         XCTAssertTrue(app.staticTexts["Finally: 3"].waitForExistence(timeout: 10))
+
+        // JSON.parse: a typed decode (the unknown `note` key ignored, as on the web) and a malformed input that
+        // throws into the page's catch.
+        XCTAssertTrue(app.staticTexts["JSON: none"].waitForExistence(timeout: 10))
+        app.buttons["Decode order"].tap()
+        XCTAssertTrue(
+            app.staticTexts["JSON: A1 x2"].waitForExistence(timeout: 10),
+            "JSON.parse did not decode into the named type"
+        )
+        app.buttons["Decode malformed"].tap()
+        XCTAssertTrue(
+            app.staticTexts["JSON: malformed"].waitForExistence(timeout: 10),
+            "A malformed JSON.parse was not caught"
+        )
+
+        // A schema's .parse(x): the native struct's own parse, which throws on a constraint violation — caught, with
+        // a message naming the field and rule.
+        XCTAssertTrue(app.staticTexts["Schema: none"].waitForExistence(timeout: 10))
+        app.buttons["Check order"].tap()
+        XCTAssertTrue(
+            app.staticTexts["Schema: ok B7"].waitForExistence(timeout: 10),
+            "A valid schema .parse(x) did not return the parsed value"
+        )
+        app.buttons["Check empty SKU"].tap()
+        XCTAssertTrue(
+            app.staticTexts["Schema: rejected: Field 'sku' violated constraint 'min length 1'"].waitForExistence(timeout: 10),
+            "A failing schema .parse(x) was not caught with its message"
+        )
     }
 
     // Platform APIs — app LIFECYCLE through the REAL UIApplication

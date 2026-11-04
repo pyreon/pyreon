@@ -1,6 +1,6 @@
 ---
 title: "Canonical Multiplatform Primitives — API Reference"
-description: "21 canonical cross-platform UI primitives that compile to DOM + SwiftUI + Compose from one .tsx: Stack, Inline, Layer, Scroll, Spacer (layout); Text, Heading, I"
+description: "22 canonical cross-platform UI primitives that compile to DOM + SwiftUI + Compose from one .tsx: Stack, Inline, Layer, Scroll, Spacer (layout); Text, Heading, I"
 ---
 
 # @pyreon/primitives — API Reference
@@ -13,14 +13,14 @@ The multiplatform UI vocabulary for Pyreon. ONE canonical name per concept (`<St
 
 **Tier:** Shared — the same source runs on web, iOS and Android
 
-the 21 canonical primitives: real web DOM runtime AND SwiftUI/Compose emit — the compiler's native target vocabulary
+the 22 canonical primitives: real web DOM runtime AND SwiftUI/Compose emit — the compiler's native target vocabulary
 
 See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multiplatform libraries](/docs/multiplatform-libraries) for every package's tier.
 
 ## Features
 
 - Native compiler tooling: primitivesPlugin from @pyreon/primitives/native-plugin owns hook recognition and Swift/Kotlin lowering; the native CLI discovers it through pyreon.native.plugin, and direct compiler callers install it explicitly
-- 21 canonical primitives compile to web DOM + iOS SwiftUI + Android Compose from one .tsx
+- 22 canonical primitives compile to web DOM + iOS SwiftUI + Android Compose from one .tsx
 - `<Tabs>`/`<Tab>` — a tab bar that keeps every visited tab mounted (TabView on iOS, BottomNavigation/NavigationRail by window width on Android, a WAI-ARIA tablist bottom bar / side rail on the web); `<Split>` — a list/detail layout that collapses to one pane on a narrow window
 - One canonical name + event per concept — `<Stack>` (not View/VStack/div), `onPress` everywhere
 - Tokens-first styling (`padding={4}`, `gap="md"`) resolves through the theme per target
@@ -92,6 +92,7 @@ export function App() {
 | [`Link`](#link-component) | component | Navigation link. |
 | [`Field`](#field-component) | component | Text input. |
 | [`Toggle`](#toggle-component) | component | Boolean switch/checkbox. |
+| [`Select`](#select-component) | component | Single choice from a list with the platform's own picker: web `<select>`, iOS a menu-style `Picker`, Android a Material  |
 | [`Modal`](#modal-component) | component | Modal/sheet. |
 | [`Tabs`](#tabs-component) | component | Top-level tab navigation; children are literal `<Tab value label icon?>` entries whose children are the tab content. |
 | [`Split`](#split-component) | component | Adaptive list/detail layout: `sidebar` is the list, the children are the detail. |
@@ -540,6 +541,32 @@ Boolean switch/checkbox. Web checkbox; iOS `Toggle`; Android `Switch`. `onChange
 - Using `onPress`/`onClick` — Toggle uses `onChange(next: boolean)`
 
 **See also:** `Field`
+
+---
+
+### `Select` `component`
+
+```ts
+(props: { value: string | (() => string); options: SelectOption[] | (() => SelectOption[]); onChange: (next: string) => void; placeholder?: string; disabled?: boolean }) => VNode
+```
+
+Single choice from a list with the platform's own picker: web `<select>`, iOS a menu-style `Picker`, Android a Material 3 `ExposedDropdownMenuBox` (the runtimes' `PyreonSelect`). `options` is `{ value, label, disabled? }[]` (`SelectOption`); `value` is the chosen option's `value`, and `''` — or any value no option has — selects nothing, which shows the `placeholder`. A disabled option is listed but not selectable, and the placeholder can never be chosen again. Every user choice goes through `onChange`.
+
+**Example**
+
+```tsx
+const fruit = signal('')
+<Select value={fruit()} options={[{ value: 'apple', label: 'Apple' }, { value: 'pear', label: 'Pear', disabled: true }]} onChange={(v) => fruit.set(v)} placeholder="Pick a fruit" />
+```
+
+**Common mistakes**
+
+- Using `onChangeText` or `onInput` — Select reports a choice with `onChange(next: string)`
+- Numeric option values — a `<select>` value is a string on every target; convert at the edges
+- A renamed type import (`import type { SelectOption as Opt }`) — the native runtimes name the type `SelectOption`, so the compiler warns
+- Building options natively from objects with other field names — a native picker reads `value`, `label` and `disabled`; map to that shape (`xs.map((x) => ({ value: x.id, label: x.name }))`)
+
+**See also:** `Field` · `Toggle`
 
 ---
 

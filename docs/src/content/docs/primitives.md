@@ -31,7 +31,7 @@ bun add @pyreon/primitives @pyreon/core @pyreon/reactivity @pyreon/runtime-dom
 | **Web content** | [`WebView`](#webview) | native web host |
 | **Escape hatches** | [`Web`, `NativeIOS`, `NativeAndroid`](#escape-hatches) | per-target branch |
 
-The first six groups are the **21 canonical primitives** (`Tab` is `Tabs`' entry and the canvas shapes are children of `Canvas` — neither is a member), the UI vocabulary
+The first six groups are the **22 canonical primitives** (`Tab` is `Tabs`' entry and the canvas shapes are children of `Canvas` — neither is a member), the UI vocabulary
 the compiler treats as its own. The compiler's list lives in
 `packages/native/compiler/src/canonical-primitives.ts` (`CANONICAL_PRIMITIVES`),
 and a test checks that it matches what this package exports. The animation
@@ -845,6 +845,54 @@ export function WifiSetting() {
 
 - **Web**: `<input type="checkbox" role="switch">`.
 - **iOS**: `Toggle("", isOn: Binding(…))`. **Android**: `Switch(checked = …, onCheckedChange = …)`.
+
+### Select
+
+A single choice from a list, with each platform's own picker: a `<select>` on
+the web, a menu-style `Picker` on iOS, a Material 3 exposed dropdown on Android.
+
+| Prop | Type |
+| --- | --- |
+| `value` | `string` (or a signal read) (required) — the chosen option's `value`; `''` selects nothing |
+| `options` | `SelectOption[]` — `{ value: string; label: string; disabled?: boolean }` (required) |
+| `onChange` | `(next: string) => void` (required) |
+| `placeholder` | `string` — shown while nothing is selected |
+| `disabled` | `boolean` |
+
+A value that no option has selects nothing, and the placeholder is shown in its
+place on every target (blank without one). The placeholder cannot be chosen
+again once something is, and a `disabled` option is listed but not selectable.
+Every choice the user makes goes through `onChange`; the control shows whatever
+`value` you pass back.
+
+```tsx
+// @check
+import { Stack, Select, Text } from '@pyreon/primitives'
+import type { SelectOption } from '@pyreon/primitives'
+import { signal } from '@pyreon/reactivity'
+
+export function FruitPicker() {
+  const fruit = signal('')
+  const options = signal<SelectOption[]>([
+    { value: 'apple', label: 'Apple' },
+    { value: 'durian', label: 'Durian', disabled: true },
+  ])
+  return (
+    <Stack gap="sm">
+      <Select value={fruit()} options={options()} onChange={(v) => fruit.set(v)} placeholder="Pick a fruit" />
+      <Text>{fruit() || 'nothing yet'}</Text>
+    </Stack>
+  )
+}
+```
+
+On native, a list typed `SelectOption[]` reaches the runtime as it is. A list of
+your own type is mapped to it, which reads `value`, `label` and — when your type
+declares it — `disabled`; a type without `value` and `label` is a named compiler
+warning.
+
+- **Web**: `<select>`, with a disabled empty `<option>` carrying the placeholder.
+- **iOS**: `PyreonSelect` — `Picker(selection:…).pickerStyle(.menu)`. **Android**: `PyreonSelect` — `ExposedDropdownMenuBox` with a read-only field.
 
 ### Modal
 

@@ -2068,6 +2068,9 @@ export function inferTypeValue(expr: ExprIR, ctx: InferenceCtx): TypeIR {
     case 'json-stringify':
       // `JSON.stringify(x)` serializes to a String on both targets.
       return { kind: 'string' }
+    case 'json-parse':
+      // The type the source named for the decode (`as T`, an annotation, a helper's return type).
+      return expr.type ?? { kind: 'unknown' }
     case 'comparison':
     case 'logical':
       // `===` / `!==` / `<` / `>` and `&&` / `||` produce boolean.

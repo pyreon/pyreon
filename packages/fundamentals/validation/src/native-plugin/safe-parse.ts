@@ -127,3 +127,24 @@ export const safeParseExpr: ExprEmitter = {
     if (to !== undefined) (e.payload as { schemaName: string }).schemaName = to
   },
 }
+
+/**
+ * `<schema>.parse(x)` → `PyreonZodSchema_<name>.parse(<x-as-dictionary>)`: the emitted struct's own static `parse`,
+ * which returns the validated value or THROWS — on the web the same call throws a validation error. It declares
+ * that throw (`throwsSync`), so the core gives it the error model a throwing helper gets: `try` / `try!` on Swift,
+ * and the enclosing helper becomes `throws`; an uncaught position is warned on both targets. The argument is
+ * converted exactly as `safeParse`'s is.
+ */
+export const parseExpr: ExprEmitter = {
+  swift: (e, ctx) => `PyreonZodSchema_${schemaNameOf(e)}.parse(${swiftSchemaInput(e.args[0]!, ctx)})`,
+  kotlin: (e, ctx) => `PyreonZodSchema_${schemaNameOf(e)}.parse(${kotlinSchemaInput(e.args[0]!, ctx)})`,
+  throwsSync: '`.parse(…)` on a schema, which throws on invalid input,',
+  typing: {
+    // The validated value IS the emitted struct, so member reads (`pet.name`) type through its fields.
+    type: (e) => ({ kind: 'typeRef', name: `PyreonZodSchema_${schemaNameOf(e)}`, args: [] }),
+  },
+  rename(e, renames) {
+    const to = renames.get(schemaNameOf(e))
+    if (to !== undefined) (e.payload as { schemaName: string }).schemaName = to
+  },
+}

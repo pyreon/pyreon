@@ -48,6 +48,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performScrollToNode
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.pinch
 import androidx.compose.ui.geometry.Offset
@@ -1168,6 +1169,21 @@ class RouterDemoInstrumentedTest {
         composeRule.onNodeWithText("Parse negative").performClick()
         composeRule.onNodeWithTag("err-result").assertTextEquals("Result: error: negative: -2")
         composeRule.onNodeWithTag("err-finally").assertTextEquals("Finally: 3")
+
+        // JSON.parse: a typed decode (the unknown `note` key ignored, as on the web) and a malformed input that
+        // throws into the page's catch. The page scrolls, and a Compose click does not — scroll to each node first.
+        composeRule.onNodeWithTag("err-json").performScrollTo().assertTextEquals("JSON: none")
+        composeRule.onNodeWithText("Decode order").performScrollTo().performClick()
+        composeRule.onNodeWithTag("err-json").performScrollTo().assertTextEquals("JSON: A1 x2")
+        composeRule.onNodeWithText("Decode malformed").performScrollTo().performClick()
+        composeRule.onNodeWithTag("err-json").performScrollTo().assertTextEquals("JSON: malformed")
+        // A schema's .parse(x): the struct's own parse throws on a constraint violation, caught with its message.
+        composeRule.onNodeWithTag("err-schema").performScrollTo().assertTextEquals("Schema: none")
+        composeRule.onNodeWithText("Check order").performScrollTo().performClick()
+        composeRule.onNodeWithTag("err-schema").performScrollTo().assertTextEquals("Schema: ok B7")
+        composeRule.onNodeWithText("Check empty SKU").performScrollTo().performClick()
+        composeRule.onNodeWithTag("err-schema").performScrollTo()
+            .assertTextEquals("Schema: rejected: Field 'sku' violated constraint 'min length 1'")
     }
 
     // Platform APIs — app LIFECYCLE through the REAL Activity lifecycle. The

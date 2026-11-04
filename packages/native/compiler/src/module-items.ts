@@ -280,6 +280,14 @@ export interface ExprEmitter {
    * uncaught exception. Only meaningful under `await`; the plugin is responsible for refusing an un-awaited use.
    */
   readonly throws?: boolean | undefined
+  /**
+   * The expression is a SYNCHRONOUS call that throws on bad input, the way `JSON.parse` does (`Pet.parse(x)`). It rides
+   * the core's error model exactly like a call to a throwing helper: Swift wraps it `try` where the enclosing function
+   * or `try` block can propagate it and `try!` (with a warning) where it cannot, and the enclosing helper becomes
+   * `throws`; Kotlin's exceptions are unchecked, so only the uncaught position warns. The value is the subject of that
+   * warning — what the call is, in the author's terms (``"`Pet.parse(…)`, which throws on invalid input,"``).
+   */
+  readonly throwsSync?: string | undefined
   /** How expressions over the node are typed (without it the node is `unknown`). */
   readonly typing?:
     | {

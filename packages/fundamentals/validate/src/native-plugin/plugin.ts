@@ -1,6 +1,6 @@
 import { type CallRecognizer, type CompilerPlugin } from '@pyreon/native-compiler/plugin-api'
 import { createSchemaItem, createSchemaStructRefinement } from '@pyreon/validation/native-plugin'
-import { fieldMetaItem, safeParseExpr } from './exprs'
+import { fieldMetaItem, parseExpr, safeParseExpr } from './exprs'
 import { FIELD_META_ITEM_TYPE, finishValidate, recognizeMethodCall, recognizeTopLevel } from './recognize'
 import { VALIDATE_PLUGIN_NAME } from './names'
 import { scanValidate } from './scan'
@@ -45,7 +45,7 @@ export const validatePlugin: CompilerPlugin = {
   topLevel: recognizeTopLevel,
   items: { schema: createSchemaItem(), [FIELD_META_ITEM_TYPE]: fieldMetaItem },
   methodCalls: { '*': recognizeMethodCall },
-  exprs: { safeParse: safeParseExpr },
+  exprs: { safeParse: safeParseExpr, parse: parseExpr },
   refineStructs: createSchemaStructRefinement(VALIDATE_PLUGIN_NAME),
   finishModule: finishValidate,
   // Every recognizer here only CLAIMS the call (`null`) and declares nothing, so there is no declaration type to emit.

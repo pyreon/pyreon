@@ -2,7 +2,7 @@
 
 > Canonical multi-platform UI primitives — semantic vocabulary that compiles to DOM (web), SwiftUI (iOS), and Compose (Android). The Pyreon Multi-Target story.
 
-**Status:** experimental, and further along than this line used to say. All **24** primitives now have real web implementations, and PMTC emits them for iOS + Android: the **21** canonical UI primitives (including `<Tabs>` with its `<Tab>` entries and `<Split>`, plus the five `<Canvas>` shape children), the two animation wrappers (`<Transition>` / `<TransitionGroup>`) and `<WebView>`. Per-capability native maturity (what is device-proven vs merely emitted) lives in the multiplatform tier table, not here — it moves per release and a copy in this file would go stale, which is exactly what happened to the sentence this replaced.
+**Status:** experimental, and further along than this line used to say. All **25** primitives now have real web implementations, and PMTC emits them for iOS + Android: the **22** canonical UI primitives (including `<Tabs>` with its `<Tab>` entries and `<Split>`, plus the five `<Canvas>` shape children), the two animation wrappers (`<Transition>` / `<TransitionGroup>`) and `<WebView>`. Per-capability native maturity (what is device-proven vs merely emitted) lives in the multiplatform tier table, not here — it moves per release and a copy in this file would go stale, which is exactly what happened to the sentence this replaced.
 
 ## What this is
 
@@ -29,8 +29,8 @@ On the **web target** this compiles via `@pyreon/runtime-dom` to DOM (the implem
 
 ## The primitives
 
-All 24 have a real web implementation in `src/web/` — there is no
-type-definition-only tier any more. The 21 canonical UI primitives are listed
+All 25 have a real web implementation in `src/web/` — there is no
+type-definition-only tier any more. The 22 canonical UI primitives are listed
 below (the compiler's `CANONICAL_PRIMITIVES` set, drift-locked against this
 package's exports); the other three are `<WebView>` and the animation
 wrappers `<Transition>` / `<TransitionGroup>` (see [Animation](#animation)).
@@ -103,7 +103,7 @@ transition *longhands* are ever assigned, so a consumer's own
 2. **One canonical event name per concept.** `onPress` everywhere (not `onClick` on web + `action:` on iOS).
 3. **Tokens-first styling.** `padding={4}` / `gap="md"` resolve via theme. No raw pixels.
 4. **Pyreon idioms preserved.** Existing `<For>` / `<Show>` / `<Match>` control flow stays.
-5. **Minimal first; expand from real-world usage.** 21 canonical primitives; more when demanded.
+5. **Minimal first; expand from real-world usage.** 22 canonical primitives; more when demanded.
 
 ## Per-platform import resolution
 
