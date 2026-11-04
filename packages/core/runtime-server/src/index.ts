@@ -908,6 +908,7 @@ async function streamElementNode(vnode: VNode, enqueue: (s: string) => void): Pr
   let open = `<${tag}`
   const props = vnode.props as Record<string, unknown>
   for (const key in props) {
+    if (isShadowedDefault(tag, key, props)) continue
     const attr = renderProp(tag, key, props[key])
     if (attr) open += ` ${attr}`
   }
@@ -1622,6 +1623,7 @@ function renderElement(vnode: VNode): MaybeAsync {
 
   const props = vnode.props as Record<string, unknown>
   for (const key in props) {
+    if (isShadowedDefault(tag, key, props)) continue
     const attr = renderProp(tag, key, props[key])
     if (attr) html += ` ${attr}`
   }
@@ -2315,6 +2317,27 @@ const PROPERTY_ONLY_PROPS = new Set([
   'volume',
   'srcObject',
 ])
+
+/**
+ * One content attribute, two props: `value` and `defaultValue` on an input
+ * both serialize to `value=""` (likewise `checked`/`defaultChecked` →
+ * `checked`, `muted`/`defaultMuted` → `muted`). Emitting both produced
+ * `value="cur" value="def"`, and the HTML parser keeps the FIRST, so props
+ * written `defaultValue`-then-`value` showed the default instead of the value.
+ * The live prop wins whenever it is set (non-nullish), as on the client — where
+ * the property assignment makes the control dirty, so the default is never
+ * what the user sees. Returns `true` when `key` is the shadowed default.
+ */
+function isShadowedDefault(tag: string, key: string, props: Record<string, unknown>): boolean {
+  let live: string
+  if (key === 'defaultValue' && tag === 'input') live = 'value'
+  else if (key === 'defaultChecked' && tag === 'input') live = 'checked'
+  else if (key === 'defaultMuted' && (tag === 'video' || tag === 'audio')) live = 'muted'
+  else return false
+  let v = props[live]
+  if (typeof v === 'function') v = (v as () => unknown)()
+  return v != null
+}
 
 function renderProp(tag: string, key: string, value: unknown): string | null {
   if (renderPropSkipped(key)) return null
