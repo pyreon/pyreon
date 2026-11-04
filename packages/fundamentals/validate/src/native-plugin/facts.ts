@@ -19,6 +19,8 @@ export interface ValidateFacts {
   readonly bindings: Map<string, 'object' | 'union'>
   /** Bindings whose `.safeParse(x)` lowered to `safeParseResult` — `finishModule` marks each matching schema so the method exists. */
   readonly safeParseResultBindings: Set<string>
+  /** Bindings whose `.parse(x)` lowered to the struct's static `parse` — `finishModule` checks each has a struct to call. */
+  readonly parseBindings: Set<string>
   /** Dedup for inline schemas keyed by the source text of the `s.object({ … })` node: two byte-identical ones share ONE struct. */
   readonly inlineByShape: Map<string, string>
   /** Monotonic counter for synthesized inline-schema binding names (`Inline0`, `Inline1`, …). */
@@ -32,6 +34,7 @@ export function validateFacts(source: { fileState<T>(key: string, init: () => T)
     names: new Set(),
     bindings: new Map(),
     safeParseResultBindings: new Set(),
+    parseBindings: new Set(),
     inlineByShape: new Map(),
     inlineCounter: 0,
   }))

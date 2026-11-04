@@ -88,7 +88,7 @@ export function App() { return null }`
     expect(code).not.toContain('PyreonParseResult')
   })
 
-  it('`.parse(x)` WARNS by name (it throws; no native error model yet) instead of emitting it broken', () => {
+  it('`.parse(x)` lowers to the struct\'s throwing parse — uncaught here, so it terminates natively and says so', () => {
     const src = `import { computed } from '@pyreon/reactivity'
 import { s } from '@pyreon/validate'
 const Pet = s.object({ name: s.string() })
@@ -98,11 +98,12 @@ export function App() {
 }`
     for (const target of ['swift', 'kotlin'] as const) {
       const { code, warnings } = transform(src, { target })
-      expect(warnings.some((w) => w.includes('`Pet.parse(…)`') && w.includes('try/throw'))).toBe(
-        true,
-      )
-      expect(code).not.toMatch(/\bPet\.parse\(/)
+      expect(code).toContain('PyreonZodSchema_Pet.parse(')
+      expect(code).not.toMatch(/(?<!PyreonZodSchema_)\bPet\.parse\(/)
+      expect(warnings.some((w) => w.includes('TERMINATES the app'))).toBe(true)
+      expect(warnings.some((w) => w.includes('try/throw lowering'))).toBe(false)
     }
+    expect(transform(src, { target: 'swift' }).code).toContain('(try! PyreonZodSchema_Pet.parse(')
   })
 
   it('`.safeParse` on a discriminatedUnion binding WARNS by name', () => {

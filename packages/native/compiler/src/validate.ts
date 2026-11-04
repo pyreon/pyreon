@@ -373,6 +373,11 @@ const SWIFT_RUNTIME_HELPERS: readonly { readonly name: string; readonly file: st
   { name: 'pyreonSlice', file: 'PyreonSlice.swift' },
   // `JSON.parse(s)` lowers to `PyreonJSON.parse(T.self, s)`.
   { name: 'PyreonJSON.parse', file: 'PyreonJSON.swift' },
+  // An emitted schema struct throws / returns these, and its callers convert typed input with `pyreonSchemaInput`.
+  { name: 'PyreonSchemaError.missingOrWrongType', file: 'PyreonSchema.swift' },
+  { name: 'PyreonSchemaError.constraintViolation', file: 'PyreonSchema.swift' },
+  { name: 'pyreonSchemaInput', file: 'PyreonSchema.swift' },
+  { name: 'PyreonParseResult', file: 'PyreonSchema.swift' },
 ]
 
 /**

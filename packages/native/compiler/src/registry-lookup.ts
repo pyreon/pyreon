@@ -748,6 +748,15 @@ export function isThrowingPluginExpr(e: ExprIR): boolean {
   return e.kind === 'ext-expr' && activeRegistries().items.exprEmitter(e.plugin, e.type)?.throws === true
 }
 
+/**
+ * When `e` is a plugin expression its owner declared a SYNCHRONOUS throw (`ExprEmitter.throwsSync`), the subject of
+ * the uncaught-throw warning; otherwise `undefined`.
+ */
+export function syncThrowingPluginExpr(e: ExprIR): string | undefined {
+  if (e.kind !== 'ext-expr') return undefined
+  return activeRegistries().items.exprEmitter(e.plugin, e.type)?.throwsSync
+}
+
 /** Render an `ext-expr` on `target` through its owner's emitter. */
 export function lowerPluginExpr(e: ExtExprIR, target: 'swift', ctx: () => SwiftEmitContext): string
 export function lowerPluginExpr(

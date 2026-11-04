@@ -32,6 +32,7 @@ import {
   lowerPluginIdentifier,
   isThrowingPluginExpr,
   lowerPluginExpr,
+  syncThrowingPluginExpr,
   moduleFieldValidators,
   pluginValueBinding,
   pluginIterationBinding,
@@ -4275,8 +4276,15 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       // wrapped in a `do`/`catch` for it (see `swiftTaskBody`), so a failure ends the handler.
       if (isThrowingPluginExpr(e.expr)) return `try await ${emitSwiftExpr(e.expr, indent)}`
       return `await ${emitSwiftExpr(e.expr, indent)}`
-    case 'ext-expr':
-      return lowerPluginExpr(e, 'swift', () => swiftEmitContext(indent))
+    case 'ext-expr': {
+      const lowered = lowerPluginExpr(e, 'swift', () => swiftEmitContext(indent))
+      // A synchronous throwing plugin call (`Pet.parse(x)`) takes the same `try` / `try!` a throwing helper does.
+      const throwsSync = syncThrowingPluginExpr(e)
+      if (throwsSync === undefined) return lowered
+      if (_swiftThrowCtx !== 'none') return `(try ${lowered})`
+      _pushSwiftEmitWarning(uncaughtThrowWarning(throwsSync))
+      return `(try! ${lowered})`
+    }
     case 'json-stringify':
       // `JSON.stringify(x)` → the runtime's web-identical serializer. Not
       // `JSONEncoder`: the bytes leave the device (a request body, a cache key)

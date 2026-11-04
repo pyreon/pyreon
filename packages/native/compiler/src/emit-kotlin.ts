@@ -45,6 +45,7 @@ import {
   lowerPluginIdentifier,
   isThrowingPluginExpr,
   lowerPluginExpr,
+  syncThrowingPluginExpr,
   moduleFieldValidators,
   pluginValueBinding,
   pluginIterationBinding,
@@ -3268,8 +3269,12 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       // `scope.launch { … }` coroutine provides the suspension context. Emit
       // just the inner call.
       return emitKotlinExpr(e.expr, indent)
-    case 'ext-expr':
+    case 'ext-expr': {
+      // A synchronous throwing plugin call (`Pet.parse(x)`): unchecked in Kotlin, so only the uncaught position warns.
+      const throwsSync = syncThrowingPluginExpr(e)
+      if (throwsSync !== undefined && _kotlinThrowCtx === 'none') _pushKotlinEmitWarning(uncaughtThrowWarning(throwsSync))
       return lowerPluginExpr(e, 'kotlin', () => kotlinEmitContext(indent))
+    }
     case 'json-stringify':
       // `JSON.stringify(x)` → the runtime's web-identical serializer. kotlinx
       // keeps declaration order (the source literal's), but writes a whole
