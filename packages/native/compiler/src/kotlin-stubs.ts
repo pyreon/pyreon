@@ -1105,6 +1105,9 @@ object PyreonJson {
     // JSON.stringify(x) lowers here (web-identical bytes).
     @Suppress("UNUSED_PARAMETER")
     inline fun <reified T> stringify(value: T): String = ""
+    // JSON.parse(s) lowers here (throws PyreonJsonParseError on bad input).
+    @Suppress("UNUSED_PARAMETER", "UNCHECKED_CAST")
+    inline fun <reified T> parse(text: String): T = (null as Any?) as T
 }
 
 // PyreonSchema — copied VERBATIM from runtime-kotlin's PyreonSchema.kt

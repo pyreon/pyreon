@@ -1022,6 +1022,8 @@ public enum PyreonJSON {
   public static func encode<T>(_ value: T) -> String { "" }
   // JSON.stringify(x) lowers here. Encodable, as in the runtime.
   public static func stringify<T: Encodable>(_ value: T) -> String { "" }
+  // JSON.parse(s) lowers here — Decodable, and THROWS, as in the runtime.
+  public static func parse<T: Decodable>(_ type: T.Type, _ text: String) throws -> T { fatalError() }
 }
 // PyreonSchema — copied VERBATIM from runtime-swift's PyreonSchema.swift
 // (schema-stub-parity.test.ts asserts it byte-for-byte). Every emitted schema

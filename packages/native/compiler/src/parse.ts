@@ -31,6 +31,7 @@ import {
 } from './registry-lookup'
 import { createImportReferenceQuery } from './import-reference'
 import { childStatementLists, rewriteCaughtMessage } from './throw-lowering'
+import { typeJsonParse, typeJsonParseReturns, unwrapJsonParse, warnUntypedJsonParse } from './json-parse'
 import type { UnloweredModule } from './unlowered-modules'
 import {
   isJson,
@@ -655,6 +656,8 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
   // type still can't be determined is warned + dropped (never a broken emit).
   // Router guards are shaped first: their parameter is the native path, which return inference needs.
   lowerRouterGuards(components, ctx.helperFns, ctx.warnings, buildInferenceCtx([], structs, [], undefined, undefined, moduleConsts))
+  typeJsonParseReturns([...ctx.helperFns, ...components.flatMap((c) => c.decls.filter((d) => d.kind === 'function'))])
+  warnUntypedJsonParse([ctx.helperFns, components], ctx.warnings)
   refineHelperReturns(ctx.helperFns, structs, ctx.warnings, moduleConsts)
   for (const helper of ctx.helperFns) helperReturnSeed.set(helper.name, helper.returnType)
 
@@ -5788,9 +5791,8 @@ function parseStatementBody(node: AnyNode, ctx: ParseCtx): StatementIR | null {
         }
         return { kind: 'declare', name: declName, declaredType }
       }
-      return declaredType === undefined
-        ? { kind: 'let', name: declName, expr: parseExpr(d.init, ctx) }
-        : { kind: 'let', name: declName, expr: parseExpr(d.init, ctx), declaredType }
+      if (declaredType === undefined) return { kind: 'let', name: declName, expr: parseExpr(d.init, ctx) }
+      return { kind: 'let', name: declName, expr: typeJsonParse(parseExpr(d.init, ctx), declaredType), declaredType }
     }
     case 'IfStatement': {
       const cond = parseExpr(node.test, ctx)
@@ -6715,15 +6717,19 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
         if (node.callee.property?.name === 'stringify' && argNodes && argNodes.length >= 1) {
           return { kind: 'json-stringify', arg: parseExpr(argNodes[0], ctx) }
         }
-        // `JSON.parse` still warns: it THROWS on malformed input, which needs a
-        // native error model (`try`/`throw` lowering) that PMTC does not carry
-        // yet — a tracked follow-up. A no-arg `JSON.stringify()` also falls here.
+        // `JSON.parse(text)` decodes into the type the source names (see `json-parse` in types.ts). The type is
+        // attached by the position that names it — the `as T` cast, a `const x: T` annotation, a typed helper's
+        // `return` — so it starts untyped here. A reviver (2nd argument) has no native equivalent.
+        if (node.callee.property?.name === 'parse' && argNodes && argNodes.length === 1) {
+          return { kind: 'json-parse', arg: parseExpr(argNodes[0], ctx) }
+        }
+        // A no-arg `JSON.stringify()` / `JSON.parse()`, or a `JSON.parse` reviver, falls here.
         return unsupportedExpr(
           ctx,
           node,
           `\`JSON.${node.callee.property.name}\``,
           node.callee.property?.name === 'parse'
-            ? 'JSON.parse throws on malformed input, which needs a native error model (try/throw lowering) — a tracked follow-up. Decode typed API responses via useFetch<T> instead.'
+            ? 'only the one-argument form lowers — a reviver function has no native equivalent. Decode into a named type (`JSON.parse(s) as T`) and transform the result instead.'
             : 'no native lowering for this shape yet — a serialization bridge is a tracked follow-up.',
         )
       }
@@ -7280,6 +7286,12 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
       // cast `[] as T[]` DOES name the element type, so thread it onto the array
       // IR (`elementType`) → a typed-empty-array emit (`[Int]()` / `emptyList<Int>()`).
       const inner = parseExpr(node.expression, ctx)
+      // `JSON.parse(s) as T` — the cast is what names the decode's type.
+      if (node.typeAnnotation) {
+        const parsedInner = unwrapJsonParse(inner)
+        if (parsedInner !== undefined && parsedInner.type === undefined)
+          return { ...parsedInner, type: parseTypeAnnotation(node.typeAnnotation, ctx) }
+      }
       if (inner.kind === 'array' && inner.elements.length === 0 && node.typeAnnotation) {
         const castType = parseTypeAnnotation(node.typeAnnotation, ctx)
         if (castType.kind === 'array') {

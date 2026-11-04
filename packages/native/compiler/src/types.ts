@@ -595,10 +595,16 @@ export type ExprIR =
   /**
    * `JSON.stringify(x)` → a native serialization of an Encodable/@Serializable
    * value. Swift `String(data: try! JSONEncoder().encode(x), …)`, Kotlin
-   * `Json.encodeToString(x)`. Only the SAFE half lowers: `JSON.parse` throws,
-   * which needs a native error model (a tracked follow-up), so it still warns.
+   * `Json.encodeToString(x)`. `JSON.parse` is the `json-parse` kind below.
    */
   | { kind: 'json-stringify'; arg: ExprIR }
+  /**
+   * `JSON.parse(text)` with the result type the SOURCE names — `JSON.parse(s) as T`, `const x: T = JSON.parse(s)`,
+   * or the `return` of a helper annotated `: T`. Natively a decode needs a static type, so `type` is undefined only
+   * when none of those named one; the emitters then warn and decline. It THROWS, so it rides the try/throw lowering
+   * exactly like a call to a throwing helper.
+   */
+  | { kind: 'json-parse'; arg: ExprIR; type?: TypeIR }
   /**
    * `await expr` — an awaited async-result call inside an `async` handler
    * (M4.5). The emitter unwraps to `await <expr>` (Swift) / `<expr>` (Kotlin

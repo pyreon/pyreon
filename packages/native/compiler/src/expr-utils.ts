@@ -750,6 +750,7 @@ export function exprReferencesIdent(expr: ExprIR, name: string): boolean {
     case 'await':
       return exprReferencesIdent(expr.expr, name)
     case 'json-stringify':
+    case 'json-parse':
       return exprReferencesIdent(expr.arg, name)
     case 'ext-expr':
       return expr.args.some((a) => exprReferencesIdent(a, name))
@@ -951,7 +952,8 @@ export function substituteMatching(expr: ExprIR, subst: Substitution): ExprIR | 
       if (inner === null) return null
       return { ...expr, inner }
     }
-    case 'json-stringify': {
+    case 'json-stringify':
+    case 'json-parse': {
       const arg = substituteMatching(expr.arg, subst)
       if (arg === null) return null
       return { ...expr, arg }
@@ -1120,6 +1122,7 @@ function walkLowerParams(
     case 'await':
       return { ...expr, expr: rec(expr.expr) }
     case 'json-stringify':
+    case 'json-parse':
       return { ...expr, arg: rec(expr.arg) }
     case 'ext-expr':
       return { ...expr, args: expr.args.map(rec) }

@@ -7,7 +7,7 @@ import { describe, expect, it } from 'vitest'
 import primitivesManifest from '../manifest'
 
 // Spot-check snapshot for @pyreon/primitives' manifest → generated docs.
-// The api[] covers the 21 canonical primitives, the two animation wrappers,
+// The api[] covers the 22 canonical primitives, the two animation wrappers,
 // <WebView>, the <Web> escape-hatch group and the helper APIs — prose-dense
 // MCP text, so a full inline snapshot would
 // rot fast — instead assert the rendered SHAPE (bullet, section header,
@@ -29,13 +29,13 @@ describe('gen-docs — @pyreon/primitives snapshot', () => {
     expect(section).toContain('PMTC')
   })
 
-  it('exposes all 21 canonical primitives + Transition/TransitionGroup + WebView + escape hatch as get_api entries', () => {
+  it('exposes all 22 canonical primitives + Transition/TransitionGroup + WebView + escape hatch as get_api entries', () => {
     const rendered = JSON.stringify(renderApiReferenceEntries(primitivesManifest))
     for (const name of [
       'Stack', 'Inline', 'Layer', 'Scroll', 'Spacer',
       'Text', 'Heading', 'Image', 'Audio', 'Video', 'Icon',
       'Button', 'Press', 'Link', 'Gesture', 'Canvas',
-      'Field', 'Toggle', 'Modal',
+      'Field', 'Toggle', 'Select', 'Modal',
       'Tabs', 'Split',
       'Transition', 'TransitionGroup',
       'WebView', 'Web',
