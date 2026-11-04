@@ -735,7 +735,7 @@ export function C() {
     name: '@pyreon/validation',
     mechanism: 'partial',
     rationale:
-      'the zod/valibot/arktype ADAPTERS stay web, but the declarative form DOES lower: a top-level zodSchema(z.object({…})) emits native field validators, and `useForm({ schema })` wires one per string field. Several schemas may share one `const a = …, b = …` statement, and `.safeParse(x)` on a declared binding or an inline adapter call lowers to the same `{ success, data }` result the web returns. Verified zero-warning on both targets; `.parse()` (throws), a schema declared inside a component body, `.refine/.transform/.default` chains (each named per field) and the async validate path stay web.',
+      'the zod/valibot/arktype ADAPTERS stay web, but the declarative form DOES lower: a top-level zodSchema(z.object({…})) emits native field validators, and `useForm({ schema })` wires one per string field. Several schemas may share one `const a = …, b = …` statement, and `.parse(x)` on a declared binding or an inline adapter call lowers to the adapter\'s own `{ ok, value } | { ok: false, issues }` result, never thrown, exactly as on the web (the adapter has no `.safeParse`, so that call warns by name). Verified zero-warning on both targets; a schema declared inside a component body, `.refine/.transform/.default` chains (each named per field) and the async validate path stay web.',
     // The snippet DRIVES A FORM, it does not merely declare the schema.
     // Declaring it alone was the old shape, and it hid the whole gap: the
     // declaration lowered to a struct with a constraint-checking `parse()`
@@ -751,7 +751,7 @@ const Signup = zodSchema(z.object({ name: z.string().min(3), age: z.number() }))
 export function C() {
   const f = useForm({ initialValues: { name: '' }, schema: Signup, onSubmit: () => {} })
   const tagOk = signal('')
-  const check = () => { tagOk.set(Tag.safeParse({ label: f.values().name }).success ? 'tag ok' : 'tag bad') }
+  const check = () => { tagOk.set(Tag.parse({ label: f.values().name }).ok ? 'tag ok' : 'tag bad') }
   return (<Stack><Field value={f.values().name} onChangeText={(v) => f.setFieldValue('name', v)} /><Button onPress={() => f.handleSubmit()}>go</Button><Button onPress={check}>tag</Button><Text>{String(f.isValid())}</Text><Text>{tagOk()}</Text></Stack>)
 }`,
   },

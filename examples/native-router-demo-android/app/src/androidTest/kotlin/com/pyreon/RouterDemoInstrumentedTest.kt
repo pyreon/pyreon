@@ -1177,13 +1177,13 @@ class RouterDemoInstrumentedTest {
         composeRule.onNodeWithTag("err-json").performScrollTo().assertTextEquals("JSON: A1 x2")
         composeRule.onNodeWithText("Decode malformed").performScrollTo().performClick()
         composeRule.onNodeWithTag("err-json").performScrollTo().assertTextEquals("JSON: malformed")
-        // A schema's .parse(x): the struct's own parse throws on a constraint violation, caught with its message.
+        // A schema's .parse(x): { ok, value } | { ok: false, issues }, never thrown — the issue's path names the field.
         composeRule.onNodeWithTag("err-schema").performScrollTo().assertTextEquals("Schema: none")
         composeRule.onNodeWithText("Check order").performScrollTo().performClick()
         composeRule.onNodeWithTag("err-schema").performScrollTo().assertTextEquals("Schema: ok B7")
         composeRule.onNodeWithText("Check empty SKU").performScrollTo().performClick()
         composeRule.onNodeWithTag("err-schema").performScrollTo()
-            .assertTextEquals("Schema: rejected: Field 'sku' violated constraint 'min length 1'")
+            .assertTextEquals("Schema: rejected sku")
     }
 
     // Platform APIs — app LIFECYCLE through the REAL Activity lifecycle. The

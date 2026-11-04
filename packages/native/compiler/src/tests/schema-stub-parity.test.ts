@@ -35,11 +35,32 @@ describe('schema stubs are byte-for-byte copies of the runtime', () => {
     'utf8',
   )
 
-  it.each(['public enum PyreonSchemaError', 'public struct PyreonParseResult'])('Swift %s', (head) => {
+  it.each([
+    'public enum PyreonSchemaError',
+    'public struct PyreonParseResult',
+    'public struct PyreonValidateIssue',
+    'public struct PyreonValidateResult',
+    'public struct PyreonValidationIssue',
+    'public struct PyreonValidationResult',
+    'func pyreonIssueField',
+    'func pyreonIssueMessage',
+    'public func pyreonValidateResult',
+    'public func pyreonValidationResult',
+  ])('Swift %s', (head) => {
     expect(block(SWIFT_UI_STUBS, head)).toBe(block(swift, head))
   })
 
-  it.each(['sealed class PyreonSchemaError', 'data class PyreonParseResult'])('Kotlin %s', (head) => {
+  it.each([
+    'sealed class PyreonSchemaError',
+    'data class PyreonParseResult',
+    'data class PyreonValidateIssue',
+    'class PyreonValidateResult',
+    'data class PyreonValidationIssue',
+    'class PyreonValidationResult',
+    'fun pyreonIssueField',
+    'inline fun <T : Any> pyreonValidateResult',
+    'inline fun <T : Any> pyreonValidationResult',
+  ])('Kotlin %s', (head) => {
     expect(block(KOTLIN_COMPOSE_STUBS, head)).toBe(block(kotlin, head))
   })
 

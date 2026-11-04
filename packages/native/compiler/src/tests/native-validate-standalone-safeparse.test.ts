@@ -2,16 +2,16 @@
 //
 // Before this, the ONLY lowered form was the top-level declaration
 // `const X = s.object({ … })` (used by `@pyreon/form`). An INLINE standalone
-// schema — `s.object({ n: s.number() }).safeParse(x).success`, the shape real
+// schema — `s.object({ n: s.number() }).safeParse(x).ok`, the shape real
 // feature code writes to validate data — WARNED and emitted verbatim
 // (`s.object(...)` — "cannot find 's' in scope"). This closes the biggest
 // remaining app-runtime LOGIC gap.
 //
 // The lowering: the inline `s.object({ … })` is SYNTHESIZED into a
 // `PyreonZodSchema_Inline<N>` struct (reusing the Gap-4 field walker), and
-// `.safeParse(x)` lowers to a static `safeParseResult(<x-as-dictionary>)` call
-// returning a web-faithful `PyreonParseResult { success, data }` — so a
-// wrapping `.success` / `.data` composes. The argument is emitted as a native
+// `.safeParse(x)` (one method with `.parse(x)` on the web) lowers to
+// `pyreonValidateResult { try <Struct>.parse(<x-as-dictionary>) }`, the library's
+// OWN `{ ok, value | issues }` — so a wrapping `.ok` / `.value` / `.issues` composes. The argument is emitted as a native
 // DICTIONARY (`[String: Any]` / `Map<String, Any?>`), so validation checks a
 // runtime map the way the web `safeParse(unknown)` does.
 
@@ -22,19 +22,19 @@ import { isKotlincAvailable, isSwiftcAvailable } from '../validate'
 const SCALAR = `import { computed } from '@pyreon/reactivity'
 import { s } from '@pyreon/validate'
 export function App() {
-  const ok = computed(() => s.object({ n: s.number() }).safeParse({ n: 1 }).success)
+  const ok = computed(() => s.object({ n: s.number() }).safeParse({ n: 1 }).ok)
   return <Text>{ok() ? 'valid' : 'invalid'}</Text>
 }`
 
 const MULTI = `import { computed } from '@pyreon/reactivity'
 import { s } from '@pyreon/validate'
 export function App() {
-  const ok = computed(() => s.object({ name: s.string(), age: s.number(), active: s.boolean() }).safeParse({ name: 'x', age: 3, active: true }).success)
+  const ok = computed(() => s.object({ name: s.string(), age: s.number(), active: s.boolean() }).safeParse({ name: 'x', age: 3, active: true }).ok)
   return <Text>{ok() ? 'valid' : 'invalid'}</Text>
 }`
 
 describe('@pyreon/validate standalone `.safeParse().success` lowering', () => {
-  it('synthesizes a schema struct + web-faithful safeParseResult call (Swift)', () => {
+  it('synthesizes a schema struct + the library\'s own { ok, value, issues } result (Swift)', () => {
     const { code, warnings } = transform(SCALAR, { target: 'swift' })
     // No stale "has NO native lowering" warning — the chain lowers.
     expect(warnings.filter((w) => w.includes('@pyreon/validate'))).toHaveLength(0)
@@ -44,31 +44,28 @@ describe('@pyreon/validate standalone `.safeParse().success` lowering', () => {
     expect(code).toContain('guard let nVal = input["n"] as? Int else {')
     // The web-faithful result shape + the call it lowers to.
     // The result type is the runtime's (`PyreonSchema.swift`), never per file.
-    expect(code).not.toMatch(/struct PyreonParseResult\b/)
+    expect(code).not.toMatch(/struct PyreonValidateResult\b/)
+    // `@pyreon/validate`'s OWN result — `{ ok, value | issues }`, never thrown — not zod's `{ success, data }`.
     expect(code).toContain(
-      'static func safeParseResult(_ input: [String: Any]) -> PyreonParseResult<Self>',
+      'pyreonValidateResult { try PyreonZodSchema_Inline0.parse(["n": 1] as [String: Any]) }.ok',
     )
-    expect(code).toContain(
-      'PyreonZodSchema_Inline0.safeParseResult(["n": 1] as [String: Any]).success',
-    )
+    expect(code).not.toContain('safeParseResult')
     // An INLINE schema has NO module-scope instance binding.
     expect(code).not.toContain('let Inline0 = PyreonZodSchema_Inline0()')
-    // `.success` infers Bool, not Any.
+    // `.ok` infers Bool, not Any.
     expect(code).toContain('private var ok: Bool')
   })
 
-  it('emits an equivalent data class + safeParseResult (Kotlin)', () => {
+  it('emits an equivalent data class + the same result (Kotlin)', () => {
     const { code, warnings } = transform(SCALAR, { target: 'kotlin' })
     expect(warnings.filter((w) => w.includes('@pyreon/validate'))).toHaveLength(0)
     expect(code).toContain('data class PyreonZodSchema_Inline0')
     expect(code).toContain('var n: Long')
-    expect(code).not.toMatch(/data class PyreonParseResult\b/)
+    expect(code).not.toMatch(/class PyreonValidateResult\b/)
     expect(code).toContain(
-      'fun safeParseResult(input: Map<String, Any?>): PyreonParseResult<PyreonZodSchema_Inline0>',
+      'pyreonValidateResult { PyreonZodSchema_Inline0.parse(mapOf<String, Any?>("n" to 1L)) }.ok',
     )
-    expect(code).toContain(
-      'PyreonZodSchema_Inline0.safeParseResult(mapOf<String, Any?>("n" to 1L)).success',
-    )
+    expect(code).not.toContain('safeParseResult')
     expect(code).not.toContain('val Inline0 = PyreonZodSchema_Inline0()')
   })
 
@@ -76,11 +73,11 @@ describe('@pyreon/validate standalone `.safeParse().success` lowering', () => {
     const src = `import { computed } from '@pyreon/reactivity'
 import { s as v } from '@pyreon/validate'
 export function App() {
-  const ok = computed(() => v.object({ n: v.number() }).safeParse({ n: 1 }).success)
+  const ok = computed(() => v.object({ n: v.number() }).safeParse({ n: 1 }).ok)
   return <Text>{ok() ? 'y' : 'n'}</Text>
 }`
     expect(transform(src, { target: 'swift' }).code).toContain(
-      'PyreonZodSchema_Inline0.safeParseResult',
+      'pyreonValidateResult { try PyreonZodSchema_Inline0.parse(',
     )
   })
 
@@ -88,8 +85,8 @@ export function App() {
     const src = `import { computed } from '@pyreon/reactivity'
 import { s } from '@pyreon/validate'
 export function App() {
-  const a = computed(() => s.object({ n: s.number() }).safeParse({ n: 1 }).success)
-  const b = computed(() => s.object({ n: s.number() }).safeParse({ n: 2 }).success)
+  const a = computed(() => s.object({ n: s.number() }).safeParse({ n: 1 }).ok)
+  const b = computed(() => s.object({ n: s.number() }).safeParse({ n: 2 }).ok)
   return <Text>{a() && b() ? 'y' : 'n'}</Text>
 }`
     const { code } = transform(src, { target: 'swift' })
@@ -121,7 +118,7 @@ export function App() { const ok = s.string().parse('x'); return null }`
     ).toBe(true)
 
     const nonLiteral = `import { s } from '@pyreon/validate'
-export function App() { const shape = { n: s.number() }; const ok = s.object(shape).safeParse({ n: 1 }).success; return null }`
+export function App() { const shape = { n: s.number() }; const ok = s.object(shape).safeParse({ n: 1 }).ok; return null }`
     const nl = transform(nonLiteral, { target: 'swift' })
     expect(nl.warnings.some((w) => w.includes('@pyreon/validate'))).toBe(true)
     expect(nl.code).not.toContain('PyreonZodSchema_')

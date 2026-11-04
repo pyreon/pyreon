@@ -299,6 +299,12 @@ export interface ExprEmitter {
         /** The type of `<node>.<property>`; when present it decides every member read on the node. */
         member?(e: ExtExprIR, property: string): TypeIR
         /**
+         * The RUNTIME types this node's `type` is built from (`typeRef`s named `name`, e.g. a result wrapper and its issue the plugin's runtime declares), how a member read on a value of that type is typed from its type arguments. `member` above
+         * types a read on the node itself; this one types the same read once the node was stored in a local
+         * (`const r = X.parse(v); r.value.name`), where only the `typeRef` survives.
+         */
+        resultTypes?: readonly { readonly name: string; member(args: readonly TypeIR[], property: string): TypeIR | undefined }[]
+        /**
          * Whether a file-scope `const` initialized with this node is typed by `type` for the READS that follow it.
          * Default true; false when the node's `type` describes how it reads (a map) but not what it is (a class
          * whose own member surface must be emitted verbatim).

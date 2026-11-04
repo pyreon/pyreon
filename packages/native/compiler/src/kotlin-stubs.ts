@@ -1123,6 +1123,56 @@ sealed class PyreonSchemaError(message: String) : Exception(message) {
 
 data class PyreonParseResult<T>(val success: Boolean, val data: T?)
 
+// The libraries' own result shapes — copied VERBATIM from PyreonSchema.kt (schema-stub-parity.test.ts).
+/** One \`@pyreon/validate\` issue: the message and the key path (\`["address", "city"]\`). */
+data class PyreonValidateIssue(val message: String, val path: List<String>)
+
+/** \`@pyreon/validate\`'s \`{ ok, value } | { ok: false, issues }\`. */
+class PyreonValidateResult<T : Any>(val ok: Boolean, private val parsed: T?, val issues: List<PyreonValidateIssue>) {
+    val value: T get() = parsed ?: throw IllegalStateException("[Pyreon] read .value of a failed parse — check .ok first")
+}
+
+/** One \`@pyreon/validation\` adapter issue: the message and a dot-separated path (\`"address.city"\`). */
+data class PyreonValidationIssue(val path: String, val message: String)
+
+/** A \`@pyreon/validation\` adapter's \`parse\` result: \`{ ok, value } | { ok: false, issues }\`. */
+class PyreonValidationResult<T : Any>(val ok: Boolean, private val parsed: T?, val issues: List<PyreonValidationIssue>) {
+    val value: T get() = parsed ?: throw IllegalStateException("[Pyreon] read .value of a failed parse — check .ok first")
+}
+
+fun pyreonIssueField(e: Throwable): String = when (e) {
+    is PyreonSchemaError.MissingOrWrongType -> e.field
+    is PyreonSchemaError.ConstraintViolation -> e.field
+    else -> ""
+}
+
+/** Run a native schema \`parse\` and report it as \`@pyreon/validate\` does: never throwing. */
+inline fun <T : Any> pyreonValidateResult(parse: () -> T): PyreonValidateResult<T> =
+    try {
+        PyreonValidateResult(true, parse(), emptyList())
+    } catch (e: PyreonSchemaError) {
+        val field = pyreonIssueField(e)
+        PyreonValidateResult(false, null, listOf(PyreonValidateIssue(e.message ?: "Schema validation failed", if (field.isEmpty()) emptyList() else field.split(".").toList())))
+    }
+
+/** Run a native schema \`parse\` and report it as a \`@pyreon/validation\` adapter's \`parse\` does: never throwing. */
+inline fun <T : Any> pyreonValidationResult(parse: () -> T): PyreonValidationResult<T> =
+    try {
+        PyreonValidationResult(true, parse(), emptyList())
+    } catch (e: PyreonSchemaError) {
+        PyreonValidationResult(false, null, listOf(PyreonValidationIssue(pyreonIssueField(e), e.message ?: "Schema validation failed")))
+    }
+
+// Typed values as schema input.
+//
+// An emitted schema's \`parse\` reads a \`Map<String, Any?>\` — the shape an
+// object LITERAL lowers to. \`Pet.safeParse(pet())\`, where \`pet\` holds a
+// @Serializable data class, has to reach the same shape, so the value goes
+// through its own serializer to JSON and back out as plain values. The JSON
+// round trip applies the class's REAL serialization (names, nested classes,
+// nulls) rather than a second hand-rolled reading that could disagree; the
+// reader below is dependency-free so it is tested without kotlinx.
+
 // Signatures mirror PyreonSchema.kt (schema-stub-parity.test.ts checks them).
 @Suppress("UNUSED_PARAMETER")
 inline fun <reified T> pyreonSchemaInput(value: T): Map<String, Any?> = emptyMap()

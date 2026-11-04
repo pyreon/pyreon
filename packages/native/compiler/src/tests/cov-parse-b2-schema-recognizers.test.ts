@@ -574,7 +574,7 @@ import { s } from '@pyreon/validate'
     const r = swift(
       V +
         `export function App() {
-  const ok = computed(() => s.object({}).safeParse({ n: 1 }).success)
+  const ok = computed(() => s.object({}).safeParse({ n: 1 }).ok)
   return <Text>{String(ok())}</Text>
 }`,
     )
@@ -582,7 +582,7 @@ import { s } from '@pyreon/validate'
     // zero-field struct rather than emitting a verbatim `s.object(...)`.
     expect(r.code).toMatch(/struct PyreonZodSchema_Inline0: Codable \{\n\n/)
     expect(r.code).toContain(
-      'PyreonZodSchema_Inline0.safeParseResult(["n": 1] as [String: Any]).success',
+      'pyreonValidateResult { try PyreonZodSchema_Inline0.parse(["n": 1] as [String: Any]) }.ok',
     )
   })
 
@@ -590,27 +590,27 @@ import { s } from '@pyreon/validate'
     const r = swift(
       V +
         `export function App() {
-  const ok = computed(() => s.object({ n: s.number() }).safeParse().success)
+  const ok = computed(() => s.object({ n: s.number() }).safeParse().ok)
   return <Text>{String(ok())}</Text>
 }`,
     )
-    expect(r.code).toContain('PyreonZodSchema_Inline0.safeParseResult([String: Any]()).success')
+    expect(r.code).toContain('pyreonValidateResult { try PyreonZodSchema_Inline0.parse([String: Any]()) }.ok')
   })
 
   it('DEDUPS two byte-identical inline shapes onto one synthesized struct', () => {
     const r = swift(
       V +
         `export function App() {
-  const a = computed(() => s.object({ n: s.number() }).safeParse({ n: 1 }).success)
-  const b = computed(() => s.object({ n: s.number() }).safeParse({ n: 2 }).success)
+  const a = computed(() => s.object({ n: s.number() }).safeParse({ n: 1 }).ok)
+  const b = computed(() => s.object({ n: s.number() }).safeParse({ n: 2 }).ok)
   return <Text>{String(a() && b())}</Text>
 }`,
     )
     expect(schemaNames(r.code).filter((n) => n.startsWith('PyreonZodSchema_Inline'))).toEqual([
       'PyreonZodSchema_Inline0',
     ])
-    expect(r.code).toContain('safeParseResult(["n": 1] as [String: Any])')
-    expect(r.code).toContain('safeParseResult(["n": 2] as [String: Any])')
+    expect(r.code).toContain('.parse(["n": 1] as [String: Any])')
+    expect(r.code).toContain('.parse(["n": 2] as [String: Any])')
   })
 
   it('lowers a NESTED s.object() for `@pyreon/validate`', () => {

@@ -378,6 +378,9 @@ const SWIFT_RUNTIME_HELPERS: readonly { readonly name: string; readonly file: st
   { name: 'PyreonSchemaError.constraintViolation', file: 'PyreonSchema.swift' },
   { name: 'pyreonSchemaInput', file: 'PyreonSchema.swift' },
   { name: 'PyreonParseResult', file: 'PyreonSchema.swift' },
+  // `@pyreon/validate`'s `.parse` / `.safeParse` and an adapter's `.parse` lower to these (their own `{ ok, value, issues }`).
+  { name: 'pyreonValidateResult', file: 'PyreonSchema.swift' },
+  { name: 'pyreonValidationResult', file: 'PyreonSchema.swift' },
 ]
 
 /**

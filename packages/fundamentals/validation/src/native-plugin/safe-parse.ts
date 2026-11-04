@@ -129,22 +129,58 @@ export const safeParseExpr: ExprEmitter = {
 }
 
 /**
- * `<schema>.parse(x)` → `PyreonZodSchema_<name>.parse(<x-as-dictionary>)`: the emitted struct's own static `parse`,
- * which returns the validated value or THROWS — on the web the same call throws a validation error. It declares
- * that throw (`throwsSync`), so the core gives it the error model a throwing helper gets: `try` / `try!` on Swift,
- * and the enclosing helper becomes `throws`; an uncaught position is warned on both targets. The argument is
- * converted exactly as `safeParse`'s is.
+ * The library's OWN web result shape, lowered: `@pyreon/validate`'s `s.object(…).parse(x)` / `.safeParse(x)` (one
+ * method under two names) and a `@pyreon/validation` adapter's `parse(x)` both return
+ * `{ ok: true, value } | { ok: false, issues }` and NEVER throw. Natively that is the runtime's
+ * `pyreonValidateResult { … }` / `pyreonValidationResult { … }` around the struct's own throwing `parse`, so the
+ * shared source reads `r.ok` / `r.value` / `r.issues` identically on all three targets. The two differ only in the
+ * issue: validate's `path` is an array of keys, the adapter's a dot-string — the same difference as on the web.
+ *
+ * (This replaced a zod-shaped `{ success, data }` result for `.safeParse` and a THROWING `.parse` — neither
+ * library has either shape.)
  */
-export const parseExpr: ExprEmitter = {
-  swift: (e, ctx) => `PyreonZodSchema_${schemaNameOf(e)}.parse(${swiftSchemaInput(e.args[0]!, ctx)})`,
-  kotlin: (e, ctx) => `PyreonZodSchema_${schemaNameOf(e)}.parse(${kotlinSchemaInput(e.args[0]!, ctx)})`,
-  throwsSync: '`.parse(…)` on a schema, which throws on invalid input,',
-  typing: {
-    // The validated value IS the emitted struct, so member reads (`pet.name`) type through its fields.
-    type: (e) => ({ kind: 'typeRef', name: `PyreonZodSchema_${schemaNameOf(e)}`, args: [] }),
-  },
-  rename(e, renames) {
-    const to = renames.get(schemaNameOf(e))
-    if (to !== undefined) (e.payload as { schemaName: string }).schemaName = to
-  },
+function resultExpr(library: 'validate' | 'validation'): ExprEmitter {
+  const fn = library === 'validate' ? 'pyreonValidateResult' : 'pyreonValidationResult'
+  const resultType = library === 'validate' ? 'PyreonValidateResult' : 'PyreonValidationResult'
+  const struct = (e: ExtExprIR): string => `PyreonZodSchema_${schemaNameOf(e)}`
+  const issueType = library === 'validate' ? 'PyreonValidateIssue' : 'PyreonValidationIssue'
+  const issue = (property: string): TypeIR | undefined =>
+    property === 'message'
+      ? { kind: 'string' }
+      : property === 'path'
+        ? library === 'validate'
+          ? { kind: 'array', element: { kind: 'string' } }
+          : { kind: 'string' }
+        : undefined
+  const member = (args: readonly TypeIR[], property: string): TypeIR | undefined =>
+    property === 'ok'
+      ? { kind: 'boolean' }
+      : property === 'value'
+        ? args[0]
+        : property === 'issues'
+          ? { kind: 'array', element: { kind: 'typeRef', name: issueType, args: [] } }
+          : undefined
+  return {
+    swift: (e, ctx) => `${fn} { try ${struct(e)}.parse(${swiftSchemaInput(e.args[0]!, ctx)}) }`,
+    kotlin: (e, ctx) => `${fn} { ${struct(e)}.parse(${kotlinSchemaInput(e.args[0]!, ctx)}) }`,
+    typing: {
+      type: (e) => ({ kind: 'typeRef', name: resultType, args: [{ kind: 'typeRef', name: struct(e), args: [] }] }),
+      member: (e, property) => member([{ kind: 'typeRef', name: struct(e), args: [] }], property) ?? { kind: 'unknown' },
+      // `const r = X.parse(v); r.value.name` — the local keeps only the `typeRef`, so its reads are typed from it.
+      resultTypes: [
+        { name: resultType, member },
+        { name: issueType, member: (_args, property) => issue(property) },
+      ],
+    },
+    rename(e, renames) {
+      const to = renames.get(schemaNameOf(e))
+      if (to !== undefined) (e.payload as { schemaName: string }).schemaName = to
+    },
+  }
 }
+
+/** `@pyreon/validate`: `s.object(…).parse(x)` and `.safeParse(x)` — the same method, the same result. */
+export const validateResultExpr: ExprEmitter = resultExpr('validate')
+
+/** A `@pyreon/validation` adapter's `parse(x)` (the adapter has no `safeParse`). */
+export const validationResultExpr: ExprEmitter = resultExpr('validation')
