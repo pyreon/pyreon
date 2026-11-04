@@ -42,6 +42,7 @@ const REQUIRED: Record<string, string> = {
   Press: ' onPress={() => {}}',
   Link: ' to="/x"',
   Gesture: ' onPan={() => {}}',
+  Canvas: ' width={10} height={10}',
   Field: ' value={v()} onChangeText={(n) => v.set(n)}',
   // A SHAPE, not a primitive: the key's first word is the tag. `multiline` is a
   // different initializer on iOS and different arguments on Android, so it is
@@ -57,12 +58,20 @@ const REQUIRED: Record<string, string> = {
   Transition: ' show={b()}',
   Audio: ' src="https://x.test/a.mp3"',
   Video: ' src="https://x.test/a.mp4"',
+  Tabs: ' value={v()} onChange={(n) => v.set(n)}',
+  Split: ' sidebar={<Text>s</Text>} showDetail={b()} onBack={() => {}}',
 }
 
 const TAKES_CHILDREN = new Set([
   'Stack', 'Inline', 'Layer', 'Scroll', 'Button', 'Press', 'Link', 'Modal', 'Text', 'Heading',
-  'Transition', 'Gesture',
+  'Transition', 'Gesture', 'Canvas', 'Tabs', 'Split',
 ])
+
+/** A primitive whose children must be specific entries: `<Tabs>` without a
+ *  `<Tab>` rightly renders nothing on Android, leaving no element to carry the tail. */
+const CHILD: Record<string, string> = {
+  Tabs: '<Tab value="a" label="A"><Text>a</Text></Tab>',
+}
 
 const CROSS_CUTTING = {
   accessibilityLabel: {
@@ -96,10 +105,10 @@ const emit = (shape: string, attr: string, target: 'swift' | 'kotlin'): string =
   const base = REQUIRED[shape] ?? ''
   const tag = tagOf(shape)
   const el = TAKES_CHILDREN.has(tag)
-    ? `<${tag}${base} ${attr}>x</${tag}>`
+    ? `<${tag}${base} ${attr}>${CHILD[tag] ?? 'x'}</${tag}>`
     : `<${tag}${base} ${attr} />`
   const src = `import { signal } from '@pyreon/reactivity'
-import { Stack, Inline, Layer, Scroll, Spacer, Text, Heading, Image, Icon, Button, Press, Link, Field, Toggle, Select, Modal, Transition, Audio, Video, Gesture } from '@pyreon/primitives'
+import { Stack, Inline, Layer, Scroll, Spacer, Text, Heading, Image, Icon, Button, Press, Link, Field, Toggle, Select, Modal, Transition, Audio, Video, Gesture, Canvas, Tabs, Tab, Split } from '@pyreon/primitives'
 export function C() {
   const v = signal('')
   const b = signal(false)
@@ -157,9 +166,9 @@ describe('and pays nothing when they are absent', () => {
     // The wrapper `<Modal>` grew for its tag must not appear on a plain modal.
     const base = REQUIRED[shape] ?? ''
     const tag = tagOf(shape)
-    const el = TAKES_CHILDREN.has(tag) ? `<${tag}${base}>x</${tag}>` : `<${tag}${base} />`
+    const el = TAKES_CHILDREN.has(tag) ? `<${tag}${base}>${CHILD[tag] ?? 'x'}</${tag}>` : `<${tag}${base} />`
     const src = `import { signal } from '@pyreon/reactivity'
-import { Stack, Inline, Layer, Scroll, Spacer, Text, Heading, Image, Icon, Button, Press, Link, Field, Toggle, Select, Modal, Transition, Audio, Video, Gesture } from '@pyreon/primitives'
+import { Stack, Inline, Layer, Scroll, Spacer, Text, Heading, Image, Icon, Button, Press, Link, Field, Toggle, Select, Modal, Transition, Audio, Video, Gesture, Canvas, Tabs, Tab, Split } from '@pyreon/primitives'
 export function C() { const v = signal(''); const b = signal(false); return <Stack>${el}</Stack> }`
     for (const target of ['swift', 'kotlin'] as const) {
       const out = transform(src, { target }).code

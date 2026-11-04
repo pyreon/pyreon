@@ -17,7 +17,17 @@
 // alignment — the same limit the canonical Stack has). Rich Element features
 // (before/after content slots, equalBeforeAfter, responsive arrays, block, the
 // `tag` override) are web-only and pass through / are dropped by the Stack emit.
-// `List` (data iteration) is a separate follow-up.
+//
+// `List` (data iteration) lowers to the same Stack holding a keyed `<For>`:
+//
+//   <List data={rows} component={Row} itemKey="id" direction="inline" />
+//     ──▶  <Stack direction="row"><For each={rows} by={(pyreonItem) => pyreonItem.id}>
+//              {(pyreonItem) => <Row {...pyreonItem} />}</For></Stack>
+//
+// which the compiler already lowers (a keyed ForEach / items, the item spread
+// onto Row's declared props). `valueName` (an array of strings/numbers) passes
+// the item as that one prop. `itemProps` / `wrapProps` / `wrapComponent` and a
+// non-identifier `component` do not lower yet — each is warned by name.
 // ============================================================================
 
 import {
@@ -84,6 +94,88 @@ export function elementToStack(e: JsxElementIR): JsxElementIR {
   return { ...e, tag: 'Stack', attrs }
 }
 
+const LIST_ITEM = 'pyreonItem'
+const LIST_ONLY = new Set(['data', 'component', 'itemKey', 'valueName', 'itemProps', 'wrapProps', 'wrapComponent'])
+
+/**
+ * Translate `<List data component itemKey? valueName?>` to a Stack (List's own
+ * layout props, through {@link elementToStack}) holding a keyed `<For>` that
+ * renders `component` per item. Returns `undefined` — with a named warning —
+ * for a shape that cannot lower, so the core reports the element as before.
+ */
+export function listToStack(e: JsxElementIR, warn: (message: string) => void): JsxElementIR | undefined {
+  const attr = (name: string) => {
+    const a = e.attrs.find((x) => x.kind === 'attr' && x.name === name)
+    return a?.kind === 'attr' ? a.value : undefined
+  }
+  const data = attr('data')
+  const component = attr('component')
+  if (data === undefined) {
+    warn('<List> needs `data` to lower natively.')
+    return undefined
+  }
+  if (component === undefined || component.kind !== 'identifier' || !/^[A-Z]/.test(component.name)) {
+    warn('<List component> must name a component (`component={Row}`) to lower natively — an inline function or an HTML tag string does not.')
+    return undefined
+  }
+  for (const name of ['itemProps', 'wrapProps', 'wrapComponent']) {
+    if (attr(name) !== undefined) warn(`<List ${name}> has no native lowering yet — it is DROPPED on iOS/Android (the rows still render).`)
+  }
+  const item = { kind: 'identifier' as const, name: LIST_ITEM }
+  // A string `valueName` passes a primitive item as that one prop; otherwise the
+  // item object spreads onto the component's declared props.
+  const valueName = literalAttr(e, 'valueName')
+  const rowAttrs: AttrIR[] =
+    valueName !== undefined
+      ? [{ kind: 'attr', name: valueName, value: item }]
+      : [{ kind: 'spread', argument: item } as unknown as AttrIR]
+  const row: JsxElementIR = { kind: 'jsx-element', tag: component.name, attrs: rowAttrs, children: [] }
+  const keyAttr = attr('itemKey')
+  let by: AttrIR | undefined
+  if (keyAttr !== undefined) {
+    if (keyAttr.kind === 'literal' && typeof keyAttr.value === 'string') {
+      by = {
+        kind: 'attr',
+        name: 'by',
+        value: { kind: 'arrow', async: false, params: [LIST_ITEM], paramTypes: [null], body: { kind: 'member', object: item, property: keyAttr.value } } as never,
+      }
+    } else if (keyAttr.kind === 'arrow') {
+      by = { kind: 'attr', name: 'by', value: keyAttr }
+    } else {
+      warn('<List itemKey> must be a property name or an inline function to lower natively — the rows are keyed by position instead.')
+    }
+  }
+  const forEl: JsxElementIR = {
+    kind: 'jsx-element',
+    tag: 'For',
+    // `pyreonEager`: a List is a plain flex container, so its rows lay out in the
+    // Stack itself — never in a Compose LazyColumn of their own.
+    attrs: [
+      { kind: 'attr', name: 'each', value: data },
+      ...(by !== undefined ? [by] : []),
+      { kind: 'attr', name: 'pyreonEager', value: { kind: 'literal', value: true } },
+    ],
+    children: [
+      {
+        kind: 'expr',
+        expr: { kind: 'arrow', async: false, params: [LIST_ITEM], paramTypes: [null], body: row } as never,
+      },
+    ],
+  }
+  const layout = elementToStack({ ...e, attrs: e.attrs.filter((a) => !(a.kind === 'attr' && LIST_ONLY.has(a.name))) })
+  return { ...layout, children: [{ kind: 'expr', expr: forEl }] }
+}
+
+export const listLowering: ElementLowering = Object.freeze({
+  module: '@pyreon/elements',
+  tags: Object.freeze(['List']),
+  retag(el: JsxElementIR, ctx: RetagContext): JsxElementIR | undefined {
+    const stack = listToStack(el, (m) => ctx.warn(m))
+    if (stack === undefined) return undefined
+    return { ...stack, attrs: stack.attrs.filter((a: AttrIR) => unconsumedSlotWarning('Stack', a) === undefined) }
+  },
+})
+
 export const elementsLowering: ElementLowering = Object.freeze({
   module: '@pyreon/elements',
   tags: Object.freeze(Object.keys(ELEMENTS_PRIMITIVE_ALIAS)),
@@ -104,7 +196,7 @@ export const elementsLowering: ElementLowering = Object.freeze({
 export const elementsPlugin: CompilerPlugin = Object.freeze({
   name: elementsLowering.module,
   apiVersion: 2,
-  elements: Object.freeze([elementsLowering]),
+  elements: Object.freeze([elementsLowering, listLowering]),
   unlowered: Object.freeze({
     // Measured every export: only `Element` lowers (to Stack). Text, List, Overlay and Portal all failed both
     // targets SILENTLY — Overlay and Portal are inherently DOM (positioning, document-level mounting), and the
@@ -113,8 +205,8 @@ export const elementsPlugin: CompilerPlugin = Object.freeze({
     // cases rather than splitting the map into two mechanisms.
     '@pyreon/elements': Object.freeze({
       advice:
-        'only `Element` lowers (to Stack) — Text / List / Overlay / Portal are DOM-based; use the canonical `Text` / `Stack` from @pyreon/primitives, or keep them in a `<Web>` branch',
-      supported: Object.freeze(Object.keys(ELEMENTS_PRIMITIVE_ALIAS)),
+        '`Element` lowers to Stack and `List` to a keyed Stack of its rows — Text / Overlay / Portal are DOM-based; use the canonical `Text` / `Stack` from @pyreon/primitives, or keep them in a `<Web>` branch',
+      supported: Object.freeze([...Object.keys(ELEMENTS_PRIMITIVE_ALIAS), 'List']),
     }),
   }),
 })

@@ -19,6 +19,7 @@
 // emitter actually emits, which is a fixed-and-growing surface.
 
 import { exprHasOptionalLink, exprReferencesIdent, isReReadableExpr } from './expr-utils'
+import { childStatementLists } from './throw-lowering'
 import type { ComponentIR, DeclIR, ExprIR, ExtDecl, ExtModuleItem, ModuleDeclIR, StatementIR, StructIR, TypeIR } from './types'
 import { rootReceiverName } from './expr-lowering'
 import { ECMASCRIPT_MATH_CONSTANTS } from './math-lowering'
@@ -621,6 +622,13 @@ function findFirstReturnExpr(
       const r = findFirstReturnExpr(s.body, ctx)
       if (r) return r
     }
+    // A `try`'s body and catch both return the function's value (`finally` cannot — it is lowered as a `defer`).
+    if (s.kind === 'try') {
+      for (const body of [s.body, s.catchBody ?? []]) {
+        const r = findFirstReturnExpr(body, ctx)
+        if (r) return r
+      }
+    }
   }
   return undefined
 }
@@ -999,14 +1007,7 @@ export function widenFloatLocals(stmts: StatementIR[], outer: InferenceCtx): voi
 
 /** Run `visit` on every nested statement list of a control-flow statement. */
 function forEachNestedBody(s: StatementIR, visit: (body: StatementIR[]) => void): void {
-  if (s.kind === 'if') {
-    visit(s.then)
-    if (s.elseBody) visit(s.elseBody)
-  } else if (s.kind === 'while' || s.kind === 'for-of' || s.kind === 'for-range' || s.kind === 'do-while') {
-    visit(s.body)
-  } else if (s.kind === 'switch') {
-    for (const c of s.cases) visit(c.body)
-  }
+  for (const body of childStatementLists(s)) visit(body)
 }
 
 export function seedHandlerLocals(

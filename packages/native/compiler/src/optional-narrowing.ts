@@ -346,6 +346,25 @@ function narrowStmt(
       }
       return { ...s, discriminant, cases }
     }
+    case 'throw': {
+      if (s.message === undefined) return s
+      const message = ex(s.message)
+      return message === null ? null : { ...s, message }
+    }
+    case 'try': {
+      // A catch binding named like the binder shadows it inside the catch body.
+      if (s.catchParam === binder) return null
+      const body = list(s.body)
+      const catchBody = s.catchBody ? list(s.catchBody) : undefined
+      const finallyBody = s.finallyBody ? list(s.finallyBody) : undefined
+      if (body === null || catchBody === null || finallyBody === null) return null
+      return {
+        ...s,
+        body,
+        ...(catchBody ? { catchBody } : {}),
+        ...(finallyBody ? { finallyBody } : {}),
+      }
+    }
   }
 }
 
@@ -353,7 +372,7 @@ function narrowStmt(
 export function exits(stmts: readonly StatementIR[]): boolean {
   const last = stmts[stmts.length - 1]
   if (last === undefined) return false
-  if (last.kind === 'return' || last.kind === 'break' || last.kind === 'continue') return true
+  if (last.kind === 'return' || last.kind === 'break' || last.kind === 'continue' || last.kind === 'throw') return true
   if (last.kind === 'if') return last.elseBody !== undefined && exits(last.then) && exits(last.elseBody)
   return false
 }
@@ -434,6 +453,14 @@ function restExprs(stmts: readonly StatementIR[]): ExprIR[] {
             out.push(...c.tests)
             walk(c.body)
           }
+          break
+        case 'throw':
+          if (s.message) out.push(s.message)
+          break
+        case 'try':
+          walk(s.body)
+          if (s.catchBody) walk(s.catchBody)
+          if (s.finallyBody) walk(s.finallyBody)
           break
         default:
           break

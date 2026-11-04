@@ -9,6 +9,7 @@
 // computed properties. Phase 1 grows a real inference pass.
 
 import { GESTURE_EVENT_NAMES, GESTURE_EVENTS } from './gesture-events'
+import { CANVAS_SHAPES, isCanvasShape, shapeColorLiteral } from './canvas-shapes'
 import type { GestureEventName } from './gesture-events'
 import { lowerWebViewDomStorage } from './webview-options'
 import { LayoutScopeTracker, lowerWebViewGrow } from './webview-sizing'
@@ -71,6 +72,8 @@ import {
   resolveRadius,
   resolveSpace,
 } from './canonical-primitives'
+import { missingTabRootWarning, planRouterTabs, planSplitSidebar, planTabs, tabRootRoute } from './navigation-lowering'
+import type { RouterTabIR } from './navigation-lowering'
 import { intrinsicElementWarning, isIntrinsicElementTag } from './intrinsic-element-warning'
 import {
   buildComponentConstMap,
@@ -106,6 +109,15 @@ import {
   SWIFT_TASK,
   SWIFT_UNHANDLED_ASYNC,
 } from './async-function'
+import {
+  computeThrowingFunctions,
+  ERROR_MESSAGE_FN,
+  ERROR_STRING_FN,
+  exprCallsThrowing,
+  statementsThrowUncaught,
+  SWIFT_THROWN_PREAMBLE,
+  uncaughtThrowWarning,
+} from './throw-lowering'
 import {
   nilCoalesceTernary,
   buildArraySpreadConcat,
@@ -160,7 +172,9 @@ import {
 } from './emit-context'
 import {
   extractTextTypography,
+  PRESSED_STATE_IDENT,
   styleToNativeModifiers,
+  styleUsesPressedState,
   swiftTextTypographyModifiers,
 } from './style-to-native'
 import {
@@ -657,6 +671,21 @@ let _usesSizeClass = false
  * additive, back-compat.
  */
 let _routerRoutes: Map<string, import('./types').RouteIR[]> = new Map()
+/** #4060: router-decl name → its `tabs` (per-tab back stacks), when any. */
+let _routerTabs: Map<string, RouterTabIR[]> = new Map()
+/**
+ * #4060: set while emitting the content of a `<RouterProvider>` whose router
+ * has `tabs`. `<Tabs router>` lowers to `PyreonRouterTabs` and records the tab
+ * being emitted in `tab`, so a `<RouterView />` inside a `<Tab>` becomes THAT
+ * tab's `PyreonTabStack`.
+ */
+let _activeRouterTabsSwift: {
+  routerName: string
+  routerExpr: string
+  routes: import('./types').RouteIR[]
+  tabs: RouterTabIR[]
+  tab: RouterTabIR | null
+} | null = null
 /**
  * R1.1 — when emitting the content of a `<RouterProvider router={r}>` whose
  * router-decl carries routes, the inner `<RouterView />` becomes the
@@ -1039,6 +1068,15 @@ export function emitSwift(
   // that is relying on an accident.
   _serviceBindings = new Map()
   _aliasImports = aliasImports
+  // Which helpers' Swift signatures carry `throws` — a fixed point over every helper in the file (see
+  // throw-lowering.ts). An `async` function is fire-and-forget, so its own signature never throws.
+  _swiftThrowingFns = computeThrowingFunctions(
+    [...helperFns, ...components.flatMap((c) => c.decls)].filter(
+      (d): d is Extract<DeclIR, { kind: 'function' }> => d.kind === 'function' && d.async !== true,
+    ),
+  )
+  _swiftThrowCtx = 'none'
+  _needsSwiftThrown = false
   // File-scope pure-logic helper names — seeded into every component's
   // per-component `_functionNames` reset so a call `dbl(21)` resolves as a
   // free-function call in ANY component (not a signal read / unknown ref).
@@ -1255,6 +1293,7 @@ export function emitSwift(
   if (_needsSwiftKeepAliveWrapper) parts.push(SWIFT_KEEP_ALIVE_WRAPPER)
   // consulted AFTER helper + component emission — the flag is set during it
   if (_needsSwiftNumString) parts.push(SWIFT_NUM_STRING)
+  if (_needsSwiftThrown) parts.push(SWIFT_THROWN_PREAMBLE)
   for (const cp of componentParts) parts.push(cp)
   _enumNames = new Set()
   _structFieldsToName = new Map()
@@ -1618,6 +1657,7 @@ function emitSwiftComponent(c: ComponentIR): string {
   // C5.2: reset router-routes map. Populated during decl-pass for
   // each `kind: 'router'` decl with a non-undefined routes array.
   _routerRoutes = new Map()
+  _routerTabs = new Map()
   // Phase 2 follow-up: also track props whose type is a function
   // (`onToggle: () -> Void`). Inside the component body, references
   // to these props are CALL SITES that need explicit `()` —
@@ -1661,6 +1701,7 @@ function emitSwiftComponent(c: ComponentIR): string {
     if (d.kind === 'router') {
       _signalNames.add(d.name)
       if (d.routes !== undefined) _routerRoutes.set(d.name, d.routes)
+      if (d.tabs !== undefined) _routerTabs.set(d.name, d.tabs)
     }
     // C4: router-hook decls (`const navigate = useNavigate()`). The
     // resulting binding IS a function value (returns `(String) -> Void`
@@ -2031,7 +2072,7 @@ function emitSwiftComponent(c: ComponentIR): string {
     if (d.kind !== 'on-mount') continue
     const savedLocals = seedHandlerLocals(d.body, _exprInferCtx)
     const savedLocalsAct1 = seedHandlerLocals(d.body, _activeInferCtx)
-    const bodyLines = d.body.map((st) => `        ${emitSwiftStatement(st, 8)}`).join('\n')
+    const bodyLines = emitSwiftStmtLines(d.body, 8).join('\n')
     _exprInferCtx.locals = savedLocals
     _activeInferCtx.locals = savedLocalsAct1
     lines.push(`      .onAppear {`)
@@ -2041,7 +2082,7 @@ function emitSwiftComponent(c: ComponentIR): string {
     // when it comes back.
     if (d.cleanup !== undefined) {
       lines.push(`      .onDisappear {`)
-      lines.push(d.cleanup.map((st) => `        ${emitSwiftStatement(st, 8)}`).join('\n'))
+      lines.push(emitSwiftStmtLines(d.cleanup, 8).join('\n'))
       lines.push(`      }`)
     }
   }
@@ -2128,6 +2169,7 @@ function emitSwiftComponent(c: ComponentIR): string {
   _functionNames = new Set()
   _usesRouter = false
   _routerRoutes = new Map()
+  _routerTabs = new Map()
   if (_hostStateDecls.length > 0) {
     lines.splice(pyreonHostStateAt, 0, ..._hostStateDecls.map((l) => `  ${l}`))
     _hostStateDecls = []
@@ -2378,6 +2420,15 @@ function inlineValueConstsInStmts(stmts: StatementIR[]): StatementIR[] {
             body: c.body.map(mapStmt),
           })),
         }
+      case 'throw':
+        return s.message ? { ...s, message: inlineValueConsts(s.message) } : s
+      case 'try':
+        return {
+          ...s,
+          body: s.body.map(mapStmt),
+          ...(s.catchBody ? { catchBody: s.catchBody.map(mapStmt) } : {}),
+          ...(s.finallyBody ? { finallyBody: s.finallyBody.map(mapStmt) } : {}),
+        }
     }
   }
   return stmts.map(mapStmt)
@@ -2537,10 +2588,15 @@ function emitSwiftDecl(
     const hasGuards =
       (d.beforeEach !== undefined && d.beforeEach.length > 0) ||
       (d.afterEach !== undefined && d.afterEach.length > 0)
+    // #4060: a tab-bar router is constructed with its tabs (one stack each).
+    const ctor =
+      d.tabs === undefined
+        ? 'PyreonRouter()'
+        : `PyreonRouter(tabs: [${d.tabs.map((t) => `PyreonRouterTab(name: ${swiftStr(t.name)}, root: ${swiftStr(t.root)})`).join(', ')}])`
     if (!hasGuards) {
-      return `@State private var ${swiftIdent(d.name)} = PyreonRouter()`
+      return `@State private var ${swiftIdent(d.name)} = ${ctor}`
     }
-    const lines: string[] = ['{', '    let r = PyreonRouter()']
+    const lines: string[] = ['{', `    let r = ${ctor}`]
     for (const fn of d.beforeEach ?? []) {
       lines.push(`    r.beforeEachGuards.append(${swiftIdent(fn)})`)
     }
@@ -2645,7 +2701,7 @@ function emitSwiftDecl(
     const inlinedStmts = inlineValueConstsInStmts(d.body)
     const savedLocals = seedHandlerLocals(inlinedStmts, _exprInferCtx)
     const savedLocalsAct3 = seedHandlerLocals(inlinedStmts, _activeInferCtx)
-    const bodyLines = inlinedStmts.map((s) => `    ${emitSwiftStatement(s, 4)}`).join('\n')
+    const bodyLines = emitSwiftStmtLines(inlinedStmts, 4).join('\n')
     _exprInferCtx.locals = savedLocals
     _activeInferCtx.locals = savedLocalsAct3
     const last = inlinedStmts[inlinedStmts.length - 1]
@@ -2845,31 +2901,76 @@ function emitSwiftNarrowedView(
 }
 
 /**
+ * A local declared in a statement list as `const f = () => { … }` is a CLOSURE
+ * on both targets, so a zero-argument call to it must keep its parentheses.
+ * Zero-argument identifier calls otherwise emit bare, because at component
+ * scope `x()` is a signal or computed READ. Without this, `f()` emitted `f`:
+ * a swiftc error on iOS and, worse, a silent no-op on Android.
+ */
+function isClosureInit(e: ExprIR): boolean {
+  return unparenExpr(e).kind === 'arrow'
+}
+
+/**
  * A statement list, with the early-return guard lowered:
  * `if (b.tags === undefined) return 0` followed by reads of `b.tags` →
  * `guard let tags = b.tags else { return 0 }` and the rest reading `tags`.
  */
 function emitSwiftStmtLines(stmts: readonly StatementIR[], indent: number): string[] {
+  // A local declared in a NESTED list (a loop body, a switch case, an if
+  // branch) is typed here as it is declared, scoped to the list. The callers
+  // seed only a body's TOP-LEVEL locals, so `for (const x of xs) { const v =
+  // x; if (v === null) continue; use(v) }` left `v` untyped — the guard could
+  // not see that it is optional, and Swift got `use(v)` with a `Double?`.
+  // The two contexts may be one object, or two sharing one `locals` map; the
+  // scoped copy must keep whatever sharing there was, or a local registered
+  // through one would stop reaching the other.
+  const ctxs = [_exprInferCtx, _activeInferCtx] as const
+  const saved = ctxs.map((c) => c.locals)
+  const exprCopy = new Map(saved[0])
+  _exprInferCtx.locals = exprCopy
+  if (_activeInferCtx !== _exprInferCtx)
+    _activeInferCtx.locals = saved[1] === saved[0] ? exprCopy : new Map(saved[1])
+  // The closure names a list declares are callable for the rest of that list only.
+  const savedFunctions = _functionNames
+  _functionNames = new Set(savedFunctions)
+  try {
+    return emitSwiftStmtLinesScoped(stmts, indent)
+  } finally {
+    _functionNames = savedFunctions
+    ctxs.forEach((c, i) => {
+      c.locals = saved[i]!
+    })
+  }
+}
+
+function emitSwiftStmtLinesScoped(stmts: readonly StatementIR[], indent: number): string[] {
   const pad = ' '.repeat(indent)
   const out: string[] = []
   for (let i = 0; i < stmts.length; i++) {
     const s = stmts[i]!
     const g = planGuard(s, stmts.slice(i + 1), _exprInferCtx, _activePropsParamName)
     if (g !== null) {
-      const exitLines = g.exitBody
-        .map((t) => `${pad}  ${emitSwiftStatement(t, indent + 2)}`)
-        .join('\n')
+      const exitLines = emitSwiftStmtLines(g.exitBody, indent + 2).join('\n')
       out.push(
         `${pad}guard ${swiftBindClause(g.narrowing, g.binder, indent)} else {\n${exitLines}\n${pad}}`,
       )
       out.push(
         ...withSwiftLocals([[g.binder, g.narrowing.unwrapped]], () =>
-          emitSwiftStmtLines(g.rest, indent),
+          emitSwiftStmtLinesScoped(g.rest, indent),
         ),
       )
       return out
     }
     out.push(`${pad}${emitSwiftStatement(s, indent)}`)
+    if (s.kind === 'let') {
+      for (const c of [_exprInferCtx, _activeInferCtx]) {
+        if (c.locals.has(s.name)) continue
+        const t = inferType(s.expr, c)
+        const typed = t.kind === 'unknown' && s.declaredType !== undefined ? s.declaredType : t
+        if (typeIsOptional(typed)) c.locals.set(s.name, typed)
+      }
+    }
   }
   return out
 }
@@ -3168,7 +3269,13 @@ function emitSwiftFunction(
   const isAsync = d.async === true
   if (isAsync && bodyReturnsValue(d.body)) _pushSwiftEmitWarning(asyncValueReturnWarning(d.name))
   if (isAsync) returnType = { kind: 'unknown' } as typeof returnType
-  const retType = returnType.kind === 'unknown' ? '' : ` -> ${swiftType(returnType)}`
+  const throwsKw = !isAsync && _swiftThrowingFns.has(d.name) ? ' throws' : ''
+  const retType = `${throwsKw}${returnType.kind === 'unknown' ? '' : ` -> ${swiftType(returnType)}`}`
+  // An async function's body runs inside a `do`/`catch` when it can fail (see below); a sync one throws only when its
+  // signature says so.
+  const asyncMayThrow = isAsync && statementsThrowUncaught(d.body, _swiftThrowingFns)
+  const prevThrowCtx = _swiftThrowCtx
+  _swiftThrowCtx = throwsKw !== '' || asyncMayThrow ? (isAsync ? 'do' : 'throws') : 'none'
   const prevReturnType = _currentReturnType
   _currentReturnType = returnType.kind === 'unknown' ? undefined : returnType
   // Single-statement single-return concise form.
@@ -3209,7 +3316,7 @@ function emitSwiftFunction(
       )
       const vis = visibility === 'private' ? 'private ' : ''
       if (isAsync) {
-        const body = bodyAwaitsFallible(d.body, isThrowingPluginExpr)
+        const body = bodyAwaitsFallible(d.body, isThrowingPluginExpr) || asyncMayThrow
           ? `do { ${concise} } ${SWIFT_UNHANDLED_ASYNC}`
           : concise
         return `${vis}func ${swiftIdent(d.name)}(${params}) { ${SWIFT_TASK} { ${body} } }`
@@ -3236,7 +3343,7 @@ function emitSwiftFunction(
     _activeInferCtx.locals = savedActive
     const vis2 = visibility === 'private' ? 'private ' : ''
     if (isAsync) {
-      const task = bodyAwaitsFallible(d.body, isThrowingPluginExpr)
+      const task = bodyAwaitsFallible(d.body, isThrowingPluginExpr) || asyncMayThrow
         ? `    ${SWIFT_TASK} {\n      do {\n${indentLines(bodyLines, 2)}\n      } ${SWIFT_UNHANDLED_ASYNC}\n    }`
         : `    ${SWIFT_TASK} {\n${bodyLines}\n    }`
       return `${vis2}func ${swiftIdent(d.name)}(${params}) {\n${task}\n  }`
@@ -3244,6 +3351,7 @@ function emitSwiftFunction(
     return `${vis2}func ${swiftIdent(d.name)}(${params})${retType} {\n${bodyLines}\n  }`
   } finally {
     _currentReturnType = prevReturnType
+    _swiftThrowCtx = prevThrowCtx
     for (const s of paramSaved) {
       if (s.had) _activeInferCtx.locals.set(s.name, s.prev!)
       else _activeInferCtx.locals.delete(s.name)
@@ -3319,6 +3427,7 @@ function emitSwiftStatement(s: StatementIR, indent: number): string {
       _exprInferCtx.locals.set(s.name, s.declaredType)
       return `var ${swiftIdent(s.name)}: ${swiftType(s.declaredType)}`
     case 'let':
+      if (isClosureInit(s.expr)) _functionNames.add(s.name)
     // `var` when a later `assign` reassigns this local (markReassigned-
     // LocalsMutable), else immutable `let`.
     // A collection local is ALWAYS `var` — subscript-assign (`m[k] = v`)
@@ -3479,7 +3588,7 @@ function emitSwiftStatement(s: StatementIR, indent: number): string {
     case 'while': {
       const pad = ' '.repeat(indent)
       const cond = swiftCondition(s.cond, (x) => emitSwiftExpr(x, indent))
-      const lines = s.body.map((t) => `${pad}  ${emitSwiftStatement(t, indent + 2)}`).join('\n')
+      const lines = emitSwiftStmtLines(s.body, indent + 2).join('\n')
       // Loop label — Swift spells it `outer: while … { break outer }`.
       const lbl = s.label !== undefined ? `${swiftIdent(s.label)}: ` : ''
       return `${lbl}while ${cond} {\n${lines}\n${pad}}`
@@ -3493,12 +3602,18 @@ function emitSwiftStatement(s: StatementIR, indent: number): string {
       // unknown, the binary coercion never fired, and swiftc rejected
       // `Int * Double` (Kotlin promotes, so only iOS failed).
       const iterT = inferType(s.iterable, _activeInferCtx)
-      const hadItem = _activeInferCtx.locals.has(s.item)
-      const prevItem = _activeInferCtx.locals.get(s.item)
-      if (iterT.kind === 'array') _activeInferCtx.locals.set(s.item, iterT.element)
-      const lines = s.body.map((t) => `${pad}  ${emitSwiftStatement(t, indent + 2)}`).join('\n')
-      if (hadItem) _activeInferCtx.locals.set(s.item, prevItem!)
-      else _activeInferCtx.locals.delete(s.item)
+      // Both contexts: the narrowing guard reads the expression context, so an
+      // item typed only in the active one could not be seen as optional.
+      const itemCtxs =
+        _exprInferCtx === _activeInferCtx ? [_activeInferCtx] : [_activeInferCtx, _exprInferCtx]
+      const itemSaved = itemCtxs.map((c) => [c.locals.has(s.item), c.locals.get(s.item)] as const)
+      if (iterT.kind === 'array') for (const c of itemCtxs) c.locals.set(s.item, iterT.element)
+      const lines = emitSwiftStmtLines(s.body, indent + 2).join('\n')
+      itemCtxs.forEach((c, i) => {
+        const [had, prev] = itemSaved[i]!
+        if (had) c.locals.set(s.item, prev!)
+        else c.locals.delete(s.item)
+      })
       const lbl = s.label !== undefined ? `${swiftIdent(s.label)}: ` : ''
       return `${lbl}for ${swiftIdent(s.item)} in ${iter} {\n${lines}\n${pad}}`
     }
@@ -3544,7 +3659,7 @@ function emitSwiftStatement(s: StatementIR, indent: number): string {
       const hadItem = _activeInferCtx.locals.has(s.item)
       const prevItem = _activeInferCtx.locals.get(s.item)
       _activeInferCtx.locals.set(s.item, { kind: 'number' })
-      const lines = s.body.map((t) => `${pad}  ${emitSwiftStatement(t, indent + 2)}`).join('\n')
+      const lines = emitSwiftStmtLines(s.body, indent + 2).join('\n')
       if (hadItem) _activeInferCtx.locals.set(s.item, prevItem!)
       else _activeInferCtx.locals.delete(s.item)
       // Swift has no descending range literal — a `down` loop is always a
@@ -3562,7 +3677,7 @@ function emitSwiftStatement(s: StatementIR, indent: number): string {
     case 'do-while': {
       const pad = ' '.repeat(indent)
       const cond = swiftCondition(s.cond, (x) => emitSwiftExpr(x, indent))
-      const lines = s.body.map((t) => `${pad}  ${emitSwiftStatement(t, indent + 2)}`).join('\n')
+      const lines = emitSwiftStmtLines(s.body, indent + 2).join('\n')
       return `repeat {\n${lines}\n${pad}} while ${cond}`
     }
     case 'switch': {
@@ -3573,9 +3688,7 @@ function emitSwiftStatement(s: StatementIR, indent: number): string {
         discT.kind === 'typeRef' && _enumNames.has(discT.name) ? discT.name : undefined
       const caseLines = s.cases
         .map((c) => {
-          const bodyLines = c.body
-            .map((t) => `${pad}    ${emitSwiftStatement(t, indent + 4)}`)
-            .join('\n')
+          const bodyLines = emitSwiftStmtLines(c.body, indent + 4).join('\n')
           // A Swift `case` body cannot be empty — emit `break` as a no-op.
           const body = bodyLines.length > 0 ? bodyLines : `${pad}    break`
           if (c.tests.length === 0) return `${pad}  default:\n${body}`
@@ -3597,7 +3710,55 @@ function emitSwiftStatement(s: StatementIR, indent: number): string {
       const defaultClause = hasDefault ? '' : `\n${pad}  default:\n${pad}    break`
       return `switch ${disc} {\n${caseLines}${defaultClause}\n${pad}}`
     }
+    case 'throw': {
+      const thrown =
+        s.rethrow !== undefined
+          ? swiftIdent(s.rethrow)
+          : `PyreonThrown(message: ${emitSwiftExpr(s.message ?? { kind: 'literal', value: '' }, indent)})`
+      if (s.rethrow === undefined) _needsSwiftThrown = true
+      if (_swiftThrowCtx !== 'none') return `throw ${thrown}`
+      _pushSwiftEmitWarning(uncaughtThrowWarning('A `throw`'))
+      return `fatalError(String(describing: ${thrown}))`
+    }
+    case 'try':
+      return emitSwiftTry(s, indent)
   }
+}
+
+/**
+ * `try { B } catch (e) { C } finally { F }` →
+ *
+ *     do {
+ *       defer { F }
+ *       do { B } catch let e { C }
+ *     }
+ *
+ * A `defer` runs when its scope exits by ANY path — falling off the end, `return`, or an error escaping the catch —
+ * which is exactly when JavaScript runs `finally`, and in the same order (after the catch). `B` may throw (it is a
+ * `do` body) only when a catch follows it; otherwise it inherits the enclosing context. The `defer` body cannot
+ * throw at all.
+ */
+function emitSwiftTry(s: Extract<StatementIR, { kind: 'try' }>, indent: number): string {
+  const pad = ' '.repeat(indent)
+  const caught = s.catchBody !== undefined
+  const inner = s.finallyBody !== undefined ? indent + 2 : indent
+  const ipad = ' '.repeat(inner)
+  const bodyLines = withSwiftThrowCtx(caught ? 'do' : _swiftThrowCtx, () =>
+    emitSwiftStmtLines(s.body, caught ? inner + 2 : inner).join('\n'),
+  )
+  let core: string
+  if (caught) {
+    const binder = s.catchParam !== undefined ? ` let ${swiftIdent(s.catchParam)}` : ''
+    const catchLines = emitSwiftStmtLines(s.catchBody!, inner + 2).join('\n')
+    core = `${ipad}do {\n${bodyLines}\n${ipad}} catch${binder} {\n${catchLines}\n${ipad}}`
+  } else {
+    core = bodyLines
+  }
+  if (s.finallyBody === undefined) return core.slice(indent)
+  const finallyLines = withSwiftThrowCtx('none', () =>
+    emitSwiftStmtLines(s.finallyBody!, indent + 4).join('\n'),
+  )
+  return `do {\n${pad}  defer {\n${finallyLines}\n${pad}  }\n${core}\n${pad}}`
 }
 
 /**
@@ -4001,11 +4162,10 @@ function emitSwiftIndexedClosure(
   setLocal(idxJs, { kind: 'number' })
   try {
     if (cb.stmts !== undefined && cb.stmts.length > 0) {
-      const pad = ' '.repeat(indent + 2)
       const inlinedStmts = inlineValueConstsInStmts(cb.stmts)
       const savedLocals = seedHandlerLocals(inlinedStmts, _exprInferCtx)
       const savedLocalsAct5 = seedHandlerLocals(inlinedStmts, _activeInferCtx)
-      const lines = inlinedStmts.map((s) => pad + emitSwiftStatement(s, indent + 2)).join('\n')
+      const lines = emitSwiftStmtLines(inlinedStmts, indent + 2).join('\n')
       _exprInferCtx.locals = savedLocals
       _activeInferCtx.locals = savedLocalsAct5
       return `{ (${idx}, ${el}) in\n${lines}\n${' '.repeat(indent)}}`
@@ -4074,6 +4234,9 @@ function emitSwiftMapFromPairs(
 }
 
 function emitSwiftExpr(e: ExprIR, indent: number): string {
+  // A closure is its own throw context: a throw or throwing call inside it cannot propagate to the enclosing
+  // `throws` helper or `do` body.
+  if (e.kind === 'arrow' && _swiftThrowCtx !== 'none') return withSwiftThrowCtx('none', () => emitSwiftExpr(e, indent))
   switch (e.kind) {
     case 'literal':
       if (typeof e.value === 'string') {
@@ -4123,6 +4286,22 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       // literal's — and writes every leaf the way ECMAScript does.
       return `PyreonJSON.stringify(${emitSwiftExpr(e.arg, indent)})`
     case 'call': {
+      if (
+        e.callee.kind === 'identifier' &&
+        _swiftThrowingFns.has(e.callee.name) &&
+        !_swiftTryWrapping.has(e)
+      ) {
+        _swiftTryWrapping.add(e)
+        try {
+          const call = emitSwiftExpr(e, indent)
+          if (_swiftThrowCtx !== 'none') return `(try ${call})`
+          _pushSwiftEmitWarning(uncaughtThrowWarning(`The call to \`${e.callee.name}()\`, which can throw,`))
+          return `(try! ${call})`
+        } finally {
+          _swiftTryWrapping.delete(e)
+        }
+      }
+      if (e.callee.kind === 'identifier' && (e.callee.name === ERROR_MESSAGE_FN || e.callee.name === ERROR_STRING_FN)) _needsSwiftThrown = true
       // `handle.dispatch(…)` and any other call on a binding a plugin's declaration created.
       const pluginLowered = lowerPluginMemberCall(e, 'swift', _pluginScope, () =>
         swiftEmitContext(indent),
@@ -5378,7 +5557,7 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
             // the loss is visible rather than a silent invalid emit.
             if (e.args.length === 0) {
               _emitWarnings.push(
-                '.toLocaleString() has no native locale-formatting equivalent — emitting a plain string conversion (no grouping separators). Format the value explicitly if you need grouping.',
+                '.toLocaleString() reached the emitter unlowered — the built-in `ecmascript-intl` plugin (which lowers it to PyreonNumberFormat) is not active in this compiler. Emitting a plain string conversion (no locale, no grouping).',
               )
               return `String(${obj})`
             }
@@ -5939,7 +6118,6 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
             return e.params.map(swiftIdent).join(', ')
           }
           if (e.stmts !== undefined && e.stmts.length > 0) {
-            const pad = ' '.repeat(indent + 2)
             const inlined = inlineValueConstsInStmts(e.stmts)
             // Bind ANNOTATED closure params into both ctxs — the body's
             // type-gated lowerings otherwise see them as unknown (`pts.count`
@@ -5964,7 +6142,7 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
             }
             const saved = seedHandlerLocals(inlined, _exprInferCtx)
             const savedAct8 = seedHandlerLocals(inlined, _activeInferCtx)
-            const lines = inlined.map((st) => pad + emitSwiftStatement(st, indent + 2)).join('\n')
+            const lines = emitSwiftStmtLines(inlined, indent + 2).join('\n')
             _exprInferCtx.locals = saved
             _activeInferCtx.locals = savedAct8
             for (const [pn, hadE, prevE, hadA, prevA] of paramBind.reverse()) {
@@ -6411,7 +6589,7 @@ function swiftEmitContext(indent: number): SwiftEmitContext {
           seedHandlerLocals([...stmts], _activeInferCtx)
         }
         try {
-          return stmts.map((st) => emitSwiftStatement(st, at))
+          return emitSwiftStmtLines(stmts, at).map((l) => l.slice(at))
         } finally {
           _exprInferCtx.locals = savedA
           _activeInferCtx.locals = savedB
@@ -6614,8 +6792,13 @@ function emitSwiftJsxElement(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent
   if (tag === 'Video') return emitSwiftVideo(e, indent)
   if (tag === 'Audio') return emitSwiftAudio(e, indent)
   if (tag === 'Modal') return emitSwiftModal(e, indent)
+  if (tag === 'Tabs') return emitSwiftTabs(e, indent)
+  if (tag === 'Split') return emitSwiftSplit(e, indent)
   if (tag === 'Press') return emitSwiftPress(e, indent)
   if (tag === 'Gesture') return emitSwiftGesture(e, indent)
+  if (tag === 'Canvas') return emitSwiftCanvas(e, indent)
+  if (tag === 'CanvasText') return emitSwiftCanvasText(e, indent)
+  if (isCanvasShape(tag)) return emitSwiftCanvasShape(e)
   if (tag === 'Field') return emitSwiftField(e, indent)
   if (tag === 'Toggle') return emitSwiftToggle(e, indent)
   if (tag === 'Select') return emitSwiftSelect(e, indent)
@@ -7005,6 +7188,31 @@ function emitSwiftText(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
   return `${result}${emitSwiftLayoutModifiers(e)}`
 }
 
+/**
+ * Whether a `<Button>`'s children are a text label: text and expressions only,
+ * with no JSX anywhere inside them. Such a label is ONE string on the web
+ * (`Tapped {n}` reads "Tapped 2"), so it must lower to ONE native Text —
+ * the same fusion `<Text>` applies. Emitting a view per child split it: two
+ * Texts in a Compose Button announce as two fragments and match no single
+ * string, and a SwiftUI Button label with several views is a TupleView laid
+ * out per view rather than as one running label.
+ */
+function buttonLabelIsTextOnly(children: readonly ChildIR[]): boolean {
+  if (children.length === 0) return false
+  const hasJsx = (n: unknown): boolean => {
+    if (n === null || typeof n !== 'object') return false
+    if (Array.isArray(n)) return n.some(hasJsx)
+    const k = (n as { kind?: unknown }).kind
+    if (k === 'jsx-element' || k === 'jsx-fragment') return true
+    return Object.values(n).some(hasJsx)
+  }
+  return children.every(
+    (c) =>
+      c.kind === 'text' ||
+      (!hasJsx(c.expr) && jsxHelperCallName(resolveAccessorChild(c.expr), _jsxFnNames) === null),
+  )
+}
+
 function emitSwiftButton(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
   // <Button onClick={() => …}>Label</Button>  →  Button("Label") { … }
   // Phase B: also accept the canonical `onPress` event name (per
@@ -7025,6 +7233,11 @@ function emitSwiftButton(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: nu
   let result: string
   if (labelText !== null) {
     result = `Button(${swiftStr(labelText)}) ${action}`
+  } else if (buttonLabelIsTextOnly(e.children)) {
+    // A mixed text label (`Tapped {n}`): one fused Text, built exactly as
+    // `<Text>` builds it.
+    const label = emitSwiftText({ kind: 'jsx-element', tag: 'Text', attrs: [], children: e.children }, indent + 2)
+    result = `Button(action: ${action}) {\n${' '.repeat(indent + 2)}${label}\n${' '.repeat(indent)}}`
   } else {
     // Complex content; emit Button { action } label: { content }.
     const pad = ' '.repeat(indent + 2)
@@ -7042,8 +7255,17 @@ function emitSwiftButton(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: nu
   // `danger` matters most: without it a destructive button was
   // indistinguishable from a confirm button, and the visual difference IS
   // the safeguard.
-  result = `${result}${swiftButtonVariantModifier(e)}`
-  const layoutModifiers = emitSwiftLayoutModifiers(e)
+  // A pressed style REPLACES the variant's button style — both decide how the
+  // button draws itself, and only one ButtonStyle can apply. The pressed one
+  // was authored for this component; a variant beside it is named, not mixed.
+  const pressedStyle = swiftPressedStyle(e)
+  if (pressedStyle !== null && e.attrs.some((a) => a.kind === 'attr' && a.name === 'variant')) {
+    _emitWarnings.push(
+      `<Button variant> with a pressed style: the pressed style draws the button on native, so the variant was not applied.`,
+    )
+  }
+  result = `${result}${pressedStyle?.buttonStyle ?? swiftButtonVariantModifier(e)}`
+  const layoutModifiers = emitSwiftLayoutModifiers(pressedStyle?.rest ?? e)
   result = layoutModifiers ? `${result}${layoutModifiers}` : result
   return disabledModifier ? `${result}\n${' '.repeat(indent)}  ${disabledModifier}` : result
 }
@@ -7130,6 +7352,10 @@ function emitSwiftCallbackArg(handler: ExprIR, indent: number): string {
 }
 
 function emitSwiftAction(handler: ExprIR, indent: number): string {
+  return withSwiftThrowCtx('none', () => emitSwiftActionBody(handler, indent))
+}
+
+function emitSwiftActionBody(handler: ExprIR, indent: number): string {
   // Strip outer arrow if present — Button takes a closure body directly.
   if (handler.kind === 'arrow') {
     // Multi-statement block body (`() => { a.set(1); b.set(2) }`) — emit
@@ -7153,11 +7379,16 @@ function emitSwiftAction(handler: ExprIR, indent: number): string {
       // launch async work. The `await` sub-expressions emit inside it.
       const isAsync = handler.async === true
       const bodyIndent = isAsync ? indent + 4 : indent + 2
-      const lines = emitSwiftStmtLines(inlinedStmts, bodyIndent).join('\n')
+      // An async handler whose body can let an error escape runs it inside the same `do`/`catch` a failing request
+      // gets — the web reports it as an unhandled rejection and stops; so does this.
+      const asyncMayThrow = isAsync && statementsThrowUncaught(inlinedStmts, _swiftThrowingFns)
+      const lines = withSwiftThrowCtx(asyncMayThrow ? 'do' : 'none', () =>
+        emitSwiftStmtLines(inlinedStmts, bodyIndent).join('\n'),
+      )
       _exprInferCtx.locals = savedLocals
       _activeInferCtx.locals = savedLocalsAct6
       if (isAsync) {
-        if (bodyAwaitsFallible(inlinedStmts, isThrowingPluginExpr)) {
+        if (bodyAwaitsFallible(inlinedStmts, isThrowingPluginExpr) || asyncMayThrow) {
           return `{\n${pad}${SWIFT_TASK} {\n${pad}  do {\n${indentLines(lines, 4)}\n${pad}  } ${SWIFT_UNHANDLED_ASYNC}\n${pad}}\n${' '.repeat(indent)}}`
         }
         return `{\n${pad}${SWIFT_TASK} {\n${lines}\n${pad}}\n${' '.repeat(indent)}}`
@@ -7176,8 +7407,9 @@ function emitSwiftAction(handler: ExprIR, indent: number): string {
     // M4.5: single-expression async handler (`async () => await x.method()`)
     // still needs the `Task { … }` async scope.
     if (handler.async === true) {
-      const inner = emitSwiftExpr(handler.body, indent)
-      if (bodyAwaitsFallible(handler.body, isThrowingPluginExpr)) {
+      const asyncMayThrow = exprCallsThrowing(handler.body, _swiftThrowingFns)
+      const inner = withSwiftThrowCtx(asyncMayThrow ? 'do' : 'none', () => emitSwiftExpr(handler.body, indent))
+      if (bodyAwaitsFallible(handler.body, isThrowingPluginExpr) || asyncMayThrow) {
         return `{ ${SWIFT_TASK} { do { ${inner} } ${SWIFT_UNHANDLED_ASYNC} } }`
       }
       return `{ ${SWIFT_TASK} { ${inner} } }`
@@ -7201,6 +7433,11 @@ function emitSwiftAction(handler: ExprIR, indent: number): string {
   // Closes the TodoMVC `Button("Remove") { onRemove }` trap.
   const resolved = resolveFunctionHandler(handler)
   if (resolved !== undefined) {
+    // A throwing helper used directly as a handler: nothing can catch it there.
+    if (_swiftThrowingFns.has(resolved)) {
+      _pushSwiftEmitWarning(uncaughtThrowWarning(`The handler \`${resolved}\`, which can throw,`))
+      return `{ try! ${swiftIdent(resolved)}() }`
+    }
     return `{ ${swiftIdent(resolved)}() }`
   }
   return `{ ${emitSwiftExpr(handler, indent)} }`
@@ -7680,6 +7917,27 @@ let _needsSwiftKeepAliveWrapper = false
 // repeat identically across sibling files in Swift, so each file's own copy
 // stays self-contained without ever colliding with the engine's.
 let _needsSwiftNumString = false
+/** The file's helpers whose Swift signature is `throws`. */
+let _swiftThrowingFns: ReadonlySet<string> = new Set()
+/**
+ * Whether the statement being emitted may throw: inside a `throws` helper, inside a `do` body, or neither (a closure
+ * that cannot throw — an event handler, an effect, a callback). Saved and restored around every scope that changes it.
+ */
+let _swiftThrowCtx: 'none' | 'throws' | 'do' = 'none'
+let _needsSwiftThrown = false
+/** Calls already being wrapped in `try`, so the re-entrant emit of the same call produces the bare form. */
+const _swiftTryWrapping = new WeakSet<ExprIR>()
+
+/** Run `fn` with the throw context set to `ctx`, restoring the previous one. */
+function withSwiftThrowCtx<T>(ctx: 'none' | 'throws' | 'do', fn: () => T): T {
+  const prev = _swiftThrowCtx
+  _swiftThrowCtx = ctx
+  try {
+    return fn()
+  } finally {
+    _swiftThrowCtx = prev
+  }
+}
 const SWIFT_NUM_STRING = `private func pyreonNumString(_ v: Double) -> String {
     v.rounded() == v && v.magnitude < 1e15 ? String(Int(v)) : String(v)
 }`
@@ -8099,6 +8357,10 @@ function swiftStylingValue(
  * migration contract).
  */
 const SWIFT_CONTAINER_TAGS = new Set([
+  // The navigation primitives WRAP their content, so a bare identifier on
+  // them would be flattened out of the accessibility tree like a VStack's.
+  'Tabs',
+  'Split',
   'Stack',
   'Inline',
   'Layer',
@@ -8110,6 +8372,8 @@ const SWIFT_CONTAINER_TAGS = new Set([
   // PyreonGesture WRAPS its content, so SwiftUI flattens it out of the
   // accessibility tree exactly like a plain stack.
   'Gesture',
+  // PyreonCanvas is a ZStack.
+  'Canvas',
 ])
 
 /**
@@ -9259,6 +9523,201 @@ function emitSwiftModal(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: num
 }
 
 /**
+ * Several children in one tab / pane are wrapped in ONE container. A SwiftUI
+ * modifier applied to a multi-view `@ViewBuilder` result is applied to EACH
+ * view, so `.tabItem { … }` over two loose views would create two tabs.
+ */
+function emitSwiftNavPane(children: readonly ChildIR[], indent: number): string {
+  const pad = ' '.repeat(indent)
+  if (children.length === 1) return pad + emitSwiftChild(children[0]!, indent)
+  if (children.length === 0) return `${pad}EmptyView()`
+  const inner = children.map((c) => ' '.repeat(indent + 2) + emitSwiftChild(c, indent + 2)).join('\n')
+  return `${pad}VStack(spacing: 0) {\n${inner}\n${pad}}`
+}
+
+/**
+ * Emit `<Tabs value onChange>` + its `<Tab>` children as the runtime
+ * `PyreonTabs(selection:items:) { pyreonTab in switch pyreonTab { … } }`
+ * (PyreonNavigation.swift → `TabView`). The tab bar is built at compile time
+ * from the literal `<Tab>` entries; each tab's content is one `case`.
+ *
+ * `value` follows `<Toggle>`'s two shapes: a bare signal binds two-way
+ * (`$tab`, `onChange` redundant), any other expression needs `onChange` and
+ * becomes a custom `Binding`.
+ */
+function emitSwiftTabs(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
+  const routerBound = e.attrs.find(
+    (a): a is Extract<AttrIR, { kind: 'attr' }> => a.kind === 'attr' && a.name === 'router',
+  )
+  if (routerBound !== undefined) return emitSwiftRouterTabs(e, routerBound, indent)
+  const valueAttr = e.attrs.find(
+    (a): a is Extract<AttrIR, { kind: 'attr' }> => a.kind === 'attr' && a.name === 'value',
+  )
+  const onChange = e.attrs.find(
+    (a): a is Extract<AttrIR, { kind: 'event' }> => a.kind === 'event' && a.name === 'change',
+  )
+  const { tabs, warnings } = planTabs(e)
+  for (const w of warnings) pushEmitWarning(w)
+  let binding: string
+  if (valueAttr !== undefined && valueAttr.value.kind === 'identifier' && _signalNames.has(valueAttr.value.name)) {
+    binding = `$${swiftIdent(valueAttr.value.name)}`
+  } else if (valueAttr !== undefined && onChange !== undefined) {
+    const getExpr = emitSwiftExpr(unwrapAccessorArrow(valueAttr.value), indent)
+    const setter = emitSwiftCallbackArg(onChange.handler, indent + 4)
+    binding = `Binding(get: { ${getExpr} }, set: ${onChange.handler.kind === 'arrow' && onChange.handler.params.length > 0 ? setter : `{ _ in ${stripSwiftClosureBody(setter)} }`})`
+  } else {
+    pushEmitWarning(
+      '<Tabs>: needs `value` bound to a signal (`value={tab}`) or `value` + `onChange` — without one the selection cannot change on iOS, so it renders as an empty view.',
+    )
+    return `EmptyView()${emitSwiftLayoutModifiers(e)}`
+  }
+  if (tabs.length === 0) return `EmptyView()${emitSwiftLayoutModifiers(e)}`
+  // A selection typed by a string-literal union (`signal<Section>('feed')`)
+  // is a native ENUM here, so the tab values must be its cases — the runtime
+  // is generic over the selection type for exactly this reason.
+  const enumType = enumTypeOfExpr(unwrapAccessorArrow(valueAttr.value))
+  const tabValue = (v: string): string => (enumType === undefined ? swiftStr(v) : `${enumType}.${swiftEnumCase(v)}`)
+  const p = ' '.repeat(indent)
+  const itemPad = ' '.repeat(indent + 2)
+  const items = tabs
+    .map((t) => {
+      const label = t.label.kind === 'literal' ? swiftStr(t.label.text) : emitSwiftExpr(t.label.expr, indent + 2)
+      const image = t.icon === undefined ? '' : `, systemImage: ${swiftStr(t.icon.sf)}`
+      return `${itemPad}PyreonTabItem(value: ${tabValue(t.value)}, label: ${label}${image}),`
+    })
+    .join('\n')
+  const cases = tabs
+    .map((t) => `${itemPad}case ${tabValue(t.value)}:\n${emitSwiftNavPane(t.children, indent + 4)}`)
+    .join('\n')
+  return (
+    `PyreonTabs(selection: ${binding}, items: [\n${items}\n${p}]) { pyreonTab in\n` +
+    `${itemPad}switch pyreonTab {\n${cases}\n${itemPad}default:\n${itemPad}  EmptyView()\n${itemPad}}\n` +
+    `${p}}${emitSwiftLayoutModifiers(e)}`
+  )
+}
+
+/**
+ * #4060 — `<Tabs router={r}>` bound to a tab-bar router (`createRouter({ tabs })`)
+ * → `PyreonRouterTabs(router:items:)`: the selection IS the router's active
+ * tab, a tap goes through `selectTab` (a re-tap pops that tab to its root), and
+ * each `<Tab>`'s `<RouterView />` becomes the tab's own `PyreonTabStack`.
+ */
+function emitSwiftRouterTabs(
+  e: Extract<ExprIR, { kind: 'jsx-element' }>,
+  routerAttr: Extract<AttrIR, { kind: 'attr' }>,
+  indent: number,
+): string {
+  const ctx = _activeRouterTabsSwift
+  if (
+    ctx === null ||
+    routerAttr.value.kind !== 'identifier' ||
+    routerAttr.value.name !== ctx.routerName ||
+    ctx.tab !== null
+  ) {
+    pushEmitWarning(
+      '<Tabs router={…}>: the router must be the `createRouter({ routes, tabs })` router of the enclosing <RouterProvider>, named directly (and <Tabs> may not sit inside one of its own tabs) — otherwise there are no per-tab stacks to bind, so it renders as an empty view on iOS.',
+    )
+    return `EmptyView()${emitSwiftLayoutModifiers(e)}`
+  }
+  const { tabs, warnings } = planRouterTabs(e, ctx.tabs)
+  for (const w of warnings) pushEmitWarning(w)
+  if (tabs.length === 0) return `EmptyView()${emitSwiftLayoutModifiers(e)}`
+  const p = ' '.repeat(indent)
+  const itemPad = ' '.repeat(indent + 2)
+  const items = tabs
+    .map((t) => {
+      const label = t.label.kind === 'literal' ? swiftStr(t.label.text) : emitSwiftExpr(t.label.expr, indent + 2)
+      const image = t.icon === undefined ? '' : `, systemImage: ${swiftStr(t.icon.sf)}`
+      return `${itemPad}PyreonTabItem(value: ${swiftStr(t.value)}, label: ${label}${image}),`
+    })
+    .join('\n')
+  const cases = tabs
+    .map((t) => {
+      ctx.tab = ctx.tabs.find((x) => x.name === t.value) ?? null
+      try {
+        return `${itemPad}case ${swiftStr(t.value)}:\n${emitSwiftNavPane(t.children, indent + 4)}`
+      } finally {
+        ctx.tab = null
+      }
+    })
+    .join('\n')
+  return (
+    `PyreonRouterTabs(router: ${ctx.routerExpr}, items: [\n${items}\n${p}]) { pyreonTab in\n` +
+    `${itemPad}switch pyreonTab {\n${cases}\n${itemPad}default:\n${itemPad}  EmptyView()\n${itemPad}}\n` +
+    `${p}}${emitSwiftLayoutModifiers(e)}`
+  )
+}
+
+/**
+ * #4060 — one tab's navigation stack: `PyreonTabStack(router:tab:) { root }`
+ * where `root` is the route at the tab's root path, carrying the router's
+ * whole `navigationDestination` dispatch for whatever the tab pushes.
+ */
+function emitSwiftTabStack(
+  ctx: NonNullable<typeof _activeRouterTabsSwift>,
+  indent: number,
+): string {
+  const tab = ctx.tab
+  if (tab === null) {
+    pushEmitWarning(
+      '<RouterView /> inside a tab-bar router (createRouter({ tabs })) must sit inside a <Tab> of its <Tabs router> — each tab owns one stack. This one renders nothing on iOS.',
+    )
+    return 'EmptyView()'
+  }
+  const pad = ' '.repeat(indent + 2)
+  const rootRoute = tabRootRoute(ctx.routes, tab.root)
+  const target = rootRoute === undefined ? undefined : resolveRouteTarget(rootRoute, ctx.routes)
+  let rootView: string
+  if (target === undefined || target.component === undefined || target.path.includes(':')) {
+    pushEmitWarning(missingTabRootWarning(tab))
+    rootView = `Text(verbatim: ${swiftStr(`Pyreon Router: no route for ${tab.root}`)})`
+  } else {
+    rootView = emitSwiftLayoutAwareInvocation(target.component, indent + 2)
+    if (target.loader !== undefined) {
+      const loadBody = emitSwiftExpr(target.loader, indent + 2)
+      rootView = `PyreonRouteLoader(path: ${swiftStr(target.path)}, load: { ${loadBody} }) { ${rootView} }`
+    }
+  }
+  return `PyreonTabStack(router: ${ctx.routerExpr}, tab: ${swiftStr(tab.name)}) {\n${pad}${rootView}${emitSwiftNavigationDestination(ctx.routes, indent + 4)}\n${' '.repeat(indent)}}`
+}
+
+/**
+ * Emit `<Split sidebar showDetail onBack>detail</Split>` as the runtime
+ * `PyreonSplit(showDetail:onBack:) { sidebar } detail: { detail }`
+ * (PyreonNavigation.swift → `NavigationSplitView`, or a pushed detail on a
+ * compact `NavigationStack`).
+ */
+function emitSwiftSplit(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
+  const showAttr = e.attrs.find(
+    (a): a is Extract<AttrIR, { kind: 'attr' }> => a.kind === 'attr' && a.name === 'showDetail',
+  )
+  const onBack = e.attrs.find(
+    (a): a is Extract<AttrIR, { kind: 'event' }> => a.kind === 'event' && a.name === 'back',
+  )
+  const sidebar = planSplitSidebar(e)
+  if (sidebar.kind === 'unsupported') pushEmitWarning(sidebar.warning)
+  if (showAttr === undefined) {
+    pushEmitWarning(
+      '<Split>: no `showDetail` — on a compact iPhone width the detail can never be shown, only the sidebar.',
+    )
+  }
+  if (onBack === undefined) {
+    pushEmitWarning(
+      '<Split>: no `onBack` — the system back button and swipe-back on a compact width cannot clear your `showDetail` state, so the detail is pushed again on the next render.',
+    )
+  }
+  const show = showAttr === undefined ? 'false' : emitSwiftSignalRead(unwrapAccessorArrow(showAttr.value))
+  const back = onBack === undefined ? '{ }' : emitSwiftAction(onBack.handler, indent + 2)
+  const p = ' '.repeat(indent)
+  const side = emitSwiftNavPane(sidebar.kind === 'view' ? sidebar.children : [], indent + 2)
+  const detail = emitSwiftNavPane(e.children, indent + 2)
+  return (
+    `PyreonSplit(showDetail: ${show}, onBack: ${back}) {\n${side}\n${p}} detail: {\n${detail}\n${p}}` +
+    emitSwiftLayoutModifiers(e)
+  )
+}
+
+/**
  * Emit `<Press onPress={fn}>{anything}</Press>` as a chrome-less
  * SwiftUI `Button(action: { handler }) { content }`.
  *
@@ -9313,6 +9772,140 @@ function emitSwiftGesture(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: n
   const pad = ' '.repeat(indent + 2)
   const contentLines = e.children.map((c) => pad + emitSwiftChild(c, indent + 2)).join('\n')
   return `${head} {\n${contentLines}\n${' '.repeat(indent)}}${tail}`
+}
+
+/**
+ * A pressable whose `style` keys on the press state (a rocketstyle `active:`
+ * block — see `PRESSED_STATE_IDENT`). The style half is lowered INSIDE a
+ * `PyreonPressStyle` ButtonStyle, whose closure receives the label and
+ * SwiftUI's own `configuration.isPressed` under that name, so the connector's
+ * ordinary reactive-condition path does the rest. The remaining modifiers
+ * (testid, a11y, margin, …) stay on the button itself, where XCUITest and
+ * VoiceOver read them.
+ *
+ * Deliberately a ButtonStyle and not a `DragGesture(minimumDistance: 0)`
+ * tracker: a zero-distance drag attached to a Button blocks the enclosing
+ * ScrollView and can swallow the tap. `isPressed` is the platform's own state —
+ * it ends on scroll-cancel exactly as the button's highlight does.
+ */
+function swiftPressedStyle(
+  e: Extract<ExprIR, { kind: 'jsx-element' }>,
+): { buttonStyle: string; rest: Extract<ExprIR, { kind: 'jsx-element' }> } | null {
+  const styleAttr = e.attrs.find(
+    (a): a is Extract<AttrIR, { kind: 'attr' }> => a.kind === 'attr' && a.name === 'style',
+  )
+  if (styleAttr === undefined || !styleUsesPressedState(styleAttr.value)) return null
+  const { modifiers, warnings, needsSizeClass } = styleToNativeModifiers(
+    styleAttr.value,
+    'swift',
+    e.tag,
+    (cond) => swiftCondition(cond, (x) => emitSwiftExpr(x, 0)),
+  )
+  for (const w of warnings) _emitWarnings.push(w)
+  if (needsSizeClass === true) _usesSizeClass = true
+  return {
+    buttonStyle: `.buttonStyle(PyreonPressStyle { label, ${PRESSED_STATE_IDENT} in label${modifiers.join('')} })`,
+    rest: { ...e, attrs: e.attrs.filter((a) => a !== styleAttr) },
+  }
+}
+
+/**
+ * A numeric shape / canvas prop as a Swift `Double` argument. A literal is
+ * passed bare; an expression is wrapped in `Double(…)` because a signal written
+ * only with integers is an `Int` here and the runtime builders take Double.
+ * Absent → `fallback`, or a named warning and `0` for a required prop.
+ */
+function swiftCanvasNumber(
+  e: Extract<ExprIR, { kind: 'jsx-element' }>,
+  prop: string,
+  fallback: number | undefined,
+): string {
+  const a = e.attrs.find(
+    (x): x is Extract<AttrIR, { kind: 'attr' }> => x.kind === 'attr' && x.name === prop,
+  )
+  if (a === undefined) {
+    if (fallback !== undefined) return String(fallback)
+    _emitWarnings.push(`<${e.tag}> is missing its required \`${prop}\` prop — drawn with ${prop}=0 on native.`)
+    return '0'
+  }
+  const v = unwrapAccessorArrow(a.value)
+  if (v.kind === 'literal' && typeof v.value === 'number') return String(v.value)
+  if (v.kind === 'unary' && v.op === '-' && v.argument.kind === 'literal' && typeof v.argument.value === 'number') {
+    return `-${v.argument.value}`
+  }
+  return `Double(${emitSwiftExpr(v, 0)})`
+}
+
+/** A shape colour prop (token / `#hex`, static or a two-literal ternary) → `Color(…)` or undefined. */
+function swiftShapeColor(e: Extract<ExprIR, { kind: 'jsx-element' }>, prop: string): string | undefined {
+  return swiftStylingValue(e, prop, (v) => {
+    const c = shapeColorLiteral(String(v), 'swift')
+    if (c !== null) return c
+    _emitWarnings.push(
+      `<${e.tag} ${prop}="${String(v)}">: not a colour token or #hex literal — drawn with the \`text\` colour on native.`,
+    )
+    return resolveColor('text', 'swift')
+  })
+}
+
+/**
+ * `<Canvas width height>` → `PyreonCanvas(width:height:) { … }`
+ * (@pyreon/native-runtime-swift): a clipped top-leading ZStack, so every child
+ * draws in the canvas's own coordinates. The generic tail carries background,
+ * testid, a11y and transforms.
+ */
+function emitSwiftCanvas(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
+  const head = `PyreonCanvas(width: ${swiftCanvasNumber(e, 'width', undefined)}, height: ${swiftCanvasNumber(e, 'height', undefined)})`
+  const tail = emitSwiftLayoutModifiers(e)
+  if (e.children.length === 0) return `${head} { EmptyView() }${tail}`
+  const pad = ' '.repeat(indent + 2)
+  const contentLines = e.children.map((c) => pad + emitSwiftChild(c, indent + 2)).join('\n')
+  return `${head} {\n${contentLines}\n${' '.repeat(indent)}}${tail}`
+}
+
+/**
+ * A `<Canvas>` shape → `PyreonShape(<path builder>, fill:, stroke:, lineWidth:)`.
+ * With no paint at all a shape is filled with the `text` colour (the web impl
+ * applies the same rule), and `<CanvasLine>` is only ever stroked.
+ */
+function emitSwiftCanvasShape(e: Extract<ExprIR, { kind: 'jsx-element' }>): string {
+  const spec = CANVAS_SHAPES[e.tag]!
+  const args = spec.args.map((arg) => {
+    let value: string
+    if (arg.kind === 'string') {
+      const a = e.attrs.find(
+        (x): x is Extract<AttrIR, { kind: 'attr' }> => x.kind === 'attr' && x.name === arg.prop,
+      )
+      if (a === undefined) {
+        _emitWarnings.push(`<${e.tag}> is missing its required \`${arg.prop}\` prop — nothing is drawn on native.`)
+        value = '""'
+      } else {
+        value = emitSwiftExpr(unwrapAccessorArrow(a.value), 0)
+      }
+    } else {
+      value = swiftCanvasNumber(e, arg.prop, arg.default)
+    }
+    return arg.label === '' ? value : `${arg.label}: ${value}`
+  })
+  const fill = spec.strokeOnly ? undefined : swiftShapeColor(e, 'fill')
+  let stroke = swiftShapeColor(e, 'stroke')
+  if (spec.strokeOnly && stroke === undefined) stroke = resolveColor('text', 'swift')
+  const fillArg = fill ?? (stroke === undefined ? resolveColor('text', 'swift') : 'nil')
+  const width = stroke === undefined ? '0' : swiftCanvasNumber(e, 'strokeWidth', 1)
+  return `PyreonShape(${spec.swift}(${args.join(', ')}), fill: ${fillArg}, stroke: ${stroke ?? 'nil'}, lineWidth: ${width})`
+}
+
+/**
+ * `<CanvasText x y size fill>` → `PyreonCanvasText(x:y:size:color:) { Text(…) }`.
+ * The content is the ordinary `<Text>` emit (interpolation, signal reads); the
+ * runtime positions its TOP-LEFT at (x, y), the same as the web's
+ * `dominant-baseline="hanging"`.
+ */
+function emitSwiftCanvasText(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
+  const text = emitSwiftText({ kind: 'jsx-element', tag: 'Text', attrs: [], children: e.children }, indent + 2)
+  const color = swiftShapeColor(e, 'fill') ?? resolveColor('text', 'swift')
+  const head = `PyreonCanvasText(x: ${swiftCanvasNumber(e, 'x', undefined)}, y: ${swiftCanvasNumber(e, 'y', undefined)}, size: ${swiftCanvasNumber(e, 'size', 14)}, color: ${color})`
+  return `${head} {\n${' '.repeat(indent + 2)}${text}\n${' '.repeat(indent)}}`
 }
 
 function emitSwiftPress(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
@@ -9380,7 +9973,9 @@ function emitSwiftPress(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: num
 
   const pad = ' '.repeat(indent + 2)
   const contentLines = e.children.map((c) => pad + emitSwiftChild(c, indent + 2)).join('\n')
-  const modifiers = emitSwiftLayoutModifiers(e)
+  const pressedStyle = swiftPressedStyle(e)
+  const modifiers = emitSwiftLayoutModifiers(pressedStyle?.rest ?? e)
+  const buttonStyle = pressedStyle?.buttonStyle ?? '.buttonStyle(.plain)'
   // `.buttonStyle(.plain)` strips system chrome; matches the canonical
   // "Press = un-styled clickable wrapper" contract.
   //
@@ -9398,7 +9993,7 @@ function emitSwiftPress(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: num
   // got it right. Uses the existing helper, which already handles the literal,
   // the `disabled={false}` no-op, and a signal-bound expression.
   const disabledMod = swiftDisabledModifier(e)
-  return `Button(action: ${action}) {\n${contentLines}\n${' '.repeat(indent)}}.buttonStyle(.plain)${disabledMod}${modifiers}${longGesture}${swipeGesture}`
+  return `Button(action: ${action}) {\n${contentLines}\n${' '.repeat(indent)}}${buttonStyle}${disabledMod}${modifiers}${longGesture}${swipeGesture}`
 }
 
 /**
@@ -9814,6 +10409,30 @@ function emitSwiftRouterProvider(
     routes = _routerRoutes.get(routerAttr.value.name)
     if (routes !== undefined && routes.length > 0) {
       routesBlock = emitSwiftNavigationDestination(routes, indent + 4)
+    }
+  }
+
+  // #4060 — a TAB-BAR router: the runtime `RouterProvider` adds no stack of
+  // its own (one per tab instead), and the content emits AS WRITTEN — a
+  // `<Tabs router>` inside lowers to `PyreonRouterTabs`, each `<RouterView />`
+  // in a `<Tab>` to that tab's `PyreonTabStack`.
+  const tabsCfg =
+    routerAttr.value.kind === 'identifier' ? _routerTabs.get(routerAttr.value.name) : undefined
+  if (tabsCfg !== undefined && routes !== undefined && routes.length > 0) {
+    const prevTabs = _activeRouterTabsSwift
+    _activeRouterTabsSwift = {
+      routerName: (routerAttr.value as Extract<ExprIR, { kind: 'identifier' }>).name,
+      routerExpr,
+      routes,
+      tabs: tabsCfg,
+      tab: null,
+    }
+    try {
+      if (e.children.length === 0) return `RouterProvider(router: ${routerExpr}) { }`
+      const contentLines = e.children.map((c) => pad + emitSwiftChild(c, indent + 2)).join('\n')
+      return `RouterProvider(router: ${routerExpr}) {\n${contentLines}\n${' '.repeat(indent)}}`
+    } finally {
+      _activeRouterTabsSwift = prevTabs
     }
   }
 
@@ -10261,6 +10880,9 @@ function emitSwiftRouterView(
   if (_emittingLayoutComponentSwift) {
     return `content()`
   }
+  // #4060 — inside a tab-bar router: a `<RouterView />` in a `<Tab>` is that
+  // tab's own navigation stack, opening on the route at the tab's root.
+  if (_activeRouterTabsSwift !== null) return emitSwiftTabStack(_activeRouterTabsSwift, _indent)
   // The routed slot of a RouterProvider whose RouterView has siblings: the
   // navigation stack itself, emitted here so the siblings stay outside it.
   if (_activeRouterSlotSwift !== null) {

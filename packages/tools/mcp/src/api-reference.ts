@@ -1355,11 +1355,26 @@ const base = signal(1.0)
 >
   <Stack scale={zoom()}><Text>Floor plan</Text></Stack>
 </Gesture>`,
-    notes: 'A region that recognises CONTINUOUS gestures and reports their values. Every value is CUMULATIVE since the gesture began; each gesture delivers one `start`, any number of `change`, then one `end` (also on cancel). Pan, pinch and rotate run SIMULTANEOUSLY, and nothing is reported until the pointer passes the touch slop (10px/pt, the platform slop on Android), so a `<Press>` inside still gets its taps. Web: pointer events on a `touch-action: none` div (capture taken only once claimed); iOS: `PyreonGesture` (simultaneous `DragGesture`/`MagnifyGesture`/`RotateGesture`); Android: `PyreonGesture` (one `pointerInput` loop over `calculatePan`/`calculateZoom`/`calculateRotation`). Drive content with the transform props (`translateX`/`translateY`/`scale`/`rotate`), which every primitive accepts and which update in place. Known divergence: a two-finger pan follows the centroid on web/Android and the first finger on iOS. See also: Press, Stack.',
+    notes: 'A region that recognises CONTINUOUS gestures and reports their values. Every value is CUMULATIVE since the gesture began; each gesture delivers one `start`, any number of `change`, then one `end` (also on cancel). Pan, pinch and rotate run SIMULTANEOUSLY, and nothing is reported until the pointer passes the touch slop (10px/pt, the platform slop on Android), so a `<Press>` inside still gets its taps. Web: pointer events on a `touch-action: none` div (capture taken only once claimed); iOS: `PyreonGesture` (simultaneous `DragGesture`/`MagnifyGesture`/`RotateGesture`); Android: `PyreonGesture` (one `pointerInput` loop over `calculatePan`/`calculateZoom`/`calculateRotation`). Drive content with the transform props (`translateX`/`translateY`/`scale`/`rotate`), which every primitive accepts and which update in place. Known divergence: a two-finger pan follows the centroid on web/Android and the first finger on iOS. See also: Press, Stack, Canvas.',
     mistakes: `- Putting \`scale\`/\`translateX\` on the \`<Gesture>\` ITSELF — the values are measured in its own coordinate space and feed back into themselves; transform a CHILD (the compiler warns)
 - Treating \`e.scale\` / \`e.dx\` as a per-frame DELTA — they are cumulative since the gesture began; multiply/add your committed base, and commit it on \`phase === "end"\`
 - Using \`<Press onSwipeLeft>\` for free dragging — swipe is a discrete end-of-gesture verdict; \`<Gesture onPan>\` reports the live translation
 - Expecting pinch/rotate from one pointer — they begin only once two pointers are down`,
+  },
+
+  'primitives/Canvas': {
+    signature: '(props: { width: number; height: number; background?: ColorToken; children }) => VNode — children: CanvasRect { x, y, width, height, radius? } · CanvasCircle { cx, cy, r } · CanvasLine { x1, y1, x2, y2 } · CanvasPath { d } · CanvasText { x, y, size? }, each with fill?/stroke?/strokeWidth? (token or #hex)',
+    example: `<Canvas width={200} height={120} background="surface">
+  <CanvasRect x={10} y={10} width={80} height={50} radius={6} fill="primary" />
+  <CanvasCircle cx={150} cy={40} r={20} fill="#16a34a" stroke="text" strokeWidth={2} />
+  <CanvasPath d="M10 100 L190 100" stroke="text" strokeWidth={2} />
+  <CanvasText x={110} y={80} size={14}>Hall A</CanvasText>
+</Canvas>`,
+    notes: 'A fixed-size, clipped vector drawing surface. Children are the shape primitives, drawn in source order (later on top) in the canvas coordinates: (0,0) top-left, y down, px/pt/dp. Shapes are ordinary JSX children, so `<For>`, `<Show>` and signal-driven props (`d={trail()}`, `width={w()}`) work inside. Paint: `fill`/`stroke` take a colour token or a `#hex` literal; with neither, a shape is filled with `text`; `<CanvasLine>` is stroke-only (default `text`, width 1). `<CanvasPath d>` takes full SVG path data (M L H V C S Q T A Z, absolute + relative). `<CanvasText>` places the TOP-LEFT of its text at (x, y) on every target. Web: one absolutely positioned `<svg>` layer per shape; iOS: `PyreonCanvas { PyreonShape(PyreonCanvasPath.rect(…)) }` (a runtime SVG parser for `d`); Android: `PyreonCanvas { PyreonShape(PyreonShapeSpec.Rect(…)) }` (androidx `PathParser` for `d`). Pair with `<Gesture>` + transform props for a pannable / zoomable plan. See also: Gesture, Image.',
+    mistakes: `- Using a shape outside a \`<Canvas>\` — shapes draw in the canvas coordinate space and fill its frame on native
+- Passing a CSS colour name (\`fill="tomato"\`) — only colour tokens and \`#hex\` literals resolve on native (the compiler warns)
+- Expecting \`<CanvasText y>\` to be the BASELINE — it is the top-left of the text on every target
+- Reaching for lowercase \`<svg>\`/\`<path>\` for cross-platform drawing — those are DOM elements; the Canvas shapes are the multiplatform vocabulary`,
   },
 
   'primitives/Link': {
@@ -1406,6 +1421,34 @@ const base = signal(1.0)
     example: '<Modal open={showSheet()} onClose={() => showSheet.set(false)}><Stack>{/* sheet body */}</Stack></Modal>',
     notes: 'Modal/sheet. Web → native `<dialog>` opened with `showModal()` (focus trap, backdrop, top layer); Escape and backdrop clicks call `onClose` instead of closing the dialog themselves, so `open` stays the source of truth. iOS `.sheet(isPresented:)`; Android `Dialog(onDismissRequest)`. Drive `open` with a signal; `onClose` fires on dismiss. See also: Layer.',
     mistakes: '- Forgetting `onClose` — needed so the platform dismiss gesture updates your signal',
+  },
+
+  'primitives/Tabs': {
+    signature: '(props: { value: string | (() => string); onChange: (next: string) => void; children: <Tab> elements } | { router: TabsRouter; children: <Tab> elements }) => VNode',
+    example: `const tab = signal('feed')
+<Tabs value={tab} onChange={(v) => tab.set(v)}>
+  <Tab value="feed" label="Feed" icon="home"><FeedScreen /></Tab>
+  <Tab value="me" label="Me" icon="person"><ProfileScreen /></Tab>
+</Tabs>`,
+    notes: `Top-level tab navigation; children are literal \`<Tab value label icon?>\` entries whose children are the tab content. Web: the WAI-ARIA tabs pattern (tablist / tab / tabpanel, roving tabindex, arrow keys + Home/End) as a bottom bar below 600px of viewport width and a side rail at 600px+. iOS: \`TabView(selection:)\` (iOS 18+ \`.sidebarAdaptable\`, a sidebar on iPad). Android: Material \`BottomNavigation\` below 600dp of window width, \`NavigationRail\` at 600dp+ (the \`useSizeClass()\` breakpoint). A visited tab stays MOUNTED while hidden on every target, so its local state, typed text and scroll position survive switching away and back. Router-agnostic: the selection is your signal; a string-literal-union signal lowers to the native enum. OR router-bound: \`<Tabs router={router}>\` with a \`createRouter({ tabs })\` router gives every tab its own back stack — the selection is \`router.activeTab()\`, a tap goes through \`router.selectTab\` (re-tapping the active tab pops it to its root), and a \`<RouterView />\` in each \`<Tab>\` shows THAT tab's stack. iOS: one \`NavigationStack\` per tab inside the \`TabView\` (a push stays inside its tab, the bar stays visible); Android: per-tab stacks, the system Back pops the active tab first. See also: Split, Link.`,
+    mistakes: `- Generating the \`<Tab>\`s with \`<For>\` or a helper — native targets build the tab bar at compile time, so each \`<Tab>\` must be written out (anything else is dropped with a warning)
+- A computed \`<Tab value>\` / \`label\` icon — \`value\` and \`icon\` must be string literals (the \`value\` is the native \`case\` / \`when\` branch)
+- Expecting \`data-testid\` on a \`<Tab>\` to identify the iOS tab bar button — SwiftUI gives tab bar items no identifier; query them by label (it lands on the web button and the Android bar item)
+- Using a SIGNAL-bound \`<Tabs>\` around routed screens and expecting each tab to keep its own route stack — the router has ONE stack, so on iOS/Android a push from inside a tab covers the TabView. Configure \`createRouter({ tabs })\` and bind \`<Tabs router={router}>\` instead
+- A \`<Tabs router>\` \`<Tab value>\` that names no tab of \`createRouter({ tabs })\` — it has no stack, so native drops it with a warning
+- Passing both \`router\` and \`value\`/\`onChange\` — \`router\` wins; the selection is the router's active tab`,
+  },
+
+  'primitives/Split': {
+    signature: '(props: { sidebar: VNodeChild; showDetail: boolean | (() => boolean); onBack: () => void; backLabel?: string; children }) => VNode',
+    example: `const picked = signal<string | null>(null)
+<Split sidebar={<MessageList onPick={(id) => picked.set(id)} />} showDetail={picked() !== null} onBack={() => picked.set(null)}>
+  <MessageView id={picked()} />
+</Split>`,
+    notes: `Adaptive list/detail layout: \`sidebar\` is the list, the children are the detail. At 600px/dp of window width and wider both panes show side by side; below it ONE pane shows — the sidebar, or the detail while \`showDetail\` — and going back calls \`onBack\` (web back button, iOS navigation back button / swipe-back, Android system back via BackHandler). iOS uses \`NavigationSplitView\` in a regular-width window and pushes the detail on a compact one, reusing the router's NavigationStack when inside one (never nesting a second). Both panes stay mounted on web/Android, so the list keeps its state across a detail visit. See also: Tabs.`,
+    mistakes: `- Omitting \`onBack\` — the platform back gesture cannot clear your selection (Android then falls through to the activity and closes the app)
+- Leaving the detail empty when nothing is selected — a wide window always shows BOTH panes, so render a placeholder
+- Passing a non-JSX \`sidebar\` (a variable holding a view) — only a JSX literal or an accessor returning one lowers natively`,
   },
 
   'primitives/Transition': {
@@ -1818,11 +1861,13 @@ return json({ data: result.data }) // keyed by matched-chain index`,
     { path: "settings", component: Settings },
   ]},
 ])`,
-    notes: 'Create a router instance with route records, guards, middleware, and mode configuration. Accepts either an array of route records (shorthand) or a full `RouterOptions` object with `routes`, `mode` (`"history"` | `"hash"`), `scrollBehavior`, and global `beforeEach` / `afterEach` guard arrays (which run before any added later with `router.beforeEach()` / `router.afterEach()`, and are the form the native targets lower). Middleware is per-route (`RouteRecord.middleware`), not a router option. The returned `Router` is generic over route names for typed programmatic navigation. See also: RouterProvider, useRouter, useRoute.',
+    notes: `Create a router instance with route records, guards, middleware, and mode configuration. Accepts either an array of route records (shorthand) or a full \`RouterOptions\` object with \`routes\`, \`mode\` (\`"history"\` | \`"hash"\`), \`scrollBehavior\`, and global \`beforeEach\` / \`afterEach\` guard arrays (which run before any added later with \`router.beforeEach()\` / \`router.afterEach()\`, and are the form the native targets lower). Middleware is per-route (\`RouteRecord.middleware\`), not a router option. The returned \`Router\` is generic over route names for typed programmatic navigation. \`tabs: [{ name, root }]\` gives a tab-bar app one back stack per tab: \`push\` acts on the ACTIVE tab (a path under another tab's root selects that tab and pushes there; a tab root pops it to the root), \`selectTab(name)\` switches and keeps every stack (re-selecting the active tab pops to root), and \`<Tabs router={router}>\` from \`@pyreon/primitives\` binds the tab bar. Web: the URL is the active tab's top entry and every history entry is stamped with its tab + stack, so Back/Forward restore both through the full pipeline. iOS: a \`NavigationStack\` per tab inside the \`TabView\`; Android: per-tab stacks with the system Back popping the active tab first. See also: RouterProvider, useRouter, useRoute.`,
     mistakes: `- \`createRouter({ routes: [...], mode: "hash" })\` and using \`window.location.hash\` elsewhere — hash mode uses \`history.pushState\`, not \`location.hash\`. Reading \`location.hash\` directly will not reflect router state
 - Defining route paths without leading \`/\` in root routes — all root-level paths must start with \`/\`
 - Using \`redirect: "/target"\` with a guard on the same route — redirects bypass guards. Use \`beforeEnter\` to conditionally redirect instead
-- Forgetting the catch-all route — \`{ path: "(.*)", component: NotFound }\` should be the last route to handle 404s`,
+- Forgetting the catch-all route — \`{ path: "(.*)", component: NotFound }\` should be the last route to handle 404s
+- With \`tabs\`, putting a plain \`<RouterView />\` OUTSIDE the \`<Tabs router>\` and expecting it to keep a hidden tab's page — only a \`<RouterView />\` inside a \`<Tab>\` reads that tab's stack; one outside follows the URL (the active tab) and remounts on every tab switch
+- With \`tabs\`, omitting a top-level literal route at a tab's \`root\` — the root is the screen that tab's stack opens on, so native renders a "no route" placeholder (with a compiler warning)`,
   },
 
   'router/RouterProvider': {

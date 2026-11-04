@@ -1,6 +1,6 @@
 ---
 title: '@pyreon/primitives'
-description: 'The canonical multi-platform UI vocabulary — 19 primitives plus Transition, TransitionGroup, WebView and per-platform escape hatches, each compiled to DOM, SwiftUI and Compose from one source.'
+description: 'The canonical multi-platform UI vocabulary — 21 primitives plus Transition, TransitionGroup, WebView and per-platform escape hatches, each compiled to DOM, SwiftUI and Compose from one source.'
 ---
 
 # @pyreon/primitives
@@ -24,12 +24,14 @@ bun add @pyreon/primitives @pyreon/core @pyreon/reactivity @pyreon/runtime-dom
 | **Layout** | [`Stack`](#stack), [`Inline`](#inline), [`Layer`](#layer), [`Scroll`](#scroll), [`Spacer`](#spacer) | dedicated emitters |
 | **Content** | [`Text`](#text), [`Heading`](#heading), [`Image`](#image), [`Audio`](#audio), [`Video`](#video), [`Icon`](#icon) | dedicated emitters |
 | **Interaction** | [`Button`](#button), [`Press`](#press), [`Link`](#link), [`Gesture`](#gesture) | dedicated emitters |
-| **Input** | [`Field`](#field), [`Toggle`](#toggle), [`Select`](#select), [`Modal`](#modal) | dedicated emitters |
+| **Drawing** | [`Canvas`](#canvas) (+ `CanvasRect`, `CanvasCircle`, `CanvasLine`, `CanvasPath`, `CanvasText`) | dedicated emitters |
+| **Input** | [`Field`](#field), [`Toggle`](#toggle), [`Modal`](#modal) | dedicated emitters |
+| **Navigation** | [`Tabs` / `Tab`](#tabs), [`Split`](#split) | dedicated emitters + router runtime |
 | **Animation** | [`Transition`](#transition), [`TransitionGroup`](#transitiongroup) | dedicated emitters |
 | **Web content** | [`WebView`](#webview) | native web host |
 | **Escape hatches** | [`Web`, `NativeIOS`, `NativeAndroid`](#escape-hatches) | per-target branch |
 
-The first four groups are the **19 canonical primitives**, the UI vocabulary
+The first six groups are the **22 canonical primitives** (`Tab` is `Tabs`' entry and the canvas shapes are children of `Canvas` — neither is a member), the UI vocabulary
 the compiler treats as its own. The compiler's list lives in
 `packages/native/compiler/src/canonical-primitives.ts` (`CANONICAL_PRIMITIVES`),
 and a test checks that it matches what this package exports. The animation
@@ -616,6 +618,63 @@ During a two-finger gesture the pan follows the centre point of the fingers on
 web and Android, and the first finger on iOS, because SwiftUI's `DragGesture`
 tracks a single touch.
 
+### Canvas
+
+A fixed-size vector drawing surface. Its children are the shape primitives,
+drawn in source order (later ones on top) in the canvas's own coordinates:
+`(0, 0)` is the top-left corner, y points down, and units are px on the web,
+pt on iOS and dp on Android. Anything outside the canvas is clipped.
+
+| Shape | Props |
+| --- | --- |
+| `CanvasRect` | `x`, `y`, `width`, `height`, `radius?` |
+| `CanvasCircle` | `cx`, `cy`, `r` |
+| `CanvasLine` | `x1`, `y1`, `x2`, `y2` (stroke only) |
+| `CanvasPath` | `d`: SVG path data, every command (M L H V C S Q T A Z, absolute and relative) |
+| `CanvasText` | `x`, `y` (the top-left of the text), `size?` (default 14), text as children |
+
+Every shape takes `fill`, `stroke` and `strokeWidth` (`CanvasLine` and
+`CanvasText` take only the ones that apply). A colour is a theme token or a
+`#hex` literal. A shape with neither `fill` nor `stroke` is filled with the
+`text` colour, and a stroke defaults to a width of 1.
+
+```tsx
+// @check
+import { Canvas, CanvasCircle, CanvasPath, CanvasRect, CanvasText } from '@pyreon/primitives'
+import { For } from '@pyreon/core'
+import { signal } from '@pyreon/reactivity'
+
+export function SeatMap() {
+  const taken = signal([{ id: 1, x: 40 }, { id: 2, x: 80 }])
+  return (
+    <Canvas width={240} height={140} background="surface">
+      <CanvasRect x={10} y={10} width={220} height={30} radius={6} fill="muted" />
+      <CanvasText x={90} y={18} size={12}>Stage</CanvasText>
+      <For each={taken()} by={(s) => s.id}>
+        {(s) => <CanvasCircle cx={s.x} cy={90} r={10} fill="danger" />}
+      </For>
+      <CanvasPath d="M10 130 L230 130" stroke="text" strokeWidth={2} />
+    </Canvas>
+  )
+}
+```
+
+Shapes are ordinary JSX children, so `For`, `Show` and signal-driven props such
+as `d={trail()}` work inside a canvas. To make a drawing pannable and zoomable,
+put the canvas inside a [`Gesture`](#gesture) and drive its transform props.
+
+- **Web**: a `position: relative` box; each shape is its own absolutely
+  positioned `<svg>` layer (so shapes can sit next to `For` and `Show`).
+- **iOS**: `PyreonCanvas { … }`, a clipped top-leading `ZStack` of SwiftUI
+  `Path`s. `CanvasPath` data is parsed by the runtime, arcs included.
+- **Android**: `PyreonCanvas { … }`, a clipped `Box` of Compose `Canvas` draw
+  layers. `CanvasPath` data goes through androidx's `PathParser`.
+
+Text inside a canvas is `CanvasText`. A plain `Text` would be laid out rather
+than placed at coordinates. For a static vector asset, a `CanvasPath` with the
+asset's path data is the multiplatform option; `Image` does not render SVG
+files on native.
+
 ### Link
 
 Navigation to another route.
@@ -821,6 +880,142 @@ export function ConfirmDelete() {
 - **iOS**: a `.sheet(isPresented:)` attached to an invisible anchor view.
   Swiping the sheet down calls `onClose`.
 - **Android**: `if (open) { Dialog(onDismissRequest = onClose) { … } }`.
+
+## Navigation
+
+App-structure primitives: a tab bar and a list/detail split. Both are
+router-agnostic, like `<Link>` — the selected tab and the visible pane are
+signals you own, so a tab can hold any screen. A `<Tabs>` can also be bound to
+a router with per-tab back stacks (`<Tabs router={router}>`, below).
+
+### Tabs
+
+Top-level tab navigation. The children are `<Tab>` entries, each holding that
+tab's content.
+
+| Prop | Type |
+| --- | --- |
+| `value` | `string` (or a signal) — required unless `router` is passed |
+| `onChange` | `(next: string) => void` — required unless `router` is passed |
+| `router` | a router created with `createRouter({ tabs })` — selection follows the router (see below) |
+
+| `<Tab>` prop | Type |
+| --- | --- |
+| `value` | `string` literal (required) |
+| `label` | `string` (required) |
+| `icon` | a canonical [`Icon`](#icon) name |
+| `data-testid` | identifies the bar item (web button, Android item) |
+
+```tsx
+// @check
+import { Stack, Tabs, Tab, Text } from '@pyreon/primitives'
+import { signal } from '@pyreon/reactivity'
+
+export function AppShell() {
+  const tab = signal('feed')
+  return (
+    <Tabs value={tab} onChange={(v) => tab.set(v)}>
+      <Tab value="feed" label="Feed" icon="home">
+        <Stack padding={4}><Text>Your feed</Text></Stack>
+      </Tab>
+      <Tab value="me" label="Me" icon="person">
+        <Stack padding={4}><Text>Your profile</Text></Stack>
+      </Tab>
+    </Tabs>
+  )
+}
+```
+
+A tab mounts the first time it is selected and then **stays mounted** while
+another tab is shown, so its local state, typed text and scroll position
+survive switching away and back — on every target.
+
+- **Web**: the WAI-ARIA tabs pattern (`tablist`, `tab` with `aria-selected`
+  and a roving `tabindex`, `tabpanel`; arrow keys, Home and End select). A
+  bottom bar below 600px of viewport width, a side rail at 600px and wider.
+- **iOS**: `TabView(selection:)`. On iOS 18+ it uses the `Tab` API with
+  `.sidebarAdaptable`, so iPad can turn the bar into a sidebar. Tab bar buttons
+  carry no identifier in SwiftUI; select them by label in UI tests.
+- **Android**: Material `BottomNavigation` below 600dp of window width,
+  `NavigationRail` at 600dp and wider — the same breakpoint as `useSizeClass()`.
+
+The native tab bar is built at compile time, so write each `<Tab>` out with a
+literal `value` (no `<For>`); anything else is dropped with a warning. A signal
+typed by a string-literal union (`signal<'feed' | 'me'>('feed')`) works too: it
+becomes a native enum.
+
+#### Tabs with their own back stacks
+
+With a signal-bound `<Tabs>`, a route pushed from inside a tab uses the
+router's single stack, so on iOS and Android it covers the tab bar. For a
+tab-bar app where every tab keeps its own stack, configure `tabs` on the router
+and pass it to `<Tabs router>`, with a `<RouterView />` in each `<Tab>`:
+
+```tsx
+<RouterProvider router={router}>
+  <Tabs router={router}>
+    <Tab value="feed" label="Feed" icon="home"><RouterView /></Tab>
+    <Tab value="me" label="Me" icon="person"><RouterView /></Tab>
+  </Tabs>
+</RouterProvider>
+```
+
+Each `<Tab value>` names one of the router's `tabs`. A push from inside a tab
+stays in that tab (the tab bar stays visible), switching tabs keeps every stack,
+and tapping the active tab pops it to its root. On iOS each tab is its own
+`NavigationStack` inside the `TabView`; on Android the system Back pops the
+active tab first. See [Tab stacks](/docs/router#tab-stacks) for how navigation
+and browser history map onto the stacks.
+
+### Split
+
+A list/detail layout. `sidebar` is the list; the children are the detail.
+
+| Prop | Type |
+| --- | --- |
+| `sidebar` | JSX (required) |
+| `showDetail` | `boolean` (or a signal read) (required) |
+| `onBack` | `() => void` (required) |
+| `backLabel` | `string` — web only, the narrow-window back button text (default `Back`) |
+
+```tsx
+// @check
+import { Button, Split, Stack, Text } from '@pyreon/primitives'
+import { signal } from '@pyreon/reactivity'
+
+export function Inbox() {
+  const picked = signal('')
+  return (
+    <Split
+      sidebar={
+        <Stack gap={2} padding={4}>
+          <Button onPress={() => picked.set('Welcome')}>Welcome</Button>
+          <Button onPress={() => picked.set('Invoice')}>Invoice</Button>
+        </Stack>
+      }
+      showDetail={picked() !== ''}
+      onBack={() => picked.set('')}
+    >
+      <Stack padding={4}><Text>{picked() === '' ? 'Pick a message' : picked()}</Text></Stack>
+    </Split>
+  )
+}
+```
+
+At 600px/dp of window width and wider both panes show side by side, so render
+a placeholder detail for "nothing selected". Below it exactly one pane shows:
+the sidebar, or the detail while `showDetail` is true. Going back calls
+`onBack` — the web back button, the iOS navigation back button or swipe-back,
+the Android system back gesture.
+
+- **Web**: two columns at 600px+; one pane below, with a back button that
+  takes focus when the detail opens.
+- **iOS**: `NavigationSplitView` in a regular-width window; in a compact one
+  the detail is pushed onto a navigation stack. Inside a `RouterProvider` it
+  reuses the router's stack (SwiftUI does not support nested stacks) and lays
+  wide windows out as two plain panes.
+- **Android**: two panes at 600dp+; one pane below, with `BackHandler`
+  calling `onBack`.
 
 ## Animation
 

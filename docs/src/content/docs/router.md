@@ -96,6 +96,7 @@ interface RouterOptions {
   onError?: (err: unknown, route: ResolvedRoute) => undefined | false
   maxCacheSize?: number
   links?: LinkConfig
+  tabs?: RouterTab[]
 }
 ```
 
@@ -111,6 +112,7 @@ interface RouterOptions {
 | `onError`        | `(err, route) => undefined \| false`               | -         | Global loader error handler. Return `false` to cancel navigation.                                                                                  |
 | `maxCacheSize`   | `number`                                           | `100`     | Max number of resolved lazy components to cache (LRU eviction)                                                                                     |
 | `links`          | `LinkConfig`                                       | -         | `<RouterLink>` external-link behaviour — `sameOriginAbsolute` (`'internal'` \| `'external'`), `externalNewTab`, `externalRel`. See [External links](#external-links). |
+| `tabs`           | `{ name: string; root: string }[]`                 | -         | One back stack per tab for a tab-bar app. See [Tab stacks](#tab-stacks). |
 
 **Hash mode vs history mode:**
 
@@ -167,6 +169,66 @@ const router = createRouter({
   },
 })
 ```
+
+### Tab stacks
+
+A tab-bar app wants every tab to keep its own stack of screens: push a post in the Feed tab, switch to Me, come back, and Feed is still on the post. Configure the tabs on the router and bind a `<Tabs>` from `@pyreon/primitives` to it:
+
+```tsx
+import { Tab, Tabs } from '@pyreon/primitives'
+import { createRouter, RouterProvider, RouterView } from '@pyreon/router'
+
+const router = createRouter({
+  mode: 'history',
+  routes: [
+    { path: '/feed', component: FeedHome },
+    { path: '/feed/post/:id', component: Post },
+    { path: '/me', component: MeHome },
+    { path: '/me/settings', component: Settings },
+  ],
+  tabs: [
+    { name: 'feed', root: '/feed' },
+    { name: 'me', root: '/me' },
+  ],
+})
+
+export function App() {
+  return (
+    <RouterProvider router={router}>
+      <Tabs router={router}>
+        <Tab value="feed" label="Feed" icon="home">
+          <RouterView />
+        </Tab>
+        <Tab value="me" label="Me" icon="person">
+          <RouterView />
+        </Tab>
+      </Tabs>
+    </RouterProvider>
+  )
+}
+```
+
+How navigation maps onto the stacks:
+
+| Navigation                                   | Effect                                                                                  |
+| -------------------------------------------- | --------------------------------------------------------------------------------------- |
+| `push(path)` under no tab root, or under the active tab's root | Pushes onto the ACTIVE tab's stack (a shared `/users/:id` page opens in whichever tab you are in). |
+| `push(path)` under another tab's root        | Selects that tab and pushes onto its stack. The longest matching root wins, so a `'/'` root is the fallback. |
+| `push(root)` — exactly a tab's root          | Selects that tab and pops it to its root.                                               |
+| `replace(path)`                              | Replaces the active tab's top entry. The root entry is never replaced; on a root-only stack it pushes. |
+| `selectTab(name)` / tapping a tab            | Switches tabs. Every stack is kept; the URL becomes the selected tab's top entry.       |
+| Re-selecting the active tab                  | Pops it to its root (the iOS and Android tab-bar convention).                           |
+| A deep link / initial URL                    | Selects the tab whose root prefixes it and pushes it onto that root, so Back returns to the tab's root page. A URL under no root opens in the first tab. |
+
+`<RouterView />` inside a `<Tab>` shows **that tab's** top entry, not the URL's, and `useRoute()` / `useParams()` inside it read that tab's route. A hidden tab's page stays mounted with its own params and loader data while another tab navigates.
+
+**Web.** The URL is always the active tab's top entry. Every history entry the router writes carries `history.state.__pyreonTab` and `__pyreonTabStack`, so browser Back and Forward restore the tab and the stack that entry recorded. Traversals run the full navigation pipeline (guards, blockers, loaders), exactly like any other Back. A tab switch and a pop-to-root are navigations, so each adds a history entry, and Back undoes them. A reload restores the stack stamped on the current entry. `selectTab` and `tabStack(name)` are on the router; `activeTab()` is reactive.
+
+**iOS.** `RouterProvider` adds no stack of its own. Each tab is a `NavigationStack` inside the `TabView`, so a push from inside a tab stays inside it and the tab bar stays visible. The back button and swipe-back pop the active tab's stack.
+
+**Android.** Each tab keeps its own back stack. The system Back pops the active tab's stack first; at another tab's root it returns to the first tab; at the first tab's root it leaves the app.
+
+**Native requirements.** `tabs` must be an array literal of `{ name, root }` with string-literal values. Each `<Tab value>` must name a configured tab, and each tab needs a top-level literal route at its `root` (the stack's root screen). Shapes outside that are named in a compiler warning.
 
 ## Route Records
 
@@ -1911,6 +1973,15 @@ interface Router {
 
   /** Navigate by delta steps in history */
   go(delta: number): void
+
+  /** The active tab (reactive), `undefined` without `tabs` */
+  readonly activeTab: () => string | undefined
+  /** Select a tab; re-selecting the active one pops it to its root */
+  selectTab(name: string): Promise<NavigationResult>
+  /** A tab's stack, root first (reactive) */
+  tabStack(name: string): readonly string[]
+  /** Render a tab panel so views inside read that tab's stack (used by `<Tabs router>`) */
+  withTab(name: string, render: () => VNodeChild): VNodeChild
 
   /** Register a global before-navigation guard. Returns an unregister function. */
   beforeEach(guard: NavigationGuard): () => void

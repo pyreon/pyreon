@@ -5,6 +5,17 @@
 // `derivedStateOf { ... }`, JSX elements to Composable function calls.
 
 import { GESTURE_EVENT_NAMES, GESTURE_EVENTS } from './gesture-events'
+import {
+  computeThrowingFunctions,
+  containsAwait,
+  ERROR_MESSAGE_FN,
+  ERROR_STRING_FN,
+  exprCallsThrowing,
+  KOTLIN_THROWN_PREAMBLE,
+  statementsThrowUncaught,
+  uncaughtThrowWarning,
+} from './throw-lowering'
+import { CANVAS_SHAPES, isCanvasShape, shapeColorLiteral } from './canvas-shapes'
 import type { GestureEventName } from './gesture-events'
 import { classifyFallback, unconsumedSlotWarning } from './jsx-slot-attrs'
 import { lowerWebViewDomStorage } from './webview-options'
@@ -70,6 +81,8 @@ import {
   resolveRadius,
   resolveSpace,
 } from './canonical-primitives'
+import { missingTabRootWarning, planRouterTabs, planSplitSidebar, planTabs, tabRootRoute } from './navigation-lowering'
+import type { RouterTabIR } from './navigation-lowering'
 import { intrinsicElementWarning, isIntrinsicElementTag } from './intrinsic-element-warning'
 import {
   buildComponentConstMap,
@@ -142,7 +155,9 @@ import {
 import {
   extractTextTypography,
   kotlinTextTypographyArgs,
+  PRESSED_STATE_IDENT,
   styleToNativeModifiers,
+  styleUsesPressedState,
 } from './style-to-native'
 import {
   type FlatRouteEntry,
@@ -615,6 +630,20 @@ let _zeroArgHelperNames: Set<string> = new Set()
  * in source) — both fall back to the existing bare-content emit.
  */
 let _routerRoutes: Map<string, import('./types').RouteIR[]> = new Map()
+/** #4060: router-decl name → its `tabs` (per-tab back stacks). Mirrors emit-swift. */
+let _routerTabs: Map<string, RouterTabIR[]> = new Map()
+/**
+ * #4060: set while emitting the content of a `<RouterProvider>` whose router
+ * has `tabs`; `tab` is the `<Tab>` being emitted, so its `<RouterView />`
+ * becomes that tab's `PyreonTabStack` + route dispatch. Mirrors emit-swift.
+ */
+let _activeRouterTabsKotlin: {
+  routerName: string
+  routerExpr: string
+  routes: import('./types').RouteIR[]
+  tabs: RouterTabIR[]
+  tab: RouterTabIR | null
+} | null = null
 
 /**
  * Phase 3 (nested routes) — names of components used as LAYOUT parents. A
@@ -670,6 +699,21 @@ let _emitWarnings: string[] = []
 // the declaration without an "invalid redeclaration" the moment they're
 // compiled together.
 let _needsKotlinNumString = false
+/** The file's helpers that can let an error escape (see throw-lowering.ts). */
+let _kotlinThrowingFns: ReadonlySet<string> = new Set()
+/** Whether the statement being emitted may throw without terminating the app — the Swift twin's `_swiftThrowCtx`. */
+let _kotlinThrowCtx: 'none' | 'throws' | 'do' = 'none'
+let _needsKotlinThrown = false
+
+function withKotlinThrowCtx<T>(ctx: 'none' | 'throws' | 'do', fn: () => T): T {
+  const prev = _kotlinThrowCtx
+  _kotlinThrowCtx = ctx
+  try {
+    return fn()
+  } finally {
+    _kotlinThrowCtx = prev
+  }
+}
 const KOTLIN_NUM_STRING = `private fun pyreonNumString(v: Double): String =
     if (v == Math.rint(v) && Math.abs(v) < 1e15) v.toLong().toString() else v.toString()`
 /**
@@ -749,6 +793,15 @@ export function emitKotlin(
   // that is relying on an accident.
   _serviceBindingsKotlin = new Map()
   _aliasImports = aliasImports
+  // Kotlin exceptions are unchecked, so no signature changes — the set only names the calls that can fail where
+  // nothing catches them (the warning the Swift twin also gives). See throw-lowering.ts.
+  _kotlinThrowingFns = computeThrowingFunctions(
+    [...helperFns, ...components.flatMap((c) => c.decls)].filter(
+      (d): d is Extract<DeclIR, { kind: 'function' }> => d.kind === 'function' && d.async !== true,
+    ),
+  )
+  _kotlinThrowCtx = 'none'
+  _needsKotlinThrown = false
   // File-scope pure-logic helper names — seeded into every component's
   // per-component `_functionNames` reset so a `dbl(21)` call resolves as a
   // free-function call in ANY component.
@@ -953,6 +1006,7 @@ export function emitKotlin(
     componentParts.push(emitKotlinComponent(c))
   // consulted AFTER helper + component emission — the flag is set during it
   if (_needsKotlinNumString) parts.push(KOTLIN_NUM_STRING)
+  if (_needsKotlinThrown) parts.push(KOTLIN_THROWN_PREAMBLE)
   // Emit synthesized anonymous-object data classes (collected during
   // component emit) at module scope — Kotlin allows top-level forward refs.
   for (const s of _synthExprStructs) parts.push(emitKotlinStruct(s))
@@ -1219,6 +1273,7 @@ function emitKotlinComponent(c: ComponentIR): string {
   _needsAndroidContext = false
   // C5.3: reset router-routes map (mirrors Swift emit's same state).
   _routerRoutes = new Map()
+  _routerTabs = new Map()
   // Phase 2 follow-up — track function-typed props so handler emit
   // calls them inside closures. Mirrors emit-swift.ts.
   for (const p of c.props) {
@@ -1253,6 +1308,7 @@ function emitKotlinComponent(c: ComponentIR): string {
     if (d.kind === 'router') {
       _signalNames.add(d.name)
       if (d.routes !== undefined) _routerRoutes.set(d.name, d.routes)
+      if (d.tabs !== undefined) _routerTabs.set(d.name, d.tabs)
     }
     // C4: `const navigate = useNavigate()` returns a `(String) -> Unit`
     // closure — register under `_functionNames` so call sites
@@ -1391,7 +1447,7 @@ function emitKotlinComponent(c: ComponentIR): string {
   for (const d of c.decls) {
     if (d.kind !== 'on-mount') continue
     const saved = seedHandlerLocals(d.body, _kotlinExprInferCtx)
-    const bodyLines = d.body.map((st) => `    ${emitKotlinStatement(st, 4, ctx)}`).join('\n')
+    const bodyLines = emitKotlinStmtLines(d.body, 4, ctx).join('\n')
     _kotlinExprInferCtx.locals = saved
     lines.push(`  LaunchedEffect(Unit) {`)
     lines.push(bodyLines)
@@ -1401,7 +1457,7 @@ function emitKotlinComponent(c: ComponentIR): string {
     if (d.cleanup !== undefined) {
       lines.push(`  DisposableEffect(Unit) {`)
       lines.push(`    onDispose {`)
-      lines.push(d.cleanup.map((st) => `      ${emitKotlinStatement(st, 6, ctx)}`).join('\n'))
+      lines.push(emitKotlinStmtLines(d.cleanup, 6, ctx).join('\n'))
       lines.push(`    }`)
       lines.push(`  }`)
     }
@@ -1458,6 +1514,7 @@ function emitKotlinComponent(c: ComponentIR): string {
   _serviceBindingsKotlin = new Map()
   _asyncDeclsKotlin = []
   _routerRoutes = new Map()
+  _routerTabs = new Map()
   const finished = _pluginScope.finalize(lines.join('\n'))
   _pluginScope = outerPluginScope
   return finished
@@ -1608,10 +1665,15 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
     const hasGuards =
       (d.beforeEach !== undefined && d.beforeEach.length > 0) ||
       (d.afterEach !== undefined && d.afterEach.length > 0)
+    // #4060: a tab-bar router is constructed with its tabs (one stack each).
+    const ctor =
+      d.tabs === undefined
+        ? 'PyreonRouter()'
+        : `PyreonRouter(tabs = listOf(${d.tabs.map((t) => `PyreonRouterTab(${kotlinStr(t.name)}, ${kotlinStr(t.root)})`).join(', ')}))`
     if (!hasGuards) {
-      return `val ${kotlinIdent(d.name)} = remember { PyreonRouter() }`
+      return `val ${kotlinIdent(d.name)} = remember { ${ctor} }`
     }
-    const inner: string[] = ['PyreonRouter().apply {']
+    const inner: string[] = [`${ctor}.apply {`]
     for (const fn of d.beforeEach ?? []) {
       inner.push(`    beforeEachGuards.add(::${kotlinIdent(fn)})`)
     }
@@ -1697,7 +1759,7 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
     // computed-body emit is the third statement-body path (after handler /
     // function-decl decls). Restored after. Mirror of the Swift side.
     const savedLocals = seedHandlerLocals(d.body, _kotlinExprInferCtx)
-    const bodyLines = d.body.map((s) => `      ${emitKotlinStatement(s, 6, bodyCtx)}`).join('\n')
+    const bodyLines = emitKotlinStmtLines(d.body, 6, bodyCtx).join('\n')
     _kotlinExprInferCtx.locals = savedLocals
     return [`val ${kotlinIdent(d.name)} by remember { derivedStateOf {`, bodyLines, `    } }`].join(
       '\n',
@@ -1881,8 +1943,45 @@ function emitKotlinNarrowedAnd(cond: ExprIR, view: ExprIR, indent: number): stri
   return `${kotlinBoundSubject(plan.n, indent)}?.let { ${kotlinIdent(plan.binder)} ->\n${pad}${inner}\n${' '.repeat(indent)}}`
 }
 
+/**
+ * A local declared in a statement list as `const f = () => { … }` is a CLOSURE
+ * on both targets, so a zero-argument call to it must keep its parentheses.
+ * Zero-argument identifier calls otherwise emit bare, because at component
+ * scope `x()` is a signal or computed READ. Without this, `f()` emitted `f`:
+ * a swiftc error on iOS and, worse, a silent no-op on Android.
+ */
+function isClosureInit(e: ExprIR): boolean {
+  return unparenExpr(e).kind === 'arrow'
+}
+
 /** A statement list with the early-return guard lowered (`val x = a.b ?: run { return 0 }`). */
 function emitKotlinStmtLines(
+  stmts: readonly StatementIR[],
+  indent: number,
+  ctx: KotlinCtx,
+): string[] {
+  // A local declared in a NESTED list (a loop body, a switch case) is typed as
+  // it is declared, scoped to the list — the callers seed only a body's
+  // top-level locals. Mirror of the Swift side.
+  const saved = _kotlinExprInferCtx.locals
+  _kotlinExprInferCtx.locals = new Map(saved)
+  // The closure names a list declares are callable for the rest of that list only.
+  const savedFunctions = _functionNames
+  _functionNames = new Set(savedFunctions)
+  try {
+    return emitKotlinStmtLinesScoped(stmts, indent, ctx)
+  } finally {
+    _functionNames = savedFunctions
+    _kotlinExprInferCtx.locals = saved
+  }
+}
+
+/** Whether a guard's exit body contains a `break` or `continue` (at any depth). */
+function exitJumpsOutOfLoop(stmts: readonly StatementIR[]): boolean {
+  return /"kind":"(break|continue)"/.test(JSON.stringify(stmts))
+}
+
+function emitKotlinStmtLinesScoped(
   stmts: readonly StatementIR[],
   indent: number,
   ctx: KotlinCtx,
@@ -1893,20 +1992,32 @@ function emitKotlinStmtLines(
     const s = stmts[i]!
     const g = planGuard(s, stmts.slice(i + 1), _kotlinExprInferCtx, _activePropsParamName)
     if (g !== null && !kotlinSmartCasts(g.narrowing)) {
-      const exitLines = g.exitBody
-        .map((t) => `${pad}  ${emitKotlinStatement(t, indent + 2, ctx)}`)
-        .join('\n')
+      const exitLines = emitKotlinStmtLines(g.exitBody, indent + 2, ctx).join('\n')
+      const binder = kotlinIdent(g.binder)
+      const subject = kotlinBoundSubject(g.narrowing, indent)
+      // `break` / `continue` inside the `?: run { }` lambda is a non-local
+      // jump that Kotlin only stabilised in 2.2 ("break continue in inline
+      // lambdas is experimental" before it). A loop-jump exit therefore binds
+      // first and tests after: the binder is a local `val`, so the `if` whose
+      // body always exits smart-casts it to non-null on every Kotlin version.
       out.push(
-        `${pad}val ${kotlinIdent(g.binder)} = ${kotlinBoundSubject(g.narrowing, indent)} ?: run {\n${exitLines}\n${pad}}`,
+        exitJumpsOutOfLoop(g.exitBody)
+          ? `${pad}val ${binder} = ${subject}\n${pad}if (${binder} == null) {\n${exitLines}\n${pad}}`
+          : `${pad}val ${binder} = ${subject} ?: run {\n${exitLines}\n${pad}}`,
       )
       out.push(
         ...withKotlinLocals([[g.binder, g.narrowing.unwrapped]], () =>
-          emitKotlinStmtLines(g.rest, indent, ctx),
+          emitKotlinStmtLinesScoped(g.rest, indent, ctx),
         ),
       )
       return out
     }
     out.push(`${pad}${emitKotlinStatement(s, indent, ctx)}`)
+    if (s.kind === 'let' && !_kotlinExprInferCtx.locals.has(s.name)) {
+      const t = inferType(s.expr, _kotlinExprInferCtx)
+      const typed = t.kind === 'unknown' && s.declaredType !== undefined ? s.declaredType : t
+      if (typeIsOptional(typed)) _kotlinExprInferCtx.locals.set(s.name, typed)
+    }
   }
   return out
 }
@@ -2151,6 +2262,11 @@ function kotlinParamType(t: TypeIR, ctx: KotlinCtx | undefined, name: string): s
 }
 
 function emitKotlinFunction(d: Extract<DeclIR, { kind: 'function' }>, ctx: KotlinCtx): string {
+  // Any Kotlin function may throw — the error reaches its caller, as in JavaScript.
+  return withKotlinThrowCtx('throws', () => emitKotlinFunctionBody(d, ctx))
+}
+
+function emitKotlinFunctionBody(d: Extract<DeclIR, { kind: 'function' }>, ctx: KotlinCtx): string {
   // `async` → fire-and-forget on the composition's coroutine scope (the Swift twin wraps in `Task`). Emit the body as a
   // plain synchronous block, then move it inside `pyreonAsyncScope.launch { … }`.
   if (d.async === true) {
@@ -2176,7 +2292,8 @@ function emitKotlinFunction(d: Extract<DeclIR, { kind: 'function' }>, ctx: Kotli
         _hasAsyncHandler = true
         const inner = m[2]!.split('\n').map((l) => `  ${l}`).join('\n')
         // A fallible await (a request) must not escape `launch`: uncaught there it crashes the app.
-        const launched = bodyAwaitsFallible(d.body, isThrowingPluginExpr)
+        const launched =
+          bodyAwaitsFallible(d.body, isThrowingPluginExpr) || statementsThrowUncaught(d.body, _kotlinThrowingFns)
           ? `      try {\n${indentLines(inner, 4)}\n      } ${KOTLIN_UNHANDLED_ASYNC}`
           : inner
         return `${m[1]}\n    ${PYREON_ASYNC_SCOPE}.launch {\n${launched}\n    }\n  }`
@@ -2336,6 +2453,7 @@ function emitKotlinStatement(s: StatementIR, indent: number, ctx: KotlinCtx): st
       _kotlinExprInferCtx.locals.set(s.name, s.declaredType)
       return `var ${kotlinIdent(s.name)}: ${kotlinType(s.declaredType, ctx)}`
     case 'let':
+      if (isClosureInit(s.expr)) _functionNames.add(s.name)
     // `var` when a later `assign` reassigns this local (markReassigned-
     // LocalsMutable), else immutable `val`.
     {
@@ -2528,9 +2646,7 @@ function emitKotlinStatement(s: StatementIR, indent: number, ctx: KotlinCtx): st
     case 'while': {
       const pad = ' '.repeat(indent)
       const cond = kotlinCondition(s.cond, (x) => emitKotlinExpr(x, indent))
-      const lines = s.body
-        .map((t) => `${pad}  ${emitKotlinStatement(t, indent + 2, ctx)}`)
-        .join('\n')
+      const lines = emitKotlinStmtLines(s.body, indent + 2, ctx).join('\n')
       // Loop label — Kotlin spells it `outer@ while … { break@outer }`.
       const lbl = s.label !== undefined ? `${kotlinIdent(s.label)}@ ` : ''
       return `${lbl}while (${cond}) {\n${lines}\n${pad}}`
@@ -2538,9 +2654,16 @@ function emitKotlinStatement(s: StatementIR, indent: number, ctx: KotlinCtx): st
     case 'for-of': {
       const pad = ' '.repeat(indent)
       const iter = emitKotlinExpr(s.iterable, indent)
-      const lines = s.body
-        .map((t) => `${pad}  ${emitKotlinStatement(t, indent + 2, ctx)}`)
-        .join('\n')
+      // The item carries the iterated array's element type in the body, so a
+      // narrowing guard over `item.field` can see that it is optional. Mirror
+      // of the Swift for-of.
+      const iterT = inferType(s.iterable, _kotlinExprInferCtx)
+      const hadItem = _kotlinExprInferCtx.locals.has(s.item)
+      const prevItem = _kotlinExprInferCtx.locals.get(s.item)
+      if (iterT.kind === 'array') _kotlinExprInferCtx.locals.set(s.item, iterT.element)
+      const lines = emitKotlinStmtLines(s.body, indent + 2, ctx).join('\n')
+      if (hadItem) _kotlinExprInferCtx.locals.set(s.item, prevItem!)
+      else _kotlinExprInferCtx.locals.delete(s.item)
       const lbl2 = s.label !== undefined ? `${kotlinIdent(s.label)}@ ` : ''
       return `${lbl2}for (${kotlinIdent(s.item)} in ${iter}) {\n${lines}\n${pad}}`
     }
@@ -2595,9 +2718,7 @@ function emitKotlinStatement(s: StatementIR, indent: number, ctx: KotlinCtx): st
       const hadI = _kotlinExprInferCtx.locals.has(s.item)
       const prevI = _kotlinExprInferCtx.locals.get(s.item)
       _kotlinExprInferCtx.locals.set(s.item, { kind: 'number' })
-      const lines = s.body
-        .map((t) => `${pad}  ${emitKotlinStatement(t, indent + 2, ctx)}`)
-        .join('\n')
+      const lines = emitKotlinStmtLines(s.body, indent + 2, ctx).join('\n')
       if (hadI) _kotlinExprInferCtx.locals.set(s.item, prevI!)
       else _kotlinExprInferCtx.locals.delete(s.item)
       // Kotlin `downTo` is inclusive-only — an exclusive descending bound
@@ -2616,9 +2737,7 @@ function emitKotlinStatement(s: StatementIR, indent: number, ctx: KotlinCtx): st
     case 'do-while': {
       const pad = ' '.repeat(indent)
       const cond = kotlinCondition(s.cond, (x) => emitKotlinExpr(x, indent))
-      const lines = s.body
-        .map((t) => `${pad}  ${emitKotlinStatement(t, indent + 2, ctx)}`)
-        .join('\n')
+      const lines = emitKotlinStmtLines(s.body, indent + 2, ctx).join('\n')
       return `do {\n${lines}\n${pad}} while (${cond})`
     }
     case 'switch': {
@@ -2629,9 +2748,7 @@ function emitKotlinStatement(s: StatementIR, indent: number, ctx: KotlinCtx): st
         discT.kind === 'typeRef' && _enumNames.has(discT.name) ? discT.name : undefined
       const caseLines = s.cases
         .map((c) => {
-          const bodyLines = c.body
-            .map((t) => `${pad}    ${emitKotlinStatement(t, indent + 4, ctx)}`)
-            .join('\n')
+          const bodyLines = emitKotlinStmtLines(c.body, indent + 4, ctx).join('\n')
           const body = bodyLines.length > 0 ? `{\n${bodyLines}\n${pad}  }` : '{}'
           if (c.tests.length === 0) return `${pad}  else -> ${body}`
           // ENUM-typed discriminant: emit the case LABELS with the
@@ -2648,6 +2765,37 @@ function emitKotlinStatement(s: StatementIR, indent: number, ctx: KotlinCtx): st
         .join('\n')
       // Kotlin `when` as a STATEMENT need not be exhaustive — no forced else.
       return `when (${disc}) {\n${caseLines}\n${pad}}`
+    }
+    case 'throw': {
+      if (_kotlinThrowCtx === 'none') _pushKotlinEmitWarning(uncaughtThrowWarning('A `throw`'))
+      if (s.rethrow !== undefined) return `throw ${kotlinIdent(s.rethrow)}`
+      _needsKotlinThrown = true
+      return `throw PyreonThrown(${emitKotlinExpr(s.message ?? { kind: 'literal', value: '' }, indent)})`
+    }
+    case 'try': {
+      const pad = ' '.repeat(indent)
+      const caught = s.catchBody !== undefined
+      const bodyLines = withKotlinThrowCtx(caught ? 'do' : _kotlinThrowCtx, () =>
+        emitKotlinStmtLines(s.body, indent + 2, ctx).join('\n'),
+      )
+      let out = `try {\n${bodyLines}\n${pad}}`
+      if (caught) {
+        const binder = s.catchParam !== undefined ? kotlinIdent(s.catchParam) : 'pyreonCaught'
+        // A catch-all inside a coroutine must not swallow its cancellation, or a disposed composition's work keeps
+        // running. Only a body that suspends can be cancelled there.
+        const cancel = containsAwait(s.body)
+          ? `${pad}  if (${binder} is kotlin.coroutines.cancellation.CancellationException) throw ${binder}\n`
+          : ''
+        const catchLines = emitKotlinStmtLines(s.catchBody!, indent + 2, ctx).join('\n')
+        out += ` catch (${binder}: Exception) {\n${cancel}${catchLines}\n${pad}}`
+      }
+      if (s.finallyBody !== undefined) {
+        const finallyLines = withKotlinThrowCtx('none', () =>
+          emitKotlinStmtLines(s.finallyBody!, indent + 2, ctx).join('\n'),
+        )
+        out += ` finally {\n${finallyLines}\n${pad}}`
+      }
+      return out
     }
   }
 }
@@ -2974,7 +3122,7 @@ function emitKotlinIndexedBody(
     }
     const pad = ' '.repeat(indent + 2)
     const savedLocals = seedHandlerLocals(cb.stmts, _kotlinExprInferCtx)
-    const lines = cb.stmts.map((s) => pad + emitKotlinStatement(s, indent + 2, stmtCtx)).join('\n')
+    const lines = emitKotlinStmtLines(cb.stmts, indent + 2, stmtCtx).join('\n')
     _kotlinExprInferCtx.locals = savedLocals
     return `\n${bindIdx === '' ? '' : `${pad}${bindIdx}\n`}${lines}\n${' '.repeat(indent)}`
   }
@@ -3006,8 +3154,12 @@ function emitKotlinPlainCallback(arg: ExprIR, indent: number, label: string): st
 
 /** True when the inferencer proves the operand is a fractional number. */
 function isDoubleOperand(x: ExprIR): boolean {
-  const t = inferType(x, _kotlinExprInferCtx)
-  return t.kind === 'number' && t.float === true
+  // The `type Double = number` alias arrives as a typeRef (a parameter or
+  // local annotated `Double`), and `Double | null` compares the same way:
+  // Kotlin rejects `Double? == Long` exactly as it rejects `Double == Long`.
+  const t = unwrapOptionalType(inferType(x, _kotlinExprInferCtx))
+  if (t.kind === 'number') return t.float === true
+  return t.kind === 'typeRef' && (t.name === 'Double' || t.name === 'Float') && t.args.length === 0
 }
 
 /**
@@ -3067,6 +3219,8 @@ function emitKotlinMapFromPairs(
 }
 
 function emitKotlinExpr(e: ExprIR, indent: number): string {
+  // A lambda is its own throw context (see the Swift twin).
+  if (e.kind === 'arrow' && _kotlinThrowCtx !== 'none') return withKotlinThrowCtx('none', () => emitKotlinExpr(e, indent))
   switch (e.kind) {
     case 'literal':
       if (typeof e.value === 'string') {
@@ -3124,6 +3278,11 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       // `PyreonJson.stringify` rewrites those leaves into ECMAScript form.
       return `PyreonJson.stringify(${emitKotlinExpr(e.arg, indent)})`
     case 'call': {
+      if (e.callee.kind === 'identifier') {
+        if (_kotlinThrowingFns.has(e.callee.name) && _kotlinThrowCtx === 'none')
+          _pushKotlinEmitWarning(uncaughtThrowWarning(`The call to \`${e.callee.name}()\`, which can throw,`))
+        if (e.callee.name === ERROR_MESSAGE_FN || e.callee.name === ERROR_STRING_FN) _needsKotlinThrown = true
+      }
       // `handle.dispatch(…)` and any other call on a binding a plugin's declaration created.
       const pluginLowered = lowerPluginMemberCall(e, 'kotlin', _pluginScope, () =>
         kotlinEmitContext(indent),
@@ -4205,7 +4364,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
             // the Swift backend.
             if (e.args.length === 0) {
               _emitWarnings.push(
-                '.toLocaleString() has no native locale-formatting equivalent — emitting a plain string conversion (no grouping separators). Format the value explicitly if you need grouping.',
+                '.toLocaleString() reached the emitter unlowered — the built-in `ecmascript-intl` plugin (which lowers it to PyreonNumberFormat) is not active in this compiler. Emitting a plain string conversion (no locale, no grouping).',
               )
               return `(${obj}).toString()`
             }
@@ -4651,7 +4810,6 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
                 types.length === e.params.length &&
                 types.every((t) => t !== undefined && t.kind !== 'unknown')
               if (allTyped && e.returnAnnot !== undefined && e.returnAnnot.kind !== 'unknown') {
-                const pad2 = ' '.repeat(indent + 2)
                 const savedAF = seedHandlerLocals(e.stmts, _kotlinExprInferCtx)
                 const pbind: Array<[string, boolean, TypeIR | undefined]> = []
                 e.params.forEach((pn, pi) => {
@@ -4664,9 +4822,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
                   _kotlinExprInferCtx.locals.set(pn, pt)
                 })
                 const fnCtx: KotlinCtx = { synthesizedDataClasses: [], componentName: '' }
-                const lines = e.stmts
-                  .map((st) => `${pad2}${emitKotlinStatement(st, indent + 2, fnCtx)}`)
-                  .join('\n')
+                const lines = emitKotlinStmtLines(e.stmts, indent + 2, fnCtx).join('\n')
                 for (const [pn, had, prev] of pbind.reverse()) {
                   if (had) _kotlinExprInferCtx.locals.set(pn, prev!)
                   else _kotlinExprInferCtx.locals.delete(pn)
@@ -4682,12 +4838,9 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
               )
               return `{ ${ktLambdaParams()} -> Unit }`
             }
-            const pad = ' '.repeat(indent + 2)
             const saved = seedHandlerLocals(e.stmts, _kotlinExprInferCtx)
             const stmtCtx: KotlinCtx = { synthesizedDataClasses: [], componentName: '' }
-            const lines = e.stmts
-              .map((st) => pad + emitKotlinStatement(st, indent + 2, stmtCtx))
-              .join('\n')
+            const lines = emitKotlinStmtLines(e.stmts, indent + 2, stmtCtx).join('\n')
             _kotlinExprInferCtx.locals = saved
             const params = e.params.length > 0 ? `${ktLambdaParams()} ->` : ''
             return `{ ${params}\n${lines}\n${' '.repeat(indent)}}`
@@ -5121,7 +5274,7 @@ function kotlinEmitContext(indent: number): KotlinEmitContext {
                   : { discardReturnValue: control.discardReturnValue }),
               }
         try {
-          return stmts.map((st) => emitKotlinStatement(st, at, callbackCtx))
+          return emitKotlinStmtLines(stmts, at, callbackCtx).map((l) => l.slice(at))
         } finally {
           _kotlinExprInferCtx.locals = saved
         }
@@ -5358,8 +5511,13 @@ function emitKotlinJsxElement(e: Extract<ExprIR, { kind: 'jsx-element' }>, inden
   if (tag === 'Video') return emitKotlinVideo(e, indent)
   if (tag === 'Audio') return emitKotlinAudio(e, indent)
   if (tag === 'Modal') return emitKotlinModal(e, indent)
+  if (tag === 'Tabs') return emitKotlinTabs(e, indent)
+  if (tag === 'Split') return emitKotlinSplit(e, indent)
   if (tag === 'Press') return emitKotlinPress(e, indent)
   if (tag === 'Gesture') return emitKotlinGesture(e, indent)
+  if (tag === 'Canvas') return emitKotlinCanvas(e, indent)
+  if (tag === 'CanvasText') return emitKotlinCanvasText(e, indent)
+  if (isCanvasShape(tag)) return emitKotlinCanvasShape(e)
   if (tag === 'Field') return emitKotlinField(e, indent)
   if (tag === 'Toggle') return emitKotlinToggle(e, indent)
   if (tag === 'Select') return emitKotlinSelect(e, indent)
@@ -5611,6 +5769,31 @@ function sanitizeKotlinFontName(name: string): string {
   return /^[0-9]/.test(cleaned) ? `_${cleaned}` : cleaned
 }
 
+/**
+ * Whether a `<Button>`'s children are a text label: text and expressions only,
+ * with no JSX anywhere inside them. Such a label is ONE string on the web
+ * (`Tapped {n}` reads "Tapped 2"), so it must lower to ONE native Text —
+ * the same fusion `<Text>` applies. Emitting a view per child split it: two
+ * Texts in a Compose Button announce as two fragments and match no single
+ * string, and a SwiftUI Button label with several views is a TupleView laid
+ * out per view rather than as one running label.
+ */
+function buttonLabelIsTextOnly(children: readonly ChildIR[]): boolean {
+  if (children.length === 0) return false
+  const hasJsx = (n: unknown): boolean => {
+    if (n === null || typeof n !== 'object') return false
+    if (Array.isArray(n)) return n.some(hasJsx)
+    const k = (n as { kind?: unknown }).kind
+    if (k === 'jsx-element' || k === 'jsx-fragment') return true
+    return Object.values(n).some(hasJsx)
+  }
+  return children.every(
+    (c) =>
+      c.kind === 'text' ||
+      (!hasJsx(c.expr) && jsxHelperCallName(resolveAccessorChild(c.expr), _jsxFnNames) === null),
+  )
+}
+
 function emitKotlinButton(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
   // Phase B: accept canonical `onPress` AND legacy `onClick` event names
   // — same Compose Button shape (`onClick = ...`) either way. The
@@ -5632,10 +5815,12 @@ function emitKotlinButton(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: n
   // primitive that dropped the testid (onNodeWithTag("login-submit")
   // found nothing while the Field's tag worked).
   const modifier = emitKotlinLayoutModifier(e)
+  const pressed = kotlinUsesPressedStyle(e)
   const args = [
     `onClick = ${action}`,
     ...(enabledArg ? [enabledArg] : []),
     ...(modifier ? [`modifier = ${modifier}`] : []),
+    ...(pressed ? [`interactionSource = ${PRESS_SOURCE_IDENT}`] : []),
   ]
   // `variant` — the visual role. Compose expresses it by swapping the
   // COMPOSABLE (Button / OutlinedButton / TextButton) rather than by a
@@ -5648,12 +5833,20 @@ function emitKotlinButton(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: n
   const variant = kotlinButtonVariant(e)
   if (variant.colorsArg !== '') args.push(variant.colorsArg)
   const buttonArgs = args.join(', ')
-  const pad = ' '.repeat(indent + 2)
+  const inner = indent + (pressed ? 2 : 0)
+  const pad = ' '.repeat(inner + 2)
+  let body: string
   if (labelText !== null) {
-    return `${variant.composable}(${buttonArgs}) {\n${pad}Text(${kotlinStr(labelText)})\n${' '.repeat(indent)}}`
+    body = `${variant.composable}(${buttonArgs}) {\n${pad}Text(${kotlinStr(labelText)})\n${' '.repeat(inner)}}`
+  } else if (buttonLabelIsTextOnly(e.children)) {
+    // A mixed text label (`Tapped {n}`): one fused Text, built exactly as
+    // `<Text>` builds it.
+    const label = emitKotlinText({ kind: 'jsx-element', tag: 'Text', attrs: [], children: e.children }, inner + 2)
+    body = `${variant.composable}(${buttonArgs}) {\n${pad}${label}\n${' '.repeat(inner)}}`
+  } else {
+    body = `${variant.composable}(${buttonArgs}) {\n${e.children.map((c) => pad + emitKotlinChild(c, inner + 2)).join('\n')}\n${' '.repeat(inner)}}`
   }
-  const contentLines = e.children.map((c) => pad + emitKotlinChild(c, indent + 2)).join('\n')
-  return `${variant.composable}(${buttonArgs}) {\n${contentLines}\n${' '.repeat(indent)}}`
+  return pressed ? kotlinWrapPressState(body, indent) : body
 }
 
 /**
@@ -5726,10 +5919,20 @@ function kotlinEnabledArg(e: Extract<ExprIR, { kind: 'jsx-element' }>): string {
   // Signal-bound / expression — negate to convert Pyreon's `disabled`
   // semantic to Compose's `enabled`. `emitKotlinSignalRead` handles
   // signal-name membership + plain-identifier emit.
-  return `enabled = !${emitKotlinSignalRead(unwrapAccessorArrow(attr.value))}`
+  //
+  // An OPERATOR expression must be parenthesised: `!` binds tighter than `==`
+  // / `&&` / `?:`, so `disabled={tab() === ''}` emitted `enabled = !tab == ""`
+  // — `!` applied to a String, which does not compile. Swift has no inversion
+  // to get wrong (`.disabled(tab == "")`), so this broke on Android only.
+  const read = emitKotlinSignalRead(unwrapAccessorArrow(attr.value))
+  return /^[A-Za-z_][\w.]*(\(\))?$/.test(read) ? `enabled = !${read}` : `enabled = !(${read})`
 }
 
 function emitKotlinAction(handler: ExprIR, indent: number): string {
+  return withKotlinThrowCtx('none', () => emitKotlinActionBody(handler, indent))
+}
+
+function emitKotlinActionBody(handler: ExprIR, indent: number): string {
   if (handler.kind === 'arrow') {
     // Multi-statement block body (`() => { a.set(1); b.set(2) }`) — emit
     // EVERY statement. Pre-fix the parse kept only the first statement and
@@ -5761,7 +5964,10 @@ function emitKotlinAction(handler: ExprIR, indent: number): string {
       // `pyreonAsyncScope.launch { … }` (the hoisted rememberCoroutineScope())
       // so a synchronous `onClick: () -> Unit` slot can run suspend calls.
       const bodyIndent = isAsync ? indent + 4 : indent + 2
-      const lines = emitKotlinStmtLines(handler.stmts, bodyIndent, stmtCtx).join('\n')
+      const asyncMayThrow = isAsync && statementsThrowUncaught(handler.stmts, _kotlinThrowingFns)
+      const lines = withKotlinThrowCtx(asyncMayThrow ? 'do' : 'none', () =>
+        emitKotlinStmtLines(handler.stmts!, bodyIndent, stmtCtx).join('\n'),
+      )
       _kotlinExprInferCtx.locals = savedLocals
       const labelPrefix = syncLabel === undefined ? '' : `${syncLabel}@`
       const head =
@@ -5770,7 +5976,7 @@ function emitKotlinAction(handler: ExprIR, indent: number): string {
           : `${labelPrefix}{ ${handler.params.map(kotlinIdent).join(', ')} ->`
       if (isAsync) {
         _hasAsyncHandler = true
-        if (bodyAwaitsFallible(handler.stmts, isThrowingPluginExpr)) {
+        if (bodyAwaitsFallible(handler.stmts, isThrowingPluginExpr) || asyncMayThrow) {
           return `${head}\n${pad}${PYREON_ASYNC_SCOPE}.launch {\n${pad}  try {\n${indentLines(lines, 4)}\n${pad}  } ${KOTLIN_UNHANDLED_ASYNC}\n${pad}}\n${' '.repeat(indent)}}`
         }
         return `${head}\n${pad}${PYREON_ASYNC_SCOPE}.launch {\n${lines}\n${pad}}\n${' '.repeat(indent)}}`
@@ -5818,6 +6024,8 @@ function emitKotlinAction(handler: ExprIR, indent: number): string {
   // mirroring emit-swift.ts:resolveFunctionHandler. Closes the
   // `Button { onRemove }` no-op trap for both handler shapes.
   if (handler.kind === 'identifier' && _functionNames.has(handler.name)) {
+    if (_kotlinThrowingFns.has(handler.name))
+      _pushKotlinEmitWarning(uncaughtThrowWarning(`The handler \`${handler.name}\`, which can throw,`))
     return `{ ${kotlinIdent(handler.name)}() }`
   }
   if (
@@ -5837,8 +6045,11 @@ const KOTLIN_HANDLER_LABEL = 'pyreonHandler'
 
 /** A single-expression async handler's coroutine body; a fallible await is caught so it cannot crash the app. */
 function kotlinLaunchBody(body: ExprIR, indent: number): string {
-  const inner = emitKotlinExpr(body, indent)
-  return bodyAwaitsFallible(body, isThrowingPluginExpr) ? `try { ${inner} } ${KOTLIN_UNHANDLED_ASYNC}` : inner
+  const mayThrow = exprCallsThrowing(body, _kotlinThrowingFns)
+  const inner = withKotlinThrowCtx(mayThrow ? 'do' : 'none', () => emitKotlinExpr(body, indent))
+  return bodyAwaitsFallible(body, isThrowingPluginExpr) || mayThrow
+    ? `try { ${inner} } ${KOTLIN_UNHANDLED_ASYNC}`
+    : inner
 }
 
 /**
@@ -6029,6 +6240,23 @@ function emitKotlinFor(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
       else _kotlinExprInferCtx.locals.delete(param)
     }
   }
+  // An EAGER <For> (`pyreonEager`, set by a lowering whose list is a plain
+  // flex container — elements `<List>`) lays its rows out in the ENCLOSING
+  // Row / Column instead of its own LazyColumn: a LazyColumn inside a Row stacks
+  // the rows vertically, and inside another scrolling or unbounded parent it
+  // measures with infinite height. `key(…)` keeps each row's identity across
+  // updates, as `items(key = …)` does for the lazy form.
+  if (e.attrs.some((a) => a.kind === 'attr' && a.name === FOR_EAGER_ATTR)) {
+    const rowName = kotlinIdent(param)
+    const keyExpr = idPath === 'it' ? rowName : idPath.startsWith('it.') ? `${rowName}.${idPath.slice(3)}` : rowName
+    return (
+      `for (${rowName} in ${items}) {\n` +
+      `${' '.repeat(indent + 2)}key(${keyExpr}) {\n` +
+      `${pad}${bodyText}\n` +
+      `${close}}\n` +
+      `${outerClose}}`
+    )
+  }
   return (
     `LazyColumn {\n` +
     `${' '.repeat(indent + 2)}items(${items}, key = { ${idPath} }) { ${kotlinIdent(param)} ->\n` +
@@ -6037,6 +6265,9 @@ function emitKotlinFor(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
     `${outerClose}}`
   )
 }
+
+/** The marker attribute a lowering sets on a `<For>` it wants laid out eagerly in its parent. */
+export const FOR_EAGER_ATTR = 'pyreonEager'
 
 /** Push an emit warning once (the same site can be reached twice by re-entrant dispatch). */
 /**
@@ -7755,6 +7986,221 @@ function emitKotlinModal(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: nu
   )
 }
 
+function pushKotlinNavWarning(w: string): void {
+  if (!_emitWarnings.includes(w)) _emitWarnings.push(w)
+}
+
+/**
+ * One tab / pane body. Several children are wrapped in ONE `Column`: the
+ * runtime hosts each pane in a `Box`, which would otherwise STACK loose
+ * children on top of each other.
+ */
+function emitKotlinNavPane(children: readonly ChildIR[], indent: number): string {
+  const pad = ' '.repeat(indent)
+  if (children.length === 1) return pad + emitKotlinChild(children[0]!, indent)
+  if (children.length === 0) return `${pad}// empty pane`
+  const inner = children.map((c) => ' '.repeat(indent + 2) + emitKotlinChild(c, indent + 2)).join('\n')
+  return `${pad}Column {\n${inner}\n${pad}}`
+}
+
+/**
+ * Emit `<Tabs value onChange>` + its `<Tab>` children as the runtime
+ * `PyreonTabs(selected, onSelect, items, modifier) { pyreonTab -> when … }`
+ * (PyreonNavigation.kt → `BottomNavigation` / `NavigationRail` by window
+ * width). Mirror of `emitSwiftTabs`; the tab bar is built at compile time and
+ * each tab's content is one `when` branch.
+ *
+ * `value` follows `<Toggle>`'s two shapes: a bare signal auto-derives the
+ * write-back when there is no `onChange`; any other expression needs
+ * `onChange`.
+ */
+function emitKotlinTabs(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
+  const routerBound = e.attrs.find(
+    (a): a is Extract<AttrIR, { kind: 'attr' }> => a.kind === 'attr' && a.name === 'router',
+  )
+  if (routerBound !== undefined) return emitKotlinRouterTabs(e, routerBound, indent)
+  const valueAttr = e.attrs.find(
+    (a): a is Extract<AttrIR, { kind: 'attr' }> => a.kind === 'attr' && a.name === 'value',
+  )
+  const onChange = e.attrs.find(
+    (a): a is Extract<AttrIR, { kind: 'event' }> => a.kind === 'event' && a.name === 'change',
+  )
+  const { tabs, warnings } = planTabs(e)
+  for (const w of warnings) pushKotlinNavWarning(w)
+  const isSignal =
+    valueAttr !== undefined && valueAttr.value.kind === 'identifier' && _signalNames.has(valueAttr.value.name)
+  if (valueAttr === undefined || (!isSignal && onChange === undefined)) {
+    pushKotlinNavWarning(
+      '<Tabs>: needs `value` bound to a signal (`value={tab}`) or `value` + `onChange` — without one the selection cannot change on Android, so nothing is rendered.',
+    )
+    return '// <Tabs> without a selection binding renders nothing on Android'
+  }
+  const selected = isSignal
+    ? kotlinIdent((valueAttr.value as Extract<ExprIR, { kind: 'identifier' }>).name)
+    : emitKotlinExpr(unwrapAccessorArrow(valueAttr.value), indent + 2)
+  const onSelect = onChange !== undefined ? emitKotlinAction(onChange.handler, indent + 2) : `{ ${selected} = it }`
+  if (tabs.length === 0) return '// <Tabs> with no <Tab> entries renders nothing on Android'
+  // A selection typed by a string-literal union is a native enum class here,
+  // so the tab values must be its entries (the runtime is generic over it).
+  const enumType = enumTypeOfExpr(unwrapAccessorArrow(valueAttr.value))
+  const tabValue = (v: string): string => (enumType === undefined ? kotlinStr(v) : `${enumType}.${kotlinEnumEntry(v)}`)
+  const p = ' '.repeat(indent)
+  const a1 = ' '.repeat(indent + 2)
+  const a2 = ' '.repeat(indent + 4)
+  const items = tabs
+    .map((t) => {
+      const args = [
+        `value = ${tabValue(t.value)}`,
+        `label = ${t.label.kind === 'literal' ? kotlinStr(t.label.text) : emitKotlinExpr(t.label.expr, indent + 4)}`,
+      ]
+      if (t.icon !== undefined) args.push(`icon = Icons.Filled.${t.icon.material}`)
+      if (t.testId !== undefined) args.push(`testTag = ${kotlinStr(t.testId)}`)
+      return `${a2}PyreonTabItem(${args.join(', ')}),`
+    })
+    .join('\n')
+  const modifier = emitKotlinLayoutModifier(e)
+  const branches = tabs
+    .map((t) => `${a2}${tabValue(t.value)} -> {\n${emitKotlinNavPane(t.children, indent + 6)}\n${a2}}`)
+    .join('\n')
+  return (
+    `PyreonTabs(\n` +
+    `${a1}selected = ${selected},\n` +
+    `${a1}onSelect = ${onSelect},\n` +
+    `${a1}items = listOf(\n${items}\n${a1}),\n` +
+    (modifier === '' ? '' : `${a1}modifier = ${modifier},\n`) +
+    `${p}) { pyreonTab ->\n` +
+    `${a1}when (pyreonTab) {\n${branches}\n${a1}}\n` +
+    `${p}}`
+  )
+}
+
+/**
+ * #4060 — `<Tabs router={r}>` bound to a tab-bar router → `PyreonTabs` whose
+ * selection is the router's active tab; a tap and a RE-tap both go through
+ * `selectTab` (a re-tap pops the tab to its root). Mirror of
+ * `emitSwiftRouterTabs`.
+ */
+function emitKotlinRouterTabs(
+  e: Extract<ExprIR, { kind: 'jsx-element' }>,
+  routerAttr: Extract<AttrIR, { kind: 'attr' }>,
+  indent: number,
+): string {
+  const ctx = _activeRouterTabsKotlin
+  if (
+    ctx === null ||
+    routerAttr.value.kind !== 'identifier' ||
+    routerAttr.value.name !== ctx.routerName ||
+    ctx.tab !== null
+  ) {
+    pushKotlinNavWarning(
+      '<Tabs router={…}>: the router must be the `createRouter({ routes, tabs })` router of the enclosing <RouterProvider>, named directly (and <Tabs> may not sit inside one of its own tabs) — otherwise there are no per-tab stacks to bind, so nothing is rendered on Android.',
+    )
+    return '// <Tabs router> without a tab-bar router renders nothing on Android'
+  }
+  const { tabs, warnings } = planRouterTabs(e, ctx.tabs)
+  for (const w of warnings) pushKotlinNavWarning(w)
+  if (tabs.length === 0) return '// <Tabs> with no <Tab> entries renders nothing on Android'
+  const r = ctx.routerExpr
+  const p = ' '.repeat(indent)
+  const a1 = ' '.repeat(indent + 2)
+  const a2 = ' '.repeat(indent + 4)
+  const items = tabs
+    .map((t) => {
+      const args = [
+        `value = ${kotlinStr(t.value)}`,
+        `label = ${t.label.kind === 'literal' ? kotlinStr(t.label.text) : emitKotlinExpr(t.label.expr, indent + 4)}`,
+      ]
+      if (t.icon !== undefined) args.push(`icon = Icons.Filled.${t.icon.material}`)
+      if (t.testId !== undefined) args.push(`testTag = ${kotlinStr(t.testId)}`)
+      return `${a2}PyreonTabItem(${args.join(', ')}),`
+    })
+    .join('\n')
+  const modifier = emitKotlinLayoutModifier(e)
+  const branches = tabs
+    .map((t) => {
+      ctx.tab = ctx.tabs.find((x) => x.name === t.value) ?? null
+      try {
+        return `${a2}${kotlinStr(t.value)} -> {\n${emitKotlinNavPane(t.children, indent + 6)}\n${a2}}`
+      } finally {
+        ctx.tab = null
+      }
+    })
+    .join('\n')
+  return (
+    `PyreonTabs(\n` +
+    `${a1}selected = ${r}.activeTab.value ?: ${kotlinStr(tabs[0]!.value)},\n` +
+    `${a1}onSelect = { ${r}.selectTab(it) },\n` +
+    `${a1}items = listOf(\n${items}\n${a1}),\n` +
+    (modifier === '' ? '' : `${a1}modifier = ${modifier},\n`) +
+    `${a1}onReselect = { ${r}.selectTab(it) },\n` +
+    `${p}) { pyreonTab ->\n` +
+    `${a1}when (pyreonTab) {\n${branches}\n${a2}else -> {}\n${a1}}\n` +
+    `${p}}`
+  )
+}
+
+/**
+ * #4060 — one tab's stack: `PyreonTabStack(router, "feed") { <dispatch> }`,
+ * where the dispatch reads the TAB's top entry (`router.tabTop("feed")`), so a
+ * hidden tab keeps showing its own page. `PyreonTabStack` owns the system Back
+ * while its tab is active. Mirror of `emitSwiftTabStack`.
+ */
+function emitKotlinTabStack(ctx: NonNullable<typeof _activeRouterTabsKotlin>, indent: number): string {
+  const tab = ctx.tab
+  if (tab === null) {
+    pushKotlinNavWarning(
+      '<RouterView /> inside a tab-bar router (createRouter({ tabs })) must sit inside a <Tab> of its <Tabs router> — each tab owns one stack. This one renders nothing on Android.',
+    )
+    return '// <RouterView> outside a <Tab> of a tab-bar router renders nothing on Android'
+  }
+  const rootRoute = tabRootRoute(ctx.routes, tab.root)
+  if (rootRoute === undefined) pushKotlinNavWarning(missingTabRootWarning(tab))
+  const dispatch = emitKotlinRouteDispatch(ctx.routes, indent + 2, `${ctx.routerExpr}.tabTop(${kotlinStr(tab.name)})`)
+  return `PyreonTabStack(${ctx.routerExpr}, ${kotlinStr(tab.name)}) {\n${dispatch}\n${' '.repeat(indent)}}`
+}
+
+/**
+ * Emit `<Split sidebar showDetail onBack>detail</Split>` as the runtime
+ * `PyreonSplit(showDetail, onBack, modifier, sidebar = { … }) { detail }`
+ * (PyreonNavigation.kt → two panes at 600dp+, else one pane + BackHandler).
+ * Mirror of `emitSwiftSplit`.
+ */
+function emitKotlinSplit(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
+  const showAttr = e.attrs.find(
+    (a): a is Extract<AttrIR, { kind: 'attr' }> => a.kind === 'attr' && a.name === 'showDetail',
+  )
+  const onBack = e.attrs.find(
+    (a): a is Extract<AttrIR, { kind: 'event' }> => a.kind === 'event' && a.name === 'back',
+  )
+  const sidebar = planSplitSidebar(e)
+  if (sidebar.kind === 'unsupported') pushKotlinNavWarning(sidebar.warning)
+  if (showAttr === undefined) {
+    pushKotlinNavWarning(
+      '<Split>: no `showDetail` — on a compact Android width the detail can never be shown, only the sidebar.',
+    )
+  }
+  if (onBack === undefined) {
+    pushKotlinNavWarning(
+      '<Split>: no `onBack` — the system back gesture on a compact Android width cannot leave the detail, so it falls through to the activity (the app closes).',
+    )
+  }
+  const show = showAttr === undefined ? 'false' : emitKotlinSignalRead(unwrapAccessorArrow(showAttr.value))
+  const back = onBack === undefined ? '{}' : emitKotlinAction(onBack.handler, indent + 2)
+  const p = ' '.repeat(indent)
+  const a1 = ' '.repeat(indent + 2)
+  const modifier = emitKotlinLayoutModifier(e)
+  const side = emitKotlinNavPane(sidebar.kind === 'view' ? sidebar.children : [], indent + 4)
+  const detail = emitKotlinNavPane(e.children, indent + 2)
+  return (
+    `PyreonSplit(\n` +
+    `${a1}showDetail = ${show},\n` +
+    `${a1}onBack = ${back},\n` +
+    (modifier === '' ? '' : `${a1}modifier = ${modifier},\n`) +
+    `${a1}sidebar = {\n${side}\n${a1}},\n` +
+    `${p}) {\n${detail}\n${p}}`
+  )
+}
+
 /**
  * Emit `<Press onPress={fn}>{anything}</Press>` as a clickable Box.
  *
@@ -7804,6 +8250,117 @@ function emitKotlinGesture(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
   return `${head} {\n${contentLines}\n${' '.repeat(indent)}}`
 }
 
+/** The interaction-source lambda parameter `PyreonPressState` hands its content. */
+const PRESS_SOURCE_IDENT = '__pySrc'
+
+/**
+ * Whether this pressable's `style` keys on the press state (a rocketstyle
+ * `active:` block — see `PRESSED_STATE_IDENT`). When it does, the element is
+ * wrapped in `PyreonPressState { __pyPressed, __pySrc -> … }`: the runtime
+ * hoists a `MutableInteractionSource`, collects `isPressed` from it, and the
+ * clickable / Button is handed that same source so the state reflects THIS
+ * element's presses. The style condition then reads the lambda parameter.
+ */
+function kotlinUsesPressedStyle(e: Extract<ExprIR, { kind: 'jsx-element' }>): boolean {
+  const styleAttr = e.attrs.find(
+    (a): a is Extract<AttrIR, { kind: 'attr' }> => a.kind === 'attr' && a.name === 'style',
+  )
+  return styleAttr !== undefined && styleUsesPressedState(styleAttr.value)
+}
+
+/** Wrap an emitted pressable in the press-state scope (see above). */
+function kotlinWrapPressState(body: string, indent: number): string {
+  // `body` was emitted one level deeper already; only its first line needs the
+  // indent it would have had as a statement.
+  const ind = ' '.repeat(indent)
+  return `PyreonPressState { ${PRESSED_STATE_IDENT}, ${PRESS_SOURCE_IDENT} ->\n${ind}  ${body}\n${ind}}`
+}
+
+/**
+ * A numeric shape / canvas prop as a Kotlin `Double` argument. An integer
+ * literal gains `.0` (Kotlin does not widen an Int literal to a Double
+ * parameter); an expression is converted with `.toDouble()` since a signal
+ * written only with integers is a `Long` here.
+ */
+function kotlinCanvasNumber(
+  e: Extract<ExprIR, { kind: 'jsx-element' }>,
+  prop: string,
+  fallback: number | undefined,
+): string {
+  const lit = (v: number): string => (Number.isInteger(v) ? `${v}.0` : String(v))
+  const a = e.attrs.find(
+    (x): x is Extract<AttrIR, { kind: 'attr' }> => x.kind === 'attr' && x.name === prop,
+  )
+  if (a === undefined) {
+    if (fallback !== undefined) return lit(fallback)
+    _emitWarnings.push(`<${e.tag}> is missing its required \`${prop}\` prop — drawn with ${prop}=0 on native.`)
+    return '0.0'
+  }
+  const v = unwrapAccessorArrow(a.value)
+  if (v.kind === 'literal' && typeof v.value === 'number') return lit(v.value)
+  if (v.kind === 'unary' && v.op === '-' && v.argument.kind === 'literal' && typeof v.argument.value === 'number') {
+    return `-${lit(v.argument.value)}`
+  }
+  return `(${emitKotlinExpr(v, 0)}).toDouble()`
+}
+
+/** A shape colour prop (token / `#hex`, static or a two-literal ternary) → `Color(…)` or undefined. */
+function kotlinShapeColor(e: Extract<ExprIR, { kind: 'jsx-element' }>, prop: string): string | undefined {
+  return kotlinStylingValue(e, prop, (v) => {
+    const c = shapeColorLiteral(String(v), 'kotlin')
+    if (c !== null) return c
+    _emitWarnings.push(
+      `<${e.tag} ${prop}="${String(v)}">: not a colour token or #hex literal — drawn with the \`text\` colour on native.`,
+    )
+    return resolveColor('text', 'kotlin')
+  })
+}
+
+/** `<Canvas width height>` → `PyreonCanvas(width = …, height = …, modifier = …) { … }`. */
+function emitKotlinCanvas(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
+  const args = [
+    `width = ${kotlinCanvasNumber(e, 'width', undefined)}`,
+    `height = ${kotlinCanvasNumber(e, 'height', undefined)}`,
+  ]
+  const modifier = emitKotlinLayoutModifier(e)
+  if (modifier !== '') args.push(`modifier = ${modifier}`)
+  const head = `PyreonCanvas(${args.join(', ')})`
+  if (e.children.length === 0) return `${head} {}`
+  const pad = ' '.repeat(indent + 2)
+  const contentLines = e.children.map((c) => pad + emitKotlinChild(c, indent + 2)).join('\n')
+  return `${head} {\n${contentLines}\n${' '.repeat(indent)}}`
+}
+
+/** A `<Canvas>` shape → `PyreonShape(PyreonShapeSpec.X(…), fill =, stroke =, strokeWidth =)`. Same paint rules as Swift. */
+function emitKotlinCanvasShape(e: Extract<ExprIR, { kind: 'jsx-element' }>): string {
+  const spec = CANVAS_SHAPES[e.tag]!
+  const args = spec.args.map((arg) => {
+    if (arg.kind === 'number') return kotlinCanvasNumber(e, arg.prop, arg.default)
+    const a = e.attrs.find(
+      (x): x is Extract<AttrIR, { kind: 'attr' }> => x.kind === 'attr' && x.name === arg.prop,
+    )
+    if (a === undefined) {
+      _emitWarnings.push(`<${e.tag}> is missing its required \`${arg.prop}\` prop — nothing is drawn on native.`)
+      return '""'
+    }
+    return emitKotlinExpr(unwrapAccessorArrow(a.value), 0)
+  })
+  const fill = spec.strokeOnly ? undefined : kotlinShapeColor(e, 'fill')
+  let stroke = kotlinShapeColor(e, 'stroke')
+  if (spec.strokeOnly && stroke === undefined) stroke = resolveColor('text', 'kotlin')
+  const fillArg = fill ?? (stroke === undefined ? resolveColor('text', 'kotlin') : 'null')
+  const width = stroke === undefined ? '0.0' : kotlinCanvasNumber(e, 'strokeWidth', 1)
+  return `PyreonShape(${spec.kotlin}(${args.join(', ')}), fill = ${fillArg}, stroke = ${stroke ?? 'null'}, strokeWidth = ${width})`
+}
+
+/** `<CanvasText x y size fill>` → `PyreonCanvasText(x =, y =, size =, color =) { Text(…) }`. */
+function emitKotlinCanvasText(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
+  const text = emitKotlinText({ kind: 'jsx-element', tag: 'Text', attrs: [], children: e.children }, indent + 2)
+  const color = kotlinShapeColor(e, 'fill') ?? resolveColor('text', 'kotlin')
+  const head = `PyreonCanvasText(x = ${kotlinCanvasNumber(e, 'x', undefined)}, y = ${kotlinCanvasNumber(e, 'y', undefined)}, size = ${kotlinCanvasNumber(e, 'size', 14)}, color = ${color})`
+  return `${head} {\n${' '.repeat(indent + 2)}${text}\n${' '.repeat(indent)}}`
+}
+
 function emitKotlinPress(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
   const handler = e.attrs.find(
     (a): a is Extract<AttrIR, { kind: 'event' }> =>
@@ -7830,7 +8387,12 @@ function emitKotlinPress(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: nu
   // the `disabled={false}` no-op, and a signal-bound expression (negated into
   // Compose's `enabled` sense).
   const enabledArg = kotlinEnabledArg(e)
-  const enabledPrefix = enabledArg === '' ? '' : `${enabledArg}, `
+  // A pressed style needs THIS element's interaction source. The indication is
+  // dropped with it: the author's pressed style is the press feedback, exactly
+  // as on the web, where `:active` styling replaces nothing but adds no ripple.
+  const pressed = kotlinUsesPressedStyle(e)
+  const sourcePrefix = pressed ? `interactionSource = ${PRESS_SOURCE_IDENT}, indication = null, ` : ''
+  const enabledPrefix = `${sourcePrefix}${enabledArg === '' ? '' : `${enabledArg}, `}`
   const clickable = onLongPress
     ? `.combinedClickable(${enabledPrefix}onClick = ${action}, onLongClick = ${emitKotlinAction(onLongPress.handler, indent)})`
     : `.clickable(${enabledPrefix}onClick = ${action})`
@@ -7866,12 +8428,17 @@ function emitKotlinPress(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: nu
   const gestures = `${clickable}${swipeInput}`
   const modifier = layoutModifier !== '' ? `${layoutModifier}${gestures}` : `Modifier${gestures}`
 
-  const pad = ' '.repeat(indent + 2)
+  const pad = ' '.repeat(indent + (pressed ? 4 : 2))
+  let body: string
   if (e.children.length === 0) {
-    return `Box(modifier = ${modifier}) {}`
+    body = `Box(modifier = ${modifier}) {}`
+  } else {
+    const contentLines = e.children
+      .map((c) => pad + emitKotlinChild(c, indent + (pressed ? 4 : 2)))
+      .join('\n')
+    body = `Box(modifier = ${modifier}) {\n${contentLines}\n${' '.repeat(indent + (pressed ? 2 : 0))}}`
   }
-  const contentLines = e.children.map((c) => pad + emitKotlinChild(c, indent + 2)).join('\n')
-  return `Box(modifier = ${modifier}) {\n${contentLines}\n${' '.repeat(indent)}}`
+  return pressed ? kotlinWrapPressState(body, indent) : body
 }
 
 /**
@@ -8329,6 +8896,30 @@ function emitKotlinRouterProvider(
     }
   }
 
+  // #4060 — a TAB-BAR router: the content emits AS WRITTEN; a `<Tabs router>`
+  // inside lowers to router-driven `PyreonTabs`, each `<RouterView />` in a
+  // `<Tab>` to that tab's `PyreonTabStack` dispatching on the tab's own top.
+  const tabsCfg =
+    routerAttr.value.kind === 'identifier' ? _routerTabs.get(routerAttr.value.name) : undefined
+  const tabRoutes =
+    routerAttr.value.kind === 'identifier' ? _routerRoutes.get(routerAttr.value.name) : undefined
+  if (tabsCfg !== undefined && tabRoutes !== undefined && tabRoutes.length > 0) {
+    const prevTabs = _activeRouterTabsKotlin
+    _activeRouterTabsKotlin = {
+      routerName: (routerAttr.value as Extract<ExprIR, { kind: 'identifier' }>).name,
+      routerExpr,
+      routes: tabRoutes,
+      tabs: tabsCfg,
+      tab: null,
+    }
+    try {
+      if (e.children.length === 0) return `RouterProvider(${routerExpr}) { }`
+      const lines = e.children.map((c) => pad + emitKotlinChild(c, indent + 2)).join('\n')
+      return `RouterProvider(${routerExpr}) {\n${lines}\n${' '.repeat(indent)}}`
+    } finally {
+      _activeRouterTabsKotlin = prevTabs
+    }
+  }
   if (e.children.length === 0) {
     return `RouterProvider(${routerExpr}) { }`
   }
@@ -8407,12 +8998,17 @@ function subtreeHasRouterView(node: unknown): boolean {
  *     else -> Text("Pyreon Router: no route for \${currentPath}")
  *   }
  */
-function emitKotlinRouteDispatch(routes: import('./types').RouteIR[], indent: number): string {
+function emitKotlinRouteDispatch(
+  routes: import('./types').RouteIR[],
+  indent: number,
+  // #4060: a tab's stack dispatches on THAT tab's top entry, not the URL's.
+  pathExpr = 'router.currentPath',
+): string {
   // Phase 3 (nested routes) — dispatch on FULL paths, wrapping each leaf in
   // its layout chain via content lambdas. Flat tables keep the unchanged
   // dispatch below — zero regression.
   if (hasNestedRoutes(routes)) {
-    return emitKotlinNestedRouteDispatch(routes, indent)
+    return emitKotlinNestedRouteDispatch(routes, indent, pathExpr)
   }
   const pad = ' '.repeat(indent)
   const innerPad = ' '.repeat(indent + 2)
@@ -8446,7 +9042,7 @@ function emitKotlinRouteDispatch(routes: import('./types').RouteIR[], indent: nu
     const loadBody = emitKotlinExpr(r.loader, indent + 4)
     return `PyreonRouteLoader(path = currentPath, load = { ${loadBody} }) { ${renderCall} }`
   }
-  lines.push(`${pad}val currentPath = router.currentPath`)
+  lines.push(`${pad}val currentPath = ${pathExpr}`)
   lines.push(`${pad}when {`)
   for (const route of routes) {
     // Wildcard routes don't get a path branch — handled as the else-branch.
@@ -8572,6 +9168,7 @@ function emitKotlinLayoutAwareInvocation(component: ExprIR, indent: number): str
 function emitKotlinNestedRouteDispatch(
   routes: import('./types').RouteIR[],
   indent: number,
+  pathExpr = 'router.currentPath',
 ): string {
   const pad = ' '.repeat(indent)
   const innerPad = ' '.repeat(indent + 2)
@@ -8597,7 +9194,7 @@ function emitKotlinNestedRouteDispatch(
       ? renderCall
       : `if (${emitKotlinExpr(guard, indent + 4)}) ${renderCall} else ${denyFallback}`
   const lines: string[] = []
-  lines.push(`${pad}val currentPath = router.currentPath`)
+  lines.push(`${pad}val currentPath = ${pathExpr}`)
   lines.push(`${pad}when {`)
   for (const entry of entries) {
     const isLeafLayout =
@@ -8651,6 +9248,8 @@ function emitKotlinRouterView(
   if (_emittingLayoutComponentKotlin) {
     return `content()`
   }
+  // #4060 — inside a tab-bar router: this tab's own stack.
+  if (_activeRouterTabsKotlin !== null) return emitKotlinTabStack(_activeRouterTabsKotlin, _indent)
   // Inside a routes-bearing `<RouterProvider>`: this is the routed slot.
   if (_activeRouteDispatchKotlin !== null) return _activeRouteDispatchKotlin(_indent)
   return `RouterView()`

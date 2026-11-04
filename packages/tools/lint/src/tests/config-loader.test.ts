@@ -15,15 +15,37 @@ describe('loadConfig', () => {
     rmSync(dir, { recursive: true, force: true })
   })
 
-  it('walks up parents to find a config — found at depth 1 (L32-34)', () => {
+  // #4083 — the walk used to break before ever reading the parent, and this
+  // spec accepted `null`, so it could not catch that.
+  it('walks up parents to find a config', () => {
     const dir = makeTmp()
-    const nested = join(dir, 'a')
+    const nested = join(dir, 'a', 'b')
     mkdirSync(nested, { recursive: true })
     writeFileSync(join(dir, '.pyreonlintrc.json'), JSON.stringify({ preset: 'recommended' }))
-    // loadConfig(nested) walks up — should find config in `dir`
-    const result = loadConfig(nested)
-    // Implementation walks up to `dir` (the immediate parent), found there.
-    expect(result === null || result.preset === 'recommended').toBe(true)
+    expect(loadConfig(nested)?.preset).toBe('recommended')
+    rmSync(dir, { recursive: true, force: true })
+  })
+
+  it('returns the NEAREST config when several ancestors have one', () => {
+    const dir = makeTmp()
+    const nested = join(dir, 'app')
+    mkdirSync(nested, { recursive: true })
+    writeFileSync(join(dir, '.pyreonlintrc.json'), JSON.stringify({ preset: 'recommended' }))
+    writeFileSync(join(nested, '.pyreonlintrc.json'), JSON.stringify({ preset: 'strict' }))
+    expect(loadConfig(nested)?.preset).toBe('strict')
+    rmSync(dir, { recursive: true, force: true })
+  })
+
+  it('stops at the repository root (.git) — a config above it is ignored', () => {
+    const dir = makeTmp()
+    const repo = join(dir, 'repo')
+    const app = join(repo, 'app')
+    mkdirSync(join(repo, '.git'), { recursive: true })
+    mkdirSync(app, { recursive: true })
+    writeFileSync(join(dir, '.pyreonlintrc.json'), JSON.stringify({ preset: 'strict' }))
+    expect(loadConfig(app)).toBeNull()
+    writeFileSync(join(repo, '.pyreonlintrc.json'), JSON.stringify({ preset: 'recommended' }))
+    expect(loadConfig(app)?.preset).toBe('recommended')
     rmSync(dir, { recursive: true, force: true })
   })
 

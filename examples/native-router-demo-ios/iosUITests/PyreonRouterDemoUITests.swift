@@ -640,6 +640,12 @@ final class PyreonRouterDemoUITests: XCTestCase {
         let zone = app.otherElements["gesture-zone"].firstMatch
         XCTAssertTrue(zone.waitForExistence(timeout: 15), "gesture zone missing")
         XCTAssertTrue(app.staticTexts["Pan: none"].firstMatch.exists, "pan should start at none")
+        // The vector <Canvas> inside the region renders (its <CanvasText> label
+        // is a real Text in the accessibility tree).
+        XCTAssertTrue(
+            app.staticTexts["Drag or pinch here"].firstMatch.waitForExistence(timeout: 5),
+            "the <Canvas> inside the gesture zone did not render its CanvasText"
+        )
 
         let from = zone.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.5))
         let to = zone.coordinate(withNormalizedOffset: CGVector(dx: 0.8, dy: 0.5))
@@ -1103,6 +1109,59 @@ final class PyreonRouterDemoUITests: XCTestCase {
         )
     }
 
+    // Error handling — `throw` and `try`/`catch`/`finally` through the real
+    // Swift error model. `parseQuantity` throws; `describeQuantity` calls it
+    // WITHOUT catching, so it must be emitted `throws` (the fixed point) and
+    // the call marked `try` — or this file does not compile at all. The page
+    // catches and renders the message; `finally` (a `defer`) increments a
+    // counter on the success AND the failure path, so it reads 1, 2, 3.
+    func test_throwTryCatchFinallyRunOnDevice() throws {
+        let app = XCUIApplication()
+        app.launch()
+
+        XCTAssertTrue(
+            app.otherElements["home-page"].firstMatch.waitForExistence(timeout: 30),
+            "Home page did not render"
+        )
+        app.buttons["Go to About"].tap()
+        XCTAssertTrue(
+            app.otherElements["about-page"].firstMatch.waitForExistence(timeout: 15),
+            "About page did not render"
+        )
+        app.buttons["View lifecycle"].tap()
+        XCTAssertTrue(
+            app.otherElements["lifecycle-page"].firstMatch.waitForExistence(timeout: 15),
+            "Lifecycle page did not render"
+        )
+        app.buttons["View errors"].tap()
+        XCTAssertTrue(
+            app.otherElements["errors-page"].firstMatch.waitForExistence(timeout: 15),
+            "Errors page did not render"
+        )
+        XCTAssertTrue(app.staticTexts["Result: none"].waitForExistence(timeout: 10))
+
+        app.buttons["Parse valid"].tap()
+        XCTAssertTrue(
+            app.staticTexts["Result: qty 3"].waitForExistence(timeout: 10),
+            "The non-throwing path did not render its value"
+        )
+        XCTAssertTrue(app.staticTexts["Finally: 1"].waitForExistence(timeout: 10), "finally did not run on success")
+
+        app.buttons["Parse empty"].tap()
+        XCTAssertTrue(
+            app.staticTexts["Result: error: required"].waitForExistence(timeout: 10),
+            "The thrown error was not caught, or its message was lost"
+        )
+        XCTAssertTrue(app.staticTexts["Finally: 2"].waitForExistence(timeout: 10), "finally did not run on failure")
+
+        app.buttons["Parse negative"].tap()
+        XCTAssertTrue(
+            app.staticTexts["Result: error: negative: -2"].waitForExistence(timeout: 10),
+            "A RangeError's interpolated message was not carried"
+        )
+        XCTAssertTrue(app.staticTexts["Finally: 3"].waitForExistence(timeout: 10))
+    }
+
     // Platform APIs — app LIFECYCLE through the REAL UIApplication
     // notifications. The lifecycle page renders the STICKY wasBackgrounded
     // flag; backgrounding via the Home button and re-activating must flip it
@@ -1351,6 +1410,132 @@ final class PyreonRouterDemoUITests: XCTestCase {
         XCTAssertTrue(
             app.staticTexts["Mounted with: Loaded title"].waitForExistence(timeout: 10),
             "onMount ran without the loader data (observed: \(app.staticTexts["loaded-mounted"].firstMatch.label))"
+        )
+    }
+
+    // Navigation row (#3983) — <Tabs> lowers to TabView, <Split> to a pushed
+    // compact detail. The load-bearing assertions are the STATE ones: the draft
+    // is typed into the Feed tab and the counter lives in a child component's
+    // own `@State` inside the Me tab, so a tab rebuilt on every switch would come
+    // back empty / at 0. Tab bar buttons carry no identifier in SwiftUI, so they
+    // are queried by their label (documented on TabProps).
+    func test_tabsKeepEachTabsStateAndSplitPushesDetail() throws {
+        let app = XCUIApplication()
+        app.launch()
+        XCTAssertTrue(app.otherElements["home-page"].firstMatch.waitForExistence(timeout: 30))
+        app.buttons["home-to-navigation"].tap()
+
+        XCTAssertTrue(
+            app.staticTexts["nav-feed-title"].waitForExistence(timeout: 15),
+            "Feed tab content did not render after navigating to /navigation"
+        )
+        let tabBar = app.tabBars.firstMatch
+        XCTAssertTrue(tabBar.waitForExistence(timeout: 10), "no tab bar — <Tabs> did not lower to a TabView")
+        XCTAssertTrue(tabBar.buttons["Mail"].exists && tabBar.buttons["Me"].exists, "tab bar items missing")
+
+        let draft = app.textFields["nav-feed-draft"]
+        XCTAssertTrue(draft.waitForExistence(timeout: 10))
+        draft.tap()
+        // Return submits the field, which dismisses the keyboard. The keyboard
+        // has to be gone before the tab switch: iOS lays it OVER the tab bar,
+        // and XCUITest still reports the occluded tab button as existing, so a
+        // tap on "Me" would land on the keyboard and leave the Feed tab on
+        // screen. A user has to dismiss the keyboard first too.
+        draft.typeText("hello\n")
+        XCTAssertEqual(app.staticTexts["nav-feed-echo"].label, "Draft: hello")
+        XCTAssertTrue(
+            app.keyboards.firstMatch.waitForNonExistence(timeout: 5),
+            "keyboard still up after Return, so it covers the tab bar"
+        )
+
+        tabBar.buttons["Me"].tap()
+        let tap = app.buttons["nav-me-tap"]
+        XCTAssertTrue(tap.waitForExistence(timeout: 10), "Me tab did not render")
+        tap.tap()
+        tap.tap()
+        XCTAssertEqual(tap.label, "Tapped 2")
+
+        tabBar.buttons["Feed"].tap()
+        XCTAssertTrue(app.staticTexts["nav-feed-echo"].waitForExistence(timeout: 10))
+        XCTAssertEqual(
+            app.staticTexts["nav-feed-echo"].label, "Draft: hello",
+            "the Feed tab lost its typed draft across a tab switch"
+        )
+        tabBar.buttons["Me"].tap()
+        XCTAssertTrue(tap.waitForExistence(timeout: 10))
+        XCTAssertEqual(
+            tap.label, "Tapped 2",
+            "the Me tab's child @State reset across a tab switch — the tab was rebuilt"
+        )
+
+        // <Split> on a compact iPhone: list → push detail → system back.
+        tabBar.buttons["Mail"].tap()
+        let row = app.buttons["nav-mail-row-welcome"]
+        XCTAssertTrue(row.waitForExistence(timeout: 10), "Split sidebar did not render")
+        row.tap()
+        let subject = app.staticTexts["nav-mail-subject"]
+        XCTAssertTrue(subject.waitForExistence(timeout: 10), "Split detail was not pushed")
+        XCTAssertEqual(subject.label, "Subject: Welcome")
+        let back = app.navigationBars.buttons.element(boundBy: 0)
+        XCTAssertTrue(back.waitForExistence(timeout: 10), "no navigation back button on the pushed detail")
+        back.tap()
+        XCTAssertTrue(
+            app.buttons["nav-mail-row-invoice"].waitForExistence(timeout: 10),
+            "system back did not return to the Split sidebar"
+        )
+        // onBack cleared the selection, so the row can be picked again.
+        app.buttons["nav-mail-row-invoice"].tap()
+        XCTAssertTrue(subject.waitForExistence(timeout: 10))
+        XCTAssertEqual(subject.label, "Subject: Invoice")
+    }
+
+    /// Tab-bar router (#4060): `createRouter({ tabs })` + `<Tabs router>` — each tab is its own
+    /// `NavigationStack` inside the `TabView`. Before, the router's one stack wrapped the TabView, so a push from
+    /// inside a tab COVERED the tab bar; here it stays, every tab keeps its stack across a switch, and re-tapping
+    /// the active tab pops it to its root.
+    func test_tabRouterKeepsAStackPerTabAndTheTabBarOnPush() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["-pyreonTabsDemo"]
+        app.launch()
+        XCTAssertTrue(
+            app.staticTexts["tabs-feed-title"].waitForExistence(timeout: 30),
+            "TabsApp did not open on the Feed tab's root"
+        )
+        let tabBar = app.tabBars.firstMatch
+        XCTAssertTrue(tabBar.waitForExistence(timeout: 10), "no tab bar — <Tabs router> did not lower to a TabView")
+
+        // Push inside Feed: the detail renders AND the tab bar is still on screen.
+        app.buttons["tabs-feed-open"].tap()
+        XCTAssertTrue(app.staticTexts["tabs-feed-post-title"].waitForExistence(timeout: 15), "push inside the Feed tab did not render")
+        XCTAssertTrue(
+            tabBar.buttons["Me"].isHittable,
+            "the tab bar is not hittable after a push — the push covered it instead of staying inside the tab"
+        )
+
+        // Switch to Me and push there.
+        tabBar.buttons["Me"].tap()
+        XCTAssertTrue(app.staticTexts["tabs-me-title"].waitForExistence(timeout: 10), "Me tab root did not render")
+        app.buttons["tabs-me-open"].tap()
+        XCTAssertTrue(app.staticTexts["tabs-me-settings-title"].waitForExistence(timeout: 15), "push inside the Me tab did not render")
+
+        // Back to Feed: its stack was kept — still on the post.
+        tabBar.buttons["Feed"].tap()
+        XCTAssertTrue(
+            app.staticTexts["tabs-feed-post-title"].waitForExistence(timeout: 10),
+            "the Feed tab lost its pushed post across a tab switch"
+        )
+
+        // Re-tapping the active tab pops it to its root.
+        tabBar.buttons["Feed"].tap()
+        XCTAssertTrue(app.staticTexts["tabs-feed-title"].waitForExistence(timeout: 10), "re-tapping Feed did not pop to its root")
+        let gone = expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: app.staticTexts["tabs-feed-post-title"])
+        XCTAssertEqual(XCTWaiter().wait(for: [gone], timeout: 10), .completed, "the post is still on the Feed stack after a re-tap")
+
+        // Me still holds its settings page.
+        tabBar.buttons["Me"].tap()
+        XCTAssertTrue(
+            app.staticTexts["tabs-me-settings-title"].waitForExistence(timeout: 10),
+            "the Me tab lost its pushed settings page"
         )
     }
 

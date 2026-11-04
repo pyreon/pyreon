@@ -34,6 +34,7 @@
 // `Stack`'s with a row default, since the two differ only in axis.
 //
 // Also exported by `@pyreon/primitives` but deliberately NOT members:
+// `Tab` (consumed by `<Tabs>`' emitter, never emitted on its own),
 // `Transition` / `TransitionGroup` (animation wrappers), `WebView` (a native
 // host for web content) and the `Web` / `NativeIOS` / `NativeAndroid` escape
 // hatches. Each has its own dedicated emitter and never reaches generic emit,
@@ -80,11 +81,17 @@ export const CANONICAL_PRIMITIVES = new Set([
   'Press',
   'Link',
   'Gesture',
+  // Drawing (1) — its shapes (CanvasRect …) are children with their own emitters, not members
+  'Canvas',
   // Input (4)
   'Field',
   'Toggle',
   'Select',
   'Modal',
+  // Navigation (2) — `<Tab>` is `<Tabs>`' entry marker and never a standalone
+  // element, so it is not a member.
+  'Tabs',
+  'Split',
 ])
 
 export function isCanonicalPrimitive(tag: string): boolean {
@@ -117,10 +124,13 @@ export const SWIFT_NAMES: Record<string, string> = {
   Press: 'Button', // no chrome — emits the trailing-closure-only form
   Link: 'PyreonLink', // pushes onto the native router (@pyreon/native-router-swift)
   Gesture: 'PyreonGesture', // simultaneous Drag/Magnify/RotateGesture (@pyreon/native-runtime-swift)
+  Canvas: 'PyreonCanvas', // clipped top-leading ZStack of Paths (@pyreon/native-runtime-swift)
   Field: 'TextField', // SecureField when kind="password"
   Toggle: 'Toggle',
   Select: 'PyreonSelect', // a menu-style Picker (runtime-swift PyreonSelect.swift)
   Modal: 'Sheet', // .sheet(isPresented:) modifier-based
+  Tabs: 'PyreonTabs', // TabView(selection:) (+ .sidebarAdaptable on iOS 18)
+  Split: 'PyreonSplit', // NavigationSplitView / compact NavigationStack
 }
 
 /**
@@ -142,10 +152,13 @@ export const KOTLIN_NAMES: Record<string, string> = {
   Press: 'Box', // Modifier.clickable
   Link: 'PyreonLink', // wraps a Box(Modifier.clickable { navigate() }) (@pyreon/native-router-kotlin)
   Gesture: 'PyreonGesture', // one pointerInput loop (@pyreon/native-runtime-kotlin)
+  Canvas: 'PyreonCanvas', // clipped Box of Canvas draw layers (@pyreon/native-runtime-kotlin)
   Field: 'TextField',
   Toggle: 'Switch',
   Select: 'PyreonSelect', // a Material 3 ExposedDropdownMenuBox (runtime-kotlin PyreonSelect.kt)
   Modal: 'Dialog',
+  Tabs: 'PyreonTabs', // BottomNavigation / NavigationRail by window width
+  Split: 'PyreonSplit', // two panes / one pane + BackHandler by window width
 }
 
 // ============================================================================

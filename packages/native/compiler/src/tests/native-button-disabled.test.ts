@@ -189,3 +189,55 @@ export function App() {
     expect(validateKotlin(transform(TOGGLE, { target: 'kotlin' }).code).ok).toBe(true)
   })
 })
+
+// `disabled={a() === b}` — an OPERATOR expression under Compose's `enabled = !…`
+// inversion. `!` binds tighter than `==` / `&&` / `||` / `?:`, so the unwrapped
+// form `enabled = !tab == ""` applies `!` to a String and kotlinc rejects it
+// (`unresolved reference 'not' for operator '!'`). Swift never inverts, so the
+// same source compiled on iOS and failed only on Android.
+describe('disabled={<operator expression>} — Kotlin parenthesises the inversion', () => {
+  const app = (disabled: string) => `
+import { signal } from '@pyreon/reactivity'
+import { Stack, Button, Field, Toggle, Press, Text } from '@pyreon/primitives'
+export function App() {
+  const tab = signal('')
+  const busy = signal(false)
+  const on = signal(false)
+  const n = signal(0)
+  return (
+    <Stack>
+      <Button onPress={() => tab.set('a')} disabled={${disabled}}>Go</Button>
+      <Field value={tab} disabled={${disabled}} />
+      <Toggle value={on} disabled={${disabled}} />
+      <Press onPress={() => n.set(1)} disabled={${disabled}}><Text>p</Text></Press>
+    </Stack>
+  )
+}`
+
+  it.each([
+    ["tab() === ''", 'enabled = !(tab == "")'],
+    ['busy() || n() > 2', 'enabled = !(busy || n > 2L)'],
+    ['!busy()', 'enabled = !(!busy)'],
+  ])('disabled={%s} → %s on every primitive', (expr, expected) => {
+    const code = transform(app(expr), { target: 'kotlin' }).code
+    expect(code.split(expected).length - 1, code).toBe(4)
+    // Swift needs no parens — `.disabled(…)` takes the expression whole.
+    expect(transform(app(expr), { target: 'swift' }).code).not.toContain('.disabled((')
+  })
+
+  it('a bare signal read stays unparenthesised (byte-identical to before)', () => {
+    expect(transform(app('busy()'), { target: 'kotlin' }).code).toContain('enabled = !busy')
+    expect(transform(app('busy()'), { target: 'kotlin' }).code).not.toContain('enabled = !(busy)')
+  })
+
+  it.skipIf(!isKotlincAvailable())(
+    'the operator forms compile with kotlinc',
+    () => {
+      for (const expr of ["tab() === ''", 'busy() || n() > 2']) {
+        const res = validateKotlin(transform(app(expr), { target: 'kotlin' }).code)
+        expect(res.ok, `${expr}: ${res.error ?? ''}`).toBe(true)
+      }
+    },
+    180_000,
+  )
+})

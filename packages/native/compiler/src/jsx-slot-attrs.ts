@@ -28,6 +28,7 @@ const SLOT_ATTRS: ReadonlyMap<string, ReadonlySet<string>> = new Map([
   ['Show', new Set(['fallback'])],
   ['Suspense', new Set(['fallback'])],
   ['ErrorBoundary', new Set(['fallback'])],
+  ['Split', new Set(['sidebar'])],
 ])
 
 function isJsxValue(e: ExprIR): boolean {

@@ -18,7 +18,7 @@
 import { For, onMount } from '@pyreon/core'
 import { useAppState, useDatabase, useFetch, useOnline, usePush, useSecureStorage, useSizeClass, useWebSocket } from '@pyreon/hooks'
 import { useFieldArray } from '@pyreon/form'
-import { Audio, Button, Gesture, Heading, Image, Inline, Layer, Link, Press, Spacer, Stack, Text, Video } from '@pyreon/primitives'
+import { Audio, Button, Canvas, CanvasCircle, CanvasLine, CanvasPath, CanvasRect, CanvasText, Field, Gesture, Heading, Image, Inline, Layer, Link, Press, Spacer, Split, Stack, Tab, Tabs, Text, Video } from '@pyreon/primitives'
 import { attrs } from '@pyreon/attrs'
 import { Element } from '@pyreon/elements'
 import { Col, Container, Row } from '@pyreon/coolgrid'
@@ -267,7 +267,8 @@ function MotionPage() {
   // so the zone sits in the first screenful on both platforms
   // (coordinate gestures need on-screen bounds — the counter-fold lesson).
   let swipeDir = plainState<string>('none')
-  // Continuous-gesture proof — <Gesture onPan onPinch> + the transform props.
+  // Continuous-gesture proof — <Gesture onPan onPinch> + the transform props,
+  // driving a vector <Canvas> (both halves of #3985 on one device page).
   // The handlers record a DISCRETE verdict on 'end' (pan direction, pinch
   // direction) so a real injected gesture is assertable as text, and the
   // live values drive `translateX` / `scale` on the inner box. Each outcome
@@ -308,9 +309,15 @@ function MotionPage() {
           }
         }}
       >
-        <Stack padding={4} background="muted" style={{ width: 300, height: 160 }}>
-          <Text translateX={panX} scale={zoom}>Drag or pinch here</Text>
-        </Stack>
+        {/* The floor-plan shape the issue describes: a vector <Canvas> the
+            gesture values pan and zoom, transformed as a CHILD of <Gesture>. */}
+        <Canvas width={300} height={160} background="muted" translateX={panX} scale={zoom} data-testid="plan-canvas">
+          <CanvasRect x={12} y={12} width={120} height={70} radius={8} fill="primary" />
+          <CanvasCircle cx={220} cy={50} r={28} fill="#16a34a" stroke="text" strokeWidth={2} />
+          <CanvasLine x1={12} y1={110} x2={288} y2={110} stroke="surface" strokeWidth={3} />
+          <CanvasPath d="M150 150 L180 120 L210 150 Z" fill="warning" />
+          <CanvasText x={14} y={124} size={14} fill="surface">Drag or pinch here</CanvasText>
+        </Canvas>
       </Gesture>
       <Button onPress={() => { boxOn = !boxOn }} data-testid="motion-toggle">
         Toggle Slow Box
@@ -588,6 +595,9 @@ function HomePage() {
       </Inline>
       <Inline gap={2}>
         <Button onPress={() => navigate('/anim')}>View anim</Button>
+        <Button onPress={() => navigate('/navigation')} data-testid="home-to-navigation">
+          View tabs
+        </Button>
       </Inline>
       <Inline gap={2}>
         <Button onPress={() => navigate('/offline')}>View offline</Button>
@@ -660,6 +670,68 @@ function HomePage() {
         <Text data-testid="adaptive-b">B</Text>
       </Stack>
     </Stack>
+  )
+}
+
+// Navigation row (#3983) — <Tabs> + <Split>. What it PROVES on device:
+//   - the tab bar exists and switches (iOS TabView, Android BottomNavigation);
+//   - a visited tab KEEPS its state: the counter lives in a CHILD component's
+//     own local signal (an `@State` / `remember` inside that tab), and the
+//     field's text is typed into the tab, so a tab that were rebuilt on every
+//     switch would come back at 0 / empty;
+//   - <Split> on a phone shows the list, pushes the detail on a row tap, and
+//     the platform's own back (iOS nav back button, Android system back)
+//     returns to the list through `onBack`.
+function TapCounter() {
+  const taps = signal(0)
+  return (
+    <Button onPress={() => taps.set(taps() + 1)} data-testid="nav-me-tap">
+      Tapped {taps()}
+    </Button>
+  )
+}
+
+function NavigationPage() {
+  const tab = signal('feed')
+  const draft = signal('')
+  const picked = signal('')
+  return (
+    <Tabs value={tab} onChange={(v) => tab.set(v)} data-testid="nav-tabs">
+      <Tab value="feed" label="Feed" icon="home" data-testid="nav-tab-feed">
+        <Stack gap={3} padding={4} data-testid="nav-feed">
+          <Text data-testid="nav-feed-title">Feed tab</Text>
+          <Field value={draft} onChangeText={(v) => draft.set(v)} placeholder="Draft" data-testid="nav-feed-draft" />
+          <Text data-testid="nav-feed-echo">Draft: {draft()}</Text>
+        </Stack>
+      </Tab>
+      <Tab value="mail" label="Mail" icon="email" data-testid="nav-tab-mail">
+        <Split
+          sidebar={
+            <Stack gap={2} padding={4} data-testid="nav-mail-list">
+              <Button onPress={() => picked.set('Welcome')} data-testid="nav-mail-row-welcome">
+                Welcome
+              </Button>
+              <Button onPress={() => picked.set('Invoice')} data-testid="nav-mail-row-invoice">
+                Invoice
+              </Button>
+            </Stack>
+          }
+          showDetail={picked() !== ''}
+          onBack={() => picked.set('')}
+          data-testid="nav-mail-split"
+        >
+          <Stack gap={2} padding={4} data-testid="nav-mail-detail">
+            <Text data-testid="nav-mail-subject">Subject: {picked() === '' ? 'none' : picked()}</Text>
+          </Stack>
+        </Split>
+      </Tab>
+      <Tab value="me" label="Me" icon="person" data-testid="nav-tab-me">
+        <Stack gap={3} padding={4} data-testid="nav-me">
+          <Text data-testid="nav-me-title">Me tab</Text>
+          <TapCounter />
+        </Stack>
+      </Tab>
+    </Tabs>
   )
 }
 
@@ -775,6 +847,47 @@ function LifecyclePage() {
       <Text>Lifecycle</Text>
       <Text data-testid="phase-text">Phase: {app()}</Text>
       <Text data-testid="bg-flag">BG: {app.wasBackgrounded}</Text>
+      <Button onPress={() => navigate('/errors')}>View errors</Button>
+      <Button onPress={() => navigate('/')}>Back to Home</Button>
+    </Stack>
+  )
+}
+
+// Error handling: `throw` and `try`/`catch`/`finally`. `parseQuantity` throws; `describeQuantity` calls it WITHOUT
+// catching, so on iOS it must be `throws` too (the fixed point) and the call marked `try`. The page catches and
+// renders the message, and `finally` runs on both the success and the failure path — a flag only it sets.
+function parseQuantity(raw: string): number {
+  if (raw === '') throw new Error('required')
+  const n = Number(raw)
+  if (n < 0) throw new RangeError(`negative: ${raw}`)
+  return n
+}
+
+function describeQuantity(raw: string): string {
+  return 'qty ' + String(parseQuantity(raw))
+}
+
+function ErrorsPage() {
+  const navigate = useNavigate()
+  const result = signal('none')
+  const finished = signal(0)
+  const run = (raw: string) => {
+    try {
+      result.set(describeQuantity(raw))
+    } catch (e) {
+      result.set(`error: ${e instanceof Error ? e.message : String(e)}`)
+    } finally {
+      finished.set(finished() + 1)
+    }
+  }
+  return (
+    <Stack gap={3} padding={4} data-testid="errors-page">
+      <Text>Errors</Text>
+      <Text data-testid="err-result">Result: {result()}</Text>
+      <Text data-testid="err-finally">Finally: {finished()}</Text>
+      <Button onPress={() => run('3')}>Parse valid</Button>
+      <Button onPress={() => run('')}>Parse empty</Button>
+      <Button onPress={() => run('-2')}>Parse negative</Button>
       <Button onPress={() => navigate('/')}>Back to Home</Button>
     </Stack>
   )
@@ -849,9 +962,11 @@ export function RouterApp() {
       { path: '/biglist', component: BigListPage },
       { path: '/a11y', component: A11yPage },
       { path: '/anim', component: AnimPage },
+      { path: '/navigation', component: NavigationPage },
       { path: '/offline', component: OfflinePage },
       { path: '/push', component: PushPage },
       { path: '/lifecycle', component: LifecyclePage },
+      { path: '/errors', component: ErrorsPage },
       { path: '/media', component: MediaPage },
       { path: '/http', component: HttpPage },
       { path: '/loaded', component: LoadedPage, loader: (): Loaded => ({ title: 'Loaded title', views: 42 }) },
@@ -863,6 +978,87 @@ export function RouterApp() {
   return (
     <RouterProvider router={router}>
       <RouterView />
+    </RouterProvider>
+  )
+}
+
+// Tab-bar router (#4060) — per-tab back stacks. A SECOND root, separate from
+// RouterApp so the existing single-stack screens (and their fold budget on the
+// Android emulator) are untouched: the iOS host shows it when launched with
+// `-pyreonTabsDemo`, the Android host from `TabsDemoActivity`. What it PROVES
+// on device:
+//   - a push from inside a tab stays INSIDE the tab — the tab bar stays
+//     visible (before, the router's one stack wrapped the TabView, so a push
+//     covered the bar);
+//   - switching tabs keeps each tab's stack (Feed is still on the post after a
+//     detour through Me);
+//   - re-tapping the active tab pops it to its root;
+//   - Android: the system Back pops the ACTIVE tab first, then returns to the
+//     first tab from another tab's root.
+function TabFeedHome() {
+  const navigate = useNavigate()
+  return (
+    <Stack gap={3} padding={4} data-testid="tabs-feed-home">
+      <Text data-testid="tabs-feed-title">Feed root</Text>
+      <Button onPress={() => navigate('/feed/post')} data-testid="tabs-feed-open">
+        Open post
+      </Button>
+    </Stack>
+  )
+}
+
+function TabFeedPost() {
+  return (
+    <Stack gap={3} padding={4} data-testid="tabs-feed-post">
+      <Text data-testid="tabs-feed-post-title">Post detail</Text>
+    </Stack>
+  )
+}
+
+function TabMeHome() {
+  const navigate = useNavigate()
+  return (
+    <Stack gap={3} padding={4} data-testid="tabs-me-home">
+      <Text data-testid="tabs-me-title">Me root</Text>
+      <Button onPress={() => navigate('/me/settings')} data-testid="tabs-me-open">
+        Open settings
+      </Button>
+    </Stack>
+  )
+}
+
+function TabMeSettings() {
+  return (
+    <Stack gap={3} padding={4} data-testid="tabs-me-settings">
+      <Text data-testid="tabs-me-settings-title">Settings</Text>
+    </Stack>
+  )
+}
+
+export function TabsApp() {
+  const router = createRouter({
+    mode: 'history',
+    routes: [
+      { path: '/feed', component: TabFeedHome },
+      { path: '/feed/post', component: TabFeedPost },
+      { path: '/me', component: TabMeHome },
+      { path: '/me/settings', component: TabMeSettings },
+    ],
+    tabs: [
+      { name: 'feed', root: '/feed' },
+      { name: 'me', root: '/me' },
+    ],
+  })
+  return (
+    <RouterProvider router={router}>
+      <Tabs router={router} data-testid="tabs-app">
+        <Tab value="feed" label="Feed" icon="home" data-testid="tabs-tab-feed">
+          <RouterView />
+        </Tab>
+        <Tab value="me" label="Me" icon="person" data-testid="tabs-tab-me">
+          <RouterView />
+        </Tab>
+      </Tabs>
     </RouterProvider>
   )
 }

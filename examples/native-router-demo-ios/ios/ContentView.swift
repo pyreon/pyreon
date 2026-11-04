@@ -15,6 +15,13 @@ import SwiftUI
 
 struct ContentView: View {
     var body: some View {
-        RouterApp()
+        // `-pyreonTabsDemo` launches the tab-bar router demo (#4060) — a second
+        // root from the same RouterApp.tsx, so the per-tab-stack UITest runs
+        // without reshaping RouterApp's screens.
+        if ProcessInfo.processInfo.arguments.contains("-pyreonTabsDemo") {
+            TabsApp()
+        } else {
+            RouterApp()
+        }
     }
 }

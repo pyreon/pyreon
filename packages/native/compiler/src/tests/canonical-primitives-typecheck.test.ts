@@ -40,13 +40,21 @@ const USAGES: ReadonlyArray<readonly [string, string]> = [
   ['Press', '<Press onPress={() => {}}><Text>p</Text></Press>'],
   ['Link', '<Link to="/x"><Text>l</Text></Link>'],
   ['Gesture', '<Gesture onPan={() => {}}><Text>g</Text></Gesture>'],
+  ['Canvas', '<Canvas width={10} height={10}><Text>c</Text></Canvas>'],
   ['Field', '<Field value="" onChangeText={() => {}} />'],
   ['Toggle', '<Toggle value={true} onChange={() => {}} />'],
   ['Select', `<Select value="a" options={[{ value: 'a', label: 'A' }]} onChange={() => {}} />`],
   ['Modal', '<Modal open={true} onClose={() => {}}><Text>m</Text></Modal>'],
+  [
+    'Tabs',
+    '<Tabs value="a" onChange={() => {}}><Tab value="a" label="A" icon="home"><Text>a</Text></Tab><Tab value="b" label="B"><Text>b</Text></Tab></Tabs>',
+  ],
+  ['Split', '<Split sidebar={<Text>s</Text>} showDetail={false} onBack={() => {}}><Text>d</Text></Split>'],
 ]
 
-const ALL = USAGES.map(([n]) => n).join(', ')
+// `Tab` is not a canonical primitive of its own (it only appears inside
+// `Tabs`), but the Tabs usage needs it imported.
+const ALL = [...USAGES.map(([n]) => n), 'Tab'].join(', ')
 const app = (jsx: string) =>
   `import { ${ALL} } from '@pyreon/primitives'\nexport function C(){ return (<Stack>${jsx}</Stack>) }`
 

@@ -114,6 +114,24 @@ function _isMountablePart(x: unknown): boolean {
  * `bindPolymorphicText` (a reactive child can also swap text↔VNode).
  */
 export function _setChild(node: Element, value: unknown): void {
+  // A FUNCTION is an accessor, as it is on the h() path (`mountChild`'s function
+  // branch). The compiler routes every child it cannot type statically here —
+  // a named binding (`const label = () => …`, `function label() {}`), a helper
+  // param, a function-valued prop — and `textContent = fn` rendered the
+  // closure's SOURCE (#4086). Mount it reactively instead; the binding's effect
+  // registers with the active EffectScope, so it is disposed with its owner.
+  if (typeof value === 'function') {
+    // ADOPTED element (hydration): the server already rendered the accessor's
+    // value as this element's whole child list — SSR elides the range markers
+    // for a sole accessor child — so hand it to the marker-less slot hydrator
+    // rather than appending a second copy beside the server's text.
+    if (!_freshBind && _slotHydrator !== null) {
+      _slotHydrator(value as never, node, null)
+      return
+    }
+    mountChild(value as VNodeChild, node, null)
+    return
+  }
   if (_isMountableTextValue(value)) {
     mountChild(value as VNodeChild, node, null)
   } else {
@@ -178,7 +196,8 @@ export function _setChildAt(parent: Node, placeholder: ChildNode, value: unknown
     _slotHydrator(value as never, parent as Element, null)
     return
   }
-  if (_isMountableTextValue(value)) {
+  // A function is an accessor (see `_setChild`) — mount it reactively.
+  if (typeof value === 'function' || _isMountableTextValue(value)) {
     mountChild(value as VNodeChild, parent, placeholder)
     placeholder.remove()
   } else if (isMidSlotText(placeholder)) {

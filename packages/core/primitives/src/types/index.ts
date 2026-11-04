@@ -33,3 +33,14 @@ export type {
   SingleLineFieldProps,
   ToggleProps,
 } from './input'
+export type {
+  CanvasCircleProps,
+  CanvasLineProps,
+  CanvasPathProps,
+  CanvasProps,
+  CanvasRectProps,
+  CanvasTextProps,
+  ShapeColor,
+  ShapePaintProps,
+} from './canvas'
+export type { SplitProps, TabProps, TabsProps, TabsRouter, TabsRouterProps, TabsSignalProps } from './navigation'

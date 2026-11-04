@@ -39,6 +39,16 @@ export type {
   PinchEvent,
   RotateEvent,
 } from './types/gesture'
+export type {
+  CanvasCircleProps,
+  CanvasLineProps,
+  CanvasPathProps,
+  CanvasProps,
+  CanvasRectProps,
+  CanvasTextProps,
+  ShapeColor,
+  ShapePaintProps,
+} from './types/canvas'
 
 export type { InlineProps, LayerProps, ScrollProps, SpacerProps, StackProps } from './types/layout'
 export type { AudioProps, HeadingProps, IconProps, ImageProps, TextProps, VideoProps } from './types/content'
@@ -53,6 +63,7 @@ export type {
   SingleLineFieldProps,
   ToggleProps,
 } from './types/input'
+export type { SplitProps, TabProps, TabsProps, TabsRouter, TabsRouterProps, TabsSignalProps } from './types/navigation'
 export type {
   TransitionEasing,
   TransitionGroupProps,
@@ -68,12 +79,13 @@ export type {
 export { init, resetPrimitivesConfig } from './config'
 export type { PrimitivesInitOptions } from './config'
 
-// ===== Web runtime exports — the 19 canonical primitives =====
+// ===== Web runtime exports — the 22 canonical primitives =====
 //
-// Stack … Modal below are the canonical set; the compiler's
+// Stack … Split below are the canonical set (`<Tab>` excepted — it is
+// `<Tabs>`' entry marker); the compiler's
 // `CANONICAL_PRIMITIVES` (packages/native/compiler/src/canonical-primitives.ts)
 // must list exactly these, and a test there fails if the two disagree. The
-// exports after `Modal` (animation, WebView, escape hatches) are not members.
+// exports after `Split` (animation, WebView, escape hatches) are not members.
 //
 // On native targets these imports are intercepted by the PMTC
 // compiler before the JSX call site reaches runtime — these
@@ -93,11 +105,18 @@ export { Icon } from './web/Icon'
 export { Button } from './web/Button'
 export { Press } from './web/Press'
 export { Gesture } from './web/Gesture'
+export { Canvas } from './web/Canvas'
 export { Link } from './web/Link'
 export { Field } from './web/Field'
 export { Toggle } from './web/Toggle'
 export { Select } from './web/Select'
 export { Modal } from './web/Modal'
+// Top-level navigation — a tab bar that keeps each tab's state, and an
+// adaptive list/detail split. `<Tab>` is `<Tabs>`' entry marker, not a
+// standalone primitive.
+export { Tabs } from './web/Tabs'
+export { Tab } from './web/Tabs'
+export { Split } from './web/Split'
 // Animation vocabulary — the ONE import path where `<Transition name>` /
 // `<TransitionGroup>` resolve on every target. PMTC has lowered both to
 // real platform animation since M2.7/M2.8 (SwiftUI `.transition(…)` +
@@ -116,6 +135,9 @@ export type { EscapeHatchProps } from './types/escape-hatch'
 // web content; an `<iframe>` on web. The path to using web-only-rich viz
 // (charts / flow / tables) inside a native shell.
 export { WebView } from './web/WebView'
+
+// ===== Canvas shapes — children of <Canvas>, each with its own emitter =====
+export { CanvasRect, CanvasCircle, CanvasLine, CanvasPath, CanvasText } from './web/Canvas'
 export type { WebViewProps } from './types/webview'
 // Guest-side glue for the WebView bridge — the reusable other half of the
 // WebView-host pattern. A web-only-rich component built as a self-contained

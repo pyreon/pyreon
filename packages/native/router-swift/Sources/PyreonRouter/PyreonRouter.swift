@@ -12,6 +12,18 @@
 
 import SwiftUI
 
+/// One tab of a tab-bar router — `createRouter({ tabs: [{ name, root }] })`.
+/// `name` is the `<Tab value>`; `root` is the path the tab's stack starts at.
+public struct PyreonRouterTab: Equatable, Sendable {
+    public let name: String
+    public let root: String
+
+    public init(name: String, root: String) {
+        self.name = name
+        self.root = root
+    }
+}
+
 /// A single route definition — Phase A4 of the 2026-06 native readiness
 /// audit (closes CRIT-2 partial + CRIT-3 partial). Apps populate
 /// `PyreonRouter.routes` with a list of these; the router's
@@ -119,6 +131,11 @@ extension EnvironmentValues {
 /// - `back()`      ← `router.back()`
 /// - `params`      ← `useParams()`
 ///
+/// With `tabs` (`createRouter({ tabs })`) the router keeps one stack per tab:
+/// `path` is always the ACTIVE tab's stack (so every existing reader and
+/// `push`/`back` keep working on it), the other tabs' stacks wait in
+/// `tabPaths`, and `PyreonTabStack` gives each tab its own `NavigationStack`.
+///
 /// The `path` stack drives SwiftUI's `NavigationStack(path:)` binding;
 /// changes to it animate transitions per platform convention.
 @available(iOS 17.0, macOS 14.0, *)
@@ -149,7 +166,123 @@ public final class PyreonRouter {
     /// Convenience accessor for the top-of-stack path. Mirrors
     /// `router.currentRoute().path` on the web side.
     public var currentPath: String {
-        path.last ?? "/"
+        path.last ?? activeTabRoot ?? "/"
+    }
+
+    // ─── Tabs (per-tab back stacks) ─────────────────────────────────────
+
+    /// The tabs from `createRouter({ tabs })`, in bar order. Empty for a
+    /// single-stack router.
+    public let tabs: [PyreonRouterTab]
+
+    /// The active tab's name; `nil` for a single-stack router.
+    public var activeTab: String?
+
+    /// The pushed entries (root excluded — a tab's root is its stack's ROOT
+    /// view) of every tab EXCEPT the active one, whose entries live in `path`.
+    public var tabPaths: [String: [String]] = [:]
+
+    /// The active tab's root path, when the router has tabs.
+    public var activeTabRoot: String? {
+        guard let activeTab else { return nil }
+        return tabs.first(where: { $0.name == activeTab })?.root
+    }
+
+    /// One tab's pushed entries (root excluded) — `path` for the active tab.
+    public func tabPath(_ name: String) -> [String] {
+        name == activeTab ? path : (tabPaths[name] ?? [])
+    }
+
+    /// The `NavigationStack(path:)` binding for one tab. SwiftUI writes through
+    /// it on the back button and the swipe-back gesture; a write to the active
+    /// tab re-resolves `params` like `back()` does.
+    public func tabPathBinding(_ name: String) -> Binding<[String]> {
+        Binding(
+            get: { [weak self] in self?.tabPath(name) ?? [] },
+            set: { [weak self] next in
+                guard let self else { return }
+                if name == self.activeTab {
+                    guard next != self.path else { return }
+                    self.path = next
+                    self.updateParamsFromPath(self.currentPath)
+                } else {
+                    self.tabPaths[name] = next
+                }
+            }
+        )
+    }
+
+    /// Select a tab. Switching keeps every tab's stack and shows the selected
+    /// tab's top entry; selecting the tab that is ALREADY active pops it to its
+    /// root — the iOS and Android tab-bar convention. Gated by the same guards
+    /// as `push` (the visible route changes). No-op for an unknown name.
+    public func selectTab(_ name: String) {
+        guard let tab = tabs.first(where: { $0.name == name }) else { return }
+        if name == activeTab {
+            guard !path.isEmpty else { return }
+            if !allowNavigation(to: tab.root) { return }
+            path = []
+            _forwardStack.removeAll()
+            updateParamsFromPath(tab.root)
+            runAfterEach(tab.root)
+            return
+        }
+        let saved = tabPaths[name] ?? []
+        let destination = saved.last ?? tab.root
+        if !allowNavigation(to: destination) { return }
+        activateTab(name)
+        _forwardStack.removeAll()
+        updateParamsFromPath(destination)
+        runAfterEach(destination)
+    }
+
+    /// Make `name` the active tab, parking the current tab's entries and
+    /// loading `name`'s. Ungated — callers run the guards first.
+    private func activateTab(_ name: String) {
+        guard name != activeTab else { return }
+        if let current = activeTab { tabPaths[current] = path }
+        path = tabPaths[name] ?? []
+        tabPaths[name] = nil
+        activeTab = name
+    }
+
+    /// The tab whose root is the longest segment-prefix of `candidate`.
+    public static func tabFor(_ candidate: String, in tabs: [PyreonRouterTab]) -> PyreonRouterTab? {
+        let segs = splitPathAndQuery(candidate).path.split(separator: "/")
+        var best: PyreonRouterTab?
+        var bestLen = -1
+        for tab in tabs {
+            let rootSegs = tab.root.split(separator: "/")
+            if rootSegs.count > segs.count || rootSegs.count <= bestLen { continue }
+            if Array(segs.prefix(rootSegs.count)) == rootSegs {
+                best = tab
+                bestLen = rootSegs.count
+            }
+        }
+        return best
+    }
+
+    /// Whether `candidate` (query ignored) IS the tab's root.
+    public static func isTabRoot(_ tab: PyreonRouterTab, _ candidate: String) -> Bool {
+        splitPathAndQuery(candidate).path.split(separator: "/") == tab.root.split(separator: "/")
+    }
+
+    /// A navigation that changes tabs: a path under ANOTHER tab's root selects
+    /// that tab and pushes onto it; a path that IS a tab's root selects it and
+    /// pops it to the root. Returns false when `candidate` is an ordinary push
+    /// onto the active tab. The caller has already run the guards.
+    private func commitAcrossTabs(_ candidate: String) -> Bool {
+        guard !tabs.isEmpty, let target = Self.tabFor(candidate, in: tabs) else { return false }
+        let isRoot = Self.isTabRoot(target, candidate)
+        guard target.name != activeTab || isRoot else { return false }
+        activateTab(target.name)
+        if isRoot {
+            path = []
+        } else {
+            path.append(candidate)
+        }
+        updateParamsFromPath(candidate)
+        return true
     }
 
     /// Path parameter map for the current route (segments matched
@@ -286,9 +419,11 @@ public final class PyreonRouter {
         initialPath: [String] = PyreonDeepLink.takePendingPath(),
         routes: [RouteRecord] = [],
         notFoundComponent: (() -> AnyView)? = nil,
+        tabs: [PyreonRouterTab] = [],
     ) {
         self.routes = routes
         self.notFoundComponent = notFoundComponent
+        self.tabs = tabs
         // GATE the initial path. It used to be assigned straight to `path`,
         // and `allowNavigation` runs only from `push`/`replace` — so an app
         // COLD-LAUNCHED by a deep link arrived at that route with every guard
@@ -325,7 +460,23 @@ public final class PyreonRouter {
         // passes. A refused path falls back to root, the same degradation the
         // web router uses for a cancelled navigation: the user lands
         // somewhere they are allowed to be.
-        self.path = Self.initialPathAllowed(routes, initialPath.last) ? initialPath : []
+        let allowed = Self.initialPathAllowed(routes, initialPath.last)
+        if let firstTab = tabs.first {
+            // A tab-bar router opens on the tab whose root prefixes the inbound
+            // path (a deep link) and PUSHES it there, so Back returns to the
+            // tab's root page; without one, on the first tab. Static helpers
+            // only — no `self` read inside init (see the note above).
+            let target = initialPath.last
+            let tab = target.flatMap { Self.tabFor($0, in: tabs) } ?? firstTab
+            self.activeTab = tab.name
+            if let target, allowed, !Self.isTabRoot(tab, target) {
+                self.path = [target]
+            } else {
+                self.path = []
+            }
+        } else {
+            self.path = allowed ? initialPath : []
+        }
         // Resolve any params that the initial top-of-stack path produces,
         // so apps that start on `/users/42` have `params["id"] == "42"`
         // immediately — no need to call push/replace just to populate.
@@ -611,6 +762,11 @@ public final class PyreonRouter {
             return
         }
         if !allowNavigation(to: path) { return }
+        if commitAcrossTabs(path) {
+            _forwardStack.removeAll()
+            runAfterEach(path)
+            return
+        }
         self.path.append(path)
         // Phase A4: resolve the matched route + extract params atomically
         // with the path mutation, so observers see a consistent snapshot
@@ -642,6 +798,11 @@ public final class PyreonRouter {
             return
         }
         if !allowNavigation(to: path) { return }
+        if commitAcrossTabs(path) {
+            _forwardStack.removeAll()
+            runAfterEach(path)
+            return
+        }
         if self.path.isEmpty {
             self.path.append(path)
         } else {

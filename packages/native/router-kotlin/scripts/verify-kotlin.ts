@@ -173,6 +173,18 @@ class Uri {
 }
 `
 
+// androidx.activity.compose.BackHandler — EXACTLY the surface RouterProvider.kt's
+// `PyreonTabStack` calls (the tab-bar router's system-Back owner). Mirrors the
+// real signature; a wider stub would mask a call the real SDK rejects.
+const ANDROIDX_ACTIVITY_STUBS = `package androidx.activity.compose
+
+import androidx.compose.runtime.Composable
+
+@Composable
+@Suppress("UNUSED_PARAMETER")
+fun BackHandler(enabled: Boolean = true, onBack: () -> Unit) {}
+`
+
 const tempDir = mkdtempSync(join(tmpdir(), 'pyreon-router-kotlin-verify-'))
 // Failure paths below call `process.exit(1)`, which ends the process without
 // running the `finally` at the bottom. An exit handler runs either way.
@@ -183,6 +195,8 @@ try {
   writeFileSync(composeRuntimePath, COMPOSE_RUNTIME_STUBS, 'utf8')
   const androidNetPath = join(tempDir, 'AndroidNet.kt')
   writeFileSync(androidNetPath, ANDROID_NET_STUBS, 'utf8')
+  const androidxActivityPath = join(tempDir, 'AndroidxActivity.kt')
+  writeFileSync(androidxActivityPath, ANDROIDX_ACTIVITY_STUBS, 'utf8')
 
   const jarPath = join(tempDir, 'pyreon-router.jar')
 
@@ -190,11 +204,11 @@ try {
   console.log(`[verify-kotlin] mode: ${typecheckOnly ? 'typecheck-only' : 'full (build + smoke)'}`)
   console.log(`[verify-kotlin] sources: ${SOURCES.length} files`)
   if (!typecheckOnly) console.log(`[verify-kotlin] test: ${TEST_FILE}`)
-  console.log(`[verify-kotlin] stubs: ${tempDir}/ (2 files)`)
+  console.log(`[verify-kotlin] stubs: ${tempDir}/ (3 files)`)
 
   const kotlincArgs = typecheckOnly
-    ? ['-d', tempDir, composeRuntimePath, androidNetPath, ...SOURCES]
-    : ['-include-runtime', '-d', jarPath, composeRuntimePath, androidNetPath, ...SOURCES, TEST_FILE]
+    ? ['-d', tempDir, composeRuntimePath, androidNetPath, androidxActivityPath, ...SOURCES]
+    : ['-include-runtime', '-d', jarPath, composeRuntimePath, androidNetPath, androidxActivityPath, ...SOURCES, TEST_FILE]
 
   const result = spawnSync(kotlinc, kotlincArgs, { encoding: 'utf8' })
 

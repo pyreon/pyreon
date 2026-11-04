@@ -122,8 +122,8 @@ The table below comes from each package manifest. `shared` describes an authorin
 | `@pyreon/charts` | the engine is generated into the native runtimes and every chart component lowers to a native PyreonChartCanvas over the same draw list: `<Chart>` with its marks (desugared to `<PlotChart marks>`), the family components (Pie / Gauge / Funnel / Radar / Candlestick / Heatmap / Boxplot / Treemap / Sunburst / Tree / Sankey / Graph / Chord / River / Polar / SingleAxis / Gantt / Calendar / Parallel, and `<MapChart>` from a precomputed `GeoShape[]` — the map registry, raw GeoJSON and `geoShapes()` stay web and warn by name). Theme tokens (`chartThemes`, `palettes`) resolve at compile time and `<ChartThemeProvider mode>` is a compile-time scope. |
 | `@pyreon/coolgrid` | Container/Row/Col lower (equal-fill + literal fractional Col spans) |
 | `@pyreon/core` | the JSX authoring surface PMTC compiles — For/Show/Suspense/ErrorBoundary lower; Switch/Match/Dynamic/Portal/Index warn with concrete alternatives |
-| `@pyreon/elements` | Element→Stack and Text lower via elements-native; the rich web-only surfaces (Overlay/Portal/List slots) warn per-construct |
-| `@pyreon/primitives` | the 19 canonical primitives: real web DOM runtime AND SwiftUI/Compose emit — the compiler's native target vocabulary |
+| `@pyreon/elements` | Element→Stack, Text, and List (a keyed Stack of its rows: data + component + itemKey / valueName) lower via elements-native; the rich web-only surfaces (Overlay/Portal, List itemProps/wrapProps/wrapComponent) warn per-construct |
+| `@pyreon/primitives` | the 22 canonical primitives: real web DOM runtime AND SwiftUI/Compose emit — the compiler's native target vocabulary |
 | `@pyreon/reactivity` | L0 of the shared-code model: the package plugin maps signal/computed to native state; PyreonReactivity runtime ports ship on both targets, while bare effect statements require a supported lifecycle hook |
 | `@pyreon/rocketstyle` | rocketstyle-over-primitive chains lower (static cascade + any number of dynamic dimensions) through its package-owned native plugin |
 | `@pyreon/rx` | supported namespace and standalone transforms lower recursively to native collection operations, including import aliases; unsupported methods warn |
@@ -178,7 +178,7 @@ The table below comes from each package manifest. `shared` describes an authorin
 | `@pyreon/sync` | the Yjs engine + IndexedDB/WebSocket transports stay web; the engine-neutral PyreonCrdt core + `syncedSignal` lower to a native runtime, cross-device transport tracked |
 | `@pyreon/table` | the TanStack-backed `useTable` (row model / faceting / virtual sizing) stays web; the dependency-free `createTableState` engine lowers to the native PyreonTableState port, rendered with `<For>` + primitives |
 | `@pyreon/testing` | the web testing kit (Testing-Library parity over the DOM renderer); native testing is XCUITest/Compose-test territory |
-| `@pyreon/toast` | the core `toast(...)` + `<Toaster>` lower to the native PyreonToast runtime: a screen-anchored overlay (a pass-through window on iOS, a window-anchored Popup on Android) styled per type, honouring literal position / max / gap / offset / duration, animating in and out, with a dismiss button (a literal `dismissible: false` hides it), and visible on every screen; the rich surface (toast.promise/update, description / icon / action, onDismiss, the hover/focus countdown pause) stays web |
+| `@pyreon/toast` | the core `toast(...)` + `<Toaster>` lower to the native PyreonToast runtime: a screen-anchored overlay (a pass-through window on iOS, a window-anchored Popup on Android) styled per type, honouring literal position / max / gap / offset / duration, animating in and out, with a dismiss button (a literal `dismissible: false` hides it), a text `description` line, an `action` button (its `onClick` may take the `&#123; id, dismiss &#125;` context), an `onDismiss` callback that fires once however the toast leaves, `toast.dismiss(id)` / `toast.dismiss()`, and visible on every screen; the rich surface (toast.promise/update, a JSX description, icon, the hover/focus countdown pause) stays web, each warned by name natively |
 | `@pyreon/unistyle` | responsive breakpoints + CSS-variable theming over real CSS; native theming is compile-time tokens + the 2-bucket size-class model |
 | `@pyreon/url-state` | the address bar is the web's own surface — history entries, `popstate`, `batchUrlUpdates` and the pluggable serializers stay web; on native the equivalent is the router's search parameters |
 | `@pyreon/validate` | pure-logic schema DSL; the runtime engine (JIT, JSON-schema export, async refinements, the v1/mini compat surfaces) stays web, and inline uses like `s.string().parse(x)` do not lower |
@@ -188,3 +188,81 @@ The table below comes from each package manifest. `shared` describes an authorin
 | `@pyreon/zero-content` | markdown/MDX content pipeline for zero's web rendering |
 
 {/* gen:multiplatform-tiers:end */}
+
+## How each package crosses to native
+
+{/* gen:native-crossing:start */}
+
+> Generated from the native coverage registry (`scripts/check-native-coverage.ts`) by
+> `bun scripts/gen-native-crossing-table.ts` — edit the registry, not this table. The
+> coverage gate compiles every entry for both targets; `--check` fails when this drifts.
+
+### Lowers — the authoring API compiles to SwiftUI and Compose (15)
+
+Write it once in TypeScript; the compiler emits native code for both targets with no warnings.
+
+| Package | How it crosses |
+| --- | --- |
+| `@pyreon/attrs` | attrs(&#123; name, component &#125;).attrs(defaults) HOC lowers via the wrapped native component. |
+| `@pyreon/charts` | the plot engine is generated into the native runtimes and every host lowers to PyreonChartCanvas (a native Canvas over the same draw list); &lt;MapChart> needs a precomputed GeoShape[]; a bare host follows the runtime colour scheme |
+| `@pyreon/coolgrid` | Container/Row/Col grid lowers to native stack layouts. |
+| `@pyreon/core` | VNode/components + For/Show control flow lower to SwiftUI/Compose view trees; render props, function-as-children and `VNodeChild` slots lower to generic `@ViewBuilder` closures / `@Composable` lambdas. |
+| `@pyreon/elements` | the Element flex primitive lowers to native stacks (its own Text is not a native primitive). |
+| `@pyreon/flow` | createFlow/useFlow and the interactive Flow host lower to PyreonFlowState + SwiftUI/Compose on both targets: complete public state operations, all seven layouts, gestures, built-in/static custom renderers, handles, resizing, multiple toolbars, custom edges/connection lines, background, controls, minimap, panels, accessibility, and portable inline styles. Device-proven on iOS Simulator and Android Emulator by the native-counter and native-tasks apps (rendered chrome read from pixels and frames, every gesture, the keyboard commands, colorMode including system, a 400-node culled scale scenario); the state surface is replayed against the web engine as oracle. Inline &lt;svg> shapes and plain div/p/span structure inside a renderer lower natively (device-proven by a native-tasks custom node); CSS-dependent renderers, SVG text/gradients/transforms and runtime renderer maps remain explicit platform boundaries that warn by name. |
+| `@pyreon/head` | a native app has no document `&lt;head>`, so the package crosses by BEING INERT: `useHead(...)` lowers to nothing and `&lt;HeadProvider>` is transparent, which lets shared source that sets a page title for the web build compile for iOS and Android. The head context and SSR helpers have no native equivalent and warn by name. |
+| `@pyreon/primitives` | the canonical native UI vocabulary (Stack/Inline/Text/Button/…) — the primitives that DEFINE what lowers. |
+| `@pyreon/reactivity` | signal/computed/effect lower to native @Observable state on both targets. |
+| `@pyreon/rocketstyle` | rocketstyle(Element).theme()/.attrs() dimensions lower to native styled components, and the SAME chain now styles on the web: a chain with `.theme()` and no `.styles()` renders its theme through unistyle's responsive engine, reached via ui-core's engine seam (rocketstyle carries no unistyle dependency and degrades to no CSS without it). Before that a theme-only chain was fully styled on iOS/Android and completely unstyled in a browser. |
+| `@pyreon/router` | RouterLink/navigation lower onto the native router runtimes (@pyreon/native-router-&#123;swift,kotlin&#125;). |
+| `@pyreon/rx` | source-first collection transforms (filter/map/take/…) lower to chained computeds; `pipe` stays web-only. |
+| `@pyreon/styler` | styled() style objects lower to native view modifiers. |
+| `@pyreon/ui-core` | the PyreonUI theme provider lowers transparently around a native tree. |
+| `@pyreon/validate` | the schema-authoring surface (s.object/s.string/…) lowers to a native Codable struct with parse/safeParse. |
+
+### Native runtime — the package ships a Swift and a Kotlin runtime (15)
+
+The same API is backed by a runtime shipped as Swift and Kotlin source.
+
+| Package | How it crosses |
+| --- | --- |
+| `@pyreon/a11y` | ships the native accessibility runtime; component-level helpers (VisuallyHidden) do not lower — a11y crosses via native accessibility modifiers. |
+| `@pyreon/auth` | useOidc(&#123; issuer, clientId, redirectUri, nativeRedirectUri &#125;) lowers to the native OIDC session (PyreonOidcAuth): system browser, PKCE, ID-token verification, Keychain/Keystore persistence. |
+| `@pyreon/form` | useForm(&#123; initialValues &#125;) lowers to a native form controller over the form runtime. |
+| `@pyreon/hooks` | the device/data hooks (useFetch/useAuth/useCamera/…) lower onto ~30 co-located native service runtimes. |
+| `@pyreon/i18n` | createI18n(&#123; locale, messages &#125;) lowers to a native PyreonI18n container with baked dictionaries. |
+| `@pyreon/machine` | createMachine(config) lowers to a native state machine over the machine runtime. |
+| `@pyreon/permissions` | usePermissions(grants) lowers to a native PyreonPermissions container over the permissions runtime. |
+| `@pyreon/query` | useQuery&lt;T>(() => (&#123; queryKey, queryFn, staleTime &#125;)) lowers to a native PyreonQuery over the query runtime, and useMutation&lt;T>(endpoint.mutation()) to a native PyreonMutation whose mutate / mutateAsync build the request at the call site from runtime values. |
+| `@pyreon/sized-map` | ships a co-located native bounded-map runtime used by the data packages. |
+| `@pyreon/state-tree` | model(id, shape) lowers to a native observable model over the state-tree runtime. |
+| `@pyreon/storage` | useStorage(key, default) lowers to native persistence over the storage backends runtime. |
+| `@pyreon/store` | defineStore(id, () => &#123;…&#125;) lowers to a native @Observable singleton over PyreonStore runtime. |
+| `@pyreon/sync` | syncedSignal(&#123; key, initial &#125;) lowers to a native CRDT-backed signal over the sync runtime. |
+| `@pyreon/table` | ships the PyreonTable native runtime; the useTable() authoring lowering is a documented open refinement. |
+| `@pyreon/toast` | ships the PyreonToast native runtime; the useToast() authoring lowering is a documented open refinement. |
+
+### WebView-hosted — the same web engine inside a native shell (3)
+
+the SAME web bundle inside a native shell — real, shipping, one codebase; NOT a native view: WebView startup cost, JSON-bridge latency, no native gesture/accessibility integration for hosted content, host page must be bundled
+
+| Package | How it crosses |
+| --- | --- |
+| `@pyreon/code` | CodeMirror 6 is a DOM editor with no native equivalent, so it crosses by HOSTING the same editor in a native &lt;WebView>: &lt;CodeWebView> from @pyreon/code/webview lowers (through the package's own native plugin) to a &lt;WebView src> pointed at a page that `pyreon-native assets` builds from the app's installed CodeMirror and the grammars it has. Edits arrive as plain `v:&lt;text>` messages and host failures as `e:&lt;message>`. Bridge proven in real Chromium against real CodeMirror; the page bundles and executes (node); the lowered host is emit + stub-typecheck proven on both targets and device-proven on iOS Simulator and Android Emulator by examples/native-tasks (the value reaches the editor and an edit comes back out; a lasting soft-keyboard session is not exercised). Every other export of the package is a DOM editor API and warns by name. |
+| `@pyreon/flow/webview` | Optional compatibility bridge for applications that deliberately need the browser SVG/DOM/CSS renderer unchanged inside WKWebView or Android WebView; the regular @pyreon/flow editor has a direct SwiftUI/Compose lowering path. Bridge proven in real Chromium, and device-proven on iOS Simulator and Android Emulator by examples/native-tasks: graph and command push in, selection and viewport events back out, once-only commands, and a reactive html swap that re-injects the bridge. |
+| `@pyreon/rich-text` | TipTap/ProseMirror is a DOM editor with no native equivalent, so it crosses by HOSTING the same WYSIWYG in a native &lt;WebView>: &lt;RichTextWebView> from @pyreon/rich-text/webview lowers (through the package's own native plugin) to a &lt;WebView src> pointed at a page that `pyreon-native assets` builds from the app's installed TipTap. The document crosses as TEXT both ways (TipTap JSON serialized to a string; HTML also accepted), edits arrive as `c:&lt;text>` and host failures as `e:&lt;message>`. Bridge proven in real Chromium against real TipTap; the page bundles and executes (node); the lowered host is emit + stub-typecheck proven on both targets and device-proven on iOS Simulator and Android Emulator by examples/native-tasks (the value reaches the editor and an edit comes back out; a lasting soft-keyboard session is not exercised). Every other export of the package is a DOM editor API and warns by name. |
+
+### Partial — a declared subset crosses; the rest warns by name (7)
+
+Only the listed surface lowers. Anything else produces a named compiler warning rather than a silent drop.
+
+| Package | How it crosses |
+| --- | --- |
+| `@pyreon/dnd` | the pdnd/DOM-shaped surface stays web (useDragMonitor is a page-global drag bus, useFileDrop is an OS file picker — each still warns BY NAME). Three hooks lower: useSortable becomes a co-located PyreonSortableState engine; useDraggable(&#123; data &#125;) / useDroppable(&#123; canDrop, onDrop, edges &#125;) become PyreonDraggableState / PyreonDroppableState with `ref=&#123;d.ref&#125;` as the platform drag source / drop target, the payload crossing as JSON and decoded into the ANNOTATED type of the onDrop source parameter. What cannot cross warns by name (onDragStart / onDragEnd / preview / handle on a draggable, onDragEnter with a source, sticky) — SwiftUI reports no drag start/end/cancel callback, so isDragging clears on the next drop rather than on a cancel. The sortable contract is required in full — items, a single-param `by`, and an arrow `onReorder`. |
+| `@pyreon/feature` | CRUD composite. The RUNTIME half stays web — generated hooks (useList / useById / useCreate / useUpdate / useDelete / useSearch), the network fetcher and validator/form integration lower only when every dependency does. The DECLARATION half crosses today: the literal field-type map emits a Codable struct + a module-scope const with `name` and `initialValues` on both targets. An object literal of scalar validators (`z.object(&#123; id: z.string() &#125;)`) lowers the same way and ALSO to the validation schema struct, so `Todo.schema.safeParse(x)` enforces the constraints on device (what cannot be enforced — `.refine()`, `.transform()`, `.default()`, `.parse()` — is reported by name); a schema held in a variable, `v.pipe(…)` and ArkType warn by name. |
+| `@pyreon/hotkeys` | the REGISTRY half (registerHotkey / scopes / conflict reporting) is web; the `useHotkey` authoring hook lowers to a SwiftUI `.keyboardShortcut` on a hidden Button and a Compose focused key handler. `mod` resolves per platform: Command on iOS, Ctrl on Android. |
+| `@pyreon/http` | imperative client calls (api.get/post) stay web, but same-file endpoint calls DO lower: createHttp(&#123; baseUrl &#125;) + api.endpoint(…) resolve through useFetch/useQuery to native PyreonFetch/PyreonQuery, an endpoint awaited in an async event handler (`await ep(&#123; json, query, headers &#125;)`, every value read at the call) to a native PyreonHttp.call that rejects a non-2xx and ends the handler, a `multipart` body carrying a picked file (`fileFromUri`) to a streamed PyreonMultipartBody, and useStream over openEventStream/openNdjsonStream to the co-located PyreonStream runtime (SSE + NDJSON, reconnect with Last-Event-ID). A literal `use: [...]` array crosses too — bearer / retry / logger lower to PyreonHttpMiddleware (an onion with the web semantics, parity-tested by execution) and forwardHeaders is the browser no-op; refresh / dedupe / a custom function keep that client web by name, and useStream refuses a middleware client by name. Verified zero-warning on both targets; the snippet exercises all of it so the real-runtime batch compiles each. |
+| `@pyreon/kinetic` | the CSS class/style engine is web; a `.preset()` chain lowers through the same &lt;Transition> path the primitive uses, with a synthesized mount flag driving the enter. A preset-less chain degrades to a plain container and warns by name. |
+| `@pyreon/url-state` | history entries, popstate and the pluggable serializers stay web, but useUrlState(key, 'default') with a STRING default DOES lower, bound to the native router's query. Verified zero-warning on both targets (a typed/number default still warns on this branch — #2943 widens that). |
+| `@pyreon/validation` | the zod/valibot/arktype ADAPTERS stay web, but the declarative form DOES lower: a top-level zodSchema(z.object(&#123;…&#125;)) emits native field validators, and `useForm(&#123; schema &#125;)` wires one per string field. Several schemas may share one `const a = …, b = …` statement, and `.safeParse(x)` on a declared binding or an inline adapter call lowers to the same `&#123; success, data &#125;` result the web returns. Verified zero-warning on both targets; `.parse()` (throws), a schema declared inside a component body, `.refine/.transform/.default` chains (each named per field) and the async validate path stay web. |
+
+{/* gen:native-crossing:end */}

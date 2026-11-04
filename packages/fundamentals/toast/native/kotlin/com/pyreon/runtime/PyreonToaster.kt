@@ -29,6 +29,7 @@ package com.pyreon.runtime
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableStateOf
@@ -209,21 +210,49 @@ private fun PyreonToastCard(card: PyreonShownToast, onGone: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(modifier = Modifier.width(4.dp).fillMaxHeight().background(toastAccent(item.type)))
-        BasicText(
-            text = item.message,
+        Column(
             modifier = Modifier
                 .weight(1f, fill = false)
-                .padding(horizontal = 16.dp, vertical = 12.dp)
-                .testTag("pyreon-toast")
-                .semantics {
-                    liveRegion = if (item.type == "error" || item.type == "warning") {
-                        LiveRegionMode.Assertive
-                    } else {
-                        LiveRegionMode.Polite
-                    }
-                },
-            style = TextStyle(color = Color(0xFF1A1A1A), fontSize = 14.sp, fontWeight = FontWeight.Medium),
-        )
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            BasicText(
+                text = item.message,
+                modifier = Modifier
+                    .testTag("pyreon-toast")
+                    .semantics {
+                        liveRegion = if (item.type == "error" || item.type == "warning") {
+                            LiveRegionMode.Assertive
+                        } else {
+                            LiveRegionMode.Polite
+                        }
+                    },
+                style = TextStyle(color = Color(0xFF1A1A1A), fontSize = 14.sp, fontWeight = FontWeight.Medium),
+            )
+            val description = item.description
+            if (description != null) {
+                // The web stylesheet's `.pyreon-toast__description`: 13px, #6b7280.
+                BasicText(
+                    text = description,
+                    modifier = Modifier.testTag("pyreon-toast-description"),
+                    style = TextStyle(color = Color(0xFF6B7280), fontSize = 13.sp),
+                )
+            }
+        }
+        val actionLabel = item.actionLabel
+        if (actionLabel != null) {
+            // The web stylesheet's `.pyreon-toast__action`: 13px blue on a light border.
+            BasicText(
+                text = actionLabel,
+                modifier = Modifier
+                    .padding(start = 4.dp)
+                    .border(1.dp, Color(0xFFE5E7EB), RoundedCornerShape(4.dp))
+                    .clickable { PyreonToast.runAction(item.id) }
+                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                    .testTag("pyreon-toast-action"),
+                style = TextStyle(color = Color(0xFF3B82F6), fontSize = 13.sp),
+            )
+        }
         if (item.dismissible) {
             BasicText(
                 text = "\u00D7",

@@ -130,6 +130,39 @@ describe.runIf(isSwiftUIAvailable())('emit compiles against the real SDK + real 
       rmSync(dir, { recursive: true, force: true })
     }
   }, 180_000)
+
+  // #4060: the tab-bar router lowers to router-swift's `PyreonRouterTabs` /
+  // `PyreonTabStack` and the `PyreonRouter(tabs:)` init — none of which a stub
+  // compile can vouch for.
+  it('the tab-bar router (per-tab stacks) typechecks with no stubs', () => {
+    const fixture = readFileSync(join(import.meta.dirname, '../fixtures/router-tabs.tsx'), 'utf8')
+    const { code, warnings } = transform(fixture, { target: 'swift' })
+    expect(warnings).toEqual([])
+    const dir = mkdtempSync(join(tmpdir(), 'pyreon-real-runtime-tabs-'))
+    try {
+      const appPath = join(dir, 'TabsApp.swift')
+      writeFileSync(appPath, `import SwiftUI\nimport Foundation\n${code}`, 'utf8')
+      execFileSync(
+        'xcrun',
+        [
+          '--sdk', 'iphonesimulator', 'swiftc', '-typecheck',
+          '-target', 'arm64-apple-ios17.0-simulator',
+          '-sdk', sdkPath(), appPath, ...sources,
+        ],
+        { encoding: 'utf8', stdio: 'pipe' },
+      )
+    } catch (err) {
+      const e = err as { stderr?: string | Buffer; stdout?: string | Buffer }
+      const out = [e.stderr, e.stdout]
+        .map((x) => (typeof x === 'string' ? x : x?.toString('utf8')) ?? '')
+        .join('\n')
+      expect.fail(
+        `swiftc -typecheck failed against the real runtime:\n${out.split('\n').filter((l) => l.includes('error:')).slice(0, 12).join('\n')}`,
+      )
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  }, 180_000)
 })
 
 /**

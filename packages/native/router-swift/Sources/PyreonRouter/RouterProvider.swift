@@ -75,9 +75,19 @@ public struct RouterProvider<Content: View>: View {
         // a pushed view does nothing — caught by the router-demo
         // round-trip UITest the moment the launch-and-render gate
         // started passing.
-        NavigationStack(path: $router.path) {
+        //
+        // A TAB-BAR router (`createRouter({ tabs })`) gets NO stack here: each
+        // tab owns one (`PyreonTabStack`, inside the `TabView`). A root stack
+        // would wrap the `TabView`, so a push from inside a tab would cover the
+        // tab bar — and SwiftUI does not support a stack nested in a stack.
+        if router.tabs.isEmpty {
+            NavigationStack(path: $router.path) {
+                content()
+            }
+            .environment(\.pyreonRouter, router)
+        } else {
             content()
+                .environment(\.pyreonRouter, router)
         }
-        .environment(\.pyreonRouter, router)
     }
 }

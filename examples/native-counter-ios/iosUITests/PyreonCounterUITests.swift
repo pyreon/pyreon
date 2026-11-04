@@ -1169,6 +1169,38 @@ final class PyreonCounterUITests: XCTestCase {
     // XCUITest-visible side effect of the layout — and is a tracked follow-up
     // rather than a band widened until it passes.
 
+    // rocketstyle's `active:` block on a Press base lowers to a custom
+    // `PyreonPressStyle` ButtonStyle that reads `configuration.isPressed`.
+    // XCUITest cannot read a colour (the Android test reads the pressed pixels),
+    // so this asserts the half that can break a real app: a custom ButtonStyle
+    // REPLACES the button's own, and the tap must still reach the action.
+    func test_rocketstylePressedStyleButtonStillFiresItsTap() throws {
+        let app = XCUIApplication()
+        app.launch()
+
+        let chip = app.buttons["press-chip"]
+        XCTAssertTrue(
+            chip.waitForExistence(timeout: 30),
+            "The press-styled rocketstyle chip is not a button in the tree — the PyreonPressStyle lowering "
+                + "did not reach the view, or the identifier landed on the label instead of the button"
+        )
+        var attempts = 0
+        while !chip.isHittable && attempts < 8 {
+            app.swipeUp()
+            attempts += 1
+        }
+        XCTAssertEqual(chip.label, "Chip taps: 0")
+        chip.tap()
+        // A Button's Text merges into the button's own accessibility label, so
+        // the count is read off the button rather than as a separate text.
+        let fired = expectation(for: NSPredicate(format: "label == %@", "Chip taps: 1"), evaluatedWith: chip)
+        XCTAssertEqual(
+            XCTWaiter().wait(for: [fired], timeout: 10), .completed,
+            "Tapping the press-styled chip did not fire its onPress through the custom ButtonStyle "
+                + "(label is now '\(chip.label)')"
+        )
+    }
+
     func test_rocketstyleComponentRendersAndFlipsOnDevice() throws {
         let app = XCUIApplication()
         app.launch()

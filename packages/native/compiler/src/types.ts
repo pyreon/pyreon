@@ -205,6 +205,14 @@ export type DeclIR =
        */
       beforeEach?: string[]
       afterEach?: string[]
+      /**
+       * `createRouter({ tabs: [{ name, root }] })` — per-tab back stacks
+       * (#4060). Literal names and roots only; the router runtime is
+       * constructed with them (`PyreonRouter(tabs:)`), and a
+       * `<Tabs router={…}>` bound to this router lowers to one native stack
+       * per tab. Undefined for a single-stack router.
+       */
+      tabs?: { name: string; root: string }[]
     }
   /**
    * A component-body `onMount(() => { … })` call — the documented lifecycle
@@ -498,6 +506,25 @@ export type StatementIR =
       kind: 'switch'
       discriminant: ExprIR
       cases: { tests: ExprIR[]; body: StatementIR[] }[]
+    }
+  /**
+   * `throw new Error(message)` / `throw 'message'` (`message`), or a rethrow of
+   * the enclosing `catch` binding (`throw e` → `rethrow: 'e'`). Kotlin throws a
+   * native exception; Swift throws from a `do` body or a `throws` helper, and
+   * where neither encloses it (an event handler) terminates the way an
+   * uncaught Kotlin exception does — see `throw-lowering.ts`.
+   */
+  | { kind: 'throw'; message?: ExprIR; rethrow?: string }
+  /**
+   * `try { … } catch (e) { … } finally { … }`. `catchBody` is absent for a
+   * `try/finally`; `catchParam` is absent for `catch { … }`.
+   */
+  | {
+      kind: 'try'
+      body: StatementIR[]
+      catchParam?: string
+      catchBody?: StatementIR[]
+      finallyBody?: StatementIR[]
     }
 
 /** Type annotation, parsed from `signal<T>(...)` generics. */

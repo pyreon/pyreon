@@ -103,6 +103,9 @@ dependencies {
     implementation("androidx.core:core-ktx:1.19.1")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
     implementation("androidx.compose.material:material")
+    // <Icon> and <Tab icon> emit Icons.Filled.* at compile time — the small core
+    // set only (never -extended; the canonical ICON_MAP is core-only).
+    implementation("androidx.compose.material:material-icons-core")
 
     // Instrumented-test deps. Same as the other Android examples.
     // The BOM pins versions PER CONFIGURATION — the implementation-
