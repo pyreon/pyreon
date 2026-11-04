@@ -20,5 +20,10 @@ fun main() {
     expect(pyreonSlice(xs, -1, -3), emptyList<Int>(), "a negative start past a negative end is empty")
     expect(pyreonSlice("hello", 1, -1), "ell", "string slice(1, -1)")
     expect(pyreonSlice("hello", -3), "llo", "string slice(-3)")
+    expect(pyreonSubstring("hello", 1, 3), "el", "substring(1, 3)")
+    expect(pyreonSubstring("hi", 0, 10), "hi", "substring past the end clamps (Kotlin's own throws)")
+    expect(pyreonSubstring("hello", 10), "", "substring(10) on a shorter string is empty")
+    expect(pyreonSubstring("hello", -2, 2), "he", "a negative bound reads as 0")
+    expect(pyreonSubstring("hello", 3, 1), "el", "start > end swaps")
     println("[PyreonSliceTest] all smoke tests passed")
 }

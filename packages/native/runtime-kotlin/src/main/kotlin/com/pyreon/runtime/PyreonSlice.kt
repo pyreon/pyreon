@@ -25,3 +25,15 @@ internal fun pyreonSliceBounds(size: Int, start: Long, end: Long?): Pair<Int, In
     fun resolve(i: Long): Int = (if (i < 0) maxOf(size + i, 0L) else minOf(i, size.toLong())).toInt()
     return resolve(start) to resolve(end ?: size.toLong())
 }
+
+/**
+ * JavaScript's `str.substring(start, end?)`: each bound clamped into `0..length` (a negative bound reads as 0), and
+ * the two SWAPPED when `start > end`. Kotlin's own `String.substring` throws `StringIndexOutOfBoundsException` for
+ * every one of those inputs — including the everyday truncation idiom `title.substring(0, 10)` on a shorter string.
+ */
+public fun pyreonSubstring(s: String, start: Long, end: Long? = null): String {
+    fun clamp(i: Long): Int = maxOf(0L, minOf(i, s.length.toLong())).toInt()
+    val a = clamp(start)
+    val b = clamp(end ?: s.length.toLong())
+    return if (a <= b) s.substring(a, b) else s.substring(b, a)
+}

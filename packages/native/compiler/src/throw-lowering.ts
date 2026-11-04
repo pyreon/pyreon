@@ -10,7 +10,8 @@
 //   helper set ({@link computeThrowingFunctions}).
 //
 // What has no checked-error equivalent at all is a throw that NOTHING catches in a closure that cannot throw — an event
-// handler, a `.map` callback. On the web that error is reported and the app keeps running. Natively an uncaught Kotlin
+// handler, an effect. (A callback of a rethrowing array method — `xs.map(s => { throw … })` — is NOT one: the error
+// propagates out of the call on every target, see `RETHROWING_ARRAY_METHODS`.) On the web that error is reported and the app keeps running. Natively an uncaught Kotlin
 // exception terminates the app, and Swift has no way to let one escape a non-throwing closure, so the emit terminates
 // there too (`fatalError` / `try!`): the two native targets then agree with each other, and the compiler names the
 // position in a warning so the author can add the `try`/`catch` that makes all three agree.
@@ -46,6 +47,40 @@ export const ERROR_MESSAGE_FN = 'pyreonErrorMessage'
 /** `String(e)` for a caught error — `Error: message`, as JavaScript renders it. */
 export const ERROR_STRING_FN = 'pyreonErrorString'
 
+/**
+ * JS array methods whose Swift lowering is a standard-library `rethrows` method (`map`, `filter`, `forEach`,
+ * `first(where:)`, `contains(where:)`, `allSatisfy`, `reduce`, `flatMap`, `firstIndex(where:)`). A callback passed to
+ * one of these may throw, and the error propagates out of the call — exactly as on the web and in Kotlin (whose
+ * inline lambdas propagate too). Every other closure is its own throw context.
+ */
+export const RETHROWING_ARRAY_METHODS: ReadonlySet<string> = new Set([
+  'map',
+  'filter',
+  'forEach',
+  'find',
+  'findIndex',
+  'some',
+  'every',
+  'reduce',
+  'flatMap',
+])
+
+/** Whether `arrow` (a callback) lets an error escape its own body. */
+export function arrowThrowsUncaught(arrow: unknown, throwingFns: ReadonlySet<string>): boolean {
+  const a = arrow as { kind?: string; body?: unknown; stmts?: StatementIR[]; async?: boolean }
+  if (a.kind !== 'arrow' || a.async === true) return false
+  if (a.stmts !== undefined && a.stmts.length > 0) return statementsThrowUncaught(a.stmts, throwingFns)
+  return exprCallsThrowing(a.body, throwingFns)
+}
+
+/** The callback arguments of `<recv>.<rethrowing method>(cb…)` whose body throws, or `[]`. */
+export function rethrowingCallbackArgs(expr: unknown, throwingFns: ReadonlySet<string>): readonly unknown[] {
+  const n = expr as { kind?: string; callee?: { kind?: string; property?: string }; args?: unknown[] }
+  if (n.kind !== 'call' || n.callee?.kind !== 'member' || n.callee.property === undefined) return []
+  if (!RETHROWING_ARRAY_METHODS.has(n.callee.property)) return []
+  return (n.args ?? []).filter((a) => arrowThrowsUncaught(a, throwingFns))
+}
+
 /** Whether `expr` calls one of `throwingFns` (or `JSON.parse`, or a plugin call that throws) OUTSIDE any nested arrow (an arrow's body is its own throw context). */
 export function exprCallsThrowing(expr: unknown, throwingFns: ReadonlySet<string>): boolean {
   const walk = (n: unknown): boolean => {
@@ -53,6 +88,8 @@ export function exprCallsThrowing(expr: unknown, throwingFns: ReadonlySet<string
     if (n === null || typeof n !== 'object') return false
     const node = n as { kind?: string; callee?: { kind?: string; name?: string } }
     if (node.kind === 'arrow') return false
+    // A throwing callback of a rethrowing array method throws out of the CALL (`xs.map(s => { throw … })`).
+    if (rethrowingCallbackArgs(n, throwingFns).length > 0) return true
     // `JSON.parse` throws on malformed input — natively on a shape mismatch too.
     if (node.kind === 'json-parse') return true
     // A plugin call that throws synchronously (`Pet.parse(x)`), declared by its owner.

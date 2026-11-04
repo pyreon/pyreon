@@ -159,19 +159,19 @@ describe('Swift member-call lowering — arity and receiver-type guards', () => 
     expect(bare).toContain('s.split()')
   })
 
-  it('substring: 1-arg → dropFirst; 2-arg → dropFirst+prefix; a NEGATIVE arg falls through', () => {
+  it('substring: 1-arg → dropFirst; 2-arg → dropFirst+prefix; a NEGATIVE arg goes through the runtime', () => {
     const one = sw(`  const a = computed(() => s().substring(1))`)
     expect(one).toContain('String(s.dropFirst(1))')
 
     const two = sw(`  const a = computed(() => s().substring(1, 3))`)
     expect(two).toContain('String(s.dropFirst(1).prefix(max(0, (3) - (1))))')
 
-    // A unary-minus argument is the `noNegative` false arm: JS's
-    // substring clamps negatives to 0, which the dropFirst lowering does
-    // not model, so it must NOT lower.
+    // A negative bound: JS clamps it to 0, which `dropFirst` would TRAP on.
+    // It used to fall through to a verbatim `s.substring(-1)` (no such Swift
+    // member); it now goes through the runtime's JS-faithful `pyreonSubstring`.
     const neg = sw(`  const a = computed(() => s().substring(-1))`)
     expect(neg).not.toContain('dropFirst')
-    expect(neg).toContain('s.substring(')
+    expect(neg).toContain('pyreonSubstring(s, -1)')
   })
 
   it('padStart / padEnd: omitted pad → " "; a 1-char literal pad; a MULTI-char pad falls through', () => {

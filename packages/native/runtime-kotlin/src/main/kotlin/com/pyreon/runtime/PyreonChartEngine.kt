@@ -928,32 +928,32 @@ fun formatDate(ms: Double, pattern: String): String {
     var out = ""
     var i = 0L
     while (i < pattern.length.toLong()) {
-      val c = pattern.substring((i).toInt(), (i + 1L).toInt())
+      val c = pyreonSubstring(pattern, (i).toLong(), (i + 1L).toLong())
       if (c == "[") {
         var end = i + 1L
-        while (end < pattern.length.toLong() && pattern.substring((end).toInt(), (end + 1L).toInt()) != "]") {
+        while (end < pattern.length.toLong() && pyreonSubstring(pattern, (end).toLong(), (end + 1L).toLong()) != "]") {
           end = end + 1L
         }
-        out = out + pattern.substring((i + 1L).toInt(), (end).toInt())
+        out = out + pyreonSubstring(pattern, (i + 1L).toLong(), (end).toLong())
         i = end + 1L
       } else {
-        if (pattern.substring((i).toInt(), (i + 4L).toInt()) == "YYYY") {
+        if (pyreonSubstring(pattern, (i).toLong(), (i + 4L).toLong()) == "YYYY") {
           out = out + padded(year, 4L)
           i = i + 4L
         } else {
-          if (pattern.substring((i).toInt(), (i + 2L).toInt()) == "YY") {
+          if (pyreonSubstring(pattern, (i).toLong(), (i + 2L).toLong()) == "YY") {
             out = out + padded(year - Math.floor((year).toDouble() / (100.0).toDouble()) * 100.0, 2L)
             i = i + 2L
           } else {
-            if (pattern.substring((i).toInt(), (i + 4L).toInt()) == "MMMM") {
+            if (pyreonSubstring(pattern, (i).toLong(), (i + 4L).toLong()) == "MMMM") {
               out = out + name
               i = i + 4L
             } else {
-              if (pattern.substring((i).toInt(), (i + 3L).toInt()) == "MMM") {
-                out = out + name.substring(0, 3)
+              if (pyreonSubstring(pattern, (i).toLong(), (i + 3L).toLong()) == "MMM") {
+                out = out + pyreonSubstring(name, (0L).toLong(), (3L).toLong())
                 i = i + 3L
               } else {
-                if (pattern.substring((i).toInt(), (i + 2L).toInt()) == "MM") {
+                if (pyreonSubstring(pattern, (i).toLong(), (i + 2L).toLong()) == "MM") {
                   out = out + padded(month, 2L)
                   i = i + 2L
                 } else {
@@ -961,7 +961,7 @@ fun formatDate(ms: Double, pattern: String): String {
                     out = out + padded(month, 1L)
                     i = i + 1L
                   } else {
-                    if (pattern.substring((i).toInt(), (i + 2L).toInt()) == "DD") {
+                    if (pyreonSubstring(pattern, (i).toLong(), (i + 2L).toLong()) == "DD") {
                       out = out + padded(day, 2L)
                       i = i + 2L
                     } else {
@@ -969,7 +969,7 @@ fun formatDate(ms: Double, pattern: String): String {
                         out = out + padded(day, 1L)
                         i = i + 1L
                       } else {
-                        if (pattern.substring((i).toInt(), (i + 2L).toInt()) == "HH") {
+                        if (pyreonSubstring(pattern, (i).toLong(), (i + 2L).toLong()) == "HH") {
                           out = out + padded(hour, 2L)
                           i = i + 2L
                         } else {
@@ -977,11 +977,11 @@ fun formatDate(ms: Double, pattern: String): String {
                             out = out + padded(hour, 1L)
                             i = i + 1L
                           } else {
-                            if (pattern.substring((i).toInt(), (i + 2L).toInt()) == "mm") {
+                            if (pyreonSubstring(pattern, (i).toLong(), (i + 2L).toLong()) == "mm") {
                               out = out + padded(minute, 2L)
                               i = i + 2L
                             } else {
-                              if (pattern.substring((i).toInt(), (i + 2L).toInt()) == "ss") {
+                              if (pyreonSubstring(pattern, (i).toLong(), (i + 2L).toLong()) == "ss") {
                                 out = out + padded(second, 2L)
                                 i = i + 2L
                               } else {
