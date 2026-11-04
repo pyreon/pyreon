@@ -49,6 +49,28 @@ public enum PyreonJSON {
         return out
     }
 
+    /**
+     * What `JSON.parse(text)` lowers to when the source names the result type (`JSON.parse(s) as T`,
+     * `const x: T = JSON.parse(s)`, a typed helper's `return`). Unknown keys are ignored, as on the web.
+     *
+     * Stricter than the web by construction: a native value has a static type, so input whose SHAPE does not
+     * match `T` throws here, where `JSON.parse` would have returned it and failed later at the first read. Both
+     * a syntax error and a shape mismatch throw a ``PyreonJSONParseError``.
+     */
+    public static func parse<T: Decodable>(_ type: T.Type, _ text: String) throws -> T {
+        do {
+            return try JSONDecoder().decode(T.self, from: Data(text.utf8))
+        } catch let DecodingError.dataCorrupted(context) {
+            throw PyreonJSONParseError(message: pyreonJSONDetail(context, fallback: "Unexpected token in JSON"))
+        } catch let DecodingError.keyNotFound(key, context) {
+            throw PyreonJSONParseError(message: "Missing key \"\(pyreonJSONPath(context.codingPath + [key]))\" in JSON")
+        } catch let DecodingError.typeMismatch(_, context) {
+            throw PyreonJSONParseError(message: pyreonJSONDetail(context, fallback: "Unexpected value in JSON"))
+        } catch let DecodingError.valueNotFound(_, context) {
+            throw PyreonJSONParseError(message: pyreonJSONDetail(context, fallback: "Unexpected null in JSON"))
+        }
+    }
+
     // ─── ECMAScript leaf formatting ─────────────────────────────────────────
 
     /**
@@ -308,4 +330,20 @@ struct PyreonJSSingle: SingleValueEncodingContainer {
     mutating func encode<T: Encodable>(_ value: T) throws {
         try pyreonJSLeaf(value, into: slot, path: codingPath)
     }
+}
+
+/** The error a lowered `JSON.parse` throws. `message` is the bare text, `description` reads as `String(e)` does on the web. */
+public struct PyreonJSONParseError: Error, LocalizedError, CustomStringConvertible {
+    public let message: String
+    public init(message: String) { self.message = message }
+    public var errorDescription: String? { message }
+    public var description: String { "SyntaxError: \(message)" }
+}
+
+private func pyreonJSONPath(_ path: [CodingKey]) -> String {
+    path.map { $0.intValue.map(String.init) ?? $0.stringValue }.joined(separator: ".")
+}
+
+private func pyreonJSONDetail(_ context: DecodingError.Context, fallback: String) -> String {
+    context.codingPath.isEmpty ? fallback : "\(fallback) at \"\(pyreonJSONPath(context.codingPath))\""
 }

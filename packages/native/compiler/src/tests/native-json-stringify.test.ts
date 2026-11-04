@@ -54,11 +54,11 @@ describe('JSON.stringify → native serialization', () => {
     expect(r.code).toContain('PyreonJson.stringify(user)')
   })
 
-  it('JSON.parse still WARNS by name (throws — coupled to the exceptions gap)', () => {
+  it('an UNTYPED JSON.parse WARNS by name (the typed forms lower — see native-json-parse.test.ts)', () => {
     const r = transform(PARSE, { target: 'swift' })
     const warn = r.warnings.find((w) => w.includes('JSON.parse'))
-    expect(warn, 'JSON.parse must warn, not lower').toBeTruthy()
-    expect(warn).toContain('native error model')
+    expect(warn, 'an untyped JSON.parse must warn, not guess a type').toBeTruthy()
+    expect(warn).toContain('has no type to decode into natively')
     // …and JSON.stringify in the same corpus does NOT warn.
     expect(transform(OBJ, { target: 'swift' }).warnings).toEqual([])
   })
