@@ -473,20 +473,38 @@ final class PyreonTasksUITests: XCTestCase {
 
         // Control -> program: open the calendar and pick the 23rd.
         picker.tap()
-        let day23 = app.buttons.matching(NSPredicate(format: "label CONTAINS 'October 23'")).firstMatch
+        // Match the day by NUMBER inside the calendar grid, not by a spelled-out
+        // date: the label is locale-formatted ("Thursday, October 23" in en_US,
+        // "Friday 23. 10." in cs_CZ), and the grid is the only collection view
+        // on screen while the calendar is open.
+        let day23 = app.collectionViews.buttons.matching(NSPredicate(format: "label MATCHES %@", ".*\\b23\\b.*")).firstMatch
         if !day23.waitForExistence(timeout: 5) { print("DIAG-DATES calendar:\n\(app.debugDescription)") }
         XCTAssertTrue(day23.exists, "the calendar did not open")
         day23.tap()
         XCTAssertTrue(waitForLabel(dayValue, "2026-10-23", timeout: 10), "a picked day did not reach the signal: '\(dayValue.label)'")
-        // Close the calendar popover.
-        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.04)).tap()
+        // Close the calendar popover by tapping OUTSIDE it, low on the screen,
+        // below the page content. Not near the top: a tap at dy 0.04 lands in the
+        // status bar, which the popover never sees, so it stays over the page and
+        // every later element "exists" but is never hittable (the CI failure on
+        // #4057). Verified on iOS 18.5 and 26.x, where no `PopoverDismissRegion`
+        // element is exposed to query instead. Wait for the calendar to be GONE,
+        // so a dismissal that did not take fails here, by name.
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.9)).tap()
+        let calendarGone = NSPredicate(format: "exists == false")
+        expectation(for: calendarGone, evaluatedWith: day23)
+        waitForExpectations(timeout: 5)
 
         // Program -> control.
         tapAfterScrolling(app.buttons["dates-christmas"].firstMatch, in: app)
         XCTAssertTrue(waitForLabel(dayValue, "2026-12-25", timeout: 10), "signal write: '\(dayValue.label)'")
         let showsChristmas = NSPredicate { _, _ in
-            let v = (picker.value as? String) ?? ""
-            return v.contains("Dec 25") || v.contains("December 25") || picker.label.contains("Dec 25")
+            // The formatted date sits on the picker OR on a child element,
+            // depending on the iOS version (18.x puts it on the DatePicker,
+            // 26.x on an inner `Other`), and its text is locale-formatted:
+            // "Dec 25, 2026" (en_US), "25. 12. 2026" (cs_CZ). Reading the
+            // field's whole accessibility subtree covers every combination.
+            let tree = dayField.debugDescription
+            return tree.contains("Dec 25") || tree.contains("December 25") || tree.contains("25. 12.")
         }
         expectation(for: showsChristmas, evaluatedWith: nil)
         waitForExpectations(timeout: 10)
