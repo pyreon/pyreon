@@ -13,10 +13,11 @@
 # would prevent it but costs a full ~8-min CI re-run per queued PR — a
 # policy trade-off deliberately not taken.
 #
-# WHAT IT DOES. On every push to main: re-run BOTH generator sets (gen-docs
+# WHAT IT DOES. On every push to main: re-run every docs generator (gen-docs
 # → llms.txt / llms-full.txt / mcp api-reference.ts; gen-all → docs
-# reference/troubleshooting/examples + nav files) and diff the generated
-# paths.
+# reference/troubleshooting/examples + nav files; the multiplatform tier and
+# native crossing tables in multiplatform-libraries.md) and diff the
+# generated paths.
 #   - No drift → green, done (runtime is seconds; the generators are
 #     lib-free — they read package source via the bun condition).
 #   - Drift → this run FAILS (an honest red signal on the offending main
@@ -84,6 +85,15 @@ jobs:
         run: |
           bun run gen-docs
           bun docs/scripts/gen-all.ts
+          # The two generated tables in multiplatform-libraries.md: the tier
+          # table (from every manifest) and the native crossing table (from
+          # the check-native-coverage registry). Both have the same
+          # concurrent-merge staleness as the docs above, and a stale one reds
+          # every open PR, because Fast Gates checks them on every PR
+          # (validate-fast --ci-complement). #4099 was a hand fix for exactly
+          # that.
+          bun scripts/check-multiplatform-tier.ts --write-table
+          bun scripts/gen-native-crossing-table.ts
 
       - name: Detect drift
         id: drift
@@ -100,6 +110,7 @@ jobs:
             docs/src/content/docs/examples.md
             docs/src/reference-nav.generated.ts
             docs/src/troubleshooting-nav.generated.ts
+            docs/src/content/docs/multiplatform-libraries.md
           )
           DRIFTED=$(git status --porcelain -- "${GENERATED[@]}" | awk '{print $2}')
           if [ -z "$DRIFTED" ]; then
@@ -124,7 +135,7 @@ jobs:
           GH_TOKEN: ${{ secrets.RELEASE_PAT }}
         run: |
           if [ -z "$GH_TOKEN" ]; then
-            echo "::warning::RELEASE_PAT is not configured — skipping the auto-regen fix PR. The guard still fails loudly below. Heal manually: run 'bun run gen-docs && bun docs/scripts/gen-all.ts' on main and commit, or configure the RELEASE_PAT secret (see release.yml) to restore the self-heal."
+            echo "::warning::RELEASE_PAT is not configured — skipping the auto-regen fix PR. The guard still fails loudly below. Heal manually: run 'bun run gen-docs && bun docs/scripts/gen-all.ts && bun scripts/check-multiplatform-tier.ts --write-table && bun scripts/gen-native-crossing-table.ts' on main and commit, or configure the RELEASE_PAT secret (see release.yml) to restore the self-heal."
             echo "RELEASE_PAT not configured — fix PR skipped; regenerate manually" >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
@@ -147,7 +158,7 @@ jobs:
               -H "Authorization: Bearer $GH_TOKEN" \
               -H "X-GitHub-Api-Version: 2022-11-28" \
               "https://api.github.com/repos/${{ github.repository }}"; then
-            echo "::warning title=RELEASE_PAT rejected::RELEASE_PAT is set but the GitHub API refused it (expired, revoked, or missing repo scope), so the auto-regen fix PR cannot be pushed. The guard still fails loudly below, and main is STALE until someone heals it: run 'bun run gen-docs && bun docs/scripts/gen-all.ts' on main and commit. Rotate the secret to restore the self-heal."
+            echo "::warning title=RELEASE_PAT rejected::RELEASE_PAT is set but the GitHub API refused it (expired, revoked, or missing repo scope), so the auto-regen fix PR cannot be pushed. The guard still fails loudly below, and main is STALE until someone heals it: run 'bun run gen-docs && bun docs/scripts/gen-all.ts && bun scripts/check-multiplatform-tier.ts --write-table && bun scripts/gen-native-crossing-table.ts' on main and commit. Rotate the secret to restore the self-heal."
             echo "RELEASE_PAT rejected by the API — fix PR skipped; regenerate manually and rotate the secret" >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
@@ -187,7 +198,7 @@ jobs:
           $(cat /tmp/drifted-files.txt)
           \`\`\`
 
-          Produced by the **Docs Freshness Guard** workflow from \`main@${GITHUB_SHA::9}\` — the diff is exactly \`bun run gen-docs && bun docs/scripts/gen-all.ts\`.
+          Produced by the **Docs Freshness Guard** workflow from \`main@${GITHUB_SHA::9}\` — the diff is exactly \`bun run gen-docs && bun docs/scripts/gen-all.ts && bun scripts/check-multiplatform-tier.ts --write-table && bun scripts/gen-native-crossing-table.ts\`.
           EOF
           )
           EXISTING=$(gh pr list --head auto/docs-regen --state open --json number --jq '.[0].number // empty')
