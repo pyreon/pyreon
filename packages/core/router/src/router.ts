@@ -48,8 +48,19 @@ export const RouterContext = createContext<RouterInstance | null>(null)
  */
 export const RouterTabContext = createContext<{ tab: string; depth: number } | null>(null)
 
-const RouterTabScope = (props: { tab: string; render: () => VNodeChild }): VNodeChild => {
-  provide(RouterTabContext, { tab: props.tab, depth: 0 })
+const RouterTabScope = (props: {
+  tab: string
+  render: () => VNodeChild
+  router: RouterInstance
+}): VNodeChild => {
+  // A tab's first view sits one level BELOW the views that enclose the tab bar,
+  // not at depth 0: `<Tabs router>` inside a root layout route (a zero
+  // `_layout.tsx`) would otherwise render `matched[0]` — the layout itself —
+  // inside every tab, recursively. The enclosing non-tab views have each
+  // claimed a depth by now (`_viewDepth` counts them in mount order); a tab bar
+  // nested in another tab's page continues from that tab's depth.
+  const outer = useContext(RouterTabContext)
+  provide(RouterTabContext, { tab: props.tab, depth: outer?.depth ?? props.router._viewDepth })
   return props.render()
 }
 
@@ -1872,7 +1883,7 @@ export function createRouter<TNames extends string = string>(
     tabStack: (name: string) => tabStacks.get(name)?.() ?? [],
 
     withTab: (name: string, render: () => VNodeChild) =>
-      h(RouterTabScope as never, { tab: name, render }),
+      h(RouterTabScope as never, { tab: name, render, router }),
 
     _tabRoute: (name: string) => tabRoutes.get(name)?.() ?? currentRoute(),
 
