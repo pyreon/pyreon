@@ -8,8 +8,9 @@
 // validators (`z.object({ id: z.string(), done: z.boolean() })`, the same shape under another namespace). A scalar field
 // reads through its modifier chain. The emitted struct holds the field's type and nothing else, so the validator object ALSO
 // lowers to the `@pyreon/validation` schema struct (`PyreonZodSchema_<binding>_schema`): `<binding>.schema.safeParse(x)` enforces
-// `.min()`, `.email()`, … on device and returns the web's `{ success, data }`. What no struct can carry (`.refine()`, …) is reported
-// BY NAME by the schema walker; `.parse()` throws and is reported too. A
+// `.min()`, `.email()`, … on device and returns what THAT LIBRARY returns on the web — zod's `{ success, data }`, or
+// `@pyreon/validate`'s `{ ok, value | issues }` (whose `.parse` is the same method). What no struct can carry (`.refine()`, …) is
+// reported BY NAME by the schema walker; zod's throwing `.parse()` and a library with no `.safeParse` method are reported too. A
 // non-literal schema (a variable, `v.pipe(…)`, ArkType), a non-literal name and the CRUD runtime (`useList`,
 // `useById`, …) fall to the Tier-2 diagnostic.
 
@@ -18,6 +19,7 @@ import {
   createSchemaStructRefinement,
   safeParseExpr,
   SCHEMA_ITEM_TYPE,
+  validateResultExpr,
   schemaItemSpec,
   schemaOf,
   tryNamespacedSchemaDefnFromTopLevel,
@@ -96,12 +98,18 @@ interface FeatureFacts {
   readonly schemaBindings: Set<string>
   /** Bindings whose `<binding>.schema.safeParse(x)` lowered — `finishModule` gives each schema its `safeParseResult`. */
   readonly safeParseBindings: Set<string>
+  /** The package each schema binding's validator namespace (`z` in `z.object(…)`) is imported from, when known. */
+  readonly schemaLibrary: Map<string, string>
 }
 
 const FACTS_KEY = '@pyreon/feature:facts'
 
 function featureFacts(source: { fileState<T>(key: string, init: () => T): T }): FeatureFacts {
-  return source.fileState<FeatureFacts>(FACTS_KEY, () => ({ schemaBindings: new Set(), safeParseBindings: new Set() }))
+  return source.fileState<FeatureFacts>(FACTS_KEY, () => ({
+    schemaBindings: new Set(),
+    safeParseBindings: new Set(),
+    schemaLibrary: new Map(),
+  }))
 }
 
 /** The name of the native schema struct a feature's validator `schema` lowers to (`PyreonZodSchema_<this>`). */
@@ -123,23 +131,44 @@ function featureValidatorSchema(init: AnyNode | undefined): AnyNode | undefined 
 /** The pre-pass: record every file-scope feature whose schema is a validator object (a component can sit above the declaration). */
 function scanFeatures(scan: ModuleScan): void {
   const facts = featureFacts(scan)
+  const importedFrom = new Map<string, string>()
+  for (const node of scan.body as readonly AnyNode[]) {
+    if (node.type !== 'ImportDeclaration' || typeof node.source?.value !== 'string') continue
+    for (const spec of (node.specifiers as AnyNode[] | undefined) ?? []) {
+      const local = spec.local?.name as string | undefined
+      if (local !== undefined) importedFrom.set(local, node.source.value as string)
+    }
+  }
   for (const node of scan.body as readonly AnyNode[]) {
     for (const d of topLevelDeclarators(node) as readonly AnyNode[]) {
-      if (d.id?.type === 'Identifier' && featureValidatorSchema(d.init as AnyNode) !== undefined) {
-        facts.schemaBindings.add(d.id.name as string)
+      const schema = d.id?.type === 'Identifier' ? featureValidatorSchema(d.init as AnyNode) : undefined
+      if (schema === undefined) continue
+      facts.schemaBindings.add(d.id.name as string)
+      const ns = unwrapTypeLayers(schema.callee?.object)?.name as string | undefined
+      const lib = ns === undefined ? undefined : importedFrom.get(ns)
+      if (lib !== undefined) {
+        facts.schemaLibrary.set(d.id.name as string, lib)
+        // The namespace is consumed by the feature's schema struct, so the blanket "has NO native lowering" line for
+        // it (an `s` imported from `@pyreon/validate` used only here) would deny a struct emitted right below it.
+        scan.lowered(lib, ns!)
       }
     }
   }
 }
 
-const SCHEMA_PARSE_THROWS =
-  '`.parse()` THROWS on invalid input, which needs a native error model (try/throw lowering) PMTC does not carry yet. Use `.safeParse(x)` and branch on `.success`.'
-
 /**
- * `Todo.schema.safeParse(x)` — the feature's own validator, lowered to the schema struct `defineFeature` declares alongside
- * the feature, so the constraints the web enforces (`.min()`, `.email()`, …) are enforced on device too. The result is
- * `{ success, data }`, like the web's. Any other member of `Todo.schema` is reported by name; a receiver that is not a feature's
- * `.schema` falls through.
+ * `Todo.schema.<method>(x)` — the feature's own validator, lowered to the schema struct `defineFeature` declares alongside
+ * the feature, so the constraints the web enforces (`.min()`, `.email()`, …) are enforced on device too. `Todo.schema` IS the
+ * schema the author passed, so the result is THAT LIBRARY's web shape, never one borrowed from another library:
+ *
+ * - zod (`z.object(…)`): `.safeParse(x)` → `{ success, data }`. Zod's `.parse(x)` THROWS a ZodError, whose `issues` the native
+ *   error does not carry — reported by name.
+ * - `@pyreon/validate` (`s.object(…)`): `.parse(x)` and `.safeParse(x)` are one method → `{ ok, value } | { ok: false, issues }`,
+ *   never thrown.
+ * - valibot (`v.object(…)`) and anything else: a valibot schema has NO `.safeParse` method on the web (it is the free function
+ *   `v.safeParse(schema, x)`), so the call is reported rather than given a shape the web does not have.
+ *
+ * A receiver that is not a feature's `.schema` falls through.
  */
 const recognizeFeatureSchemaCall: MethodCallRecognizer = (site, ctx) => {
   const facts = featureFacts(ctx)
@@ -152,18 +181,35 @@ const recognizeFeatureSchemaCall: MethodCallRecognizer = (site, ctx) => {
   if (receiver.object?.type !== 'Identifier' || !facts.schemaBindings.has(receiver.object.name as string)) return undefined
   const binding = receiver.object.name as string
   const method = callee.property.name as string
-  if (method === 'safeParse') {
-    const argNode = (node.arguments as AnyNode[] | undefined)?.[0]
-    const arg = argNode ? ctx.expr(argNode) : { kind: 'object' as const, fields: [] }
-    facts.safeParseBindings.add(binding)
-    return { type: 'safeParse', payload: { schemaName: schemaStructName(binding) }, args: [arg] }
+  const library = facts.schemaLibrary.get(binding)
+  const argNode = (node.arguments as AnyNode[] | undefined)?.[0]
+  const arg = () => (argNode ? ctx.expr(argNode) : { kind: 'object' as const, fields: [] })
+  const subject = `\`${binding}.schema.${method}(…)\``
+  if (library === '@pyreon/validate') {
+    if (method === 'parse' || method === 'safeParse') {
+      return { type: 'result', payload: { schemaName: schemaStructName(binding) }, args: [arg()] }
+    }
+    return ctx.unsupported(node, subject, 'only `.parse(x)` / `.safeParse(x)` on a feature schema lower to native. Keep this call in a web-only helper.')
+  }
+  if (library === 'zod') {
+    if (method === 'safeParse') {
+      facts.safeParseBindings.add(binding)
+      return { type: 'safeParse', payload: { schemaName: schemaStructName(binding) }, args: [arg()] }
+    }
+    return ctx.unsupported(
+      node,
+      subject,
+      method === 'parse'
+        ? "zod's `.parse()` THROWS a ZodError on invalid input, and the native schema error does not carry its `issues`. Use `.safeParse(x)` and branch on `.success` — it lowers on both targets."
+        : 'only `.safeParse(x)` on a zod feature schema lowers to native. Keep this call in a web-only helper.',
+    )
   }
   return ctx.unsupported(
     node,
-    `\`${binding}.schema.${method}(…)\``,
-    method === 'parse'
-      ? SCHEMA_PARSE_THROWS
-      : 'only `.safeParse(x)` on a feature schema lowers to native. Keep this call in a web-only helper.',
+    subject,
+    library === 'valibot'
+      ? 'a valibot schema has no `.safeParse` / `.parse` METHOD on the web — validation is the free function `v.safeParse(schema, x)`, which does not lower. Keep this call in a web-only helper.'
+      : `the schema's library ${library === undefined ? 'is not imported in this file' : `(\`${library}\`) is not one whose result shape lowers`}, so the native result shape cannot be chosen. Import the validator namespace from \`zod\` or \`@pyreon/validate\`.`,
   )
 }
 
@@ -390,7 +436,7 @@ export const featurePlugin: CompilerPlugin = Object.freeze({
   items: Object.freeze({ [ITEM_TYPE]: featureItem, [SCHEMA_ITEM_TYPE]: createSchemaItem() }),
   scanModule: scanFeatures,
   methodCalls: Object.freeze({ '*': recognizeFeatureSchemaCall }),
-  exprs: Object.freeze({ safeParse: safeParseExpr }),
+  exprs: Object.freeze({ safeParse: safeParseExpr, result: validateResultExpr }),
   refineStructs: createSchemaStructRefinement(FEATURE_PLUGIN_NAME),
   finishModule: finishFeature,
   // A `defineFeature` call the top-level recognizer did not lower (a call inside a component body, a destructured binding, a
