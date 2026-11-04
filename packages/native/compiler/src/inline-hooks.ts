@@ -1059,7 +1059,7 @@ export function applyEdits(source: string, edits: Edit[]): string {
   let out = source
   let floor = Number.POSITIVE_INFINITY
   for (const e of sorted) {
-    if (e.end > floor) continue // overlapping edit: keep the outer, earlier-applied one
+    if (e.end > floor) continue // overlaps an edit already applied (the later-starting one): drop this one
     out = out.slice(0, e.start) + e.text + out.slice(e.end)
     floor = e.start
   }

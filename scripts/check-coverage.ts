@@ -394,6 +394,31 @@ export function coverageResultStatus(r: CoverageVerdict): string {
   return r.shortfalls.length > 0 ? '\u26a0\ufe0f ratchet' : '\u2705'
 }
 
+/**
+ * The CI `::error::` line for a failing package, naming EVERY metric that
+ * failed — or null when the package passed.
+ *
+ * Two independent rules can fail a package: the long-standing hard statements
+ * comparison (`pass`) and a declared metric falling below its ratchet floor
+ * (`regressed`). The annotation used to name statements unconditionally, so a
+ * `@pyreon/native-compiler` run that failed on BRANCHES (92.73% vs a 94% floor)
+ * surfaced in the PR checks UI as "95.55% statements" — pointing whoever read
+ * it at the wrong metric.
+ */
+export function coverageErrorAnnotation(
+  r: Pick<CoverageResult, 'package' | 'statements' | 'threshold' | 'pass' | 'shortfalls'>,
+): string | null {
+  const parts: string[] = []
+  if (!r.pass) parts.push(`statements ${r.statements}% (need ${r.threshold}%)`)
+  for (const sf of r.shortfalls) {
+    if (!sf.regressed) continue
+    // A statements shortfall is already covered by the hard comparison above.
+    if (sf.metric === 'statements' && !r.pass) continue
+    parts.push(`${sf.metric} ${sf.measured}% (floor ${sf.floor}%)`)
+  }
+  return parts.length > 0 ? `${r.package} coverage below threshold: ${parts.join('; ')}` : null
+}
+
 export function formatCoverageShortfall(pkg: string, sf: MetricShortfall): string {
   return `${pkg}: ${sf.metric} ${sf.measured}% is below declared ${sf.declared}% ` +
     `(ratchet floor ${sf.floor}%, tolerance ${FLOOR_TOLERANCE_PP}pp)`
@@ -1625,12 +1650,11 @@ console.log(report)
 // CI: write GitHub Actions annotations and step summary
 if (isCI) {
   for (const r of sorted) {
-    if (!r.pass) {
-      console.log(
-        `::error::${r.package} coverage below threshold: ${r.statements}% statements (need ${r.threshold}%)`,
-      )
-    }
+    const annotation = coverageErrorAnnotation(r)
+    if (annotation) console.log(`::error::${annotation}`)
     for (const sf of r.shortfalls.filter((s) => !s.regressed)) {
+      // Statements below the hard threshold is an ERROR above, not a warning.
+      if (sf.metric === 'statements' && !r.pass) continue
       console.log(`::warning::${formatCoverageShortfall(r.package, sf)}`)
     }
   }
