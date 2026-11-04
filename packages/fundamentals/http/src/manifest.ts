@@ -160,7 +160,7 @@ body.toString() // "amount=2000&metadata%5Border%5D=A1"`,
       kind: 'function',
       signature: '(options?: RetryOptions) => HttpMiddleware',
       summary:
-        'Replay a failed request. OFF unless you add it, because @pyreon/query already retries and the two compound silently. Retries idempotent methods only (POST is excluded), on 408/413/429/5xx plus transport failures, with exponential backoff, full jitter and `Retry-After` support. Never replays a cancellation, and stops replaying the moment the caller aborts — including mid-backoff.',
+        'Replay a failed request. OFF unless you add it, because @pyreon/query already retries and the two compound silently. Retries idempotent methods only (POST is excluded), on 408/413/429/5xx plus transport failures, with exponential backoff, equal jitter (a delay drawn from half to all of the exponential step) and `Retry-After` support. Never replays a cancellation, and stops replaying the moment the caller aborts — including mid-backoff.',
       example: `const api = createHttp({ use: [retry({ limit: 3 })] })`,
       mistakes: [
         'Enabling it alongside @pyreon/query’s own retry without lowering one of them — 3 × 3 is nine requests.',

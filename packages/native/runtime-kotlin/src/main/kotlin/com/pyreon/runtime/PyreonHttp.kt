@@ -585,7 +585,7 @@ public object PyreonHttpPipeline {
         }
     }
 
-    /** Exponential backoff with full jitter — the web's `defaultBackoff`. */
+    /** Exponential backoff with equal jitter (`[base/2, base]`) — the web's `defaultBackoff`. */
     @JvmStatic
     public fun defaultBackoff(attempt: Int, random: Double): Double {
         val base = minOf(1000.0 * Math.pow(2.0, (attempt - 1).toDouble()), 20_000.0)
