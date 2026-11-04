@@ -95,8 +95,10 @@ sealed class PyreonShapeSpec {
             lineTo(x2.toFloat(), y2.toFloat())
         }
         // androidx's own SVG path-data parser — every command, arcs included.
-        // It throws on malformed data; an empty path is the browser's answer.
-        is Svg -> runCatching { PathParser().parsePathString(d).toPath() }.getOrElse { Path() }
+        // It THROWS on malformed data, where SVG (and the web, and iOS) draws
+        // everything up to the first bad command — so it is handed only that
+        // well-formed prefix. The runCatching stays as a last-resort guard.
+        is Svg -> runCatching { PathParser().parsePathString(pyreonSvgPathValidPrefix(d)).toPath() }.getOrElse { Path() }
     }
 }
 

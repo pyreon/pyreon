@@ -40,7 +40,11 @@ export interface RetryOptions {
   maxDelay?: number | undefined
 }
 
-/** Exponential backoff with full jitter — avoids a synchronised thundering herd. */
+/**
+ * Exponential backoff with EQUAL jitter — a uniform delay in `[base/2, base]`,
+ * which spreads retries to avoid a synchronised thundering herd while keeping
+ * at least half the backoff. (Not "full" jitter, which would draw from `[0, base]`.)
+ */
 function defaultBackoff(attempt: number): number {
   const base = Math.min(1000 * 2 ** (attempt - 1), 20_000)
   return Math.round(base / 2 + Math.random() * (base / 2))

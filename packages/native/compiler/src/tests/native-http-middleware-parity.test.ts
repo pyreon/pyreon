@@ -13,7 +13,7 @@
 //     outcome, every log line, how many times the token was read) and the vectors must be equal.
 //
 // The scenarios target the places the two could plausibly disagree: header-name case, a nil vs empty token, the
-// origin boundary, the full-jitter formula and its 20s cap, `Retry-After` in both forms against `maxDelay`, network
+// origin boundary, the equal-jitter formula and its 20s cap, `Retry-After` in both forms against `maxDelay`, network
 // errors with `network` on and off, non-idempotent verbs, and ORDER — `[bearer, retry]` and `[retry, bearer]` differ
 // on the web, including the in-place-mutation case where a later token read returns null.
 
@@ -448,7 +448,7 @@ function jvmPath(): string | undefined {
 describe('createHttp `use` middleware — web ⇄ native parity, executed', () => {
   it('the web vector is what this file claims it is (a control for the harness)', async () => {
     // Pinned by hand so a broken web harness (say, a setTimeout spy that never fires) cannot make every vector agree
-    // on nothing: full jitter at random 0.5 is 0.75 × base, base doubling from 1000.
+    // on nothing: equal jitter at random 0.5 is 0.75 × base, base doubling from 1000.
     expect(await runWeb(SCENARIOS.find((s) => s.name === 'retry-default')!)).toBe(
       '3|-,-,-|750,1500|200||0',
     )

@@ -200,7 +200,7 @@ fun testMiddlewareRetryReplaysWithBackoff() {
     check(res.status == 200) { "the third attempt's 200 is returned" }
     check(t.seen.size == 3) { "two retries: ${t.seen.size}" }
     // random = 0.5 → base/2 + 0.5·base/2 = 0.75·base, base = 1000·2^(n-1)
-    check(r.sleeps == listOf(750.0, 1500.0)) { "full-jitter backoff: ${r.sleeps}" }
+    check(r.sleeps == listOf(750.0, 1500.0)) { "equal-jitter backoff: ${r.sleeps}" }
 }
 
 fun testMiddlewareRetryStopsAtLimitAndSkipsPost() {
