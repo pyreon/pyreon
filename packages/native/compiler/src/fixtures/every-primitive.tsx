@@ -2,6 +2,7 @@ import { signal } from '@pyreon/reactivity'
 import {
   Stack, Inline, Layer, Scroll, Text, Image, Video, Audio, Transition, Link, Modal, Press, WebView, Field, Gesture,
   Canvas, CanvasRect, CanvasCircle, CanvasLine, CanvasPath, CanvasText,
+  Tabs, Tab, Split,
 } from '@pyreon/primitives'
 import { For } from '@pyreon/core'
 
@@ -15,6 +16,8 @@ export function ProbeApp() {
   const turn = signal(0)
   const pts = signal([{ x: 10, y: 20 }, { x: 40, y: 50 }])
   const trail = signal('M0 0 L10 10')
+  const tab = signal('home')
+  const picked = signal('')
   return (
     <Stack margin={4} marginX={2} marginY={1} padding={2} background="primary" radius="md">
       <Inline margin={2} gap={2}>
@@ -63,6 +66,21 @@ export function ProbeApp() {
       <Field value={notes} onChangeText={(v) => notes.set(v)} kind="email" onSubmit={() => open.set(true)} />
       <Field multiline value={notes} onChangeText={(v) => notes.set(v)} placeholder="Notes" data-testid="probe-notes" />
       <Field multiline lines={rows()} value={notes()} onChangeText={(v) => notes.set(v)} />
+      <Tabs value={tab} onChange={(v) => tab.set(v)} data-testid="probe-tabs">
+        <Tab value="home" label="Home" icon="home" data-testid="probe-tab-home">
+          <Text>home tab</Text>
+        </Tab>
+        <Tab value="inbox" label="Inbox" icon="email">
+          <Split
+            sidebar={<Press onPress={() => picked.set('a')}><Text>row a</Text></Press>}
+            showDetail={picked() !== ''}
+            onBack={() => picked.set('')}
+            data-testid="probe-split"
+          >
+            <Text>{picked()}</Text>
+          </Split>
+        </Tab>
+      </Tabs>
       <Modal open={open()} onClose={() => open.set(false)} data-testid="probe-modal" accessibilityLabel="Dialog">
         <Text>modal body</Text>
       </Modal>

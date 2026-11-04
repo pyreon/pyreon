@@ -152,13 +152,13 @@
       "warnings": 0
     },
     "fixture:every-primitive.tsx|swift": {
-      "sha": "2de486ba1d0e59c8836e4ac2b9f3f8cbe3f01af54fb29718588172a307b41981",
-      "bytes": 5859,
+      "sha": "0a34ad9f240ee88c899fb4932953067162628cfd026a34d673eae1a6f4933205",
+      "bytes": 6745,
       "warnings": 0
     },
     "fixture:every-primitive.tsx|kotlin": {
-      "sha": "ee8b6e7d62b1e8a1697739580eb86235caccb41d1dbedb027cdbd3e85283573e",
-      "bytes": 5710,
+      "sha": "18d7244020e6370b50680d61fea5173ba964a04b50408d1c9904411da6ab61b9",
+      "bytes": 6698,
       "warnings": 0
     },
     "fixture:lifecycle-errorboundary.tsx|swift": {
@@ -4522,8 +4522,8 @@
       "warnings": 0
     },
     "golden-fixture:query-35.tsx|swift": {
-      "sha": "f4a08ebacf7a9823d8c505cd58ab769b9c9deb6825dd48d99d37511f280d8f99",
-      "bytes": 175,
+      "sha": "13e84bed14677b68309e7cfbccefff6b7cb527f76b56f0872a20498c9a68f4ba",
+      "bytes": 170,
       "warnings": 0
     },
     "golden-fixture:query-35.tsx|kotlin": {
@@ -5002,8 +5002,8 @@
       "warnings": 0
     },
     "golden-fixture:rate-callback-returns.tsx|swift": {
-      "sha": "904eca595114ddf7d1f936b2b0e2957097f9ba0ff31df48625a7c897b2ee5986",
-      "bytes": 552,
+      "sha": "88a2451b0e4dd63452dd66199eda66f5cd14dc49d535dcc5313b79700b5bc189",
+      "bytes": 547,
       "warnings": 0
     },
     "golden-fixture:rate-callback-returns.tsx|kotlin": {
@@ -7402,13 +7402,13 @@
       "warnings": 0
     },
     "example:native-router-demo-ios/RouterApp.tsx|swift": {
-      "sha": "d600d85cdf2d5bd3ece8190eb091bf631aeff6fe6296a0aefb2ffa9114babaa7",
-      "bytes": 23477,
+      "sha": "eafcf6eb2291dbd684e5caf19fd49288e27449aa6effcf072d3a99bd82f88c14",
+      "bytes": 25953,
       "warnings": 0
     },
     "example:native-router-demo-ios/RouterApp.tsx|kotlin": {
-      "sha": "6466160864b69fefaa6d5ba5ff034c0a7712001141e2ba4a10dc67b59dda0361",
-      "bytes": 21285,
+      "sha": "2ed9ba4ebfc3db81cacbc9aebf2d372dfbcb56a3cc2019ccaca2e7e076c37e39",
+      "bytes": 24115,
       "warnings": 0
     },
     "example:native-tasks/TasksApp.tsx|swift": {

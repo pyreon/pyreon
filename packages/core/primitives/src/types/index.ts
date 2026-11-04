@@ -41,3 +41,4 @@ export type {
   ShapeColor,
   ShapePaintProps,
 } from './canvas'
+export type { SplitProps, TabProps, TabsProps } from './navigation'

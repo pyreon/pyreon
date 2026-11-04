@@ -980,6 +980,20 @@ public struct PyreonGesture<Content: View>: View {
   ) {}
   public var body: some View { EmptyView() }
 }
+// <Tabs> / <Split> — mirror router-swift's PyreonNavigation.swift signatures exactly.
+public struct PyreonTabItem<Value: Hashable>: Identifiable {
+  public let value: Value
+  public var id: Value { value }
+  public init(value: Value, label: String, systemImage: String? = nil) { self.value = value }
+}
+public struct PyreonTabs<Value: Hashable, Content: View>: View {
+  public init(selection: Binding<Value>, items: [PyreonTabItem<Value>], @ViewBuilder content: @escaping (Value) -> Content) {}
+  public typealias Body = Never
+}
+public struct PyreonSplit<Sidebar: View, Detail: View>: View {
+  public init(showDetail: Bool, onBack: @escaping () -> Void, @ViewBuilder sidebar: () -> Sidebar, @ViewBuilder detail: () -> Detail) {}
+  public typealias Body = Never
+}
 public enum PyreonJSON {
   public static func encode<T>(_ value: T) -> String { "" }
   // JSON.stringify(x) lowers here. Encodable, as in the runtime.
