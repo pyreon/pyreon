@@ -2998,6 +2998,21 @@ describe('JS syntax and optional native parity — SSR props with a different co
     compareSsrTemplate('export const C = () => <video volume={0.5} />'))
   test('input defaultValue reaches _ssrAttr', () =>
     compareSsrTemplate('export const C = () => <input defaultValue="x" />'))
+  // A live prop and its default share one content attribute; which wins is a
+  // runtime question, so the element bails to the h() path in BOTH backends.
+  for (const src of [
+    '<input value="cur" defaultValue="def" />',
+    '<input defaultValue="def" value={v} />',
+    '<input type="checkbox" defaultChecked checked={c} />',
+    '<video defaultMuted muted={m} />',
+    '<div class="f"><input defaultValue="def" value={v} /></div>',
+  ]) {
+    test(`live prop + default bails: ${src}`, () => {
+      compareSsrTemplate(`export const C = () => ${src}`)
+      const js = transformJSX_JS(`export const C = () => ${src}`, 'test.tsx', { ssr: true, ssrTemplate: true }).code
+      expect(js).not.toContain('_ssr(')
+    })
+  }
 })
 
 describe('JS syntax and optional native parity — named accessor DOM props (#4086)', () => {

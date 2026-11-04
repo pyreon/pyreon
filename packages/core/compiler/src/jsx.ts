@@ -2758,6 +2758,19 @@ export function transformJSX_JS(
       if (seen.has(nm)) return false
       seen.add(nm)
     }
+    // A live prop and its default share ONE content attribute (`value` /
+    // `defaultValue` → `value=""`, likewise `checked`, `muted`). Which wins
+    // depends on the live prop's RUNTIME value (it wins when non-nullish), so
+    // the bake cannot decide it — and emitting both is parser-first-wins.
+    // Bail to the h() path, which resolves it (`isShadowedDefault`).
+    if (
+      ((tag === 'input' &&
+        ((seen.has('value') && seen.has('defaultValue')) ||
+          (seen.has('checked') && seen.has('defaultChecked')))) ||
+        ((tag === 'video' || tag === 'audio') && seen.has('muted') && seen.has('defaultMuted')))
+    ) {
+      return false
+    }
     ssrEmitStatic(buf, `<${tag}`)
     for (const attr of jsxAttrs(el)) {
       if (!ssrSerializeAttr(buf, attr, tag)) return false

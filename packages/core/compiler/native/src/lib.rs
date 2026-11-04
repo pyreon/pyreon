@@ -7170,6 +7170,15 @@ fn ssr_serialize_element(buf: &mut SsrBuf, el: &JSXElement, mode: SsrMode, ctx: 
             }
         }
     }
+    // A live prop and its default share ONE content attribute — which wins
+    // depends on the live prop's runtime value, so bail to the h() path
+    // (mirrors JS `ssrSerializeElement`).
+    let both = |a: &str, b: &str| seen.contains(a) && seen.contains(b);
+    if (tag == "input" && (both("value", "defaultValue") || both("checked", "defaultChecked")))
+        || ((tag == "video" || tag == "audio") && both("muted", "defaultMuted"))
+    {
+        return false;
+    }
     buf.emit_static(&format!("<{}", tag));
     for attr in &el.opening_element.attributes {
         if !ssr_serialize_attr(buf, attr, tag, ctx) {

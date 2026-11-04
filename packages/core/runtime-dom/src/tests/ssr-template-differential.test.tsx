@@ -738,6 +738,18 @@ describe('SSR — props with a different content attribute, or none', () => {
     ['media defaultMuted is the muted attribute', `const Node = <video defaultMuted />`, {}, () => h('video', { defaultMuted: true }), [' muted'], ['default-muted']],
     ['property-only props serialize nothing', `const Node = <video currentTime={3} volume={0.5} playbackRate={2} />`, {}, () => h('video', { currentTime: 3, volume: 0.5, playbackRate: 2 }), ['<video></video>'], ['current', 'volume', 'playback']],
     ['indeterminate serializes nothing', `const Node = <input type="checkbox" indeterminate />`, {}, () => h('input', { type: 'checkbox', indeterminate: true }), ['<input type="checkbox"'], ['indeterminate']],
+    // A live prop and its default share ONE content attribute. Emitting both
+    // (`value="cur" value="def"`) is parser-FIRST-wins, so the
+    // defaultValue-then-value order showed the default. The live prop wins
+    // whenever it is non-nullish; a nullish one leaves the default in place.
+    ['value wins over a LATER defaultValue', `const Node = <input value={v} defaultValue="def" />`, { v: 'cur' }, () => h('input', { value: 'cur', defaultValue: 'def' }), ['value="cur"'], ['def']],
+    ['value wins over an EARLIER defaultValue', `const Node = <input defaultValue="def" value={v} />`, { v: 'cur' }, () => h('input', { defaultValue: 'def', value: 'cur' }), ['value="cur"'], ['def']],
+    ['static value wins over static defaultValue', `const Node = <input defaultValue="def" value="cur" />`, {}, () => h('input', { defaultValue: 'def', value: 'cur' }), ['value="cur"'], ['def']],
+    ['an accessor value wins too', `const Node = <input defaultValue="def" value={v} />`, { v: () => 'cur' }, () => h('input', { defaultValue: 'def', value: () => 'cur' }), ['value="cur"'], ['def']],
+    ['a nullish value leaves defaultValue in place', `const Node = <input defaultValue="def" value={v} />`, { v: undefined }, () => h('input', { defaultValue: 'def', value: undefined }), ['value="def"'], []],
+    ['checked={false} wins over defaultChecked', `const Node = <input type="checkbox" defaultChecked checked={v} />`, { v: false }, () => h('input', { type: 'checkbox', defaultChecked: true, checked: false }), ['<input type="checkbox" />'], ['checked']],
+    ['checked={true} with defaultChecked={false} is checked', `const Node = <input type="checkbox" defaultChecked={false} checked={v} />`, { v: true }, () => h('input', { type: 'checkbox', defaultChecked: false, checked: true }), [' checked'], []],
+    ['muted={false} wins over defaultMuted', `const Node = <video defaultMuted muted={v} />`, { v: false }, () => h('video', { defaultMuted: true, muted: false }), ['<video></video>'], ['muted']],
   ]
   for (const [name, src, deps, oracle, has, hasNot] of cases) {
     test(name, async () => {
@@ -746,8 +758,30 @@ describe('SSR — props with a different content attribute, or none', () => {
       expect(compiled).toBe(direct)
       for (const x of has) expect(direct).toContain(x)
       for (const x of hasNot) expect(direct).not.toContain(x)
+      // Never two copies of one content attribute.
+      expect(direct.match(/ value=/g)?.length ?? 0).toBeLessThanOrEqual(1)
     })
   }
+
+  // The server HTML, a hydration over it, and a fresh client mount must all
+  // show the SAME control state — before the fix the parser kept the first of
+  // two `value` attributes, so the server page showed the default.
+  test('server HTML, hydration and client mount agree on the shown value / checked', async () => {
+    const vnode = () =>
+      h('div', null, h('input', { id: 't', defaultValue: 'def', value: 'cur' }), h('input', { id: 'c', type: 'checkbox', defaultChecked: true, checked: false }))
+    const html = await renderToString(vnode())
+    const ssr = document.createElement('div')
+    ssr.innerHTML = html
+    expect((ssr.querySelector('#t') as HTMLInputElement).value).toBe('cur')
+    expect((ssr.querySelector('#c') as HTMLInputElement).checked).toBe(false)
+    hydrateRoot(ssr, vnode())
+    expect((ssr.querySelector('#t') as HTMLInputElement).value).toBe('cur')
+    expect((ssr.querySelector('#c') as HTMLInputElement).checked).toBe(false)
+    const fresh = document.createElement('div')
+    mount(vnode(), fresh)
+    expect((fresh.querySelector('#t') as HTMLInputElement).value).toBe('cur')
+    expect((fresh.querySelector('#c') as HTMLInputElement).checked).toBe(false)
+  })
 })
 
 describe('SSR fast path — conditional DOM-element operand is lowered (optimization fired)', () => {
