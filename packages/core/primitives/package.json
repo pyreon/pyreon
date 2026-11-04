@@ -52,6 +52,7 @@
     "@happy-dom/global-registrator": "21.0.4",
     "@pyreon/manifest": "workspace:*",
     "@pyreon/native-compiler": "workspace:*",
+    "@pyreon/router": "workspace:^",
     "@pyreon/runtime-dom": "workspace:^",
     "@pyreon/test-utils": "workspace:^",
     "@pyreon/tsconfig": "workspace:*",

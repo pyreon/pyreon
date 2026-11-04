@@ -2985,3 +2985,36 @@ describeNative('re-mountable component-child templates (#3955)', () => {
     expect(root).not.toMatch(/, 1\)/)
   })
 })
+
+describe('JS syntax and optional native parity — SSR props with a different content attribute, or none', () => {
+  // `<textarea defaultValue>` bails to the h() path (its default is text
+  // content); `indeterminate` / `volume` have no content attribute and are
+  // skipped rather than baked. Both backends must agree byte for byte.
+  test('textarea defaultValue bails', () =>
+    compareSsrTemplate('export const C = () => <div><textarea defaultValue="draft" /></div>'))
+  test('indeterminate is skipped, not baked', () =>
+    compareSsrTemplate('export const C = () => <input type="checkbox" indeterminate />'))
+  test('volume is skipped, not baked', () =>
+    compareSsrTemplate('export const C = () => <video volume={0.5} />'))
+  test('input defaultValue reaches _ssrAttr', () =>
+    compareSsrTemplate('export const C = () => <input defaultValue="x" />'))
+})
+
+describe('JS syntax and optional native parity — named accessor DOM props (#4086)', () => {
+  // A non-literal DOM-property value may be an accessor: static position emits
+  // `_setPropStatic`, reactive position `_setProp`; literals keep the raw
+  // assignment. Both backends must make the same three-way decision.
+  test('static named binding / member / literal', () => {
+    compare('<div><input type="checkbox" checked={isOn} /><span>x</span></div>')
+    compare('<div><input disabled={x.y} value={getV} /><span>x</span></div>')
+    compare('<div><input checked={true} disabled={-1} /><select value={`b`}><option/></select></div>')
+  })
+  test('reactive function-valued prop', () => {
+    compare('function A(p) { return <div><input checked={p.c} /><span>x</span></div> }')
+    compare('<div><input checked={sel(k) ? on : off} /><span>x</span></div>')
+  })
+  test('named accessor child', () => {
+    compare('function A() { const label = () => n(); return <p>{label}</p> }')
+    compare('function A() { function label() { return n() } return <p><b/>{label}<i/></p> }')
+  })
+})

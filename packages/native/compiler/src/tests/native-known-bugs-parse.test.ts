@@ -226,10 +226,12 @@ describe('a non-preset toast member call is named', () => {
     })
   }
 
-  it('a real-but-unlowered method (`toast.dismiss`) gets the follow-up wording', () => {
-    const r = swift(handler('toast.dismiss("q")'))
-    expect(warn(r)).toContain('`toast.dismiss` has no native lowering yet')
-    expect(r.code).not.toContain('toast.dismiss')
+  // `toast.dismiss` lowers now (→ PyreonToast.shared.dismiss), so the
+  // follow-up wording is held by `toast.update`, still unlowered.
+  it('a real-but-unlowered method (`toast.update`) gets the follow-up wording', () => {
+    const r = swift(handler('toast.update("q", { message: "x" })'))
+    expect(warn(r)).toContain('`toast.update` has no native lowering yet')
+    expect(r.code).not.toContain('toast.update')
   })
 
   it('the presets still lower with no warning', () => {

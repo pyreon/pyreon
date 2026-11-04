@@ -1,5 +1,7 @@
-import { createContext, onUnmount, useContext } from '@pyreon/core'
-import { computed, isClient, signal } from '@pyreon/reactivity'
+import { createContext, h, onUnmount, provide, useContext } from '@pyreon/core'
+import type { VNodeChild } from '@pyreon/core'
+import { batch, computed, isClient, signal, untrack } from '@pyreon/reactivity'
+import type { Computed, Signal } from '@pyreon/reactivity'
 import { SizedMap } from '@pyreon/sized-map'
 import { buildNameIndex, buildPath, resolveRoute, stringifyQuery } from './match'
 import { classifyRedirectTarget, getRedirectInfo } from './redirect'
@@ -21,6 +23,7 @@ import {
   type Router,
   type RouterInstance,
   type RouterOptions,
+  type RouterTab,
 } from './types'
 
 // Dev-mode gate: see `pyreon/no-process-dev-gate` lint rule for why this
@@ -35,6 +38,27 @@ const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number)
 // tree (e.g. programmatic navigation from event handlers).
 
 export const RouterContext = createContext<RouterInstance | null>(null)
+
+/**
+ * Which tab of a tab-bar router (`createRouter({ tabs })`) a subtree belongs
+ * to, and the `RouterView` nesting depth reached inside it. Provided by
+ * `router.withTab()` (depth 0) and re-provided by each tab-scoped
+ * `RouterView` (depth + 1). A tab's views and hooks read THAT tab's stack,
+ * so a hidden tab keeps rendering its own page while another tab is active.
+ */
+export const RouterTabContext = createContext<{ tab: string; depth: number } | null>(null)
+
+const RouterTabScope = (props: { tab: string; render: () => VNodeChild }): VNodeChild => {
+  provide(RouterTabContext, { tab: props.tab, depth: 0 })
+  return props.render()
+}
+
+/** The tab a hook call sits inside, when its router has tabs. */
+function tabScopeOf(router: Router): string | null {
+  const scope = useContext(RouterTabContext)
+  if (scope === null || router.activeTab() === undefined) return null
+  return scope.tab
+}
 
 // Module-level fallback — safe for CSR (single-threaded), not for concurrent SSR.
 // RouterProvider also sets this so legacy useRouter() calls outside the tree work.
@@ -77,6 +101,13 @@ export function useRoute<TPath extends string = string>(): () => ResolvedRoute<
     throw new Error(
       '[Pyreon] No router installed. Wrap your app in <RouterProvider router={router}>.',
     )
+  // Inside a tab of a tab-bar router, a page reads ITS tab's route — not the
+  // active tab's — so a hidden tab's params do not change under it.
+  const tab = tabScopeOf(router)
+  if (tab !== null) {
+    const inst = router as RouterInstance
+    return (() => inst._tabRoute(tab)) as never
+  }
   return router.currentRoute as never
 }
 
@@ -119,6 +150,8 @@ export function useParams<T extends Record<string, string> = Record<string, stri
     throw new Error(
       '[Pyreon] No router installed. Wrap your app in <RouterProvider router={router}>.',
     )
+  const tab = tabScopeOf(router)
+  if (tab !== null) return (router as RouterInstance)._tabRoute(tab).params as T
   return router.currentRoute().params as T
 }
 
@@ -590,6 +623,133 @@ export function createRouter<TNames extends string = string>(
   const currentPath = signal(normalizeTrailingSlash(getInitialLocation(), trailingSlash))
   const currentRoute = computed<ResolvedRoute>(() => resolveRoute(currentPath(), routes))
 
+  // ── Tabs: one back stack per tab ──────────────────────────────────────────
+  //
+  // `createRouter({ tabs })` gives each tab its own stack of entries (root
+  // first). `currentPath` stays the ACTIVE tab's top entry — the URL — so
+  // every existing reader keeps working, and the stacks change only inside
+  // `commitNavigation`, so a cancelled or superseded navigation never touches
+  // them. Each history entry carries `{ __pyreonTab, __pyreonTabStack }`, which
+  // is what lets Back/Forward restore a tab AND its stack.
+  const tabs: RouterTab[] = (opts.tabs ?? []).map((t) => ({
+    name: t.name,
+    root: normalizeTrailingSlash(t.root, trailingSlash),
+  }))
+  const tabMode = tabs.length > 0
+  const activeTabSig = signal<string | undefined>(undefined)
+  const tabStacks = new Map<string, Signal<string[]>>()
+  const tabRoutes = new Map<string, Computed<ResolvedRoute>>()
+
+  if (tabMode) {
+    const initial = initialTabPlan(currentPath.peek())
+    for (const t of tabs) {
+      if (!tabStacks.has(t.name)) addTabState(t, t.name === initial.tab ? initial.stack : [t.root])
+    }
+    activeTabSig.set(initial.tab)
+  }
+
+  /** One tab's stack signal + its memoized top-entry route. Called once per configured tab. */
+  function addTabState(t: RouterTab, initialStack: string[]): void {
+    const stack = signal<string[]>(initialStack)
+    tabStacks.set(t.name, stack)
+    // The top as a STRING first, so the route object is rebuilt only when the
+    // top actually changes — a tab's leaf view compares routes by identity,
+    // and a needless new object would remount the page.
+    const top = computed(() => {
+      const st = stack()
+      return st[st.length - 1] ?? t.root
+    })
+    // Memoized on the top string too: a dirty-marked recompute that finds the
+    // same top must hand back the SAME object, or the equality gate passes a
+    // fresh route downstream and the page remounts.
+    let lastTop: string | undefined
+    let lastRoute: ResolvedRoute | undefined
+    tabRoutes.set(
+      t.name,
+      computed(() => {
+        const path = top()
+        if (path !== lastTop || lastRoute === undefined) {
+          lastTop = path
+          lastRoute = resolveRoute(path, routes)
+        }
+        return lastRoute
+      }),
+    )
+  }
+
+  function findTab(name: string | undefined): RouterTab | undefined {
+    return name === undefined ? undefined : tabs.find((t) => t.name === name)
+  }
+
+  /** The tab whose root is the longest segment-prefix of `path`, if any. */
+  function tabForPath(path: string): RouterTab | undefined {
+    const ps = pathSegments(path)
+    let best: RouterTab | undefined
+    let bestLen = -1
+    for (const t of tabs) {
+      const rs = pathSegments(t.root)
+      if (rs.length > ps.length || rs.length <= bestLen) continue
+      if (rs.every((seg, i) => seg === ps[i])) {
+        best = t
+        bestLen = rs.length
+      }
+    }
+    return best
+  }
+
+  function isTabRoot(t: RouterTab, path: string): boolean {
+    return pathSegments(path).join('/') === pathSegments(t.root).join('/')
+  }
+
+  /** A history stamp's tab + stack, when it is one this router can restore. */
+  function parseTabStamp(state: unknown): TabPlan | null {
+    if (!tabMode || state === null || typeof state !== 'object') return null
+    const st = state as { __pyreonTab?: unknown; __pyreonTabStack?: unknown }
+    if (typeof st.__pyreonTab !== 'string' || findTab(st.__pyreonTab) === undefined) return null
+    const stack = st.__pyreonTabStack
+    if (!Array.isArray(stack) || stack.length === 0 || !stack.every((e) => typeof e === 'string')) {
+      return null
+    }
+    return { tab: st.__pyreonTab, stack: stack as string[] }
+  }
+
+  /**
+   * The starting tab + stack for the initial URL. A reload (or a return to the
+   * page) finds its own stamp on the history entry and restores the stack; a
+   * fresh deep link selects the tab whose root prefixes it and PUSHES the path
+   * onto that tab's root, so Back returns to the tab's root page.
+   */
+  function initialTabPlan(path: string): TabPlan {
+    const stamped = isClient ? parseTabStamp(window.history.state) : null
+    if (stamped !== null && stamped.stack[stamped.stack.length - 1] === path) return stamped
+    const t = tabForPath(path) ?? tabs[0]!
+    return { tab: t.name, stack: isTabRoot(t, path) ? [path] : [t.root, path] }
+  }
+
+  /**
+   * How a programmatic navigation to `path` changes the stacks:
+   * - exactly a tab's root → select that tab, pop it to the root;
+   * - under ANOTHER tab's root → select that tab, push onto its stack;
+   * - otherwise → push onto (or replace the top of) the active tab.
+   * The root entry is never replaced: a `replace` on a root-only stack pushes.
+   */
+  function planTabNav(path: string, replace: boolean): TabPlan {
+    const active = findTab(activeTabSig.peek()) ?? tabs[0]!
+    const target = tabForPath(path) ?? active
+    const stack = tabStacks.get(target.name)?.peek() ?? [target.root]
+    if (isTabRoot(target, path)) return { tab: target.name, stack: [path] }
+    if (target.name !== active.name) return { tab: target.name, stack: [...stack, path] }
+    if (replace && stack.length > 1) return { tab: target.name, stack: [...stack.slice(0, -1), path] }
+    return { tab: target.name, stack: [...stack, path] }
+  }
+
+  /** The active tab's stamp for the current history entry. */
+  function tabStamp(): Record<string, unknown> {
+    if (!tabMode) return {}
+    const tab = activeTabSig.peek()!
+    return { __pyreonTab: tab, __pyreonTabStack: [...(tabStacks.get(tab)?.peek() ?? [])] }
+  }
+
   // ── Browser-initiated navigation (Back/Forward, hash anchors) ────────────
   //
   // Routes history traversals through the SAME `navigate()` pipeline as
@@ -613,6 +773,7 @@ export function createRouter<TNames extends string = string>(
   // (#2885 fixed the URL-clobber half of this same race; this is the other
   // half -- the router's own state must follow the browser to the final entry.)
   let _pendingBrowserTarget: string | null = null
+  let _pendingBrowserTab: string | undefined
 
   const handleBrowserNav = (): void => {
     // Client-only: wired solely to the popstate/hashchange listeners, which
@@ -628,7 +789,12 @@ export function createRouter<TNames extends string = string>(
       return
     }
     const target = normalizeTrailingSlash(getCurrentLocation(), trailingSlash)
-    if (target === (_pendingBrowserTarget ?? currentPath.peek())) {
+    // With tabs, two entries can share a path (a detail page pushed in two
+    // tabs), so an entry is the SAME place only when its tab matches too.
+    const poppedTab = parseTabStamp(window.history.state)
+    const expectedTab = _pendingBrowserTarget !== null ? _pendingBrowserTab : activeTabSig.peek()
+    const sameTab = poppedTab === null || poppedTab.tab === expectedTab
+    if (sameTab && target === (_pendingBrowserTarget ?? currentPath.peek())) {
       // Fragment-only change (history mode), an echo, or a duplicate event
       // for the traversal already in flight — native behavior wins.
       if (poppedIdx !== null) _histIdx = poppedIdx
@@ -637,7 +803,8 @@ export function createRouter<TNames extends string = string>(
     const prevIdx = _histIdx
     if (poppedIdx !== null) _histIdx = poppedIdx
     _pendingBrowserTarget = target
-    void navigate(target, true, 0, true)
+    _pendingBrowserTab = poppedTab?.tab ?? activeTabSig.peek()
+    void navigate(target, true, 0, true, poppedTab ?? undefined)
       .finally(() => {
         // Identity-guarded: a NEWER browser traversal may own the field now.
         if (_pendingBrowserTarget === target) _pendingBrowserTarget = null
@@ -677,12 +844,14 @@ export function createRouter<TNames extends string = string>(
   // by other code keep their fields — we only add `__pyreonIdx`.
   if (isClient) {
     const existing = readHistoryIdx()
-    if (existing !== null) {
-      _histIdx = existing
-    } else {
+    if (existing !== null) _histIdx = existing
+    // Tab mode always (re)stamps: the initial plan may have built the stack
+    // from the URL, and a later Back to this entry must restore exactly it.
+    if (existing === null || tabMode) {
       const prev = window.history.state as Record<string, unknown> | null
+      const base0 = prev && typeof prev === 'object' ? prev : {}
       window.history.replaceState(
-        prev && typeof prev === 'object' ? { ...prev, __pyreonIdx: 0 } : { __pyreonIdx: 0 },
+        { ...base0, __pyreonIdx: existing ?? 0, ...tabStamp() },
         '',
         window.location.href,
       )
@@ -836,12 +1005,12 @@ export function createRouter<TNames extends string = string>(
       const prev = window.history.state as Record<string, unknown> | null
       const merged =
         prev && typeof prev === 'object'
-          ? { ...prev, __pyreonIdx: _histIdx }
-          : { __pyreonIdx: _histIdx }
+          ? { ...prev, __pyreonIdx: _histIdx, ...tabStamp() }
+          : { __pyreonIdx: _histIdx, ...tabStamp() }
       window.history.replaceState(merged, '', url)
     } else {
       _histIdx++
-      window.history.pushState({ __pyreonIdx: _histIdx }, '', url)
+      window.history.pushState({ __pyreonIdx: _histIdx, ...tabStamp() }, '', url)
     }
   }
 
@@ -1122,6 +1291,7 @@ export function createRouter<TNames extends string = string>(
     to: ResolvedRoute,
     from: ResolvedRoute,
     fromBrowser = false,
+    tabPlan: TabPlan | null = null,
   ): Promise<void> {
     scrollManager.save(from.path)
 
@@ -1131,7 +1301,19 @@ export function createRouter<TNames extends string = string>(
       // new navigation's data (empty when the chain had no middleware —
       // middleware data is per-navigation). See useMiddlewareData.
       router._committedMiddlewareData = to._middlewareData ?? {}
-      currentPath.set(path)
+      if (tabPlan !== null) {
+        // The stacks, the active tab and the URL move as ONE step, so no reader
+        // sees a stack whose top disagrees with the path.
+        const top = tabPlan.stack[tabPlan.stack.length - 1]
+        const stack = top === path ? tabPlan.stack : [...tabPlan.stack, path]
+        batch(() => {
+          tabStacks.get(tabPlan.tab)?.set(stack)
+          activeTabSig.set(tabPlan.tab)
+          currentPath.set(path)
+        })
+      } else {
+        currentPath.set(path)
+      }
       // A BROWSER-initiated traversal (popstate/hashchange) has already moved
       // the URL — the browser owns it, and this commit is only catching the app
       // up. Writing it back is redundant in the happy path and actively WRONG
@@ -1161,8 +1343,18 @@ export function createRouter<TNames extends string = string>(
       // `revalidateSwrLoaders` never ran and SWR was a no-op for the realistic
       // nav-away/back case. Retained SWR data is bounded by the number of
       // developer-declared SWR route RECORDS; per-param growth
+      // With tabs, a HIDDEN tab still renders its own page, whose view re-reads
+      // its loader data — pruning it would remount that page with `undefined`.
+      const keep = new Set<RouteRecord>(to.matched)
+      if (tabPlan !== null) {
+        for (const t of tabs) {
+          if (t.name === tabPlan.tab) continue
+          const r = tabRoutes.get(t.name)
+          if (r !== undefined) for (const rec of untrack(r).matched) keep.add(rec)
+        }
+      }
       for (const record of router._loaderData.keys()) {
-        if (!to.matched.includes(record) && !record.staleWhileRevalidate) {
+        if (!keep.has(record) && !record.staleWhileRevalidate) {
           router._loaderData.delete(record)
         }
       }
@@ -1338,6 +1530,7 @@ export function createRouter<TNames extends string = string>(
     replace: boolean,
     redirectDepth = 0,
     fromBrowser = false,
+    tabPlanIn?: TabPlan,
   ): Promise<NavigationResult> {
     if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('router.navigate')
     router._navigationStartTime = Date.now()
@@ -1353,6 +1546,7 @@ export function createRouter<TNames extends string = string>(
     }
 
     const path = normalizeTrailingSlash(rawPath, trailingSlash)
+    const tabPlan = tabMode ? (tabPlanIn ?? planTabNav(path, replace)) : null
     const gen = ++_navGen
     loadingSignal.update((n) => n + 1)
 
@@ -1403,7 +1597,7 @@ export function createRouter<TNames extends string = string>(
       return gen === _navGen ? 'cancelled' : 'superseded'
     }
 
-    await commitNavigation(path, replace, to, from, fromBrowser)
+    await commitNavigation(path, replace, to, from, fromBrowser, tabPlan)
     loadingSignal.update((n) => n - 1)
     return 'committed'
   }
@@ -1648,6 +1842,40 @@ export function createRouter<TNames extends string = string>(
       loadingSignal.update((n) => n - 1)
     },
 
+    activeTab: () => activeTabSig(),
+
+    async selectTab(name: string) {
+      const t = findTab(name)
+      if (t === undefined) {
+        if (process.env.NODE_ENV !== 'production') {
+          console.warn(
+            `[Pyreon Router] selectTab(${JSON.stringify(name)}): ${
+              tabMode
+                ? `no tab with that name (configured: ${tabs.map((x) => x.name).join(', ')})`
+                : 'this router has no `tabs` — pass `createRouter({ tabs: [...] })`'
+            }.`,
+          )
+        }
+        return 'cancelled'
+      }
+      const stack = tabStacks.get(name)!.peek()
+      if (name === activeTabSig.peek()) {
+        // Re-selecting the active tab pops it to its root — the iOS and Android
+        // tab-bar convention. Already at the root: nothing to do.
+        if (stack.length <= 1) return 'committed'
+        return navigate(stack[0]!, false, 0, false, { tab: name, stack: [stack[0]!] })
+      }
+      // Switching shows the tab's own top entry and keeps its stack.
+      return navigate(stack[stack.length - 1]!, false, 0, false, { tab: name, stack: [...stack] })
+    },
+
+    tabStack: (name: string) => tabStacks.get(name)?.() ?? [],
+
+    withTab: (name: string, render: () => VNodeChild) =>
+      h(RouterTabScope as never, { tab: name, render }),
+
+    _tabRoute: (name: string) => tabRoutes.get(name)?.() ?? currentRoute(),
+
     invalidateLoader(keyOrPredicate?: string | ((key: string) => boolean)) {
       if (!keyOrPredicate) {
         // Invalidate all
@@ -1768,6 +1996,18 @@ export function createRouter<TNames extends string = string>(
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+
+/** A tab's resulting stack (root first) for one navigation of a tab-bar router. */
+interface TabPlan {
+  tab: string
+  stack: string[]
+}
+
+/** The non-empty `/` segments of a path, ignoring its query and fragment. */
+function pathSegments(path: string): string[] {
+  const end = path.search(/[?#]/)
+  return (end < 0 ? path : path.slice(0, end)).split('/').filter(Boolean)
+}
 
 /**
  * Match a lazy route's `_hmrId` (emitted by `@pyreon/zero`'s fs-router as the

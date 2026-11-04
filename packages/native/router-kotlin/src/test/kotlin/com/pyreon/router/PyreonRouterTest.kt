@@ -1059,5 +1059,68 @@ fun main() {
         expectEq(PyreonDeepLink.pathFor("myapp", "", ""), "/", "empty host and path")
     }
 
+    // ── Tabs: per-tab back stacks (#4060) ───────────────────────────────────────
+    fun tabRouter(initial: List<String> = emptyList()) = PyreonRouter(
+        initialPath = initial,
+        tabs = listOf(PyreonRouterTab("feed", "/feed"), PyreonRouterTab("me", "/me")),
+    )
+
+    runTest("tabs: starts on the first tab at its root") {
+        val r = tabRouter()
+        expectEq(r.activeTab.value, "feed", "active")
+        expectEq(r.path.value, emptyList<String>(), "empty stack")
+        expectEq(r.currentPath, "/feed", "currentPath is the tab root")
+    }
+
+    runTest("tabs: push stays inside the active tab; switching keeps each stack") {
+        val r = tabRouter()
+        r.push("/feed/post/1")
+        r.selectTab("me")
+        r.push("/me/settings")
+        expectEq(r.tabTop("feed"), "/feed/post/1", "hidden tab keeps its top")
+        r.selectTab("feed")
+        expectEq(r.currentPath, "/feed/post/1", "back on feed's top")
+        expectEq(r.tabPath("me"), listOf("/me/settings"), "me's stack kept")
+    }
+
+    runTest("tabs: re-selecting the active tab pops it to root") {
+        val r = tabRouter()
+        r.push("/feed/post/1")
+        r.push("/feed/post/2")
+        r.selectTab("feed")
+        expectEq(r.path.value, emptyList<String>(), "popped")
+        expectEq(r.currentPath, "/feed", "at root")
+    }
+
+    runTest("tabs: a path under another tab root selects it and pushes") {
+        val r = tabRouter()
+        r.push("/me/settings")
+        expectEq(r.activeTab.value, "me", "switched")
+        expectEq(r.path.value, listOf("/me/settings"), "pushed onto me")
+        r.push("/feed")
+        expectEq(r.activeTab.value, "feed", "tab root selects")
+        expectEq(r.path.value, emptyList<String>(), "and pops to root")
+    }
+
+    runTest("tabs: back pops only the active tab; a deep link selects then pushes") {
+        val r = tabRouter()
+        r.push("/feed/post/1")
+        r.selectTab("me")
+        r.push("/me/settings")
+        r.back()
+        expectEq(r.path.value, emptyList<String>(), "me popped")
+        expectEq(r.tabPath("feed"), listOf("/feed/post/1"), "feed untouched")
+        val d = tabRouter(listOf("/me/settings"))
+        expectEq(d.activeTab.value, "me", "deep link selects me")
+        expectEq(d.path.value, listOf("/me/settings"), "and pushes onto its root")
+    }
+
+    runTest("tabs: selectTab is gated by guards") {
+        val r = tabRouter()
+        r.beforeEachGuards.add { it != "/me" }
+        r.selectTab("me")
+        expectEq(r.activeTab.value, "feed", "blocked")
+    }
+
     println("[verify-kotlin] ✓ PyreonRouter smoke ${80} test(s) passed")
 }

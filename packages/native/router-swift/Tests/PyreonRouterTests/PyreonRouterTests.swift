@@ -1340,4 +1340,125 @@ final class PyreonDeepLinkPathTests: XCTestCase {
             XCTAssertEqual(PyreonDeepLink.normalizedPath(from: url), expected, raw)
         }
     }
+
+    // ─── Tabs: per-tab back stacks (#4060) ───────────────────────────
+
+    private func tabRouter(_ initial: [String] = []) -> PyreonRouter {
+        PyreonRouter(
+            initialPath: initial,
+            tabs: [
+                PyreonRouterTab(name: "feed", root: "/feed"),
+                PyreonRouterTab(name: "me", root: "/me"),
+            ]
+        )
+    }
+
+    func testTabRouterStartsOnTheFirstTabAtItsRoot() throws {
+        let router = tabRouter()
+        XCTAssertEqual(router.activeTab, "feed")
+        XCTAssertEqual(router.path, [])
+        XCTAssertEqual(router.currentPath, "/feed")
+    }
+
+    func testPushStaysInsideTheActiveTab() throws {
+        let router = tabRouter()
+        router.push("/feed/post/1")
+        router.push("/users/7") // under no tab root → the active tab
+        XCTAssertEqual(router.activeTab, "feed")
+        XCTAssertEqual(router.tabPath("feed"), ["/feed/post/1", "/users/7"])
+        XCTAssertEqual(router.tabPath("me"), [])
+    }
+
+    func testSwitchingTabsKeepsEachStack() throws {
+        let router = tabRouter()
+        router.push("/feed/post/1")
+        router.selectTab("me")
+        router.push("/me/settings")
+        XCTAssertEqual(router.currentPath, "/me/settings")
+        router.selectTab("feed")
+        XCTAssertEqual(router.activeTab, "feed")
+        XCTAssertEqual(router.currentPath, "/feed/post/1")
+        XCTAssertEqual(router.tabPath("feed"), ["/feed/post/1"])
+        XCTAssertEqual(router.tabPath("me"), ["/me/settings"])
+    }
+
+    func testReselectingTheActiveTabPopsToRoot() throws {
+        let router = tabRouter()
+        router.push("/feed/post/1")
+        router.push("/feed/post/2")
+        router.selectTab("feed")
+        XCTAssertEqual(router.path, [])
+        XCTAssertEqual(router.currentPath, "/feed")
+    }
+
+    func testPushUnderAnotherTabRootSelectsItAndPushes() throws {
+        let router = tabRouter()
+        router.push("/me/settings")
+        XCTAssertEqual(router.activeTab, "me")
+        XCTAssertEqual(router.path, ["/me/settings"])
+        XCTAssertEqual(router.tabPath("feed"), [])
+    }
+
+    func testPushOfATabRootSelectsItAndPopsToRoot() throws {
+        let router = tabRouter()
+        router.push("/me/settings")
+        router.selectTab("feed")
+        router.push("/me")
+        XCTAssertEqual(router.activeTab, "me")
+        XCTAssertEqual(router.path, [])
+    }
+
+    func testBackPopsOnlyTheActiveTab() throws {
+        let router = tabRouter()
+        router.push("/feed/post/1")
+        router.selectTab("me")
+        router.push("/me/settings")
+        router.back()
+        XCTAssertEqual(router.path, [])
+        XCTAssertEqual(router.tabPath("feed"), ["/feed/post/1"])
+    }
+
+    func testDeepLinkSelectsTheTabAndPushes() throws {
+        let router = tabRouter(["/me/settings"])
+        XCTAssertEqual(router.activeTab, "me")
+        XCTAssertEqual(router.path, ["/me/settings"])
+        XCTAssertEqual(router.currentPath, "/me/settings")
+    }
+
+    func testDeepLinkToATabRootSelectsItWithAnEmptyStack() throws {
+        let router = tabRouter(["/me"])
+        XCTAssertEqual(router.activeTab, "me")
+        XCTAssertEqual(router.path, [])
+    }
+
+    func testTabPathBindingWritesTheRightStack() throws {
+        let router = tabRouter()
+        router.push("/feed/post/1")
+        router.selectTab("me")
+        // SwiftUI popping the (hidden) feed stack must not touch the active one.
+        router.tabPathBinding("feed").wrappedValue = []
+        XCTAssertEqual(router.tabPath("feed"), [])
+        router.push("/me/settings")
+        // The swipe-back on the ACTIVE tab writes `path` and re-resolves.
+        router.tabPathBinding("me").wrappedValue = []
+        XCTAssertEqual(router.path, [])
+        XCTAssertEqual(router.currentPath, "/me")
+    }
+
+    func testSelectTabIsGatedByGuards() throws {
+        let router = tabRouter()
+        router.beforeEachGuards.append { $0 != "/me" }
+        router.selectTab("me")
+        XCTAssertEqual(router.activeTab, "feed")
+    }
+
+    func testTabForPicksTheLongestRoot() throws {
+        let tabs = [
+            PyreonRouterTab(name: "home", root: "/"),
+            PyreonRouterTab(name: "me", root: "/me"),
+        ]
+        XCTAssertEqual(PyreonRouter.tabFor("/me/x?y=1", in: tabs)?.name, "me")
+        XCTAssertEqual(PyreonRouter.tabFor("/about", in: tabs)?.name, "home")
+        XCTAssertEqual(PyreonRouter.tabFor("/meow", in: tabs)?.name, "home")
+    }
 }

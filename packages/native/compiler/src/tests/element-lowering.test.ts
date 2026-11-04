@@ -24,11 +24,13 @@ describe('element lowering registry', () => {
     expect(builtIns.find('Row', claimAll)?.module).toBe('@pyreon/coolgrid')
     expect(builtIns.find('Col', claimAll)?.module).toBe('@pyreon/coolgrid')
     expect(builtIns.find('Element', claimAll)?.module).toBe('@pyreon/elements')
+    expect(builtIns.find('List', claimAll)?.module).toBe('@pyreon/elements')
     expect(builtIns.find('PieChart', claimAll)).toBeUndefined()
     expect(builtIns.find('Stack', claimAll)).toBeUndefined()
-    expect(builtIns.entries.map((e) => e.owner)).toEqual(['@pyreon/elements', '@pyreon/coolgrid'])
+    // elements registers two lowerings: Element (→ Stack) and List (→ a keyed Stack).
+    expect(builtIns.entries.map((e) => e.owner)).toEqual(['@pyreon/elements', '@pyreon/elements', '@pyreon/coolgrid'])
     expect(withCharts.find('PieChart', claimAll)?.module).toBe('@pyreon/charts')
-    expect(withCharts.entries.map((e) => e.owner)).toEqual(['@pyreon/charts', '@pyreon/elements', '@pyreon/coolgrid'])
+    expect(withCharts.entries.map((e) => e.owner)).toEqual(['@pyreon/charts', '@pyreon/elements', '@pyreon/elements', '@pyreon/coolgrid'])
   })
 
   it('the guard decides: a refused (tag, module) is not claimed', () => {

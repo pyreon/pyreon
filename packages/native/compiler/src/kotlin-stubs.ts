@@ -179,11 +179,16 @@ enum class TextOverflow { Clip, Ellipsis, Visible }
 @Suppress("UNUSED_PARAMETER")
 fun Text(text: String, style: TextStyle = TextStyle(), color: Color? = null, fontSize: TextUnit = TextUnit(0f), fontWeight: FontWeight? = null, fontStyle: FontStyle? = null, textAlign: TextAlign? = null, fontFamily: FontFamily? = null, letterSpacing: TextUnit = TextUnit(0f), maxLines: Int = Int.MAX_VALUE, overflow: TextOverflow = TextOverflow.Clip, modifier: Modifier = Modifier) {}
 
+// Compose runtime \`key\` (androidx.compose.runtime): identity for an eager <For> row.
+@Composable
+fun key(vararg keys: Any?, block: @Composable () -> Unit) {}
+
 @Composable
 fun Button(
   onClick: () -> Unit,
   modifier: Modifier = Modifier,
   enabled: Boolean = true,
+  interactionSource: MutableInteractionSource = MutableInteractionSource(),
   colors: ButtonColorsStub = ButtonColorsStub(),
   content: @Composable () -> Unit,
 ) {
@@ -632,8 +637,21 @@ object Modifier {
   // androidx.compose.foundation.border(BorderStroke, Shape).
   @Suppress("UNUSED_PARAMETER")
   fun border(border: BorderStroke, shape: Shape): Modifier = this
+  // The REAL androidx.compose.foundation.clickable signature. The stub used to
+  // take only \`onClick\`, which REJECTED the correct \`<Press disabled>\` emit
+  // (\`clickable(enabled = …, onClick = …)\`) — a stub narrower than the real
+  // surface manufactures a failure, so that shape was never compile-verified.
   @Suppress("UNUSED_PARAMETER")
-  fun clickable(onClick: () -> Unit): Modifier = this
+  fun clickable(enabled: Boolean = true, onClickLabel: String? = null, role: Role? = null, onClick: () -> Unit): Modifier = this
+  // The interaction-source overload — what a pressable with a pressed style
+  // lowers to (PyreonPressState hands it the source). Real Compose (1.7+):
+  // clickable(interactionSource: MutableInteractionSource?, indication:
+  // Indication?, enabled = true, onClickLabel, role, onClick). The two
+  // trailing optional params this emit never passes are left out.
+  @Suppress("UNUSED_PARAMETER")
+  fun clickable(interactionSource: MutableInteractionSource?, indication: Indication?, enabled: Boolean = true, onClick: () -> Unit): Modifier = this
+  @Suppress("UNUSED_PARAMETER")
+  fun combinedClickable(interactionSource: MutableInteractionSource?, indication: Indication?, enabled: Boolean = true, onLongClick: (() -> Unit)? = null, onClick: () -> Unit): Modifier = this
   // useHotkey — Compose delivers key events only to a FOCUSED node, so the
   // lowering needs all three of these together. Real Compose spells them
   // Modifier.focusRequester(FocusRequester) / .focusable() /
@@ -796,7 +814,47 @@ object Icons {
     val Warning: ImageVector = ImageVector()
     val Check: ImageVector = ImageVector()
     val Add: ImageVector = ImageVector()
+    val Home: ImageVector = ImageVector()
+    val Email: ImageVector = ImageVector()
+    val Person: ImageVector = ImageVector()
+    val Search: ImageVector = ImageVector()
+    val Settings: ImageVector = ImageVector()
+    val List: ImageVector = ImageVector()
   }
+}
+
+// <Tabs> / <Split> — mirror runtime-kotlin's PyreonNavigation.kt signatures exactly.
+data class PyreonTabItem<T>(
+  val value: T,
+  val label: String,
+  val icon: ImageVector? = null,
+  val testTag: String? = null,
+)
+
+@Composable
+@Suppress("UNUSED_PARAMETER")
+fun <T> PyreonTabs(
+  selected: T,
+  onSelect: (T) -> Unit,
+  items: List<PyreonTabItem<T>>,
+  modifier: Modifier = Modifier,
+  onReselect: ((T) -> Unit)? = null,
+  content: @Composable (T) -> Unit,
+) {
+  content(selected)
+}
+
+@Composable
+@Suppress("UNUSED_PARAMETER")
+fun PyreonSplit(
+  showDetail: Boolean,
+  onBack: () -> Unit,
+  modifier: Modifier = Modifier,
+  sidebar: @Composable () -> Unit,
+  detail: @Composable () -> Unit,
+) {
+  sidebar()
+  detail()
 }
 
 @Composable
@@ -976,6 +1034,18 @@ fun PyreonLink(to: String, content: @Composable (navigate: () -> Unit) -> Unit) 
   // on navigate(). For typecheck-only purposes we just invoke the
   // content with a no-op navigate.
   content { }
+}
+
+// androidx.compose.foundation.interaction.MutableInteractionSource /
+// androidx.compose.foundation.Indication — only what the pressed-style lowering
+// names (it never constructs either: the source arrives as a lambda param).
+class MutableInteractionSource
+interface Indication
+
+// PyreonPressState — mirror of @pyreon/native-runtime-kotlin's PyreonPressState.kt.
+@Composable
+fun PyreonPressState(content: @Composable (pressed: Boolean, source: MutableInteractionSource) -> Unit) {
+  content(false, MutableInteractionSource())
 }
 
 // PyreonCanvas + shapes — mirror of @pyreon/native-runtime-kotlin's PyreonCanvas.kt.
@@ -1458,7 +1528,15 @@ fun <I, O> rememberLauncherForActivityResult(
 // joined this loop — the prior coverage (router-hooks.tsx) only
 // exercised the HOOK surface, so the instance-level symbols were
 // never stubbed.
-class PyreonRouter {
+data class PyreonRouterTab(val name: String, val root: String)
+
+// Tab-bar router (#4060): the constructor's tabs parameter and the tab
+// surface the emit reads, mirroring router-kotlin's PyreonRouter.
+class PyreonRouter(tabs: List<PyreonRouterTab> = emptyList()) {
+  val tabs: List<PyreonRouterTab> = tabs
+  val activeTab: MutableState<String?> = mutableStateOf(tabs.firstOrNull()?.name)
+  fun selectTab(name: String) {}
+  fun tabTop(name: String): String = "/"
   var currentPath: String = "/"
   fun push(path: String) { currentPath = path }
   // Global guards, mirroring the real PyreonRouter (see the Swift stub).
@@ -1478,6 +1556,12 @@ class PyreonRouter {
 
 @Composable
 fun RouterProvider(router: PyreonRouter, content: @Composable () -> Unit) {
+  content()
+}
+
+@Composable
+@Suppress("UNUSED_PARAMETER")
+fun PyreonTabStack(router: PyreonRouter, tab: String, content: @Composable () -> Unit) {
   content()
 }
 

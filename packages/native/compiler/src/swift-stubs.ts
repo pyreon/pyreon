@@ -519,6 +519,26 @@ public struct MagnificationGesture: Gesture {
 // Mirrors the real SwiftUI button styles the variant emit can produce.
 // Listing exactly these (not an open struct) keeps a wrong style name a
 // compile error here rather than a device surprise.
+// SwiftUI's ButtonStyle — the custom-style protocol a pressed style lowers
+// through (PyreonPressStyle). Real: protocol ButtonStyle { associatedtype Body:
+// View; func makeBody(configuration: Configuration) -> Body; typealias
+// Configuration = ButtonStyleConfiguration }.
+public struct ButtonStyleConfiguration {
+  public struct Label: View { public typealias Body = Never }
+  public let label: ButtonStyleConfiguration.Label
+  public let isPressed: Bool
+}
+public protocol ButtonStyle {
+  associatedtype Body: View
+  typealias Configuration = ButtonStyleConfiguration
+  @ViewBuilder func makeBody(configuration: Self.Configuration) -> Self.Body
+}
+// Mirror of @pyreon/native-runtime-swift's PyreonPressStyle.swift.
+public struct PyreonPressStyle<Styled: View>: ButtonStyle {
+  private let styled: (ButtonStyleConfiguration.Label, Bool) -> Styled
+  public init(@ViewBuilder _ styled: @escaping (ButtonStyleConfiguration.Label, Bool) -> Styled) { self.styled = styled }
+  public func makeBody(configuration: Configuration) -> some View { styled(configuration.label, configuration.isPressed) }
+}
 public struct PrimitiveButtonStyleStub {
   public static let plain = PrimitiveButtonStyleStub()
   public static let bordered = PrimitiveButtonStyleStub()
@@ -581,6 +601,7 @@ extension View {
   public func animation<V: Equatable>(_ animation: Animation?, value: V) -> some View { self }
   public func transition(_ t: AnyTransition) -> some View { self }
   public func buttonStyle(_ style: PrimitiveButtonStyleStub) -> some View { self }
+  public func buttonStyle<S: ButtonStyle>(_ style: S) -> some View { self }
   public func tint(_ color: Color?) -> some View { self }
   public func accessibilityIdentifier(_ id: String) -> some View { self }
   // The real SwiftUI signature (WritableKeyPath), so a key path the real SDK
@@ -965,6 +986,29 @@ public struct PyreonGesture<Content: View>: View {
   ) {}
   public var body: some View { EmptyView() }
 }
+// <Tabs> / <Split> — mirror router-swift's PyreonNavigation.swift signatures exactly.
+public struct PyreonTabItem<Value: Hashable>: Identifiable {
+  public let value: Value
+  public var id: Value { value }
+  public init(value: Value, label: String, systemImage: String? = nil) { self.value = value }
+}
+public struct PyreonTabs<Value: Hashable, Content: View>: View {
+  public init(selection: Binding<Value>, items: [PyreonTabItem<Value>], @ViewBuilder content: @escaping (Value) -> Content) {}
+  public typealias Body = Never
+}
+public struct PyreonSplit<Sidebar: View, Detail: View>: View {
+  public init(showDetail: Bool, onBack: @escaping () -> Void, @ViewBuilder sidebar: () -> Sidebar, @ViewBuilder detail: () -> Detail) {}
+  public typealias Body = Never
+}
+// Tab-bar router (#4060) — mirror PyreonNavigation.swift's router-bound tabs.
+public struct PyreonRouterTabs<Content: View>: View {
+  public init(router: PyreonRouter, items: [PyreonTabItem<String>], @ViewBuilder content: @escaping (String) -> Content) {}
+  public typealias Body = Never
+}
+public struct PyreonTabStack<Content: View>: View {
+  public init(router: PyreonRouter, tab: String, @ViewBuilder content: @escaping () -> Content) {}
+  public typealias Body = Never
+}
 public enum PyreonJSON {
   public static func encode<T>(_ value: T) -> String { "" }
   // JSON.stringify(x) lowers here. Encodable, as in the runtime.
@@ -1005,8 +1049,15 @@ public struct PyreonWebView: View {
 // router-hooks emit: @Environment(\\.pyreonRouter) var pyreonRouter: PyreonRouter?
 // + useNavigate(router:) -> (String) -> Void + useParams(router:) ->
 // [String: String]. Signatures mirror packages/native/router-swift exactly.
+public struct PyreonRouterTab {
+  public let name: String
+  public let root: String
+  public init(name: String, root: String) { self.name = name; self.root = root }
+}
 public final class PyreonRouter {
   public init() {}
+  // Tab-bar router (#4060): mirrors the real init's trailing tabs: label.
+  public init(tabs: [PyreonRouterTab]) {}
   // Static pattern matcher the multi-screen emit calls to resolve a pushed
   // path. Returns the captured params, or nil when the pattern does not match —
   // keeping the OPTIONAL return is load-bearing: an emit that forgets to unwrap

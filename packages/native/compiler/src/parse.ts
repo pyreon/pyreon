@@ -30,6 +30,7 @@ import {
   pluginExprReduce,
 } from './registry-lookup'
 import { createImportReferenceQuery } from './import-reference'
+import { childStatementLists, rewriteCaughtMessage } from './throw-lowering'
 import type { UnloweredModule } from './unlowered-modules'
 import {
   isJson,
@@ -183,10 +184,7 @@ interface ParseCtx {
    * warn-dropped (producing an unbound reference) ever record an alias, so a
    * bug here cannot affect any previously-compiling code.
    */
-  hookFieldAliases: Map<
-    string,
-    { object: string; field: string } | { object: string; index: number }
-  >
+  hookFieldAliases: Map<string, { object: string; path: readonly DestructureStep[] }>
   /** Monotonic counter for synthetic hook-destructure container names
    * (`__pyHook0`, `__pyHook1`, …). Reset per top-level node alongside
    * `hookFieldAliases`, so names are unique within one component. */
@@ -4147,20 +4145,14 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     DESTRUCTURE_CONTAINER_HOOKS.has(init.callee.name as string)
   ) {
     const hook = init.callee.name as string
-    const props = (node.id.properties as AnyNode[] | undefined) ?? []
-    // v1 only lowers all-simple destructures: every entry a plain
-    // `{ key }` or renamed `{ key: local }`. A RestElement or a nested
-    // pattern (value not an Identifier) bails the WHOLE lowering so we
-    // never half-bind.
-    const allSimple =
-      props.length > 0 &&
-      props.every(
-        (p) =>
-          p?.type === 'Property' &&
-          staticPropKey(p) !== undefined &&
-          p.value?.type === 'Identifier',
-      )
-    if (allSimple) {
+    // Only a FLAT pattern lowers here: every entry `{ key }` or `{ key: local }`.
+    // A hook result's fields are mostly signal accessors (`data`, `error`), so
+    // a nested pattern (`{ data: { id } }`) would reach into a function — in JS
+    // that reads `undefined` and TS rejects it. A rest element bails too; the
+    // whole lowering bails so we never half-bind.
+    const bindings = destructureBindings(node.id)
+    const flat = bindings !== undefined && [...bindings.values()].every((path) => path.length === 1 && 'field' in path[0]!)
+    if (bindings !== undefined && flat) {
       // Recurse with an Identifier id to reach the normal hook dispatch
       // (every ObjectPattern block above is skipped for an Identifier id),
       // producing e.g. a `fetch` / `geolocation` / `auth` DeclIR named
@@ -4174,18 +4166,14 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
       const containerDecl = tryDeclFromVarDeclarator(synthNode, ctx)
       if (containerDecl) {
         ctx.hookDestructureCounter += 1
-        for (const prop of props) {
-          const key = staticPropKey(prop as AnyNode) as string
-          const local = (prop as AnyNode).value?.name as string
-          ctx.hookFieldAliases.set(local, { object: synthName, field: key })
-        }
+        for (const [local, path] of bindings) ctx.hookFieldAliases.set(local, { object: synthName, path })
         return containerDecl
       }
       // containerDecl null → the hook has no single-binding container
       // Fall through to the warn-drop below.
     }
     ctx.warnings.push(
-      `${hook}() destructure form (\`const { … } = ${hook}(...)\`) was not lowered on native — either the hook has no single-binding container, or the pattern uses a rest element / nested binding (not yet supported). Use the single-binding shape \`const x = ${hook}(...); x.field\` (e.g. \`const q = useFetch(url); q.data()\` / \`q.isPending\`) instead. Tracked as a follow-up.`,
+      `${hook}() destructure form (\`const { … } = ${hook}(...)\`) was not lowered on native — either the hook has no single-binding container, or the pattern is not flat (a rest element, a nested pattern or a default — a hook's fields are mostly signal accessors, which do not destructure). Use the single-binding shape \`const x = ${hook}(...); x.field\` (e.g. \`const q = useFetch(url); q.data()\` / \`q.isPending\`) instead. Tracked as a follow-up.`,
     )
     return null
   }
@@ -4226,17 +4214,9 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   // so we never half-bind. (The destructured object's field must resolve to a
   // known struct for `.field` to typecheck — the anonymous-object-type case
   // stays the separate struct-synthesis gap, no worse than the prior drop.)
-  if (node.id?.type === 'ObjectPattern' && init) {
-    const props = (node.id.properties as AnyNode[] | undefined) ?? []
-    const allSimple =
-      props.length > 0 &&
-      props.every(
-        (p) =>
-          p?.type === 'Property' &&
-          staticPropKey(p) !== undefined &&
-          p.value?.type === 'Identifier',
-      )
-    if (allSimple) {
+  if ((node.id?.type === 'ObjectPattern' || node.id?.type === 'ArrayPattern') && init) {
+    const bindings = destructureBindings(node.id)
+    if (bindings !== undefined) {
       const synthName = `__pyDestr${ctx.hookDestructureCounter}`
       const synthNode = {
         ...node,
@@ -4245,53 +4225,17 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
       const containerDecl = tryDeclFromVarDeclarator(synthNode, ctx)
       if (containerDecl) {
         ctx.hookDestructureCounter += 1
-        for (const prop of props) {
-          const key = staticPropKey(prop as AnyNode) as string
-          const local = (prop as AnyNode).value?.name as string
-          ctx.hookFieldAliases.set(local, { object: synthName, field: key })
-        }
+        for (const [local, path] of bindings) ctx.hookFieldAliases.set(local, { object: synthName, path })
         return containerDecl
       }
     }
     // not lowerable → fall through to the LOUD residual warning below
   }
-  // General local ARRAY destructure — `const [a, b] = <expr>` at COMPONENT
-  // scope (the parallel of the object arm above; the helper/computed BODY
-  // walker has its own block-scoped expansion). Previously this fell through
-  // to the name-based bail (an ArrayPattern id has no `.name`) and was
-  // dropped with NO warning — the emitted body then referenced `a`/`b`
-  // unbound, so swiftc/kotlinc failed with "cannot find 'a' in scope" while
-  // the transform reported zero warnings. Same container+alias approach as
-  // the object arm: synthesize `const __pyDestrN = <expr>` (recurse — value
-  // consts, signal reads, hook results all resolve there) and alias each
-  // element to `__pyDestrN[i]` in parseExpr's Identifier case — the exact IR
-  // of the documented explicit-index shape (`xs()[0]`), so emit + inference
-  // are shared with a proven path on both targets. A hole (`[, b]`), rest
-  // (`[...r]`), default (`[a = 1]`), or nested pattern bails the whole
-  // lowering (allSimple guard) to the residual warning below — never a
-  // half-binding.
-  if (node.id?.type === 'ArrayPattern' && init) {
-    const els = (node.id.elements as (AnyNode | null)[] | undefined) ?? []
-    const allSimple = els.length > 0 && els.every((el) => el?.type === 'Identifier')
-    if (allSimple) {
-      const synthName = `__pyDestr${ctx.hookDestructureCounter}`
-      const synthNode = {
-        ...node,
-        id: { type: 'Identifier', name: synthName },
-      } as AnyNode
-      const containerDecl = tryDeclFromVarDeclarator(synthNode, ctx)
-      if (containerDecl) {
-        ctx.hookDestructureCounter += 1
-        els.forEach((el, i) => {
-          ctx.hookFieldAliases.set((el as AnyNode).name as string, {
-            object: synthName,
-            index: i,
-          })
-        })
-        return containerDecl
-      }
-    }
-  }
+  // (The arm above covers ARRAY patterns too — `const [a, b] = xs()` aliases
+  // each element to `__pyDestrN[i]`, the exact IR of the documented
+  // explicit-index shape. Before it existed an ArrayPattern fell through to
+  // the name-based bail with NO warning, and the body referenced `a`/`b`
+  // unbound.)
   // A component-level destructure that did NOT lower above — a non-simple
   // pattern (nested / rest / default / hole), or a RHS whose single-binding
   // container form yields no decl. Without this, the declaration silently
@@ -4421,6 +4365,8 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     if (routes !== null) decl.routes = routes
     if (beforeEach.length > 0) decl.beforeEach = beforeEach
     if (afterEach.length > 0) decl.afterEach = afterEach
+    const tabs = tryExtractRouterTabs(init.arguments?.[0], ctx.warnings)
+    if (tabs !== undefined) decl.tabs = tabs
     return decl
   }
   // `useToggle(initial)` / `useCounter(initial, { min, max })` — pure state
@@ -4884,6 +4830,53 @@ function lowerGuardFn(
  * createRouter config. A named reference is kept as is; an inline function is synthesized into a file-level helper
  * (see `inlineGuardHelper`) and its generated name kept. Anything else is warned and dropped.
  */
+/**
+ * `createRouter({ tabs: [{ name: 'feed', root: '/feed' }, …] })` → the tab
+ * list, or undefined when the config has no `tabs`. Every entry must be an
+ * object LITERAL with string-literal `name` and `root`: the native router is
+ * constructed with them and each `<Tab value>` is matched against `name` at
+ * compile time. Anything else is NAMED and dropped — a tab silently missing
+ * from the router would push every one of its routes into another tab.
+ */
+function tryExtractRouterTabs(arg: AnyNode | undefined, warnings: string[]): { name: string; root: string }[] | undefined {
+  if (!arg || arg.type !== 'ObjectExpression') return undefined
+  const prop = (arg.properties as AnyNode[] | undefined)?.find((p) => p?.type === 'Property' && staticPropKey(p) === 'tabs')
+  if (!prop) return undefined
+  const value = prop.value as AnyNode | undefined
+  if (!value || value.type !== 'ArrayExpression') {
+    warnings.push(
+      '[pyreon-native] createRouter `tabs` must be an array LITERAL of `{ name, root }` objects on iOS/Android — the router is built with them at compile time. Per-tab stacks are DROPPED here, so every route pushes onto one stack.',
+    )
+    return undefined
+  }
+  const out: { name: string; root: string }[] = []
+  const literal = (obj: AnyNode, key: string): string | undefined => {
+    const p = (obj.properties as AnyNode[] | undefined)?.find((x) => x?.type === 'Property' && staticPropKey(x) === key)
+    const v = p?.value as AnyNode | undefined
+    if (v?.type === 'Literal' && typeof v.value === 'string') return v.value as string
+    if (v?.type === 'TemplateLiteral' && (v.expressions as unknown[]).length === 0) {
+      return ((v.quasis as AnyNode[])[0]?.value as { cooked?: string } | undefined)?.cooked
+    }
+    return undefined
+  }
+  for (const el of (value.elements as AnyNode[] | undefined) ?? []) {
+    const name = el?.type === 'ObjectExpression' ? literal(el, 'name') : undefined
+    const root = el?.type === 'ObjectExpression' ? literal(el, 'root') : undefined
+    if (name === undefined || root === undefined) {
+      warnings.push(
+        '[pyreon-native] createRouter `tabs`: each entry must be `{ name: \'…\', root: \'/…\' }` with string-literal name and root — this tab is DROPPED on iOS/Android.',
+      )
+      continue
+    }
+    if (out.some((t) => t.name === name)) {
+      warnings.push(`[pyreon-native] createRouter \`tabs\`: a second tab named ${JSON.stringify(name)} is DROPPED — tab names must be distinct.`)
+      continue
+    }
+    out.push({ name, root })
+  }
+  return out.length > 0 ? out : undefined
+}
+
 function tryExtractGuardRefArray(
   arg: AnyNode | undefined,
   key: string,
@@ -5477,6 +5470,8 @@ function markMethodMutatedLocals(stmts: StatementIR[]): void {
       if (st.kind === 'for-of') {
         walk(st.body)
       }
+      if (st.kind === 'try' || st.kind === 'switch') for (const l of childStatementLists(st)) walk(l)
+      if (st.kind === 'throw' && st.message) scanExpr(st.message)
     }
   }
   walk(stmts)
@@ -5511,17 +5506,9 @@ function markReassignedLocalsMutable(stmts: StatementIR[]): void {
         s.expr.callee.object.kind === 'identifier'
       ) {
         reassigned.add(s.expr.callee.object.name)
-      } else if (s.kind === 'if') {
-        collect(s.then)
-        if (s.elseBody) collect(s.elseBody)
-      } else if (
-        s.kind === 'while' ||
-        s.kind === 'for-of' ||
-        s.kind === 'for-range' ||
-        s.kind === 'do-while'
-      )
-        collect(s.body)
-      else if (s.kind === 'switch') for (const c of s.cases) collect(c.body)
+      } else {
+        for (const l of childStatementLists(s)) collect(l)
+      }
       // Assignments inside CALLBACK arrows (`nums.forEach(x => { acc = acc +
       // x })` — the accumulate idiom) live in EXPRESSION trees, which the
       // per-kind statement walk above never enters — the outer `let acc`
@@ -5544,7 +5531,8 @@ function markReassignedLocalsMutable(stmts: StatementIR[]): void {
       collect(node.stmts)
     }
     for (const k of Object.keys(node)) {
-      if (k === 'then' || k === 'elseBody' || k === 'body' || k === 'cases') continue // already walked per-kind
+      if (k === 'then' || k === 'elseBody' || k === 'body' || k === 'cases' || k === 'catchBody' || k === 'finallyBody')
+        continue // already walked per-kind
       walkForNestedArrows(node[k])
     }
   }
@@ -5553,17 +5541,7 @@ function markReassignedLocalsMutable(stmts: StatementIR[]): void {
   const mark = (list: StatementIR[]): void => {
     for (const s of list) {
       if (s.kind === 'let' && reassigned.has(s.name)) s.mutable = true
-      else if (s.kind === 'if') {
-        mark(s.then)
-        if (s.elseBody) mark(s.elseBody)
-      } else if (
-        s.kind === 'while' ||
-        s.kind === 'for-of' ||
-        s.kind === 'for-range' ||
-        s.kind === 'do-while'
-      )
-        mark(s.body)
-      else if (s.kind === 'switch') for (const c of s.cases) mark(c.body)
+      else for (const l of childStatementLists(s)) mark(l)
     }
   }
   mark(stmts)
@@ -6000,6 +5978,10 @@ function parseStatementBody(node: AnyNode, ctx: ParseCtx): StatementIR | null {
       }
       return { kind: 'switch', discriminant, cases }
     }
+    case 'ThrowStatement':
+      return parseThrow(node.argument as AnyNode | undefined, ctx)
+    case 'TryStatement':
+      return parseTry(node, ctx)
     default:
       ctx.warnings.push(`Unsupported statement: ${node.type}.`)
       return null
@@ -6012,6 +5994,103 @@ function parseLoopBody(node: AnyNode | undefined, ctx: ParseCtx): StatementIR[] 
   if (node.type === 'BlockStatement') return parseStatementBlock(node, ctx)
   const s = parseStatement(node, ctx)
   return s ? [s] : []
+}
+
+/**
+ * The `catch` bindings in scope while a catch body is parsed, innermost last. Strictly nested with the synchronous
+ * parse (pushed and popped in a `finally` around the body), so a rethrow (`throw e`) resolves to the binding it names.
+ */
+const _catchParams: string[] = []
+
+/** `new Error(m)` / `new TypeError(m)` / `Error(m)` → the constructor's message argument (or `''`); otherwise undefined. */
+function errorConstructionMessage(arg: AnyNode): AnyNode | null | undefined {
+  if (arg.type !== 'NewExpression' && arg.type !== 'CallExpression') return undefined
+  const callee = arg.callee as AnyNode | undefined
+  const name = callee?.type === 'Identifier' ? (callee.name as string) : undefined
+  if (name === undefined || !name.endsWith('Error')) return undefined
+  const args = (arg.arguments as AnyNode[] | undefined) ?? []
+  if (args.length > 1) return undefined
+  return args[0] ?? null
+}
+
+/**
+ * `throw new Error(message)` / `throw 'message'` / a rethrow of the enclosing `catch` binding. Anything else — an
+ * arbitrary object, an error value held in some other variable — has no portable native shape and is NAMED rather
+ * than dropped silently (a silently dropped throw keeps executing the code after it).
+ */
+function parseThrow(arg: AnyNode | undefined, ctx: ParseCtx): StatementIR | null {
+  if (arg === undefined) return null
+  if (arg.type === 'Identifier' && _catchParams.includes(arg.name as string)) {
+    return { kind: 'throw', rethrow: arg.name as string }
+  }
+  const fromCtor = errorConstructionMessage(arg)
+  const msgNode =
+    fromCtor !== undefined
+      ? fromCtor
+      : (arg.type === 'Literal' && typeof arg.value === 'string') || arg.type === 'TemplateLiteral'
+        ? arg
+        : undefined
+  if (msgNode === undefined) {
+    ctx.warnings.push(
+      `\`throw\` lowers to native for \`throw new Error(message)\` (any \`…Error\` constructor), a string, or rethrowing the enclosing \`catch\` binding — this one throws some other value, so it was dropped and the code after it would keep running. Throw an \`Error\` with a message instead.`,
+    )
+    return null
+  }
+  if (msgNode === null) return { kind: 'throw', message: { kind: 'literal', value: '' } }
+  const parsed = parseExpr(msgNode, ctx)
+  const isText = parsed.kind === 'template' || (parsed.kind === 'literal' && typeof parsed.value === 'string')
+  return {
+    kind: 'throw',
+    // A non-string message is stringified, as `new Error(x)` does.
+    message: isText ? parsed : { kind: 'call', callee: { kind: 'identifier', name: 'String' }, args: [parsed] },
+  }
+}
+
+/** `try { … } catch (e) { … } finally { … }` — see `throw-lowering.ts` for the per-target model. */
+function parseTry(node: AnyNode, ctx: ParseCtx): StatementIR | null {
+  const body = parseLoopBody(node.block as AnyNode, ctx)
+  const handler = node.handler as AnyNode | null | undefined
+  const out: Extract<StatementIR, { kind: 'try' }> = { kind: 'try', body }
+  if (handler) {
+    const param = handler.param as AnyNode | null | undefined
+    if (param && param.type !== 'Identifier') {
+      ctx.warnings.push(
+        `A destructured \`catch\` binding (\`catch ({ message })\`) is not lowered to native — bind the error (\`catch (e)\`) and read \`e.message\`. The catch body was kept; the binding was dropped.`,
+      )
+    }
+    const paramName = param?.type === 'Identifier' ? (param.name as string) : undefined
+    if (paramName !== undefined) _catchParams.push(paramName)
+    try {
+      const catchBody = parseLoopBody(handler.body as AnyNode, ctx)
+      out.catchBody = paramName !== undefined ? rewriteCaughtMessage(catchBody, paramName) : catchBody
+    } finally {
+      if (paramName !== undefined) _catchParams.splice(_catchParams.lastIndexOf(paramName), 1)
+    }
+    if (paramName !== undefined) out.catchParam = paramName
+  }
+  const finalizer = node.finalizer as AnyNode | null | undefined
+  if (finalizer) {
+    const finallyBody = parseLoopBody(finalizer, ctx)
+    // Swift runs a `finally` as a `defer`, which cannot leave its scope early.
+    if (finallyBody.some((s) => leavesScope(s))) {
+      ctx.warnings.push(
+        `A \`finally\` block that \`return\`s, \`throw\`s, \`break\`s or \`continue\`s is not lowered to native (Swift runs \`finally\` as a \`defer\`, which cannot leave its scope) — the finally block was dropped. Move that control flow out of \`finally\`.`,
+      )
+    } else {
+      out.finallyBody = finallyBody
+    }
+  }
+  return out
+}
+
+/** Whether a statement (or one nested in it, outside arrows) leaves the enclosing scope. */
+function leavesScope(s: StatementIR, inLoop = false): boolean {
+  if (s.kind === 'return' || s.kind === 'throw') return true
+  // A `break`/`continue` belonging to a loop INSIDE the finally block stays inside it — unless it is labeled, when it
+  // may name a loop outside.
+  if (s.kind === 'break' || s.kind === 'continue') return !inLoop || s.label !== undefined
+  const loop = s.kind === 'while' || s.kind === 'do-while' || s.kind === 'for-of' || s.kind === 'for-range'
+  return childStatementLists(s).some((l) => l.some((c) => leavesScope(c, inLoop || loop)))
 }
 
 /** Extract the `T` from `signal<T>(…)`. oxc exposes generics as `typeArguments`. */
@@ -6612,23 +6691,7 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
       // are ever in this map, so no previously-compiling code can change.
       {
         const fieldAlias = ctx.hookFieldAliases.get(node.name as string)
-        if (fieldAlias !== undefined) {
-          if ('index' in fieldAlias) {
-            // Array-destructured local (`const [a, b] = xs()`) — rewrite to
-            // `__pyDestrN[i]`, the same IR as the documented explicit-index
-            // shape (`xs()[0]`), so the emit + inference paths are shared.
-            return {
-              kind: 'index',
-              object: { kind: 'identifier', name: fieldAlias.object },
-              index: { kind: 'literal', value: fieldAlias.index },
-            }
-          }
-          return {
-            kind: 'member',
-            object: { kind: 'identifier', name: fieldAlias.object },
-            property: fieldAlias.field,
-          }
-        }
+        if (fieldAlias !== undefined) return destructureAccess(fieldAlias.object, fieldAlias.path)
       }
       return { kind: 'identifier', name: node.name as string }
     case 'CallExpression': {
@@ -6744,6 +6807,22 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
           left: parseExpr(node.left, ctx),
           right: parseExpr(node.right, ctx),
         }
+      }
+      // `e instanceof Error` on a `catch` binding — the idiomatic narrowing TypeScript requires (the binding is
+      // `unknown`). Natively every caught value IS an error (only an `Error` or a string can be thrown, both lowered to
+      // the native error type), so the test is constant. A subclass test (`RangeError`) cannot be answered: the
+      // native error does not keep the JavaScript class.
+      if (
+        op === 'instanceof' &&
+        node.left?.type === 'Identifier' &&
+        _catchParams.includes(node.left.name as string) &&
+        node.right?.type === 'Identifier'
+      ) {
+        if (node.right.name === 'Error') return { kind: 'literal', value: true }
+        ctx.warnings.push(
+          `[${locOf(node, ctx)}] \`${node.left.name as string} instanceof ${node.right.name as string}\` is not lowered to native: the native error keeps the message, not the JavaScript error class. Test \`instanceof Error\`, or carry the distinction in the message.`,
+        )
+        return { kind: 'literal', value: false }
       }
       ctx.warnings.push(
         `[${locOf(node, ctx)}] Binary operator \`${op}\` is not supported in native (PMTC) — emitting \`+\` as a fallback (likely wrong); rewrite using a supported operator.`,
@@ -7747,4 +7826,58 @@ function parseJsxChild(node: AnyNode, ctx: ParseCtx): ChildIR | null {
     )
   }
   return null
+}
+
+/** One step from a destructured container to a binding: a field, an index, or a trailing array rest. */
+export type DestructureStep = { field: string } | { index: number } | { sliceFrom: number }
+
+/**
+ * Every local a destructuring pattern binds, as a path from the destructured
+ * value — `{ a, b: { c }, d: [e, , f] }` → `a`: `.a`, `c`: `.b.c`, `e`: `.d[0]`,
+ * `f`: `.d[2]`; a trailing `...rest` in an ARRAY pattern is `.slice(n)`, which
+ * is what JS produces. Returns `undefined` for a shape an alias cannot express
+ * faithfully, so the caller bails the WHOLE pattern rather than half-binding:
+ * an OBJECT rest (a new object without the named keys), a default (JS applies
+ * it only for `undefined`, which native cannot tell apart from `null`), a
+ * computed key, or an empty pattern.
+ */
+export function destructureBindings(pattern: AnyNode): Map<string, DestructureStep[]> | undefined {
+  const out = new Map<string, DestructureStep[]>()
+  const walk = (p: AnyNode, path: DestructureStep[]): boolean => {
+    if (p?.type === 'Identifier') {
+      out.set(p.name as string, path)
+      return true
+    }
+    if (p?.type === 'ObjectPattern') {
+      const props = (p.properties as AnyNode[] | undefined) ?? []
+      if (props.length === 0) return false
+      return props.every((prop) => {
+        if (prop?.type !== 'Property') return false
+        const key = staticPropKey(prop)
+        return key !== undefined && walk(prop.value, [...path, { field: key }])
+      })
+    }
+    if (p?.type === 'ArrayPattern') {
+      const els = (p.elements as (AnyNode | null)[] | undefined) ?? []
+      if (els.every((el) => el === null)) return false
+      return els.every((el, i) => {
+        if (el === null) return true
+        if (el.type === 'RestElement') return i === els.length - 1 && walk(el.argument, [...path, { sliceFrom: i }])
+        return walk(el, [...path, { index: i }])
+      })
+    }
+    return false
+  }
+  return walk(pattern, []) && out.size > 0 ? out : undefined
+}
+
+/** The IR for reading a destructured binding: its container followed by each step. */
+function destructureAccess(container: string, path: readonly DestructureStep[]): ExprIR {
+  let e: ExprIR = { kind: 'identifier', name: container }
+  for (const step of path) {
+    if ('field' in step) e = { kind: 'member', object: e, property: step.field }
+    else if ('index' in step) e = { kind: 'index', object: e, index: { kind: 'literal', value: step.index } }
+    else e = { kind: 'call', callee: { kind: 'member', object: e, property: 'slice' }, args: [{ kind: 'literal', value: step.sliceFrom }] }
+  }
+  return e
 }

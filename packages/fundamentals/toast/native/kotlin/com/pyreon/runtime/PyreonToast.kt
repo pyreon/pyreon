@@ -36,6 +36,10 @@ public data class PyreonToastItem(
     val message: String,
     val type: String,
     val dismissible: Boolean = true,
+    /** Optional secondary line under the message (the web's `description`). */
+    val description: String? = null,
+    /** The action button's label; its handler is kept by [PyreonToast]. */
+    val actionLabel: String? = null,
 )
 
 public object PyreonToast {
@@ -49,6 +53,17 @@ public object PyreonToast {
     public var maxToasts: Long = 50L
 
     private var counter = 0
+
+    /** Action handlers by toast id, dropped with the toast so the closure is released. */
+    private val actions = HashMap<String, () -> Unit>()
+
+    /**
+     * `onDismiss` handlers by toast id. Like the web, one fires exactly once
+     * when its toast leaves the queue by ANY path — dismiss, expiry, [clear],
+     * or eviction past [maxToasts]. Removed from the table before it runs, so a
+     * handler that enqueues or dismisses another toast is re-entrancy safe.
+     */
+    private val dismissHandlers = HashMap<String, () -> Unit>()
     // The scope the auto-dismiss coroutine runs on — swappable in tests.
     internal var scope: CoroutineScope = CoroutineScope(Dispatchers.Main)
 
@@ -62,12 +77,40 @@ public object PyreonToast {
         type: String = "info",
         durationMillis: Long? = null,
         dismissible: Boolean = true,
+        description: String? = null,
+        actionLabel: String? = null,
+        onAction: (() -> Unit)? = null,
+        // The action handler that takes the web's `{ id, dismiss }` context: it
+        // receives this toast's id (the compiler lowers `dismiss()` to
+        // `dismiss(id)`). Used when `onAction` is absent; a tap leaves the toast up
+        // unless the handler dismisses it.
+        onActionContext: ((id: String) -> Unit)? = null,
+        onDismiss: (() -> Unit)? = null,
     ): String {
         counter += 1
         val id = "toast-$counter"
-        var next = toasts.value + PyreonToastItem(id, message, type, dismissible)
-        if (next.size > maxToasts) next = next.takeLast(maxToasts.toInt())
+        val action: (() -> Unit)? = onAction ?: onActionContext?.let { handler -> { handler(id) } }
+        var next = toasts.value + PyreonToastItem(
+            id,
+            message,
+            type,
+            dismissible,
+            description,
+            if (actionLabel != null && action != null) actionLabel else null,
+        )
+        // Register before bounding the stack, so a toast evicted on arrival
+        // (maxToasts = 0) still has its handlers released and onDismiss fired.
+        if (actionLabel != null && action != null) actions[id] = action
+        if (onDismiss != null) dismissHandlers[id] = onDismiss
+        var evicted: List<String> = emptyList()
+        if (next.size > maxToasts) {
+            val kept = next.takeLast(maxToasts.toInt())
+            evicted = next.dropLast(kept.size).map { it.id }
+            next = kept
+        }
         toasts.value = next
+        // An evicted toast has left the queue, so its onDismiss fires (web parity).
+        for (droppedId in evicted) release(droppedId)
         val ttl = durationMillis ?: defaultDurationMillis
         if (ttl > 0) {
             scope.launch {
@@ -85,11 +128,29 @@ public object PyreonToast {
 
     /** The hard removal both `dismiss` and the auto-dismiss coroutine call. */
     public fun remove(id: String) {
+        if (toasts.value.none { it.id == id }) return
         toasts.value = toasts.value.filterNot { it.id == id }
+        release(id)
+    }
+
+    /**
+     * Run a toast's action handler. Like the web, the toast stays until it is
+     * dismissed or expires; a no-op once the toast is gone.
+     */
+    public fun runAction(id: String) {
+        actions[id]?.invoke()
     }
 
     /** Remove every toast. */
     public fun clear() {
+        val ids = toasts.value.map { it.id }
         toasts.value = emptyList()
+        for (id in ids) release(id)
+    }
+
+    /** Drop a departed toast's handlers, then fire its onDismiss once. */
+    private fun release(id: String) {
+        actions.remove(id)
+        dismissHandlers.remove(id)?.invoke()
     }
 }

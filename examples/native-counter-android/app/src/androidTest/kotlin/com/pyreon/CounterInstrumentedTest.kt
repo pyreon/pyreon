@@ -394,6 +394,17 @@ class CounterInstrumentedTest {
         check(animatedElapsed >= 2_000) { "with reduced motion off the 3s zoom animation landed in ${animatedElapsed}ms" }
     }
 
+    // Increment is tapped with a coordinate click that does NOT scroll, and the
+    // count assertions read "Count: N" at the top of the page, so the page is
+    // deliberately left unscrolled. That only works while Increment is on screen:
+    // content added above it pushes it past the fold, the tap lands on nothing,
+    // and every count-driven test then fails on a downstream assertion that
+    // names the wrong cause. Asserting it is displayed first makes that failure
+    // say what actually happened.
+    private fun tapIncrement() {
+        composeRule.onNodeWithText("Increment").assertIsDisplayed().performClick()
+    }
+
     @Test
     fun appLaunchesAndIncrementsCounter() {
         // Phase 1: assert initial render. PMTC emits
@@ -407,9 +418,7 @@ class CounterInstrumentedTest {
         // button. PMTC emits the button as
         // `Button(onClick = { count = count + 1 }) { Text("Increment") }`.
         // Click → Compose recomposes Text with the updated count.
-        composeRule
-            .onNodeWithText("Increment")
-            .performClick()
+        tapIncrement()
 
         composeRule
             .onNodeWithText("Count: 1")
@@ -424,8 +433,8 @@ class CounterInstrumentedTest {
     // declares the changes it handles, so Compose recomposes in place.
     @Test
     fun stateSurvivesRotationAndThemeSwitch() {
-        composeRule.onNodeWithText("Increment").performClick()
-        composeRule.onNodeWithText("Increment").performClick()
+        tapIncrement()
+        tapIncrement()
         composeRule.onNodeWithText("Count: 2").assertIsDisplayed()
         val before = composeRule.activity
         val uiModes = InstrumentationRegistry.getInstrumentation().targetContext
@@ -457,8 +466,8 @@ class CounterInstrumentedTest {
     @Test
     fun longPressResetsCounter() {
         // Drive the count up (0 -> 2) so the reset is observable.
-        composeRule.onNodeWithText("Increment").performClick()
-        composeRule.onNodeWithText("Increment").performClick()
+        tapIncrement()
+        tapIncrement()
         composeRule.onNodeWithText("Count: 2").assertIsDisplayed()
 
         // Semantics action, not a coordinate long-press: the counter column
@@ -584,6 +593,51 @@ class CounterInstrumentedTest {
         }
     }
 
+    // rocketstyle's `active:` block on a Press base, read off REAL PIXELS while
+    // the touch is held. The chip paints solid #1d4ed8 and #dc2626 while
+    // pressed; Compose can capture a node's pixels, so this asserts the
+    // pressed colour itself rather than only that a tap still fires.
+    //
+    // The capture covers the tagged node's bounds — the chip's content area,
+    // inside its padding, where the background shows around the label's glyphs.
+    // A MAJORITY of pixels is asserted rather than one fixed point, so the
+    // text's antialiasing can never decide the result.
+    @Test
+    fun rocketstylePressedStylePaintsWhileHeldAndTheTapStillFires() {
+        val chip = composeRule.onNodeWithTag("press-chip")
+        chip.performScrollTo()
+        composeRule.onNodeWithText("Chip taps: 0").assertExists()
+
+        fun share(r: Int, g: Int, b: Int): Float {
+            composeRule.waitForIdle()
+            val map = chip.captureToImage().toPixelMap()
+            var n = 0
+            for (y in 0 until map.height) for (x in 0 until map.width) {
+                val c = map[x, y]
+                if (abs((c.red * 255).roundToInt() - r) <= 8 &&
+                    abs((c.green * 255).roundToInt() - g) <= 8 &&
+                    abs((c.blue * 255).roundToInt() - b) <= 8
+                ) n++
+            }
+            return n.toFloat() / (map.width * map.height)
+        }
+
+        check(share(0x1d, 0x4e, 0xd8) > 0.5f) { "the chip does not paint its un-pressed #1d4ed8 background" }
+
+        chip.performTouchInput { down(center) }
+        // A clickable inside a scrolling container delays its press interaction
+        // until it is sure the touch is not a scroll; let that timeout pass.
+        composeRule.mainClock.advanceTimeBy(500)
+        check(share(0xdc, 0x26, 0x26) > 0.5f) {
+            "the chip did not paint its active #dc2626 background while held — the pressed style did not reach " +
+                "the view, or the interaction source handed to clickable is not the one PyreonPressState collects"
+        }
+
+        chip.performTouchInput { up() }
+        composeRule.onNodeWithText("Chip taps: 1").assertExists()
+        check(share(0x1d, 0x4e, 0xd8) > 0.5f) { "the chip stayed in its pressed colour after release" }
+    }
+
     // The static half of the style pipeline, asserted through GEOMETRY — the
     // Compose mirror of the iOS `test_rocketstyleSizeDimensionProducesRealGeometry`.
     //
@@ -676,10 +730,10 @@ class CounterInstrumentedTest {
     fun i18nInterpolationAndPluralsFollowCount() {
         composeRule.onNodeWithText("Hallo Vit!").assertExists()
         composeRule.onNodeWithText("0 Stücke").assertExists()
-        composeRule.onNodeWithText("Increment").performClick()
+        tapIncrement()
         composeRule.waitForIdle()
         composeRule.onNodeWithText("1 Stück").assertExists()
-        composeRule.onNodeWithText("Increment").performClick()
+        tapIncrement()
         composeRule.waitForIdle()
         composeRule.onNodeWithText("2 Stücke").assertExists()
     }
@@ -901,7 +955,7 @@ class CounterInstrumentedTest {
     @Test
     fun rocketstyleComponentRendersAndFlipsOnDevice() {
         composeRule.onNodeWithText("Badge: ok").assertIsDisplayed()
-        repeat(3) { composeRule.onNodeWithText("Increment").performClick() }
+        repeat(3) { tapIncrement() }
         composeRule.waitForIdle()
         composeRule.onNodeWithText("Badge: warn").assertIsDisplayed()
     }
@@ -1247,7 +1301,7 @@ class CounterInstrumentedTest {
         composeRule.onNodeWithTag("rp-plain").assertTextEquals("rp plain 0")
         composeRule.onAllNodesWithTag("rp-footer").assertCountEquals(1)
 
-        repeat(3) { composeRule.onNodeWithText("Increment").performClick() }
+        repeat(3) { tapIncrement() }
         composeRule.waitForIdle()
 
         composeRule.onNodeWithTag("rp-block").assertTextEquals("rp big 6")

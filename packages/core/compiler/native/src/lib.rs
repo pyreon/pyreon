@@ -638,6 +638,8 @@ struct Ctx<'a> {
     needs_set_class_import: bool,
     needs_set_attr_import: bool,
     needs_set_value_import: bool,
+    needs_set_prop_import: bool,
+    needs_set_prop_static_import: bool,
     needs_set_html_import: bool,
     needs_bind_text_import: bool,
     needs_bind_prop_import: bool,
@@ -867,6 +869,8 @@ impl<'a> Ctx<'a> {
             needs_set_class_import: false,
             needs_set_attr_import: false,
             needs_set_value_import: false,
+            needs_set_prop_import: false,
+            needs_set_prop_static_import: false,
             needs_set_html_import: false,
             needs_bind_text_import: false,
             needs_bind_prop_import: false,
@@ -1039,6 +1043,12 @@ impl<'a> Ctx<'a> {
             }
             if self.needs_set_value_import {
                 imports.push("_setValue");
+            }
+            if self.needs_set_prop_import {
+                imports.push("_setProp");
+            }
+            if self.needs_set_prop_static_import {
+                imports.push("_setPropStatic");
             }
             if self.needs_set_html_import {
                 imports.push("_setHtml");
@@ -5739,6 +5749,25 @@ fn walk_member_chain(expr: &Expression) -> bool {
 }
 
 /// Strip TS type-only layers + parens that don't affect runtime value.
+/// A primitive literal — a value that can never be a function. Mirrors the JS
+/// backend's `isPrimitiveLiteralNode` (#4086).
+fn is_primitive_literal_expr(expr: &Expression) -> bool {
+    match unwrap_type_layers(expr) {
+        Expression::StringLiteral(_)
+        | Expression::NumericLiteral(_)
+        | Expression::BooleanLiteral(_)
+        | Expression::NullLiteral(_)
+        | Expression::BigIntLiteral(_)
+        | Expression::RegExpLiteral(_) => true,
+        Expression::TemplateLiteral(t) => t.expressions.is_empty(),
+        Expression::UnaryExpression(u) => {
+            matches!(u.operator, UnaryOperator::UnaryNegation | UnaryOperator::UnaryPlus)
+                && matches!(u.argument, Expression::NumericLiteral(_))
+        }
+        _ => false,
+    }
+}
+
 fn unwrap_type_layers<'a>(expr: &'a Expression<'a>) -> &'a Expression<'a> {
     let mut cur = expr;
     loop {
@@ -6487,6 +6516,15 @@ fn ssr_serialize_attr(
     // already handles it. Mirrors JS `ssrSerializeAttr`.
     if tag == "textarea" && name == "value" {
         return false;
+    }
+    // `<textarea defaultValue>`: the default IS the text content. Mirrors JS.
+    if tag == "textarea" && name == "defaultValue" {
+        return false;
+    }
+    // Property-only props have no content attribute; `renderProp` drops them.
+    // The lowercase ones would otherwise be baked as an attribute. Mirrors JS.
+    if name == "indeterminate" || name == "volume" {
+        return true;
     }
     let is_aria = name.as_bytes().first() == Some(&97) && name.starts_with("aria-");
     let has_upper = name.bytes().any(|b| b.is_ascii_uppercase());
@@ -7885,6 +7923,8 @@ struct TemplateBuilder {
     needs_set_class: bool,
     needs_set_attr: bool,
     needs_set_value: bool,
+    needs_set_prop: bool,
+    needs_set_prop_static: bool,
     needs_set_html: bool,
     /// Preserved holes — absorbed COMPONENT children whose source range must
     /// survive into the output so the walk can transform them in place. Each is
@@ -7924,6 +7964,8 @@ impl TemplateBuilder {
             needs_set_class: false,
             needs_set_attr: false,
             needs_set_value: false,
+            needs_set_prop: false,
+            needs_set_prop_static: false,
             needs_set_html: false,
             hole_spans: Vec::new(),
         }
@@ -8084,6 +8126,12 @@ fn build_template_call(
     }
     if tb.needs_set_value {
         ctx.needs_set_value_import = true;
+    }
+    if tb.needs_set_prop {
+        ctx.needs_set_prop_import = true;
+    }
+    if tb.needs_set_prop_static {
+        ctx.needs_set_prop_static_import = true;
     }
     if tb.needs_set_html {
         ctx.needs_set_html_import = true;
@@ -8865,6 +8913,7 @@ fn attr_setter(
     expr: &str,
     tag: &str,
     tb: &mut TemplateBuilder,
+    resolve: bool,
 ) -> String {
     // class/style mirror the runtime `applyProp` value-normalization
     // (packages/core/runtime-dom/src/props.ts): a string passes through, an
@@ -8901,8 +8950,14 @@ fn attr_setter(
         // assignment. Mirrors the JS backend's attrSetter (jsx.ts).
         tb.needs_set_value = true;
         format!("_setValue({}, {})", var_name, expr)
-    } else if is_dom_prop(html_attr_name) {
+    } else if is_dom_prop(html_attr_name) && !resolve {
+        // A statically primitive value (literal) — the raw assignment is exact.
         format!("{}.{} = {}", var_name, html_attr_name, expr)
+    } else if is_dom_prop(html_attr_name) {
+        // DOM property: delegate to `_setProp` (= applyDomProp), which resolves
+        // a FUNCTION value as an accessor (#4086). Mirrors jsx.ts.
+        tb.needs_set_prop = true;
+        format!("_setProp({}, \"{}\", {})", var_name, html_attr_name, expr)
     } else {
         // Generic attribute — delegate to runtime `_setAttr` (= applyAttrProp)
         // so a DYNAMIC attr normalizes identically to the h() path: null/undefined
@@ -8941,7 +8996,20 @@ fn emit_dynamic_attr(
         tb.needs_set_style = true;
     }
     if !is_reactive {
-        let line = attr_setter(html_attr_name, var_name, &expr_text, tag, tb);
+        // A DOM property in static position: `_setPropStatic` binds a FUNCTION
+        // value live (#4086). Mirrors jsx.ts's emitDynamicAttr.
+        if (is_dom_prop(html_attr_name)
+            || (html_attr_name == "value" && (tag == "input" || tag == "textarea")))
+            && !is_primitive_literal_expr(expr_node)
+        {
+            tb.needs_set_prop_static = true;
+            tb.bind_lines.push(format!(
+                "_setPropStatic({}, \"{}\", {})",
+                var_name, html_attr_name, expr_text
+            ));
+            return;
+        }
+        let line = attr_setter(html_attr_name, var_name, &expr_text, tag, tb, false);
         tb.bind_lines.push(line);
         return;
     }
@@ -9003,14 +9071,14 @@ fn emit_dynamic_attr(
     if let Some(sel) = try_direct_selector_ternary(expr_node, ctx) {
         let d = tb.next_disp();
         let setter_expr = format!("(m ? {} : {})", sel.consequent, sel.alternate);
-        let setter_body = attr_setter(html_attr_name, var_name, &setter_expr, tag, tb);
+        let setter_body = attr_setter(html_attr_name, var_name, &setter_expr, tag, tb, true);
         tb.bind_lines.push(format!(
             "const {} = {}.subscribe({}, (m) => {{ {} }})",
             d, sel.selector_ref, sel.key_expr, setter_body
         ));
         return;
     }
-    let line = attr_setter(html_attr_name, var_name, &expr_text, tag, tb);
+    let line = attr_setter(html_attr_name, var_name, &expr_text, tag, tb, true);
     if attr_has_fixed_deps(expr_node, ctx) {
         tb.reactive_bind_exprs.push(line);
     } else {
@@ -9066,7 +9134,7 @@ fn attr_initializer_to_html(
     match &attr.value {
         None => {
             if tag == "input" && html_attr_name == "indeterminate" {
-                let line = attr_setter(html_attr_name, var_name, "true", tag, tb);
+                let line = attr_setter(html_attr_name, var_name, "true", tag, tb, false);
                 tb.bind_lines.push(line);
                 return String::new();
             }
@@ -9084,7 +9152,7 @@ fn attr_initializer_to_html(
             if ((tag == "select" || tag == "textarea") && html_attr_name == "value")
                 || (tag == "input" && html_attr_name == "indeterminate")
             {
-                let line = attr_setter(html_attr_name, var_name, &escape_js_string(&js_text(s.value)), tag, tb);
+                let line = attr_setter(html_attr_name, var_name, &escape_js_string(&js_text(s.value)), tag, tb, false);
                 tb.bind_lines.push(line);
                 return String::new();
             }

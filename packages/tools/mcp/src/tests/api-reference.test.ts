@@ -471,11 +471,14 @@ describe('api-reference', () => {
       expect(entry!.notes).toBeTruthy()
     })
 
-    it('createRouter carries 4 mistakes covering hash mode + catch-all', () => {
+    it('createRouter carries 6 mistakes covering hash mode, catch-all, and tab stacks', () => {
       const entry = API_REFERENCE['router/createRouter']
       expect(entry?.notes).toContain('routes')
       expect(entry?.notes).toContain('Router')
-      expect(entry?.mistakes?.split('\n').length).toBe(4)
+      expect(entry?.mistakes?.split('\n').length).toBe(6)
+      expect(entry?.mistakes).toContain('mode: "hash"')
+      expect(entry?.mistakes).toContain('catch-all')
+      expect(entry?.mistakes).toContain('With `tabs`')
     })
 
     it('useRouter documents the View Transition await semantics', () => {

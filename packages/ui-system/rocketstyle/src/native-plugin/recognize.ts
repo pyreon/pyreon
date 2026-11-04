@@ -34,6 +34,7 @@ import {
   isStyleBasePrimitive,
   DEFAULT_THEME,
   resolveThemeToken,
+  PRESSED_STATE_IDENT,
   type ThemeTable,
   type ExprIR,
 } from '@pyreon/native-compiler/plugin-api'
@@ -50,6 +51,31 @@ const DIMENSION_METHODS: Record<string, string> = {
   sizes: 'size',
   variants: 'variant',
 }
+/** The bases whose native emit owns a press state the pressed style can key on. */
+const PRESSABLE_BASES = new Set(['Button', 'Press'])
+
+/**
+ * Pseudo-state keys inside a style block. `active` is the CSS name rocketstyle
+ * themes use; `pressed` is accepted as the native spelling of the same state.
+ * hover / focus have no lowering yet and are named in a warning instead of
+ * falling into the generic "non-literal value" drop.
+ */
+const PRESSED_KEYS = new Set(['active', 'pressed'])
+/**
+ * The CSS initial value of the properties a pressed style commonly sets on its
+ * own. Only properties whose initial value is a single fixed literal are here —
+ * `color` inherits, so its un-pressed value depends on the parent and cannot be
+ * written down.
+ */
+const PRESSED_ONLY_INITIAL: Record<string, string | number> = {
+  opacity: 1,
+  backgroundColor: 'transparent',
+  background: 'transparent',
+  borderColor: 'transparent',
+  borderWidth: 0,
+}
+const UNLOWERED_PSEUDO_KEYS = new Set(['hover', 'focus', 'focusVisible', 'focusWithin', 'disabled'])
+
 const TS_WRAPPERS = new Set([
   'TSAsExpression',
   'TSSatisfiesExpression',
@@ -112,12 +138,24 @@ export function parseRocketstyleDefn(
     return null
   }
 
-  const base = themeArg ? styleFromDimBody(themeArg, name, 'theme', warnings, theme) : emptyObject()
+  const pressed: Record<string, Extract<ExprIR, { kind: 'object' }>> = {}
+  const base = themeArg
+    ? styleFromDimBody(themeArg, name, 'theme', warnings, theme, pressed, 'base')
+    : emptyObject()
   const dims: RocketstyleComponentIR['dims'] = {}
   for (const { dim, arg } of dimCalls) {
-    dims[dim] = dimensionMap(arg, name, dim, warnings, theme)
+    dims[dim] = dimensionMap(arg, name, dim, warnings, theme, pressed)
   }
-  return { name, tag: prim, base, dims }
+  if (Object.keys(pressed).length === 0) return { name, tag: prim, base, dims }
+  if (!PRESSABLE_BASES.has(prim)) {
+    warnings.push(
+      `rocketstyle(...) '${name}': an active/pressed style only lowers on a pressable base (Button or Press) — ` +
+        `'${prim}' never receives a press on native, so the pressed style was dropped. On the web a non-interactive ` +
+        `element only matches :active while the pointer is held on it.`,
+    )
+    return { name, tag: prim, base, dims }
+  }
+  return { name, tag: prim, base, dims, pressed }
 }
 
 /**
@@ -160,6 +198,7 @@ function dimensionMap(
   dim: string,
   warnings: string[],
   theme: ThemeTable,
+  pressed: Record<string, Extract<ExprIR, { kind: 'object' }>>,
 ): Record<string, Extract<ExprIR, { kind: 'object' }>> {
   const obj = unwrapDimBody(arg)
   const out: Record<string, Extract<ExprIR, { kind: 'object' }>> = {}
@@ -197,6 +236,8 @@ function dimensionMap(
       `${dim}.${valueName}`,
       warnings,
       theme,
+      pressed,
+      `${dim}.${valueName}`,
     )
   }
   return out
@@ -209,9 +250,11 @@ function styleFromDimBody(
   where: string,
   warnings: string[],
   theme: ThemeTable,
+  pressed: Record<string, Extract<ExprIR, { kind: 'object' }>>,
+  pressedKey: string,
 ): Extract<ExprIR, { kind: 'object' }> {
   const obj = unwrapDimBody(arg)
-  return objectExprToStyleObject(obj, compName, where, warnings, theme)
+  return objectExprToStyleObject(obj, compName, where, warnings, theme, pressed, pressedKey)
 }
 
 /** Unwrap a `(t) => ({ … })` arrow (or block `return {…}`) to the object literal;
@@ -244,9 +287,12 @@ function objectExprToStyleObject(
   where: string,
   warnings: string[],
   theme: ThemeTable,
+  pressed?: Record<string, Extract<ExprIR, { kind: 'object' }>>,
+  pressedKey?: string,
 ): Extract<ExprIR, { kind: 'object' }> {
   const fields: { name: string; value: ExprIR }[] = []
   const dropped: string[] = []
+  const unlowered: string[] = []
   if (obj && obj.type === 'ObjectExpression') {
     for (const p of (obj.properties as AnyNode[]) ?? []) {
       if (p.type !== 'Property' && p.type !== 'ObjectProperty') continue
@@ -259,6 +305,20 @@ function objectExprToStyleObject(
       const key = p.key?.name ?? p.key?.value
       if (typeof key !== 'string') continue
       const v = unwrap(p.value)
+      // A pseudo-state block (`active: { … }`). Only one level deep: a pressed
+      // block's own nested state blocks are not a rocketstyle shape.
+      if (v?.type === 'ObjectExpression' && pressed && pressedKey && PRESSED_KEYS.has(key)) {
+        const inner = objectExprToStyleObject(v, compName, `${where}.${key}`, warnings, theme)
+        const prev = pressed[pressedKey]
+        pressed[pressedKey] = prev
+          ? { kind: 'object', fields: [...prev.fields, ...inner.fields], spreads: [] }
+          : inner
+        continue
+      }
+      if (v?.type === 'ObjectExpression' && UNLOWERED_PSEUDO_KEYS.has(key)) {
+        unlowered.push(key)
+        continue
+      }
       if (v?.type === 'Literal' && (typeof v.value === 'string' || typeof v.value === 'number')) {
         fields.push({ name: key, value: { kind: 'literal', value: v.value } })
       } else if (
@@ -275,6 +335,13 @@ function objectExprToStyleObject(
         else dropped.push(key)
       }
     }
+  }
+  if (unlowered.length > 0) {
+    warnings.push(
+      `rocketstyle(...) '${compName}' ${where}: the ${unlowered.join(' / ')} state style has no native lowering ` +
+        `(only active / pressed does, on a Button or Press base), so it was dropped on iOS and Android. The web ` +
+        `keeps it.`,
+    )
   }
   if (dropped.length > 0) {
     warnings.push(
@@ -357,12 +424,61 @@ export function resolveRocketstyleUseSite(
   // base ∪ static-matched dims — the shared foundation of both branches.
   const baseFields = new Map<string, ExprIR>()
   for (const f of rkt.base.fields) baseFields.set(f.name, f.value)
+  const baseApplied = ['base']
   for (const { dim, value } of staticVals) {
     const set = rkt.dims[dim]?.[value]
     if (set) for (const f of set.fields) baseFields.set(f.name, f.value)
+    baseApplied.push(`${dim}.${value}`)
   }
 
-  if (dynamics.length === 0) return toStyleObject(baseFields)
+  // One resolved leaf. When any applied block declares an `active:` style, the
+  // leaf becomes a ternary on the base's PRESS STATE: the pressed side is the
+  // leaf with every applied pressed block layered on top, in cascade order —
+  // the same result rocketstyle's deep merge gives on the web, where a
+  // dimension's plain value is still beaten by an earlier block's :active.
+  const leaf = (
+    fields: Map<string, ExprIR>,
+    applied: readonly string[],
+  ): Extract<ExprIR, { kind: 'object' | 'ternary' }> => {
+    if (rkt.pressed === undefined) return toStyleObject(fields)
+    const pressedFields = new Map(fields)
+    let any = false
+    for (const key of applied) {
+      const block = rkt.pressed[key]
+      if (!block) continue
+      any = true
+      for (const f of block.fields) pressedFields.set(f.name, f.value)
+    }
+    if (!any) return toStyleObject(fields)
+    // A property set ONLY while pressed has no un-pressed value to flip back
+    // to. On the web the cascade supplies the property's initial value; here
+    // that value has to be written down, or the connector — which needs the
+    // property on both sides — would apply the pressed value permanently.
+    const plainFields = new Map(fields)
+    for (const name of [...pressedFields.keys()]) {
+      if (plainFields.has(name)) continue
+      const initial = PRESSED_ONLY_INITIAL[name]
+      if (initial !== undefined) {
+        plainFields.set(name, { kind: 'literal', value: initial })
+      } else {
+        pressedFields.delete(name)
+        warn?.(
+          `<${rkt.name}>: '${name}' is set only in the active/pressed style, and it has no single initial value ` +
+            `native can flip back to, so it was dropped there. Declare '${name}' in the base style too.`,
+        )
+      }
+    }
+    return {
+      kind: 'ternary',
+      cond: { kind: 'identifier', name: PRESSED_STATE_IDENT },
+      // `then` is the shared ternary IR branch, not a Promise method.
+      // oxlint-disable-next-line unicorn/no-thenable
+      then: toStyleObject(pressedFields),
+      otherwise: toStyleObject(plainFields),
+    }
+  }
+
+  if (dynamics.length === 0) return leaf(baseFields, baseApplied)
 
   // A ternary per dynamic dim, nested in declaration order, so every leaf is one point of the dimension-set
   // PRODUCT: base ∪ static dims ∪ each dynamic dim's chosen set, applied in the same order as the runtime cascade
@@ -370,18 +486,19 @@ export function resolveRocketstyleUseSite(
   const resolve = (
     i: number,
     fields: Map<string, ExprIR>,
+    applied: readonly string[],
   ): Extract<ExprIR, { kind: 'object' | 'ternary' }> => {
     const d = dynamics[i]
-    if (d === undefined) return toStyleObject(fields)
+    if (d === undefined) return leaf(fields, applied)
     const branch = (value: string): Extract<ExprIR, { kind: 'object' | 'ternary' }> => {
       const m = new Map(fields)
       const set = rkt.dims[d.dim]?.[value]
       if (set) for (const f of set.fields) m.set(f.name, f.value)
-      return resolve(i + 1, m)
+      return resolve(i + 1, m, [...applied, `${d.dim}.${value}`])
     }
     // `then` is the shared ternary IR branch, not a Promise method.
     // oxlint-disable-next-line unicorn/no-thenable
     return { kind: 'ternary', cond: d.cond, then: branch(d.a), otherwise: branch(d.b) }
   }
-  return resolve(0, baseFields)
+  return resolve(0, baseFields, baseApplied)
 }

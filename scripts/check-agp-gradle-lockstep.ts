@@ -64,6 +64,8 @@ export const AGP_MIN_GRADLE: Record<string, string> = {
   '8.14': '8.14',
   // AGP 9.4.0 release notes: minimum (and default) Gradle 9.6.0.
   '9.4': '9.6.0',
+  // AGP 9.5 compatibility table: minimum (and default) Gradle 9.6.0.
+  '9.5': '9.6.0',
 }
 
 export function cmpVersions(a: string, b: string): number {
