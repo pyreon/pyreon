@@ -283,6 +283,11 @@ fun serializer(type: java.lang.reflect.Type): KSerializer<Any> {
     override val descriptor: Any = "stub-runtime"
   }
 }
+
+// What every kotlinx decode failure extends (PyreonJson.parse rewraps it). The
+// real class extends IllegalArgumentException, which is why a lowered
+// \`catch (e: Exception)\` catches it.
+open class SerializationException(message: String? = null) : IllegalArgumentException(message)
 `
 
 const KOTLINX_SERIALIZATION_JSON_STUBS = `package kotlinx.serialization.json

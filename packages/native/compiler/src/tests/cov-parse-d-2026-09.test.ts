@@ -300,10 +300,11 @@ describe('parse.ts — parseExpr: rare expression arms', () => {
   const comp = (body: string, extraImports = '') =>
     `${PRIM}${extraImports}\nexport function App(){\n${body}\n return <Text>x</Text> }`
 
-  it('JSON.parse and a no-arg JSON.stringify warn with DIFFERENT hints', () => {
+  it('an untyped JSON.parse and a no-arg JSON.stringify warn with DIFFERENT hints', () => {
     const r = swift(`${PRIM}export function App(){ return <Text>{JSON.parse("1")}{JSON.stringify()}</Text> }`)
     const w = r.warnings.join('\n')
-    expect(w).toContain('JSON.parse throws on malformed input')
+    // An untyped JSON.parse has no type to decode into natively (the typed forms lower — native-json-parse.test.ts).
+    expect(w).toContain('has no type to decode into natively')
     expect(w).toContain('`JSON.stringify` is not supported in native (PMTC) — no native lowering for this shape yet')
   })
 

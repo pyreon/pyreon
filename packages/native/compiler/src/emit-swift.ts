@@ -4284,6 +4284,16 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       // order the struct encodes in — declaration order, i.e. the source
       // literal's — and writes every leaf the way ECMAScript does.
       return `PyreonJSON.stringify(${emitSwiftExpr(e.arg, indent)})`
+    case 'json-parse': {
+      // A decode into the type the source named — and a throwing one, so it takes the same `try` / `try!` the
+      // call to a throwing helper does.
+      // Untyped: the parser already named it (`warnUntypedJsonParse`); emit the inert fallback it promised.
+      if (e.type === undefined) return '""'
+      const decode = `PyreonJSON.parse(${swiftType(e.type)}.self, ${emitSwiftExpr(e.arg, indent)})`
+      if (_swiftThrowCtx !== 'none') return `(try ${decode})`
+      _pushSwiftEmitWarning(uncaughtThrowWarning('`JSON.parse(…)`, which throws on malformed input,'))
+      return `(try! ${decode})`
+    }
     case 'call': {
       if (
         e.callee.kind === 'identifier' &&

@@ -867,10 +867,27 @@ function describeQuantity(raw: string): string {
   return 'qty ' + String(parseQuantity(raw))
 }
 
+// `JSON.parse` decodes into the type the source names — here the helper's return type. It throws on malformed input,
+// so it rides the same error model; an unknown key (`note`) is ignored, as on the web.
+type Order = { sku: string; qty: number }
+
+function readOrder(raw: string): Order {
+  return JSON.parse(raw)
+}
+
 function ErrorsPage() {
   const navigate = useNavigate()
   const result = signal('none')
   const finished = signal(0)
+  const decoded = signal('none')
+  const decode = (raw: string) => {
+    try {
+      const order = readOrder(raw)
+      decoded.set(`${order.sku} x${order.qty}`)
+    } catch {
+      decoded.set('malformed')
+    }
+  }
   const run = (raw: string) => {
     try {
       result.set(describeQuantity(raw))
@@ -880,7 +897,9 @@ function ErrorsPage() {
       finished.set(finished() + 1)
     }
   }
+  // In a <Scroll>: the page is taller than a phone, and a tap below the fold of a plain column is a silent no-op.
   return (
+    <Scroll>
     <Stack gap={3} padding={4} data-testid="errors-page">
       <Text>Errors</Text>
       <Text data-testid="err-result">Result: {result()}</Text>
@@ -888,8 +907,12 @@ function ErrorsPage() {
       <Button onPress={() => run('3')}>Parse valid</Button>
       <Button onPress={() => run('')}>Parse empty</Button>
       <Button onPress={() => run('-2')}>Parse negative</Button>
+      <Text data-testid="err-json">JSON: {decoded()}</Text>
+      <Button onPress={() => decode('{"sku":"A1","qty":2,"note":"gift"}')}>Decode order</Button>
+      <Button onPress={() => decode('{"sku":')}>Decode malformed</Button>
       <Button onPress={() => navigate('/')}>Back to Home</Button>
     </Stack>
+    </Scroll>
   )
 }
 

@@ -3276,6 +3276,14 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       // bytes that leave the device would differ from the web's.
       // `PyreonJson.stringify` rewrites those leaves into ECMAScript form.
       return `PyreonJson.stringify(${emitKotlinExpr(e.arg, indent)})`
+    case 'json-parse':
+      // A decode into the type the source named. Kotlin exceptions are unchecked, so only the uncaught position
+      // needs saying — exactly as for a call to a throwing helper.
+      // Untyped: the parser already named it (`warnUntypedJsonParse`); emit the inert fallback it promised.
+      if (e.type === undefined) return '""'
+      if (_kotlinThrowCtx === 'none')
+        _pushKotlinEmitWarning(uncaughtThrowWarning('`JSON.parse(…)`, which throws on malformed input,'))
+      return `PyreonJson.parse<${kotlinType(e.type)}>(${emitKotlinExpr(e.arg, indent)})`
     case 'call': {
       if (e.callee.kind === 'identifier') {
         if (_kotlinThrowingFns.has(e.callee.name) && _kotlinThrowCtx === 'none')

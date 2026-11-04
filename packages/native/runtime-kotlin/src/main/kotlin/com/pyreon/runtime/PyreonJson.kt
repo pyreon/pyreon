@@ -23,6 +23,7 @@
 
 package com.pyreon.runtime
 
+import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.serializer
 
@@ -38,6 +39,27 @@ object PyreonJson {
      */
     @PublishedApi
     internal val stringifyJson: Json = Json { allowSpecialFloatingPointValues = true }
+
+    /** kotlinx configured for `parse`: unknown keys are ignored, as `JSON.parse` and Swift's JSONDecoder do. */
+    @PublishedApi
+    internal val parseJson: Json = Json { ignoreUnknownKeys = true }
+
+    /**
+     * What `JSON.parse(text)` lowers to when the source names the result type. Stricter than the web by
+     * construction: input whose SHAPE does not match `T` throws here, where `JSON.parse` would have returned it.
+     * A syntax error and a shape mismatch both throw [PyreonJsonParseError].
+     */
+    inline fun <reified T> parse(text: String): T =
+        try {
+            parseJson.decodeFromString(serializer<T>(), text)
+        } catch (e: SerializationException) {
+            throw PyreonJsonParseError(parseErrorMessage(e))
+        }
+
+    /** kotlinx's message is multi-line, with tuning hints after the first line; keep the diagnosis. */
+    @PublishedApi
+    internal fun parseErrorMessage(e: SerializationException): String =
+        e.message?.lineSequence()?.firstOrNull()?.trim()?.takeIf { it.isNotEmpty() } ?: "Unexpected token in JSON"
 
     /** The web's `JSON.stringify(value)`, byte for byte. */
     inline fun <reified T> stringify(value: T): String =
@@ -177,4 +199,9 @@ object PyreonJson {
     }
 
     private fun hex4(c: Char): String = c.code.toString(16).padStart(4, '0')
+}
+
+/** The error a lowered `JSON.parse` throws. `message` is the bare text; `toString()` reads as `String(e)` does on the web. */
+class PyreonJsonParseError(message: String) : Exception(message) {
+    override fun toString(): String = "SyntaxError: $message"
 }
