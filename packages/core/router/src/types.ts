@@ -103,6 +103,13 @@ export interface ResolvedRoute<
   isNotFound?: boolean
 }
 
+/** Internal: how the initial navigation's guard pipeline ended. */
+export type InitialNavigationOutcome =
+  | { kind: 'continue' }
+  | { kind: 'redirect'; target: string }
+  | { kind: 'cancel' }
+  | { kind: 'superseded' }
+
 // ─── Lazy component ───────────────────────────────────────────────────────────
 
 export const LAZY_SYMBOL = Symbol('pyreon.lazy')
@@ -686,6 +693,19 @@ export interface RouterInstance extends Router {
   _abortController: AbortController | null
   /** Registered navigation blockers */
   _blockers: Set<BlockerFn>
+  /**
+   * Run the INITIAL navigation's pipeline (route `redirect`, middleware,
+   * `beforeEnter`, global guards) once. Idempotent — every call returns the
+   * same promise. Started by the first `RouterView`, by `preload()` of the
+   * initial path, or on the microtask after `createRouter`, whichever is first.
+   */
+  _startInitialNavigation: () => Promise<InitialNavigationOutcome>
+  /**
+   * `true` while the initial navigation's guards are pending, or after they
+   * cancelled / redirected it on the server. `RouterView` renders nothing
+   * while it is set, so a guarded deep link never shows its content first.
+   */
+  _initialGate: () => boolean
   /** Resolves the isReady() promise after initial navigation completes */
   _readyResolve: (() => void) | null
   /** The isReady() promise instance */
