@@ -73,7 +73,8 @@ describe('the web libraries really have these shapes (the oracle this lowering f
   })
   it('@pyreon/validation: an adapter has parse (dot-string path, no throw) and NO safeParse', () => {
     const Pet = zodSchema(z.object({ name: z.string().min(1), age: z.number() }))
-    const bad = Pet.parse({ name: '', age: 1 })
+    // `parse` is optional on the adapter TYPE (TypedSchemaAdapter); every shipped adapter defines it.
+    const bad = Pet.parse!({ name: '', age: 1 })
     expect(bad.ok).toBe(false)
     expect(bad.ok ? null : bad.issues[0]!.path).toBe('name')
     expect((Pet as unknown as { safeParse?: unknown }).safeParse).toBeUndefined()
@@ -145,10 +146,10 @@ describe('the Swift emit RUNS like the web library', () => {
   for (const [name, src, web] of [
     ['validate', validate, (n: string) => {
       const r = s.object({ name: s.string().min(1), age: s.number() }).parse({ name: n, age: 1 })
-      return r.ok ? `ok ${r.value.name}` : `bad ${r.issues[0]!.path.join('.')}`
+      return r.ok ? `ok ${r.value.name}` : `bad ${r.issues[0]!.path?.join('.')}`
     }],
     ['validation', zod, (n: string) => {
-      const r = zodSchema(z.object({ name: z.string().min(1), age: z.number() })).parse({ name: n, age: 1 })
+      const r = zodSchema(z.object({ name: z.string().min(1), age: z.number() })).parse!({ name: n, age: 1 })
       return r.ok ? `ok ${r.value.name}` : `bad ${r.issues[0]!.path}`
     }],
   ] as const) {
