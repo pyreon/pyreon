@@ -1329,6 +1329,7 @@ class PyreonNumberFormat(
 // (runtime-kotlin's PyreonSlice.kt).
 fun <T> pyreonSlice(a: List<T>, start: Long, end: Long? = null): List<T> = a
 fun pyreonSlice(s: String, start: Long, end: Long? = null): String = s
+fun pyreonSubstring(s: String, start: Long, end: Long? = null): String = s
 
 // kotlinx.coroutines surface the emitted fetch harness drives —
 // withContext(Dispatchers.IO) { ... } around the blocking URL read.

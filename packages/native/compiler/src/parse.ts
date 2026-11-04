@@ -4248,7 +4248,7 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   // vocab: fail loudly, naming the working shapes.
   if ((node.id?.type === 'ObjectPattern' || node.id?.type === 'ArrayPattern') && init) {
     ctx.warnings.push(
-      'Component-body destructuring in this shape is not lowered to native — only flat `const { x, y } = …` and flat `const [a, b] = …` lower (no nesting, rest, defaults, or holes). Bind explicitly instead (`const a = o().a` / `const first = xs()[0]`); the declaration was skipped and its names would otherwise emit unbound.',
+      'Component-body destructuring in this shape is not lowered to native — plain names, nested patterns, holes and a trailing array rest lower (`const { a: { b }, c } = …`, `const [x, , z, ...rest] = …`), but not a default value (`= 7`), an object rest (`...others`) or a computed key. Bind explicitly instead (`const a = o().a` / `const first = xs()[0]`); the declaration was skipped and its names would otherwise emit unbound.',
     )
     return null
   }

@@ -283,7 +283,13 @@ Both emitters dispatch member calls through a `switch (prop)` with no `default:`
 
 ### PMTC: a same-named native primitive with a narrower or different contract
 
-A lowering inherits the native primitive's rounding, units, locale and nullability, and the result compiles and silently differs on one target. Look up the primitive's contract; do not infer from the name.
+A lowering inherits the native primitive's rounding, units, locale and nullability, and the result compiles and silently differs on one target. Look up the primitive's contract; do not infer from the name. Instances: Kotlin's `String.substring` throws for a bound past the end or `start > end` where JS clamps and swaps (`title.substring(0, 10)` crashed Android; the generated chart engine's date formatter threw near the end of every pattern) — `pyreonSubstring`; Swift's `map`/`filter`/`reduce` are `rethrows`, so a throwing callback propagates, and lowering it to `fatalError` made iOS alone terminate (`RETHROWING_ARRAY_METHODS`).
+
+---
+
+### PMTC: a "callable names" set seeded only where components start
+
+Zero-argument calls emit BARE (a signal read) unless the name is known callable, and the set was seeded per component — so module scope (one helper calling another, `String(k())`) emitted `k` on both targets with no warning. Seed every scope that emits calls, including module scope (`moduleFunctionNames*`). Lock: `native-review-0-54-emit-fixes.test.ts`.
   - `Math.round`: Swift `.rounded()` rounds ties away from zero; JS rounds ties toward +∞. Swift emits `((Double(x)) + 0.5).rounded(.down)`. Kotlin's `java.lang.Math.round` is specified as `floor(x + 0.5)` and already matches.
   - `String.length`: Swift `String.count` counts grapheme clusters (`"👍"` is 1, JS/Kotlin say 2). Emit `.utf16.count` for a provably string receiver; an array keeps `.count`.
   - `toFixed`: Kotlin's 1-arg `"%.2f".format(x)` uses the device locale (`1234,57` under German). Emit `"%.2f".format(java.util.Locale.ROOT, x)`. Swift's `String(format:)` is already invariant.
