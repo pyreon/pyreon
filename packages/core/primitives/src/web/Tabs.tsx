@@ -169,6 +169,13 @@ export const Tabs = (props: TabsProps): VNode => {
     root.getElementById(tabId(next))?.focus()
   }
 
+  // The roving tabindex needs exactly ONE tabbable tab. When `value` names no
+  // tab (an initial `''`, a stale value after the tab set changed) none is
+  // selected, and a tabindex keyed only on selection would make every tab
+  // `-1` — the whole tab bar unreachable by keyboard. WAI-ARIA's fallback is
+  // the first tab.
+  const noneSelected = (): boolean => !tabs.some((t) => t.value === selected())
+
   const buttons = tabs.map((t, i) => {
     const isSelected = (): boolean => selected() === t.value
     const label = t.label
@@ -181,7 +188,7 @@ export const Tabs = (props: TabsProps): VNode => {
         class: 'pyreon-tabs__tab',
         'aria-controls': panelId(i),
         'aria-selected': () => (isSelected() ? 'true' : 'false'),
-        tabindex: () => (isSelected() ? 0 : -1),
+        tabindex: () => (isSelected() || (i === 0 && noneSelected()) ? 0 : -1),
         'data-testid': t.testId,
         // A click on the active tab re-selects it (router tabs pop to root);
         // arrow-key activation never does.

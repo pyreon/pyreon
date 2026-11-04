@@ -42,7 +42,8 @@ typealias SelectOption = PyreonSelectOption
  *   the placeholder (empty without one), which is not itself a menu item, as the
  *   web's disabled `<option value="">` cannot be chosen.
  * - A disabled option is listed but not selectable.
- * - Choosing an option calls `onChange` with its value; the field shows whatever
+ * - Choosing a different option calls `onChange` with its value (re-choosing the
+ *   selected one does not, as on the web); the field shows whatever
  *   `value` the caller passes back, so a handler that rejects the choice wins.
  */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -80,7 +81,10 @@ fun PyreonSelect(
                     text = { Text(option.label) },
                     onClick = {
                         expanded = false
-                        onChange(option.value)
+                        // Re-choosing the selected option is not a change: a web
+                        // `<select>` fires no `change` event for it, so neither does
+                        // this — `onChange` reports a NEW value on every target.
+                        if (option.value != value) onChange(option.value)
                     },
                     enabled = option.disabled != true,
                 )
