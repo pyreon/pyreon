@@ -328,3 +328,48 @@ describe('tab stacks — rendering', () => {
     expect((r as unknown as { _loaderData: Map<RouteRecord, unknown> })._loaderData.get(rec)).toBe(loaded)
   })
 })
+
+describe('tab stacks — tab bar inside a layout route', () => {
+  // `<Tabs router>` inside a root layout (a zero `_layout.tsx`) is the common
+  // app shape. A tab's first view must render the level BELOW the layout; a
+  // tab scope that restarted at depth 0 rendered the layout inside every tab,
+  // recursively, until the heap ran out.
+  it('each tab renders its own page under the layout, once', async () => {
+    let r: Router | null = null
+    const Layout = () =>
+      h(
+        'main',
+        { id: 'layout' },
+        h('section', { id: 'feed' }, r!.withTab('feed', () => h(RouterView, {}))),
+        h('section', { id: 'me' }, r!.withTab('me', () => h(RouterView, {}))),
+      )
+    const nested: RouteRecord[] = [
+      {
+        path: '/',
+        component: Layout,
+        children: [
+          { path: 'feed', component: page('feed') },
+          { path: 'feed/post/:id', component: page('post') },
+          { path: 'me', component: page('me') },
+        ],
+      },
+    ]
+    window.history.replaceState(null, '', '/feed')
+    r = createRouter({ routes: nested, tabs, mode: 'history' })
+    router = r
+    const el = document.createElement('div')
+    document.body.appendChild(el)
+    mount(h(RouterProvider, { router: r }, h(RouterView, {})), el)
+    await flush()
+
+    expect(el.querySelectorAll('#layout')).toHaveLength(1)
+    expect(el.querySelector('#feed [data-page]')?.getAttribute('data-page')).toBe('feed')
+    expect(el.querySelector('#me [data-page]')?.getAttribute('data-page')).toBe('me')
+
+    await r.push('/feed/post/1')
+    await flush()
+    expect(el.querySelectorAll('#layout')).toHaveLength(1)
+    expect(el.querySelector('#feed [data-page]')?.getAttribute('data-page')).toBe('post')
+    expect(el.querySelector('#me [data-page]')?.getAttribute('data-page')).toBe('me')
+  })
+})
