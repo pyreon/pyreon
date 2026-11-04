@@ -161,7 +161,7 @@ return json({ data: result.data }) // keyed by matched-chain index
 createRouter(options: RouterOptions | RouteRecord[]): Router
 ```
 
-Create a router instance with route records, guards, middleware, and mode configuration. Accepts either an array of route records (shorthand) or a full `RouterOptions` object with `routes`, `mode` (`"history"` | `"hash"`), `scrollBehavior`, and global `beforeEach` / `afterEach` guard arrays (which run before any added later with `router.beforeEach()` / `router.afterEach()`, and are the form the native targets lower). Middleware is per-route (`RouteRecord.middleware`), not a router option. The returned `Router` is generic over route names for typed programmatic navigation.
+Create a router instance with route records, guards, middleware, and mode configuration. Accepts either an array of route records (shorthand) or a full `RouterOptions` object with `routes`, `mode` (`"history"` | `"hash"`), `scrollBehavior`, and global `beforeEach` / `afterEach` guard arrays (which run before any added later with `router.beforeEach()` / `router.afterEach()`, and are the form the native targets lower). Middleware is per-route (`RouteRecord.middleware`), not a router option. The returned `Router` is generic over route names for typed programmatic navigation. `tabs: [{ name, root }]` gives a tab-bar app one back stack per tab: `push` acts on the ACTIVE tab (a path under another tab's root selects that tab and pushes there; a tab root pops it to the root), `selectTab(name)` switches and keeps every stack (re-selecting the active tab pops to root), and `<Tabs router={router}>` from `@pyreon/primitives` binds the tab bar. Web: the URL is the active tab's top entry and every history entry is stamped with its tab + stack, so Back/Forward restore both through the full pipeline. iOS: a `NavigationStack` per tab inside the `TabView`; Android: per-tab stacks with the system Back popping the active tab first.
 
 **Example**
 
@@ -181,6 +181,8 @@ const router = createRouter([
 - Defining route paths without leading `/` in root routes — all root-level paths must start with `/`
 - Using `redirect: "/target"` with a guard on the same route — redirects bypass guards. Use `beforeEnter` to conditionally redirect instead
 - Forgetting the catch-all route — `{ path: "(.*)", component: NotFound }` should be the last route to handle 404s
+- With `tabs`, putting a plain `<RouterView />` OUTSIDE the `<Tabs router>` and expecting it to keep a hidden tab's page — only a `<RouterView />` inside a `<Tab>` reads that tab's stack; one outside follows the URL (the active tab) and remounts on every tab switch
+- With `tabs`, omitting a top-level literal route at a tab's `root` — the root is the screen that tab's stack opens on, so native renders a "no route" placeholder (with a compiler warning)
 
 **See also:** `RouterProvider` · `useRouter` · `useRoute`
 

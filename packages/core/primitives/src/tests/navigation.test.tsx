@@ -147,6 +147,31 @@ describe('<Tabs>', () => {
     warn.mockRestore()
   })
 
+  it('renders an empty tab bar when given no tabs, and ignores keys there', () => {
+    const c = render(h(Tabs, { value: 'a', onChange: () => {} }, null, false))
+    expect(tabsOf(c)).toHaveLength(0)
+    const list = c.querySelector('[role="tablist"]')!
+    const ev = new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true })
+    list.dispatchEvent(ev)
+    expect(ev.defaultPrevented).toBe(false)
+  })
+
+  it('reads tabs through accessor children, fragment props.children and a Tab whose content is in props', () => {
+    // The shapes jsx() and the compiler produce: children moved into props,
+    // and an accessor-wrapped child list.
+    const viaProps = h(Tab, { value: 'b', label: 'Two', children: h('p', { id: 'b-body' }, 'B') })
+    const frag = h(Fragment, { children: [viaProps] })
+    const c = render(
+      h(Tabs, { value: 'b', onChange: () => {}, class: 'extra' }, () => [
+        h(Tab, { value: 'a', label: 'One' }, 'A'),
+        frag,
+      ]),
+    )
+    expect(tabsOf(c).map((t) => t.textContent)).toEqual(['One', 'Two'])
+    expect(c.querySelector('#b-body')?.textContent).toBe('B')
+    expect(c.querySelector('.pyreon-tabs')?.className).toBe('pyreon-tabs extra')
+  })
+
   it('a bare <Tab> outside <Tabs> renders its children', () => {
     const c = render(h(Tab, { value: 'a', label: 'A' }, h('b', null, 'body')))
     expect(c.innerHTML).toBe('<b>body</b>')

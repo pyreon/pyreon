@@ -562,10 +562,10 @@ Modal/sheet. Web → native `<dialog>` opened with `showModal()` (focus trap, ba
 ### `Tabs` `component`
 
 ```ts
-(props: { value: string | (() => string); onChange: (next: string) => void; children: <Tab> elements }) => VNode
+(props: { value: string | (() => string); onChange: (next: string) => void; children: <Tab> elements } | { router: TabsRouter; children: <Tab> elements }) => VNode
 ```
 
-Top-level tab navigation; children are literal `<Tab value label icon?>` entries whose children are the tab content. Web: the WAI-ARIA tabs pattern (tablist / tab / tabpanel, roving tabindex, arrow keys + Home/End) as a bottom bar below 600px of viewport width and a side rail at 600px+. iOS: `TabView(selection:)` (iOS 18+ `.sidebarAdaptable`, a sidebar on iPad). Android: Material `BottomNavigation` below 600dp of window width, `NavigationRail` at 600dp+ (the `useSizeClass()` breakpoint). A visited tab stays MOUNTED while hidden on every target, so its local state, typed text and scroll position survive switching away and back. Router-agnostic: the selection is your signal; a string-literal-union signal lowers to the native enum.
+Top-level tab navigation; children are literal `<Tab value label icon?>` entries whose children are the tab content. Web: the WAI-ARIA tabs pattern (tablist / tab / tabpanel, roving tabindex, arrow keys + Home/End) as a bottom bar below 600px of viewport width and a side rail at 600px+. iOS: `TabView(selection:)` (iOS 18+ `.sidebarAdaptable`, a sidebar on iPad). Android: Material `BottomNavigation` below 600dp of window width, `NavigationRail` at 600dp+ (the `useSizeClass()` breakpoint). A visited tab stays MOUNTED while hidden on every target, so its local state, typed text and scroll position survive switching away and back. Router-agnostic: the selection is your signal; a string-literal-union signal lowers to the native enum. OR router-bound: `<Tabs router={router}>` with a `createRouter({ tabs })` router gives every tab its own back stack — the selection is `router.activeTab()`, a tap goes through `router.selectTab` (re-tapping the active tab pops it to its root), and a `<RouterView />` in each `<Tab>` shows THAT tab's stack. iOS: one `NavigationStack` per tab inside the `TabView` (a push stays inside its tab, the bar stays visible); Android: per-tab stacks, the system Back pops the active tab first.
 
 **Example**
 
@@ -582,7 +582,9 @@ const tab = signal('feed')
 - Generating the `<Tab>`s with `<For>` or a helper — native targets build the tab bar at compile time, so each `<Tab>` must be written out (anything else is dropped with a warning)
 - A computed `<Tab value>` / `label` icon — `value` and `icon` must be string literals (the `value` is the native `case` / `when` branch)
 - Expecting `data-testid` on a `<Tab>` to identify the iOS tab bar button — SwiftUI gives tab bar items no identifier; query them by label (it lands on the web button and the Android bar item)
-- Placing `<Tabs>` inside a pushed route and expecting the tab bar to stay visible on iOS when a later route is pushed — the router has ONE stack, so a push covers the TabView
+- Using a SIGNAL-bound `<Tabs>` around routed screens and expecting each tab to keep its own route stack — the router has ONE stack, so on iOS/Android a push from inside a tab covers the TabView. Configure `createRouter({ tabs })` and bind `<Tabs router={router}>` instead
+- A `<Tabs router>` `<Tab value>` that names no tab of `createRouter({ tabs })` — it has no stack, so native drops it with a warning
+- Passing both `router` and `value`/`onChange` — `router` wins; the selection is the router's active tab
 
 **See also:** `Split` · `Link`
 

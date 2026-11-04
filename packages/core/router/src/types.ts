@@ -1,4 +1,4 @@
-import type { ComponentFn } from '@pyreon/core'
+import type { ComponentFn, VNodeChild } from '@pyreon/core'
 import type { LinkConfig } from './typed-routes'
 
 export type { ComponentFn }
@@ -454,6 +454,45 @@ export interface RouterOptions {
    * new-tab, and `rel`). See {@link LinkConfig}.
    */
   links?: LinkConfig
+  /**
+   * Per-tab back stacks for a tab-bar app. Each tab owns its own stack of
+   * entries, rooted at `root`; the router keeps one ACTIVE tab, and
+   * `push` / `replace` / `useNavigate()` act on the active tab's stack.
+   * Bind a `<Tabs router={router}>` (from `@pyreon/primitives`) to it and
+   * put a `<RouterView />` in each `<Tab>`:
+   *
+   * - a path under ANOTHER tab's root selects that tab and pushes onto it
+   *   (the longest matching root wins, so a `'/'` root is the fallback);
+   * - a path that is exactly a tab's root selects it and pops it to the root;
+   * - a path under no root pushes onto the active tab;
+   * - `selectTab(name)` switches tabs and keeps every stack; selecting the
+   *   tab that is already active pops it to its root (iOS / Android convention).
+   *
+   * On the web the URL is the active tab's top entry. Every router-written
+   * history entry is stamped with its tab and that tab's stack, so
+   * Back/Forward restore the tab and its stack through the full navigation
+   * pipeline. On iOS each tab is a `NavigationStack` inside the `TabView`; on
+   * Android each tab keeps its own stack and the system Back pops the active
+   * tab first.
+   *
+   * @example
+   * createRouter({
+   *   routes,
+   *   tabs: [
+   *     { name: 'feed', root: '/feed' },
+   *     { name: 'me', root: '/me' },
+   *   ],
+   * })
+   */
+  tabs?: RouterTab[]
+}
+
+/** One tab of a tab-bar router — see {@link RouterOptions.tabs}. */
+export interface RouterTab {
+  /** Identifies the tab: the `value` of its `<Tab>`, and `selectTab(name)`'s argument. */
+  name: string
+  /** The path the tab's stack is rooted at (a literal path, e.g. `'/feed'`). */
+  root: string
 }
 
 // ─── Router interface ─────────────────────────────────────────────────────────
@@ -578,6 +617,29 @@ export interface Router<TNames extends string = string> {
    * await router.revalidate() // list loader re-runs, view updates in place
    */
   revalidate(): Promise<void>
+  /**
+   * The active tab's name (reactive), or `undefined` when the router has no
+   * `tabs`. See {@link RouterOptions.tabs}.
+   */
+  readonly activeTab: () => string | undefined
+  /**
+   * Select a tab. Switching keeps every tab's stack and shows the selected
+   * tab's top entry; selecting the tab that is ALREADY active pops it to its
+   * root. Runs the full navigation pipeline (guards, loaders, history). Resolves
+   * `'cancelled'` for an unknown tab name or a router without `tabs`.
+   */
+  selectTab(name: string): Promise<NavigationResult>
+  /**
+   * A tab's stack, root first (reactive). Empty for an unknown tab name.
+   */
+  tabStack(name: string): readonly string[]
+  /**
+   * Render `render()` as tab `name`'s content: a `<RouterView />` inside it
+   * shows THAT tab's top entry, and `useRoute()` / `useParams()` read that
+   * tab's route — so a hidden tab keeps its own page. `<Tabs router>` from
+   * `@pyreon/primitives` calls this for each panel; app code rarely needs it.
+   */
+  withTab(name: string, render: () => VNodeChild): VNodeChild
   /** Remove all event listeners, clear caches, and abort in-flight navigations. */
   destroy(): void
 }
@@ -684,4 +746,9 @@ export interface RouterInstance extends Router {
    * Present only when the router is created in a dev browser context.
    */
   _hmrSwap?: (id: string, mod: unknown) => boolean
+  /**
+   * The resolved top entry of tab `name` (reactive). Only meaningful when the
+   * router has `tabs`; read by a tab-scoped `RouterView` / `useRoute()`.
+   */
+  _tabRoute(name: string): ResolvedRoute
 }

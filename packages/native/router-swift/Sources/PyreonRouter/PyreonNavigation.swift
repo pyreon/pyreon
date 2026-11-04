@@ -99,6 +99,66 @@ public struct PyreonTabs<Value: Hashable, Content: View>: View {
     }
 }
 
+/// `<Tabs router={router}>` → `PyreonTabs` whose selection IS the router's
+/// active tab. A write of the selection goes through `selectTab`, so tapping
+/// the tab that is already selected pops that tab's stack to its root (the
+/// tab-bar convention; `TabView` delivers the re-tap as a write of the same
+/// value). Each tab's content is a `PyreonTabStack`.
+@available(iOS 17.0, macOS 14.0, *)
+public struct PyreonRouterTabs<Content: View>: View {
+    private let router: PyreonRouter
+    private let items: [PyreonTabItem<String>]
+    private let content: (String) -> Content
+
+    public init(
+        router: PyreonRouter,
+        items: [PyreonTabItem<String>],
+        @ViewBuilder content: @escaping (String) -> Content
+    ) {
+        self.router = router
+        self.items = items
+        self.content = content
+    }
+
+    public var body: some View {
+        PyreonTabs(
+            selection: Binding(
+                get: { router.activeTab ?? items.first?.value ?? "" },
+                set: { router.selectTab($0) }
+            ),
+            items: items,
+            content: content
+        )
+    }
+}
+
+/// One tab of a tab-bar router: its own `NavigationStack`, bound to that tab's
+/// entries, so a push from inside the tab stays inside it (the tab bar stays
+/// visible) and every other tab keeps its stack. `content` is the tab's root
+/// view, carrying the route `navigationDestination`.
+@available(iOS 17.0, macOS 14.0, *)
+public struct PyreonTabStack<Content: View>: View {
+    private let router: PyreonRouter
+    private let tab: String
+    private let content: () -> Content
+
+    public init(router: PyreonRouter, tab: String, @ViewBuilder content: @escaping () -> Content) {
+        self.router = router
+        self.tab = tab
+        self.content = content
+    }
+
+    public var body: some View {
+        NavigationStack(path: router.tabPathBinding(tab)) {
+            content()
+        }
+        // On the STACK, not the content: pushed destinations are hosted by the
+        // stack, so an environment set on `content()` never reaches them (see
+        // RouterProvider).
+        .environment(\.pyreonRouter, router)
+    }
+}
+
 /// `<Split>` → `NavigationSplitView` in a regular-width window (two plain
 /// panes when it is already inside the router's stack); in a compact
 /// one, the sidebar with the detail pushed onto a navigation stack while

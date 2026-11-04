@@ -35,6 +35,12 @@ import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateOf
 
 /**
+ * One tab of a tab-bar router — `createRouter({ tabs: [{ name, root }] })`.
+ * [name] is the `<Tab value>`; [root] is the path the tab's stack starts at.
+ */
+public data class PyreonRouterTab(val name: String, val root: String)
+
+/**
  * A single route definition — Phase A4 of the 2026-06 native readiness
  * audit (closes CRIT-2 partial + CRIT-3 partial). Apps populate
  * [PyreonRouter.routes] with a list of these; the router's `push`/`replace`
@@ -133,12 +139,108 @@ public class PyreonRouter(
     initialPath: List<String> = PyreonDeepLink.takePendingPath(),
     routes: List<RouteRecord> = emptyList(),
     notFoundComponent: (@Composable () -> Unit)? = null,
+    tabs: List<PyreonRouterTab> = emptyList(),
 ) {
+    /** The tabs from `createRouter({ tabs })`, in bar order. Empty for a
+     *  single-stack router. */
+    public val tabs: List<PyreonRouterTab> = tabs
+
+    /** The tab a tab-bar router opens on: the one whose root prefixes the
+     *  inbound path (a deep link), else the first. */
+    private val initialTab: PyreonRouterTab? =
+        tabs.firstOrNull()?.let { first -> initialPath.lastOrNull()?.let { tabFor(it, tabs) } ?: first }
+
     /**
      * Reactive path stack. Drives the host's NavHost / when-on-path
      * branching. Compose observers recompose when this changes.
+     *
+     * With [tabs] this is the ACTIVE tab's pushed entries (its root is the
+     * stack's root view, not an entry); a deep link is PUSHED onto its tab's
+     * root, so Back returns to the tab's root page.
      */
-    public val path: MutableState<List<String>> = mutableStateOf(initialPath)
+    public val path: MutableState<List<String>> = mutableStateOf(
+        if (initialTab == null) {
+            initialPath
+        } else {
+            initialPath.lastOrNull()?.takeIf { !isTabRoot(initialTab, it) }?.let { listOf(it) } ?: emptyList()
+        },
+    )
+
+    /** The active tab's name; `null` for a single-stack router. */
+    public val activeTab: MutableState<String?> = mutableStateOf(initialTab?.name)
+
+    /** The pushed entries of every tab EXCEPT the active one (whose entries
+     *  are [path]). */
+    public val tabPaths: MutableState<Map<String, List<String>>> = mutableStateOf(emptyMap())
+
+    /** The active tab's root path, when the router has tabs. */
+    public val activeTabRoot: String?
+        get() = tabs.firstOrNull { it.name == activeTab.value }?.root
+
+    /** One tab's pushed entries (root excluded) — [path] for the active tab. */
+    public fun tabPath(name: String): List<String> =
+        if (name == activeTab.value) path.value else tabPaths.value[name] ?: emptyList()
+
+    /** The path a tab is showing: its top entry, or its root. */
+    public fun tabTop(name: String): String =
+        tabPath(name).lastOrNull() ?: tabs.firstOrNull { it.name == name }?.root ?: "/"
+
+    /**
+     * Select a tab. Switching keeps every tab's stack and shows the selected
+     * tab's top entry; selecting the tab that is ALREADY active pops it to its
+     * root — the iOS and Android tab-bar convention. Gated by the same guards
+     * as [push]. No-op for an unknown name.
+     */
+    public fun selectTab(name: String) {
+        val tab = tabs.firstOrNull { it.name == name } ?: return
+        if (name == activeTab.value) {
+            if (path.value.isEmpty()) return
+            if (!allowNavigation(tab.root)) return
+            path.value = emptyList()
+            _forwardStack.clear()
+            updateParamsFromPath(tab.root)
+            runAfterEach(tab.root)
+            return
+        }
+        val destination = tabPaths.value[name]?.lastOrNull() ?: tab.root
+        if (!allowNavigation(destination)) return
+        activateTab(name)
+        _forwardStack.clear()
+        updateParamsFromPath(destination)
+        runAfterEach(destination)
+    }
+
+    /** Make [name] the active tab, parking the current tab's entries and
+     *  loading [name]'s. Ungated — callers run the guards first. */
+    private fun activateTab(name: String) {
+        val current = activeTab.value
+        if (name == current) return
+        val parked = tabPaths.value.toMutableMap()
+        if (current != null) parked[current] = path.value
+        path.value = parked.remove(name) ?: emptyList()
+        tabPaths.value = parked
+        activeTab.value = name
+    }
+
+    /** A navigation that changes tabs: a path under ANOTHER tab's root selects
+     *  that tab and pushes onto it; a path that IS a tab's root selects it and
+     *  pops it to the root. Returns false for an ordinary push onto the active
+     *  tab. The caller has already run the guards. */
+    private fun commitAcrossTabs(candidate: String): Boolean {
+        if (tabs.isEmpty()) return false
+        val target = tabFor(candidate, tabs) ?: return false
+        val isRoot = isTabRoot(target, candidate)
+        if (target.name == activeTab.value && !isRoot) return false
+        activateTab(target.name)
+        path.value = if (isRoot) emptyList() else path.value + candidate
+        updateParamsFromPath(candidate)
+        return true
+    }
+
+    private fun runAfterEach(committed: String) {
+        for (hook in afterEachHooks) hook(committed)
+        for ((_, fn) in _disposableAfterEachHooks) fn(committed)
+    }
 
     init {
         // WARM deep links — a URL handed to an app that is already running.
@@ -223,7 +325,7 @@ public class PyreonRouter(
 
     /** Top-of-stack path. Mirrors `router.currentRoute().path` on the web side. */
     public val currentPath: String
-        get() = path.value.lastOrNull() ?: "/"
+        get() = path.value.lastOrNull() ?: activeTabRoot ?: "/"
 
     init {
         // Resolve any params that the initial top-of-stack path produces,
@@ -528,6 +630,11 @@ public class PyreonRouter(
             return
         }
         if (!allowNavigation(path)) return
+        if (commitAcrossTabs(path)) {
+            _forwardStack.clear()
+            runAfterEach(path)
+            return
+        }
         this.path.value = this.path.value + path
         // Phase A4: resolve the matched route + extract params atomically
         // with the path mutation, so observers see a consistent snapshot
@@ -562,6 +669,11 @@ public class PyreonRouter(
             return
         }
         if (!allowNavigation(path)) return
+        if (commitAcrossTabs(path)) {
+            _forwardStack.clear()
+            runAfterEach(path)
+            return
+        }
         val current = this.path.value
         this.path.value = if (current.isEmpty()) {
             listOf(path)
@@ -658,6 +770,27 @@ public class PyreonRouter(
     }
 
     public companion object {
+        /** The tab whose root is the longest segment-prefix of [candidate]. */
+        public fun tabFor(candidate: String, tabs: List<PyreonRouterTab>): PyreonRouterTab? {
+            val segs = splitPathAndQuery(candidate).first.split('/').filter { it.isNotEmpty() }
+            var best: PyreonRouterTab? = null
+            var bestLen = -1
+            for (tab in tabs) {
+                val rootSegs = tab.root.split('/').filter { it.isNotEmpty() }
+                if (rootSegs.size > segs.size || rootSegs.size <= bestLen) continue
+                if (segs.subList(0, rootSegs.size) == rootSegs) {
+                    best = tab
+                    bestLen = rootSegs.size
+                }
+            }
+            return best
+        }
+
+        /** Whether [candidate] (query ignored) IS [tab]'s root. */
+        public fun isTabRoot(tab: PyreonRouterTab, candidate: String): Boolean =
+            splitPathAndQuery(candidate).first.split('/').filter { it.isNotEmpty() } ==
+                tab.root.split('/').filter { it.isNotEmpty() }
+
         /** Round-1 audit fix: LRU bound for `loaderData`. 50 mirrors the
          *  web router's prefetch-cache cap — empirically large enough
          *  for normal app navigation patterns (tab-bar apps, deep flows)

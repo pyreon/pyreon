@@ -80,6 +80,10 @@ fun <T> PyreonTabs(
     onSelect: (T) -> Unit,
     items: List<PyreonTabItem<T>>,
     modifier: Modifier = Modifier,
+    // A tap on the ALREADY-selected tab. A router-bound `<Tabs router>` pops
+    // that tab's stack to its root here (the tab-bar convention); `null` keeps
+    // the re-tap a no-op, as `onSelect` only ever reports a change.
+    onReselect: ((T) -> Unit)? = null,
     content: @Composable (T) -> Unit,
 ) {
     val wide = LocalConfiguration.current.screenWidthDp >= PYREON_WIDE_DP
@@ -96,7 +100,7 @@ fun <T> PyreonTabs(
                 items.forEach { item ->
                     NavigationRailItem(
                         selected = item.value == selected,
-                        onClick = { if (item.value != selected) onSelect(item.value) },
+                        onClick = { if (item.value != selected) onSelect(item.value) else onReselect?.invoke(item.value) },
                         icon = { PyreonTabIcon(item) },
                         label = { Text(item.label) },
                         modifier = if (item.testTag != null) Modifier.testTag(item.testTag) else Modifier,
@@ -128,7 +132,7 @@ fun <T> PyreonTabs(
                     items.forEach { item ->
                         BottomNavigationItem(
                             selected = item.value == selected,
-                            onClick = { if (item.value != selected) onSelect(item.value) },
+                            onClick = { if (item.value != selected) onSelect(item.value) else onReselect?.invoke(item.value) },
                             icon = { PyreonTabIcon(item) },
                             label = { Text(item.label) },
                             modifier = if (item.testTag != null) Modifier.testTag(item.testTag) else Modifier,

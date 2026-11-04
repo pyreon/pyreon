@@ -71,7 +71,8 @@ import {
   resolveRadius,
   resolveSpace,
 } from './canonical-primitives'
-import { planSplitSidebar, planTabs } from './navigation-lowering'
+import { missingTabRootWarning, planRouterTabs, planSplitSidebar, planTabs, tabRootRoute } from './navigation-lowering'
+import type { RouterTabIR } from './navigation-lowering'
 import { intrinsicElementWarning, isIntrinsicElementTag } from './intrinsic-element-warning'
 import {
   buildComponentConstMap,
@@ -660,6 +661,21 @@ let _usesSizeClass = false
  * additive, back-compat.
  */
 let _routerRoutes: Map<string, import('./types').RouteIR[]> = new Map()
+/** #4060: router-decl name → its `tabs` (per-tab back stacks), when any. */
+let _routerTabs: Map<string, RouterTabIR[]> = new Map()
+/**
+ * #4060: set while emitting the content of a `<RouterProvider>` whose router
+ * has `tabs`. `<Tabs router>` lowers to `PyreonRouterTabs` and records the tab
+ * being emitted in `tab`, so a `<RouterView />` inside a `<Tab>` becomes THAT
+ * tab's `PyreonTabStack`.
+ */
+let _activeRouterTabsSwift: {
+  routerName: string
+  routerExpr: string
+  routes: import('./types').RouteIR[]
+  tabs: RouterTabIR[]
+  tab: RouterTabIR | null
+} | null = null
 /**
  * R1.1 — when emitting the content of a `<RouterProvider router={r}>` whose
  * router-decl carries routes, the inner `<RouterView />` becomes the
@@ -1621,6 +1637,7 @@ function emitSwiftComponent(c: ComponentIR): string {
   // C5.2: reset router-routes map. Populated during decl-pass for
   // each `kind: 'router'` decl with a non-undefined routes array.
   _routerRoutes = new Map()
+  _routerTabs = new Map()
   // Phase 2 follow-up: also track props whose type is a function
   // (`onToggle: () -> Void`). Inside the component body, references
   // to these props are CALL SITES that need explicit `()` —
@@ -1664,6 +1681,7 @@ function emitSwiftComponent(c: ComponentIR): string {
     if (d.kind === 'router') {
       _signalNames.add(d.name)
       if (d.routes !== undefined) _routerRoutes.set(d.name, d.routes)
+      if (d.tabs !== undefined) _routerTabs.set(d.name, d.tabs)
     }
     // C4: router-hook decls (`const navigate = useNavigate()`). The
     // resulting binding IS a function value (returns `(String) -> Void`
@@ -2131,6 +2149,7 @@ function emitSwiftComponent(c: ComponentIR): string {
   _functionNames = new Set()
   _usesRouter = false
   _routerRoutes = new Map()
+  _routerTabs = new Map()
   if (_hostStateDecls.length > 0) {
     lines.splice(pyreonHostStateAt, 0, ..._hostStateDecls.map((l) => `  ${l}`))
     _hostStateDecls = []
@@ -2540,10 +2559,15 @@ function emitSwiftDecl(
     const hasGuards =
       (d.beforeEach !== undefined && d.beforeEach.length > 0) ||
       (d.afterEach !== undefined && d.afterEach.length > 0)
+    // #4060: a tab-bar router is constructed with its tabs (one stack each).
+    const ctor =
+      d.tabs === undefined
+        ? 'PyreonRouter()'
+        : `PyreonRouter(tabs: [${d.tabs.map((t) => `PyreonRouterTab(name: ${swiftStr(t.name)}, root: ${swiftStr(t.root)})`).join(', ')}])`
     if (!hasGuards) {
-      return `@State private var ${swiftIdent(d.name)} = PyreonRouter()`
+      return `@State private var ${swiftIdent(d.name)} = ${ctor}`
     }
-    const lines: string[] = ['{', '    let r = PyreonRouter()']
+    const lines: string[] = ['{', `    let r = ${ctor}`]
     for (const fn of d.beforeEach ?? []) {
       lines.push(`    r.beforeEachGuards.append(${swiftIdent(fn)})`)
     }
@@ -9370,6 +9394,10 @@ function emitSwiftNavPane(children: readonly ChildIR[], indent: number): string 
  * becomes a custom `Binding`.
  */
 function emitSwiftTabs(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
+  const routerBound = e.attrs.find(
+    (a): a is Extract<AttrIR, { kind: 'attr' }> => a.kind === 'attr' && a.name === 'router',
+  )
+  if (routerBound !== undefined) return emitSwiftRouterTabs(e, routerBound, indent)
   const valueAttr = e.attrs.find(
     (a): a is Extract<AttrIR, { kind: 'attr' }> => a.kind === 'attr' && a.name === 'value',
   )
@@ -9414,6 +9442,91 @@ function emitSwiftTabs(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
     `${itemPad}switch pyreonTab {\n${cases}\n${itemPad}default:\n${itemPad}  EmptyView()\n${itemPad}}\n` +
     `${p}}${emitSwiftLayoutModifiers(e)}`
   )
+}
+
+/**
+ * #4060 — `<Tabs router={r}>` bound to a tab-bar router (`createRouter({ tabs })`)
+ * → `PyreonRouterTabs(router:items:)`: the selection IS the router's active
+ * tab, a tap goes through `selectTab` (a re-tap pops that tab to its root), and
+ * each `<Tab>`'s `<RouterView />` becomes the tab's own `PyreonTabStack`.
+ */
+function emitSwiftRouterTabs(
+  e: Extract<ExprIR, { kind: 'jsx-element' }>,
+  routerAttr: Extract<AttrIR, { kind: 'attr' }>,
+  indent: number,
+): string {
+  const ctx = _activeRouterTabsSwift
+  if (
+    ctx === null ||
+    routerAttr.value.kind !== 'identifier' ||
+    routerAttr.value.name !== ctx.routerName ||
+    ctx.tab !== null
+  ) {
+    pushEmitWarning(
+      '<Tabs router={…}>: the router must be the `createRouter({ routes, tabs })` router of the enclosing <RouterProvider>, named directly (and <Tabs> may not sit inside one of its own tabs) — otherwise there are no per-tab stacks to bind, so it renders as an empty view on iOS.',
+    )
+    return `EmptyView()${emitSwiftLayoutModifiers(e)}`
+  }
+  const { tabs, warnings } = planRouterTabs(e, ctx.tabs)
+  for (const w of warnings) pushEmitWarning(w)
+  if (tabs.length === 0) return `EmptyView()${emitSwiftLayoutModifiers(e)}`
+  const p = ' '.repeat(indent)
+  const itemPad = ' '.repeat(indent + 2)
+  const items = tabs
+    .map((t) => {
+      const label = t.label.kind === 'literal' ? swiftStr(t.label.text) : emitSwiftExpr(t.label.expr, indent + 2)
+      const image = t.icon === undefined ? '' : `, systemImage: ${swiftStr(t.icon.sf)}`
+      return `${itemPad}PyreonTabItem(value: ${swiftStr(t.value)}, label: ${label}${image}),`
+    })
+    .join('\n')
+  const cases = tabs
+    .map((t) => {
+      ctx.tab = ctx.tabs.find((x) => x.name === t.value) ?? null
+      try {
+        return `${itemPad}case ${swiftStr(t.value)}:\n${emitSwiftNavPane(t.children, indent + 4)}`
+      } finally {
+        ctx.tab = null
+      }
+    })
+    .join('\n')
+  return (
+    `PyreonRouterTabs(router: ${ctx.routerExpr}, items: [\n${items}\n${p}]) { pyreonTab in\n` +
+    `${itemPad}switch pyreonTab {\n${cases}\n${itemPad}default:\n${itemPad}  EmptyView()\n${itemPad}}\n` +
+    `${p}}${emitSwiftLayoutModifiers(e)}`
+  )
+}
+
+/**
+ * #4060 — one tab's navigation stack: `PyreonTabStack(router:tab:) { root }`
+ * where `root` is the route at the tab's root path, carrying the router's
+ * whole `navigationDestination` dispatch for whatever the tab pushes.
+ */
+function emitSwiftTabStack(
+  ctx: NonNullable<typeof _activeRouterTabsSwift>,
+  indent: number,
+): string {
+  const tab = ctx.tab
+  if (tab === null) {
+    pushEmitWarning(
+      '<RouterView /> inside a tab-bar router (createRouter({ tabs })) must sit inside a <Tab> of its <Tabs router> — each tab owns one stack. This one renders nothing on iOS.',
+    )
+    return 'EmptyView()'
+  }
+  const pad = ' '.repeat(indent + 2)
+  const rootRoute = tabRootRoute(ctx.routes, tab.root)
+  const target = rootRoute === undefined ? undefined : resolveRouteTarget(rootRoute, ctx.routes)
+  let rootView: string
+  if (target === undefined || target.component === undefined || target.path.includes(':')) {
+    pushEmitWarning(missingTabRootWarning(tab))
+    rootView = `Text(verbatim: ${swiftStr(`Pyreon Router: no route for ${tab.root}`)})`
+  } else {
+    rootView = emitSwiftLayoutAwareInvocation(target.component, indent + 2)
+    if (target.loader !== undefined) {
+      const loadBody = emitSwiftExpr(target.loader, indent + 2)
+      rootView = `PyreonRouteLoader(path: ${swiftStr(target.path)}, load: { ${loadBody} }) { ${rootView} }`
+    }
+  }
+  return `PyreonTabStack(router: ${ctx.routerExpr}, tab: ${swiftStr(tab.name)}) {\n${pad}${rootView}${emitSwiftNavigationDestination(ctx.routes, indent + 4)}\n${' '.repeat(indent)}}`
 }
 
 /**
@@ -10070,6 +10183,30 @@ function emitSwiftRouterProvider(
     }
   }
 
+  // #4060 — a TAB-BAR router: the runtime `RouterProvider` adds no stack of
+  // its own (one per tab instead), and the content emits AS WRITTEN — a
+  // `<Tabs router>` inside lowers to `PyreonRouterTabs`, each `<RouterView />`
+  // in a `<Tab>` to that tab's `PyreonTabStack`.
+  const tabsCfg =
+    routerAttr.value.kind === 'identifier' ? _routerTabs.get(routerAttr.value.name) : undefined
+  if (tabsCfg !== undefined && routes !== undefined && routes.length > 0) {
+    const prevTabs = _activeRouterTabsSwift
+    _activeRouterTabsSwift = {
+      routerName: (routerAttr.value as Extract<ExprIR, { kind: 'identifier' }>).name,
+      routerExpr,
+      routes,
+      tabs: tabsCfg,
+      tab: null,
+    }
+    try {
+      if (e.children.length === 0) return `RouterProvider(router: ${routerExpr}) { }`
+      const contentLines = e.children.map((c) => pad + emitSwiftChild(c, indent + 2)).join('\n')
+      return `RouterProvider(router: ${routerExpr}) {\n${contentLines}\n${' '.repeat(indent)}}`
+    } finally {
+      _activeRouterTabsSwift = prevTabs
+    }
+  }
+
   // R1.1 — when routes are present, pick the HOME route (literal `/` if
   // present, else first non-pattern route, else first route as last
   // resort). The inner `<RouterView />` will emit as that component's
@@ -10514,6 +10651,9 @@ function emitSwiftRouterView(
   if (_emittingLayoutComponentSwift) {
     return `content()`
   }
+  // #4060 — inside a tab-bar router: a `<RouterView />` in a `<Tab>` is that
+  // tab's own navigation stack, opening on the route at the tab's root.
+  if (_activeRouterTabsSwift !== null) return emitSwiftTabStack(_activeRouterTabsSwift, _indent)
   // The routed slot of a RouterProvider whose RouterView has siblings: the
   // navigation stack itself, emitted here so the siblings stay outside it.
   if (_activeRouterSlotSwift !== null) {

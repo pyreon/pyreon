@@ -13,7 +13,7 @@
  */
 
 import { ICON_MAP } from './canonical-primitives'
-import type { AttrIR, ChildIR, ExprIR } from './types'
+import type { AttrIR, ChildIR, ExprIR, RouteIR } from './types'
 
 type JsxElement = Extract<ExprIR, { kind: 'jsx-element' }>
 
@@ -131,4 +131,51 @@ export function planSplitSidebar(e: JsxElement): SidebarPlan {
     warning:
       '<Split sidebar={…}>: only a JSX literal (`sidebar={<List/>}`) or an accessor returning one lowers to native — this sidebar is DROPPED and the list pane renders EMPTY on iOS/Android. Inline the JSX.',
   }
+}
+
+/** A `createRouter({ tabs })` entry, as the parser records it. */
+export interface RouterTabIR {
+  readonly name: string
+  readonly root: string
+}
+
+/**
+ * The `<Tab>` entries of a ROUTER-BOUND `<Tabs router={r}>` (#4060): the
+ * ordinary plan, minus every tab that does not name one of the router's
+ * `tabs` — that tab has no stack, so it is NAMED and dropped on native rather
+ * than given a stack nobody can push to.
+ */
+export function planRouterTabs(
+  e: JsxElement,
+  routerTabs: readonly RouterTabIR[],
+): { tabs: TabPlan[]; warnings: string[] } {
+  const { tabs, warnings } = planTabs(e)
+  const known = new Set(routerTabs.map((t) => t.name))
+  const kept: TabPlan[] = []
+  for (const t of tabs) {
+    if (known.has(t.value)) {
+      kept.push(t)
+      continue
+    }
+    warnings.push(
+      `<Tabs router>: <Tab value=${JSON.stringify(t.value)}> names no tab of the router (configured: ${[...known]
+        .map((n) => JSON.stringify(n))
+        .join(', ')}) — it has no back stack, so it is DROPPED on iOS/Android. Add it to createRouter({ tabs }).`,
+    )
+  }
+  return { tabs: kept, warnings }
+}
+
+/**
+ * The route a tab's stack opens on: the TOP-LEVEL route whose literal path is
+ * the tab's root. Undefined when there is none — the caller names it.
+ */
+export function tabRootRoute(routes: readonly RouteIR[], root: string): RouteIR | undefined {
+  const norm = (p: string): string => p.split('/').filter(Boolean).join('/')
+  return routes.find((r) => !r.path.includes(':') && norm(r.path) === norm(root))
+}
+
+/** The warning for a tab whose root matches no route. */
+export function missingTabRootWarning(tab: RouterTabIR): string {
+  return `<Tabs router>: tab ${JSON.stringify(tab.name)} has root ${JSON.stringify(tab.root)}, which matches no top-level literal route — its stack opens on a "no route" placeholder on iOS/Android. Add a { path: ${JSON.stringify(tab.root)}, component } route.`
 }

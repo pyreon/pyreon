@@ -205,6 +205,14 @@ export type DeclIR =
        */
       beforeEach?: string[]
       afterEach?: string[]
+      /**
+       * `createRouter({ tabs: [{ name, root }] })` — per-tab back stacks
+       * (#4060). Literal names and roots only; the router runtime is
+       * constructed with them (`PyreonRouter(tabs:)`), and a
+       * `<Tabs router={…}>` bound to this router lowers to one native stack
+       * per tab. Undefined for a single-stack router.
+       */
+      tabs?: { name: string; root: string }[]
     }
   /**
    * A component-body `onMount(() => { … })` call — the documented lifecycle

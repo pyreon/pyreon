@@ -838,6 +838,7 @@ fun <T> PyreonTabs(
   onSelect: (T) -> Unit,
   items: List<PyreonTabItem<T>>,
   modifier: Modifier = Modifier,
+  onReselect: ((T) -> Unit)? = null,
   content: @Composable (T) -> Unit,
 ) {
   content(selected)
@@ -1527,7 +1528,15 @@ fun <I, O> rememberLauncherForActivityResult(
 // joined this loop — the prior coverage (router-hooks.tsx) only
 // exercised the HOOK surface, so the instance-level symbols were
 // never stubbed.
-class PyreonRouter {
+data class PyreonRouterTab(val name: String, val root: String)
+
+// Tab-bar router (#4060): the constructor's tabs parameter and the tab
+// surface the emit reads, mirroring router-kotlin's PyreonRouter.
+class PyreonRouter(tabs: List<PyreonRouterTab> = emptyList()) {
+  val tabs: List<PyreonRouterTab> = tabs
+  val activeTab: MutableState<String?> = mutableStateOf(tabs.firstOrNull()?.name)
+  fun selectTab(name: String) {}
+  fun tabTop(name: String): String = "/"
   var currentPath: String = "/"
   fun push(path: String) { currentPath = path }
   // Global guards, mirroring the real PyreonRouter (see the Swift stub).
@@ -1547,6 +1556,12 @@ class PyreonRouter {
 
 @Composable
 fun RouterProvider(router: PyreonRouter, content: @Composable () -> Unit) {
+  content()
+}
+
+@Composable
+@Suppress("UNUSED_PARAMETER")
+fun PyreonTabStack(router: PyreonRouter, tab: String, content: @Composable () -> Unit) {
   content()
 }
 

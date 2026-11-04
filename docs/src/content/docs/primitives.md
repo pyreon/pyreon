@@ -837,7 +837,8 @@ export function ConfirmDelete() {
 
 App-structure primitives: a tab bar and a list/detail split. Both are
 router-agnostic, like `<Link>` — the selected tab and the visible pane are
-signals you own, so a tab can hold any screen.
+signals you own, so a tab can hold any screen. A `<Tabs>` can also be bound to
+a router with per-tab back stacks (`<Tabs router={router}>`, below).
 
 ### Tabs
 
@@ -846,8 +847,9 @@ tab's content.
 
 | Prop | Type |
 | --- | --- |
-| `value` | `string` (or a signal) (required) |
-| `onChange` | `(next: string) => void` (required) |
+| `value` | `string` (or a signal) — required unless `router` is passed |
+| `onChange` | `(next: string) => void` — required unless `router` is passed |
+| `router` | a router created with `createRouter({ tabs })` — selection follows the router (see below) |
 
 | `<Tab>` prop | Type |
 | --- | --- |
@@ -892,8 +894,30 @@ survive switching away and back — on every target.
 The native tab bar is built at compile time, so write each `<Tab>` out with a
 literal `value` (no `<For>`); anything else is dropped with a warning. A signal
 typed by a string-literal union (`signal<'feed' | 'me'>('feed')`) works too: it
-becomes a native enum. The router has one stack, so pushing a route from
-inside a tab covers the tab bar rather than pushing inside that tab.
+becomes a native enum.
+
+#### Tabs with their own back stacks
+
+With a signal-bound `<Tabs>`, a route pushed from inside a tab uses the
+router's single stack, so on iOS and Android it covers the tab bar. For a
+tab-bar app where every tab keeps its own stack, configure `tabs` on the router
+and pass it to `<Tabs router>`, with a `<RouterView />` in each `<Tab>`:
+
+```tsx
+<RouterProvider router={router}>
+  <Tabs router={router}>
+    <Tab value="feed" label="Feed" icon="home"><RouterView /></Tab>
+    <Tab value="me" label="Me" icon="person"><RouterView /></Tab>
+  </Tabs>
+</RouterProvider>
+```
+
+Each `<Tab value>` names one of the router's `tabs`. A push from inside a tab
+stays in that tab (the tab bar stays visible), switching tabs keeps every stack,
+and tapping the active tab pops it to its root. On iOS each tab is its own
+`NavigationStack` inside the `TabView`; on Android the system Back pops the
+active tab first. See [Tab stacks](/docs/router#tab-stacks) for how navigation
+and browser history map onto the stacks.
 
 ### Split
 

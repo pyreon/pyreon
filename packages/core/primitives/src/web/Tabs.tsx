@@ -108,17 +108,34 @@ export const Tabs = (props: TabsProps): VNode => {
   const tabId = (i: number): string => `${uid}-tab-${i}`
   const panelId = (i: number): string => `${uid}-panel-${i}`
 
+  // Router-bound tabs (`<Tabs router>`): the selection IS the router's active
+  // tab, and selecting goes through the router — including re-selecting the
+  // active tab, which pops that tab's stack to its root.
+  const router = props.router
+  if (process.env.NODE_ENV !== 'production' && router !== undefined && router.activeTab() === undefined) {
+    console.warn(
+      '[Pyreon] <Tabs router={router}>: this router has no `tabs` — configure them with createRouter({ routes, tabs: [{ name, root }] }).',
+    )
+  }
+
   // Deferred read — the compiler emits a signal-valued prop as a getter, and
   // reading it inside each binding is what keeps the selection live.
   const selected = (): string => {
+    if (router !== undefined) return String(router.activeTab() ?? '')
     const v = props.value
     return String(typeof v === 'function' ? (v as () => string)() : v)
   }
 
-  const select = (i: number): void => {
-    const entry = tabs[i]
-    if (entry === undefined || entry.value === selected()) return
-    props.onChange(entry.value)
+  const select = (i: number, reselect = false): void => {
+    // Callers pass only in-range indices (a rendered button, or a keyboard
+    // step taken modulo the tab count).
+    const entry = tabs[i]!
+    if (router !== undefined) {
+      if (entry.value !== selected() || reselect) router.selectTab(entry.value)
+      return
+    }
+    if (entry.value === selected()) return
+    props.onChange!(entry.value)
   }
 
   const onKeyDown = (e: KeyboardEvent): void => {
@@ -166,7 +183,9 @@ export const Tabs = (props: TabsProps): VNode => {
         'aria-selected': () => (isSelected() ? 'true' : 'false'),
         tabindex: () => (isSelected() ? 0 : -1),
         'data-testid': t.testId,
-        onClick: () => select(i),
+        // A click on the active tab re-selects it (router tabs pop to root);
+        // arrow-key activation never does.
+        onClick: () => select(i, true),
       },
       t.icon !== undefined ? h(Icon, { name: t.icon }) : null,
       h('span', null, typeof label === 'function' ? () => String(readProp(label)) : String(label)),
@@ -195,7 +214,8 @@ export const Tabs = (props: TabsProps): VNode => {
         'aria-labelledby': tabId(i),
         hidden: () => selected() !== t.value,
       },
-      () => (mounted() ? t.content : null),
+      () =>
+        mounted() ? (router !== undefined ? [router.withTab(t.value, () => t.content)] : t.content) : null,
     )
   })
 

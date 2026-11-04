@@ -70,7 +70,8 @@ import {
   resolveRadius,
   resolveSpace,
 } from './canonical-primitives'
-import { planSplitSidebar, planTabs } from './navigation-lowering'
+import { missingTabRootWarning, planRouterTabs, planSplitSidebar, planTabs, tabRootRoute } from './navigation-lowering'
+import type { RouterTabIR } from './navigation-lowering'
 import { intrinsicElementWarning, isIntrinsicElementTag } from './intrinsic-element-warning'
 import {
   buildComponentConstMap,
@@ -618,6 +619,20 @@ let _zeroArgHelperNames: Set<string> = new Set()
  * in source) — both fall back to the existing bare-content emit.
  */
 let _routerRoutes: Map<string, import('./types').RouteIR[]> = new Map()
+/** #4060: router-decl name → its `tabs` (per-tab back stacks). Mirrors emit-swift. */
+let _routerTabs: Map<string, RouterTabIR[]> = new Map()
+/**
+ * #4060: set while emitting the content of a `<RouterProvider>` whose router
+ * has `tabs`; `tab` is the `<Tab>` being emitted, so its `<RouterView />`
+ * becomes that tab's `PyreonTabStack` + route dispatch. Mirrors emit-swift.
+ */
+let _activeRouterTabsKotlin: {
+  routerName: string
+  routerExpr: string
+  routes: import('./types').RouteIR[]
+  tabs: RouterTabIR[]
+  tab: RouterTabIR | null
+} | null = null
 
 /**
  * Phase 3 (nested routes) — names of components used as LAYOUT parents. A
@@ -1222,6 +1237,7 @@ function emitKotlinComponent(c: ComponentIR): string {
   _needsAndroidContext = false
   // C5.3: reset router-routes map (mirrors Swift emit's same state).
   _routerRoutes = new Map()
+  _routerTabs = new Map()
   // Phase 2 follow-up — track function-typed props so handler emit
   // calls them inside closures. Mirrors emit-swift.ts.
   for (const p of c.props) {
@@ -1256,6 +1272,7 @@ function emitKotlinComponent(c: ComponentIR): string {
     if (d.kind === 'router') {
       _signalNames.add(d.name)
       if (d.routes !== undefined) _routerRoutes.set(d.name, d.routes)
+      if (d.tabs !== undefined) _routerTabs.set(d.name, d.tabs)
     }
     // C4: `const navigate = useNavigate()` returns a `(String) -> Unit`
     // closure — register under `_functionNames` so call sites
@@ -1461,6 +1478,7 @@ function emitKotlinComponent(c: ComponentIR): string {
   _serviceBindingsKotlin = new Map()
   _asyncDeclsKotlin = []
   _routerRoutes = new Map()
+  _routerTabs = new Map()
   const finished = _pluginScope.finalize(lines.join('\n'))
   _pluginScope = outerPluginScope
   return finished
@@ -1611,10 +1629,15 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
     const hasGuards =
       (d.beforeEach !== undefined && d.beforeEach.length > 0) ||
       (d.afterEach !== undefined && d.afterEach.length > 0)
+    // #4060: a tab-bar router is constructed with its tabs (one stack each).
+    const ctor =
+      d.tabs === undefined
+        ? 'PyreonRouter()'
+        : `PyreonRouter(tabs = listOf(${d.tabs.map((t) => `PyreonRouterTab(${kotlinStr(t.name)}, ${kotlinStr(t.root)})`).join(', ')}))`
     if (!hasGuards) {
-      return `val ${kotlinIdent(d.name)} = remember { PyreonRouter() }`
+      return `val ${kotlinIdent(d.name)} = remember { ${ctor} }`
     }
-    const inner: string[] = ['PyreonRouter().apply {']
+    const inner: string[] = [`${ctor}.apply {`]
     for (const fn of d.beforeEach ?? []) {
       inner.push(`    beforeEachGuards.add(::${kotlinIdent(fn)})`)
     }
@@ -7893,6 +7916,10 @@ function emitKotlinNavPane(children: readonly ChildIR[], indent: number): string
  * `onChange`.
  */
 function emitKotlinTabs(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
+  const routerBound = e.attrs.find(
+    (a): a is Extract<AttrIR, { kind: 'attr' }> => a.kind === 'attr' && a.name === 'router',
+  )
+  if (routerBound !== undefined) return emitKotlinRouterTabs(e, routerBound, indent)
   const valueAttr = e.attrs.find(
     (a): a is Extract<AttrIR, { kind: 'attr' }> => a.kind === 'attr' && a.name === 'value',
   )
@@ -7946,6 +7973,91 @@ function emitKotlinTabs(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: num
     `${a1}when (pyreonTab) {\n${branches}\n${a1}}\n` +
     `${p}}`
   )
+}
+
+/**
+ * #4060 — `<Tabs router={r}>` bound to a tab-bar router → `PyreonTabs` whose
+ * selection is the router's active tab; a tap and a RE-tap both go through
+ * `selectTab` (a re-tap pops the tab to its root). Mirror of
+ * `emitSwiftRouterTabs`.
+ */
+function emitKotlinRouterTabs(
+  e: Extract<ExprIR, { kind: 'jsx-element' }>,
+  routerAttr: Extract<AttrIR, { kind: 'attr' }>,
+  indent: number,
+): string {
+  const ctx = _activeRouterTabsKotlin
+  if (
+    ctx === null ||
+    routerAttr.value.kind !== 'identifier' ||
+    routerAttr.value.name !== ctx.routerName ||
+    ctx.tab !== null
+  ) {
+    pushKotlinNavWarning(
+      '<Tabs router={…}>: the router must be the `createRouter({ routes, tabs })` router of the enclosing <RouterProvider>, named directly (and <Tabs> may not sit inside one of its own tabs) — otherwise there are no per-tab stacks to bind, so nothing is rendered on Android.',
+    )
+    return '// <Tabs router> without a tab-bar router renders nothing on Android'
+  }
+  const { tabs, warnings } = planRouterTabs(e, ctx.tabs)
+  for (const w of warnings) pushKotlinNavWarning(w)
+  if (tabs.length === 0) return '// <Tabs> with no <Tab> entries renders nothing on Android'
+  const r = ctx.routerExpr
+  const p = ' '.repeat(indent)
+  const a1 = ' '.repeat(indent + 2)
+  const a2 = ' '.repeat(indent + 4)
+  const items = tabs
+    .map((t) => {
+      const args = [
+        `value = ${kotlinStr(t.value)}`,
+        `label = ${t.label.kind === 'literal' ? kotlinStr(t.label.text) : emitKotlinExpr(t.label.expr, indent + 4)}`,
+      ]
+      if (t.icon !== undefined) args.push(`icon = Icons.Filled.${t.icon.material}`)
+      if (t.testId !== undefined) args.push(`testTag = ${kotlinStr(t.testId)}`)
+      return `${a2}PyreonTabItem(${args.join(', ')}),`
+    })
+    .join('\n')
+  const modifier = emitKotlinLayoutModifier(e)
+  const branches = tabs
+    .map((t) => {
+      ctx.tab = ctx.tabs.find((x) => x.name === t.value) ?? null
+      try {
+        return `${a2}${kotlinStr(t.value)} -> {\n${emitKotlinNavPane(t.children, indent + 6)}\n${a2}}`
+      } finally {
+        ctx.tab = null
+      }
+    })
+    .join('\n')
+  return (
+    `PyreonTabs(\n` +
+    `${a1}selected = ${r}.activeTab.value ?: ${kotlinStr(tabs[0]!.value)},\n` +
+    `${a1}onSelect = { ${r}.selectTab(it) },\n` +
+    `${a1}items = listOf(\n${items}\n${a1}),\n` +
+    (modifier === '' ? '' : `${a1}modifier = ${modifier},\n`) +
+    `${a1}onReselect = { ${r}.selectTab(it) },\n` +
+    `${p}) { pyreonTab ->\n` +
+    `${a1}when (pyreonTab) {\n${branches}\n${a2}else -> {}\n${a1}}\n` +
+    `${p}}`
+  )
+}
+
+/**
+ * #4060 — one tab's stack: `PyreonTabStack(router, "feed") { <dispatch> }`,
+ * where the dispatch reads the TAB's top entry (`router.tabTop("feed")`), so a
+ * hidden tab keeps showing its own page. `PyreonTabStack` owns the system Back
+ * while its tab is active. Mirror of `emitSwiftTabStack`.
+ */
+function emitKotlinTabStack(ctx: NonNullable<typeof _activeRouterTabsKotlin>, indent: number): string {
+  const tab = ctx.tab
+  if (tab === null) {
+    pushKotlinNavWarning(
+      '<RouterView /> inside a tab-bar router (createRouter({ tabs })) must sit inside a <Tab> of its <Tabs router> — each tab owns one stack. This one renders nothing on Android.',
+    )
+    return '// <RouterView> outside a <Tab> of a tab-bar router renders nothing on Android'
+  }
+  const rootRoute = tabRootRoute(ctx.routes, tab.root)
+  if (rootRoute === undefined) pushKotlinNavWarning(missingTabRootWarning(tab))
+  const dispatch = emitKotlinRouteDispatch(ctx.routes, indent + 2, `${ctx.routerExpr}.tabTop(${kotlinStr(tab.name)})`)
+  return `PyreonTabStack(${ctx.routerExpr}, ${kotlinStr(tab.name)}) {\n${dispatch}\n${' '.repeat(indent)}}`
 }
 
 /**
@@ -8622,6 +8734,30 @@ function emitKotlinRouterProvider(
     }
   }
 
+  // #4060 — a TAB-BAR router: the content emits AS WRITTEN; a `<Tabs router>`
+  // inside lowers to router-driven `PyreonTabs`, each `<RouterView />` in a
+  // `<Tab>` to that tab's `PyreonTabStack` dispatching on the tab's own top.
+  const tabsCfg =
+    routerAttr.value.kind === 'identifier' ? _routerTabs.get(routerAttr.value.name) : undefined
+  const tabRoutes =
+    routerAttr.value.kind === 'identifier' ? _routerRoutes.get(routerAttr.value.name) : undefined
+  if (tabsCfg !== undefined && tabRoutes !== undefined && tabRoutes.length > 0) {
+    const prevTabs = _activeRouterTabsKotlin
+    _activeRouterTabsKotlin = {
+      routerName: (routerAttr.value as Extract<ExprIR, { kind: 'identifier' }>).name,
+      routerExpr,
+      routes: tabRoutes,
+      tabs: tabsCfg,
+      tab: null,
+    }
+    try {
+      if (e.children.length === 0) return `RouterProvider(${routerExpr}) { }`
+      const lines = e.children.map((c) => pad + emitKotlinChild(c, indent + 2)).join('\n')
+      return `RouterProvider(${routerExpr}) {\n${lines}\n${' '.repeat(indent)}}`
+    } finally {
+      _activeRouterTabsKotlin = prevTabs
+    }
+  }
   if (e.children.length === 0) {
     return `RouterProvider(${routerExpr}) { }`
   }
@@ -8700,12 +8836,17 @@ function subtreeHasRouterView(node: unknown): boolean {
  *     else -> Text("Pyreon Router: no route for \${currentPath}")
  *   }
  */
-function emitKotlinRouteDispatch(routes: import('./types').RouteIR[], indent: number): string {
+function emitKotlinRouteDispatch(
+  routes: import('./types').RouteIR[],
+  indent: number,
+  // #4060: a tab's stack dispatches on THAT tab's top entry, not the URL's.
+  pathExpr = 'router.currentPath',
+): string {
   // Phase 3 (nested routes) — dispatch on FULL paths, wrapping each leaf in
   // its layout chain via content lambdas. Flat tables keep the unchanged
   // dispatch below — zero regression.
   if (hasNestedRoutes(routes)) {
-    return emitKotlinNestedRouteDispatch(routes, indent)
+    return emitKotlinNestedRouteDispatch(routes, indent, pathExpr)
   }
   const pad = ' '.repeat(indent)
   const innerPad = ' '.repeat(indent + 2)
@@ -8739,7 +8880,7 @@ function emitKotlinRouteDispatch(routes: import('./types').RouteIR[], indent: nu
     const loadBody = emitKotlinExpr(r.loader, indent + 4)
     return `PyreonRouteLoader(path = currentPath, load = { ${loadBody} }) { ${renderCall} }`
   }
-  lines.push(`${pad}val currentPath = router.currentPath`)
+  lines.push(`${pad}val currentPath = ${pathExpr}`)
   lines.push(`${pad}when {`)
   for (const route of routes) {
     // Wildcard routes don't get a path branch — handled as the else-branch.
@@ -8865,6 +9006,7 @@ function emitKotlinLayoutAwareInvocation(component: ExprIR, indent: number): str
 function emitKotlinNestedRouteDispatch(
   routes: import('./types').RouteIR[],
   indent: number,
+  pathExpr = 'router.currentPath',
 ): string {
   const pad = ' '.repeat(indent)
   const innerPad = ' '.repeat(indent + 2)
@@ -8890,7 +9032,7 @@ function emitKotlinNestedRouteDispatch(
       ? renderCall
       : `if (${emitKotlinExpr(guard, indent + 4)}) ${renderCall} else ${denyFallback}`
   const lines: string[] = []
-  lines.push(`${pad}val currentPath = router.currentPath`)
+  lines.push(`${pad}val currentPath = ${pathExpr}`)
   lines.push(`${pad}when {`)
   for (const entry of entries) {
     const isLeafLayout =
@@ -8944,6 +9086,8 @@ function emitKotlinRouterView(
   if (_emittingLayoutComponentKotlin) {
     return `content()`
   }
+  // #4060 — inside a tab-bar router: this tab's own stack.
+  if (_activeRouterTabsKotlin !== null) return emitKotlinTabStack(_activeRouterTabsKotlin, _indent)
   // Inside a routes-bearing `<RouterProvider>`: this is the routed slot.
   if (_activeRouteDispatchKotlin !== null) return _activeRouteDispatchKotlin(_indent)
   return `RouterView()`
