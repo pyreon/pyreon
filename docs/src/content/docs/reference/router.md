@@ -181,6 +181,7 @@ const router = createRouter([
 - Defining route paths without leading `/` in root routes — all root-level paths must start with `/`
 - Using `redirect: "/target"` with a guard on the same route — redirects bypass guards. Use `beforeEnter` to conditionally redirect instead
 - Forgetting the catch-all route — `{ path: "(.*)", component: NotFound }` should be the last route to handle 404s
+- Registering a guard with `router.beforeEach()` AFTER the first `<RouterView>` mounts — the initial navigation (a deep link, a reload, the SSR request URL) runs the guards too, but only the ones registered by then. Pass guards as the `beforeEach` option or register them before mounting. On the server a guard that throws (reads `window`/`localStorage`) defers to the client; gate server-rendered HTML with `!isServer && …` or a loader `redirect()` instead
 - With `tabs`, putting a plain `<RouterView />` OUTSIDE the `<Tabs router>` and expecting it to keep a hidden tab's page — only a `<RouterView />` inside a `<Tab>` reads that tab's stack; one outside follows the URL (the active tab) and remounts on every tab switch
 - With `tabs`, omitting a top-level literal route at a tab's `root` — the root is the screen that tab's stack opens on, so native renders a "no route" placeholder (with a compiler warning)
 

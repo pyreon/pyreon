@@ -4,7 +4,7 @@ import { batch, computed, isClient, signal, untrack } from '@pyreon/reactivity'
 import type { Computed, Signal } from '@pyreon/reactivity'
 import { SizedMap } from '@pyreon/sized-map'
 import { buildNameIndex, buildPath, resolveRoute, stringifyQuery } from './match'
-import { classifyRedirectTarget, getRedirectInfo } from './redirect'
+import { classifyRedirectTarget, getRedirectInfo, redirect as throwRedirect } from './redirect'
 import { ScrollManager } from './scroll'
 import { classifyHref } from './typed-routes'
 import {
@@ -12,6 +12,7 @@ import {
   type Blocker,
   type BlockerFn,
   type ComponentFn,
+  type InitialNavigationOutcome,
   isLazy,
   type LoaderContext,
   type NavigationGuard,
@@ -1307,6 +1308,10 @@ export function createRouter<TNames extends string = string>(
     scrollManager.save(from.path)
 
     const doCommit = () => {
+      // Any committed navigation supersedes the initial one: the route on
+      // screen is now one the pipeline approved.
+      _commitCount++
+      if (initialGate.peek()) initialGate.set(false)
       // Publish the middleware chain's accumulated data BEFORE flipping the
       // path so any reactive reader waking up on the route change sees the
       // new navigation's data (empty when the chain had no middleware —
@@ -1558,6 +1563,7 @@ export function createRouter<TNames extends string = string>(
 
     const path = normalizeTrailingSlash(rawPath, trailingSlash)
     const tabPlan = tabMode ? (tabPlanIn ?? planTabNav(path, replace)) : null
+    if (_initialNav === null) void startInitialNavigation('navigate')
     const gen = ++_navGen
     loadingSignal.update((n) => n + 1)
 
@@ -1613,6 +1619,141 @@ export function createRouter<TNames extends string = string>(
     return 'committed'
   }
 
+  // ── Initial navigation ──────────────────────────────────────────────────
+  //
+  // The first URL is resolved SYNCHRONOUSLY into `currentPath` (SSR and a
+  // hydrating client need a route to render on the first pass), but it must
+  // still go through the navigation PIPELINE — otherwise a deep link to a
+  // guarded route renders without its guard, which is the bypass a
+  // `beforeEnter` / `beforeEach` exists to prevent. This runs the pipeline's
+  // gating half (route `redirect`, middleware, `beforeEnter`, global guards)
+  // for the initial route, with `from` = a START route whose `matched` is
+  // empty (Vue Router's START_LOCATION), so no `beforeLeave` runs.
+  //
+  // While it is pending — and after it cancels — `RouterView` renders nothing
+  // (`initialGate`), so guarded content never reaches the DOM first. It is
+  // only armed when there is something to evaluate, so an app with no guards
+  // renders on the first pass exactly as before.
+  //
+  // Environment contract: guards run on the SERVER too, so a guard that
+  // returns `false` / a path there gates the SSR output (a redirect becomes an
+  // HTTP redirect via `preload`). A guard that THROWS on the server — almost
+  // always one reading `window` / `localStorage` — is treated as "cannot be
+  // decided here": the server renders, and the client re-runs the guard on
+  // its own initial navigation and enforces it. On the client a throw cancels,
+  // exactly as on any other navigation.
+  const initialPath = currentPath.peek()
+  const initialGate = signal(false)
+  let _initialNav: Promise<InitialNavigationOutcome> | null = null
+  let _commitCount = 0
+
+  const START_ROUTE: ResolvedRoute = {
+    path: '/',
+    params: {},
+    query: {},
+    hash: '',
+    matched: [],
+    meta: Object.freeze({}),
+  }
+
+  /** Server: a throw defers to the client. Client: a throw cancels. */
+  function initialThrow(what: string, err: unknown): InitialNavigationOutcome | null {
+    if (process.env.NODE_ENV !== 'production') {
+      // oxlint-disable-next-line no-console
+      console.warn(
+        isClient
+          ? `[Pyreon Router] ${what} threw on the initial navigation — navigation cancelled:`
+          : `[Pyreon Router] ${what} threw during SSR on the initial navigation — rendering, and deferring the decision to the client's initial navigation. Guard browser-only reads with \`isServer\` from @pyreon/reactivity to decide explicitly:`,
+        err,
+      )
+    }
+    return isClient ? { kind: 'cancel' } : null
+  }
+
+  async function runInitialPipeline(to: ResolvedRoute): Promise<InitialNavigationOutcome> {
+    const gen = ++_navGen
+    const from = START_ROUTE
+
+    const redirectTarget = resolveRedirect(to)
+    if (redirectTarget !== null) return { kind: 'redirect', target: redirectTarget }
+
+    try {
+      const mw = await runMiddleware(to, from, gen)
+      if (gen !== _navGen) return { kind: 'superseded' }
+      if (mw.action === 'cancel') return { kind: 'cancel' }
+      if (mw.action === 'redirect') return { kind: 'redirect', target: mw.target }
+    } catch (err) {
+      const o = initialThrow('Route middleware', err)
+      if (o) return o
+    }
+
+    const all: NavigationGuard[] = []
+    for (const record of to.matched) {
+      const raw = record.beforeEnter
+      if (raw) for (const g of Array.isArray(raw) ? raw : [raw]) all.push(g)
+    }
+    for (const g of guards) all.push(g)
+    for (const guard of all) {
+      let result: NavigationGuardResult
+      try {
+        result = await guard(to, from)
+      } catch (err) {
+        const o = initialThrow('Navigation guard', err)
+        if (o) return o
+        continue
+      }
+      if (gen !== _navGen) return { kind: 'superseded' }
+      if (result === false) return { kind: 'cancel' }
+      if (typeof result === 'string') return { kind: 'redirect', target: result }
+    }
+    router._committedMiddlewareData = to._middlewareData ?? {}
+    return { kind: 'continue' }
+  }
+
+  function startInitialNavigation(supersededBy?: 'navigate'): Promise<InitialNavigationOutcome> {
+    if (_initialNav) return _initialNav
+    const to = resolveRoute(initialPath, routes)
+    const hasWork =
+      guards.length > 0 ||
+      resolveRedirect(to) !== null ||
+      to.matched.some((r) => r.beforeEnter || r.middleware)
+    if (supersededBy) {
+      // An explicit navigation started before the initial pipeline did (a
+      // `push()` straight after `createRouter`). That navigation runs the full
+      // pipeline for ITS target; the initial route was never approved, so keep
+      // it hidden until something commits.
+      if (hasWork) initialGate.set(true)
+      _initialNav = Promise.resolve({ kind: 'superseded' })
+      return _initialNav
+    }
+    if (!hasWork) {
+      _initialNav = Promise.resolve({ kind: 'continue' })
+      return _initialNav
+    }
+    const commitsBefore = _commitCount
+    initialGate.set(true)
+    loadingSignal.update((n) => n + 1)
+    _initialNav = runInitialPipeline(to).then(async (outcome) => {
+      loadingSignal.update((n) => n - 1)
+      if (outcome.kind === 'continue') {
+        initialGate.set(false)
+      } else if (outcome.kind === 'redirect' && isClient) {
+        // The browser is AT the guarded URL — replace it, never push.
+        await applyRedirect(outcome.target, true, 1)
+        // A redirect that itself got cancelled leaves nothing approved.
+        if (_commitCount === commitsBefore) initialGate.set(true)
+      } else if (outcome.kind === 'superseded') {
+        // A newer navigation took over; it clears the gate when it commits.
+        // If it has already committed, the gate is already clear.
+      }
+      // 'cancel' (both envs) and a server 'redirect' keep the gate set: there
+      // is no approved route to show. `preload` turns a server redirect into
+      // the HTTP redirect.
+      return outcome
+    })
+    return _initialNav
+  }
+
   // ── isReady promise ─────────────────────────────────────────────────────
   // Resolves after the first navigation (including guards + loaders) completes.
 
@@ -1654,6 +1795,8 @@ export function createRouter<TNames extends string = string>(
     _loaderCache: new SizedMap({ maxEntries: maxCacheSize }),
     _loaderInflight: new Map(),
     _executeLoader: (record, ctx) => executeLoader(record, ctx),
+    _startInitialNavigation: startInitialNavigation,
+    _initialGate: () => initialGate(),
 
     async push(
       location:
@@ -1726,6 +1869,18 @@ export function createRouter<TNames extends string = string>(
     },
 
     async preload(path: string, request?: Request, preloadOptions?: { skipLoaders?: boolean }) {
+      // Preloading the INITIAL route — what every SSR/SSG host and zero's
+      // hydrating client do before their first render — runs the initial
+      // navigation's guards first. A guard redirect on the server becomes the
+      // same thrown `redirect()` a loader produces, so every host's existing
+      // redirect handling (HTTP 30x, SSG `_redirects`) applies unchanged. A
+      // route the guards did not approve is never preloaded: its loaders do
+      // not run and its chunk is not fetched.
+      if (normalizeTrailingSlash(path, trailingSlash) === initialPath) {
+        const outcome = await startInitialNavigation()
+        if (outcome.kind === 'redirect' && !isClient) throwRedirect(outcome.target)
+        if (outcome.kind === 'cancel' || outcome.kind === 'redirect') return
+      }
       const resolved = resolveRoute(path, routes)
       // Load lazy components in parallel and populate the component cache so
       // the synchronous render pass finds ready components instead of kicking
@@ -1982,13 +2137,18 @@ export function createRouter<TNames extends string = string>(
   // cancelled traversals — see `_navOwner`.
   if (_popstateHandler || _hashchangeHandler) _navOwner = router
 
-  // Initial route is resolved synchronously — mark ready on next microtask
-  // so consumers can await isReady() before the first render.
+  // Initial route is resolved synchronously; its guard pipeline starts on the
+  // next microtask at the latest (so guards registered with `router.beforeEach()`
+  // right after `createRouter` are included), and `isReady()` resolves once it
+  // has settled — including a redirect it triggered.
   queueMicrotask(() => {
-    if (router._readyResolve) {
-      router._readyResolve()
-      router._readyResolve = null
+    const ready = () => {
+      if (router._readyResolve) {
+        router._readyResolve()
+        router._readyResolve = null
+      }
     }
+    startInitialNavigation().then(ready, ready)
   })
 
   // Expose the HMR coordinator on globalThis so `@pyreon/vite-plugin`'s

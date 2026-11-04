@@ -113,6 +113,12 @@ const RouterView: ComponentFn<RouterViewProps> = (props) => {
   const routeOf = (): ResolvedRoute =>
     tab !== null ? router._tabRoute(tab) : router.currentRoute()
 
+  // Arm the initial navigation's guard pipeline BEFORE the first render reads
+  // the route, so a guarded deep link renders nothing until its guards approve
+  // it (idempotent — a host that already awaited `preload`/`isReady` finds it
+  // settled and the first render is unchanged).
+  void router._startInitialNavigation?.()
+
   // Root-only, client-only route announcer (a11y — WAI-ARIA / Next.js-style):
   // tell screen-reader users the page changed on each navigation. Registered
   // in `onMount`, so the INITIAL page load is NOT announced (the SR already
@@ -194,7 +200,8 @@ const RouterView: ComponentFn<RouterViewProps> = (props) => {
   const depthEntry = computed<DepthEntry>(
     () => {
       const route = routeOf()
-      const rec = route.matched[depth] ?? null
+      // Initial navigation pending or not approved: render nothing.
+      const rec = router._initialGate?.() ? null : (route.matched[depth] ?? null)
       if (!rec) return { rec: null, comp: null, errored: false, route, loaderData: undefined }
       // Subscribe to `_loadingSignal` so lazy resolution wakes this
       // computed up — when the cache fills, we re-emit with comp set.
