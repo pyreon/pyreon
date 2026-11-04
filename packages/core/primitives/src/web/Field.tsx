@@ -18,7 +18,14 @@ const KIND_TO_TYPE: Record<string, string> = {
   search: 'search',
   tel: 'tel',
   url: 'url',
+  date: 'date',
+  time: 'time',
+  // The web's own zone-free wall-clock input: its value is `YYYY-MM-DDTHH:mm`,
+  // exactly the `datetime` value contract.
+  datetime: 'datetime-local',
 }
+
+const DATE_KINDS: ReadonlySet<string> = new Set(['date', 'time', 'datetime'])
 
 /**
  * Visible rows of a `<Field multiline>` when `lines` is omitted. The PMTC
@@ -30,11 +37,12 @@ const KIND_TO_TYPE: Record<string, string> = {
 export const FIELD_DEFAULT_LINES = 3
 
 /**
- * `<Field>` — text input.
+ * `<Field>` — text input, text area, or date / time picker.
  *
  * Compiles to:
  * - Web (this impl): `<input type=...>` with onInput → onChangeText;
- *   `<textarea rows>` when `multiline`
+ *   `<textarea rows>` when `multiline`; `date` / `time` / `datetime-local`
+ *   with `min` / `max` for the date kinds
  * - iOS (via PMTC): `TextField` / `SecureField` (kind="password");
  *   `TextField(axis: .vertical)` when `multiline`
  * - Android (via PMTC): single-line `TextField` with `KeyboardOptions`;
@@ -70,10 +78,11 @@ export const Field = (props: FieldProps): VNode => {
     props.onChangeText(target.value)
   }
 
-  // A text area's Enter inserts a newline, so it never submits — the type
-  // forbids `onSubmit` on the multiline shape, and this guards untyped callers.
+  // A text area's Enter inserts a newline, and a date picker has no keyboard
+  // submit natively, so neither submits — the types forbid `onSubmit` on both
+  // shapes, and this guards untyped callers.
   const onKeyDown =
-    !multiline && props.onSubmit
+    !multiline && !DATE_KINDS.has(kind) && props.onSubmit
       ? (e: KeyboardEvent) => {
           if (e.key === 'Enter') {
             props.onSubmit?.()
@@ -121,6 +130,13 @@ export const Field = (props: FieldProps): VNode => {
   }
   if (onKeyDown) attrs.onKeyDown = onKeyDown
   if (props.placeholder !== undefined) attrs.placeholder = props.placeholder
+  if (!multiline && DATE_KINDS.has(kind)) {
+    // Bounds of what can be picked, in the value's own format. Read through
+    // thunks so a reactive bound stays live.
+    const p = props as { min?: string; max?: string }
+    if (p.min !== undefined) attrs.min = () => (props as { min?: string }).min
+    if (p.max !== undefined) attrs.max = () => (props as { max?: string }).max
+  }
   if (props.disabled) attrs.disabled = true
   return h(multiline ? 'textarea' : 'input', attrs)
 }

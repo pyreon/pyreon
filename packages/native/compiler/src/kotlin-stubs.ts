@@ -1910,6 +1910,19 @@ class PyreonAudioState(engine: AudioEngine) {
   fun pause() {}
   fun stop() {}
 }
+// <Field kind="date" | "time" | "datetime"> — runtime-kotlin PyreonDateValue.kt / PyreonDateField.kt, exactly.
+enum class PyreonDateFieldKind { Date, Time, DateTime }
+@Composable
+fun PyreonDateField(
+  value: String,
+  onValueChange: (String) -> Unit,
+  kind: PyreonDateFieldKind,
+  modifier: Modifier = Modifier,
+  min: String? = null,
+  max: String? = null,
+  placeholder: String? = null,
+  enabled: Boolean = true,
+) {}
 // <Select> — runtime-kotlin PyreonSelect.kt, exactly.
 @Serializable
 data class PyreonSelectOption(var value: String, var label: String, var disabled: Boolean? = null)

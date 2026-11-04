@@ -7,6 +7,12 @@ description: "Common lifecycle & cleanup mistakes in Pyreon and how to fix them.
 
 > **Generated** from `.agents/rules/anti-patterns.md` (the same source as MCP `get_anti_patterns`). Each entry is a real mistake + its fix; where a detector code is listed, the linter / `pyreon doctor` / MCP `validate` catches it automatically.
 
+### Lowering a web input whose value can be EMPTY onto a native control that cannot be — the "no value" state has to be designed, not inherited
+
+(`<Field kind="date">`, #3980): `<input type="date">` holds `""` until the user picks, but SwiftUI's `DatePicker` and Compose's `DatePickerState` always hold a date. Binding the empty string straight through has no faithful outcome: the picker shows a date the user never chose, or the parse fails. **Rule: when the web control's value domain includes "nothing", the native lowering needs an explicit empty state — a placeholder control that only becomes the picker on first interaction, plus a clear action back to `""` — and that state must be a device-tested path of its own.** The same audit applies to bounds: Material's `TimePicker` has no way to disable hours, so a `min`/`max` that the web enforces in the control is applied on CONFIRM on Android; say so in the docs rather than implying parity. Reference: `packages/native/runtime-swift/Sources/PyreonRuntime/PyreonDateField.swift` + `runtime-kotlin/.../PyreonDateField.kt`.
+
+---
+
 ### A "keep it mounted" accessor that re-runs on every switch rebuilds its subtree anyway
 
 The `<Tabs>` web panel first returned `seen ? content : null` from an accessor that read the selection, expecting the second run's IDENTICAL `content` array to be left alone. It was not — `mountReactive` skips a re-run only for a `_tpl` NativeItem (or an array of them), because identity cannot tell "unchanged" from "mutated in place" (`signal.trigger()`). Every tab switch tore the visited panel down and rebuilt it, dropping typed text; caught by a node-identity assertion (`expected <input> to be <input> // Object.is`). **Fix: make the accessor depend only on a latch that changes ONCE** — `computed(() => (seen ||= selected() === v), { equals: Object.is })` — so the boundary runs twice in its life (null → content) and never again. Rule: a subtree that must survive must not sit under an accessor whose dependencies keep changing; "returns the same value" is not a contract a reactive boundary honours. Reference: `packages/core/primitives/src/web/Tabs.tsx`; bisect in `tests/navigation.test.tsx`.

@@ -441,6 +441,89 @@ final class PyreonTasksUITests: XCTestCase {
         XCTAssertTrue(app.otherElements["tasks-page"].firstMatch.waitForExistence(timeout: 15), "streams-back did not return to tasks")
     }
 
+    /// `<Field kind="date" | "time" | "datetime">` (#3980) on the device: the
+    /// runtime's `PyreonDateField`, a SwiftUI `DatePicker`.
+    ///
+    /// Control -> program: a day picked in the real calendar reaches the signal
+    /// as the web's `YYYY-MM-DD`. Program -> control: writing the signal moves
+    /// the picker. An EMPTY field has no picker (a `DatePicker` cannot be
+    /// empty): it shows its placeholder, and tapping it starts a value.
+    func test_dateFieldsPickThroughTheNativeDatePicker() throws {
+        let app = XCUIApplication()
+        app.launch()
+        let username = app.textFields["login-username"].firstMatch
+        XCTAssertTrue(username.waitForExistence(timeout: 30), "Username field missing")
+        username.tap()
+        username.typeText("abcde")
+        dismissKeyboard(app)
+        app.buttons["login-submit"].firstMatch.tap()
+        XCTAssertTrue(app.otherElements["tasks-page"].firstMatch.waitForExistence(timeout: 20), "Tasks page did not render after login")
+
+        let nav = app.buttons["tasks-dates"].firstMatch
+        XCTAssertTrue(nav.waitForExistence(timeout: 15), "Dates button missing on tasks page")
+        tapAfterScrolling(nav, in: app)
+        XCTAssertTrue(app.otherElements["dates-page"].firstMatch.waitForExistence(timeout: 15), "Dates page did not render")
+
+        let dayValue = app.staticTexts["dates-day-value"].firstMatch
+        XCTAssertTrue(waitForLabel(dayValue, "2026-10-22", timeout: 10), "initial: '\(dayValue.label)'")
+        let dayField = app.otherElements["dates-day"].firstMatch
+        XCTAssertTrue(dayField.waitForExistence(timeout: 10), "date field missing:\n\(app.debugDescription)")
+        let picker = dayField.datePickers.firstMatch
+        XCTAssertTrue(picker.exists, "the date field holds no DatePicker:\n\(dayField.debugDescription)")
+
+        // Control -> program: open the calendar and pick the 23rd.
+        picker.tap()
+        // Match the day by NUMBER inside the calendar grid, not by a spelled-out
+        // date: the label is locale-formatted ("Thursday, October 23" in en_US,
+        // "Friday 23. 10." in cs_CZ), and the grid is the only collection view
+        // on screen while the calendar is open.
+        let day23 = app.collectionViews.buttons.matching(NSPredicate(format: "label MATCHES %@", ".*\\b23\\b.*")).firstMatch
+        if !day23.waitForExistence(timeout: 5) { print("DIAG-DATES calendar:\n\(app.debugDescription)") }
+        XCTAssertTrue(day23.exists, "the calendar did not open")
+        day23.tap()
+        XCTAssertTrue(waitForLabel(dayValue, "2026-10-23", timeout: 10), "a picked day did not reach the signal: '\(dayValue.label)'")
+        // Close the calendar popover by tapping OUTSIDE it, low on the screen,
+        // below the page content. Not near the top: a tap at dy 0.04 lands in the
+        // status bar, which the popover never sees, so it stays over the page and
+        // every later element "exists" but is never hittable (the CI failure on
+        // #4057). Verified on iOS 18.5 and 26.x, where no `PopoverDismissRegion`
+        // element is exposed to query instead. Wait for the calendar to be GONE,
+        // so a dismissal that did not take fails here, by name.
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.9)).tap()
+        let calendarGone = NSPredicate(format: "exists == false")
+        expectation(for: calendarGone, evaluatedWith: day23)
+        waitForExpectations(timeout: 5)
+
+        // Program -> control.
+        tapAfterScrolling(app.buttons["dates-christmas"].firstMatch, in: app)
+        XCTAssertTrue(waitForLabel(dayValue, "2026-12-25", timeout: 10), "signal write: '\(dayValue.label)'")
+        let showsChristmas = NSPredicate { _, _ in
+            // The formatted date sits on the picker OR on a child element,
+            // depending on the iOS version (18.x puts it on the DatePicker,
+            // 26.x on an inner `Other`), and its text is locale-formatted:
+            // "Dec 25, 2026" (en_US), "25. 12. 2026" (cs_CZ). Reading the
+            // field's whole accessibility subtree covers every combination.
+            let tree = dayField.debugDescription
+            return tree.contains("Dec 25") || tree.contains("December 25") || tree.contains("25. 12.")
+        }
+        expectation(for: showsChristmas, evaluatedWith: nil)
+        waitForExpectations(timeout: 10)
+
+        // An empty time field shows its placeholder; tapping it starts a value.
+        let timeValue = app.staticTexts["dates-time-value"].firstMatch
+        XCTAssertEqual(timeValue.label, "empty")
+        let start = app.buttons["Pick a time"].firstMatch
+        XCTAssertTrue(start.exists, "the empty time field does not show its placeholder")
+        start.tap()
+        let startedNow = NSPredicate { _, _ in timeValue.label.range(of: "^\\d{2}:\\d{2}$", options: .regularExpression) != nil }
+        expectation(for: startedNow, evaluatedWith: nil)
+        waitForExpectations(timeout: 10)
+        XCTAssertTrue(app.otherElements["dates-time"].firstMatch.datePickers.firstMatch.exists, "a started time field shows a picker")
+
+        // The datetime field round-trips its initial value untouched.
+        XCTAssertEqual(app.staticTexts["dates-when-value"].firstMatch.label, "2026-10-22T09:30")
+    }
+
     /// `<Select>` (#3980) on the device: the native menu `Picker`.
     ///
     /// Control -> program: choosing "Apple" in the real menu must write
