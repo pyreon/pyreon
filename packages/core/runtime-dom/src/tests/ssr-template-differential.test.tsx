@@ -22,6 +22,7 @@ import type { VNode } from '@pyreon/core'
 import { For, Fragment, _fuse, _lc, createContext, h, provide, useContext } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 import { _esc, _escSole, _ssr, _ssrAttr, _ssrAttrGen, _ssrAttrUrl, _ssrChildren, _ssrForKeyed, _ssrDeferred, _ssrItem, _ssrNode, renderToString } from '@pyreon/runtime-server'
+import { query } from '@pyreon/test-utils'
 import { disableHydrationWarnings, hydrateRoot, mount, onHydrationMismatch } from '../index'
 
 function stripImports(code: string): string {
@@ -772,15 +773,15 @@ describe('SSR — props with a different content attribute, or none', () => {
     const html = await renderToString(vnode())
     const ssr = document.createElement('div')
     ssr.innerHTML = html
-    expect((ssr.querySelector('#t') as HTMLInputElement).value).toBe('cur')
-    expect((ssr.querySelector('#c') as HTMLInputElement).checked).toBe(false)
+    expect(query<HTMLInputElement>(ssr, '#t').value).toBe('cur')
+    expect(query<HTMLInputElement>(ssr, '#c').checked).toBe(false)
     hydrateRoot(ssr, vnode())
-    expect((ssr.querySelector('#t') as HTMLInputElement).value).toBe('cur')
-    expect((ssr.querySelector('#c') as HTMLInputElement).checked).toBe(false)
+    expect(query<HTMLInputElement>(ssr, '#t').value).toBe('cur')
+    expect(query<HTMLInputElement>(ssr, '#c').checked).toBe(false)
     const fresh = document.createElement('div')
     mount(vnode(), fresh)
-    expect((fresh.querySelector('#t') as HTMLInputElement).value).toBe('cur')
-    expect((fresh.querySelector('#c') as HTMLInputElement).checked).toBe(false)
+    expect(query<HTMLInputElement>(fresh, '#t').value).toBe('cur')
+    expect(query<HTMLInputElement>(fresh, '#c').checked).toBe(false)
   })
 })
 
