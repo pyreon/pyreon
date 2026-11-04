@@ -38,7 +38,7 @@ for (const mode of ['string', 'stream'] as const) {
             path: '/admin',
             component: Secret,
             beforeEnter: () => false,
-            loader: () => {
+            loader: async () => {
               loaderRan = true
               return 1
             },

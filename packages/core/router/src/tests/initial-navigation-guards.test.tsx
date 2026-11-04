@@ -105,7 +105,7 @@ describe('initial navigation runs the guard pipeline (client)', () => {
       url: '/admin',
       routes: [
         { path: '/', component: Home },
-        { path: '/admin', component: Admin, beforeEnter: () => false, loader: () => {
+        { path: '/admin', component: Admin, beforeEnter: () => false, loader: async () => {
           loaderRan = true
           return 1
         } },

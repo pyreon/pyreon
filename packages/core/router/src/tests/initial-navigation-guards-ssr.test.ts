@@ -2,7 +2,7 @@
 import { isServer } from '@pyreon/reactivity'
 import { getRedirectInfo } from '../redirect'
 import { createRouter } from '../router'
-import type { RouteRecord } from '../types'
+import type { RouteRecord, RouterInstance } from '../types'
 
 // Server half of the initial-navigation guard contract: an SSR host calls
 // `router.preload(url)` before rendering, so a guard decision there must reach
@@ -28,7 +28,7 @@ describe('initial navigation guards on the server', () => {
   it('a cancelling guard hides the route from the render', async () => {
     const router = createRouter({ routes: routes(), url: '/admin', beforeEach: [(to) => to.path !== '/admin'] })
     await router.preload('/admin')
-    expect(router._initialGate()).toBe(true)
+    expect((router as unknown as RouterInstance)._initialGate()).toBe(true)
   })
 
   it('a guard that THROWS on the server (browser-only state) defers to the client', async () => {
@@ -41,6 +41,6 @@ describe('initial navigation guards on the server', () => {
       mode: 'history',
     })
     await expect(router.preload('/admin')).resolves.toBeUndefined()
-    expect(router._initialGate()).toBe(false)
+    expect((router as unknown as RouterInstance)._initialGate()).toBe(false)
   })
 })
