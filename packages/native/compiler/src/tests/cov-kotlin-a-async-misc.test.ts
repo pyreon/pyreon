@@ -103,11 +103,11 @@ describe('Kotlin: standalone safeParse emits a DYNAMIC value, not a data class',
 import { s } from '@pyreon/validate'
 import { Stack, Text } from '@pyreon/primitives'
 export function App() {
-  const a = computed(() => s.object({ n: s.number() }).safeParse({}).success)
-  const b = computed(() => s.object({ n: s.number() }).safeParse({ n: 1, o: { p: 2 }, arr: [], arr2: [1, 2] }).success)
+  const a = computed(() => s.object({ n: s.number() }).safeParse({}).ok)
+  const b = computed(() => s.object({ n: s.number() }).safeParse({ n: 1, o: { p: 2 }, arr: [], arr2: [1, 2] }).ok)
   return (<Stack><Text>{a() && b() ? 'v' : 'i'}</Text></Stack>)
 }`).code
-    expect(out).toContain('safeParseResult(mapOf<String, Any?>())')
+    expect(out).toContain('.parse(mapOf<String, Any?>())')
     expect(out).toContain(
       'mapOf<String, Any?>("n" to 1L, "o" to mapOf<String, Any?>("p" to 2L), "arr" to listOf<Any?>(), "arr2" to listOf<Any?>(1L, 2L))',
     )

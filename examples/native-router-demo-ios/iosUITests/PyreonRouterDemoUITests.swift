@@ -1185,8 +1185,8 @@ final class PyreonRouterDemoUITests: XCTestCase {
         )
         app.buttons["Check empty SKU"].tap()
         XCTAssertTrue(
-            app.staticTexts["Schema: rejected: Field 'sku' violated constraint 'min length 1'"].waitForExistence(timeout: 10),
-            "A failing schema .parse(x) was not caught with its message"
+            app.staticTexts["Schema: rejected sku"].waitForExistence(timeout: 10),
+            "A failing schema .parse(x) did not return { ok: false, issues } naming the field"
         )
     }
 

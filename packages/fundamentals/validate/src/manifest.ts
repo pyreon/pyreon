@@ -13,7 +13,7 @@ export default defineManifest({
     rationale:
       'pure-logic schema DSL; the runtime engine (JIT, JSON-schema export, async refinements, the v1/mini compat surfaces) stays web, and inline uses like `s.string().parse(x)` do not lower',
     nativeFrontend:
-      'a top-level `const X = s.object({ … })` declaration AND the standalone inline chain `s.object({ … }).safeParse(x).success`, emitted as a Swift Codable struct / Kotlin data class with `parse` + constraint checks (`.safeParse` returns a web-faithful `{ success, data }`); only a literal `s.object({ … })` shape lowers',
+      'a top-level `const X = s.object({ … })` declaration AND the standalone inline chain `s.object({ … }).parse(x).ok`, emitted as a Swift Codable struct / Kotlin data class with `parse` + constraint checks; `.parse(x)` and `.safeParse(x)` (one method on the web) both return the web\'s own `{ ok, value } | { ok: false, issues }` and never throw — a native parse reports only the FIRST failing field, with the platform\'s own message text; only a literal `s.object({ … })` shape lowers',
   },
   longExample: `import { z } from 'zod'
 import { signal } from '@pyreon/reactivity'

@@ -89,27 +89,27 @@ ${decls}
       .find((l) => l.includes(`private var ${name}:`))
       ?.trim() ?? '(missing)'
 
-  it('`.success` is a Bool — read off the schema-validate node, so the computed is precise', () => {
+  it('`.ok` is a Bool — read off the result node, so the computed is precise', () => {
     expect(
-      sAnnot(`  const a = computed(() => s.object({ n: s.number() }).safeParse({ n: 1 }).success)`, 'a'),
+      sAnnot(`  const a = computed(() => s.object({ n: s.number() }).safeParse({ n: 1 }).ok)`, 'a'),
     ).toContain('var a: Bool')
   })
 
-  it('`.data` stays unknown (the optional validated value is not modelled)', () => {
+  it('`.value` is the validated struct', () => {
     expect(
-      sAnnot(`  const b = computed(() => s.object({ n: s.number() }).safeParse({ n: 1 }).data)`, 'b'),
-    ).toContain('var b: Any')
+      sAnnot(`  const b = computed(() => s.object({ n: s.number() }).safeParse({ n: 1 }).value)`, 'b'),
+    ).toContain('var b: PyreonZodSchema_Inline0')
   })
 
-  it('the bare result is unknown too — `let r: Any` compiles, so this is never a broken emit', () => {
+  it('the bare result is the library\'s own result type', () => {
     expect(
       sAnnot(`  const c = computed(() => s.object({ n: s.number() }).safeParse({ n: 1 }))`, 'c'),
-    ).toContain('var c: Any')
+    ).toContain('var c: PyreonValidateResult<PyreonZodSchema_Inline0>')
   })
 
   it('the emit routes through the synthesized schema, not a data class', () => {
     expect(
-      swift(schemaApp(`  const a = computed(() => s.object({ n: s.number() }).safeParse({ n: 1 }).success)`)),
+      swift(schemaApp(`  const a = computed(() => s.object({ n: s.number() }).safeParse({ n: 1 }).ok)`)),
     ).toContain('PyreonZodSchema_')
   })
 })

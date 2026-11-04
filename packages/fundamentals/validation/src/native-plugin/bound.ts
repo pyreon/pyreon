@@ -2,12 +2,12 @@
 // USED after it is declared:
 //
 //   - `const a = zodSchema(…), b = zodSchema(…)` — several schemas in ONE declaration;
-//   - `a.safeParse(x)` on a file-scope binding, from a handler / effect / computed;
-//   - `zodSchema(z.object({ … })).safeParse(x)` on an inline expression.
+//   - `a.parse(x)` on a file-scope binding, from a handler / effect / computed;
+//   - `zodSchema(z.object({ … })).parse(x)` on an inline expression.
 //
-// `@pyreon/validate`'s `s` DSL has had the last two since the standalone-validation work (its plugin owns the
-// recognizers); these are the adapter-side counterparts, over the SAME `safeParse` expression and the SAME
-// `safeParseResult` emit, so one `.tsx` reads `.success` / `.data` identically on all three targets.
+// Both lower to the ADAPTER's own web result — `{ ok, value } | { ok: false, issues }`, never thrown — so one `.tsx`
+// reads `.ok` / `.value` / `.issues` identically on all three targets. The adapter has no `.safeParse` (that is the
+// raw zod/valibot schema's method); a call to it is declined by name.
 
 import {
   topLevelDeclarators,
@@ -37,11 +37,9 @@ interface ValidationFacts {
   /**
    * File-scope schema BINDINGS, recorded syntactically BEFORE any component is parsed (a component can sit above
    * the schema it validates with, and components parse in source order). Only the literal-shape form the
-   * recognizers lower counts, so a `.safeParse` is never pointed at a struct that was never emitted.
+   * recognizers lower counts, so a `.parse` is never pointed at a struct that was never emitted.
    */
   readonly bindings: Map<string, 'object' | 'union'>
-  /** Bindings whose `.safeParse(x)` lowered — `finishModule` marks each matching schema so `safeParseResult` is emitted. */
-  readonly safeParseResultBindings: Set<string>
   /** Bindings whose `.parse(x)` lowered to the struct's static `parse` — `finishModule` checks each has a struct to call. */
   readonly parseBindings: Set<string>
   /** Dedup for inline schemas keyed by the source text of the adapter call: two byte-identical ones share ONE struct. */
@@ -55,7 +53,6 @@ function validationFacts(source: { fileState<T>(key: string, init: () => T): T }
   return source.fileState<ValidationFacts>(FACTS_KEY, () => ({
     imported: false,
     bindings: new Map(),
-    safeParseResultBindings: new Set(),
     parseBindings: new Set(),
     inlineByShape: new Map(),
     inlineCounter: 0,
@@ -86,20 +83,20 @@ function literalSchemaKind(init: AnyNode | undefined): 'object' | 'union' | unde
 }
 
 /**
- * Deep-walk for an inline `adapter(<literal object schema>).safeParse(…)`. The unlowered-module warning runs before
+ * Deep-walk for an inline `adapter(<literal object schema>).parse(…)`. The unlowered-module warning runs before
  * any body is parsed, so "does an inline call lower?" has to be answered syntactically here — the same decision
  * the method-call recognizer makes (`literalSchemaKind`), through the same function.
  */
-function containsInlineSafeParse(node: AnyNode): boolean {
+function containsInlineParse(node: AnyNode): boolean {
   if (node === null || typeof node !== 'object') return false
-  if (Array.isArray(node)) return node.some(containsInlineSafeParse)
+  if (Array.isArray(node)) return node.some(containsInlineParse)
   if (node.type === 'CallExpression') {
     const c = node.callee as AnyNode | undefined
     if (
       c?.type === 'MemberExpression' &&
       !c.computed &&
       c.property?.type === 'Identifier' &&
-      c.property.name === 'safeParse' &&
+      c.property.name === 'parse' &&
       literalSchemaKind(c.object as AnyNode) === 'object'
     ) {
       return true
@@ -108,7 +105,7 @@ function containsInlineSafeParse(node: AnyNode): boolean {
   for (const key of Object.keys(node)) {
     if (key === 'loc' || key === 'start' || key === 'end') continue
     const child = (node as Record<string, unknown>)[key]
-    if (child !== null && typeof child === 'object' && containsInlineSafeParse(child)) return true
+    if (child !== null && typeof child === 'object' && containsInlineParse(child)) return true
   }
   return false
 }
@@ -128,9 +125,9 @@ export function scanValidationBindings(scan: ModuleScan): void {
       if (kind !== undefined) facts.bindings.set(d.id.name as string, kind)
     }
   }
-  // An INLINE `adapter({ … }).safeParse(x)` anywhere in the tree also lowers, so the blanket "no native lowering"
+  // An INLINE `adapter({ … }).parse(x)` anywhere in the tree also lowers, so the blanket "no native lowering"
   // warning must not print directly above the struct it denies.
-  if (facts.imported && containsInlineSafeParse(scan.body)) {
+  if (facts.imported && containsInlineParse(scan.body)) {
     for (const adapter of SCHEMA_ADAPTERS) scan.lowered('@pyreon/validation', adapter)
   }
 }
@@ -185,19 +182,18 @@ export function lowerMultiDeclarator(node: AnyNode, ctx: ModuleParseContext): Ex
   return undefined
 }
 
-const PARSE_THROWS =
-  'an INLINE schema\'s `.parse(x)` does not lower yet — hoist the schema to a top-level `const` (whose `.parse(x)` does lower, throwing natively), or use `.safeParse(x)` and branch on `.success`.'
+const NO_SAFE_PARSE =
+  'a @pyreon/validation adapter has NO `.safeParse` — the adapter is `{ _infer, validator, parse }`, so on the web this is `undefined` and the call throws a TypeError. Use `.parse(x)`, which returns `{ ok, value } | { ok: false, issues }` and never throws; it lowers on both native targets.'
 
 /**
- * `a.safeParse(x)` on a file-scope binding, and `zodSchema(z.object({ … })).safeParse(x)` inline: a `safeParse`
- * expression over the schema's own struct, whose `safeParseResult` carries the web's `{ success, data }` shape.
- * Without it the verbatim call was a STATIC method called through an instance, with an object-literal argument
- * lowered to a synthesized struct where the method takes a dictionary — compiling on neither target, with zero
- * warnings.
+ * `a.parse(x)` on a file-scope adapter binding, and `zodSchema(z.object({ … })).parse(x)` inline: the ADAPTER's own
+ * result — `{ ok: true, value } | { ok: false, issues }` (an issue's `path` a dot-string), never thrown — over the
+ * schema's own struct (`validationResultExpr`).
  *
- * `a.parse(x)` lowers to the struct's own throwing `parse`, riding the core's error model (`try` / `try!`).
+ * `.safeParse` is declined by name: the adapter has none (it is the raw zod/valibot schema's method, which the
+ * adapter does not expose). It used to lower to a zod-shaped `{ success, data }` that no web code could read.
  *
- * What stays web-only is WARNED by name: an inline `adapter(…).parse(x)`, `.parse` / `.safeParse` on a `discriminatedUnion`, any other method.
+ * What stays web-only is WARNED by name: `.parse` on a `discriminatedUnion`, any other method.
  * Returns undefined for a receiver that is neither, so an unrelated `x.parse(…)` falls through.
  */
 export const recognizeValidationMethodCall: MethodCallRecognizer = (site, ctx) => {
@@ -209,28 +205,28 @@ export const recognizeValidationMethodCall: MethodCallRecognizer = (site, ctx) =
   const method = callee.property.name as string
   const receiver = callee.object as AnyNode
 
-  // ── inline: `zodSchema(z.object({ … })).safeParse(x)`
+  // ── inline: `zodSchema(z.object({ … })).parse(x)`
   if (
     receiver?.type === 'CallExpression' &&
     receiver.callee?.type === 'Identifier' &&
     SCHEMA_ADAPTERS.has(receiver.callee.name as string)
   ) {
     const adapter = receiver.callee.name as string
-    if (method === 'parse') return ctx.unsupported(node, `\`${adapter}(…).parse(…)\``, PARSE_THROWS)
-    if (method !== 'safeParse') {
+    if (method === 'safeParse') return ctx.unsupported(node, `\`${adapter}(…).safeParse(…)\``, NO_SAFE_PARSE)
+    if (method !== 'parse') {
       return ctx.unsupported(
         node,
         `\`${adapter}(…).${method}(…)\``,
-        'only `.safeParse(x)` on a schema lowers to native. Keep this call in a web-only helper.',
+        'only `.parse(x)` on a schema adapter lowers to native. Keep this call in a web-only helper.',
       )
     }
     const kind = literalSchemaKind(receiver)
     if (kind !== 'object') {
       return ctx.unsupported(
         node,
-        `\`${adapter}(…).safeParse(…)\``,
+        `\`${adapter}(…).parse(…)\``,
         kind === 'union'
-          ? 'a `discriminatedUnion` schema lowers to a native enum with no `{ success, data }` result form yet. Validate each variant with its own object schema, or keep this call in a web-only helper.'
+          ? 'a `discriminatedUnion` schema lowers to a native enum with no `{ ok, value }` result form yet. Validate each variant with its own object schema, or keep this call in a web-only helper.'
           : 'the schema argument is not an inline literal object shape, so no struct can be synthesized. Inline it (`' +
               adapter +
               '(z.object({ … }))`) or declare it at the top level.',
@@ -251,48 +247,40 @@ export const recognizeValidationMethodCall: MethodCallRecognizer = (site, ctx) =
       if (built === null) {
         return ctx.unsupported(
           node,
-          `\`${adapter}(…).safeParse(…)\``,
+          `\`${adapter}(…).parse(…)\``,
           'the inline schema did not lower to a native struct (see the warning above), so this call has nothing to validate against.',
         )
       }
       built.inline = true
-      built.emitSafeParseResult = true
       ctx.addItem(schemaItemSpec(built))
       facts.inlineByShape.set(shapeKey, schemaName)
     }
     const argNode = (node.arguments as AnyNode[] | undefined)?.[0]
     const arg = argNode ? ctx.expr(argNode) : { kind: 'object' as const, fields: [] }
-    return { type: 'safeParse', payload: { schemaName }, args: [arg] }
+    return { type: 'result', payload: { schemaName }, args: [arg] }
   }
 
-  // ── bound: `a.safeParse(x)` where `a` is a file-scope schema binding
+  // ── bound: `a.parse(x)` where `a` is a file-scope adapter binding
   if (receiver?.type !== 'Identifier') return undefined
   const binding = receiver.name as string
   const kind = facts.bindings.get(binding)
   if (kind === undefined) return undefined
-  if (method === 'safeParse' && kind === 'object') {
-    const argNode = (node.arguments as AnyNode[] | undefined)?.[0]
-    const arg = argNode ? ctx.expr(argNode) : { kind: 'object' as const, fields: [] }
-    facts.safeParseResultBindings.add(binding)
-    return { type: 'safeParse', payload: { schemaName: binding }, args: [arg] }
-  }
+  if (method === 'safeParse') return ctx.unsupported(node, `\`${binding}.safeParse(…)\` on a @pyreon/validation schema`, NO_SAFE_PARSE)
   if (method === 'parse' && kind === 'object') {
     const argNode = (node.arguments as AnyNode[] | undefined)?.[0]
     const arg = argNode ? ctx.expr(argNode) : { kind: 'object' as const, fields: [] }
     facts.parseBindings.add(binding)
-    return { type: 'parse', payload: { schemaName: binding }, args: [arg] }
+    return { type: 'result', payload: { schemaName: binding }, args: [arg] }
   }
   const reason =
     method === 'parse'
-      ? 'a `discriminatedUnion` schema lowers to a native enum, which `.parse(x)` does not return yet. Parse each variant with its own object schema binding, or keep this call in a web-only helper.'
-      : method === 'safeParse'
-        ? 'a `discriminatedUnion` schema lowers to a native enum with no `{ success, data }` result form yet. Validate each variant with its own object schema binding, or keep this call in a web-only helper.'
-        : 'only `.parse(x)` / `.safeParse(x)` on an object schema binding lower to native. Keep this call in a web-only helper.'
+      ? 'a `discriminatedUnion` schema lowers to a native enum, which has no `{ ok, value }` result form yet. Parse each variant with its own object schema binding, or keep this call in a web-only helper.'
+      : 'only `.parse(x)` on an object schema binding lowers to native. Keep this call in a web-only helper.'
   return ctx.unsupported(node, `\`${binding}.${method}(…)\` on a @pyreon/validation schema`, reason)
 }
 
 /**
- * `a.safeParse(…)`: give that schema the `safeParseResult` its expression lowers to. A recorded binding whose
+ * `a.parse(…)`: the schema whose struct that call goes through must exist. A recorded binding whose
  * shape the recognizer then DECLINED has no struct to call into — say so rather than emit a call to a type that
  * does not exist.
  */
@@ -306,20 +294,5 @@ export const finishValidation: ModuleFinish = ({ items, report, fileState }) => 
       report(
         `\`${binding}.parse(…)\` references a @pyreon/validation schema whose shape did not lower to native (no struct was emitted for \`${binding}\`), so the call cannot compile on iOS/Android. Give \`${binding}\` a literal object shape of supported fields.`,
       )
-  }
-  for (const binding of facts.safeParseResultBindings) {
-    const item = items.find(
-      (i) =>
-        i.plugin === VALIDATION_PLUGIN_NAME &&
-        i.type === SCHEMA_ITEM_TYPE &&
-        !schemaOf(i).inline &&
-        schemaOf(i).bindingName === binding,
-    )
-    if (item) schemaOf(item).emitSafeParseResult = true
-    else {
-      report(
-        `\`${binding}.safeParse(…)\` references a @pyreon/validation schema whose shape did not lower to native (no struct was emitted for \`${binding}\`), so the call cannot compile on iOS/Android. Give \`${binding}\` a literal object shape of supported fields.`,
-      )
-    }
   }
 }

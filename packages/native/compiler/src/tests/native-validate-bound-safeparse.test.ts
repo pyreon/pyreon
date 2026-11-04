@@ -20,9 +20,10 @@ const BOUND = `import { computed } from '@pyreon/reactivity'
 import { s } from '@pyreon/validate'
 const Pet = s.object({ name: s.string(), age: s.number() })
 export function App() {
-  const ok = computed(() => Pet.safeParse({ name: 'x', age: 3 }).success)
-  const name = computed(() => Pet.safeParse({ name: 'x', age: 3 }).data?.name ?? 'none')
-  return <Text>{ok() ? name() : 'invalid'}</Text>
+  const ok = computed(() => Pet.safeParse({ name: 'x', age: 3 }).ok)
+  const name = computed(() => { const r = Pet.parse({ name: 'x', age: 3 }); return r.ok ? r.value.name : 'none' })
+  const firstIssue = computed(() => { const r = Pet.safeParse({ age: 3 }); return r.ok ? '' : r.issues[0]!.path.join('.') })
+  return <Stack><Text>{ok() ? name() : 'invalid'}</Text><Text>{firstIssue()}</Text></Stack>
 }`
 
 // The lathe shape: the schema is DECLARED BELOW the component that uses it,
@@ -32,24 +33,27 @@ const NAMESAKE = `import { computed } from '@pyreon/reactivity'
 import { s } from '@pyreon/validate'
 export type Pet = { name: string; age: number }
 export function App() {
-  const ok = computed(() => Pet.safeParse({ name: 'x', age: 3 }).success)
+  const ok = computed(() => Pet.safeParse({ name: 'x', age: 3 }).ok)
   return <Text>{ok() ? 'valid' : 'invalid'}</Text>
 }
 export const Pet = s.object({ name: s.string(), age: s.number() })
 `
 
 describe('`Binding.safeParse(x)` on a file-scope @pyreon/validate schema', () => {
-  it('Swift: a static safeParseResult call on the binding struct, argument as a dictionary', () => {
+  it('Swift: the library\'s own non-throwing result over the struct\'s parse, argument as a dictionary', () => {
     const { code, warnings } = transform(BOUND, { target: 'swift' })
     expect(warnings).toEqual([])
     expect(code).toContain(
-      'PyreonZodSchema_Pet.safeParseResult(["name": "x", "age": 3] as [String: Any]).success',
+      'pyreonValidateResult { try PyreonZodSchema_Pet.parse(["name": "x", "age": 3] as [String: Any]) }.ok',
     )
-    expect(code).toContain(
-      'static func safeParseResult(_ input: [String: Any]) -> PyreonParseResult<Self>',
-    )
+    // `.parse` and `.safeParse` are ONE method on the web, so they lower identically.
+    expect(code).toContain('let r = pyreonValidateResult { try PyreonZodSchema_Pet.parse(')
+    expect(code).toContain('r.ok ? r.value.name : "none"')
+    expect(code).toContain('r.issues[0].path.joined(separator: ".")')
+    // zod's `{ success, data }` is not this library's shape.
+    expect(code).not.toContain('safeParseResult')
     // The result type is the runtime's, never declared per file.
-    expect(code).not.toMatch(/struct PyreonParseResult\b/)
+    expect(code).not.toMatch(/struct PyreonValidateResult\b/)
     // The broken verbatim form is gone.
     expect(code).not.toMatch(/\bPet\.safeParse\(/)
     expect(code).not.toContain('__Obj0(name:')
@@ -58,15 +62,13 @@ describe('`Binding.safeParse(x)` on a file-scope @pyreon/validate schema', () =>
     expect(code).toContain('private var ok: Bool')
   })
 
-  it('Kotlin: a companion safeParseResult call, argument as a Map', () => {
+  it('Kotlin: the same result over the companion parse, argument as a Map', () => {
     const { code, warnings } = transform(BOUND, { target: 'kotlin' })
     expect(warnings).toEqual([])
     expect(code).toContain(
-      'PyreonZodSchema_Pet.safeParseResult(mapOf<String, Any?>("name" to "x", "age" to 3L)).success',
+      'pyreonValidateResult { PyreonZodSchema_Pet.parse(mapOf<String, Any?>("name" to "x", "age" to 3L)) }.ok',
     )
-    expect(code).toContain(
-      'fun safeParseResult(input: Map<String, Any?>): PyreonParseResult<PyreonZodSchema_Pet>',
-    )
+    expect(code).not.toContain('safeParseResult')
     expect(code).not.toMatch(/\bPet\.safeParse\(/)
   })
 
@@ -74,7 +76,7 @@ describe('`Binding.safeParse(x)` on a file-scope @pyreon/validate schema', () =>
     for (const target of ['swift', 'kotlin'] as const) {
       const { code, warnings } = transform(NAMESAKE, { target })
       expect(warnings).toEqual([])
-      expect(code).toContain('PyreonZodSchema_PetValue.safeParseResult(')
+      expect(code).toContain('PyreonZodSchema_PetValue.parse(')
       expect(code).not.toContain('PyreonZodSchema_Pet.')
     }
   })
@@ -88,22 +90,21 @@ export function App() { return null }`
     expect(code).not.toContain('PyreonParseResult')
   })
 
-  it('`.parse(x)` lowers to the struct\'s throwing parse — uncaught here, so it terminates natively and says so', () => {
+  it('`.parse(x)` NEVER throws — on the web it returns `{ ok, value | issues }`, so natively it does too', () => {
     const src = `import { computed } from '@pyreon/reactivity'
 import { s } from '@pyreon/validate'
 const Pet = s.object({ name: s.string() })
 export function App() {
-  const n = computed(() => Pet.parse({ name: 'x' }).name)
+  const n = computed(() => { const r = Pet.parse({ name: 'x' }); return r.ok ? r.value.name : '-' })
   return <Text>{n()}</Text>
 }`
     for (const target of ['swift', 'kotlin'] as const) {
       const { code, warnings } = transform(src, { target })
-      expect(code).toContain('PyreonZodSchema_Pet.parse(')
+      expect(code).toContain('pyreonValidateResult {')
       expect(code).not.toMatch(/(?<!PyreonZodSchema_)\bPet\.parse\(/)
-      expect(warnings.some((w) => w.includes('TERMINATES the app'))).toBe(true)
-      expect(warnings.some((w) => w.includes('try/throw lowering'))).toBe(false)
+      expect(warnings).toEqual([])
     }
-    expect(transform(src, { target: 'swift' }).code).toContain('(try! PyreonZodSchema_Pet.parse(')
+    expect(transform(src, { target: 'swift' }).code).not.toContain('try!')
   })
 
   it('`.safeParse` on a discriminatedUnion binding WARNS by name', () => {
@@ -114,7 +115,7 @@ const Shape = s.discriminatedUnion('kind', [
   s.object({ kind: s.literal('b'), t: s.string() }),
 ])
 export function App() {
-  const ok = computed(() => Shape.safeParse({ kind: 'a', n: 1 }).success)
+  const ok = computed(() => Shape.safeParse({ kind: 'a', n: 1 }).ok)
   return <Text>{ok() ? 'y' : 'n'}</Text>
 }`
     const { warnings } = transform(src, { target: 'swift' })

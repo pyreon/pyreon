@@ -4,7 +4,7 @@
 // which is what an object LITERAL lowers to. Any other argument — a signal
 // holding a struct, a variable, a call — was passed through as-is:
 //
-//   PyreonZodSchema_Pet.safeParseResult(pet)
+//   pyreonValidateResult { try PyreonZodSchema_Pet.parse(pet) }
 //   // cannot convert value of type 'P' to expected argument type '[String : Any]'
 //
 // and a typed value nested INSIDE a literal (`{ …, owner: owner() }`)
@@ -38,8 +38,8 @@ const Pet = s.object({
 export function App() {
   const pet = signal<P>({ name: 'Rex', age: 3, ok: true, tags: ['a'], owner: { email: 'a@b.co' } })
   const owner = signal<O>({ email: 'b@c.io' })
-  const whole = computed(() => Pet.safeParse(pet()).success)
-  const nested = computed(() => Pet.safeParse({ name: 'Mo', age: 1, ok: false, tags: [], owner: owner() }).success)
+  const whole = computed(() => Pet.safeParse(pet()).ok)
+  const nested = computed(() => Pet.safeParse({ name: 'Mo', age: 1, ok: false, tags: [], owner: owner() }).ok)
   return <Text>{whole() && nested() ? 'valid' : 'invalid'}</Text>
 }`
 
@@ -47,19 +47,19 @@ describe('a typed value as a safeParse argument', () => {
   it('Swift: the whole-value argument goes through pyreonSchemaInput', () => {
     const { code, warnings } = transform(TYPED, { target: 'swift' })
     expect(warnings).toEqual([])
-    expect(code).toContain('PyreonZodSchema_Pet.safeParseResult(pyreonSchemaInput(pet)).success')
+    expect(code).toContain('PyreonZodSchema_Pet.parse(pyreonSchemaInput(pet)) }.ok')
     // A typed value NESTED in a literal is converted; the scalars beside it are not.
     expect(code).toContain('"owner": pyreonSchemaValue(owner)')
     expect(code).toContain('"name": "Mo"')
-    expect(code).not.toMatch(/safeParseResult\(pet\)/)
+    expect(code).not.toMatch(/\.parse\(pet\)/)
   })
 
   it('Kotlin: the same, through the serializer', () => {
     const { code, warnings } = transform(TYPED, { target: 'kotlin' })
     expect(warnings).toEqual([])
-    expect(code).toContain('PyreonZodSchema_Pet.safeParseResult(pyreonSchemaInput(pet)).success')
+    expect(code).toContain('PyreonZodSchema_Pet.parse(pyreonSchemaInput(pet)) }.ok')
     expect(code).toContain('"owner" to pyreonSchemaValue(owner)')
-    expect(code).not.toMatch(/safeParseResult\(pet\)/)
+    expect(code).not.toMatch(/\.parse\(pet\)/)
   })
 
   it('an object literal of scalars is emitted exactly as before', () => {
@@ -67,12 +67,12 @@ describe('a typed value as a safeParse argument', () => {
 import { s } from '@pyreon/validate'
 const Pet = s.object({ name: s.string() })
 export function App() {
-  const ok = computed(() => Pet.safeParse({ name: 'x' }).success)
+  const ok = computed(() => Pet.safeParse({ name: 'x' }).ok)
   return <Text>{ok() ? 'y' : 'n'}</Text>
 }`
     const { code } = transform(src, { target: 'swift' })
     expect(code).toContain(
-      'PyreonZodSchema_Pet.safeParseResult(["name": "x"] as [String: Any]).success',
+      'PyreonZodSchema_Pet.parse(["name": "x"] as [String: Any]) }.ok',
     )
     expect(code).not.toContain('pyreonSchema')
   })
@@ -208,17 +208,17 @@ describe.runIf(isSwiftUIAvailable())('typed safeParse against the REAL runtime (
       writeFileSync(join(dir, 'Schemas.swift'), `import Foundation\n${decls.join('\n\n')}`, 'utf8')
       writeFileSync(
         join(dir, 'main.swift'),
-        `func check(_ p: P) -> Bool { PyreonZodSchema_Pet.safeParseResult(pyreonSchemaInput(p)).success }
+        `func check(_ p: P) -> Bool { pyreonValidateResult { try PyreonZodSchema_Pet.parse(pyreonSchemaInput(p)) }.ok }
 let owner = O(email: "a@b.co")
 let good = P(name: "Rex", age: 3, ok: true, tags: ["a"], owner: owner)
-let parsed = PyreonZodSchema_Pet.safeParseResult(pyreonSchemaInput(good))
-print("good=\\(parsed.success) email=\\(parsed.data?.owner.email ?? "-") tags=\\(parsed.data?.tags ?? [])")
+let parsed = pyreonValidateResult { try PyreonZodSchema_Pet.parse(pyreonSchemaInput(good)) }
+print("good=\\(parsed.ok) email=\\(parsed.value?.owner.email ?? "-") tags=\\(parsed.value?.tags ?? [])")
 print("shortName=\\(check(P(name: "R", age: 3, ok: true, tags: [], owner: owner)))")
 print("badEmail=\\(check(P(name: "Rex", age: 3, ok: true, tags: [], owner: O(email: "nope"))))")
-print("nestedValue=\\(PyreonZodSchema_Pet.safeParseResult(["name": "Mo", "age": 1, "ok": false, "tags": [String](), "owner": pyreonSchemaValue(owner)] as [String: Any]).success)")
+print("nestedValue=\\(pyreonValidateResult { try PyreonZodSchema_Pet.parse(["name": "Mo", "age": 1, "ok": false, "tags": [String](), "owner": pyreonSchemaValue(owner)] as [String: Any]) }.ok)")
 // What the emit produced before: the struct itself in the dictionary. It
 // compiles (the value is Any) and is rejected — valid data, invalid result.
-print("nestedRaw=\\(PyreonZodSchema_Pet.safeParseResult(["name": "Mo", "age": 1, "ok": false, "tags": [String](), "owner": owner] as [String: Any]).success)")
+print("nestedRaw=\\(pyreonValidateResult { try PyreonZodSchema_Pet.parse(["name": "Mo", "age": 1, "ok": false, "tags": [String](), "owner": owner] as [String: Any]) }.ok)")
 `,
         'utf8',
       )

@@ -1,5 +1,8 @@
-// `@pyreon/validation`'s adapters AFTER the schema is declared: several schemas in one statement, `.safeParse()` on
+// `@pyreon/validation`'s adapters AFTER the schema is declared: several schemas in one statement, `.parse()` on
 // a declared binding or on an inline adapter call, and the modifier chains the native struct does not enforce.
+//
+// The adapter is `{ _infer, validator, parse }` on the web: its `parse` returns `{ ok, value } | { ok: false, issues }`
+// (an issue's `path` a dot-string) and never throws, and it has NO `safeParse`. Natively the same.
 //
 // Before, each of these emitted with ZERO warnings and compiled on neither target (or, for the modifiers, compiled
 // and silently accepted what the web rejects):
@@ -26,9 +29,9 @@ const a = zodSchema(z.object({ n: z.string().min(2) })), b = zodSchema(z.object(
 export function App() {
   const msg = signal('')
   const go = () => {
-    const r = a.safeParse({ n: 'abc' })
-    const q = b.safeParse({ m: 2 })
-    msg.set(r.success && q.success ? 'ok' : 'bad')
+    const r = a.parse({ n: 'abc' })
+    const q = b.parse({ m: 2 })
+    msg.set(r.ok && q.ok ? 'ok ' + r.value.n : 'bad ' + (r.ok ? '' : r.issues[0]!.path))
   }
   return <Button onPress={go}><Text>{msg()}</Text></Button>
 }`
@@ -37,7 +40,7 @@ const INLINE = `${HEAD}
 export function App() {
   const msg = signal('')
   const go = () => {
-    msg.set(zodSchema(z.object({ n: z.string() })).safeParse({ n: 'a' }).success ? 'ok' : 'bad')
+    msg.set(zodSchema(z.object({ n: z.string() })).parse({ n: 'a' }).ok ? 'ok' : 'bad')
   }
   return <Button onPress={go}><Text>{msg()}</Text></Button>
 }`
@@ -76,21 +79,22 @@ export function App() { return <Text>x</Text> }`
   })
 })
 
-describe('.safeParse() on a declared schema or an inline adapter call', () => {
-  it('Swift: lowers to safeParseResult over the binding’s struct, with a dictionary argument', () => {
+describe('.parse() on a declared schema or an inline adapter call', () => {
+  it('Swift: the adapter\'s own non-throwing result over the binding’s struct, with a dictionary argument', () => {
     const { code, warnings } = transform(MULTI, { target: 'swift' })
     expect(warnings).toEqual([])
-    expect(code).toContain('PyreonZodSchema_a.safeParseResult(["n": "abc"] as [String: Any])')
-    expect(code).toContain('static func safeParseResult')
+    expect(code).toContain('let r = pyreonValidationResult { try PyreonZodSchema_a.parse(["n": "abc"] as [String: Any]) }')
+    expect(code).not.toContain('safeParseResult')
+    expect(code).not.toContain('try!')
   })
 
   it('Kotlin: the same, over a Map', () => {
     const { code, warnings } = transform(MULTI, { target: 'kotlin' })
     expect(warnings).toEqual([])
-    expect(code).toContain('PyreonZodSchema_a.safeParseResult(mapOf<String, Any?>("n" to "abc"))')
+    expect(code).toContain('val r = pyreonValidationResult { PyreonZodSchema_a.parse(mapOf<String, Any?>("n" to "abc")) }')
   })
 
-  it('an inline `zodSchema(z.object({…})).safeParse(x)` synthesizes a struct and prints no “no native lowering” line', () => {
+  it('an inline `zodSchema(z.object({…})).parse(x)` synthesizes a struct and prints no “no native lowering” line', () => {
     for (const target of ['swift', 'kotlin'] as const) {
       const { code, warnings } = transform(INLINE, { target })
       expect(warnings).toEqual([])
@@ -99,30 +103,39 @@ describe('.safeParse() on a declared schema or an inline adapter call', () => {
     }
   })
 
-  it('`.parse()` on a binding lowers (throwing); an inline adapter `.parse()` stays a NAMED warning — never a verbatim emit', () => {
+  it('`.safeParse()` does not exist on an adapter — declared or inline, it is a NAMED warning, never an emit', () => {
+    const bound = `${HEAD}const a = zodSchema(z.object({ n: z.string() }))
+export function App() {
+  const msg = signal('')
+  const go = () => { msg.set(a.safeParse({ n: 'x' }).success ? 'y' : 'n') }
+  return <Button onPress={go}><Text>{msg()}</Text></Button>
+}`
+    const inline = `${HEAD}export function App() {
+  const msg = signal('')
+  const go = () => { msg.set(zodSchema(z.object({ n: z.string() })).safeParse({ n: 'x' }).success ? 'y' : 'n') }
+  return <Button onPress={go}><Text>{msg()}</Text></Button>
+}`
+    for (const target of ['swift', 'kotlin'] as const) {
+      expect(warn(bound, target).join('\n')).toMatch(/`a\.safeParse\(…\)`.*has NO `\.safeParse`/)
+      expect(warn(inline, target).join('\n')).toMatch(/`zodSchema\(…\)\.safeParse\(…\)`.*has NO `\.safeParse`/)
+      expect(transform(bound, { target }).code).not.toContain('safeParseResult')
+    }
+  })
+
+  it('`.parse()` never throws natively, so an uncaught call in a handler is not a TERMINATES warning', () => {
     const src = `${HEAD}const a = zodSchema(z.object({ n: z.string() }))
 export function App() {
   const msg = signal('')
-  const go = () => { msg.set(a.parse({ n: 'x' }).n) }
+  const go = () => { const r = a.parse({ n: 'x' }); msg.set(r.ok ? r.value.n : 'bad') }
   return <Button onPress={go}><Text>{msg()}</Text></Button>
 }`
-    // A declared binding's `.parse()` lowers to the struct's throwing parse; uncaught in a handler, it is warned.
-    const w = warn(src, 'swift').join('\n')
-    expect(w).not.toMatch(/`a\.parse\(…\)` on a @pyreon\/validation schema/)
-    expect(w).toContain('TERMINATES the app')
-    // The INLINE spelling still does not lower, and is named.
-    const inline = `${HEAD}export function App() {
-  const msg = signal('')
-  const go = () => { msg.set(zodSchema(z.object({ n: z.string() })).parse({ n: 'x' }).n) }
-  return <Button onPress={go}><Text>{msg()}</Text></Button>
-}`
-    expect(warn(inline, 'kotlin').join('\n')).toMatch(/zodSchema\(…\)\.parse\(…\)/)
+    for (const target of ['swift', 'kotlin'] as const) expect(warn(src, target)).toEqual([])
   })
 
-  it('`.safeParse()` on a discriminatedUnion is a named warning (no { success, data } enum form yet)', () => {
+  it('`.parse()` on a discriminatedUnion is a named warning (no { ok, value } enum form yet)', () => {
     const src = `${HEAD}const u = zodSchema(z.discriminatedUnion('t', [z.object({ t: z.literal('a') }), z.object({ t: z.literal('b') })]))
 export function App() {
-  const go = () => { u.safeParse({ t: 'a' }) }
+  const go = () => { u.parse({ t: 'a' }) }
   return <Button onPress={go}><Text>x</Text></Button>
 }`
     expect(warn(src, 'swift').join('\n')).toMatch(/discriminatedUnion/)

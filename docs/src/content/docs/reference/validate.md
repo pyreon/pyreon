@@ -15,7 +15,7 @@ Pyreon-owned validator library implementing Standard Schema (https://standardsch
 
 pure-logic schema DSL; the runtime engine (JIT, JSON-schema export, async refinements, the v1/mini compat surfaces) stays web, and inline uses like `s.string().parse(x)` do not lower
 
-**What crosses natively:** a top-level `const X = s.object({ … })` declaration AND the standalone inline chain `s.object({ … }).safeParse(x).success`, emitted as a Swift Codable struct / Kotlin data class with `parse` + constraint checks (`.safeParse` returns a web-faithful `{ success, data }`); only a literal `s.object({ … })` shape lowers
+**What crosses natively:** a top-level `const X = s.object({ … })` declaration AND the standalone inline chain `s.object({ … }).parse(x).ok`, emitted as a Swift Codable struct / Kotlin data class with `parse` + constraint checks; `.parse(x)` and `.safeParse(x)` (one method on the web) both return the web's own `{ ok, value } | { ok: false, issues }` and never throw — a native parse reports only the FIRST failing field, with the platform's own message text; only a literal `s.object({ … })` shape lowers
 
 See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multiplatform libraries](/docs/multiplatform-libraries) for every package's tier.
 
