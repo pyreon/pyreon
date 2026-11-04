@@ -9,6 +9,7 @@ import {
   computeThrowingFunctions,
   containsAwait,
   ERROR_MESSAGE_FN,
+  ERROR_STRING_FN,
   exprCallsThrowing,
   KOTLIN_THROWN_PREAMBLE,
   statementsThrowUncaught,
@@ -3279,7 +3280,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       if (e.callee.kind === 'identifier') {
         if (_kotlinThrowingFns.has(e.callee.name) && _kotlinThrowCtx === 'none')
           _pushKotlinEmitWarning(uncaughtThrowWarning(`The call to \`${e.callee.name}()\`, which can throw,`))
-        if (e.callee.name === ERROR_MESSAGE_FN) _needsKotlinThrown = true
+        if (e.callee.name === ERROR_MESSAGE_FN || e.callee.name === ERROR_STRING_FN) _needsKotlinThrown = true
       }
       // `handle.dispatch(…)` and any other call on a binding a plugin's declaration created.
       const pluginLowered = lowerPluginMemberCall(e, 'kotlin', _pluginScope, () =>

@@ -111,6 +111,7 @@ import {
 import {
   computeThrowingFunctions,
   ERROR_MESSAGE_FN,
+  ERROR_STRING_FN,
   exprCallsThrowing,
   statementsThrowUncaught,
   SWIFT_THROWN_PREAMBLE,
@@ -4299,7 +4300,7 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
           _swiftTryWrapping.delete(e)
         }
       }
-      if (e.callee.kind === 'identifier' && e.callee.name === ERROR_MESSAGE_FN) _needsSwiftThrown = true
+      if (e.callee.kind === 'identifier' && (e.callee.name === ERROR_MESSAGE_FN || e.callee.name === ERROR_STRING_FN)) _needsSwiftThrown = true
       // `handle.dispatch(…)` and any other call on a binding a plugin's declaration created.
       const pluginLowered = lowerPluginMemberCall(e, 'swift', _pluginScope, () =>
         swiftEmitContext(indent),

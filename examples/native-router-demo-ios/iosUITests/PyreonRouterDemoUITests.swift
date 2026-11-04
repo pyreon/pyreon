@@ -1109,6 +1109,59 @@ final class PyreonRouterDemoUITests: XCTestCase {
         )
     }
 
+    // Error handling — `throw` and `try`/`catch`/`finally` through the real
+    // Swift error model. `parseQuantity` throws; `describeQuantity` calls it
+    // WITHOUT catching, so it must be emitted `throws` (the fixed point) and
+    // the call marked `try` — or this file does not compile at all. The page
+    // catches and renders the message; `finally` (a `defer`) increments a
+    // counter on the success AND the failure path, so it reads 1, 2, 3.
+    func test_throwTryCatchFinallyRunOnDevice() throws {
+        let app = XCUIApplication()
+        app.launch()
+
+        XCTAssertTrue(
+            app.otherElements["home-page"].firstMatch.waitForExistence(timeout: 30),
+            "Home page did not render"
+        )
+        app.buttons["Go to About"].tap()
+        XCTAssertTrue(
+            app.otherElements["about-page"].firstMatch.waitForExistence(timeout: 15),
+            "About page did not render"
+        )
+        app.buttons["View lifecycle"].tap()
+        XCTAssertTrue(
+            app.otherElements["lifecycle-page"].firstMatch.waitForExistence(timeout: 15),
+            "Lifecycle page did not render"
+        )
+        app.buttons["View errors"].tap()
+        XCTAssertTrue(
+            app.otherElements["errors-page"].firstMatch.waitForExistence(timeout: 15),
+            "Errors page did not render"
+        )
+        XCTAssertTrue(app.staticTexts["Result: none"].waitForExistence(timeout: 10))
+
+        app.buttons["Parse valid"].tap()
+        XCTAssertTrue(
+            app.staticTexts["Result: qty 3"].waitForExistence(timeout: 10),
+            "The non-throwing path did not render its value"
+        )
+        XCTAssertTrue(app.staticTexts["Finally: 1"].waitForExistence(timeout: 10), "finally did not run on success")
+
+        app.buttons["Parse empty"].tap()
+        XCTAssertTrue(
+            app.staticTexts["Result: error: required"].waitForExistence(timeout: 10),
+            "The thrown error was not caught, or its message was lost"
+        )
+        XCTAssertTrue(app.staticTexts["Finally: 2"].waitForExistence(timeout: 10), "finally did not run on failure")
+
+        app.buttons["Parse negative"].tap()
+        XCTAssertTrue(
+            app.staticTexts["Result: error: negative: -2"].waitForExistence(timeout: 10),
+            "A RangeError's interpolated message was not carried"
+        )
+        XCTAssertTrue(app.staticTexts["Finally: 3"].waitForExistence(timeout: 10))
+    }
+
     // Platform APIs — app LIFECYCLE through the REAL UIApplication
     // notifications. The lifecycle page renders the STICKY wasBackgrounded
     // flag; backgrounding via the Home button and re-activating must flip it

@@ -847,6 +847,47 @@ function LifecyclePage() {
       <Text>Lifecycle</Text>
       <Text data-testid="phase-text">Phase: {app()}</Text>
       <Text data-testid="bg-flag">BG: {app.wasBackgrounded}</Text>
+      <Button onPress={() => navigate('/errors')}>View errors</Button>
+      <Button onPress={() => navigate('/')}>Back to Home</Button>
+    </Stack>
+  )
+}
+
+// Error handling: `throw` and `try`/`catch`/`finally`. `parseQuantity` throws; `describeQuantity` calls it WITHOUT
+// catching, so on iOS it must be `throws` too (the fixed point) and the call marked `try`. The page catches and
+// renders the message, and `finally` runs on both the success and the failure path — a flag only it sets.
+function parseQuantity(raw: string): number {
+  if (raw === '') throw new Error('required')
+  const n = Number(raw)
+  if (n < 0) throw new RangeError(`negative: ${raw}`)
+  return n
+}
+
+function describeQuantity(raw: string): string {
+  return 'qty ' + String(parseQuantity(raw))
+}
+
+function ErrorsPage() {
+  const navigate = useNavigate()
+  const result = signal('none')
+  const finished = signal(0)
+  const run = (raw: string) => {
+    try {
+      result.set(describeQuantity(raw))
+    } catch (e) {
+      result.set(`error: ${e instanceof Error ? e.message : String(e)}`)
+    } finally {
+      finished.set(finished() + 1)
+    }
+  }
+  return (
+    <Stack gap={3} padding={4} data-testid="errors-page">
+      <Text>Errors</Text>
+      <Text data-testid="err-result">Result: {result()}</Text>
+      <Text data-testid="err-finally">Finally: {finished()}</Text>
+      <Button onPress={() => run('3')}>Parse valid</Button>
+      <Button onPress={() => run('')}>Parse empty</Button>
+      <Button onPress={() => run('-2')}>Parse negative</Button>
       <Button onPress={() => navigate('/')}>Back to Home</Button>
     </Stack>
   )
@@ -925,6 +966,7 @@ export function RouterApp() {
       { path: '/offline', component: OfflinePage },
       { path: '/push', component: PushPage },
       { path: '/lifecycle', component: LifecyclePage },
+      { path: '/errors', component: ErrorsPage },
       { path: '/media', component: MediaPage },
       { path: '/http', component: HttpPage },
       { path: '/loaded', component: LoadedPage, loader: (): Loaded => ({ title: 'Loaded title', views: 42 }) },

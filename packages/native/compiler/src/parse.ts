@@ -6808,6 +6808,22 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
           right: parseExpr(node.right, ctx),
         }
       }
+      // `e instanceof Error` on a `catch` binding — the idiomatic narrowing TypeScript requires (the binding is
+      // `unknown`). Natively every caught value IS an error (only an `Error` or a string can be thrown, both lowered to
+      // the native error type), so the test is constant. A subclass test (`RangeError`) cannot be answered: the
+      // native error does not keep the JavaScript class.
+      if (
+        op === 'instanceof' &&
+        node.left?.type === 'Identifier' &&
+        _catchParams.includes(node.left.name as string) &&
+        node.right?.type === 'Identifier'
+      ) {
+        if (node.right.name === 'Error') return { kind: 'literal', value: true }
+        ctx.warnings.push(
+          `[${locOf(node, ctx)}] \`${node.left.name as string} instanceof ${node.right.name as string}\` is not lowered to native: the native error keeps the message, not the JavaScript error class. Test \`instanceof Error\`, or carry the distinction in the message.`,
+        )
+        return { kind: 'literal', value: false }
+      }
       ctx.warnings.push(
         `[${locOf(node, ctx)}] Binary operator \`${op}\` is not supported in native (PMTC) — emitting \`+\` as a fallback (likely wrong); rewrite using a supported operator.`,
       )

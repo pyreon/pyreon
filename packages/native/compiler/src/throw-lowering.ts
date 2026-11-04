@@ -42,6 +42,8 @@ export function childStatementLists(s: StatementIR): StatementIR[][] {
 
 /** The name the runtime-free message accessor is emitted under, on both targets. */
 export const ERROR_MESSAGE_FN = 'pyreonErrorMessage'
+/** `String(e)` for a caught error — `Error: message`, as JavaScript renders it. */
+export const ERROR_STRING_FN = 'pyreonErrorString'
 
 /** Whether `expr` calls one of `throwingFns` OUTSIDE any nested arrow (an arrow's body is its own throw context). */
 export function exprCallsThrowing(expr: unknown, throwingFns: ReadonlySet<string>): boolean {
@@ -160,12 +162,8 @@ export function rewriteCaughtMessage(stmts: StatementIR[], param: string): State
       property?: string
     }
     if (node.kind === 'arrow' && node.params?.includes(param)) return n
-    if (
-      node.kind === 'member' &&
-      node.property === 'message' &&
-      node.object?.kind === 'identifier' &&
-      node.object.name === param
-    ) {
+    // `(e as Error).message` — the cast TypeScript requires on an `unknown` binding parses to a paren layer.
+    if (node.kind === 'member' && node.property === 'message' && isParam(node.object)) {
       const call: ExprIR = {
         kind: 'call',
         callee: { kind: 'identifier', name: ERROR_MESSAGE_FN },
@@ -173,9 +171,30 @@ export function rewriteCaughtMessage(stmts: StatementIR[], param: string): State
       }
       return call
     }
+    // `String(e)` — Swift has no `String(_:)` for an `Error`; both targets describe it as JavaScript does.
+    const call = n as { kind?: string; callee?: { kind?: string; name?: string }; args?: unknown[] }
+    if (
+      call.kind === 'call' &&
+      call.callee?.kind === 'identifier' &&
+      call.callee.name === 'String' &&
+      call.args?.length === 1 &&
+      isParam(call.args[0])
+    ) {
+      const described: ExprIR = {
+        kind: 'call',
+        callee: { kind: 'identifier', name: ERROR_STRING_FN },
+        args: [{ kind: 'identifier', name: param }],
+      }
+      return described
+    }
     const out: Record<string, unknown> = {}
     for (const [k, v] of Object.entries(n)) out[k] = map(v)
     return out
+  }
+  const isParam = (n: unknown): boolean => {
+    let cur = n as { kind?: string; name?: string; inner?: unknown } | null
+    while (cur?.kind === 'paren') cur = cur.inner as typeof cur
+    return cur?.kind === 'identifier' && cur.name === param
   }
   return map(stmts) as StatementIR[]
 }
@@ -206,9 +225,11 @@ export const SWIFT_THROWN_PREAMBLE = `private struct PyreonThrown: Error, Custom
 }
 private func ${ERROR_MESSAGE_FN}(_ e: Error) -> String {
     (e as? PyreonThrown)?.message ?? String(describing: e)
-}`
+}
+private func ${ERROR_STRING_FN}(_ e: Error) -> String { String(describing: e) }`
 
 export const KOTLIN_THROWN_PREAMBLE = `private class PyreonThrown(message: String) : Exception(message) {
     override fun toString(): String = "Error: $message"
 }
-private fun ${ERROR_MESSAGE_FN}(e: Throwable): String = e.message ?: e.toString()`
+private fun ${ERROR_MESSAGE_FN}(e: Throwable): String = e.message ?: e.toString()
+private fun ${ERROR_STRING_FN}(e: Throwable): String = e.toString()`

@@ -125,6 +125,20 @@ function App() {
   </Stack>)
 }`
 
+// The TypeScript-strict spellings: the catch binding is \`unknown\`, so real code narrows or casts it.
+const strictCatch = `${head}
+function p(raw: string): number {
+  if (raw === '') throw new Error('required')
+  return 1
+}
+function App() {
+  const r = signal('')
+  const a = () => { try { r.set(String(p(''))) } catch (e) { r.set(e instanceof Error ? e.message : String(e)) } }
+  const b = () => { try { r.set(String(p(''))) } catch (e) { r.set((e as Error).message) } }
+  const c = () => { try { r.set(String(p(''))) } catch (e) { r.set(\`failed: \${String(e)}\`) } }
+  return (<Stack><Text>{r()}</Text><Button onPress={a}>A</Button><Button onPress={b}>B</Button><Button onPress={c}>C</Button></Stack>)
+}`
+
 const emit = (src: string, target: 'swift' | 'kotlin') => transform(src, { target })
 const code = (src: string, target: 'swift' | 'kotlin') => emit(src, target).code
 const warnings = (src: string, target: 'swift' | 'kotlin') => emit(src, target).warnings.join('\n')
@@ -186,6 +200,23 @@ describe('throw + try/catch/finally — emit shape', () => {
   })
 })
 
+describe('TypeScript-strict catch spellings', () => {
+  it('`instanceof Error` is constant natively, and the cast / String() read through the accessors', () => {
+    for (const target of ['swift', 'kotlin'] as const) {
+      const out = code(strictCatch, target)
+      expect(out).toContain('pyreonErrorMessage(e)')
+      expect(out).toContain('pyreonErrorString(e)')
+      expect(out).not.toMatch(/e \+ Error/)
+      expect(warnings(strictCatch, target)).not.toContain('instanceof')
+    }
+  })
+
+  it('a subclass test cannot be answered and is named', () => {
+    const src = strictCatch.replace('e instanceof Error ?', 'e instanceof RangeError ?')
+    expect(warnings(src, 'swift')).toContain('keeps the message, not the JavaScript error class')
+  })
+})
+
 describe('an uncaught throw in a closure that cannot throw', () => {
   const src = uncaught
 
@@ -235,7 +266,7 @@ function App() { return (<Stack><Text>{String(f(1))}</Text></Stack>) }`
 })
 
 describe('try/throw survives the real toolchains', () => {
-  const sources = { validation, caughtInside, rethrow, guarded, uncaught, asyncHandler }
+  const sources = { validation, strictCatch, caughtInside, rethrow, guarded, uncaught, asyncHandler }
   for (const [name, src] of Object.entries(sources)) {
     it.skipIf(!isSwiftcAvailable())(`Swift: ${name} type-checks against the stub`, () => {
       const r = validateSwiftWithStubs(code(src, 'swift'))
