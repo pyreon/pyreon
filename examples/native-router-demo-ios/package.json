@@ -22,6 +22,7 @@
     "@pyreon/primitives": "workspace:*",
     "@pyreon/reactivity": "workspace:*",
     "@pyreon/router": "workspace:*",
-    "@pyreon/styler": "workspace:*"
+    "@pyreon/styler": "workspace:*",
+    "@pyreon/validate": "workspace:*"
   }
 }

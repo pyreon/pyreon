@@ -13,10 +13,25 @@
 
 import Foundation
 
-public enum PyreonSchemaError: Error {
+public enum PyreonSchemaError: Error, LocalizedError, CustomStringConvertible {
     case missingOrWrongType(field: String, expected: String)
     case constraintViolation(field: String, rule: String)
     case unknown
+
+    /// The same text Kotlin's PyreonSchemaError carries as its message, so a caught Pet.parse(x) failure
+    /// reads identically on both targets (e.message in the shared source).
+    public var errorDescription: String? {
+        switch self {
+        case let .missingOrWrongType(field, expected):
+            return "Field '\(field)' missing or wrong type (expected \(expected))"
+        case let .constraintViolation(field, rule):
+            return "Field '\(field)' violated constraint '\(rule)'"
+        case .unknown:
+            return "Schema validation failed"
+        }
+    }
+
+    public var description: String { errorDescription ?? "Schema validation failed" }
 }
 
 /// The web-faithful `{ success, data }` result of `Schema.safeParse(x)`.

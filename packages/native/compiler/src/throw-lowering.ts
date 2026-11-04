@@ -15,6 +15,7 @@
 // there too (`fatalError` / `try!`): the two native targets then agree with each other, and the compiler names the
 // position in a warning so the author can add the `try`/`catch` that makes all three agree.
 
+import { syncThrowingPluginExpr } from './registry-lookup'
 import type { ExprIR, StatementIR } from './types'
 
 /** Every nested statement list of `s` — the one place that knows which statement kinds own a body. */
@@ -45,7 +46,7 @@ export const ERROR_MESSAGE_FN = 'pyreonErrorMessage'
 /** `String(e)` for a caught error — `Error: message`, as JavaScript renders it. */
 export const ERROR_STRING_FN = 'pyreonErrorString'
 
-/** Whether `expr` calls one of `throwingFns` (or `JSON.parse`) OUTSIDE any nested arrow (an arrow's body is its own throw context). */
+/** Whether `expr` calls one of `throwingFns` (or `JSON.parse`, or a plugin call that throws) OUTSIDE any nested arrow (an arrow's body is its own throw context). */
 export function exprCallsThrowing(expr: unknown, throwingFns: ReadonlySet<string>): boolean {
   const walk = (n: unknown): boolean => {
     if (Array.isArray(n)) return n.some(walk)
@@ -54,6 +55,8 @@ export function exprCallsThrowing(expr: unknown, throwingFns: ReadonlySet<string
     if (node.kind === 'arrow') return false
     // `JSON.parse` throws on malformed input — natively on a shape mismatch too.
     if (node.kind === 'json-parse') return true
+    // A plugin call that throws synchronously (`Pet.parse(x)`), declared by its owner.
+    if (node.kind === 'ext-expr' && syncThrowingPluginExpr(node as ExprIR) !== undefined) return true
     if (
       node.kind === 'call' &&
       node.callee?.kind === 'identifier' &&

@@ -1174,6 +1174,20 @@ final class PyreonRouterDemoUITests: XCTestCase {
             app.staticTexts["JSON: malformed"].waitForExistence(timeout: 10),
             "A malformed JSON.parse was not caught"
         )
+
+        // A schema's .parse(x): the native struct's own parse, which throws on a constraint violation — caught, with
+        // a message naming the field and rule.
+        XCTAssertTrue(app.staticTexts["Schema: none"].waitForExistence(timeout: 10))
+        app.buttons["Check order"].tap()
+        XCTAssertTrue(
+            app.staticTexts["Schema: ok B7"].waitForExistence(timeout: 10),
+            "A valid schema .parse(x) did not return the parsed value"
+        )
+        app.buttons["Check empty SKU"].tap()
+        XCTAssertTrue(
+            app.staticTexts["Schema: rejected: Field 'sku' violated constraint 'min length 1'"].waitForExistence(timeout: 10),
+            "A failing schema .parse(x) was not caught with its message"
+        )
     }
 
     // Platform APIs — app LIFECYCLE through the REAL UIApplication

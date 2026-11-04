@@ -927,6 +927,7 @@
         "@pyreon/reactivity": "workspace:*",
         "@pyreon/router": "workspace:*",
         "@pyreon/styler": "workspace:*",
+        "@pyreon/validate": "workspace:*",
       },
     },
     "examples/native-router-demo-web": {
@@ -944,6 +945,7 @@
         "@pyreon/router": "workspace:*",
         "@pyreon/runtime-dom": "workspace:*",
         "@pyreon/styler": "workspace:*",
+        "@pyreon/validate": "workspace:*",
       },
       "devDependencies": {
         "@pyreon/tsconfig": "workspace:*",

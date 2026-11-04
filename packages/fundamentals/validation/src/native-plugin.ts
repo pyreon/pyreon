@@ -18,5 +18,5 @@ export {
   schemaItemSpec,
   schemaOf,
 } from './native-plugin/schema'
-export { safeParseExpr, schemaInputNeedsConversion } from './native-plugin/safe-parse'
+export { parseExpr, safeParseExpr, schemaInputNeedsConversion } from './native-plugin/safe-parse'
 export type { UrlRule, ZodFieldConstraints, ZodFieldType, ZodSchemaDefnIR } from './native-plugin/ir'

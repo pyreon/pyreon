@@ -148,10 +148,11 @@ function recognizeInline(
  * a `safeParse` expression over the binding's own struct, whose `safeParseResult` carries the web's
  * `{ success, data }` shape.
  *
+ * `Pet.parse(x)` lowers to the struct's static `parse`, which returns the validated value or THROWS — the core's
+ * error model gives it `try` / `try!` and warns where nothing catches it, as for any throwing call.
+ *
  * What stays web-only is WARNED by name rather than emitted broken:
- *   - `.parse(x)` THROWS on invalid input, which needs the native error model (`try`/`throw` lowering) PMTC does
- *     not carry yet;
- *   - `.safeParse` on a `discriminatedUnion` binding — its native enum has no `{ success, data }` result form yet;
+ *   - `.parse` / `.safeParse` on a `discriminatedUnion` binding — its native enum has neither result form yet;
  *   - the async variants and any other method.
  *
  * Returns undefined when the receiver is not a recorded binding, so an unrelated `x.parse(…)` falls through.
@@ -177,12 +178,18 @@ function recognizeBound(
     facts.safeParseResultBindings.add(binding)
     return { type: 'safeParse', payload: { schemaName: binding }, args: [arg] }
   }
+  if (method === 'parse' && kind === 'object') {
+    const argNode = (node.arguments as AnyNode[] | undefined)?.[0]
+    const arg = argNode ? ctx.expr(argNode) : { kind: 'object' as const, fields: [] }
+    facts.parseBindings.add(binding)
+    return { type: 'parse', payload: { schemaName: binding }, args: [arg] }
+  }
   const reason =
     method === 'parse'
-      ? '`.parse()` THROWS on invalid input, which needs a native error model (try/throw lowering) PMTC does not carry yet. Use `.safeParse(x)` and branch on `.success` — it lowers on both targets.'
+      ? 'a `discriminatedUnion` schema lowers to a native enum, which `.parse(x)` does not return yet. Parse each variant with its own `s.object(…)` binding, or keep this call in a web-only helper.'
       : method === 'safeParse'
         ? 'a `discriminatedUnion` schema lowers to a native enum with no `{ success, data }` result form yet. Validate each variant with its own `s.object(…)` binding, or keep this call in a web-only helper.'
-        : 'only `.safeParse(x)` on an `s.object({ … })` binding lowers to native. Keep this call in a web-only helper.'
+        : 'only `.parse(x)` / `.safeParse(x)` on an `s.object({ … })` binding lower to native. Keep this call in a web-only helper.'
   return ctx.unsupported(node, `\`${binding}.${method}(…)\` on a @pyreon/validate schema`, reason)
 }
 
@@ -198,7 +205,17 @@ export const recognizeMethodCall: MethodCallRecognizer = (site, ctx) => {
  * emitting a call to a type that does not exist.
  */
 export const finishValidate: ModuleFinish = ({ items, report, fileState }) => {
-  for (const binding of validateFacts({ fileState }).safeParseResultBindings) {
+  const facts = validateFacts({ fileState })
+  for (const binding of facts.parseBindings) {
+    const has = items.some(
+      (i) => i.plugin === VALIDATE_PLUGIN_NAME && i.type === SCHEMA_ITEM_TYPE && !schemaOf(i).inline && schemaOf(i).bindingName === binding,
+    )
+    if (!has)
+      report(
+        `\`${binding}.parse(…)\` references a @pyreon/validate schema whose shape did not lower to native (no struct was emitted for \`${binding}\`), so the call cannot compile on iOS/Android. Give \`${binding}\` a literal \`s.object({ … })\` shape of supported fields.`,
+      )
+  }
+  for (const binding of facts.safeParseResultBindings) {
     const item = items.find(
       (i) =>
         i.plugin === VALIDATE_PLUGIN_NAME &&
