@@ -7412,13 +7412,13 @@
       "warnings": 0
     },
     "example:native-router-demo-ios/RouterApp.tsx|swift": {
-      "sha": "aa84f11ad7f9d7cb9f5f8a061814c789588e98ca866e1be72dbc6146e2ced6fc",
-      "bytes": 29614,
+      "sha": "7e09df287f73cb61baf2ff53afe297b9d0530f68ed78ed2e9e35cc8b1093b60e",
+      "bytes": 31639,
       "warnings": 0
     },
     "example:native-router-demo-ios/RouterApp.tsx|kotlin": {
-      "sha": "38fe1746cd10dc2280980e338ee487d683d21e29e2fc2e901de5d69b6b2a8a45",
-      "bytes": 27300,
+      "sha": "ef139c38449c2287f2623bf58d63fc61afa3e9990a129db663a28dbb8758a5b2",
+      "bytes": 29207,
       "warnings": 0
     },
     "example:native-tasks/TasksApp.tsx|swift": {

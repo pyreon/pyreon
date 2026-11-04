@@ -20,6 +20,7 @@
 // touched.
 
 import { forEachExpr } from './expr-walk'
+import { childStatementLists } from './throw-lowering'
 import { inferType, typeIsOptional, unwrapOptionalType, type InferenceCtx } from './infer-type'
 import type { ComponentIR, DeclIR, ExprIR, ModuleDeclIR, StatementIR, TypeIR } from './types'
 
@@ -80,19 +81,7 @@ function expectType(e: ExprIR, expected: TypeIR | undefined): void {
 
 /** Every statement list nested directly in `s`. */
 function nestedBodies(s: StatementIR): StatementIR[][] {
-  switch (s.kind) {
-    case 'if':
-      return s.elseBody ? [s.then, s.elseBody] : [s.then]
-    case 'while':
-    case 'for-of':
-    case 'for-range':
-    case 'do-while':
-      return [s.body]
-    case 'switch':
-      return s.cases.map((c) => c.body)
-    default:
-      return []
-  }
+  return childStatementLists(s)
 }
 
 /** Every expression a statement owns directly (not those inside nested bodies). */
@@ -116,6 +105,8 @@ function statementExprs(s: StatementIR): ExprIR[] {
       return s.step ? [s.from, s.to, s.step] : [s.from, s.to]
     case 'switch':
       return [s.discriminant, ...s.cases.flatMap((c) => c.tests)]
+    case 'throw':
+      return s.message ? [s.message] : []
     default:
       return []
   }

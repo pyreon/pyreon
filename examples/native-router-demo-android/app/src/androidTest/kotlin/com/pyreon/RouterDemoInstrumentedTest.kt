@@ -1140,6 +1140,36 @@ class RouterDemoInstrumentedTest {
         }
     }
 
+    // Error handling — `throw` and `try`/`catch`/`finally` as native Kotlin
+    // exceptions. The page catches the error and renders its message;
+    // `finally` increments a counter on the success AND the failure path.
+    // Reached via the deep-link seam, like the lifecycle page, to spend no
+    // fold budget.
+    @Test
+    fun throwTryCatchFinallyRunOnDevice() {
+        val instr = InstrumentationRegistry.getInstrumentation()
+        composeRule.onNodeWithTag("home-page").assertIsDisplayed()
+        instr.runOnMainSync {
+            com.pyreon.router.PyreonDeepLink.receive(Uri.parse("pyreondemo://errors"))
+        }
+        composeRule.waitUntil(timeoutMillis = 15_000) {
+            composeRule.onAllNodesWithTag("errors-page").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithTag("err-result").assertTextEquals("Result: none")
+
+        composeRule.onNodeWithText("Parse valid").performClick()
+        composeRule.onNodeWithTag("err-result").assertTextEquals("Result: qty 3")
+        composeRule.onNodeWithTag("err-finally").assertTextEquals("Finally: 1")
+
+        composeRule.onNodeWithText("Parse empty").performClick()
+        composeRule.onNodeWithTag("err-result").assertTextEquals("Result: error: required")
+        composeRule.onNodeWithTag("err-finally").assertTextEquals("Finally: 2")
+
+        composeRule.onNodeWithText("Parse negative").performClick()
+        composeRule.onNodeWithTag("err-result").assertTextEquals("Result: error: negative: -2")
+        composeRule.onNodeWithTag("err-finally").assertTextEquals("Finally: 3")
+    }
+
     // Platform APIs — app LIFECYCLE through the REAL Activity lifecycle. The
     // lifecycle page renders the STICKY wasBackgrounded flag;
     // rememberPyreonAppState() observes the hosting Activity via a

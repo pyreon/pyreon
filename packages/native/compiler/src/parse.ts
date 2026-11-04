@@ -30,6 +30,7 @@ import {
   pluginExprReduce,
 } from './registry-lookup'
 import { createImportReferenceQuery } from './import-reference'
+import { childStatementLists, rewriteCaughtMessage } from './throw-lowering'
 import type { UnloweredModule } from './unlowered-modules'
 import {
   isJson,
@@ -5469,6 +5470,8 @@ function markMethodMutatedLocals(stmts: StatementIR[]): void {
       if (st.kind === 'for-of') {
         walk(st.body)
       }
+      if (st.kind === 'try' || st.kind === 'switch') for (const l of childStatementLists(st)) walk(l)
+      if (st.kind === 'throw' && st.message) scanExpr(st.message)
     }
   }
   walk(stmts)
@@ -5503,17 +5506,9 @@ function markReassignedLocalsMutable(stmts: StatementIR[]): void {
         s.expr.callee.object.kind === 'identifier'
       ) {
         reassigned.add(s.expr.callee.object.name)
-      } else if (s.kind === 'if') {
-        collect(s.then)
-        if (s.elseBody) collect(s.elseBody)
-      } else if (
-        s.kind === 'while' ||
-        s.kind === 'for-of' ||
-        s.kind === 'for-range' ||
-        s.kind === 'do-while'
-      )
-        collect(s.body)
-      else if (s.kind === 'switch') for (const c of s.cases) collect(c.body)
+      } else {
+        for (const l of childStatementLists(s)) collect(l)
+      }
       // Assignments inside CALLBACK arrows (`nums.forEach(x => { acc = acc +
       // x })` — the accumulate idiom) live in EXPRESSION trees, which the
       // per-kind statement walk above never enters — the outer `let acc`
@@ -5536,7 +5531,8 @@ function markReassignedLocalsMutable(stmts: StatementIR[]): void {
       collect(node.stmts)
     }
     for (const k of Object.keys(node)) {
-      if (k === 'then' || k === 'elseBody' || k === 'body' || k === 'cases') continue // already walked per-kind
+      if (k === 'then' || k === 'elseBody' || k === 'body' || k === 'cases' || k === 'catchBody' || k === 'finallyBody')
+        continue // already walked per-kind
       walkForNestedArrows(node[k])
     }
   }
@@ -5545,17 +5541,7 @@ function markReassignedLocalsMutable(stmts: StatementIR[]): void {
   const mark = (list: StatementIR[]): void => {
     for (const s of list) {
       if (s.kind === 'let' && reassigned.has(s.name)) s.mutable = true
-      else if (s.kind === 'if') {
-        mark(s.then)
-        if (s.elseBody) mark(s.elseBody)
-      } else if (
-        s.kind === 'while' ||
-        s.kind === 'for-of' ||
-        s.kind === 'for-range' ||
-        s.kind === 'do-while'
-      )
-        mark(s.body)
-      else if (s.kind === 'switch') for (const c of s.cases) mark(c.body)
+      else for (const l of childStatementLists(s)) mark(l)
     }
   }
   mark(stmts)
@@ -5992,6 +5978,10 @@ function parseStatementBody(node: AnyNode, ctx: ParseCtx): StatementIR | null {
       }
       return { kind: 'switch', discriminant, cases }
     }
+    case 'ThrowStatement':
+      return parseThrow(node.argument as AnyNode | undefined, ctx)
+    case 'TryStatement':
+      return parseTry(node, ctx)
     default:
       ctx.warnings.push(`Unsupported statement: ${node.type}.`)
       return null
@@ -6004,6 +5994,103 @@ function parseLoopBody(node: AnyNode | undefined, ctx: ParseCtx): StatementIR[] 
   if (node.type === 'BlockStatement') return parseStatementBlock(node, ctx)
   const s = parseStatement(node, ctx)
   return s ? [s] : []
+}
+
+/**
+ * The `catch` bindings in scope while a catch body is parsed, innermost last. Strictly nested with the synchronous
+ * parse (pushed and popped in a `finally` around the body), so a rethrow (`throw e`) resolves to the binding it names.
+ */
+const _catchParams: string[] = []
+
+/** `new Error(m)` / `new TypeError(m)` / `Error(m)` → the constructor's message argument (or `''`); otherwise undefined. */
+function errorConstructionMessage(arg: AnyNode): AnyNode | null | undefined {
+  if (arg.type !== 'NewExpression' && arg.type !== 'CallExpression') return undefined
+  const callee = arg.callee as AnyNode | undefined
+  const name = callee?.type === 'Identifier' ? (callee.name as string) : undefined
+  if (name === undefined || !name.endsWith('Error')) return undefined
+  const args = (arg.arguments as AnyNode[] | undefined) ?? []
+  if (args.length > 1) return undefined
+  return args[0] ?? null
+}
+
+/**
+ * `throw new Error(message)` / `throw 'message'` / a rethrow of the enclosing `catch` binding. Anything else — an
+ * arbitrary object, an error value held in some other variable — has no portable native shape and is NAMED rather
+ * than dropped silently (a silently dropped throw keeps executing the code after it).
+ */
+function parseThrow(arg: AnyNode | undefined, ctx: ParseCtx): StatementIR | null {
+  if (arg === undefined) return null
+  if (arg.type === 'Identifier' && _catchParams.includes(arg.name as string)) {
+    return { kind: 'throw', rethrow: arg.name as string }
+  }
+  const fromCtor = errorConstructionMessage(arg)
+  const msgNode =
+    fromCtor !== undefined
+      ? fromCtor
+      : (arg.type === 'Literal' && typeof arg.value === 'string') || arg.type === 'TemplateLiteral'
+        ? arg
+        : undefined
+  if (msgNode === undefined) {
+    ctx.warnings.push(
+      `\`throw\` lowers to native for \`throw new Error(message)\` (any \`…Error\` constructor), a string, or rethrowing the enclosing \`catch\` binding — this one throws some other value, so it was dropped and the code after it would keep running. Throw an \`Error\` with a message instead.`,
+    )
+    return null
+  }
+  if (msgNode === null) return { kind: 'throw', message: { kind: 'literal', value: '' } }
+  const parsed = parseExpr(msgNode, ctx)
+  const isText = parsed.kind === 'template' || (parsed.kind === 'literal' && typeof parsed.value === 'string')
+  return {
+    kind: 'throw',
+    // A non-string message is stringified, as `new Error(x)` does.
+    message: isText ? parsed : { kind: 'call', callee: { kind: 'identifier', name: 'String' }, args: [parsed] },
+  }
+}
+
+/** `try { … } catch (e) { … } finally { … }` — see `throw-lowering.ts` for the per-target model. */
+function parseTry(node: AnyNode, ctx: ParseCtx): StatementIR | null {
+  const body = parseLoopBody(node.block as AnyNode, ctx)
+  const handler = node.handler as AnyNode | null | undefined
+  const out: Extract<StatementIR, { kind: 'try' }> = { kind: 'try', body }
+  if (handler) {
+    const param = handler.param as AnyNode | null | undefined
+    if (param && param.type !== 'Identifier') {
+      ctx.warnings.push(
+        `A destructured \`catch\` binding (\`catch ({ message })\`) is not lowered to native — bind the error (\`catch (e)\`) and read \`e.message\`. The catch body was kept; the binding was dropped.`,
+      )
+    }
+    const paramName = param?.type === 'Identifier' ? (param.name as string) : undefined
+    if (paramName !== undefined) _catchParams.push(paramName)
+    try {
+      const catchBody = parseLoopBody(handler.body as AnyNode, ctx)
+      out.catchBody = paramName !== undefined ? rewriteCaughtMessage(catchBody, paramName) : catchBody
+    } finally {
+      if (paramName !== undefined) _catchParams.splice(_catchParams.lastIndexOf(paramName), 1)
+    }
+    if (paramName !== undefined) out.catchParam = paramName
+  }
+  const finalizer = node.finalizer as AnyNode | null | undefined
+  if (finalizer) {
+    const finallyBody = parseLoopBody(finalizer, ctx)
+    // Swift runs a `finally` as a `defer`, which cannot leave its scope early.
+    if (finallyBody.some((s) => leavesScope(s))) {
+      ctx.warnings.push(
+        `A \`finally\` block that \`return\`s, \`throw\`s, \`break\`s or \`continue\`s is not lowered to native (Swift runs \`finally\` as a \`defer\`, which cannot leave its scope) — the finally block was dropped. Move that control flow out of \`finally\`.`,
+      )
+    } else {
+      out.finallyBody = finallyBody
+    }
+  }
+  return out
+}
+
+/** Whether a statement (or one nested in it, outside arrows) leaves the enclosing scope. */
+function leavesScope(s: StatementIR, inLoop = false): boolean {
+  if (s.kind === 'return' || s.kind === 'throw') return true
+  // A `break`/`continue` belonging to a loop INSIDE the finally block stays inside it — unless it is labeled, when it
+  // may name a loop outside.
+  if (s.kind === 'break' || s.kind === 'continue') return !inLoop || s.label !== undefined
+  const loop = s.kind === 'while' || s.kind === 'do-while' || s.kind === 'for-of' || s.kind === 'for-range'
+  return childStatementLists(s).some((l) => l.some((c) => leavesScope(c, inLoop || loop)))
 }
 
 /** Extract the `T` from `signal<T>(…)`. oxc exposes generics as `typeArguments`. */
@@ -6720,6 +6807,22 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
           left: parseExpr(node.left, ctx),
           right: parseExpr(node.right, ctx),
         }
+      }
+      // `e instanceof Error` on a `catch` binding — the idiomatic narrowing TypeScript requires (the binding is
+      // `unknown`). Natively every caught value IS an error (only an `Error` or a string can be thrown, both lowered to
+      // the native error type), so the test is constant. A subclass test (`RangeError`) cannot be answered: the
+      // native error does not keep the JavaScript class.
+      if (
+        op === 'instanceof' &&
+        node.left?.type === 'Identifier' &&
+        _catchParams.includes(node.left.name as string) &&
+        node.right?.type === 'Identifier'
+      ) {
+        if (node.right.name === 'Error') return { kind: 'literal', value: true }
+        ctx.warnings.push(
+          `[${locOf(node, ctx)}] \`${node.left.name as string} instanceof ${node.right.name as string}\` is not lowered to native: the native error keeps the message, not the JavaScript error class. Test \`instanceof Error\`, or carry the distinction in the message.`,
+        )
+        return { kind: 'literal', value: false }
       }
       ctx.warnings.push(
         `[${locOf(node, ctx)}] Binary operator \`${op}\` is not supported in native (PMTC) — emitting \`+\` as a fallback (likely wrong); rewrite using a supported operator.`,
