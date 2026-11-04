@@ -2371,8 +2371,8 @@ zero({ mode: 'ssg', ssg: { workers: 1 } })`,
     pattern: /(Navigation guard|Route middleware) threw (during SSR )?on the initial navigation/,
     diagnose: (m) => ({
       cause: m[2]
-        ? `A ${m[1].toLowerCase()} threw while the server evaluated the initial navigation — usually it reads window or localStorage. The server rendered the route and left the decision to the client.`
-        : `A ${m[1].toLowerCase()} threw on the client's initial navigation, so the deep link was cancelled and <RouterView> renders nothing.`,
+        ? `A ${(m[1] ?? "guard").toLowerCase()} threw while the server evaluated the initial navigation — usually it reads window or localStorage. The server rendered the route and left the decision to the client.`
+        : `A ${(m[1] ?? "guard").toLowerCase()} threw on the client's initial navigation, so the deep link was cancelled and <RouterView> renders nothing.`,
       fix: "Make the guard decide explicitly per environment: import { isServer } from '@pyreon/reactivity' and return a value on the server (e.g. `!isServer && isAdmin()` keeps the server from rendering a guarded page). To gate server-rendered HTML on a session, throw redirect() from the route's loader, which receives the request.",
       related: 'Router guards run on the initial navigation (Vue Router model)',
     }),
