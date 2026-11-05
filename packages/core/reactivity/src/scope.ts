@@ -58,8 +58,8 @@ export class EffectScope {
    * component's scope rather than leaking as global effects.
    */
   runInScope<T>(fn: () => T): T {
-    const prev = _currentScope
-    _currentScope = this
+    const prev = _sc.s
+    _sc.s = this
     // `onCleanup()` called in `fn` (outside any effect it creates) belongs to
     // THIS scope and runs on `stop()` — the same ownership rule as effects. It
     // must not inherit an enclosing effect run's window (a store first created
@@ -69,7 +69,7 @@ export class EffectScope {
     try {
       return fn()
     } finally {
-      _currentScope = prev
+      _sc.s = prev
       const collected = _exitCleanupFrame(token)
       if (collected !== null) for (const c of collected) this.add({ dispose: c })
     }
@@ -126,14 +126,24 @@ export class EffectScope {
   }
 }
 
-let _currentScope: EffectScope | null = null
+// A field on a `const` object rather than a module-level `let` — see the V8
+// measurement on `TrackingFrame` in tracking.ts.
+interface ScopeFrame {
+  s: EffectScope | null
+  /** The active context owner (see `getContextOwner`). */
+  o: EffectScope | null
+}
+const _sc: ScopeFrame = {
+  s: null,
+  o: null,
+}
 
 export function getCurrentScope(): EffectScope | null {
-  return _currentScope
+  return _sc.s
 }
 
 export function setCurrentScope(scope: EffectScope | null): void {
-  _currentScope = scope
+  _sc.s = scope
 }
 
 export function effectScope(): EffectScope {
@@ -141,33 +151,32 @@ export function effectScope(): EffectScope {
 }
 
 // ─── Current context owner ───────────────────────────────────────────────────
-// DELIBERATELY SEPARATE from `_currentScope` (the effect-TRACKING scope). The
+// DELIBERATELY SEPARATE from `_sc.s` (the effect-TRACKING scope). The
 // renderer sets this to the component's scope while mounting that component's
 // subtree, so a child's owner chains to its parent; deferred boundaries capture
 // it at setup and restore it when they later mount children inside an effect.
 // Keeping the two distinct means restoring the owner for a deferred mount does
 // NOT perturb which scope new effects are tracked by.
-let _currentContextOwner: EffectScope | null = null
 
 export function getContextOwner(): EffectScope | null {
-  return _currentContextOwner
+  return _sc.o
 }
 
 /** Set the current context owner, returning the previous one (for restore). */
 export function setContextOwner(owner: EffectScope | null): EffectScope | null {
-  const prev = _currentContextOwner
-  _currentContextOwner = owner
+  const prev = _sc.o
+  _sc.o = owner
   return prev
 }
 
 /** Run `fn` with `owner` as the current context owner, then restore. */
 export function runWithContextOwner<T>(owner: EffectScope | null, fn: () => T): T {
-  const prev = _currentContextOwner
-  _currentContextOwner = owner
+  const prev = _sc.o
+  _sc.o = owner
   try {
     return fn()
   } finally {
-    _currentContextOwner = prev
+    _sc.o = prev
   }
 }
 
@@ -189,7 +198,7 @@ export function runWithContextOwner<T>(owner: EffectScope | null, fn: () => T): 
  * })
  */
 export function onScopeDispose(fn: () => void): void {
-  const scope = _currentScope
+  const scope = _sc.s
   if (!scope) {
     if (process.env.NODE_ENV !== 'production') {
       // oxlint-disable-next-line no-console
