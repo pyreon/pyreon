@@ -65,6 +65,7 @@ Reconciler functions below live in `packages/core/runtime-dom/src/nodes.ts` unle
 - Devtools work (`compId`, `_mountingStack`, `registerComponent`/`unregisterComponent`) is behind `__DEV__` and tree-shaken in production.
 - Lazy allocation: `EffectScope._effects`/`._updateHooks`, `LifecycleHooks.mount`/`.unmount`/`.update`/`.error` and `mountCleanups` start as `null`.
 - `makeReactiveProps` copies on the first reactive prop in a single pass; a static-only component allocates no result object.
+- The converted props object has a **null prototype**. On a `{}`, each per-instance accessor makes V8 mint a new hidden class per component (no two results share a map); a null-prototype object starts in dictionary mode and skips that. Measured 2026-11 on the 2,047-component deep-tree mount: `makeReactiveProps` ~165 → ~75 µs on-CPU, board 3.70–3.72 → 3.57–3.59 ms, retained bytes per object unchanged. Workarounds that keep `Object.prototype` (dictionary via `delete`, `setPrototypeOf` after the fact, computed-key literal getters) measured no faster. Consequence: read props with `Object.hasOwn` / `in`, never `props.hasOwnProperty`.
 - `jsx()` hands a childless, keyless element's props straight to `h()` without copying, which also preserves getter props. Elements with children still copy, because `children` moves between props and the child list.
 - `omit()` accepts a pre-built `Set<string>`; rocketstyle builds it once per definition.
 - Unistyle `styles()` reuses a module-level Set and fragment buffer, cleared on each synchronous call.

@@ -100,7 +100,7 @@ Caveats: create/replace/remove/append are dominated by browser layout that every
 | scenario | fastest | **Pyreon** | others |
 | --- | --- | --- | --- |
 | dbmon tick (100×6, all change) | **Pyreon 1.83 ms** | — | Svelte 1.84 · Octane 1.88 · React 1.92 · Solid 1.96 · Vue 2.01 · Preact 2.10 |
-| mount deep tree (2,047 components) | Solid 3.07 ms 🥇 | **3.78 ms (1.23× slower)** | React 3.73 · Preact 4.66 · Vue 6.34 · Svelte 10.88 |
+| mount deep tree (2,047 components) | Solid 3.09 ms 🥇 | **3.59 ms (1.16× slower)** ¹ | React 3.63 ¹ · Preact 4.66 · Vue 6.34 · Svelte 10.88 |
 | context → 1,024 consumers | **Pyreon 1.91 ms** | — | Solid 2.00 · React 2.29 · Svelte 2.34 · Preact 2.58 · Vue 2.63 |
 | effect list: update 500 | **Pyreon 0.97 ms 🥇** | — | Solid 1.02 · React 1.25 · Svelte 1.50 · Preact 1.70 · Vue 2.86 |
 | effect list: dispose 500 | Solid 45 µs 🥇 | 55 µs | Svelte 95 · Preact 170 · React 192 · Vue 210 |
@@ -108,6 +108,7 @@ Caveats: create/replace/remove/append are dominated by browser layout that every
 | memo wall: passthrough | Pyreon (bare computed) 469 µs 🥇 | 471 µs | Svelte 502 · Solid 503 · React 572 · Preact 768 · Vue 1,900 |
 
 - Scenario rows above are the 2026-10-15 run (60 samples per cell; 🥇 = fastest median — check CIs in the raw output before reading a sub-3% gap as a win).
+- ¹ Re-measured 2026-11-05 after null-prototype reactive props (`--scenario tree --only Pyreon,SolidJS,React 19,Vanilla JS` plus a same-build `Pyreon (old props)` arm, repeat 5, two runs): Pyreon 3.57 [3.50–3.61] / 3.59 [3.54–3.62] ms, old pipeline 3.72 [3.67–3.76] / 3.70 [3.66–3.74], Solid 3.12 / 3.09, React 3.64 / 3.63 (🤝 with Pyreon). Preact/Vue/Svelte were not re-run.
 - Deep-tree mount remains **Pyreon's clearest framework loss** (Vanilla floor 2.53 ms). The template diagnostic arms measure 3.81 ms (`tpl append`) and 4.05 ms (`tpl slot`); `SolidJS (eager props)` 2.66 ms is a diagnostic, unranked. Profiled again on 2026-10-15: GC share is the same as Solid's (19.4% vs 19.1%) and no single lever remains.
 
 **Flow — `@pyreon/flow` vs React Flow 12 (500 nodes / 499 edges):**

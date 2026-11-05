@@ -116,7 +116,7 @@ Real Chromium, 60 samples per cell.
 | Scenario | Fastest | Pyreon |
 | --- | --- | --- |
 | dbmon tick (100×6 cells, all change) | Svelte 1.80ms | 1.90ms (1.06× slower) |
-| mount deep tree (2,047 components) | Solid 3.25ms | 4.20ms (**1.29× slower**) |
+| mount deep tree (2,047 components) | Solid 3.09ms | 3.59ms (**1.16× slower**, 2026-11-05) |
 | context → 1,024 consumers | **Pyreon 1.71ms** | Solid 1.79 🤝 |
 | effect list: update 500 | Solid 1.02ms | 🤝 1.03ms |
 | effect list: dispose 500 | Solid 40µs | 🤝 40µs |
@@ -126,7 +126,7 @@ Real Chromium, 60 samples per cell.
 - **dbmon** changes every value every tick, which removes a signal graph's
   skip-unchanged advantage by construction; the whole field is within 1.25×
   and Pyreon is **not** the leader.
-- **Deep-tree mount is Pyreon's clearest loss** — 1.29× behind Solid.
+- **Deep-tree mount is Pyreon's clearest loss** — 1.16× behind Solid (was 1.19–1.29×; null-prototype reactive props, 2026-11).
 - The memo scenario's first pass started after a load spike settled; treat it
   as possibly contaminated.
 

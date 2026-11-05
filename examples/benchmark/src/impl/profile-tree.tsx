@@ -188,6 +188,35 @@ function PyreonDeepTreeSig(props: { depth: number }) {
   )
 }
 
+// ─── I: A, but the provider hands the context the SIGNAL itself ──────────────
+// (Solid's arm passes its signal to the Provider; A passes a wrapper arrow.)
+// Same components as A — only the provided value differs.
+
+// ─── J: A with useContext called but a static leaf (prices the lookup alone) ─
+
+function PyreonNodeCtxOnly(props: { depth: number }): VNodeChild {
+  if (props.depth <= 1) {
+    const get = useContext(PyreonDeepCtx)
+    ;(globalThis as { __sink?: unknown }).__sink = get
+    return <span class="leaf">x</span>
+  }
+  return (
+    <div class="branch">
+      <PyreonNodeCtxOnly depth={props.depth - 1} />
+      <PyreonNodeCtxOnly depth={props.depth - 1} />
+    </div>
+  )
+}
+
+function PyreonDeepTreeCtxOnly(props: { depth: number; value: () => string }) {
+  provide(PyreonDeepCtx, props.value)
+  return (
+    <div class="tree-root">
+      <PyreonNodeCtxOnly depth={props.depth} />
+    </div>
+  )
+}
+
 // ─── G: Solid, the compiler's output shape ───────────────────────────────────
 
 const SolidCtx = solidCreateContext<() => string>(() => '')
@@ -238,7 +267,7 @@ function vanillaBuild(depth: number): Node {
   return div
 }
 
-export const TREE_ARMS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'V'] as const
+export const TREE_ARMS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'V'] as const
 export type TreeArm = (typeof TREE_ARMS)[number]
 
 export function setupTreeProfile(makeHost: () => HTMLElement): void {
@@ -280,6 +309,12 @@ export function setupTreeProfile(makeHost: () => HTMLElement): void {
   function __mountTreeH(): void {
     mountPyreon('H', ph('div', { class: 'tree-root' }, ph(PyreonNodeGet as never, { depth: TREE_DEPTH })))
   }
+  function __mountTreeI(): void {
+    mountPyreon('I', ph(PyreonDeepTree as never, { depth: TREE_DEPTH, value: pValue }))
+  }
+  function __mountTreeJ(): void {
+    mountPyreon('J', ph(PyreonDeepTreeCtxOnly as never, { depth: TREE_DEPTH, value: () => pValue() }))
+  }
   function __mountTreeG(): void {
     disposers.G = solidRender(
       () =>
@@ -310,6 +345,8 @@ export function setupTreeProfile(makeHost: () => HTMLElement): void {
     F: __mountTreeF,
     G: __mountTreeG,
     H: __mountTreeH,
+    I: __mountTreeI,
+    J: __mountTreeJ,
     V: __mountTreeV,
   }
 
