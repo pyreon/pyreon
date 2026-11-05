@@ -161,7 +161,7 @@ Each of these produced a wrong published figure at some point.
 
 ### Swap rows
 
-- Refuted (2026-11), do not re-propose: reusing `<For>`'s per-update scratch on the swap path (double-buffered `newKeys`, a reused `diffs` buffer, a linear scan in place of `new Set(diffs)` in `smallKPlace`). In-run A/B as two arms of one build: `bench-crossover` batch cycle at 1,000 rows, K target 10/20/40/80/160 ms — before 850/888/961/921/898 µs, after 854/851/954/929/903 µs (CIs overlap at every K but 20 ms); fair-bench swap 805 [800–810] vs 795 [780–805] µs. The K-dependence is not Pyreon allocation: Octane moved the same way in the same run (882/873/908/927/924 µs). Patch kept at the scratchpad, not in the repo.
+- Refuted (2026-11), do not re-propose: reusing `<For>`'s per-update scratch on the swap path (double-buffered `newKeys`, a reused `diffs` buffer, a linear scan in place of `new Set(diffs)` in `smallKPlace`). In-run A/B as two arms of one build: `bench-crossover` batch cycle at 1,000 rows, K target 10/20/40/80/160 ms — before 850/888/961/921/898 µs, after 854/851/954/929/903 µs (CIs overlap at every K but 20 ms); fair-bench swap 805 [800–810] vs 795 [780–805] µs. The K-dependence is not Pyreon allocation: Octane moved the same way in the same run (882/873/908/927/924 µs).
 - Vue Vapor RC led swap outright in two runs (745 vs Pyreon 805 µs). Its DOM ops for this op are the same as Pyreon's (two `insertBefore`, back row first; `planMoves` keeps rows 2–997 as the LIS), and a scratch probe found no swap-cost difference from `class=""` on every row or from the `<For>` comment markers. The lead is unexplained; it needs a CDP profile of the swap op, which no driver does yet.
 
 ### Clear rows
