@@ -36,6 +36,7 @@ import {
   Match,
   onUnmount,
   Show,
+  splitProps,
   Suspense,
   Switch,
 } from '@pyreon/core'
@@ -191,10 +192,14 @@ function wrapCompatComponent(solidComponent: Function): ComponentFn {
     })
 
     // Strip the internal prop before passing to the component
-    const { [_CHILD_INSTANCE]: _stripped, ...cleanProps } = props as Record<
-      string | symbol,
-      unknown
-    >
+    // Descriptor-preserving split, NOT a rest-destructure: a rest-destructure
+    // is a value copy that fires every getter once, here, and freezes each
+    // reactive prop (the mount pipeline turns a parent's `prop={signal()}` into
+    // a getter). Component props are reactive in this framework, so a prop read
+    // inside an effect or a JSX accessor must see later changes. `splitProps`
+    // copies descriptors onto a plain `{}`, so the component still gets an
+    // `Object.prototype` object.
+    const cleanProps = splitProps(props as Record<string | symbol, unknown>, [_CHILD_INSTANCE])[1]
 
     // Return reactive accessor — Pyreon's mountChild calls mountReactive
     return () => {
