@@ -1,5 +1,101 @@
 # @pyreon/primitives
 
+## 0.54.0
+
+### Minor Changes
+
+- [#4048](https://github.com/pyreon/pyreon/pull/4048) [`6e62c7d`](https://github.com/pyreon/pyreon/commit/6e62c7d0c5dda0f2a275c140aadc1bc4c29a9835) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `<Field multiline>` is a text area on the web, iOS and Android.
+
+  Add `multiline` (and optionally `lines`, the number of visible rows, default 3) to a `<Field>` to get a multi-line text input. It lowers to `<textarea rows>` on the web, `TextField(axis: .vertical)` with `.lineLimit(lines, reservesSpace: true)` on iOS, and a `TextField` with `minLines`/`maxLines` on Android. On every target the field is exactly `lines` rows tall and scrolls past them, and Return inserts a newline. `lines` can be reactive.
+
+  A text area has no keyboard `kind` and no `onSubmit`, so the types reject both on the multiline shape, and the native compiler warns by name if they reach it anyway. `multiline` selects a different control, so it must be a static value; a dynamic one warns and renders a single-line field.
+
+  Fixed on Android: a plain single-line `<Field>` now passes `singleLine = true`. Material's `TextField` defaults to multi-line, so before this Return inserted a newline and long text wrapped onto more rows on Android only, while the web and iOS fields were one line.
+
+- [#4064](https://github.com/pyreon/pyreon/pull/4064) [`1496a84`](https://github.com/pyreon/pyreon/commit/1496a84df5e8f51df9bca3decda388e0a75b427e) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Add the `<Canvas>` vector-drawing primitive ([#3985](https://github.com/pyreon/pyreon/issues/3985)).
+
+  `<Canvas width height>` is a fixed-size, clipped drawing surface. Its children are the shape primitives `CanvasRect`, `CanvasCircle`, `CanvasLine`, `CanvasPath` (full SVG path data, arcs included) and `CanvasText`, with `fill` / `stroke` / `strokeWidth` taking a colour token or a `#hex` literal. Shapes are ordinary JSX children, so `<For>`, `<Show>` and signal-driven props work inside a canvas.
+
+  On the web each shape is an absolutely positioned `<svg>` layer. On iOS the canvas is `PyreonCanvas` (a clipped `ZStack` of SwiftUI `Path`s, with a runtime SVG path parser). On Android it is `PyreonCanvas` (a clipped `Box` of Compose `Canvas` layers, using androidx's `PathParser`).
+
+- [#4057](https://github.com/pyreon/pyreon/pull/4057) [`4d8a3e0`](https://github.com/pyreon/pyreon/commit/4d8a3e07a94000d2cff9dff642b108cfc188879d) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `<Field kind="date" | "time" | "datetime">` picks a date, a time or both, on the web, iOS and Android.
+
+  The value is the zone-free wall-clock string an `<input type="date" | "time" | "datetime-local">` produces: `YYYY-MM-DD`, `HH:mm` (24-hour) or `YYYY-MM-DDTHH:mm`. `''` means no value. `min` and `max` take strings in the same format and bound what can be picked.
+
+  On the web it renders the matching `<input>`. On iOS it is a `DatePicker`; on Android, Material 3's date picker and time picker dialogs. With no value the native field shows the placeholder (or the locale's date pattern), and a clear button returns it to `''`. Material's time picker cannot disable hours, so on Android a time bound is applied when the choice is confirmed.
+
+  A static `min` or `max` that is not in the kind's format, or is not a real date, is ignored by a browser; the compiler drops it on iOS and Android too and names it. `min` after `max` is kept and named. `onSubmit` is not allowed on a date kind, because a picker has no keyboard submit.
+
+- [#4062](https://github.com/pyreon/pyreon/pull/4062) [`1ece4c0`](https://github.com/pyreon/pyreon/commit/1ece4c0cd31a8ed21b14ad41fe794969f2a80d18) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Add the `<Gesture>` primitive and transform props ([#3985](https://github.com/pyreon/pyreon/issues/3985)).
+
+  `<Gesture onPan onPinch onRotate>` reports continuous gestures with cumulative values (`dx`/`dy`/`x`/`y`, `scale`/`centerX`/`centerY`, `degrees`) and a `start` / `change` / `end` phase. Pan, pinch and rotate run at the same time, and nothing is reported until the pointer passes the touch slop, so a button inside the region still receives taps. It lowers to pointer events on the web, simultaneous `DragGesture` / `MagnifyGesture` / `RotateGesture` on iOS (`PyreonGesture`), and one `pointerInput` loop on Android (`PyreonGesture`).
+
+  Every primitive now accepts `translateX`, `translateY`, `scale` and `rotate`. Values can be signal reads and update in place: CSS `transform` on the web, `.offset` / `.scaleEffect` / `.rotationEffect` on iOS, `Modifier.offset` / `.scale` / `.rotate` on Android. The order is the same on every target (rotate, then scale, then translate).
+
+  The native compiler now honours a closure parameter's declared type when it widens signals to `Double`, so `x.set(e.dx)` in a gesture handler no longer leaves `x` an `Int`.
+
+- [`7270e41`](https://github.com/pyreon/pyreon/commit/7270e41ba3cbb0597265129877c060f7d2a7b3d5) Thanks [@vitbokisch](https://github.com/vitbokisch)! - New `<Select>` primitive: choose one value from a list with each platform's own picker.
+
+  ```tsx
+  <Select
+    value={fruit()}
+    options={[{ value: 'apple', label: 'Apple' }]}
+    onChange={(v) => fruit.set(v)}
+    placeholder="Pick a fruit"
+  />
+  ```
+
+  On the web it renders a `<select>`. On iOS it lowers to `PyreonSelect`, a menu-style `Picker`. On Android it lowers to `PyreonSelect`, a Material 3 `ExposedDropdownMenuBox`. `options` is `{ value, label, disabled? }[]`, exported as the `SelectOption` type. `value` is the chosen option's value. `''`, or any value no option has, selects nothing and shows the placeholder. A disabled option is listed but cannot be chosen, and the placeholder cannot be chosen once something is. Every user choice goes through `onChange`.
+
+  A list typed `SelectOption[]` is passed to the native runtime unchanged. A list of your own type is mapped to `SelectOption`, which reads `disabled` only when your type declares it. A type without `value` and `label` gets a named compiler warning.
+
+  Also fixed: a signal write is now typed by the signal. `xs.set([{ value, label }])` used to build its objects from whichever declared struct matched their fields first. In a file that also imports `@pyreon/charts`, that was the chart engine's `PolarTick`, so the assignment did not compile.
+
+- [#4059](https://github.com/pyreon/pyreon/pull/4059) [`6e0d14c`](https://github.com/pyreon/pyreon/commit/6e0d14c14ee19339d25e3b974d90eb571694cb9e) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Add top-level navigation primitives: `<Tabs>` / `<Tab>` and `<Split>` ([#3983](https://github.com/pyreon/pyreon/issues/3983)).
+
+  `<Tabs value onChange>` with literal `<Tab value label icon>` entries is a tab bar that keeps every visited tab mounted, so a tab's local state, typed text and scroll position survive switching away and back. On the web it is the WAI-ARIA tabs pattern (tablist, roving tabindex, arrow keys / Home / End) as a bottom bar below 600px and a side rail at 600px and wider. On iOS it lowers to `TabView(selection:)`, using the iOS 18 `Tab` API with `.sidebarAdaptable` where available. On Android it lowers to Material `BottomNavigation` below 600dp of window width and `NavigationRail` at 600dp and wider, the `useSizeClass()` breakpoint. A selection signal typed by a string-literal union lowers to the native enum.
+
+  `<Split sidebar showDetail onBack>` is a list/detail layout: two panes on a wide window, one pane on a narrow one. On iOS that is `NavigationSplitView`, or on a compact width the detail pushed onto a navigation stack. Inside a `RouterProvider` it reuses the router's stack rather than nesting a second one. On Android, `BackHandler` routes the system back gesture to `onBack`.
+
+  Both primitives are router-agnostic, like `<Link>`: the selection and the visible pane are your signals. The native tab bar is built at compile time, so a `<Tab>` produced by `<For>`, or one with a computed `value`, is dropped with a named warning.
+
+- [#4091](https://github.com/pyreon/pyreon/pull/4091) [`2fe2c1e`](https://github.com/pyreon/pyreon/commit/2fe2c1e6bcc4dbcfe1d8d349c46e97a7353e85c5) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Add per-tab back stacks for tab-bar apps: `createRouter({ tabs })` with `<Tabs router={router}>` ([#4060](https://github.com/pyreon/pyreon/issues/4060)).
+
+  `createRouter({ routes, tabs: [{ name, root }] })` keeps one stack per tab and an active tab. `push` / `replace` / `useNavigate()` act on the active tab. A path under another tab's root selects that tab and pushes onto it, a tab's root path selects it and pops it to the root, and `router.selectTab(name)` switches tabs and keeps every stack. Selecting the tab that is already active pops it to its root. `router.activeTab()` (reactive) and `router.tabStack(name)` read the state.
+
+  `<Tabs router={router}>` from `@pyreon/primitives` binds the tab bar to the router. Put a `<RouterView />` in each `<Tab>`: it shows that tab's top entry, and `useRoute()` / `useParams()` inside it read that tab's route, so a hidden tab keeps its page, params and loader data while another tab navigates. Tapping the active tab pops it to its root.
+
+  - **Web:** the URL is the active tab's top entry. Every history entry the router writes is stamped with its tab and that tab's stack, so Back and Forward restore both through the full navigation pipeline (guards, blockers, loaders). A reload restores the stack stamped on the current entry.
+  - **iOS:** `RouterProvider` adds no stack of its own for a tab-bar router. Each tab is its own `NavigationStack` inside the `TabView` (`PyreonRouterTabs` / `PyreonTabStack`), so a push from inside a tab stays in it and the tab bar stays visible.
+  - **Android:** each tab keeps its own stack (`PyreonTabStack`). The system Back pops the active tab first, then returns from another tab's root to the first tab. `PyreonTabs` gains an `onReselect` callback.
+  - **Deep links** select the tab whose root prefixes the path and push it there, on all three targets.
+
+  The native compiler lowers `tabs` (an array literal of string-literal `{ name, root }`). A `<Tab value>` that names no configured tab, a tab whose root matches no top-level literal route, and a `<RouterView />` outside a `<Tab>` are named in warnings. A signal-bound `<Tabs value onChange>` is unchanged.
+
+  `pyreon doctor diagnose` / MCP `diagnose` explain the two router-tab warnings (`selectTab` of an unknown tab, `<Tabs router>` on a router without `tabs`).
+
+- [#4052](https://github.com/pyreon/pyreon/pull/4052) [`2de6084`](https://github.com/pyreon/pyreon/commit/2de6084df506180f468f9674fa341fea50044574) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `<WebView>` now hosts a whole web flow on iOS and Android: the page gets the browser chrome it would get in a browser, and the view can fill the screen.
+
+  Browser chrome ([#3982](https://github.com/pyreon/pyreon/issues/3982)). The Android host had no `WebChromeClient`, so a hosted page's `<input type="file">` never opened a picker, `navigator.geolocation` was never answered, `alert()` / `confirm()` / `prompt()` showed nothing, and `getUserMedia` was denied. The iOS host had no `WKUIDelegate`, so the dialogs were dropped and `window.open` / `target="_blank"` did nothing. Both now answer all of them: the system file chooser (on Android the document picker, or the camera for `capture`), native dialogs titled with the page's host, a per-site prompt for location / camera / microphone followed by the runtime permission, and `http(s)` / `mailto` / `tel` / `sms` links from `window.open` / `target="_blank"` handed to the system browser instead of replacing the hosted page. Location, camera and microphone are only granted when the app declares them (Info.plist usage string, AndroidManifest permission); an undeclared one is refused, and Android logs the entry to add. The `create-multiplatform` scaffold now declares the FileProvider the camera writes through, and lists the permissions and usage strings commented out.
+
+  Sizing ([#3956](https://github.com/pyreon/pyreon/issues/3956), item 5). An unsized `<WebView>` is now the `<iframe>` default on every target: full width and 150 high. iOS used to fill whatever a stack offered while Android was 150dp, and the web filled a sized container. The new `grow` prop takes the free main-axis space of the parent `<Stack>` / `<Inline>` (Compose `Modifier.weight(1f)`, a greedy SwiftUI frame, `flex: 1 1 150px` on the web) and fills a non-stack parent. Inside a `<Scroll>` there is no free space, so the compiler drops `grow` with a named warning. `<CodeWebView>`, `<RichTextWebView>` and `<FlowWebView>` forward `grow` too.
+
+  Breaking for apps that relied on the old defaults: on iOS an unsized `<WebView>` in a stack is no longer stretched to fill it, and on the web the iframe no longer has `height: 100%`. Add `grow` where a web view should fill its parent.
+
+### Patch Changes
+
+- [#4105](https://github.com/pyreon/pyreon/pull/4105) [`28ec100`](https://github.com/pyreon/pyreon/commit/28ec10036dbbbd192b65c5503921d6e7fd1c5ccc) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Fix four web↔native parity and accessibility gaps in the new primitives.
+
+  - `<Tabs>`: when `value` names no tab, the first tab is now tabbable. Before, every tab had `tabindex="-1"` and the tab bar could not be reached by keyboard.
+  - `<CanvasText>`: its web `<svg>` layer is no longer `aria-hidden`. Screen readers now read canvas text on the web, as VoiceOver and TalkBack already do natively. Shape layers stay decorative.
+  - iOS `<Field kind="date" | "time" | "datetime">`: an unpadded or short value (`"2026-2-3"`, `"26-02-03"`, `"9:30"`) now counts as "no value". `DateFormatter` accepted these even with `isLenient = false`, so iOS showed a date where the web and Android show an empty field.
+  - Android `<Select>`: choosing the option that is already selected no longer calls `onChange`. A web `<select>` fires no `change` event in that case.
+
+- Updated dependencies [[`597eff1`](https://github.com/pyreon/pyreon/commit/597eff15a534373d09bb290e8749608611b8319f), [`f8a9770`](https://github.com/pyreon/pyreon/commit/f8a97700f3fbd9c0f497824e6beb4d18ecad6f13), [`457c9ce`](https://github.com/pyreon/pyreon/commit/457c9cebd6583f88cdb309f35b1dba6ae6fc8044), [`02da900`](https://github.com/pyreon/pyreon/commit/02da900bf63421da6d2bcea6a45c1dfa43691168), [`956a521`](https://github.com/pyreon/pyreon/commit/956a5214e0208b883767aee1d91acefefe7c1557), [`6e62c7d`](https://github.com/pyreon/pyreon/commit/6e62c7d0c5dda0f2a275c140aadc1bc4c29a9835), [`b2ad72e`](https://github.com/pyreon/pyreon/commit/b2ad72e34e901aa634f5ba91867cf71ed96a823a), [`1e1c9b7`](https://github.com/pyreon/pyreon/commit/1e1c9b7c54cb7c02d30e64e86da5d823cb3595e4), [`02da900`](https://github.com/pyreon/pyreon/commit/02da900bf63421da6d2bcea6a45c1dfa43691168), [`1cc7355`](https://github.com/pyreon/pyreon/commit/1cc7355def1b6470e1ac7961469e4608c819f79a), [`52aa984`](https://github.com/pyreon/pyreon/commit/52aa984f840f760ea305457bed722fb3d2d3b01a), [`5990b5b`](https://github.com/pyreon/pyreon/commit/5990b5b6742d467dcb28bc94bf2bc3fcea4ce6c3), [`5abcb2d`](https://github.com/pyreon/pyreon/commit/5abcb2d51816c8e114b0755cf761ba58a4ea8db5), [`7e39941`](https://github.com/pyreon/pyreon/commit/7e39941a6fe07657c5fc010ee4d0985dc26675d9), [`a0ab9cf`](https://github.com/pyreon/pyreon/commit/a0ab9cf627a21fc83c746e0aaf1312aabe6cf0b1), [`6e0d14c`](https://github.com/pyreon/pyreon/commit/6e0d14c14ee19339d25e3b974d90eb571694cb9e), [`1496a84`](https://github.com/pyreon/pyreon/commit/1496a84df5e8f51df9bca3decda388e0a75b427e), [`ad2a8de`](https://github.com/pyreon/pyreon/commit/ad2a8de7bfde34680e3f33e2b203ac62b2b04b88), [`a503e83`](https://github.com/pyreon/pyreon/commit/a503e837a25e93b61e3f2b9e1b55144c06157e22), [`4d8a3e0`](https://github.com/pyreon/pyreon/commit/4d8a3e07a94000d2cff9dff642b108cfc188879d), [`7740e2f`](https://github.com/pyreon/pyreon/commit/7740e2fe6bd8b35d142075d5ebe1b8b236ae525c), [`fc12522`](https://github.com/pyreon/pyreon/commit/fc12522441c02e15db1d9670013401f3fe926593), [`9ad118e`](https://github.com/pyreon/pyreon/commit/9ad118ec46145a24d960863d3d96b4fb6392fe5a), [`6906adf`](https://github.com/pyreon/pyreon/commit/6906adf78bbac38802fdbd1829efcdc24ed25448), [`1ece4c0`](https://github.com/pyreon/pyreon/commit/1ece4c0cd31a8ed21b14ad41fe794969f2a80d18), [`769d852`](https://github.com/pyreon/pyreon/commit/769d8524cbf4d4ac9627a039d0015a831a31151e), [`08bcee8`](https://github.com/pyreon/pyreon/commit/08bcee866ba0fbd0fbf876a1ecdf8e709a1244f3), [`6aef1c9`](https://github.com/pyreon/pyreon/commit/6aef1c91c0b8d30530cf36adaaf5ef7116ea9ad0), [`310bf91`](https://github.com/pyreon/pyreon/commit/310bf91f6673d747a77e1996647673fce725d0db), [`09262fa`](https://github.com/pyreon/pyreon/commit/09262fa053d7c995f64bb26e351b7f7492f16c30), [`1a7ccdd`](https://github.com/pyreon/pyreon/commit/1a7ccdda20096710a2486f67e97025776552f3f5), [`06621cc`](https://github.com/pyreon/pyreon/commit/06621cc7fc5c1c591cafc4a2f56fbaf6a90afcea), [`adeaef9`](https://github.com/pyreon/pyreon/commit/adeaef94fdd962ccfd19558dbc91ef52b5b71cee), [`f31f903`](https://github.com/pyreon/pyreon/commit/f31f903baa6b09cbe66afa07a48202b7fcfe6c92), [`6eff04e`](https://github.com/pyreon/pyreon/commit/6eff04ee8bd5b35b2f981a6fa006dc00a15300f9), [`0902367`](https://github.com/pyreon/pyreon/commit/0902367dc7c94b66247e7e9e837f604b971644e1), [`769d852`](https://github.com/pyreon/pyreon/commit/769d8524cbf4d4ac9627a039d0015a831a31151e), [`1f751e7`](https://github.com/pyreon/pyreon/commit/1f751e77167667c463904f2cc4e12a7061743ed4), [`fd8d8ec`](https://github.com/pyreon/pyreon/commit/fd8d8ec5b359691205defe02c7184f5a331ae155), [`8b3214b`](https://github.com/pyreon/pyreon/commit/8b3214bb6d8392493939513870b9ff7b52ecf8b5), [`db8c255`](https://github.com/pyreon/pyreon/commit/db8c255cea867d0bd092ab377629a47c5cdaaefe), [`22ca310`](https://github.com/pyreon/pyreon/commit/22ca310101833666295f7d941509b4c7467f89d0), [`544a762`](https://github.com/pyreon/pyreon/commit/544a762b866a2fd526f0e20636cc4c256ab9fc15), [`d55ecbb`](https://github.com/pyreon/pyreon/commit/d55ecbb061f0599836fc4385b5d694854e47a935), [`a9fe968`](https://github.com/pyreon/pyreon/commit/a9fe9688c142e1652513a74b293555d8ae40c1ac), [`c0df87c`](https://github.com/pyreon/pyreon/commit/c0df87ca58a9c23fcc0035cb46c3db5f9f399c46), [`760cbef`](https://github.com/pyreon/pyreon/commit/760cbefcbbd7378413f1020a1b33740c60b0ec5e), [`fd8d8ec`](https://github.com/pyreon/pyreon/commit/fd8d8ec5b359691205defe02c7184f5a331ae155), [`04ccbe7`](https://github.com/pyreon/pyreon/commit/04ccbe7d34879d554e35524a03f5e2f5761775fb), [`e883da2`](https://github.com/pyreon/pyreon/commit/e883da2c5a4e37e2c886b2399c28ae31e27c5d61), [`d47fa5a`](https://github.com/pyreon/pyreon/commit/d47fa5a2ff23761f04a7f81a97bdf677ed55b9fe), [`0dd9221`](https://github.com/pyreon/pyreon/commit/0dd9221e3e30019f57832e95fe76dd067655170f), [`7270e41`](https://github.com/pyreon/pyreon/commit/7270e41ba3cbb0597265129877c060f7d2a7b3d5), [`02da900`](https://github.com/pyreon/pyreon/commit/02da900bf63421da6d2bcea6a45c1dfa43691168), [`784e46a`](https://github.com/pyreon/pyreon/commit/784e46a486c2ccb16728117c392f0194b563fd66), [`6e1a7be`](https://github.com/pyreon/pyreon/commit/6e1a7be711eb7858ad5612df5c0062a2a427c194), [`eab5598`](https://github.com/pyreon/pyreon/commit/eab5598203c2973217cf815a47c7a27567e268fa), [`03b6bfa`](https://github.com/pyreon/pyreon/commit/03b6bfa460bca4b9512ea411a5eaef79033dc1b8), [`6ea59b1`](https://github.com/pyreon/pyreon/commit/6ea59b115639d71b3645b267c9572185a9d52a63), [`24bbbfd`](https://github.com/pyreon/pyreon/commit/24bbbfded6d857f8c638da7d059c6eadf13bb977), [`6e0d14c`](https://github.com/pyreon/pyreon/commit/6e0d14c14ee19339d25e3b974d90eb571694cb9e), [`0468605`](https://github.com/pyreon/pyreon/commit/0468605d9b72eefcbdbc2dba0d2d6f86dcb19ee2), [`abc4561`](https://github.com/pyreon/pyreon/commit/abc45618892cbbcf375bc856656699f7d3515af6), [`bc1cc7e`](https://github.com/pyreon/pyreon/commit/bc1cc7e05362f41dea5786f9b74cc39d0188984d), [`bd75ce2`](https://github.com/pyreon/pyreon/commit/bd75ce2c2c44c44759197de1fccdc78f013c3bce), [`71fe560`](https://github.com/pyreon/pyreon/commit/71fe5608b1d95b7df6f550281a278290e33a0f90), [`15434f5`](https://github.com/pyreon/pyreon/commit/15434f55159337beada1cb7526aa956abcbd2de9), [`0fc7458`](https://github.com/pyreon/pyreon/commit/0fc745886238a2ead837732f4eea6022fdd33781), [`38f7aaa`](https://github.com/pyreon/pyreon/commit/38f7aaa8ee7f73c168d66b4e53f24d7f85e62ee4), [`bc6f40c`](https://github.com/pyreon/pyreon/commit/bc6f40ca8281e08f1a8f3e7cb988ad4092aadff8), [`03727ea`](https://github.com/pyreon/pyreon/commit/03727ea27fadbce6a5c0f93293757c90d2ac3ceb), [`87ccdb5`](https://github.com/pyreon/pyreon/commit/87ccdb56ca5247dcfbb1309c7875d65204549b0d), [`9018b4b`](https://github.com/pyreon/pyreon/commit/9018b4b2ef3fb50b6eacbdca9f9e553ad0efb541), [`3f1009e`](https://github.com/pyreon/pyreon/commit/3f1009eb66fbf6aac01a9b74c096d747bd6f5e6c), [`2fe2c1e`](https://github.com/pyreon/pyreon/commit/2fe2c1e6bcc4dbcfe1d8d349c46e97a7353e85c5), [`c655989`](https://github.com/pyreon/pyreon/commit/c6559893e81150811adf41052b550d58e196d43a), [`10adf79`](https://github.com/pyreon/pyreon/commit/10adf79a515a7852d357099e22ff75b6d9ba8cc8), [`2de6084`](https://github.com/pyreon/pyreon/commit/2de6084df506180f468f9674fa341fea50044574)]:
+  - @pyreon/native-compiler@0.54.0
+  - @pyreon/reactivity@0.54.0
+  - @pyreon/core@0.54.0
+
 ## 0.53.0
 
 ### Minor Changes
@@ -208,7 +304,7 @@
   below, just caught before push instead of by CI. The one other consumer
   pinning past 20.11.6 — `@happy-dom/global-registrator` in
   `examples/benchmark`, whose own 20.13.2 release requires `happy-dom
-^20.13.2` as a peer — is reverted to `^20.11.6` alongside it, so the whole
+  ^20.13.2` as a peer — is reverted to `^20.11.6` alongside it, so the whole
   graph resolves to one version again.
 
   `examples/benchmark`'s framework competitors were refreshed too so the
@@ -238,7 +334,7 @@
   2.31.1 → 3.0.1 and `@changesets/changelog-github` 0.7.0 → 1.0.0 stay put:
   1.0.0 ships `"type": "module"` with no CJS export, and this repo's own
   `.changeset/resilient-changelog.cjs` does `require('@changesets/changelog-
-github')` — bumping it would break `changeset version` at release time with
+  github')` — bumping it would break `changeset version` at release time with
   `ERR_REQUIRE_ESM`, verified by reading the published package's `exports`
   map, not assumed. The root `uuid` override stays at `11.1.1` for the same
   reason, one level removed: it force-pins a transitive dep of `exceljs`
@@ -252,7 +348,7 @@ github')` — bumping it would break `changeset version` at release time with
   3.17.8 in this branch's first pass (a routine-looking override edit, not
   vetted as carefully as the deps above), and it broke
   `@pyreon/virtual`'s real-Chromium `repositions a STAYING row below when row 0
-is remeasured taller` test deterministically (3/3 local runs, plus 3/3 CI
+  is remeasured taller` test deterministically (3/3 local runs, plus 3/3 CI
   retries) — bisected down to virtual-core's own 3.17.7 "synchronous
   notification for scroll compensation" change, not to anything else in this
   branch (ruled out `@tanstack/react-virtual`, unrelated — not imported by this

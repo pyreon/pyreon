@@ -1,5 +1,17 @@
 # @pyreon/server
 
+## 0.54.0
+
+### Patch Changes
+
+- Updated dependencies [[`f31485c`](https://github.com/pyreon/pyreon/commit/f31485c7eb6d1eaf402bfd6554bb9165da118012), [`956a521`](https://github.com/pyreon/pyreon/commit/956a5214e0208b883767aee1d91acefefe7c1557), [`6b7085a`](https://github.com/pyreon/pyreon/commit/6b7085a6bad6e48c7a764d0f502e755ed54aaf8e), [`eae9e20`](https://github.com/pyreon/pyreon/commit/eae9e20bdbb2190213e68963afeb732ae71bf543), [`34fc2b5`](https://github.com/pyreon/pyreon/commit/34fc2b5cbffff3edb2b84a3fc96423c804d6a9f4), [`8e9b9ac`](https://github.com/pyreon/pyreon/commit/8e9b9acce45a76ac3a9b8eb5bd55bd4c159ae1a9), [`bed3ef0`](https://github.com/pyreon/pyreon/commit/bed3ef0fc388e45f2baf0641554770c3b19b86d9), [`871f6f0`](https://github.com/pyreon/pyreon/commit/871f6f0925f4793441138947c8834fe0b6b426d2), [`1e1c9b7`](https://github.com/pyreon/pyreon/commit/1e1c9b7c54cb7c02d30e64e86da5d823cb3595e4), [`871f6f0`](https://github.com/pyreon/pyreon/commit/871f6f0925f4793441138947c8834fe0b6b426d2), [`c21ab54`](https://github.com/pyreon/pyreon/commit/c21ab54734096ac2613f998f5eba3f05dfe8c094), [`02da900`](https://github.com/pyreon/pyreon/commit/02da900bf63421da6d2bcea6a45c1dfa43691168), [`b1f9bfe`](https://github.com/pyreon/pyreon/commit/b1f9bfe4a5200225b6076044d310b1fcc2d0383e), [`5abcb2d`](https://github.com/pyreon/pyreon/commit/5abcb2d51816c8e114b0755cf761ba58a4ea8db5), [`ed925ac`](https://github.com/pyreon/pyreon/commit/ed925ac8a0b8f49e0fbade1438cfb2de0e20d1e4), [`0902367`](https://github.com/pyreon/pyreon/commit/0902367dc7c94b66247e7e9e837f604b971644e1), [`0fc7458`](https://github.com/pyreon/pyreon/commit/0fc745886238a2ead837732f4eea6022fdd33781), [`38f7aaa`](https://github.com/pyreon/pyreon/commit/38f7aaa8ee7f73c168d66b4e53f24d7f85e62ee4), [`bc6f40c`](https://github.com/pyreon/pyreon/commit/bc6f40ca8281e08f1a8f3e7cb988ad4092aadff8), [`03727ea`](https://github.com/pyreon/pyreon/commit/03727ea27fadbce6a5c0f93293757c90d2ac3ceb), [`87ccdb5`](https://github.com/pyreon/pyreon/commit/87ccdb56ca5247dcfbb1309c7875d65204549b0d), [`9018b4b`](https://github.com/pyreon/pyreon/commit/9018b4b2ef3fb50b6eacbdca9f9e553ad0efb541), [`3f1009e`](https://github.com/pyreon/pyreon/commit/3f1009eb66fbf6aac01a9b74c096d747bd6f5e6c), [`ab90ebc`](https://github.com/pyreon/pyreon/commit/ab90ebc06667adb17efd936df98ffd1067f48527), [`09262fa`](https://github.com/pyreon/pyreon/commit/09262fa053d7c995f64bb26e351b7f7492f16c30), [`3acf603`](https://github.com/pyreon/pyreon/commit/3acf60374e846db9d16e3b5906d4488c5dbe3038), [`700a06c`](https://github.com/pyreon/pyreon/commit/700a06c75804dd488000db0cb7716f421d997823), [`42343f4`](https://github.com/pyreon/pyreon/commit/42343f44de58e4ec797c1cd02685833bd4515c11), [`2fe2c1e`](https://github.com/pyreon/pyreon/commit/2fe2c1e6bcc4dbcfe1d8d349c46e97a7353e85c5), [`2979e47`](https://github.com/pyreon/pyreon/commit/2979e47ade6278c73a0f50ba5120bef21cb01139), [`7ed6c99`](https://github.com/pyreon/pyreon/commit/7ed6c9995eb87a26aaef6b0f8c7526a6291e3b4e), [`9e3d608`](https://github.com/pyreon/pyreon/commit/9e3d60870e000c7a9404d885b3d2207f80c94868), [`f1aa5ed`](https://github.com/pyreon/pyreon/commit/f1aa5edb158f88d8beb22c893972362f1dffbd1a), [`143e288`](https://github.com/pyreon/pyreon/commit/143e2887ff318a8e0842774eb2e320f085253400), [`f703796`](https://github.com/pyreon/pyreon/commit/f703796329d51f218ea10190b95d7c3f166e41f5), [`c3bd80c`](https://github.com/pyreon/pyreon/commit/c3bd80c467ce940c0298ab6b85eabb5fd0463ef6), [`c655989`](https://github.com/pyreon/pyreon/commit/c6559893e81150811adf41052b550d58e196d43a), [`4c56327`](https://github.com/pyreon/pyreon/commit/4c5632769f5df19db831799298b3713577751957)]:
+  - @pyreon/runtime-dom@0.54.0
+  - @pyreon/reactivity@0.54.0
+  - @pyreon/head@0.54.0
+  - @pyreon/runtime-server@0.54.0
+  - @pyreon/core@0.54.0
+  - @pyreon/router@0.54.0
+
 ## 0.53.0
 
 ### Patch Changes
@@ -386,7 +398,7 @@
 ### Patch Changes
 
 - [#2096](https://github.com/pyreon/pyreon/pull/2096) [`9098141`](https://github.com/pyreon/pyreon/commit/9098141d9ffc00d5ff247aa85575ee32d9b2680f) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Fix an intermittent `ReferenceError: Cannot access '_countSink' before
-initialization` during island hydration (an occasional `test (core)` failure).
+  initialization` during island hydration (an occasional `test (core)` failure).
   The perf-counter sink was a module-level `const` read inside the hoisted
   `hydrateIsland` function, which — under a concurrent/deferred module-eval race —
   could run before the const initialized (temporal dead zone). It now reads
@@ -1113,8 +1125,8 @@ initialization` during island hydration (an occasional `test (core)` failure).
   **Behaviour change for consumers**: code that received `Date` props as
   ISO strings and revived with `new Date(props.someDate)` still works
   (Date constructor accepts Date). Code doing `typeof props.someDate ===
-'string'` on a Date-typed prop needs updating to `props.someDate
-instanceof Date`. This is documented in the JSDoc on
+  'string'` on a Date-typed prop needs updating to `props.someDate
+  instanceof Date`. This is documented in the JSDoc on
   `serializeIslandProps` and CLAUDE.md.
 
   Tests: 21 codec roundtrip + escape + fail-loud + forward-compat specs
@@ -1142,17 +1154,17 @@ instanceof Date`. This is documented in the JSDoc on
   a `{ type: 'submit', path }` capture. Post-hydrate, the live form is
   resolved via the same `data-testid` / tag+child-index path used for
   clicks, and a synthetic `SubmitEvent('submit', { bubbles: true,
-cancelable: true })` is re-dispatched on it — so the live `onSubmit`
+  cancelable: true })` is re-dispatched on it — so the live `onSubmit`
   reads current `FormData` with the user's actual input values.
 
   Discriminated union `CapturedInteraction = { type: 'click'; path } |
-{ type: 'submit'; path }` keeps the replay-target wiring type-narrow.
+  { type: 'submit'; path }` keeps the replay-target wiring type-narrow.
   `SubmitEvent` is the standard global in real browsers and modern
   happy-dom; falls back to a plain `Event('submit')` if the constructor
   isn't available (older runtimes).
 
   Test: `interaction: form submit hydrates + prevents browser nav +
-replays submit on live form` in `tests/client.test.ts`. Full server
+  replays submit on live form` in `tests/client.test.ts`. Full server
   suite: 143 pass (was 142). Typecheck + lint clean.
 
   **Compat note**: user code that explicitly opts out via `interaction(click)`
