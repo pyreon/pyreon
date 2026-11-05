@@ -156,6 +156,7 @@ Each of these produced a wrong published figure at some point.
 - No single cliff: the JS splits across the `<For>` reconciler + `_tpl` clone, per-row `_bindText` + disposer, and selector subscribe + `_setClass` + cleanup wrapper.
 - The `class=""` presence write on unselected rows is a documented contract (`[class]` selectors, SSR/hydration parity); it is not removed for speed.
 - Refuted levers, do not re-propose: flattened `ForEntry`, deferred keyed Map, pooled cleanup closure. Lazy per-row signals are capped at ~0.7% of the op (`signal()` costs ~58 ns/row).
+- Shipped (2026-11): `<For>` mounts fresh / replaced / contiguously inserted rows straight into the live parent instead of staging them in a `DocumentFragment` (every row was parented twice). In-run A/B, same build, arms interleaved per sample: 1k create JS 0.99 → 0.905 ms, replace 1.56 → 1.43 ms; 10k create 10.47 → 9.50 ms; layout unchanged. On the board it took create 10,000 rows from a tie to outright (73.1 [72.2–73.4] ms vs Vue Vapor RC 74.2 [73.8–74.7]); create 1,000 and replace are still CI-tied with Vue 3 / Vapor. With a subtree `MutationObserver` on `<body>` (one record per row instead of one per fragment) the JS half still came out ahead and totals were tied.
 - Addressable ceiling (`scripts/bench/dom-micro.ts`): the JS any framework controls is ~7% of create-10k; ~93% is browser insert + layout. Treat a create-op change under ~0.5% as noise.
 
 ### Clear rows
