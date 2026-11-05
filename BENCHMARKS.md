@@ -334,7 +334,7 @@ Per row at 50/200 routes Pyreon wins miss → catch-all (25 vs find-my-way 55 ns
 | toast | react-hot-toast, sonner | headless 2.5–3.8×; cold create 3.3× / 2.5×; ⚠ happy-dom commit 21–31× | sonner excluded from commit rows |
 | charts engine | ECharts 6.1 SSR | spec → SVG 8.0× (bars 1k), 7.2× (bars 10k), 9.6× (line 10k) | — |
 | hooks | Solid / Preact counters | counter 1.27× / 1.47× | wrapper overhead vs raw signal 0–6% |
-| rx | computed / Solid / RxJS | `pipe` fuses N nodes into 1 (exact count); filter, map, sum level with or ahead of a hand computed | **`pipe` of three stages 1.07× behind a hand computed** (29.6 vs 27.7 µs), `sortBy` 1.05×, `groupBy` 1.01× |
+| rx | computed / Solid / RxJS | `pipe` fuses N nodes into 1 (exact count); filter, map, sum level with or ahead of a hand computed | `pipe` of three stages ~1.03× a hand computed, inside run-to-run noise (2026-11-05: medians 26.9–28.0 vs 26.8–27.6 µs over four interleaved process pairs; the earlier 1.07× included an extra `[...a]` copy only the rx arm made, fixed in the harness). `sortBy` 1.05× (its comparator is the generic `<`/`>` key compare, not a numeric subtraction), `groupBy` 1.01× |
 | dnd ⚠ happy-dom | raw pragmatic-drag-and-drop | row-enter fan-out 20× | mount/unmount 🤝; monitor +82 ns; dispatch +5 ns |
 | validation (wrapper tax) | raw zod / valibot / arktype | — | tax −24 to +436 ns over raw (largest: arktype invalid) |
 
@@ -420,7 +420,7 @@ Per row at 50/200 routes Pyreon wins miss → catch-all (25 vs find-my-way 55 ns
 8. **Hydration** — tied with Vue on total and walk.
 9. **Bundle size** — 17.1 KB vs Solid 7.5 KB, Preact 10.1 KB, Svelte 16.1 KB.
 10. **Router at 10 routes** (Hono) and per-row static/dynamic/splat matches at every size; **validate** invalid string (zod 1.17×) and six protocol cells (zod-c, arktype, typia).
-11. **Store setup** (30.9× vs Zustand) and **patch with a subscriber** (1.3×), **storage read** (1.5×, single-digit ns), **http client creation** (vs redaxios), **url-state integer parse** (1.1×), **rx `pipe`/`sortBy`** (1.05–1.07× vs a hand computed), **form-bench heap** (Solid lighter), **table/virtual mount under happy-dom**.
+11. **Store setup** (30.9× vs Zustand) and **patch with a subscriber** (1.3×), **storage read** (1.5×, single-digit ns), **http client creation** (vs redaxios), **url-state integer parse** (1.1×), **rx `sortBy`** (1.05× vs a hand computed; `pipe` is now inside noise), **form-bench heap** (Solid lighter), **table/virtual mount under happy-dom**.
 12. **Unbundled Node** — any process importing `lib/` without a bundler pays ~145 ns per dev-gate read.
 
 ## 14. Harness notes and open defects

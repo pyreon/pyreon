@@ -355,7 +355,12 @@ function buildThunk(op: string, impl: Impl): () => void {
       src,
       (a: Row[]) => a.filter((r) => r.value > 200),
       (a: Row[]) => a.map((r) => ({ ...r, v2: r.value * 2 })),
-      (a: { v2: number }[]) => [...a].sort((x, y) => x.v2 - y.v2),
+      // Sort IN PLACE, exactly like every other arm's `nat()`: `a` is the
+      // fresh array the map step just built, so nothing else can observe it.
+      // A `[...a]` copy here made the rx arm do an extra 1k-element copy the
+      // native/computed/Solid/RxJS arms never did — measured as the whole
+      // rx-vs-computed "pipe overhead".
+      (a: { v2: number }[]) => a.sort((x, y) => x.v2 - y.v2),
     )
     return () => {
       src.set(nextData())

@@ -360,7 +360,7 @@ not browser-representative.
 | `@pyreon/virtual` ⚠ | @tanstack/react-virtual | Scroll → DOM 1.4× faster; mount 1.1× slower here, but 1.16× **faster** in real Chromium. |
 | `@pyreon/table` ⚠ | @tanstack/react-table | Single-cell update 1.1–1.6× vs memoized rows, 13–23× vs naive; replace 1.4–1.6×. **Losses:** mount 1.2–1.5× slower here (1.12× in real Chromium), sort ties memoized rows. |
 | `@pyreon/toast` | react-hot-toast / sonner | Headless 2.5–3.8×; ⚠ create/update/dismiss → DOM 21–31×. Sonner is excluded from the commit rows (it does not render in happy-dom). |
-| `@pyreon/rx` | plain computed / Solid / RxJS | `pipe()` fuses N nodes into one. Per op, filter/map/sum are level with a hand-written computed; **`pipe` of three stages is 1.07× and `sortBy` 1.05× behind it**. |
+| `@pyreon/rx` | plain computed / Solid / RxJS | `pipe()` fuses N nodes into one. Per op, filter/map/sum are level with a hand-written computed; `pipe` of three stages is ~1.03× (inside run-to-run noise; an earlier 1.07× included an extra array copy only the rx arm made, now fixed in the harness). **`sortBy` is 1.05× behind**, because its comparator is a generic key compare rather than a numeric subtraction. |
 | `@pyreon/dnd` ⚠ | raw pragmatic-drag-and-drop | Row-enter fan-out 20× (selector vs naive); mount/unmount 🤝 tie; dispatch adds 5ns. |
 | `@pyreon/hooks` | Solid / Preact counters | Counter 1.27× / 1.47× faster. |
 | `@pyreon/validation` | raw zod / valibot / arktype | Wrapper tax of −24 to +436ns over the raw library (largest on ArkType invalid). |
@@ -451,7 +451,7 @@ Kept current against the 2026-11-05 run:
 11. **Package-level losses** — store setup (30.9× vs Zustand) and
     patch-with-subscriber (1.3×), http client creation (vs redaxios), url-state
     integer parse (1.1×), Zod on invalid strings (1.17×) and a few compiled-Zod
-    / ArkType validation cells, rx `pipe`/`sortBy` (1.05–1.07× vs a hand
+    / ArkType validation cells, rx `sortBy` (1.05× vs a hand
     computed), form-benchmark heap (Solid modular-forms is lighter), table and
     virtual mount under happy-dom.
 12. **Unbundled Node** — any process importing `lib/` without a bundler pays
