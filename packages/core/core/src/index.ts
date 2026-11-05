@@ -79,6 +79,7 @@ export {
   _pickProps,
   _lc,
   _fuse,
+  _compatProps,
   _rp,
   _rpd,
   _wrapSpread,

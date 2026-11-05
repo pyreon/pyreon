@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { makeReactiveProps, REACTIVE_PROP, _rp, _wrapSpread } from '../props'
+import { _compatProps, makeReactiveProps, REACTIVE_PROP, _rp, _wrapSpread } from '../props'
 import { signal } from '@pyreon/reactivity'
 
 describe('makeReactiveProps', () => {
@@ -23,6 +23,19 @@ describe('makeReactiveProps', () => {
     expect(d.configurable).toBe(true)
     s.set(2)
     expect(result.b).toBe(2)
+  })
+
+  it('_compatProps re-links Object.prototype in place and keeps getters live', () => {
+    const s = signal(1)
+    const result = makeReactiveProps({ b: _rp(() => s()) })
+    const same = _compatProps(result)
+    expect(same).toBe(result)
+    expect(Object.getPrototypeOf(same)).toBe(Object.prototype)
+    expect((same as { hasOwnProperty(k: string): boolean }).hasOwnProperty('b')).toBe(true)
+    s.set(3)
+    expect(same.b).toBe(3)
+    const plain = { a: 1 }
+    expect(_compatProps(plain)).toBe(plain)
   })
 
   it('returns raw object when no reactive props exist (fast path)', () => {

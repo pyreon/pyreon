@@ -1050,7 +1050,8 @@ const Badge = () => {
     notes: 'Split a props object into two parts: the picked keys and the rest. Both halves preserve signal reactivity — reads through either half still track the original reactive prop getters. This is the Pyreon replacement for `const { x, ...rest } = props` destructuring, which captures values once and loses reactivity. See also: mergeProps, cx.',
     mistakes: `- \`const { class: cls, ...rest } = props\` — destructuring captures once, loses reactivity. Use \`splitProps(props, ["class"])\`
 - Passing a non-props object — \`splitProps\` relies on reactive getter descriptors that the compiler creates on props objects
-- Forgetting that symbol-keyed props are preserved — \`splitProps\` uses \`Reflect.ownKeys\` so symbols (like \`REACTIVE_PROP\`) survive`,
+- Forgetting that symbol-keyed props are preserved — \`splitProps\` uses \`Reflect.ownKeys\` so symbols (like \`REACTIVE_PROP\`) survive
+- Calling \`props.hasOwnProperty(k)\` or \`props.toString()\` — a component that receives ANY reactive (compiler-wrapped) prop gets a NULL-prototype props object, while a component with only static props gets the plain object it was passed; the prototype depends on the call site. Use \`Object.hasOwn(props, k)\` or \`k in props\`, and \`String(props.x)\`. The \`*-compat\` layers restore \`Object.prototype\` before third-party code sees props`,
   },
 
   'core/mergeProps': {

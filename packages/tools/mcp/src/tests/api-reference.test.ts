@@ -399,7 +399,8 @@ describe('api-reference', () => {
     it('splitProps documents the reactivity-preserving contract', () => {
       const entry = API_REFERENCE['core/splitProps']
       expect(entry?.notes).toContain('reactivity')
-      expect(entry?.mistakes?.split('\n').length).toBe(3)
+      expect(entry?.mistakes).toContain('Object.hasOwn')
+      expect(entry?.mistakes?.split('\n').length).toBe(4)
     })
 
     it('onMount documents cleanup return value', () => {

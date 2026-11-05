@@ -559,6 +559,24 @@ export function makeReactiveProps(raw: Record<string, unknown>): Record<string, 
   return result ?? raw
 }
 
+/**
+ * @internal Give a props object back the normal `Object.prototype`.
+ *
+ * `makeReactiveProps` returns a NULL-prototype object whenever a component
+ * received a reactive prop (a V8 hidden-class win). Pyreon components are
+ * told to use `Object.hasOwn` / `key in props`; a `*-compat` layer cannot ask
+ * that of third-party React/Preact/Vue/Solid/Svelte code, which may call
+ * `props.hasOwnProperty(k)` or interpolate `props`. The compat wrappers call
+ * this ONCE per instance at setup. It re-links the prototype in place, so the
+ * getters stay live — never value-copy props here.
+ */
+export function _compatProps<T extends object>(props: T): T {
+  if (props !== null && typeof props === 'object' && Object.getPrototypeOf(props) === null) {
+    Object.setPrototypeOf(props, Object.prototype)
+  }
+  return props
+}
+
 // ─── Unique ID ───────────────────────────────────────────────────────────────
 
 // Plain module-scope counter. The duplicate-instance bug class is now
