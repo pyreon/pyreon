@@ -156,7 +156,13 @@ Each of these produced a wrong published figure at some point.
 - No single cliff: the JS splits across the `<For>` reconciler + `_tpl` clone, per-row `_bindText` + disposer, and selector subscribe + `_setClass` + cleanup wrapper.
 - The `class=""` presence write on unselected rows is a documented contract (`[class]` selectors, SSR/hydration parity); it is not removed for speed.
 - Refuted levers, do not re-propose: flattened `ForEntry`, deferred keyed Map, pooled cleanup closure. Lazy per-row signals are capped at ~0.7% of the op (`signal()` costs ~58 ns/row).
+- Shipped (2026-11): `<For>` mounts fresh / replaced / contiguously inserted rows straight into the live parent instead of staging them in a `DocumentFragment` (every row was parented twice). In-run A/B, same build, arms interleaved per sample: 1k create JS 0.99 → 0.905 ms, replace 1.56 → 1.43 ms; 10k create 10.47 → 9.50 ms; layout unchanged. On the board it took create 10,000 rows from a tie to outright (73.1 [72.2–73.4] ms vs Vue Vapor RC 74.2 [73.8–74.7]); create 1,000 and replace are still CI-tied with Vue 3 / Vapor. With a subtree `MutationObserver` on `<body>` (one record per row instead of one per fragment) the JS half still came out ahead and totals were tied.
 - Addressable ceiling (`scripts/bench/dom-micro.ts`): the JS any framework controls is ~7% of create-10k; ~93% is browser insert + layout. Treat a create-op change under ~0.5% as noise.
+
+### Swap rows
+
+- Refuted (2026-11), do not re-propose: reusing `<For>`'s per-update scratch on the swap path (double-buffered `newKeys`, a reused `diffs` buffer, a linear scan in place of `new Set(diffs)` in `smallKPlace`). In-run A/B as two arms of one build: `bench-crossover` batch cycle at 1,000 rows, K target 10/20/40/80/160 ms — before 850/888/961/921/898 µs, after 854/851/954/929/903 µs (CIs overlap at every K but 20 ms); fair-bench swap 805 [800–810] vs 795 [780–805] µs. The K-dependence is not Pyreon allocation: Octane moved the same way in the same run (882/873/908/927/924 µs).
+- Vue Vapor RC led swap outright in two runs (745 vs Pyreon 805 µs). Its DOM ops for this op are the same as Pyreon's (two `insertBefore`, back row first; `planMoves` keeps rows 2–997 as the LIS), and a scratch probe found no swap-cost difference from `class=""` on every row or from the `<For>` comment markers. The lead is unexplained; it needs a CDP profile of the swap op, which no driver does yet.
 
 ### Clear rows
 
@@ -168,6 +174,29 @@ Each of these produced a wrong published figure at some point.
 
 - Now a CI tie with Solid. Two changes got it there: a second inline tracking-subscriber slot before promoting to a `Set` (plus `deps.pop()` in the effect/`_bind` disposers), and `mountChildAsUnit` for static (non-accessor) slot values, so rows inside a cloned container get effect-only cleanups instead of 500 individual DOM removals. An accessor slot keeps the full remover because it must clear its own range.
 - `bench-disposeprofile.ts` is on-CPU attribution; only the scenario board's wall-clock CI is a published verdict. Give the ladder an arm with the board's exact shape, or it can miss the lever the board needs.
+
+### Table mount (Chromium, 1,000 rows × 6 cols)
+
+- Driver: `examples/benchmark/bench-tableprofile.ts` (`?profileTable=1`).
+  - `split` mode interleaves Pyreon and react-table mounts and times the mount's JS and its forced layout separately.
+  - `profile` mode gives subtree CPU attribution under `__mountOnly`.
+- **Layout is identical across arms** (~15 ms of the ~25 ms op). The whole gap is JS.
+- **The gap was `<For>` fragment staging.** The DOM-op census on main:
+  - Pyreon: 6,000 `td → DocumentFragment` inserts, 1,000 `fragment → tr`, 1,000 `tr → fragment`, and 2,000 inner-`<For>` marker comments.
+  - react-table: 13,000 plain `appendChild` into detached nodes.
+  - Pyreon's `insertBefore` was 3.1 ms self time against react-table's `appendChild` at 1.0 ms.
+- **PR #4115 closes it** (`<For>` mounts new rows straight into the live parent, which here is the detached `<tr>`).
+  - Cross-build interleaved JS: 12.02 [11.90–12.27] → 10.17 [10.10–10.23] ms. The react-table arm, identical in both builds, moved 10.27 → 10.08, so the drift between the two builds is about 0.2 ms.
+  - Same build: Pyreon JS 10.36 [9.99–10.67] vs react-table 11.73 [11.54–11.83] ms.
+  - Board (`bench-scenarios --scenario table --repeat 3`): main 27.89 [27.69–28.39] vs react-table 25.80 (1.08×); #4115 25.50 [25.24–25.79] vs 25.46 (tie). Mount is then layout-bound like every other create op.
+- Remaining Pyreon-only JS: two `<For>` markers per row (2,000 `createComment` + inserts), plus the keyed-map duplicate check (`warnForKeyIn`, a `Map.has` per key, ~0.45 ms over 7,000 string keys). Neither is a lever on a layout-bound op.
+
+### Charts row-object ingestion
+
+- `resolveAccessor` (`packages/fundamentals/charts/src/engine/marks.ts`) grew its output with `push` despite #3912's comment and changeset saying it was presized. Presizing it took a fresh-page 1M line mount from 14.06 to 10.39 ms (interleaved, disjoint), which ties the columnar arm (PR #4117).
+- On the charts-libs board the 1M cell runs after the smaller cells and moved only 16.55 → 15.65 ms, with overlapping CIs. Chart.js with decimation still leads there (1.22×).
+- The remaining row cost on that warmed page is the million accessor calls and object reads (~8 ms of attribution with `--history`). It is not reachable without changing the accessor API. Columnar input remains the large-data path.
+- `v - v === 0` versus `Number.isFinite` in that loop makes no difference (ablated).
 
 ### Hydration
 
@@ -189,3 +218,4 @@ Each of these produced a wrong published figure at some point.
 | Topic | File |
 | --- | --- |
 | Core micro-benchmarks: router, reactivity, head, store, state-tree, machine, i18n, permissions, form, query, http, SSR harness, `NODE_ENV` cost, declined micro-optimizations | `.agents/guides/benchmarks/references/core-micro-benchmarks.md` |
+| Row list: swap diagnosis (layout-bound, identical DOM ops, the Vapor lead is per-page-load variance) and the create-1k residual after direct insertion | `.agents/guides/benchmarks/references/row-list-swap-and-create-residual.md` |
