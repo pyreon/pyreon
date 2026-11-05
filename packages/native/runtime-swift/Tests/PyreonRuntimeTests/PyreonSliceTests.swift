@@ -39,4 +39,22 @@ final class PyreonSliceTests: XCTestCase {
         XCTAssertEqual(pyreonSubstring("hello", -2, 2), "he")
         XCTAssertEqual(pyreonSubstring("hello", 3, 1), "el")
     }
+
+    // Positions are UTF-16 offsets, as in JavaScript and as `.length` (`utf16.count`) counts them. "👍" is two
+    // units and one Character, so a Character-counting helper cuts every one of these at a different place.
+    func testStringPositionsAreUtf16Offsets() {
+        XCTAssertEqual(pyreonSlice("a👍b", 0, 3), "a👍")
+        XCTAssertEqual(pyreonSlice("a👍b", -1), "b")
+        XCTAssertEqual(pyreonSubstring("a👍b", 1, 3), "👍")
+        XCTAssertEqual(pyreonCharAt("a👍b", 3), "b")
+        XCTAssertEqual(pyreonCharAt("a👍b", 9), "")
+        XCTAssertEqual(pyreonIndexOf("a👍b", "b"), 3)
+        XCTAssertEqual(pyreonIndexOf("a👍b", "b", 4), -1)
+        XCTAssertEqual(pyreonIndexOf("abc", ""), 0)
+        // Exact code-unit match: canonically-equivalent text is NOT equal, as on the web.
+        XCTAssertEqual(pyreonIndexOf("e\u{301}", "\u{e9}"), -1)
+        XCTAssertTrue(pyreonStartsWith("a👍b", "b", 3))
+        XCTAssertTrue(pyreonEndsWith("a👍b", "👍", 3))
+        XCTAssertFalse(pyreonEndsWith("ab", "abc", 2))
+    }
 }

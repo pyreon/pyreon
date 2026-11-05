@@ -39,10 +39,10 @@ const COMPUTEDS = `  const pre = computed(() => name().substring(0, 3))
   const lastDone = computed(() => todos().findLast(t => t.done))`
 
 describe('JS .substring / .findLast → native idiom', () => {
-  it('Swift: substring → String(dropFirst.prefix); findLast → last(where:) typed T?', () => {
+  it('Swift: substring → the UTF-16 runtime; findLast → last(where:) typed T?', () => {
     const out = transform(SRC(COMPUTEDS), { target: 'swift' }).code
-    expect(out).toContain('String(name.dropFirst(0).prefix(max(0, (3) - (0))))')
-    expect(out).toContain('String(name.dropFirst(2))')
+    expect(out).toContain('pyreonSubstring(name, 0, 3)')
+    expect(out).toContain('pyreonSubstring(name, 2)')
     expect(out).toContain('todos.last(where: { t in t.done })')
     // findLast is Optional — the computed is annotated Todo?, not Any
     expect(out).toContain('private var lastDone: Todo?')

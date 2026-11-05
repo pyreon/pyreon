@@ -1813,12 +1813,40 @@ function kotlinExprIsAssignment(expr: string): boolean {
   // into the Unit block form: "missing return statement" / return-type
   // mismatch on the charts engine). Depth-scan, and exclude the
   // comparison spellings (== <= >= !=).
+  //
+  // String and char LITERALS are skipped too: `fun fmt(n: Long): String = "v=" + n` carries its `=` inside a
+  // quote, and reading it as an assignment dropped the `return` the same way — every helper returning text that
+  // contains `=` (`'v=' + String(n)`, `` `${k}=${v}` ``) emitted a Unit block and failed with "missing return
+  // statement". A `${…}` template inside a string is code again, so it is scanned with its own brace depth.
   let depth = 0
+  // Brace depth of each open `${` template; the innermost decides when the string resumes.
+  const templates: number[] = []
+  let inString = false
   for (let i = 0; i < expr.length; i++) {
     const c = expr[i]!
-    if (c === '(' || c === '[' || c === '{') depth++
-    else if (c === ')' || c === ']' || c === '}') depth--
-    else if (c === '=' && depth === 0) {
+    if (inString) {
+      if (c === '\\') i++
+      else if (c === '"') inString = false
+      else if (c === '$' && expr[i + 1] === '{') {
+        templates.push(depth)
+        depth++
+        inString = false
+        i++
+      }
+      continue
+    }
+    if (c === '"') inString = true
+    else if (c === "'") {
+      // A char literal: `'='`, `'\\''`.
+      i += expr[i + 1] === '\\' ? 3 : 2
+    } else if (c === '(' || c === '[' || c === '{') depth++
+    else if (c === ')' || c === ']' || c === '}') {
+      depth--
+      if (c === '}' && templates.length > 0 && templates[templates.length - 1] === depth) {
+        templates.pop()
+        inString = true
+      }
+    } else if (c === '=' && depth === 0) {
       const prev = expr[i - 1] ?? ''
       const next = expr[i + 1] ?? ''
       if (prev !== '=' && prev !== '<' && prev !== '>' && prev !== '!' && next !== '=') return true
@@ -2786,7 +2814,7 @@ function emitKotlinStatement(s: StatementIR, indent: number, ctx: KotlinCtx): st
       if (_kotlinThrowCtx === 'none') _pushKotlinEmitWarning(uncaughtThrowWarning('A `throw`'))
       if (s.rethrow !== undefined) return `throw ${kotlinIdent(s.rethrow)}`
       _needsKotlinThrown = true
-      return `throw PyreonThrown(${emitKotlinExpr(s.message ?? { kind: 'literal', value: '' }, indent)})`
+      return `throw PyreonThrown(${emitKotlinExpr(s.message ?? { kind: 'literal', value: '' }, indent)}${s.raw === true ? ', raw = true' : ''})`
     }
     case 'try': {
       const pad = ' '.repeat(indent)
@@ -3234,12 +3262,91 @@ function emitKotlinMapFromPairs(
   }
 }
 
+/** Array methods whose callback's FIRST param is the element (mirror of the Swift set). */
+const KOTLIN_ELEMENT_FIRST_CALLBACK_METHODS = new Set([
+  'map',
+  'filter',
+  'forEach',
+  'find',
+  'findLast',
+  'findIndex',
+  'findLastIndex',
+  'some',
+  'every',
+  'flatMap',
+])
+
+/** Calls whose callback params are currently seeded — the re-entry guard for `withKotlinCallbackParamTypes`. */
+const _kotlinSeededCalls = new WeakSet<ExprIR>()
+
+/**
+ * The callback-param bindings a member call implies: an element-first array method binds its first param to
+ * the receiver's element type, and `reduce((acc, el) => …, seed)` binds the accumulator to the seed's type and
+ * the element to the receiver's.
+ *
+ * A JS callback param is neither a signal nor a const, so without this it infers `unknown` inside the lambda,
+ * and every TYPE-dependent lowering in the body silently picks its untyped spelling. The load-bearing case is
+ * `.length`: Kotlin's `String.length` is a 32-bit `Int` and a TS integer is `Long`, so the member emit widens
+ * a PROVABLY-string receiver with `.toLong()` — and an untyped one is left alone. `names.map((n) => n.length)`
+ * therefore produced a `List<Int>` where every consumer expects `List<Long>`, a kotlinc error with no PMTC
+ * warning. Swift has always seeded these (`emitSwiftMemberCallArgs`); Kotlin assumed it did not need to,
+ * because Kotlin auto-promotes Int×Double arithmetic — which was true, and beside the point for every other
+ * type-dependent lowering.
+ */
+function kotlinCallbackParamBindings(e: ExprIR): [string, TypeIR][] {
+  if (e.kind !== 'call' || e.callee.kind !== 'member') return []
+  const cb = e.args[0]
+  if (cb === undefined || cb.kind !== 'arrow') return []
+  const prop = e.callee.property
+  if (KOTLIN_ELEMENT_FIRST_CALLBACK_METHODS.has(prop) && cb.params.length >= 1) {
+    const recvT = unwrapOptionalType(inferType(e.callee.object, _kotlinExprInferCtx))
+    if (recvT.kind !== 'array' || recvT.element.kind === 'unknown') return []
+    // The second param is the INDEX — bound too, or an outer binding of the same name (`const k = s.trim()`)
+    // would type it, now that the element beside it is typed.
+    const out: [string, TypeIR][] = [[cb.params[0]!, recvT.element]]
+    if (cb.params.length >= 2) out.push([cb.params[1]!, { kind: 'number' }])
+    return out
+  }
+  if (prop === 'reduce' && cb.params.length >= 2) {
+    const recvT = unwrapOptionalType(inferType(e.callee.object, _kotlinExprInferCtx))
+    if (recvT.kind !== 'array') return []
+    const seed = e.args[1]
+    const accT = seed !== undefined ? inferType(seed, _kotlinExprInferCtx) : recvT.element
+    const out: [string, TypeIR][] = []
+    if (accT.kind !== 'unknown') out.push([cb.params[0]!, accT])
+    if (recvT.element.kind !== 'unknown') out.push([cb.params[1]!, recvT.element])
+    return out
+  }
+  return []
+}
+
 function emitKotlinExpr(e: ExprIR, indent: number): string {
   // A lambda is its own throw context (see the Swift twin).
   // A callback of a rethrowing array method (`xs.map { … throw … }`) is not its own throw context: Kotlin's inline
   // lambdas propagate the exception out of the call, as JS does (see `case 'call'`).
   if (e.kind === 'arrow' && _kotlinThrowCtx !== 'none' && !_kotlinRethrowingArrows.has(e))
     return withKotlinThrowCtx('none', () => emitKotlinExpr(e, indent))
+  if (e.kind === 'call' && !_kotlinSeededCalls.has(e)) {
+    const bindings = kotlinCallbackParamBindings(e)
+    if (bindings.length > 0) {
+      const saved = bindings.map(([n]) => ({
+        n,
+        had: _kotlinExprInferCtx.locals.has(n),
+        prev: _kotlinExprInferCtx.locals.get(n),
+      }))
+      for (const [n, t] of bindings) _kotlinExprInferCtx.locals.set(n, t)
+      _kotlinSeededCalls.add(e)
+      try {
+        return emitKotlinExpr(e, indent)
+      } finally {
+        _kotlinSeededCalls.delete(e)
+        for (const x of saved.reverse()) {
+          if (x.had) _kotlinExprInferCtx.locals.set(x.n, x.prev!)
+          else _kotlinExprInferCtx.locals.delete(x.n)
+        }
+      }
+    }
+  }
   switch (e.kind) {
     case 'literal':
       if (typeof e.value === 'string') {
@@ -4059,11 +4166,10 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
             }
             break
           case 'charAt':
-            // JS `str.charAt(i)` returns a 1-char STRING. Kotlin `str[i]` is
-            // a Char, so `.toString()` to match JS's String result (Swift:
-            // `String(Array(str)[i])`). Out-of-range crashes (JS returns "")
-            // — bounds are the caller's concern; documented v1 limitation.
-            if (e.args.length === 1) return `${obj}[${kotlinIntArg(e.args[0]!, indent)}].toString()`
+            // JS `str.charAt(i)` returns the UTF-16 unit at `i` as a STRING, or "" out of range. Kotlin indexes
+            // UTF-16 units natively; `getOrNull` gives the web's "" where `str[i]` threw (Swift: `pyreonCharAt`).
+            if (e.args.length === 1)
+              return `(${obj}${objDot}getOrNull(${kotlinIntArg(e.args[0]!, indent)})?.toString() ?: "")`
             break
           case 'charCodeAt':
             // JS `s.charCodeAt(i)` → the UTF-16 code unit as Double (the JS

@@ -121,8 +121,8 @@ describe('2a. positioned searches lower faithfully instead of re-emitting the we
     expect(rhs(sw.code, 'b')).toContain('__pyPos < 0 ? max(0, __pyRecv.count + __pyPos) : min(__pyPos, __pyRecv.count)')
     expect(rhs(sw.code, 'a')).toContain('__pyRecv[__pyFrom...].firstIndex(of: 2) ?? -1')
   })
-  it('Swift: a string position is clamped to [0, count]', () => {
-    expect(rhs(sw.code, 'c')).toContain('min(max(0, 5), __pyRecv.count)')
+  it('Swift: a string position is a UTF-16 offset, clamped by the runtime', () => {
+    expect(rhs(sw.code, 'c')).toBe('pyreonIndexOf(s, "o", 5)')
   })
   it('Kotlin: List.indexOf has no fromIndex — subList + offset; String.indexOf(s, i) IS JS', () => {
     expect(rhs(kt.code, 'a')).toContain('__pyRecv.subList(__pyFrom, __pyRecv.size).indexOf(2L)')

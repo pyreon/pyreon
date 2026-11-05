@@ -862,22 +862,17 @@ function swiftPositionedSearch(
       `let __pyFrom = __pyPos < 0 ? max(0, __pyRecv.count + __pyPos) : min(__pyPos, __pyRecv.count); return ${found} }()`
     )
   }
+  // A STRING position and the result are UTF-16 offsets (JavaScript's, and `.length`'s via `utf16.count`) — the
+  // runtime helpers count code units, where `String.Index` arithmetic counts Characters.
   switch (method) {
     case 'indexOf':
-      return (
-        `{ () -> Int in let __pyRecv = ${obj}; let __pyFrom = min(max(0, ${pos}), __pyRecv.count); ` +
-        `return __pyRecv.range(of: ${x}, range: __pyRecv.index(__pyRecv.startIndex, offsetBy: __pyFrom)..<__pyRecv.endIndex)` +
-        `.map { __pyRecv.distance(from: __pyRecv.startIndex, to: $0.lowerBound) } ?? -1 }()`
-      )
+      return `pyreonIndexOf(${obj}, ${x}, ${pos})`
     case 'includes':
-      return (
-        `{ () -> Bool in let __pyRecv = ${obj}; let __pyFrom = min(max(0, ${pos}), __pyRecv.count); ` +
-        `return __pyRecv[__pyRecv.index(__pyRecv.startIndex, offsetBy: __pyFrom)...].contains(${x}) }()`
-      )
+      return `(pyreonIndexOf(${obj}, ${x}, ${pos}) >= 0)`
     case 'startsWith':
-      return `{ () -> Bool in let __pyRecv = ${obj}; return __pyRecv.dropFirst(max(0, ${pos})).hasPrefix(${x}) }()`
+      return `pyreonStartsWith(${obj}, ${x}, ${pos})`
     case 'endsWith':
-      return `{ () -> Bool in let __pyRecv = ${obj}; return __pyRecv.prefix(max(0, ${pos})).hasSuffix(${x}) }()`
+      return `pyreonEndsWith(${obj}, ${x}, ${pos})`
     case 'split':
       return (
         `{ () -> [String] in let __pyParts = ${obj}.components(separatedBy: ${x}); let __pyLimit = ${pos}; ` +
@@ -3727,7 +3722,7 @@ function emitSwiftStatement(s: StatementIR, indent: number): string {
       const thrown =
         s.rethrow !== undefined
           ? swiftIdent(s.rethrow)
-          : `PyreonThrown(message: ${emitSwiftExpr(s.message ?? { kind: 'literal', value: '' }, indent)})`
+          : `PyreonThrown(message: ${emitSwiftExpr(s.message ?? { kind: 'literal', value: '' }, indent)}${s.raw === true ? ', raw: true' : ''})`
       if (s.rethrow === undefined) _needsSwiftThrown = true
       if (_swiftThrowCtx !== 'none') return `throw ${thrown}`
       _pushSwiftEmitWarning(uncaughtThrowWarning('A `throw`'))
@@ -5171,8 +5166,10 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
             // Kotlin's `indexOf` already returns Int (-1) for both → no map.
             if (e.args.length === 1) {
               const idxType = inferType(e.callee.object, _activeInferCtx)
+              // A STRING offset counts UTF-16 units (see `pyreonIndexOf`); `range(of:)` + `distance` counted Characters
+              // and matched canonically-equivalent text, so `'a👍b'.indexOf('b')` was 2 natively and 3 on the web.
               if (idxType.kind === 'string') {
-                return `(${obj}${objDot}range(of: ${argExprs[0]!}).map { ${obj}${objDot}distance(from: ${obj}${objDot}startIndex, to: $0.lowerBound) } ?? -1)`
+                return `pyreonIndexOf(${obj}, ${argExprs[0]!})`
               }
               return `(${obj}${objDot}firstIndex(of: ${argExprs[0]!}) ?? -1)`
             }
@@ -5183,12 +5180,15 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
             break
           }
           case 'charAt':
-            // JS `str.charAt(i)` returns a 1-char STRING. Swift has no
-            // `.charAt`; index the Character array + rewrap to String
-            // (`String(Array(str)[i])`). NOTE: out-of-range crashes (JS
-            // returns "") — bounds are the caller's concern; documented v1
-            // limitation. Kotlin maps separately (`str[i].toString()`).
-            if (e.args.length === 1) return `String(Array(${obj})[${argExprs[0]!}])`
+            // JS `str.charAt(i)` returns the UTF-16 unit at `i` as a string, or "" out of range. Indexing
+            // `Array(str)` counted Characters (disagreeing with `.length`) and trapped out of range.
+            if (e.args.length === 1) {
+              const i = isFloatTypeIR(inferType(e.args[0]!, _activeInferCtx))
+                ? `pyreonSliceIndex(${argExprs[0]!})`
+                : argExprs[0]!
+              if (objDot === '?.') return `${obj}.map { pyreonCharAt($0, ${i}) }`
+              return `pyreonCharAt(${obj}, ${i})`
+            }
             break
           case 'charCodeAt':
             // JS `s.charCodeAt(i)` → the UTF-16 code unit as Double
@@ -5258,22 +5258,16 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
             // The platform idiom is exact only for non-negative integer LITERALS in order: `dropFirst(-1)` traps,
             // and JS clamps a negative bound to 0 and swaps `start > end`. Anything else (a variable bound, whose
             // sign and order are unknown) goes through the runtime's `pyreonSubstring`, which does what JS does.
-            const lits = e.args.map((a) => (a.kind === 'literal' && typeof a.value === 'number' && Number.isInteger(a.value) && a.value >= 0 ? a.value : undefined))
-            const literalInOrder = lits.every((v) => v !== undefined) && (lits.length < 2 || lits[0]! <= lits[1]!)
-            if ((!literalInOrder || objDot === '?.') && (e.args.length === 1 || e.args.length === 2)) {
+            //
+            // ALWAYS the runtime: a String bound is a UTF-16 offset, and the platform idiom (`dropFirst`/`prefix`)
+            // counts Characters, so even an in-order literal (`'a👍b'.substring(0, 3)`) cut at a different place.
+            if (e.args.length === 1 || e.args.length === 2) {
               const bounds = e.args.map((a, i) => {
                 const t = inferType(a, _activeInferCtx)
                 return t.kind === 'number' && t.float === true ? `pyreonSliceIndex(${argExprs[i]!})` : argExprs[i]!
               })
               if (objDot === '?.') return `${obj}.map { pyreonSubstring($0, ${bounds.join(', ')}) }`
               return `pyreonSubstring(${[obj, ...bounds].join(', ')})`
-            }
-            const noNegative = e.args.every((a) => a.kind !== 'unary')
-            if (noNegative) {
-              if (e.args.length === 1) return `String(${obj}${objDot}dropFirst(${argExprs[0]!}))`
-              if (e.args.length === 2) {
-                return `String(${obj}${objDot}dropFirst(${argExprs[0]!}).prefix(max(0, (${argExprs[1]!}) - (${argExprs[0]!}))))`
-              }
             }
             break
           }
@@ -5297,7 +5291,8 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
             if (e.args.length >= 1 && okPad) {
               const len = argExprs[0]!
               const pad = e.args.length >= 2 ? argExprs[1]! : '" "'
-              const fill = `String(repeating: ${pad}, count: max(0, (${len}) - ${obj}${objDot}count))`
+              // The target length is in UTF-16 units, like `.length`.
+              const fill = `String(repeating: ${pad}, count: max(0, (${len}) - ${obj}${objDot}utf16.count))`
               return prop === 'padStart' ? `(${fill} + ${obj})` : `(${obj} + ${fill})`
             }
             break
@@ -5396,8 +5391,10 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
               // survived → `value of type 'String' has no member 'slice'`.
               const optional = e.callee.optional === true
               const recv = optional ? '$0' : obj
-              // A bound whose sign is not known at compile time: JavaScript's semantics, from the runtime.
-              if (!sliceBoundsAreLiteral(e.args)) {
+              // A bound whose sign is not known at compile time: JavaScript's semantics, from the runtime. A STRING
+              // always goes there: its bounds are UTF-16 offsets, and every literal idiom below (`dropFirst`,
+              // `suffix`, …) counts Characters.
+              if (wrap === 'String' || !sliceBoundsAreLiteral(e.args)) {
                 // A fractional bound (`xs.length / 2`, `Math.floor(n * r)`) is a Swift `Double`, and `pyreonSlice`
                 // takes `Int`. JavaScript truncates it (`ToIntegerOrInfinity`: NaN → 0, ±Infinity clamps) — so does
                 // `pyreonSliceIndex`; a bare `Int(x)` would TRAP on NaN or an infinity instead.
@@ -5405,7 +5402,8 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
                   const t = inferType(a, _activeInferCtx)
                   return t.kind === 'number' && t.float === true ? `pyreonSliceIndex(${argExprs[i]!})` : argExprs[i]!
                 })
-                const body = `pyreonSlice(${[recv, ...bounds].join(', ')})`
+                // `str.slice()` copies: the runtime needs an explicit start.
+                const body = `pyreonSlice(${[recv, ...(bounds.length === 0 ? ['0'] : bounds)].join(', ')})`
                 return optional ? `${obj}.map { ${body} }` : body
               }
               // Negative-index idioms (Swift indices count from the front):

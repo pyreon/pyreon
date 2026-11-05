@@ -31,7 +31,8 @@ describe('optional-chained `.slice` — the `Optional.map` wrap', () => {
       `  const a = computed(() => rows().find((r) => r.name === 'x')?.name?.slice(0, 2))`,
     )
     expect(code).toContain('.map {')
-    expect(code).toContain('dropFirst(0)')
+    // A String slice counts UTF-16 units, so it goes through the runtime (not `dropFirst`, which counts Characters).
+    expect(code).toContain('.map { pyreonSlice($0, 0, 2) }')
   })
 
   it('a NEGATIVE optional slice takes the same wrap through the suffix form', () => {
@@ -39,7 +40,7 @@ describe('optional-chained `.slice` — the `Optional.map` wrap', () => {
       `  const a = computed(() => rows().find((r) => r.name === 'x')?.name?.slice(-2))`,
     )
     expect(code).toContain('.map {')
-    expect(code).toContain('suffix(2)')
+    expect(code).toContain('.map { pyreonSlice($0, -2) }')
   })
 
   it('a NON-optional slice has no `.map { }` wrap (the control)', () => {

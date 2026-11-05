@@ -514,7 +514,17 @@ export type StatementIR =
    * where neither encloses it (an event handler) terminates the way an
    * uncaught Kotlin exception does — see `throw-lowering.ts`.
    */
-  | { kind: 'throw'; message?: ExprIR; rethrow?: string }
+  | {
+      kind: 'throw'
+      message?: ExprIR
+      rethrow?: string
+      /**
+       * The thrown value IS the string (`throw 'plain'`), not an `Error` carrying it as its message. On the web
+       * `String(e)` / `` `${e}` `` then reads `plain`, where an `Error` reads `Error: plain` — so the native error
+       * value records which one it was and describes itself accordingly.
+       */
+      raw?: boolean
+    }
   /**
    * `try { … } catch (e) { … } finally { … }`. `catchBody` is absent for a
    * `try/finally`; `catchParam` is absent for `catch { … }`.
@@ -638,7 +648,14 @@ export type ExprIR =
    * (Swift `indices.contains ? xs[i] : nil` / Kotlin `getOrNull(i)`) and
    * infers `element | undefined` so `?? fallback` collapses.
    */
-  | { kind: 'index'; object: ExprIR; index: ExprIR; optional?: boolean }
+  | {
+      kind: 'index'
+      object: ExprIR
+      index: ExprIR
+      optional?: boolean
+      /** An array-destructured element (`const [a] = xs`) — see `destructure-absence.ts`. */
+      destructured?: boolean
+    }
   /**
    * `new Map<K, V>()` / `new Set<T>()` / `new Set(seedArray)` — the two
    * supported collection constructors (the accumulator / dedup idioms).

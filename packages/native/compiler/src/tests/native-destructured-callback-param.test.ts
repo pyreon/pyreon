@@ -41,7 +41,7 @@ for (const target of ['swift', 'kotlin'] as const) {
       // A rename reads the SOURCE field.
       expect(out.code).toMatch(new RegExp(`(__p\\d+)${arrow}\\1\\.title \\+`))
       // An inner `(title) =>` shadows the alias; the outer `title` still reads the parameter.
-      expect(out.code).toMatch(/title\.(utf16\.count|length) }\)\.(count|length) \+ __p\d+\.title/)
+      expect(out.code).toMatch(/title\.(utf16\.count|length(\.toLong\(\))?) }\)\.(count|length) \+ __p\d+\.title/)
       // A nested destructured callback gets its own name, and the outer field reads the OUTER parameter.
       const m = out.code.match(new RegExp(`(__p\\d+)${arrow}ts\\.map\\(\\{ (__p\\d+)${arrow}(__p\\d+)\\.title`))
       expect(m).not.toBeNull()
