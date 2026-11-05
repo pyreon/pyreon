@@ -227,6 +227,13 @@ export type DeclIR =
   /** `onMount(fn)`. `cleanup` is the body of a returned teardown function, run when the view goes away. */
   | { kind: 'on-mount'; body: StatementIR[]; cleanup?: StatementIR[] | undefined }
   /**
+   * `effect(fn)` in a component body. `fn` is the component-scope function the parser lifted the body into
+   * (`__pyEffectN`, a sibling `function` decl); `cleanup` says it returns the web effect's cleanup closure (or
+   * `undefined`). The emitters run it on appear and again whenever one of the body's reactive reads changes.
+   * `tracked: false` is an `onMount` whose cleanup closes over the mount body's locals: run once, never re-run.
+   */
+  | { kind: 'effect'; fn: string; cleanup: boolean; tracked: boolean }
+  /**
    * A PLAIN service container (`useShare`, `useLinking`, `useHaptics`,
    * `useNotifications`, `useBiometrics`, `useImagePicker`, `useFilePicker`,
    * `useCamera`) — see `services.ts`. `hook` names the entry in `SERVICES`

@@ -379,11 +379,13 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
       // Core operation spellings remain valid in unimported snippets. An imported
       // or locally declared function with that spelling still needs its owner's
       // mapping; otherwise the generic operation would claim unrelated code.
-      new Set(['signal', 'computed', ...nativeLoweredHooks()]),
+      new Set(['signal', 'computed', 'effect', ...nativeLoweredHooks()]),
       (hook, module) =>
-        hook === 'signal' || hook === 'computed'
-          ? hookClaimsSource(hook, module)
-          : module.startsWith('@pyreon/') || hookClaimsSource(hook, module),
+        hook === 'effect'
+          ? module === '@pyreon/reactivity'
+          : hook === 'signal' || hook === 'computed'
+            ? hookClaimsSource(hook, module)
+            : module.startsWith('@pyreon/') || hookClaimsSource(hook, module),
     ),
   )
   for (const node of ast.program.body as AnyNode[]) {
@@ -3002,11 +3004,30 @@ function tryComponentFromTopLevel(node: AnyNode, ctx: ParseCtx): ComponentIR | n
         // A returned CLEANUP fn (onMount's unmount contract) runs when the view goes away: Swift
         // `.onDisappear`, Kotlin `DisposableEffect`'s `onDispose`. It is stripped from the mount body either
         // way — a bare `return <closure>` inside `.onAppear` / `LaunchedEffect` would be a type error.
-        const cleanup = onMountCleanup(cb, name, ctx)
-        const kept = bodyStmts.filter(
-          (st) => !(st.kind === 'return' && st.expr !== undefined && st.expr.kind === 'arrow'),
-        )
-        decls.push({ kind: 'on-mount', body: kept, ...(cleanup !== undefined ? { cleanup } : {}) })
+        const cleanup = onMountCleanup(cb, ctx)
+        if (cleanup === 'captures-mount-locals') {
+          // The cleanup closes over a value the mount body computed (`const id = setInterval(…); return () =>
+          // clearInterval(id)`). Separate mount / unmount hooks cannot share that local, so the mount runs as an
+          // UNTRACKED effect instead: one function whose returned closure keeps it, run once on appear, its cleanup
+          // on disappear — the same lifetime as onMount, and the web's closure semantics.
+          decls.push(...effectDecls(cb, decls, ctx, false))
+        } else {
+          const kept = bodyStmts.filter(
+            (st) => !(st.kind === 'return' && st.expr !== undefined && st.expr.kind === 'arrow'),
+          )
+          decls.push({ kind: 'on-mount', body: kept, ...(cleanup !== undefined ? { cleanup } : {}) })
+        }
+      } else if (
+        call?.type === 'CallExpression' &&
+        call.callee?.type === 'Identifier' &&
+        call.callee.name === 'effect' &&
+        call.arguments?.length === 1 &&
+        (call.arguments[0]?.type === 'ArrowFunctionExpression' ||
+          call.arguments[0]?.type === 'FunctionExpression') &&
+        call.arguments[0]?.async !== true
+      ) {
+        const effect = effectDecls(call.arguments[0] as AnyNode, decls, ctx, true)
+        decls.push(...effect)
       } else if (call?.type === 'CallExpression') {
         // A bare CALL statement (`effect(...)`, a stray side-effecting
         // call) has no native lowering — dropped + NAMED warning, so the
@@ -3353,13 +3374,105 @@ function hasNestedValueReturns(fn: AnyNode, name: string, ctx: ParseCtx): boolea
 }
 
 /**
- * The teardown an `onMount` callback returns, as statements — or `undefined` (and a named warning) when there is none
- * that can lower. Only a TOP-LEVEL `return () => { … }` is a teardown: a conditional one would need the mount body's
- * control flow to decide at unmount time. And the teardown must not read a local the mount body declared: on the web
- * the returned closure captures it, but the native mount and unmount hooks are separate closures (Swift
- * `.onAppear` / `.onDisappear`), so the value would not be there. Keep that state in a signal instead.
+ * `effect(fn)` in a component body — the reactive side effect: `fn` runs once, then again whenever a signal it read
+ * changes, and the function it returns (if any) runs before each re-run and when the component goes away.
+ *
+ * The body becomes a component-scope FUNCTION (`__pyEffectN`), so its locals, `if`s, loops and `try` lower exactly
+ * as a handler's do, and a returned cleanup closure captures the locals it reads (`const id = …; return () => use(id)`)
+ * — the web's closure semantics, which `onMount`'s split mount/cleanup hooks cannot give. The `effect` decl beside it
+ * names the function; the emitters derive the re-run triggers from the body's reactive reads (`effect-deps.ts`).
  */
-function onMountCleanup(cb: AnyNode, component: string, ctx: ParseCtx): StatementIR[] | undefined {
+function effectDecls(cb: AnyNode, decls: readonly DeclIR[], ctx: ParseCtx, tracked: boolean): DeclIR[] {
+  const index = decls.filter((d) => d.kind === 'effect').length
+  const fn = `__pyEffect${index}`
+  const body: StatementIR[] =
+    cb.body?.type === 'BlockStatement'
+      ? parseStatementBlock(cb.body, ctx)
+      : // `effect(() => expr)`: an arrow that returns an arrow returns its cleanup; anything else is a statement.
+        cb.body?.type === 'ArrowFunctionExpression' || cb.body?.type === 'FunctionExpression'
+        ? [{ kind: 'return', expr: parseExpr(cb.body, ctx) }]
+        : [{ kind: 'expr', expr: parseExpr(cb.body, ctx) }]
+  const cleanup = statementsReturnValue(body)
+  const returnType: TypeIR = cleanup
+    ? {
+        kind: 'union',
+        branches: [{ kind: 'function', params: [], returnType: { kind: 'unknown' } }, { kind: 'undefined' }],
+      }
+    : { kind: 'unknown' }
+  // With a cleanup, every exit returns one: a bare `return` returns none, and so does falling off the end.
+  const finalBody = cleanup ? withExplicitUndefinedReturns(body) : body
+  return [
+    { kind: 'function', name: fn, params: [], returnType, body: finalBody },
+    { kind: 'effect', fn, cleanup, tracked },
+  ]
+}
+
+/** Whether any `return` in `body` (outside nested closures) returns a value — an effect's cleanup. */
+function statementsReturnValue(body: readonly StatementIR[]): boolean {
+  let found = false
+  forEachNestedStatement(body, (st) => {
+    if (st.kind === 'return' && st.expr !== undefined) found = true
+  })
+  return found
+}
+
+/** Every value-less `return` becomes `return undefined`, and a body that can fall off its end gains one. */
+function withExplicitUndefinedReturns(body: StatementIR[]): StatementIR[] {
+  const undef: ExprIR = { kind: 'literal', value: null }
+  const rewrite = (list: StatementIR[]): StatementIR[] =>
+    list.map((st): StatementIR => {
+      if (st.kind === 'return' && st.expr === undefined) return { kind: 'return', expr: undef }
+      return mapNestedStatementLists(st, rewrite)
+    })
+  const out = rewrite(body)
+  const last = out[out.length - 1]
+  if (last === undefined || last.kind !== 'return') out.push({ kind: 'return', expr: undef })
+  return out
+}
+
+/** Visit every statement in `list`, descending into nested statement lists (not into expressions or closures). */
+function forEachNestedStatement(list: readonly StatementIR[], visit: (st: StatementIR) => void): void {
+  for (const st of list) {
+    visit(st)
+    mapNestedStatementLists(st, (inner) => {
+      forEachNestedStatement(inner, visit)
+      return inner
+    })
+  }
+}
+
+/** `st` with each of its nested statement lists replaced by `f(list)` (the statement itself is otherwise unchanged). */
+function mapNestedStatementLists(st: StatementIR, f: (list: StatementIR[]) => StatementIR[]): StatementIR {
+  switch (st.kind) {
+    case 'if':
+      return { ...st, then: f(st.then), ...(st.elseBody !== undefined ? { elseBody: f(st.elseBody) } : {}) }
+    case 'while':
+    case 'do-while':
+    case 'for-of':
+    case 'for-range':
+      return { ...st, body: f(st.body) }
+    case 'switch':
+      return { ...st, cases: st.cases.map((c) => ({ ...c, body: f(c.body) })) }
+    case 'try':
+      return {
+        ...st,
+        body: f(st.body),
+        ...(st.catchBody !== undefined ? { catchBody: f(st.catchBody) } : {}),
+        ...(st.finallyBody !== undefined ? { finallyBody: f(st.finallyBody) } : {}),
+      }
+    default:
+      return st
+  }
+}
+
+/**
+ * The teardown an `onMount` callback returns, as statements — or `undefined` when there is none. Only a TOP-LEVEL
+ * `return () => { … }` is a teardown: a conditional one would need the mount body's control flow to decide at unmount
+ * time. A teardown that reads a local the mount body declared returns `'captures-mount-locals'`: the native mount and
+ * unmount hooks are separate closures (Swift `.onAppear` / `.onDisappear`), so the caller lowers that `onMount` as an
+ * untracked effect, whose single function keeps the local in the closure it returns.
+ */
+function onMountCleanup(cb: AnyNode, ctx: ParseCtx): StatementIR[] | 'captures-mount-locals' | undefined {
   if (cb.body?.type !== 'BlockStatement') return undefined
   const top = (cb.body.body as AnyNode[] | undefined) ?? []
   const isClosure = (n: AnyNode | undefined): boolean =>
@@ -3390,12 +3503,7 @@ function onMountCleanup(cb: AnyNode, component: string, ctx: ParseCtx): Statemen
   }
   visit(fn.body)
   const captured = [...mountLocals].filter((n) => read.has(n))
-  if (captured.length > 0) {
-    ctx.warnings.push(
-      `Component ${component}: onMount's cleanup reads ${captured.map((n) => `\`${n}\``).join(', ')}, declared in the mount body. On the web the returned closure captures it, but native runs mount and unmount as separate hooks, so it would not be there — the cleanup was NOT emitted. Keep that value in a signal declared beside the component's other state, and read it from the cleanup.`,
-    )
-    return undefined
-  }
+  if (captured.length > 0) return 'captures-mount-locals'
   return fn.body?.type === 'BlockStatement'
     ? parseStatementBlock(fn.body, ctx)
     : [{ kind: 'expr', expr: parseExpr(fn.body, ctx) }]
