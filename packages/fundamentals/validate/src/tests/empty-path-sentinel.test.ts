@@ -73,7 +73,7 @@ describe('EMPTY_PATH sentinel', () => {
   it('a root issue path is a fresh mutable array, never the shared sentinel', () => {
     const typeFail = s.string().parse(42)
     const checkFail = s.string().email().parse('nope')
-    const custom = s.string().refine(() => false, 'no').parse('x')
+    const custom = s.string().refine(() => false, { message: 'no' }).parse('x')
     const paths = [typeFail, checkFail, custom].map((r) => {
       if (r.ok) throw new Error('expected failure')
       return r.issues[0]!.path as unknown[]
