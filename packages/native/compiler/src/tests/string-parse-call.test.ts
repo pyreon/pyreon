@@ -35,21 +35,15 @@ describe('startsWith / endsWith (Swift mapping)', () => {
 })
 
 describe('parseInt / parseFloat globals', () => {
-  it('Swift: parseInt → (Int(x) ?? 0); parseFloat → (Double(x) ?? 0)', () => {
-    expect(transform(SRC("parseInt('42')"), { target: 'swift' }).code).toContain(
-      '(Int("42") ?? 0)',
-    )
-    expect(transform(SRC("parseFloat('3.14')"), { target: 'swift' }).code).toContain(
-      '(Double("3.14") ?? 0)',
-    )
+  // A string argument goes through the runtimes' ECMAScript parsers (PyreonNumber.swift / .kt), executed against
+  // the web's own answers in native-platform-globals.test.ts.
+  it('Swift: parseInt → (pyreonParseInt(x) ?? 0); parseFloat → pyreonParseFloat(x)', () => {
+    expect(transform(SRC("parseInt('42')"), { target: 'swift' }).code).toContain('(pyreonParseInt("42") ?? 0)')
+    expect(transform(SRC("parseFloat('3.14')"), { target: 'swift' }).code).toContain('pyreonParseFloat("3.14")')
   })
-  it('Kotlin: parseInt → toIntOrNull ?: 0; parseFloat → toDoubleOrNull ?: 0.0', () => {
-    expect(transform(SRC("parseInt('42')"), { target: 'kotlin' }).code).toContain(
-      '(("42").toLongOrNull() ?: 0L)',
-    )
-    expect(transform(SRC("parseFloat('3.14')"), { target: 'kotlin' }).code).toContain(
-      '(("3.14").toDoubleOrNull() ?: 0.0)',
-    )
+  it('Kotlin: parseInt → (pyreonParseInt(x) ?: 0L); parseFloat → pyreonParseFloat(x)', () => {
+    expect(transform(SRC("parseInt('42')"), { target: 'kotlin' }).code).toContain('(pyreonParseInt("42") ?: 0L)')
+    expect(transform(SRC("parseFloat('3.14')"), { target: 'kotlin' }).code).toContain('pyreonParseFloat("3.14")')
   })
   it('neither emits the bare parseInt/parseFloat call', () => {
     expect(transform(SRC("parseInt('42')"), { target: 'swift' }).code).not.toContain('parseInt(')

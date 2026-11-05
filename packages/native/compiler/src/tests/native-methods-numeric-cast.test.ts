@@ -1,7 +1,9 @@
 // JS numeric-cast globals → native idiom + precise inference.
-//   Number(x)     → Swift (Double(x) ?? 0) / Kotlin ((x).toDoubleOrNull() ?: 0.0)
-//   parseInt(x)   → Swift (Int(x) ?? 0)    / Kotlin ((x).toIntOrNull() ?: 0)
-//   parseFloat(x) → Swift (Double(x) ?? 0) / Kotlin ((x).toDoubleOrNull() ?: 0.0)
+//   Number(x)     → pyreonToNumber(x)            (both targets; NaN on failure, as on the web)
+//   parseInt(x)   → Swift (pyreonParseInt(x) ?? 0) / Kotlin (pyreonParseInt(x) ?: 0L)
+//   parseFloat(x) → pyreonParseFloat(x)          (both targets)
+// for a STRING argument — the runtimes' ECMAScript parsers (PyreonNumber.swift / .kt; see
+// native-platform-globals.test.ts, which executes them against the web).
 //
 // `Number(x)` had NO mapping — emitted verbatim `Number(x)`, a swiftc TYPE
 // error (no such global) that slips past `-parse`. `parseInt`/`parseFloat`
@@ -38,23 +40,24 @@ const COMPUTEDS = `  const num = computed(() => Number(s()))
 describe('JS Number() / parseInt / parseFloat → native idiom + precise type', () => {
   it('Swift: Number→Double cast; all three typed precisely (not Any)', () => {
     const out = transform(SRC(COMPUTEDS), { target: 'swift' }).code
-    expect(out).toContain('(Double(s) ?? 0)') // Number + parseFloat
-    expect(out).toContain('(Int(s) ?? 0)') // parseInt
+    expect(out).toContain('pyreonToNumber(s)') // Number
+    expect(out).toContain('pyreonParseFloat(s)') // parseFloat
+    expect(out).toContain('(pyreonParseInt(s) ?? 0)') // parseInt
     expect(out).toContain('private var num: Double')
     expect(out).toContain('private var int: Int')
     expect(out).toContain('private var flt: Double')
     // float inference flows into arithmetic coercion
     expect(out).toContain('private var scaled: Double')
-    expect(out).toContain('(Double(s) ?? 0) * Double(2)')
-    expect(out).not.toContain('Number(s)')
+    expect(out).toContain('pyreonToNumber(s) * Double(2)')
+    expect(out).not.toMatch(/(?<![A-Za-z])Number\(s\)/)
     expect(out).not.toContain('private var num: Any')
   })
 
   it('Kotlin: Number→toDoubleOrNull; parseInt→toIntOrNull', () => {
     const out = transform(SRC(COMPUTEDS), { target: 'kotlin' }).code
-    expect(out).toContain('(s).toDoubleOrNull() ?: 0.0')
-    expect(out).toContain('(s).toLongOrNull() ?: 0L')
-    expect(out).not.toContain('Number(s)')
+    expect(out).toContain('pyreonToNumber(s)')
+    expect(out).toContain('(pyreonParseInt(s) ?: 0L)')
+    expect(out).not.toMatch(/(?<![A-Za-z])Number\(s\)/)
   })
 
   it.skipIf(!isSwiftcAvailable())('emitted Swift parses on real swiftc', () => {

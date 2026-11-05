@@ -239,7 +239,6 @@ export const UNMAPPED_ARRAY_METHODS: readonly string[] = [
 
 export const UNMAPPED_STRING_METHODS: readonly string[] = [
   'codePointAt',
-  'localeCompare',
   'normalize',
   'substr',
   'toLocaleLowerCase',
@@ -263,7 +262,6 @@ const UNMAPPED_METHOD_REMEDY: Readonly<Record<string, string>> = {
   values: 'iterate the array directly',
   with: 'use `.map((v, i) => (i === n ? next : v))`',
   codePointAt: 'use `.charCodeAt()` — and note JS is out-of-bounds-SAFE where the native forms throw',
-  localeCompare: 'compare with `<` / `>` — neither native form is locale-aware anyway',
   normalize: 'normalize before the value reaches shared source',
   substr: 'use `.slice(start, end)` (`substr` is deprecated in JS too)',
   toLocaleLowerCase: 'use `.toLowerCase()` — the locale-aware form has no cross-target equivalent',

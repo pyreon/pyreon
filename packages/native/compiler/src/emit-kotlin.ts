@@ -3320,6 +3320,29 @@ function kotlinCallbackParamBindings(e: ExprIR): [string, TypeIR][] {
   return []
 }
 
+
+/** The `console` methods that lower to the platform print (the browser's log levels have no native split). */
+const CONSOLE_LEVELS: ReadonlySet<string> = new Set(['log', 'info', 'debug', 'warn', 'error'])
+
+/** Mirror of the Swift `swiftParseFailureTest`: a NaN test on a parse call checks whether the native parse failed. */
+function kotlinParseFailureTest(arg: ExprIR, indent: number, test: 'isNaN' | 'isFinite'): string | null {
+  if (arg.kind !== 'call' || arg.callee.kind !== 'identifier' || arg.callee.name !== 'parseInt') return null
+  if (arg.args.length < 1 || inferType(arg.args[0]!, _kotlinExprInferCtx).kind !== 'string') return null
+  const s = emitKotlinExpr(arg.args[0]!, indent)
+  const radix = arg.args[1]
+  const parsed = radix === undefined ? `pyreonParseInt(${s})` : `pyreonParseInt(${s}, ${kotlinIntArg(radix, indent)})`
+  return test === 'isNaN' ? `(${parsed} == null)` : `(${parsed} != null)`
+}
+
+/** Mirror of the Swift `warnIntegerNaNTest`. */
+function warnKotlinIntegerNaNTest(test: 'isNaN' | 'isFinite', arg: ExprIR, shown: string): void {
+  if (arg.kind === 'literal') return
+  _emitWarnings.push(
+    `${test}(${shown}): the argument is an integer natively, and a native integer is never NaN, so this folds to \`${test === 'isNaN' ? 'false' : 'true'}\`. ` +
+      `If it holds a parseInt result, a failed parse is 0 natively, not NaN — test the parse itself (\`${test}(parseInt(text))\`), which lowers to a check that the native parse failed.`,
+  )
+}
+
 function emitKotlinExpr(e: ExprIR, indent: number): string {
   // A lambda is its own throw context (see the Swift twin).
   // A callback of a rethrowing array method (`xs.map { … throw … }`) is not its own throw context: Kotlin's inline
@@ -3506,15 +3529,20 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         )
         return e.callee.property === 'keys' ? 'emptyList<String>()' : 'emptyList<Any>()'
       }
-      // `console.log(…)` → `println(…)` — the universal TS debug call
-      // maps to Kotlin's stdlib print (Swift mirror: `print`).
+      // `console.log(…)` (and `info` / `debug` / `warn` / `error`) → `println(…)` — the universal TS debug call maps
+      // to Kotlin's stdlib print (Swift mirror: `print`). `println` takes ONE value, so several arguments are joined
+      // with a space, as the console prints them; passing them through (`println(a, b)`) did not compile, and the
+      // non-`log` levels were emitted verbatim (`console.error(…)`), which did not compile either.
       if (
         e.callee.kind === 'member' &&
-        e.callee.property === 'log' &&
+        CONSOLE_LEVELS.has(e.callee.property) &&
         e.callee.object.kind === 'identifier' &&
         e.callee.object.name === 'console'
       ) {
-        return `println(${e.args.map((a) => emitKotlinExpr(a, indent)).join(', ')})`
+        const parts = e.args.map((a) => emitKotlinExpr(a, indent))
+        if (parts.length === 0) return 'println()'
+        if (parts.length === 1) return `println(${parts[0]!})`
+        return `println(listOf<Any?>(${parts.join(', ')}).joinToString(" "))`
       }
       // `String(x)` — JS number/value → string coercion. Kotlin has NO
       // `String(Any)` constructor (only `String(CharArray)`), so the
@@ -3738,12 +3766,46 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
           nT0.kind === 'typeRef' && (nT0.name === 'Double' || nT0.name === 'Float')
             ? ({ kind: 'number', float: true } as TypeIR)
             : nT0
+        const parseTest = kotlinParseFailureTest(e.args[0]!, indent, 'isNaN')
+        if (parseTest !== null) return parseTest
         const nStr = emitKotlinExpr(e.args[0]!, indent)
-        if (nT.kind === 'number' && nT.float !== true) return 'false'
+        if (nT.kind === 'number' && nT.float !== true) {
+          warnKotlinIntegerNaNTest('isNaN', e.args[0]!, nStr)
+          return 'false'
+        }
         if (nT.kind === 'number') return `(${nStr}).isNaN()`
         _emitWarnings.push(
           `isNaN(${nStr}): the argument's numeric type could not be inferred — emitting the raw call, which does not compile natively.`,
         )
+      }
+      // `isFinite(x)` / `Number.isFinite(x)` — mirror of the Swift lowering.
+      if (e.callee.kind === 'identifier' && e.callee.name === 'isFinite' && e.args.length === 1) {
+        const fT0 = inferType(e.args[0]!, _kotlinExprInferCtx)
+        const fT =
+          fT0.kind === 'typeRef' && (fT0.name === 'Double' || fT0.name === 'Float')
+            ? ({ kind: 'number', float: true } as TypeIR)
+            : fT0
+        const parseTest = kotlinParseFailureTest(e.args[0]!, indent, 'isFinite')
+        if (parseTest !== null) return parseTest
+        const fStr = emitKotlinExpr(e.args[0]!, indent)
+        if (fT.kind === 'number' && fT.float !== true) {
+          warnKotlinIntegerNaNTest('isFinite', e.args[0]!, fStr)
+          return 'true'
+        }
+        if (fT.kind === 'number') return `(${fStr}).isFinite()`
+        _emitWarnings.push(
+          `isFinite(${fStr}): the argument's numeric type could not be inferred — emitting the raw call, which does not compile natively.`,
+        )
+      }
+      // `crypto.randomUUID()` — mirror of the Swift lowering; `java.util.UUID` prints lower-case like the web.
+      if (
+        e.callee.kind === 'member' &&
+        e.callee.object.kind === 'identifier' &&
+        e.callee.object.name === 'crypto' &&
+        e.callee.property === 'randomUUID' &&
+        e.args.length === 0
+      ) {
+        return 'java.util.UUID.randomUUID().toString()'
       }
       // `Boolean(x)` — JS truthiness coercion as a VALUE. Kotlin has no
       // `Boolean(x)` function (the raw emit fails "unresolved reference"),
@@ -3812,6 +3874,17 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         e.args.length >= 1
       ) {
         const arg = emitKotlinExpr(e.args[0]!, indent)
+        // A STRING argument goes through the runtime's ECMAScript algorithms (`PyreonNumber.kt`) — the mirror of the
+        // Swift lowering; `toLongOrNull()` / `toDoubleOrNull()` demand the whole string in Kotlin's grammar.
+        if (inferType(e.args[0]!, _kotlinExprInferCtx).kind === 'string') {
+          if (e.callee.name === 'parseInt') {
+            const radix = e.args[1]
+            return radix === undefined
+              ? `(pyreonParseInt(${arg}) ?: 0L)`
+              : `(pyreonParseInt(${arg}, ${kotlinIntArg(radix, indent)}) ?: 0L)`
+          }
+          return e.callee.name === 'parseFloat' ? `pyreonParseFloat(${arg})` : `pyreonToNumber(${arg})`
+        }
         if (e.callee.name === 'parseInt') {
           // The radix used to be DROPPED: `parseInt(hex, 16)` decoded as base
           // 10 and returned 0 for `'ff'` — a plausible number that flowed on.
@@ -4122,6 +4195,19 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
           // 1-argument result widens; `List.indexOf` additionally has no
           // `fromIndex`, so the 2-argument positioned form applies to
           // `indexOf` only, not `lastIndexOf`.
+          case 'localeCompare':
+            // Mirror of the Swift lowering: the default locale's collator (`java.text.Collator` is ICU-backed on
+            // Android), its Int result widened to the Long a TS number is.
+            if (e.args.length === 1) {
+              if (objDot === '?.') {
+                return `${obj}?.let { java.text.Collator.getInstance().compare(it, ${argExprs[0]!}).toLong() }`
+              }
+              return kotlinLongOf(`java.text.Collator.getInstance().compare(${obj}, ${argExprs[0]!})`)
+            }
+            _emitWarnings.push(
+              `.localeCompare(…) with a locale or options argument has no native lowering — only \`a.localeCompare(b)\` (the default locale) lowers. Emitting the raw call, which fails to compile.`,
+            )
+            break
           case 'indexOf':
           case 'lastIndexOf':
             if (e.args.length === 1) return kotlinLongOf(`${obj}${objDot}${prop}(${argExprs[0]!})`)

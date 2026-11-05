@@ -1582,6 +1582,16 @@ export function inferTypeValue(expr: ExprIR, ctx: InferenceCtx): TypeIR {
       ) {
         return { kind: 'number', float: true }
       }
+      // `crypto.randomUUID()` → string (paired with the per-target UUID emit).
+      if (
+        expr.callee.kind === 'member' &&
+        expr.callee.object.kind === 'identifier' &&
+        expr.callee.object.name === 'crypto' &&
+        expr.callee.property === 'randomUUID' &&
+        expr.args.length === 0
+      ) {
+        return { kind: 'string' }
+      }
       // `Number.isInteger(x)` → boolean (paired with the per-target
       // remainder-check emit; without this the computed annotated `Any`).
       if (
@@ -1593,10 +1603,11 @@ export function inferTypeValue(expr: ExprIR, ctx: InferenceCtx): TypeIR {
       ) {
         return { kind: 'boolean' }
       }
-      // `isNaN(x)` → boolean (paired with the per-target lowering).
+      // `isNaN(x)` / `isFinite(x)` → boolean (paired with the per-target lowerings; the parser canonicalizes the
+      // `Number.` spellings to these).
       if (
         expr.callee.kind === 'identifier' &&
-        expr.callee.name === 'isNaN' &&
+        (expr.callee.name === 'isNaN' || expr.callee.name === 'isFinite') &&
         expr.args.length === 1
       ) {
         return { kind: 'boolean' }
@@ -1816,6 +1827,7 @@ export function inferTypeValue(expr: ExprIR, ctx: InferenceCtx): TypeIR {
             case 'endsWith':
               return { kind: 'boolean' }
             case 'indexOf':
+            case 'localeCompare': // -1 / 0 / 1 on both targets
               return { kind: 'number' }
             case 'charCodeAt':
               // emitted as Double on both targets (the JS number)
