@@ -657,7 +657,7 @@ export function App() {
   it('a fromIndex / endPosition lowers to a positioned search, never the 1-argument spelling', () => {
     expect(line('a6')).not.toContain('xs.contains(1)')
     expect(line('a6')).toContain('__pyRecv[__pyFrom...].contains(1)')
-    expect(line('a11')).toContain('__pyRecv.prefix(max(0, 2)).hasSuffix("a")')
+    expect(line('a11')).toContain('pyreonEndsWith(s, "a", 2)')
   })
 
   it('an uncovered shape stays verbatim and is NAMED', () => {
@@ -671,8 +671,9 @@ export function App() {
 
   it('the modelled arities still lower: seedless reduce, one- and two-argument substring', () => {
     expect(line('a14')).toContain('let a14 = xs.dropFirst().reduce(xs[0], { a, x in a + x })')
-    expect(line('a18')).toContain('let a18 = String(s.dropFirst(1))')
-    expect(line('a19')).toContain('let a19 = String(s.dropFirst(1).prefix(max(0, (2) - (1))))')
+    // String positions are UTF-16 offsets, so substring goes through the runtime.
+    expect(line('a18')).toContain('let a18 = pyreonSubstring(s, 1)')
+    expect(line('a19')).toContain('let a19 = pyreonSubstring(s, 1, 2)')
   })
 })
 

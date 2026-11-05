@@ -38,7 +38,7 @@ describe('P1 — seeding + inference gaps (charts-engine shapes)', () => {
     expect(out).not.toContain('Double(step * i)')
   })
 
-  it('String(x) locals infer string — indexOf takes the range(of:) form', () => {
+  it('String(x) locals infer string — indexOf takes the string (UTF-16 offset) form', () => {
     const out = transform(`
   function fx(v: Double): Double {
     const s = String(v)
@@ -47,7 +47,7 @@ describe('P1 — seeding + inference gaps (charts-engine shapes)', () => {
   }
   export function P() { return <Text>{String(fx(1.25))}</Text> }
 `, { target: 'swift' }).code
-    expect(out).toContain('range(of: ".")')
+    expect(out).toContain('pyreonIndexOf(s, ".")')
     expect(out).not.toContain('firstIndex')
   })
 
@@ -98,7 +98,7 @@ describe('P1 — seeding + inference gaps (charts-engine shapes)', () => {
   }
   export function P() { return <Text>{fixed(2.0)(1.25)}</Text> }
 `, { target: 'swift' }).code
-    expect(out).toContain('range(of: ".")')
+    expect(out).toContain('pyreonIndexOf(s, ".")')
     expect(out).not.toContain('firstIndex')
   })
 

@@ -287,11 +287,18 @@ A lowering inherits the native primitive's rounding, units, locale and nullabili
 
 ---
 
+### PMTC: an untyped callback parameter silently picks every type-dependent lowering's untyped spelling
+
+Kotlin seeded no array-callback params, so `names.map((n) => n.length)` left `String.length` an `Int` against `List<Long>` (kotlinc error, no warning); seeding the element then exposed an outer `const k` typing the INDEX param, so seed both. Same evidence rule at the other end of a call: a `number` param a caller feeds a Double must widen (`call-site-param-floats.ts`). Lock: `native-web-divergences-0-54.test.ts`.
+
+---
+
 ### PMTC: a "callable names" set seeded only where components start
 
 Zero-argument calls emit BARE (a signal read) unless the name is known callable, and the set was seeded per component — so module scope (one helper calling another, `String(k())`) emitted `k` on both targets with no warning. Seed every scope that emits calls, including module scope (`moduleFunctionNames*`). Lock: `native-review-0-54-emit-fixes.test.ts`.
   - `Math.round`: Swift `.rounded()` rounds ties away from zero; JS rounds ties toward +∞. Swift emits `((Double(x)) + 0.5).rounded(.down)`. Kotlin's `java.lang.Math.round` is specified as `floor(x + 0.5)` and already matches.
   - `String.length`: Swift `String.count` counts grapheme clusters (`"👍"` is 1, JS/Kotlin say 2). Emit `.utf16.count` for a provably string receiver; an array keeps `.count`.
+  - String POSITIONS (`slice`, `substring`, `charAt`, `indexOf`, positioned `includes`/`startsWith`/`endsWith`, `padStart`): fixing `.length` alone left every position-taking method counting Characters, so `'a👍b'.slice(0, 3)` cut at a different place than `.length` measured. Swift routes them all through the UTF-16 runtime (`pyreonSlice`/`pyreonCharAt`/`pyreonIndexOf`, `PyreonSlice.swift`); a literal `dropFirst`/`suffix` fast path is Character-based and is no longer used for strings. Lock: `native-web-divergences-0-54.test.ts` (executes both targets against the web's own answer).
   - `toFixed`: Kotlin's 1-arg `"%.2f".format(x)` uses the device locale (`1234,57` under German). Emit `"%.2f".format(java.util.Locale.ROOT, x)`. Swift's `String(format:)` is already invariant.
   - `Record<K, V>` index: native dictionary subscripts are optional on both targets; this is inherent to the lowering.
   When a correction lands at one call site, apply the invariant everywhere it holds. Reference: `emit-swift.ts`, `emit-kotlin.ts`; `native-emit-correctness.test.ts`.

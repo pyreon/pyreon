@@ -45,9 +45,9 @@ describe('JS .slice → native idiom (dropFirst/prefix · drop/take)', () => {
     expect(out).toContain('Array(todos.dropFirst(0).prefix(max(0, (2) - (0))))')
     // array slice, single arg → Array(...dropFirst(1))
     expect(out).toContain('Array(todos.dropFirst(1))')
-    // string slice rewraps via String(...), and the computed is typed String
-    expect(out).toContain('String(name.dropFirst(0).prefix(max(0, (3) - (0))))')
-    expect(out).toContain('String(name.dropFirst(2))')
+    // a string slice counts UTF-16 units (the runtime), and the computed is typed String
+    expect(out).toContain('pyreonSlice(name, 0, 3)')
+    expect(out).toContain('pyreonSlice(name, 2)')
     // result type annotations are correct (the array slice keeps [Todo])
     expect(out).toContain('private var firstTwo: [Todo]')
     expect(out).toContain('private var pre: String')

@@ -104,23 +104,24 @@ describe('Swift member-call lowering — arity and receiver-type guards', () => 
     expect(w.some((x) => x.includes('.lastIndexOf on a non-array receiver'))).toBe(true)
   })
 
-  it('indexOf: string receiver → range(of:)+distance; array → firstIndex(of:) ?? -1', () => {
+  it('indexOf: string receiver → the UTF-16 runtime offset; array → firstIndex(of:) ?? -1', () => {
     const out = sw(`  const a = computed(() => s().indexOf('l'))
   const b = computed(() => nums().indexOf(2))`)
-    expect(out).toContain('s.range(of: "l")')
-    expect(out).toContain('distance(from: s.startIndex')
+    // `range(of:)` + `distance` counted Characters where JS (and `.length`) count UTF-16 units.
+    expect(out).toContain('pyreonIndexOf(s, "l")')
+    expect(out).not.toContain('range(of:')
     expect(out).toContain('(nums.firstIndex(of: 2) ?? -1)')
   })
 
   it('charAt / charCodeAt: the 1-arg arms; 0-arg falls through', () => {
     const out = sw(`  const a = computed(() => s().charAt(0))
   const b = computed(() => s().charCodeAt(0))`)
-    expect(out).toContain('String(Array(s)[0])')
+    expect(out).toContain('pyreonCharAt(s, 0)')
     expect(out).toContain('Double(Array(s.utf16)[Int(0)])')
 
     const bare = sw(`  const a = computed(() => s().charAt())`)
     expect(bare).toContain('s.charAt()')
-    expect(bare).not.toContain('String(Array(s)')
+    expect(bare).not.toContain('pyreonCharAt')
   })
 
   it('startsWith / endsWith → hasPrefix / hasSuffix; 2-arg lowers a positioned search', () => {
@@ -132,7 +133,7 @@ describe('Swift member-call lowering — arity and receiver-type guards', () => 
     // The 1-arg `hasPrefix` spelling would silently drop the position.
     const two = sw(`  const a = computed(() => s().startsWith('he', 1))`)
     expect(two).not.toContain('s.hasPrefix("he")')
-    expect(two).toContain('__pyRecv.dropFirst(max(0, 1)).hasPrefix("he")')
+    expect(two).toContain('pyreonStartsWith(s, "he", 1)')
   })
 
   it('join: a non-String element array maps through String.init first', () => {
@@ -159,12 +160,12 @@ describe('Swift member-call lowering — arity and receiver-type guards', () => 
     expect(bare).toContain('s.split()')
   })
 
-  it('substring: 1-arg → dropFirst; 2-arg → dropFirst+prefix; a NEGATIVE arg goes through the runtime', () => {
+  it('substring: every arity goes through the UTF-16 runtime (`dropFirst` counts Characters)', () => {
     const one = sw(`  const a = computed(() => s().substring(1))`)
-    expect(one).toContain('String(s.dropFirst(1))')
+    expect(one).toContain('pyreonSubstring(s, 1)')
 
     const two = sw(`  const a = computed(() => s().substring(1, 3))`)
-    expect(two).toContain('String(s.dropFirst(1).prefix(max(0, (3) - (1))))')
+    expect(two).toContain('pyreonSubstring(s, 1, 3)')
 
     // A negative bound: JS clamps it to 0, which `dropFirst` would TRAP on.
     // It used to fall through to a verbatim `s.substring(-1)` (no such Swift
@@ -176,7 +177,8 @@ describe('Swift member-call lowering — arity and receiver-type guards', () => 
 
   it('padStart / padEnd: omitted pad → " "; a 1-char literal pad; a MULTI-char pad falls through', () => {
     const dflt = sw(`  const a = computed(() => s().padStart(8))`)
-    expect(dflt).toContain('String(repeating: " ", count: max(0, (8) - s.count))')
+    // The target length is in UTF-16 units, like `.length`.
+    expect(dflt).toContain('String(repeating: " ", count: max(0, (8) - s.utf16.count))')
     expect(dflt).toMatch(/\(String\(repeating: " ".*\) \+ s\)/)
 
     const end = sw(`  const a = computed(() => s().padEnd(8, '0'))`)
@@ -230,7 +232,8 @@ describe('Swift member-call lowering — arity and receiver-type guards', () => 
     expect(out).toContain('Array(strs)')
     expect(out).toContain('Array(strs.dropFirst(1))')
     expect(out).toContain('Array(strs.dropFirst(1).prefix(max(0, (2) - (1))))')
-    expect(out).toContain('String(s.dropFirst(1).prefix(max(0, (3) - (1))))')
+    // A String slice counts UTF-16 units — the runtime, not `dropFirst` (Characters).
+    expect(out).toContain('pyreonSlice(s, 1, 3)')
   })
 
   it('slice on a NUMBER receiver has no wrap and falls through (the `wrap === null` arm)', () => {

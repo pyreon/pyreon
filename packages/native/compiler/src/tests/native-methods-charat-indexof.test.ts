@@ -39,13 +39,12 @@ const COMPUTEDS = `  const first = computed(() => name().charAt(0))
   const strPos = computed(() => name().indexOf('l'))`
 
 describe('JS .charAt / .indexOf → native idiom', () => {
-  it('Swift: charAt → String(Array[i]); indexOf → Int with `?? -1` / range+distance', () => {
+  it('Swift: charAt / string indexOf → the UTF-16 runtime; array indexOf → Int with `?? -1`', () => {
     const out = transform(SRC(COMPUTEDS), { target: 'swift' }).code
-    expect(out).toContain('String(Array(name)[0])')
+    // String positions are UTF-16 offsets (as `.length` counts them), not Character offsets.
+    expect(out).toContain('pyreonCharAt(name, 0)')
     expect(out).toContain('(ids.firstIndex(of: 2) ?? -1)')
-    expect(out).toContain(
-      'name.range(of: "l").map { name.distance(from: name.startIndex, to: $0.lowerBound) } ?? -1',
-    )
+    expect(out).toContain('pyreonIndexOf(name, "l")')
     // result types: charAt→String, both indexOf→Int (not Int? / Any)
     expect(out).toContain('private var first: String')
     expect(out).toContain('private var pos: Int')
@@ -53,9 +52,9 @@ describe('JS .charAt / .indexOf → native idiom', () => {
     expect(out).not.toContain('.charAt(')
   })
 
-  it('Kotlin: charAt → [i].toString(); indexOf passes through (native -1)', () => {
+  it('Kotlin: charAt → getOrNull(i)?.toString() ?: ""; indexOf passes through (native -1)', () => {
     const out = transform(SRC(COMPUTEDS), { target: 'kotlin' }).code
-    expect(out).toContain('name[0].toString()')
+    expect(out).toContain('(name.getOrNull(0)?.toString() ?: "")')
     expect(out).toContain('ids.indexOf(2L).toLong()')
     expect(out).toContain("name.indexOf(\"l\")")
     expect(out).not.toContain('.charAt(')

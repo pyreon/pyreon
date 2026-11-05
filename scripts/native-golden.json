@@ -7412,18 +7412,18 @@
       "warnings": 0
     },
     "example:native-router-demo-ios/RouterApp.tsx|swift": {
-      "sha": "24977ad0f9a51c77caeec544c25a688d8f09919e99096302824303840bc3a02f",
-      "bytes": 34474,
+      "sha": "c94d0fb25f0e5418382052e579bc01628ea6332a755947612c9226e3ba04753d",
+      "bytes": 34516,
       "warnings": 0
     },
     "example:native-router-demo-ios/RouterApp.tsx|kotlin": {
-      "sha": "330e5bcbe43c3704ed0589d9ef1786a9a6c8ebea537d1abd786bdca0fbb19f10",
-      "bytes": 32171,
+      "sha": "82cc4e06872742263c059cf755635f7697f714029e2e81873fdafc72baf3aacd",
+      "bytes": 32237,
       "warnings": 0
     },
     "example:native-tasks/TasksApp.tsx|swift": {
-      "sha": "cdce3da9bf2c74fe1e4929e4dcb44d5ff2d8251e4179f9f75c69c0a2724d7cbf",
-      "bytes": 172793,
+      "sha": "dae2ff48104f8227f2658059f55796dff31f01d5bf10b2e208b984b2211ced07",
+      "bytes": 172773,
       "warnings": 1
     },
     "example:native-tasks/TasksApp.tsx|kotlin": {
@@ -7792,8 +7792,8 @@
       "warnings": 0
     },
     "registry:@pyreon/code|swift": {
-      "sha": "905ab79736953cd94f5bc86d504327731a234e730a68577b02207dd37b7d2b41",
-      "bytes": 650,
+      "sha": "96ec90031db20a38046511549dd7258d1ea912e02833fa8af0893d4680958ad8",
+      "bytes": 640,
       "warnings": 0
     },
     "registry:@pyreon/code|kotlin": {
@@ -7822,8 +7822,8 @@
       "warnings": 0
     },
     "registry:@pyreon/rich-text|swift": {
-      "sha": "2b4d1aad5803e4827b6f406f34b2d33477deece6ab9a942266899c02f4646ffc",
-      "bytes": 624,
+      "sha": "30db906a1ec185fd9bfa3c22bfca55bf93f6b87077e1b419eec3b39793d092cb",
+      "bytes": 614,
       "warnings": 0
     },
     "registry:@pyreon/rich-text|kotlin": {

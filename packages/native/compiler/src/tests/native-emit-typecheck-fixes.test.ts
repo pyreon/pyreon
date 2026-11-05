@@ -40,9 +40,9 @@ describe('Swift emit -typecheck fixes (post-v0.34.0 audit)', () => {
 
   describe('B — `.slice()` on a `.find()` optional receiver is lowered', () => {
     const body = `const xs = signal<string[]>(["aaaa"])\nconst f = computed(() => xs().find(x => x.length > 3))\nconst out = computed(() => f()?.slice(0,2) ?? "")`
-    it('lowers via optional `.map { String($0.dropFirst… }`, not raw `.slice`', () => {
+    it('lowers via optional `.map { pyreonSlice($0, …) }`, not raw `.slice`', () => {
       const swift = emit(body)
-      expect(swift).toContain('.map { String(')
+      expect(swift).toContain('.map { pyreonSlice($0, 0, 2) }')
       expect(swift).not.toMatch(/\?\.slice\(/)
     })
     it.skipIf(!isSwiftUIAvailable())('type-checks on real swiftc', () => {
