@@ -108,7 +108,11 @@ const NO_META: Record<string, unknown> = Object.freeze({})
 function toResolved(config: HttpClientConfig, base?: ResolvedConfig): ResolvedConfig {
   // Called through the codec object, so a codec written as a class keeps `this`.
   const codec = config.json
-  const headerSources = [...(base?.headerSources ?? [])]
+  // No `[...(base?.headerSources ?? [])]`: for a root client that spread
+  // allocates a throwaway `[]` and runs the iterator protocol on it, which
+  // measured as most of `createHttp`'s cost. `slice()` keeps the copy (an
+  // `extend()` must never share its parent's array) without either.
+  const headerSources: HeaderSource[] = base ? base.headerSources.slice() : []
   if (config.headers) headerSources.push(config.headers)
 
   return {
