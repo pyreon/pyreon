@@ -164,6 +164,11 @@ Neither arm synthesizes pointer events; both drive their public imperative API a
 
 (ms; run 1 / run 2.) The unranked `Vanilla canvas` control strokes every point with no axes and does not reduce points, so it is a drift control, not a floor. Pyreon draws an offscreen accessible data table by default; nobody else does.
 
+2026-11-05, row-object input only: the row accessor now writes into a presized array (#3912 described this change, but the code never made it). These figures come from a focused run, not the full set. That run used `--only`, 4 passes, interleaved arms, and a temporary push arm as the in-run control.
+- **1M mount:** 16.55 → 15.65 ms. The CIs overlap, and Chart.js at 12.79 ms still leads (1.22×).
+- **100k update:** 2.83 → 2.66 ms, a disjoint win.
+- **Fresh page:** the 1M mount is 14.06 → 10.39 ms (interleaved, disjoint) and ties the columnar arm. On the board the remaining row cost is the 1M accessor calls themselves.
+
 ## 3. Scaling — `bench-crossover` (batch instrument, 100 → 20,000 rows)
 
 `--repeat 3`, one run 02:58–03:03, load 1.9–2.5. Arms: Pyreon, Octane 0.16, Solid (the harness has no Vapor arm). Per-op figure = cycle ÷ 2, median [CI95].
