@@ -114,9 +114,9 @@ export function App(){
   // Controls — the pre-existing coercion constructors are unchanged.
   it('controls: Number("42") / parseInt("7") emits unchanged', () => {
     const num = sw(N(`  const out = computed(() => Number("42"))`))
-    expect(num).toContain('(Double("42") ?? 0)')
+    expect(num).toContain('pyreonToNumber("42")')
     const pi = sw(N(`  const out = computed(() => parseInt("7"))`))
-    expect(pi).toContain('(Int("7") ?? 0)')
+    expect(pi).toContain('(pyreonParseInt("7") ?? 0)')
   })
 
   // Compile proof — every lowering shape in ONE component, through real
