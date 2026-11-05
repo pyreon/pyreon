@@ -46,7 +46,7 @@ is staged in-repo at `contrib/krausest/pyreon-keyed/`.
   partial update, swap, remove, create 10k) against the Vue 3.6 Vapor release
   candidate, Octane 0.16 and Vue 3; dbmon; 1,000-row hydration vs Vue; router
   matching at 50/200 routes.
-- **Losses:** deep component-tree mount (Solid 1.20×), data-table mount vs
+- **Losses:** deep component-tree mount (Solid 1.16×), data-table mount vs
   memoized react-table (1.12×), some large line-chart mounts, signal creation
   and deep computed chains vs Preact Signals, bundle size, router at 10 routes,
   and a handful of package micro-ops. All listed at the end.
@@ -145,7 +145,7 @@ Real Chromium, 60 samples per cell, run twice.
 | Scenario | Fastest | Pyreon |
 | --- | --- | --- |
 | dbmon tick (100×6 cells, all change) | 🤝 Pyreon 1.71ms = Octane 1.71 = Svelte 1.75 | — |
-| mount deep tree (2,047 components) | Solid 3.09ms | 3.72ms (**1.20× slower**; React 3.64 🤝) |
+| mount deep tree (2,047 components) | Solid 3.09ms | 3.59ms (**1.16× slower**, re-measured 2026-11-05; React 3.63 🤝) |
 | context → 1,024 consumers | **Pyreon 1.88ms** | Solid 1.94 |
 | effect list: update 500 | **Pyreon 820µs** | Solid 907µs |
 | effect list: dispose 500 | 🤝 Pyreon 45µs = Solid 45µs | second run: Solid 38µs vs Pyreon 50µs |
@@ -155,8 +155,9 @@ Real Chromium, 60 samples per cell, run twice.
 - **dbmon** changes every value every tick, which removes a signal graph's
   skip-unchanged advantage by construction; the field converges on the
   DOM-write floor, and it is never quoted as a win for anyone.
-- **Deep-tree mount is Pyreon's clearest loss** — 1.20× behind Solid; React and
-  Pyreon are a statistical tie.
+- **Deep-tree mount is Pyreon's clearest loss** — 1.16× behind Solid (1.20×
+  before null-prototype reactive props, 2026-11); React and Pyreon are a
+  statistical tie.
 - **Dispose 500** sits at two or three clock ticks; the runs disagree (tie, then
   Solid 1.3×), and an on-CPU profile puts Pyreon's teardown below Solid's.
 
@@ -428,7 +429,7 @@ isolation, correctness gates):
 
 Kept current against the 2026-11-05 run:
 
-1. **Deep component-tree mount** — 1.20× behind Solid (3.72 vs 3.09ms); React
+1. **Deep component-tree mount** — 1.16× behind Solid (3.59 vs 3.09ms); React
    ties Pyreon.
 2. **Keyed row-list board** — tied for first, not outright, on create, replace,
    partial update, swap, remove and create 10k (Vue 3.6 Vapor release

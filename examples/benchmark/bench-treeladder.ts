@@ -27,7 +27,7 @@ const ITER = Number(process.argv[2] ?? 60)
 const INTERVAL_US = 20
 const PORT = process.env.TP_PORT ?? '4187'
 
-const ARMS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'V'] as const
+const ARMS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'V'] as const
 const ARM_LABEL: Record<string, string> = {
   A: 'A_idiomatic  compiled components, getter props, context leaf  ← the board',
   B: 'B_eagerProps = A with plain-value child props (no _rp / getter)',
@@ -37,6 +37,8 @@ const ARM_LABEL: Record<string, string> = {
   F: 'F_sigLeaf    = A but the leaf reads a plain signal (direct tier)',
   G: 'G_solid      SolidJS, compiler-faithful (template clone + insert)',
   H: 'H_getters    = E with hand-written getter child props (no _rp, no conversion)',
+  I: 'I_ctxSignal  = A but the provider hands the context the SIGNAL (Solid arm shape)',
+  J: 'J_ctxOnly    = C plus the useContext lookup (no bind)',
   V: 'V_vanilla    hand-written DOM (floor)',
 }
 const LEAVES = 1024
@@ -48,7 +50,7 @@ const preview = spawn('bunx', ['vite', 'preview', '--port', PORT, '--strictPort'
 await new Promise((r) => setTimeout(r, 2500))
 
 const browser = await chromium.launch({
-  args: ['--js-flags=--expose-gc', '--enable-precise-memory-info'],
+  args: [`--js-flags=--expose-gc ${process.env.TL_JSFLAGS ?? ''}`, '--enable-precise-memory-info'],
 })
 try {
   const page = await browser.newPage()
@@ -183,11 +185,14 @@ try {
   console.log(`    B − E  compiled template vs h(), eager props            = ${d('B', 'E')}`)
   console.log(`    D − V  h() element path over vanilla                   = ${d('D', 'V')}`)
   console.log(`    C − V  compiled static tree over vanilla               = ${d('C', 'V')}`)
+  console.log(`    A − I  wrapper accessor vs signal through context      = ${d('A', 'I')}`)
+  console.log(`    J − C  useContext lookup alone                         = ${d('J', 'C')}`)
+  console.log(`    I − J  direct-tier text bind                           = ${d('I', 'J')}`)
 
-  for (const a of ['A', 'H', 'G'] as const) {
+  for (const a of (process.env.TL_TOP ?? 'A,I,J,G').split(',') as (typeof ARMS)[number][]) {
     const { total, byFn } = subtree(`__mountTree${a}`)
     console.log(`\n  ${ARM_LABEL[a]} — top frames (${total} samples):`)
-    for (const [fn, h] of [...byFn.entries()].sort((x, y) => y[1] - x[1]).slice(0, 14)) {
+    for (const [fn, h] of [...byFn.entries()].sort((x, y) => y[1] - x[1]).slice(0, Number(process.env.TL_N ?? 14))) {
       console.log(`    ${((h / Math.max(total, 1)) * 100).toFixed(1).padStart(5)}%  ${us(h).toFixed(0).padStart(5)}µs  ${fn}`)
     }
   }

@@ -498,6 +498,10 @@ export function _wrapSpread(
  * props (like Show's when, For's each) are left as-is.
  *
  * Returns the same object if no reactive props found (fast path).
+ *
+ * The converted object has a NULL prototype (see the comment at the
+ * allocation). Read props with `Object.hasOwn(props, k)` / `k in props`,
+ * never `props.hasOwnProperty(k)`.
  */
 export function makeReactiveProps(raw: Record<string, unknown>): Record<string, unknown> {
   // SINGLE pass, copy-on-first-reactive-prop.
@@ -519,7 +523,22 @@ export function makeReactiveProps(raw: Record<string, unknown>): Record<string, 
     const val = raw[key]
     if (typeof val === 'function' && (val as any)[REACTIVE_PROP]) {
       if (result === null) {
-        result = {}
+        // NULL prototype, deliberately (measured, 2026-11). Every result gets
+        // an ACCESSOR whose getter is a fresh closure, so on a `{}` V8 cannot
+        // share a map between two props objects: each `defineProperty` mints a
+        // new hidden class (`%HaveSameMap` is false for any two results). A
+        // null-prototype object starts in dictionary mode, so the accessor is
+        // a dictionary insert and no map is built. On the 2,047-component
+        // deep-tree mount this took `makeReactiveProps` from ~165 to ~75 µs
+        // on-CPU and the board from 3.70-3.72 to 3.57-3.59 ms (two runs, CIs
+        // disjoint); retained size per object is unchanged (268-272 B).
+        // Reads are no slower: the old per-object maps made every props read
+        // site megamorphic anyway. `{ __proto__: … }`-style workarounds that
+        // keep `Object.prototype` (dictionary via `delete`, setPrototypeOf)
+        // measured no faster than `{}`. The cost: `props.hasOwnProperty` /
+        // `props.toString` are undefined on a component that received a
+        // reactive prop — use `Object.hasOwn` / `String(…)` instead.
+        result = Object.create(null) as Record<string, unknown>
         // Backfill the static keys already scanned. Same value-copy the
         // second pass performed for them before.
         for (let j = 0; j < i; j++) {
@@ -538,6 +557,24 @@ export function makeReactiveProps(raw: Record<string, unknown>): Record<string, 
   }
 
   return result ?? raw
+}
+
+/**
+ * @internal Give a props object back the normal `Object.prototype`.
+ *
+ * `makeReactiveProps` returns a NULL-prototype object whenever a component
+ * received a reactive prop (a V8 hidden-class win). Pyreon components are
+ * told to use `Object.hasOwn` / `key in props`; a `*-compat` layer cannot ask
+ * that of third-party React/Preact/Vue/Solid/Svelte code, which may call
+ * `props.hasOwnProperty(k)` or interpolate `props`. The compat wrappers call
+ * this ONCE per instance at setup. It re-links the prototype in place, so the
+ * getters stay live — never value-copy props here.
+ */
+export function _compatProps<T extends object>(props: T): T {
+  if (props !== null && typeof props === 'object' && Object.getPrototypeOf(props) === null) {
+    Object.setPrototypeOf(props, Object.prototype)
+  }
+  return props
 }
 
 // ─── Unique ID ───────────────────────────────────────────────────────────────

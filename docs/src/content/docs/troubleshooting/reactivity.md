@@ -148,6 +148,15 @@ A function is always truthy, so `if (!has)` is dead code.
 
 ---
 
+### Calling `Object.prototype` methods on `props`
+
+(`props.hasOwnProperty(k)`, `props.toString()`, `` `${props}` ``): a component that receives any reactive (compiler-wrapped `_rp`) prop gets a NULL-prototype props object from `makeReactiveProps`, while a component with only static props gets the plain object it was passed. The prototype is call-site dependent, so the bug shows up on one usage and not another (`TypeError: props.hasOwnProperty is not a function`; the diagnose catalog maps it).
+  - Use `Object.hasOwn(props, k)` or `k in props`, and `String(props.x)`. Spread, `Object.keys`, `in`, JSON and descriptor copying are unaffected.
+  - Why: a per-instance getter on `{}` makes V8 build a new hidden class per component; the null prototype skips it (deep-tree mount −0.11 to −0.15 ms, 2026-11).
+  - The react/preact/vue-compat wrappers call `_compatProps` once per instance to re-link `Object.prototype` in place (getters stay live) — third-party code cannot be asked to use `Object.hasOwn`. solid/svelte-compat already hand the user component a rest-destructured copy. `nativeCompat` components keep Pyreon semantics.
+
+---
+
 ### JSX spread on a component copies getter props by value
 
 An object spread fires every getter, so `<Comp {...source}>` would freeze reactive props.

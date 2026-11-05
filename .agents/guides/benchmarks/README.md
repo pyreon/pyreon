@@ -31,7 +31,7 @@ Absolute times are machine-dependent; ratios are the portable signal. 🤝 means
 | scenario | leader | Pyreon |
 | --- | --- | --- |
 | dbmon tick (every value changes) | Svelte | 1.06× behind; whole field within 1.25× |
-| mount deep tree (2,047 components) | Solid | **1.29× behind (4.20 vs 3.25 ms)** — clearest loss |
+| mount deep tree (2,047 components) | Solid | **1.14–1.16× behind (3.57–3.59 vs 3.09–3.12 ms, 2026-11)** — clearest loss |
 | context → 1,024 consumers | Pyreon | Solid 🤝 |
 | effect list: update / dispose 500 | Solid | 🤝 on both |
 | memo wall: blocked / passthrough | Pyreon | — |
@@ -62,7 +62,7 @@ Absolute times are machine-dependent; ratios are the portable signal. 🤝 means
 
 Keep this list honest and current; it is `BENCHMARKS.md` §12:
 
-1. Deep component-tree mount — 1.29× behind Solid.
+1. Deep component-tree mount — 1.14–1.16× behind Solid.
 2. Signal creation (~5× vs Preact on both engines); deep computed chains, computed diamond, and (V8) wide fan-out.
 3. Large-page SSR — Vue compiled SSR 1.06–1.09× faster.
 4. dbmon — Svelte leads.
@@ -147,6 +147,9 @@ Each of these produced a wrong published figure at some point.
 - The gap to Solid is per-component framework JS plus GC, not element creation.
 - The ablation ladder (`examples/benchmark/bench-treeladder.ts` + `src/impl/profile-tree.tsx`) attributes the Pyreon-over-Solid gap to getter child props, and specifically to the O(depth) getter chain read three times per node. Solid pays the same class of cost (its eager-props diagnostic arm sits well below its real arm). Emitting getters directly instead of `_rp` + `makeReactiveProps` was measured and does not help; hand-written getters were slower than the shipped pipeline. `probe-getter-chain.ts` measures the chain in isolation.
 - Component instantiation (`mountComponent` / `runWithHooks` / scope / owner) is cheap on the ladder.
+- **Shipped 2026-11: null-prototype props.** Profiling with `TL_JSFLAGS=--no-turbo-inlining` (the inlined profile hides it inside `mountComponent`) showed `makeReactiveProps` at ~165 µs on-CPU: each `defineProperty` of a per-instance getter on a `{}` built a fresh V8 hidden class. A null-prototype result halves that; board 3.70–3.72 → 3.57–3.59 ms (two runs, interleaved `Pyreon (old props)` arm, disjoint CIs), Solid 3.09–3.12, so the gap went 1.19–1.20× → 1.14–1.16×. No change on effects/table/flow/memo (A/B, two rounds), row board, or retained heap.
+- **Context leaf, measured 2026-11 (ladder arms I and J).** `useContext` lookup alone (J − C) is 40–80 µs on-CPU, noisy, ~20 µs self in a no-inline profile; not worth a semantic change to the owner walk. The wrapper-vs-signal cost (A − I, the provider handing `() => sig()` instead of `sig`) is 30–50 µs: a signal reaches `_bindText`'s direct tier, an arrow cannot. That is an idiom difference, not a framework lever — and the board's Pyreon arm passes a wrapper while its Solid arm passes the signal, an asymmetry that slightly handicaps Pyreon (left unchanged; see `bench-gaps` notes). Solid's leaf skips a text node for the empty initial value, but sets `textContent` for a non-empty one at the same on-CPU cost, so that is not a fairness issue.
+- Insertion counts are equal (2,048 `insertBefore` vs Solid's 2,046 + 2 `appendChild`, no comment nodes); the ~40 µs `insertBefore` difference is not a structural lever. #4115's direct-insert change touches `<For>` only and does not reach this op.
 - No single lever is left on this op. Measure any props-pipeline simplification on the ladder before proposing it.
 - `templatizeComponentChildren` is default-on in `@pyreon/vite-plugin`. The opt-in `tpl append` / `tpl slot` template variants in the scenario suite are reported in `BENCHMARKS.md` §2.
 

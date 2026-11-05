@@ -10,7 +10,7 @@
  */
 
 import type { ComponentFn, Props, VNode, VNodeChild } from '@pyreon/core'
-import { Fragment, h, isNativeCompat, mapCompatDomProps, onUnmount } from '@pyreon/core'
+import { _compatProps, Fragment, h, isNativeCompat, mapCompatDomProps, onUnmount } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 import type { Component } from './index'
 
@@ -94,6 +94,9 @@ function isClassComponent(type: Function): boolean {
 
 function wrapClassComponent(ClassComp: Function): ComponentFn {
   const wrapped = ((props: Props) => {
+    // Third-party compat code may call props.hasOwnProperty — give the
+    // (possibly null-prototype) Pyreon props object a normal prototype.
+    props = _compatProps(props)
     const instance = new (ClassComp as new (props: Props) => Component)(props)
     const version = signal(0)
     let updateScheduled = false
@@ -177,6 +180,9 @@ function wrapCompatComponent(preactComponent: Function): ComponentFn {
   // The wrapper returns a reactive accessor (() => VNodeChild) which Pyreon's
   // mountChild treats as a reactive expression via mountReactive.
   wrapped = ((props: Props) => {
+    // Third-party compat code may call props.hasOwnProperty — give the
+    // (possibly null-prototype) Pyreon props object a normal prototype.
+    props = _compatProps(props)
     const ctx: RenderContext = {
       hooks: [],
       scheduleRerender: () => {

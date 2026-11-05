@@ -96,7 +96,7 @@ This run **supersedes** the 2026-09-24 run and the 2026-10-15 / 2026-10-20 refre
 | scenario | fastest | **Pyreon** | others |
 | --- | --- | --- | --- |
 | dbmon tick (100×6, all change) | 🤝 **Pyreon 1.71** = Octane 1.71 = Svelte 1.75 | — | Solid 1.81 · React 1.82 · Vue 1.92 · Preact 1.99 (Vanilla 1.58) |
-| mount deep tree (2,047 components) | Solid 3.09 ms | **3.72 ms (1.20× slower)** | React 3.64 · Preact 4.44 · Vue 6.15 · Svelte 10.83 (Vanilla 2.41) |
+| mount deep tree (2,047 components) | Solid 3.09 ms | **3.59 ms (1.16× slower)** ¹ | React 3.63 ¹ · Preact 4.44 · Vue 6.15 · Svelte 10.83 (Vanilla 2.41) |
 | context → 1,024 consumers | **Pyreon 1.88 ms** | — | Solid 1.94 · React 2.25 · Svelte 2.36 · Preact 2.52 · Vue 2.60 (Vanilla 1.84) |
 | effect list: update 500 | **Pyreon 820 µs** | — | Solid 907 · React 1,140 · Svelte 1,440 · Preact 1,600 · Vue 2,800 |
 | effect list: dispose 500 | 🤝 Pyreon 45 = Solid 45 µs | — | Svelte 105 · Preact 165 · React 185 · Vue 205 |
@@ -106,6 +106,7 @@ This run **supersedes** the 2026-09-24 run and the 2026-10-15 / 2026-10-20 refre
 **Run 2:** dbmon — Svelte 1.66, Octane 1.68, Pyreon 1.73, Solid 1.75, React 1.78 all 🤝 (Vue 1.89, Preact 2.04 behind). Deep tree — Solid 3.11, React 3.66, Pyreon 3.75 (React = Pyreon 🤝). Context — Pyreon 1.84 outright, Solid 1.93. Update 500 — Pyreon 808 outright, Solid 865. **Dispose 500 — Solid 38 µs outright, Pyreon 50 µs.** Memo blocked — Pyreon 11 µs outright. Passthrough — Pyreon (bare computed) 449, Pyreon 461, Svelte 487.
 
 - **dbmon** changes every value every tick, which removes a signal graph's skip-unchanged advantage by construction; the field converges on the DOM-write floor. It is never quoted as a win for anyone.
+- ¹ Re-measured 2026-11-05 after null-prototype reactive props (`--scenario tree --only Pyreon,SolidJS,React 19,Vanilla JS` plus a same-build `Pyreon (old props)` arm running the previous pipeline, repeat 5, two runs): Pyreon 3.57 [3.50–3.61] / 3.59 [3.54–3.62] ms vs old pipeline 3.72 [3.67–3.76] / 3.70 [3.66–3.74], Solid 3.12 / 3.09, React 3.64 / 3.63 (🤝 with Pyreon). The 3.72 / 3.75 ms in this refresh (and in Run 2 above) is the pre-change pipeline. Preact/Vue/Svelte were not re-run.
 - **Deep-tree mount is Pyreon's clearest framework loss.** Diagnostic arms (unranked): `SolidJS (eager props)` 2.63 ms, `Pyreon (tpl append)` 3.74 ms, `Pyreon (tpl slot)` 4.00 ms.
 - **Dispose 500** sits at 2–3 clock quanta with CV 21–41%. The on-CPU ablation ladder measures Pyreon's board-shaped arm *below* Solid (14.3 vs 17.3 µs), so the wall-clock lead is not reproduced as a JS cost (see the gap notes in §12).
 
@@ -372,7 +373,7 @@ Per row at 50/200 routes Pyreon wins miss → catch-all (25 vs find-my-way 55 ns
 | crossover · swap 100 / 1,000 | no verdict (K-dependent) | Octane |
 | crossover · swap 5k–20k | **win** 1.03–1.10× | Octane |
 | dbmon | 🤝 tie | Octane / Svelte |
-| deep-tree mount | **loss** 1.20× | Solid (React 🤝 Pyreon) |
+| deep-tree mount | **loss** 1.16× (1.20× before #4123) | Solid (React 🤝 Pyreon) |
 | context → 1,024 consumers | **win** 1.03–1.05× | Solid |
 | effect list: update 500 | **win** 1.07–1.11× | Solid |
 | effect list: dispose 500 | 🤝 / **loss** (run 2, 1.3×) | Solid |

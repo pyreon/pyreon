@@ -1,7 +1,43 @@
 import { describe, expect, it } from 'vitest'
-import { makeReactiveProps, REACTIVE_PROP, _rp, _wrapSpread } from '../props'
+import { _compatProps, makeReactiveProps, REACTIVE_PROP, _rp, _wrapSpread } from '../props'
+import { signal } from '@pyreon/reactivity'
 
 describe('makeReactiveProps', () => {
+  // Perf contract (deep-tree mount, 2026-11): a null-prototype result is a
+  // dictionary-mode object, so the per-instance accessor does not mint a new
+  // V8 hidden class per component. Everything a props consumer relies on —
+  // own enumerable getters, spread, `in`, `Object.hasOwn`, JSON — still works.
+  it('converted props have a null prototype and keep plain-object semantics', () => {
+    const s = signal(1)
+    const fn = () => 0
+    const result = makeReactiveProps({ a: 'x', b: _rp(() => s()), c: fn })
+    expect(Object.getPrototypeOf(result)).toBe(null)
+    expect(Object.keys(result)).toEqual(['a', 'b', 'c'])
+    expect(Object.hasOwn(result, 'b')).toBe(true)
+    expect('b' in result).toBe(true)
+    expect({ ...result }).toEqual({ a: 'x', b: 1, c: fn })
+    expect(JSON.stringify({ a: result.a, b: result.b })).toBe('{"a":"x","b":1}')
+    const d = Object.getOwnPropertyDescriptor(result, 'b')!
+    expect(typeof d.get).toBe('function')
+    expect(d.enumerable).toBe(true)
+    expect(d.configurable).toBe(true)
+    s.set(2)
+    expect(result.b).toBe(2)
+  })
+
+  it('_compatProps re-links Object.prototype in place and keeps getters live', () => {
+    const s = signal(1)
+    const result = makeReactiveProps({ b: _rp(() => s()) })
+    const same = _compatProps(result)
+    expect(same).toBe(result)
+    expect(Object.getPrototypeOf(same)).toBe(Object.prototype)
+    expect((same as { hasOwnProperty(k: string): boolean }).hasOwnProperty('b')).toBe(true)
+    s.set(3)
+    expect(same.b).toBe(3)
+    const plain = { a: 1 }
+    expect(_compatProps(plain)).toBe(plain)
+  })
+
   it('returns raw object when no reactive props exist (fast path)', () => {
     const raw = { a: 1, b: 'hello', c: true }
     const result = makeReactiveProps(raw)
