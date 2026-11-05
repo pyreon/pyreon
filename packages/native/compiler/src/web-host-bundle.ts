@@ -126,7 +126,13 @@ async function withRolldown(rolldown: RolldownLike, options: BundleWebHostOption
             const r = await this.resolve(id, join(dir, 'noop.js'), { skipSelf: true })
             if (r) return r
           }
-          return undefined
+          // Returning undefined here would let rolldown treat the import as EXTERNAL: the build succeeds and the page
+          // references a global that does not exist, failing only inside the native WebView. esbuild reports the same
+          // shape as a build error, so this path must too.
+          throw new Error(
+            `[Pyreon] The web-host entry imports '${id}', which resolves from none of: ${resolveDirs.join(', ')}. ` +
+              'Install it in the app (or the editor package that owns the entry).',
+          )
         },
         load(id: string) {
           return id === entry ? source : undefined
