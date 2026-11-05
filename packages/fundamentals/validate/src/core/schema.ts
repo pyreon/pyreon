@@ -20,7 +20,7 @@
 
 import type { FieldMeta, StandardSchemaIssue, StandardSchemaV1 } from '../types'
 import { META_SLOT } from '../types'
-import { type PyreonIssue, ValidationError } from './issue'
+import { type PyreonIssue, ValidationError, snapshotPath } from './issue'
 import { type JitValidator, tryCompileJit, tryCompileJitCheck } from './jit'
 import type { CatchOp, CheckOpts, Op, ParseCtx, PendingCheck } from './ops'
 import { EMPTY_PATH, makeCtx } from './ops'
@@ -1182,7 +1182,7 @@ function applyRefines(
     // Snapshot the path NOW: an enclosing object/array pops its segment before
     // the Promise settles, so reading `ctx.path` later would file the issue at
     // the parent (the root, for a top-level object field).
-    const path = ctx.path.slice()
+    const path = snapshotPath(ctx.path)
     return value.then((resolved) => applyRefinesSync(resolved, refines, ctx, path))
   }
   return applyRefinesSync(value, refines, ctx, ctx.path)
@@ -1222,7 +1222,7 @@ function applyRefinesSync(
 }
 
 function makeRefineIssue(opts: RefineSpec['opts'], path: ParseCtx['path']): PyreonIssue {
-  const issue: PyreonIssue = { message: opts.message, path: path.slice() }
+  const issue: PyreonIssue = { message: opts.message, path: snapshotPath(path) }
   if (opts.code !== undefined) (issue as { code?: string }).code = opts.code
   if (opts.key !== undefined) (issue as { key?: string }).key = opts.key
   if (opts.params !== undefined)
@@ -1269,7 +1269,7 @@ function applyServerChecksSync(
       // Not installed (the client, or a server that didn't register it): defer.
       // Record the pending check and let the value pass — the SERVER is the
       // authoritative re-validation. Path is snapshotted now (sync).
-      ;(ctx.pending ??= []).push({ path: ctx.path.slice(), key: sc.key })
+      ;(ctx.pending ??= []).push({ path: snapshotPath(ctx.path), key: sc.key })
       continue
     }
     const ok = fn(value, ctx.context)
@@ -1277,7 +1277,7 @@ function applyServerChecksSync(
       // A registered async check — promote the remaining checks to async.
       // Snapshot the path NOW: it unwinds (object field pop) before resolve.
       const rest = specs.slice(i)
-      const pathSnap = ctx.path.slice()
+      const pathSnap = snapshotPath(ctx.path)
       return Promise.resolve().then(async () => {
         for (const r of rest) {
           const f = getServerCheck(r.key)
@@ -1452,7 +1452,7 @@ export class SuperRefineSchema<T> extends Schema<T> {
       if (ctx.issues.length === before) {
         const refineCtx: SuperRefineCtx = {
           addIssue: (issue) => {
-            const path = issue.path ? [...ctx.path, ...issue.path] : ctx.path.slice()
+            const path = issue.path ? [...ctx.path, ...issue.path] : snapshotPath(ctx.path)
             const out2: PyreonIssue = { message: issue.message, path }
             if (issue.code !== undefined) (out2 as { code?: string }).code = issue.code
             if (issue.key !== undefined) (out2 as { key?: string }).key = issue.key
@@ -1510,7 +1510,7 @@ export class NonOptionalSchema<T> extends Schema<T> {
 
   override _compileType(input: unknown, ctx: ParseCtx): unknown {
     if (input === undefined) {
-      ctx.issues.push({ message: this.message, path: ctx.path.slice() })
+      ctx.issues.push({ message: this.message, path: snapshotPath(ctx.path) })
       return input
     }
     return this.source._runInto(input, ctx)
@@ -1549,7 +1549,7 @@ export function makeCheckIssue(
 ): PyreonIssue {
   const issue: PyreonIssue = {
     message: opts?.message ?? message,
-    path: ctx.path.slice(), // snapshot — ctx.path is mutated during parse
+    path: snapshotPath(ctx.path), // snapshot — ctx.path is mutated during parse
   }
   ;(issue as { code?: string }).code = opts?.code ?? code
   ;(issue as { key?: string }).key = opts?.key ?? key

@@ -19,6 +19,19 @@ export type { PyreonIssue, StandardSchemaIssue }
 export type PathSegment = PropertyKey | { readonly key: PropertyKey }
 
 /**
+ * Snapshot a parse path into a FRESH array for an issue.
+ *
+ * `ctx.path` is mutated (push/pop) throughout a parse, so an issue must hold a
+ * copy. At the root that path is the frozen `EMPTY_PATH` sentinel, and in JSC
+ * `slice()` on a FROZEN array leaves the fast copy path: it measured ~40% of a
+ * scalar type-mismatch parse. An empty literal is the same value (a fresh,
+ * mutable, unshared array) without that cost.
+ */
+export function snapshotPath(path: ReadonlyArray<PathSegment>): PathSegment[] {
+  return path.length === 0 ? [] : path.slice()
+}
+
+/**
  * Build a Pyreon-flavoured issue with all four metadata fields. Used by
  * primitive type checks and built-in constraint checks. Caller is
  * responsible for passing the current path.
@@ -36,7 +49,7 @@ export function makeIssue(opts: {
     // SNAPSHOT the path — `ctx.path` is a single array mutated (push/pop)
     // throughout the parse, so an issue must capture a copy, not a live
     // reference (otherwise it reads back as `[]` after the parse unwinds).
-    path: opts.path.slice(),
+    path: snapshotPath(opts.path),
   }
   if (opts.code !== undefined) (out as { code?: string }).code = opts.code
   if (opts.key !== undefined) (out as { key?: string }).key = opts.key

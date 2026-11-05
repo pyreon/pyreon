@@ -66,4 +66,28 @@ describe('EMPTY_PATH sentinel', () => {
     expect(scalar.ok).toBe(false)
     if (!scalar.ok) expect(scalar.issues[0]!.path).toEqual([])
   })
+  // `snapshotPath` returns a fresh `[]` literal for a root issue instead of
+  // `EMPTY_PATH.slice()` (slicing a FROZEN array leaves JSC's fast copy path —
+  // ~40% of a scalar type-mismatch parse). The contract the literal must keep:
+  // every issue owns a fresh, MUTABLE, UNSHARED path — never the sentinel.
+  it('a root issue path is a fresh mutable array, never the shared sentinel', () => {
+    const typeFail = s.string().parse(42)
+    const checkFail = s.string().email().parse('nope')
+    const custom = s.string().refine(() => false, { message: 'no' }).parse('x')
+    const paths = [typeFail, checkFail, custom].map((r) => {
+      if (r.ok) throw new Error('expected failure')
+      return r.issues[0]!.path as unknown[]
+    })
+    for (const p of paths) {
+      expect(p).not.toBe(EMPTY_PATH)
+      expect(Object.isFrozen(p)).toBe(false)
+      expect(p).toEqual([])
+    }
+    expect(paths[0]).not.toBe(paths[1])
+    paths[0]!.push('mutated')
+    expect(EMPTY_PATH.length).toBe(0)
+    const again = s.string().parse(42)
+    if (again.ok) throw new Error('expected failure')
+    expect(again.issues[0]!.path).toEqual([])
+  })
 })

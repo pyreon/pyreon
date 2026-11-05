@@ -22,6 +22,7 @@
   - `ctx.path` is untouched on the valid path; issue paths are rebuilt only at failure sites.
   - Format checks go through a memoized resolver and `_pred` predicates.
   - A lazy `EMPTY_PATH` sentinel means scalar and flat-object parses allocate no path arrays.
+  - Issues snapshot the path through `snapshotPath` (`core/issue.ts`), which returns a fresh `[]` for an empty path. Never `EMPTY_PATH.slice()`: `slice()` on a FROZEN array leaves JSC's fast copy path and was ~40% of a scalar type-mismatch parse (megamorphic bench, string invalid: 51.6 → 37.2 ns).
   - A DU root compiles to a discriminant `switch` with member bodies inlined.
   - All-inline-primitive objects build their stripped clone as one object literal.
   - A fully inline tree is branded `_jitPure`; `parse`/`~standard.validate` reuse a per-schema context, and `parse` is installed as an own property closing over the compiled function.
