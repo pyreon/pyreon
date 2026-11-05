@@ -380,15 +380,23 @@ function toNumber(v: unknown, label: string): Double {
  * its own; a number result skips the `toNumber` call. At 1M rows this loop is
  * most of a row-data mount.
  *
- * Presized with `fill(0)` (packed, never holey), unlike the column path below:
- * here the per-row accessor call is the cost, and growing the array by `push`
- * added ~1 ms at 1M rows in the real mount (18.8 vs 19.5-20.7 ms, Chromium).
+ * PRESIZED, filled with `NaN` so the array is born packed-double (never holey,
+ * no SMI→double transition on the first fractional write). Growing it by
+ * `push` instead (what shipped until 2026-11, despite this comment once saying
+ * otherwise) cost, at 1,000,000 rows in Chromium: 14.06 → 10.39 ms per mount
+ * on a fresh page (interleaved A/B, disjoint CI95), and 16.55 → 15.65 ms on
+ * the charts-libs board, whose page has already mounted the smaller sizes
+ * (CIs overlap there); the 100,000-row update went 2.83 → 2.66 ms (disjoint).
+ * The column path below keeps `push` for its own measured reason: there the
+ * up-front allocation ADDS to a loop with no call in it, while here it replaces
+ * the growth copies of a loop the per-row accessor call already dominates.
  */
 function resolveAccessor<T>(data: T[], acc: (d: T, index: number) => unknown, label: string): Double[] {
-  const out: Double[] = []
-  for (let i = 0; i < data.length; i++) {
+  const n = data.length
+  const out: Double[] = new Array<Double>(n).fill(Number.NaN)
+  for (let i = 0; i < n; i++) {
     const v = acc(data[i]!, i)
-    out.push(typeof v === 'number' ? (Number.isFinite(v) ? v : Number.NaN) : toNumber(v, label))
+    out[i] = typeof v === 'number' ? (Number.isFinite(v) ? v : Number.NaN) : toNumber(v, label)
   }
   return out
 }

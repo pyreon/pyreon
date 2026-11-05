@@ -148,6 +148,11 @@ The 2026-09-24 small-chart loss is gone: the accessible data table now fills aft
 
 uPlot leads line mounts; its main-thread time ties Pyreon's (2.73 vs 2.70 ms, measured 2026-10-14), so the remaining wall-clock gap is outside JS (raster/read-back) and is open.
 
+2026-11-05, row-object input only: the row accessor now writes into a presized array (#3912 described this change, but the code never made it). These figures come from a focused run, not the full set. That run used `--only`, 4 passes, interleaved arms, and a temporary push arm as the in-run control.
+- **1M mount:** 16.55 → 15.65 ms. The CIs overlap, and Chart.js at 12.79 ms still leads (1.22×).
+- **100k update:** 2.83 → 2.66 ms, a disjoint win.
+- **Fresh page:** the 1M mount is 14.06 → 10.39 ms (interleaved, disjoint) and ties the columnar arm. On the board the remaining row cost is the 1M accessor calls themselves.
+
 ## 3. Scaling — `bench-crossover` (batch instrument, 100 → 20,000 rows)
 
 One pass per cell, load 3.9–5.8, no cell discarded.
