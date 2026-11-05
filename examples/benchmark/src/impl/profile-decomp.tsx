@@ -165,14 +165,12 @@ export function setupDecompProfile(hosts: {
     pV = buildRows(n)
   }
   /**
-   * Vanilla-shaped rows built through the SAME helper the reactive arms use.
-   *
-   * `buildRows` uses `Array.from({length}, …)` and `buildRowsWith` a
-   * preallocated `new Array(n)` + loop — so a raw `l3/build - vanilla/build`
-   * delta prices the per-row `signal()` PLUS that allocator difference, and the
-   * loop is the faster of the two, which would UNDERSTATE the signal cost.
-   * This driver isolates the two: signal() = l3/build - vanillaLoop/build, and
-   * the helper difference = vanilla/build - vanillaLoop/build.
+   * Vanilla-shaped rows built through `buildRowsWith` with an inline factory —
+   * the shape the reactive arms use. `buildRows` (what the board's vanilla arm
+   * calls) has delegated to the same `buildRowsWith` helper since #3642, which
+   * removed the old `Array.from` asymmetry; this driver stays so the per-row
+   * `signal()` price is read with the factory shape held constant:
+   * signal() = l3/build - vanillaLoop/build.
    */
   function __vBuildLoop(n: number) {
     pV = buildRowsWith<PlainRow>(n, (id, label) => ({ id, label }))

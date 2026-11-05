@@ -286,7 +286,7 @@ try {
       // vanillaLoop builds plain `{id,label}` rows through the same
       // preallocated-loop helper the reactive arms use, so
       //   signal()          = l3Build      - vanillaLoop
-      //   helper difference = vanillaBuild - vanillaLoop
+      //   helper difference = vanillaBoard - vanillaLoop (both buildRowsWith now)
       const buildVariant = async (fn: () => void) => {
         const xs: number[] = []
         for (let i = 0; i < 8; i++) fn()
@@ -302,12 +302,12 @@ try {
         return xs
       }
       const bvRuns: Record<string, number[]> = {
-        vanillaArrayFrom: [],
+        vanillaBoard: [],
         vanillaLoop: [],
         l3Signal: [],
       }
       for (let pass = 0; pass < 3; pass++) {
-        bvRuns.vanillaArrayFrom!.push(...(await buildVariant(() => b.vanilla.build!(rows))))
+        bvRuns.vanillaBoard!.push(...(await buildVariant(() => b.vanilla.build!(rows))))
         bvRuns.vanillaLoop!.push(...(await buildVariant(() => b.vanilla.buildLoop!(rows))))
         bvRuns.l3Signal!.push(...(await buildVariant(() => b.l3.build!(rows))))
       }
@@ -358,7 +358,7 @@ try {
         )
       }
       cis['signal'] = bootDiffCI(bvRuns.vanillaLoop!, bvRuns.l3Signal!)
-      cis['helper'] = bootDiffCI(bvRuns.vanillaLoop!, bvRuns.vanillaArrayFrom!)
+      cis['helper'] = bootDiffCI(bvRuns.vanillaLoop!, bvRuns.vanillaBoard!)
 
       return { medians: result, cis, n: runs['l3/create/fresh']!.js.length }
     },
@@ -429,18 +429,17 @@ try {
 
     const totalCreateGap = g(`l3/create/${mode}`).js - g(`vanilla/create/${mode}`).js
     const commitGap = g(`l3/commit/${mode}`).js - g(`vanilla/commit/${mode}`).js
-    // The model must reconcile against what the BOARD pays, and the board's
-    // vanilla arm builds via `Array.from` — so the build term here is
-    // signal-rows minus Array.from-rows, not the helper-held-constant signal
-    // cost reported above. Using the clean signal number here would leave the
-    // helper difference unaccounted and make the check look worse than it is.
-    const buildDeltaAsBenched = g('bv/l3Signal').js - g('bv/vanillaArrayFrom').js
+    // The model must reconcile against what the BOARD pays: the board's vanilla
+    // arm builds through `buildRows` (since #3642 a thin wrapper over the same
+    // `buildRowsWith` helper every arm uses — it no longer goes through
+    // `Array.from`), so the build term here is signal-rows minus buildRows-rows.
+    const buildDeltaAsBenched = g('bv/l3Signal').js - g('bv/vanillaBoard').js
     const explained = commitGap + buildDeltaAsBenched
     console.log(`\n-- totals --`)
     console.log(`create JS gap (L3 - vanilla): ${withCI(totalCreateGap, `vanilla->l3/create/${mode}`)}`)
     console.log(`  of which commit: ${f(commitGap)} (${perRow(commitGap)}/row)`)
     console.log(
-      `  of which build:  ${f(buildDeltaAsBenched)} (${perRow(buildDeltaAsBenched)}/row)  [as benched: signal-rows vs Array.from-rows]`,
+      `  of which build:  ${f(buildDeltaAsBenched)} (${perRow(buildDeltaAsBenched)}/row)  [as benched: signal-rows vs buildRows-rows]`,
     )
     console.log(
       `  sum ${f(explained)} vs measured ${f(totalCreateGap)} ` +
@@ -457,16 +456,20 @@ try {
     )
   }
   console.log(`\n${'='.repeat(72)}\nBUILD-PHASE ISOLATION (row construction only, ${ROWS} rows)\n${'='.repeat(72)}`)
-  const bvAf = g('bv/vanillaArrayFrom').js
+  const bvAf = g('bv/vanillaBoard').js
   const bvLoop = g('bv/vanillaLoop').js
   const bvSig = g('bv/l3Signal').js
-  console.log(`vanilla rows via Array.from (what impl/vanilla.ts uses): ${f(bvAf)}  ${perRow(bvAf)}/row`)
-  console.log(`vanilla rows via preallocated loop:                     ${f(bvLoop)}  ${perRow(bvLoop)}/row`)
+  console.log(`vanilla rows via buildRows (what impl/vanilla.ts uses):  ${f(bvAf)}  ${perRow(bvAf)}/row`)
+  console.log(`vanilla rows via buildRowsWith + inline factory:        ${f(bvLoop)}  ${perRow(bvLoop)}/row`)
   console.log(`reactive rows ({id, label: signal(s)}) via same loop:   ${f(bvSig)}  ${perRow(bvSig)}/row`)
   console.log(`\n  per-row signal() cost  = ${withCI(bvSig - bvLoop, 'signal')}`)
   console.log(`    ^ the ONLY clean signal-alloc number (row-building helper held constant)`)
   console.log(`  helper difference      = ${withCI(bvAf - bvLoop, 'helper')}`)
-  console.log(`    ^ Array.from vs preallocated loop; on the board this FAVOURS Pyreon`)
+  console.log(
+    `    ^ SAME helper (buildRows delegates to buildRowsWith since #3642) — the board has no\n` +
+      `      row-building asymmetry; a non-zero value here is the factory shape / call-site\n` +
+      `      polymorphism of THIS shared page (the board runs each arm in its own page)`,
+  )
 
   // Stamp the load AFTER as well: a run that started quiet and ended loaded had
   // a competitor for most of its samples, and the median hides that.
