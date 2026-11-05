@@ -1352,6 +1352,21 @@ object PyreonURL {
 // pyreonNumberString — JS \`String(number)\`, which every Double-typed
 // template interpoland lowers through. Mirrors the real signature.
 fun pyreonNumberString(value: Number): String = ""
+// PyreonTimers — JS setTimeout / setInterval / clear* (PyreonTimers.kt). Mirrors the real surface.
+object PyreonTimers {
+  interface Scheduler {
+    fun post(delayMs: Long, task: Runnable)
+    fun cancel(task: Runnable)
+  }
+  var scheduler: Scheduler = object : Scheduler {
+    override fun post(delayMs: Long, task: Runnable) {}
+    override fun cancel(task: Runnable) {}
+  }
+  fun setTimeout(ms: Number, fn: () -> Unit): Long = 0L
+  fun setInterval(ms: Number, fn: () -> Unit): Long = 0L
+  fun clear(id: Long?) {}
+  val pendingCount: Int get() = 0
+}
 // Intl.DateTimeFormat / Intl.NumberFormat — the real PyreonIntl.kt surface,
 // exactly: every parameter defaulted and named, values taken as Number.
 class PyreonDateTimeFormat(

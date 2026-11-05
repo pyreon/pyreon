@@ -3320,6 +3320,32 @@ function kotlinCallbackParamBindings(e: ExprIR): [string, TypeIR][] {
   return []
 }
 
+/** The `PyreonTimers` lowering of a timer call, or `undefined` when `e` is not one (mirror of `swiftTimerCall`). */
+function kotlinTimerCall(e: Extract<ExprIR, { kind: 'call' }>, indent: number): string | undefined {
+  if (e.callee.kind !== 'identifier') return undefined
+  const name = e.callee.name
+  if (name === 'clearTimeout' || name === 'clearInterval') {
+    if (e.args.length !== 1) return undefined
+    return `PyreonTimers.clear(${emitKotlinExpr(e.args[0]!, indent)})`
+  }
+  if (name !== 'setTimeout' && name !== 'setInterval') return undefined
+  const cb = e.args[0]
+  if (cb === undefined) return undefined
+  if (e.args.length > 2) {
+    _emitWarnings.push(
+      `${name}(fn, ms, …args): the extra arguments (which the web passes to the callback) have no native lowering — they are dropped. Close over the values in the callback instead.`,
+    )
+  }
+  const closure =
+    cb.kind === 'arrow'
+      ? emitKotlinExpr(cb, indent)
+      : cb.kind === 'identifier'
+        ? `{ ${kotlinIdent(cb.name)}() }`
+        : `{ ${emitKotlinExpr(cb, indent)}() }`
+  const ms = e.args[1] === undefined ? '0L' : emitKotlinExpr(e.args[1], indent)
+  return `PyreonTimers.${name}(${ms}) ${closure}`
+}
+
 function emitKotlinExpr(e: ExprIR, indent: number): string {
   // A lambda is its own throw context (see the Swift twin).
   // A callback of a rethrowing array method (`xs.map { … throw … }`) is not its own throw context: Kotlin's inline
@@ -3533,6 +3559,11 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
           return `pyreonNumString(${emitKotlinExpr(e.args[0]!, indent)})`
         }
         return `(${emitKotlinExpr(e.args[0]!, indent)}).toString()`
+      }
+      // Timers → the runtime's `PyreonTimers` (`PyreonTimers.kt`) — the mirror of the Swift lowering.
+      {
+        const timer = kotlinTimerCall(e, indent)
+        if (timer !== undefined) return timer
       }
       // `Date.now()` — JS ms-since-epoch. `Date` is an unresolved reference
       // on Kotlin (verbatim emit failed) — lower to

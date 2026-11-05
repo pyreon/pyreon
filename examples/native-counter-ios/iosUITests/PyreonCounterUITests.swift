@@ -1734,4 +1734,20 @@ final class PyreonCounterUITests: XCTestCase {
         XCTAssertEqual(app.staticTexts["rp-plain"].label, "rp plain 3")
     }
 
+    // setTimeout on device. The `timer-arm` handler writes `armed` and schedules `fired` 400ms later through
+    // `PyreonTimers.setTimeout` (a Timer on the main run loop). Before the lowering the call was emitted verbatim and
+    // the app did not compile.
+    func test_setTimeoutFiresOnTheMainThread() throws {
+        let app = XCUIApplication()
+        app.launch()
+
+        let arm = app.buttons["timer-arm"]
+        XCTAssertTrue(arm.waitForExistence(timeout: 30))
+        bringFullyOnScreen(arm, in: app)
+        arm.tap()
+        XCTAssertTrue(
+            app.staticTexts["Timer: fired"].waitForExistence(timeout: 10),
+            "The setTimeout callback did not run (or its write did not re-render)"
+        )
+    }
 }

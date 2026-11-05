@@ -4241,6 +4241,32 @@ function emitSwiftMapFromPairs(
   }
 }
 
+/** The `PyreonTimers` lowering of a timer call, or `undefined` when `e` is not one (see the call site). */
+function swiftTimerCall(e: Extract<ExprIR, { kind: 'call' }>, indent: number): string | undefined {
+  if (e.callee.kind !== 'identifier') return undefined
+  const name = e.callee.name
+  if (name === 'clearTimeout' || name === 'clearInterval') {
+    if (e.args.length !== 1) return undefined
+    return `PyreonTimers.clear(${emitSwiftExpr(e.args[0]!, indent)})`
+  }
+  if (name !== 'setTimeout' && name !== 'setInterval') return undefined
+  const cb = e.args[0]
+  if (cb === undefined) return undefined
+  if (e.args.length > 2) {
+    _emitWarnings.push(
+      `${name}(fn, ms, …args): the extra arguments (which the web passes to the callback) have no native lowering — they are dropped. Close over the values in the callback instead.`,
+    )
+  }
+  const closure =
+    cb.kind === 'arrow'
+      ? emitSwiftExpr(cb, indent)
+      : cb.kind === 'identifier'
+        ? `{ ${swiftIdent(cb.name)}() }`
+        : `{ ${emitSwiftExpr(cb, indent)}() }`
+  const ms = e.args[1] === undefined ? '0' : emitSwiftExpr(e.args[1], indent)
+  return `PyreonTimers.${name}(${ms}, ${closure})`
+}
+
 function emitSwiftExpr(e: ExprIR, indent: number): string {
   // A closure is its own throw context: a throw or throwing call inside it cannot propagate to the enclosing
   // `throws` helper or `do` body.
@@ -4430,6 +4456,14 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         e.callee.object.name === 'console'
       ) {
         return `print(${e.args.map((a) => emitSwiftExpr(a, indent)).join(', ')})`
+      }
+      // `setTimeout(fn, ms)` / `setInterval(fn, ms)` / `clearTimeout(id)` / `clearInterval(id)` → the runtime's
+      // `PyreonTimers` (`PyreonTimers.swift`), which keeps the web's contract: main-thread callbacks, positive
+      // never-reused ids, a clear of an unknown id is a no-op. A named function reference is wrapped in a closure that
+      // calls it; extra arguments (passed through to the callback on the web) have no lowering and warn.
+      {
+        const timer = swiftTimerCall(e, indent)
+        if (timer !== undefined) return timer
       }
       // `Date.now()` — JS ms-since-epoch. Foundation's `Date` resolves as a
       // TYPE, so the verbatim emit failed "cannot call value of non-function

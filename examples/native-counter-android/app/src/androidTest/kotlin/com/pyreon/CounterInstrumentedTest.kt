@@ -1307,4 +1307,14 @@ class CounterInstrumentedTest {
         composeRule.onNodeWithTag("rp-block").assertTextEquals("rp big 6")
         composeRule.onNodeWithTag("rp-plain").assertTextEquals("rp plain 3")
     }
+
+    // setTimeout on device — the Compose twin of iOS `test_setTimeoutFiresOnTheMainThread`: `PyreonTimers` posts the
+    // callback to the main looper's Handler, and its state write recomposes the row.
+    @Test
+    fun setTimeoutFiresOnTheMainThread() {
+        composeRule.onNodeWithTag("timer-arm").performScrollTo().performClick()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodesWithText("Timer: fired").fetchSemanticsNodes().isNotEmpty()
+        }
+    }
 }
