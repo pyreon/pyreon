@@ -22,7 +22,11 @@
  *   5. After warmup, 20 timed runs are collected. Median + p90 are
  *      reported with a **95% bootstrap CI** on the median (1000
  *      resamples) and a **coefficient of variation** so the reader
- *      can tell a 5% delta apart from noise.
+ *      can tell a 5% delta apart from noise. Under `--repeat N` the
+ *      CI is a CLUSTER bootstrap (resample the N page-loads, then the
+ *      20 samples within each), because page-to-page variance dwarfs
+ *      within-page variance; a single pass has one page-load per arm
+ *      and its verdicts are flagged provisional.
  *   6. DOM verification at every iteration (`expectRows`/
  *      `expectRowsWithSelected`) — frameworks that fail to commit
  *      before the bench timer ends throw and surface as a console
@@ -70,7 +74,7 @@
  *   bun bench-fair.ts --baseline <path>              # compare to baseline JSON
  *   bun bench-fair.ts --throttle 4                   # 4× CPU slowdown via CDP
  *   bun bench-fair.ts --frameworks Pyreon,Solid      # restrict to subset
- *   bun bench-fair.ts --repeat 4                     # 4 full passes; pools 20×4=80 samples per test for tighter CI95
+ *   bun bench-fair.ts --repeat 4                     # 4 full passes (page-loads); CI95 = cluster bootstrap over them
  *   bun bench-fair.ts --wait-quiet [maxLoad]         # block until load1 ≤ maxLoad (default 8) before measuring
  *
  * Machine load (`os.loadavg()`) + CPU identity are stamped before and after
@@ -83,6 +87,7 @@ import { dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { chromium, type Page } from 'playwright'
 import { auditCells, formatGuardReport } from './bimodality-guard'
+import { clusterBootstrapCI95 } from './cluster-bootstrap'
 import { LoadRecorder, parseWaitQuiet, waitForQuietMachine } from './machine-load'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
@@ -161,6 +166,8 @@ interface BenchResult {
   warmupUsed: number
   /** Raw samples — surfaced by `src/runner.ts` for sample-pooling across --repeat N runs. */
   samples: number[]
+  /** Page-loads the CI95 was cluster-bootstrapped over (absent = one page, `runner.ts` stats). */
+  pages?: number
 }
 interface SuiteResult {
   framework: string
@@ -174,7 +181,8 @@ interface CliArgs {
   frameworks: readonly string[]
   /**
    * Repeat the entire per-framework page-isolation loop N times,
-   * pooling the 20×N samples per test for a tighter CI95. N=1 (default)
+   * one page-load per framework per pass; the CI95 is a cluster
+   * bootstrap over the N page-loads (see `cluster-bootstrap.ts`). N=1 (default)
    * is the current behavior (20 samples per test). N=3-5 is appropriate
    * when sub-millisecond medians live at the performance.now() floor
    * and run-to-run variance is the dominant source of noise.
@@ -260,11 +268,19 @@ function canonicalizeSuites(suites: SuiteResult[]): SuiteResult[] {
 }
 
 /**
- * Re-compute median + p90 + CI95 + CV from a pooled samples array.
- * Used by `--repeat N` to aggregate 20×N samples into a single result
- * with tighter CI95 than any individual run.
+ * Re-compute median + p90 + CI95 + CV from the per-page sample clusters.
+ * Used by `--repeat N` to aggregate N page-loads × 20 samples into one result.
+ *
+ * Point statistics (median, p90, CV) are taken over the pooled samples, but
+ * the CI95 is a CLUSTER bootstrap over the page-loads (see
+ * `cluster-bootstrap.ts`): the 20 samples of one page share its JIT and heap
+ * state, and page-to-page spread is large (620–860µs per-page medians on swap
+ * for every arm, Vanilla included). Bootstrapping the pool as 20×N
+ * independent samples made the interval far too narrow, and the verdict reads
+ * this interval.
  */
-function recomputeStats(name: string, pooledSamples: number[], warmupUsedMax: number): BenchResult {
+function recomputeStats(name: string, clusters: number[][], warmupUsedMax: number): BenchResult {
+  const pooledSamples = clusters.flat()
   const sorted = [...pooledSamples].sort((a, b) => a - b)
   const median = sorted[Math.floor((sorted.length - 1) * 0.5)] ?? 0
   const p90 = sorted[Math.floor((sorted.length - 1) * 0.9)] ?? 0
@@ -276,25 +292,7 @@ function recomputeStats(name: string, pooledSamples: number[], warmupUsedMax: nu
   )
   const cv = mean > 0 ? stddev / mean : 0
 
-  // 95% bootstrap CI on the median over the pooled samples — uses the
-  // same 1000-resample non-parametric bootstrap as `runner.ts`. Pooling
-  // 20×N samples roughly halves the CI95 width per √N (statistical
-  // power), so 4 runs ≈ half the noise of 1 run.
-  const RESAMPLES = 1000
-  const medians: number[] = []
-  for (let b = 0; b < RESAMPLES; b++) {
-    const resample: number[] = []
-    for (let i = 0; i < pooledSamples.length; i++) {
-      resample.push(pooledSamples[Math.floor(Math.random() * pooledSamples.length)] ?? 0)
-    }
-    resample.sort((a, b2) => a - b2)
-    medians.push(resample[Math.floor((resample.length - 1) * 0.5)] ?? 0)
-  }
-  medians.sort((a, b) => a - b)
-  const ci95: [number, number] = [
-    medians[Math.floor((medians.length - 1) * 0.025)] ?? 0,
-    medians[Math.floor((medians.length - 1) * 0.975)] ?? 0,
-  ]
+  const ci95 = clusterBootstrapCI95(clusters, { resamples: 1000 })
 
   return {
     name,
@@ -307,13 +305,14 @@ function recomputeStats(name: string, pooledSamples: number[], warmupUsedMax: nu
     cv,
     warmupUsed: warmupUsedMax,
     samples: pooledSamples,
+    pages: clusters.filter((c) => c.length > 0).length,
   }
 }
 
 /**
- * Aggregate N independent SuiteResult arrays into one — pools the
- * per-test `samples` across runs, then recomputes median + CI95 + CV
- * over the full pool.
+ * Aggregate N independent SuiteResult arrays into one — keeps each run's
+ * per-test `samples` as one page-load cluster, then recomputes median + CV
+ * over the pool and the CI95 by cluster bootstrap.
  */
 function aggregateRepeated(runs: SuiteResult[][]): SuiteResult[] {
   if (runs.length === 0) return []
@@ -338,16 +337,17 @@ function aggregateRepeated(runs: SuiteResult[][]): SuiteResult[] {
     return {
       framework,
       results: template.results.map((result, testIdx) => {
-        const pooled: number[] = []
+        // One cluster per page-load: each pass ran this framework in its own page.
+        const clusters: number[][] = []
         let warmupMax = 0
         for (const suite of suites) {
           const r = suite.results[testIdx]
           if (r?.samples) {
-            for (const s of r.samples) pooled.push(s)
+            clusters.push([...r.samples])
             if (r.warmupUsed > warmupMax) warmupMax = r.warmupUsed
           }
         }
-        return recomputeStats(result.name, pooled, warmupMax)
+        return recomputeStats(result.name, clusters, warmupMax)
       }),
     }
   })
@@ -640,7 +640,7 @@ async function main(): Promise<void> {
   console.log(`[bench-fair] running ${args.frameworks.length} framework(s) — each in a fresh page…`)
   if (args.repeat > 1) {
     console.log(
-      `[bench-fair] --repeat ${args.repeat} → pooling ${args.repeat * 20} samples per test for tighter CI95`,
+      `[bench-fair] --repeat ${args.repeat} → ${args.repeat} page-loads × 20 samples per test; CI95 = cluster bootstrap over page-loads`,
     )
   }
 
@@ -728,7 +728,7 @@ async function main(): Promise<void> {
   for (const line of formatGuardReport(guard, quantumMs)) console.log(line)
 
   printMachineStamp(chromiumVersion)
-  printMarkdownTable(suites, quantumMs)
+  printMarkdownTable(suites, quantumMs, args.repeat)
   printRetainedHeapTable(suites, heapByFramework)
 
   // Optional JSON dump for diff / archival.
@@ -744,6 +744,10 @@ async function main(): Promise<void> {
         stabilizeTolerance: 0.1,
         runs: 20,
         bootstrapResamples: 1000,
+        ciMethod:
+          args.repeat > 1
+            ? 'cluster bootstrap: resample page-loads, then samples within each'
+            : 'single page-load: sample bootstrap only, excludes page-load variance',
         pageIsolation: 'per-framework',
         exposeGc: true,
         repeat: args.repeat,
@@ -844,7 +848,7 @@ function coverageNote(suites: SuiteResult[], test: string): string {
   return n < suites.length ? ` (${n}/${suites.length} measured)` : ''
 }
 
-function printMarkdownTable(suites: SuiteResult[], quantumMs: number): void {
+function printMarkdownTable(suites: SuiteResult[], quantumMs: number, pages: number): void {
   // Derived, never assumed — see RESOLUTION_FLOOR_QUANTA / VERDICT_FLOOR_QUANTA.
   const floorMs = RESOLUTION_FLOOR_QUANTA * quantumMs
   const verdictFloorMs = VERDICT_FLOOR_QUANTA * quantumMs
@@ -940,6 +944,14 @@ function printMarkdownTable(suites: SuiteResult[], quantumMs: number): void {
   console.log()
   console.log('Statistically-honest verdict per test (CI95-overlap = tied within noise)')
   console.log('─'.repeat(120))
+  if (pages < 3) {
+    // Per-page medians move by ~30% between page-loads for every arm, and with
+    // fewer than 3 page-loads the cluster bootstrap has nothing to resample.
+    console.log(
+      `  ⚠ ${pages} page-load(s) per arm: the CI95 below excludes page-to-page variance, so ` +
+        'these verdicts are provisional. Use --repeat 5 for a publishable verdict.',
+    )
+  }
   // `Pyreon` (idiomatic JSX) competes for the verdict like every other
   // framework — only the no-framework Vanilla baseline is held out.
   const fwOnlyForVerdict = suites.filter((s) => s.framework !== 'Vanilla JS')
