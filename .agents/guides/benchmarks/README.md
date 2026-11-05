@@ -175,6 +175,29 @@ Each of these produced a wrong published figure at some point.
 - Now a CI tie with Solid. Two changes got it there: a second inline tracking-subscriber slot before promoting to a `Set` (plus `deps.pop()` in the effect/`_bind` disposers), and `mountChildAsUnit` for static (non-accessor) slot values, so rows inside a cloned container get effect-only cleanups instead of 500 individual DOM removals. An accessor slot keeps the full remover because it must clear its own range.
 - `bench-disposeprofile.ts` is on-CPU attribution; only the scenario board's wall-clock CI is a published verdict. Give the ladder an arm with the board's exact shape, or it can miss the lever the board needs.
 
+### Table mount (Chromium, 1,000 rows × 6 cols)
+
+- Driver: `examples/benchmark/bench-tableprofile.ts` (`?profileTable=1`).
+  - `split` mode interleaves Pyreon and react-table mounts and times the mount's JS and its forced layout separately.
+  - `profile` mode gives subtree CPU attribution under `__mountOnly`.
+- **Layout is identical across arms** (~15 ms of the ~25 ms op). The whole gap is JS.
+- **The gap was `<For>` fragment staging.** The DOM-op census on main:
+  - Pyreon: 6,000 `td → DocumentFragment` inserts, 1,000 `fragment → tr`, 1,000 `tr → fragment`, and 2,000 inner-`<For>` marker comments.
+  - react-table: 13,000 plain `appendChild` into detached nodes.
+  - Pyreon's `insertBefore` was 3.1 ms self time against react-table's `appendChild` at 1.0 ms.
+- **PR #4115 closes it** (`<For>` mounts new rows straight into the live parent, which here is the detached `<tr>`).
+  - Cross-build interleaved JS: 12.02 [11.90–12.27] → 10.17 [10.10–10.23] ms. The react-table arm, identical in both builds, moved 10.27 → 10.08, so the drift between the two builds is about 0.2 ms.
+  - Same build: Pyreon JS 10.36 [9.99–10.67] vs react-table 11.73 [11.54–11.83] ms.
+  - Board (`bench-scenarios --scenario table --repeat 3`): main 27.89 [27.69–28.39] vs react-table 25.80 (1.08×); #4115 25.50 [25.24–25.79] vs 25.46 (tie). Mount is then layout-bound like every other create op.
+- Remaining Pyreon-only JS: two `<For>` markers per row (2,000 `createComment` + inserts), plus the keyed-map duplicate check (`warnForKeyIn`, a `Map.has` per key, ~0.45 ms over 7,000 string keys). Neither is a lever on a layout-bound op.
+
+### Charts row-object ingestion
+
+- `resolveAccessor` (`packages/fundamentals/charts/src/engine/marks.ts`) grew its output with `push` despite #3912's comment and changeset saying it was presized. Presizing it took a fresh-page 1M line mount from 14.06 to 10.39 ms (interleaved, disjoint), which ties the columnar arm (PR #4117).
+- On the charts-libs board the 1M cell runs after the smaller cells and moved only 16.55 → 15.65 ms, with overlapping CIs. Chart.js with decimation still leads there (1.22×).
+- The remaining row cost on that warmed page is the million accessor calls and object reads (~8 ms of attribution with `--history`). It is not reachable without changing the accessor API. Columnar input remains the large-data path.
+- `v - v === 0` versus `Number.isFinite` in that loop makes no difference (ablated).
+
 ### Hydration
 
 - The hydration fixture uses `<For>`, which is fully adopted on every framework (1,000/1,000). A keyed-list bench cannot measure template-adoption changes; use the app-page shape.

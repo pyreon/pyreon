@@ -284,6 +284,15 @@ if (__url.searchParams.get('profileClear') === '1') {
     setupChartsLibsProfile()
     setStatus('profileChartsLibs ready')
   })()
+} else if (__url.searchParams.get('profileTable') === '1') {
+  // CPU-profiling / JS-vs-layout split target for bench-tableprofile.ts —
+  // exposes named __mountOnly / __teardownOnly drivers for the table
+  // scenario's two arms; never runs the timed suite.
+  void (async () => {
+    const { setupTableProfile } = await import('./impl/scenario-table')
+    setupTableProfile()
+    setStatus('profileTable ready')
+  })()
 } else if (__url.searchParams.get('profileTree') === '1') {
   // CPU-profiling target for bench-treeladder.ts — the deep-tree mount
   // ablation ladder (eight arms behind named __mountTree* frames); never
