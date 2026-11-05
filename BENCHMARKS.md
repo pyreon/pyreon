@@ -15,7 +15,7 @@ No dependency changed between the two commits, so the competitor versions below 
 
 **Repeats in the final pass.** The row board, the four core scenarios (dbmon, deep tree, effects, memo), the table scenario, charts-libs, hydration and reactivity on both engines were **run twice**. Everything else in the final pass is **one run**, and is labelled so.
 
-**How to read.** Every head-to-head passes a correctness gate before timing (all implementations must produce the same observable result). Figures are medians with bootstrap 95% CIs. 🤝 means the CIs overlap: *could not distinguish*, not *equal*. A result is called a **win** only when the CIs are disjoint **in both runs**; a result measured once says "one run". When the two runs disagree, both are reported. **Absolute times are machine-dependent; compare ratios.** The three harness defects in §14 limit how far some of these verdicts can be trusted; read them before quoting a row-board margin.
+**How to read.** Every head-to-head passes a correctness gate before timing (all implementations must produce the same observable result). Figures are medians with bootstrap 95% CIs; the row-board CIs in §1 are re-derived with a cluster bootstrap over page loads (§14). 🤝 means the CIs overlap: *could not distinguish*, not *equal*. A result is called a **win** only when the CIs are disjoint **in both runs**; a result measured once says "one run". When the two runs disagree, both are reported. **Absolute times are machine-dependent; compare ratios.** The three harness defects in §14 limit how far some of these verdicts can be trusted; read them before quoting a close margin.
 
 **Author-judge:** Pyreon's authors wrote and judge every bench here. The only fully independent venue is krausest/js-framework-benchmark; a keyed implementation is staged at `contrib/krausest/pyreon-keyed/`.
 
@@ -33,9 +33,10 @@ This record **supersedes** the overnight version of this file (`d47fa5a2f`), the
 
 | previously published (overnight, `d47fa5a2f`) | final pass (`779a82f01`) |
 | --- | --- |
-| row board: swap rows 🤝 tie (both runs) | **loss in run 1** (Vapor 1.07×, CIs disjoint); CIs touch in run 2 |
-| row board: create 10,000 🤝 tie | **win** in both runs, 1.02× (see the CI caveat in §14) |
-| row board: clear rows win 1.15× | win 1.11–1.12× |
+| row board: swap rows 🤝 tie (both runs) | 🤝 tie (both runs, cluster CIs); the harness's pooled CI showed a 1.07× loss in run 1 |
+| row board: create 10,000 🤝 tie | 🤝 in run 1, win (1.02×) in run 2 (cluster CIs) |
+| row board: clear rows win 1.15× | win 1.11–1.12× (both runs, cluster CIs) |
+| row board: append win 1.02× | 🤝 in run 1, win (1.02×) in run 2 (cluster CIs) |
 | context → 1,024 consumers: Pyreon outright (both runs) | win in run 1 (1.05×), 🤝 in run 2 |
 | effect list update 500: Pyreon outright (both runs) | 🤝 in run 1, win in run 2 (1.10×) |
 | effect list dispose 500: 🤝 / Solid 1.3× | **Solid in both runs**, 1.11–1.13× (one 5 µs clock quantum) |
@@ -62,8 +63,8 @@ This record **supersedes** the overnight version of this file (`d47fa5a2f`), the
 
 | previously published | status | why |
 | --- | --- | --- |
-| "Vue 3.6 Vapor (RC) outright on replace all (1.02×) and swap rows (1.08×)" (2026-10-15) | withdrawn | Replace is a tie in both final-pass runs. Swap went the other way: see the row above. |
-| "Pyreon outright on create 1,000 / replace all" (page, 2026-09-23) | withdrawn | Ties with Vapor RC, Octane 0.16 and Vue 3 in both runs. (Create 10,000 is a win again; see §1.) |
+| "Vue 3.6 Vapor (RC) outright on replace all (1.02×) and swap rows (1.08×)" (2026-10-15) | withdrawn | Replace and swap are ties in both final-pass runs. |
+| "Pyreon outright on create 1,000 / replace all / create 10,000" (page, 2026-09-23) | withdrawn | Create 1,000 and replace tie Vapor RC, Octane 0.16 and Vue 3 in both runs; create 10,000 is a tie in one run and a win in the other (§1). |
 | "Pyreon has the lowest retained heap" (form-bench) | withdrawn | Solid modular-forms 2.33 MB < Pyreon 2.42 MB (overnight run). |
 | "Pyreon fastest median on dbmon" (2026-10-15) | superseded | Three-way tie in both runs. dbmon is never a win for anyone (§2). |
 | "cssVariables theming 1.16× / 1.22× faster" | reversed | Classic mode is 1.13× faster (§11, overnight run). |
@@ -83,22 +84,24 @@ This record **supersedes** the overnight version of this file (`d47fa5a2f`), the
 | replace all | 6.69 | **7.13** | 7.11 | 7.29 | 7.38 | 7.83 | 8.24 | 8.02 | 8.89 | 9.80 |
 | partial update | 710µs | **705µs** | 710µs | 735µs | 1.04 | 1.27 | 1.22 | 810µs | 885µs | 920µs |
 | select row | 5µs | **10µs** | 25µs | 25µs | 380µs | 30µs | 60µs | 325µs | 260µs | 280µs |
-| swap rows | 790µs | **805µs** | 755µs | 765µs | 1.06 | 955µs | 925µs | 1.50 | 6.06 | 995µs |
+| swap rows | 790µs | 805µs | 755µs | 765µs | 1.06 | 955µs | 925µs | 1.50 | 6.06 | 995µs |
 | remove row | 5.73 | **5.70** | 5.76 | 5.74 | 5.89 | 5.76 | 5.83 | 6.35 | 5.78 | 5.90 |
 | clear rows | 90µs | **130µs** | 145µs | 150µs | 255µs | 460µs | 640µs | 335µs | 920µs | 260µs |
-| create 10,000 | 67.56 | **72.64** | 74.83 | 74.31 | 73.99 | 78.75 | 82.99 | 87.51 | 192.01 | 278.03 |
-| append 1k→10k | 12.00 | **13.06** | 62.20 | 13.25 | 62.83 | 13.71 | 14.54 | 19.25 | 15.22 | 16.35 |
+| create 10,000 | 67.56 | 72.64 | 74.83 | 74.31 | 73.99 | 78.75 | 82.99 | 87.51 | 192.01 | 278.03 |
+| append 1k→10k | 12.00 | 13.06 | 62.20 | 13.25 | 62.83 | 13.71 | 14.54 | 19.25 | 15.22 | 16.35 |
 
 (ms unless noted.)
 
-**Verdicts, Pyreon vs the fastest rival, run 1 / run 2:**
+**CIs.** The harness prints a bootstrap CI that treats the 100 samples as independent, but they come from 5 page loads of 20, and page-to-page medians differ (swap: 620–860 µs per page for every arm). The verdicts below therefore use a **two-stage cluster bootstrap** (resample the 5 page loads, then samples within each; 1,000 resamples, seed 42; `examples/benchmark/cluster-bootstrap.ts` from #4129) recomputed from the per-page samples saved in the run's JSON. With only 5 clusters these intervals are themselves coarse.
 
-- **Win (CIs disjoint in both runs):** clear rows 130 / 135 µs vs Vapor 145 / 150 µs (1.11–1.12×); create 10,000 72.64 / 72.73 vs Vue 3 73.99 / Vapor 74.38 (1.02×); append 13.06 / 13.06 vs Octane 13.25 / 13.32 (1.01–1.02×).
-- **Tie (both runs):** create 1,000 7.26 / 7.28 vs Vue 3 7.33 / Vapor 7.35; replace all 7.13 / 7.12 vs Vapor 7.11 / 7.20; partial update 705 / 695 µs vs Vapor 710 / 665 µs (Octane also tied); remove row 5.70 / 5.75 vs Octane 5.74 / Vapor 5.76.
-- **Loss in run 1:** swap rows, **805 [795–815] µs vs Vapor 755 [735–770] µs, 1.07×** (Octane 765 µs is also ahead). In run 2 Pyreon reads 805 [795–815] against Vapor 775 [765–795], so the CIs touch. This is a loss in one run and a near-loss in the other; it is not a tie.
+**Verdicts, Pyreon vs the fastest rival, run 1 / run 2, median [cluster CI95]:**
+
+- **Win (CIs disjoint in both runs):** clear rows only, 130 [125–135] / 135 [130–140] µs vs Vapor 145 [140–150] / 150 [147–155] µs (1.11–1.12×).
+- **Split, tie in run 1 and win in run 2:** create 10,000, 72.65 [72.11–73.56] / 72.74 [72.14–73.54] vs Vue 3 74.01 [73.55–74.88] in run 1 (CIs touch) and Vapor 74.38 [73.57–75.09] in run 2 (1.02×); append, 13.06 [12.98–13.26] / 13.06 [12.94–13.16] vs Octane 13.26 [13.12–13.40] / 13.34 [13.25–13.51] (1.02× in run 2). Not claimed as wins.
+- **Tie (both runs):** create 1,000 (with Vue 3 and Vapor, + Octane in run 2); replace all (Vapor, Octane, + Vue 3 in run 2); partial update (Vapor, Octane); remove row (Octane, Vapor, Solid, React, + Preact in run 1); **swap rows**, 805 [770–825] / 808 [670–835] µs vs Vapor 755 [718–815] / 775 [755–800] µs (Octane and Solid also tied).
 - **No verdict:** select row is below 10 clock quanta; the batch instrument (§3) resolves it. The `batch cycle` rows run on only 5 of 10 arms and are not ranked.
 
-**The margins are small enough that the CI caveat matters.** The harness bootstraps the 100 samples as if they were independent, but they come from 5 page loads of 20; per-page medians for swap range 620–860 µs for every arm. A cluster bootstrap would widen every CI on this board, so the 1.01–1.02× wins above (append, create 10,000) and the 1.07× swap loss may not all survive it (§14).
+**What the pooled CI said instead.** On the harness's own pooled CI, swap was a 1.07× loss to Vapor in run 1 (805 [795–815] vs 755 [735–770] µs) with CIs touching in run 2, and create 10,000 and append were wins in both runs. Neither survives the page-load correction, so neither is published as a verdict.
 
 **Against hand-written Vanilla (run 1):** create 1.07×, replace 1.07×, partial 0.99×, swap 1.02×, remove 0.99×, create 10k 1.08×, append 1.09×, clear 1.44×.
 
@@ -398,11 +401,11 @@ The `run` column says which run each row comes from. Final-pass rows are one run
 | row · replace all | F ×2 | 🤝 tie | Vapor RC / Octane |
 | row · partial update | F ×2 | 🤝 tie | Vapor RC / Octane |
 | row · select row | F ×2 | no verdict (sub-resolution); batch: **win** | Octane (1.86–2.04× slower, one run) |
-| row · swap rows | F ×2 | **loss** 1.07× in run 1; CIs touch in run 2 | Vapor RC |
+| row · swap rows | F ×2 | 🤝 tie (cluster CIs; pooled CI read a 1.07× loss in run 1) | Vapor RC / Octane |
 | row · remove row | F ×2 | 🤝 tie | Octane / Vapor RC |
-| row · clear rows | F ×2 | **win** 1.11–1.12× | Vapor RC |
-| row · create 10,000 | F ×2 | **win** 1.02× | Vue 3 / Vapor RC |
-| row · append 1k→10k | F ×2 | **win** 1.01–1.02× | Octane |
+| row · clear rows | F ×2 | **win** 1.11–1.12× (cluster CIs) | Vapor RC |
+| row · create 10,000 | F ×2 | 🤝 in run 1, win (1.02×) in run 2 | Vue 3 / Vapor RC |
+| row · append 1k→10k | F ×2 | 🤝 in run 1, win (1.02×) in run 2 | Octane |
 | crossover · select (100–20k) | F ×1 | **win** 1.86–2.04× (one run) | Octane |
 | crossover · partial update (100–20k) | F ×1 | **win** 1.05–1.12× vs Octane; tie with Solid at 1k (one run) | Octane / Solid |
 | crossover · swap 100 / 1,000 | F ×1 | **loss** 1.12× / 1.10× (one run; K-dependent) | Octane |
@@ -448,7 +451,7 @@ The `run` column says which run each row comes from. Final-pass rows are one run
 ## 13. Where Pyreon is not outright fastest (collected)
 
 1. **Deep component-tree mount** — 1.15–1.18× behind Solid (3.59 / 3.58 vs 3.06 / 3.10 ms); React ties Pyreon.
-2. **Row board** — create 1,000, replace, partial update and remove are statistical ties with Vue 3.6 Vapor (release candidate), Octane 0.16 and (create) Vue 3. **Swap rows is a loss in run 1** (Vapor 1.07×) and a near-loss in run 2. Pyreon wins only clear, create 10,000 and append, the last two by 1–2%.
+2. **Row board** — create 1,000, replace, partial update, swap and remove are statistical ties with Vue 3.6 Vapor (release candidate), Octane 0.16 and (create) Vue 3; create 10,000 and append win only one of two runs. Pyreon wins only clear rows outright in both runs.
 3. **Swap at 100 / 1,000 rows (crossover)** — Octane 1.12× / 1.10× at the default batch target, one run; the result moves with batch size.
 4. **Effect-list dispose 500** — Solid ahead in both runs by one 5 µs clock quantum.
 5. **Charts line mounts** — the default row-object input loses 10k (1.17–1.20× vs uPlot) and 1M (1.16–1.20× vs Chart.js); the columnar input ties except a 1.18× loss to uPlot at 10k in run 1.
@@ -457,14 +460,14 @@ The `run` column says which run each row comes from. Final-pass rows are one run
 8. **Bundle size** — 17.2 KB vs Solid 7.5 KB, Preact 10.1 KB, Svelte 16.1 KB.
 9. **Router at 10 routes** (Hono 1.91×) and per-row static, nested-static, dynamic, nested-dynamic and splat matches at every size; **validate protocol**: six cells (zod-c, arktype, typia).
 10. **Store setup** (28.9× vs Zustand) and **store read** (1.7×, single-digit ns), **storage read** (1.5×, single-digit ns), **url-state integer parse** (1.1×), **form-bench heap** (Solid lighter), **table under happy-dom** (mount at 1,000 rows, single-cell update vs memoized rows at 1,000, sort vs memoized rows at 100), **virtual mount under happy-dom**.
-11. **Ties and splits that are not wins:** context propagation and effect-list update (a win in one run each), table mount and single-cell update in Chromium (a win in one run each), dbmon, router at 50/200 routes, http client creation, store patch with a subscriber, rx `pipe` / `sortBy` (no CI).
+11. **Ties and splits that are not wins:** row-board create 10,000 and append, context propagation and effect-list update (a win in one run each), table mount and single-cell update in Chromium (a win in one run each), dbmon, router at 50/200 routes, http client creation, store patch with a subscriber, rx `pipe` / `sortBy` (no CI).
 12. **Unbundled Node** — any process importing `lib/` without a bundler pays a live `process.env` read per dev gate (about 145 ns each on V8, overnight measurement).
 
 ## 14. Harness notes and open defects
 
 Three harness defects found while publishing the final pass:
 
-- **Row-board CIs are too narrow.** `bench-fair` bootstraps its 100 pooled samples as if they were independent, but they come from 5 page loads of 20 samples each, and per-page medians differ (swap: 620–860 µs per page for every arm). A cluster bootstrap that resamples whole page loads is needed. Until it lands, treat every §1 margin under about 5% as unconfirmed: that covers the create 10,000 and append wins and the swap loss.
+- **Pooled CIs are too narrow.** `bench-fair` bootstraps its 100 pooled samples as if they were independent, but they come from 5 page loads of 20 samples each, and per-page medians differ (swap: 620–860 µs per page for every arm). #4129 (open) adds a cluster bootstrap. §1's verdicts are already recomputed with it from the saved per-page samples; on the pooled CI, swap read as a run-1 loss and create 10,000 and append as wins. `bench-scenarios` pools its passes the same way and its text logs do not keep per-pass samples, so the §2 scenario CIs are still pooled: treat the close scenario verdicts (context, effect-list update and dispose, table mount and single-cell update, charts-libs 10k mounts) as provisional until re-run with #4129.
 - **The scenario harness can mislabel a tie.** `bench-scenarios` ranks every arm against the leader, and when the leader is another Pyreon arm (as with `PlotChart columns` at 1M points) a wide leader CI turns a CI-disjoint loss to a rival into 🤝. This record re-derives the 1M row-input verdict against Chart.js directly (§2, footnote ¹).
 - **Stale version label:** `packages/fundamentals/table/bench/table-bench.ts` prints `table-core@9.0.0`; 9.3.1 is installed and is what runs. Likewise `packages/fundamentals/validate/bench/validation.ts` prints `typia 14` (15.2.1 is installed). Only the labels are stale.
 

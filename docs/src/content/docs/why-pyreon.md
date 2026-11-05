@@ -31,21 +31,20 @@ On the krausest-style synthetic row-list suite (real Chromium via Playwright, pr
 
 | Operation | **Pyreon** | Vue 3.6 Vapor (RC) | Octane 0.16 | Vue 3 | Solid | Svelte 5 | React 19 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| Create 1,000 rows | 🤝 7.26 | 🤝 7.35 | 7.47 | 🤝 7.33 | 7.88 | 8.07 | 9.04 |
-| Create 10,000 rows | **72.64** | 74.83 | 74.31 | 73.99 | 78.75 | 87.51 | 192.01 |
-| Partial update (every 10th) | 🤝 705µs | 🤝 710µs | 🤝 735µs | 1.04 | 1.27 | 810µs | 885µs |
-| Swap rows | 805µs | **755µs** | 765µs | 1.06 | 955µs | 1.50 | 6.06 |
-| Remove row | 🤝 5.70 | 🤝 5.76 | 🤝 5.74 | 5.89 | 🤝 5.76 | 6.35 | 🤝 5.78 |
+| Create 1,000 rows | 7.26 | 🤝 7.35 | 7.47 | 🤝 7.33 | 7.88 | 8.07 | 9.04 |
+| Create 10,000 rows | 72.64 | 74.83 | 74.31 | 🤝 73.99 | 78.75 | 87.51 | 192.01 |
+| Partial update (every 10th) | 705µs | 🤝 710µs | 🤝 735µs | 1.04 | 1.27 | 810µs | 885µs |
+| Swap rows | 805µs | 🤝 755µs | 🤝 765µs | 1.06 | 🤝 955µs | 1.50 | 6.06 |
+| Remove row | 5.70 | 🤝 5.76 | 🤝 5.74 | 5.89 | 🤝 5.76 | 6.35 | 🤝 5.78 |
 | Clear rows | **130µs** | 145µs | 150µs | 255µs | 460µs | 335µs | 920µs |
-| Append 1k→10k rows | **13.06** | 62.20 | 13.25 | 62.83 | 13.71 | 19.25 | 15.22 |
+| Append 1k→10k rows | 13.06 | 62.20 | 🤝 13.25 | 62.83 | 13.71 | 19.25 | 15.22 |
 
-(ms unless noted. `🤝` = statistical tie with the leader, CI95 overlaps. Bold = outright leader on that row.)
+(ms unless noted. `🤝` = statistical tie with Pyreon in that run, cluster-bootstrap CI95 overlaps. Bold = Pyreon outright in both runs.)
 
 The honest read:
 
-- **Pyreon wins three ops in both runs** — clear rows (1.11–1.12×), create 10,000 and append (both by 1–2%). It **ties** the Vue 3.6 Vapor release candidate, Octane and Vue 3 on create 1,000, replace, partial update and remove.
-- **It loses swap rows** to Vapor by 1.07× in one run; in the other the intervals touch.
-- **The margins are small and the harness overstates its own precision**: its confidence intervals treat samples from the same page load as independent, so the 1–2% wins and the swap loss may not survive a corrected bootstrap.
+- **Pyreon wins one op in both runs** — clear rows (1.11–1.12×). Create 10,000 and append win one run by 2% and tie the other. It **ties** the Vue 3.6 Vapor release candidate, Octane and Vue 3 on create 1,000, replace, partial update, swap and remove.
+- **The margins are small and the harness overstated its own precision**: its confidence intervals treated samples from the same page load as independent. These verdicts are recomputed with a bootstrap that resamples whole page loads; on the narrow intervals swap had read as a 1.07× loss and create 10,000 and append as wins.
 - **`select row` is resolved by a batch instrument.** Pyreon is flat at about 0.43µs against Octane's 0.83µs at every list size (1.86–2.04×), while Solid's select is O(n).
 - **Most of these ops are layout-bound.** Create, replace, remove and append are dominated by browser layout that every framework pays identically.
 - **Memory:** retained heap after the suite ties Pyreon (3.08MB) with Preact (3.09MB) as the lightest framework.
@@ -58,7 +57,7 @@ The honest read:
 - **Bundle size**: the same keyed-table app is 17.2KB gzipped in Pyreon against Solid's 7.5KB and Preact's 10.1KB.
 - **This is synthetic, and author-judged.** Real-app shapes are measured too — TodoMVC against `react-dom@19`, a 12-field form against six form libraries, compiled SSR against Vue, Svelte and React, where Pyreon leads — but Pyreon's authors wrote and judge every one of these benches, and no independent third-party run exists yet. Until one does, any performance claim stops at this evidence and does not extrapolate to your app.
 
-So: a three-way tie at the front of the row-list suite with small outright wins on clear, create 10,000 and append, tied for lightest on memory, and behind on deep-tree mount, swap, signal creation and bundle size.
+So: a tie at the front of the row-list suite with one outright win (clear rows), tied for lightest on memory, and behind on deep-tree mount, signal creation and bundle size.
 
 ## Full-stack, not just a renderer
 

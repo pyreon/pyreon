@@ -63,12 +63,11 @@ every project.
 summarises it.
 
 On the krausest-style synthetic row-list benchmark (Chromium via Playwright,
-10 frameworks), compiled Pyreon **wins three of nine ops outright** — clear
-rows by 1.11–1.12×, create 10,000 and append by 1–2% — and is
-**statistically tied** with the Vue 3.6 Vapor release candidate,
-[Octane](https://octanejs.dev) and Vue 3 on create 1,000, replace, partial
-update and remove. It **loses swap rows** to Vapor by 1.07× in one of two
-runs. `select row` sits below the clock resolution of that instrument; a
+10 frameworks), compiled Pyreon **wins one of nine ops outright** — clear
+rows, by 1.11–1.12× in both runs — wins create 10,000 and append in one of
+two runs by 2%, and is **statistically tied** with the Vue 3.6 Vapor release
+candidate, [Octane](https://octanejs.dev) and Vue 3 on create 1,000, replace,
+partial update, swap and remove. `select row` sits below the clock resolution of that instrument; a
 batch-timed run resolves it at about 0.43µs for Pyreon against 0.83µs for
 Octane. Against hand-written Vanilla, Pyreon costs 0.99–1.09× on most ops.
 Important caveats, stated as the project's record:
@@ -77,9 +76,11 @@ Important caveats, stated as the project's record:
   (2,047 components) is **1.15–1.18× slower than Solid**; Preact Signals
   creates signals about 5× faster and leads deep unobserved computed chains;
   and the same app ships 17.2KB gzipped against Solid's 7.5KB.
-- The row-board margins are small, and the harness's confidence intervals are
-  too narrow (they treat samples from one page load as independent), so the
-  1–2% wins and the swap loss are unconfirmed until it is fixed.
+- The row-board margins are small, and the harness's own confidence intervals
+  were too narrow (they treated samples from one page load as independent).
+  These verdicts are recomputed with a bootstrap that resamples whole page
+  loads; on the narrow intervals swap had read as a loss and create 10,000 and
+  append as wins.
 - Create, replace, remove and append are dominated by browser layout every
   framework pays identically, so small gaps there are mostly not framework
   JavaScript. Retained heap after the suite ties Preact for the lightest

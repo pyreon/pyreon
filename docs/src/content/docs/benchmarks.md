@@ -26,7 +26,8 @@ Each section names its run and how many times it was measured. Benches ran
 strictly one at a time, with `NODE_ENV=production`, production builds for every
 browser suite, and a cross-origin-isolated page so the browser clock resolves
 5µs instead of 100µs. Figures are medians with bootstrap 95% confidence
-intervals. A result is a **win** only when the intervals do not overlap **in
+intervals (for the row-list board, a cluster bootstrap over page loads; see
+[Harness caveats](#harness-caveats)). A result is a **win** only when the intervals do not overlap **in
 both runs**; a cell measured once says "one run". `🤝` marks a statistical tie
 (*could not distinguish*, not *equal*). When two runs disagree, both are
 reported. Absolute times are machine-dependent — **the ratio is the portable
@@ -46,14 +47,15 @@ independent reproduction fully resolves author bias. A ready-to-submit
 is staged in-repo at `contrib/krausest/pyreon-keyed/`.
 
 **Three harness defects limit some verdicts below** (details in
-[Harness caveats](#harness-caveats)): the row-list board's confidence intervals
-are too narrow, the scenario harness can label a loss as a tie, and the table
+[Harness caveats](#harness-caveats)): the harness confidence intervals are too
+narrow (the row-list board below is already recomputed with a corrected
+bootstrap; the scenario suites are not), the scenario harness can label a loss as a tie, and the table
 bench prints a stale `table-core` version.
 
 ## Summary
 
-- **Wins (both runs, or one run where marked):** clear rows, create 10,000 and
-  append on the row-list board (the last two by 1–2%), select and partial update
+- **Wins (both runs, or one run where marked):** clear rows on the row-list
+  board, select and partial update
   vs Octane at every list size (one run), memoization, compiled SSR and
   `renderToString`, an app-shaped hydration page (one run), TodoMVC vs React, a
   12-field form vs six form libraries, `@pyreon/flow` vs React Flow,
@@ -61,14 +63,13 @@ bench prints a stale `table-core` version.
   each), chart updates vs uPlot and Chart.js, the computed diamond, effect
   propagation and batching vs Preact Signals, head, styler, and most
   fundamentals packages.
-- **Statistical ties:** create 1,000, replace, partial update and remove on the
-  row-list board against the Vue 3.6 Vapor release candidate, Octane 0.16 and
+- **Statistical ties:** create 1,000, replace, partial update, swap and remove
+  on the row-list board against the Vue 3.6 Vapor release candidate, Octane 0.16 and
   Vue 3; dbmon; the 1,000-row hydration walk vs Vue; router matching at 50/200
-  routes. **Split** (a win in one run, a tie in the other): context
-  propagation, effect-list updates, and data-table mount and single-cell update
+  routes. **Split** (a win in one run, a tie in the other): create 10,000 and
+  append on the row-list board, context propagation, effect-list updates, and data-table mount and single-cell update
   vs memoized react-table.
-- **Losses:** swap rows on the row-list board (Vapor 1.07× in one run), swap at
-  100/1,000 rows in the scaling run, deep component-tree mount (Solid
+- **Losses:** swap at 100/1,000 rows in the scaling run, deep component-tree mount (Solid
   1.15–1.18×), effect-list dispose (Solid, by one clock tick), some line-chart
   mounts, signal creation, deep computed chains and V8 wide fan-out vs Preact
   Signals, bundle size, router at 10 routes, and a handful of package
@@ -80,10 +81,11 @@ react-table mounts 1.12× faster" (now a tie, then Pyreon 1.03×); "Preact Signa
 wins the computed diamond" (Pyreon now leads it, 1.30× on V8 and 1.07× on
 JavaScriptCore); "Zod wins invalid scalar strings 1.17×" (Pyreon now leads all
 12 cells, one run); "creating an http client is 1.46× slower than redaxios" and "a store patch with
-a subscriber is 1.3× slower than Zustand" (both now ties). New losses: swap rows on the row-list board, and swap at 100/1,000 rows
-in the scaling run, which had been "no verdict"; effect-list dispose, a tie in
+a subscriber is 1.3× slower than Zustand" (both now ties). New loss: swap at
+100/1,000 rows in the scaling run, which had been "no verdict"; effect-list
+dispose, a tie in
 one run before, is now Solid's in both. Earlier withdrawals stay
-withdrawn: Pyreon is not outright on create 1,000 or replace all, Vapor is not
+withdrawn: Pyreon is not outright on create 1,000, replace all or create 10,000, Vapor is not
 outright on replace all, Pyreon does not have the lowest form-benchmark heap,
 and cssVariables theming is 1.13× *slower* than classic mode.
 
@@ -96,37 +98,36 @@ write**.
 
 | Benchmark | Vanilla | Pyreon | Vue 3.6 Vapor (RC) | Octane | Vue 3 | Solid | Solid 2.0 (RC) | Svelte 5 | React 19 | Preact |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Create 1,000 | 6.78 | 🤝 7.26 | 🤝 7.35 | 7.47 | 🤝 7.33 | 7.88 | 8.28 | 8.07 | 9.04 | 9.87 |
-| Replace all | 6.69 | 🤝 7.13 | 🤝 7.11 | 🤝 7.29 | 7.38 | 7.83 | 8.24 | 8.02 | 8.89 | 9.80 |
-| Partial update | 710µs | 🤝 705µs | 🤝 710µs | 🤝 735µs | 1.04 | 1.27 | 1.22 | 810µs | 885µs | 920µs |
+| Create 1,000 | 6.78 | 7.26 | 🤝 7.35 | 7.47 | 🤝 7.33 | 7.88 | 8.28 | 8.07 | 9.04 | 9.87 |
+| Replace all | 6.69 | 7.13 | 🤝 7.11 | 🤝 7.29 | 7.38 | 7.83 | 8.24 | 8.02 | 8.89 | 9.80 |
+| Partial update | 710µs | 705µs | 🤝 710µs | 🤝 735µs | 1.04 | 1.27 | 1.22 | 810µs | 885µs | 920µs |
 | Select row | 5µs | 10µs | 25µs | 25µs | 380µs | 30µs | 60µs | 325µs | 260µs | 280µs |
-| Swap rows | 790µs | 805µs | **755µs** | 765µs | 1.06 | 955µs | 925µs | 1.50 | 6.06 | 995µs |
-| Remove row | 5.73 | 🤝 5.70 | 🤝 5.76 | 🤝 5.74 | 5.89 | 🤝 5.76 | 5.83 | 6.35 | 🤝 5.78 | 5.90 |
+| Swap rows | 790µs | 805µs | 🤝 755µs | 🤝 765µs | 1.06 | 🤝 955µs | 925µs | 1.50 | 6.06 | 995µs |
+| Remove row | 5.73 | 5.70 | 🤝 5.76 | 🤝 5.74 | 5.89 | 🤝 5.76 | 5.83 | 6.35 | 🤝 5.78 | 🤝 5.90 |
 | Clear rows | 90µs | **130µs** | 145µs | 150µs | 255µs | 460µs | 640µs | 335µs | 920µs | 260µs |
-| Create 10,000 | 67.56 | **72.64** | 74.83 | 74.31 | 73.99 | 78.75 | 82.99 | 87.51 | 192.01 | 278.03 |
-| Append 1k→10k | 12.00 | **13.06** | 62.20 | 13.25 | 62.83 | 13.71 | 14.54 | 19.25 | 15.22 | 16.35 |
+| Create 10,000 | 67.56 | 72.64 | 74.83 | 74.31 | 🤝 73.99 | 78.75 | 82.99 | 87.51 | 192.01 | 278.03 |
+| Append 1k→10k | 12.00 | 13.06 | 62.20 | 🤝 13.25 | 62.83 | 13.71 | 14.54 | 19.25 | 15.22 | 16.35 |
 
-(ms unless noted; first of two runs shown; `🤝` = tied with the fastest
-framework; **bold** = outright leader among frameworks. On swap rows Vapor and
-Octane are tied for the lead.)
+(ms unless noted; first of two runs shown; `🤝` = confidence interval overlaps
+Pyreon's in that run; **bold** = Pyreon outright in both runs.)
 
-**Verdicts, run 1 / run 2:**
+**Verdicts, run 1 / run 2.** These use a cluster bootstrap that resamples whole
+page loads, recomputed from the samples each run saved, because the harness's
+own intervals are too narrow (see [Harness caveats](#harness-caveats)):
 
-- **Pyreon wins** clear rows (130 / 135µs vs Vapor 145 / 150µs, 1.11–1.12×),
-  create 10,000 (72.64 / 72.73 vs Vue 3 73.99 / Vapor 74.38, 1.02×) and append
-  (13.06 / 13.06 vs Octane 13.25 / 13.32, 1.01–1.02×).
-- **Statistical tie for first** on create 1,000, replace all, partial update and
-  remove row, against the Vue 3.6 Vapor release candidate, Octane 0.16 and, on
-  create, Vue 3.
-- **Pyreon loses swap rows in run 1**: 805µs against Vapor's 755µs, 1.07×, with
-  disjoint intervals (Octane is ahead too). In run 2 the intervals touch (805 vs
-  775µs). That is a loss and a near-loss, not a tie.
+- **Pyreon wins clear rows** in both runs (130 / 135µs vs Vapor 145 / 150µs,
+  1.11–1.12×). It is the only outright win on this board.
+- **Split** on create 10,000 and append: a tie in run 1, a 1.02× win in run 2.
+  Not claimed as wins.
+- **Statistical tie for first** on create 1,000, replace all, partial update,
+  swap rows and remove row, against the Vue 3.6 Vapor release candidate, Octane
+  0.16 and, on some ops, Vue 3, Solid and React.
 - **No verdict** on select row, which sits below 10 clock ticks (the batch
   instrument below resolves it).
 
-These margins are small, and the harness's intervals are too narrow (see
-[Harness caveats](#harness-caveats)), so the 1–2% wins and the 7% swap loss may
-not all survive a corrected bootstrap.
+On the harness's own (too narrow) intervals, swap read as a 1.07× loss to Vapor
+in run 1, and create 10,000 and append as wins in both runs. Neither reading
+survives the page-load correction, so neither is published.
 
 **Against hand-written Vanilla**, Pyreon costs 0.99–1.09× on every op except
 clear and select row, which is below the clock resolution (create 1.07×, replace 1.07×, partial update 0.99×, swap 1.02×, remove
@@ -482,12 +483,15 @@ isolation, correctness gates). Figures are from the overnight run:
 Three defects in the benchmark harnesses were found while publishing the
 2026-11-05 final pass. They are disclosed here rather than fixed silently:
 
-- **The row-list board's confidence intervals are too narrow.** `bench-fair`
-  bootstraps its 100 samples as if they were independent, but they come from 5
-  page loads of 20, and page-to-page medians differ (on swap, 620–860µs for
-  every framework). Resampling whole page loads would widen every interval.
-  Until that lands, treat any row-board margin under about 5% as unconfirmed —
-  which covers the create 10,000 and append wins and the swap loss.
+- **The harness confidence intervals are too narrow.** `bench-fair` bootstraps
+  its 100 samples as if they were independent, but they come from 5 page loads
+  of 20, and page-to-page medians differ (on swap, 620–860µs for every
+  framework). A fix that resamples whole page loads is in review (#4129). The
+  row-list verdicts on this page are already recomputed that way from the saved
+  samples. The scenario suites pool their passes the same way and their logs do
+  not keep per-pass samples, so the close scenario verdicts (context,
+  effect-list update and dispose, table mount and single-cell update, the 10k
+  line-chart mounts) stay provisional until they are re-run.
 - **The scenario harness can label a loss as a tie.** It ranks every arm against
   the leader; when the leader is another Pyreon arm with a wide interval (the
   columnar chart arm at 1,000,000 points), a loss to a rival is printed as
@@ -502,9 +506,9 @@ Kept current against the 2026-11-05 final pass:
 1. **Deep component-tree mount** — 1.15–1.18× behind Solid (3.59 vs 3.06ms);
    React ties Pyreon.
 2. **Keyed row-list board** — tied for first, not outright, on create 1,000,
-   replace, partial update and remove (Vue 3.6 Vapor release candidate, Octane
-   0.16, Vue 3). **Swap rows is a loss** (Vapor 1.07× in one run, intervals
-   touching in the other).
+   replace, partial update, swap and remove (Vue 3.6 Vapor release candidate,
+   Octane 0.16, Vue 3); create 10,000 and append win only one of two runs.
+   Clear rows is the only outright win.
 3. **Swap at 100 and 1,000 rows** — Octane 1.12× and 1.10× at the default batch
    window, one run; the result moves with the window size.
 4. **Effect-list dispose** — Solid ahead in both runs, by one clock tick.
@@ -525,8 +529,8 @@ Kept current against the 2026-11-05 final pass:
     form-benchmark heap (Solid modular-forms is lighter), and table and virtual
     mount under happy-dom, plus table single-cell update and sort against
     memoized rows at some sizes under happy-dom.
-11. **Not wins, despite a good run** — context propagation, effect-list updates,
-    and data-table mount and single-cell update each won one run and tied the
+11. **Not wins, despite a good run** — create 10,000 and append on the row-list
+    board, context propagation, effect-list updates, and data-table mount and single-cell update each won one run and tied the
     other.
 12. **Unbundled Node** — any process importing `lib/` without a bundler pays
     about 145ns per dev-gate read.
