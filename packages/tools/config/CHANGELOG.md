@@ -1,5 +1,9 @@
 # @pyreon/config
 
+## 0.54.0
+
+No changes in this release.
+
 ## 0.53.0
 
 No changes in this release.
@@ -164,7 +168,7 @@ No changes in this release.
   not checking. The most common failure when an AI writes UI code is a plausible
   prop value that does not exist — `state="primry"` typechecks in a JS file,
   renders without throwing, and silently does nothing. `atlas check Button
-'{"state":"primry"}'` catches it and suggests `primary`, plus unknown props,
+  '{"state":"primry"}'` catches it and suggests `primary`, plus unknown props,
   wrong types (including a non-function event handler) and missing required props.
   Exits non-zero, so it works in a hook or a CI step. Reads the catalog rather
   than rescanning, so it cannot disagree with the guide an agent was just handed.
@@ -195,7 +199,7 @@ No changes in this release.
 
   **Imported prop types now resolve** — the largest remaining gap between
   "works" and "usable on a real design system". `import type { ButtonProps } from
-'./types'` is what most projects do, and it produced ZERO controls: the
+  './types'` is what most projects do, and it produced ZERO controls: the
   component was found, its whole contract was not — no knobs, no variant axes, no
   scenarios past the edge cases. Relative imports are followed to the file,
   through barrel re-exports (`export type { X } from './y'`, `export *`) and
