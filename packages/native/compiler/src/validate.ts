@@ -371,6 +371,11 @@ export function _swiftTypecheckPreamble(source: string): string {
 const SWIFT_RUNTIME_HELPERS: readonly { readonly name: string; readonly file: string }[] = [
   { name: 'pyreonNumberString', file: 'PyreonNumber.swift' },
   { name: 'pyreonSlice', file: 'PyreonSlice.swift' },
+  { name: 'pyreonSliceIndex', file: 'PyreonSlice.swift' },
+  { name: 'pyreonSubstring', file: 'PyreonSlice.swift' },
+  // `Intl.NumberFormat` / `Intl.DateTimeFormat` / `toLocale*String` construct these (intl-plugin.ts).
+  { name: 'PyreonNumberFormat', file: 'PyreonIntl.swift' },
+  { name: 'PyreonDateTimeFormat', file: 'PyreonIntl.swift' },
   // `JSON.parse(s)` lowers to `PyreonJSON.parse(T.self, s)`.
   { name: 'PyreonJSON.parse', file: 'PyreonJSON.swift' },
   // An emitted schema struct throws / returns these, and its callers convert typed input with `pyreonSchemaInput`.
@@ -378,6 +383,9 @@ const SWIFT_RUNTIME_HELPERS: readonly { readonly name: string; readonly file: st
   { name: 'PyreonSchemaError.constraintViolation', file: 'PyreonSchema.swift' },
   { name: 'pyreonSchemaInput', file: 'PyreonSchema.swift' },
   { name: 'PyreonParseResult', file: 'PyreonSchema.swift' },
+  // `@pyreon/validate`'s `.parse` / `.safeParse` and an adapter's `.parse` lower to these (their own `{ ok, value, issues }`).
+  { name: 'pyreonValidateResult', file: 'PyreonSchema.swift' },
+  { name: 'pyreonValidationResult', file: 'PyreonSchema.swift' },
 ]
 
 /**

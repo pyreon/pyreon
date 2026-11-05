@@ -116,6 +116,7 @@ import {
   ERROR_MESSAGE_FN,
   ERROR_STRING_FN,
   exprCallsThrowing,
+  rethrowingCallbackArgs,
   statementsThrowUncaught,
   SWIFT_THROWN_PREAMBLE,
   uncaughtThrowWarning,
@@ -601,6 +602,10 @@ let _functionNames: Set<string> = new Set()
  * emit) — seeded into each component's `_functionNames` so a `dbl(21)` call
  * resolves as a free-function call regardless of which component emits it. */
 let _helperFnNames: Set<string> = new Set()
+/** The names a call at module scope resolves as a function call (not a signal read). */
+function moduleFunctionNamesSwift(): Set<string> {
+  return new Set([..._helperFnNames, ..._moduleViewHelpersSwift.keys()])
+}
 /** File-scope helper name → return type, assigned onto each component's infer
  * ctx so a computed over a helper call infers its return type (not `Any`). */
 let _helperReturns: Map<string, TypeIR> = new Map()
@@ -1132,6 +1137,12 @@ export function emitSwift(
   _componentPropsMap = new Map(components.map((c) => [c.name, c.props]))
   _componentSlotsMap = new Map(components.map((c) => [c.name, slotPropsOf(c)]))
   _moduleViewHelpersSwift = moduleViewHelpers(moduleDecls)
+  // Module scope (free helper bodies, plugin module items) sees the file's
+  // helper functions as CALLABLE, exactly as a component body does: without
+  // this, a zero-argument helper called from another helper (`String(k())`)
+  // fell through to the signal-read branch and emitted the bare reference
+  // `k` — a swiftc and kotlinc error with no warning.
+  _functionNames = moduleFunctionNamesSwift()
   _viewHelpersSwift = new Map(_moduleViewHelpersSwift)
   // Per-file library preparations (`CompilerPlugin.prepareEmit`): a plugin records what it learns about the
   // file's components and may add components of its own, emitted after the file's.
@@ -1643,7 +1654,7 @@ function emitSwiftComponent(c: ComponentIR): string {
   // them only for `count()` (signal read). Seed with the file-scope helper
   // names so a `dbl(21)` call in this component resolves as a free function.
   // File-scope view helpers are CALLED (`row()`), never read like a signal.
-  _functionNames = new Set([..._helperFnNames, ..._moduleViewHelpersSwift.keys()])
+  _functionNames = moduleFunctionNamesSwift()
   _zeroArgFnNames = new Set(_zeroArgHelperNames)
   _serviceBindings = bindServices(c.decls)
   _asyncDeclsSwift = []
@@ -2168,7 +2179,7 @@ function emitSwiftComponent(c: ComponentIR): string {
   _activePropsParamName = undefined
   _signalEnumTypes = new Map()
   _signalNames = new Set()
-  _functionNames = new Set()
+  _functionNames = moduleFunctionNamesSwift()
   _usesRouter = false
   _routerRoutes = new Map()
   _routerTabs = new Map()
@@ -4238,7 +4249,10 @@ function emitSwiftMapFromPairs(
 function emitSwiftExpr(e: ExprIR, indent: number): string {
   // A closure is its own throw context: a throw or throwing call inside it cannot propagate to the enclosing
   // `throws` helper or `do` body.
-  if (e.kind === 'arrow' && _swiftThrowCtx !== 'none') return withSwiftThrowCtx('none', () => emitSwiftExpr(e, indent))
+  // The exception is a callback of a rethrowing array method (`xs.map(s => { throw … })`): Swift's `map` is
+  // `rethrows`, so the closure inherits the context and the CALL is marked `try` (see `case 'call'`).
+  if (e.kind === 'arrow' && _swiftThrowCtx !== 'none' && !_swiftRethrowingArrows.has(e))
+    return withSwiftThrowCtx('none', () => emitSwiftExpr(e, indent))
   switch (e.kind) {
     case 'literal':
       if (typeof e.value === 'string') {
@@ -4305,6 +4319,22 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       return `(try! ${decode})`
     }
     case 'call': {
+      // `xs.map(s => { if (!s) throw new Error('bad'); return s.length })` inside a `throws` helper or a `do` body:
+      // the error propagates out of the call, as it does on the web and in Kotlin. Before this, the closure was its
+      // own throw context and the `throw` became `fatalError` — iOS alone terminated where Android caught it.
+      if (_swiftThrowCtx !== 'none' && !_swiftTryWrapping.has(e)) {
+        const throwingCallbacks = rethrowingCallbackArgs(e, _swiftThrowingFns)
+        if (throwingCallbacks.length > 0) {
+          _swiftTryWrapping.add(e)
+          for (const cb of throwingCallbacks) _swiftRethrowingArrows.add(cb as ExprIR)
+          try {
+            return `(try ${emitSwiftExpr(e, indent)})`
+          } finally {
+            _swiftTryWrapping.delete(e)
+            for (const cb of throwingCallbacks) _swiftRethrowingArrows.delete(cb as ExprIR)
+          }
+        }
+      }
       if (
         e.callee.kind === 'identifier' &&
         _swiftThrowingFns.has(e.callee.name) &&
@@ -5225,6 +5255,19 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
             // (start>end) and negative→0 quirks are not modeled; a unary-
             // minus arg falls through to the generic emit. Kotlin's
             // `String.substring(start, end?)` matches JS, so no Kotlin map.
+            // The platform idiom is exact only for non-negative integer LITERALS in order: `dropFirst(-1)` traps,
+            // and JS clamps a negative bound to 0 and swaps `start > end`. Anything else (a variable bound, whose
+            // sign and order are unknown) goes through the runtime's `pyreonSubstring`, which does what JS does.
+            const lits = e.args.map((a) => (a.kind === 'literal' && typeof a.value === 'number' && Number.isInteger(a.value) && a.value >= 0 ? a.value : undefined))
+            const literalInOrder = lits.every((v) => v !== undefined) && (lits.length < 2 || lits[0]! <= lits[1]!)
+            if ((!literalInOrder || objDot === '?.') && (e.args.length === 1 || e.args.length === 2)) {
+              const bounds = e.args.map((a, i) => {
+                const t = inferType(a, _activeInferCtx)
+                return t.kind === 'number' && t.float === true ? `pyreonSliceIndex(${argExprs[i]!})` : argExprs[i]!
+              })
+              if (objDot === '?.') return `${obj}.map { pyreonSubstring($0, ${bounds.join(', ')}) }`
+              return `pyreonSubstring(${[obj, ...bounds].join(', ')})`
+            }
             const noNegative = e.args.every((a) => a.kind !== 'unary')
             if (noNegative) {
               if (e.args.length === 1) return `String(${obj}${objDot}dropFirst(${argExprs[0]!}))`
@@ -5355,7 +5398,14 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
               const recv = optional ? '$0' : obj
               // A bound whose sign is not known at compile time: JavaScript's semantics, from the runtime.
               if (!sliceBoundsAreLiteral(e.args)) {
-                const body = `pyreonSlice(${[recv, ...argExprs].join(', ')})`
+                // A fractional bound (`xs.length / 2`, `Math.floor(n * r)`) is a Swift `Double`, and `pyreonSlice`
+                // takes `Int`. JavaScript truncates it (`ToIntegerOrInfinity`: NaN → 0, ±Infinity clamps) — so does
+                // `pyreonSliceIndex`; a bare `Int(x)` would TRAP on NaN or an infinity instead.
+                const bounds = e.args.map((a, i) => {
+                  const t = inferType(a, _activeInferCtx)
+                  return t.kind === 'number' && t.float === true ? `pyreonSliceIndex(${argExprs[i]!})` : argExprs[i]!
+                })
+                const body = `pyreonSlice(${[recv, ...bounds].join(', ')})`
                 return optional ? `${obj}.map { ${body} }` : body
               }
               // Negative-index idioms (Swift indices count from the front):
@@ -7938,6 +7988,8 @@ let _needsSwiftKeepAliveWrapper = false
 let _needsSwiftNumString = false
 /** The file's helpers whose Swift signature is `throws`. */
 let _swiftThrowingFns: ReadonlySet<string> = new Set()
+/** Callbacks of a rethrowing array method that keep the enclosing throw context (`case 'call'`). */
+const _swiftRethrowingArrows = new Set<ExprIR>()
 /**
  * Whether the statement being emitted may throw: inside a `throws` helper, inside a `do` body, or neither (a closure
  * that cannot throw — an event handler, an effect, a callback). Saved and restored around every scope that changes it.

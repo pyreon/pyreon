@@ -245,7 +245,7 @@ const SHAPES: Record<string, string> = {
   // KEY is itself a keyword.
   zodDiscriminated: `${ZOD_HEAD}export const S = zodSchema(z.discriminatedUnion('where', [\n${lines(FIELD_WORDS.slice(0, 40), (w) => `  z.object({ where: z.literal('${w}'), ${w}: z.string() }),`)}\n]))\n`,
   zodDiscriminatorKeyword: `${ZOD_HEAD}export const S = zodSchema(z.discriminatedUnion('operator', [\n  z.object({ operator: z.literal('a'), x: z.string() }),\n  z.object({ operator: z.literal('b'), x: z.string() }),\n]))\n`,
-  validateInline: `import { s } from '@pyreon/validate'\nexport function App() {\n  const r = s.object({ ${lines(FIELD_WORDS, (w) => `${w}: s.string()`, ', ')} }).safeParse({ ${lines(FIELD_WORDS, (w) => `${w}: 'x'`, ', ')} })\n  return <Text>{r.success ? 'y' : 'n'}</Text>\n}\n`,
+  validateInline: `import { s } from '@pyreon/validate'\nexport function App() {\n  const r = s.object({ ${lines(FIELD_WORDS, (w) => `${w}: s.string()`, ', ')} }).safeParse({ ${lines(FIELD_WORDS, (w) => `${w}: 'x'`, ', ')} })\n  return <Text>{r.ok ? 'y' : 'n'}</Text>\n}\n`,
   featureSchema: `import { defineFeature } from '@pyreon/feature'\nexport const Todo = defineFeature({ name: 'todo', schema: { ${lines(FIELD_WORDS, (w) => `${w}: 'string'`, ', ')} } })\n`,
   // type alias / interface / inline literal structs: declaration, literal, access.
   typeAlias: `type Row = {\n${lines(FIELD_WORDS, (w) => `  ${w}: string`, ';\n')}\n}\nexport function App() {\n  const rows = signal<Row[]>([{ ${lines(FIELD_WORDS, (w) => `${w}: 'x'`, ', ')} }])\n  return <Stack><For each={rows()} by={(r) => r.where}>{(r) => <Stack>${texts(FIELD_WORDS, (w) => `r.${w}`)}</Stack>}</For></Stack>\n}\n`,

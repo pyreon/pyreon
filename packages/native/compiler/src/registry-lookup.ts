@@ -743,6 +743,19 @@ export function pluginExprMemberType(e: ExtExprIR, property: string): TypeIR | u
   return activeRegistries().items.exprEmitter(e.plugin, e.type)?.typing?.member?.(e, property)
 }
 
+/**
+ * The type of `<value>.<property>` for a value of a plugin RUNTIME generic (`ExprEmitter.typing.resultTypes`), or
+ * `undefined` when no active plugin declares a result type named `t.name`.
+ */
+export function pluginResultTypeMember(t: Extract<TypeIR, { kind: 'typeRef' }>, property: string): TypeIR | undefined {
+  for (const exprs of activeRegistries().items.exprEmitters.values()) {
+    for (const emitter of exprs.values()) {
+      for (const rt of emitter.typing?.resultTypes ?? []) if (rt.name === t.name) return rt.member(t.args, property)
+    }
+  }
+  return undefined
+}
+
 /** Whether `e` is a plugin expression its owner declared FALLIBLE (`ExprEmitter.throws`). */
 export function isThrowingPluginExpr(e: ExprIR): boolean {
   return e.kind === 'ext-expr' && activeRegistries().items.exprEmitter(e.plugin, e.type)?.throws === true

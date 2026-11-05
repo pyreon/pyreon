@@ -17,15 +17,16 @@ import type { FieldMetaDefnIR } from './ir'
 type AnyNode = any
 
 /**
- * True when `node` is a `<s>.object({ … }).safeParse(ARG)` CallExpression: a call whose callee is
- * `<schema>.safeParse` and whose `<schema>` is a `<s>.object(<ObjectExpression>)` call with `s` bound to
+ * True when `node` is a `<s>.object({ … }).parse(ARG)` / `.safeParse(ARG)` CallExpression (the two are ONE method
+ * on the web — both return `{ ok, value | issues }`): a call whose callee is `<schema>.parse` / `.safeParse` and whose `<schema>` is a `<s>.object(<ObjectExpression>)` call with `s` bound to
  * `@pyreon/validate`.
  */
 export function isInlineValidateSafeParseCall(node: AnyNode, sNames: ReadonlySet<string>): boolean {
   if (node.type !== 'CallExpression') return false
   const callee = node.callee as AnyNode | undefined
   if (callee?.type !== 'MemberExpression' || callee.computed) return false
-  if (callee.property?.type !== 'Identifier' || callee.property.name !== 'safeParse') return false
+  if (callee.property?.type !== 'Identifier') return false
+  if (callee.property.name !== 'safeParse' && callee.property.name !== 'parse') return false
   const schemaCall = callee.object as AnyNode | undefined
   if (schemaCall?.type !== 'CallExpression') return false
   const schemaCallee = schemaCall.callee as AnyNode | undefined

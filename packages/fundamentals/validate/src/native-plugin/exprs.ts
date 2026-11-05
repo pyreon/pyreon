@@ -4,7 +4,7 @@ import {
   type ItemBindings,
   type ModuleItemEmitter,
 } from '@pyreon/native-compiler/plugin-api'
-export { parseExpr, safeParseExpr } from '@pyreon/validation/native-plugin'
+export { validateResultExpr } from '@pyreon/validation/native-plugin'
 import type { FieldMetaDefnIR } from './ir'
 
 const fieldMetaOf = (item: { payload: unknown }): FieldMetaDefnIR => item.payload as FieldMetaDefnIR

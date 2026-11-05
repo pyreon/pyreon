@@ -470,7 +470,7 @@ public enum PyreonHttpPipeline {
         }
     }
 
-    /// Exponential backoff with full jitter — the web's `defaultBackoff`.
+    /// Exponential backoff with equal jitter (`[base/2, base]`) — the web's `defaultBackoff`.
     public static func defaultBackoff(attempt: Int, random: Double) -> Double {
         let base = min(1000 * pow(2, Double(attempt - 1)), 20_000)
         return (base / 2 + random * (base / 2)).rounded(.toNearestOrAwayFromZero)

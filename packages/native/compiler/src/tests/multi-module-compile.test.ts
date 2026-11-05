@@ -40,12 +40,12 @@ const REPO = resolve(import.meta.dirname, '../../../../..')
 const BOOKSHELF = join(REPO, 'examples/lathe-bookshelf/src/gen')
 
 // Two hand-written modules that each VALIDATE with `safeParse`, so both emit
-// the `PyreonParseResult` path as well as the error type.
+// the `PyreonValidateResult` path as well as the error type.
 const PETS = `import { computed } from '@pyreon/reactivity'
 import { s } from '@pyreon/validate'
 const Pet = s.object({ name: s.string().min(1), age: s.number() })
 export function PetBadge() {
-  const ok = computed(() => Pet.safeParse({ name: 'x', age: 3 }).success)
+  const ok = computed(() => Pet.safeParse({ name: 'x', age: 3 }).ok)
   return <Text>{ok() ? 'valid pet' : 'invalid pet'}</Text>
 }`
 
@@ -53,7 +53,7 @@ const OWNERS = `import { computed } from '@pyreon/reactivity'
 import { s } from '@pyreon/validate'
 const Owner = s.object({ email: s.string().email() })
 export function OwnerBadge() {
-  const ok = computed(() => Owner.safeParse({ email: 'a@b.co' }).success)
+  const ok = computed(() => Owner.safeParse({ email: 'a@b.co' }).ok)
   return <Text>{ok() ? 'valid owner' : 'invalid owner'}</Text>
 }`
 
@@ -146,8 +146,12 @@ function emitAll(target: 'swift' | 'kotlin'): string[] {
 const PER_FILE_SHARED = [
   /^enum PyreonSchemaError\b/m,
   /^struct PyreonParseResult\b/m,
+  /^(public )?struct PyreonValidateResult\b/m,
+  /^(public )?func pyreonValidateResult\b/m,
   /^sealed class PyreonSchemaError\b/m,
   /^data class PyreonParseResult\b/m,
+  /^class PyreonValidateResult\b/m,
+  /^inline fun <T : Any> pyreonValidateResult\b/m,
 ]
 
 /**
@@ -201,7 +205,7 @@ describe('schema-bearing modules compile TOGETHER', () => {
       // The fixture must actually reach the shared types, or the compiles
       // below are vacuous.
       expect(codes.join('\n')).toContain('PyreonSchemaError')
-      expect(codes.join('\n')).toContain('PyreonParseResult')
+      expect(codes.join('\n')).toContain('pyreonValidateResult')
       for (const code of codes) {
         for (const re of PER_FILE_SHARED) expect(code).not.toMatch(re)
       }

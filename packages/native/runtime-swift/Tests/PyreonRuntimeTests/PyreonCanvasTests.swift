@@ -71,6 +71,9 @@ final class PyreonCanvasTests: XCTestCase {
 
     func testMalformedInputKeepsWhatParsed() {
         assertRect(box("M0 0 L10 10 L"), 0, 0, 10, 10)
+        // An unknown command keeps the prefix before it — SVG's error rule, and
+        // the Android runtime's (pyreonSvgPathValidPrefix) for the same input.
+        assertRect(box("M10 10 L20 20 X 5 5"), 10, 10, 10, 10)
         XCTAssertTrue(PyreonCanvasPath.svg("garbage").isEmpty)
         XCTAssertTrue(PyreonCanvasPath.svg("").isEmpty)
     }

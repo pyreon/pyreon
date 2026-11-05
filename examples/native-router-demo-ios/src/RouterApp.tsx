@@ -876,8 +876,9 @@ function readOrder(raw: string): Order {
   return JSON.parse(raw)
 }
 
-// A schema's `.parse(x)` lowers to the native struct's own `parse`, which throws on invalid input — caught here exactly
-// like `JSON.parse` above. Native's message names the field and rule (`Field 'sku' violated constraint …`).
+// A `@pyreon/validate` schema's `.parse(x)` NEVER throws: on the web it returns `{ ok: true, value } | { ok: false,
+// issues }` (`.safeParse` is the same method), and natively it returns that same shape. The issue's `path` is shown
+// rather than its message, because the message text is each platform's own.
 const OrderCheck = s.object({ sku: s.string().min(1), qty: s.number() })
 
 function ErrorsPage() {
@@ -895,12 +896,8 @@ function ErrorsPage() {
   }
   const checked = signal('none')
   const check = (sku: string) => {
-    try {
-      const o = OrderCheck.parse({ sku, qty: 1 })
-      checked.set(`ok ${o.sku}`)
-    } catch (e) {
-      checked.set(`rejected: ${e instanceof Error ? e.message : String(e)}`)
-    }
+    const r = OrderCheck.parse({ sku, qty: 1 })
+    checked.set(r.ok ? `ok ${r.value.sku}` : `rejected ${r.issues[0]!.path.join('.')}`)
   }
   const run = (raw: string) => {
     try {

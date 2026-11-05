@@ -1064,6 +1064,84 @@ public struct PyreonParseResult<T> {
         self.data = data
     }
 }
+// The libraries' own result shapes — copied VERBATIM from PyreonSchema.swift (schema-stub-parity.test.ts).
+/// One \`@pyreon/validate\` issue: the message and the key path (\`["address", "city"]\`).
+public struct PyreonValidateIssue: Codable, Equatable {
+    public let message: String
+    public let path: [String]
+    public init(message: String, path: [String]) {
+        self.message = message
+        self.path = path
+    }
+}
+
+/// \`@pyreon/validate\`'s \`{ ok, value } | { ok: false, issues }\`.
+public struct PyreonValidateResult<T> {
+    public let ok: Bool
+    public let value: T!
+    public let issues: [PyreonValidateIssue]
+    public init(ok: Bool, value: T?, issues: [PyreonValidateIssue]) {
+        self.ok = ok
+        self.value = value
+        self.issues = issues
+    }
+}
+
+/// One \`@pyreon/validation\` adapter issue: the message and a dot-separated path (\`"address.city"\`).
+public struct PyreonValidationIssue: Codable, Equatable {
+    public let path: String
+    public let message: String
+    public init(path: String, message: String) {
+        self.path = path
+        self.message = message
+    }
+}
+
+/// A \`@pyreon/validation\` adapter's \`parse\` result: \`{ ok, value } | { ok: false, issues }\`.
+public struct PyreonValidationResult<T> {
+    public let ok: Bool
+    public let value: T!
+    public let issues: [PyreonValidationIssue]
+    public init(ok: Bool, value: T?, issues: [PyreonValidationIssue]) {
+        self.ok = ok
+        self.value = value
+        self.issues = issues
+    }
+}
+
+/// The failing field of a native schema error (\`""\` when it names none).
+func pyreonIssueField(_ e: Error) -> String {
+    switch e as? PyreonSchemaError {
+    case let .missingOrWrongType(field, _)?: return field
+    case let .constraintViolation(field, _)?: return field
+    default: return ""
+    }
+}
+
+func pyreonIssueMessage(_ e: Error) -> String {
+    (e as? LocalizedError)?.errorDescription ?? String(describing: e)
+}
+
+/// Run a native schema \`parse\` and report it as \`@pyreon/validate\` does: never throwing.
+public func pyreonValidateResult<T>(_ parse: () throws -> T) -> PyreonValidateResult<T> {
+    do {
+        return PyreonValidateResult(ok: true, value: try parse(), issues: [])
+    } catch {
+        let field = pyreonIssueField(error)
+        let path = field.isEmpty ? [] : field.split(separator: ".").map(String.init)
+        return PyreonValidateResult(ok: false, value: nil, issues: [PyreonValidateIssue(message: pyreonIssueMessage(error), path: path)])
+    }
+}
+
+/// Run a native schema \`parse\` and report it as a \`@pyreon/validation\` adapter's \`parse\` does: never throwing.
+public func pyreonValidationResult<T>(_ parse: () throws -> T) -> PyreonValidationResult<T> {
+    do {
+        return PyreonValidationResult(ok: true, value: try parse(), issues: [])
+    } catch {
+        return PyreonValidationResult(ok: false, value: nil, issues: [PyreonValidationIssue(path: pyreonIssueField(error), message: pyreonIssueMessage(error))])
+    }
+}
+
 // Signatures mirror PyreonSchema.swift (schema-stub-parity.test.ts checks them).
 public func pyreonSchemaInput<T: Encodable>(_ value: T) -> [String: Any] { [:] }
 public func pyreonSchemaInput(_ value: [String: Any]) -> [String: Any] { value }
@@ -1584,6 +1662,8 @@ public final class PyreonNumberFormat {
 // (runtime-swift's PyreonSlice.swift).
 public func pyreonSlice<T>(_ a: [T], _ start: Int, _ end: Int? = nil) -> [T] { a }
 public func pyreonSlice(_ s: String, _ start: Int, _ end: Int? = nil) -> String { s }
+public func pyreonSliceIndex(_ d: Double) -> Int { 0 }
+public func pyreonSubstring(_ s: String, _ start: Int, _ end: Int? = nil) -> String { s }
 public final class PyreonDatabase {
   public init() {}
   public func insert(_ collection: String, _ record: PyreonRecord) {}

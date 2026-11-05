@@ -3560,32 +3560,32 @@ public func formatDate(_ ms: Double, _ pattern: String) -> String {
     var out = ""
     var i = 0
     while i < pattern.utf16.count {
-      let c = String(pattern.dropFirst(i).prefix(max(0, (i + 1) - (i))))
+      let c = pyreonSubstring(pattern, i, i + 1)
       if c == "[" {
         var end = i + 1
-        while end < pattern.utf16.count && String(pattern.dropFirst(end).prefix(max(0, (end + 1) - (end)))) != "]" {
+        while end < pattern.utf16.count && pyreonSubstring(pattern, end, end + 1) != "]" {
           end = end + 1
         }
-        out = out + String(pattern.dropFirst(i + 1).prefix(max(0, (end) - (i + 1))))
+        out = out + pyreonSubstring(pattern, i + 1, end)
         i = end + 1
       } else {
-        if String(pattern.dropFirst(i).prefix(max(0, (i + 4) - (i)))) == "YYYY" {
+        if pyreonSubstring(pattern, i, i + 4) == "YYYY" {
           out = out + padded(year, 4)
           i = i + 4
         } else {
-          if String(pattern.dropFirst(i).prefix(max(0, (i + 2) - (i)))) == "YY" {
+          if pyreonSubstring(pattern, i, i + 2) == "YY" {
             out = out + padded(year - floor(Double(year / 100.0)) * 100.0, 2)
             i = i + 2
           } else {
-            if String(pattern.dropFirst(i).prefix(max(0, (i + 4) - (i)))) == "MMMM" {
+            if pyreonSubstring(pattern, i, i + 4) == "MMMM" {
               out = out + name
               i = i + 4
             } else {
-              if String(pattern.dropFirst(i).prefix(max(0, (i + 3) - (i)))) == "MMM" {
+              if pyreonSubstring(pattern, i, i + 3) == "MMM" {
                 out = out + String(name.dropFirst(0).prefix(max(0, (3) - (0))))
                 i = i + 3
               } else {
-                if String(pattern.dropFirst(i).prefix(max(0, (i + 2) - (i)))) == "MM" {
+                if pyreonSubstring(pattern, i, i + 2) == "MM" {
                   out = out + padded(month, 2)
                   i = i + 2
                 } else {
@@ -3593,7 +3593,7 @@ public func formatDate(_ ms: Double, _ pattern: String) -> String {
                     out = out + padded(month, 1)
                     i = i + 1
                   } else {
-                    if String(pattern.dropFirst(i).prefix(max(0, (i + 2) - (i)))) == "DD" {
+                    if pyreonSubstring(pattern, i, i + 2) == "DD" {
                       out = out + padded(day, 2)
                       i = i + 2
                     } else {
@@ -3601,7 +3601,7 @@ public func formatDate(_ ms: Double, _ pattern: String) -> String {
                         out = out + padded(day, 1)
                         i = i + 1
                       } else {
-                        if String(pattern.dropFirst(i).prefix(max(0, (i + 2) - (i)))) == "HH" {
+                        if pyreonSubstring(pattern, i, i + 2) == "HH" {
                           out = out + padded(hour, 2)
                           i = i + 2
                         } else {
@@ -3609,11 +3609,11 @@ public func formatDate(_ ms: Double, _ pattern: String) -> String {
                             out = out + padded(hour, 1)
                             i = i + 1
                           } else {
-                            if String(pattern.dropFirst(i).prefix(max(0, (i + 2) - (i)))) == "mm" {
+                            if pyreonSubstring(pattern, i, i + 2) == "mm" {
                               out = out + padded(minute, 2)
                               i = i + 2
                             } else {
-                              if String(pattern.dropFirst(i).prefix(max(0, (i + 2) - (i)))) == "ss" {
+                              if pyreonSubstring(pattern, i, i + 2) == "ss" {
                                 out = out + padded(second, 2)
                                 i = i + 2
                               } else {

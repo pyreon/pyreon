@@ -7,7 +7,7 @@
 // (`String.substring`, `List.findLast`), so only Swift needs a mapping.
 //
 //   substring(s, e) → Swift String(obj.dropFirst(s).prefix(max(0, e - s)))
-//   substring(s)    → Swift String(obj.dropFirst(s))   (Kotlin: native)
+//   substring(s)    → Swift String(obj.dropFirst(s))   (Kotlin: pyreonSubstring — its own throws past the end)
 //   findLast(p)     → Swift obj.last(where: p)          (Kotlin: native)
 //
 // `.findLast` returns `T | undefined` (like `.find`), so the inference side
@@ -52,10 +52,10 @@ describe('JS .substring / .findLast → native idiom', () => {
     expect(out).not.toContain('.findLast(')
   })
 
-  it('Kotlin: substring + findLast pass through (both are native Kotlin)', () => {
+  it('Kotlin: substring goes through pyreonSubstring (Kotlin\'s own throws past the end); findLast passes through', () => {
     const out = transform(SRC(COMPUTEDS), { target: 'kotlin' }).code
-    expect(out).toContain('name.substring(0, 3)')
-    expect(out).toContain('name.substring(2)')
+    expect(out).toContain('pyreonSubstring(name, (0L).toLong(), (3L).toLong())')
+    expect(out).toContain('pyreonSubstring(name, (2L).toLong())')
     expect(out).toContain('todos.findLast(')
   })
 

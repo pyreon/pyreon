@@ -125,7 +125,7 @@ import { s } from '@pyreon/validate'
   it('object and array literals recurse; the EMPTY forms get their typed empties', () => {
     const out = swift(
       V + `export function App() {
-  const a = computed(() => s.object({ n: s.number() }).safeParse({ n: 1, nested: { p: 'q' }, arr: [1, { z: 2 }], empty: {}, ea: [] }).success)
+  const a = computed(() => s.object({ n: s.number() }).safeParse({ n: 1, nested: { p: 'q' }, arr: [1, { z: 2 }], empty: {}, ea: [] }).ok)
   return (<Text>{String(a())}</Text>)
 }`,
     )
@@ -133,15 +133,15 @@ import { s } from '@pyreon/validate'
       '["n": 1, "nested": ["p": "q"] as [String: Any], "arr": [1, ["z": 2] as [String: Any]], "empty": [String: Any](), "ea": [Any]()] as [String: Any]',
     )
     // never the synthesized-struct form every other literal position gets
-    expect(out).not.toContain('safeParseResult(__Obj')
+    expect(out).not.toContain('.parse(__Obj')
   })
 
   it('an object literal WITH A SPREAD, and a non-literal argument, fall to the ordinary expr emit', () => {
     const out = swift(
       V + `export function App() {
   const base = signal<{ n: number }>({ n: 2 })
-  const b = computed(() => s.object({ n: s.number() }).safeParse({ ...base(), n: 3 }).success)
-  const c = computed(() => s.object({ n: s.number() }).safeParse(base()).success)
+  const b = computed(() => s.object({ n: s.number() }).safeParse({ ...base(), n: 3 }).ok)
+  const c = computed(() => s.object({ n: s.number() }).safeParse(base()).ok)
   return (<Text>{\`\${b()}\${c()}\`}</Text>)
 }`,
     )
@@ -149,8 +149,8 @@ import { s } from '@pyreon/validate'
     // non-literal argument goes through `pyreonSchemaInput`, converting it
     // through its own Codable encoding (see native-validate-typed-safeparse).
     // The spread keeps its source: an override of `base`, not the one-field tuple `(n: 3)` it used to drop to.
-    expect(out).toContain('safeParseResult(pyreonSchemaInput({ var c = base; c.n = 3; return c }()))')
+    expect(out).toContain('.parse(pyreonSchemaInput({ var c = base; c.n = 3; return c }()))')
     // an identifier is a typed value too, so it goes through the same helper.
-    expect(out).toContain('safeParseResult(pyreonSchemaInput(base))')
+    expect(out).toContain('.parse(pyreonSchemaInput(base))')
   })
 })

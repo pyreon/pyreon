@@ -23,7 +23,7 @@ import { childStatementLists } from './throw-lowering'
 import type { ComponentIR, DeclIR, ExprIR, ExtDecl, ExtModuleItem, ModuleDeclIR, StatementIR, StructIR, TypeIR } from './types'
 import { rootReceiverName } from './expr-lowering'
 import { ECMASCRIPT_MATH_CONSTANTS } from './math-lowering'
-import { findFunctionLowering, pluginItemType, findService, pluginCallReadType, pluginValueType, pluginExprMemberType, pluginMemberReadType, pluginMethodReturnType, pluginExprSeedsModuleConst, pluginExprType } from './registry-lookup'
+import { findFunctionLowering, pluginItemType, findService, pluginCallReadType, pluginValueType, pluginExprMemberType, pluginMemberReadType, pluginMethodReturnType, pluginExprSeedsModuleConst, pluginExprType, pluginResultTypeMember } from './registry-lookup'
 
 export interface InferenceCtx {
   /** Signal name → declared type. Filled from the component's decls. */
@@ -1989,6 +1989,11 @@ export function inferTypeValue(expr: ExprIR, ctx: InferenceCtx): TypeIR {
         }
         const field = ctx.structs.get(objType.name)?.get(expr.property)
         if (field) return field
+        // A plugin runtime generic (`PyreonValidateResult<Pet>`) stored in a local: its owner types the read.
+        if (!ctx.structs.has(objType.name)) {
+          const typed = pluginResultTypeMember(objType, expr.property)
+          if (typed !== undefined) return typed
+        }
       }
       if (objType.kind === 'array') {
         // Property reads only: `length` is the sole array property. Methods

@@ -12,7 +12,7 @@ import {
   tryZodSchemaDefnFromTopLevel,
   warnUnloweredSchemaAdapter,
 } from './recognize'
-import { parseExpr, safeParseExpr } from './safe-parse'
+import { validationResultExpr } from './safe-parse'
 import { createSchemaItem, createSchemaStructRefinement, schemaItemSpec } from './schema'
 
 export { VALIDATION_PLUGIN_NAME }
@@ -85,7 +85,7 @@ export const validationPlugin: CompilerPlugin = {
   },
   items: { schema: createSchemaItem({ declaredBy: 'zodSchema/valibotSchema/arktypeSchema' }) },
   methodCalls: { '*': recognizeValidationMethodCall },
-  exprs: { safeParse: safeParseExpr, parse: parseExpr },
+  exprs: { result: validationResultExpr },
   finishModule: finishValidation,
   refineStructs: createSchemaStructRefinement(VALIDATION_PLUGIN_NAME),
   // Every recognizer here only CLAIMS the call (`null`) and declares nothing, so there is no declaration type to emit.
@@ -106,7 +106,7 @@ export const validationPlugin: CompilerPlugin = {
       // ABOVE that struct in the same output — telling an author to wrap
       // working code in a `<Web>` escape hatch.
       advice:
-        'a TOP-LEVEL `const X = zodSchema(z.object({ … }))` DOES lower — it emits a native struct with parse/safeParse, and `X.safeParse(v)` / `zodSchema(z.object({ … })).safeParse(v)` lower to the web\'s `{ success, data }` result (several schemas may share one `const a = …, b = …` statement). `X.parse(v)` on a top-level binding lowers too, throwing natively through the try/catch error model. What stays web-only: an inline adapter call\'s `.parse()`, a schema declared inside a component body (hoist it), a non-literal schema argument, `.refine` / `.transform` / `.default` / `.preprocess` chains (named per field), `standardSchemaToValidator` and the async validate path',
+        'a TOP-LEVEL `const X = zodSchema(z.object({ … }))` DOES lower — it emits a native struct, and `X.parse(v)` / `zodSchema(z.object({ … })).parse(v)` lower to the adapter\'s own `{ ok, value } | { ok: false, issues }` result, which never throws (several schemas may share one `const a = …, b = …` statement). The adapter has no `.safeParse` (on the web it is `undefined`). What stays web-only: a schema declared inside a component body (hoist it), a non-literal schema argument, `.refine` / `.transform` / `.default` / `.preprocess` chains (named per field), `standardSchemaToValidator` and the async validate path',
     },
   },
 }

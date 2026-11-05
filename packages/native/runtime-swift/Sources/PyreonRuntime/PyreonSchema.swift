@@ -47,6 +47,100 @@ public struct PyreonParseResult<T> {
     }
 }
 
+// MARK: - The libraries' own result shapes
+//
+// Each schema library's `parse` has its OWN web result shape, and the native
+// emit reproduces it rather than borrowing zod's:
+//
+//   @pyreon/validate    `s.object(…).parse(x)` and `.safeParse(x)` (the same
+//                       method) → `{ ok, value } | { ok: false, issues }`,
+//                       `issues[i].path` an ARRAY of keys. Never throws.
+//   @pyreon/validation  `zodSchema(…).parse(x)` (the adapter has no
+//                       `safeParse`) → the same, but `issues[i].path` is a
+//                       DOT-STRING. Never throws.
+//
+// `value` is implicitly unwrapped: the shared source reads it only after
+// narrowing on `ok` (TypeScript rejects `r.value` otherwise), so `r.value.name`
+// must compile as written. A native parse stops at the first failing field, so
+// `issues` holds at most one entry where the web may report several.
+
+/// One `@pyreon/validate` issue: the message and the key path (`["address", "city"]`).
+public struct PyreonValidateIssue: Codable, Equatable {
+    public let message: String
+    public let path: [String]
+    public init(message: String, path: [String]) {
+        self.message = message
+        self.path = path
+    }
+}
+
+/// `@pyreon/validate`'s `{ ok, value } | { ok: false, issues }`.
+public struct PyreonValidateResult<T> {
+    public let ok: Bool
+    public let value: T!
+    public let issues: [PyreonValidateIssue]
+    public init(ok: Bool, value: T?, issues: [PyreonValidateIssue]) {
+        self.ok = ok
+        self.value = value
+        self.issues = issues
+    }
+}
+
+/// One `@pyreon/validation` adapter issue: the message and a dot-separated path (`"address.city"`).
+public struct PyreonValidationIssue: Codable, Equatable {
+    public let path: String
+    public let message: String
+    public init(path: String, message: String) {
+        self.path = path
+        self.message = message
+    }
+}
+
+/// A `@pyreon/validation` adapter's `parse` result: `{ ok, value } | { ok: false, issues }`.
+public struct PyreonValidationResult<T> {
+    public let ok: Bool
+    public let value: T!
+    public let issues: [PyreonValidationIssue]
+    public init(ok: Bool, value: T?, issues: [PyreonValidationIssue]) {
+        self.ok = ok
+        self.value = value
+        self.issues = issues
+    }
+}
+
+/// The failing field of a native schema error (`""` when it names none).
+func pyreonIssueField(_ e: Error) -> String {
+    switch e as? PyreonSchemaError {
+    case let .missingOrWrongType(field, _)?: return field
+    case let .constraintViolation(field, _)?: return field
+    default: return ""
+    }
+}
+
+func pyreonIssueMessage(_ e: Error) -> String {
+    (e as? LocalizedError)?.errorDescription ?? String(describing: e)
+}
+
+/// Run a native schema `parse` and report it as `@pyreon/validate` does: never throwing.
+public func pyreonValidateResult<T>(_ parse: () throws -> T) -> PyreonValidateResult<T> {
+    do {
+        return PyreonValidateResult(ok: true, value: try parse(), issues: [])
+    } catch {
+        let field = pyreonIssueField(error)
+        let path = field.isEmpty ? [] : field.split(separator: ".").map(String.init)
+        return PyreonValidateResult(ok: false, value: nil, issues: [PyreonValidateIssue(message: pyreonIssueMessage(error), path: path)])
+    }
+}
+
+/// Run a native schema `parse` and report it as a `@pyreon/validation` adapter's `parse` does: never throwing.
+public func pyreonValidationResult<T>(_ parse: () throws -> T) -> PyreonValidationResult<T> {
+    do {
+        return PyreonValidationResult(ok: true, value: try parse(), issues: [])
+    } catch {
+        return PyreonValidationResult(ok: false, value: nil, issues: [PyreonValidationIssue(path: pyreonIssueField(error), message: pyreonIssueMessage(error))])
+    }
+}
+
 // MARK: - Typed values as schema input
 //
 // An emitted schema's `parse` reads a `[String: Any]` — the shape an object

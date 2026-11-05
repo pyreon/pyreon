@@ -23,3 +23,27 @@ func pyreonSliceBounds(_ count: Int, _ start: Int, _ end: Int?) -> (Int, Int) {
     func resolve(_ i: Int) -> Int { i < 0 ? max(count + i, 0) : min(i, count) }
     return (resolve(start), resolve(end ?? count))
 }
+
+/**
+ * A fractional `slice` bound, converted the way JavaScript does (`ToIntegerOrInfinity`): truncated toward zero, NaN
+ * read as 0, and ±Infinity (or anything past `Int`'s range) clamped. `Int(d)` alone TRAPS on NaN and the
+ * infinities, where `xs.slice(0, NaN)` is just `[]` on the web. Kotlin's `Double.toLong()` already has these
+ * semantics, so only Swift needs the helper.
+ */
+public func pyreonSliceIndex(_ d: Double) -> Int {
+    if d.isNaN { return 0 }
+    if d >= 9.223372036854775807e18 { return Int.max }
+    if d <= -9.223372036854775808e18 { return Int.min }
+    return Int(d)
+}
+
+/**
+ * JavaScript's `str.substring(start, end?)`: each bound clamped into `0...count` (a negative bound reads as 0), and
+ * the two SWAPPED when `start > end`. Counted in Characters, like `pyreonSlice` and `count`.
+ */
+public func pyreonSubstring(_ s: String, _ start: Int, _ end: Int? = nil) -> String {
+    let chars = Array(s)
+    func clamp(_ i: Int) -> Int { max(0, min(i, chars.count)) }
+    let a = clamp(start), b = clamp(end ?? chars.count)
+    return String(chars[min(a, b)..<max(a, b)])
+}
