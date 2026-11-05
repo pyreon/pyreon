@@ -837,7 +837,7 @@ fun groupThousands(v: Double): String {
   }
 
 fun groupDigits(s: String): String {
-    val neg = s.length.toLong() > 0L && s[0].toString() == "-"
+    val neg = s.length.toLong() > 0L && (s.getOrNull(0)?.toString() ?: "") == "-"
     val body = if (neg) s.drop(1) else s
     val dot = body.indexOf(".").toLong()
     val whole = if (dot < 0L) body else pyreonSlice(body, (0L).toLong(), (dot).toLong())

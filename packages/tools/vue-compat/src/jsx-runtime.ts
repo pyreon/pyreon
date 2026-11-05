@@ -15,7 +15,7 @@
  */
 
 import type { ComponentFn, Props, VNode, VNodeChild } from '@pyreon/core'
-import { Fragment, h, isNativeCompat, onUnmount } from '@pyreon/core'
+import { _compatProps, Fragment, h, isNativeCompat, onUnmount } from '@pyreon/core'
 import { runUntracked, signal } from '@pyreon/reactivity'
 
 export { Fragment }
@@ -110,6 +110,9 @@ function wrapCompatComponent(vueComponent: Function): ComponentFn {
   // The wrapper returns a reactive accessor (() => VNodeChild) which Pyreon's
   // mountChild treats as a reactive expression via mountReactive.
   wrapped = ((props: Props) => {
+    // Third-party compat code may call props.hasOwnProperty — give the
+    // (possibly null-prototype) Pyreon props object a normal prototype.
+    props = _compatProps(props)
     const ctx: RenderContext = {
       hooks: [],
       scheduleRerender: () => {

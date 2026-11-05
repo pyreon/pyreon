@@ -38,9 +38,9 @@ const COMPUTEDS = `  const padded = computed(() => name().padStart(5, '0'))
 describe('JS .padStart / .padEnd → native idiom (single-char/default pad)', () => {
   it('Swift: manual repeat-and-concat, clamped; typed String', () => {
     const out = transform(SRC(COMPUTEDS), { target: 'swift' }).code
-    expect(out).toContain('(String(repeating: "0", count: max(0, (5) - name.count)) + name)')
-    expect(out).toContain('(String(repeating: " ", count: max(0, (8) - name.count)) + name)')
-    expect(out).toContain('(name + String(repeating: " ", count: max(0, (8) - name.count)))')
+    expect(out).toContain('(String(repeating: "0", count: max(0, (5) - name.utf16.count)) + name)')
+    expect(out).toContain('(String(repeating: " ", count: max(0, (8) - name.utf16.count)) + name)')
+    expect(out).toContain('(name + String(repeating: " ", count: max(0, (8) - name.utf16.count)))')
     expect(out).toContain('private var padded: String')
     expect(out).not.toContain('.padStart(')
     expect(out).not.toContain('.padEnd(')

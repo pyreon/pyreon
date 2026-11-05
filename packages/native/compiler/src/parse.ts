@@ -4,6 +4,8 @@
 // starter fixtures use are recognised. Anything outside that set is
 // either passed through as unknown or surfaces a warning.
 
+import { refineParamFloatsFromCallSites } from './call-site-param-floats'
+import { applyDestructureAbsence, applyDestructureAbsenceToLets } from './destructure-absence'
 import { GESTURE_EVENTS, isGestureEventName } from './gesture-events'
 import { THIRD_PARTY_SCHEMA_LIBRARIES } from './verbatim-call-warning'
 import { widenLiteralsInDoubleContexts } from './contextual-double-literals'
@@ -639,6 +641,8 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
     refine({ components, helperFns: ctx.helperFns })
 
   const defaultCtx = buildInferenceCtx([], structs, [], undefined, helperReturnSeed, moduleConsts)
+  // Before return inference: a parameter a caller feeds a Double must be Double, and the return re-infers over it.
+  refineParamFloatsFromCallSites(ctx.helperFns, components, defaultCtx, componentCtx)
   refineFunctionDefaults(ctx.helperFns, defaultCtx)
   refinePluginItemMembers(moduleItems, structs, helperReturnSeed, moduleConsts)
   for (const component of components) {
@@ -669,6 +673,10 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
     moduleDecls,
     inferenceCtx: (c) => (c === null ? defaultCtx : componentCtx(c)),
   })
+
+  // A component-scope array destructure inlines its element read at each use; where a use tests it for absence it
+  // must read nil-safely, as the web's `undefined` does (destructure-absence.ts).
+  for (const component of components) applyDestructureAbsence([component.decls, component.returnExpr])
 
   // Items plugins synthesized outside a declaration, then each plugin's last pass over the whole list.
   moduleItems.push(...ctx.lateModuleItems)
@@ -5369,6 +5377,7 @@ function parseStatementBlockBody(block: AnyNode, ctx: ParseCtx): StatementIR[] {
               kind: 'index',
               object: { kind: 'identifier', name: synthName },
               index: { kind: 'literal', value: i },
+              destructured: true,
             },
           })
         })
@@ -5413,6 +5422,7 @@ function parseStatementBlockBody(block: AnyNode, ctx: ParseCtx): StatementIR[] {
   }
   markReassignedLocalsMutable(out)
   markMethodMutatedLocals(out)
+  applyDestructureAbsenceToLets(out)
 
   return out
 }
@@ -6045,6 +6055,8 @@ function parseThrow(arg: AnyNode | undefined, ctx: ParseCtx): StatementIR | null
     kind: 'throw',
     // A non-string message is stringified, as `new Error(x)` does.
     message: isText ? parsed : { kind: 'call', callee: { kind: 'identifier', name: 'String' }, args: [parsed] },
+    // `throw 'plain'` throws the string itself, which describes itself without the `Error: ` prefix.
+    ...(fromCtor === undefined ? { raw: true } : {}),
   }
 }
 
@@ -7888,7 +7900,8 @@ function destructureAccess(container: string, path: readonly DestructureStep[]):
   let e: ExprIR = { kind: 'identifier', name: container }
   for (const step of path) {
     if ('field' in step) e = { kind: 'member', object: e, property: step.field }
-    else if ('index' in step) e = { kind: 'index', object: e, index: { kind: 'literal', value: step.index } }
+    else if ('index' in step)
+      e = { kind: 'index', object: e, index: { kind: 'literal', value: step.index }, destructured: true }
     else e = { kind: 'call', callee: { kind: 'member', object: e, property: 'slice' }, args: [{ kind: 'literal', value: step.sliceFrom }] }
   }
   return e

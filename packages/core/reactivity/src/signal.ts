@@ -151,7 +151,7 @@ function _set(this: SignalFn<unknown>, newValue: unknown) {
   // The batch is synchronous — only the dedup semantics change.
   //
   // No-subscriber fast path: with nothing to notify there is no cascade to
-  // drain, and while batchDepth is 0 the pending queues are provably empty, so
+  // drain, and while the batch depth is 0 the pending queues are provably empty, so
   // the whole batch window is skipped. Dominant shape for write-only signals.
   const _d1 = this._d1
   const _d = this._d

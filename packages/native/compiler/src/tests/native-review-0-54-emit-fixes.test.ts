@@ -115,9 +115,9 @@ describe('substring has JavaScript semantics on both targets', () => {
     expect(out).toContain('p.name?.let { pyreonSubstring(it, (1L).toLong()) }')
     expect(out).not.toMatch(/\.substring\(/)
   })
-  it('Swift keeps the clamping idiom for in-order literals and uses the runtime otherwise', () => {
+  it('Swift always uses the runtime (a String position is a UTF-16 offset; `dropFirst` counts Characters)', () => {
     const out = emit(substrings, 'swift').code
-    expect(out).toContain('String(s.dropFirst(0).prefix(max(0, (10) - (0))))')
+    expect(out).toContain('pyreonSubstring(s, 0, 10)')
     expect(out).toContain('pyreonSubstring(s, i)')
     expect(out).toContain('pyreonSubstring(s, 3, 1)')
     expect(out).toContain('pyreonSubstring(s, 0, pyreonSliceIndex(')

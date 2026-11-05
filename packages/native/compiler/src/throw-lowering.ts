@@ -260,17 +260,22 @@ export function uncaughtThrowWarning(what: string): string {
   )
 }
 
+/**
+ * The native error value. `raw` marks a thrown STRING (`throw 'plain'`): JavaScript stringifies that as the string
+ * itself, and an `Error` as `Error: <message>`, so `String(e)` and `` `${e}` `` describe the two differently.
+ */
 export const SWIFT_THROWN_PREAMBLE = `private struct PyreonThrown: Error, CustomStringConvertible {
     let message: String
-    var description: String { "Error: \\(message)" }
+    var raw: Bool = false
+    var description: String { raw ? message : "Error: \\(message)" }
 }
 private func ${ERROR_MESSAGE_FN}(_ e: Error) -> String {
     (e as? PyreonThrown)?.message ?? (e as? LocalizedError)?.errorDescription ?? String(describing: e)
 }
 private func ${ERROR_STRING_FN}(_ e: Error) -> String { String(describing: e) }`
 
-export const KOTLIN_THROWN_PREAMBLE = `private class PyreonThrown(message: String) : Exception(message) {
-    override fun toString(): String = "Error: $message"
+export const KOTLIN_THROWN_PREAMBLE = `private class PyreonThrown(message: String, private val raw: Boolean = false) : Exception(message) {
+    override fun toString(): String = if (raw) message.orEmpty() else "Error: $message"
 }
 private fun ${ERROR_MESSAGE_FN}(e: Throwable): String = e.message ?: e.toString()
 private fun ${ERROR_STRING_FN}(e: Throwable): String = e.toString()`

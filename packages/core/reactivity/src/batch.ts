@@ -21,7 +21,32 @@
 //
 // Cascade-graph invariants are fuzzed in `tests/batch.test.ts`.
 
-let batchDepth = 0
+/**
+ * Batch / drain state as fields of one `const` object, not module-level `let`s:
+ * V8 pays a context load plus a TDZ hole check per access to a module `let` and
+ * hoists neither across calls. See the measurement on `TrackingFrame` in
+ * tracking.ts.
+ */
+interface BatchState {
+  /** Open batch windows (explicit `batch()` and inline write windows). */
+  d: number
+  /**
+   * Monotonic effect-pass generation, never reset — monotonicity is what makes
+   * stale generations from prior passes/drains automatically read as "not
+   * visited" (see `QueuedEffect._vg`).
+   */
+  g: number
+  /** Re-entrancy guard for the deferred `_lazyDirtyStack` drain. */
+  r: boolean
+  /** Current inline recursion depth of `propagateLazyDirty`. */
+  c: number
+}
+const _b: BatchState = {
+  d: 0,
+  g: 1,
+  r: false,
+  c: 0,
+}
 
 // Tier-1 entries clear their flag BEFORE running (the array analogue of
 // delete-before-run) so a genuine post-visit re-dirty RE-PUSHES the entry and
@@ -41,7 +66,7 @@ const recomputeQueue: QueuedRefresh[] = []
 //   `_eq` — queue membership. Cur/Next are mutually exclusive in time (an effect
 //           leaves `curEffects` before it can enter `nextEffects`), so one
 //           tri-state field dedups BOTH queues.
-//   `_vg` — pass GENERATION it last ran in. `_vg === _passGen` ⇔ "already ran
+//   `_vg` — pass GENERATION it last ran in. `_vg === _b.g` ⇔ "already ran
 //           this pass" → a re-enqueue routes to the NEXT pass. The monotonic
 //           counter replaces a Set's wholesale `.clear()` with an O(1) bump.
 // Never-enqueued effects, raw `subscribe` listeners and `direct` updaters read
@@ -58,9 +83,6 @@ interface QueuedEffect {
 }
 const curEffects: QueuedEffect[] = []
 const nextEffects: QueuedEffect[] = []
-// Monotonic pass generation, never reset — monotonicity is what makes stale
-// generations from prior passes/drains automatically read as "not visited".
-let _passGen = 1
 
 // Every computed NOTIFY recompute carries `_rc = true` (stamped by
 // `_markRecompute`). The enqueue router checks it FIRST because a MISS means an
@@ -149,15 +171,15 @@ export function enqueueEagerRefresh(refresh: () => void): void {
 }
 
 export function batch(fn: () => void): void {
-  batchDepth++
+  _b.d++
   try {
     fn()
   } finally {
-    batchDepth--
-    if (batchDepth === 0 && (recomputeQueue.length > 0 || curEffects.length > 0)) {
+    _b.d--
+    if (_b.d === 0 && (recomputeQueue.length > 0 || curEffects.length > 0)) {
       // Keep batching active during the flush so cascade notifications enqueue
       // (and dedup) into the same queues instead of firing inline.
-      batchDepth = 1
+      _b.d = 1
       drainQueuesLocked()
     }
   }
@@ -173,16 +195,36 @@ export function batch(fn: () => void): void {
  * @internal Used only by `@pyreon/reactivity`'s signal write path.
  */
 export function openInlineBatch(): void {
-  batchDepth++
+  _b.d++
 }
 
 /** @internal Pair of {@link openInlineBatch}. Drains cascades, resets depth. */
 export function closeInlineBatch(): void {
-  batchDepth--
-  if (batchDepth === 0 && (recomputeQueue.length > 0 || curEffects.length > 0)) {
-    batchDepth = 1
+  _b.d--
+  if (_b.d === 0 && (recomputeQueue.length > 0 || curEffects.length > 0)) {
+    _b.d = 1
     drainQueuesLocked()
   }
+}
+
+/**
+ * Empty a drain queue, skipping the store when it is already empty.
+ *
+ * `arr.length = 0` is a slow store on BOTH engines even when it changes
+ * nothing: measured ~16ns on an already-empty array under V8 (node 26) and JSC
+ * (bun 1.4), M3 Max. A drain truncates up to five queues per write, nearly all
+ * of them already empty, and those stores were the largest self-time lines of
+ * `drainQueuesLocked` in a diamond-into-effect profile.
+ *
+ * `runEffectPass` additionally empties a ONE-entry pass with `pop()`: V8's
+ * `length = 0` on a non-empty array costs ~25ns and drops the backing store, so
+ * the next drain's first `push` re-allocates. Popping in the tier-1 loop as well
+ * was measured and rejected: it regressed a 50-deep chain read by an effect by
+ * ~11% on V8 (an inlining-budget effect on `drainQueuesLocked`), so only the
+ * effect pass pops.
+ */
+function clearQueue(q: unknown[]): void {
+  if (q.length !== 0) q.length = 0
 }
 
 /**
@@ -191,15 +233,18 @@ export function closeInlineBatch(): void {
  * visited) effects run THIS pass — matching JS Set iteration semantics.
  */
 function runEffectPass(): void {
-  _passGen++
+  _b.g++
   const cur = curEffects
   for (let i = 0; i < cur.length; i++) {
     const fn = cur[i]!
     fn._eq = EQ.Idle // consumed from curEffects — a re-enqueue now routes via _vg
-    fn._vg = _passGen // mark visited this pass
+    fn._vg = _b.g // mark visited this pass
     fn()
   }
-  cur.length = 0
+  // A single-effect pass (the dominant shape: one write, one effect) empties
+  // with `pop()`, which keeps the backing store; see `clearQueue`.
+  if (cur.length === 1) cur.pop()
+  else clearQueue(cur)
   // Promote next-pass entries (self-re-fire) into curEffects for the next pass.
   const next = nextEffects
   if (next.length > 0) {
@@ -208,14 +253,14 @@ function runEffectPass(): void {
       f._eq = EQ.Cur
       cur.push(f)
     }
-    next.length = 0
+    clearQueue(next)
   }
 }
 
 /**
- * Drain both queues to empty. Caller must hold `batchDepth = 1` (so cascade
+ * Drain both queues to empty. Caller must hold `_b.d = 1` (so cascade
  * notifications enqueue instead of dispatching inline); this function resets
- * `batchDepth` to 0 in its `finally` regardless of outcome.
+ * `_b.d` to 0 in its `finally` regardless of outcome.
  */
 function drainQueuesLocked(): void {
   try {
@@ -254,7 +299,7 @@ function drainQueuesLocked(): void {
         r._rq = 0 // consumed — a genuine post-visit re-dirty re-pushes
         r()
       }
-      recomputeQueue.length = 0
+      clearQueue(recomputeQueue)
 
       // Tier 2 — ONE effect pass; the intrusive flags handle within-pass dedup
       // and cross-pass re-fire routing. Then loop back to tier 1 for anything
@@ -306,22 +351,22 @@ function drainQueuesLocked(): void {
     // Effects catch internally, but raw `subscribe` listeners can throw straight
     // past this.
     for (let i = 0; i < curEffects.length; i++) curEffects[i]!._eq = EQ.Idle
-    curEffects.length = 0
+    clearQueue(curEffects)
     for (let i = 0; i < nextEffects.length; i++) nextEffects[i]!._eq = EQ.Idle
-    nextEffects.length = 0
+    clearQueue(nextEffects)
     for (let i = 0; i < recomputeQueue.length; i++) recomputeQueue[i]!._rq = 0
-    recomputeQueue.length = 0
+    clearQueue(recomputeQueue)
     // Advance past every `_vg` this drain assigned so the NEXT drain's collection
     // window routes every effect to `curEffects`, not `nextEffects` — without
     // this an effect that ran in the previous drain would be misread as "already
     // visited" and silently skip its run.
-    _passGen++
-    batchDepth = 0
+    _b.g++
+    _b.d = 0
   }
 }
 
 export function isBatching(): boolean {
-  return batchDepth > 0
+  return _b.d > 0
 }
 
 // ─── Lazy-computed dirty cascade (depth-bounded) ────────────────────────────
@@ -343,8 +388,6 @@ export function isBatching(): boolean {
 //
 // NOT on the signal fan-out path, so wide-fan-out / batch-50 are untouched.
 const _lazyDirtyStack: Array<() => void> = []
-let _lazyDirtyDraining = false
-let _cascadeDepth = 0
 // Recurse inline up to this nesting depth, then defer to the stack. ~2 JS frames
 // per hop, so 500 ~= 1000 frames — well below the V8 ceiling (a bare recursive
 // cascade overflowed ~2,600 in a default-stack Node fork) while keeping the
@@ -355,7 +398,7 @@ const MAX_CASCADE_RECURSION = 500
  * Propagate dirtiness from a computed whose value (potentially) changed.
  *
  * Always called under an open batch window (a signal write opens one before
- * dispatch; the tier-1 drain holds `batchDepth = 1`; an `{ equals }` refresh
+ * dispatch; the tier-1 drain holds `_b.d = 1`; an `{ equals }` refresh
  * opens its own when pulled outside one), so `enqueuePendingNotification`'s
  * `isBatching()` invariant holds. A notify recompute is dirty-mark-only, so
  * processing one cannot mutate any `_s` mid-walk.
@@ -451,7 +494,7 @@ export function propagateLazyDirty(host: LazySource, owner: LazyTarget | null = 
   // are spuriously dirty on an unchanged value — harmless (they re-derive to the
   // same value on their next pull, and their own gate stops any propagation).
   let gated = false
-  const depth = _cascadeDepth
+  const depth = _b.c
   if (depth >= MAX_CASCADE_RECURSION) {
     // Too deep — defer every lazy branch to the explicit stack; each re-enters
     // at depth 0 and recurses another full window.
@@ -463,7 +506,7 @@ export function propagateLazyDirty(host: LazySource, owner: LazyTarget | null = 
       } else enqueuePendingNotification(sub)
     }
   } else {
-    _cascadeDepth = depth + 1
+    _b.c = depth + 1
     for (const sub of subs) {
       // The `_rc` check stays FIRST: an effect notify pays one absent-field
       // read, and only a recompute goes on to read `_c`.
@@ -476,20 +519,20 @@ export function propagateLazyDirty(host: LazySource, owner: LazyTarget | null = 
         break
       } else enqueuePendingNotification(sub)
     }
-    _cascadeDepth = depth
+    _b.c = depth
   }
   if (gated) enqueueEagerRefresh(owner as unknown as () => void)
   // Drive the deferred stack ONLY from the outermost frame — a re-entrant call
   // from within the drain leaves its pushes for the active loop.
-  if (depth === 0 && _lazyDirtyStack.length > 0 && !_lazyDirtyDraining) {
-    _lazyDirtyDraining = true
+  if (depth === 0 && _lazyDirtyStack.length > 0 && !_b.r) {
+    _b.r = true
     try {
       while (_lazyDirtyStack.length > 0) _lazyDirtyStack.pop()!()
     } finally {
       // Discard a partial stack on an unexpected throw so the next cascade
       // starts clean (belt-and-braces — dirty-marking never throws).
       _lazyDirtyStack.length = 0
-      _lazyDirtyDraining = false
+      _b.r = false
     }
   }
 }
@@ -504,7 +547,7 @@ export function enqueuePendingNotification(notify: () => void): void {
     return
   }
   const q = notify as QueuedEffect
-  if (q._vg === _passGen) {
+  if (q._vg === _b.g) {
     // Already ran this pass → route to the next pass (cross-pass re-fire,
     // ErrorBoundary's self-dispatch pattern). `_eq === Next` dedups it.
     if (q._eq !== EQ.Next) {
@@ -512,7 +555,7 @@ export function enqueuePendingNotification(notify: () => void): void {
       nextEffects.push(q)
     }
   } else if (q._eq !== EQ.Cur) {
-    // Fresh effect: `_vg` 0/undefined never equals the monotonic `_passGen`.
+    // Fresh effect: `_vg` 0/undefined never equals the monotonic `_b.g`.
     q._eq = EQ.Cur
     curEffects.push(q)
   }

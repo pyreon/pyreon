@@ -441,3 +441,15 @@ describe('generic boolean attribute diagnosis retains normalization guidance', (
     expect(result?.fixCode).toContain('aria-disabled')
   })
 })
+
+describe('diagnoseError — null-prototype props', () => {
+  it.each(['hasOwnProperty', 'toString'])('props.%s is not a function → Object.hasOwn guidance', (m) => {
+    const result = diagnoseError(`TypeError: props.${m} is not a function`)
+    expect(result?.cause).toContain('null-prototype')
+    expect(result?.fix).toContain('Object.hasOwn')
+  })
+
+  it('leaves a bare `x is not a function` to the signal/prop entry', () => {
+    expect(diagnoseError('TypeError: count is not a function')?.cause).not.toContain('null-prototype')
+  })
+})

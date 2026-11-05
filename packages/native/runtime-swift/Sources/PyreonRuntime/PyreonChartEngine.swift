@@ -3462,16 +3462,16 @@ public func exponential(_ v: Double) -> String {
 
 public func groupThousands(_ v: Double) -> String {
     let s = plain(v)
-    if (s.range(of: "e").map { s.distance(from: s.startIndex, to: $0.lowerBound) } ?? -1) >= 0 || s == "NaN" {
+    if pyreonIndexOf(s, "e") >= 0 || s == "NaN" {
       return s
     }
     return groupDigits(s)
   }
 
 public func groupDigits(_ s: String) -> String {
-    let neg = s.utf16.count > 0 && String(Array(s)[0]) == "-"
-    let body = neg ? String(s.dropFirst(1)) : s
-    let dot = (body.range(of: ".").map { body.distance(from: body.startIndex, to: $0.lowerBound) } ?? -1)
+    let neg = s.utf16.count > 0 && pyreonCharAt(s, 0) == "-"
+    let body = neg ? pyreonSlice(s, 1) : s
+    let dot = pyreonIndexOf(body, ".")
     let whole = dot < 0 ? body : pyreonSlice(body, 0, dot)
     let frac = dot < 0 ? "" : pyreonSlice(body, dot)
     var out = ""
@@ -3514,7 +3514,7 @@ public func fixed(_ places: Int) -> (Double) -> String {
         return "\(pyreonNumberString(((Double(r)) + 0.5).rounded(.down)))"
       }
       let s = "\(pyreonNumberString(r))"
-      let dot = (s.range(of: ".").map { s.distance(from: s.startIndex, to: $0.lowerBound) } ?? -1)
+      let dot = pyreonIndexOf(s, ".")
       if dot < 0 {
         return "\(s).\(String(repeating: "0", count: p))"
       }
@@ -3582,7 +3582,7 @@ public func formatDate(_ ms: Double, _ pattern: String) -> String {
               i = i + 4
             } else {
               if pyreonSubstring(pattern, i, i + 3) == "MMM" {
-                out = out + String(name.dropFirst(0).prefix(max(0, (3) - (0))))
+                out = out + pyreonSubstring(name, 0, 3)
                 i = i + 3
               } else {
                 if pyreonSubstring(pattern, i, i + 2) == "MM" {
@@ -4756,7 +4756,7 @@ public func withAlpha(_ color: String, _ alpha: Double) -> String {
     if !color.hasPrefix("#") {
       return color
     }
-    let hex = String(color.dropFirst(1))
+    let hex = pyreonSlice(color, 1)
     let code = { (c: Double) in
       if c >= 48.0 && c <= 57.0 {
         return c - 48.0

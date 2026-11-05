@@ -1330,6 +1330,17 @@ pyreon upgrade   # align them all to one release
     }),
   },
   {
+    // A component that received a compiler-wrapped reactive prop gets a
+    // NULL-prototype props object (makeReactiveProps, a V8 hidden-class win), so
+    // Object.prototype methods are not on it.
+    pattern: /props\.(hasOwnProperty|propertyIsEnumerable|isPrototypeOf|toString|valueOf|toLocaleString) is not a function/,
+    diagnose: (m) => ({
+      cause: `The props object has no prototype, so \`props.${m[1] ?? 'hasOwnProperty'}\` is undefined. Pyreon builds a null-prototype props object whenever a component receives a reactive prop (any prop the compiler wraps in _rp).`,
+      fix: "Use the static forms: `Object.hasOwn(props, key)` (or `key in props`) instead of `props.hasOwnProperty(key)`, and `String(props.x)` / `Object.prototype.toString.call(props)` instead of calling methods on props itself.",
+      related: 'makeReactiveProps returns a null-prototype object',
+    }),
+  },
+  {
     // TWO distinct Pyreon causes share this message shape — teaching only the
     // signal one was actively wrong for the reactive-prop variant (PZ-10),
     // where the fix is the OPPOSITE direction (stop calling it).

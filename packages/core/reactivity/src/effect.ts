@@ -40,8 +40,6 @@ export interface ReactiveSnapshotCapture {
   restore: <T>(snap: unknown, fn: () => T) => T
 }
 
-let _snapshotCapture: ReactiveSnapshotCapture | null = null
-
 /**
  * Register a capture/restore pair so reactivity-layer effects (`_bind`,
  * `renderEffect`, `effect`) can preserve external context (e.g. the core
@@ -50,7 +48,7 @@ let _snapshotCapture: ReactiveSnapshotCapture | null = null
  * replaces the previously registered hook.
  */
 export function setSnapshotCapture(hook: ReactiveSnapshotCapture | null): void {
-  _snapshotCapture = hook
+  _c.s = hook
 }
 
 // ─── onCleanup ───────────────────────────────────────────────────────────────
@@ -58,8 +56,19 @@ export function setSnapshotCapture(hook: ReactiveSnapshotCapture | null): void {
 // the run opens only a boolean WINDOW; the array is allocated on first use.
 // Window and array are saved/restored per run, or a NESTED effect() would null
 // the module var on exit and silently DROP outer cleanups registered after it.
-let _cleanupCollector: (() => void)[] | null = null
-let _cleanupWindowOpen = false
+// Held as fields of one `const` object rather than module-level `let`s — see the
+// V8 measurement on `TrackingFrame` in tracking.ts.
+interface CleanupFrame {
+  c: (() => void)[] | null
+  o: boolean
+  /** Context snapshot hook registered by `@pyreon/core` (see `setSnapshotCapture`). */
+  s: ReactiveSnapshotCapture | null
+}
+const _c: CleanupFrame = {
+  c: null,
+  o: false,
+  s: null,
+}
 
 /**
  * Register a cleanup function inside an effect. The cleanup runs:
@@ -79,9 +88,9 @@ let _cleanupWindowOpen = false
  * })
  */
 export function onCleanup(fn: () => void): void {
-  if (_cleanupWindowOpen) {
-    if (_cleanupCollector === null) _cleanupCollector = []
-    _cleanupCollector.push(fn)
+  if (_c.o) {
+    if (_c.c === null) _c.c = []
+    _c.c.push(fn)
   }
 }
 
@@ -108,9 +117,9 @@ export type CleanupFrameToken = boolean | (() => void)[]
  * @internal
  */
 export function _enterCleanupFrame(): CleanupFrameToken {
-  const token: CleanupFrameToken = _cleanupWindowOpen ? (_cleanupCollector ?? true) : false
-  _cleanupWindowOpen = true
-  _cleanupCollector = null
+  const token: CleanupFrameToken = _c.o ? (_c.c ?? true) : false
+  _c.o = true
+  _c.c = null
   return token
 }
 
@@ -120,9 +129,9 @@ export function _enterCleanupFrame(): CleanupFrameToken {
  * @internal
  */
 export function _exitCleanupFrame(token: CleanupFrameToken): (() => void)[] | null {
-  const collected = _cleanupCollector
-  _cleanupWindowOpen = token !== false
-  _cleanupCollector = typeof token === 'boolean' ? null : token
+  const collected = _c.c
+  _c.o = token !== false
+  _c.c = typeof token === 'boolean' ? null : token
   return collected
 }
 
@@ -133,7 +142,7 @@ export function _exitCleanupFrame(token: CleanupFrameToken): (() => void)[] | nu
 const LAZY_INNER: unknown[] = []
 
 // Inner-effect collector state lives in tracking.ts so `runUntracked` can
-// suspend it in lock-step with `activeEffect`.
+// suspend it in lock-step with `_t.e`.
 
 // Global handler for unhandled errors thrown inside effects; defaults to
 // console.error so failures are never silently swallowed. Two surfaces fire on
@@ -202,7 +211,7 @@ export function effect(
   const scope = getCurrentScope()
   // Capture the context owner + hook at SETUP; re-runs restore it before
   // invoking fn (see the module header).
-  const cap = _snapshotCapture
+  const cap = _c.s
   const snapshot = cap ? cap.capture() : null
   // Pre-build the restore wrapper ONCE at setup instead of allocating a
   // `() => restore(...)` closure on every non-first run.
@@ -262,10 +271,10 @@ export function effect(
     // actually used), saved/restored so nested runs can't clobber this one.
     const outerCollector = getInnerEffectCollector()
     setInnerEffectCollector(LAZY_INNER)
-    const prevCleanupWindow = _cleanupWindowOpen
-    const prevCleanupCollector = _cleanupCollector
-    _cleanupWindowOpen = true
-    _cleanupCollector = null
+    const prevCleanupWindow = _c.o
+    const prevCleanupCollector = _c.c
+    _c.o = true
+    _c.c = null
     try {
       // First run COLLECTS deps; re-runs VERIFY them positionally (zero Set ops
       // in the steady state). The first run is inside the synchronous mount where
@@ -274,12 +283,12 @@ export function effect(
       cleanup =
         (isFirstRun ? runCollect(run, deps, fn) : runVerify(run, deps, fnToRunReplay)) ||
         undefined
-      if (_cleanupCollector !== null) cleanups = _cleanupCollector
+      if (_c.c !== null) cleanups = _c.c
     } catch (err) {
       _errorHandler(err)
     } finally {
-      _cleanupWindowOpen = prevCleanupWindow
-      _cleanupCollector = prevCleanupCollector
+      _c.o = prevCleanupWindow
+      _c.c = prevCleanupCollector
       const mine = getInnerEffectCollector()
       if (mine !== LAZY_INNER && mine !== null) innerEffects = mine as Effect[]
       setInnerEffectCollector(outerCollector)
@@ -370,7 +379,7 @@ export function effect(
  * Per re-run savings vs renderEffect:
  * - No tracking frame at all (renderEffect re-runs enter a `runVerify`
  *   frame — cheap, but still a save/restore + one compare per read)
- * - Signal reads hit `if (activeEffect)` null check → instant return
+ * - Signal reads hit `if (_t.e)` null check → instant return
  */
 export function _bind(fn: () => void): () => void {
   const deps: SubscriberHost[] = []
@@ -381,7 +390,7 @@ export function _bind(fn: () => void): () => void {
   // closure capture for this binding's lifetime — a later
   // `setSnapshotCapture(null)` doesn't disturb it, matching setup-time
   // semantics (the provider chain is fixed at setup).
-  const cap = _snapshotCapture
+  const cap = _c.s
   const snapshot = cap ? cap.capture() : null
 
   // Pre-pick the run body at setup so re-runs do a disposed-check + direct
@@ -456,11 +465,11 @@ export function renderEffect(fn: () => void): () => void {
   // Same rationale as `_bind`: capture the external context snapshot at
   // SETUP and restore it on signal-driven re-runs so provider lookups stay
   // correct even after `mountReactive`'s cleanup truncates the global stack.
-  const snapshot = _snapshotCapture ? _snapshotCapture.capture() : null
+  const snapshot = _c.s ? _c.s.capture() : null
 
   const trackedFn =
-    snapshot !== null && _snapshotCapture
-      ? () => (_snapshotCapture as ReactiveSnapshotCapture).restore(snapshot, fn)
+    snapshot !== null && _c.s
+      ? () => (_c.s as ReactiveSnapshotCapture).restore(snapshot, fn)
       : fn
 
   const run = () => {

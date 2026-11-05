@@ -1,14 +1,64 @@
 import { enqueuePendingNotification, isBatching } from './batch'
 
-let activeEffect: (() => void) | null = null
-
-// The deps collector — every primitive that establishes a tracking scope
-// (`effect` / `renderEffect` / `_bind` / `computed`) enters a FRAME via
-// `runCollect` / `runVerify` below, which points this at the frame's own
-// local `Set[]` BEFORE `activeEffect` goes live, so `trackSubscriber` always
-// records deps inline here (no per-effect WeakMap). This is an INVARIANT, not
-// a fast path: there is no fallback collector.
-let _depsCollector: SubscriberHost[] | null = null
+/**
+ * The tracking frame — every hot piece of module state the tracked-read path
+ * touches, held as FIELDS of one module-level `const` object rather than as
+ * module-level `let` bindings.
+ *
+ * Measured, not stylistic: V8 compiles each access to a module-scope `let` from
+ * inside a function as a context-slot load plus a TDZ hole check, and does not
+ * hoist either across the calls a tracked read makes. Saving, setting and
+ * restoring three `let`s cost ~1.9ns per frame in an isolated probe versus
+ * ~0.1ns for the same three fields on a `const` object (node 26, M3 Max; JSC
+ * showed no difference there). Applied to this frame plus the batch, cleanup,
+ * scope and trace state, the reactivity micro board moved by: computed diamond
+ * -32%, 50-deep chain -26%, 1→100 effect fan-out -8%, batch-50 -10% under V8;
+ * diamond -8%, fan-out -8%, batch -6% under JSC (chain within noise there).
+ * Zero bytes per signal, computed or effect: one object in total.
+ *
+ * Keep NEW hot module state on a holder like this rather than adding a
+ * module-level `let` (`tests/no-hot-module-let.test.ts` enforces it).
+ *
+ * Field names are one letter on purpose: a minifier renames a `let` but never a
+ * property. Descriptive names cost +146 B gzipped on the package entry; one
+ * letter costs +79 B. Each field is documented below instead.
+ */
+interface TrackingFrame {
+  /** The subscriber a tracked read registers — `null` outside any tracking scope. */
+  e: (() => void) | null
+  /**
+   * The deps collector — every primitive that establishes a tracking scope
+   * (`effect` / `renderEffect` / `_bind` / `computed`) enters a FRAME via
+   * `runCollect` / `runVerify` below, which points this at the frame's own
+   * local `deps` array BEFORE `e` goes live, so `trackSubscriber`
+   * always records deps inline here (no per-effect WeakMap). This is an
+   * INVARIANT, not a fast path: there is no fallback collector.
+   */
+  d: SubscriberHost[] | null
+  /**
+   * Verify-mode position. Mode is encoded in the SIGN (-1 = collect, >=0 =
+   * verify at that position) — folding the former separate owner flag into the
+   * index drops one state read from the hottest tracked-read line.
+   */
+  i: number
+  /**
+   * Thread-local collector for nested effects — captures `effect()` calls made
+   * inside another effect's body so the parent can dispose them on re-run.
+   * Lives here (not effect.ts) so `runUntracked` can suspend it in lock-step
+   * with `e`: without that, child component effects created inside
+   * `mountFor`'s `runUntracked` wrap would register as inner effects of the
+   * For's effect and be disposed on its NEXT re-run, silently dropping every
+   * subscription they had. Untyped (`unknown[]`) to avoid a circular dep with
+   * effect.ts.
+   */
+  n: unknown[] | null
+}
+const _t: TrackingFrame = {
+  e: null,
+  d: null,
+  i: -1,
+  n: null,
+}
 
 // ─── Verify-mode dep reuse ───────────────────────────────────────────────────
 //
@@ -43,11 +93,6 @@ let _depsCollector: SubscriberHost[] | null = null
 // `() => void` in `_s1`/`_s`, which the batch router, `signal.subscribe`,
 // devtools and `_set`'s inline dispatch all consume. Nodes would force a rewrite
 // of that tuned notify path plus one allocation per dependency edge.
-//
-// Mode is encoded in the SIGN of `_verifyIndex` (-1 = collect, >=0 = verify at
-// that position) — folding the former separate owner flag into the index drops
-// one module-var read from the hottest tracked-read line.
-let _verifyIndex = -1
 
 /**
  * Subscriber host — any reactive source that can have downstream subscribers.
@@ -148,25 +193,25 @@ export function removeSubscriber(host: SubscriberHost, sub: () => void): void {
  * never allocate anything.
  */
 export function trackSubscriber(host: SubscriberHost) {
-  const ae = activeEffect
+  const ae = _t.e
   if (ae === null) return
-  const idx = _verifyIndex
+  const idx = _t.i
   if (idx >= 0) {
     // Verify mode — steady-state re-run: one identity compare, no Set ops.
     // Safe to trust the index after the `ae === null` gate: `runUntracked`
-    // suspends `activeEffect` only, so untracked code can't reach a stale index.
-    const deps = _depsCollector as SubscriberHost[]
+    // suspends `_t.e` only, so untracked code can't reach a stale index.
+    const deps = _t.d as SubscriberHost[]
     if (idx < deps.length && deps[idx] === host) {
-      _verifyIndex = idx + 1
+      _t.i = idx + 1
       return
     }
     divergeVerify(host, ae)
     return
   }
   addSubscriber(host, ae)
-  // INVARIANT (see `_depsCollector`): a collector is ALWAYS set while
-  // activeEffect is live, so no null guard is needed here.
-  ;(_depsCollector as SubscriberHost[]).push(host)
+  // INVARIANT (see `TrackingFrame.d`): a collector is ALWAYS set while
+  // `_t.e` is live, so no null guard is needed here.
+  ;(_t.d as SubscriberHost[]).push(host)
 }
 
 /**
@@ -176,8 +221,8 @@ export function trackSubscriber(host: SubscriberHost) {
  * to plain collect mode for the remainder of this run.
  */
 function divergeVerify(host: SubscriberHost, owner: () => void): void {
-  const deps = _depsCollector as SubscriberHost[]
-  const confirmed = _verifyIndex
+  const deps = _t.d as SubscriberHost[]
+  const confirmed = _t.i
   // 1. Unsubscribe the unconfirmed tail — those positions are stale-dep
   //    candidates; any that get re-read later in this run re-subscribe via
   //    the collect path below.
@@ -189,7 +234,7 @@ function divergeVerify(host: SubscriberHost, owner: () => void): void {
   for (let j = 0; j < confirmed; j++) addSubscriber(deps[j] as SubscriberHost, owner)
   // 3. Exit verify mode (-1 = collect) — the rest of this run collects
   //    normally onto the preserved confirmed prefix.
-  _verifyIndex = -1
+  _t.i = -1
   // 4. Record the current (diverging) read.
   addSubscriber(host, owner)
   deps.push(host)
@@ -202,18 +247,18 @@ function divergeVerify(host: SubscriberHost, owner: () => void): void {
  * get an isolated frame and the outer frame resumes where it left off.
  */
 export function runCollect<T>(owner: () => void, deps: SubscriberHost[], fn: () => T): T {
-  const prevEffect = activeEffect
-  const prevDeps = _depsCollector
-  const prevIndex = _verifyIndex
-  activeEffect = owner
-  _depsCollector = deps
-  _verifyIndex = -1 // collect mode
+  const prevEffect = _t.e
+  const prevDeps = _t.d
+  const prevIndex = _t.i
+  _t.e = owner
+  _t.d = deps
+  _t.i = -1 // collect mode
   try {
     return fn()
   } finally {
-    activeEffect = prevEffect
-    _depsCollector = prevDeps
-    _verifyIndex = prevIndex
+    _t.e = prevEffect
+    _t.d = prevDeps
+    _t.i = prevIndex
   }
 }
 
@@ -224,12 +269,12 @@ export function runCollect<T>(owner: () => void, deps: SubscriberHost[], fn: () 
  * owner never leaves its subscriber Sets.
  */
 export function runVerify<T>(owner: () => void, deps: SubscriberHost[], fn: () => T): T {
-  const prevEffect = activeEffect
-  const prevDeps = _depsCollector
-  const prevIndex = _verifyIndex
-  activeEffect = owner
-  _depsCollector = deps
-  _verifyIndex = 0 // verify mode, position 0
+  const prevEffect = _t.e
+  const prevDeps = _t.d
+  const prevIndex = _t.i
+  _t.e = owner
+  _t.d = deps
+  _t.i = 0 // verify mode, position 0
   try {
     const result = fn()
     // Shrink: fn stayed in verify mode but read FEWER deps than last run —
@@ -238,7 +283,7 @@ export function runVerify<T>(owner: () => void, deps: SubscriberHost[], fn: () =
     // Deliberately NOT in the finally: if fn threw, the unverified tail stays
     // subscribed + recorded (dispose still removes everything) and the next run
     // re-verifies from index 0.
-    const idx = _verifyIndex
+    const idx = _t.i
     if (idx >= 0 && idx < deps.length) {
       for (let j = idx; j < deps.length; j++) removeSubscriber(deps[j] as SubscriberHost, owner)
       deps.length = idx
@@ -246,9 +291,9 @@ export function runVerify<T>(owner: () => void, deps: SubscriberHost[], fn: () =
     }
     return result
   } finally {
-    activeEffect = prevEffect
-    _depsCollector = prevDeps
-    _verifyIndex = prevIndex
+    _t.e = prevEffect
+    _t.d = prevDeps
+    _t.i = prevIndex
   }
 }
 
@@ -279,37 +324,26 @@ export function notifySubscribers(subscribers: Set<() => void>) {
   }
 }
 
-// Thread-local collector for nested effects — captures `effect()` calls made
-// inside another effect's body so the parent can dispose them on re-run.
-// Lives here (not effect.ts) so `runUntracked` can suspend it in lock-step with
-// `activeEffect`: without that, child component effects created inside
-// `mountFor`'s `runUntracked` wrap would register as inner effects of the For's
-// effect and be disposed on its NEXT re-run, silently dropping every
-// subscription they had.
-//
-// Untyped (`unknown[]`) to avoid a circular dep with effect.ts.
-let _innerEffectCollector: unknown[] | null = null
-
 export function getInnerEffectCollector(): unknown[] | null {
-  return _innerEffectCollector
+  return _t.n
 }
 
 export function setInnerEffectCollector(c: unknown[] | null): void {
-  _innerEffectCollector = c
+  _t.n = c
 }
 
 /** Read signals without subscribing AND prevent auto-registration of new
  * effects with the surrounding outer effect's inner-effect collector.
  * Alias: `untrack`. */
 export function runUntracked<T>(fn: () => T): T {
-  const prevActive = activeEffect
-  const prevCollector = _innerEffectCollector
-  activeEffect = null
-  _innerEffectCollector = null
+  const prevActive = _t.e
+  const prevCollector = _t.n
+  _t.e = null
+  _t.n = null
   try {
     return fn()
   } finally {
-    activeEffect = prevActive
-    _innerEffectCollector = prevCollector
+    _t.e = prevActive
+    _t.n = prevCollector
   }
 }

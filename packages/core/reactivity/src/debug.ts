@@ -27,7 +27,10 @@ interface SignalUpdateEvent {
 
 type SignalUpdateListener = (event: SignalUpdateEvent) => void
 
-let _traceListeners: SignalUpdateListener[] | null = null
+// A field on a `const` object rather than a module-level `let`: `isTracing()`
+// runs on EVERY signal write, and V8 pays a context load plus a TDZ hole check
+// per module-`let` access (see `TrackingFrame` in tracking.ts).
+const _tr: { l: SignalUpdateListener[] | null } = { l: null }
 
 /**
  * Register a listener that fires on every signal write.
@@ -39,18 +42,18 @@ let _traceListeners: SignalUpdateListener[] | null = null
  * })
  */
 export function onSignalUpdate(listener: SignalUpdateListener): () => void {
-  if (!_traceListeners) _traceListeners = []
-  _traceListeners.push(listener)
+  if (!_tr.l) _tr.l = []
+  _tr.l.push(listener)
   return () => {
-    if (!_traceListeners) return
-    _traceListeners = _traceListeners.filter((l) => l !== listener)
-    if (_traceListeners.length === 0) _traceListeners = null
+    if (!_tr.l) return
+    _tr.l = _tr.l.filter((l) => l !== listener)
+    if (_tr.l.length === 0) _tr.l = null
   }
 }
 
 /** @internal — called from signal.set() when tracing is active */
 export function _notifyTraceListeners(sig: Signal<unknown>, prev: unknown, next: unknown): void {
-  if (!_traceListeners) return
+  if (!_tr.l) return
   const event: SignalUpdateEvent = {
     signal: sig,
     name: sig.label,
@@ -62,12 +65,12 @@ export function _notifyTraceListeners(sig: Signal<unknown>, prev: unknown, next:
     stack: new Error().stack ?? '',
     timestamp: performance.now(),
   }
-  for (const l of _traceListeners) l(event)
+  for (const l of _tr.l) l(event)
 }
 
 /** Check if any trace listeners are active (fast path for signal.set) */
 export function isTracing(): boolean {
-  return _traceListeners !== null
+  return _tr.l !== null
 }
 
 // ─── why() — trace which signal caused a re-run ──────────────────────────────

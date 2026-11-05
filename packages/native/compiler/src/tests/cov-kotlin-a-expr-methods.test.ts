@@ -43,8 +43,8 @@ describe('Kotlin expr: array/String method lowerings', () => {
   it('charAt/charCodeAt: 1-char String vs the UTF-16 code unit as a Double', () => {
     const out = kt(`  const a = computed(() => name().charAt(1))
   const b = computed(() => name().charCodeAt(0))`).code
-    // charAt → Char.toString() (JS returns a STRING, Kotlin's `[]` a Char)
-    expect(out).toContain('name[1].toString()')
+    // charAt → Char.toString() (JS returns a STRING, Kotlin's `[]` a Char), "" out of range as on the web
+    expect(out).toContain('(name.getOrNull(1)?.toString() ?: "")')
     // charCodeAt tolerates a Double-typed index and yields a Double
     expect(out).toContain('name[(0L).toInt()].code.toDouble()')
   })
