@@ -229,6 +229,15 @@ if (__url.searchParams.get('profileClear') === '1') {
     setupClearProfile(makeContainer('bench-fixture'))
     setStatus('profileClear ready')
   })()
+} else if (__url.searchParams.get('profileSwap') === '1') {
+  // CPU-profiling + interleaved wall-clock target for bench-swapprofile.ts —
+  // Pyreon, Vue Vapor RC and Vanilla swap arms side by side, each in its own
+  // `bench-fixture` host (the row board's fixed table layout).
+  void (async () => {
+    const { setupSwapProfile } = await import('./impl/profile-swap')
+    await setupSwapProfile(() => makeContainer('bench-fixture'))
+    setStatus('profileSwap ready')
+  })()
 } else if (__url.searchParams.get('profileCreate') === '1') {
   // CPU-profiling target for bench-createprofile.ts — mounts the Pyreon bench
   // markup AND a hand-written Vanilla builder side by side, exposing

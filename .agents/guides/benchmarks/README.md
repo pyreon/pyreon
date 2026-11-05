@@ -195,3 +195,4 @@ Each of these produced a wrong published figure at some point.
 | Topic | File |
 | --- | --- |
 | Core micro-benchmarks: router, reactivity, head, store, state-tree, machine, i18n, permissions, form, query, http, SSR harness, `NODE_ENV` cost, declined micro-optimizations | `.agents/guides/benchmarks/references/core-micro-benchmarks.md` |
+| Row list: swap diagnosis (layout-bound, identical DOM ops, the Vapor lead is per-page-load variance) and the create-1k residual after direct insertion | `.agents/guides/benchmarks/references/row-list-swap-and-create-residual.md` |
