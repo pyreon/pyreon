@@ -1,4 +1,5 @@
 import {
+  coverageErrorAnnotation,
   coverageResultStatus,
   coverageRunSummary,
   findShortfalls,
@@ -54,5 +55,43 @@ describe('coverage reports distinguish targets from ratchet floors', () => {
   it('cannot claim success after a measurement or configuration failure', () => {
     expect(coverageRunSummary([clean], true)).toContain('failed')
     expect(coverageRunSummary([clean], true)).not.toContain('All packages meet')
+  })
+})
+
+describe('coverageErrorAnnotation names the metric that actually failed', () => {
+  const base = { package: '@pyreon/native-compiler', statements: 96.2, threshold: 96 }
+  const declared = { statements: 96, branches: 94, functions: 95, lines: 97 }
+
+  it('names BRANCHES when only branches regressed below its floor', () => {
+    const r = {
+      ...base,
+      pass: true,
+      shortfalls: findShortfalls({ statements: 96.2, branches: 92.73, functions: 96, lines: 97 }, declared, undefined),
+    }
+    const line = coverageErrorAnnotation(r)
+    expect(line).toBe('@pyreon/native-compiler coverage below threshold: branches 92.73% (floor 94%)')
+    expect(line).not.toContain('statements')
+  })
+
+  it('names BOTH when statements and branches fail (the 2026-11 main shape)', () => {
+    const r = {
+      ...base,
+      statements: 95.55,
+      pass: false,
+      shortfalls: findShortfalls({ statements: 95.55, branches: 92.73, functions: 96.29, lines: 96.94 }, declared, undefined),
+    }
+    expect(coverageErrorAnnotation(r)).toBe(
+      '@pyreon/native-compiler coverage below threshold: statements 95.55% (need 96%); branches 92.73% (floor 94%)',
+    )
+  })
+
+  it('returns null for a passing package, including a within-tolerance warning', () => {
+    const r = {
+      ...base,
+      pass: true,
+      shortfalls: findShortfalls({ statements: 96.2, branches: 94, functions: 95, lines: 96.94 }, declared, undefined),
+    }
+    expect(r.shortfalls).toHaveLength(1)
+    expect(coverageErrorAnnotation(r)).toBeNull()
   })
 })

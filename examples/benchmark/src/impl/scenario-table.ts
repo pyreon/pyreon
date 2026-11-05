@@ -267,3 +267,46 @@ export async function runTable(frameworkName: string, container: HTMLElement): P
   clear()
   return suite
 }
+
+/**
+ * CPU-profiling / split target for `bench-tableprofile.ts` (`?profileTable=1`).
+ * Never runs the timed suite. Exposes named `__mountOnly` / `__teardownOnly`
+ * frames so a CDP profile can be attributed to the mount subtree only, and a
+ * `split()` sample that times the mount's JS and the forced layout separately
+ * (the board's `bench()` times them together).
+ */
+export function setupTableProfile(): void {
+  const host = document.createElement('div')
+  document.body.appendChild(host)
+  const base = makeTableData(N)
+  let target: TableTarget | null = null
+  let teardown: (() => void) | null = null
+  function __mountOnly(): void {
+    teardown = target!.mount(host)
+  }
+  function __teardownOnly(): void {
+    teardown?.()
+    teardown = null
+    host.innerHTML = ''
+  }
+  ;(globalThis as { __tableProf?: unknown }).__tableProf = {
+    prepare(fw: string): void {
+      target = fw === 'Pyreon' ? pyreonTarget(base) : reactTarget(base)
+    },
+    mount: __mountOnly,
+    teardown: __teardownOnly,
+    cells: (): number => host.querySelectorAll('td').length,
+    /** One mount: JS (until `mount()` returns) and layout (the forced flush) apart. */
+    split(): { js: number; layout: number } {
+      const t0 = performance.now()
+      __mountOnly()
+      const t1 = performance.now()
+      host.getBoundingClientRect()
+      void document.body.offsetHeight
+      const t2 = performance.now()
+      if (host.querySelectorAll('td').length !== N * TABLE_COLS) throw new Error('[table-profile] wrong cell count')
+      __teardownOnly()
+      return { js: t1 - t0, layout: t2 - t1 }
+    },
+  }
+}

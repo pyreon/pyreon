@@ -1096,8 +1096,33 @@ export function mountFor<T>(
     cleanupCount++
   }
 
+  /*
+   * DIRECT INSERTION (fresh render, replace-all, contiguous insert). Rows are
+   * mounted straight into the live parent instead of being staged in a
+   * DocumentFragment that is then moved in with one insertBefore. Staging
+   * parents every row TWICE — once into the fragment, once out of it — and the
+   * second move is not free: Chromium's fragment insertion re-walks and
+   * re-parents each child. Measured in real Chromium on the bench row (same
+   * build, arms interleaved per sample, CI95 disjoint): 1,000 rows fresh JS
+   * 0.99 → 0.905 ms, replace 1.56 → 1.43 ms; 10,000 rows fresh 10.47 → 9.50
+   * ms, replace 17.57 → 16.20 ms. Forced layout afterwards is unchanged.
+   *
+   * Trade-offs, measured or reasoned:
+   *  - A MutationObserver on an ancestor now receives one record per row
+   *    instead of one record holding every row. With a subtree childList
+   *    observer on <body> the JS half still came out ahead (1k fresh 1.005 →
+   *    0.975 ms) and the totals were CI-tied, so this is not a regression.
+   *  - Rows are CONNECTED while the next row is built (they used to be
+   *    connected all at once at the end). A row `ref` / custom-element
+   *    `connectedCallback` therefore sees a connected node — strictly more
+   *    useful — and a ref that forces layout pays per row (it used to read
+   *    zero-sized boxes, which was wrong).
+   *  - The owns-parent replace clears with one in-place
+   *    `replaceChildren(start, tail)` first, keeping the parent's identity.
+   *  - When the For itself is still inside an outer row's not-yet-attached
+   *    subtree, `liveParent` is that subtree and the two shapes cost the same.
+   */
   const handleFreshRender = (items: T[], n: number, liveParent: Node) => {
-    const frag = document.createDocumentFragment()
     const keys = new Array<string | number>(n)
     // Duplicate detection reuses `cache` instead of a second `Set`. `cache` is
     // provably EMPTY here (this path only runs when `currentKeys.length === 0`,
@@ -1106,14 +1131,16 @@ export function mountFor<T>(
     // is exactly the membership `seen.has(key)` tested. Saves an n-entry Set
     // allocation plus one hash op per row on the bulk-create path; duplicates
     // are still skipped, so DOM-corruption safety is unchanged.
+    //
+    // Rows are mounted STRAIGHT into the live parent before `tailMarker` — see
+    // DIRECT INSERTION above.
     for (let i = 0; i < n; i++) {
       const item = items[i] as T
       const key = getKey(item)
       if (warnForKeyIn(cache, key)) continue // skip duplicate
       keys[i] = key
-      renderInto(item, key, i, frag, null)
+      renderInto(item, key, i, liveParent, tailMarker)
     }
-    liveParent.insertBefore(frag, tailMarker)
     currentKeys = keys
   }
 
@@ -1155,30 +1182,23 @@ export function mountFor<T>(
     const ownsParent =
       liveParent.firstChild === startMarker && liveParent.lastChild === tailMarker
 
-    const frag = document.createDocumentFragment()
-    for (let i = 0; i < n; i++) {
-      renderInto(items[i] as T, newKeys[i] as string | number, i, frag, null)
-    }
-
+    // Direct insertion (see handleFreshRender): clear the old block first, then
+    // mount every new row straight into the live parent. In the owns-parent
+    // shape the clear is ONE native in-place `replaceChildren(start, tail)` —
+    // the parent element keeps its identity (and with it delegated `__ev_*`
+    // handlers, refs, observers and listeners); see handleFastClear for why a
+    // cloneNode + replaceChild parent swap is NOT used. Measured against the
+    // previous `replaceChildren(start, frag, tail)` shape, real Chromium,
+    // 1,000 rows: replace JS 1.56 → 1.43 ms.
     if (ownsParent) {
-      // ONE native remove-all + re-insert, IN PLACE. This deliberately replaced
-      // a cloneNode(false) + replaceChild parent SWAP that was ~20µs/1000-rows
-      // FASTER on-CPU (Chromium 2026-08-17, interleaved A/B profiles: swap
-      // ~60µs vs replaceChildren ~80µs total clear — the swap never unlinks the
-      // children individually) but DISCARDED the parent element's identity,
-      // silently dropping the parent's expando-delegated handlers (`__ev_*`),
-      // refs, observers, and direct listeners (cloneNode copies none of those)
-      // — e.g. `<ul onClick={…}><For …/></ul>` lost its click handler on the
-      // first clear/full-replace. Correctness > performance: the identity-
-      // preserving primitive wins, and the fair-bench median is unmoved (the
-      // delta sits inside the 100µs timer quantum). Locked by
-      // for-clear-replace-fast.test.tsx (parent-identity + counter specs).
-      ;(liveParent as Element).replaceChildren(startMarker, frag, tailMarker)
+      ;(liveParent as Element).replaceChildren(startMarker, tailMarker)
       if (process.env.NODE_ENV !== 'production')
         _countSink.__pyreon_count__?.('runtime.mountFor.replaceFast')
     } else {
       clearBetween(startMarker, tailMarker)
-      liveParent.insertBefore(frag, tailMarker)
+    }
+    for (let i = 0; i < n; i++) {
+      renderInto(items[i] as T, newKeys[i] as string | number, i, liveParent, tailMarker)
     }
     currentKeys = newKeys
   }
@@ -1276,8 +1296,8 @@ export function mountFor<T>(
    * can be stale: `p + s === oldLen` proves every old key survives), AND the
    * O(n) LIS walk — replacing ~4n Map/Set hash ops with an O(oldLen) `===`
    * prefix/suffix scan + the O(added) mount that is genuinely required work.
-   * The run mounts into a DocumentFragment and lands with ONE live
-   * `insertBefore` (the fresh-render pattern) instead of one per row.
+   * The run mounts straight into the live parent before the suffix's first
+   * anchor (see DIRECT INSERTION).
    *
    * SAFETY: only fires when `n > oldLen` (a net growth) AND the prefix+suffix
    * cover every OLD key (`p + s === oldLen`). That gate guarantees (a) nothing
@@ -1332,15 +1352,12 @@ export function mountFor<T>(
       before = suffixEntry.anchor
     }
 
-    // Mount the run `newKeys[p .. runEnd)` into a fragment — one live
-    // insertBefore for the whole run.
-    const frag = document.createDocumentFragment()
+    // Mount the run `newKeys[p .. runEnd)` in place, before the suffix.
     for (let i = p; i < runEnd; i++) {
       const key = newKeys[i] as string | number
       if (cache.has(key)) continue // duplicate — first wins, like mountNewForEntries
-      renderInto(items[i] as T, key, i, frag, null)
+      renderInto(items[i] as T, key, i, liveParent, before)
     }
-    liveParent.insertBefore(frag, before)
 
     // Refresh the shifted suffix's pos to its new indices `[runEnd .. n)`.
     for (let i = runEnd; i < n; i++) {

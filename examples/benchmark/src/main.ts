@@ -229,6 +229,15 @@ if (__url.searchParams.get('profileClear') === '1') {
     setupClearProfile(makeContainer('bench-fixture'))
     setStatus('profileClear ready')
   })()
+} else if (__url.searchParams.get('profileSwap') === '1') {
+  // CPU-profiling + interleaved wall-clock target for bench-swapprofile.ts —
+  // Pyreon, Vue Vapor RC and Vanilla swap arms side by side, each in its own
+  // `bench-fixture` host (the row board's fixed table layout).
+  void (async () => {
+    const { setupSwapProfile } = await import('./impl/profile-swap')
+    await setupSwapProfile(() => makeContainer('bench-fixture'))
+    setStatus('profileSwap ready')
+  })()
 } else if (__url.searchParams.get('profileCreate') === '1') {
   // CPU-profiling target for bench-createprofile.ts — mounts the Pyreon bench
   // markup AND a hand-written Vanilla builder side by side, exposing
@@ -274,6 +283,15 @@ if (__url.searchParams.get('profileClear') === '1') {
     const { setupChartsLibsProfile } = await import('./impl/scenario-charts-libs')
     setupChartsLibsProfile()
     setStatus('profileChartsLibs ready')
+  })()
+} else if (__url.searchParams.get('profileTable') === '1') {
+  // CPU-profiling / JS-vs-layout split target for bench-tableprofile.ts —
+  // exposes named __mountOnly / __teardownOnly drivers for the table
+  // scenario's two arms; never runs the timed suite.
+  void (async () => {
+    const { setupTableProfile } = await import('./impl/scenario-table')
+    setupTableProfile()
+    setStatus('profileTable ready')
   })()
 } else if (__url.searchParams.get('profileTree') === '1') {
   // CPU-profiling target for bench-treeladder.ts — the deep-tree mount
