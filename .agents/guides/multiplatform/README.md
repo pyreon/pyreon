@@ -29,7 +29,7 @@ The Pyreon Multi-Target Compiler (`packages/native/compiler`) emits SwiftUI and 
 
 ## Four-layer shared-code model
 
-- **L0** `signal()` / `computed()` / `effect()` run identically (map to `@State` / `mutableStateOf`).
+- **L0** `signal()` / `computed()` / `effect()` run identically (map to `@State` / `mutableStateOf`). A component-body `effect()` lowers to a component function run `.onAppear` + `.onChange(of:)` (Swift) / in a keyed `DisposableEffect` (Compose); its re-run triggers are the body's reactive reads, collected statically by `effect-deps.ts` (one set for both targets, a superset of the web's last-run set).
 - **L1** custom pure-logic hooks are fully shared.
 - **L2** service-backed hooks (`useStorage`, `useRouter`, `useFetch`, `usePermissions`, …) lower to native runtime classes.
 - **L3a** `@pyreon/primitives`: one canonical name per concept, `onPress` everywhere, tokens-first styling, no responsive props.

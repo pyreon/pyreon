@@ -1,8 +1,8 @@
 // The teardown `onMount` returns runs when the view goes away: Swift `.onDisappear`, Kotlin `DisposableEffect`'s
 // `onDispose`. It used to be stripped with a warning, so a subscription opened on mount was never closed on native.
 //
-// The one shape that stays a warning: a cleanup that reads a local the mount body declared. On the web the returned
-// closure captures it; native runs mount and unmount as separate hooks, so the value would not be there.
+// A cleanup that reads a local the mount body declared needs the web's closure: separate mount / unmount hooks
+// cannot share the local, so that onMount lowers as an untracked effect (one function that returns the closure).
 
 import { describe, expect, it } from 'vitest'
 import { transform, validateKotlin, validateSwiftWithStubs } from './first-party-plugins'
@@ -52,13 +52,29 @@ describe('onMount cleanup on native', () => {
     expect(v.ok, v.error).toBe(true)
   })
 
-  it('a teardown that reads a mount-body local warns by name and is not emitted', () => {
+  it('a teardown that reads a mount-body local keeps it: the mount runs as an untracked effect', () => {
+    // It used to warn and drop the teardown. One function now returns the closure, so the local stays captured, as
+    // on the web (`native-effect.test.ts` covers the effect lowering itself).
     const src = comp("const label = 'bye'; status.set('mounted'); return () => { status.set(label) }")
     for (const target of ['swift', 'kotlin'] as const) {
       const r = transform(src, { target })
-      expect(r.warnings.join('\n'), target).toContain("onMount's cleanup reads `label`")
-      expect(r.code, target).not.toMatch(/onDisappear|DisposableEffect/)
+      expect(r.warnings, target).toEqual([])
+      expect(r.code, target).toContain('__pyEffect0')
     }
+    expect(transform(src, { target: 'swift' }).code).toContain('.onDisappear { __pyEffect0Cleanup?(); __pyEffect0Cleanup = nil }')
+    expect(transform(src, { target: 'kotlin' }).code).toContain('onDispose { cleanup?.invoke() }')
+  })
+
+  it.runIf(isSwiftcAvailable())('Swift: the captured-local teardown typechecks', () => {
+    const src = comp("const label = 'bye'; status.set('mounted'); return () => { status.set(label) }")
+    const v = validateSwiftWithStubs(transform(src, { target: 'swift' }).code)
+    expect(v.ok, v.error).toBe(true)
+  })
+
+  it.runIf(isKotlincAvailable())('Kotlin: the captured-local teardown compiles', () => {
+    const src = comp("const label = 'bye'; status.set('mounted'); return () => { status.set(label) }")
+    const v = validateKotlin(transform(src, { target: 'kotlin' }).code)
+    expect(v.ok, v.error).toBe(true)
   })
 
   it('a mount with no teardown is unchanged: no .onDisappear, no DisposableEffect', () => {
