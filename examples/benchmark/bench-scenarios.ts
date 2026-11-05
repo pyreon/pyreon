@@ -26,8 +26,13 @@
  *    so no cross-suite heap or JIT bias;
  *  - `--repeat N` pools raw samples across N passes, with the framework order
  *    reshuffled per pass;
- *  - median + 95% bootstrap CI, and a `🤝` marker whenever a framework's CI
- *    overlaps the leader's — an overlap is a TIE, not a loss;
+ *  - median + 95% CLUSTER-bootstrap CI (resample the page-loads, then the
+ *    samples within each — one page's samples share its JIT/heap state, so
+ *    pooling them as independent draws made the CI far too narrow);
+ *  - every ranked PYREON arm is judged against the best ranked NON-Pyreon arm
+ *    (another Pyreon variant leading must not turn a CI-disjoint loss or win
+ *    against the field into a "tie"); other arms against the overall leader.
+ *    A `🤝` marks a CI overlap — a TIE, not a loss;
  *  - per-iteration verification in-page, asserting the EFFECT the op claims:
  *    dbmon reads back cell text AND threshold class on three rows; the tree
  *    checks all 1,024 leaves; `effects` reads back the SUBSCRIPTIONS' OWN
@@ -46,6 +51,7 @@
 import { execSync, spawn } from 'node:child_process'
 import { readFileSync, writeFileSync } from 'node:fs'
 import { chromium } from 'playwright'
+import { clusterBootstrapCI95, medianOf as median } from './cluster-bootstrap'
 import { LoadRecorder, parseWaitQuiet, waitForQuietMachine } from './machine-load'
 
 const argv = process.argv
@@ -67,7 +73,8 @@ const PORT = 4181
  *
  *  - `--pass-offset K` shifts the per-pass order shuffle, so N separate
  *    `--repeat 1` invocations still see N DIFFERENT framework orders;
- *  - `--raw-out FILE` writes the pooled raw samples + every load stamp as JSON;
+ *  - `--raw-out FILE` writes the raw samples (one cluster per page-load) + every
+ *    load stamp as JSON;
  *  - `--pool A.json,B.json,…` skips build and measurement entirely and prints
  *    the report over the union of those files' samples (each file's load
  *    stamps are printed first, so a contaminated pass is visible).
@@ -240,24 +247,24 @@ interface SuiteResult {
   results: { name: string; median: number; samples: number[] }[]
 }
 
-function median(xs: number[]): number {
-  const s = [...xs].sort((a, b) => a - b)
-  if (s.length === 0) return 0
-  return s.length % 2 ? (s[s.length >> 1] as number) : ((s[s.length / 2 - 1] as number) + (s[s.length / 2] as number)) / 2
+/** Ranked arms that are Pyreon itself — never each other's competitor. */
+function isPyreonArm(fw: string): boolean {
+  return fw === 'Pyreon' || fw.startsWith('Pyreon ')
 }
 
-function ci95(xs: number[]): [number, number] {
-  // Percentile bootstrap on the median, 1000 resamples, deterministic LCG.
-  let seed = 42
-  const rnd = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 0xffffffff)
-  const meds: number[] = []
-  for (let b = 0; b < 1000; b++) {
-    const re: number[] = []
-    for (let i = 0; i < xs.length; i++) re.push(xs[Math.floor(rnd() * xs.length)] as number)
-    meds.push(median(re))
-  }
-  meds.sort((a, b) => a - b)
-  return [meds[Math.floor(0.025 * meds.length)] as number, meds[Math.floor(0.975 * meds.length)] as number]
+function overlaps(a: [number, number], b: [number, number]): boolean {
+  return a[0] <= b[1] && b[0] <= a[1]
+}
+
+/** Verdict of one Pyreon arm against the best ranked non-Pyreon arm. */
+function pyreonVerdict(
+  r: { med: number; ci: [number, number] },
+  rival: { fw: string; med: number; ci: [number, number] },
+): string {
+  if (overlaps(r.ci, rival.ci)) return `🤝 tie vs ${rival.fw}`
+  return r.med < rival.med
+    ? `🥇 ${(rival.med / r.med).toFixed(2)}× faster than ${rival.fw}`
+    : `${(r.med / rival.med).toFixed(2)}× slower than ${rival.fw}`
 }
 
 /**
@@ -354,18 +361,29 @@ if (!POOL_FILES && WAIT_QUIET !== null) await waitForQuietMachine('bench-scenari
 if (!POOL_FILES) stamp('load before measuring')
 
 try {
-  // key: `${scenarioId}\u0000${opName}\u0000${framework}` → pooled samples
-  const pooled = new Map<string, number[]>()
+  // key: `${scenarioId}\u0000${opName}\u0000${framework}` → one sample array
+  // per page-load (cluster), for the cluster bootstrap.
+  const pooled = new Map<string, number[][]>()
 
   if (POOL_FILES) {
     for (const f of POOL_FILES) {
       const raw = JSON.parse(readFileSync(f, 'utf8')) as {
         stamps: { label: string; load1: number }[]
-        pooled: [string, number[]][]
+        /** Per-page clusters (current format). */
+        clusters?: [string, number[][]][]
+        /** Legacy flat pool — one page-load per key per file (`--repeat 1` passes). */
+        pooled?: [string, number[]][]
       }
       const loads = raw.stamps.map((st) => `${st.label}=${st.load1.toFixed(2)}`).join(' · ')
       console.log(`[bench-scenarios] pooling ${f}\n    load stamps: ${loads}`)
-      for (const [k, v] of raw.pooled) pooled.set(k, [...(pooled.get(k) ?? []), ...v])
+      if (raw.clusters) {
+        for (const [k, v] of raw.clusters) pooled.set(k, [...(pooled.get(k) ?? []), ...v])
+      } else {
+        if ((raw.pooled ?? []).length > 0) {
+          console.log('    (legacy flat file: treated as ONE page-load per arm — only correct for a --repeat 1 pass)')
+        }
+        for (const [k, v] of raw.pooled ?? []) pooled.set(k, [...(pooled.get(k) ?? []), v])
+      }
     }
   }
 
@@ -413,7 +431,7 @@ try {
         for (const s of suites) {
           for (const r of s.results) {
             const key = `${scenario.id}\u0000${r.name}\u0000${s.framework}`
-            pooled.set(key, [...(pooled.get(key) ?? []), ...r.samples])
+            pooled.set(key, [...(pooled.get(key) ?? []), [...r.samples]])
           }
         }
         console.log('ok')
@@ -425,7 +443,7 @@ try {
 
   if (!POOL_FILES) stamp('load after measuring')
   if (RAW_OUT) {
-    writeFileSync(RAW_OUT, JSON.stringify({ stamps: load.report().stamps, machine: load.report().machine, pooled: [...pooled] }))
+    writeFileSync(RAW_OUT, JSON.stringify({ stamps: load.report().stamps, machine: load.report().machine, clusters: [...pooled] }))
     console.log(`[bench-scenarios] raw samples + load stamps → ${RAW_OUT}`)
   }
 
@@ -445,12 +463,14 @@ try {
       console.log('  ' + '─'.repeat(74))
       const rows = scenario.frameworks
         .map((fw) => {
-          const samples = pooled.get(`${scenario.id}\u0000${op}\u0000${fw}`) ?? []
+          const clusters = pooled.get(`${scenario.id}\u0000${op}\u0000${fw}`) ?? []
+          const samples = clusters.flat()
           return {
             fw,
             med: median(samples),
-            ci: ci95(samples),
+            ci: clusterBootstrapCI95(clusters),
             n: samples.length,
+            pages: clusters.length,
             cv: cv(samples),
           }
         })
@@ -462,9 +482,17 @@ try {
       // eager-props arm is a diagnostic; calling either "the winner" would
       // misreport the framework race.
       const bestFw = rows.find((r) => !NON_RANKING.has(r.fw)) ?? best
+      // A Pyreon arm is judged against the best NON-Pyreon ranked arm. Against
+      // the overall leader, a Pyreon variant leading (e.g. the columns arm on
+      // charts-libs mount 1M) printed `🤝 tie` for Pyreon-rows vs Chart.js
+      // although their CIs were disjoint: the overlap it found was with its own
+      // sibling, not with the field.
+      const bestRival = rows.find((r) => !NON_RANKING.has(r.fw) && !isPyreonArm(r.fw))
+      const minPages = Math.min(...rows.map((r) => r.pages))
+      if (minPages < 3) {
+        console.log(`  ⚠ ${minPages} page-load(s) for some arm: CI95 excludes page-to-page variance — verdicts provisional`)
+      }
       for (const r of rows) {
-        const tiedWithLeader =
-          r !== bestFw && r.ci[0] <= bestFw.ci[1] && bestFw.ci[0] <= r.ci[1]
         const marker =
           r.fw === 'Vanilla JS'
             ? '(floor)'
@@ -472,13 +500,15 @@ try {
               ? `(diagnostic — ${(r.med / bestFw.med).toFixed(2)}× vs SolidJS)`
               : NON_RANKING.has(r.fw)
                 ? `(diagnostic, unranked — ${(r.med / bestFw.med).toFixed(2)}× the leader)`
-                : r === bestFw
-                ? '🥇'
-                : tiedWithLeader
-                  ? '🤝 tie'
-                  : `${(r.med / bestFw.med).toFixed(2)}× slower`
+                : isPyreonArm(r.fw) && bestRival
+                  ? pyreonVerdict(r, bestRival)
+                  : r === bestFw
+                    ? '🥇'
+                    : overlaps(r.ci, bestFw.ci)
+                      ? '🤝 tie'
+                      : `${(r.med / bestFw.med).toFixed(2)}× slower`
         console.log(
-          `  ${r.fw.padEnd(28)} ${fmt(r.med).padStart(9)}  [${fmt(r.ci[0])}–${fmt(r.ci[1])}]  n=${String(r.n).padStart(3)}  CV=${r.cv.toFixed(1).padStart(4)}%  ${marker}`,
+          `  ${r.fw.padEnd(28)} ${fmt(r.med).padStart(9)}  [${fmt(r.ci[0])}–${fmt(r.ci[1])}]  n=${String(r.n).padStart(3)} (${r.pages}pg)  CV=${r.cv.toFixed(1).padStart(4)}%  ${marker}`,
         )
       }
     }

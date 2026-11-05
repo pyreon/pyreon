@@ -93,7 +93,9 @@ Keep this list honest and current; it is `BENCHMARKS.md` §12:
 ### DOM suites (`examples/benchmark`)
 
 - One Pyreon entry: the idiomatic JSX users ship (`src/impl/pyreon.tsx`). No hand-tuned "compiled" tier — the compiler already emits `_tpl()` + fine-grained bindings.
-- Per-framework page isolation (`page.goto('?framework=X')`), forced GC between iterations, adaptive warmup, 20 timed runs, median + 95% bootstrap CI + CV, `🤝` on CI overlap.
+- Per-framework page isolation (`page.goto('?framework=X')`), forced GC between iterations, adaptive warmup, 20 timed runs per page-load, median + 95% CI + CV, `🤝` on CI overlap.
+- The CI is a **cluster bootstrap** (`examples/benchmark/cluster-bootstrap.ts`): resample the page-loads (or processes) with replacement, then the samples within each. Samples from one page share its JIT and heap state, and page-to-page spread is large (per-page `swap rows` medians 620–860 µs for every arm, Vanilla included), so bootstrapping 5 × 20 pooled samples as 100 independent draws gave intervals several times too narrow. `bench-fair`, `bench-scenarios` and `table-bench` use it. With one page-load per arm (`--repeat 1`) the CI cannot contain page-load variance, and the harness flags the verdicts as provisional.
+- In `bench-scenarios`, each ranked Pyreon arm is judged against the best ranked **non-Pyreon** arm, never against a sibling Pyreon variant that happens to lead.
 - Production `vite build`, real published competitor deps, seeded RNG, DOM verification every iteration (gates read the table back, not just a row count).
 - Tightest commit per framework (`flushSync` / microtask / synchronous — never an `rAF` wait inside the timed window). Per-run resets on every op. Randomized, per-pass-reshuffled order.
 - Cross-origin isolated pages (`examples/benchmark/vite.config.ts` sets COOP/COEP) give a 5 µs `performance.now()` quantum instead of Chromium's 100 µs clamp. `bench-fair` prints `crossOriginIsolated=` and the quantum; confirm it before trusting sub-millisecond rows.
@@ -138,6 +140,7 @@ Each of these produced a wrong published figure at some point.
 - **Engine-internal caches in heap metrics.** V8's `smi_string_cache` grows when an arm stringifies many distinct integers in JS (`String(row.id)`) and is charged to whichever arm did it. Every arm renders the raw `row.id`. Bucket a heap snapshot by constructor and check GC-root-held entries (`bench-heapdiff.ts`) before attributing a heap delta to a framework. Node saturates this cache at startup, so only a fresh browser page shows it.
 - **Competitor handicaps.** A non-idiomatic competitor shape (Octane's `{String(row.id)}` disabling its `forBlock` fast path, an `rAF` idle wait inside React's window, a Solid arm skipping getter props) silently inflates Pyreon's lead.
 - **Dependency bumps move the board.** A competitor version bump can flip a verdict (Octane 0.2.x/0.4.x changed several ops). Attribute a change to Pyreon only after splitting "Pyreon moved" from "competitor moved".
+- **Pooled bootstrap overstates certainty.** CIs published before the cluster bootstrap (2026-11-05) resampled pooled samples as independent and are too narrow; an "outright" from that era on a close op needs a re-run before it is quoted again.
 - **Noisy load hides gaps.** A wide CI at high load can make a real gap look like a tie. Check CI width before publishing a tie; re-run on a quiet machine, and publish a verdict on a close op only after two runs agree.
 
 ## Standing findings not in `BENCHMARKS.md`
