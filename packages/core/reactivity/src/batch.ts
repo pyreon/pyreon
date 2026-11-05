@@ -208,6 +208,26 @@ export function closeInlineBatch(): void {
 }
 
 /**
+ * Empty a drain queue, skipping the store when it is already empty.
+ *
+ * `arr.length = 0` is a slow store on BOTH engines even when it changes
+ * nothing: measured ~16ns on an already-empty array under V8 (node 26) and JSC
+ * (bun 1.4), M3 Max. A drain truncates up to five queues per write, nearly all
+ * of them already empty, and those stores were the largest self-time lines of
+ * `drainQueuesLocked` in a diamond-into-effect profile.
+ *
+ * `runEffectPass` additionally empties a ONE-entry pass with `pop()`: V8's
+ * `length = 0` on a non-empty array costs ~25ns and drops the backing store, so
+ * the next drain's first `push` re-allocates. Popping in the tier-1 loop as well
+ * was measured and rejected: it regressed a 50-deep chain read by an effect by
+ * ~11% on V8 (an inlining-budget effect on `drainQueuesLocked`), so only the
+ * effect pass pops.
+ */
+function clearQueue(q: unknown[]): void {
+  if (q.length !== 0) q.length = 0
+}
+
+/**
  * Run ONE effect pass over `curEffects`, then promote `nextEffects`.
  * `curEffects.length` is re-read each iteration so newly-enqueued (not yet
  * visited) effects run THIS pass — matching JS Set iteration semantics.
@@ -221,7 +241,10 @@ function runEffectPass(): void {
     fn._vg = _b.g // mark visited this pass
     fn()
   }
-  cur.length = 0
+  // A single-effect pass (the dominant shape: one write, one effect) empties
+  // with `pop()`, which keeps the backing store; see `clearQueue`.
+  if (cur.length === 1) cur.pop()
+  else clearQueue(cur)
   // Promote next-pass entries (self-re-fire) into curEffects for the next pass.
   const next = nextEffects
   if (next.length > 0) {
@@ -230,7 +253,7 @@ function runEffectPass(): void {
       f._eq = EQ.Cur
       cur.push(f)
     }
-    next.length = 0
+    clearQueue(next)
   }
 }
 
@@ -276,7 +299,7 @@ function drainQueuesLocked(): void {
         r._rq = 0 // consumed — a genuine post-visit re-dirty re-pushes
         r()
       }
-      recomputeQueue.length = 0
+      clearQueue(recomputeQueue)
 
       // Tier 2 — ONE effect pass; the intrusive flags handle within-pass dedup
       // and cross-pass re-fire routing. Then loop back to tier 1 for anything
@@ -328,11 +351,11 @@ function drainQueuesLocked(): void {
     // Effects catch internally, but raw `subscribe` listeners can throw straight
     // past this.
     for (let i = 0; i < curEffects.length; i++) curEffects[i]!._eq = EQ.Idle
-    curEffects.length = 0
+    clearQueue(curEffects)
     for (let i = 0; i < nextEffects.length; i++) nextEffects[i]!._eq = EQ.Idle
-    nextEffects.length = 0
+    clearQueue(nextEffects)
     for (let i = 0; i < recomputeQueue.length; i++) recomputeQueue[i]!._rq = 0
-    recomputeQueue.length = 0
+    clearQueue(recomputeQueue)
     // Advance past every `_vg` this drain assigned so the NEXT drain's collection
     // window routes every effect to `curEffects`, not `nextEffects` — without
     // this an effect that ran in the previous drain would be misread as "already
