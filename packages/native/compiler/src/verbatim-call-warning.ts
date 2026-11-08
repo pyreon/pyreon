@@ -175,10 +175,6 @@ export function verbatimPyreonTypeWarnings(
  * Kotlin's `require(`) are deliberately absent: their survival is not evidence of anything.
  */
 const PLATFORM_GLOBAL_ADVICE: Readonly<Record<string, string>> = {
-  setTimeout: 'a timer tied to the component\'s lifetime lowers through the hooks package\'s timeout hook (inline callback, literal delay)',
-  setInterval: 'a timer tied to the component\'s lifetime lowers through the hooks package\'s interval hook (inline callback, literal delay)',
-  clearTimeout: 'the hooks package\'s timeout hook lowers and clears itself on unmount',
-  clearInterval: 'the hooks package\'s interval hook lowers and clears itself on unmount',
   requestAnimationFrame: 'animate with `<Transition>` or a primitive\'s animation props',
   cancelAnimationFrame: 'animate with `<Transition>` or a primitive\'s animation props',
   requestIdleCallback: 'do the work in `onMount` or a handler',

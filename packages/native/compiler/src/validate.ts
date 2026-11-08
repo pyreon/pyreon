@@ -384,6 +384,10 @@ const SWIFT_RUNTIME_HELPERS: readonly { readonly name: string; readonly file: st
   // `Intl.NumberFormat` / `Intl.DateTimeFormat` / `toLocale*String` construct these (intl-plugin.ts).
   { name: 'PyreonNumberFormat', file: 'PyreonIntl.swift' },
   { name: 'PyreonDateTimeFormat', file: 'PyreonIntl.swift' },
+  // `setTimeout` / `setInterval` / `clearTimeout` / `clearInterval` lower to these.
+  { name: 'PyreonTimers.setTimeout', file: 'PyreonTimers.swift' },
+  { name: 'PyreonTimers.setInterval', file: 'PyreonTimers.swift' },
+  { name: 'PyreonTimers.clear', file: 'PyreonTimers.swift' },
   // `JSON.parse(s)` lowers to `PyreonJSON.parse(T.self, s)`.
   { name: 'PyreonJSON.parse', file: 'PyreonJSON.swift' },
   // An emitted schema struct throws / returns these, and its callers convert typed input with `pyreonSchemaInput`.
