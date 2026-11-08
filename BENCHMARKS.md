@@ -338,6 +338,8 @@ Run 2 (bundled vs Preact): create 32 vs 6 · diamond 5,174 vs 5,575 · effect 1,
 
 The average row prints no CI, so 50 and 200 routes are reported as ties with radix3, and 10 routes as a loss to Hono. Per row at 50/200 routes Pyreon wins miss → catch-all (26 vs find-my-way 57–59 ns) and trails on static (16 vs radix3 12–13 ns), nested static (21 vs radix3 10 ns), dynamic 1 param (78–79 vs find-my-way 61–62 ns), dynamic 2 params (133–134 vs radix3 102–103 ns), nested dynamic (135–142 vs radix3 100–105 ns) and splat (109 vs find-my-way 78–79 ns). Ahead of find-my-way on average (1.13–1.14×), Hono at 50/200 routes (3.3×), Next.js path-to-regexp (2.8–10.6×), Vue Router (7.7–19.0×), TanStack (7.7–8.3×) and React Router (885–3,763×).
 
+> **Harness changed after these figures (PR #PRNUM).** Hono's timed arm now also builds the params object from `router.match`'s raw captures, which every other arm already does inside its timed call; before, that construction ran only in the untimed correctness gate. The router figures above predate the change and will move (Hono's rows up) on the next quiet-machine run.
+
 **Head** vs Unhead — *overnight run, `d47fa5a2f`*: serialize **1.50× / 1.27× / 1.22×** faster (5 / 20 / 50 tags).
 
 **Styler** vs Emotion / goober / styled-components — *overnight run, `d47fa5a2f`*: cold insert 3.38× / 3.59×; warm dedup 6.34× / 3.81×; dynamic resolve 5.26× / 2.17×; SSR collect 3.56× / 3.99× / 2.30× (styled-components includes a React render pass). Pyreon fastest on all four.
@@ -374,6 +376,8 @@ The `run` column says which run each row comes from. Final-pass rows are one run
 | rx | computed / Solid / RxJS | final | `pipe` fuses N nodes into 1 (exact count); filter, map and sum level with or ahead of a hand computed | **no verdict:** `pipe` of three stages 1.03× and `sortBy` 1.03× a hand computed, `groupBy` 1.02×; the harness prints medians with no CI |
 | dnd ⚠ happy-dom | raw pragmatic-drag-and-drop | overnight | row-enter fan-out 20× | mount/unmount 🤝; monitor +82 ns; dispatch +5 ns |
 | validation (wrapper tax) | raw zod / valibot / arktype | overnight | — | tax −24 to +436 ns over raw (largest: arktype invalid) |
+
+> **Harness changed after the store and http figures above (PR #PRNUM).** store: the `setup` op no longer builds Pyreon's store id string (`` `bench-${n}` ``) inside the timed loop; ids are pre-built untimed, so the arms do the same work. http: a new `GET → decoded JSON (library defaults)` row creates every client with no timeout or retry overrides, so Pyreon's and ky's default timeout cost is visible (every other row disables it). The store and http figures here predate the change; the next quiet-machine run replaces them.
 
 ⚠ happy-dom rows time a JavaScript DOM implementation, not a browser: counts and relative work are meaningful, absolute times are not. The table bench prints `table-core@9.0.0`; 9.3.1 is installed and measured (§14).
 
