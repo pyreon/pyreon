@@ -33,6 +33,7 @@ struct PyreonBluetoothTests {
             // so its suite runs inside this guard rather than beside the
             // ungated ones below.
             PyreonWakeLockTests.runAll()
+            PyreonAppStateTests.runAll()
             PyreonDeviceInfoTests.runAll()
             PyreonSafeAreaTests.runAll()
             PyreonAudioPlayerTests.runAll()
