@@ -8,15 +8,15 @@
 # reverse dependent), the native-compiler suite and the Swift/Kotlin lanes. So
 # this hook only catches the cheap, likely failures before they cost a CI
 # round trip:
-#   1. validate-fast (oxlint + the doc/dist/budget/manifest gates)
-#   2. lint:pyreon
-#   3. typecheck of the DIRECTLY changed workspaces — on a root-file change
+#   1. validate-fast (oxlint, lint:pyreon and the doc/dist/budget/manifest
+#      gates; lint:pyreon is one of its gates, so the hook does not run it twice)
+#   2. typecheck of the DIRECTLY changed workspaces — on a root-file change
 #      (bun.lock, root tsconfig/package.json/vitest setup) across the workspace
-#   4. tests of the DIRECTLY changed workspaces only (never the closure, never
+#   3. tests of the DIRECTLY changed workspaces only (never the closure, never
 #      the whole workspace). Native-toolchain packages (packages/native/*) run
 #      only when they themselves changed: vitest suites with --maxWorkers=4,
 #      KOTLIN_HOME detected from the kotlinc on PATH.
-# Steps 3 and 4 skip any package whose inputs are byte-identical to a recorded
+# Steps 2 and 3 skip any package whose inputs are byte-identical to a recorded
 # PASS (scripts/pre-push-plan.ts: own tree + @pyreon deps + lockfile/root
 # files), so a re-push, rebase or merge from main re-runs only what changed.
 # The plan prints what it skipped and why.
@@ -206,7 +206,7 @@ run_with_timeout() {
 # historically missed. Runtime is ~2-5s warm and idle, but scales hard with
 # machine load (measured 148s / 211s / 496s at load 20 / 333 / 443) — hence
 # VF_TIMEOUT_SEC above rather than the shared per-step default.
-echo "[1/4] fast gates (lint + doc/dist/budget/manifest)"
+echo "[1/3] fast gates (lint, lint:pyreon, doc/dist/budget/manifest)"
 run_with_timeout_secs "$VF_TIMEOUT_SEC" "validate-fast" "bun run validate-fast"
 VF_RC=$?
 if [ $VF_RC -eq 124 ]; then
@@ -220,18 +220,7 @@ elif [ $VF_RC -ne 0 ]; then
 fi
 echo
 
-# Pyreon-specific errors are a separate required CI gate. Oxlint in
-# validate-fast cannot detect them (for example missing diagnostic prefixes).
-echo "[2/4] Pyreon lint"
-run_with_timeout "Pyreon lint" "bun run lint:pyreon"
-PYREON_LINT_RC=$?
-if [ "$PYREON_LINT_RC" -ne 0 ]; then
-  echo "[pyreon pre-push] ❌ Pyreon lint failed — fix the findings above and retry."
-  exit 1
-fi
-echo
-
-# ── 3/4. Plan: direct-only selection minus recorded passes ───────────
+# ── 2/3. Plan: direct-only selection minus recorded passes ───────────
 # `pre-push-plan.ts` prints shell assignments (validated workspace names,
 # single-quoted) on stdout and the human-readable plan on stderr. A planner
 # failure FAILS the push rather than silently selecting nothing: an empty
@@ -262,9 +251,9 @@ if [ "$PLAN_ROOT_CHANGED" = "1" ] && [ -z "${PYREON_PRE_PUSH_TIMEOUT_SEC:-}" ]; 
   TYPECHECK_TIMEOUT_SEC=1800
 fi
 
-# ── 3. Typecheck ─────────────────────────────────────────────────────
+# ── 2. Typecheck ─────────────────────────────────────────────────────
 if [ -n "$PLAN_TYPECHECK" ]; then
-  echo "[3/4] typecheck"
+  echo "[2/3] typecheck"
   run_with_timeout_secs "$TYPECHECK_TIMEOUT_SEC" "typecheck" "bun run $PLAN_TYPECHECK typecheck"
   TC_RC=$?
   if [ $TC_RC -eq 124 ]; then
@@ -276,11 +265,11 @@ if [ -n "$PLAN_TYPECHECK" ]; then
   fi
   record_pass typecheck
 else
-  echo "[3/4] typecheck — nothing to run"
+  echo "[2/3] typecheck — nothing to run"
 fi
 echo
 
-# ── 4. Tests ─────────────────────────────────────────────────────────
+# ── 3. Tests ─────────────────────────────────────────────────────────
 # run_tests <step-name> <budget> <bun-run-args>
 # bun's filter errors when no package in the filtered set has a `test`
 # script. The planner already drops those, but keep tolerating the message so
@@ -312,9 +301,9 @@ run_tests() {
 }
 
 if [ -z "$PLAN_TEST$PLAN_NATIVE_VITEST$PLAN_NATIVE_SCRIPT" ]; then
-  echo "[4/4] tests — nothing to run"
+  echo "[3/3] tests — nothing to run"
 else
-  echo "[4/4] tests (directly changed packages)"
+  echo "[3/3] tests (directly changed packages)"
   if [ -n "$PLAN_TEST" ]; then
     run_tests "tests" "$TIMEOUT_SEC" "bun run $PLAN_TEST --sequential test --" || exit 1
     record_pass test

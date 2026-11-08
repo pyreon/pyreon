@@ -21,7 +21,7 @@ The bar is "do it properly, not quickly". When priorities across open work are u
 | Regenerate docs from manifests | `bun run gen-docs && bun docs/scripts/gen-all.ts` |
 | Changeset | `bun changeset` |
 
-Use `bun run test`, never `bun test` (the suites are vitest). Run `bun run validate-fast` before every push. The `.githooks/pre-push` hook is deliberately fast and local: validate-fast, `lint:pyreon`, then typecheck and tests of the DIRECTLY changed packages only, skipping any package whose inputs match a recorded pass. GitHub CI is the full gate: it runs the whole reverse-dependency closure, the native-compiler suite and the Swift/Kotlin lanes as required checks, so nothing merges without them.
+Use `bun run test`, never `bun test` (the suites are vitest). Run `bun run validate-fast` before every push. The `.githooks/pre-push` hook is deliberately fast and local: validate-fast (which includes `lint:pyreon`), then typecheck and tests of the DIRECTLY changed packages only, skipping any package whose inputs match a recorded pass. GitHub CI is the full gate: it runs the whole reverse-dependency closure, the native-compiler suite and the Swift/Kotlin lanes as required checks, so nothing merges without them.
 
 ## Where to read more
 

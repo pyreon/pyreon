@@ -208,10 +208,9 @@ Restack in dependency order, not PR order. Never use a bare `git stash pop` duri
 
 `.githooks/pre-push` (installed via `core.hooksPath` by `bun scripts/install-git-hooks.ts`) runs:
 
-1. `bun run validate-fast` — lint plus the cheap gates listed in `scripts/validate-fast.ts`, run concurrently (`--serial` to isolate one, `--json` for machine output). A few seconds warm, but it slows sharply under machine load, so this step's default timeout is 900s.
-2. `bun run lint:pyreon` — the same required Pyreon-specific lint gate as CI.
-3. Typecheck of the DIRECTLY changed workspaces (`scripts/affected.ts --changed-only` semantics, plus the leaf seeds: `scripts/**`, `e2e/**` and non-`ci.yml` workflows map to `@pyreon/test-utils`, doc inputs to their parser). A root-file change (`scripts/affected.ts:isRootFile`: `bun.lock`, root `package.json`/`tsconfig*.json`/`vitest.*.ts`, `.bun-version`, `ci.yml`, shared actions) typechecks the whole workspace instead, with an 1800s budget.
-4. Tests of the DIRECTLY changed workspaces only — never the closure, and never the whole workspace, even on a root-file change. Packages under `packages/native/` run only when they themselves changed, as their own step with a 7200s budget: vitest suites with `--maxWorkers=4`, and `KOTLIN_HOME` derived from the `kotlinc` on PATH when it is not already set (no hard-coded install path).
+1. `bun run validate-fast` — lint, `lint:pyreon` and the cheap gates listed in `scripts/validate-fast.ts`, run concurrently (`--serial` to isolate one, `--json` for machine output). A few seconds warm, but it slows sharply under machine load, so this step's default timeout is 900s.
+2. Typecheck of the DIRECTLY changed workspaces (`scripts/affected.ts --changed-only` semantics, plus the leaf seeds: `scripts/**`, `e2e/**` and non-`ci.yml` workflows map to `@pyreon/test-utils`, doc inputs to their parser). A root-file change (`scripts/affected.ts:isRootFile`: `bun.lock`, root `package.json`/`tsconfig*.json`/`vitest.*.ts`, `.bun-version`, `ci.yml`, shared actions) typechecks the whole workspace instead, with an 1800s budget.
+3. Tests of the DIRECTLY changed workspaces only — never the closure, and never the whole workspace, even on a root-file change. Packages under `packages/native/` run only when they themselves changed, as their own step with a 7200s budget: vitest suites with `--maxWorkers=4`, and `KOTLIN_HOME` derived from the `kotlinc` on PATH when it is not already set (no hard-coded install path).
 
 `scripts/pre-push-plan.ts` computes the selection and prints what it runs, what it skips as already passed, which unchanged native packages it leaves out, and how many reverse dependents it drops for CI to cover.
 
