@@ -79,13 +79,16 @@ describe('WeakMap / sheet cache lifecycle', () => {
     expect(hits2).toBe(0)
   })
 
-  it('sheet LRU-style eviction kicks in at maxCacheSize boundary', () => {
+  it('sheet LRU-style eviction kicks in at maxCacheSize boundary', async () => {
     // Small cache so we can observe eviction
     const s = new StyleSheet({ maxCacheSize: 100 })
     // Insert 110 UNIQUE CSS texts → should trigger eviction
     for (let i = 0; i < 110; i++) {
       s.insert(`prop-${i}: ${i}`)
     }
+    // Client-side eviction runs in a microtask, after the render that
+    // triggered it has attached its elements (StyleSheet#evictIfNeeded).
+    await Promise.resolve()
     // Eviction runs when size > max; after the 11th extra insert, it
     // drops back. Cache size stays close to max (bounded, not unbounded).
     // Actual behavior: can briefly hit max+1 since evict-then-set.

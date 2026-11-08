@@ -10,7 +10,8 @@
  *     *, *::before, *::after { box-sizing: border-box; }
  *   `
  */
-import type { ComponentFn } from '@pyreon/core'
+import { type ComponentFn, onUnmount } from '@pyreon/core'
+import { isServer } from '@pyreon/reactivity'
 import { type Interpolation, normalizeCSS, resolve } from './resolve'
 import { isDynamic } from './shared'
 import { sheet } from './sheet'
@@ -47,7 +48,14 @@ export const createGlobalStyle = (
 
     // Length check — `normalizeCSS` already trims. Ported from
     // vitus-labs `be471b19`.
-    if (cssText.length > 0) sheet.insertGlobal(cssText)
+    if (cssText.length > 0) {
+      const key = sheet.insertGlobal(cssText)
+      // No element carries a global's rules, so the sheet's live-DOM eviction
+      // guard cannot see them — hold the key for as long as this global is
+      // mounted. Client only: a server request copies the rules into its own
+      // buffer when it renders them.
+      if (!isServer) onUnmount(sheet.retain(key))
+    }
 
     return null
   }
