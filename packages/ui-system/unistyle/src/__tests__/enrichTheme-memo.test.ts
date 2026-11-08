@@ -38,7 +38,7 @@ describe('enrichTheme — identity memo', () => {
   })
 
   it('production: still memoizes, without the dev counter', () => {
-    const env = process.env as { NODE_ENV?: string }
+    const env = process.env as { NODE_ENV?: string | undefined }
     const prevEnv = env.NODE_ENV
     const prevSink = g.__pyreon_count__
     const seen: string[] = []
