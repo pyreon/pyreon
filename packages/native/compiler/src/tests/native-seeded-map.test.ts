@@ -33,7 +33,7 @@ describe('seeded new Map([[k,v],…]) → native dict literal', () => {
     const r = transform(MAP, { target: 'swift' })
     expect(r.warnings).toEqual([])
     expect(r.code).toContain('["apple": 3, "pear": 2]')
-    expect(r.code).toContain('[String: Int]')
+    expect(r.code).toContain('PyreonMap<String, Int>')
   })
 
   it('Kotlin: emits mutableMapOf(k to v), no warning', () => {

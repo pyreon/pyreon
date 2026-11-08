@@ -42,7 +42,9 @@
  * different amounts of WORK per call — Pyreon's resolveRoute returns a full
  * ResolvedRoute (params + parsed query + merged meta + matched chain),
  * find-my-way/radix3 return a handler + params, Vue resolve builds a full
- * location object. The comparison is "cost of the library's canonical
+ * location object. Hono's `router.match` returns raw captures only, so its
+ * timed arm also builds the params object from them (see buildHono); before
+ * 2026-11 that construction ran only in the untimed gate. The comparison is "cost of the library's canonical
  * match entry point", not a claim of identical per-call work.
  *
  * Usage:
@@ -377,30 +379,37 @@ function buildHono({ flatDefs }: Table): Adapter {
   }
   app.get('/*', Object.assign((c: { text: (s: string) => unknown }) => c.text(''), { rid: 'catchall' }) as never)
   const honoRouter = app.router
+  // Hono's `router.match` returns raw captures (a stash array + a name→index
+  // ParamIndexMap) and never builds a params object; Hono's Context does that
+  // lazily for the app. Every other arm here returns usable params (Pyreon a
+  // full ResolvedRoute), so the TIMED call includes the params construction
+  // too — the work any caller of `match` needs. The gate (`inspect`) reads
+  // the same function, so what is verified is exactly what is timed.
+  //
+  // hono Result<T> = [[ [ [handler, routeMeta], ParamIndexMap ], ... ], stash?]
+  // — RegExpRouter puts param VALUES in the stash (res[1]) with the
+  // ParamIndexMap mapping name→stash index; TrieRouter puts the value
+  // directly. Multiple entries return in registration order (middleware
+  // semantics) — the FIRST is the specific route (catch-all registered last).
+  const honoResolve = (p: string): { rid: string | null; params: Record<string, unknown> } => {
+    const res = honoRouter.match('GET', p) as [
+      Array<[[unknown, unknown], Record<string, number | string>]>,
+      (Array<string | null> | undefined)?,
+    ]
+    const first = res[0][0]
+    if (!first) return { rid: null, params: {} }
+    const [handlerRecord, paramMap] = first
+    const stash = res[1]
+    const params: Record<string, unknown> = {}
+    for (const k in paramMap) {
+      const v = paramMap[k]
+      params[k] = stash && typeof v === 'number' ? stash[v] : v
+    }
+    return { rid: (handlerRecord[0] as { rid?: string }).rid ?? null, params }
+  }
   return {
-    match: (p) => honoRouter.match('GET', p),
-    inspect: (p) => {
-      // hono Result<T> = [[ [ [handler, routeMeta], ParamIndexMap ], ... ], stash?]
-      // — RegExpRouter puts param VALUES in the stash (res[1]) with the
-      // ParamIndexMap mapping name→stash index; TrieRouter puts the value
-      // directly. Multiple entries return in registration order (middleware
-      // semantics) — the FIRST is the specific route (catch-all registered
-      // last).
-      const res = honoRouter.match('GET', p) as [
-        Array<[[unknown, unknown], Record<string, number | string>]>,
-        (Array<string | null> | undefined)?,
-      ]
-      const first = res[0][0]
-      if (!first) return { rid: null, params: {} }
-      const [handlerRecord, paramMap] = first
-      const handler = handlerRecord[0]
-      const stash = res[1]
-      const params: Record<string, unknown> = {}
-      for (const [k, v] of Object.entries(paramMap ?? {})) {
-        params[k] = stash && typeof v === 'number' ? stash[v] : v
-      }
-      return { rid: (handler as { rid?: string }).rid ?? null, params }
-    },
+    match: honoResolve,
+    inspect: honoResolve,
   }
 }
 

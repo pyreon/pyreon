@@ -69,11 +69,20 @@ function deepMerge(target: unknown, source: unknown): unknown {
  * itself when a field is not structured-cloneable (a function, a class instance
  * with private state) — reset then restores that reference, which is the best
  * available answer rather than a throw at `.create()` time.
+ *
+ * Primitives (and functions) are copied by reference without calling
+ * `structuredClone`: a primitive is immutable, so the clone is the same value,
+ * and the serializer round-trip was ~18% of a schema-mode `.create()` on a
+ * flat model. Only `typeof value === 'object'` (non-null) reaches the clone.
  */
 function cloneResetBaseline(source: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {}
   for (const key of Object.keys(source)) {
     const value = source[key]
+    if (value === null || typeof value !== 'object') {
+      out[key] = value
+      continue
+    }
     try {
       out[key] = structuredClone(value)
     } catch {

@@ -67,11 +67,9 @@ export const setStyleExtraction = (
   _cpseEnabled = enabled
   if (rewrite) _cpseRewrite = rewrite
 }
-// Per-$element vars cache — the value must survive `elClassCache` HITS, where
-// `doResolve` returns the cached className WITHOUT re-resolving (so the vars
-// would otherwise be lost for repeated-identical Elements). Only written when
-// CPSE is on.
-const cpseVarsCache = new WeakMap<object, Record<string, string>>()
+// Theme key for the per-definition `$element` cache when no theme object is
+// provided (WeakMap keys must be objects).
+const NO_THEME = {}
 /** Merge CPSE custom-property vars into a finalProps `style` (object | string | absent). */
 const mergeCpseStyle = (finalProps: Record<string, any>, vars: Record<string, string>): void => {
   const existing = finalProps.style
@@ -227,8 +225,15 @@ const createStyledComponent = (
     const cachedEmptyVNode = h(tag as string, staticClassName ? { class: staticClassName } : {})
 
     const StaticStyled: ComponentFn = (rawPropsIn: Record<string, any>): VNode | null => {
-      // SSR: the class was inserted once at creation, so a render never calls
-      // `insert()` — tell the sheet this request used it (see `markUsed`).
+      // The class was inserted once, at creation. If the sheet has since
+      // dropped it (eviction, `reset()`, HMR `clearAll()`), put it back: the
+      // content hash is deterministic, so the className — and the pre-built
+      // VNode carrying it — stay valid. A constant-true check until the
+      // sheet's first removal.
+      if (staticClassName && !sheet.isLive(staticClassName))
+        sheet.insert(cssText, false, insertLayer, false)
+      // SSR: a render never calls `insert()` — tell the sheet this request
+      // used the class (see `markUsed`).
       if (IS_SERVER && staticClassName) sheet.markUsed(staticClassName)
       // Normalize `innerRef` → `ref` before the ref-aware fast path below
       // (otherwise an innerRef-only call would hit the cached ref-less VNode).
@@ -289,14 +294,23 @@ const createStyledComponent = (
   // Two-level WeakMap: $rocketstyle → $rocketstate → className.
   // 50 identical Items with the same resolved theme → 1 resolve + 49 hits.
   const classCache = new WeakMap<object, WeakMap<object, string>>()
-  // Single-key cache for non-rocketstyle styled components (e.g. Element's
-  // Wrapper, which depends on `$element` + `$childFix`). The key is the
-  // `$element` object identity; `$childFix` is folded into a `Map<bool,
-  // string>` per `$element` to avoid wrong-cache hits when childFix differs.
+  // Cache for non-rocketstyle styled components (e.g. Element's Wrapper,
+  // which depends on `$element` + `$childFix` + the THEME). Keyed theme →
+  // `$element` identity → `$childFix`. The theme level is load-bearing: the
+  // resolved CSS reads `theme.rootSize` / `theme.breakpoints`, so a class
+  // cached under one theme is wrong under another (a whole-theme swap, or two
+  // server tenants with different themes). Theme entries die with the theme
+  // object (WeakMap); `$element` entries die with the interned bundle.
   // Element-layer interning (see `@pyreon/elements` Element/component.tsx)
   // gives `$element` stable identity across mounts, which is what makes this
   // cache fire — analogous to rocketstyle's dimension-prop memo.
-  const elClassCache = new WeakMap<object, Map<unknown, string>>()
+  const elClassCache = new WeakMap<object, WeakMap<object, Map<unknown, string>>>()
+  // CPSE per-instance vars, parallel to `elClassCache` (same keys): the value
+  // must survive an `elClassCache` HIT, where `doResolve` returns the cached
+  // className WITHOUT re-resolving. Per-definition and per-theme like the
+  // class, because the vars come from the same resolve. Only written when CPSE
+  // is on.
+  const cpseVarsCache = new WeakMap<object, WeakMap<object, Map<unknown, Record<string, string>>>>()
 
   // DYNAMIC PATH: uses computed() for reactive class derivation.
   //
@@ -369,31 +383,37 @@ const createStyledComponent = (
         const inner = classCache.get(rs)
         if (inner) {
           const cached = inner.get(rsState)
-          if (cached !== undefined) return cached
+          // `isLive`: the sheet may have evicted the rule since this name was
+          // cached — then fall through, re-resolve and re-insert it.
+          if (cached !== undefined && sheet.isLive(cached)) return cached
         }
       }
 
-      // Element-layer cache (no rocketstyle props, but $element is present
-      // and an object). Fires only when the rocketstyle path didn't apply
-      // — they're mutually exclusive in practice.
-      const $el = isReactiveEl ? elVal : rawProps.$element
+      // Element-layer cache (no rocketstyle props, but $element — or, for
+      // Text, $text — is present and an object). Fires only when the
+      // rocketstyle path didn't apply — they're mutually exclusive in practice.
+      // Text interns its `$text` bundle (`internTextBundle`) exactly like
+      // Element interns `$element`, so the same identity reaches this cache.
+      const $el = isReactiveEl ? elVal : (rawProps.$element ?? rawProps.$text)
       const $childFix = rawProps.$childFix
       const useElCache =
         !bypassElCacheAndCpse &&
         (!rs || typeof rs !== 'object' || !rsState || typeof rsState !== 'object') &&
         $el &&
         typeof $el === 'object'
+      const themeKey = t && typeof t === 'object' ? (t as object) : NO_THEME
       if (useElCache) {
-        const inner = elClassCache.get($el as object)
+        const inner = elClassCache.get(themeKey)?.get($el as object)
         if (inner) {
           const cached = inner.get($childFix)
-          if (cached !== undefined) {
+          if (cached !== undefined && sheet.isLive(cached)) {
             if (process.env.NODE_ENV !== 'production')
               _countSink.__pyreon_count__?.('styler.elClassCache.hit')
             // Restore the per-instance CPSE vars cached alongside this $element
             // (the className was the value-agnostic one) so the value survives
             // the cache hit.
-            if (_cpseEnabled) pendingCpseVars = cpseVarsCache.get($el as object) ?? null
+            if (_cpseEnabled)
+              pendingCpseVars = cpseVarsCache.get(themeKey)?.get($el as object)?.get($childFix) ?? null
             return cached
           }
         }
@@ -424,7 +444,19 @@ const createStyledComponent = (
         if (Object.keys(vars).length > 0) {
           cssText = agnostic
           pendingCpseVars = vars
-          if (useElCache) cpseVarsCache.set($el as object, vars)
+          if (useElCache) {
+            let byEl = cpseVarsCache.get(themeKey)
+            if (!byEl) {
+              byEl = new WeakMap()
+              cpseVarsCache.set(themeKey, byEl)
+            }
+            let byFix = byEl.get($el as object)
+            if (!byFix) {
+              byFix = new Map()
+              byEl.set($el as object, byFix)
+            }
+            byFix.set($childFix, vars)
+          }
         }
       }
       const className = cssText.length > 0 ? sheet.insert(cssText, false, insertLayer) : ''
@@ -437,10 +469,15 @@ const createStyledComponent = (
         }
         inner.set(rsState, className)
       } else if (useElCache) {
-        let inner = elClassCache.get($el as object)
+        let byEl = elClassCache.get(themeKey)
+        if (!byEl) {
+          byEl = new WeakMap()
+          elClassCache.set(themeKey, byEl)
+        }
+        let inner = byEl.get($el as object)
         if (!inner) {
           inner = new Map()
-          elClassCache.set($el as object, inner)
+          byEl.set($el as object, inner)
         }
         inner.set($childFix, className)
       }

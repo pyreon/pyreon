@@ -425,7 +425,7 @@ export function zeroPlugin(userInput: ZeroUserConfig = {}): Plugin[] {
 						? expandRoutesForLocales(baseRoutes, config.i18n)
 						: baseRoutes;
 					// mode: 'auto' — inference-as-declaration (see zeroPlugin head).
-					const routes = config._autoMode ? applyModeInference(expandedRoutes) : expandedRoutes;
+					const routes = config._autoMode ? applyModeInference(expandedRoutes, config.routeRules) : expandedRoutes;
 					// Build-time ISR safety: an isr-mode route whose source reads
 					// request cookie/authorization state is per-user — with the
 					// default cache key (or 'path-only') the runtime REFUSES to

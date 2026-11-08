@@ -227,7 +227,7 @@ Pick a target during the prompt or pass `--adapter`. The prompt is filtered to t
 | `vercel` | `vercelAdapter()` | `vercel.json` | — |
 | `cloudflare` | `cloudflareAdapter()` | `wrangler.toml` (the adapter writes the authoritative `dist/_routes.json` at build time) | — |
 | `netlify` | `netlifyAdapter()` | `netlify.toml` (render-mode-aware — SSR modes publish `dist/publish` + wire the `ssr` function from `dist/netlify/functions`; SSG/SPA publish `dist`) | — |
-| `node` | `nodeAdapter()` | `Dockerfile`, `.dockerignore` | `PORT` |
+| `node` | `nodeAdapter()` | `Dockerfile` (builds with Bun, runs on Node with production `node_modules`), `.dockerignore` | `PORT` |
 | `bun` | `bunAdapter()` | `Dockerfile` (Bun-based), `.dockerignore` | `PORT` |
 | `static` | (none) | (none — `dist/` after build is the whole site) | — |
 
