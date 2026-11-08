@@ -1,32 +1,34 @@
 #!/usr/bin/env sh
 #
-# Pyreon pre-push hook — Phase E1 of the production-readiness plan.
+# Pyreon pre-push hook.
 #
-# Runs the local-fast subset of CI before letting a push leave the laptop:
-#   1. lint (oxlint, ~3s for the whole repo)
-#   2. typecheck on affected packages
-#   3. test on affected packages — gracefully no-ops when the affected
-#      set has no packages with a `test` script (most examples)
+# THE CONTRACT: local = fast and direct-only; CI = the full gate.
 #
-# Total runtime target: 30-60s for a typical PR. The point is to catch
-# the cheap-to-detect failures locally instead of waiting 5 min for CI
-# to bounce them.
+# GitHub CI is a required merge gate and runs the full affected closure (every
+# reverse dependent), the native-compiler suite and the Swift/Kotlin lanes. So
+# this hook only catches the cheap, likely failures before they cost a CI
+# round trip:
+#   1. validate-fast (oxlint + the doc/dist/budget/manifest gates)
+#   2. lint:pyreon
+#   3. typecheck of the DIRECTLY changed workspaces — on a root-file change
+#      (bun.lock, root tsconfig/package.json/vitest setup) across the workspace
+#   4. tests of the DIRECTLY changed workspaces only (never the closure, never
+#      the whole workspace). Native-toolchain packages (packages/native/*) run
+#      only when they themselves changed: vitest suites with --maxWorkers=4,
+#      KOTLIN_HOME detected from the kotlinc on PATH.
+# Steps 3 and 4 skip any package whose inputs are byte-identical to a recorded
+# PASS (scripts/pre-push-plan.ts: own tree + @pyreon deps + lockfile/root
+# files), so a re-push, rebase or merge from main re-runs only what changed.
+# The plan prints what it skipped and why.
 #
 # ── Timeout & stale-process safety net ──
 #
-# Each step has a timeout (300s for ordinary affected checks; larger budgets
-# below for fast gates and native/full-workspace tests) so it cannot hang
-# forever — historically vitest workers from prior worktree sessions
-# could deadlock the test step indefinitely. On timeout: kill the step,
-# print actionable guidance (likely cause + bypass flag), exit 1.
-#
-# The hook also detects long-running `vitest` processes from sibling
-# worktrees at startup and warns — they're a frequent cause of the
-# test-step hang, but we don't auto-kill them (they may belong to
-# another active dev session).
+# Each step has a timeout so it cannot hang forever. On timeout: kill the
+# step's own process tree, print actionable guidance, exit 1.
 #
 # Tunable:
 #   PYREON_PRE_PUSH_TIMEOUT_SEC=300   # overrides every step's budget
+#   PYREON_PRE_PUSH_NO_CACHE=1        # ignore recorded passes for this push
 #
 # Opt-out:
 #   PYREON_SKIP_PRE_PUSH=1 git push   # one-off bypass for emergencies
@@ -51,12 +53,15 @@ cd "$REPO_ROOT" || exit 1
 # same affected graph twice, raced over package-owned test scratch directories,
 # exhausted kotlinc/vitest workers, and then reported unrelated ENOTEMPTY,
 # timeout, or SIGKILL failures. `mkdir` is atomic on every supported host.
-GIT_COMMON_DIR=$(git rev-parse --git-common-dir)
-case "$GIT_COMMON_DIR" in
+# GIT_COMMON_DIR is itself a git environment variable (unset below), so the
+# resolved path lives under a name git does not read. It also holds the pass
+# cache, shared by every worktree of this clone.
+GIT_COMMON_DIR_ABS=$(git rev-parse --git-common-dir)
+case "$GIT_COMMON_DIR_ABS" in
   /*) ;;
-  *) GIT_COMMON_DIR="$REPO_ROOT/$GIT_COMMON_DIR" ;;
+  *) GIT_COMMON_DIR_ABS="$REPO_ROOT/$GIT_COMMON_DIR_ABS" ;;
 esac
-PRE_PUSH_LOCK="$GIT_COMMON_DIR/pyreon-pre-push.lock"
+PRE_PUSH_LOCK="$GIT_COMMON_DIR_ABS/pyreon-pre-push.lock"
 
 # Git exports GIT_DIR, GIT_WORK_TREE, GIT_INDEX_FILE and friends to hooks, and
 # they override `cwd` and `git -C` for every git the gates and tests spawn. A
@@ -85,8 +90,10 @@ if ! mkdir "$PRE_PUSH_LOCK" 2>/dev/null; then
 fi
 echo "$$" > "$PRE_PUSH_LOCK/pid"
 TEST_OUTPUT_FILE=""
+PLAN_STATE_FILE=""
 cleanup() {
   if [ -n "$TEST_OUTPUT_FILE" ]; then rm -f "$TEST_OUTPUT_FILE"; fi
+  if [ -n "$PLAN_STATE_FILE" ]; then rm -f "$PLAN_STATE_FILE"; fi
   rm -f "$PRE_PUSH_LOCK/pid"
   rmdir "$PRE_PUSH_LOCK" 2>/dev/null || true
 }
@@ -95,31 +102,14 @@ trap cleanup EXIT HUP INT TERM
 TIMEOUT_SEC="${PYREON_PRE_PUSH_TIMEOUT_SEC:-300}"
 
 # validate-fast gets its OWN budget, and it must not be the 300s default.
-#
-# Two reasons, both measured 2026-08 on a loaded machine:
-#
-#   1. The gate wall is NOT the advertised "~2-5s". That figure is a warm,
-#      idle box. Measured on this repo: 148s at load ~20, 211s at load 333,
-#      and 496s at load 443 — the last one is 1.65x the default budget, so
-#      the FIRST step of the wall gets killed before a single test runs.
-#
-#   2. The full-workspace auto-raise below CANNOT protect it. That raise keys
-#      on $FILTER, which is computed ~30 lines AFTER this step has already
-#      run — so the one scenario it was written for (a root-file change, which
-#      is exactly when the machine is busiest) is the one scenario where
-#      validate-fast is still on 300s.
-#
-# The failure mode is what makes this worth fixing rather than documenting:
-# a killed step prints "fast gates failed — fix the failure(s) above", which
-# reads as YOUR GATES ARE BROKEN. Nothing says the clock ran out, so the
-# rational response is to bypass the hook — which is how a wall stops being
-# run at all.
-#
-# An explicit PYREON_PRE_PUSH_TIMEOUT_SEC still wins outright; this only
-# raises the DEFAULT, and only for this step.
+# The gate wall is NOT the advertised "~2-5s" on a loaded machine: measured
+# 148s at load ~20, 211s at load 333 and 496s at load 443 (2026-08). A killed
+# step reads as "your gates are broken", and the rational response to that is
+# to bypass the hook — which is how a wall stops being run at all. An explicit
+# PYREON_PRE_PUSH_TIMEOUT_SEC still wins outright.
 VF_TIMEOUT_SEC="${PYREON_PRE_PUSH_TIMEOUT_SEC:-900}"
 
-echo "[pyreon pre-push] running local validation (lint + typecheck + tests)"
+echo "[pyreon pre-push] local validation: fast gates + typecheck/tests of DIRECTLY changed packages (CI runs the full closure)"
 echo "[pyreon pre-push] per-step timeout: ${TIMEOUT_SEC}s. bypass with PYREON_SKIP_PRE_PUSH=1 or git push --no-verify"
 echo
 
@@ -238,86 +228,113 @@ if [ "$PYREON_LINT_RC" -ne 0 ]; then
 fi
 echo
 
-# ── 2. Affected filter ───────────────────────────────────────────────
-# `affected.ts` emits one of three shapes:
-#   1. `--filter=@pyreon/x --filter=...`  — normal case, run only those
-#   2. `--filter=*`                       — diff failed / root-file changed,
-#                                            run everything as a safety net
-#   3. ``  (empty string)                 — no committed changes diff
-#                                            origin/main → genuinely nothing
-#                                            to test; skip tests + typecheck
-#
-# Empty case (3) used to fall back to `--filter='*'` here, but that ran
-# the full 60+-package suite for what was usually a no-op push (e.g.
-# pre-push on a branch with no diff vs origin/main yet). The full-repo
-# run is heavyweight (60+ parallel vitest workers, occasional flakes
-# from resource contention) and bypasses the whole point of "affected".
-FILTER=$(bun run scripts/affected.ts --base=origin/main 2>/dev/null || echo "")
-TEST_TIMEOUT_SEC="$TIMEOUT_SEC"
-# ── Full-wall auto-budget ────────────────────────────────────────────
-# A root-file change resolves to `--filter=*` — the ENTIRE workspace.
-# Cold macOS native tests were still compiling after the full test wall's
-# one-hour deadline. Real-SDK fixtures also compile directly, outside the
-# verdict cache, so warming it does not make every check cheap. Give tests
-# their own backstop; keep typecheck's existing 30-minute root-file budget.
-# An explicit PYREON_PRE_PUSH_TIMEOUT_SEC always wins.
-if [ "$FILTER" = "--filter=*" ] && [ -z "${PYREON_PRE_PUSH_TIMEOUT_SEC:-}" ]; then
-  TIMEOUT_SEC=1800
-  TEST_TIMEOUT_SEC=7200
-  echo "[pyreon pre-push] full-workspace filter — typecheck timeout ${TIMEOUT_SEC}s; test timeout ${TEST_TIMEOUT_SEC}s"
-elif [ -z "${PYREON_PRE_PUSH_TIMEOUT_SEC:-}" ]; then
-  case " $FILTER " in
-    *" --filter=@pyreon/native-compiler "*)
-      TEST_TIMEOUT_SEC=7200
-      echo "[pyreon pre-push] native-compiler affected — test timeout ${TEST_TIMEOUT_SEC}s"
-      ;;
-  esac
+# ── 3/4. Plan: direct-only selection minus recorded passes ───────────
+# `pre-push-plan.ts` prints shell assignments (validated workspace names,
+# single-quoted) on stdout and the human-readable plan on stderr. A planner
+# failure FAILS the push rather than silently selecting nothing: an empty
+# selection is indistinguishable from "all green" otherwise.
+PLAN_STATE_FILE=$(mktemp -t pyreon-pre-push-plan-XXXXXX)
+PLAN_NO_CACHE=""
+if [ "${PYREON_PRE_PUSH_NO_CACHE:-}" = "1" ]; then PLAN_NO_CACHE="--no-cache"; fi
+if ! PLAN_OUT=$(bun scripts/pre-push-plan.ts plan --base=origin/main \
+  --cache-dir="$GIT_COMMON_DIR_ABS" --state="$PLAN_STATE_FILE" $PLAN_NO_CACHE); then
+  echo "[pyreon pre-push] ❌ could not plan the typecheck/test selection (scripts/pre-push-plan.ts failed above)."
+  echo "[pyreon pre-push]    Bypass for this push: PYREON_SKIP_PRE_PUSH=1 git push"
+  exit 1
 fi
-if [ -z "$FILTER" ]; then
-  echo "[pyreon pre-push] no affected packages — skipping typecheck + tests"
-  echo
-  echo "[pyreon pre-push] ✓ all checks passed — pushing"
-  exit 0
+PLAN_ROOT_CHANGED=0 PLAN_TYPECHECK="" PLAN_TEST="" PLAN_NATIVE_VITEST="" PLAN_NATIVE_SCRIPT="" PLAN_KOTLIN_HOME=""
+eval "$PLAN_OUT"
+echo
+
+record_pass() {
+  bun scripts/pre-push-plan.ts record --cache-dir="$GIT_COMMON_DIR_ABS" \
+    --state="$PLAN_STATE_FILE" --group="$1" || \
+    echo "[pyreon pre-push] (could not record the pass for $1 — it will re-run next push)"
+}
+
+# A root-file change typechecks the whole workspace: give it the budget the
+# full-workspace typecheck always had. An explicit override always wins.
+TYPECHECK_TIMEOUT_SEC="$TIMEOUT_SEC"
+if [ "$PLAN_ROOT_CHANGED" = "1" ] && [ -z "${PYREON_PRE_PUSH_TIMEOUT_SEC:-}" ]; then
+  TYPECHECK_TIMEOUT_SEC=1800
 fi
 
-# ── 3. Typecheck (affected) ──────────────────────────────────────────
-echo "[3/4] typecheck (affected)"
-run_with_timeout "typecheck" "bun run $FILTER typecheck"
-TC_RC=$?
-if [ $TC_RC -eq 124 ]; then
-  exit 1
-elif [ $TC_RC -ne 0 ]; then
-  echo
-  echo "[pyreon pre-push] ❌ typecheck failed — fix the errors above and retry."
-  exit 1
+# ── 3. Typecheck ─────────────────────────────────────────────────────
+if [ -n "$PLAN_TYPECHECK" ]; then
+  echo "[3/4] typecheck"
+  run_with_timeout_secs "$TYPECHECK_TIMEOUT_SEC" "typecheck" "bun run $PLAN_TYPECHECK typecheck"
+  TC_RC=$?
+  if [ $TC_RC -eq 124 ]; then
+    exit 1
+  elif [ $TC_RC -ne 0 ]; then
+    echo
+    echo "[pyreon pre-push] ❌ typecheck failed — fix the errors above and retry."
+    exit 1
+  fi
+  record_pass typecheck
+else
+  echo "[3/4] typecheck — nothing to run"
 fi
 echo
 
-# ── 4. Tests (affected) ──────────────────────────────────────────────
+# ── 4. Tests ─────────────────────────────────────────────────────────
+# run_tests <step-name> <budget> <bun-run-args>
 # bun's filter errors when no package in the filtered set has a `test`
-# script (most examples). That is NOT a failure for us — treat it as
-# "nothing to run".
-echo "[4/4] tests (affected)"
-TEST_OUTPUT_FILE=$(mktemp -t pyreon-pre-push-XXXXXX)
+# script. The planner already drops those, but keep tolerating the message so
+# a renamed script cannot turn a no-op into a red push. bun 1.4 changed it
+# from "No packages matched the filter" to "No workspace packages matched the
+# filter" — match the stable suffix.
+run_tests() {
+  step_name="$1"
+  step_budget="$2"
+  step_cmd="$3"
+  TEST_OUTPUT_FILE=$(mktemp -t pyreon-pre-push-XXXXXX)
+  run_with_timeout_secs "$step_budget" "$step_name" "$step_cmd > '$TEST_OUTPUT_FILE' 2>&1"
+  TEST_EXIT=$?
+  cat "$TEST_OUTPUT_FILE"
+  if [ $TEST_EXIT -eq 124 ]; then
+    return 1
+  elif [ $TEST_EXIT -ne 0 ]; then
+    if grep -q "packages matched the filter" "$TEST_OUTPUT_FILE"; then
+      echo "[pyreon pre-push] (no test scripts in the selected packages — ok)"
+    else
+      echo
+      echo "[pyreon pre-push] ❌ $step_name failed — fix the failures above and retry."
+      return 1
+    fi
+  fi
+  rm -f "$TEST_OUTPUT_FILE"
+  TEST_OUTPUT_FILE=""
+  return 0
+}
 
-run_with_timeout_secs "$TEST_TIMEOUT_SEC" "tests" "bun run $FILTER --sequential test -- > '$TEST_OUTPUT_FILE' 2>&1"
-TEST_EXIT=$?
-cat "$TEST_OUTPUT_FILE"
-
-if [ $TEST_EXIT -eq 124 ]; then
-  exit 1
-elif [ $TEST_EXIT -ne 0 ]; then
-  # bun 1.4 changed this message from "No packages matched the filter" to
-  # "No workspace packages matched the filter" — match the stable suffix
-  # so a future bun wording tweak doesn't silently turn this back into a
-  # hard failure for every docs-only / test-script-less affected set.
-  if grep -q "packages matched the filter" "$TEST_OUTPUT_FILE"; then
-    echo "[pyreon pre-push] (no test scripts in affected packages — ok)"
-  else
-    echo
-    echo "[pyreon pre-push] ❌ tests failed — fix the failures above and retry."
-    exit 1
+if [ -z "$PLAN_TEST$PLAN_NATIVE_VITEST$PLAN_NATIVE_SCRIPT" ]; then
+  echo "[4/4] tests — nothing to run"
+else
+  echo "[4/4] tests (directly changed packages)"
+  if [ -n "$PLAN_TEST" ]; then
+    run_tests "tests" "$TIMEOUT_SEC" "bun run $PLAN_TEST --sequential test --" || exit 1
+    record_pass test
+  fi
+  # Native-toolchain suites run only when the package itself changed (the
+  # planner guarantees that). A cold native-compiler run compiles hundreds of
+  # Swift/Kotlin fixtures, so it keeps its long budget, and four workers keep
+  # kotlinc from exhausting the machine.
+  NATIVE_TIMEOUT_SEC="${PYREON_PRE_PUSH_TIMEOUT_SEC:-7200}"
+  if [ -n "$PLAN_KOTLIN_HOME" ]; then
+    KOTLIN_HOME="$PLAN_KOTLIN_HOME"
+    export KOTLIN_HOME
+  fi
+  if [ -n "$PLAN_NATIVE_VITEST" ]; then
+    run_tests "native tests" "$NATIVE_TIMEOUT_SEC" \
+      "bun run $PLAN_NATIVE_VITEST --sequential test -- --maxWorkers=4" || exit 1
+    record_pass native-vitest
+  fi
+  if [ -n "$PLAN_NATIVE_SCRIPT" ]; then
+    run_tests "native toolchain tests" "$NATIVE_TIMEOUT_SEC" \
+      "bun run $PLAN_NATIVE_SCRIPT --sequential test" || exit 1
+    record_pass native-script
   fi
 fi
 echo
-echo "[pyreon pre-push] ✓ all checks passed — pushing"
+echo "[pyreon pre-push] ✓ local checks passed — pushing. CI runs the full affected closure."

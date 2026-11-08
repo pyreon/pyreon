@@ -297,7 +297,7 @@ jobs:
           # mirror the cell exactly so the decide verdict and the cell's own
           # filter can never disagree (same script, same base, deterministic).
           TC_ALL='["core","fundamentals","internals","native","tools","ui","ui-system","zero","examples"]'
-          TEST_ALL='["core","fundamentals","internals","native-rest","tools","ui","ui-system","zero"]'
+          TEST_ALL='["core","fundamentals","internals","native-rest","tools","ui","ui-system","zero","examples"]'
           emit() { # emit <prefix> <json>
             echo "$1=$2" >> "$GITHUB_OUTPUT"
             if [ "$2" = "[]" ]; then echo "$1-has=false" >> "$GITHUB_OUTPUT"; else echo "$1-has=true" >> "$GITHUB_OUTPUT"; fi
@@ -361,7 +361,8 @@ jobs:
             "internals:--category=internals" \
             "native-rest:--category=native --exclude=native/compiler" \
             "tools:--category=tools" "ui:--category=ui" \
-            "ui-system:--category=ui-system" "zero:--category=zero")
+            "ui-system:--category=ui-system" "zero:--category=zero" \
+            "examples:--category=examples")
           # Three runners for each family, packed using separate measured
           # profiles. Native-rest's cache writer follows membership, so its
           # spare capacity can now carry other categories.
@@ -971,7 +972,7 @@ jobs:
       matrix:
         # Dynamic (see typecheck-cell): only affected categories spawn;
     # `|| full-list` fallback keeps an internal matrix-output error fail-closed.
-        include: ${{ fromJSON(needs.install.outputs.test-matrix || '[{"name":"native-rest","members":"native-rest"},{"name":"batch-a","members":"core fundamentals internals"},{"name":"batch-b","members":"tools ui ui-system zero"}]') }}
+        include: ${{ fromJSON(needs.install.outputs.test-matrix || '[{"name":"native-rest","members":"native-rest"},{"name":"batch-a","members":"core fundamentals internals"},{"name":"batch-b","members":"tools ui ui-system zero examples"}]') }}
     steps:
       # Pin Node — vitest's `#!/usr/bin/env node` shebang means tests
       # run under whatever Node is on PATH. Without this, ubuntu-latest's
@@ -1048,6 +1049,15 @@ jobs:
                 printf -- '--filter=./%s ' "$d"
               done)
               ;;
+            # Example apps live outside packages/, as the typecheck cell's
+            # pseudo-category does. Their vitest suites (ui-showcase routes,
+            # fundamentals-playground, lathe-bookshelf, experiments,
+            # native-viz's emit check) ran nowhere in CI before: only the
+            # local pre-push hook's closure reached them.
+            examples)
+              AFFECTED_ARGS="--category=examples"
+              FULL_FILTER="--filter=./examples/*"
+              ;;
             *)
               AFFECTED_ARGS="--category=$category"
               FULL_FILTER="--filter=./packages/$category/*"
@@ -1093,7 +1103,9 @@ jobs:
           set -e
           OUTPUT=$(cat "$OUTPUT_FILE")
           rm -f "$OUTPUT_FILE"
-          if [ $EXIT -ne 0 ] && echo "$OUTPUT" | grep -q "No packages matched the filter"; then
+          # bun 1.4 says "No workspace packages matched the filter"; match the
+          # stable suffix, as the pre-push hook does.
+          if [ $EXIT -ne 0 ] && echo "$OUTPUT" | grep -q "packages matched the filter"; then
             echo "(no matching packages have a 'test' script — treating as no-op)"
             EXIT=0
           fi

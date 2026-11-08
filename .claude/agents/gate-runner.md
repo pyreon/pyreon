@@ -1,6 +1,6 @@
 ---
 name: gate-runner
-description: Runs the pre-push gate wall (validate-fast + affected typecheck/test + lint:pyreon) and triages every failure against the known failure-mode table with the exact fix command. Use PROACTIVELY before any push or PR, and whenever CI goes red, to determine whether the failure was locally preventable — even if the user only says "can I push?". Do NOT use for: code review (use pyreon-reviewer), benchmarks (use bench-runner), or opening/monitoring the PR itself (use pr-shepherd).
+description: Runs the pre-push gate wall (validate-fast + lint:pyreon + typecheck/test of directly changed packages) and triages every failure against the known failure-mode table with the exact fix command. Use PROACTIVELY before any push or PR, and whenever CI goes red, to determine whether the failure was locally preventable — even if the user only says "can I push?". Do NOT use for: code review (use pyreon-reviewer), benchmarks (use bench-runner), or opening/monitoring the PR itself (use pr-shepherd).
 tools: Read, Grep, Glob, Bash, mcp__pyreon
 disallowedTools: Agent
 model: sonnet
@@ -19,11 +19,13 @@ Run all of these, collect every failure, then triage. Do not stop at the first r
 
 1. `bun run validate-fast` — lint + the cheap gates.
 2. `bun run lint:pyreon` — the separate `Pyreon Lint Gate` (not in validate-fast).
-3. `bun run --filter=<affected> typecheck`
-4. `bun run --filter=<affected> test`
+3. typecheck of the directly changed packages
+4. tests of the directly changed packages
 
-Compute the affected set with `bun scripts/affected.ts`; a root-file change means
-`--filter=*`.
+Take the selection from `bun scripts/pre-push-plan.ts plan --cache-dir=<dir> --state=<file>`
+(the hook's own planner; it prints what it runs and skips). It is direct-only by design: CI runs
+the full reverse-dependency closure as required checks. A root-file change widens typecheck to the
+workspace, never tests.
 
 ## Quick triage
 

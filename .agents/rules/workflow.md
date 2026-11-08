@@ -35,7 +35,7 @@ Priorities: correctness > performance > DX > AI-friendliness.
 
 ## Recurring CI failure modes
 
-Run `bun run validate-fast` before every push; the pre-push hook runs it too. When CI fails on a gate, ask whether `validate-fast` would have caught it — if yes, that is a workflow failure. Most gate names below are step names inside the `Fast Gates` or `Build` jobs; the fix commands are the same.
+Run `bun run validate-fast` before every push; the pre-push hook runs it too. The hook is light by design (direct-only, see "Pre-push hook"); the full verification is CI's job. When CI fails on a gate, ask whether `validate-fast` would have caught it — if yes, that is a workflow failure. Most gate names below are step names inside the `Fast Gates` or `Build` jobs; the fix commands are the same.
 
 When CI fails on a gate not listed here, add a row in the same PR.
 
@@ -204,20 +204,37 @@ Restack in dependency order, not PR order. Never use a bare `git stash pop` duri
 
 ## Pre-push hook
 
+**The contract: local = fast and direct-only; CI = the full gate.** CI minutes are free and CI is a required merge gate, so the hook catches only the cheap, likely failures before they cost a round trip. It never runs the reverse-dependency closure: a change in `@pyreon/reactivity` used to select 136 of 140 workspaces (including the 30+ minute native-compiler suite), and the repository-wide lock then queued every other push behind it.
+
 `.githooks/pre-push` (installed via `core.hooksPath` by `bun scripts/install-git-hooks.ts`) runs:
 
 1. `bun run validate-fast` — lint plus the cheap gates listed in `scripts/validate-fast.ts`, run concurrently (`--serial` to isolate one, `--json` for machine output). A few seconds warm, but it slows sharply under machine load, so this step's default timeout is 900s.
 2. `bun run lint:pyreon` — the same required Pyreon-specific lint gate as CI.
-3. `bun run --filter=<affected> typecheck`
-4. `bun run --filter=<affected> test` — no-ops when no affected package has a `test` script.
+3. Typecheck of the DIRECTLY changed workspaces (`scripts/affected.ts --changed-only` semantics, plus the leaf seeds: `scripts/**`, `e2e/**` and non-`ci.yml` workflows map to `@pyreon/test-utils`, doc inputs to their parser). A root-file change (`scripts/affected.ts:isRootFile`: `bun.lock`, root `package.json`/`tsconfig*.json`/`vitest.*.ts`, `.bun-version`, `ci.yml`, shared actions) typechecks the whole workspace instead, with an 1800s budget.
+4. Tests of the DIRECTLY changed workspaces only — never the closure, and never the whole workspace, even on a root-file change. Packages under `packages/native/` run only when they themselves changed, as their own step with a 7200s budget: vitest suites with `--maxWorkers=4`, and `KOTLIN_HOME` derived from the `kotlinc` on PATH when it is not already set (no hard-coded install path).
+
+`scripts/pre-push-plan.ts` computes the selection and prints what it runs, what it skips as already passed, which unchanged native packages it leaves out, and how many reverse dependents it drops for CI to cover.
+
+Pass cache:
+
+- A pass is recorded per package and step (typecheck, test) under a key over git's view of the working tree (tracked plus untracked-not-ignored files): the package's own files, every transitive `@pyreon/*` dependency's files, its leaf inputs (`scripts/**` for `@pyreon/test-utils`, doc inputs for their parser), every root file and the bun version. An unchanged package is skipped on a re-push, a rebase or a merge from main that did not touch its inputs.
+- Only passes are written; a failure records nothing and re-runs next time. The store is `<git common dir>/pyreon-pre-push-pass-cache.json`, shared by every worktree, capped at 4000 entries and 30 days, written atomically.
+- A test that reads files outside those inputs can be satisfied by a stale pass locally. CI never uses this cache, so it still catches that. `PYREON_PRE_PUSH_NO_CACHE=1 git push` ignores the cache for one push.
+
+What CI runs instead, all behind required checks (`Test` aggregates the typecheck/test cells; `Validate emitted Swift + Kotlin` and `Validate emitted Swift (real-SDK typecheck, macOS)` run when the native path classifier OR the native-compiler dependency graph selects them):
+
+- every package in the affected closure, per category (`ci.yml` `typecheck (…)` / `test (…)`, including the `examples` category);
+- `@pyreon/native-compiler`, the Kotlin runtime/router suites and the co-located native sources (`native-validate.yml`);
+- the Swift runtime/router suites (`native-device.yml`).
+
+If the hook stops running something, move it into a required CI job in the same PR; never keep a check local because CI lacks it.
 
 Behaviour:
 
 - One run per repository at a time (a lock in the git common dir); a stale lock from a crashed run is reclaimed.
-- Each other step has a 300s timeout (`PYREON_PRE_PUSH_TIMEOUT_SEC`). A timed-out step is killed with guidance.
+- Ordinary steps have a 300s timeout (`PYREON_PRE_PUSH_TIMEOUT_SEC` overrides every budget). A timed-out step is killed with guidance; a clock timeout cleans up only the owned process tree and is not an assertion failure.
 - It warns about `vitest` processes older than 10 minutes (possibly from another worktree) but does not kill them.
-- A root-file change (including any `.github/workflows/**` edit, per `scripts/affected.ts:isRootFile`) resolves to `--filter=*`: typecheck keeps its 1800s budget and tests receive 7200s. An affected set containing `@pyreon/native-compiler` also receives the 7200s test budget. Real-SDK fixtures compile outside the verdict cache, so a warm cache does not guarantee a short run; a cold full wall was still compiling after one hour. Explicit `PYREON_PRE_PUSH_TIMEOUT_SEC` overrides every step budget. A clock timeout fails loudly and cleans up only the owned tree; do not bypass tests or confuse SIGTERM/SIGKILL with an assertion failure.
-- No committed changes versus `origin/main`: typecheck and tests are skipped.
+- A planner failure fails the push (it never silently selects nothing). No committed changes versus `origin/main`: typecheck and tests are skipped.
 
 Bypass: `PYREON_SKIP_PRE_PUSH=1 git push` (one-off) or `git push --no-verify`. Disable with `git config --unset core.hooksPath`; re-enable with `bun scripts/install-git-hooks.ts`.
 
