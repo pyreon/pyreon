@@ -1372,6 +1372,52 @@ describe("mode: 'auto' inference (EXPERIMENTAL)", () => {
     expect(out[2]!.exports?.renderModeLiteral).toBeUndefined() // layout untouched
   })
 
+  it('applyModeInference stamps ONLY inferred pages: a layout declaration or a routeRule outranks inference', () => {
+    const route = (over: Partial<FileRoute>, e: Partial<RouteFileExports> = {}): FileRoute => ({
+      filePath: 'x.tsx', urlPath: '/x', dirPath: '', depth: 1,
+      isLayout: false, isError: false, isLoading: false, isNotFound: false,
+      isCatchAll: false, renderMode: 'ssr', exports: exp(e), ...over,
+    })
+    const routes: FileRoute[] = [
+      // layout under app/ declares 'spa' → cascades to app/page
+      route(
+        { filePath: 'app/_layout.tsx', urlPath: '/app', dirPath: 'app', isLayout: true },
+        { hasRenderMode: true, renderModeLiteral: "'spa'" } as never,
+      ),
+      route({ filePath: 'app/page.tsx', urlPath: '/app/page', dirPath: 'app' }),
+      // a loader (inferred 'ssr'), but a rule says 'ssg'
+      route({ filePath: 'ruled.tsx', urlPath: '/ruled' }, { hasLoader: true }),
+      // nothing declared → inferred
+      route({ filePath: 'free.tsx', urlPath: '/free' }, { hasLoader: true }),
+    ]
+    const out = applyModeInference(routes, { '/ruled': { renderMode: 'ssg' } })
+    // Stamping these would make the inference a PAGE declaration, which
+    // outranks the layout and the rule at runtime — the mode table (which
+    // honours them) and the built app would disagree.
+    expect(out[1]!.exports?.renderModeLiteral).toBeUndefined()
+    expect(out[2]!.exports?.renderModeLiteral).toBeUndefined()
+    expect(out[3]!.exports?.renderModeLiteral).toBe('"ssr"')
+  })
+
+  it('resolveAutoAppMode: a layout declaring a server mode needs the server pipeline', () => {
+    const routes: FileRoute[] = [
+      {
+        filePath: 'admin/_layout.tsx', urlPath: '/admin', dirPath: 'admin', depth: 1,
+        isLayout: true, isError: false, isLoading: false, isNotFound: false,
+        isCatchAll: false, renderMode: 'ssr',
+        exports: exp({ hasRenderMode: true, renderModeLiteral: "'ssr'" } as never),
+      },
+      {
+        filePath: 'admin/index.tsx', urlPath: '/admin', dirPath: 'admin', depth: 1,
+        isLayout: false, isError: false, isLoading: false, isNotFound: false,
+        isCatchAll: false, renderMode: 'ssr', exports: exp({}),
+      },
+    ]
+    // The page alone infers 'ssg', but its layout declares 'ssr' — choosing
+    // the static pipeline would make the declared route unservable.
+    expect(resolveAutoAppMode(routes)).toBe('ssr')
+  })
+
   it('resolveAutoAppMode: pure-static → ssg; any server-needing page or rule → ssr', () => {
     const page = (over: Partial<RouteFileExports>): FileRoute => ({
       filePath: 'x.tsx', urlPath: '/x', dirPath: '', depth: 1,

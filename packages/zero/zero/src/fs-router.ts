@@ -1285,17 +1285,95 @@ export function inferRouteMode(exp: RouteFileExports): RenderMode {
 }
 
 /**
- * Inference-as-declaration: rewrite undeclared PAGE routes so their inferred
- * mode becomes a literal `renderModeLiteral` — the generator then inlines it
+ * Where a page route's file-level render mode comes from:
+ * - `file` / `layout`: a literal `renderMode` on the page / nearest ancestor `_layout`;
+ * - `computed`: the page or nearest declaring layout exports a NON-literal
+ *   `renderMode` — only the runtime knows its value (`mode` is undefined);
+ * - `rule`: a `routeRules` glob;
+ * - `inferred`: `mode: 'auto'` inference from the page's exports;
+ * - `app`: nothing declared, the app mode applies.
+ */
+export type FileRouteModeSource = 'file' | 'layout' | 'computed' | 'rule' | 'inferred' | 'app'
+
+type DeclaredMode = RenderMode | 'computed'
+
+function declaredModeOf(r: FileRoute): DeclaredMode | undefined {
+  const exp = r.exports
+  if (!exp?.hasRenderMode) return undefined
+  const lit = exp.renderModeLiteral?.replace(/['"]/g, '')
+  return lit === 'ssr' || lit === 'ssg' || lit === 'spa' || lit === 'isr' ? lit : 'computed'
+}
+
+/**
+ * THE file-level render-mode resolver. Every build-time question of the form
+ * "what mode does this page get" — the mode table, `mode: 'auto'` inference,
+ * whether the hybrid prerender pass has anything to do, which dynamic routes
+ * deserve the missing-getStaticPaths warning — goes through this one function,
+ * so they cannot disagree. Precedence matches the runtime resolver
+ * (`route-modes.ts:resolveRenderModeForPath`): page declaration > nearest
+ * ancestor layout declaration > `routeRules` > inference (`'auto'` only) >
+ * app mode.
+ */
+export function createFileRouteModeResolver(
+  routes: readonly FileRoute[],
+  appMode: RenderMode | 'auto',
+  rules?: import('./route-modes').RouteRules,
+): (route: FileRoute) => { mode: RenderMode | undefined; source: FileRouteModeSource } {
+  // Layout declarations cascade to everything under their directory.
+  const layoutModes = new Map<string, DeclaredMode>()
+  for (const r of routes) {
+    if (!r.isLayout) continue
+    const m = declaredModeOf(r)
+    if (m) layoutModes.set(r.dirPath, m)
+  }
+  const nearestLayoutMode = (dirPath: string): DeclaredMode | undefined => {
+    let dir = dirPath
+    for (;;) {
+      const m = layoutModes.get(dir)
+      if (m) return m
+      if (dir === '') return undefined
+      const i = dir.lastIndexOf('/')
+      dir = i === -1 ? '' : dir.slice(0, i)
+    }
+  }
+  return (r) => {
+    const own = declaredModeOf(r)
+    if (own === 'computed') return { mode: undefined, source: 'computed' }
+    if (own) return { mode: own, source: 'file' }
+    const layout = nearestLayoutMode(r.dirPath)
+    if (layout === 'computed') return { mode: undefined, source: 'computed' }
+    if (layout) return { mode: layout, source: 'layout' }
+    const rule = matchRouteRules(rules, r.urlPath)
+    if (rule) return { mode: rule, source: 'rule' }
+    if (appMode === 'auto') {
+      return { mode: inferRouteMode(r.exports ?? ({} as RouteFileExports)), source: 'inferred' }
+    }
+    return { mode: appMode, source: 'app' }
+  }
+}
+
+/**
+ * Inference-as-declaration: rewrite PAGE routes whose mode is INFERRED so it
+ * becomes a literal `renderModeLiteral` — the generator then inlines it
  * exactly like a hand-written `export const renderMode`, and the runtime
  * dispatch / build filtering / mode errors need ZERO auto-awareness.
+ *
+ * Only routes nothing else declared are stamped: a page under a declaring
+ * `_layout`, or one a `routeRules` glob matches, keeps no literal so the
+ * runtime cascade resolves it exactly as the mode table does. (Stamping it
+ * would turn the inference into a page-level declaration that outranks the
+ * layout and the rule.)
  */
-export function applyModeInference(routes: FileRoute[]): FileRoute[] {
+export function applyModeInference(
+  routes: FileRoute[],
+  rules?: import('./route-modes').RouteRules,
+): FileRoute[] {
+  const resolve = createFileRouteModeResolver(routes, 'auto', rules)
   return routes.map((r) => {
     if (r.isLayout || r.isError || r.isLoading || r.isNotFound) return r
     const exp = r.exports
-    if (exp?.hasRenderMode) return r
-    const inferred = inferRouteMode(exp ?? ({} as RouteFileExports))
+    const { mode: inferred, source } = resolve(r)
+    if (source !== 'inferred' || inferred === undefined) return r
     return {
       ...r,
       exports: {
@@ -1337,31 +1415,16 @@ export function detectIsrAuthRisk(
   appMode: RenderMode,
   rules?: import('./route-modes').RouteRules,
 ): IsrAuthRiskEntry[] {
-  // Layouts with a literal mode, for the cascade walk. dirPath '' covers
-  // everything; dirPath 'account' covers 'account' + 'account/…'.
-  const layoutModes: Array<{ dirPath: string; mode: string }> = []
-  for (const r of routes) {
-    if (!r.isLayout) continue
-    const lit = r.exports?.renderModeLiteral?.replace(/['"]/g, '')
-    if (lit !== undefined) layoutModes.push({ dirPath: r.dirPath, mode: lit })
-  }
-  const layoutModeFor = (dirPath: string): string | undefined => {
-    let best: { dirPath: string; mode: string } | undefined
-    for (const l of layoutModes) {
-      const covers = l.dirPath === '' || dirPath === l.dirPath || dirPath.startsWith(`${l.dirPath}/`)
-      if (covers && (best === undefined || l.dirPath.length > best.dirPath.length)) best = l
-    }
-    return best?.mode
-  }
-
+  // Same resolver as the mode table, so "is this route isr" has one answer.
+  // A computed renderMode is runtime-only (and warned about separately).
+  const resolve = createFileRouteModeResolver(routes, appMode, rules)
   const offenders: IsrAuthRiskEntry[] = []
   for (const r of routes) {
     if (r.isLayout || r.isError || r.isLoading || r.isNotFound) continue
     const exp = r.exports
     if (!exp?.readsRequestAuth) continue
     if (!(exp.hasLoader || exp.hasMiddleware || exp.hasGuard)) continue
-    const own = exp.renderModeLiteral?.replace(/['"]/g, '')
-    const effective = own ?? layoutModeFor(r.dirPath) ?? matchRouteRules(rules, r.urlPath) ?? appMode
+    const effective = resolve(r).mode
     if (effective === 'isr') offenders.push({ filePath: r.filePath, urlPath: r.urlPath })
   }
   return offenders
@@ -1401,19 +1464,14 @@ export function resolveAutoAppMode(
   if (rules && Object.values(rules).some((v) => v.renderMode && serverModes.has(v.renderMode))) {
     return 'ssr'
   }
+  const resolve = createFileRouteModeResolver(routes, 'auto', rules)
   for (const r of routes) {
     if (r.isLayout || r.isError || r.isLoading || r.isNotFound) continue
-    const lit = r.exports?.renderModeLiteral?.replace(/['"]/g, '')
-    if (lit !== undefined) {
-      if (serverModes.has(lit)) return 'ssr'
-      continue
-    }
-    if (r.exports?.hasRenderMode) {
-      // computed renderMode — can't prove static; a server keeps every
-      // declared mode honorable.
-      return 'ssr'
-    }
-    if (serverModes.has(inferRouteMode(r.exports ?? ({} as RouteFileExports)))) return 'ssr'
+    const { mode, source } = resolve(r)
+    // A computed renderMode can't be proven static; a server keeps every
+    // declared mode honorable.
+    if (source === 'computed') return 'ssr'
+    if (mode !== undefined && serverModes.has(mode)) return 'ssr'
   }
   return 'ssg'
 }
@@ -1512,10 +1570,12 @@ export function resolveAutoModeSync(
 export interface FileRouteModeEntry {
   /** URL pattern (`/posts/:id`). */
   pattern: string
-  /** Effective mode: leaf declaration > nearest ancestor layout > app mode. */
+  /** Effective mode: leaf > nearest ancestor layout > routeRules > inference ('auto') > app mode. */
   mode: RenderMode
-  /** True when the route (or an ancestor layout) DECLARED the mode. */
+  /** True when the route, an ancestor layout or a routeRules glob DECLARED the mode. */
   declared: boolean
+  /** Where the mode came from (see {@link FileRouteModeSource}). */
+  source: FileRouteModeSource
   /** Source file, relative to the routes dir. */
   filePath: string
 }
@@ -1524,9 +1584,9 @@ export interface FileRouteModeEntry {
  * File-level twin of `collectRouteModes` (route-modes.ts): classify every
  * PAGE route's effective render mode straight from the routes directory —
  * no route-module build needed, so the dev banner and both build plugins
- * can print the SAME per-route mode table. Resolution parity contract
- * (leaf declaration > nearest ancestor `_layout` declaration > app mode)
- * is locked by fs-router tests against the runtime resolver's semantics.
+ * can print the SAME per-route mode table. Resolution goes through
+ * {@link createFileRouteModeResolver}; parity with the runtime resolver is
+ * locked by fs-router tests.
  */
 export async function collectFileRouteModes(
   routesDir: string,
@@ -1536,61 +1596,27 @@ export async function collectFileRouteModes(
   // matchRouteRules comes from the module-level static import — route-modes
   // is a value dep of this module now (detectIsrAuthRisk uses it too).
   const { isApiRoute } = await import('./api-routes')
-  const infer = appMode === 'auto'
-  const scanMode: RenderMode = infer ? 'ssg' : appMode
+  const scanMode: RenderMode = appMode === 'auto' ? 'ssg' : appMode
   const routes = await scanRouteFilesWithExports(routesDir, scanMode)
-
-  const parseDeclared = (r: FileRoute): RenderMode | undefined => {
-    const lit = r.exports?.renderModeLiteral?.replace(/['"]/g, '')
-    return lit === 'ssr' || lit === 'ssg' || lit === 'spa' || lit === 'isr' ? lit : undefined
-  }
-
-  // Layout declarations cascade to everything under their directory.
-  const layoutModes = new Map<string, RenderMode>()
-  for (const r of routes) {
-    if (!r.isLayout) continue
-    const m = parseDeclared(r)
-    if (m) layoutModes.set(r.dirPath, m)
-  }
+  const resolve = createFileRouteModeResolver(routes, appMode, rules)
 
   const out: FileRouteModeEntry[] = []
   for (const r of routes) {
     if (r.isLayout || r.isError || r.isLoading || r.isNotFound) continue
     if (isApiRoute(r.filePath)) continue
     if (!r.urlPath) continue
-    let mode = parseDeclared(r)
-    let declared = mode !== undefined
-    if (!mode) {
-      // Nearest ancestor layout wins (walk the dir chain upward).
-      let dir = r.dirPath
-      for (;;) {
-        const m = layoutModes.get(dir)
-        if (m) {
-          mode = m
-          declared = true
-          break
-        }
-        if (dir === '') break
-        const i = dir.lastIndexOf('/')
-        dir = i === -1 ? '' : dir.slice(0, i)
-      }
-    }
-    // Central overrides: file/layout declaration > routeRules > app mode
-    // (same precedence as the runtime resolver).
-    const ruleMode = mode === undefined ? matchRouteRules(rules, r.urlPath) : undefined
-    if (ruleMode !== undefined) {
-      mode = ruleMode
-      declared = true
-    }
-    // mode: 'auto' — undeclared routes resolve by inference (same helper the
-    // generator uses, so this view matches the built modes exactly).
-    if (mode === undefined && infer) {
-      mode = inferRouteMode(r.exports ?? ({} as RouteFileExports))
-    }
+    const { mode, source } = resolve(r)
     out.push({
       pattern: r.urlPath,
-      mode: mode ?? (appMode as RenderMode),
-      declared,
+      // A computed declaration's value is runtime-only; show the mode the
+      // route would otherwise get (the build already warns about it).
+      mode:
+        mode
+        ?? (appMode === 'auto'
+          ? inferRouteMode(r.exports ?? ({} as RouteFileExports))
+          : appMode),
+      declared: source !== 'app' && source !== 'inferred',
+      source,
       filePath: r.filePath,
     })
   }
