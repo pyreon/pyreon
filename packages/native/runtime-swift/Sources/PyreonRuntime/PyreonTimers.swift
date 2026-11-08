@@ -76,7 +76,10 @@ public enum PyreonTimers {
         // carries it across the Sendable closure `Timer` takes.
         let box = Callback(fn)
         // A zero-interval repeating Timer would spin the run loop; browsers clamp a busy interval too.
-        let timer = Timer(timeInterval: repeats ? max(delay, 0.001) : delay, repeats: repeats) { _ in
+        let interval = repeats ? max(delay, 0.001) : delay
+        // The first fire date is explicit: swift-corelibs-foundation's `Timer(timeInterval:repeats:block:)` fires NOW
+        // (Darwin's fires after the interval), so on Linux every timer ran at once, in creation order.
+        let timer = Timer(fire: Date().addingTimeInterval(interval), interval: interval, repeats: repeats) { _ in
             if !repeats {
                 table.lock.lock()
                 table.timers.removeValue(forKey: id)
