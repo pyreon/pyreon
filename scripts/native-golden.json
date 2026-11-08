@@ -7392,13 +7392,13 @@
       "warnings": 0
     },
     "example:native-counter-ios/Counter.tsx|swift": {
-      "sha": "cde070e84bcec2e6b6b66fa8fc8dbdb7dc5c1d37c82a0670fa0ec3606ebea61e",
-      "bytes": 19338,
+      "sha": "9068e65d908f0a88dd71827413ef060648d0b19dd01282679faa3212694ecd58",
+      "bytes": 20090,
       "warnings": 0
     },
     "example:native-counter-ios/Counter.tsx|kotlin": {
-      "sha": "8372f8818c22f8a6d7f61aed8ca2e4dc0b087a8843899658c7f3cd719c5f28aa",
-      "bytes": 20004,
+      "sha": "4081c009eb8bc15653b2737f3662a422f75e067c168181b10a6ce2698ec962e8",
+      "bytes": 20506,
       "warnings": 0
     },
     "example:native-finance/FinanceApp.tsx|swift": {

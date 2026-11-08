@@ -18,6 +18,7 @@ import { swiftStr } from './string-literals'
 import { resolveDateFieldShape, type DateBound } from './date-field-shape'
 import { resolveFieldShape } from './field-shape'
 import { resolveSelectOptions } from './select-shape'
+import { effectReadCandidates, effectTriggerPaths, isComponentStateName } from './effect-deps'
 import {
   allServices,
   bindServices,
@@ -1297,6 +1298,10 @@ export function emitSwift(
   // emit) at module scope. Swift allows top-level type forward refs, so
   // ordering vs the components is irrelevant.
   for (const s of _synthExprStructs) parts.push(emitSwiftStruct(s))
+  // `.onChange(of:)` needs an Equatable value: a struct an effect depends on gets the synthesized conformance, in an
+  // extension so every other struct's emit is unchanged.
+  for (const name of _effectEquatableStructs) parts.push(`extension ${swiftIdent(name)}: Equatable {}`)
+  _effectEquatableStructs = new Set()
   // Gap 3 PR-3.2/3.3/3.4 — prepend wrapper helper structs if needed.
   if (_needsSwiftKeepAliveWrapper) parts.push(SWIFT_KEEP_ALIVE_WRAPPER)
   // consulted AFTER helper + component emission — the flag is set during it
@@ -1333,6 +1338,90 @@ export function emitSwift(
   const warnings = [..._emitWarnings]
   _emitWarnings = []
   return { code: parts.join('\n\n'), warnings }
+}
+
+/** Structs an effect's `.onChange(of:)` compares — each gets `extension X: Equatable {}` (see the module emit). */
+let _effectEquatableStructs: Set<string> = new Set()
+
+/**
+ * The `.onChange(of:)` values of effect `fn` in component `c`: its reactive reads, lowered, deduplicated. A read whose
+ * value Swift cannot compare (a closure, an opaque runtime type) cannot be an `.onChange` key — it is named in a
+ * warning instead of being dropped silently, since the effect then does not re-run when it changes.
+ */
+function swiftEffectDeps(c: ComponentIR, fn: string): string[] {
+  const decl = c.decls.find((d): d is Extract<DeclIR, { kind: 'function' }> => d.kind === 'function' && d.name === fn)
+  if (decl === undefined) return []
+  const saved = seedHandlerLocals(decl.body, _activeInferCtx)
+  const out: string[] = []
+  try {
+    const lowered = effectReadCandidates(decl.body, c.propsParamName, (n) => isComponentStateName(c, n)).map((cand) => [cand, emitSwiftExpr(cand, 0)] as const)
+    const keep = new Set(effectTriggerPaths(lowered.map(([, code]) => code)))
+    for (const [cand, code] of lowered) {
+      if (!keep.has(code) || out.includes(code)) continue
+      const structs = new Set<string>()
+      const t = inferType(cand, _activeInferCtx)
+      // A runtime container's field (`online.isOnline`, `ws.lastMessage`) has no type the compiler can see. Compare its
+      // description instead: a String, so always Equatable, and it changes whenever the scalar / string / optional /
+      // collection value those fields hold changes.
+      if (t.kind === 'unknown') {
+        out.push(`String(describing: ${code})`)
+        continue
+      }
+      if (!swiftEquatable(t, structs, new Set())) {
+        _emitWarnings.push(
+          `Component ${c.name}: effect() reads \`${code}\`, whose value Swift cannot compare, so on iOS the effect does NOT re-run when it changes (\`.onChange(of:)\` needs an Equatable value). Read a comparable field of it instead (an id, a count, a string).`,
+        )
+        continue
+      }
+      for (const s of structs) _effectEquatableStructs.add(s)
+      out.push(code)
+    }
+  } finally {
+    _activeInferCtx.locals = saved
+  }
+  return out
+}
+
+/**
+ * The call that runs effect body `fn`. An error nothing in the body catches has nowhere to go from `.onAppear` /
+ * `.onChange` — like an event handler, it terminates (as an uncaught Kotlin exception does) and says so.
+ */
+function swiftEffectCall(fn: string): string {
+  if (!_swiftThrowingFns.has(fn)) return `${swiftIdent(fn)}()`
+  _pushSwiftEmitWarning(uncaughtThrowWarning('An `effect()` body, which can throw,'))
+  return `try! ${swiftIdent(fn)}()`
+}
+
+/** Whether a value of type `t` is Equatable in the emitted Swift; collects the structs that need the conformance. */
+function swiftEquatable(t: TypeIR, structs: Set<string>, seen: Set<string>): boolean {
+  switch (t.kind) {
+    case 'number':
+    case 'string':
+    case 'boolean':
+      return true
+    case 'array':
+    case 'set':
+      return swiftEquatable(t.element, structs, seen)
+    case 'map':
+      return swiftEquatable(t.key, structs, seen) && swiftEquatable(t.value, structs, seen)
+    case 'union':
+      return t.branches.every(
+        (b) => b.kind === 'undefined' || b.kind === 'null' || swiftEquatable(b, structs, seen),
+      )
+    case 'typeRef': {
+      if (t.name === 'Int' || t.name === 'Double' || t.name === 'String' || t.name === 'Bool') return true
+      if (_enumNames.has(t.name)) return true
+      const st = [..._declaredStructs, ..._synthExprStructs].find((x) => x.name === t.name)
+      if (st === undefined) return false
+      if (seen.has(st.name)) return true
+      seen.add(st.name)
+      if (!st.fields.every((f) => swiftEquatable(f.type, structs, seen))) return false
+      structs.add(st.name)
+      return true
+    }
+    default:
+      return false
+  }
 }
 
 /** Declared module structs — feeds per-component inference ctx so member
@@ -1525,7 +1614,7 @@ let _activePropsParamName: string | undefined
  * Kotlin needs no equivalent — its harness is a `LaunchedEffect(Unit)` SIBLING
  * node keyed on a stable `Unit`, which recomposition does not cancel.
  */
-const LIFECYCLE_HOST_DECL_KINDS: ReadonlySet<DeclIR['kind']> = new Set(['on-mount'])
+const LIFECYCLE_HOST_DECL_KINDS: ReadonlySet<DeclIR['kind']> = new Set(['on-mount', 'effect'])
 
 /**
  * Push a named warning when a `&&` / `||` operand is provably not a Bool.
@@ -1962,6 +2051,16 @@ function emitSwiftComponent(c: ComponentIR): string {
     // on-mount decls emit at the HARNESS level (.onAppear after the body,
     // on the stable-identity host) — no stored property.
     if (d.kind === 'on-mount' || pluginDeclFeatures(d)?.lifecycleOnly === true) continue
+    // An effect's body is its sibling `function` decl; with a cleanup, the closure it returned is held between runs
+    // so the next run (and the view going away) can call it first.
+    if (d.kind === 'effect') {
+      if (d.cleanup) {
+        const fn = swiftIdent(d.fn)
+        lines.push(`  @State private var ${fn}Cleanup: (() -> Void)? = nil`)
+        lines.push(`  private func ${fn}Run() { ${fn}Cleanup?(); ${fn}Cleanup = ${swiftEffectCall(d.fn)} }`)
+      }
+      continue
+    }
     lines.push(`  ${emitSwiftDecl(d, inferCtx, synth)}`)
   }
   // A plugin's declarations that are declared TYPED with no initializer (a `@State` initializer cannot reference another
@@ -2076,6 +2175,16 @@ function emitSwiftComponent(c: ComponentIR): string {
   // `.task(id:)` cancels and RESTARTS when the id changes, which is exactly
   // a restarting trailing-edge debounce — measured as the web contract
   // before this was written. No stored timer handle, no runtime.
+  // effect(fn) → run on appear, and again on `.onChange(of:)` each reactive read the body can perform
+  // (`effect-deps.ts`). Emitted BEFORE the onMount hooks: the web runs an effect during setup, before mount.
+  for (const d of c.decls) {
+    if (d.kind !== 'effect') continue
+    const fn = swiftIdent(d.fn)
+    const run = d.cleanup ? `${fn}Run()` : swiftEffectCall(d.fn)
+    lines.push(`      .onAppear { ${run} }`)
+    if (d.tracked) for (const dep of swiftEffectDeps(c, d.fn)) lines.push(`      .onChange(of: ${dep}) { ${run} }`)
+    if (d.cleanup) lines.push(`      .onDisappear { ${fn}Cleanup?(); ${fn}Cleanup = nil }`)
+  }
   for (const d of c.decls) {
     if (d.kind !== 'on-mount') continue
     const savedLocals = seedHandlerLocals(d.body, _exprInferCtx)
@@ -2499,7 +2608,7 @@ function emitSwiftDecl(
   // `hotkey` joins them — it becomes a hidden shortcut Button in `.background`,
   // and it carries a `body` like a computed does, so without this narrow it
   // reaches the `if (d.body !== undefined)` branch below and is treated as one.
-  if (d.kind === 'on-mount') return ''
+  if (d.kind === 'on-mount' || d.kind === 'effect') return ''
   // Seeded with the SOURCE, so the value is available immediately — the web
   // hook has no first-delay gap and a field that rendered empty for the
   // delay on every mount would be a visible divergence. The debounce itself
@@ -4272,6 +4381,26 @@ function warnIntegerNaNTest(test: 'isNaN' | 'isFinite', arg: ExprIR, shown: stri
   )
 }
 
+/** `untrack(fn)` / `batch(fn)` / `sig.peek()` as their plain evaluation (see the call site), or `undefined`. */
+function swiftReactivityPassthrough(e: Extract<ExprIR, { kind: 'call' }>, indent: number): string | undefined {
+  if (e.args.length === 0 && e.callee.kind === 'member' && e.callee.property === 'peek' && !e.callee.optional) {
+    const read: ExprIR = { kind: 'call', callee: e.callee.object, args: [] }
+    return emitSwiftExpr(read, indent)
+  }
+  if (e.callee.kind !== 'identifier' || (e.callee.name !== 'untrack' && e.callee.name !== 'batch')) return undefined
+  const fn = e.args[0]
+  if (e.args.length !== 1 || fn === undefined || fn.kind !== 'arrow' || fn.params.length !== 0) return undefined
+  if (fn.stmts === undefined) return `(${emitSwiftExpr(fn.body, indent)})`
+  if (fn.stmts.some((st) => st.kind === 'return' && st.expr !== undefined)) {
+    _emitWarnings.push(
+      `${e.callee.name}(() => { …; return value }): a block body that returns a value has no native lowering — write the value as an expression body (\`${e.callee.name}(() => value)\`), or run the statements and read the value after.`,
+    )
+    return undefined
+  }
+  const pad = ' '.repeat(indent)
+  return `{ () in\n${emitSwiftStmtLines(fn.stmts, indent + 2).join('\n')}\n${pad}}()`
+}
+
 function emitSwiftExpr(e: ExprIR, indent: number): string {
   // A closure is its own throw context: a throw or throwing call inside it cannot propagate to the enclosing
   // `throws` helper or `do` body.
@@ -4451,6 +4580,14 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
           `Object.${e.callee.property}(...) has no native equivalent — only Object.keys() / Object.values() on a statically-known HOMOGENEOUS object shape are supported (they lower to a literal key / member-access array). Emitting an empty array; restructure to avoid runtime object reflection on native.`,
         )
         return e.callee.property === 'keys' ? '[String]()' : '[Any]()'
+      }
+      // `untrack(() => x)` / `batch(() => { … })` / `sig.peek()` — the reactivity helpers that only steer the web's
+      // dependency tracking and flushing. Native has neither to steer: an effect's triggers are read off its body
+      // statically (and `effect-deps.ts` leaves these reads out), and writes inside one action already coalesce. So
+      // each is its plain evaluation: the closure's value, the closure run, the signal read.
+      {
+        const passthrough = swiftReactivityPassthrough(e, indent)
+        if (passthrough !== undefined) return passthrough
       }
       // `console.log(…)` (and `info` / `debug` / `warn` / `error`) → `print(…)` — the universal TS debug call maps to
       // Swift's stdlib print, which joins its arguments with a space as the console does (Kotlin mirror: `println`).

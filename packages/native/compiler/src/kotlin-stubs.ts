@@ -117,6 +117,15 @@ class DisposableEffectScope {
 @Composable
 @Suppress("UNUSED_PARAMETER")
 fun DisposableEffect(key1: Any?, effect: DisposableEffectScope.() -> DisposableEffectResult) {}
+@Composable
+@Suppress("UNUSED_PARAMETER")
+fun DisposableEffect(key1: Any?, key2: Any?, effect: DisposableEffectScope.() -> DisposableEffectResult) {}
+@Composable
+@Suppress("UNUSED_PARAMETER")
+fun DisposableEffect(key1: Any?, key2: Any?, key3: Any?, effect: DisposableEffectScope.() -> DisposableEffectResult) {}
+@Composable
+@Suppress("UNUSED_PARAMETER")
+fun DisposableEffect(vararg keys: Any?, effect: DisposableEffectScope.() -> DisposableEffectResult) {}
 
 // isSystemInDarkTheme — Compose's dark-mode read (androidx.compose.foundation),
 // emitted by useColorScheme(). The real device build imports it via the CLI's

@@ -128,7 +128,7 @@ Layer 0: signal / computed / effect              (reactive core, 100% shared)
 
 ### Layer 0 — Reactive core (100% shared)
 
-`signal()`, `computed()`, `effect()`, `batch()`, `onCleanup()` — these are the same on every platform. PMTC maps them to `@State` / `@Observable` on iOS and `mutableStateOf` / `derivedStateOf` on Android. On web they're native Pyreon.
+`signal()`, `computed()`, `effect()`, `batch()`, `onCleanup()` — these are the same on every platform. PMTC maps them to `@State` / `@Observable` on iOS and `mutableStateOf` / `derivedStateOf` on Android. On web they're native Pyreon. An `effect()` in a component body runs when the view appears and again when a signal it reads changes — `.onAppear` + `.onChange(of:)` on iOS, a keyed `DisposableEffect` on Android; see the declarations table below for the exact re-run rule.
 
 ### Layer 1 — Pure-logic hooks (100% shared)
 
@@ -1134,6 +1134,7 @@ every warning; treat any warning as "this construct is outside v1."
 | `const x = signal(init)` / `signal<T>(init)` | un-annotated literals infer string/number/boolean; enum-typed signals get native enums |
 | `const c = computed(() => expr)` | expression OR block body (block: `let` + `if`/`return`) |
 | `const f = (args) => …` | functions; expression or block body |
+| `effect(() => { … })` (and an `onMount` whose cleanup closes over a mount-body local) | The body becomes a component function, so locals, branches, loops and `try` lower as a handler's do, and a returned cleanup closure keeps the locals it reads. It runs when the view appears and again whenever one of its REACTIVE READS changes: Swift `.onAppear` + one `.onChange(of:)` per read (a struct read gets `extension X: Equatable {}`; a read Swift cannot compare, such as a closure, is named in a warning), Compose a `DisposableEffect` keyed by the same reads. The returned cleanup runs before each re-run and when the view goes away. Two differences from the web, both deliberate: the reads are collected from the body STATICALLY — every signal / computed / store field / prop it names, so a signal read only in a branch that did not run still re-runs it (the body re-checks its own condition, so a guarded effect does the same work); and the first run is after the first frame, not during setup, so a write it makes shows one frame later. Reads in the cleanup, in `untrack(…)` and through `.peek()` are not triggers, as on the web; `untrack(() => x)`, `batch(() => { … })` and `sig.peek()` themselves lower to their plain evaluation (native has no tracking or flushing for them to steer; a `batch` / `untrack` block body that returns a value warns). An `onMount` whose cleanup reads a mount-body local (`const id = setInterval(…); return () => clearInterval(id)`) runs the same way, once, never re-run. Verified: R2 (`native-effect.test.ts` — stub swiftc, real-SDK swiftc, kotlinc) |
 | `const x = <expr>` (plain value) | non-call / non-arrow inits — string / number / boolean / arithmetic / member / signal-read — emit as a body-local `let` (Swift, in `body`) / `val` (Kotlin); captures-once like a JS const (#1691) |
 | `useStorage<T>('key', default)` | literal string key required |
 | `createRouter({ routes })` / `useNavigate()` / `useParams()` / `useLoaderData<T>()` | literal route arrays; guards as expression-body arrows |
