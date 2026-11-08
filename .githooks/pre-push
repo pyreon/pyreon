@@ -97,7 +97,10 @@ cleanup() {
   rm -f "$PRE_PUSH_LOCK/pid"
   rmdir "$PRE_PUSH_LOCK" 2>/dev/null || true
 }
-trap cleanup EXIT HUP INT TERM
+trap cleanup EXIT
+# A signal must END the hook, not just run cleanup and fall through to the next
+# step with the lock already released (sh resumes after a trap handler).
+trap 'exit 130' HUP INT TERM
 
 TIMEOUT_SEC="${PYREON_PRE_PUSH_TIMEOUT_SEC:-300}"
 
