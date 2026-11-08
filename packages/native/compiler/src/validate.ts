@@ -377,6 +377,12 @@ const SWIFT_RUNTIME_HELPERS: readonly { readonly name: string; readonly file: st
   { name: 'pyreonParseInt', file: 'PyreonNumber.swift' },
   { name: 'pyreonParseFloat', file: 'PyreonNumber.swift' },
   { name: 'pyreonToNumber', file: 'PyreonNumber.swift' },
+  // A JS `Date` lowers to these (date-lowering.ts).
+  { name: 'pyreonDateFrom', file: 'PyreonDate.swift' },
+  { name: 'pyreonDateGet', file: 'PyreonDate.swift' },
+  { name: 'pyreonDateTimezoneOffset', file: 'PyreonDate.swift' },
+  { name: 'pyreonDateISO', file: 'PyreonDate.swift' },
+  { name: 'pyreonDateMake', file: 'PyreonDate.swift' },
   { name: 'pyreonSlice', file: 'PyreonSlice.swift' },
   { name: 'pyreonSliceIndex', file: 'PyreonSlice.swift' },
   { name: 'pyreonSubstring', file: 'PyreonSlice.swift' },

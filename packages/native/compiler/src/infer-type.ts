@@ -18,6 +18,7 @@
 // that would require a real type checker. It covers the shapes the
 // emitter actually emits, which is a fixed-and-growing surface.
 
+import { DATE_RUNTIME_RESULTS } from './date-lowering'
 import { exprHasOptionalLink, exprReferencesIdent, isReReadableExpr } from './expr-utils'
 import { childStatementLists } from './throw-lowering'
 import type { ComponentIR, DeclIR, ExprIR, ExtDecl, ExtModuleItem, ModuleDeclIR, StatementIR, StructIR, TypeIR } from './types'
@@ -1564,6 +1565,10 @@ export function inferTypeValue(expr: ExprIR, ctx: InferenceCtx): TypeIR {
         // array literal to `[Any]` → `.length` failed on Swift). `Boolean(x)`
         // → boolean (paired with the truthiness-lowering emit both targets).
         if (expr.callee.name === 'String') return { kind: 'string' }
+        // The `PyreonDate` runtime functions a JS `Date` lowers to (date-lowering.ts).
+        const dateResult = Object.hasOwn(DATE_RUNTIME_RESULTS, expr.callee.name) ? DATE_RUNTIME_RESULTS[expr.callee.name] : undefined
+        if (dateResult === 'number') return { kind: 'number', float: true }
+        if (dateResult === 'string') return { kind: 'string' }
         // A timer id (`PyreonTimers` returns an Int / Long).
         if (expr.callee.name === 'setTimeout' || expr.callee.name === 'setInterval') return { kind: 'number' }
         // `untrack(() => x)` / `batch(() => x)` lower to `x` (their plain evaluation), so they type as `x`.

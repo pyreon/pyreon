@@ -1651,6 +1651,17 @@ public func pyreonNumberString(_ v: Int) -> String { "" }
 public func pyreonParseInt(_ text: String, _ radix: Int? = nil) -> Int? { nil }
 public func pyreonParseFloat(_ text: String) -> Double { 0 }
 public func pyreonToNumber(_ text: String) -> Double { 0 }
+// PyreonDate — JS Date as epoch milliseconds (PyreonDate.swift). Mirrors the real surface.
+public func pyreonDateFrom(_ text: String) -> Double { 0 }
+public func pyreonDateFrom(_ ms: Double) -> Double { 0 }
+public func pyreonDateFrom(_ ms: Int) -> Double { 0 }
+public func pyreonDateGet(_ ms: Double, _ field: Int, _ utc: Bool) -> Double { 0 }
+public func pyreonDateGet(_ ms: Int, _ field: Int, _ utc: Bool) -> Double { 0 }
+public func pyreonDateTimezoneOffset(_ ms: Double) -> Double { 0 }
+public func pyreonDateTimezoneOffset(_ ms: Int) -> Double { 0 }
+public func pyreonDateISO(_ ms: Double) -> String { "" }
+public func pyreonDateISO(_ ms: Int) -> String { "" }
+public func pyreonDateMake(_ utc: Bool, _ parts: Double...) -> Double { 0 }
 // PyreonTimers — JS setTimeout / setInterval / clear* (PyreonTimers.swift). Mirrors the real surface.
 public enum PyreonTimers {
   @discardableResult public static func setTimeout(_ ms: Double, _ fn: @escaping () -> Void) -> Int { 0 }
