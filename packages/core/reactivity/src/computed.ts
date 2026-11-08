@@ -13,6 +13,7 @@ import { _captureCallerLocation, _rdRecordFire, _rdRegister } from './reactive-d
 import { getCurrentScope } from './scope'
 import {
   removeSubscriber,
+  exactDeps,
   runCollect,
   runVerify,
   type SubscriberHost,
@@ -278,7 +279,9 @@ function createComputed<T>(
   // before it is wired.
   let initialized = false
   let tracked = false
-  const deps: SubscriberHost[] = []
+  // `let`: re-pointed at an exact-size copy after the first collect (see
+  // `exactDeps` in tracking.ts).
+  let deps: SubscriberHost[] = []
   let recompute: () => void
 
   const read = (() => {
@@ -297,7 +300,12 @@ function createComputed<T>(
           // records the new shape, keeping the dep list exact on every re-eval.
           next = runVerify(recompute, deps, fn)
         } else {
-          next = runCollect(recompute, deps, fn)
+          const collected = deps
+          try {
+            next = runCollect(recompute, collected, fn)
+          } finally {
+            deps = exactDeps(collected)
+          }
           tracked = true
         }
       } catch (err) {

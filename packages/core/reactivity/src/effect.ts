@@ -1,6 +1,7 @@
 import { _captureCallerLocation, _rdRecordFire, _rdRegister } from './reactive-devtools'
 import { getCurrentScope } from './scope'
 import {
+  exactDeps,
   getInnerEffectCollector,
   removeSubscriber,
   runCollect,
@@ -89,8 +90,10 @@ const _c: CleanupFrame = {
  */
 export function onCleanup(fn: () => void): void {
   if (_c.o) {
-    if (_c.c === null) _c.c = []
-    _c.c.push(fn)
+    // `[fn]`, not `[]` + push: V8's first push reserves 16 slots, and most
+    // windows collect exactly one cleanup.
+    if (_c.c === null) _c.c = [fn]
+    else _c.c.push(fn)
   }
 }
 
@@ -215,13 +218,14 @@ export function effect(
   const snapshot = cap ? cap.capture() : null
   // Pre-build the restore wrapper ONCE at setup instead of allocating a
   // `() => restore(...)` closure on every non-first run.
-  const fnToRunReplay: () => void =
+  const fnToRunReplay: () => (() => void) | void =
     snapshot !== null && cap ? () => cap.restore(snapshot, fn) : fn
   let disposed = false
   let isFirstRun = true
   let cleanup: (() => void) | undefined
-  // Local deps array — avoids WeakMap overhead (like renderEffect)
-  const deps: SubscriberHost[] = []
+  // Local deps array — avoids WeakMap overhead (like renderEffect). `let`: the
+  // first run re-points it at an exact-size copy (`exactDeps`).
+  let deps: SubscriberHost[] = []
 
   let cleanups: (() => void)[] | undefined
   // Inner effects created during this effect's body — disposed on outer re-run
@@ -280,9 +284,16 @@ export function effect(
       // in the steady state). The first run is inside the synchronous mount where
       // the context stack is still intact, so it calls fn directly; re-runs happen
       // after mountReactive truncated the stack and need it restored.
-      cleanup =
-        (isFirstRun ? runCollect(run, deps, fn) : runVerify(run, deps, fnToRunReplay)) ||
-        undefined
+      if (isFirstRun) {
+        const collected = deps
+        try {
+          cleanup = runCollect(run, collected, fn) || undefined
+        } finally {
+          deps = exactDeps(collected)
+        }
+      } else {
+        cleanup = runVerify(run, deps, fnToRunReplay) || undefined
+      }
       if (_c.c !== null) cleanups = _c.c
     } catch (err) {
       _errorHandler(err)
@@ -382,7 +393,7 @@ export function effect(
  * - Signal reads hit `if (_t.e)` null check → instant return
  */
 export function _bind(fn: () => void): () => void {
-  const deps: SubscriberHost[] = []
+  let deps: SubscriberHost[] = []
   let disposed = false
 
   // Capture the snapshot AND the hook reference at SETUP, so re-runs dispatch
@@ -414,7 +425,12 @@ export function _bind(fn: () => void): () => void {
   // intentionally call `fn` directly (not `run`) here — the synchronous
   // mount stack is already intact at this point, so restoring the captured
   // snapshot would just push the same frames again redundantly.
-  runCollect(run, deps, fn)
+  const collected = deps
+  try {
+    runCollect(run, collected, fn)
+  } finally {
+    deps = exactDeps(collected)
+  }
 
   const dispose = () => {
     if (disposed) return
@@ -458,7 +474,7 @@ export function renderEffect(fn: () => void): () => void {
     }
   }
 
-  const deps: SubscriberHost[] = []
+  let deps: SubscriberHost[] = []
   let disposed = false
   let isFirstRun = true
 
@@ -479,7 +495,12 @@ export function renderEffect(fn: () => void): () => void {
       // First run: stack is still intact (we're inside the synchronous
       // mount), so call fn directly to avoid pushing the snapshot frames
       // a second time.
-      runCollect(run, deps, fn)
+      const collected = deps
+      try {
+        runCollect(run, collected, fn)
+      } finally {
+        deps = exactDeps(collected)
+      }
     } else {
       // Re-run: VERIFY the previous dep list positionally (zero Set ops in
       // the steady state) instead of the old cleanup-all + re-track pair.

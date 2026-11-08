@@ -47,8 +47,10 @@ export class EffectScope {
   /** Register an effect/computed to be disposed when this scope stops. */
   add(e: { dispose(): void }): void {
     if (!this._active) return
-    if (this._effects === null) this._effects = []
-    this._effects.push(e)
+    // `[e]`, not `[]` + push: V8's first push reserves 16 slots, which a
+    // scope holding one or two disposers would carry for its lifetime.
+    if (this._effects === null) this._effects = [e]
+    else this._effects.push(e)
   }
 
   /**
