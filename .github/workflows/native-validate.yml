@@ -661,17 +661,9 @@ jobs:
           swiftc -typecheck "${RUNNER_TEMP}/pyreon-swiftui-probe.swift"
           echo "SwiftUI SDK present — validateSwiftTypecheck blocks WILL run"
 
-      # Restore-only: the bun tarball store ci.yml's Install saves on main (the
-      # one writer under this prefix; check-cache-key-sync locks that). A miss
-      # costs ~1 s. UNMEASURED on macOS until the nightly seeds the store; the
-      # Linux twin measured a net LOSS (see the validate job), so if the first
-      # warm macOS run does not show the install phase shrinking, remove this.
-      - name: Restore bun install cache (read-only)
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ~/.bun/install/cache
-          key: bun-install-cache-${{ runner.os }}-${{ hashFiles('bun.lock') }}
-          restore-keys: bun-install-cache-${{ runner.os }}-
+      # No bun tarball cache on macOS: restoring it took 65-126 s here and the
+      # install after it 3-7 s, while a cold install of the same lockfile takes
+      # ~8 s on ubuntu (see native-device.yml's iOS job for the measurement).
       # Read-only restore of ci.yml's SOURCE-HASHED lib/ (ci's Install is the
       # one writer). bootstrap.ts decides staleness by CONTENT hash, never
       # mtime, so a prefix-restored older lib/ is safe: it rebuilds only the

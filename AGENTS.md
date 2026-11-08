@@ -148,6 +148,7 @@ Before adding any module-level cache, stack or registry, answer: what evicts ent
 
 - Never push to `main`. Work on a branch in a worktree created from `origin/main` (`git worktree add /tmp/wt-<name> origin/main -b <branch>`); do not check out or pull in the primary checkout.
 - **Leave the machine as you found it.** Sessions share one Mac's CPU, RAM and disk. A `/tmp/wt-<name>` worktree is about 1.7–2.3 GB (it has its own `node_modules`), and a device left running costs more than a build: one idle Android emulator holds about 3.5 GB.
+  - Nothing in a default local run (`bun run test`, the pre-push hook, `validate-fast`, any package script) boots a simulator or emulator; CI's `native-device.yml` owns device lanes. A package script that needs a device must be gated on `PYREON_DEVICE_TESTS=1` (locked by `no-local-device-boot.test.ts`). Run a device lane locally only when the task needs it.
   - `simctl terminate` any app you launch. Shut down any simulator or emulator **you** booted: `simctl shutdown <udid>` / `adb -s <serial> emu kill`. Never `shutdown all`, because another session may be mid-test.
   - Keep Xcode and Gradle build output inside your worktree, never in a new top-level `/tmp` directory.
   - Once your PR merges, remove the worktree and the branch: `git worktree remove --force /tmp/wt-<name> && git branch -D <branch>`. Skip a worktree that a running process still uses (`lsof -d cwd | grep /tmp/wt-<name>`).
