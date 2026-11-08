@@ -140,17 +140,21 @@ describe('styler — scoped SSR collection edges', () => {
     expect(count(later, 'color: gold;')).toBe(1)
   })
 
-  it('an evicted ambient key is skipped, not emitted as undefined', async () => {
+  it('an ambient (static global) key survives eviction and still reaches a later request', async () => {
     const s = createSheet({ maxCacheSize: 10 })
-    s.insertGlobal('body { background: black; }', true) // oldest → evicted first
+    // Oldest entry — the first eviction candidate. It is inserted once, at
+    // module evaluation, and nothing re-inserts it, so evicting it would drop
+    // the app's global CSS from every later request.
+    s.insertGlobal('body { background: black; }', true)
     for (let i = 0; i < 12; i++) s.insert(`width: ${i}px;`)
     const tag = await runWithRequestContext(async () => {
       s.insert('height: 1px;')
       return s.getStyleTag()
     })
-    expect(tag).not.toContain('background: black')
+    expect(tag).toContain('background: black')
     expect(tag).not.toContain('undefined')
     expect(tag).toContain('height: 1px;')
+    expect(tag).not.toContain('width: 0px;') // the oldest CLASS rule was evicted
   })
 
   it('concurrent streams keep independent flush watermarks', async () => {

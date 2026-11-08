@@ -28,7 +28,8 @@ Component libraries in `packages/ui/` (private):
 
 - `styled('div')` → `ComponentFn`; `css` → lazy `CSSResult`; `keyframes` → animation name; `createGlobalStyle` / `createSheet()`.
 - `ThemeContext` is reactive (`createReactiveContext<Theme>`). `useTheme()` returns a snapshot; `useThemeAccessor()` returns `() => Theme` for use in effects. A whole-theme swap re-resolves CSS and swaps class names without remounting.
-- One singleton `StyleSheet` (FNV-1a hashing, dedup, SSR).
+- One singleton `StyleSheet` (FNV-1a hashing, dedup, SSR). It is bounded (`maxCacheSize`, default 10,000) and evicts its oldest unused rules: never a class an element in the document carries (the client pass runs in a microtask so a render's elements are attached first), never `@keyframes` or a static global, never a mounted dynamic global (`sheet.retain`). Every cache above the sheet that returns a class name without `insert()` checks `sheet.isLive(name)` first and re-inserts on a miss.
+- The `$element` class cache in `DynamicStyled` is keyed theme → bundle → `$childFix` (Wrapper/Text CSS reads `rootSize` and breakpoints), so a theme swap or a second server tenant never reuses another theme's class.
 - `innerRef` is an alias of `ref` on `styled()` components.
 - On the server `DynamicStyled` (`IS_SERVER`) skips its reactive `computed`/`renderEffect` setup and emits the same class name.
 - The dev validator in `sheet.ts` flags `NaN` and malformed `var()` values in inserted CSS.
