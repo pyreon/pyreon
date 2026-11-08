@@ -104,7 +104,6 @@ describe('an unmapped Array/String method WARNS instead of leaking verbatim', ()
     ['nums().findLastIndex((x: number) => x > 1)', '.findLastIndex()'],
     ['s().codePointAt(0)', '.codePointAt()'],
     ['s().substr(1)', '.substr()'],
-    ['s().localeCompare("b")', '.localeCompare()'],
     ['s().normalize()', '.normalize()'],
     ['s().toLocaleUpperCase()', '.toLocaleUpperCase()'],
   ]

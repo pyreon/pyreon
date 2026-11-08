@@ -93,7 +93,9 @@ Keep this list honest and current; it is `BENCHMARKS.md` §12:
 ### DOM suites (`examples/benchmark`)
 
 - One Pyreon entry: the idiomatic JSX users ship (`src/impl/pyreon.tsx`). No hand-tuned "compiled" tier — the compiler already emits `_tpl()` + fine-grained bindings.
-- Per-framework page isolation (`page.goto('?framework=X')`), forced GC between iterations, adaptive warmup, 20 timed runs, median + 95% bootstrap CI + CV, `🤝` on CI overlap.
+- Per-framework page isolation (`page.goto('?framework=X')`), forced GC between iterations, adaptive warmup, 20 timed runs per page-load, median + 95% CI + CV, `🤝` on CI overlap.
+- The CI is a **cluster bootstrap** (`examples/benchmark/cluster-bootstrap.ts`): resample the page-loads (or processes) with replacement, then the samples within each. Samples from one page share its JIT and heap state, and page-to-page spread is large (per-page `swap rows` medians 620–860 µs for every arm, Vanilla included), so bootstrapping 5 × 20 pooled samples as 100 independent draws gave intervals several times too narrow. `bench-fair`, `bench-scenarios` and `table-bench` use it. With one page-load per arm (`--repeat 1`) the CI cannot contain page-load variance, and the harness flags the verdicts as provisional.
+- In `bench-scenarios`, each ranked Pyreon arm is judged against the best ranked **non-Pyreon** arm, never against a sibling Pyreon variant that happens to lead.
 - Production `vite build`, real published competitor deps, seeded RNG, DOM verification every iteration (gates read the table back, not just a row count).
 - Tightest commit per framework (`flushSync` / microtask / synchronous — never an `rAF` wait inside the timed window). Per-run resets on every op. Randomized, per-pass-reshuffled order.
 - Cross-origin isolated pages (`examples/benchmark/vite.config.ts` sets COOP/COEP) give a 5 µs `performance.now()` quantum instead of Chromium's 100 µs clamp. `bench-fair` prints `crossOriginIsolated=` and the quantum; confirm it before trusting sub-millisecond rows.
@@ -138,6 +140,7 @@ Each of these produced a wrong published figure at some point.
 - **Engine-internal caches in heap metrics.** V8's `smi_string_cache` grows when an arm stringifies many distinct integers in JS (`String(row.id)`) and is charged to whichever arm did it. Every arm renders the raw `row.id`. Bucket a heap snapshot by constructor and check GC-root-held entries (`bench-heapdiff.ts`) before attributing a heap delta to a framework. Node saturates this cache at startup, so only a fresh browser page shows it.
 - **Competitor handicaps.** A non-idiomatic competitor shape (Octane's `{String(row.id)}` disabling its `forBlock` fast path, an `rAF` idle wait inside React's window, a Solid arm skipping getter props) silently inflates Pyreon's lead.
 - **Dependency bumps move the board.** A competitor version bump can flip a verdict (Octane 0.2.x/0.4.x changed several ops). Attribute a change to Pyreon only after splitting "Pyreon moved" from "competitor moved".
+- **Pooled bootstrap overstates certainty.** CIs published before the cluster bootstrap (2026-11-05) resampled pooled samples as independent and are too narrow; an "outright" from that era on a close op needs a re-run before it is quoted again.
 - **Noisy load hides gaps.** A wide CI at high load can make a real gap look like a tie. Check CI width before publishing a tie; re-run on a quiet machine, and publish a verdict on a close op only after two runs agree.
 
 ## Standing findings not in `BENCHMARKS.md`
@@ -199,8 +202,16 @@ Each of these produced a wrong published figure at some point.
 
 - `resolveAccessor` (`packages/fundamentals/charts/src/engine/marks.ts`) grew its output with `push` despite #3912's comment and changeset saying it was presized. Presizing it took a fresh-page 1M line mount from 14.06 to 10.39 ms (interleaved, disjoint), which ties the columnar arm (PR #4117).
 - On the charts-libs board the 1M cell runs after the smaller cells and moved only 16.55 → 15.65 ms, with overlapping CIs. Chart.js with decimation still leads there (1.22×).
-- The remaining row cost on that warmed page is the million accessor calls and object reads (~8 ms of attribution with `--history`). It is not reachable without changing the accessor API. Columnar input remains the large-data path.
+- The remaining row cost on that warmed page is the million accessor calls and object reads (~8 ms of attribution with `--history`). Part of it was V8 calling the accessor out of line; that part is fixed (next bullet). The rest needs the columnar API, which remains the large-data path.
 - `v - v === 0` versus `Number.isFinite` in that loop makes no difference (ablated).
+- **Why the board's row arm stayed slow (2026-11):** the board forces a GC before every sample, and that GC collects the previous chart's accessor. V8 clears call feedback that points at a dead closure. When V8 compiled `resolveAccessor` at its next entry, it saw that empty feedback and called the accessor out of line for every row, permanently: the inlining trace showed no inlined accessor and no later deopt.
+  - **Fix:** for at least 300,000 rows the loop runs in `fillAccessor`, entered for row 0 and then for the rest, so the compile sees the live accessor.
+  - **Why shorter series keep the single loop:** code that inlines a closure is discarded when that closure is collected, so the split loop restarts from the interpreter after every GC. That costs more than out-of-line calls below about 300k rows. With the split at every length, the charts-vs-ECharts 100k mount measured 4.32 [4.28–4.37] → 4.48 [4.46–4.53] ms.
+  - **In-loop resolve time**, split vs single loop: 100k worse, 200k about the same, 300k tied, 500k 3.10 → 2.50 ms, 1M 5.30 → 3.75 ms.
+  - **charts-libs board** (6 passes, both arms interleaved in one build): 1M mount 15.52 [15.04–16.44] → 13.77 [13.05–14.83] ms (disjoint). Chart.js was 12.89 [12.84–12.95] ms, so the gap narrowed to 1.07× but did not close. 100k update 2.66 → 2.34 ms and 10k update 1.15 → 1.08 ms (both disjoint). Every other charts-libs and charts-vs-ECharts cell tied.
+- Refuted or not worth it (2026-11), do not re-propose: keeping the last accessor alive in a module slot so the call site goes closure-agnostic. It fixed a blank-page micro (5.2 → 3.2 ms) but did nothing in the real mount (5.18 vs 5.28 ms), and it retains user data. Pinning `yDomain` to skip the extent pass is worth only ~0.4 ms at 1M (CIs overlap), not a native engine type change.
+- The 10k mount gap to uPlot is NOT ingestion: the columnar arm loses by the same amount (1.91 vs uPlot 1.44 ms), and `density: 'device'` closes it. It is the default `'fine'` M4 density drawing about twice uPlot's points, which is a product choice.
+- Open candidate, measured once and not shipped: in `m4CategoryPoints`, compute a point's y only when its raw value passes the column's current min or max. This is exact, because y is monotone in the value (fuzz: 0 mismatches in 3,000 cases). Results: V8 micro 2.37 → 1.83 ms at 1M; board update 100k columns 1.44 → 1.23 ms and rows 1.95 → 1.83 ms (both disjoint); 1M columns mount 9.94 → 8.42 ms (overlapping). It needs the native engine regenerated (`decimate-values.ts` crosses).
 
 ### Hydration
 

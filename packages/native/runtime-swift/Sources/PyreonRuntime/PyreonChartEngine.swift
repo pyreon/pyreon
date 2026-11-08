@@ -13838,7 +13838,7 @@ public func m4CategoryPoints(_ values: [Double], _ plot: PyreonChartRect, _ dom:
     let inv = dom.inverse == true
     let r0 = inv ? plot.y : top
     let diff = inv ? top - plot.y : plot.y - top
-    let flatY = (top + plot.y) / 2.0
+    let rising = (dspan > 0.0) == (diff > 0.0)
     var i = 0
     var prevLen = 1
     while i < n {
@@ -13863,20 +13863,27 @@ public func m4CategoryPoints(_ values: [Double], _ plot: PyreonChartRect, _ dom:
       var hi = i
       var loY = scaleLinear(dom, top, plot.y, v0)
       var hiY = loY
+      var loV = v0
+      var hiV = v0
       var j = i + 1
       while j < end {
         let v = values[j]
         if !isFiniteChartNumber(v) {
           return none
         }
-        let y = flat ? flatY : r0 + ((v - dmin) / dspan) * diff
-        if y < loY {
-          lo = j
-          loY = y
-        }
-        if y > hiY {
-          hi = j
-          hiY = y
+        let past = rising ? v > hiV || v < loV : v < hiV || v > loV
+        if !flat && past {
+          let y = r0 + ((v - dmin) / dspan) * diff
+          if y < loY {
+            lo = j
+            loY = y
+            loV = v
+          }
+          if y > hiY {
+            hi = j
+            hiY = y
+            hiV = v
+          }
         }
         j = j + 1
       }
@@ -13953,5 +13960,7 @@ public func binValues(_ values: [Double], _ count: Double) -> [Bin] {
 public func binLabel(_ b: Bin) -> String { "\(plain(b.x0))–\(plain(b.x1))" }
 
 private func pyreonNumString(_ v: Double) -> String {
-    v.rounded() == v && v.magnitude < 1e15 ? String(Int(v)) : String(v)
+    if v.isNaN { return "NaN" }
+    if v.isInfinite { return v < 0 ? "-Infinity" : "Infinity" }
+    return v.rounded() == v && v.magnitude < 1e15 ? String(Int(v)) : String(v)
 }

@@ -3,7 +3,8 @@
  * Wall-clock benchmark — @pyreon/table vs @tanstack/react-table.
  *
  * Companion to the deterministic COUNT bench (`bench:table`). Same fair
- * foundation: BOTH adapters wrap the SAME `@tanstack/table-core@9.0.0`, so the
+ * foundation: BOTH adapters wrap the SAME `@tanstack/table-core` (version read
+ * from the installed package.json and printed in the banner), so the
  * row-model work is identical — this times only the ADAPTER's render strategy.
  *
  * Objectivity contract (mirrors store-bench.ts):
@@ -15,8 +16,8 @@
  *    single-cell edit really changed one cell, a sort really re-ordered, etc.).
  *  - React commits are driven synchronously via `flushSync` (the correct bench
  *    primitive — isolates render WORK from React's macrotask scheduler latency).
- *  - Pooled median of many small runs × BENCH_REPEATS processes + bootstrap
- *    CI95; `🤝` marks a react cell whose CI95 overlaps the Pyreon cell.
+ *  - Pooled median of many small runs × BENCH_REPEATS processes + CLUSTER
+ *    bootstrap CI95 (resample processes, then samples within each); `🤝` marks a react cell whose CI95 overlaps the Pyreon cell.
  *  - NO forced GC (JSC jettisons compiled code on forced GC → re-tier noise).
  *  - A `sink` defeats DCE.
  *
@@ -31,7 +32,11 @@
 process.env.NODE_ENV = 'production'
 
 import { GlobalRegistrator } from '@happy-dom/global-registrator'
+import { readFileSync } from 'node:fs'
+import { createRequire } from 'node:module'
 import { cpus as benchCpus, loadavg as benchLoadavg } from 'node:os'
+// Relative: the shared harness helper lives with the cross-framework suite.
+import { clusterBootstrapCI95 } from '../../../../examples/benchmark/cluster-bootstrap'
 
 // Runtime banner — which ENGINE produced these numbers (bun = JavaScriptCore,
 // node = V8) plus CPU and load, so a result is never quoted engine-less.
@@ -85,17 +90,6 @@ const columnDefs = Array.from({ length: COLS }, (_, c) => ({
 function median(xs: number[]): number {
   const s = [...xs].sort((a, b) => a - b)
   return s[s.length >> 1] as number
-}
-function bootstrapCI(samples: number[], resamples = 1500): [number, number] {
-  const meds: number[] = []
-  const n = samples.length
-  for (let r = 0; r < resamples; r++) {
-    const re: number[] = []
-    for (let i = 0; i < n; i++) re.push(samples[(Math.random() * n) | 0] as number)
-    meds.push(median(re))
-  }
-  meds.sort((a, b) => a - b)
-  return [meds[(resamples * 0.025) | 0] as number, meds[(resamples * 0.975) | 0] as number]
 }
 const overlaps = (a: [number, number], b: [number, number]) => a[0] <= b[1] && b[0] <= a[1]
 
@@ -454,13 +448,34 @@ if (childArgs.length === 3) {
 }
 
 // ─── orchestrator ────────────────────────────────────────────────────────────
+/**
+ * The table-core each adapter actually resolves, read from the INSTALLED
+ * package.json files. A hardcoded `table-core@9.0.0` stayed in the banner
+ * through two upgrades; a mismatch between the two adapters is printed loudly
+ * because the bench's fairness rests on them sharing one core.
+ */
+function tableCoreLabel(): string {
+  const versionOf = (pkgJson: string): string =>
+    (JSON.parse(readFileSync(pkgJson, 'utf8')) as { version: string }).version
+  const fromHere = createRequire(import.meta.url)
+  const pyreonCore = versionOf(fromHere.resolve('@tanstack/table-core/package.json'))
+  const reactTablePkg = fromHere.resolve('@tanstack/react-table/package.json')
+  const reactCore = versionOf(createRequire(reactTablePkg).resolve('@tanstack/table-core/package.json'))
+  return pyreonCore === reactCore
+    ? `both wrap @tanstack/table-core@${pyreonCore}`
+    : `⚠ DIFFERENT table-core: @pyreon/table → ${pyreonCore}, react-table → ${reactCore}`
+}
+
 const CELL_REPEATS = Number(process.env.BENCH_REPEATS ?? 3)
 interface Cell {
   med: number
   ci: [number, number]
 }
 function runCell(variant: Variant, n: number, scenario: Scenario): Cell {
-  const pooled: number[] = []
+  // One cluster per isolated process: its samples share that process's JIT and
+  // heap state, so the CI is a cluster bootstrap over processes, not a
+  // bootstrap of the pool as if every sample were independent.
+  const clusters: number[][] = []
   for (let r = 0; r < CELL_REPEATS; r++) {
     const proc = Bun.spawnSync(['bun', import.meta.path, variant, String(n), scenario], {
       env: { ...process.env, NODE_ENV: 'production' },
@@ -471,9 +486,9 @@ function runCell(variant: Variant, n: number, scenario: Scenario): Cell {
       )
     }
     const { samples } = JSON.parse(new TextDecoder().decode(proc.stdout)) as { samples: number[] }
-    pooled.push(...samples)
+    clusters.push(samples)
   }
-  return { med: median(pooled), ci: bootstrapCI(pooled) }
+  return { med: median(clusters.flat()), ci: clusterBootstrapCI95(clusters, { resamples: 1500 }) }
 }
 
 console.log(benchRuntimeBanner())
@@ -483,7 +498,7 @@ console.log(
 console.log(
   `=== @pyreon/table vs @tanstack/react-table (${process.platform}/${process.arch}, happy-dom, NODE_ENV=production, per-cell isolated processes, median ms/op [CI95], 🤝 = CI-overlap tie) ===`,
 )
-console.log(`(both wrap @tanstack/table-core@9.0.0; ${COLS} columns; ratio = react ÷ pyreon, >1 ⇒ Pyreon faster)\n`)
+console.log(`(${tableCoreLabel()}; ${COLS} columns; ratio = react ÷ pyreon, >1 ⇒ Pyreon faster)\n`)
 
 const pad = (s: string, w: number) => s.padEnd(w)
 const padL = (s: string, w: number) => s.padStart(w)

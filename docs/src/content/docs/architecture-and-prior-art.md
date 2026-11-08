@@ -57,35 +57,34 @@ every project.
 
 ## Performance, stated honestly
 
-**Restated against the full benchmark run of 2026-09-23.** That run was
-preceded by an audit of every harness, and most of the defects it found
-flattered Pyreon — competitor arms paying a slower helper inside the timed
-window, Vue measured through hand-written render functions instead of its
-compiled templates, Solid arms skipping work its compiler emits. All were
-fixed before measuring. The authoritative record is `BENCHMARKS.md` at the
-repo root; the [benchmarks page](/docs/benchmarks) summarises it.
+**Restated against the benchmark run of 2026-11-05** (`main` at
+`779a82f01`, close cells measured twice). The authoritative record is
+`BENCHMARKS.md` at the repo root; the [benchmarks page](/docs/benchmarks)
+summarises it.
 
-On the krausest-style synthetic row-list benchmark (Chromium via
-Playwright), compiled Pyreon is **the fastest framework measured on five of
-nine ops outright** — create 1,000, replace, clear rows, create 10,000 and
-append — and **statistically tied with [Octane](https://octanejs.dev)**, the
-nearest rival, on partial update and swap, and with Octane and Solid on
-remove. `select row` sits below the clock resolution of that instrument; a
-batch-timed run resolves it at roughly 0.5µs for Pyreon against 0.9µs for
-Octane. The VDOM frameworks pay the most at scale: at 10,000 rows React is
-2.46× and Preact 3.35× slower. Against hand-written Vanilla, Pyreon costs
-1.04–1.10× on most ops. Important caveats, stated as the project's
-record:
+On the krausest-style synthetic row-list benchmark (Chromium via Playwright,
+10 frameworks), compiled Pyreon **wins one of nine ops outright** — clear
+rows, by 1.11–1.12× in both runs — wins create 10,000 and append in one of
+two runs by 2%, and is **statistically tied** with the Vue 3.6 Vapor release
+candidate, [Octane](https://octanejs.dev) and Vue 3 on create 1,000, replace,
+partial update, swap and remove. `select row` sits below the clock resolution of that instrument; a
+batch-timed run resolves it at about 0.43µs for Pyreon against 0.83µs for
+Octane. Against hand-written Vanilla, Pyreon costs 0.99–1.09× on most ops.
+Important caveats, stated as the project's record:
 
 - It is **not** "fastest on all benchmarks." Mounting a deep component tree
-  (2,047 components) is **1.29× slower than Solid**; Vue's compiled SSR is
-  1.06–1.09× faster on 100- and 1,000-row pages; Preact Signals creates
-  signals about 5× faster; and the same app ships 16.6KB gzipped against
-  Solid's 7.5KB.
+  (2,047 components) is **1.15–1.18× slower than Solid**; Preact Signals
+  creates signals about 5× faster and leads deep unobserved computed chains;
+  and the same app ships 17.2KB gzipped against Solid's 7.5KB.
+- The row-board margins are small, and the harness's own confidence intervals
+  were too narrow (they treated samples from one page load as independent).
+  These verdicts are recomputed with a bootstrap that resamples whole page
+  loads; on the narrow intervals swap had read as a loss and create 10,000 and
+  append as wins.
 - Create, replace, remove and append are dominated by browser layout every
   framework pays identically, so small gaps there are mostly not framework
   JavaScript. Retained heap after the suite ties Preact for the lightest
-  framework (2.78 MB) — a tie, not a ranking.
+  framework (3.08 MB vs 3.09 MB) — a tie, not a ranking.
 - These are author-judged benchmarks, and no independent third-party run
   exists yet — treat cross-framework performance claims accordingly.
 

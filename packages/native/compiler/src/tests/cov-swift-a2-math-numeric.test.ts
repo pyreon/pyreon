@@ -180,7 +180,11 @@ describe('isNaN — one arm per inferred numeric type', () => {
   const b2 = computed(() => isNaN(d()))`)
     expect(body(code, 'a')).toBe('false')
     expect(body(code, 'b2')).toBe('(d).isNaN')
-    expect(warnings.filter((w) => w.includes('isNaN'))).toEqual([])
+    // The Int arm folds, and says so: a native integer is never NaN, which is wrong for a failed `parseInt` held in
+    // a variable (0 natively, NaN on the web). The Double arm is exact and silent.
+    const nan = warnings.filter((w) => w.includes('isNaN'))
+    expect(nan).toHaveLength(1)
+    expect(nan[0]).toContain('isNaN(n): the argument is an integer natively')
   })
 
   it('a `Float`-typeRef arg normalizes to the FLOAT arm', () => {

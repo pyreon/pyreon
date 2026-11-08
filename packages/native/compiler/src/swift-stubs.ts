@@ -1646,6 +1646,11 @@ public enum PyreonURL {
 // template interpoland lowers through. Mirrors the real overload pair.
 public func pyreonNumberString(_ v: Double) -> String { "" }
 public func pyreonNumberString(_ v: Int) -> String { "" }
+// pyreonParseInt / pyreonParseFloat / pyreonToNumber — the ECMAScript text→number algorithms
+// (PyreonNumber.swift). Mirrors the real signatures.
+public func pyreonParseInt(_ text: String, _ radix: Int? = nil) -> Int? { nil }
+public func pyreonParseFloat(_ text: String) -> Double { 0 }
+public func pyreonToNumber(_ text: String) -> Double { 0 }
 // Intl.DateTimeFormat / Intl.NumberFormat — the real PyreonIntl.swift surface,
 // exactly: every parameter defaulted, labelled, in declaration order.
 public final class PyreonDateTimeFormat {

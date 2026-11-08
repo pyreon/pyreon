@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { area, bars, groupedBars, line, points, resolveCategories, resolveMarks, stackedBars } from './marks'
+import { area, bars, groupedBars, line, points, PRIMED_LOOP_MIN_ROWS, resolveCategories, resolveMarks, stackedBars } from './marks'
 
 interface Row {
   month: string
@@ -29,6 +29,29 @@ describe('marks', () => {
     const [s] = resolveMarks(DATA, [bars<Row>((_d, i) => i * 10)])
     expect(s!.values).toEqual([0, 10])
   })
+
+  // A long series resolves row 0 on its own and then the rest (see
+  // `resolveAccessor`); a short one in one loop. Every row must be read exactly
+  // once, in order, on both paths and at the edges of the split.
+  it.each([0, 1, 2, 5, PRIMED_LOOP_MIN_ROWS - 1, PRIMED_LOOP_MIN_ROWS, PRIMED_LOOP_MIN_ROWS + 1])(
+    'reads each of %i rows once, in order',
+    (n) => {
+      const rows = Array.from({ length: n }, (_, i) => ({ v: i * 2 }))
+      let next = 0
+      let outOfOrder = -1
+      const [s] = resolveMarks(rows, [
+        line<{ v: number }>((d, i) => {
+          if (i !== next && outOfOrder < 0) outOfOrder = i
+          next = i + 1
+          return d.v
+        }),
+      ])
+      expect(outOfOrder).toBe(-1)
+      expect(next).toBe(n)
+      expect(s!.values.length).toBe(n)
+      expect(s!.values.every((v, i) => v === i * 2)).toBe(true)
+    },
+  )
 
   /**
    * A missing measurement is a GAP, not a zero: the engine skips the bar,

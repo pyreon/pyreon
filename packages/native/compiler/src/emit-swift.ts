@@ -4350,6 +4350,37 @@ function emitSwiftMapFromPairs(
   }
 }
 
+
+/** The `console` methods that lower to the platform print (the browser's log levels have no native split). */
+const SWIFT_CONSOLE_LEVELS: ReadonlySet<string> = new Set(['log', 'info', 'debug', 'warn', 'error'])
+
+/**
+ * `isNaN(parseInt(s))` (and `isFinite(parseInt(s))`) — the web's "is this text an integer?" test. `parseFloat` /
+ * `Number` return a Double that IS NaN on failure, so their tests need nothing special; `parseInt` returns an Int,
+ * which falls back to 0 on failure, so testing its RESULT would always say "a number". The test is lowered on the
+ * parse itself instead: did the runtime's `pyreonParseInt` fail.
+ */
+function swiftParseFailureTest(arg: ExprIR, indent: number, test: 'isNaN' | 'isFinite'): string | null {
+  if (arg.kind !== 'call' || arg.callee.kind !== 'identifier' || arg.callee.name !== 'parseInt') return null
+  if (arg.args.length < 1 || inferType(arg.args[0]!, _activeInferCtx).kind !== 'string') return null
+  const s = emitSwiftExpr(arg.args[0]!, indent)
+  const radix = arg.args[1]
+  const parsed = radix === undefined ? `pyreonParseInt(${s})` : `pyreonParseInt(${s}, ${emitSwiftExpr(radix, indent)})`
+  return test === 'isNaN' ? `(${parsed} == nil)` : `(${parsed} != nil)`
+}
+
+/**
+ * A NaN test on an integer that is not a literal. Native integers cannot be NaN, so the test folds to a constant —
+ * right for a real integer, but wrong for one that came from a failed `parseInt` (0 natively, NaN on the web).
+ */
+function warnIntegerNaNTest(test: 'isNaN' | 'isFinite', arg: ExprIR, shown: string): void {
+  if (arg.kind === 'literal') return
+  _emitWarnings.push(
+    `${test}(${shown}): the argument is an integer natively, and a native integer is never NaN, so this folds to \`${test === 'isNaN' ? 'false' : 'true'}\`. ` +
+      `If it holds a parseInt result, a failed parse is 0 natively, not NaN — test the parse itself (\`${test}(parseInt(text))\`), which lowers to a check that the native parse failed.`,
+  )
+}
+
 /** `untrack(fn)` / `batch(fn)` / `sig.peek()` as their plain evaluation (see the call site), or `undefined`. */
 function swiftReactivityPassthrough(e: Extract<ExprIR, { kind: 'call' }>, indent: number): string | undefined {
   if (e.args.length === 0 && e.callee.kind === 'member' && e.callee.property === 'peek' && !e.callee.optional) {
@@ -4558,11 +4589,11 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         const passthrough = swiftReactivityPassthrough(e, indent)
         if (passthrough !== undefined) return passthrough
       }
-      // `console.log(…)` → `print(…)` — the universal TS debug call
-      // maps to Swift's stdlib print (Kotlin mirror: `println`).
+      // `console.log(…)` (and `info` / `debug` / `warn` / `error`) → `print(…)` — the universal TS debug call maps to
+      // Swift's stdlib print, which joins its arguments with a space as the console does (Kotlin mirror: `println`).
       if (
         e.callee.kind === 'member' &&
-        e.callee.property === 'log' &&
+        SWIFT_CONSOLE_LEVELS.has(e.callee.property) &&
         e.callee.object.kind === 'identifier' &&
         e.callee.object.name === 'console'
       ) {
@@ -4831,12 +4862,49 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
           nT0.kind === 'typeRef' && (nT0.name === 'Double' || nT0.name === 'Float')
             ? ({ kind: 'number', float: true } as TypeIR)
             : nT0
+        const parseTest = swiftParseFailureTest(e.args[0]!, indent, 'isNaN')
+        if (parseTest !== null) return parseTest
         const nStr = emitSwiftExpr(e.args[0]!, indent)
-        if (nT.kind === 'number' && nT.float !== true) return 'false'
+        if (nT.kind === 'number' && nT.float !== true) {
+          warnIntegerNaNTest('isNaN', e.args[0]!, nStr)
+          return 'false'
+        }
         if (nT.kind === 'number') return `(${nStr}).isNaN`
         _emitWarnings.push(
           `isNaN(${nStr}): the argument's numeric type could not be inferred — emitting the raw call, which does not compile natively.`,
         )
+      }
+      // `isFinite(x)` / `Number.isFinite(x)` (the parser canonicalizes the namespaced spelling). Same shape as
+      // `isNaN`: an Int is always finite; a Double asks the native `.isFinite`; an argument whose numeric type is not
+      // known keeps the raw call with a NAMED warning.
+      if (e.callee.kind === 'identifier' && e.callee.name === 'isFinite' && e.args.length === 1) {
+        const fT0 = inferType(e.args[0]!, _activeInferCtx)
+        const fT =
+          fT0.kind === 'typeRef' && (fT0.name === 'Double' || fT0.name === 'Float')
+            ? ({ kind: 'number', float: true } as TypeIR)
+            : fT0
+        const parseTest = swiftParseFailureTest(e.args[0]!, indent, 'isFinite')
+        if (parseTest !== null) return parseTest
+        const fStr = emitSwiftExpr(e.args[0]!, indent)
+        if (fT.kind === 'number' && fT.float !== true) {
+          warnIntegerNaNTest('isFinite', e.args[0]!, fStr)
+          return 'true'
+        }
+        if (fT.kind === 'number') return `(${fStr}).isFinite`
+        _emitWarnings.push(
+          `isFinite(${fStr}): the argument's numeric type could not be inferred — emitting the raw call, which does not compile natively.`,
+        )
+      }
+      // `crypto.randomUUID()` — the web's RFC 4122 v4 id, lower-case. Foundation's `UUID` is v4 too but prints
+      // upper-case, so it is lowered to match the web's spelling (ids are compared and persisted as strings).
+      if (
+        e.callee.kind === 'member' &&
+        e.callee.object.kind === 'identifier' &&
+        e.callee.object.name === 'crypto' &&
+        e.callee.property === 'randomUUID' &&
+        e.args.length === 0
+      ) {
+        return 'UUID().uuidString.lowercased()'
       }
       // `Boolean(x)` — JS truthiness coercion as a VALUE. Swift has no
       // `Boolean` initializer ("cannot find 'Boolean' in scope" — the raw
@@ -4906,6 +4974,20 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         e.args.length >= 1
       ) {
         const arg = emitSwiftExpr(e.args[0]!, indent)
+        // A STRING argument goes through the runtime's ECMAScript algorithms (`PyreonNumber.swift`): Foundation's
+        // `Int(_:)` / `Double(_:)` demand the whole string in Swift's grammar, so `parseInt("3.5")` was 0 natively
+        // and 3 on the web, `parseFloat("12px")` 0 and 12, `Number("")` 0 by accident and `Number(" 7 ")` 0 vs 7.
+        // `parseFloat` / `Number` are Doubles, so their failure is the web's NaN; `parseInt` is an Int, which cannot be
+        // NaN, so a failed parse is 0 (a NaN TEST on the call checks the parse itself — `swiftParseFailureTest`).
+        if (inferType(e.args[0]!, _activeInferCtx).kind === 'string') {
+          if (e.callee.name === 'parseInt') {
+            const radix = e.args[1]
+            return radix === undefined
+              ? `(pyreonParseInt(${arg}) ?? 0)`
+              : `(pyreonParseInt(${arg}, ${emitSwiftExpr(radix, indent)}) ?? 0)`
+          }
+          return e.callee.name === 'parseFloat' ? `pyreonParseFloat(${arg})` : `pyreonToNumber(${arg})`
+        }
         if (e.callee.name === 'parseInt') {
           // The radix used to be DROPPED: `parseInt(hex, 16)` decoded as base
           // 10 and returned 0 for `'ff'` — a plausible number that flowed on.
@@ -5316,6 +5398,19 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
             }
             break
           }
+          case 'localeCompare':
+            // JS `a.localeCompare(b)` orders by the default locale's collation and returns a negative number, 0 or a
+            // positive number. Foundation's `localizedCompare` is the same collation against the current locale; its
+            // `ComparisonResult` raw value is -1 / 0 / 1, which is what a sort comparator reads. The locale and
+            // options arguments are not lowered (the default locale is what the web uses without them).
+            if (e.args.length === 1) {
+              if (objDot === '?.') return `${obj}.map { $0.localizedCompare(${argExprs[0]!}).rawValue }`
+              return `${obj}.localizedCompare(${argExprs[0]!}).rawValue`
+            }
+            _emitWarnings.push(
+              `.localeCompare(…) with a locale or options argument has no native lowering — only \`a.localeCompare(b)\` (the default locale) lowers. Emitting the raw call, which fails to compile.`,
+            )
+            break
           case 'charAt':
             // JS `str.charAt(i)` returns the UTF-16 unit at `i` as a string, or "" out of range. Indexing
             // `Array(str)` counted Characters (disagreeing with `.length`) and trapped out of range.
@@ -8144,8 +8239,13 @@ function withSwiftThrowCtx<T>(ctx: 'none' | 'throws' | 'do', fn: () => T): T {
     _swiftThrowCtx = prev
   }
 }
+// The non-finite values use JavaScript's spelling (`NaN`, `Infinity`); Swift's `String(Double)` prints `nan` / `inf`.
+// They are reachable from ordinary code: a failed `parseFloat` / `Number(text)` is NaN (Kotlin's mirror already
+// prints `NaN` / `Infinity`, through `Double.toString`).
 const SWIFT_NUM_STRING = `private func pyreonNumString(_ v: Double) -> String {
-    v.rounded() == v && v.magnitude < 1e15 ? String(Int(v)) : String(v)
+    if v.isNaN { return "NaN" }
+    if v.isInfinite { return v < 0 ? "-Infinity" : "Infinity" }
+    return v.rounded() == v && v.magnitude < 1e15 ? String(Int(v)) : String(v)
 }`
 
 /**
