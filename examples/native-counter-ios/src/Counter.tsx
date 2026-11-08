@@ -175,6 +175,9 @@ function EffectEcho(props: { count: number }) {
 export function Counter() {
   let count = state<number>(0)
   let chipTaps = state<number>(0)
+  // setTimeout device proof: `PyreonTimers` (a run-loop Timer on iOS, the main looper's Handler on Android) runs the
+  // callback on the main thread after the delay, and the write it makes re-renders the row.
+  let timerState = state<string>('idle')
   // Direct native Flow device proof. This is intentionally NOT the /webview
   // bridge: PMTC emits PyreonFlowView and the app links the package's actual
   // SwiftUI/Compose host, state, geometry, handles, and resize sources. The
@@ -698,6 +701,8 @@ export function Counter() {
       <Text data-testid="probe-record-state">Recording: {recorder.recording() ? 'on' : 'off'}</Text>
       <Button data-testid="probe-scan" onPress={() => bt.scan()}>Scan</Button>
       <Text data-testid="probe-bt-state">Bluetooth: {bt.available() ? 'available' : 'unavailable'}-{bt.scanning() ? 'scanning' : 'idle'}</Text>
+      <Button data-testid="timer-arm" onPress={() => { timerState = 'armed'; setTimeout(() => { timerState = 'fired' }, 400) }}>Arm timer</Button>
+      <Text data-testid="timer-state">Timer: {timerState}</Text>
       {/* Switching language — also LAST, for the same reason as the probe rows:
           anything higher pushes controls other tests tap without scrolling.
           The web writes `i18n.locale.set('en')` and reads `i18n.locale()`;

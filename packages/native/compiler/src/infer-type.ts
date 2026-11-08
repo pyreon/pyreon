@@ -1564,6 +1564,8 @@ export function inferTypeValue(expr: ExprIR, ctx: InferenceCtx): TypeIR {
         // array literal to `[Any]` → `.length` failed on Swift). `Boolean(x)`
         // → boolean (paired with the truthiness-lowering emit both targets).
         if (expr.callee.name === 'String') return { kind: 'string' }
+        // A timer id (`PyreonTimers` returns an Int / Long).
+        if (expr.callee.name === 'setTimeout' || expr.callee.name === 'setInterval') return { kind: 'number' }
         // `untrack(() => x)` / `batch(() => x)` lower to `x` (their plain evaluation), so they type as `x`.
         if ((expr.callee.name === 'untrack' || expr.callee.name === 'batch') && expr.args.length === 1) {
           const fn = expr.args[0]!

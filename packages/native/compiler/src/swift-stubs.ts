@@ -1651,6 +1651,15 @@ public func pyreonNumberString(_ v: Int) -> String { "" }
 public func pyreonParseInt(_ text: String, _ radix: Int? = nil) -> Int? { nil }
 public func pyreonParseFloat(_ text: String) -> Double { 0 }
 public func pyreonToNumber(_ text: String) -> Double { 0 }
+// PyreonTimers — JS setTimeout / setInterval / clear* (PyreonTimers.swift). Mirrors the real surface.
+public enum PyreonTimers {
+  @discardableResult public static func setTimeout(_ ms: Double, _ fn: @escaping () -> Void) -> Int { 0 }
+  @discardableResult public static func setTimeout(_ ms: Int, _ fn: @escaping () -> Void) -> Int { 0 }
+  @discardableResult public static func setInterval(_ ms: Double, _ fn: @escaping () -> Void) -> Int { 0 }
+  @discardableResult public static func setInterval(_ ms: Int, _ fn: @escaping () -> Void) -> Int { 0 }
+  public static func clear(_ id: Int?) {}
+  public static var pendingCount: Int { 0 }
+}
 // Intl.DateTimeFormat / Intl.NumberFormat — the real PyreonIntl.swift surface,
 // exactly: every parameter defaulted, labelled, in declaration order.
 public final class PyreonDateTimeFormat {
