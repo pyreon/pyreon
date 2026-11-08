@@ -373,10 +373,12 @@ const createStyledComponent = (
         }
       }
 
-      // Element-layer cache (no rocketstyle props, but $element is present
-      // and an object). Fires only when the rocketstyle path didn't apply
-      // — they're mutually exclusive in practice.
-      const $el = isReactiveEl ? elVal : rawProps.$element
+      // Element-layer cache (no rocketstyle props, but $element — or, for
+      // Text, $text — is present and an object). Fires only when the
+      // rocketstyle path didn't apply — they're mutually exclusive in practice.
+      // Text interns its `$text` bundle (`internTextBundle`) exactly like
+      // Element interns `$element`, so the same identity reaches this cache.
+      const $el = isReactiveEl ? elVal : (rawProps.$element ?? rawProps.$text)
       const $childFix = rawProps.$childFix
       const useElCache =
         !bypassElCacheAndCpse &&
