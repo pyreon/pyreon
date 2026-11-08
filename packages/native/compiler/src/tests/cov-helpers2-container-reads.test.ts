@@ -131,20 +131,20 @@ ${decls}
       ?.trim() ?? '(missing)'
 
   it('`new Set(<array>)` takes the ELEMENT type from the seed', () => {
-    expect(a(`  const v = computed(() => new Set(xs()))`, 'v')).toContain('var v: Set<Int>')
+    expect(a(`  const v = computed(() => new Set(xs()))`, 'v')).toContain('var v: PyreonSet<Int>')
   })
 
   it('`new Set(<non-array>)` degrades rather than guessing', () => {
-    expect(a(`  const v = computed(() => new Set(s2()))`, 'v')).toContain('var v: Set<Any>')
+    expect(a(`  const v = computed(() => new Set(s2()))`, 'v')).toContain('var v: PyreonSet<Any>')
   })
 
   it('an EXPLICIT element type wins over the seed', () => {
-    expect(a(`  const v = computed(() => new Set<string>())`, 'v')).toContain('var v: Set<String>')
+    expect(a(`  const v = computed(() => new Set<string>())`, 'v')).toContain('var v: PyreonSet<String>')
   })
 
   it('`new Map<K, V>()` carries both declared generics', () => {
     expect(a(`  const v = computed(() => new Map<string, number>())`, 'v')).toContain(
-      'var v: [String: Int]',
+      'var v: PyreonMap<String, Int>',
     )
   })
 

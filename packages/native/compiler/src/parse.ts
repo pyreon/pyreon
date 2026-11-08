@@ -7522,6 +7522,13 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
         // computed pair array, a non-pair element, a non-scalar key/value)
         // stays the named warning — never a mis-emit.
         const seedArg = node.arguments[0] as AnyNode
+        // `new Map(other)` — not a literal pair array: a copy of another map (typed at emit).
+        if (
+          (node.arguments?.length ?? 0) === 1 &&
+          (seedArg?.type === 'Identifier' || seedArg?.type === 'CallExpression' || seedArg?.type === 'MemberExpression')
+        ) {
+          return { kind: 'new-collection', collection: 'map', copyOf: parseExpr(seedArg, ctx) }
+        }
         const pairNodes =
           seedArg?.type === 'ArrayExpression'
             ? ((seedArg.elements as AnyNode[] | undefined) ?? [])

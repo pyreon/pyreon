@@ -142,6 +142,7 @@ import {
   inferTypeValue,
   objectLengthRangeForm,
   optionalMemberTernary,
+  rewriteObjectMapCall,
   rewriteObjectKeys,
   rewriteObjectValues,
   seedHandlerLocals,
@@ -4139,10 +4140,13 @@ export function swiftType(t: TypeIR, synth?: SwiftSynthCtx, declName?: string): 
       return 'String'
     case 'boolean':
       return 'Bool'
+    // A JS `Map` / `Set` / `Record` keeps INSERTION order; Swift's `Dictionary` / `Set` do not (their order
+    // follows a per-process-seeded hash). The ordered runtime twins keep the same spelling (literals, subscripts,
+    // `insert` / `contains` / `removeValue`), so only the order changes — see `PyreonCollections.swift`.
     case 'map':
-      return `[${swiftType(t.key, synth)}: ${swiftType(t.value, synth)}]`
+      return `PyreonMap<${swiftType(t.key, synth)}, ${swiftType(t.value, synth)}>`
     case 'set':
-      return `Set<${swiftType(t.element, synth)}>`
+      return `PyreonSet<${swiftType(t.element, synth)}>`
     case 'array':
       return `[${swiftType(t.element, synth, declName)}]`
     case 'object': {
@@ -4297,10 +4301,8 @@ function emitSwiftIndexedClosure(
 }
 
 /**
- * `new Map(src.map((x) => [k, v]))` → `Dictionary(src.map { x in (k, v) },
- * uniquingKeysWith: { _, last in last })`. The plain `Dictionary(uniqueKeysWithValues:)`
- * TRAPS on a repeated key; JS `Map` keeps the last value, which the uniquing
- * closure reproduces. `x` is bound to the source's element type while the two
+ * `new Map(src.map((x) => [k, v]))` → `PyreonMap(src.map { x in (k, v) })`. A repeated key keeps its
+ * first position and takes the last value, as JS `Map` does (`Dictionary(uniqueKeysWithValues:)` trapped). `x` is bound to the source's element type while the two
  * halves emit, so a type-gated lowering inside them sees a typed receiver.
  */
 function emitSwiftMapFromPairs(
@@ -4340,7 +4342,7 @@ function emitSwiftMapFromPairs(
     const v = withExpectedType(mt.kind === 'map' ? mt.value : undefined, () =>
       emitSwiftExpr(pairs.value, indent),
     )
-    return `Dictionary(${src}.map { ${swiftIdent(p)} in (${k}, ${v}) }, uniquingKeysWith: { _, last in last })`
+    return `PyreonMap(${src}.map { ${swiftIdent(p)} in (${k}, ${v}) })`
   } finally {
     _activeEnumType = prevEnum
     if (had[0]) _exprInferCtx.locals.set(p, had[1]!)
@@ -4554,7 +4556,7 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       // known, so the rewrite lowers to a plain string-array literal;
       // recursing into the array emit produces the precise `[String]`.
       {
-        const rw = rewriteObjectKeys(e, _exprInferCtx)
+        const rw = rewriteObjectMapCall(e, _exprInferCtx) ?? rewriteObjectKeys(e, _exprInferCtx)
         if (rw !== null) return emitSwiftExpr(rw, indent)
       }
       // `Object.values(<object-typed expr>)` → a static member-access array
@@ -5206,6 +5208,9 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
             if (prop === 'delete' && e.args.length === 1)
               return `${obj}${objDot}removeValue(forKey: ${k(0)})`
             if (prop === 'clear' && e.args.length === 0) return `${obj}${objDot}removeAll()`
+            // The keys / values as an array, in insertion order (`PyreonMap` keeps it).
+            if (prop === 'keys' && e.args.length === 0) return `${obj}${objDot}keys`
+            if (prop === 'values' && e.args.length === 0) return `${obj}${objDot}values`
           }
           if (recvT.kind === 'set') {
             if (prop === 'add' && e.args.length === 1)
@@ -6459,11 +6464,20 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       )
     }
     case 'new-collection': {
-      // `new Map<K,V>()` → `[K: V]()`; `new Set<T>()` → `Set<T>()`;
-      // `new Set(arr)` → `Set(arr)`. See the local-let mutability note in
+      // `new Map<K,V>()` → `PyreonMap<K, V>()`; `new Set<T>()` → `PyreonSet<T>()`;
+      // `new Set(arr)` → `PyreonSet(arr)` (the ordered twins — see `swiftType`). See the local-let mutability note in
       // the statement emit (collections force `var` — subscript-assign and
       // insert are mutating).
       if (e.collection === 'map') {
+        if (e.copyOf !== undefined) {
+          const src = emitSwiftExpr(e.copyOf, indent)
+          if (unwrapOptionalType(inferType(e.copyOf, _activeInferCtx)).kind !== 'map') {
+            _emitWarnings.push(
+              `new Map(${src}): only a copy of another Map / Record lowers natively (or a literal \`[[k, v], …]\` array, or \`xs.map((x) => [k, v])\`) — the argument here is not one. Construct the map empty and populate it with \`.set(k, v)\`.`,
+            )
+          }
+          return `${src}`
+        }
         if (e.pairsFrom !== undefined) return emitSwiftMapFromPairs(e, e.pairsFrom, indent)
         // Seeded `new Map([[k,v],…])` → a dict literal `[k: v, …]`.
         if (e.entries && e.entries.length > 0) {
@@ -6472,10 +6486,10 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
             .join(', ')
           return `[${body}]`
         }
-        return `[${swiftType(e.keyType!)}: ${swiftType(e.valueType!)}]()`
+        return `PyreonMap<${swiftType(e.keyType!)}, ${swiftType(e.valueType!)}>()`
       }
-      if (e.seed !== undefined) return `Set(${emitSwiftExpr(e.seed, indent)})`
-      return `Set<${swiftType(e.elementType!)}>()`
+      if (e.seed !== undefined) return `PyreonSet(${emitSwiftExpr(e.seed, indent)})`
+      return `PyreonSet<${swiftType(e.elementType!)}>()`
     }
     case 'jsx-element':
       return emitSwiftJsx(e, indent)

@@ -997,7 +997,7 @@ export function App(props: { s: string; base: number }) {
 }`)).toContain('(pyreonParseInt(s, (base).toInt()) ?: 0L)')
   })
 
-  it('Boolean() of an optional string / number follows JS truthiness; Object.keys/values degrade to typed empty lists (NAMED)', () => {
+  it('Boolean() of an optional string / number follows JS truthiness; Object.keys/values of a Record are its keys / values', () => {
     const r = kt(`
 import { signal } from '@pyreon/reactivity'
 import { Text } from '@pyreon/primitives'
@@ -1012,11 +1012,11 @@ export function App(props: { cfg: Record<string, number> }) {
 }`)
     expect(r.code).toContain('val b1 = (name ?: "").isNotEmpty()')
     expect(r.code).toContain('val b2 = ((age ?: 0L) != 0L)')
-    expect(r.code).toContain('val k = emptyList<String>()')
-    expect(r.code).toContain('val v = emptyList<Any>()')
-    const w = r.warnings.join('\n')
-    expect(w).toContain('Object.keys(...) has no native equivalent')
-    expect(w).toContain('Object.values(...) has no native equivalent')
+    // A `Record<string, number>` is a map, so these are its own keys / values in insertion order
+    // (`native-ordered-collections.test.ts`); they used to degrade to empty lists with a warning.
+    expect(r.code).toContain('val k = cfg.keys.toList()')
+    expect(r.code).toContain('val v = cfg.values.toList()')
+    expect(r.warnings.join('\n')).not.toContain('has no native equivalent')
   })
 
   it('an `Error` parameter is Kotlin `Throwable`; a nested array field names its class in the SINGULAR only when plural', () => {
