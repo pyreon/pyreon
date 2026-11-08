@@ -67,7 +67,7 @@ describe('parse.ts — lowerUtilityType: lowered forms', () => {
 
   it('NoInfer erases to its argument and Record lowers to a dictionary', () => {
     const s = swift(fnWithParams('o: NoInfer<number>, n: Record<string, number>'))
-    expect(sigLine(s.code)).toContain('_ o: Int, _ n: [String: Int]')
+    expect(sigLine(s.code)).toContain('_ o: Int, _ n: PyreonMap<String, Int>')
     const k = kotlin(fnWithParams('n: Record<string, number>'))
     expect(sigLine(k.code)).toContain('n: MutableMap<String, Long>')
   })
@@ -340,7 +340,8 @@ describe('parse.ts — parseExpr: rare expression arms', () => {
 
   it.each([
     ['a 2-arg generic Map', 'new Map<string, number>(1, 2)', '`new Map` without explicit generic type arguments'],
-    ['a Map seeded from a non-array', 'new Map(entries)', 'seeded `new Map([...])`'],
+    // `new Map(x)` is a COPY of another map; `entries` here is an array, which the emit names.
+    ['a Map seeded from a non-array', 'new Map(entries)', 'only a copy of another Map / Record lowers natively'],
     ['a Map seeded from an EMPTY array', 'new Map([])', 'seeded `new Map([...])`'],
     ['a 2-arg generic Set', 'new Set<number>(1, 2)', '`new Set` without explicit generic type arguments'],
     ['a Set seeded with objects', 'new Set([{ q: 1 }])', 'seeded with non-scalar elements'],

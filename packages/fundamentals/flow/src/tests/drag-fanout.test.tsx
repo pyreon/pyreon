@@ -200,7 +200,8 @@ describe('single-node drag fan-out (per-id computeds)', () => {
 
     // A consumer-batched move + removal in ONE batch is the ordering that
     // dirty-marks e-move's geometry in the same drain that sweeps it — the
-    // shape `disposeCached`'s dirty-clear defends against.
+    // shape the reactivity core's disposed-computed guard defends against
+    // (`computed-dispose-relink.test.ts`).
     batch(() => {
       dragFrame(flow, 'n0')
       flow.removeEdge('e-move')

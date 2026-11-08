@@ -51,7 +51,7 @@ export function C() { return <Stack><Text>{String(M["a"] ?? 0)}</Text></Stack> }
   it('`Record<K, V>` lowers to the native DICTIONARY — type AND literal', () => {
     const src = RECORD
     const sw = transform(src, { target: 'swift' })
-    expect(sw.code).toContain('private let M: [String: Int] = ["a": 1]')
+    expect(sw.code).toContain('private let M: PyreonMap<String, Int> = ["a": 1]')
     const kt = transform(src, { target: 'kotlin' })
     expect(kt.code).toContain('private val M: MutableMap<String, Long> = mutableMapOf("a" to 1L)')
     expect(sw.warnings).toEqual([])
