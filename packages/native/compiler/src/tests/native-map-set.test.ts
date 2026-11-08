@@ -66,7 +66,7 @@ const DEDUP = A(`  const out = computed(() => {
 describe('P1 — Map/Set vocabulary (both targets)', () => {
   it('Swift: the Map accumulator idiom lowers end-to-end (var local, subscript writes, .count)', () => {
     const rs = transform(ACCUM, { target: 'swift' })
-    expect(rs.code).toContain('var m = [String: Int]()')
+    expect(rs.code).toContain('var m = PyreonMap<String, Int>()')
     expect(rs.code).toContain('m["a"] = 1')
     expect(rs.code).toContain('m.count')
     expect(rs.warnings).toHaveLength(0)
@@ -105,7 +105,7 @@ describe('P1 — Map/Set vocabulary (both targets)', () => {
   })
   it('Swift: the Set dedup idiom lowers fully (multi-statement plain callback — the sibling find)', () => {
     const rs = transform(DEDUP, { target: 'swift' })
-    expect(rs.code).toContain('var seen = Set<Int>()')
+    expect(rs.code).toContain('var seen = PyreonSet<Int>()')
     expect(rs.code).toContain('seen.contains(x)')
     expect(rs.code).toContain('seen.insert(x)')
     expect(rs.code).not.toContain('{ x in "" }')
@@ -122,7 +122,7 @@ describe('P1 — Map/Set vocabulary (both targets)', () => {
   })
   it('new Set(arr) seeds from the array on both targets', () => {
     const src = A(`  const out = computed(() => new Set(nums()).size)`)
-    expect(transform(src, { target: 'swift' }).code).toContain('Set(nums).count')
+    expect(transform(src, { target: 'swift' }).code).toContain('PyreonSet(nums).count')
     expect(transform(src, { target: 'kotlin' }).code).toContain('.toMutableSet()')
   })
   it('guards: bare new Map() (no generics) + new Foo() keep NAMED warnings; signal.set unchanged', () => {

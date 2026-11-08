@@ -131,6 +131,7 @@ import {
   normalizeNumericAlias,
   objectLengthRangeForm,
   optionalMemberTernary,
+  rewriteObjectMapCall,
   rewriteObjectKeys,
   rewriteObjectValues,
   seedHandlerLocals,
@@ -3587,7 +3588,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       // struct field names (statically known). Recurse into the rewritten
       // array literal so the array emit produces the `List<String>`.
       {
-        const rw = rewriteObjectKeys(e, _kotlinExprInferCtx)
+        const rw = rewriteObjectMapCall(e, _kotlinExprInferCtx) ?? rewriteObjectKeys(e, _kotlinExprInferCtx)
         if (rw !== null) return emitKotlinExpr(rw, indent)
       }
       // `Object.values(<object-typed expr>)` → a static member-access array
@@ -4186,6 +4187,9 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
             const v = (i: number) => typedArg(i, recvT.value)
             if (prop === 'set' && e.args.length === 2) return `${obj}[${k(0)}] = ${v(1)}`
             if (prop === 'get' && e.args.length === 1) return `${obj}[${k(0)}]`
+            // The keys / values as a list, in insertion order (`mutableMapOf` is a LinkedHashMap).
+            if (prop === 'keys' && e.args.length === 0) return `${obj}${objDot}keys.toList()`
+            if (prop === 'values' && e.args.length === 0) return `${obj}${objDot}values.toList()`
             if (prop === 'has' && e.args.length === 1)
               return `${obj}${objDot}containsKey(${k(0)})`
             if (prop === 'delete' && e.args.length === 1) return `${obj}${objDot}remove(${k(0)})`
@@ -5193,6 +5197,15 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       // Mirror of the Swift emit. `val` is fine on Kotlin (the reference is
       // final; contents mutate through it).
       if (e.collection === 'map') {
+        if (e.copyOf !== undefined) {
+          const src = emitKotlinExpr(e.copyOf, indent)
+          if (unwrapOptionalType(inferType(e.copyOf, _kotlinExprInferCtx)).kind !== 'map') {
+            _emitWarnings.push(
+              `new Map(${src}): only a copy of another Map / Record lowers natively (or a literal \`[[k, v], …]\` array, or \`xs.map((x) => [k, v])\`) — the argument here is not one. Construct the map empty and populate it with \`.set(k, v)\`.`,
+            )
+          }
+          return `${src}.toMutableMap()`
+        }
         if (e.pairsFrom !== undefined) return emitKotlinMapFromPairs(e, e.pairsFrom, indent)
         // Seeded `new Map([[k,v],…])` → `mutableMapOf(k to v, …)`.
         if (e.entries && e.entries.length > 0) {

@@ -22,9 +22,9 @@
 //
 // Two deliberate limits, stated rather than papered over: a `nil` optional is
 // OMITTED (synthesized `Codable` uses `encodeIfPresent`; that is JS's
-// `undefined`, whereas a JS `null` writes `"k":null`), and a `Dictionary` keeps
-// Swift's unordered iteration (a JS object's insertion order is not recoverable
-// from a hash map).
+// `undefined`, whereas a JS `null` writes `"k":null`), and a plain `Dictionary`
+// keeps Swift's unordered iteration. Emitted code never hands it one: a `Map` /
+// `Record` is a `PyreonMap`, which encodes its keys in insertion order.
 
 import Foundation
 

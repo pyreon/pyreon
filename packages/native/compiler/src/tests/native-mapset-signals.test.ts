@@ -69,11 +69,11 @@ describe('reactive Map/Set signals → native collections (not Any)', () => {
   it('Swift: signal type annotation is the native collection, reads lower', () => {
     const out = transform(APP, { target: 'swift' }).code
     // The signal is typed as the native collection, not Any.
-    expect(out).toContain('@State private var seen: Set<String> = Set<String>()')
-    expect(out).toContain('@State private var counts: [String: Int] = [String: Int]()')
-    expect(out).toContain('@State private var flags: [String: Bool] = [String: Bool]()')
+    expect(out).toContain('@State private var seen: PyreonSet<String> = PyreonSet<String>()')
+    expect(out).toContain('@State private var counts: PyreonMap<String, Int> = PyreonMap<String, Int>()')
+    expect(out).toContain('@State private var flags: PyreonMap<String, Bool> = PyreonMap<String, Bool>()')
     // seeded Set element inferred from the literal.
-    expect(out).toContain('@State private var nums: Set<Int> = Set([1, 2, 3])')
+    expect(out).toContain('@State private var nums: PyreonSet<Int> = PyreonSet([1, 2, 3])')
     expect(out).not.toContain(': Any =')
     // reads lower to the native ops (were: verbatim `.size`/`.has`/`.get`).
     expect(out).toContain('seen.count')
@@ -158,7 +158,7 @@ function App() {
     // lowers to a real dict literal on both targets.
     expect((sw.warnings ?? []).some((w) => w.includes('seeded `new Map'))).toBe(false)
     expect((kt.warnings ?? []).some((w) => w.includes('seeded `new Map'))).toBe(false)
-    expect(sw.code).toContain('[String: Int] = ["a": 1]')
+    expect(sw.code).toContain('PyreonMap<String, Int> = ["a": 1]')
     expect(kt.code).toContain('mutableMapOf("a" to 1L)')
 
     // UNCHANGED HALF — the invariant THIS suite exists to protect: the signal's

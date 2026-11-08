@@ -70,7 +70,7 @@ describe('parse.ts — inferTypeFromInitial residual arms', () => {
   })
 
   it('recovers a Set element type from its seed array', () => {
-    expect(swift(body('  const g = signal(new Set([1,2,3]))')).code).toContain('@State private var g: Set<Int> = Set([1, 2, 3])')
+    expect(swift(body('  const g = signal(new Set([1,2,3]))')).code).toContain('@State private var g: PyreonSet<Int> = PyreonSet([1, 2, 3])')
   })
 })
 
