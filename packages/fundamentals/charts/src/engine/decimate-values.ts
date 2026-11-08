@@ -296,7 +296,21 @@ export function m4CategoryPoints(values: Double[], plot: Rect, dom: Domain, perP
   const inv = dom.inverse === true
   const r0 = inv ? plot.y : top
   const diff = inv ? top - plot.y : plot.y - top
-  const flatY = (top + plot.y) / 2.0
+  // `y` is monotone in the value: every step of `r0 + ((v - dmin) / dspan) * diff`
+  // is a correctly rounded subtraction, division, multiplication or addition,
+  // and rounding never reverses an order. It rises with `v` when `dspan` and
+  // `diff` share a sign and falls otherwise. So a value inside the closed range
+  // between the column's current extremes has a y inside theirs, can update
+  // neither, and its y is never computed. Only a value PAST an extreme computes
+  // y, and that y is still what decides — two distinct values that round to one
+  // y keep their first occurrence exactly as before. (A wrong `rising`, as with
+  // a NaN span, only makes the filter pass more values; it never skips one that
+  // could update.) A flat domain draws every value at the plot's mid-height,
+  // which never beats the column's first y, so it skips them all. Measured in
+  // Chromium, interleaved against the previous loop: update at 100k values
+  // 2.65 -> 2.48 ms (rows) and 2.06 -> 1.85 ms (columns), CIs disjoint; every
+  // other cell tied. Output pinned bit for bit by m4-filter-equivalence.test.ts.
+  const rising = (dspan > 0.0) === (diff > 0.0)
   let i = 0
   let prevLen = 1
   while (i < n) {
@@ -317,18 +331,25 @@ export function m4CategoryPoints(values: Double[], plot: Rect, dom: Domain, perP
     let hi = i
     let loY = scaleLinear(dom, top, plot.y, v0)
     let hiY = loY
+    let loV = v0
+    let hiV = v0
     let j = i + 1
     while (j < end) {
       const v = values[j]!
       if (!isFiniteChartNumber(v)) return none
-      const y = flat ? flatY : r0 + ((v - dmin) / dspan) * diff
-      if (y < loY) {
-        lo = j
-        loY = y
-      }
-      if (y > hiY) {
-        hi = j
-        hiY = y
+      const past = rising ? v > hiV || v < loV : v < hiV || v > loV
+      if (!flat && past) {
+        const y = r0 + ((v - dmin) / dspan) * diff
+        if (y < loY) {
+          lo = j
+          loY = y
+          loV = v
+        }
+        if (y > hiY) {
+          hi = j
+          hiY = y
+          hiV = v
+        }
       }
       j = j + 1
     }

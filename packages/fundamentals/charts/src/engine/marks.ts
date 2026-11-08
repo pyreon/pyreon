@@ -374,6 +374,12 @@ function toNumber(v: unknown, label: string): Double {
 }
 
 /**
+ * Row count from which `resolveAccessor` runs the primed, split loop (see
+ * there). Exported for the test that covers that path; not public API.
+ */
+export const PRIMED_LOOP_MIN_ROWS = 300_000
+
+/**
  * One accessor resolved over every row, non-finite results as gaps (see
  * `toNumber`). Its own small function rather than a loop inside
  * `resolveMarks`' large per-mark callback, so the engine optimizes the loop on
@@ -390,15 +396,52 @@ function toNumber(v: unknown, label: string): Double {
  * The column path below keeps `push` for its own measured reason: there the
  * up-front allocation ADDS to a loop with no call in it, while here it replaces
  * the growth copies of a loop the per-row accessor call already dominates.
+ *
+ * A LONG series (at least `PRIMED_LOOP_MIN_ROWS` rows) runs its loop in
+ * `fillAccessor`, entered twice: row 0 alone, then the rest. The first entry
+ * records THIS accessor in the loop's call-site feedback, so when V8 compiles
+ * `fillAccessor` at its next entry it inlines the accessor. A loop compiled
+ * inline here can start compiling while that feedback is empty, because V8
+ * clears call feedback that points at a collected closure, such as the
+ * previous chart's accessor. That code then calls the accessor out of line for
+ * every row, and V8 never recompiles it: its inlining trace shows no inlined
+ * accessor in that compile and no later deopt.
+ *
+ * Short series keep the single inline loop. Code that inlines a closure is
+ * thrown away when the closure is collected, so after a GC the primed loop
+ * starts again from the interpreter. Below ~300,000 rows that restart costs
+ * more than the out-of-line calls: the charts-vs-ECharts 100,000-row mount
+ * measured 4.32 [4.28–4.37] → 4.48 [4.46–4.53] ms with the split at every
+ * length. Per-length resolve time, split vs single loop: 100k worse, 200k
+ * about the same, 300k a tie, 500k 3.10 → 2.50 ms, 1M 5.30 → 3.75 ms.
+ *
+ * Chromium, interleaved arms in one build, median [CI95]. On the charts-libs
+ * board (6 passes): 1,000,000-row mount 15.52 [15.04–16.44] → 13.77
+ * [13.05–14.83] ms, 100,000-row update 2.66 [2.63–2.68] → 2.34 [2.31–2.36] ms,
+ * 10,000-row update 1.15 [1.12–1.17] → 1.08 [1.05–1.10] ms. Every other
+ * charts-libs and charts-vs-ECharts cell tied.
  */
 function resolveAccessor<T>(data: T[], acc: (d: T, index: number) => unknown, label: string): Double[] {
   const n = data.length
   const out: Double[] = new Array<Double>(n).fill(Number.NaN)
+  if (n >= PRIMED_LOOP_MIN_ROWS) {
+    fillAccessor(data, acc, out, 0, 1, label)
+    fillAccessor(data, acc, out, 1, n, label)
+    return out
+  }
   for (let i = 0; i < n; i++) {
     const v = acc(data[i]!, i)
     out[i] = typeof v === 'number' ? (Number.isFinite(v) ? v : Number.NaN) : toNumber(v, label)
   }
   return out
+}
+
+/** `resolveAccessor`'s per-row loop over `[from, to)`. See `resolveAccessor` for why it is a separate function. */
+function fillAccessor<T>(data: T[], acc: (d: T, index: number) => unknown, out: Double[], from: number, to: number, label: string): void {
+  for (let i = from; i < to; i++) {
+    const v = acc(data[i]!, i)
+    out[i] = typeof v === 'number' ? (Number.isFinite(v) ? v : Number.NaN) : toNumber(v, label)
+  }
 }
 
 export function resolveMarks<T>(data: T[], marks: Mark<T>[], palette: readonly string[] = DEFAULT_PALETTE): Series[] {

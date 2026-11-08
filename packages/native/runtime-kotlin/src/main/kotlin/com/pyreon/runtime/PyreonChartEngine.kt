@@ -11219,7 +11219,7 @@ fun m4CategoryPoints(values: List<Double>, plot: PyreonChartRect, dom: Domain, p
     val inv = dom.inverse == true
     val r0 = if (inv) plot.y else top
     val diff = if (inv) top - plot.y else plot.y - top
-    val flatY = ((top + plot.y)).toDouble() / (2.0).toDouble()
+    val rising = (dspan > 0.0) == (diff > 0.0)
     var i = 0L
     var prevLen = 1L
     while (i < n) {
@@ -11244,20 +11244,27 @@ fun m4CategoryPoints(values: List<Double>, plot: PyreonChartRect, dom: Domain, p
       var hi = i
       var loY = scaleLinear(dom, top, plot.y, v0)
       var hiY = loY
+      var loV = v0
+      var hiV = v0
       var j = i + 1L
       while (j < end) {
         val v = values[(j).toInt()]
         if (!isFiniteChartNumber(v)) {
           return none
         }
-        val y = if (flat) flatY else r0 + (((v - dmin)).toDouble() / (dspan).toDouble()) * diff
-        if (y < loY) {
-          lo = j
-          loY = y
-        }
-        if (y > hiY) {
-          hi = j
-          hiY = y
+        val past = if (rising) v > hiV || v < loV else v < hiV || v > loV
+        if (!flat && past) {
+          val y = r0 + (((v - dmin)).toDouble() / (dspan).toDouble()) * diff
+          if (y < loY) {
+            lo = j
+            loY = y
+            loV = v
+          }
+          if (y > hiY) {
+            hi = j
+            hiY = y
+            hiV = v
+          }
         }
         j = j + 1L
       }

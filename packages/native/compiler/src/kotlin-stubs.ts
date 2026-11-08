@@ -1352,6 +1352,11 @@ object PyreonURL {
 // pyreonNumberString — JS \`String(number)\`, which every Double-typed
 // template interpoland lowers through. Mirrors the real signature.
 fun pyreonNumberString(value: Number): String = ""
+// pyreonParseInt / pyreonParseFloat / pyreonToNumber — the ECMAScript text→number algorithms
+// (PyreonNumber.kt). Mirrors the real signatures.
+fun pyreonParseInt(text: String, radix: Int? = null): Long? = null
+fun pyreonParseFloat(text: String): Double = 0.0
+fun pyreonToNumber(text: String): Double = 0.0
 // PyreonTimers — JS setTimeout / setInterval / clear* (PyreonTimers.kt). Mirrors the real surface.
 object PyreonTimers {
   interface Scheduler {

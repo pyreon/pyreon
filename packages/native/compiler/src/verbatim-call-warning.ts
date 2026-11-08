@@ -161,3 +161,174 @@ export function verbatimPyreonTypeWarnings(
   }
   return out
 }
+
+/**
+ * JavaScript / browser globals with no native counterpart of the same spelling, and what to write instead.
+ *
+ * Every lowering arm in the emitters claims a few of these (`Math.*`, `Date.now`, `parseInt`, `console.log`, …). One
+ * nobody claims is re-emitted verbatim, and the native build fails with "cannot find 'setTimeout' in scope" — with no
+ * warning from this compiler. A probe of everyday app code found eight of these silent failures (timers, `fetch`,
+ * `Promise.all`, `crypto`, `Number.isNaN`, `localeCompare`, `console.error`). Judged by SURVIVAL in the final output,
+ * like the Pyreon-import check above, so a global some arm lowers never reaches this list's warning.
+ *
+ * Names a native API also spells (`Array(`, `String(`, `URL(`, `Date(`, `Error`, `Math.` — java.lang.Math on Kotlin,
+ * Kotlin's `require(`) are deliberately absent: their survival is not evidence of anything.
+ */
+const PLATFORM_GLOBAL_ADVICE: Readonly<Record<string, string>> = {
+  requestAnimationFrame: 'animate with `<Transition>` or a primitive\'s animation props',
+  cancelAnimationFrame: 'animate with `<Transition>` or a primitive\'s animation props',
+  requestIdleCallback: 'do the work in `onMount` or a handler',
+  queueMicrotask: 'do the work in `onMount` or a handler',
+  structuredClone: 'copy with a spread (`{ ...x }`, `[...xs]`), which lowers',
+  fetch: 'fetch through the framework\'s data-fetching hook, which lowers to the native HTTP client',
+  Promise: 'await the calls one after another — `Promise` combinators have no native lowering',
+  crypto: 'only `crypto.randomUUID()` lowers',
+  window: 'browser state has no native counterpart; keep it behind a `<Web>` escape hatch',
+  document: 'the DOM has no native counterpart; keep it behind a `<Web>` escape hatch',
+  navigator: 'use the platform hooks (network status, clipboard, share, geolocation, …), which lower',
+  localStorage: 'use the storage package\'s storage hook, which lowers to the platform store',
+  sessionStorage: 'use the storage package\'s storage hook, which lowers to the platform store',
+  location: 'read and change the route through the router, which lowers',
+  history: 'navigate through the router, which lowers',
+  globalThis: 'reference the value directly',
+  alert: 'present a `<Modal>` or a toast, which lower',
+  confirm: 'present a `<Modal>`, which lowers',
+  prompt: 'present a `<Modal>` with a `<Field>`, which lower',
+  performance: '`Date.now()` lowers',
+  process: 'there is no process environment on a device',
+  Buffer: 'Buffer is a Node API',
+  Number: '`Number(x)`, `Number.isNaN`, `Number.isFinite`, `Number.isInteger`, `Number.parseInt` and `Number.parseFloat` lower',
+  Object: '`Object.keys` / `Object.values` lower only on a statically-known object shape',
+  JSON: '`JSON.stringify(x)` and a typed `JSON.parse(s) as T` lower',
+  Intl: '`new Intl.DateTimeFormat(…)` / `new Intl.NumberFormat(…)` bound to a const lower',
+  RegExp: 'regular expressions have no native lowering; rewrite with string methods',
+  Symbol: 'symbols have no native counterpart',
+  Reflect: 'reflection has no native counterpart',
+  Proxy: 'proxies have no native counterpart',
+  WeakMap: 'use a `Map` keyed by an id, which lowers',
+  WeakSet: 'use a `Set` of ids, which lowers',
+  WeakRef: 'weak references have no native lowering',
+  BigInt: 'big integers have no native lowering',
+  URLSearchParams: 'build the query with a template literal, or pass route params through the router',
+  FormData: 'send JSON through the data-fetching hook, which lowers',
+  Blob: 'binary data has no native lowering',
+  AbortController: 'the data-fetching hook cancels its own requests',
+  TextEncoder: 'byte encoding has no native lowering',
+  TextDecoder: 'byte decoding has no native lowering',
+  atob: 'base64 has no native lowering',
+  btoa: 'base64 has no native lowering',
+  encodeURIComponent: 'URL encoding has no native lowering; pass values as route params or a JSON body',
+  decodeURIComponent: 'URL decoding has no native lowering; the router decodes params',
+  encodeURI: 'URL encoding has no native lowering',
+  decodeURI: 'URL decoding has no native lowering',
+  console: '`console.log` / `info` / `debug` / `warn` / `error` lower to the platform print',
+}
+
+/** JavaScript methods with no lowering and no same-spelled method in Swift's or Kotlin's standard library. */
+const JS_ONLY_METHODS: readonly string[] = [
+  'localeCompare',
+  'toISOString',
+  'toUTCString',
+  'toDateString',
+  'toTimeString',
+  'toLocaleDateString',
+  'toLocaleTimeString',
+  'getTime',
+  'getFullYear',
+  'getMonth',
+  'getDate',
+  'getDay',
+  'getHours',
+  'getMinutes',
+  'getSeconds',
+  'getMilliseconds',
+  'getTimezoneOffset',
+  'setFullYear',
+  'setMonth',
+  'setDate',
+  'setHours',
+  'setMinutes',
+  'setSeconds',
+  'toFixed',
+  'toPrecision',
+  'toExponential',
+  'toSorted',
+  'toReversed',
+  'toSpliced',
+  'findLast',
+  'findLastIndex',
+  'splice',
+  'unshift',
+  'substr',
+  'charAt',
+  'normalize',
+  'trimLeft',
+  'trimRight',
+  'flat',
+]
+
+/** JavaScript methods Kotlin's standard library spells the same way (so only a SURVIVING Swift call is broken). */
+const JS_METHODS_SWIFT_ONLY: readonly string[] = ['padStart', 'padEnd', 'trimStart', 'trimEnd', 'substring', 'codePointAt']
+
+function targetLabel(target: string): string {
+  return target === 'swift' ? 'Swift' : target === 'kotlin' ? 'Kotlin' : target
+}
+
+function missingSymbolError(target: string, name: string): string {
+  return target === 'kotlin' ? `"unresolved reference '${name}'"` : `"cannot find '${name}' in scope"`
+}
+
+/** Whether the SOURCE binds `name` itself — a declaration, an import, a parameter or a destructured binding. */
+function declaredInSource(source: string, name: string): boolean {
+  const n = escapeRegExp(name)
+  return (
+    new RegExp(`\\b(?:const|let|var|function|class|enum|type|interface)\\s+${n}\\b`).test(source) ||
+    new RegExp(`\\bimport\\b[^;\\n]*\\b${n}\\b`).test(source) ||
+    // a parameter (`(location) =>`, `(a, history: H) =>`, `history =>`) or a destructured binding (`{ document }`)
+    new RegExp(`[({,]\\s*(?:\\.\\.\\.)?${n}\\s*[?]?\\s*[:,)}=]`).test(source) ||
+    new RegExp(`(?<![\\w.$])${n}\\s*=>`).test(source)
+  )
+}
+
+/**
+ * Warnings for a JavaScript or browser global, or a JavaScript-only method, that survives VERBATIM in the emitted code
+ * — the shapes that otherwise fail the native build with no diagnostic. A name an earlier warning already mentions is
+ * skipped (that warning is more specific).
+ */
+export function verbatimPlatformWarnings(
+  source: string,
+  code: string,
+  target: string,
+  existingWarnings: readonly string[],
+): string[] {
+  const body = stripLiteralsAndComments(code)
+  const sourceBody = stripLiteralsAndComments(source.replace(/^\s*import\b[^\n]*$/gm, ''))
+  const known = existingWarnings.join('\n')
+  const mentioned = (name: string) => new RegExp(`(?<![\\w$])${escapeRegExp(name)}(?![\\w$])`).test(known)
+  const out: string[] = []
+  for (const [name, advice] of Object.entries(PLATFORM_GLOBAL_ADVICE)) {
+    const n = escapeRegExp(name)
+    // A call (`setTimeout(`) or a namespace read (`crypto.`), not a member of something else (`x.fetch(`).
+    const use = new RegExp(`(?<![\\w.$])${n}\\s*[.(]`)
+    if (!use.test(body) || !use.test(sourceBody)) continue
+    if (declaredInSource(source, name) || mentioned(name)) continue
+    // The emitted file declares it itself (a helper the emitter wrote, a binding the user wrote).
+    if (new RegExp(`\\b(?:func|fun|let|var|val|struct|class|enum|object)\\s+${n}\\b`).test(body)) continue
+    out.push(
+      `${name} is a JavaScript/browser global with no native lowering — it is reproduced verbatim in the emitted ` +
+        `${targetLabel(target)}, where no such symbol exists, so the native build fails with ${missingSymbolError(target, name)}. ` +
+        `${advice[0]!.toUpperCase()}${advice.slice(1)}.`,
+    )
+  }
+  const methods = target === 'swift' ? [...JS_ONLY_METHODS, ...JS_METHODS_SWIFT_ONLY] : JS_ONLY_METHODS
+  for (const name of methods) {
+    const call = new RegExp(`\\.\\s*${escapeRegExp(name)}\\s*\\(`)
+    if (!call.test(body) || !call.test(sourceBody) || mentioned(name)) continue
+    out.push(
+      `.${name}(…) is a JavaScript method with no ${targetLabel(target)} lowering — it is reproduced verbatim, and the native build fails ` +
+        `with ${target === 'kotlin' ? `"unresolved reference '${name}'"` : `"value has no member '${name}'"`}. Rewrite it with a method that lowers (the supported-TypeScript table lists them), ` +
+        `or keep the code behind a \`<Web>\` escape hatch.`,
+    )
+  }
+  return out
+}

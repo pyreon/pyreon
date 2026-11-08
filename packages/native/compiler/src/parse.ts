@@ -4644,6 +4644,9 @@ function tryExtractRoutes(arg: AnyNode | undefined, ctx: ParseCtx): RouteIR[] | 
   return parseRouteArray(routesProp.value, ctx)
 }
 
+/** `Number.<name>` spellings that are the same function as the global `<name>` for a numeric argument. */
+const NUMBER_NAMESPACE_ALIASES: ReadonlySet<string> = new Set(['isNaN', 'isFinite', 'parseInt', 'parseFloat'])
+
 /** Globals an inline guard may read without capturing anything from the component. */
 const GUARD_GLOBALS = new Set([
   'Math', 'Number', 'String', 'Boolean', 'JSON', 'Array', 'Object', 'Date', 'undefined', 'NaN', 'Infinity',
@@ -6752,7 +6755,20 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
       const calleeCall = tryPluginCallExpr(node, ctx)
       if (calleeCall !== undefined) return calleeCall
       // A claimed library function keeps the callee spelling its plugin asked for (`FunctionLowering.irName`).
-      const parsedCallee = parseExpr(node.callee, ctx)
+      const parsedCallee0 = parseExpr(node.callee, ctx)
+      // `Number.isNaN` / `Number.isFinite` / `Number.parseInt` / `Number.parseFloat` are the namespaced spellings of
+      // the globals `isNaN` / `isFinite` / `parseInt` / `parseFloat`. For the numeric arguments native code carries
+      // they agree, so they canonicalize to ONE callee here and each emitter keeps ONE lowering per function. Before,
+      // only the global spellings lowered and the namespaced ones were emitted verbatim (`Number.isNaN(v)` — a
+      // compile error on both targets, with no warning).
+      const parsedCallee =
+        parsedCallee0.kind === 'member' &&
+        parsedCallee0.optional !== true &&
+        parsedCallee0.object.kind === 'identifier' &&
+        parsedCallee0.object.name === 'Number' &&
+        NUMBER_NAMESPACE_ALIASES.has(parsedCallee0.property)
+          ? ({ kind: 'identifier' as const, name: parsedCallee0.property })
+          : parsedCallee0
       const irName =
         parsedCallee.kind === 'identifier' ? functionIrName(parsedCallee.name) : undefined
       const callee =

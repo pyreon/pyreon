@@ -994,7 +994,7 @@ import { Text } from '@pyreon/primitives'
 export function App(props: { s: string; base: number }) {
   const r = parseInt(props.s, props.base)
   return <Text>{r}</Text>
-}`)).toContain('((s).toLongOrNull((base).toInt()) ?: 0L)')
+}`)).toContain('(pyreonParseInt(s, (base).toInt()) ?: 0L)')
   })
 
   it('Boolean() of an optional string / number follows JS truthiness; Object.keys/values degrade to typed empty lists (NAMED)', () => {

@@ -1646,6 +1646,11 @@ public enum PyreonURL {
 // template interpoland lowers through. Mirrors the real overload pair.
 public func pyreonNumberString(_ v: Double) -> String { "" }
 public func pyreonNumberString(_ v: Int) -> String { "" }
+// pyreonParseInt / pyreonParseFloat / pyreonToNumber — the ECMAScript text→number algorithms
+// (PyreonNumber.swift). Mirrors the real signatures.
+public func pyreonParseInt(_ text: String, _ radix: Int? = nil) -> Int? { nil }
+public func pyreonParseFloat(_ text: String) -> Double { 0 }
+public func pyreonToNumber(_ text: String) -> Double { 0 }
 // PyreonTimers — JS setTimeout / setInterval / clear* (PyreonTimers.swift). Mirrors the real surface.
 public enum PyreonTimers {
   @discardableResult public static func setTimeout(_ ms: Double, _ fn: @escaping () -> Void) -> Int { 0 }
