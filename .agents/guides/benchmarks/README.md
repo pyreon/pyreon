@@ -6,69 +6,43 @@ Read this before making, changing, or reviewing any performance claim.
 
 Per-library micro-benchmark detail (router, reactivity, store, http, SSR harness, declined micro-optimizations) is in `.agents/guides/benchmarks/references/core-micro-benchmarks.md`.
 
-## Current standings (summary of `BENCHMARKS.md`)
+## Current standings (summary of `BENCHMARKS.md`, run of 2026-11-05)
 
-Absolute times are machine-dependent; ratios are the portable signal. 🤝 means the CI95s overlap ("could not distinguish"), not "equal".
+Absolute times are machine-dependent; ratios are the portable signal. 🤝 means the CI95s overlap ("could not distinguish"), not "equal". A **win** needs disjoint CIs in every run measured; row-board CIs are cluster-bootstrapped over page loads (`BENCHMARKS.md` §14). The full per-op table is `BENCHMARKS.md` §12 and the collected losses are §13 — quote those, not this summary.
 
-### DOM row-list suite (`bench:fair`, 8 frameworks, real Chromium)
+### DOM row-list suite (`bench:fair`, 10 arms, real Chromium)
 
-- **Pyreon outright:** create 1,000, replace all, clear rows (115 vs Octane 190 µs), create 10,000, append 1k→10k.
-- **Tie:** Pyreon = Octane on partial update and swap rows; Solid = Octane = Pyreon on remove row.
-- **No verdict:** select row (below 10 clock ticks — use the batch instrument, `bench:crossover`); `batch cycle` rows (only 4 of 8 implementations).
-- **Vs hand-written Vanilla:** 1.03–1.10× on most ops, 1.19× swap, 1.21× clear.
-- **Retained heap:** Pyreon ties Preact as the lightest framework (2.78 MB).
-- Octane is the nearest rival. It is Octane 0.4.2; verdicts against earlier Octane versions are not comparable.
+- **Pyreon outright (both runs):** clear rows only — 130 µs vs Vue 3.6 Vapor RC 145 µs (1.11–1.12×).
+- **Split (tie in one run, 1.02× win in the other), not claimed as wins:** create 10,000, append 1k→10k.
+- **Tie:** create 1,000, replace all, partial update, swap rows, remove row — against Vapor RC, Octane 0.16 and (create) Vue 3.
+- **No verdict:** select row (below 10 clock quanta; the batch instrument gives Pyreon 1.86–2.04× over Octane, one run).
+- **Vs hand-written Vanilla:** 0.99–1.09× on every op except clear (1.44×).
+- **Retained heap:** Pyreon 3.08 MB ties Preact 3.09 MB as the lightest framework.
 
-### Scaling (`bench:crossover`, 100 → 20,000 rows, batch-timed)
+### Scaling (`bench:crossover`, batch-timed, one run)
 
-- **select** is O(1) for Pyreon and Octane (Pyreon ~1.85–1.95× faster at every size) and O(n) for Solid.
-- **partial update:** Pyreon 1.08–1.13× faster than Octane; ~1.05–1.07× faster than Solid from 1,000 rows (tie at 100).
-- **swap:** tie with Octane at 100 rows, Pyreon 1.03–1.18× faster from 1,000 up.
-- Open instrument disagreement: Octane `select` at 10k/20k reads 50–60 µs on the per-op timer and ~0.9 µs on the batch instrument. The batch figure is used; the per-op one is unexplained.
+- **select:** Pyreon 1.86–2.04× faster than Octane at every size.
+- **partial update:** 1.05–1.12× vs Octane; tie with Solid at 1,000 rows.
+- **swap:** Octane 1.12× / 1.10× at 100 / 1,000 rows (fails the harness's K-independence check); Pyreon 1.03–1.11× from 5,000 up.
 
-### Scenario suite (`bench:scenarios`)
+### Elsewhere
 
-| scenario | leader | Pyreon |
-| --- | --- | --- |
-| dbmon tick (every value changes) | Svelte | 1.06× behind; whole field within 1.25× |
-| mount deep tree (2,047 components) | Solid | **1.14–1.16× behind (3.57–3.59 vs 3.09–3.12 ms, 2026-11)** — clearest loss |
-| context → 1,024 consumers | Pyreon | Solid 🤝 |
-| effect list: update / dispose 500 | Solid | 🤝 on both |
-| memo wall: blocked / passthrough | Pyreon | — |
-
-**Flow — `@pyreon/flow` vs React Flow 12** (`bench:flow`, 500 nodes / 499 edges): React Flow wins mount (1.20×). Pyreon wins drag ×60 (7.4×), select (3.5×), pan+zoom ×60 (95×), unmount (3.5×). Add 50 nodes ties. Caveats:
-
-- Neither arm synthesizes pointer events. The bench measures each library's update, not the gesture (hit testing, d3-drag).
-- Both arms drive their public imperative API (`createFlow` + `updateNode`/`selectNode`/`addNode`/`viewport.set` vs `ReactFlowInstance` methods in `flushSync`) and verify the DOM effect every iteration.
-- React Flow's mount excludes its deferred edge pass: it waits for ResizeObserver measurement before drawing edges, and the harness waits for those edges outside the timed region.
-- Drag/pan ratios are mostly React Flow re-rendering node wrappers on every store write — its architecture.
-- Not measured: rubber-band selection, edge reconnection, layout.
-
-### Hydration and SSR
-
-- **1,000-row table (`bench:hydration`):** Pyreon and Vue (compiled template) are statistically tied on both the total and the walk. React 1.08× behind on total, Preact 1.84×.
-- **App-page shape (`bench:apppage`, 320 components, 2,206 nodes):** Pyreon leads (React 1.09×, Vue 1.18×, Preact 1.39×).
-- **Compiled SSR (`bench:ssr` in `examples/benchmark`):** Pyreon leads at 10 rows; Vue leads at 100 and 1,000 rows (Pyreon 1.06× / 1.09× behind).
-- **`renderToString` vs React/Preact/Solid (`bench:ssr-cross`):** Pyreon compiled leads every scenario (1.63–4.46× over Solid). The uncompiled `h()` walk is 5–6× slower than compiled.
-
-### Other suites
-
-- **TodoMVC shape vs `react-dom@19` (`real-bench`):** add-100 1.14×, toggle-1000 2.42×, clear-1000 4.24×.
-- **Form (12 fields, 6 libraries):** Pyreon ties Solid modular-forms on mount; leads every other scenario; lowest retained heap.
-- **Bundle (same keyed-table app):** Pyreon 16.6 KB vs Solid 7.5 KB, Preact 10.6 KB (Pyreon 2.22× Solid).
-- **Reactivity core, fundamentals, router, head, styler, validate:** see `BENCHMARKS.md` §8–§11 and the reference file.
+- **Scenarios:** dbmon three-way tie; deep-tree mount **loss** 1.15–1.18× to Solid (React ties Pyreon); memo wall wins; flow, virtual and charts-vs-ECharts win every op (one run); charts-libs line mounts lose at 10k (uPlot) and 1M rows (Chart.js).
+- **Hydration:** 1,000-row table — walk tie with Vue, total tie / Vue 1.01×; app page — Pyreon 4.02 ms, React 1.03×, Preact 1.07×, Vue 1.11× (one run).
+- **SSR (overnight run, one run):** compiled SSR leads at 10 / 100 / 1,000 rows (1.21× / 1.35× / 1.14×); `renderToString` 1.64–4.68× over Solid.
+- **Bundle (same app):** Pyreon 17.2 KB vs Solid 7.5, Preact 10.1, Svelte 16.1 — a loss.
 
 ### Where Pyreon loses
 
-Keep this list honest and current; it is `BENCHMARKS.md` §12:
+Keep this list honest and current; it mirrors `BENCHMARKS.md` §13:
 
-1. Deep component-tree mount — 1.14–1.16× behind Solid.
-2. Signal creation (~5× vs Preact on both engines); deep computed chains, computed diamond, and (V8) wide fan-out.
-3. Large-page SSR — Vue compiled SSR 1.06–1.09× faster.
-4. dbmon — Svelte leads.
-5. Bundle size.
-6. Flow mount — React Flow 1.20× faster.
-7. Store setup, hotkeys register/teardown, http client creation, url-state integer parse, form store setup, rx per-op overhead, table mount/sort (happy-dom), router at 10 routes.
+1. Deep component-tree mount — 1.15–1.18× behind Solid.
+2. Swap at 100 / 1,000 rows on the batch instrument (Octane, K-dependent).
+3. Effect-list dispose 500 — Solid by one 5 µs clock quantum.
+4. Charts line mounts at 10k (uPlot) and 1M rows (Chart.js) on row-object input.
+5. Signal creation (~5× vs Preact Signals); deep unobserved chains; wide fan-out on V8.
+6. Bundle size.
+7. Router at 10 routes (Hono 1.91×); some validate-protocol cells; store setup and read; storage read; url-state integer parse; form-bench heap; table and virtual under happy-dom.
 8. Unbundled Node — importing `lib/` without a bundler pays ~145 ns per `process.env.NODE_ENV` read on dev-gated hot paths.
 
 ### Charts vs ECharts 6 (not in `BENCHMARKS.md`)

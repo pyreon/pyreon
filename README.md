@@ -5,7 +5,7 @@
 <p align="center">
   <a href="https://github.com/pyreon/pyreon/actions/workflows/ci.yml"><img src="https://github.com/pyreon/pyreon/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-22D3EE" alt="License: MIT" /></a>
-  <img src="https://img.shields.io/badge/row--list%20benchmark-mostly%20ties%20Octane%2C%20wins%20create--10k%20%2B%20append-F4EFE6?labelColor=0A0A0E" alt="Row-list benchmark: statistically tied with Octane on most ops, wins create-10k and append outright" />
+  <img src="https://img.shields.io/badge/row--list%20benchmark-ties%20the%20fastest%2C%20wins%20clear%20rows-F4EFE6?labelColor=0A0A0E" alt="Row-list benchmark: statistically tied with the fastest frameworks on most ops, wins clear rows outright" />
 </p>
 
 # Pyreon
@@ -18,9 +18,9 @@ A signal-based UI framework with fine-grained reactivity. No virtual DOM, no com
 - **No dependency arrays.** Signals track their own subscribers automatically.
 - **~6 kB gzip** for core + runtime-dom. Tree-shakeable — only what you use ships to the client.
 - **Full-stack.** SSR streaming, static site generation, island architecture, and client-side SPA — all from one framework.
-- **Fast, and we retracted the parts of our own benchmark that overstated it — three times.** A synthetic row-list benchmark across an 8-framework field found our harness had handicapped [Octane](https://octanejs.dev) — the nearest rival — with a `String()` wrapper that disabled its compiler fast path; let a V8 engine artifact inflate the retained-memory numbers for five implementations; and used a CSS table-layout mode that forced a full-table re-measure on any op that widened a cell, which inflated our published Pyreon-vs-Solid `partial update` lead from a real ~2.1× to a false ~4.9× (retracted). Corrected (pending merge — see [benchmarks](https://pyreon.dev/docs/benchmarks)): Pyreon **wins bulk-create outright** — 10,000 rows in 80.3ms vs Octane 83.4ms, and **~2.6× faster than React and ~3.3× than Preact** at that size — plus an outright win on `append` (~1.14–1.20×, widened after the table-layout fix, 14.2ms vs Octane's 16.3ms) — and is **statistically tied with Octane** on create-1k, replace, partial-update, and remove. Octane, in turn, **wins `clear rows`** (a real ~1.45× on `main` today, not a timer artifact — and a real architectural gap, since Octane registers no per-row subscriptions at all; a separate fix, still open, narrows it to ~1.15× without closing it). `select row` is at the floor of what real-Chromium timing can resolve for both. (Real Chromium, published deps, every competitor on its own documented fast path; retained memory is a 3-way tie with Preact for 3rd of 8, not a win.)
+- **Fast, measured honestly — including our losses.** On a synthetic row-list benchmark against nine other implementations (Vue 3.6 Vapor RC, Octane, Vue 3, Solid, Solid 2 RC, Svelte 5, React 19, Preact, hand-written Vanilla), Pyreon wins **clear rows** outright (1.11–1.12× over Vue Vapor RC) and is **statistically tied with the fastest** on create, replace, partial update, swap and remove; it is ~2.6× faster than React and ~3.8× than Preact at 10,000 rows. It **loses** deep component-tree mount to Solid (1.15–1.18×), and its bundle for the same app (17.2 KB) is larger than Solid (7.5 KB), Preact (10.1 KB) and Svelte (16.1 KB). The benchmark record withdraws its own claims when a harness bug is found — most recently, a cluster bootstrap over page loads turned two published wins and one loss into ties. Every figure, its confidence interval and every withdrawal are in [BENCHMARKS.md](BENCHMARKS.md) (Apple M3 Max, real Chromium, author-run, synthetic; see also [benchmarks](https://pyreon.dev/docs/benchmarks)).
 - **77 packages.** Forms, routing, state management, charts, drag & drop, i18n, multiplatform (SwiftUI + Compose), and more.
-- **Migration paths.** Drop-in compat layers for React, Preact, Vue, Solid, and Svelte.
+- **Migration paths.** Compat layers for React, Preact, Vue, Solid, and Svelte, at near-full public-API parity.
 
 ## Quick Start
 
@@ -155,11 +155,11 @@ The `count()` call inside JSX is a reactive getter. Pyreon wraps it in an effect
 | [`@pyreon/lint`](packages/tools/lint/) | 133 Pyreon-specific lint rules across 25 categories — reactivity, JSX, SSR, performance |
 | [`@pyreon/storybook`](packages/tools/storybook/) | Storybook renderer for Pyreon components |
 | [`@pyreon/typescript`](packages/tools/typescript/) | TypeScript config presets |
-| [`@pyreon/react-compat`](packages/tools/react-compat/) | Drop-in React compatibility layer |
-| [`@pyreon/preact-compat`](packages/tools/preact-compat/) | Drop-in Preact compatibility layer |
-| [`@pyreon/vue-compat`](packages/tools/vue-compat/) | Drop-in Vue compatibility layer |
-| [`@pyreon/solid-compat`](packages/tools/solid-compat/) | Drop-in Solid compatibility layer |
-| [`@pyreon/svelte-compat`](packages/tools/svelte-compat/) | Drop-in Svelte compatibility layer |
+| [`@pyreon/react-compat`](packages/tools/react-compat/) | React compatibility layer (near-full public-API parity) |
+| [`@pyreon/preact-compat`](packages/tools/preact-compat/) | Preact compatibility layer (near-full public-API parity) |
+| [`@pyreon/vue-compat`](packages/tools/vue-compat/) | Vue compatibility layer (near-full public-API parity) |
+| [`@pyreon/solid-compat`](packages/tools/solid-compat/) | Solid compatibility layer (near-full public-API parity) |
+| [`@pyreon/svelte-compat`](packages/tools/svelte-compat/) | Svelte compatibility layer (near-full public-API parity) |
 | [`@pyreon/testing`](packages/tools/testing/) | Test kit at Testing-Library parity — `render`/`screen`/`fireEvent`, jest-dom matchers, plus reactive fire-count / leak matchers |
 | [`@pyreon/cli`](packages/tools/cli/) | `pyreon` CLI — `doctor`, `check`, `add`, `new`, `mcp`, `lint`, `info`, `upgrade`, `plain`, `context`, plus `atlas` / `loom` / `lathe` delegators |
 | [`@pyreon/mcp`](packages/tools/mcp/) | MCP server — API reference, patterns, `validate`, `diagnose` for AI assistants |
