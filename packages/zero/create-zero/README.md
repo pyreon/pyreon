@@ -63,7 +63,7 @@ Pick a target via `--adapter`. Each adapter writes the platform-specific deploy 
 | `vercel` | `vercel.json` |
 | `cloudflare` | `wrangler.toml`, `_routes.json` |
 | `netlify` | `netlify.toml` |
-| `node` | `Dockerfile`, `.dockerignore` |
+| `node` | `Dockerfile` (builds with Bun, runs on Node with production `node_modules`), `.dockerignore` |
 | `bun` | `Dockerfile` (bun-based), `.dockerignore` |
 | `static` | — (`dist/` is the artefact) |
 

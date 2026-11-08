@@ -1,7 +1,9 @@
-FROM node:26-alpine@sha256:c6ad9e9c1d80f6eb607c26b4b0a132ff7a2344fad1c78ea3baa2a7d4c8de6d94 AS build
+# Bun from the official image: corepack never supported Bun, and Node 25+
+# no longer ships corepack.
+FROM oven/bun:1@sha256:1d22548f177f4ff38e0c15baa3c2c46c6c2060ba2d1bc573bb4720b407548f1d AS build
 WORKDIR /app
 COPY package.json bun.lock* ./
-RUN corepack enable && corepack prepare bun@latest --activate && bun install --frozen-lockfile
+RUN bun install --frozen-lockfile
 COPY . .
 RUN bun run build
 
