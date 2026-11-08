@@ -161,6 +161,12 @@ import {
 import { swiftCodingKeysLines } from './spelling'
 
 import { lowerMathCall, lowerMathConstant } from './math-lowering'
+import {
+  fractionalIntoIntegerFieldWarning,
+  isDateNowCall,
+  isWholeValued,
+  typeWantsInteger,
+} from './integer-field-coercion'
 import { buildObjectConstFields, planObjectSpread, resolveSpreadFields } from './spread-lowering'
 import { collectJsxFnNames, jsxHelperCallName, jsxHelperCallWarning } from './jsx-helper-call'
 import type { SpreadResolver } from './spread-lowering'
@@ -807,6 +813,37 @@ let _componentValueConstExprs: Map<string, ExprIR> = new Map()
 let _activeInferCtx: ReturnType<typeof buildInferenceCtx> = emptyInferenceCtx()
 
 /** 'double' / 'int' / 'other' for an expr, via the active inference ctx. */
+/**
+ * A value stored into an INTEGER struct field (see integer-field-coercion.ts): a whole-valued Double converts
+ * exactly (`Int(…)`; `Date.now()` in integer milliseconds), any other Double is named. Everything else is `raw`.
+ */
+function swiftIntoIntegerField(
+  structName: string,
+  field: string,
+  ft: TypeIR | undefined,
+  value: ExprIR,
+  raw: string,
+): string {
+  if (ft === undefined || !typeWantsInteger(ft) || numericFloatness(value) !== 'double') return raw
+  if (isDateNowCall(value)) return 'Int(Date().timeIntervalSince1970 * 1000)'
+  if (isWholeValued(value, (x) => numericFloatness(x) === 'int')) return `Int(${raw})`
+  const w = fractionalIntoIntegerFieldWarning(structName, field, 'Swift')
+  if (!_emitWarnings.includes(w)) _emitWarnings.push(w)
+  return raw
+}
+
+/** A spread override (`{ ...t, id: … }`) of the SOURCE struct's field, coerced into that field's type like an init argument. */
+function swiftSpreadOverride(source: ExprIR, f: { name: string; value: ExprIR }, indent: number): string {
+  const raw = emitSwiftExpr(f.value, indent)
+  const st = inferType(source, _activeInferCtx)
+  const base = st.kind === 'union' ? st.branches.find((b) => b.kind !== 'null' && b.kind !== 'undefined') : st
+  if (base?.kind !== 'typeRef') return raw
+  const def =
+    _declaredStructs.find((s) => s.name === base.name) ?? _synthExprStructs.find((s) => s.name === base.name)
+  const ft = def?.fields.find((x) => x.name === f.name)?.type
+  return swiftIntoIntegerField(base.name, f.name, ft, f.value, raw)
+}
+
 function numericFloatness(e: ExprIR): 'double' | 'int' | 'other' {
   const t = inferType(e, _activeInferCtx)
   // The `Double`/`Float` ALIAS arrives as an unresolved typeRef (a param
@@ -6467,14 +6504,15 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
           } else {
             const target = emitSwiftExpr(plan.source, indent)
             const overrides = plan.fields
-              .map((f) => `c.${swiftIdent(f.name)} = ${emitSwiftExpr(f.value, indent)}`)
+              .map((f) => `c.${swiftIdent(f.name)} = ${swiftSpreadOverride(plan.source, f, indent)}`)
               .join('; ')
             return `{ var c = ${target}; ${overrides}; return c }()`
           }
         }
       }
       if (e.spreads && e.spreads.length === 1 && e.spreads[0]!.kind === 'identifier') {
-        const target = emitSwiftExpr(e.spreads[0]!, indent)
+        const spreadSource = e.spreads[0]!
+        const target = emitSwiftExpr(spreadSource, indent)
         // An OPTIONAL source lowers to `var c = o` where `o` is `T?`, so the
         // member assignment and the return type both fail. TypeScript accepts
         // the spread, so without this the first signal is a swiftc gate whose
@@ -6485,7 +6523,7 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
           )
         }
         const overrides = e.fields
-          .map((f) => `c.${swiftIdent(f.name)} = ${emitSwiftExpr(f.value, indent)}`)
+          .map((f) => `c.${swiftIdent(f.name)} = ${swiftSpreadOverride(spreadSource, f, indent)}`)
           .join('; ')
         return `{ var c = ${target}; ${overrides}; return c }()`
       }
@@ -6535,7 +6573,8 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
               const raw = withExpectedType(ft, () => emitSwiftExpr(f.value, indent))
               const wantsFloat = ft !== undefined && typeWantsFloat(ft)
               const coerce = wantsFloat && numericFloatness(f.value) === 'int'
-              return `${swiftIdent(f.name)}: ${coerce ? `Double(${raw})` : raw}`
+              if (coerce) return `${swiftIdent(f.name)}: Double(${raw})`
+              return `${swiftIdent(f.name)}: ${swiftIntoIntegerField(structName, f.name, ft, f.value, raw)}`
             })
             .join(', ')
           return `${swiftIdent(structName)}(${args})`

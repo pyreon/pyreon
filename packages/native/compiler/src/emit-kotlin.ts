@@ -144,6 +144,12 @@ import type { InferenceCtx } from './infer-type'
 import { kotlinEnumEntry, kotlinIdent, kotlinMember, safeIdent } from './identifier-safety'
 import { KOTLIN_INT } from './spelling'
 import { lowerMathCall, lowerMathConstant } from './math-lowering'
+import {
+  fractionalIntoIntegerFieldWarning,
+  isDateNowCall,
+  isWholeValued,
+  typeWantsInteger,
+} from './integer-field-coercion'
 import { buildObjectConstFields, planObjectSpread, resolveSpreadFields } from './spread-lowering'
 import { collectJsxFnNames, jsxHelperCallName, jsxHelperCallWarning } from './jsx-helper-call'
 import type { SpreadResolver } from './spread-lowering'
@@ -407,9 +413,48 @@ function kotlinStructCtorArgs(
           typeof f.value.value === 'number' &&
           Number.isInteger(f.value.value) &&
           f.value.float !== true)
-      return `${kotlinMember(f.name)} = ${wantsFloat && isInt ? `(${raw}).toDouble()` : raw}`
+      if (wantsFloat && isInt) return `${kotlinMember(f.name)} = (${raw}).toDouble()`
+      return `${kotlinMember(f.name)} = ${kotlinIntoIntegerField(structName, f.name, ft, f.value, raw)}`
     })
     .join(', ')
+}
+
+/**
+ * Twin of the Swift `swiftIntoIntegerField` (see integer-field-coercion.ts): a whole-valued Double stored into a
+ * `Long` field converts exactly (`(…).toLong()`; `Date.now()` is `System.currentTimeMillis()`), any other Double
+ * is named. Everything else is `raw`.
+ */
+function kotlinIntoIntegerField(
+  structName: string,
+  field: string,
+  ft: TypeIR | undefined,
+  value: ExprIR,
+  raw: string,
+): string {
+  if (ft === undefined || !typeWantsInteger(ft) || !isDoubleOperand(value)) return raw
+  if (isDateNowCall(value)) return 'System.currentTimeMillis()'
+  if (isWholeValued(value, isIntegerOperand)) return `(${raw}).toLong()`
+  const w = fractionalIntoIntegerFieldWarning(structName, field, 'Kotlin')
+  if (!_emitWarnings.includes(w)) _emitWarnings.push(w)
+  return raw
+}
+
+function isIntegerOperand(x: ExprIR): boolean {
+  const t = unwrapOptionalType(inferType(x, _kotlinExprInferCtx))
+  return t.kind === 'number' && t.float !== true
+}
+
+/** A `.copy(…)` override of a spread SOURCE's field, coerced into that field's type like a constructor argument. */
+function kotlinSpreadOverride(source: ExprIR, f: { name: string; value: ExprIR }, indent: number): string {
+  const raw = emitKotlinExpr(f.value, indent)
+  const st = unwrapOptionalType(inferType(source, _kotlinExprInferCtx))
+  if (st.kind !== 'typeRef') return raw
+  const def =
+    _declaredStructs.find((s) => s.name === st.name) ??
+    _synthExprStructs.find((s) => s.name === st.name) ??
+    _synthStateClassesKotlin.get(st.name)
+  const ft = def?.fields.find((x) => x.name === f.name)?.type
+  return kotlinIntoIntegerField(st.name, f.name, ft, f.value, raw)
 }
 
 /** The integer value of a literal (or a negated one), else undefined. */
@@ -5216,14 +5261,15 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
           } else {
             const target = emitKotlinExpr(plan.source, indent)
             const overrides = plan.fields
-              .map((f) => `${kotlinMember(f.name)} = ${emitKotlinExpr(f.value, indent)}`)
+              .map((f) => `${kotlinMember(f.name)} = ${kotlinSpreadOverride(plan.source, f, indent)}`)
               .join(', ')
             return `${target}.copy(${overrides})`
           }
         }
       }
       if (e.spreads && e.spreads.length === 1 && e.spreads[0]!.kind === 'identifier') {
-        const target = emitKotlinExpr(e.spreads[0]!, indent)
+        const spreadSource = e.spreads[0]!
+        const target = emitKotlinExpr(spreadSource, indent)
         // Mirror of the Swift emitter: `.copy` on a nullable receiver is
         // rejected outright, and TypeScript accepts the spread, so without
         // this the first signal is a kotlinc gate naming generated Kotlin.
@@ -5233,7 +5279,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
           )
         }
         const overrides = e.fields
-          .map((f) => `${kotlinMember(f.name)} = ${emitKotlinExpr(f.value, indent)}`)
+          .map((f) => `${kotlinMember(f.name)} = ${kotlinSpreadOverride(spreadSource, f, indent)}`)
           .join(', ')
         return `${target}.copy(${overrides})`
       }
