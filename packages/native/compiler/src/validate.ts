@@ -369,6 +369,9 @@ export function _swiftTypecheckPreamble(source: string): string {
  * only some call sites is exactly how ~20 chart-host specs broke together.
  */
 const SWIFT_RUNTIME_HELPERS: readonly { readonly name: string; readonly file: string }[] = [
+  // `Map` / `Set` / `Record` lower to the ordered collections.
+  { name: 'PyreonMap', file: 'PyreonCollections.swift' },
+  { name: 'PyreonSet', file: 'PyreonCollections.swift' },
   { name: 'pyreonNumberString', file: 'PyreonNumber.swift' },
   // `parseInt` / `parseFloat` / `Number(text)` on a string lower to these.
   { name: 'pyreonParseInt', file: 'PyreonNumber.swift' },
@@ -384,6 +387,10 @@ const SWIFT_RUNTIME_HELPERS: readonly { readonly name: string; readonly file: st
   // `Intl.NumberFormat` / `Intl.DateTimeFormat` / `toLocale*String` construct these (intl-plugin.ts).
   { name: 'PyreonNumberFormat', file: 'PyreonIntl.swift' },
   { name: 'PyreonDateTimeFormat', file: 'PyreonIntl.swift' },
+  // `setTimeout` / `setInterval` / `clearTimeout` / `clearInterval` lower to these.
+  { name: 'PyreonTimers.setTimeout', file: 'PyreonTimers.swift' },
+  { name: 'PyreonTimers.setInterval', file: 'PyreonTimers.swift' },
+  { name: 'PyreonTimers.clear', file: 'PyreonTimers.swift' },
   // `JSON.parse(s)` lowers to `PyreonJSON.parse(T.self, s)`.
   { name: 'PyreonJSON.parse', file: 'PyreonJSON.swift' },
   // An emitted schema struct throws / returns these, and its callers convert typed input with `pyreonSchemaInput`.
@@ -401,11 +408,23 @@ const SWIFT_RUNTIME_HELPERS: readonly { readonly name: string; readonly file: st
  * The real files, not stubs, so their behaviour is the one type-checked. Part
  * of the preamble, and therefore of the verdict-cache key.
  */
+/**
+ * The REAL ordered collections (`PyreonMap` / `PyreonSet`, `PyreonCollections.swift`) the emit spells every `Map`,
+ * `Set` and `Record` with. Linked into the stub lane verbatim rather than mirrored: they are pure Swift, and a
+ * hand-written mirror of a generic collection is exactly the kind of stub that drifts from the API it stands for.
+ */
+function swiftCollectionsRuntime(): string {
+  const text = readIfPresent(join(NATIVE_PACKAGES_DIR, 'runtime-swift/Sources/PyreonRuntime', 'PyreonCollections.swift'))
+  return text === undefined ? '' : `\n${text.replace(/^import Foundation\n/m, '')}\n`
+}
+
 function swiftRuntimeHelpers(source: string): string {
   let out = ''
   const linked = new Set<string>()
   for (const { name, file } of SWIFT_RUNTIME_HELPERS) {
-    if (!source.includes(`${name}(`) || source.includes(`func ${name}`) || linked.has(file)) continue
+    // A runtime TYPE is named in an annotation (`PyreonMap<String, Int>`) as often as it is constructed.
+    const named = source.includes(`${name}(`) || source.includes(`${name}<`)
+    if (!named || source.includes(`func ${name}`) || linked.has(file)) continue
     linked.add(file)
     const text = readIfPresent(join(NATIVE_PACKAGES_DIR, 'runtime-swift/Sources/PyreonRuntime', file))
     if (text !== undefined) out += `${text.replace(/^import Foundation\n/m, '')}\n`
@@ -651,7 +670,8 @@ export function validateSwiftWithStubs(
   // concat would instead see it as an "invalid redeclaration". Drop the stub's
   // copy of any type the emit declares so the concat behaves like real shadowing.
   const stub =
-    shadowStubDeclarations(SWIFT_UI_STUBS, stripped) + swiftAugmentation(options, stripped)
+    shadowStubDeclarations(SWIFT_UI_STUBS + swiftCollectionsRuntime(), stripped) +
+    swiftAugmentation(options, stripped)
 
   // Everything above transformed the source; `stub` and `inputText` ARE the
   // bytes swiftc will see. Keying on them means every transform — import
@@ -748,7 +768,8 @@ export function validateSwiftFilesWithStubs(
     }
   }
   const all = stripped.join('\n')
-  const stub = shadowStubDeclarations(SWIFT_UI_STUBS, all) + swiftAugmentation(options, all)
+  const stub =
+    shadowStubDeclarations(SWIFT_UI_STUBS + swiftCollectionsRuntime(), all) + swiftAugmentation(options, all)
   const inputs = stripped.map((s) => {
     const observation =
       /@Observable\b/.test(s) && !/^import Observation\s*$/m.test(s) ? 'import Observation\n' : ''

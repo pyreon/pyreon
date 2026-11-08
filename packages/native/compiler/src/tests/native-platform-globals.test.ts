@@ -264,7 +264,9 @@ describe('a global or JS-only method that survives verbatim is named', () => {
     it(`${target}: each survivor is named once, with what to write instead`, () => {
       const { warnings } = emit(survivors, target)
       const named = (n: string) => warnings.filter((w) => w.startsWith(`${n} is a JavaScript/browser global`))
-      for (const n of ['setTimeout', 'fetch', 'Promise', 'localStorage']) expect(named(n), n).toHaveLength(1)
+      for (const n of ['fetch', 'Promise', 'localStorage']) expect(named(n), n).toHaveLength(1)
+      // Timers lower now (PyreonTimers — native-timers.test.ts), so they no longer survive to be named.
+      expect(named('setTimeout')).toHaveLength(0)
       expect(named('fetch')[0]).toContain('data-fetching hook')
       expect(named('localStorage')[0]).toContain('storage hook')
       // `normalize` on a string receiver already has a more specific warning; the survival check does not repeat it.

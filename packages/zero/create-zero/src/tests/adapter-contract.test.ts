@@ -108,6 +108,65 @@ describe('bun adapter — Dockerfile runs the adapter-emitted runner', () => {
   })
 })
 
+/** `FROM` image + `RUN` lines per build stage of a Dockerfile. */
+function dockerStages(dockerfile: string): { image: string; runs: string[] }[] {
+  const stages: { image: string; runs: string[] }[] = []
+  for (const line of dockerfile.split('\n')) {
+    const from = /^FROM\s+(\S+)/.exec(line)
+    if (from) stages.push({ image: from[1]!, runs: [] })
+    else if (/^RUN\s/.test(line)) stages.at(-1)?.runs.push(line)
+  }
+  return stages
+}
+
+describe('node/bun Dockerfiles — every stage can run the commands it uses', () => {
+  // The node Dockerfile built on node:26-alpine with
+  // `corepack enable && corepack prepare bun@latest`: Node 25+ no longer
+  // bundles corepack (`corepack: not found`), and corepack never supported
+  // Bun anyway, so `docker build` failed at the install step. Bisect: put
+  // the corepack line back → the node case fails.
+  for (const id of ['node', 'bun'] as const) {
+    it(`${id}: no corepack, and every stage that runs bun is a Bun image`, async () => {
+      const config = cfg(id, 'ssr-stream')
+      await adapterFor(id).apply(config)
+      const dockerfile = readFileSync(join(config.targetDir, 'Dockerfile'), 'utf8')
+      expect(dockerfile).not.toMatch(/^RUN .*corepack/m)
+      const stages = dockerStages(dockerfile)
+      expect(stages.length).toBeGreaterThan(0)
+      for (const stage of stages) {
+        if (!stage.runs.some((r) => /\bbunx?\s/.test(r))) continue
+        // The scaffold is Bun-first (bun.lock, `bun run build`): the stage
+        // that installs and builds must start from an image that ships Bun.
+        expect(stage.image).toMatch(/^oven\/bun:/)
+      }
+      // Images are digest-pinned (the freshness workflow checks the pins).
+      for (const stage of stages) expect(stage.image).toMatch(/@sha256:[0-9a-f]{64}$/)
+    })
+
+    it(`${id}: the runtime stage ships production node_modules next to dist/`, async () => {
+      // The SSR bundle externalizes the app's packages (@pyreon/*,
+      // @tanstack/query-core, …) and imports them from node_modules. Copying
+      // dist/ alone made the node image crash with ERR_MODULE_NOT_FOUND; the
+      // bun image only started by auto-installing from npm AT REQUEST TIME
+      // (unpinned, and dead without network). Bisect: drop the node_modules
+      // COPY → this fails.
+      const config = cfg(id, 'ssr-stream')
+      await adapterFor(id).apply(config)
+      const dockerfile = readFileSync(join(config.targetDir, 'Dockerfile'), 'utf8')
+      expect(dockerfile).toMatch(/^RUN bun install --frozen-lockfile --production$/m)
+      const runtime = dockerfile.slice(dockerfile.lastIndexOf('\nFROM '))
+      expect(runtime).toMatch(/^COPY --from=\w+ \/app\/node_modules \.\/node_modules$/m)
+    })
+  }
+
+  it('node: the runtime stage is Node and runs the node runner', async () => {
+    const config = cfg('node', 'ssr-stream')
+    await adapterFor('node').apply(config)
+    const stages = dockerStages(readFileSync(join(config.targetDir, 'Dockerfile'), 'utf8'))
+    expect(stages.at(-1)!.image).toMatch(/^node:/)
+  })
+})
+
 describe('netlify adapter — netlify.toml matches the staged output', () => {
   it('SSR modes publish the staged client + wire the ssr function', async () => {
     for (const mode of ['ssr-stream', 'ssr-string', 'isr'] as const) {

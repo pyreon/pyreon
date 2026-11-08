@@ -203,7 +203,11 @@ function PyreonUI(props: PyreonUIProps): VNodeChild {
   const modeComputed = computed(resolveMode)
 
   // Enrich theme — wrapped in computed so user-preference theme swaps
-  // propagate. The enrichment itself is cheap (builds a __PYREON__ block).
+  // propagate. `enrichTheme` is memoized on the raw theme's identity, so a
+  // fresh provider (one per SSR request, a remount, a nested provider) with
+  // the same theme object gets the SAME enriched object — and every
+  // theme-keyed style cache below it (rocketstyle, styler, unistyle) hits
+  // instead of re-resolving once per mount.
   //
   // When `props.theme` is omitted, return the parent's theme verbatim
   // (already enriched). Without this, `enrichTheme(undefined)` would

@@ -5,6 +5,7 @@
 // `derivedStateOf { ... }`, JSX elements to Composable function calls.
 
 import { GESTURE_EVENT_NAMES, GESTURE_EVENTS } from './gesture-events'
+import { effectReadCandidates, effectTriggerPaths, isComponentStateName } from './effect-deps'
 import {
   computeThrowingFunctions,
   containsAwait,
@@ -130,6 +131,7 @@ import {
   normalizeNumericAlias,
   objectLengthRangeForm,
   optionalMemberTernary,
+  rewriteObjectMapCall,
   rewriteObjectKeys,
   rewriteObjectValues,
   seedHandlerLocals,
@@ -1419,7 +1421,7 @@ function emitKotlinComponent(c: ComponentIR): string {
   // (after the signature line).
   // on-mount decls emit at the harness level (LaunchedEffect(Unit), below).
   const declTexts = c.decls
-    .filter((d) => d.kind !== 'on-mount' && pluginDeclFeatures(d)?.lifecycleOnly !== true)
+    .filter((d) => d.kind !== 'on-mount' && d.kind !== 'effect' && pluginDeclFeatures(d)?.lifecycleOnly !== true)
     .map((d) => emitKotlinDecl(d, ctx))
   // Pass 2: walk props — formats prop annotations AND ALSO discovers
   // synthesized types from PROP annotations. This pass must run BEFORE
@@ -1505,6 +1507,26 @@ function emitKotlinComponent(c: ComponentIR): string {
   // composable leaves composition, which IS the web hooks' onUnmount.
   // LaunchedEffect(key) cancels the previous when the key changes — the
   // Compose mirror of .task(id:), and the same restarting trailing edge.
+  // effect(fn) → `DisposableEffect(<reads>)`: it runs the body when the composable enters composition and again —
+  // disposing the previous run first — whenever a key changes; its `onDispose` is the cleanup the body returned.
+  // The keys are the body's reactive reads (`effect-deps.ts`), the same set the Swift `.onChange(of:)` list uses.
+  // Emitted BEFORE the onMount hooks: the web runs an effect during setup, before mount.
+  for (const d of c.decls) {
+    if (d.kind !== 'effect') continue
+    const keys = d.tracked ? kotlinEffectDeps(c, d.fn) : []
+    const fn = kotlinIdent(d.fn)
+    // An error nothing in the body catches escapes the composition and terminates the app — as on Swift.
+    if (_kotlinThrowingFns.has(d.fn)) _pushKotlinEmitWarning(uncaughtThrowWarning('An `effect()` body, which can throw,'))
+    lines.push(`  DisposableEffect(${keys.length > 0 ? keys.join(', ') : 'Unit'}) {`)
+    if (d.cleanup) {
+      lines.push(`    val cleanup = ${fn}()`)
+      lines.push(`    onDispose { cleanup?.invoke() }`)
+    } else {
+      lines.push(`    ${fn}()`)
+      lines.push(`    onDispose { }`)
+    }
+    lines.push(`  }`)
+  }
   for (const d of c.decls) {
     if (d.kind !== 'on-mount') continue
     const saved = seedHandlerLocals(d.body, _kotlinExprInferCtx)
@@ -1645,9 +1667,26 @@ function asyncStateKotlin(d: DeclIR, indent: number): { pending: string; error: 
   return pluginAsyncState(d, 'kotlin', kotlinEmitContext(indent))!
 }
 
+/**
+ * The `DisposableEffect` keys of effect `fn` in component `c`: its reactive reads, lowered, deduplicated. Compose
+ * compares keys with `equals`, which every value has, so no read is ever left out (Swift's `.onChange` can be).
+ */
+function kotlinEffectDeps(c: ComponentIR, fn: string): string[] {
+  const decl = c.decls.find((d): d is Extract<DeclIR, { kind: 'function' }> => d.kind === 'function' && d.name === fn)
+  if (decl === undefined) return []
+  const saved = seedHandlerLocals(decl.body, _kotlinExprInferCtx)
+  const out: string[] = []
+  try {
+    out.push(...effectTriggerPaths(effectReadCandidates(decl.body, c.propsParamName, (n) => isComponentStateName(c, n)).map((cand) => emitKotlinExpr(cand, 0))))
+  } finally {
+    _kotlinExprInferCtx.locals = saved
+  }
+  return out
+}
+
 function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
-  // on-mount emits at the harness level (LaunchedEffect) — defensive narrow.
-  if (d.kind === 'on-mount') return ''
+  // on-mount / effect emit at the harness level (LaunchedEffect / DisposableEffect) — defensive narrow.
+  if (d.kind === 'on-mount' || d.kind === 'effect') return ''
   // Phase 5b: a plain value const → a composable-body `val` (captures-once).
   if (d.kind === 'value') {
     const steer =
@@ -3365,6 +3404,31 @@ function kotlinCallbackParamBindings(e: ExprIR): [string, TypeIR][] {
   return []
 }
 
+/** The `PyreonTimers` lowering of a timer call, or `undefined` when `e` is not one (mirror of `swiftTimerCall`). */
+function kotlinTimerCall(e: Extract<ExprIR, { kind: 'call' }>, indent: number): string | undefined {
+  if (e.callee.kind !== 'identifier') return undefined
+  const name = e.callee.name
+  if (name === 'clearTimeout' || name === 'clearInterval') {
+    if (e.args.length !== 1) return undefined
+    return `PyreonTimers.clear(${emitKotlinExpr(e.args[0]!, indent)})`
+  }
+  if (name !== 'setTimeout' && name !== 'setInterval') return undefined
+  const cb = e.args[0]
+  if (cb === undefined) return undefined
+  if (e.args.length > 2) {
+    _emitWarnings.push(
+      `${name}(fn, ms, …args): the extra arguments (which the web passes to the callback) have no native lowering — they are dropped. Close over the values in the callback instead.`,
+    )
+  }
+  const closure =
+    cb.kind === 'arrow'
+      ? emitKotlinExpr(cb, indent)
+      : cb.kind === 'identifier'
+        ? `{ ${kotlinIdent(cb.name)}() }`
+        : `{ ${emitKotlinExpr(cb, indent)}() }`
+  const ms = e.args[1] === undefined ? '0L' : emitKotlinExpr(e.args[1], indent)
+  return `PyreonTimers.${name}(${ms}) ${closure}`
+}
 
 /** The `console` methods that lower to the platform print (the browser's log levels have no native split). */
 const CONSOLE_LEVELS: ReadonlySet<string> = new Set(['log', 'info', 'debug', 'warn', 'error'])
@@ -3386,6 +3450,26 @@ function warnKotlinIntegerNaNTest(test: 'isNaN' | 'isFinite', arg: ExprIR, shown
     `${test}(${shown}): the argument is an integer natively, and a native integer is never NaN, so this folds to \`${test === 'isNaN' ? 'false' : 'true'}\`. ` +
       `If it holds a parseInt result, a failed parse is 0 natively, not NaN — test the parse itself (\`${test}(parseInt(text))\`), which lowers to a check that the native parse failed.`,
   )
+}
+
+/** Mirror of `swiftReactivityPassthrough`. */
+function kotlinReactivityPassthrough(e: Extract<ExprIR, { kind: 'call' }>, indent: number): string | undefined {
+  if (e.args.length === 0 && e.callee.kind === 'member' && e.callee.property === 'peek' && !e.callee.optional) {
+    const read: ExprIR = { kind: 'call', callee: e.callee.object, args: [] }
+    return emitKotlinExpr(read, indent)
+  }
+  if (e.callee.kind !== 'identifier' || (e.callee.name !== 'untrack' && e.callee.name !== 'batch')) return undefined
+  const fn = e.args[0]
+  if (e.args.length !== 1 || fn === undefined || fn.kind !== 'arrow' || fn.params.length !== 0) return undefined
+  if (fn.stmts === undefined) return `(${emitKotlinExpr(fn.body, indent)})`
+  if (fn.stmts.some((st) => st.kind === 'return' && st.expr !== undefined)) {
+    _emitWarnings.push(
+      `${e.callee.name}(() => { …; return value }): a block body that returns a value has no native lowering — write the value as an expression body (\`${e.callee.name}(() => value)\`), or run the statements and read the value after.`,
+    )
+    return undefined
+  }
+  const pad = ' '.repeat(indent)
+  return `run {\n${emitKotlinStmtLines(fn.stmts, indent + 2, { synthesizedDataClasses: [], componentName: '', lambdaLabel: 'run' }).join('\n')}\n${pad}}`
 }
 
 function emitKotlinExpr(e: ExprIR, indent: number): string {
@@ -3549,7 +3633,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       // struct field names (statically known). Recurse into the rewritten
       // array literal so the array emit produces the `List<String>`.
       {
-        const rw = rewriteObjectKeys(e, _kotlinExprInferCtx)
+        const rw = rewriteObjectMapCall(e, _kotlinExprInferCtx) ?? rewriteObjectKeys(e, _kotlinExprInferCtx)
         if (rw !== null) return emitKotlinExpr(rw, indent)
       }
       // `Object.values(<object-typed expr>)` → a static member-access array
@@ -3573,6 +3657,11 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
           `Object.${e.callee.property}(...) has no native equivalent — only Object.keys() / Object.values() on a statically-known HOMOGENEOUS object shape are supported (it lowers to a literal key list). Emitting an empty list; restructure to avoid runtime object reflection on native.`,
         )
         return e.callee.property === 'keys' ? 'emptyList<String>()' : 'emptyList<Any>()'
+      }
+      // `untrack` / `batch` / `.peek()` — their plain evaluation (mirror of the Swift lowering).
+      {
+        const passthrough = kotlinReactivityPassthrough(e, indent)
+        if (passthrough !== undefined) return passthrough
       }
       // `console.log(…)` (and `info` / `debug` / `warn` / `error`) → `println(…)` — the universal TS debug call maps
       // to Kotlin's stdlib print (Swift mirror: `print`). `println` takes ONE value, so several arguments are joined
@@ -3606,6 +3695,11 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
           return `pyreonNumString(${emitKotlinExpr(e.args[0]!, indent)})`
         }
         return `(${emitKotlinExpr(e.args[0]!, indent)}).toString()`
+      }
+      // Timers → the runtime's `PyreonTimers` (`PyreonTimers.kt`) — the mirror of the Swift lowering.
+      {
+        const timer = kotlinTimerCall(e, indent)
+        if (timer !== undefined) return timer
       }
       // `Date.now()` — JS ms-since-epoch. `Date` is an unresolved reference
       // on Kotlin (verbatim emit failed) — lower to
@@ -4138,6 +4232,9 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
             const v = (i: number) => typedArg(i, recvT.value)
             if (prop === 'set' && e.args.length === 2) return `${obj}[${k(0)}] = ${v(1)}`
             if (prop === 'get' && e.args.length === 1) return `${obj}[${k(0)}]`
+            // The keys / values as a list, in insertion order (`mutableMapOf` is a LinkedHashMap).
+            if (prop === 'keys' && e.args.length === 0) return `${obj}${objDot}keys.toList()`
+            if (prop === 'values' && e.args.length === 0) return `${obj}${objDot}values.toList()`
             if (prop === 'has' && e.args.length === 1)
               return `${obj}${objDot}containsKey(${k(0)})`
             if (prop === 'delete' && e.args.length === 1) return `${obj}${objDot}remove(${k(0)})`
@@ -5145,6 +5242,15 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       // Mirror of the Swift emit. `val` is fine on Kotlin (the reference is
       // final; contents mutate through it).
       if (e.collection === 'map') {
+        if (e.copyOf !== undefined) {
+          const src = emitKotlinExpr(e.copyOf, indent)
+          if (unwrapOptionalType(inferType(e.copyOf, _kotlinExprInferCtx)).kind !== 'map') {
+            _emitWarnings.push(
+              `new Map(${src}): only a copy of another Map / Record lowers natively (or a literal \`[[k, v], …]\` array, or \`xs.map((x) => [k, v])\`) — the argument here is not one. Construct the map empty and populate it with \`.set(k, v)\`.`,
+            )
+          }
+          return `${src}.toMutableMap()`
+        }
         if (e.pairsFrom !== undefined) return emitKotlinMapFromPairs(e, e.pairsFrom, indent)
         // Seeded `new Map([[k,v],…])` → `mutableMapOf(k to v, …)`.
         if (e.entries && e.entries.length > 0) {

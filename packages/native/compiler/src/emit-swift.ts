@@ -18,6 +18,7 @@ import { swiftStr } from './string-literals'
 import { resolveDateFieldShape, type DateBound } from './date-field-shape'
 import { resolveFieldShape } from './field-shape'
 import { resolveSelectOptions } from './select-shape'
+import { effectReadCandidates, effectTriggerPaths, isComponentStateName } from './effect-deps'
 import {
   allServices,
   bindServices,
@@ -141,6 +142,7 @@ import {
   inferTypeValue,
   objectLengthRangeForm,
   optionalMemberTernary,
+  rewriteObjectMapCall,
   rewriteObjectKeys,
   rewriteObjectValues,
   seedHandlerLocals,
@@ -1334,6 +1336,10 @@ export function emitSwift(
   // emit) at module scope. Swift allows top-level type forward refs, so
   // ordering vs the components is irrelevant.
   for (const s of _synthExprStructs) parts.push(emitSwiftStruct(s))
+  // `.onChange(of:)` needs an Equatable value: a struct an effect depends on gets the synthesized conformance, in an
+  // extension so every other struct's emit is unchanged.
+  for (const name of _effectEquatableStructs) parts.push(`extension ${swiftIdent(name)}: Equatable {}`)
+  _effectEquatableStructs = new Set()
   // Gap 3 PR-3.2/3.3/3.4 — prepend wrapper helper structs if needed.
   if (_needsSwiftKeepAliveWrapper) parts.push(SWIFT_KEEP_ALIVE_WRAPPER)
   // consulted AFTER helper + component emission — the flag is set during it
@@ -1370,6 +1376,90 @@ export function emitSwift(
   const warnings = [..._emitWarnings]
   _emitWarnings = []
   return { code: parts.join('\n\n'), warnings }
+}
+
+/** Structs an effect's `.onChange(of:)` compares — each gets `extension X: Equatable {}` (see the module emit). */
+let _effectEquatableStructs: Set<string> = new Set()
+
+/**
+ * The `.onChange(of:)` values of effect `fn` in component `c`: its reactive reads, lowered, deduplicated. A read whose
+ * value Swift cannot compare (a closure, an opaque runtime type) cannot be an `.onChange` key — it is named in a
+ * warning instead of being dropped silently, since the effect then does not re-run when it changes.
+ */
+function swiftEffectDeps(c: ComponentIR, fn: string): string[] {
+  const decl = c.decls.find((d): d is Extract<DeclIR, { kind: 'function' }> => d.kind === 'function' && d.name === fn)
+  if (decl === undefined) return []
+  const saved = seedHandlerLocals(decl.body, _activeInferCtx)
+  const out: string[] = []
+  try {
+    const lowered = effectReadCandidates(decl.body, c.propsParamName, (n) => isComponentStateName(c, n)).map((cand) => [cand, emitSwiftExpr(cand, 0)] as const)
+    const keep = new Set(effectTriggerPaths(lowered.map(([, code]) => code)))
+    for (const [cand, code] of lowered) {
+      if (!keep.has(code) || out.includes(code)) continue
+      const structs = new Set<string>()
+      const t = inferType(cand, _activeInferCtx)
+      // A runtime container's field (`online.isOnline`, `ws.lastMessage`) has no type the compiler can see. Compare its
+      // description instead: a String, so always Equatable, and it changes whenever the scalar / string / optional /
+      // collection value those fields hold changes.
+      if (t.kind === 'unknown') {
+        out.push(`String(describing: ${code})`)
+        continue
+      }
+      if (!swiftEquatable(t, structs, new Set())) {
+        _emitWarnings.push(
+          `Component ${c.name}: effect() reads \`${code}\`, whose value Swift cannot compare, so on iOS the effect does NOT re-run when it changes (\`.onChange(of:)\` needs an Equatable value). Read a comparable field of it instead (an id, a count, a string).`,
+        )
+        continue
+      }
+      for (const s of structs) _effectEquatableStructs.add(s)
+      out.push(code)
+    }
+  } finally {
+    _activeInferCtx.locals = saved
+  }
+  return out
+}
+
+/**
+ * The call that runs effect body `fn`. An error nothing in the body catches has nowhere to go from `.onAppear` /
+ * `.onChange` — like an event handler, it terminates (as an uncaught Kotlin exception does) and says so.
+ */
+function swiftEffectCall(fn: string): string {
+  if (!_swiftThrowingFns.has(fn)) return `${swiftIdent(fn)}()`
+  _pushSwiftEmitWarning(uncaughtThrowWarning('An `effect()` body, which can throw,'))
+  return `try! ${swiftIdent(fn)}()`
+}
+
+/** Whether a value of type `t` is Equatable in the emitted Swift; collects the structs that need the conformance. */
+function swiftEquatable(t: TypeIR, structs: Set<string>, seen: Set<string>): boolean {
+  switch (t.kind) {
+    case 'number':
+    case 'string':
+    case 'boolean':
+      return true
+    case 'array':
+    case 'set':
+      return swiftEquatable(t.element, structs, seen)
+    case 'map':
+      return swiftEquatable(t.key, structs, seen) && swiftEquatable(t.value, structs, seen)
+    case 'union':
+      return t.branches.every(
+        (b) => b.kind === 'undefined' || b.kind === 'null' || swiftEquatable(b, structs, seen),
+      )
+    case 'typeRef': {
+      if (t.name === 'Int' || t.name === 'Double' || t.name === 'String' || t.name === 'Bool') return true
+      if (_enumNames.has(t.name)) return true
+      const st = [..._declaredStructs, ..._synthExprStructs].find((x) => x.name === t.name)
+      if (st === undefined) return false
+      if (seen.has(st.name)) return true
+      seen.add(st.name)
+      if (!st.fields.every((f) => swiftEquatable(f.type, structs, seen))) return false
+      structs.add(st.name)
+      return true
+    }
+    default:
+      return false
+  }
 }
 
 /** Declared module structs — feeds per-component inference ctx so member
@@ -1562,7 +1652,7 @@ let _activePropsParamName: string | undefined
  * Kotlin needs no equivalent — its harness is a `LaunchedEffect(Unit)` SIBLING
  * node keyed on a stable `Unit`, which recomposition does not cancel.
  */
-const LIFECYCLE_HOST_DECL_KINDS: ReadonlySet<DeclIR['kind']> = new Set(['on-mount'])
+const LIFECYCLE_HOST_DECL_KINDS: ReadonlySet<DeclIR['kind']> = new Set(['on-mount', 'effect'])
 
 /**
  * Push a named warning when a `&&` / `||` operand is provably not a Bool.
@@ -1999,6 +2089,16 @@ function emitSwiftComponent(c: ComponentIR): string {
     // on-mount decls emit at the HARNESS level (.onAppear after the body,
     // on the stable-identity host) — no stored property.
     if (d.kind === 'on-mount' || pluginDeclFeatures(d)?.lifecycleOnly === true) continue
+    // An effect's body is its sibling `function` decl; with a cleanup, the closure it returned is held between runs
+    // so the next run (and the view going away) can call it first.
+    if (d.kind === 'effect') {
+      if (d.cleanup) {
+        const fn = swiftIdent(d.fn)
+        lines.push(`  @State private var ${fn}Cleanup: (() -> Void)? = nil`)
+        lines.push(`  private func ${fn}Run() { ${fn}Cleanup?(); ${fn}Cleanup = ${swiftEffectCall(d.fn)} }`)
+      }
+      continue
+    }
     lines.push(`  ${emitSwiftDecl(d, inferCtx, synth)}`)
   }
   // A plugin's declarations that are declared TYPED with no initializer (a `@State` initializer cannot reference another
@@ -2113,6 +2213,16 @@ function emitSwiftComponent(c: ComponentIR): string {
   // `.task(id:)` cancels and RESTARTS when the id changes, which is exactly
   // a restarting trailing-edge debounce — measured as the web contract
   // before this was written. No stored timer handle, no runtime.
+  // effect(fn) → run on appear, and again on `.onChange(of:)` each reactive read the body can perform
+  // (`effect-deps.ts`). Emitted BEFORE the onMount hooks: the web runs an effect during setup, before mount.
+  for (const d of c.decls) {
+    if (d.kind !== 'effect') continue
+    const fn = swiftIdent(d.fn)
+    const run = d.cleanup ? `${fn}Run()` : swiftEffectCall(d.fn)
+    lines.push(`      .onAppear { ${run} }`)
+    if (d.tracked) for (const dep of swiftEffectDeps(c, d.fn)) lines.push(`      .onChange(of: ${dep}) { ${run} }`)
+    if (d.cleanup) lines.push(`      .onDisappear { ${fn}Cleanup?(); ${fn}Cleanup = nil }`)
+  }
   for (const d of c.decls) {
     if (d.kind !== 'on-mount') continue
     const savedLocals = seedHandlerLocals(d.body, _exprInferCtx)
@@ -2536,7 +2646,7 @@ function emitSwiftDecl(
   // `hotkey` joins them — it becomes a hidden shortcut Button in `.background`,
   // and it carries a `body` like a computed does, so without this narrow it
   // reaches the `if (d.body !== undefined)` branch below and is treated as one.
-  if (d.kind === 'on-mount') return ''
+  if (d.kind === 'on-mount' || d.kind === 'effect') return ''
   // Seeded with the SOURCE, so the value is available immediately — the web
   // hook has no first-delay gap and a field that rendered empty for the
   // delay on every mount would be a visible divergence. The debounce itself
@@ -4067,10 +4177,13 @@ export function swiftType(t: TypeIR, synth?: SwiftSynthCtx, declName?: string): 
       return 'String'
     case 'boolean':
       return 'Bool'
+    // A JS `Map` / `Set` / `Record` keeps INSERTION order; Swift's `Dictionary` / `Set` do not (their order
+    // follows a per-process-seeded hash). The ordered runtime twins keep the same spelling (literals, subscripts,
+    // `insert` / `contains` / `removeValue`), so only the order changes — see `PyreonCollections.swift`.
     case 'map':
-      return `[${swiftType(t.key, synth)}: ${swiftType(t.value, synth)}]`
+      return `PyreonMap<${swiftType(t.key, synth)}, ${swiftType(t.value, synth)}>`
     case 'set':
-      return `Set<${swiftType(t.element, synth)}>`
+      return `PyreonSet<${swiftType(t.element, synth)}>`
     case 'array':
       return `[${swiftType(t.element, synth, declName)}]`
     case 'object': {
@@ -4225,10 +4338,8 @@ function emitSwiftIndexedClosure(
 }
 
 /**
- * `new Map(src.map((x) => [k, v]))` → `Dictionary(src.map { x in (k, v) },
- * uniquingKeysWith: { _, last in last })`. The plain `Dictionary(uniqueKeysWithValues:)`
- * TRAPS on a repeated key; JS `Map` keeps the last value, which the uniquing
- * closure reproduces. `x` is bound to the source's element type while the two
+ * `new Map(src.map((x) => [k, v]))` → `PyreonMap(src.map { x in (k, v) })`. A repeated key keeps its
+ * first position and takes the last value, as JS `Map` does (`Dictionary(uniqueKeysWithValues:)` trapped). `x` is bound to the source's element type while the two
  * halves emit, so a type-gated lowering inside them sees a typed receiver.
  */
 function emitSwiftMapFromPairs(
@@ -4268,7 +4379,7 @@ function emitSwiftMapFromPairs(
     const v = withExpectedType(mt.kind === 'map' ? mt.value : undefined, () =>
       emitSwiftExpr(pairs.value, indent),
     )
-    return `Dictionary(${src}.map { ${swiftIdent(p)} in (${k}, ${v}) }, uniquingKeysWith: { _, last in last })`
+    return `PyreonMap(${src}.map { ${swiftIdent(p)} in (${k}, ${v}) })`
   } finally {
     _activeEnumType = prevEnum
     if (had[0]) _exprInferCtx.locals.set(p, had[1]!)
@@ -4278,6 +4389,31 @@ function emitSwiftMapFromPairs(
   }
 }
 
+/** The `PyreonTimers` lowering of a timer call, or `undefined` when `e` is not one (see the call site). */
+function swiftTimerCall(e: Extract<ExprIR, { kind: 'call' }>, indent: number): string | undefined {
+  if (e.callee.kind !== 'identifier') return undefined
+  const name = e.callee.name
+  if (name === 'clearTimeout' || name === 'clearInterval') {
+    if (e.args.length !== 1) return undefined
+    return `PyreonTimers.clear(${emitSwiftExpr(e.args[0]!, indent)})`
+  }
+  if (name !== 'setTimeout' && name !== 'setInterval') return undefined
+  const cb = e.args[0]
+  if (cb === undefined) return undefined
+  if (e.args.length > 2) {
+    _emitWarnings.push(
+      `${name}(fn, ms, …args): the extra arguments (which the web passes to the callback) have no native lowering — they are dropped. Close over the values in the callback instead.`,
+    )
+  }
+  const closure =
+    cb.kind === 'arrow'
+      ? emitSwiftExpr(cb, indent)
+      : cb.kind === 'identifier'
+        ? `{ ${swiftIdent(cb.name)}() }`
+        : `{ ${emitSwiftExpr(cb, indent)}() }`
+  const ms = e.args[1] === undefined ? '0' : emitSwiftExpr(e.args[1], indent)
+  return `PyreonTimers.${name}(${ms}, ${closure})`
+}
 
 /** The `console` methods that lower to the platform print (the browser's log levels have no native split). */
 const SWIFT_CONSOLE_LEVELS: ReadonlySet<string> = new Set(['log', 'info', 'debug', 'warn', 'error'])
@@ -4307,6 +4443,26 @@ function warnIntegerNaNTest(test: 'isNaN' | 'isFinite', arg: ExprIR, shown: stri
     `${test}(${shown}): the argument is an integer natively, and a native integer is never NaN, so this folds to \`${test === 'isNaN' ? 'false' : 'true'}\`. ` +
       `If it holds a parseInt result, a failed parse is 0 natively, not NaN — test the parse itself (\`${test}(parseInt(text))\`), which lowers to a check that the native parse failed.`,
   )
+}
+
+/** `untrack(fn)` / `batch(fn)` / `sig.peek()` as their plain evaluation (see the call site), or `undefined`. */
+function swiftReactivityPassthrough(e: Extract<ExprIR, { kind: 'call' }>, indent: number): string | undefined {
+  if (e.args.length === 0 && e.callee.kind === 'member' && e.callee.property === 'peek' && !e.callee.optional) {
+    const read: ExprIR = { kind: 'call', callee: e.callee.object, args: [] }
+    return emitSwiftExpr(read, indent)
+  }
+  if (e.callee.kind !== 'identifier' || (e.callee.name !== 'untrack' && e.callee.name !== 'batch')) return undefined
+  const fn = e.args[0]
+  if (e.args.length !== 1 || fn === undefined || fn.kind !== 'arrow' || fn.params.length !== 0) return undefined
+  if (fn.stmts === undefined) return `(${emitSwiftExpr(fn.body, indent)})`
+  if (fn.stmts.some((st) => st.kind === 'return' && st.expr !== undefined)) {
+    _emitWarnings.push(
+      `${e.callee.name}(() => { …; return value }): a block body that returns a value has no native lowering — write the value as an expression body (\`${e.callee.name}(() => value)\`), or run the statements and read the value after.`,
+    )
+    return undefined
+  }
+  const pad = ' '.repeat(indent)
+  return `{ () in\n${emitSwiftStmtLines(fn.stmts, indent + 2).join('\n')}\n${pad}}()`
 }
 
 function emitSwiftExpr(e: ExprIR, indent: number): string {
@@ -4462,7 +4618,7 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       // known, so the rewrite lowers to a plain string-array literal;
       // recursing into the array emit produces the precise `[String]`.
       {
-        const rw = rewriteObjectKeys(e, _exprInferCtx)
+        const rw = rewriteObjectMapCall(e, _exprInferCtx) ?? rewriteObjectKeys(e, _exprInferCtx)
         if (rw !== null) return emitSwiftExpr(rw, indent)
       }
       // `Object.values(<object-typed expr>)` → a static member-access array
@@ -4489,6 +4645,14 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         )
         return e.callee.property === 'keys' ? '[String]()' : '[Any]()'
       }
+      // `untrack(() => x)` / `batch(() => { … })` / `sig.peek()` — the reactivity helpers that only steer the web's
+      // dependency tracking and flushing. Native has neither to steer: an effect's triggers are read off its body
+      // statically (and `effect-deps.ts` leaves these reads out), and writes inside one action already coalesce. So
+      // each is its plain evaluation: the closure's value, the closure run, the signal read.
+      {
+        const passthrough = swiftReactivityPassthrough(e, indent)
+        if (passthrough !== undefined) return passthrough
+      }
       // `console.log(…)` (and `info` / `debug` / `warn` / `error`) → `print(…)` — the universal TS debug call maps to
       // Swift's stdlib print, which joins its arguments with a space as the console does (Kotlin mirror: `println`).
       if (
@@ -4498,6 +4662,14 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         e.callee.object.name === 'console'
       ) {
         return `print(${e.args.map((a) => emitSwiftExpr(a, indent)).join(', ')})`
+      }
+      // `setTimeout(fn, ms)` / `setInterval(fn, ms)` / `clearTimeout(id)` / `clearInterval(id)` → the runtime's
+      // `PyreonTimers` (`PyreonTimers.swift`), which keeps the web's contract: main-thread callbacks, positive
+      // never-reused ids, a clear of an unknown id is a no-op. A named function reference is wrapped in a closure that
+      // calls it; extra arguments (passed through to the callback on the web) have no lowering and warn.
+      {
+        const timer = swiftTimerCall(e, indent)
+        if (timer !== undefined) return timer
       }
       // `Date.now()` — JS ms-since-epoch. Foundation's `Date` resolves as a
       // TYPE, so the verbatim emit failed "cannot call value of non-function
@@ -5106,6 +5278,9 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
             if (prop === 'delete' && e.args.length === 1)
               return `${obj}${objDot}removeValue(forKey: ${k(0)})`
             if (prop === 'clear' && e.args.length === 0) return `${obj}${objDot}removeAll()`
+            // The keys / values as an array, in insertion order (`PyreonMap` keeps it).
+            if (prop === 'keys' && e.args.length === 0) return `${obj}${objDot}keys`
+            if (prop === 'values' && e.args.length === 0) return `${obj}${objDot}values`
           }
           if (recvT.kind === 'set') {
             if (prop === 'add' && e.args.length === 1)
@@ -6359,11 +6534,20 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       )
     }
     case 'new-collection': {
-      // `new Map<K,V>()` → `[K: V]()`; `new Set<T>()` → `Set<T>()`;
-      // `new Set(arr)` → `Set(arr)`. See the local-let mutability note in
+      // `new Map<K,V>()` → `PyreonMap<K, V>()`; `new Set<T>()` → `PyreonSet<T>()`;
+      // `new Set(arr)` → `PyreonSet(arr)` (the ordered twins — see `swiftType`). See the local-let mutability note in
       // the statement emit (collections force `var` — subscript-assign and
       // insert are mutating).
       if (e.collection === 'map') {
+        if (e.copyOf !== undefined) {
+          const src = emitSwiftExpr(e.copyOf, indent)
+          if (unwrapOptionalType(inferType(e.copyOf, _activeInferCtx)).kind !== 'map') {
+            _emitWarnings.push(
+              `new Map(${src}): only a copy of another Map / Record lowers natively (or a literal \`[[k, v], …]\` array, or \`xs.map((x) => [k, v])\`) — the argument here is not one. Construct the map empty and populate it with \`.set(k, v)\`.`,
+            )
+          }
+          return `${src}`
+        }
         if (e.pairsFrom !== undefined) return emitSwiftMapFromPairs(e, e.pairsFrom, indent)
         // Seeded `new Map([[k,v],…])` → a dict literal `[k: v, …]`.
         if (e.entries && e.entries.length > 0) {
@@ -6372,10 +6556,10 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
             .join(', ')
           return `[${body}]`
         }
-        return `[${swiftType(e.keyType!)}: ${swiftType(e.valueType!)}]()`
+        return `PyreonMap<${swiftType(e.keyType!)}, ${swiftType(e.valueType!)}>()`
       }
-      if (e.seed !== undefined) return `Set(${emitSwiftExpr(e.seed, indent)})`
-      return `Set<${swiftType(e.elementType!)}>()`
+      if (e.seed !== undefined) return `PyreonSet(${emitSwiftExpr(e.seed, indent)})`
+      return `PyreonSet<${swiftType(e.elementType!)}>()`
     }
     case 'jsx-element':
       return emitSwiftJsx(e, indent)

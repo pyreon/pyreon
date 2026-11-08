@@ -227,6 +227,13 @@ export type DeclIR =
   /** `onMount(fn)`. `cleanup` is the body of a returned teardown function, run when the view goes away. */
   | { kind: 'on-mount'; body: StatementIR[]; cleanup?: StatementIR[] | undefined }
   /**
+   * `effect(fn)` in a component body. `fn` is the component-scope function the parser lifted the body into
+   * (`__pyEffectN`, a sibling `function` decl); `cleanup` says it returns the web effect's cleanup closure (or
+   * `undefined`). The emitters run it on appear and again whenever one of the body's reactive reads changes.
+   * `tracked: false` is an `onMount` whose cleanup closes over the mount body's locals: run once, never re-run.
+   */
+  | { kind: 'effect'; fn: string; cleanup: boolean; tracked: boolean }
+  /**
    * A PLAIN service container (`useShare`, `useLinking`, `useHaptics`,
    * `useNotifications`, `useBiometrics`, `useImagePicker`, `useFilePicker`,
    * `useCamera`) — see `services.ts`. `hook` names the entry in `SERVICES`
@@ -688,6 +695,13 @@ export type ExprIR =
        * otherwise inference binds `param` to the source's element type.
        */
       pairsFrom?: { source: ExprIR; param: string; key: ExprIR; value: ExprIR }
+      /**
+       * `new Map(other)` — a copy of another map, the immutable-update idiom
+       * (`const next = new Map(m()); next.set(k, v); m.set(next)`). Swift copies by value (`PyreonMap` is a
+       * struct); Kotlin `.toMutableMap()` keeps the LinkedHashMap order. The emitters check that `copyOf` infers a
+       * map and name the shape otherwise.
+       */
+      copyOf?: ExprIR
     }
   | {
       kind: 'binary'

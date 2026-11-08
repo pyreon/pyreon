@@ -307,6 +307,9 @@ export class StyleSheet {
   // and remove the exact DOM rules without fragile index bookkeeping.
   private domRules = new Map<string, CSSRule[]>()
   private sheet: CSSStyleSheet | null = null
+  // The `<style>` element backing `sheet` (client only) — its document is the
+  // one the live-DOM eviction guard scans.
+  private styleEl: HTMLStyleElement | null = null
   // Per-request SSR accumulation state, reached ONLY through `_ssr`. The buffer
   // holds rules for `getStyleTag()` (SSG / string SSR) and the streaming flush
   // watermark (`flushedIdx`) lets the pipeline emit `<style>` inline per Suspense
@@ -345,6 +348,27 @@ export class StyleSheet {
   // distinct keyframes/global bodies the app declares; cleared with `cache`.
   private ambientKeys: string[] = []
   private ambientSet = new Set<string>()
+
+  // Keys eviction must never drop, with a hold count. Two owners:
+  //  - DEFINITION-owned rules that nothing re-inserts: `@keyframes` and static
+  //    (`ambient`) `createGlobalStyle` CSS, inserted once at module evaluation.
+  //    Held forever (count never released) — bounded by the number of
+  //    keyframes/global definitions the app declares.
+  //  - A mounted dynamic `createGlobalStyle` (client only): held for the
+  //    component's lifetime via `retain()`, released on unmount.
+  // Class rules are NOT held here: what protects them is the live-DOM check in
+  // `evictIfNeeded` (an element still carries the class) and the revalidation
+  // every upper cache does on a hit (`isLive`). Cleared with `cache`.
+  private held = new Map<string, number>()
+
+  /**
+   * Bumped whenever a key LEAVES `cache` (eviction, `reset`, `clearCache`,
+   * `clearAll`). Caches above the sheet hand class names out without calling
+   * `insert()`; while this is 0 nothing was ever removed, so every name they
+   * hold is still live and `isLive` needs no lookup.
+   */
+  private removals = 0
+  private evictScheduled = false
 
   /**
    * The active SSR state — request-scoped when a streaming render is in flight,
@@ -481,6 +505,7 @@ export class StyleSheet {
     const existing = document.querySelector(`style[${ATTR}]`) as HTMLStyleElement | null
 
     if (existing) {
+      this.styleEl = existing
       this.sheet = existing.sheet ?? null
       this.hydrateFromTag(existing)
     } else {
@@ -492,6 +517,7 @@ export class StyleSheet {
       // itself.)
       if (this.nonce) el.setAttribute('nonce', this.nonce)
       document.head.appendChild(el)
+      this.styleEl = el
       this.sheet = el.sheet ?? null
     }
 
@@ -583,6 +609,8 @@ export class StyleSheet {
    * which is the actual memory leak this method exists to prevent.
    */
   private evictKeys(keys: string[]): void {
+    if (keys.length === 0) return
+    this.removals++
     const ruleRefs = new Set<CSSRule>()
     for (const key of keys) {
       this.cache.delete(key)
@@ -614,20 +642,100 @@ export class StyleSheet {
     }
   }
 
-  /** Evict oldest entries when cache exceeds max size. */
+  /**
+   * Evict the oldest entries once the cache exceeds `maxCacheSize`.
+   *
+   * A rule is evictable only if nothing still uses it:
+   *  - `held` keys (keyframes, static globals, mounted dynamic globals) never;
+   *  - on the CLIENT, a class some element in the document still carries
+   *    never — dropping it would unstyle a mounted element that no cache can
+   *    repair. One `[class]` scan per eviction batch (a batch frees 10% of
+   *    the cap, so the scan amortizes over that many inserts).
+   *
+   * The client pass is DEFERRED to a microtask: a render hands out cached
+   * class names to elements that are still detached while the render runs,
+   * and the DOM scan can only see them once the synchronous mount has
+   * attached them. The server needs no deferral — a request copies a rule's
+   * text into its own buffer the moment it uses the key (`pushSSR`).
+   *
+   * Upper caches that still map to an evicted name revalidate on their next
+   * hit (`isLive`) and re-insert, so eviction never leaves a dangling name.
+   */
   private evictIfNeeded() {
     if (this.cache.size <= this.maxCacheSize) return
+    if (this.isSSR) {
+      this.evictNow(null)
+      return
+    }
+    if (this.evictScheduled) return
+    this.evictScheduled = true
+    queueMicrotask(() => {
+      this.evictScheduled = false
+      if (this.cache.size > this.maxCacheSize) this.evictNow(this.liveDomClasses())
+    })
+  }
 
-    // Map iteration order is insertion order — delete oldest 10%
-    const toDelete = Math.floor(this.maxCacheSize * 0.1)
+  /** Class names (`pyr-…`) carried by any element in this sheet's document. */
+  private liveDomClasses(): Set<string> {
+    const live = new Set<string>()
+    // The sheet's own document (client-only path: `mount()` set the element).
+    const doc = this.styleEl?.ownerDocument
+    /* v8 ignore next -- defensive: only the client schedules this scan */
+    if (!doc) return live
+    const els = doc.querySelectorAll('[class]')
+    for (let i = 0; i < els.length; i++) {
+      const list = (els[i] as Element).classList
+      for (let j = 0; j < list.length; j++) {
+        const c = list[j] as string
+        if (c.startsWith(PREFIX)) live.add(c)
+      }
+    }
+    return live
+  }
+
+  private evictNow(live: Set<string> | null): void {
+    // Map iteration order is insertion order — delete the oldest 10% that
+    // nothing uses.
+    // Down to 90% of the cap. Synchronously (server) the overflow is 1, so
+    // this is the classic 10% batch; a deferred client pass may run after a
+    // whole burst of inserts and must take the cache back under the cap.
+    const toDelete = this.cache.size - this.maxCacheSize + Math.floor(this.maxCacheSize * 0.1)
     const evicted: string[] = []
-    let count = 0
     for (const key of this.cache.keys()) {
-      if (count >= toDelete) break
+      if (evicted.length >= toDelete) break
+      if (this.held.has(key) || live?.has(key)) continue
       evicted.push(key)
-      count++
     }
     this.evictKeys(evicted)
+  }
+
+  /**
+   * Whether a class name an upper cache is about to hand out still has its
+   * rule in this sheet. Every cache above the sheet (styled's rocketstyle /
+   * `$element` class caches, static components, CPSE's shape cache) must ask
+   * before returning a cached name — a `false` means "re-resolve and
+   * re-insert". O(1); a constant `true` until the first removal ever.
+   */
+  isLive(key: string): boolean {
+    return this.removals === 0 || key === '' || this.cache.has(key)
+  }
+
+  /**
+   * Hold `key` against eviction until the returned release is called. Used by
+   * a mounted dynamic `createGlobalStyle`, whose rules no element carries (so
+   * the live-DOM check cannot see them). Refcounted: two mounts of the same
+   * CSS hold it twice. The release is idempotent.
+   */
+  retain(key: string): () => void {
+    this.held.set(key, (this.held.get(key) ?? 0) + 1)
+    let released = false
+    return () => {
+      if (released) return
+      released = true
+      const n = (this.held.get(key) ?? 0) - 1
+      if (n > 0) this.held.set(key, n)
+      else this.held.delete(key)
+    }
   }
 
   /**
@@ -905,6 +1013,9 @@ export class StyleSheet {
 
     this.evictIfNeeded()
     this.cache.set(name, name)
+    // Definition-owned: `keyframes` inserts once, at module evaluation, and
+    // nothing re-inserts it — so it must never be evicted (see `held`).
+    this.held.set(name, 1)
 
     const rule = `@keyframes ${name}{${body}}`
 
@@ -926,16 +1037,19 @@ export class StyleSheet {
   }
 
   /** Insert global CSS rules (no wrapper selector). Deduplicates by hash. */
-  insertGlobal(cssText: string, ambient = false): void {
+  insertGlobal(cssText: string, ambient = false): string {
     const h = hash(cssText)
     const key = `global-${h}`
+    // A static (`ambient`) global is definition-owned: inserted once at
+    // module evaluation, never re-inserted — so it must never be evicted.
+    if (ambient && !this.held.has(key)) this.held.set(key, 1)
 
     if (this.cache.has(key)) {
       if (this.isSSR) {
         if (ambient) this.addAmbient(key)
         this.pushSSR(key)
       }
-      return
+      return key
     }
 
     this.evictIfNeeded()
@@ -981,6 +1095,7 @@ export class StyleSheet {
         }
       }
     }
+    return key
   }
 
   /**
@@ -1210,6 +1325,8 @@ export class StyleSheet {
 
   /** Reset SSR buffer and cache (call between server requests). */
   reset(): void {
+    if (this.cache.size > 0) this.removals++
+    this.held.clear()
     this._ssr.buffer = []
     this._ssr.flushedIdx = 0
     this._ssr.ambientIdx = 0
@@ -1226,6 +1343,8 @@ export class StyleSheet {
 
   /** Clear the dedup cache. Useful for HMR / dev-time reloads. */
   clearCache(): void {
+    if (this.cache.size > 0) this.removals++
+    this.held.clear()
     this.cache.clear()
     this.ssrRules.clear()
     this.ambientKeys = []
@@ -1247,6 +1366,8 @@ export class StyleSheet {
    * the DOM — observable as missing styles after every hot reload.
    */
   clearAll(): void {
+    if (this.cache.size > 0) this.removals++
+    this.held.clear()
     this.cache.clear()
     this.ssrRules.clear()
     this.ambientKeys = []

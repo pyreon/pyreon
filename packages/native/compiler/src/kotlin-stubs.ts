@@ -117,6 +117,15 @@ class DisposableEffectScope {
 @Composable
 @Suppress("UNUSED_PARAMETER")
 fun DisposableEffect(key1: Any?, effect: DisposableEffectScope.() -> DisposableEffectResult) {}
+@Composable
+@Suppress("UNUSED_PARAMETER")
+fun DisposableEffect(key1: Any?, key2: Any?, effect: DisposableEffectScope.() -> DisposableEffectResult) {}
+@Composable
+@Suppress("UNUSED_PARAMETER")
+fun DisposableEffect(key1: Any?, key2: Any?, key3: Any?, effect: DisposableEffectScope.() -> DisposableEffectResult) {}
+@Composable
+@Suppress("UNUSED_PARAMETER")
+fun DisposableEffect(vararg keys: Any?, effect: DisposableEffectScope.() -> DisposableEffectResult) {}
 
 // isSystemInDarkTheme — Compose's dark-mode read (androidx.compose.foundation),
 // emitted by useColorScheme(). The real device build imports it via the CLI's
@@ -1357,6 +1366,21 @@ fun pyreonNumberString(value: Number): String = ""
 fun pyreonParseInt(text: String, radix: Int? = null): Long? = null
 fun pyreonParseFloat(text: String): Double = 0.0
 fun pyreonToNumber(text: String): Double = 0.0
+// PyreonTimers — JS setTimeout / setInterval / clear* (PyreonTimers.kt). Mirrors the real surface.
+object PyreonTimers {
+  interface Scheduler {
+    fun post(delayMs: Long, task: Runnable)
+    fun cancel(task: Runnable)
+  }
+  var scheduler: Scheduler = object : Scheduler {
+    override fun post(delayMs: Long, task: Runnable) {}
+    override fun cancel(task: Runnable) {}
+  }
+  fun setTimeout(ms: Number, fn: () -> Unit): Long = 0L
+  fun setInterval(ms: Number, fn: () -> Unit): Long = 0L
+  fun clear(id: Long?) {}
+  val pendingCount: Int get() = 0
+}
 // Intl.DateTimeFormat / Intl.NumberFormat — the real PyreonIntl.kt surface,
 // exactly: every parameter defaulted and named, values taken as Number.
 class PyreonDateTimeFormat(

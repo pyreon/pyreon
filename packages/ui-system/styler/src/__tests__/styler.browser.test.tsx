@@ -336,3 +336,34 @@ describe('insertGlobal — @layer statement + string-aware splitting (real Chrom
     sib.remove()
   })
 })
+
+describe('sheet eviction keeps used rules styled (real Chromium)', () => {
+  let seq = 0
+  const overflowSheet = async (): Promise<void> => {
+    for (let i = 0; i < 10_010; i++) sheet.insert(`--browser-evict-fill-${seq++}: ${i};`)
+    await Promise.resolve()
+  }
+
+  it('a mounted element keeps its computed style through eviction', async () => {
+    const Box = styled('div')`
+      color: ${(p: { $element: { c: string } }) => p.$element.c};
+    `
+    const { container, unmount } = mountInBrowser(h(Box as never, { $element: { c: 'rgb(1, 99, 2)' } }))
+    const el = container.firstElementChild as HTMLElement
+    await overflowSheet()
+    expect(getComputedStyle(el).color).toBe('rgb(1, 99, 2)')
+    unmount()
+  })
+
+  it('a remount from the class cache after eviction is styled again', async () => {
+    const Box = styled('div')`
+      color: ${(p: { $element: { c: string } }) => p.$element.c};
+    `
+    const bundle = { c: 'rgb(3, 98, 4)' }
+    mountInBrowser(h(Box as never, { $element: bundle })).unmount()
+    await overflowSheet()
+    const { container, unmount } = mountInBrowser(h(Box as never, { $element: bundle }))
+    expect(getComputedStyle(container.firstElementChild as HTMLElement).color).toBe('rgb(3, 98, 4)')
+    unmount()
+  })
+})

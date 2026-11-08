@@ -131,7 +131,8 @@ export function cpseStyled(tag: string): ComponentFn<CpseStyledProps> {
       const result = styles({ theme: styleTheme as InnerTheme, css, rootSize, extractVars: vars })
       const shapeKey = `flat:${Object.keys(styleTheme).sort().join('|')}`
       let className = classByShape.get(shapeKey)
-      if (className === undefined) {
+      // `isLive`: re-insert when the sheet evicted the rule behind the name.
+      if (className === undefined || !sheet.isLive(className)) {
         const text = normalizeCSS(String(result))
         className = text.length > 0 ? sheet.insert(text) : ''
         classByShape.set(shapeKey, className)
@@ -159,7 +160,7 @@ export function cpseStyled(tag: string): ComponentFn<CpseStyledProps> {
     }
     const shapeKey = `resp:${shapeParts.join('|')}`
     let className = classByShape.get(shapeKey)
-    if (className === undefined) {
+    if (className === undefined || !sheet.isLive(className)) {
       const text = normalizeCSS(frags.join('\n'))
       className = text.length > 0 ? sheet.insert(text) : ''
       classByShape.set(shapeKey, className)

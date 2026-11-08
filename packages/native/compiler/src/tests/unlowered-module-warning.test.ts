@@ -255,8 +255,8 @@ describe('partial-support packages: only some exports lower', () => {
 // @pyreon/core and @pyreon/reactivity — the two most-used packages — each had
 // silent failures among exports that mostly DO lower:
 //
-//   reactivity   batch / untrack / effectScope   ✗   (signal, computed, effect,
-//                                                     onCleanup all lower)
+//   reactivity   effectScope                     ✗   (signal, computed, effect,
+//                                                     onCleanup, batch, untrack lower)
 //   core         lazy / cx / createUniqueId /    ✗   (onMount, h, Fragment,
 //                splitProps                           Show, For, Suspense lower)
 //
@@ -268,10 +268,11 @@ describe('partial-support packages: only some exports lower', () => {
 // the worst possible scale, so the guard tests below matter more than the
 // warning tests.
 //
-// `batch` is arguably strippable rather than unsupported — SwiftUI @State and
-// Compose mutableStateOf already coalesce writes within one action, so the
-// wrapper is a no-op on native. Warned rather than stripped because that is an
-// emit change with a return-value question (`batch(() => x)` yields x on web).
+// `batch` and `untrack` lower as their plain evaluation: SwiftUI @State and
+// Compose mutableStateOf already coalesce writes within one action, and an
+// effect's triggers are read off its body statically. The return-value question
+// (`batch(() => x)` yields x on web) is answered by lowering an expression body
+// to its value; a block body that returns a value is named instead.
 describe('core and reactivity: deny-listed exports', () => {
   const rx = (imp: string, body: string) =>
     `import { ${imp} } from '@pyreon/reactivity'\nimport { Stack, Text, Button } from '${P}'\nexport function C(){ ${body} }`
@@ -279,8 +280,6 @@ describe('core and reactivity: deny-listed exports', () => {
     `import { ${imp} } from '@pyreon/core'\nimport { Stack, Text } from '${P}'\nexport function C(){ ${body} }`
 
   for (const [label, src, symbol] of [
-    ['batch', rx('signal, batch', `const n = signal(0); return (<Stack><Button onPress={() => batch(() => { n.set(1) })}>b</Button></Stack>)`), 'batch'],
-    ['untrack', rx('signal, untrack', `const n = signal(0); const v = untrack(() => n()); return (<Stack><Text>{v}</Text></Stack>)`), 'untrack'],
     ['effectScope', rx('effectScope', `const s = effectScope(); return (<Stack><Text>x</Text></Stack>)`), 'effectScope'],
     ['cx', core('cx', `const c = cx(['a']); return (<Stack><Text>{c}</Text></Stack>)`), 'cx'],
     ['createUniqueId', core('createUniqueId', `const id = createUniqueId(); return (<Stack><Text>{id}</Text></Stack>)`), 'createUniqueId'],
@@ -295,6 +294,9 @@ describe('core and reactivity: deny-listed exports', () => {
   // essentially every multiplatform component ever written.
   for (const [label, src] of [
     ['signal + computed', rx('signal, computed', `const n = signal(1); const d = computed(() => n() * 2); return (<Stack><Text>{d()}</Text></Stack>)`)],
+    // `batch` / `untrack` lower as their plain evaluation (native has no tracking or flushing for them to steer).
+    ['batch', rx('signal, batch', `const n = signal(0); return (<Stack><Button onPress={() => batch(() => { n.set(1) })}>b</Button></Stack>)`)],
+    ['untrack', rx('signal, untrack', `const n = signal(0); const v = untrack(() => n()); return (<Stack><Text>{v}</Text></Stack>)`)],
     ['onMount', core('onMount', `onMount(() => {}); return (<Stack><Text>x</Text></Stack>)`)],
     [
       'Show',

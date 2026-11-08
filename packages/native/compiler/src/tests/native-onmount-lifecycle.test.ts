@@ -98,18 +98,21 @@ export function App(){
     expect(rc.code).toMatch(/\.onDisappear \{\s+count = 0/)
     expect(rc.code).not.toContain('return {')
   })
-  it('guard: a bare `effect(...)` statement warns NAMED (the silent-drop class is closed)', () => {
+  it('guard: a bare call statement warns NAMED (the silent-drop class is closed)', () => {
+    // `effect(...)` was this guard's example until it gained a lowering (`native-effect.test.ts`); any other bare
+    // call still has none.
     const re = transform(
-      `import { signal, effect } from '@pyreon/reactivity'
+      `import { signal } from '@pyreon/reactivity'
 import { Stack, Text } from '@pyreon/primitives'
+function report(n: number): void { void n }
 export function App(){
   const count = signal<number>(0)
-  effect(() => { console.log(count()) })
+  report(count())
   return (<Stack><Text>{String(count())}</Text></Stack>)
 }`,
       { target: 'swift' },
     )
-    expect(re.warnings.some((w) => w.includes('effect(...)'))).toBe(true)
+    expect(re.warnings.some((w) => w.includes('report(...)'))).toBe(true)
   })
   it('guard: a bare `void x` reference no-op does NOT warn (rx-full regression)', () => {
     // The bare-statement walker must warn ONLY on genuine dropped CALLS

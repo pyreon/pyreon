@@ -1307,4 +1307,27 @@ class CounterInstrumentedTest {
         composeRule.onNodeWithTag("rp-block").assertTextEquals("rp big 6")
         composeRule.onNodeWithTag("rp-plain").assertTextEquals("rp plain 3")
     }
+
+    // setTimeout on device — the Compose twin of iOS `test_setTimeoutFiresOnTheMainThread`: `PyreonTimers` posts the
+    // callback to the main looper's Handler, and its state write recomposes the row.
+    @Test
+    fun setTimeoutFiresOnTheMainThread() {
+        composeRule.onNodeWithTag("timer-arm").performScrollTo().performClick()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodesWithText("Timer: fired").fetchSemanticsNodes().isNotEmpty()
+        }
+    }
+
+    // effect() on device — the Compose twin of iOS `test_effectReRunsOnPropChangeAndCleansUpFirst`. `EffectEcho`'s
+    // effect runs in a `DisposableEffect(count)`: each Increment changes the key, so Compose disposes the previous
+    // run (its cleanup counts) and starts the next. Three taps → `echo 30 / cleanups 3`.
+    @Test
+    fun effectReRunsOnPropChangeAndCleansUpFirst() {
+        composeRule.onNodeWithTag("effect-echo").assertExists().assertTextEquals("echo 0 / cleanups 0")
+
+        repeat(3) { tapIncrement() }
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithTag("effect-echo").assertTextEquals("echo 30 / cleanups 3")
+    }
 }

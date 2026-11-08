@@ -32,6 +32,7 @@ import {
   useAudioRecorder,
   useBluetooth,
 } from '@pyreon/hooks'
+import { signal, effect } from '@pyreon/reactivity'
 import { createI18n } from '@pyreon/i18n/core'
 import { createMachine } from '@pyreon/machine'
 import { Background, Controls, createFlow, Flow, Handle, NodeResizer, NodeToolbar, Panel, Position, type ConnectionLineProps, type NodeComponentProps } from '@pyreon/flow'
@@ -156,9 +157,27 @@ function Tally(props: { count: number; children: (n: number) => unknown; footer?
   return <Stack>{props.children(props.count)}{props.footer}</Stack>
 }
 
+// effect() device proof. A component-body `effect` lowers to a component function run `.onAppear` + `.onChange(of:)`
+// (iOS) / in a keyed `DisposableEffect` (Android); its trigger here is the `count` PROP, and the cleanup it returns
+// must run before every re-run. After three Increments both suites read `echo 30 / cleanups 3`: the effect re-ran
+// on each change of the parent's state (not just once on appear), and each previous run's cleanup ran first.
+function EffectEcho(props: { count: number }) {
+  const echo = signal('0')
+  const cleanups = signal(0)
+  effect(() => {
+    const n = props.count
+    echo.set(String(n * 10))
+    return () => cleanups.set(cleanups.peek() + 1)
+  })
+  return <Text data-testid="effect-echo">{`echo ${echo()} / cleanups ${cleanups()}`}</Text>
+}
+
 export function Counter() {
   let count = state<number>(0)
   let chipTaps = state<number>(0)
+  // setTimeout device proof: `PyreonTimers` (a run-loop Timer on iOS, the main looper's Handler on Android) runs the
+  // callback on the main thread after the delay, and the write it makes re-renders the row.
+  let timerState = state<string>('idle')
   // Direct native Flow device proof. This is intentionally NOT the /webview
   // bridge: PMTC emits PyreonFlowView and the app links the package's actual
   // SwiftUI/Compose host, state, geometry, handles, and resize sources. The
@@ -667,6 +686,7 @@ export function Counter() {
       <Tally count={count} footer={<Text data-testid="rp-footer">{'rp footer filled'}</Text>}>
         {(n) => <Text data-testid="rp-plain">{`rp plain ${n}`}</Text>}
       </Tally>
+      <EffectEcho count={count} />
       {/* Platform-probe rows, LAST on the page on purpose (see the F3 note above):
           rows added higher up push controls the other device tests click without
           scrolling below the fold. The probe tests scroll to what they need. */}
@@ -681,6 +701,8 @@ export function Counter() {
       <Text data-testid="probe-record-state">Recording: {recorder.recording() ? 'on' : 'off'}</Text>
       <Button data-testid="probe-scan" onPress={() => bt.scan()}>Scan</Button>
       <Text data-testid="probe-bt-state">Bluetooth: {bt.available() ? 'available' : 'unavailable'}-{bt.scanning() ? 'scanning' : 'idle'}</Text>
+      <Button data-testid="timer-arm" onPress={() => { timerState = 'armed'; setTimeout(() => { timerState = 'fired' }, 400) }}>Arm timer</Button>
+      <Text data-testid="timer-state">Timer: {timerState}</Text>
       {/* Switching language — also LAST, for the same reason as the probe rows:
           anything higher pushes controls other tests tap without scrolling.
           The web writes `i18n.locale.set('en')` and reads `i18n.locale()`;

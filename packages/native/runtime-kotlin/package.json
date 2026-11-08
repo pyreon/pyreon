@@ -32,7 +32,8 @@
           "PyreonChartCanvas.kt",
           "PyreonGesture.kt",
           "PyreonNavigation.kt",
-          "PyreonPressState.kt"
+          "PyreonPressState.kt",
+          "PyreonTimers.kt"
         ]
       }
     }
