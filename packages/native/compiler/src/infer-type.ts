@@ -1558,6 +1558,11 @@ export function inferTypeValue(expr: ExprIR, ctx: InferenceCtx): TypeIR {
         if (expr.callee.name === 'String') return { kind: 'string' }
         // A timer id (`PyreonTimers` returns an Int / Long).
         if (expr.callee.name === 'setTimeout' || expr.callee.name === 'setInterval') return { kind: 'number' }
+        // `untrack(() => x)` / `batch(() => x)` lower to `x` (their plain evaluation), so they type as `x`.
+        if ((expr.callee.name === 'untrack' || expr.callee.name === 'batch') && expr.args.length === 1) {
+          const fn = expr.args[0]!
+          if (fn.kind === 'arrow' && fn.params.length === 0 && fn.stmts === undefined) return inferType(fn.body, ctx)
+        }
         if (expr.callee.name === 'Boolean') return { kind: 'boolean' }
       }
       // `Array.from(x)` / `Array.from(x, fn)` / `Array.isArray(x)` — the
@@ -1566,6 +1571,15 @@ export function inferTypeValue(expr: ExprIR, ctx: InferenceCtx): TypeIR {
       {
         const a = inferArrayStaticCall(expr, ctx)
         if (a !== null) return a
+      }
+      // `sig.peek()` is the signal's read (an untracked one on the web; native has no tracking).
+      if (
+        expr.args.length === 0 &&
+        expr.callee.kind === 'member' &&
+        expr.callee.property === 'peek' &&
+        expr.callee.optional !== true
+      ) {
+        return inferType({ kind: 'call', callee: expr.callee.object, args: [] }, ctx)
       }
       // `Date.now()` — JS ms-since-epoch as a Number. The value (~1.7e12)
       // OVERFLOWS Kotlin's 32-bit Int (PMTC's `number` → Int default), so the

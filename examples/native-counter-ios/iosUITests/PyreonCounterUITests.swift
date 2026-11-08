@@ -1750,4 +1750,24 @@ final class PyreonCounterUITests: XCTestCase {
             "The setTimeout callback did not run (or its write did not re-render)"
         )
     }
+
+    // effect() on device. `EffectEcho` (shared Counter.tsx) runs a component-body `effect` whose trigger is its
+    // `count` prop and whose returned cleanup counts its own runs. Three Increments must re-run it three times —
+    // `.onChange(of: count)` firing on each change of the parent's state — with the previous run's cleanup first.
+    // Before the lowering existed the effect was DROPPED, and the label stayed `echo 0 / cleanups 0`.
+    func test_effectReRunsOnPropChangeAndCleansUpFirst() throws {
+        let app = XCUIApplication()
+        app.launch()
+
+        let echo = app.staticTexts["effect-echo"]
+        XCTAssertTrue(echo.waitForExistence(timeout: 30), "The effect() row did not render")
+        XCTAssertEqual(echo.label, "echo 0 / cleanups 0")
+
+        let increment = app.buttons["Increment"]
+        for _ in 0..<3 { increment.tap() }
+
+        let rerun = NSPredicate(format: "label == %@", "echo 30 / cleanups 3")
+        expectation(for: rerun, evaluatedWith: echo)
+        waitForExpectations(timeout: 10)
+    }
 }

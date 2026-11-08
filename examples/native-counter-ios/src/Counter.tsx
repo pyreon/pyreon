@@ -32,6 +32,7 @@ import {
   useAudioRecorder,
   useBluetooth,
 } from '@pyreon/hooks'
+import { signal, effect } from '@pyreon/reactivity'
 import { createI18n } from '@pyreon/i18n/core'
 import { createMachine } from '@pyreon/machine'
 import { Background, Controls, createFlow, Flow, Handle, NodeResizer, NodeToolbar, Panel, Position, type ConnectionLineProps, type NodeComponentProps } from '@pyreon/flow'
@@ -154,6 +155,21 @@ function NativeFlowNode(props: NodeComponentProps<NativeFlowData>) {
 // view-builder statements on both targets.
 function Tally(props: { count: number; children: (n: number) => unknown; footer?: VNodeChild }) {
   return <Stack>{props.children(props.count)}{props.footer}</Stack>
+}
+
+// effect() device proof. A component-body `effect` lowers to a component function run `.onAppear` + `.onChange(of:)`
+// (iOS) / in a keyed `DisposableEffect` (Android); its trigger here is the `count` PROP, and the cleanup it returns
+// must run before every re-run. After three Increments both suites read `echo 30 / cleanups 3`: the effect re-ran
+// on each change of the parent's state (not just once on appear), and each previous run's cleanup ran first.
+function EffectEcho(props: { count: number }) {
+  const echo = signal('0')
+  const cleanups = signal(0)
+  effect(() => {
+    const n = props.count
+    echo.set(String(n * 10))
+    return () => cleanups.set(cleanups.peek() + 1)
+  })
+  return <Text data-testid="effect-echo">{`echo ${echo()} / cleanups ${cleanups()}`}</Text>
 }
 
 export function Counter() {
@@ -670,6 +686,7 @@ export function Counter() {
       <Tally count={count} footer={<Text data-testid="rp-footer">{'rp footer filled'}</Text>}>
         {(n) => <Text data-testid="rp-plain">{`rp plain ${n}`}</Text>}
       </Tally>
+      <EffectEcho count={count} />
       {/* Platform-probe rows, LAST on the page on purpose (see the F3 note above):
           rows added higher up push controls the other device tests click without
           scrolling below the fold. The probe tests scroll to what they need. */}

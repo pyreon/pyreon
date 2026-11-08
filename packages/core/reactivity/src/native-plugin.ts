@@ -9,8 +9,8 @@ export const reactivityPlugin: CompilerPlugin = {
   unlowered: {
     '@pyreon/reactivity': {
       advice:
-        'these have no native emit — writes inside one action already coalesce on both native targets, so drop the `batch(...)` wrapper and set signals directly; for `untrack` / `effectScope`, restructure with plain `computed()`',
-      unsupported: ['batch', 'untrack', 'effectScope'],
+        '`effectScope` has no native emit — a component\'s effects already stop with the component on both native targets; restructure with plain `effect()` / `computed()` (`batch`, `untrack` and `.peek()` DO lower, as their plain evaluation)',
+      unsupported: ['effectScope'],
     },
   },
 }

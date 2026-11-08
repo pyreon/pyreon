@@ -1317,4 +1317,17 @@ class CounterInstrumentedTest {
             composeRule.onAllNodesWithText("Timer: fired").fetchSemanticsNodes().isNotEmpty()
         }
     }
+
+    // effect() on device — the Compose twin of iOS `test_effectReRunsOnPropChangeAndCleansUpFirst`. `EffectEcho`'s
+    // effect runs in a `DisposableEffect(count)`: each Increment changes the key, so Compose disposes the previous
+    // run (its cleanup counts) and starts the next. Three taps → `echo 30 / cleanups 3`.
+    @Test
+    fun effectReRunsOnPropChangeAndCleansUpFirst() {
+        composeRule.onNodeWithTag("effect-echo").assertExists().assertTextEquals("echo 0 / cleanups 0")
+
+        repeat(3) { tapIncrement() }
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithTag("effect-echo").assertTextEquals("echo 30 / cleanups 3")
+    }
 }

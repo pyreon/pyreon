@@ -5,6 +5,7 @@
 // `derivedStateOf { ... }`, JSX elements to Composable function calls.
 
 import { GESTURE_EVENT_NAMES, GESTURE_EVENTS } from './gesture-events'
+import { effectReadCandidates, effectTriggerPaths, isComponentStateName } from './effect-deps'
 import {
   computeThrowingFunctions,
   containsAwait,
@@ -1374,7 +1375,7 @@ function emitKotlinComponent(c: ComponentIR): string {
   // (after the signature line).
   // on-mount decls emit at the harness level (LaunchedEffect(Unit), below).
   const declTexts = c.decls
-    .filter((d) => d.kind !== 'on-mount' && pluginDeclFeatures(d)?.lifecycleOnly !== true)
+    .filter((d) => d.kind !== 'on-mount' && d.kind !== 'effect' && pluginDeclFeatures(d)?.lifecycleOnly !== true)
     .map((d) => emitKotlinDecl(d, ctx))
   // Pass 2: walk props — formats prop annotations AND ALSO discovers
   // synthesized types from PROP annotations. This pass must run BEFORE
@@ -1460,6 +1461,26 @@ function emitKotlinComponent(c: ComponentIR): string {
   // composable leaves composition, which IS the web hooks' onUnmount.
   // LaunchedEffect(key) cancels the previous when the key changes — the
   // Compose mirror of .task(id:), and the same restarting trailing edge.
+  // effect(fn) → `DisposableEffect(<reads>)`: it runs the body when the composable enters composition and again —
+  // disposing the previous run first — whenever a key changes; its `onDispose` is the cleanup the body returned.
+  // The keys are the body's reactive reads (`effect-deps.ts`), the same set the Swift `.onChange(of:)` list uses.
+  // Emitted BEFORE the onMount hooks: the web runs an effect during setup, before mount.
+  for (const d of c.decls) {
+    if (d.kind !== 'effect') continue
+    const keys = d.tracked ? kotlinEffectDeps(c, d.fn) : []
+    const fn = kotlinIdent(d.fn)
+    // An error nothing in the body catches escapes the composition and terminates the app — as on Swift.
+    if (_kotlinThrowingFns.has(d.fn)) _pushKotlinEmitWarning(uncaughtThrowWarning('An `effect()` body, which can throw,'))
+    lines.push(`  DisposableEffect(${keys.length > 0 ? keys.join(', ') : 'Unit'}) {`)
+    if (d.cleanup) {
+      lines.push(`    val cleanup = ${fn}()`)
+      lines.push(`    onDispose { cleanup?.invoke() }`)
+    } else {
+      lines.push(`    ${fn}()`)
+      lines.push(`    onDispose { }`)
+    }
+    lines.push(`  }`)
+  }
   for (const d of c.decls) {
     if (d.kind !== 'on-mount') continue
     const saved = seedHandlerLocals(d.body, _kotlinExprInferCtx)
@@ -1600,9 +1621,26 @@ function asyncStateKotlin(d: DeclIR, indent: number): { pending: string; error: 
   return pluginAsyncState(d, 'kotlin', kotlinEmitContext(indent))!
 }
 
+/**
+ * The `DisposableEffect` keys of effect `fn` in component `c`: its reactive reads, lowered, deduplicated. Compose
+ * compares keys with `equals`, which every value has, so no read is ever left out (Swift's `.onChange` can be).
+ */
+function kotlinEffectDeps(c: ComponentIR, fn: string): string[] {
+  const decl = c.decls.find((d): d is Extract<DeclIR, { kind: 'function' }> => d.kind === 'function' && d.name === fn)
+  if (decl === undefined) return []
+  const saved = seedHandlerLocals(decl.body, _kotlinExprInferCtx)
+  const out: string[] = []
+  try {
+    out.push(...effectTriggerPaths(effectReadCandidates(decl.body, c.propsParamName, (n) => isComponentStateName(c, n)).map((cand) => emitKotlinExpr(cand, 0))))
+  } finally {
+    _kotlinExprInferCtx.locals = saved
+  }
+  return out
+}
+
 function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
-  // on-mount emits at the harness level (LaunchedEffect) — defensive narrow.
-  if (d.kind === 'on-mount') return ''
+  // on-mount / effect emit at the harness level (LaunchedEffect / DisposableEffect) — defensive narrow.
+  if (d.kind === 'on-mount' || d.kind === 'effect') return ''
   // Phase 5b: a plain value const → a composable-body `val` (captures-once).
   if (d.kind === 'value') {
     const steer =
@@ -3368,6 +3406,26 @@ function warnKotlinIntegerNaNTest(test: 'isNaN' | 'isFinite', arg: ExprIR, shown
   )
 }
 
+/** Mirror of `swiftReactivityPassthrough`. */
+function kotlinReactivityPassthrough(e: Extract<ExprIR, { kind: 'call' }>, indent: number): string | undefined {
+  if (e.args.length === 0 && e.callee.kind === 'member' && e.callee.property === 'peek' && !e.callee.optional) {
+    const read: ExprIR = { kind: 'call', callee: e.callee.object, args: [] }
+    return emitKotlinExpr(read, indent)
+  }
+  if (e.callee.kind !== 'identifier' || (e.callee.name !== 'untrack' && e.callee.name !== 'batch')) return undefined
+  const fn = e.args[0]
+  if (e.args.length !== 1 || fn === undefined || fn.kind !== 'arrow' || fn.params.length !== 0) return undefined
+  if (fn.stmts === undefined) return `(${emitKotlinExpr(fn.body, indent)})`
+  if (fn.stmts.some((st) => st.kind === 'return' && st.expr !== undefined)) {
+    _emitWarnings.push(
+      `${e.callee.name}(() => { …; return value }): a block body that returns a value has no native lowering — write the value as an expression body (\`${e.callee.name}(() => value)\`), or run the statements and read the value after.`,
+    )
+    return undefined
+  }
+  const pad = ' '.repeat(indent)
+  return `run {\n${emitKotlinStmtLines(fn.stmts, indent + 2, { synthesizedDataClasses: [], componentName: '', lambdaLabel: 'run' }).join('\n')}\n${pad}}`
+}
+
 function emitKotlinExpr(e: ExprIR, indent: number): string {
   // A lambda is its own throw context (see the Swift twin).
   // A callback of a rethrowing array method (`xs.map { … throw … }`) is not its own throw context: Kotlin's inline
@@ -3553,6 +3611,11 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
           `Object.${e.callee.property}(...) has no native equivalent — only Object.keys() / Object.values() on a statically-known HOMOGENEOUS object shape are supported (it lowers to a literal key list). Emitting an empty list; restructure to avoid runtime object reflection on native.`,
         )
         return e.callee.property === 'keys' ? 'emptyList<String>()' : 'emptyList<Any>()'
+      }
+      // `untrack` / `batch` / `.peek()` — their plain evaluation (mirror of the Swift lowering).
+      {
+        const passthrough = kotlinReactivityPassthrough(e, indent)
+        if (passthrough !== undefined) return passthrough
       }
       // `console.log(…)` (and `info` / `debug` / `warn` / `error`) → `println(…)` — the universal TS debug call maps
       // to Kotlin's stdlib print (Swift mirror: `print`). `println` takes ONE value, so several arguments are joined
