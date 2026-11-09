@@ -91,6 +91,42 @@ export function createReactiveVirtualizer<
 
   // Lifecycle: mount observers, clean up on unmount.
   let mountCleanup: (() => void) | undefined
+  let unmounted = false
+
+  /**
+   * A scroll element can be handed over while it is still DETACHED from the live document — Pyreon builds a template
+   * into an inert fragment (the `<template>` element's own document) and inserts it after `onMount` has run, which is
+   * the normal case for a routed page. TanStack reads `scrollElement.ownerDocument.defaultView` when it attaches its
+   * observers, and that is `null` in an inert document, so it attached NO ResizeObserver and no scroll listener: the
+   * scroll rect stayed 0×0 and the list rendered zero rows while `totalSize` was still right. `_willUpdate` skips an
+   * unchanged element, so nothing ever retried. Re-attach once the element is in the document.
+   */
+  const needsAttach = (inst: Virtualizer<TScrollElement, TItemElement>): boolean => {
+    const el = inst.options.getScrollElement() as Element | Window | null
+    return el !== null && 'isConnected' in el && !(el as Element).isConnected
+  }
+  const reattachWhenConnected = (inst: Virtualizer<TScrollElement, TItemElement>, frames: number): void => {
+    if (unmounted) return
+    if (needsAttach(inst)) {
+      if (frames <= 0) {
+        if (process.env.NODE_ENV !== 'production') {
+          console.warn(
+            `[Pyreon] ${hook}: the scroll element is still detached from the document after mount, so the list renders ZERO rows. ` +
+              'Insert the scroll container into the document (or return it from getScrollElement only once it is).',
+          )
+        }
+        return
+      }
+      requestAnimationFrame(() => reattachWhenConnected(inst, frames - 1))
+      return
+    }
+    // Connected: drop the observers attached against the inert document and attach them for real.
+    // (`_didMount`'s disposer IS TanStack's `cleanup()`, which is otherwise private.)
+    mountCleanup?.()
+    inst._willUpdate()
+    emit()
+  }
+
   onMount(() => {
     const inst = instance!
     mountCleanup = inst._didMount()
@@ -103,10 +139,16 @@ export function createReactiveVirtualizer<
           'and make sure it is mounted by the time this component is.',
       )
     }
+    // Attached against a detached element → retry on the microtask (the common case: inserted right after mount), then
+    // frame by frame for a bounded time.
+    if (needsAttach(inst)) {
+      queueMicrotask(() => reattachWhenConnected(inst, 60))
+    }
     return undefined
   })
 
   onUnmount(() => {
+    unmounted = true
     watch.dispose()
     mountCleanup?.()
   })

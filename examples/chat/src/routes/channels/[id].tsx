@@ -104,20 +104,32 @@ export default function ChannelPage() {
   // Send mutation — POST to /api/send. The server echoes the message
   // via SSE which the onMessage handler reconciles into the local list.
   const sendMutation = useMutation({
-    mutationFn: async (body: string) => {
+    mutationFn: async (input: { optimisticId: string; body: string }) => {
       const res = await fetch('/api/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           channelId: channelId,
-          body,
+          body: input.body,
           author: { name: 'You', color: '#4338ca' },
         }),
       })
       if (!res.ok) throw new Error(`send failed: ${res.status}`)
       return res.json() as Promise<Message>
     },
-    onError: (err) => {
+    // Reconcile the optimistic row with the server's message. The echo over SSE may have arrived BEFORE this response
+    // (then the server row is already in the list and the optimistic one is simply dropped) or AFTER (then the
+    // optimistic row takes the server id, so the echo dedupes by id). Without this the optimistic `opt_…` id never
+    // matched the echo's `srv_…` id and every sent message showed twice.
+    onSuccess: (server, input) => {
+      const current = untrack(() => messages) as Message[]
+      const echoed = current.some((m) => m.id === server.id)
+      messages = echoed
+        ? current.filter((m) => m.id !== input.optimisticId)
+        : current.map((m) => (m.id === input.optimisticId ? ({ ...m, ...server, pending: false } as Message) : m))
+    },
+    onError: (err, input) => {
+      messages = (untrack(() => messages) as Message[]).filter((m) => m.id !== input.optimisticId)
       toast.error(`Send failed: ${(err as Error).message}`)
     },
   })
@@ -152,7 +164,7 @@ export default function ChannelPage() {
         pending: true,
       },
     ]
-    sendMutation.mutate(trimmed)
+    sendMutation.mutate({ optimisticId, body: trimmed })
   }
 
   // Filtered messages — narrows by search term (case-insensitive).
