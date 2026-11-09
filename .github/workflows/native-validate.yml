@@ -264,6 +264,15 @@ jobs:
           distribution: 'temurin'
           java-version: '21'
 
+      - name: Cache the pinned kotlinc release
+        # The zip is immutable and sha256-pinned, so caching it removes a live
+        # dependency on GitHub's release CDN, which 504'd on 2026-11-09 and failed
+        # this job before any code ran (#4154).
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/pyreon-dl/kotlin-compiler-${{ env.KOTLIN_VERSION }}.zip
+          key: dl-kotlin-compiler-${{ env.KOTLIN_VERSION }}
+
       - name: Install kotlinc (pinned release + sha256)
         # Pinned, IMMUTABLE Kotlin compiler release + sha256 verification —
         # satisfies Scorecard PinnedDependencies (no live `curl get.sdkman.io |
@@ -276,8 +285,12 @@ jobs:
           KOTLIN_SHA256: '0352c0a45bd22f80f6b26e485cd04da8047baa5de54865281fb9f89a4a7bcf2a'
         run: |
           set -euo pipefail
-          ZIP="kotlin-compiler-${KOTLIN_VERSION}.zip"
-          curl -fsSL -o "$ZIP" "https://github.com/JetBrains/kotlin/releases/download/v${KOTLIN_VERSION}/${ZIP}"
+          ZIP="$HOME/.cache/pyreon-dl/kotlin-compiler-${KOTLIN_VERSION}.zip"
+          mkdir -p "$(dirname "$ZIP")"
+          # A cache hit skips the network. On a miss, back off long enough to ride
+          # out a short CDN outage; the sha256 check below gates a partial download.
+          [ -f "$ZIP" ] || curl -fsSL --retry 6 --retry-delay 10 --retry-all-errors --connect-timeout 30 \
+            -o "$ZIP" "https://github.com/JetBrains/kotlin/releases/download/v${KOTLIN_VERSION}/$(basename "$ZIP")"
           echo "${KOTLIN_SHA256}  ${ZIP}" | sha256sum -c -
           unzip -q "$ZIP" -d "$HOME/kotlin-dist"
           echo "$HOME/kotlin-dist/kotlinc/bin" >> "$GITHUB_PATH"
