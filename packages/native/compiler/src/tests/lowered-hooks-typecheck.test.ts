@@ -178,6 +178,16 @@ const USAGES: ReadonlyArray<readonly [string, string, string]> = [
   ['useInterval', '@pyreon/hooks', 'useInterval(() => { const x = 1 }, 1000)'],
   ['useTimeout', '@pyreon/hooks', 'useTimeout(() => { const x = 1 }, 500)'],
   [
+    'usePrevious',
+    '@pyreon/hooks',
+    'const n = signal(0); const prev = usePrevious(() => n())',
+  ],
+  [
+    'useUpdateEffect',
+    '@pyreon/hooks',
+    "const n = signal(0); const log = signal(''); useUpdateEffect(() => n(), (next, prev) => { log.set('' + prev + next) })",
+  ],
+  [
     'useDebouncedCallback',
     '@pyreon/hooks',
     'const dc = useDebouncedCallback((n: number) => { const x = n }, 300)',

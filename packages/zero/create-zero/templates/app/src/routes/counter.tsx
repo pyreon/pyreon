@@ -68,13 +68,11 @@ export default function Counter() {
         </div>
         <pre>
           <code>
-            <span class="kw">let</span> <span class="fn">count</span> ={" "}
-            <span class="fn">state</span>(<span class="str">0</span>)
-            <span class="kw">const</span> <span class="fn">doubled</span> ={" "}
-            <span class="fn">derived</span>(<span class="fn">count</span> * <span class="str">2</span>)
+            <span class="kw">let</span> <span class="fn">count</span> = <span class="fn">state</span>(<span class="str">0</span>){"\n"}
+            <span class="kw">const</span> <span class="fn">doubled</span> = <span class="fn">derived</span>(<span class="fn">count</span> * <span class="str">2</span>){"\n"}
             {"\n"}
-            <span class="cm">{"// Write it like a normal variable:"}</span>
-            <span class="fn">count</span>++
+            <span class="cm">{"// Write it like a normal variable:"}</span>{"\n"}
+            <span class="fn">count</span>++{"\n"}
             {"\n"}
             <span class="cm">{"// …and every place that reads it updates ✓"}</span>
           </code>

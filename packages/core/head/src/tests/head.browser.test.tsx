@@ -2,9 +2,11 @@ import { h } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 import { flush, mountInBrowser } from '@pyreon/test-utils/browser'
 import { afterEach, describe, expect, it } from 'vitest'
-import type { HeadContextValue, HeadTag } from '../context'
+import type { HeadContextValue, HeadTag, UseHeadInput } from '../context'
+import { createHeadContext } from '../context'
 import { syncDom } from '../dom'
 import { HeadProvider } from '../provider'
+import { serializeHead } from '../serialize'
 import { useHead } from '../use-head'
 
 // Real-Chromium smoke suite for @pyreon/head.
@@ -276,5 +278,74 @@ describe('head in real browser', () => {
     } finally {
       console.error = origErr
     }
+  })
+})
+
+// A server-rendered page already carries one of each head tag. Hydration must
+// ADOPT those, not append a second copy. The client syncer seeds its managed
+// set from `[data-pyreon-head]`, and the serializer never wrote that marker,
+// so every hydrated page (pyreon.dev included) ended up with each <meta>,
+// <link> and JSON-LD <script> twice. The server markup here is the real
+// serializer's output for the real `useHead` tags; only the transport (an HTML
+// string written into <head>) stands in for the HTTP response.
+describe('hydrating over server-rendered head tags', () => {
+  const input: UseHeadInput = {
+    title: 'Docs',
+    meta: [
+      { name: 'description', content: 'Server description' },
+      { property: 'og:title', content: 'Docs' },
+    ],
+    link: [{ rel: 'canonical', href: 'https://pyreon.dev/docs' }],
+    jsonLd: { '@context': 'https://schema.org', '@type': 'WebPage', name: 'Docs' },
+  }
+  const App = () => h(Page, { setup: () => useHead(input) })
+
+  /** The tags `useHead` resolves for `input` — what the server serializes. */
+  function serverHead(): string {
+    const ctx = createHeadContext()
+    const { unmount } = mountInBrowser(h(HeadProvider, { context: ctx }, h(App, null)))
+    const html = serializeHead(ctx.resolve())
+    unmount()
+    expect(
+      document.head.querySelectorAll('[data-pyreon-head]').length,
+      'probe mount cleaned up',
+    ).toBe(0)
+    return html
+  }
+
+  afterEach(() => {
+    for (const el of document.head.querySelectorAll(
+      '[data-pyreon-head], meta[name="description"], meta[property="og:title"], link[rel="canonical"], script[type="application/ld+json"]',
+    )) {
+      el.remove()
+    }
+  })
+
+  it('adopts each server tag instead of appending a duplicate', () => {
+    document.head.insertAdjacentHTML('beforeend', serverHead())
+    const serverDesc = document.head.querySelector('meta[name="description"]')
+    expect(serverDesc, 'premise: the server markup is in <head>').not.toBeNull()
+
+    const { unmount } = mountInBrowser(h(HeadProvider, null, h(App, null)))
+
+    expect(document.head.querySelectorAll('meta[name="description"]').length).toBe(1)
+    expect(document.head.querySelectorAll('meta[property="og:title"]').length).toBe(1)
+    expect(document.head.querySelectorAll('link[rel="canonical"]').length).toBe(1)
+    expect(document.head.querySelectorAll('script[type="application/ld+json"]').length).toBe(1)
+    // The SAME node the server sent, now managed — not a replacement.
+    expect(document.head.querySelector('meta[name="description"]')).toBe(serverDesc)
+    unmount()
+  })
+
+  it('patches an adopted tag when the client value differs, still one copy', () => {
+    document.head.insertAdjacentHTML(
+      'beforeend',
+      serverHead().replace('Server description', 'Stale description'),
+    )
+    const { unmount } = mountInBrowser(h(HeadProvider, null, h(App, null)))
+    const desc = document.head.querySelectorAll('meta[name="description"]')
+    expect(desc.length).toBe(1)
+    expect(desc[0]!.getAttribute('content')).toBe('Server description')
+    unmount()
   })
 })
