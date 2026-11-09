@@ -53,16 +53,18 @@ export function App(props: { raw: unknown }) {
 })
 
 describe('Date.* and console.log', () => {
-  it('`Date.now()` becomes the epoch-ms Double; any other `Date.*` static is NAMED', () => {
+  it('`Date.now()` becomes the epoch-ms Double, `Date.parse` the runtime parse; an unknown `Date.*` static is NAMED', () => {
     const r = run(`import { Stack, Text } from '${P}'
 export function App() {
   const now = () => Date.now()
   const parsed = () => Date.parse('x')
-  return (<Stack><Text>{() => \`\${now()}\${String(parsed())}\`}</Text></Stack>)
+  const odd = () => Date.foo('x')
+  return (<Stack><Text>{() => \`\${now()}\${String(parsed())}\${String(odd())}\`}</Text></Stack>)
 }`)
     expect(r.code).toContain('private func now() -> Double { (Date().timeIntervalSince1970 * 1000) }')
-    // the verbatim emit stays so swiftc names the site
-    expect(r.code).toContain('Date.parse("x")')
+    expect(r.code).toContain('private func parsed() -> Double { pyreonDateFrom("x") }')
+    // an unknown static keeps its verbatim emit so swiftc names the site
+    expect(r.code).toContain('Date.foo("x")')
     expect(r.warnings.length).toBeGreaterThan(0)
   })
 

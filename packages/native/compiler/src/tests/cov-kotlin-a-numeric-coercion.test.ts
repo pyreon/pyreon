@@ -146,12 +146,14 @@ describe('Kotlin expr: String() / Date / Object statics', () => {
     expect(out).toContain('fun pyreonNumString')
   })
 
-  it('Date.now() is epoch millis as a Double; any other Date static warns NAMED', () => {
+  it('Date.now() is epoch millis as a Double; Date.parse lowers to the runtime; an unknown Date static warns NAMED', () => {
     const ok = kt(`  const a = computed(() => Date.now())`)
     expect(ok.code).toContain('System.currentTimeMillis().toDouble()')
     expect(ok.warnings.join('\n')).not.toContain('Date.')
-    const bad = kt(`  const a = computed(() => Date.parse('2020-01-01'))`)
-    expect(bad.warnings.join('\n')).toContain('Date.parse')
+    const parsed = kt(`  const a = computed(() => Date.parse('2020-01-01'))`)
+    expect(parsed.code).toContain('pyreonDateFrom("2020-01-01")')
+    const bad = kt(`  const a = computed(() => Date.foo('2020-01-01'))`)
+    expect(bad.warnings.join('\n')).toContain('Date.foo')
   })
 
   it('Object.values/entries degrade to a typed empty list + a NAMED warning (no runtime reflection)', () => {
