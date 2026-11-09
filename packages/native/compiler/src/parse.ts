@@ -65,6 +65,7 @@ import {
   type InferenceCtx,
 } from './infer-type'
 import { canonicalizeHookBindings } from './hook-binding'
+import { desugarTsEnums } from './ts-enum-desugar'
 import { inlineCustomHooks } from './inline-hooks'
 import { normalizeComponentForms } from './component-forms'
 import { rewritePropsDestructuring } from './props-destructure'
@@ -374,6 +375,9 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
   // Resolve hook BINDINGS before any recognizer reads a callee name: an aliased
   // framework hook is renamed to its canonical export, and a same-named user
   // function or foreign import stops being claimed (see hook-binding.ts).
+  // TS `enum`s reduce to shapes the recognizers already lower (a string-literal union / `number`, members to their
+  // literals) — see ts-enum-desugar.ts. Before any extractor reads the AST, like the hook bindings below.
+  ctx.warnings.push(...desugarTsEnums(ast.program as AnyNode))
   ctx.warnings.push(
     ...canonicalizeHookBindings(
       ast.program as AnyNode,
@@ -769,7 +773,7 @@ function warnUnsupportedTopLevelDecl(node: AnyNode, ctx: ParseCtx): void {
   if (decl.type === 'TSEnumDeclaration') {
     const name = (decl.id?.name as string | undefined) ?? 'an enum'
     ctx.warnings.push(
-      `Top-level TS \`enum ${name}\` is NOT compiled to native (it emits nothing → native code referencing it won't compile). PMTC maps a string-literal UNION type alias to a native enum, not a TS \`enum\` declaration — use \`type ${name} = 'a' | 'b'\` instead.`,
+      `Top-level TS \`enum ${name}\` is NOT compiled to native (it emits nothing → native code referencing it won't compile). A string enum or a numeric enum with literal initializers lowers; this one mixes strings and numbers or computes an initializer — give every member a literal of one kind, or use \`type ${name} = 'a' | 'b'\`.`,
     )
   } else if (decl.type === 'ClassDeclaration') {
     const name = (decl.id?.name as string | undefined) ?? 'a class'
