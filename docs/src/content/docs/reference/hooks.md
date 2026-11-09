@@ -1361,7 +1361,7 @@ const latest = useLatest(props.onSave)
 useKeyboard(key: string, handler: (event: KeyboardEvent) => void, options?: { event?: 'keydown' | 'keyup'; target?: EventTarget }) => void
 ```
 
-Registers a `keydown` (or `keyup`) listener on `options.target` (default `document`) that fires `handler` only when `event.key === key`. Auto-removed on unmount. For app-wide shortcuts with modifiers, prefer `@pyreon/hotkeys`.
+Registers a `keydown` (or `keyup`) listener on `options.target` (default `document`) that fires `handler` only when `event.key === key`. Auto-removed on unmount. For app-wide shortcuts with modifiers, prefer `@pyreon/hotkeys`. On native it lowers to the same hardware-keyboard binding as `useHotkey` (SwiftUI `.keyboardShortcut`, a Compose key handler); the key must be a literal, the handler inline, and a native binding fires only when the key is pressed with no modifier. `event: keyup`, `target` and an uppercase letter (Shift+letter on the web) are named warnings that drop the binding.
 
 **Example**
 

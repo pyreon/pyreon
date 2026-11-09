@@ -165,6 +165,14 @@ export {
 export { kotlinIdent, kotlinMember, localBase, swiftIdent } from './identifier-safety'
 export { KOTLIN_INT, swiftCodingKeysLines } from './spelling'
 export { kotlinStr, swiftStr } from './string-literals'
+export {
+  keyBindingDecl,
+  kotlinKeyConstant,
+  stripEventSuppression,
+  swiftKeyEquivalent,
+  type KeyBinding,
+  type KeyBindingDeclOptions,
+} from './key-binding'
 
 export { isCanonicalPrimitive } from './canonical-primitives'
 export { isStyleBasePrimitive } from './registry-lookup'

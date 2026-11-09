@@ -179,6 +179,11 @@ const USAGES: ReadonlyArray<readonly [string, string, string]> = [
   ['useInterval', '@pyreon/hooks', 'useInterval(() => { const x = 1 }, 1000)'],
   ['useTimeout', '@pyreon/hooks', 'useTimeout(() => { const x = 1 }, 500)'],
   [
+    'useKeyboard',
+    '@pyreon/hooks',
+    "const n = signal(0); useKeyboard('Escape', () => { n.set(0) })",
+  ],
+  [
     'usePrevious',
     '@pyreon/hooks',
     'const n = signal(0); const prev = usePrevious(() => n())',

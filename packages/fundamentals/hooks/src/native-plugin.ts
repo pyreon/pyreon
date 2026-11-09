@@ -16,6 +16,7 @@ import {
   refineCounters,
 } from './native-plugin/stateful-emit'
 import { recognizeTimer } from './native-plugin/timers'
+import { keyboardDecl, recognizeKeyboard } from './native-plugin/keyboard'
 import {
   recognizeColorScheme,
   recognizeMediaQuery,
@@ -87,6 +88,7 @@ const nativePlugin = {
     useInterval: recognizeTimer,
     useTimeout: recognizeTimer,
     useUpdateEffect: recognizeUpdateEffect,
+    useKeyboard: recognizeKeyboard,
   },
   // `await fileFromUri(uri)` — a picked file to upload (see `upload-file.ts`).
   scanModule: scanFileFromUri,
@@ -110,6 +112,7 @@ const nativePlugin = {
     tick: timerDecl,
     'previous-value': previousDecl,
     'update-effect': updateEffectDecl,
+    keyboard: keyboardDecl,
     'color-scheme': colorSchemeDecl,
     'size-class': sizeClassDecl,
     'media-query': mediaQueryDecl,
