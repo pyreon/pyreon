@@ -21,7 +21,8 @@ import {
   recognizeMutation,
   scanMutations,
 } from './mutation'
-import { MUTATION_TYPE, QUERY_CLIENT_TYPE, QUERY_PLUGIN_NAME, QUERY_TYPE, STREAM_TYPE } from './names'
+import { infiniteDecl, infiniteReceiver, recognizeInfiniteQuery } from './infinite'
+import { INFINITE_QUERY_TYPE, MUTATION_TYPE, QUERY_CLIENT_TYPE, QUERY_PLUGIN_NAME, QUERY_TYPE, STREAM_TYPE } from './names'
 import { recognizeQuery, recognizeQueryClient, recognizeStream, scanQuery } from './recognize'
 import { queryStubs } from './stubs'
 import { queryDeclSwift, queryLifecycleSwift, streamDeclSwift, streamLifecycleSwift } from './swift'
@@ -206,6 +207,7 @@ export const queryPlugin: CompilerPlugin = {
     useQuery: recognizeQuery,
     useStream: recognizeStream,
     useMutation: recognizeMutation,
+    useInfiniteQuery: recognizeInfiniteQuery,
     QueryClient: recognizeQueryClient,
   },
   // A container is view state (`@State` / `remember`), which has no meaning at file scope.
@@ -218,8 +220,9 @@ export const queryPlugin: CompilerPlugin = {
     [STREAM_TYPE]: streamDecl,
     [QUERY_CLIENT_TYPE]: queryClientDecl,
     [MUTATION_TYPE]: mutationDecl,
+    [INFINITE_QUERY_TYPE]: infiniteDecl,
   },
-  receivers: { [QUERY_TYPE]: queryReceiver, [STREAM_TYPE]: streamReceiver, [MUTATION_TYPE]: mutationReceiver },
+  receivers: { [QUERY_TYPE]: queryReceiver, [STREAM_TYPE]: streamReceiver, [MUTATION_TYPE]: mutationReceiver, [INFINITE_QUERY_TYPE]: infiniteReceiver },
   elements: queryElements,
   stubs: queryStubs,
 }

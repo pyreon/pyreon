@@ -54,3 +54,23 @@ export interface StreamPayload {
   reconnect: { attempts: number; delay: number; maxDelay: number; onEnd: boolean } | null
   maxEvents: number
 }
+
+/** The payload of an `infinite-query` declaration (see `recognizeInfiniteQuery`). */
+export interface InfiniteQueryPayload {
+  /** The decoded type of ONE page. */
+  pageType: TypeIR
+  /** The cache-key label — the `queryKey` array's literals colon-joined (the native runtime does not share a cache). */
+  queryKey: string
+  /** The literal fetch URL (a URL that never mentions the page parameter would fetch the same page forever). */
+  url?: string
+  /** The fetch URL as a template that interpolates the page parameter, built per request inside the harness. */
+  urlExpr?: ExprIR
+  /** The name the page parameter is bound to inside the URL template (`pageParam`, or the destructure's rename). */
+  pageParamName: string
+  /** `initialPageParam`, carried as a string. */
+  initialParam: string
+  /** The name `getNextPageParam`'s argument (the last page) is bound to. */
+  lastPageName: string
+  /** The field of the last page that holds the next parameter (`nextCursor`). */
+  nextField: string
+}

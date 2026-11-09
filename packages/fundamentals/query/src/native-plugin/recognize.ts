@@ -730,7 +730,7 @@ function endpointQueryCallInArrow(
  * `() => ({ … })` and the block form `() => { return { … } }`. Returns
  * undefined for anything else (so the caller warns + bails).
  */
-function arrowReturnedObject(arrow: AnyNode): AnyNode | undefined {
+export function arrowReturnedObject(arrow: AnyNode): AnyNode | undefined {
   const body = arrow?.body
   if (!body) return undefined
   // Concise: `() => ({...})` — the body IS the ObjectExpression (the parens are
@@ -767,7 +767,7 @@ function arrowReturnedObject(arrow: AnyNode): AnyNode | undefined {
  *                         `queryKey` field (the emit reads `expr` on this path).
  * Returns undefined when the node is not an array, is empty, or holds a spread.
  */
-function tryQueryKeyParts(
+export function tryQueryKeyParts(
   node: AnyNode,
   ctx: ParseContext,
 ): { literal: string; expr?: ExprIR } | undefined {
@@ -811,7 +811,7 @@ function tryQueryKeyParts(
  * that can't be safely baked, or a non-fetch body (the caller then tries the
  * direct-value form).
  */
-function tryQueryFnFetch(
+export function tryQueryFnFetch(
   node: AnyNode,
 ): { url?: string; urlNode?: AnyNode; init?: AnyNode } | undefined {
   if (
