@@ -21,7 +21,7 @@ The bar is "do it properly, not quickly". When priorities across open work are u
 | Regenerate docs from manifests | `bun run gen-docs && bun docs/scripts/gen-all.ts` |
 | Changeset | `bun changeset` |
 
-Use `bun run test`, never `bun test` (the suites are vitest). Run `bun run validate-fast` before every push; the `.githooks/pre-push` hook runs it plus affected typecheck and tests.
+Use `bun run test`, never `bun test` (the suites are vitest). Run `bun run validate-fast` before every push. The `.githooks/pre-push` hook is deliberately fast and local: validate-fast (which includes `lint:pyreon`), then typecheck and tests of the DIRECTLY changed packages only, skipping any package whose inputs match a recorded pass. GitHub CI is the full gate: it runs the whole reverse-dependency closure, the native-compiler suite and the Swift/Kotlin lanes as required checks, so nothing merges without them.
 
 ## Where to read more
 
@@ -143,11 +143,13 @@ Before adding any module-level cache, stack or registry, answer: what evicts ent
 - **Report honestly.** Lead a summary with what is not done and what was not verified. A measured tie or loss is reported as a tie or loss.
 - **Keep knowledge current in the same PR.** A new anti-pattern goes into `.agents/rules/anti-patterns.md`; a new convention into the matching rule file; an API change into the manifest, README and docs. Put durable contracts in these files, not per-PR narrative — history belongs in git and changelogs.
 - **Changesets**: any source change in a published package needs `bun changeset`. Pyreon is 0.x, so a breaking change is `minor`, never `major`.
+- **Local pushes are fast and direct-only; CI is the full gate.** Do not widen the pre-push hook back to the reverse-dependency closure. If the hook stops running something, a required CI job must run it; never keep a check local because CI lacks it (details: `.agents/rules/workflow.md`, "Pre-push hook").
 
 ### Git
 
 - Never push to `main`. Work on a branch in a worktree created from `origin/main` (`git worktree add /tmp/wt-<name> origin/main -b <branch>`); do not check out or pull in the primary checkout.
 - **Leave the machine as you found it.** Sessions share one Mac's CPU, RAM and disk. A `/tmp/wt-<name>` worktree is about 1.7–2.3 GB (it has its own `node_modules`), and a device left running costs more than a build: one idle Android emulator holds about 3.5 GB.
+  - Nothing in a default local run (`bun run test`, the pre-push hook, `validate-fast`, any package script) boots a simulator or emulator; CI's `native-device.yml` owns device lanes. A package script that needs a device must be gated on `PYREON_DEVICE_TESTS=1` (locked by `no-local-device-boot.test.ts`). Run a device lane locally only when the task needs it.
   - `simctl terminate` any app you launch. Shut down any simulator or emulator **you** booted: `simctl shutdown <udid>` / `adb -s <serial> emu kill`. Never `shutdown all`, because another session may be mid-test.
   - Keep Xcode and Gradle build output inside your worktree, never in a new top-level `/tmp` directory.
   - Once your PR merges, remove the worktree and the branch: `git worktree remove --force /tmp/wt-<name> && git branch -D <branch>`. Skip a worktree that a running process still uses (`lsof -d cwd | grep /tmp/wt-<name>`).

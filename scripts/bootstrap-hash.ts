@@ -214,3 +214,26 @@ export function serializeManifest(manifest: Manifest): string {
   for (const k of Object.keys(manifest).sort()) sorted[k] = manifest[k] as ManifestEntry
   return `${JSON.stringify(sorted, null, 2)}\n`
 }
+
+/**
+ * Content hash of an explicit list of repo-relative files, with the SAME
+ * `path \0 content \0` encoding the package hashes above use. For callers that
+ * already know the file set (the pre-push pass cache hashes git's own view of
+ * the tree, so build output and ignored scratch can never enter a key).
+ * Sorted here, so the caller's order cannot change the digest; an unreadable
+ * or deleted file contributes a sentinel, never nothing.
+ */
+export function computeFileListHash(root: string, relPaths: readonly string[], salt = ''): string {
+  const h = createHash('sha1').update(HASH_SCHEME_VERSION).update(salt)
+  const files: Array<[string, Buffer]> = [...relPaths]
+    .sort()
+    .map((rel) => {
+      try {
+        return [rel, readFileSync(join(root, rel))] as [string, Buffer]
+      } catch {
+        return [rel, Buffer.from('<unreadable>')] as [string, Buffer]
+      }
+    })
+  updateWithFiles(h, files)
+  return h.digest('hex')
+}

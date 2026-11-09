@@ -8,6 +8,7 @@
 // Type inference is deliberately naive — numeric assumption for
 // computed properties. Phase 1 grows a real inference pass.
 
+import { isModuleState, moduleStateClassName, moduleStateDecls, shadowingNames } from './module-state'
 import { GESTURE_EVENT_NAMES, GESTURE_EVENTS } from './gesture-events'
 import { CANVAS_SHAPES, isCanvasShape, shapeColorLiteral } from './canvas-shapes'
 import type { GestureEventName } from './gesture-events'
@@ -142,6 +143,7 @@ import {
   inferTypeValue,
   objectLengthRangeForm,
   optionalMemberTernary,
+  rewriteObjectMapCall,
   rewriteObjectKeys,
   rewriteObjectValues,
   seedHandlerLocals,
@@ -162,6 +164,12 @@ import {
 import { swiftCodingKeysLines } from './spelling'
 
 import { lowerMathCall, lowerMathConstant } from './math-lowering'
+import {
+  fractionalIntoIntegerFieldWarning,
+  isDateNowCall,
+  isWholeValued,
+  typeWantsInteger,
+} from './integer-field-coercion'
 import { buildObjectConstFields, planObjectSpread, resolveSpreadFields } from './spread-lowering'
 import { collectJsxFnNames, jsxHelperCallName, jsxHelperCallWarning } from './jsx-helper-call'
 import type { SpreadResolver } from './spread-lowering'
@@ -808,6 +816,38 @@ let _componentValueConstExprs: Map<string, ExprIR> = new Map()
 let _activeInferCtx: ReturnType<typeof buildInferenceCtx> = emptyInferenceCtx()
 
 /** 'double' / 'int' / 'other' for an expr, via the active inference ctx. */
+/**
+ * A value stored into an INTEGER struct field (see integer-field-coercion.ts): a whole-valued Double converts
+ * through `pyreonInt(…)` (`Date.now()` in integer milliseconds), any other Double is named. Everything else is `raw`.
+ */
+function swiftIntoIntegerField(
+  structName: string,
+  field: string,
+  ft: TypeIR | undefined,
+  value: ExprIR,
+  raw: string,
+): string {
+  if (ft === undefined || !typeWantsInteger(ft) || numericFloatness(value) !== 'double') return raw
+  if (isDateNowCall(value)) return 'Int(Date().timeIntervalSince1970 * 1000)'
+  // `pyreonInt`, not `Int(…)`: `Int(_:)` traps on the NaN / ±Infinity a `Math.floor(x / 0)` can reach.
+  if (isWholeValued(value, (x) => numericFloatness(x) === 'int')) return `pyreonInt(${raw})`
+  const w = fractionalIntoIntegerFieldWarning(structName, field, 'Swift')
+  if (!_emitWarnings.includes(w)) _emitWarnings.push(w)
+  return raw
+}
+
+/** A spread override (`{ ...t, id: … }`) of the SOURCE struct's field, coerced into that field's type like an init argument. */
+function swiftSpreadOverride(source: ExprIR, f: { name: string; value: ExprIR }, indent: number): string {
+  const raw = emitSwiftExpr(f.value, indent)
+  const st = inferType(source, _activeInferCtx)
+  const base = st.kind === 'union' ? st.branches.find((b) => b.kind !== 'null' && b.kind !== 'undefined') : st
+  if (base?.kind !== 'typeRef') return raw
+  const def =
+    _declaredStructs.find((s) => s.name === base.name) ?? _synthExprStructs.find((s) => s.name === base.name)
+  const ft = def?.fields.find((x) => x.name === f.name)?.type
+  return swiftIntoIntegerField(base.name, f.name, ft, f.value, raw)
+}
+
 function numericFloatness(e: ExprIR): 'double' | 'int' | 'other' {
   const t = inferType(e, _activeInferCtx)
   // The `Double`/`Float` ALIAS arrives as an unresolved typeRef (a param
@@ -1057,6 +1097,13 @@ export function emitSwift(
   // THIS source — not on what else the process compiled before it (a CLI
   // build, a watcher, a test file compiling twice all saw drifting names).
   _swiftHostStateSeq = 0
+  // Module-scope signals / computeds are the file's shared state (module-state.ts): emitted as one singleton, read and
+  // written through it — never as plain bindings.
+  const moduleState = moduleStateDecls(moduleDecls)
+  moduleDecls = moduleDecls.filter((md) => !isModuleState(md))
+  _moduleStateNames = new Set(moduleState.map((d) => (d as { name: string }).name))
+  _moduleStateShadow = new Set()
+  _moduleStateAll = moduleState
   // A host's `@State` lines are spliced into its component's struct when the component ends; a component that is not a struct (a stateless `@ViewBuilder func`) never reaches that splice, so what it registered must not survive into the next compile.
   _hostStateDecls = []
   _emitWarnings = []
@@ -1235,7 +1282,7 @@ export function emitSwift(
   // `NAMES.indexOf(…)` over a top-level `const NAMES = […]` types its receiver.
   _moduleConstTypes = buildModuleConstTypes(moduleDecls, structs, _helperReturns)
   _activeInferCtx = buildInferenceCtx(
-    [],
+    moduleState,
     structs,
     [],
     undefined,
@@ -1249,7 +1296,7 @@ export function emitSwift(
   // objects, so seeding one leaves the other empty — which is how an optional
   // field read still emitted `if hs {` after the structs were available.
   _exprInferCtx = buildInferenceCtx(
-    [],
+    moduleState,
     structs,
     [],
     undefined,
@@ -1263,6 +1310,8 @@ export function emitSwift(
   const parts: string[] = []
   for (const e of enums) parts.push(emitSwiftEnum(e))
   for (const s of structs) if (!s.external) parts.push(emitSwiftStruct(s))
+  _signalNames = new Set(_moduleStateNames)
+  if (moduleState.length > 0) parts.push(emitSwiftModuleState(moduleState))
   for (const md of moduleDecls) parts.push(emitSwiftModuleDecl(md))
   // File-scope items declared before free helper functions.
   for (const item of itemsInSlot(moduleItems, 'bindings'))
@@ -1422,6 +1471,39 @@ function swiftEquatable(t: TypeIR, structs: Set<string>, seen: Set<string>): boo
     default:
       return false
   }
+}
+
+/** The file's module-state names (module-state.ts) and the names the current component binds itself. */
+let _moduleStateNames: Set<string> = new Set()
+let _moduleStateShadow: Set<string> = new Set()
+let _moduleStateAll: DeclIR[] = []
+
+function _moduleStateDeclsVisible(): DeclIR[] {
+  return _moduleStateAll.filter((d) => !_moduleStateShadow.has((d as { name: string }).name))
+}
+
+/** Whether `name` here reads the module state: declared there, and bound by no component, handler or helper local. */
+function isModuleStateRead(name: string): boolean {
+  if (!_moduleStateNames.has(name) || _moduleStateShadow.has(name)) return false
+  return !_activeInferCtx.locals.has(name) && !_exprInferCtx.locals.has(name)
+}
+
+/** The singleton holding the file's module-scope signals and computeds. */
+function emitSwiftModuleState(state: DeclIR[]): string {
+  const cls = moduleStateClassName()
+  const lines = ['@available(iOS 17.0, macOS 14.0, *)', '@Observable', `final class ${cls} {`, `    static let shared = ${cls}()`]
+  for (const d of state) {
+    if (d.kind === 'signal') {
+      const init = withExpectedType(d.type, () => emitSwiftExpr(d.initial, 0))
+      const t = d.type.kind === 'unknown' ? inferType(d.initial, _activeInferCtx) : d.type
+      lines.push(`    var ${swiftIdent(d.name)}: ${swiftType(t)} = ${init}`)
+    } else if (d.kind === 'computed' && d.expr !== undefined) {
+      const t = inferType(d.expr, _activeInferCtx)
+      lines.push(`    var ${swiftIdent(d.name)}: ${swiftType(t)} { ${emitSwiftExpr(d.expr, 0)} }`)
+    }
+  }
+  lines.push('    private init() {}', '}')
+  return lines.join('\n')
 }
 
 /** Declared module structs — feeds per-component inference ctx so member
@@ -1673,8 +1755,9 @@ function emitSwiftComponent(c: ComponentIR): string {
   // Shape A: pass file-scope helper return types so the computeds pre-inference
   // resolves `computed(() => dbl(21))` to `Int`, not `Any` (assigning after the
   // build would be too late — the computed type is already cached).
+  _moduleStateShadow = shadowingNames(c.decls, c.props)
   const inferCtx = buildInferenceCtx(
-    c.decls,
+    [..._moduleStateDeclsVisible(), ...c.decls],
     _structDefs,
     c.props,
     c.propsParamName,
@@ -1731,8 +1814,8 @@ function emitSwiftComponent(c: ComponentIR): string {
   // at `.set()` call sites later in the body.
   _signalEnumTypes = new Map()
   // G1: track every signal name so TextField's pattern-detection can
-  // recognise binding-eligible identifiers.
-  _signalNames = new Set()
+  // recognise binding-eligible identifiers. Module state the component does not shadow reads like a signal too.
+  _signalNames = new Set([..._moduleStateNames].filter((n) => !_moduleStateShadow.has(n)))
   // G2 (related correctness): track every function decl name so the
   // call-emit keeps parens for `addTodo()` (function call) and drops
   // them only for `count()` (signal read). Seed with the file-scope helper
@@ -4139,10 +4222,13 @@ export function swiftType(t: TypeIR, synth?: SwiftSynthCtx, declName?: string): 
       return 'String'
     case 'boolean':
       return 'Bool'
+    // A JS `Map` / `Set` / `Record` keeps INSERTION order; Swift's `Dictionary` / `Set` do not (their order
+    // follows a per-process-seeded hash). The ordered runtime twins keep the same spelling (literals, subscripts,
+    // `insert` / `contains` / `removeValue`), so only the order changes — see `PyreonCollections.swift`.
     case 'map':
-      return `[${swiftType(t.key, synth)}: ${swiftType(t.value, synth)}]`
+      return `PyreonMap<${swiftType(t.key, synth)}, ${swiftType(t.value, synth)}>`
     case 'set':
-      return `Set<${swiftType(t.element, synth)}>`
+      return `PyreonSet<${swiftType(t.element, synth)}>`
     case 'array':
       return `[${swiftType(t.element, synth, declName)}]`
     case 'object': {
@@ -4297,10 +4383,8 @@ function emitSwiftIndexedClosure(
 }
 
 /**
- * `new Map(src.map((x) => [k, v]))` → `Dictionary(src.map { x in (k, v) },
- * uniquingKeysWith: { _, last in last })`. The plain `Dictionary(uniqueKeysWithValues:)`
- * TRAPS on a repeated key; JS `Map` keeps the last value, which the uniquing
- * closure reproduces. `x` is bound to the source's element type while the two
+ * `new Map(src.map((x) => [k, v]))` → `PyreonMap(src.map { x in (k, v) })`. A repeated key keeps its
+ * first position and takes the last value, as JS `Map` does (`Dictionary(uniqueKeysWithValues:)` trapped). `x` is bound to the source's element type while the two
  * halves emit, so a type-gated lowering inside them sees a typed receiver.
  */
 function emitSwiftMapFromPairs(
@@ -4340,7 +4424,7 @@ function emitSwiftMapFromPairs(
     const v = withExpectedType(mt.kind === 'map' ? mt.value : undefined, () =>
       emitSwiftExpr(pairs.value, indent),
     )
-    return `Dictionary(${src}.map { ${swiftIdent(p)} in (${k}, ${v}) }, uniquingKeysWith: { _, last in last })`
+    return `PyreonMap(${src}.map { ${swiftIdent(p)} in (${k}, ${v}) })`
   } finally {
     _activeEnumType = prevEnum
     if (had[0]) _exprInferCtx.locals.set(p, had[1]!)
@@ -4350,6 +4434,31 @@ function emitSwiftMapFromPairs(
   }
 }
 
+/** The `PyreonTimers` lowering of a timer call, or `undefined` when `e` is not one (see the call site). */
+function swiftTimerCall(e: Extract<ExprIR, { kind: 'call' }>, indent: number): string | undefined {
+  if (e.callee.kind !== 'identifier') return undefined
+  const name = e.callee.name
+  if (name === 'clearTimeout' || name === 'clearInterval') {
+    if (e.args.length !== 1) return undefined
+    return `PyreonTimers.clear(${emitSwiftExpr(e.args[0]!, indent)})`
+  }
+  if (name !== 'setTimeout' && name !== 'setInterval') return undefined
+  const cb = e.args[0]
+  if (cb === undefined) return undefined
+  if (e.args.length > 2) {
+    _emitWarnings.push(
+      `${name}(fn, ms, …args): the extra arguments (which the web passes to the callback) have no native lowering — they are dropped. Close over the values in the callback instead.`,
+    )
+  }
+  const closure =
+    cb.kind === 'arrow'
+      ? emitSwiftExpr(cb, indent)
+      : cb.kind === 'identifier'
+        ? `{ ${swiftIdent(cb.name)}() }`
+        : `{ ${emitSwiftExpr(cb, indent)}() }`
+  const ms = e.args[1] === undefined ? '0' : emitSwiftExpr(e.args[1], indent)
+  return `PyreonTimers.${name}(${ms}, ${closure})`
+}
 
 /** The `console` methods that lower to the platform print (the browser's log levels have no native split). */
 const SWIFT_CONSOLE_LEVELS: ReadonlySet<string> = new Set(['log', 'info', 'debug', 'warn', 'error'])
@@ -4436,6 +4545,7 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
     case 'identifier': {
       const constant = lowerPluginIdentifier(e.name, 'swift', () => swiftEmitContext(0))
       if (constant !== undefined) return constant
+      if (isModuleStateRead(e.name)) return `${moduleStateClassName()}.shared.${swiftIdent(e.name)}`
       return swiftIdent(e.name)
     }
     case 'await':
@@ -4554,7 +4664,7 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       // known, so the rewrite lowers to a plain string-array literal;
       // recursing into the array emit produces the precise `[String]`.
       {
-        const rw = rewriteObjectKeys(e, _exprInferCtx)
+        const rw = rewriteObjectMapCall(e, _exprInferCtx) ?? rewriteObjectKeys(e, _exprInferCtx)
         if (rw !== null) return emitSwiftExpr(rw, indent)
       }
       // `Object.values(<object-typed expr>)` → a static member-access array
@@ -4598,6 +4708,14 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         e.callee.object.name === 'console'
       ) {
         return `print(${e.args.map((a) => emitSwiftExpr(a, indent)).join(', ')})`
+      }
+      // `setTimeout(fn, ms)` / `setInterval(fn, ms)` / `clearTimeout(id)` / `clearInterval(id)` → the runtime's
+      // `PyreonTimers` (`PyreonTimers.swift`), which keeps the web's contract: main-thread callbacks, positive
+      // never-reused ids, a clear of an unknown id is a no-op. A named function reference is wrapped in a closure that
+      // calls it; extra arguments (passed through to the callback on the web) have no lowering and warn.
+      {
+        const timer = swiftTimerCall(e, indent)
+        if (timer !== undefined) return timer
       }
       // `Date.now()` — JS ms-since-epoch. Foundation's `Date` resolves as a
       // TYPE, so the verbatim emit failed "cannot call value of non-function
@@ -5127,6 +5245,8 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         if (callRead !== undefined) {
           return `${swiftIdent(e.callee.name)}.${callRead}`
         }
+        // A read of module state (module-state.ts) goes through the file's singleton.
+        if (isModuleStateRead(e.callee.name)) return `${moduleStateClassName()}.shared.${swiftIdent(e.callee.name)}`
         return swiftIdent(e.callee.name)
       }
       // TS-method translation (Phase 2 follow-up). When the callee is a
@@ -5206,6 +5326,9 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
             if (prop === 'delete' && e.args.length === 1)
               return `${obj}${objDot}removeValue(forKey: ${k(0)})`
             if (prop === 'clear' && e.args.length === 0) return `${obj}${objDot}removeAll()`
+            // The keys / values as an array, in insertion order (`PyreonMap` keeps it).
+            if (prop === 'keys' && e.args.length === 0) return `${obj}${objDot}keys`
+            if (prop === 'values' && e.args.length === 0) return `${obj}${objDot}values`
           }
           if (recvT.kind === 'set') {
             if (prop === 'add' && e.args.length === 1)
@@ -6459,11 +6582,20 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       )
     }
     case 'new-collection': {
-      // `new Map<K,V>()` → `[K: V]()`; `new Set<T>()` → `Set<T>()`;
-      // `new Set(arr)` → `Set(arr)`. See the local-let mutability note in
+      // `new Map<K,V>()` → `PyreonMap<K, V>()`; `new Set<T>()` → `PyreonSet<T>()`;
+      // `new Set(arr)` → `PyreonSet(arr)` (the ordered twins — see `swiftType`). See the local-let mutability note in
       // the statement emit (collections force `var` — subscript-assign and
       // insert are mutating).
       if (e.collection === 'map') {
+        if (e.copyOf !== undefined) {
+          const src = emitSwiftExpr(e.copyOf, indent)
+          if (unwrapOptionalType(inferType(e.copyOf, _activeInferCtx)).kind !== 'map') {
+            _emitWarnings.push(
+              `new Map(${src}): only a copy of another Map / Record lowers natively (or a literal \`[[k, v], …]\` array, or \`xs.map((x) => [k, v])\`) — the argument here is not one. Construct the map empty and populate it with \`.set(k, v)\`.`,
+            )
+          }
+          return `${src}`
+        }
         if (e.pairsFrom !== undefined) return emitSwiftMapFromPairs(e, e.pairsFrom, indent)
         // Seeded `new Map([[k,v],…])` → a dict literal `[k: v, …]`.
         if (e.entries && e.entries.length > 0) {
@@ -6472,10 +6604,10 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
             .join(', ')
           return `[${body}]`
         }
-        return `[${swiftType(e.keyType!)}: ${swiftType(e.valueType!)}]()`
+        return `PyreonMap<${swiftType(e.keyType!)}, ${swiftType(e.valueType!)}>()`
       }
-      if (e.seed !== undefined) return `Set(${emitSwiftExpr(e.seed, indent)})`
-      return `Set<${swiftType(e.elementType!)}>()`
+      if (e.seed !== undefined) return `PyreonSet(${emitSwiftExpr(e.seed, indent)})`
+      return `PyreonSet<${swiftType(e.elementType!)}>()`
     }
     case 'jsx-element':
       return emitSwiftJsx(e, indent)
@@ -6604,14 +6736,15 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
           } else {
             const target = emitSwiftExpr(plan.source, indent)
             const overrides = plan.fields
-              .map((f) => `c.${swiftIdent(f.name)} = ${emitSwiftExpr(f.value, indent)}`)
+              .map((f) => `c.${swiftIdent(f.name)} = ${swiftSpreadOverride(plan.source, f, indent)}`)
               .join('; ')
             return `{ var c = ${target}; ${overrides}; return c }()`
           }
         }
       }
       if (e.spreads && e.spreads.length === 1 && e.spreads[0]!.kind === 'identifier') {
-        const target = emitSwiftExpr(e.spreads[0]!, indent)
+        const spreadSource = e.spreads[0]!
+        const target = emitSwiftExpr(spreadSource, indent)
         // An OPTIONAL source lowers to `var c = o` where `o` is `T?`, so the
         // member assignment and the return type both fail. TypeScript accepts
         // the spread, so without this the first signal is a swiftc gate whose
@@ -6622,7 +6755,7 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
           )
         }
         const overrides = e.fields
-          .map((f) => `c.${swiftIdent(f.name)} = ${emitSwiftExpr(f.value, indent)}`)
+          .map((f) => `c.${swiftIdent(f.name)} = ${swiftSpreadOverride(spreadSource, f, indent)}`)
           .join('; ')
         return `{ var c = ${target}; ${overrides}; return c }()`
       }
@@ -6672,7 +6805,8 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
               const raw = withExpectedType(ft, () => emitSwiftExpr(f.value, indent))
               const wantsFloat = ft !== undefined && typeWantsFloat(ft)
               const coerce = wantsFloat && numericFloatness(f.value) === 'int'
-              return `${swiftIdent(f.name)}: ${coerce ? `Double(${raw})` : raw}`
+              if (coerce) return `${swiftIdent(f.name)}: Double(${raw})`
+              return `${swiftIdent(f.name)}: ${swiftIntoIntegerField(structName, f.name, ft, f.value, raw)}`
             })
             .join(', ')
           return `${swiftIdent(structName)}(${args})`

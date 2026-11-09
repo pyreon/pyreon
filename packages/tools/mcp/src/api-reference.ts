@@ -4760,7 +4760,7 @@ const merged = useMergedRef(localRef, props.ref)
     signature: '<T>(source: () => T, callback: (newVal: T, oldVal: T | undefined) => void | (() => void)) => void',
     example: `useUpdateEffect(() => value(), (val) => api.save(val))
 // Doesn't fire on initial mount — only on subsequent value changes`,
-    notes: `Watch-style effect that skips the initial run — tracks \`source\` and fires \`callback(newVal, oldVal)\` only when \`source\`'s value changes *after* mount (\`oldVal\` is \`undefined\` on the first change). Use for "save on change but not on first render" patterns where the initial value is already persisted. Note the argument order is \`(source, callback)\` — NOT React's \`(effect, deps)\`. See also: useIsomorphicLayoutEffect.`,
+    notes: `Watch-style effect that skips the initial run — tracks \`source\` and fires \`callback(newVal, oldVal)\` only when \`source\`'s value changes *after* mount (\`oldVal\` is \`undefined\` on the first change). Use for "save on change but not on first render" patterns where the initial value is already persisted. Note the argument order is \`(source, callback)\` — NOT React's \`(effect, deps)\`. On native it lowers to the SwiftUI two-argument .onChange(of:), which skips the initial value, or a keyed LaunchedEffect against a remembered snapshot on Android. The source must be an expression-body getter and the callback inline; a callback that returns a cleanup is a named warning, not a silent drop. See also: useIsomorphicLayoutEffect.`,
   },
 
   'hooks/useIsomorphicLayoutEffect': {
@@ -4794,7 +4794,7 @@ useIsomorphicLayoutEffect(() => {
     signature: '() => () => "visible" | "hidden"',
     example: `const visibility = useDocumentVisibility()
 effect(() => { visibility() === 'hidden' ? pausePolling() : resumePolling() })`,
-    notes: `Track the Page Visibility state (\`document.visibilityState\`) reactively — \`"hidden"\` when the tab is backgrounded/minimized, \`"visible"\` otherwise. Use it to pause work the user can't see (polling, video, animations, expensive timers) and resume on return. SSR-safe (returns \`"visible"\` on the server); the \`visibilitychange\` listener is removed on unmount. See also: useOnline, useIdle.`,
+    notes: `Track the Page Visibility state (\`document.visibilityState\`) reactively — \`"hidden"\` when the tab is backgrounded/minimized, \`"visible"\` otherwise. Use it to pause work the user can't see (polling, video, animations, expensive timers) and resume on return. SSR-safe (returns \`"visible"\` on the server); the \`visibilitychange\` listener is removed on unmount. On native it lowers to the app-lifecycle container behind \`useAppState\`: \`"hidden"\` once the app is backgrounded, \`"visible"\` otherwise (including while merely inactive, as an unfocused tab is still visible). See also: useOnline, useIdle.`,
   },
 
   'hooks/useIdle': {
@@ -4999,7 +4999,7 @@ const entry = useIntersection(() => el)
     example: `const count = signal(0)
 const prev = usePrevious(() => count())
 // after count.set(5): prev() === 0`,
-    notes: 'Track the previous value of a reactive read. Runs an `effect` over `getter()`; returns an accessor for the value from BEFORE the last change (`undefined` until the getter changes once). See also: useLatest, useUpdateEffect.',
+    notes: 'Track the previous value of a reactive read. Runs an `effect` over `getter()`; returns an accessor for the value from BEFORE the last change (`undefined` until the getter changes once). On native it lowers to an optional state that the SwiftUI two-argument .onChange(of:) (or a keyed LaunchedEffect plus a remembered snapshot on Android) sets to the old value on each change; it starts nil/null, as the web accessor starts undefined. The source must be an expression-body getter. See also: useLatest, useUpdateEffect.',
     mistakes: `- Passing a plain value instead of a getter — \`usePrevious(count())\` snapshots once; pass \`() => count()\` so the effect tracks the signal.
 - Reading \`prev()\` on first render — it is \`undefined\` until the tracked value changes at least once.`,
   },
@@ -8325,7 +8325,7 @@ const themeAccessor = useContext(ThemeContext) // () => Theme`,
     example: `import { createSheet } from "@pyreon/styler"
 
 const shadowSheet = createSheet({ /* StyleSheetOptions */ })`,
-    notes: `Creates an ISOLATED \`StyleSheet\` instance (its own FNV-1a dedup cache + rule registry) instead of the shared singleton \`sheet\`. Use for shadow-DOM roots, multi-window/iframe rendering, per-request SSR isolation, or test isolation where one request/realm must not share the global dedup cache. Options: \`maxCacheSize\`, \`layer\` (wrap scoped rules in an \`@layer\`), and \`nonce\` (CSP — stamps the SSR \`<style>\` from \`getStyleTag()\` and the client \`<style>\` element with a \`nonce\` so a strict \`style-src 'nonce-…'\` policy admits the critical CSS). Most apps never need this — the singleton is correct for a single document. See also: StyleSheet, sheet.`,
+    notes: `Creates an ISOLATED \`StyleSheet\` instance (its own FNV-1a dedup cache + rule registry) instead of the shared singleton \`sheet\`. Use for shadow-DOM roots, multi-window/iframe rendering, per-request SSR isolation, or test isolation where one request/realm must not share the global dedup cache. Options: \`maxCacheSize\` (past it the sheet evicts its oldest UNUSED rules — never a class a document element carries, a \`@keyframes\`, a static global, or a key held with \`retain()\`; caches that hand out class names check \`isLive(name)\` and re-insert), \`layer\` (wrap scoped rules in an \`@layer\`), and \`nonce\` (CSP — stamps the SSR \`<style>\` from \`getStyleTag()\` and the client \`<style>\` element with a \`nonce\` so a strict \`style-src 'nonce-…'\` policy admits the critical CSS). Most apps never need this — the singleton is correct for a single document. See also: StyleSheet, sheet.`,
     mistakes: `- Creating a fresh sheet per render — defeats dedup; create once per realm/root and reuse
 - Mixing the singleton and an isolated sheet for the same DOM — classes from one will not be deduped against the other; pick one per document root`,
   },

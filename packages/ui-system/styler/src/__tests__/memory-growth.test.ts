@@ -2,15 +2,20 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { createSheet } from '../sheet'
 import { query, queryOptional } from '@pyreon/test-utils'
 
+// Client-side eviction runs in a microtask (after the synchronous render that
+// triggered it has attached its elements — see `StyleSheet#evictIfNeeded`).
+const flushEviction = (): Promise<void> => Promise.resolve()
+
 describe('memory growth', () => {
   describe('bounded cache prevents unbounded growth (DOM mode)', () => {
-    it('cache stays bounded with maxCacheSize', () => {
+    it('cache stays bounded with maxCacheSize', async () => {
       const maxSize = 50
       const s = createSheet({ maxCacheSize: maxSize })
 
       for (let i = 0; i < maxSize * 3; i++) {
         s.insert(`property-${i}: value-${i};`)
       }
+      await flushEviction()
 
       expect(s.cacheSize).toBeLessThanOrEqual(maxSize * 1.5)
     })
@@ -34,13 +39,14 @@ describe('memory growth', () => {
       }
     })
 
-    it('handles rapid insertions without memory issues', () => {
+    it('handles rapid insertions without memory issues', async () => {
       const s = createSheet({ maxCacheSize: 100 })
       const iterations = 1000
 
       for (let i = 0; i < iterations; i++) {
         s.insert(`rapid-${i}: value;`)
       }
+      await flushEviction()
 
       expect(s.cacheSize).toBeLessThan(iterations)
       expect(s.cacheSize).toBeGreaterThan(0)
@@ -90,12 +96,13 @@ describe('memory growth', () => {
       })
     })
 
-    it('insertCache stays bounded under N >> maxCacheSize unique inserts', () => {
+    it('insertCache stays bounded under N >> maxCacheSize unique inserts', async () => {
       const maxSize = 50
       const s = createSheet({ maxCacheSize: maxSize })
       const N = maxSize * 6
 
       for (let i = 0; i < N; i++) s.insert(`prop-${i}: value-${i};`)
+      await flushEviction()
 
       const ic = (s as unknown as { insertCache: Map<string, string> }).insertCache
       // Pre-fix: ic.size === N (insertCache never evicted). Post-fix it
@@ -105,7 +112,7 @@ describe('memory growth', () => {
       expect(ic.size).toBeLessThan(N)
     })
 
-    it('live DOM cssRules count does not grow unbounded', () => {
+    it('live DOM cssRules count does not grow unbounded', async () => {
       const maxSize = 30
       const s = createSheet({ maxCacheSize: maxSize })
 
@@ -114,6 +121,7 @@ describe('memory growth', () => {
       expect(el?.sheet).toBeTruthy()
 
       for (let i = 0; i < maxSize * 5; i++) s.insert(`b-${i}: ${i};`)
+      await flushEviction()
 
       const after = el!.sheet!.cssRules.length
       // Pre-fix: `after` ≈ maxSize*6 (+@layer decl) — every unique insert

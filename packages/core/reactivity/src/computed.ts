@@ -15,6 +15,7 @@ import {
   removeSubscriber,
   exactDeps,
   runCollect,
+  runUntracked,
   runVerify,
   type SubscriberHost,
   trackSubscriber,
@@ -287,6 +288,28 @@ function createComputed<T>(
   const read = (() => {
     trackSubscriber(read as unknown as SubscriberHost)
     if (read._dirty) {
+      // A DISPOSED computed must never re-link to its sources. `dispose()`
+      // empties `deps`, so a dirty read through `runVerify` would diverge at
+      // index 0 and `addSubscriber` `recompute` back onto every source — a
+      // zombie subscriber that is never evaluated again (`recompute` and every
+      // dirty-marker bail on `_disposed`) yet stays for the source's lifetime.
+      // The window is a read after a write dirty-marked it and before anything
+      // pulled it: e.g. a batched write + dispose whose already-enqueued
+      // dispatch still reads the computed. Return the last value; a computed
+      // disposed before its first evaluation evaluates once, UNTRACKED. Only
+      // the dirty branch pays this check — clean reads are untouched.
+      if (read._disposed) {
+        read._dirty = false
+        if (!initialized) {
+          initialized = true
+          try {
+            read._value = runUntracked(fn)
+          } catch (err) {
+            _errorHandler(err)
+          }
+        }
+        return read._value
+      }
       if (process.env.NODE_ENV !== 'production') {
         _countSink.__pyreon_count__?.('reactivity.computedRecompute')
         _rdRecordFire(read)

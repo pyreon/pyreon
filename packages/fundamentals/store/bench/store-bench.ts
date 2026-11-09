@@ -29,6 +29,9 @@
  *    measurement reflects per-store creation cost, not an ever-growing
  *    500k-entry Map no real app has. Within a run the registry still grows —
  *    that retention IS part of Pyreon's honest per-op cost.
+ *  - Symmetric arms on `setup`: Pyreon's store ids are pre-built outside the
+ *    timed window (a real app passes a literal), so no arm builds a string
+ *    inside the timed region.
  *  - STATS: per-impl samples are the per-run means (runs × iters); table
  *    reports the median with a bootstrap CI95. `🤝` marks a verdict whose
  *    CI95 overlaps Pyreon's — treat those as ties, not wins/losses.
@@ -95,9 +98,12 @@ const now = () => Number(process.hrtime.bigint())
  * MEDIAN ignores them, while steady-state amortized GC (what a real app pays)
  * stays in the number.
  */
+const MEASURE_WARMUP = 40_000
+const MEASURE_RUNS = 41
+
 function measureSamples(
   fn: () => void,
-  { warmup = 40_000, iters = 5_000, runs = 41, between }: {
+  { warmup = MEASURE_WARMUP, iters = 5_000, runs = MEASURE_RUNS, between }: {
     warmup?: number
     iters?: number
     runs?: number
@@ -149,8 +155,12 @@ type Impl = Record<ImplName, () => void>
 
 // ─── idiomatic store factories ───────────────────────────────────────────────
 let pyrId = 0
-function makePyreon() {
-  const use = defineStore(`bench-${pyrId++}`, () => {
+// The id is a parameter so the timed `setup` op can pass a PRE-BUILT string:
+// building `bench-${n}` inside the timed region charged Pyreon a template
+// literal + fresh-string allocation (~70 ns on the lower quartile) that the
+// Zustand/Jotai arms never pay. Untimed callers keep the default.
+function makePyreon(id: string = `bench-${pyrId++}`) {
+  const use = defineStore(id, () => {
     const count = signal(0)
     const label = signal('x')
     return { count, label, inc: () => count.set(count() + 1) }
@@ -171,6 +181,11 @@ function makeJotai() {
   return { countAtom, labelAtom, store }
 }
 
+// `setup` sizes its pre-built id pool from these (see the op).
+const SETUP_ITERS = 2_000
+const SETUP_WARMUP = MEASURE_WARMUP
+const SETUP_RUNS = MEASURE_RUNS
+
 // ─── ops ─────────────────────────────────────────────────────────────────────
 interface OpSpec {
   note?: string
@@ -183,23 +198,32 @@ interface OpSpec {
 
 const OPS: Record<string, OpSpec> = {
   setup: {
-    note: 'Pyreon allocs 2 signals + registers in a global registry (SSR/devtools); Zustand/Jotai are bare closures. Registry reset between runs (untimed).',
+    note: 'Pyreon allocs 2 signals + registers in a global registry (SSR/devtools); Zustand/Jotai are bare closures. Registry reset between runs and store ids pre-built (both untimed).',
     // 2k stores per run keeps within-run registry retention in a real-app
     // regime instead of a 220k-entry Map (a pure harness artifact).
-    iters: 2_000,
+    iters: SETUP_ITERS,
     between: () => resetAllStores(),
-    make: () => ({
-      pyreon: () => {
-        sink += makePyreon().store.count()
-      },
-      zustand: () => {
-        sink += makeZustand().getState().count
-      },
-      jotai: () => {
-        const j = makeJotai()
-        sink += j.store.get(j.countAtom)
-      },
-    }),
+    make: () => {
+      // Every id the child will need (warmup + runs × iters, per
+      // measureSamples' defaults), built here — outside every timed window —
+      // so the timed Pyreon arm does the same work as the other arms: create
+      // a store, read one field. Ids stay unique, as before.
+      const ids: string[] = []
+      for (let i = 0; i < SETUP_WARMUP + SETUP_RUNS * SETUP_ITERS; i++) ids.push(`bench-${i}`)
+      let next = 0
+      return {
+        pyreon: () => {
+          sink += makePyreon(ids[next++] as string).store.count()
+        },
+        zustand: () => {
+          sink += makeZustand().getState().count
+        },
+        jotai: () => {
+          const j = makeJotai()
+          sink += j.store.get(j.countAtom)
+        },
+      }
+    },
   },
   read: {
     note: '≈tied with Zustand — both ~single-digit ns (sub-ns gap is noise)',

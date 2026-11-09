@@ -63,6 +63,7 @@ const USAGES: ReadonlyArray<readonly [string, string, string]> = [
     'const crash = useCrashReporter(); const go = () => { crash.recordError("x") }',
   ],
   ['useDatabase', '@pyreon/hooks', 'const db = useDatabase()'],
+  ['useDocumentVisibility', '@pyreon/hooks', 'const v = useDocumentVisibility()'],
   ['useFetch', '@pyreon/hooks', 'const f = useFetch<Resp>("https://x.dev/a")'],
   ['useFilePicker', '@pyreon/hooks', 'const p = useFilePicker()'],
   ['useForm', '@pyreon/form', 'const fm = useForm({ fields: {} })'],
@@ -176,6 +177,16 @@ const USAGES: ReadonlyArray<readonly [string, string, string]> = [
   // type-checks against the stubs.
   ['useInterval', '@pyreon/hooks', 'useInterval(() => { const x = 1 }, 1000)'],
   ['useTimeout', '@pyreon/hooks', 'useTimeout(() => { const x = 1 }, 500)'],
+  [
+    'usePrevious',
+    '@pyreon/hooks',
+    'const n = signal(0); const prev = usePrevious(() => n())',
+  ],
+  [
+    'useUpdateEffect',
+    '@pyreon/hooks',
+    "const n = signal(0); const log = signal(''); useUpdateEffect(() => n(), (next, prev) => { log.set('' + prev + next) })",
+  ],
   [
     'useDebouncedCallback',
     '@pyreon/hooks',

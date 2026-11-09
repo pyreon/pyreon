@@ -64,6 +64,7 @@ import {
   type InferenceCtx,
 } from './infer-type'
 import { canonicalizeHookBindings } from './hook-binding'
+import { desugarTsEnums } from './ts-enum-desugar'
 import { inlineCustomHooks } from './inline-hooks'
 import { normalizeComponentForms } from './component-forms'
 import { rewritePropsDestructuring } from './props-destructure'
@@ -373,6 +374,9 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
   // Resolve hook BINDINGS before any recognizer reads a callee name: an aliased
   // framework hook is renamed to its canonical export, and a same-named user
   // function or foreign import stops being claimed (see hook-binding.ts).
+  // TS `enum`s reduce to shapes the recognizers already lower (a string-literal union / `number`, members to their
+  // literals) — see ts-enum-desugar.ts. Before any extractor reads the AST, like the hook bindings below.
+  ctx.warnings.push(...desugarTsEnums(ast.program as AnyNode))
   ctx.warnings.push(
     ...canonicalizeHookBindings(
       ast.program as AnyNode,
@@ -768,7 +772,7 @@ function warnUnsupportedTopLevelDecl(node: AnyNode, ctx: ParseCtx): void {
   if (decl.type === 'TSEnumDeclaration') {
     const name = (decl.id?.name as string | undefined) ?? 'an enum'
     ctx.warnings.push(
-      `Top-level TS \`enum ${name}\` is NOT compiled to native (it emits nothing → native code referencing it won't compile). PMTC maps a string-literal UNION type alias to a native enum, not a TS \`enum\` declaration — use \`type ${name} = 'a' | 'b'\` instead.`,
+      `Top-level TS \`enum ${name}\` is NOT compiled to native (it emits nothing → native code referencing it won't compile). A string enum or a numeric enum with literal initializers lowers; this one mixes strings and numbers or computes an initializer — give every member a literal of one kind, or use \`type ${name} = 'a' | 'b'\`.`,
     )
   } else if (decl.type === 'ClassDeclaration') {
     const name = (decl.id?.name as string | undefined) ?? 'a class'
@@ -818,11 +822,23 @@ function tryModuleDeclsFromTopLevel(node: AnyNode, ctx: ParseCtx): ModuleDeclIR[
     // function bodies separately), but defensive bail catches any
     // shape where a user accidentally writes `const x = signal(0)` at
     // module scope (which would be a runtime bug in Pyreon anyway).
+    // A module-scope `signal()` / `computed()` is the file's SHARED state — one value every component (and helper)
+    // reads and writes, as on the web. It lowers to a per-file observable singleton (module-state.ts); a `computed`
+    // with a block body has no form there yet and is named.
     if (init.type === 'CallExpression') {
       const calleeName = init.callee?.name as string | undefined
       if (calleeName === 'signal' || calleeName === 'computed') {
+        const decl = tryDeclFromVarDeclarator(declarator, ctx)
+        if (decl?.kind === 'signal' && decl.storageKey === undefined) {
+          out.push({ name, mutable: false, type: decl.type, initial: decl.initial, reactive: { kind: 'signal' } })
+          continue
+        }
+        if (decl?.kind === 'computed' && decl.expr !== undefined) {
+          out.push({ name, mutable: false, type: { kind: 'unknown' }, initial: decl.expr, reactive: { kind: 'computed' } })
+          continue
+        }
         ctx.warnings.push(
-          `Module-level binding ${name} initializes via ${calleeName}() — these belong inside a component. Skipped.`,
+          `Module-level binding ${name} initializes via ${calleeName}() in a shape the module-state lowering does not take (a block-bodied computed, a persisted signal) — move it into a component or a store. Skipped.`,
         )
         continue
       }
@@ -1731,8 +1747,10 @@ function refineStructFloatsFromInitializers(
   for (const c of components) {
     const ctx = componentCtx(c)
     for (const d of c.decls) {
-      if (d.kind !== 'signal') continue
-      refine(d.type, d.initial, ctx)
+      if (d.kind === 'signal') refine(d.type, d.initial, ctx)
+      // An ANNOTATED local (`const row: TooltipRow = { value: 1.5, … }`) is the same evidence as a signal seed: the
+      // annotation names the struct, the literal says the field is fractional.
+      else if (d.kind === 'value' && d.type !== undefined) refine(d.type, d.expr, ctx)
     }
   }
   const moduleCtx = buildInferenceCtx([], structs, [], undefined, undefined, moduleConsts)
@@ -7522,6 +7540,13 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
         // computed pair array, a non-pair element, a non-scalar key/value)
         // stays the named warning — never a mis-emit.
         const seedArg = node.arguments[0] as AnyNode
+        // `new Map(other)` — not a literal pair array: a copy of another map (typed at emit).
+        if (
+          (node.arguments?.length ?? 0) === 1 &&
+          (seedArg?.type === 'Identifier' || seedArg?.type === 'CallExpression' || seedArg?.type === 'MemberExpression')
+        ) {
+          return { kind: 'new-collection', collection: 'map', copyOf: parseExpr(seedArg, ctx) }
+        }
         const pairNodes =
           seedArg?.type === 'ArrayExpression'
             ? ((seedArg.elements as AnyNode[] | undefined) ?? [])

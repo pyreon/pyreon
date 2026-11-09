@@ -930,6 +930,7 @@ public final class PyreonNetworkStatus {
 public final class PyreonAppState {
   public private(set) var phase: String
   public private(set) var wasBackgrounded: Bool = false
+  public var visibility: String { phase == "background" ? "hidden" : "visible" }
   public func start() {}
   public func stop() {}
   public init(phase: String = "active") { self.phase = phase }
@@ -1646,11 +1647,23 @@ public enum PyreonURL {
 // template interpoland lowers through. Mirrors the real overload pair.
 public func pyreonNumberString(_ v: Double) -> String { "" }
 public func pyreonNumberString(_ v: Int) -> String { "" }
+// pyreonInt — a whole-valued Double stored into an Int field, without Int(_:)'s trap
+// on NaN / ±Infinity (PyreonNumber.swift). Mirrors the real signature.
+public func pyreonInt(_ v: Double) -> Int { 0 }
 // pyreonParseInt / pyreonParseFloat / pyreonToNumber — the ECMAScript text→number algorithms
 // (PyreonNumber.swift). Mirrors the real signatures.
 public func pyreonParseInt(_ text: String, _ radix: Int? = nil) -> Int? { nil }
 public func pyreonParseFloat(_ text: String) -> Double { 0 }
 public func pyreonToNumber(_ text: String) -> Double { 0 }
+// PyreonTimers — JS setTimeout / setInterval / clear* (PyreonTimers.swift). Mirrors the real surface.
+public enum PyreonTimers {
+  @discardableResult public static func setTimeout(_ ms: Double, _ fn: @escaping () -> Void) -> Int { 0 }
+  @discardableResult public static func setTimeout(_ ms: Int, _ fn: @escaping () -> Void) -> Int { 0 }
+  @discardableResult public static func setInterval(_ ms: Double, _ fn: @escaping () -> Void) -> Int { 0 }
+  @discardableResult public static func setInterval(_ ms: Int, _ fn: @escaping () -> Void) -> Int { 0 }
+  public static func clear(_ id: Int?) {}
+  public static var pendingCount: Int { 0 }
+}
 // Intl.DateTimeFormat / Intl.NumberFormat — the real PyreonIntl.swift surface,
 // exactly: every parameter defaulted, labelled, in declaration order.
 public final class PyreonDateTimeFormat {

@@ -53,6 +53,7 @@ Read before adding or changing a workflow, job, required check, or cache key.
 | aggregate | `Test` | The single fail-closed aggregator over Install, Fast Gates, and all four matrices (`scripts/ci-aggregate.ts`). It depends on every member so it consumes a runner only for the final verdict. |
 
 - Lib-free vs lib-needing: typecheck, lint and vitest resolve `@pyreon/*` to `src` through the `bun` condition and do not need `lib/`. Exceptions are tests that assert on `lib/` bytes or boot a nested Vite SSR build. A new lib-needing gate goes in `Build`; a lib-free one in `Fast Gates`.
+- The local pre-push hook is direct-only (see `.agents/rules/workflow.md`, "Pre-push hook"), so these cells are the ONLY place the reverse-dependency closure is tested before merge. Anything the hook drops must stay covered here or in a required native job.
 - `scripts/affected.ts` computes the per-PR package filter. Root configuration, `.github/workflows/ci.yml` and shared-action changes escalate to `--filter=*`. Any OTHER workflow file is a leaf seed for `@pyreon/test-utils` (its tests lint the workflows), so editing `native-device.yml` no longer reruns every package; it still keeps `affected` non-empty, which the E2E aggregator's decide-says-run invariant depends on. E2E and scaffold selectors also cover shared actions.
 - `scripts/ci-batch.ts` uses separate `typecheck`, `test`, `e2e`, and `scaffold` profiles. A suite name is not a global cost: `core` E2E and core package tests are different workloads. The profile records measurement provenance. Unknown members still run with a default weight. Small selected workloads use fewer runners; caps remain 3 typecheck, 3 test, 4 E2E, and 3 scaffold batches. All seven scaffold fixtures now fit on one runner (~49s of measured work after removing repeated root bootstrap), avoiding two redundant setups; the cap leaves room for future growth.
 - `Test` validates `toJSON(needs)` after its dependencies finish. Install and Fast Gates must succeed; each selected matrix must succeed; only explicitly unselected matrices may skip. Missing, malformed, or contradictory selection outputs fail. Healthy runs make no jobs-API calls. Failed runs request job links once, with a ten-second total deadline; unavailable or stale API data cannot change the failed verdict.
@@ -67,7 +68,7 @@ Read before adding or changing a workflow, job, required check, or cache key.
 ## Other workflows
 
 - `pr-gates.yml` — `Changeset` and `Diagnose Catalog`. These are label-sensitive (`skip-changeset`, `skip-diagnose-catalog`), so they live apart from `ci.yml`, whose `pull_request` trigger excludes `labeled` (a label would cancel the in-flight run).
-- `native-validate.yml` — `Validate emitted Swift + Kotlin`, `Validate emitted Swift (real-SDK typecheck, macOS)`.
+- `native-validate.yml` — `Validate emitted Swift + Kotlin`, `Validate emitted Swift (real-SDK typecheck, macOS)`. Both run when the native path classifier OR the native-compiler dependency graph (`affected.ts --category=native/compiler`) selects them; the device lanes use the path classifier alone.
 - `native-device.yml` — `iOS — xcodebuild (Simulator SDK)`, `Android — gradlew assembleDebug`.
 - Native lane selection follows package-owned lowering as well as the PMTC
   directories. `native-surface-touched.ts` recognizes plugin source and its own

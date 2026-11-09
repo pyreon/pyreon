@@ -21,6 +21,11 @@
  *    has a default (pyreon 30s, ky 10s) because ofetch/redaxios/axios
  *    default to none — the composed-signal tax is measured by its OWN row
  *    (`GET with 5s timeout`) for the libs that support timeouts at all.
+ *    Because that makes every other row a non-default configuration for
+ *    pyreon and ky, `GET → decoded JSON (library defaults)` creates each
+ *    client with NOTHING but baseUrl + the shared header, so each pays its
+ *    own out-of-the-box cost (pyreon's 30 s and ky's 10 s timeout wiring,
+ *    ky's default retry config). This is what an app gets without tuning.
  *  - CORRECTNESS GATE asserts all libs decode the same body, serialize the
  *    same POST body + content-type, and produce the same query string
  *    (scalar params only — array encoding legitimately differs per lib)
@@ -145,6 +150,25 @@ function makeClients() {
   }
 }
 
+// ── library-default clients (no timeout / retry overrides) ──────────────────
+// Only the base URL and the shared header every row uses. axios is still
+// pinned to its `fetch` adapter: that is a TRANSPORT pin (its Node default,
+// the `http` adapter, would bypass the stub and hit the network), not a
+// feature override — axios has no default timeout either way.
+function makeDefaultClients() {
+  return {
+    pyreon: createHttp({ baseUrl: BASE, headers: { 'x-app': 'bench' } }),
+    ky: ky.create({ prefix: BASE, headers: { 'x-app': 'bench' } }),
+    ofetch: ofetch.create({ baseURL: BASE, headers: { 'x-app': 'bench' } }),
+    redaxios: redaxios.create({ baseURL: BASE, headers: { 'x-app': 'bench' } }),
+    axios: axiosDefault.create({
+      baseURL: BASE,
+      headers: { 'x-app': 'bench' },
+      adapter: 'fetch',
+    }),
+  }
+}
+
 function measureSamplesAsync(
   fn: () => Promise<void>,
   { warmup = 3_000, iters = 1_000, runs = 31 }: {
@@ -220,6 +244,39 @@ const OPS: Record<string, OpSpec> = {
         },
         ofetch: async () => {
           const d = (await c.ofetch<{ id: number }>('/users/1'))
+          sink += d.id
+        },
+        redaxios: async () => {
+          const r = await c.redaxios.get('/users/1')
+          sink += (r.data as { id: number }).id
+        },
+        axios: async () => {
+          const r = await c.axios.get<{ id: number }>('/users/1')
+          sink += r.data.id
+        },
+        bare: async () => {
+          const r = await fetch(`${BASE}/users/1`, { headers: { 'x-app': 'bench' } })
+          const d = JSON.parse(await r.text()) as { id: number }
+          sink += d.id
+        },
+      }
+    },
+  },
+  'GET → decoded JSON (library defaults)': {
+    note: 'the headline request with each client at its OUT-OF-THE-BOX config — pyreon (30 s) and ky (10 s) pay their default timeout wiring, which every other row turns off; ofetch/redaxios/axios have no default timeout. bare = plain fetch, no timeout.',
+    make: () => {
+      const c = makeDefaultClients()
+      return {
+        pyreon: async () => {
+          const d = (await c.pyreon.get('users/1').json()) as { id: number }
+          sink += d.id
+        },
+        ky: async () => {
+          const d = (await c.ky.get('users/1').json()) as { id: number }
+          sink += d.id
+        },
+        ofetch: async () => {
+          const d = await c.ofetch<{ id: number }>('/users/1')
           sink += d.id
         },
         redaxios: async () => {
@@ -520,6 +577,14 @@ async function capture(fn: () => Promise<void>): Promise<Captured> {
   assert(deep(await c.ofetch('/users/1')), 'ofetch decodes body')
   assert(deep((await c.redaxios.get('/users/1')).data), 'redaxios decodes body')
   assert(deep((await c.axios.get('/users/1')).data), 'axios decodes body')
+
+  // The library-defaults row's clients decode the same body.
+  const dc = makeDefaultClients()
+  assert(deep(await dc.pyreon.get('users/1').json()), 'pyreon (defaults) decodes body')
+  assert(deep(await dc.ky.get('users/1').json()), 'ky (defaults) decodes body')
+  assert(deep(await dc.ofetch('/users/1')), 'ofetch (defaults) decodes body')
+  assert(deep((await dc.redaxios.get('/users/1')).data), 'redaxios (defaults) decodes body')
+  assert(deep((await dc.axios.get('/users/1')).data), 'axios (defaults) decodes body')
 
   // axios MUST be on the fetch adapter (Node default is the http adapter,
   // which would bypass the stub and hit the network) — proven by capture:

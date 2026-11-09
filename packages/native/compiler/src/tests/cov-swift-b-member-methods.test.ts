@@ -331,7 +331,7 @@ ${body}
       { target: 'swift' },
     ).code
     expect(out).toContain('["a"] = 1')
-    expect(out).toContain('let g = ([String: Int]())["a"]')
+    expect(out).toContain('let g = (PyreonMap<String, Int>())["a"]')
     expect(out).toContain('!= nil)')
     expect(out).toContain('.removeValue(forKey: "a")')
     expect(out).toContain('.removeAll()')

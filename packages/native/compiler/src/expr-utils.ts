@@ -1494,3 +1494,8 @@ export function isNumericLiteralOrNegation(x: ExprIR): boolean {
     typeof x.argument.value === 'number'
   )
 }
+
+/** The current emit's per-file name suffix (empty without a filename) — see `withSynthStructSuffix`. */
+export function synthStructSuffix(): string {
+  return _synthStructSuffix
+}

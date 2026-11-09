@@ -10,6 +10,7 @@ import type { PyreonHTMLAttributes, VNodeChild } from '@pyreon/core'
 import type { HTMLTextTags } from '@pyreon/ui-core'
 import { PKG_NAME } from '../constants'
 import type { ExtendCss, PyreonComponent } from '../types'
+import { internTextBundle } from '../helpers/internTextBundle'
 import { hasGetterProps } from '../utils'
 import Styled from './styled'
 
@@ -68,9 +69,11 @@ const Component: PyreonComponent<Props> & {
   // class computed and swaps classList on change, no remount. Static css
   // (the dominant case) keeps the plain object — byte-identical resolution
   // + elClassCache behavior.
+  // Static css: an INTERNED bundle (`internTextBundle`), so the styler's
+  // `$text` class cache hits on every later mount with the same css.
   const $text = hasGetterProps(own, ['css'])
     ? () => ({ extraStyles: own.css })
-    : { extraStyles: own.css }
+    : internTextBundle(own.css)
 
   // Use `h(Styled, mergeProps(rest, {..., children}))` instead of JSX
   // spread `<Styled ... {...rest}>` so compiler-emitted reactive props

@@ -1366,6 +1366,21 @@ fun pyreonNumberString(value: Number): String = ""
 fun pyreonParseInt(text: String, radix: Int? = null): Long? = null
 fun pyreonParseFloat(text: String): Double = 0.0
 fun pyreonToNumber(text: String): Double = 0.0
+// PyreonTimers — JS setTimeout / setInterval / clear* (PyreonTimers.kt). Mirrors the real surface.
+object PyreonTimers {
+  interface Scheduler {
+    fun post(delayMs: Long, task: Runnable)
+    fun cancel(task: Runnable)
+  }
+  var scheduler: Scheduler = object : Scheduler {
+    override fun post(delayMs: Long, task: Runnable) {}
+    override fun cancel(task: Runnable) {}
+  }
+  fun setTimeout(ms: Number, fn: () -> Unit): Long = 0L
+  fun setInterval(ms: Number, fn: () -> Unit): Long = 0L
+  fun clear(id: Long?) {}
+  val pendingCount: Int get() = 0
+}
 // Intl.DateTimeFormat / Intl.NumberFormat — the real PyreonIntl.kt surface,
 // exactly: every parameter defaulted and named, values taken as Number.
 class PyreonDateTimeFormat(
@@ -2134,6 +2149,8 @@ class PyreonNetworkStatus(isOnline: Boolean = true) {
 class PyreonAppState(phase: String = "active") {
   val phase: MutableState<String> = mutableStateOf(phase)
   val wasBackgrounded: MutableState<Boolean> = mutableStateOf(false)
+  val visibility: String
+    get() = if (phase.value == "background") "hidden" else "visible"
 }
 
 // Self-installing variant the useAppState emit references (mirrors

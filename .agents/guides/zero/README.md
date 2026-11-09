@@ -6,7 +6,7 @@ Read before touching `packages/zero/**`, a build adapter, SSG/SSR/ISR output, or
 
 ## SSG (`ssgPlugin`)
 
-- Per-route HTML is built by a nested Vite SSR sub-build. An env flag stops it re-triggering itself; pages render concurrently via `runWithConcurrency`, with progress through `ssg.onProgress`.
+- Per-route HTML is built by a nested Vite SSR sub-build, imported with a content-hash query (the ESM cache is keyed by URL; without it a second in-process build rendered with the first build's routes). An env flag stops it re-triggering itself; pages render concurrently via `runWithConcurrency`, with progress through `ssg.onProgress`.
 - `ssg.workers` (opt-in, `ssg-worker-pool.ts`) renders on N worker threads that each import the same built SSG entry; only the renderer runs off-thread (template injection, writes, manifests stay on main). Byte-identical output depends on per-page CSS being order-independent — every page renders inside `runWithRequestContext`, which is a styler request scope (`sheet.markUsed` at cached-class render sites; module-level keyframes/static globals are ambient). Breaking that scope makes worker output differ from the single-thread build.
 - `ssg.cssMode: 'asset'` writes one content-addressed CSS file per DISTINCT page rule set (it used to write the first page's CSS and link it everywhere).
 - `getStaticPaths` enumerates dynamic routes (`[id].tsx`).
@@ -57,7 +57,8 @@ Read before touching `packages/zero/**`, a build adapter, SSG/SSR/ISR output, or
 ### `mode: 'auto'` (experimental)
 
 - Per-route inference: `revalidate` → isr; `getStaticPaths` → ssg (even with a loader); loader / serverLoader / guard / middleware → ssr; otherwise ssg. Explicit exports and `routeRules` win.
-- `applyModeInference` injects a `renderModeLiteral` before generation, so runtime and build code never need to know about `auto`.
+- `applyModeInference` injects a `renderModeLiteral` before generation, so runtime and build code never need to know about `auto`. It stamps ONLY routes whose mode is inferred: a page under a declaring `_layout`, or one a `routeRules` glob matches, stays unstamped (a stamp is a page-level declaration and would outrank the layout and the rule).
+- One file-level resolver, `fs-router.ts:createFileRouteModeResolver` (page > nearest layout > `routeRules` > inference > app mode), answers every build-time "what mode is this page" question: the mode table (`collectFileRouteModes`), the stamping above, `resolveAutoAppMode`, `detectIsrAuthRisk`, the hybrid prerender gate and the missing-`getStaticPaths` warning. The hybrid gate used to scan only for a literal `renderMode`, so inferred and rule-declared static routes printed `○ ssg` but were never prerendered. Never add a second scan.
 - The app pipeline resolves it with `resolveAutoModeSync` when the zero plugin is created (cwd-based routes dir, announced once).
 - `ZeroUserConfig` widens only `zero()`'s parameter. Internal `ZeroConfig.mode` stays narrow; `_autoMode` is the internal marker.
 

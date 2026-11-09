@@ -143,7 +143,7 @@ describe('renderWithHead — SSR', () => {
       return h('div', null)
     }
     const { head } = await renderWithHead(h(Page, null))
-    expect(head).toContain('<style>body { color: red }</style>')
+    expect(head).toContain('<style data-pyreon-head="style-0">body { color: red }</style>')
   })
 
   test('renders <noscript> tags', async () => {
@@ -152,7 +152,9 @@ describe('renderWithHead — SSR', () => {
       return h('div', null)
     }
     const { head } = await renderWithHead(h(Page, null))
-    expect(head).toContain('<noscript><p>Please enable JavaScript</p></noscript>')
+    expect(head).toContain(
+      '<noscript data-pyreon-head="noscript-0"><p>Please enable JavaScript</p></noscript>',
+    )
   })
 
   test('renders JSON-LD script tag', async () => {
@@ -1122,7 +1124,7 @@ describe('renderWithHead — SSR additional branches', () => {
       return h('div', null)
     }
     const { head } = await renderWithHead(h(Page, null))
-    expect(head).toContain('<noscript>')
+    expect(head).toContain('<noscript data-pyreon-head="noscript-0">')
     expect(head).toContain('Enable JavaScript')
   })
 
@@ -1260,7 +1262,7 @@ describe('useHead — speculationRules', () => {
     const { head } = await renderWithHead(h(Page, null))
     expect(head).toContain('type="speculationrules"')
     // Body must be valid JSON parseable back to the exact rules.
-    const m = head.match(/<script type="speculationrules">([\s\S]*?)<\/script>/)
+    const m = head.match(/<script type="speculationrules"[^>]*>([\s\S]*?)<\/script>/)
     expect(m).not.toBeNull()
     const parsed = JSON.parse((m as RegExpMatchArray)[1] as string)
     expect(parsed).toEqual({
@@ -1336,7 +1338,7 @@ describe('useHead — speculationRules', () => {
       return h('div', null)
     }
     const { head } = await renderWithHead(h(Page, null))
-    const m = head.match(/<script type="speculationrules">([\s\S]*?)<\/script>/)
+    const m = head.match(/<script type="speculationrules"[^>]*>([\s\S]*?)<\/script>/)
     expect(JSON.parse((m as RegExpMatchArray)[1] as string).prefetch[0].where).toEqual({
       selector_matches: 'a.router-link',
     })
@@ -1360,7 +1362,7 @@ describe('useHead — speculationRules', () => {
     }
     const { head } = await renderWithHead(h(Page, null))
     // The raw closing tag must NOT appear unescaped inside the block.
-    const block = head.match(/<script type="speculationrules">([\s\S]*?)<\/script>/)
+    const block = head.match(/<script type="speculationrules"[^>]*>([\s\S]*?)<\/script>/)
     expect(block).not.toBeNull()
     expect((block as RegExpMatchArray)[1]).not.toContain('</script>')
     // And the un-escaped JSON still parses back to the original URL.
@@ -1377,7 +1379,9 @@ describe('serializeHead', () => {
       { tag: 'title', key: 't', children: 'My Page' },
       { tag: 'meta', key: 'm', props: { name: 'description', content: 'Hello' } },
     ])
-    expect(out).toBe('<title>My Page</title>\n  <meta name="description" content="Hello" />')
+    expect(out).toBe(
+      '<title>My Page</title>\n  <meta name="description" content="Hello" data-pyreon-head="m" />',
+    )
   })
 
   test('applies titleTemplate (string + function forms)', () => {
@@ -1390,7 +1394,7 @@ describe('serializeHead', () => {
     const out = serializeHead([
       { tag: 'meta', key: 'm', props: { property: 'og:title', content: 'Hi', id: 'x' } },
     ])
-    expect(out).toBe('<meta property="og:title" content="Hi" id="x" />')
+    expect(out).toBe('<meta property="og:title" content="Hi" id="x" data-pyreon-head="m" />')
   })
 
   test('escapes & < > " in attribute values and title — at every position', () => {
@@ -1404,20 +1408,47 @@ describe('serializeHead', () => {
     ])
     expect(out).toBe(
       '<title>&amp; &lt; &gt; &quot;</title>\n' +
-        '  <meta content="&lt;lead" />\n' +
-        '  <meta content="trail&gt;" />\n' +
-        '  <meta content="a&amp;b&lt;c&gt;d&quot;e" />\n' +
-        '  <meta content="totally clean" />\n' +
-        '  <meta content="" />',
+        '  <meta content="&lt;lead" data-pyreon-head="m1" />\n' +
+        '  <meta content="trail&gt;" data-pyreon-head="m2" />\n' +
+        '  <meta content="a&amp;b&lt;c&gt;d&quot;e" data-pyreon-head="m3" />\n' +
+        '  <meta content="totally clean" data-pyreon-head="m4" />\n' +
+        '  <meta content="" data-pyreon-head="m5" />',
     )
+  })
+
+  // The hydration contract: the client (`dom.ts`) seeds its managed set from
+  // `[data-pyreon-head]`, so every tag the server sends must carry its key, or
+  // the hydrated page holds two copies of each (`head.browser.test.tsx` runs
+  // the adoption in real Chromium).
+  test('stamps each keyed tag with data-pyreon-head (escaped); title has none', async () => {
+    function Page() {
+      useHead({
+        title: 'T',
+        meta: [{ name: 'description', content: 'd' }],
+        link: [{ rel: 'canonical', href: '/c' }],
+        jsonLd: { '@type': 'WebPage' },
+      })
+      return h('div', null)
+    }
+    const { head } = await renderWithHead(h(Page, null))
+    expect(head).toContain('<title>T</title>')
+    expect(head).toContain('<meta name="description" content="d" data-pyreon-head="description" />')
+    expect(head).toContain(
+      '<link rel="canonical" href="/c" data-pyreon-head="link-canonical-/c" />',
+    )
+    expect(head).toContain('data-pyreon-head="jsonld">')
+    expect(serializeHead([{ tag: 'meta', key: 'a"b<', props: { name: 'x' } }])).toBe(
+      '<meta name="x" data-pyreon-head="a&quot;b&lt;" />',
+    )
+    expect(serializeHead([{ tag: 'meta', props: { name: 'x' } }])).toBe('<meta name="x" />')
   })
 
   test('void tags self-close; non-void tags wrap children', () => {
     expect(serializeHead([{ tag: 'link', key: 'l', props: { rel: 'icon', href: '/f.ico' } }])).toBe(
-      '<link rel="icon" href="/f.ico" />',
+      '<link rel="icon" href="/f.ico" data-pyreon-head="l" />',
     )
     expect(serializeHead([{ tag: 'style', key: 's', children: '.a{color:red}' }])).toBe(
-      '<style>.a{color:red}</style>',
+      '<style data-pyreon-head="s">.a{color:red}</style>',
     )
   })
 
@@ -1437,6 +1468,8 @@ describe('serializeHead', () => {
     // The same resolved tags fed through the public serializer produce the
     // exact same fragment renderWithHead emits internally.
     expect(head).toContain('<title>Round Trip</title>')
-    expect(head).toContain('<meta name="description" content="&lt;x&gt; &amp; &quot;y&quot;" />')
+    expect(head).toContain(
+      '<meta name="description" content="&lt;x&gt; &amp; &quot;y&quot;" data-pyreon-head="description" />',
+    )
   })
 })

@@ -1912,6 +1912,49 @@ describe('SSG completeness warning — routeRules exemption (Tier-4)', () => {
   })
 })
 
+describe('SSG completeness warning — follows the RESOLVED mode', () => {
+  const warnsFor = async (
+    files: Record<string, string>,
+    appMode: 'ssr' | 'ssg' | 'auto',
+    needle: string,
+  ): Promise<boolean> => {
+    const root = mkdtempSync(path.join(tmpdir(), 'pyreon-mode-warn-'))
+    for (const [rel, body] of Object.entries(files)) {
+      const full = path.join(root, rel)
+      mkdirSync(path.dirname(full), { recursive: true })
+      writeFileSync(full, body)
+    }
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      await _internal.autoDetectStaticPaths(root, new Map() as never, [], undefined, undefined, appMode)
+      return warn.mock.calls.some((c) => String(c[0]).includes(needle))
+    } finally {
+      warn.mockRestore()
+      rmSync(root, { recursive: true, force: true })
+    }
+  }
+  const page = 'export default () => null'
+  const loaderPage = 'export default () => null\nexport const loader = async () => ({})'
+
+  it('hybrid app mode: an undeclared dynamic route is served by the server — no warning', async () => {
+    expect(await warnsFor({ 'index.tsx': page, 'app/[id].tsx': page }, 'ssr', 'app/[id].tsx')).toBe(false)
+  })
+
+  it("a layout declaring a non-static mode exempts the routes under it", async () => {
+    const files = {
+      'index.tsx': page,
+      'app/_layout.tsx': "export default (p) => p.children\nexport const renderMode = 'spa'",
+      'app/[id].tsx': page,
+    }
+    expect(await warnsFor(files, 'ssg', 'app/[id].tsx')).toBe(false)
+  })
+
+  it("mode 'auto': inferred 'ssr' (loader) is exempt; inferred 'ssg' still warns", async () => {
+    expect(await warnsFor({ 'index.tsx': page, 'app/[id].tsx': loaderPage }, 'auto', 'app/[id].tsx')).toBe(false)
+    expect(await warnsFor({ 'index.tsx': page, 'app/[id].tsx': page }, 'auto', 'app/[id].tsx')).toBe(true)
+  })
+})
+
 describe('mergeRedirectsFile', () => {
   // The build used to OVERWRITE dist/_redirects, silently dropping every rule
   // the app shipped in public/_redirects once any loader threw redirect().

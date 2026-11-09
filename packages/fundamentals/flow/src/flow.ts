@@ -237,24 +237,11 @@ export function createFlow<TData = Record<string, unknown>>(
     }
   }
 
-  // Dispose a cache-owned computed AND clear its dirty flag. The flag clear
-  // closes a re-subscription hole: when a consumer batches a write that
-  // dirty-marked this computed WITH the removal that sweeps it (e.g. a node
-  // move + `removeEdge` in one `batch`), the already-enqueued thunk dispatch
-  // still READS the disposed computed after the sweep — and a dirty read
-  // re-evaluates and RE-subscribes it to its deps via `runVerify`, stranding
-  // a permanent zombie subscriber. Clean, a late read returns the cached
-  // value without re-tracking (the row is about to unmount anyway).
-  function disposeCached(c: Computed<unknown>): void {
-    c.dispose()
-    ;(c as unknown as { _dirty: boolean })._dirty = false
-  }
-
   function sweepCache<V>(cache: Map<string, Computed<V>>, live: Map<string, unknown>): void {
     if (cache.size === 0) return
     for (const [id, c] of cache) {
       if (!live.has(id)) {
-        disposeCached(c as Computed<unknown>)
+        c.dispose()
         cache.delete(id)
       }
     }
@@ -2032,19 +2019,19 @@ export function createFlow<TData = Record<string, unknown>>(
     // The per-id computed caches are instance-owned (created scope-DETACHED —
     // see `detachedComputed`), so this is their terminal disposal point; the
     // map sweeps only cover ids that leave a LIVE graph.
-    for (const c of edgeGeometryCache.values()) disposeCached(c as Computed<unknown>)
+    for (const c of edgeGeometryCache.values()) c.dispose()
     edgeGeometryCache.clear()
-    for (const c of edgeByIdCache.values()) disposeCached(c as Computed<unknown>)
+    for (const c of edgeByIdCache.values()) c.dispose()
     edgeByIdCache.clear()
-    for (const c of nodeByIdCache.values()) disposeCached(c as Computed<unknown>)
+    for (const c of nodeByIdCache.values()) c.dispose()
     nodeByIdCache.clear()
-    for (const c of absPosCache.values()) disposeCached(c as Computed<unknown>)
+    for (const c of absPosCache.values()) c.dispose()
     absPosCache.clear()
-    for (const c of nodeSelectedCache.values()) disposeCached(c as Computed<unknown>)
+    for (const c of nodeSelectedCache.values()) c.dispose()
     nodeSelectedCache.clear()
-    for (const c of edgeSelectedCache.values()) disposeCached(c as Computed<unknown>)
+    for (const c of edgeSelectedCache.values()) c.dispose()
     edgeSelectedCache.clear()
-    for (const c of measurementCache.values()) disposeCached(c as Computed<unknown>)
+    for (const c of measurementCache.values()) c.dispose()
     measurementCache.clear()
   }
 

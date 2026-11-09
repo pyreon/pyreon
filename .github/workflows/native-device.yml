@@ -221,6 +221,27 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      # Read-only restore of ci.yml's SOURCE-HASHED lib/ (ci's Install is the
+      # one writer). bootstrap.ts decides staleness by CONTENT hash, never
+      # mtime, so a prefix-restored older lib/ is safe: it rebuilds only the
+      # packages whose source changed. Measured before this: every native job
+      # rebuilt all 76 packages from nothing — ~150 s of a ~210 s install.
+      # ORDER: this restore runs BEFORE the simulator boot below. Its key is a
+      # `hashFiles` over every package's src/, and hashFiles has a hard
+      # 120 s limit. With a cold simulator boot competing for the disk it
+      # exceeded that limit and failed the job (PR #4153's first run, 137 s),
+      # while the same expression takes 5-28 s on the macOS validate job,
+      # which boots no simulator. The boot still overlaps install, bootstrap,
+      # the Swift unit tests and the app build.
+      - name: Restore source-hashed lib/ (read-only)
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            packages/*/*/lib
+            .bootstrap-cache.json
+          key: bootstrap-ubuntu-${{ hashFiles('packages/*/*/src/**', 'packages/*/*/package.json', 'packages/*/*/tsconfig.json', 'tsconfig.json', 'scripts/bootstrap.ts', 'bun.lock') }}
+          restore-keys: |
+            bootstrap-ubuntu-
       - name: Resolve ONE concrete Simulator device (by UDID) and start booting it
         # `xcodebuild test` needs a CONCRETE device (the build step's
         # `generic/platform=iOS Simulator` cannot run tests). Hardcoding a
@@ -250,7 +271,7 @@ jobs:
         # suite's handle-drag test failed all three iterations on the smaller
         # screen (run on PR #3574). Do not reorder by name.
         #
-        # Booting starts HERE, right after checkout, so the ~3-minute cold boot
+        # Booting starts HERE, right after checkout and the lib/ restore, so the ~3-minute cold boot
         # overlaps install + bootstrap + the Swift unit tests + the app build
         # instead of stalling the first `xcodebuild test`. `simctl boot` returns
         # once the boot is under way; the steps that need a READY device wait
@@ -282,47 +303,16 @@ jobs:
         with:
           bun-version-file: .bun-version
 
-      # The matrix pays this install ONCE PER CELL, so a cold 6-minute
-      # NO bun-install cache here, deliberately. I added one earlier today to
-      # kill the ~6 min cold install, and it was a bad trade once measured:
-      # the repo's Actions cache sits at 9.74 GB of its 10 GB limit, and this
-      # entry is 257 MB per BRANCH. Bootstrap caches — the ones that let a job
-      # skip rebuilding all 74 packages — are only 5 MB each, so one large
-      # write LRU-evicts hundreds of them. PR #2642's Build found no bootstrap
-      # cache on ANY of its three keys and rebuilt from scratch: ~6 min, on
-      # every lib-needing job, on every PR.
-      #
-      # So this bought ~4 min on ONE macOS job (it was 5 jobs when the matrix
-      # existed, which is what justified it) at the cost of ~6 min on roughly
-      # eight ubuntu jobs elsewhere. Restore it only alongside a real cache
-      # budget — the 1.2 GB Linux bun-install entries are the bigger tenant
-      # and would need looking at first.
-
-      # Restore-only: the bun tarball store ci.yml's Install saves on main (the
-      # one writer under this prefix; check-cache-key-sync locks that). A miss
-      # costs ~1 s. UNMEASURED on macOS until the nightly seeds the store; the
-      # Linux twin measured a net LOSS (see the Android job), so if the first
-      # warm macOS run does not show the install phase shrinking, remove this.
-      - name: Restore bun install cache (read-only)
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ~/.bun/install/cache
-          key: bun-install-cache-${{ runner.os }}-${{ hashFiles('bun.lock') }}
-          restore-keys: bun-install-cache-${{ runner.os }}-
-      # Read-only restore of ci.yml's SOURCE-HASHED lib/ (ci's Install is the
-      # one writer). bootstrap.ts decides staleness by CONTENT hash, never
-      # mtime, so a prefix-restored older lib/ is safe: it rebuilds only the
-      # packages whose source changed. Measured before this: every native job
-      # rebuilt all 76 packages from nothing — ~150 s of a ~210 s install.
-      - name: Restore source-hashed lib/ (read-only)
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: |
-            packages/*/*/lib
-            .bootstrap-cache.json
-          key: bootstrap-ubuntu-${{ hashFiles('packages/*/*/src/**', 'packages/*/*/package.json', 'packages/*/*/tsconfig.json', 'tsconfig.json', 'scripts/bootstrap.ts', 'bun.lock') }}
-          restore-keys: |
-            bootstrap-ubuntu-
+      # NO bun-install cache on macOS. Measured over 25 green runs (2026-11-02..08):
+      # restoring the ~900 MB macOS tarball store took 179-487 s (median ~240 s)
+      # on every run, and the install after it took 3-14 s. The Android job on
+      # ubuntu has no tarball cache at all and installs the same lockfile cold
+      # in 7-13 s ("1194 packages installed [7.75s]"). Part of that restore
+      # time was the simulator's cold boot competing for the disk (see the
+      # lib/ restore's ORDER note), so the restore mostly hid boot I/O while
+      # buying ~1 s of install. It and its nightly writer are gone, which also
+      # frees ~0.9 GB of the 10 GB Actions cache for the small bootstrap
+      # entries every PR depends on.
       - name: Install workspace deps (bootstraps @pyreon/native-cli used by the preBuildScript)
         run: |
           # Retry the install — a transient registry tarball-extract flake
@@ -374,16 +364,6 @@ jobs:
             exit 1
           }
           bun run --filter='@pyreon/native-*-swift' test
-
-      # macOS tarball store — ONE writer, the nightly schedule run on main. Same
-      # prefix + path as ci.yml's Linux writer (runner.os keeps them apart), so
-      # check-cache-key-sync sees one lineage. Restored read-only above.
-      - name: Save bun install cache (nightly only)
-        if: github.event_name == 'schedule'
-        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ~/.bun/install/cache
-          key: bun-install-cache-${{ runner.os }}-${{ hashFiles('bun.lock') }}
 
       - name: Install XcodeGen
         run: brew install xcodegen

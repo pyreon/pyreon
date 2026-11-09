@@ -31,6 +31,18 @@ export interface RateData {
   delayMs: number
   fn: Extract<DeclIR, { kind: 'function' }>
 }
+export interface PreviousData {
+  source: ExprIR
+  type: TypeIR
+}
+export interface UpdateEffectData {
+  source: ExprIR
+  type: TypeIR
+  /** The callback's `(newVal, oldVal)` parameter names; either may be absent. */
+  newName: string | undefined
+  oldName: string | undefined
+  body: import('@pyreon/native-compiler/plugin-api').StatementIR[]
+}
 export interface TimerData {
   mode: 'interval' | 'timeout'
   delayMs: number

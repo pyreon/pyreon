@@ -89,13 +89,13 @@ export default function PostsIndex() {
         </div>
         <pre>
           <code>
-            <span class="cm">{"// Export a loader — runs on the server"}</span>
-            <span class="kw">export async function</span> <span class="fn">loader</span>(ctx) {"{"}
-            <span class="kw">const</span> posts = <span class="kw">await</span> db.posts.
-            <span class="fn">findMany</span>()
-            <span class="kw">return</span> {"{"} posts {"}"}
-            {"}"}
-            <span class="cm">{"// Access data in the component"}</span>
+            <span class="cm">{"// Export a loader — runs on the server"}</span>{"\n"}
+            <span class="kw">export async function</span> <span class="fn">loader</span>(ctx) {"{"}{"\n"}
+            {"  "}<span class="kw">const</span> posts = <span class="kw">await</span> db.posts.<span class="fn">findMany</span>(){"\n"}
+            {"  "}<span class="kw">return</span> {"{"} posts {"}"}{"\n"}
+            {"}"}{"\n"}
+            {"\n"}
+            <span class="cm">{"// Access data in the component"}</span>{"\n"}
             <span class="kw">const</span> data = <span class="fn">useLoaderData</span>()
           </code>
         </pre>

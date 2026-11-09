@@ -695,6 +695,13 @@ export type ExprIR =
        * otherwise inference binds `param` to the source's element type.
        */
       pairsFrom?: { source: ExprIR; param: string; key: ExprIR; value: ExprIR }
+      /**
+       * `new Map(other)` — a copy of another map, the immutable-update idiom
+       * (`const next = new Map(m()); next.set(k, v); m.set(next)`). Swift copies by value (`PyreonMap` is a
+       * struct); Kotlin `.toMutableMap()` keeps the LinkedHashMap order. The emitters check that `copyOf` infers a
+       * map and name the shape otherwise.
+       */
+      copyOf?: ExprIR
     }
   | {
       kind: 'binary'
@@ -948,6 +955,12 @@ export interface ModuleDeclIR {
   type: TypeIR
   /** Initial-value expression. */
   initial: ExprIR
+  /**
+   * A module-scope `signal(initial)` (`kind: 'signal'`) or `computed(() => initial)` (`kind: 'computed'`, `initial`
+   * being the computed's expression): the file's shared reactive state, emitted as a per-file observable singleton
+   * and read / written through it everywhere (module-state.ts), never as a plain binding.
+   */
+  reactive?: { kind: 'signal' | 'computed' } | undefined
 }
 
 export interface ParseResult {

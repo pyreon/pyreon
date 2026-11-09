@@ -45,10 +45,10 @@ export default function Home() {
           </div>
           <pre>
             <code>
-              <span class="cm"># Create a new project in seconds</span>
-              <span class="fn">bun</span> create @pyreon/zero my-app
-              <span class="fn">cd</span> my-app
-              <span class="fn">bun</span> install
+              <span class="cm"># Create a new project in seconds</span>{"\n"}
+              <span class="fn">bun</span> create @pyreon/zero my-app{"\n"}
+              <span class="fn">cd</span> my-app{"\n"}
+              <span class="fn">bun</span> install{"\n"}
               <span class="fn">bun</span> run dev
             </code>
           </pre>

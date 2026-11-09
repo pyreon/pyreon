@@ -14,7 +14,7 @@
 //   new Map<string, Todo>()            → [String: Todo]() / mutableMapOf<String, Todo>()
 //   new Map<string, Todo[]>()          → the group-by idiom
 //   new Map<string, Status>()          → an enum-valued map
-//   new Map(todos.map(t => [t.id, t])) → Swift Dictionary(…, uniquingKeysWith:)
+//   new Map(todos.map(t => [t.id, t])) → Swift PyreonMap(…) (a repeated key keeps the last value)
 //                                        / Kotlin associate { … }.toMutableMap()
 // Still a NAMED warning: an inline object value type (`Map<K, { x: number }>`
 // has no type name to put in `[K: V]`), an imported/undeclared value type, a
@@ -89,17 +89,17 @@ describe('Map with struct / enum / array values → native dictionary', () => {
 
   it('Swift: struct-valued dictionaries, the group-by idiom and the index-by idiom', () => {
     const out = transform(APP, { target: 'swift' }).code
-    expect(out).toContain('@State private var cache: [String: Todo] = [String: Todo]()')
-    expect(out).toContain('@State private var notes: [Int: Note] = [Int: Note]()')
-    expect(out).toContain('@State private var status: [String: Status] = [String: Status]()')
-    expect(out).toContain('var byId = [String: Todo]()')
+    expect(out).toContain('@State private var cache: PyreonMap<String, Todo> = PyreonMap<String, Todo>()')
+    expect(out).toContain('@State private var notes: PyreonMap<Int, Note> = PyreonMap<Int, Note>()')
+    expect(out).toContain('@State private var status: PyreonMap<String, Status> = PyreonMap<String, Status>()')
+    expect(out).toContain('var byId = PyreonMap<String, Todo>()')
     expect(out).toContain('byId[t.id] = t')
-    expect(out).toContain('var g = [String: [Todo]]()')
+    expect(out).toContain('var g = PyreonMap<String, [Todo]>()')
     expect(out).toContain(
-      'private var byId: [String: Todo] { Dictionary(todos.map { t in (t.id, t) }, uniquingKeysWith: { _, last in last }) }',
+      'private var byId: PyreonMap<String, Todo> { PyreonMap(todos.map { t in (t.id, t) }) }',
     )
-    expect(out).toContain('private var totals: [String: Int]')
-    expect(out).toContain('@State private var idx: [String: Todo] = Dictionary(SEED.map')
+    expect(out).toContain('private var totals: PyreonMap<String, Int>')
+    expect(out).toContain('@State private var idx: PyreonMap<String, Todo> = PyreonMap(SEED.map')
     // The unannotated index-by SIGNAL is typed, so its reads lower too.
     expect(out).toContain('idx["a"]?.title')
     expect(out).toContain('cache["a"] = Todo(id: "a", title: "Z", tag: "t", n: 2)')

@@ -36,9 +36,9 @@ import {
 } from './build-flags'
 import { resolveConfig } from './config'
 import { isApiRoute } from './api-routes'
-import { collectFileRouteModes, detectRouteExports, parseFileRoutes, scanRouteFiles, scanRouteFilesWithExports } from './fs-router'
+import { collectFileRouteModes, parseFileRoutes, scanRouteFiles, scanRouteFilesWithExports, type FileRouteModeEntry } from './fs-router'
 import { expandRoutesForLocales, type I18nRoutingConfig } from './i18n-routing'
-import { assertModesSupported, formatRouteModeTable, matchRouteRules, type RouteModeEntry, type RouteRules } from './route-modes'
+import { assertModesSupported, formatRouteModeTable, type RouteModeEntry, type RouteRules } from './route-modes'
 import {
   extractStylerStyleTag,
   hashCss,
@@ -74,7 +74,7 @@ import {
 } from './og-route-shared'
 import { createHash } from 'node:crypto'
 import { writeServiceWorker } from './pwa'
-import type { ZeroConfig } from './types'
+import type { RenderMode, ZeroConfig } from './types'
 
 // M2.3 — Server-side perf-harness counter sink (same shape as
 // runtime-server). Every emission is gated on the BARE INLINE
@@ -474,28 +474,22 @@ export function expandUrlPattern(pattern: string, params: Record<string, string>
  * Deduped per source file (i18n fan-out produces one FileRoute per locale).
  */
 async function warnUnenumeratedDynamicRoute(
-  routesDir: string,
   filePath: string,
   pattern: string,
   warned: Set<string>,
-  rules?: RouteRules,
+  modes: () => Promise<Map<string, FileRouteModeEntry>>,
 ): Promise<void> {
   if (warned.has(filePath)) return
   warned.add(filePath)
   if (isApiRoute(filePath)) return // runtime-only by definition
-  // A routeRules glob declaring the route non-static is as intentional as
-  // a file-level declaration — same exemption.
-  const ruleMode = matchRouteRules(rules, pattern)
-  if (ruleMode === 'spa' || ruleMode === 'ssr' || ruleMode === 'isr') return
-  try {
-    const source = await readFile(join(routesDir, filePath), 'utf-8')
-    const literal = detectRouteExports(source, filePath).renderModeLiteral
-    const declared = literal?.replace(/['"]/g, '')
-    // Declared non-static mode → the skip is intentional, not a footgun.
-    if (declared === 'spa' || declared === 'ssr' || declared === 'isr') return
-  } catch {
-    // unreadable file → fall through to the warning (better loud than silent)
-  }
+  // Only a route that RESOLVES to 'ssg' is a missing page. A non-static
+  // mode — declared on the page or a layout, set by a routeRules glob,
+  // inferred under mode: 'auto', or simply the app mode of a hybrid build —
+  // is served by the CSR shell or the server, so the skip is intentional.
+  // Same resolver as the mode table (collectFileRouteModes). A computed
+  // renderMode is unknowable here: better loud than silent.
+  const entry = (await modes()).get(filePath)
+  if (entry && entry.source !== 'computed' && entry.mode !== 'ssg') return
   console.warn(
     `[Pyreon] SSG: dynamic route "${filePath}" (${pattern}) has no \`getStaticPaths\` — no page will be emitted for it.\n`
       + `  Fix one of:\n`
@@ -511,6 +505,7 @@ async function autoDetectStaticPaths(
   errors: { path: string; error: unknown }[] = [],
   i18n?: I18nRoutingConfig,
   rules?: RouteRules,
+  appMode: RenderMode | 'auto' = 'ssg',
 ): Promise<string[]> {
   // Routes dir missing → fall back to "/" anyway. A project that doesn't
   // expose routes via fs-routing (custom routes module, single-page app
@@ -542,6 +537,12 @@ async function autoDetectStaticPaths(
     byFile.add(file)
   }
   const warnedDynamicFiles = new Set<string>()
+  // Per-file resolved modes, scanned once and only if a dynamic route needs it.
+  let modesByFile: Promise<Map<string, FileRouteModeEntry>> | undefined
+  const modes = (): Promise<Map<string, FileRouteModeEntry>> =>
+    (modesByFile ??= collectFileRouteModes(routesDir, appMode, rules).then(
+      (entries) => new Map(entries.map((e) => [e.filePath, e])),
+    ))
   for (const r of fileRoutes) {
     if (r.isLayout || r.isError || r.isLoading || r.isNotFound) continue
     const path = r.urlPath
@@ -563,7 +564,7 @@ async function autoDetectStaticPaths(
       // unless the route file explicitly declares a non-static renderMode
       // ('spa' gets the CSR shell; 'ssr'/'isr' are served by the hybrid
       // server) or is an API route (runtime-only by definition).
-      await warnUnenumeratedDynamicRoute(routesDir, r.filePath, path, warnedDynamicFiles, rules)
+      await warnUnenumeratedDynamicRoute(r.filePath, path, warnedDynamicFiles, modes)
       continue
     }
 
@@ -624,7 +625,7 @@ async function resolvePaths(
     return Array.isArray(result) ? result : []
   }
   if (Array.isArray(explicit)) return explicit
-  return autoDetectStaticPaths(routesDir, registry, errors, config.i18n, config.routeRules)
+  return autoDetectStaticPaths(routesDir, registry, errors, config.i18n, config.routeRules, fileModeFor(config))
 }
 
 // `writeFileAtomic`, `mkdirOnce`, `_resetMkdirCache` are imported from
@@ -633,27 +634,29 @@ async function resolvePaths(
 // the SSG + SSR/ISR plugins so the cleanup recipe can never diverge.
 
 /**
- * Phase 2 — cheap hybrid pre-check. Scans the route files' detected exports
- * for any DECLARED `renderMode` of 'ssg' or 'spa' (page or layout — layout
- * declarations cascade). Costs one source scan; the AUTHORITATIVE per-path
- * decision is still the SSG entry's `__resolveRenderMode` (record-tree
- * resolution) — this only decides whether the hybrid prerender pass is
- * worth its SSR sub-build at all.
+ * The app mode the file-level resolver needs: `'auto'` when inference is on
+ * (the internal config only carries the resolved pipeline mode), so inferred
+ * routes resolve exactly as the routes module stamps them.
  */
-async function anyRouteDeclaresStaticMode(
-  routesDir: string,
-  mode: ZeroConfig['mode'],
-): Promise<boolean> {
+function fileModeFor(config: ZeroConfig): RenderMode | 'auto' {
+  return config._autoMode ? 'auto' : (config.mode ?? 'ssr')
+}
+
+/**
+ * Phase 2 — cheap hybrid pre-check: does any page RESOLVE to 'ssg' or 'spa'?
+ * Uses the same file-level resolver as the mode table (`collectFileRouteModes`:
+ * page > layout > routeRules > mode: 'auto' inference > app mode), so a route
+ * the table prints as `○ ssg` always gets the prerender pass. It used to scan
+ * only for a literal `renderMode` export, so inferred and routeRules-declared
+ * static routes were silently served by SSR instead. The AUTHORITATIVE
+ * per-path decision is still the SSG entry's `__resolveRenderMode`; this only
+ * decides whether the pass is worth its SSR sub-build. A computed renderMode
+ * is unknowable here, so it runs the pass.
+ */
+async function hybridHasStaticRoutes(routesDir: string, config: ZeroConfig): Promise<boolean> {
   if (!existsSync(routesDir)) return false
-  try {
-    const files = await scanRouteFilesWithExports(routesDir, mode)
-    return files.some((f) => {
-      const lit = f.exports?.renderModeLiteral
-      return typeof lit === 'string' && /['"](ssg|spa)['"]/.test(lit)
-    })
-  } catch {
-    return false
-  }
+  const entries = await collectFileRouteModes(routesDir, fileModeFor(config), config.routeRules)
+  return entries.some((e) => e.source === 'computed' || e.mode === 'ssg' || e.mode === 'spa')
 }
 
 /**
@@ -1378,7 +1381,7 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
       const appMode = config.mode ?? 'ssr'
       const hybrid = appMode === 'ssr' || appMode === 'isr'
       if (appMode !== 'ssg' && !hybrid) return
-      if (hybrid && !(await anyRouteDeclaresStaticMode(join(root, 'src', 'routes'), config.mode))) {
+      if (hybrid && !(await hybridHasStaticRoutes(join(root, 'src', 'routes'), config))) {
         return
       }
 
@@ -1522,8 +1525,18 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
         __resolveRenderMode?: (path: string) => 'ssr' | 'ssg' | 'spa' | 'isr'
         __routeModeEntries?: import('./route-modes').RouteModeEntry[]
       }
+      // The URL carries the bundle's content hash: the ESM loader caches by
+      // URL, so a second build in the same process (programmatic builds, a
+      // test suite, `vite build --watch`) would otherwise get the FIRST
+      // build's module back and prerender with stale routes and modes.
+      // Keyed on content (not a timestamp) so identical rebuilds reuse one
+      // module instead of retaining a new copy per build.
+      const handlerHash = createHash('sha256')
+        .update(await readFile(handlerPath))
+        .digest('hex')
+        .slice(0, 16)
       const handlerMod = (await withSilent(
-        () => import(/* @vite-ignore */ pathToFileURL(handlerPath).href),
+        () => import(/* @vite-ignore */ `${pathToFileURL(handlerPath).href}?v=${handlerHash}`),
       )) as HandlerMod
       // `ssg.workers` — render on worker threads over the same built entry
       // (see `ssg-worker-pool.ts`). Started right before the render loop and

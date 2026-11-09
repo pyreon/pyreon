@@ -68,7 +68,7 @@ Pass `mode: 'auto'` to `zero()` and every route's mode is **inferred** from what
 - `loader` / `serverLoader` / `guard` / `middleware` → `'ssr'`
 - otherwise → `'ssg'`
 
-An explicit `renderMode` export or a `routeRules` match still wins. `mode: 'auto'` widens only `zero()`'s own parameter — `ZeroConfig.mode` (what `resolveConfig`/`defineConfig` accept) never carries `'auto'`; it's resolved to a concrete app-level mode (`'ssr'` if any page needs server rendering, else `'ssg'`) once, up front, at plugin-factory time. The build's per-route mode table shows `'auto'` as the app mode plus each route's inferred value, so the inference is always visible, never silent.
+An explicit `renderMode` export (on the page or a parent `_layout`) or a `routeRules` match still wins. Every route that resolves to `'ssg'` (shown as `○ ssg` in the build's mode table) is prerendered, whether its mode was declared, rule-matched or inferred. `mode: 'auto'` widens only `zero()`'s own parameter — `ZeroConfig.mode` (what `resolveConfig`/`defineConfig` accept) never carries `'auto'`; it's resolved to a concrete app-level mode (`'ssr'` if any page needs server rendering, else `'ssg'`) once, up front, at plugin-factory time. The build's per-route mode table shows `'auto'` as the app mode plus each route's inferred value, so the inference is always visible, never silent.
 
 ## SSG: static paths
 

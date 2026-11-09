@@ -107,3 +107,14 @@ fun main() {
     testAppStateUpdateIndependentOfLifecycle()
     println("[PyreonAppStateTest] all smoke tests passed")
 }
+
+fun testAppStateVisibilityIsHiddenOnlyWhenBackgrounded() {
+    val state = PyreonAppState()
+    check(state.visibility == "visible") { "active → visible" }
+    state.update("inactive")
+    check(state.visibility == "visible") { "inactive stays visible (web: an unfocused page is still visible)" }
+    state.update("background")
+    check(state.visibility == "hidden") { "background → hidden" }
+    state.update("active")
+    check(state.visibility == "visible") { "returning to active → visible again" }
+}

@@ -1398,12 +1398,20 @@ export function inferTypeValue(expr: ExprIR, ctx: InferenceCtx): TypeIR {
           return { kind: 'map', key: expr.keyType, value: expr.valueType }
         }
         if (expr.pairsFrom !== undefined) return inferMapFromPairsType(expr.pairsFrom, ctx)
+        if (expr.copyOf !== undefined) {
+          const src = unwrapOptionalType(inferType(expr.copyOf, ctx))
+          return src.kind === 'map' ? src : { kind: 'unknown' }
+        }
         return { kind: 'unknown' }
       }
       if (expr.elementType !== undefined) return { kind: 'set', element: expr.elementType }
       // `new Set(arr)` — element type from the seed array.
       const seedT = expr.seed !== undefined ? inferType(expr.seed, ctx) : { kind: 'unknown' as const }
-      return { kind: 'set', element: seedT.kind === 'array' ? seedT.element : { kind: 'unknown' } }
+      // `new Set(otherSet)` copies: its element type is the other set's.
+      return {
+        kind: 'set',
+        element: seedT.kind === 'array' || seedT.kind === 'set' ? seedT.element : { kind: 'unknown' },
+      }
     }
     case 'literal': {
       if (typeof expr.value === 'string') return { kind: 'string' }
@@ -1495,7 +1503,7 @@ export function inferTypeValue(expr: ExprIR, ctx: InferenceCtx): TypeIR {
       // hard-coding the type here) keeps ONE source of truth for the
       // detection + lowering (the emitters call the same `rewriteObjectKeys`).
       {
-        const rw = rewriteObjectKeys(expr, ctx)
+        const rw = rewriteObjectMapCall(expr, ctx) ?? rewriteObjectKeys(expr, ctx)
         if (rw !== null) return inferType(rw, ctx)
       }
       // `Object.values(<object-typed expr>)` → same one-source-of-truth
@@ -1556,6 +1564,8 @@ export function inferTypeValue(expr: ExprIR, ctx: InferenceCtx): TypeIR {
         // array literal to `[Any]` → `.length` failed on Swift). `Boolean(x)`
         // → boolean (paired with the truthiness-lowering emit both targets).
         if (expr.callee.name === 'String') return { kind: 'string' }
+        // A timer id (`PyreonTimers` returns an Int / Long).
+        if (expr.callee.name === 'setTimeout' || expr.callee.name === 'setInterval') return { kind: 'number' }
         // `untrack(() => x)` / `batch(() => x)` lower to `x` (their plain evaluation), so they type as `x`.
         if ((expr.callee.name === 'untrack' || expr.callee.name === 'batch') && expr.args.length === 1) {
           const fn = expr.args[0]!
@@ -1635,6 +1645,11 @@ export function inferTypeValue(expr: ExprIR, ctx: InferenceCtx): TypeIR {
           }
           if (expr.callee.property === 'has' || expr.callee.property === 'delete') {
             return { kind: 'boolean' }
+          }
+          // `m.keys()` / `m.values()` lower to the keys / values as an ARRAY, in insertion order.
+          if (expr.callee.property === 'keys' && expr.args.length === 0) return { kind: 'array', element: msT.key }
+          if (expr.callee.property === 'values' && expr.args.length === 0) {
+            return { kind: 'array', element: msT.value }
           }
         }
         if (msT.kind === 'set') {
@@ -2301,6 +2316,26 @@ export function inferTypeValue(expr: ExprIR, ctx: InferenceCtx): TypeIR {
  * into the array VALUE emit — so the type annotation and the emitted value
  * can never disagree.
  */
+/**
+ * `Object.keys(r)` / `Object.values(r)` on a MAP-typed value (a `Record<string, T>`, a `Map`) → the map's own
+ * `r.keys()` / `r.values()`, which both emitters lower to the keys / values in insertion order. The struct-shaped
+ * forms stay with `rewriteObjectKeys` / `rewriteObjectValues`.
+ */
+export function rewriteObjectMapCall(expr: ExprIR, ctx: InferenceCtx): ExprIR | null {
+  if (
+    expr.kind !== 'call' ||
+    expr.args.length !== 1 ||
+    expr.callee.kind !== 'member' ||
+    expr.callee.object.kind !== 'identifier' ||
+    expr.callee.object.name !== 'Object' ||
+    (expr.callee.property !== 'keys' && expr.callee.property !== 'values')
+  )
+    return null
+  const arg = expr.args[0]!
+  if (unwrapOptionalType(inferType(arg, ctx)).kind !== 'map') return null
+  return { kind: 'call', callee: { kind: 'member', object: arg, property: expr.callee.property }, args: [] }
+}
+
 export function rewriteObjectKeys(expr: ExprIR, ctx: InferenceCtx): ExprIR | null {
   if (expr.kind !== 'call') return null
   const callee = expr.callee

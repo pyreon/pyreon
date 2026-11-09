@@ -28,7 +28,8 @@ Component libraries in `packages/ui/` (private):
 
 - `styled('div')` → `ComponentFn`; `css` → lazy `CSSResult`; `keyframes` → animation name; `createGlobalStyle` / `createSheet()`.
 - `ThemeContext` is reactive (`createReactiveContext<Theme>`). `useTheme()` returns a snapshot; `useThemeAccessor()` returns `() => Theme` for use in effects. A whole-theme swap re-resolves CSS and swaps class names without remounting.
-- One singleton `StyleSheet` (FNV-1a hashing, dedup, SSR).
+- One singleton `StyleSheet` (FNV-1a hashing, dedup, SSR). It is bounded (`maxCacheSize`, default 10,000) and evicts its oldest unused rules: never a class an element in the document carries (the client pass runs in a microtask so a render's elements are attached first), never `@keyframes` or a static global, never a mounted dynamic global (`sheet.retain`). Every cache above the sheet that returns a class name without `insert()` checks `sheet.isLive(name)` first and re-inserts on a miss.
+- The `$element` class cache in `DynamicStyled` is keyed theme → bundle → `$childFix` (Wrapper/Text CSS reads `rootSize` and breakpoints), so a theme swap or a second server tenant never reuses another theme's class.
 - `innerRef` is an alias of `ref` on `styled()` components.
 - On the server `DynamicStyled` (`IS_SERVER`) skips its reactive `computed`/`renderEffect` setup and emits the same class name.
 - The dev validator in `sheet.ts` flags `NaN` and malformed `var()` values in inserted CSS.
@@ -40,6 +41,7 @@ Component libraries in `packages/ui/` (private):
 - `@media (min-width)` blocks emit only deltas (`optimizeBreakpointDeltas`). The diff runs against the running cascade, so a value that reverts to an earlier one is re-emitted.
 - `themeToCssVars(theme, opts?)` (`cssVariables.ts`) turns a plain theme into `--px-*` custom properties and returns `{ vars, css, registry }`. Units are applied at emission (`spacing.small: 8` → `--px-spacing-small: 0.5rem`). Plain `var()`/`calc()` strings pass through unchanged. Pure, cached per theme object.
 - Registers its theme engine (`enrichTheme`, `themeToCssVars`, `cpseRewrite`) into `ui-core` at load.
+- `enrichTheme` is memoized on the raw theme's identity (WeakMap; also re-derives after `init({ css })`), and enriching an enriched theme returns it. Every style cache keys on the enriched object, so pass `<PyreonUI>` the SAME theme object across requests/remounts — a theme object built per request makes every cache below it miss once per request.
 
 ## @pyreon/rocketstyle
 
@@ -66,6 +68,7 @@ Component libraries in `packages/ui/` (private):
   - `block: true` for full-width elements and app roots; the default is shrink-wrapping `inline-flex`.
   - Theme-level flex overrides fight the wrapper's emitted CSS and never reach the flex-fix inner layer. Theme layout is correct only for `flexWrap`, CSS grid, and `display: 'block'` for text ellipsis.
 - Simple-path fast path: without before/after content and on a non-fix tag, `Element` makes one styled invocation. `internElementBundle()` returns the same `$element` object for the same primitive tuple, so the class cache hits.
+- `Text` interns its `$text` bundle the same way (`internTextBundle`: one shared bundle without `css`, by identity for an object/function `css`, LRU by string), and the styler's `$element` class cache keys on `$text` when there is no `$element`, so warm Text mounts skip the CSS pipeline.
 
 ### Overlay
 

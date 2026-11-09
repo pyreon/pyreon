@@ -1,5 +1,6 @@
 import * as p from './ui'
 import { type CliArgs, helpText, parseArgs } from './args'
+import { detectPackageManager, nextSteps } from './package-manager'
 import { runPrompts } from './prompts'
 import { scaffold } from './scaffold'
 
@@ -46,7 +47,8 @@ async function main() {
   s.stop('Project created!')
 
   // Next steps
-  p.note([`cd ${config.name}`, 'bun install', 'bun run dev'].join('\n'), 'Next steps')
+  const pm = detectPackageManager(process.env.npm_config_user_agent)
+  p.note(nextSteps(config.name, pm, config.template).join('\n'), 'Next steps')
 
   p.outro('Happy building!')
 }
