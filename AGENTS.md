@@ -21,7 +21,7 @@ The bar is "do it properly, not quickly". When priorities across open work are u
 | Regenerate docs from manifests | `bun run gen-docs && bun docs/scripts/gen-all.ts` |
 | Changeset | `bun changeset` |
 
-Use `bun run test`, never `bun test` (the suites are vitest). Run `bun run validate-fast` before every push; the `.githooks/pre-push` hook runs it plus affected typecheck and tests.
+Use `bun run test`, never `bun test` (the suites are vitest). Run `bun run validate-fast` before every push. The `.githooks/pre-push` hook is deliberately fast and local: validate-fast (which includes `lint:pyreon`), then typecheck and tests of the DIRECTLY changed packages only, skipping any package whose inputs match a recorded pass. GitHub CI is the full gate: it runs the whole reverse-dependency closure, the native-compiler suite and the Swift/Kotlin lanes as required checks, so nothing merges without them.
 
 ## Where to read more
 
@@ -143,6 +143,7 @@ Before adding any module-level cache, stack or registry, answer: what evicts ent
 - **Report honestly.** Lead a summary with what is not done and what was not verified. A measured tie or loss is reported as a tie or loss.
 - **Keep knowledge current in the same PR.** A new anti-pattern goes into `.agents/rules/anti-patterns.md`; a new convention into the matching rule file; an API change into the manifest, README and docs. Put durable contracts in these files, not per-PR narrative — history belongs in git and changelogs.
 - **Changesets**: any source change in a published package needs `bun changeset`. Pyreon is 0.x, so a breaking change is `minor`, never `major`.
+- **Local pushes are fast and direct-only; CI is the full gate.** Do not widen the pre-push hook back to the reverse-dependency closure. If the hook stops running something, a required CI job must run it; never keep a check local because CI lacks it (details: `.agents/rules/workflow.md`, "Pre-push hook").
 
 ### Git
 
