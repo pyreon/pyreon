@@ -373,6 +373,8 @@ const SWIFT_RUNTIME_HELPERS: readonly { readonly name: string; readonly file: st
   { name: 'PyreonMap', file: 'PyreonCollections.swift' },
   { name: 'PyreonSet', file: 'PyreonCollections.swift' },
   { name: 'pyreonNumberString', file: 'PyreonNumber.swift' },
+  // A whole-valued Double stored into an integer struct field (integer-field-coercion.ts).
+  { name: 'pyreonInt', file: 'PyreonNumber.swift' },
   // `parseInt` / `parseFloat` / `Number(text)` on a string lower to these.
   { name: 'pyreonParseInt', file: 'PyreonNumber.swift' },
   { name: 'pyreonParseFloat', file: 'PyreonNumber.swift' },

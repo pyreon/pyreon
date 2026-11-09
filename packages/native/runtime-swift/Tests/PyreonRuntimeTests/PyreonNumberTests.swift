@@ -23,6 +23,19 @@ final class PyreonNumberTests: XCTestCase {
         XCTAssertEqual(pyreonNumberString(42), "42")
     }
 
+    // pyreonInt is Kotlin's Double.toLong(): the Android emit stores the same value, and neither target traps.
+    func testIntConversionNeverTraps() {
+        XCTAssertEqual(pyreonInt(7.0), 7)
+        XCTAssertEqual(pyreonInt(-7.9), -7)
+        XCTAssertEqual(pyreonInt(1709251200000.0), 1709251200000)
+        XCTAssertEqual(pyreonInt(Double.nan), 0)
+        XCTAssertEqual(pyreonInt(Double.infinity), Int.max)
+        XCTAssertEqual(pyreonInt(-Double.infinity), Int.min)
+        XCTAssertEqual(pyreonInt(1e300), Int.max)
+        XCTAssertEqual(pyreonInt(9_223_372_036_854_775_808.0), Int.max)
+        XCTAssertEqual(pyreonInt(-9_223_372_036_854_775_808.0), Int.min)
+    }
+
     func testChartCategoriesAndDates() {
         XCTAssertEqual(pyreonChartString(2024), "2024")
         XCTAssertEqual(pyreonChartString(2024.0), "2024")

@@ -817,7 +817,7 @@ let _activeInferCtx: ReturnType<typeof buildInferenceCtx> = emptyInferenceCtx()
 /** 'double' / 'int' / 'other' for an expr, via the active inference ctx. */
 /**
  * A value stored into an INTEGER struct field (see integer-field-coercion.ts): a whole-valued Double converts
- * exactly (`Int(…)`; `Date.now()` in integer milliseconds), any other Double is named. Everything else is `raw`.
+ * through `pyreonInt(…)` (`Date.now()` in integer milliseconds), any other Double is named. Everything else is `raw`.
  */
 function swiftIntoIntegerField(
   structName: string,
@@ -828,7 +828,8 @@ function swiftIntoIntegerField(
 ): string {
   if (ft === undefined || !typeWantsInteger(ft) || numericFloatness(value) !== 'double') return raw
   if (isDateNowCall(value)) return 'Int(Date().timeIntervalSince1970 * 1000)'
-  if (isWholeValued(value, (x) => numericFloatness(x) === 'int')) return `Int(${raw})`
+  // `pyreonInt`, not `Int(…)`: `Int(_:)` traps on the NaN / ±Infinity a `Math.floor(x / 0)` can reach.
+  if (isWholeValued(value, (x) => numericFloatness(x) === 'int')) return `pyreonInt(${raw})`
   const w = fractionalIntoIntegerFieldWarning(structName, field, 'Swift')
   if (!_emitWarnings.includes(w)) _emitWarnings.push(w)
   return raw
