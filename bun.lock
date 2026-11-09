@@ -3329,6 +3329,7 @@
         "create-zero": "./bin/create-zero.js",
       },
       "devDependencies": {
+        "@pyreon/compiler": "workspace:*",
         "@pyreon/tsconfig": "workspace:*",
         "@pyreon/vitest-config": "workspace:*",
         "@pyreon/zero": "workspace:*",

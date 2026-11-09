@@ -41,7 +41,7 @@ export function layout() {
         <RouterView />
       </main>
 
-      <footer class="app-footer">Built with Pyreon Zero — signal-based, blazing fast.</footer>
+      <footer class="app-footer">Built with Pyreon Zero — signal-based, fine-grained.</footer>
     </QueryClientProvider>
   )
 }

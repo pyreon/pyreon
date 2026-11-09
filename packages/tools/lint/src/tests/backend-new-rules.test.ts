@@ -188,7 +188,7 @@ describe('pyreon/no-secret-in-shared-module', () => {
     expect(only(`export const u = process.env.ZERO_PUBLIC_API_URL`, ID, SHARED)).toEqual([])
   })
 
-  it.each(['NODE_ENV', 'CI', 'FORCE_COLOR', 'NO_COLOR', 'TERM', 'DEBUG'])(
+  it.each(['NODE_ENV', 'CI', 'FORCE_COLOR', 'NO_COLOR', 'TERM', 'DEBUG', 'npm_config_user_agent'])(
     'treats %s as environment plumbing, not a secret',
     (name) => {
       // FORCE_COLOR is here because the rule reported it three times in

@@ -38,6 +38,9 @@ const BENIGN = new Set([
   'FORCE_COLOR', 'NO_COLOR', 'TERM', 'COLORTERM', 'TERM_PROGRAM',
   // Ordinary process plumbing.
   'DEBUG', 'LANG', 'LC_ALL', 'PWD', 'HOME', 'PATH', 'SHELL', 'USER',
+  // Which package manager launched the process (`npm/10.9.0 node/v22 …`), set by npm, pnpm, yarn and bun.
+  // `create-pyreon-app` reads it to print that tool's install command; the rule reported it there.
+  'npm_config_user_agent',
 ])
 
 function envKeyOf(node: any): string | null {
