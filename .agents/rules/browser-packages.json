@@ -20,6 +20,7 @@
     "@pyreon/rocketstyle",
     "@pyreon/coolgrid",
     "@pyreon/kinetic",
+    "@pyreon/ui-core",
     "@pyreon/ui-components",
     "@pyreon/ui-primitives",
     "@pyreon/ui-theme",
