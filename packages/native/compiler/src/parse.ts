@@ -822,11 +822,23 @@ function tryModuleDeclsFromTopLevel(node: AnyNode, ctx: ParseCtx): ModuleDeclIR[
     // function bodies separately), but defensive bail catches any
     // shape where a user accidentally writes `const x = signal(0)` at
     // module scope (which would be a runtime bug in Pyreon anyway).
+    // A module-scope `signal()` / `computed()` is the file's SHARED state — one value every component (and helper)
+    // reads and writes, as on the web. It lowers to a per-file observable singleton (module-state.ts); a `computed`
+    // with a block body has no form there yet and is named.
     if (init.type === 'CallExpression') {
       const calleeName = init.callee?.name as string | undefined
       if (calleeName === 'signal' || calleeName === 'computed') {
+        const decl = tryDeclFromVarDeclarator(declarator, ctx)
+        if (decl?.kind === 'signal' && decl.storageKey === undefined) {
+          out.push({ name, mutable: false, type: decl.type, initial: decl.initial, reactive: { kind: 'signal' } })
+          continue
+        }
+        if (decl?.kind === 'computed' && decl.expr !== undefined) {
+          out.push({ name, mutable: false, type: { kind: 'unknown' }, initial: decl.expr, reactive: { kind: 'computed' } })
+          continue
+        }
         ctx.warnings.push(
-          `Module-level binding ${name} initializes via ${calleeName}() — these belong inside a component. Skipped.`,
+          `Module-level binding ${name} initializes via ${calleeName}() in a shape the module-state lowering does not take (a block-bodied computed, a persisted signal) — move it into a component or a store. Skipped.`,
         )
         continue
       }

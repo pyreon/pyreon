@@ -1398,8 +1398,16 @@ the lathe bookshelf data components consumed from another module;
 block-bodied shapes); no device assertion yet.
 
 **Module scope**: `let`/`const` primitives (non-reactive on native),
-type aliases, the recognized factory calls. Module-scope `signal()` is
-NOT lowered — declare signals inside components or stores.
+type aliases, the recognized factory calls, and **module-scope `signal()` /
+`computed()`** — the file's shared state. They lower to one observable
+singleton per file (Swift `@Observable final class PyreonModuleState…` with a
+`shared` instance, Kotlin `object PyreonModuleState…` with `mutableStateOf`),
+the shape store state takes, so every component that reads one re-renders
+when it changes; reads and writes in components, handlers, helpers and the
+state's own computeds all go through it, and a local of the same name shadows
+it. The singleton's name carries the file's suffix, so two files never
+collide. A block-bodied module `computed` or a persisted module signal is
+named in a warning.
 
 ### Consuming compiler diagnostics
 
