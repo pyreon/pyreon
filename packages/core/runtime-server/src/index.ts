@@ -39,6 +39,7 @@ import {
   isSafeImageDataUri,
   isUnsafeUrl,
   makeReactiveProps,
+  _requestIdFrame,
   normalizeStyleValue,
   popContext,
   runWithHooks,
@@ -529,7 +530,7 @@ export async function renderToString(root: VNode | null): Promise<string> {
   // NOT `withStylerSSRScope` — see its doc comment. String-mode SSR reads the
   // buffer AFTER this returns, which is the documented pattern; scoping here
   // hides every rule from that read.
-  return withIsolatedRegistries(() => _contextAls.run([], () => renderNode(root)))
+  return withIsolatedRegistries(() => _contextAls.run([_requestIdFrame()], () => renderNode(root)))
 }
 
 /**
@@ -543,7 +544,7 @@ export function runWithRequestContext<T>(fn: () => Promise<T>): Promise<T> {
   // styles inside this call, so the rules one request inserts can no longer
   // leak into the next request's `<style>` (the shared instance buffer was
   // never reset — a page's CSS grew with every other page rendered before it).
-  return withStylerSSRScope(() => withIsolatedRegistries(() => _contextAls.run([], fn)))
+  return withStylerSSRScope(() => withIsolatedRegistries(() => _contextAls.run([_requestIdFrame()], fn)))
 }
 
 /**
@@ -751,7 +752,7 @@ export function renderToStream(
           })
       return _contextAls.getStore() !== undefined
         ? streamBody()
-        : withStylerSSRScope(() => withIsolatedRegistries(() => _contextAls.run([], streamBody)))
+        : withStylerSSRScope(() => withIsolatedRegistries(() => _contextAls.run([_requestIdFrame()], streamBody)))
     },
     cancel(reason) {
       // Consumer (browser fetch reader) closed the stream — propagate to
@@ -1115,7 +1116,7 @@ async function streamSuspenseBoundary(vnode: VNode, enqueue: (s: string) => void
   // `?? []` is defensive — the streaming pipeline always runs inside an active
   // `_contextAls` run, so `getStore()` is defined here.
   /* v8 ignore next */
-  const ctxStore = _contextAls.getStore() ?? []
+  const ctxStore = _contextAls.getStore() ?? [_requestIdFrame()]
 
   // Queue async resolution — runs in parallel, emits to the main stream when done.
   // Errors are caught per-boundary so one failing Suspense doesn't abort the

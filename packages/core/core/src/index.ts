@@ -83,13 +83,19 @@ export {
   _rp,
   _rpd,
   _wrapSpread,
-  createUniqueId,
   makeReactiveProps,
   mergeProps,
   REACTIVE_PROP,
   removeUndefinedProps,
   splitProps,
 } from './props'
+export {
+  _IslandIds,
+  _nextIslandIdPrefix,
+  _requestIdFrame,
+  _resetIdCounter,
+  createUniqueId,
+} from './unique-id'
 export type { ElementRef, Ref, RefCallback, RefProp } from './ref'
 export { createRef, elementRef } from './ref'
 export type { Directive, DirectiveEntry } from './directive'

@@ -576,29 +576,3 @@ export function _compatProps<T extends object>(props: T): T {
   }
   return props
 }
-
-// ─── Unique ID ───────────────────────────────────────────────────────────────
-
-// Plain module-scope counter. The duplicate-instance bug class is now
-// prevented at the bundler layer + detected at the runtime layer.
-let _idCounter = 0
-
-/**
- * Generate a unique ID string for accessibility attributes (htmlFor, aria-describedby, etc.).
- * SSR-safe: uses a deterministic counter that resets per request context.
- *
- * @example
- * const id = createUniqueId()
- * return <>
- *   <label for={id}>Name</label>
- *   <input id={id} />
- * </>
- */
-export function createUniqueId(): string {
-  return `pyreon-${++_idCounter}`
-}
-
-/** Reset the ID counter (called by SSR per-request). */
-export function _resetIdCounter(): void {
-  _idCounter = 0
-}

@@ -1,4 +1,5 @@
-import { createUniqueId, mergeProps, splitProps } from '../props'
+import { mergeProps, splitProps } from '../props'
+import { createUniqueId } from '../unique-id'
 
 describe('splitProps', () => {
   test('splits known keys from rest', () => {
