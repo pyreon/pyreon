@@ -42,6 +42,7 @@
     "build": "vl_rolldown_build",
     "dev": "vl_rolldown_build-watch",
     "test": "vitest run",
+    "test:browser": "vitest run --config ./vitest.browser.config.ts",
     "typecheck": "tsc --noEmit",
     "lint": "oxlint .",
     "bench:storage": "NODE_ENV=production bun bench/storage-bench.ts"
@@ -62,6 +63,7 @@
     "@pyreon/runtime-server": "workspace:^",
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
+    "@vitest/browser-playwright": "^5.0.5",
     "bun-types": "^1.4.4",
     "fake-indexeddb": "^6.2.6",
     "jotai": "^3.0.1",
