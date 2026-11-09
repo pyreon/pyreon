@@ -99,9 +99,8 @@ export function App() {
     expect(out).not.toContain('@AppStorage("k10")')
   })
 
-  it('a TS `enum` declaration is NOT a native enum, and is named as such', () => {
-    // The stated remedy is the string-literal union above; a TS enum emits
-    // nothing, so a reference to it would not compile.
+  it('a string TS `enum` is the same native String enum as the union', () => {
+    // It used to emit nothing (and warn); it now desugars to the string-literal union above (ts-enum-desugar.ts).
     const r = transform(
       `import { Stack, Text } from '@pyreon/primitives'
 enum Side { Left = 'left' }
@@ -110,9 +109,8 @@ export function App() {
 }`,
       { target: 'swift' },
     )
-    expect(
-      r.warnings.some((w) => w.includes('Top-level TS `enum Side` is NOT compiled to native')),
-    ).toBe(true)
+    expect(r.code).toContain('enum Side: String')
+    expect(r.warnings.some((w) => w.includes('enum Side'))).toBe(false)
   })
 })
 
