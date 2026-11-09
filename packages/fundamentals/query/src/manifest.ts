@@ -21,7 +21,7 @@ export default defineManifest({
     rationale:
       'wraps TanStack Query (a JS runtime cache), so the full client — QueryClient config, devtools, infinite/suspense queries — stays web; `useQuery` itself lowers to the PyreonQuery runtime',
     nativeFrontend:
-      'PyreonQuery — `useQuery` (key + fetcher, loading/error/data state); PyreonMutation — `useMutation<T>(ep.mutation())` or `useMutation({ mutationFn: (vars) => ep({ json: vars }) })` with `mutate` / `mutateAsync` / `reset` and data/error/status (the request is built at the call site from runtime values; the latest call owns the state; TanStack callback order; `invalidates` / `onMutate` / `retry` are named, not lowered); PyreonStream — `useStream` over `openEventStream` / `openNdjsonStream` (SSE + NDJSON, reconnect with Last-Event-ID)',
+      'PyreonQuery — `useQuery` (key + fetcher, loading/error/data state); PyreonMutation — `useMutation<T>(ep.mutation())` or `useMutation({ mutationFn: (vars) => ep({ json: vars }) })` with `mutate` / `mutateAsync` / `reset` and data/error/status (the request is built at the call site from runtime values; the latest call owns the state; TanStack callback order; `invalidates` / `onMutate` / `retry` are named, not lowered); PyreonInfiniteQuery — `useInfiniteQuery<Page>` with a literal `queryKey`, a GET `fetch` of a URL that interpolates `pageParam`, a literal `initialPageParam` and `getNextPageParam: (last) => last.field` (read `data()` / `hasNextPage()` / `isFetchingNextPage()`, call `fetchNextPage()`; no fetch init, `getPreviousPageParam`, `maxPages` or shared cache); PyreonStream — `useStream` over `openEventStream` / `openNdjsonStream` (SSE + NDJSON, reconnect with Last-Event-ID)',
   },
   longExample: `import {
   QueryClient,

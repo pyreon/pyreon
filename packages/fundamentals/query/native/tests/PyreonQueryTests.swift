@@ -94,5 +94,6 @@ struct PyreonQueryTests {
         print("[PyreonQueryTests] all assertions passed")
         // The package's other suites share this one entry point (the gate compiles every test file together).
         await runPyreonMutationTests()
+        await runPyreonInfiniteQueryTests()
     }
 }

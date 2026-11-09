@@ -97,6 +97,9 @@
         ],
         "PyreonMutation": [
           "PyreonMutation.kt"
+        ],
+        "PyreonInfiniteQuery": [
+          "PyreonInfiniteQuery.kt"
         ]
       },
       "plugin": "./lib/native-plugin.js",

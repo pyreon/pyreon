@@ -192,13 +192,62 @@ class PyreonStream<E>(val maxEvents: Long = 1000L, main: java.util.concurrent.Ex
 
 `
 
+export const INFINITE_SWIFT_STUBS = `// PyreonInfiniteQuery — mirrors @pyreon/query/native/swift/PyreonInfiniteQuery.swift:
+// private(set) result fields, the two harness closures, and the resolve/reject report-back.
+public struct PyreonInfiniteData<Page> {
+  public let pages: [Page]
+  public let pageParams: [String]
+  public init(pages: [Page], pageParams: [String]) {}
+}
+public func pyreonPageParam<T>(_ value: T?) -> String? { value.map { String(describing: $0) } }
+public final class PyreonInfiniteQuery<Page> {
+  public private(set) var data: PyreonInfiniteData<Page>?
+  public private(set) var error: Error?
+  public private(set) var isPending: Bool = false
+  public private(set) var isFetching: Bool = false
+  public private(set) var isFetchingNextPage: Bool = false
+  public private(set) var hasNextPage: Bool = false
+  public let queryKey: String
+  public let initialParam: String
+  public var requestPage: ((String) -> Void)?
+  public var getNextParam: ((Page) -> String?)?
+  public init(queryKey: String, initialParam: String) { self.queryKey = queryKey; self.initialParam = initialParam }
+  public func start() {}
+  public func fetchNextPage() {}
+  public func resolve(_ page: Page, param: String) {}
+  public func reject(_ failure: Error) {}
+}
+`
+
+export const INFINITE_KOTLIN_STUBS = `// PyreonInfiniteQuery — mirrors @pyreon/query/native/kotlin/.../PyreonInfiniteQuery.kt.
+class PyreonInfiniteData<Page>(val pages: List<Page>, val pageParams: List<String>)
+fun pyreonPageParam(value: Any?): String? = value?.toString()
+class PyreonInfiniteQuery<Page>(val queryKey: String, val initialParam: String) {
+  val data: MutableState<PyreonInfiniteData<Page>?> = mutableStateOf(null)
+  val error: MutableState<Throwable?> = mutableStateOf(null)
+  val isPending: MutableState<Boolean> = mutableStateOf(false)
+  val isFetching: MutableState<Boolean> = mutableStateOf(false)
+  val isFetchingNextPage: MutableState<Boolean> = mutableStateOf(false)
+  val hasNextPage: MutableState<Boolean> = mutableStateOf(false)
+  var requestPage: ((String) -> Unit)? = null
+  var getNextParam: ((Page) -> String?)? = null
+  fun start() {}
+  fun fetchNextPage() {}
+  fun resolve(page: Page, param: String) {}
+  fun reject(failure: Throwable) {}
+}
+
+`
+
 export const queryStubs: StubAugmentation = {
   swift: (source) =>
     (/\bPyreonQuery\b/.test(source) ? QUERY_SWIFT_STUBS : '') +
     (/\bPyreonMutation\b/.test(source) ? MUTATION_SWIFT_STUBS : '') +
-    (/\bPyreonStream\b/.test(source) ? STREAM_SWIFT_STUBS : ''),
+    (/\bPyreonStream\b/.test(source) ? STREAM_SWIFT_STUBS : '') +
+    (/\bPyreonInfiniteQuery\b/.test(source) ? INFINITE_SWIFT_STUBS : ''),
   kotlin: (source) =>
     (/\bPyreonQuery\b/.test(source) ? QUERY_KOTLIN_STUBS : '') +
     (/\bPyreonMutation\b/.test(source) ? MUTATION_KOTLIN_STUBS : '') +
-    (/\bPyreonStream\b/.test(source) ? STREAM_KOTLIN_STUBS : ''),
+    (/\bPyreonStream\b/.test(source) ? STREAM_KOTLIN_STUBS : '') +
+    (/\bPyreonInfiniteQuery\b/.test(source) ? INFINITE_KOTLIN_STUBS : ''),
 }

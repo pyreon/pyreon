@@ -199,6 +199,11 @@ const USAGES: ReadonlyArray<readonly [string, string, string]> = [
     'const tc = useThrottledCallback((n: number) => { const x = n }, 100)',
   ],
   [
+    'useInfiniteQuery',
+    '@pyreon/query',
+    'const f = useInfiniteQuery<Resp>(() => ({ queryKey: ["k"], queryFn: ({ pageParam }) => fetch(`/x?c=${pageParam}`), initialPageParam: "0", getNextPageParam: (l) => l.text }))',
+  ],
+  [
     'useQuery',
     '@pyreon/query',
     'const q = useQuery<Resp>(() => ({ queryKey: ["k"], queryFn: () => fetch("/x"), staleTime: 0 }))',
