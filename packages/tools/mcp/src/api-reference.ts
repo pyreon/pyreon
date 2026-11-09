@@ -1086,7 +1086,7 @@ const merged = mergeProps(defaults, filtered)`,
     </>
   )
 }`,
-    notes: 'Generate a unique string ID ("pyreon-1", "pyreon-2", ...) that is consistent between server and client when called in the same order. SSR-safe — the counter resets per request context. Use for `id`/`for`/`aria-*` attribute pairing in components. See also: splitProps.',
+    notes: 'Generate a unique string ID ("pyreon-1", "pyreon-2", ...) that is consistent between server and client when called in the same order. Hydration-stable — the server counts per request, so every request restarts at 1; an island hydrates in its own namespace (`pyreon-i1-…`) that the server writes to `data-id-prefix`, so a component in an island gets the id it was rendered with. It holds while the components that call it render in the same order on both sides (the synchronous page render and each island do); a streamed Suspense boundary that resolves out of order is the exception. Use for `id`/`for`/`aria-*` attribute pairing in components. See also: splitProps.',
   },
 
   'core/Portal': {

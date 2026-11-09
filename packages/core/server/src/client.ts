@@ -26,7 +26,7 @@
  */
 
 import type { ComponentFn } from '@pyreon/core'
-import { h } from '@pyreon/core'
+import { _IslandIds, h } from '@pyreon/core'
 import { createRouter, hydrateLoaderData, type RouteRecord, RouterProvider } from '@pyreon/router'
 import { decodeIslandProps } from './island-codec'
 import { hydrateRoot, mount } from '@pyreon/runtime-dom'
@@ -693,7 +693,12 @@ async function hydrateIsland(
     // parents to it (hydrate.ts sets `scope._parent = getContextOwner()`),
     // letting the component's `useContext()` reach ancestor providers
     // (PyreonUI theme, etc.). `null` owner → detached root (static islands).
-    runWithContextOwner(owner ?? null, () => hydrateRoot(el, h(Comp, props)))
+    // The server wrote the island's id namespace to `data-id-prefix`; restoring it around the root makes every
+    // `createUniqueId()` inside the island return the id the server rendered (an island is not part of the page's
+    // hydration walk, so the page counter cannot reach it). Absent on a marker the client created itself.
+    const idPrefix = el.getAttribute('data-id-prefix')
+    const tree = idPrefix === null ? h(Comp, props) : h(_IslandIds, { prefix: idPrefix }, h(Comp, props))
+    runWithContextOwner(owner ?? null, () => hydrateRoot(el, tree))
     if (process.env.NODE_ENV !== 'production') _count('island.hydrated')
   } catch (err) {
     console.error(`Failed to hydrate island "${name}"`, err)

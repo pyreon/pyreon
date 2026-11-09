@@ -186,7 +186,7 @@ import { splitProps, mergeProps, cx, createUniqueId } from '@pyreon/core'
 function Button(props: ButtonProps) {
   const [local, rest] = splitProps(props, ['variant', 'size'])
   const merged = mergeProps({ type: 'button' }, rest)
-  const id = createUniqueId()  // 'pyreon-1', SSR-safe
+  const id = createUniqueId()  // 'pyreon-1' — the same id on the server and after hydration
   return (
     <button id={id} {...merged} class={cx('btn', `btn-${local.variant}`, local.size && `size-${local.size}`)}>
       {props.children}

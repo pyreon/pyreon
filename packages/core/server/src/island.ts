@@ -76,7 +76,7 @@
  */
 
 import type { ComponentFn, Props, VNode } from '@pyreon/core'
-import { h, onMount } from '@pyreon/core'
+import { _IslandIds, _nextIslandIdPrefix, h, onMount } from '@pyreon/core'
 import { getContextOwner, isClient } from '@pyreon/reactivity'
 import { encodeIslandProps } from './island-codec'
 
@@ -210,9 +210,14 @@ export function island<P extends Props = Props>(
 
     // ── SERVER (SSR/SSG): render the component INSIDE the marker ─────────────
     // so the static HTML carries the island content (SEO / no-JS / first paint).
+    // The island's ids live in a namespace of their own (`pyreon-iK-…`): its subtree is hydrated later as a
+    // SEPARATE root, so it cannot share the page's counter and still agree with the client. The ordinal is taken
+    // NOW, before the loader awaits, so it follows document order rather than the order the chunks resolve in.
+    const idPrefix = _nextIslandIdPrefix()
+    attrs['data-id-prefix'] = idPrefix
     return loader().then((mod) => {
       const Comp = typeof mod === 'function' ? mod : mod.default
-      return h('pyreon-island', attrs, h(Comp, props))
+      return h('pyreon-island', attrs, h(_IslandIds, { prefix: idPrefix }, h(Comp, props)))
     })
   }
 

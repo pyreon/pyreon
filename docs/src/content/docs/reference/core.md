@@ -31,7 +31,7 @@ See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multipla
 - lazy() / Dynamic — code splitting and dynamic component rendering
 - splitProps / mergeProps / removeUndefinedProps — reactivity-preserving props utilities
 - cx() — class value combiner (strings, objects, arrays, nested)
-- createUniqueId — SSR-safe unique ID generation
+- createUniqueId — hydration-stable unique ID generation (per-request on the server, one namespace per island)
 - Async — pending/error/empty/data over any structural AsyncLike source (query results, http resources, hand-rolled)
 - use() — compose element directives (plain (el) =&gt; cleanup | void functions) into a single ref callback
 - elementRef() — one value that is both a ref and the () =&gt; T | null accessor element-consuming hooks take
@@ -879,7 +879,7 @@ const merged = mergeProps(defaults, filtered)
 createUniqueId(): string
 ```
 
-Generate a unique string ID ("pyreon-1", "pyreon-2", ...) that is consistent between server and client when called in the same order. SSR-safe — the counter resets per request context. Use for `id`/`for`/`aria-*` attribute pairing in components.
+Generate a unique string ID ("pyreon-1", "pyreon-2", ...) that is consistent between server and client when called in the same order. Hydration-stable — the server counts per request, so every request restarts at 1; an island hydrates in its own namespace (`pyreon-i1-…`) that the server writes to `data-id-prefix`, so a component in an island gets the id it was rendered with. It holds while the components that call it render in the same order on both sides (the synchronous page render and each island do); a streamed Suspense boundary that resolves out of order is the exception. Use for `id`/`for`/`aria-*` attribute pairing in components.
 
 **Example**
 

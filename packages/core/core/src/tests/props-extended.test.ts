@@ -1,4 +1,5 @@
-import { _resetIdCounter, createUniqueId, mergeProps, splitProps } from '../props'
+import { mergeProps, splitProps } from '../props'
+import { _resetIdCounter, createUniqueId } from '../unique-id'
 
 describe('createUniqueId — extended', () => {
   test('returns pyreon- prefixed string', () => {
