@@ -61,6 +61,7 @@ export const LIFECYCLE_REGISTRY: LifecycleEntry[] = [
   // wired in both emits, or the hook ships frozen at its initial value.
   { container: 'PyreonNetworkStatus', method: 'start', policy: 'auto', hook: 'useOnline' },
   { container: 'PyreonAppState', method: 'start', policy: 'auto', hook: 'useAppState' },
+  { container: 'PyreonAppState', method: 'start', policy: 'auto', hook: 'useDocumentVisibility' },
   { container: 'PyreonPushNotifications', method: 'start', policy: 'auto', hook: 'usePush' },
   { container: 'PyreonCrashReporter', method: 'start', policy: 'auto', hook: 'useCrashReporter' },
   { container: 'PyreonWebSocket', method: 'connect', policy: 'auto', declKind: 'websocket' },

@@ -83,20 +83,18 @@ export default function Dashboard() {
         </div>
         <pre>
           <code>
-            <span class="cm">{"// Navigation guard — protect routes"}</span>
-            <span class="kw">export function</span> <span class="fn">guard</span>() {"{"}
-            <span class="kw">if</span> (!isAuthenticated) {"{"}
-            <span class="kw">return</span> <span class="str">"/login"</span>{" "}
-            <span class="cm">{"// redirect"}</span>
-            {"}"}
-            <span class="kw">return</span> <span class="str">true</span>{" "}
-            <span class="cm">{"// allow"}</span>
-            {"}"}
-            <span class="cm">{"// Per-route server middleware"}</span>
-            <span class="kw">export const</span> <span class="fn">middleware</span> = (req, next)
-            =&gt; {"{"}
-            <span class="cm">{"// logging, auth, rate limiting..."}</span>
-            <span class="kw">return</span> <span class="fn">next</span>(req)
+            <span class="cm">{"// Navigation guard — protect routes"}</span>{"\n"}
+            <span class="kw">export function</span> <span class="fn">guard</span>() {"{"}{"\n"}
+            {"  "}<span class="kw">if</span> (!isAuthenticated) {"{"}{"\n"}
+            {"    "}<span class="kw">return</span> <span class="str">"/login"</span> <span class="cm">{"// redirect"}</span>{"\n"}
+            {"  }"}{"\n"}
+            {"  "}<span class="kw">return</span> <span class="str">true</span> <span class="cm">{"// allow"}</span>{"\n"}
+            {"}"}{"\n"}
+            {"\n"}
+            <span class="cm">{"// Per-route server middleware"}</span>{"\n"}
+            <span class="kw">export const</span> <span class="fn">middleware</span> = (req, next) =&gt; {"{"}{"\n"}
+            {"  "}<span class="cm">{"// logging, auth, rate limiting..."}</span>{"\n"}
+            {"  "}<span class="kw">return</span> <span class="fn">next</span>(req){"\n"}
             {"}"}
           </code>
         </pre>

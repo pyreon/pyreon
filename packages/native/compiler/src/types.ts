@@ -955,6 +955,12 @@ export interface ModuleDeclIR {
   type: TypeIR
   /** Initial-value expression. */
   initial: ExprIR
+  /**
+   * A module-scope `signal(initial)` (`kind: 'signal'`) or `computed(() => initial)` (`kind: 'computed'`, `initial`
+   * being the computed's expression): the file's shared reactive state, emitted as a per-file observable singleton
+   * and read / written through it everywhere (module-state.ts), never as a plain binding.
+   */
+  reactive?: { kind: 'signal' | 'computed' } | undefined
 }
 
 export interface ParseResult {

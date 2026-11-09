@@ -26,6 +26,21 @@ public func pyreonNumberString(_ v: Double) -> String {
 /// The integer overload: `String(Int)` already matches JavaScript.
 public func pyreonNumberString(_ v: Int) -> String { String(v) }
 
+/// A whole-valued `Double` (`Math.floor(x)`, `Math.round(a / b)`, ...) stored into an
+/// INTEGER field. Swift's `Int(_:)` TRAPS on NaN, ±Infinity and anything outside
+/// `Int`'s range, which `Math.floor(NaN)` or `Math.round(x / 0)` reach at runtime.
+/// This is Kotlin's `Double.toLong()`, which the Android emit uses for the same
+/// store, so both targets hold the same value and neither crashes: NaN is 0,
+/// ±Infinity and out-of-range values saturate to `Int.max` / `Int.min`, and every
+/// other value truncates toward zero.
+public func pyreonInt(_ v: Double) -> Int {
+    if v.isNaN { return 0 }
+    // `Double(Int.max)` rounds up to 2^63, which is itself out of range.
+    if v >= 9_223_372_036_854_775_808.0 { return Int.max }
+    if v <= -9_223_372_036_854_775_808.0 { return Int.min }
+    return Int(v)
+}
+
 // MARK: - Parsing text into numbers (ECMAScript `parseInt` / `parseFloat` / `Number`)
 //
 // Foundation's `Int(_:)` / `Double(_:)` accept a WHOLE string in Swift's own literal grammar; the web's functions do

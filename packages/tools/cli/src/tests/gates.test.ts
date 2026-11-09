@@ -180,7 +180,10 @@ describe('runDocClaimsGate', () => {
     // four docs pages), which had rotted to 15 / 16 / 18 against a real 17.
     // One of the 8 — the primitives-README "N … more when demanded" line —
     // moved here from the web-implementation count, so the net change is +7.
-    expect(result.meta.scanned).toBe(44)
+    //
+    // 45 with the create-zero lint prompt ("Include @pyreon/lint? (N
+    // Pyreon-specific rules)"), which shipped 59 against a real 133.
+    expect(result.meta.scanned).toBe(45)
     // The real repo must be drift-free — this gate runs in CI; if a
     // count claim drifts, EVERY PR's doctor run fails until it's fixed.
     const errs = result.findings.filter((f) => f.severity === 'error')

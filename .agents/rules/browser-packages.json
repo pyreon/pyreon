@@ -37,6 +37,7 @@
     "@pyreon/zero-content",
     "@pyreon/zero",
     "@pyreon/lathe",
-    "@pyreon/storage"
+    "@pyreon/storage",
+    "@pyreon/auth"
   ]
 }

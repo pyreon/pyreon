@@ -8,6 +8,7 @@
 // Type inference is deliberately naive — numeric assumption for
 // computed properties. Phase 1 grows a real inference pass.
 
+import { isModuleState, moduleStateClassName, moduleStateDecls, shadowingNames } from './module-state'
 import { GESTURE_EVENT_NAMES, GESTURE_EVENTS } from './gesture-events'
 import { CANVAS_SHAPES, isCanvasShape, shapeColorLiteral } from './canvas-shapes'
 import type { GestureEventName } from './gesture-events'
@@ -163,6 +164,12 @@ import {
 import { swiftCodingKeysLines } from './spelling'
 
 import { lowerMathCall, lowerMathConstant } from './math-lowering'
+import {
+  fractionalIntoIntegerFieldWarning,
+  isDateNowCall,
+  isWholeValued,
+  typeWantsInteger,
+} from './integer-field-coercion'
 import { buildObjectConstFields, planObjectSpread, resolveSpreadFields } from './spread-lowering'
 import { collectJsxFnNames, jsxHelperCallName, jsxHelperCallWarning } from './jsx-helper-call'
 import type { SpreadResolver } from './spread-lowering'
@@ -809,6 +816,38 @@ let _componentValueConstExprs: Map<string, ExprIR> = new Map()
 let _activeInferCtx: ReturnType<typeof buildInferenceCtx> = emptyInferenceCtx()
 
 /** 'double' / 'int' / 'other' for an expr, via the active inference ctx. */
+/**
+ * A value stored into an INTEGER struct field (see integer-field-coercion.ts): a whole-valued Double converts
+ * through `pyreonInt(…)` (`Date.now()` in integer milliseconds), any other Double is named. Everything else is `raw`.
+ */
+function swiftIntoIntegerField(
+  structName: string,
+  field: string,
+  ft: TypeIR | undefined,
+  value: ExprIR,
+  raw: string,
+): string {
+  if (ft === undefined || !typeWantsInteger(ft) || numericFloatness(value) !== 'double') return raw
+  if (isDateNowCall(value)) return 'Int(Date().timeIntervalSince1970 * 1000)'
+  // `pyreonInt`, not `Int(…)`: `Int(_:)` traps on the NaN / ±Infinity a `Math.floor(x / 0)` can reach.
+  if (isWholeValued(value, (x) => numericFloatness(x) === 'int')) return `pyreonInt(${raw})`
+  const w = fractionalIntoIntegerFieldWarning(structName, field, 'Swift')
+  if (!_emitWarnings.includes(w)) _emitWarnings.push(w)
+  return raw
+}
+
+/** A spread override (`{ ...t, id: … }`) of the SOURCE struct's field, coerced into that field's type like an init argument. */
+function swiftSpreadOverride(source: ExprIR, f: { name: string; value: ExprIR }, indent: number): string {
+  const raw = emitSwiftExpr(f.value, indent)
+  const st = inferType(source, _activeInferCtx)
+  const base = st.kind === 'union' ? st.branches.find((b) => b.kind !== 'null' && b.kind !== 'undefined') : st
+  if (base?.kind !== 'typeRef') return raw
+  const def =
+    _declaredStructs.find((s) => s.name === base.name) ?? _synthExprStructs.find((s) => s.name === base.name)
+  const ft = def?.fields.find((x) => x.name === f.name)?.type
+  return swiftIntoIntegerField(base.name, f.name, ft, f.value, raw)
+}
+
 function numericFloatness(e: ExprIR): 'double' | 'int' | 'other' {
   const t = inferType(e, _activeInferCtx)
   // The `Double`/`Float` ALIAS arrives as an unresolved typeRef (a param
@@ -1058,6 +1097,13 @@ export function emitSwift(
   // THIS source — not on what else the process compiled before it (a CLI
   // build, a watcher, a test file compiling twice all saw drifting names).
   _swiftHostStateSeq = 0
+  // Module-scope signals / computeds are the file's shared state (module-state.ts): emitted as one singleton, read and
+  // written through it — never as plain bindings.
+  const moduleState = moduleStateDecls(moduleDecls)
+  moduleDecls = moduleDecls.filter((md) => !isModuleState(md))
+  _moduleStateNames = new Set(moduleState.map((d) => (d as { name: string }).name))
+  _moduleStateShadow = new Set()
+  _moduleStateAll = moduleState
   // A host's `@State` lines are spliced into its component's struct when the component ends; a component that is not a struct (a stateless `@ViewBuilder func`) never reaches that splice, so what it registered must not survive into the next compile.
   _hostStateDecls = []
   _emitWarnings = []
@@ -1236,7 +1282,7 @@ export function emitSwift(
   // `NAMES.indexOf(…)` over a top-level `const NAMES = […]` types its receiver.
   _moduleConstTypes = buildModuleConstTypes(moduleDecls, structs, _helperReturns)
   _activeInferCtx = buildInferenceCtx(
-    [],
+    moduleState,
     structs,
     [],
     undefined,
@@ -1250,7 +1296,7 @@ export function emitSwift(
   // objects, so seeding one leaves the other empty — which is how an optional
   // field read still emitted `if hs {` after the structs were available.
   _exprInferCtx = buildInferenceCtx(
-    [],
+    moduleState,
     structs,
     [],
     undefined,
@@ -1264,6 +1310,8 @@ export function emitSwift(
   const parts: string[] = []
   for (const e of enums) parts.push(emitSwiftEnum(e))
   for (const s of structs) if (!s.external) parts.push(emitSwiftStruct(s))
+  _signalNames = new Set(_moduleStateNames)
+  if (moduleState.length > 0) parts.push(emitSwiftModuleState(moduleState))
   for (const md of moduleDecls) parts.push(emitSwiftModuleDecl(md))
   // File-scope items declared before free helper functions.
   for (const item of itemsInSlot(moduleItems, 'bindings'))
@@ -1423,6 +1471,39 @@ function swiftEquatable(t: TypeIR, structs: Set<string>, seen: Set<string>): boo
     default:
       return false
   }
+}
+
+/** The file's module-state names (module-state.ts) and the names the current component binds itself. */
+let _moduleStateNames: Set<string> = new Set()
+let _moduleStateShadow: Set<string> = new Set()
+let _moduleStateAll: DeclIR[] = []
+
+function _moduleStateDeclsVisible(): DeclIR[] {
+  return _moduleStateAll.filter((d) => !_moduleStateShadow.has((d as { name: string }).name))
+}
+
+/** Whether `name` here reads the module state: declared there, and bound by no component, handler or helper local. */
+function isModuleStateRead(name: string): boolean {
+  if (!_moduleStateNames.has(name) || _moduleStateShadow.has(name)) return false
+  return !_activeInferCtx.locals.has(name) && !_exprInferCtx.locals.has(name)
+}
+
+/** The singleton holding the file's module-scope signals and computeds. */
+function emitSwiftModuleState(state: DeclIR[]): string {
+  const cls = moduleStateClassName()
+  const lines = ['@available(iOS 17.0, macOS 14.0, *)', '@Observable', `final class ${cls} {`, `    static let shared = ${cls}()`]
+  for (const d of state) {
+    if (d.kind === 'signal') {
+      const init = withExpectedType(d.type, () => emitSwiftExpr(d.initial, 0))
+      const t = d.type.kind === 'unknown' ? inferType(d.initial, _activeInferCtx) : d.type
+      lines.push(`    var ${swiftIdent(d.name)}: ${swiftType(t)} = ${init}`)
+    } else if (d.kind === 'computed' && d.expr !== undefined) {
+      const t = inferType(d.expr, _activeInferCtx)
+      lines.push(`    var ${swiftIdent(d.name)}: ${swiftType(t)} { ${emitSwiftExpr(d.expr, 0)} }`)
+    }
+  }
+  lines.push('    private init() {}', '}')
+  return lines.join('\n')
 }
 
 /** Declared module structs — feeds per-component inference ctx so member
@@ -1674,8 +1755,9 @@ function emitSwiftComponent(c: ComponentIR): string {
   // Shape A: pass file-scope helper return types so the computeds pre-inference
   // resolves `computed(() => dbl(21))` to `Int`, not `Any` (assigning after the
   // build would be too late — the computed type is already cached).
+  _moduleStateShadow = shadowingNames(c.decls, c.props)
   const inferCtx = buildInferenceCtx(
-    c.decls,
+    [..._moduleStateDeclsVisible(), ...c.decls],
     _structDefs,
     c.props,
     c.propsParamName,
@@ -1732,8 +1814,8 @@ function emitSwiftComponent(c: ComponentIR): string {
   // at `.set()` call sites later in the body.
   _signalEnumTypes = new Map()
   // G1: track every signal name so TextField's pattern-detection can
-  // recognise binding-eligible identifiers.
-  _signalNames = new Set()
+  // recognise binding-eligible identifiers. Module state the component does not shadow reads like a signal too.
+  _signalNames = new Set([..._moduleStateNames].filter((n) => !_moduleStateShadow.has(n)))
   // G2 (related correctness): track every function decl name so the
   // call-emit keeps parens for `addTodo()` (function call) and drops
   // them only for `count()` (signal read). Seed with the file-scope helper
@@ -4463,6 +4545,7 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
     case 'identifier': {
       const constant = lowerPluginIdentifier(e.name, 'swift', () => swiftEmitContext(0))
       if (constant !== undefined) return constant
+      if (isModuleStateRead(e.name)) return `${moduleStateClassName()}.shared.${swiftIdent(e.name)}`
       return swiftIdent(e.name)
     }
     case 'await':
@@ -5162,6 +5245,8 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         if (callRead !== undefined) {
           return `${swiftIdent(e.callee.name)}.${callRead}`
         }
+        // A read of module state (module-state.ts) goes through the file's singleton.
+        if (isModuleStateRead(e.callee.name)) return `${moduleStateClassName()}.shared.${swiftIdent(e.callee.name)}`
         return swiftIdent(e.callee.name)
       }
       // TS-method translation (Phase 2 follow-up). When the callee is a
@@ -6651,14 +6736,15 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
           } else {
             const target = emitSwiftExpr(plan.source, indent)
             const overrides = plan.fields
-              .map((f) => `c.${swiftIdent(f.name)} = ${emitSwiftExpr(f.value, indent)}`)
+              .map((f) => `c.${swiftIdent(f.name)} = ${swiftSpreadOverride(plan.source, f, indent)}`)
               .join('; ')
             return `{ var c = ${target}; ${overrides}; return c }()`
           }
         }
       }
       if (e.spreads && e.spreads.length === 1 && e.spreads[0]!.kind === 'identifier') {
-        const target = emitSwiftExpr(e.spreads[0]!, indent)
+        const spreadSource = e.spreads[0]!
+        const target = emitSwiftExpr(spreadSource, indent)
         // An OPTIONAL source lowers to `var c = o` where `o` is `T?`, so the
         // member assignment and the return type both fail. TypeScript accepts
         // the spread, so without this the first signal is a swiftc gate whose
@@ -6669,7 +6755,7 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
           )
         }
         const overrides = e.fields
-          .map((f) => `c.${swiftIdent(f.name)} = ${emitSwiftExpr(f.value, indent)}`)
+          .map((f) => `c.${swiftIdent(f.name)} = ${swiftSpreadOverride(spreadSource, f, indent)}`)
           .join('; ')
         return `{ var c = ${target}; ${overrides}; return c }()`
       }
@@ -6719,7 +6805,8 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
               const raw = withExpectedType(ft, () => emitSwiftExpr(f.value, indent))
               const wantsFloat = ft !== undefined && typeWantsFloat(ft)
               const coerce = wantsFloat && numericFloatness(f.value) === 'int'
-              return `${swiftIdent(f.name)}: ${coerce ? `Double(${raw})` : raw}`
+              if (coerce) return `${swiftIdent(f.name)}: Double(${raw})`
+              return `${swiftIdent(f.name)}: ${swiftIntoIntegerField(structName, f.name, ft, f.value, raw)}`
             })
             .join(', ')
           return `${swiftIdent(structName)}(${args})`

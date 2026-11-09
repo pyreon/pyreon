@@ -32,7 +32,8 @@ describe('loud warnings for silently-dropped top-level declarations', () => {
   })
 
   it('TS `enum` warns + redirects to a string-literal union alias', () => {
-    const w = declWarnings(wrap('enum Color { Red, Green }'))
+    // A plain numeric / string enum lowers now (native-ts-enum.test.ts); a mixed one still warns.
+    const w = declWarnings(wrap("enum Color { Red, Green = 'green' }"))
     expect(w.length).toBe(1)
     expect(w[0]).toContain('enum Color')
     expect(w[0]).toContain("type Color = 'a' | 'b'")
@@ -46,7 +47,7 @@ describe('loud warnings for silently-dropped top-level declarations', () => {
   })
 
   it('exported object-shape `interface` SYNTHESIZES; exported `enum` still warns', () => {
-    const w = declWarnings(wrap('export interface P { id: number }\nexport enum E { A, B }'))
+    const w = declWarnings(wrap("export interface P { id: number }\nexport enum E { A, B = 'b' }"))
     expect(w.length).toBe(1)
     expect(w[0]).toContain('enum E')
     expect(transform(wrap('export interface P { id: number }'), { target: 'swift' }).code).toContain(

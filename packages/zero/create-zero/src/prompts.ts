@@ -298,7 +298,8 @@ export async function runPrompts(args: CliArgs): Promise<ProjectConfig> {
     lint = true
   } else {
     const value = await p.confirm({
-      message: 'Include @pyreon/lint? (59 Pyreon-specific rules)',
+      // The count is a doc-claims surface (`lint-rule-count`): CI fails when it drifts from the rule registry.
+      message: 'Include @pyreon/lint? (133 Pyreon-specific rules)',
       initialValue: true,
     })
     if (p.isCancel(value)) {

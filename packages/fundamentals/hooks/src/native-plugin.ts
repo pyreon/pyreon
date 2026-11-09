@@ -1,11 +1,17 @@
 import { statefulStubs } from './native-plugin/stateful-stubs'
-import { recognizeStateful } from './native-plugin/stateful-recognize'
+import {
+  recognizeStateful,
+  recognizePrevious,
+  recognizeUpdateEffect,
+} from './native-plugin/stateful-recognize'
 import {
   pureStateDecl,
   pureStateReceiver,
   debouncedDecl,
   rateDecl,
   timerDecl,
+  previousDecl,
+  updateEffectDecl,
   prepareStateful,
   refineCounters,
 } from './native-plugin/stateful-emit'
@@ -68,10 +74,15 @@ const nativePlugin = {
     useDebouncedValue: recognizeStateful,
     useDebouncedCallback: recognizeStateful,
     useThrottledCallback: recognizeStateful,
+    usePrevious: recognizePrevious,
     useColorScheme: recognizeColorScheme,
     useSizeClass: recognizeSizeClass,
   },
-  statementCalls: { useInterval: recognizeTimer, useTimeout: recognizeTimer },
+  statementCalls: {
+    useInterval: recognizeTimer,
+    useTimeout: recognizeTimer,
+    useUpdateEffect: recognizeUpdateEffect,
+  },
   // `await fileFromUri(uri)` — a picked file to upload (see `upload-file.ts`).
   scanModule: scanFileFromUri,
   callExprs: recognizeFileFromUri,
@@ -92,6 +103,8 @@ const nativePlugin = {
     'debounced-value': debouncedDecl,
     'rate-limited': rateDecl,
     tick: timerDecl,
+    'previous-value': previousDecl,
+    'update-effect': updateEffectDecl,
     'color-scheme': colorSchemeDecl,
     'size-class': sizeClassDecl,
   },
@@ -352,6 +365,18 @@ const nativePlugin = {
       kotlinState: ['phase', 'wasBackgrounded'],
       lifecycle: 'start-stop',
       destructure: true,
+    },
+    // The web hook is an accessor over `document.visibilityState`; natively the
+    // same lifecycle container answers it (`visibility` is derived from
+    // `phase`: "hidden" only once backgrounded). `visibility` is a plain getter
+    // on both targets — on Kotlin it reads `phase.value` itself, so it is NOT in
+    // `kotlinState` (that list is the `MutableState` fields needing `.value`).
+    useDocumentVisibility: {
+      legacyKind: 'document-visibility',
+      swift: 'PyreonAppState()',
+      kotlin: ['val {id} = rememberPyreonAppState()'],
+      callRead: 'visibility',
+      lifecycle: 'start-stop',
     },
     // Crash reporting. `start()` installs the uncaught-exception hook and
     // rehydrates the previous launch's report; a report that vanishes on
