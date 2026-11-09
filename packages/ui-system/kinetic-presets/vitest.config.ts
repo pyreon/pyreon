@@ -1,6 +1,7 @@
 import { defineNodeConfig } from '@pyreon/vitest-config'
 
 export default defineNodeConfig({
+  excludeBrowserTests: true,
   coverageExclude: ['src/native-plugin.ts', 'src/native-plugin/**'],
   category: 'ui',
   environment: 'happy-dom',
