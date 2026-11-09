@@ -863,7 +863,7 @@ useInterval(() => tick(), () => paused() ? null : 1000)`,
       signature:
         "useKeyboard(key: string, handler: (event: KeyboardEvent) => void, options?: { event?: 'keydown' | 'keyup'; target?: EventTarget }) => void",
       summary:
-        'Registers a `keydown` (or `keyup`) listener on `options.target` (default `document`) that fires `handler` only when `event.key === key`. Auto-removed on unmount. For app-wide shortcuts with modifiers, prefer `@pyreon/hotkeys`.',
+        'Registers a `keydown` (or `keyup`) listener on `options.target` (default `document`) that fires `handler` only when `event.key === key`. Auto-removed on unmount. For app-wide shortcuts with modifiers, prefer `@pyreon/hotkeys`. On native it lowers to the same hardware-keyboard binding as `useHotkey` (SwiftUI `.keyboardShortcut`, a Compose key handler); the key must be a literal, the handler inline, and a native binding fires only when the key is pressed with no modifier. `event: keyup`, `target` and an uppercase letter (Shift+letter on the web) are named warnings that drop the binding.',
       example: `useKeyboard('Escape', () => closeModal())`,
       mistakes: [
         'Expecting modifier handling — it matches `event.key` EXACTLY (no Cmd/Ctrl/Shift logic); use `@pyreon/hotkeys` for chords.',
