@@ -81,6 +81,9 @@ const countHookExports = (repoRoot: string): number => {
 const countDocPages = (repoRoot: string): number => {
   const docsDir = join(repoRoot, 'docs')
   if (!existsSync(docsDir)) return 0
+  // Blog posts are not documentation pages, and one lands every week —
+  // counting them would turn the "N doc pages" claim red on every post PR.
+  const blogDir = join(docsDir, 'src', 'content', 'blog')
   let count = 0
   const walk = (dir: string): void => {
     let entries: string[]
@@ -105,8 +108,9 @@ const countDocPages = (repoRoot: string): number => {
       } catch {
         continue
       }
-      if (isDir) walk(full)
-      else if (name.endsWith('.md')) count++
+      if (isDir) {
+        if (full !== blogDir) walk(full)
+      } else if (name.endsWith('.md')) count++
     }
   }
   walk(docsDir)

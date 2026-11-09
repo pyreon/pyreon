@@ -103,6 +103,27 @@ describe('generateSitemap', () => {
     expect(sitemap.split('<url>').length - 1).toBe(3)
   })
 
+  it('excludes the not-found view under both of its names', () => {
+    // `_404.tsx` is the fs-router's not-found slot, not a page; it used to
+    // be published as `/_404`.
+    const sitemap = generateSitemap(['index.tsx', '_404.tsx', 'docs/_not-found.tsx'], config)
+    expect(sitemap).not.toContain('_404')
+    expect(sitemap).not.toContain('_not-found')
+    expect(sitemap.split('<url>').length - 1).toBe(1)
+  })
+
+  it('dedups a nested index scanned as /posts/ against the SSG path /posts', () => {
+    // The route scan spells a nested index with a trailing slash; the SSG
+    // manifest (seoPlugin `useSsgPaths`) lists the same page without one.
+    const sitemap = generateSitemap(['index.tsx', 'posts/index.tsx'], {
+      origin: 'https://example.com',
+      additionalPaths: [{ path: '/posts' }, { path: '/posts/hello' }],
+    })
+    expect(sitemap.split('<url>').length - 1).toBe(3)
+    expect(sitemap).toContain('<loc>https://example.com/posts/</loc>')
+    expect(sitemap).not.toContain('<loc>https://example.com/posts</loc>')
+  })
+
   it('excludes layout, error, and loading files', () => {
     const files = ['index.tsx', '_layout.tsx', '_error.tsx', '_loading.tsx']
     const sitemap = generateSitemap(files, config)

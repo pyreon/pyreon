@@ -188,6 +188,9 @@ This file is also the source of the MCP `get_anti_patterns` tool and the docs si
 - **Pyreon-flavored helper components in compat-mode apps without `nativeCompat()`**: the `*-compat` JSX runtimes wrap user components in `wrapCompatComponent`, so a helper using `provide()` / `onMount()` / `onUnmount()` / `effect()` at body scope runs outside Pyreon's setup frame and breaks on re-render.
   - Call `nativeCompat(MyHelper)` from `@pyreon/core` (`core/src/compat-marker.ts`) so compat runtimes route it through `h()`. Framework components (`RouterView`, `PyreonUI`, `FormProvider`, …) are already marked.
   - Unit tests cannot see this (a single synchronous mount keeps context); the cpa-app-compat e2e suites (`e2e/cpa-app-*-compat.spec.ts`) catch it.
+- **Context-reading hooks after an `await` in an async component**: `useHead`, `useContext`, `onMount` and friends must run in the synchronous part of setup. On the client, code after the first `await` has no current component, so `useHead` finds no head context and silently does nothing — `renderToString` keeps the context across the await, so SSR output looks right and only the hydrated/client-navigated page is wrong.
+  - Register before awaiting with the reactive form, then fill it: `const input = signal({}); useHead(() => input()); const data = await load(); input.set(build(data))`.
+  - `defineContentRoute` shipped this bug (every content page kept the layout's `<title>` after hydration). Test: `packages/zero/zero-content/src/tests/_define-content-route.test.tsx` ("head on the CLIENT").
 
 ## Architecture Mistakes
 

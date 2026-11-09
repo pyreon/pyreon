@@ -31,8 +31,11 @@ import {
 } from './search/index-builder'
 import { promises as fsp } from 'node:fs'
 import { generateLlmsTxt } from './seo/llms-txt'
-import { generateRssFeed } from './seo/rss'
-import { generateSitemap, type SitemapPage } from './seo/sitemap'
+import { generateRssFeed, type RssItem } from '@pyreon/zero'
+import { parseFrontmatter } from './pipeline/frontmatter'
+import { isPublished, readPublishTime } from './publish'
+import { markdownToFeedHtml } from './seo/feed-html'
+import { generateSitemap, joinUrl, type SitemapPage } from './seo/sitemap'
 import { renderVirtualCollections } from './virtual-collections'
 import { writeContentTypes } from './type-emit/content-types'
 import {
@@ -44,7 +47,7 @@ import {
   isStandardSchema,
   validateAgainstSchema,
 } from './schema-validate'
-import type { Heading } from './types'
+import type { ContentConfig, Heading } from './types'
 
 /**
  * `ssrLoadModule` for `content.config.ts`, inside the `@pyreon/reactivity`
@@ -198,6 +201,21 @@ export interface SeoEmitOptions {
       title: string
       description?: string
       language?: string
+      /**
+       * Output path inside `outDir`, which is also the URL the feed is
+       * served at (`<atom:link rel="self">`). Default `'rss.xml'`; a blog
+       * under `/blog` usually wants `'blog/rss.xml'`.
+       */
+      path?: string
+      /**
+       * `'summary'` (default) puts the entry's `description` in each item.
+       * `'full'` also renders the whole markdown body to HTML as
+       * `<content:encoded>`, with absolute URLs — what feed readers and
+       * importers (dev.to "Publishing from RSS") use as the article body.
+       */
+      content?: 'summary' | 'full'
+      /** Keep only the newest N items. Default: all. */
+      limit?: number
     }
   /** Emit `dist/llms.txt`. Pass an object to override the site title /
    *  description; defaults to "Site" otherwise. */
@@ -382,6 +400,103 @@ export function collectionSlugFor(
 }
 
 /**
+ * What the build remembers about each collection entry beyond its search
+ * document: the frontmatter (publish state, feed dates and tags) and the
+ * raw markdown source (feed bodies).
+ *
+ * @internal
+ */
+export interface EntryMeta {
+  frontmatter: Record<string, unknown>
+  source: string
+}
+
+/**
+ * Drop unpublished entries (`draft: true`, or a `publishDate` after `now`)
+ * from the per-collection entry lists a production build writes into the
+ * search index, sitemap, RSS feed and llms.txt. An entry with no recorded
+ * frontmatter is kept — it was never seen by `transform`, so there is
+ * nothing to judge it by.
+ *
+ * @internal exported for testing
+ */
+export function selectPublishedEntries(
+  entriesByCollection: Record<string, CollectionEntryForIndex[]>,
+  meta: ReadonlyMap<string, ReadonlyMap<string, EntryMeta>>,
+  config: ContentConfig,
+  now: number,
+): Record<string, CollectionEntryForIndex[]> {
+  const out: Record<string, CollectionEntryForIndex[]> = {}
+  for (const [collection, entries] of Object.entries(entriesByCollection)) {
+    const publishDate = config.collections[collection]?.publishDate
+    const collMeta = meta.get(collection)
+    out[collection] = entries.filter((entry) => {
+      const fm = collMeta?.get(entry.slug)?.frontmatter
+      return fm === undefined || isPublished(fm, publishDate, now)
+    })
+  }
+  return out
+}
+
+/**
+ * The files of every `unpublished: 'omit'` collection that are not
+ * published at `now`, as absolute paths — the negative glob patterns of a
+ * production build's virtual collections module. Reads each file's
+ * frontmatter directly: the glob decides what gets transformed, so this
+ * cannot wait for `transform` to have seen the file.
+ *
+ * @internal exported for testing
+ */
+export async function collectUnpublishedFiles(
+  config: ContentConfig,
+  root: string,
+  now: number,
+): Promise<Record<string, string[]>> {
+  const out: Record<string, string[]> = {}
+  for (const [name, def] of Object.entries(config.collections)) {
+    if (def.unpublished !== 'omit') continue
+    const dir = path.resolve(root, def.path ?? `src/content/${name}`)
+    let files: string[]
+    try {
+      files = (await fsp.readdir(dir, { recursive: true }))
+        .filter((f) => /\.mdx?$/.test(f))
+        .map((f) => path.join(dir, f))
+    } catch {
+      continue
+    }
+    const excluded: string[] = []
+    for (const file of files) {
+      const { data } = parseFrontmatter(await fsp.readFile(file, 'utf8'))
+      if (!isPublished(data, def.publishDate, now)) excluded.push(file)
+    }
+    out[name] = excluded.sort()
+  }
+  return out
+}
+
+/**
+ * The instant a production build decides publish state at. Normally the
+ * build's own clock; `PYREON_CONTENT_NOW` (any `Date`-parseable value)
+ * overrides it, which is how you build the site as it will look on a
+ * future date — e.g. to check a scheduled post before its day.
+ *
+ * @internal exported for testing
+ */
+export function resolvePublishNow(env: Record<string, string | undefined> = process.env): number {
+  const override = env['PYREON_CONTENT_NOW']
+  if (override !== undefined && override !== '') {
+    const t = Date.parse(override)
+    if (Number.isNaN(t)) {
+      throw new Error(
+        `[@pyreon/zero-content] PYREON_CONTENT_NOW="${override}" is not a date. Use an ISO date such as 2026-11-16 or 2026-11-16T09:00:00Z, or unset it.`,
+      )
+    }
+    return t
+  }
+  return Date.now()
+}
+
+/**
  * PR-L audit M19 — write configured SEO outputs (sitemap.xml / rss.xml /
  * llms.txt) to `outDir`. Pure-ish — the only side effect is `writeFile`.
  *
@@ -392,6 +507,12 @@ export async function emitSeoOutputs(
   entriesByCollection: Record<string, CollectionEntryForIndex[]>,
   outDir: string,
   warn: (message: string) => void,
+  /** Frontmatter + source per entry, and the content config — feed dates,
+   *  tags and full-content bodies come from here. */
+  feedContext?: {
+    config: ContentConfig
+    meta: ReadonlyMap<string, ReadonlyMap<string, EntryMeta>>
+  },
 ): Promise<void> {
   const fs = await import('node:fs/promises')
   const baseUrl = seo.baseUrl
@@ -437,30 +558,51 @@ export async function emitSeoOutputs(
       )
     } else {
       const list = entriesByCollection[rssOpts.collection] ?? []
-      const items = list
+      const publishDate =
+        feedContext?.config.collections[rssOpts.collection]?.publishDate
+      const collMeta = feedContext?.meta.get(rssOpts.collection)
+      const dated = list
         .map((entry) => {
           const url = urlFor(rssOpts.collection, entry.slug)
           if (url === null) return null
-          const item: {
-            title: string
-            link: string
-            description?: string
-          } = { title: entry.title, link: url }
+          const meta = collMeta?.get(entry.slug)
+          const fm = meta?.frontmatter
+          const item: RssItem = { title: entry.title, link: url }
           if (entry.description) item.description = entry.description
-          return item
+          const time =
+            publishDate !== undefined ? readPublishTime(fm?.[publishDate]) : null
+          if (time !== null) item.pubDate = new Date(time).toISOString()
+          const tags = fm?.['tags']
+          if (Array.isArray(tags) && tags.every((t) => typeof t === 'string')) {
+            item.categories = tags as string[]
+          }
+          if (rssOpts.content === 'full' && meta !== undefined) {
+            item.content = markdownToFeedHtml(meta.source, joinUrl(baseUrl, url))
+          }
+          return { item, time }
         })
         .filter((i): i is NonNullable<typeof i> => i !== null)
-      const rssArgs: {
-        title: string
-        baseUrl: string
-        items: typeof items
-        description?: string
-        language?: string
-      } = { title: rssOpts.title, baseUrl, items }
-      if (rssOpts.description) rssArgs.description = rssOpts.description
-      if (rssOpts.language) rssArgs.language = rssOpts.language
-      const xml = generateRssFeed(rssArgs)
-      await fs.writeFile(path.join(outDir, 'rss.xml'), xml, 'utf8')
+      // Newest first when the collection is dated (readers and importers
+      // take the head of the feed); otherwise the deterministic slug order.
+      if (publishDate !== undefined) {
+        dated.sort((a, b) => (b.time ?? -Infinity) - (a.time ?? -Infinity))
+      }
+      const items = dated
+        .slice(0, rssOpts.limit ?? dated.length)
+        .map((d) => d.item)
+      const feedPath = (rssOpts.path ?? 'rss.xml').replace(/^\/+/, '')
+      const rssConfig: Parameters<typeof generateRssFeed>[0] = {
+        title: rssOpts.title,
+        origin: baseUrl,
+        items,
+        feedUrl: `/${feedPath}`,
+      }
+      if (rssOpts.description) rssConfig.description = rssOpts.description
+      if (rssOpts.language) rssConfig.language = rssOpts.language
+      const xml = generateRssFeed(rssConfig)
+      const target = path.join(outDir, feedPath)
+      await fs.mkdir(path.dirname(target), { recursive: true })
+      await fs.writeFile(target, xml, 'utf8')
     }
   }
 
@@ -532,6 +674,24 @@ export default function content(options: ContentPluginOptions = {}): Plugin {
   // buildStart so dev → build doesn't carry stale dev-mode entries.
   const searchEntries: Map<string, Map<string, CollectionEntryForIndex>> =
     new Map()
+  // Frontmatter + raw source per collection entry, keyed like
+  // `searchEntries`. Read at closeBundle for publish filtering and RSS
+  // bodies. Cleared per build alongside `searchEntries`.
+  const entryMeta: Map<string, Map<string, EntryMeta>> = new Map()
+  const stashEntryMeta = (collection: string, slug: string, meta: EntryMeta): void => {
+    let m = entryMeta.get(collection)
+    if (!m) {
+      m = new Map<string, EntryMeta>()
+      entryMeta.set(collection, m)
+    }
+    m.set(slug, meta)
+  }
+  // The instant this build decides publish state at — fixed once per
+  // build (buildStart) so the bundle, search index and feeds agree.
+  let publishNow = Date.now()
+  /** A production build — the only kind that hides unpublished entries. */
+  const isProductionBuild = (): boolean =>
+    resolvedConfig?.command === 'build' && resolvedConfig.isProduction
 
   const getMdxDir = (): string => {
     if (options.mdxDir) return options.mdxDir
@@ -806,6 +966,8 @@ Until this file exists, getCollection() / getEntry() will throw "No content coll
       // without this, a fresh build inherits the previous run's
       // searchEntries and emits duplicate / stale documents.
       searchEntries.clear()
+      entryMeta.clear()
+      publishNow = resolvePublishNow()
       // Build mode (not dev) needs an ssrLoadModule fallback too. We
       // use Rollup's resolution by importing the file directly via
       // `import()`. This works when the consumer's bundler can resolve
@@ -878,10 +1040,19 @@ _setRegistry({})
 export {}
 `
         }
-        return renderVirtualCollections({
-          config: loadedConfig.config,
-          root: resolvedConfig?.root ?? process.cwd(),
-        })
+        const root = resolvedConfig?.root ?? process.cwd()
+        // A production build leaves unpublished entries of an
+        // `unpublished: 'omit'` collection out of the glob, so they are
+        // never bundled or routable. Dev keeps them for authoring.
+        if (isProductionBuild()) {
+          return renderVirtualCollections({
+            config: loadedConfig.config,
+            root,
+            exclude: await collectUnpublishedFiles(loadedConfig.config, root, publishNow),
+            publishCutoff: publishNow,
+          })
+        }
+        return renderVirtualCollections({ config: loadedConfig.config, root })
       }
       return null
     },
@@ -944,6 +1115,10 @@ export {}
                   searchEntries.set(collectionName, m)
                 }
                 const fm = cached.frontmatter
+                stashEntryMeta(collectionName, slug, {
+                  frontmatter: fm as Record<string, unknown>,
+                  source: cached.source,
+                })
                 m.set(
                   slug,
                   buildPageSearchEntry({
@@ -1058,6 +1233,7 @@ export {}
               collMap = new Map<string, CollectionEntryForIndex>()
               searchEntries.set(collectionName, collMap)
             }
+            stashEntryMeta(collectionName, slug, { frontmatter, source: code })
             collMap.set(
               slug,
               buildPageSearchEntry({
@@ -1158,12 +1334,19 @@ export {}
       // Walk each collection's accumulated entries, sorted by slug for
       // deterministic output (same slug order across builds keeps git
       // diffs minimal if the artifact ever gets committed).
-      const entriesByCollection: Record<string, CollectionEntryForIndex[]> = {}
+      const allEntries: Record<string, CollectionEntryForIndex[]> = {}
       for (const [name, m] of searchEntries.entries()) {
-        entriesByCollection[name] = Array.from(m.values()).sort((a, b) =>
+        allEntries[name] = Array.from(m.values()).sort((a, b) =>
           a.slug.localeCompare(b.slug),
         )
       }
+      // A production build never lists an unpublished entry (draft, or
+      // dated after this build) in the search index or any SEO output —
+      // even when the page itself is still bundled (`unpublished:
+      // 'runtime'`), because a public index or feed is a disclosure.
+      const entriesByCollection = resolvedConfig.isProduction
+        ? selectPublishedEntries(allEntries, entryMeta, loadedConfig.config, publishNow)
+        : allEntries
       try {
         const result = await buildSearchIndex({
           config: loadedConfig.config,
@@ -1197,6 +1380,7 @@ export {}
             entriesByCollection,
             outDir,
             (msg) => this.warn(msg),
+            { config: loadedConfig.config, meta: entryMeta },
           )
         } catch (err) {
           this.warn(

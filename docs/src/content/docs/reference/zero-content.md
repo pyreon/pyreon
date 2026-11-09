@@ -147,10 +147,10 @@ export default defineConfig({
 ### `defineCollection` `function`
 
 ```ts
-defineCollection<TSchema>({ type, path?, schema, components?, searchable? }): CollectionDefinition<TSchema>
+defineCollection<TSchema>({ type, path?, schema, components?, searchable?, publishDate?, unpublished?: 'runtime' | 'omit' }): CollectionDefinition<TSchema>
 ```
 
-Per-collection definition. `type: 'pages'` triggers route generation under `src/routes/_content/<name>/[...slug].tsx` (auto-gitignored); `type: 'data'` is queryable via `getCollection`/`getEntry` but not routed. Schema is a zod schema — frontmatter is validated against it at build with file&#58;line errors on mismatch.
+Per-collection definition. `type: 'pages'` triggers route generation under `src/routes/_content/<name>/[...slug].tsx` (auto-gitignored); `type: 'data'` is queryable via `getCollection`/`getEntry` but not routed. Schema is a zod schema — frontmatter is validated against it at build with file&#58;line errors on mismatch. `publishDate: '<field>'` makes a future-dated entry unpublished until that date (like `draft: true`); production builds never list unpublished entries in the search index, sitemap, RSS or llms.txt, and `unpublished: 'omit'` also leaves them out of the bundle entirely (not routable — the right choice for a static site; the default `'runtime'` keeps them bundled for preview mode). A static build decides at BUILD time, so a scheduled entry appears with the first build on or after its date; `PYREON_CONTENT_NOW` overrides the build's clock.
 
 **Example**
 
@@ -170,6 +170,8 @@ defineCollection({
 
 - Returning raw `z.object(...)` schemas without wrapping in `defineCollection`. The plugin needs the wrapper to know the collection name + type.
 - Setting `type: "pages"` for a collection that should not be routed (e.g. blog posts queried via `getCollection` for an index page). Use `type: "data"`.
+- Expecting a scheduled (`publishDate` in the future) entry on a static site to appear AT its date — it appears with the first build on or after that date; schedule or trigger a deploy
+- Leaving `unpublished` at the default `'runtime'` on an SSG site — the draft/scheduled entry is still bundled (its text ships in a public JS chunk) and `getEntry` resolves it; use `'omit'`
 - Schema mismatches that surface only at build time. Use `pyreon doctor --check-content` (PR 9) at edit time, or watch the dev server output during `bun run dev`.
 
 ---
@@ -222,6 +224,7 @@ for (const post of posts) {
 **Common mistakes**
 
 - Calling `getCollection` in a component body without `await`. It returns a Promise. Wrap in an async setup function, use a loader, or await it during SSG render.
+- Prefixing the collection to `entry.slug` twice — `slug` is collection-relative (`'hello'` for `src/content/blog/hello.md`), the same key `getEntry` takes
 - Passing a string that isn't a defined collection. TypeScript catches this once `.pyreon/content-types.d.ts` is generated; without it, you'd get a runtime error.
 
 **See also:** `getEntry` · `getEntries`

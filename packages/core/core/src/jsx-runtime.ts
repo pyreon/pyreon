@@ -649,6 +649,27 @@ interface OlAttributes extends PyreonHTMLAttributes<HTMLOListElement> {
   type?: '1' | 'a' | 'A' | 'i' | 'I' | undefined
 }
 
+/** `<time datetime>` — the machine-readable form of the displayed date. */
+interface TimeAttributes extends PyreonHTMLAttributes<HTMLTimeElement> {
+  datetime?: string | (() => string) | undefined
+}
+
+/** `<blockquote cite>` / `<q cite>` — URL of the quoted source. */
+interface QuoteAttributes extends PyreonHTMLAttributes<HTMLQuoteElement> {
+  cite?: string | (() => string) | undefined
+}
+
+/** `<del>` / `<ins>` — source of, and time of, the edit. */
+interface ModAttributes extends PyreonHTMLAttributes<HTMLModElement> {
+  cite?: string | (() => string) | undefined
+  datetime?: string | (() => string) | undefined
+}
+
+/** `<data value>` — the machine-readable value of the content. */
+interface DataAttributes extends PyreonHTMLAttributes<HTMLDataElement> {
+  value?: string | number | (() => string | number) | undefined
+}
+
 interface CanvasAttributes extends PyreonHTMLAttributes<HTMLCanvasElement> {
   width?: number | string | undefined
   height?: number | string | undefined
@@ -868,7 +889,7 @@ declare global {
       // Block text
       p: PyreonHTMLAttributes
       pre: PyreonHTMLAttributes
-      blockquote: PyreonHTMLAttributes
+      blockquote: QuoteAttributes
       figure: PyreonHTMLAttributes
       figcaption: PyreonHTMLAttributes
       div: PyreonHTMLAttributes
@@ -881,9 +902,9 @@ declare global {
       small: PyreonHTMLAttributes
       s: PyreonHTMLAttributes
       cite: PyreonHTMLAttributes
-      q: PyreonHTMLAttributes
+      q: QuoteAttributes
       abbr: PyreonHTMLAttributes
-      time: PyreonHTMLAttributes
+      time: TimeAttributes
       code: PyreonHTMLAttributes
       var: PyreonHTMLAttributes
       samp: PyreonHTMLAttributes
@@ -901,6 +922,10 @@ declare global {
       ruby: PyreonHTMLAttributes
       rt: PyreonHTMLAttributes
       rp: PyreonHTMLAttributes
+      data: DataAttributes
+      // Edits
+      del: ModAttributes
+      ins: ModAttributes
       // Lists
       ul: PyreonHTMLAttributes
       ol: OlAttributes

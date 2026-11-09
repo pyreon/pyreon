@@ -2194,7 +2194,7 @@ generateRouteTypes(['/', '/about', '/users/:id'])
 (config: RssConfig) => string
 ```
 
-Generate an RSS 2.0 feed string for blog / changelog / podcast content — CLIENT-SAFE, re-exported from the main `@pyreon/zero` entry (no `/server` subpath needed, unlike `seoPlugin`/`aiPlugin`/`generateSitemap`). Items are emitted in the supplied order — sort newest-first yourself before passing them in. Typically called from a build script or an API route handler that returns the string with `Content-Type: application/rss+xml`.
+Generate an RSS 2.0 feed string for blog / changelog / podcast content — CLIENT-SAFE, re-exported from the main `@pyreon/zero` entry (no `/server` subpath needed, unlike `seoPlugin`/`aiPlugin`/`generateSitemap`). Items are emitted in the supplied order — sort newest-first yourself before passing them in. Typically called from a build script or an API route handler that returns the string with `Content-Type: application/rss+xml`. An item's `content` (HTML) is emitted as CDATA-wrapped `<content:encoded>` — the full body readers and importers like dev.to take instead of `description`; `feedUrl` emits `<atom:link rel="self">`. Both namespaces are declared only when used.
 
 **Example**
 
@@ -2210,13 +2210,16 @@ const xml = generateRssFeed({
     link: `/blog/${p.slug}`,
     pubDate: p.data.publishDate,
     description: p.data.description,
+    content: p.html, // optional full body (absolute URLs)
   })),
+  feedUrl: '/blog/rss.xml',
 })
 ```
 
 **Common mistakes**
 
 - Passing `items` in an arbitrary order and expecting the feed to sort itself — items are emitted in the SUPPLIED order; sort newest-first before passing them in
+- Putting site-relative links or images in `content` — a feed reader resolves them against nothing; make every URL absolute
 - Reaching for `@pyreon/zero-content`'s own `generateRssFeed` — that one is DEPRECATED and forwards here anyway; import directly from `@pyreon/zero`
 
 **See also:** `seoPlugin`

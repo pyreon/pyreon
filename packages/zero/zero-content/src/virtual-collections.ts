@@ -19,6 +19,20 @@ export interface RenderVirtualCollectionsArgs {
   config: ContentConfig
   /** Vite root, used to compute the import.meta.glob path. */
   root: string
+  /**
+   * Per collection, the files a production build leaves out (unpublished
+   * entries of an `unpublished: 'omit'` collection), as absolute paths.
+   * Each becomes a negative `import.meta.glob` pattern, so the file is
+   * never bundled — not just hidden from queries.
+   */
+  exclude?: Record<string, readonly string[]>
+  /**
+   * The instant the build decided publish state at (epoch ms). Emitted as
+   * `publishCutoff` on every collection that has exclusions, so the
+   * runtime's `getCollection` judges scheduled entries against the same
+   * instant the bundle was cut at, not the visitor's clock.
+   */
+  publishCutoff?: number
 }
 
 /**
@@ -47,8 +61,12 @@ _setRegistry({})
       ? collectionDir
       : path.join(args.root, collectionDir)
     const globPath = '/' + path.relative(args.root, absDir).split(path.sep).join('/') + '/**/*.{md,mdx}'
+    const excluded = (args.exclude?.[name] ?? [])
+      .map((file) => '!/' + path.relative(args.root, file).split(path.sep).join('/'))
+      .sort()
+    const globArg = excluded.length > 0 ? [globPath, ...excluded] : globPath
     lines.push(
-      `const __${name}_modules = import.meta.glob(${JSON.stringify(globPath)})`,
+      `const __${name}_modules = import.meta.glob(${JSON.stringify(globArg)})`,
     )
   }
 
@@ -59,11 +77,18 @@ _setRegistry({})
       ? collectionDir
       : path.join(args.root, collectionDir)
     const relAbsDir = '/' + path.relative(args.root, absDir).split(path.sep).join('/')
+    const publishLines =
+      (def.publishDate !== undefined
+        ? `\n    publishDate: ${JSON.stringify(def.publishDate)},`
+        : '') +
+      (args.exclude?.[name] !== undefined && args.publishCutoff !== undefined
+        ? `\n    publishCutoff: ${JSON.stringify(args.publishCutoff)},`
+        : '')
     // Slug derivation matches `deriveSlug` in parse.ts: strip ext + `/index`
     registryLines.push(
       `  ${JSON.stringify(name)}: {
     name: ${JSON.stringify(name)},
-    type: ${JSON.stringify(def.type)},
+    type: ${JSON.stringify(def.type)},${publishLines}
     loaders: Object.fromEntries(
       Object.entries(__${name}_modules).map(([file, loader]) => [
         __zcSlug(file, ${JSON.stringify(relAbsDir)}),

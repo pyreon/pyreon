@@ -224,4 +224,29 @@ describe('RSS output stays parseable', () => {
     // A CMS field left blank is the ordinary cause.
     expect(toRfc822('not-a-date')).not.toContain('Invalid')
   })
+
+  it('emits the full body as content:encoded, CDATA-wrapped, with its namespace', () => {
+    // Importers such as dev.to take the article body from content:encoded;
+    // without it they import only the one-line description.
+    const html = '<p>Body with <code>]]></code> inside</p>'
+    const xml = generateRssFeed({ ...base, items: [{ ...base.items[0]!, content: html }] })
+    expect(xml).toContain('xmlns:content="http://purl.org/rss/1.0/modules/content/"')
+    // A raw `]]>` would end the CDATA section early; it must be split.
+    expect(xml).toContain(
+      '<content:encoded><![CDATA[<p>Body with <code>]]]]><![CDATA[></code> inside</p>]]></content:encoded>',
+    )
+    // No namespace declaration when no item carries content.
+    expect(generateRssFeed(base)).not.toContain('xmlns:content')
+  })
+
+  it('emits atom:link rel=self from a path or an absolute URL', () => {
+    const fromPath = generateRssFeed({ ...base, feedUrl: '/blog/rss.xml' })
+    expect(fromPath).toContain('xmlns:atom="http://www.w3.org/2005/Atom"')
+    expect(fromPath).toContain(
+      `<atom:link href="${base.origin}/blog/rss.xml" rel="self" type="application/rss+xml" />`,
+    )
+    const absolute = generateRssFeed({ ...base, feedUrl: 'https://cdn.example.org/feed.xml' })
+    expect(absolute).toContain('href="https://cdn.example.org/feed.xml"')
+    expect(generateRssFeed(base)).not.toContain('atom:link')
+  })
 })

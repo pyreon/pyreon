@@ -1,6 +1,7 @@
 import pyreon from '@pyreon/vite-plugin'
 import content from '@pyreon/zero-content/plugin'
 import zero from '@pyreon/zero/server'
+import { seoPlugin } from '@pyreon/zero/seo'
 import { defineConfig } from 'vite'
 import { pyreonSyntaxDark, pyreonSyntaxLight } from './src/styles/pyreon-syntax'
 import inlineCriticalCss from './vite-plugins/inline-critical-css'
@@ -38,6 +39,23 @@ export default defineConfig({
       highlighter: {
         themes: { light: pyreonSyntaxLight, dark: pyreonSyntaxDark },
       },
+      // /blog/rss.xml — published posts only (drafts and posts dated after
+      // this build are left out; see content.config.ts), newest first, full
+      // HTML bodies with absolute URLs so dev.to "Publishing from RSS" and
+      // feed readers get the whole article. The sitemap comes from
+      // seoPlugin below, which lists every prerendered page.
+      seo: {
+        baseUrl: 'https://pyreon.dev',
+        rss: {
+          collection: 'blog',
+          path: 'blog/rss.xml',
+          title: 'Pyreon blog',
+          description:
+            'Notes from building Pyreon: how the compiler and runtime work, measured benchmark results (losses included), and release write-ups.',
+          language: 'en',
+          content: 'full',
+        },
+      },
     }),
     pyreon(),
     // Self-host the brand fonts (dogfoods zero's fontPlugin, wired here
@@ -61,6 +79,12 @@ export default defineConfig({
       },
     }),
     lastUpdated({ contentDir: 'src/content/docs' }),
+    // dist/sitemap.xml from the SSG output: every prerendered page and
+    // nothing else, so an unpublished blog post (never rendered) is never
+    // listed.
+    seoPlugin({
+      sitemap: { origin: 'https://pyreon.dev', useSsgPaths: true, trailingSlash: 'never' },
+    }),
     // Must come AFTER zero() so its closeBundle runs on the final SSG
     // HTML — folds the render-blocking app stylesheet into each page's
     // <head> to clear the last critical-path request before first paint.
