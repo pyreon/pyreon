@@ -41,8 +41,21 @@ class PyreonThrottled<A>(waitMs: Long, scheduler: PyreonScheduler, action: (A) -
   fun cancel() {}
 }`
 
+export const LATEST_SWIFT_STUBS = `public final class PyreonLatest<T> {
+  public var current: T
+  public init(_ initial: T) { self.current = initial }
+}`
+
+export const LATEST_KOTLIN_STUBS = `class PyreonLatest<T>(initial: T) {
+  var current: T = initial
+}`
+
 /** Append package stubs only when the generated program references a rate limiter. */
 export const statefulStubs: StubAugmentation = {
-  swift: (source) => (/\bPyreon(?:Debounced|Throttled)\b/.test(source) ? RATE_SWIFT_STUBS : ''),
-  kotlin: (source) => (/\bPyreon(?:Debounced|Throttled)\b/.test(source) ? RATE_KOTLIN_STUBS : ''),
+  swift: (source) =>
+    (/\bPyreon(?:Debounced|Throttled)\b/.test(source) ? RATE_SWIFT_STUBS : '') +
+    (/\bPyreonLatest\b/.test(source) ? LATEST_SWIFT_STUBS : ''),
+  kotlin: (source) =>
+    (/\bPyreon(?:Debounced|Throttled)\b/.test(source) ? RATE_KOTLIN_STUBS : '') +
+    (/\bPyreonLatest\b/.test(source) ? LATEST_KOTLIN_STUBS : ''),
 }

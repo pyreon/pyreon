@@ -14,6 +14,7 @@ import type {
   DebouncedData,
   RateData,
   TimerData,
+  LatestData,
   PreviousData,
   UpdateEffectData,
 } from './stateful-types'
@@ -396,4 +397,21 @@ export function refineCounters(module: CompilerModule, ctx: CompilerContext): vo
     }
     visit(component, new Map())
   }
+}
+
+/**
+ * `useLatest(literal)` — a `PyreonLatest<T>` reference box. It is not view state: writing `.current` must not
+ * re-render (the web ref never does), so SwiftUI keeps the box in a `@State` whose contents nobody observes, and Compose
+ * `remember`s the instance. `.current` reads and writes are the box's own field, so no receiver is needed.
+ */
+export const latestDecl: DeclEmitter = {
+  swift: (decl, ctx) => {
+    const payload = data<LatestData>(decl)
+    return `@State private var ${ctx.ident(decl.name)} = PyreonLatest<${ctx.typeText(payload.type)}>(${ctx.expr(payload.initial, 2)})`
+  },
+  kotlin: (decl, ctx) => {
+    const payload = data<LatestData>(decl)
+    return `val ${ctx.ident(decl.name)} = remember { PyreonLatest<${ctx.typeText(payload.type)}>(${ctx.expr(payload.initial, 2)}) }`
+  },
+  typing: { member: (decl, property) => (property === 'current' ? data<LatestData>(decl).type : undefined) },
 }

@@ -35,6 +35,7 @@ struct PyreonBluetoothTests {
             PyreonWakeLockTests.runAll()
             PyreonAppStateTests.runAll()
             PyreonReducedMotionTests.runAll()
+            PyreonLatestTests.runAll()
             PyreonDeviceInfoTests.runAll()
             PyreonSafeAreaTests.runAll()
             PyreonAudioPlayerTests.runAll()

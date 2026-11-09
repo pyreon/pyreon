@@ -1,6 +1,7 @@
 import { statefulStubs } from './native-plugin/stateful-stubs'
 import {
   recognizeStateful,
+  recognizeLatest,
   recognizePrevious,
   recognizeUpdateEffect,
 } from './native-plugin/stateful-recognize'
@@ -10,6 +11,7 @@ import {
   debouncedDecl,
   rateDecl,
   timerDecl,
+  latestDecl,
   previousDecl,
   updateEffectDecl,
   prepareStateful,
@@ -79,6 +81,7 @@ const nativePlugin = {
     useDebouncedCallback: recognizeStateful,
     useThrottledCallback: recognizeStateful,
     usePrevious: recognizePrevious,
+    useLatest: recognizeLatest,
     useColorScheme: recognizeColorScheme,
     useSizeClass: recognizeSizeClass,
     useMediaQuery: recognizeMediaQuery,
@@ -109,6 +112,7 @@ const nativePlugin = {
     'rate-limited': rateDecl,
     tick: timerDecl,
     'previous-value': previousDecl,
+    'latest-value': latestDecl,
     'update-effect': updateEffectDecl,
     'color-scheme': colorSchemeDecl,
     'size-class': sizeClassDecl,

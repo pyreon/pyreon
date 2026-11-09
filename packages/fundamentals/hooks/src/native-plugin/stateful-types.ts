@@ -35,6 +35,11 @@ export interface PreviousData {
   source: ExprIR
   type: TypeIR
 }
+export interface LatestData {
+  /** The literal the box starts holding (a `@State` default cannot read props, so it must be a literal). */
+  initial: ExprIR
+  type: TypeIR
+}
 export interface UpdateEffectData {
   source: ExprIR
   type: TypeIR

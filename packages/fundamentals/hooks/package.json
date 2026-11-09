@@ -103,6 +103,9 @@
         "PyreonBiometrics": [
           "PyreonBiometrics.kt"
         ],
+        "PyreonLatest": [
+          "PyreonLatest.kt"
+        ],
         "PyreonClipboard": [
           "PyreonClipboard.kt"
         ],
