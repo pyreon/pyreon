@@ -1,5 +1,14 @@
 import { createContext } from '@pyreon/core'
 
+/**
+ * The attribute that marks a `<head>` tag as managed by `@pyreon/head`, valued
+ * with the tag's dedupe key. The server serializer (`serialize.ts`) stamps it
+ * and the client syncer (`dom.ts`) seeds from it, so a hydrating client adopts
+ * the server's tags rather than appending a second copy of each. Kept here, a
+ * module both import, so the client never imports the serializer.
+ */
+export const HEAD_ATTR = 'data-pyreon-head'
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface HeadTag {
