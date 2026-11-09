@@ -33,6 +33,13 @@ public final class PyreonAppState {
     /// accessor) — a native-only member read, same footing as `net.isOnline`.
     public private(set) var wasBackgrounded: Bool = false
 
+    /// `useDocumentVisibility()`'s value: "hidden" once the app is in the
+    /// background, "visible" otherwise. "inactive" (a system sheet, the app
+    /// switcher peek) stays "visible" — the web's `document.visibilityState`
+    /// likewise stays "visible" while a page is merely unfocused. Derived from
+    /// `phase`, so it is observable through the same single stored property.
+    public var visibility: String { phase == "background" ? "hidden" : "visible" }
+
     @ObservationIgnored private var observers: [NSObjectProtocol] = []
     @ObservationIgnored private var _started: Bool = false
 
