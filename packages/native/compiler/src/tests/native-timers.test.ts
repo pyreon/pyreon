@@ -86,17 +86,21 @@ describe('timer calls lower to PyreonTimers', () => {
 
 // ── Behaviour: both runtimes run one scenario and print the web's sequence ──────────────────────────────────────
 //
-// t=0: A = timeout 80ms, B = timeout 80ms (same delay: FIFO, A first), C = timeout 20ms cleared immediately,
+// t=0: A = timeout 500ms, B = timeout 500ms (same delay: FIFO, A first), C = timeout 20ms cleared immediately,
 //      I = interval 10ms that clears itself on its 3rd tick, Z = timeout with a NEGATIVE delay (runs as 0).
 // Expected (the browser's order): Z, I1, I2, I3, A, B — and nothing left scheduled. Ids are positive and distinct, and
 // clearing an unknown id (999) or nil is a no-op.
+//
+// The delays are wall-clock, so they carry wide margins: the interval's three ticks (~30ms) finish ~470ms before A,
+// and the scenario waits 1.5s before reading `pending`. Tighter values (80ms / 0.2s) flaked on loaded macOS CI
+// runners, where interval ticks slipped past A and B had not fired when the window closed.
 const EXPECTED = ['ids ok', 'Z', 'I1', 'I2', 'I3', 'A', 'B', 'pending 0'].join('\n')
 
 function webSequence(): Promise<string> {
   return new Promise((resolve) => {
     const out: string[] = []
-    const a = setTimeout(() => out.push('A'), 80)
-    const b = setTimeout(() => out.push('B'), 80)
+    const a = setTimeout(() => out.push('A'), 500)
+    const b = setTimeout(() => out.push('B'), 500)
     const c = setTimeout(() => out.push('C'), 20)
     clearTimeout(c)
     let n = 0
@@ -113,7 +117,7 @@ function webSequence(): Promise<string> {
     setTimeout(() => {
       out.push('pending 0')
       resolve(out.join('\n'))
-    }, 200)
+    }, 1500)
   })
 }
 
@@ -127,8 +131,8 @@ const runtime = (lang: 'swift' | 'kotlin') =>
 
 const SWIFT_SCENARIO = `
 var out: [String] = []
-let a = PyreonTimers.setTimeout(80) { out.append("A") }
-let b = PyreonTimers.setTimeout(80) { out.append("B") }
+let a = PyreonTimers.setTimeout(500) { out.append("A") }
+let b = PyreonTimers.setTimeout(500) { out.append("B") }
 let c = PyreonTimers.setTimeout(20) { out.append("C") }
 PyreonTimers.clear(c)
 var n = 0
@@ -143,7 +147,7 @@ PyreonTimers.clear(999)
 PyreonTimers.clear(nil)
 let ids = [a, b, c, i, z]
 out.insert(Set(ids).count == 5 && ids.allSatisfy { $0 > 0 } ? "ids ok" : "ids bad", at: 0)
-RunLoop.main.run(until: Date().addingTimeInterval(0.2))
+RunLoop.main.run(until: Date().addingTimeInterval(1.5))
 out.append("pending \\(PyreonTimers.pendingCount)")
 print(out.joined(separator: "\\n"))
 `
@@ -172,8 +176,8 @@ fun main() {
   }
   val out = mutableListOf<String>()
   exec.submit {
-    val a = PyreonTimers.setTimeout(80) { out.add("A") }
-    val b = PyreonTimers.setTimeout(80) { out.add("B") }
+    val a = PyreonTimers.setTimeout(500) { out.add("A") }
+    val b = PyreonTimers.setTimeout(500) { out.add("B") }
     val c = PyreonTimers.setTimeout(20) { out.add("C") }
     PyreonTimers.clear(c)
     var n = 0
@@ -189,7 +193,7 @@ fun main() {
     val ids = listOf(a, b, c, i, z)
     out.add(0, if (ids.toSet().size == 5 && ids.all { it > 0 }) "ids ok" else "ids bad")
   }.get()
-  Thread.sleep(200)
+  Thread.sleep(1500)
   exec.submit { out.add("pending \${PyreonTimers.pendingCount}") }.get()
   exec.shutdownNow()
   println(out.joinToString("\\n"))
