@@ -200,6 +200,17 @@ const SUITES: Suite[] = [
     ],
   },
   {
+    name: 'hn-clone',
+    script: 'test:e2e:hn-clone',
+    triggers: [
+      ...RENDER_CORE,
+      'packages/fundamentals/query/',
+      'packages/zero/zero/',
+      'examples/hn-clone/',
+      'e2e/hn-clone',
+    ],
+  },
+  {
     name: 'collab-board',
     script: 'test:e2e:collab-board',
     triggers: [
