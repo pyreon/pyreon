@@ -4,6 +4,7 @@
 // `var x by remember { mutableStateOf(initial) }`, computeds to
 // `derivedStateOf { ... }`, JSX elements to Composable function calls.
 
+import { isModuleState, moduleStateClassName, moduleStateDecls, shadowingNames } from './module-state'
 import { GESTURE_EVENT_NAMES, GESTURE_EVENTS } from './gesture-events'
 import { effectReadCandidates, effectTriggerPaths, isComponentStateName } from './effect-deps'
 import {
@@ -146,6 +147,12 @@ import type { InferenceCtx } from './infer-type'
 import { kotlinEnumEntry, kotlinIdent, kotlinMember, safeIdent } from './identifier-safety'
 import { KOTLIN_INT } from './spelling'
 import { lowerMathCall, lowerMathConstant } from './math-lowering'
+import {
+  fractionalIntoIntegerFieldWarning,
+  isDateNowCall,
+  isWholeValued,
+  typeWantsInteger,
+} from './integer-field-coercion'
 import { buildObjectConstFields, planObjectSpread, resolveSpreadFields } from './spread-lowering'
 import { collectJsxFnNames, jsxHelperCallName, jsxHelperCallWarning } from './jsx-helper-call'
 import type { SpreadResolver } from './spread-lowering'
@@ -409,9 +416,48 @@ function kotlinStructCtorArgs(
           typeof f.value.value === 'number' &&
           Number.isInteger(f.value.value) &&
           f.value.float !== true)
-      return `${kotlinMember(f.name)} = ${wantsFloat && isInt ? `(${raw}).toDouble()` : raw}`
+      if (wantsFloat && isInt) return `${kotlinMember(f.name)} = (${raw}).toDouble()`
+      return `${kotlinMember(f.name)} = ${kotlinIntoIntegerField(structName, f.name, ft, f.value, raw)}`
     })
     .join(', ')
+}
+
+/**
+ * Twin of the Swift `swiftIntoIntegerField` (see integer-field-coercion.ts): a whole-valued Double stored into a
+ * `Long` field converts exactly (`(…).toLong()`; `Date.now()` is `System.currentTimeMillis()`), any other Double
+ * is named. Everything else is `raw`.
+ */
+function kotlinIntoIntegerField(
+  structName: string,
+  field: string,
+  ft: TypeIR | undefined,
+  value: ExprIR,
+  raw: string,
+): string {
+  if (ft === undefined || !typeWantsInteger(ft) || !isDoubleOperand(value)) return raw
+  if (isDateNowCall(value)) return 'System.currentTimeMillis()'
+  if (isWholeValued(value, isIntegerOperand)) return `(${raw}).toLong()`
+  const w = fractionalIntoIntegerFieldWarning(structName, field, 'Kotlin')
+  if (!_emitWarnings.includes(w)) _emitWarnings.push(w)
+  return raw
+}
+
+function isIntegerOperand(x: ExprIR): boolean {
+  const t = unwrapOptionalType(inferType(x, _kotlinExprInferCtx))
+  return t.kind === 'number' && t.float !== true
+}
+
+/** A `.copy(…)` override of a spread SOURCE's field, coerced into that field's type like a constructor argument. */
+function kotlinSpreadOverride(source: ExprIR, f: { name: string; value: ExprIR }, indent: number): string {
+  const raw = emitKotlinExpr(f.value, indent)
+  const st = unwrapOptionalType(inferType(source, _kotlinExprInferCtx))
+  if (st.kind !== 'typeRef') return raw
+  const def =
+    _declaredStructs.find((s) => s.name === st.name) ??
+    _synthExprStructs.find((s) => s.name === st.name) ??
+    _synthStateClassesKotlin.get(st.name)
+  const ft = def?.fields.find((x) => x.name === f.name)?.type
+  return kotlinIntoIntegerField(st.name, f.name, ft, f.value, raw)
 }
 
 /** The integer value of a literal (or a negated one), else undefined. */
@@ -795,6 +841,12 @@ export function emitKotlin(
   _emitWarnings = []
   _kotlinLayout.reset()
   _needsKotlinNumString = false
+  // Module-scope signals / computeds are the file's shared state (module-state.ts).
+  const moduleState = moduleStateDecls(moduleDecls)
+  moduleDecls = moduleDecls.filter((md) => !isModuleState(md))
+  _moduleStateNamesKt = new Set(moduleState.map((d) => (d as { name: string }).name))
+  _moduleStateShadowKt = new Set()
+  _moduleStateAllKt = moduleState
   // Per-FILE hook-binding-name sets. They are populated by the pre-pass
   // below (which walks EVERY component at once), so they are file-scoped,
   // not component-scoped — and nothing reset them. Two consequences: the
@@ -837,7 +889,7 @@ export function emitKotlin(
   // `NAMES.indexOf(…)` over a top-level `const NAMES = […]` types its receiver.
   _moduleConstTypes = buildModuleConstTypes(moduleDecls, structs, _helperReturns)
   _kotlinExprInferCtx = buildInferenceCtx(
-    [],
+    moduleState,
     structs,
     [],
     undefined,
@@ -981,6 +1033,8 @@ export function emitKotlin(
   _needsKotlinKeepAliveWrapper = false
   for (const e of enums) parts.push(emitKotlinEnum(e))
   for (const s of structs) if (!s.external) parts.push(emitKotlinStruct(s))
+  _signalNames = new Set(_moduleStateNamesKt)
+  if (moduleState.length > 0) parts.push(emitKotlinModuleState(moduleState))
   for (const md of moduleDecls) parts.push(emitKotlinModuleDecl(md))
   // File-scope items declared before free helper functions.
   for (const item of itemsInSlot(moduleItems, 'bindings'))
@@ -1278,7 +1332,8 @@ function emitKotlinComponent(c: ComponentIR): string {
   // is read BEFORE emitKotlinDecl runs so the decl emit can see the
   // enum context.
   _signalEnumTypes = new Map()
-  _signalNames = new Set()
+  // Module state the component does not shadow reads like a signal (module-state.ts).
+  _signalNames = new Set([..._moduleStateNamesKt].filter((n) => !shadowingNames(c.decls, c.props).has(n)))
   // Seed with file-scope helper names so a `dbl(21)` call in this component
   // resolves as a free function.
   // File-scope view helpers are CALLED (`row()`), never read like a signal.
@@ -1342,8 +1397,9 @@ function emitKotlinComponent(c: ComponentIR): string {
   // Write-site float widening — mirror of the Swift emitter's call; see
   // infer-type.ts:widenFloatSignals. Idempotent (safe if Swift ran first).
   widenFloatSignals(c, _kotlinStructDefs, _moduleConstTypes, _moduleItems)
+  _moduleStateShadowKt = shadowingNames(c.decls, c.props)
   const inferCtx = buildInferenceCtx(
-    c.decls,
+    [..._moduleStateAllKt.filter((d) => !_moduleStateShadowKt.has((d as { name: string }).name)), ...c.decls],
     _kotlinStructDefs,
     c.props,
     c.propsParamName,
@@ -1637,6 +1693,34 @@ function kotlinEffectDeps(c: ComponentIR, fn: string): string[] {
     _kotlinExprInferCtx.locals = saved
   }
   return out
+}
+
+/** The file's module-state names (module-state.ts) and the names the current component binds itself. */
+let _moduleStateNamesKt: Set<string> = new Set()
+let _moduleStateShadowKt: Set<string> = new Set()
+let _moduleStateAllKt: DeclIR[] = []
+
+/** Whether `name` here reads the module state (declared there, bound by no component or local of its own). */
+function isModuleStateReadKt(name: string): boolean {
+  if (!_moduleStateNamesKt.has(name) || _moduleStateShadowKt.has(name)) return false
+  return !_kotlinExprInferCtx.locals.has(name)
+}
+
+/** The singleton holding the file's module-scope signals and computeds — the shape a store's state takes. */
+function emitKotlinModuleState(state: DeclIR[]): string {
+  const lines = [`object ${moduleStateClassName()} {`]
+  for (const d of state) {
+    if (d.kind === 'signal') {
+      const t = d.type.kind === 'unknown' ? inferType(d.initial, _kotlinExprInferCtx) : d.type
+      const init = withExpectedTypeKotlin(t, () => emitKotlinExpr(d.initial, 0))
+      lines.push(`    var ${kotlinIdent(d.name)} by mutableStateOf<${kotlinType(t)}>(${init})`)
+    } else if (d.kind === 'computed' && d.expr !== undefined) {
+      const t = inferType(d.expr, _kotlinExprInferCtx)
+      lines.push(`    val ${kotlinIdent(d.name)}: ${kotlinType(t)} get() = ${emitKotlinExpr(d.expr, 0)}`)
+    }
+  }
+  lines.push('}')
+  return lines.join('\n')
 }
 
 function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
@@ -3494,6 +3578,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
     case 'identifier': {
       const constant = lowerPluginIdentifier(e.name, 'kotlin', () => kotlinEmitContext(0))
       if (constant !== undefined) return constant
+      if (isModuleStateReadKt(e.name)) return `${moduleStateClassName()}.${kotlinIdent(e.name)}`
       return kotlinIdent(e.name)
     }
     case 'await':
@@ -4084,6 +4169,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
           const read = `${kotlinIdent(e.callee.name)}.${svc.callRead}`
           return svc.kotlinState?.includes(svc.callRead) === true ? `${read}.value` : read
         }
+        if (isModuleStateReadKt(e.callee.name)) return `${moduleStateClassName()}.${kotlinIdent(e.callee.name)}`
         return kotlinIdent(e.callee.name)
       }
       // TS-method translation (Phase 2 follow-up). When the callee is a
@@ -5322,14 +5408,15 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
           } else {
             const target = emitKotlinExpr(plan.source, indent)
             const overrides = plan.fields
-              .map((f) => `${kotlinMember(f.name)} = ${emitKotlinExpr(f.value, indent)}`)
+              .map((f) => `${kotlinMember(f.name)} = ${kotlinSpreadOverride(plan.source, f, indent)}`)
               .join(', ')
             return `${target}.copy(${overrides})`
           }
         }
       }
       if (e.spreads && e.spreads.length === 1 && e.spreads[0]!.kind === 'identifier') {
-        const target = emitKotlinExpr(e.spreads[0]!, indent)
+        const spreadSource = e.spreads[0]!
+        const target = emitKotlinExpr(spreadSource, indent)
         // Mirror of the Swift emitter: `.copy` on a nullable receiver is
         // rejected outright, and TypeScript accepts the spread, so without
         // this the first signal is a kotlinc gate naming generated Kotlin.
@@ -5339,7 +5426,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
           )
         }
         const overrides = e.fields
-          .map((f) => `${kotlinMember(f.name)} = ${emitKotlinExpr(f.value, indent)}`)
+          .map((f) => `${kotlinMember(f.name)} = ${kotlinSpreadOverride(spreadSource, f, indent)}`)
           .join(', ')
         return `${target}.copy(${overrides})`
       }

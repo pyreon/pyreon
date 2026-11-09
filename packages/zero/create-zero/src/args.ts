@@ -112,7 +112,7 @@ export function parseArgs(argv: readonly string[]): CliArgs {
         continue
       }
       // `--install` / `--no-install` are accepted no-ops. The scaffolder
-      // never installs (it prints `bun install` in the next-steps), but users
+      // never installs (it prints the install command in the next-steps), but users
       // pass these out of habit from create-vite / create-next-app — erroring
       // on them (as a phantom `install` feature) is hostile. `--no-install`
       // already describes the actual behavior.

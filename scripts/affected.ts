@@ -650,4 +650,6 @@ function main(): void {
   process.stdout.write(flags)
 }
 
-main()
+// Gated so `scripts/pre-push-plan.ts` (and the unit tests) can import the
+// classifiers without this module printing a filter as a side effect.
+if (import.meta.main) main()

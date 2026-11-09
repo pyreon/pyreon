@@ -394,7 +394,7 @@ const merged = useMergedRef(localRef, props.ref)
       signature:
         '<T>(source: () => T, callback: (newVal: T, oldVal: T | undefined) => void | (() => void)) => void',
       summary:
-        'Watch-style effect that skips the initial run — tracks `source` and fires `callback(newVal, oldVal)` only when `source`\'s value changes *after* mount (`oldVal` is `undefined` on the first change). Use for "save on change but not on first render" patterns where the initial value is already persisted. Note the argument order is `(source, callback)` — NOT React\'s `(effect, deps)`.',
+        'Watch-style effect that skips the initial run — tracks `source` and fires `callback(newVal, oldVal)` only when `source`\'s value changes *after* mount (`oldVal` is `undefined` on the first change). Use for "save on change but not on first render" patterns where the initial value is already persisted. Note the argument order is `(source, callback)` — NOT React\'s `(effect, deps)`. On native it lowers to the SwiftUI two-argument .onChange(of:), which skips the initial value, or a keyed LaunchedEffect against a remembered snapshot on Android. The source must be an expression-body getter and the callback inline; a callback that returns a cleanup is a named warning, not a silent drop.',
       example: `useUpdateEffect(() => value(), (val) => api.save(val))
 // Doesn't fire on initial mount — only on subsequent value changes`,
       seeAlso: ['useIsomorphicLayoutEffect'],
@@ -444,7 +444,7 @@ useIsomorphicLayoutEffect(() => {
       kind: 'hook',
       signature: '() => () => "visible" | "hidden"',
       summary:
-        'Track the Page Visibility state (`document.visibilityState`) reactively — `"hidden"` when the tab is backgrounded/minimized, `"visible"` otherwise. Use it to pause work the user can\'t see (polling, video, animations, expensive timers) and resume on return. SSR-safe (returns `"visible"` on the server); the `visibilitychange` listener is removed on unmount.',
+        'Track the Page Visibility state (`document.visibilityState`) reactively — `"hidden"` when the tab is backgrounded/minimized, `"visible"` otherwise. Use it to pause work the user can\'t see (polling, video, animations, expensive timers) and resume on return. SSR-safe (returns `"visible"` on the server); the `visibilitychange` listener is removed on unmount. On native it lowers to the app-lifecycle container behind `useAppState`: `"hidden"` once the app is backgrounded, `"visible"` otherwise (including while merely inactive, as an unfocused tab is still visible).',
       example: `const visibility = useDocumentVisibility()
 effect(() => { visibility() === 'hidden' ? pausePolling() : resumePolling() })`,
       seeAlso: ['useOnline', 'useIdle'],
@@ -760,7 +760,7 @@ const entry = useIntersection(() => el)
       kind: 'hook',
       signature: 'usePrevious<T>(getter: () => T) => () => T | undefined',
       summary:
-        'Track the previous value of a reactive read. Runs an `effect` over `getter()`; returns an accessor for the value from BEFORE the last change (`undefined` until the getter changes once).',
+        'Track the previous value of a reactive read. Runs an `effect` over `getter()`; returns an accessor for the value from BEFORE the last change (`undefined` until the getter changes once). On native it lowers to an optional state that the SwiftUI two-argument .onChange(of:) (or a keyed LaunchedEffect plus a remembered snapshot on Android) sets to the old value on each change; it starts nil/null, as the web accessor starts undefined. The source must be an expression-body getter.',
       example: `const count = signal(0)
 const prev = usePrevious(() => count())
 // after count.set(5): prev() === 0`,

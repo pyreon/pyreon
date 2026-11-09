@@ -944,6 +944,8 @@ In CSR mode, `useHead` automatically syncs changes to the real DOM `<head>`. The
 
 All Pyreon-managed head elements carry a `data-pyreon-head` attribute. This ensures that Pyreon never interferes with elements it did not create.
 
+The SSR serializer (`renderWithHead` / `serializeHead`) writes the same attribute on every keyed tag it renders (`<meta name="description" content="…" data-pyreon-head="description" />`). On hydration the client finds those tags by their key and patches them in place, so a server-rendered page keeps exactly one copy of each tag instead of gaining a client-side duplicate.
+
 When a component unmounts, its registered tags are removed from the context and the DOM is re-synced, cleaning up any elements that are no longer needed.
 
 ## Integration with Router

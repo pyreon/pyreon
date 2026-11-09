@@ -34,6 +34,7 @@
     "test": "vitest run"
   },
   "devDependencies": {
+    "@pyreon/compiler": "workspace:*",
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
     "@pyreon/zero": "workspace:*"
