@@ -13,8 +13,8 @@
 // The inference types it `{ number, float: true }`, so the Int×Double
 // coercion machinery makes mixed arithmetic (`Date.now() - start()`) work,
 // and `Math.floor(Date.now() / 1000)` composes with the Math return-type
-// inference (→ Int). Other `Date.*` statics (`Date.parse`, …) have no
-// faithful mapping → NAMED build-failing warning, never a silent drop.
+// inference (→ Int). `Date.parse` / `Date.UTC` and the rest of `Date` lower
+// through the runtime's PyreonDate (date-lowering.ts).
 //
 // KNOWN, DISCLOSED limitation (pre-existing, general — not Date-specific):
 // `.set(<float expr>)` into an Int-typed signal (`signal<number>(0)` +
@@ -90,16 +90,16 @@ export function App(){
     expect(rs.code).toContain('func pyreonNumString')
   })
 
-  // Guard — other Date.* statics warn LOUD, never silent.
-  it('guard: `Date.parse(...)` keeps a NAMED build-failing warning', () => {
+  // `Date.parse` lowers too now (date-lowering.ts — native-date.test.ts covers its semantics).
+  it('`Date.parse(...)` lowers to the runtime parser', () => {
     const rs = sw(`import { signal, computed } from '@pyreon/reactivity'
 import { Stack, Text } from '@pyreon/primitives'
 export function App(){
   const out = computed(() => Date.parse("2026-01-01"))
   return (<Stack><Text>{String(out())}</Text></Stack>)
 }`)
-    expect(rs.warnings.some((w) => w.includes('Date.parse'))).toBe(true)
-    expect(rs.code).toContain('Date.parse')
+    expect(rs.warnings.some((w) => w.includes('Date.parse'))).toBe(false)
+    expect(rs.code).toContain('pyreonDateFrom("2026-01-01")')
   })
 
   // Compile proof — elapsed-time component through real swiftc + kotlinc.
