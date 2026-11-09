@@ -9,13 +9,13 @@ crate-type = ["cdylib"]
 [dependencies]
 napi = { version = "3", features = ["napi9", "compat-mode"] }
 napi-derive = "3"
-oxc_parser = "0.156"
-oxc_allocator = "0.156"
-oxc_ast = "0.156"
-oxc_ast_visit = "0.156"
-oxc_span = "0.156"
-oxc_str = "0.156"
-oxc_syntax = "0.156"
+oxc_parser = "0.157"
+oxc_allocator = "0.157"
+oxc_ast = "0.157"
+oxc_ast_visit = "0.157"
+oxc_span = "0.157"
+oxc_str = "0.157"
+oxc_syntax = "0.157"
 rustc-hash = "2"
 
 [build-dependencies]
