@@ -137,6 +137,8 @@ export interface KeyBindingDeclOptions {
   readonly legacyKind: string
   /** The authoring call named in warnings (`useHotkey`, `useKeyboard`). */
   readonly label: string
+  /** What a dropped binding is called in warnings (`hotkey`, `key binding`). */
+  readonly noun: string
   /** The Compose focus requester's variable name; distinct per label so two wrappers in one component cannot collide. */
   readonly focusVar: string
   /** Reads the resolved binding off the declaration's payload. */
@@ -152,9 +154,9 @@ const NAMED_KEYS =
  * label (so several bindings share one wrapper rather than nesting).
  */
 export function keyBindingDecl(options: KeyBindingDeclOptions): DeclEmitter {
-  const { legacyKind, label, focusVar, read } = options
+  const { legacyKind, label, noun, focusVar, read } = options
   const dropped = (key: string, platform: string, what: string): string =>
-    `${label}: '${key}' has no ${what} — the ${label === 'useHotkey' ? 'hotkey' : 'key binding'} is DROPPED on ${platform}. Use a single printable character or one of the named keys that map on both targets (${NAMED_KEYS}), or handle this shortcut inside a <NativeIOS> / <NativeAndroid> branch.`
+    `${label}: '${key}' has no ${what} — the ${noun} is DROPPED on ${platform}. Use a single printable character or one of the named keys that map on both targets (${NAMED_KEYS}), or handle this shortcut inside a <NativeIOS> / <NativeAndroid> branch.`
   return {
     legacyKind,
     legacyName: false,

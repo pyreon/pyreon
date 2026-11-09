@@ -33,6 +33,7 @@ const NO_MODIFIERS = '!e.isCtrlPressed && !e.isShiftPressed && !e.isAltPressed'
 export const keyboardDecl = keyBindingDecl({
   legacyKind: 'keyboard',
   label: 'useKeyboard',
+  noun: 'key binding',
   focusVar: '__kbFocus',
   read: (decl) => {
     const d = decl.payload as unknown as KeyboardData

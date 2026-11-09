@@ -15,6 +15,7 @@ interface Data {
 const hotkeyDecl = keyBindingDecl({
   legacyKind: 'hotkey',
   label: 'useHotkey',
+  noun: 'hotkey',
   focusVar: '__hkFocus',
   read: (decl) => {
     const d = decl.payload as unknown as Data
