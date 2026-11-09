@@ -283,6 +283,30 @@ test.describe('<Image priority> preload', () => {
   })
 })
 
+// ─── Head tags after hydration ───────────────────────────────────────────────
+
+test.describe('head tags after hydration', () => {
+  // The SSR response carries one of each head tag. The hydrating client used
+  // to append its own copy next to each, because the server never stamped the
+  // `data-pyreon-head` key the client adopts by, so every hydrated page held
+  // two of every <meta>/<link>. Asserted on the LIVE DOM after hydration, on
+  // a page whose head comes from `useHead` on both sides.
+  test('each server head tag is adopted, not duplicated', async ({ page }) => {
+    await page.goto('/font-preload-probe')
+    await waitForHydration(page)
+    await expect(page.locator('head link[rel="preload"][href="/fonts/display-bold.woff2"]')).toHaveCount(1)
+    // No <meta>/<link> appears twice, compared by its attributes without the
+    // marker (a duplicate is exactly an unmarked server copy + a marked one).
+    const tags = await page.$$eval('head meta, head link', (els) =>
+      els.map((e) =>
+        [e.tagName, ...[...e.attributes].filter((a) => a.name !== 'data-pyreon-head').map((a) => `${a.name}=${a.value}`).sort()].join(' '),
+      ),
+    )
+    expect(tags.length).toBeGreaterThan(0)
+    expect(tags.length, tags.join('\n')).toBe(new Set(tags).size)
+  })
+})
+
 // ─── usePreloadFont (closes #1359 e2e coverage) ──────────────────────────────
 
 test.describe('usePreloadFont — runtime font preload', () => {

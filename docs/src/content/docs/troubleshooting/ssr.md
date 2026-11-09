@@ -13,6 +13,12 @@ One module-level counter, never reset: the server's kept growing across requests
 
 ---
 
+### [FIXED, 2026-11] A client that adopts server markup by a marker the server never writes duplicates instead of hydrating
+
+(`@pyreon/head`). `dom.ts` seeds its managed set from `[data-pyreon-head]`, but the SSR serializer emitted bare tags, so every hydrated page (pyreon.dev included) held two of each `<meta>`/`<link>`/JSON-LD `<script>`: the static HTML was right, and nothing failed. **Rule: an adoption key is a contract with two halves; define it once in a module both import (`HEAD_ATTR` in `head/src/context.ts`, so the client never imports the serializer) and test it by running the SERVER output under the CLIENT in a real browser.** Locks: `head/src/tests/head.browser.test.tsx` ("hydrating over server-rendered head tags"), `e2e/ssr-showcase.spec.ts` ("head tags after hydration"), and the marker test in `head.test.ts`.
+
+---
+
 ### A cursor that skips a byte-ambiguous node unconditionally cannot honour a client child that IS that node — decide by the VNODE, never the DOM
 
 (hydration whitespace, #3832). `firstReal`/`nextReal` skip whitespace-only text because server formatting whitespace is ignorable, but SSR of an explicit `{' '}` emits the SAME bytes, so `<First/>{' '}<span/>` skipped the server's space, warned `expected TextNode, got 1` and inserted a duplicate. The DOM cannot disambiguate; only the parallel vnode walk can. **Fix**: a whitespace-only text vnode looks BACK (`skippedWhitespaceBefore`) for the node the cursor walked past, adopts it (splitting a parser-merged run), and marks it in a `WeakSet` so no later whitespace vnode re-claims it; every other vnode keeps skipping. Walk back over formatting comments AND empty text nodes — `isWhitespaceOnly('')` is vacuously true, and hydration itself inserts empty nodes for `''` children (the fuzzer found this on its first run). Pure compiled templates were never affected (the verifier's template match already tolerates their baked whitespace); only the h()/component walk was. **Detection lesson: the parity fuzzers could not have caught it — the grammar's text pool had no whitespace-only string.** A differential fuzzer is only as strong as its INPUT alphabet; add the byte-ambiguous values (` `, `\n`, `\t`, empty) to every text pool. Reference: `runtime-dom/src/hydrate.ts:skippedWhitespaceBefore`; locks `hydrate-explicit-whitespace{,-compiled}.test.tsx` (bisect-verified: 29/42 fail on revert) + both parity fuzzers at 5000 seeds.

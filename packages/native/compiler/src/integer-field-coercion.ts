@@ -9,8 +9,12 @@
 //
 // The value side decides the lowering:
 //
-// - WHOLE by construction (`isWholeValued`) — the conversion is exact, so it converts: Swift `Int(…)`, Kotlin
-//   `(…).toLong()`, and `Date.now()` is spelled directly in integer milliseconds on both.
+// - WHOLE by construction (`isWholeValued`) — the conversion is exact, so it converts: Swift `pyreonInt(…)`, Kotlin
+//   `(…).toLong()`, and `Date.now()` is spelled directly in integer milliseconds on both (always finite).
+//   A whole-valued expression can still be NON-FINITE at runtime (`Math.floor(NaN)`, `Math.round(x / 0)`), where
+//   Swift's `Int(_:)` TRAPS. `pyreonInt` (runtime-swift PyreonNumber.swift) is Kotlin's `Double.toLong()` — NaN is
+//   0, ±Infinity and out-of-range values saturate — so the two targets store the same value and neither crashes.
+//   JavaScript would store `NaN`, which no integer field can hold.
 // - Anything else Double (`Math.random()`, a division, a `: Double` parameter) — truncating would silently change
 //   the value the web stores, so it is left as written and NAMED: the author declares the field `Double`.
 //
@@ -44,8 +48,8 @@ export function isDateNowCall(e: ExprIR): boolean {
 const WHOLE_MATH = new Set(['floor', 'ceil', 'round', 'trunc'])
 
 /**
- * The value is a whole number in JavaScript for every input it can take (finite inputs; NaN/Infinity have no
- * integer on either target), so converting it to an integer is exact. `isIntegerTyped` answers for operands the
+ * The value is a whole number in JavaScript for every FINITE input it can take, so converting it to an integer is
+ * exact (NaN/Infinity have no integer on either target; the emitters' conversion maps them the same way on both). `isIntegerTyped` answers for operands the
  * inferencer already types as an integer.
  */
 export function isWholeValued(e: ExprIR, isIntegerTyped: (e: ExprIR) => boolean): boolean {

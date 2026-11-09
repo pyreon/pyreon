@@ -9,7 +9,14 @@ import type {
   CompilerContext,
   DeclIR,
 } from '@pyreon/native-compiler/plugin-api'
-import type { PureStateData, DebouncedData, RateData, TimerData } from './stateful-types'
+import type {
+  PureStateData,
+  DebouncedData,
+  RateData,
+  TimerData,
+  PreviousData,
+  UpdateEffectData,
+} from './stateful-types'
 
 const PURE = 'pure-state'
 const DEBOUNCED = 'debounced-value'
@@ -163,6 +170,97 @@ export const rateDecl: DeclEmitter = {
     },
   },
 }
+const PREVIOUS = 'previous-value'
+const UPDATE_EFFECT = 'update-effect'
+const sourceType = (payload: { source: ExprIR; type: import('@pyreon/native-compiler/plugin-api').TypeIR }, ctx: EmitContext) => {
+  const inferred = ctx.inferType(payload.source)
+  return inferred.kind === 'unknown' ? payload.type : inferred
+}
+
+/**
+ * `usePrevious(() => x)` — `@State prev: T?` that the lifecycle observer sets to the OLD value whenever `x` changes.
+ * Kotlin has no old/new observer, so a remembered `Seen` snapshot stands in: the keyed effect fires on a change and
+ * moves the snapshot into `prev`. Both start `nil`/`null` exactly as the web accessor starts `undefined`.
+ */
+export const previousDecl: DeclEmitter = {
+  legacyKind: PREVIOUS,
+  swift: (decl, ctx) =>
+    `@State private var ${ctx.ident(decl.name)}: ${ctx.typeText(sourceType(data<PreviousData>(decl), ctx))}? = nil`,
+  kotlin: (decl, ctx) => {
+    const payload = data<PreviousData>(decl)
+    const name = ctx.ident(decl.name)
+    return `var ${name} by remember { mutableStateOf<${ctx.typeText(sourceType(payload, ctx))}?>(null) }; var ${name}Seen by remember { mutableStateOf(${ctx.expr(payload.source, 2)}) }`
+  },
+  lifecycle: {
+    stableHost: true,
+    earlyOrder: 30,
+    swift: (decl, ctx) => [
+      `.onChange(of: ${ctx.expr(data<PreviousData>(decl).source, 6)}) { old, _ in ${ctx.ident(decl.name)} = old }`,
+    ],
+    kotlin: (decl, ctx) => {
+      const name = ctx.ident(decl.name)
+      const source = ctx.expr(data<PreviousData>(decl).source, 4)
+      return [
+        `LaunchedEffect(${source}) {`,
+        `  if (${source} != ${name}Seen) { ${name} = ${name}Seen; ${name}Seen = ${source} }`,
+        '}',
+      ]
+    },
+  },
+}
+
+/**
+ * `useUpdateEffect(() => x, (next, prev) => body)` — `watch` semantics. SwiftUI's two-argument `.onChange(of:)` is exactly
+ * that (it skips the initial value and hands over old and new). Compose gets a remembered snapshot compared inside a keyed
+ * effect, which also skips the first composition because the snapshot starts equal to the source.
+ */
+export const updateEffectDecl: DeclEmitter = {
+  legacyKind: UPDATE_EFFECT,
+  // SwiftUI keeps the previous value itself, so there is nothing to store; the comment marks where the observer is.
+  swift: (decl, ctx) => `// useUpdateEffect ${ctx.ident(decl.name)}: observed by the .onChange below`,
+  kotlin: (decl, ctx) =>
+    `var ${ctx.ident(decl.name)}Seen by remember { mutableStateOf(${ctx.expr(data<UpdateEffectData>(decl).source, 2)}) }`,
+  lifecycle: {
+    stableHost: true,
+    earlyOrder: 30,
+    swift: (decl, ctx) => {
+      const payload = data<UpdateEffectData>(decl)
+      const type = sourceType(payload, ctx)
+      const locals = new Map([
+        ...(payload.newName === undefined ? [] : [[payload.newName, type] as const]),
+        ...(payload.oldName === undefined ? [] : [[payload.oldName, type] as const]),
+      ])
+      const body = ctx.statements(payload.body, 8, locals)
+      return [
+        `.onChange(of: ${ctx.expr(payload.source, 6)}) { ${payload.oldName === undefined ? '_' : ctx.ident(payload.oldName)}, ${payload.newName === undefined ? '_' : ctx.ident(payload.newName)} in`,
+        ...body.map((line) => `  ${line}`),
+        '}',
+      ]
+    },
+    kotlin: (decl, ctx) => {
+      const payload = data<UpdateEffectData>(decl)
+      const type = sourceType(payload, ctx)
+      const name = `${ctx.ident(decl.name)}Seen`
+      const source = ctx.expr(payload.source, 4)
+      const locals = new Map([
+        ...(payload.newName === undefined ? [] : [[payload.newName, type] as const]),
+        ...(payload.oldName === undefined ? [] : [[payload.oldName, type] as const]),
+      ])
+      const body = ctx.statements(payload.body, 6, locals)
+      return [
+        `LaunchedEffect(${source}) {`,
+        `  if (${source} != ${name}) {`,
+        ...(payload.oldName === undefined ? [] : [`    val ${ctx.ident(payload.oldName)} = ${name}`]),
+        ...(payload.newName === undefined ? [] : [`    val ${ctx.ident(payload.newName)} = ${source}`]),
+        `    ${name} = ${source}`,
+        ...body.map((line) => `    ${line}`),
+        '  }',
+        '}',
+      ]
+    },
+  },
+}
+
 export const timerDecl: DeclEmitter = {
   legacyKind: TIMER,
   legacyName: false,

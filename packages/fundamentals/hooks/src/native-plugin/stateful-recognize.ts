@@ -126,3 +126,54 @@ export const recognizeStateful: CallRecognizer = (call, ctx) => {
   }
   return undefined
 }
+
+const isFn = (node: AnyNode | undefined): node is AnyNode =>
+  node?.type === 'ArrowFunctionExpression' || node?.type === 'FunctionExpression'
+
+/** `usePrevious(() => expr)` — the value `expr` held before its last change (`undefined` until it first changes). */
+export const recognizePrevious: CallRecognizer = (_call, ctx) => {
+  const getter = ctx.unwrap(ctx.args[0]) as AnyNode | undefined
+  if (!isFn(getter) || getter.body?.type === 'BlockStatement') {
+    ctx.report(
+      `usePrevious() \`${ctx.declName}\`: the source must be an expression-body getter (\`() => expr\`) to lower natively — this one is not, so the declaration is NOT lowered.`,
+    )
+    return null
+  }
+  const source = ctx.expr(getter.body as AnyNode)
+  return spec('previous-value', { source, type: ctx.initialType(source) })
+}
+
+/** `useUpdateEffect(() => expr, (next, prev) => { … })` — `watch` semantics: skips the first run, then fires per change. */
+export const recognizeUpdateEffect: CallRecognizer = (_call, ctx) => {
+  const getter = ctx.unwrap(ctx.args[0]) as AnyNode | undefined
+  const cb = ctx.unwrap(ctx.args[1]) as AnyNode | undefined
+  if (!isFn(getter) || getter.body?.type === 'BlockStatement') {
+    ctx.report(
+      `Component ${ctx.declName}: useUpdateEffect() needs an expression-body source getter (\`() => expr\`) to lower natively — this one is not, so it was DROPPED and will not run on device.`,
+    )
+    return null
+  }
+  if (!isFn(cb)) {
+    ctx.report(
+      `Component ${ctx.declName}: useUpdateEffect() needs an inline callback to lower natively — this one is not, so it was DROPPED and will not run on device.`,
+    )
+    return null
+  }
+  const body = cb.body as AnyNode
+  if (body.type === 'BlockStatement' && JSON.stringify(body).includes('"type":"ReturnStatement"')) {
+    ctx.report(
+      `Component ${ctx.declName}: useUpdateEffect() callbacks that return a cleanup function are not lowered natively (the native observers have no per-run cleanup slot) — so it was DROPPED and will not run on device. Move the cleanup into an onUnmount, or use effect().`,
+    )
+    return null
+  }
+  const params = (cb.params as AnyNode[] | undefined) ?? []
+  const name = (p: AnyNode | undefined): string | undefined => (p?.type === 'Identifier' ? (p.name as string) : undefined)
+  const source = ctx.expr(getter.body as AnyNode)
+  return spec('update-effect', {
+    source,
+    type: ctx.initialType(source),
+    newName: name(params[0]),
+    oldName: name(params[1]),
+    body: body.type === 'BlockStatement' ? ctx.statements(body) : [{ kind: 'expr', expr: ctx.expr(body) }],
+  })
+}

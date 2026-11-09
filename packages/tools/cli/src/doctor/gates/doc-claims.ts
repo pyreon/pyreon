@@ -430,6 +430,13 @@ const checks: ClaimCheck[] = [
         file: '.agents/rules/code-style.md',
         pattern: /Pyreon-specific rules \((\d+) rules, \d+ categories/,
       },
+      {
+        // The scaffolder's lint prompt, which every `create-pyreon-app` user
+        // reads. It shipped "59" in 0.53.0 against an actual 133, because it
+        // was not a claim surface.
+        file: 'packages/zero/create-zero/src/prompts.ts',
+        pattern: /Include @pyreon\/lint\? \((\d+) Pyreon-specific rules\)/,
+      },
     ],
   },
   {

@@ -1182,14 +1182,14 @@
       "warnings": 1
     },
     "golden-fixture:chart-swift-04.tsx|swift": {
-      "sha": "9b231fa7e6d44ed137a40669acb0ed5a71180f503b8014afcb9e7afca2ba8b64",
-      "bytes": 5805,
-      "warnings": 2
+      "sha": "7abe73a8b7764f366056b6f198442b0cbb838d278f9e44f03ccac2a48bfeb7b7",
+      "bytes": 5997,
+      "warnings": 1
     },
     "golden-fixture:chart-swift-04.tsx|kotlin": {
-      "sha": "0b1b90542def36bceb9642b1c9feb13dec8bb8d983b766af0068e5662430f6da",
-      "bytes": 6522,
-      "warnings": 2
+      "sha": "fb634591fe8c5275f577dc67759ac63d68ef48f501e6fc95ba910de2a3b46119",
+      "bytes": 6605,
+      "warnings": 1
     },
     "golden-fixture:chart-swift-05.tsx|swift": {
       "sha": "dce63db0cc4003136b6c922b9c44685937b5dbf2e26222ddddb3c2da1967857e",

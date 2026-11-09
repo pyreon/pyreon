@@ -1,8 +1,6 @@
-import type { HeadContextValue } from './context'
+import { HEAD_ATTR as ATTR, type HeadContextValue } from './context'
 import { isElementEventHandlerAttr } from '@pyreon/core'
 import { isHeadAttrSafe } from './attr-guard'
-
-const ATTR = 'data-pyreon-head'
 
 /** Tracks managed elements by key — avoids querySelectorAll on every sync */
 const managedElements = new Map<string, Element>()

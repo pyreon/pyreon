@@ -1,11 +1,17 @@
 import { statefulStubs } from './native-plugin/stateful-stubs'
-import { recognizeStateful } from './native-plugin/stateful-recognize'
+import {
+  recognizeStateful,
+  recognizePrevious,
+  recognizeUpdateEffect,
+} from './native-plugin/stateful-recognize'
 import {
   pureStateDecl,
   pureStateReceiver,
   debouncedDecl,
   rateDecl,
   timerDecl,
+  previousDecl,
+  updateEffectDecl,
   prepareStateful,
   refineCounters,
 } from './native-plugin/stateful-emit'
@@ -68,10 +74,15 @@ const nativePlugin = {
     useDebouncedValue: recognizeStateful,
     useDebouncedCallback: recognizeStateful,
     useThrottledCallback: recognizeStateful,
+    usePrevious: recognizePrevious,
     useColorScheme: recognizeColorScheme,
     useSizeClass: recognizeSizeClass,
   },
-  statementCalls: { useInterval: recognizeTimer, useTimeout: recognizeTimer },
+  statementCalls: {
+    useInterval: recognizeTimer,
+    useTimeout: recognizeTimer,
+    useUpdateEffect: recognizeUpdateEffect,
+  },
   // `await fileFromUri(uri)` — a picked file to upload (see `upload-file.ts`).
   scanModule: scanFileFromUri,
   callExprs: recognizeFileFromUri,
@@ -92,6 +103,8 @@ const nativePlugin = {
     'debounced-value': debouncedDecl,
     'rate-limited': rateDecl,
     tick: timerDecl,
+    'previous-value': previousDecl,
+    'update-effect': updateEffectDecl,
     'color-scheme': colorSchemeDecl,
     'size-class': sizeClassDecl,
   },

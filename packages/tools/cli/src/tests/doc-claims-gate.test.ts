@@ -344,6 +344,36 @@ describe('a count repeated in one file must agree everywhere', () => {
   })
 })
 
+describe('the scaffolder prompt carries the lint rule count', () => {
+  // `create-pyreon-app` asked "Include @pyreon/lint? (59 Pyreon-specific
+  // rules)" in 0.53.0 while the registry held 133: the prompt was not a
+  // claim surface, so nothing compared it.
+  const rules = (n: number): string =>
+    `export const allRules: Rule[] = [\n${Array.from({ length: n }, (_, i) => `  rule${i},`).join('\n')}\n]\n`
+  const prompt = (n: number): string =>
+    `const value = await p.confirm({\n  message: 'Include @pyreon/lint? (${n} Pyreon-specific rules)',\n})\n`
+  const PROMPTS = 'packages/zero/create-zero/src/prompts.ts'
+
+  it('reports a stale prompt count with both numbers', () => {
+    build({ 'packages/tools/lint/src/rules/index.ts': rules(4), [PROMPTS]: prompt(3) })
+    return run().then((r) => {
+      const drift = forCheck(r, 'lint-rule-count').filter(
+        (f) => f.code.endsWith('-drift') && f.location?.relPath === PROMPTS,
+      )
+      expect(drift.length).toBe(1)
+      expect(drift[0]?.message).toContain('claims 3')
+      expect(drift[0]?.message).toContain('actual 4')
+    })
+  })
+
+  it('stays quiet when the prompt matches the registry', () => {
+    build({ 'packages/tools/lint/src/rules/index.ts': rules(4), [PROMPTS]: prompt(4) })
+    return run().then((r) => {
+      expect(forCheck(r, 'lint-rule-count').filter((f) => f.location?.relPath === PROMPTS)).toEqual([])
+    })
+  })
+})
+
 describe('a JSON claim is read as the reader sees it', () => {
   // `package.json` may store any character as a `\uXXXX` escape, and
   // `changeset version` re-serialises the file on every release — so a
