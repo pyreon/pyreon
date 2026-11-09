@@ -1366,6 +1366,13 @@ fun pyreonNumberString(value: Number): String = ""
 fun pyreonParseInt(text: String, radix: Int? = null): Long? = null
 fun pyreonParseFloat(text: String): Double = 0.0
 fun pyreonToNumber(text: String): Double = 0.0
+// PyreonDate — JS Date as epoch milliseconds (PyreonDate.kt). Mirrors the real surface.
+fun pyreonDateFrom(text: String): Double = 0.0
+fun pyreonDateFrom(ms: Number): Double = 0.0
+fun pyreonDateGet(ms: Number, field: Number, utc: Boolean): Double = 0.0
+fun pyreonDateTimezoneOffset(ms: Number): Double = 0.0
+fun pyreonDateISO(ms: Number): String = ""
+fun pyreonDateMake(utc: Boolean, vararg parts: Number): Double = 0.0
 // PyreonTimers — JS setTimeout / setInterval / clear* (PyreonTimers.kt). Mirrors the real surface.
 object PyreonTimers {
   interface Scheduler {

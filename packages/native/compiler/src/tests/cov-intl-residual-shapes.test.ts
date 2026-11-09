@@ -94,8 +94,10 @@ describe('format() misuse is named', () => {
     warns(`const f = new Intl.NumberFormat('en')`, `<Text>{f.format(1, 2)}</Text>`, /`format\(\)` with 2 arguments/)
   })
 
-  it('format(new Date(y, m, d)) is named', () => {
-    warns(`const f = new Intl.DateTimeFormat('en')`, `<Text>{f.format(new Date(2026, 1, 2))}</Text>`, /new Date\(y, m, …\)/)
+  it('format(new Date(y, m, d)) formats its local time; eight parts are named', () => {
+    const r = transform(app(`const f = new Intl.DateTimeFormat('en')`, `<Text>{f.format(new Date(2026, 1, 2))}</Text>`), { target: 'swift' })
+    expect(r.code).toContain('pyreonDateMake(false, 2026, 1, 2)')
+    warns(`const f = new Intl.DateTimeFormat('en')`, `<Text>{f.format(new Date(2026, 1, 2, 3, 4, 5, 6, 7))}</Text>`, /new Date\(y, m, …\)/)
   })
 
   it('a method a formatter does not have is named as such', () => {

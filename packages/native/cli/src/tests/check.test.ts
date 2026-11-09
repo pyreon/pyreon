@@ -41,7 +41,7 @@ function App() {
 
 const RISKY = `import { Stack, Text } from '@pyreon/primitives'
 function App() {
-  const now = new Date()
+  const now = new URLSearchParams('a=1')
   return (<Stack><Text>{now.toString()}</Text></Stack>)
 }`
 
@@ -54,7 +54,7 @@ describe('check — in-memory native compile-check', () => {
     expect(res.warningCount).toBe(0)
   })
 
-  it('an unsupported-subset shape (new Date()) warns for BOTH targets', () => {
+  it('an unsupported-subset shape (new URLSearchParams()) warns for BOTH targets', () => {
     write('App.tsx', RISKY)
     const res = check({ source: dir })
     const warnings = res.findings.filter((f) => f.kind === 'warning')

@@ -188,7 +188,12 @@ describe('every shape outside the subset is NAMED, never emitted verbatim', () =
 
   it('a locale list, and a multi-argument Date', () => {
     warns('', `<Text>{price().toLocaleString(['de-DE', 'en-US'])}</Text>`, /locale LIST/)
-    warns('', `<Text>{new Date(2026, 9, 22).toLocaleDateString()}</Text>`, /new Date\(y, m, …\)/)
+    // `new Date(y, m, d)` is its local time natively (date-lowering.ts), so it formats like any other date.
+    for (const target of ['swift', 'kotlin'] as const) {
+      const r = transform(app('', `<Text>{new Date(2026, 9, 22).toLocaleDateString()}</Text>`), { target })
+      expect(r.code).toContain('pyreonDateMake(false, 2026')
+      expect(r.warnings.join('\n')).not.toMatch(/new Date\(y, m, …\)/)
+    }
   })
 
   it('toLocaleDateString on something that is not `new Date(ms)`', () => {

@@ -151,7 +151,7 @@ const scanIntl: ModuleScanner = (scan) => {
   walk(scan.body)
 }
 
-/** `new Date(ms)` → `ms`; `new Date()` → the current time; anything else → `undefined`. */
+/** `new Date(ms)` → `ms`; `new Date()` → the current time; `new Date(y, m, …)` → its local time; else `undefined`. */
 function dateArgument(node: AnyNode, ctx: ModuleParseContext): ExprIR | 'invalid' | undefined {
   const n = unwrapTypeLayers(node)
   if (n?.type !== 'NewExpression' || n.callee?.type !== 'Identifier' || n.callee.name !== 'Date') {
@@ -167,6 +167,14 @@ function dateArgument(node: AnyNode, ctx: ModuleParseContext): ExprIR | 'invalid
     }
   }
   if (args.length === 1) return ctx.expr(args[0])
+  // `new Date(y, m, d, …)` — local time, the runtime's `pyreonDateMake` (date-lowering.ts).
+  if (args.length <= 7) {
+    return {
+      kind: 'call',
+      callee: { kind: 'identifier', name: 'pyreonDateMake' },
+      args: [{ kind: 'literal', value: false }, ...args.map((a) => ctx.expr(a))],
+    }
+  }
   return 'invalid'
 }
 
@@ -335,7 +343,7 @@ const recognizeFormatterMethod: MethodCallRecognizer = (site, ctx) => {
   }
   const date = dateArgument(site.args[0], ctx)
   if (date === 'invalid') {
-    return ctx.unsupported(site.args[0] as AnyNode, '`new Date(y, m, …)`', 'only `new Date(ms)` and `new Date()` lower — natively a date is its epoch milliseconds.')
+    return ctx.unsupported(site.args[0] as AnyNode, '`new Date(y, m, …)`', '`new Date()`, `new Date(ms)` and `new Date(y, m, …)` (up to seven parts) lower — natively a date is its epoch milliseconds.')
   }
   const value = date ?? ctx.expr(site.args[0] as AnyNode)
   return {
@@ -350,7 +358,7 @@ function recognizeToLocale(entry: DateTimeEntry): MethodCallRecognizer {
   return (site, ctx) => {
     const date = dateArgument(site.receiver, ctx)
     if (date === 'invalid') {
-      return ctx.unsupported(site.receiver as AnyNode, '`new Date(y, m, …)`', 'only `new Date(ms)` and `new Date()` lower — natively a date is its epoch milliseconds.')
+      return ctx.unsupported(site.receiver as AnyNode, '`new Date(y, m, …)`', '`new Date()`, `new Date(ms)` and `new Date(y, m, …)` (up to seven parts) lower — natively a date is its epoch milliseconds.')
     }
     const where = date !== undefined ? `\`Date#${site.method}\`` : `\`Number#${site.method}\``
     if (date === undefined && entry !== 'toLocaleString') {

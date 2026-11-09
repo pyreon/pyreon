@@ -4,6 +4,7 @@
 // starter fixtures use are recognised. Anything outside that set is
 // either passed through as unknown or surfaces a warning.
 
+import { lowerDateNode } from './date-lowering'
 import { refineParamFloatsFromCallSites } from './call-site-param-floats'
 import { applyDestructureAbsence, applyDestructureAbsenceToLets } from './destructure-absence'
 import { GESTURE_EVENTS, isGestureEventName } from './gesture-events'
@@ -4773,6 +4774,11 @@ function tryExtractRoutes(arg: AnyNode | undefined, ctx: ParseCtx): RouteIR[] | 
 /** `Number.<name>` spellings that are the same function as the global `<name>` for a numeric argument. */
 const NUMBER_NAMESPACE_ALIASES: ReadonlySet<string> = new Set(['isNaN', 'isFinite', 'parseInt', 'parseFloat'])
 
+/** Whether the file binds its own `Date` (a class, a const, an import), which the Date lowering must leave alone. */
+function dateIsShadowed(ctx: ParseCtx): boolean {
+  return /\b(?:class|const|let|var|function|interface|type)\s+Date\b|\bimport\b[^;\n]*\bDate\b/.test(ctx.source)
+}
+
 /** Globals an inline guard may read without capturing anything from the component. */
 const GUARD_GLOBALS = new Set([
   'Math', 'Number', 'String', 'Boolean', 'JSON', 'Array', 'Object', 'Date', 'undefined', 'NaN', 'Infinity',
@@ -6589,6 +6595,8 @@ function parseTypeAnnotation(node: AnyNode, ctx: ParseCtx): TypeIR {
       // `ReadonlyArray<T>` is the long spelling of `readonly T[]` — the same
       // runtime array, lowered as one (see the TSTypeOperator case).
       if (name === 'ReadonlyArray' && args.length === 1) return { kind: 'array', element: args[0]! }
+      // A `Date` is its epoch milliseconds natively (date-lowering.ts).
+      if (name === 'Date' && args.length === 0) return { kind: 'number', float: true }
       // TypeScript's BUILT-IN utility types. Neither Swift nor Kotlin has any
       // of these names, so the pass-through arm below emitted the TS spelling
       // verbatim — `Partial<ChartTheme>` became `private let T:
@@ -6838,6 +6846,11 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
       }
       return { kind: 'identifier', name: node.name as string }
     case 'CallExpression': {
+      // `Date.parse` / `Date.UTC` and the Date methods (`d.getFullYear()`, `d.toISOString()`, …) — see date-lowering.ts.
+      {
+        const date = lowerDateNode(node, (n) => parseExpr(n, ctx), dateIsShadowed(ctx))
+        if (date !== undefined) return date
+      }
       // `JSON.parse(x)` / `JSON.stringify(x)` — no native lowering yet
       // (Swift needs a JSONEncoder/Decoder bridge gated on Codable
       // conformance; Kotlin needs kotlinx `Json` + imports). Pre-fix the
@@ -7472,6 +7485,11 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
       // A construction a plugin claims by the callee it recorded when it scanned the file (`CompilerPlugin.callExprs`).
       const constructed = tryPluginCallExpr(node, ctx)
       if (constructed !== undefined) return constructed
+      // `new Date(…)` — a date is its epoch milliseconds natively (date-lowering.ts).
+      {
+        const date = lowerDateNode(node, (n) => parseExpr(n, ctx), dateIsShadowed(ctx))
+        if (date !== undefined) return date
+      }
       const calleeName = node.callee?.type === 'Identifier' ? (node.callee.name as string) : ''
       const typeArgs = (node.typeArguments?.params ??
         node.typeParameters?.params ??
