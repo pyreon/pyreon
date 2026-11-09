@@ -272,3 +272,34 @@ describe('useWindowVirtualizer — real Chromium (first browser coverage)', () =
     unmount()
   })
 })
+
+describe('a scroll element that is detached when the component mounts', () => {
+  it('still virtualizes once it is inserted into the document', async () => {
+    // Pyreon builds a template into an inert fragment (the <template>'s own document) and inserts it AFTER onMount — the
+    // routed-page case. There `ownerDocument.defaultView` is null, so TanStack attaches no observers.
+    const tpl = document.createElement('template')
+    tpl.innerHTML = '<div style="height:200px;overflow:auto;position:relative"><div style="height:2000px"></div></div>'
+    const frag = tpl.content.cloneNode(true) as DocumentFragment
+    const scrollEl = frag.firstElementChild as HTMLDivElement
+    expect(scrollEl.ownerDocument.defaultView).toBeNull()
+
+    let virtual!: ReturnType<typeof useVirtualizer<HTMLDivElement, HTMLElement>>
+    const Comp = () => {
+      virtual = useVirtualizer<HTMLDivElement, HTMLElement>(() => ({
+        count: 100,
+        getScrollElement: () => scrollEl,
+        estimateSize: () => 20,
+      }))
+      return <i />
+    }
+    const { unmount } = mountInBrowser(<Comp />)
+    // Inserted after mount, exactly as the router does.
+    document.body.appendChild(frag)
+    await vi.waitFor(() => expect(virtual.virtualItems().length).toBeGreaterThan(0), { timeout: 2000 })
+    // A bounded window, not every row.
+    expect(virtual.virtualItems().length).toBeLessThan(100)
+    scrollEl.remove()
+    unmount()
+  })
+})
+
