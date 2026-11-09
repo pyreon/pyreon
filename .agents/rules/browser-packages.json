@@ -21,6 +21,7 @@
     "@pyreon/coolgrid",
     "@pyreon/kinetic",
     "@pyreon/ui-core",
+    "@pyreon/kinetic-presets",
     "@pyreon/ui-components",
     "@pyreon/ui-primitives",
     "@pyreon/ui-theme",
