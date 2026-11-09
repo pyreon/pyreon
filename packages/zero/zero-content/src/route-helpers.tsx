@@ -33,6 +33,7 @@ import { h, Suspense } from '@pyreon/core'
 import type { ComponentFn, VNodeChild } from '@pyreon/core'
 import { useHead } from '@pyreon/head'
 import type { UseHeadInput } from '@pyreon/head'
+import { signal } from '@pyreon/reactivity'
 import { useParams } from '@pyreon/router'
 import { getEntry } from './runtime'
 import type { CollectionEntry } from './types'
@@ -190,16 +191,25 @@ export function defineContentRoute<TCollection extends string>(
       : options.head ?? defaultHeadFromEntry
 
   const AsyncBody: AsyncBody = async ({ slug }) => {
+    // Register the page's head entry NOW, during the synchronous part of
+    // setup. On the client, code after the `await` below runs with no
+    // current component, so a `useHead` there finds no head context and is
+    // a silent no-op — every content page kept the previous (or the
+    // layout's default) <title> and meta after hydration and client-side
+    // navigation. The reactive form re-syncs once the entry resolves.
+    const headInput = headBuilder !== null ? signal<UseHeadInput>({}) : null
+    if (headInput !== null) useHead(() => headInput())
     const entry = await getEntry(collection, slug)
     if (!entry) return h(NotFound, { slug })
-    // Emit page-level head tags BEFORE rendering the body so the
-    // collected tags are part of the same component's setup pass.
-    // `@pyreon/head`'s `useHead` is idempotent on re-resolve (Suspense
-    // re-runs the async body on stream replay), and the head context
-    // dedupes by `key` so repeat title/description registrations
-    // collapse to a single tag.
-    if (headBuilder !== null) {
-      useHead(headBuilder(entry))
+    if (headBuilder !== null && headInput !== null) {
+      const input = headBuilder(entry)
+      headInput.set(input)
+      // The server evaluates a function `useHead` once, synchronously —
+      // before the entry existed — so register the resolved tags directly
+      // as well. renderToString keeps the head context across the await;
+      // on the client this call is the no-op described above. Same keys,
+      // so the two registrations collapse to one set of tags.
+      useHead(input)
     }
     const Content = await entry.render()
     const body = h(Content, null)

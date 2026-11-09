@@ -455,7 +455,7 @@ for (const doc of docs) {
 }
 ```
 
-Each entry exposes `{ slug, data, render(), headings }`. `render()` is async because content modules are lazy-loaded (Vite splits them into per-route chunks).
+Each entry exposes `{ slug, data, render(), headings }`. `slug` is relative to the collection's directory (`src/content/blog/hello.md` → `'hello'`): it is the key `getEntry` takes and the `[slug]` route param, so `` `/blog/${entry.slug}` `` is the entry's URL. `render()` is async because content modules are lazy-loaded (Vite splits them into per-route chunks).
 
 ### `getCollection` options
 
@@ -466,7 +466,7 @@ const published = await getCollection('blog', {
 })
 ```
 
-- **`includeDrafts`** — defaults are environment-aware: production builds skip `draft: true` entries (stage a draft in source without leaking it to a public deploy); dev mode shows them. Pass an explicit boolean to override.
+- **`includeDrafts`** — defaults are environment-aware: production builds skip unpublished entries — `draft: true`, and entries dated in the future when the collection declares `publishDate` (see [Drafts and scheduled entries](#drafts-and-scheduled-entries)) — so a draft can be staged in source without leaking to a public deploy; dev mode shows them. Pass an explicit boolean to override.
 - **`filter`** — a predicate run against each entry; return `false` to drop it. Useful for tag listings and date-range filters.
 
 ### `getEntry` / `getEntries`
@@ -485,6 +485,29 @@ const some = await getEntries('blog', ['welcome', 'why-signals']) // missing slu
 - Querying a string that isn't a defined collection throws (and lists the available collections). TypeScript catches it too, once `.pyreon/content-types.d.ts` is generated.
 - If the registry isn't wired (no `content.config`, or `virtual:zero-content/collections` never imported), the query throws a self-explanatory "No content collection registry available" error.
 :::
+
+### Drafts and scheduled entries
+
+Two frontmatter conventions keep an entry private: `draft: true`, and — for a collection that names its date field with `publishDate` — a date in the future.
+
+```ts
+// content.config.ts
+blog: defineCollection({
+  type: 'pages',
+  schema: z.object({ title: z.string(), date: z.date(), draft: z.boolean().optional() }),
+  publishDate: 'date',   // a post dated in the future is unpublished until that date
+  unpublished: 'omit',   // a production build leaves unpublished posts out entirely
+}),
+```
+
+A production build never lists an unpublished entry in the search index, the sitemap, the RSS feed or `llms.txt`. What happens to the page itself depends on `unpublished`:
+
+| `unpublished` | Production build | Use for |
+| --- | --- | --- |
+| `'runtime'` (default) | Bundled. `getCollection` skips it; preview mode (`@pyreon/zero/preview`) can show it on an SSR deployment; `getEntry` still resolves it. | SSR / ISR sites with a preview workflow |
+| `'omit'` | Not bundled at all: no chunk, no route, unreachable through `getEntry`. | Static (SSG) sites — the only way to keep a draft's text out of public JS |
+
+The decision is made at **build** time on a static site, so a scheduled entry goes live with the first build on or after its date — not at that instant. Set `PYREON_CONTENT_NOW` (any `Date`-parseable value, e.g. `PYREON_CONTENT_NOW=2026-11-16 vite build`) to build the site as it will look on a later date. `isPublished(data, publishDateField?, now?)` is exported for code that needs the same rule.
 
 ### Collection types & conventions
 
@@ -551,6 +574,8 @@ content({
 - `baseUrl` is required for any SEO output (skipped with a warning otherwise).
 - `collectionUrls` maps each collection to a URL prefix (defaults to `/<collection>`); set a collection to `null` to exclude it.
 - `sitemap: true` emits `sitemap.xml`; `rss` (object form, scoped to one collection) emits `rss.xml`; `llms` emits `llms.txt`.
+- Unpublished entries (drafts, and future-dated entries of a `publishDate` collection) are left out of all three in a production build.
+- `rss` options: `path` (default `'rss.xml'`; e.g. `'blog/rss.xml'`, also used for `<atom:link rel="self">`), `content: 'full'` (adds each entry's whole body as HTML in `<content:encoded>`, with absolute URLs — what feed readers and importers such as dev.to's "Publishing from RSS" use as the article; default `'summary'` = `description` only), `limit` (newest N). When the collection declares `publishDate`, items carry `pubDate` and are ordered newest first; a string-array `tags` field becomes `<category>` elements; the `guid` is the absolute item URL.
 
 The same generators (`generateSitemap`, `generateRssFeed`, `generateLlmsTxt`) are exported for use in standalone build scripts without the Vite plugin.
 

@@ -21,6 +21,14 @@ export interface RssItem {
   categories?: string[]
   /** Optional GUID — defaults to the joined URL. */
   guid?: string
+  /**
+   * Full item body as HTML, emitted as `<content:encoded>` inside a CDATA
+   * section. Feed readers and importers (dev.to's "Publishing from RSS",
+   * Feedly, Inoreader) use it as the article body and fall back to
+   * `description` without it. URLs inside it should be absolute: a reader
+   * resolves them against nothing.
+   */
+  content?: string
 }
 
 export interface RssConfig {
@@ -37,6 +45,18 @@ export interface RssConfig {
   /** Fixed `lastBuildDate` override (ISO 8601). Defaults to the first
    *  item's pubDate, or omitted entirely when no items carry one. */
   lastBuildDate?: string
+  /**
+   * Path (joined to `origin`) or absolute URL the feed itself is served at,
+   * e.g. `/blog/rss.xml`. Emitted as `<atom:link rel="self">`, which the W3C
+   * feed validator expects and readers use to dedupe subscriptions.
+   */
+  feedUrl?: string
+}
+
+/** Wrap HTML in CDATA. A literal `]]>` cannot appear inside one, so it is
+ *  split across two sections. */
+function cdata(html: string): string {
+  return `<![CDATA[${html.split(']]>').join(']]]]><![CDATA[>')}]]>`
 }
 
 /**
@@ -93,7 +113,11 @@ function joinRssUrl(origin: string, path: string): string {
  */
 export function generateRssFeed(config: RssConfig): string {
   const lines: string[] = ['<?xml version="1.0" encoding="UTF-8"?>']
-  lines.push('<rss version="2.0">')
+  const hasContent = config.items.some((i) => i.content !== undefined)
+  const ns =
+    (hasContent ? ' xmlns:content="http://purl.org/rss/1.0/modules/content/"' : '') +
+    (config.feedUrl ? ' xmlns:atom="http://www.w3.org/2005/Atom"' : '')
+  lines.push(`<rss version="2.0"${ns}>`)
   lines.push('  <channel>')
   lines.push(`    <title>${escapeXmlRss(config.title)}</title>`)
   lines.push(`    <link>${escapeXmlRss(config.origin)}</link>`)
@@ -102,6 +126,14 @@ export function generateRssFeed(config: RssConfig): string {
   }
   if (config.language) {
     lines.push(`    <language>${escapeXmlRss(config.language)}</language>`)
+  }
+  if (config.feedUrl) {
+    const self = /^https?:\/\//.test(config.feedUrl)
+      ? config.feedUrl
+      : joinRssUrl(config.origin, config.feedUrl)
+    lines.push(
+      `    <atom:link href="${escapeXmlRss(self)}" rel="self" type="application/rss+xml" />`,
+    )
   }
   const lastBuild =
     config.lastBuildDate
@@ -133,6 +165,9 @@ export function generateRssFeed(config: RssConfig): string {
     }
     if (item.description) {
       lines.push(`      <description>${escapeXmlRss(item.description)}</description>`)
+    }
+    if (item.content !== undefined) {
+      lines.push(`      <content:encoded>${cdata(item.content)}</content:encoded>`)
     }
     lines.push('    </item>')
   }

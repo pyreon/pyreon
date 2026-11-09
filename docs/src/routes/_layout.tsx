@@ -1,10 +1,17 @@
 import { onMount, onUnmount } from '@pyreon/core'
+import { useHead } from '@pyreon/head'
 import { computed, signal } from '@pyreon/reactivity'
 import { RouterView, useRoute } from '@pyreon/router'
 import { Search } from '@pyreon/zero-content'
 import { Header } from '../components/Header'
 import { PrimaryNavigation } from '../components/PrimaryNavigation'
 import { Sidebar } from '../components/Sidebar'
+import { BLOG_TITLE, SITE_ORIGIN } from '../blog/posts'
+
+const DEFAULT_TITLE = 'Pyreon — the signal-based UI framework'
+const DEFAULT_DESCRIPTION =
+  'Signal-based UI framework — fine-grained reactivity, no virtual DOM, streaming SSR.'
+const DEFAULT_IMAGE_ALT = 'Pyreon — the signal-based UI framework. Signals in. Updates out.'
 
 /**
  * Root layout — wraps every route with the persistent shell:
@@ -26,6 +33,38 @@ import { Sidebar } from '../components/Sidebar'
 export function layout() {
   const drawerOpen = signal(false)
   const route = useRoute()
+
+  // Site-wide head defaults. They live here, not as static tags in
+  // index.html, because @pyreon/head dedupes by key with the innermost
+  // component winning: a page's own `og:image` / `og:url` / description
+  // (e.g. a blog post's cover) REPLACES these. A static template tag cannot
+  // be replaced, so social scrapers — which take the first `og:image` —
+  // saw the generic card and `og:url` "https://pyreon.dev/" on every page.
+  useHead(() => {
+    const path = route().path
+    return {
+      title: DEFAULT_TITLE,
+      meta: [
+        { name: 'description', content: DEFAULT_DESCRIPTION },
+        { property: 'og:type', content: 'website' },
+        { property: 'og:url', content: `${SITE_ORIGIN}${typeof path === 'string' ? path : '/'}` },
+        { property: 'og:title', content: DEFAULT_TITLE },
+        { property: 'og:description', content: DEFAULT_DESCRIPTION },
+        // Raster PNG: social cards reject SVG (see scripts/generate-og.mjs).
+        { property: 'og:image', content: `${SITE_ORIGIN}/og.png` },
+        { property: 'og:image:width', content: '1200' },
+        { property: 'og:image:height', content: '630' },
+        { property: 'og:image:alt', content: DEFAULT_IMAGE_ALT },
+        { name: 'twitter:card', content: 'summary_large_image' },
+        { name: 'twitter:image', content: `${SITE_ORIGIN}/og.png` },
+        { name: 'twitter:image:alt', content: DEFAULT_IMAGE_ALT },
+      ],
+      // Feed autodiscovery on every page.
+      link: [
+        { rel: 'alternate', type: 'application/rss+xml', title: BLOG_TITLE, href: '/blog/rss.xml' },
+      ],
+    }
+  })
 
   // A DEDUPING computed (not a plain accessor): the sidebar `<aside>` is
   // rendered inside a reactive conditional `{() => isDocsPath() ? … : null}`,

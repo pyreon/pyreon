@@ -14,6 +14,8 @@ production) landed in the cutover PR.
 | Path                        | What it holds                                          |
 | --------------------------- | ------------------------------------------------------ |
 | `src/content/docs/`         | 95+ markdown pages — one per package + patterns       |
+| `src/content/blog/`         | Blog posts → `/blog/<slug>`, feed at `/blog/rss.xml`   |
+| `public/blog/covers/`       | Blog cover images (1600x840 PNG)                       |
 | `src/mdx/`                  | Convention-scanned components (PascalCase, used inline in `.md`) |
 | `src/components/`           | Layout shells used by `[...slug].tsx`                  |
 | `src/routes/`               | fs-router pages — index + catch-all `[...slug].tsx`    |
@@ -32,8 +34,8 @@ bun run dev
 # Build (writes to dist/, base path default `/`)
 bun run build
 
-# Build for production deploy (GitHub Pages at /pyreon/)
-bunx vite build --base=/pyreon/
+# Build the site as it will look on a later date (scheduled blog posts)
+PYREON_CONTENT_NOW=2026-11-16 bun run build
 
 # Preview the build
 bun run preview
@@ -62,12 +64,53 @@ bun run preview
   and use it in any `.md` by name — zero imports needed (convention
   scan).
 
+## Blog
+
+Posts live in `src/content/blog/<slug>.md` (schema: `blogSchema` in
+`content.config.ts`):
+
+```yaml
+---
+title: "Post title"
+description: "One or two sentences — the index card, meta description and RSS summary."
+date: 2026-11-16          # PUBLISH date (UTC calendar day)
+slug: post-slug           # must equal the file name
+tags: [javascript, webdev]
+cover: /blog/covers/post-slug.png   # 1600x840, file in public/blog/covers/
+# canonical: https://…    # only if first published elsewhere
+# draft: true             # never published while set
+---
+```
+
+**To publish on a date:** add the file with that future `date` and merge
+it whenever it is ready. It is not published by the merge itself: a
+production build leaves out every post that is a draft or dated after the
+build — no page, no bundle chunk, no index, RSS, sitemap or search entry.
+The post appears with the **first deploy that runs on or after its date**
+(`date: 2026-11-16` counts from 00:00 UTC that day).
+
+The site does **not** rebuild on a schedule. A deploy happens only when
+`Deploy Docs` runs on `main`, which is either:
+
+- a push to `main` that touches `docs/**` or one of the framework packages
+  listed in `.github/workflows/docs.yml`, or
+- a manual run: Actions → **Deploy Docs** → *Run workflow* on `main`
+  (`gh workflow run docs.yml --ref main`).
+
+So on publish day, either merge something that touches those paths, or
+run the workflow by hand. To preview a scheduled post locally, build with
+`PYREON_CONTENT_NOW=<date>` (see Run) or open `/blog/<slug>` in `bun run
+dev`, where drafts and scheduled posts still render (the index lists only
+published ones).
+
 ## Deploy
 
-GitHub Actions workflow `.github/workflows/docs.yml` builds the site
-with `--base=/pyreon/` and uploads the `dist/` to GitHub Pages on
-every push to main that touches `docs/**` or any of the framework
-packages the docs build transitively depends on.
+GitHub Actions workflow `.github/workflows/docs.yml` builds the site with
+a root base (`vite build`, served at the apex `pyreon.dev`) and deploys
+`dist/` to GitHub Pages on every push to main that touches `docs/**` or
+any of the framework packages the docs build transitively depends on, and
+on a manual `workflow_dispatch` run. Pull requests run the build job only,
+as a check; they never deploy.
 
 ## Related
 

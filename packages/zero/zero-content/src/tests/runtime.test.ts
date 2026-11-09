@@ -197,3 +197,33 @@ describe('runtime — defensive fallbacks', () => {
     expect(entries[0]!.headings).toEqual([])
   })
 })
+
+describe('entry.slug is the collection-relative key', () => {
+  // A compiled module's own `slug` export is the path after `/content/`
+  // (`blog/hello` for src/content/blog/hello.md), or a bare basename for a
+  // collection outside `/content/`. Returning that made `getCollection`'s
+  // `entry.slug` disagree with the key `getEntry` takes: `/blog/${slug}`
+  // built `/blog/blog/hello`, and `getEntry('blog', entry.slug)` missed.
+  it('getCollection, getEntry and getEntries all return the key getEntry accepts', async () => {
+    _setRegistry({
+      blog: {
+        name: 'blog',
+        type: 'pages',
+        loaders: {
+          hello: async () => ({
+            default: () => null,
+            frontmatter: { title: 'Hello' },
+            headings: [],
+            slug: 'blog/hello',
+          }),
+        },
+      },
+    } as never)
+    const [listed] = await getCollection('blog', { includeDrafts: true })
+    expect(listed!.slug).toBe('hello')
+    const one = await getEntry('blog', listed!.slug)
+    expect(one?.slug).toBe('hello')
+    const [many] = await getEntries('blog', ['hello'])
+    expect(many!.slug).toBe('hello')
+  })
+})

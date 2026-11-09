@@ -222,3 +222,25 @@ describe('defineContentRoute — useHead integration', () => {
     expect(spy.mock.calls[0]![0].slug).toBe('guide')
   })
 })
+
+describe('defineContentRoute — head on the CLIENT', () => {
+  beforeEach(() => {
+    _resetRegistryForTesting()
+  })
+
+  it('applies the entry title after mount (useHead after the await was a no-op)', async () => {
+    const { mount } = await import('@pyreon/runtime-dom')
+    const { HeadProvider } = await import('@pyreon/head')
+    setupRegistry('guide')
+    mockParams = { slug: 'guide' }
+    document.title = 'Site default'
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const Route = defineContentRoute('docs')
+    const unmount = mount(h(HeadProvider, null, h(Route, null)) as never, host) as unknown as () => void
+    await vi.waitFor(() => expect(host.textContent).toContain('rendered content'))
+    await vi.waitFor(() => expect(document.title).toBe('Hello'))
+    unmount()
+    host.remove()
+  })
+})

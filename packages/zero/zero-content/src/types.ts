@@ -63,6 +63,32 @@ export interface CollectionDefinition<TSchema = unknown> {
    * Default: `true` for `type: 'pages'`, `false` for `type: 'data'`.
    */
   searchable?: boolean
+  /**
+   * Name of the frontmatter field that holds the entry's publish date
+   * (e.g. `'date'`). An entry dated in the future is unpublished until
+   * that date, exactly like a `draft: true` entry: `getCollection` skips
+   * it in production, and production builds leave it out of the search
+   * index, sitemap, RSS feed and llms.txt. A static (SSG) build decides
+   * at BUILD time, so a scheduled entry appears on the first build on or
+   * after its date.
+   */
+  publishDate?: string
+  /**
+   * What a production build does with unpublished entries (`draft: true`,
+   * or a `publishDate` still in the future at build time).
+   *
+   *   - `'runtime'` (default): bundled. `getCollection` filters them, and
+   *     preview mode (`@pyreon/zero/preview`) can still show them on an
+   *     SSR deployment. `getEntry` resolves them by slug.
+   *   - `'omit'`: left out of the build entirely — not bundled, so not
+   *     routable and unreachable through `getEntry`. Use this on a static
+   *     site, where preview cannot apply and a bundled draft would ship
+   *     its content in a public JS chunk.
+   *
+   * Either way the search index, sitemap, RSS feed and llms.txt of a
+   * production build never list an unpublished entry.
+   */
+  unpublished?: 'runtime' | 'omit'
 }
 
 /**
@@ -129,7 +155,13 @@ export interface CollectionSchemas {
  * Per-entry shape returned by `getEntry` and `getCollection`.
  */
 export interface CollectionEntry<TData = Record<string, unknown>> {
-  /** Path-derived slug, e.g. `'docs/zero'` (no leading slash, no extension). */
+  /**
+   * The entry's slug WITHIN its collection — the file path relative to the
+   * collection's directory, without extension, `index` collapsed: e.g.
+   * `'zero'` for `src/content/docs/zero.md`. It is the key `getEntry` /
+   * `getEntries` accept and what a `[slug]` route param holds, so
+   * `` `/blog/${entry.slug}` `` is the entry's URL.
+   */
   slug: string
   /** Frontmatter parsed + validated against the collection's schema. */
   data: TData

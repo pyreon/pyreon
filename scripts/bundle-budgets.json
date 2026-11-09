@@ -73,7 +73,7 @@
   "@pyreon/virtual": 1200,
   "@pyreon/vite-plugin": 13300,
   "@pyreon/vue-compat": 5000,
-  "@pyreon/zero": 9070,
+  "@pyreon/zero": 9310,
   "@pyreon/zero-cli": 5600,
   "@pyreon/zero-content": 11428
 }

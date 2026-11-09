@@ -470,3 +470,20 @@ describe('the counters read the source, not a cached build', () => {
     })
   })
 })
+
+describe('doc page count', () => {
+  it('does not count blog posts as doc pages', () => {
+    // A blog post lands every week; counting it turned the AGENTS.md
+    // "N doc pages" claim red on every post PR.
+    build({
+      'AGENTS.md': 'the docs site — 2 doc pages covering all packages\n',
+      'docs/README.md': '# docs\n',
+      'docs/src/content/docs/a.md': '# a\n',
+      'docs/src/content/blog/first-post.md': '# post\n',
+      'docs/src/content/blog/second-post.md': '# post\n',
+    })
+    return run().then((r) => {
+      expect(forCheck(r, 'doc-count'), 'README + a.md = 2; posts excluded').toEqual([])
+    })
+  })
+})

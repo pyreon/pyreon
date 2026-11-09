@@ -1,4 +1,5 @@
 import { isPreview } from '@pyreon/zero/preview'
+import { isPublished } from './publish'
 import type {
   CollectionEntry,
   CollectionSchemas,
@@ -32,6 +33,15 @@ export interface CollectionRuntime<TData = Record<string, unknown>> {
   type: 'pages' | 'data'
   /** Loader map: slug → async loader. Populated from `import.meta.glob`. */
   loaders: Record<string, () => Promise<ContentModule<TData>>>
+  /** The collection's `publishDate` frontmatter field, when declared. */
+  publishDate?: string
+  /**
+   * Set by a production build of an `unpublished: 'omit'` collection: the
+   * instant (epoch ms) the build decided which entries are published.
+   * `getCollection` judges scheduled entries against it, so a page agrees
+   * with the bundle it shipped in rather than with the visitor's clock.
+   */
+  publishCutoff?: number
 }
 
 /**
@@ -83,9 +93,10 @@ export function _getRegistry(): CollectionRegistry {
  * PR-J audit M13 — options accepted by `getCollection`.
  *
  *   - `includeDrafts`: when `false` (default in PRODUCTION builds),
- *     entries whose frontmatter has `draft: true` are skipped. In dev
- *     mode the default flips to `true` so authors can preview drafts.
- *     Pass an explicit boolean to override.
+ *     unpublished entries are skipped: `draft: true`, and — when the
+ *     collection declares `publishDate` — entries dated in the future.
+ *     In dev mode the default flips to `true` so authors can preview
+ *     them. Pass an explicit boolean to override.
  *
  *   - `filter`: optional predicate run against each entry's data —
  *     return `false` to drop it. Useful for tag-based listings,
@@ -126,7 +137,7 @@ export async function getCollection(
     slugs.map(async (slug): Promise<CollectionEntry> => {
       const mod = await collection.loaders[slug]!()
       return {
-        slug: mod.slug ?? slug,
+        slug,
         data: mod.frontmatter as Record<string, unknown>,
         render: async () => mod.default,
         headings: mod.headings ?? [],
@@ -145,7 +156,8 @@ export async function getCollection(
       : true)
   let result = entries
   if (!includeDrafts) {
-    result = result.filter((e) => e.data['draft'] !== true)
+    const now = collection.publishCutoff ?? Date.now()
+    result = result.filter((e) => isPublished(e.data, collection.publishDate, now))
   }
   if (options?.filter) {
     result = result.filter(options.filter)
@@ -176,7 +188,7 @@ export async function getEntry(
   if (!loader) return undefined
   const mod = await loader()
   return {
-    slug: mod.slug ?? slug,
+    slug,
     data: mod.frontmatter as Record<string, unknown>,
     render: async () => mod.default,
     headings: mod.headings ?? [],
@@ -207,7 +219,7 @@ export async function getEntries(
       if (!loader) return null
       const mod = await loader()
       return {
-        slug: mod.slug ?? slug,
+        slug,
         data: mod.frontmatter as Record<string, unknown>,
         render: async () => mod.default,
         headings: mod.headings ?? [],

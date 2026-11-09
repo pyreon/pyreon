@@ -172,6 +172,9 @@ export {
   resolveReferences,
 } from './references'
 export type { Reference } from './references'
+// Draft + scheduled (future `publishDate`) entries — the one predicate
+// every surface uses to decide whether an entry is public.
+export { isPublished } from './publish'
 
 // ─── SEO + build outputs (PR-L audit M19) ─────────────────────────────────
 //

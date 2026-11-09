@@ -163,6 +163,9 @@ export function formatLoc(origin: string, path: string, mode: TrailingSlash): st
   return `${origin}${p}`
 }
 
+/** Route files that are not pages (see the special files in `fs-router.ts`). */
+const NON_PAGE_ROUTE_FILES = new Set(['_layout', '_error', '_loading', '_404', '_not-found'])
+
 /**
  * Generate a sitemap.xml string from route file paths.
  *
@@ -186,12 +189,15 @@ export function generateSitemap(
 
   const paths = routeFiles
     .filter((f) => {
-      // Exclude layout, error, loading files
+      // Exclude the fs-router's special files — they are not pages. The
+      // set mirrors `fs-router.ts` (`_layout`, `_error`, `_loading`, and
+      // the not-found view under both its names); `_404` used to slip
+      // through and publish `/_404` as a page URL.
       const name = f
         .split('/')
         .pop()
         ?.replace(/\.\w+$/, '')
-      return name !== '_layout' && name !== '_error' && name !== '_loading'
+      return name === undefined || !NON_PAGE_ROUTE_FILES.has(name)
     })
     .map((f) => {
       // Convert file path to URL
@@ -221,13 +227,19 @@ export function generateSitemap(
   // this the duplicate reached the emitted sitemap. Dedup here covers
   // both branches at the single source. The route-scan entry wins so its
   // configured `changefreq`/`priority` is kept over a bare dup.
+  //
+  // The key ignores a trailing slash: a nested index file scans as
+  // `/posts/` while the SSG manifest lists the same page as `/posts`, and
+  // both used to be emitted. The `trailingSlash` policy decides the
+  // spelling at render time.
   const allPaths: SitemapEntry[] = (() => {
     const byPath = new Map<string, SitemapEntry>()
     for (const e of [
       ...paths.map((p) => ({ path: p, changefreq, priority })),
       ...(config.additionalPaths ?? []),
     ]) {
-      if (!byPath.has(e.path)) byPath.set(e.path, e)
+      const key = e.path.length > 1 && e.path.endsWith('/') ? e.path.slice(0, -1) : e.path
+      if (!byPath.has(key)) byPath.set(key, e)
     }
     return [...byPath.values()]
   })()
