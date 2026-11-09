@@ -87,6 +87,12 @@ export interface ServiceDescriptor {
    */
   readonly callRead?: string
   /**
+   * The value type a bare call of the container yields (`net()` is a Bool, `app()` a String). Without it the call
+   * infers as `unknown`, so `'Online: ' + net()` emits a raw `String + Bool` that swiftc rejects, and a condition on
+   * it is not narrowed. Declare it whenever `callRead` is set.
+   */
+  readonly callReadType?: TypeIR
+  /**
    * Members that are Compose `MutableState` on Kotlin: a read — member form or
    * zero-argument call form — appends `.value`. Members NOT listed read bare
    * (plain getters, methods). Swift's @Observable properties need no rewrite.

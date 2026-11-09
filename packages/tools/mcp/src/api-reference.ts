@@ -4864,7 +4864,7 @@ effect(() => { if (idle()) showAwayBanner() })`,
     signature: 'useReducedMotion() => () => boolean',
     example: `const reduced = useReducedMotion()
 <Transition enter={() => reduced() ? '' : 'fade-in'}>…</Transition>`,
-    notes: 'Reactive accessor for `(prefers-reduced-motion: reduce)` (a thin `useMediaQuery` wrapper). Gate animations on it for accessibility. See also: useMediaQuery, useColorScheme.',
+    notes: 'Reactive accessor for `(prefers-reduced-motion: reduce)` (a thin `useMediaQuery` wrapper). Gate animations on it for accessibility. On native it reads the OS setting directly (UIAccessibility Reduce Motion on iOS; the Remove animations / animator-duration-scale setting on Android) and updates when the user changes it, with no first-render lag. See also: useMediaQuery, useColorScheme.',
     mistakes: `- First render / SSR reports \`false\` ("motion allowed") until \`onMount\` — inherits \`useMediaQuery\` seeding.
 - Returns an accessor — call it.`,
   },

@@ -105,6 +105,7 @@ fun main() {
     testAppStateDoubleStopIsNoop()
     testAppStateStartStopStartCycle()
     testAppStateUpdateIndependentOfLifecycle()
+    testAppStateVisibilityIsHiddenOnlyWhenBackgrounded()
     println("[PyreonAppStateTest] all smoke tests passed")
 }
 

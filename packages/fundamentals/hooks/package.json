@@ -89,6 +89,10 @@
           "PyreonAppState.kt",
           "PyreonAppStateAndroid.kt"
         ],
+        "PyreonReducedMotionAndroid": [
+          "PyreonReducedMotion.kt",
+          "PyreonReducedMotionAndroid.kt"
+        ],
         "PyreonAuth": [
           "PyreonAuth.kt",
           "@base/PyreonHttp.kt"

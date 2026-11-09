@@ -878,7 +878,7 @@ const size = useSizeClass()
 useReducedMotion() => () => boolean
 ```
 
-Reactive accessor for `(prefers-reduced-motion: reduce)` (a thin `useMediaQuery` wrapper). Gate animations on it for accessibility.
+Reactive accessor for `(prefers-reduced-motion: reduce)` (a thin `useMediaQuery` wrapper). Gate animations on it for accessibility. On native it reads the OS setting directly (UIAccessibility Reduce Motion on iOS; the Remove animations / animator-duration-scale setting on Android) and updates when the user changes it, with no first-render lag.
 
 **Example**
 

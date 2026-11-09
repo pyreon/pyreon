@@ -64,6 +64,7 @@ const USAGES: ReadonlyArray<readonly [string, string, string]> = [
   ],
   ['useDatabase', '@pyreon/hooks', 'const db = useDatabase()'],
   ['useDocumentVisibility', '@pyreon/hooks', 'const v = useDocumentVisibility()'],
+  ['useReducedMotion', '@pyreon/hooks', 'const m = useReducedMotion()'],
   ['useFetch', '@pyreon/hooks', 'const f = useFetch<Resp>("https://x.dev/a")'],
   ['useFilePicker', '@pyreon/hooks', 'const p = useFilePicker()'],
   ['useForm', '@pyreon/form', 'const fm = useForm({ fields: {} })'],
