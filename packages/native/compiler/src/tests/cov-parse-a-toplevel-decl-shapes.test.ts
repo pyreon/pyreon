@@ -98,8 +98,9 @@ describe('top-level recognizers — the id must be a plain Identifier', () => {
 })
 
 describe('top-level declaration kinds PMTC drops', () => {
-  it('a TS `enum` warns by name and points at the string-union alias', () => {
-    const w = warnings(mod(`enum Colour { Red }`))
+  it('a TS `enum` that cannot be desugared (mixed string / number) warns by name and points at the string-union alias', () => {
+    // A string or numeric enum lowers (native-ts-enum.test.ts); a mixed one is still dropped and named.
+    const w = warnings(mod(`enum Colour { Red = 'red', Green = 1 }`))
     expect(w.some((m) => m.includes('`enum Colour`') && m.includes("type Colour = 'a' | 'b'"))).toBe(true)
   })
 
