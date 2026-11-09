@@ -18,6 +18,9 @@ import {
 import { recognizeTimer } from './native-plugin/timers'
 import {
   recognizeColorScheme,
+  recognizeMediaQuery,
+  mediaQueryDecl,
+  mediaQueryReceiver,
   recognizeSizeClass,
   colorSchemeDecl,
   sizeClassDecl,
@@ -78,6 +81,7 @@ const nativePlugin = {
     usePrevious: recognizePrevious,
     useColorScheme: recognizeColorScheme,
     useSizeClass: recognizeSizeClass,
+    useMediaQuery: recognizeMediaQuery,
   },
   statementCalls: {
     useInterval: recognizeTimer,
@@ -108,11 +112,13 @@ const nativePlugin = {
     'update-effect': updateEffectDecl,
     'color-scheme': colorSchemeDecl,
     'size-class': sizeClassDecl,
+    'media-query': mediaQueryDecl,
   },
   receivers: {
     [FETCH_TYPE]: fetchReceiver,
     ...containerPlugin.receivers,
     'pure-state': pureStateReceiver,
+    'media-query': mediaQueryReceiver,
   },
   // The websocket's implicit connect-on-mount (see `containers.ts`).
   prepareEmit: (input, ctx) => {
