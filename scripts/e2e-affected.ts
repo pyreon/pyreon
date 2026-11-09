@@ -186,6 +186,20 @@ const SUITES: Suite[] = [
     ],
   },
   {
+    name: 'kanban',
+    script: 'test:e2e:kanban',
+    triggers: [
+      ...RENDER_CORE,
+      'packages/fundamentals/state-tree/',
+      'packages/fundamentals/url-state/',
+      'packages/fundamentals/toast/',
+      'packages/fundamentals/dnd/',
+      'packages/fundamentals/hooks/',
+      'examples/kanban/',
+      'e2e/kanban',
+    ],
+  },
+  {
     name: 'collab-board',
     script: 'test:e2e:collab-board',
     triggers: [

@@ -80,6 +80,8 @@ const WEIGHTS: Record<BatchProfile, Record<string, number>> = {
     'ui-regression': 29,
     islands: 12,
     'collab-board': 16,
+    // Not yet measured in CI: 3 specs against one Vite dev server.
+    kanban: 12,
     cssvars: 10,
     'ssg-i18n-prefix': 5,
     'ssg-i18n': 6,
