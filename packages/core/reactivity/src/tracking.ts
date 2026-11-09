@@ -241,6 +241,31 @@ function divergeVerify(host: SubscriberHost, owner: () => void): void {
 }
 
 /**
+ * Exact-size copy of a just-collected dep list, for the owner to keep instead
+ * of the collecting array.
+ *
+ * V8 gives a `[]` a 16-slot backing store on its first `push`, so a one-dep
+ * list retains 184 B where `[x]` retains 56 B (node, uncompressed pointers).
+ * Every effect, computed, `_bind` and renderEffect collects into a fresh `[]`
+ * once and keeps that list for its lifetime, so the slack is paid per binding
+ * (~128 B each on node, about half that under Chromium's pointer compression).
+ * Copying once after the FIRST collect drops it; the collecting array becomes
+ * young-generation garbage. An empty list is returned as-is (no backing store
+ * was ever allocated).
+ *
+ * A reused per-depth scratch was considered and rejected: `length = 0` makes
+ * V8 drop the backing store, so the scratch would re-grow every time (the same
+ * garbage), and keeping it un-truncated would mean nulling stale slots on the
+ * hot collect path, or retaining hosts past their owner (a leak).
+ *
+ * Re-runs that diverge push onto the exact array and may grow it again; that
+ * is the rare branch-flip path and is not re-trimmed.
+ */
+export function exactDeps(deps: SubscriberHost[]): SubscriberHost[] {
+  return deps.length === 0 ? deps : deps.slice()
+}
+
+/**
  * Enter a COLLECT tracking frame: `fn`'s reactive reads subscribe `owner` and
  * append their subscriber Sets to `deps`. Used for FIRST runs. Fully re-entrant
  * — saves and restores the complete tracking frame, so nested evaluations each

@@ -120,7 +120,9 @@ Framework packages emit counters via `globalThis.__pyreon_count__?.('name')` wit
 
 ### Retained heap
 
-Signal ~152 B, effect ~930 B, computed ~913 B (≈6× a signal — prefer plain signals), `effectScope` ~64 B. Measure with `bun run measure-memory` under `NODE_ENV=production`.
+Signal ~152 B, signal + effect ~690 B, signal + computed ~688 B (a computed is ≈3.5× a signal — prefer plain signals), `effectScope` ~64 B (node 26, 2026-11). Measure with `bun run measure-memory` under `NODE_ENV=production`.
+
+- V8 gives `[]` a 16-slot backing store on its first `push` (184 B retained for one element, against 56 B for `[x]`). Long-lived per-owner arrays must not keep that slack: owners keep an exact-size copy of their first-run deps (`exactDeps` in `tracking.ts`), and the `onCleanup` collector and `EffectScope._effects` start from `[x]`.
 
 ### Introspection (dev/test, `@pyreon/reactivity`)
 
