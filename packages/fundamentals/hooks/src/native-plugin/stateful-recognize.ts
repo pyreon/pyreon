@@ -177,3 +177,18 @@ export const recognizeUpdateEffect: CallRecognizer = (_call, ctx) => {
     body: body.type === 'BlockStatement' ? ctx.statements(body) : [{ kind: 'expr', expr: ctx.expr(body) }],
   })
 }
+
+/** `useLatest(literal)` — a mutable box that never re-renders (`{ current }` on the web). */
+export const recognizeLatest: CallRecognizer = (_call, ctx) => {
+  const node = ctx.unwrap(ctx.args[0] as AnyNode | undefined) as AnyNode | undefined
+  const isLiteral =
+    node?.type === 'Literal' && ['number', 'string', 'boolean'].includes(typeof node.value)
+  if (!isLiteral) {
+    ctx.report(
+      `useLatest() \`${ctx.declName}\`: the initial value must be a number, string or boolean literal — a SwiftUI \`@State\` default cannot read props or other state — so the declaration is NOT lowered. Start from a literal and assign \`.current\` on mount.`,
+    )
+    return null
+  }
+  const initial = ctx.expr(node)
+  return spec('latest-value', { initial, type: ctx.initialType(initial) })
+}
