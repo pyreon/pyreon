@@ -63,6 +63,7 @@ const USAGES: ReadonlyArray<readonly [string, string, string]> = [
     'const crash = useCrashReporter(); const go = () => { crash.recordError("x") }',
   ],
   ['useDatabase', '@pyreon/hooks', 'const db = useDatabase()'],
+  ['useDocumentVisibility', '@pyreon/hooks', 'const v = useDocumentVisibility()'],
   ['useFetch', '@pyreon/hooks', 'const f = useFetch<Resp>("https://x.dev/a")'],
   ['useFilePicker', '@pyreon/hooks', 'const p = useFilePicker()'],
   ['useForm', '@pyreon/form', 'const fm = useForm({ fields: {} })'],

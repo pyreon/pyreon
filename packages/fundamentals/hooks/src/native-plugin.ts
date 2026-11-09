@@ -366,6 +366,18 @@ const nativePlugin = {
       lifecycle: 'start-stop',
       destructure: true,
     },
+    // The web hook is an accessor over `document.visibilityState`; natively the
+    // same lifecycle container answers it (`visibility` is derived from
+    // `phase`: "hidden" only once backgrounded). `visibility` is a plain getter
+    // on both targets — on Kotlin it reads `phase.value` itself, so it is NOT in
+    // `kotlinState` (that list is the `MutableState` fields needing `.value`).
+    useDocumentVisibility: {
+      legacyKind: 'document-visibility',
+      swift: 'PyreonAppState()',
+      kotlin: ['val {id} = rememberPyreonAppState()'],
+      callRead: 'visibility',
+      lifecycle: 'start-stop',
+    },
     // Crash reporting. `start()` installs the uncaught-exception hook and
     // rehydrates the previous launch's report; a report that vanishes on
     // relaunch is worse than none, so Android's factory installs a file-backed

@@ -34,6 +34,16 @@ public class PyreonAppState(phase: String = "active") {
      */
     public val wasBackgrounded: MutableState<Boolean> = mutableStateOf(false)
 
+    /**
+     * `useDocumentVisibility()`'s value: "hidden" once the app is in the
+     * background, "visible" otherwise. "inactive" stays "visible", as the web's
+     * `document.visibilityState` stays "visible" while a page is merely
+     * unfocused. A plain getter over [phase], so reading it inside a
+     * composition tracks `phase` and recomposes when it flips.
+     */
+    public val visibility: String
+        get() = if (phase.value == "background") "hidden" else "visible"
+
     /** Set the phase directly (used by the injected source + tests). */
     public fun update(phase: String) {
         this.phase.value = phase

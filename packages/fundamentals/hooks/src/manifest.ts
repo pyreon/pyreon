@@ -444,7 +444,7 @@ useIsomorphicLayoutEffect(() => {
       kind: 'hook',
       signature: '() => () => "visible" | "hidden"',
       summary:
-        'Track the Page Visibility state (`document.visibilityState`) reactively — `"hidden"` when the tab is backgrounded/minimized, `"visible"` otherwise. Use it to pause work the user can\'t see (polling, video, animations, expensive timers) and resume on return. SSR-safe (returns `"visible"` on the server); the `visibilitychange` listener is removed on unmount.',
+        'Track the Page Visibility state (`document.visibilityState`) reactively — `"hidden"` when the tab is backgrounded/minimized, `"visible"` otherwise. Use it to pause work the user can\'t see (polling, video, animations, expensive timers) and resume on return. SSR-safe (returns `"visible"` on the server); the `visibilitychange` listener is removed on unmount. On native it lowers to the app-lifecycle container behind `useAppState`: `"hidden"` once the app is backgrounded, `"visible"` otherwise (including while merely inactive, as an unfocused tab is still visible).',
       example: `const visibility = useDocumentVisibility()
 effect(() => { visibility() === 'hidden' ? pausePolling() : resumePolling() })`,
       seeAlso: ['useOnline', 'useIdle'],

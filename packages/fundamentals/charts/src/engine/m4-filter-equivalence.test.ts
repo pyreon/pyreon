@@ -98,8 +98,16 @@ function sameBits(a: Pt[], b: Pt[]): string | null {
 
 const CASES = 3000
 
+// Backstop, derived rather than guessed: this is deterministic CPU work (3000
+// series averaging ~10k values, generated AND re-reduced by the reference), 6.4s
+// on a quiet machine under v8 coverage. `Coverage (Full)` runs four packages in
+// parallel on a shared runner, where the same work took more than the 20s default
+// (≥3.1x slower) and failed the lane on every main push. 60s is ~9x the measured
+// local figure; the fuzz keeps all CASES, since fewer would quietly weaken it.
+const FUZZ_TIMEOUT_MS = 60_000
+
 describe('m4CategoryPoints value filter', () => {
-  it(`returns exactly the every-y loop's points across ${CASES} fuzzed series`, () => {
+  it(`returns exactly the every-y loop's points across ${CASES} fuzzed series`, { timeout: FUZZ_TIMEOUT_MS }, () => {
     const r = rng(0x5eed)
     let reduced = 0
     for (let t = 0; t < CASES; t++) {
