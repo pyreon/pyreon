@@ -71,6 +71,8 @@ const WEIGHTS: Record<BatchProfile, Record<string, number>> = {
     ui: 29,
     'ui-system': 41,
     zero: 126,
+    // Not yet measured in CI: 19.5s locally for all example suites (2026-11-08).
+    examples: 30,
   },
   e2e: {
     core: 98,
