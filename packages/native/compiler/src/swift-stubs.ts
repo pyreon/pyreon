@@ -930,6 +930,7 @@ public final class PyreonNetworkStatus {
 public final class PyreonAppState {
   public private(set) var phase: String
   public private(set) var wasBackgrounded: Bool = false
+  public var visibility: String { phase == "background" ? "hidden" : "visible" }
   public func start() {}
   public func stop() {}
   public init(phase: String = "active") { self.phase = phase }
