@@ -1410,6 +1410,11 @@ async function dispatchDevPipeline(
 	};
 	if (req.socket?.remoteAddress) ctx.locals.remoteAddress = req.socket.remoteAddress;
 
+	// `/api/*` that no pipeline middleware, fs API route or page route claimed belongs to the user's own dev middleware
+	// (`configureServer`, registered after Zero's) — the same W24 carve-out the SSR and 404 handlers apply. Answering
+	// 405 here swallowed every non-GET to it (`POST /api/send` of a plugin-hosted backend).
+	const apiOwnedDownstream =
+		url.pathname.startsWith("/api/") && !(await pageRouteMatches(server, url.pathname).catch(() => false));
 	const response =
 		(await runRequestPipeline(pipeline, ctx)) ??
 		// Nothing answered a non-GET/HEAD: production's handler replies
@@ -1417,7 +1422,7 @@ async function dispatchDevPipeline(
 		// `?_action=`) are pipeline middleware, so they answer first and
 		// never reach this fallback, so dev must too — unless a vite `server.proxy`
 		// context owns the URL (the proxy runs downstream of this middleware).
-		(proxyOwned ? undefined : pageMethodResponse(webReq.method));
+		(proxyOwned || apiOwnedDownstream ? undefined : pageMethodResponse(webReq.method));
 	if (response) {
 		sendWebResponse(res, response);
 		return true;

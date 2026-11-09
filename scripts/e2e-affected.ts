@@ -211,6 +211,20 @@ const SUITES: Suite[] = [
     ],
   },
   {
+    name: 'chat',
+    script: 'test:e2e:chat',
+    triggers: [
+      ...RENDER_CORE,
+      'packages/fundamentals/query/',
+      'packages/fundamentals/url-state/',
+      'packages/fundamentals/toast/',
+      'packages/fundamentals/state-tree/',
+      'packages/fundamentals/hooks/',
+      'examples/chat/',
+      'e2e/chat',
+    ],
+  },
+  {
     name: 'collab-board',
     script: 'test:e2e:collab-board',
     triggers: [
