@@ -1732,8 +1732,10 @@ function refineStructFloatsFromInitializers(
   for (const c of components) {
     const ctx = componentCtx(c)
     for (const d of c.decls) {
-      if (d.kind !== 'signal') continue
-      refine(d.type, d.initial, ctx)
+      if (d.kind === 'signal') refine(d.type, d.initial, ctx)
+      // An ANNOTATED local (`const row: TooltipRow = { value: 1.5, … }`) is the same evidence as a signal seed: the
+      // annotation names the struct, the literal says the field is fractional.
+      else if (d.kind === 'value' && d.type !== undefined) refine(d.type, d.expr, ctx)
     }
   }
   const moduleCtx = buildInferenceCtx([], structs, [], undefined, undefined, moduleConsts)
