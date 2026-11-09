@@ -42,6 +42,7 @@
     "build": "bun run vl_rolldown_build",
     "lint": "oxlint .",
     "test": "vitest run",
+    "test:browser": "vitest run --config ./vitest.browser.config.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -55,6 +56,7 @@
     "@pyreon/typescript": "workspace:^",
     "@pyreon/unistyle": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
+    "@vitest/browser-playwright": "^5.0.5",
     "@vitus-labs/tools-rolldown": "^2.8.0"
   },
   "peerDependencies": {
