@@ -755,6 +755,17 @@ jobs:
         with:
           packages: platform-tools
 
+      - name: Cache the pinned Gradle distribution
+        # Immutable and sha256-pinned, so a cache hit removes the live dependency on
+        # services.gradle.org, whose 504s outlasted the 3x5s retry on 2026-11-09 (#4143).
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          # GRADLE_VERSION lives in the install step's env, so key on this file:
+          # bumping it re-downloads once, and the install step always looks for
+          # the zip of the pinned version inside this directory.
+          path: ~/.cache/pyreon-dl/gradle
+          key: dl-gradle-${{ hashFiles('.github/workflows/native-device.yml') }}
+
       - name: Install Gradle (pinned distribution + sha256)
         # The android examples pin AGP 9.4.1 (needs Gradle 9.6+) but ship no
         # `gradlew` wrapper, so install Gradle directly. KEEP THIS IN LOCKSTEP
@@ -773,11 +784,15 @@ jobs:
           GRADLE_SHA256: '21bd5da2de49b642904077f38c0efdc7778e92b3ed0889392dca61b97e389607'
         run: |
           set -euo pipefail
-          ZIP="gradle-${GRADLE_VERSION}-bin.zip"
+          ZIP="$HOME/.cache/pyreon-dl/gradle/gradle-${GRADLE_VERSION}-bin.zip"
+          mkdir -p "$(dirname "$ZIP")"
           # `--retry`/`--retry-all-errors` hardens the single network fetch
           # against the same transient-download class that broke the streak
           # (the sha256 check below still gates a corrupt/partial download).
-          curl -fsSL --retry 3 --retry-delay 5 --retry-all-errors -o "$ZIP" "https://services.gradle.org/distributions/${ZIP}"
+          # A cache hit skips the network; on a miss, back off long enough to ride
+          # out a short outage (3x5s did not, on 2026-11-09).
+          [ -f "$ZIP" ] || curl -fsSL --retry 6 --retry-delay 10 --retry-all-errors --connect-timeout 30 \
+            -o "$ZIP" "https://services.gradle.org/distributions/$(basename "$ZIP")"
           echo "${GRADLE_SHA256}  ${ZIP}" | sha256sum -c -
           unzip -q "$ZIP" -d "$HOME/gradle-dist"
           echo "$HOME/gradle-dist/gradle-${GRADLE_VERSION}/bin" >> "$GITHUB_PATH"
