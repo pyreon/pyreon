@@ -146,10 +146,27 @@ export function App() {
 }`
 
 describe('effect(fn) — a service or storage binding is a trigger too', () => {
-  it('Swift: a runtime container field (no compile-time type) is compared by its description', () => {
+  it('Swift: a container read with a declared type (useOnline) is compared directly', () => {
     const { code, warnings } = emit(serviceReads, 'swift')
     expect(code).toContain('.onChange(of: theme) { __pyEffect0() }')
-    expect(code).toContain('.onChange(of: String(describing: online.isOnline)) { __pyEffect0() }')
+    // `online()` is a Bool by the descriptor's `callReadType`, so no description fallback is needed.
+    expect(code).toContain('.onChange(of: online.isOnline) { __pyEffect0() }')
+    expect(code).not.toContain('String(describing: online.isOnline)')
+    expect(warnings).toEqual([])
+  })
+
+  it('Swift: a runtime container field with NO compile-time type is still compared by its description', () => {
+    const untyped = `import { signal, effect } from '@pyreon/reactivity'
+import { useClipboard } from '@pyreon/hooks'
+import { Stack, Text } from '@pyreon/primitives'
+export function App() {
+  const cb = useClipboard()
+  const log = signal('')
+  effect(() => { log.set(String(cb.text())) })
+  return (<Stack><Text>{log()}</Text></Stack>)
+}`
+    const { code, warnings } = emit(untyped, 'swift')
+    expect(code).toContain('.onChange(of: String(describing: cb.text)) { __pyEffect0() }')
     expect(warnings).toEqual([])
   })
 

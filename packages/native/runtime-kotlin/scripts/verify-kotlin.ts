@@ -809,6 +809,41 @@ const ANDROID_APPSTATE_CONTEXT_STUBS = `package android.content
 public open class Context
 `
 
+/**
+ * The android.* surface PyreonReducedMotionAndroid touches, each mirror holding ONLY the members that file uses (a shared
+ * superset would mask a break): Context + ContentResolver (content), ContentObserver (database), Settings.Global
+ * (provider). Handler/Looper and Uri reuse the connectivity / linking mirrors.
+ */
+const ANDROID_REDUCED_MOTION_CONTENT_STUBS = `package android.content
+
+public open class Context {
+  public val contentResolver: ContentResolver = ContentResolver()
+}
+
+public class ContentResolver {
+  public fun registerContentObserver(uri: android.net.Uri, notifyForDescendants: Boolean, observer: android.database.ContentObserver) {}
+  public fun unregisterContentObserver(observer: android.database.ContentObserver) {}
+}
+`
+
+const ANDROID_REDUCED_MOTION_DATABASE_STUBS = `package android.database
+
+public abstract class ContentObserver(handler: android.os.Handler?) {
+  public open fun onChange(selfChange: Boolean) {}
+}
+`
+
+const ANDROID_REDUCED_MOTION_PROVIDER_STUBS = `package android.provider
+
+public class Settings {
+  public object Global {
+    public const val ANIMATOR_DURATION_SCALE: String = "animator_duration_scale"
+    public fun getFloat(resolver: android.content.ContentResolver, name: String, default: Float): Float = default
+    public fun getUriFor(name: String): android.net.Uri = android.net.Uri()
+  }
+}
+`
+
 const ANDROID_PUSH_OS_STUBS = `package android.os
 
 public class Build {
@@ -2105,6 +2140,35 @@ try {
         ]
       : []
 
+  // PyreonReducedMotionAndroid: Context + ContentResolver / ContentObserver / Settings.Global mirrors, the connectivity
+  // Handler/Looper mirror, the linking Uri mirror, the Compose platform LocalContext, and the CORE sibling (the
+  // composable returns PyreonReducedMotion and drives update()).
+  const reducedMotionContentPath = join(tempDir, 'ReducedMotionContent.kt')
+  const reducedMotionDatabasePath = join(tempDir, 'ReducedMotionDatabase.kt')
+  const reducedMotionProviderPath = join(tempDir, 'ReducedMotionProvider.kt')
+  const reducedMotionHandlerPath = join(tempDir, 'ReducedMotionHandler.kt')
+  const reducedMotionUriPath = join(tempDir, 'ReducedMotionUri.kt')
+  if (SERVICE === 'PyreonReducedMotionAndroid') {
+    writeFileSync(reducedMotionContentPath, ANDROID_REDUCED_MOTION_CONTENT_STUBS, 'utf8')
+    writeFileSync(reducedMotionDatabasePath, ANDROID_REDUCED_MOTION_DATABASE_STUBS, 'utf8')
+    writeFileSync(reducedMotionProviderPath, ANDROID_REDUCED_MOTION_PROVIDER_STUBS, 'utf8')
+    writeFileSync(reducedMotionHandlerPath, ANDROID_OS_CONNECTIVITY_HANDLER_STUBS, 'utf8')
+    writeFileSync(reducedMotionUriPath, ANDROID_NET_STUBS, 'utf8')
+    writeFileSync(composePlatformPath, ANDROIDX_COMPOSE_PLATFORM_STUBS, 'utf8')
+  }
+  const reducedMotionAndroidExtras =
+    SERVICE === 'PyreonReducedMotionAndroid'
+      ? [
+          reducedMotionContentPath,
+          reducedMotionDatabasePath,
+          reducedMotionProviderPath,
+          reducedMotionHandlerPath,
+          reducedMotionUriPath,
+          composePlatformPath,
+          resolve(PACKAGE_ROOT, 'src/main/kotlin/com/pyreon/runtime/PyreonReducedMotion.kt'),
+        ]
+      : []
+
   const geolocationAndroidExtras =
     SERVICE === 'PyreonGeolocationAndroid'
       ? [
@@ -2187,6 +2251,7 @@ try {
         ...audioAndroidExtras,
         ...audioEngineExtras,
         ...appStateAndroidExtras,
+        ...reducedMotionAndroidExtras,
         ...crashReporterAndroidExtras,
         ...SOURCE_FILES,
       ]
@@ -2223,6 +2288,7 @@ try {
         ...audioAndroidExtras,
         ...audioEngineExtras,
         ...appStateAndroidExtras,
+        ...reducedMotionAndroidExtras,
         ...crashReporterAndroidExtras,
         ...SOURCE_FILES,
         TEST_FILE,

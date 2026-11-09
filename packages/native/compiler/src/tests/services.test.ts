@@ -137,6 +137,11 @@ const EXPECTED: readonly Expected[] = [
     kotlin: 'val x = rememberPyreonAppState()',
   },
   {
+    hook: 'useReducedMotion',
+    swift: 'PyreonReducedMotion()',
+    kotlin: 'val x = rememberPyreonReducedMotion()',
+  },
+  {
     hook: 'useCrashReporter',
     swift: 'PyreonCrashReporter()',
     kotlin: 'val x = rememberPyreonCrashReporter()',
@@ -316,6 +321,7 @@ describe('service descriptors — callRead (a bare call of the container)', () =
     ['useOnline', 'x()', 'x.isOnline', 'x.isOnline.value'],
     ['useAppState', 'x()', 'x.phase', 'x.phase.value'],
     ['useDocumentVisibility', 'x()', 'x.visibility', 'x.visibility'],
+    ['useReducedMotion', 'x()', 'x.enabled', 'x.enabled.value'],
     ['useSafeArea', 'x().top', 'x.insets.top', 'x.insets.top'],
   ] as const)('%s: %s', (hook, expr, swift, kotlin) => {
     const sw = transform(readSrc(hook, expr), { target: 'swift' }).code

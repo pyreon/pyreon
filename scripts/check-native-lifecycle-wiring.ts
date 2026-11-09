@@ -62,6 +62,7 @@ export const LIFECYCLE_REGISTRY: LifecycleEntry[] = [
   { container: 'PyreonNetworkStatus', method: 'start', policy: 'auto', hook: 'useOnline' },
   { container: 'PyreonAppState', method: 'start', policy: 'auto', hook: 'useAppState' },
   { container: 'PyreonAppState', method: 'start', policy: 'auto', hook: 'useDocumentVisibility' },
+  { container: 'PyreonReducedMotion', method: 'start', policy: 'auto', hook: 'useReducedMotion' },
   { container: 'PyreonPushNotifications', method: 'start', policy: 'auto', hook: 'usePush' },
   { container: 'PyreonCrashReporter', method: 'start', policy: 'auto', hook: 'useCrashReporter' },
   { container: 'PyreonWebSocket', method: 'connect', policy: 'auto', declKind: 'websocket' },

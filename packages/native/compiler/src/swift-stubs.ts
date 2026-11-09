@@ -935,6 +935,18 @@ public final class PyreonAppState {
   public func stop() {}
   public init(phase: String = "active") { self.phase = phase }
 }
+// PyreonReducedMotion — mirror of the runtime surface the emit touches: the no-arg constructor, the enabled
+// Bool read (bare — the real type is @Observable) and the start/stop lifecycle. useReducedMotion() returns a web
+// ACCESSOR read as motion(); the emit lowers that call to motion.enabled.
+public final class PyreonReducedMotion {
+  public private(set) var enabled: Bool
+  public func start() {}
+  public func stop() {}
+  public var isMonitoring: Bool { false }
+  public static func systemValue() -> Bool { false }
+  public func update(_ enabled: Bool) {}
+  public init(enabled: Bool? = nil) { self.enabled = enabled ?? false }
+}
 // PyreonCrashReporter — mirror of the runtime-swift surface the emit touches:
 // no-arg init, start(), the lastCrash/hadCrash reads (bare — the real type is
 // @Observable), and recordError/breadcrumb/clear methods.

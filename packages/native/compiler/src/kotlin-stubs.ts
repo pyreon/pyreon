@@ -2166,6 +2166,18 @@ class PyreonAppState(phase: String = "active") {
 @Composable
 fun rememberPyreonAppState(): PyreonAppState = PyreonAppState()
 
+// PyreonReducedMotion — mirror of the runtime-kotlin surface the emit touches: the no-arg constructor and the
+// enabled MutableState<Boolean>, read as motion.enabled.value. useReducedMotion() returns a web ACCESSOR read as
+// motion(); the emit lowers that call to motion.enabled.value.
+class PyreonReducedMotion(enabled: Boolean = false) {
+  val enabled: MutableState<Boolean> = mutableStateOf(enabled)
+  fun update(enabled: Boolean) { this.enabled.value = enabled }
+}
+
+// Self-installing variant the useReducedMotion emit references (mirrors PyreonReducedMotionAndroid.kt's @Composable).
+@Composable
+fun rememberPyreonReducedMotion(): PyreonReducedMotion = PyreonReducedMotion()
+
 // PyreonCrashReporter — mirror of the runtime-kotlin surface the emit touches:
 // lastCrash/hadCrash MutableState (read dot-value), recordError/breadcrumb/
 // clear methods. The self-installing @Composable factory the emit references.

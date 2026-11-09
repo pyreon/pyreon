@@ -395,7 +395,7 @@ function widenFloatSignalDecls(
 function serviceTypingKey(d: DeclIR): string | undefined {
   if (d.kind === 'service') {
     const svc = findService(d.hook)
-    return svc?.optionalFields === undefined && svc?.methodReturns === undefined ? undefined : d.hook
+    return svc?.optionalFields === undefined && svc?.methodReturns === undefined && svc?.callReadType === undefined ? undefined : d.hook
   }
   return undefined
 }
@@ -1488,6 +1488,12 @@ export function inferTypeValue(expr: ExprIR, ctx: InferenceCtx): TypeIR {
         const svcKey = ctx.services.get(expr.callee.object.name)
         const returns = svcKey === undefined ? undefined : findService(svcKey)?.methodReturns?.[expr.callee.property]
         if (returns !== undefined) return returns
+      }
+      // A bare call of a service container (`net()`, `motion()`) — the value its `callRead` property holds.
+      if (expr.args.length === 0 && expr.callee.kind === 'identifier' && !ctx.locals.has(expr.callee.name)) {
+        const svcKey = ctx.services.get(expr.callee.name)
+        const readType = svcKey === undefined ? undefined : findService(svcKey)?.callReadType
+        if (readType !== undefined) return readType
       }
       if (expr.args.length === 0 && expr.callee.kind === 'member' &&
         expr.callee.object.kind === 'identifier' && expr.callee.object.name === ctx.signalReceiver &&

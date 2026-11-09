@@ -54,6 +54,7 @@ import { fetchDecl, fetchReceiver, FETCH_TYPE, recognizeFetch } from './native-p
 import { recognizeFileFromUri, scanFileFromUri, UPLOAD_FILE_TYPE, uploadFileExpr } from './native-plugin/upload-file'
 
 const num = { kind: 'number' as const }
+const bool = { kind: 'boolean' as const }
 const str = { kind: 'string' as const }
 /** `Error?` on Swift, `Throwable?` on Kotlin — an error OBJECT, never a string. */
 const ERROR_OBJECT = { kind: 'typeRef' as const, name: 'Error', args: [] }
@@ -339,6 +340,7 @@ const nativePlugin = {
       swift: 'PyreonNetworkStatus()',
       kotlin: ['val {id} = rememberPyreonNetworkStatus()'],
       callRead: 'isOnline',
+      callReadType: bool,
       kotlinState: ['isOnline'],
       lifecycle: 'start-stop',
       destructure: true,
@@ -362,6 +364,7 @@ const nativePlugin = {
       swift: 'PyreonAppState()',
       kotlin: ['val {id} = rememberPyreonAppState()'],
       callRead: 'phase',
+      callReadType: str,
       kotlinState: ['phase', 'wasBackgrounded'],
       lifecycle: 'start-stop',
       destructure: true,
@@ -376,6 +379,19 @@ const nativePlugin = {
       swift: 'PyreonAppState()',
       kotlin: ['val {id} = rememberPyreonAppState()'],
       callRead: 'visibility',
+      callReadType: str,
+      lifecycle: 'start-stop',
+    },
+    // The OS "reduce motion" preference. The web hook is an accessor over `(prefers-reduced-motion: reduce)`; natively
+    // the container holds the same flag (UIAccessibility on iOS, the animator-duration-scale setting on Android) and the
+    // accessor call reads it. `enabled` is `MutableState` on Kotlin, so it is listed in `kotlinState`.
+    useReducedMotion: {
+      legacyKind: 'reduced-motion',
+      swift: 'PyreonReducedMotion()',
+      kotlin: ['val {id} = rememberPyreonReducedMotion()'],
+      callRead: 'enabled',
+      callReadType: bool,
+      kotlinState: ['enabled'],
       lifecycle: 'start-stop',
     },
     // Crash reporting. `start()` installs the uncaught-exception hook and
