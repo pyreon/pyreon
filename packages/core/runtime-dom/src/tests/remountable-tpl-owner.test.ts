@@ -5,6 +5,7 @@
  * the enclosing component provides. Seen as `examples/chat`'s routed page throwing "No QueryClient found" under a
  * `<QueryClientProvider>` layout.
  */
+import type { VNodeChild } from '@pyreon/core'
 import { createContext, h, provide, useContext } from '@pyreon/core'
 import { afterEach, describe, expect, test } from 'vitest'
 import { mountChild } from '../index'
@@ -12,7 +13,7 @@ import { _mountChild, _tpl } from '../template'
 
 const Ctx = createContext<string | null>(null)
 
-function Provide(props: { value: string; children?: unknown }) {
+function Provide(props: { value: string; children?: VNodeChild }) {
   provide(Ctx, props.value)
   return props.children as never
 }
@@ -38,7 +39,8 @@ describe('remountable _tpl builds on mount, inside the right owner', () => {
           'div',
           null,
           h(Chrome, null),
-          _tpl('<main data-pyreon-hole></main>', (root) => _mountChild(h(Reader, null), root as never, null) as never, 1),
+          // Compiled output places a template item in a child position; its type is not a `VNodeChild`.
+          _tpl('<main data-pyreon-hole></main>', (root) => _mountChild(h(Reader, null), root as never, null) as never, 1) as unknown as VNodeChild,
         ),
       )
     const container = document.createElement('div')
