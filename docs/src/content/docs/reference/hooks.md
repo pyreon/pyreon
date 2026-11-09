@@ -20,6 +20,7 @@ See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multipla
 ## Features
 
 - Native compiler tooling: hooksPlugin from @pyreon/hooks/native-plugin owns hook recognition and Swift/Kotlin lowering; the native CLI discovers it through pyreon.native.plugin, and direct compiler callers install it explicitly
+- Web-only on native BY DESIGN (each is a named compile warning that drops the hook, never a silent approximation): `useControllableState` — a props-accessor primitive; a native component takes values, so write the controlled/uncontrolled pair as an explicit prop plus local state. `useBreakpoint` and a width/orientation `useMediaQuery` — a CSS-pixel width is a property of the web viewport, while a native window width is per-window (split view, Stage Manager, foldables) and needs a geometry reader the hook cannot inject; use `useSizeClass()` for the compact/regular split. Only the literal `prefers-color-scheme` queries of `useMediaQuery` lower (a boolean read of the system appearance), and `useReducedMotion()` covers motion.
 - 65 signal-based hooks across 7 categories
 - State: useToggle, useCounter, usePrevious, useLatest, useControllableState
 - DOM: useEventListener, useClickOutside, useFocus, useHover, useFocusTrap, useFocusReturn, useInertOthers, useElementSize, useWindowResize, useWindowScroll, useScrollLock, useIntersection, useInfiniteScroll
