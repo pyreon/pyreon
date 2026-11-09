@@ -251,7 +251,7 @@ jobs:
         # bumping is a one-line change.
         # SHA-pinned per PinnedDependenciesID supply-chain hardening.
         # swift-actions/setup-swift@v2
-        uses: swift-actions/setup-swift@7ca6abe6b3b0e8b5421b88be48feee39cbf52c6a # v2.4.0
+        uses: swift-actions/setup-swift@364295d9c23900ce04d4e5cc708387921b4e50f9 # v3
         with:
           swift-version: ${{ env.SWIFT_VERSION }}
 
@@ -259,7 +259,7 @@ jobs:
         run: swiftc --version
 
       - name: Setup JDK (Kotlin prerequisite)
-        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
         with:
           distribution: 'temurin'
           java-version: '21'
