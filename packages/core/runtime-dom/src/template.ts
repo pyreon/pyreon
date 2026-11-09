@@ -914,16 +914,21 @@ function remountableTpl(
   html: string,
   bind: (el: HTMLElement) => (() => void) | null,
 ): RemountableNativeItem {
-  let current: NativeItem = _tpl(html, bind)
+  // Built on FIRST USE, not at creation. A compiled component child is created while its parent's JSX arguments are
+  // being evaluated — before the enclosing component (a context provider, say) has run its setup — so building here
+  // would mount every component the template holds (a `<RouterView />`, a routed page) under the wrong owner, where
+  // the provider's context does not reach. The first use is the mount, which runs inside the right owner.
+  let current: NativeItem | null = null
   let dead = false
+  const built = (): NativeItem => (current ??= _tpl(html, bind))
   const dispose = (): void => {
     dead = true
-    current.cleanup?.()
+    current?.cleanup?.()
   }
   const item = {
     __isNative: true as const,
     get el(): HTMLElement {
-      return current.el
+      return built().el
     },
     // Always a function: even a bind with no disposers must mark the item dead.
     get cleanup(): () => void {
@@ -934,15 +939,15 @@ function remountableTpl(
     },
     __revive(): void {
       dead = false
-      current = _tpl(html, bind)
+      current = null
     },
     // Hydration hands a DEFERRED item its real cursor; forward to the item
     // actually holding the build (the facade is transparent to that protocol).
     get __deferred(): true | undefined {
-      return (current as Partial<DeferredNativeItem>).__deferred
+      return (built() as Partial<DeferredNativeItem>).__deferred
     },
     __adoptAt(domNode: Element): boolean {
-      return (current as Partial<DeferredNativeItem>).__adoptAt?.(domNode) ?? false
+      return (built() as Partial<DeferredNativeItem>).__adoptAt?.(domNode) ?? false
     },
   }
   return item as unknown as RemountableNativeItem

@@ -21,7 +21,20 @@ beforeAll(async () => {
 	server = await createServer({
 		root: FIXTURE_DIR,
 		configFile: false,
-		plugins: [pyreon(), zeroPlugin({ mode: "ssr" })],
+		plugins: [
+			pyreon(),
+			zeroPlugin({ mode: "ssr" }),
+			// A user plugin hosting its own dev backend, registered after Zero's (the typical order).
+			{
+				name: "user-dev-api",
+				configureServer(s) {
+					s.middlewares.use("/api/echo", (_req, res) => {
+						res.statusCode = 201;
+						res.end("echoed");
+					});
+				},
+			},
+		],
 		resolve: { conditions: ["bun"] },
 		ssr: { resolve: { conditions: ["bun"] } },
 		optimizeDeps: { noDiscovery: true, include: [] },
@@ -102,5 +115,16 @@ describe("zero dev runs the production request pipeline", { timeout: DEV_SERVER_
 		// Vite's own CORS middleware answers a bare OPTIONS (204, no `Allow`)
 		// before any plugin middleware — same status as production.
 		expect(options.status).toBe(204);
+	});
+
+	it("a non-GET to an /api path no route claims reaches the user's own dev middleware, not a 405", async () => {
+		const res = await devFetch(`${baseUrl}/api/echo`, "POST to a user-plugin /api endpoint", {
+			observe: state,
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: "{}",
+		});
+		expect(res.status).toBe(201);
+		expect(await res.text()).toBe("echoed");
 	});
 });

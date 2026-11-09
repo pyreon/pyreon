@@ -84,6 +84,8 @@ const WEIGHTS: Record<BatchProfile, Record<string, number>> = {
     kanban: 12,
     // Not yet measured in CI: 3 specs against one Vite dev server, API mocked in-page.
     'hn-clone': 12,
+    // Not yet measured in CI: 3 specs against one Vite dev server (SSE backend included).
+    chat: 12,
     cssvars: 10,
     'ssg-i18n-prefix': 5,
     'ssg-i18n': 6,
