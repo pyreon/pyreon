@@ -2149,6 +2149,8 @@ class PyreonNetworkStatus(isOnline: Boolean = true) {
 class PyreonAppState(phase: String = "active") {
   val phase: MutableState<String> = mutableStateOf(phase)
   val wasBackgrounded: MutableState<Boolean> = mutableStateOf(false)
+  val visibility: String
+    get() = if (phase.value == "background") "hidden" else "visible"
 }
 
 // Self-installing variant the useAppState emit references (mirrors
