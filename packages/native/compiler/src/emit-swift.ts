@@ -8,6 +8,7 @@
 // Type inference is deliberately naive — numeric assumption for
 // computed properties. Phase 1 grows a real inference pass.
 
+import { isModuleState, moduleStateClassName, moduleStateDecls, shadowingNames } from './module-state'
 import { GESTURE_EVENT_NAMES, GESTURE_EVENTS } from './gesture-events'
 import { CANVAS_SHAPES, isCanvasShape, shapeColorLiteral } from './canvas-shapes'
 import type { GestureEventName } from './gesture-events'
@@ -1058,6 +1059,13 @@ export function emitSwift(
   // THIS source — not on what else the process compiled before it (a CLI
   // build, a watcher, a test file compiling twice all saw drifting names).
   _swiftHostStateSeq = 0
+  // Module-scope signals / computeds are the file's shared state (module-state.ts): emitted as one singleton, read and
+  // written through it — never as plain bindings.
+  const moduleState = moduleStateDecls(moduleDecls)
+  moduleDecls = moduleDecls.filter((md) => !isModuleState(md))
+  _moduleStateNames = new Set(moduleState.map((d) => (d as { name: string }).name))
+  _moduleStateShadow = new Set()
+  _moduleStateAll = moduleState
   // A host's `@State` lines are spliced into its component's struct when the component ends; a component that is not a struct (a stateless `@ViewBuilder func`) never reaches that splice, so what it registered must not survive into the next compile.
   _hostStateDecls = []
   _emitWarnings = []
@@ -1236,7 +1244,7 @@ export function emitSwift(
   // `NAMES.indexOf(…)` over a top-level `const NAMES = […]` types its receiver.
   _moduleConstTypes = buildModuleConstTypes(moduleDecls, structs, _helperReturns)
   _activeInferCtx = buildInferenceCtx(
-    [],
+    moduleState,
     structs,
     [],
     undefined,
@@ -1250,7 +1258,7 @@ export function emitSwift(
   // objects, so seeding one leaves the other empty — which is how an optional
   // field read still emitted `if hs {` after the structs were available.
   _exprInferCtx = buildInferenceCtx(
-    [],
+    moduleState,
     structs,
     [],
     undefined,
@@ -1264,6 +1272,8 @@ export function emitSwift(
   const parts: string[] = []
   for (const e of enums) parts.push(emitSwiftEnum(e))
   for (const s of structs) if (!s.external) parts.push(emitSwiftStruct(s))
+  _signalNames = new Set(_moduleStateNames)
+  if (moduleState.length > 0) parts.push(emitSwiftModuleState(moduleState))
   for (const md of moduleDecls) parts.push(emitSwiftModuleDecl(md))
   // File-scope items declared before free helper functions.
   for (const item of itemsInSlot(moduleItems, 'bindings'))
@@ -1423,6 +1433,39 @@ function swiftEquatable(t: TypeIR, structs: Set<string>, seen: Set<string>): boo
     default:
       return false
   }
+}
+
+/** The file's module-state names (module-state.ts) and the names the current component binds itself. */
+let _moduleStateNames: Set<string> = new Set()
+let _moduleStateShadow: Set<string> = new Set()
+let _moduleStateAll: DeclIR[] = []
+
+function _moduleStateDeclsVisible(): DeclIR[] {
+  return _moduleStateAll.filter((d) => !_moduleStateShadow.has((d as { name: string }).name))
+}
+
+/** Whether `name` here reads the module state: declared there, and bound by no component, handler or helper local. */
+function isModuleStateRead(name: string): boolean {
+  if (!_moduleStateNames.has(name) || _moduleStateShadow.has(name)) return false
+  return !_activeInferCtx.locals.has(name) && !_exprInferCtx.locals.has(name)
+}
+
+/** The singleton holding the file's module-scope signals and computeds. */
+function emitSwiftModuleState(state: DeclIR[]): string {
+  const cls = moduleStateClassName()
+  const lines = ['@available(iOS 17.0, macOS 14.0, *)', '@Observable', `final class ${cls} {`, `    static let shared = ${cls}()`]
+  for (const d of state) {
+    if (d.kind === 'signal') {
+      const init = withExpectedType(d.type, () => emitSwiftExpr(d.initial, 0))
+      const t = d.type.kind === 'unknown' ? inferType(d.initial, _activeInferCtx) : d.type
+      lines.push(`    var ${swiftIdent(d.name)}: ${swiftType(t)} = ${init}`)
+    } else if (d.kind === 'computed' && d.expr !== undefined) {
+      const t = inferType(d.expr, _activeInferCtx)
+      lines.push(`    var ${swiftIdent(d.name)}: ${swiftType(t)} { ${emitSwiftExpr(d.expr, 0)} }`)
+    }
+  }
+  lines.push('    private init() {}', '}')
+  return lines.join('\n')
 }
 
 /** Declared module structs — feeds per-component inference ctx so member
@@ -1674,8 +1717,9 @@ function emitSwiftComponent(c: ComponentIR): string {
   // Shape A: pass file-scope helper return types so the computeds pre-inference
   // resolves `computed(() => dbl(21))` to `Int`, not `Any` (assigning after the
   // build would be too late — the computed type is already cached).
+  _moduleStateShadow = shadowingNames(c.decls, c.props)
   const inferCtx = buildInferenceCtx(
-    c.decls,
+    [..._moduleStateDeclsVisible(), ...c.decls],
     _structDefs,
     c.props,
     c.propsParamName,
@@ -1732,8 +1776,8 @@ function emitSwiftComponent(c: ComponentIR): string {
   // at `.set()` call sites later in the body.
   _signalEnumTypes = new Map()
   // G1: track every signal name so TextField's pattern-detection can
-  // recognise binding-eligible identifiers.
-  _signalNames = new Set()
+  // recognise binding-eligible identifiers. Module state the component does not shadow reads like a signal too.
+  _signalNames = new Set([..._moduleStateNames].filter((n) => !_moduleStateShadow.has(n)))
   // G2 (related correctness): track every function decl name so the
   // call-emit keeps parens for `addTodo()` (function call) and drops
   // them only for `count()` (signal read). Seed with the file-scope helper
@@ -4463,6 +4507,7 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
     case 'identifier': {
       const constant = lowerPluginIdentifier(e.name, 'swift', () => swiftEmitContext(0))
       if (constant !== undefined) return constant
+      if (isModuleStateRead(e.name)) return `${moduleStateClassName()}.shared.${swiftIdent(e.name)}`
       return swiftIdent(e.name)
     }
     case 'await':
@@ -5162,6 +5207,8 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         if (callRead !== undefined) {
           return `${swiftIdent(e.callee.name)}.${callRead}`
         }
+        // A read of module state (module-state.ts) goes through the file's singleton.
+        if (isModuleStateRead(e.callee.name)) return `${moduleStateClassName()}.shared.${swiftIdent(e.callee.name)}`
         return swiftIdent(e.callee.name)
       }
       // TS-method translation (Phase 2 follow-up). When the callee is a
