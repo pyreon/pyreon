@@ -3,12 +3,12 @@ import { onMount } from "@pyreon/core"
 import { RouterView, useRouter } from "@pyreon/router"
 import { Link } from "@pyreon/zero/link"
 import { ThemeToggle } from "@pyreon/zero/theme"
-import { getSession, type SessionInfo } from "../../lib/auth"
+import type { SessionInfo } from "../../lib/auth"
 
 /**
  * Auth-gated route group. Every `/app/*` route runs through this layout,
- * which checks the session client-side on mount and redirects to `/login`
- * if missing. Pyreon doesn't ship a loader-side `throw redirect()` pattern
+ * which asks `/api/session` on mount (the cookie is HttpOnly, so only the
+ * server can read it) and redirects to `/login` if there is no session. Pyreon doesn't ship a loader-side `throw redirect()` pattern
  * (unlike Remix / React Router), so the gate runs after first paint —
  * brief flash of the layout shell is acceptable since unauthorized users
  * see no real data (the data-fetching helpers in `lib/db.ts` should
@@ -23,8 +23,7 @@ export function layout() {
   const router = useRouter()
 
   onMount(() => {
-    const sid = readSessionCookie()
-    void getSession(sid).then((info) => {
+    void fetchSession().then((info) => {
       if (!info) {
         void router.push("/login")
         return
@@ -56,7 +55,9 @@ export function layout() {
             return s ? <div>{s.email}</div> : <div>Loading…</div>
           }}
           <div style="margin-top: 0.5rem; display: flex; gap: 0.5rem; align-items: center;">
-            <a href="/api/signout">Sign out</a>
+            <form method="post" action="/api/signout" style="display: inline;">
+              <button type="submit" class="btn-link">Sign out</button>
+            </form>
             <ThemeToggle />
           </div>
         </div>
@@ -69,8 +70,16 @@ export function layout() {
   )
 }
 
-function readSessionCookie(): string | undefined {
-  if (typeof document === "undefined") return undefined
-  const m = /(?:^|;\s*)sid=([^;]+)/.exec(document.cookie)
-  return m?.[1]
+/**
+ * Ask the server who is signed in. The session cookie is HttpOnly, so page
+ * JavaScript cannot read it — `/api/session` reads it and answers.
+ */
+async function fetchSession(): Promise<SessionInfo | null> {
+  try {
+    const res = await fetch("/api/session", { credentials: "same-origin" })
+    if (!res.ok) return null
+    return ((await res.json()) as { session: SessionInfo | null }).session
+  } catch {
+    return null
+  }
 }

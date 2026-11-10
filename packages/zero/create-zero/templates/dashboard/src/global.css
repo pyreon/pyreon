@@ -127,6 +127,20 @@ label {
   transition: background 150ms ease, border-color 150ms ease;
 }
 
+/* A form button that reads as a link (sign-out is a POST, not a GET link). */
+.btn-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--c-accent);
+  font: inherit;
+  cursor: pointer;
+}
+
+.btn-link:hover {
+  text-decoration: underline;
+}
+
 .btn-primary {
   background: var(--c-accent);
   color: #fff;

@@ -31,9 +31,12 @@ export default function Home() {
             Sign in
           </Link>
         </div>
-        <p style="margin-top: 1.5rem; font-size: 0.875rem; color: var(--c-text-muted);">
-          Demo login: <code>demo@example.com</code> / <code>demo1234</code>
-        </p>
+        {/* The demo account exists only under `vite dev` — see lib/auth.ts. */}
+        {import.meta.env.DEV ? (
+          <p style="margin-top: 1.5rem; font-size: 0.875rem; color: var(--c-text-muted);">
+            Demo login (dev only): <code>demo@example.com</code> / <code>demo1234</code>
+          </p>
+        ) : null}
       </section>
     </>
   )

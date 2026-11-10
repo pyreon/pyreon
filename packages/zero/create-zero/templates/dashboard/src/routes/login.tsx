@@ -2,15 +2,17 @@ import { signal } from "@pyreon/reactivity"
 import { useHead } from "@pyreon/head"
 import { Link } from "@pyreon/zero/link"
 import { useRouter } from "@pyreon/router"
-import { signIn } from "../lib/auth"
+import { postCredentials } from "../lib/post-credentials"
 
 export const meta = { title: "Sign in" }
 
 export default function Login() {
   useHead({ title: meta.title })
 
-  const email = signal("demo@example.com")
-  const password = signal("demo1234")
+  // The demo account exists only under `vite dev` (see `lib/auth.ts`), so the
+  // form is pre-filled only there.
+  const email = signal(import.meta.env.DEV ? "demo@example.com" : "")
+  const password = signal(import.meta.env.DEV ? "demo1234" : "")
   const error = signal<string | null>(null)
   const submitting = signal(false)
 
@@ -21,23 +23,16 @@ export default function Login() {
     error.set(null)
     submitting.set(true)
 
-    // `await` works for BOTH the in-memory stub (sync) and the Supabase
-    // integration override (async) — awaiting a non-Promise returns the
-    // value unchanged, so this stays correct when `--integrations supabase`
-    // swaps in the async auth implementation.
-    const result = await signIn(email(), password())
+    // The server checks the password and sets the session cookie (HttpOnly,
+    // so this page never sees the id). Works unchanged with the Supabase
+    // overlay, which swaps `lib/auth.ts` underneath the endpoint.
+    const message = await postCredentials("/api/signin", email(), password())
     submitting.set(false)
-
-    if ("error" in result) {
-      error.set(result.error)
+    if (message) {
+      error.set(message)
       return
     }
 
-    // Persist the stub session id client-side. Real impl uses an HttpOnly cookie
-    // set by the auth handler. See @pyreon/auth-lucia for the production path.
-    if (typeof document !== "undefined") {
-      document.cookie = `sid=${result.sessionId}; path=/; max-age=${7 * 24 * 60 * 60}`
-    }
     await router.push("/app/dashboard")
   }
 
