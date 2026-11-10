@@ -43,4 +43,34 @@ describe('initial navigation guards on the server', () => {
     await expect(router.preload('/admin')).resolves.toBeUndefined()
     expect((router as unknown as RouterInstance)._initialGate()).toBe(false)
   })
+  it('middleware that THROWS on the server defers to the client too, and later guards still run', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      let guardRan = false
+      const router = createRouter({
+        url: '/admin',
+        mode: 'history',
+        routes: [
+          { path: '/', component: Page },
+          {
+            path: '/admin',
+            component: Page,
+            middleware: () => {
+              throw new Error('reads document.cookie')
+            },
+            beforeEnter: () => {
+              guardRan = true
+              return true
+            },
+          },
+        ],
+      })
+      await expect(router.preload('/admin')).resolves.toBeUndefined()
+      expect(guardRan).toBe(true)
+      expect((router as unknown as RouterInstance)._initialGate()).toBe(false)
+      expect(warn.mock.calls.some((c) => String(c[0]).includes('Route middleware threw during SSR'))).toBe(true)
+    } finally {
+      warn.mockRestore()
+    }
+  })
 })

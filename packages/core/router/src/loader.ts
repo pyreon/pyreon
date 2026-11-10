@@ -239,20 +239,47 @@ export function stringifyLoaderDataForScript(data: object): string {
 
 /**
  * Rewrite every `"__proto__"` object KEY in compact `JSON.stringify` output to
- * `["__proto__"]`. Outside string tokens JSON contains no `"`, so matching
+ * `["__proto__"]`. Outside string tokens JSON contains no `"`, so walking
  * whole string tokens left to right is an exact tokenizer; a string token
  * immediately followed by `:` is a key (`JSON.stringify` without `space`
  * emits no whitespace, and a string VALUE is followed by `,`, `}` or `]`).
  * `JSON.stringify` never escapes `_` or ASCII letters, so the key always
  * appears as the literal text `"__proto__"`.
+ *
+ * A single forward scan, not a global string-token regex: a regex retried
+ * from every `"` makes an unterminated run of `\"` quadratic (ReDoS), and
+ * this runs on server-rendered, user-influenced payloads.
  */
-function jsonToScriptExpression(json: string): string {
+/** @internal Exported for the adversarial-input test; not part of the package entry. */
+export function jsonToScriptExpression(json: string): string {
   if (!json.includes('"__proto__":')) return json
-  return json.replace(/"(?:[^"\\]|\\.)*"/g, (token, offset: number) =>
-    token === '"__proto__"' && json.charCodeAt(offset + token.length) === 58 /* : */
-      ? '["__proto__"]'
-      : token,
-  )
+  const n = json.length
+  let out = ''
+  let copied = 0
+  let i = 0
+  while (i < n) {
+    if (json.charCodeAt(i) !== 34 /* " */) {
+      i++
+      continue
+    }
+    const start = i++
+    // Advance to the closing quote, stepping over each `\x` escape pair.
+    while (i < n) {
+      const c = json.charCodeAt(i)
+      if (c === 34 /* " */) break
+      i += c === 92 /* \ */ ? 2 : 1
+    }
+    i++ // past the closing quote
+    if (
+      i - start === 11 &&
+      json.charCodeAt(i) === 58 /* : */ &&
+      json.startsWith('"__proto__"', start)
+    ) {
+      out += `${json.slice(copied, start)}["__proto__"]`
+      copied = i
+    }
+  }
+  return out + json.slice(copied)
 }
 
 /**
