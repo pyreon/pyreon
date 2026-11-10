@@ -17,7 +17,7 @@ let _current: LifecycleHooks | null = null
  * a write that skipped `_writableHooks()` throws instead of leaking across
  * components.
  */
-export const EMPTY_HOOKS: LifecycleHooks = Object.freeze({ mount: null, unmount: null, update: null, error: null }) as LifecycleHooks
+export const EMPTY_HOOKS: LifecycleHooks = /* @__PURE__ */ Object.freeze({ mount: null, unmount: null, update: null, error: null }) as LifecycleHooks
 
 /**
  * "Inside a component setup, no hook registered yet". A setup frame starts
@@ -25,7 +25,7 @@ export const EMPTY_HOOKS: LifecycleHooks = Object.freeze({ mount: null, unmount:
  * (`_writableHooks`), so a component that registers nothing never allocates
  * one. Truthy, so "is a component rendering?" checks still see it.
  */
-export const PENDING_HOOKS: LifecycleHooks = Object.freeze({ mount: null, unmount: null, update: null, error: null }) as LifecycleHooks
+export const PENDING_HOOKS: LifecycleHooks = /* @__PURE__ */ Object.freeze({ mount: null, unmount: null, update: null, error: null }) as LifecycleHooks
 
 export function setCurrentHooks(hooks: LifecycleHooks | null) {
   _current = hooks
