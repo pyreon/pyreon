@@ -7,6 +7,12 @@ description: "Common library api-shape mistakes in Pyreon and how to fix them."
 
 > **Generated** from `.agents/rules/anti-patterns.md` (the same source as MCP `get_anti_patterns`). Each entry is a real mistake + its fix; where a detector code is listed, the linter / `pyreon doctor` / MCP `validate` catches it automatically.
 
+### A compat API that sorts its argument into the wrong shape
+
+Vue-compat `watch` treated any non-ref source as a getter, so `watch(reactive(obj), cb)` — Vue's most common form — called the proxy as a function, threw inside the effect, and never fired; `Array.isArray` also took a `reactive([])` for a list of sources. Classify by the real library's order (ref → function → reactive → array of sources) and warn on anything else. Test: `vue-compat/src/tests/watch-reactive-source.test.ts`.
+
+---
+
 ### Importing `@pyreon/charts` through a pre-0.52 entry point
 
 The main entry is now the engine (`<Chart>` with mark children, formerly `<Plot>` at `/plot`), and the ECharts wrapper is `<EChart>` at `/echarts`, with `/manual` and `/vite` under it. `<Chart options={…}>` from the root is the old wrapper and no longer type-checks.

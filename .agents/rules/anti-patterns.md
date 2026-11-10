@@ -986,6 +986,7 @@ Rules for backing a third-party library's pluggable reactivity (atom-style `crea
 
 ## Library API-Shape Mistakes
 
+- **A compat API that sorts its argument into the wrong shape**: vue-compat `watch` treated any non-ref source as a getter, so `watch(reactive(obj), cb)` — Vue's most common form — called the proxy as a function, threw inside the effect, and never fired; `Array.isArray` also took a `reactive([])` for a list of sources. Classify by the real library's order (ref → function → reactive → array of sources) and warn on anything else. Test: `vue-compat/src/tests/watch-reactive-source.test.ts`.
 - **Importing `@pyreon/charts` through a pre-0.52 entry point** `[detector: charts-legacy-import]`: the main entry is now the engine (`<Chart>` with mark children, formerly `<Plot>` at `/plot`), and the ECharts wrapper is `<EChart>` at `/echarts`, with `/manual` and `/vite` under it. `<Chart options={…}>` from the root is the old wrapper and no longer type-checks.
   - `pyreon check --fix` rewrites each import to the entry that exports the name now, and renames `Plot`→`Chart`, `Tip`→`Tooltip` and the wrapper's `Chart`→`EChart` at every reference.
   - The wrapper is told apart from the grammar by an `options` attribute or a wrapper-only name in the same import.
