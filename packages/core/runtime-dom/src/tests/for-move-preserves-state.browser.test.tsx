@@ -1,21 +1,27 @@
 /**
  * Keyed reorders move rows with the DOM's state-preserving `moveBefore`
  * (`moveNode` in nodes.ts), so a moved row keeps focus — a plain
- * `insertBefore` removes the node first, which blurs it. Real Chromium only:
- * happy-dom has no `moveBefore` and takes the `insertBefore` fallback.
+ * `insertBefore` removes the node first, which blurs it. happy-dom has no
+ * `moveBefore` and takes the `insertBefore` fallback. The suite also runs in
+ * WebKit and Firefox (`vitest.browser.engines.config.ts`); WebKit does not ship
+ * `moveBefore` yet, so the focus specs run only where it exists, and Chromium is
+ * pinned to have it so the specs can never all skip silently.
  */
 import { For, h } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 import { mount } from '@pyreon/runtime-dom'
 import { query } from '@pyreon/test-utils'
 import { describe, expect, it } from 'vitest'
+import { server } from 'vitest/browser'
+
+const hasMoveBefore = typeof (Element.prototype as { moveBefore?: unknown }).moveBefore === 'function'
 
 describe('<For> moves keep row state (real Chromium)', () => {
-  it('the browser under test has moveBefore (otherwise this spec proves nothing)', () => {
-    expect(typeof (Element.prototype as { moveBefore?: unknown }).moveBefore).toBe('function')
+  it.runIf(server.browser === 'chromium')('Chromium has moveBefore (otherwise these specs prove nothing)', () => {
+    expect(hasMoveBefore).toBe(true)
   })
 
-  it('a focused input in a moved row stays focused through a swap', () => {
+  it.runIf(hasMoveBefore)('a focused input in a moved row stays focused through a swap', () => {
     const ids = signal([1, 2, 3, 4, 5, 6])
     const host = document.createElement('div')
     document.body.appendChild(host)
@@ -36,7 +42,7 @@ describe('<For> moves keep row state (real Chromium)', () => {
     host.remove()
   })
 
-  it('a keyed .map accessor keeps focus the same way', () => {
+  it.runIf(hasMoveBefore)('a keyed .map accessor keeps focus the same way', () => {
     const ids = signal([1, 2, 3, 4])
     const host = document.createElement('div')
     document.body.appendChild(host)
