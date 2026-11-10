@@ -82,6 +82,18 @@ export interface LoadOptions {
    */
   readDocument?: ((id: string) => string) | undefined
   /**
+   * The directory every local referenced document must lie in -- see
+   * `LatheSection.refRoot`. Defaults to the directory of `location`; a
+   * `$ref` that resolves outside it (`../`, an absolute path, a `file://`
+   * URL) throws instead of being read.
+   */
+  refRoot?: string | undefined
+  /**
+   * Resolve a path's symlinks (`fs.realpathSync`), so the `refRoot` check
+   * compares real locations. Without it the check is lexical.
+   */
+  realpath?: ((path: string) => string) | undefined
+  /**
    * REMOTE documents already fetched (`remoteRefs: 'fetch'`), by URL. Without
    * it a remote `$ref` is reported, never fetched: this reader is synchronous
    * and offline.
@@ -129,7 +141,7 @@ export function loadOpenApi(source: string, options: LoadOptions = {}): LoadResu
       } catch (err) {
         return { error: err instanceof Error ? err.message : String(err) }
       }
-    })
+    }, { refRoot: options.refRoot, realpath: options.realpath })
     const bundled = bundle(specAt, docs)
     return { doc: loadParsed(bundled.doc, options, [...keyNotes, ...bundled.notes]), documents: bundled.documents }
   }

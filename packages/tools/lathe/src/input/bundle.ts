@@ -122,12 +122,22 @@ const DATA_KEYS = new Set(['example', 'examples', 'default', 'enum', 'const'])
  */
 const NEVER_STRUCTURE = new Set(['example', 'enum', 'const'])
 
+/** One cross-document reference: the target's id and the `$ref` text naming it. */
+interface DocReference {
+  id: DocId
+  ref: string
+}
+
 /**
- * The OTHER documents `doc` references, as absolute ids. Only structure is
- * scanned: a `$ref` inside an example payload is data.
+ * The OTHER documents `doc` references, with the `$ref` that names each. Only
+ * structure is scanned: a `$ref` inside an example payload is data.
  */
-export function referencedDocuments(doc: unknown, self: DocId): DocId[] {
-  const out = new Set<DocId>()
+function documentReferences(doc: unknown, self: DocId): DocReference[] {
+  const out = new Map<DocId, string>()
+  const add = (ref: string): void => {
+    const { doc: target } = splitRef(ref, self)
+    if (target !== self && !out.has(target)) out.set(target, ref)
+  }
   const visit = (node: unknown): void => {
     if (Array.isArray(node)) {
       for (const n of node) visit(n)
@@ -137,13 +147,11 @@ export function referencedDocuments(doc: unknown, self: DocId): DocId[] {
     if (!o) return
     for (const [k, v] of Object.entries(o)) {
       if (k === '$ref' && typeof v === 'string') {
-        const { doc: target } = splitRef(v, self)
-        if (target !== self) out.add(target)
+        add(v)
       } else if (k === 'discriminator') {
         for (const m of Object.values(obj(obj(v)?.mapping) ?? {})) {
           if (typeof m !== 'string' || m.startsWith('#') || !/[./]/.test(m)) continue
-          const { doc: target } = splitRef(m, self)
-          if (target !== self) out.add(target)
+          add(m)
         }
       } else if (!NEVER_STRUCTURE.has(k)) {
         visit(v)
@@ -151,27 +159,121 @@ export function referencedDocuments(doc: unknown, self: DocId): DocId[] {
     }
   }
   visit(doc)
-  return [...out]
+  return [...out].map(([id, ref]) => ({ id, ref }))
+}
+
+/**
+ * The OTHER documents `doc` references, as absolute ids. Only structure is
+ * scanned: a `$ref` inside an example payload is data.
+ */
+export function referencedDocuments(doc: unknown, self: DocId): DocId[] {
+  return documentReferences(doc, self).map((r) => r.id)
 }
 
 /** The outcome of reading one referenced document. */
 export type ReadOutcome = { doc: unknown } | { error: string }
 
 /**
+ * Where a LOCAL `$ref` may read from.
+ *
+ * A spec is input, and often someone else's: a vendor's split spec, a pull
+ * request, a downloaded example. Without a boundary its `$ref: '../../.env'`
+ * (or an absolute path, or a `file://` URL) was read, parsed, and its content
+ * written into the generated client as descriptions. So every local document
+ * must lie inside ONE directory -- the root spec's own, unless `refRoot`
+ * names a wider one -- and a reference outside it fails the run.
+ */
+export interface RefContainment {
+  /**
+   * The directory every local document must lie in. Defaults to the
+   * directory of the root spec.
+   */
+  refRoot?: string | undefined
+  /**
+   * Resolve a path's symlinks (`fs.realpathSync`). With it the check compares
+   * real locations, so a symlink inside the directory that points outside it
+   * is refused too; without it the check is lexical.
+   */
+  realpath?: ((path: string) => string) | undefined
+}
+
+const ABSOLUTE = /^(?:\/|[A-Za-z]:\/)/
+
+/** The directory part of a document id, with a trailing separator ('' for none). */
+function dirOf(id: DocId): string {
+  return id.slice(0, Math.max(id.lastIndexOf('/'), id.lastIndexOf('\\')) + 1)
+}
+
+/** `realpath`, falling back to the deepest existing ancestor for a path that does not exist yet. */
+function realish(p: string, realpath: (path: string) => string): string {
+  try {
+    return realpath(p === '' ? '.' : p)
+  } catch {
+    const cut = Math.max(p.lastIndexOf('/'), p.lastIndexOf('\\'))
+    if (cut <= 0) return p
+    return `${realish(p.slice(0, cut), realpath).replace(/[\\/]+$/, '')}/${p.slice(cut + 1)}`
+  }
+}
+
+/** Whether `file` lies inside directory `dir` (both normalized: a `..` survives only as a leading segment). */
+function isInside(dir: string, file: string): boolean {
+  const f = file.replace(/\\/g, '/')
+  const slashed = dir.replace(/\\/g, '/')
+  const dirAbsolute = ABSOLUTE.test(slashed)
+  if (dirAbsolute !== ABSOLUTE.test(f)) return false
+  const d = slashed.replace(/\/+$/, '')
+  // `''` is the working directory (a relative root spec with no directory
+  // part) -- or, absolute, the filesystem root.
+  if (d !== '' && d !== '.' && !f.startsWith(`${d}/`)) return false
+  const rest = d === '' || d === '.' ? f : f.slice(d.length + 1)
+  // A URL-shaped id (`file:`, `c:` without a slash) is not a path under `dir`.
+  return !rest.split('/').includes('..') && !/^[a-z][a-z\d+.-]*:/i.test(rest)
+}
+
+/**
+ * Why reading local document `id` (named by `ref` in `from`) is refused, or
+ * `undefined` when it lies inside the containment directory. Remote documents
+ * are not this check's concern: a remote document never reads a local one
+ * (see {@link collectDocuments}), and remote reads have their own origin rule.
+ */
+export function localRefEscape(rootId: DocId, id: DocId, ref: string, from: DocId, containment: RefContainment = {}): string | undefined {
+  if (isRemote(rootId) || isRemote(id)) return undefined
+  const dir = normalizePath(containment.refRoot ?? dirOf(rootId))
+  const { realpath } = containment
+  const inside = realpath ? isInside(realish(dir, realpath), realish(id, realpath)) : isInside(dir, id)
+  if (inside) return undefined
+  return (
+    `[Pyreon] lathe: \`$ref\` \`${ref}\` in ${from} resolves to ${id}, which is outside ${dir === '' ? 'the spec\'s directory' : dir}.\n` +
+    '  Lathe reads referenced files only inside the root spec\'s directory, so a spec cannot pull an arbitrary local file (a .env, a key) into the generated client.\n' +
+    '  Nothing was generated. If the file belongs to the spec, set `refRoot` in the lathe config to a directory that contains it.'
+  )
+}
+
+/** A remote document may not make a reader touch the local disk. */
+const REMOTE_TO_LOCAL = 'a remote spec can only reference other http(s) documents, not local files.'
+
+/**
  * Read the root's reference closure, synchronously, with `read`. A document
  * that cannot be read is recorded as a failure (and reported by
  * {@link bundle}) rather than thrown, so one missing file costs the refs into
- * it and not the whole generation.
+ * it and not the whole generation. A LOCAL document outside the containment
+ * directory ({@link RefContainment}) is never read: it throws, naming the
+ * reference.
  */
-export function collectDocuments(root: unknown, rootId: DocId, read: (id: DocId) => ReadOutcome): Map<DocId, ReadOutcome> {
+export function collectDocuments(
+  root: unknown,
+  rootId: DocId,
+  read: (id: DocId, from: DocId) => ReadOutcome,
+  containment: RefContainment = {},
+): Map<DocId, ReadOutcome> {
   const docs = new Map<DocId, ReadOutcome>([[rootId, { doc: root }]])
-  const queue = referencedDocuments(root, rootId)
+  const queue = documentReferences(root, rootId).map((r) => ({ ...r, from: rootId }))
   while (queue.length > 0) {
-    const id = queue.shift() as DocId
+    const { id, ref, from } = queue.shift() as DocReference & { from: DocId }
     if (docs.has(id)) continue
-    const outcome = read(id)
+    const outcome = guarded(rootId, id, ref, from, containment) ?? read(id, from)
     docs.set(id, outcome)
-    if ('doc' in outcome) queue.push(...referencedDocuments(outcome.doc, id))
+    if ('doc' in outcome) queue.push(...documentReferences(outcome.doc, id).map((r) => ({ ...r, from: id })))
   }
   return docs
 }
@@ -180,18 +282,32 @@ export function collectDocuments(root: unknown, rootId: DocId, read: (id: DocId)
 export async function collectDocumentsAsync(
   root: unknown,
   rootId: DocId,
-  read: (id: DocId) => Promise<ReadOutcome>,
+  read: (id: DocId, from: DocId) => Promise<ReadOutcome>,
+  containment: RefContainment = {},
 ): Promise<Map<DocId, ReadOutcome>> {
   const docs = new Map<DocId, ReadOutcome>([[rootId, { doc: root }]])
-  const queue = referencedDocuments(root, rootId)
+  const queue = documentReferences(root, rootId).map((r) => ({ ...r, from: rootId }))
   while (queue.length > 0) {
-    const id = queue.shift() as DocId
+    const { id, ref, from } = queue.shift() as DocReference & { from: DocId }
     if (docs.has(id)) continue
-    const outcome = await read(id)
+    const outcome = guarded(rootId, id, ref, from, containment) ?? (await read(id, from))
     docs.set(id, outcome)
-    if ('doc' in outcome) queue.push(...referencedDocuments(outcome.doc, id))
+    if ('doc' in outcome) queue.push(...documentReferences(outcome.doc, id).map((r) => ({ ...r, from: id })))
   }
   return docs
+}
+
+/**
+ * The one check every document read passes: a remote document never reaches
+ * a local file (an outcome, reported like any unreadable part), and a local
+ * document outside the containment directory fails the run.
+ */
+function guarded(rootId: DocId, id: DocId, ref: string, from: DocId, containment: RefContainment): ReadOutcome | undefined {
+  if (isRemote(id)) return undefined
+  if (isRemote(from)) return { error: REMOTE_TO_LOCAL }
+  const escape = localRefEscape(rootId, id, ref, from, containment)
+  if (escape) throw new Error(escape)
+  return undefined
 }
 
 /** Where a node sits, which decides what a `$ref` in it means. */
@@ -404,8 +520,23 @@ export function bundle(rootId: DocId, docs: ReadonlyMap<DocId, ReadOutcome>): Bu
     return local
   }
 
+  // Every node the bundle builds counts against a budget. An inlined target is
+  // COPIED at each use, and copies nest: a document whose every level
+  // references the next twice doubles per level, so 21 levels of a few bytes
+  // each became ~2 million copies and half a gigabyte. The budget scales with
+  // the input -- a real spec that inlines a shared response into every
+  // operation stays far inside it -- and a fan-out fails fast and by name.
+  const budget = NODE_BUDGET_BASE + NODE_BUDGET_FACTOR * countNodes(docs)
+  let built = 0
   const walk = (node: unknown, doc: DocId, kind: Kind, path: string[]): unknown => {
     if (kind === 'data') return node
+    if (++built > budget) {
+      throw new Error(
+        `[Pyreon] lathe: bundling ${rootId} expanded its \`$ref\`s past ${budget.toLocaleString('en-US')} nodes (at ${label(doc, path)}), so nothing was generated.\n` +
+          '  A reference outside a schema position (a response, parameter, path item, or any other value) is copied at every use, and copies that reference each other multiply per level.\n' +
+          '  Move the repeated structure into a schema, or remove the reference fan-out.',
+      )
+    }
     if (Array.isArray(node)) {
       const elementKind: Kind = kind === 'schemaList' || kind === 'parameterList' ? childKind(kind, '') : kind === 'schema' ? 'schema' : 'other'
       return node.map((n, i) => walk(n, doc, elementKind, [...path, String(i)]))
@@ -503,6 +634,25 @@ export function bundle(rootId: DocId, docs: ReadonlyMap<DocId, ReadOutcome>): Bu
     else out.components = { ...obj(out.components), schemas: merged }
   }
   return { doc: out, notes, documents: [...docs.keys()].filter((id) => used.has(id)) }
+}
+
+/** The floor of the bundle's node budget, for a small input. */
+const NODE_BUDGET_BASE = 1_000_000
+/** How many bundled nodes each input node may become (inlining multiplies). */
+const NODE_BUDGET_FACTOR = 10
+
+/** How many values (objects, arrays and scalars) the documents hold together. */
+function countNodes(docs: ReadonlyMap<DocId, ReadOutcome>): number {
+  let n = 0
+  const stack: unknown[] = []
+  for (const outcome of docs.values()) if ('doc' in outcome) stack.push(outcome.doc)
+  while (stack.length > 0) {
+    const node = stack.pop()
+    n++
+    if (node === null || typeof node !== 'object') continue
+    for (const v of Array.isArray(node) ? node : Object.values(node)) stack.push(v)
+  }
+  return n
 }
 
 function pointerPath(pointer: string): string[] {
