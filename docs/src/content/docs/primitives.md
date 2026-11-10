@@ -1224,6 +1224,19 @@ export function ChartHost() {
   undeclared one is refused, and Android logs which entry to add. Only
   `http(s)`, `mailto`, `tel` and `sms` links are handed to the system, so a
   hosted page cannot launch other apps through a custom scheme.
+- **Origin scope**: `data` and `onMessage` belong to the page the app loaded.
+  On iOS and Android the host pins the origin its own load lands on (after
+  server redirects): `file://` for `html` and bundled files, otherwise the
+  remote page's origin. The main frame then stays on that origin. A tapped link
+  to another origin opens in the system browser, and any other navigation off
+  it (a script redirect, a form post, a `data:` URL) is cancelled. Only the
+  main frame of that origin receives `data` and can send messages; an iframe
+  inside the page gets neither (a same-origin one can only call its parent's
+  `window.pyreonPostMessage`, as on the web). The web host has the same reach,
+  because a cross-origin frame is unreachable from its parent. A
+  bundled `src` must not contain a `..` segment, and any other `src` must be
+  an `http(s)` URL. Android also turns off file and content access outside
+  the bundled assets.
 - Inside the page, `connectWebHost()` from this package reads the data
   (`window.__pyreonData`, updated on each `pyreondata` event) and sends messages
   back. See the [multiplatform guide](/docs/multiplatform) for the full pattern.

@@ -33,6 +33,23 @@ describe('joinUrl', () => {
   })
 })
 
+describe('applyPathParams — the shared placeholder RegExp', () => {
+  // The `g` RegExp is ONE module-level instance. These lock the two ways a
+  // shared `lastIndex` could leak between calls.
+  it('a throw from a missing param does not disturb the next call', () => {
+    expect(() => applyPathParams('/a/:x/b/:y', { x: 1 })).toThrow(/needs the parameter "y"/)
+    expect(applyPathParams('/u/:id', { id: 7 })).toBe('/u/7')
+    expect(applyPathParams('/p/:a/:b', { a: 'q', b: 'r' })).toBe('/p/q/r')
+  })
+
+  it('a re-entrant call from a param toString sees every placeholder', () => {
+    const inner = { toString: () => applyPathParams('/in/:k/:j', { k: 'K', j: 'J' }) }
+    expect(applyPathParams('/out/:a/:b', { a: inner as unknown as string, b: 'B' })).toBe(
+      `/out/${encodeURIComponent('/in/K/J')}/B`,
+    )
+  })
+})
+
 describe('applyPathParams', () => {
   it('substitutes and URL-encodes', () => {
     expect(applyPathParams('/users/:id', { id: 42 })).toBe('/users/42')
