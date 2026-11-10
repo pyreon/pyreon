@@ -12,9 +12,21 @@
 
 import type { ComponentFn, Props, VNode, VNodeChild } from '@pyreon/core'
 import { _compatProps, Fragment, h, isNativeCompat, mapCompatDomProps, onUnmount } from '@pyreon/core'
-import { signal } from '@pyreon/reactivity'
+import { getCurrentScope, onScopeDispose, signal } from '@pyreon/reactivity'
 
 export { Fragment }
+
+/**
+ * Register teardown on the component's SCOPE when there is one. `mount.ts`
+ * stops a component's scope BEFORE tearing down its subtree, so scope
+ * callbacks run parent-before-child — React's (and Preact's) unmount order for
+ * effect cleanups and `componentWillUnmount`. `onUnmount` hooks run after the
+ * subtree, i.e. child-before-parent, which is what this used to use.
+ */
+function onTeardown(fn: () => void): void {
+  if (getCurrentScope()) onScopeDispose(fn)
+  else onUnmount(fn)
+}
 
 // ─── Render context (used by hooks) ──────────────────────────────────────────
 
@@ -149,7 +161,7 @@ function wrapCompatComponent(reactComponent: Function): ComponentFn {
 
     // Register cleanup for all hooks on unmount
     /* v8 ignore start — defensive cleanup combinations over hook types; structurally exercised but counted per-branch */
-    onUnmount(() => {
+    onTeardown(() => {
       ctx.unmounted = true
       for (const hook of ctx.hooks) {
         if (hook && typeof hook === 'object' && 'cleanup' in hook) {
