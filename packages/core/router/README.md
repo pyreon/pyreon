@@ -293,19 +293,19 @@ useBlocker(() => isDirty)
 ```ts
 import {
   prefetchLoaderData, hydrateLoaderData,
-  serializeLoaderData, stringifyLoaderData,
+  serializeLoaderData, stringifyLoaderDataForScript,
 } from '@pyreon/router'
 
 // Server: pre-fetch + serialize
 await prefetchLoaderData(router, url.pathname, request)
 const blob = serializeLoaderData(router)
-const json = stringifyLoaderData(blob)   // safe stringifier — drops fns, throws on cycles
+const expr = stringifyLoaderDataForScript(blob)   // for <script>window.__PYREON_LOADER_DATA__=${expr}</script>
 
 // Client: hydrate
 hydrateLoaderData(router, window.__PYREON_LOADER_DATA__)
 ```
 
-`stringifyLoaderData` is the safe serializer: drops `function` / `symbol` values, throws `[Pyreon] Loader returned circular reference at "<path>"` on cycles, escapes `</script>` for inline embedding.
+`stringifyLoaderData` is the safe serializer: drops `function` / `symbol` values, throws `[Pyreon] Loader returned circular reference at "<path>"` on cycles, and escapes the `<` class plus U+2028/U+2029 so the text is safe inside a `<script>`. It returns JSON text — use it for a JSON response or a `<script type="application/json">` block. For an executable `window.X=…` assignment use `stringifyLoaderDataForScript`: a JavaScript object literal treats a `"__proto__":` key as a prototype setter, so it emits that key in the computed form `["__proto__"]` (output is otherwise byte-identical).
 
 ## Match utilities
 

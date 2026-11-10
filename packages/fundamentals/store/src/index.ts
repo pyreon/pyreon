@@ -462,10 +462,21 @@ function deepMerge(target: unknown, source: unknown): unknown {
   if (!isPlainObject(target) || !isPlainObject(source)) return source
   const out: Record<string, unknown> = { ...target }
   for (const key of Object.keys(source)) {
-    out[key] =
-      isPlainObject(target[key]) && isPlainObject(source[key])
-        ? deepMerge(target[key], source[key])
-        : source[key]
+    // Keys come from DATA (`deepPatch(await res.json())`), so read the
+    // target's OWN value only — `target['__proto__']` would return
+    // `Object.prototype`, which `isPlainObject` accepts.
+    const current = Object.hasOwn(target, key) ? target[key] : undefined
+    const next = source[key]
+    const value = isPlainObject(current) && isPlainObject(next) ? deepMerge(current, next) : next
+    if (key === '__proto__') {
+      // `JSON.parse` makes `__proto__` an ordinary OWN key; `out[key] = value`
+      // would run the accessor and turn `value` into `out`'s PROTOTYPE, so a
+      // schema parse then read smuggled optional fields through the chain.
+      // Define it as an own key so the merged object keeps the input's shape.
+      Object.defineProperty(out, key, { value, enumerable: true, writable: true, configurable: true })
+    } else {
+      out[key] = value
+    }
   }
   return out
 }

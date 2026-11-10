@@ -15,6 +15,16 @@ import { _resetServerIslands, serverIsland } from '@pyreon/server'
 import type { MiddlewareContext } from '@pyreon/server'
 import { afterEach, describe, expect, it } from 'vitest'
 import { createServerIslandMiddleware } from '../server-islands-middleware'
+import { createIslandSigner } from '../server-island-token'
+
+// Every fragment request carries the signature the page render minted for
+// its marker (see server-island-signatures.test.ts for the refusals).
+const signer = createIslandSigner({ secret: 'k'.repeat(32) })
+async function signedUrl(name: string, props = '', page = '/'): Promise<string> {
+  const sig = await signer.sign(name, page, props, Date.now() + 60_000)
+  const q = props ? `props=${encodeURIComponent(props)}&` : ''
+  return `http://x/_pyreon/fragment/${name}?${q}page=${encodeURIComponent(page)}&sig=${encodeURIComponent(sig)}`
+}
 
 const Badge: ComponentFn = (props: { who?: string }) =>
   h('em', null, `hi ${props.who ?? 'there'}`)
@@ -35,16 +45,15 @@ afterEach(() => _resetServerIslands())
 
 describe('createServerIslandMiddleware', () => {
   it('ignores non-fragment paths (falls through)', async () => {
-    const mw = createServerIslandMiddleware([])
+    const mw = createServerIslandMiddleware([], signer)
     expect(await mw(ctxFor('http://x/about'))).toBeUndefined()
   })
 
   it('renders a registered island with props + locals; default no-store', async () => {
     serverIsland(async () => Badge, { name: 'Hi' })
-    const mw = createServerIslandMiddleware([])
-    const props = encodeURIComponent(JSON.stringify({ who: 'ada' }))
+    const mw = createServerIslandMiddleware([], signer)
     const res = (await mw(
-      ctxFor(`http://x/_pyreon/fragment/Hi?props=${props}`),
+      ctxFor(await signedUrl('Hi', JSON.stringify({ who: 'ada' }))),
     )) as Response
     expect(res.status).toBe(200)
     expect(await res.text()).toBe('<em>hi ada</em>')
@@ -65,28 +74,30 @@ describe('createServerIslandMiddleware', () => {
         }),
       } as RouteRecord,
     ]
-    const mw = createServerIslandMiddleware(routes)
-    const res = (await mw(ctxFor('http://x/_pyreon/fragment/LazyIsland'))) as Response
+    const mw = createServerIslandMiddleware(routes, signer)
+    const res = (await mw(ctxFor(await signedUrl('LazyIsland')))) as Response
     expect(res.status).toBe(200)
     expect(await res.text()).toContain('hi there')
     expect(loaded).toBe(1)
     // Second miss-shaped lookup doesn't re-warm (memoized).
-    const res2 = (await mw(ctxFor('http://x/_pyreon/fragment/LazyIsland'))) as Response
+    const res2 = (await mw(ctxFor(await signedUrl('LazyIsland')))) as Response
     expect(res2.status).toBe(200)
     expect(loaded).toBe(1)
   })
 
   it('unknown island after warm → 404 (allowlist, never arbitrary render)', async () => {
-    const mw = createServerIslandMiddleware([])
-    const res = (await mw(ctxFor('http://x/_pyreon/fragment/NotAThing'))) as Response
+    // Signed (e.g. an island removed since the page rendered), still unknown.
+    const mw = createServerIslandMiddleware([], signer)
+    const res = (await mw(ctxFor(await signedUrl('NotAThing')))) as Response
     expect(res.status).toBe(404)
   })
 
   it('hostile props → 400; slashed names → 400; non-GET → 405', async () => {
     serverIsland(async () => Badge, { name: 'Hi' })
-    const mw = createServerIslandMiddleware([])
+    const mw = createServerIslandMiddleware([], signer)
     const bad = (await mw(
-      ctxFor(`http://x/_pyreon/fragment/Hi?props=${encodeURIComponent('{nope')}`),
+      // Validly signed but undecodable: the decode guard still answers 400.
+      ctxFor(await signedUrl('Hi', '{nope')),
     )) as Response
     expect(bad.status).toBe(400)
     const slashed = (await mw(ctxFor('http://x/_pyreon/fragment/a/b'))) as Response
@@ -99,9 +110,9 @@ describe('createServerIslandMiddleware', () => {
   it('locals from earlier middleware reach the fragment (the personalization contract)', async () => {
     const WhoAmI: ComponentFn = () => h('b', null, 'route-mw-sees-locals')
     serverIsland(async () => WhoAmI, { name: 'Locals' })
-    const mw = createServerIslandMiddleware([])
+    const mw = createServerIslandMiddleware([], signer)
     const res = (await mw(
-      ctxFor('http://x/_pyreon/fragment/Locals', 'GET', { user: 'ada' }),
+      ctxFor(await signedUrl('Locals'), 'GET', { user: 'ada' }),
     )) as Response
     expect(res.status).toBe(200)
   })
