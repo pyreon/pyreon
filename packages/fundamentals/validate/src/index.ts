@@ -63,6 +63,11 @@
 
 // ─── v1 validator (new) ────────────────────────────────────────────────
 
+import { enableJit } from './jit'
+
+// The chainable entry ships the runtime JIT (see core/jit-hook.ts); `mini` opts in.
+enableJit()
+
 export * from './v1'
 
 // ─── DX layer (works with Pyreon's own validator + any other StdSchema lib) ──

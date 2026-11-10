@@ -8,11 +8,11 @@
  * written by hand here would test the renderer against the shape the test
  * author expected, not the one Lathe writes.
  */
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { generate, resolveConfig } from '@pyreon/lathe/core'
-import { afterAll, describe, expect, it } from 'vitest'
+import { afterAll, afterEach, describe, expect, it, vi } from 'vitest'
 import { callTool, newClient } from './helpers'
 import { findSurfaces, loadSurfaces, renderClientIndex, renderOperation } from '../lathe'
 
@@ -216,9 +216,13 @@ describe('shapes the renderer must not assume away', () => {
 })
 
 describe('through the MCP server', () => {
+  afterEach(() => vi.restoreAllMocks())
+
   it('serves all three tools', async () => {
     const before = project(['name', 'email'])
     const after = project(['name'])
+    // Both fixtures live under the OS temp dir; make that the project root.
+    vi.spyOn(process, 'cwd').mockReturnValue(tmpdir())
     const { client, close } = await newClient()
     try {
       const index = await callTool(client, 'get_api_client', { path: after.gen })
@@ -237,6 +241,55 @@ describe('through the MCP server', () => {
       expect(missing).toContain('does not exist')
       const bad = await callTool(client, 'explain_api_diff', { before: join(before.root, 'nope.json'), after: join(after.gen, 'api-surface.json') })
       expect(bad).toMatch(/Could not compute the diff: .*nope\.json` does not exist/)
+    } finally {
+      await close()
+    }
+  })
+})
+
+// Tool arguments are written by a model that may be reading untrusted text, so
+// they must not reach git as options or read files outside the project.
+describe('tool arguments that reach git or the filesystem', () => {
+  afterEach(() => vi.restoreAllMocks())
+
+  it('explain_api_diff refuses a revision that git would parse as an option', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'mcp-git-arg-'))
+    roots.push(dir)
+    const target = join(dir, 'written-by-git')
+    const { client, close } = await newClient()
+    try {
+      // `git show --output=<file>:x` would write <file>; the revision must be rejected first.
+      const out = await callTool(client, 'explain_api_diff', { before: `--output=${target}:x`, after: 'package.json' })
+      // git names the file after the whole argument, `<target>:x`.
+      expect(existsSync(`${target}:x`)).toBe(false)
+      expect(out).toMatch(/Could not compute the diff: \[Pyreon\] mcp: `--output=.*` is not a git revision/)
+    } finally {
+      await close()
+    }
+  })
+
+  it('explain_api_diff and get_api_client/get_api_operation refuse paths outside the project root', async () => {
+    const inside = project(['name'])
+    const outside = project(['name', 'email'])
+    vi.spyOn(process, 'cwd').mockReturnValue(inside.root)
+    const { client, close } = await newClient()
+    try {
+      const diff = await callTool(client, 'explain_api_diff', {
+        before: join(outside.gen, 'api-surface.json'),
+        after: join(inside.gen, 'api-surface.json'),
+      })
+      expect(diff).toMatch(/Could not compute the diff: \[Pyreon\] mcp: `.*api-surface\.json` is outside the project root/)
+      const index = await callTool(client, 'get_api_client', { path: outside.gen })
+      expect(index).toMatch(/outside the project root/)
+      expect(index).not.toContain('getOrder')
+      const op = await callTool(client, 'get_api_operation', { operation: 'getOrder', path: '../' + outside.root.split(/[\\/]/).pop() + '/src/gen' })
+      expect(op).toMatch(/outside the project root/)
+      // A symlink inside the project that points outside it is resolved, not trusted.
+      symlinkSync(outside.gen, join(inside.root, 'linked'))
+      const linked = await callTool(client, 'get_api_client', { path: 'linked' })
+      expect(linked).toMatch(/outside the project root/)
+      // Inside the root still works.
+      expect(await callTool(client, 'get_api_client', { path: 'src/gen' })).toContain('`getOrder`')
     } finally {
       await close()
     }

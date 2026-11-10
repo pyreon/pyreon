@@ -16,6 +16,9 @@ import type { ChartGradient, ChartPattern, DrawCmd, MeasureText, Pt, Rect } from
  * The context's font is set and restored around the measurement: layout runs
  * before drawing, and leaving a different font behind would silently change
  * how every later label renders.
+ *
+ * Returns a FRESH measurer with an empty memo. A host that draws repeatedly
+ * wants {@link sharedCanvasMeasure} instead, whose memo survives frames.
  */
 export function canvasMeasure(ctx: CanvasRenderingContext2D, fontFamily: string): MeasureText {
   // Memoized per measurer: a frame measures every tick label, every legend
@@ -36,6 +39,40 @@ export function canvasMeasure(ctx: CanvasRenderingContext2D, fontFamily: string)
     cache.set(key, w)
     return w
   }
+}
+
+/**
+ * Measurers that outlive a frame, one per (context, font family).
+ *
+ * The chart hosts used to call {@link canvasMeasure} inside every draw, so the
+ * memo it carries — written for exactly the "hover re-measures the same
+ * strings" case — was thrown away before a second frame could hit it: every
+ * update, tween frame and hover frame measured every tick label, legend entry
+ * and preset button cold, each miss also re-parsing the font string twice.
+ *
+ * Keyed WEAKLY on the context, so a measurer (and its ≤4,096-entry memo) is
+ * released with its canvas — no registry to clean up, nothing retained past
+ * the chart. A width depends only on the string, the size and the family: not
+ * on the transform, the DPR or anything `prepareCanvas` resets, so reusing it
+ * across frames, resizes and theme changes returns the same numbers a fresh
+ * measurer would. (The family is a constant system-font stack; were it ever a
+ * web font, a memo filled before the font loaded would hold fallback widths —
+ * clear it on `document.fonts` `loadingdone` then.)
+ */
+const sharedMeasurers = new WeakMap<CanvasRenderingContext2D, Map<string, MeasureText>>()
+
+export function sharedCanvasMeasure(ctx: CanvasRenderingContext2D, fontFamily: string): MeasureText {
+  let byFamily = sharedMeasurers.get(ctx)
+  if (byFamily === undefined) {
+    byFamily = new Map()
+    sharedMeasurers.set(ctx, byFamily)
+  }
+  let m = byFamily.get(fontFamily)
+  if (m === undefined) {
+    m = canvasMeasure(ctx, fontFamily)
+    byFamily.set(fontFamily, m)
+  }
+  return m
 }
 
 /**
