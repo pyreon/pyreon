@@ -4,6 +4,7 @@
 // only fs API routes: the data endpoint and actions answered with the SPA
 // shell / 404, route middleware never gated anything, and the entry's own
 // middleware (security headers) existed only in production.
+import { connect } from "node:net";
 import { resolve } from "node:path";
 import pyreon from "@pyreon/vite-plugin";
 import { createServer, type ViteDevServer } from "vite";
@@ -101,6 +102,44 @@ describe("zero dev runs the production request pipeline", { timeout: DEV_SERVER_
 			body: JSON.stringify({ msg: "hi" }),
 		});
 		expect(blocked.status).toBe(403);
+	});
+
+	// The dev request URL was `new URL(req.url, "http://" + host)`: a
+	// request-target of `//attacker.example/_zero/actions/<id>` (what a browser
+	// sends for a form posting to `http://victim//attacker.example/...`) made
+	// the URL's origin the attacker's — equal to their Origin header, so the
+	// action's same-origin check passed. Raw socket: fetch would normalise it.
+	it("a cross-origin action call cannot borrow its origin from the request-target", async () => {
+		await devFetch(`${baseUrl}/`, "home (registers the action)", {
+			observe: state,
+			headers: { accept: "text/html" },
+		});
+		const id = actionId("src/actions.ts", "echo");
+		const port = Number(new URL(baseUrl).port);
+		const body = JSON.stringify({ msg: "hi" });
+		const raw = (target: string) =>
+			new Promise<string>((done, fail) => {
+				const sock = connect(port, new URL(baseUrl).hostname, () =>
+					sock.write(
+						`POST ${target} HTTP/1.1\r\nHost: localhost:${port}\r\nOrigin: http://attacker.example\r\n` +
+							`Content-Type: application/json\r\nContent-Length: ${body.length}\r\nConnection: close\r\n\r\n${body}`,
+					),
+				);
+				let out = "";
+				sock.on("data", (d) => (out += String(d)));
+				sock.on("end", () => done(out));
+				sock.on("error", fail);
+			});
+		const plain = await raw(`/_zero/actions/${id}`);
+		expect(plain.split("\r\n")[0]).toContain(" 403 ");
+		for (const target of [
+			`//attacker.example/_zero/actions/${id}`,
+			`http://attacker.example/_zero/actions/${id}`,
+		]) {
+			const res = await raw(target);
+			expect(res).not.toContain("echoed");
+			expect(res.split("\r\n")[0]).not.toContain(" 200 ");
+		}
 	});
 
 	it("a non-GET request to a page answers 405/204 like production, not the SPA shell", async () => {

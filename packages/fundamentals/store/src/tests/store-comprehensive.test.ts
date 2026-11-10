@@ -165,7 +165,7 @@ describe('subscribe — mutation tracking details', () => {
     const api = useStore()
     let capturedState: Record<string, unknown> | undefined
     api.subscribe(
-      (_m, state) => {
+      ({ state }) => {
         capturedState = state
       },
       { immediate: true },

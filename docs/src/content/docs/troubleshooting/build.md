@@ -492,6 +492,12 @@ Compose's `Modifier.weight` is an extension on `ColumnScope` / `RowScope`, and `
 
 ---
 
+### A native WebView bridge is for the page the app loaded, not for every frame or origin.
+
+WKWebView script-message handlers and Android `addJavascriptInterface` objects are visible in EVERY frame of whatever document is loaded, and a navigation delegate that does not exist lets the main frame wander to any origin, which then receives `data` pushes and can drive `onMessage`. The web host reaches only same-origin / `srcdoc` frames, so native must match: pin the origin the host's own load commits to (after its redirects), keep the main frame on it (user-tapped link off it → system browser, anything else cancelled), deliver messages only from the main frame of that origin (iOS: `WKScriptMessage.frameInfo.isMainFrame` + `securityOrigin`; Android without androidx.webkit: a per-view token closed over by a main-frame-only shim, plus the main frame's URL origin re-read on the main thread), and push data / relay only while the main frame shows it. Asset `src` must not escape the asset dir (`..`, scheme, backslash), and Android file access is explicitly off. The decisions are pure functions so they run without a device: `PyreonWebView.swift` (`pyreonWebViewNavigationDecision`, `pyreonWebViewMayDeliver`, `pyreonWebViewAssetName`) / `PyreonWebChromePolicy.kt`, locked by `hooks/native/tests/PyreonWebViewTests.swift` and `PyreonWebChromePolicyTest.kt`.
+
+---
+
 ### A WebView callback must be answered exactly once on every path.
 
 An Android `onShowFileChooser` `ValueCallback` that is never answered leaves the page's file input dead until the view is recreated; a dropped WKUIDelegate completion handler raises in WebKit. Answer on success, on denial, on dismissal, when a newer request replaces a pending one, and when the view is released. In Swift 6 the WKUIDelegate methods only match with `@MainActor @Sendable` completion types; a "nearly matches optional requirement" warning means WebKit never calls them. Reference: `hooks/native/kotlin/com/pyreon/runtime/PyreonWebChromePolicy.kt` (`PyreonOnceSlot`, `PyreonPermissionQueue`).
@@ -585,6 +591,12 @@ PMTC's emitted router dispatch compared static routes with `path == "/toolkit"`,
 ### Escape the escape character first.
 
 Escaping `|` in a Markdown table cell without first escaping `\` turns `\|` into `\\|`, which renders as an escaped backslash plus a live pipe (CodeQL `js/incomplete-sanitization`). Always `.replace(/\\/g, '\\\\')` before the delimiter, as `writer.ts:q()` does for string literals. In tests, count delimiters by walking the string and consuming `\X` pairs (a `(?<!\\)` lookbehind has the same bug), and include a fixture with exactly one backslash before the delimiter. Reference: `packages/tools/lathe/src/emit/docs.ts:mdCell`; lock `lathe/src/tests/docs-emit.test.ts` (`mdCells`).
+
+---
+
+### Generated Markdown is read as MDX: untrusted text in it is code, not prose.
+
+`@pyreon/zero-content` compiles `.md` as MDX by default, where `{…}` is a JavaScript expression and `<…>` is JSX; plain Markdown passes raw HTML through. So spec, CMS or user text interpolated into a generated page runs at SSG build time and in the reader's browser unless EVERY interpolation goes through one escaper that is safe for CommonMark, GFM and MDX at once. Rules: (1) prose, headings, link labels and table cells backslash-escape every punctuation character that can open a construct (lathe: `docs.ts:md`, all but `" ' , . ; ?`, plus a leading `1.`); an allowlist of "dangerous" characters is the list someone remembered. (2) Inline code spans take NO backslash escapes (they would render); pick a backtick delimiter longer than any run in the value, pad when it starts or ends with a backtick, and collapse newlines (`docs.ts:code`); fences likewise (`fence`). (3) Never let safety rest on a parse failure: an HTML-comment banner made every page fail MDX compilation, which hid the hole until someone removed the banner. Put markers where every reader accepts them (a YAML comment in the frontmatter). Test through the real consumer and EXECUTE the module (`lathe/src/tests/docs-mdx-safety.test.ts`: zero-content's plugin `transform`, then import and render with a `globalThis` sentinel), bisected against the old escaper with the banner made safe.
 
 ---
 
