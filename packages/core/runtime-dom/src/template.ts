@@ -1,5 +1,5 @@
 import type { NativeItem, VNodeChild } from '@pyreon/core'
-import { _rdNodeId, getContextOwner, renderEffect } from '@pyreon/reactivity'
+import { _noopDispose, _rdNodeId, getContextOwner, renderEffect } from '@pyreon/reactivity'
 import { _tagTextBinding } from './binding-registry'
 import { bindPolymorphicText, createPolyTextCore, mountChild, mountChildAsUnit, SVG_TAGS, type PolyTextCore } from './mount'
 import { _bindEvent } from './props'
@@ -330,6 +330,19 @@ function resolveSlowCaller(
  */
 export function _bindProp(props: object, key: string, node: Text, parent: Node): () => void {
   const d = Object.getOwnPropertyDescriptor(props, key)
+  if (d !== undefined && d.get === undefined && d.set === undefined) {
+    // An own DATA property: a props object's data properties are fixed at
+    // creation (reactive props are getters), so this binding can never update.
+    // Text-ish values write once and leave nothing behind — the same coercion
+    // and adopted-node read-back as the poly core's text write. Objects and
+    // functions (a VNode, an accessor) keep the general path below.
+    const v = d.value as unknown
+    if (v === null || (typeof v !== 'object' && typeof v !== 'function')) {
+      const next = v == null || v === false ? '' : String(v as string | number | boolean)
+      if (node.data !== next) node.data = next
+      return _noopDispose
+    }
+  }
   const g = d !== undefined ? (d.get as ({ _v?: unknown; direct?: (fn: () => void) => () => void } & (() => unknown)) | undefined) : undefined
   if (g !== undefined && typeof g.direct === 'function') return _bindText(g, node)
   return bindPolymorphicText(() => (props as Record<string, unknown>)[key] as VNodeChild, node, parent)
@@ -437,6 +450,8 @@ export function _bindText(
       written = next
     }
   })
+  // Dead binding that stayed text: no re-run can happen and no subtree exists.
+  if (disposeEffect === _noopDispose && core === null) return _noopDispose
   return () => {
     disposeEffect()
     if (core !== null) core.dispose()

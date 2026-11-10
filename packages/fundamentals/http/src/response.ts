@@ -11,6 +11,7 @@
  * and two consumers of the same promise share one network call.
  */
 
+import { bodySignalOf } from './transport'
 import {
   type HttpError,
   ParseError,
@@ -96,6 +97,16 @@ function readUnderSignal<T>(
   if (signal.aborted) {
     void response.raw.body?.cancel().catch(noop)
     return Promise.reject(link.abortError())
+  }
+  // `fetch` wired this body to the same signal: an abort (caller or timeout)
+  // errors the stream itself, so the read rejects on its own and only the
+  // error needs relabelling. This is the default client's path — every
+  // request carries the 30 s timeout signal — and it skips the racing
+  // promise, the abort hook and its remover.
+  if (bodySignalOf(response) === signal) {
+    return read().catch((error: unknown) => {
+      throw signal.aborted ? link.abortError() : error
+    })
   }
   return new Promise<T>((resolve, reject) => {
     const unwatch = link.onAbort(() => {

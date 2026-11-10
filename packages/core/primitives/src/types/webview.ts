@@ -14,6 +14,16 @@ export interface WebViewProps {
    * A LOCAL bundled asset name (preferred — policy-safe) or a remote
    * `http(s)` URL. On native: a bundled file (iOS `Bundle.main` /
    * Android `assets/`) or a remote `URLRequest`; on web an `<iframe src>`.
+   * A bundled name may not contain a `..` segment, a scheme or a backslash,
+   * and a non-bundled `src` loads only when it is `http(s)`.
+   *
+   * ORIGIN SCOPE (native). The host pins the origin its own load lands on
+   * (after server redirects): `file://` for `html` and bundled files, the
+   * remote page's origin otherwise. Afterwards the main frame stays on it — a
+   * tapped link elsewhere opens in the system browser, any other off-origin
+   * main-frame navigation is cancelled — and `data` / `onMessage` reach only
+   * the MAIN frame of that origin, never an iframe inside the page. This is
+   * the web host's reach too (a cross-origin frame is unreachable).
    */
   src?: string
   /**

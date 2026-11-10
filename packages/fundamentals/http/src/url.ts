@@ -41,9 +41,13 @@ export function joinUrl(base: string | undefined, path: string): string {
 /**
  * `:name` placeholders, plus the `\\:` escape for a LITERAL colon.
  *
- * A fresh RegExp per call: a `g`-flagged instance carries `lastIndex`.
+ * ONE shared instance. A `g`-flagged RegExp carries `lastIndex`, but
+ * `String.prototype.replace` resets it to 0 before matching and collects every
+ * match BEFORE calling the replacer — so neither a throwing replacer nor a
+ * re-entrant `applyPathParams` (a param whose `toString` builds another path)
+ * can observe or disturb a stale `lastIndex`. Locked by `url.test.ts`.
  */
-const pathToken = (): RegExp => /\\:|:([A-Za-z_][A-Za-z0-9_]*)/g
+const PATH_TOKEN = /\\:|:([A-Za-z_][A-Za-z0-9_]*)/g
 
 /**
  * Substitute `:name` placeholders. Values are `encodeURIComponent`-encoded,
@@ -59,7 +63,7 @@ const pathToken = (): RegExp => /\\:|:([A-Za-z_][A-Za-z0-9_]*)/g
  */
 export function applyPathParams(path: string, params: PathParams | undefined): string {
   if (!path.includes(':')) return path
-  return path.replace(pathToken(), (_match, name: string | undefined) => {
+  return path.replace(PATH_TOKEN, (_match, name: string | undefined) => {
     if (name === undefined) return ':'
     const value = params?.[name]
     if (value === undefined || value === null) {

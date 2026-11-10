@@ -1,0 +1,22 @@
+{
+  "id": "tanstack-start",
+  "label": "TanStack Start (React)",
+  "docs": [
+    "https://tanstack.com/start/latest/docs/framework/react/guide/hosting (Nitro node output)",
+    "https://tanstack.com/start/latest/docs/framework/react/guide/server-functions",
+    "https://tanstack.com/start/latest/docs/framework/react/guide/data-loading",
+    "https://tanstack.com/router/latest/docs/framework/react/guide/not-found-errors",
+    "@tanstack/cli 0.72.16 `create --framework React --blank --deployment nitro` (the scaffold)"
+  ],
+  "packages": ["@tanstack/react-start", "@tanstack/react-router", "react", "react-dom", "nitro", "vite"],
+  "build": ["npm", "run", "build"],
+  "start": ["node", ".output/server/index.mjs"],
+  "dataFile": "src/lib/data.ts",
+  "hydration": "full",
+  "streaming": "streamed (TanStack Start default stream handler; loader data dehydrated into the HTML)",
+  "notes": [
+    "Nitro 3.0.260610-beta (the version the official scaffold pins) node-server preset.",
+    "Router defaults from the scaffold kept: defaultPreload 'intent', scrollRestoration.",
+    "The form is a plain <form action={fn.url} method=post multipart> (no-JS path) whose onSubmit calls the server function through useServerFn (thrown redirect → client navigation, returned {error} → state)."
+  ]
+}
