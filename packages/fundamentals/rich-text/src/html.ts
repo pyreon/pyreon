@@ -1,3 +1,4 @@
+import { isUnsafeUrl } from '@pyreon/core'
 import type { JSONContent } from '@tiptap/core'
 
 /**
@@ -34,7 +35,7 @@ const BLOCK: Record<string, (el: Element) => JSONContent> = {
 
 type Mark = { type: string; attrs?: Record<string, unknown> }
 
-const MARK: Record<string, (el: Element) => Mark> = {
+const MARK: Record<string, (el: Element) => Mark | undefined> = {
   STRONG: () => ({ type: 'bold' }),
   B: () => ({ type: 'bold' }),
   EM: () => ({ type: 'italic' }),
@@ -43,8 +44,25 @@ const MARK: Record<string, (el: Element) => Mark> = {
   DEL: () => ({ type: 'strike' }),
   U: () => ({ type: 'underline' }),
   CODE: () => ({ type: 'code' }),
-  A: (el) => ({ type: 'link', attrs: { href: el.getAttribute('href') } }),
+  // `getAttribute` returns the entity-DECODED value, so `jav&#x61;script:` is
+  // judged as the `javascript:` the browser would run. An unsafe href drops
+  // the mark, as TipTap's Link `parseHTML` does for a disallowed URI.
+  A: (el) => {
+    const href = el.getAttribute('href')
+    return href !== null && isUnsafeUrl(href) ? undefined : { type: 'link', attrs: { href } }
+  },
 }
+
+/**
+ * The ONE predicate for every URL this module writes into an attribute. The
+ * pre-mount / server `html()` output is meant to be rendered (often through
+ * `innerHTML`), and the mounted engine never sees it — so a stored
+ * `javascript:` / `data:` link must not survive here just because TipTap's Link
+ * extension would have blanked it after mount. Decides on the JSON string,
+ * which is exactly what the browser decodes the escaped attribute back to.
+ */
+const safeUrl = (url: unknown): string | undefined =>
+  typeof url === 'string' && !isUnsafeUrl(url) ? url : undefined
 
 /** Container blocks hold blocks; everything else holds inline content. */
 const CONTAINERS = new Set(['bulletList', 'orderedList', 'listItem', 'blockquote'])
@@ -207,8 +225,8 @@ const MARK_TAG: Record<string, string> = {
 
 function markOpen(mark: Mark): string {
   if (mark.type === 'link') {
-    const href = mark.attrs?.href
-    return typeof href === 'string' ? `<a href="${escapeAttr(href)}">` : '<a>'
+    const href = safeUrl(mark.attrs?.href)
+    return href !== undefined ? `<a href="${escapeAttr(href)}">` : '<a>'
   }
   const tag = MARK_TAG[mark.type]
   return tag ? `<${tag}>` : ''
@@ -234,7 +252,9 @@ function nodeToHtml(node: JSONContent): string {
     case 'paragraph':
       return `<p>${inner()}</p>`
     case 'heading': {
-      const level = Number(node.attrs?.level) || 1
+      // Clamped: the level is interpolated into a TAG NAME, so an arbitrary
+      // stored number must not mint `<h99>` (or worse) out of document data.
+      const level = Math.min(6, Math.max(1, Math.trunc(Number(node.attrs?.level)) || 1))
       return `<h${level}>${inner()}</h${level}>`
     }
     case 'bulletList':

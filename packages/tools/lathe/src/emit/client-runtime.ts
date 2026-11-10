@@ -37,7 +37,9 @@
  *   - `undefined` / `null` query entries are DROPPED, never serialized as the
  *     text `"undefined"`.
  *   - path parameters are `encodeURIComponent`-encoded, so an id containing
- *     `/` cannot break out of its segment.
+ *     `/` cannot break out of its segment — and a value that is exactly `.` /
+ *     `..` has its dots encoded twice (`%252E`), because the URL parser
+ *     resolves `%2E` as a dot segment too (`@pyreon/http`'s `encodePathParam`).
  */
 
 /** Which HTTP runtime the generated client is built on. */
@@ -302,7 +304,12 @@ export function runtimePreamble(lossless = false): string[] {
     '          `Pass it as \\`{ params: { ${name}: … } }\\`.`,',
     '      )',
     '    }',
-    '    return encodeURIComponent(String(value))',
+    '    // A value that IS `.` / `..` is a dot segment the URL parser resolves (so is',
+    '    // `%2E`): encode the dots twice so the request cannot reach another endpoint.',
+    '    const v = String(value)',
+    '    if (v === ".") return "%252E"',
+    '    if (v === "..") return "%252E%252E"',
+    '    return encodeURIComponent(v)',
     '  })',
     '}',
     '',

@@ -269,21 +269,6 @@ export function mountReactive(
  * tearing down and rebuilding the full list on every signal update.
  */
 
-interface KeyedEntry {
-  /** Comment node placed immediately before this entry's DOM content. */
-  anchor: Comment
-  cleanup: Cleanup
-  /**
-   * Last DOM node of this entry's content, or null when the entry is the
-   * anchor comment alone. Captured at mount; stays valid because every
-   * dynamic child inserts BEFORE its own end marker, which lies inside
-   * [anchor..end]. Lets `moveEntryBefore` move the exact range with no
-   * module-level anchor registry (a per-row `WeakSet<Node>` registry
-   * retained its grown backing table forever — V8 never shrinks it — which
-   * was the entire retained-heap delta vs Solid on the 10k-row bench).
-   */
-  end: Node | null
-}
 
 /** LIS-based reorder state — shared across keyed list instances, grown as needed */
 interface LisState {
@@ -328,38 +313,6 @@ function growLisArrays(lis: LisState, n: number): LisState {
   }
 }
 
-function computeKeyedLis(
-  lis: LisState,
-  n: number,
-  newKeyOrder: (string | number)[],
-  curPos: Map<string | number, number>,
-): number {
-  const { tails, tailIdx, pred } = lis
-  let lisLen = 0
-  let ops = 0
-  for (let i = 0; i < n; i++) {
-    const key = newKeyOrder[i]
-    if (key === undefined) continue
-    const v = curPos.get(key) ?? -1
-    if (v < 0) continue
-
-    let lo = 0
-    let hi = lisLen
-    while (lo < hi) {
-      const mid = (lo + hi) >> 1
-      ops++
-      if ((tails[mid] as number) < v) lo = mid + 1
-      else hi = mid
-    }
-    tails[lo] = v
-    tailIdx[lo] = i
-    if (lo > 0) pred[i] = tailIdx[lo - 1] as number
-    if (lo === lisLen) lisLen++
-  }
-  if (process.env.NODE_ENV !== 'production' && ops > 0)
-    _countSink.__pyreon_count__?.('runtime.mountFor.lisOps', ops)
-  return lisLen
-}
 
 function markStayingEntries(lis: LisState, lisLen: number): void {
   const { tailIdx, pred, stay } = lis
@@ -370,45 +323,7 @@ function markStayingEntries(lis: LisState, lisLen: number): void {
   }
 }
 
-function applyKeyedMoves(
-  n: number,
-  newKeyOrder: (string | number)[],
-  stay: Uint8Array,
-  cache: Map<string | number, KeyedEntry>,
-  parent: Node,
-  tailMarker: Comment,
-): void {
-  let cursor: Node = tailMarker
-  for (let i = n - 1; i >= 0; i--) {
-    const key = newKeyOrder[i]
-    if (key === undefined) continue
-    const entry = cache.get(key)
-    if (!entry) continue
-    if (!stay[i]) moveEntryBefore(parent, entry.anchor, entry.end, cursor)
-    cursor = entry.anchor
-  }
-}
 
-/** Grow LIS typed arrays if needed, then compute and apply reorder. */
-function keyedListReorder(
-  lis: LisState,
-  n: number,
-  newKeyOrder: (string | number)[],
-  curPos: Map<string | number, number>,
-  cache: Map<string | number, KeyedEntry>,
-  parent: Node,
-  tailMarker: Comment,
-): LisState {
-  const grown = growLisArrays(lis, n)
-  grown.pred.fill(-1, 0, n)
-  grown.stay.fill(0, 0, n)
-
-  const lisLen = computeKeyedLis(grown, n, newKeyOrder, curPos)
-  markStayingEntries(grown, lisLen)
-  applyKeyedMoves(n, newKeyOrder, grown.stay, cache, parent, tailMarker)
-
-  return grown
-}
 
 export function mountKeyedList(
   accessor: () => VNode[],
@@ -422,8 +337,9 @@ export function mountKeyedList(
   parent.insertBefore(startMarker, listAnchor)
   parent.insertBefore(tailMarker, listAnchor)
 
-  const cache = new Map<string | number, KeyedEntry>()
-  const curPos = new Map<string | number, number>()
+  // Entries carry their current position (`pos`), so a reorder runs through
+  // `<For>`'s own LIS (`forLisReorder`) — one reconciler core, not two.
+  const cache = new Map<string | number, ForEntry>()
   let currentKeyOrder: (string | number)[] = []
 
   // Starts as the shared zero-capacity state: the first reorder's
@@ -473,10 +389,9 @@ export function mountKeyedList(
     for (const [key, entry] of cache) {
       if (newKeySet.has(key)) continue
       _emitCleanup()
-      entry.cleanup()
+      ;(entry.cleanup as Cleanup)()
       entry.anchor.parentNode?.removeChild(entry.anchor)
       cache.delete(key)
-      curPos.delete(key)
     }
   }
 
@@ -492,7 +407,7 @@ export function mountKeyedList(
       // Content just mounted immediately before tailMarker — its last node is
       // tailMarker's previous sibling (or the anchor itself when empty).
       const last = tailMarker.previousSibling
-      cache.set(key, { anchor, cleanup, end: last === anchor ? null : last })
+      cache.set(key, { anchor, cleanup, pos: -1, end: last === anchor ? null : last, seen: 0 })
       added++
     }
     return added
@@ -505,7 +420,7 @@ export function mountKeyedList(
    * NEW keys inserted, mounting the run at its slot IS the whole update: no key
    * can be stale (`p + s === oldLen` proves every old key survives) and no
    * survivor moves — so the newKey-Set build + O(m) stale scan AND the O(n) LIS
-   * reorder are skipped. The caller's shared tail (curPos rebuild +
+   * reorder are skipped. The caller's shared tail (position rebuild +
    * `currentKeyOrder` assignment) still runs, so bookkeeping is untouched.
    *
    * Guards: bails when any vnode is KEYLESS (`newKeyOrder.length !== n` —
@@ -547,7 +462,7 @@ export function mountKeyedList(
       // Content just mounted immediately before `before` — its last node is
       // `before`'s previous sibling (or the anchor itself when empty).
       const last = before.previousSibling
-      cache.set(key, { anchor, cleanup, end: last === anchor ? null : last })
+      cache.set(key, { anchor, cleanup, pos: -1, end: last === anchor ? null : last, seen: 0 })
     }
     if (process.env.NODE_ENV !== 'production')
       _countSink.__pyreon_count__?.('runtime.mountFor.insertFast')
@@ -574,11 +489,10 @@ export function mountKeyedList(
   const dropKeyedState = () => {
     for (const entry of cache.values()) {
       _emitCleanup()
-      entry.cleanup()
+      ;(entry.cleanup as Cleanup)()
       entry.anchor.parentNode?.removeChild(entry.anchor)
     }
     cache.clear()
-    curPos.clear()
     currentKeyOrder = []
   }
 
@@ -636,10 +550,9 @@ export function mountKeyedList(
       if (n === 0 && cache.size > 0) {
         for (const entry of cache.values()) {
           _emitCleanup()
-          entry.cleanup()
+          ;(entry.cleanup as Cleanup)()
         }
         cache.clear()
-        curPos.clear()
         currentKeyOrder = []
         if (liveParent.firstChild === startMarker && liveParent.lastChild === tailMarker) {
           // Owns-parent bulk clear — the keyed-array sibling of mountFor's
@@ -659,7 +572,7 @@ export function mountKeyedList(
 
       // Pure contiguous insertion (append / prepend / middle-insert with all old
       // keys surviving in order) mounts the run and skips stale scan + reorder;
-      // the shared curPos/currentKeyOrder tail below still runs.
+      // the shared position/currentKeyOrder tail below still runs.
       if (!tryContiguousInsertionKeyed(newList, n, newKeyOrder, liveParent)) {
         // Pure-reorder skip (mirrors mountFor): mount new entries FIRST + count.
         // Nothing added AND the cache already holds exactly the keyed count means a
@@ -670,14 +583,13 @@ export function mountKeyedList(
         }
 
         if (currentKeyOrder.length > 0 && m > 0) {
-          lis = keyedListReorder(lis, m, newKeyOrder, curPos, cache, liveParent, tailMarker)
+          lis = forLisReorder(lis, m, newKeyOrder, cache, liveParent, tailMarker)
         }
       }
 
-      curPos.clear()
       for (let i = 0; i < newKeyOrder.length; i++) {
-        const k = newKeyOrder[i]
-        if (k !== undefined) curPos.set(k, i)
+        const entry = cache.get(newKeyOrder[i] as string | number)
+        if (entry) entry.pos = i
       }
       currentKeyOrder = newKeyOrder
     })
@@ -688,7 +600,7 @@ export function mountKeyedList(
     disposeUnkeyed()
     for (const entry of cache.values()) {
       _emitCleanup()
-      entry.cleanup()
+      ;(entry.cleanup as Cleanup)()
       entry.anchor.parentNode?.removeChild(entry.anchor)
     }
     cache.clear()
@@ -706,7 +618,7 @@ const SMALL_K = 8
 // a comment fallback for empty) — using the element saves 1 createComment + 1
 // DOM node per entry. pos is merged here rather than a separate Map to halve Map
 // operations. cleanup is null when there is no teardown work. end is the entry's
-// LAST DOM node, or null for the dominant single-node case — see KeyedEntry.end
+// LAST DOM node, or null for the dominant single-node case — see ForEntry.end
 // for the range contract.
 interface ForEntry {
   anchor: Node

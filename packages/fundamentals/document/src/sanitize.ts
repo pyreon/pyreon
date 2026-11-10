@@ -5,13 +5,23 @@
 
 /**
  * Sanitize a CSS value — strips characters that could break out of a CSS property.
- * Blocks: semicolons, braces, angle brackets, quotes, backslashes, expressions.
+ * Blocks: semicolons, braces, angle brackets, quotes, backslashes, expressions,
+ * and `&`.
+ *
+ * The value lands inside a `style="…"` ATTRIBUTE, which the browser
+ * entity-decodes BEFORE the CSS parser sees it. Stripping `;` from the raw
+ * string is therefore not enough: `50%&#59;position&#58;fixed` decodes to a
+ * second declaration. So the probe is decoded first (the same fixed-point
+ * decode the URL guards use) and every `&` left afterwards is removed — no
+ * character reference can be formed without one, including the named ones
+ * the decoder does not know (`&semi;`, `&lbrace;`). Decode-then-strip, in
+ * that order, so a decoded `;` is stripped like a typed one.
  */
 export function sanitizeCss(value: string | undefined): string {
   if (value == null) return ''
   // Remove anything that could break out of a CSS value
-  return value
-    .replace(/[;{}()<>\\'"]/g, '')
+  return decodeEntities(value)
+    .replace(/[;{}()<>\\'"&]/g, '')
     .replace(/expression\s*\(/gi, '')
     .replace(/url\s*\(/gi, '')
     .replace(/javascript\s*:/gi, '')
