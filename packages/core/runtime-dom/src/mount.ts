@@ -24,7 +24,6 @@ import {
   useContext,
 } from '@pyreon/core'
 import {
-  type EffectScope,
   effectScope,
   getContextOwner,
   renderEffect,
@@ -34,6 +33,7 @@ import {
   setCurrentScope,
 } from '@pyreon/reactivity'
 import { setupDelegation } from './delegate'
+import type { EffectScope } from '@pyreon/reactivity'
 import { registerComponent, unregisterComponent } from './devtools'
 import { _takePendingForAdoption, detachNode, mountFor, mountKeyedList, mountReactive } from './nodes'
 import { applyProps, applySelectValueProp } from './props'
