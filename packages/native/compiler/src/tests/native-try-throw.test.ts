@@ -180,7 +180,7 @@ describe('throw + try/catch/finally — emit shape', () => {
     const swift = code(src, 'swift')
     expect(swift).toContain('func safeAge(_ raw: String) -> Double')
     expect(swift).not.toContain('safeAge(_ raw: String) throws')
-    expect(swift).toMatch(/\} catch \{\s*return 0/)
+    expect(swift).toMatch(/\} catch _ \{\s*return 0/)
     expect(code(src, 'kotlin')).toContain('catch (pyreonCaught: Exception)')
   })
 

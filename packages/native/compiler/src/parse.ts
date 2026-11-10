@@ -2937,6 +2937,7 @@ function tryComponentFromTopLevel(node: AnyNode, ctx: ParseCtx): ComponentIR | n
             unwrapTypeLayers(declarator.init as AnyNode),
           )
         }
+        warnComponentBodyTimer(declarator, ctx)
         const decl = tryDeclFromVarDeclarator(declarator, ctx)
         // A plain `let` that a CLOSURE reassigns is component state in everything but name. As a value-const it
         // emits an immutable `let`/`val` (Swift: not in scope of the helper func; Kotlin: "val cannot be reassigned"),
@@ -4213,6 +4214,35 @@ function reassignedInClosure(name: string, body: readonly AnyNode[]): boolean {
     return false
   }
   return walk(body, false)
+}
+
+/**
+ * `const id = setInterval(…)` / `setTimeout(…)` written directly in a component body (#4251). On the web the body runs
+ * once, so it starts one timer at mount. Natively the declaration is a body-level value: SwiftUI re-evaluates `body`
+ * and Compose recomposes, so the timer starts again on every update, and a read of `id` (a `clearInterval(id)`) is
+ * inlined into a call that starts yet another timer and clears that one. Named rather than lowered: the documented
+ * shapes — the timer in an `onMount` (whose returned cleanup clears it), or started from a handler that keeps the id
+ * in a signal — lower correctly on both targets.
+ */
+function warnComponentBodyTimer(declarator: AnyNode, ctx: ParseCtx): void {
+  const init = declarator.init === undefined || declarator.init === null ? undefined : unwrapTypeLayers(declarator.init as AnyNode)
+  if (init?.type !== 'CallExpression') return
+  const callee = init.callee as AnyNode | undefined
+  const fn =
+    callee?.type === 'Identifier'
+      ? (callee.name as string)
+      : callee?.type === 'MemberExpression' &&
+          callee.object?.type === 'Identifier' &&
+          (callee.object.name === 'window' || callee.object.name === 'globalThis') &&
+          callee.property?.type === 'Identifier'
+        ? (callee.property.name as string)
+        : undefined
+  if (fn !== 'setInterval' && fn !== 'setTimeout') return
+  const name = declarator.id?.type === 'Identifier' ? (declarator.id.name as string) : 'id'
+  const clear = fn === 'setInterval' ? 'clearInterval' : 'clearTimeout'
+  ctx.warnings.push(
+    `\`const ${name} = ${fn}(…)\` is written directly in a component body. On the web the body runs once, so this starts one timer at mount; on iOS and Android the body is re-evaluated on every update (SwiftUI \`body\`, a Compose recomposition), so the timer starts again each time and \`${name}\` is not one stable id (a \`${clear}(${name})\` starts another timer and clears that one). Start it in \`onMount(() => { const ${name} = ${fn}(…); return () => ${clear}(${name}) })\`, or from an event handler that keeps the id in a signal.`,
+  )
 }
 
 function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {

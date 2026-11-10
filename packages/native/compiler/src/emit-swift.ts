@@ -3948,7 +3948,10 @@ function emitSwiftTry(s: Extract<StatementIR, { kind: 'try' }>, indent: number):
   )
   let core: string
   if (caught) {
-    const binder = s.catchParam !== undefined ? ` let ${swiftIdent(s.catchParam)}` : ''
+    // A bare `catch { … }` is `catch _`, never `catch`: Swift's bare catch binds an implicit `error`, which shadows a
+    // signal or local of that name, so `error.set('failed')` became `error = "failed"` against an immutable binding and
+    // failed to compile (#4251). Kotlin already names its binding `pyreonCaught`.
+    const binder = s.catchParam !== undefined ? ` let ${swiftIdent(s.catchParam)}` : ' _'
     const catchLines = emitSwiftStmtLines(s.catchBody!, inner + 2).join('\n')
     core = `${ipad}do {\n${bodyLines}\n${ipad}} catch${binder} {\n${catchLines}\n${ipad}}`
   } else {
