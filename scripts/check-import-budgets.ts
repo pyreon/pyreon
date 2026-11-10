@@ -171,6 +171,15 @@ export const SCENARIOS: Scenario[] = [
     imports: ['css'],
   },
   {
+    // Locks the import-chosen drag preview: a plain draggable must not carry
+    // pdnd's preview utilities (`setCustomNativeDragPreview` + offset presets),
+    // which `dragPreview()` brings in only when used.
+    id: '@pyreon/dnd::useDraggable',
+    pkg: '@pyreon/dnd',
+    dir: 'fundamentals/dnd',
+    imports: ['useDraggable'],
+  },
+  {
     id: '@pyreon/core::jsx',
     pkg: '@pyreon/core',
     dir: 'core/core',
