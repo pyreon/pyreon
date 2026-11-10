@@ -1768,9 +1768,12 @@ import { isRedirectError, getRedirectInfo } from '@pyreon/router'
 
 **`LoaderContext.request`** is populated when a loader runs during SSR (via `router.preload(path, request)` or `prefetchLoaderData(router, path, request)`) AND for serverLoaders run by the data endpoint on client navigations; `undefined` for isomorphic loaders running in the browser. This lets server-side loaders read cookies / auth headers and decide whether to `redirect()` BEFORE the layout renders.
 
-### notFound() — trigger a 404 boundary
+### notFound() — "matched route, missing resource"
 
-Throw `notFound()` inside a loader or a component to render the nearest `NotFoundBoundary` instead of the route. This is the "the route matched but the resource doesn't exist" case (e.g. `/user/999` where user 999 was deleted) — distinct from "no route matched at all".
+`notFound()` is the "the route matched but the resource doesn't exist" case (e.g. `/user/999` where user 999 was deleted) — distinct from "no route matched at all". Where you throw it decides what renders:
+
+- **From a loader** (`loader` or `serverLoader`): the navigation commits into the router's **not-found state** — `currentRoute()` resolves to the same chain an unmatched URL gets (the nearest `notFoundComponent` / `_404.tsx`, rendered inside its layouts) with `isNotFound: true`, keeping the URL, `params` and `query`. SSR answers HTTP **404** (string and stream mode; still 404 with an empty chain when no `notFoundComponent` exists), the loader-data blob carries a marker so the hydrating client resolves the same chain, the single-fetch data endpoint answers `{ "notFound": true }`, and a client navigation lands on the same page. `onError` is not called — like `redirect()`, it is flow control. The next navigation leaves the state.
+- **From a component** while it renders: the nearest `NotFoundBoundary` renders its fallback.
 
 ```tsx
 import { notFound, NotFoundBoundary, isNotFoundError } from '@pyreon/router'
@@ -1798,7 +1801,7 @@ function App() {
 }
 ```
 
-- **`notFound()`** — returns a sentinel error to `throw`. Catchable by the nearest `NotFoundBoundary`.
+- **`notFound()`** — throws a branded error (`=> never`). From a loader → the not-found state above; from a component → the nearest `NotFoundBoundary`.
 - **`NotFoundBoundary`** — renders its `fallback` when a descendant throws `notFound()`. Behaves like an error boundary scoped to not-found errors.
 - **`isNotFoundError(err)`** — type guard for custom error boundaries that need to distinguish not-found from other errors (re-throw everything else, render a 404 UI for this one).
 
@@ -1828,7 +1831,7 @@ interface ResolvedRoute {
 }
 ```
 
-`notFound()` (the thrown sentinel) and `notFoundComponent` / `_404.tsx` (the no-route-matched fallback) are complementary: the first is for "matched route, missing resource", the second for "URL matched nothing".
+`notFound()` (the thrown sentinel) and `notFoundComponent` / `_404.tsx` (the no-route-matched fallback) are complementary: the first is for "matched route, missing resource", the second for "URL matched nothing". A loader's `notFound()` renders the SAME `notFoundComponent` chain, so one `_404.tsx` serves both.
 
 ## Lazy Loading
 

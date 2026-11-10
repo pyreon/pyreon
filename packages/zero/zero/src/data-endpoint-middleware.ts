@@ -117,6 +117,14 @@ export function createDataEndpointMiddleware(routes: RouteRecord[]): Middleware 
           { status: 200, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } },
         )
       }
+      // A server loader threw `notFound()` — the client router renders the
+      // not-found page for this navigation (a payload, like a redirect).
+      if (result.kind === 'notFound') {
+        return new Response('{"notFound":true}', {
+          status: 200,
+          headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
+        })
+      }
       // `stringifyLoaderData` is the SAFE serializer (cycle detection with a
       // named path, function/symbol drops, `</script>` escaping). The keys
       // are matched-chain indices (numbers stringify cleanly).

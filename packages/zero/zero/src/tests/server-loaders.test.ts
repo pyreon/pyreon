@@ -150,6 +150,23 @@ describe('/_pyreon/data endpoint', () => {
     expect(await res.json()).toEqual({ redirect: { to: '/login', status: 302 } })
   })
 
+  it('notFound() from a server loader → { notFound: true } at HTTP 200, not a 500', async () => {
+    const { notFound } = await import('@pyreon/router')
+    const routes: RouteRecord[] = [
+      {
+        path: '/items/:id',
+        component: C,
+        serverLoader: async ({ params }) => (params.id === '1' ? { id: 1 } : notFound()),
+        hasServerLoader: true,
+      } as RouteRecord,
+    ]
+    const mw = createDataEndpointMiddleware(routes)
+    const res = (await mw(ctxFor('http://x/_pyreon/data?path=%2Fitems%2F9999'))) as Response
+    expect(res.status).toBe(200)
+    expect(res.headers.get('Cache-Control')).toBe('no-store')
+    expect(await res.json()).toEqual({ notFound: true })
+  })
+
   it('C-REGRESSION: layout loader + page serverLoader at SAME path do NOT collide', async () => {
     // The canonical auth-layout + server-data-page pattern. Pre-fix both
     // records keyed by path '/dash' collided and the page data was lost
