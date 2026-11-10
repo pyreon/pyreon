@@ -786,6 +786,86 @@ describe('computeAffectedFlags', () => {
   })
 })
 
+describe('computeAffectedFlags — requireScript (the test cells pass --script=test)', () => {
+  // bun exits 1 when EVERY package a filter matches lacks the script, and the
+  // message changed across bun releases (1.4.4: `Script "test" not found in N
+  // packages`), so the CI examples cell went red on every PR that touched a
+  // compat package: its example apps have no `test` script.
+  const S: Workspace[] = [
+    { name: '@pyreon/core', dir: `${ROOT}/packages/core/core`, deps: [], scriptNames: ['test'] },
+    {
+      name: '@pyreon/example-with-tests',
+      dir: `${ROOT}/examples/with-tests`,
+      deps: ['@pyreon/core'],
+      scriptNames: ['dev', 'test'],
+    },
+    {
+      name: '@pyreon/example-no-tests',
+      dir: `${ROOT}/examples/no-tests`,
+      deps: ['@pyreon/core'],
+      scriptNames: ['dev', 'build'],
+    },
+    // Hand-built fixture shape: no script list counts as "not declared".
+    { name: '@pyreon/example-unknown', dir: `${ROOT}/examples/unknown`, deps: ['@pyreon/core'] },
+  ]
+
+  it('drops affected packages without the script', () => {
+    expect(
+      computeAffectedFlags({
+        changed: ['packages/core/core/src/h.ts'],
+        workspaces: S,
+        category: 'examples',
+        root: ROOT,
+        requireScript: 'test',
+      }),
+    ).toBe('--filter=@pyreon/example-with-tests')
+  })
+
+  it('returns empty when no affected package has the script (cell skips instead of failing)', () => {
+    expect(
+      computeAffectedFlags({
+        changed: ['examples/no-tests/src/main.ts'],
+        workspaces: S,
+        category: 'examples',
+        root: ROOT,
+        requireScript: 'test',
+      }),
+    ).toBe('')
+  })
+
+  it('leaves the result unchanged when not asked', () => {
+    expect(
+      computeAffectedFlags({
+        changed: ['examples/no-tests/src/main.ts'],
+        workspaces: S,
+        category: 'examples',
+        root: ROOT,
+      }),
+    ).toBe('--filter=@pyreon/example-no-tests')
+  })
+
+  it('passes the full-suite escalation through unchanged', () => {
+    expect(
+      computeAffectedFlags({
+        changed: ['bun.lock'],
+        workspaces: S,
+        category: 'examples',
+        root: ROOT,
+        requireScript: 'test',
+      }),
+    ).toBe('--filter=*')
+  })
+
+  it('discoverWorkspaces records each package.json script list', () => {
+    const real = discoverWorkspaces()
+    const solid = real.find((w) => w.name === '@pyreon/example-solid-compat')
+    expect(solid?.scriptNames).toBeDefined()
+    expect(solid?.scriptNames).not.toContain('test')
+    const reactivity = real.find((w) => w.name === '@pyreon/reactivity')
+    expect(reactivity?.scriptNames).toContain('test')
+  })
+})
+
 describe('isE2eFile — must AGREE with e2e-affected on e2e/**', () => {
   // Same invariant as the scripts/** block above, on the shape it did not
   // cover. `e2e-affected.ts` lists `e2e/` as run-all-suites and no workspace
