@@ -239,6 +239,23 @@ describe('the CLI', () => {
     expect(gone.stderr).toMatch(/`missing\.json` does not exist at git revision `main`/)
   })
 
+  it('refuses a `<rev>:<path>` whose revision git would parse as an option, without calling git', async () => {
+    const calls: string[] = []
+    const fs: Fs = { ...memFs({ 'b.json': AFTER }), gitShow: (rev) => (calls.push(rev), undefined) }
+    // `git show --output=<file>:x` writes <file>; `--` makes parseArgv pass it through as a positional.
+    const out = await run(parseArgv(['diff', '--', '--output=/tmp/x:y', 'b.json']), undefined, fs)
+    expect(calls).toEqual([])
+    expect(out.code).toBe(2)
+    expect(out.stderr).toMatch(/`--output=\/tmp\/x` is not a git revision/)
+    // Ordinary revision expressions are still accepted.
+    const ok = await run(
+      parseArgv(['diff', 'HEAD~1:a.json', 'b.json']),
+      undefined,
+      { ...memFs({ 'b.json': AFTER }, { 'HEAD~1:a.json': BEFORE }) },
+    )
+    expect(ok.code).toBe(0)
+  })
+
   it('--json is the one report shape, with the diff inside; github returns a summary for the job page', async () => {
     const fs = memFs({ 'a.json': BEFORE, 'b.json': AFTER })
     const json = await run(parseArgv(['diff', 'a.json', 'b.json', '--json', '--fail-on-breaking']), undefined, fs)
