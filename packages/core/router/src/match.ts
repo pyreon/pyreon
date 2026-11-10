@@ -460,6 +460,13 @@ interface RouteIndex {
   /** O(1) lookup for fully static paths (including nested) */
   staticMap: Record<string, FlattenedRoute>
   /**
+   * Raw URL → the final frozen `ResolvedRoute`, for every `rawSafe` static
+   * entry without a validator: a static resolve is one probe and a return.
+   */
+  rawStatic: Record<string, ResolvedRoute>
+  /** Some `rawSafe` static entry has a validator, so lane 1 must also probe `staticMap`. */
+  validatedStatic: boolean
+  /**
    * First-segment dispatch: an open-addressed hash table (`firstKeys[j]` →
    * `firstDispatch[j]`, size a power of two, linear probing) from a route's
    * static first segment to its bucket. The fast lane hashes the
@@ -730,12 +737,20 @@ function buildRouteIndex(routes: RouteRecord[]): RouteIndex {
   // hostile keys (`__proto__`, `constructor`) plain own properties — the
   // same hardening radix3 relies on for its staticRoutesMap.
   const staticMap: Record<string, FlattenedRoute> = Object.create(null)
+  const rawStatic: Record<string, ResolvedRoute> = Object.create(null)
+  let validatedStatic = false
   const segmentMap: Record<string, FlattenedRoute[]> = Object.create(null)
   const dynamicFirst: FlattenedRoute[] = []
   const wildcards: FlattenedRoute[] = []
 
   for (const f of flattened) {
     indexFlatRoute(f, staticMap, segmentMap, dynamicFirst, wildcards)
+  }
+  for (const key in staticMap) {
+    const f = staticMap[key] as FlattenedRoute
+    if (!f.rawSafe) continue
+    if (f.staticResult !== null) rawStatic[key] = f.staticResult
+    else validatedStatic = true
   }
 
   // PR-S9: build the notFoundComponent trie at the same step. Walking
@@ -793,6 +808,8 @@ function buildRouteIndex(routes: RouteRecord[]): RouteIndex {
 
   const index: RouteIndex = {
     staticMap,
+    rawStatic,
+    validatedStatic,
     firstKeys,
     firstDispatch,
     firstMask,
@@ -1149,14 +1166,14 @@ function missResult(
  */
 export function resolveRoute(rawPath: string, routes: RouteRecord[]): ResolvedRoute {
   const index = getIndex(routes)
-
-  // Lane 1: the raw path IS a static key. Keys containing `?`/`#` are
-  // excluded (`rawSafe`): in a raw URL those characters are the query / hash
-  // separators, so such a route is reachable only through its %-encoded form
-  // via the general lane — exactly as before this shortcut existed.
-  const raw = index.staticMap[rawPath]
-  if (raw !== undefined && raw.rawSafe) {
-    return raw.staticResult ?? routeHit(raw, rawPath, EMPTY_PARAMS, EMPTY_QUERY, '')
+  const cached = index.rawStatic[rawPath]
+  if (cached !== undefined) return cached
+  // Lane 1 (rest): a raw static hit whose chain has a validator. Keys holding
+  // `?`/`#` are excluded (`rawSafe`) here and in `rawStatic`: in a raw URL
+  // those characters are the query / hash separators.
+  if (index.validatedStatic) {
+    const raw = index.staticMap[rawPath]
+    if (raw !== undefined && raw.rawSafe) return routeHit(raw, rawPath, EMPTY_PARAMS, EMPTY_QUERY, '')
   }
 
   // Lane 2: first-char fail-fast (see RouteIndex.firstCharMask). A path whose
@@ -1181,11 +1198,30 @@ export function resolveRoute(rawPath: string, routes: RouteRecord[]): ResolvedRo
       cc !== 35 &&
       !(cc < 128 && mask[cc] === 1))
   ) {
-    const cleanPath = splitUrl(rawPath, urlEnd(rawPath))
+    const end = urlEnd(rawPath)
+    const w = index.wildcards[0]
+    // The common miss — no query/hash, a catch-all without a validator — is
+    // built inline (no split, no helper calls).
+    if (end === rawPath.length && w !== undefined && w.validateFn === null) {
+      return {
+        path: rawPath,
+        params: EMPTY_PARAMS,
+        query: EMPTY_QUERY,
+        hash: '',
+        matched: w.matchedChain,
+        meta: w.meta,
+        search: EMPTY_SEARCH,
+      }
+    }
+    const cleanPath = splitUrl(rawPath, end)
     return missResult(index, routes, cleanPath, _url.query, _url.hash)
   }
 
   // Lane 3: the single-pass walk.
+  return resolveUncached(rawPath, routes, index)
+}
+
+function resolveUncached(rawPath: string, routes: RouteRecord[], index: RouteIndex): ResolvedRoute {
   const f = walkAll(index, rawPath, false)
   if (f === null) return resolveGeneral(rawPath, routes, index)
 
