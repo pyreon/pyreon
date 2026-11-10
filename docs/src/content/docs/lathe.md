@@ -672,7 +672,9 @@ gen/docs/models.md    the emitted types
 ```
 
 Markdown with frontmatter, so the pages drop into a `@pyreon/zero-content`
-collection unchanged and still read on GitHub with nothing installed.
+collection unchanged and still read on GitHub with nothing installed. Spec text
+is escaped for Markdown and MDX alike (zero-content compiles `.md` as MDX), so a
+`{…}` or `<…>` in a third-party spec renders as text and never runs.
 
 Kubb reaches for Redoc here, which renders the **spec**. That is a different
 document: it tells you the HTTP contract and leaves you to work out which
@@ -1403,9 +1405,11 @@ jobs:
       - run: bun install --frozen-lockfile
       - name: Diff the contract
         id: diff
+        env:
+          BASE_REF: ${{ github.base_ref }}
         run: |
           set +e
-          bunx lathe diff "origin/${{ github.base_ref }}:openapi.yaml" openapi.yaml \
+          bunx lathe diff "origin/${BASE_REF}:openapi.yaml" openapi.yaml \
             --format markdown --fail-on-breaking > contract.md
           echo "code=$?" >> "$GITHUB_OUTPUT"
       - name: Summary

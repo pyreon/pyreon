@@ -40,8 +40,9 @@ describe('gen-docs — store snapshot', () => {
       patch((state) => state.count.set(99))
 
       // Subscribe to mutations:
-      const unsub = subscribe((mutation, state) => {
+      const unsub = subscribe((mutation) => {
         console.log(mutation.type, mutation.events) // 'direct' | 'patch'
+        console.log(mutation.state) // lazy snapshot, built on first read
       })
 
       // Action interception:
