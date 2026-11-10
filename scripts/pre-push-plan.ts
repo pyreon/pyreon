@@ -12,7 +12,7 @@
  * explicit rule (`PATH_RULES`, documented in `.agents/rules/workflow.md`):
  * a workspace file → that workspace's typecheck and tests; a budgets JSON →
  * the tests that read it; a lockfile → a frozen-lockfile dry run; a workflow →
- * actionlint; an unknown root file → the `@pyreon/test-utils` suite. The hook
+ * the tests that read it; an unknown root file → the `@pyreon/test-utils` suite. The hook
  * never typechecks or tests beyond the directly changed packages (the
  * maintainer's standing rule: one heavy run at a time on a shared machine; the
  * reverse-dependency closure and the workspace typecheck are CI's).
@@ -93,8 +93,8 @@ export const PATH_RULES: ReadonlyArray<{ id: RuleId; match: string; checks: stri
   { id: 'root-tsconfig', match: 'root `tsconfig*.json`', checks: 'validate-fast only (`check-tsconfig-presets`); CI typechecks the workspace' },
   { id: 'install', match: '`bun.lock`, root `package.json`, `.bun-version`', checks: '`bun install --frozen-lockfile --dry-run`' },
   { id: 'root-vitest', match: 'root `vitest.*.ts` (every suite\'s setup)', checks: 'the `@pyreon/test-utils` suite as a setup smoke test' },
-  { id: 'workflow', match: '`.github/workflows/*`', checks: '`actionlint` on the changed files; the `@pyreon/test-utils` tests that name the file' },
-  { id: 'shared-action', match: '`.github/actions/**`', checks: '`actionlint` on every workflow; the `@pyreon/test-utils` tests that name the file' },
+  { id: 'workflow', match: '`.github/workflows/*`', checks: 'the `@pyreon/test-utils` tests that name the file (validate-fast runs the CI-config gates)' },
+  { id: 'shared-action', match: '`.github/actions/**`', checks: 'the `@pyreon/test-utils` tests that name the file' },
   { id: 'script', match: '`scripts/**`', checks: 'the `@pyreon/test-utils` tests that name the file or a script that imports or reads it; `@pyreon/test-utils` typecheck for code' },
   { id: 'repo-file', match: '`e2e/**`, `.claude/**`, `.githooks/**`', checks: 'the `@pyreon/test-utils` tests that name the file' },
   { id: 'prose', match: 'Markdown, `.agents/**`, `.changeset/**`, `llms*.txt` outside a workspace', checks: 'validate-fast only (plus the parser package of a doc input)' },
@@ -117,8 +117,6 @@ export interface Plan {
    * non-workspace files: the test files to run. `null` = the whole suite.
    */
   targetedTests: string[] | null
-  /** Workflow files for `actionlint` (`['*']` = every workflow). */
-  actionlint: string[]
   /** Run `bun install --frozen-lockfile --dry-run`. */
   installCheck: boolean
 }
@@ -230,7 +228,6 @@ export function computePlan(opts: {
   const seeds = new Set<string>()
   const leaves = new Set<string>()
   const observed: string[] = []
-  const actionlint = new Set<string>()
   let installCheck = false
   let fullTestUtils = unknownDiff
   let testUtilsTypecheck = false
@@ -256,11 +253,9 @@ export function computePlan(opts: {
         fullTestUtils = true
         break
       case 'workflow':
-        actionlint.add(path)
         observed.push(path)
         break
       case 'shared-action':
-        actionlint.add('*')
         observed.push(path)
         break
       case 'script':
@@ -314,7 +309,6 @@ export function computePlan(opts: {
     closureSize,
     groups,
     targetedTests,
-    actionlint: actionlint.has('*') ? ['*'] : [...actionlint].sort(),
     installCheck,
   }
 }

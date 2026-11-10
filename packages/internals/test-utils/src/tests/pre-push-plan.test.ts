@@ -116,12 +116,11 @@ describe('computePlan', () => {
     expect(p.groups.typecheck).toEqual(['@pyreon/styler'])
   })
 
-  it('a workflow gets actionlint on that file and the tests that read it; a shared action lints every workflow', () => {
+  it('a workflow runs the tests that read it — no local-only linter', () => {
     const p = plan(['.github/workflows/ci.yml'])
-    expect(p.actionlint).toEqual(['.github/workflows/ci.yml'])
+    expect(p).not.toHaveProperty('actionlint')
     expect(p.targetedTests).toEqual(['packages/internals/test-utils/src/tests/ci-yml.test.ts'])
     expect(p.groups.typecheck).toEqual([])
-    expect(plan(['.github/actions/setup/action.yml']).actionlint).toEqual(['*'])
   })
 
   it('a root vitest setup file runs the whole test-utils suite as a setup smoke test', () => {

@@ -32,8 +32,8 @@
  * Concurrent typecheck/test runs from several worktrees exhausted vitest and
  * kotlinc workers and raced over shared scratch paths, so the CPU-heavy part
  * (typecheck and tests) still runs under one lock per repository
- * (`<git common dir>/pyreon-pre-push.lock`). validate-fast, actionlint and the
- * lockfile check run outside it. A push that finds the lock held WAITS (inside
+ * (`<git common dir>/pyreon-pre-push.lock`). validate-fast and the lockfile
+ * check run outside it. A push that finds the lock held WAITS (inside
  * its own cap) and says who holds it, on which branch, doing what, for how
  * long. Because every holder is capped too, a wait is bounded by the cap.
  *
@@ -107,7 +107,7 @@ export interface Step {
   passes: string[]
   /** Learned-duration key; steps without one are always attempted. */
   durationKey?: string
-  /** Set when the step cannot run here at all (missing tool); listed as not checked. */
+  /** Set when the step cannot run here at all (a missing toolchain); listed as not checked. */
   unavailable?: string
 }
 
@@ -200,7 +200,7 @@ export async function runSteps(steps: readonly Step[], capMs: number, deps: RunD
 }
 
 /** Stand-alone checks that run before the lock. */
-function cheapSteps(plan: Plan, actionlintPath: string | null): Step[] {
+function cheapSteps(plan: Plan): Step[] {
   const steps: Step[] = [
     { id: 'validate-fast', label: 'validate-fast (lint, lint:pyreon, doc/dist/budget/manifest/CI-config gates)', argv: ['bun', 'run', 'validate-fast'], locked: false, passes: [] },
   ]
@@ -211,19 +211,6 @@ function cheapSteps(plan: Plan, actionlintPath: string | null): Step[] {
       argv: ['bun', 'install', '--frozen-lockfile', '--dry-run'],
       locked: false,
       passes: [],
-    })
-  }
-  if (plan.actionlint.length > 0) {
-    const files = plan.actionlint[0] === '*' ? [] : plan.actionlint
-    steps.push({
-      id: 'actionlint',
-      label: `actionlint ${files.length > 0 ? files.join(' ') : '(every workflow)'}`,
-      // Shellcheck off: its findings are style notes the workflows carry today;
-      // the workflow syntax, expression and type checks are what a push breaks.
-      argv: ['actionlint', '-shellcheck=', ...files],
-      locked: false,
-      passes: [],
-      ...(actionlintPath === null ? { unavailable: 'actionlint is not installed (brew install actionlint)' } : {}),
     })
   }
   return steps
@@ -238,7 +225,6 @@ export function buildSteps(opts: {
   workspaces: readonly WorkspaceInfo[]
   keys: ReadonlyMap<string, string>
   cache: PassCache
-  actionlintPath: string | null
   kotlinHome: string | null
 }): { steps: Step[]; cached: string[] } {
   const { plan, keys, cache } = opts
@@ -276,7 +262,7 @@ export function buildSteps(opts: {
     ...(env ? { env } : {}),
   })
 
-  const steps: Step[] = [...cheapSteps(plan, opts.actionlintPath)]
+  const steps: Step[] = [...cheapSteps(plan)]
   steps.push(...typecheckStep('typecheck', 'typecheck (changed packages)', plan.groups.typecheck))
   for (const pkg of plan.groups.test) {
     if (!fresh('test', pkg)) continue
@@ -536,14 +522,6 @@ function execStep(step: Step, budgetMs: number): Promise<Outcome> {
 
 // ── CLI ────────────────────────────────────────────────────────────────────
 
-function onPath(bin: string): string | null {
-  try {
-    return execFileSync('which', [bin], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim() || null
-  } catch {
-    return null
-  }
-}
-
 function git(args: string[]): string {
   try {
     return execFileSync('git', args, { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim()
@@ -587,7 +565,7 @@ async function main(): Promise<void> {
   const cache = useCache ? readCacheFile(cacheDir) : parseCache(null)
   const needsKotlin = plan.groups['native-vitest'].length + plan.groups['native-script'].length > 0
   const kotlinHome = needsKotlin ? (process.env.KOTLIN_HOME ?? detectKotlinHome()) : null
-  const { steps, cached } = buildSteps({ plan, workspaces, keys, cache, actionlintPath: onPath('actionlint'), kotlinHome })
+  const { steps, cached } = buildSteps({ plan, workspaces, keys, cache, kotlinHome })
 
   say(`checks what this push can break, within ${capSec}s; CI runs the full gate. Bypass: PYREON_SKIP_PRE_PUSH=1`)
   printPlan(plan, base, changed === null ? null : changed.length, cached, say)

@@ -109,11 +109,11 @@ describe('runSteps — the time cap', () => {
     expect(f.ran).toEqual(['a', 'broken'])
   })
 
-  it('lists an unavailable tool without failing', async () => {
+  it('lists an unavailable toolchain without failing', async () => {
     const f = fakeDeps({})
-    const r = await runSteps([step('actionlint', { unavailable: 'actionlint is not installed' })], 60_000, f.deps)
+    const r = await runSteps([step('native', { unavailable: 'kotlinc is not installed' })], 60_000, f.deps)
     expect(r.exitCode).toBe(0)
-    expect(r.unchecked[0]!.why).toBe('actionlint is not installed')
+    expect(r.unchecked[0]!.why).toBe('kotlinc is not installed')
     expect(f.ran).toEqual([])
   })
 })
@@ -282,7 +282,6 @@ describe('buildSteps', () => {
     closureSize: 0,
     groups: { typecheck: [], test: [], 'native-vitest': [], 'native-script': [] },
     targetedTests: null,
-    actionlint: [],
     installCheck: false,
     ...over,
   })
@@ -293,25 +292,22 @@ describe('buildSteps', () => {
       plan: plan({
         groups: { typecheck: ['@pyreon/a'], test: ['@pyreon/a'], 'native-vitest': ['@pyreon/native-compiler'], 'native-script': [] },
         installCheck: true,
-        actionlint: ['.github/workflows/ci.yml'],
       }),
       workspaces: WS,
       keys,
       cache: { version: 1, entries: {} },
-      actionlintPath: '/bin/actionlint',
       kotlinHome: '/k',
     })
     expect(steps.map((s) => [s.id, s.locked])).toEqual([
       ['validate-fast', false],
       ['install', false],
-      ['actionlint', false],
       ['typecheck', true],
       ['test:@pyreon/a', true],
       ['native-vitest:@pyreon/native-compiler', true],
     ])
-    expect(steps[5]!.argv).toEqual(['bun', 'run', 'test', '--', '--maxWorkers=4'])
-    expect(steps[5]!.env).toEqual({ KOTLIN_HOME: '/k' })
-    expect(steps[5]!.durationKey).toBe('test|@pyreon/native-compiler')
+    expect(steps[4]!.argv).toEqual(['bun', 'run', 'test', '--', '--maxWorkers=4'])
+    expect(steps[4]!.env).toEqual({ KOTLIN_HOME: '/k' })
+    expect(steps[4]!.durationKey).toBe('test|@pyreon/native-compiler')
   })
 
   it('skips what already passed with identical inputs, and a targeted test-utils run records no pass', () => {
@@ -323,7 +319,6 @@ describe('buildSteps', () => {
       workspaces: WS,
       keys,
       cache: { version: 1, entries: { [entryKey('typecheck', '@pyreon/a', 'k-@pyreon/a')]: 1, [entryKey('test', '@pyreon/a', 'k-@pyreon/a')]: 1 } },
-      actionlintPath: null,
       kotlinHome: null,
     })
     expect(cached).toEqual(['typecheck @pyreon/a', 'test @pyreon/a'])
@@ -333,19 +328,5 @@ describe('buildSteps', () => {
     expect(targeted.argv).toEqual(['bun', 'run', 'test', '--', 'src/tests/budgets.test.ts'])
     expect(targeted.cwd).toBe('/r/packages/internals/test-utils')
     expect(targeted.passes).toEqual([])
-  })
-
-  it('marks actionlint unavailable rather than failing when it is not installed', () => {
-    const { steps } = buildSteps({
-      plan: plan({ actionlint: ['*'] }),
-      workspaces: WS,
-      keys,
-      cache: { version: 1, entries: {} },
-      actionlintPath: null,
-      kotlinHome: null,
-    })
-    expect(steps.find((s) => s.id === 'actionlint')).toEqual(
-      expect.objectContaining({ argv: ['actionlint', '-shellcheck='], unavailable: expect.stringMatching(/not installed/) }),
-    )
   })
 })

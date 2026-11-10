@@ -214,27 +214,27 @@ Restack in dependency order, not PR order. Never use a bare `git stash pop` duri
 | root `tsconfig*.json` | validate-fast only (`check-tsconfig-presets`); CI typechecks the workspace |
 | `bun.lock`, root `package.json`, `.bun-version` | `bun install --frozen-lockfile --dry-run` |
 | root `vitest.*.ts` (every suite's setup) | the `@pyreon/test-utils` suite as a setup smoke test |
-| `.github/workflows/*` | `actionlint -shellcheck=` on the changed files; the `@pyreon/test-utils` tests that name the file |
-| `.github/actions/**` | `actionlint -shellcheck=` on every workflow; the tests that name the file |
+| `.github/workflows/*`, `.github/actions/**` | the `@pyreon/test-utils` tests that name the file (validate-fast already runs the CI-config gates) |
 | `scripts/**` | the `@pyreon/test-utils` tests that name the file, or name a script that imports or reads it (transitively, comments ignored); `@pyreon/test-utils` typecheck when it is code. `scripts/bundle-budgets.json` → the 8 test files that read it, not the 137-file suite |
 | `e2e/**`, `.claude/**`, `.githooks/**` | the `@pyreon/test-utils` tests that name the file |
 | Markdown, `.agents/**`, `.changeset/**`, `llms*.txt` outside a workspace | nothing beyond validate-fast (a doc input also runs its parser package, e.g. `anti-patterns.md` → `@pyreon/mcp`) |
 | any other root file | fallback: the full `@pyreon/test-utils` suite (the package that tests repository-level files) |
 
-validate-fast (lint, `lint:pyreon`, the doc/dist/budget/manifest/CI-config gates in `scripts/validate-fast.ts`) runs on every push. The hook never typechecks or tests beyond the directly changed packages: the machine is shared and allows one heavy run at a time, and the reverse-dependency closure and the workspace typecheck are CI's. Packages under `packages/native/` run only when they themselves changed (`--maxWorkers=4` for vitest suites, `KOTLIN_HOME` derived from the `kotlinc` on PATH). `actionlint` is a local extra that CI does not run yet; without it installed the step is listed as not checked.
+validate-fast (lint, `lint:pyreon`, the doc/dist/budget/manifest/CI-config gates in `scripts/validate-fast.ts`) runs on every push. The hook never typechecks or tests beyond the directly changed packages: the machine is shared and allows one heavy run at a time, and the reverse-dependency closure and the workspace typecheck are CI's. Packages under `packages/native/` run only when they themselves changed (`--maxWorkers=4` for vitest suites, `KOTLIN_HOME` derived from the `kotlinc` on PATH).
 
 Order and time:
 
-- Checks run cheapest and most likely first: validate-fast, the lockfile dry run, actionlint, then (under the lock) the changed packages' typecheck (one package at a time), their tests, the native suites. The cap therefore drops the slow tail first.
+- Checks run cheapest and most likely first: validate-fast, the lockfile dry run, then (under the lock) the changed packages' typecheck (one package at a time), their tests, the native suites. The cap therefore drops the slow tail first.
 - **One wall-clock cap for the whole run, lock wait included: 300 s** (`PYREON_PRE_PUSH_CAP_SEC`; `PYREON_PRE_PUSH_TIMEOUT_SEC` is an alias). Measured 2026-11-10 at load 10–80: validate-fast 10–36 s, the full `@pyreon/test-utils` suite 38 s, the largest web package suites 8–22 s, whole example pushes 12–40 s. It is kept short for a second reason: git opens the SSH connection before the hook and leaves it idle, and GitHub drops an idle session after some minutes, so a long hook fails the push it validated (seen with a 20-minute hook; the exact window is unmeasured).
-- **On the cap the hook fails OPEN**: it stops the running check, prints every check it did not run with the reason, and lets the push through. Each of those runs in CI behind a required check, so the cost is at most a CI round trip; failing closed on a clock is what made everyone skip the hook. A check that FAILS always blocks the push.
+- **A failing check blocks the push; a timeout does not.** On the cap the hook stops the running check, prints every check it did not run with the reason, and lets the push through: a push is reversible and CI runs every one of those checks behind a required check, so the cost is at most a CI round trip. Failing closed on a clock is what made everyone skip the hook.
 - A suite whose last recorded duration exceeds the time left is not started (it could only be killed at the cap) and is listed as not checked. Durations live in `<git common dir>/pyreon-pre-push-durations.json` (latest per suite, capped at 500 entries and 30 days).
 
 Lock:
 
-- Only the CPU-heavy part (typecheck and tests) runs under the per-repository lock (`<git common dir>/pyreon-pre-push.lock`; concurrent walls exhausted vitest/kotlinc workers and raced over shared scratch). validate-fast, the lockfile check and actionlint run outside it.
+- Only the CPU-heavy part (typecheck and tests) runs under the per-repository lock (`<git common dir>/pyreon-pre-push.lock`; concurrent walls exhausted vitest/kotlinc workers and raced over shared scratch). validate-fast and the lockfile check run outside it.
 - A push that finds the lock held waits inside its own cap, and every 30 s names the holder: pid, branch, worktree, the check it is running and for how long. Every holder is capped too, so the wait is bounded. If the cap runs out first, the locked checks are listed as not checked.
 - A lock whose holder process is gone is reclaimed. The lock still writes `pid` first, so an older hook in another worktree reads it.
+- The lock is shared by every worktree of the repository, and each worktree runs its OWN checked-out copy of `.githooks/pre-push`. A stale worktree on an old branch therefore still runs the old hook, which can hold the lock for its full uncapped wall (seen 2026-11-10: a pre-#4148 hook from the primary checkout held it for 15+ minutes). The new runner's wait stays inside its cap and names the holder (`held by pid 63734 (an older hook that records no details)`); update or remove stale worktrees rather than skipping the hook.
 
 Pass cache:
 
