@@ -1,0 +1,43 @@
+{
+  "id": "next",
+  "label": "Next.js 16 (App Router)",
+  "docs": [
+    "https://nextjs.org/docs/app/getting-started/fetching-data",
+    "https://nextjs.org/docs/app/api-reference/functions/connection",
+    "https://nextjs.org/docs/app/guides/forms",
+    "https://nextjs.org/docs/app/getting-started/mutating-data",
+    "https://nextjs.org/docs/app/api-reference/functions/redirect",
+    "https://nextjs.org/docs/app/api-reference/functions/not-found",
+    "https://nextjs.org/docs/app/getting-started/server-and-client-components",
+    "https://nextjs.org/docs/app/getting-started/deploying",
+    "https://nextjs.org/docs/app/guides/self-hosting"
+  ],
+  "packages": [
+    "next",
+    "react",
+    "react-dom"
+  ],
+  "build": [
+    "npm",
+    "run",
+    "build"
+  ],
+  "start": [
+    "node",
+    "node_modules/next/dist/bin/next",
+    "start"
+  ],
+  "dataFile": "lib/data.ts",
+  "hydration": "full",
+  "streaming": "streamed (React Fizz renderToReadableStream + inline RSC Flight payload, Transfer-Encoding: chunked; no Suspense boundaries, so the whole page is one shell flushed in ~12 chunks in the same tick)",
+  "notes": [
+    "Start: `next start` (node node_modules/next/dist/bin/next start). The Deploying/Self-hosting docs present `next start` as the Node.js server that supports all features; `output: \"standalone\"` is documented only as the Docker-image-size option, so it is not used.",
+    "`next start` honours PORT but not HOST (it takes -H / --hostname); it binds to all interfaces (*:PORT). Loopback traffic is unaffected.",
+    "Compression: Next default compress: true (gzip) is left on. With no Accept-Encoding the response is identity; with Accept-Encoding: gzip it answers Content-Encoding: gzip.",
+    "/items is dynamic (ƒ in the build output) via `await connection()` in the page (the documented replacement for unstable_noStore; cacheComponents is off, the default). /items/[id] has no generateStaticParams so it renders on demand.",
+    "Per request on /items: route match, RSC render of the server component tree (listItems() once), Flight payload serialised and inlined into the HTML, Fizz SSR of the client components (Counter, AddItemForm). Response carries Cache-Control: private, no-cache, no-store and X-Powered-By.",
+    "Form: client component with useActionState(createItem) per the Forms guide (validation errors); the action validates, addItem, revalidatePath(\"/items\"), redirect(`/items/${id}`). React renders <form action=\"\" encType=\"multipart/form-data\" method=\"POST\"> for progressive enhancement.",
+    "next/link default prefetch: in production every in-viewport <Link> is prefetched on the client after hydration (the 100 item links trigger RSC prefetch requests); left at the default per CONTRACT.",
+    "Telemetry: NEXT_TELEMETRY_DISABLED=1 in the build script; the harness sets it at start."
+  ]
+}

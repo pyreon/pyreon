@@ -250,3 +250,25 @@ describe('the LPIH cache write validates before it touches disk', () => {
       })
   })
 })
+
+// The handler built the request as `new URL(url, origin)`, so a
+// request-target of `//other.host/x` (or an absolute-form one) gave the page a
+// URL whose ORIGIN the client chose. The origin comes from Host only.
+describe('the dev request URL takes its origin from Host only', () => {
+  it.each([
+    ['//attacker.example/page', 'http://victim.example//attacker.example/page'],
+    ['/\\attacker.example/page', 'http://victim.example//attacker.example/page'],
+    ['http://attacker.example/page?a=1', 'http://victim.example/page?a=1'],
+    ['/page?a=1', 'http://victim.example/page?a=1'],
+  ])('%s', async (target, expected) => {
+    const { run, seen } = harness()
+    await run(target, { headers: { host: 'victim.example' } })
+    expect(seen.request?.url).toBe(expected)
+  })
+
+  it('a Host that cannot form an origin falls back to localhost', async () => {
+    const { run, seen } = harness()
+    await run('/page', { headers: { host: 'victim.example/evil' } })
+    expect(seen.request?.url).toBe('http://localhost/page')
+  })
+})

@@ -101,7 +101,7 @@ export async function main(
           path.startsWith("./") || path.startsWith("../") || path.startsWith("/")
             ? path
             : `./${path}`;
-        const r = spawnSync("git", ["show", `${rev}:${rel}`], {
+        const r = spawnSync("git", ["show", "--end-of-options", `${rev}:${rel}`], {
           cwd,
           env,
           encoding: "utf8",
