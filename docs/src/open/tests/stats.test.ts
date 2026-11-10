@@ -35,6 +35,16 @@ const healthy: Route = (url) => {
       link: '<https://api.github.com/repositories/1/contributors?per_page=1&page=2>; rel="next", <https://api.github.com/repositories/1/contributors?per_page=1&page=17>; rel="last"',
     })
   }
+  if (url.includes('/commits?sha=main')) {
+    return json([{ sha: 'a' }], 200, {
+      link: '<https://api.github.com/repositories/1/commits?sha=main&per_page=1&page=2>; rel="next", <https://api.github.com/repositories/1/commits?sha=main&per_page=1&page=3895>; rel="last"',
+    })
+  }
+  if (url.includes('/releases?per_page=1')) {
+    return json([{ id: 1 }], 200, {
+      link: '<https://api.github.com/repositories/1/releases?per_page=1&page=2004>; rel="last"',
+    })
+  }
   if (url.endsWith('/releases/latest')) {
     return json({ tag_name: 'v0.53.0', published_at: '2026-10-13T08:24:31Z', html_url: 'https://github.com/pyreon/pyreon/releases/tag/v0.53.0' })
   }
@@ -53,7 +63,7 @@ const fetchOf = (route: Route) => {
   return { fetch, calls }
 }
 
-const REPO: RepoStats = { publishedPackages: 77, lintRules: 133, lintCategories: 25, mcpTools: 24, docPages: 223, testFiles: 3800 }
+const REPO: RepoStats = { publishedPackages: 77, lintRules: 133, lintCategories: 25, mcpTools: 24, docPages: 223, testFiles: 3800, browserTestFiles: 274 }
 const NO_WAIT = { retryDelaysMs: [0] }
 
 describe('fetchOpenStats — every source answering', () => {
@@ -68,6 +78,8 @@ describe('fetchOpenStats — every source answering', () => {
       closedIssues: { ok: true, value: 210 },
       mergedPrs: { ok: true, value: 4100 },
       contributors: { ok: true, value: 17 },
+      commits: { ok: true, value: 3895 },
+      releases: { ok: true, value: 2004 },
       latestRelease: {
         ok: true,
         value: { tag: 'v0.53.0', date: '2026-10-13T08:24:31Z', url: 'https://github.com/pyreon/pyreon/releases/tag/v0.53.0' },
@@ -93,8 +105,16 @@ describe('fetchOpenStats — every source answering', () => {
     }
     await fetchGithubStats({ fetch, ...NO_WAIT })
     await fetchGithubStats({ fetch, githubToken: 'abc', ...NO_WAIT })
-    expect(seen.slice(0, 6).every((h) => h === null)).toBe(true)
-    expect(seen.slice(6).every((h) => h === 'Bearer abc')).toBe(true)
+    const half = seen.length / 2
+    expect(seen.slice(0, half).every((h) => h === null)).toBe(true)
+    expect(seen.slice(half).every((h) => h === 'Bearer abc')).toBe(true)
+  })
+
+  it('never counts commits from the checkout: a 404 for main is unavailable, not a guess', async () => {
+    const { fetch } = fetchOf((url, init) => (url.includes('/commits?') ? json({ message: 'No commit found' }, 404) : healthy(url, init)))
+    const gh = await fetchGithubStats({ fetch, ...NO_WAIT })
+    expect(gh.commits).toEqual({ ok: false, reason: 'HTTP 404' })
+    expect(gh.releases).toEqual({ ok: true, value: 2004 })
   })
 
   it('counts contributors from the body when there is only one page', async () => {

@@ -15,6 +15,8 @@ const allDown: OpenStats = {
     closedIssues: down,
     mergedPrs: down,
     contributors: down,
+    commits: down,
+    releases: down,
     latestRelease: down,
   },
   npm: {
@@ -35,13 +37,15 @@ const allUp: OpenStats = {
     closedIssues: ok(210),
     mergedPrs: ok(4100),
     contributors: ok(17),
+    commits: ok(3895),
+    releases: ok(2004),
     latestRelease: ok({ tag: 'v0.53.0', date: '2026-10-13T08:24:31Z', url: 'https://github.com/pyreon/pyreon/releases/tag/v0.53.0' }),
   },
   npm: {
     packages: [{ name: '@pyreon/core', weekly: ok(273), monthly: ok(1980) }],
     trend: ok({ label: '@pyreon/core', points: [{ week: '2026-11-03', downloads: 273 }] }),
   },
-  repo: ok({ publishedPackages: 77, lintRules: 133, lintCategories: 25, mcpTools: 24, docPages: 223, testFiles: 3805 }),
+  repo: ok({ publishedPackages: 77, lintRules: 133, lintCategories: 25, mcpTools: 24, docPages: 223, testFiles: 3805, browserTestFiles: 274 }),
 }
 
 const textOf = (html: string) => html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ')
@@ -50,8 +54,8 @@ describe('OpenStatsView', () => {
   it('renders every missing number as unavailable, never as zero', async () => {
     const html = await renderToString(h(OpenStatsView, { stats: allDown }))
     const text = textOf(html)
-    // 7 GitHub tiles + 3 npm tiles + 5 repo tiles, and the chart's notice.
-    expect(text.split(UNAVAILABLE).length - 1).toBe(16)
+    // 8 tiles in "The work" + 3 npm + 5 community, and the chart's notice.
+    expect(text.split(UNAVAILABLE).length - 1).toBe(17)
     expect(html).not.toMatch(/open-tile__value">0</)
     expect(text).toContain('Last updated 10 November 2026, 00:07 UTC')
     expect(text).toContain('Download history is unavailable right now')
@@ -59,9 +63,17 @@ describe('OpenStatsView', () => {
 
   it('renders the numbers it has', async () => {
     const text = textOf(await renderToString(h(OpenStatsView, { stats: allUp })))
-    for (const shown of ['1,234', '4,100', 'v0.53.0', '13 October 2026', '273', '1,980 in the last 30 days', '133', 'in 25 categories', '3,805']) {
+    for (const shown of ['1,234', '4,100', '3,895', '2,004', 'Latest: v0.53.0, 13 October 2026', '273', '1,980 in the last 30 days', '133', 'in 25 categories', '3,805', '274 of them run in real Chromium']) {
       expect(text).toContain(shown)
     }
     expect(text).not.toContain(UNAVAILABLE)
+  })
+
+  it('leads with the work, then downloads, then the community, then benchmarks', async () => {
+    const html = await renderToString(h(OpenStatsView, { stats: allUp }))
+    const order = ['id="open-work"', 'id="open-npm"', 'id="open-community"', 'id="open-bench"'].map((id) => html.indexOf(id))
+    expect(order.every((i) => i >= 0)).toBe(true)
+    expect([...order].sort((a, b) => a - b)).toEqual(order)
+    expect(html).toContain('Star the repo on GitHub')
   })
 })

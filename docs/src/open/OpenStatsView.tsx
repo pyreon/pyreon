@@ -5,6 +5,7 @@ import {
   formatDay,
   formatTimestamp,
   type OpenStats,
+  type RepoStats,
   type Stat,
   REPO,
 } from './stats'
@@ -88,51 +89,68 @@ export function OpenStatsView(props: { stats: OpenStats }) {
   const gh = stats.github
   const release = gh.latestRelease
   const repo = stats.repo
+  const fromRepo = (key: keyof RepoStats): Stat<number> =>
+    repo.ok ? { ok: true, value: repo.value[key] } : repo
 
   return (
     <div class="site-page open-page">
       <header class="site-page__hero">
         <p class="site-page__eyebrow">Open stats</p>
-        <h1>Everything in the open</h1>
+        <h1>Built in the open. Counted in public.</h1>
         <p class="site-page__lead">
-          Stars, downloads, issues, releases: every number on this page comes straight from
-          GitHub, npm and the repository itself, refreshed by each deploy. Nobody types them in,
-          nobody rounds them up.
+          Every number on this page is pulled from GitHub, npm and the repository itself on every
+          daily deploy. Nobody types them in, nobody rounds them up. Here is what has shipped.
         </p>
         <p class="open-updated">
           Last updated <time datetime={stats.generatedAt}>{formatTimestamp(stats.generatedAt)}</time>
         </p>
       </header>
 
-      <section class="site-section" aria-labelledby="open-github">
-        <h2 id="open-github">On GitHub</h2>
-        <div class="open-grid">
-          <Tile label="Stars" stat={gh.stars} href={`${GITHUB}/stargazers`} />
-          <Tile label="Forks" stat={gh.forks} href={`${GITHUB}/forks`} />
-          <Tile label="Contributors" stat={gh.contributors} href={`${GITHUB}/graphs/contributors`} />
-          <Tile label="Merged pull requests" stat={gh.mergedPrs} href={`${GITHUB}/pulls?q=is%3Apr+is%3Amerged`} />
-          <Tile label="Open issues" stat={gh.openIssues} href={`${GITHUB}/issues`} />
-          <Tile label="Closed issues" stat={gh.closedIssues} href={`${GITHUB}/issues?q=is%3Aissue+is%3Aclosed`} />
-          {release.ok ? (
-            <a class="open-tile open-tile--link" href={release.value.url} rel="noopener">
-              <span class="open-tile__label">Latest release</span>
-              <span class="open-tile__value">{release.value.tag}</span>
-              <span class="open-tile__hint">{formatDay(release.value.date)}</span>
-            </a>
-          ) : (
-            <div class="open-tile">
-              <span class="open-tile__label">Latest release</span>
-              <span class="open-tile__value open-tile__value--missing" title={release.reason}>
-                {UNAVAILABLE}
-              </span>
-            </div>
-          )}
+      <section class="site-section" aria-labelledby="open-work">
+        <h2 id="open-work">The work</h2>
+        <p class="site-section__intro">
+          Commits, pull requests, releases, packages and tests, counted straight from the source.
+        </p>
+        <div class="open-grid open-grid--hero">
+          <Tile label="Commits on main" stat={gh.commits} href={`${GITHUB}/commits/main`} />
+          <Tile
+            label="Merged pull requests"
+            stat={gh.mergedPrs}
+            href={`${GITHUB}/pulls?q=is%3Apr+is%3Amerged`}
+          />
+          <Tile
+            label="Releases published"
+            stat={gh.releases}
+            hint={release.ok ? `Latest: ${release.value.tag}, ${formatDay(release.value.date)}` : undefined}
+            href={release.ok ? release.value.url : `${GITHUB}/releases`}
+          />
+          <Tile label="Published packages" stat={fromRepo('publishedPackages')} href="/docs/package-catalog" />
+          <Tile
+            label="Test files"
+            stat={fromRepo('testFiles')}
+            hint={repo.ok ? `${formatCount(repo.value.browserTestFiles)} of them run in real Chromium` : undefined}
+          />
+          <Tile
+            label="Lint rules"
+            stat={fromRepo('lintRules')}
+            hint={repo.ok ? `in ${repo.value.lintCategories} categories` : undefined}
+            href="/docs/lint"
+          />
+          <Tile label="MCP tools" stat={fromRepo('mcpTools')} href="/docs/mcp" />
+          <Tile label="Docs pages" stat={fromRepo('docPages')} href="/docs/getting-started" />
         </div>
+        <p class="open-note">
+          Repository counts come from the same code as the{' '}
+          <a href={`${GITHUB}/blob/main/scripts/check-doc-claims.ts`} rel="noopener">
+            doc-claims check
+          </a>
+          , which fails CI the moment a number in the docs drifts from the code.
+        </p>
       </section>
 
       <section class="site-section" aria-labelledby="open-npm">
-        <h2 id="open-npm">On npm</h2>
-        <p class="site-section__intro">Downloads in the last 7 days, with the last 30 underneath.</p>
+        <h2 id="open-npm">Downloads</h2>
+        <p class="site-section__intro">Installs from npm in the last 7 days, with the last 30 underneath.</p>
         <div class="open-grid">
           {stats.npm.packages.map((p) => (
             <Tile
@@ -146,29 +164,34 @@ export function OpenStatsView(props: { stats: OpenStats }) {
         <DownloadTrend stats={stats} />
       </section>
 
-      <section class="site-section" aria-labelledby="open-repo">
-        <h2 id="open-repo">Inside the repository</h2>
+      <section class="site-section" aria-labelledby="open-community">
+        <h2 id="open-community">Community</h2>
         <p class="site-section__intro">
-          Counted from the source by the same code that keeps the docs honest: the{' '}
-          <a href={`${GITHUB}/blob/main/scripts/check-doc-claims.ts`} rel="noopener">
-            doc-claims check
-          </a>{' '}
-          fails CI when a number in the docs drifts from the code.
+          This is where it starts. The first stars, the first forks and the first outside
+          contributors are being counted right now, and yours can be one of them.
         </p>
         <div class="open-grid">
+          <Tile label="Stars" stat={gh.stars} href={`${GITHUB}/stargazers`} />
+          <Tile label="Forks" stat={gh.forks} href={`${GITHUB}/forks`} />
+          <Tile label="Contributors" stat={gh.contributors} href={`${GITHUB}/graphs/contributors`} />
+          <Tile label="Open issues" stat={gh.openIssues} href={`${GITHUB}/issues`} />
           <Tile
-            label="Published packages"
-            stat={repo.ok ? { ok: true, value: repo.value.publishedPackages } : repo}
+            label="Closed issues"
+            stat={gh.closedIssues}
+            href={`${GITHUB}/issues?q=is%3Aissue+is%3Aclosed`}
           />
-          <Tile
-            label="Lint rules"
-            stat={repo.ok ? { ok: true, value: repo.value.lintRules } : repo}
-            hint={repo.ok ? `in ${repo.value.lintCategories} categories` : undefined}
-          />
-          <Tile label="MCP tools" stat={repo.ok ? { ok: true, value: repo.value.mcpTools } : repo} />
-          <Tile label="Docs pages" stat={repo.ok ? { ok: true, value: repo.value.docPages } : repo} />
-          <Tile label="Test files" stat={repo.ok ? { ok: true, value: repo.value.testFiles } : repo} />
         </div>
+        <p class="site-actions">
+          <a class="site-button site-button--primary" href={GITHUB} rel="noopener">
+            Star the repo on GitHub
+          </a>
+          <a class="site-button" href={`${GITHUB}/issues`} rel="noopener">
+            Find an issue to pick up
+          </a>
+          <a class="site-button" href={`${GITHUB}/blob/main/CONTRIBUTING.md`} rel="noopener">
+            Read the contributing guide
+          </a>
+        </p>
       </section>
 
       <section class="site-section open-bench" aria-labelledby="open-bench">

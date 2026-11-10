@@ -79,6 +79,7 @@ async function collect(repoRoot: string): Promise<OpenStats> {
         mcpTools: counts.mcpTools,
         docPages: counts.docPages,
         testFiles: countTestFiles(repoRoot),
+        browserTestFiles: countTestFiles(repoRoot, BROWSER_TEST_FILE),
       }
     },
   )
@@ -99,10 +100,11 @@ function report(stats: OpenStats, logger: Logger | null): void {
 }
 
 const TEST_FILE = /\.(test|spec)\.tsx?$/
+const BROWSER_TEST_FILE = /\.browser\.test\.tsx?$/
 const SKIP_DIRS = new Set(['node_modules', 'lib', 'dist', 'build', 'coverage'])
 
 /** Test files in the repo — `*.test.ts(x)` and `*.spec.ts(x)`, outside build output. */
-export function countTestFiles(repoRoot: string): number {
+export function countTestFiles(repoRoot: string, pattern: RegExp = TEST_FILE): number {
   let count = 0
   const walk = (dir: string): void => {
     let entries
@@ -114,7 +116,7 @@ export function countTestFiles(repoRoot: string): number {
     for (const entry of entries) {
       if (entry.name.startsWith('.') || SKIP_DIRS.has(entry.name)) continue
       if (entry.isDirectory()) walk(join(dir, entry.name))
-      else if (entry.isFile() && TEST_FILE.test(entry.name)) count++
+      else if (entry.isFile() && pattern.test(entry.name)) count++
     }
   }
   for (const top of ['packages', 'examples', 'e2e', 'docs', 'scripts']) walk(join(repoRoot, top))

@@ -23,6 +23,10 @@ export interface GithubStats {
   closedIssues: Stat<number>
   mergedPrs: Stat<number>
   contributors: Stat<number>
+  /** Commits on `main`, from the API — a PR checkout's HEAD is a merge ref, not main. */
+  commits: Stat<number>
+  /** GitHub releases published (one per package release). */
+  releases: Stat<number>
   latestRelease: Stat<Release>
 }
 
@@ -57,6 +61,8 @@ export interface RepoStats {
   mcpTools: number
   docPages: number
   testFiles: number
+  /** `*.browser.test.ts(x)` files: the suites that run in real Chromium. */
+  browserTestFiles: number
 }
 
 export interface OpenStats {
@@ -212,18 +218,21 @@ export async function fetchGithubStats(options: FetchOptions): Promise<GithubSta
     return { openIssues, closedIssues, mergedPrs }
   })()
 
-  const contributors = settle<number>(async () => {
-    const res = await withRetry(options, () =>
-      getJson(options.fetch, `${api}/repos/${REPO}/contributors?per_page=1&anon=false`, headers, timeoutMs),
-    )
-    if (res.status !== 200) return unavailable(httpReason(res.status))
-    // One contributor per page: the `last` page number IS the count.
-    const link = res.headers.get('link') ?? ''
-    const last = /[?&]page=(\d+)>;\s*rel="last"/.exec(link)
-    if (last?.[1]) return { ok: true, value: Number(last[1]) }
-    if (Array.isArray(res.body)) return { ok: true, value: res.body.length }
-    return unavailable('unexpected response')
-  })
+  // A list endpoint asked for one item per page: the `last` page number IS
+  // the count. One page (no `last` link) means the body length is.
+  const listCount = (path: string): Promise<Stat<number>> =>
+    settle(async () => {
+      const res = await withRetry(options, () => getJson(options.fetch, `${api}${path}`, headers, timeoutMs))
+      if (res.status !== 200) return unavailable(httpReason(res.status))
+      const link = res.headers.get('link') ?? ''
+      const last = /[?&]page=(\d+)>;\s*rel="last"/.exec(link)
+      if (last?.[1]) return { ok: true, value: Number(last[1]) }
+      if (Array.isArray(res.body)) return { ok: true, value: res.body.length }
+      return unavailable('unexpected response')
+    })
+  const contributors = listCount(`/repos/${REPO}/contributors?per_page=1&anon=false`)
+  const commits = listCount(`/repos/${REPO}/commits?sha=main&per_page=1`)
+  const releases = listCount(`/repos/${REPO}/releases?per_page=1`)
 
   const latestRelease = settle<Release>(async () => {
     const res = await withRetry(options, () =>
@@ -242,11 +251,13 @@ export async function fetchGithubStats(options: FetchOptions): Promise<GithubSta
     return { ok: true, value: { tag: body.tag_name, date: body.published_at, url: body.html_url } }
   })
 
-  const [stars, forks, counts, contributorCount, release] = await Promise.all([
+  const [stars, forks, counts, contributorCount, commitCount, releaseCount, release] = await Promise.all([
     fromRepo('stargazers_count'),
     fromRepo('forks_count'),
     searches,
     contributors,
+    commits,
+    releases,
     latestRelease,
   ])
   return {
@@ -254,6 +265,8 @@ export async function fetchGithubStats(options: FetchOptions): Promise<GithubSta
     forks,
     ...counts,
     contributors: contributorCount,
+    commits: commitCount,
+    releases: releaseCount,
     latestRelease: release,
   }
 }

@@ -181,6 +181,28 @@
   font-size: 0.8rem;
   color: var(--text-dim);
 }
+.open-grid--hero {
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+}
+.open-grid--hero .open-tile {
+  min-height: 140px;
+  padding: 1.2rem 1.3rem;
+}
+.open-grid--hero .open-tile__value:not(.open-tile__value--missing) {
+  font-size: clamp(2.2rem, 4vw, 3rem);
+  letter-spacing: -0.04em;
+  background: var(--ember-grad);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.open-note {
+  max-width: 760px;
+  margin: 1rem 0 0;
+  font-size: 0.9rem;
+  line-height: 1.6;
+  color: var(--text-dim);
+}
 .open-chart {
   margin: 1.25rem 0 0;
   padding: 1rem;
@@ -328,6 +350,12 @@
   }
   .open-tile__value {
     font-size: 1.6rem;
+  }
+  .open-grid--hero .open-tile__value:not(.open-tile__value--missing) {
+    font-size: 1.9rem;
+  }
+  .open-tile__value--missing {
+    font-size: 0.95rem;
   }
   .showcase-card {
     padding: 1rem;

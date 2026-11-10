@@ -981,7 +981,7 @@ test.describe('the charts page mounts every mark it documents', () => {
 // (the ones posts link to, so a missing one is a dead link in the wild).
 test.describe('site pages: /open, /showcase, /discord, /newsletter', () => {
   const pages = [
-    { path: '/open', heading: 'Everything in the open', title: 'Open stats · Pyreon' },
+    { path: '/open', heading: 'Built in the open. Counted in public.', title: 'Open stats · Pyreon' },
     { path: '/showcase', heading: 'What you can build with Pyreon', title: 'Showcase · Pyreon' },
     { path: '/discord', heading: 'Talk to the people building Pyreon', title: 'Community · Pyreon' },
     { path: '/newsletter', heading: 'Every post, the day it goes out', title: 'Newsletter · Pyreon' },
