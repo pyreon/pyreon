@@ -3,6 +3,7 @@ import { DENO_ADAPTER_OUTPUT } from './contract'
 import { EDGE_INIT_FILE, renderEdgeInit } from './edge-wrapper'
 import { stageClientThenServer } from './stage'
 import { STATIC_MIME_TYPES } from './mime'
+import { REQUEST_RUNTIME } from './request-runtime'
 import { validateBuildInputs } from './validate'
 
 /**
@@ -74,8 +75,17 @@ const clientDir = new URL("./${DENO_ADAPTER_OUTPUT.clientDir}/", import.meta.url
 
 const MIME_TYPES = ${JSON.stringify(STATIC_MIME_TYPES)}
 
+${REQUEST_RUNTIME}
 async function serveStatic(url) {
-  const path = decodeURIComponent(url.pathname)
+  // Hidden files (\`/.vite/manifest.json\`, \`/.env\`) are never served;
+  // only \`/.well-known/\` is public.
+  if (__pyreonIsHiddenPath(url.pathname)) return undefined
+  let path
+  try {
+    path = decodeURIComponent(url.pathname)
+  } catch {
+    return new Response("Bad Request", { status: 400 })
+  }
   const dot = path.lastIndexOf(".")
   if (dot <= path.lastIndexOf("/")) return undefined
   // Resolve against the client dir and refuse anything that escapes it.

@@ -739,6 +739,24 @@ const PaginatedTable = defineComponent(() => {
 })
 ```
 
+### Reusable query options — `queryOptions()`
+
+Declare a query once and reuse it in hooks and in the imperative client API. `queryOptions` returns its argument unchanged; the returned `queryKey` carries the data type, so the cache reads are typed without a generic:
+
+```ts
+import { queryOptions, infiniteQueryOptions, mutationOptions, useQuery, useQueryClient } from '@pyreon/query'
+
+const userQuery = (id: number) =>
+  queryOptions({ queryKey: ['user', id], queryFn: () => fetchUser(id) })
+
+const user = useQuery(() => userQuery(userId())) // factory called inside the accessor: stays reactive
+const client = useQueryClient()
+client.getQueryData(userQuery(1).queryKey)       // User | undefined
+client.setQueryData(userQuery(1).queryKey, (u) => u && { ...u, name: 'New' })
+```
+
+`infiniteQueryOptions` does the same for paginated queries (the key is tagged with `InfiniteData<TPage, TPageParam>`), and `mutationOptions` declares a `useMutation` options object once, `invalidates` included.
+
 ## Parallel Queries
 
 ### useQueries
@@ -1384,6 +1402,7 @@ Type re-exports include `QueryKey`, `QueryFilters`, `MutationFilters`, `Dehydrat
 | `useQueryErrorResetBoundary` | Access error reset function                   |
 | `useSuspenseQueries`         | `useQueries` shaped for a `QuerySuspense` boundary |
 | `defineQueries`              | Named parallel queries: `defineQueries({ user: () => ({…}), posts: () => ({…}) })` returns `{ user, posts }` results |
+| `queryOptions` / `infiniteQueryOptions` / `mutationOptions` | Declare a query or mutation once, typed; returns its argument unchanged, with the `queryKey` tagged so `client.getQueryData(opts.queryKey)` is typed. Use as `useQuery(() => userQuery(id()))` |
 | `useMutationState`           | `Signal` of mutation states matching a filter (`useMutationState(() => ({ filters, select }))`) |
 | `usePrefetchQuery` / `usePrefetchInfiniteQuery` | Prefetch at setup if the key is not cached yet (options function, read once) |
 | `HydrationBoundary`          | Hydrate a dehydrated `state` into the client before rendering children |
