@@ -2410,6 +2410,26 @@ zero({ mode: 'ssg', ssg: { workers: 1 } })`,
       related: 'Router guards run on the initial navigation (Vue Router model)',
     }),
   },
+  {
+    // The content audit's `orphaned-md-file` finding (`pyreon doctor`,
+    // MCP). Before 0.54 the audit only recognised a literal
+    // `defineCollection({...})`, so every post of a collection declared any
+    // other way — the `blogCollection()` preset from
+    // `@pyreon/zero-content/blog`, an app's own factory, a variable — was
+    // reported as orphaned although the runtime served it.
+    pattern: /lives under `src\/content\/` but is not under any declared collection's `path`|\borphaned-md-file\b/,
+    diagnose: () => ({
+      cause:
+        "The content audit found a markdown file under `src/content/` that no declared collection claims. Either it really is outside every collection's directory (the runtime ignores it), or the collection that holds it is declared in a way an older `@pyreon/compiler` could not read: before 0.54 the audit only understood a literal `defineCollection({ ... })`, so a `blogCollection()` preset, a factory call or a collection held in a variable left its whole directory looking orphaned.",
+      fix: "If the file's collection is declared with `blogCollection()`, a factory or a variable, upgrade `@pyreon/compiler` (`npx pyreon upgrade`); the audit now treats any value in `collections` as a collection, using its literal `path` or `src/content/<name>`. Otherwise move the file into a collection's directory, declare a collection whose `path` includes it, or delete it.",
+      fixCode: `// content.config.ts — every value here is a collection; a non-literal one
+// reads from src/content/<name> unless it passes a literal path
+export const collections = {
+  blog: blogCollection(),                       // src/content/blog
+  notes: defineCollection({ path: 'src/notes' }),
+}`,
+    }),
+  },
 ]
 
 /** Diagnose an error message and return structured fix information */
