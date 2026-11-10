@@ -52,9 +52,12 @@
  *    several impls in one process cross-contaminates JSC inline caches (a hand
  *    `computed` first WARMS the shared `Array.prototype.filter` callsite and
  *    makes a later rx read look ~35% faster than it is in isolation).
- *  - Median ns/op over warmup + N runs + CV%; a `sink` defeats DCE. µs-scale,
- *    GC-heavy → higher CV than the ns-scale primitive benches; the column
- *    RATIO is the portable signal. ns is machine-dependent.
+ *  - Median ns/op over warmup + N runs, ${BENCH_REPEATS:-4} fresh processes per
+ *    cell (round-robin across implementations), with a two-stage CLUSTER
+ *    bootstrap CI95 (processes resampled, then samples within each). A
+ *    win/loss is printed only when the CI95s are disjoint; otherwise a tie.
+ *    A `sink` defeats DCE. µs-scale and GC-heavy, so intervals are wider than
+ *    the ns-scale primitive benches'. ns is machine-dependent.
  *
  * ── HONEST READ ──────────────────────────────────────────────────────────────
  *  - COMPOSITION: `pipe` is a strict structural win — 1 node vs N, 1 recompute
@@ -98,7 +101,7 @@ function benchRuntimeBanner(): string {
 
 // ─── timing core ─────────────────────────────────────────────────────────────
 const now = () => Number(process.hrtime.bigint())
-function measure(fn: () => void, { warmup = 3_000, iters = 20_000, runs = 13 } = {}): { median: number; cv: number } {
+function measure(fn: () => void, { warmup = 3_000, iters = 20_000, runs = 13 } = {}): { median: number; cv: number; samples: number[] } {
   for (let i = 0; i < warmup; i++) fn()
   const s: number[] = []
   for (let r = 0; r < runs; r++) {
@@ -110,7 +113,7 @@ function measure(fn: () => void, { warmup = 3_000, iters = 20_000, runs = 13 } =
   const median = s[s.length >> 1] as number
   const mean = s.reduce((a, b) => a + b, 0) / s.length
   const sd = Math.sqrt(s.reduce((a, b) => a + (b - mean) ** 2, 0) / s.length)
-  return { median, cv: sd / mean }
+  return { median, cv: sd / mean, samples: s }
 }
 
 let sink = 0
@@ -394,7 +397,7 @@ const childArg = process.argv[2]
 if (childArg) {
   const [op, impl] = childArg.split('::') as [string, Impl]
   const r = measure(buildThunk(opKey(op), impl))
-  process.stdout.write(JSON.stringify({ median: r.median, cv: r.cv, sink }))
+  process.stdout.write(JSON.stringify({ median: r.median, cv: r.cv, samples: r.samples, sink }))
   process.exit(0)
 }
 
@@ -545,32 +548,83 @@ declare const Bun: {
 }
 interface Cell {
   median: number
-  cv: number
+  ci: [number, number]
+}
+
+/**
+ * Two-stage CLUSTER bootstrap CI95 on the median: resample the processes, then
+ * the samples inside each drawn process. Samples from one process share its
+ * JIT tiering and heap layout, so pooling them as if independent would make
+ * the interval far too narrow — the process-to-process spread has to be in it.
+ * Seeded, so a re-print of the same samples gives the same interval.
+ */
+function clusterCI95(clusters: number[][], resamples = 1000): [number, number] {
+  let a = 0xbe9c4
+  const rnd = () => {
+    a = (a + 0x6d2b79f5) | 0
+    let t = Math.imul(a ^ (a >>> 15), 1 | a)
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+  }
+  const meds: number[] = []
+  for (let b = 0; b < resamples; b++) {
+    const draw: number[] = []
+    for (let i = 0; i < clusters.length; i++) {
+      const c = clusters[Math.floor(rnd() * clusters.length)]!
+      for (let j = 0; j < c.length; j++) draw.push(c[Math.floor(rnd() * c.length)]!)
+    }
+    draw.sort((x, y) => x - y)
+    meds.push(draw[draw.length >> 1]!)
+  }
+  meds.sort((x, y) => x - y)
+  return [meds[Math.floor((resamples - 1) * 0.025)]!, meds[Math.floor((resamples - 1) * 0.975)]!]
+}
+
+// Several fresh processes per cell (one cluster each), ROUND-ROBIN across the
+// implementations so a load burst spreads over every column instead of landing
+// on one.
+const REPEATS = Number(process.env.BENCH_REPEATS ?? 4)
+const clusters: Record<string, Record<Impl, number[][]>> = {}
+for (const op of OP_ORDER) clusters[op] = Object.fromEntries(IMPLS.map((i) => [i, []])) as unknown as Record<Impl, number[][]>
+for (let r = 0; r < REPEATS; r++) {
+  for (const op of OP_ORDER) {
+    for (const impl of IMPLS) {
+      const proc = Bun.spawnSync(['bun', import.meta.path, `${op}::${impl}`], { env: { ...process.env, NODE_ENV: 'production' } })
+      if (proc.exitCode !== 0) throw new Error(`child failed for ${op}::${impl}`)
+      clusters[op]![impl].push((JSON.parse(new TextDecoder().decode(proc.stdout)) as { samples: number[] }).samples)
+    }
+  }
 }
 const table: Record<string, Record<Impl, Cell>> = {}
 for (const op of OP_ORDER) {
   table[op] = {} as Record<Impl, Cell>
   for (const impl of IMPLS) {
-    const proc = Bun.spawnSync(['bun', import.meta.path, `${op}::${impl}`], { env: { ...process.env, NODE_ENV: 'production' } })
-    if (proc.exitCode !== 0) throw new Error(`child failed for ${op}::${impl}`)
-    table[op]![impl] = JSON.parse(new TextDecoder().decode(proc.stdout)) as Cell
+    const all = clusters[op]![impl].flat().sort((x, y) => x - y)
+    table[op]![impl] = { median: all[all.length >> 1]!, ci: clusterCI95(clusters[op]![impl]) }
   }
 }
 
 console.log(
-  `=== (B) PER-OP RE-DERIVE COST (${process.platform}/${process.arch}, NODE_ENV=production, 1k rows, per-(op,impl) isolated, median ns/op) ===\n`,
+  `=== (B) PER-OP RE-DERIVE COST (${process.platform}/${process.arch}, NODE_ENV=production, 1k rows, per-(op,impl) isolated, ${REPEATS} processes per cell, median ns/op [cluster-bootstrap CI95]) ===\n`,
 )
 const pad = (s: string, n: number) => s.padEnd(n)
 const padL = (s: string, n: number) => s.padStart(n)
-const cell = (c: Cell) => `${c.median.toFixed(0)} (cv${(c.cv * 100).toFixed(0)}%)`
+const cell = (c: Cell) => `${c.median.toFixed(0)} [${c.ci[0].toFixed(0)},${c.ci[1].toFixed(0)}]`
+/** @pyreon/rx against a peer: win / loss only when the CI95s are disjoint, else a tie. */
+const verdict = (rx: Cell, peer: Cell) => {
+  const ratio = peer.median / rx.median
+  if (rx.ci[1] < peer.ci[0]) return `win ${ratio.toFixed(2)}x`
+  if (peer.ci[1] < rx.ci[0]) return `loss ${ratio.toFixed(2)}x`
+  return `tie ${ratio.toFixed(2)}x`
+}
 console.log(
-  `${pad('op', 26)} ${padL('native', 13)} ${padL('Pyreon computed', 16)} ${padL('@pyreon/rx', 14)} ${padL('Solid memo', 14)} ${padL('RxJS*', 13)}`,
+  `${pad('op', 26)} ${padL('native', 18)} ${padL('Pyreon computed', 18)} ${padL('@pyreon/rx', 18)} ${padL('Solid memo', 18)} ${padL('RxJS*', 18)}   rx vs Solid · rx vs computed`,
 )
-console.log('─'.repeat(100))
+console.log('─'.repeat(150))
 for (const op of OP_ORDER) {
   const t = table[op]!
   console.log(
-    `${pad(op, 26)} ${padL(cell(t.native), 13)} ${padL(cell(t.computed), 16)} ${padL(cell(t.rx), 14)} ${padL(cell(t.solid), 14)} ${padL(cell(t.rxjs), 13)}`,
+    `${pad(op, 26)} ${padL(cell(t.native), 18)} ${padL(cell(t.computed), 18)} ${padL(cell(t.rx), 18)} ${padL(cell(t.solid), 18)} ${padL(cell(t.rxjs), 18)}   ${verdict(t.rx, t.solid)} · ${verdict(t.rx, t.computed)}`,
   )
 }
 console.log(

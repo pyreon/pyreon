@@ -1670,6 +1670,38 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin<any>
   }
 }
 
+/**
+ * The request URL for a raw request-target: the ORIGIN from `origin` only,
+ * the target only as a path + query. Never `new URL(target, origin)`: that
+ * resolves `//other.host/x` (and an absolute-form `http://other.host/x`) to
+ * another origin, which handlers read as the request's own. `null` when the
+ * Host cannot form a URL. Same contract as `@pyreon/zero`'s
+ * `requestUrlFromTarget` (adapters/request-runtime.ts).
+ * @internal
+ */
+export function _requestUrlFromTarget(target: string | undefined, origin: string): URL | null {
+  let t = target || '/'
+  if (t.charCodeAt(0) !== 47) {
+    if (/^[a-z][a-z\d+.-]*:/i.test(t)) {
+      try {
+        const abs = new URL(t)
+        t = abs.pathname.charCodeAt(0) === 47 ? abs.pathname + abs.search : '/'
+      } catch {
+        t = '/'
+      }
+    } else {
+      t = '/'
+    }
+  }
+  if (/[/?#@\\\s]/.test(origin.slice(origin.indexOf('//') + 2))) return null
+  try {
+    const url = new URL(origin + t)
+    return url.origin === new URL(origin).origin ? url : null
+  } catch {
+    return null
+  }
+}
+
 export async function _handleSsrRequest(
   server: ViteDevServer,
   entry: string,
@@ -1686,8 +1718,9 @@ export async function _handleSsrRequest(
     return
   }
 
-  const origin = `http://${req.headers.host ?? 'localhost'}`
-  const fullUrl = new URL(url, origin)
+  const fullUrl =
+    _requestUrlFromTarget(url, `http://${req.headers.host ?? 'localhost'}`) ??
+    (_requestUrlFromTarget(url, 'http://localhost') as URL)
   const request = new Request(fullUrl.href, {
     method: req.method ?? 'GET',
     headers: Object.entries(req.headers).reduce((h, [k, v]) => {

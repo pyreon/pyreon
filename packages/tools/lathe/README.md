@@ -396,7 +396,9 @@ gen/docs/models.md    the emitted types
 
 `plugins: ['docs']` renders Markdown with frontmatter, so the pages drop into a
 `@pyreon/zero-content` collection unchanged and still read correctly on GitHub
-with nothing installed.
+with nothing installed. Spec text is escaped for Markdown AND MDX (which
+zero-content compiles `.md` as), so a `{…}` or `<…>` in a third-party spec
+renders as text and never runs.
 
 Kubb reaches for Redoc here, which renders the SPEC. That is a different
 document: it tells you the HTTP contract and leaves you to work out which hook

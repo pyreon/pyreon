@@ -126,9 +126,11 @@ jobs:
       # ── The documented Action, verbatim (see the drift lock above) ─────────
       - name: Diff the contract
         id: diff
+        env:
+          BASE_REF: ${{ github.base_ref || 'main' }}
         run: |
           set +e
-          bunx lathe diff "origin/${{ github.base_ref || 'main' }}:openapi.yaml" openapi.yaml \
+          bunx lathe diff "origin/${BASE_REF}:openapi.yaml" openapi.yaml \
             --format markdown --fail-on-breaking > contract.md
           echo "code=$?" >> "$GITHUB_OUTPUT"
       - name: Summary
@@ -182,6 +184,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           PR: ${{ github.event.pull_request.number }}
           CODE: ${{ steps.diff.outputs.code }}
+          BASE_REF: ${{ github.base_ref || 'main' }}
           CAN_COMMENT: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
           SENTINEL: 'lathe self-test sentinel, run ${{ github.run_id }}: must survive the contract comment unchanged'
         run: |
@@ -189,7 +192,7 @@ jobs:
           fail() { echo "::error::$1"; exit 1; }
 
           # 1. The exit code agrees with the report it wrote.
-          case "$CODE" in 0|1) ;; *) cat contract.md || true; fail "lathe diff exited $CODE: an input could not be read (base: origin/${{ github.base_ref || 'main' }})";; esac
+          case "$CODE" in 0|1) ;; *) cat contract.md || true; fail "lathe diff exited $CODE: an input could not be read (base: origin/${BASE_REF})";; esac
           header=$(head -n 1 contract.md)
           echo "report: $header (exit $CODE)"
           case "$header" in '### API contract: '*) ;; *) fail "not a contract report: $header";; esac

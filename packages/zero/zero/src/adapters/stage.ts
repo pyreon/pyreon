@@ -118,7 +118,9 @@ export async function stageClientThenServer(
 ): Promise<void> {
   const serverSrc = join(options.serverEntry, '..')
   await materialize(options.clientOutDir, layout.clientDest, {
-    preserve: [basename(serverSrc), EDGE_SERVER_SUBDIR, ...(layout.preserve ?? [])],
+    // `.vite/` holds Vite's build manifest (an internal module graph); it is
+    // never part of the deployed client, whoever enabled it.
+    preserve: [basename(serverSrc), EDGE_SERVER_SUBDIR, '.vite', ...(layout.preserve ?? [])],
   })
   await materialize(serverSrc, layout.serverDest)
 }
