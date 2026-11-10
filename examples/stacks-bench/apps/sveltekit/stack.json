@@ -1,0 +1,24 @@
+{
+  "id": "sveltekit",
+  "label": "SvelteKit 3",
+  "docs": [
+    "https://svelte.dev/docs/kit/creating-a-project (sv create --template minimal)",
+    "https://svelte.dev/docs/kit/load",
+    "https://svelte.dev/docs/kit/form-actions",
+    "https://svelte.dev/docs/kit/errors",
+    "https://svelte.dev/docs/kit/server-only-modules",
+    "https://svelte.dev/docs/kit/adapter-node"
+  ],
+  "packages": ["@sveltejs/kit", "@sveltejs/adapter-node", "svelte", "vite"],
+  "build": ["npm", "run", "build"],
+  "start": ["node", "build/index.js"],
+  "dataFile": "src/lib/server/data.ts",
+  "hydration": "full",
+  "streaming": "buffered (no streamed promises returned from load)",
+  "notes": [
+    "kit.paths.origin is set to http://127.0.0.1:4404 at build time: adapter-node 6 reads the origin from it (the ORIGIN env var of adapter-node 5 is gone) and otherwise assumes https, which makes the CSRF check reject every plain-http form POST.",
+    "adapter-node: node:http (polka) → sirv static handler for build/client → SvelteKit server.respond. precompress is on by default for static assets (.gz/.br written at build, served only when the client sends Accept-Encoding); SSR HTML is never compressed.",
+    "formatPrice is restated in src/lib/price.ts because components cannot import $lib/server modules; byte-identical function.",
+    "data-sveltekit-preload-data=\"hover\" kept from the scaffold (default link prefetch on hover)."
+  ]
+}
