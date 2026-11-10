@@ -33,6 +33,8 @@ name: Native Device Build
 #     check runs land on the same head SHA and replace the skipped ones.
 #   - on `workflow_dispatch` (manual) and the nightly schedule (drift
 #     check against main) — both unconditional.
+#   - on a PR the classifier selected, only for apps whose native INPUT
+#     fingerprint moved between base and head (the `fingerprint` job).
 #   - in the merge queue (`merge_group`) both lanes report SKIPPED: the PR
 #     already ran them, and a 60-minute macOS lane at the head of the queue
 #     would hold every PR queued behind it. The nightly run re-proves main.
@@ -157,6 +159,96 @@ jobs:
             echo "native-device label → every lane"
           fi
 
+  # ── Native inputs fingerprint (narrow by what the lanes BUILD) ───────
+  # `changes` decides from PATHS and must over-approximate: a package with a
+  # `native-plugin` export drags its whole import closure (core, reactivity,
+  # router…) and `bun.lock` into the native surface. Measured 2026-11-09/10:
+  # 31 of 56 native-selected PRs got there ONLY that way and used ~74% of the
+  # device-lane minutes. This job builds what the lanes would build — every
+  # gated app's own `scripts/build.sh` emit, at the PR head and at its base —
+  # and hashes it together with the native runtime/router sources, co-located
+  # native sources, the shared native examples, this workflow, the scripts it
+  # names, and the native workspaces' lockfile closure
+  # (`scripts/native-inputs-fingerprint.ts` has the full input contract).
+  # Only apps whose fingerprint differs keep their lane.
+  #
+  # FAIL-CLOSED: if any step fails, times out or the base cannot be built,
+  # the outputs stay EMPTY and the lanes fall back to the `changes` selection.
+  # Only a computed `none` skips a lane. The `native-device` label and every
+  # non-PR event bypass this job. The nightly schedule on main always builds
+  # every app — the backstop for inputs outside the fingerprint (runner
+  # image, Xcode, Homebrew xcodegen, emulator images).
+  fingerprint:
+    name: Native inputs fingerprint
+    needs: changes
+    if: >-
+      github.event_name == 'pull_request' &&
+      needs.changes.result == 'success' &&
+      needs.changes.outputs.native == 'true' &&
+      !contains(github.event.pull_request.labels.*.name, 'native-device')
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    # A failure here only means "could not narrow": the lanes run. It must not
+    # turn the PR's run red for a check that is not a gate.
+    continue-on-error: true
+    permissions:
+      contents: read
+    outputs:
+      ios-apps: ${{ steps.compare.outputs.ios-apps }}
+      android-apps: ${{ steps.compare.outputs.android-apps }}
+    steps:
+      # The PR merge commit and its first parent, the base tip it was merged
+      # onto — the same pair `changes` diffs.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 2
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: .bun-version
+      - name: Restore source-hashed lib/ (read-only)
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            packages/*/*/lib
+            .bootstrap-cache.json
+          key: bootstrap-ubuntu-${{ hashFiles('packages/*/*/src/**', 'packages/*/*/package.json', 'packages/*/*/tsconfig.json', 'tsconfig.json', 'scripts/bootstrap.ts', 'bun.lock') }}
+          restore-keys: |
+            bootstrap-ubuntu-
+      - name: Fingerprint the PR (head)
+        run: |
+          set -euo pipefail
+          PYREON_BOOTSTRAP_SKIP=1 bun install --frozen-lockfile
+          bun scripts/bootstrap.ts
+          bun scripts/native-inputs-fingerprint.ts --emit > "$RUNNER_TEMP/head.json"
+      - name: Fingerprint the base
+        run: |
+          set -euo pipefail
+          BASE="$RUNNER_TEMP/base"
+          git worktree add --detach "$BASE" HEAD^1
+          (cd "$BASE" && PYREON_BOOTSTRAP_SKIP=1 bun install --frozen-lockfile)
+          # Seed the base with the head's built lib/ and its content-hash
+          # manifest: bootstrap.ts rebuilds exactly the packages whose source
+          # (or bun.lock) differs, so the base is built from base sources.
+          for lib in packages/*/*/lib; do
+            if [ -d "$BASE/$(dirname "$lib")" ]; then cp -a "$lib" "$BASE/$lib"; fi
+          done
+          cp .bootstrap-cache.json "$BASE/"
+          (cd "$BASE" && bun scripts/bootstrap.ts)
+          # The head's script fingerprints the base tree, so both sides use one
+          # definition; the script hashes each tree's OWN copy of itself and of
+          # this workflow, so editing either still selects every lane.
+          bun scripts/native-inputs-fingerprint.ts --root="$BASE" --emit > "$RUNNER_TEMP/base.json"
+      - name: Compare
+        id: compare
+        env:
+          IOS: ${{ needs.changes.outputs.ios-apps }}
+          ANDROID: ${{ needs.changes.outputs.android-apps }}
+        run: |
+          set -euo pipefail
+          bun scripts/native-inputs-fingerprint.ts --compare "$RUNNER_TEMP/base.json" "$RUNNER_TEMP/head.json" \
+            --ios="${IOS:-all}" --android="${ANDROID:-all}" >> "$GITHUB_OUTPUT"
+
   ios-build:
     # Runs when: non-PR event (nightly / dispatch) · the PR touches native
     # paths (`changes` job) · the PR carries the `native-device` label
@@ -164,20 +256,24 @@ jobs:
     # The workflow no longer triggers on `labeled`, so every PR run is a
     # push/open/reopen of its head and the path arm decides; there is no
     # label event that could replace a red run with a skipped one.
-    # The `(failure() && …)` arm is the fail-closed guard from ci.yml's
-    # anti-pattern entry: a crashed `changes` job must RUN the gate, not
-    # skip it (a skipped required check reports success).
+    # Fail-closed arms: a `changes` job that did not succeed RUNS the gate (a
+    # skipped required check reports success). `fingerprint` narrows only by
+    # an explicit `none`: skipped, failed or timed out, its outputs are empty
+    # and the `changes` selection stands. `!cancelled()` rather than
+    # `success()`, because `fingerprint` is legitimately skipped on non-PR
+    # runs and non-native PRs, and a skipped `needs` makes `success()` false.
     # The leading `merge_group` exclusion skips the lane in the merge queue
     # (see the header); it reports `skipped`, which the queue accepts.
-    needs: changes
+    needs: [changes, fingerprint]
     if: >-
-      github.event_name != 'merge_group' && (
-      (success() && (
+      github.event_name != 'merge_group' && !cancelled() && (
         github.event_name != 'pull_request' ||
-        (needs.changes.outputs.native == 'true' && needs.changes.outputs.ios-apps != 'none') ||
-        contains(github.event.pull_request.labels.*.name, 'native-device')
-      )) ||
-      (failure() && needs.changes.result != 'success'))
+        needs.changes.result != 'success' ||
+        contains(github.event.pull_request.labels.*.name, 'native-device') ||
+        (needs.changes.outputs.native == 'true' &&
+         needs.changes.outputs.ios-apps != 'none' &&
+         needs.fingerprint.outputs.ios-apps != 'none')
+      )
     name: iOS — xcodebuild (Simulator SDK)
     # ONE runner builds and UITests the example apps, sequentially — only the
     # apps the change can reach (`IOS_APPS`, from the `changes` job); every app
@@ -244,7 +340,7 @@ jobs:
     # Which apps this run tests (see the `changes` job). EMPTY → `all`,
     # so a decide that never produced a value cannot shrink the lanes.
     env:
-      IOS_APPS: ${{ needs.changes.outputs.ios-apps || 'all' }}
+      IOS_APPS: ${{ needs.fingerprint.outputs.ios-apps || needs.changes.outputs.ios-apps || 'all' }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -731,15 +827,16 @@ jobs:
 
   android-build:
     # Same gate as ios-build — see the comment there.
-    needs: changes
+    needs: [changes, fingerprint]
     if: >-
-      github.event_name != 'merge_group' && (
-      (success() && (
+      github.event_name != 'merge_group' && !cancelled() && (
         github.event_name != 'pull_request' ||
-        (needs.changes.outputs.native == 'true' && needs.changes.outputs.android-apps != 'none') ||
-        contains(github.event.pull_request.labels.*.name, 'native-device')
-      )) ||
-      (failure() && needs.changes.result != 'success'))
+        needs.changes.result != 'success' ||
+        contains(github.event.pull_request.labels.*.name, 'native-device') ||
+        (needs.changes.outputs.native == 'true' &&
+         needs.changes.outputs.android-apps != 'none' &&
+         needs.fingerprint.outputs.android-apps != 'none')
+      )
     name: Android — gradlew assembleDebug
     runs-on: ubuntu-latest
     # 60, not 40: the fetch-arc run data showed 40 is AT the wire —
@@ -754,7 +851,7 @@ jobs:
     # Which apps this run tests (see the `changes` job). EMPTY → `all`,
     # so a decide that never produced a value cannot shrink the lanes.
     env:
-      ANDROID_APPS: ${{ needs.changes.outputs.android-apps || 'all' }}
+      ANDROID_APPS: ${{ needs.fingerprint.outputs.android-apps || needs.changes.outputs.android-apps || 'all' }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
