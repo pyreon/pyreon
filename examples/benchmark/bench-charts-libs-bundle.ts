@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 /**
- * Charts BUNDLE SIZE — `@pyreon/charts` vs uPlot, Chart.js and Recharts: the
+ * Charts BUNDLE SIZE — `@pyreon/charts` vs uPlot, Chart.js, Recharts, visx,
+ * Observable Plot, D3 and lightweight-charts: the
  * minimal import each library needs to draw ONE line chart.
  *
  * Protocol (same as `bench-bundle.ts` / `bench-charts-bundle.ts`):
@@ -10,9 +11,9 @@
  *    its own column (uPlot ships a stylesheet its layout relies on).
  *
  * Each library is measured in the host it actually needs:
- *  - uPlot and Chart.js are framework-free, so their entries are plain
+ *  - uPlot, Chart.js, Plot, D3 and lightweight-charts are framework-free, so their entries are plain
  *    scripts — the number IS the library.
- *  - Recharts is React-only, so its entry mounts with React 19 + ReactDOM;
+ *  - Recharts and visx are React-only, so their entries mount with React 19 + ReactDOM;
  *    a `React + ReactDOM only` row is the baseline it sits on.
  *  - Pyreon's charts need the Pyreon runtime; a `Pyreon runtime only` row is
  *    that baseline.
@@ -91,7 +92,7 @@ import 'uplot/dist/uPlot.min.css'
     marker: 'getContext',
   },
   {
-    name: 'Chart.js 4.5.1 (tree-shaken)',
+    name: 'Chart.js 4.6.1 (tree-shaken)',
     base: null,
     source: `import { Chart, LinearScale, LineController, LineElement, PointElement } from 'chart.js'
 Chart.register(LineController, LineElement, PointElement, LinearScale)
@@ -107,6 +108,55 @@ const rows = [{ x: 0, y: 3 }, { x: 1, y: 7 }, { x: 2, y: 5 }]
 ;${KEEP} = () => createRoot(document.body).render(h(LineChart, { width: 800, height: 300, data: rows }, h(XAxis, { dataKey: 'x', type: 'number' }), h(YAxis, null), h(Line, { dataKey: 'y' })))
 `,
     marker: 'recharts',
+  },
+  {
+    // Same composition as the visx arm in src/impl/scenario-charts-libs.ts.
+    name: 'visx 4.0.0',
+    base: 'React + ReactDOM only',
+    source: `${REACT}import { AxisBottom, AxisLeft } from '@visx/axis'
+import { Group } from '@visx/group'
+import { scaleLinear } from '@visx/scale'
+import { LinePath } from '@visx/shape'
+const rows = [{ x: 0, y: 3 }, { x: 1, y: 7 }, { x: 2, y: 5 }]
+const x = scaleLinear({ domain: [0, 2], range: [0, 750] })
+const y = scaleLinear({ domain: [3, 7], range: [260, 0] })
+;${KEEP} = () => createRoot(document.body).render(h('svg', { width: 800, height: 300 }, h(Group, { left: 40, top: 10 }, h(LinePath, { data: rows, x: (d: { x: number }) => x(d.x), y: (d: { y: number }) => y(d.y) }), h(AxisLeft, { scale: y }), h(AxisBottom, { scale: x, top: 260 }))))
+`,
+    marker: 'visx',
+  },
+  {
+    name: 'Observable Plot 0.6.19',
+    base: null,
+    source: `import * as Plot from '@observablehq/plot'
+;${KEEP} = () => document.body.append(Plot.plot({ width: 800, height: 300, grid: true, marks: [Plot.lineY([3, 7, 5])] }))
+`,
+    marker: 'aria-label',
+  },
+  {
+    // Named imports from the d3 bundle, the way the D3 docs import it.
+    name: 'D3 7.9.2 (hand-written line)',
+    base: null,
+    source: `import { axisBottom, axisLeft, create, line, scaleLinear } from 'd3'
+const rows = [{ x: 0, y: 3 }, { x: 1, y: 7 }, { x: 2, y: 5 }]
+;${KEEP} = () => {
+  const x = scaleLinear().domain([0, 2]).range([40, 790])
+  const y = scaleLinear().domain([3, 7]).range([270, 10])
+  const svg = create('svg').attr('width', 800).attr('height', 300)
+  svg.append('g').attr('transform', 'translate(0,270)').call(axisBottom(x))
+  svg.append('g').attr('transform', 'translate(40,0)').call(axisLeft(y))
+  svg.append('path').attr('fill', 'none').attr('stroke', 'blue').attr('d', line<{ x: number; y: number }>((d) => x(d.x), (d) => y(d.y))(rows))
+  document.body.append(svg.node()!)
+}
+`,
+    marker: 'createElementNS',
+  },
+  {
+    name: 'lightweight-charts 5.2.1',
+    base: null,
+    source: `import { createChart, LineSeries } from 'lightweight-charts'
+;${KEEP} = () => createChart(document.body, { width: 800, height: 300 }).addSeries(LineSeries).setData([{ time: 1, value: 3 }, { time: 2, value: 7 }, { time: 3, value: 5 }] as never)
+`,
+    marker: 'getContext',
   },
 ]
 

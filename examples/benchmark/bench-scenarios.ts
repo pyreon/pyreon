@@ -192,7 +192,7 @@ const SCENARIOS: { id: string; label: string; frameworks: string[] }[] = [
     // readback) — see src/impl/scenario-charts-libs.ts for the window, the
     // gate, and which library reduces points per pixel.
     id: 'charts-libs',
-    label: 'charts — @pyreon/charts vs uPlot 1.6, Chart.js 4, Recharts 3 (800×300, first painted frame)',
+    label: 'charts — @pyreon/charts vs uPlot 1.6, Chart.js 4, Recharts 3, visx 4, Observable Plot 0.6, D3 7, lightweight-charts 5 (800×300, first painted frame)',
     frameworks: [
       'Pyreon (PlotChart)',
       'Pyreon (PlotChart columns)',
@@ -200,6 +200,10 @@ const SCENARIOS: { id: string; label: string; frameworks: string[] }[] = [
       'uPlot 1.6',
       'Chart.js 4 (min-max decimation)',
       'Recharts 3',
+      'visx 4',
+      'Observable Plot 0.6',
+      'D3 7 (hand-written)',
+      'lightweight-charts 5',
       'Chart.js 4 (defaults, no decimation)',
       'Pyreon (PlotChart, no a11y table)',
       'Vanilla canvas (control)',
