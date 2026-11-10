@@ -344,8 +344,10 @@ function TasksPage() {
           coordinates and silently does nothing. The page root cannot be a
           <Scroll>: the task list is a <For> (LazyColumn), which the compiler
           refuses to nest inside a verticalScroll Column (infinite-height
-          measure). Two columns of six/five keep every button on-screen on
-          both targets with no scrolling at all. */}
+          measure). Two columns of ten keep every button on-screen on both
+          targets with no scrolling at all; a column of eleven already
+          pushes `tasks-logout` past the fold, so add a new button to the
+          SHORTER column. */}
       <Inline gap={2}>
         <Stack gap={2}>
           <Button onPress={addTask} data-testid="new-task-add">
@@ -375,6 +377,9 @@ function TasksPage() {
           <Button onPress={() => navigate('/select')} data-testid="tasks-select">
             Select
           </Button>
+          <Button onPress={() => navigate('/hooks')} data-testid="tasks-hooks">
+            Hooks
+          </Button>
         </Stack>
         <Stack gap={2}>
           <Button onPress={() => navigate('/stats')} data-testid="tasks-stats">
@@ -391,9 +396,6 @@ function TasksPage() {
           </Button>
           <Button onPress={() => navigate('/streams')} data-testid="tasks-streams">
             Streams
-          </Button>
-          <Button onPress={() => navigate('/hooks')} data-testid="tasks-hooks">
-            Hooks
           </Button>
           <Button onPress={() => navigate('/requests')} data-testid="tasks-requests">
             Requests
