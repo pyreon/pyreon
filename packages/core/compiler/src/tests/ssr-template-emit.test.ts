@@ -211,10 +211,11 @@ describe('ssrTemplate — component children are preserved-source holes', () => 
 
   test("the child's source is PRESERVED, so its props still transform in place", () => {
     // `p` is a component prop, so the reactive-prop pass must still wrap it
-    // INSIDE the preserved range. A missing `_rp` here would mean the child was
-    // never walked and the component would receive a dead snapshot.
+    // INSIDE the preserved range. A bare `id={p.id}` here would mean the child
+    // was never walked and the component would receive a dead snapshot; the
+    // walked pass-through forwards the prop through `_pp`.
     expect(ssrFast(`const Page = (p) => <main class="m"><Widget id={p.id} /></main>`)).toContain(
-      '_ssrNode(<Widget id={_rp(() => p.id)} />)',
+      '_ssrNode(<Widget id={_pp(p, "id")} />)',
     )
   })
 

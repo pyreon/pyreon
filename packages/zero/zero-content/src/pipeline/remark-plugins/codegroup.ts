@@ -1,3 +1,4 @@
+import { firstDelimited } from '../../_shared/linear-scan'
 import { visit } from '../visit'
 import type { Code, Root } from 'mdast'
 import type { ContainerDirective } from 'mdast-util-directive'
@@ -99,6 +100,7 @@ export function remarkCodeGroup() {
  */
 export function parseLabel(meta: string | null | undefined): string | null {
   if (!meta) return null
-  const m = meta.match(/\[([^\]]+)\]/)
-  return m ? m[1]!.trim() : null
+  // `meta.match(/\[([^\]]+)\]/)?.[1]`, linear (see `_shared/linear-scan`).
+  const label = firstDelimited(meta, '[', ']', 1)
+  return label === null ? null : label.trim()
 }

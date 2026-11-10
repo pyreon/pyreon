@@ -11,9 +11,9 @@
  * enableJit()
  * ```
  */
-import { tryCompileJit, tryCompileJitCheck } from './core/jit'
+import { tryCompileJit, tryCompileJitCheck, tryCompileJitFast } from './core/jit'
 import { installJit } from './core/jit-hook'
 
 export function enableJit(): void {
-  installJit({ tryCompileJit, tryCompileJitCheck })
+  installJit({ tryCompileJit, tryCompileJitCheck, tryCompileJitFast })
 }

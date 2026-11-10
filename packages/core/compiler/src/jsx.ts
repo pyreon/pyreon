@@ -1343,6 +1343,8 @@ export function transformJSX_JS(
   let needsTplImport = false
   let needsRpImport = false
   let needsRpdImport = false
+  let needsPkImport = false
+  let needsPpImport = false
   let needsLcImport = false
   let needsFuseImport = false
   let needsWrapSpreadImport = false
@@ -3081,9 +3083,12 @@ export function transformJSX_JS(
         // consumer can skip the tracked effect (see core `_rpd`). Same
         // value semantics as `_rp(() => sig())`; both backends agree.
         const bareSig = bareSignalCallee(expr)
+        const folded = bareSig === null ? foldPropEmit(expr, inner) : null
         if (bareSig !== null) {
           replacements.push({ start, end, text: `_rpd(${bareSig})` })
           needsRpdImport = true
+        } else if (folded !== null) {
+          replacements.push({ start, end, text: folded })
         } else {
           replacements.push({ start, end, text: `_rp(() => ${inner})` })
           needsRpImport = true
@@ -3284,10 +3289,25 @@ export function transformJSX_JS(
     name: string
     prev: { start: number; end: number } | undefined
     /** Entry registers a member of this name-set (undo = delete), not an alias. */
-    set?: 'props' | 'signal' | 'selector' | 'fn'
+    set?: 'props' | 'fold' | 'signal' | 'selector' | 'fn'
     /** `set: 'fn'` — whether `propDerivedFnInits` held the name BEFORE this registration. */
     fnPrev?: boolean
   }[] = []
+  /**
+   * The subset of `propsNames` the STATIC-PROP FOLD may read through `_pk` /
+   * `_pp` (see core `props.ts`): the first parameter of a CAPITALIZED
+   * component (`function Card(props)`, `const Card = (props) => …`) that is
+   * never re-bound or assigned anywhere inside it. Other props roots (a
+   * lowercase helper's parameter, `splitProps` results) can hold a store
+   * PROXY, whose descriptor reports a frozen data property while its `get`
+   * trap tracks, so they keep the `_rp` thunk. Scoped like `propsNames`.
+   */
+  const foldPropsNames = new Set<string>()
+  function registerFoldPropsName(name: string): void {
+    if (foldPropsNames.has(name)) return
+    foldPropsNames.add(name)
+    propDerivedLog.push({ name, prev: undefined, set: 'fold' })
+  }
   /** `propsNames` is lexically scoped by the same frames (see above). */
   function registerPropsName(name: string): void {
     if (propsNames.has(name)) return
@@ -3675,6 +3695,75 @@ export function transformJSX_JS(
     }
   }
 
+  /** `function Card(…)` / `const Card = (…) => …` / `const Card = function (…) {…}`. */
+  function isCapitalizedComponent(node: N, parent: N | undefined): boolean {
+    let name: string | undefined
+    if (node.type === 'FunctionDeclaration') name = node.id?.name
+    else if (parent?.type === 'VariableDeclarator' && parent.init === node && parent.id?.type === 'Identifier')
+      name = parent.id.name
+    if (!name) return false
+    const c = name.charCodeAt(0)
+    return c >= 65 && c <= 90
+  }
+
+  /** `_pp(props, "k")` for an exact pass-through, `_pk(…) ? e : _rp(() => e)` for a foldable expression. */
+  function foldPropEmit(expr: N, inner: string): string | null {
+    if (foldPropsNames.size === 0) return null
+    const reads: string[] = []
+    const seen = new Set<string>()
+    const memberKey = (n: N): string | null =>
+      n.type === 'MemberExpression' &&
+      !n.computed &&
+      !n.optional &&
+      n.object?.type === 'Identifier' &&
+      foldPropsNames.has(n.object.name) &&
+      n.property?.type === 'Identifier'
+        ? `${n.object.name}, "${n.property.name}"`
+        : null
+    const top = unwrapTypeLayers(expr)
+    const pass = memberKey(top)
+    if (pass !== null) {
+      needsPpImport = true
+      return `_pp(${pass})`
+    }
+    const ok = (n0: N): boolean => {
+      const n = unwrapTypeLayers(n0)
+      switch (n.type) {
+        case 'Literal':
+          return (
+            n.regex === undefined &&
+            n.bigint === undefined &&
+            (n.value === null || typeof n.value === 'string' || typeof n.value === 'number' || typeof n.value === 'boolean')
+          )
+        case 'MemberExpression': {
+          const k = memberKey(n)
+          if (k === null) return false
+          if (!seen.has(k)) {
+            seen.add(k)
+            reads.push(k)
+          }
+          return true
+        }
+        case 'TemplateLiteral':
+          return (n.expressions ?? []).every(ok)
+        case 'UnaryExpression':
+          return n.operator !== 'delete' && ok(n.argument)
+        case 'BinaryExpression':
+          return n.operator !== 'in' && n.operator !== 'instanceof' && ok(n.left) && ok(n.right)
+        case 'LogicalExpression':
+          return ok(n.left) && ok(n.right)
+        case 'ConditionalExpression':
+          return ok(n.test) && ok(n.consequent) && ok(n.alternate)
+        default:
+          return false
+      }
+    }
+    if (!ok(top) || reads.length === 0) return null
+    needsPkImport = true
+    needsRpImport = true
+    return `${reads.map((r) => `_pk(${r})`).join(' && ')} ? (${inner}) : _rp(() => ${inner})`
+  }
+
   /** Detect component functions and register their first param as a props name.
    *  Called inline during the walk when entering a function. */
   function maybeRegisterComponentProps(node: N): void {
@@ -3720,7 +3809,11 @@ export function transformJSX_JS(
           forEachChildFast(n, checkJSX)
         }
         forEachChildFast(node, checkJSX)
-        if (hasJSX) registerPropsName(firstParam.name)
+        if (hasJSX) {
+          registerPropsName(firstParam.name)
+          if (isCapitalizedComponent(node, parent) && countBindingsAndWrites(node, firstParam.name, forEachChildFast) === 1)
+            registerFoldPropsName(firstParam.name)
+        }
       }
     }
   }
@@ -4427,6 +4520,7 @@ export function transformJSX_JS(
       while (propDerivedLog.length > propDerivedMark) {
         const e = propDerivedLog.pop()!
         if (e.set === 'props') propsNames.delete(e.name)
+        else if (e.set === 'fold') foldPropsNames.delete(e.name)
         else if (e.set === 'signal') signalVars.delete(e.name)
         else if (e.set === 'selector') selectorVars.delete(e.name)
         else if (e.set === 'fn') {
@@ -4531,7 +4625,7 @@ export function transformJSX_JS(
     preamble = `import { ${ssrImports.join(', ')} } from "@pyreon/runtime-server";\n` + preamble
   }
 
-  if (needsRpImport || needsRpdImport || needsLcImport || needsFuseImport || needsWrapSpreadImport || needsCxImportGlobal) {
+  if (needsRpImport || needsRpdImport || needsPkImport || needsPpImport || needsLcImport || needsFuseImport || needsWrapSpreadImport || needsCxImportGlobal) {
     const coreImports: string[] = []
     // Alias to an internal name — `cx` is a PUBLIC export users import
     // directly (e.g. a hand-written component that also uses `class={…}`),
@@ -4539,6 +4633,8 @@ export function transformJSX_JS(
     if (needsCxImportGlobal) coreImports.push('cx as _cx')
     if (needsFuseImport) coreImports.push('_fuse')
     if (needsLcImport) coreImports.push('_lc')
+    if (needsPkImport) coreImports.push('_pk')
+    if (needsPpImport) coreImports.push('_pp')
     if (needsRpImport) coreImports.push('_rp')
     if (needsRpdImport) coreImports.push('_rpd')
     if (needsWrapSpreadImport) coreImports.push('_wrapSpread')
@@ -7070,6 +7166,61 @@ interface FunctionBinding {
  * module signal's name — a `TypeError: error is not a function` inside the
  * error handler itself. Both backends walk the identical statement set.
  */
+/**
+ * How many times `name` is BOUND (parameter, declarator, catch parameter,
+ * function or class name) or WRITTEN (assignment or update target) anywhere
+ * inside `fn`, nested functions included. A component's props parameter is
+ * foldable only when this is exactly 1 (the parameter itself): any other
+ * binding or write could make `name` refer to a different object somewhere in
+ * the body. Mirrors native `count_bindings_and_writes`.
+ */
+function countBindingsAndWrites(
+  fn: N,
+  name: string,
+  forEachChildFast: (node: N, cb: (child: N) => void) => void,
+): number {
+  let count = 0
+  const pat = (p: N | null | undefined): void => {
+    if (!p) return
+    const names: string[] = []
+    collectPatternNames(p, names)
+    for (const n of names) if (n === name) count++
+  }
+  const visit = (n: N): void => {
+    switch (n.type) {
+      case 'FunctionDeclaration':
+      case 'FunctionExpression':
+      case 'ArrowFunctionExpression':
+        if (n.id?.name === name) count++
+        for (const p of n.params ?? []) pat(p)
+        break
+      case 'ClassDeclaration':
+      case 'ClassExpression':
+        if (n.id?.name === name) count++
+        break
+      case 'VariableDeclarator':
+        pat(n.id)
+        break
+      case 'CatchClause':
+        pat(n.param)
+        break
+      case 'AssignmentExpression':
+        pat(n.left)
+        break
+      case 'ForInStatement':
+      case 'ForOfStatement':
+        if (n.left?.type !== 'VariableDeclaration') pat(n.left)
+        break
+      case 'UpdateExpression':
+        if (n.argument?.type === 'Identifier' && n.argument.name === name) count++
+        break
+    }
+    forEachChildFast(n, visit)
+  }
+  visit(fn)
+  return count
+}
+
 function collectFunctionBindings(fn: N): FunctionBinding[] {
   const out: FunctionBinding[] = []
   const names: string[] = []

@@ -14,7 +14,7 @@ describe('gen-docs — i18n snapshot', () => {
     expect(renderLlmsFullSection(manifest)).toMatchInlineSnapshot(`
       "## @pyreon/i18n — Internationalization
 
-      Signal-based internationalization for Pyreon. \`createI18n\` returns a reactive \`t(key, values?)\` plus locale-reactive \`Intl\` formatters \`n()\` (number/currency/percent), \`d()\` (date/time) and \`rt()\` (relative time) — formatters are memoized per (locale, options). Translations support \`{{name}}\` interpolation, inline format specifiers (\`{{amount, currency}}\`, \`{{when, date}}\`, \`{{n, relativetime, day}}\`), \`_one\`/\`_other\`/\`_zero\` plural suffixes, \`context\` (gender/variant), \`defaultValue\`, and \`$t(key)\` nesting. Namespace lazy loading deduplicates concurrent requests. Two entry points: \`@pyreon/i18n\` (full — includes JSX \`Trans\` component, \`I18nProvider\`, \`useI18n\`) and \`@pyreon/i18n/core\` (framework-agnostic — only \`createI18n\`, \`interpolate\`, \`resolvePluralCategory\`, types). The \`/core\` entry transitively depends only on \`@pyreon/reactivity\` with zero JSX, making it suitable for backend translation pipelines, edge workers, and non-Pyreon frontends.
+      Signal-based internationalization for Pyreon. \`createI18n\` returns a reactive \`t(key, values?)\` plus locale-reactive \`Intl\` formatters \`n()\` (number/currency/percent), \`d()\` (date/time), \`rt()\` (relative time) and \`l()\` (lists) — formatters are memoized per (locale, options) — plus \`dir()\` for the text direction of a locale. Translations support \`{{name}}\` interpolation, inline format specifiers (\`{{amount, currency}}\`, \`{{when, date}}\`, \`{{n, relativetime, day}}\`, \`{{items, list}}\`), \`_one\`/\`_other\`/\`_zero\` plural suffixes, \`context\` (gender/variant), \`defaultValue\`, and \`$t(key)\` nesting. Namespace lazy loading deduplicates concurrent requests. Two entry points: \`@pyreon/i18n\` (full — includes JSX \`Trans\` component, \`I18nProvider\`, \`useI18n\`) and \`@pyreon/i18n/core\` (framework-agnostic — only \`createI18n\`, \`interpolate\`, \`resolvePluralCategory\`, types). The \`/core\` entry transitively depends only on \`@pyreon/reactivity\` with zero JSX, making it suitable for backend translation pipelines, edge workers, and non-Pyreon frontends.
 
       \`\`\`typescript
       import { createI18n, I18nProvider, useI18n, Trans } from '@pyreon/i18n'
@@ -48,6 +48,8 @@ describe('gen-docs — i18n snapshot', () => {
       i18n.n(9.99, { style: 'currency', currency: 'USD' })  // "$9.99"
       i18n.d(Date.now(), { dateStyle: 'medium' })    // "Jan 15, 2024"
       i18n.rt(-3, 'day')                             // "3 days ago"
+      i18n.l(['Ann', 'Bob', 'Cy'])                   // "Ann, Bob, and Cy"
+      i18n.dir('ar')                                 // "rtl" — for <html dir>
 
       // Inline format specifiers + context/defaultValue inside t():
       // messages.en.total = "Total: {{amount, currency}}"  → "Total: $9.99"
@@ -94,7 +96,7 @@ describe('gen-docs — i18n snapshot', () => {
       >
       > **Plural suffixes + _zero + context**: Pluralization uses \`_one\`/\`_other\` key suffixes (e.g. \`items_one\`, \`items_other\`) selected by \`count\`. \`count === 0\` tries an explicit \`_zero\` form first (so English can say "No items"). \`context\` (gender/variant) combines with plurals: \`t(key, { context: "male", count: 1 })\` tries \`key_male_one\` → \`key_male\` → \`key_one\` → \`key\`. Custom plural rules can be provided for non-English languages.
       >
-      > **Formatters are reactive + memoized**: \`n()\`/\`d()\`/\`rt()\` read the locale signal, so read them inside reactive scopes (JSX/effect) to re-format on locale change. The underlying \`Intl.*Format\` instances are memoized per (locale, options) — repeated calls in a rendered list are cheap. Configure reusable named formats via \`numberFormats\`/\`dateFormats\`/\`relativeTimeFormats\` and reference them by name (\`n(9.99, "currency")\`) or inline (\`"{{amount, currency}}"\`).
+      > **Formatters are reactive + memoized**: \`n()\`/\`d()\`/\`rt()\`/\`l()\`/\`dir()\` read the locale signal, so read them inside reactive scopes (JSX/effect) to re-format on locale change. The underlying \`Intl.*Format\` instances are memoized per (locale, options) — repeated calls in a rendered list are cheap. Configure reusable named formats via \`numberFormats\`/\`dateFormats\`/\`relativeTimeFormats\`/\`listFormats\` and reference them by name (\`n(9.99, "currency")\`) or inline (\`"{{amount, currency}}"\`).
       >
       > **Reserved value keys**: \`count\`, \`context\`, and \`defaultValue\` in the \`t()\` values object are interpreted as options (not interpolated as \`{{context}}\` unless the translation literally references them). \`defaultValue\` is returned (interpolated) when the key is missing, before the key-as-fallback.
       >
@@ -107,7 +109,7 @@ describe('gen-docs — i18n snapshot', () => {
 
   it('renders to MCP api-reference entries', () => {
     const record = renderApiReferenceEntries(manifest)
-    expect(Object.keys(record).length).toBe(13)
+    expect(Object.keys(record).length).toBe(15)
     expect(record['i18n/createI18n']!.notes).toContain('reactive')
     expect(record['i18n/createI18n']!.mistakes?.split('\n').length).toBe(6)
     // The two previously-undocumented public exports are now covered.
@@ -117,5 +119,7 @@ describe('gen-docs — i18n snapshot', () => {
     expect(record['i18n/n']!.signature).toContain('Intl.NumberFormatOptions')
     expect(record['i18n/d']!.signature).toContain('Intl.DateTimeFormatOptions')
     expect(record['i18n/rt']!.signature).toContain('Intl.RelativeTimeFormatUnit')
+    expect(record['i18n/l']!.signature).toContain('Intl.ListFormatOptions')
+    expect(record['i18n/dir']!.signature).toContain("'ltr' | 'rtl'")
   })
 })

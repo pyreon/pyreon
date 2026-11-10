@@ -66,12 +66,16 @@ i18n.t('items', { count: 1 }) // '1 item' (fallback to en)
 | `defaultNamespace`  | `string`                                                  | Default namespace for `t()` (default: `'common'`)        |
 | `pluralRules`       | `Record<string, (count: number) => string>`               | Custom plural rules; defaults to `Intl.PluralRules`      |
 | `onMissingKey`      | `(locale, key, namespace?) => string \| undefined`        | Missing-key handler — log, report, or supply a fallback   |
+| `numberFormats` / `dateFormats` / `relativeTimeFormats` / `listFormats` | `Record<locale, Record<name, Intl.*FormatOptions>>` | Named formats for `n` / `d` / `rt` / `l` and inline `{{x, name}}` |
 
 Returns `I18nInstance`:
 
 | Property                              | Type                                              | Description                          |
 | ------------------------------------- | ------------------------------------------------- | ------------------------------------ |
 | `t(key, values?)`                     | `(string, InterpolationValues?) => string`        | Translate; reads locale reactively   |
+| `n` / `d` / `rt`                      | `Intl` number / date / relative-time formatters   | Reactive, memoized per (locale, options) |
+| `l(values, options?)`                 | `(Iterable<string>, Intl.ListFormatOptions \| string?) => string` | Locale list join: "a, b, and c" / "a or b" |
+| `dir(locale?)`                        | `(string?) => 'ltr' \| 'rtl'`                      | Text direction; no argument = current locale, reactive |
 | `locale`                              | `Signal<string>`                                  | Current locale, writable             |
 | `loadNamespace(ns, locale?)`          | `(string, string?) => Promise<void>`              | Load a namespace; deduped per-request |
 | `isLoading`                           | `Computed<boolean>`                               | True while any namespace is loading  |
@@ -115,6 +119,22 @@ interpolate('Hello, {{ name }}!', { name: 'World' }) // 'Hello, World!'
 ```
 
 Supports whitespace inside braces. Unmatched placeholders are left as-is.
+
+## Lists and text direction
+
+```ts
+i18n.l(['Ann', 'Bob', 'Cy'])                      // "Ann, Bob, and Cy"   (de: "Ann, Bob und Cy")
+i18n.l(['tea', 'coffee'], { type: 'disjunction' }) // "tea or coffee"
+
+// Inline in a message — items are coerced with String, nullish entries dropped:
+// "Invited: {{names, list}}" · "Pick {{opts, list, disjunction}}" · "{{parts, list, unit, narrow}}"
+i18n.t('invited', { names: ['Ann', 'Bob'] })       // "Invited: Ann and Bob"
+
+i18n.dir('ar')    // "rtl" — Arabic, Hebrew, Persian, Urdu, … and explicit RTL scripts (`az-Arab`)
+i18n.dir()        // the current locale's direction, reactive
+```
+
+`<html lang={() => i18n.locale()} dir={() => i18n.dir()}>` keeps the document direction in step with locale switches. Like `n` / `d` / `rt`, `l` and `dir` are web-only: the native lowering covers `t()` and the locale.
 
 ## `I18nProvider` / `useI18n()`
 

@@ -101,6 +101,12 @@ export interface ResolvedRoute<
    * pages. SSR handlers read this to set HTTP status 404.
    */
   isNotFound?: boolean
+  /**
+   * Internal: set on an in-flight navigation's `to` when one of its loaders
+   * (or the data endpoint) reported `notFound()`. `commitNavigation` turns it
+   * into the router's loader-not-found state for that path.
+   */
+  _loaderNotFound?: boolean | undefined
 }
 
 /** Internal: how the initial navigation's guard pipeline ended. */
@@ -583,8 +589,10 @@ export interface Router<TNames extends string = string> {
   /**
    * Phase 5 — run ONLY the matched chain's `serverLoader` records for the
    * single-fetch data endpoint, keyed by matched-chain index. Returns the
-   * index-keyed data, or a redirect descriptor when a server loader threw
-   * `redirect()`. Server-only (the `serverLoader` fn exists only in the SSR
+   * index-keyed data, a redirect descriptor when a server loader threw
+   * `redirect()`, or `{ kind: 'notFound' }` when one threw `notFound()`
+   * (the endpoint answers `{ notFound: true }` and the client lands on the
+   * not-found page). Server-only (the `serverLoader` fn exists only in the SSR
    * module graph).
    */
   runServerLoaders(
@@ -593,6 +601,7 @@ export interface Router<TNames extends string = string> {
   ): Promise<
     | { kind: 'data'; data: Record<number, unknown> }
     | { kind: 'redirect'; to: string; status: number }
+    | { kind: 'notFound' }
   >
   /**
    * Invalidate cached loader data. Forces loaders to re-run on next navigation.
@@ -723,6 +732,14 @@ export interface RouterInstance extends Router {
    * navigations whose chain has no middleware (data is per-navigation).
    */
   _committedMiddlewareData: Record<string, unknown>
+  /**
+   * The path (pathname, no query) whose loaders threw `notFound()` on the
+   * last committed navigation, SSR preload or hydration — `null` otherwise.
+   * While it equals the current path, `currentRoute()` resolves to the
+   * not-found fallback chain (`isNotFound: true`). The next committed
+   * navigation overwrites it.
+   */
+  _loaderNotFound: Signal<string | null>
   /** Key-based loader cache: cacheKey → { data, timestamp } */
   _loaderCache: SizedMap<string, { data: unknown; timestamp: number }>
   /**

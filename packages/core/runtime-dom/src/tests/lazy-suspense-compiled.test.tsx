@@ -8,7 +8,7 @@
 import { transformSync } from 'esbuild'
 import { transformJSX_JS } from '@pyreon/compiler'
 import type { ComponentFn } from '@pyreon/core'
-import { Fragment, Suspense, _fuse, _rp, h, lazy } from '@pyreon/core'
+import { Fragment, Suspense, _fuse, _pk, _pp, _rp, h, lazy } from '@pyreon/core'
 import {
   _esc,
   _escSole,
@@ -64,8 +64,8 @@ function compile(
     jsxFactory: 'h',
     jsxFragment: 'Fragment',
   }).code
-  const names = ['h', 'Fragment', 'Suspense', '_rp', '_fuse', '_ssr', '_ssrNode', '_ssrDeferred', '_esc', '_escSole', 'Lazy']
-  const vals = [h, Fragment, Suspense, _rp, _fuse, _ssr, _ssrNode, _ssrDeferred, _esc, _escSole, Lazy]
+  const names = ['h', 'Fragment', 'Suspense', '_pk', '_pp', '_rp', '_fuse', '_ssr', '_ssrNode', '_ssrDeferred', '_esc', '_escSole', 'Lazy']
+  const vals = [h, Fragment, Suspense, _pk, _pp, _rp, _fuse, _ssr, _ssrNode, _ssrDeferred, _esc, _escSole, Lazy]
   // oxlint-disable-next-line no-new-func
   return new Function(...names, `${lowered}\nreturn Node`)(...vals)
 }

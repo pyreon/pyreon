@@ -60,7 +60,9 @@ describe('JSX transform — component child: stable-reference contract (#2348)',
       const B = (props) => <Heading label={props.title}>{props.title}</Heading>
     `
     const out = t(src)
-    expect(out, 'attr keeps the _rp wrap').toContain('_rp(() => props.title)')
+    // A pass-through attr forwards the parent's getter (or its fixed value)
+    // through `_pp` — live either way (core `_pp`).
+    expect(out, 'attr forwards the prop live').toContain('label={_pp(props, "title")}')
     // (plain toContain — the attr's own `=>` defeats a `<Heading[^>]*>` regex)
     expect(out, 'child gets the accessor (was bare/frozen pre-#2348)').toContain(
       '>{() => props.title}</Heading>',

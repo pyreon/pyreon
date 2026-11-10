@@ -62,14 +62,14 @@ describe('bakedRpcScript', () => {
   it('escapes a closing script tag hidden in component source', () => {
     const script = bakedRpcScript({ source: { A: { source: '<div>a</script><b>' } } })
     expect(script).not.toContain('</script><b>')
-    expect(script).toContain('<\\/script>')
+    expect(script).not.toContain('</script><')
     // Still exactly one real closing tag — the wrapper's own.
     expect(script.match(/<\/script>/g)).toHaveLength(1)
   })
 
   it('escapes a comment opener, which also ends the script grammar', () => {
     const script = bakedRpcScript({ source: { A: { source: '<!-- x' } } })
-    expect(script).toContain('<\\!--')
+    expect(script).not.toContain('<!--')
   })
 
   it('escapes U+2028 / U+2029 — legal in JSON, historically illegal in JS', () => {
@@ -86,5 +86,28 @@ describe('bakedRpcScript', () => {
     const json = script.slice(script.indexOf('=') + 1, script.lastIndexOf('</script>'))
     // eslint-disable-next-line no-new-func -- parsing the emitted literal is the assertion
     expect(new Function(`return ${json}`)()).toEqual(payload)
+  })
+
+  // A `"__proto__":` key in a JS object literal is a PROTOTYPE SETTER, not a
+  // key. Component names and RPC answers are user-shaped, so a bare
+  // JSON.stringify embed dropped that key on the page and let every
+  // missing-key lookup inherit the smuggled fields — while the per-component
+  // `.json` files (JSON.parse) kept it. The evaluated script must be
+  // deep-equal to JSON.parse of the same payload.
+  it('keeps an own "__proto__" key as an own key when the script is evaluated', () => {
+    const payload = JSON.parse(
+      '{"source":{"__proto__":{"source":"proto.tsx","polluted":true},"A":{"source":"a"}}}',
+    ) as Record<string, Record<string, unknown>>
+    const script = bakedRpcScript(payload)
+    const expr = script.slice(script.indexOf('=') + 1, script.lastIndexOf('</script>'))
+    // eslint-disable-next-line no-new-func -- evaluating the emitted literal is the assertion
+    const evaluated = new Function(`return ${expr}`)() as Record<string, Record<string, unknown>>
+    const source = evaluated.source as Record<string, unknown>
+    expect(Object.getPrototypeOf(source)).toBe(Object.prototype)
+    expect(Object.hasOwn(source, '__proto__')).toBe(true)
+    expect(Object.keys(source)).toEqual(['__proto__', 'A'])
+    // A missing component must not inherit the smuggled answer.
+    expect((source as Record<string, unknown>).polluted).toBeUndefined()
+    expect(JSON.stringify(evaluated)).toBe(JSON.stringify(payload))
   })
 })
