@@ -1,4 +1,5 @@
 import type { Computed, Signal } from '@pyreon/reactivity'
+import type { TextDirection } from './direction'
 
 /** A nested dictionary of translation strings. */
 export type TranslationDictionary = {
@@ -44,6 +45,9 @@ export type InterpolationValues = Record<string, InterpolationValue>
 
 /** Per-locale named `Intl.NumberFormat` options: `{ en: { currency: {...} } }`. */
 export type NumberFormats = Record<string, Record<string, Intl.NumberFormatOptions>>
+
+/** Per-locale named `Intl.ListFormat` options: `{ en: { or: { type: 'disjunction' } } }`. */
+export type ListFormats = Record<string, Record<string, Intl.ListFormatOptions>>
 
 /** Per-locale named `Intl.DateTimeFormat` options: `{ en: { short: {...} } }`. */
 export type DateFormats = Record<string, Record<string, Intl.DateTimeFormatOptions>>
@@ -96,6 +100,8 @@ export interface I18nOptions {
   dateFormats?: DateFormats
   /** Per-locale named `Intl.RelativeTimeFormat` options — see {@link numberFormats}. */
   relativeTimeFormats?: RelativeTimeFormats
+  /** Per-locale named `Intl.ListFormat` options — see {@link numberFormats}. */
+  listFormats?: ListFormats
   /**
    * Custom named formatters. Usable inline (`"{{val, myFormat}}"`) — receive the
    * raw value + current locale and return a string. Take priority over builtins.
@@ -165,6 +171,27 @@ export interface I18nInstance<TKey extends string = string> {
     unit: Intl.RelativeTimeFormatUnit,
     options?: Intl.RelativeTimeFormatOptions | string,
   ) => string
+
+  /**
+   * Join a list for the current locale via `Intl.ListFormat`. Reactive +
+   * memoized. `options` is an `Intl.ListFormatOptions` object or a configured
+   * `listFormats` name. Inline form: `"{{items, list}}"`,
+   * `"{{items, list, disjunction}}"`, `"{{items, list, unit, narrow}}"`.
+   *
+   * @example i18n.l(['Ann', 'Bob', 'Cy'])                      // "Ann, Bob, and Cy"
+   * @example i18n.l(['tea', 'coffee'], { type: 'disjunction' }) // "tea or coffee"
+   */
+  l: (values: Iterable<string>, options?: Intl.ListFormatOptions | string) => string
+
+  /**
+   * Text direction of a locale: `'rtl'` for Arabic, Hebrew, Persian, Urdu …,
+   * otherwise `'ltr'`. Without an argument it reads the current locale
+   * reactively, so `<html dir={() => i18n.dir()}>` follows locale switches.
+   *
+   * @example i18n.dir('ar')    // "rtl"
+   * @example i18n.dir('en-US') // "ltr"
+   */
+  dir: (locale?: string) => TextDirection
 
   /** Current locale (reactive signal). */
   locale: Signal<string>
