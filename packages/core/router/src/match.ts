@@ -78,7 +78,7 @@ function decodeQueryComponent(raw: string): string {
  * `js/remote-property-injection`). A null-prototype object has no prototype
  * chain, so every user key is a plain OWN data property. This is the standard
  * `qs` / `query-string` hardening — layer ONE of two (see
- * `DANGEROUS_QUERY_KEYS` for layer two, which the null prototype does NOT cover).
+ * `isDangerousQueryKey` for layer two, which the null prototype does NOT cover).
  */
 function emptyQueryRecord<T>(): Record<string, T> {
   return Object.create(null) as Record<string, T>
@@ -96,7 +96,9 @@ function emptyQueryRecord<T>(): Record<string, T> {
  * `constructor`, `prototype`) closes that hop and the CodeQL finding at the
  * source; a genuine app query param by these names has no legitimate use.
  */
-const DANGEROUS_QUERY_KEYS = new Set(['__proto__', 'constructor', 'prototype'])
+function isDangerousQueryKey(key: string): boolean {
+  return key === '__proto__' || key === 'constructor' || key === 'prototype'
+}
 // NOTE on CodeQL `js/remote-property-injection`: that query credits only
 // ALLOWLIST/constant-prefix sanitizers by design, so a blocklist guard like this
 // one is never recognized and the alerts on the write sites are DISMISSED with
@@ -105,18 +107,24 @@ const DANGEROUS_QUERY_KEYS = new Set(['__proto__', 'constructor', 'prototype'])
 // dropped dangerous keys above, both bisect-locked in tests/match.test.ts.
 
 export function parseQuery(qs: string): Record<string, string> {
-  if (!qs) return emptyQueryRecord()
   const result = emptyQueryRecord<string>()
-  for (const part of qs.split('&')) {
-    const eqIdx = part.indexOf('=')
-    if (eqIdx < 0) {
-      const key = decodeQueryComponent(part)
-      if (key && !DANGEROUS_QUERY_KEYS.has(key)) result[key] = ''
-    } else {
-      const key = decodeQueryComponent(part.slice(0, eqIdx))
-      const val = decodeQueryComponent(part.slice(eqIdx + 1))
-      if (key && !DANGEROUS_QUERY_KEYS.has(key)) result[key] = val
+  // One pass over `qs`: each `&`-separated part splits at its FIRST `=`
+  // (no `=` → empty value); empty keys and dangerous keys are dropped, and a
+  // repeated key keeps its last value. (Replaced `split('&')` + `indexOf`:
+  // the array and the per-part native calls cost ~4x the parse itself.)
+  const len = qs.length
+  let i = 0
+  while (i < len) {
+    let eq = -1
+    let j = i
+    for (; j < len; j++) {
+      const c = qs.charCodeAt(j)
+      if (c === 38 /* & */) break
+      if (c === 61 /* = */ && eq < 0) eq = j
     }
+    const key = decodeQueryComponent(eq < 0 ? qs.slice(i, j) : qs.slice(i, eq))
+    if (key && !isDangerousQueryKey(key)) result[key] = eq < 0 ? '' : decodeQueryComponent(qs.slice(eq + 1, j))
+    i = j + 1
   }
   return result
 }
@@ -142,7 +150,7 @@ export function parseQueryMulti(qs: string): Record<string, string | string[]> {
       key = decodeQueryComponent(part.slice(0, eqIdx))
       val = decodeQueryComponent(part.slice(eqIdx + 1))
     }
-    if (!key || DANGEROUS_QUERY_KEYS.has(key)) continue
+    if (!key || isDangerousQueryKey(key)) continue
     const existing = result[key]
     if (existing === undefined) {
       result[key] = val
@@ -256,6 +264,13 @@ interface FlattenedRoute {
    * the URL to the general lane.
    */
   walkable: boolean
+  /**
+   * `false` when no static route could share this route's path (no static in
+   * its first-segment bucket has its segment count), so a walk match with a
+   * query/hash need not probe `staticMap` for an outranking static. `true`
+   * (probe) whenever that cannot be ruled out cheaply.
+   */
+  staticTwin: boolean
   /**
    * The frozen `ResolvedRoute` for this entry's static path with no query, no
    * hash and no `validateSearch` — built once when the entry enters `staticMap`
@@ -402,6 +417,7 @@ function makeFlatEntry(
     validateFn,
     rawSafe: false,
     walkable: segments.every((s) => s.isParam || !/[?#]/.test(s.raw)),
+    staticTwin: true,
     staticResult: null,
   }
 }
@@ -751,6 +767,13 @@ function buildRouteIndex(routes: RouteRecord[]): RouteIndex {
 
   for (const f of flattened) {
     indexFlatRoute(f, staticMap, segmentMap, dynamicFirst, wildcards)
+  }
+  for (const key in segmentMap) {
+    const bucket = segmentMap[key] as FlattenedRoute[]
+    for (const f of bucket) {
+      if (f.isStatic || f.hasSplat || f.hasOptional) continue
+      f.staticTwin = bucket.some((o) => o.isStatic && o.segmentCount === f.segmentCount)
+    }
   }
   for (const key in staticMap) {
     const f = staticMap[key] as FlattenedRoute
@@ -1232,9 +1255,14 @@ function resolveUncached(rawPath: string, routes: RouteRecord[], index: RouteInd
   const params = _walkParams.p
   if (end === rawPath.length) return routeHit(f, rawPath, params, EMPTY_QUERY, '')
   const cleanPath = splitUrl(rawPath, end)
-  // A static route for the bare path outranks the bucket (`/about?x=1`).
-  const s = index.staticMap[cleanPath]
-  if (s !== undefined) return staticResult(s, cleanPath, _url.query, _url.hash)
+  // A static match IS the static-map entry for its path (both keep the first
+  // in definition order). A dynamic match is outranked by a static route for
+  // the bare path (`/user/me?x=1` with `/user/me` defined after `/user/:id`).
+  if (f.isStatic) return staticResult(f, cleanPath, _url.query, _url.hash)
+  if (f.staticTwin) {
+    const s = index.staticMap[cleanPath]
+    if (s !== undefined) return staticResult(s, cleanPath, _url.query, _url.hash)
+  }
   return routeHit(f, cleanPath, params, _url.query, _url.hash)
 }
 
