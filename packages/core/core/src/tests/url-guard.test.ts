@@ -45,6 +45,10 @@ describe('url-guard — isUnsafeUrl (charCodeAt fast path)', () => {
     'DATA:text/html,x',
     ' data:text/html,x',
     '\tdata:text/html,x',
+    'vbscript:msgbox(1)',
+    'VBScript:msgbox(1)',
+    ' vbscript:x',
+    '\u00a0vbscript:x',
     // unicode-whitespace-prefixed (the `\s` set — a `c > 32` fast path would
     // wrongly pass these; the conservative predicate routes ≥127 to the regex)
     '\u00a0javascript:x', // NBSP (160)
@@ -78,6 +82,9 @@ describe('url-guard — isUnsafeUrl (charCodeAt fast path)', () => {
     'j', // bare 'j', no colon → safe
     'data-uri-ish/path', // starts with 'd' → regex, no `data:` → safe
     'javascriptural/thing', // starts with 'j' → regex, no `javascript:` → safe
+    'vbscript', // starts with 'v' → regex, no colon → safe
+    'video.mp4', // starts with 'v' → regex, no `vbscript:` → safe
+    'V', // bare 'V' → safe
   ]
 
   it('is byte-for-byte equivalent to UNSAFE_URL_RE.test on the full matrix', () => {
@@ -89,7 +96,7 @@ describe('url-guard — isUnsafeUrl (charCodeAt fast path)', () => {
   it('BLOCKS every javascript:/data: variant (security invariant)', () => {
     for (const url of cases) {
       const lower = url.trimStart().toLowerCase()
-      if (lower.startsWith('javascript:') || lower.startsWith('data:')) {
+      if (lower.startsWith('javascript:') || lower.startsWith('vbscript:') || lower.startsWith('data:')) {
         expect(isUnsafeUrl(url)).toBe(true)
       }
     }

@@ -675,6 +675,12 @@ struct Ctx<'a> {
     needs_ssr_for_keyed_import: bool,
     needs_esc_import: bool,
     needs_esc_sole_import: bool,
+    /// The baked namespace-changing ancestors (`s` svg, `m` math, `f`
+    /// foreignObject) of the element `ssr_serialize_element` is walking; every
+    /// CHILD hole under them carries it as a trailing argument so the runtime
+    /// renders the hole in the parser's namespace. Mirrors the JS backend's
+    /// `ssrNsPath` (see its docblock).
+    ssr_ns_path: String,
     needs_ssr_attr_import: bool,
     needs_ssr_attr_gen_import: bool,
     needs_ssr_attr_url_import: bool,
@@ -858,6 +864,7 @@ impl<'a> Ctx<'a> {
             needs_ssr_for_keyed_import: false,
             needs_esc_import: false,
             needs_esc_sole_import: false,
+            ssr_ns_path: String::new(),
             needs_ssr_attr_import: false,
             needs_ssr_attr_gen_import: false,
             needs_ssr_attr_url_import: false,
@@ -5892,6 +5899,10 @@ struct SsrBuf {
     /// its props transform in place. Spans (not node refs) are stored so
     /// `SsrBuf` needs no lifetime parameter. Mirrors the JS `SsrBuf.holeSrc`.
     hole_src: Vec<Option<SrcHole>>,
+    /// Per-hole: the `ssr_ns_path` a PRESERVED source hole was emitted under
+    /// (empty for generated holes, whose text already carries it). Mirrors the
+    /// JS `SsrBuf.holeSrc[i].ns`.
+    hole_ns: Vec<String>,
     /// A GENERATED hole's text contains JSX — rendered by `_esc`/`_escSole` the
     /// moment the `_ssr(...)` arguments evaluate, so the call is wrapped in
     /// `_ssrDeferred` like a preserved component hole. Propagates from `.map` /
@@ -5918,6 +5929,7 @@ impl SsrBuf {
             holes: Vec::new(),
             hole_str: Vec::new(),
             hole_src: Vec::new(),
+            hole_ns: Vec::new(),
             defer_jsx: false,
         }
     }
@@ -5935,12 +5947,13 @@ impl SsrBuf {
         self.holes.push(expr_text);
         self.hole_str.push(provably_string);
         self.hole_src.push(None);
+        self.hole_ns.push(String::new());
         self.statics.push(String::new());
     }
     /// A hole whose text is the child's OWN source range, left in place.
     /// Mirrors the JS `ssrEmitSourceHole`.
-    fn emit_source_hole(&mut self, start: u32, end: u32) {
-        self.emit_source_hole_wrapped(start, end, "_ssrNode(", ")", false);
+    fn emit_source_hole(&mut self, start: u32, end: u32, ns: String) {
+        self.emit_source_hole_wrapped(start, end, "_ssrNode(", ")", false, ns);
     }
     fn emit_source_hole_wrapped(
         &mut self,
@@ -5949,10 +5962,12 @@ impl SsrBuf {
         open: &'static str,
         close: &'static str,
         is_expr: bool,
+        ns: String,
     ) {
         self.holes.push(String::new());
         self.hole_str.push(false);
         self.hole_src.push(Some(SrcHole { start, end, open, close, is_expr }));
+        self.hole_ns.push(ns);
         self.statics.push(String::new());
     }
 }
@@ -6393,17 +6408,44 @@ fn is_false_null_undefined(expr: &Expression) -> bool {
     }
 }
 
-/// Emit a text/expression child as `_esc(expr)`. Mirrors JS `emitEscHole`.
-fn emit_esc_hole(buf: &mut SsrBuf, expr_text: String, ctx: &mut Ctx) {
-    buf.emit_hole(format!("_esc({})", expr_text));
+/// Emit a text/expression child as `_esc(expr)` — a CHILD hole also carries
+/// the baked namespace path; an attribute-value hole (`child == false`) does
+/// not. Mirrors JS `emitEscHole`.
+fn emit_esc_hole(buf: &mut SsrBuf, expr_text: String, child: bool, ctx: &mut Ctx) {
+    let ns = if child { ssr_ns_arg(&ctx.ssr_ns_path) } else { String::new() };
+    buf.emit_hole(format!("_esc({}{})", expr_text, ns));
     ctx.needs_esc_import = true;
+}
+
+/// `, "<path>"` for a child hole under baked foreign-namespace tags, else "".
+/// Mirrors JS `ssrNsArg`.
+fn ssr_ns_arg(path: &str) -> String {
+    if path.is_empty() {
+        String::new()
+    } else {
+        format!(", \"{}\"", path)
+    }
+}
+
+/// The `ssr_ns_path` code for a namespace-changing tag (ASCII
+/// case-insensitive, as the tokenizer is). Mirrors JS `ssrNsCode`.
+fn ssr_ns_code(tag: &str) -> &'static str {
+    if tag.eq_ignore_ascii_case("svg") {
+        "s"
+    } else if tag.eq_ignore_ascii_case("math") {
+        "m"
+    } else if tag.eq_ignore_ascii_case("foreignobject") {
+        "f"
+    } else {
+        ""
+    }
 }
 
 /// Emit a SOLE expression child as `_escSole(expr)` — `_esc` minus the accessor
 /// range markers, matching `renderElement`'s sole-child elision. Mirrors JS
 /// `emitEscSoleHole`.
 fn emit_esc_sole_hole(buf: &mut SsrBuf, expr_text: String, ctx: &mut Ctx) {
-    buf.emit_hole(format!("_escSole({})", expr_text));
+    buf.emit_hole(format!("_escSole({}{})", expr_text, ssr_ns_arg(&ctx.ssr_ns_path)));
     ctx.needs_esc_sole_import = true;
 }
 
@@ -6492,7 +6534,7 @@ fn ssr_try_bake_dynamic_attr(
         return false;
     }
     buf.emit_static(&format!(" {}=\"", name));
-    emit_esc_hole(buf, value_text.to_string(), ctx);
+    emit_esc_hole(buf, value_text.to_string(), false, ctx);
     buf.emit_static("\"");
     true
 }
@@ -7022,7 +7064,7 @@ fn ssr_serialize_expr_child(
         if sole {
             emit_esc_sole_hole(buf, t, ctx);
         } else {
-            emit_esc_hole(buf, t, ctx);
+            emit_esc_hole(buf, t, true, ctx);
         }
         return true;
     }
@@ -7048,14 +7090,28 @@ fn ssr_serialize_expr_child(
         {
             if sole {
                 ctx.needs_esc_sole_import = true;
-                buf.emit_source_hole_wrapped(sp.start, sp.end, "_escSole(", ")", true);
+                buf.emit_source_hole_wrapped(
+                    sp.start,
+                    sp.end,
+                    "_escSole(",
+                    ")",
+                    true,
+                    ctx.ssr_ns_path.clone(),
+                );
             } else {
                 let wrapped = should_wrap(expr, ctx);
                 ctx.needs_esc_import = true;
                 if wrapped {
                     buf.emit_static("<!--$-->");
                 }
-                buf.emit_source_hole_wrapped(sp.start, sp.end, "_esc(", ")", true);
+                buf.emit_source_hole_wrapped(
+                    sp.start,
+                    sp.end,
+                    "_esc(",
+                    ")",
+                    true,
+                    ctx.ssr_ns_path.clone(),
+                );
                 if wrapped {
                     buf.emit_static("<!--/$-->");
                 }
@@ -7079,10 +7135,10 @@ fn ssr_serialize_expr_child(
         // The h() path wraps a dynamic child in `() => expr` → `<!--$-->…<!--/$-->`
         // markers. Bake the markers + `_esc(expr)`: byte-identical.
         buf.emit_static("<!--$-->");
-        emit_esc_hole(buf, expr_text, ctx);
+        emit_esc_hole(buf, expr_text, true, ctx);
         buf.emit_static("<!--/$-->");
     } else {
-        emit_esc_hole(buf, expr_text, ctx);
+        emit_esc_hole(buf, expr_text, true, ctx);
     }
     true
 }
@@ -7249,7 +7305,7 @@ fn ssr_serialize_child(
                 if !ssr_component_child_eligible(el) {
                     return false;
                 }
-                buf.emit_source_hole(el.span().start, el.span().end);
+                buf.emit_source_hole(el.span().start, el.span().end, ctx.ssr_ns_path.clone());
                 ctx.needs_ssr_node_import = true;
                 return true;
             }
@@ -7324,17 +7380,24 @@ fn ssr_serialize_element(buf: &mut SsrBuf, el: &JSXElement, mode: SsrMode, ctx: 
     // A self-closing non-void tag (`<div />`) has no children to walk; it still
     // gets its closing tag, matching the h() path's `<div></div>`.
     if !self_closing {
+        // Children are parsed in this element's namespace (see `ssr_ns_path`).
+        let outer_ns_len = ctx.ssr_ns_path.len();
+        ctx.ssr_ns_path.push_str(ssr_ns_code(tag));
         // Text fusion (see `fuse_text_children`): ONE sole accessor child →
         // the `_escSole` shape, no markers on either side. Mirrors JS.
-        if let Some(fused) = fuse_text_children(el, ctx, false) {
+        let ok = if let Some(fused) = fuse_text_children(el, ctx, false) {
             emit_esc_sole_hole(buf, fused, ctx);
+            true
         } else {
             let sole = ssr_sole_child(el);
-            for (i, child) in el.children.iter().enumerate() {
-                if !ssr_serialize_child(buf, child, mode, sole == Some(i), ctx) {
-                    return false;
-                }
-            }
+            el.children
+                .iter()
+                .enumerate()
+                .all(|(i, child)| ssr_serialize_child(buf, child, mode, sole == Some(i), ctx))
+        };
+        ctx.ssr_ns_path.truncate(outer_ns_len);
+        if !ok {
+            return false;
         }
     }
     buf.emit_static(&format!("</{}>", tag));
@@ -7598,7 +7661,12 @@ fn try_ssr_template_emit(el: &JSXElement, ctx: &mut Ctx) -> bool {
     // Self-closing roots are eligible — `ssr_serialize_element` already emits
     // both forms (void → `<img … />`, non-void → `<div …></div>`). Mirrors the
     // JS backend; byte-identity is locked by `ssr-template-differential`.
-    let buf = match build_ssr_buf(el, SsrMode::Recursed, ctx) {
+    // A top-level template has no baked ancestors: its holes inherit the
+    // runtime namespace it renders in. Mirrors JS `trySsrTemplateEmit`.
+    let outer_ns = std::mem::take(&mut ctx.ssr_ns_path);
+    let built = build_ssr_buf(el, SsrMode::Recursed, ctx);
+    ctx.ssr_ns_path = outer_ns;
+    let buf = match built {
         Some(b) => b,
         None => return false,
     };
@@ -7684,7 +7752,8 @@ fn try_ssr_template_emit(el: &JSXElement, ctx: &mut Ctx) -> bool {
     for k in 1..preserved.len() {
         let (idx, span) = preserved[k];
         let between = format!(
-            "{}{}, {}",
+            "{}{}{}, {}",
+            ssr_ns_arg(&buf.hole_ns[preserved[k - 1].0]),
             preserved[k - 1].1.close,
             generated_up_to(idx, &mut hole, &buf),
             span.open
@@ -7695,8 +7764,10 @@ fn try_ssr_template_emit(el: &JSXElement, ctx: &mut Ctx) -> bool {
 
     // Two closers for the call + one for the `_ssrDeferred(() => …)` wrap.
     let last = preserved[preserved.len() - 1].1;
+    let last_ns = ssr_ns_arg(&buf.hole_ns[preserved[preserved.len() - 1].0]);
     let mut suffix = format!(
-        "{}{}))",
+        "{}{}{}))",
+        last_ns,
         last.close,
         generated_up_to(buf.holes.len(), &mut hole, &buf)
     );
