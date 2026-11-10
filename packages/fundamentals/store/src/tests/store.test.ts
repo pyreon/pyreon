@@ -386,7 +386,7 @@ describe('subscribe', () => {
     }))
     const api = useStore()
     let capturedState: Record<string, unknown> | null = null
-    api.subscribe((_mutation, state) => {
+    api.subscribe(({ state }) => {
       capturedState = state
     })
     api.store.count.set(42)
@@ -401,7 +401,7 @@ describe('subscribe', () => {
     let called = false
     let capturedState: Record<string, unknown> | null = null
     api.subscribe(
-      (_mutation, state) => {
+      ({ state }) => {
         called = true
         capturedState = state
       },
