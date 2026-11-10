@@ -260,3 +260,9 @@ function Transition(props: TransitionProps): VNodeChild {
 // annotation lets the bundler drop it when the export is unused.
 const _Transition = /* @__PURE__ */ nativeCompat(Transition)
 export { _Transition as Transition }
+
+// `@pyreon/runtime-dom/transition` is built from THIS file: the build tool
+// derives a subpath's entry from its export key (`./transition` →
+// `src/transition.ts`), so the subpath's whole public surface lives here.
+export type { TransitionGroupProps } from './transition-group'
+export { TransitionGroup } from './transition-group'
