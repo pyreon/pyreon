@@ -45,6 +45,7 @@ import {
   type EffectScope,
   effectScope,
   getCurrentScope,
+  onScopeDispose,
   batch as pyreonBatch,
   computed as pyreonComputed,
   createSelector as pyreonCreateSelector,
@@ -66,7 +67,7 @@ const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number)
 export type Accessor<T> = () => T
 
 /** Solid-compatible setter type */
-export type Setter<T> = (v: T | ((prev: T) => T)) => void
+export type Setter<T> = (v: T | ((prev: T) => T)) => T
 
 /** Solid-compatible signal tuple type */
 export type Signal<T> = [Accessor<T>, Setter<T>]
@@ -89,7 +90,7 @@ export type VoidComponent<P = object> = Component<P>
 // ─── createSignal ────────────────────────────────────────────────────────────
 
 export type SignalGetter<T> = () => T
-export type SignalSetter<T> = (v: T | ((prev: T) => T)) => void
+export type SignalSetter<T> = (v: T | ((prev: T) => T)) => T
 
 export interface CreateSignalOptions<T> {
   equals?: false | ((prev: T, next: T) => boolean)
@@ -134,6 +135,7 @@ export function createSignal<T>(
           const next = typeof v === 'function' ? (v as (prev: T) => T)(prev) : v
           s.set({ v: next }) // new object always passes Object.is
           scheduleRerender()
+          return next
         }
       } else {
         const s = pyreonSignal<T>(initialValue)
@@ -141,9 +143,10 @@ export function createSignal<T>(
         setter = (v) => {
           const prev = s.peek()
           const next = typeof v === 'function' ? (v as (prev: T) => T)(prev) : v
-          if (shouldSkipUpdate(prev, next, options)) return
+          if (shouldSkipUpdate(prev, next, options)) return next
           s.set(next)
           scheduleRerender()
+          return next
         }
       }
 
@@ -161,6 +164,7 @@ export function createSignal<T>(
       const prev = s.peek().v
       const next = typeof v === 'function' ? (v as (prev: T) => T)(prev) : v
       s.set({ v: next })
+      return next
     }
     return [getter, setter]
   }
@@ -170,8 +174,9 @@ export function createSignal<T>(
   const setter: SignalSetter<T> = (v) => {
     const prev = s.peek()
     const next = typeof v === 'function' ? (v as (prev: T) => T)(prev) : v
-    if (shouldSkipUpdate(prev, next, options)) return
+    if (shouldSkipUpdate(prev, next, options)) return next
     s.set(next)
+    return next
   }
   return [getter, setter]
 }
@@ -263,6 +268,13 @@ export function createMemo<T>(fn: ((prev?: T) => T) | (() => T), initialValue?: 
         prevValue = result
         return result
       })
+      // Eager, as in Solid: computed now and on every change, not on first
+      // read — `fn` sees each intermediate `prev`, and side effects in it run
+      // when the dependency changes.
+      const keepHot = pyreonEffect(() => {
+        c()
+      })
+      ctx.unmountCallbacks.push(() => keepHot.dispose())
       ctx.hooks[idx] = c
     }
     const c = ctx.hooks[idx] as ReturnType<typeof pyreonComputed<T>>
@@ -275,6 +287,11 @@ export function createMemo<T>(fn: ((prev?: T) => T) | (() => T), initialValue?: 
     const result = (fn as (prev?: T) => T)(prevValue)
     prevValue = result
     return result
+  })
+  // Eager (see above). The effect belongs to the current scope (`createRoot`),
+  // which disposes it.
+  pyreonEffect(() => {
+    c()
   })
   return () => c()
 }
@@ -1302,9 +1319,74 @@ export function mapArray<T, U>(
   list: () => readonly T[],
   mapFn: (item: T, index: () => number) => U,
 ): () => U[] {
+  // Solid semantics: an item is mapped ONCE, by reference, and its result is
+  // reused for as long as the item stays in the list (only its index signal
+  // moves). Each mapping runs in its own root, disposed when the item leaves —
+  // so effects and cleanups created by `mapFn` live exactly as long as the
+  // item. It used to re-run `mapFn` for every item on every change.
+  let items: T[] = []
+  let mapped: U[] = []
+  let disposers: (() => void)[] = []
+  let indexes: ReturnType<typeof pyreonSignal<number>>[] = []
+
+  const disposeAll = () => {
+    for (const d of disposers) d()
+    items = []
+    mapped = []
+    disposers = []
+    indexes = []
+  }
+  const ctx = getCurrentCtx()
+  if (ctx) {
+    const idx = getHookIndex()
+    if (idx >= ctx.hooks.length) {
+      ctx.hooks[idx] = true
+      ctx.unmountCallbacks.push(disposeAll)
+    }
+  } else if (getCurrentScope()) {
+    onScopeDispose(disposeAll)
+  }
+
   return createMemo(() => {
-    const items = list()
-    return items.map((item, i) => mapFn(item, () => i))
+    const next = list()
+    return runUntracked(() => {
+      // Old positions per item (a queue, so duplicates pair up in order).
+      const pool = new Map<T, number[]>()
+      for (let i = 0; i < items.length; i++) {
+        const q = pool.get(items[i] as T)
+        if (q) q.push(i)
+        else pool.set(items[i] as T, [i])
+      }
+      const used = new Array<boolean>(items.length).fill(false)
+      const nextMapped: U[] = []
+      const nextDisposers: (() => void)[] = []
+      const nextIndexes: ReturnType<typeof pyreonSignal<number>>[] = []
+      for (let j = 0; j < next.length; j++) {
+        const item = next[j] as T
+        const old = pool.get(item)?.shift()
+        if (old !== undefined) {
+          used[old] = true
+          const index = indexes[old] as ReturnType<typeof pyreonSignal<number>>
+          index.set(j)
+          nextMapped[j] = mapped[old] as U
+          nextDisposers[j] = disposers[old] as () => void
+          nextIndexes[j] = index
+        } else {
+          const index = pyreonSignal(j)
+          nextIndexes[j] = index
+          nextMapped[j] = createRoot((dispose) => {
+            nextDisposers[j] = dispose
+            return mapFn(item, () => index())
+          })
+        }
+      }
+      for (let i = 0; i < used.length; i++) if (!used[i]) (disposers[i] as () => void)()
+      items = next.slice()
+      mapped = nextMapped
+      disposers = nextDisposers
+      indexes = nextIndexes
+      return nextMapped
+    })
   })
 }
 
