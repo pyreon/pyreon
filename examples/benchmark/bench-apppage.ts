@@ -29,7 +29,7 @@
  * hand-written faithfully.
  */
 import { execSync, spawn } from 'node:child_process'
-import { readdirSync, readFileSync } from 'node:fs'
+import { readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { chromium } from 'playwright'
 import { LoadRecorder, parseWaitQuiet, waitForQuietMachine } from './machine-load'
@@ -39,9 +39,17 @@ const REPEAT = (() => {
   return i >= 0 ? Math.max(1, Number(process.argv[i + 1]) || 1) : 3
 })()
 const PORT = 4181
+const argVal = (flag: string): string | undefined => {
+  const i = process.argv.indexOf(flag)
+  return i >= 0 ? process.argv[i + 1] : undefined
+}
+/** `--raw-out FILE`: raw samples, one cluster per page-load. */
+const RAW_OUT = argVal('--raw-out')
+/** `--only A,B`: restrict the arm set for a focused A/B run. */
+const ONLY = argVal('--only')?.split(',').map((s) => s.trim())
 /** `--wait-quiet [maxLoad]` — opt-in: block until load1 ≤ maxLoad before measuring. */
 const WAIT_QUIET = parseWaitQuiet(process.argv)
-const FRAMEWORKS = ['Pyreon', 'React 19', 'Preact', 'Vue 3']
+const FRAMEWORKS = ['Pyreon', 'React 19', 'Preact', 'Vue 3'].filter((f) => !ONLY || ONLY.includes(f))
 
 interface SuiteResult {
   framework: string
@@ -157,6 +165,7 @@ try {
 
   // ── Passes ───────────────────────────────────────────────────────────────
   const pooled = new Map<string, number[]>()
+  const clusters = new Map<string, number[][]>()
   const adoption = new Map<string, string>()
   for (let pass = 1; pass <= REPEAT; pass++) {
     const order = [...FRAMEWORKS]
@@ -191,6 +200,7 @@ try {
       for (const s of suites) {
         for (const r of s.results) {
           pooled.set(s.framework, [...(pooled.get(s.framework) ?? []), ...r.samples])
+          clusters.set(s.framework, [...(clusters.get(s.framework) ?? []), r.samples])
         }
       }
       console.log(`[bench-apppage]   ▸ ${fw}  adopted ${adoption.get(fw) ?? 'n/a'}`)
@@ -199,6 +209,13 @@ try {
     load.stamp(`pass ${pass} end`)
   }
   load.stamp('after measuring')
+  if (RAW_OUT) {
+    writeFileSync(
+      RAW_OUT,
+      JSON.stringify({ bundle: diskBundle, clusters: [...clusters], stamps: load.report().stamps }),
+    )
+    console.log(`[bench-apppage] raw samples → ${RAW_OUT}`)
+  }
 
   console.log(
     `\nApp-page hydration: 320-component static composition, SSR HTML → interactive`,
