@@ -28,6 +28,7 @@
  */
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
+import { resolveInsideProject } from './tool-input'
 import type { ApiSurface, SurfaceChange, SurfaceOperation } from '@pyreon/lathe/core'
 
 export const SURFACE_FILENAME = 'api-surface.json'
@@ -90,6 +91,12 @@ export function loadSurfaces(cwd: string, path?: string): LoadSurfacesResult {
   if (path !== undefined) {
     const abs = isAbsolute(path) ? path : resolve(cwd, path)
     const file = existsSync(abs) && statSync(abs).isDirectory() ? join(abs, SURFACE_FILENAME) : abs
+    // Checked on the file actually read, so a symlinked api-surface.json cannot escape either.
+    try {
+      resolveInsideProject(cwd, file)
+    } catch (err) {
+      return { ok: false, reason: 'unreadable', detail: (err as Error).message }
+    }
     if (!existsSync(file)) return { ok: false, reason: 'missing', detail: `${relative(cwd, file) || file} does not exist` }
     paths = [file]
   } else {
