@@ -1,0 +1,46 @@
+{
+  "id": "nuxt",
+  "label": "Nuxt 4",
+  "docs": [
+    "https://nuxt.com/docs/4.x/getting-started/data-fetching",
+    "https://nuxt.com/docs/4.x/api/composables/use-fetch",
+    "https://nuxt.com/docs/4.x/api/utils/dollarfetch",
+    "https://nuxt.com/docs/4.x/api/utils/navigate-to",
+    "https://nuxt.com/docs/4.x/directory-structure/server",
+    "https://nuxt.com/docs/4.x/getting-started/error-handling",
+    "https://nuxt.com/docs/4.x/api/components/nuxt-link",
+    "https://nuxt.com/docs/4.x/getting-started/seo-meta",
+    "https://nuxt.com/docs/4.x/getting-started/deployment",
+    "https://vuejs.org/api/composition-api-lifecycle.html#onmounted"
+  ],
+  "packages": [
+    "nuxt",
+    "vue",
+    "vue-router",
+    "nitropack",
+    "h3"
+  ],
+  "build": [
+    "npm",
+    "run",
+    "build"
+  ],
+  "start": [
+    "node",
+    ".output/server/index.mjs"
+  ],
+  "dataFile": "server/lib/data.ts",
+  "hydration": "full",
+  "streaming": "buffered (Nitro node-server renders the Vue app with renderToString and sends one body with Content-Length)",
+  "notes": [
+    "Start: node .output/server/index.mjs (Nitro node-server preset, the documented Node deployment). It honours PORT and HOST (binds 127.0.0.1).",
+    "Compression: none. Nitro does not compress dynamic responses even when the client sends Accept-Encoding: gzip, br (compressPublicAssets is off by default and only affects pre-compressed static assets).",
+    "Per request on /items: Nitro router -> Vue SSR of the page; useFetch(\"/api/items\") during SSR is served in-process by Nitro (local fetch to the server route, no socket), listItems() once, formatPrice on the server; the result is serialised into the Nuxt payload (devalue) inlined in the HTML. Response has x-powered-by: Nuxt, no cache headers.",
+    "Data module lives in server/lib/data.ts and is imported only by server/api routes, so it is never in the client bundle (checked: no seeded strings in .output/public/_nuxt).",
+    "Form: Nuxt has no form-action primitive; per the data-fetching docs, event-based POSTs use $fetch to a Nitro server route (server/api/items/index.post.ts, readFormData + validateName). Invalid -> createError 400 whose message the page shows in #form-error; valid -> addItem, returns {id}, page calls navigateTo(`/items/${id}`).",
+    "Without JS the <form method=\"post\" action=\"/api/items\"> still adds the item but the browser shows the JSON response (no redirect, no error page); Nuxt has no documented no-JS form path.",
+    "/items/:id: useFetch(`/api/items/${id}`); the route throws createError 404 for an unknown id, the page throws createError({ status: 404 }) when data is empty (error-handling docs example) -> HTTP 404.",
+    "NuxtLink default prefetch: visible links prefetch the target page component chunk on idle (the 100 item links share one route chunk).",
+    "Telemetry: telemetry: false in nuxt.config; the harness also sets NUXT_TELEMETRY_DISABLED=1. devtools: { enabled: true } is the starter-template default and is dev-only."
+  ]
+}
