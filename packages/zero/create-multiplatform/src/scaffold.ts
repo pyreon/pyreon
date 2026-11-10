@@ -957,17 +957,25 @@ if [ -f keystore.properties ]; then
   exit 0
 fi
 
+# A random password PER PROJECT, kept only in the gitignored, owner-only
+# keystore.properties. A fixed password shared by every scaffold would make
+# any leaked release.keystore usable by anyone. It reaches keytool through
+# the environment, not argv, so it never shows in a process listing.
+umask 077
+PYREON_KEYSTORE_PASS="$(od -An -N24 -tx1 /dev/urandom | tr -d ' \\n')"
+export PYREON_KEYSTORE_PASS
 keytool -genkeypair -v -keystore release.keystore -alias pyreon-release \\
   -keyalg RSA -keysize 2048 -validity 10000 \\
-  -storepass pyreon-local -keypass pyreon-local \\
+  -storepass:env PYREON_KEYSTORE_PASS -keypass:env PYREON_KEYSTORE_PASS \\
   -dname "CN=Pyreon Local Release, OU=dev, O=pyreon, C=US"
 
-cat > keystore.properties <<'PROPS'
+cat > keystore.properties <<PROPS
 storeFile=release.keystore
-storePassword=pyreon-local
+storePassword=\${PYREON_KEYSTORE_PASS}
 keyAlias=pyreon-release
-keyPassword=pyreon-local
+keyPassword=\${PYREON_KEYSTORE_PASS}
 PROPS
+unset PYREON_KEYSTORE_PASS
 
 echo "[pyreon] Self-signed release keystore generated (android/release.keystore)."
 `,
