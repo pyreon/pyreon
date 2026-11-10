@@ -7,6 +7,7 @@ import { pyreonSyntaxDark, pyreonSyntaxLight } from './src/styles/pyreon-syntax'
 import inlineCriticalCss from './vite-plugins/inline-critical-css'
 import lastUpdated from './vite-plugins/last-updated'
 import openStats from './vite-plugins/open-stats'
+import publishLlmsTxt from './vite-plugins/publish-llms-txt'
 import { SITE_LINKS } from './src/site-links'
 
 // Pyreon-native docs site, powered by @pyreon/zero + @pyreon/zero-content.
@@ -84,6 +85,9 @@ export default defineConfig({
     // virtual:pyreon-open-stats — GitHub / npm / repo numbers for /open,
     // fetched once per build; a failed source renders as "unavailable".
     openStats(),
+    // /llms.txt + /llms-full.txt — the repo-root files `bun run gen-docs`
+    // generates from the package manifests (see the plugin).
+    publishLlmsTxt(),
     // dist/sitemap.xml from the SSG output: every prerendered page and
     // nothing else, so an unpublished blog post (never rendered) is never
     // listed.

@@ -8,6 +8,8 @@
 // scaffold isn't shipping placeholder source that wouldn't actually compile
 // on native.
 
+import { spawnSync } from 'node:child_process'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -290,6 +292,55 @@ describe('buildScaffold — native runtime delivery wiring (local-proof-found fi
     const pkg = get('package.json')
     expect(pkg).toContain('"release:keystore"')
     expect(pkg).toContain('"release:android"')
+  })
+
+  it('Android release lane: the keystore password is random per project, never argv', () => {
+    // The generated script used to give every scaffolded app the SAME
+    // password (`pyreon-local`), so a leaked release.keystore was usable by
+    // anyone. Run the REAL script against a stub `keytool` that records what
+    // it was handed -- no JDK needed, and the assertion is on behaviour.
+    const script = get('scripts/ensure-release-keystore.sh')
+    expect(script).not.toContain('pyreon-local')
+    const run = (): { pass: string; argv: string; props: string; mode: number } => {
+      const root = mkdtempSync(join(tmpdir(), 'cmp-ks-'))
+      try {
+        mkdirSync(join(root, 'scripts'))
+        mkdirSync(join(root, 'android'))
+        mkdirSync(join(root, 'bin'))
+        writeFileSync(join(root, 'scripts/ensure-release-keystore.sh'), script)
+        writeFileSync(
+          join(root, 'bin/keytool'),
+          '#!/usr/bin/env bash\nprintf %s "$PYREON_KEYSTORE_PASS" > ../pass.txt\nprintf "%s " "$@" > ../argv.txt\ntouch release.keystore\n',
+          { mode: 0o755 },
+        )
+        const r = spawnSync('bash', ['scripts/ensure-release-keystore.sh'], {
+          cwd: root,
+          env: { ...process.env, PATH: `${join(root, 'bin')}:${process.env.PATH ?? ''}` },
+          encoding: 'utf8',
+        })
+        expect(r.status, r.stderr).toBe(0)
+        return {
+          pass: readFileSync(join(root, 'pass.txt'), 'utf8'),
+          argv: readFileSync(join(root, 'argv.txt'), 'utf8'),
+          props: readFileSync(join(root, 'android/keystore.properties'), 'utf8'),
+          mode: statSync(join(root, 'android/keystore.properties')).mode & 0o777,
+        }
+      } finally {
+        rmSync(root, { recursive: true, force: true })
+      }
+    }
+    const a = run()
+    const b = run()
+    expect(a.pass).toMatch(/^[0-9a-f]{48}$/)
+    expect(b.pass).toMatch(/^[0-9a-f]{48}$/)
+    expect(a.pass).not.toBe(b.pass)
+    // keystore.properties carries the same password keytool used, owner-only.
+    expect(a.props).toContain(`storePassword=${a.pass}`)
+    expect(a.props).toContain(`keyPassword=${a.pass}`)
+    expect(a.mode).toBe(0o600)
+    // Handed over through the environment, never on the command line.
+    expect(a.argv).not.toContain(a.pass)
+    expect(a.argv).toContain('-storepass:env PYREON_KEYSTORE_PASS')
   })
 
   it('MainActivity extends ComponentActivity (Compose setContent receiver)', () => {

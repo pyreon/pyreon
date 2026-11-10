@@ -23,7 +23,7 @@
  */
 import { afterEach, describe, expect, test } from 'vitest'
 import { computed, effect, effectScope, signal } from '@pyreon/reactivity'
-import { defineStore, resetAllStores } from '../index'
+import { defineStore, resetAllStores, defineSchemaStore } from '../index'
 
 afterEach(() => {
   resetAllStores()
@@ -116,7 +116,7 @@ describe('setup-scope ownership', () => {
 
   test('schema-mode setup computeds also live in the store scope', () => {
     const componentScope = effectScope()
-    const useStore = defineStore('scope-schema', {
+    const useStore = defineSchemaStore('scope-schema', {
       schema: {
         '~standard': {
           version: 1 as const,

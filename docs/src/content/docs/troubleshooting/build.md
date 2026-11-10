@@ -99,6 +99,7 @@ The charts plugin looked finished once its emitters moved, yet the core still im
 When keys come from data, `key in obj`, `obj[key]` and `obj[key] = v` consult `Object.prototype`, and `__proto__` hits an accessor. Test with `Object.hasOwn`; write with `Object.defineProperty` or use a null-prototype object. Program-supplied keys are fine with ordinary access.
   - Read side: `.strict()` in `packages/fundamentals/validate/src/composition/object.ts` used `key in known`, so keys like `toString` or `constructor` bypassed strict mode. Lock: `validate/src/tests/strict-prototype-keys.test.ts`.
   - Write side: `packages/tools/lathe/src/input/yaml.ts:setKey` assigned `map[key] = value`, so a `__proto__` key replaced the prototype and vanished from the IR. The `.json` path (`JSON.parse`) already defined it as an own key; when two readers of the same data disagree, the divergence finds the bug. Lock: `lathe/src/tests/yaml-prototype-keys.test.ts` (the `constructor` case is a companion, not the lock — plain assignment defines it).
+  - A recursive merge, clone or codec that copies keys from its input is a data-keyed write even though no "dictionary" is in sight: `deepPatch(await res.json())` hands it a `JSON.parse` result. `deepMerge` in `@pyreon/store` and `@pyreon/state-tree` did `out[key] = value`, so a nested own `__proto__` key became the merged object's prototype and the schema parse read optional fields the payload never had as own keys; the server island codec did the same in both directions (encode dropped the key, decode grafted it). Define a `__proto__` key with `Object.defineProperty` (keeping the input's shape, as `JSON.parse` does) and read the other side with `Object.hasOwn`. Locks: `store/src/tests/deep-patch-own-proto-key.test.ts`, `state-tree/src/tests/deep-patch-own-proto-key.test.ts`, `server/src/tests/island-codec-own-proto-key.test.ts`.
 
 ---
 
@@ -561,6 +562,12 @@ A boot audit and debounced context writer belong to one Vite server: cancel thei
 ### A nested build that reconstructs a plugin must carry the user's options across deliberately.
 
 Zero's `ssg`/`ssr`/`isr` modes run a nested Vite build. It cannot reuse the outer `pyreon` instance (a second `configResolved` rewrites captured output paths — see `RE_ADDED_PLUGIN_NAMES`), and a bare `pyreon()` silently drops options such as `ssrTemplate`, which only affects the SSR graph. Either replay the config (`createServer` with no `configFile` override, as the rocketstyle-collapse resolver does) or reconstruct it explicitly. Not every option should be forwarded: `pyreon({ ssr: { entry } })` makes `config()` return `build.rollupOptions.input`, which beats the inline `build({ … })` argument and would hijack the sub-build. `packages/zero/zero/src/inner-pyreon-options.ts` classifies options with a total `Record<keyof Required<PyreonPluginOptions>, 'forward' | 'drop'>`, so a new option fails to compile (TS2741) until classified. Test at the call site: stub vite's `build`, capture the config the real `buildSsrBundle` passes, and read the options off the constructed plugin via its `api` (`PyreonPluginApi`). Lock: `zero/src/tests/ssr-build-forwards-pyreon-options.test.ts`.
+
+---
+
+### An optional native peer must stay external in the nested SSR build.
+
+Zero imports `sharp` only lazily, but Vite externalizes a dependency only when it resolves from the app root. In a workspace (or any layout where the peer resolves only from zero's own `node_modules`) Vite bundled it; rolldown put a shared runtime helper in the sharp chunk, the server entry imported that chunk statically, and the server crashed at startup on the missing native binary. `buildSsrBundle` sets `ssr.external` to `OPTIONAL_NATIVE_PEERS` (every `peerDependenciesMeta[*].optional` entry; a test locks the list against `package.json`). Do not rely on a dynamic `import()` to keep a module out of the startup graph of a bundled output. Lock: `zero/src/tests/ssr-build-optional-peers.test.ts`.
 
 ---
 

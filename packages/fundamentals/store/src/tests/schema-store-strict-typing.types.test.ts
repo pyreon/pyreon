@@ -14,7 +14,7 @@
  * execute the (throwing) schema validator at runtime. The `it` block only runs
  * `expectTypeOf` (a runtime no-op) so vitest has something to green.
  */
-import { computed, defineStore } from '../index'
+import { computed, defineSchemaStore } from '../index'
 import { zodSchema } from '@pyreon/validation/zod'
 import { z } from 'zod'
 import { describe, expectTypeOf, it } from 'vitest'
@@ -28,7 +28,7 @@ const UserSchema = zodSchema(
   }),
 )
 
-const useUser = defineStore('types-user', {
+const useUser = defineSchemaStore('types-user', {
   schema: UserSchema,
   initial: { name: '', age: 0, tags: [], prefs: { theme: 'light', compact: false } },
   setup: ({ state }) => ({

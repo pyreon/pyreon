@@ -1,5 +1,5 @@
 import { h, Show } from '@pyreon/core'
-import { useLoaderData } from '@pyreon/router'
+import { notFound, useLoaderData } from '@pyreon/router'
 
 interface Post {
   id: number
@@ -37,7 +37,9 @@ export default function PostPage() {
 
 export async function loader({ params }: { params: Record<string, string> }) {
   const id = Number(params.id)
-  return POSTS.find((p) => p.id === id) ?? null
+  // An unknown id is a missing RESOURCE on a matched route: `notFound()`
+  // renders `_404.ts` inside the layout and SSR answers HTTP 404.
+  return POSTS.find((p) => p.id === id) ?? notFound()
 }
 
 // PR H follow-up — enumerates concrete post IDs for SSG. Combined with
