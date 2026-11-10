@@ -310,7 +310,8 @@ console.log(diags[0]?.code) // "react-use-state"
 
 import { migrateReactCode } from "@pyreon/compiler/analyze"
 
-const { code, changes } = migrateReactCode(reactSource, "C.tsx")
+const { code, changes, manual } = migrateReactCode(reactSource, "C.tsx")
+// manual: [{ line, column, message, suggested }] — e.g. a state read at setup level
 
 import { migratePyreonCode } from "@pyreon/compiler/analyze"
 

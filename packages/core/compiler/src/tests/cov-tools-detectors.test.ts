@@ -449,9 +449,13 @@ describe('migrateReactCode — hook rewrites', () => {
     expect(plain.code).toContain('useState(0)')
   })
 
-  it('names an ELIDED first binding element `value`', () => {
-    expect(migrateReactCode(`const [, setC] = useState(0)`, 'a.ts').code).toContain(
-      'value = signal(0)',
+  it('derives a signal name from the setter when the value is ELIDED', () => {
+    const r = migrateReactCode(`const [, setLabel] = useState(0)\nsetLabel(2)`, 'a.ts')
+    expect(r.code).toContain('label = signal(0)')
+    expect(r.code).toContain('label.set(2)')
+    // A derived name that is already taken gets a suffix.
+    expect(migrateReactCode(`const [, setC] = useState(0)\nconst c = 1`, 'a.ts').code).toContain(
+      'cState = signal(0)',
     )
   })
 
@@ -464,7 +468,7 @@ describe('migrateReactCode — hook rewrites', () => {
   it('rewrites useEffect(fn, nonArrayDeps) to effect(fn)', () => {
     const r = migrateReactCode(`useEffect(() => { f() }, deps)`, 'a.ts')
     expect(r.code).toContain('effect(')
-    expect(r.changes.some((c) => c.description.includes('auto-tracks deps'))).toBe(true)
+    expect(r.changes.some((c) => c.description.includes('useEffect → effect'))).toBe(true)
   })
 
   it('leaves a zero-argument useEffect / useMemo / useCallback untouched', () => {
@@ -493,10 +497,10 @@ describe('migrateReactCode — JSX attribute rewrites', () => {
     expect(migrateReactCode(`const A = <Ns.Input onChange={f} />`).code).toContain('onChange')
   })
 
-  it('rewrites dangerouslySetInnerHTML only when `__html` is present', () => {
+  it('leaves dangerouslySetInnerHTML alone (Pyreon supports it raw; innerHTML is sanitized and throws in SSR)', () => {
     expect(
       migrateReactCode(`const A = <div dangerouslySetInnerHTML={{ __html: raw }} />`).code,
-    ).toContain('innerHTML={raw}')
+    ).toContain('dangerouslySetInnerHTML={{ __html: raw }}')
     const noHtml = migrateReactCode(`const A = <div dangerouslySetInnerHTML={{ other: raw }} />`)
     expect(noHtml.code).toContain('dangerouslySetInnerHTML')
     const notObject = migrateReactCode(`const A = <div dangerouslySetInnerHTML={cfg} />`)

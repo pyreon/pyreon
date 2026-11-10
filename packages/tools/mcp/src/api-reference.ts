@@ -1699,8 +1699,9 @@ console.log(diags[0]?.code) // "react-use-state"`,
     signature: 'migrateReactCode(code: string, filename?: string): MigrationResult',
     example: `import { migrateReactCode } from "@pyreon/compiler/analyze"
 
-const { code, changes } = migrateReactCode(reactSource, "C.tsx")`,
-    notes: 'One-shot React→Pyreon codemod — `useState`→`signal`, `useEffect`→`effect`/`onMount`, `className`→`class`, etc. Returns the rewritten code plus the list of applied `MigrationChange`s. Mechanical only: shapes it cannot safely rewrite are left as `detectReactPatterns` diagnostics for the human. See also: detectReactPatterns.',
+const { code, changes, manual } = migrateReactCode(reactSource, "C.tsx")
+// manual: [{ line, column, message, suggested }] — e.g. a state read at setup level`,
+    notes: 'One-shot React→Pyreon codemod whose output updates: `useState`→`signal` with every read rewritten to `x()` and every setter call to `x.set(v)` / `x.update(fn)`, `useReducer`→`signal` + a `dispatch`, `useEffect`→`effect`/`onMount`, `useMemo`→`computed` (reads called), `useCallback`/`memo`/`forwardRef` unwrapped (the ref arrives as `props.ref`), `useRef(null)`→`createRef()`, `useRef(v)`→`{ current: v }`, a body-level `const` derived from state → `computed`, a `return` that reads state outside JSX → an accessor, `className`/`htmlFor`/text-input `onChange`, `createRoot(el).render(app)`→`mount(app, el)`, `Fragment`→`<>`, router `Link`/`Outlet`. References are resolved lexically, so shadowing locals are left alone. Returns `{ code, diagnostics, changes, manual }`: `manual` lists every pattern it left in place (with its React import kept) or converted with a caveat, each with a reason and a suggestion. See also: detectReactPatterns.',
   },
 
   'compiler/migratePyreonCode': {
@@ -7585,11 +7586,12 @@ function Counter() {
   return <button onClick={() => setCount(count + 1)}>{count}</button>
 }
 \` })`,
-    notes: 'Convert React code to idiomatic Pyreon. Handles `useState` → `signal()`, `useEffect` → `effect()`, `className` → `class`, `onChange` → `onInput`, `useMemo` → `computed()`, React imports → Pyreon imports. Reports per-edit fixable diagnostics so callers can apply or review. See also: validate.',
+    notes: 'Convert React code to Pyreon that updates. `useState` → `signal()` with reads rewritten to `count()` and setter calls to `count.set(v)` / `count.update(fn)`; `useReducer` → `signal()` + `dispatch`; `useEffect` → `effect()` / `onMount()`; `useMemo` → `computed()`; `useCallback` / `memo` / `forwardRef` unwrapped; `useRef(null)` → `createRef()`, `useRef(v)` → `{ current: v }`; a body-level `const` derived from state → `computed()`; `className` → `class`; text-input `onChange` → `onInput`; React imports → Pyreon imports. Anything it cannot convert safely is left in place (React import kept) and listed under "Remaining issues" with the reason, together with whatever `validate` still finds in the output. See also: validate.',
     mistakes: `- Expecting the migration to handle every React feature — currently covers the most common hooks/JSX patterns. Class components, Concurrent React APIs, Suspense boundaries, and React-specific libs (react-router, redux) are NOT migrated automatically; the result will flag remaining issues but won't rewrite them.
 - Running \`migrate_react\` on a file that's already mostly Pyreon — it's idempotent against already-migrated code (nothing flagged → nothing changed), so the cost is just the parse pass; safe to re-run.
 - Forgetting that \`useEffect(() => fn, [deps])\` → \`effect(() => fn)\` changes semantics: Pyreon effects auto-track via signal reads, the explicit deps array is dropped. Verify your effects read the same signals the React deps array listed.
-- Trusting the migration to produce idiomatic Pyreon — the output is CORRECT but mechanical. Pair with \`get_pattern\` after migration to apply Pyreon-native shapes (e.g. \`<Show when={() => …}>\` instead of ternaries; \`<For>\` instead of \`.map()\`).`,
+- Applying the output without reading "Remaining issues" — that list is where the tool says what it did NOT convert (a state read at setup level, \`useId\`, \`Context.Provider\`, destructured props, \`.map()\` lists) and those lines still behave like React.
+- Trusting the migration to produce idiomatic Pyreon — the output updates but is mechanical. Pair with \`get_pattern\` after migration to apply Pyreon-native shapes (e.g. \`<Show when={() => …}>\` instead of ternaries; \`<For>\` instead of \`.map()\`).`,
   },
 
   'mcp/migrate_pyreon': {
