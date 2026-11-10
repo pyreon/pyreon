@@ -558,6 +558,12 @@ Zero's `ssg`/`ssr`/`isr` modes run a nested Vite build. It cannot reuse the oute
 
 ---
 
+### An optional native peer must stay external in the nested SSR build.
+
+Zero imports `sharp` only lazily, but Vite externalizes a dependency only when it resolves from the app root. In a workspace (or any layout where the peer resolves only from zero's own `node_modules`) Vite bundled it; rolldown put a shared runtime helper in the sharp chunk, the server entry imported that chunk statically, and the server crashed at startup on the missing native binary. `buildSsrBundle` sets `ssr.external` to `OPTIONAL_NATIVE_PEERS` (every `peerDependenciesMeta[*].optional` entry; a test locks the list against `package.json`). Do not rely on a dynamic `import()` to keep a module out of the startup graph of a bundled output. Lock: `zero/src/tests/ssr-build-optional-peers.test.ts`.
+
+---
+
 ### Rebuild `lib/` before debugging an example build's `MISSING_EXPORT`.
 
 `vite.config.ts` imports resolve through the `node` condition (`lib/`), not `bun` (`src/`). Run `bun scripts/bootstrap.ts` (fast when clean). `bun install` runs it automatically, but edits between installs need a manual run.
