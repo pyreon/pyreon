@@ -1,10 +1,25 @@
 import pyreon from '@pyreon/vite-plugin'
+import content from '@pyreon/zero-content/plugin'
 import zero from '@pyreon/zero/server'
 import { fontPlugin } from '@pyreon/zero/font'
 import { seoPlugin } from '@pyreon/zero/seo'
 
 export default {
   plugins: [
+    // Markdown posts (src/content/blog) + /blog/rss.xml. Drafts and posts
+    // dated after the build are left out of the build entirely.
+    content({
+      seo: {
+        baseUrl: 'https://example.com',
+        rss: {
+          collection: 'blog',
+          path: 'blog/rss.xml',
+          title: 'Blog',
+          description: 'A Pyreon Zero blog.',
+          content: 'full',
+        },
+      },
+    }),
     pyreon(),
     zero({ mode: 'ssg' }),
 

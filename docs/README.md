@@ -14,7 +14,7 @@ production) landed in the cutover PR.
 | Path                        | What it holds                                          |
 | --------------------------- | ------------------------------------------------------ |
 | `src/content/docs/`         | 95+ markdown pages — one per package + patterns       |
-| `src/content/blog/`         | Blog posts → `/blog/<slug>`, feed at `/blog/rss.xml`   |
+| `src/content/blog/`         | Blog posts → `/blog/<slug>`, tags at `/blog/tags/<tag>`, feed at `/blog/rss.xml` |
 | `public/blog/covers/`       | Blog cover images (1600x840 PNG)                       |
 | `src/mdx/`                  | Convention-scanned components (PascalCase, used inline in `.md`) |
 | `src/components/`           | Layout shells used by `[...slug].tsx`                  |
@@ -66,8 +66,15 @@ bun run preview
 
 ## Blog
 
-Posts live in `src/content/blog/<slug>.md` (schema: `blogSchema` in
-`content.config.ts`):
+The blog runs on `@pyreon/zero-content/blog` (guide: `/docs/blog`):
+`blogCollection()` in `content.config.ts`, `defineBlog(...)` in
+`src/blog/blog.ts`, four one-line routes under `src/routes/blog/` (index,
+`page/[page]`, `[slug]`, `tags/[tag]`), and `src/blog/PostFooter.tsx` for the
+call to action, share links and newsletter form after every post. The
+newsletter form renders nothing until `NEWSLETTER_ACTION` in
+`src/blog/site.ts` is set to the provider's form endpoint.
+
+Posts live in `src/content/blog/<slug>.md`:
 
 ```yaml
 ---
@@ -77,6 +84,9 @@ date: 2026-11-16          # PUBLISH date (UTC calendar day)
 slug: post-slug           # must equal the file name
 tags: [javascript, webdev]
 cover: /blog/covers/post-slug.png   # 1600x840, file in public/blog/covers/
+# coverAlt: What the cover shows   # optional; without it the cover is decorative
+# updated: 2026-11-20     # optional; last meaningful revision
+# author: vit             # optional; defaults to vit (authors in src/blog/blog.ts)
 # canonical: https://…    # only if first published elsewhere
 # draft: true             # never published while set
 ---

@@ -182,8 +182,27 @@ describe('scaffold — output file-set snapshots', () => {
       // Blog has its own routes; should not pick up app-template store/features overlays.
       expect(files).not.toContain('src/stores/app.ts')
       expect(files).not.toContain('src/features/posts.ts')
-      // Should have the blog's content posts.
-      expect(files.some((f) => f.startsWith('src/content/posts/'))).toBe(true)
+      // Markdown posts in a zero-content collection, served by the
+      // @pyreon/zero-content/blog module (the pyreon.dev/blog implementation).
+      expect(files.some((f) => f.startsWith('src/content/blog/') && f.endsWith('.md'))).toBe(true)
+      for (const route of [
+        'content.config.ts',
+        'src/blog.ts',
+        'src/routes/blog/index.tsx',
+        'src/routes/blog/[slug].tsx',
+        'src/routes/blog/page/[page].tsx',
+        'src/routes/blog/tags/[tag].tsx',
+      ]) {
+        expect(files).toContain(route)
+      }
+      const { readFile } = await import('node:fs/promises')
+      const vite = await readFile(join(dir, 'vite.config.ts'), 'utf8')
+      expect(vite).toContain("import content from '@pyreon/zero-content/plugin'")
+      expect(vite).toContain("path: 'blog/rss.xml'")
+      const pkg = JSON.parse(await readFile(join(dir, 'package.json'), 'utf8')) as {
+        dependencies: Record<string, string>
+      }
+      expect(pkg.dependencies['@pyreon/zero-content']).toBeDefined()
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }

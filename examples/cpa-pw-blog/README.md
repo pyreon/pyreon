@@ -5,14 +5,16 @@ A minimal blog built with [`@pyreon/zero`](https://github.com/pyreon/pyreon/tree
 ## What it shows
 
 - **Static routes** — `/`, `/about`, `/blog` auto-detected from the file-system router
-- **Dynamic routes with `getStaticPaths`** — `/blog/:slug` enumerates 3 posts ([`src/routes/blog/[slug].tsx`](src/routes/blog/[slug].tsx))
+- **Markdown blog on `@pyreon/zero-content/blog`** — posts in `src/content/blog/`, the blog defined once in [`src/blog.ts`](src/blog.ts) (`defineBlog`), four one-line routes (index, `/blog/page/:page`, `/blog/:slug`, `/blog/tags/:tag`); the same module as pyreon.dev/blog
+- **Dynamic routes with `getStaticPaths`** — `/blog/:slug` enumerates 3 posts, `/blog/tags/:tag` every tag ([`src/routes/blog/[slug].tsx`](src/routes/blog/[slug].tsx))
 - **Build-time ISR via `revalidate` export** — `/blog/<slug>` revalidates every hour; entries land in `dist/_pyreon-revalidate.json`
 - **`vercelRevalidateHandler` scaffold** — drop-in webhook at [`src/routes/api/_pyreon-revalidate.ts`](src/routes/api/_pyreon-revalidate.ts) that platform adapters call on CMS publish
 - **`_404.tsx` with layout chrome** — 404 pages wrap in the parent layout via PR L5's router-driven fallback
 - **`_layout.tsx`** — global navigation + theme provider, rendered once per page
-- **API routes** — `/api/rss.xml` (RSS feed), `/api/echo/[...path]` (streaming catch-all canary)
+- **RSS** — `/blog/rss.xml`, emitted at build by the content plugin (published posts only, full bodies)
+- **API routes** — `/api/echo/[...path]` (streaming catch-all canary)
 - **Sitemap auto-emit** — `useSsgPaths: true` reads the resolved-paths manifest so dynamic blog URLs land in `dist/sitemap.xml`
-- **Per-post `useHead`** — title + og:* meta tags per route
+- **Per-post SEO** — title, canonical, Open Graph, `article:*`, Twitter card and JSON-LD `BlogPosting` per post
 - **`@pyreon/zero/font`** — Google Fonts self-hosted at build time (CDN in dev), with sized fallback for CLS protection
 
 ## Build
@@ -59,11 +61,11 @@ See [`docs/src/content/docs/ssg.md`](../../docs/src/content/docs/ssg.md) for the
 
 ```text
 src/
-├── content/posts/                   # post bodies (TSX components)
-│   ├── welcome.tsx
-│   ├── why-signals.tsx
-│   └── static-vs-ssr.tsx
-├── lib/posts.ts                     # post manifest + helpers
+├── content/blog/                    # posts (markdown)
+│   ├── welcome.md
+│   ├── why-signals.md
+│   └── static-vs-ssr.md
+├── blog.ts                          # defineBlog({ siteUrl, title, … })
 ├── routes/
 │   ├── _layout.tsx                  # global nav + PyreonUI
 │   ├── _404.tsx                     # not-found page
@@ -71,15 +73,17 @@ src/
 │   ├── about.tsx                    # about (/about)
 │   ├── blog/
 │   │   ├── index.tsx                # blog listing (/blog)
+│   │   ├── page/[page].tsx          # listing pages (/blog/page/2, …)
+│   │   ├── tags/[tag].tsx           # tag pages (/blog/tags/<tag>)
 │   │   └── [slug].tsx               # post page (getStaticPaths + revalidate)
 │   └── api/
-│       ├── rss.ts                   # /api/rss.xml — RSS feed
 │       ├── echo/[...path].ts        # /api/echo/* — streaming catch-all
 │       └── _pyreon-revalidate.ts    # /api/_pyreon-revalidate — ISR webhook
 ├── global.css
 ├── entry-client.ts
 └── entry-server.ts
-vite.config.ts                       # mode: 'ssg', seoPlugin, fontPlugin
+content.config.ts                    # blog: blogCollection()
+vite.config.ts                       # content() (posts + RSS), mode: 'ssg', seoPlugin, fontPlugin
 ```
 
 ## Audit + lint

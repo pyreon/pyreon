@@ -32,13 +32,36 @@ export function generateViteConfig(config: ProjectConfig): string {
     : ''
   const adapterArg = adapter.viteFactory ? `, adapter: ${adapter.viteFactory}()` : ''
 
+  // Blog template — the content plugin compiles the markdown posts and
+  // emits the RSS feed (published posts only, full bodies). It runs before
+  // pyreon() so the compiled posts go through the JSX pipeline.
+  const isBlog = config.template === 'blog'
+  const contentImport = isBlog ? `\nimport content from '@pyreon/zero-content/plugin'` : ''
+  const contentPlugin = isBlog
+    ? `
+    // Markdown posts (src/content/blog) + /blog/rss.xml. Drafts and posts
+    // dated after the build are left out of the build entirely.
+    content({
+      seo: {
+        baseUrl: 'https://example.com',
+        rss: {
+          collection: 'blog',
+          path: 'blog/rss.xml',
+          title: 'Blog',
+          description: 'A Pyreon Zero blog.',
+          content: 'full',
+        },
+      },
+    }),`
+    : ''
+
   return `import pyreon from '@pyreon/vite-plugin'
-import zero from '@pyreon/zero/server'${adapterImport}
+import zero from '@pyreon/zero/server'${adapterImport}${contentImport}
 
 // One config surface: fonts, SEO, favicons, og-images, and AI discoverability
 // are all fields on zero() — no separate plugin imports needed.
 export default {
-  plugins: [
+  plugins: [${contentPlugin}
     pyreon(${pyreonOpts}),
     zero({
       ${MODE_MAP[config.renderMode]}${adapterArg},${typedRoutesLine}

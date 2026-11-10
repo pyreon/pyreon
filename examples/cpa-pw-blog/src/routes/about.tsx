@@ -20,8 +20,8 @@ export default function About() {
       </p>
       <p>
         The blog renders statically — every page on this site is plain HTML on disk after{" "}
-        <code>bun run build</code>. Posts live in <code>src/content/posts/</code>; drop a new
-        TSX file there and it auto-appears in the listings and RSS feed.
+        <code>bun run build</code>. Posts are markdown files in <code>src/content/blog/</code>; add
+        one and it appears in the listings, on its tag pages and in the RSS feed.
       </p>
     </>
   )

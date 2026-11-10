@@ -188,6 +188,7 @@ export const SIDEBAR: SidebarGroup[] = [
       { text: 'Create Zero', slug: 'create-zero' },
       { text: 'Zero CLI', slug: 'zero-cli' },
       { text: 'Zero Content (markdown)', slug: 'zero-content' },
+      { text: 'Blog', slug: 'blog' },
       { text: 'Live Examples (<Example>)', slug: 'live-examples' },
       { text: 'Meta', slug: 'meta' },
       { text: 'Storybook', slug: 'storybook' },

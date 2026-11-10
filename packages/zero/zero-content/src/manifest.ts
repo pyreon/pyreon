@@ -22,7 +22,7 @@ export default defineManifest({
   multiplatform: {
     tier: 'web-only',
     rationale:
-      'markdown/MDX content pipeline for zero\'s web rendering',
+      'markdown/MDX content pipeline and blog module for zero\'s web rendering: a Vite plugin, SSG/SSR pages and document head tags — nothing here has a native target',
   },
   features: [
     'Compile-time .md/.mdx → Pyreon JSX (no dangerouslySetInnerHTML — full reactivity + tree-shaking preserved)',
@@ -42,6 +42,8 @@ export default defineManifest({
     'Built-in layout components — `<Sidebar>` with groups + active highlighting, `<Toc>` with scroll-spy via IntersectionObserver',
     'Frontmatter JSON Schema + .vscode-settings emission — autocomplete + validation in any .md file via the YAML extension',
     'Inherits zero\'s perf stack — image/font auto-wire, script defer default, resource hints, view transitions',
+    '`@pyreon/zero-content/blog` — a production blog in four one-line routes: `blogCollection()` (frontmatter schema + publish dates), `defineBlog()` (paginated index, post, tag pages, `getStaticPaths`), queries (tags + counts, previous/next, related, reading time counted at build), SEO (Open Graph, `article:*`, Twitter, JSON-LD `BlogPosting`/`Blog`), restylable components; drafts and future-dated posts reach no surface',
+    'Every compiled content module exports `wordCount` (prose + code), surfaced as `entry.wordCount` — reading time without walking the page in the browser',
   ],
   longExample: `// vite.config.ts
 import pyreon from '@pyreon/vite-plugin'
@@ -549,6 +551,41 @@ search.query.set('signal')
         'Gating the empty state on `results().length === 0` alone — during the debounce/index-load window results are momentarily empty for a query that WILL match; gate on `status() === \'ready\'` too, as shown above',
         'Building a search index yourself instead of calling `loadSearchIndex` — the module-level cache is what keeps the ~200 KB index from being fetched/parsed once per mounted search UI',
       ],
+    },
+    {
+      name: 'blogCollection / defineBlog (@pyreon/zero-content/blog)',
+      kind: 'function',
+      signature:
+        "blogCollection(options?: { path?: string; unpublished?: 'omit' | 'runtime' }): CollectionDefinition · defineBlog(config: BlogConfig): Blog",
+      summary:
+        "A production blog on a content collection. `blogCollection()` is a `pages` collection with a dependency-free Standard Schema for post frontmatter (title, description, date, updated?, slug?, tags?, cover?, coverAlt?, author?, canonical?, draft? — unknown fields are a build error), `date` as the publish date, and `unpublished: 'omit'` by default. `defineBlog({ siteUrl, title, description, … })` returns the queries (`getPosts()` — published, newest first; `getPost`, `getTags` with counts), four route components (`IndexPage` for `/blog` and `/blog/page/[page]`, `PostPage`, `TagPage`) and their `getStaticPaths` (`pagePaths`, `postPaths`, `tagPaths`). Every listing, count, page count, previous/next and related list derives from the published posts only, and `PostPage` renders an unpublished entry only in development (with a Draft/Scheduled notice), whatever the `unpublished` mode bundled. Each page sets its head through `blogPostHead`/`blogListHead`: title, description, canonical, Open Graph + `article:*`, Twitter card, JSON-LD `BlogPosting` (post), `Blog` (index) or `CollectionPage` (tag). Components (`PostList`, `PostCard`, `PostHeader`, `PostMeta`, `TagList`, `Pagination`, `PostNav`, `RelatedPosts`, `ShareLinks`, `NewsletterForm`) are exported for custom pages; the optional stylesheet `@pyreon/zero-content/blog.css` has one-class specificity and takes its colours from the host via `--pyreon-blog-*` variables. RSS stays in the content plugin's `seo.rss`.",
+      example: `// content.config.ts
+import { defineConfig } from '@pyreon/zero-content'
+import { blogCollection } from '@pyreon/zero-content/blog'
+export default defineConfig({ collections: { blog: blogCollection() } })
+
+// src/blog.ts
+import 'virtual:zero-content/collections'
+import { defineBlog } from '@pyreon/zero-content/blog'
+export const blog = defineBlog({
+  siteUrl: 'https://example.com',
+  title: 'Example blog',
+  description: 'Notes from the team.',
+  feedPath: '/blog/rss.xml',
+})
+
+// src/routes/blog/index.tsx          export default blog.IndexPage
+// src/routes/blog/page/[page].tsx    export const getStaticPaths = blog.pagePaths; export default blog.IndexPage
+// src/routes/blog/[slug].tsx         export const getStaticPaths = blog.postPaths; export default blog.PostPage
+// src/routes/blog/tags/[tag].tsx     export const getStaticPaths = blog.tagPaths;  export default blog.TagPage`,
+      mistakes: [
+        "Forgetting `import 'virtual:zero-content/collections'` in the file that calls `defineBlog` — the SSG render and `getStaticPaths` read the collection registry it populates; without it `getPosts()` throws `No content collection registry available`",
+        'Expecting `/blog/page/1` to exist — page 1 is `/blog`; `pagePaths` lists pages 2..n and the index route treats `1` as not found (no duplicate URL)',
+        'A frontmatter `slug` that differs from the file name — the URL comes from the file; `postPaths` fails the build naming both',
+        'Importing `@pyreon/zero-content/blog.css` AFTER the site stylesheet — it has one-class specificity, so it must come first for the site\'s class rules to win',
+        'Expecting `blogCollection` to transform frontmatter — it validates only; runtime data is the frontmatter as written (dates arrive as ISO strings), and `toBlogPost` normalises it',
+      ],
+      seeAlso: ['defineCollection', 'getCollection'],
     },
     {
       name: 'generateSitemap / generateRssFeed / generateLlmsTxt',

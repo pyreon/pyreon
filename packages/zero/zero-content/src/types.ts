@@ -29,6 +29,12 @@ export interface ContentModule<TFrontmatter = Record<string, unknown>> {
   headings: Heading[]
   /** Stable slug derived from the file path (e.g. `docs/zero`). */
   slug: string
+  /**
+   * Words in the body (prose + code), counted at compile time. Every
+   * module the plugin compiles exports it; a hand-written loader may omit
+   * it, and the runtime then reports `0`.
+   */
+  wordCount?: number
 }
 
 /**
@@ -169,4 +175,10 @@ export interface CollectionEntry<TData = Record<string, unknown>> {
   render: () => Promise<ComponentFn<Record<string, never>>>
   /** Heading list for the page (level 2-3). */
   headings: Heading[]
+  /**
+   * Words in the body (prose + code), counted when the file was compiled —
+   * divide by a reading speed for a reading-time label without walking the
+   * page in the browser.
+   */
+  wordCount: number
 }

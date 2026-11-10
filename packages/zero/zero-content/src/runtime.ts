@@ -141,6 +141,7 @@ export async function getCollection(
         data: mod.frontmatter as Record<string, unknown>,
         render: async () => mod.default,
         headings: mod.headings ?? [],
+        wordCount: mod.wordCount ?? 0,
       }
     }),
   )
@@ -163,6 +164,23 @@ export async function getCollection(
     result = result.filter(options.filter)
   }
   return result
+}
+
+/**
+ * Whether one entry of `name` is public right now, judged exactly as
+ * `getCollection` judges it in production: not a draft, and — when the
+ * collection declares `publishDate` — dated at or before the build's
+ * publish cutoff (or the current time when the build recorded none).
+ * Unknown collections answer `false`.
+ *
+ * Use it where an entry is reached by slug (`getEntry`) rather than
+ * through `getCollection`, e.g. a post page that must not render an
+ * unpublished entry an `unpublished: 'runtime'` build still bundles.
+ */
+export function isEntryPublished(name: string, data: Record<string, unknown>): boolean {
+  const collection = _getRegistry()[name]
+  if (!collection) return false
+  return isPublished(data, collection.publishDate, collection.publishCutoff ?? Date.now())
 }
 
 /**
@@ -192,6 +210,7 @@ export async function getEntry(
     data: mod.frontmatter as Record<string, unknown>,
     render: async () => mod.default,
     headings: mod.headings ?? [],
+    wordCount: mod.wordCount ?? 0,
   }
 }
 
@@ -223,6 +242,7 @@ export async function getEntries(
         data: mod.frontmatter as Record<string, unknown>,
         render: async () => mod.default,
         headings: mod.headings ?? [],
+        wordCount: mod.wordCount ?? 0,
       }
     }),
   )

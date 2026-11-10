@@ -16,10 +16,24 @@ function toProps(obj: Record<string, string | undefined>): Record<string, string
 function buildEntry(o: UseHeadInput): HeadEntry {
   const tags: HeadTag[] = []
   if (o.title != null) tags.push({ tag: 'title', key: 'title', children: o.title })
+  // A meta tag is keyed by its name/property, so a page's `og:title`
+  // replaces the layout's. Two cases share a name on purpose and must not
+  // collapse into one tag: the same name for different `media`
+  // (`theme-color` for light and dark), and a property Open Graph allows
+  // several times (`article:tag`, `og:locale:alternate`). So `media` is
+  // part of the key, and the 2nd, 3rd… use of a key in ONE `useHead` call
+  // is keyed `<key>#1`, `<key>#2`… — still replaced position-by-position
+  // by a later entry that sets the same list.
+  const metaUses = new Map<string, number>()
   o.meta?.forEach((m, i) => {
+    const named = m.name ?? m.property
+    const base =
+      named === undefined ? `meta-${i}` : m.media !== undefined ? `${named}|${m.media}` : named
+    const n = metaUses.get(base) ?? 0
+    metaUses.set(base, n + 1)
     tags.push({
       tag: 'meta',
-      key: m.name ?? m.property ?? `meta-${i}`,
+      key: n === 0 ? base : `${base}#${n}`,
       props: toProps(m as Record<string, string | undefined>),
     })
   })

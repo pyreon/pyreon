@@ -94,6 +94,12 @@ export function generatePackageJson(
   // document-primitives + document + connector-document trio for the
   // headline PDF-export demo, regardless of which integrations the user
   // picks.
+  // Blog template hard requirement — posts are markdown in a
+  // `@pyreon/zero-content` collection and the routes come from its `/blog`
+  // module (the same implementation pyreon.dev/blog runs on).
+  if (config.template === 'blog') {
+    allFeatureDeps.add('@pyreon/zero-content')
+  }
   if (config.template === 'dashboard') {
     allFeatureDeps.add('@pyreon/document-primitives')
     allFeatureDeps.add('@pyreon/document')

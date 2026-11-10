@@ -6,6 +6,7 @@ import remarkParse from 'remark-parse'
 import { unified, type Processor } from 'unified'
 import type { Root } from 'mdast'
 import { emitJsx, type EmitOptions } from './emit-jsx'
+import { countWords } from './word-count'
 import { parseFrontmatter } from './frontmatter'
 import { remarkCallout } from './remark-plugins/callout'
 import { remarkCodeGroup } from './remark-plugins/codegroup'
@@ -150,6 +151,8 @@ export interface CompileResult {
   headings: Heading[]
   /** Derived slug from the file path. */
   slug: string
+  /** Words in the body (prose + code), for reading-time labels. */
+  wordCount: number
   /**
    * Component names referenced in the markdown via JSX. Useful for
    * downstream validation, dependency tracking, HMR invalidation.
@@ -340,12 +343,14 @@ export async function compileMarkdown(
   //    passes; pick whatever comes after `/content/` (the documented
   //    convention) or fall back to the filename stem.
   const slug = deriveSlug(id)
+  const wordCount = countWords(tree)
 
   // 6. Wrap into a complete TSX module. The module exports:
   //      - `default` — the page component
   //      - `frontmatter` — parsed YAML, typed by zod at PR 4
   //      - `headings` — for the TOC
   //      - `slug` — for the catch-all route
+  //      - `wordCount` — for reading-time labels
   //
   //    Hoisted ESM (per-`.md` imports + exports) lands at the top of
   //    the module. A single `import { Name1, Name2 } from componentsModule`
@@ -357,6 +362,7 @@ export async function compileMarkdown(
     frontmatter,
     headings,
     slug,
+    wordCount,
     hoistedEsm,
     componentRefs: componentRefList,
     componentsModule:
@@ -368,6 +374,7 @@ export async function compileMarkdown(
     frontmatter,
     headings,
     slug,
+    wordCount,
     componentRefs: componentRefList,
     hoistedEsm: [...hoistedEsm],
     warnings: compileWarnings,
@@ -394,6 +401,7 @@ function renderTsxModule(opts: {
   frontmatter: Record<string, unknown>
   headings: Heading[]
   slug: string
+  wordCount: number
   hoistedEsm: string[]
   componentRefs: string[]
   componentsModule: string
@@ -448,6 +456,7 @@ function renderTsxModule(opts: {
 ${autoImportLine}${hoistedSection}export const frontmatter = ${fm}
 export const headings = ${hd}
 export const slug = ${sg}
+export const wordCount = ${opts.wordCount}
 
 export default function ContentPage() {
   return (

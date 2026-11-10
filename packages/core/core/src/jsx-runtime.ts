@@ -439,6 +439,8 @@ export interface AnchorAttributes extends PyreonHTMLAttributes<HTMLAnchorElement
   target?: '_blank' | '_self' | '_parent' | '_top' | string | undefined
   rel?: string | undefined
   download?: string | boolean | undefined
+  /** MIME type of the linked resource, e.g. `application/rss+xml` for a feed. */
+  type?: string | undefined
 }
 
 export interface ButtonAttributes extends PyreonHTMLAttributes<HTMLButtonElement> {
