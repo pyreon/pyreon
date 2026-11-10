@@ -191,6 +191,18 @@ createHandler({
 
 Each middleware receives `ctx: MiddlewareContext` (`{ request, path, method, headers, locals, ... }`) and may return a `Response` (short-circuit), `void` (continue), or `Promise` of either. The first `Response` wins; otherwise the SSR render runs.
 
+## Error reporting
+
+```ts
+createHandler({
+  App,
+  routes,
+  onError: (error, { phase, request }) => Sentry.captureException(error, { tags: { phase } }),
+})
+```
+
+`onError` receives every unexpected server error with its `phase` (`'middleware'` for a throwing middleware or API route, `'render'`, `'stream'`, `'action'` for a `@pyreon/zero` server action, `'reported'` for `ctx.reportError(...)`). It runs after the console line, never changes the response, and a failing hook is caught.
+
 ## Documentation
 
 Full docs: [pyreon.dev/docs/server](https://pyreon.dev/docs/server) (or `docs/src/content/docs/server.md` in this repo).

@@ -102,7 +102,7 @@ function useUser() {
 createHandler(options: HandlerOptions): (req: Request) => Promise<Response>
 ```
 
-Build a production SSR handler from your `App`, `routes`, and optional template / client entry / middleware. The template is precompiled once at handler-creation (split into 4 parts to skip three string scans per request); a missing `<!--pyreon-app-->` placeholder throws at creation time, not per request. Middleware runs before render with `ctx.locals` for cross-middleware data passing — return a `Response` to short-circuit the chain. `mode: "stream"` uses `renderToStream` so Suspense boundaries flush out-of-order; `mode: "string"` uses `renderToString` (default).
+Build a production SSR handler from your `App`, `routes`, and optional template / client entry / middleware. The template is precompiled once at handler-creation (split into 4 parts to skip three string scans per request); a missing `<!--pyreon-app-->` placeholder throws at creation time, not per request. Middleware runs before render with `ctx.locals` for cross-middleware data passing — return a `Response` to short-circuit the chain. `mode: "stream"` uses `renderToStream` so Suspense boundaries flush out-of-order; `mode: "string"` uses `renderToString` (default). `onError(error, { request, phase })` receives every unexpected server error (`phase`: `middleware` — including API routes —, `render`, `stream`, `action` from zero server actions, or `reported` via `ctx.reportError`) to forward to Sentry / OpenTelemetry; it runs after the console line, never changes the 500 response, and a throwing hook is caught.
 
 **Example**
 
@@ -114,6 +114,7 @@ export default createHandler({
   routes,
   clientEntry: "/src/entry-client.ts",
   mode: "stream",  // or "string"
+  onError: (error, { phase, request }) => Sentry.captureException(error, { tags: { phase } }),
 })
 ```
 
@@ -122,6 +123,7 @@ export default createHandler({
 - Omitting `<!--pyreon-app-->` from the custom template — throws at handler-creation, not per request
 - Returning a `Response` from middleware and expecting downstream middleware to still run — the chain short-circuits on the first `Response`
 - Reading `ctx.locals` from inside the component without `useRequestLocals()` — the component tree only sees locals when bridged through that hook
+- Expecting `onError` to replace the response or to be awaited — it is a reporter: the client always gets the generic 500, and a returned promise is not awaited
 - Forgetting to escape user data inserted into a custom template — `createHandler` only escapes its own loader-data injection (`</script>` → `<\/script>`); your template content is your responsibility
 
 **See also:** `prerender` · `island` · `useRequestLocals`
