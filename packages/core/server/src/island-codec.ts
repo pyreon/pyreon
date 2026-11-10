@@ -213,7 +213,7 @@ function walkObject(
       // Silently dropped — JSON.stringify does the same.
       continue
     }
-    result[key] = walk(val, ancestors, `${path}.${key}`, islandName, depth + 1)
+    setOwn(result, key, walk(val, ancestors, `${path}.${key}`, islandName, depth + 1))
   }
 
   // If the user's plain object literally has `__pyreon_t` as an own key,
@@ -224,6 +224,21 @@ function walkObject(
     return { [TAG]: 'e', [VALUE]: result }
   }
   return result
+}
+
+/**
+ * Copy a DATA key onto a plain object as an own property. Island props are
+ * user data (and the fragment endpoint decodes CLIENT-controlled props on the
+ * server), so a key can be `"__proto__"`: `out[key] = value` would run the
+ * accessor and make `value` the object's PROTOTYPE — the key vanished from the
+ * wire on encode and its fields surfaced as inherited props on decode.
+ */
+function setOwn(out: Record<string, unknown>, key: string, value: unknown): void {
+  if (key === '__proto__') {
+    Object.defineProperty(out, key, { value, enumerable: true, writable: true, configurable: true })
+  } else {
+    out[key] = value
+  }
 }
 
 /**
@@ -282,7 +297,7 @@ export function decodeIslandProps(value: unknown): unknown {
         if (v && typeof v === 'object' && !Array.isArray(v)) {
           const out: Record<string, unknown> = {}
           for (const [k, val] of Object.entries(v as Record<string, unknown>)) {
-            out[k] = decodeIslandProps(val)
+            setOwn(out, k, decodeIslandProps(val))
           }
           return out
         }
@@ -295,7 +310,7 @@ export function decodeIslandProps(value: unknown): unknown {
 
   const out: Record<string, unknown> = {}
   for (const [k, val] of Object.entries(obj)) {
-    out[k] = decodeIslandProps(val)
+    setOwn(out, k, decodeIslandProps(val))
   }
   return out
 }

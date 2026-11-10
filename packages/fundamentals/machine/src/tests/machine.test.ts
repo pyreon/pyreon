@@ -106,6 +106,18 @@ describe('createMachine', () => {
       ).toThrow(/transition target 'lodaing'.*not defined in states/)
     })
 
+    it('validates OWN transitions only — an inherited enumerable entry is not a transition', () => {
+      // Inherited entries are never taken by send() (own-property lookup), so
+      // validation must not reject a config because of one either.
+      const on = Object.create({ STRAY: 'nowhere' }) as Record<string, string>
+      on.GO = 'b'
+      const m = createMachine({ initial: 'a', states: { a: { on }, b: {} } } as any)
+      ;(m.send as unknown as (e: string) => void)('STRAY')
+      expect(m()).toBe('a')
+      ;(m.send as unknown as (e: string) => void)('GO')
+      expect(m()).toBe('b')
+    })
+
     it('throws on a non-existent `always` transition target', () => {
       expect(() =>
         createMachine({
@@ -243,6 +255,39 @@ describe('createMachine', () => {
       })
       expect(m.matches('loading', 'error')).toBe(true)
       expect(m.matches('idle', 'error')).toBe(false)
+    })
+
+    it('matches any position of a longer list, and nothing for an empty one', () => {
+      const m = createMachine({
+        initial: 'error',
+        states: { idle: {}, loading: {}, error: {} },
+      })
+      expect(m.matches('idle', 'loading', 'error')).toBe(true)
+      expect(m.matches('error', 'idle', 'loading')).toBe(true)
+      expect(m.matches('idle', 'loading')).toBe(false)
+      expect((m.matches as () => boolean)()).toBe(false)
+    })
+
+    it('tracks the state with one and with several arguments', () => {
+      const m = createMachine({
+        initial: 'idle',
+        states: { idle: { on: { GO: 'busy' } }, busy: { on: { GO: 'idle' } } },
+      })
+      const one: boolean[] = []
+      const many: boolean[] = []
+      const e1 = effect(() => {
+        one.push(m.matches('busy'))
+      })
+      const e2 = effect(() => {
+        many.push(m.matches('idle', 'busy'))
+      })
+      m.send('GO')
+      m.send('GO')
+      expect(one).toEqual([false, true, false])
+      // Re-ran on each change even though the result stayed true.
+      expect(many).toEqual([true, true, true])
+      e1.dispose()
+      e2.dispose()
     })
 
     it('is reactive in effects', () => {
@@ -660,6 +705,29 @@ describe('createMachine', () => {
       m.send('GO')
       expect(enterFn).not.toHaveBeenCalled()
       expect(transitionFn).not.toHaveBeenCalled()
+    })
+
+    it('works before any listener exists, and listeners can be added after it', () => {
+      const m = createMachine({
+        initial: 'a',
+        states: { a: { on: { GO: 'b' } }, b: { on: { GO: 'a' }, final: true } },
+      })
+      m.dispose()
+      const unsub = m.onTransition(() => {})
+      unsub()
+      unsub() // idempotent
+      const exitA = vi.fn()
+      const enterB = vi.fn()
+      const done = vi.fn()
+      m.onExit('a', exitA)
+      m.onEnter('b', enterB)
+      m.onDone(done)
+      m.send('GO')
+      expect([exitA, enterB, done].map((f) => f.mock.calls.length)).toEqual([1, 1, 1])
+      m.dispose()
+      m.send('GO')
+      m.send('GO')
+      expect([exitA, enterB, done].map((f) => f.mock.calls.length)).toEqual([1, 1, 1])
     })
   })
 

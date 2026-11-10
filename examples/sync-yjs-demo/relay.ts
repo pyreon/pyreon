@@ -19,7 +19,29 @@ const http = createServer((_req, res) => {
   res.end('sync-relay ok')
 })
 
-await createSyncServer({ server: http })
+// The demo page (Vite dev server) and this relay are DIFFERENT origins (other
+// port), so the relay's cross-site WebSocket guard closes the page's upgrade
+// with 4403 unless its origin is allowed. This demo allows loopback pages on
+// any port plus any origins listed in SYNC_ALLOWED_ORIGINS (comma-separated).
+// A production relay lists its app's exact origin(s).
+const extraOrigins = new Set(
+  (process.env.SYNC_ALLOWED_ORIGINS ?? '')
+    .split(',')
+    .map((o) => o.trim())
+    .filter(Boolean),
+)
+const LOOPBACK = new Set(['localhost', '127.0.0.1', '[::1]'])
+const allowedOrigins = (origin: string): boolean => {
+  if (extraOrigins.has(origin)) return true
+  try {
+    const url = new URL(origin)
+    return (url.protocol === 'http:' || url.protocol === 'https:') && LOOPBACK.has(url.hostname)
+  } catch {
+    return false
+  }
+}
+
+await createSyncServer({ server: http, allowedOrigins })
 
 http.listen(port, () => {
   // eslint-disable-next-line no-console

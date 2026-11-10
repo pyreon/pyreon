@@ -73,6 +73,20 @@ const sameRef = computed(() => obj(), { equals: (a, b) => a.id === b.id })
 
 Lazy, memoized, auto-tracking. Recomputes only when a dependency changes AND a subscriber actually reads it. Pass a custom `equals` to dedupe by structural identity instead of `Object.is`.
 
+## Linked signals
+
+```ts
+const options = signal(['small', 'medium', 'large'])
+const size = linked(() => options()[0]) // follows options
+size.set('large') // local override
+options.set(['s', 'm']) // source changed → size() === 's'
+
+// keep the previous choice while it is still valid
+const kept = linked(options, (opts, prev): string => (prev && opts.includes(prev.value) ? prev.value : opts[0]))
+```
+
+A writable derived value (Angular `linkedSignal`): lazy like `computed`, writable with `.set()` / `.update()`, reset when the source changes. The two-argument form tracks only `source` and runs `compute` untracked with the previous `{ source, value }`.
+
 ## Effects
 
 ```ts

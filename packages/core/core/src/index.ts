@@ -80,6 +80,8 @@ export {
   _lc,
   _fuse,
   _compatProps,
+  _pk,
+  _pp,
   _rp,
   _rpd,
   _wrapSpread,

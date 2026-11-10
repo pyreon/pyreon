@@ -126,7 +126,7 @@ const User = () => {
 | [`getActiveRouter / setActiveRouter`](#getactiverouter-setactiverouter-function) | function | The module-level FALLBACK a hook resolves against when no `<RouterProvider>` context is above it. |
 | [`classifyHref / toRouterPath`](#classifyhref-torouterpath-function) | function | The classification `<RouterLink>` uses internally to decide client-side-navigate vs plain-anchor-behavior, exported for  |
 | [`classifyRedirectTarget / safeRedirectLocation`](#classifyredirecttarget-saferedirectlocation-function) | function | The open-redirect guard `redirect()` runs its target through. |
-| [`serializeLoaderData / stringifyLoaderData / hydrateLoaderData`](#serializeloaderdata-stringifyloaderdata-hydrateloaderdata-function) | function | The SSR ⇄ client loader-data transit pipeline `@pyreon/server`/`@pyreon/zero` build on. |
+| [`serializeLoaderData / stringifyLoaderDataForScript / stringifyLoaderData / hydrateLoaderData`](#serializeloaderdata-stringifyloaderdataforscript-stringifyloaderdata-hydrateloaderdata-function) | function | The SSR ⇄ client loader-data transit pipeline `@pyreon/server`/`@pyreon/zero` build on. |
 | [`resolveRoute / buildPath / findRouteByName / parseQuery / parseQueryMulti / stringifyQuery`](#resolveroute-buildpath-findroutebyname-parsequery-parsequerymulti-stringifyquery-function) | function | Match utilities re-exported for SSR route pre-fetching and custom tooling that needs to match a path against a route TRE |
 
 ## API
@@ -752,20 +752,28 @@ const page = () => search().page
 notFound(message?: string) => never · NotFoundBoundary(props: { fallback: ComponentFn | VNodeChild; children?: VNodeChild }) => VNodeChild
 ```
 
-The Next.js-style 404 pair. `notFound()` THROWS a branded Error (message defaults to 'Not Found') from inside a loader or component; `isNotFoundError` detects the brand (`Symbol.for('pyreon.notFound')`, realm-shared). `NotFoundBoundary` wraps the core `ErrorBoundary`: it renders `children` normally, and when a `notFound()` is thrown in its subtree it renders `fallback` (invoked as a component with `{ error, reset }` when its arity is &lt;= 1, else returned as a plain VNodeChild). It RE-THROWS any non-notFound error so real errors still propagate to an outer error boundary.
+The Next.js-style 404 pair. `notFound()` THROWS a branded Error (message defaults to 'Not Found'); `isNotFoundError` detects the brand (`Symbol.for('pyreon.notFound')`, realm-shared). Thrown from a LOADER (`loader` / `serverLoader`) it is flow control, like `redirect()`: the route enters the router's not-found state — `currentRoute()` resolves to the same `notFoundComponent` / `_404.tsx` chain an unmatched URL gets (inside its layouts, `isNotFound: true`, URL/params/query kept), SSR answers HTTP 404 in string and stream mode (404 with an empty chain when no `notFoundComponent` exists), the loader-data blob carries a marker so the hydrating client resolves the same chain, the data endpoint answers `{ notFound: true }`, a client navigation lands on the same page, `onError` is not called, and the next navigation leaves the state. Thrown from a COMPONENT it is caught by the nearest `NotFoundBoundary`, which wraps the core `ErrorBoundary` wraps the core `ErrorBoundary`: it renders `children` normally, and when a `notFound()` is thrown in its subtree it renders `fallback` (invoked as a component with `{ error, reset }` when its arity is &lt;= 1, else returned as a plain VNodeChild). It RE-THROWS any non-notFound error so real errors still propagate to an outer error boundary.
 
 **Example**
 
 ```tsx
-async function loadUser(params: { id: string }) {
-  const user = await fetchUser(params.id)
-  if (!user) notFound()          // throws — code below is unreachable
-  return user
-}
+// Loader: renders the route tree's notFoundComponent / _404.tsx (SSR: HTTP 404)
+const routes = [{
+  path: '/', component: Layout, notFoundComponent: NotFoundPage,
+  children: [{
+    path: 'user/:id', component: UserPage,
+    loader: async ({ params }) => {
+      const user = await fetchUser(params.id)
+      if (!user) notFound()          // throws — code below is unreachable
+      return user
+    },
+  }],
+}]
 
+// Component: caught by the nearest NotFoundBoundary
 const app = (
   <NotFoundBoundary fallback={() => <h1>404 — not found</h1>}>
-    <RouterView />
+    <Widget />
   </NotFoundBoundary>
 )
 ```
@@ -774,7 +782,7 @@ const app = (
 
 - Expecting code after `notFound()` to run — it THROWS (`=> never`) and never returns, so a guard-then-continue pattern does not work (everything after it is unreachable).
 - Using `NotFoundBoundary` as a general error boundary — it ONLY handles `notFound()` throws; every other error is RE-THROWN to the nearest outer `ErrorBoundary`.
-- Confusing `notFound()` with the route-record `notFoundComponent` / fs-router `_404.tsx` — those are the route-level no-match fallback; `notFound()` drives the `NotFoundBoundary` in the rendered subtree (a different mechanism).
+- Wrapping `RouterView` in a `NotFoundBoundary` to catch a LOADER's `notFound()` — a loader's `notFound()` never reaches a boundary; it renders the route tree's `notFoundComponent` / `_404.tsx` chain (HTTP 404 under SSR). `NotFoundBoundary` is for `notFound()` thrown while a component renders.
 
 **See also:** `redirect` · `RouterView`
 
@@ -915,21 +923,21 @@ safeRedirectLocation('javascript:alert(1)')  // '/' — blocked
 
 ---
 
-### `serializeLoaderData / stringifyLoaderData / hydrateLoaderData` `function`
+### `serializeLoaderData / stringifyLoaderDataForScript / stringifyLoaderData / hydrateLoaderData` `function`
 
 ```ts
-serializeLoaderData(router: RouterInstance) => Record<string, unknown> · stringifyLoaderData(loaderData: Record<string, unknown>) => string · hydrateLoaderData(router: RouterInstance, serialized: Record<string, unknown>) => void
+serializeLoaderData(router: RouterInstance) => Record<string, unknown> · stringifyLoaderDataForScript(data: object) => string · stringifyLoaderData(loaderData: Record<string, unknown>) => string · hydrateLoaderData(router: RouterInstance, serialized: Record<string, unknown>) => void
 ```
 
-The SSR ⇄ client loader-data transit pipeline `@pyreon/server`/`@pyreon/zero` build on. Server side: `serializeLoaderData(router)` collects the matched chain's loader results into a plain object keyed by route path (a layout and its index page can share a path — the SECOND record at the same path gets a `path#1` suffix so neither clobbers the other); `stringifyLoaderData(data)` then turns that into a STRING ready to embed inside an inline `<script>` — it strips functions/symbols, throws a clear `[Pyreon] Loader returned circular reference at "<path>"` naming the offending key on a real cycle (a DAG with a SHARED reference, like two fields pointing at the same ORM instance, is NOT a cycle and serializes fine), and neutralizes the whole `<` character class plus U+2028/U+2029 so an adversarial loader value can never break out of the `<script>` boundary. Client side: `hydrateLoaderData(router, serialized)` — called once, BEFORE `mount()`, right after `createRouter()` — populates the router's internal loader-data map from the deserialized blob so the initial render uses the server-fetched data instead of re-running loaders.
+The SSR ⇄ client loader-data transit pipeline `@pyreon/server`/`@pyreon/zero` build on. Server side: `serializeLoaderData(router)` collects the matched chain's loader results into a plain object keyed by route path (a layout and its index page can share a path — the SECOND record at the same path gets a `path#1` suffix so neither clobbers the other); `stringifyLoaderDataForScript(data)` then turns that into a JavaScript EXPRESSION ready for an inline `<script>window.X=…</script>` assignment, and `stringifyLoaderData(data)` into script-safe JSON TEXT (a JSON response body or a `<script type="application/json">` block). Both strip functions/symbols, throws a clear `[Pyreon] Loader returned circular reference at "<path>"` naming the offending key on a real cycle (a DAG with a SHARED reference, like two fields pointing at the same ORM instance, is NOT a cycle and serializes fine), and neutralizes the whole `<` character class plus U+2028/U+2029 so an adversarial loader value can never break out of the `<script>` boundary. The `ForScript` form additionally rewrites every `"__proto__"` KEY to the computed `["__proto__"]`, because a JS object literal treats a `"__proto__":` key as a PROTOTYPE SETTER: a user-keyed map holding that key would lose it on the client and every missing-key lookup would inherit the smuggled fields; without such a key its output is byte-identical to `stringifyLoaderData`. Client side: `hydrateLoaderData(router, serialized)` — called once, BEFORE `mount()`, right after `createRouter()` — populates the router's internal loader-data map from the deserialized blob so the initial render uses the server-fetched data instead of re-running loaders.
 
 **Example**
 
 ```tsx
 // Server (SSR handler):
 await prefetchLoaderData(router, req.url)
-const json = stringifyLoaderData(serializeLoaderData(router))
-const html = `...<script>window.__PYREON_LOADER_DATA__=${json}</script>...`
+const expr = stringifyLoaderDataForScript(serializeLoaderData(router))
+const html = `...<script>window.__PYREON_LOADER_DATA__=${expr}</script>...`
 
 // Client entry (before mount):
 const router = createRouter({ routes })
@@ -940,6 +948,7 @@ mount(h(App, null), document.getElementById('app')!)
 **Common mistakes**
 
 - Calling `JSON.stringify(serializeLoaderData(router))` directly instead of `stringifyLoaderData` — loses the circular-reference diagnostic (a bare `JSON.stringify` throws an opaque "Converting circular structure to JSON" naming no route) AND the `<script>`-context escaping (a loader value containing `</script>` or `<!--<script>` can corrupt the page)
+- Interpolating `stringifyLoaderData` (JSON text) into an EXECUTABLE `window.X=…` assignment — the script is a JS object literal, where a `"__proto__":` key sets the prototype instead of creating the key. Use `stringifyLoaderDataForScript` for executable embeds; keep `stringifyLoaderData` for JSON responses and `type="application/json"` blocks
 - Calling `hydrateLoaderData` AFTER `mount()` — it populates the loader-data map the FIRST render reads; called too late, the initial render re-fetches instead of using the server data
 - Returning a Mongo/Prisma model with back-references intact from a loader — that IS a genuine cycle, and `stringifyLoaderData` throws naming the exact key; strip back-references or return a plain serialized shape
 

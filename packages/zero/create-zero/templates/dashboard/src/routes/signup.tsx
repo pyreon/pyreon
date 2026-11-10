@@ -2,7 +2,7 @@ import { signal } from "@pyreon/reactivity"
 import { useHead } from "@pyreon/head"
 import { Link } from "@pyreon/zero/link"
 import { useRouter } from "@pyreon/router"
-import { signUp } from "../lib/auth"
+import { postCredentials } from "../lib/post-credentials"
 
 export const meta = { title: "Create an account" }
 
@@ -21,19 +21,15 @@ export default function Signup() {
     error.set(null)
     submitting.set(true)
 
-    // `await` works for BOTH the in-memory stub (sync) and the Supabase
-    // integration override (async) — see login.tsx for the same pattern.
-    const result = await signUp(email(), password())
+    // Same server-side flow as login.tsx: the endpoint creates the account and
+    // sets the HttpOnly session cookie.
+    const message = await postCredentials("/api/signup", email(), password())
     submitting.set(false)
-
-    if ("error" in result) {
-      error.set(result.error)
+    if (message) {
+      error.set(message)
       return
     }
 
-    if (typeof document !== "undefined") {
-      document.cookie = `sid=${result.sessionId}; path=/; max-age=${7 * 24 * 60 * 60}`
-    }
     await router.push("/app/dashboard")
   }
 

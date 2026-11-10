@@ -420,7 +420,7 @@ const title = syncedSignal({ doc, key: "title", initial: "Untitled" })`,
       kind: 'function',
       signature: '(options: SyncServerOptions) => Promise<SyncServer>',
       summary:
-        "Start a Node/Bun WebSocket relay that brokers Yjs sync between clients sharing a room. Keeps one authoritative Y.Doc per room (so a late-joiner catches up), applies each inbound update, and broadcasts to the room's OTHER clients. Server-only (`@pyreon/sync/server` — imports `ws` + `node:http`, never enters a client bundle). The `authorize(ctx)` hook is the per-room/per-doc access gate: return false (or throw) to reject with close code 4401 before any data flows. Omitting it accepts EVERY connection (an open relay) and warns once at startup, in production too. Rooms are GC'd when the last client leaves — the relay is ephemeral (no persistence); clients keep their own copy. Pass `server` to attach to an existing http.Server instead of opening a port.",
+        "Start a Node/Bun WebSocket relay that brokers Yjs sync between clients sharing a room. Keeps one authoritative Y.Doc per room (so a late-joiner catches up), applies each inbound update, and broadcasts to the room's OTHER clients. Server-only (`@pyreon/sync/server` — imports `ws` + `node:http`, never enters a client bundle). The `authorize(ctx)` hook is the per-room/per-doc access gate: return false (or throw) to reject with close code 4401 before any data flows. Omitting it accepts EVERY connection (an open relay) and warns once at startup, in production too. Rooms are GC'd when the last client leaves — the relay is ephemeral (no persistence); clients keep their own copy. Pass `server` to attach to an existing http.Server instead of opening a port. A browser upgrade whose `Origin` is neither same-origin with the upgrade's `Host` nor listed in `allowedOrigins` (array of origins, or a predicate) is closed with 4403 before `authorize` runs — the cross-site WebSocket hijacking guard; an upgrade without `Origin` (Node, Bun, native) is unaffected.",
       example: `import { createSyncServer } from "@pyreon/sync/server"
 const relay = await createSyncServer({
   port: 1234,
@@ -431,6 +431,7 @@ const relay = await createSyncServer({
         'Deploying without an `authorize` hook — the default allows EVERY connection (dev-only); a real deployment MUST supply it or anyone with the room id can read/write. `createSyncServer` warns once at startup when the hook is absent, in production as well as development, because an open relay is a live misconfiguration rather than a developer-time nicety.',
         'Importing `@pyreon/sync/server` into client code — it pulls `ws` + `node:http`; it is the server-only subpath by design',
         'Expecting the relay to persist data — it is ephemeral; durability lives on the clients (persistViaIndexedDB) or an external store',
+        'Serving the app from a different origin than the relay (or behind a proxy that rewrites `Host`) without `allowedOrigins: [\'https://app.example.com\']` — browser upgrades from that origin are closed with 4403. Keep the list tight when `authorize` reads cookies.',
       ],
       seeAlso: ['connectViaWebSocket', 'AuthorizeContext'],
     },
@@ -438,9 +439,9 @@ const relay = await createSyncServer({
       name: 'AuthorizeContext',
       kind: 'type',
       signature:
-        'interface AuthorizeContext { room: string; token: string | null; req: IncomingMessage }',
+        'interface AuthorizeContext { room: string; token: string | null; origin: string | null; req: IncomingMessage }',
       summary:
-        "Context passed to the relay's `authorize` hook: the `room` parsed from the URL path, the `token` query-string param (browser WebSockets can't set headers, so auth rides the query string), and the raw HTTP upgrade `req` (read cookies / headers here if you prefer).",
+        "Context passed to the relay's `authorize` hook: the `room` parsed from the URL path, the `token` query-string param (browser WebSockets can't set headers, so auth rides the query string), the upgrade's `Origin` header (`null` for non-browser clients; already checked against `allowedOrigins`), and the raw HTTP upgrade `req` (read cookies / headers here if you prefer). Cookie auth alone does not prove the page is yours — browsers attach cookies to a WebSocket upgrade any site opens — which is why the relay refuses a cross-origin browser upgrade before `authorize` runs.",
       example: `authorize: ({ room, token, req }) => verify(room, token)`,
       seeAlso: ['createSyncServer'],
     },

@@ -165,7 +165,9 @@ describe('templatizeComponentChildren — emit shape', () => {
     expect(code).toContain('_tpl("<div class=\\"branch\\" data-pyreon-hole></div>"')
     // Without the hole this reads `<Node depth={props.depth - 1} />` — a value
     // captured once, so the prop never updates again.
-    expect(code).toContain('_mountChild(<Node depth={_rp(() => props.depth - 1)} />')
+    expect(code).toContain(
+      '_mountChild(<Node depth={_pk(props, "depth") ? (props.depth - 1) : _rp(() => props.depth - 1)} />',
+    )
   })
 
   it('PRESERVES a signal auto-call on an absorbed component child’s props', () => {

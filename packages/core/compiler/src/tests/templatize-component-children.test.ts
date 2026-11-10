@@ -123,8 +123,10 @@ describe('preserved holes — what survives into the emitted child', () => {
   // everything below — it compiles and renders, and only a real app catches it.
   it('keeps _rp wrapping on the child’s props', () => {
     const code = emit(`const N = (props) => <div class="b"><Node depth={props.depth - 1} /></div>`)
-    expect(code).toContain('_mountChild(<Node depth={_rp(() => props.depth - 1)} />')
-    expect(code).toContain('import { _rp } from "@pyreon/core"')
+    expect(code).toContain(
+      '_mountChild(<Node depth={_pk(props, "depth") ? (props.depth - 1) : _rp(() => props.depth - 1)} />',
+    )
+    expect(code).toContain('import { _pk, _rp } from "@pyreon/core"')
   })
 
   it('keeps the signal auto-call on the child’s props', () => {
@@ -143,8 +145,8 @@ describe('preserved holes — what survives into the emitted child', () => {
     const code = emit(
       `const N = (props) => <div class="b"><A x={props.a} /><B y={props.b} /></div>`,
     )
-    expect(code).toContain('_mountChild(<A x={_rp(() => props.a)} />, __root, null)')
-    expect(code).toContain('_mountChild(<B y={_rp(() => props.b)} />, __root, null)')
+    expect(code).toContain('_mountChild(<A x={_pp(props, "a")} />, __root, null)')
+    expect(code).toContain('_mountChild(<B y={_pp(props, "b")} />, __root, null)')
     expect(code.indexOf('<A x=')).toBeLessThan(code.indexOf('<B y='))
   })
 
@@ -153,7 +155,7 @@ describe('preserved holes — what survives into the emitted child', () => {
     // not only when it is the first child — a slice would emit the child's text
     // as it stood before the walk and silently drop the `_rp` wrapping.
     const code = emit(`const N = (props) => <div class="b"><span>S</span><A x={props.a} /></div>`)
-    expect(code).toContain('_mountChild(<A x={_rp(() => props.a)} />')
+    expect(code).toContain('_mountChild(<A x={_pp(props, "a")} />')
   })
 })
 

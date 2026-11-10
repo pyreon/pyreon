@@ -33,7 +33,23 @@ export interface AuthorizeContext {
   room: string
   /** The `token` query-string param, or `null`. (Browser WebSockets can't set headers.) */
   token: string | null
-  /** The raw HTTP upgrade request — read cookies / headers here if you prefer. */
+  /**
+   * The upgrade's `Origin` header, or `null` when it carried none (non-browser
+   * clients). By the time `authorize` runs it has already passed the
+   * {@link SyncServerOptions.allowedOrigins} check.
+   */
+  origin: string | null
+  /**
+   * The raw HTTP upgrade request — read cookies / headers here if you prefer.
+   *
+   * **Cookie auth and cross-site pages.** A browser attaches cookies to a
+   * WebSocket upgrade that ANOTHER site's page opens (WebSockets are not
+   * subject to CORS), so a cookie alone does not prove the page is yours —
+   * that is cross-site WebSocket hijacking. The relay rejects a cross-origin
+   * browser upgrade before `authorize` runs unless the origin is listed in
+   * {@link SyncServerOptions.allowedOrigins}; keep that list tight when you
+   * authorize by cookie, and prefer the `token` param where you can.
+   */
   req: IncomingMessage
 }
 
@@ -62,6 +78,25 @@ export interface SyncServerOptions {
    * local/dev; a real deployment MUST supply this.
    */
   authorize?: (ctx: AuthorizeContext) => AuthorizeResult | Promise<AuthorizeResult>
+  /**
+   * Browser origins allowed to connect, in ADDITION to the relay's own origin.
+   *
+   * WebSockets are not subject to CORS: any page on any site can open
+   * `wss://your-relay/room`, and the browser sends that site's visitors'
+   * cookies for your relay's domain along with it. So an upgrade whose
+   * `Origin` header names a DIFFERENT origin than the relay's own `Host` is
+   * closed with **4403** before `authorize` runs, unless it is allowed here.
+   *
+   * - An upgrade with NO `Origin` header (Node, Bun, native apps, server-to-server)
+   *   is not a browser page and is unaffected — authenticate it in `authorize`.
+   * - Same-origin pages (Origin host === the upgrade's `Host`) are always allowed.
+   * - An array lists exact origins (`'https://app.example.com'`); a function
+   *   decides per origin. `() => true` restores allow-all.
+   *
+   * Behind a proxy that REWRITES `Host`, same-origin cannot be recognised —
+   * list your app's origin here.
+   */
+  allowedOrigins?: readonly string[] | ((origin: string) => boolean)
   /**
    * Liveness heartbeat, in ms. Every interval the relay pings each socket and
    * TERMINATES one that did not answer the previous ping — a half-open
@@ -197,6 +232,41 @@ function sendRoster(r: Room, socket: WsSocket): void {
   }
 }
 
+/** Serialized origin of an `Origin` value (`'null'` for an opaque or unparsable one). */
+function normalizeOrigin(origin: string): string {
+  try {
+    return new URL(origin).origin
+  } catch {
+    return 'null'
+  }
+}
+
+/** Host (`name[:port]`, lower-cased) of an `Origin` value, or `null` for an opaque one. */
+function originHost(origin: string): string | null {
+  try {
+    return new URL(origin).host || null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * The `allowedOrigins` predicate. Same-origin (the Origin's host equals the
+ * upgrade's `Host`) always passes; anything else — including an opaque
+ * `Origin: null` (sandboxed iframe, `file:`) — passes only when listed.
+ */
+function makeOriginCheck(
+  allowed: SyncServerOptions['allowedOrigins'],
+): (origin: string, host: string | undefined) => boolean {
+  const listed = typeof allowed === 'function' ? allowed : undefined
+  const list = new Set(typeof allowed === 'function' ? [] : (allowed ?? []).map(normalizeOrigin))
+  return (origin, host) => {
+    const oh = originHost(origin)
+    if (oh !== null && host !== undefined && oh === host.toLowerCase()) return true
+    return listed ? listed(origin) : list.has(normalizeOrigin(origin))
+  }
+}
+
 /**
  * Start a relay that brokers Yjs sync between clients sharing a room. Clients
  * connect with {@link connectViaWebSocket} pointing at `ws(s)://host/<room>?token=…`.
@@ -289,6 +359,7 @@ export function createSyncServer(options: SyncServerOptions): Promise<SyncServer
   if (options.maxPayload !== undefined) wssOptions.maxPayload = options.maxPayload
   const wss = new WebSocketServer(wssOptions)
   const maxRooms = options.maxRooms ?? Number.POSITIVE_INFINITY
+  const originAllowed = makeOriginCheck(options.allowedOrigins)
 
   // Heartbeat: `alive` is cleared before each ping and set again by the pong; a
   // socket still un-alive at the NEXT tick never answered and is terminated,
@@ -325,6 +396,15 @@ export function createSyncServer(options: SyncServerOptions): Promise<SyncServer
     // rethrows it and the whole relay dies; `ws` closes the socket right after,
     // and the `close` handler below does the cleanup.
     socket.on('error', () => {})
+
+    // Cross-site WebSocket hijacking guard — BEFORE any listener, buffer or
+    // `authorize` call, so a rejected page never gets a frame in or out.
+    const originHeader = req.headers.origin
+    const origin = typeof originHeader === 'string' ? originHeader : null
+    if (origin !== null && !originAllowed(origin, req.headers.host)) {
+      socket.close(4403, 'origin not allowed')
+      return
+    }
 
     /* v8 ignore next — `req.url ?? '/'`: the `ws` upgrade always sets req.url, so the
        '/' fallback is defensive. */
@@ -484,7 +564,7 @@ export function createSyncServer(options: SyncServerOptions): Promise<SyncServer
       let access: AuthorizeResult = true
       if (options.authorize) {
         try {
-          access = await options.authorize({ room, token, req })
+          access = await options.authorize({ room, token, origin, req })
         } catch {
           access = false
         }

@@ -77,6 +77,27 @@ doubled()  // 10`,
 - Reasoning about memory from stale branches — a re-evaluated computed drops subscriptions to sources it no longer reads (exact dep list per evaluation), so \`dispose()\` fully unsubscribes even after conditional-branch flips`,
   },
 
+  'reactivity/linked': {
+    signature: '<T>(compute: () => T, options?: LinkedOptions<T>) => LinkedSignal<T> | <S, T>(source: () => S, compute: (source: S, previous: { source: S; value: T } | undefined) => T, options?: LinkedOptions<T>) => LinkedSignal<T>',
+    example: `import { linked, signal } from '@pyreon/reactivity'
+
+const options = signal(['small', 'medium', 'large'])
+const size = linked(() => options()[0])
+size.set('large')                    // the user's choice
+options.set(['s', 'm'])              // list changed → size() === 's'
+
+// keep the previous choice when the new list still contains it
+// (annotate the return type: T cannot be inferred from a body that reads prev.value)
+const kept = linked(options, (opts, prev): string =>
+  prev && opts.includes(prev.value) ? prev.value : opts[0])`,
+    notes: 'A writable derived value (Angular `linkedSignal`): it follows its source like a `computed`, can be overwritten with `.set()` / `.update()` like a signal, and resets when the source changes. `linked(() => expr)` resets whenever `expr` changes; `linked(source, (s, prev) => value)` tracks only `source` and runs `compute` untracked with the new source value and the previous `{ source, value }` (including a local override), so it can keep a previous choice that is still valid. The source is compared with `Object.is` — a recomputation to the same source value keeps the override; a write made after a pending source change wins. Lazy like `computed`. Returns `LinkedSignal<T>`: call to read, `.peek()`, `.set()`, `.update()`, `.dispose()` (only needed outside a component or effect scope). No native lowering yet. See also: computed, signal, watch.',
+    mistakes: `- Writing \`signal\` + \`watch(source, v => sel.set(...))\` by hand — it is eager, runs the reset as a separate effect (one stale read in between), and must be disposed; \`linked\` is one lazy node
+- Reading other signals inside the two-argument \`compute\` and expecting them to reset the value — \`compute\` runs untracked; only \`source\` is tracked. Put every reset trigger in \`source\`
+- Expecting a source that recomputes to an EQUAL value to reset the override — the source is compared with \`Object.is\`; return a new identity (or a different value) to force a reset
+- Leaving the two-argument \`compute\` unannotated while its body reads \`prev.value\` — TypeScript cannot infer \`T\` from a body that depends on it and falls back to \`unknown\`; annotate the return type (\`(opts, prev): string => …\`)
+- Destructuring \`const { set } = sel\` — the methods are shared and use \`this\`, as with \`signal\`; call \`sel.set(v)\``,
+  },
+
   'reactivity/effect': {
     signature: '(fn: () => (() => void) | void) => () => void',
     example: `const count = signal(0)
@@ -2155,21 +2176,29 @@ const page = () => search().page`,
 
   'router/notFound / NotFoundBoundary': {
     signature: 'notFound(message?: string) => never · NotFoundBoundary(props: { fallback: ComponentFn | VNodeChild; children?: VNodeChild }) => VNodeChild',
-    example: `async function loadUser(params: { id: string }) {
-  const user = await fetchUser(params.id)
-  if (!user) notFound()          // throws — code below is unreachable
-  return user
-}
+    example: `// Loader: renders the route tree's notFoundComponent / _404.tsx (SSR: HTTP 404)
+const routes = [{
+  path: '/', component: Layout, notFoundComponent: NotFoundPage,
+  children: [{
+    path: 'user/:id', component: UserPage,
+    loader: async ({ params }) => {
+      const user = await fetchUser(params.id)
+      if (!user) notFound()          // throws — code below is unreachable
+      return user
+    },
+  }],
+}]
 
+// Component: caught by the nearest NotFoundBoundary
 const app = (
   <NotFoundBoundary fallback={() => <h1>404 — not found</h1>}>
-    <RouterView />
+    <Widget />
   </NotFoundBoundary>
 )`,
-    notes: `The Next.js-style 404 pair. \`notFound()\` THROWS a branded Error (message defaults to 'Not Found') from inside a loader or component; \`isNotFoundError\` detects the brand (\`Symbol.for('pyreon.notFound')\`, realm-shared). \`NotFoundBoundary\` wraps the core \`ErrorBoundary\`: it renders \`children\` normally, and when a \`notFound()\` is thrown in its subtree it renders \`fallback\` (invoked as a component with \`{ error, reset }\` when its arity is <= 1, else returned as a plain VNodeChild). It RE-THROWS any non-notFound error so real errors still propagate to an outer error boundary. See also: redirect, RouterView.`,
+    notes: `The Next.js-style 404 pair. \`notFound()\` THROWS a branded Error (message defaults to 'Not Found'); \`isNotFoundError\` detects the brand (\`Symbol.for('pyreon.notFound')\`, realm-shared). Thrown from a LOADER (\`loader\` / \`serverLoader\`) it is flow control, like \`redirect()\`: the route enters the router's not-found state — \`currentRoute()\` resolves to the same \`notFoundComponent\` / \`_404.tsx\` chain an unmatched URL gets (inside its layouts, \`isNotFound: true\`, URL/params/query kept), SSR answers HTTP 404 in string and stream mode (404 with an empty chain when no \`notFoundComponent\` exists), the loader-data blob carries a marker so the hydrating client resolves the same chain, the data endpoint answers \`{ notFound: true }\`, a client navigation lands on the same page, \`onError\` is not called, and the next navigation leaves the state. Thrown from a COMPONENT it is caught by the nearest \`NotFoundBoundary\`, which wraps the core \`ErrorBoundary\` wraps the core \`ErrorBoundary\`: it renders \`children\` normally, and when a \`notFound()\` is thrown in its subtree it renders \`fallback\` (invoked as a component with \`{ error, reset }\` when its arity is <= 1, else returned as a plain VNodeChild). It RE-THROWS any non-notFound error so real errors still propagate to an outer error boundary. See also: redirect, RouterView.`,
     mistakes: `- Expecting code after \`notFound()\` to run — it THROWS (\`=> never\`) and never returns, so a guard-then-continue pattern does not work (everything after it is unreachable).
 - Using \`NotFoundBoundary\` as a general error boundary — it ONLY handles \`notFound()\` throws; every other error is RE-THROWN to the nearest outer \`ErrorBoundary\`.
-- Confusing \`notFound()\` with the route-record \`notFoundComponent\` / fs-router \`_404.tsx\` — those are the route-level no-match fallback; \`notFound()\` drives the \`NotFoundBoundary\` in the rendered subtree (a different mechanism).`,
+- Wrapping \`RouterView\` in a \`NotFoundBoundary\` to catch a LOADER's \`notFound()\` — a loader's \`notFound()\` never reaches a boundary; it renders the route tree's \`notFoundComponent\` / \`_404.tsx\` chain (HTTP 404 under SSR). \`NotFoundBoundary\` is for \`notFound()\` thrown while a component renders.`,
   },
 
   'router/lazy': {
@@ -2232,19 +2261,20 @@ safeRedirectLocation('javascript:alert(1)')  // '/' — blocked`,
 - Using \`classifyRedirectTarget\` result's \`.url\` directly for a \`'block'\` verdict — it is undefined for that kind; use \`safeRedirectLocation\` (which always returns a safe string) unless you specifically need to branch on WHY something was blocked`,
   },
 
-  'router/serializeLoaderData / stringifyLoaderData / hydrateLoaderData': {
-    signature: 'serializeLoaderData(router: RouterInstance) => Record<string, unknown> · stringifyLoaderData(loaderData: Record<string, unknown>) => string · hydrateLoaderData(router: RouterInstance, serialized: Record<string, unknown>) => void',
+  'router/serializeLoaderData / stringifyLoaderDataForScript / stringifyLoaderData / hydrateLoaderData': {
+    signature: 'serializeLoaderData(router: RouterInstance) => Record<string, unknown> · stringifyLoaderDataForScript(data: object) => string · stringifyLoaderData(loaderData: Record<string, unknown>) => string · hydrateLoaderData(router: RouterInstance, serialized: Record<string, unknown>) => void',
     example: `// Server (SSR handler):
 await prefetchLoaderData(router, req.url)
-const json = stringifyLoaderData(serializeLoaderData(router))
-const html = \`...<script>window.__PYREON_LOADER_DATA__=\${json}</script>...\`
+const expr = stringifyLoaderDataForScript(serializeLoaderData(router))
+const html = \`...<script>window.__PYREON_LOADER_DATA__=\${expr}</script>...\`
 
 // Client entry (before mount):
 const router = createRouter({ routes })
 hydrateLoaderData(router, window.__PYREON_LOADER_DATA__ ?? {})
 mount(h(App, null), document.getElementById('app')!)`,
-    notes: `The SSR ⇄ client loader-data transit pipeline \`@pyreon/server\`/\`@pyreon/zero\` build on. Server side: \`serializeLoaderData(router)\` collects the matched chain's loader results into a plain object keyed by route path (a layout and its index page can share a path — the SECOND record at the same path gets a \`path#1\` suffix so neither clobbers the other); \`stringifyLoaderData(data)\` then turns that into a STRING ready to embed inside an inline \`<script>\` — it strips functions/symbols, throws a clear \`[Pyreon] Loader returned circular reference at "<path>"\` naming the offending key on a real cycle (a DAG with a SHARED reference, like two fields pointing at the same ORM instance, is NOT a cycle and serializes fine), and neutralizes the whole \`<\` character class plus U+2028/U+2029 so an adversarial loader value can never break out of the \`<script>\` boundary. Client side: \`hydrateLoaderData(router, serialized)\` — called once, BEFORE \`mount()\`, right after \`createRouter()\` — populates the router's internal loader-data map from the deserialized blob so the initial render uses the server-fetched data instead of re-running loaders. See also: useLoaderData, prefetchLoaderData.`,
+    notes: `The SSR ⇄ client loader-data transit pipeline \`@pyreon/server\`/\`@pyreon/zero\` build on. Server side: \`serializeLoaderData(router)\` collects the matched chain's loader results into a plain object keyed by route path (a layout and its index page can share a path — the SECOND record at the same path gets a \`path#1\` suffix so neither clobbers the other); \`stringifyLoaderDataForScript(data)\` then turns that into a JavaScript EXPRESSION ready for an inline \`<script>window.X=…</script>\` assignment, and \`stringifyLoaderData(data)\` into script-safe JSON TEXT (a JSON response body or a \`<script type="application/json">\` block). Both strip functions/symbols, throws a clear \`[Pyreon] Loader returned circular reference at "<path>"\` naming the offending key on a real cycle (a DAG with a SHARED reference, like two fields pointing at the same ORM instance, is NOT a cycle and serializes fine), and neutralizes the whole \`<\` character class plus U+2028/U+2029 so an adversarial loader value can never break out of the \`<script>\` boundary. The \`ForScript\` form additionally rewrites every \`"__proto__"\` KEY to the computed \`["__proto__"]\`, because a JS object literal treats a \`"__proto__":\` key as a PROTOTYPE SETTER: a user-keyed map holding that key would lose it on the client and every missing-key lookup would inherit the smuggled fields; without such a key its output is byte-identical to \`stringifyLoaderData\`. Client side: \`hydrateLoaderData(router, serialized)\` — called once, BEFORE \`mount()\`, right after \`createRouter()\` — populates the router's internal loader-data map from the deserialized blob so the initial render uses the server-fetched data instead of re-running loaders. See also: useLoaderData, prefetchLoaderData.`,
     mistakes: `- Calling \`JSON.stringify(serializeLoaderData(router))\` directly instead of \`stringifyLoaderData\` — loses the circular-reference diagnostic (a bare \`JSON.stringify\` throws an opaque "Converting circular structure to JSON" naming no route) AND the \`<script>\`-context escaping (a loader value containing \`</script>\` or \`<!--<script>\` can corrupt the page)
+- Interpolating \`stringifyLoaderData\` (JSON text) into an EXECUTABLE \`window.X=…\` assignment — the script is a JS object literal, where a \`"__proto__":\` key sets the prototype instead of creating the key. Use \`stringifyLoaderDataForScript\` for executable embeds; keep \`stringifyLoaderData\` for JSON responses and \`type="application/json"\` blocks
 - Calling \`hydrateLoaderData\` AFTER \`mount()\` — it populates the loader-data map the FIRST render reads; called too late, the initial render re-fetches instead of using the server data
 - Returning a Mongo/Prisma model with back-references intact from a loader — that IS a genuine cycle, and \`stringifyLoaderData\` throws naming the exact key; strip back-references or return a plain serialized shape`,
   },
@@ -2443,8 +2473,9 @@ const CartBadge = serverIsland(() => import('../islands/CartBadge'), {
 
 // page stays SSG/ISR/CDN-cacheable; the badge renders per request
 ;<CartBadge label="Cart" />`,
-    notes: `The INVERSE of \`island()\`: a static (CDN/ISR/prerender-cacheable) page with per-request SERVER-rendered holes. Every render emits only a \`<pyreon-server-island>\` marker carrying the name + codec-encoded props — the page contains nothing request-specific, so it stays cacheable. On the client each marker SELF-ACTIVATES on mount and fetches \`GET /_pyreon/fragment/<name>?props=…\` (auto-mounted by zero's createServer); the fragment renders per-request on the server with full request context (middleware locals, cookies — \`useRequestLocals()\` works inside). The endpoint is name-ALLOWLISTED — only registered islands render. \`fallback\` is the structural placeholder for no-JS clients and until the fragment arrives. \`cache\` sets the fragment response Cache-Control (default \`no-store\`) — only for fragments that do NOT vary on cookies/auth. See also: activateServerIslands.`,
-    mistakes: `- TRUSTING the props inside the fragment — they arrive in the query string of a public, UNAUTHENTICATED endpoint (\`GET /_pyreon/fragment/<name>?props=…\`), so a caller can send any value for any registered island. The NAME is allowlisted; the props are not. Render from them freely, but authorize from the REQUEST (\`useRequestLocals()\`, the session cookie) — an island that reads a \`userId\` prop and returns that user's data is an IDOR by construction
+    notes: `The INVERSE of \`island()\`: a static (CDN/ISR/prerender-cacheable) page with per-request SERVER-rendered holes. Every render emits only a \`<pyreon-server-island>\` marker carrying the name + codec-encoded props — the page contains nothing request-specific, so it stays cacheable. On the client each marker SELF-ACTIVATES on mount and fetches \`GET /_pyreon/fragment/<name>?props=…\` (auto-mounted by zero's createServer); the fragment renders per-request on the server with full request context (middleware locals, cookies — \`useRequestLocals()\` works inside). The endpoint is name-ALLOWLISTED — only registered islands render. Under zero every server-rendered marker is SIGNED (\`data-page\` + \`data-sig\`: HMAC over name, page pathname, encoded props and expiry, minted via \`ctx.locals[SERVER_ISLAND_MINT]\`); zero's endpoint verifies before decoding props (missing/tampered/expired → 403) and runs the declaring page's route middleware. A client-rendered marker retries a 403 with the signed marker from the current page's server HTML. \`fallback\` is the structural placeholder for no-JS clients and until the fragment arrives. \`cache\` sets the fragment response Cache-Control (default \`no-store\`) — only for fragments that do NOT vary on cookies/auth. See also: activateServerIslands.`,
+    mistakes: `- Authorizing from a prop inside the fragment — a signature proves the server rendered those props on that page, not for THIS visitor (a signed URL from one user's page replays for anyone the page's middleware admits until it expires), and a custom endpoint built on \`renderServerIslandFragment\` gets caller-chosen props. Authorize from the REQUEST (\`useRequestLocals()\`, the session cookie) — an island that reads a \`userId\` prop and returns that user's data is an IDOR by construction
+- Running more than one server instance (or prerendering pages with server islands) without \`PYREON_ISLAND_SECRET\` — each process then signs with its own random secret, so a fragment only verifies on the process that rendered its page, and prerendered markers stay unsigned (403)
 - Passing children — island props cross the fragment boundary as codec-encoded data; children are dropped (same contract as client islands)
 - Setting \`cache\` on a cookie-varying fragment — the same auth poisoning class as ISR cacheKey; the no-store default exists for a reason
 - Expecting the fragment to hydrate interactivity — fragments are server-rendered HTML; composing a client island() INSIDE a server island is a documented follow-up, not v1
@@ -2939,22 +2970,19 @@ setStoreRegistryProvider(() => als.getStore() ?? new Map())`,
 
   'store/dehydrateStores': {
     signature: '(filter?: (id: string) => boolean) => Record<string, Record<string, unknown>>',
-    example: `// server, after render. Store state is user data, so the JSON must be
-// neutralised for the inline-<script> context: a bare JSON.stringify lets a
-// stored string close the element or open the script-data-double-escaped state,
-// and U+2028/U+2029 are legal in JSON but are line terminators inside a script.
-// Every escape here round-trips byte-identically through JSON.parse.
-const scriptSafeJson = (v: unknown) =>
-  JSON.stringify(v)
-    .replace(/</g, '\\\\u003C')
-    .replace(/\\u2028/g, '\\\\u2028')
-    .replace(/\\u2029/g, '\\\\u2029')
+    example: `// server, after render. Store state is user data: a bare JSON.stringify lets a
+// stored string close the <script> or open the script-data-double-escaped state,
+// U+2028/U+2029 are line terminators inside a script, and the payload is
+// evaluated as an object literal, where a "__proto__": key sets the prototype.
+// stringifyLoaderDataForScript (what @pyreon/server uses for this payload)
+// handles all of it.
+import { stringifyLoaderDataForScript } from '@pyreon/router'
 
 const stores = dehydrateStores(id => !id.startsWith('server:'))
 html = html.replace('</head>',
-  \`<script>window.__PYREON_STORE_STATE__=\${scriptSafeJson(stores)}</script></head>\`)`,
+  \`<script>window.__PYREON_STORE_STATE__=\${stringifyLoaderDataForScript(stores)}</script></head>\`)`,
     notes: `SERVER side of the SSR store-hydration handshake (the \`@pyreon/store\` analogue of TanStack Query \`dehydrate\`). Call after \`renderToString\` completes — it walks the active per-request registry and snapshots each store's signal-backed \`.state\` into a plain, JSON-serializable object keyed by store id. Actions and computeds are excluded (they are not in \`.state\`). Pass a \`filter\` predicate to scope which stores ship to the client (e.g. exclude server-only / sensitive stores). The framework serializes the result into the HTML; \`hydrateStores\` reads it back on the client. This is what makes cross-island shared state production-complete: a store shared by multiple islands hydrates ONCE with server state instead of per-island. See also: hydrateStores, setStoreRegistryProvider.`,
-    mistakes: `- Embedding the snapshot with a bare \`JSON.stringify\` — store state is user data, so a stored string containing \`</script>\` or \`<!--<script\` breaks out of the inline script. Escape the \`<\` class plus U+2028/U+2029 before interpolating, as the example does
+    mistakes: `- Embedding the snapshot with a bare \`JSON.stringify\` — store state is user data, so a stored string containing \`</script>\` or \`<!--<script\` breaks out of the inline script, and a \`"__proto__"\` key becomes the prototype when the literal is evaluated. Use \`stringifyLoaderDataForScript\` from \`@pyreon/router\`, as the example does
 - Storing non-JSON-serializable values (Date / Map / Set / class instances) in a dehydrated store — the framework \`JSON.stringify\`s the snapshot, so those silently degrade. Keep dehydrated state plain, or revive on read
 - Calling it BEFORE render completes — it snapshots current signal values; run it after \`renderToString\` so loaders/server mutations are reflected
 - Forgetting the \`filter\` for sensitive stores — by default EVERY active store is dehydrated and shipped to the client. Exclude server-only state with the predicate`,
@@ -4528,7 +4556,7 @@ await api.post('/orders', { json: { id: 9007199254740993n } })`,
     signature: '(baseUrl: string | undefined, path: string, params: PathParams | undefined, query: QueryParams | undefined) => string',
     example: `buildUrl('/api', '/users/:id', { id: '1' }, { includeDeleted: true })
 // -> '/api/users/1?includeDeleted=true'`,
-    notes: 'The full URL-resolution pipeline `createHttp`/`endpoint` build every request URL through: `applyPathParams` (substitutes `:name` placeholders, `encodeURIComponent`-encoded so an id containing `/` cannot escape its segment — throws on a missing param rather than leaving a literal `:id` in the URL) → `joinUrl` (base + path with exactly one slash between them; a PREFIX join, not `new URL(path, base)` — see the "baseUrl is a PREFIX" gotcha) → `buildQuery` (serializes a query object, DROPPING `undefined`/`null` entries so they never land in the URL as the literal text `"undefined"`, and repeating the key for array values). Each step is also individually exported (`applyPathParams`, `joinUrl`, `buildQuery`, `isAbsoluteUrl`) for anything building URLs outside the client — a custom transport, a test assertion, a devtools panel. See also: createHttp.',
+    notes: 'The full URL-resolution pipeline `createHttp`/`endpoint` build every request URL through: `applyPathParams` (substitutes `:name` placeholders through `encodePathParam` — `encodeURIComponent`, so an id containing `/` cannot escape its segment, plus a value of exactly `.` / `..` encoded as `%252E` because the URL parser resolves both `..` and `%2E%2E` as dot segments and the request would reach another endpoint — throws on a missing param rather than leaving a literal `:id` in the URL) → `joinUrl` (base + path with exactly one slash between them; a PREFIX join, not `new URL(path, base)` — see the "baseUrl is a PREFIX" gotcha) → `buildQuery` (serializes a query object, DROPPING `undefined`/`null` entries so they never land in the URL as the literal text `"undefined"`, and repeating the key for array values). Each step is also individually exported (`applyPathParams`, `encodePathParam`, `joinUrl`, `buildQuery`, `isAbsoluteUrl`) for anything building URLs outside the client — a custom transport, a test assertion, a devtools panel. See also: createHttp.',
     mistakes: `- Interpolating a param into the path string yourself (\`\` \`/users/\${id}\` \`\`) instead of \`:id\` + \`params\` — that skips encoding, so an id containing \`/\` or \`?\` escapes its segment
 - Expecting \`joinUrl\` to follow WHATWG \`new URL(path, base)\` semantics — a leading slash does NOT discard the base path here; \`joinUrl('/api/v1', '/users')\` is \`/api/v1/users\`, never \`/users\`
 - Passing \`undefined\` in a query object and expecting it omitted only sometimes — it is ALWAYS dropped, on every value including array entries`,
@@ -5806,7 +5834,7 @@ clearStorage('all')     // every backend`,
 
 i18n.t('greeting', { name: 'World' })  // "Hello, World!"
 i18n.locale.set('fr')  // switch reactively`,
-    notes: 'Create a reactive i18n instance. Returns `{ t, n, d, rt, locale, addMessages, loadNamespace, ... }`. The `t(key, values?)` function resolves translations reactively — changing `locale` via `.set()` re-evaluates all `t()`/`n()`/`d()`/`rt()` reads in reactive scopes. Supports `{{name}}` interpolation, inline format specifiers (`{{amount, currency}}`), `_one`/`_other`/`_zero` plural suffixes, `context` (gender/variant), `defaultValue`, `$t(key)` nesting, namespace lazy loading with deduplication, fallback locale, and custom plural rules. Configure named Intl formats via `numberFormats` / `dateFormats` / `relativeTimeFormats` and custom inline formatters via `formats`. Available from both `@pyreon/i18n` and `@pyreon/i18n/core`. See also: I18nProvider, useI18n, Trans, interpolate, n, d, rt, resolvePluralCategory.',
+    notes: 'Create a reactive i18n instance. Returns `{ t, n, d, rt, l, dir, locale, addMessages, loadNamespace, ... }`. The `t(key, values?)` function resolves translations reactively — changing `locale` via `.set()` re-evaluates all `t()`/`n()`/`d()`/`rt()`/`l()`/`dir()` reads in reactive scopes. Supports `{{name}}` interpolation, inline format specifiers (`{{amount, currency}}`), `_one`/`_other`/`_zero` plural suffixes, `context` (gender/variant), `defaultValue`, `$t(key)` nesting, namespace lazy loading with deduplication, fallback locale, and custom plural rules. Configure named Intl formats via `numberFormats` / `dateFormats` / `relativeTimeFormats` / `listFormats` and custom inline formatters via `formats`. Available from both `@pyreon/i18n` and `@pyreon/i18n/core`. See also: I18nProvider, useI18n, Trans, interpolate, n, d, rt, l, dir, resolvePluralCategory.',
     mistakes: `- Reading \`t(key)\` outside a reactive scope and expecting updates on locale change — \`t()\` is a reactive signal read, wrap in JSX thunk or \`effect()\`
 - Using \`@pyreon/i18n\` on the backend — use \`@pyreon/i18n/core\` instead, it has zero JSX/core dependencies
 - Forgetting \`fallbackLocale\` — missing keys in the current locale return the key string instead of falling back to another language
@@ -5845,6 +5873,27 @@ i18n.rt(-1, 'day', { numeric: 'auto' })// "yesterday"`,
     notes: 'Format a relative time for the current locale via `Intl.RelativeTimeFormat`. Reactive + memoized. Negative values are past, positive are future. Pass `{ numeric: "auto" }` for "yesterday"/"tomorrow" phrasing. See also: createI18n, n, d.',
     mistakes: `- Forgetting the unit argument — \`rt\` needs an explicit \`Intl.RelativeTimeFormatUnit\` (e.g. "day", "hour")
 - Computing the delta in the wrong sign — negative is past ("ago"), positive is future ("in …")`,
+  },
+
+  'i18n/l': {
+    signature: '(values: Iterable<string>, options?: Intl.ListFormatOptions | string) => string',
+    example: `i18n.l(['Ann', 'Bob', 'Cy'])                      // "Ann, Bob, and Cy"
+i18n.l(['tea', 'coffee'], { type: 'disjunction' }) // "tea or coffee"
+// message: "Invited: {{names, list}}"
+i18n.t('invited', { names: ['Ann', 'Bob'] })       // "Invited: Ann and Bob"`,
+    notes: 'Join a list for the current locale via `Intl.ListFormat` ("a, b, and c" / "a, b und c"). Reactive + memoized per (locale, options). `options` is an `Intl.ListFormatOptions` object (`type: "conjunction" | "disjunction" | "unit"`, `style: "long" | "short" | "narrow"`) or a configured `listFormats` name. Inline in a message: `{{items, list}}`, `{{items, list, disjunction}}`, `{{items, list, unit, narrow}}`, or `{{items, <listFormats name>}}`; inline items are coerced with `String` and nullish entries dropped. See also: createI18n, n, dir.',
+    mistakes: `- Joining with \`items.join(", ")\` — the separator and the final "and" differ per locale (\`de\` has no serial comma, \`ja\` uses "、")
+- Passing numbers to \`l()\` — \`Intl.ListFormat\` throws on non-string items; map them through \`n()\` first (the inline \`{{x, list}}\` form coerces with \`String\`)`,
+  },
+
+  'i18n/dir': {
+    signature: `(locale?: string) => 'ltr' | 'rtl'`,
+    example: `i18n.dir('ar')    // "rtl"
+i18n.dir('en-US') // "ltr"
+const direction = i18n.dir() // current locale; reactive inside JSX / effects
+// e.g. useHead(() => ({ htmlAttrs: { lang: i18n.locale(), dir: i18n.dir() } }))`,
+    notes: 'Text direction of a locale — `"rtl"` for Arabic, Hebrew, Persian, Urdu and other right-to-left scripts, otherwise `"ltr"`. An explicit script subtag wins (`az-Arab` → rtl). Uses `Intl.Locale#getTextInfo()` where the runtime has it, then the likely script from `maximize()`, then a fixed language list. Without an argument it reads the current locale reactively. See also: createI18n, l.',
+    mistakes: '- Reading `dir()` once at setup — like `t()`, the no-argument form reads the locale signal, so read it inside JSX / effect to follow locale switches',
   },
 
   'i18n/I18nProvider': {
@@ -8870,7 +8919,7 @@ editor.chain()?.toggleBold().run()  // run a command
     notes: `Create a reactive WYSIWYG editor instance. \`editor.json\` is a writable Signal<JSONContent> — \`editor.json()\` reads reactively, \`editor.json.set(next)\` replaces the editor content (loop-safe). \`html\`/\`text\`/\`isEmpty\`/\`characterCount\`/\`wordCount\`/\`canUndo\`/\`canRedo\` are computed signals; \`editable\` is a writable Signal<boolean> (runtime read-only toggle); \`editor.isActive('bold')\` is the reactive toolbar primitive. \`characterCount\`/\`wordCount\`/\`isEmpty\` derive from the document JSON, so they report accurately BEFORE the (lazy) engine mounts (stored-JSON draft lists), count VISIBLE characters (not the \`\\n\\n\` block separators \`getText()\` inserts), and — like \`text\`/\`html\`/\`canUndo\` — re-derive only on a CONTENT change, never a pure cursor move (a live word-counter effect doesn't re-fire on every arrow-key); \`isActive\` still tracks the selection. Commands run through \`editor.chain()\` (toggleBold/toggleHeading/toggleBulletList/…) plus \`undo\`/\`redo\`/\`focus\`/\`blur\` helpers. The TipTap \`Editor\` (over ProseMirror) is created lazily when mounted via \`<RichText>\`, so \`@tiptap/*\` stays out of the initial bundle. Config accepts content (HTML string or ProseMirror JSON), editable, ariaLabel, starterKit, extensions, autofocus, onChange, and onError (mount failures route here instead of an unhandled rejection). The instance is framework-independent — mount it via \`<RichText instance={editor} />\`. See also: RichText, bindRichTextToSignal.`,
     mistakes: `- Forgetting to declare @pyreon/runtime-dom in consumer app deps — <RichText> JSX emits _tpl() which needs runtime-dom
 - Calling editor.json(newDoc) to write — that reads and ignores the argument. Use editor.json.set(newDoc)
-- Reading editor.html() / editor.chain() before mount — the TipTap Editor is created on mount (async, lazy import). html falls back to the initial string; chain() returns null. Use editor.json.set(...) to set content independently of the view
+- Reading editor.html() / editor.chain() before mount — the TipTap Editor is created on mount (async, lazy import). html falls back to the initial string (verbatim — it is your own input; sanitize stored HTML before rendering it), or, after a pre-mount json.set / with JSON content, to an engine-free serialization that drops \`javascript:\` / \`data:\` link hrefs (the same \`isUnsafeUrl\` rule the framework applies to every URL attribute); chain() returns null. Use editor.json.set(...) to set content independently of the view
 - Hand-rolling the applyingExternal flag pair for external sync — use bindRichTextToSignal instead
 - Forgetting editor.dispose() on unmount — like @pyreon/code, the instance is user-owned (the component does not auto-dispose so it can be re-mounted). A re-mount restores the CURRENT document (edits are preserved), and a dispose() during the pending async mount is safe (no leaked editor)
 - Relying on a thrown error to debug a broken extension set (e.g. starterKit:false with no schema-providing extension) — mount failures no longer surface as an unhandled rejection; pass onError to observe them, otherwise they log a [Pyreon] message in dev`,
@@ -9443,7 +9492,7 @@ app.post('/api/webhooks/posts-changed', async () => {
   const { dropped } = await tagged.revalidateTag('posts')
   return Response.json({ dropped })
 })`,
-    notes: `Runtime ISR — on-demand SSR caching with stale-while-revalidate. Wraps an SSR handler so pages are rendered on the FIRST request, cached per-URL (or per-\`cacheKey\`-derived key), and served stale until expiry while a background revalidate fires. The returned \`ISRHandler\` is still a callable \`(req) => Promise<Response>\` for \`Bun.serve({ fetch: ... })\`, but ALSO exposes imperative invalidation: \`.revalidateNow(key)\` drops one entry (returns \`{ dropped: boolean }\`), \`.revalidateAll()\` drops everything (when the store implements \`clear()\`), and \`.revalidateTag(tag)\` drops every entry recorded under a tag (returns \`{ dropped: number }\`) — pair with \`config.tagsForRequest(req) => string[]\`, which records tags at cache-SET time, for CMS-webhook group invalidation without path enumeration. \`config.store\` swaps the backing (\`createMemoryStore\` default; \`createFsStore(dir)\` survives restarts on a single box; Redis/KV for multi-instance). Pair with webhooks for CMS-driven cache busting — no stale window between content update and propagation. Distinct from build-time ISR (per-route \`revalidate\` export + \`Adapter.revalidate\`): runtime ISR caches at request time; build-time ISR triggers platform rebuilds. They can coexist: a \`mode: 'isr'\` app with per-route \`revalidate\` exports gets BOTH. See also: zero, Adapter, ISRStore, createMemoryStore.`,
+    notes: `Runtime ISR — on-demand SSR caching with stale-while-revalidate. Wraps an SSR handler so pages are rendered on the FIRST request, cached per-URL (or per-\`cacheKey\`-derived key), and served stale until expiry while a background revalidate fires. An entry whose server-island signatures are past half their lifetime (\`x-pyreon-island-expires\`, stored with the entry) is re-rendered instead of served, so a cached page never hands out fragments that are about to be refused. The returned \`ISRHandler\` is still a callable \`(req) => Promise<Response>\` for \`Bun.serve({ fetch: ... })\`, but ALSO exposes imperative invalidation: \`.revalidateNow(key)\` drops one entry (returns \`{ dropped: boolean }\`), \`.revalidateAll()\` drops everything (when the store implements \`clear()\`), and \`.revalidateTag(tag)\` drops every entry recorded under a tag (returns \`{ dropped: number }\`) — pair with \`config.tagsForRequest(req) => string[]\`, which records tags at cache-SET time, for CMS-webhook group invalidation without path enumeration. \`config.store\` swaps the backing (\`createMemoryStore\` default; \`createFsStore(dir)\` survives restarts on a single box; Redis/KV for multi-instance). Pair with webhooks for CMS-driven cache busting — no stale window between content update and propagation. Distinct from build-time ISR (per-route \`revalidate\` export + \`Adapter.revalidate\`): runtime ISR caches at request time; build-time ISR triggers platform rebuilds. They can coexist: a \`mode: 'isr'\` app with per-route \`revalidate\` exports gets BOTH. See also: zero, Adapter, ISRStore, createMemoryStore.`,
     mistakes: `- Treating the returned handler as a plain function — it ALSO carries \`.revalidateNow(key)\` and \`.revalidateAll()\` methods. Webhook-driven invalidation is the canonical way to bust the cache; waiting for the TTL is the fallback
 - Calling \`.revalidateAll()\` against a store that does not implement \`clear()\` — throws a clear error. External stores (Redis with TTL-only) must opt in by implementing the method
 - Expecting \`revalidateNow(key)\` against a store without \`delete?()\` to physically drop the entry — returns \`{ dropped: false }\` honestly; such stores rely on TTL for eviction
@@ -9714,7 +9763,8 @@ const user = useRequestLocals().user as User | null`,
   },
 
   'zero/defineAction': {
-    signature: 'function defineAction<T>(handler: (ctx: ActionContext) => T | Promise<T>): Action<T>',
+    signature: `function defineAction<T>(handler: (ctx: ActionContext) => T | Promise<T>): Action<T>
+function defineAction<S extends StandardSchemaV1, T>(input: S, handler: (input: InferOutput<S>, ctx: ActionContext) => T | Promise<T>): Action<T | ActionFailure<ActionInputError>, InferInput<S>>`,
     example: `import { redirect } from '@pyreon/router'
 import { defineAction, fail, Form } from '@pyreon/zero/actions'
 
@@ -9732,15 +9782,16 @@ export default function NewPost() {
     </Form>
   )
 }`,
-    notes: `Define a server action (import from \`@pyreon/zero/actions\`). Export it from a route as \`action\` and submit it with \`<Form action={action}>\` — it then works as a plain HTML form post WITHOUT JavaScript (the server runs it, then answers 303 for a \`redirect()\` or re-renders the page with the result) and is enhanced to \`fetch\` when JavaScript runs. The result is also a callable that POSTs JSON to \`/_zero/actions/<id>\`. zero's Vite plugin derives a stable id and strips the handler (and imports only it used) from the client bundle. Same-origin check + 1 MiB body limit (\`createServer({ actions: { corsOrigins, bodyLimit } })\`); runs after app and route middleware. See also: useSubmission, Form.`,
+    notes: `Define a server action (import from \`@pyreon/zero/actions\`). Export it from a route as \`action\` and submit it with \`<Form action={action}>\` — it then works as a plain HTML form post WITHOUT JavaScript (the server runs it, then answers 303 for a \`redirect()\` or re-renders the page with the result) and is enhanced to \`fetch\` when JavaScript runs. The result is also a callable that POSTs JSON to \`/_zero/actions/<id>\`. zero's Vite plugin derives a stable id and strips the handler (and imports only it used) from the client bundle. Same-origin check + 1 MiB body limit (\`createServer({ actions: { corsOrigins, bodyLimit } })\`); runs after app and route middleware. **Typed input:** \`defineAction(schema, handler)\` validates the input with any Standard Schema (zod, valibot, arktype, \`@pyreon/validate\`) before the handler runs; the handler receives the parsed OUTPUT, and an invalid input never reaches it — the action returns \`fail(422, { error: 'Invalid input', issues, fields })\`, so a page reads \`useSubmission(action).result()?.fields?.title\`. The input is the JSON body, or the form fields as an object (a repeated name becomes an array; values stay strings / \`File\`s — use coercing schemas). See also: useSubmission, Form.`,
     mistakes: `- Exporting a plain \`async function action()\` from a route — it is not a defineAction() result, so it is refused with a 500 AND its body would ship to the client; wrap it: \`export const action = defineAction(async (ctx) => …)\`
 - Returning an error object with status 200 for a validation failure — return \`fail(422, data)\` so the response carries the status and \`useSubmission().result()\` gets the data
 - Throwing an Error for a user-facing message — its message is replaced by "Internal server error" in production; use \`fail()\`
+- With \`defineAction(schema, handler)\`, a non-coercing number/boolean schema on a FORM post — form values arrive as strings; use \`z.coerce.number()\` / \`s.coerce.number()\` (JSON calls keep their types)
 - Using \`redirect()\` with a 307 expecting a re-POST — page form posts always answer 303 so the browser follows with a GET`,
   },
 
   'zero/Form': {
-    signature: 'function Form<T>(props: { action: Action<T>; revalidate?: boolean | readonly string[]; resetOnSuccess?: boolean; onSuccess?: (data: ActionData<T>) => void; children?: VNodeChild; [attr: string]: unknown }): VNodeChild',
+    signature: 'function Form<T, TInput = unknown>(props: { action: Action<T, TInput>; revalidate?: boolean | readonly string[]; resetOnSuccess?: boolean; onSuccess?: (data: ActionData<T>) => void; children?: VNodeChild; [attr: string]: unknown }): VNodeChild',
     example: `<Form action={action} revalidate={false} class="new-post">
   <input name="title" required />
   <button type="submit">Create</button>
@@ -9750,7 +9801,7 @@ export default function NewPost() {
   },
 
   'zero/useSubmission': {
-    signature: 'function useSubmission<T>(action: Action<T>): Submission<T>',
+    signature: 'function useSubmission<T, TInput = unknown>(action: Action<T, TInput>): Submission<T>',
     example: `const sub = useSubmission(action)
 <button disabled={sub.pending()}>Save</button>
 <p>{() => sub.pending() ? \`Saving \${sub.input()?.get('title')}\` : ''}</p>
@@ -11084,16 +11135,17 @@ const relay = await createSyncServer({
   authorize: ({ room, token }) => token === secretFor(room), // REQUIRED in prod
 })
 // later: await relay.close()`,
-    notes: `Start a Node/Bun WebSocket relay that brokers Yjs sync between clients sharing a room. Keeps one authoritative Y.Doc per room (so a late-joiner catches up), applies each inbound update, and broadcasts to the room's OTHER clients. Server-only (\`@pyreon/sync/server\` — imports \`ws\` + \`node:http\`, never enters a client bundle). The \`authorize(ctx)\` hook is the per-room/per-doc access gate: return false (or throw) to reject with close code 4401 before any data flows. Omitting it accepts EVERY connection (an open relay) and warns once at startup, in production too. Rooms are GC'd when the last client leaves — the relay is ephemeral (no persistence); clients keep their own copy. Pass \`server\` to attach to an existing http.Server instead of opening a port. See also: connectViaWebSocket, AuthorizeContext.`,
+    notes: `Start a Node/Bun WebSocket relay that brokers Yjs sync between clients sharing a room. Keeps one authoritative Y.Doc per room (so a late-joiner catches up), applies each inbound update, and broadcasts to the room's OTHER clients. Server-only (\`@pyreon/sync/server\` — imports \`ws\` + \`node:http\`, never enters a client bundle). The \`authorize(ctx)\` hook is the per-room/per-doc access gate: return false (or throw) to reject with close code 4401 before any data flows. Omitting it accepts EVERY connection (an open relay) and warns once at startup, in production too. Rooms are GC'd when the last client leaves — the relay is ephemeral (no persistence); clients keep their own copy. Pass \`server\` to attach to an existing http.Server instead of opening a port. A browser upgrade whose \`Origin\` is neither same-origin with the upgrade's \`Host\` nor listed in \`allowedOrigins\` (array of origins, or a predicate) is closed with 4403 before \`authorize\` runs — the cross-site WebSocket hijacking guard; an upgrade without \`Origin\` (Node, Bun, native) is unaffected. See also: connectViaWebSocket, AuthorizeContext.`,
     mistakes: `- Deploying without an \`authorize\` hook — the default allows EVERY connection (dev-only); a real deployment MUST supply it or anyone with the room id can read/write. \`createSyncServer\` warns once at startup when the hook is absent, in production as well as development, because an open relay is a live misconfiguration rather than a developer-time nicety.
 - Importing \`@pyreon/sync/server\` into client code — it pulls \`ws\` + \`node:http\`; it is the server-only subpath by design
-- Expecting the relay to persist data — it is ephemeral; durability lives on the clients (persistViaIndexedDB) or an external store`,
+- Expecting the relay to persist data — it is ephemeral; durability lives on the clients (persistViaIndexedDB) or an external store
+- Serving the app from a different origin than the relay (or behind a proxy that rewrites \`Host\`) without \`allowedOrigins: ['https://app.example.com']\` — browser upgrades from that origin are closed with 4403. Keep the list tight when \`authorize\` reads cookies.`,
   },
 
   'sync/AuthorizeContext': {
-    signature: 'interface AuthorizeContext { room: string; token: string | null; req: IncomingMessage }',
+    signature: 'interface AuthorizeContext { room: string; token: string | null; origin: string | null; req: IncomingMessage }',
     example: 'authorize: ({ room, token, req }) => verify(room, token)',
-    notes: `Context passed to the relay's \`authorize\` hook: the \`room\` parsed from the URL path, the \`token\` query-string param (browser WebSockets can't set headers, so auth rides the query string), and the raw HTTP upgrade \`req\` (read cookies / headers here if you prefer). See also: createSyncServer.`,
+    notes: `Context passed to the relay's \`authorize\` hook: the \`room\` parsed from the URL path, the \`token\` query-string param (browser WebSockets can't set headers, so auth rides the query string), the upgrade's \`Origin\` header (\`null\` for non-browser clients; already checked against \`allowedOrigins\`), and the raw HTTP upgrade \`req\` (read cookies / headers here if you prefer). Cookie auth alone does not prove the page is yours — browsers attach cookies to a WebSocket upgrade any site opens — which is why the relay refuses a cross-origin browser upgrade before \`authorize\` runs. See also: createSyncServer.`,
   },
   // <gen-docs:api-reference:end @pyreon/sync>
 

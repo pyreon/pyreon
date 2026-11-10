@@ -144,6 +144,15 @@ for (const client of ADAPTER_CLIENTS) {
       expect(recorded[0]?.url).toBe('/v1/books/a%2Fb')
     })
 
+    it('makes a dot-segment path parameter inert', async () => {
+      const gen = await load(client)
+      // `..` (and `%2E%2E`) is a dot segment the URL parser resolves, so the
+      // request would address the parent route instead of a book.
+      await gen.getBook({ params: { id: '..' } })
+      await gen.getBook({ params: { id: '.' } })
+      expect(recorded.map((r) => r?.url)).toEqual(['/v1/books/%252E%252E', '/v1/books/%252E'])
+    })
+
     it('appends query parameters and drops nullish ones', async () => {
       const gen = await load(client)
       await gen.listBooks({ query: { q: 'dune', skip: undefined } })
