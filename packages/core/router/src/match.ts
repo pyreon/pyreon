@@ -62,7 +62,13 @@ function safeDecodeURIComponent(raw: string): string {
 
 /** Decode a query component: `+` → space (per application/x-www-form-urlencoded), then URI-decode. */
 function decodeQueryComponent(raw: string): string {
-  return safeDecodeURIComponent(raw.replace(/\+/g, ' '))
+  // Most components (`tab=a`) hold neither `%` nor `+`; decoding them is the
+  // identity, and the regex replace + guarded decode cost ~100 ns each in JSC.
+  for (let i = 0; i < raw.length; i++) {
+    const c = raw.charCodeAt(i)
+    if (c === 37 /* % */ || c === 43 /* + */) return safeDecodeURIComponent(raw.replace(/\+/g, ' '))
+  }
+  return raw
 }
 
 /**
