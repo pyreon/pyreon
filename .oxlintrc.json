@@ -271,6 +271,7 @@
     "templates",
     "atlas-dist",
     "atlas-dist-e2e",
-    "**/bench/typia/generated.js"
+    "**/bench/typia/generated.js",
+    "examples/stacks-bench/apps"
   ]
 }

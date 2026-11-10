@@ -1,0 +1,8 @@
+{
+  "name": "stacks-bench-zero",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "vite build"
+  }
+}

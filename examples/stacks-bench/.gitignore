@@ -1,0 +1,6 @@
+# Measurement output (FIRST-PASS numbers go in the PR, not the repo)
+results/
+# The repo root ignores every `lib` directory (package build output). Here `lib/` is
+# source: the harness modules and each arm's own src/lib.
+!lib/
+*.tsbuildinfo
