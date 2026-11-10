@@ -94,7 +94,7 @@ export async function prefetchLoaderData(
  * await prefetchLoaderData(router, req.url)
  * const { html, head } = await renderWithHead(h(App, null))
  * const page = `...${head}
- *   <script>window.__PYREON_LOADER_DATA__=${JSON.stringify(serializeLoaderData(router))}</script>
+ *   <script>window.__PYREON_LOADER_DATA__=${stringifyLoaderDataForScript(serializeLoaderData(router))}</script>
  *   ...${html}...`
  */
 export function serializeLoaderData(router: RouterInstance): Record<string, unknown> {
@@ -128,7 +128,11 @@ export function serializeLoaderData(router: RouterInstance): Record<string, unkn
 }
 
 /**
- * Serialize loader data to JSON for embedding in an SSR `<script>` tag.
+ * Serialize loader data to script-safe JSON TEXT: a JSON response body (the
+ * `/_pyreon/data` endpoint) or a `<script type="application/json">` block read
+ * back with `JSON.parse`. For an EXECUTABLE `<script>window.X=…</script>`
+ * assignment use {@link stringifyLoaderDataForScript}: a JS object literal
+ * treats a `"__proto__"` key as a prototype setter, JSON does not.
  *
  * M2.2 — Drop-in replacement for `JSON.stringify(serializeLoaderData(router))`
  * with three correctness wins:
@@ -165,8 +169,9 @@ export function serializeLoaderData(router: RouterInstance): Record<string, unkn
  * failures were the pre-fix shape.
  *
  * @example
+ * // JSON response body / `<script type="application/json">` data block:
  * const json = stringifyLoaderData(serializeLoaderData(router))
- * const tag = `<script>window.__PYREON_LOADER_DATA__=${json}</script>`
+ * // Executable `window.X=…` assignment: use stringifyLoaderDataForScript.
  */
 export function stringifyLoaderData(loaderData: Record<string, unknown>): string {
   // Fast path: native JSON.stringify with NO replacer. A replacer function
@@ -196,6 +201,58 @@ export function stringifyLoaderData(loaderData: Record<string, unknown>): string
     .replace(/</g, '\\u003C')
     .replace(/\u2028/g, '\\u2028')
     .replace(/\u2029/g, '\\u2029')
+}
+
+/**
+ * Serialize loader data (or any JSON-shaped state, e.g. the store-state twin
+ * `__PYREON_STORE_STATE__`) to a JavaScript EXPRESSION for an inline
+ * `<script>window.X=…</script>` assignment.
+ *
+ * Use this — not {@link stringifyLoaderData} — whenever the output is
+ * EVALUATED as JavaScript. JSON text and a JS object literal disagree on
+ * exactly one key: in a literal, `"__proto__": {…}` does not create a
+ * property, it SETS THE PROTOTYPE. A user-keyed map that legitimately holds a
+ * `__proto__` key (usernames, tags, slugs, uploaded JSON) would lose that key
+ * on the client, and every missing-key lookup on the map would then inherit
+ * the smuggled value's fields — while the `/_pyreon/data` endpoint
+ * (`res.json()`, i.e. `JSON.parse`) kept it as an own key, so SSR-hydrated
+ * and client-navigated pages disagreed. Every `"__proto__"` KEY token is
+ * rewritten to the computed form `["__proto__"]`, which a literal defines as
+ * an ordinary own property, so the evaluated value is deep-equal to
+ * `JSON.parse` of the JSON. String CONTENTS are never touched, and payloads
+ * without that key (the overwhelming case) pay one `includes` scan and are
+ * returned byte-identical to {@link stringifyLoaderData}.
+ *
+ * The output is NOT JSON when such a key exists — for a JSON response or a
+ * `<script type="application/json">` data block use `stringifyLoaderData`.
+ *
+ * @example
+ * const expr = stringifyLoaderDataForScript(serializeLoaderData(router))
+ * const tag = `<script>window.__PYREON_LOADER_DATA__=${expr}</script>`
+ */
+export function stringifyLoaderDataForScript(data: object): string {
+  // `object`, not `Record<string, unknown>`: callers embed interface-typed
+  // payloads too (a query `DehydratedState`), which TS will not widen to an
+  // index signature.
+  return jsonToScriptExpression(stringifyLoaderData(data as Record<string, unknown>))
+}
+
+/**
+ * Rewrite every `"__proto__"` object KEY in compact `JSON.stringify` output to
+ * `["__proto__"]`. Outside string tokens JSON contains no `"`, so matching
+ * whole string tokens left to right is an exact tokenizer; a string token
+ * immediately followed by `:` is a key (`JSON.stringify` without `space`
+ * emits no whitespace, and a string VALUE is followed by `,`, `}` or `]`).
+ * `JSON.stringify` never escapes `_` or ASCII letters, so the key always
+ * appears as the literal text `"__proto__"`.
+ */
+function jsonToScriptExpression(json: string): string {
+  if (!json.includes('"__proto__":')) return json
+  return json.replace(/"(?:[^"\\]|\\.)*"/g, (token, offset: number) =>
+    token === '"__proto__"' && json.charCodeAt(offset + token.length) === 58 /* : */
+      ? '["__proto__"]'
+      : token,
+  )
 }
 
 /**

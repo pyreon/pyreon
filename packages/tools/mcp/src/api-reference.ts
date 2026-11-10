@@ -2232,19 +2232,20 @@ safeRedirectLocation('javascript:alert(1)')  // '/' — blocked`,
 - Using \`classifyRedirectTarget\` result's \`.url\` directly for a \`'block'\` verdict — it is undefined for that kind; use \`safeRedirectLocation\` (which always returns a safe string) unless you specifically need to branch on WHY something was blocked`,
   },
 
-  'router/serializeLoaderData / stringifyLoaderData / hydrateLoaderData': {
-    signature: 'serializeLoaderData(router: RouterInstance) => Record<string, unknown> · stringifyLoaderData(loaderData: Record<string, unknown>) => string · hydrateLoaderData(router: RouterInstance, serialized: Record<string, unknown>) => void',
+  'router/serializeLoaderData / stringifyLoaderDataForScript / stringifyLoaderData / hydrateLoaderData': {
+    signature: 'serializeLoaderData(router: RouterInstance) => Record<string, unknown> · stringifyLoaderDataForScript(data: object) => string · stringifyLoaderData(loaderData: Record<string, unknown>) => string · hydrateLoaderData(router: RouterInstance, serialized: Record<string, unknown>) => void',
     example: `// Server (SSR handler):
 await prefetchLoaderData(router, req.url)
-const json = stringifyLoaderData(serializeLoaderData(router))
-const html = \`...<script>window.__PYREON_LOADER_DATA__=\${json}</script>...\`
+const expr = stringifyLoaderDataForScript(serializeLoaderData(router))
+const html = \`...<script>window.__PYREON_LOADER_DATA__=\${expr}</script>...\`
 
 // Client entry (before mount):
 const router = createRouter({ routes })
 hydrateLoaderData(router, window.__PYREON_LOADER_DATA__ ?? {})
 mount(h(App, null), document.getElementById('app')!)`,
-    notes: `The SSR ⇄ client loader-data transit pipeline \`@pyreon/server\`/\`@pyreon/zero\` build on. Server side: \`serializeLoaderData(router)\` collects the matched chain's loader results into a plain object keyed by route path (a layout and its index page can share a path — the SECOND record at the same path gets a \`path#1\` suffix so neither clobbers the other); \`stringifyLoaderData(data)\` then turns that into a STRING ready to embed inside an inline \`<script>\` — it strips functions/symbols, throws a clear \`[Pyreon] Loader returned circular reference at "<path>"\` naming the offending key on a real cycle (a DAG with a SHARED reference, like two fields pointing at the same ORM instance, is NOT a cycle and serializes fine), and neutralizes the whole \`<\` character class plus U+2028/U+2029 so an adversarial loader value can never break out of the \`<script>\` boundary. Client side: \`hydrateLoaderData(router, serialized)\` — called once, BEFORE \`mount()\`, right after \`createRouter()\` — populates the router's internal loader-data map from the deserialized blob so the initial render uses the server-fetched data instead of re-running loaders. See also: useLoaderData, prefetchLoaderData.`,
+    notes: `The SSR ⇄ client loader-data transit pipeline \`@pyreon/server\`/\`@pyreon/zero\` build on. Server side: \`serializeLoaderData(router)\` collects the matched chain's loader results into a plain object keyed by route path (a layout and its index page can share a path — the SECOND record at the same path gets a \`path#1\` suffix so neither clobbers the other); \`stringifyLoaderDataForScript(data)\` then turns that into a JavaScript EXPRESSION ready for an inline \`<script>window.X=…</script>\` assignment, and \`stringifyLoaderData(data)\` into script-safe JSON TEXT (a JSON response body or a \`<script type="application/json">\` block). Both strip functions/symbols, throws a clear \`[Pyreon] Loader returned circular reference at "<path>"\` naming the offending key on a real cycle (a DAG with a SHARED reference, like two fields pointing at the same ORM instance, is NOT a cycle and serializes fine), and neutralizes the whole \`<\` character class plus U+2028/U+2029 so an adversarial loader value can never break out of the \`<script>\` boundary. The \`ForScript\` form additionally rewrites every \`"__proto__"\` KEY to the computed \`["__proto__"]\`, because a JS object literal treats a \`"__proto__":\` key as a PROTOTYPE SETTER: a user-keyed map holding that key would lose it on the client and every missing-key lookup would inherit the smuggled fields; without such a key its output is byte-identical to \`stringifyLoaderData\`. Client side: \`hydrateLoaderData(router, serialized)\` — called once, BEFORE \`mount()\`, right after \`createRouter()\` — populates the router's internal loader-data map from the deserialized blob so the initial render uses the server-fetched data instead of re-running loaders. See also: useLoaderData, prefetchLoaderData.`,
     mistakes: `- Calling \`JSON.stringify(serializeLoaderData(router))\` directly instead of \`stringifyLoaderData\` — loses the circular-reference diagnostic (a bare \`JSON.stringify\` throws an opaque "Converting circular structure to JSON" naming no route) AND the \`<script>\`-context escaping (a loader value containing \`</script>\` or \`<!--<script>\` can corrupt the page)
+- Interpolating \`stringifyLoaderData\` (JSON text) into an EXECUTABLE \`window.X=…\` assignment — the script is a JS object literal, where a \`"__proto__":\` key sets the prototype instead of creating the key. Use \`stringifyLoaderDataForScript\` for executable embeds; keep \`stringifyLoaderData\` for JSON responses and \`type="application/json"\` blocks
 - Calling \`hydrateLoaderData\` AFTER \`mount()\` — it populates the loader-data map the FIRST render reads; called too late, the initial render re-fetches instead of using the server data
 - Returning a Mongo/Prisma model with back-references intact from a loader — that IS a genuine cycle, and \`stringifyLoaderData\` throws naming the exact key; strip back-references or return a plain serialized shape`,
   },
@@ -2939,22 +2940,19 @@ setStoreRegistryProvider(() => als.getStore() ?? new Map())`,
 
   'store/dehydrateStores': {
     signature: '(filter?: (id: string) => boolean) => Record<string, Record<string, unknown>>',
-    example: `// server, after render. Store state is user data, so the JSON must be
-// neutralised for the inline-<script> context: a bare JSON.stringify lets a
-// stored string close the element or open the script-data-double-escaped state,
-// and U+2028/U+2029 are legal in JSON but are line terminators inside a script.
-// Every escape here round-trips byte-identically through JSON.parse.
-const scriptSafeJson = (v: unknown) =>
-  JSON.stringify(v)
-    .replace(/</g, '\\\\u003C')
-    .replace(/\\u2028/g, '\\\\u2028')
-    .replace(/\\u2029/g, '\\\\u2029')
+    example: `// server, after render. Store state is user data: a bare JSON.stringify lets a
+// stored string close the <script> or open the script-data-double-escaped state,
+// U+2028/U+2029 are line terminators inside a script, and the payload is
+// evaluated as an object literal, where a "__proto__": key sets the prototype.
+// stringifyLoaderDataForScript (what @pyreon/server uses for this payload)
+// handles all of it.
+import { stringifyLoaderDataForScript } from '@pyreon/router'
 
 const stores = dehydrateStores(id => !id.startsWith('server:'))
 html = html.replace('</head>',
-  \`<script>window.__PYREON_STORE_STATE__=\${scriptSafeJson(stores)}</script></head>\`)`,
+  \`<script>window.__PYREON_STORE_STATE__=\${stringifyLoaderDataForScript(stores)}</script></head>\`)`,
     notes: `SERVER side of the SSR store-hydration handshake (the \`@pyreon/store\` analogue of TanStack Query \`dehydrate\`). Call after \`renderToString\` completes — it walks the active per-request registry and snapshots each store's signal-backed \`.state\` into a plain, JSON-serializable object keyed by store id. Actions and computeds are excluded (they are not in \`.state\`). Pass a \`filter\` predicate to scope which stores ship to the client (e.g. exclude server-only / sensitive stores). The framework serializes the result into the HTML; \`hydrateStores\` reads it back on the client. This is what makes cross-island shared state production-complete: a store shared by multiple islands hydrates ONCE with server state instead of per-island. See also: hydrateStores, setStoreRegistryProvider.`,
-    mistakes: `- Embedding the snapshot with a bare \`JSON.stringify\` — store state is user data, so a stored string containing \`</script>\` or \`<!--<script\` breaks out of the inline script. Escape the \`<\` class plus U+2028/U+2029 before interpolating, as the example does
+    mistakes: `- Embedding the snapshot with a bare \`JSON.stringify\` — store state is user data, so a stored string containing \`</script>\` or \`<!--<script\` breaks out of the inline script, and a \`"__proto__"\` key becomes the prototype when the literal is evaluated. Use \`stringifyLoaderDataForScript\` from \`@pyreon/router\`, as the example does
 - Storing non-JSON-serializable values (Date / Map / Set / class instances) in a dehydrated store — the framework \`JSON.stringify\`s the snapshot, so those silently degrade. Keep dehydrated state plain, or revive on read
 - Calling it BEFORE render completes — it snapshots current signal values; run it after \`renderToString\` so loaders/server mutations are reflected
 - Forgetting the \`filter\` for sensitive stores — by default EVERY active store is dehydrated and shipped to the client. Exclude server-only state with the predicate`,

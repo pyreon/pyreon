@@ -74,8 +74,16 @@ The WHATWG URL parser first strips leading/trailing C0 controls and space, then 
 `<!--` followed by `<script` puts the tokenizer in script-data-double-escaped state without any slash, so `<!--<script>alert(1)//` survives. Raw U+2028/U+2029 in JSON are line terminators in a script and cause a `SyntaxError`.
   - For DATA (JSON): `.replace(/</g, '\\u003C').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029')`. `JSON.parse` round-trips it byte-identically.
   - For CODE (raw JS source): escape only `</`. `\u003C` in raw JS breaks every `<` operator. The `scriptSafe` helpers in `packages/fundamentals/{code,charts,rich-text,flow}/src/webview.ts` are correct as they are.
-  - `__PYREON_LOADER_DATA__` (`html.ts`, `render-page.ts`) and `__PYREON_STORE_STATE__` (`render-page.ts`) all go through `stringifyLoaderData` in `packages/core/router/src/loader.ts`. `@pyreon/atlas`'s `bakedRpcScript` (`build/bake.ts`) is a correct precedent.
+  - `__PYREON_LOADER_DATA__` (`html.ts`, `render-page.ts`) and `__PYREON_STORE_STATE__` (`render-page.ts`) all go through `stringifyLoaderDataForScript` (which wraps `stringifyLoaderData`) in `packages/core/router/src/loader.ts`. `@pyreon/atlas`'s `bakedRpcScript` (`build/bake.ts`) is a correct precedent.
   - Tests: `router/src/tests/loader.test.ts` (`inline-<script> context escaping (security)`), `server/src/tests/server.test.ts` (`buildScripts neutralises the <!--<script> script-data bypass`).
+
+---
+
+### JSON interpolated into an executable script is a JS object literal, not JSON
+
+In `<script>window.X=${json}</script>` a `"__proto__":` key SETS THE PROTOTYPE instead of creating the key. A user-keyed map holding that key (usernames, tags, slugs, uploaded JSON) loses it on the client and every missing-key lookup inherits its fields, while a `res.json()` reader of the same data keeps it, so SSR-hydrated and client-navigated pages disagree.
+  - Emit the key as the computed `["__proto__"]` (an ordinary own property in a literal), only for KEY tokens, never inside string contents: `stringifyLoaderDataForScript` in `packages/core/router/src/loader.ts`. Output without that key is byte-identical to the JSON. Keep `stringifyLoaderData` (JSON text) for JSON responses and `type="application/json"` blocks, which `JSON.parse` reads correctly.
+  - Lock: `server/src/tests/script-embed-oracle.test.ts` — a seeded fuzz that parses every embed with parse5 (no breakout element) and EVALUATES each script, asserting the same own keys and only standard prototypes at every depth.
 
 ---
 
