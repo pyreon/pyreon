@@ -379,6 +379,21 @@ export function effect(
 }
 
 /**
+ * The disposer `renderEffect` and `_bind` return for a DEAD binding: one whose
+ * first run tracked no dependency. Nothing can re-run such a binding (a re-run
+ * is only ever scheduled by a tracked source), so it owns no subscription to
+ * remove; keeping its closures, deps array and scope entry alive until unmount
+ * would be pure waste. Compiled templates hit this for every binding that
+ * reads only static props (`<FormRow label="Name" />` → `_bindProp(props,
+ * 'label', …)`), which is most bindings on a design-system page.
+ *
+ * Shared and idempotent. Callers that layer their own teardown on top compare
+ * against it (`dispose === _noopDispose`) to drop their wrapper too. Do not
+ * store disposers keyed by identity: every dead binding returns this function.
+ */
+export const _noopDispose = (): void => {}
+
+/**
  * Static-dep binding — compiler helper for template expressions.
  *
  * Like renderEffect but assumes dependencies never change (true for all
@@ -431,6 +446,10 @@ export function _bind(fn: () => void): () => void {
   } finally {
     deps = exactDeps(collected)
   }
+
+  // Dead binding: the first run subscribed to nothing, so nothing can ever
+  // re-run it. Drop the disposer and the scope entry (see `_noopDispose`).
+  if (deps.length === 0) return _noopDispose
 
   const dispose = () => {
     if (disposed) return
@@ -513,6 +532,10 @@ export function renderEffect(fn: () => void): () => void {
     _rdRegister(run, 'effect', null, run, undefined, _captureCallerLocation(1))
 
   run()
+
+  // Dead binding (see `_noopDispose`): no dependency was
+  // tracked on the first run, so no signal can ever schedule `run` again.
+  if (deps.length === 0) return _noopDispose
 
   const dispose = () => {
     if (disposed) return

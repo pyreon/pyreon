@@ -145,10 +145,39 @@ public class PyreonRouter(
      *  single-stack router. */
     public val tabs: List<PyreonRouterTab> = tabs
 
+    /** Whether the route-level `beforeEnter` chain admits the initial path.
+     *
+     *  The initial path used to be assigned straight to [path], and the guards
+     *  run only from [push]/[replace]/[selectTab] — so an app COLD-launched by
+     *  a deep link (the default `initialPath` is [PyreonDeepLink.takePendingPath])
+     *  opened on a route whose `beforeEnter` refuses it, while a WARM link to
+     *  the same route was gated. Every route entry, cold or warm, goes through
+     *  the guard.
+     *
+     *  Only per-route guards can run here: global `beforeEach` guards are
+     *  registered on the router this constructor is building, so the list is
+     *  necessarily empty. Re-validating the standing path when one is added
+     *  later is deliberately NOT done — it would make registering a guard
+     *  navigate (a `beforeEach { false }` "block while saving" guard would
+     *  eject the user). A guard that must cover a cold deep link belongs on
+     *  the route's `beforeEnter`. Same contract as the Swift router.
+     *
+     *  Reads the constructor's `routes` parameter, not the [routes] state
+     *  (declared below, not yet initialised). A refused path falls back to
+     *  the root — the web router's degradation for a cancelled navigation. */
+    private val initialPathAllowed: Boolean = initialPath.lastOrNull()?.let { candidate ->
+        resolveChainIn(routes, candidate)?.all { (record, _) -> record.beforeEnter?.invoke(candidate) != false }
+    } ?: true
+
     /** The tab a tab-bar router opens on: the one whose root prefixes the
-     *  inbound path (a deep link), else the first. */
+     *  inbound path (a deep link), else the first. A REFUSED inbound path
+     *  opens on the first tab: selecting the target's tab would still show
+     *  its root, and when the refused path IS that root (`myapp://me` with a
+     *  guarded `/me`) the guarded page would render anyway. */
     private val initialTab: PyreonRouterTab? =
-        tabs.firstOrNull()?.let { first -> initialPath.lastOrNull()?.let { tabFor(it, tabs) } ?: first }
+        tabs.firstOrNull()?.let { first ->
+            initialPath.lastOrNull()?.takeIf { initialPathAllowed }?.let { tabFor(it, tabs) } ?: first
+        }
 
     /**
      * Reactive path stack. Drives the host's NavHost / when-on-path
@@ -159,7 +188,9 @@ public class PyreonRouter(
      * root, so Back returns to the tab's root page.
      */
     public val path: MutableState<List<String>> = mutableStateOf(
-        if (initialTab == null) {
+        if (!initialPathAllowed) {
+            emptyList()
+        } else if (initialTab == null) {
             initialPath
         } else {
             initialPath.lastOrNull()?.takeIf { !isTabRoot(initialTab, it) }?.let { listOf(it) } ?: emptyList()
@@ -331,7 +362,8 @@ public class PyreonRouter(
         // Resolve any params that the initial top-of-stack path produces,
         // so apps starting on `/users/42` have `params["id"] == "42"`
         // immediately — no need to call push/replace just to populate.
-        if (initialPath.isNotEmpty()) {
+        // A REFUSED initial path never committed, so it contributes no params.
+        if (initialPath.isNotEmpty() && initialPathAllowed) {
             val resolved = resolve(initialPath.last())
             if (resolved != null) {
                 params.value = resolved.second
