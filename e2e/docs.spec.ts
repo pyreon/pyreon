@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test'
 import { readdirSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { waitForHydration } from './hydration-barrier'
+import { SITE_LINKS } from '../docs/src/site-links'
 
 // Discover the runnable files independently of the gallery generator. A new
 // example gets a real-browser check; a generator omission cannot silently pass.
@@ -973,5 +974,77 @@ test.describe('the charts page mounts every mark it documents', () => {
     const headers = await page.locator('.pyreon-example table th').allTextContents()
     expect(headers.some((h) => h.includes('(upper)')), headers.join(' | ')).toBe(true)
     expect(headers.some((h) => h.includes('(lower)')), headers.join(' | ')).toBe(true)
+  })
+})
+
+// The four standalone marketing pages are prerendered into the static build
+// (the ones posts link to, so a missing one is a dead link in the wild).
+test.describe('site pages: /open, /showcase, /discord, /newsletter', () => {
+  const pages = [
+    { path: '/open', heading: 'Everything in the open', title: 'Open stats · Pyreon' },
+    { path: '/showcase', heading: 'What you can build with Pyreon', title: 'Showcase · Pyreon' },
+    { path: '/discord', heading: 'Talk to the people building Pyreon', title: 'Community · Pyreon' },
+    { path: '/newsletter', heading: 'Every post, the day it goes out', title: 'Newsletter · Pyreon' },
+  ]
+
+  const targetOf = (path: string): string | null => {
+    const key = path.slice(1)
+    return key in SITE_LINKS ? SITE_LINKS[key as keyof typeof SITE_LINKS] : null
+  }
+
+  for (const p of pages) {
+    test(`${p.path} is prerendered with its own title and Open Graph tags`, async ({ page, request }) => {
+      // The raw HTML, before any script: the static host serves this file.
+      const res = await request.get(p.path)
+      expect(res.status()).toBe(200)
+      const html = await res.text()
+      const target = targetOf(p.path)
+      if (target !== null) {
+        // Switched on: a static redirect with a visible way through.
+        expect(html).toContain(`http-equiv="refresh" content="0; url=${target}"`)
+        expect(html).toContain(`href="${target}"`)
+        return
+      }
+      expect(html).toContain(p.heading)
+      expect(html).toContain(`<title>${p.title}</title>`)
+      expect(html).toContain(`property="og:url" content="https://pyreon.dev${p.path}"`)
+      expect(html).toContain(`rel="canonical" href="https://pyreon.dev${p.path}"`)
+
+      const errors: string[] = []
+      page.on('pageerror', (error) => errors.push(error.message))
+      await page.goto(p.path)
+      await waitForHydration(page)
+      await expect(page.locator('h1')).toHaveText(p.heading)
+      expect(errors).toEqual([])
+    })
+  }
+
+  test('/open shows a number or says it is unavailable, never a blank', async ({ page }) => {
+    await page.goto('/open')
+    await waitForHydration(page)
+    const values = await page.locator('.open-tile__value').allTextContents()
+    expect(values.length).toBeGreaterThanOrEqual(15)
+    for (const v of values) expect(v.trim()).toMatch(/^(v?[\d.,]+|unavailable right now)$/)
+    await expect(page.locator('.open-updated time')).toHaveText(/\d{4}, \d\d:\d\d UTC$/)
+  })
+
+  test('/showcase filters by theme', async ({ page }) => {
+    await page.goto('/showcase')
+    await waitForHydration(page)
+    const groups = page.locator('.showcase-group')
+    const total = await groups.count()
+    expect(total).toBeGreaterThan(1)
+    await page.getByRole('button', { name: 'Native' }).click()
+    await expect(page.locator('.showcase-group:visible')).toHaveCount(1)
+    await expect(page.locator('.showcase-group:visible h2')).toHaveText('Native')
+    await page.getByRole('button', { name: 'All' }).click()
+    await expect(page.locator('.showcase-group:visible')).toHaveCount(total)
+  })
+
+  test('the sitemap lists every page, and leaves out a stable link once it redirects', async ({ request }) => {
+    const sitemap = await (await request.get('/sitemap.xml')).text()
+    for (const p of pages) {
+      expect(sitemap.includes(`<loc>https://pyreon.dev${p.path}</loc>`), p.path).toBe(targetOf(p.path) === null)
+    }
   })
 })

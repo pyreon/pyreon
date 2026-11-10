@@ -20,6 +20,9 @@ export function PrimaryNavigation(props: PrimaryNavigationProps) {
       <RouterLink to="/blog" class="docs-header__link" onClick={() => props.onNavigate?.()}>
         Blog
       </RouterLink>
+      <RouterLink to="/showcase" class="docs-header__link" onClick={() => props.onNavigate?.()}>
+        Showcase
+      </RouterLink>
       {/* Atlas is a separate static site, so this link must load its document. */}
       <a
         href="/atlas/"

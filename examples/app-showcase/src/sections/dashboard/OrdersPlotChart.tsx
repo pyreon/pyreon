@@ -40,7 +40,9 @@ export function OrdersPlotChart() {
   return (
     <ChartCard>
       <ChartTitle>Revenue — Pyreon plot engine</ChartTitle>
-      <span data-testid="plot-engine-picked">{() => String(picked)}</span>
+      <span data-testid="plot-engine-picked">
+        {() => (picked < 0 ? '' : `Selected: ${rows()[picked]?.[0].slice(5) ?? ''}`)}
+      </span>
       <Show when={() => query.data() !== undefined} fallback={<ChartFallback>Loading chart…</ChartFallback>}>
         <div data-testid="plot-engine-chart">
           <PlotChart

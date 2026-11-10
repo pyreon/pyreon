@@ -44,6 +44,9 @@ on:
       - 'packages/tools/atlas/**'
       - 'packages/ui/**'
       - 'packages/ui-system/**'
+      # The live showcase demos built into /showcase/<name>/ below.
+      - 'examples/collab-board/**'
+      - 'examples/react-compat/**'
       - '.github/workflows/docs.yml'
   # Also run the BUILD job (not deploy) on PRs touching the docs source or the
   # framework packages the docs build depends on — so a docs-SITE build break
@@ -73,6 +76,9 @@ on:
       - 'packages/tools/atlas/**'
       - 'packages/ui/**'
       - 'packages/ui-system/**'
+      # The live showcase demos built into /showcase/<name>/ below.
+      - 'examples/collab-board/**'
+      - 'examples/react-compat/**'
       - '.github/workflows/docs.yml'
   # Scheduled publishing. A blog post dated in the future is left out of every
   # build that runs before its date (zero-content `publish.ts`), so it goes
@@ -140,9 +146,22 @@ jobs:
       - name: Prepare diagnostics directory
         run: mkdir -p .cache/docs-ci
 
+      - name: Docs site unit tests
+        # The site's own code: the /open stats fetchers (including every
+        # failure path), the stable-link config and the showcase data. Not in
+        # the CI test cells, which cover packages/ and examples/ only.
+        timeout-minutes: 3
+        run: cd docs && bun run test
+
       - name: Build docs
         shell: bash
         timeout-minutes: 10
+        env:
+          # /open fetches GitHub numbers at build time. The workflow token
+          # (read-only `contents: read` is enough for public reads) lifts the
+          # unauthenticated rate limit that a shared runner IP hits often; a
+          # source that still fails renders as "unavailable", never a red build.
+          GITHUB_TOKEN: ${{ github.token }}
         # ROOT base (no `--base` flag → Vite defaults to `/`) because the
         # site now serves at the apex `pyreon.dev`, not the `/pyreon/`
         # project-pages subpath. The custom domain is pinned by
@@ -199,6 +218,22 @@ jobs:
             --out "$GITHUB_WORKSPACE/docs/dist/atlas" \
             --base /atlas/ \
             --title "Pyreon UI" 2>&1 | tee .cache/docs-ci/atlas.log
+
+      - name: Build the showcase live demos
+        shell: bash
+        timeout-minutes: 4
+        # /showcase links "Open the live demo" for the examples that are fully
+        # static (no server, no API): each is a plain Vite build with its base
+        # under /showcase/<name>/, emitted into docs/dist like Atlas. Each
+        # takes about a second. A failure fails the deploy for the same reason
+        # as Atlas: the gallery would otherwise link to a 404.
+        run: |
+          for demo in collab-board react-compat; do
+            (cd "examples/$demo" && bash ../../scripts/gnu-timeout.sh --verbose --signal=KILL 2m \
+              bunx vite build --base "/showcase/$demo/" --outDir "$GITHUB_WORKSPACE/docs/dist/showcase/$demo" --emptyOutDir) \
+              2>&1 | tee ".cache/docs-ci/showcase-$demo.log"
+            test -f "docs/dist/showcase/$demo/index.html"
+          done
 
       - name: Preserve build diagnostics
         if: always()

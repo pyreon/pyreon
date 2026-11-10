@@ -27,6 +27,13 @@ declare module 'virtual:zero/api-routes' {
   export const apiRoutes: ApiRouteEntry[]
 }
 
+// Build-time project numbers for `/open` (vite-plugins/open-stats.ts).
+declare module 'virtual:pyreon-open-stats' {
+  import type { OpenStats } from './open/stats'
+  const stats: OpenStats
+  export default stats
+}
+
 declare module 'virtual:zero-content/collections'
 declare module 'virtual:zero-content/components'
 

@@ -4,6 +4,7 @@ import { registerExamples } from '@pyreon/zero-content'
 import 'virtual:zero-content/collections'
 import './styles/tokens.css'
 import './styles/docs.css'
+import './styles/site-pages.css'
 
 // Register the consumer's example files for `<Example file="./..." />`.
 // `import.meta.glob` is compile-time resolved relative to THIS file —

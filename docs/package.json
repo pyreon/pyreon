@@ -9,6 +9,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
+    "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "lint": "oxlint .",
     "gen": "bun scripts/gen-all.ts",
@@ -60,9 +61,11 @@
   },
   "devDependencies": {
     "@pyreon/typescript": "workspace:*",
+    "@pyreon/vitest-config": "workspace:*",
     "@types/bun": "^1.4.4",
     "beasties": "^0.5.5",
     "typescript": "^6.0.3",
-    "vite": "^8.3.5"
+    "vite": "^8.3.5",
+    "vitest": "^5.0.5"
   }
 }

@@ -6,6 +6,8 @@ import { defineConfig } from 'vite'
 import { pyreonSyntaxDark, pyreonSyntaxLight } from './src/styles/pyreon-syntax'
 import inlineCriticalCss from './vite-plugins/inline-critical-css'
 import lastUpdated from './vite-plugins/last-updated'
+import openStats from './vite-plugins/open-stats'
+import { SITE_LINKS } from './src/site-links'
 
 // Pyreon-native docs site, powered by @pyreon/zero + @pyreon/zero-content.
 //
@@ -79,11 +81,23 @@ export default defineConfig({
       },
     }),
     lastUpdated({ contentDir: 'src/content/docs' }),
+    // virtual:pyreon-open-stats — GitHub / npm / repo numbers for /open,
+    // fetched once per build; a failed source renders as "unavailable".
+    openStats(),
     // dist/sitemap.xml from the SSG output: every prerendered page and
     // nothing else, so an unpublished blog post (never rendered) is never
     // listed.
     seoPlugin({
-      sitemap: { origin: 'https://pyreon.dev', useSsgPaths: true, trailingSlash: 'never' },
+      sitemap: {
+        origin: 'https://pyreon.dev',
+        useSsgPaths: true,
+        trailingSlash: 'never',
+        // A stable link that forwards (/discord, /newsletter once switched on)
+        // is a redirect, not a page worth indexing.
+        exclude: Object.entries(SITE_LINKS)
+          .filter(([, target]) => target !== null)
+          .map(([key]) => `/${key}`),
+      },
     }),
     // Must come AFTER zero() so its closeBundle runs on the final SSG
     // HTML — folds the render-blocking app stylesheet into each page's
