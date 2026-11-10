@@ -1668,7 +1668,7 @@ For SSR, preload the matched route before rendering, serialize its loader data i
 **Server:**
 
 ```tsx
-import { createRouter, serializeLoaderData, stringifyLoaderData } from '@pyreon/router'
+import { createRouter, serializeLoaderData, stringifyLoaderDataForScript } from '@pyreon/router'
 import { renderToString } from '@pyreon/runtime-server'
 
 // In your SSR handler:
@@ -1683,10 +1683,12 @@ await router.preload(pathname + search, req)
 // Render the app
 const html = await renderToString(<App />)
 
-// Serialize loader data for client hydration. `stringifyLoaderData` escapes
-// `<`, U+2028 and U+2029 so the JSON cannot break out of the <script>, and
-// names the route when a loader returns a circular structure.
-const loaderData = stringifyLoaderData(serializeLoaderData(router))
+// Serialize loader data for client hydration. `stringifyLoaderDataForScript`
+// escapes `<`, U+2028 and U+2029 so the data cannot break out of the <script>,
+// keeps an own "__proto__" key an own key (a JS object literal would otherwise
+// treat it as a prototype setter), and names the route when a loader returns a
+// circular structure.
+const loaderData = stringifyLoaderDataForScript(serializeLoaderData(router))
 
 // Include in HTML response:
 const page = `
@@ -2514,7 +2516,7 @@ A typical SSR flow:
 1. Create the router with `url: req.url`
 2. Preload the route with `router.preload(path, req)` (resolves lazy components and runs loaders)
 3. Render the app to string
-4. Serialize loader data with `stringifyLoaderData(serializeLoaderData(router))` and embed in HTML
+4. Serialize loader data with `stringifyLoaderDataForScript(serializeLoaderData(router))` and embed in HTML
 5. On the client, create a new router and hydrate with `hydrateLoaderData(router, data)`
 6. Mount the app
 
@@ -2525,7 +2527,7 @@ import {
   RouterProvider,
   RouterView,
   serializeLoaderData,
-  stringifyLoaderData,
+  stringifyLoaderDataForScript,
 } from '@pyreon/router'
 import { renderToString } from '@pyreon/runtime-server'
 
@@ -2541,7 +2543,7 @@ export async function handleRequest(req: Request): Promise<Response> {
     </RouterProvider>,
   )
 
-  const loaderData = stringifyLoaderData(serializeLoaderData(router))
+  const loaderData = stringifyLoaderDataForScript(serializeLoaderData(router))
 
   return new Response(
     `
@@ -2765,7 +2767,8 @@ router.push({ name: 'user', params: { id: '42' } })
 
 <APICard name="isNotFoundError" type="function" signature="isNotFoundError(err: unknown): boolean" description="Type guard — true when err is a notFound() sentinel." />
 
-<APICard name="stringifyLoaderData" type="function" signature={"stringifyLoaderData(data: Record<string, unknown>): string"} description="SSR: JSON-serialize loader data for an inline <script> — escapes <, U+2028 and U+2029, and throws a [Pyreon] error naming the key on a circular reference." />
+<APICard name="stringifyLoaderDataForScript" type="function" signature={"stringifyLoaderDataForScript(data: object): string"} description="SSR: serialize loader data as a JavaScript expression for an executable inline <script>window.X=…</script> — the stringifyLoaderData escaping, plus every __proto__ object key emitted as a computed key so it stays an own property." />
+<APICard name="stringifyLoaderData" type="function" signature={"stringifyLoaderData(data: Record<string, unknown>): string"} description="SSR: JSON-serialize loader data as script-safe JSON text (a JSON response or an application/json script block; use stringifyLoaderDataForScript for an executable window.X= assignment) — escapes <, U+2028 and U+2029, and throws a [Pyreon] error naming the key on a circular reference." />
 
 <APICard name="getActiveRouter / setActiveRouter" type="function" signature={"getActiveRouter(): Router | null / setActiveRouter(router: Router | null): void"} description="Read the router from context (falling back to the module-level active router), or install a router without a RouterProvider." />
 

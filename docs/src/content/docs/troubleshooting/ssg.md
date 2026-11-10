@@ -91,7 +91,7 @@ Vite's config bundler resolves `@pyreon/zero` and `@pyreon/vite-plugin` through 
 
 ### Bare `JSON.stringify(loaderData)` for SSR data embedding
 
-It throws an opaque error on cycles and silently drops functions. All embed sites use `stringifyLoaderData` from `@pyreon/router` (`packages/core/router/src/loader.ts`), which detects cycles and throws `[Pyreon] Loader returned circular reference at "<route-path>"…`, and strips functions/symbols (including array slots). A boundary that serializes user data owns the serialization and its error message.
+It throws an opaque error on cycles and silently drops functions. All executable embed sites use `stringifyLoaderDataForScript` (JSON responses use `stringifyLoaderData`) from `@pyreon/router` (`packages/core/router/src/loader.ts`), which detects cycles and throws `[Pyreon] Loader returned circular reference at "<route-path>"…`, and strips functions/symbols (including array slots). A boundary that serializes user data owns the serialization and its error message.
 
 ---
 

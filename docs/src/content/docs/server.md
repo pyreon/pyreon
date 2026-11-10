@@ -761,7 +761,7 @@ const scripts = buildScripts('/client.js', { users: [{ id: 1 }] })
 // <script type="module" src="/client.js"></script>
 ```
 
-If no loader data is present (empty object), only the module script is emitted. The JSON is serialized via `@pyreon/router`'s `stringifyLoaderData` — it neutralizes the whole `<` class (not just `</script>` — a bare `</`-only escape is bypassable via `<!--<script>`, which the HTML tokenizer treats as a script-data-double-escape opener with no slash involved) plus the U+2028/U+2029 line terminators JSON permits but a `<script>` body doesn't, and throws a `[Pyreon]`-prefixed error naming the offending key on a circular reference instead of a bare `Converting circular structure to JSON`.
+If no loader data is present (empty object), only the module script is emitted. The data is serialized via `@pyreon/router`'s `stringifyLoaderDataForScript` — it emits every `"__proto__"` key as the computed `["__proto__"]` (in a JavaScript object literal a plain `"__proto__":` key SETS THE PROTOTYPE instead of creating the key, so a user-keyed map would lose it and inherit its fields), neutralizes the whole `<` class (not just `</script>` — a bare `</`-only escape is bypassable via `<!--<script>`, which the HTML tokenizer treats as a script-data-double-escape opener with no slash involved) plus the U+2028/U+2029 line terminators JSON permits but a `<script>` body doesn't, and throws a `[Pyreon]`-prefixed error naming the offending key on a circular reference instead of a bare `Converting circular structure to JSON`.
 
 ### `compileTemplate`
 
