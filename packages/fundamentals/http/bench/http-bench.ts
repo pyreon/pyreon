@@ -1,5 +1,5 @@
 /**
- * @pyreon/http vs ky vs ofetch vs redaxios vs axios — objective head-to-head
+ * @pyreon/http vs ky vs ofetch vs redaxios vs axios vs wretch — objective head-to-head
  * on the per-request WRAPPER hot path, with a bare-`fetch` floor.
  *
  * Run: `bun run bench:http` (sets NODE_ENV=production).
@@ -59,6 +59,8 @@ import axiosDefault from 'axios'
 import ky from 'ky'
 import { ofetch } from 'ofetch'
 import redaxios from 'redaxios'
+import wretch from 'wretch'
+import { abortAddon, queryStringAddon } from 'wretch/addons'
 import { createHttp } from '../src/client'
 import { cpus as benchCpus, loadavg as benchLoadavg } from 'node:os'
 
@@ -147,6 +149,8 @@ function makeClients() {
       headers: { 'x-app': 'bench' },
       adapter: 'fetch',
     }),
+    // wretch: an immutable request builder; no default timeout.
+    wretch: wretch(BASE).headers({ 'x-app': 'bench' }),
   }
 }
 
@@ -166,6 +170,8 @@ function makeDefaultClients() {
       headers: { 'x-app': 'bench' },
       adapter: 'fetch',
     }),
+    // wretch: an immutable request builder; no default timeout.
+    wretch: wretch(BASE).headers({ 'x-app': 'bench' }),
   }
 }
 
@@ -209,7 +215,7 @@ function bootstrapCI(samples: number[], resamples = 2_000): [number, number] {
 const overlaps = (a: [number, number], b: [number, number]) => a[0] <= b[1] && b[0] <= a[1]
 
 let sink = 0
-const IMPLS = ['pyreon', 'ky', 'ofetch', 'redaxios', 'axios', 'bare'] as const
+const IMPLS = ['pyreon', 'ky', 'ofetch', 'redaxios', 'axios', 'wretch', 'bare'] as const
 type ImplName = (typeof IMPLS)[number]
 type Impl = Record<ImplName, () => Promise<void>>
 
@@ -254,6 +260,10 @@ const OPS: Record<string, OpSpec> = {
           const r = await c.axios.get<{ id: number }>('/users/1')
           sink += r.data.id
         },
+        wretch: async () => {
+          const d = await c.wretch.get('/users/1').json<{ id: number }>()
+          sink += d.id
+        },
         bare: async () => {
           const r = await fetch(`${BASE}/users/1`, { headers: { 'x-app': 'bench' } })
           const d = JSON.parse(await r.text()) as { id: number }
@@ -286,6 +296,10 @@ const OPS: Record<string, OpSpec> = {
         axios: async () => {
           const r = await c.axios.get<{ id: number }>('/users/1')
           sink += r.data.id
+        },
+        wretch: async () => {
+          const d = await c.wretch.get('/users/1').json<{ id: number }>()
+          sink += d.id
         },
         bare: async () => {
           const r = await fetch(`${BASE}/users/1`, { headers: { 'x-app': 'bench' } })
@@ -324,6 +338,10 @@ const OPS: Record<string, OpSpec> = {
           const r = await c.axios.post<{ id: number }>('/users', payload)
           sink += r.data.id
         },
+        wretch: async () => {
+          const d = await c.wretch.url('/users').post(payload).json<{ id: number }>()
+          sink += d.id
+        },
         bare: async () => {
           const r = await fetch(`${BASE}/users`, {
             method: 'POST',
@@ -341,6 +359,8 @@ const OPS: Record<string, OpSpec> = {
     make: () => {
       const c = makeClients()
       const q = { page: 2, q: 'ada', limit: 10 }
+      // wretch serializes query params through its QueryStringAddon.
+      const wq = c.wretch.addon(queryStringAddon)
       return {
         pyreon: async () => {
           const d = (await c.pyreon.get('users', { query: q }).json()) as { id: number }
@@ -361,6 +381,10 @@ const OPS: Record<string, OpSpec> = {
         axios: async () => {
           const r = await c.axios.get<{ id: number }>('/users', { params: q })
           sink += r.data.id
+        },
+        wretch: async () => {
+          const d = await wq.url('/users').query(q).get().json<{ id: number }>()
+          sink += d.id
         },
         bare: async () => {
           const s = new URLSearchParams()
@@ -383,6 +407,8 @@ const OPS: Record<string, OpSpec> = {
       const pyreonT = createHttp({ baseUrl: BASE, timeout: 5_000 })
       const kyT = ky.create({ prefix: BASE, timeout: 5_000, retry: 0 })
       const ofetchT = ofetch.create({ baseURL: BASE, timeout: 5_000 })
+      // wretch: the AbortAddon's per-request `setTimeout` (cleared on settle).
+      const wretchT = wretch(BASE).addon(abortAddon())
       const bareImpl = async () => {
         const controller = new AbortController()
         const timer = setTimeout(() => controller.abort(), 5_000)
@@ -420,6 +446,10 @@ const OPS: Record<string, OpSpec> = {
           })
           sink += r.data.id
         },
+        wretch: async () => {
+          const d = await wretchT.get('/users/1').setTimeout(5_000).json<{ id: number }>()
+          sink += d.id
+        },
         bare: bareImpl,
       }
     },
@@ -450,6 +480,10 @@ const OPS: Record<string, OpSpec> = {
           headers: { 'x-app': 'bench' },
           adapter: 'fetch',
         })
+        sink += typeof c.get === 'function' ? 1 : 0
+      },
+      wretch: async () => {
+        const c = wretch(BASE).headers({ 'x-app': 'bench' })
         sink += typeof c.get === 'function' ? 1 : 0
       },
       bare: async () => {
@@ -496,6 +530,15 @@ const OPS: Record<string, OpSpec> = {
           sink += ctx.response.status
         },
       })
+      // wretch middlewares: (next) => (url, opts) => Promise<Response>.
+      const wretchM = wretch(BASE).middlewares([
+        (next) => (url, opts) => next(url, opts),
+        (next) => async (url, opts) => {
+          const res = await next(url, opts)
+          sink += res.status
+          return res
+        },
+      ])
       const axiosM = axiosDefault.create({ baseURL: BASE, adapter: 'fetch' })
       axiosM.interceptors.request.use((cfg) => cfg)
       axiosM.interceptors.response.use((res) => {
@@ -523,6 +566,10 @@ const OPS: Record<string, OpSpec> = {
         axios: async () => {
           const r = await axiosM.get<{ id: number }>('/users/1')
           sink += r.data.id
+        },
+        wretch: async () => {
+          const d = await wretchM.get('/users/1').json<{ id: number }>()
+          sink += d.id
         },
         bare: async () => {
           const r = await fetch(`${BASE}/users/1`)
@@ -577,6 +624,7 @@ async function capture(fn: () => Promise<void>): Promise<Captured> {
   assert(deep(await c.ofetch('/users/1')), 'ofetch decodes body')
   assert(deep((await c.redaxios.get('/users/1')).data), 'redaxios decodes body')
   assert(deep((await c.axios.get('/users/1')).data), 'axios decodes body')
+  assert(deep(await c.wretch.get('/users/1').json()), 'wretch decodes body')
 
   // The library-defaults row's clients decode the same body.
   const dc = makeDefaultClients()
@@ -585,6 +633,7 @@ async function capture(fn: () => Promise<void>): Promise<Captured> {
   assert(deep(await dc.ofetch('/users/1')), 'ofetch (defaults) decodes body')
   assert(deep((await dc.redaxios.get('/users/1')).data), 'redaxios (defaults) decodes body')
   assert(deep((await dc.axios.get('/users/1')).data), 'axios (defaults) decodes body')
+  assert(deep(await dc.wretch.get('/users/1').json()), 'wretch (defaults) decodes body')
 
   // axios MUST be on the fetch adapter (Node default is the http adapter,
   // which would bypass the stub and hit the network) — proven by capture:
@@ -601,6 +650,7 @@ async function capture(fn: () => Promise<void>): Promise<Captured> {
     ['ofetch', async () => void (await c.ofetch('/users', { method: 'POST', body: payload }))],
     ['redaxios', async () => void (await c.redaxios.post('/users', payload))],
     ['axios', async () => void (await c.axios.post('/users', payload))],
+    ['wretch', async () => void (await c.wretch.url('/users').post(payload).res())],
   ] as const) {
     const got = await capture(fn)
     assert(got.method === 'POST', `${name} POST method`)
@@ -619,6 +669,7 @@ async function capture(fn: () => Promise<void>): Promise<Captured> {
     ['ofetch', async () => void (await c.ofetch('/users', { query: q }))],
     ['redaxios', async () => void (await c.redaxios.get('/users', { params: q }))],
     ['axios', async () => void (await c.axios.get('/users', { params: q }))],
+    ['wretch', async () => void (await c.wretch.addon(queryStringAddon).url('/users').query(q).get().res())],
   ] as const) {
     const got = await capture(fn)
     const qs = got.url.split('?')[1] ?? ''
@@ -672,12 +723,12 @@ for (const op of OP_ORDER) {
 
 console.log(benchRuntimeBanner())
 console.log(
-  `=== @pyreon/http vs ky vs ofetch vs redaxios vs axios(fetch) + bare-fetch floor (${process.platform}/${process.arch}, NODE_ENV=production, stubbed fetch, per-(op×impl) isolated processes, median ns/op [CI95], 🤝 = CI-overlap tie vs pyreon) ===\n`,
+  `=== @pyreon/http vs ky vs ofetch vs redaxios vs axios(fetch) vs wretch + bare-fetch floor (${process.platform}/${process.arch}, NODE_ENV=production, stubbed fetch, per-(op×impl) isolated processes, median ns/op [CI95], 🤝 = CI-overlap tie vs pyreon) ===\n`,
 )
 const pad = (s: string, n: number) => s.padEnd(n)
 const padL = (s: string, n: number) => s.padStart(n)
 console.log(
-  `${pad('op', 34)} ${padL('pyreon', 8)} ${padL('ky', 8)} ${padL('ofetch', 8)} ${padL('redaxios', 9)} ${padL('axios', 8)} ${padL('bare', 8)}   verdicts (competitor ÷ pyreon)`,
+  `${pad('op', 34)} ${padL('pyreon', 8)} ${padL('ky', 8)} ${padL('ofetch', 8)} ${padL('redaxios', 9)} ${padL('axios', 8)} ${padL('wretch', 8)} ${padL('bare', 8)}   verdicts (competitor ÷ pyreon)`,
 )
 console.log('─'.repeat(150))
 const num = (c: Cell | null, w: number) => padL(c === null ? 'n/a' : c.med.toFixed(0), w)
@@ -694,7 +745,7 @@ for (const r of rows) {
     return `${name}=${tie ? `🤝${base}` : base}`
   }
   console.log(
-    `${pad(r.op, 34)} ${padL(p.med.toFixed(0), 8)} ${num(r.cells.ky, 8)} ${num(r.cells.ofetch, 8)} ${num(r.cells.redaxios, 9)} ${num(r.cells.axios, 8)} ${num(r.cells.bare, 8)}   ${(['ky', 'ofetch', 'redaxios', 'axios'] as const).map(verdict).join(' ')}`,
+    `${pad(r.op, 34)} ${padL(p.med.toFixed(0), 8)} ${num(r.cells.ky, 8)} ${num(r.cells.ofetch, 8)} ${num(r.cells.redaxios, 9)} ${num(r.cells.axios, 8)} ${num(r.cells.wretch, 8)} ${num(r.cells.bare, 8)}   ${(['ky', 'ofetch', 'redaxios', 'axios', 'wretch'] as const).map(verdict).join(' ')}`,
   )
   if (r.note) console.log(`  └ ${r.note}`)
 }

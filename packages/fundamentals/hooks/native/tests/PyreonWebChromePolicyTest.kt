@@ -120,7 +120,53 @@ private fun permissionQueue() {
     expect(results.size == 5, "no double answer after cancelAll")
 }
 
+// Origin scope: data and the bridge belong to the page the app loaded.
+private fun originScope() {
+    expect(pyreonWebViewOrigin("HTTPS://App.Example.com/x?y") == "https://app.example.com", "https origin")
+    expect(pyreonWebViewOrigin("https://a.test:443/") == "https://a.test", "default https port dropped")
+    expect(pyreonWebViewOrigin("http://a.test:8080/") == "http://a.test:8080", "explicit port kept")
+    expect(pyreonWebViewOrigin("file:///android_asset/index.html") == "file://", "file is one origin")
+    for (opaque in listOf("about:blank", "data:text/html,x", "javascript:alert(1)", "blob:https://a.test/1", "myapp://x", "", null)) {
+        expect(pyreonWebViewOrigin(opaque) == null, "$opaque is opaque")
+    }
+
+    val app = "https://app.test"
+    expect(pyreonWebViewMayDeliver("https://app.test/page", app), "main frame of the app origin")
+    expect(!pyreonWebViewMayDeliver("https://evil.test/", app), "another origin never delivers")
+    expect(!pyreonWebViewMayDeliver("data:text/html,x", app), "an opaque origin never delivers")
+    expect(!pyreonWebViewMayDeliver("https://app.test/", null), "nothing allowed before a load commits")
+
+    val evil = "https://evil.test/phish"
+    fun nav(main: Boolean, pending: Boolean, url: String?, gesture: Boolean) =
+        pyreonWebViewNavigationDecision(main, pending, url, app, gesture)
+    expect(nav(false, false, evil, false) == PyreonWebViewNavigation.ALLOW, "sub-frame navigates")
+    expect(nav(true, true, "https://www.app.test/", false) == PyreonWebViewNavigation.ALLOW, "the host's load follows its redirects")
+    expect(nav(true, false, "https://app.test/next", false) == PyreonWebViewNavigation.ALLOW, "same-origin navigation")
+    expect(nav(true, false, evil, true) == PyreonWebViewNavigation.OPEN_EXTERNALLY, "a tapped off-origin link goes to the system")
+    expect(nav(true, false, evil, false) == PyreonWebViewNavigation.CANCEL, "a scripted off-origin navigation is cancelled")
+    expect(nav(true, false, "data:text/html,x", true) == PyreonWebViewNavigation.CANCEL, "a data: main frame is cancelled")
+    expect(nav(true, false, "file:///data/data/app/x", true) == PyreonWebViewNavigation.CANCEL, "a remote page cannot navigate to file:")
+
+    expect(pyreonWebViewTokenMatches("abc-123", "abc-123"), "the shim's token passes")
+    expect(!pyreonWebViewTokenMatches("abc-123", "abc-124"), "a wrong token fails")
+    expect(!pyreonWebViewTokenMatches("abc-123", "abc"), "a short token fails")
+    expect(!pyreonWebViewTokenMatches("abc-123", null), "no token fails")
+
+    for (ok in listOf("chart.html", "webhost/bridge.html", "a/b/c.html")) {
+        expect(pyreonWebViewAssetPath(ok) == ok, "$ok is a bundled asset")
+    }
+    for (bad in listOf("../secret.xml", "a/../../x", "a/%2e%2e/x", "/etc/hosts", "a\\..\\x", "file:///etc/hosts", "", "a//b", "./x")) {
+        expect(pyreonWebViewAssetPath(bad) == null, "$bad is refused as an asset")
+    }
+    expect(pyreonWebViewIsRemoteSrc("https://a.test/x"), "https src loads")
+    expect(pyreonWebViewIsRemoteSrc("http://a.test"), "http src loads")
+    for (bad in listOf("file:///etc/hosts", "javascript:alert(1)", "content://x/y", "myapp://x", "https://", "chart.html")) {
+        expect(!pyreonWebViewIsRemoteSrc(bad), "$bad is not a remote src")
+    }
+}
+
 public fun main() {
+    originScope()
     fileChooserPlans()
     mediaPermissions()
     externalUrls()
