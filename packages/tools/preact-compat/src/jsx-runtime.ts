@@ -27,6 +27,13 @@ export interface RenderContext {
   pendingLayoutEffects: EffectEntry[]
   /** Set to true when the component is unmounted */
   unmounted: boolean
+  /**
+   * True while a render runs because the component itself asked for it (a
+   * `useState` setter, `dispatch`, a context change, an external store). `memo`
+   * reads it: React never skips such a render, only a parent-driven one whose
+   * props are shallow-equal.
+   */
+  _selfUpdate?: boolean
 }
 
 export interface EffectEntry {
@@ -194,6 +201,7 @@ function wrapCompatComponent(preactComponent: Function): ComponentFn {
     }
 
     const version = signal(0)
+    let renderedVersion = 0
     let updateScheduled = false
 
     ctx.scheduleRerender = () => {
@@ -221,7 +229,10 @@ function wrapCompatComponent(preactComponent: Function): ComponentFn {
 
     // Return reactive accessor — Pyreon's mountChild calls mountReactive
     return () => {
-      version() // tracked read — triggers re-execution when state changes
+      // tracked read — triggers re-execution when state changes
+      const v = version()
+      ctx._selfUpdate = v !== renderedVersion
+      renderedVersion = v
       beginRender(ctx)
       const result = (preactComponent as ComponentFn)(props)
       const layoutEffects = ctx.pendingLayoutEffects

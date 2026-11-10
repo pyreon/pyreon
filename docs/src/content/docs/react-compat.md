@@ -428,7 +428,7 @@ function memo<P>(
 ): (props: P) => VNodeChild
 ```
 
-Wraps a component to skip re-render when its props are shallowly equal -- exactly like React. Each `<MemoComp />` usage gets its own per-instance props/result cache. Pass a custom `areEqual` to override the default shallow comparison.
+Wraps a component to skip re-render when its props are shallowly equal -- exactly like React. As in React, a render the component triggers itself (its own `useState` / `useReducer` update, a context it reads, `useSyncExternalStore`) is never skipped. Each `<MemoComp />` usage gets its own per-instance props/result cache. Pass a custom `areEqual` to override the default shallow comparison.
 
 ```tsx
 const MyComponent = memo((props: { name: string }) => <div>{props.name}</div>)
@@ -439,10 +439,12 @@ const MyComponent = memo((props: { name: string }) => <div>{props.name}</div>)
 #### `useRef`
 
 ```ts
-function useRef<T>(initial?: T): { current: T | null }
+function useRef<T>(initial: T): { current: T }
+function useRef<T>(initial: T | null): { current: T | null }
+function useRef<T = undefined>(): { current: T | undefined }
 ```
 
-Returns a mutable `&#123; current &#125;` object, identical in shape to React's ref.
+Returns a mutable `&#123; current &#125;` object, identical in shape to React's ref. Like React, `useRef()` with no argument starts at `undefined`; use `useRef<HTMLInputElement>(null)` for a DOM ref.
 
 ```tsx
 const inputRef = useRef<HTMLInputElement>()

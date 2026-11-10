@@ -608,14 +608,16 @@ Memoizes `fn` across re-renders, returning the same reference until a dep change
 ### `useRef`
 
 ```ts
-function useRef<T>(initial?: T): { current: T | null }
+function useRef<T>(initial: T): { current: T }
+function useRef<T>(initial: T | null): { current: T | null }
+function useRef<T = undefined>(): { current: T | undefined }
 ```
 
-Returns a `&#123; current &#125;` object. If `initial` is provided, `current` is set to it; otherwise it defaults to `null`.
+Returns a `&#123; current &#125;` object. If `initial` is provided, `current` is set to it; otherwise it starts at `undefined`, exactly like Preact.
 
 ```tsx
 // DOM ref
-const inputRef = useRef<HTMLInputElement>()
+const inputRef = useRef<HTMLInputElement>(null)
 // later: inputRef.current?.focus()
 
 // Mutable value store
