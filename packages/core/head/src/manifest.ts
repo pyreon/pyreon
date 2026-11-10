@@ -186,7 +186,7 @@ useHead({
     {
       label: 'Inline script escaping',
       note:
-        'Script / style / noscript bodies are not HTML-escaped, but the SSR serializer rewrites `</script>` / `</style>` / `</noscript>` and `<!--` to prevent breaking out of the wrapping tag. Inline JSON-LD via `jsonLd: {...}` auto-wraps in `<script type="application/ld+json">` and stringifies the value.',
+        'Script / style / noscript bodies are not HTML-escaped, but the SSR serializer neutralises them so they cannot break out of the wrapping tag: a JSON data block (`application/ld+json`, `speculationrules`, `importmap`, any `+json` / `/json` type) has every `<` written as `\\u003C`, which still `JSON.parse`s; script code, CSS and noscript get `</script>` / `</style>` / `</noscript>` and `<!--` rewritten. Inline JSON-LD via `jsonLd: {...}` auto-wraps in `<script type="application/ld+json">` and stringifies the value.',
     },
   ],
 })
