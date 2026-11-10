@@ -74,7 +74,7 @@ The WHATWG URL parser first strips leading/trailing C0 controls and space, then 
 `<!--` followed by `<script` puts the tokenizer in script-data-double-escaped state without any slash, so `<!--<script>alert(1)//` survives. Raw U+2028/U+2029 in JSON are line terminators in a script and cause a `SyntaxError`.
   - For DATA (JSON): `.replace(/</g, '\\u003C').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029')`. `JSON.parse` round-trips it byte-identically.
   - For CODE (raw JS source): escape only `</`. `\u003C` in raw JS breaks every `<` operator. The `scriptSafe` helpers in `packages/fundamentals/{code,charts,rich-text,flow}/src/webview.ts` are correct as they are.
-  - `__PYREON_LOADER_DATA__` (`html.ts`, `render-page.ts`) and `__PYREON_STORE_STATE__` (`render-page.ts`) all go through `stringifyLoaderDataForScript` (which wraps `stringifyLoaderData`) in `packages/core/router/src/loader.ts`. `@pyreon/atlas`'s `bakedRpcScript` (`build/bake.ts`) is a correct precedent.
+  - `__PYREON_LOADER_DATA__` (`html.ts`, `render-page.ts`) and `__PYREON_STORE_STATE__` (`render-page.ts`) all go through `stringifyLoaderDataForScript` (which wraps `stringifyLoaderData`) in `packages/core/router/src/loader.ts`. So does `@pyreon/atlas`'s `bakedRpcScript` (`build/bake.ts`, the static-site RPC payload: component names and answers are user-shaped).
   - Tests: `router/src/tests/loader.test.ts` (`inline-<script> context escaping (security)`), `server/src/tests/server.test.ts` (`buildScripts neutralises the <!--<script> script-data bypass`).
 
 ---
