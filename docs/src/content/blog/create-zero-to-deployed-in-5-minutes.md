@@ -1,6 +1,6 @@
 ---
-title: "From create-zero to a running production server in five minutes"
-description: "Scaffold a Pyreon Zero app, tour what you got, pick a render mode per route, let mode: 'auto' infer them, and boot the production server with the Node adapter. Every command and every output here came from a real run."
+title: "From npm create to a production server in five minutes"
+description: "One command to scaffold, one to install, one to build: a Node server that streams server-rendered HTML, answers API routes and serves prerendered pages. Every command and every output here came from a real run."
 date: 2027-01-04
 slug: create-zero-to-deployed-in-5-minutes
 tags: [javascript, webdev, tutorial, ssr]
@@ -139,6 +139,8 @@ export function GET() {
 }
 ```
 
+> **Static where it can be, server-rendered where it must be, decided per route.**
+
 ## 4. Pick a render mode per route
 
 Zero has five app-level modes, chosen at scaffold time with `--mode`:
@@ -242,6 +244,8 @@ shows the per-route inference — explicit renderMode exports and routeRules alw
 Read it against the rule: `/posts` has a loader and no `getStaticPaths`, so SSR. `/dashboard` exports a `guard`, so SSR. `/posts/:id` has `getStaticPaths`, so all five posts are prerendered. The plain pages are static. Because some routes need a server, the app as a whole builds as a server app, and every `○` route lands in `dist/` as real HTML.
 
 Shipping `auto` behind the Node adapter? Give the home page an explicit mode: `export const renderMode = 'ssr'` in `src/routes/index.tsx`. A page's own export always beats inference, every other route keeps its inferred mode, and this setup boots the Node server on every Zero version. In some versions, a hybrid Node build that prerendered `/` replaced the server's HTML template, and `node dist/index.js` stopped at boot with `[Pyreon] Template must contain <!--pyreon-app--> placeholder`; [issue #4250](https://github.com/pyreon/pyreon/issues/4250) has the details.
+
+> **One word in your config, and Zero infers a render mode for every route.**
 
 ## Other targets
 

@@ -1,6 +1,6 @@
 ---
-title: "90 days of building Pyreon in public, and what we keep doing"
-description: "Publishing our losses, a log of our own retractions, bugs fixed in the open, a post every week. The practices behind this blog, where every live number lives, and what comes next."
+title: "90 days in public: don’t trust us, check us"
+description: "Our losses published next to our wins, a log of our own retractions, bugs fixed in the open, a post every week. The habits we’re keeping, where every live number lives, and what comes next."
 date: 2027-03-01
 slug: 90-days-of-building-in-public
 tags: [opensource, javascript, buildinpublic, webdev]
@@ -17,15 +17,17 @@ It means you can check us without asking us. Every claim on this blog points at 
 
 We publish where we lose, so you can trust where we win. That line runs through the whole series, and it is the one practice we would keep if we had to drop all the others.
 
+> **We publish where we lose, so you can trust where we win.**
+
 ## Four habits we are keeping
 
 ### 1. Losses get the same page as wins
 
-The benchmark record has a section whose whole job is to list where Pyreon is not the fastest: deep component trees, bundle size, signal creation, some chart mounts, router and store rows. It sits in the same file as the wins, with the same intervals and the same reproduce commands. [Where Pyreon is not the fastest](/blog/where-pyreon-is-not-the-fastest) walks the whole list.
+The benchmark record has a section whose whole job is to list where Pyreon is not the fastest: deep component trees, bundle size, signal creation, some chart mounts, router and store rows. It sits in the same file as the wins, with the same intervals and the same reproduce commands. [Every result, on the table](/blog/where-pyreon-is-not-the-fastest) walks the whole list.
 
 ### 2. The record logs its own retractions
 
-Section 0 of [`BENCHMARKS.md`](https://github.com/pyreon/pyreon/blob/main/BENCHMARKS.md) opens with what changed and what we withdrew. A harness bug that handicapped a rival, a CSS default that inflated our own lead, confidence intervals that counted five page loads as a hundred samples: each one became a pull request and a re-run, and the published verdicts changed with it. [We keep retracting our own benchmark wins](/blog/we-keep-retracting-our-benchmark-wins) tells every one of those stories.
+Section 0 of [`BENCHMARKS.md`](https://github.com/pyreon/pyreon/blob/main/BENCHMARKS.md) opens with what changed and what we withdrew. A harness bug that handicapped a rival, a CSS default that inflated our own lead, confidence intervals that counted five page loads as a hundred samples: each one became a pull request and a re-run, and the published verdicts changed with it. [We caught our own benchmarks lying](/blog/we-keep-retracting-our-benchmark-wins) tells every one of those stories.
 
 The rule that follows from it: the benchmark record is the source of truth. If a post on this blog differs from it, the record wins.
 
@@ -65,6 +67,8 @@ Fifteen posts was the opening. From here, the project runs on recurring formats,
 | **Live build** | monthly | an hour of building something real, live, with questions in chat |
 
 Built something? Post it in #show-and-tell on [Discord](https://pyreon.dev/discord). Ship Friday is made of your projects.
+
+> **A post is a snapshot. The record is live. If they disagree, trust the record.**
 
 ## The road toward 1.0
 

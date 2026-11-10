@@ -1,6 +1,6 @@
 ---
-title: "Porting a React app with @pyreon/react-compat, one component at a time"
-description: "Run your React components on Pyreon's runtime with two config lines, then convert them to signals one at a time, starting where it pays. What carries over, what changes, and the one behaviour to plan around."
+title: "Bring your React app. Change two config lines. Go fine-grained one component at a time"
+description: "@pyreon/react-compat runs the React components you already have on Pyreon’s runtime, with near-full public-API parity with React 19. Then convert them to signals one at a time, starting where it pays. What carries over, what changes, and the one behaviour to plan around."
 date: 2027-01-25
 slug: porting-a-react-app-with-react-compat
 tags: [react, javascript, migration, webdev]
@@ -9,7 +9,7 @@ cover: /blog/covers/porting-a-react-app-with-react-compat.png
 
 A rewrite is the most expensive way to find out whether a framework is worth it. You spend three weeks porting, and only then do you learn the answer.
 
-`@pyreon/react-compat` gives you a cheaper path. Change two lines of config, run the React components you already have on Pyreon's runtime, then convert them to native Pyreon one at a time, starting with the components where fine-grained updates pay off most. Your app keeps working the whole way.
+`@pyreon/react-compat` gives you a cheaper path. Change two lines of config, run the React components you already have on Pyreon's runtime, then convert them to native Pyreon one at a time, starting with the components where fine-grained updates pay off most. Your app keeps working the whole way, and the payoff is real: on a TodoMVC-shaped benchmark, native Pyreon toggles 1,000 todos about **2.4× faster than React 19** and clears them 3–4× faster (synthetic, author-run, Apple M3 Max; [benchmarks](/docs/benchmarks)).
 
 Here is the full route: what runs as-is, what behaves differently (including one difference you must plan for), how a converted component lives inside a compat app, and the moment you switch compat off and let the compiler take over. The compat layer has near-full public-API parity with React 19. It is a migration path, not React, and every place it differs is listed below.
 
@@ -63,6 +63,8 @@ useEffect(() => {
 ```
 
 The surface covers React 19's public API: `useReducer`, `useRef`, `useId`, `useSyncExternalStore`, `useImperativeHandle`, `useActionState`, `useOptimistic`, `use`, `useLayoutEffect`, `useInsertionEffect`, plus `forwardRef`, `memo`, `lazy`, `Suspense`, `createContext`, `createPortal`, `cloneElement`, `Children`, `StrictMode` and `Profiler`. We call that **near-full public-API parity**. Here is where the "near" lives.
+
+> **A rewrite is the most expensive way to find out whether a framework is worth it.**
 
 ## Step 3: know what differs
 
@@ -172,6 +174,8 @@ So convert from the leaves up, and keep long-lived state out of components that 
 ### Framework components ship marked
 
 `RouterProvider`, `RouterView`, `FormProvider`, `Form`, `QueryClientProvider`, `Toaster`, `ErrorBoundary`, `Suspense` and the other framework providers and boundaries already carry the marker. You can use Pyreon's router, forms and query inside a compat app today. Only **your own** Pyreon-style helpers that call `provide()`, `onMount` or `effect` need `nativeCompat()`. Pure render components without those calls don't.
+
+> **Change two lines of config. Keep shipping. Convert where it pays.**
 
 ## Step 5: switch compat off and let the compiler in
 

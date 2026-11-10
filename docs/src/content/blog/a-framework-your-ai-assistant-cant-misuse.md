@@ -1,6 +1,6 @@
 ---
-title: "A framework your AI assistant can't misuse (mostly)"
-description: "Ask an assistant for a Pyreon component and it writes React with a Pyreon import. Here is what the MCP server, the Reactivity Lens and pyreon check say about it, verbatim, and the one bug none of them catch."
+title: "Your AI assistant wrote six bugs. Pyreon’s tools caught five before the code ran"
+description: "Ask an assistant for a Pyreon component and it writes React habits with a Pyreon import. Here is what the MCP server, the Reactivity Lens and pyreon check said about it, verbatim, and the sixth bug we show you anyway."
 date: 2026-12-14
 slug: a-framework-your-ai-assistant-cant-misuse
 tags: [ai, javascript, typescript, webdev]
@@ -42,6 +42,8 @@ count.update(n => n + 1)       // update
 ```
 
 Static context helps. It is also passive: the assistant has to read it and remember it. The next layers answer back.
+
+> **A new framework can’t wait for the next round of model training. So Pyreon answers back while the assistant works.**
 
 ## Layer 2: an MCP server the assistant can ask
 
@@ -234,6 +236,8 @@ export function UserList(props: { users: User[]; title: string }) {
 ```
 
 `validate` on this version: `✓ No issues found. The code follows Pyreon patterns correctly.` And `explain_reactivity` now marks `{props.title}` as `live`.
+
+> **Five of six bugs, flagged with a fix before a single line ran.**
 
 ## The sixth bug, and why we show it
 

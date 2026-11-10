@@ -1,17 +1,21 @@
 ---
-title: "We keep retracting our own benchmark wins"
-description: "A String() call that switched off a rival's compiler, a V8 cache billed to the wrong framework, a CSS default that inflated our lead, and statistics that counted 5 page loads as 100 samples. Every bug we found in our own benchmark, what it cost us, and the guard that stops it now."
+title: "We caught our own benchmarks lying. Here’s every bug, and the wins that survived"
+description: "Eight measurement bugs in our own benchmark, from a String() call that switched off a rival’s compiler to statistics that counted 5 page loads as 100 samples. What each one cost, the guard that stops it now, and the results still standing."
 date: 2026-11-23
 slug: we-keep-retracting-our-benchmark-wins
 tags: [javascript, performance, benchmarking, webdev]
 cover: /blog/covers/we-keep-retracting-our-benchmark-wins.png
 ---
 
-Our benchmark record opens with a list of things we got wrong.
+Most benchmark pages show you the wins. Ours opens with the mistakes.
 
-Section 0 of [`BENCHMARKS.md`](https://github.com/pyreon/pyreon/blob/main/BENCHMARKS.md) lists every verdict that moved and every claim we withdrew. It sits above the results, not in a footnote. Most entries on it are wins we took back, because most of the bugs we found in our own harness made Pyreon look better than it was.
+Section 0 of [`BENCHMARKS.md`](https://github.com/pyreon/pyreon/blob/main/BENCHMARKS.md) lists every verdict that moved and every claim we withdrew, above the results, not in a footnote. We hunted bugs in our own harness for months, and most of them made Pyreon look *better* than it was. We fixed every one, re-ran everything and published what came out.
 
-That list is the reason to trust the rest of the page. We publish where we lose, so you can trust where we win. Here is how the list got written: eight bugs, what each one cost us, and the guard that stops it from coming back.
+Here is what survived. Pyreon wins `clear rows` outright in both runs against ten frameworks (130 µs vs Vue 3.6 Vapor RC's 145 µs). It builds 10,000 rows **2.6× faster than React 19** and 3.8× faster than Preact. It ties for the lightest retained heap on the board. Those numbers came through every bug below, and that is why they mean something.
+
+*Synthetic, author-run, Apple M3 Max, real Chromium. Reproduce: [pyreon.dev/docs/benchmarks](/docs/benchmarks).*
+
+We publish where we lose, so you can trust where we win. Here are all eight measurement bugs we found in our own benchmark, what each one cost us, and the guard that stops it from coming back. Don't trust us. Run it.
 
 ## Start by distrusting us
 
@@ -79,7 +83,7 @@ The same mechanism had inflated one of our headlines. We had published a `partia
 
 We had published hydration as a statistical tie with Vue. The run behind it was taken at a one-minute load average of 8.2. A re-run on a quiet machine (load 2.2–2.5, isolation verified, the served bundle hash checked against the file on disk) gave disjoint intervals in all four runs and a 3–4% Vue lead (#2920). The wide interval had been hiding a real gap, not proving there was none.
 
-That PR also kept count. It was the eighth correction to the record during the August campaign, and five of the first six had moved a Pyreon-friendly figure the wrong way for us.
+That PR also kept a tally of the August campaign: of its first six corrections, five had moved a Pyreon-friendly figure the wrong way for us.
 
 **The guard:** every suite runs strictly one at a time, waits for a one-minute load below 4, and stamps the load before and after. A close verdict is published only after two runs agree.
 
@@ -109,6 +113,8 @@ The same PR fixed a defect pointing the other way. The scenario harness ranked e
 
 **The guard:** the board's intervals are cluster-bootstrapped, a run with fewer than three page loads prints "verdicts provisional", and each Pyreon arm is judged only against the best non-Pyreon arm. The scenario harness computes cluster intervals now too, but its published figures predate the fix, so the record marks its close scenario verdicts as provisional until the next run.
 
+> **Every bug on this list became a pull request and a re-run. Don’t trust us. Run it.**
+
 ## Count the directions
 
 Read the list again and notice which way the errors pointed. Handicapped competitors, a stringified id, a CSS default, a clamped clock, a busy machine, pooled intervals: almost every one made Pyreon look better than it was.
@@ -116,6 +122,8 @@ Read the list again and notice which way the errors pointed. Handicapped competi
 That is what author bias looks like in practice. Nobody wrote "make Octane slow". Someone wrote `String(row.id)` because it looked tidy, and nobody checked what Octane's compiler did with it.
 
 So we audit a pleasant number with the same rigour as an unpleasant one. A 110× margin, "2.5× faster than hand-written DOM", a zero-width interval: we now treat each of those as a harness bug until proven otherwise.
+
+> **Nobody wrote “make Octane slow”. Someone wrote String(row.id) because it looked tidy.**
 
 ## What a verdict has to survive now
 

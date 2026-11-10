@@ -1,23 +1,44 @@
 ---
-title: "Where Pyreon is not the fastest"
-description: "Every loss in our benchmark record, with the number, the cause as far as we have traced it, whether it is a design choice, and what we have already tried. We publish where we lose, so you can trust where we win."
+title: "Every result, on the table: Pyreon against ten frameworks"
+description: "The full scoreboard from our benchmark record: an outright win on clear rows, 2.6× faster than React at 10,000 rows, tied for the lightest heap, then every tie and every loss with its cause. Don’t trust us. Run it."
 date: 2027-02-22
 slug: where-pyreon-is-not-the-fastest
 tags: [javascript, performance, benchmarks, webdev]
 cover: /blog/covers/where-pyreon-is-not-the-fastest.png
 ---
 
-Mount a tree of 2,047 nested components in real Chromium. Solid does it in 3.06 ms. Pyreon takes 3.59 ms.
+Clear 1,000 rows: **Pyreon 130 µs, the fastest of ten frameworks** in both runs. Build 10,000 rows: **2.6× faster than React 19**. Retained heap: **tied for the lightest on the board**.
 
-That is our clearest loss to another framework, it holds in both runs at 1.15–1.18×, and it is the first entry in a section of our benchmark record that most projects would never write: §13, "Where Pyreon is not outright fastest".
-
-We publish where we lose, so you can trust where we win. This post walks that list with the same care we give a win: the number, the cause as far as we have traced it, whether it follows from a design choice, and what we have already measured or shipped.
+That is the top of the scoreboard. This post puts the whole thing on the table: every win, every tie and every loss in our benchmark record, with the numbers and the causes. We publish where we lose, so you can trust where we win.
 
 > **All figures:** `BENCHMARKS.md`, run of 2026-11-05, Apple M3 Max, real Chromium 156 unless stated. Medians with bootstrap 95% intervals; "loss" means the intervals are disjoint; "one run" where marked. Synthetic and author-run. Every number reproduces from [pyreon.dev/docs/benchmarks](/docs/benchmarks). The benchmark record is the source of truth; if it differs from this post, the record wins.
 
-Two ground rules first. **We wrote and judge every one of these benchmarks**, so read them as the author's report. A keyed implementation for krausest/js-framework-benchmark is staged in the repo (`contrib/krausest/pyreon-keyed/`) for the independent check. And **a tie is not a loss, but it is not a win either**, so the ties where we once claimed wins are on this list too. The story of how those claims came down is in [We keep retracting our own benchmark wins](/blog/we-keep-retracting-our-benchmark-wins).
+## The wins
 
-## The whole list on one screen
+| where | Pyreon | against |
+| --- | --- | --- |
+| clear rows, row board of 10 frameworks | 130 µs, outright win in both runs | Vue 3.6 Vapor RC 145 µs (1.11–1.12×) |
+| create 10,000 rows | 72.6 ms | React 19 192.0 ms (2.6×), Preact 278.0 ms (3.8×) |
+| retained heap, row board | 3.08 MB, tied lightest | Preact 3.09 MB |
+| select row (batch instrument) | 1.86–2.04× ahead, one run | Octane |
+| TodoMVC shape | toggle 1,000 about 2.4×, clear 1,000 3–4× | React 19 |
+| hydration, 320-component app page | 4.02 ms, fastest, one run | React 4.15, Preact 4.30, Vue 4.47 |
+| compiled SSR, 10 / 100 / 1,000 rows | fastest at all three (1.21× / 1.35× / 1.14× vs next), one run | the field |
+| `renderToString`, 4 scenarios | 1.64–4.68×, byte-identical output, one run | Solid |
+| 12-field form, 4 timed ops | fastest on all four, one run | six form libraries |
+| charts, 4 ops | 2.5–8.7× faster; line chart 38.0 KB vs 155.9 KB, one run | ECharts 6 |
+| node graph / virtual list | all 6 ops / all 4 ops, one run | React Flow 12 / react-virtual |
+| reactivity core (V8) | effect 2.04–2.13×, batch 1.94–1.95×, diamond 1.30× | Preact Signals |
+
+> **Don’t trust us. Run it. Every number on this page reproduces from the commands in the record.**
+
+## Everything else, on the same table
+
+A scoreboard that only lists wins is an advert. Here is the rest, walked with the same care we give a win: the number, the cause as far as we have traced it, whether it follows from a design choice, and what we have already measured or shipped.
+
+Two ground rules first. **We wrote and judge every one of these benchmarks**, so read them as the author's report. A keyed implementation for krausest/js-framework-benchmark is staged in the repo (`contrib/krausest/pyreon-keyed/`) for the independent check. And **a tie is not a loss, but it is not a win either**, so the ties where we once claimed wins are on this list too. The story of how those claims came down is in [We caught our own benchmarks lying](/blog/we-keep-retracting-our-benchmark-wins).
+
+## The rest of the board on one screen
 
 | # | where | margin | design choice? |
 | --- | --- | --- | --- |
@@ -33,6 +54,8 @@ Two ground rules first. **We wrote and judge every one of these benchmarks**, so
 | 10 | store setup and smaller fundamentals rows | Zustand 28.9× on setup | yes, by design |
 
 ## 1. Deep trees cost us the most
+
+Mount a tree of 2,047 nested components in real Chromium. Solid does it in 3.06 ms; Pyreon takes 3.59 ms. That is our clearest loss to another framework, and it holds in both runs at 1.15–1.18×.
 
 | | run 1 | run 2 |
 | --- | ---: | ---: |
@@ -107,7 +130,7 @@ Updates go the other way: Pyreon leads uPlot and Chart.js by 1.44–2.23× on 10
 
 Every framework adopts all 1,000 server rows. The walk, the framework's own work, is a **tie with Vue in both runs** (1.16 / 1.19 ms vs 1.17 / 1.16 ms). On the total, run 1 ties, and in run 2 Vue is ahead by 0.05 ms, 1.01×. About 100 µs of Pyreon's walk builds per-row app state that Vue's arm does not, and layout is about 80% of every total.
 
-On a 320-component app page, the shape most real pages look like, Pyreon hydrates in 4.02 ms against React's 4.15, Preact's 4.30 and Vue's 4.47 (one run). The keyed table is the shape where we are not ahead. How hydration adopts the server's DOM in the first place is in [Hydration that adopts the server DOM](/blog/hydration-that-adopts-the-server-dom).
+On a 320-component app page, the shape most real pages look like, Pyreon hydrates in 4.02 ms against React's 4.15, Preact's 4.30 and Vue's 4.47 (one run). The keyed table is the shape where we are not ahead. How hydration adopts the server's DOM in the first place is in [Type before the page hydrates. Pyreon keeps every character](/blog/hydration-that-adopts-the-server-dom).
 
 ## 7. The reactivity core
 
@@ -147,6 +170,8 @@ The rest: store reads 1.7× slower (5 vs 3 ns), storage reads 1.5× (4 vs 3 ns),
 
 One for server authors: importing Pyreon's `lib/` in Node **without a bundler** pays a live `process.env` read on every dev-only check, about 145 ns each on V8. Every bundler folds these reads away. An unbundled server path does not.
 
+> **A tie is not a loss, but it is not a win either. So the ties are on this list too.**
+
 ## What this list does not cover
 
 - **Not measured at all:** streaming SSR, portals, async waterfalls, startup metrics, krausest's memory metrics, Firefox and Safari, and any independent third-party run. A full-stack suite (`@pyreon/zero` against eight meta-frameworks) lives in the repo; this post quotes no result from it.
@@ -164,6 +189,6 @@ A synthetic benchmark cannot tell you how your app will feel. Building one can:
 npm create @pyreon/zero@latest
 ```
 
-- Docs: [pyreon.dev/docs](/docs). The rules that keep an app on the fast path: [The seven rules of fine-grained reactivity](/blog/seven-rules-of-fine-grained-reactivity).
+- Docs: [pyreon.dev/docs](/docs). The rules that keep an app on the fast path: [the seven rules of fine-grained reactivity](/blog/seven-rules-of-fine-grained-reactivity).
 - Star the repo: [github.com/pyreon/pyreon](https://github.com/pyreon/pyreon)
 - Talk to us on [Discord](https://pyreon.dev/discord) or open an issue on [GitHub](https://github.com/pyreon/pyreon/issues). Found a harness bug? That is our favourite kind of issue.

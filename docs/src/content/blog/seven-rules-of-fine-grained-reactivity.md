@@ -1,6 +1,6 @@
 ---
-title: "The seven rules of fine-grained reactivity"
-description: "In Pyreon a component runs once, and seven rules decide what updates afterwards. Each one comes with the broken version, the fix, and the tool that catches it before you ship."
+title: "Two of these values will never update: the seven rules of fine-grained reactivity"
+description: "In Pyreon a component runs once, and seven rules decide what updates afterwards. Each rule comes with the broken version, the fix, and the tool that flags it before you ship."
 date: 2027-02-01
 slug: seven-rules-of-fine-grained-reactivity
 tags: [javascript, typescript, reactivity, webdev]
@@ -81,6 +81,8 @@ const doubled = computed(() => count() * 2)   // ✓ live wherever it is read
 Signal reads in JSX text, attributes and component props are tracked, and the compiler turns prop reads into getters for the child. Reads inside `effect()` and `computed()` are tracked. Reads in plain setup code are not.
 
 **Caught by:** the Reactivity Lens, which marks `{snapshot}` as baked once where you expected live. No detector flags this shape on purpose: a setup snapshot is sometimes exactly what you want, and seeding an initial value is the common case.
+
+> **A read at setup is a snapshot. A read inside JSX, a computed or an effect stays live.**
 
 ## Rule 3: don't destructure props
 
@@ -205,6 +207,8 @@ A bare array of elements mounts fine, then ignores every later change to `items`
 ```
 
 A tracked scope subscribes only to the signals it read on its last run. Solid, Preact Signals and MobX all behave this way. The bug shows up when the guard and the guarded signal change in the same batch, which is exactly what form validation does on submit. No tool catches this one yet, so make it a habit: read every signal before the conditional.
+
+> **Seven rules, and your editor marks every expression live or static as you type.**
 
 ## Or let the compiler carry the rules: Plain Mode
 

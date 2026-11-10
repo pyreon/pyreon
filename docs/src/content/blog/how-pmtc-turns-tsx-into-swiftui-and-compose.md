@@ -1,6 +1,6 @@
 ---
-title: "How PMTC turns TSX into SwiftUI and Jetpack Compose"
-description: "Pyreon's multi-target compiler writes Swift and Kotlin source you can read. What a signal becomes, how a union type becomes an enum, why .length turns into utf16.count, what landed this winter (Date, enums, timers, effects, try/catch, JSON.parse), and how the output is checked all the way to a device."
+title: "Your TypeScript, compiled to SwiftUI and Jetpack Compose you could have written by hand"
+description: "Pyreon’s multi-target compiler turns .tsx into Swift and Kotlin source you can read: signals become @State and mutableStateOf, union types become enums, .length becomes utf16.count. Plus what landed this winter, and how the output is checked all the way to a device."
 date: 2027-01-11
 slug: how-pmtc-turns-tsx-into-swiftui-and-compose
 tags: [swift, kotlin, compilers, typescript]
@@ -175,6 +175,8 @@ fun TodoApp() {
 }
 ```
 
+> **Swift and Kotlin source out, not a JavaScript runtime in: the primitives render as real SwiftUI and Compose views.**
+
 ## The mapping, construct by construct
 
 Put the two outputs side by side and the rules fall out. None of this is string templating. Each row is a decision about what the platform's own idiom is.
@@ -338,6 +340,8 @@ The supported TypeScript in a component body is deliberately narrow: signal, com
 The design rule for everything outside that lane: **say so, by name.** Early on, unsupported code was often dropped silently, the worst thing a compiler can do, because the app builds and then behaves differently. A large share of this year's native work turned silent drops into named warnings or into real lowerings. The docs now say the failure mode outside the lane is "almost always" a named warning, and they list the known silent shapes instead of pretending there are none. You can see a few of those warnings in action in next week's launch post.
 
 A clean compile is not yet proof that the output compiles, either. `pyreon-native check` reports warnings in milliseconds. `pyreon-native check --typecheck` also runs a real `swiftc -typecheck` against the SwiftUI SDK on macOS. Put the second one in CI, next to the Gradle build for Android.
+
+> **The output is gated by swiftc and kotlinc in CI, and the example apps run their UI tests on a Simulator and an emulator.**
 
 ## Five rungs from emit to device
 

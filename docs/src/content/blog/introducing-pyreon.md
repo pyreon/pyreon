@@ -1,13 +1,15 @@
 ---
-title: "Introducing Pyreon"
-description: "A TypeScript UI framework where components run once, the benchmark page lists our losses next to our wins, and one .tsx file can compile to SwiftUI and Jetpack Compose. Here is what is in the box, what is not finished, and how to start in a minute."
+title: "Introducing Pyreon: write it once, ship it fine-grained to the web, iOS and Android"
+description: "A TypeScript UI framework where components run once, 10,000 rows build 2.6× faster than React, the same app ships at a quarter of React’s bundle, and one .tsx file compiles to SwiftUI and Jetpack Compose. What’s in the box, and how to start in a minute."
 date: 2026-12-01
 slug: introducing-pyreon
 tags: [javascript, typescript, webdev, opensource]
 cover: /blog/covers/introducing-pyreon.png
 ---
 
-What if your component ran once, and a state change touched only the exact text node that shows it? No re-render pass, no virtual DOM, no dependency arrays to keep in sync.
+What if your component ran once, and a state change touched only the exact text node that shows it? Zero re-render passes and zero dependency arrays. On our benchmark board that model builds 10,000 rows **2.6× faster than React 19**, and the same app ships in **a quarter of React’s bundle** (17.2 KB vs 69.6 KB gzipped).
+
+*Synthetic, author-run, Apple M3 Max, real Chromium. Reproduce: [pyreon.dev/docs/benchmarks](/docs/benchmarks).*
 
 That is Pyreon: a TypeScript UI framework built on signals, where the compiler wires each piece of state straight to the DOM node that displays it. It is MIT-licensed, it is at version 0.53, and today we're opening the doors. Build something with it and tell us where it breaks.
 
@@ -74,6 +76,8 @@ Not everything lowers. Packages that depend on the DOM (the code editor, drag an
 
 The scaffolder sets your assistant up on day one: `.mcp.json` and `CLAUDE.md` by default, plus `AGENTS.md`, Cursor rules or Copilot instructions if you pick them.
 
+> **One .tsx file. A website, an iPhone app and an Android app.**
+
 ## What is in the box
 
 77 published packages, all versioned together:
@@ -124,6 +128,8 @@ Web, iOS and Android from one source (device builds need Xcode and the Android S
 ```bash
 npm create @pyreon/multiplatform@latest my-app
 ```
+
+> **We publish where we lose, so you can trust where we win.**
 
 ## How you can help
 

@@ -1,6 +1,6 @@
 ---
-title: "One .tsx, three platforms: Pyreon on the web, SwiftUI and Jetpack Compose"
-description: "Write a component once in TypeScript and get a web app, a SwiftUI app and a Jetpack Compose app. How to scaffold one, what compiles to native views, what stays on the web and why, and how we test it on simulators and emulators in CI."
+title: "One .tsx file. A website, an iPhone app and an Android app"
+description: "Write a component once in TypeScript and get a web app, a SwiftUI app and a Jetpack Compose app, each built from its platform’s real UI toolkit. How to scaffold one, what compiles to native views, what stays on the web, and how we test it on simulators and emulators in CI."
 date: 2027-01-19
 slug: one-tsx-three-platforms
 tags: [ios, android, typescript, compilers]
@@ -106,6 +106,8 @@ Start with the web target and add native later. Nothing in the web build needs X
 
 Deep links come built in. The URL scheme defaults to the project name (`my-app` becomes `myapp://`, or pick one with `--scheme`), and the host files forward inbound URLs to the router, so `xcrun simctl openurl booted "myapp://item/42"` opens `/item/42`.
 
+> **One component. Three platforms. Each one drawn by its own native UI toolkit.**
+
 ## Three loops, from milliseconds to seconds
 
 There is no JavaScript running on the device to hot-patch, so the native loop has three layers. Use the cheapest one that answers your question:
@@ -189,6 +191,8 @@ todos = (todos + [Todo(id: (Date().timeIntervalSince1970 * 1000), text: draft)])
 ```
 
 A plain `number` field lowers to an integer, and a millisecond timestamp is a `Double` on iOS. That one is fixed now: since [#4147](https://github.com/pyreon/pyreon/pull/4147) the compiler converts a whole-valued `Double` stored into an integer field, and the same line emits `Todo(id: Int(Date().timeIntervalSince1970 * 1000), …)`, which type-checks. The lesson stands, though: in CI, run `check --typecheck`, not only `check`.
+
+> **Write it once in TypeScript. Ship it fine-grained to the web, iOS and Android.**
 
 ## Tested on simulators and emulators, in CI
 

@@ -1,6 +1,6 @@
 ---
-title: "Built for AI assistants: what a framework can give a model besides docs"
-description: "An MCP server with 24 tools, the compiler's live/static verdict in your editor, a component catalog that mounts every scenario, a CLI gate and llms.txt. A worked session with real output, and where each tool stops."
+title: "Your AI assistant has read more React than anything else. Pyreon corrects it while it works"
+description: "An MCP server with 24 tools, the compiler’s live/static verdict in your editor, a component catalog that mounts every scenario, a CLI gate and llms.txt. A worked session with real output, and where each tool stops."
 date: 2027-02-16
 slug: built-for-ai-assistants
 tags: [ai, mcp, typescript, devtools]
@@ -36,6 +36,8 @@ The 24 tools, by what you are doing at the time:
 | using verified catalogs | `get_atlas_catalog`, `get_atlas_component`, `get_dependency_fabric`, `get_api_client`, `get_api_operation`, `explain_api_diff` |
 
 The API answers come from the same per-package manifests that generate the docs site and `llms.txt`. A step in the required `Fast Gates` CI check (`check-mcp-docs`) verifies that the tools the server registers, the tools its manifest lists and the tools its [docs page](/docs/mcp) describes are the same set, so the assistant never gets told about a tool that does not exist.
+
+> **We can’t change what a model was trained on. We can change what it checks its work against.**
 
 ## 2. A worked session
 
@@ -161,6 +163,8 @@ Nobody wrote that failing scenario. Atlas generated an "empty" case for the requ
 
 Two files come out. `atlas-catalog.json` holds every component, control, scenario and verdict as data, and the MCP tools serve it. `atlas-agent-guide.md` is the compact version for an assistant: what exists, what passed, what is broken. A failing scenario exits non-zero, so the catalog gates itself in CI. And `--check` compares against the committed catalog and fails when a check **stops running**, not only when one starts failing, because a failure that vanishes since its check no longer runs is lost coverage, not a fix.
 
+> **24 tools, no model inside, no network calls: every answer comes from the compiler and the manifests.**
+
 ## 5. `pyreon check` and `llms.txt`
 
 [`pyreon check`](/docs/cli) is the terminal twin of `validate`. It runs the same detectors over the files you changed in git, prints each finding with its fix, and exits non-zero, so it slots into a pre-commit hook or a CI step:
@@ -186,7 +190,7 @@ We publish the edges of our tools the same way we publish our benchmark losses: 
 - **None of this makes the model smarter.** These tools give an assistant something to check its work against. Whether it calls them depends on the client and the prompt, which is why the scaffolds write the instructions for you.
 - **The Lens editor integration is basic.** VS Code uses an extension you symlink in from the repo (not on the Marketplace yet); other editors register `pyreon-lint --lsp` by hand.
 
-For the deep dive on one snippet, including the bug none of these tools catch, read [A framework your AI assistant can't misuse](/blog/a-framework-your-ai-assistant-cant-misuse).
+For the deep dive on one snippet, including the bug none of these tools catch, read [Your AI assistant wrote six bugs](/blog/a-framework-your-ai-assistant-cant-misuse).
 
 ## Build something with it
 

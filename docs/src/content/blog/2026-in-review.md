@@ -1,6 +1,6 @@
 ---
-title: "Pyreon in 2026: the year in commits"
-description: "From an empty repository in March to 77 packages, a native compiler and a benchmark record that lists its own retractions. What we shipped, what we took back, and what is still open, counted from the repository."
+title: "Pyreon’s 2026: 3,881 commits, 77 packages and one codebase for three platforms"
+description: "From an empty repository in March to 77 packages, a compiler that ships one .tsx file to the web, SwiftUI and Jetpack Compose, and a benchmark record that lists its own retractions. The year, counted from the repository."
 date: 2026-12-28
 slug: 2026-in-review
 tags: [javascript, opensource, webdev, typescript]
@@ -53,13 +53,15 @@ June was the busiest month of the year: 713 commits.
 - `@pyreon/atlas`, a component workbench that derives a machine-readable component catalog and verifies it (#2482, 23 July).
 - `@pyreon/loom`, a dependency observatory for monorepos (#2609, 31 July).
 
+> **3,881 commits. 3,699 pull requests. One .tsx file that compiles to the web, SwiftUI and Jetpack Compose.**
+
 ## August: the month we checked our own numbers
 
 August had two threads, and both were about finding where we were wrong.
 
-The first was benchmarks. An audit found our row-list harness handicapping competitors: Svelte and Vue on non-idiomatic reactive state and Octane pinned behind its latest release (#2878). Within days it also found a `String()` wrapper that switched off Octane's compiler fast path (#2897), a V8 string cache charged to five implementations' heap (#2899), a CSS `table-layout` default that made one op bimodal and inflated a Pyreon lead about 2.3× (#2903), and sub-millisecond ops timed against a 100 µs clock (#2894). We retracted each one in public, and nearly every correction moved a number against us. The full story is in [We keep retracting our own benchmark wins](/blog/we-keep-retracting-our-benchmark-wins).
+The first was benchmarks. An audit found our row-list harness handicapping competitors: Svelte and Vue on non-idiomatic reactive state and Octane pinned behind its latest release (#2878). Within days it also found a `String()` wrapper that switched off Octane's compiler fast path (#2897), a V8 string cache charged to five implementations' heap (#2899), a CSS `table-layout` default that made one op bimodal and inflated a Pyreon lead about 2.3× (#2903), and sub-millisecond ops timed against a 100 µs clock (#2894). We retracted each one in public, and nearly every correction moved a number against us. The full story is in [We caught our own benchmarks lying](/blog/we-keep-retracting-our-benchmark-wins).
 
-The second was hydration. Compiled templates were replacing the server's DOM nodes instead of adopting them, which wiped anything typed before the bundle loaded. #2918 (18 August) made them adopt, gated on a byte-equal check of the template's static skeleton. How that works is in [Hydration that adopts the server DOM](/blog/hydration-that-adopts-the-server-dom).
+The second was hydration. Compiled templates were replacing the server's DOM nodes instead of adopting them, which wiped anything typed before the bundle loaded. #2918 (18 August) made them adopt, gated on a byte-equal check of the template's static skeleton. How that works is in [Type before the page hydrates. Pyreon keeps every character](/blog/hydration-that-adopts-the-server-dom).
 
 August also shipped `@pyreon/lathe`, OpenAPI to a typed client (#3077); Plain Mode, the experimental dialect where `let count = state(0); count++` compiles to signals (#3110); and our own charting engine for `@pyreon/charts` (#3128).
 
@@ -76,6 +78,8 @@ The native compiler grew the most. In early November alone it learned to lower `
 On 5 November we re-ran the benchmark record end to end and rebuilt its confidence intervals with a cluster bootstrap over page loads (#4129). That turned a published loss and two published wins on the row board into ties or splits. The board today has one outright win, `clear rows` (1.11–1.12× over Vue 3.6 Vapor RC), and a section that lists where Pyreon is not the fastest: deep component-tree mount (Solid 1.15–1.18× ahead), bundle size (17.2 KB against Solid's 7.5 KB for the same app) and signal creation (about 5× slower than Preact Signals).
 
 *Synthetic, author-run, Apple M3 Max. Reproduce: [pyreon.dev/docs/benchmarks](/docs/benchmarks).*
+
+> **Nearly every correction we made in August moved a number against us. We published every one.**
 
 ## What we did not finish
 

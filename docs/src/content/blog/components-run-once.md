@@ -1,6 +1,6 @@
 ---
-title: "Components run once: what the Pyreon compiler does with your JSX"
-description: "Your component function runs a single time. After that, a signal change updates the one text node that shows it. Here is the real compiler output, and the rules that decide what stays live."
+title: "Your component runs once. Here’s what replaced the re-render"
+description: "Delete useMemo, useCallback and every dependency array. A Pyreon component runs one time, and a signal change updates the one text node that shows it. Here is the real compiler output that makes it work."
 date: 2026-11-16
 slug: components-run-once
 tags: [javascript, webdev, typescript, frontend]
@@ -9,7 +9,13 @@ cover: /blog/covers/components-run-once.png
 
 You know the afternoon. A list stutters, the profiler lights up, and you spend three hours learning that a callback got a new identity on every render. The fix is one `useCallback`. The lesson is that you now have to think about renders forever.
 
-Pyreon removes the question. A component function runs **once**, when it mounts. When data changes, the one text node that shows it updates, and nothing else in the tree is visited. You don't take our word for it: the compiler output below shows exactly what runs.
+Pyreon removes the question. A component function runs **once**, when it mounts. When data changes, the one text node that shows it updates, and nothing else in the tree is visited. Nothing re-runs, so there is nothing to memoise: no `useMemo`, no `useCallback`, no dependency arrays.
+
+Skipping all that work shows up on the clock. Pyreon builds 10,000 table rows **2.6× faster than React 19** (72.6 ms vs 192.0 ms). You don't take our word for any of it: the compiler output below shows exactly what runs.
+
+*Synthetic, author-run, Apple M3 Max, real Chromium. Reproduce: [pyreon.dev/docs/benchmarks](/docs/benchmarks).*
+
+> **The best re-render is the one that never happens.**
 
 ## Ten lines in, one binding out
 
@@ -164,6 +170,8 @@ return <Greeting name={_rpd(user)} tone="warm" />
 ```
 
 `user()` became a reactive prop. The literal `"warm"` stayed a literal, because there is nothing to track.
+
+> **You write what you mean, and it stays fast. Nobody has to babysit the renders.**
 
 ## The rules on one card
 

@@ -1,6 +1,6 @@
 ---
-title: "OpenAPI to a typed client, mocks and native modules in one command"
-description: "One spec in, 29 files out: schemas, endpoints, query hooks that refetch what a mutation changed, deterministic mocks, fake data, and Swift and Kotlin modules that lathe compiles to prove they lower."
+title: "One OpenAPI spec in, 29 files out: typed client, query hooks, mocks and native modules"
+description: "Stop hand-writing types, fetch calls, query keys and mocks. One command turns a spec into schemas, endpoints, query hooks that refetch what a mutation changed, deterministic mocks, fake data, and Swift and Kotlin modules that lathe compiles to prove they lower."
 date: 2027-02-08
 slug: openapi-to-typed-client-mocks-and-native
 tags: [openapi, typescript, codegen, ios]
@@ -141,6 +141,8 @@ When you do need a key, it comes from the endpoint, so it survives a path change
 
 Paginated endpoints work the same way once you declare how they page (lathe never guesses which parameter advances a page): each declaration emits a typed `use<Op>Infinite` hook and an `<op>InfiniteOptions` factory for a loader's prefetch.
 
+> **Change a field in the spec, regenerate, and the types, hooks and mocks move together.**
+
 ## Mocks with no server and no service worker
 
 ```ts
@@ -237,7 +239,7 @@ struct ListBooksData: View {
 }
 ```
 
-(This sample is from the lathe README, generated against a spec whose base URL is `https://books.test/v1`.) If the native compiler is not installed, the check says it skipped instead of quietly passing. For how PMTC lowers a component in general, see [How PMTC turns TSX into SwiftUI and Compose](/blog/how-pmtc-turns-tsx-into-swiftui-and-compose).
+(This sample is from the lathe README, generated against a spec whose base URL is `https://books.test/v1`.) If the native compiler is not installed, the check says it skipped instead of quietly passing. For how PMTC lowers a component in general, see [Your TypeScript, compiled to SwiftUI and Jetpack Compose](/blog/how-pmtc-turns-tsx-into-swiftui-and-compose).
 
 In CI:
 
@@ -246,6 +248,8 @@ lathe check --strict-native --fail-on-breaking
 ```
 
 `--strict-native` fails when a native module does not lower. `--fail-on-breaking` fails when a spec change would break the generated client's public contract, such as a removed field or a narrowed type. `lathe diff <before> <after>` renders that contract change for a pull request, and each side can be a git revision (`main:openapi.yaml`).
+
+> **The same spec that types your web client compiles to Swift and Kotlin.**
 
 ## Every loss gets a name
 
