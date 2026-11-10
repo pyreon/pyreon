@@ -376,6 +376,55 @@ test.describe("server functions (<Form> + route action)", () => {
     });
   });
 
+  /**
+   * `defineAction(schema, handler)` — `examples/ssr-showcase/src/routes/form-actions-validated.tsx`.
+   * The Standard Schema runs on the server before the handler: an invalid
+   * form answers 422 with per-field messages, a valid one reaches the handler
+   * with the parsed (coerced) output — with and without JavaScript.
+   */
+  test.describe("validated action input (defineAction(schema, handler))", () => {
+    test.describe("without JavaScript", () => {
+      test.use({ javaScriptEnabled: false });
+
+      test("an invalid form answers 422 with per-field messages; a valid one reaches the handler", async ({
+        page,
+      }) => {
+        await page.goto("/form-actions-validated");
+        await page.getByTestId("email-input").fill("not-an-email");
+        await page.getByTestId("age-input").fill("9");
+        const [resp] = await Promise.all([
+          page.waitForResponse((r) => r.request().method() === "POST"),
+          page.getByTestId("signup").click(),
+        ]);
+        expect(resp.status()).toBe(422);
+        await expect(page.getByTestId("email-error")).toHaveText("Enter an email address");
+        await expect(page.getByTestId("age-error")).toHaveText("Must be 13 or older");
+        await expect(page.getByTestId("welcome")).toHaveText("none");
+
+        await page.getByTestId("email-input").fill("ada@example.com");
+        await page.getByTestId("age-input").fill("36");
+        await page.getByTestId("signup").click();
+        await expect(page.getByTestId("welcome")).toHaveText("ada@example.com (37 next year)");
+      });
+    });
+
+    test("with JavaScript: field errors render without a navigation", async ({ page }) => {
+      const errors: string[] = [];
+      page.on("pageerror", (e) => errors.push(e.message));
+      await page.goto("/form-actions-validated");
+      await page.waitForLoadState("networkidle");
+      await page.getByTestId("email-input").fill("nope");
+      await page.getByTestId("age-input").fill("20");
+      await page.getByTestId("signup").click();
+      await expect(page.getByTestId("email-error")).toHaveText("Enter an email address");
+      await expect(page.getByTestId("age-error")).toHaveText("");
+      await page.getByTestId("email-input").fill("grace@example.com");
+      await page.getByTestId("signup").click();
+      await expect(page.getByTestId("welcome")).toHaveText("grace@example.com (21 next year)");
+      expect(errors).toEqual([]);
+    });
+  });
+
   test("a cross-origin form post is rejected before the handler runs", async ({
     request,
   }) => {

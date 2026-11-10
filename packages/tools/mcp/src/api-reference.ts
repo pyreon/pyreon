@@ -9714,7 +9714,8 @@ const user = useRequestLocals().user as User | null`,
   },
 
   'zero/defineAction': {
-    signature: 'function defineAction<T>(handler: (ctx: ActionContext) => T | Promise<T>): Action<T>',
+    signature: `function defineAction<T>(handler: (ctx: ActionContext) => T | Promise<T>): Action<T>
+function defineAction<S extends StandardSchemaV1, T>(input: S, handler: (input: InferOutput<S>, ctx: ActionContext) => T | Promise<T>): Action<T | ActionFailure<ActionInputError>, InferInput<S>>`,
     example: `import { redirect } from '@pyreon/router'
 import { defineAction, fail, Form } from '@pyreon/zero/actions'
 
@@ -9732,15 +9733,16 @@ export default function NewPost() {
     </Form>
   )
 }`,
-    notes: `Define a server action (import from \`@pyreon/zero/actions\`). Export it from a route as \`action\` and submit it with \`<Form action={action}>\` — it then works as a plain HTML form post WITHOUT JavaScript (the server runs it, then answers 303 for a \`redirect()\` or re-renders the page with the result) and is enhanced to \`fetch\` when JavaScript runs. The result is also a callable that POSTs JSON to \`/_zero/actions/<id>\`. zero's Vite plugin derives a stable id and strips the handler (and imports only it used) from the client bundle. Same-origin check + 1 MiB body limit (\`createServer({ actions: { corsOrigins, bodyLimit } })\`); runs after app and route middleware. See also: useSubmission, Form.`,
+    notes: `Define a server action (import from \`@pyreon/zero/actions\`). Export it from a route as \`action\` and submit it with \`<Form action={action}>\` — it then works as a plain HTML form post WITHOUT JavaScript (the server runs it, then answers 303 for a \`redirect()\` or re-renders the page with the result) and is enhanced to \`fetch\` when JavaScript runs. The result is also a callable that POSTs JSON to \`/_zero/actions/<id>\`. zero's Vite plugin derives a stable id and strips the handler (and imports only it used) from the client bundle. Same-origin check + 1 MiB body limit (\`createServer({ actions: { corsOrigins, bodyLimit } })\`); runs after app and route middleware. **Typed input:** \`defineAction(schema, handler)\` validates the input with any Standard Schema (zod, valibot, arktype, \`@pyreon/validate\`) before the handler runs; the handler receives the parsed OUTPUT, and an invalid input never reaches it — the action returns \`fail(422, { error: 'Invalid input', issues, fields })\`, so a page reads \`useSubmission(action).result()?.fields?.title\`. The input is the JSON body, or the form fields as an object (a repeated name becomes an array; values stay strings / \`File\`s — use coercing schemas). See also: useSubmission, Form.`,
     mistakes: `- Exporting a plain \`async function action()\` from a route — it is not a defineAction() result, so it is refused with a 500 AND its body would ship to the client; wrap it: \`export const action = defineAction(async (ctx) => …)\`
 - Returning an error object with status 200 for a validation failure — return \`fail(422, data)\` so the response carries the status and \`useSubmission().result()\` gets the data
 - Throwing an Error for a user-facing message — its message is replaced by "Internal server error" in production; use \`fail()\`
+- With \`defineAction(schema, handler)\`, a non-coercing number/boolean schema on a FORM post — form values arrive as strings; use \`z.coerce.number()\` / \`s.coerce.number()\` (JSON calls keep their types)
 - Using \`redirect()\` with a 307 expecting a re-POST — page form posts always answer 303 so the browser follows with a GET`,
   },
 
   'zero/Form': {
-    signature: 'function Form<T>(props: { action: Action<T>; revalidate?: boolean | readonly string[]; resetOnSuccess?: boolean; onSuccess?: (data: ActionData<T>) => void; children?: VNodeChild; [attr: string]: unknown }): VNodeChild',
+    signature: 'function Form<T, TInput = unknown>(props: { action: Action<T, TInput>; revalidate?: boolean | readonly string[]; resetOnSuccess?: boolean; onSuccess?: (data: ActionData<T>) => void; children?: VNodeChild; [attr: string]: unknown }): VNodeChild',
     example: `<Form action={action} revalidate={false} class="new-post">
   <input name="title" required />
   <button type="submit">Create</button>
@@ -9750,7 +9752,7 @@ export default function NewPost() {
   },
 
   'zero/useSubmission': {
-    signature: 'function useSubmission<T>(action: Action<T>): Submission<T>',
+    signature: 'function useSubmission<T, TInput = unknown>(action: Action<T, TInput>): Submission<T>',
     example: `const sub = useSubmission(action)
 <button disabled={sub.pending()}>Save</button>
 <p>{() => sub.pending() ? \`Saving \${sub.input()?.get('title')}\` : ''}</p>
