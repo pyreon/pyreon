@@ -11,6 +11,7 @@ Read before touching `packages/zero/**`, a build adapter, SSG/SSR/ISR output, or
 - `ssg.cssMode: 'asset'` writes one content-addressed CSS file per DISTINCT page rule set (it used to write the first page's CSS and link it everywhere).
 - `getStaticPaths` enumerates dynamic routes (`[id].tsx`).
 - `_404.tsx` / `_not-found.tsx` → `dist/404.html`. It renders inside layout chrome: `findNotFoundFallback` builds the chain, loaders are skipped via `router.preload(path, _, { skipLoaders: true })`, and `noindex` is injected.
+- A loader's `notFound()` ("matched route, missing resource") renders the SAME chain: the router keeps a per-router loader-not-found path (`router._loaderNotFound`), and while it equals the current path `currentRoute()` resolves through `resolveLoaderNotFound` (`isNotFound: true`). Set by `preload` (SSR → 404, string and stream), `prefetchLoaderData`, a committed navigation (`to._loaderNotFound`, from `processLoaderResult` or the data endpoint's `{ notFound: true }` payload) and `revalidate`; `serializeLoaderData` emits `__pyreonNotFound: true` and `hydrateLoaderData` re-enters the state before the first render, so hydration adopts the server's nodes. Any new path that runs loaders must map `isNotFoundError` the same way, never to a 500 or `onError`.
 - A loader-thrown `redirect()` → `dist/_redirects` (Netlify/Cloudflare) + `_redirects.json` (Vercel) + optional meta-refresh HTML.
 - Sitemap: `seoPlugin({ sitemap: { useSsgPaths, hreflang } })`.
 - Each route gets `<link rel=modulepreload>` for its static import closure only.

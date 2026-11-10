@@ -119,7 +119,10 @@ export type RenderPageResult =
       head: string
       /** `<script>window.__PYREON_LOADER_DATA__=…</script>` or `''`. */
       loaderScript: string
-      /** 404 when the router resolved via the `notFoundComponent` fallback. */
+      /**
+       * 404 when the router resolved via the `notFoundComponent` fallback —
+       * an unmatched URL, or a matched route whose loader threw `notFound()`.
+       */
       status: 200 | 404
       /**
        * Source-module ids (`component._hmrId`) of the matched chain's lazy
