@@ -58,7 +58,7 @@ describe('a whole-valued Double converts into an integer struct field', () => {
     expect(code).toContain(
       'Todo(id: pyreonInt(floor(Double(Double.random(in: 0..<1) * Double(1000)))), title: title)',
     )
-    expect(code).toMatch(/Todo\(id: pyreonInt\(\(\(Double\(.*\) \+ Double\(1\)\), title: title\)/)
+    expect(code).toMatch(/Todo\(id: pyreonInt\(pyreonRound\(Double\(.*\)\) \+ Double\(1\)\), title: title\)/)
     expect(code).toContain('c.id = pyreonInt(trunc(Double(Double(x.id) / Double(2))))')
     // `Int(_:)` traps on NaN / ±Infinity; only the always-finite `Date.now()` keeps it.
     expect(code.match(/\bInt\(/g)).toHaveLength(2)
@@ -73,7 +73,7 @@ describe('a whole-valued Double converts into an integer struct field', () => {
     expect(code).toContain('data class Todo(var id: Long, var title: String)')
     expect(code).toContain('Todo(id = System.currentTimeMillis(), title = title)')
     expect(code).toContain('Todo(id = (Math.floor(Math.random() * 1000L)).toLong(), title = title)')
-    expect(code).toMatch(/Todo\(id = \(Math\.round\(.*\+ 1L\)\.toLong\(\), title = title\)/)
+    expect(code).toMatch(/Todo\(id = \(pyreonRound\(.*\+ 1L\)\.toLong\(\), title = title\)/)
     expect(code).toContain('x.copy(id = (kotlin.math.truncate(')
     expect(code).toContain('x.copy(id = System.currentTimeMillis())')
     expect(code).not.toContain('System.currentTimeMillis().toDouble(), title')
@@ -205,24 +205,29 @@ function ceilOf(x: number, d: number): Todo { return { id: Math.ceil(x / d), tit
 function truncOf(x: number, d: number): Todo { return { id: Math.trunc(x / d), title: 'trunc' } }
 function roundOf(x: number, d: number): Todo { return { id: Math.round(x / d), title: 'round' } }
 function twiceOf(x: number, d: number): Todo { return { id: Math.floor(x / d) * 2, title: 'twice' } }
+function roundPlusOf(x: number, d: number): Todo { return { id: Math.round(x / d) + 1, title: 'roundPlus' } }
 function App() {
-  return (<Stack><Text>{floorOf(1, 2).title}{ceilOf(1, 2).title}{truncOf(1, 2).title}{roundOf(1, 2).title}{twiceOf(1, 2).title}</Text></Stack>)
+  return (<Stack><Text>{floorOf(1, 2).title}{ceilOf(1, 2).title}{truncOf(1, 2).title}{roundOf(1, 2).title}{twiceOf(1, 2).title}{roundPlusOf(1, 2).title}</Text></Stack>)
 }`
 
-const FNS = ['floorOf', 'ceilOf', 'truncOf', 'roundOf', 'twiceOf'] as const
+const FNS = ['floorOf', 'ceilOf', 'truncOf', 'roundOf', 'twiceOf', 'roundPlusOf'] as const
 const MAX = '9223372036854775807'
 const MIN = '-9223372036854775808'
-// [x, d, floor, ceil, trunc, round, floor * 2] — the finite rows are JavaScript's own answers.
-const CASES: readonly (readonly [number, number, string, string, string, string, string])[] = [
-  [7, 2, '3', '4', '3', '4', '6'],
-  [-7, 2, '-4', '-3', '-3', '-3', '-8'],
-  [0, 0, '0', '0', '0', '0', '0'],
-  [1, 0, MAX, MAX, MAX, MAX, MAX],
-  [-1, 0, MIN, MIN, MIN, MIN, MIN],
+// [x, d, floor, ceil, trunc, round, floor * 2, round + 1] — the finite rows are JavaScript's own answers. A non-finite
+// value reaches the store as NaN (→ 0) or ±Infinity (→ the saturated bound) on BOTH targets even through arithmetic:
+// `Math.round(0 / 0) + 1` stored 1 on Android, because `java.lang.Math.round` had already turned NaN into 0 (#4258).
+const CASES: readonly (readonly [number, number, string, string, string, string, string, string])[] = [
+  [7, 2, '3', '4', '3', '4', '6', '5'],
+  [-7, 2, '-4', '-3', '-3', '-3', '-8', '-2'],
+  [-5, 2, '-3', '-2', '-2', '-2', '-6', '-1'],
+  [0, 0, '0', '0', '0', '0', '0', '0'],
+  [1, 0, MAX, MAX, MAX, MAX, MAX, MAX],
+  [-1, 0, MIN, MIN, MIN, MIN, MIN, MIN],
 ]
 const expected = CASES.flatMap(([x, d, ...want]) => FNS.map((f, i) => `${f} ${x} ${d} ${want[i]}`))
 
 const RUNTIME = join(__dirname, '../../../runtime-swift/Sources/PyreonRuntime/PyreonNumber.swift')
+const KOTLIN_RUNTIME = join(__dirname, '../../../runtime-kotlin/src/main/kotlin/com/pyreon/runtime/PyreonNumber.kt')
 const javaOk = (() => {
   try {
     execFileSync('java', ['-version'], { stdio: 'ignore' })
@@ -272,10 +277,74 @@ describe('a non-finite whole-valued Double is stored the same on both targets an
         '}',
       ]
       const dir = mkdtempSync(join(tmpdir(), 'pyreon-int-field-'))
-      writeFileSync(join(dir, 'main.kt'), [struct, ...fns, ...main].join('\n'))
-      execFileSync('kotlinc', [join(dir, 'main.kt'), '-include-runtime', '-d', join(dir, 'p.jar')], { stdio: 'pipe' })
+      writeFileSync(join(dir, 'main.kt'), ['import com.pyreon.runtime.*', struct, ...fns, ...main].join('\n'))
+      execFileSync('kotlinc', [join(dir, 'main.kt'), KOTLIN_RUNTIME, '-include-runtime', '-d', join(dir, 'p.jar')], {
+        stdio: 'pipe',
+      })
       expect(execFileSync('java', ['-jar', join(dir, 'p.jar')], { encoding: 'utf8' }).trim().split('\n')).toEqual(
         expected,
+      )
+    },
+    240_000,
+  )
+})
+
+// `Math.round` itself, outside an integer store: both targets call the runtime's `pyreonRound`, which is JavaScript's
+// rule. Each row is [input, JavaScript's `Math.round(input)`]; the executed programs print whether they agree (NaN is
+// compared with NaN), so the Swift and Kotlin spellings of a Double never have to match each other's text.
+const ROUND_ROWS: readonly (readonly [string, string])[] = [
+  ['2.5', '3.0'],
+  ['-2.5', '-2.0'],
+  ['-0.5', '-0.0'],
+  ['0.49999999999999994', '0.0'],
+  ['4503599627370497.0', '4503599627370497.0'],
+  ['1e300', '1e300'],
+  ['-1e300', '-1e300'],
+  ['Double.NaN', 'Double.NaN'],
+  ['Double.POSITIVE_INFINITY', 'Double.POSITIVE_INFINITY'],
+]
+const roundOnly = `import { Stack, Text } from '@pyreon/primitives'
+function roundOnly(x: number): number { return Math.round(x * 1.5) }
+function App() { return (<Stack><Text>{roundOnly(1)}</Text></Stack>) }`
+
+describe("Math.round is JavaScript's on both targets, NaN and ±Infinity included (#4258)", () => {
+  it('both targets lower it to the runtime pyreonRound', () => {
+    expect(emit(roundOnly, 'swift').code).toContain('pyreonRound(')
+    expect(emit(roundOnly, 'kotlin').code).toContain('pyreonRound(')
+    expect(emit(roundOnly, 'kotlin').code).not.toContain('Math.round(')
+  })
+
+  const swiftLit = (v: string) =>
+    v.replace('Double.NaN', 'Double.nan').replace('Double.POSITIVE_INFINITY', 'Double.infinity')
+  it.runIf(isSwiftcAvailable())(
+    'Swift: executed',
+    () => {
+      const lines = ROUND_ROWS.map(
+        ([x, want]) =>
+          `do { let g = pyreonRound(${swiftLit(x)}); let w: Double = ${swiftLit(want)}; print(g.isNaN ? w.isNaN : (g == w && g.sign == w.sign)) }`,
+      )
+      const dir = mkdtempSync(join(tmpdir(), 'pyreon-round-'))
+      writeFileSync(join(dir, 'main.swift'), [readFileSync(RUNTIME, 'utf8'), ...lines].join('\n'))
+      execFileSync('swiftc', [join(dir, 'main.swift'), '-o', join(dir, 'run')], { stdio: 'pipe' })
+      expect(execFileSync(join(dir, 'run'), { encoding: 'utf8' }).trim().split('\n')).toEqual(ROUND_ROWS.map(() => 'true'))
+    },
+    180_000,
+  )
+
+  it.runIf(isKotlincAvailable() && javaOk)(
+    'Kotlin: executed',
+    () => {
+      const lines = ROUND_ROWS.map(
+        ([x, want]) =>
+          `  run { val g = pyreonRound(${x}); val w: Double = ${want}; println(if (g.isNaN()) w.isNaN() else g == w && (1.0 / g) == (1.0 / w)) }`,
+      )
+      const dir = mkdtempSync(join(tmpdir(), 'pyreon-round-'))
+      writeFileSync(join(dir, 'main.kt'), ['import com.pyreon.runtime.*', 'fun main() {', ...lines, '}'].join('\n'))
+      execFileSync('kotlinc', [join(dir, 'main.kt'), KOTLIN_RUNTIME, '-include-runtime', '-d', join(dir, 'p.jar')], {
+        stdio: 'pipe',
+      })
+      expect(execFileSync('java', ['-jar', join(dir, 'p.jar')], { encoding: 'utf8' }).trim().split('\n')).toEqual(
+        ROUND_ROWS.map(() => 'true'),
       )
     },
     240_000,
