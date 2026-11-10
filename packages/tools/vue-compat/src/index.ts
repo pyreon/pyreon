@@ -457,7 +457,7 @@ export function toRefs<T extends object>(obj: T): { [K in keyof T]: Ref<T[K]> } 
 export interface WatchOptions {
   /** Call the callback immediately with current value. Default: false */
   immediate?: boolean
-  /** Ignored in Pyreon — dependencies are tracked automatically. */
+  /** Track every nested property of what the source returns (Vue's `deep`). A `reactive()` source is always deep. */
   deep?: boolean
   /** Accepted for compatibility but not meaningfully differentiated in Pyreon. */
   flush?: 'pre' | 'post' | 'sync'
@@ -486,14 +486,20 @@ export function watch<T extends readonly WatchSource<any>[]>(
   ) => void,
   options?: WatchOptions,
 ): () => void
+/** A `reactive()` object: watched deeply, as in Vue. */
+export function watch<T extends object>(
+  source: T,
+  cb: (newValue: T, oldValue: T | undefined, onCleanup: (fn: () => void) => void) => void,
+  options?: WatchOptions,
+): () => void
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function watch<T>(
-  source: WatchSource<T> | WatchSource<T>[],
+  source: WatchSource<T> | WatchSource<T>[] | T,
   cb: (newValue: T, oldValue: T | undefined, onCleanup: (fn: () => void) => void) => void,
   options?: WatchOptions,
 ): () => void {
-  // Array of sources — multi-watch
-  if (Array.isArray(source)) {
+  // Array of sources — multi-watch. A `reactive([])` is ONE deep source.
+  if (Array.isArray(source) && !isReactive(source)) {
     return _watchArray(
       source as WatchSource<unknown>[],
       cb as (newValue: unknown, oldValue: unknown) => void,
@@ -503,12 +509,59 @@ export function watch<T>(
   return _watchSingle(source as WatchSource<T>, cb, options)
 }
 
+/**
+ * Read every nested property of `value` inside the current tracking frame, so a
+ * watcher subscribes to all of it (Vue's `traverse`). Returns `value`.
+ */
+function _traverse<T>(value: T, seen: Set<unknown> = new Set()): T {
+  if (value === null || typeof value !== 'object' || seen.has(value)) return value
+  seen.add(value)
+  if (Array.isArray(value)) {
+    for (let i = 0; i < value.length; i++) _traverse(value[i], seen)
+  } else if (value instanceof Map || value instanceof Set) {
+    value.forEach((v: unknown) => {
+      _traverse(v, seen)
+    })
+  } else {
+    for (const key of Object.keys(value)) _traverse((value as Record<string, unknown>)[key], seen)
+  }
+  return value
+}
+
+/**
+ * The tracked getter for one watch source, with Vue's rules:
+ * - a ref reads `.value`; a function is called;
+ * - a `reactive()` object is watched DEEPLY (Vue's default for that source),
+ *   so `watch(state, cb)` fires on any nested mutation;
+ * - `deep: true` traverses whatever the ref/getter returns.
+ * A `reactive()` source used to be called as a function — the watcher threw
+ * "getter is not a function" inside its effect and never fired.
+ */
+function _watchGetter(source: unknown, deep: boolean): () => unknown {
+  if (isRef(source)) {
+    const r = source as Ref
+    return deep ? () => _traverse(r.value) : () => r.value
+  }
+  if (typeof source === 'function') {
+    const fn = source as () => unknown
+    return deep ? () => _traverse(fn()) : fn
+  }
+  if (isReactive(source)) return () => _traverse(source)
+  if (process.env.NODE_ENV !== 'production') {
+    // oxlint-disable-next-line no-console
+    console.warn(
+      '[Pyreon] vue-compat watch(): invalid source — pass a ref, a getter function, a reactive() object, or an array of these. The watcher will never fire.',
+    )
+  }
+  return () => source
+}
+
 function _watchArray(
   sources: WatchSource<unknown>[],
   cb: (newValues: unknown, oldValues: unknown, onCleanup: (fn: () => void) => void) => void,
   options?: WatchOptions,
 ): () => void {
-  const getters = sources.map((s) => (isRef(s) ? () => (s as Ref).value : (s as () => unknown)))
+  const getters = sources.map((s) => _watchGetter(s, options?.deep === true))
 
   let cleanupFn: (() => void) | undefined
   const onCleanup = (fn: () => void) => {
@@ -645,7 +698,7 @@ function _watchSingle<T>(
     const idx = getHookIndex()
     if (idx < ctx.hooks.length) return ctx.hooks[idx] as () => void
 
-    const getter = isRef(source) ? () => source.value : (source as () => T)
+    const getter = _watchGetter(source, options?.deep === true) as () => T
     let oldValue: T | undefined
     let initialized = false
 
@@ -690,7 +743,7 @@ function _watchSingle<T>(
   }
 
   // Outside component
-  const getter = isRef(source) ? () => source.value : (source as () => T)
+  const getter = _watchGetter(source, options?.deep === true) as () => T
   let oldValue: T | undefined
   let initialized = false
 
