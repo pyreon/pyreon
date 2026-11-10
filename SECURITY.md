@@ -29,8 +29,8 @@ Security issues we care about:
 ## Past Security Fixes
 
 - SSR: closing-tag injection neutralised in `<script>`/`<style>` raw text; `<noscript>` content is HTML-escaped
-- SSR and client: blocking `javascript:` and `data:` URIs (control-character-obfuscated spellings included; raster and script-free SVG `data:image/*` on image sources allowed) in URL-bearing attributes. `vbscript:` is not blocked: no supported browser executes it.
+- SSR and client: blocking `javascript:`, `vbscript:` and `data:` URIs (control-character-obfuscated spellings included; raster and script-free SVG `data:image/*` on image sources allowed) in URL-bearing attributes
 - Router: `sanitizePath()` blocks protocol-relative and absolute URL redirects
 - SSG: Path traversal validation ensures output stays within `outDir`
-- Vue-compat: `readonly()` rejects property assignment and deletion
+- Vue-compat: `readonly()` rejects every write: assignment, deletion, `defineProperty`, `setPrototypeOf`, `preventExtensions`
 - Reconciler: Circular reference detection via `WeakSet`
