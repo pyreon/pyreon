@@ -63,6 +63,7 @@ Honest read: react-query is **not** naive — its tracked-props make it field-aw
 | `useQuery` / `useMutation` / `useInfiniteQuery` / `useQueries` | ✅ |
 | Suspense (`useSuspenseQuery` / `…InfiniteQuery` / `…Queries` + `<QuerySuspense>`) | ✅ |
 | `select`, `placeholderData`, `keepPreviousData`, `enabled`, `staleTime`, `retry`, … | ✅ — all `QueryObserverOptions` pass straight through to query-core |
+| `queryOptions` / `infiniteQueryOptions` / `mutationOptions` (declare once; tagged `queryKey` types `getQueryData`) | ✅ |
 | Optimistic updates (`onMutate` + `setQueryData`) | ✅ — inherited from query-core |
 | SSR dehydrate / hydrate (`dehydrate` / `hydrate` / `<HydrationBoundary>`) | ✅ |
 | Persistence (`<PersistQueryClientProvider>` + `useIsRestoring`, `/persist` subpath) | ✅ |
@@ -172,6 +173,24 @@ const queries = defineQueries({
 queries.user.data()
 queries.posts.data()
 ```
+
+## `queryOptions` / `infiniteQueryOptions` / `mutationOptions`
+
+Declare a query or mutation once, typed, and reuse it in the hooks and in the imperative `QueryClient` API. At runtime each returns its argument unchanged; the returned `queryKey` is tagged with the data and error types (TanStack's `DataTag`), so `getQueryData` / `setQueryData` need no generic.
+
+```ts
+const userQuery = (id: number) =>
+  queryOptions({ queryKey: ['user', id], queryFn: () => fetchUser(id) })
+
+const user = useQuery(() => userQuery(userId())) // call the factory INSIDE the accessor to stay reactive
+await client.prefetchQuery(userQuery(1))
+client.getQueryData(userQuery(1).queryKey)        // User | undefined
+
+const createPost = mutationOptions({ mutationFn: (p: NewPost) => api.create(p), invalidates: [['posts']] })
+useMutation(createPost)
+```
+
+`useQuery` takes an options function, so pass `() => queryOptions(…)`, not the object itself. On a native target the PMTC `useQuery` lowering reads an inline options object; write it inline in native-shared code.
 
 ## `useSubscription(options)`
 

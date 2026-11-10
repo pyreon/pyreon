@@ -101,6 +101,32 @@ describe('denoAdapter build', () => {
     expect(existsSync(join(staged, '_pyreon-edge-init.js'))).toBe(true)
   })
 
+  // The runner's static server answered `/.vite/manifest.json` (and any other
+  // dotfile) from the client dir. Runs the emitted `serveStatic` against a
+  // stubbed `Deno.readFile` that "has" every file.
+  it('the runner never serves a hidden path, except /.well-known/', async () => {
+    const outDir = join(root, 'deno-hidden')
+    await denoAdapter().build(ssr(outDir, { edgeServerEntry: join(edge, 'entry-server.js') }))
+    const runner = await readFile(join(outDir, DENO_ADAPTER_OUTPUT.runnerEntry), 'utf-8')
+    const start = runner.indexOf('function __pyreonRequestUrl')
+    const end = runner.indexOf('const PORT')
+    expect(start).toBeGreaterThan(-1)
+    const read: string[] = []
+    const Deno = { readFile: async (u: URL) => (read.push(u.pathname), new Uint8Array([1])) }
+    const serveStatic = new Function(
+      'Deno',
+      'clientDir',
+      'MIME_TYPES',
+      `${runner.slice(start, end)}\nreturn serveStatic`,
+    )(Deno, new URL('file:///srv/client/'), {}) as (url: URL) => Promise<Response | undefined>
+    for (const p of ['/.vite/manifest.json', '/%2evite/manifest.json', '/.env']) {
+      expect(await serveStatic(new URL(`http://h${p}`))).toBeUndefined()
+    }
+    expect(read).toEqual([])
+    expect((await serveStatic(new URL('http://h/.well-known/security.txt')))?.status).toBe(200)
+    expect((await serveStatic(new URL('http://h/%E0%A4%A.js')))?.status).toBe(400)
+  })
+
   it('defaults to /assets/ and port 8000, and emits no cron block without schedules', async () => {
     const outDir = join(root, 'deno-default')
     await denoAdapter().build(ssr(outDir, { edgeServerEntry: join(edge, 'entry-server.js') }))
