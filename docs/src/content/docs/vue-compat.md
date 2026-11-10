@@ -337,6 +337,12 @@ function reactive<T extends object>(obj: T): T
 
 Creates a deeply reactive proxy backed by Pyreon's `createStore()`. Each property is backed by its own signal, so mutations trigger only the affected subscribers.
 
+As in Vue:
+
+- A ref stored in a property reads as its value and is written through on assignment (`reactive({ count })` → `state.count` is a number; `state.count = 5` sets `count.value`). Array elements keep their refs.
+- `reactive(raw)` returns the same proxy every time for the same object, and `reactive(proxy)` returns `proxy`.
+- `Map` and `Set` (top level or nested) are reactive: `get`, `has`, `size` and iteration are tracked, and `set` / `add` / `delete` / `clear` notify when they change something. Tracking is per collection, not per key, so reading `map.get('a')` also re-runs on `map.set('b', …)`.
+
 ```tsx
 const state = reactive({ count: 0, user: { name: 'Alice' } })
 
@@ -611,6 +617,7 @@ function watch<T>(
 interface WatchOptions {
   immediate?: boolean // Fire cb immediately with current value
   deep?: boolean // Ignored in Pyreon
+  flush?: 'pre' | 'post' | 'sync' // 'pre' (default) batches one tick's changes into one call; 'sync' fires per change
 }
 ```
 
@@ -650,6 +657,8 @@ state.user.name = 'Bob' // logs: "Name changed: Alice -> Bob"
 **Immediate mode:**
 
 When `immediate: true`, the callback fires synchronously with the current value before any changes occur. The `oldValue` is `undefined` on the first call.
+
+**Flush timing.** As in Vue, the callback runs after the current tick, once, however many times the source changed: `c.value = 1; c.value = 2; c.value = 3` calls it once with `(3, 0)`, and a value that ends where it started calls nothing. Pass `flush: 'sync'` to be called on every change. A write the callback makes to its own source does not call it again.
 
 ```tsx
 const count = ref(5)
