@@ -297,13 +297,6 @@ try { load() } catch (err) { return <p>{err.message}</p> }`,
       fix: 'Align `@pyreon/core` and `@pyreon/compiler` (and `@pyreon/vite-plugin`) to the same version — `pyreon upgrade` does this — and make sure only ONE `@pyreon/core` resolves (`pyreon info` reports version skew and duplicates). In the monorepo, run `bun scripts/bootstrap.ts` so the built `lib/` catches up with source.',
       fixCode:
         '// every @pyreon/* package on ONE version — the compiler\'s emit and core\'s exports move together\n// package.json\n"@pyreon/core": "0.52.0",\n"@pyreon/compiler": "0.52.0",\n"@pyreon/vite-plugin": "0.52.0"\n\n// or, in one step:\n// npx pyreon upgrade',
-      // package.json
-      '@pyreon/core': '0.52.0',
-      '@pyreon/compiler': '0.52.0',
-      '@pyreon/vite-plugin': '0.52.0',
-
-      // or, in one step:
-      // npx pyreon upgrade",
     }),
   },
   {
@@ -725,7 +718,7 @@ expect(extractDocumentTree(vnode).props).toEqual({})
 // GOOD — the real \`h()\` shape, which is what ships
 import { h } from '@pyreon/core'
 expect(extractDocumentTree(h(DocDocument, { title: 'Test' })).props.title).toBe('Test')`,
-      docs: '.agents/rules/test-environment-parity.md',
+      related: 'See `.agents/rules/test-environment-parity.md` (the test-environment parity rules the audit enforces).',
     }),
   },
   {
