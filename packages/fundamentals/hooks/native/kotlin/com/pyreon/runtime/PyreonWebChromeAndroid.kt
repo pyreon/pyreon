@@ -406,7 +406,8 @@ internal class PyreonWebChrome(private val context: Context) {
         return true
     }
 
-    private fun openExternally(url: String) {
+    // Also the main-frame off-origin link hand-off (PyreonWebView.kt).
+    fun openExternally(url: String) {
         if (!pyreonMayOpenExternally(url)) {
             Log.w(TAG, "[Pyreon] <WebView>: refused to open \"$url\" outside the view (only http(s)/mailto/tel/sms are handed to the system).")
             return

@@ -1,0 +1,16 @@
+{
+  "name": "stacks-bench-solidstart",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "vite build"
+  },
+  "dependencies": {
+    "@solidjs/meta": "0.29.4",
+    "@solidjs/router": "1.0.1",
+    "@solidjs/start": "2.2.2",
+    "nitro": "3.0.261103-rc",
+    "solid-js": "1.9.18",
+    "vite": "8.3.7"
+  }
+}

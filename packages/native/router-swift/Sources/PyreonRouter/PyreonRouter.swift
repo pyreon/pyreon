@@ -467,7 +467,10 @@ public final class PyreonRouter {
             // tab's root page; without one, on the first tab. Static helpers
             // only — no `self` read inside init (see the note above).
             let target = initialPath.last
-            let tab = target.flatMap { Self.tabFor($0, in: tabs) } ?? firstTab
+            // A REFUSED path opens on the FIRST tab: selecting the target's tab
+            // would still render its root, and when the refused path IS that
+            // root (`myapp://me` with a guarded `/me`) the guarded page shows.
+            let tab = (allowed ? target.flatMap { Self.tabFor($0, in: tabs) } : nil) ?? firstTab
             self.activeTab = tab.name
             if let target, allowed, !Self.isTabRoot(tab, target) {
                 self.path = [target]
@@ -480,7 +483,8 @@ public final class PyreonRouter {
         // Resolve any params that the initial top-of-stack path produces,
         // so apps that start on `/users/42` have `params["id"] == "42"`
         // immediately — no need to call push/replace just to populate.
-        if !initialPath.isEmpty, let resolved = self.resolve(initialPath.last!) {
+        // A REFUSED initial path never committed, so it contributes no params.
+        if allowed, !initialPath.isEmpty, let resolved = self.resolve(initialPath.last!) {
             self.params = resolved.params
         }
         // WARM links — a URL handed to an app that is already running. The
