@@ -51,6 +51,18 @@
  *    server island is a documented follow-up, not v1.
  *  - **Name-allowlisted endpoint.** The fragment endpoint renders ONLY
  *    registered islands — an attacker cannot render arbitrary components.
+ *  - **Signed, page-bound fragments.** When the server renders a marker it
+ *    asks the request's mint (`useRequestLocals()[SERVER_ISLAND_MINT]`,
+ *    installed by zero's pipeline) for a signature over the island name, the
+ *    rendering page's pathname, the encoded props and an expiry, and stamps
+ *    `data-page` + `data-sig` on the marker. The client sends them back
+ *    unchanged; zero's endpoint refuses (403) anything it did not sign and
+ *    runs the declaring page's route middleware for the fragment. A marker
+ *    rendered on the client (SPA navigation) has no signature: on a 403 the
+ *    client fetches the current page's server HTML once — through the same
+ *    gates — takes the signed marker with the same name and props from it,
+ *    and retries. Without a mint (a custom `@pyreon/server` handler) markers
+ *    are unsigned and a custom endpoint must authorize on its own.
  *  - **`cache` is opt-in.** Fragment responses default to `no-store`
  *    (they exist BECAUSE they're per-request). A `cache` option sets
  *    Cache-Control for fragments that are deferred-but-shared (e.g. a
@@ -66,6 +78,20 @@
 import type { ComponentFn, VNodeChild } from '@pyreon/core'
 import { h, isClient } from '@pyreon/core'
 import { encodeIslandProps } from './island-codec'
+import { useRequestLocals } from './middleware'
+
+/**
+ * `ctx.locals` key of the request's server-island MINT — a function that
+ * signs one marker for the page being rendered. Installed by zero's request
+ * pipeline; absent elsewhere (markers are then unsigned).
+ */
+export const SERVER_ISLAND_MINT = 'pyreon:serverIslandMint'
+
+/** Signs one marker: `props` is the marker's `data-props` value ('' for none). */
+export type ServerIslandMint = (
+  name: string,
+  props: string,
+) => Promise<{ page: string; sig: string } | null>
 
 export interface ServerIslandOptions {
   /** Unique island name — the fragment endpoint's allowlist key. */
@@ -162,11 +188,13 @@ export function serverIsland<P extends Record<string, unknown> = Record<string, 
         )
       }
     }
-    return h(
+    const propsAttr = serialized !== '{}' ? serialized : ''
+    const marker = (signed: { page: string; sig: string } | null) => h(
       'pyreon-server-island' as never,
       {
         'data-name': options.name,
-        ...(serialized !== '{}' ? { 'data-props': serialized } : {}),
+        ...(propsAttr ? { 'data-props': propsAttr } : {}),
+        ...(signed ? { 'data-page': signed.page, 'data-sig': signed.sig } : {}),
         // SELF-ACTIVATION (client islands' self-hydration precedent): the
         // marker fetches its own fragment when IT mounts — robust whether
         // the page hydrated, the route lazily mounted after activation
@@ -185,6 +213,15 @@ export function serverIsland<P extends Record<string, unknown> = Record<string, 
       } as never,
       (options.fallback ?? null) as never,
     )
+    if (!isClient) {
+      // Server render: sign the marker for this page (an async component —
+      // `renderToString` / `renderToStream` await it). No mint → unsigned.
+      const mint = useRequestLocals()[SERVER_ISLAND_MINT]
+      if (typeof mint === 'function') {
+        return (mint as ServerIslandMint)(options.name, propsAttr).then(marker) as never
+      }
+    }
+    return marker(null)
   }
   return ServerIslandMarker
 }
@@ -203,12 +240,20 @@ export function activateServerIslandElement(el: HTMLElement, base = ''): void {
   el.setAttribute('data-pyreon-si', '1')
   const name = el.getAttribute('data-name')
   if (!name) return
-  const props = el.getAttribute('data-props')
-  const qs = props ? `?props=${encodeURIComponent(props)}` : ''
-  fetch(`${base}/_pyreon/fragment/${encodeURIComponent(name)}${qs}`, {
-    headers: { Accept: 'text/html' },
-  })
+  const props = el.getAttribute('data-props') ?? ''
+  const page = el.getAttribute('data-page')
+  const sig = el.getAttribute('data-sig')
+  const get = (signed: { page: string; sig: string } | null) =>
+    fetch(fragmentUrl(base, name, props, signed), { headers: { Accept: 'text/html' } })
+  get(page && sig ? { page, sig } : null)
     .then(async (res) => {
+      // 403: the server signs fragments and this marker's signature is
+      // missing (rendered on the client) or stale. Take the signed marker
+      // from the current page's server render and retry once.
+      if (res.status === 403) {
+        const signed = await signedMarkerFromPage(name, props)
+        if (signed) res = await get(signed)
+      }
       if (!res.ok) throw new Error(`[Pyreon] fragment ${name}: HTTP ${res.status}`)
       const html = await res.text()
       if (!el.isConnected) return // route torn down mid-flight
@@ -226,4 +271,50 @@ export function activateServerIslandElement(el: HTMLElement, base = ''): void {
         console.error(`[Pyreon] server island "${name}" fragment fetch failed:`, err)
       }
     })
+}
+
+function fragmentUrl(
+  base: string,
+  name: string,
+  props: string,
+  signed: { page: string; sig: string } | null,
+): string {
+  const params: string[] = []
+  if (props) params.push(`props=${encodeURIComponent(props)}`)
+  if (signed) {
+    params.push(`page=${encodeURIComponent(signed.page)}`, `sig=${encodeURIComponent(signed.sig)}`)
+  }
+  return `${base}/_pyreon/fragment/${encodeURIComponent(name)}${params.length ? `?${params.join('&')}` : ''}`
+}
+
+/**
+ * In-flight page fetches, keyed by URL, so every unsigned marker on one page
+ * shares a single request. Each entry is removed when its fetch settles —
+ * the map holds only requests in flight.
+ */
+const pageFetches = new Map<string, Promise<string>>()
+
+async function signedMarkerFromPage(
+  name: string,
+  props: string,
+): Promise<{ page: string; sig: string } | null> {
+  if (typeof location === 'undefined' || typeof DOMParser === 'undefined') return null
+  const href = location.pathname + location.search
+  let pending = pageFetches.get(href)
+  if (!pending) {
+    pending = fetch(href, { headers: { Accept: 'text/html' } })
+      .then((r) => (r.ok ? r.text() : ''))
+      .finally(() => pageFetches.delete(href))
+    pageFetches.set(href, pending)
+  }
+  const html = await pending
+  if (!html) return null
+  const doc = new DOMParser().parseFromString(html, 'text/html')
+  for (const m of doc.querySelectorAll('pyreon-server-island[data-sig]')) {
+    if (m.getAttribute('data-name') !== name || (m.getAttribute('data-props') ?? '') !== props) continue
+    const page = m.getAttribute('data-page')
+    const sig = m.getAttribute('data-sig')
+    if (page && sig) return { page, sig }
+  }
+  return null
 }

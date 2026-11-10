@@ -179,7 +179,7 @@ export const loader = async ({ request }: LoaderContext) => {
 
 `redirect(url, status?)` throws a redirect error (it returns `never`); writing `redirect(...)` IS the throw, you do not need `throw` in front of it. Default status is `307` (Temporary Redirect, method-preserving); pass `301`/`308` for permanent moves or `302`/`303` to force GET on the target.
 
-`notFound(message?)` throws the not-found error that triggers the 404 boundary.
+`notFound(message?)` throws the not-found error. From a loader or `serverLoader` the page renders the nearest `notFoundComponent` / `_404.tsx` inside its layouts and the response is HTTP `404` (never a 500); the hydrating client and client-side navigations resolve the same not-found page.
 
 ### Loader-thrown redirects
 

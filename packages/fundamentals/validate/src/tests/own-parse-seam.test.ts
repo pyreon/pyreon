@@ -86,3 +86,42 @@ describe('own-property parse seam (pure JIT trees)', () => {
     expect(Sub.parse()).toBe(marker)
   })
 })
+
+// The OWN-PROPERTY `is`: once the verdict JIT serves a schema, `schema.is` IS
+// the verdict function — same snapshot and invalidation contract as `parse`.
+describe('own-property is (verdict JIT)', () => {
+  const ownIs = (x: unknown) => Object.hasOwn(x as object, 'is')
+
+  it('is installed by the first compile and is dropped and rebuilt with the artifacts', () => {
+    const S = s.number().int()
+    expect(ownIs(S)).toBe(false)
+    expect(S.is(200)).toBe(true)
+    expect(ownIs(S)).toBe(true)
+    // A chained derivative never inherits the receiver's verdict.
+    const derived = S.max(150)
+    expect(ownIs(derived)).toBe(false)
+    expect(derived.is(200)).toBe(false)
+    // Direct op-list change + invalidation: the stale verdict goes with it.
+    S._ops = derived._ops
+    S._invalidateCompile()
+    expect(ownIs(S)).toBe(false)
+    expect(S.is(200)).toBe(false)
+    expect(S.is(20)).toBe(true)
+    expect(S.parse(200).ok).toBe(false)
+  })
+
+  it('a shape the verdict JIT refuses keeps the prototype method', () => {
+    const S = s.string().refine((v) => v !== 'no', { message: 'nope' })
+    expect(S.is('ok')).toBe(true)
+    expect(S.is('no')).toBe(false)
+    expect(ownIs(S)).toBe(false)
+  })
+
+  it('a destructured is works once installed', () => {
+    const S = s.object({ a: s.string() })
+    S.parse({ a: 'x' })
+    const { is } = S
+    expect(is({ a: 'x' })).toBe(true)
+    expect(is({ a: 1 })).toBe(false)
+  })
+})

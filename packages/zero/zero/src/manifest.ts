@@ -243,7 +243,7 @@ plugins: [pyreon(), zero({ mode: 'ssr', adapter: denoAdapter() })]   // Deno.ser
       signature:
         'function createISRHandler(handler: (req: Request) => Promise<Response>, config: ISRConfig): ISRHandler',
       summary:
-        "Runtime ISR — on-demand SSR caching with stale-while-revalidate. Wraps an SSR handler so pages are rendered on the FIRST request, cached per-URL (or per-`cacheKey`-derived key), and served stale until expiry while a background revalidate fires. The returned `ISRHandler` is still a callable `(req) => Promise<Response>` for `Bun.serve({ fetch: ... })`, but ALSO exposes imperative invalidation: `.revalidateNow(key)` drops one entry (returns `{ dropped: boolean }`), `.revalidateAll()` drops everything (when the store implements `clear()`), and `.revalidateTag(tag)` drops every entry recorded under a tag (returns `{ dropped: number }`) — pair with `config.tagsForRequest(req) => string[]`, which records tags at cache-SET time, for CMS-webhook group invalidation without path enumeration. `config.store` swaps the backing (`createMemoryStore` default; `createFsStore(dir)` survives restarts on a single box; Redis/KV for multi-instance). Pair with webhooks for CMS-driven cache busting — no stale window between content update and propagation. Distinct from build-time ISR (per-route `revalidate` export + `Adapter.revalidate`): runtime ISR caches at request time; build-time ISR triggers platform rebuilds. They can coexist: a `mode: 'isr'` app with per-route `revalidate` exports gets BOTH.",
+        "Runtime ISR — on-demand SSR caching with stale-while-revalidate. Wraps an SSR handler so pages are rendered on the FIRST request, cached per-URL (or per-`cacheKey`-derived key), and served stale until expiry while a background revalidate fires. An entry whose server-island signatures are past half their lifetime (`x-pyreon-island-expires`, stored with the entry) is re-rendered instead of served, so a cached page never hands out fragments that are about to be refused. The returned `ISRHandler` is still a callable `(req) => Promise<Response>` for `Bun.serve({ fetch: ... })`, but ALSO exposes imperative invalidation: `.revalidateNow(key)` drops one entry (returns `{ dropped: boolean }`), `.revalidateAll()` drops everything (when the store implements `clear()`), and `.revalidateTag(tag)` drops every entry recorded under a tag (returns `{ dropped: number }`) — pair with `config.tagsForRequest(req) => string[]`, which records tags at cache-SET time, for CMS-webhook group invalidation without path enumeration. `config.store` swaps the backing (`createMemoryStore` default; `createFsStore(dir)` survives restarts on a single box; Redis/KV for multi-instance). Pair with webhooks for CMS-driven cache busting — no stale window between content update and propagation. Distinct from build-time ISR (per-route `revalidate` export + `Adapter.revalidate`): runtime ISR caches at request time; build-time ISR triggers platform rebuilds. They can coexist: a `mode: 'isr'` app with per-route `revalidate` exports gets BOTH.",
       example: `import { createISRHandler, createServer } from '@pyreon/zero/server'
 
 const ssrHandler = createServer({ routes })
@@ -654,13 +654,14 @@ const user = useRequestLocals().user as User | null`,
     {
       name: 'defineAction',
       kind: 'function',
-      signature: 'function defineAction<T>(handler: (ctx: ActionContext) => T | Promise<T>): Action<T>',
+      signature: 'function defineAction<T>(handler: (ctx: ActionContext) => T | Promise<T>): Action<T>\nfunction defineAction<S extends StandardSchemaV1, T>(input: S, handler: (input: InferOutput<S>, ctx: ActionContext) => T | Promise<T>): Action<T | ActionFailure<ActionInputError>, InferInput<S>>',
       summary:
-        'Define a server action (import from `@pyreon/zero/actions`). Export it from a route as `action` and submit it with `<Form action={action}>` — it then works as a plain HTML form post WITHOUT JavaScript (the server runs it, then answers 303 for a `redirect()` or re-renders the page with the result) and is enhanced to `fetch` when JavaScript runs. The result is also a callable that POSTs JSON to `/_zero/actions/<id>`. zero\'s Vite plugin derives a stable id and strips the handler (and imports only it used) from the client bundle. Same-origin check + 1 MiB body limit (`createServer({ actions: { corsOrigins, bodyLimit } })`); runs after app and route middleware.',
+        'Define a server action (import from `@pyreon/zero/actions`). Export it from a route as `action` and submit it with `<Form action={action}>` — it then works as a plain HTML form post WITHOUT JavaScript (the server runs it, then answers 303 for a `redirect()` or re-renders the page with the result) and is enhanced to `fetch` when JavaScript runs. The result is also a callable that POSTs JSON to `/_zero/actions/<id>`. zero\'s Vite plugin derives a stable id and strips the handler (and imports only it used) from the client bundle. Same-origin check + 1 MiB body limit (`createServer({ actions: { corsOrigins, bodyLimit } })`); runs after app and route middleware. **Typed input:** `defineAction(schema, handler)` validates the input with any Standard Schema (zod, valibot, arktype, `@pyreon/validate`) before the handler runs; the handler receives the parsed OUTPUT, and an invalid input never reaches it — the action returns `fail(422, { error: \'Invalid input\', issues, fields })`, so a page reads `useSubmission(action).result()?.fields?.title`. The input is the JSON body, or the form fields as an object (a repeated name becomes an array; values stay strings / `File`s — use coercing schemas).',
       mistakes: [
         'Exporting a plain `async function action()` from a route — it is not a defineAction() result, so it is refused with a 500 AND its body would ship to the client; wrap it: `export const action = defineAction(async (ctx) => …)`',
         'Returning an error object with status 200 for a validation failure — return `fail(422, data)` so the response carries the status and `useSubmission().result()` gets the data',
         'Throwing an Error for a user-facing message — its message is replaced by "Internal server error" in production; use `fail()`',
+        'With `defineAction(schema, handler)`, a non-coercing number/boolean schema on a FORM post — form values arrive as strings; use `z.coerce.number()` / `s.coerce.number()` (JSON calls keep their types)',
         'Using `redirect()` with a 307 expecting a re-POST — page form posts always answer 303 so the browser follows with a GET',
       ],
       example: `import { redirect } from '@pyreon/router'
@@ -686,7 +687,7 @@ export default function NewPost() {
       name: 'Form',
       kind: 'component',
       signature:
-        'function Form<T>(props: { action: Action<T>; revalidate?: boolean | readonly string[]; resetOnSuccess?: boolean; onSuccess?: (data: ActionData<T>) => void; children?: VNodeChild; [attr: string]: unknown }): VNodeChild',
+        'function Form<T, TInput = unknown>(props: { action: Action<T, TInput>; revalidate?: boolean | readonly string[]; resetOnSuccess?: boolean; onSuccess?: (data: ActionData<T>) => void; children?: VNodeChild; [attr: string]: unknown }): VNodeChild',
       summary:
         'A `<form method="post">` bound to a server action (`@pyreon/zero/actions`). Renders `action="?<page query>&_action=<id>"` — a query-only URL, so the POST targets the current page with base path, locale prefix and query intact, identically on server and client. With JavaScript it intercepts submit, sends the same request via `fetch`, updates `useSubmission(action)`, then on success re-runs the current route\'s loaders (`revalidate`, default `true`; `false` opts out; an array of loaderKey values invalidates only those) and resets its fields (`resetOnSuccess`). A `redirect()` navigates client-side.',
       mistakes: [
@@ -701,7 +702,7 @@ export default function NewPost() {
     {
       name: 'useSubmission',
       kind: 'hook',
-      signature: 'function useSubmission<T>(action: Action<T>): Submission<T>',
+      signature: 'function useSubmission<T, TInput = unknown>(action: Action<T, TInput>): Submission<T>',
       summary:
         'Reactive state of an action\'s submissions (`@pyreon/zero/actions`): `pending()`, `input()` (the FormData in flight — render it optimistically), `result()` (return value or `fail()` data), `status()`, `error()`, plus `submit(data, { revalidate })` and `reset()`. Every call for the same action shares one state on the client. After a no-JS form post the server-rendered result is hydrated, so the page shows it with and without JavaScript. On the server the state is per request.',
       mistakes: [

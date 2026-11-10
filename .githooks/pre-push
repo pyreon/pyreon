@@ -273,9 +273,9 @@ echo
 # run_tests <step-name> <budget> <bun-run-args>
 # bun's filter errors when no package in the filtered set has a `test`
 # script. The planner already drops those, but keep tolerating the message so
-# a renamed script cannot turn a no-op into a red push. bun 1.4 changed it
-# from "No packages matched the filter" to "No workspace packages matched the
-# filter" — match the stable suffix.
+# a renamed script cannot turn a no-op into a red push. bun 1.4.0 says "No
+# workspace packages matched the filter", bun 1.4.4 'Script "test" not found
+# in N packages' — match both.
 run_tests() {
   step_name="$1"
   step_budget="$2"
@@ -287,7 +287,7 @@ run_tests() {
   if [ $TEST_EXIT -eq 124 ]; then
     return 1
   elif [ $TEST_EXIT -ne 0 ]; then
-    if grep -q "packages matched the filter" "$TEST_OUTPUT_FILE"; then
+    if grep -qE 'packages matched the filter|Script "test" not found in' "$TEST_OUTPUT_FILE"; then
       echo "[pyreon pre-push] (no test scripts in the selected packages — ok)"
     else
       echo

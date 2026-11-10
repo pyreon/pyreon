@@ -18,11 +18,21 @@ import type * as Jit from './jit'
 
 export let tryCompileJit: typeof Jit.tryCompileJit = () => null
 export let tryCompileJitCheck: typeof Jit.tryCompileJitCheck = () => null
+export let tryCompileJitFast: typeof Jit.tryCompileJitFast = () => null
+
+/**
+ * The FAILURE sentinel a `'fast'`-mode validator returns (see
+ * `JitFastValidator` in `./jit`). Lives here, not in `./jit`, so the parse
+ * seam in `schema.ts` can compare against it without importing the JIT.
+ */
+export const JIT_FAIL: unique symbol = Symbol('pyreon.validate.fail')
 
 export function installJit(jit: {
   tryCompileJit: typeof Jit.tryCompileJit
   tryCompileJitCheck: typeof Jit.tryCompileJitCheck
+  tryCompileJitFast: typeof Jit.tryCompileJitFast
 }): void {
   tryCompileJit = jit.tryCompileJit
   tryCompileJitCheck = jit.tryCompileJitCheck
+  tryCompileJitFast = jit.tryCompileJitFast
 }

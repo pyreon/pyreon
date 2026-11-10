@@ -24,6 +24,8 @@ import { createSelector, signal } from '@pyreon/reactivity'
 import { mount } from '@pyreon/runtime-dom'
 import { createVaporApp, nextTick } from 'virtual:vue-vapor-runtime'
 import RowsVapor, { onRowsVaporReady } from 'virtual:rows-vue-vapor'
+import { createRoot as octaneCreateRoot, flushSync as octaneFlushSync } from 'octane'
+import { App as OctaneRowsApp } from './crossover-octane.tsrx'
 import type { NumericText, Row } from '../runner'
 import { buildRows, buildRowsWith, resetRng } from '../runner'
 
@@ -36,7 +38,9 @@ type Driver = {
   churn: (n: number) => void | Promise<void>
 }
 
-const ROWS = 1_000
+/** `?swapRows=N` (default 1,000): the crossover board also swaps at 100. */
+const ROWS = Number(new URL(location.href).searchParams.get('swapRows') ?? 1_000)
+const LAST = ROWS - 2
 
 function idsOf(host: HTMLElement): number[] {
   return [...host.querySelectorAll('tr')].map((tr) => Number(tr.firstChild?.textContent))
@@ -66,8 +70,8 @@ function setupPyreon(host: HTMLElement): Driver {
   function __swapPyreon(): void {
     const current = [...rows()]
     const a = current[1] as ReactiveRow
-    current[1] = current[998] as ReactiveRow
-    current[998] = a
+    current[1] = current[LAST] as ReactiveRow
+    current[LAST] = a
     rows.set(current)
   }
   const churn = (n: number) => {
@@ -89,8 +93,8 @@ async function setupVapor(host: HTMLElement): Promise<Driver> {
   async function __swapVapor(): Promise<void> {
     const updated = [...currentRows]
     const tmp = updated[1] as Row
-    updated[1] = updated[998] as Row
-    updated[998] = tmp
+    updated[1] = updated[LAST] as Row
+    updated[LAST] = tmp
     rows.value = currentRows = updated
     await nextTick()
   }
@@ -126,20 +130,45 @@ function setupVanilla(host: HTMLElement): Driver {
   host.appendChild(table)
   function __swapVanilla(): void {
     const tmp = rows[1] as Row
-    rows[1] = rows[998] as Row
-    rows[998] = tmp
+    rows[1] = rows[LAST] as Row
+    rows[LAST] = tmp
     const tmpTr = trs[1] as HTMLElement
-    trs[1] = trs[998] as HTMLElement
-    trs[998] = tmpTr
+    trs[1] = trs[LAST] as HTMLElement
+    trs[LAST] = tmpTr
     const tmpTd = labelTds[1] as HTMLElement
-    labelTds[1] = labelTds[998] as HTMLElement
-    labelTds[998] = tmpTd
+    labelTds[1] = labelTds[LAST] as HTMLElement
+    labelTds[LAST] = tmpTd
     tbody.insertBefore(trs[1] as HTMLElement, trs[2] as HTMLElement)
-    tbody.insertBefore(trs[998] as HTMLElement, (trs[999] as HTMLElement | undefined) ?? null)
+    tbody.insertBefore(trs[LAST] as HTMLElement, (trs[LAST + 1] as HTMLElement | undefined) ?? null)
   }
   // Vanilla's renderAll rebuilds the table from scratch, so its board history
   // never touches the live tbody it swaps in — churn is a no-op by construction.
   return { swap: __swapVanilla, flush: () => host.getBoundingClientRect(), ids: () => idsOf(host), churn: () => {} }
+}
+
+async function setupOctane(host: HTMLElement): Promise<Driver> {
+  // The crossover board's own Octane arm (keyed `@for`, `flushSync` commit).
+  const root = octaneCreateRoot(host)
+  const setters = await new Promise<{ setRows: (rows: Row[]) => void }>((r) =>
+    root.render(OctaneRowsApp, { onMounted: r }),
+  )
+  const setRows = (rows: Row[]) => octaneFlushSync(() => setters.setRows(rows))
+  let currentRows = buildRows(ROWS)
+  setRows(currentRows)
+  function __swapOctane(): void {
+    const updated = [...currentRows]
+    const tmp = updated[1] as Row
+    updated[1] = updated[LAST] as Row
+    updated[LAST] = tmp
+    setRows((currentRows = updated))
+  }
+  const churn = (n: number) => {
+    for (let i = 0; i < n; i++) {
+      setRows((currentRows = buildRows(ROWS)))
+      host.getBoundingClientRect()
+    }
+  }
+  return { swap: __swapOctane, flush: () => host.getBoundingClientRect(), ids: () => idsOf(host), churn }
 }
 
 export async function setupSwapProfile(makeHost: () => HTMLElement): Promise<void> {
@@ -148,6 +177,7 @@ export async function setupSwapProfile(makeHost: () => HTMLElement): Promise<voi
     pyreon: setupPyreon(makeHost()),
     vanilla: setupVanilla(makeHost()),
     vapor: await setupVapor(makeHost()),
+    octane: await setupOctane(makeHost()),
   }
   ;(globalThis as Record<string, unknown>).__swapBench = drivers
 }

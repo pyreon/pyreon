@@ -171,6 +171,15 @@ export const SCENARIOS: Scenario[] = [
     imports: ['css'],
   },
   {
+    // Locks the defineStore / defineSchemaStore split: a setup-only store must
+    // not carry schema mode or the `@pyreon/validation` bridge. Re-merging
+    // schema dispatch into `defineStore` puts both back.
+    id: '@pyreon/store::defineStore',
+    pkg: '@pyreon/store',
+    dir: 'fundamentals/store',
+    imports: ['defineStore'],
+  },
+  {
     // Locks the `mini` entry WITHOUT the runtime JIT (~3.5 KB gz): the JIT is
     // installed by the main entry or `enableJit()` from `@pyreon/validate/jit`,
     // never reached from `mini`. A static `./jit` import in `core/schema.ts`

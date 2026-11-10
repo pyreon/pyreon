@@ -1666,6 +1666,7 @@
         "@pyreon/vitest-config": "workspace:*",
         "@vitest/browser": "^5.0.5",
         "@vitest/browser-playwright": "^5.0.5",
+        "parse5": "^7.3.0",
       },
       "peerDependencies": {
         "@pyreon/core": "workspace:^",
@@ -2642,6 +2643,7 @@
         "@pyreon/permissions": "workspace:*",
         "@pyreon/reactivity": "workspace:*",
         "@pyreon/rocketstyle": "workspace:*",
+        "@pyreon/router": "workspace:*",
         "@pyreon/runtime-dom": "workspace:*",
         "@pyreon/styler": "workspace:*",
         "@pyreon/ui-core": "workspace:*",
