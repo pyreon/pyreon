@@ -6,7 +6,7 @@
 - Engine seam: `CrdtAdapter`/`CrdtDoc`/`CrdtMap`, with `FakeCrdtAdapter` as the test double.
 - `PyreonCrdtAdapter`/`PyreonCrdtDoc` (main entry): a dependency-free last-writer-wins scalar-map engine (Lamport clock, actor-id tie-break) that PMTC can lower to native. `connectPyreonSync` is its JSON transport; `createNativeSyncHost` bridges it to a native runtime. Rich text/lists stay on Yjs.
 - `@pyreon/sync/yjs`: `createYjsDoc`, `syncedText` (Y.Text), `syncedList` (Y.Array, render with keyed `<For>`), `syncedAwareness` (ephemeral presence/cursors), `persistViaIndexedDB`, `connectViaBroadcastChannel`, `connectViaWebSocket`.
-- `@pyreon/sync/server`: `createSyncServer({ authorize? })` with a per-room authoritative Y.Doc. The default allows everything; production must supply `authorize`.
+- `@pyreon/sync/server`: `createSyncServer({ authorize?, allowedOrigins? })` with a per-room authoritative Y.Doc. The default allows everything; production must supply `authorize`. A browser upgrade whose `Origin` is not same-origin with `Host` (or listed in `allowedOrigins`) is closed 4403 BEFORE `authorize` (cross-site WebSocket hijacking guard); no `Origin` = non-browser client, unaffected. `AuthorizeContext.origin` carries the header.
 
 ## Update loop
 

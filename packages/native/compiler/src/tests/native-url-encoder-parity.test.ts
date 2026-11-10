@@ -2,6 +2,7 @@ import { execFileSync } from 'node:child_process'
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { encodePathParam } from '@pyreon/http'
 import { describe, expect, it } from 'vitest'
 import { isKotlincAvailable, isSwiftcAvailable } from '../validate'
 
@@ -9,7 +10,8 @@ import { isKotlincAvailable, isSwiftcAvailable } from '../validate'
  * The emit for a RUNTIME path param interpolates
  * `PyreonURL.encodePathParam(value)` into the URL, so that helper is the
  * native half of a contract whose other half is the web's
- * `encodeURIComponent(String(value))` (`@pyreon/http`'s `applyPathParams`).
+ * `encodePathParam(String(value))` (`@pyreon/http`'s `applyPathParams`):
+ * `encodeURIComponent`, with a value of exactly `.` / `..` made inert.
  *
  * ONE source file produces both URLs. If the two encoders disagree by a single
  * character, the same generated call reaches a different endpoint on Android
@@ -18,7 +20,7 @@ import { isKotlincAvailable, isSwiftcAvailable } from '../validate'
  * missing feature; it is a wrong request.
  *
  * So this asserts the contract by EXECUTION rather than by reading the code:
- * the corpus is generated from the real `encodeURIComponent`, the encoder is
+ * the corpus is generated from the web's real `encodePathParam`, the encoder is
  * extracted VERBATIM from the shipped runtime source (never re-typed here, so
  * it cannot drift away from what ships), compiled by the real toolchain, run,
  * and compared byte for byte.
@@ -124,6 +126,12 @@ const STRINGS: string[] = [
   'Ω',
   'naïve café',
   '../../etc/passwd',
+  // A whole-value dot segment: `encodeURIComponent` leaves it intact and the
+  // URL parser resolves it, so all three encoders make it inert (`%252E`).
+  '.',
+  '..',
+  '...',
+  '.a',
   ' ',
   '​',
   ' ',
@@ -131,7 +139,8 @@ const STRINGS: string[] = [
 /** `PathParams` is `Record<string, string | number>`, so numbers too. */
 const NUMBERS: number[] = [0, 1, 42, -7, 1.5, -0.25, 2, 1e6, 123456789, 3.14159, 0.5]
 
-const expectedFor = (v: string | number): string => encodeURIComponent(String(v))
+// The WEB's encoder, executed — `encodeURIComponent` plus the dot-segment rule.
+const expectedFor = (v: string | number): string => encodePathParam(String(v))
 
 /**
  * Integral values take the Int overload -- the one the compiler will pick for

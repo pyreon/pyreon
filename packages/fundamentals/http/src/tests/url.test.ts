@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { applyPathParams, buildQuery, buildUrl, isAbsoluteUrl, joinUrl } from '../url'
+import { createHttp } from '../client'
+import { bearer } from '../middleware'
+import { createFetchTransport } from '../transport'
+import { applyPathParams, buildQuery, buildUrl, encodePathParam, isAbsoluteUrl, joinUrl } from '../url'
 
 describe('isAbsoluteUrl', () => {
   it('recognises schemes', () => {
@@ -33,6 +36,23 @@ describe('joinUrl', () => {
   })
 })
 
+describe('applyPathParams — the shared placeholder RegExp', () => {
+  // The `g` RegExp is ONE module-level instance. These lock the two ways a
+  // shared `lastIndex` could leak between calls.
+  it('a throw from a missing param does not disturb the next call', () => {
+    expect(() => applyPathParams('/a/:x/b/:y', { x: 1 })).toThrow(/needs the parameter "y"/)
+    expect(applyPathParams('/u/:id', { id: 7 })).toBe('/u/7')
+    expect(applyPathParams('/p/:a/:b', { a: 'q', b: 'r' })).toBe('/p/q/r')
+  })
+
+  it('a re-entrant call from a param toString sees every placeholder', () => {
+    const inner = { toString: () => applyPathParams('/in/:k/:j', { k: 'K', j: 'J' }) }
+    expect(applyPathParams('/out/:a/:b', { a: inner as unknown as string, b: 'B' })).toBe(
+      `/out/${encodeURIComponent('/in/K/J')}/B`,
+    )
+  })
+})
+
 describe('applyPathParams', () => {
   it('substitutes and URL-encodes', () => {
     expect(applyPathParams('/users/:id', { id: 42 })).toBe('/users/42')
@@ -41,6 +61,37 @@ describe('applyPathParams', () => {
 
   it('encodes a value that would otherwise break out of its segment', () => {
     expect(applyPathParams('/users/:id', { id: 'a/b?c' })).toBe('/users/a%2Fb%3Fc')
+  })
+
+  // `encodeURIComponent` leaves `.` alone, and the URL parser fetch uses
+  // resolves a `.` / `..` SEGMENT — so the request (with its credentials)
+  // reached a different endpoint. `%2E` is no fix: WHATWG treats it as a dot
+  // too. The oracle is the real URL parser, not the string.
+  it.each([
+    ['/orgs/:org/members/:user/sessions', { org: 'acme', user: '..' }, '/v1/orgs/acme/members/%252E%252E/sessions'],
+    ['/projects/:id', { id: '.' }, '/v1/projects/%252E'],
+    ['/users/:id/posts', { id: '..' }, '/v1/users/%252E%252E/posts'],
+  ])('a dot-segment value cannot leave its segment: %s %o', (path, params, expected) => {
+    const url = buildUrl('https://api.invalid/v1', path, params, undefined)
+    expect(new URL(url).pathname).toBe(expected)
+  })
+
+  it('values that merely CONTAIN dots are plain encodeURIComponent', () => {
+    expect(encodePathParam('...')).toBe('...')
+    expect(encodePathParam('.a')).toBe('.a')
+    expect(encodePathParam('v1.2')).toBe('v1.2')
+    expect(applyPathParams('/f/:name.json', { name: 'x' })).toBe('/f/x.json')
+  })
+
+  it('the request a client sends with a bearer token stays on its endpoint', async () => {
+    const seen: string[] = []
+    const fake = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      seen.push(`${init?.method} ${new Request(input).url}`)
+      return new Response('{}', { headers: { 'content-type': 'application/json' } })
+    }) as typeof fetch
+    const api = createHttp({ baseUrl: 'https://api.invalid/v1', transport: createFetchTransport(fake), use: [bearer(() => 'T')] })
+    await api.delete('/orgs/:org/members/:user/sessions', { params: { org: 'acme', user: '..' } })
+    expect(seen).toEqual(['DELETE https://api.invalid/v1/orgs/acme/members/%252E%252E/sessions'])
   })
 
   it('throws — rather than leaving a literal ":id" — when a param is missing', () => {

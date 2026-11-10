@@ -25,6 +25,14 @@ import {
 import { middlewareExpr, middlewareNames, scanClientMiddleware, type ClientMiddleware } from './middleware'
 import { scanCallRoles } from './call'
 import { encodeForm } from '../body'
+// The web's OWN path-segment encoder (`applyPathParams` calls it), imported
+// rather than re-spelled: the native literal path and the web must agree
+// byte-for-byte, because one source file produces both URLs — `'a b'` must be
+// `/users/a%20b` on every platform, and a `.` / `..` value must be made inert
+// on every platform. Encoding at COMPILE time is free for a literal, so the
+// emitted URL is a fully-encoded constant. Un-encoded substitution was not
+// cosmetic: `#` truncated the URL, `?` / `&` injected query structure.
+import { encodePathParam } from '../url'
 
 // biome-ignore lint/suspicious/noExplicitAny: ESTree nodes are read structurally, as in the compiler.
 type AnyNode = any
@@ -95,25 +103,6 @@ function readResponseSchemaRef(node: AnyNode | undefined): { binding: string; ar
 
 
 
-
-
-/**
- * Encode a `:param` value for a URL PATH segment.
- *
- * This is deliberately the SAME platform primitive the web runtime calls
- * (`@pyreon/http`'s `applyPathParams` → `encodeURIComponent`), not an
- * approximation of it. The two sides must agree byte-for-byte, because one
- * source file produces both URLs: a hand-rolled encoder here would make
- * `getUser({ params: { id: 'a b' } })` request `/users/a%20b` on the web and
- * something else on iOS/Android, silently. Encoding at COMPILE time is free —
- * the native path only ever substitutes LITERALS — so the emitted URL is a
- * fully-encoded constant.
- *
- * Un-encoded substitution was not merely cosmetic: a value containing `#`
- * truncated the URL at the fragment, and `?` / `&` injected query structure
- * into a path segment.
- */
-const encodePathParam = (value: string): string => encodeURIComponent(value)
 
 /**
  * The `:param` pattern, and it must stay the web's EXACTLY.
