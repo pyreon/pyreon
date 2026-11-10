@@ -116,7 +116,10 @@ export class EffectScope {
   stop(): void {
     if (!this._active) return
     if (this._effects) {
-      for (const e of this._effects) typeof e === 'function' ? e() : e.dispose()
+      for (const e of this._effects) {
+        if (typeof e === 'function') e()
+        else e.dispose()
+      }
     }
     this._effects = null
     this._updateHooks = null

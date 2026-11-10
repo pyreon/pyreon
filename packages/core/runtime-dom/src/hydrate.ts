@@ -16,7 +16,7 @@
  * Falls back to mountChild() whenever DOM structure doesn't match the VNode.
  */
 
-import type { ComponentFn, LazyComponent, RefProp, VNode, VNodeChild } from '@pyreon/core'
+import type { ComponentFn, LazyComponent, LifecycleHooks, RefProp, VNode, VNodeChild } from '@pyreon/core'
 import {
   _setSuspenseHydrating,
   dispatchToErrorBoundary,
@@ -27,7 +27,6 @@ import {
   reportError,
   _runHooked,
   _takeHooks,
-  type LifecycleHooks,
   SuspenseBoundaryContext,
   useContext,
 } from '@pyreon/core'

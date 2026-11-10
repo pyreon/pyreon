@@ -1,6 +1,7 @@
 import type {
   ComponentFn,
   ForProps,
+  LifecycleHooks,
   NativeItem,
   PortalProps,
   RefProp,
@@ -19,7 +20,6 @@ import {
   reportError,
   _runHooked,
   _takeHooks,
-  type LifecycleHooks,
   SuspenseBoundaryContext,
   useContext,
 } from '@pyreon/core'
