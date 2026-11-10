@@ -531,8 +531,10 @@ function mountComponent(
   //
   // So: a leak-class risk surface across a public API, for a win that is not
   // measurable. Re-open only with a measurement that clears ±2% on this
-  // benchmark. Companion note at the hooks allocation in `@pyreon/core`'s
-  // `runWithHooks`.
+  // benchmark. That verdict is about SPEED and the scope. The hooks object IS
+  // now lazy (`_runHooked` in `@pyreon/core`), for RETAINED HEAP: it lives as
+  // long as the component, and its lazy design needs no hot-path branch
+  // (registration is rare, unlike scope/owner reads).
   const prevOwner = getContextOwner()
   const scope = effectScope()
   scope._parent = prevOwner

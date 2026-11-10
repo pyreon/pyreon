@@ -122,6 +122,7 @@ Framework packages emit counters via `globalThis.__pyreon_count__?.('name')` wit
 
 Signal ~152 B, signal + effect ~690 B, signal + computed ~688 B (a computed is ≈3.5× a signal — prefer plain signals), `effectScope` ~64 B (node 26, 2026-11). Measure with `bun run measure-memory` under `NODE_ENV=production`.
 
+- **Per-component retained heap.** A component that registers no lifecycle hook shares the frozen `EMPTY_HOOKS` (`_runHooked` / `_takeHooks` in `@pyreon/core`; the setup frame starts as `PENDING_HOOKS` and materialises on first registration). One with no unmount work returns `leanUnmount(scope, subtree)` instead of a closure over `mountComponent`'s whole context, and `EffectScope.add` takes bare disposer functions (no `{ dispose }` wrapper per binding). Measured on the 2,047-component deep tree: 870.6 → ~723–747 KB retained, and 601 KB together with the static-prop fold (Solid 206 KB). Locked by `lazy-hooks.test.ts` (core) and `lean-component-unmount.test.ts` (runtime-dom).
 - V8 gives `[]` a 16-slot backing store on its first `push` (184 B retained for one element, against 56 B for `[x]`). Long-lived per-owner arrays must not keep that slack: owners keep an exact-size copy of their first-run deps (`exactDeps` in `tracking.ts`), and the `onCleanup` collector and `EffectScope._effects` start from `[x]`.
 
 ### Introspection (dev/test, `@pyreon/reactivity`)
