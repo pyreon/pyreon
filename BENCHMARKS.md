@@ -513,3 +513,5 @@ cd packages/fundamentals/validate && bun bench/validation.ts   # likewise store,
 Overnight-only suites: `bun bench-ssr.ts --wait-quiet 4 && bun bench-charts-bundle.ts` (in `examples/benchmark`), `cd ../real-bench && bun bench.ts --repeat 4 --wait-quiet 4`, `cd ../form-bench && bun bench-form.ts --repeat 3 --wait-quiet 4`, and from the root `bun run bench:ssr-cross && bun run bench:head && bun scripts/bench/core/styler.ts`.
 
 Every fundamentals package: `cd packages/fundamentals/<pkg> && NODE_ENV=production bun bench/<file>.ts` (the package's `bench*` script).
+
+Multi-library head-to-heads (shared harness `scripts/bench/rivals-harness.ts`: one process per op × arm × round, cluster-bootstrap CI95 over processes; not yet in the tables above): `bun run bench:rivals` in `packages/fundamentals/{i18n,machine,query,dnd}` (i18n vs i18next / FormatJS / vue-i18n / Lingui / Paraglide; machine vs XState / Robot; query vs react-query / SWR / Apollo, happy-dom; dnd vs dnd-kit, happy-dom), and `bun run bench:styler-floors` from the root (styler vs Emotion / goober with vanilla-extract, StyleX and Tailwind as non-ranking zero-runtime floors).
