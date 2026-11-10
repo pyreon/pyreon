@@ -1,0 +1,39 @@
+{
+  "id": "astro",
+  "label": "Astro 7 (@astrojs/node standalone, Preact island)",
+  "docs": [
+    "https://docs.astro.build/en/guides/on-demand-rendering/",
+    "https://docs.astro.build/en/guides/actions/",
+    "https://docs.astro.build/en/reference/modules/astro-actions/",
+    "https://docs.astro.build/en/guides/integrations-guide/node/",
+    "https://docs.astro.build/en/guides/integrations-guide/preact/",
+    "https://docs.astro.build/en/guides/framework-components/"
+  ],
+  "packages": [
+    "astro",
+    "@astrojs/node",
+    "@astrojs/preact",
+    "preact"
+  ],
+  "build": [
+    "npm",
+    "run",
+    "build"
+  ],
+  "start": [
+    "node",
+    "./dist/server/entry.mjs"
+  ],
+  "dataFile": "src/lib/data.ts",
+  "hydration": "island",
+  "streaming": "streamed (Astro renders on-demand pages as a chunked stream by default; experimentalDisableStreaming not set)",
+  "notes": [
+    "No compression: the @astrojs/node standalone server sends identity bodies even when the client sends Accept-Encoding: gzip/br (HTML and /_astro assets alike).",
+    "Per request: the standalone node:http server runs Astro's app.render() \u2014 route match, the (empty) middleware chain, frontmatter (one listItems()/getItem() await), then streams the rendered page in chunks. /_astro/* assets are served from dist/client with immutable cache headers.",
+    "Form: Astro Actions with accept:'form' and no input validator (handler gets FormData; validateName() is the rule). The form posts to ?_action=addItem; the page reads Astro.getActionResult() \u2014 error \u2192 re-render with HTTP 400 and #form-error (ActionError BAD_REQUEST message), success \u2192 Astro.redirect (302) to /items/:id. Works without JS; there is no client-side enhancement (plain full-page POST).",
+    "The node adapter enables sessions with filesystem storage by default at build; nothing in this app reads Astro.session, so no session cookie or file I/O happens per request.",
+    "Only the Counter (Preact, client:load) ships JS: preact runtime + hooks + @preact/signals (pulled in by @astrojs/preact's client renderer) + the island; the page also inlines Astro's astro-island loader script.",
+    "Links are plain <a> (Astro's link primitive); no prefetch by default (prefetch is opt-in in Astro config).",
+    "Telemetry disabled via ASTRO_TELEMETRY_DISABLED=1 in the npm scripts and the harness env."
+  ]
+}

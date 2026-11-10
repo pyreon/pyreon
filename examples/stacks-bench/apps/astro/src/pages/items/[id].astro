@@ -1,0 +1,17 @@
+---
+// https://docs.astro.build/en/guides/on-demand-rendering/
+// https://docs.astro.build/en/guides/routing/#on-demand-dynamic-routes
+import Layout from '../../layouts/Layout.astro'
+import { formatPrice, getItem } from '../../lib/data'
+
+const item = await getItem(Number(Astro.params.id))
+if (!item) {
+  return new Response(null, { status: 404, statusText: 'Not found' })
+}
+---
+<Layout>
+  <h1 id="item-name">{item.name}</h1>
+  <p>{item.description}</p>
+  <p class="price">{formatPrice(item.price)}</p>
+  <a href="/items">Back</a>
+</Layout>
