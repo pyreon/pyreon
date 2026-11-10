@@ -491,6 +491,27 @@ function diagnoseReactivePropCall(
   )
 }
 
+/**
+ * The props object a component runs with — the ONE builder shared by
+ * `mountComponent` and `hydrateComponent`, so the two paths cannot drift.
+ *
+ * Positional children (`h(Comp, props, ...children)`) are merged into
+ * `props.children` by DESCRIPTOR copy (`mergeProps`), then compiler-emitted
+ * `_rp(() => expr)` thunks become getters (`makeReactiveProps`). An object
+ * spread here would fire every getter already on `vnode.props` — e.g. a
+ * component forwarding its own props with `h(Inner, props, 'label')` — and
+ * freeze the value, so the child would stop tracking the signal.
+ */
+export function componentProps(vnode: VNode): Record<string, unknown> {
+  const props = vnode.props as Record<string, unknown>
+  const children = vnode.children ?? []
+  const raw =
+    children.length > 0 && props.children === undefined
+      ? mergeProps(props, { children: children.length === 1 ? children[0] : children })
+      : props
+  return raw === EMPTY_PROPS ? raw : makeReactiveProps(raw)
+}
+
 function mountComponent(
   vnode: VNode & { type: ComponentFn },
   parent: Node,
@@ -557,36 +578,7 @@ function mountComponent(
     _mountingStack!.push(compId)
   }
 
-  // Merge vnode.children into props.children if not already set.
-  //
-  // Descriptor-copy preserves getter-shaped reactive props (the compiler-emitted
-  // `_rp(() => signal())` wrappers that `makeReactiveProps` converts to getters).
-  // A plain `{ ...vnode.props, children }` spread would fire every getter HERE
-  // and store the resolved value as a static data property, breaking
-  // signal-driven reactivity for every prop the component reads in a tracking
-  // scope — the bug-class root for any component called via the canonical
-  // `h(Comp, props, ...children)` shape with reactive props.
-  const children = vnode.children ?? []
-  let rawProps: Record<string, unknown>
-  if (
-    children.length > 0 &&
-    (vnode.props as Record<string, unknown>).children === undefined
-  ) {
-    // `mergeProps` copies own DESCRIPTORS (not values) so reactive getter props
-    // on vnode.props survive the merge. `vnode.props` is always a non-null object
-    // here (h() never produces null props; EMPTY_PROPS is the sentinel).
-    rawProps = mergeProps(vnode.props as Record<string, unknown>, {
-      children: children.length === 1 ? children[0] : children,
-    })
-  } else {
-    rawProps = vnode.props as Record<string, unknown>
-  }
-
-  // Convert compiler-emitted () => expr wrappers into getter properties.
-  // This makes component props reactive — reading props.state inside an
-  // effect/computed tracks the underlying signals.
-  const mergedProps =
-    rawProps === EMPTY_PROPS ? rawProps : makeReactiveProps(rawProps as Record<string, unknown>)
+  const mergedProps = componentProps(vnode)
 
   try {
     const result = runWithHooks(vnode.type, mergedProps)

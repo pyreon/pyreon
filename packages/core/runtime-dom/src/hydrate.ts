@@ -22,7 +22,6 @@ import {
   dispatchToErrorBoundary,
   ForSymbol,
   Fragment,
-  makeReactiveProps,
   PortalSymbol,
   reportError,
   runWithHooks,
@@ -46,7 +45,7 @@ import { setupDelegation } from './delegate'
 import { suspenseAttachOf } from './suspense-boundary'
 import { installDevTools } from './devtools'
 import { warnHydrationMismatch } from './hydration-debug'
-import { bindPolymorphicText, mountChild } from './mount'
+import { bindPolymorphicText, componentProps, mountChild } from './mount'
 import { buildRowPlan, replayRowPlan, tplAdoptVerify } from './hydration-plan'
 import type { RowPlan } from './hydration-plan'
 import { _setPendingForAdoption, mountKeyedList, mountReactive } from './nodes'
@@ -1794,22 +1793,9 @@ function hydrateComponent(
 
   // Function.name is always a string per spec; || handles empty string, avoids uncoverable ?? branch
   const componentName = ((vnode.type as ComponentFn).name || 'Anonymous') as string
-  const rawProps =
-    (vnode.children ?? []).length > 0 &&
-    (vnode.props as Record<string, unknown>).children === undefined
-      ? {
-          ...vnode.props,
-          children:
-            (vnode.children ?? []).length === 1
-              ? (vnode.children ?? [])[0]
-              : (vnode.children ?? []),
-        }
-      : (vnode.props as Record<string, unknown>)
-  // Convert compiler-emitted `_rp(() => expr)` wrappers into getter properties —
-  // mirrors mount.ts so component code reading `props.x` gets the resolved value,
-  // not the raw `_rp` function. Without it hydration binds against the wrong
-  // values and any signal-driven re-render diverges from the SSR HTML.
-  const mergedProps = makeReactiveProps(rawProps as Record<string, unknown>)
+  // Same builder as mountComponent — children merged by descriptor copy, then
+  // `_rp` thunks become getters — so a forwarded getter prop stays live here too.
+  const mergedProps = componentProps(vnode)
 
   let result: ReturnType<typeof runWithHooks>
   // Compiled-template ADOPTION (component-root fast path). A component whose
