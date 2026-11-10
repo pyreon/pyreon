@@ -298,6 +298,7 @@ async function signedMarkerFromPage(
   name: string,
   props: string,
 ): Promise<{ page: string; sig: string } | null> {
+  if (typeof location === 'undefined' || typeof DOMParser === 'undefined') return null
   const href = location.pathname + location.search
   let pending = pageFetches.get(href)
   if (!pending) {
