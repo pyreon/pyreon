@@ -588,6 +588,12 @@ Escaping `|` in a Markdown table cell without first escaping `\` turns `\|` into
 
 ---
 
+### Generated Markdown is read as MDX: untrusted text in it is code, not prose.
+
+`@pyreon/zero-content` compiles `.md` as MDX by default, where `{…}` is a JavaScript expression and `<…>` is JSX; plain Markdown passes raw HTML through. So spec, CMS or user text interpolated into a generated page runs at SSG build time and in the reader's browser unless EVERY interpolation goes through one escaper that is safe for CommonMark, GFM and MDX at once. Rules: (1) prose, headings, link labels and table cells backslash-escape every punctuation character that can open a construct (lathe: `docs.ts:md`, all but `" ' , . ; ?`, plus a leading `1.`); an allowlist of "dangerous" characters is the list someone remembered. (2) Inline code spans take NO backslash escapes (they would render); pick a backtick delimiter longer than any run in the value, pad when it starts or ends with a backtick, and collapse newlines (`docs.ts:code`); fences likewise (`fence`). (3) Never let safety rest on a parse failure: an HTML-comment banner made every page fail MDX compilation, which hid the hole until someone removed the banner. Put markers where every reader accepts them (a YAML comment in the frontmatter). Test through the real consumer and EXECUTE the module (`lathe/src/tests/docs-mdx-safety.test.ts`: zero-content's plugin `transform`, then import and render with a `globalThis` sentinel), bisected against the old escaper with the banner made safe.
+
+---
+
 ### Every compiled `_setX` helper must restate the `setStaticProp` branches above it.
 
 The compiled template path routes attributes by name straight to `_setAttr`/`_setValue`/`_setStyle`/`_setClass`/`_setHtml` and never calls `setStaticProp`, so any earlier branch must be restated in the helper. Current guarantees:
