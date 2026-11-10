@@ -1,0 +1,36 @@
+{
+  "name": "stacks-bench-qwik",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": "^18.17.0 || ^20.3.0 || >=21.0.0"
+  },
+  "scripts": {
+    "build": "qwik build",
+    "build.client": "vite build",
+    "build.preview": "vite build --ssr src/entry.preview.tsx",
+    "build.server": "qwik check-client src dist && vite build -c adapters/express/vite.config.ts",
+    "build.types": "tsc --incremental --noEmit",
+    "dev": "vite --mode ssr",
+    "preview": "qwik build preview && vite preview --open",
+    "serve": "node server/entry.express",
+    "start": "vite --open --mode ssr",
+    "qwik": "qwik"
+  },
+  "devDependencies": {
+    "@builder.io/qwik": "1.20.4",
+    "@builder.io/qwik-city": "1.20.4",
+    "@types/compression": "1.8.1",
+    "@types/express": "4.17.25",
+    "@types/node": "20.19.0",
+    "compression": "1.8.2",
+    "dotenv": "16.6.1",
+    "typescript": "5.4.5",
+    "undici": "8.12.4",
+    "vite": "7.3.7",
+    "vite-tsconfig-paths": "4.3.2"
+  },
+  "dependencies": {
+    "express": "4.22.0"
+  }
+}

@@ -83,6 +83,26 @@
 //   `NSMicrophoneUsageDescription` for `getUserMedia`) in Info.plist. Without
 //   the key iOS never asks, and the page's request fails.
 //
+// ## Origin scope
+//
+// `data` and the reverse bridge belong to the page the APP loaded, as on the
+// web, where the host can reach only a same-origin / `srcdoc` frame:
+//
+// - The allowed origin is the one the host's own load commits to (after its
+//   server redirects): `file://` for inline `html` and bundled `src`, the
+//   remote page's `scheme://host[:port]` otherwise.
+// - After that commit the MAIN frame stays on that origin. A user-tapped link
+//   off it is handed to the system (`http(s)` / `mailto` / `tel` / `sms`, as
+//   for `window.open`); any other off-origin main-frame navigation (a script
+//   redirect, a form post, a `data:` / `javascript:` URL) is cancelled.
+//   Sub-frames navigate freely but never get the bridge or the data.
+// - A script message is delivered only from the main frame of the allowed
+//   origin (`WKScriptMessage.frameInfo`); the shim is main-frame-only too.
+// - `data` is pushed, and a host-group relay evaluated, only while the main
+//   frame shows the allowed origin.
+// - A bundled `src` with a `..` segment, a scheme or a backslash is refused,
+//   and a non-bundled `src` loads only when it is an `http(s)` URL.
+//
 // ## Policy posture (App Store / Play Store)
 //
 // The intended use is a HYBRID: a substantial native shell (the canonical
@@ -207,6 +227,84 @@ func pyreonWebViewDialogTitle(host: String?) -> String? {
     return host
 }
 
+// MARK: Origin scope — see "Origin scope" in the file header.
+
+/// An origin as `scheme://host[:port]`, lower-cased, default ports dropped
+/// (`port` 0 / nil is the default, which is what `WKSecurityOrigin` reports).
+/// `file` is one origin ("file://", the bundled app content). Anything without
+/// a host that is not `file` (`about:`, `data:`, `blob:`, `javascript:`) is
+/// OPAQUE and returns nil, so it is never an allowed origin.
+func pyreonWebViewOrigin(scheme: String?, host: String?, port: Int?) -> String? {
+    guard let scheme = scheme?.lowercased(), !scheme.isEmpty else { return nil }
+    if scheme == "file" { return "file://" }
+    guard scheme == "http" || scheme == "https", let host = host?.lowercased(), !host.isEmpty else { return nil }
+    let defaultPort = scheme == "https" ? 443 : 80
+    if let port, port != 0, port != defaultPort { return "\(scheme)://\(host):\(port)" }
+    return "\(scheme)://\(host)"
+}
+
+/// The origin of a URL (nil for an opaque one).
+func pyreonWebViewOrigin(_ url: URL?) -> String? {
+    guard let url else { return nil }
+    return pyreonWebViewOrigin(scheme: url.scheme, host: url.host, port: url.port)
+}
+
+/// What to do with a navigation (see "Origin scope" in the file header).
+enum PyreonWebViewNavigation: Equatable {
+    case allow
+    case cancel
+    /// Cancel it here and hand the URL to the system instead.
+    case openExternally
+}
+
+/// The navigation policy. A sub-frame navigates freely (it never gets the
+/// bridge or the data). The main frame may go anywhere while the load the HOST
+/// started is still pending (its server redirects), and afterwards only within
+/// the origin that load committed to. A user-activated main-frame link off that
+/// origin is handed to the system (as `window.open` is); anything else is
+/// cancelled. `isMainFrame == nil` is a new-window request, which
+/// `createWebViewWith` hands over.
+func pyreonWebViewNavigationDecision(
+    isMainFrame: Bool?,
+    initialLoadPending: Bool,
+    url: URL?,
+    allowedOrigin: String?,
+    userActivated: Bool
+) -> PyreonWebViewNavigation {
+    guard isMainFrame == true else { return .allow }
+    if initialLoadPending { return .allow }
+    if let allowedOrigin, pyreonWebViewOrigin(url) == allowedOrigin { return .allow }
+    if userActivated, pyreonWebViewMayOpenExternally(url) { return .openExternally }
+    return .cancel
+}
+
+/// Whether bridge traffic may cross: only the MAIN frame, only while it shows
+/// the allowed origin. The web host reaches nothing else either (a cross-origin
+/// iframe is unreachable from its parent).
+func pyreonWebViewMayDeliver(isMainFrame: Bool, origin: String?, allowedOrigin: String?) -> Bool {
+    guard isMainFrame, let origin, let allowedOrigin else { return false }
+    return origin == allowedOrigin
+}
+
+/// A `src` that names a BUNDLED file: a relative path with no `..` segment,
+/// no scheme and no backslash. nil when it would escape the bundle directory.
+func pyreonWebViewAssetName(_ src: String) -> String? {
+    guard !src.isEmpty, !src.hasPrefix("/"), !src.contains("\\"), !src.contains(":") else { return nil }
+    let decoded = src.removingPercentEncoding ?? src
+    let segments = decoded.split(separator: "/", omittingEmptySubsequences: false)
+    if segments.contains(where: { $0 == ".." || $0 == "." || $0.isEmpty }) { return nil }
+    if decoded.contains("\\") || decoded.contains(":") { return nil }
+    return src
+}
+
+/// A `src` that names a remote page: `http(s)` only, with a host.
+func pyreonWebViewRemoteURL(_ src: String) -> URL? {
+    guard let url = URL(string: src), let scheme = url.scheme?.lowercased(),
+          scheme == "http" || scheme == "https", let host = url.host, !host.isEmpty
+    else { return nil }
+    return url
+}
+
 /// The script-message handler name the injected `window.pyreonPostMessage`
 /// shim forwards to (`window.webkit.messageHandlers.pyreonNative`).
 private let _pyreonMessageHandlerName = "pyreonNative"
@@ -234,6 +332,55 @@ final class _PyreonWebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDeleg
     var loadedKey: String?
     /// Reverse-bridge callback — invoked with the page's posted string.
     var onMessage: ((String) -> Void)?
+    /// The origin the host's own load committed to — the only origin that gets
+    /// the data push and the bridge (see "Origin scope" in the file header).
+    var allowedOrigin: String?
+    /// True from the host starting a load until that load commits: its server
+    /// redirects are part of the load, so they are followed wherever they go.
+    var initialLoadPending = false
+
+    /// Whether the main frame currently shows the allowed origin.
+    func mainFrameAllowed(_ webView: WKWebView) -> Bool {
+        !initialLoadPending
+            && pyreonWebViewMayDeliver(isMainFrame: true, origin: pyreonWebViewOrigin(webView.url), allowedOrigin: allowedOrigin)
+    }
+
+    func webView(
+        _ webView: WKWebView,
+        decidePolicyFor navigationAction: WKNavigationAction,
+        decisionHandler: @escaping @MainActor @Sendable (WKNavigationActionPolicy) -> Void
+    ) {
+        let decision = pyreonWebViewNavigationDecision(
+            isMainFrame: navigationAction.targetFrame?.isMainFrame,
+            initialLoadPending: initialLoadPending,
+            url: navigationAction.request.url,
+            allowedOrigin: allowedOrigin,
+            userActivated: navigationAction.navigationType == .linkActivated
+        )
+        switch decision {
+        case .allow:
+            decisionHandler(.allow)
+        case .cancel:
+            decisionHandler(.cancel)
+        case .openExternally:
+            decisionHandler(.cancel)
+            if let url = navigationAction.request.url { _pyreonOpenExternally(url) }
+        }
+    }
+
+    func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
+        // Pin the origin the host's own load landed on (after its redirects).
+        if initialLoadPending {
+            initialLoadPending = false
+            allowedOrigin = pyreonWebViewOrigin(webView.url)
+        }
+    }
+
+    /// The host's load failed before committing: whatever document is still
+    /// shown is not the one the host asked for, so nothing is allowed.
+    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+        initialLoadPending = false
+    }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         loaded = true
@@ -246,6 +393,17 @@ final class _PyreonWebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDeleg
         didReceive message: WKScriptMessage
     ) {
         guard message.name == _pyreonMessageHandlerName else { return }
+        // Only the main frame of the allowed origin may talk to the app: an
+        // ad iframe or a page the user navigated to gets nothing through.
+        let frame = message.frameInfo
+        let origin = pyreonWebViewOrigin(
+            scheme: frame.securityOrigin.protocol,
+            host: frame.securityOrigin.host,
+            port: frame.securityOrigin.port
+        )
+        guard !initialLoadPending,
+              pyreonWebViewMayDeliver(isMainFrame: frame.isMainFrame, origin: origin, allowedOrigin: allowedOrigin)
+        else { return }
         let body = String(describing: message.body)
         // Reserved host-group traffic is consumed here and never forwarded.
         if _PyreonWebViewGroups.shared.handle(body, from: self) { return }
@@ -346,7 +504,7 @@ final class _PyreonWebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDeleg
     /// Push the latest JSON into `window.__pyreonData` + fire `pyreondata`.
     /// No-op until the page has finished loading or when there's no data.
     func pushData(into webView: WKWebView) {
-        guard loaded, let json = latestData, !json.isEmpty else { return }
+        guard loaded, mainFrameAllowed(webView), let json = latestData, !json.isEmpty else { return }
         let js = "window.__pyreonData = \(json); window.dispatchEvent(new Event(\"pyreondata\"));"
         webView.evaluateJavaScript(js, completionHandler: nil)
     }
@@ -414,7 +572,9 @@ final class _PyreonWebViewGroups {
         let literal = String(array.dropFirst().dropLast())
         let js = "if (typeof window.__pyreonWebViewGroupMessage === 'function') window.__pyreonWebViewGroupMessage(\(literal));"
         for member in table.allObjects where member !== coordinator {
-            member.webView?.evaluateJavaScript(js, completionHandler: nil)
+            // A sibling whose main frame left its origin gets nothing relayed.
+            guard let webView = member.webView, member.mainFrameAllowed(webView) else { continue }
+            webView.evaluateJavaScript(js, completionHandler: nil)
         }
     }
 }
@@ -436,7 +596,9 @@ private func _syncPyreonWebView(
     if coordinator.loadedKey != key {
         coordinator.loadedKey = key
         coordinator.loaded = false
-        _loadPyreonWebView(webView, html: html, src: src)
+        // The new load decides the origin; until it commits nothing is allowed.
+        coordinator.allowedOrigin = nil
+        coordinator.initialLoadPending = _loadPyreonWebView(webView, html: html, src: src)
         // `didFinish` pushes the data once the page is ready.
     } else {
         // html/src unchanged → a data-only update: push without reloading.
@@ -608,20 +770,26 @@ private struct _PyreonWebViewBridge: NSViewRepresentable {
 #endif
 
 /// Shared load logic. `html` → `loadHTMLString`; `src` → a bundled local
-/// file (resolved against `Bundle.main`, the policy-safe path) falling
-/// back to a remote `URL`.
+/// file (resolved against `Bundle.main`, the policy-safe path; a name with a
+/// `..` segment is refused) falling back to a remote `http(s)` URL. Any other
+/// `src` loads nothing. Returns whether a load was started.
 @MainActor
-private func _loadPyreonWebView(_ webView: WKWebView, html: String?, src: String?) {
+private func _loadPyreonWebView(_ webView: WKWebView, html: String?, src: String?) -> Bool {
     if let html {
         webView.loadHTMLString(html, baseURL: Bundle.main.bundleURL)
-        return
+        return true
     }
-    guard let src else { return }
-    if let fileURL = Bundle.main.url(forResource: src, withExtension: nil) {
+    guard let src else { return false }
+    if let name = pyreonWebViewAssetName(src), let fileURL = Bundle.main.url(forResource: name, withExtension: nil),
+       fileURL.standardizedFileURL.path.hasPrefix(Bundle.main.bundleURL.standardizedFileURL.path + "/") {
         webView.loadFileURL(fileURL, allowingReadAccessTo: Bundle.main.bundleURL)
-    } else if let url = URL(string: src) {
-        webView.load(URLRequest(url: url))
+        return true
     }
+    if let url = pyreonWebViewRemoteURL(src) {
+        webView.load(URLRequest(url: url))
+        return true
+    }
+    return false
 }
 
 #else
