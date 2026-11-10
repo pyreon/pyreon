@@ -37,6 +37,12 @@ Path-keyed middleware is only a gate if it matches the SAME normalised target th
 
 ---
 
+### An endpoint that returns route-derived output without the route's gate
+
+Any handler that runs a route's loaders, renders its layout, or runs an action declared by it must first run the middleware of every route record whose code it will run, as the requester. Gating by "the URL the request names" misses two shapes zero shipped: (1) server actions — `/_zero/actions/<id>` matches no page, and `POST /<public page>?_action=<id>` ran the public page's gate and then an action declared on `/admin` (ids are deterministic and ship in the client JS); (2) the router's not-found chain — `/admin/<unknown>` with an `admin/_404` renders `[...ancestor layouts, <404 leaf>]`, so the `/admin` layout's loader ran (its data in the 404 HTML and via `/_pyreon/data`) while `admin/_layout`'s middleware listed only page patterns. Fix shape: gate from what the ROUTER resolves (layout records carry a symbol tag, `route-gate.ts`, that names their middleware entry; the dispatcher runs every tagged entry on `resolveRoute(target).matched`), and gate an action as its DECLARING page (build-time id → page map from the action manifest, `_registerActionRoutes`); an action with no determinable route is refused (403), never run ungated. Copy symbol-keyed tags explicitly through any `for…in` record copy (the generated `clean()` dropped it in dev). Reference: `packages/zero/zero/src/{pipeline,route-gate,fs-router,actions}.ts`; locked by `tests/gate-actions-and-not-found.test.ts`, `tests/integration/dev-pipeline.test.ts` and the `ssr-node` e2e.
+
+---
+
 ### Comparing origins by prefix, trusting the first `X-Forwarded-For` entry
 
 Both treat an attacker-shaped string as structured truth.

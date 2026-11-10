@@ -197,6 +197,7 @@ export function getRegisteredActions(): Map<string, RegisteredAction> {
 export function _resetActions(): void {
   actionRegistry.clear()
   actionModuleLoaders = new Map()
+  actionDeclaringRoutes = new Map()
   _resetSubmissions()
   warnedPluginless = false
 }
@@ -651,6 +652,41 @@ let actionModuleLoaders: ReadonlyMap<string, () => Promise<unknown>> = new Map()
 /** @internal Called by the generated route-middleware module. */
 export function _registerActionModules(loaders: Record<string, () => Promise<unknown>>): void {
   actionModuleLoaders = new Map(Object.entries(loaders))
+}
+
+/**
+ * Build-time map: action id → URL pattern of the page that DECLARES it (the
+ * page file, or its `.server.*` sibling, that calls `defineAction`). The
+ * request gate runs that page's route middleware before the action body,
+ * whichever URL the action was posted to. Replaced wholesale per
+ * registration (bounded by the build's action call sites).
+ */
+let actionDeclaringRoutes: ReadonlyMap<string, string> = new Map()
+
+/** @internal Called by the generated route-middleware module. */
+export function _registerActionRoutes(routes: Record<string, string>): void {
+  actionDeclaringRoutes = new Map(Object.entries(routes))
+}
+
+/**
+ * The URL pattern of the page that declares action `id`, or `null` when no
+ * page declares it (an action defined in a shared module).
+ *
+ * @internal
+ */
+export function _actionDeclaringRoute(id: string): string | null {
+  return actionDeclaringRoutes.get(id) ?? null
+}
+
+/**
+ * Whether `id` names an action this server can run — registered, or listed
+ * in the build-time manifest. An unknown id is answered by the endpoint's
+ * own not-found path, without running anything.
+ *
+ * @internal
+ */
+export function _isKnownAction(id: string): boolean {
+  return actionRegistry.has(id) || actionModuleLoaders.has(id)
 }
 
 /**

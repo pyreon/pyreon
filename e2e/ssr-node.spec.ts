@@ -311,6 +311,49 @@ test.describe("SSR node deploy artifact", () => {
     expect(await ok.text()).toContain("GUARDED_SENTINEL_m4k2");
   });
 
+  // A server action is gated as the page that DECLARES it — on its own
+  // endpoint and when posted to a public page through `?_action=`. Before the
+  // fix both paths ran `/guarded`'s action without `/guarded`'s middleware.
+  test("an action declared on a guarded page runs only for a requester that page admits", async ({
+    page,
+  }) => {
+    const auth = { "x-demo-auth": "let-me-in" };
+    const html = await (await page.request.get("/guarded", { headers: auth })).text();
+    const id = /data-action="([^"]+)"/.exec(html)?.[1];
+    expect(id, "the guarded page exposes its action id").toBeTruthy();
+    const endpoint = `/_zero/actions/${id}`;
+    const viaPublic = `/?_action=${id}`;
+    const form = { "content-type": "application/x-www-form-urlencoded", "x-zero-action": "1" };
+    for (const res of [
+      await page.request.post(endpoint, { data: {} }),
+      await page.request.post(viaPublic, { headers: form, data: "a=1" }),
+    ]) {
+      expect(res.status()).toBe(401);
+      expect(await res.text()).not.toContain("GUARDED_ACTION_SENTINEL_q7v1");
+    }
+    const ok = await page.request.post(endpoint, { headers: auth, data: {} });
+    expect(ok.status()).toBe(200);
+    expect(await ok.text()).toContain("GUARDED_ACTION_SENTINEL_q7v1");
+  });
+
+  // A URL under a guarded folder that matches no page renders the folder's
+  // not-found page INSIDE its layout, so the layout's loader runs. Before the
+  // fix the layout's middleware (which lists page patterns only) did not.
+  test("a not-found page under a guarded folder runs the folder middleware first", async ({
+    page,
+  }) => {
+    for (const path of ["/vault/nope", "/_pyreon/data?path=/vault/nope"]) {
+      const denied = await page.request.get(path);
+      expect(denied.status(), path).toBe(401);
+      expect(await denied.text(), path).not.toContain("VAULT_LAYOUT_SENTINEL_p3x9");
+    }
+    const ok = await page.request.get("/vault/nope", { headers: { "x-demo-auth": "let-me-in" } });
+    expect(ok.status()).toBe(404);
+    const html = await ok.text();
+    expect(html).toContain('data-testid="vault-not-found"');
+    expect(html).toContain("VAULT_LAYOUT_SENTINEL_p3x9");
+  });
+
   // The node runner used to drop request bodies, so every API POST arrived
   // empty and `req.json()` threw.
   test("an API POST reaches its handler with its body", async ({ page }) => {
