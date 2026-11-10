@@ -687,7 +687,7 @@ export default function NewPost() {
       name: 'Form',
       kind: 'component',
       signature:
-        'function Form<T>(props: { action: Action<T>; revalidate?: boolean | readonly string[]; resetOnSuccess?: boolean; onSuccess?: (data: ActionData<T>) => void; children?: VNodeChild; [attr: string]: unknown }): VNodeChild',
+        'function Form<T, TInput = unknown>(props: { action: Action<T, TInput>; revalidate?: boolean | readonly string[]; resetOnSuccess?: boolean; onSuccess?: (data: ActionData<T>) => void; children?: VNodeChild; [attr: string]: unknown }): VNodeChild',
       summary:
         'A `<form method="post">` bound to a server action (`@pyreon/zero/actions`). Renders `action="?<page query>&_action=<id>"` — a query-only URL, so the POST targets the current page with base path, locale prefix and query intact, identically on server and client. With JavaScript it intercepts submit, sends the same request via `fetch`, updates `useSubmission(action)`, then on success re-runs the current route\'s loaders (`revalidate`, default `true`; `false` opts out; an array of loaderKey values invalidates only those) and resets its fields (`resetOnSuccess`). A `redirect()` navigates client-side.',
       mistakes: [
@@ -702,7 +702,7 @@ export default function NewPost() {
     {
       name: 'useSubmission',
       kind: 'hook',
-      signature: 'function useSubmission<T>(action: Action<T>): Submission<T>',
+      signature: 'function useSubmission<T, TInput = unknown>(action: Action<T, TInput>): Submission<T>',
       summary:
         'Reactive state of an action\'s submissions (`@pyreon/zero/actions`): `pending()`, `input()` (the FormData in flight — render it optimistically), `result()` (return value or `fail()` data), `status()`, `error()`, plus `submit(data, { revalidate })` and `reset()`. Every call for the same action shares one state on the client. After a no-JS form post the server-rendered result is hydrated, so the page shows it with and without JavaScript. On the server the state is per request.',
       mistakes: [

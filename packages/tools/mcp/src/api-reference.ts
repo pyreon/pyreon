@@ -9742,7 +9742,7 @@ export default function NewPost() {
   },
 
   'zero/Form': {
-    signature: 'function Form<T>(props: { action: Action<T>; revalidate?: boolean | readonly string[]; resetOnSuccess?: boolean; onSuccess?: (data: ActionData<T>) => void; children?: VNodeChild; [attr: string]: unknown }): VNodeChild',
+    signature: 'function Form<T, TInput = unknown>(props: { action: Action<T, TInput>; revalidate?: boolean | readonly string[]; resetOnSuccess?: boolean; onSuccess?: (data: ActionData<T>) => void; children?: VNodeChild; [attr: string]: unknown }): VNodeChild',
     example: `<Form action={action} revalidate={false} class="new-post">
   <input name="title" required />
   <button type="submit">Create</button>
@@ -9752,7 +9752,7 @@ export default function NewPost() {
   },
 
   'zero/useSubmission': {
-    signature: 'function useSubmission<T>(action: Action<T>): Submission<T>',
+    signature: 'function useSubmission<T, TInput = unknown>(action: Action<T, TInput>): Submission<T>',
     example: `const sub = useSubmission(action)
 <button disabled={sub.pending()}>Save</button>
 <p>{() => sub.pending() ? \`Saving \${sub.input()?.get('title')}\` : ''}</p>
