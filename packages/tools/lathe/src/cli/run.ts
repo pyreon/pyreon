@@ -700,6 +700,9 @@ function runDiff(
   return { code, stdout: renderContractDiff(diff, format), stderr: "" };
 }
 
+/** A git revision: no leading `-`, only the characters refs and revision suffixes use. */
+const GIT_REVISION = /^[\w@][\w@./~^{}+-]*$/;
+
 /**
  * Read one diff input. A path that does not exist but looks like
  * `<rev>:<path>` is read from git (`main:openapi.yaml`, `HEAD~1:api/spec.yaml`)
@@ -708,6 +711,14 @@ function runDiff(
 function readInput(spec: string, fs: Fs): string {
   if (fs.exists(spec)) return fs.read(spec);
   const rev = /^([^:]{2,}):(.+)$/.exec(spec);
+  // The revision becomes a `git` argv element: one starting with `-` would be
+  // parsed as an option (`--output=<file>` makes `git show` write a file), so
+  // only the ref / revision-expression charset is accepted.
+  if (rev && !GIT_REVISION.test(rev[1] as string)) {
+    throw new Error(
+      `[Pyreon] lathe diff: \`${rev[1]}\` is not a git revision. Use a branch, tag, commit or revision expression such as \`main\`, \`v1.2.0\` or \`HEAD~1\`.`,
+    );
+  }
   if (rev && fs.gitShow) {
     const text = fs.gitShow(rev[1] as string, rev[2] as string);
     if (text !== undefined) return text;
