@@ -101,12 +101,19 @@ import { consumeHydration, markStoreSsrExcluded } from './hydration'
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 export interface MutationInfo {
-  storeId: string
-  type: 'direct' | 'patch'
-  events: { key: string; newValue: unknown; oldValue: unknown }[]
+  readonly storeId: string
+  readonly type: 'direct' | 'patch'
+  readonly events: { key: string; newValue: unknown; oldValue: unknown }[]
+  /**
+   * A plain snapshot of every state field. LAZY: built on first read and
+   * cached on the mutation, so a subscriber that only looks at `events` (or at
+   * nothing) never pays for it. Read it inside the callback — it reflects the
+   * store at the moment it is first read.
+   */
+  readonly state: Record<string, unknown>
 }
 
-export type SubscribeCallback = (mutation: MutationInfo, state: Record<string, unknown>) => void
+export type SubscribeCallback = (mutation: MutationInfo) => void
 
 export interface ActionContext {
   name: string
@@ -827,6 +834,39 @@ function defineSetupStore<T extends Record<string, unknown>>(
 }
 
 /**
+ * The object every store subscriber receives. `state` is a lazy snapshot (see
+ * {@link MutationInfo.state}); the class keeps one hidden shape for every
+ * mutation, where the old object literal plus a separately built snapshot
+ * allocated both on every notification.
+ */
+class Mutation implements MutationInfo {
+  readonly storeId: string
+  readonly type: 'direct' | 'patch'
+  readonly events: MutationInfo['events']
+  private _store: SetupStore<Record<string, unknown>>
+  private _state: Record<string, unknown> | null = null
+
+  constructor(store: SetupStore<any>, type: 'direct' | 'patch', events: MutationInfo['events']) {
+    this.storeId = store.id
+    this.type = type
+    this.events = events
+    this._store = store
+  }
+
+  get state(): Record<string, unknown> {
+    return this._state ?? this._snapshot()
+  }
+
+  _snapshot(): Record<string, unknown> {
+    return (this._state ??= this._store._getState())
+  }
+}
+
+// Enumerable like a data field, so `{ ...mutation }`, JSON and test matchers
+// see `state` as they see `events`.
+Object.defineProperty(Mutation.prototype, 'state', { enumerable: true })
+
+/**
  * One setup store: the object `useStore()` returns.
  *
  * WHY A CLASS. This used to be one large closure: every store allocated its
@@ -873,11 +913,21 @@ class SetupStore<T extends Record<string, unknown>> {
   _signalObjs: SignalLike[] = []
   _initialVals: unknown[] = []
 
+  // Fields declared with `declare` below are LAZY and ABSENT until first use:
+  // a store that is created and read but never subscribed, patched or given a
+  // plugin cleanup does not initialise them at all (fewer field writes and a
+  // smaller object per store). They are compared with `== null`, which covers
+  // both the absent (`undefined`) and the cleared (`null`) states.
   // Key → index for `patch`; LAZY — most stores never call object-form patch.
-  _keyIndex: Map<string, number> | null = null
+  declare _keyIndex: Map<string, number> | null | undefined
 
   // ─── subscribe infrastructure (all lazy) ────────────────────────────────
   _subscribers: Set<SubscribeCallback> | null = null
+  // The subscriber when there is exactly ONE (the common case: a devtools
+  // hook, a persistence plugin, one component) — emit calls it directly
+  // instead of allocating a Set iterator per notification. Kept in step with
+  // `_subscribers` by `_syncSole` on every add / remove / clear.
+  _sole: SubscribeCallback | null = null
   _patchInProgress = false
   // Nesting depth of the subscribed-patch window. A re-entrant `patch()` (a
   // user effect fired by the outer patch's batch drain calling `patch()`
@@ -895,9 +945,9 @@ class SetupStore<T extends Record<string, unknown>> {
   // `_signalKeys`: `_signalUnsubs[i]` disposes field i's detector,
   // `_detectors[i]` is that detector (kept so the with-subscriber `patch()` can
   // detach it during its own writes), `_prevValues[i]` the last-seen value.
-  _signalUnsubs: (() => void)[] | null = null
-  _detectors: (() => void)[] | null = null
-  _prevValues: unknown[] | null = null
+  declare _signalUnsubs: (() => void)[] | null | undefined
+  declare _detectors: (() => void)[] | null | undefined
+  declare _prevValues: unknown[] | null | undefined
   // Detector-wiring generation. Bumped whenever the detectors are (re)attached
   // or torn down. The with-subscriber patch only takes the O(1)
   // sole-subscriber suspend fast path while it is UNCHANGED — a mid-patch side
@@ -905,15 +955,15 @@ class SetupStore<T extends Record<string, unknown>> {
   _detectorEpoch = 0
 
   _actionListeners: Set<OnActionCallback> | null = null
-  _pluginCleanups: (() => void)[] | null = null
+  declare _pluginCleanups: (() => void)[] | null | undefined
 
   // Cached batch callbacks for `patch` — zero per-call closure allocation; the
   // argument and event buffer are handed across through these slots.
   _patchArg: Record<string, unknown> | ((state: Record<string, any>) => void) | null = null
-  _applyPatchFn: (() => void) | null = null
-  _signalMap: Record<string, unknown> | null = null
-  _detachEvents: MutationInfo['events'] | null = null
-  _detachApplyFn: (() => void) | null = null
+  declare _applyPatchFn: (() => void) | null | undefined
+  declare _signalMap: Record<string, unknown> | null | undefined
+  declare _detachEvents: MutationInfo['events'] | null | undefined
+  declare _detachApplyFn: (() => void) | null | undefined
 
   // The public methods: own properties bound to this store (see the class comment).
   patch: StoreApi<T>['patch']
@@ -993,7 +1043,7 @@ class SetupStore<T extends Record<string, unknown>> {
   }
 
   _getKeyIndex(): Map<string, number> {
-    if (this._keyIndex === null) {
+    if (this._keyIndex == null) {
       const keyIndex = new Map<string, number>()
       const sk = this._signalKeys
       for (let i = 0; i < sk.length; i++) keyIndex.set(sk[i] as string, i)
@@ -1025,13 +1075,24 @@ class SetupStore<T extends Record<string, unknown>> {
     }
   }
 
-  // Fan out ONE mutation + state snapshot to every store subscriber.
-  _emitToSubscribers(mutation: MutationInfo, state: Record<string, unknown>): void {
-    for (const cb of this._subscribers as Set<SubscribeCallback>) {
+  // Fan out ONE mutation to every store subscriber. With more than one
+  // subscriber the state snapshot is taken up front, so a write made by one
+  // subscriber can never leak into the snapshot another one reads; a sole
+  // subscriber gets it lazily (never built if never read).
+  _emitToSubscribers(mutation: Mutation): void {
+    const sole = this._sole
+    if (sole !== null) {
+      if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('store.subscribeNotify')
+      sole(mutation)
+      return
+    }
+    const subs = this._subscribers as Set<SubscribeCallback>
+    mutation._snapshot()
+    for (const cb of subs) {
       // Fan-out per notification × subscriber. High count under stress means
       // user code is over-subscribing.
       if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('store.subscribeNotify')
-      cb(mutation, state)
+      cb(mutation)
     }
   }
 
@@ -1046,18 +1107,13 @@ class SetupStore<T extends Record<string, unknown>> {
     }
     const subscribers = this._subscribers
     if (subscribers === null || subscribers.size === 0) return
-    const mutation: MutationInfo = {
-      storeId: this.id,
-      type: 'direct',
-      events: [{ key, newValue, oldValue }],
-    }
-    this._emitToSubscribers(mutation, this._getState())
+    this._emitToSubscribers(new Mutation(this, 'direct', [{ key, newValue, oldValue }]))
   }
 
   _activateSignalSubs(): void {
-    if (this._signalUnsubs !== null && this._signalUnsubs.length > 0) return // already active
+    if (this._signalUnsubs != null && this._signalUnsubs.length > 0) return // already active
     this._detectorEpoch++
-    if (this._signalUnsubs === null) {
+    if (this._signalUnsubs == null) {
       this._signalUnsubs = []
       this._detectors = []
       this._prevValues = []
@@ -1084,7 +1140,7 @@ class SetupStore<T extends Record<string, unknown>> {
   }
 
   _deactivateSignalSubs(): void {
-    if (this._signalUnsubs === null) return
+    if (this._signalUnsubs == null) return
     this._detectorEpoch++
     for (const unsub of this._signalUnsubs) unsub()
     this._signalUnsubs.length = 0
@@ -1141,13 +1197,13 @@ class SetupStore<T extends Record<string, unknown>> {
   }
 
   _ensureApply(): () => void {
-    if (this._applyPatchFn === null) {
+    if (this._applyPatchFn == null) {
       this._applyPatchFn = () => {
         const arg = this._patchArg as
           | Record<string, unknown>
           | ((state: Record<string, any>) => void)
         if (typeof arg === 'function') {
-          if (this._signalMap === null) {
+          if (this._signalMap == null) {
             const signalMap: Record<string, unknown> = {}
             for (const key of this._signalKeys) {
               signalMap[key] = this._raw[key]
@@ -1180,7 +1236,7 @@ class SetupStore<T extends Record<string, unknown>> {
   // detached. The patched value is read BEFORE suspending, so a throwing
   // getter on the patch object leaves the detector attached.
   _ensureDetachApply(): () => void {
-    if (this._detachApplyFn === null) {
+    if (this._detachApplyFn == null) {
       this._detachApplyFn = () => {
         const arg = this._patchArg as Record<string, unknown>
         const events = this._detachEvents as MutationInfo['events']
@@ -1255,7 +1311,7 @@ class SetupStore<T extends Record<string, unknown>> {
             this._patchEvents = EMPTY_EVENTS
           }
           if (finalEvents.length > 0) {
-            this._emitToSubscribers({ storeId: this.id, type: 'patch', events: finalEvents }, this._getState())
+            this._emitToSubscribers(new Mutation(this, 'patch', finalEvents))
           }
         } else if (events.length > 0) {
           // NESTED patch: hand our writes to the shared buffer so the OUTERMOST
@@ -1290,7 +1346,7 @@ class SetupStore<T extends Record<string, unknown>> {
         if (this._patchDepth === 0) {
           this._patchInProgress = false
           if (this._patchEvents.length > 0) {
-            this._emitToSubscribers({ storeId: this.id, type: 'patch', events: this._patchEvents }, this._getState())
+            this._emitToSubscribers(new Mutation(this, 'patch', this._patchEvents))
           }
           this._patchEvents = EMPTY_EVENTS
         }
@@ -1298,22 +1354,24 @@ class SetupStore<T extends Record<string, unknown>> {
     }
   }
 
+  _syncSole(): void {
+    const subs = this._subscribers
+    this._sole = subs !== null && subs.size === 1 ? (subs.values().next().value as SubscribeCallback) : null
+  }
+
   _subscribe(callback: SubscribeCallback, options?: { immediate?: boolean }): () => void {
     // Bring change-detection live before the first subscriber so it sees every
     // subsequent mutation (idempotent for additional subscribers).
     this._activateSignalSubs()
     ;(this._subscribers ??= new Set()).add(callback)
+    this._syncSole()
     if (options?.immediate) {
-      const mutation: MutationInfo = {
-        storeId: this.id,
-        type: 'direct',
-        events: [],
-      }
-      callback(mutation, this._getState())
+      callback(new Mutation(this, 'direct', []))
     }
     return () => {
       const subscribers = this._subscribers
       subscribers?.delete(callback)
+      this._syncSole()
       // Tear the per-signal subscriptions back down once the last store
       // subscriber leaves, restoring the fast unsubscribed-write path.
       if (subscribers === null || subscribers.size === 0) this._deactivateSignalSubs()
@@ -1350,7 +1408,7 @@ class SetupStore<T extends Record<string, unknown>> {
   _dispose(): void {
     // Plugin-returned cleanups first (they may still read state), nulled after
     // so a second dispose() is a no-op for them.
-    if (this._pluginCleanups !== null) {
+    if (this._pluginCleanups != null) {
       const cleanups = this._pluginCleanups
       this._pluginCleanups = null
       for (const cleanup of cleanups) {
@@ -1366,6 +1424,7 @@ class SetupStore<T extends Record<string, unknown>> {
     }
     this._deactivateSignalSubs()
     this._subscribers?.clear()
+    this._sole = null
     this._actionListeners?.clear()
     // Stop the store-owned scope — disposes every computed/effect created
     // inside setup() and plugin bodies (idempotent).
