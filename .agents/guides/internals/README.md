@@ -113,6 +113,16 @@ Framework packages emit counters via `globalThis.__pyreon_count__?.('name')` wit
 - Direct subscribers: inline slot `_d1`, promoted to a `Set` on the second. Tracking subscribers: two inline (`_s1`, then a function in `_s`), promoted to a `Set` on the third. Never read `_s` as a `Set`; use `_hasSubscribers` / `_tierCount`.
 - A compiled slot with a static value mounts via `mountChildAsUnit` (effect-only cleanups, leaves with the clone). An accessor slot keeps a full remover.
 
+### Contract suite (`packages/core/reactivity/src/tests/contract/`)
+
+The contract suite is the definition of `@pyreon/reactivity`'s observable behaviour. It uses only the public API (plus the exports the core keeps as contracts: `_v`, `.direct`, `_hasSubscribers`, `_suspend*`/`_resume*`, `_bind`, `renderEffect`, `_noopDispose`, `setSnapshotCapture`). Each test is named after a guarantee id (C1–C25, S1) from the core redesign's contract table. A change to the core is correct when this suite passes, whatever the internals look like.
+
+- One file per group: `effects-and-batch`, `derivation`, `direct-and-subscribers`, `errors`, `ownership-and-cleanup`, `dependencies`, `selector`.
+- `accidental/` pins behaviour that is a property of today's implementation, not a promise (evaluation counts below an unchanged node, eager `{ equals }`, run order within a flush, nested first-run re-entrancy). Each assertion carries the value it becomes under the planned core; update those deliberately, never to make a change pass.
+- `known-bugs.test.ts` holds bugs as `test.fails` with the correct assertion. A fix turns them red: switch them to `test`.
+- `differential-fuzz.test.ts` checks random graphs and operation sequences against a from-scratch reference model. A failing seed prints a shrunk reproduction and a replay command. Knobs: `REACTIVITY_FUZZ_CASES`, `REACTIVITY_FUZZ_STEPS`, `REACTIVITY_FUZZ_SEED`, `REACTIVITY_FUZZ_ASSERT_WASTED=1` (zero wasted evaluations), `REACTIVITY_FUZZ_STRICT=1` (the known-bug metrics are zero). `--reporter=verbose` prints the metric line.
+- A new guarantee gets a contract test, plus a fuzz operation when the generator does not reach it. Tests that read internals (`_s1`, `_dirty`, `_d1`, …) protect the current storage, not the contract. Do not use them to define behaviour.
+
 ### Batch (`batch.ts`)
 
 - Tier 1 drains `{ equals }` computed refreshes; tier 2 runs effects, multi-pass for re-entrant writes (`MAX_PASSES = 32`).
