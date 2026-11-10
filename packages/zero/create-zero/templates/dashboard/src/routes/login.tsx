@@ -10,9 +10,13 @@ export default function Login() {
   useHead({ title: meta.title })
 
   // The demo account exists only under `vite dev` (see `lib/auth.ts`), so the
-  // form is pre-filled only there.
-  const email = signal(import.meta.env.DEV ? "demo@example.com" : "")
-  const password = signal(import.meta.env.DEV ? "demo1234" : "")
+  // form is pre-filled only there. Production builds (client and server)
+  // replace `process.env.NODE_ENV` with "production", so a deployed login
+  // page starts empty. Pre-filling is only a convenience: the account itself
+  // is what `lib/auth.ts` refuses to create outside development.
+  const isDev = process.env.NODE_ENV !== "production"
+  const email = signal(isDev ? "demo@example.com" : "")
+  const password = signal(isDev ? "demo1234" : "")
   const error = signal<string | null>(null)
   const submitting = signal(false)
 
