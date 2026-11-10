@@ -1,5 +1,5 @@
 import { _enterCleanupFrame, _exitCleanupFrame } from '@pyreon/reactivity'
-import { getCurrentHooks, setCurrentHooks } from './lifecycle'
+import { _peekCurrentHooks, EMPTY_HOOKS, PENDING_HOOKS, setCurrentHooks } from './lifecycle'
 import type { ComponentFn, LifecycleHooks, VNodeChild } from './types'
 
 /**
@@ -20,53 +20,65 @@ export function runWithHooks<P extends object>(
   fn: ComponentFn<P>,
   props: P,
 ): { vnode: VNodeChild; hooks: LifecycleHooks } {
-  // This per-component allocation is NOT an optimization target — measured +
-  // rejected (2026-08). Making it lazy (allocate on the first onMount/onUnmount/
-  // onUpdate/onErrorCaptured, hand back a shared frozen sentinel otherwise) was
-  // implemented and benchmarked against the 2,047-component deep-tree mount:
-  // −0.07%, i.e. nothing. The ceiling was measured directly and independently by
-  // ADDING a second per-component hooks object AND a second per-component
-  // `EffectScope` — a probe that, unlike removing them, cannot bias the run by
-  // breaking disposal — which cost only +0.59%. In the same interleaved session
-  // the `context → 1,024 consumers` op, which mounts nothing and therefore
-  // cannot be affected by any of these arms, moved ±2%, so every one of those
-  // deltas sits inside the instrument's own noise floor.
-  //
-  // The reading: a young-generation object allocation here is a pointer bump,
-  // and any bookkeeping added to avoid it (a frame flag, a depth counter, a
-  // nullish-coalesce on the return, and the polymorphic property access a shared
-  // sentinel introduces at `hooks.mount` / `.unmount` / `.update`) costs at
-  // least as much as the allocation. The same conclusion applies to the
-  // per-component `EffectScope` in `@pyreon/runtime-dom`'s mountComponent — see
-  // the note there. Re-open only with a measurement that clears ±2% on this
-  // benchmark.
-  const hooks: LifecycleHooks = { mount: null, unmount: null, update: null, error: null }
-  // RESTORE the caller's frame, never reset to a constant: component setup
-  // NESTS (a `_mountSlot` inside a parent's compiled `_tpl(...)` call mounts a
-  // child component while the parent's frame is open), so `setCurrentHooks(null)`
-  // on the inner exit closed the OUTER frame and silently dropped every hook the
-  // parent registered afterwards.
-  const prevHooks = getCurrentHooks()
-  setCurrentHooks(hooks)
-  // `onCleanup()` in a component body belongs to THIS component: collect it in
-  // a fresh window and run it on unmount. Without this the body inherited
-  // whatever window was open — none at the root (the cleanup vanished) or the
-  // enclosing <For>/<Show>/router effect's (re-runs of that boundary fired it
-  // while this component was still mounted). Saved-then-restored like the hooks
-  // frame; allocation-free unless the body actually calls `onCleanup`.
+  const vnode = _runHooked(fn, props)
+  return { vnode, hooks: _takeHooks() }
+}
+
+/** The hooks `_runHooked` collected for the component it just ran. */
+let _lastHooks: LifecycleHooks = EMPTY_HOOKS
+
+/**
+ * `runWithHooks` without the `{ vnode, hooks }` result object: returns the
+ * vnode and leaves the hooks for `_takeHooks()`, which the caller reads right
+ * after the call, before running any other component.
+ *
+ * Hooks are allocated LAZILY. The frame starts as the shared `PENDING_HOOKS`
+ * and the first `onMount` / `onUnmount` / `onUpdate` / `onErrorCaptured` (or a
+ * setup-time `onCleanup`) materialises a real object; a component that
+ * registers nothing gets the shared frozen `EMPTY_HOOKS`. History: this was
+ * built and rejected in 2026-08 as a SPEED lever (−0.07% on the 2,047-component
+ * deep-tree mount, inside noise). It is kept for RETAINED HEAP: the per-instance
+ * object lives as long as the component (28 B each), and the deep tree's
+ * components register no hook.
+ *
+ * RESTORE the caller's frame, never reset it to a constant: component setup
+ * NESTS (a `_mountSlot` inside a parent's compiled `_tpl(...)` call mounts a
+ * child component while the parent's frame is open), so resetting on the inner
+ * exit would close the OUTER frame and drop every hook the parent registered
+ * afterwards. `onCleanup()` in a component body belongs to THIS component: it
+ * is collected in a fresh window and run on unmount.
+ * @internal
+ */
+export function _runHooked<P extends object>(fn: ComponentFn<P>, props: P): VNodeChild {
+  const prevHooks = _peekCurrentHooks()
+  setCurrentHooks(PENDING_HOOKS)
   const cleanupToken = _enterCleanupFrame()
   let vnode: VNodeChild = null
+  let hooks: LifecycleHooks = EMPTY_HOOKS
   try {
     vnode = fn(props)
   } finally {
+    const mine = _peekCurrentHooks()
     setCurrentHooks(prevHooks)
+    if (mine !== PENDING_HOOKS && mine !== null) hooks = mine
     const collected = _exitCleanupFrame(cleanupToken)
     if (collected !== null) {
-      if (hooks.unmount === null) hooks.unmount = collected
+      if (hooks === EMPTY_HOOKS) hooks = { mount: null, unmount: collected, update: null, error: null }
+      else if (hooks.unmount === null) hooks.unmount = collected
       else for (const c of collected) hooks.unmount.push(c)
     }
   }
-  return { vnode, hooks }
+  // Only on success: a throwing setup must not leave its hooks parked in this
+  // module slot (nothing would read and release them).
+  _lastHooks = hooks
+  return vnode
+}
+
+/** The hooks of the component `_runHooked` last ran (`EMPTY_HOOKS` when none). @internal */
+export function _takeHooks(): LifecycleHooks {
+  const h = _lastHooks
+  _lastHooks = EMPTY_HOOKS
+  return h
 }
 
 /**

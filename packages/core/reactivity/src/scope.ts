@@ -1,6 +1,9 @@
 import { _enterCleanupFrame, _exitCleanupFrame } from './effect'
 export class EffectScope {
-  private _effects: { dispose(): void }[] | null = null
+  // A registered effect, or a BARE disposer function: render bindings register
+  // their dispose function directly instead of wrapping it in `{ dispose }`
+  // (one 16 B object per binding, kept for the binding's lifetime).
+  private _effects: ({ dispose(): void } | (() => void))[] | null = null
   private _active = true
   private _updateHooks: (() => void)[] | null = null
   private _updatePending = false
@@ -45,7 +48,7 @@ export class EffectScope {
   }
 
   /** Register an effect/computed to be disposed when this scope stops. */
-  add(e: { dispose(): void }): void {
+  add(e: { dispose(): void } | (() => void)): void {
     if (!this._active) return
     // `[e]`, not `[]` + push: V8's first push reserves 16 slots, which a
     // scope holding one or two disposers would carry for its lifetime.
@@ -73,7 +76,7 @@ export class EffectScope {
     } finally {
       _sc.s = prev
       const collected = _exitCleanupFrame(token)
-      if (collected !== null) for (const c of collected) this.add({ dispose: c })
+      if (collected !== null) for (const c of collected) this.add(c)
     }
   }
 
@@ -113,7 +116,10 @@ export class EffectScope {
   stop(): void {
     if (!this._active) return
     if (this._effects) {
-      for (const e of this._effects) e.dispose()
+      for (const e of this._effects) {
+        if (typeof e === 'function') e()
+        else e.dispose()
+      }
     }
     this._effects = null
     this._updateHooks = null
@@ -211,5 +217,5 @@ export function onScopeDispose(fn: () => void): void {
     }
     return
   }
-  scope.add({ dispose: fn })
+  scope.add(fn)
 }
