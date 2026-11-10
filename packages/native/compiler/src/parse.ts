@@ -4,6 +4,7 @@
 // starter fixtures use are recognised. Anything outside that set is
 // either passed through as unknown or surfaces a warning.
 
+import { isDoubleLiteralValue } from './number-literal'
 import { lowerDateNode } from './date-lowering'
 import { refineParamFloatsFromCallSites } from './call-site-param-floats'
 import { applyDestructureAbsence, applyDestructureAbsenceToLets } from './destructure-absence'
@@ -1476,7 +1477,8 @@ function inferTypeFromInitial(initial: ExprIR): TypeIR {
     if (typeof initial.value === 'number') {
       // A non-integer literal (`12.5`) is fractional → Double; an
       // integer literal stays Int (PMTC's ergonomic default).
-      return Number.isInteger(initial.value) ? { kind: 'number' } : { kind: 'number', float: true }
+      // A whole literal outside the 32-bit range is a Double too (`number-literal.ts`), as every other typing pass reads it.
+      return isDoubleLiteralValue(initial.value) ? { kind: 'number', float: true } : { kind: 'number' }
     }
     if (typeof initial.value === 'string') return { kind: 'string' }
     if (typeof initial.value === 'boolean') return { kind: 'boolean' }
@@ -1960,7 +1962,7 @@ function isFractionalLiteral(e: ExprIR): boolean {
   return (
     e.kind === 'literal' &&
     typeof e.value === 'number' &&
-    (!Number.isInteger(e.value) || Math.abs(e.value) > 2147483647)
+    isDoubleLiteralValue(e.value)
   )
 }
 

@@ -4,6 +4,7 @@
 // `var x by remember { mutableStateOf(initial) }`, computeds to
 // `derivedStateOf { ... }`, JSX elements to Composable function calls.
 
+import { isDoubleLiteralValue, wholeDoubleLiteral } from './number-literal'
 import { isModuleState, moduleStateClassName, moduleStateDecls, shadowingNames } from './module-state'
 import { GESTURE_EVENT_NAMES, GESTURE_EVENTS } from './gesture-events'
 import { effectReadCandidates, effectTriggerPaths, isComponentStateName } from './effect-deps'
@@ -3571,11 +3572,12 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       // `x == 5L`, `fold(0L, …)`, an untyped `var total = 0L`); a position
       // that REQUIRES a 32-bit Int (a subscript, `take(n)`, a Compose param)
       // goes through `kotlinIntArg`, which drops it again.
-      if (
-        typeof e.value === 'number' &&
-        Number.isInteger(e.value) &&
-        Math.abs(e.value) <= Number.MAX_SAFE_INTEGER
-      ) {
+      // A whole literal past the 32-bit range is a Double everywhere it is typed (`number-literal.ts`): spell it as one,
+      // not as a `Long` the inferred Double type then disagrees with.
+      if (typeof e.value === 'number' && Number.isInteger(e.value) && isDoubleLiteralValue(e.value)) {
+        return wholeDoubleLiteral(e.value)
+      }
+      if (typeof e.value === 'number' && Number.isInteger(e.value)) {
         return `${e.value}L`
       }
       return String(e.value)

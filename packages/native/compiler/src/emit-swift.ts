@@ -8,6 +8,7 @@
 // Type inference is deliberately naive — numeric assumption for
 // computed properties. Phase 1 grows a real inference pass.
 
+import { isDoubleLiteralValue, wholeDoubleLiteral } from './number-literal'
 import { isModuleState, moduleStateClassName, moduleStateDecls, shadowingNames } from './module-state'
 import { GESTURE_EVENT_NAMES, GESTURE_EVENTS } from './gesture-events'
 import { CANVAS_SHAPES, isCanvasShape, shapeColorLiteral } from './canvas-shapes'
@@ -4540,6 +4541,10 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       // with its decimal (`12.5`), so only integer values need the `.0`.
       if (typeof e.value === 'number' && e.float === true && Number.isInteger(e.value)) {
         return `${e.value}.0`
+      }
+      // A whole literal past the 32-bit range is a Double everywhere it is typed (`number-literal.ts`): spell it as one.
+      if (typeof e.value === 'number' && Number.isInteger(e.value) && isDoubleLiteralValue(e.value)) {
+        return wholeDoubleLiteral(e.value)
       }
       return String(e.value)
     case 'identifier': {
