@@ -41,6 +41,7 @@
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
+import { createHash } from 'node:crypto'
 import { gzipSync } from 'node:zlib'
 import { staticClosureCode } from './bundle-static-closure'
 import { parseSync, Visitor } from 'oxc-parser'
@@ -58,6 +59,7 @@ import { isModuleEntry } from './is-entry'
 // because BOTH gates consume them — this ambient is the second half, so the
 // next person to import something from here does not hit the same wall.
 declare const Bun: {
+  version: string
   build(options: {
     entrypoints: string[]
     minify?: boolean
@@ -759,6 +761,46 @@ interface BundleResult {
   unmeasurable?: string
   /** Set when the direct build was invalid and the barrel-safe entry was used. */
   repaired?: boolean
+  /** sha256 of the exact bytes that were gzipped (the minified bundle). */
+  sha256?: string
+}
+
+/** Prefix of every line of the measurement block (grep-able in a CI log). */
+export const MEASURE_PREFIX = '[budget-measure]'
+
+/**
+ * The measurement as a compact, machine-readable block: one header line with
+ * the bundler version and platform, one line per package, one trailer with the
+ * count. Printed on EVERY run (green or red), so any two runs — a CI Build log
+ * and a local run of the same commit — can be compared with `diff`.
+ *
+ * Why it exists: budgets have passed locally and failed in CI (or the reverse)
+ * by ~1%, which was attributed to the platform's gzip. Given the same bundle
+ * bytes, gzip is bit-identical on macOS arm64 and Linux arm64/x64 (bun 1.4.0
+ * and 1.4.4), and so is `Bun.build` given the same `lib/`. So the difference is
+ * in the INPUT, and `sha256` (of the pre-compression bundle) says which
+ * packages' inputs differ.
+ */
+export function formatMeasureBlock(
+  results: readonly BundleResult[],
+  env: { bun: string; platform: string },
+): string[] {
+  const lines = [`${MEASURE_PREFIX} env bun=${env.bun} platform=${env.platform}`]
+  for (const r of [...results].sort((a, b) => a.name.localeCompare(b.name))) {
+    if (r.failed) {
+      lines.push(`${MEASURE_PREFIX} ${r.name} failed`)
+      continue
+    }
+    const flags = `${r.repaired ? ' repaired' : ''}${r.unmeasurable ? ' unmeasurable' : ''}`
+    lines.push(`${MEASURE_PREFIX} ${r.name} raw=${r.raw} gzip=${r.gzip} sha256=${r.sha256 ?? '-'}${flags}`)
+  }
+  lines.push(`${MEASURE_PREFIX} end count=${results.length}`)
+  return lines
+}
+
+/** sha256 hex of a string's UTF-8 bytes. */
+export function bundleSha256(code: string): string {
+  return createHash('sha256').update(code, 'utf8').digest('hex')
 }
 
 /**
@@ -901,13 +943,14 @@ async function measurePackage(pkg: PackageInfo): Promise<BundleResult> {
 
   const raw = Buffer.byteLength(code, 'utf-8')
   const gzip = gzipSync(code, { level: 9 }).byteLength
+  const sha256 = bundleSha256(code)
   // A number we cannot stand behind is reported as a FAILURE, never as a small
   // size. A budget compared against a bundle that shook to nothing is a gate
   // that cannot fail, which this repo treats as worse than no gate at all.
   if (diagnosis !== null) {
-    return { name: pkg.name, raw, gzip, unmeasurable: diagnosis }
+    return { name: pkg.name, raw, gzip, sha256, unmeasurable: diagnosis }
   }
-  return { name: pkg.name, raw, gzip, ...(repaired ? { repaired: true } : {}) }
+  return { name: pkg.name, raw, gzip, sha256, ...(repaired ? { repaired: true } : {}) }
 }
 
 // ─── Main ────────────────────────────────────────────────────────────────
@@ -926,6 +969,12 @@ async function main(): Promise<void> {
 
   // Measure all in parallel — Bun.build is async and CPU-light per call.
   const results: BundleResult[] = await Promise.all(packages.map(measurePackage))
+  const measureEnv = { bun: Bun.version, platform: `${process.platform}-${process.arch}` }
+  if (!jsonMode) {
+    const unbuilt = missingBuilds.map((name) => ({ name, raw: 0, gzip: 0, failed: true }))
+    // eslint-disable-next-line no-console
+    for (const line of formatMeasureBlock([...results, ...unbuilt], measureEnv)) console.log(line)
+  }
   // A package whose bundle could not be trusted is EXCLUDED from `measured`.
   // Leaving it in would let a meaningless number be compared against a budget
   // and pass — the exact shape this gate exists to make impossible.
@@ -1188,6 +1237,7 @@ async function main(): Promise<void> {
           thinKnown,
           recovered,
           measured,
+          env: measureEnv,
         },
         null,
         2,
