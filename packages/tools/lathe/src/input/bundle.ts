@@ -211,8 +211,15 @@ function realish(p: string, realpath: (path: string) => string): string {
   } catch {
     const cut = Math.max(p.lastIndexOf('/'), p.lastIndexOf('\\'))
     if (cut <= 0) return p
-    return `${realish(p.slice(0, cut), realpath).replace(/[\\/]+$/, '')}/${p.slice(cut + 1)}`
+    return `${trimTrailingSlashes(realish(p.slice(0, cut), realpath))}/${p.slice(cut + 1)}`
   }
+}
+
+/** `p` without trailing `/` or `\\` (a scan, not a `/[\\/]+$/` regex, which backtracks quadratically). */
+function trimTrailingSlashes(p: string): string {
+  let end = p.length
+  while (end > 0 && (p.charCodeAt(end - 1) === 47 || p.charCodeAt(end - 1) === 92)) end--
+  return p.slice(0, end)
 }
 
 /** Whether `file` lies inside directory `dir` (both normalized: a `..` survives only as a leading segment). */
@@ -221,7 +228,7 @@ function isInside(dir: string, file: string): boolean {
   const slashed = dir.replace(/\\/g, '/')
   const dirAbsolute = ABSOLUTE.test(slashed)
   if (dirAbsolute !== ABSOLUTE.test(f)) return false
-  const d = slashed.replace(/\/+$/, '')
+  const d = trimTrailingSlashes(slashed)
   // `''` is the working directory (a relative root spec with no directory
   // part) -- or, absolute, the filesystem root.
   if (d !== '' && d !== '.' && !f.startsWith(`${d}/`)) return false
