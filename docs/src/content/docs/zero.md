@@ -1512,7 +1512,7 @@ export default createServer({
 })
 ```
 
-**Error reporting.** `onError` receives every unexpected server error with its phase: a throwing middleware or API route (`'middleware'`), a failed render (`'render'` / `'stream'`), a server action handler that threw (`'action'`), and anything a middleware reports with `ctx.reportError`. It runs after the console line and never changes the response. It is a function, so it goes here, not in `zero({...})`. See [`@pyreon/server` error handling](/docs/server#reporting-errors--onerror).
+**Error reporting.** `onError` receives every unexpected server error with its phase: a throwing middleware or API route (`'middleware'`), a failed render (`'render'` / `'stream'`), a server action handler that threw (`'action'`), and anything a middleware reports with `ctx.reportError`. It runs after the console line and never changes the response. It is a function, so it goes here, not in `zero({...})`. See [`@pyreon/server` error handling](/docs/server#reporting-errors-onerror).
 
 **Your `zero({...})` settings reach this server automatically.** A production build injects the data part of the config (`mode`, `base`, `ssr`, `isr`, `routeRules`, `i18n`), and a `config` you pass here wins key by key. Settings that are code, such as `middleware` or a custom ISR `store` / `cacheKey` function, cannot be carried into the bundle: when you set them on `zero()` without a `src/entry-server.ts`, the build warns, and you pass them here instead.
 
