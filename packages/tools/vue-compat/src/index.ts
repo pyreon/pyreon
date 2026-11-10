@@ -12,7 +12,8 @@
  * DIFFERENCES FROM VUE 3:
  *  - `deep` option in watch() is ignored — Pyreon tracks dependencies automatically.
  *  - `shallowReactive` uses per-property signals (still shallow, but Pyreon-flavored).
- *  - `readonly` returns a Proxy that throws on set (not Vue's readonly proxy).
+ *  - `readonly` returns a Proxy that THROWS on every write (set, delete, defineProperty,
+ *    setPrototypeOf, preventExtensions) where Vue warns and ignores set/delete only.
  *  - `defineComponent` only supports Composition API (setup function), not Options API.
  *  - Components re-execute their body on state change (hook-indexed re-render model).
  *
@@ -334,6 +335,48 @@ export function shallowReadonly<T extends object>(obj: T): Readonly<T> {
   return _createShallowReadonlyProxy(obj)
 }
 
+/**
+ * The write traps every readonly proxy (deep or shallow) shares.
+ *
+ * A readonly proxy must reject EVERY operation that would change the target,
+ * not just `[[Set]]` and `[[Delete]]`: a Proxy forwards each internal method
+ * it does not trap straight to the target, so `Object.defineProperty(ro, k, d)`
+ * (also the path `Object.assign`-free libraries, `Object.freeze` and decorators
+ * take), `Object.setPrototypeOf(ro, p)` and `Object.preventExtensions(ro)`
+ * mutated the "readonly" source. Vue 3's own readonly handler traps only
+ * `set`/`deleteProperty` too, so there is no upstream behaviour to mirror for
+ * these three; this compat layer already THROWS on a readonly write (see the
+ * module header), and every write path now does the same.
+ */
+const readonlyWriteTraps: Pick<
+  ProxyHandler<object>,
+  'set' | 'deleteProperty' | 'defineProperty' | 'setPrototypeOf' | 'preventExtensions'
+> = {
+  set(_target, key) {
+    // Internal symbols used for identification are allowed
+    if (key === V_IS_READONLY || key === V_RAW) return true
+    throw new Error(`[Pyreon] Cannot set property "${String(key)}" on a readonly object`)
+  },
+  deleteProperty(_target, key) {
+    throw new Error(`[Pyreon] Cannot delete property "${String(key)}" from a readonly object`)
+  },
+  defineProperty(_target, key) {
+    throw new Error(
+      `[Pyreon] Cannot define property "${String(key)}" on a readonly object. Mutate the source object passed to readonly() instead.`,
+    )
+  },
+  setPrototypeOf() {
+    throw new Error(
+      '[Pyreon] Cannot set the prototype of a readonly object. Mutate the source object passed to readonly() instead.',
+    )
+  },
+  preventExtensions() {
+    throw new Error(
+      '[Pyreon] Cannot prevent extensions on (or freeze/seal) a readonly object. Freeze the source object passed to readonly() instead.',
+    )
+  },
+}
+
 function _createShallowReadonlyProxy<T extends object>(obj: T): Readonly<T> {
   const proxy = new Proxy(obj, {
     get(target, key) {
@@ -342,15 +385,17 @@ function _createShallowReadonlyProxy<T extends object>(obj: T): Readonly<T> {
       return Reflect.get(target, key)
       // NO recursive wrapping — shallow
     },
-    set(_target, key) {
-      if (key === V_IS_READONLY || key === V_RAW) return true
-      throw new Error(`[Pyreon] Cannot set property "${String(key)}" on a readonly object`)
-    },
-    deleteProperty(_target, key) {
-      throw new Error(`[Pyreon] Cannot delete property "${String(key)}" from a readonly object`)
-    },
+    ...readonlyWriteTraps,
   })
   return proxy as Readonly<T>
+}
+
+function _wrapReadonlyValue(value: unknown): unknown {
+  // Recursively wrap nested objects in readonly
+  if (value !== null && typeof value === 'object' && !isRef(value)) {
+    return _createReadonlyProxy(value as object)
+  }
+  return value
 }
 
 function _createReadonlyProxy<T extends object>(obj: T): Readonly<T> {
@@ -358,21 +403,22 @@ function _createReadonlyProxy<T extends object>(obj: T): Readonly<T> {
     get(target, key) {
       if (key === V_IS_READONLY) return true
       if (key === V_RAW) return target
-      const value = Reflect.get(target, key)
-      // Recursively wrap nested objects in readonly
-      if (value !== null && typeof value === 'object' && !isRef(value)) {
-        return _createReadonlyProxy(value as object)
+      return _wrapReadonlyValue(Reflect.get(target, key))
+    },
+    // A descriptor read is the second way to reach a nested object:
+    // `Object.getOwnPropertyDescriptor(ro, 'nested').value` handed out the RAW
+    // nested source, writable through ordinary assignment. Wrap the value as
+    // `get` does. The Proxy invariant only pins `value` for a property that is
+    // both non-configurable and non-writable, so that one case (whose nested
+    // object is still reachable read-only through `get`) is returned as is.
+    getOwnPropertyDescriptor(target, key) {
+      const desc = Reflect.getOwnPropertyDescriptor(target, key)
+      if (desc && 'value' in desc && (desc.configurable || desc.writable)) {
+        desc.value = _wrapReadonlyValue(desc.value)
       }
-      return value
+      return desc
     },
-    set(_target, key) {
-      // Internal symbols used for identification are allowed
-      if (key === V_IS_READONLY || key === V_RAW) return true
-      throw new Error(`[Pyreon] Cannot set property "${String(key)}" on a readonly object`)
-    },
-    deleteProperty(_target, key) {
-      throw new Error(`[Pyreon] Cannot delete property "${String(key)}" from a readonly object`)
-    },
+    ...readonlyWriteTraps,
   })
   return proxy as Readonly<T>
 }
