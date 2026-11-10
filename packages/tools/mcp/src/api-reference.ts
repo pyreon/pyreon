@@ -5806,7 +5806,7 @@ clearStorage('all')     // every backend`,
 
 i18n.t('greeting', { name: 'World' })  // "Hello, World!"
 i18n.locale.set('fr')  // switch reactively`,
-    notes: 'Create a reactive i18n instance. Returns `{ t, n, d, rt, locale, addMessages, loadNamespace, ... }`. The `t(key, values?)` function resolves translations reactively — changing `locale` via `.set()` re-evaluates all `t()`/`n()`/`d()`/`rt()` reads in reactive scopes. Supports `{{name}}` interpolation, inline format specifiers (`{{amount, currency}}`), `_one`/`_other`/`_zero` plural suffixes, `context` (gender/variant), `defaultValue`, `$t(key)` nesting, namespace lazy loading with deduplication, fallback locale, and custom plural rules. Configure named Intl formats via `numberFormats` / `dateFormats` / `relativeTimeFormats` and custom inline formatters via `formats`. Available from both `@pyreon/i18n` and `@pyreon/i18n/core`. See also: I18nProvider, useI18n, Trans, interpolate, n, d, rt, resolvePluralCategory.',
+    notes: 'Create a reactive i18n instance. Returns `{ t, n, d, rt, l, dir, locale, addMessages, loadNamespace, ... }`. The `t(key, values?)` function resolves translations reactively — changing `locale` via `.set()` re-evaluates all `t()`/`n()`/`d()`/`rt()`/`l()`/`dir()` reads in reactive scopes. Supports `{{name}}` interpolation, inline format specifiers (`{{amount, currency}}`), `_one`/`_other`/`_zero` plural suffixes, `context` (gender/variant), `defaultValue`, `$t(key)` nesting, namespace lazy loading with deduplication, fallback locale, and custom plural rules. Configure named Intl formats via `numberFormats` / `dateFormats` / `relativeTimeFormats` / `listFormats` and custom inline formatters via `formats`. Available from both `@pyreon/i18n` and `@pyreon/i18n/core`. See also: I18nProvider, useI18n, Trans, interpolate, n, d, rt, l, dir, resolvePluralCategory.',
     mistakes: `- Reading \`t(key)\` outside a reactive scope and expecting updates on locale change — \`t()\` is a reactive signal read, wrap in JSX thunk or \`effect()\`
 - Using \`@pyreon/i18n\` on the backend — use \`@pyreon/i18n/core\` instead, it has zero JSX/core dependencies
 - Forgetting \`fallbackLocale\` — missing keys in the current locale return the key string instead of falling back to another language
@@ -5845,6 +5845,27 @@ i18n.rt(-1, 'day', { numeric: 'auto' })// "yesterday"`,
     notes: 'Format a relative time for the current locale via `Intl.RelativeTimeFormat`. Reactive + memoized. Negative values are past, positive are future. Pass `{ numeric: "auto" }` for "yesterday"/"tomorrow" phrasing. See also: createI18n, n, d.',
     mistakes: `- Forgetting the unit argument — \`rt\` needs an explicit \`Intl.RelativeTimeFormatUnit\` (e.g. "day", "hour")
 - Computing the delta in the wrong sign — negative is past ("ago"), positive is future ("in …")`,
+  },
+
+  'i18n/l': {
+    signature: '(values: Iterable<string>, options?: Intl.ListFormatOptions | string) => string',
+    example: `i18n.l(['Ann', 'Bob', 'Cy'])                      // "Ann, Bob, and Cy"
+i18n.l(['tea', 'coffee'], { type: 'disjunction' }) // "tea or coffee"
+// message: "Invited: {{names, list}}"
+i18n.t('invited', { names: ['Ann', 'Bob'] })       // "Invited: Ann and Bob"`,
+    notes: 'Join a list for the current locale via `Intl.ListFormat` ("a, b, and c" / "a, b und c"). Reactive + memoized per (locale, options). `options` is an `Intl.ListFormatOptions` object (`type: "conjunction" | "disjunction" | "unit"`, `style: "long" | "short" | "narrow"`) or a configured `listFormats` name. Inline in a message: `{{items, list}}`, `{{items, list, disjunction}}`, `{{items, list, unit, narrow}}`, or `{{items, <listFormats name>}}`; inline items are coerced with `String` and nullish entries dropped. See also: createI18n, n, dir.',
+    mistakes: `- Joining with \`items.join(", ")\` — the separator and the final "and" differ per locale (\`de\` has no serial comma, \`ja\` uses "、")
+- Passing numbers to \`l()\` — \`Intl.ListFormat\` throws on non-string items; map them through \`n()\` first (the inline \`{{x, list}}\` form coerces with \`String\`)`,
+  },
+
+  'i18n/dir': {
+    signature: `(locale?: string) => 'ltr' | 'rtl'`,
+    example: `i18n.dir('ar')    // "rtl"
+i18n.dir('en-US') // "ltr"
+const direction = i18n.dir() // current locale; reactive inside JSX / effects
+// e.g. useHead(() => ({ htmlAttrs: { lang: i18n.locale(), dir: i18n.dir() } }))`,
+    notes: 'Text direction of a locale — `"rtl"` for Arabic, Hebrew, Persian, Urdu and other right-to-left scripts, otherwise `"ltr"`. An explicit script subtag wins (`az-Arab` → rtl). Uses `Intl.Locale#getTextInfo()` where the runtime has it, then the likely script from `maximize()`, then a fixed language list. Without an argument it reads the current locale reactively. See also: createI18n, l.',
+    mistakes: '- Reading `dir()` once at setup — like `t()`, the no-argument form reads the locale signal, so read it inside JSX / effect to follow locale switches',
   },
 
   'i18n/I18nProvider': {
