@@ -213,6 +213,24 @@ export async function runAppPage(
   }
 
   if (teardown) (teardown as Teardown)()
+  teardown = null
+
+  // `?heap=1`: leave hooks for an outside driver (bench-apppage-heap.ts) to
+  // measure the retained heap of ONE hydrated page with CDP — a forced GC and
+  // `Runtime.getHeapUsage` on each side of `hydrate()`. Untimed.
+  if (new URL(location.href).searchParams.get('heap') === '1') {
+    ;(globalThis as { __appPageHeapHooks?: unknown }).__appPageHeapHooks = {
+      inject,
+      hydrate: async () => {
+        teardown = await target.hydrate(host)
+      },
+      teardown: () => {
+        if (teardown) (teardown as Teardown)()
+        teardown = null
+      },
+    }
+    return suite
+  }
   host.remove()
   return suite
 }
