@@ -4114,6 +4114,27 @@ usePrefetchQuery(() => ({ queryKey: ['user', id], queryFn: fetchUser }))
     notes: `Infinite-query variant of \`usePrefetchQuery\` — warms the first page of a paginated query into the cache during setup, only when the key isn't already cached. Requires \`initialPageParam\` + \`getNextPageParam\` like \`useInfiniteQuery\`. Pair with \`useSuspenseInfiniteQuery\` in a child. See also: usePrefetchQuery, useSuspenseInfiniteQuery, useInfiniteQuery.`,
   },
 
+  'query/queryOptions': {
+    signature: '<TQueryFnData, TError, TData, TQueryKey>(options: UseQueryOptions<TQueryFnData, TError, TData, TQueryKey>) => UseQueryOptions<…> & { queryKey: DataTag<TQueryKey, TQueryFnData, TError> }',
+    example: `const userQuery = (id: number) =>
+  queryOptions({ queryKey: ['user', id], queryFn: () => fetchUser(id) })
+
+const user = useQuery(() => userQuery(userId()))       // reactive: userId() is read in the accessor
+const cached = client.getQueryData(userQuery(1).queryKey) // User | undefined — no generic needed
+
+const feed = infiniteQueryOptions({
+  queryKey: ['feed'],
+  queryFn: ({ pageParam }) => fetchPage(pageParam),
+  initialPageParam: 0,
+  getNextPageParam: (last) => last.next,
+})
+const createPost = mutationOptions({ mutationFn: (p: NewPost) => api.create(p), invalidates: [['posts']] })`,
+    notes: 'Declare a query once, typed, and reuse it in `useQuery`, `useSuspenseQuery`, `usePrefetchQuery` and the imperative `QueryClient` API. Returns `options` unchanged at runtime; the returned `queryKey` is tagged (TanStack `DataTag`) with the `queryFn` result and error types, so `client.getQueryData(opts.queryKey)` / `setQueryData` are typed without a hand-written generic. `infiniteQueryOptions` tags the key with `InfiniteData<TQueryFnData, TPageParam>`; `mutationOptions` is the same declare-once helper for `useMutation` (including `invalidates`). See also: useQuery, useInfiniteQuery, useMutation, useQueryClient.',
+    mistakes: `- Passing the result straight to \`useQuery(queryOptions(…))\` — \`useQuery\` takes an options FUNCTION: \`useQuery(() => queryOptions(…))\` (or \`useQuery(() => userQuery(id()))\`)
+- Building the options once OUTSIDE the accessor from a signal value (\`const o = userQuery(id())\`) — the key is then fixed; call the factory inside the accessor so the signal read stays reactive
+- Expecting it to lower on a native target — the PMTC \`useQuery\` lowering reads an inline options object; write the object inline in native-shared code`,
+  },
+
   'query/useSubscription': {
     signature: '(options: UseSubscriptionOptions) => UseSubscriptionResult',
     example: `const sub = useSubscription({

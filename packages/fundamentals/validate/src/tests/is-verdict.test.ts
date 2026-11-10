@@ -1,6 +1,6 @@
 // Schema.is() boolean check + the compile-time verdict fast-path hook.
 import { afterEach, describe, expect, it } from 'vitest'
-import { configure, s } from '../v1'
+import { configure, s } from '../index'
 
 describe('Schema.is() — fallback (no attached verdict)', () => {
   it('agrees with parse().ok for primitives', () => {

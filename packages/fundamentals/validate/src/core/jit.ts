@@ -425,7 +425,8 @@ export type JitMode = 'parse' | 'check' | 'fast'
  * unique, so no input value can ever equal it — `v !== JIT_FAIL` is the
  * whole verdict at the seam.
  */
-export const JIT_FAIL: unique symbol = Symbol('pyreon.validate.fail')
+import { JIT_FAIL } from './jit-hook'
+export { JIT_FAIL }
 
 /**
  * A `'fast'`-mode validator: takes ONLY the input and returns the validated

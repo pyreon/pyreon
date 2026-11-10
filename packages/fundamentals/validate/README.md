@@ -177,6 +177,8 @@ import { object, string, minLength, email, pipe } from '@pyreon/validate/mini'
 const Login = object({ name: string().check(minLength(2)), email: string().check(email()) })
 ```
 
+`mini` ships without the runtime JIT (about 3.5 KB gz) and compiles through the interpreter, which returns identical results. Opt back in with `import { enableJit } from '@pyreon/validate/jit'; enableJit()` before the first parse. The main entry and the `optimizeValidators` rewrite keep the JIT on.
+
 ## JSON Schema emit
 
 `toJsonSchema(schema)` (from the **`@pyreon/validate/json-schema`** subpath) walks the introspectable schema graph and emits a JSON Schema **draft 2020-12** document — for OpenAPI specs, AI structured-output constraints, editor autocomplete, cross-language contracts.

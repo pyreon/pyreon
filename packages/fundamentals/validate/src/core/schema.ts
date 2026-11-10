@@ -21,14 +21,8 @@
 import type { FieldMeta, StandardSchemaIssue, StandardSchemaV1 } from '../types'
 import { META_SLOT } from '../types'
 import { type PyreonIssue, ValidationError, snapshotPath } from './issue'
-import {
-  type JitFastValidator,
-  type JitValidator,
-  JIT_FAIL,
-  tryCompileJit,
-  tryCompileJitCheck,
-  tryCompileJitFast,
-} from './jit'
+import type { JitFastValidator, JitValidator } from './jit'
+import { JIT_FAIL, tryCompileJit, tryCompileJitCheck, tryCompileJitFast } from './jit-hook'
 import type { CatchOp, CheckOpts, Op, ParseCtx, PendingCheck } from './ops'
 import { EMPTY_PATH, makeCtx } from './ops'
 import { getServerCheck } from './registry'
