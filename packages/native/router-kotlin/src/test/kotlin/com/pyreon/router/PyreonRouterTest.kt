@@ -1122,5 +1122,81 @@ fun main() {
         expectEq(r.activeTab.value, "feed", "blocked")
     }
 
+    // ── Cold deep links are gated by beforeEnter ────────────────────────────
+    // The initial path (default: the pending inbound deep link) used to be
+    // assigned straight to `path`, so an app cold-launched by a URL opened on a
+    // route whose `beforeEnter` refuses it, while a warm link was gated. Twin
+    // of the Swift router's testColdDeepLinkIsGatedByBeforeEnter.
+    fun guarded(allow: Boolean) = listOf(
+        RouteRecord(path = "/admin/:section", component = {}, beforeEnter = { _ -> allow }),
+    )
+
+    runTest("cold deep link: a refused initial path falls back to root with no params") {
+        val r = PyreonRouter(initialPath = listOf("/admin/billing"), routes = guarded(false))
+        expectEq(r.path.value, emptyList<String>(), "refused → root")
+        expectEq(r.currentPath, "/", "currentPath is root")
+        expectEq(r.params.value, emptyMap<String, String>(), "refused path contributes no params")
+    }
+
+    runTest("cold deep link: the DEFAULT initialPath (pending link) is gated too") {
+        // No live router: the link is parked as PENDING, exactly as on a cold launch.
+        PyreonDeepLink.reset()
+        PyreonDeepLink.receive("/admin/billing")
+        val r = PyreonRouter(routes = guarded(false))
+        expectEq(r.path.value, emptyList<String>(), "pending link refused")
+        PyreonDeepLink.reset()
+    }
+
+    runTest("cold deep link: an allowed initial path is kept, with its params") {
+        val r = PyreonRouter(initialPath = listOf("/admin/billing"), routes = guarded(true))
+        expectEq(r.path.value, listOf("/admin/billing"), "kept")
+        expectEq(r.params.value, mapOf("section" to "billing"), "params")
+    }
+
+    runTest("cold deep link: a path with no matching route is kept (404 is not the guard's job)") {
+        val r = PyreonRouter(initialPath = listOf("/nope"), routes = emptyList())
+        expectEq(r.path.value, listOf("/nope"), "kept")
+    }
+
+    runTest("cold deep link: a nested layout's beforeEnter gates its child") {
+        val routes = listOf(
+            RouteRecord(
+                path = "/admin",
+                component = {},
+                beforeEnter = { _ -> false },
+                children = listOf(RouteRecord(path = "/admin/billing", component = {})),
+            ),
+        )
+        val r = PyreonRouter(initialPath = listOf("/admin/billing"), routes = routes)
+        expectEq(r.path.value, emptyList<String>(), "parent guard refuses the child")
+    }
+
+    runTest("cold deep link: a tab router refuses the guarded entry and stays on the tab root") {
+        val r = PyreonRouter(
+            initialPath = listOf("/me/settings"),
+            routes = listOf(RouteRecord(path = "/me/settings", component = {}, beforeEnter = { _ -> false })),
+            tabs = listOf(PyreonRouterTab("feed", "/feed"), PyreonRouterTab("me", "/me")),
+        )
+        expectEq(r.path.value, emptyList<String>(), "not pushed")
+        expectEq(r.activeTab.value, "feed", "opens on the first tab, not the target's")
+    }
+
+    runTest("cold deep link: a refused tab ROOT does not render through the tab selection") {
+        val r = PyreonRouter(
+            initialPath = listOf("/me"),
+            routes = listOf(RouteRecord(path = "/me", component = {}, beforeEnter = { _ -> false })),
+            tabs = listOf(PyreonRouterTab("feed", "/feed"), PyreonRouterTab("me", "/me")),
+        )
+        expectEq(r.currentPath, "/feed", "guarded tab root not shown")
+    }
+
+    runTest("a global guard added later does not eject from the standing path") {
+        val r = PyreonRouter(initialPath = listOf("/home"), routes = listOf(RouteRecord(path = "/home", component = {})))
+        r.beforeEachGuards.add { _ -> false }
+        expectEq(r.path.value, listOf("/home"), "standing path kept")
+        r.push("/other")
+        expectEq(r.path.value, listOf("/home"), "next transition blocked")
+    }
+
     println("[verify-kotlin] ✓ PyreonRouter smoke ${80} test(s) passed")
 }
