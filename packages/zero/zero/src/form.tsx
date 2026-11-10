@@ -230,7 +230,7 @@ function toFormData(data: FormData | Record<string, string | Blob>): FormData {
  *   )
  * }
  */
-export function useSubmission<T>(action: Action<T>): Submission<T> {
+export function useSubmission<T, TInput = unknown>(action: Action<T, TInput>): Submission<T> {
   const id = action.actionId
   const cell = cellFor(id)
   // Resolved at setup (a hook), used later inside event handlers.
@@ -324,9 +324,13 @@ function currentPathOf(router: ReturnType<typeof useRouter> | undefined): string
 // ─── <Form> ─────────────────────────────────────────────────────────────────
 
 /** Props for {@link Form}. */
-export interface FormProps<T> extends SubmitOptions {
-  /** The action to run — a `defineAction()` result (often the route's own `action` export). */
-  action: Action<T>
+export interface FormProps<T, TInput = unknown> extends SubmitOptions {
+  /**
+   * The action to run — a `defineAction()` result (often the route's own `action` export).
+   * A schema-validated action (`defineAction(schema, handler)`) carries its input type as
+   * `TInput`; the form submits its fields, so any input type is accepted here.
+   */
+  action: Action<T, TInput>
   /**
    * Reset the form's fields after a successful enhanced submission.
    * Default `true` (the no-JS path reloads the page, which resets it too).
@@ -350,7 +354,7 @@ export interface FormProps<T> extends SubmitOptions {
  *   <button type="submit">Create</button>
  * </Form>
  */
-export function Form<T>(props: FormProps<T>): VNodeChild {
+export function Form<T, TInput = unknown>(props: FormProps<T, TInput>): VNodeChild {
   const [own, rest] = splitProps(props, [
     'action',
     'revalidate',

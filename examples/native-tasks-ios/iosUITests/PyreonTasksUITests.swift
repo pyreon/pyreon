@@ -441,6 +441,53 @@ final class PyreonTasksUITests: XCTestCase {
         XCTAssertTrue(app.otherElements["tasks-page"].firstMatch.waitForExistence(timeout: 15), "streams-back did not return to tasks")
     }
 
+    /// useInfiniteQuery, useLatest, useMediaQuery and useKeyboard on the device.
+    ///
+    /// Infinite query: three pages from the loopback server's /pages. The count must climb 1 -> 2 -> 3 and
+    /// `hasNextPage` must flip to false only when the server's last page carries no `nextCursor` (the
+    /// terminating case is the one a wrong cursor reader gets wrong). useLatest: a write to the box does not
+    /// re-render, so after the 3rd tap the text shows the value written one tap before (2), while the signal
+    /// reads 3. useMediaQuery: a default simulator is light. The hardware-key PRESS is not driven here, for
+    /// the reason noted on useHotkey above; the Android test presses the key.
+    func test_hooksInfiniteQueryLatestMediaQueryKeyboard() throws {
+        let app = XCUIApplication()
+        app.launch()
+        let username = app.textFields["login-username"].firstMatch
+        XCTAssertTrue(username.waitForExistence(timeout: 30), "Username field missing")
+        username.tap()
+        username.typeText("abcde")
+        dismissKeyboard(app)
+        app.buttons["login-submit"].firstMatch.tap()
+        XCTAssertTrue(app.otherElements["tasks-page"].firstMatch.waitForExistence(timeout: 20), "Tasks page did not render after login")
+
+        tapAfterScrolling(app.buttons["tasks-hooks"].firstMatch, in: app)
+        XCTAssertTrue(app.otherElements["hooks-page"].firstMatch.waitForExistence(timeout: 15), "Hooks page did not render")
+
+        let pages = app.staticTexts["hooks-pages"].firstMatch
+        let more = app.staticTexts["hooks-more"].firstMatch
+        XCTAssertTrue(waitForLabel(pages, "1", timeout: 20), "first page never arrived: '\(pages.label)'")
+        XCTAssertEqual(more.label, "true", "page 0 carries a nextCursor, so hasNextPage must be true")
+        tapAfterScrolling(app.buttons["hooks-fetch-more"].firstMatch, in: app)
+        XCTAssertTrue(waitForLabel(pages, "2", timeout: 20), "fetchNextPage did not load page 2: '\(pages.label)'")
+        XCTAssertEqual(more.label, "true", "page 1 carries a nextCursor, so hasNextPage must be true")
+        tapAfterScrolling(app.buttons["hooks-fetch-more"].firstMatch, in: app)
+        XCTAssertTrue(waitForLabel(pages, "3", timeout: 20), "fetchNextPage did not load page 3: '\(pages.label)'")
+        XCTAssertTrue(waitForLabel(more, "false", timeout: 10), "the last page has no nextCursor, so hasNextPage must be false: '\(more.label)'")
+
+        let latest = app.staticTexts["hooks-latest"].firstMatch
+        let taps = app.staticTexts["hooks-taps"].firstMatch
+        XCTAssertEqual(latest.label, "0", "useLatest(0) must start at 0")
+        for _ in 0..<3 { tapAfterScrolling(app.buttons["hooks-tap"].firstMatch, in: app) }
+        XCTAssertTrue(waitForLabel(taps, "3", timeout: 10), "the tap signal did not reach 3: '\(taps.label)'")
+        XCTAssertEqual(latest.label, "2", "useLatest must show the value written one tap ago (a write to the box does not re-render)")
+
+        XCTAssertEqual(app.staticTexts["hooks-dark"].firstMatch.label, "light", "useMediaQuery('(prefers-color-scheme: dark)') must be false on a light simulator")
+        XCTAssertEqual(app.staticTexts["hooks-key"].firstMatch.label, "0", "useKeyboard's bound counter did not render")
+
+        tapAfterScrolling(app.buttons["hooks-back"].firstMatch, in: app)
+        XCTAssertTrue(app.otherElements["tasks-page"].firstMatch.waitForExistence(timeout: 15), "hooks-back did not return to tasks")
+    }
+
     /// `<Field kind="date" | "time" | "datetime">` (#3980) on the device: the
     /// runtime's `PyreonDateField`, a SwiftUI `DatePicker`.
     ///

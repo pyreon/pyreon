@@ -1668,7 +1668,7 @@ For SSR, preload the matched route before rendering, serialize its loader data i
 **Server:**
 
 ```tsx
-import { createRouter, serializeLoaderData, stringifyLoaderData } from '@pyreon/router'
+import { createRouter, serializeLoaderData, stringifyLoaderDataForScript } from '@pyreon/router'
 import { renderToString } from '@pyreon/runtime-server'
 
 // In your SSR handler:
@@ -1683,10 +1683,12 @@ await router.preload(pathname + search, req)
 // Render the app
 const html = await renderToString(<App />)
 
-// Serialize loader data for client hydration. `stringifyLoaderData` escapes
-// `<`, U+2028 and U+2029 so the JSON cannot break out of the <script>, and
-// names the route when a loader returns a circular structure.
-const loaderData = stringifyLoaderData(serializeLoaderData(router))
+// Serialize loader data for client hydration. `stringifyLoaderDataForScript`
+// escapes `<`, U+2028 and U+2029 so the data cannot break out of the <script>,
+// keeps an own "__proto__" key an own key (a JS object literal would otherwise
+// treat it as a prototype setter), and names the route when a loader returns a
+// circular structure.
+const loaderData = stringifyLoaderDataForScript(serializeLoaderData(router))
 
 // Include in HTML response:
 const page = `
@@ -1766,9 +1768,12 @@ import { isRedirectError, getRedirectInfo } from '@pyreon/router'
 
 **`LoaderContext.request`** is populated when a loader runs during SSR (via `router.preload(path, request)` or `prefetchLoaderData(router, path, request)`) AND for serverLoaders run by the data endpoint on client navigations; `undefined` for isomorphic loaders running in the browser. This lets server-side loaders read cookies / auth headers and decide whether to `redirect()` BEFORE the layout renders.
 
-### notFound() — trigger a 404 boundary
+### notFound() — "matched route, missing resource"
 
-Throw `notFound()` inside a loader or a component to render the nearest `NotFoundBoundary` instead of the route. This is the "the route matched but the resource doesn't exist" case (e.g. `/user/999` where user 999 was deleted) — distinct from "no route matched at all".
+`notFound()` is the "the route matched but the resource doesn't exist" case (e.g. `/user/999` where user 999 was deleted) — distinct from "no route matched at all". Where you throw it decides what renders:
+
+- **From a loader** (`loader` or `serverLoader`): the navigation commits into the router's **not-found state** — `currentRoute()` resolves to the same chain an unmatched URL gets (the nearest `notFoundComponent` / `_404.tsx`, rendered inside its layouts) with `isNotFound: true`, keeping the URL, `params` and `query`. SSR answers HTTP **404** (string and stream mode; still 404 with an empty chain when no `notFoundComponent` exists), the loader-data blob carries a marker so the hydrating client resolves the same chain, the single-fetch data endpoint answers `{ "notFound": true }`, and a client navigation lands on the same page. `onError` is not called — like `redirect()`, it is flow control. The next navigation leaves the state.
+- **From a component** while it renders: the nearest `NotFoundBoundary` renders its fallback.
 
 ```tsx
 import { notFound, NotFoundBoundary, isNotFoundError } from '@pyreon/router'
@@ -1796,7 +1801,7 @@ function App() {
 }
 ```
 
-- **`notFound()`** — returns a sentinel error to `throw`. Catchable by the nearest `NotFoundBoundary`.
+- **`notFound()`** — throws a branded error (`=> never`). From a loader → the not-found state above; from a component → the nearest `NotFoundBoundary`.
 - **`NotFoundBoundary`** — renders its `fallback` when a descendant throws `notFound()`. Behaves like an error boundary scoped to not-found errors.
 - **`isNotFoundError(err)`** — type guard for custom error boundaries that need to distinguish not-found from other errors (re-throw everything else, render a 404 UI for this one).
 
@@ -1826,7 +1831,7 @@ interface ResolvedRoute {
 }
 ```
 
-`notFound()` (the thrown sentinel) and `notFoundComponent` / `_404.tsx` (the no-route-matched fallback) are complementary: the first is for "matched route, missing resource", the second for "URL matched nothing".
+`notFound()` (the thrown sentinel) and `notFoundComponent` / `_404.tsx` (the no-route-matched fallback) are complementary: the first is for "matched route, missing resource", the second for "URL matched nothing". A loader's `notFound()` renders the SAME `notFoundComponent` chain, so one `_404.tsx` serves both.
 
 ## Lazy Loading
 
@@ -2514,7 +2519,7 @@ A typical SSR flow:
 1. Create the router with `url: req.url`
 2. Preload the route with `router.preload(path, req)` (resolves lazy components and runs loaders)
 3. Render the app to string
-4. Serialize loader data with `stringifyLoaderData(serializeLoaderData(router))` and embed in HTML
+4. Serialize loader data with `stringifyLoaderDataForScript(serializeLoaderData(router))` and embed in HTML
 5. On the client, create a new router and hydrate with `hydrateLoaderData(router, data)`
 6. Mount the app
 
@@ -2525,7 +2530,7 @@ import {
   RouterProvider,
   RouterView,
   serializeLoaderData,
-  stringifyLoaderData,
+  stringifyLoaderDataForScript,
 } from '@pyreon/router'
 import { renderToString } from '@pyreon/runtime-server'
 
@@ -2541,7 +2546,7 @@ export async function handleRequest(req: Request): Promise<Response> {
     </RouterProvider>,
   )
 
-  const loaderData = stringifyLoaderData(serializeLoaderData(router))
+  const loaderData = stringifyLoaderDataForScript(serializeLoaderData(router))
 
   return new Response(
     `
@@ -2765,7 +2770,8 @@ router.push({ name: 'user', params: { id: '42' } })
 
 <APICard name="isNotFoundError" type="function" signature="isNotFoundError(err: unknown): boolean" description="Type guard — true when err is a notFound() sentinel." />
 
-<APICard name="stringifyLoaderData" type="function" signature={"stringifyLoaderData(data: Record<string, unknown>): string"} description="SSR: JSON-serialize loader data for an inline <script> — escapes <, U+2028 and U+2029, and throws a [Pyreon] error naming the key on a circular reference." />
+<APICard name="stringifyLoaderDataForScript" type="function" signature={"stringifyLoaderDataForScript(data: object): string"} description="SSR: serialize loader data as a JavaScript expression for an executable inline <script>window.X=…</script> — the stringifyLoaderData escaping, plus every __proto__ object key emitted as a computed key so it stays an own property." />
+<APICard name="stringifyLoaderData" type="function" signature={"stringifyLoaderData(data: Record<string, unknown>): string"} description="SSR: JSON-serialize loader data as script-safe JSON text (a JSON response or an application/json script block; use stringifyLoaderDataForScript for an executable window.X= assignment) — escapes <, U+2028 and U+2029, and throws a [Pyreon] error naming the key on a circular reference." />
 
 <APICard name="getActiveRouter / setActiveRouter" type="function" signature={"getActiveRouter(): Router | null / setActiveRouter(router: Router | null): void"} description="Read the router from context (falling back to the module-level active router), or install a router without a RouterProvider." />
 

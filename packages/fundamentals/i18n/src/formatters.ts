@@ -1,5 +1,6 @@
 import type {
   DateFormats,
+  ListFormats,
   NamedFormatters,
   NumberFormats,
   RelativeTimeFormats,
@@ -13,12 +14,26 @@ export interface FormatterConfig {
   numberFormats?: NumberFormats | undefined
   dateFormats?: DateFormats | undefined
   relativeTimeFormats?: RelativeTimeFormats | undefined
+  listFormats?: ListFormats | undefined
   formats?: NamedFormatters | undefined
 }
 
 /** Coerce a date-ish value to a Date for Intl.DateTimeFormat. */
 function toDate(value: Date | number | string): Date {
   return value instanceof Date ? value : new Date(value)
+}
+
+/**
+ * Inline `{{val, list}}` items. An array is the list (nullish entries are
+ * dropped, the rest coerced with `String` — `Intl.ListFormat` throws on a
+ * non-string item). Any other value is a one-item list: a bare string must NOT
+ * reach `Intl.ListFormat.format`, which would iterate it character by character.
+ */
+function toListItems(value: unknown): string[] {
+  if (!Array.isArray(value)) return value == null ? [] : [String(value)]
+  const items: string[] = []
+  for (const item of value) if (item != null) items.push(String(item))
+  return items
 }
 
 /**
@@ -45,6 +60,7 @@ export function createFormatters(config: FormatterConfig) {
   const numCache = new Map<string, Intl.NumberFormat>()
   const dtCache = new Map<string, Intl.DateTimeFormat>()
   const rtCache = new Map<string, Intl.RelativeTimeFormat>()
+  const listCache = new Map<string, Intl.ListFormat>()
 
   /** Look up a named format for `locale`, falling back to `fallbackLocale`. */
   function resolveNamed<O>(
@@ -102,6 +118,18 @@ export function createFormatters(config: FormatterConfig) {
     return f
   }
 
+  function listFormatter(locale: string, options?: Intl.ListFormatOptions | string) {
+    const opts =
+      typeof options === 'string' ? (resolveNamed(config.listFormats, locale, options) ?? {}) : (options ?? {})
+    const key = `${locale}|${typeof options === 'string' ? `@${options}` : JSON.stringify(opts)}`
+    let f = listCache.get(key)
+    if (!f) {
+      f = new Intl.ListFormat(locale, opts)
+      listCache.set(key, f)
+    }
+    return f
+  }
+
   const n = (locale: string, value: number | bigint, options?: Intl.NumberFormatOptions | string): string => {
     if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('i18n.formatNumber')
     return numberFormatter(locale, options).format(value)
@@ -126,14 +154,25 @@ export function createFormatters(config: FormatterConfig) {
     return relativeTimeFormatter(locale, options).format(value, unit)
   }
 
+  const l = (
+    locale: string,
+    values: Iterable<string>,
+    options?: Intl.ListFormatOptions | string,
+  ): string => {
+    if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('i18n.formatList')
+    // A bare string is iterable — `Intl.ListFormat` would join its characters.
+    return listFormatter(locale, options).format(typeof values === 'string' ? [values] : values)
+  }
+
   /**
    * Resolve an inline interpolation format spec (`{{val, <spec>}}`).
    * `spec` is the comma-separated text after the key: `number`, `currency`
    * (a named number format), `date` / `time` / `datetime`, `relativetime, day`,
-   * or any custom named formatter from `config.formats`.
+   * `list` / `list, disjunction` / `list, unit, narrow`, or any custom named
+   * formatter from `config.formats`.
    *
    * Resolution order: custom `formats` → known builtins → configured named
-   * (number/date/relative-time) tables → `String(value)`.
+   * (number/date/relative-time/list) tables → `String(value)`.
    */
   function format(value: unknown, spec: string, locale: string): string {
     // `split(',')` always yields ≥1 element, so `parts[0]` is always a string.
@@ -152,6 +191,13 @@ export function createFormatters(config: FormatterConfig) {
       return d(locale, value as Date | number | string, name)
     }
     if (name === 'relativetime') return rt(locale, Number(value), unit)
+    if (name === 'list') {
+      // `list, <type>, <style>` — both optional, `Intl.ListFormatOptions` values.
+      const opts: Intl.ListFormatOptions = {}
+      if (parts[1]) opts.type = parts[1] as Intl.ListFormatType
+      if (parts[2]) opts.style = parts[2] as Intl.ListFormatStyle
+      return l(locale, toListItems(value), opts)
+    }
 
     // 3. Configured named formats (number → date → relative-time tables).
     if (resolveNamed(config.numberFormats, locale, name) !== undefined) {
@@ -163,12 +209,15 @@ export function createFormatters(config: FormatterConfig) {
     if (resolveNamed(config.relativeTimeFormats, locale, name) !== undefined) {
       return rt(locale, Number(value), unit, name)
     }
+    if (resolveNamed(config.listFormats, locale, name) !== undefined) {
+      return l(locale, toListItems(value), name)
+    }
 
     // 4. No recognized spec — plain coercion.
     return value == null ? '' : String(value)
   }
 
-  return { n, d, rt, format }
+  return { n, d, rt, l, format }
 }
 
 export type Formatters = ReturnType<typeof createFormatters>

@@ -87,7 +87,13 @@ export function parseFrontmatter(source: string): Frontmatter {
     if (content[0] === '\n') content = content.slice(1)
   }
 
-  if (block.replace(/^\s*#[^\n]+/gm, '').trim() === '') {
+  // A block of only YAML comments and whitespace has no data. The leading
+  // run is `[^\S\n\r\u2028\u2029]*` (whitespace WITHOUT line terminators),
+  // not `\s*`: under `m`, `^\s*` restarted at every line start and swept
+  // every following blank line before failing, which was quadratic in the
+  // number of newlines (1e5 → ~1.8 s). The verdict is identical — the same
+  // `#…` lines are removed, only whitespace the `trim()` drops anyway differs.
+  if (block.replace(/^[^\S\n\r\u2028\u2029]*#[^\n]+/gm, '').trim() === '') {
     return { data: {}, content }
   }
   return { data: parseBlock(block, language.toLowerCase()), content }

@@ -19,7 +19,8 @@
  * })
  */
 
-import { createContext, useContext, provide } from '@pyreon/core'
+import type { Context } from '@pyreon/core'
+import { useContext, provide } from '@pyreon/core'
 
 export interface MiddlewareContext {
   /** The incoming request */
@@ -51,8 +52,18 @@ export type Middleware = (ctx: MiddlewareContext) => Response | void | Promise<R
  * This bridges the middleware → component gap: middleware sets `ctx.locals`,
  * the handler provides it into the Pyreon context system, and components
  * read it without coupling to the middleware layer.
+ *
+ * Its id is REGISTRY-keyed (`Symbol.for`), not a fresh `Symbol()`: a server
+ * bundle can hold two copies of this module (one reached through
+ * `@pyreon/server`, one through `@pyreon/server/client` — e.g. a route chunk
+ * rendering a `serverIsland()` marker), and the copy the handler provides
+ * with must be the copy a component reads from. With per-copy ids the reader
+ * silently got `{}` — a server island rendered without its signature.
  */
-export const RequestLocalsCtx = createContext<Record<string, unknown>>({})
+export const RequestLocalsCtx: Context<Record<string, unknown>> = {
+  id: Symbol.for('pyreon.server.requestLocals'),
+  defaultValue: {},
+}
 
 /**
  * Read per-request locals inside a component (SSR only).
