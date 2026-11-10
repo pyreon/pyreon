@@ -1090,6 +1090,34 @@ A plain `<form method="post">` without `<Form>` also reaches the route's `action
 
 `<Form>` also takes `resetOnSuccess` (default `true`) and `onSuccess(data)`. Other attributes pass through to the `<form>` element; add `enctype="multipart/form-data"` for file inputs.
 
+### Validating the input — `defineAction(schema, handler)`
+
+Pass a [Standard Schema](https://standardschema.dev) (zod, valibot, arktype, `@pyreon/validate`'s `s`) before the handler and the input is validated before the handler runs. The handler receives the schema's parsed output, typed:
+
+```tsx title="src/routes/posts/new.tsx"
+import { z } from 'zod'
+import { defineAction, Form, useSubmission } from '@pyreon/zero/actions'
+
+export const action = defineAction(
+  z.object({ title: z.string().min(1, 'Title is required'), views: z.coerce.number().int() }),
+  async (input, ctx) => db.posts.insert(input), // input: { title: string; views: number }
+)
+
+export default function NewPost() {
+  const sub = useSubmission(action)
+  return (
+    <Form action={action}>
+      <input name="title" />
+      <p>{() => sub.result()?.fields?.title?.join(', ') ?? ''}</p>
+      <input name="views" />
+      <button>Create</button>
+    </Form>
+  )
+}
+```
+
+An invalid input never reaches the handler: the action returns `fail(422, { error: 'Invalid input', issues, fields })`, where `fields` maps each dotted path (`title`, `items.0.qty`, `''` for the root) to its messages. The input is the JSON body for a direct call, or the form fields as an object for a form post. A repeated name becomes an array, and values stay strings or `File`s, so use coercing schemas (`z.coerce.number()`) for numbers and booleans in forms. Called on the server, the action validates too and returns the failure instead of running the handler.
+
 ### Calling an action directly
 
 A `defineAction` result is also a plain async function: `await createPost({ title })` POSTs JSON to `/_zero/actions/<id>` and resolves with the handler's return value. On the server it calls the handler directly. The `ActionContext` exposes `request`, `json` (for JSON bodies), `formData` (for form and multipart bodies) and `headers`.

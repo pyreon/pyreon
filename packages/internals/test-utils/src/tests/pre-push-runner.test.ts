@@ -15,7 +15,7 @@ import {
   tryAcquireLock,
   waitForLock,
 } from '../../../../../scripts/pre-push'
-import { entryKey, type Plan, type WorkspaceInfo } from '../../../../../scripts/pre-push-plan'
+import { computePlan, entryKey, type Plan, type WorkspaceInfo } from '../../../../../scripts/pre-push-plan'
 
 /**
  * `scripts/pre-push.ts` runs the pre-push plan. The contract these tests pin:
@@ -308,6 +308,31 @@ describe('buildSteps', () => {
     expect(steps[4]!.argv).toEqual(['bun', 'run', 'test', '--', '--maxWorkers=4'])
     expect(steps[4]!.env).toEqual({ KOTLIN_HOME: '/k' })
     expect(steps[4]!.durationKey).toBe('test|@pyreon/native-compiler')
+  })
+
+  it('a changed package without a test script gets no test step, so no filtered run can find nothing', () => {
+    // #4232 taught the old shell hook to tolerate bun's "no package has a test
+    // script" error (bun 1.4.0 and 1.4.4 word it differently). The runner never
+    // reaches that case: tests run per package in its own directory, and only
+    // for packages that declare `test` (computePlan), so this pins it.
+    const p = computePlan({
+      changed: ['packages/tools/no-tests/src/x.ts', 'packages/tools/bare/src/y.ts'],
+      workspaces: [
+        { name: '@pyreon/no-tests', dir: '/r/packages/tools/no-tests', deps: [], scripts: { typecheck: 'tsc --noEmit' } },
+        { name: '@pyreon/bare', dir: '/r/packages/tools/bare', deps: [], scripts: {} },
+      ],
+      root: '/r',
+    })
+    expect(p.groups.test).toEqual([])
+    const { steps } = buildSteps({
+      plan: p,
+      workspaces: WS,
+      keys: new Map(),
+      cache: { version: 1, entries: {} },
+      kotlinHome: null,
+    })
+    expect(steps.map((s) => s.id)).toEqual(['validate-fast', 'typecheck'])
+    expect(steps[1]!.argv).toEqual(['bun', 'run', '--filter=@pyreon/no-tests', '--sequential', 'typecheck'])
   })
 
   it('skips what already passed with identical inputs, and a targeted test-utils run records no pass', () => {

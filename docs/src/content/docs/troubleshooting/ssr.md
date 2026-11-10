@@ -60,6 +60,14 @@ Zero's `createServer` mounted API routes, actions, island fragments and the `/_p
 
 ---
 
+### An unanchored "opener, negated run, closer" regex is quadratic when the closer is missing
+
+In `/<[^>]+>/g`, `/!?\[([^\]]*)\]\([^)]*\)/g` or `/\{([^}]*)\}/g` the negated class admits the OPENER, so on `'['.repeat(1e5)` every opener scans to the end, fails, and the engine retries at the next one (4 s). The same shape: `/([A-Za-z][\w-]*)=…/g` retries at every letter of a long run, and `^\s*` under `m` restarts at every line start and sweeps all following blank lines (`\s` contains `\n`). Markdown, code-fence meta and frontmatter are author content and may come from contributors or a CMS.
+  - Bound line-start runs to one line: `[^\S\n\r\u2028\u2029]*` (`\r` and U+2028/9 are line starts under `m` too, so excluding only `\n` stays quadratic on CR input).
+  - For delimited spans, use a scanner that remembers the next closer (no closer after one opener means none after any later one): `zero-content/src/_shared/linear-scan.ts`. Prove a rewrite exact with a seeded differential against the old regex plus a real-content corpus, and lock it with a 1e5-character timing case that fails on the old regex: `zero-content/src/tests/_linear-scan-equivalence.test.ts`.
+
+---
+
 ### URL guard that classifies the handed string, not the browser-preprocessed one
 
 The WHATWG URL parser first strips leading/trailing C0 controls and space, then removes all ASCII tab/newline from anywhere. `trim()` covers neither fully, so `"\u0000//evil"` and `"/<TAB>/evil"` resolve off-origin, and `"java<TAB>script:alert(1)"` resolves to a live `javascript:` URL.

@@ -1066,8 +1066,13 @@ jobs:
               ;;
           esac
           if [ "${{ github.event_name }}" = "pull_request" ]; then
+            # `--script=test` drops affected packages with no `test`
+            # script (the compat example apps): bun exits 1 when every
+            # package a filter matches lacks the script, with wording
+            # that changes between bun releases.
             FILTER=$(bun run scripts/affected.ts \
               --base="$CI_BASE" \
+              --script=test \
               $AFFECTED_ARGS)
             if [ "$FILTER" = "--filter=*" ]; then
               FILTER="$FULL_FILTER"
@@ -1105,9 +1110,11 @@ jobs:
           set -e
           OUTPUT=$(cat "$OUTPUT_FILE")
           rm -f "$OUTPUT_FILE"
-          # bun 1.4 says "No workspace packages matched the filter"; match the
-          # stable suffix, as the pre-push hook does.
-          if [ $EXIT -ne 0 ] && echo "$OUTPUT" | grep -q "packages matched the filter"; then
+          # The affected filter already drops script-less packages
+          # (`--script=test`); this stays as a backstop for the full-slice
+          # path. bun 1.4.0 says "No workspace packages matched the filter",
+          # bun 1.4.4 'Script "test" not found in N packages'.
+          if [ $EXIT -ne 0 ] && echo "$OUTPUT" | grep -qE 'packages matched the filter|Script "test" not found in'; then
             echo "(no matching packages have a 'test' script — treating as no-op)"
             EXIT=0
           fi
