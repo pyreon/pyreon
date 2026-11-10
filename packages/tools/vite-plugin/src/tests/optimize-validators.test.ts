@@ -27,6 +27,9 @@ describe('optimizeValidators — source rewrite', () => {
     )
     // The original chainable construction is gone.
     expect(out!).not.toContain('s.object(')
+    // `mini` ships without the runtime JIT; the rewrite opts back in so the
+    // module validates exactly as fast as the chainable source did.
+    expect(out!).toContain("import { enableJit as _pv$enableJit } from '@pyreon/validate/jit';\n_pv$enableJit();")
   })
 
   it('returns null when there is no schema to rewrite', () => {
