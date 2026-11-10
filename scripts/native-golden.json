@@ -7422,13 +7422,13 @@
       "warnings": 0
     },
     "example:native-tasks/TasksApp.tsx|swift": {
-      "sha": "bfe42612c2901001ec2c61bf589b473058f45d6b717ddefd8cd6de0b3bee5d4f",
-      "bytes": 172894,
+      "sha": "1b5736e537065f52281e45849f560986d5061f1818a5795bede1b52e54f4c676",
+      "bytes": 175650,
       "warnings": 1
     },
     "example:native-tasks/TasksApp.tsx|kotlin": {
-      "sha": "4aac050caea0202022bf0ecff6c2b14a0fc12e18f8f9111f3d2a29c2a82b1e9f",
-      "bytes": 180424,
+      "sha": "bdf5658503d0dab2becaace46f824097e0b23c2b4598285e452b32480b1270bd",
+      "bytes": 183309,
       "warnings": 0
     },
     "example:native-todomvc-ios/TodoApp.tsx|swift": {

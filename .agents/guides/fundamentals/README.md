@@ -6,7 +6,7 @@ Read only the file for the package you are changing. Packages with a detail file
 
 | Package | File | One line |
 | --- | --- | --- |
-| `@pyreon/store` | `references/store.md` | `defineStore(id, setup)` singleton stores, store-owned scope, schema overload |
+| `@pyreon/store` | `references/store.md` | `defineStore(id, setup)` singleton stores, store-owned scope, `defineSchemaStore(id, config)` for schema-validated stores |
 | `@pyreon/state-tree` | `references/state-tree.md` | models, snapshots, patches, middleware |
 | `@pyreon/form` | `references/form.md` | `useForm`, field a11y, schema error routing, dot-path leaf fields |
 | `@pyreon/validate` | `references/validate.md` | `s` runtime, JIT, `.is()` verdict JIT, benchmark standings |

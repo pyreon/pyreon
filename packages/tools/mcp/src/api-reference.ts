@@ -77,6 +77,27 @@ doubled()  // 10`,
 - Reasoning about memory from stale branches — a re-evaluated computed drops subscriptions to sources it no longer reads (exact dep list per evaluation), so \`dispose()\` fully unsubscribes even after conditional-branch flips`,
   },
 
+  'reactivity/linked': {
+    signature: '<T>(compute: () => T, options?: LinkedOptions<T>) => LinkedSignal<T> | <S, T>(source: () => S, compute: (source: S, previous: { source: S; value: T } | undefined) => T, options?: LinkedOptions<T>) => LinkedSignal<T>',
+    example: `import { linked, signal } from '@pyreon/reactivity'
+
+const options = signal(['small', 'medium', 'large'])
+const size = linked(() => options()[0])
+size.set('large')                    // the user's choice
+options.set(['s', 'm'])              // list changed → size() === 's'
+
+// keep the previous choice when the new list still contains it
+// (annotate the return type: T cannot be inferred from a body that reads prev.value)
+const kept = linked(options, (opts, prev): string =>
+  prev && opts.includes(prev.value) ? prev.value : opts[0])`,
+    notes: 'A writable derived value (Angular `linkedSignal`): it follows its source like a `computed`, can be overwritten with `.set()` / `.update()` like a signal, and resets when the source changes. `linked(() => expr)` resets whenever `expr` changes; `linked(source, (s, prev) => value)` tracks only `source` and runs `compute` untracked with the new source value and the previous `{ source, value }` (including a local override), so it can keep a previous choice that is still valid. The source is compared with `Object.is` — a recomputation to the same source value keeps the override; a write made after a pending source change wins. Lazy like `computed`. Returns `LinkedSignal<T>`: call to read, `.peek()`, `.set()`, `.update()`, `.dispose()` (only needed outside a component or effect scope). No native lowering yet. See also: computed, signal, watch.',
+    mistakes: `- Writing \`signal\` + \`watch(source, v => sel.set(...))\` by hand — it is eager, runs the reset as a separate effect (one stale read in between), and must be disposed; \`linked\` is one lazy node
+- Reading other signals inside the two-argument \`compute\` and expecting them to reset the value — \`compute\` runs untracked; only \`source\` is tracked. Put every reset trigger in \`source\`
+- Expecting a source that recomputes to an EQUAL value to reset the override — the source is compared with \`Object.is\`; return a new identity (or a different value) to force a reset
+- Leaving the two-argument \`compute\` unannotated while its body reads \`prev.value\` — TypeScript cannot infer \`T\` from a body that depends on it and falls back to \`unknown\`; annotate the return type (\`(opts, prev): string => …\`)
+- Destructuring \`const { set } = sel\` — the methods are shared and use \`this\`, as with \`signal\`; call \`sel.set(v)\``,
+  },
+
   'reactivity/effect': {
     signature: '(fn: () => (() => void) | void) => () => void',
     example: `const count = signal(0)
@@ -1207,6 +1228,17 @@ if (isClient) {
 - Using \`isClient\` to gate DOM access inside a component body when \`onMount\`/\`effect\` would do — those never run during SSR at all, which is simpler and doesn't need the guard`,
   },
 
+  'core/escapeJsonForScript': {
+    signature: '(json: string) => string',
+    example: `import { escapeJsonForScript } from '@pyreon/core'
+
+const tag = \`<script type="application/ld+json">\${escapeJsonForScript(JSON.stringify(data))}</script>\``,
+    notes: `Neutralise JSON TEXT for the body of an inline \`<script>\`: every \`<\` becomes \`\\u003C\` (so \`</script\`, \`<!--\` and \`<script\` cannot form) and U+2028/U+2029 are escaped. Every escape is a valid JSON escape, so the block still \`JSON.parse\`s to an identical value — unlike the \`<\\/\` / \`<\\!--\` rewrite, where \`\\!\` is not a JSON escape. The one recipe \`@pyreon/head\` uses for JSON data blocks (JSON-LD, speculation rules, import maps) and \`@pyreon/zero\`'s \`jsonLd()\` uses. For a JSON block or response only: an executable \`window.X=…\` assignment also needs the \`__proto__\`-key handling of \`@pyreon/router\`'s loader-data serializer, and script CODE must not take it (\`\\u003C\` outside a string breaks \`<\` operators).`,
+    mistakes: `- Interpolating a bare \`JSON.stringify\` into a \`<script>\` — a string value containing \`</script>\` or \`<!--<script>\` breaks out of the element
+- Escaping with \`<\\/\` and \`<\\!--\` inside a JSON block — \`\\!\` is not a JSON escape, so the block no longer parses and its data is dropped
+- Passing JavaScript SOURCE instead of JSON text — \`\\u003C\` outside a string literal is a syntax error`,
+  },
+
   'core/defineComponent': {
     signature: '<P>(fn: ComponentFn<P>) => ComponentFn<P>',
     example: `const Button = defineComponent((props: { label: string }) => <button>{props.label}</button>)
@@ -2155,21 +2187,29 @@ const page = () => search().page`,
 
   'router/notFound / NotFoundBoundary': {
     signature: 'notFound(message?: string) => never · NotFoundBoundary(props: { fallback: ComponentFn | VNodeChild; children?: VNodeChild }) => VNodeChild',
-    example: `async function loadUser(params: { id: string }) {
-  const user = await fetchUser(params.id)
-  if (!user) notFound()          // throws — code below is unreachable
-  return user
-}
+    example: `// Loader: renders the route tree's notFoundComponent / _404.tsx (SSR: HTTP 404)
+const routes = [{
+  path: '/', component: Layout, notFoundComponent: NotFoundPage,
+  children: [{
+    path: 'user/:id', component: UserPage,
+    loader: async ({ params }) => {
+      const user = await fetchUser(params.id)
+      if (!user) notFound()          // throws — code below is unreachable
+      return user
+    },
+  }],
+}]
 
+// Component: caught by the nearest NotFoundBoundary
 const app = (
   <NotFoundBoundary fallback={() => <h1>404 — not found</h1>}>
-    <RouterView />
+    <Widget />
   </NotFoundBoundary>
 )`,
-    notes: `The Next.js-style 404 pair. \`notFound()\` THROWS a branded Error (message defaults to 'Not Found') from inside a loader or component; \`isNotFoundError\` detects the brand (\`Symbol.for('pyreon.notFound')\`, realm-shared). \`NotFoundBoundary\` wraps the core \`ErrorBoundary\`: it renders \`children\` normally, and when a \`notFound()\` is thrown in its subtree it renders \`fallback\` (invoked as a component with \`{ error, reset }\` when its arity is <= 1, else returned as a plain VNodeChild). It RE-THROWS any non-notFound error so real errors still propagate to an outer error boundary. See also: redirect, RouterView.`,
+    notes: `The Next.js-style 404 pair. \`notFound()\` THROWS a branded Error (message defaults to 'Not Found'); \`isNotFoundError\` detects the brand (\`Symbol.for('pyreon.notFound')\`, realm-shared). Thrown from a LOADER (\`loader\` / \`serverLoader\`) it is flow control, like \`redirect()\`: the route enters the router's not-found state — \`currentRoute()\` resolves to the same \`notFoundComponent\` / \`_404.tsx\` chain an unmatched URL gets (inside its layouts, \`isNotFound: true\`, URL/params/query kept), SSR answers HTTP 404 in string and stream mode (404 with an empty chain when no \`notFoundComponent\` exists), the loader-data blob carries a marker so the hydrating client resolves the same chain, the data endpoint answers \`{ notFound: true }\`, a client navigation lands on the same page, \`onError\` is not called, and the next navigation leaves the state. Thrown from a COMPONENT it is caught by the nearest \`NotFoundBoundary\`, which wraps the core \`ErrorBoundary\` wraps the core \`ErrorBoundary\`: it renders \`children\` normally, and when a \`notFound()\` is thrown in its subtree it renders \`fallback\` (invoked as a component with \`{ error, reset }\` when its arity is <= 1, else returned as a plain VNodeChild). It RE-THROWS any non-notFound error so real errors still propagate to an outer error boundary. See also: redirect, RouterView.`,
     mistakes: `- Expecting code after \`notFound()\` to run — it THROWS (\`=> never\`) and never returns, so a guard-then-continue pattern does not work (everything after it is unreachable).
 - Using \`NotFoundBoundary\` as a general error boundary — it ONLY handles \`notFound()\` throws; every other error is RE-THROWN to the nearest outer \`ErrorBoundary\`.
-- Confusing \`notFound()\` with the route-record \`notFoundComponent\` / fs-router \`_404.tsx\` — those are the route-level no-match fallback; \`notFound()\` drives the \`NotFoundBoundary\` in the rendered subtree (a different mechanism).`,
+- Wrapping \`RouterView\` in a \`NotFoundBoundary\` to catch a LOADER's \`notFound()\` — a loader's \`notFound()\` never reaches a boundary; it renders the route tree's \`notFoundComponent\` / \`_404.tsx\` chain (HTTP 404 under SSR). \`NotFoundBoundary\` is for \`notFound()\` thrown while a component renders.`,
   },
 
   'router/lazy': {
@@ -2232,19 +2272,20 @@ safeRedirectLocation('javascript:alert(1)')  // '/' — blocked`,
 - Using \`classifyRedirectTarget\` result's \`.url\` directly for a \`'block'\` verdict — it is undefined for that kind; use \`safeRedirectLocation\` (which always returns a safe string) unless you specifically need to branch on WHY something was blocked`,
   },
 
-  'router/serializeLoaderData / stringifyLoaderData / hydrateLoaderData': {
-    signature: 'serializeLoaderData(router: RouterInstance) => Record<string, unknown> · stringifyLoaderData(loaderData: Record<string, unknown>) => string · hydrateLoaderData(router: RouterInstance, serialized: Record<string, unknown>) => void',
+  'router/serializeLoaderData / stringifyLoaderDataForScript / stringifyLoaderData / hydrateLoaderData': {
+    signature: 'serializeLoaderData(router: RouterInstance) => Record<string, unknown> · stringifyLoaderDataForScript(data: object) => string · stringifyLoaderData(loaderData: Record<string, unknown>) => string · hydrateLoaderData(router: RouterInstance, serialized: Record<string, unknown>) => void',
     example: `// Server (SSR handler):
 await prefetchLoaderData(router, req.url)
-const json = stringifyLoaderData(serializeLoaderData(router))
-const html = \`...<script>window.__PYREON_LOADER_DATA__=\${json}</script>...\`
+const expr = stringifyLoaderDataForScript(serializeLoaderData(router))
+const html = \`...<script>window.__PYREON_LOADER_DATA__=\${expr}</script>...\`
 
 // Client entry (before mount):
 const router = createRouter({ routes })
 hydrateLoaderData(router, window.__PYREON_LOADER_DATA__ ?? {})
 mount(h(App, null), document.getElementById('app')!)`,
-    notes: `The SSR ⇄ client loader-data transit pipeline \`@pyreon/server\`/\`@pyreon/zero\` build on. Server side: \`serializeLoaderData(router)\` collects the matched chain's loader results into a plain object keyed by route path (a layout and its index page can share a path — the SECOND record at the same path gets a \`path#1\` suffix so neither clobbers the other); \`stringifyLoaderData(data)\` then turns that into a STRING ready to embed inside an inline \`<script>\` — it strips functions/symbols, throws a clear \`[Pyreon] Loader returned circular reference at "<path>"\` naming the offending key on a real cycle (a DAG with a SHARED reference, like two fields pointing at the same ORM instance, is NOT a cycle and serializes fine), and neutralizes the whole \`<\` character class plus U+2028/U+2029 so an adversarial loader value can never break out of the \`<script>\` boundary. Client side: \`hydrateLoaderData(router, serialized)\` — called once, BEFORE \`mount()\`, right after \`createRouter()\` — populates the router's internal loader-data map from the deserialized blob so the initial render uses the server-fetched data instead of re-running loaders. See also: useLoaderData, prefetchLoaderData.`,
+    notes: `The SSR ⇄ client loader-data transit pipeline \`@pyreon/server\`/\`@pyreon/zero\` build on. Server side: \`serializeLoaderData(router)\` collects the matched chain's loader results into a plain object keyed by route path (a layout and its index page can share a path — the SECOND record at the same path gets a \`path#1\` suffix so neither clobbers the other); \`stringifyLoaderDataForScript(data)\` then turns that into a JavaScript EXPRESSION ready for an inline \`<script>window.X=…</script>\` assignment, and \`stringifyLoaderData(data)\` into script-safe JSON TEXT (a JSON response body or a \`<script type="application/json">\` block). Both strip functions/symbols, throws a clear \`[Pyreon] Loader returned circular reference at "<path>"\` naming the offending key on a real cycle (a DAG with a SHARED reference, like two fields pointing at the same ORM instance, is NOT a cycle and serializes fine), and neutralizes the whole \`<\` character class plus U+2028/U+2029 so an adversarial loader value can never break out of the \`<script>\` boundary. The \`ForScript\` form additionally rewrites every \`"__proto__"\` KEY to the computed \`["__proto__"]\`, because a JS object literal treats a \`"__proto__":\` key as a PROTOTYPE SETTER: a user-keyed map holding that key would lose it on the client and every missing-key lookup would inherit the smuggled fields; without such a key its output is byte-identical to \`stringifyLoaderData\`. Client side: \`hydrateLoaderData(router, serialized)\` — called once, BEFORE \`mount()\`, right after \`createRouter()\` — populates the router's internal loader-data map from the deserialized blob so the initial render uses the server-fetched data instead of re-running loaders. See also: useLoaderData, prefetchLoaderData.`,
     mistakes: `- Calling \`JSON.stringify(serializeLoaderData(router))\` directly instead of \`stringifyLoaderData\` — loses the circular-reference diagnostic (a bare \`JSON.stringify\` throws an opaque "Converting circular structure to JSON" naming no route) AND the \`<script>\`-context escaping (a loader value containing \`</script>\` or \`<!--<script>\` can corrupt the page)
+- Interpolating \`stringifyLoaderData\` (JSON text) into an EXECUTABLE \`window.X=…\` assignment — the script is a JS object literal, where a \`"__proto__":\` key sets the prototype instead of creating the key. Use \`stringifyLoaderDataForScript\` for executable embeds; keep \`stringifyLoaderData\` for JSON responses and \`type="application/json"\` blocks
 - Calling \`hydrateLoaderData\` AFTER \`mount()\` — it populates the loader-data map the FIRST render reads; called too late, the initial render re-fetches instead of using the server data
 - Returning a Mongo/Prisma model with back-references intact from a loader — that IS a genuine cycle, and \`stringifyLoaderData\` throws naming the exact key; strip back-references or return a plain serialized shape`,
   },
@@ -2443,8 +2484,9 @@ const CartBadge = serverIsland(() => import('../islands/CartBadge'), {
 
 // page stays SSG/ISR/CDN-cacheable; the badge renders per request
 ;<CartBadge label="Cart" />`,
-    notes: `The INVERSE of \`island()\`: a static (CDN/ISR/prerender-cacheable) page with per-request SERVER-rendered holes. Every render emits only a \`<pyreon-server-island>\` marker carrying the name + codec-encoded props — the page contains nothing request-specific, so it stays cacheable. On the client each marker SELF-ACTIVATES on mount and fetches \`GET /_pyreon/fragment/<name>?props=…\` (auto-mounted by zero's createServer); the fragment renders per-request on the server with full request context (middleware locals, cookies — \`useRequestLocals()\` works inside). The endpoint is name-ALLOWLISTED — only registered islands render. \`fallback\` is the structural placeholder for no-JS clients and until the fragment arrives. \`cache\` sets the fragment response Cache-Control (default \`no-store\`) — only for fragments that do NOT vary on cookies/auth. See also: activateServerIslands.`,
-    mistakes: `- TRUSTING the props inside the fragment — they arrive in the query string of a public, UNAUTHENTICATED endpoint (\`GET /_pyreon/fragment/<name>?props=…\`), so a caller can send any value for any registered island. The NAME is allowlisted; the props are not. Render from them freely, but authorize from the REQUEST (\`useRequestLocals()\`, the session cookie) — an island that reads a \`userId\` prop and returns that user's data is an IDOR by construction
+    notes: `The INVERSE of \`island()\`: a static (CDN/ISR/prerender-cacheable) page with per-request SERVER-rendered holes. Every render emits only a \`<pyreon-server-island>\` marker carrying the name + codec-encoded props — the page contains nothing request-specific, so it stays cacheable. On the client each marker SELF-ACTIVATES on mount and fetches \`GET /_pyreon/fragment/<name>?props=…\` (auto-mounted by zero's createServer); the fragment renders per-request on the server with full request context (middleware locals, cookies — \`useRequestLocals()\` works inside). The endpoint is name-ALLOWLISTED — only registered islands render. Under zero every server-rendered marker is SIGNED (\`data-page\` + \`data-sig\`: HMAC over name, page pathname, encoded props and expiry, minted via \`ctx.locals[SERVER_ISLAND_MINT]\`); zero's endpoint verifies before decoding props (missing/tampered/expired → 403) and runs the declaring page's route middleware. A client-rendered marker retries a 403 with the signed marker from the current page's server HTML. \`fallback\` is the structural placeholder for no-JS clients and until the fragment arrives. \`cache\` sets the fragment response Cache-Control (default \`no-store\`) — only for fragments that do NOT vary on cookies/auth. See also: activateServerIslands.`,
+    mistakes: `- Authorizing from a prop inside the fragment — a signature proves the server rendered those props on that page, not for THIS visitor (a signed URL from one user's page replays for anyone the page's middleware admits until it expires), and a custom endpoint built on \`renderServerIslandFragment\` gets caller-chosen props. Authorize from the REQUEST (\`useRequestLocals()\`, the session cookie) — an island that reads a \`userId\` prop and returns that user's data is an IDOR by construction
+- Running more than one server instance (or prerendering pages with server islands) without \`PYREON_ISLAND_SECRET\` — each process then signs with its own random secret, so a fragment only verifies on the process that rendered its page, and prerendered markers stay unsigned (403)
 - Passing children — island props cross the fragment boundary as codec-encoded data; children are dropped (same contract as client islands)
 - Setting \`cache\` on a cookie-varying fragment — the same auth poisoning class as ISR cacheKey; the no-store default exists for a reason
 - Expecting the fragment to hydrate interactivity — fragments are server-rendered HTML; composing a client island() INSIDE a server island is a documented follow-up, not v1
@@ -2759,22 +2801,23 @@ const { store, patch, subscribe, reset } = useCounter()
 store.count()       // 0
 store.increment()   // reactive update
 patch({ count: 42 })`,
-    notes: `Define a composition-style store. The setup function runs once per store ID — inside a store-OWNED effect scope, so \`computed()\`/\`effect()\` created in setup belong to the STORE (disposed by \`dispose()\`), never to the component whose mount happened to create the store first (a component unmount cannot freeze a singleton's computeds). Setup returns an object whose signals become tracked state and whose functions become interceptable actions. Returns a hook function that produces a StoreApi with \`.store\` (user state/actions), \`.patch()\`, \`.subscribe()\`, \`.onAction()\`, \`.reset()\`, and \`.dispose()\`. Stores are singletons — calling the hook twice with the same ID returns the same instance; redefining an ID from a DIFFERENT setup function dev-warns once (the existing instance wins). See also: StoreApi, addStorePlugin, resetStore, defineStore (schema mode).`,
+    notes: `Define a composition-style store. The setup function runs once per store ID — inside a store-OWNED effect scope, so \`computed()\`/\`effect()\` created in setup belong to the STORE (disposed by \`dispose()\`), never to the component whose mount happened to create the store first (a component unmount cannot freeze a singleton's computeds). Setup returns an object whose signals become tracked state and whose functions become interceptable actions. Returns a hook function that produces a StoreApi with \`.store\` (user state/actions), \`.patch()\`, \`.subscribe()\`, \`.onAction()\`, \`.reset()\`, and \`.dispose()\`. Stores are singletons — calling the hook twice with the same ID returns the same instance; redefining an ID from a DIFFERENT setup function dev-warns once (the existing instance wins). See also: StoreApi, addStorePlugin, resetStore, defineSchemaStore.`,
     mistakes: `- Calling \`useCounter()\` expecting a new instance — stores are singletons by ID. The setup runs once; the registry returns the same \`StoreApi\` for every later call with that ID until \`resetStore(id)\` / \`resetAllStores()\`
 - Reading \`store.count\` without calling it — signals are functions; use \`store.count()\` to read
 - Calling \`store.count.set()\` for multi-field updates instead of \`patch()\` — separate \`.set()\` calls each notify subscribers; \`patch()\` batches them into ONE \`type: "patch"\` mutation
 - Forgetting \`dispose()\` / \`resetAllStores()\` in tests — the store persists in the global registry across test cases, leaking state into the next test. Put \`afterEach(() => resetAllStores())\` in setup
 - Returning a non-signal, non-function value from \`setup\` (a plain object/array) and expecting it to be reactive — only signals become tracked state. Classification is duck-typed: signals = \`.set\` + \`.peek\`, computeds = \`.dispose\` (and not a signal), everything-else-callable = action. A plain object is none of these and is passed through inert
 - Mutating state by reassigning \`store.count\` — it is a frozen accessor; write via \`store.increment()\` (an action) or \`patch({ count })\`. Direct property assignment is silently ineffective
+- Passing a schema config (\`{ schema, initial }\`) to \`defineStore\` — schema-validated stores are \`defineSchemaStore(id, config)\`. \`defineStore\` takes a setup function only (dev builds throw with this pointer)
 - Registering an \`addStorePlugin\` AFTER the store was first created and expecting it to apply — plugins run only at creation time. The already-created store never sees it (see \`addStorePlugin\` mistakes)
 - Defining the same id twice with different setups (or editing a store module under HMR) and expecting the new setup to apply — the registry returns the FIRST instance; the second definition dev-warns once per id and is otherwise inert until \`resetStore(id)\` or a full reload
 - Expecting persisted state to need a middleware — return \`useStorage()\` (from \`@pyreon/storage\`) signals from setup instead; a StorageSignal IS a signal, so it classifies as state and \`patch\`/\`reset\`/\`subscribe\`/\`dehydrateStores\` all flow through it (cross-tab sync included)`,
   },
 
-  'store/defineStore (schema mode)': {
+  'store/defineSchemaStore': {
     signature: '<S, U extends Record<string, unknown> = {}>(id: string, config: SchemaStoreConfig<S, U>) => () => SchemaStoreApi<SignalsOf<InferSchema<S>> & U>',
     example: `import { zodSchema } from '@pyreon/validation'
-import { defineStore, computed } from '@pyreon/store'
+import { computed, defineSchemaStore } from '@pyreon/store'
 import { z } from 'zod'
 
 const UserSchema = zodSchema(z.object({
@@ -2782,7 +2825,7 @@ const UserSchema = zodSchema(z.object({
   age: z.number(),
 }))
 
-const useUser = defineStore('user', {
+const useUser = defineSchemaStore('user', {
   schema: UserSchema,
   initial: { name: '', age: 0 },
   setup: ({ state }) => ({
@@ -2798,7 +2841,7 @@ u.store.greet()                             // computed
 u.set({ name: 'Alice', age: 30 })           // validates + replaces
 u.patch({ age: 31 })                        // validates merged + writes only changed
 u.store.age.set(-1)                         // direct write — bypasses validation`,
-    notes: 'Schema-driven `defineStore` overload. Accepts a `TypedSchemaAdapter` (from `@pyreon/validation` — Tier A.1) OR a Standard Schema-compliant schema (Tier A.2, e.g. raw zod 3.24+ / valibot 1.0+ / arktype 2.0+ / Effect Schema) plus an `initial` state. Field types are inferred from the schema — zero manual annotations. Returns a hook whose `store` exposes per-field signals at the top level alongside any setup-returned actions/computeds. `set` (full replace) and `patch` (partial merge) validate every write through the schema; direct signal writes (`store.field.set(v)`) bypass validation by design as an escape hatch for hot paths. The PARSED initial is written to signals — zod `.default()` / `.transform()` work correctly. Async validators are rejected at `defineStore`-time. For libraries without Standard Schema support (yup, joi, ajv, io-ts, etc.), users author a 5-10 line adapter (Tier B) matching the `_infer` + `parse` shape. See also: SchemaStoreApi, SchemaStoreConfig, SchemaStoreContext, StoreApi.',
+    notes: `Define a schema-validated store (a separate export from \`defineStore\`, so a plain store's bundle never carries the validation bridge). Accepts a \`TypedSchemaAdapter\` (from \`@pyreon/validation\` — Tier A.1) OR a Standard Schema-compliant schema (Tier A.2, e.g. raw zod 3.24+ / valibot 1.0+ / arktype 2.0+ / Effect Schema) plus an \`initial\` state. Field types are inferred from the schema — zero manual annotations. Returns a hook whose \`store\` exposes per-field signals at the top level alongside any setup-returned actions/computeds. \`set\` (full replace) and \`patch\` (partial merge) validate every write through the schema; direct signal writes (\`store.field.set(v)\`) bypass validation by design as an escape hatch for hot paths. The PARSED initial is written to signals — zod \`.default()\` / \`.transform()\` work correctly. Async validators are rejected at \`defineSchemaStore\`-time. For libraries without Standard Schema support (yup, joi, ajv, io-ts, etc.), users author a 5-10 line adapter (Tier B) matching the \`_infer\` + \`parse\` shape. See also: SchemaStoreApi, SchemaStoreConfig, SchemaStoreContext, StoreApi.`,
     mistakes: `- **Direct signal writes bypass validation.** \`store.fieldName.set(v)\` writes directly to the underlying signal — the schema is NOT consulted. Intentional escape hatch for hot paths, but easy to hit by accident. Use \`.set(full)\` or \`.patch(partial)\` for guaranteed validation
 - **Top-level fields only get signals.** Nested objects (e.g. \`prefs: { theme: "light" }\`) remain as VALUES inside the parent signal. To mutate a nested field: \`patch({ prefs: { ...store.prefs(), theme: "dark" } })\`. Recursive signal-ization is NOT supported — would require library-specific schema introspection
 - **Async validators are unsupported.** If the schema validator returns a Promise, \`defineStore\` throws at definition-time. Use \`@pyreon/form\` for async refinements, or validate manually before calling \`.set()\`
@@ -2816,7 +2859,7 @@ u.set({ name: 'Alice', prefs: { theme: 'dark' } })   // full replace, validated
 u.patch({ name: 'Bob' })                              // shallow per-field replace, validated
 u.deepPatch({ prefs: { theme: 'dark' } })             // deep-merge nested objects, validated
 u.update('items', items => items.filter(x => x.id !== 1))  // transform single field, validated`,
-    notes: 'Return type of the schema-driven `defineStore` overload — STRICTLY TYPED from the schema. Two type params: `TRaw` = the schema-inferred field VALUES (`InferSchema<S>`), and `TStore` = the `.store` shape (per-field `Signal`s + setup-returned actions/computeds). Extends `StoreApi<TStore>` with four validated mutation methods, every one checked against the real field types at compile time (no manual annotations, no casts): `set(next: TRaw)` REPLACES the whole state atomically; `patch(partial: Partial<TRaw>)` SHALLOW-merges top-level fields; `deepPatch(partial: DeepPartial<TRaw>)` recursively merges nested plain objects while REPLACING arrays / class instances / primitives; `update(key, current => next)` transforms a single field via callback whose value is typed `TRaw[K]` (covers add / remove / map / filter / object-key-delete in one method). `state` is the typed field-value snapshot `TRaw`. All four validate the merged result against the schema and throw on failure (or invoke `onValidationError` if configured). Escape hatches (unvalidated by design): the FUNCTIONAL `patch(fn)` form and direct signal writes (`store.field.set(v)`). See also: defineStore (schema mode), DeepPartial, StoreApi.',
+    notes: 'Return type of the schema-driven `defineStore` overload — STRICTLY TYPED from the schema. Two type params: `TRaw` = the schema-inferred field VALUES (`InferSchema<S>`), and `TStore` = the `.store` shape (per-field `Signal`s + setup-returned actions/computeds). Extends `StoreApi<TStore>` with four validated mutation methods, every one checked against the real field types at compile time (no manual annotations, no casts): `set(next: TRaw)` REPLACES the whole state atomically; `patch(partial: Partial<TRaw>)` SHALLOW-merges top-level fields; `deepPatch(partial: DeepPartial<TRaw>)` recursively merges nested plain objects while REPLACING arrays / class instances / primitives; `update(key, current => next)` transforms a single field via callback whose value is typed `TRaw[K]` (covers add / remove / map / filter / object-key-delete in one method). `state` is the typed field-value snapshot `TRaw`. All four validate the merged result against the schema and throw on failure (or invoke `onValidationError` if configured). Escape hatches (unvalidated by design): the FUNCTIONAL `patch(fn)` form and direct signal writes (`store.field.set(v)`). See also: defineSchemaStore, DeepPartial, StoreApi.',
     mistakes: `- Passing the wrong shape to \`set\` — it requires the FULL state matching the schema. Use \`patch\` / \`deepPatch\` for partial updates
 - Expecting \`set\` to silently merge — it REPLACES. Use \`patch\` (shallow) or \`deepPatch\` (recursive) to merge with current state
 - Using \`patch({ prefs: { theme: "dark" } })\` expecting other \`prefs\` keys to survive — \`patch\` is SHALLOW, the whole \`prefs\` object is replaced. Use \`deepPatch\` for nested-object merging
@@ -2841,7 +2884,7 @@ deepPatch({ prefs: { theme: 'dark', density: 'compact' } })  // full nested obje
 
   'store/SchemaStoreConfig': {
     signature: 'interface SchemaStoreConfig<S, U> { schema: S; initial: InferSchema<S>; setup?: (ctx: SchemaStoreContext<InferSchema<S>>) => U; onValidationError?: (issues: SchemaIssue[], op: "set" | "patch" | "init") => void }',
-    example: `defineStore('user', {
+    example: `defineSchemaStore('user', {
   schema: zodSchema(z.object({ name: z.string(), age: z.number() })),
   initial: { name: '', age: 0 },
   setup: ({ state, set, patch, reset }) => ({
@@ -2849,7 +2892,7 @@ deepPatch({ prefs: { theme: 'dark', density: 'compact' } })  // full nested obje
   }),
   onValidationError: (issues, op) => toast.error(\`\${op}: \${issues.length} errors\`),
 })`,
-    notes: 'Config object passed as the 2nd arg of the schema-mode `defineStore` overload. `schema` accepts either a Pyreon `TypedSchemaAdapter` (from `@pyreon/validation`) or a Standard Schema-compliant instance — duck-typed at runtime. `initial` is validated once at definition time; the parsed (coerced) value is written to signals. `setup` (optional) runs once at store-creation; it receives the per-field signals + validated mutation helpers. `onValidationError`, if provided, replaces the default throw-on-invalid behavior — useful for non-fatal UX (e.g. show a toast instead of crashing the render). See also: defineStore (schema mode), SchemaStoreContext.',
+    notes: 'Config object passed as the 2nd arg of the schema-mode `defineStore` overload. `schema` accepts either a Pyreon `TypedSchemaAdapter` (from `@pyreon/validation`) or a Standard Schema-compliant instance — duck-typed at runtime. `initial` is validated once at definition time; the parsed (coerced) value is written to signals. `setup` (optional) runs once at store-creation; it receives the per-field signals + validated mutation helpers. `onValidationError`, if provided, replaces the default throw-on-invalid behavior — useful for non-fatal UX (e.g. show a toast instead of crashing the render). See also: defineSchemaStore, SchemaStoreContext.',
     mistakes: `- \`schema\` must carry the type-inference brand — pass \`zodSchema(z.object(...))\`, not \`z.object(...)\` directly (for the Tier A.1 path). For Tier A.2 (Standard Schema), pass the raw schema — auto-detected via \`~standard\`
 - \`initial\` is REQUIRED and is type-checked against \`InferSchema<S>\`. A bad shape is a TypeScript error
 - \`setup\`-returned keys MUST NOT collide with schema field names — defineStore throws at construction`,
@@ -2857,7 +2900,7 @@ deepPatch({ prefs: { theme: 'dark', density: 'compact' } })  // full nested obje
 
   'store/SchemaStoreContext': {
     signature: 'interface SchemaStoreContext<T> { state: SignalsOf<T>; set: (next: T) => void; patch: (partial: Partial<T>) => void; reset: () => void }',
-    example: `defineStore('counter', {
+    example: `defineSchemaStore('counter', {
   schema: zodSchema(z.object({ count: z.number().nonnegative() })),
   initial: { count: 0 },
   setup: ({ state, patch }) => ({
@@ -2865,7 +2908,7 @@ deepPatch({ prefs: { theme: 'dark', density: 'compact' } })  // full nested obje
     dec: () => state.count.update(n => n - 1),         // BYPASSES validation — can go negative
   }),
 })`,
-    notes: 'Argument passed to the schema-mode `setup` function. `state` is the per-field signals map (`state.name` is `Signal<string>` etc.). `set` / `patch` / `reset` are validated mutation helpers — calling them from inside setup actions is the canonical way to write validated state. See also: defineStore (schema mode), SchemaStoreConfig.',
+    notes: 'Argument passed to the schema-mode `setup` function. `state` is the per-field signals map (`state.name` is `Signal<string>` etc.). `set` / `patch` / `reset` are validated mutation helpers — calling them from inside setup actions is the canonical way to write validated state. See also: defineSchemaStore, SchemaStoreConfig.',
     mistakes: `- \`state.x.set(v)\` skips validation — for guaranteed validation, call \`set\`/\`patch\` from the context
 - \`state\` contains SIGNALS, not values. Read via \`state.x()\`; assign via \`set\`/\`patch\` or direct \`state.x.set()\``,
   },
@@ -2939,22 +2982,19 @@ setStoreRegistryProvider(() => als.getStore() ?? new Map())`,
 
   'store/dehydrateStores': {
     signature: '(filter?: (id: string) => boolean) => Record<string, Record<string, unknown>>',
-    example: `// server, after render. Store state is user data, so the JSON must be
-// neutralised for the inline-<script> context: a bare JSON.stringify lets a
-// stored string close the element or open the script-data-double-escaped state,
-// and U+2028/U+2029 are legal in JSON but are line terminators inside a script.
-// Every escape here round-trips byte-identically through JSON.parse.
-const scriptSafeJson = (v: unknown) =>
-  JSON.stringify(v)
-    .replace(/</g, '\\\\u003C')
-    .replace(/\\u2028/g, '\\\\u2028')
-    .replace(/\\u2029/g, '\\\\u2029')
+    example: `// server, after render. Store state is user data: a bare JSON.stringify lets a
+// stored string close the <script> or open the script-data-double-escaped state,
+// U+2028/U+2029 are line terminators inside a script, and the payload is
+// evaluated as an object literal, where a "__proto__": key sets the prototype.
+// stringifyLoaderDataForScript (what @pyreon/server uses for this payload)
+// handles all of it.
+import { stringifyLoaderDataForScript } from '@pyreon/router'
 
 const stores = dehydrateStores(id => !id.startsWith('server:'))
 html = html.replace('</head>',
-  \`<script>window.__PYREON_STORE_STATE__=\${scriptSafeJson(stores)}</script></head>\`)`,
+  \`<script>window.__PYREON_STORE_STATE__=\${stringifyLoaderDataForScript(stores)}</script></head>\`)`,
     notes: `SERVER side of the SSR store-hydration handshake (the \`@pyreon/store\` analogue of TanStack Query \`dehydrate\`). Call after \`renderToString\` completes — it walks the active per-request registry and snapshots each store's signal-backed \`.state\` into a plain, JSON-serializable object keyed by store id. Actions and computeds are excluded (they are not in \`.state\`). Pass a \`filter\` predicate to scope which stores ship to the client (e.g. exclude server-only / sensitive stores). The framework serializes the result into the HTML; \`hydrateStores\` reads it back on the client. This is what makes cross-island shared state production-complete: a store shared by multiple islands hydrates ONCE with server state instead of per-island. See also: hydrateStores, setStoreRegistryProvider.`,
-    mistakes: `- Embedding the snapshot with a bare \`JSON.stringify\` — store state is user data, so a stored string containing \`</script>\` or \`<!--<script\` breaks out of the inline script. Escape the \`<\` class plus U+2028/U+2029 before interpolating, as the example does
+    mistakes: `- Embedding the snapshot with a bare \`JSON.stringify\` — store state is user data, so a stored string containing \`</script>\` or \`<!--<script\` breaks out of the inline script, and a \`"__proto__"\` key becomes the prototype when the literal is evaluated. Use \`stringifyLoaderDataForScript\` from \`@pyreon/router\`, as the example does
 - Storing non-JSON-serializable values (Date / Map / Set / class instances) in a dehydrated store — the framework \`JSON.stringify\`s the snapshot, so those silently degrade. Keep dehydrated state plain, or revive on read
 - Calling it BEFORE render completes — it snapshots current signal values; run it after \`renderToString\` so loaders/server mutations are reflected
 - Forgetting the \`filter\` for sensitive stores — by default EVERY active store is dehydrated and shipped to the client. Exclude server-only state with the predicate`,
@@ -2999,7 +3039,7 @@ function callAction<K extends keyof CartActions>(name: K, ...args: Parameters<Ca
 
   'store/signal': {
     signature: 're-exported verbatim from @pyreon/reactivity: signal, computed, effect, batch',
-    example: `import { defineStore, signal, computed, batch } from '@pyreon/store'
+    example: `import { defineStore, signal, computed, batch, defineSchemaStore } from '@pyreon/store'
 
 export const useCounter = defineStore('counter', () => {
   const count = signal(0)
@@ -9464,7 +9504,7 @@ app.post('/api/webhooks/posts-changed', async () => {
   const { dropped } = await tagged.revalidateTag('posts')
   return Response.json({ dropped })
 })`,
-    notes: `Runtime ISR — on-demand SSR caching with stale-while-revalidate. Wraps an SSR handler so pages are rendered on the FIRST request, cached per-URL (or per-\`cacheKey\`-derived key), and served stale until expiry while a background revalidate fires. The returned \`ISRHandler\` is still a callable \`(req) => Promise<Response>\` for \`Bun.serve({ fetch: ... })\`, but ALSO exposes imperative invalidation: \`.revalidateNow(key)\` drops one entry (returns \`{ dropped: boolean }\`), \`.revalidateAll()\` drops everything (when the store implements \`clear()\`), and \`.revalidateTag(tag)\` drops every entry recorded under a tag (returns \`{ dropped: number }\`) — pair with \`config.tagsForRequest(req) => string[]\`, which records tags at cache-SET time, for CMS-webhook group invalidation without path enumeration. \`config.store\` swaps the backing (\`createMemoryStore\` default; \`createFsStore(dir)\` survives restarts on a single box; Redis/KV for multi-instance). Pair with webhooks for CMS-driven cache busting — no stale window between content update and propagation. Distinct from build-time ISR (per-route \`revalidate\` export + \`Adapter.revalidate\`): runtime ISR caches at request time; build-time ISR triggers platform rebuilds. They can coexist: a \`mode: 'isr'\` app with per-route \`revalidate\` exports gets BOTH. See also: zero, Adapter, ISRStore, createMemoryStore.`,
+    notes: `Runtime ISR — on-demand SSR caching with stale-while-revalidate. Wraps an SSR handler so pages are rendered on the FIRST request, cached per-URL (or per-\`cacheKey\`-derived key), and served stale until expiry while a background revalidate fires. An entry whose server-island signatures are past half their lifetime (\`x-pyreon-island-expires\`, stored with the entry) is re-rendered instead of served, so a cached page never hands out fragments that are about to be refused. The returned \`ISRHandler\` is still a callable \`(req) => Promise<Response>\` for \`Bun.serve({ fetch: ... })\`, but ALSO exposes imperative invalidation: \`.revalidateNow(key)\` drops one entry (returns \`{ dropped: boolean }\`), \`.revalidateAll()\` drops everything (when the store implements \`clear()\`), and \`.revalidateTag(tag)\` drops every entry recorded under a tag (returns \`{ dropped: number }\`) — pair with \`config.tagsForRequest(req) => string[]\`, which records tags at cache-SET time, for CMS-webhook group invalidation without path enumeration. \`config.store\` swaps the backing (\`createMemoryStore\` default; \`createFsStore(dir)\` survives restarts on a single box; Redis/KV for multi-instance). Pair with webhooks for CMS-driven cache busting — no stale window between content update and propagation. Distinct from build-time ISR (per-route \`revalidate\` export + \`Adapter.revalidate\`): runtime ISR caches at request time; build-time ISR triggers platform rebuilds. They can coexist: a \`mode: 'isr'\` app with per-route \`revalidate\` exports gets BOTH. See also: zero, Adapter, ISRStore, createMemoryStore.`,
     mistakes: `- Treating the returned handler as a plain function — it ALSO carries \`.revalidateNow(key)\` and \`.revalidateAll()\` methods. Webhook-driven invalidation is the canonical way to bust the cache; waiting for the TTL is the fallback
 - Calling \`.revalidateAll()\` against a store that does not implement \`clear()\` — throws a clear error. External stores (Redis with TTL-only) must opt in by implementing the method
 - Expecting \`revalidateNow(key)\` against a store without \`delete?()\` to physically drop the entry — returns \`{ dropped: false }\` honestly; such stores rely on TTL for eviction
