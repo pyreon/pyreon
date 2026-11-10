@@ -157,6 +157,15 @@ export function stringifyQuery(query: Record<string, string>): string {
   return parts.length ? `?${parts.join('&')}` : ''
 }
 
+// Shared frozen empties for the no-params / no-query / no-search cases —
+// the dominant shapes. Freezing follows the `meta` precedent (frozen at
+// flatten time): user mutation throws in strict mode instead of silently
+// polluting a shared object, and the resolver skips three allocations per
+// navigation. Non-empty params/query/search are still fresh per resolve.
+const EMPTY_PARAMS: Record<string, string> = Object.freeze(Object.create(null))
+const EMPTY_QUERY: Record<string, string> = Object.freeze(Object.create(null))
+const EMPTY_SEARCH: Record<string, unknown> = Object.freeze(Object.create(null))
+
 // ─── Compiled route structures ───────────────────────────────────────────────
 
 /**
@@ -229,6 +238,26 @@ interface FlattenedRoute {
    * (pre-merged + frozen at flatten time for the same per-resolve saving).
    */
   validateFn: ((raw: Record<string, string>) => Record<string, unknown>) | null
+  /**
+   * Set when this entry owns a `staticMap` key: `true` when that key holds no
+   * `?`/`#`, so a RAW URL equal to it is this route with no query/hash (a raw
+   * URL's `?`/`#` are separators, never path characters).
+   */
+  rawSafe: boolean
+  /**
+   * `false` when a static segment contains `?` or `#`: in a raw URL those end
+   * the path, so the single-pass walk cannot compare such a segment and hands
+   * the URL to the general lane.
+   */
+  walkable: boolean
+  /**
+   * The frozen `ResolvedRoute` for this entry's static path with no query, no
+   * hash and no `validateSearch` — built once when the entry enters `staticMap`
+   * and returned as-is by every such resolve (zero allocation; the same
+   * object identity, so an `Object.is`-gated consumer sees "unchanged" for a
+   * same-path re-resolve). `null` for dynamic entries and validator chains.
+   */
+  staticResult: ResolvedRoute | null
 }
 
 /** WeakMap cache: compile each RouteRecord[] once */
@@ -365,6 +394,9 @@ function makeFlatEntry(
     hasOptional,
     minSegments: minSegs,
     validateFn,
+    rawSafe: false,
+    walkable: segments.every((s) => s.isParam || !/[?#]/.test(s.raw)),
+    staticResult: null,
   }
 }
 
@@ -427,21 +459,19 @@ function flattenOne(
 interface RouteIndex {
   /** O(1) lookup for fully static paths (including nested) */
   staticMap: Record<string, FlattenedRoute>
-  /** First-segment dispatch: maps first path segment → candidate routes */
-  segmentMap: Record<string, FlattenedRoute[]>
   /**
-   * Second-level dispatch for the fast lane: per first-segment bucket,
-   * fixed-segment-count candidates indexed by their count (`exact[n]`),
-   * with splat/optional candidates in `flex` (their acceptable count is a
-   * range, checked via `isSegmentCountCompatible`). A 4-segment URL in a
-   * 5-candidate bucket walks ONLY `exact[4]` + `flex` — the count-mismatch
-   * rejects the flat bucket scan paid per resolve disappear structurally.
-   * Built once per index alongside `segmentMap` (which the general lane
-   * still uses — its split-based path skips empty segments, so its
-   * pathLen can differ from the fast lane's; sharing dispatch would be
-   * wrong there).
+   * First-segment dispatch: an open-addressed hash table (`firstKeys[j]` →
+   * `firstDispatch[j]`, size a power of two, linear probing) from a route's
+   * static first segment to its bucket. The fast lane hashes the
+   * first segment IN PLACE in the URL and compares candidate keys char by
+   * char — no substring is allocated and no string is atomized for a property
+   * lookup, which a `segmentMap[url.slice(1, end)]` probe pays on every
+   * dynamic resolve (measured ~15 ns of a ~67 ns `/user/:id` resolve).
+   * Each bucket lists its routes in definition order.
    */
-  segmentDispatch: Record<string, BucketDispatch | null>
+  firstKeys: Array<string | undefined>
+  firstDispatch: Array<FlattenedRoute[] | undefined>
+  firstMask: number
   /** Routes whose first segment is dynamic (fallback) */
   dynamicFirst: FlattenedRoute[]
   /** Wildcard/catch-all routes */
@@ -607,31 +637,6 @@ function findInTrie(
 
 const _indexCache = new WeakMap<RouteRecord[], RouteIndex>()
 
-/**
- * Per-bucket second-level dispatch: candidates indexed by exact segment
- * count. ONLY built for buckets where every candidate has a fixed count
- * (no splat, no optional) — there a URL of length n can only ever match
- * `exact[n]`, so count-mismatch rejects disappear structurally AND
- * definition order is trivially preserved (only one count can match).
- * Buckets containing splat/optional candidates return `null` and keep the
- * ordered flat scan: first-match-wins across MIXED candidates (a splat
- * defined before a same-count param route must keep winning) cannot be
- * expressed in a count-indexed structure without re-merging order.
- */
-interface BucketDispatch {
-  /** exact[n] = candidates whose segmentCount === n, in definition order */
-  exact: Array<FlattenedRoute[] | undefined>
-}
-
-function buildBucketDispatch(bucket: FlattenedRoute[]): BucketDispatch | null {
-  const exact: Array<FlattenedRoute[] | undefined> = []
-  for (const f of bucket) {
-    if (f.hasSplat || f.hasOptional) return null
-    ;(exact[f.segmentCount] ??= []).push(f)
-  }
-  return { exact }
-}
-
 /** Classify a single flattened route into the appropriate index bucket */
 function indexFlatRoute(
   f: FlattenedRoute,
@@ -642,7 +647,20 @@ function indexFlatRoute(
 ): void {
   // Static map: first static entry wins (preserves definition order)
   if (f.isStatic && f.staticPath && staticMap[f.staticPath] === undefined) {
-    staticMap[f.staticPath] = f
+    const key = f.staticPath
+    staticMap[key] = f
+    f.rawSafe = key.indexOf('?') < 0 && key.indexOf('#') < 0
+    if (f.validateFn === null) {
+      f.staticResult = Object.freeze({
+        path: key,
+        params: EMPTY_PARAMS,
+        query: EMPTY_QUERY,
+        hash: '',
+        matched: f.matchedChain,
+        meta: f.meta,
+        search: EMPTY_SEARCH,
+      })
+    }
   }
 
   if (f.isWildcard) {
@@ -664,6 +682,35 @@ function indexFlatRoute(
   } else {
     dynamicFirst.push(f)
   }
+}
+
+/** Hash of `s[from, to)` — the same function at build time (keys) and resolve time (URL, in place). */
+function hashRange(s: string, from: number, to: number): number {
+  let h = 0
+  for (let i = from; i < to; i++) h = (Math.imul(h, 31) + s.charCodeAt(i)) | 0
+  return h
+}
+
+/** Fast-lane bucket for the first segment `path[1, end)`, or undefined. */
+function findFirstBucket(
+  index: RouteIndex,
+  path: string,
+  end: number,
+  hash: number,
+): FlattenedRoute[] | undefined {
+  const keys = index.firstKeys
+  const mask = index.firstMask
+  const len = end - 1
+  let j = hash & mask
+  for (let key = keys[j]; key !== undefined; key = keys[j]) {
+    if (key.length === len) {
+      let k = 0
+      while (k < len && key.charCodeAt(k) === path.charCodeAt(1 + k)) k++
+      if (k === len) return index.firstDispatch[j]
+    }
+    j = (j + 1) & mask
+  }
+  return undefined
 }
 
 function buildRouteIndex(routes: RouteRecord[]): RouteIndex {
@@ -697,10 +744,17 @@ function buildRouteIndex(routes: RouteRecord[]): RouteIndex {
   // children + no entries) when no record carries `notFoundComponent`.
   const notFoundTrie = buildNotFoundTrie(routes)
 
-  const segmentDispatch: Record<string, BucketDispatch | null> = Object.create(null)
-  for (const key in segmentMap) {
-    const bucket = segmentMap[key]
-    if (bucket) segmentDispatch[key] = buildBucketDispatch(bucket)
+  const firstKeysList = Object.keys(segmentMap)
+  let size = 8
+  while (size < firstKeysList.length * 2) size <<= 1
+  const firstMask = size - 1
+  const firstKeys: Array<string | undefined> = new Array(size).fill(undefined)
+  const firstDispatch: Array<FlattenedRoute[] | undefined> = new Array(size).fill(undefined)
+  for (const key of firstKeysList) {
+    let j = hashRange(key, 0, key.length) & firstMask
+    while (firstKeys[j] !== undefined) j = (j + 1) & firstMask
+    firstKeys[j] = key
+    firstDispatch[j] = segmentMap[key]
   }
 
   // First-char fail-fast mask: `mask[c] === 1` iff SOME non-wildcard route's first
@@ -739,8 +793,9 @@ function buildRouteIndex(routes: RouteRecord[]): RouteIndex {
 
   const index: RouteIndex = {
     staticMap,
-    segmentMap,
-    segmentDispatch,
+    firstKeys,
+    firstDispatch,
+    firstMask,
     dynamicFirst,
     wildcards,
     notFoundTrie,
@@ -774,145 +829,135 @@ function splitPath(path: string): string[] {
   return parts
 }
 
-/** Decode only if the segment contains a `%` character */
-function decodeSafe(s: string): string {
-  return s.indexOf('%') >= 0 ? safeDecodeURIComponent(s) : s
-}
 
-// ─── Offset-walking fast matcher ─────────────────────────────────────────────
+// ─── Single-pass walk lane ───────────────────────────────────────────────────
 //
-// The general matcher materializes EVERY path segment as a substring plus a
-// parts array per resolve (3 allocations for a 2-segment dynamic URL before
-// matching starts) and compares static pattern segments via slice-then-===. The
-// offset walker compares static segments IN PLACE (`startsWith` at an offset)
-// and only materializes segments that become param values, dropping dynamic
-// resolves from ~5 allocations to ~2.
+// The common URL is matched in ONE pass over its characters: the first
+// segment is hashed in place for the dispatch table, then each candidate route
+// is walked against the URL — static pattern segments compared char by char
+// at the current offset, param segments scanned to their end and sliced, a
+// splat taking the rest of the path. The walk stops at the first `?` or `#`,
+// so the query/hash split falls out of it. Nothing re-scans the URL.
 //
-// It only runs for "plain" paths — no `%` escapes, no `//` empty segments, no
-// trailing slash, all of which change segment-boundary semantics.
-// `scanCleanPath` detects those in the same pass that counts segments and
-// returns -1, so every edge shape falls back to the general matcher and stays
-// byte-identical by construction.
+// Why a successful walk is exact: every segment it consumes is non-empty and
+// it must end at `?`, `#` or the end of the URL, so success PROVES the path
+// part has no `//` and no trailing slash — the shapes on which the general
+// lane's split-and-collapse semantics differ. A walk that meets a `%` inside a
+// param or splat value aborts (decoding could change which route wins), and
+// static segments compare the raw text exactly as the general lane does. So
+// whenever the walk succeeds, every earlier candidate's failure was genuine;
+// when no candidate succeeds (or one aborts), the general lane answers.
+// `fast-lane-differential.test.ts` fuzzes the two lanes against each other.
 
-/**
- * First internal `/` offset (>= 1) from the most recent SUCCESSFUL
- * `scanCleanPath` call, or -1 for a single-segment path (no internal slash).
- * The fast lane reads this to slice the first segment for its dispatch-map key
- * WITHOUT a second `indexOf('/', 1)` pass — `scanCleanPath` already visited
- * that boundary while counting segments. Single-threaded synchronous read
- * immediately after the scan (same module-local memo pattern as
- * `_lastRoutes`/`_lastIndex`); only read when `scanCleanPath` returned >= 0,
- * so an early `-1` return never leaves an observable stale value.
- */
-let _scanFirstSlash = -1
+/** Walk state: where the matched path part ended, and whether the walk must defer to the general lane. */
+const _walk = { end: 0, abort: false }
 
-/**
- * Single-pass scan of a clean path (no query/hash): returns the segment
- * count when the path is "plain" (no `%`, no `//`, no trailing slash), or
- * -1 when the general split-based matcher must be used instead. On success it
- * also records the first internal `/` offset in `_scanFirstSlash` (see above).
- */
-function scanCleanPath(path: string): number {
-  const len = path.length
-  let count = 0
-  let prevSlash = true
-  let firstSlash = -1
-  // NOTE (negative result, kept so nobody re-tries it): a native `indexOf`-based
-  // rewrite (memchr %-scan + slash-hopping) MEASURED SLOWER in a same-conditions
-  // A/B — splat +15%, dynamic-1 +15% — because JSC's per-call `indexOf` overhead
-  // exceeds this JIT-tightened char loop at realistic path lengths. Behavior is
-  // locked against a frozen oracle copy in `scan-clean-path.test.ts`.
-  for (let i = path.charCodeAt(0) === 47 /* / */ ? 1 : 0; i < len; i++) {
-    const c = path.charCodeAt(i)
-    if (c === 47 /* / */) {
-      if (prevSlash) return -1 // `//` — empty segment
-      if (firstSlash < 0) firstSlash = i // first internal boundary (for the fast-lane key)
-      prevSlash = true
-    } else {
-      if (c === 37 /* % */) return -1 // encoded char — needs decode path
-      if (prevSlash) {
-        count++
-        prevSlash = false
-      }
-    }
-  }
-  if (prevSlash && len > 1) return -1 // trailing slash
-  _scanFirstSlash = firstSlash
-  return count
+/** `c` ends a path part: end of string (-1), `?` or `#`. */
+function isPathEnd(c: number): boolean {
+  return c === -1 || c === 63 /* ? */ || c === 35 /* # */
 }
 
 /**
- * Test-only white-box hooks for the scan-equivalence fuzz
- * (`scan-clean-path.test.ts`): the scan and its `_scanFirstSlash` side
- * channel are module-internal, and the differential oracle needs BOTH
- * outputs to prove the native-scan rewrite behavior-identical to the
- * previous char-loop implementation.
- * @internal
+ * Walk `f` over `path` from segment `from`, whose opening `/` is at `off`.
+ * Returns the params on a match (and sets `_walk.end`), or null. Sets
+ * `_walk.abort` when a param value holds a `%` escape or the route has a
+ * static `?`/`#` segment — the general lane must decide those.
  */
-export const _scanCleanPathForTest = scanCleanPath
-/** @internal */
-export function _scanFirstSlashForTest(): number {
-  return _scanFirstSlash
-}
-
-/**
- * Offset-walking equivalent of `matchFlattened` for plain paths (as
- * certified by `scanCleanPath`). Static segments compare in place; param
- * segments slice exactly once (no decode needed — the scan guaranteed no
- * `%`); splats slice the remainder in one operation (joining decoded
- * segments is unnecessary for the same reason).
- *
- * `firstSlash`: when >= 0, the caller has already PROVEN segment 0 is a static
- * match (it reached this route through `segmentDispatch`/`segmentMap`, which
- * are keyed by the route's static `firstSegment` === the path's first segment),
- * and `firstSlash` is the offset of the first internal `/`. We then skip
- * segment 0 entirely and resume matching at segment 1 (offset `firstSlash + 1`)
- * — eliding one `indexOf('/')` + one `startsWith` per matched dynamic route,
- * the exact re-comparison the dispatch key already performed. Pass -1 (the
- * `dynamicFirst`/param-first path, whose segment 0 is NOT pre-validated) to
- * match from segment 0 as before.
- */
-function matchFlattenedFast(
+function walkRoute(
   f: FlattenedRoute,
   path: string,
-  pathLen: number,
-  firstSlash: number,
+  off: number,
+  from: number,
+  decode: boolean,
 ): Record<string, string> | null {
-  if (!isSegmentCountCompatible(f, pathLen)) return null
-
-  let params: Record<string, string> | null = null
-  const segments = f.segments
+  if (!decode && !f.walkable) {
+    _walk.abort = true
+    return null
+  }
+  const segs = f.segments
   const count = f.segmentCount
   const len = path.length
-  // firstSlash >= 0 ⇒ segment 0 already matched via the dispatch key; resume at
-  // segment 1 just past the first internal '/'. Else start at the leading '/'.
-  let i = firstSlash >= 0 ? 1 : 0
-  let offset = firstSlash >= 0 ? firstSlash + 1 : 1
-  for (; i < count; i++) {
-    const seg = segments[i]
-    if (!seg) return null
-    if (seg.isSplat) {
-      if (params === null) params = {}
-      params[seg.paramName] = path.slice(offset)
-      return params
-    }
-    if (offset >= len) {
-      // Path exhausted — only trailing optionals may remain
-      if (!seg.isOptional) return null
+  // The root path (`/`, `/?q`, `/#h`) has zero segments: its `/` opens none.
+  if (off === 0 && isPathEnd(len > 1 ? path.charCodeAt(1) : -1)) off = 1
+  let params: Record<string, string> | null = null
+  for (let i = from; i < count; i++) {
+    const seg = segs[i] as CompiledSegment
+    const c = off < len ? path.charCodeAt(off) : -1
+    if (c !== 47 /* / */) {
+      // The path part ended (a non-`/` char here can only follow a static
+      // segment that was a strict prefix — a mismatch). Only trailing
+      // optionals may remain.
+      if (!isPathEnd(c) || !seg.isOptional) return null
       continue
     }
-    let end = path.indexOf('/', offset)
-    if (end === -1) end = len
+    const start = off + 1
     if (seg.isParam) {
+      let j = start
+      let segs2 = 1
+      for (; j < len; j++) {
+        const ch = path.charCodeAt(j)
+        if (ch === 63 || ch === 35) break
+        if (ch === 37 /* % */ && !decode) {
+          _walk.abort = true
+          return null
+        }
+        if (ch === 47) {
+          if (!seg.isSplat) break
+          // inside a splat: an empty segment (`//`, trailing `/`) is not plain
+          if (j === start || isPathEnd(j + 1 < len ? path.charCodeAt(j + 1) : -1) || path.charCodeAt(j + 1) === 47) {
+            return null
+          }
+          segs2++
+        }
+      }
+      if (j === start) return null // empty segment
+      // A splat consumes the rest: the URL's segment count is now known, and
+      // must pass the same count rule the general lane applies up front.
+      if (seg.isSplat && !isSegmentCountCompatible(f, i + segs2)) return null
       if (params === null) params = {}
-      params[seg.paramName] = path.slice(offset, end)
+      let v = path.slice(start, j)
+      // General lane: decode per segment (a malformed escape stays raw in its
+      // own segment only).
+      if (decode && v.indexOf('%') >= 0) v = v.split('/').map(safeDecodeURIComponent).join('/')
+      params[seg.paramName] = v
+      off = j
+      if (seg.isSplat) break
     } else {
-      if (end - offset !== seg.raw.length || !path.startsWith(seg.raw, offset)) return null
+      const raw = seg.raw
+      const n = raw.length
+      if (start + n > len) return null
+      for (let k = 0; k < n; k++) {
+        if (path.charCodeAt(start + k) !== raw.charCodeAt(k)) return null
+      }
+      off = start + n
     }
-    offset = end + 1
   }
+  if (!isPathEnd(off < len ? path.charCodeAt(off) : -1)) return null
+  _walk.end = off
   return params ?? {}
 }
+
+/** First walk match in `list` (definition order), or null — check `_walk.abort` after a null. */
+function walkList(
+  list: FlattenedRoute[],
+  path: string,
+  off: number,
+  from: number,
+  decode: boolean,
+): FlattenedRoute | null {
+  for (let i = 0; i < list.length; i++) {
+    const f = list[i] as FlattenedRoute
+    const params = walkRoute(f, path, off, from, decode)
+    if (params !== null) {
+      _walkParams.p = params
+      return f
+    }
+    if (_walk.abort) return null
+  }
+  return null
+}
+
+const _walkParams: { p: Record<string, string> } = { p: EMPTY_PARAMS }
 
 // ─── Path matching (compiled) ────────────────────────────────────────────────
 
@@ -974,30 +1019,6 @@ export function matchPath(pattern: string, path: string): Record<string, string>
 
 // ─── Compiled matching helpers ────────────────────────────────────────────────
 
-/** Collect remaining path segments as a decoded splat value.
- *
- * Builds the joined string directly via concatenation — avoids the
- * intermediate `string[]` allocation + `.push` per segment + `.join('/')`
- * round-trip the previous shape required. Decoding stays per-segment but
- * inlined here (cheap `indexOf('%')` check + return raw when no `%`),
- * skipping the `decodeSafe` function-call overhead. No signature change,
- * no JIT-shape impact on the static / dynamic fast paths.
- *
- * Microbench against the bench's `/files/docs/2024/report.pdf` shape
- * (4-segment splat, no `%`): ~32% throughput improvement (4.3M → 5.6M
- * ops/s @ 50-route table). Slow path with `%`-encoded segments
- * preserved by the inline `indexOf` check. */
-function captureSplat(pathParts: string[], from: number, pathLen: number): string {
-  let result = ''
-  for (let j = from; j < pathLen; j++) {
-    const p = pathParts[j]
-    if (p === undefined) continue
-    const decoded = p.indexOf('%') >= 0 ? safeDecodeURIComponent(p) : p
-    result = result === '' ? decoded : `${result}/${decoded}`
-  }
-  return result
-}
-
 // ─── Flattened route matching ─────────────────────────────────────────────────
 
 /** Check whether a flattened route's segment count is compatible with the path length */
@@ -1008,82 +1029,7 @@ function isSegmentCountCompatible(f: FlattenedRoute, pathLen: number): boolean {
   return false
 }
 
-/** Try to match a flattened route against path parts.
- *
- * `params` is lazy-initialized — the previous shape allocated `{}` BEFORE
- * the segment loop, wasted on every candidate that ultimately fails on a
- * static-segment mismatch (the common case in multi-candidate buckets
- * like `/admin` where several routes share the same first segment but
- * differ on the second). Starting as `null` and materializing on the
- * first param write saves one allocation per fail-on-mismatch candidate.
- * Returns a fresh `{}` (not a shared sentinel) when no params were
- * captured — consumers may mutate the returned object via `useParams()`
- * patterns. Same return shape as before; no signature change. */
-function matchFlattened(
-  f: FlattenedRoute,
-  pathParts: string[],
-  pathLen: number,
-): Record<string, string> | null {
-  if (!isSegmentCountCompatible(f, pathLen)) return null
-
-  let params: Record<string, string> | null = null
-  const segments = f.segments
-  const count = f.segmentCount
-  for (let i = 0; i < count; i++) {
-    const seg = segments[i]
-    const pt = pathParts[i]
-    if (!seg) return null
-    if (seg.isSplat) {
-      if (params === null) params = {}
-      params[seg.paramName] = captureSplat(pathParts, i, pathLen)
-      return params
-    }
-    if (pt === undefined) {
-      if (!seg.isOptional) return null
-      continue
-    }
-    if (seg.isParam) {
-      if (params === null) params = {}
-      params[seg.paramName] = decodeSafe(pt)
-    } else if (seg.raw !== pt) {
-      return null
-    }
-  }
-  return params ?? {}
-}
-
-/** Search a list of flattened candidates for a match */
-function searchCandidates(
-  candidates: FlattenedRoute[],
-  pathParts: string[],
-  pathLen: number,
-): MatchResult | null {
-  for (let i = 0; i < candidates.length; i++) {
-    const f = candidates[i]
-    if (!f) continue
-    const params = matchFlattened(f, pathParts, pathLen)
-    if (params) {
-      // Carry the pre-merged `f.meta` (computed ONCE at flatten time, byte-for-
-      // byte equal to `mergeMeta(f.matchedChain)`) so the dynamic-route paths in
-      // resolveRoute reuse it instead of re-running `mergeMeta` (a fresh alloc +
-      // a per-record Object.assign loop) on every navigation — matching what the
-      // static/wildcard fast paths already do.
-      return { params, matched: f.matchedChain, meta: f.meta, validateFn: f.validateFn }
-    }
-  }
-  return null
-}
-
 // ─── Route resolution ─────────────────────────────────────────────────────────
-
-interface MatchResult {
-  params: Record<string, string>
-  matched: RouteRecord[]
-  /** Pre-merged route meta from the matched FlattenedRoute (cached, not re-merged) */
-  meta: RouteMeta
-  /** Pre-resolved validateSearch fn from the matched FlattenedRoute (null = none in chain) */
-  validateFn: FlattenedRoute['validateFn']
-}
 
 /**
  * Apply a pre-resolved validateSearch fn to the parsed query. Same
@@ -1103,240 +1049,67 @@ function applyValidateFn(
   }
 }
 
-// Shared frozen empties for the no-params / no-query / no-search cases —
-// the dominant shapes. Freezing follows the `meta` precedent (frozen at
-// flatten time): user mutation throws in strict mode instead of silently
-// polluting a shared object, and the resolver skips three allocations per
-// navigation. Non-empty params/query/search are still fresh per resolve.
-const EMPTY_PARAMS: Record<string, string> = Object.freeze(Object.create(null))
-const EMPTY_QUERY: Record<string, string> = Object.freeze(Object.create(null))
-const EMPTY_SEARCH: Record<string, unknown> = Object.freeze(Object.create(null))
 
 // Identity memo for the dominant single-router case: every navigation
 // passes the SAME RouteRecord[] reference, so an identity check replaces
 // the WeakMap probe (~0.5ns vs ~4ns). Multi-router apps alternate refs and
 // fall back to the WeakMap-cached index — never rebuilt, never wrong.
-let _lastRoutes: RouteRecord[] | null = null
-let _lastIndex: RouteIndex | null = null
+// Held on a const object, not module `let`s (V8 pays a context-slot load +
+// TDZ check per module-`let` access — see `.agents/guides/benchmarks`).
+const _memo: { routes: RouteRecord[] | null; index: RouteIndex | null } = {
+  routes: null,
+  index: null,
+}
 
-/**
- * Resolve a raw path (including query string and hash) against the route tree.
- * Uses flattened index for O(1) static lookup and first-segment dispatch.
- */
-export function resolveRoute(rawPath: string, routes: RouteRecord[]): ResolvedRoute {
-  // Split the FRAGMENT first, then the query within the pre-hash part — WHATWG
-  // URL order (`/path?query#hash`). Splitting `?` first leaked the hash into the
-  // query (`/user/42?tab=posts#bio` -> `{ tab: 'posts#bio' }`) and misread a `?`
-  // inside a fragment as a query separator.
-  const hIdx = rawPath.indexOf('#')
-  const beforeHash = hIdx >= 0 ? rawPath.slice(0, hIdx) : rawPath
-  const hash = hIdx >= 0 ? rawPath.slice(hIdx + 1) : ''
+function getIndex(routes: RouteRecord[]): RouteIndex {
+  const m = _memo
+  if (routes === m.routes && m.index !== null) return m.index
+  const index = buildRouteIndex(routes)
+  m.routes = routes
+  m.index = index
+  return index
+}
 
-  const qIdx = beforeHash.indexOf('?')
-  const cleanPath = qIdx >= 0 ? beforeHash.slice(0, qIdx) : beforeHash
-  const queryPart = qIdx >= 0 ? beforeHash.slice(qIdx + 1) : ''
-
-  // Inline empty-query fast path — the dominant case (no query string)
-  // skips the parseQuery call entirely; non-empty queries take the full
-  // parser. Fresh `{}` per resolve is preserved (callers may mutate).
-  const query = queryPart ? parseQuery(queryPart) : EMPTY_QUERY
-
-  // Build index (identity memo for the single-router case; WeakMap-cached
-  // build behind it)
-  let index: RouteIndex
-  if (routes === _lastRoutes && _lastIndex) {
-    index = _lastIndex
-  } else {
-    index = buildRouteIndex(routes)
-    _lastRoutes = routes
-    _lastIndex = index
+/** A fast-lane match of `f`: fresh result with the shared frozen `search` when there is no validator. */
+function routeHit(
+  f: FlattenedRoute,
+  path: string,
+  params: Record<string, string>,
+  query: Record<string, string>,
+  hash: string,
+): ResolvedRoute {
+  return {
+    path,
+    params,
+    query,
+    hash,
+    matched: f.matchedChain,
+    meta: f.meta,
+    search: f.validateFn ? applyValidateFn(f.validateFn, query) : EMPTY_SEARCH,
   }
+}
 
-  // Fast path 1: O(1) static Map lookup (covers nested static too)
-  const staticMatch = index.staticMap[cleanPath]
-  if (staticMatch) {
-    return {
-      path: cleanPath,
-      params: EMPTY_PARAMS,
-      query,
-      hash,
-      matched: staticMatch.matchedChain,
-      meta: staticMatch.meta,
-      search: staticMatch.validateFn ? applyValidateFn(staticMatch.validateFn, query) : EMPTY_SEARCH,
-    }
-  }
+/** Result for a static-map hit: the cached frozen route, or a fresh one when it has a query / hash / validator. */
+function staticResult(
+  s: FlattenedRoute,
+  cleanPath: string,
+  query: Record<string, string>,
+  hash: string,
+): ResolvedRoute {
+  if (s.staticResult !== null && query === EMPTY_QUERY && hash === '') return s.staticResult
+  return routeHit(s, cleanPath, EMPTY_PARAMS, query, hash)
+}
 
-  // First-char fail-fast (see RouteIndex.firstCharMask): after the static
-  // miss, a path whose first-segment char no non-wildcard route starts with
-  // can only match a wildcard — return it directly, skipping the plain-shape
-  // scan, dispatch, and general matcher (the first-char fail a radix tree
-  // gets for free; a 12-char miss paid ~4ns/char here). Excluded chars fall
-  // through to the full pipeline: `%` (an encoded first char decodes to
-  // anything) and `/` (a leading `//` collapses in the general lane's
-  // splitPath, so `//foo` can still match `/foo`). `charCodeAt(1)` is NaN
-  // for the bare root `'/'` and for `''` — both fail `cc < 128` and jump:
-  // correct, since a root route would have hit the staticMap above, and the
-  // general lane resolves both to the same wildcard/not-found tail.
-  const mask = index.firstCharMask
-  if (mask) {
-    const cc = cleanPath.charCodeAt(1)
-    if (cc !== 37 && cc !== 47 && !(cc < 128 && mask[cc] === 1)) {
-      const w = index.wildcards[0]
-      if (w) {
-        return {
-          path: cleanPath,
-          params: EMPTY_PARAMS,
-          query,
-          hash,
-          matched: w.matchedChain,
-          meta: w.meta,
-          search: w.validateFn ? applyValidateFn(w.validateFn, query) : EMPTY_SEARCH,
-        }
-      }
-      // Same not-found tail as the full pipeline (notFoundComponent walk →
-      // bare empty match) — the mask only skips MATCHING work, never
-      // changes what a non-match resolves to.
-      const nfb = findNotFoundFallback(routes, cleanPath, index.notFoundTrie)
-      if (nfb) {
-        return {
-          path: cleanPath,
-          params: {},
-          query,
-          hash,
-          matched: nfb,
-          meta: mergeMeta(nfb),
-          search: {},
-          isNotFound: true,
-        }
-      }
-      return { path: cleanPath, params: {}, query, hash, matched: [], meta: {}, search: {} }
-    }
-  }
-
-  // Split path for segment-based matching
-  // Fast lane: plain paths (no `%`, no `//`, no trailing slash — the
-  // overwhelmingly common shape) match via the offset walker: static
-  // pattern segments compare in place, only param values are sliced, no
-  // parts array is allocated. `scanCleanPath` certifies the shape in a
-  // single pass and returns -1 for anything that needs the general
-  // split-based matcher, which is preserved below byte-for-byte.
-  const fastLen = scanCleanPath(cleanPath)
-  if (fastLen >= 0) {
-    if (fastLen > 0) {
-      // `_scanFirstSlash` was just set by `scanCleanPath` — reuse it to slice
-      // the first segment instead of re-scanning with `indexOf('/', 1)`.
-      const first =
-        _scanFirstSlash < 0 ? cleanPath.slice(1) : cleanPath.slice(1, _scanFirstSlash)
-      const dispatch = index.segmentDispatch[first]
-      if (dispatch !== undefined) {
-        // Candidates: count-indexed when the bucket is all-fixed (null =
-        // bucket has splat/optional candidates → ordered flat scan).
-        const candidates = dispatch !== null ? dispatch.exact[fastLen] : index.segmentMap[first]
-        if (candidates) {
-          for (let i = 0; i < candidates.length; i++) {
-            const f = candidates[i]
-            if (!f) continue
-            // Every candidate in this bucket is keyed by `first` (its static
-            // `firstSegment`), so segment 0 is a guaranteed match — skip it via
-            // `_scanFirstSlash`.
-            const params = matchFlattenedFast(f, cleanPath, fastLen, _scanFirstSlash)
-            if (params) {
-              return {
-                path: cleanPath,
-                params,
-                query,
-                hash,
-                matched: f.matchedChain,
-                meta: f.meta,
-                search: f.validateFn ? applyValidateFn(f.validateFn, query) : EMPTY_SEARCH,
-              }
-            }
-          }
-        }
-      }
-    }
-    const dyn = index.dynamicFirst
-    for (let i = 0; i < dyn.length; i++) {
-      const f = dyn[i]
-      if (!f) continue
-      // Param-first routes: segment 0 is NOT pre-validated — match from the top.
-      const params = matchFlattenedFast(f, cleanPath, fastLen, -1)
-      if (params) {
-        return {
-          path: cleanPath,
-          params,
-          query,
-          hash,
-          matched: f.matchedChain,
-          meta: f.meta,
-          search: f.validateFn ? applyValidateFn(f.validateFn, query) : EMPTY_SEARCH,
-        }
-      }
-    }
-    const w = index.wildcards[0]
-    if (w) {
-      return {
-        path: cleanPath,
-        params: EMPTY_PARAMS,
-        query,
-        hash,
-        matched: w.matchedChain,
-        meta: w.meta,
-        search: w.validateFn ? applyValidateFn(w.validateFn, query) : EMPTY_SEARCH,
-      }
-    }
-  } else {
-    // General lane: %-encoded / `//` / trailing-slash paths — split-based
-    // matching with per-segment decode, exactly as before the fast lane.
-    const pathParts = splitPath(cleanPath)
-    const pathLen = pathParts.length
-
-    if (pathLen > 0) {
-      const first = pathParts[0] as string
-      const bucket = index.segmentMap[first]
-      if (bucket) {
-        const match = searchCandidates(bucket, pathParts, pathLen)
-        if (match) {
-          return {
-            path: cleanPath,
-            params: match.params,
-            query,
-            hash,
-            matched: match.matched,
-            meta: match.meta,
-            search: applyValidateFn(match.validateFn, query),
-          }
-        }
-      }
-    }
-
-    const dynMatch = searchCandidates(index.dynamicFirst, pathParts, pathLen)
-    if (dynMatch) {
-      return {
-        path: cleanPath,
-        params: dynMatch.params,
-        query,
-        hash,
-        matched: dynMatch.matched,
-        meta: dynMatch.meta,
-        search: applyValidateFn(dynMatch.validateFn, query),
-      }
-    }
-
-    const w = index.wildcards[0]
-    if (w) {
-      return {
-        path: cleanPath,
-        params: {},
-        query,
-        hash,
-        matched: w.matchedChain,
-        meta: w.meta,
-        search: applyValidateFn(w.validateFn, query),
-      }
-    }
-  }
-
+/** A wildcard / not-found result — what every non-matching path resolves to. */
+function missResult(
+  index: RouteIndex,
+  routes: RouteRecord[],
+  cleanPath: string,
+  query: Record<string, string>,
+  hash: string,
+): ResolvedRoute {
+  const w = index.wildcards[0]
+  if (w) return routeHit(w, cleanPath, EMPTY_PARAMS, query, hash)
   // Fallback: notFoundComponent walk. When the URL doesn't match any
   // descendant route, look for the deepest parent `notFoundComponent`
   // whose path is a prefix of this URL. Build a synthetic chain that
@@ -1358,8 +1131,164 @@ export function resolveRoute(rawPath: string, routes: RouteRecord[]): ResolvedRo
       isNotFound: true,
     }
   }
-
   return { path: cleanPath, params: {}, query, hash, matched: [], meta: {}, search: {} }
+}
+
+/**
+ * Resolve a raw path (including query string and hash) against the route tree.
+ *
+ * Lanes, cheapest first:
+ *   1. The raw path is a static route's exact path (no `?`/`#`) → the route's
+ *      cached frozen `ResolvedRoute` (zero allocation).
+ *   2. First-char fail-fast (and non-root-relative paths) → the wildcard /
+ *      not-found tail.
+ *   3. The single-pass walk: first-segment dispatch, then each candidate
+ *      walked over the URL once (see "Single-pass walk lane").
+ *   4. Anything the walk cannot decide (`%` in a param, `//`, trailing slash,
+ *      no match) → the general split-normalize-decode lane.
+ */
+export function resolveRoute(rawPath: string, routes: RouteRecord[]): ResolvedRoute {
+  const index = getIndex(routes)
+
+  // Lane 1: the raw path IS a static key. Keys containing `?`/`#` are
+  // excluded (`rawSafe`): in a raw URL those characters are the query / hash
+  // separators, so such a route is reachable only through its %-encoded form
+  // via the general lane — exactly as before this shortcut existed.
+  const raw = index.staticMap[rawPath]
+  if (raw !== undefined && raw.rawSafe) {
+    return raw.staticResult ?? routeHit(raw, rawPath, EMPTY_PARAMS, EMPTY_QUERY, '')
+  }
+
+  // Lane 2: first-char fail-fast (see RouteIndex.firstCharMask). A path whose
+  // first-segment char no non-wildcard route starts with can only match a
+  // wildcard — the first-char fail a radix tree gets for free. Excluded chars take
+  // the full pipeline: `%` (an encoded first char decodes to anything), `/` (a
+  // leading `//` collapses in the general lane), and `?`/`#` (`/?q` is the root
+  // path plus a query). `charCodeAt(1)` is NaN for the bare root `/` — it
+  // jumps, which is correct: a root route would have hit lane 1.
+  //
+  // A path that is not root-relative (no leading `/`, including `''`) matches
+  // no route either: callers pass root-relative paths, and the resolver
+  // deliberately does not guess (`matcher-agreement.test.ts`).
+  const mask = index.firstCharMask
+  const cc = rawPath.charCodeAt(1)
+  if (
+    rawPath.charCodeAt(0) !== 47 /* / */ ||
+    (mask !== null &&
+      cc !== 37 &&
+      cc !== 47 &&
+      cc !== 63 &&
+      cc !== 35 &&
+      !(cc < 128 && mask[cc] === 1))
+  ) {
+    const cleanPath = splitUrl(rawPath, urlEnd(rawPath))
+    return missResult(index, routes, cleanPath, _url.query, _url.hash)
+  }
+
+  // Lane 3: the single-pass walk.
+  const f = walkAll(index, rawPath, false)
+  if (f === null) return resolveGeneral(rawPath, routes, index)
+
+  const end = _walk.end
+  const params = _walkParams.p
+  if (end === rawPath.length) return routeHit(f, rawPath, params, EMPTY_QUERY, '')
+  const cleanPath = splitUrl(rawPath, end)
+  // A static route for the bare path outranks the bucket (`/about?x=1`).
+  const s = index.staticMap[cleanPath]
+  if (s !== undefined) return staticResult(s, cleanPath, _url.query, _url.hash)
+  return routeHit(f, cleanPath, params, _url.query, _url.hash)
+}
+
+/**
+ * Hash the first segment in place (it ends at the first `/`, `?`, `#` or the
+ * end), walk that bucket in definition order, then the param-first routes.
+ * Returns the matched route (params in `_walkParams`, end in `_walk.end`) or
+ * null; after a null, `_walk.abort` says the general lane must decide.
+ */
+function walkAll(index: RouteIndex, path: string, decode: boolean): FlattenedRoute | null {
+  const len = path.length
+  let firstEnd = 1
+  let h = 0
+  for (; firstEnd < len; firstEnd++) {
+    const c = path.charCodeAt(firstEnd)
+    if (c === 47 || c === 63 || c === 35) break
+    h = (Math.imul(h, 31) + c) | 0
+  }
+  _walk.abort = false
+  if (firstEnd > 1) {
+    const bucket = findFirstBucket(index, path, firstEnd, h)
+    // Every candidate is keyed by its static first segment, which the lookup
+    // just proved equal — the walk starts at segment 1.
+    if (bucket !== undefined) {
+      const f = walkList(bucket, path, firstEnd, 1, decode)
+      if (f !== null || _walk.abort) return f
+    }
+  }
+  return walkList(index.dynamicFirst, path, 0, 0, decode)
+}
+
+/** Query and hash of the last `splitUrl` — read immediately after the call. */
+const _url: { query: Record<string, string>; hash: string } = { query: EMPTY_QUERY, hash: '' }
+
+/** Offset of the first `?` or `#` in a raw URL (its length when neither occurs). */
+function urlEnd(raw: string): number {
+  const q = raw.indexOf('?')
+  const h = raw.indexOf('#')
+  return q < 0 ? (h < 0 ? raw.length : h) : h < 0 || q < h ? q : h
+}
+
+/**
+ * Split a raw URL whose path part ends at `end` (the first `?`/`#`): returns
+ * the path and leaves the parsed query and the hash in `_url`. WHATWG order —
+ * the hash starts at the first `#`, the query is what lies between a leading
+ * `?` and that `#`, so a `?` inside the fragment is not a query separator.
+ */
+function splitUrl(raw: string, end: number): string {
+  const u = _url
+  if (end === raw.length) {
+    u.query = EMPTY_QUERY
+    u.hash = ''
+    return raw
+  }
+  const h = raw.indexOf('#', end)
+  u.hash = h >= 0 ? raw.slice(h + 1) : ''
+  const qs = raw.charCodeAt(end) === 63 /* ? */ ? raw.slice(end + 1, h >= 0 ? h : raw.length) : ''
+  u.query = qs ? parseQuery(qs) : EMPTY_QUERY
+  return raw.slice(0, end)
+}
+
+/**
+ * The general lane: `%`-encoded / `//` / trailing-slash / relative paths —
+ * split-based matching with per-segment decode. It is also the reference the
+ * fast lane is fuzzed against (`_resolveGeneralForTest`).
+ */
+function resolveGeneral(rawPath: string, routes: RouteRecord[], index: RouteIndex): ResolvedRoute {
+  // Splitting `?` before `#` once leaked the hash into the query
+  // (`/user/42?tab=posts#bio` -> `{ tab: 'posts#bio' }`); `splitUrl` keeps
+  // WHATWG order.
+  const cleanPath = splitUrl(rawPath, urlEnd(rawPath))
+  const query = _url.query
+  const hash = _url.hash
+
+  const s = index.staticMap[cleanPath]
+  if (s !== undefined) return staticResult(s, cleanPath, query, hash)
+
+  // Normalize: drop empty segments (`//`, a trailing `/`) and walk the plain
+  // `/`-joined path in decode mode — static pattern segments compare against
+  // the RAW segment (a `%`-encoded static pattern matches the identical raw
+  // URL), params and splats are decoded per segment.
+  const path = `/${splitPath(cleanPath).join('/')}`
+  const f = walkAll(index, path, true)
+  if (f !== null) return routeHit(f, cleanPath, _walkParams.p, query, hash)
+  return missResult(index, routes, cleanPath, query, hash)
+}
+
+/**
+ * @internal Test hook: resolve through the general lane only — the reference
+ * implementation `fast-lane-differential.test.ts` fuzzes the fast lanes against.
+ */
+export function _resolveGeneralForTest(rawPath: string, routes: RouteRecord[]): ResolvedRoute {
+  return resolveGeneral(rawPath, routes, getIndex(routes))
 }
 
 // ─── notFoundComponent walking ───────────────────────────────────────────────

@@ -59,6 +59,14 @@ export interface RouteMeta {
 
 // ─── Resolved route ───────────────────────────────────────────────────────────
 
+/**
+ * The result of resolving a URL against the route table.
+ *
+ * **Read-only.** A static route with no query, hash or `validateSearch`
+ * resolves to ONE cached, frozen object (so resolving it allocates nothing and
+ * `Object.is`-gated readers see "unchanged"). Copy it (`{ ...route }`) before
+ * attaching per-navigation data.
+ */
 export interface ResolvedRoute<
   P extends Record<string, string | undefined> = Record<string, string>,
   Q extends Record<string, string> = Record<string, string>,

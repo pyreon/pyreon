@@ -23,12 +23,17 @@ For genuinely unbundled server paths, gate with a module-init ternary whose cond
 
 ## Router (`scripts/bench/core/router.ts`)
 
-8-router protocol with per-cell process isolation, input rotation, and a correctness gate. Standings are in `BENCHMARKS.md` §9: Pyreon averages 1.00–1.01× of the fastest at 50 and 200 routes; Hono leads the 10-route table. Hono's arm times `router.match` plus building the params object from its raw captures (stash + ParamIndexMap), because every other arm returns params inside its timed call; the correctness gate reads the same function.
+10-router protocol with per-cell process isolation, input rotation, and a correctness gate. Standings are in `BENCHMARKS.md` §9 (figures there predate the 2026-11-10 matcher rewrite until the next full run). Hono's arm times `router.match` plus building the params object from its raw captures (stash + ParamIndexMap), because every other arm returns params inside its timed call; the correctness gate reads the same function.
 
-- Static resolve is flat O(1) across route counts.
-- Dynamic matching reuses `scanCleanPath`'s recorded first-slash offset and skips re-comparing segment 0, which the dispatch key already proved (`packages/core/router/src/match.ts`). It is byte-identical to the previous matcher over a random-path differential.
-- Miss → catch-all uses a first-char fail-fast mask built by `buildRouteIndex`: a path whose first char no route starts with jumps straight to the wildcard/not-found tail. The mask disables itself for dynamic-first routes and non-ASCII route first-chars; `%`- and `/`-first paths fall through. Locked by `packages/core/router/src/tests/first-char-mask.test.ts`.
-- find-my-way/radix3 can edge param-heavy scenarios via radix-tree short-circuiting while returning less than Pyreon's full `ResolvedRoute` (params, parsed query, merged meta, matched chain).
+The arms are Pyreon, find-my-way, Hono, radix3, rou3, memoirist, React Router, TanStack, Vue Router and path-to-regexp (Next.js shape). `--gate-only` runs just the identity-verified correctness gate.
+
+How `resolveRoute` reaches its numbers (`packages/core/router/src/match.ts`):
+
+- **Static, including nested:** the RAW URL is looked up in the static map; a hit with no query, hash or `validateSearch` returns the route's cached frozen `ResolvedRoute` — zero allocation, flat across route counts. Static keys containing `?`/`#` are excluded (`rawSafe`): in a raw URL those are separators.
+- **Dynamic — one pass:** the first segment is hashed in place and looked up in an open-addressed table (no substring, no string atomization); each candidate in the bucket is then walked over the URL once (`walkRoute`): static segments compared char by char, params scanned and sliced, a splat taking the rest, stopping at the first `?`/`#`. A successful walk proves the path is plain (every consumed segment is non-empty and the walk ends at `?`/`#`/end), so earlier candidates' failures are genuine. A `%` inside a param aborts to the general lane.
+- **Non-plain paths** (`%` in a param, `//`, trailing slash) and walk misses go to the general lane, which drops empty segments and runs the SAME walker in decode mode — one matcher, not two. `fast-lane-differential.test.ts` fuzzes the lanes against each other.
+- **Miss → catch-all:** a first-char fail-fast mask built by `buildRouteIndex` runs before the static probe and jumps straight to the wildcard/not-found tail. It disables itself for dynamic-first routes and non-ASCII route first-chars; `%`, `/`, `?` and `#` at position 1 fall through. Locked by `first-char-mask.test.ts`.
+- **Measured and declined (2026-11-10):** a separate plainness scan recording segment boundaries before matching (the two-pass predecessor of the walk: ~1.3 ns/char on JSC, paid again by the static compares), re-ordering the scan's branches, a segment-at-a-time inner loop, atomizing param names before keyed stores, and `startsWith` / `slice ===` instead of the char-compare loop — all within noise of each other. A native `indexOf` scan was slower earlier (2026-07).
 
 ## Reactivity (`scripts/bench/core/reactivity.ts`)
 

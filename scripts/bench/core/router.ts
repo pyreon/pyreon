@@ -8,6 +8,8 @@
  *   - find-my-way      — radix tree (Fastify)
  *   - hono             — SmartRouter (RegExpRouter mega-regex + Trie fallback)
  *   - radix3           — radix tree (unjs / Nitro / H3 / Nuxt)
+ *   - rou3             — radix3's successor (unjs / H3 v2 / Nitro v3)
+ *   - memoirist        — radix tree (Elysia)
  *   - react-router     — matchRoutes (React Router v7+)
  *   - @tanstack/router — tree-based matching (TanStack Router)
  *   - vue-router       — router.resolve (Vue Router v4+)
@@ -50,6 +52,7 @@
  * Usage:
  *   bun scripts/bench/core/router.ts            # full protocol run (~6-9 min)
  *   bun scripts/bench/core/router.ts --quick    # 1 process/cell, fewer runs
+ *   bun scripts/bench/core/router.ts --gate-only  # correctness gate only, no timing
  *   bun scripts/bench/core/router.ts --cell K   # internal worker mode
  */
 
@@ -103,6 +106,8 @@ const FindMyWay = (await import('find-my-way')).default
 const { Hono } = await import('hono')
 const { match: ptrMatch } = await import('next/dist/compiled/path-to-regexp')
 const { createRouter: createRadix3 } = await import('radix3')
+const { addRoute: rou3Add, createRouter: createRou3, findRoute: rou3Find } = await import('rou3')
+const { Memoirist } = await import('memoirist')
 const { matchRoutes } = await import('react-router')
 const { createMemoryHistory, createRouter: createVueRouter } = await import('vue-router')
 const { resolveRoute } = await import('../../../packages/core/router/src/match')
@@ -280,6 +285,8 @@ type Lib =
   | 'find-my-way'
   | 'Hono'
   | 'radix3'
+  | 'rou3'
+  | 'memoirist'
   | 'React Router'
   | 'TanStack'
   | 'Vue Router'
@@ -290,6 +297,8 @@ const LIBS: Lib[] = [
   'find-my-way',
   'Hono',
   'radix3',
+  'rou3',
+  'memoirist',
   'React Router',
   'TanStack',
   'Vue Router',
@@ -325,6 +334,8 @@ const buildersByLib: Record<Lib, (t: Table) => Adapter> = {
   'find-my-way': buildFindMyWay,
   Hono: buildHono,
   radix3: buildRadix3,
+  rou3: buildRou3,
+  memoirist: buildMemoirist,
   'React Router': buildReactRouter,
   TanStack: buildTanStack,
   'Vue Router': buildVue,
@@ -425,6 +436,37 @@ function buildRadix3({ flatDefs }: Table): Adapter {
     inspect: (p) => {
       const res = radix.lookup(p) as { rid?: string; params?: Record<string, unknown> } | null
       return { rid: res?.rid ?? null, params: res?.params ?? {} }
+    },
+  }
+}
+
+function buildRou3({ flatDefs }: Table): Adapter {
+  // rou3 — `/**:path` is its named splat (the `/*` flat token is one segment)
+  const r = createRou3<{ rid: string }>()
+  for (const d of flatDefs) {
+    const path = d.flat.endsWith('/*') ? `${d.flat.slice(0, -1)}**:path` : d.flat
+    rou3Add(r, 'GET', path, { rid: d.rid })
+  }
+  rou3Add(r, 'GET', '/**', { rid: 'catchall' })
+  return {
+    match: (p) => rou3Find(r, 'GET', p),
+    inspect: (p) => {
+      const res = rou3Find(r, 'GET', p)
+      return { rid: res?.data.rid ?? null, params: (res?.params ?? {}) as Record<string, unknown> }
+    },
+  }
+}
+
+function buildMemoirist({ flatDefs }: Table): Adapter {
+  // memoirist (Elysia) — `/*` is its wildcard, captured as params['*']
+  const r = new Memoirist<{ rid: string }>()
+  for (const d of flatDefs) r.add('GET', d.flat, { rid: d.rid })
+  r.add('GET', '/*', { rid: 'catchall' })
+  return {
+    match: (p) => r.find('GET', p),
+    inspect: (p) => {
+      const res = r.find('GET', p)
+      return { rid: res?.store.rid ?? null, params: (res?.params ?? {}) as Record<string, unknown> }
     },
   }
 }
@@ -660,6 +702,8 @@ const PROCS = QUICK ? 1 : 3
   }
   console.log(`✓ correctness gate passed — ${checked} (size × scenario × variant × lib) cells agree\n`)
 }
+// `--gate-only`: run the identity-verified correctness gate and stop (no timing).
+if (process.argv.includes('--gate-only')) process.exit(0)
 
 interface CellResult {
   median: number

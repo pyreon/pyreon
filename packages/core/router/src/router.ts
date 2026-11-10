@@ -1567,7 +1567,10 @@ export function createRouter<TNames extends string = string>(
     const gen = ++_navGen
     loadingSignal.update((n) => n + 1)
 
-    const to = resolveRoute(path, routes)
+    // A per-navigation COPY: `runMiddleware` annotates `to` with the chain's
+    // data, and `resolveRoute` may hand back a shared frozen object (static
+    // routes cache theirs), so the pipeline must own the one it writes to.
+    const to: ResolvedRoute = { ...resolveRoute(path, routes) }
     const from = currentRoute()
 
     const redirectTarget = resolveRedirect(to)
@@ -1712,7 +1715,8 @@ export function createRouter<TNames extends string = string>(
 
   function startInitialNavigation(supersededBy?: 'navigate'): Promise<InitialNavigationOutcome> {
     if (_initialNav) return _initialNav
-    const to = resolveRoute(initialPath, routes)
+    // Per-navigation copy — see `navigate`: middleware annotates `to`.
+    const to: ResolvedRoute = { ...resolveRoute(initialPath, routes) }
     const hasWork =
       guards.length > 0 ||
       resolveRedirect(to) !== null ||
