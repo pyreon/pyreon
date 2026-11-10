@@ -10,13 +10,14 @@
  * the native-compiler suite, the Swift/Kotlin lanes, all behind required
  * checks). Each changed path maps to the checks it can affect through one
  * explicit rule (`PATH_RULES`, documented in `.agents/rules/workflow.md`):
- * a workspace file → that workspace's typecheck and tests plus its
- * dependents' typecheck; a budgets JSON → the tests that read it; a root
- * tsconfig → the workspace typecheck; a lockfile → a frozen-lockfile dry run
- * and the workspace typecheck; a workflow → actionlint; an unknown root file
- * → a broad fallback that the time cap bounds. Tests are never widened to the
- * dependents. Native-toolchain packages (`packages/native/*`) run only when
- * they themselves changed.
+ * a workspace file → that workspace's typecheck and tests; a budgets JSON →
+ * the tests that read it; a lockfile → a frozen-lockfile dry run; a workflow →
+ * actionlint; an unknown root file → the `@pyreon/test-utils` suite. The hook
+ * never typechecks or tests beyond the directly changed packages (the
+ * maintainer's standing rule: one heavy run at a time on a shared machine; the
+ * reverse-dependency closure and the workspace typecheck are CI's).
+ * Native-toolchain packages (`packages/native/*`) run only when they
+ * themselves changed.
  *
  * ## The pass cache
  *
@@ -88,16 +89,16 @@ export type RuleId =
   | 'unknown-root'
 
 export const PATH_RULES: ReadonlyArray<{ id: RuleId; match: string; checks: string }> = [
-  { id: 'package', match: 'a file inside a workspace', checks: 'typecheck + tests of that workspace; typecheck of its dependents' },
-  { id: 'root-tsconfig', match: 'root `tsconfig*.json`', checks: 'typecheck of the whole workspace' },
-  { id: 'install', match: '`bun.lock`, root `package.json`, `.bun-version`', checks: '`bun install --frozen-lockfile --dry-run`; typecheck of the whole workspace' },
-  { id: 'root-vitest', match: 'root `vitest.*.ts` (every suite\'s setup)', checks: 'typecheck of the whole workspace; the `@pyreon/test-utils` suite as a setup smoke test' },
+  { id: 'package', match: 'a file inside a workspace', checks: 'typecheck + tests of that workspace' },
+  { id: 'root-tsconfig', match: 'root `tsconfig*.json`', checks: 'validate-fast only (`check-tsconfig-presets`); CI typechecks the workspace' },
+  { id: 'install', match: '`bun.lock`, root `package.json`, `.bun-version`', checks: '`bun install --frozen-lockfile --dry-run`' },
+  { id: 'root-vitest', match: 'root `vitest.*.ts` (every suite\'s setup)', checks: 'the `@pyreon/test-utils` suite as a setup smoke test' },
   { id: 'workflow', match: '`.github/workflows/*`', checks: '`actionlint` on the changed files; the `@pyreon/test-utils` tests that name the file' },
   { id: 'shared-action', match: '`.github/actions/**`', checks: '`actionlint` on every workflow; the `@pyreon/test-utils` tests that name the file' },
   { id: 'script', match: '`scripts/**`', checks: 'the `@pyreon/test-utils` tests that name the file or a script that imports or reads it; `@pyreon/test-utils` typecheck for code' },
   { id: 'repo-file', match: '`e2e/**`, `.claude/**`, `.githooks/**`', checks: 'the `@pyreon/test-utils` tests that name the file' },
   { id: 'prose', match: 'Markdown, `.agents/**`, `.changeset/**`, `llms*.txt` outside a workspace', checks: 'validate-fast only (plus the parser package of a doc input)' },
-  { id: 'unknown-root', match: 'any other root file', checks: 'broad fallback: typecheck of the whole workspace + the full `@pyreon/test-utils` suite' },
+  { id: 'unknown-root', match: 'any other root file', checks: 'fallback: the full `@pyreon/test-utils` suite (the package that tests repository-level files)' },
 ]
 
 export interface Plan {
@@ -109,13 +110,8 @@ export interface Plan {
   direct: string[]
   /** Size of the reverse-dependency closure CI runs. */
   closureSize: number
-  /**
-   * The checks, highest value first. `typecheck` is the directly changed
-   * workspaces; `typecheckWide` (dependents, or the whole workspace) runs
-   * after the tests, so a time cap drops the broad part first.
-   */
+  /** The directly changed workspaces' checks. */
   groups: Record<Group, string[]>
-  typecheckWide: string[]
   /**
    * When `@pyreon/test-utils` is in `groups.test` only because of
    * non-workspace files: the test files to run. `null` = the whole suite.
@@ -125,8 +121,6 @@ export interface Plan {
   actionlint: string[]
   /** Run `bun install --frozen-lockfile --dry-run`. */
   installCheck: boolean
-  /** Native-toolchain workspaces a workspace-wide typecheck leaves out. */
-  nativeSkipped: string[]
 }
 
 export function isNativeToolchainWorkspace(ws: Workspace, root: string): boolean {
@@ -237,7 +231,6 @@ export function computePlan(opts: {
   const leaves = new Set<string>()
   const observed: string[] = []
   const actionlint = new Set<string>()
-  let workspaceTypecheck = unknownDiff
   let installCheck = false
   let fullTestUtils = unknownDiff
   let testUtilsTypecheck = false
@@ -255,14 +248,11 @@ export function computePlan(opts: {
     rules.push({ path, rule })
     switch (rule) {
       case 'root-tsconfig':
-        workspaceTypecheck = true
         break
       case 'install':
         installCheck = true
-        workspaceTypecheck = true
         break
       case 'root-vitest':
-        workspaceTypecheck = true
         fullTestUtils = true
         break
       case 'workflow':
@@ -283,7 +273,6 @@ export function computePlan(opts: {
       case 'prose':
         break
       case 'unknown-root':
-        workspaceTypecheck = true
         fullTestUtils = true
         break
     }
@@ -304,17 +293,6 @@ export function computePlan(opts: {
   const typecheck = new Set(direct.filter((n) => has(n, 'typecheck') && (n !== testUtils || seeds.has(n) || fullTestUtils)))
   if (testUtils && testUtilsTypecheck && has(testUtils, 'typecheck')) typecheck.add(testUtils)
 
-  const nativeSkipped: string[] = []
-  const wide = new Set<string>()
-  const widen = (names: Iterable<string>) => {
-    for (const name of names) {
-      if (typecheck.has(name) || !has(name, 'typecheck')) continue
-      if (native(name)) nativeSkipped.push(name)
-      else wide.add(name)
-    }
-  }
-  if (workspaceTypecheck) widen(workspaces.map((w) => w.name))
-  else widen(transitiveDependents(seeds, workspaces))
   const closureSize = unknownDiff ? workspaces.length : transitiveDependents(seeds, workspaces).size + leaves.size
 
   const groups: Record<Group, string[]> = {
@@ -335,11 +313,9 @@ export function computePlan(opts: {
     direct,
     closureSize,
     groups,
-    typecheckWide: [...wide].sort(),
     targetedTests,
     actionlint: actionlint.has('*') ? ['*'] : [...actionlint].sort(),
     installCheck,
-    nativeSkipped: [...new Set(nativeSkipped)].sort(),
   }
 }
 

@@ -15,9 +15,9 @@
  * gates that catch most CI failures. A hook that is skipped protects nothing.
  *
  * So the whole run (lock wait included) is bounded by `capSec` (default
- * `DEFAULT_CAP_SEC`). Checks run highest value first — validate-fast, the
- * directly changed packages' typecheck and tests, then the broad typecheck,
- * then native toolchain suites — so the cap drops the broad part. When the cap
+ * `DEFAULT_CAP_SEC`). Checks run cheapest and most likely first —
+ * validate-fast, then the directly changed packages' typecheck and tests, then
+ * native toolchain suites — so the cap drops the slow tail. When the cap
  * is reached the hook stops the running check, prints every check it did NOT
  * run and lets the push through (exit 0). Every one of those checks runs in CI
  * behind a required check, so failing open costs at most a CI round trip,
@@ -39,7 +39,7 @@
  *
  * ## Environment
  *
- *   PYREON_PRE_PUSH_CAP_SEC=480   total wall-clock cap (PYREON_PRE_PUSH_TIMEOUT_SEC is an alias)
+ *   PYREON_PRE_PUSH_CAP_SEC=300   total wall-clock cap (PYREON_PRE_PUSH_TIMEOUT_SEC is an alias)
  *   PYREON_PRE_PUSH_NO_CACHE=1    ignore recorded passes for this push
  *   PYREON_PRE_PUSH_BASE=<rev>    diff base (default origin/main)
  *   PYREON_SKIP_PRE_PUSH=1        skip the hook (handled in .githooks/pre-push)
@@ -73,14 +73,16 @@ import {
 const ROOT = resolve(import.meta.dirname, '..')
 
 /**
- * Measured 2026-11-10 on the shared dev Mac (load 35–80): validate-fast 36 s,
- * the full `@pyreon/test-utils` suite 38 s, the whole-workspace typecheck 53 s,
- * the largest web package suites 8–22 s. A typical push needs 1–2 minutes; 480 s
- * leaves room for a root-config push under load (validate-fast alone measured
- * 148–211 s at load 20–333) and stays well under the 25+ minutes that made
- * everyone skip the hook.
+ * Measured 2026-11-10 on the shared dev Mac (load 10–80): validate-fast 10–36 s,
+ * the full `@pyreon/test-utils` suite 38 s, the largest web package suites
+ * 8–22 s; whole example pushes 12–40 s. 300 s is ~7x a typical push and
+ * leaves room for validate-fast under load (148–211 s measured at load
+ * 20–333). It is also kept short for a reason outside this machine: git opens
+ * the SSH connection BEFORE the hook runs and leaves it idle, and GitHub drops
+ * an idle session after some minutes — a 20-minute hook once failed the very
+ * push it had just validated. The exact idle window was not measured.
  */
-export const DEFAULT_CAP_SEC = 480
+export const DEFAULT_CAP_SEC = 300
 /** A check is not started with less time than this left. */
 export const MIN_STEP_MS = 10_000
 /** How often a waiting push repeats who holds the lock. */
@@ -256,7 +258,8 @@ export function buildSteps(opts: {
       {
         id,
         label: `${label}: ${summarize(run)}`,
-        argv: ['bun', 'run', ...run.map((n) => `--filter=${n}`), 'typecheck'],
+        // One package at a time: the shared machine allows one heavy run.
+        argv: ['bun', 'run', ...run.map((n) => `--filter=${n}`), '--sequential', 'typecheck'],
         locked: true,
         passes: run.map((n) => entry('typecheck', n)),
       },
@@ -294,7 +297,6 @@ export function buildSteps(opts: {
     }
     steps.push(testStep('test', pkg, []))
   }
-  steps.push(...typecheckStep('typecheck-wide', 'typecheck (dependents / workspace)', plan.typecheckWide))
   const env = opts.kotlinHome ? { KOTLIN_HOME: opts.kotlinHome } : undefined
   for (const pkg of plan.groups['native-vitest']) {
     if (fresh('native-vitest', pkg)) steps.push(testStep('native-vitest', pkg, ['--maxWorkers=4'], env))
@@ -558,9 +560,8 @@ function printPlan(plan: Plan, base: string, changedCount: number | null, cached
   for (const [rule, paths] of byRule) say(`  ${rule}: ${summarize(paths, 4)}`)
   if (plan.targetedTests !== null) say(`  ${plan.targetedTests.length} @pyreon/test-utils test file(s) read the changed files`)
   if (cached.length > 0) say(`  skipped, already passed with identical inputs: ${summarize(cached)}`)
-  if (plan.nativeSkipped.length > 0) say(`  native-toolchain packages left out of the wide typecheck: ${summarize(plan.nativeSkipped)}`)
   const dropped = plan.closureSize - plan.direct.length
-  if (dropped > 0) say(`  ${dropped} dependent workspace(s) are typechecked only; CI runs their tests`)
+  if (dropped > 0) say(`  ${dropped} dependent workspace(s) left to CI (typecheck and tests of the closure)`)
 }
 
 async function main(): Promise<void> {
@@ -581,7 +582,7 @@ async function main(): Promise<void> {
   const testUtilsDir = workspaces.find((w) => w.name === SCRIPT_TEST_PACKAGE)?.dir
   const { testFiles, scriptFiles } = readTargetingSources(ROOT, files, testUtilsDir)
   const plan = computePlan({ changed, workspaces, root: ROOT, testFiles, scriptFiles })
-  const wanted = new Set([...Object.values(plan.groups).flat(), ...plan.typecheckWide])
+  const wanted = new Set(Object.values(plan.groups).flat())
   const keys = wanted.size > 0 ? computePassKeys({ root: ROOT, files, workspaces, packages: [...wanted] }) : new Map<string, string>()
   const cache = useCache ? readCacheFile(cacheDir) : parseCache(null)
   const needsKotlin = plan.groups['native-vitest'].length + plan.groups['native-script'].length > 0

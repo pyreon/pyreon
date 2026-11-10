@@ -281,20 +281,17 @@ describe('buildSteps', () => {
     direct: [],
     closureSize: 0,
     groups: { typecheck: [], test: [], 'native-vitest': [], 'native-script': [] },
-    typecheckWide: [],
     targetedTests: null,
     actionlint: [],
     installCheck: false,
-    nativeSkipped: [],
     ...over,
   })
   const keys = new Map(WS.map((w) => [w.name, `k-${w.name}`]))
 
-  it('orders cheap gates, then direct typecheck, direct tests, wide typecheck, native suites', () => {
+  it('orders cheap gates, then the changed packages\' typecheck, their tests, native suites', () => {
     const { steps } = buildSteps({
       plan: plan({
         groups: { typecheck: ['@pyreon/a'], test: ['@pyreon/a'], 'native-vitest': ['@pyreon/native-compiler'], 'native-script': [] },
-        typecheckWide: ['@pyreon/b'],
         installCheck: true,
         actionlint: ['.github/workflows/ci.yml'],
       }),
@@ -310,12 +307,11 @@ describe('buildSteps', () => {
       ['actionlint', false],
       ['typecheck', true],
       ['test:@pyreon/a', true],
-      ['typecheck-wide', true],
       ['native-vitest:@pyreon/native-compiler', true],
     ])
-    expect(steps[6]!.argv).toEqual(['bun', 'run', 'test', '--', '--maxWorkers=4'])
-    expect(steps[6]!.env).toEqual({ KOTLIN_HOME: '/k' })
-    expect(steps[6]!.durationKey).toBe('test|@pyreon/native-compiler')
+    expect(steps[5]!.argv).toEqual(['bun', 'run', 'test', '--', '--maxWorkers=4'])
+    expect(steps[5]!.env).toEqual({ KOTLIN_HOME: '/k' })
+    expect(steps[5]!.durationKey).toBe('test|@pyreon/native-compiler')
   })
 
   it('skips what already passed with identical inputs, and a targeted test-utils run records no pass', () => {
@@ -332,7 +328,7 @@ describe('buildSteps', () => {
     })
     expect(cached).toEqual(['typecheck @pyreon/a', 'test @pyreon/a'])
     const tc = steps.find((s) => s.id === 'typecheck')!
-    expect(tc.argv).toEqual(['bun', 'run', '--filter=@pyreon/b', 'typecheck'])
+    expect(tc.argv).toEqual(['bun', 'run', '--filter=@pyreon/b', '--sequential', 'typecheck'])
     const targeted = steps.find((s) => s.id === 'test:@pyreon/test-utils:targeted')!
     expect(targeted.argv).toEqual(['bun', 'run', 'test', '--', 'src/tests/budgets.test.ts'])
     expect(targeted.cwd).toBe('/r/packages/internals/test-utils')

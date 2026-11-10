@@ -23,8 +23,8 @@ Run all of these, collect every failure, then triage. Do not stop at the first r
 
 Take the selection from `bun scripts/pre-push.ts --cache-dir="$(git rev-parse --git-common-dir)" --plan-only`
 (the hook's own plan; it prints each check and its command, and what it skips as already passed).
-Tests are never widened to dependents: CI runs the full reverse-dependency closure as required
-checks. Root config widens typecheck to the workspace, never tests.
+It never goes beyond the directly changed packages: CI runs the reverse-dependency closure and
+the workspace typecheck as required checks.
 
 ## Quick triage
 

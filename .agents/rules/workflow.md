@@ -210,23 +210,23 @@ Restack in dependency order, not PR order. Never use a bare `git stash pop` duri
 
 | Changed path | Checks |
 | --- | --- |
-| a file inside a workspace | typecheck + tests of that workspace; typecheck of its dependents (tests never widen — CI runs them) |
-| root `tsconfig*.json` | typecheck of the whole workspace |
-| `bun.lock`, root `package.json`, `.bun-version` | `bun install --frozen-lockfile --dry-run`; typecheck of the whole workspace |
-| root `vitest.*.ts` (every suite's setup) | typecheck of the whole workspace; the `@pyreon/test-utils` suite as a setup smoke test |
+| a file inside a workspace | typecheck + tests of that workspace (never its dependents — CI runs the closure) |
+| root `tsconfig*.json` | validate-fast only (`check-tsconfig-presets`); CI typechecks the workspace |
+| `bun.lock`, root `package.json`, `.bun-version` | `bun install --frozen-lockfile --dry-run` |
+| root `vitest.*.ts` (every suite's setup) | the `@pyreon/test-utils` suite as a setup smoke test |
 | `.github/workflows/*` | `actionlint -shellcheck=` on the changed files; the `@pyreon/test-utils` tests that name the file |
 | `.github/actions/**` | `actionlint -shellcheck=` on every workflow; the tests that name the file |
-| `scripts/**` | the `@pyreon/test-utils` tests that name the file, or name a script that imports or reads it (transitively, comments ignored); `@pyreon/test-utils` typecheck when it is code. `scripts/bundle-budgets.json` → the 7 tests that read it, not the 137-file suite |
+| `scripts/**` | the `@pyreon/test-utils` tests that name the file, or name a script that imports or reads it (transitively, comments ignored); `@pyreon/test-utils` typecheck when it is code. `scripts/bundle-budgets.json` → the 8 test files that read it, not the 137-file suite |
 | `e2e/**`, `.claude/**`, `.githooks/**` | the `@pyreon/test-utils` tests that name the file |
 | Markdown, `.agents/**`, `.changeset/**`, `llms*.txt` outside a workspace | nothing beyond validate-fast (a doc input also runs its parser package, e.g. `anti-patterns.md` → `@pyreon/mcp`) |
-| any other root file | broad fallback: typecheck of the whole workspace + the full `@pyreon/test-utils` suite |
+| any other root file | fallback: the full `@pyreon/test-utils` suite (the package that tests repository-level files) |
 
-validate-fast (lint, `lint:pyreon`, the doc/dist/budget/manifest/CI-config gates in `scripts/validate-fast.ts`) runs on every push. Packages under `packages/native/` run only when they themselves changed (`--maxWorkers=4` for vitest suites, `KOTLIN_HOME` derived from the `kotlinc` on PATH) and are left out of a workspace-wide typecheck. `actionlint` is a local extra that CI does not run yet; without it installed the step is listed as not checked.
+validate-fast (lint, `lint:pyreon`, the doc/dist/budget/manifest/CI-config gates in `scripts/validate-fast.ts`) runs on every push. The hook never typechecks or tests beyond the directly changed packages: the machine is shared and allows one heavy run at a time, and the reverse-dependency closure and the workspace typecheck are CI's. Packages under `packages/native/` run only when they themselves changed (`--maxWorkers=4` for vitest suites, `KOTLIN_HOME` derived from the `kotlinc` on PATH). `actionlint` is a local extra that CI does not run yet; without it installed the step is listed as not checked.
 
 Order and time:
 
-- Checks run highest value first: validate-fast, the lockfile dry run, actionlint, then (under the lock) the changed packages' typecheck, their tests, the dependents/workspace typecheck, the native suites. The cap therefore drops the broad part first.
-- **One wall-clock cap for the whole run, lock wait included: 480 s** (`PYREON_PRE_PUSH_CAP_SEC`; `PYREON_PRE_PUSH_TIMEOUT_SEC` is an alias). Measured 2026-11-10 at load 35–80: validate-fast 36 s, the whole-workspace typecheck 53 s, the full `@pyreon/test-utils` suite 38 s, the largest web package suites 8–22 s.
+- Checks run cheapest and most likely first: validate-fast, the lockfile dry run, actionlint, then (under the lock) the changed packages' typecheck (one package at a time), their tests, the native suites. The cap therefore drops the slow tail first.
+- **One wall-clock cap for the whole run, lock wait included: 300 s** (`PYREON_PRE_PUSH_CAP_SEC`; `PYREON_PRE_PUSH_TIMEOUT_SEC` is an alias). Measured 2026-11-10 at load 10–80: validate-fast 10–36 s, the full `@pyreon/test-utils` suite 38 s, the largest web package suites 8–22 s, whole example pushes 12–40 s. It is kept short for a second reason: git opens the SSH connection before the hook and leaves it idle, and GitHub drops an idle session after some minutes, so a long hook fails the push it validated (seen with a 20-minute hook; the exact window is unmeasured).
 - **On the cap the hook fails OPEN**: it stops the running check, prints every check it did not run with the reason, and lets the push through. Each of those runs in CI behind a required check, so the cost is at most a CI round trip; failing closed on a clock is what made everyone skip the hook. A check that FAILS always blocks the push.
 - A suite whose last recorded duration exceeds the time left is not started (it could only be killed at the cap) and is listed as not checked. Durations live in `<git common dir>/pyreon-pre-push-durations.json` (latest per suite, capped at 500 entries and 30 days).
 

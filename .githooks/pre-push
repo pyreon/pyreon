@@ -6,7 +6,7 @@
 # scripts/pre-push-plan.ts (classifier: changed path -> checks, pass cache).
 # The path -> checks table is in .agents/rules/workflow.md, "Pre-push hook".
 #
-#   PYREON_PRE_PUSH_CAP_SEC=480   whole-run wall-clock cap; on the cap the hook
+#   PYREON_PRE_PUSH_CAP_SEC=300   whole-run wall-clock cap; on the cap the hook
 #                                 lists what it did not check and lets the push
 #                                 through (CI runs all of it). A FAILED check
 #                                 still blocks the push.

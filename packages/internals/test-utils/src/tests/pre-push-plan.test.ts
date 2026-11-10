@@ -66,15 +66,12 @@ describe('computePlan', () => {
   const plan = (changed: string[] | null) =>
     computePlan({ changed, workspaces: WS, root: ROOT, testFiles: TEST_UTILS_TESTS, scriptFiles: SCRIPTS })
 
-  it('a package change: that package typechecked + tested, its dependents typechecked only', () => {
+  it('a package change checks that package only — the closure is CI\'s', () => {
     const p = plan(['packages/core/reactivity/src/signal.ts'])
     expect(p.rules).toEqual([{ path: 'packages/core/reactivity/src/signal.ts', rule: 'package' }])
     expect(p.groups.typecheck).toEqual(['@pyreon/reactivity'])
     expect(p.groups.test).toEqual(['@pyreon/reactivity'])
-    // Tests never widen to the closure — CI runs it.
-    expect(p.typecheckWide).toEqual(['@pyreon/core', '@pyreon/styler'])
     expect(p.groups['native-vitest']).toEqual([])
-    expect(p.nativeSkipped).toEqual(['@pyreon/native-compiler'])
     expect(p.closureSize).toBe(4)
   })
 
@@ -91,7 +88,6 @@ describe('computePlan', () => {
     expect(p.groups.test).toEqual(['@pyreon/test-utils'])
     expect(p.targetedTests).toEqual(['packages/internals/test-utils/src/tests/budgets.test.ts'])
     expect(p.groups.typecheck).toEqual([])
-    expect(p.typecheckWide).toEqual([])
   })
 
   it('a script reaches the tests of every script that imports it, transitively; a comment is not a read', () => {
@@ -107,70 +103,57 @@ describe('computePlan', () => {
     expect(p.groups.test).toEqual([])
   })
 
-  it('a root tsconfig typechecks the workspace (minus native toolchains) and tests nothing', () => {
+  it('a root tsconfig runs no workspace wall (validate-fast checks the presets; CI typechecks)', () => {
     const p = plan(['tsconfig.base.json'])
     expect(p.rules[0]!.rule).toBe('root-tsconfig')
-    expect(p.groups.test).toEqual([])
-    expect(p.groups.typecheck).toEqual([])
-    expect(p.typecheckWide).toEqual(['@pyreon/core', '@pyreon/no-tests', '@pyreon/reactivity', '@pyreon/styler', '@pyreon/test-utils'])
-    expect(p.nativeSkipped).toEqual(['@pyreon/native-compiler', '@pyreon/native-runtime-kotlin'])
+    expect(Object.values(p.groups).flat()).toEqual([])
   })
 
-  it('the lockfile adds the frozen-lockfile dry run and the workspace typecheck', () => {
+  it('the lockfile adds only the frozen-lockfile dry run to the changed packages', () => {
     const p = plan(['bun.lock', 'packages/ui-system/styler/src/index.ts'])
     expect(p.installCheck).toBe(true)
     expect(p.groups.test).toEqual(['@pyreon/styler'])
     expect(p.groups.typecheck).toEqual(['@pyreon/styler'])
-    expect(p.typecheckWide).toEqual(['@pyreon/core', '@pyreon/no-tests', '@pyreon/reactivity', '@pyreon/test-utils'])
   })
 
   it('a workflow gets actionlint on that file and the tests that read it; a shared action lints every workflow', () => {
     const p = plan(['.github/workflows/ci.yml'])
     expect(p.actionlint).toEqual(['.github/workflows/ci.yml'])
     expect(p.targetedTests).toEqual(['packages/internals/test-utils/src/tests/ci-yml.test.ts'])
-    expect(p.typecheckWide).toEqual([])
+    expect(p.groups.typecheck).toEqual([])
     expect(plan(['.github/actions/setup/action.yml']).actionlint).toEqual(['*'])
   })
 
-  it('a root vitest setup file typechecks the workspace and runs the whole test-utils suite as a smoke test', () => {
+  it('a root vitest setup file runs the whole test-utils suite as a setup smoke test', () => {
     const p = plan(['vitest.setup.ts'])
     expect(p.groups.test).toEqual(['@pyreon/test-utils'])
     expect(p.targetedTests).toBeNull()
-    expect(p.typecheckWide.length + p.groups.typecheck.length).toBe(5)
   })
 
-  it('an unknown root file falls back to the broad set (which the time cap bounds)', () => {
+  it('an unknown root file falls back to the whole test-utils suite, never the workspace', () => {
     const p = plan(['.oxlintrc.json'])
     expect(p.rules[0]!.rule).toBe('unknown-root')
     expect(p.groups.test).toEqual(['@pyreon/test-utils'])
+    expect(p.groups.typecheck).toEqual(['@pyreon/test-utils'])
     expect(p.targetedTests).toBeNull()
-    expect([...p.groups.typecheck, ...p.typecheckWide].sort()).toEqual([
-      '@pyreon/core',
-      '@pyreon/no-tests',
-      '@pyreon/reactivity',
-      '@pyreon/styler',
-      '@pyreon/test-utils',
-    ])
   })
 
   it('an unknowable diff behaves like an unknown root file', () => {
     const p = plan(null)
     expect(p.unknownDiff).toBe(true)
     expect(p.groups.test).toEqual(['@pyreon/test-utils'])
-    expect(p.groups.typecheck.length + p.typecheckWide.length).toBe(5)
+    expect(p.groups.typecheck).toEqual(['@pyreon/test-utils'])
   })
 
   it('prose outside a workspace adds nothing beyond validate-fast', () => {
     const p = plan(['AGENTS.md', '.agents/rules/workflow.md', '.changeset/x.md'])
     expect(Object.values(p.groups).flat()).toEqual([])
-    expect(p.typecheckWide).toEqual([])
     expect(p.rules.map((r) => r.rule)).toEqual(['prose', 'prose', 'prose'])
   })
 
   it('an empty diff runs nothing', () => {
     const p = plan([])
     expect(Object.values(p.groups).flat()).toEqual([])
-    expect(p.typecheckWide).toEqual([])
   })
 
   it('every documented rule is reachable from a real path', () => {
