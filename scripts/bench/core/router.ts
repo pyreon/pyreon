@@ -160,6 +160,10 @@ function generateTable(count: number): { pyreonRoutes: RouteRecord[]; flatDefs: 
     ],
   })
   addFlat('admin-dashboard', '/admin/dashboard')
+  // Pyreon's nested table always matched `/admin/users` (the layout record is
+  // a route of its own); the flat tables now carry it too, so a nested-static
+  // row can rotate over two distinct paths.
+  addFlat('admin-users', '/admin/users')
   addFlat('admin-user-settings', '/admin/users/:id/settings')
 
   // Splat
@@ -212,6 +216,20 @@ interface Variant {
 interface Scenario {
   name: string
   variants: Variant[]
+  /**
+   * URLs carry `?query#hash`. Routers whose match entry point does not split
+   * those off get the cheapest correct strip in front of it — what a caller
+   * of that router has to do — so every arm returns the right params.
+   */
+  withQuery?: boolean
+}
+
+/** The cheapest correct strip of `?query` / `#hash` (what a caller must do for a router that does not). */
+function stripQueryHash(p: string): string {
+  const q = p.indexOf('?')
+  const h = p.indexOf('#')
+  const e = q < 0 ? h : h < 0 || q < h ? q : h
+  return e < 0 ? p : p.slice(0, e)
 }
 
 function scenarios(count: number): Scenario[] {
@@ -248,6 +266,21 @@ function scenarios(count: number): Scenario[] {
         rid: 'comment',
         param: id,
       })),
+    },
+    {
+      // Added 2026-11: the row above repeats ONE path, so a JIT can hoist the
+      // lookup out of the timed loop; this one alternates two nested statics.
+      name: 'nested static (2 paths)',
+      variants: Array.from({ length: 8 }, (_, i) =>
+        i % 2 === 0
+          ? { path: '/admin/dashboard', rid: 'admin-dashboard' }
+          : { path: '/admin/users', rid: 'admin-users' },
+      ),
+    },
+    {
+      name: 'dynamic (1 param) ?query#hash',
+      withQuery: true,
+      variants: ids.map((id) => ({ path: `/user/${id}?tab=a#x`, rid: 'user', param: id })),
     },
     {
       name: 'nested static (2 deep)',
@@ -306,6 +339,8 @@ const LIBS: Lib[] = [
 ]
 
 interface Adapter {
+  /** The entry point already ignores `?query#hash` (Pyreon, React Router, Vue Router — checked by the gate). */
+  stripsQuery?: boolean
   match: (path: string) => unknown
   /** Return the matched route id + extracted params for the correctness gate */
   inspect: (path: string) => { rid: string | null; params: Record<string, unknown> }
@@ -345,6 +380,7 @@ const buildersByLib: Record<Lib, (t: Table) => Adapter> = {
 function buildPyreon({ pyreonRoutes }: Table): Adapter {
   // Pyreon
   return {
+    stripsQuery: true,
     match: (p) => resolveRoute(p, pyreonRoutes),
     inspect: (p) => {
       const r = resolveRoute(p, pyreonRoutes)
@@ -482,6 +518,7 @@ function buildReactRouter({ flatDefs }: Table): Adapter {
   }))
   rrRoutes.push({ path: '*', element: null, rid: 'catchall' })
   return {
+    stripsQuery: true,
     match: (p) => matchRoutes(rrRoutes, p),
     inspect: (p) => {
       const res = matchRoutes(rrRoutes, p)
@@ -538,6 +575,7 @@ function buildVue({ flatDefs }: Table): Adapter {
   vueRoutes.push({ path: '/:pathMatch(.*)*', component: VueNoop, meta: { rid: 'catchall' } })
   const vueRouter = createVueRouter({ history: createMemoryHistory(), routes: vueRoutes })
   return {
+    stripsQuery: true,
     match: (p) => vueRouter.resolve(p),
     inspect: (p) => {
       const res = vueRouter.resolve(p)
@@ -652,7 +690,10 @@ if (cellArg !== -1) {
   const adapter = buildAdapter(size, lib)
   const sc = scenarios(size).find((x) => x.name === scenarioName)
   if (!sc) throw new Error(`unknown scenario ${scenarioName}`)
-  const matchFn = adapter.match
+  const matchFn =
+    sc.withQuery && !adapter.stripsQuery
+      ? (p: string) => adapter.match(stripQueryHash(p))
+      : adapter.match
   const paths = sc.variants.map((v) => v.path)
   let i = 0
   // Rotate the 8 variants through the timed loop (see OBJECTIVITY CONTRACT #2)
@@ -681,7 +722,8 @@ const PROCS = QUICK ? 1 : 3
     for (const sc of scenarios(size)) {
       for (const v of sc.variants) {
         for (const lib of LIBS) {
-          const { rid, params } = adapters[lib].inspect(v.path)
+          const a = adapters[lib]
+          const { rid, params } = a.inspect(sc.withQuery && !a.stripsQuery ? stripQueryHash(v.path) : v.path)
           if (rid !== v.rid) {
             throw new Error(
               `[correctness] size=${size} ${sc.name} ${lib}: "${v.path}" matched "${rid}" — expected "${v.rid}"`,
@@ -689,6 +731,7 @@ const PROCS = QUICK ? 1 : 3
           }
           if (v.param !== undefined) {
             const values = Object.values(params).map((x) => String(x))
+            // Exact value — `42?tab=a#x` must not pass for `42`.
             if (!values.includes(v.param)) {
               throw new Error(
                 `[correctness] size=${size} ${sc.name} ${lib}: "${v.path}" params ${JSON.stringify(params)} missing expected value "${v.param}"`,

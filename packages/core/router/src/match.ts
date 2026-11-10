@@ -489,7 +489,7 @@ interface RouteIndex {
    * when the mask can't be used (dynamic-first routes exist, or a route's
    * first char is non-ASCII).
    */
-  firstCharMask: Uint8Array | null
+  missChars: Uint8Array | null
   /**
    * PR-S9: pre-built trie of `notFoundComponent`-bearing records keyed by
    * their full URL path. `findNotFoundFallback` walks the trie by URL
@@ -806,6 +806,17 @@ function buildRouteIndex(routes: RouteRecord[]): RouteIndex {
     }
   }
 
+  // Store the INVERSE for the hot path: `missChars[c] === 1` ⇔ a URL whose
+  // first-segment char is `c` can only reach a wildcard. `%`, `/`, `?`, `#`
+  // never qualify (an encoded char decodes to anything, `//x` collapses, `/?q`
+  // is the root plus a query). Non-ASCII chars and NaN (the bare `/`) index
+  // past the table, read `undefined` and take the full pipeline.
+  const missChars = firstCharMask
+  if (missChars) {
+    for (let c = 0; c < 128; c++) missChars[c] = missChars[c] === 1 ? 0 : 1
+    missChars[37] = missChars[47] = missChars[63] = missChars[35] = 0
+  }
+
   const index: RouteIndex = {
     staticMap,
     rawStatic,
@@ -816,7 +827,7 @@ function buildRouteIndex(routes: RouteRecord[]): RouteIndex {
     dynamicFirst,
     wildcards,
     notFoundTrie,
-    firstCharMask,
+    missChars,
   }
   _indexCache.set(routes, index)
   return index
@@ -1168,6 +1179,26 @@ export function resolveRoute(rawPath: string, routes: RouteRecord[]): ResolvedRo
   const index = getIndex(routes)
   const cached = index.rawStatic[rawPath]
   if (cached !== undefined) return cached
+  // Lane 2: first-char fail-fast (see `RouteIndex.missChars`). A path whose
+  // first-segment char no non-wildcard route starts with can only match a
+  // wildcard — the first-char fail a radix tree gets for free. Every static
+  // key's first char is a route char, so no static (lane 1 or below) is
+  // skipped. The common miss — no query/hash, a catch-all without a validator
+  // — is built inline. (Measured: testing this BEFORE the lane-1 probe made
+  // static resolves ~4x slower on JSC, so it stays after.)
+  const missChars = index.missChars
+  if (missChars !== null && missChars[rawPath.charCodeAt(1)] === 1) {
+    const w = index.wildcards[0]
+    if (
+      w !== undefined &&
+      rawPath.indexOf('?') < 0 &&
+      rawPath.indexOf('#') < 0
+    ) {
+      return routeHit(w, rawPath, EMPTY_PARAMS, EMPTY_QUERY, '')
+    }
+    return missResult(index, routes, splitUrl(rawPath, urlEnd(rawPath)), _url.query, _url.hash)
+  }
+
   // Lane 1 (rest): a raw static hit whose chain has a validator. Keys holding
   // `?`/`#` are excluded (`rawSafe`) here and in `rawStatic`: in a raw URL
   // those characters are the query / hash separators.
@@ -1176,45 +1207,11 @@ export function resolveRoute(rawPath: string, routes: RouteRecord[]): ResolvedRo
     if (raw !== undefined && raw.rawSafe) return routeHit(raw, rawPath, EMPTY_PARAMS, EMPTY_QUERY, '')
   }
 
-  // Lane 2: first-char fail-fast (see RouteIndex.firstCharMask). A path whose
-  // first-segment char no non-wildcard route starts with can only match a
-  // wildcard — the first-char fail a radix tree gets for free. Excluded chars take
-  // the full pipeline: `%` (an encoded first char decodes to anything), `/` (a
-  // leading `//` collapses in the general lane), and `?`/`#` (`/?q` is the root
-  // path plus a query). `charCodeAt(1)` is NaN for the bare root `/` — it
-  // jumps, which is correct: a root route would have hit lane 1.
-  //
   // A path that is not root-relative (no leading `/`, including `''`) matches
-  // no route either: callers pass root-relative paths, and the resolver
-  // deliberately does not guess (`matcher-agreement.test.ts`).
-  const mask = index.firstCharMask
-  const cc = rawPath.charCodeAt(1)
-  if (
-    rawPath.charCodeAt(0) !== 47 /* / */ ||
-    (mask !== null &&
-      cc !== 37 &&
-      cc !== 47 &&
-      cc !== 63 &&
-      cc !== 35 &&
-      !(cc < 128 && mask[cc] === 1))
-  ) {
-    const end = urlEnd(rawPath)
-    const w = index.wildcards[0]
-    // The common miss — no query/hash, a catch-all without a validator — is
-    // built inline (no split, no helper calls).
-    if (end === rawPath.length && w !== undefined && w.validateFn === null) {
-      return {
-        path: rawPath,
-        params: EMPTY_PARAMS,
-        query: EMPTY_QUERY,
-        hash: '',
-        matched: w.matchedChain,
-        meta: w.meta,
-        search: EMPTY_SEARCH,
-      }
-    }
-    const cleanPath = splitUrl(rawPath, end)
-    return missResult(index, routes, cleanPath, _url.query, _url.hash)
+  // no route: callers pass root-relative paths, and the resolver deliberately
+  // does not guess (`matcher-agreement.test.ts`).
+  if (rawPath.charCodeAt(0) !== 47 /* / */) {
+    return missResult(index, routes, splitUrl(rawPath, urlEnd(rawPath)), _url.query, _url.hash)
   }
 
   // Lane 3: the single-pass walk.
