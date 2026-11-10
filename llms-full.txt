@@ -1125,7 +1125,7 @@ Composition-style global state management built on @pyreon/reactivity signals. S
 
 ```typescript
 import { signal, computed } from '@pyreon/reactivity'
-import { defineStore, addStorePlugin, resetAllStores } from '@pyreon/store'
+import { defineStore, addStorePlugin, resetAllStores, defineSchemaStore } from '@pyreon/store'
 
 // Define a store — setup function runs once per store ID.
 // Signals → tracked state, functions → wrapped actions.

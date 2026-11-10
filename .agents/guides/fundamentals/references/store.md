@@ -11,5 +11,5 @@
 - Cold per-store fields (`_keyIndex`, detector arrays, patch closures, plugin cleanups) are `declare`d and ABSENT until first use; compare them with `== null`.
 - Dev warnings: unknown patch keys; redefining an id with a different setup (the HMR stale shape).
 - Persistence is composition: return `useStorage()` signals from setup. A store family is a derived id (`` defineStore(`doc:${id}`) ``) with manual lifecycle.
-- Schema overload `defineStore(id, { schema, initial, setup? })`: the schema is a `@pyreon/validation` adapter or any raw Standard Schema (zod, valibot, arktype). Every write is validated, and `SchemaStoreApi` is typed through `InferSchema<S>` (`_infer` for an adapter, else `~standard.types.output`), so `state`, `set`, `patch`, `deepPatch` and `update(key, fn)` are typed without annotations.
+- Schema stores: `defineSchemaStore(id, { schema, initial, setup? })`: the schema is a `@pyreon/validation` adapter or any raw Standard Schema (zod, valibot, arktype). Every write is validated, and `SchemaStoreApi` is typed through `InferSchema<S>` (`_infer` for an adapter, else `~standard.types.output`), so `state`, `set`, `patch`, `deepPatch` and `update(key, fn)` are typed without annotations.
 - Unvalidated by design: the functional `patch(fn)` form and direct `store.field.set(v)`. Async validators throw at definition time.
