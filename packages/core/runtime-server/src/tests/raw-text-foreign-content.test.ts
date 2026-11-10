@@ -55,8 +55,6 @@ const decodeEntities = (s: string): string =>
     .replace(/&#39;/g, "'")
     .replace(/&amp;/g, '&')
 
-const cssUnescapeLt = (s: string): string => s.replace(/\\3c /g, '<')
-
 describe('raw-text content inside foreign content (svg / math) cannot open a tag', () => {
   for (const ns of ['svg', 'math'] as const) {
     for (const payload of PAYLOADS) {
@@ -66,10 +64,15 @@ describe('raw-text content inside foreign content (svg / math) cannot open a tag
           await renderToString(tree()),
           await stream(tree()),
           // What the compiler emits for `<svg>{child}</svg>` under ssrTemplate:
-          // the `<svg>` is baked static text and the child is a bare hole.
+          // the `<svg>` is baked static text, so the child hole carries the
+          // baked namespace path (`"s"` / `"m"`).
           await renderToString(
             h(
-              () => _ssr([`<${ns}>`, `</${ns}>`], _escSole(h('style', null, payload))) as never,
+              () =>
+                _ssr(
+                  [`<${ns}>`, `</${ns}>`],
+                  _escSole(h('style', null, payload), ns === 'svg' ? 's' : 'm'),
+                ) as never,
               null,
             ),
           ),
@@ -77,8 +80,8 @@ describe('raw-text content inside foreign content (svg / math) cannot open a tag
         for (const out of outputs) {
           const text = body(out, 'style')
           expect(text).not.toMatch(TAG_OPEN)
-          // CSS reads `\3c ` as `<`: the stylesheet text is unchanged.
-          expect(cssUnescapeLt(text)).toBe(payload)
+          // Foreign content decodes entities: the stylesheet text is unchanged.
+          expect(decodeEntities(text)).toBe(payload)
         }
       })
 

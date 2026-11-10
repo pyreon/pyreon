@@ -1264,6 +1264,31 @@ describe('JS syntax and optional native parity — select value binding (PZ-09)'
 // JS↔Rust with the flag ON; bail shapes (where the compiler falls to h()) must
 // ALSO agree — so the h() output for those matches between backends too.
 describe('SSR compile-to-string fast path (ssrTemplate) syntax and optional native parity', () => {
+  // Child holes under a baked `<svg>` / `<math>` / `<foreignObject>` carry the
+  // baked namespace path so the runtime renders a `<script>`/`<style>` VNode in
+  // the parser's namespace; attribute holes do not. Both backends must agree on
+  // every carrier: plain/sole/text-fused holes, nested-conditional and `.map`
+  // / `<For>` item bodies (built while the path is live), preserved component
+  // holes (the bracketing closers), and a top-level template that resets it.
+  test('foreign-namespace path on child holes (svg / math / foreignObject)', () => {
+    compareSsrTemplate(`const A = (p) => <svg>{p.child}</svg>`)
+    compareSsrTemplate(`const A = (p) => <svg><g></g>{p.a}<g>{p.b} {p.c}</g></svg>`)
+    compareSsrTemplate(`const A = (p) => <math><mi>{p.a}</mi><foreignObject>{p.b}</foreignObject></math>`)
+    compareSsrTemplate(`const A = (p) => <svg><foreignObject><div>{p.a}<svg>{p.b}</svg></div></foreignObject></svg>`)
+    compareSsrTemplate(`const A = (p) => <svg><a href={p.u} title={p.t}>{p.x}</a></svg>`)
+    compareSsrTemplate(`const A = (p) => <svg>{p.on && <g>{p.v}</g>}{p.on ? <g>{p.v}</g> : null}</svg>`)
+    compareSsrTemplate(`const A = (p) => <svg>{p.list.map((v) => <g>{v}</g>)}</svg>`)
+    compareSsrTemplate(`import { For } from '@pyreon/core'\nconst A = (p) => <svg><For each={p.rows} by={(r) => r.k}>{(r) => <g>{r.v}</g>}</For></svg>`)
+    compareSsrTemplate(`const A = (p) => <svg><Wrap v={p.v} /><g>{p.x}</g><Wrap v={p.w} /></svg>`)
+    compareSsrTemplate(`const A = (p) => <div><Wrap v={p.v} /><svg><Wrap v={<g>{p.w}</g>} /></svg></div>`)
+    const js = transformJSX_JS(`const A = (p) => <svg><g>{p.a}</g><foreignObject>{p.b}</foreignObject></svg>`, 'test.tsx', { ssr: true, ssrTemplate: true }).code
+    expect(js).toContain('_escSole(p.a, "s")')
+    expect(js).toContain('_escSole(p.b, "sf")')
+    const attr = transformJSX_JS(`const A = (p) => <svg><a title={p.t}>x</a></svg>`, 'test.tsx', { ssr: true, ssrTemplate: true }).code
+    expect(attr).not.toMatch(/, "s"\)/)
+    const html = transformJSX_JS(`const A = (p) => <div>{p.a}<span>{p.b}</span></div>`, 'test.tsx', { ssr: true, ssrTemplate: true }).code
+    expect(html).not.toMatch(/_esc(Sole)?\([^)]*, "/)
+  })
   test('conditional between two string literals bakes both attribute renderings', () => {
     compareSsrTemplate(
       `const A = (p) => <a class={p.on ? 'even row' : 'odd row'} style={p.on ? '' : 'color:red'} title={p.on ? 'a "q" <b>' : 'x & y'} href={p.on ? '/one' : '/two'}>x</a>`,

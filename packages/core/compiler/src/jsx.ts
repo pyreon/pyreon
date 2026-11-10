@@ -1377,6 +1377,21 @@ export function transformJSX_JS(
   let needsSsrForKeyedImport = false
   let needsEscImport = false
   let needsEscSoleImport = false
+  /**
+   * The baked namespace-changing ancestors of the element being serialized
+   * (`s` = `<svg>`, `m` = `<math>`, `f` = `<foreignObject>`), outermost first.
+   *
+   * A baked `<svg>` is static TEXT, so the runtime renderer never sees it: a
+   * child hole under it (`<svg>{p.child}</svg>` → `_escSole(p.child)`) renders
+   * a `<script>`/`<style>` VNode as if it were in HTML, where its text is raw —
+   * but the parser is in foreign content there, where the same text is markup.
+   * Every CHILD hole under one of these tags therefore carries the path as a
+   * trailing argument (`_escSole(p.child, "s")`), and the runtime folds it onto
+   * its own namespace (`nsAfterPath` in @pyreon/runtime-server) to render the
+   * hole in the parser's namespace. Attribute holes do not need it. Mirrored by
+   * `Ctx::ssr_ns_path` in native/src/lib.rs.
+   */
+  let ssrNsPath = ''
   let needsSsrAttrImport = false
   let needsSsrAttrGenImport = false
   let needsSsrAttrUrlImport = false
@@ -1897,7 +1912,7 @@ export function transformJSX_JS(
      * is" — see `ssrEmitSourceHole`. The emitter then brackets the range with
      * replacements instead of replacing across it.
      */
-    holeSrc: ({ start: number; end: number; node: N } | null)[]
+    holeSrc: ({ start: number; end: number; node: N; ns: string } | null)[]
   }
 
   function ssrEmitStatic(buf: SsrBuf, s: string): void {
@@ -1949,7 +1964,7 @@ export function transformJSX_JS(
   function ssrEmitSourceHole(buf: SsrBuf, el: N): void {
     buf.holes.push('')
     buf.holeStr.push(false)
-    buf.holeSrc.push({ start: el.start as number, end: el.end as number, node: el })
+    buf.holeSrc.push({ start: el.start as number, end: el.end as number, node: el, ns: ssrNsPath })
     buf.statics.push('')
   }
 
@@ -2097,7 +2112,7 @@ export function transformJSX_JS(
     if (!ssrProvablyNonNullNonBoolean(expr)) return false
     if (url && !ssrProvablySafeUrl(expr)) return false
     ssrEmitStatic(buf, ` ${name}="`)
-    emitEscHole(buf, valueText)
+    emitEscHole(buf, valueText, false)
     ssrEmitStatic(buf, '"')
     return true
   }
@@ -2367,15 +2382,26 @@ export function transformJSX_JS(
 
   /** Emit a text/expression child as `_esc(expr)` — byte-identical to
    * `renderNode(value)` (primitive → escaped, VNode → mounted). */
-  function emitEscHole(buf: SsrBuf, exprText: string): void {
-    ssrEmitHole(buf, `_esc(${exprText})`)
+  function emitEscHole(buf: SsrBuf, exprText: string, child = true): void {
+    ssrEmitHole(buf, `_esc(${exprText}${child ? ssrNsArg(ssrNsPath) : ''})`)
     needsEscImport = true
+  }
+
+  /** `, "<path>"` for a child hole under baked foreign-namespace tags, else ''. */
+  function ssrNsArg(path: string): string {
+    return path === '' ? '' : `, ${JSON.stringify(path)}`
+  }
+
+  /** The `ssrNsPath` code for a namespace-changing tag (ASCII case-insensitive, as the tokenizer is). */
+  function ssrNsCode(tag: string): string {
+    const t = tag.toLowerCase()
+    return t === 'svg' ? 's' : t === 'math' ? 'm' : t === 'foreignobject' ? 'f' : ''
   }
 
   /** Emit a SOLE expression child as `_escSole(expr)` — `_esc` minus the
    * accessor range markers, matching `renderElement`'s sole-child elision. */
   function emitEscSoleHole(buf: SsrBuf, exprText: string): void {
-    ssrEmitHole(buf, `_escSole(${exprText})`)
+    ssrEmitHole(buf, `_escSole(${exprText}${ssrNsArg(ssrNsPath)})`)
     needsEscSoleImport = true
   }
 
@@ -2786,17 +2812,24 @@ export function transformJSX_JS(
     // A self-closing non-void tag (`<div />`) has no children to walk; it
     // still gets its closing tag, matching the h() path's `<div></div>`.
     if (!selfClosing) {
-      // Text fusion (see `fuseTextChildren`): the children become ONE sole
-      // accessor child, so this is exactly the `_escSole` shape — no markers
-      // on either side, byte-identical to the h() path's fused emit.
-      const fused = fuseTextChildren(el)
-      if (fused !== null) {
-        emitEscSoleHole(buf, fused)
-      } else {
-        const sole = ssrSoleChild(el)
-        for (const child of jsxChildren(el)) {
-          if (!ssrSerializeChild(buf, child, mode, child === sole)) return false
+      // Children are parsed in this element's namespace (see `ssrNsPath`).
+      const outerNs = ssrNsPath
+      ssrNsPath += ssrNsCode(tag)
+      try {
+        // Text fusion (see `fuseTextChildren`): the children become ONE sole
+        // accessor child, so this is exactly the `_escSole` shape — no markers
+        // on either side, byte-identical to the h() path's fused emit.
+        const fused = fuseTextChildren(el)
+        if (fused !== null) {
+          emitEscSoleHole(buf, fused)
+        } else {
+          const sole = ssrSoleChild(el)
+          for (const child of jsxChildren(el)) {
+            if (!ssrSerializeChild(buf, child, mode, child === sole)) return false
+          }
         }
+      } finally {
+        ssrNsPath = outerNs
       }
     }
     ssrEmitStatic(buf, `</${tag}>`)
@@ -2911,7 +2944,16 @@ export function transformJSX_JS(
     // forms correctly (void → `<img …  />`, non-void → `<div …></div>`), so the
     // only thing that kept `<Icon> = () => <img …/>`, `<Divider> = () => <hr/>`
     // and `<Input> = () => <input …/>` on the slow h() path was this gate.
-    const buf = buildSsrBuf(node, 'recursed')
+    // A top-level template has no baked ancestors: its holes inherit the
+    // runtime namespace it renders in.
+    const outerNs = ssrNsPath
+    ssrNsPath = ''
+    let buf: SsrBuf | null
+    try {
+      buf = buildSsrBuf(node, 'recursed')
+    } finally {
+      ssrNsPath = outerNs
+    }
     if (buf === null) return false
     const start = node.start as number
     const end = node.end as number
@@ -2978,13 +3020,13 @@ export function transformJSX_JS(
       replacements.push({
         start: preserved[k - 1]!.end,
         end: preserved[k]!.start,
-        text: `)${generatedUpTo(idx)}, _ssrNode(`,
+        text: `${ssrNsArg(preserved[k - 1]!.ns)})${generatedUpTo(idx)}, _ssrNode(`,
       })
       hole = idx + 1
     }
 
     // Two closers for the call + one for the `_ssrDeferred(() => …)` wrap.
-    let suffix = `)${generatedUpTo(buf.holes.length)}))`
+    let suffix = `${ssrNsArg(preserved[preserved.length - 1]!.ns)})${generatedUpTo(buf.holes.length)}))`
     if (needsBraces) suffix = isSoleComponentChild(node) ? `${suffix})}` : `${suffix}}`
     replacements.push({ start: preserved[preserved.length - 1]!.end, end, text: suffix })
 
