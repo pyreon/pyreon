@@ -43,7 +43,7 @@
  */
 import { query } from '@pyreon/test-utils'
 import { transformJSX } from '@pyreon/compiler'
-import { Fragment, For, h, _rp, _rpd, cx } from '@pyreon/core'
+import { Fragment, For, h, _pk, _pp, _rp, _rpd, cx } from '@pyreon/core'
 import { _bind, signal, renderEffect } from '@pyreon/reactivity'
 import { transformSync } from 'esbuild'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -82,6 +82,8 @@ const RUNTIME_DEPS = {
   _textSlot,
   _setChild,
   _setChildAt,
+  _pk,
+  _pp,
   _rp,
   _rpd,
   _cx: cx,
