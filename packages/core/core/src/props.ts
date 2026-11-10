@@ -318,6 +318,66 @@ export function _rp<T>(fn: () => T): () => T {
 }
 
 /**
+ * STATIC-PROP FOLD, runtime half (the compiler's component-attribute emit is
+ * the other). `<Child depth={props.depth - 1} />` inside a component lowers to
+ *
+ *     depth: _pk(props, "depth") ? props.depth - 1 : _rp(() => props.depth - 1)
+ *
+ * `_pk` is true when `key` is an own DATA property of `props` holding a
+ * primitive (string, number, boolean, null or undefined). A props object's data
+ * properties are fixed when it is created (a reactive prop is a GETTER), so the
+ * expression can never change and is evaluated once, as a plain value: no thunk,
+ * no getter on the child, and no O(depth) getter chain when the same prop is
+ * threaded through many levels. The compiler only emits this for operators that
+ * cannot run user code on primitives, and the primitive check excludes objects
+ * (`valueOf`), BigInt (mixing throws) and symbols, so evaluating early is
+ * unobservable. Anything else keeps today's `_rp` thunk.
+ *
+ * The descriptor is read, never the property, so a getter does not fire (and
+ * is not tracked) at the call site.
+ *
+ * Emitted by the compiler — not meant for hand-written code.
+ */
+export function _pk(props: object, key: string): boolean {
+  const d = Object.getOwnPropertyDescriptor(props, key)
+  if (d === undefined || d.get !== undefined || d.set !== undefined) return false
+  const v = d.value as unknown
+  const t = typeof v
+  return v == null || t === 'string' || t === 'number' || t === 'boolean'
+}
+
+/**
+ * STATIC-PROP FOLD for an exact pass-through, `<Child x={props.x} />`.
+ *
+ * - An own data property is returned as its value (it can never change; a
+ *   branded thunk stored as data is excluded, since passing it on would turn
+ *   it into a getter on the child).
+ * - A getter that is itself a compiler thunk (`REACTIVE_PROP`-branded: `_rp`,
+ *   `_rpd`, `_lc`, `_wrapSpread`'s) is FORWARDED: the child installs the same
+ *   `this`-free thunk, so a prop threaded through N levels is one call deep
+ *   instead of N, and an `_rpd` getter keeps its direct tier at every level.
+ * - Anything else (a missing key, a hand-written or `mergeProps` getter) gets
+ *   today's `_rp(() => props[key])`.
+ *
+ * Emitted by the compiler — not meant for hand-written code.
+ */
+export function _pp(props: object, key: string): unknown {
+  const d = Object.getOwnPropertyDescriptor(props, key)
+  if (d !== undefined) {
+    const g = d.get as (Record<symbol, unknown> & (() => unknown)) | undefined
+    if (g === undefined) {
+      if (d.set === undefined) {
+        const v = d.value as unknown
+        if (typeof v !== 'function' || !(v as unknown as Record<symbol, unknown>)[REACTIVE_PROP]) return v
+      }
+    } else if (g[REACTIVE_PROP] === true) {
+      return g
+    }
+  }
+  return _rp(() => (props as Record<string, unknown>)[key])
+}
+
+/**
  * The reactive-prop wrapper for a prop whose expression is EXACTLY a bare
  * signal/computed call — `<Row value={sig()} />`. Same contract as `_rp`
  * (a branded thunk that `makeReactiveProps` turns into a getter), plus the

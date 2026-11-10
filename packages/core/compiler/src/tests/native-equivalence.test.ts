@@ -3033,3 +3033,27 @@ describe('JS syntax and optional native parity — named accessor DOM props (#40
     compare('function A() { function label() { return n() } return <p><b/>{label}<i/></p> }')
   })
 })
+
+// Static-prop fold (`_pk` / `_pp`, core `props.ts`): eligibility (capitalized
+// component, never re-bound props param) and the operator whitelist must agree
+// byte-for-byte between backends.
+describe('JS syntax and optional native parity — static-prop fold', () => {
+  const cases: [string, string][] = [
+    ['fn decl, arithmetic + pass-through', 'function Node(props) { return <div><Node depth={props.depth - 1} tag={props.tag} /></div> }'],
+    ['template, ternary, logical', 'const C = (props) => <R n={`x${props.a}`} c={props.a ? "y" : props.b} l={props.a || 0} />'],
+    ['unary whitelist', 'const C = (props) => <R v={-props.n} u={typeof props.n} b={!props.f} />'],
+    ['rejected shapes keep _rp', 'const C = (props) => <R y={props.y + count()} z={props.o.k} w={props.s instanceof props.t} i={"k" in props.o} o={props?.z} g={1n + props.y} />'],
+    ['lowercase helper keeps _rp', 'const row = (item) => <R x={item.x} y={item.x + 1} />'],
+    ['re-bound param', 'function C(props) { props = other; return <R y={props.y} /> }'],
+    ['destructuring write', 'function C(props) { ({ props } = o); return <R y={props.y} /> }'],
+    ['catch shadow', 'function C(props) { try {} catch (props) {} return <R y={props.y} /> }'],
+    ['nested shadowing param', 'function C(props) { const f = (props) => <R x={props.x} />; return <R y={props.y} /> }'],
+    ['update write', 'function C(props) { props++; return <R y={props.y} /> }'],
+    ['exported fn expression', 'export const C = function (props) { return <R y={props.y * 2} /> }'],
+    ['export default + TS layers', 'export default function C(props) { return <R y={props.y as number} k={(props.k)!} /> }'],
+    ['splitProps result not folded', 'const C = (props) => { const [own] = splitProps(props, ["a"]); return <R a={own.a} b={props.b == null} /> }'],
+    ['class method not folded', 'class X { render(props) { return <R a={props.a} /> } }'],
+    ['map callback param', 'const Outer = (props) => <div>{list.map((p) => <R a={p.a} b={props.b} />)}</div>'],
+  ]
+  for (const [name, src] of cases) test(name, () => compare(src, 'test.tsx'))
+})

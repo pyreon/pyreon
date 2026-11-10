@@ -21,7 +21,7 @@
  */
 import { transformJSX } from '@pyreon/compiler'
 import { transformSync } from 'esbuild'
-import { Fragment, h, _rp, _rpd, cx } from '@pyreon/core'
+import { Fragment, h, _pk, _pp, _rp, _rpd, cx } from '@pyreon/core'
 import { _bind, signal, renderEffect } from '@pyreon/reactivity'
 import { renderToString } from '@pyreon/runtime-server'
 import { describe, expect, it } from 'vitest'
@@ -57,6 +57,8 @@ const RUNTIME_DEPS = {
   _setChild,
   _setChildAt,
   bindPolymorphicText,
+  _pk,
+  _pp,
   _rp,
   _rpd,
   _cx: cx,
