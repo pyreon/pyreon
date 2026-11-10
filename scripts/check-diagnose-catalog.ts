@@ -72,8 +72,13 @@
  * 2. Filter through `isSensitiveSourceFile`. If none → exit 0.
  * 3. If `HAS_SKIP_LABEL=true` → exit 0 (deliberate bypass).
  * 4. If `HEAD_REF` matches `changeset-release/*` → exit 0 (release PR).
- * 5. Count `ERROR_PATTERNS` entries in both `origin/${BASE_REF}` and HEAD
- *    versions of `diagnose.ts`. If HEAD count > base count → pass.
+ * 5. Count `ERROR_PATTERNS` entries in `diagnose.ts` at HEAD and at the
+ *    MERGE-BASE of `origin/${BASE_REF}` and HEAD — the same base step 1
+ *    diffs against. If HEAD count > base count → pass. Never the tip of
+ *    `origin/${BASE_REF}`: a queued job fetches the base AFTER the event
+ *    froze the PR's merge ref, so an entry that landed on the base in
+ *    between was counted against the PR (2026-11-10: #4289 saw
+ *    `base=123 → head=122`, #4284's own new entry read as no growth).
  * 6. Otherwise → fail with a clear "add a new entry, or label to bypass"
  *    message.
  */
@@ -241,6 +246,24 @@ function changedFiles(baseRef: string): string[] | null {
   }
 }
 
+/**
+ * The commit the PR's catalog growth is measured from: the merge-base of
+ * `origin/<baseRef>` and HEAD, or `null` when it cannot be computed. In CI
+ * HEAD is the PR's merge ref, whose first parent is the base as of the
+ * event, so this is that parent even when the base has moved on since.
+ */
+function catalogBase(baseRef: string): string | null {
+  try {
+    return git('merge-base', `origin/${baseRef}`, 'HEAD')
+  } catch (err) {
+    console.error(
+      `[check-diagnose-catalog] could not compute the merge-base with origin/${baseRef}: ` +
+        `${err instanceof Error ? err.message : String(err)}`,
+    )
+    return null
+  }
+}
+
 function readFileAt(ref: string, path: string): string | null {
   try {
     return git('show', `${ref}:${path}`)
@@ -362,7 +385,16 @@ function main(): void {
     )
     process.exit(1)
   }
-  const baseSource = readFileAt(`origin/${BASE_REF}`, CATALOG_FILE)
+  const base = catalogBase(BASE_REF)
+  if (base === null) {
+    // Fail CLOSED, as for the diff above: without a base there is no growth to measure.
+    console.error(
+      `[check-diagnose-catalog] REFUSING to pass: no merge-base between origin/${BASE_REF} and HEAD, ` +
+        `so catalog growth could not be measured.`,
+    )
+    process.exit(1)
+  }
+  const baseSource = readFileAt(base, CATALOG_FILE)
   const headSource = readFileAtHead(CATALOG_FILE)
 
   const result = evaluateGate({
@@ -397,7 +429,7 @@ function main(): void {
 
     case 'skip-missing-base-catalog':
       console.log(
-        `[check-diagnose-catalog] Could not read \`${CATALOG_FILE}\` from origin/${BASE_REF} — skipping (likely a first-time-add of the catalog file).`,
+        `[check-diagnose-catalog] Could not read \`${CATALOG_FILE}\` at the merge-base with origin/${BASE_REF} — skipping (likely a first-time-add of the catalog file).`,
       )
       process.exit(0)
       break
