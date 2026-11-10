@@ -98,6 +98,10 @@ jobs:
           bun-version-file: .bun-version
       - name: Detect native-path changes
         id: detect
+        env:
+          # Through env, never `${{ }}` inside the script: a context value
+          # interpolated into `run:` is spliced into the shell source.
+          BASE_REF: ${{ github.base_ref }}
         run: |
           set -euo pipefail
           all_lanes() {
@@ -112,8 +116,8 @@ jobs:
           # fail-closed: every uncertainty RUNS the lanes; see native-validate.yml
           # for the two over-matches the inline regex it replaced carried).
           # Fail-closed: any diff failure → run=true.
-          git fetch origin "${{ github.base_ref }}" || true
-          if FILES=$(git diff --name-only "origin/${{ github.base_ref }}...HEAD"); then
+          git fetch origin "$BASE_REF" || true
+          if FILES=$(git diff --name-only "origin/${BASE_REF}...HEAD"); then
             printf '%s\n' "$FILES" | bun scripts/native-surface-touched.ts --self=.github/workflows/native-device.yml --apps
           else
             all_lanes
