@@ -21,10 +21,10 @@ Run all of these, collect every failure, then triage. Do not stop at the first r
 2. typecheck of the directly changed packages
 3. tests of the directly changed packages
 
-Take the selection from `bun scripts/pre-push-plan.ts plan --cache-dir=<dir> --state=<file>`
-(the hook's own planner; it prints what it runs and skips). It is direct-only by design: CI runs
-the full reverse-dependency closure as required checks. A root-file change widens typecheck to the
-workspace, never tests.
+Take the selection from `bun scripts/pre-push.ts --cache-dir="$(git rev-parse --git-common-dir)" --plan-only`
+(the hook's own plan; it prints each check and its command, and what it skips as already passed).
+Tests are never widened to dependents: CI runs the full reverse-dependency closure as required
+checks. Root config widens typecheck to the workspace, never tests.
 
 ## Quick triage
 

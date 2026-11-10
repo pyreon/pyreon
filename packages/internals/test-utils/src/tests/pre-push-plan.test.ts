@@ -2,6 +2,7 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
+  classifyRootPath,
   computePassKeys,
   computePlan,
   entryKey,
@@ -9,16 +10,19 @@ import {
   PASS_CACHE_MAX_AGE_MS,
   PASS_CACHE_MAX_ENTRIES,
   PASS_CACHE_VERSION,
+  PATH_RULES,
   recordPasses,
+  stripComments,
   type WorkspaceInfo,
 } from '../../../../../scripts/pre-push-plan'
 
 /**
  * `scripts/pre-push-plan.ts` decides what the pre-push hook runs. The contract
- * these tests pin: the hook is DIRECT-ONLY (never the reverse-dependency
- * closure, which CI runs), a root-file change widens typecheck but never
- * tests, native-toolchain packages run only when they themselves changed, and
- * the pass cache skips a package only while every one of its inputs is
+ * these tests pin: every changed path maps to the checks it can affect
+ * (`PATH_RULES`); tests are never widened to the reverse-dependency closure
+ * (CI runs it), only typecheck is; a scripts/** file runs only the tests that
+ * read it; native-toolchain packages run only when they themselves changed;
+ * and the pass cache skips a package only while every one of its inputs is
  * byte-identical.
  */
 
@@ -44,75 +48,152 @@ const WS: WorkspaceInfo[] = [
 ]
 
 describe('computePlan', () => {
-  it('runs a core change DIRECT-ONLY and reports the closure it dropped', () => {
-    const plan = computePlan({
-      changed: ['packages/core/reactivity/src/signal.ts'],
-      workspaces: WS,
-      root: ROOT,
-    })
-    expect(plan.direct).toEqual(['@pyreon/reactivity'])
-    expect(plan.groups.typecheck).toEqual(['@pyreon/reactivity'])
-    expect(plan.groups.test).toEqual(['@pyreon/reactivity'])
-    // The old hook ran the closure, including the native-compiler suite.
-    expect(plan.groups['native-vitest']).toEqual([])
-    expect(plan.closureSize).toBe(4)
-    expect(plan.rootChanged).toBe(false)
+  const TEST_UTILS_TESTS = new Map([
+    ['packages/internals/test-utils/src/tests/affected.test.ts', "import { x } from '../../../../../scripts/affected'"],
+    [
+      'packages/internals/test-utils/src/tests/budgets.test.ts',
+      "const BUDGETS = JSON.parse(readFileSync(join(ROOT, 'scripts', 'bundle-budgets.json'), 'utf8'))",
+    ],
+    ['packages/internals/test-utils/src/tests/ci-yml.test.ts', "const ci = read('.github/workflows/ci.yml')"],
+    ['packages/internals/test-utils/src/tests/unrelated.test.ts', "import { y } from '../../../../../scripts/other'"],
+  ])
+  const SCRIPTS = new Map([
+    ['scripts/affected.ts', "import { gitChangedFilesZ } from './changed-files'\n// see bundle-budgets.json for budgets"],
+    ['scripts/changed-files.ts', 'export function gitChangedFilesZ() {}'],
+    ['scripts/other.ts', 'export const y = 1'],
+    ['scripts/lonely.ts', 'export const z = 1'],
+  ])
+  const plan = (changed: string[] | null) =>
+    computePlan({ changed, workspaces: WS, root: ROOT, testFiles: TEST_UTILS_TESTS, scriptFiles: SCRIPTS })
+
+  it('a package change: that package typechecked + tested, its dependents typechecked only', () => {
+    const p = plan(['packages/core/reactivity/src/signal.ts'])
+    expect(p.rules).toEqual([{ path: 'packages/core/reactivity/src/signal.ts', rule: 'package' }])
+    expect(p.groups.typecheck).toEqual(['@pyreon/reactivity'])
+    expect(p.groups.test).toEqual(['@pyreon/reactivity'])
+    // Tests never widen to the closure — CI runs it.
+    expect(p.typecheckWide).toEqual(['@pyreon/core', '@pyreon/styler'])
+    expect(p.groups['native-vitest']).toEqual([])
+    expect(p.nativeSkipped).toEqual(['@pyreon/native-compiler'])
+    expect(p.closureSize).toBe(4)
   })
 
   it('splits a changed native package into its own toolchain group', () => {
-    const plan = computePlan({
-      changed: [
-        'packages/native/compiler/src/emit.ts',
-        'packages/native/runtime-kotlin/src/Runtime.kt',
-      ],
-      workspaces: WS,
-      root: ROOT,
-    })
-    expect(plan.groups.test).toEqual([])
-    expect(plan.groups['native-vitest']).toEqual(['@pyreon/native-compiler'])
-    expect(plan.groups['native-script']).toEqual(['@pyreon/native-runtime-kotlin'])
+    const p = plan(['packages/native/compiler/src/emit.ts', 'packages/native/runtime-kotlin/src/Runtime.kt'])
+    expect(p.groups.test).toEqual([])
+    expect(p.groups['native-vitest']).toEqual(['@pyreon/native-compiler'])
+    expect(p.groups['native-script']).toEqual(['@pyreon/native-runtime-kotlin'])
   })
 
-  it('a root-file change typechecks the workspace but tests nothing extra', () => {
-    const plan = computePlan({
-      changed: ['bun.lock', 'packages/ui-system/styler/src/index.ts'],
-      workspaces: WS,
-      root: ROOT,
-    })
-    expect(plan.rootChanged).toBe(true)
-    expect(plan.groups.test).toEqual(['@pyreon/styler'])
-    expect(plan.groups.typecheck).toEqual([
+  it('the budgets file runs only the tests that read it — no typecheck, no workspace wall', () => {
+    const p = plan(['scripts/bundle-budgets.json'])
+    expect(p.rules).toEqual([{ path: 'scripts/bundle-budgets.json', rule: 'script' }])
+    expect(p.groups.test).toEqual(['@pyreon/test-utils'])
+    expect(p.targetedTests).toEqual(['packages/internals/test-utils/src/tests/budgets.test.ts'])
+    expect(p.groups.typecheck).toEqual([])
+    expect(p.typecheckWide).toEqual([])
+  })
+
+  it('a script reaches the tests of every script that imports it, transitively; a comment is not a read', () => {
+    const p = plan(['scripts/changed-files.ts'])
+    expect(p.targetedTests).toEqual(['packages/internals/test-utils/src/tests/affected.test.ts'])
+    // Script code is typechecked through @pyreon/test-utils, which imports it.
+    expect(p.groups.typecheck).toEqual(['@pyreon/test-utils'])
+  })
+
+  it('a script no test reads runs no tests', () => {
+    const p = plan(['scripts/lonely.ts'])
+    expect(p.targetedTests).toBeNull()
+    expect(p.groups.test).toEqual([])
+  })
+
+  it('a root tsconfig typechecks the workspace (minus native toolchains) and tests nothing', () => {
+    const p = plan(['tsconfig.base.json'])
+    expect(p.rules[0]!.rule).toBe('root-tsconfig')
+    expect(p.groups.test).toEqual([])
+    expect(p.groups.typecheck).toEqual([])
+    expect(p.typecheckWide).toEqual(['@pyreon/core', '@pyreon/no-tests', '@pyreon/reactivity', '@pyreon/styler', '@pyreon/test-utils'])
+    expect(p.nativeSkipped).toEqual(['@pyreon/native-compiler', '@pyreon/native-runtime-kotlin'])
+  })
+
+  it('the lockfile adds the frozen-lockfile dry run and the workspace typecheck', () => {
+    const p = plan(['bun.lock', 'packages/ui-system/styler/src/index.ts'])
+    expect(p.installCheck).toBe(true)
+    expect(p.groups.test).toEqual(['@pyreon/styler'])
+    expect(p.groups.typecheck).toEqual(['@pyreon/styler'])
+    expect(p.typecheckWide).toEqual(['@pyreon/core', '@pyreon/no-tests', '@pyreon/reactivity', '@pyreon/test-utils'])
+  })
+
+  it('a workflow gets actionlint on that file and the tests that read it; a shared action lints every workflow', () => {
+    const p = plan(['.github/workflows/ci.yml'])
+    expect(p.actionlint).toEqual(['.github/workflows/ci.yml'])
+    expect(p.targetedTests).toEqual(['packages/internals/test-utils/src/tests/ci-yml.test.ts'])
+    expect(p.typecheckWide).toEqual([])
+    expect(plan(['.github/actions/setup/action.yml']).actionlint).toEqual(['*'])
+  })
+
+  it('a root vitest setup file typechecks the workspace and runs the whole test-utils suite as a smoke test', () => {
+    const p = plan(['vitest.setup.ts'])
+    expect(p.groups.test).toEqual(['@pyreon/test-utils'])
+    expect(p.targetedTests).toBeNull()
+    expect(p.typecheckWide.length + p.groups.typecheck.length).toBe(5)
+  })
+
+  it('an unknown root file falls back to the broad set (which the time cap bounds)', () => {
+    const p = plan(['.oxlintrc.json'])
+    expect(p.rules[0]!.rule).toBe('unknown-root')
+    expect(p.groups.test).toEqual(['@pyreon/test-utils'])
+    expect(p.targetedTests).toBeNull()
+    expect([...p.groups.typecheck, ...p.typecheckWide].sort()).toEqual([
       '@pyreon/core',
       '@pyreon/no-tests',
       '@pyreon/reactivity',
       '@pyreon/styler',
       '@pyreon/test-utils',
     ])
-    // Native toolchains stay out unless they themselves changed.
-    expect(plan.nativeSkipped).toEqual(['@pyreon/native-compiler', '@pyreon/native-runtime-kotlin'])
   })
 
-  it('an unknowable diff behaves like a root change (typecheck everything, no tests)', () => {
-    const plan = computePlan({ changed: null, workspaces: WS, root: ROOT })
-    expect(plan.unknownDiff).toBe(true)
-    expect(plan.rootChanged).toBe(true)
-    expect(plan.groups.test).toEqual([])
-    expect(plan.groups.typecheck.length).toBe(5)
+  it('an unknowable diff behaves like an unknown root file', () => {
+    const p = plan(null)
+    expect(p.unknownDiff).toBe(true)
+    expect(p.groups.test).toEqual(['@pyreon/test-utils'])
+    expect(p.groups.typecheck.length + p.typecheckWide.length).toBe(5)
   })
 
-  it('maps a script change to its leaf test package and skips packages without the script', () => {
-    const plan = computePlan({
-      changed: ['scripts/affected.ts', 'packages/tools/no-tests/src/x.ts'],
-      workspaces: WS,
-      root: ROOT,
-    })
-    expect(plan.groups.test).toEqual(['@pyreon/test-utils'])
-    expect(plan.groups.typecheck).toEqual(['@pyreon/no-tests', '@pyreon/test-utils'])
+  it('prose outside a workspace adds nothing beyond validate-fast', () => {
+    const p = plan(['AGENTS.md', '.agents/rules/workflow.md', '.changeset/x.md'])
+    expect(Object.values(p.groups).flat()).toEqual([])
+    expect(p.typecheckWide).toEqual([])
+    expect(p.rules.map((r) => r.rule)).toEqual(['prose', 'prose', 'prose'])
   })
 
   it('an empty diff runs nothing', () => {
-    const plan = computePlan({ changed: [], workspaces: WS, root: ROOT })
-    expect(Object.values(plan.groups).flat()).toEqual([])
+    const p = plan([])
+    expect(Object.values(p.groups).flat()).toEqual([])
+    expect(p.typecheckWide).toEqual([])
+  })
+
+  it('every documented rule is reachable from a real path', () => {
+    const examples: Record<string, string> = {
+      'root-tsconfig': 'tsconfig.json',
+      install: 'bun.lock',
+      'root-vitest': 'vitest.setup.ts',
+      workflow: '.github/workflows/release.yml',
+      'shared-action': '.github/actions/setup/action.yml',
+      script: 'scripts/bundle-budgets.json',
+      'repo-file': 'e2e/app.spec.ts',
+      prose: 'README.md',
+      'unknown-root': 'bunfig.toml',
+    }
+    for (const rule of PATH_RULES.map((r) => r.id).filter((id) => id !== 'package')) {
+      expect(classifyRootPath(examples[rule]!)).toBe(rule)
+    }
+  })
+})
+
+describe('stripComments', () => {
+  it('drops line and block comments but keeps URLs in strings', () => {
+    expect(stripComments("a() // x.json\n/* y.json */ b('https://e.com/z.json')")).toBe("a() \n b('https://e.com/z.json')")
   })
 })
 

@@ -35,7 +35,7 @@ Priorities: correctness > performance > DX > AI-friendliness.
 
 ## Recurring CI failure modes
 
-Run `bun run validate-fast` before every push; the pre-push hook runs it too. The hook is light by design (direct-only, see "Pre-push hook"); the full verification is CI's job. When CI fails on a gate, ask whether `validate-fast` would have caught it — if yes, that is a workflow failure. Most gate names below are step names inside the `Fast Gates` or `Build` jobs; the fix commands are the same.
+Run `bun run validate-fast` before every push; the pre-push hook runs it too. The hook checks what the push can break within a time cap (see "Pre-push hook"); the full verification is CI's job. When CI fails on a gate, ask whether `validate-fast` would have caught it — if yes, that is a workflow failure. Most gate names below are step names inside the `Fast Gates` or `Build` jobs; the fix commands are the same.
 
 When CI fails on a gate not listed here, add a row in the same PR.
 
@@ -204,19 +204,41 @@ Restack in dependency order, not PR order. Never use a bare `git stash pop` duri
 
 ## Pre-push hook
 
-**The contract: local = fast and direct-only; CI = the full gate.** CI minutes are free and CI is a required merge gate, so the hook catches only the cheap, likely failures before they cost a round trip. It never runs the reverse-dependency closure: a change in `@pyreon/reactivity` used to select 136 of 140 workspaces (including the 30+ minute native-compiler suite), and the repository-wide lock then queued every other push behind it.
+**The contract: the hook checks what this push can break, within a hard time cap; CI is the full gate.** It is meant to be run on every push. When it ran the whole workspace wall behind a repository-wide lock (one budgets-file push held every other worktree for 25+ minutes, 2026-11-10), everyone pushed with `PYREON_SKIP_PRE_PUSH=1` and lost even the cheap gates.
 
-`.githooks/pre-push` (installed via `core.hooksPath` by `bun scripts/install-git-hooks.ts`) runs:
+`.githooks/pre-push` (installed via `core.hooksPath` by `bun scripts/install-git-hooks.ts`) handles the bypass and git's environment, then runs `scripts/pre-push.ts` (order, cap, lock). The plan comes from `scripts/pre-push-plan.ts` (`PATH_RULES`): each changed path matches one rule, and the plan is the union.
 
-1. `bun run validate-fast` — lint, `lint:pyreon` and the cheap gates listed in `scripts/validate-fast.ts`, run concurrently (`--serial` to isolate one, `--json` for machine output). A few seconds warm, but it slows sharply under machine load, so this step's default timeout is 900s.
-2. Typecheck of the DIRECTLY changed workspaces (`scripts/affected.ts --changed-only` semantics, plus the leaf seeds: `scripts/**`, `e2e/**` and non-`ci.yml` workflows map to `@pyreon/test-utils`, doc inputs to their parser). A root-file change (`scripts/affected.ts:isRootFile`: `bun.lock`, root `package.json`/`tsconfig*.json`/`vitest.*.ts`, `.bun-version`, `ci.yml`, shared actions) typechecks the whole workspace instead, with an 1800s budget.
-3. Tests of the DIRECTLY changed workspaces only — never the closure, and never the whole workspace, even on a root-file change. Packages under `packages/native/` run only when they themselves changed, as their own step with a 7200s budget: vitest suites with `--maxWorkers=4`, and `KOTLIN_HOME` derived from the `kotlinc` on PATH when it is not already set (no hard-coded install path).
+| Changed path | Checks |
+| --- | --- |
+| a file inside a workspace | typecheck + tests of that workspace; typecheck of its dependents (tests never widen — CI runs them) |
+| root `tsconfig*.json` | typecheck of the whole workspace |
+| `bun.lock`, root `package.json`, `.bun-version` | `bun install --frozen-lockfile --dry-run`; typecheck of the whole workspace |
+| root `vitest.*.ts` (every suite's setup) | typecheck of the whole workspace; the `@pyreon/test-utils` suite as a setup smoke test |
+| `.github/workflows/*` | `actionlint -shellcheck=` on the changed files; the `@pyreon/test-utils` tests that name the file |
+| `.github/actions/**` | `actionlint -shellcheck=` on every workflow; the tests that name the file |
+| `scripts/**` | the `@pyreon/test-utils` tests that name the file, or name a script that imports or reads it (transitively, comments ignored); `@pyreon/test-utils` typecheck when it is code. `scripts/bundle-budgets.json` → the 7 tests that read it, not the 137-file suite |
+| `e2e/**`, `.claude/**`, `.githooks/**` | the `@pyreon/test-utils` tests that name the file |
+| Markdown, `.agents/**`, `.changeset/**`, `llms*.txt` outside a workspace | nothing beyond validate-fast (a doc input also runs its parser package, e.g. `anti-patterns.md` → `@pyreon/mcp`) |
+| any other root file | broad fallback: typecheck of the whole workspace + the full `@pyreon/test-utils` suite |
 
-`scripts/pre-push-plan.ts` computes the selection and prints what it runs, what it skips as already passed, which unchanged native packages it leaves out, and how many reverse dependents it drops for CI to cover.
+validate-fast (lint, `lint:pyreon`, the doc/dist/budget/manifest/CI-config gates in `scripts/validate-fast.ts`) runs on every push. Packages under `packages/native/` run only when they themselves changed (`--maxWorkers=4` for vitest suites, `KOTLIN_HOME` derived from the `kotlinc` on PATH) and are left out of a workspace-wide typecheck. `actionlint` is a local extra that CI does not run yet; without it installed the step is listed as not checked.
+
+Order and time:
+
+- Checks run highest value first: validate-fast, the lockfile dry run, actionlint, then (under the lock) the changed packages' typecheck, their tests, the dependents/workspace typecheck, the native suites. The cap therefore drops the broad part first.
+- **One wall-clock cap for the whole run, lock wait included: 480 s** (`PYREON_PRE_PUSH_CAP_SEC`; `PYREON_PRE_PUSH_TIMEOUT_SEC` is an alias). Measured 2026-11-10 at load 35–80: validate-fast 36 s, the whole-workspace typecheck 53 s, the full `@pyreon/test-utils` suite 38 s, the largest web package suites 8–22 s.
+- **On the cap the hook fails OPEN**: it stops the running check, prints every check it did not run with the reason, and lets the push through. Each of those runs in CI behind a required check, so the cost is at most a CI round trip; failing closed on a clock is what made everyone skip the hook. A check that FAILS always blocks the push.
+- A suite whose last recorded duration exceeds the time left is not started (it could only be killed at the cap) and is listed as not checked. Durations live in `<git common dir>/pyreon-pre-push-durations.json` (latest per suite, capped at 500 entries and 30 days).
+
+Lock:
+
+- Only the CPU-heavy part (typecheck and tests) runs under the per-repository lock (`<git common dir>/pyreon-pre-push.lock`; concurrent walls exhausted vitest/kotlinc workers and raced over shared scratch). validate-fast, the lockfile check and actionlint run outside it.
+- A push that finds the lock held waits inside its own cap, and every 30 s names the holder: pid, branch, worktree, the check it is running and for how long. Every holder is capped too, so the wait is bounded. If the cap runs out first, the locked checks are listed as not checked.
+- A lock whose holder process is gone is reclaimed. The lock still writes `pid` first, so an older hook in another worktree reads it.
 
 Pass cache:
 
-- A pass is recorded per package and step (typecheck, test) under a key over git's view of the working tree (tracked plus untracked-not-ignored files): the package's own files, every transitive `@pyreon/*` dependency's files, its leaf inputs (`scripts/**` for `@pyreon/test-utils`, doc inputs for their parser), every root file and the bun version. An unchanged package is skipped on a re-push, a rebase or a merge from main that did not touch its inputs.
+- A pass is recorded per package and step (typecheck, test) under a key over git's view of the working tree (tracked plus untracked-not-ignored files): the package's own files, every transitive `@pyreon/*` dependency's files, its leaf inputs (`scripts/**` for `@pyreon/test-utils`, doc inputs for their parser), every root file and the bun version. An unchanged package is skipped on a re-push, a rebase or a merge from main that did not touch its inputs. A targeted `@pyreon/test-utils` run records nothing (it is not a pass of the whole suite).
 - Only passes are written; a failure records nothing and re-runs next time. The store is `<git common dir>/pyreon-pre-push-pass-cache.json`, shared by every worktree, capped at 4000 entries and 30 days, written atomically.
 - A test that reads files outside those inputs can be satisfied by a stale pass locally. CI never uses this cache, so it still catches that. `PYREON_PRE_PUSH_NO_CACHE=1 git push` ignores the cache for one push.
 
@@ -230,10 +252,9 @@ If the hook stops running something, move it into a required CI job in the same 
 
 Behaviour:
 
-- One run per repository at a time (a lock in the git common dir); a stale lock from a crashed run is reclaimed.
-- Ordinary steps have a 300s timeout (`PYREON_PRE_PUSH_TIMEOUT_SEC` overrides every budget). A timed-out step is killed with guidance; a clock timeout cleans up only the owned process tree and is not an assertion failure.
-- It warns about `vitest` processes older than 10 minutes (possibly from another worktree) but does not kill them.
-- A planner failure fails the push (it never silently selects nothing). No committed changes versus `origin/main`: typecheck and tests are skipped.
+- It warns about `vitest` processes older than 10 minutes (possibly from another worktree) but does not kill them; a timed-out check is stopped through its own process group only.
+- A planner failure fails the push (it never silently selects nothing). No committed changes versus the base: only validate-fast runs.
+- `PYREON_PRE_PUSH_BASE=<rev>` changes the diff base (default `origin/main`). `bun scripts/pre-push.ts --cache-dir="$(git rev-parse --git-common-dir)" --plan-only` prints the checks and their commands without running them.
 
 Bypass: `PYREON_SKIP_PRE_PUSH=1 git push` (one-off) or `git push --no-verify`. Disable with `git config --unset core.hooksPath`; re-enable with `bun scripts/install-git-hooks.ts`.
 
