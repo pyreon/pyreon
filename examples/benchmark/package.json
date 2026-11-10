@@ -18,6 +18,8 @@
     "bench:scenarios": "bun bench-scenarios.ts",
     "bench:crossover": "bun bench-crossover.ts",
     "bench:flow": "bun bench-scenarios.ts --scenario flow",
+    "bench:table": "bun bench-scenarios.ts --scenario table",
+    "bench:virtual": "bun bench-scenarios.ts --scenario virtual",
     "bench:charts": "bun bench-scenarios.ts --scenario charts",
     "bench:charts-bundle": "bun bench-charts-bundle.ts"
   },
@@ -69,6 +71,19 @@
     "oxc-parser": "^0.155.0",
     "playwright": "^1.64.1",
     "typescript": "^6.0.3",
-    "vite": "^8.3.5"
+    "vite": "^8.3.5",
+    "@xyflow/svelte": "1.7.1",
+    "@vue-flow/core": "1.48.2",
+    "@joint/core": "4.3.4",
+    "ag-grid-community": "36.3.0",
+    "@tanstack/solid-table": "9.3.1",
+    "@tanstack/vue-table": "9.3.1",
+    "@tanstack/svelte-table": "9.3.1",
+    "react-window": "2.5.3",
+    "virtua": "0.54.2",
+    "@tanstack/solid-virtual": "3.13.53",
+    "@tanstack/vue-virtual": "3.13.52",
+    "vue-virtual-scroller": "3.0.5",
+    "babel-preset-solid": "1.9.16"
   }
 }
