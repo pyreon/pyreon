@@ -372,3 +372,39 @@ export function runUntracked<T>(fn: () => T): T {
     _t.n = prevCollector
   }
 }
+
+/**
+ * @internal The reads the CURRENT collect frame has recorded so far (a copy),
+ * or `null` outside a collect frame. With `_replayReads` this lets a caller
+ * that already evaluated an accessor once (to classify its value) hand the
+ * value AND its dependencies to the machinery that owns the binding, instead
+ * of that machinery calling the accessor — user code — a second time.
+ */
+export function _frameReads(): SubscriberHost[] | null {
+  if (_t.e === null || _t.i >= 0) return null
+  return (_t.d as SubscriberHost[]).slice()
+}
+
+/**
+ * @internal Record `hosts` as reads of the current tracking frame, in order —
+ * exactly what reading each source again would record, without re-running
+ * the code that read them.
+ */
+export function _replayReads(hosts: readonly SubscriberHost[]): void {
+  for (let i = 0; i < hosts.length; i++) trackSubscriber(hosts[i] as SubscriberHost)
+}
+
+const _sampleOwner = (): void => {}
+
+/**
+ * @internal Evaluate `fn` once in its own collect frame and return its value,
+ * appending every source it read to `reads`. No subscription survives: the
+ * sampling owner is removed from each source before returning.
+ */
+export function _sampleReads<T>(fn: () => T, reads: SubscriberHost[]): T {
+  try {
+    return runCollect(_sampleOwner, reads, fn)
+  } finally {
+    for (let i = 0; i < reads.length; i++) removeSubscriber(reads[i] as SubscriberHost, _sampleOwner)
+  }
+}

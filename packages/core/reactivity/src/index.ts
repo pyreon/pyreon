@@ -67,6 +67,9 @@ export type {
 export { clearReactiveTrace, getReactiveTrace } from './reactive-trace'
 export {
   _bind,
+  _captureRun,
+  _releaseRun,
+  type RunCapture,
   _enterCleanupFrame,
   _exitCleanupFrame,
   type CleanupFrameToken,
@@ -105,5 +108,12 @@ export {
 } from './signal'
 export { type WrapSignalOptions, wrapSignal } from './wrap-signal'
 export { createStore, isStore, markRaw, shallowReactive } from './store'
-export { runUntracked, runUntracked as untrack } from './tracking'
+export {
+  _frameReads,
+  _replayReads,
+  _sampleReads,
+  runUntracked,
+  runUntracked as untrack,
+  type SubscriberHost,
+} from './tracking'
 export { type WatchOptions, watch } from './watch'

@@ -91,6 +91,7 @@ Default-on in dev. The Vite plugin injects `virtual:pyreon/dev-error-printer`, w
 - The `h()` input `checked` binding writes live checkedness after user interaction. Its initial value establishes `defaultChecked` once; later updates keep that form-reset default. An explicit `defaultChecked` prop owns the default regardless of prop order. ARIA/SVG remain attribute-based. Locked by `checked-prop.browser.test.tsx`.
 - Custom elements (hyphenated tags) receive props as properties, except `data-*`/`aria-*`, which are always attributes on every element.
 - `Transition`/`TransitionGroup` finish via a 5s safety timeout if no `transitionend` arrives. Subpath exports `@pyreon/runtime-dom/transition`, `/keep-alive` and `/sanitizer` keep a `mount`-only import small.
+- **An accessor child is called once at mount.** `mountAccessorChild` classifies the first value inside `_captureRun` (the inner-effect and `onCleanup` windows an `effect()` run opens) and, for a structural value, hands `{ value, reads, run }` (`FirstRun`) to `mountReactive` / `mountKeyedList`, whose first run mounts that value, replays the reads (`_replayReads`) and re-homes the captured work (`_releaseRun`). Locked by `accessor-single-run-at-mount.test.tsx`. Open: the hydration walk (`hydrate.ts` `hydrateSoleAccessorChild`, `hydrateReactiveChild`, `hydrateReactiveText`) still samples with `runUntracked(child)` and then calls the accessor again.
 - A 10k-row `<For>` allocates ~10k signals; virtualize with `@pyreon/virtual`.
 
 ## Islands (`island(loader, { name, hydrate, prefetch? })`)

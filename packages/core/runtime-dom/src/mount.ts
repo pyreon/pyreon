@@ -22,6 +22,10 @@ import {
   useContext,
 } from '@pyreon/core'
 import {
+  _captureRun,
+  _frameReads,
+  _releaseRun,
+  type RunCapture,
   effectScope,
   getContextOwner,
   renderEffect,
@@ -930,9 +934,11 @@ export function bindPolymorphicText(
  *   (ErrorBoundary routing, onUpdate notify, the re-entrant generation
  *   guard, inner-effect/onCleanup windows) that a renderEffect-flavored
  *   dispatcher cannot replicate — then dispose this dispatcher so its
- *   first-run subscriptions are dropped. Those structural branches keep the
- *   historical 2-invocations-at-mount shape (few per page, and their
- *   accessors are typically a single conditional read, not a cell formatter).
+ *   first-run subscriptions are dropped. The classified VALUE and the sources
+ *   its call read are handed over as a `FirstRun`, so the machinery's first
+ *   run mounts that value and replays those reads instead of calling the
+ *   accessor again: ONE invocation at mount on every branch (a `.map` maps
+ *   once, a compat component body runs once).
  *
  * Classification stays PINNED at the first run's value, exactly as the old
  * untracked sample pinned it — a textish-first accessor that later yields a
@@ -962,8 +968,14 @@ function mountAccessorChild(
     // preserving the old sample's propagate-synchronously-out-of-mountChild
     // behavior. Re-runs take the `core !== null` path above with NO catch —
     // renderEffect re-run errors propagate, exactly as before.
+    // The first call runs inside an effect-shaped window (inner effects and
+    // `onCleanup`), and what it registers is released into whichever frame
+    // ends up owning the binding — here for text, the structural machinery's
+    // first run otherwise — so a single call registers exactly where it did
+    // when the machinery made its own call.
+    const run: RunCapture = { inner: null, cleanups: null }
     try {
-      const v = child()
+      const v = _captureRun(child, run)
       // Text fast path: reactive string/number/boolean — update text.data in
       // place. POLYMORPHIC: the accessor may later return a VNode
       // (`() => loading() ? 'Loading…' : <Table/>`), so the binding upgrades
@@ -974,8 +986,15 @@ function mountAccessorChild(
         text = document.createTextNode(v === false ? '' : String(v))
         parent.insertBefore(text, anchor)
         core = createPolyTextCore(text, parent, ownerAtSetup)
+        _releaseRun(run)
         return
       }
+      // The sources that call just read — handed to the structural machinery
+      // below with the value, so it does not evaluate the accessor again.
+      const reads = _frameReads()
+      // No collect frame (never true for this dispatcher's first run): the
+      // machinery will call the accessor itself, so the work stays here.
+      if (reads === null) _releaseRun(run)
       // Structural shape — hand off to the effect()-grade machinery.
       // Constructed UNTRACKED (the machinery was historically built outside
       // any tracking frame; its own effect establishes the real
@@ -986,15 +1005,27 @@ function mountAccessorChild(
       try {
         runUntracked(() => {
           handoff = isKeyedArray(v)
-            ? mountKeyedList(child as () => VNode[], parent, anchor, (vn, p, a) =>
-                mountChild(vn, p, a),
+            ? mountKeyedList(
+                child as () => VNode[],
+                parent,
+                anchor,
+                (vn, p, a) => mountChild(vn, p, a),
+                reads === null ? undefined : { value: v as unknown as VNode[], reads, run },
               )
-            : mountReactive(child as () => VNodeChild, parent, anchor, mountChild)
+            : mountReactive(
+                child as () => VNodeChild,
+                parent,
+                anchor,
+                mountChild,
+                reads === null ? undefined : { value: v, reads, run },
+              )
         })
       } finally {
         _elementDepth = prevDepth
       }
     } catch (err) {
+      // Whatever the throwing call registered goes where it always went.
+      _releaseRun(run)
       firstRunError = err
     }
   })
