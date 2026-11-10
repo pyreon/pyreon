@@ -1486,7 +1486,7 @@ describe('getCurrentInstance()', () => {
     let inst1: ReturnType<typeof getCurrentInstance> = null
     let inst2: ReturnType<typeof getCurrentInstance> = null
     let renderCount = 0
-    const r = ref(0)
+    let r: { value: number } | null = null
 
     // Use jsx() so the component is wrapped → hook context + _props active
     // (this is how real vue-compat apps run via the vite plugin).
@@ -1495,7 +1495,8 @@ describe('getCurrentInstance()', () => {
       if (renderCount === 0) inst1 = i
       else inst2 = i
       renderCount++
-      void r.value // track → forces a re-render
+      // Hook-indexed ref: its setter schedules a re-render of THIS component.
+      r = ref(0)
       return jsx('div', { children: 'c' })
     }
 
@@ -1513,8 +1514,10 @@ describe('getCurrentInstance()', () => {
     expect(inst1!.slots.default!()).toBe('kid')
 
     // Stable uid across re-render (hook-indexed)
-    r.value = 1
+    expect(renderCount).toBe(1) // one render at mount
+    r!.value = 1
     await new Promise((res) => setTimeout(res, 30))
+    expect(renderCount).toBe(2)
     expect(inst2).not.toBeNull()
     expect(inst2!.uid).toBe(inst1!.uid)
     unmount()

@@ -360,6 +360,12 @@ export function effect(
   // work that explicitly opted out of the outer reactive context falls through
   // to scope.add — that's what keeps child component effects mounted inside
   // `mountFor`'s `runUntracked` wrap alive across the For's next re-run.
+  registerEffectHere(e)
+  return e
+}
+
+/** Register a new effect with the CURRENT frame: the enclosing run's inner window, else the scope. */
+function registerEffectHere(e: Effect): void {
   const collector = getInnerEffectCollector()
   if (collector !== null) {
     if (collector === LAZY_INNER) {
@@ -374,8 +380,51 @@ export function effect(
     // Otherwise auto-register with the active EffectScope (if any)
     getCurrentScope()?.add(e)
   }
+}
 
-  return e
+/**
+ * What a run captured with `_captureRun`: the effects it created and the
+ * `onCleanup` callbacks it registered (`null` = none).
+ * @internal
+ */
+export interface RunCapture {
+  inner: Effect[] | null
+  cleanups: (() => void)[] | null
+}
+
+/**
+ * Run `fn` inside the same inner-effect and `onCleanup` windows an `effect()`
+ * run opens, and record what it registered in `out` instead of letting it
+ * reach the caller's frame. Pair with `_releaseRun` in whichever frame ends up
+ * OWNING that work — so code evaluated once, before its owner is known (an
+ * accessor child classified at mount), registers exactly where a call made in
+ * that owner would have.
+ * @internal
+ */
+export function _captureRun<T>(fn: () => T, out: RunCapture): T {
+  const outerCollector = getInnerEffectCollector()
+  setInnerEffectCollector(LAZY_INNER)
+  const token = _enterCleanupFrame()
+  try {
+    return fn()
+  } finally {
+    out.cleanups = _exitCleanupFrame(token)
+    const mine = getInnerEffectCollector()
+    out.inner = mine !== LAZY_INNER && mine !== null ? (mine as Effect[]) : null
+    setInnerEffectCollector(outerCollector)
+  }
+}
+
+/**
+ * Register what `_captureRun` recorded with the CURRENT frame, in creation
+ * order, as if it had been created here.
+ * @internal
+ */
+export function _releaseRun(cap: RunCapture): void {
+  if (cap.inner !== null) for (const e of cap.inner) registerEffectHere(e)
+  if (cap.cleanups !== null) for (const c of cap.cleanups) onCleanup(c)
+  cap.inner = null
+  cap.cleanups = null
 }
 
 /**
