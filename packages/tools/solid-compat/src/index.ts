@@ -50,6 +50,7 @@ import {
   createSelector as pyreonCreateSelector,
   effect as pyreonEffect,
   onCleanup as pyreonOnCleanup,
+  onScopeDispose,
   signal as pyreonSignal,
   runUntracked,
   setCurrentScope,
@@ -195,6 +196,13 @@ function shouldSkipUpdate<T>(prev: T, next: T, options?: CreateSignalOptions<T>)
  * A re-entrance guard prevents infinite loops from signal writes inside
  * the effect.
  */
+/**
+ * > 0 while a `createEffect` body runs. Solid's `onCleanup` registers on the
+ * CURRENT owner, which inside an effect is that effect: the cleanup runs before
+ * each re-run and on disposal, not at component unmount.
+ */
+let _effectDepth = 0
+
 export function createEffect<T>(fn: ((prev?: T) => T) | (() => void), initialValue?: T): void {
   const ctx = getCurrentCtx()
   if (ctx) {
@@ -206,10 +214,12 @@ export function createEffect<T>(fn: ((prev?: T) => T) | (() => void), initialVal
     const e = pyreonEffect(() => {
       if (running) return
       running = true
+      _effectDepth++
       try {
         const result = (fn as (prev?: T) => T)(prevValue)
         if (result !== undefined) prevValue = result
       } finally {
+        _effectDepth--
         running = false
       }
     })
@@ -222,8 +232,13 @@ export function createEffect<T>(fn: ((prev?: T) => T) | (() => void), initialVal
   // Outside component
   let prevValue: T | undefined = initialValue
   pyreonEffect(() => {
-    const result = (fn as (prev?: T) => T)(prevValue)
-    if (result !== undefined) prevValue = result
+    _effectDepth++
+    try {
+      const result = (fn as (prev?: T) => T)(prevValue)
+      if (result !== undefined) prevValue = result
+    } finally {
+      _effectDepth--
+    }
   })
 }
 
@@ -373,9 +388,17 @@ export function onMount(fn: () => CleanupFn | void | undefined): void {
 }
 
 /**
- * Solid-compatible `onCleanup` — registers a callback to run when the component unmounts.
+ * Solid-compatible `onCleanup` — registers `fn` on the current owner, as Solid
+ * does: inside a `createEffect` it runs before the effect re-runs and when it
+ * is disposed; in a component it runs on unmount; inside `createRoot` it runs
+ * when the root is disposed. (It used to always mean "component unmount", so an
+ * effect's cleanup never ran between runs, and a root's never ran at all.)
  */
 export function onCleanup(fn: () => void): void {
+  if (_effectDepth > 0) {
+    pyreonOnCleanup(fn)
+    return
+  }
   const ctx = getCurrentCtx()
   if (ctx) {
     const idx = getHookIndex()
@@ -386,7 +409,11 @@ export function onCleanup(fn: () => void): void {
     return
   }
 
-  // Outside component
+  // Outside a compat component: a `createRoot` (or any active scope) owns it.
+  if (getCurrentScope()) {
+    onScopeDispose(fn)
+    return
+  }
   pyreonOnUnmount(fn)
 }
 
