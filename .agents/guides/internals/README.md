@@ -116,6 +116,9 @@ Framework packages emit counters via `globalThis.__pyreon_count__?.('name')` wit
 
 - Tier 1 drains `{ equals }` computed refreshes; tier 2 runs effects, multi-pass for re-entrant writes (`MAX_PASSES = 32`).
 - Every computed is dirty-marked at notify time, so derived values settle before any effect runs regardless of subscription order. Lazy computeds are never queued.
+- A computed's `_dirty` is a staleness level, not a boolean: 0 clean, 1 STRICT CHECK, 2 CHECK, 3 DIRTY, 4 disposed-while-marked (`Stale` in `batch.ts`). DIRTY = a source it read really changed. CHECK = reached only through another computed (maybe stale): the read either refreshes its computed deps in recorded order (`refreshDeps`) and skips `fn` when none changed — the equality cutoff — or, when its 2-bit cutoff predictor expects a change, evaluates directly (cheapest on all-change chains; a wasted evaluation flips the predictor, so never two in a row). STRICT CHECK = below a self-gating node (`{ equals }`, direct updater, gated fan-out owner); always refreshes deps first, so a fresh-object computed there stays as quiet as when it was unmarked. A changed computed upgrades its direct subscribers to DIRTY and never re-walks below them.
+- The write walk marks EVERY computed below a marked node, including past a runner (gated fan-out), past a direct updater and below an `{ equals }` computed (STRICT CHECK). A computed left clean under a marked one answers a pull inside `batch()` with a stale value (fixed 2026-11; `check-state-fuzz.test.ts`).
+- Keep the computed `read` closure under V8's 460-byte inlining limit (`--print-bytecode --print-bytecode-filter=read`); cold paths live in module helpers (`readDisposed`, `evalThrew`, `refreshClean`). Over the limit it stops being inlined and the diamond loses ~10% on V8.
 - The tier-1 drain clears an entry's queue flag before running it, so a later re-dirty re-runs instead of being deduplicated.
 
 ### Retained heap

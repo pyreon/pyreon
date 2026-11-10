@@ -215,12 +215,12 @@ describe('tier-1 topo-staleness ({ equals } computeds)', () => {
     // The effect (queued first) writes s → e is dirty-marked + its refresh
     // enqueued; the raw listener then throws → drain aborts → refresh dropped.
     expect(() => trigger.set(1)).toThrow('raw boom')
-    expect((e as unknown as { _dirty: boolean })._dirty).toBe(true) // stranded
+    expect((e as unknown as { _dirty: number })._dirty).toBe(3) // stranded DIRTY
 
     // Bare read outside any window: refreshes, propagates via its own window.
     expect(e()).toBe(2)
     expect(directRuns).toBe(1)
-    expect((e as unknown as { _dirty: boolean })._dirty).toBe(false)
+    expect((e as unknown as { _dirty: number })._dirty).toBe(0)
   })
 
   test('a stranded { equals } computed with a PROMOTED direct-Set self-heals too (multi-direct arm)', () => {
@@ -247,7 +247,7 @@ describe('tier-1 topo-staleness ({ equals } computeds)', () => {
     })
 
     expect(() => trigger.set(1)).toThrow('raw boom')
-    expect((e as unknown as { _dirty: boolean })._dirty).toBe(true)
+    expect((e as unknown as { _dirty: number })._dirty).toBe(3)
 
     expect(e()).toBe(2)
     expect(runsA).toBe(1)

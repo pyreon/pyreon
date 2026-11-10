@@ -45,6 +45,7 @@ Tier-1 drains in subscription order, not topological order, so a queued evaluato
   - Dirty-mark every computed inline during the write's notify phase, so a pull-read evaluates a dirty dep in place.
   - Clear an entry's queue-membership flag before running it, so a re-notify after its visit re-queues it instead of being deduped away. A DAG settles in at most depth sweeps.
   - The old direct inline eager path was faster because it was wrong (torn and stale); do not chase that speed.
+  - Never end the write walk early while computeds remain below the marked node (a runner sighting, a direct updater, an `{ equals }` notify). Mark them STRICT CHECK instead (always refresh deps first, never evaluate on a guess): a skipped computed keeps its clean flag and a pull before the owner's refresh returns its stale cache, while a guessed evaluation of a fresh-object computed re-runs its effects. Tests: `check-state-fuzz.test.ts`.
   - Code: `computed.ts:createComputed` (the read's dirty branch is the single evaluator) + `batch.ts` (`enqueueEagerRefresh`, `recomputeQueue`). Test: `reactivity/src/tests/tier1-topo-staleness.test.ts`.
 
 ---

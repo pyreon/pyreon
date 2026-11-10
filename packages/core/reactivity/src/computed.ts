@@ -1,4 +1,5 @@
 import {
+  type Stale,
   _markLazyAndPropagate,
   _markRecompute,
   closeInlineBatch,
@@ -14,9 +15,9 @@ import { getCurrentScope } from './scope'
 import {
   removeSubscriber,
   exactDeps,
-  runCollect,
   runUntracked,
   runVerify,
+  _t,
   type SubscriberHost,
   trackSubscriber,
 } from './tracking'
@@ -74,8 +75,8 @@ interface ComputedFn<T> {
   (): T
   /** @internal cached value */
   _value: T
-  /** @internal dirty flag — true when a dependency changed since last read */
-  _dirty: boolean
+  /** @internal staleness — 0 clean, 1 STRICT CHECK, 2 CHECK, 3 DIRTY, 4 disposed while marked; see `Stale` in batch.ts */
+  _dirty: Stale
   /** @internal disposed flag */
   _disposed: boolean
   /**
@@ -132,7 +133,7 @@ const ComputedProto = {
   get _v() {
     // Getters can't declare a `this` param (TS2784); narrow inline.
     const self = this as unknown as ComputedFn<unknown>
-    if (self._dirty) self() // ensure value is fresh
+    if (self._dirty !== 0) self() // ensure value is fresh
     return self._value
   },
 }
@@ -148,7 +149,7 @@ function cleanupLocalDeps(deps: SubscriberHost[], fn: () => void): void {
  * subscriber/direct branch sides exist ONCE, shared by both window arms. */
 /** A lazy computed's notify callback carries a back-ref to its read fn (`_c`,
  *  stamped by `_markRecompute`); effects and eager computeds do not. */
-type LazyNotifyFn = (() => void) & { _c?: { _dirty: boolean; _disposed: boolean } }
+type LazyNotifyFn = (() => void) & { _c?: { _dirty: Stale; _disposed: boolean } }
 
 function dispatchEagerChange(read: ComputedFn<unknown>): void {
   if (read._s1 !== null || read._s !== null) propagateLazyDirty(read)
@@ -176,7 +177,20 @@ function propagateEagerChange(read: ComputedFn<unknown>): void {
     const s1 = read._s1 as (LazyNotifyFn | null)
     if (s1 === null) return
     const c = s1._c
-    if (c !== undefined && (c._dirty || c._disposed)) return
+    if (c !== undefined) {
+      const st = c._dirty
+      // DIRTY already (or 4, disposed while marked): nothing to add. A CHECK
+      // (strict or not): its own subscribers were reached when it was marked,
+      // so the change only has to be RECORDED on it — the upgrade is what makes
+      // its pending dep refresh re-evaluate it. A marked computed is never
+      // disposed (dispose turns a mark into 4), so `_disposed` is read only for
+      // a clean one.
+      if (st === 1 || st === 2) {
+        c._dirty = 3
+        return
+      }
+      if (st !== 0 || c._disposed) return
+    }
   }
   if (isBatching()) {
     dispatchEagerChange(read)
@@ -188,6 +202,78 @@ function propagateEagerChange(read: ComputedFn<unknown>): void {
       closeInlineBatch()
     }
   }
+}
+
+/**
+ * The CHECK-state dep refresh: pull each COMPUTED dep that is itself marked,
+ * in the order the last evaluation read them, and stop at the first one whose
+ * change upgrades `read` to DIRTY. Returns whether `read` must re-evaluate.
+ *
+ * Order and the early stop are what make this sound: every dep before the
+ * first changed one returned the same value as last time, so `fn` would read
+ * exactly those deps again — a dep after it may belong to a branch `fn` no
+ * longer takes, and is never pulled here (Preact's and alien-signals' rule).
+ *
+ * Signals and selector buckets carry no `_dirty` (`undefined > 0` is false);
+ * a write to one notifies its subscribers DIRTY directly, so a CHECK node never
+ * needs to look at them. The pulls run UNTRACKED — `read` already registered
+ * with the outer frame — by suspending the frame's subscriber inline rather
+ * than through a `runUntracked` closure per pull. Recursion depth equals the
+ * depth of the marked chain, as for the evaluation it replaces.
+ */
+function refreshDeps(read: ComputedFn<unknown>, deps: SubscriberHost[]): boolean {
+  const prev = _t.e
+  _t.e = null
+  try {
+    for (let i = 0; i < deps.length; i++) {
+      const d = deps[i] as unknown as { (): unknown; _dirty?: Stale }
+      if ((d._dirty as number) > 0) {
+        d()
+        if (read._dirty === 3) return true
+      }
+    }
+  } finally {
+    _t.e = prev
+  }
+  return false
+}
+
+/**
+ * The cold paths of a computed's read, kept OUT of the per-instance `read`
+ * closure on purpose: V8 inlines a function only below a bytecode-size limit,
+ * and the read closure sits close to it. Measured: with these inline the read
+ * stopped being inlined into its callers (`--trace-turbo-inlining`: "exceeds
+ * bytecode limit") and the computed diamond lost ~10% on V8.
+ */
+function readDisposed<T>(read: ComputedFn<T>, fn: () => T, flags: number): T {
+  read._dirty = 0
+  // Disposed before its first evaluation: evaluate once, UNTRACKED.
+  if ((flags & 1) === 0) {
+    try {
+      read._value = runUntracked(fn)
+    } catch (err) {
+      _errorHandler(err)
+    }
+  }
+  return read._value
+}
+
+function evalThrew<T>(read: ComputedFn<T>, err: unknown): T {
+  _errorHandler(err)
+  read._dirty = 0
+  return read._value
+}
+
+/** CHECK resolution: true (and the computed marked clean) when no dep changed. */
+function refreshClean(read: ComputedFn<unknown>, deps: SubscriberHost[]): boolean {
+  if (refreshDeps(read, deps)) return false
+  read._dirty = 0
+  return true
+}
+
+function devRecordRecompute(read: ComputedFn<unknown>): void {
+  _countSink.__pyreon_count__?.('reactivity.computedRecompute')
+  _rdRecordFire(read)
 }
 
 export function computed<T>(fn: () => T, options?: ComputedOptions<T>): Computed<T> {
@@ -274,12 +360,26 @@ function createComputed<T>(
   eager: boolean,
   injectedLoc?: { file: string; line: number; col: number },
 ): Computed<T> {
-  // `initialized`, `tracked` and `deps` are touched only by the per-instance
-  // `read` / `recompute` / `dispose` closures, so they stay closure-captured.
-  // `recompute` is forward-declared for the `read` body; `read` is never invoked
-  // before it is wired.
-  let initialized = false
-  let tracked = false
+  // `flags` and `deps` are touched only by the per-instance `read` / `recompute`
+  // / `dispose` closures, so they stay closure-captured. `recompute` is
+  // forward-declared for the `read` body; `read` is never invoked before it is
+  // wired.
+  //
+  // `flags` packs three things into one closure slot (one slot fewer than the
+  // two booleans it replaced):
+  //  - bit 0 (1): initialized — evaluated at least once (bit 1 is unused);
+  //  - bits 2–3: the CUTOFF PREDICTOR, a 2-bit saturating counter (0..3,
+  //    starting at 1). A CHECK read can either refresh its computed deps first
+  //    and skip `fn` when none changed (pays a dep walk, saves `fn` on a
+  //    cutoff), or evaluate `fn` directly (always correct — it is what a DIRTY
+  //    read does — and cheapest when the value is going to change anyway). The
+  //    counter jumps to 3 when a CHECK resolved to "unchanged" and drops by one
+  //    when it changed; at 2 or more the read refreshes deps first. So a node
+  //    never wastes two evaluations in a row, a node below an unchanged gate
+  //    stops evaluating after at most one wasted run, a node in an all-change
+  //    chain keeps the direct path with no dep walk, and one change in a
+  //    mostly-cutoff node does not flip it.
+  let flags = 4
   // `let`: re-pointed at an exact-size copy after the first collect (see
   // `exactDeps` in tracking.ts).
   let deps: SubscriberHost[] = []
@@ -287,7 +387,8 @@ function createComputed<T>(
 
   const read = (() => {
     trackSubscriber(read as unknown as SubscriberHost)
-    if (read._dirty) {
+    const st = read._dirty
+    if (st !== 0) {
       // A DISPOSED computed must never re-link to its sources. `dispose()`
       // empties `deps`, so a dirty read through `runVerify` would diverge at
       // index 0 and `addSubscriber` `recompute` back onto every source — a
@@ -298,52 +399,52 @@ function createComputed<T>(
       // dispatch still reads the computed. Return the last value; a computed
       // disposed before its first evaluation evaluates once, UNTRACKED. Only
       // the dirty branch pays this check — clean reads are untouched.
-      if (read._disposed) {
-        read._dirty = false
-        if (!initialized) {
-          initialized = true
-          try {
-            read._value = runUntracked(fn)
-          } catch (err) {
-            _errorHandler(err)
-          }
-        }
-        return read._value
-      }
-      if (process.env.NODE_ENV !== 'production') {
-        _countSink.__pyreon_count__?.('reactivity.computedRecompute')
-        _rdRecordFire(read)
-      }
-      const wasInitialized = initialized
+      // `flags` is read ONCE into a local and written back once per exit: each
+      // closure-slot access of a `let` carries a TDZ hole check, and the read
+      // closure must stay under V8's inlining bytecode limit (see
+      // `readDisposed`).
+      let f = flags
+      // 4 = disposed while marked (set by `dispose()`). `readDisposed` clears
+      // it, and a disposed computed is never marked again, so this runs once.
+      if (st === 4) return readDisposed(read, fn, f)
+      // CHECK: only an upstream node MAY have changed. A STRICT check always —
+      // and a plain check when the predictor expects a cutoff — refreshes the
+      // computed deps in recorded order; one that re-evaluates to a new value
+      // upgrades this node to DIRTY through `propagateEagerChange`. If none
+      // does, the cached value is still current — the equality cutoff: `fn` is
+      // skipped.
+      if ((st === 1 || (st === 2 && (f & 8) !== 0)) && refreshClean(read, deps)) return read._value
+      if (process.env.NODE_ENV !== 'production') devRecordRecompute(read)
       let next: T
       try {
-        if (tracked) {
-          // Deps already established — VERIFY them positionally (zero Set ops in
-          // the steady state). A divergence unsubscribes the stale tail and
-          // records the new shape, keeping the dep list exact on every re-eval.
-          next = runVerify(recompute, deps, fn)
-        } else {
-          const collected = deps
-          try {
-            next = runCollect(recompute, collected, fn)
-          } finally {
-            deps = exactDeps(collected)
-          }
-          tracked = true
-        }
+        // VERIFY the dep list positionally (zero Set ops in the steady state). A
+        // divergence unsubscribes the stale tail and records the new shape. The
+        // first evaluation verifies an EMPTY list, which diverges at index 0
+        // and collects — one path for both, which keeps this closure small
+        // enough for V8 to inline. The first successful collect is then trimmed
+        // to an exact-size copy (`exactDeps`).
+        next = runVerify(recompute, deps, fn)
+        if ((f & 1) === 0) deps = exactDeps(deps)
       } catch (err) {
-        _errorHandler(err)
-        read._dirty = false
-        initialized = true
-        return read._value // keep the previous value on a throwing eval
+        flags = f | 1
+        return evalThrew(read, err) // keep the previous value on a throwing eval
       }
-      read._dirty = false
-      initialized = true
-      // Value gate: keep the OLD value (stable reference — the memo semantic)
-      // and notify nobody when equal.
-      if (!(wasInitialized && equals(read._value, next))) {
+      read._dirty = 0
+      if ((f & 1) !== 0 && equals(read._value, next)) {
+        // Value gate: keep the OLD value (stable reference — the memo
+        // semantic) and notify nobody. A CHECK that turned out unchanged moves
+        // the predictor to refresh-deps-first.
+        if (st === 2 && (f & 12) !== 12) flags = f | 12
+      } else {
+        // First evaluation: store, but never propagate — the actively-tracking
+        // reader that triggered it is already subscribed. Otherwise a CHECK that
+        // changed leans toward evaluating directly next time. Flags are stored
+        // BEFORE propagating, which can re-enter this read. Stored only when it
+        // changes: the steady state (an all-change node) writes nothing.
+        if ((f & 1) === 0) flags = f | 1
+        else if (st === 2 && (f & 12) !== 0) flags = f - 4
         read._value = next
-        if (wasInitialized) propagateEagerChange(read)
+        if ((f & 1) !== 0) propagateEagerChange(read)
       }
     }
     return read._value
@@ -353,7 +454,7 @@ function createComputed<T>(
   // `ComputedFn` / `ComputedProto` comments above for the why.
   Object.setPrototypeOf(read, ComputedProto)
   read._value = undefined as T
-  read._dirty = true
+  read._dirty = 3
   read._disposed = false
   read._s1 = null
   read._s = null
@@ -361,21 +462,37 @@ function createComputed<T>(
   read._d = null
 
   recompute = eager
-    ? () => {
+    ? (level?: Stale) => {
         // EAGER notify — an explicit `equals` places the gate at THIS node, so
         // book the tier-1 refresh unconditionally rather than waiting for a
         // runner to appear downstream. Idempotent via the `_dirty` guard, exactly
-        // like the gated-lazy variant.
-        if (read._disposed || read._dirty) return
-        read._dirty = true
+        // like the gated-lazy variant. The dirty walk passes CHECK (1) when it
+        // reaches this node through one that was only marked; a source calling
+        // it bare has really changed (DIRTY). A CHECK refresh re-evaluates only
+        // if a computed dep turns out to have changed.
+        if (read._disposed) return
+        const lv: Stale = level === undefined ? 3 : level
+        const st = read._dirty
+        if (st !== 0) {
+          if (st < lv) read._dirty = lv
+          return
+        }
+        read._dirty = lv
+        // Its own subscribers are marked STRICT CHECK as well, so a pull that lands
+        // before the tier-1 refresh (inside a batch, or from an earlier refresh
+        // in the same drain) re-validates through this node rather than reading
+        // a stale cache. A runner below gates on this node, which is already
+        // booked.
         if (isBatching()) {
           enqueueEagerRefresh(read as unknown as () => void)
+          if (read._s1 !== null || read._s !== null) propagateLazyDirty(read, read, 1)
         } else {
           // Raw external dispatch outside any write window (every in-tree notify
           // runs under one) — open our own so the refresh still runs synchronously.
           openInlineBatch()
           try {
             enqueueEagerRefresh(read as unknown as () => void)
+            if (read._s1 !== null || read._s !== null) propagateLazyDirty(read, read, 1)
           } finally {
             closeInlineBatch()
           }
@@ -389,7 +506,8 @@ function createComputed<T>(
         //
         // This closure exists ONLY for its per-instance subscriber-set IDENTITY —
         // dispatch sites holding the `_c` back-ref call the helper directly.
-        _markLazyAndPropagate(read)
+        // A source calling this directly has really changed: DIRTY.
+        _markLazyAndPropagate(read, 3)
       }
   // Recompute marker → the batch router and `propagateLazyDirty` run this inline
   // (dirty-mark-only, idempotent) instead of routing it through the queues, so
@@ -402,6 +520,9 @@ function createComputed<T>(
 
   read.dispose = () => {
     read._disposed = true
+    // Disposed while marked: the next read takes `readDisposed` (4) instead of
+    // evaluating and re-linking to its sources.
+    if (read._dirty !== 0) read._dirty = 4
     cleanupLocalDeps(deps, recompute)
   }
 

@@ -116,16 +116,19 @@ describe('computed — default value gate', () => {
     n.set(1)
     n.set(2)
     // `c` is the node directly above the runner, so `c` is the one that refreshes
-    // and gates; its evaluation pulls `b` exactly as the effect's own read would
-    // have. So the chain costs the SAME evaluations it costs today — the saving
-    // is the effect body, which no longer runs at all.
-    expect(cEvals - cBase).toBe(2)
+    // and gates. `c` is only CHECK-marked (its dep `b` is a computed that may
+    // re-evaluate to the same value). Its cutoff predictor starts at "expect a
+    // change", so the FIRST refresh evaluates `c` directly; the equal result
+    // switches it to refreshing `b` first, so the second write confirms `c`
+    // clean WITHOUT running it — the equality cutoff.
     expect(bEvals - bBase).toBe(2)
+    expect(cEvals - cBase).toBe(1)
     expect(runs).toBe(1)
 
     // A real change propagates normally.
     n.set(10)
-    expect(cEvals - cBase).toBe(3)
+    expect(bEvals - bBase).toBe(3)
+    expect(cEvals - cBase).toBe(2)
     expect(runs).toBe(2)
 
     eff.dispose()
