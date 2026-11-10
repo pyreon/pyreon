@@ -318,6 +318,44 @@ quantity.set(3)
 console.log(total()) // 324
 ```
 
+## Linked Signals
+
+`linked()` is a writable derived value, the equivalent of Angular's `linkedSignal`. It follows its source like a `computed`, can be overwritten with `.set()` / `.update()` like a signal, and resets when the source changes. The typical case is a selection that must reset when the list it selects from changes, while the user can still change it.
+
+```ts
+import { linked, signal } from '@pyreon/reactivity'
+
+const options = signal(['small', 'medium', 'large'])
+const size = linked(() => options()[0])
+
+size() // 'small'
+size.set('large') // the user's choice
+size() // 'large'
+options.set(['s', 'm']) // the source changed: the override is dropped
+size() // 's'
+```
+
+The two-argument form separates what resets the value from how it is computed. `source` is tracked; `compute` runs untracked with the new source value and the previous `{ source, value }` (`undefined` the first time, and including a local override), so it can keep a choice that is still valid:
+
+```ts
+const size = linked(options, (opts, prev): string =>
+  prev && opts.includes(prev.value) ? prev.value : opts[0],
+)
+```
+
+Annotate the return type when the body reads `prev.value`: TypeScript cannot infer `T` from a body that depends on it, and falls back to `unknown`.
+
+Rules:
+
+- The source is compared with `Object.is`. A recomputation that yields the same source value keeps a local override.
+- A write made after a pending source change (in the same `batch`) wins: `set` settles the source first.
+- It is lazy like `computed`: nothing is computed until something reads it.
+- `options.equals` gates downstream notifications, as in `computed`.
+- `dispose()` stops it following the source. A `linked` created in a component or effect scope is disposed with it.
+- The methods are shared and use `this`, as with `signal`: call `size.set(v)`, do not destructure `set`.
+- Compared with the hand-written `signal` + `watch(source, …)` pattern, it is one lazy node with no separate reset effect, and it retains slightly less heap (about 970–1010 B against about 1040 B per instance in Node).
+- It has no native (PMTC) lowering yet; the native compiler warns on the call.
+
 ## Effects
 
 An effect runs a function and automatically re-runs it whenever any signal or computed it reads changes. Effects run synchronously on creation and re-run synchronously on each dependency change.

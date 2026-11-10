@@ -79,6 +79,12 @@ export {
   setSnapshotCapture,
 } from './effect'
 export { reconcile } from './reconcile'
+export {
+  type LinkedOptions,
+  type LinkedPrevious,
+  type LinkedSignal,
+  linked,
+} from './linked'
 export { createResource, type Resource } from './resource'
 export {
   EffectScope,

@@ -77,6 +77,27 @@ doubled()  // 10`,
 - Reasoning about memory from stale branches — a re-evaluated computed drops subscriptions to sources it no longer reads (exact dep list per evaluation), so \`dispose()\` fully unsubscribes even after conditional-branch flips`,
   },
 
+  'reactivity/linked': {
+    signature: '<T>(compute: () => T, options?: LinkedOptions<T>) => LinkedSignal<T> | <S, T>(source: () => S, compute: (source: S, previous: { source: S; value: T } | undefined) => T, options?: LinkedOptions<T>) => LinkedSignal<T>',
+    example: `import { linked, signal } from '@pyreon/reactivity'
+
+const options = signal(['small', 'medium', 'large'])
+const size = linked(() => options()[0])
+size.set('large')                    // the user's choice
+options.set(['s', 'm'])              // list changed → size() === 's'
+
+// keep the previous choice when the new list still contains it
+// (annotate the return type: T cannot be inferred from a body that reads prev.value)
+const kept = linked(options, (opts, prev): string =>
+  prev && opts.includes(prev.value) ? prev.value : opts[0])`,
+    notes: 'A writable derived value (Angular `linkedSignal`): it follows its source like a `computed`, can be overwritten with `.set()` / `.update()` like a signal, and resets when the source changes. `linked(() => expr)` resets whenever `expr` changes; `linked(source, (s, prev) => value)` tracks only `source` and runs `compute` untracked with the new source value and the previous `{ source, value }` (including a local override), so it can keep a previous choice that is still valid. The source is compared with `Object.is` — a recomputation to the same source value keeps the override; a write made after a pending source change wins. Lazy like `computed`. Returns `LinkedSignal<T>`: call to read, `.peek()`, `.set()`, `.update()`, `.dispose()` (only needed outside a component or effect scope). No native lowering yet. See also: computed, signal, watch.',
+    mistakes: `- Writing \`signal\` + \`watch(source, v => sel.set(...))\` by hand — it is eager, runs the reset as a separate effect (one stale read in between), and must be disposed; \`linked\` is one lazy node
+- Reading other signals inside the two-argument \`compute\` and expecting them to reset the value — \`compute\` runs untracked; only \`source\` is tracked. Put every reset trigger in \`source\`
+- Expecting a source that recomputes to an EQUAL value to reset the override — the source is compared with \`Object.is\`; return a new identity (or a different value) to force a reset
+- Leaving the two-argument \`compute\` unannotated while its body reads \`prev.value\` — TypeScript cannot infer \`T\` from a body that depends on it and falls back to \`unknown\`; annotate the return type (\`(opts, prev): string => …\`)
+- Destructuring \`const { set } = sel\` — the methods are shared and use \`this\`, as with \`signal\`; call \`sel.set(v)\``,
+  },
+
   'reactivity/effect': {
     signature: '(fn: () => (() => void) | void) => () => void',
     example: `const count = signal(0)
