@@ -29,6 +29,13 @@ export interface RenderContext {
   pendingLayoutEffects: EffectEntry[]
   /** Set to true when the component is unmounted */
   unmounted: boolean
+  /**
+   * True while a render runs because the component itself asked for it (a
+   * `useState` setter, `dispatch`, a context change, an external store). `memo`
+   * reads it: React never skips such a render, only a parent-driven one whose
+   * props are shallow-equal.
+   */
+  _selfUpdate?: boolean
   /** Hook count from the previous render (dev-mode ordering guard) */
   _hookCount?: number
 }
@@ -49,6 +56,17 @@ export function getCurrentCtx(): RenderContext | null {
 
 export function getHookIndex(): number {
   return _hookIndex++
+}
+
+/**
+ * A render that bails out part-way (`memo` returning its cached result) skips
+ * the hooks the component would have called. Advance the index past them so
+ * the dev hook-order check does not report a conditional hook that is not one.
+ */
+export function skipRemainingHooks(): void {
+  if (_currentCtx && _currentCtx._hookCount !== undefined && _currentCtx._hookCount > _hookIndex) {
+    _hookIndex = _currentCtx._hookCount
+  }
 }
 
 export function beginRender(ctx: RenderContext): void {
@@ -136,6 +154,7 @@ function wrapCompatComponent(reactComponent: Function): ComponentFn {
     }
 
     const version = signal(0)
+    let renderedVersion = 0
     let updateScheduled = false
 
     ctx.scheduleRerender = () => {
@@ -170,7 +189,10 @@ function wrapCompatComponent(reactComponent: Function): ComponentFn {
 
     // Return reactive accessor — Pyreon's mountChild calls mountReactive
     return () => {
-      version() // tracked read — triggers re-execution when state changes
+      // tracked read — triggers re-execution when state changes
+      const v = version()
+      ctx._selfUpdate = v !== renderedVersion
+      renderedVersion = v
       beginRender(ctx)
       const result = (reactComponent as ComponentFn)(props)
       const insertionEffects = ctx.pendingInsertionEffects
