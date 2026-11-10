@@ -152,8 +152,19 @@ test.describe("SSR node deploy artifact", () => {
 
     // 2. The fragment endpoint renders per request: two fetches → two
     //    DIFFERENT stamps (the inverse of hybrid-static's static-first
-    //    proof, where two fetches must be IDENTICAL).
-    const propsQ = `?props=${encodeURIComponent(JSON.stringify({ label: "now" }))}`;
+    //    proof, where two fetches must be IDENTICAL). The page signed the
+    //    marker (`data-page` + `data-sig`); the fragment request sends them
+    //    back, and an unsigned request is refused.
+    const attr = (n: string) =>
+      (new RegExp(`${n}="([^"]*)"`).exec(raw)?.[1] ?? "").replace(/&quot;/g, '"').replace(/&amp;/g, "&");
+    expect(attr("data-sig")).toMatch(/^\d+\./);
+    const propsQ =
+      `?props=${encodeURIComponent(attr("data-props"))}` +
+      `&page=${encodeURIComponent(attr("data-page"))}&sig=${encodeURIComponent(attr("data-sig"))}`;
+    const unsigned = await page.request.get(
+      `/_pyreon/fragment/ServerStamp?props=${encodeURIComponent(JSON.stringify({ label: "now" }))}`,
+    );
+    expect(unsigned.status()).toBe(403);
     const f1 = await (
       await page.request.get(`/_pyreon/fragment/ServerStamp${propsQ}`)
     ).text();
@@ -165,9 +176,9 @@ test.describe("SSR node deploy artifact", () => {
     expect(f2).toContain("now:");
     expect(f1).not.toBe(f2);
 
-    // 3. Unknown island names 404 (the endpoint allowlist).
+    // 3. Unknown or unsigned island names are refused before any lookup.
     const nope = await page.request.get("/_pyreon/fragment/NotRegistered");
-    expect(nope.status()).toBe(404);
+    expect(nope.status()).toBe(403);
 
     // 4. In the browser, the client activation swaps the fragment in.
     await page.goto("/server-island-demo");
@@ -218,6 +229,49 @@ test.describe("SSR node deploy artifact", () => {
       () => (window as never as Record<string, unknown>).__nav_sentinel,
     );
     expect(sentinel).toBe("alive");
+  });
+
+  test("a loader notFound() answers 404 with _404 in the layout, and hydrates onto the SAME nodes", async ({
+    page,
+  }) => {
+    // `/posts/:id` matches; its loader throws notFound() for an unknown id.
+    const resp = await page.request.get("/posts/9999");
+    expect(resp.status()).toBe(404);
+    const html = await resp.text();
+    expect(html).toContain('data-testid="not-found-page"');
+    expect(html).toContain('data-testid="nav-home"'); // inside the layout
+    expect(html).toContain('"__pyreonNotFound":true'); // hydration marker
+
+    // Hydration must resolve the same not-found chain the server rendered:
+    // capture the server's node before the (deferred) client entry runs,
+    // then check the hydrated page still shows THAT node.
+    await page.addInitScript(() => {
+      document.addEventListener("readystatechange", () => {
+        if (document.readyState === "interactive") {
+          (window as never as Record<string, unknown>).__serverNotFound =
+            document.querySelector('[data-testid="not-found-page"]');
+        }
+      });
+    });
+    const errors: string[] = [];
+    page.on("pageerror", (e) => errors.push(e.message));
+    page.on("console", (m) => {
+      if (m.type() === "error" || /mismatch/i.test(m.text())) errors.push(m.text());
+    });
+    await page.goto("/posts/9999");
+    await page.waitForLoadState("networkidle");
+    await expect(page.getByTestId("not-found-page")).toBeVisible();
+    await expect(page.getByTestId("post-page")).toHaveCount(0);
+    const sameNode = await page.evaluate(
+      () =>
+        (window as never as Record<string, unknown>).__serverNotFound != null &&
+        document.querySelector('[data-testid="not-found-page"]') ===
+          (window as never as Record<string, unknown>).__serverNotFound,
+    );
+    expect(sameNode, "the hydrated page must adopt the server's not-found node").toBe(true);
+    // 404 responses log nothing to the console (the 404 document request
+    // itself is reported by Chromium as a failed resource load).
+    expect(errors.filter((e) => !/status of 404/.test(e))).toEqual([]);
   });
 
   test("hydrates + client-side navigation works (assets load + run)", async ({
@@ -373,6 +427,55 @@ test.describe("server functions (<Form> + route action)", () => {
       await expect(page).toHaveURL(/\/about$/);
       const list = await page.request.get("/form-actions");
       expect(await list.text()).toContain("nojs-leaver");
+    });
+  });
+
+  /**
+   * `defineAction(schema, handler)` — `examples/ssr-showcase/src/routes/form-actions-validated.tsx`.
+   * The Standard Schema runs on the server before the handler: an invalid
+   * form answers 422 with per-field messages, a valid one reaches the handler
+   * with the parsed (coerced) output — with and without JavaScript.
+   */
+  test.describe("validated action input (defineAction(schema, handler))", () => {
+    test.describe("without JavaScript", () => {
+      test.use({ javaScriptEnabled: false });
+
+      test("an invalid form answers 422 with per-field messages; a valid one reaches the handler", async ({
+        page,
+      }) => {
+        await page.goto("/form-actions-validated");
+        await page.getByTestId("email-input").fill("not-an-email");
+        await page.getByTestId("age-input").fill("9");
+        const [resp] = await Promise.all([
+          page.waitForResponse((r) => r.request().method() === "POST"),
+          page.getByTestId("signup").click(),
+        ]);
+        expect(resp.status()).toBe(422);
+        await expect(page.getByTestId("email-error")).toHaveText("Enter an email address");
+        await expect(page.getByTestId("age-error")).toHaveText("Must be 13 or older");
+        await expect(page.getByTestId("welcome")).toHaveText("none");
+
+        await page.getByTestId("email-input").fill("ada@example.com");
+        await page.getByTestId("age-input").fill("36");
+        await page.getByTestId("signup").click();
+        await expect(page.getByTestId("welcome")).toHaveText("ada@example.com (37 next year)");
+      });
+    });
+
+    test("with JavaScript: field errors render without a navigation", async ({ page }) => {
+      const errors: string[] = [];
+      page.on("pageerror", (e) => errors.push(e.message));
+      await page.goto("/form-actions-validated");
+      await page.waitForLoadState("networkidle");
+      await page.getByTestId("email-input").fill("nope");
+      await page.getByTestId("age-input").fill("20");
+      await page.getByTestId("signup").click();
+      await expect(page.getByTestId("email-error")).toHaveText("Enter an email address");
+      await expect(page.getByTestId("age-error")).toHaveText("");
+      await page.getByTestId("email-input").fill("grace@example.com");
+      await page.getByTestId("signup").click();
+      await expect(page.getByTestId("welcome")).toHaveText("grace@example.com (21 next year)");
+      expect(errors).toEqual([]);
     });
   });
 

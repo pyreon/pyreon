@@ -266,3 +266,46 @@ describe('a failed fragment degrades to the fallback, never a broken page', () =
     expect(seen, 'and must not dispatch from outside the document').toEqual([])
   })
 })
+
+describe('signed fragments', () => {
+  it('a server-signed marker sends its page and signature back unchanged', async () => {
+    const urls = stubFetch(() => ok('<b>x</b>'))
+    serverMarkup({ 'data-name': 'Signed', 'data-props': '{"a":1}', 'data-page': '/a b', 'data-sig': '9.x_y-z' })
+    activateServerIslands()
+    await settle()
+    expect(urls[0]).toBe(
+      `/_pyreon/fragment/Signed?props=${encodeURIComponent('{"a":1}')}&page=${encodeURIComponent('/a b')}&sig=9.x_y-z`,
+    )
+  })
+
+  it('an unsigned (client-rendered) marker answered 403 takes the signed marker from the page render and retries once', async () => {
+    // SPA navigation renders markers on the client, where nothing can sign
+    // them. The current page's server render (through the same gates) can.
+    const pageHtml =
+      '<html><body><pyreon-server-island data-name="Nav" data-props="{&quot;q&quot;:1}" data-page="/here" data-sig="5.SIG">'
+      + '</pyreon-server-island><pyreon-server-island data-name="Nav" data-props="{&quot;q&quot;:2}" data-page="/here" data-sig="5.OTHER">'
+      + '</pyreon-server-island></body></html>'
+    const urls = stubFetch((url) => {
+      if (url.startsWith('/_pyreon/fragment/')) return url.includes('sig=') ? ok('<b>signed</b>') : httpError(403)
+      return ok(pageHtml)
+    })
+    const Island = serverIsland(async () => Badge, { name: 'Nav' })
+    mount(h('div', null, h(Island, { q: 1 } as never), h(Island, { q: 2 } as never)), container)
+    await vi.waitFor(() => expect(container.querySelectorAll('b')).toHaveLength(2))
+
+    const pageFetches = urls.filter((u) => !u.startsWith('/_pyreon/'))
+    expect(pageFetches, 'both markers share ONE page fetch').toEqual([location.pathname + location.search])
+    expect(urls).toContain(`/_pyreon/fragment/Nav?props=${encodeURIComponent('{"q":1}')}&page=%2Fhere&sig=5.SIG`)
+    expect(urls).toContain(`/_pyreon/fragment/Nav?props=${encodeURIComponent('{"q":2}')}&page=%2Fhere&sig=5.OTHER`)
+  })
+
+  it('no signed marker with the same name and props on the page → the fallback stays, flagged', async () => {
+    const urls = stubFetch((url) => (url.startsWith('/_pyreon/') ? httpError(403) : ok('<html><body></body></html>')))
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const el = serverMarkup({ 'data-name': 'Lost' })
+    activateServerIslandElement(el)
+    await vi.waitFor(() => expect(el.getAttribute('data-island-error')).toBe('fragment-failed'))
+    expect(urls.filter((u) => u.startsWith('/_pyreon/'))).toHaveLength(1)
+    expect(el.innerHTML).toBe('<span>fallback</span>')
+  })
+})

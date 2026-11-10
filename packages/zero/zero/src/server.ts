@@ -17,6 +17,8 @@ export type { CreateAppOptions } from "./app";
 export { createApp } from "./app";
 export type { CreateServerOptions } from "./entry-server";
 export { createServer } from "./entry-server";
+export type { ServerIslandSignatureOptions } from "./server-island-token";
+export { prerenderServerIslandLocals } from "./server-island-token";
 
 // ─── Config ─────────────────────────────────────────────────────────────────
 

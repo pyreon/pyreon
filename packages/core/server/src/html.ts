@@ -6,7 +6,7 @@
  *   <!--pyreon-app-->      — replaced with rendered application HTML
  *   <!--pyreon-scripts-->  — replaced with client entry script + inline loader data
  */
-import { stringifyLoaderData } from '@pyreon/router'
+import { stringifyLoaderDataForScript } from '@pyreon/router'
 
 export const DEFAULT_TEMPLATE = `<!DOCTYPE html>
 <html lang="en">
@@ -90,7 +90,7 @@ export function buildScripts(
     // M2.2 — safe serializer: strips function/symbol values silently,
     // throws a Pyreon-prefixed error on circular refs naming the offending
     // key, and escapes </script> for safe inline embedding.
-    const json = stringifyLoaderData(loaderData)
+    const json = stringifyLoaderDataForScript(loaderData)
     parts.push(`<script>window.__PYREON_LOADER_DATA__=${json}</script>`)
   }
 
@@ -112,7 +112,7 @@ export function buildScriptsFast(
 ): string {
   if (loaderData && Object.keys(loaderData).length > 0) {
     // M2.2 — safe serializer (same contract as `buildScripts`).
-    const json = stringifyLoaderData(loaderData)
+    const json = stringifyLoaderDataForScript(loaderData)
     // Same nonce the string-mode pipeline puts on this script — without it a
     // strict `script-src 'nonce-…'` policy blocked loader data on streamed pages.
     const safeNonce = nonce ? nonce.replace(/["'<>\s]/g, '') : ''

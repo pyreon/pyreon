@@ -272,25 +272,7 @@ export async function compileMarkdown(
   let tree: Root
   try {
     const processor = getProcessor(mdxEnabled)
-    // VitePress / Starlight / Docusaurus directive syntax tolerates
-    // `::: name` (one or more spaces between the fence and the
-    // directive name); remark-directive only accepts `:::name`.
-    // Pyreon docs authored before the cutover used the space-form,
-    // and downstream consumers may still author in it. We normalize
-    // before parsing — strip the space(s) so remark sees the canonical
-    // form and the callout / codegroup / details plugins can fire.
-    // Without this, `::: code-group` rendered as literal paragraph
-    // text in every page that used it.
-    //
-    // The regex is anchored at line start (`m` flag), allows leading
-    // whitespace, requires `:::` followed by at least one space and
-    // a valid identifier (lowercase letter then alphanum/dash). The
-    // identifier rule is conservative so we don't accidentally
-    // rewrite a code line that happens to start with `::: ` in prose.
-    const normalized = body.replace(
-      /^(\s*):::\s+([a-z][a-z0-9-]*)/gm,
-      '$1:::$2',
-    )
+    const normalized = normalizeDirectiveFences(body)
     raw = processor.parse(normalized) as Root
     // `parse` (sync) → `run` (async; lets remark plugins return promises
     // for future Shiki-as-remark-plugin moves). Currently all our plugins
@@ -393,6 +375,34 @@ export async function compileMarkdown(
     hoistedEsm: [...hoistedEsm],
     warnings: compileWarnings,
   }
+}
+
+/**
+ * VitePress / Starlight / Docusaurus directive syntax tolerates `::: name`
+ * (one or more spaces between the fence and the directive name);
+ * remark-directive only accepts `:::name`. Pyreon docs authored before the
+ * cutover used the space-form, and downstream consumers may still author in
+ * it. We normalize before parsing — strip the space(s) so remark sees the
+ * canonical form and the callout / codegroup / details plugins can fire.
+ * Without this, `::: code-group` rendered as literal paragraph text in every
+ * page that used it.
+ *
+ * The regex is anchored at line start (`m` flag), allows leading whitespace,
+ * requires `:::` followed by at least one space and a valid identifier
+ * (lowercase letter then alphanum/dash). The identifier rule is conservative
+ * so we don't accidentally rewrite a code line that happens to start with
+ * `::: ` in prose.
+ *
+ * The leading run is `[^\S\n\r\u2028\u2029]*`, not `\s*`: under `m`,
+ * `^\s*` restarted at every line start and swept all following blank lines,
+ * quadratic in the newline count (1e5 blank lines took seconds). The output is
+ * identical — a match that began on an earlier blank line only re-emitted
+ * those lines through `$1`.
+ *
+ * @internal exported for testing
+ */
+export function normalizeDirectiveFences(body: string): string {
+  return body.replace(/^([^\S\n\r\u2028\u2029]*):::\s+([a-z][a-z0-9-]*)/gm, '$1:::$2')
 }
 
 /**
