@@ -69,5 +69,12 @@ export function optimizeValidators(code: string, id: string): string | null {
     .sort()
     .map((name) => `${name} as ${ALIAS_PREFIX}${name}`)
     .join(', ')
-  return `import { ${specifiers} } from '@pyreon/validate/mini';\n${out}`
+  // `mini` ships without the runtime JIT (`@pyreon/validate/jit`); the
+  // chainable source this replaces had it, so keep it — the rewrite changes
+  // the bundle, never the validator's speed.
+  return (
+    `import { ${specifiers} } from '@pyreon/validate/mini';\n` +
+    `import { enableJit as ${ALIAS_PREFIX}enableJit } from '@pyreon/validate/jit';\n` +
+    `${ALIAS_PREFIX}enableJit();\n${out}`
+  )
 }

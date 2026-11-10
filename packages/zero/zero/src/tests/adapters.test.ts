@@ -1408,6 +1408,41 @@ describe('bun adapter — runtime contract', () => {
     }
   }
 
+  // `.vite/manifest.json` (and any other dotfile in the client dir) was served
+  // as a static file; only `/.well-known/` is public.
+  it.skipIf(!hasBun)(
+    'never serves a hidden path as a static file, except /.well-known/',
+    async () => {
+      await setupMockBuild()
+      const outDir = join(TMP, 'bun-runtime-hidden')
+      const port = await pickFreePort()
+      await bunAdapter().build({
+        kind: 'ssr',
+        serverEntry: join(MOCK_SERVER, 'entry-server.js'),
+        clientOutDir: MOCK_CLIENT,
+        outDir,
+        config: { port },
+      })
+      await mkdir(join(outDir, 'client', '.vite'), { recursive: true })
+      await writeFile(join(outDir, 'client', '.vite', 'manifest.json'), '{"secret":1}')
+      await mkdir(join(outDir, 'client', '.well-known'), { recursive: true })
+      await writeFile(join(outDir, 'client', '.well-known', 'security.txt'), 'Contact: x')
+      const stop = await startBunServer(join(outDir, 'index.ts'), port)
+      try {
+        for (const p of ['/.vite/manifest.json', '/%2evite/manifest.json']) {
+          const res = await fetch(`http://127.0.0.1:${port}${p}`)
+          expect(await res.text()).toBe('ok')
+        }
+        const wk = await fetch(`http://127.0.0.1:${port}/.well-known/security.txt`)
+        expect(await wk.text()).toBe('Contact: x')
+      } finally {
+        await stop()
+        await cleanup()
+      }
+    },
+    20000,
+  )
+
   it.skipIf(!hasBun)(
     'emitted entry boots — SSR fallback returns handler response for non-static paths',
     async () => {
@@ -1732,6 +1767,112 @@ describe('node adapter — runtime contract', () => {
         // Still serving after the throw.
         const after = await fetch(`http://127.0.0.1:${port}/api/echo`, { method: 'POST', body: 'x' })
         expect(after.status).toBe(200)
+      } finally {
+        await stop()
+        await cleanup()
+      }
+    },
+    20000,
+  )
+
+  // A raw request line, so the request-target is exactly what a browser (or
+  // anything else) put on the wire — `fetch` would normalise it away.
+  async function rawRequest(port: number, head: string, body = ''): Promise<string> {
+    const { connect } = await import('node:net')
+    return new Promise<string>((resolve, reject) => {
+      const sock = connect(port, '127.0.0.1', () => sock.write(head + body))
+      let out = ''
+      sock.on('data', (d) => (out += String(d)))
+      sock.on('end', () => resolve(out))
+      sock.on('error', reject)
+    })
+  }
+
+  // The runner built the URL as `new URL(req.url, origin)`, so a
+  // request-target of `//other.host/x` (what a browser sends for a form that
+  // posts to `https://victim//other.host/x`) or an absolute-form target made
+  // the URL's ORIGIN the attacker's — equal to their `Origin` header, which
+  // is exactly what the server-action CSRF check compares against.
+  it.skipIf(!hasNode)(
+    'derives the request origin from Host only — the request-target is a path',
+    async () => {
+      await setupMockBuild()
+      await writeFile(
+        join(MOCK_SERVER, 'entry-server.js'),
+        `export default async (req) => {
+  const url = new URL(req.url)
+  return Response.json({ origin: url.origin, path: url.pathname + url.search })
+}`,
+      )
+      const outDir = join(TMP, 'node-runtime-target')
+      const port = await pickFreePort()
+      await nodeAdapter().build({
+        kind: 'ssr',
+        serverEntry: join(MOCK_SERVER, 'entry-server.js'),
+        clientOutDir: MOCK_CLIENT,
+        outDir,
+        config: { port },
+      })
+      const stop = await startNodeServer(join(outDir, 'index.js'), port)
+      try {
+        const echo = async (target: string) => {
+          const res = await rawRequest(
+            port,
+            `POST ${target} HTTP/1.1\r\nHost: victim.example\r\nOrigin: http://attacker.example\r\nContent-Length: 2\r\nConnection: close\r\n\r\n`,
+            '{}',
+          )
+          return JSON.parse(res.slice(res.indexOf('{'), res.lastIndexOf('}') + 1)) as {
+            origin: string
+            path: string
+          }
+        }
+        expect(await echo('//attacker.example/_zero/actions/x')).toEqual({
+          origin: 'http://victim.example',
+          path: '//attacker.example/_zero/actions/x',
+        })
+        expect(await echo('http://attacker.example/_zero/actions/x?a=1')).toEqual({
+          origin: 'http://victim.example',
+          path: '/_zero/actions/x?a=1',
+        })
+        expect(await echo('/plain?q=1')).toEqual({ origin: 'http://victim.example', path: '/plain?q=1' })
+      } finally {
+        await stop()
+        await cleanup()
+      }
+    },
+    20000,
+  )
+
+  // `.vite/manifest.json` (and any other dotfile in the client dir) was served
+  // as a static file; only `/.well-known/` is public.
+  it.skipIf(!hasNode)(
+    'never serves a hidden path as a static file, except /.well-known/',
+    async () => {
+      await setupMockBuild()
+      const outDir = join(TMP, 'node-runtime-hidden')
+      const port = await pickFreePort()
+      await nodeAdapter().build({
+        kind: 'ssr',
+        serverEntry: join(MOCK_SERVER, 'entry-server.js'),
+        clientOutDir: MOCK_CLIENT,
+        outDir,
+        config: { port },
+      })
+      // Planted AFTER staging so this asserts the runner, not the stage step.
+      await mkdir(join(outDir, 'client', '.vite'), { recursive: true })
+      await writeFile(join(outDir, 'client', '.vite', 'manifest.json'), '{"secret":1}')
+      await writeFile(join(outDir, 'client', '.env'), 'SECRET=1')
+      await mkdir(join(outDir, 'client', '.well-known'), { recursive: true })
+      await writeFile(join(outDir, 'client', '.well-known', 'security.txt'), 'Contact: x')
+      const stop = await startNodeServer(join(outDir, 'index.js'), port)
+      try {
+        for (const p of ['/.vite/manifest.json', '/%2evite/manifest.json', '/.env']) {
+          const res = await fetch(`http://127.0.0.1:${port}${p}`)
+          // Fell through to the SSR handler (the mock answers "ok").
+          expect(await res.text()).toBe('ok')
+        }
+        const wk = await fetch(`http://127.0.0.1:${port}/.well-known/security.txt`)
+        expect(await wk.text()).toBe('Contact: x')
       } finally {
         await stop()
         await cleanup()

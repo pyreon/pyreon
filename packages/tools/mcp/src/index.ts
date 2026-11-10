@@ -76,6 +76,7 @@ import {
   renderDiffExplanation,
   renderOperation,
 } from './lathe'
+import { gitShowArgs, parseGitRevSpec, resolveInsideProject } from './tool-input'
 import packageJson from '../package.json' with { type: 'json' }
 import {
   ANTI_PATTERN_CATEGORIES,
@@ -913,13 +914,13 @@ server.tool(
       const cwd = process.cwd()
       const read = (spec: string): string => {
         const abs = isAbsolute(spec) ? spec : resolve(cwd, spec)
-        if (existsSync(abs)) return readFileSync(abs, 'utf8')
-        const rev = /^([^:]{2,}):(.+)$/.exec(spec)
+        if (existsSync(abs)) return readFileSync(resolveInsideProject(cwd, spec), 'utf8')
+        const rev = parseGitRevSpec(spec)
         if (rev) {
           const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith('GIT_')))
-          const r = spawnSync('git', ['show', `${rev[1]}:${rev[2]}`], { cwd, env, encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 })
+          const r = spawnSync('git', gitShowArgs(rev), { cwd, env, encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 })
           if (r.status === 0) return r.stdout
-          throw new Error(`[Pyreon] mcp: \`${rev[2]}\` does not exist at git revision \`${rev[1]}\`.`)
+          throw new Error(`[Pyreon] mcp: \`${rev.path}\` does not exist at git revision \`${rev.rev}\`.`)
         }
         throw new Error(`[Pyreon] mcp: \`${spec}\` does not exist. Pass a spec, an api-surface.json, or \`<git-rev>:<path>\`.`)
       }
