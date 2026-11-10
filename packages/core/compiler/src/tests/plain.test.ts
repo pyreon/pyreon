@@ -7,6 +7,7 @@
  * locks the EMIT: what each dialect shape rewrites to, what warns, and what is
  * deliberately left alone.
  */
+import { parseSync } from 'oxc-parser'
 import { describe, expect, it } from 'vitest'
 import { detectPlain, transformPlain } from '../plain'
 import { transformJSX, transformJSX_JS } from '../jsx'
@@ -611,6 +612,19 @@ describe('reactive early returns', () => {
 }\n`
     const r = P(src)!
     expect(r.code).toContain(`return () => {`)
+  })
+
+  it('does NOT wrap the tail of an ASYNC component (it would put `await` in a plain closure)', () => {
+    const src = `${HEADER}export const Body = async (props) => {
+  let head = state.raw({})
+  if (props.slug === undefined) return <p>none</p>
+  const data = await load(props.slug)
+  head = data
+  return <article>{data.title}</article>
+}\n`
+    const r = P(src)!
+    expect(r.code).not.toContain(`return () => {`)
+    expect(parseSync('t.tsx', r.code, { sourceType: 'module', lang: 'tsx' }).errors).toEqual([])
   })
 
   it('does NOT wrap a static early return', () => {
