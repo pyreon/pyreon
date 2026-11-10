@@ -21,7 +21,6 @@ import {
   SuspenseBoundaryContext,
   useContext,
 } from '@pyreon/core'
-import { _captureRun, _frameReads, _releaseRun, type RunCapture } from '@pyreon/reactivity'
 import {
   effectScope,
   getContextOwner,
@@ -30,6 +29,10 @@ import {
   runWithContextOwner,
   setContextOwner,
   setCurrentScope,
+  _captureRun,
+  _frameReads,
+  _releaseRun,
+  type RunCapture,
 } from '@pyreon/reactivity'
 import { setupDelegation } from './delegate'
 import { registerComponent, unregisterComponent } from './devtools'
