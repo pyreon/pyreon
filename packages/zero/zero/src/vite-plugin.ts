@@ -1291,14 +1291,25 @@ let warnedEntryLoad = false;
 async function loadEntryPipelineOptions(
 	server: ViteDevServer,
 	root: string,
-): Promise<{ middleware?: import("@pyreon/server").Middleware[]; actions?: unknown } | undefined> {
+): Promise<
+	| {
+			middleware?: import("@pyreon/server").Middleware[];
+			actions?: unknown;
+			serverIslands?: import("./server-island-token").ServerIslandSignatureOptions;
+	  }
+	| undefined
+> {
 	const file = ENTRY_SERVER_CANDIDATES.map((f) => join(root, "src", f)).find((f) => existsSync(f));
 	if (!file) return undefined;
 	try {
 		const mod = await ssrLoadModuleQuiet(server, file);
 		const handler = mod.default as Record<symbol, unknown> | undefined;
 		return handler?.[Symbol.for("pyreon.zero.pipelineOptions")] as
-			| { middleware?: import("@pyreon/server").Middleware[]; actions?: unknown }
+			| {
+					middleware?: import("@pyreon/server").Middleware[];
+					actions?: unknown;
+					serverIslands?: import("./server-island-token").ServerIslandSignatureOptions;
+			  }
 			| undefined;
 	} catch (err) {
 		if (!warnedEntryLoad) {
@@ -1397,6 +1408,7 @@ async function dispatchDevPipeline(
 		...(entryOptions?.actions !== undefined
 			? { actions: entryOptions.actions as import("./actions").CreateActionMiddlewareOptions | false }
 			: {}),
+		...(entryOptions?.serverIslands ? { serverIslands: entryOptions.serverIslands } : {}),
 	});
 
 	const webReq = toWebRequest(req);

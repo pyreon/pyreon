@@ -13,6 +13,7 @@ import { createPipelineGate } from './isr-gate'
 import { createRequestPipeline, matchPattern, trimTrailingSlashes } from './pipeline'
 import { collectRouteModes, resolveRenderModeForPath } from './route-modes'
 import { withRouteOgMeta } from './og-route'
+import type { ServerIslandSignatureOptions } from './server-island-token'
 import { render404Page } from './not-found'
 import type { RenderMode, RouteMiddlewareEntry, ZeroConfig } from './types'
 
@@ -73,6 +74,16 @@ export interface CreateServerOptions {
    * mounting the middleware manually elsewhere in the chain).
    */
   actions?: CreateActionMiddlewareOptions | false
+  /**
+   * Server-island fragment signing. Every marker the server renders is signed
+   * (name + page + props + expiry); the fragment endpoint refuses anything
+   * else and runs the declaring page's route middleware. `secret` defaults to
+   * the `PYREON_ISLAND_SECRET` environment variable, then to a random
+   * per-process secret — set one when more than one instance serves the app,
+   * or when prerendered pages contain server islands. `maxAge` (seconds,
+   * default one day) bounds SSR / ISR signatures.
+   */
+  serverIslands?: ServerIslandSignatureOptions
 }
 
 /**
@@ -163,6 +174,7 @@ export function createServer(options: CreateServerOptions): (req: Request) => Pr
     ...(options.routeMiddleware ? { routeMiddleware: options.routeMiddleware } : {}),
     ...(options.apiRoutes ? { apiRoutes: options.apiRoutes } : {}),
     ...(options.actions !== undefined ? { actions: options.actions } : {}),
+    ...(options.serverIslands ? { serverIslands: options.serverIslands } : {}),
     // No-JS form posts re-render their page through a handler that does
     // NOT run this pipeline again (assigned below).
     renderActionPage: (req) => renderForAction!(req),
@@ -344,7 +356,7 @@ export function createServer(options: CreateServerOptions): (req: Request) => Pr
 export const PIPELINE_OPTIONS: unique symbol = Symbol.for('pyreon.zero.pipelineOptions') as never
 
 export type PipelineTaggedHandler = ((req: Request) => Promise<Response>) & {
-  [PIPELINE_OPTIONS]?: Pick<CreateServerOptions, 'middleware' | 'actions'>
+  [PIPELINE_OPTIONS]?: Pick<CreateServerOptions, 'middleware' | 'actions' | 'serverIslands'>
 }
 
 function withPipelineOptions(
@@ -355,6 +367,7 @@ function withPipelineOptions(
   tagged[PIPELINE_OPTIONS] = {
     ...(options.middleware ? { middleware: options.middleware } : {}),
     ...(options.actions !== undefined ? { actions: options.actions } : {}),
+    ...(options.serverIslands ? { serverIslands: options.serverIslands } : {}),
   }
   return tagged
 }

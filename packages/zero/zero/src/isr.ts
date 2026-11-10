@@ -2,6 +2,7 @@ import { SizedMap } from '@pyreon/sized-map'
 import { PREVIEW_COOKIE } from './preview'
 import { readCookie } from './utils/signed-cookie'
 import type { ISRConfig } from './types'
+import { islandSignaturesExpiring } from './server-island-token'
 
 // Dev-mode counter sink — see packages/internals/perf-harness for contract.
 // Zero cost in prod (gate folds to `false`, optional-chain short-circuits).
@@ -745,7 +746,11 @@ export function createISRHandler(
     // TTL/eviction policy and typically just read directly.
     const entry = await store.get(key)
 
-    if (entry) {
+    // An entry whose server-island signatures are past half their lifetime
+    // is re-rendered instead of served: its visitors' fragment requests would
+    // otherwise be refused once the signatures expire (an ISR entry can be
+    // served stale for as long as nobody revalidates it).
+    if (entry && !islandSignaturesExpiring(entry.headers, entry.timestamp)) {
       const age = Date.now() - entry.timestamp
 
       if (age > revalidateMs) {

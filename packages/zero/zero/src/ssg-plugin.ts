@@ -152,7 +152,7 @@ import { h } from "@pyreon/core"
 import { renderWithHead } from "@pyreon/head/ssr"
 import { renderPage } from "@pyreon/server"
 import { runWithRequestContext } from "@pyreon/runtime-server"
-import { collectRouteModes, createApp, renderOgSvgFromLoaded, resolveRenderModeForPath } from "@pyreon/zero/server"
+import { collectRouteModes, createApp, prerenderServerIslandLocals, renderOgSvgFromLoaded, resolveRenderModeForPath } from "@pyreon/zero/server"
 
 // Phase 2 — route-level render modes. The plugin filters/validates the
 // resolved path list through THESE exports so build-time mode decisions
@@ -230,6 +230,9 @@ export default async function renderPath(path, options) {
   const result = await renderPage(App, router, path, {
     skipLoaders: options?.isNotFound === true,
     collectStyles: __pyreonGetStylerTag,
+    // Server-island markers on a prerendered page are signed (no expiry)
+    // with the shared PYREON_ISLAND_SECRET — see prerenderServerIslandLocals.
+    locals: prerenderServerIslandLocals(path, __ssgBase),
   })
   if (result.kind === "redirect") {
     return { kind: "redirect", from: path, to: result.to, status: result.status }

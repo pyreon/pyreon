@@ -6,14 +6,16 @@
  */
 import type { ComponentFn } from '@pyreon/core'
 import { h } from '@pyreon/core'
-import { renderToString } from '@pyreon/runtime-server'
+import { renderToString, runWithRequestContext } from '@pyreon/runtime-server'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { useRequestLocals } from '../middleware'
+import { provideRequestLocals, useRequestLocals } from '../middleware'
 import {
   _resetServerIslands,
   getRegisteredServerIslands,
+  SERVER_ISLAND_MINT,
   serverIsland,
 } from '../server-island'
+import type { ServerIslandMint } from '../server-island'
 import { renderServerIslandFragment } from '../server-island-render'
 
 const Badge: ComponentFn = (props: { label?: string }) =>
@@ -60,6 +62,43 @@ describe('serverIsland — marker component', () => {
     serverIsland(loaderB, { name: 'Dup' })
     expect(getRegisteredServerIslands().get('Dup')?.loader).toBe(loaderA)
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('duplicate name "Dup"'))
+  })
+})
+
+describe('serverIsland — signed markers', () => {
+  it("asks the request's mint to sign name + encoded props, and stamps data-page / data-sig", async () => {
+    const Island = serverIsland(async () => Badge, { name: 'CartBadge' })
+    const calls: [string, string][] = []
+    const mint: ServerIslandMint = async (name, props) => {
+      calls.push([name, props])
+      return { page: '/shop', sig: '123.abc' }
+    }
+    const html = await runWithRequestContext(async () => {
+      provideRequestLocals({ [SERVER_ISLAND_MINT]: mint })
+      return renderToString(h(Island, { label: 'Cart' } as never))
+    })
+    expect(calls).toEqual([['CartBadge', JSON.stringify({ label: 'Cart' })]])
+    expect(html).toContain('data-page="/shop"')
+    expect(html).toContain('data-sig="123.abc"')
+  })
+
+  it('signs empty props as the empty string (no data-props attribute)', async () => {
+    const Island = serverIsland(async () => Badge, { name: 'Bare' })
+    const seen: string[] = []
+    const mint: ServerIslandMint = async (_n, props) => (seen.push(props), null)
+    const html = await runWithRequestContext(async () => {
+      provideRequestLocals({ [SERVER_ISLAND_MINT]: mint })
+      return renderToString(h(Island, {} as never))
+    })
+    expect(seen).toEqual([''])
+    expect(html).not.toContain('data-sig')
+  })
+
+  it('without a mint (a custom handler) the marker is unsigned', async () => {
+    const Island = serverIsland(async () => Badge, { name: 'Plain' })
+    const html = await renderToString(h(Island, {} as never))
+    expect(html).not.toContain('data-page')
+    expect(html).not.toContain('data-sig')
   })
 })
 
