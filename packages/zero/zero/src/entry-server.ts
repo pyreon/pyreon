@@ -206,27 +206,27 @@ export function createServer(options: CreateServerOptions): (req: Request) => Pr
     resolvedClientEntry = false
   }
 
-  const baseHandler = withRouteOgMeta(
-    createHandler({
-      App,
-      routes: options.routes,
-      middleware: allMiddleware,
-      // `ssr.mode` decides. A zero build always sets it (resolveConfig
-      // defaults it to 'string'; `ssr: { mode: 'stream' }` opts into the
-      // streamed shell + out-of-order Suspense). The `mode: 'ssr'` fallback
-      // to streaming below only applies to hand-built configs that set no
-      // `ssr` at all. ISR apps stay buffered — the SWR cache stores complete
-      // Response bodies; caching a stream would either drain it (defeating
-      // streaming) or store nothing (defeating caching). PPR-shaped shell
-      // caching is the eventual resolution (analysis doc P1-B).
-      mode: config.ssr?.mode ?? (config.mode === 'ssr' ? 'stream' : 'string'),
-      ...(resolvedTemplate ? { template: resolvedTemplate } : {}),
-      ...(resolvedClientEntry !== undefined ? { clientEntry: resolvedClientEntry } : {}),
-      ...(config.base && config.base !== '/' ? { base: config.base } : {}),
-    }),
-    options.routes,
-    config.routeOg,
-  )
+  // `og:image` injection is NOT applied here: it is per-request (absolute,
+  // from the request origin unless `routeOg.siteUrl` is set) and this
+  // handler's responses are what the ISR cache stores. It wraps the final
+  // handler below, outside the cache.
+  const baseHandler = createHandler({
+    App,
+    routes: options.routes,
+    middleware: allMiddleware,
+    // `ssr.mode` decides. A zero build always sets it (resolveConfig
+    // defaults it to 'string'; `ssr: { mode: 'stream' }` opts into the
+    // streamed shell + out-of-order Suspense). The `mode: 'ssr'` fallback
+    // to streaming below only applies to hand-built configs that set no
+    // `ssr` at all. ISR apps stay buffered — the SWR cache stores complete
+    // Response bodies; caching a stream would either drain it (defeating
+    // streaming) or store nothing (defeating caching). PPR-shaped shell
+    // caching is the eventual resolution (analysis doc P1-B).
+    mode: config.ssr?.mode ?? (config.mode === 'ssr' ? 'stream' : 'string'),
+    ...(resolvedTemplate ? { template: resolvedTemplate } : {}),
+    ...(resolvedClientEntry !== undefined ? { clientEntry: resolvedClientEntry } : {}),
+    ...(config.base && config.base !== '/' ? { base: config.base } : {}),
+  })
 
   // A no-JS action post re-renders its page through a handler whose ONLY
   // middleware restores the POST's own middleware results (locals,
@@ -254,18 +254,18 @@ export function createServer(options: CreateServerOptions): (req: Request) => Pr
   // silently, with `config.isr` ignored and no signal pointing at the
   // cause (Pattern D from the audit). The wireRenderMode helper makes
   // the dispatch explicit + drift-tested.
-  const handler = wirePerRouteModes(
-    config.mode ?? 'ssr',
-    baseHandler,
-    config,
-    options.routes,
-    resolvedTemplate,
-    // Phase 4 — per-route ISR needs a BUFFERED handler: the SWR cache
-    // stores complete bodies, and `mode: 'ssr'` now defaults to
-    // streaming. Built lazily — only when a route actually declares
-    // 'isr' inside a streaming app.
-    () =>
-      withRouteOgMeta(
+  const handler = withRouteOgMeta(
+    wirePerRouteModes(
+      config.mode ?? 'ssr',
+      baseHandler,
+      config,
+      options.routes,
+      resolvedTemplate,
+      // Phase 4 — per-route ISR needs a BUFFERED handler: the SWR cache
+      // stores complete bodies, and `mode: 'ssr'` now defaults to
+      // streaming. Built lazily — only when a route actually declares
+      // 'isr' inside a streaming app.
+      () =>
         createHandler({
           App,
           routes: options.routes,
@@ -275,10 +275,10 @@ export function createServer(options: CreateServerOptions): (req: Request) => Pr
           ...(resolvedClientEntry !== undefined ? { clientEntry: resolvedClientEntry } : {}),
           ...(config.base && config.base !== '/' ? { base: config.base } : {}),
         }),
-        options.routes,
-        config.routeOg,
-      ),
-    isEndpoint,
+      isEndpoint,
+    ),
+    options.routes,
+    config.routeOg,
   )
 
   // M1.2 — Runtime SSR 404 routes through the router (PR L5).

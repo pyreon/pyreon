@@ -119,6 +119,7 @@ const feed = useInfiniteQuery(() => ({
     'useQuery / useMutation / useInfiniteQuery / useQueries with signal-driven options',
     'useSuspenseQuery / useSuspenseInfiniteQuery / useSuspenseQueries + QuerySuspense boundary (non-undefined data)',
     'usePrefetchQuery / usePrefetchInfiniteQuery — warm the cache in setup (no loading flash)',
+    'queryOptions / infiniteQueryOptions / mutationOptions — declare a query or mutation once, typed; the tagged `queryKey` types `getQueryData` / `setQueryData`',
     'useMutationState — reactive read of the MutationCache (global in-flight mutation UI)',
     'HydrationBoundary — component that hydrates a server-dehydrated cache before children render',
     'useSubscription — reactive WebSocket with auto-reconnect and QueryClient cache integration',
@@ -289,6 +290,33 @@ usePrefetchQuery(() => ({ queryKey: ['user', id], queryFn: fetchUser }))
   getNextPageParam: (last) => last.next,
 }))`,
       seeAlso: ['usePrefetchQuery', 'useSuspenseInfiniteQuery', 'useInfiniteQuery'],
+    },
+    {
+      name: 'queryOptions',
+      kind: 'function',
+      signature:
+        '<TQueryFnData, TError, TData, TQueryKey>(options: UseQueryOptions<TQueryFnData, TError, TData, TQueryKey>) => UseQueryOptions<…> & { queryKey: DataTag<TQueryKey, TQueryFnData, TError> }',
+      summary:
+        'Declare a query once, typed, and reuse it in `useQuery`, `useSuspenseQuery`, `usePrefetchQuery` and the imperative `QueryClient` API. Returns `options` unchanged at runtime; the returned `queryKey` is tagged (TanStack `DataTag`) with the `queryFn` result and error types, so `client.getQueryData(opts.queryKey)` / `setQueryData` are typed without a hand-written generic. `infiniteQueryOptions` tags the key with `InfiniteData<TQueryFnData, TPageParam>`; `mutationOptions` is the same declare-once helper for `useMutation` (including `invalidates`).',
+      example: `const userQuery = (id: number) =>
+  queryOptions({ queryKey: ['user', id], queryFn: () => fetchUser(id) })
+
+const user = useQuery(() => userQuery(userId()))       // reactive: userId() is read in the accessor
+const cached = client.getQueryData(userQuery(1).queryKey) // User | undefined — no generic needed
+
+const feed = infiniteQueryOptions({
+  queryKey: ['feed'],
+  queryFn: ({ pageParam }) => fetchPage(pageParam),
+  initialPageParam: 0,
+  getNextPageParam: (last) => last.next,
+})
+const createPost = mutationOptions({ mutationFn: (p: NewPost) => api.create(p), invalidates: [['posts']] })`,
+      mistakes: [
+        'Passing the result straight to `useQuery(queryOptions(…))` — `useQuery` takes an options FUNCTION: `useQuery(() => queryOptions(…))` (or `useQuery(() => userQuery(id()))`)',
+        'Building the options once OUTSIDE the accessor from a signal value (`const o = userQuery(id())`) — the key is then fixed; call the factory inside the accessor so the signal read stays reactive',
+        'Expecting it to lower on a native target — the PMTC `useQuery` lowering reads an inline options object; write the object inline in native-shared code',
+      ],
+      seeAlso: ['useQuery', 'useInfiniteQuery', 'useMutation', 'useQueryClient'],
     },
     {
       name: 'useSubscription',
