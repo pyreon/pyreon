@@ -73,6 +73,12 @@ A cleanup's job depends on whether anything else will remove the node, not on wh
 
 ---
 
+### A compat `onCleanup` bound to one owner kind
+
+Solid-compat's `onCleanup` always meant "component unmount", so a cleanup registered inside `createEffect` never ran between runs (per-run listeners, timers and sockets piled up) and one inside `createRoot` never ran. Resolve the owner at call time like the real library: running effect (`pyreonOnCleanup`, tracked by an effect-depth counter) → compat component (unmount) → active scope (`onScopeDispose`). Test: `solid-compat/src/tests/on-cleanup-owner.test.ts`.
+
+---
+
 ### An effect wrapper storing its per-run cleanup in a closure
 
 `watch(source, cb)` used to park a returned cleanup in a local `let`, so it ran only on the next re-run or an explicit `stop()` — never when the owning scope disposed the effect, which is how components use `watch`. Kinetic's `useAnimationEnd` then left a 5s timer and `transitionend`/`animationend` listeners pinning an unmounted subtree. Any wrapper whose callback may return a cleanup must hand it to the effect: `watch` calls `onCleanup(result)` inside the effect body, so it runs before each re-run, on `dispose()`, and untracked. Reference: `packages/core/reactivity/src/watch.ts`; `tests/watch.test.ts` ("per-run cleanup runs when the OWNING scope disposes").

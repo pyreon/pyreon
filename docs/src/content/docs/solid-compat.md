@@ -206,8 +206,8 @@ function WebSocketComponent(props: { url: () => string }) {
       setMessages((prev) => [...prev, e.data])
     }
 
-    // In Solid, onCleanup is used inside createEffect
-    // In Pyreon, use onCleanup (which maps to onUnmount)
+    // Closes the previous socket before the effect re-runs for a new URL,
+    // and the last one on unmount -- exactly as in Solid
     onCleanup(() => ws.close())
   })
 
@@ -596,7 +596,7 @@ function WindowSize() {
 function onCleanup(fn: () => void): void
 ```
 
-Registers a cleanup function that runs when the component is unmounted. Maps to Pyreon's `onUnmount`.
+Registers a cleanup on the current owner, as in Solid: inside `createEffect` it runs before each re-run and when the effect is disposed; in a component body it runs on unmount; inside `createRoot` it runs when the root is disposed.
 
 ```tsx
 const Timer = () => {
