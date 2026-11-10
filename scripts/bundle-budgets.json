@@ -57,7 +57,7 @@
   "@pyreon/state-tree": 6170,
   "@pyreon/auth": 9000,
   "@pyreon/storage": 3625,
-  "@pyreon/store": 3733,
+  "@pyreon/store": 3855,
   "@pyreon/storybook": 576,
   "@pyreon/styler": 8080,
   "@pyreon/svelte-compat": 2816,
