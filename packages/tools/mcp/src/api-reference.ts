@@ -312,6 +312,20 @@ store.editor.someMethod()           // works — class methods see real receiver
 - Using markRaw on plain data objects to "skip" deep wrap — for that, use \`shallowReactive\`. markRaw is for class instances and externally-managed shapes`,
   },
 
+  'reactivity/snapshot': {
+    signature: '<T>(value: T) => T',
+    example: `import { createStore, snapshot } from '@pyreon/reactivity'
+
+const store = createStore({ user: { name: 'Ann' }, tags: ['a'] })
+const copy = snapshot(store)   // { user: { name: 'Ann' }, tags: ['a'] }, no proxies
+structuredClone(copy)          // works — structuredClone(store) throws on the Proxy
+store.user.name = 'Bob'        // copy.user.name is still 'Ann'`,
+    notes: `A plain, non-reactive deep copy of a store (or of any value holding stores) — for logging, \`JSON.stringify\`, \`structuredClone\`, \`postMessage\`, undo history or a form's initial values. Reads the raw targets, so it tracks nothing and creates no per-property signals. Copies plain objects and arrays at every depth and unwraps every store proxy it meets (including one assigned into another store); keeps class instances, \`Map\`, \`Set\`, \`Date\` and \`markRaw\` objects by reference, unwrapped. Shared references and cycles are preserved. The equivalent of Svelte \`$state.snapshot\`. See also: createStore, markRaw, reconcile.`,
+    mistakes: `- Calling \`structuredClone(store)\` or \`postMessage(store)\` directly — a Proxy cannot be cloned; pass \`snapshot(store)\`
+- Expecting class instances / \`Map\` / \`Set\` / \`Date\` inside the store to be copied — they are kept by reference; copy them yourself if the snapshot must not share them
+- Using \`snapshot\` to read inside an effect and expecting a re-run on change — it tracks nothing by design; read the store fields directly to subscribe`,
+  },
+
   'reactivity/untrack': {
     signature: '(fn: () => T) => T',
     example: `effect(() => {
