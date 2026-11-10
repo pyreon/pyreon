@@ -51,6 +51,11 @@
  *    server island is a documented follow-up, not v1.
  *  - **Name-allowlisted endpoint.** The fragment endpoint renders ONLY
  *    registered islands — an attacker cannot render arbitrary components.
+ *  - **Public endpoint.** A fragment is not bound to the page that declared
+ *    it (registration is per module, and a module can be shared by many
+ *    routes), so that page's route middleware does NOT run for it and its
+ *    `props` are caller-chosen. Gate a sensitive island with app-wide
+ *    middleware, or check access inside the island (`useRequestLocals()`).
  *  - **`cache` is opt-in.** Fragment responses default to `no-store`
  *    (they exist BECAUSE they're per-request). A `cache` option sets
  *    Cache-Control for fragments that are deferred-but-shared (e.g. a

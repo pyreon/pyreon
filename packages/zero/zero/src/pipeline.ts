@@ -19,12 +19,15 @@ import { createActionMiddleware, resolveActionOptions } from './actions'
 import { createFormActionMiddleware } from './form-actions-server'
 import type { ApiRouteEntry } from './api-routes'
 import { createApiMiddleware, matchApiRoute } from './api-routes'
-import { createDataEndpointMiddleware } from './data-endpoint-middleware'
-import { createOgImageMiddleware } from './og-route'
+import { createDataEndpointMiddleware, dataEndpointTargetPathname } from './data-endpoint-middleware'
+import { createOgImageMiddleware, ROUTE_MIDDLEWARE_RAN } from './og-route'
+import { pagePathFromOgEndpoint } from './og-route-shared'
 import { createServerIslandMiddleware } from './server-islands-middleware'
 import type { RouteMiddlewareEntry, ZeroConfig } from './types'
 
 export const DATA_ENDPOINT = '/_pyreon/data'
+
+export { ROUTE_MIDDLEWARE_RAN }
 
 export interface RequestPipelineOptions {
   routes: RouteRecord[]
@@ -188,7 +191,11 @@ export function stripBase(pathname: string, config: ZeroConfig): string {
  * - For the single-fetch data endpoint, the TARGET page's path: the endpoint
  *   runs that page's serverLoaders, so it must be gated by that page's
  *   middleware — otherwise `/_pyreon/data?path=/admin` handed out data the
- *   `/admin` middleware refuses, on every client-side navigation.
+ *   `/admin` middleware refuses, on every client-side navigation. The target
+ *   is read through `dataEndpointTarget`, the endpoint's own normaliser, so
+ *   the gated page and the served page cannot differ.
+ * - For the OG image endpoint (`/_zero/og/<page>.png`), `<page>`: it runs that
+ *   page's loaders with the caller's request.
  * - With `base` and i18n prefixes removed, because route patterns carry
  *   neither (`/app/de/admin` is the `/admin` route).
  */
@@ -197,10 +204,16 @@ export function routingPathname(url: URL, config: ZeroConfig): string {
   // `<base>/_pyreon/data` skips the target page's route middleware.
   let pathname = stripBase(url.pathname, config)
   if (pathname === DATA_ENDPOINT) {
-    const target = url.searchParams.get('path')
-    if (target && target.startsWith('/')) {
-      pathname = stripBase(new URL(target, 'http://pyreon.invalid').pathname, config)
-    }
+    // The endpoint's OWN normalisation — never a re-parse (`new URL(target)`
+    // read `//admin` as host `admin`, path `/`, while the router served
+    // `/admin`). An invalid target is refused by the endpoint with a 400.
+    const target = dataEndpointTargetPathname(url)
+    if (target !== null) pathname = stripBase(target, config)
+  } else {
+    // The OG endpoint runs the page's loaders with the caller's request and
+    // renders its data into an image, so it is gated as that page.
+    const ogPage = pagePathFromOgEndpoint(pathname)
+    if (ogPage !== null) pathname = ogPage
   }
   const locales = config.i18n?.locales
   if (locales?.length) {
@@ -225,6 +238,10 @@ export function createRouteMiddlewareDispatcher(
         ? entry.patterns.some((p) => matchPattern(p, pathname))
         : matchPattern(entry.pattern, pathname)
       if (hit) {
+        // Endpoints that answer with a shared-cacheable response (the OG
+        // image) must not let a CDN replay what this request was allowed to
+        // see: they read this flag and answer `private` instead.
+        ctx.locals[ROUTE_MIDDLEWARE_RAN] = true
         const mw = Array.isArray(entry.middleware) ? entry.middleware : [entry.middleware]
         for (const fn of mw) {
           const result = await fn(ctx)

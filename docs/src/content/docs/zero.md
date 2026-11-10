@@ -573,6 +573,7 @@ Contracts worth knowing:
 
 - **Always deferred** — even on a fully-SSR page the island arrives via the fragment fetch. That's what makes the surrounding page's cacheability unconditional.
 - **Allowlisted endpoint** — only registered island names render; unknown names 404. Hostile `props` return 400, never a 500.
+- **The fragment endpoint is public** — it is not bound to the page that declared the island, so that page's route middleware does NOT run for it, and `props` are whatever the caller sends. Gate a sensitive island with app-wide middleware or check access inside it (`useRequestLocals()`).
 - **Fragments default to `Cache-Control: no-store`**. The `cache` option sets a custom value for deferred-but-public fragments — never cache a fragment that varies on cookies (the same auth caveat as ISR's `cacheKey`).
 - **Failure degrades to the fallback** — a failed fragment fetch leaves the fallback content in place and flags the marker (`data-island-error="fragment-failed"`); the page never breaks.
 - **Cold starts work**: the endpoint warms lazy route modules once on a registry miss, so a fragment request hitting a freshly-restarted server (pages served from CDN cache) still resolves.
@@ -1343,7 +1344,7 @@ export const og: OgImage<{ title: string }, { slug: string }> = ({ data, params 
 ```
 
 - **SSG paths** — rendered at **build** time to a content-hashed PNG (`dist/assets/og/<path>.<hash>.png`), and that page's `<head>` gets `og:image` + `og:image:width/height` + `twitter:card`. The loader data is the value the page itself rendered with (loaders run once per path).
-- **SSR / ISR routes** — served at request time from `/_zero/og/<path>.png` (auto-mounted by `createServer`), and the rendered page carries the matching **absolute** `og:image` (request origin). The endpoint answers `Cache-Control: public, max-age=0, s-maxage=3600, stale-while-revalidate=3600`, so a CDN caches and revalidates it (ISR at the edge; the in-process ISR cache deliberately never stores `/_zero/*` endpoints).
+- **SSR / ISR routes** — served at request time from `/_zero/og/<path>.png` (auto-mounted by `createServer`), and the rendered page carries the matching **absolute** `og:image` (request origin). The endpoint answers `Cache-Control: public, max-age=0, s-maxage=3600, stale-while-revalidate=3600`, so a CDN caches and revalidates it (ISR at the edge; the in-process ISR cache deliberately never stores `/_zero/*` endpoints). The page's route middleware gates the image, and when the page has route middleware or the request carried a `Cookie`/`Authorization` header the image is `private, no-store` instead: a CDN would otherwise replay what one admitted request saw to everyone.
 - An explicit `og:image` (from `useHead`/`<Meta>`) always wins — nothing is injected over it.
 - The `og` export is referenced **only** from the server graph (the SSG sub-build and the SSR bundle), via a lazy import — it never reaches the client bundle.
 
@@ -1520,9 +1521,13 @@ export default createServer({
 3. the framework endpoints: API routes, island fragments, the server-loader data endpoint (`/_pyreon/data`) and server actions (`/_zero/actions/*`);
 4. the page render.
 
-Because app-wide and route middleware run first, an auth check protects API routes, actions and loader data as well as pages. Route middleware is matched on the pathname (a query string can't skip it), with `base` and the i18n locale prefix removed. For the data endpoint it is matched on the page the data belongs to, so `/_pyreon/data?path=/admin` runs `/admin`'s middleware.
+Because app-wide and route middleware run first, an auth check protects API routes, actions and loader data as well as pages. Route middleware is matched on the pathname (a query string can't skip it), with `base` and the i18n locale prefix removed. For the data endpoint it is matched on the page the data belongs to, so `/_pyreon/data?path=/admin` runs `/admin`'s middleware; the target is normalised once (doubled slashes collapsed; `\`, control characters and `.`/`..` segments refused with a 400), and the endpoint serves exactly the page that was gated. The OG image endpoint is gated the same way: `/_zero/og/admin.png` runs `/admin`'s middleware.
 
-With `mode: 'isr'`, only HTML page renders are cached. API routes and the framework endpoints always run live, and responses keep their own content type.
+With `mode: 'isr'`, only HTML page renders are cached. API routes and the framework endpoints always run live, and responses keep their own content type. The cache sits **after** the middleware: app-wide and route middleware run for every request, including a cache HIT, so a page rendered for a request your middleware admitted is never served to one it would refuse. Middleware runs once per request (not again inside the render), and the headers it sets apply to cached responses too.
+
+**Server-island fragments are public endpoints.** `/_pyreon/fragment/<name>` is not tied to the page that declared the island, so the page's route middleware does not run for it. Gate a sensitive island with app-wide middleware, or check access inside the island itself (`useRequestLocals()`), and never trust its `props` — a caller chooses them.
+
+**App-wide middleware that gates by path** must match the page a request serves, not the raw URL: compare against `routingPathname(ctx.url, config)` from `@pyreon/zero/pipeline`, which maps the data and OG endpoints to their page and strips `base` and the locale prefix.
 
 ### startClient
 
