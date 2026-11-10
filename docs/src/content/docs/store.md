@@ -1131,11 +1131,11 @@ Listen to all state changes in the store. The callback receives the mutation inf
 ```ts
 const { subscribe } = useCounter()
 
-const unsubscribe = subscribe((mutation, state) => {
+const unsubscribe = subscribe((mutation) => {
   console.log(mutation.storeId) // "counter"
   console.log(mutation.type) // "direct" or "patch"
   console.log(mutation.events) // [{ key: "count", oldValue: 0, newValue: 1 }]
-  console.log(state) // { count: 1 }
+  console.log(mutation.state) // { count: 1 }, built lazily on first read
 })
 
 // Trigger immediately with current state:
@@ -1205,7 +1205,7 @@ import { addStorePlugin } from '@pyreon/store'
 
 // Logger plugin
 addStorePlugin(({ store, id, subscribe }) => {
-  subscribe((mutation, state) => {
+  subscribe((mutation) => {
     console.log(`[${id}]`, mutation.type, mutation.events)
   })
 })
@@ -1213,7 +1213,7 @@ addStorePlugin(({ store, id, subscribe }) => {
 // Server-sync plugin with dispose-time teardown
 addStorePlugin(({ id, subscribe }) => {
   const socket = connectSync(id)
-  subscribe((_mutation, state) => socket.send(state))
+  subscribe((mutation) => socket.send(mutation.state))
   return () => socket.close() // runs on store.dispose()
 })
 ```
