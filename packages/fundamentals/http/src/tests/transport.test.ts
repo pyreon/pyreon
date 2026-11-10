@@ -143,3 +143,23 @@ describe('end-to-end through the default transport', () => {
     globalThis.fetch = original
   })
 })
+
+describe('body wiring mark (fetchTransport → readUnderSignal)', () => {
+  it('marks a fetch-produced body as wired to the request signal, and a swapped body as not', async () => {
+    const { bodySignalOf, createFetchTransport } = await import('../transport')
+    const controller = new AbortController()
+    const transport = createFetchTransport(async () => new Response('{"a":1}'))
+    const req = {
+      method: 'GET', url: 'https://x.test/a', baseUrl: undefined, headers: new Headers(), body: null,
+      signal: controller.signal, credentials: undefined, meta: {},
+    } as unknown as Parameters<typeof transport>[0]
+    const res = await transport(req)
+    expect(bodySignalOf(res)).toBe(controller.signal)
+    // A middleware that swaps the body (dedupe's clone) carries the marks over
+    // with the spread — they must no longer match, so the read keeps its race.
+    expect(bodySignalOf({ ...res, raw: res.raw.clone() })).toBeUndefined()
+    // No signal on the request → nothing to be wired to.
+    const bare = await transport({ ...req, signal: undefined } as typeof req)
+    expect(bodySignalOf(bare)).toBeUndefined()
+  })
+})
