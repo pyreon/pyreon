@@ -47,6 +47,15 @@ describe('excerptOf', () => {
     expect(long.excerpt.endsWith('word…')).toBe(true)
     expect(excerptOf({ type: 'root', children: [] })).toBe('')
   })
+
+  it('drops trailing punctuation and whitespace before the ellipsis', () => {
+    const para = (value: string) =>
+      ({ type: 'root', children: [{ type: 'paragraph', children: [{ type: 'text', value }] }] }) as Parameters<
+        typeof excerptOf
+      >[0]
+    expect(excerptOf(para(`alpha beta, — ${'x'.repeat(40)}`), 20)).toBe('alpha beta…')
+    expect(excerptOf(para(`${'a'.repeat(15)}.,;:–-${'b'.repeat(10)}`), 20)).toBe(`${'a'.repeat(15)}…`)
+  })
 })
 
 describe('the shipped frontmatter is the schema output', () => {

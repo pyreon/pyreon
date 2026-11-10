@@ -1,4 +1,5 @@
 import type { Nodes, Root } from 'mdast'
+import { trimEndChars } from '../_shared/trim-chars'
 
 // ─── Word count — computed at compile time ─────────────────────────────────
 //
@@ -65,6 +66,11 @@ function plainText(node: Nodes): string {
   return node.children.map((c) => plainText(c as Nodes)).join('')
 }
 
+/** Punctuation and whitespace dropped from the end of a cut excerpt before the `…`. */
+function isExcerptTail(ch: string): boolean {
+  return /\s/.test(ch) || ',;:.–—-'.includes(ch)
+}
+
 /**
  * The first paragraph of a markdown tree as plain text, whitespace
  * collapsed, cut at a word boundary to at most `max` characters (with `…`
@@ -80,7 +86,7 @@ export function excerptOf(tree: Root, max = 200): string {
     if (text.length <= max) return text
     const cut = text.slice(0, max)
     const space = cut.lastIndexOf(' ')
-    return `${(space > max / 2 ? cut.slice(0, space) : cut).replace(/[\s,;:.–—-]+$/, '')}…`
+    return `${trimEndChars(space > max / 2 ? cut.slice(0, space) : cut, isExcerptTail)}…`
   }
   return ''
 }

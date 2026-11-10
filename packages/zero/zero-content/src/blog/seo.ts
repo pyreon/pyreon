@@ -1,4 +1,5 @@
 import type { UseHeadInput } from '@pyreon/head'
+import { trimEndChars, trimStartChars } from '../_shared/trim-chars'
 import type { BlogAuthor, BlogPost } from './posts'
 
 // ─── Blog SEO — <head> tags and JSON-LD for posts and listings ────────────
@@ -28,7 +29,7 @@ export interface BlogSeoSite {
 /** Resolve a site path (or an absolute URL) against the site origin. */
 export function absoluteUrl(siteUrl: string, pathOrUrl: string): string {
   if (/^https?:\/\//.test(pathOrUrl)) return pathOrUrl
-  return `${siteUrl.replace(/\/+$/, '')}/${pathOrUrl.replace(/^\/+/, '')}`
+  return `${trimEndChars(siteUrl, '/')}/${trimStartChars(pathOrUrl, '/')}`
 }
 
 function person(site: BlogSeoSite, author: BlogAuthor): Record<string, unknown> {

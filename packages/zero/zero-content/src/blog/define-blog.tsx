@@ -4,6 +4,7 @@ import { useHead } from '@pyreon/head'
 import type { UseHeadInput } from '@pyreon/head'
 import { signal } from '@pyreon/reactivity'
 import { RouterLink, useParams } from '@pyreon/router'
+import { trimChars, trimEndChars } from '../_shared/trim-chars'
 import { getCollection, getEntry, isEntryPublished } from '../runtime'
 import {
   CoverImage,
@@ -171,14 +172,14 @@ export function resolveBlogConfig(config: BlogConfig): ResolvedBlogConfig {
       `[Pyreon] defineBlog: siteUrl must be an absolute origin such as "https://example.com" (got "${config.siteUrl}"). Canonical, Open Graph and JSON-LD URLs are built from it.`,
     )
   }
-  const basePath = `/${(config.basePath ?? '/blog').replace(/^\/+|\/+$/g, '')}`
+  const basePath = `/${trimChars(config.basePath ?? '/blog', '/')}`
   const pageSize = config.pageSize ?? 10
   if (!Number.isInteger(pageSize) || pageSize < 1) {
     throw new Error(`[Pyreon] defineBlog: pageSize must be a whole number of at least 1 (got ${pageSize}).`)
   }
   const authors = config.authors ?? {}
   return {
-    siteUrl: config.siteUrl.replace(/\/+$/, ''),
+    siteUrl: trimEndChars(config.siteUrl, '/'),
     title: config.title,
     description: config.description,
     basePath: basePath === '/' ? '' : basePath,

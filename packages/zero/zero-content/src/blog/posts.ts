@@ -1,3 +1,4 @@
+import { trimChars } from '../_shared/trim-chars'
 import type { CollectionEntry } from '../types'
 import type { BlogFrontmatter, BlogPostData } from './schema'
 
@@ -83,15 +84,17 @@ export function readingMinutes(wordCount: number, wordsPerMinute = 230): number 
  * @example slugifyTag('Web Dev') // 'web-dev'
  */
 export function slugifyTag(name: string): string {
-  const slug = name
-    .normalize('NFKD')
-    .replace(/[̀-ͯ]/g, '')
-    .toLowerCase()
-    .replace(/\+/g, '-plus-')
-    .replace(/#/g, '-sharp-')
-    .replace(/&/g, '-and-')
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
+  const slug = trimChars(
+    name
+      .normalize('NFKD')
+      .replace(/[̀-ͯ]/g, '')
+      .toLowerCase()
+      .replace(/\+/g, '-plus-')
+      .replace(/#/g, '-sharp-')
+      .replace(/&/g, '-and-')
+      .replace(/[^a-z0-9]+/g, '-'),
+    '-',
+  )
   return slug.length > 0 ? slug : encodeURIComponent(name.trim().toLowerCase())
 }
 

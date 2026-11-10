@@ -1,6 +1,7 @@
 import { cx, For, Show } from '@pyreon/core'
 import type { VNodeChild } from '@pyreon/core'
 import { RouterLink } from '@pyreon/router'
+import { trimEndChars } from '../_shared/trim-chars'
 import { formatPostDate, isoDay } from './posts'
 import type { BlogAuthor, BlogCover, BlogPost, BlogTag, BlogTagCount } from './posts'
 
@@ -373,7 +374,7 @@ export function shareTargets(url: string, title: string, mastodonInstance = 'mas
   const text = encodeURIComponent(title)
   const link = encodeURIComponent(url)
   const both = encodeURIComponent(`${title} ${url}`)
-  const host = mastodonInstance.replace(/^https?:\/\//, '').replace(/\/+$/, '')
+  const host = trimEndChars(mastodonInstance.replace(/^https?:\/\//, ''), '/')
   return [
     { network: 'x', label: 'X', href: `https://x.com/intent/post?text=${text}&url=${link}` },
     { network: 'bluesky', label: 'Bluesky', href: `https://bsky.app/intent/compose?text=${both}` },
