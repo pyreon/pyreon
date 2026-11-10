@@ -1,5 +1,5 @@
 import type { Adapter, AdapterBuildOptions, AdapterRevalidateResult } from '../types'
-import { BUN_ADAPTER_OUTPUT } from './contract'
+import { BUN_ADAPTER_OUTPUT, ADAPTER_RESERVED_OUTPUTS } from './contract'
 import { SCHEDULER_RUNTIME, serializeJobs } from './cron'
 import { REQUEST_RUNTIME } from './request-runtime'
 import { stageClientThenServer } from './stage'
@@ -27,6 +27,7 @@ export interface BunAdapterOptions {
 export function bunAdapter(adapterOptions: BunAdapterOptions = {}): Adapter {
   return {
     name: 'bun',
+    reservedOutputs: ADAPTER_RESERVED_OUTPUTS.bun,
     capabilities: { schedules: adapterOptions.scheduler === true },
     async build(options: AdapterBuildOptions) {
       if (options.kind === 'ssg') {

@@ -1019,6 +1019,16 @@ export interface Adapter {
    */
   capabilities?: AdapterCapabilities
   /**
+   * Top-level names this adapter's SSR build writes or stages under `outDir`
+   * (`client`, `index.js`, `publish`, `_worker.js`, …). In a hybrid build the
+   * SSG pass fails when a prerendered route's output would land under one of
+   * them (or under one zero writes itself, `HYBRID_BUILD_OUTPUTS`): the
+   * staging step would overwrite or drop that page, which then silently
+   * server-renders (#4259). A custom adapter that stages into `outDir` should
+   * list its names here.
+   */
+  reservedOutputs?: readonly string[]
+  /**
    * Revalidate a prerendered path on the deploy platform's ISR layer
    * (PR I — build-time ISR). Called by user code (webhook handlers,
    * cron jobs, CMS triggers, etc.) to trigger a rebuild-on-stale for
