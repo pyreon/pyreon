@@ -194,7 +194,23 @@ export function _markLazyAndPropagate(c: LazyTarget, level: 1 | 2 | 3): void {
   // below it must gate HERE rather than be enqueued. Everything below `c` is
   // only POSSIBLY stale (c may re-evaluate to an equal value), so the walk
   // marks CHECK.
-  if (c._s1 !== null || c._s !== null) propagateLazyDirty(c, c, deep)
+  const s1 = c._s1
+  if (s1 !== null) {
+    // Re-visit fast exit — the diamond's second path: the sole subscriber is a
+    // lazy computed that is already marked, so only strengthen it (the same
+    // step the walk's first hop would take) and skip the non-inlinable walk.
+    if (c._s === null) {
+      const n = (s1 as LazyNotify)._c
+      if (n !== undefined) {
+        const ns = n._dirty
+        if (ns !== 0) {
+          if (ns < deep) n._dirty = deep
+          return
+        }
+      }
+    }
+    propagateLazyDirty(c, c, deep)
+  } else if (c._s !== null) propagateLazyDirty(c, c, deep)
 }
 
 /**

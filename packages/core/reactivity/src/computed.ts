@@ -91,6 +91,12 @@ interface ComputedFn<T> {
   _d1: (() => void) | null
   /** @internal direct-updater Set — allocated on PROMOTION from `_d1` (≥2 subscribers) */
   _d: Set<() => void> | null
+  /**
+   * @internal the dependency list (hosts, in read order). A property rather
+   * than a closure variable so `checkDirty` can walk the graph iteratively
+   * from any node.
+   */
+  _deps: SubscriberHost[]
   /** Cached value for compiler-emitted direct bindings — recomputes if dirty. */
   _v: T
   dispose(): void
@@ -204,38 +210,95 @@ function propagateEagerChange(read: ComputedFn<unknown>): void {
   }
 }
 
+/** A computed as seen by the iterative dep check (signals carry no `_dirty`). */
+interface CheckNode {
+  (): unknown
+  _dirty?: Stale
+  _deps: SubscriberHost[]
+}
+
 /**
- * The CHECK-state dep refresh: pull each COMPUTED dep that is itself marked,
- * in the order the last evaluation read them, and stop at the first one whose
- * change upgrades `read` to DIRTY. Returns whether `read` must re-evaluate.
- *
- * Order and the early stop are what make this sound: every dep before the
- * first changed one returned the same value as last time, so `fn` would read
- * exactly those deps again — a dep after it may belong to a branch `fn` no
- * longer takes, and is never pulled here (Preact's and alien-signals' rule).
- *
- * Signals and selector buckets carry no `_dirty` (`undefined > 0` is false);
- * a write to one notifies its subscribers DIRTY directly, so a CHECK node never
- * needs to look at them. The pulls run UNTRACKED — `read` already registered
- * with the outer frame — by suspending the frame's subscriber inline rather
- * than through a `runUntracked` closure per pull. Recursion depth equals the
- * depth of the marked chain, as for the evaluation it replaces.
+ * Scratch stack for {@link checkDirty}: the computeds being descended through
+ * and the dep index to resume each at. Hot module state on a `const` holder
+ * (see `TrackingFrame` in tracking.ts). Entries are POPPED as the walk climbs
+ * back, so nothing is retained after a check (a throw truncates to the
+ * caller's base in `finally`); capacity is bounded by the deepest marked
+ * chain ever checked.
  */
-function refreshDeps(read: ComputedFn<unknown>, deps: SubscriberHost[]): boolean {
+const _ck: { n: CheckNode[]; i: number[] } = { n: [], i: [] }
+
+/**
+ * The CHECK-state resolution, ITERATIVE (alien-signals' `checkDirty` shape):
+ * walk down the recorded deps of `root` with an explicit stack, descending
+ * into each dep that is itself only CHECK-marked and evaluating each that is
+ * DIRTY, then resolve bottom-up. A dep that re-evaluates to a new value
+ * upgrades its subscribers to DIRTY (`propagateEagerChange`); a node found
+ * DIRTY is evaluated (its deps are now fresh, so `fn` reads clean caches) and
+ * the walk resumes in its parent; a node whose deps all came back unchanged is
+ * marked clean WITHOUT running `fn` — the equality cutoff. Returns true when
+ * `root` itself must re-evaluate (left DIRTY for the caller), false when it
+ * was confirmed clean.
+ *
+ * Deps are visited in the order the last evaluation read them, stopping at
+ * the first change: every dep before it returned the same value as last time,
+ * so `fn` would read exactly those again, and a dep after it may belong to a
+ * branch `fn` no longer takes (Preact's and alien-signals' rule). Signals and
+ * selector buckets carry no `_dirty` and are skipped — a write to one marks
+ * its subscribers DIRTY directly. The walk runs UNTRACKED (`root` already
+ * registered with the outer frame), suspending the frame inline. Re-entrant:
+ * an evaluation inside the walk may run its own check above `base`.
+ */
+function checkDirty(root: CheckNode): boolean {
   const prev = _t.e
   _t.e = null
+  const ns = _ck.n
+  const is = _ck.i
+  const base = ns.length
+  let node = root
+  let deps = root._deps
+  let i = 0
   try {
-    for (let i = 0; i < deps.length; i++) {
-      const d = deps[i] as unknown as { (): unknown; _dirty?: Stale }
-      if ((d._dirty as number) > 0) {
-        d()
-        if (read._dirty === 3) return true
+    for (;;) {
+      if (node._dirty !== 3) {
+        if (i < deps.length) {
+          const d = deps[i] as unknown as CheckNode
+          const st = d._dirty
+          if (st === 1 || st === 2) {
+            // Only maybe-stale: descend and resolve it first.
+            ns.push(node)
+            is.push(i)
+            node = d
+            deps = d._deps
+            i = 0
+            continue
+          }
+          // DIRTY (3) or disposed-while-marked (4): evaluate it in place. A
+          // new value upgrades `node` to DIRTY, seen at the loop top.
+          if (st === 3 || st === 4) d()
+          i++
+          continue
+        }
+        // Every dep came back unchanged: clean without running `fn`.
+        node._dirty = 0
+        if (ns.length === base) return false
+      } else {
+        if (ns.length === base) return true
+        // DIRTY below the root: evaluate it now (its deps are fresh). A new
+        // value upgrades the parent, seen when the walk resumes there.
+        node()
       }
+      node = ns.pop() as CheckNode
+      i = (is.pop() as number) + 1
+      deps = node._deps
     }
   } finally {
     _t.e = prev
+    // Only a throw leaves frames above `base`; drop them (no retention).
+    if (ns.length > base) {
+      ns.length = base
+      is.length = base
+    }
   }
-  return false
 }
 
 /**
@@ -262,13 +325,6 @@ function evalThrew<T>(read: ComputedFn<T>, err: unknown): T {
   _errorHandler(err)
   read._dirty = 0
   return read._value
-}
-
-/** CHECK resolution: true (and the computed marked clean) when no dep changed. */
-function refreshClean(read: ComputedFn<unknown>, deps: SubscriberHost[]): boolean {
-  if (refreshDeps(read, deps)) return false
-  read._dirty = 0
-  return true
 }
 
 function devRecordRecompute(read: ComputedFn<unknown>): void {
@@ -380,9 +436,6 @@ function createComputed<T>(
   //    chain keeps the direct path with no dep walk, and one change in a
   //    mostly-cutoff node does not flip it.
   let flags = 4
-  // `let`: re-pointed at an exact-size copy after the first collect (see
-  // `exactDeps` in tracking.ts).
-  let deps: SubscriberHost[] = []
   let recompute: () => void
 
   const read = (() => {
@@ -413,7 +466,7 @@ function createComputed<T>(
       // upgrades this node to DIRTY through `propagateEagerChange`. If none
       // does, the cached value is still current — the equality cutoff: `fn` is
       // skipped.
-      if ((st === 1 || (st === 2 && (f & 8) !== 0)) && refreshClean(read, deps)) return read._value
+      if ((st === 1 || (st === 2 && (f & 8) !== 0)) && !checkDirty(read)) return read._value
       if (process.env.NODE_ENV !== 'production') devRecordRecompute(read)
       let next: T
       try {
@@ -423,11 +476,21 @@ function createComputed<T>(
         // and collects — one path for both, which keeps this closure small
         // enough for V8 to inline. The first successful collect is then trimmed
         // to an exact-size copy (`exactDeps`).
-        next = runVerify(recompute, deps, fn)
-        if ((f & 1) === 0) deps = exactDeps(deps)
+        next = runVerify(recompute, read._deps, fn)
       } catch (err) {
         flags = f | 1
         return evalThrew(read, err) // keep the previous value on a throwing eval
+      }
+      // A CHECK evaluated on the predictor's guess: any dep that changed while
+      // `fn` ran upgraded this node to DIRTY. Still CHECK means every input came
+      // back unchanged, so the new result carries no new information — keep the
+      // OLD value, notify nobody, and refresh deps first next time. This is
+      // what keeps a computed that builds a fresh object from re-running its
+      // effects on an unchanged input (it can never gate by `equals`).
+      if (st === 2 && read._dirty === 2) {
+        read._dirty = 0
+        flags = f | 12
+        return read._value
       }
       read._dirty = 0
       if ((f & 1) !== 0 && equals(read._value, next)) {
@@ -441,10 +504,15 @@ function createComputed<T>(
         // changed leans toward evaluating directly next time. Flags are stored
         // BEFORE propagating, which can re-enter this read. Stored only when it
         // changes: the steady state (an all-change node) writes nothing.
-        if ((f & 1) === 0) flags = f | 1
-        else if (st === 2 && (f & 12) !== 0) flags = f - 4
         read._value = next
-        if ((f & 1) !== 0) propagateEagerChange(read)
+        if ((f & 1) === 0) {
+          flags = f | 1
+          // Keep an exact-size copy of the first collect (see `exactDeps`).
+          read._deps = exactDeps(read._deps)
+        } else {
+          if (st === 2 && (f & 12) !== 0) flags = f - 4
+          propagateEagerChange(read)
+        }
       }
     }
     return read._value
@@ -460,6 +528,7 @@ function createComputed<T>(
   read._s = null
   read._d1 = null
   read._d = null
+  read._deps = []
 
   recompute = eager
     ? (level?: Stale) => {
@@ -523,7 +592,7 @@ function createComputed<T>(
     // Disposed while marked: the next read takes `readDisposed` (4) instead of
     // evaluating and re-linking to its sources.
     if (read._dirty !== 0) read._dirty = 4
-    cleanupLocalDeps(deps, recompute)
+    cleanupLocalDeps(read._deps, recompute)
   }
 
   if (process.env.NODE_ENV !== 'production')

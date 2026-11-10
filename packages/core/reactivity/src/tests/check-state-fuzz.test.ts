@@ -345,3 +345,30 @@ describe('a fresh-object computed below a self-gating node stays quiet', () => {
     expect(runs).toBe(0)
   })
 })
+
+describe('a CHECK node evaluated on a guess keeps its value when no input changed', () => {
+  test('a fresh-object computed below a plain lazy gate re-runs its effect 0 times', () => {
+    // Before CHECK state this effect ran on every one of the 20 writes: the
+    // gate re-derived an equal value, but the fresh-object node below it was
+    // dirty and rebuilt a new object, which no `equals` can gate.
+    const s = signal(0)
+    const gate = computed(() => (s() >= 0 ? 1 : 0))
+    let evals = 0
+    const fresh = computed(() => {
+      evals++
+      return { v: gate() }
+    })
+    let runs = 0
+    effect(() => {
+      fresh()
+      runs++
+    })
+    const before = evals
+    for (let k = 1; k <= 20; k++) s.set(k)
+    expect(runs).toBe(1)
+    // At most one evaluation on a guess, then it refreshes its dep first.
+    expect(evals - before).toBeLessThanOrEqual(1)
+    s.set(-1) // a real change still flows
+    expect(runs).toBe(2)
+  })
+})
