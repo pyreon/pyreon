@@ -17,11 +17,14 @@ import {
   PortalSymbol,
   propagateError,
   reportError,
-  runWithHooks,
+  _runHooked,
+  _takeHooks,
+  type LifecycleHooks,
   SuspenseBoundaryContext,
   useContext,
 } from '@pyreon/core'
 import {
+  type EffectScope,
   effectScope,
   getContextOwner,
   renderEffect,
@@ -536,7 +539,7 @@ function mountComponent(
   setCurrentScope(scope)
   setContextOwner(scope)
 
-  let hooks: ReturnType<typeof runWithHooks>['hooks']
+  let hooks: LifecycleHooks
   let output: VNodeChild
 
   const componentName = (vnode.type.name || 'Anonymous') as string
@@ -584,9 +587,8 @@ function mountComponent(
     rawProps === EMPTY_PROPS ? rawProps : makeReactiveProps(rawProps as Record<string, unknown>)
 
   try {
-    const result = runWithHooks(vnode.type, mergedProps)
-    hooks = result.hooks
-    output = result.vnode
+    output = _runHooked(vnode.type, mergedProps)
+    hooks = _takeHooks()
   } catch (err) {
     if (process.env.NODE_ENV !== 'production') _mountingStack!.pop()
     setCurrentScope(null)
@@ -765,6 +767,13 @@ function mountComponent(
   // component's siblings resolve their own context, not this component's.
   setContextOwner(prevOwner)
 
+  // No unmount work beyond the scope and the subtree (the common case — no
+  // onUnmount / setup onCleanup / onMount cleanup): return a closure that
+  // captures only those two. The full closure below captures this function's
+  // whole context (parent, owner, hooks, name, …), which then lives as long
+  // as the component.
+  if (hooks.unmount === null && mountCleanups === null) return leanUnmount(scope, subtreeCleanup, compId)
+
   return () => {
     if (process.env.NODE_ENV !== 'production') unregisterComponent(compId!)
     scope.stop()
@@ -785,6 +794,15 @@ function mountComponent(
       }
     }
     if (mountCleanups) for (const fn of mountCleanups) fn()
+  }
+}
+
+/** `mountComponent`'s unmount for a component with no hook cleanups — see the call site. */
+function leanUnmount(scope: EffectScope, subtreeCleanup: Cleanup, compId: string | undefined): Cleanup {
+  return () => {
+    if (process.env.NODE_ENV !== 'production') unregisterComponent(compId!)
+    scope.stop()
+    subtreeCleanup()
   }
 }
 

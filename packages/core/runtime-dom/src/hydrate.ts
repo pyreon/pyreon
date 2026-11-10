@@ -25,7 +25,9 @@ import {
   makeReactiveProps,
   PortalSymbol,
   reportError,
-  runWithHooks,
+  _runHooked,
+  _takeHooks,
+  type LifecycleHooks,
   SuspenseBoundaryContext,
   useContext,
 } from '@pyreon/core'
@@ -1758,7 +1760,8 @@ function hydrateComponent(
   // values and any signal-driven re-render diverges from the SSR HTML.
   const mergedProps = makeReactiveProps(rawProps as Record<string, unknown>)
 
-  let result: ReturnType<typeof runWithHooks>
+  let output: VNodeChild
+  let hooks: LifecycleHooks
   // Compiled-template ADOPTION (component-root fast path). A component whose
   // body is a static DOM subtree returns a `_tpl()` NativeItem. Arm the
   // one-shot target with this component's SSR cursor so a root `_tpl` whose
@@ -1771,7 +1774,8 @@ function hydrateComponent(
   const adoptTarget = domNode !== null && domNode.nodeType === 1 ? (domNode as Element) : null
   if (adoptTarget !== null) _setTplAdoptTarget(adoptTarget)
   try {
-    result = runWithHooks(vnode.type as ComponentFn, mergedProps)
+    output = _runHooked(vnode.type as ComponentFn, mergedProps)
+    hooks = _takeHooks()
   } catch (err) {
     if (adoptTarget !== null) _setTplAdoptTarget(null)
     setCurrentScope(null)
@@ -1794,7 +1798,6 @@ function hydrateComponent(
   if (adoptTarget !== null) _setTplAdoptTarget(null)
   setCurrentScope(null)
 
-  const { vnode: output, hooks } = result
 
   // Register onUpdate hooks with the scope
   if (hooks.update) {

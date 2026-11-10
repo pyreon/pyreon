@@ -10,11 +10,40 @@ import type { CleanupFn, LifecycleHooks } from './types'
 // load).
 let _current: LifecycleHooks | null = null
 
+/**
+ * The hooks of a component that registered none — shared by every such
+ * component instead of one `{ mount, unmount, update, error }` object each
+ * (28 B retained per instance, for the lifetime of the component). Frozen, so
+ * a write that skipped `_writableHooks()` throws instead of leaking across
+ * components.
+ */
+export const EMPTY_HOOKS: LifecycleHooks = Object.freeze({ mount: null, unmount: null, update: null, error: null }) as LifecycleHooks
+
+/**
+ * "Inside a component setup, no hook registered yet". A setup frame starts
+ * here, and the first registration swaps in a real object
+ * (`_writableHooks`), so a component that registers nothing never allocates
+ * one. Truthy, so "is a component rendering?" checks still see it.
+ */
+export const PENDING_HOOKS: LifecycleHooks = Object.freeze({ mount: null, unmount: null, update: null, error: null }) as LifecycleHooks
+
 export function setCurrentHooks(hooks: LifecycleHooks | null) {
   _current = hooks
 }
 
+/** The current frame's hooks for WRITING — materialises a pending frame. */
+function _writableHooks(): LifecycleHooks | null {
+  if (_current === PENDING_HOOKS) _current = { mount: null, unmount: null, update: null, error: null }
+  return _current
+}
+
+/** The current frame's hooks, materialised (callers may write to them). */
 export function getCurrentHooks(): LifecycleHooks | null {
+  return _writableHooks()
+}
+
+/** Raw read of the current frame, `PENDING_HOOKS` included (no allocation). */
+export function _peekCurrentHooks(): LifecycleHooks | null {
   return _current
 }
 
@@ -106,9 +135,10 @@ function warnOutsideSetup(hookName: string): void {
  */
 export function onMount(fn: () => CleanupFn | void | undefined) {
   warnOutsideSetup('onMount')
-  if (_current) {
-    if (_current.mount === null) _current.mount = []
-    _current.mount.push(fn)
+  const _h = _writableHooks()
+  if (_h) {
+    if (_h.mount === null) _h.mount = []
+    _h.mount.push(fn)
   }
 }
 
@@ -117,9 +147,10 @@ export function onMount(fn: () => CleanupFn | void | undefined) {
  */
 export function onUnmount(fn: () => void) {
   warnOutsideSetup('onUnmount')
-  if (_current) {
-    if (_current.unmount === null) _current.unmount = []
-    _current.unmount.push(fn)
+  const _h = _writableHooks()
+  if (_h) {
+    if (_h.unmount === null) _h.unmount = []
+    _h.unmount.push(fn)
   }
 }
 
@@ -128,9 +159,10 @@ export function onUnmount(fn: () => void) {
  */
 export function onUpdate(fn: () => void) {
   warnOutsideSetup('onUpdate')
-  if (_current) {
-    if (_current.update === null) _current.update = []
-    _current.update.push(fn)
+  const _h = _writableHooks()
+  if (_h) {
+    if (_h.update === null) _h.update = []
+    _h.update.push(fn)
   }
 }
 
@@ -149,8 +181,9 @@ export function onUpdate(fn: () => void) {
  */
 export function onErrorCaptured(fn: (err: unknown) => boolean | undefined) {
   warnOutsideSetup('onErrorCaptured')
-  if (_current) {
-    if (_current.error === null) _current.error = []
-    _current.error.push(fn)
+  const _h = _writableHooks()
+  if (_h) {
+    if (_h.error === null) _h.error = []
+    _h.error.push(fn)
   }
 }
