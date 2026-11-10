@@ -59,8 +59,8 @@ Read before adding or changing a workflow, job, required check, or cache key.
 - `Test` validates `toJSON(needs)` after its dependencies finish. Install and Fast Gates must succeed; each selected matrix must succeed; only explicitly unselected matrices may skip. Missing, malformed, or contradictory selection outputs fail. Healthy runs make no jobs-API calls. Failed runs request job links once, with a ten-second total deadline; unavailable or stale API data cannot change the failed verdict.
 - `scripts/check-ci-fail-fast.ts` statically prevents an expensive job from
   bypassing Fast Gates or a matrix from disabling cancellation.
-- `ci-main.yml` runs `Coverage (Full)` and `Coverage (Native)` on push to main and in the merge queue. Coverage-infrastructure PRs also run `Coverage (Full)`; native coverage retains its main/merge-group scope.
-  Superseded coverage PR runs cancel by PR ref; main and merge-group runs finish
+- `ci-main.yml` runs `Coverage (Full)` and `Coverage (Native)` on push to main. Coverage-infrastructure PRs also run `Coverage (Full)`; native coverage runs on main only. Neither is required, so neither runs in the merge queue.
+  Superseded coverage PR runs cancel by PR ref; main runs finish
   and coalesce pending work. The static CI policy gate guards both behaviors.
 
 - Native capability disk caches accept only successful probes. A timeout or signal is a transient failure, never evidence that a compiler or module is absent. Failed legacy probe entries are ignored; interrupted module validation fails and retries on the next call. Required Observation validation fails instead of reporting a successful skip. Genuine SwiftUI absence on non-Apple hosts remains an SDK skip.
@@ -69,7 +69,9 @@ Read before adding or changing a workflow, job, required check, or cache key.
 
 - `pr-gates.yml` — `Changeset` and `Diagnose Catalog`. These are label-sensitive (`skip-changeset`, `skip-diagnose-catalog`), so they live apart from `ci.yml`, whose `pull_request` trigger excludes `labeled` (a label would cancel the in-flight run).
 - `native-validate.yml` — `Validate emitted Swift + Kotlin`, `Validate emitted Swift (real-SDK typecheck, macOS)`. Both run when the native path classifier OR the native-compiler dependency graph (`affected.ts --category=native/compiler`) selects them; the device lanes use the path classifier alone.
-- `native-device.yml` — `iOS — xcodebuild (Simulator SDK)`, `Android — gradlew assembleDebug`.
+- `native-device.yml` — `iOS — xcodebuild (Simulator SDK)`, `Android — gradlew assembleDebug`. After the path classifier, a `Native inputs fingerprint` job (PR only, `continue-on-error`) builds every gated app's emit at head and base and keeps only apps whose fingerprint moved; an empty output (failure, timeout) falls back to the classifier. Input contract and tests: `scripts/native-inputs-fingerprint.ts`, `native-inputs-fingerprint.test.ts`. Triggers on `opened`/`synchronize`/`reopened`, not `labeled`: a label event re-ran the whole device build on the same SHA (19 times in two days, 1,086 macOS runner-minutes). The `native-device` label is read on the next push; `gh workflow run native-device.yml --ref <branch>` proves the current commit at once.
+- `native-device-nightly-status.yml` (`workflow_run` after `Native Device Build`) — keeps the `[native-device] Nightly device build is RED` sticky issue in step with the scheduled run. It was a job inside `native-device.yml` and put a skipped or cancelled row on every PR.
+- `lathe-action-selftest.yml` (advisory) — trigger-level `paths:` filter. A trigger filter is allowed only on advisory workflows; a required one needs the always-running decide job.
 - Native lane selection follows package-owned lowering as well as the PMTC
   directories. `native-surface-touched.ts` recognizes plugin source and its own
   selector scripts; `native-plugin-surface.ts` derives the runtime import closure
@@ -92,9 +94,44 @@ Read before adding or changing a workflow, job, required check, or cache key.
 
 ## Required checks
 
-Branch protection pins 15 required contexts in two authorities that must stay identical: classic protection and ruleset 19416270.
+Branch protection pins 15 required contexts in two authorities that must stay identical: classic protection and ruleset 19416270. The merge queue rule belongs in the ruleset (see Merge queue).
 
 `Install`, `Fast Gates`, `Build`, `Test`, `Test (browser)`, `Release Build`, `bootstrap-exit-codes`, `Changeset`, `Diagnose Catalog`, `Analyze (javascript-typescript)`, `CodeQL`, the two `Validate emitted Swift…` jobs, `iOS — xcodebuild`, `Android — gradlew`.
+
+## Merge queue
+
+Prepared, not enabled. The ruleset has no `merge_queue` rule, so `merge_group` events never fire (zero runs repository-wide, although `ci.yml` has carried the trigger since September). Every workflow that owns a required context carries `merge_group`:
+
+| Context | Workflow / job | In a merge group |
+| --- | --- | --- |
+| `Install`, `Fast Gates`, `Build`, `Test`, `Test (browser)`, `Release Build`, `bootstrap-exit-codes` | `ci.yml` | Full matrix, as on `push: main`. Release Build audits advisories against `merge_group.base_sha` (pre-existing ones warn). Labels are absent, so `skip-release-readiness` does not apply, as on `main`. |
+| `Changeset`, `Diagnose Catalog` | `pr-gates.yml` | Skipped: both depend only on the PR's diff and labels, which the PR already passed. |
+| `Analyze (javascript-typescript)`, `CodeQL` | `codeql.yml` | Runs. `CodeQL` is posted by code scanning after the upload, so the job cannot skip. |
+| `Validate emitted Swift + Kotlin` | `native-validate.yml` `validate` | Runs when the group's diff (`base_sha` → head) selects it, by the PR rules. |
+| `Validate emitted Swift (real-SDK typecheck, macOS)` | `native-validate.yml` `validate-swift-typecheck` | Skipped. |
+| `iOS — xcodebuild (Simulator SDK)`, `Android — gradlew assembleDebug` | `native-device.yml` | Skipped. |
+
+- macOS and device lanes skip in the queue because they ran on the PR and a macOS slot wait (p90 144 min, 2026-11-10) at the head of the queue would hold every group behind it. The nightly runs re-prove `main`. To run them in the queue, remove the `merge_group` exclusion from their `if:`.
+- Concurrency keys must be unique per queue ref: `github.event.pull_request.number` is empty in a merge group, so use `… || github.ref`. Never cancel a merge-group run (`cancel-in-progress` is PR-only everywhere).
+- Do not save a cache from a merge group: its ref is deleted, so the entry only evicts others.
+- `ci-main.yml` (`Coverage (Full)`, `Coverage (Native)`) has no `merge_group` trigger: neither is required, so in the queue it would cost about 18 runner-minutes per group for a verdict the queue does not read. Main's push run remains the backstop.
+
+Enable (maintainer, one ruleset change):
+
+```bash
+gh api repos/pyreon/pyreon/rulesets/19416270 > rs.json
+jq '{name, target, enforcement, conditions, bypass_actors, rules: (.rules + [{type: "merge_queue", parameters: {merge_method: "SQUASH", grouping_strategy: "ALLGREEN", max_entries_to_build: 3, min_entries_to_merge: 1, max_entries_to_merge: 5, min_entries_to_merge_wait_minutes: 5, check_response_timeout_minutes: 120}}])}' rs.json > rs-queue.json
+gh api -X PUT repos/pyreon/pyreon/rulesets/19416270 --input rs-queue.json
+```
+
+- First canary: one docs-only PR (for example a one-line `.agents/` edit). It exercises the full `ci.yml` matrix, CodeQL with its `CodeQL` upload context, the skipped `pr-gates` jobs, the native-validate decide on a group diff and the skipped device lanes, without a 60-minute native lane. Watch that all 15 contexts report on the `gh-readonly-queue/main/…` head before queueing more.
+- `SQUASH`: the only allowed method; keeps the required linear history.
+- Build concurrency 3: a group costs about 65–85 runner-minutes over about 20 jobs (full `ci.yml`: 18 jobs, 57–61 min; CodeQL 4; Linux native validate 18 when selected). Three groups at their widest take most of the 20 org slots.
+- Merge limits 1–5 with a 5-minute wait: about 25 merges a day; a busy hour batches 2–5 PRs into one full run.
+- Timeout 120 minutes: a full `ci.yml` run takes 10–24 min on idle runners and up to 64 under load (2026-11-10); Linux job queue p90 was about 100 min.
+- Contributors: the merge button becomes "Merge when ready"; auto-merge (`gh pr merge N --auto`) adds the PR to the queue once its checks pass. A group that fails removes its PR with a comment; fix, push, re-queue. `strict` stays off.
+- Changesets: the Version PR and `auto/docs-regen` go through the queue like any PR (`gh pr merge --auto --squash` enqueues). The queue's fast-forward of `main` is a normal push, so `release.yml`, `docs.yml`, `docs-freshness-guard.yml` and main CI trigger as before.
+- Roll back: `gh api repos/pyreon/pyreon/rulesets/19416270 | jq '{name, target, enforcement, conditions, bypass_actors, rules: [.rules[] | select(.type != "merge_queue")]}' > rs-noqueue.json`, then the same PUT with that file. Queued PRs leave the queue; `merge_group` triggers go dormant again. The UI path is Settings → Rules → Rulesets → main branch protection → "Require merge queue".
 
 ## Caches
 
@@ -106,7 +143,7 @@ Branch protection pins 15 required contexts in two authorities that must stay id
 
 ## Gate reference
 
-- **Coverage (Full)**: main and merge groups measure every testable workspace except the native compiler, which retains its separate cached coverage job. Coverage-infrastructure PRs also run the full gate before merging. The four-worker pool is followed by three serial nested-build suites; budget for both phases. The full job has a 35m backstop, a 25m coverage step and a 3m always-run log upload. Each package logs its start and duration, so a partial run identifies work still in flight. Per-package deadlines terminate the owned POSIX process group (TERM, then KILL after 1s) and settle even if inherited pipes stay open. Timed-out/signalled executions fail even after printing a summary. No package thresholds are relaxed. Optional native binaries must not control JavaScript fallback coverage: syntax, live-option and lens assertions run independently, with Rust parity checked additionally when the binary is installed.
+- **Coverage (Full)**: main measures every testable workspace except the native compiler, which retains its separate cached coverage job. Coverage-infrastructure PRs also run the full gate before merging. The four-worker pool is followed by three serial nested-build suites; budget for both phases. The full job has a 35m backstop, a 25m coverage step and a 3m always-run log upload. Each package logs its start and duration, so a partial run identifies work still in flight. Per-package deadlines terminate the owned POSIX process group (TERM, then KILL after 1s) and settle even if inherited pipes stay open. Timed-out/signalled executions fail even after printing a summary. No package thresholds are relaxed. Optional native binaries must not control JavaScript fallback coverage: syntax, live-option and lens assertions run independently, with Rust parity checked additionally when the binary is installed.
 - **audit-types** (`bun run audit-types --all --strict`): flags public-interface fields with zero non-type references (typed-but-unimplemented). New HIGH findings block. Fix the runtime, or add to `EXEMPT_FIELDS` in `scripts/audit-types.ts` with a rationale.
 - **verify-modes** (`bun run verify-modes`): `vite build` for every example × mode, asserting rendered content, not just a green build. New cells must check content.
 - **check-bundle-budgets** / **check-import-budgets**: gzipped main-entry and minimal-import sizes against `scripts/{bundle,import}-budgets.json`, measured on built `lib/` with a `NODE_ENV=production` define. Rebuild each changed package before measuring locally; source-resolving tests and typechecks can pass while these gates measure yesterday's library. Run both size gates after that rebuild. For intentional growth, `--update` and review the diff.
@@ -155,4 +192,4 @@ Branch protection pins 15 required contexts in two authorities that must stay id
 - `Test (browser)` has a 35-minute backstop derived from both setup budgets (10 + 16 minutes including retries/repair/download kill grace), test work and shared setup. Keep the outer timeout above the sum when changing any inner budget.
 - iOS UI suites target the resolved simulator UDID with parallel testing disabled, so device state (appearance, location, URL delivery) belongs to the device configured by the workflow. Test retries relaunch the runner process. Each app writes a separate `.xcresult` bundle, uploaded after success or failure. The exact `.ci-ios-results/*.xcresult` upload must enable hidden files because its result root starts with a dot; a completed or failed selected UI step with no matching results is an error, while entirely skipped app lanes do not upload.
 - Deliver deep links through `XCUIDevice.shared.system.open(URL)` in XCUITest, then assert both cold and warm routes. Safari's address bar and confirmation sheet are unrelated dependencies and must not decide whether URL handling is tested. A failed route assertion stays a hard failure.
-- `docs.yml` — docs SSG and Atlas build on relevant PRs; deploy only from `main` (push, a daily 00:05 UTC schedule that publishes future-dated blog posts on their date, or a manual dispatch). Upload and deploy share one condition, `event_name != 'pull_request' && ref == main`; a PR never deploys. Linux command deadlines cover install (10m), docs (8m), and Atlas (3m), below the 25m job backstop. Explicit Bash preserves the failed producer's status through `tee`. Always upload phase logs and the SSG error artifact before the job backstop; a timed-out command must fail, and a successful rerun does not establish the earlier stall's cause. Google Fonts self-hosting shares a 60s abort deadline across CSS and font bodies.
+- `docs.yml` — concurrency cancels superseded PR builds but never a running `main` deploy (pending ones coalesce to the latest); cancelling the running deploy left pyreon.dev un-deployed for 7.5 h on 2026-11-10 while each run waited about an hour for a runner. Docs SSG and Atlas build on relevant PRs; deploy only from `main` (push, a daily 00:05 UTC schedule that publishes future-dated blog posts on their date, or a manual dispatch). Upload and deploy share one condition, `event_name != 'pull_request' && ref == main`; a PR never deploys. Linux command deadlines cover install (10m), docs (8m), and Atlas (3m), below the 25m job backstop. Explicit Bash preserves the failed producer's status through `tee`. Always upload phase logs and the SSG error artifact before the job backstop; a timed-out command must fail, and a successful rerun does not establish the earlier stall's cause. Google Fonts self-hosting shares a 60s abort deadline across CSS and font bodies.

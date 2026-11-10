@@ -16,6 +16,14 @@ on:
   # any base, which reads as "validated" and is not.
   # Re-adding the filter re-opens that hole.
   pull_request:
+  # Merge queue: `Analyze (javascript-typescript)` AND `CodeQL` are required.
+  # `CodeQL` is not a job — code scanning posts it after this workflow uploads
+  # an analysis for the merge group's ref — so this job must really RUN in
+  # the queue (a skip would leave `CodeQL` missing and the group would time
+  # out). Each group has a unique ref, so the per-ref concurrency group below
+  # never cancels one group with another. Inert until a merge-queue rule is
+  # enabled on main.
+  merge_group:
   schedule:
     - cron: '27 4 * * 1' # weekly, Mondays 04:27 UTC
 

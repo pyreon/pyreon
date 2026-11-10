@@ -35,18 +35,29 @@ on:
   # "validated" and is not.
   pull_request:
     types: [opened, synchronize, reopened, labeled, unlabeled]
+  # Merge queue: both contexts are required, so the queue waits for them on
+  # every merge group. Both are functions of the PR's own diff and labels,
+  # which a merge group cannot change and does not carry (no PR payload, no
+  # labels), and the PR already passed them to enter the queue. So both jobs
+  # SKIP in a merge group — a skipped required check is accepted — instead
+  # of re-deciding a label exemption they cannot see. Inert until a
+  # merge-queue rule is enabled on main.
+  merge_group:
 
 permissions:
   contents: read
   pull-requests: read
 
 concurrency:
-  group: pr-gates-${{ github.event.pull_request.number }}
+  # A merge group has no PR number; its unique queue ref keeps groups from
+  # cancelling one another through a shared `pr-gates-` key.
+  group: pr-gates-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
   changeset:
     name: Changeset
+    if: github.event_name != 'merge_group'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -65,6 +76,7 @@ jobs:
 
   diagnose-catalog:
     name: Diagnose Catalog
+    if: github.event_name != 'merge_group'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
