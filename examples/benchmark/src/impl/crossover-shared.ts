@@ -225,8 +225,16 @@ export function idAt(index: number, expectedId: number) {
 export async function calibrateK(
   cycle: () => Promise<void>,
   targetMs: number,
+  op?: 'select' | 'partial' | 'swap',
 ): Promise<number> {
   for (let i = 0; i < 3; i++) await cycle()
+  // `?kswap=N` (etc., set by `bench-crossover --k swap=N`): use a FIXED K, the
+  // same for every arm. Calibrated K is per arm AND per page load, and it swung
+  // 3–7× between page loads of one arm (2026-11 K-sweep: Pyreon@100 swap
+  // 22 / 48 / 147 at one 10 ms target) — so two arms were timed over different
+  // amounts of work and GC per sample. A fixed K compares like with like.
+  const fixed = op !== undefined ? numParam(`k${op}`) : null
+  if (fixed !== null) return Math.max(K_MIN, Math.min(K_MAX, Math.floor(fixed)))
 
   let probe = 2
   for (;;) {

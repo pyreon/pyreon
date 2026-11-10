@@ -24,7 +24,10 @@ windows**.
 
 - **Two tabs, same browser** → sync with **no relay** (BroadcastChannel).
 - **Two browsers / devices** → append `?ws=ws://127.0.0.1:5190/<room>` so they
-  sync **through the relay**.
+  sync **through the relay**. The relay accepts pages served from loopback
+  (`localhost` / `127.0.0.1`) on any port; for another device on your LAN, start
+  it with `SYNC_ALLOWED_ORIGINS=http://<lan-ip>:5189` (comma-separated), since
+  the relay closes a cross-origin browser upgrade it was not told to allow.
 - **Reload** → edits persist (IndexedDB). **Stop the relay, edit, restart** →
   offline edits replay on reconnect.
 

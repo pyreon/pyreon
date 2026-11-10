@@ -16,7 +16,7 @@
  */
 import { transformSync } from 'esbuild'
 import { transformJSX_JS } from '@pyreon/compiler'
-import { Fragment, Suspense, _fuse, _rp, h } from '@pyreon/core'
+import { Fragment, Suspense, _fuse, _pk, _pp, _rp, h } from '@pyreon/core'
 import { _esc, _escSole, _ssr, _ssrDeferred, _ssrNode, renderToStream, renderToString } from '@pyreon/runtime-server'
 
 const SRC = `
@@ -44,8 +44,8 @@ function compile(ssrTemplate: boolean): (p: { ms: number }) => unknown {
     jsxFactory: 'h',
     jsxFragment: 'Fragment',
   }).code
-  const names = ['h', 'Fragment', 'Suspense', '_rp', '_fuse', '_ssr', '_ssrNode', '_ssrDeferred', '_esc', '_escSole']
-  const vals = [h, Fragment, Suspense, _rp, _fuse, _ssr, _ssrNode, _ssrDeferred, _esc, _escSole]
+  const names = ['h', 'Fragment', 'Suspense', '_pk', '_pp', '_rp', '_fuse', '_ssr', '_ssrNode', '_ssrDeferred', '_esc', '_escSole']
+  const vals = [h, Fragment, Suspense, _pk, _pp, _rp, _fuse, _ssr, _ssrNode, _ssrDeferred, _esc, _escSole]
   // oxlint-disable-next-line no-new-func
   return new Function(...names, `${lowered}\nreturn Node`)(...vals)
 }

@@ -1,5 +1,6 @@
 import type {
   DateFormats,
+  ListFormats,
   NamedFormatters,
   NumberFormats,
   RelativeTimeFormats,
@@ -13,12 +14,26 @@ export interface FormatterConfig {
   numberFormats?: NumberFormats | undefined
   dateFormats?: DateFormats | undefined
   relativeTimeFormats?: RelativeTimeFormats | undefined
+  listFormats?: ListFormats | undefined
   formats?: NamedFormatters | undefined
 }
 
 /** Coerce a date-ish value to a Date for Intl.DateTimeFormat. */
 function toDate(value: Date | number | string): Date {
   return value instanceof Date ? value : new Date(value)
+}
+
+/**
+ * Inline `{{val, list}}` items. An array is the list (nullish entries are
+ * dropped, the rest coerced with `String` — `Intl.ListFormat` throws on a
+ * non-string item). Any other value is a one-item list: a bare string must NOT
+ * reach `Intl.ListFormat.format`, which would iterate it character by character.
+ */
+function toListItems(value: unknown): string[] {
+  if (!Array.isArray(value)) return value == null ? [] : [String(value)]
+  const items: string[] = []
+  for (const item of value) if (item != null) items.push(String(item))
+  return items
 }
 
 /**
@@ -90,6 +105,7 @@ export function createFormatters(config: FormatterConfig) {
   const numTable = formatterTable<Intl.NumberFormat>()
   const dtTable = formatterTable<Intl.DateTimeFormat>()
   const rtTable = formatterTable<Intl.RelativeTimeFormat>()
+  const listTable = formatterTable<Intl.ListFormat>()
 
   /** Look up a named format for `locale`, falling back to `fallbackLocale`. */
   function resolveNamed<O>(
@@ -157,6 +173,15 @@ export function createFormatters(config: FormatterConfig) {
       (loc, opts) => new Intl.RelativeTimeFormat(loc, opts),
     )
 
+  const listFormatter = (locale: string, options?: Intl.ListFormatOptions | string) =>
+    cached(
+      listTable,
+      locale,
+      options,
+      (name) => resolveNamed(config.listFormats, locale, name) ?? {},
+      (loc, opts) => new Intl.ListFormat(loc, opts),
+    )
+
   const n = (locale: string, value: number | bigint, options?: Intl.NumberFormatOptions | string): string => {
     if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('i18n.formatNumber')
     return numberFormatter(locale, options).format(value)
@@ -181,27 +206,33 @@ export function createFormatters(config: FormatterConfig) {
     return relativeTimeFormatter(locale, options).format(value, unit)
   }
 
+  const l = (
+    locale: string,
+    values: Iterable<string>,
+    options?: Intl.ListFormatOptions | string,
+  ): string => {
+    if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('i18n.formatList')
+    // A bare string is iterable — `Intl.ListFormat` would join its characters.
+    return listFormatter(locale, options).format(typeof values === 'string' ? [values] : values)
+  }
+
   /**
    * Resolve an inline interpolation format spec (`{{val, <spec>}}`).
    * `spec` is the comma-separated text after the key: `number`, `currency`
    * (a named number format), `date` / `time` / `datetime`, `relativetime, day`,
-   * or any custom named formatter from `config.formats`.
+   * `list` / `list, disjunction` / `list, unit, narrow`, or any custom named
+   * formatter from `config.formats`.
    *
    * Resolution order: custom `formats` → known builtins → configured named
-   * (number/date/relative-time) tables → `String(value)`.
+   * (number/date/relative-time/list) tables → `String(value)`.
    */
   function format(value: unknown, spec: string, locale: string): string {
-    const parsed = parseSpec(spec)
-    return formatParsed(value, parsed.name, parsed.unit, locale)
+    return formatParsed(value, parseSpec(spec), locale)
   }
 
   /** {@link format} with the spec already split by {@link parseSpec}. */
-  function formatParsed(
-    value: unknown,
-    name: string,
-    unit: Intl.RelativeTimeFormatUnit,
-    locale: string,
-  ): string {
+  function formatParsed(value: unknown, spec: ParsedSpec, locale: string): string {
+    const { name, unit } = spec
     // 1. Custom named formatter wins.
     const custom = ownAt(config.formats, name)
     if (typeof custom === 'function') return custom(value, locale)
@@ -213,6 +244,7 @@ export function createFormatters(config: FormatterConfig) {
       return d(locale, value as Date | number | string, name)
     }
     if (name === 'relativetime') return rt(locale, Number(value), unit)
+    if (name === 'list') return l(locale, toListItems(value), spec.list)
 
     // 3. Configured named formats (number → date → relative-time tables).
     if (resolveNamed(config.numberFormats, locale, name) !== undefined) {
@@ -224,22 +256,37 @@ export function createFormatters(config: FormatterConfig) {
     if (resolveNamed(config.relativeTimeFormats, locale, name) !== undefined) {
       return rt(locale, Number(value), unit, name)
     }
+    if (resolveNamed(config.listFormats, locale, name) !== undefined) {
+      return l(locale, toListItems(value), name)
+    }
 
     // 4. No recognized spec — plain coercion.
     return value == null ? '' : String(value)
   }
 
-  return { n, d, rt, format, formatParsed }
+  return { n, d, rt, l, format, formatParsed }
 }
 
 export type Formatters = ReturnType<typeof createFormatters>
 
+/** An inline format spec split once (see {@link parseSpec}). */
+export interface ParsedSpec {
+  name: string
+  /** `relativetime, <unit>` — default `second`. */
+  unit: Intl.RelativeTimeFormatUnit
+  /** `list, <type>, <style>` — both optional `Intl.ListFormatOptions` values. */
+  list: Intl.ListFormatOptions
+}
+
 /**
- * Split an inline format spec (`relativetime, day`) into its name and the
- * relative-time unit (default `second`). Done once per compiled placeholder.
+ * Split an inline format spec (`relativetime, day`, `list, disjunction`) into
+ * its name and arguments. Done once per compiled placeholder.
  */
-export function parseSpec(spec: string): { name: string; unit: Intl.RelativeTimeFormatUnit } {
+export function parseSpec(spec: string): ParsedSpec {
   // `split(',')` always yields ≥1 element, so `parts[0]` is always a string.
   const parts = spec.split(',').map((p) => p.trim())
-  return { name: parts[0]!, unit: (parts[1] ?? 'second') as Intl.RelativeTimeFormatUnit }
+  const list: Intl.ListFormatOptions = {}
+  if (parts[1]) list.type = parts[1] as Intl.ListFormatType
+  if (parts[2]) list.style = parts[2] as Intl.ListFormatStyle
+  return { name: parts[0]!, unit: (parts[1] ?? 'second') as Intl.RelativeTimeFormatUnit, list }
 }

@@ -10,6 +10,7 @@ import {
   resetAllStores,
   resetStore,
   type MutationInfo,
+  defineSchemaStore,
 } from '../index'
 
 beforeEach(() => {
@@ -43,7 +44,7 @@ describe('defineStore({ ssr: false }) — excluded from the SSR payload', () => 
   })
 
   it('a schema store with ssr:false is not serialized', () => {
-    const useSecret = defineStore('secret', {
+    const useSecret = defineSchemaStore('secret', {
       schema: z.object({ apiKey: z.string() }),
       initial: { apiKey: 'sk-live' },
       ssr: false,

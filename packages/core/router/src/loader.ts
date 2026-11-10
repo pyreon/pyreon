@@ -1,6 +1,7 @@
 import type { Context } from '@pyreon/core'
 import { createContext, useContext } from '@pyreon/core'
 import type { RouterInstance } from './types'
+import { isNotFoundError } from './not-found'
 
 // Dev-mode gate + counter sink. See packages/internals/perf-harness for contract.
 const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number) => void }
@@ -75,16 +76,31 @@ export async function prefetchLoaderData(
         // `_loaderInflight`) — the exact double-fetch prefetching exists
         // to avoid. Loader errors (incl. thrown `redirect()`) propagate
         // to the caller exactly as before.
-        const data = await router._executeLoader(r, {
-          params: route.params,
-          query: route.query,
-          signal: ac.signal,
-          ...(request ? { request } : {}),
-        })
+        let data: unknown
+        try {
+          data = await router._executeLoader(r, {
+            params: route.params,
+            query: route.query,
+            signal: ac.signal,
+            ...(request ? { request } : {}),
+          })
+        } catch (err) {
+          // `notFound()` → the path's not-found state (see `router.preload`),
+          // not a rejection. A navigation's commit overwrites it.
+          if (!isNotFoundError(err)) throw err
+          router._loaderNotFound?.set(route.path)
+          return
+        }
         router._loaderData.set(r, data)
       }),
   )
 }
+
+/**
+ * Key in the serialized loader-data blob marking a page whose loader threw
+ * `notFound()`. Route paths always start with `/`, so it cannot collide.
+ */
+const LOADER_NOT_FOUND_KEY = '__pyreonNotFound'
 
 /**
  * Serialize loader data to a JSON-safe plain object for embedding in SSR HTML.
@@ -94,7 +110,7 @@ export async function prefetchLoaderData(
  * await prefetchLoaderData(router, req.url)
  * const { html, head } = await renderWithHead(h(App, null))
  * const page = `...${head}
- *   <script>window.__PYREON_LOADER_DATA__=${JSON.stringify(serializeLoaderData(router))}</script>
+ *   <script>window.__PYREON_LOADER_DATA__=${stringifyLoaderDataForScript(serializeLoaderData(router))}</script>
  *   ...${html}...`
  */
 export function serializeLoaderData(router: RouterInstance): Record<string, unknown> {
@@ -108,7 +124,14 @@ export function serializeLoaderData(router: RouterInstance): Record<string, unkn
   // `hydrateLoaderData` counts occurrences while walking the SAME matched
   // chain in the SAME order, so the suffixes line up deterministically.
   const result: Record<string, unknown> = {}
-  const matched = router.currentRoute().matched
+  const current = router.currentRoute()
+  const matched = current.matched
+  // The server rendered the loader-not-found chain: tell the client so it
+  // starts in the same state (otherwise it would resolve the real route and
+  // the hydration would mismatch).
+  if (current.isNotFound === true && router._loaderNotFound?.peek() === current.path) {
+    result[LOADER_NOT_FOUND_KEY] = true
+  }
   const seen = new Map<string, number>()
   for (const record of matched) {
     if (!router._loaderData.has(record)) continue
@@ -128,7 +151,11 @@ export function serializeLoaderData(router: RouterInstance): Record<string, unkn
 }
 
 /**
- * Serialize loader data to JSON for embedding in an SSR `<script>` tag.
+ * Serialize loader data to script-safe JSON TEXT: a JSON response body (the
+ * `/_pyreon/data` endpoint) or a `<script type="application/json">` block read
+ * back with `JSON.parse`. For an EXECUTABLE `<script>window.X=…</script>`
+ * assignment use {@link stringifyLoaderDataForScript}: a JS object literal
+ * treats a `"__proto__"` key as a prototype setter, JSON does not.
  *
  * M2.2 — Drop-in replacement for `JSON.stringify(serializeLoaderData(router))`
  * with three correctness wins:
@@ -165,8 +192,9 @@ export function serializeLoaderData(router: RouterInstance): Record<string, unkn
  * failures were the pre-fix shape.
  *
  * @example
+ * // JSON response body / `<script type="application/json">` data block:
  * const json = stringifyLoaderData(serializeLoaderData(router))
- * const tag = `<script>window.__PYREON_LOADER_DATA__=${json}</script>`
+ * // Executable `window.X=…` assignment: use stringifyLoaderDataForScript.
  */
 export function stringifyLoaderData(loaderData: Record<string, unknown>): string {
   // Fast path: native JSON.stringify with NO replacer. A replacer function
@@ -196,6 +224,85 @@ export function stringifyLoaderData(loaderData: Record<string, unknown>): string
     .replace(/</g, '\\u003C')
     .replace(/\u2028/g, '\\u2028')
     .replace(/\u2029/g, '\\u2029')
+}
+
+/**
+ * Serialize loader data (or any JSON-shaped state, e.g. the store-state twin
+ * `__PYREON_STORE_STATE__`) to a JavaScript EXPRESSION for an inline
+ * `<script>window.X=…</script>` assignment.
+ *
+ * Use this — not {@link stringifyLoaderData} — whenever the output is
+ * EVALUATED as JavaScript. JSON text and a JS object literal disagree on
+ * exactly one key: in a literal, `"__proto__": {…}` does not create a
+ * property, it SETS THE PROTOTYPE. A user-keyed map that legitimately holds a
+ * `__proto__` key (usernames, tags, slugs, uploaded JSON) would lose that key
+ * on the client, and every missing-key lookup on the map would then inherit
+ * the smuggled value's fields — while the `/_pyreon/data` endpoint
+ * (`res.json()`, i.e. `JSON.parse`) kept it as an own key, so SSR-hydrated
+ * and client-navigated pages disagreed. Every `"__proto__"` KEY token is
+ * rewritten to the computed form `["__proto__"]`, which a literal defines as
+ * an ordinary own property, so the evaluated value is deep-equal to
+ * `JSON.parse` of the JSON. String CONTENTS are never touched, and payloads
+ * without that key (the overwhelming case) pay one `includes` scan and are
+ * returned byte-identical to {@link stringifyLoaderData}.
+ *
+ * The output is NOT JSON when such a key exists — for a JSON response or a
+ * `<script type="application/json">` data block use `stringifyLoaderData`.
+ *
+ * @example
+ * const expr = stringifyLoaderDataForScript(serializeLoaderData(router))
+ * const tag = `<script>window.__PYREON_LOADER_DATA__=${expr}</script>`
+ */
+export function stringifyLoaderDataForScript(data: object): string {
+  // `object`, not `Record<string, unknown>`: callers embed interface-typed
+  // payloads too (a query `DehydratedState`), which TS will not widen to an
+  // index signature.
+  return jsonToScriptExpression(stringifyLoaderData(data as Record<string, unknown>))
+}
+
+/**
+ * Rewrite every `"__proto__"` object KEY in compact `JSON.stringify` output to
+ * `["__proto__"]`. Outside string tokens JSON contains no `"`, so walking
+ * whole string tokens left to right is an exact tokenizer; a string token
+ * immediately followed by `:` is a key (`JSON.stringify` without `space`
+ * emits no whitespace, and a string VALUE is followed by `,`, `}` or `]`).
+ * `JSON.stringify` never escapes `_` or ASCII letters, so the key always
+ * appears as the literal text `"__proto__"`.
+ *
+ * A single forward scan, not a global string-token regex: a regex retried
+ * from every `"` makes an unterminated run of `\"` quadratic (ReDoS), and
+ * this runs on server-rendered, user-influenced payloads.
+ */
+/** @internal Exported for the adversarial-input test; not part of the package entry. */
+export function jsonToScriptExpression(json: string): string {
+  if (!json.includes('"__proto__":')) return json
+  const n = json.length
+  let out = ''
+  let copied = 0
+  let i = 0
+  while (i < n) {
+    if (json.charCodeAt(i) !== 34 /* " */) {
+      i++
+      continue
+    }
+    const start = i++
+    // Advance to the closing quote, stepping over each `\x` escape pair.
+    while (i < n) {
+      const c = json.charCodeAt(i)
+      if (c === 34 /* " */) break
+      i += c === 92 /* \ */ ? 2 : 1
+    }
+    i++ // past the closing quote
+    if (
+      i - start === 11 &&
+      json.charCodeAt(i) === 58 /* : */ &&
+      json.startsWith('"__proto__"', start)
+    ) {
+      out += `${json.slice(copied, start)}["__proto__"]`
+      copied = i
+    }
+  }
+  return out + json.slice(copied)
 }
 
 /**
@@ -261,7 +368,11 @@ export function hydrateLoaderData(
   serialized: Record<string, unknown>,
 ): void {
   if (!serialized || typeof serialized !== 'object') return
-  const route = router._resolve(router.currentRoute().path)
+  // Server rendered the loader-not-found chain → enter the same state BEFORE
+  // resolving, so the walk below (and the first render) uses that chain.
+  const notFound = serialized[LOADER_NOT_FOUND_KEY] === true && router._loaderNotFound !== undefined
+  if (notFound) router._loaderNotFound.set(router.currentRoute().path)
+  const route = notFound ? router.currentRoute() : router._resolve(router.currentRoute().path)
   // Mirror serializeLoaderData's collision-aware keys: first record at a
   // path reads the bare key, subsequent same-path records read
   // `path#<occurrence>` (falling back to the bare key for blobs written by

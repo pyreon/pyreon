@@ -60,6 +60,14 @@ Zero's `createServer` mounted API routes, actions, island fragments and the `/_p
 
 ---
 
+### An unanchored "opener, negated run, closer" regex is quadratic when the closer is missing
+
+In `/<[^>]+>/g`, `/!?\[([^\]]*)\]\([^)]*\)/g` or `/\{([^}]*)\}/g` the negated class admits the OPENER, so on `'['.repeat(1e5)` every opener scans to the end, fails, and the engine retries at the next one (4 s). The same shape: `/([A-Za-z][\w-]*)=…/g` retries at every letter of a long run, and `^\s*` under `m` restarts at every line start and sweeps all following blank lines (`\s` contains `\n`). Markdown, code-fence meta and frontmatter are author content and may come from contributors or a CMS.
+  - Bound line-start runs to one line: `[^\S\n\r\u2028\u2029]*` (`\r` and U+2028/9 are line starts under `m` too, so excluding only `\n` stays quadratic on CR input).
+  - For delimited spans, use a scanner that remembers the next closer (no closer after one opener means none after any later one): `zero-content/src/_shared/linear-scan.ts`. Prove a rewrite exact with a seeded differential against the old regex plus a real-content corpus, and lock it with a 1e5-character timing case that fails on the old regex: `zero-content/src/tests/_linear-scan-equivalence.test.ts`.
+
+---
+
 ### URL guard that classifies the handed string, not the browser-preprocessed one
 
 The WHATWG URL parser first strips leading/trailing C0 controls and space, then removes all ASCII tab/newline from anywhere. `trim()` covers neither fully, so `"\u0000//evil"` and `"/<TAB>/evil"` resolve off-origin, and `"java<TAB>script:alert(1)"` resolves to a live `javascript:` URL.
@@ -74,8 +82,16 @@ The WHATWG URL parser first strips leading/trailing C0 controls and space, then 
 `<!--` followed by `<script` puts the tokenizer in script-data-double-escaped state without any slash, so `<!--<script>alert(1)//` survives. Raw U+2028/U+2029 in JSON are line terminators in a script and cause a `SyntaxError`.
   - For DATA (JSON): `.replace(/</g, '\\u003C').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029')`. `JSON.parse` round-trips it byte-identically.
   - For CODE (raw JS source): escape only `</`. `\u003C` in raw JS breaks every `<` operator. The `scriptSafe` helpers in `packages/fundamentals/{code,charts,rich-text,flow}/src/webview.ts` are correct as they are.
-  - `__PYREON_LOADER_DATA__` (`html.ts`, `render-page.ts`) and `__PYREON_STORE_STATE__` (`render-page.ts`) all go through `stringifyLoaderData` in `packages/core/router/src/loader.ts`. `@pyreon/atlas`'s `bakedRpcScript` (`build/bake.ts`) is a correct precedent.
+  - `__PYREON_LOADER_DATA__` (`html.ts`, `render-page.ts`) and `__PYREON_STORE_STATE__` (`render-page.ts`) all go through `stringifyLoaderDataForScript` (which wraps `stringifyLoaderData`) in `packages/core/router/src/loader.ts`. So does `@pyreon/atlas`'s `bakedRpcScript` (`build/bake.ts`, the static-site RPC payload: component names and answers are user-shaped).
   - Tests: `router/src/tests/loader.test.ts` (`inline-<script> context escaping (security)`), `server/src/tests/server.test.ts` (`buildScripts neutralises the <!--<script> script-data bypass`).
+
+---
+
+### JSON interpolated into an executable script is a JS object literal, not JSON
+
+In `<script>window.X=${json}</script>` a `"__proto__":` key SETS THE PROTOTYPE instead of creating the key. A user-keyed map holding that key (usernames, tags, slugs, uploaded JSON) loses it on the client and every missing-key lookup inherits its fields, while a `res.json()` reader of the same data keeps it, so SSR-hydrated and client-navigated pages disagree.
+  - Emit the key as the computed `["__proto__"]` (an ordinary own property in a literal), only for KEY tokens, never inside string contents: `stringifyLoaderDataForScript` in `packages/core/router/src/loader.ts`. Output without that key is byte-identical to the JSON. Keep `stringifyLoaderData` (JSON text) for JSON responses and `type="application/json"` blocks, which `JSON.parse` reads correctly.
+  - Lock: `server/src/tests/script-embed-oracle.test.ts` — a seeded fuzz that parses every embed with parse5 (no breakout element) and EVALUATES each script, asserting the same own keys and only standard prototypes at every depth.
 
 ---
 
@@ -243,5 +259,20 @@ Setting `input.value`/`textarea.value` as a property never creates the content a
 ### Sanitized `innerHTML` prop must not be emitted raw by SSR
 
 `innerHTML` is the sanitized prop (client `applyStaticProp` runs a `DOMParser` allowlist), while `dangerouslySetInnerHTML` is raw by design. The sanitizer cannot run in Node, and a string sanitizer is mXSS-prone on the SVG surface, so the SSR/SSG/stream renderers throw a `[Pyreon]` error naming the remedy (client-only island/SPA route, or `dangerouslySetInnerHTML` with a server-safe sanitizer). Escaping as text is wrong. A client-side security guard needs an SSR twin, because the browser parses the initial HTML before any JS runs; if the guard cannot run on the server, fail loudly. Code: `packages/core/runtime-server/src/index.ts:throwSsrInnerHtmlUnsupported`. Tests: `runtime-server/src/tests/ssr-innerhtml-xss.test.ts`, `runtime-dom/src/tests/ssr-innerhtml-xss-parity.test.ts`.
+
+---
+
+### A serializer that judges a value in a different form than its consumer reads it
+
+A guard is only as good as the representation it inspects. Decide on what the CONSUMER will see after its own decoding/normalisation, at the one funnel every emit goes through. Rules:
+  - **A second emit path skips the first path's guard.** `@pyreon/rich-text`'s pre-mount/server `html()` is `jsonToHtml`, not TipTap, so the Link extension's URI allow-list never ran and a stored `javascript:` href came out live. Every URL attribute a serializer writes goes through one predicate (`@pyreon/core`'s `isUnsafeUrl`); an HTML importer judges the `getAttribute` value, which is already entity-decoded. Reference: `packages/fundamentals/rich-text/src/html.ts` (`safeUrl`); `tests/url-safety.test.ts`.
+  - **A value inside an HTML attribute is entity-decoded before CSS/URL parsing.** Stripping `;` `(` `)` from the raw string misses `&#59;`. Decode to a fixed point, strip, then remove every remaining `&` (no character reference forms without one, including named ones a decoder does not know). Reference: `packages/fundamentals/document/src/sanitize.ts:sanitizeCss`; `tests/css-entity-decode.test.ts` (oracle: a real parse of the emitted markup).
+  - **`encodeURIComponent` does not make a path segment inert.** A value that is exactly `.` / `..` is a dot segment that WHATWG `fetch` and OkHttp resolve, and so is `%2E` — the request (with its credentials) reaches another endpoint. Encode the dots twice (`%252E`). The web (`@pyreon/http` `encodePathParam`), the native compile-time literal path (imports the web function), both native runtimes (`PyreonURL.encodePathParam`) and lathe's generated runtime must apply the same rule. Reference: `packages/fundamentals/http/src/url.ts`; parity in `native/compiler/src/tests/native-url-encoder-parity.test.ts` (executed).
+
+---
+
+### A WebSocket endpoint that authenticates by cookie without checking `Origin`
+
+WebSockets are not subject to CORS, and the browser attaches the endpoint's cookies to an upgrade that ANY site's page opens (cross-site WebSocket hijacking). Refuse a browser upgrade whose `Origin` is neither same-origin with `Host` nor explicitly allowed, before the auth hook runs; an upgrade with no `Origin` is not a browser page. Reference: `packages/fundamentals/sync/src/server.ts` (`allowedOrigins`, close 4403); `tests/server-origin.test.ts`.
 
 ---
