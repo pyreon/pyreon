@@ -5,7 +5,12 @@
 // - The setter returns the new value: https://docs.solidjs.com/reference/basic-reactivity/create-signal
 // - mapArray maps each item once, by reference, and disposes an item's
 //   mapping when it leaves: https://docs.solidjs.com/reference/reactive-utilities/map-array
+import { h } from '@pyreon/core'
+import { mount } from '@pyreon/runtime-dom'
 import { createEffect, createMemo, createRoot, createSignal, mapArray } from '../index'
+import { jsx } from '../jsx-runtime'
+
+const tick = () => new Promise<void>((r) => setTimeout(r, 10))
 
 describe('createMemo — eager', () => {
   test('runs at creation and once per change, threading prev through every run', () => {
@@ -85,5 +90,77 @@ describe('mapArray — keyed by reference', () => {
     runs.length = 0
     setTick(2)
     expect(runs).toEqual([])
+  })
+})
+
+describe('mapArray — duplicates, owners', () => {
+  test('a repeated item maps once per occurrence and keeps both mappings on a reorder', () => {
+    createRoot((dispose) => {
+      const a = { id: 'a' }
+      const b = { id: 'b' }
+      const [list, setList] = createSignal([a, a, b])
+      let calls = 0
+      const mapped = mapArray(list, (item) => ({ id: item.id, n: ++calls }))
+      const first = mapped()
+      expect(first.map((m) => m.id)).toEqual(['a', 'a', 'b'])
+      expect(calls).toBe(3)
+      setList([a, b, a])
+      const second = mapped()
+      expect(calls).toBe(3)
+      // Occurrences pair up in order: the 1st `a` stays first, the 2nd moves last.
+      expect(second).toEqual([first[0], first[2], first[1]])
+      dispose()
+    })
+  })
+
+  test('works with no owner at all (no component, no root)', () => {
+    const [list, setList] = createSignal(['x'])
+    let calls = 0
+    const mapped = mapArray(list, (item) => {
+      calls++
+      return item.toUpperCase()
+    })
+    expect(mapped()).toEqual(['X'])
+    setList(['x', 'y'])
+    expect(mapped()).toEqual(['X', 'Y'])
+    expect(calls).toBe(2)
+  })
+
+  test('inside a component: survives re-renders, maps each item once, stops at unmount', async () => {
+    let setList!: (v: string[]) => string[]
+    let bump!: (v: number) => number
+    let calls = 0
+    let seen: string[] = []
+    const Comp = () => {
+      const [list, sl] = createSignal(['a', 'b'])
+      const [n, sn] = createSignal(0)
+      setList = sl
+      bump = sn
+      const mapped = mapArray(list, (item) => {
+        calls++
+        return item.toUpperCase()
+      })
+      seen = mapped()
+      return jsx('div', { children: `${n()}:${mapped().join(',')}` })
+    }
+    const el = document.createElement('div')
+    document.body.appendChild(el)
+    const unmount = mount(
+      h(() => jsx(Comp, {}), null),
+      el,
+    )
+    expect(seen).toEqual(['A', 'B'])
+    bump(1)
+    await tick()
+    expect(el.textContent).toBe('1:A,B')
+    setList(['b', 'c'])
+    await tick()
+    expect(el.textContent).toBe('1:B,C')
+    expect(calls).toBe(3)
+    unmount()
+    setList(['d'])
+    await tick()
+    expect(calls).toBe(3)
+    el.remove()
   })
 })
