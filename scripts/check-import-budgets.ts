@@ -180,6 +180,17 @@ export const SCENARIOS: Scenario[] = [
     imports: ['useDraggable'],
   },
   {
+    // Locks the `mini` entry WITHOUT the runtime JIT (~3.5 KB gz): the JIT is
+    // installed by the main entry or `enableJit()` from `@pyreon/validate/jit`,
+    // never reached from `mini`. A static `./jit` import in `core/schema.ts`
+    // puts it back into every `mini` bundle.
+    id: '@pyreon/validate::mini',
+    pkg: '@pyreon/validate',
+    dir: 'fundamentals/validate',
+    entry: 'mini.js',
+    imports: ['object', 'string', 'number', 'boolean', 'email', 'minLength', 'minValue', 'integer'],
+  },
+  {
     id: '@pyreon/core::jsx',
     pkg: '@pyreon/core',
     dir: 'core/core',

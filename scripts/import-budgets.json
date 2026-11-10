@@ -16,5 +16,6 @@
   "@pyreon/charts::chart-line": 40300,
   "@pyreon/charts::chart-pie": 26210,
   "@pyreon/zero::web-vitals": 1500,
-  "@pyreon/dnd::useDraggable": 1020
+  "@pyreon/dnd::useDraggable": 1020,
+  "@pyreon/validate::mini": 6400
 }
