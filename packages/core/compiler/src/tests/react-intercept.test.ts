@@ -796,6 +796,19 @@ describe('diagnoseError', () => {
     expect(result!.fixCode).toContain('signal')
   })
 
+  // A static route resolves to ONE cached frozen ResolvedRoute; adding a
+  // property to it (stashing per-navigation data on `to`) throws this.
+  test('diagnoses a write to a frozen ResolvedRoute', () => {
+    const result = diagnoseError(
+      'TypeError: Cannot add property visitedAt, object is not extensible',
+    )
+    expect(result).not.toBeNull()
+    expect(result!.cause).toContain('visitedAt')
+    expect(result!.cause).toContain('ResolvedRoute')
+    expect(result!.fix).toContain('{ ...route')
+    expect(result!.fixCode).toContain('signal')
+  })
+
   test('returns null for unknown errors', () => {
     expect(diagnoseError('Something completely unrelated happened')).toBeNull()
     expect(diagnoseError('')).toBeNull()

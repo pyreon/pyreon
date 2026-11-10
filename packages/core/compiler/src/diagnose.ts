@@ -1598,6 +1598,26 @@ onBeforeRouteEnter(() => { viewedAt.set(Date.now()) })`,
     }),
   },
   {
+    // A static route's `ResolvedRoute` is ONE cached frozen object
+    // (@pyreon/router: `resolveRoute` returns it for every resolve of that
+    // path with no query/hash/validateSearch — zero allocation, and an
+    // `Object.is`-gated reader sees "unchanged"). Code that stashes
+    // per-navigation data ON the route object (`to.myFlag = true` in a
+    // guard, `route.cachedAt = …` in a component) now throws this when it
+    // adds a new property. JSC and V8 word it the same way.
+    pattern: /Cannot add property ([\w$]+), object is not extensible/,
+    diagnose: (m) => ({
+      cause: `Attempted to add '${m[1]}' to a frozen object. If the object is a route from \`useRoute()\`, a guard's \`to\`/\`from\`, or \`router.currentRoute()\`, a static route resolves to ONE cached frozen \`ResolvedRoute\` shared by every navigation to that path — writing to it would leak the value into every later visit, so the router freezes it.`,
+      fix: "Treat a `ResolvedRoute` as read-only. To annotate one, copy it first (`{ ...route, myFlag: true }`); for per-navigation state use your own store, context or signal.",
+      fixCode: `// BAD — throws TypeError for static routes (shared frozen object):
+// router.beforeEach((to) => { (to as any).visitedAt = Date.now() })
+
+// GOOD — copy, or keep the state elsewhere:
+const visitedAt = signal<number | null>(null)
+router.beforeEach(() => { visitedAt.set(Date.now()) })`,
+    }),
+  },
+  {
     // The residual this PR's fix leaves behind. `isSafeImageDataUri` used to
     // swallow a `decodeURIComponent` failure and scan the still-encoded bytes,
     // which the scripted-SVG regex cannot match — so a payload with a malformed
