@@ -153,6 +153,7 @@ Eligible trees lower to `_ssr(["<li>…", "</li>"], hole0, …)`. Holes resolve 
 - Opt-in in `@pyreon/compiler` (`ssrTemplate: true`), because the emit injects an `@pyreon/runtime-server` import and `_ssr` returns an `instanceof`-branded `RawHtml` the app's own renderer must recognise.
 - Auto in `@pyreon/vite-plugin`: enabled when `@pyreon/runtime-server` resolves from the app, else the `h()` path with a one-time dev warning. `true`/`false` force it.
 - Rows and `.map` items concatenate statics and hole temps inline instead of calling `_ssrItem`. Holes not provably `string` are guarded; a failed guard (async `_esc`, a `RawHtml` from `_ssrChildren`/`_ssrForKeyed`) falls back to `_ssrItem`. Declines entirely when a user param could be shadowed by the `_h<n>` temps.
+- A component child is a PRESERVED-source hole (`_ssrNode(<Comp …/>)`, walked in place), and so is an expression child that contains JSX the lowerings cannot turn into a string (`{items.map(i => <li><Link/></li>)}`) when `sliceExpr` returns its source verbatim: `_esc(`/`_escSole(` around the range, so the item's own root templates. Any call with a preserved hole, or with a generated hole that still builds JSX, is wrapped in `_ssrDeferred(() => …)` so components render at the h() path's position (context).
 
 ### Hydrating compiled templates
 

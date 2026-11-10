@@ -1374,6 +1374,10 @@ export function transformJSX_JS(
   let needsSsrChildrenImport = false
   let needsSsrItemImport = false
   let needsSsrNodeImport = false
+  let needsSsrDeferredImport = false
+  /** Set by `ssrLowerNestedElements`: its non-null result still contains JSX
+   * in an operand it kept as source. */
+  let ssrLowerResidualJsx = false
   let needsSsrForKeyedImport = false
   let needsEscImport = false
   let needsEscSoleImport = false
@@ -1897,7 +1901,15 @@ export function transformJSX_JS(
      * is" — see `ssrEmitSourceHole`. The emitter then brackets the range with
      * replacements instead of replacing across it.
      */
-    holeSrc: ({ start: number; end: number; node: N } | null)[]
+    holeSrc: ({ start: number; end: number; node: N; open: string; close: string } | null)[]
+    /**
+     * A GENERATED hole's text contains JSX — a VNode built and rendered by
+     * `_esc`/`_escSole` the moment the `_ssr(...)` arguments evaluate. Like a
+     * preserved component hole, that render must happen at the h() path's
+     * render position (context), so the call is wrapped in `_ssrDeferred`.
+     * Propagates from `.map` / `<For>` item buffers to the enclosing call.
+     */
+    deferJsx: boolean
   }
 
   function ssrEmitStatic(buf: SsrBuf, s: string): void {
@@ -1946,10 +1958,10 @@ export function transformJSX_JS(
     return true
   }
 
-  function ssrEmitSourceHole(buf: SsrBuf, el: N): void {
+  function ssrEmitSourceHole(buf: SsrBuf, el: N, open = '_ssrNode(', close = ')'): void {
     buf.holes.push('')
     buf.holeStr.push(false)
-    buf.holeSrc.push({ start: el.start as number, end: el.end as number, node: el })
+    buf.holeSrc.push({ start: el.start as number, end: el.end as number, node: el, open, close })
     buf.statics.push('')
   }
 
@@ -2344,6 +2356,7 @@ export function transformJSX_JS(
     // list onto the h() path.
     const itemBuf = buildSsrBuf(body, 'mapitem')
     if (itemBuf === null) return false
+    if (itemBuf.deferJsx) buf.deferJsx = true
     const recv = sliceExpr(callee.object)
     const params = cb.params ?? []
     const paramText =
@@ -2542,6 +2555,9 @@ export function transformJSX_JS(
     const eb = buildSsrBuf(el, 'recursed')
     if (eb === null) return null
     if (eb.holeSrc.some((h) => h !== null)) return null
+    // Generated text that still builds JSX must render at the h() position —
+    // which only a whole-call `_ssrDeferred` gives, not an operand string.
+    if (eb.deferJsx) return null
     needsSsrImport = true
     return ssrCallText(eb, 'recursed')
   }
@@ -2565,12 +2581,19 @@ export function transformJSX_JS(
    * pre-existing VNode path.
    */
   function ssrLowerNestedElements(expr: N): string | null {
-    if (expr.type === 'JSXElement') return ssrLowerElementText(expr)
+    ssrLowerResidualJsx = false
+    if (expr.type === 'JSXElement') {
+      const whole = ssrLowerElementText(expr)
+      ssrLowerResidualJsx = false
+      return whole
+    }
     if (expr.type === 'LogicalExpression' && expr.operator === '&&') {
       const right = unwrapTypeLayers(expr.right)
       if (right.type !== 'JSXElement') return null
       const lowered = ssrLowerElementText(right)
-      return lowered === null ? null : `${sliceExpr(expr.left)} && ${lowered}`
+      if (lowered === null) return null
+      ssrLowerResidualJsx = containsJsx(expr.left)
+      return `${sliceExpr(expr.left)} && ${lowered}`
     }
     if (expr.type === 'ConditionalExpression') {
       const cons = unwrapTypeLayers(expr.consequent)
@@ -2578,6 +2601,11 @@ export function transformJSX_JS(
       const loweredCons = cons.type === 'JSXElement' ? ssrLowerElementText(cons) : null
       const loweredAlt = alt.type === 'JSXElement' ? ssrLowerElementText(alt) : null
       if (loweredCons === null && loweredAlt === null) return null
+      // An arm left as source (`cond ? <div/> : <Comp/>`) still builds JSX.
+      ssrLowerResidualJsx =
+        containsJsx(expr.test) ||
+        (loweredCons === null && containsJsx(expr.consequent)) ||
+        (loweredAlt === null && containsJsx(expr.alternate))
       const consText = loweredCons ?? sliceExpr(expr.consequent)
       const altText = loweredAlt ?? sliceExpr(expr.alternate)
       return `${sliceExpr(expr.test)} ? ${consText} : ${altText}`
@@ -2595,6 +2623,7 @@ export function transformJSX_JS(
     // h() would then elide that accessor's markers because it is the item
     // element's only child — so `_esc` (which adds them) would diverge.
     if (mode === 'mapitem') {
+      if (containsJsx(expr)) buf.deferJsx = true
       if (sole) emitEscSoleHole(buf, sliceExpr(expr))
       else emitEscHole(buf, sliceExpr(expr))
       return true
@@ -2605,7 +2634,50 @@ export function transformJSX_JS(
     // `cond ? <el> : …`) so the taken branch builds a string, not a VNode. The
     // reconstructed text is byte-identical through `_esc`/`_escSole` (see
     // `ssrLowerNestedElements`); null keeps the pre-existing `sliceExpr` path.
-    const exprText = ssrLowerNestedElements(expr) ?? sliceExpr(expr)
+    const lowered = ssrLowerNestedElements(expr)
+    if (lowered === null && containsJsx(expr)) {
+      // JSX the two lowerings above could not turn into a string — a `.map`
+      // whose item holds a COMPONENT (`items.map(i => <li><Link/></li>)`), a
+      // ternary arm that is a component, a block-bodied callback. As generated
+      // `sliceExpr` text, that JSX is invisible to the walker, so every element
+      // in it fell to `jsx()`/`h()` at runtime: a list of 100 `<li><Link/></li>`
+      // cost ~400 VNode allocations per request instead of 100.
+      //
+      // When the expression needs no rewrite of its own (`sliceExpr` returns
+      // the source verbatim), PRESERVE it like a component
+      // child: `_esc(` / `_escSole(` around the untouched range, and `walkNode`
+      // then visits it exactly as the client compile does — so the item's root
+      // element becomes its own `_ssr` template (deferred, holding the
+      // component as an `_ssrNode` hole). `renderNode` resolves an array of
+      // those to the same bytes as the array of VNodes. Recursed mode only:
+      // map/for item bodies are generated text with nowhere to keep a range.
+      if (
+        mode === 'recursed' &&
+        sliceExpr(expr) === code.slice(expr.start as number, expr.end as number)
+      ) {
+        if (sole) {
+          needsEscSoleImport = true
+          ssrEmitSourceHole(buf, expr, '_escSole(')
+        } else {
+          // Same marker decision as the generated path below.
+          const wrapped = shouldWrap(expr)
+          needsEscImport = true
+          if (wrapped) ssrEmitStatic(buf, '<!--$-->')
+          ssrEmitSourceHole(buf, expr, '_esc(')
+          if (wrapped) ssrEmitStatic(buf, '<!--/$-->')
+        }
+        return true
+      }
+      // Kept as generated text: the hole RENDERS whatever VNodes it builds as
+      // soon as it is evaluated, so the call must be deferred like a
+      // component hole (see `DeferredHtml`). Without this a module-level
+      // `const frag = <ul>{xs.map(x => <Row/>)}</ul>` rendered `Row` before
+      // any provider ran, reading context defaults.
+      buf.deferJsx = true
+    } else if (lowered !== null && ssrLowerResidualJsx) {
+      buf.deferJsx = true
+    }
+    const exprText = lowered ?? sliceExpr(expr)
     // SOLE child of this element → no markers on EITHER side, whatever the
     // expression's static shape; `_escSole` decides from the runtime value
     // kind, which is the only thing that determines whether `_esc` would have
@@ -2678,6 +2750,7 @@ export function transformJSX_JS(
     // `.map` case above.
     const itemBuf = buildSsrBuf(body, 'foritem')
     if (itemBuf === null) return false
+    if (itemBuf.deferJsx) buf.deferJsx = true
     const params = cb.params ?? []
     const paramText =
       params.length === 0
@@ -2807,7 +2880,7 @@ export function transformJSX_JS(
    * `.map` ITEM (mapitem mode) uses `_ssrItem` — a plain-string variant that
    * `_ssrChildren` concatenates without a per-item `RawHtml` wrap. */
   function buildSsrBuf(el: N, mode: SsrMode): SsrBuf | null {
-    const buf: SsrBuf = { statics: [''], holes: [], holeStr: [], holeSrc: [] }
+    const buf: SsrBuf = { statics: [''], holes: [], holeStr: [], holeSrc: [], deferJsx: false }
     if (!ssrSerializeElement(buf, el, mode)) return null
     return buf
   }
@@ -2920,7 +2993,11 @@ export function transformJSX_JS(
 
     const preserved = buf.holeSrc.filter((h): h is NonNullable<(typeof buf.holeSrc)[number]> => h !== null)
     if (preserved.length === 0) {
-      const call = ssrCallText(buf, 'recursed')
+      let call = ssrCallText(buf, 'recursed')
+      if (buf.deferJsx) {
+        call = `_ssrDeferred(() => ${call})`
+        needsSsrDeferredImport = true
+      }
       replacements.push({ start, end, text: braceTemplateChild(call, node, !!needsBraces) })
       needsSsrImport = true
       return true
@@ -2958,7 +3035,8 @@ export function transformJSX_JS(
     const indexOfHole = (h: (typeof preserved)[number]): number => buf.holeSrc.indexOf(h)
 
     const firstIdx = indexOfHole(preserved[0]!)
-    let prefix = `_ssrDeferred(() => _ssr([${staticsArr}]${generatedUpTo(firstIdx)}, _ssrNode(`
+    needsSsrDeferredImport = true
+    let prefix = `_ssrDeferred(() => _ssr([${staticsArr}]${generatedUpTo(firstIdx)}, ${preserved[0]!.open}`
     // Bracketed emission: the closing edit adds the matching `)}`/`}` — so the
     // lazy wrap has to be spelled out here rather than routed through
     // `braceTemplateChild`, which owns a whole self-contained call.
@@ -2978,13 +3056,13 @@ export function transformJSX_JS(
       replacements.push({
         start: preserved[k - 1]!.end,
         end: preserved[k]!.start,
-        text: `)${generatedUpTo(idx)}, _ssrNode(`,
+        text: `${preserved[k - 1]!.close}${generatedUpTo(idx)}, ${preserved[k]!.open}`,
       })
       hole = idx + 1
     }
 
     // Two closers for the call + one for the `_ssrDeferred(() => …)` wrap.
-    let suffix = `)${generatedUpTo(buf.holes.length)}))`
+    let suffix = `${preserved[preserved.length - 1]!.close}${generatedUpTo(buf.holes.length)}))`
     if (needsBraces) suffix = isSoleComponentChild(node) ? `${suffix})}` : `${suffix}}`
     replacements.push({ start: preserved[preserved.length - 1]!.end, end, text: suffix })
 
@@ -4522,6 +4600,7 @@ export function transformJSX_JS(
     if (needsSsrChildrenImport) ssrImports.push('_ssrChildren')
     if (needsSsrItemImport) ssrImports.push('_ssrItem')
     if (needsSsrNodeImport) ssrImports.push('_ssrNode', '_ssrDeferred')
+    else if (needsSsrDeferredImport) ssrImports.push('_ssrDeferred')
     if (needsSsrForKeyedImport) ssrImports.push('_ssrForKeyed')
     if (needsEscImport) ssrImports.push('_esc')
     if (needsEscSoleImport) ssrImports.push('_escSole')
