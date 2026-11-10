@@ -265,13 +265,6 @@ interface FlattenedRoute {
    */
   walkable: boolean
   /**
-   * `false` when no static route could share this route's path (no static in
-   * its first-segment bucket has its segment count), so a walk match with a
-   * query/hash need not probe `staticMap` for an outranking static. `true`
-   * (probe) whenever that cannot be ruled out cheaply.
-   */
-  staticTwin: boolean
-  /**
    * The frozen `ResolvedRoute` for this entry's static path with no query, no
    * hash and no `validateSearch` — built once when the entry enters `staticMap`
    * and returned as-is by every such resolve (zero allocation; the same
@@ -417,7 +410,6 @@ function makeFlatEntry(
     validateFn,
     rawSafe: false,
     walkable: segments.every((s) => s.isParam || !/[?#]/.test(s.raw)),
-    staticTwin: true,
     staticResult: null,
   }
 }
@@ -767,13 +759,6 @@ function buildRouteIndex(routes: RouteRecord[]): RouteIndex {
 
   for (const f of flattened) {
     indexFlatRoute(f, staticMap, segmentMap, dynamicFirst, wildcards)
-  }
-  for (const key in segmentMap) {
-    const bucket = segmentMap[key] as FlattenedRoute[]
-    for (const f of bucket) {
-      if (f.isStatic || f.hasSplat || f.hasOptional) continue
-      f.staticTwin = bucket.some((o) => o.isStatic && o.segmentCount === f.segmentCount)
-    }
   }
   for (const key in staticMap) {
     const f = staticMap[key] as FlattenedRoute
@@ -1258,11 +1243,8 @@ function resolveUncached(rawPath: string, routes: RouteRecord[], index: RouteInd
   // A static match IS the static-map entry for its path (both keep the first
   // in definition order). A dynamic match is outranked by a static route for
   // the bare path (`/user/me?x=1` with `/user/me` defined after `/user/:id`).
-  if (f.isStatic) return staticResult(f, cleanPath, _url.query, _url.hash)
-  if (f.staticTwin) {
-    const s = index.staticMap[cleanPath]
-    if (s !== undefined) return staticResult(s, cleanPath, _url.query, _url.hash)
-  }
+  const s = index.staticMap[cleanPath]
+  if (s !== undefined) return staticResult(s, cleanPath, _url.query, _url.hash)
   return routeHit(f, cleanPath, params, _url.query, _url.hash)
 }
 
