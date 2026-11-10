@@ -152,8 +152,19 @@ test.describe("SSR node deploy artifact", () => {
 
     // 2. The fragment endpoint renders per request: two fetches → two
     //    DIFFERENT stamps (the inverse of hybrid-static's static-first
-    //    proof, where two fetches must be IDENTICAL).
-    const propsQ = `?props=${encodeURIComponent(JSON.stringify({ label: "now" }))}`;
+    //    proof, where two fetches must be IDENTICAL). The page signed the
+    //    marker (`data-page` + `data-sig`); the fragment request sends them
+    //    back, and an unsigned request is refused.
+    const attr = (n: string) =>
+      (new RegExp(`${n}="([^"]*)"`).exec(raw)?.[1] ?? "").replace(/&quot;/g, '"').replace(/&amp;/g, "&");
+    expect(attr("data-sig")).toMatch(/^\d+\./);
+    const propsQ =
+      `?props=${encodeURIComponent(attr("data-props"))}` +
+      `&page=${encodeURIComponent(attr("data-page"))}&sig=${encodeURIComponent(attr("data-sig"))}`;
+    const unsigned = await page.request.get(
+      `/_pyreon/fragment/ServerStamp?props=${encodeURIComponent(JSON.stringify({ label: "now" }))}`,
+    );
+    expect(unsigned.status()).toBe(403);
     const f1 = await (
       await page.request.get(`/_pyreon/fragment/ServerStamp${propsQ}`)
     ).text();
@@ -165,9 +176,9 @@ test.describe("SSR node deploy artifact", () => {
     expect(f2).toContain("now:");
     expect(f1).not.toBe(f2);
 
-    // 3. Unknown island names 404 (the endpoint allowlist).
+    // 3. Unknown or unsigned island names are refused before any lookup.
     const nope = await page.request.get("/_pyreon/fragment/NotRegistered");
-    expect(nope.status()).toBe(404);
+    expect(nope.status()).toBe(403);
 
     // 4. In the browser, the client activation swaps the fragment in.
     await page.goto("/server-island-demo");
