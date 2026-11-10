@@ -9,9 +9,9 @@
  *       y column replaced by another series of the same length.
  *  7.   `update line, 10,000 points (last value)` — a streaming-style edit:
  *       only the LAST point changes. Each arm uses its documented way to do
- *       that (Chart.js mutates the point and calls `update('none')`,
- *       lightweight-charts calls `series.update()`, the declarative arms
- *       hand over a new array — none of them has a cheaper documented path).
+ *       that (lightweight-charts calls `series.update()`; every other arm
+ *       hands over a new array — Chart.js's in-place edit breaks under its
+ *       decimation plugin, see its target).
  *  8.   `mount bars, 1,000 bars` — category axis, one bar per datum.
  *
  * Skipped rivals: ApexCharts 8 (its licence forbids "use in competing
@@ -424,15 +424,11 @@ function chartjsTarget(decimate: boolean): Target {
       ds.data = asXY(ys)
       c.update('none')
     },
-    // https://www.chartjs.org/docs/latest/developers/updates.html — mutate the
-    // dataset in place, then `chart.update()` ('none' = no animation).
-    updateLast(ys) {
-      if (c === null) return
-      const pts = c.data.datasets[0]!.data as XY[]
-      const i = ys.length - 1
-      pts[i] = { x: i, y: ys[i]! }
-      c.update('none')
-    },
+    // No `updateLast`: Chart.js's in-place edit (mutate `dataset.data[i]`,
+    // https://www.chartjs.org/docs/latest/developers/updates.html) is unusable
+    // with the decimation plugin, which swaps `dataset.data` for its decimated
+    // copy — the mutation lands on that copy and `update()` throws. Replacing
+    // the array (the same page's other documented pattern) is used instead.
     mountBars(host, ys) {
       const rows = asBarRows(ys)
       c = new Chart(canvasIn(host), {

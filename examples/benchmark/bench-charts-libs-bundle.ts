@@ -120,7 +120,7 @@ import { LinePath } from '@visx/shape'
 const rows = [{ x: 0, y: 3 }, { x: 1, y: 7 }, { x: 2, y: 5 }]
 const x = scaleLinear({ domain: [0, 2], range: [0, 750] })
 const y = scaleLinear({ domain: [3, 7], range: [260, 0] })
-;${KEEP} = () => createRoot(document.body).render(h('svg', { width: 800, height: 300 }, h(Group, { left: 40, top: 10 }, h(LinePath, { data: rows, x: (d: { x: number }) => x(d.x), y: (d: { y: number }) => y(d.y) }), h(AxisLeft, { scale: y }), h(AxisBottom, { scale: x, top: 260 }))))
+;${KEEP} = () => createRoot(document.body).render(h('svg', { width: 800, height: 300 }, h(Group, { left: 40, top: 10 }, h(LinePath<{ x: number; y: number }>, { data: rows, x: (d: { x: number }) => x(d.x), y: (d: { y: number }) => y(d.y) }), h(AxisLeft, { scale: y }), h(AxisBottom, { scale: x, top: 260 }))))
 `,
     marker: 'visx',
   },
