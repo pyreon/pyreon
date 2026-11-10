@@ -30,7 +30,7 @@ describe('store API method forms', () => {
     const api = useCounter()
     const seen: number[] = []
     const subscribe = api.subscribe
-    const off = subscribe((_m, state) => seen.push(state.count as number))
+    const off = subscribe((m) => seen.push(m.state.count as number))
     const detachedPatch = api.patch
     detachedPatch({ count: 2 })
     off()
