@@ -552,8 +552,8 @@ Foundation rollout (A–E):
 
 | Phase | Scope | Status |
 |-------|-------|--------|
-| **A** | Architectural foundation: canonical primitives package + web runtimes | ✅ Done — **all 15** primitives have web DOM runtimes |
-| **B** | PMTC compiler emit for iOS + Android (extends `canonical-primitives.ts` table) | ✅ iOS (Swift) **15/15**; Android (Compose) emit completing via the P2.2 series |
+| **A** | Architectural foundation: canonical primitives package + web runtimes | ✅ Done — every canonical primitive has a web DOM runtime |
+| **B** | PMTC compiler emit for iOS + Android (extends `canonical-primitives.ts` table) | ✅ Done — every canonical primitive emits for iOS (Swift) and Android (Compose) |
 | **C** | `@pyreon/native-router-{swift,kotlin}` runtime adapters + routes emit (path + component) | ✅ Done |
 | **D** | Web target for PMTC + `examples/native-todomvc-web/` consuming the shared source | ✅ Done |
 | **E** | TodoMVC migration to canonical vocab — closes the cross-platform contract | ✅ Done |
