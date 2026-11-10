@@ -1,0 +1,22 @@
+{
+  "id": "solidstart",
+  "label": "SolidStart 2",
+  "docs": [
+    "https://docs.solidjs.com/solid-start/getting-started (create-solid -s --v2 -t basic)",
+    "https://docs.solidjs.com/solid-start/building-your-application/data-loading",
+    "https://docs.solidjs.com/solid-start/guides/data-mutation",
+    "https://docs.solidjs.com/solid-router/reference/data-apis/query",
+    "https://docs.solidjs.com/solid-start/reference/server/http-status-code"
+  ],
+  "packages": ["@solidjs/start", "@solidjs/router", "solid-js", "nitro", "vite"],
+  "build": ["npm", "run", "build"],
+  "start": ["node", ".output/server/index.mjs"],
+  "dataFile": "src/lib/data.ts",
+  "hydration": "full",
+  "streaming": "streamed (SolidStart default renderToStream; the page's data resolves inside one tick)",
+  "notes": [
+    "Nitro 3 (npm latest 3.0.261103-rc, as the create-solid v2 template installs) node-server preset via srvx.",
+    "Server data via query() + 'use server' functions; route preload + createAsync; the query result is serialized (seroval) into the HTML for hydration.",
+    "Unknown id: the page renders <HttpStatusCode code={404}>."
+  ]
+}
