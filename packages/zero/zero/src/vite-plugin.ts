@@ -80,6 +80,7 @@ import { ssrPlugin } from "./ssr-plugin";
 import { themeScript } from "./theme";
 import { clientFlagsPlugin } from "./client-flags-plugin";
 import { serializeServerConfig } from "./server-config";
+import { requestUrlFromTarget } from "./adapters/request-runtime";
 import type { RouteMiddlewareEntry, ZeroConfig } from "./types";
 
 import { withSilent } from "@pyreon/reactivity";
@@ -588,8 +589,12 @@ export function zeroPlugin(userInput: ZeroUserConfig = {}): Plugin[] {
 						// Build a Web Request from the Node IncomingMessage so loaders
 						// can read cookies / auth headers via `ctx.request` and call
 						// `redirect()` from a server-side context.
-						const reqHost = req.headers.host ?? "localhost";
-						const reqUrl = new URL(req.url ?? "/", `http://${reqHost}`);
+						// Origin from Host, the request-target only as a PATH (see
+						// adapters/request-runtime.ts). A malformed Host falls back
+						// to localhost rather than failing the dev render.
+						const reqUrl =
+							requestUrlFromTarget(req.url, `http://${req.headers.host ?? "localhost"}`) ??
+							(requestUrlFromTarget(req.url, "http://localhost") as URL);
 						const reqHeaders = new Headers();
 						for (const [key, value] of Object.entries(req.headers)) {
 							if (value !== undefined) {
@@ -1313,10 +1318,16 @@ async function loadEntryPipelineOptions(
 	}
 }
 
-/** Node `IncomingMessage` → Web `Request` (body streamed, not buffered). */
-function toWebRequest(req: IncomingMessage): Request {
-	const host = req.headers.host ?? "localhost";
-	const url = new URL(req.url ?? "/", `http://${host}`);
+/**
+ * Node `IncomingMessage` → Web `Request` (body streamed, not buffered).
+ * `null` for a request whose Host cannot form a URL (answered 400).
+ */
+function toWebRequest(req: IncomingMessage): Request | null {
+	// Origin from Host, the request-target only as a PATH: resolving the
+	// target against a base let `//other.host/x` choose the URL's origin,
+	// which the server-action CSRF check compares against.
+	const url = requestUrlFromTarget(req.url, `http://${req.headers.host ?? "localhost"}`);
+	if (url === null) return null;
 	const method = (req.method ?? "GET").toUpperCase();
 	const headers = new Headers();
 	for (const [key, value] of Object.entries(req.headers)) {
@@ -1400,6 +1411,11 @@ async function dispatchDevPipeline(
 	});
 
 	const webReq = toWebRequest(req);
+	if (webReq === null) {
+		res.statusCode = 400;
+		res.end("Bad Request");
+		return true;
+	}
 	const url = new URL(webReq.url);
 	const ctx: DevPipelineCtx = {
 		req: webReq,

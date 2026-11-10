@@ -19,7 +19,7 @@ import { describe, expect, it } from 'vitest'
 import type { ParseCtx } from '../core/ops'
 import { EMPTY_PATH } from '../core/ops'
 import type { Result, Schema } from '../core/schema'
-import { s } from '../v1'
+import { s } from '../index'
 
 // ─── deterministic RNG (mulberry32 — same as the sibling fuzz suites) ──────
 function rng(seed: number): () => number {
