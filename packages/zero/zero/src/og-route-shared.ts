@@ -16,7 +16,9 @@ export interface RouteOgConfig {
    * `zero({ base })` is applied separately) used to make the injected
    * `og:image` URL absolute at build time. Most crawlers (Facebook, LinkedIn,
    * Slack) require an ABSOLUTE URL; without it the SSG meta tag is
-   * root-relative. The runtime (SSR/ISR) path always uses the request origin.
+   * root-relative. The runtime (SSR/ISR) tag uses it too when set, and
+   * otherwise the request's own origin — injected per response, outside the
+   * ISR cache, so a spoofed `Host` never reaches another visitor.
    */
   siteUrl?: string
 }
