@@ -32,7 +32,7 @@ yarn add @pyreon/store
 ## Quick Start
 
 ```ts
-import { defineStore, signal, computed } from '@pyreon/store'
+import { defineStore, signal, computed, defineSchemaStore } from '@pyreon/store'
 
 const useCounter = defineStore('counter', () => {
   const count = signal(0)
@@ -60,7 +60,7 @@ console.log(store.doubled()) // 2
 Use `defineStore` to create a store with a unique ID and a setup function. The setup function runs once (on first use) and returns an object of signals, computed values, and actions.
 
 ```ts
-import { defineStore, signal, computed } from '@pyreon/store'
+import { defineStore, signal, computed, defineSchemaStore } from '@pyreon/store'
 
 const useCounter = defineStore('counter', () => {
   // State — reactive signals
@@ -224,7 +224,7 @@ import type { Signal } from '@pyreon/store'
 ### Authentication Store
 
 ```ts
-import { defineStore, signal, computed } from '@pyreon/store'
+import { defineStore, signal, computed, defineSchemaStore } from '@pyreon/store'
 import { useStorage } from '@pyreon/storage'
 
 interface User {
@@ -317,7 +317,7 @@ const useAuth = defineStore('auth', () => {
 ### Shopping Cart Store
 
 ```ts
-import { defineStore, signal, computed, batch } from '@pyreon/store'
+import { defineStore, signal, computed, batch, defineSchemaStore } from '@pyreon/store'
 
 interface CartItem {
   productId: string
@@ -414,7 +414,7 @@ const useCart = defineStore('cart', () => {
 ### Theme Store
 
 ```ts
-import { defineStore, signal, computed, effect } from '@pyreon/store'
+import { defineStore, signal, computed, effect, defineSchemaStore } from '@pyreon/store'
 import { useStorage } from '@pyreon/storage'
 
 type Theme = 'light' | 'dark' | 'system'
@@ -464,7 +464,7 @@ const useTheme = defineStore('theme', () => {
 There is no persist middleware — none is needed. `@pyreon/storage`'s `useStorage()` returns a `StorageSignal` (a real `Signal` plus a persistence side-effect), so **returning one from `setup` gives you a persisted store field** with everything a store field has: it's classified as state, `patch` / `reset` / `subscribe` / `dehydrateStores` all flow through it, and cross-tab sync plus optional debounced writes (`writeDebounceMs`) come from `@pyreon/storage` for free. You persist exactly the fields you wrap — the composition IS the selection (no `partialize` config):
 
 ```ts
-import { computed, defineStore, signal } from '@pyreon/store'
+import { computed, defineStore, signal, defineSchemaStore } from '@pyreon/store'
 import { useStorage } from '@pyreon/storage'
 
 const useCart = defineStore('cart', () => {
@@ -482,7 +482,7 @@ Other backends compose identically: `useSessionStorage`, `useCookie`, `useIndexe
 Two caveats worth knowing:
 
 - **`reset()` restores the setup-time snapshot** — for a persisted field that's the value read from storage at store creation, not your declared default. To clear the persisted value itself, call `field.remove()` (resets the signal to the default AND deletes the storage entry).
-- **Shape migrations are yours** — there is no `version`/`migrate` option. If the persisted shape evolves across releases, validate/normalize the raw value in setup (or use a schema-mode store and normalize through an action).
+- **Shape migrations are yours** — there is no `version`/`migrate` option. If the persisted shape evolves across releases, validate/normalize the raw value in setup (or use a `defineSchemaStore` store and normalize through an action).
 
 ## Schema-driven Stores
 
@@ -490,7 +490,7 @@ For state that needs runtime validation, `defineStore` accepts a **schema-driven
 
 ```ts
 import { zodSchema } from '@pyreon/validation'
-import { defineStore, computed } from '@pyreon/store'
+import { defineStore, computed, defineSchemaStore } from '@pyreon/store'
 import { z } from 'zod'
 
 const UserSchema = zodSchema(z.object({
@@ -499,7 +499,7 @@ const UserSchema = zodSchema(z.object({
   prefs: z.object({ theme: z.enum(['light', 'dark']) }),
 }))
 
-const useUser = defineStore('user', {
+const useUser = defineSchemaStore('user', {
   schema: UserSchema,
   initial: { name: '', age: 0, prefs: { theme: 'light' } },
   setup: ({ state, set, patch, reset }) => ({
@@ -522,7 +522,7 @@ u.store.age.set(-1)                         // direct write — bypasses validat
 
 ### Library support
 
-The schema-mode overload works with **every** validation library through two complementary mechanisms.
+`defineSchemaStore` works with **every** validation library through two complementary mechanisms.
 
 **Tier A — First-party + Standard Schema (zero user work):**
 
@@ -538,7 +538,7 @@ Standard Schema-compliant schemas are **auto-detected** via the `'~standard'` pr
 
 ```ts
 // Tier A.2: raw zod schema (Standard Schema-compliant)
-const useUser = defineStore('user', {
+const useUser = defineSchemaStore('user', {
   schema: z.object({ name: z.string(), age: z.number() }),  // ← no wrap
   initial: { name: 'Alice', age: 30 },
 })
@@ -567,15 +567,15 @@ function yupSchema<T extends Record<string, unknown>>(
   }
 }
 
-defineStore('user', { schema: yupSchema(yupUserSchema), initial })
+defineSchemaStore('user', { schema: yupSchema(yupUserSchema), initial })
 ```
 
 ### Mutation methods
 
-The schema-driven `defineStore` overload returns a `SchemaStoreApi<TRaw, TStore>` — where `TRaw` is the schema's inferred field values and `TStore` is `.store` (the per-field signals + any `setup` actions/computeds). It exposes four validated mutation methods, all strictly typed from the schema (a wrong-typed value, an unknown field, or an `update` on a non-field key fails typecheck — zero casts):
+`defineSchemaStore` returns a `SchemaStoreApi<TRaw, TStore>` — where `TRaw` is the schema's inferred field values and `TStore` is `.store` (the per-field signals + any `setup` actions/computeds). It exposes four validated mutation methods, all strictly typed from the schema (a wrong-typed value, an unknown field, or an `update` on a non-field key fails typecheck — zero casts):
 
 ```ts
-const useStore = defineStore('s', {
+const useStore = defineSchemaStore('s', {
   schema: zodSchema(z.object({
     count: z.number(),
     items: z.array(z.object({ id: z.number(), label: z.string() })),
@@ -628,15 +628,15 @@ All four methods validate the merged result against the schema and either throw 
 
 - **`set(full)` and `patch(partial)` validate.** Invalid input throws (or invokes `onValidationError` if provided). State stays at its previous value on failure.
 - **Direct signal writes bypass validation** by design — `store.fieldName.set(v)` is an escape hatch for hot paths where the per-write schema parse cost (~50-200µs) matters. For guaranteed validation, route through `set` or `patch`.
-- **Initial is validated once at defineStore-time.** Invalid initial throws immediately. Schema defaults (`z.string().default('Alice')`) and transforms are applied — the PARSED value is written to signals.
-- **Async validators are unsupported.** A schema whose validator returns a `Promise` is rejected at defineStore-time. Use `@pyreon/form` for async refinements.
+- **Initial is validated once at defineSchemaStore-time.** Invalid initial throws immediately. Schema defaults (`z.string().default('Alice')`) and transforms are applied — the PARSED value is written to signals.
+- **Async validators are unsupported.** A schema whose validator returns a `Promise` is rejected at defineSchemaStore-time. Use `@pyreon/form` for async refinements.
 
 ### Validation error handling
 
 By default, validation failures throw. Provide `onValidationError` to suppress the throw and handle errors yourself (e.g. show a toast):
 
 ```ts
-defineStore('user', {
+defineSchemaStore('user', {
   schema: UserSchema,
   initial: { name: 'Alice', age: 30 },
   onValidationError: (issues, op) => {
@@ -1479,7 +1479,7 @@ After an SSR render, every store in the request registry is serialized into the 
 const useSession = defineStore('session', () => ({ token: signal('') }), { ssr: false })
 
 // Schema stores take the same flag in their config:
-const useSecrets = defineStore('secrets', { schema: Secrets, initial, ssr: false })
+const useSecrets = defineSchemaStore('secrets', { schema: Secrets, initial, ssr: false })
 ```
 
 An `ssr: false` store is never serialized, and on the client it ignores any incoming server snapshot, so it always starts from its own `setup()` values. `dehydrateStores(filter)` remains available for an app-wide filter.
@@ -1556,7 +1556,7 @@ Define a store with a unique ID and a setup function.
 - **`options`** (`StoreOptions`, optional) -- `{ ssr?: boolean }`. `ssr: false` keeps the store out of the SSR state payload and makes it ignore an incoming server snapshot.
 - **Returns** `() => StoreApi<T>` -- A hook function that returns the `StoreApi` wrapping the singleton store state.
 
-### `defineStore(id, schemaConfig)`
+### `defineSchemaStore(id, config)`
 
 Schema form (see the schema section above). `schemaConfig` is `{ schema, initial, setup?, onValidationError?, ssr? }`.
 

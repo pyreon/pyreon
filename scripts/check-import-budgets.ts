@@ -171,6 +171,15 @@ export const SCENARIOS: Scenario[] = [
     imports: ['css'],
   },
   {
+    // Locks the defineStore / defineSchemaStore split: a setup-only store must
+    // not carry schema mode or the `@pyreon/validation` bridge. Re-merging
+    // schema dispatch into `defineStore` puts both back.
+    id: '@pyreon/store::defineStore',
+    pkg: '@pyreon/store',
+    dir: 'fundamentals/store',
+    imports: ['defineStore'],
+  },
+  {
     id: '@pyreon/core::jsx',
     pkg: '@pyreon/core',
     dir: 'core/core',

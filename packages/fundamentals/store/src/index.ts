@@ -244,7 +244,7 @@ export interface SchemaStoreContext<T extends Record<string, unknown>> {
 export interface SchemaStoreConfig<S, U extends Record<string, unknown> = Record<string, unknown>> {
   /** The schema. Pyreon adapter or Standard Schema instance. */
   readonly schema: S
-  /** Initial state. Validated once at `defineStore`-time (fail-fast). */
+  /** Initial state. Validated once at `defineSchemaStore`-time (fail-fast). */
   readonly initial: InferSchema<S>
   /**
    * Optional setup function — receives per-field signals + mutation
@@ -466,7 +466,29 @@ function deepMerge(target: unknown, source: unknown): unknown {
 // ─── defineStore ─────────────────────────────────────────────────────────────
 
 /**
- * Schema-driven store overload. Accepts a `TypedSchemaAdapter` (from
+ * Define a store with a unique id and a setup function.
+ * Returns a hook that returns a `StoreApi<T>` with the user's state under `.store`
+ * and framework methods (`patch`, `subscribe`, `onAction`, `reset`, `dispose`) at the top level.
+ *
+ * Schema-validated stores use {@link defineSchemaStore}: keeping them out of
+ * `defineStore` lets a plain store's bundle leave the validation bridge out.
+ */
+export function defineStore<T extends Record<string, unknown>>(
+  id: string,
+  setup: () => T,
+  options?: StoreOptions,
+): () => StoreApi<T> {
+  if (process.env.NODE_ENV !== 'production' && typeof setup !== 'function') {
+    throw new Error(
+      `[Pyreon] defineStore("${id}") takes a setup function. A schema config ({ schema, initial }) ` +
+        'goes to defineSchemaStore(id, config) from @pyreon/store.',
+    )
+  }
+  return defineSetupStore(id, setup, options?.ssr !== false) as () => StoreApi<T>
+}
+
+/**
+ * Define a schema-validated store. Accepts a `TypedSchemaAdapter` (from
  * `@pyreon/validation`) or a Standard Schema-compliant schema, plus an
  * `initial` state and an optional `setup` function. Returns a hook whose
  * `StoreApi.store` exposes per-field signals at the top level alongside
@@ -479,12 +501,11 @@ function deepMerge(target: unknown, source: unknown): unknown {
  *
  * @example
  * ```ts
- * import { zodSchema } from '@pyreon/validation'
- * import { defineStore } from '@pyreon/store'
+ * import { defineSchemaStore } from '@pyreon/store'
  * import { z } from 'zod'
  *
- * const useUser = defineStore('user', {
- *   schema: zodSchema(z.object({ name: z.string(), age: z.number() })),
+ * const useUser = defineSchemaStore('user', {
+ *   schema: z.object({ name: z.string(), age: z.number() }),
  *   initial: { name: '', age: 0 },
  *   setup: ({ state }) => ({
  *     greet: computed(() => `Hi, ${state.name()}`),
@@ -498,36 +519,10 @@ function deepMerge(target: unknown, source: unknown): unknown {
  * u.patch({ age: 31 })   // validates merged + writes only changed
  * ```
  */
-export function defineStore<S, U extends Record<string, unknown> = Record<string, unknown>>(
+export function defineSchemaStore<S, U extends Record<string, unknown> = Record<string, unknown>>(
   id: string,
   config: SchemaStoreConfig<S, U>,
 ): () => SchemaStoreApi<InferSchema<S>, SignalsOf<InferSchema<S>> & U>
-
-/**
- * Define a store with a unique id and a setup function.
- * Returns a hook that returns a `StoreApi<T>` with the user's state under `.store`
- * and framework methods (`patch`, `subscribe`, `onAction`, `reset`, `dispose`) at the top level.
- */
-export function defineStore<T extends Record<string, unknown>>(
-  id: string,
-  setup: () => T,
-  options?: StoreOptions,
-): () => StoreApi<T>
-
-export function defineStore(
-  id: string,
-  configOrSetup: unknown,
-  options?: StoreOptions,
-): () => StoreApi<Record<string, unknown>> {
-  // ── Schema-mode dispatch ────────────────────────────────────────────────
-  // Discriminator: 2nd arg is an object with a `schema` field.
-  if (configOrSetup != null && typeof configOrSetup === 'object' && 'schema' in configOrSetup) {
-    return defineSchemaStore(id, configOrSetup as SchemaStoreConfig<unknown>)
-  }
-
-  // ── Setup-fn mode (existing path, unchanged) ────────────────────────────
-  return defineSetupStore(id, configOrSetup as () => Record<string, unknown>, options?.ssr !== false)
-}
 
 /**
  * Schema-mode implementation — synthesizes a setup function from the
@@ -535,7 +530,7 @@ export function defineStore(
  * setup-store pipeline. Wraps the resulting StoreApi with validated
  * `set` + `patch` methods.
  */
-function defineSchemaStore(
+export function defineSchemaStore(
   id: string,
   config: SchemaStoreConfig<unknown>,
 ): () => SchemaStoreApi<Record<string, unknown>, Record<string, unknown>> {
@@ -544,12 +539,12 @@ function defineSchemaStore(
   // Resolve sync parse function (Tier A.1, A.2, or throw).
   const parse = extractParseFn(schema)
 
-  // Validate `initial` once at defineStore-time. Throws if invalid, OR
+  // Validate `initial` once at defineSchemaStore-time. Throws if invalid, OR
   // if the schema is async (Promise return).
   const initialParsed = parse(initial as unknown)
   if (initialParsed instanceof Promise) {
     throw new Error(
-      '[Pyreon] defineStore: schema is async (validator returned a Promise). ' +
+      '[Pyreon] defineSchemaStore: schema is async (validator returned a Promise). ' +
         'Schema-driven stores require SYNCHRONOUS validation. ' +
         'For async refinements, use `@pyreon/form` or validate manually before set().',
     )
@@ -566,7 +561,7 @@ function defineSchemaStore(
   for (const key of Object.keys(parsedInitial)) {
     if (RESERVED_STORE_KEYS.has(key)) {
       throw new Error(
-        `[Pyreon] defineStore: schema field "${key}" collides with a reserved ` +
+        `[Pyreon] defineSchemaStore: schema field "${key}" collides with a reserved ` +
           `StoreApi method name. Rename the schema field.`,
       )
     }
@@ -578,7 +573,7 @@ function defineSchemaStore(
     const result = parse(value)
     if (result instanceof Promise) {
       throw new Error(
-        '[Pyreon] defineStore: schema returned a Promise at runtime — async unsupported.',
+        '[Pyreon] defineSchemaStore: schema returned a Promise at runtime — async unsupported.',
       )
     }
     if (!result.ok) {
@@ -624,7 +619,7 @@ function defineSchemaStore(
       for (const key of Object.keys(userResult)) {
         if (key in perFieldSignals) {
           throw new Error(
-            `[Pyreon] defineStore: setup() returned key "${key}" that ` +
+            `[Pyreon] defineSchemaStore: setup() returned key "${key}" that ` +
               `collides with schema field "${key}". Rename the action/computed.`,
           )
         }

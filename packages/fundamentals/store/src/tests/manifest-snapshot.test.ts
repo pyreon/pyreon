@@ -18,7 +18,7 @@ describe('gen-docs — store snapshot', () => {
 
       \`\`\`typescript
       import { signal, computed } from '@pyreon/reactivity'
-      import { defineStore, addStorePlugin, resetAllStores } from '@pyreon/store'
+      import { defineStore, addStorePlugin, resetAllStores, defineSchemaStore } from '@pyreon/store'
 
       // Define a store — setup function runs once per store ID.
       // Signals → tracked state, functions → wrapped actions.
@@ -96,7 +96,8 @@ describe('gen-docs — store snapshot', () => {
     // entry (documents signal/computed/effect/batch re-exports) = 16.
     expect(Object.keys(record).length).toBe(16)
     expect(record['store/defineStore']!.notes).toContain('singleton')
-    expect(record['store/defineStore']!.mistakes?.split('\n').length).toBe(9)
+    expect(record['store/defineSchemaStore']).toBeDefined()
+    expect(record['store/defineStore']!.mistakes?.split('\n').length).toBe(10)
     // The previously-missing StoreApi entry now resolves (no 404).
     expect(record['store/StoreApi']).toBeDefined()
     // Unknown patch keys now dev-warn (were a fully silent no-op).
@@ -107,8 +108,7 @@ describe('gen-docs — store snapshot', () => {
     expect(record['store/dehydrateStores']).toBeDefined()
     expect(record['store/hydrateStores']!.notes).toContain('boot-time one-shot')
     // Schema-mode entries
-    expect(record['store/defineStore (schema mode)']).toBeDefined()
-    expect(record['store/defineStore (schema mode)']!.notes).toContain('Schema-driven')
+    expect(record['store/defineSchemaStore']!.notes).toContain('schema-validated store')
     expect(record['store/SchemaStoreApi']).toBeDefined()
     expect(record['store/SchemaStoreApi']!.notes).toContain('deepPatch')
     expect(record['store/SchemaStoreApi']!.notes).toContain('update')

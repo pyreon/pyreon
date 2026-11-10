@@ -14,7 +14,7 @@ export default defineManifest({
       'defineStore lowers to @Observable singleton (Swift) / mutableStateOf object (Kotlin); cross-screen state device-proven',
   },
   longExample: `import { signal, computed } from '@pyreon/reactivity'
-import { defineStore, addStorePlugin, resetAllStores } from '@pyreon/store'
+import { defineStore, addStorePlugin, resetAllStores, defineSchemaStore } from '@pyreon/store'
 
 // Define a store — setup function runs once per store ID.
 // Signals → tracked state, functions → wrapped actions.
@@ -97,21 +97,22 @@ patch({ count: 42 })`,
         'Forgetting `dispose()` / `resetAllStores()` in tests — the store persists in the global registry across test cases, leaking state into the next test. Put `afterEach(() => resetAllStores())` in setup',
         'Returning a non-signal, non-function value from `setup` (a plain object/array) and expecting it to be reactive — only signals become tracked state. Classification is duck-typed: signals = `.set` + `.peek`, computeds = `.dispose` (and not a signal), everything-else-callable = action. A plain object is none of these and is passed through inert',
         'Mutating state by reassigning `store.count` — it is a frozen accessor; write via `store.increment()` (an action) or `patch({ count })`. Direct property assignment is silently ineffective',
+        'Passing a schema config (`{ schema, initial }`) to `defineStore` — schema-validated stores are `defineSchemaStore(id, config)`. `defineStore` takes a setup function only (dev builds throw with this pointer)',
         'Registering an `addStorePlugin` AFTER the store was first created and expecting it to apply — plugins run only at creation time. The already-created store never sees it (see `addStorePlugin` mistakes)',
         'Defining the same id twice with different setups (or editing a store module under HMR) and expecting the new setup to apply — the registry returns the FIRST instance; the second definition dev-warns once per id and is otherwise inert until `resetStore(id)` or a full reload',
         'Expecting persisted state to need a middleware — return `useStorage()` (from `@pyreon/storage`) signals from setup instead; a StorageSignal IS a signal, so it classifies as state and `patch`/`reset`/`subscribe`/`dehydrateStores` all flow through it (cross-tab sync included)',
       ],
-      seeAlso: ['StoreApi', 'addStorePlugin', 'resetStore', 'defineStore (schema mode)'],
+      seeAlso: ['StoreApi', 'addStorePlugin', 'resetStore', 'defineSchemaStore'],
     },
     {
-      name: 'defineStore (schema mode)',
+      name: 'defineSchemaStore',
       kind: 'function',
       signature:
         '<S, U extends Record<string, unknown> = {}>(id: string, config: SchemaStoreConfig<S, U>) => () => SchemaStoreApi<SignalsOf<InferSchema<S>> & U>',
       summary:
-        "Schema-driven `defineStore` overload. Accepts a `TypedSchemaAdapter` (from `@pyreon/validation` — Tier A.1) OR a Standard Schema-compliant schema (Tier A.2, e.g. raw zod 3.24+ / valibot 1.0+ / arktype 2.0+ / Effect Schema) plus an `initial` state. Field types are inferred from the schema — zero manual annotations. Returns a hook whose `store` exposes per-field signals at the top level alongside any setup-returned actions/computeds. `set` (full replace) and `patch` (partial merge) validate every write through the schema; direct signal writes (`store.field.set(v)`) bypass validation by design as an escape hatch for hot paths. The PARSED initial is written to signals — zod `.default()` / `.transform()` work correctly. Async validators are rejected at `defineStore`-time. For libraries without Standard Schema support (yup, joi, ajv, io-ts, etc.), users author a 5-10 line adapter (Tier B) matching the `_infer` + `parse` shape.",
+        "Define a schema-validated store (a separate export from `defineStore`, so a plain store's bundle never carries the validation bridge). Accepts a `TypedSchemaAdapter` (from `@pyreon/validation` — Tier A.1) OR a Standard Schema-compliant schema (Tier A.2, e.g. raw zod 3.24+ / valibot 1.0+ / arktype 2.0+ / Effect Schema) plus an `initial` state. Field types are inferred from the schema — zero manual annotations. Returns a hook whose `store` exposes per-field signals at the top level alongside any setup-returned actions/computeds. `set` (full replace) and `patch` (partial merge) validate every write through the schema; direct signal writes (`store.field.set(v)`) bypass validation by design as an escape hatch for hot paths. The PARSED initial is written to signals — zod `.default()` / `.transform()` work correctly. Async validators are rejected at `defineSchemaStore`-time. For libraries without Standard Schema support (yup, joi, ajv, io-ts, etc.), users author a 5-10 line adapter (Tier B) matching the `_infer` + `parse` shape.",
       example: `import { zodSchema } from '@pyreon/validation'
-import { defineStore, computed } from '@pyreon/store'
+import { computed, defineSchemaStore } from '@pyreon/store'
 import { z } from 'zod'
 
 const UserSchema = zodSchema(z.object({
@@ -119,7 +120,7 @@ const UserSchema = zodSchema(z.object({
   age: z.number(),
 }))
 
-const useUser = defineStore('user', {
+const useUser = defineSchemaStore('user', {
   schema: UserSchema,
   initial: { name: '', age: 0 },
   setup: ({ state }) => ({
@@ -168,7 +169,7 @@ u.update('items', items => items.filter(x => x.id !== 1))  // transform single f
         'Calling `update` on a setup-returned action/computed key — `update`\'s key is constrained to the schema FIELD names only (typos and non-field keys fail typecheck). Actions/computeds are not writable state',
         'Expecting the FUNCTIONAL `patch(fn)` form to validate — only the OBJECT form (`patch({ … })`) runs through the schema. The `patch(state => …)` callback is a raw-signal escape hatch, unvalidated by design (same as direct `store.field.set(v)`)',
       ],
-      seeAlso: ['defineStore (schema mode)', 'DeepPartial', 'StoreApi'],
+      seeAlso: ['defineSchemaStore', 'DeepPartial', 'StoreApi'],
     },
     {
       name: 'DeepPartial',
@@ -195,7 +196,7 @@ deepPatch({ prefs: { theme: 'dark', density: 'compact' } })  // full nested obje
         'interface SchemaStoreConfig<S, U> { schema: S; initial: InferSchema<S>; setup?: (ctx: SchemaStoreContext<InferSchema<S>>) => U; onValidationError?: (issues: SchemaIssue[], op: "set" | "patch" | "init") => void }',
       summary:
         "Config object passed as the 2nd arg of the schema-mode `defineStore` overload. `schema` accepts either a Pyreon `TypedSchemaAdapter` (from `@pyreon/validation`) or a Standard Schema-compliant instance — duck-typed at runtime. `initial` is validated once at definition time; the parsed (coerced) value is written to signals. `setup` (optional) runs once at store-creation; it receives the per-field signals + validated mutation helpers. `onValidationError`, if provided, replaces the default throw-on-invalid behavior — useful for non-fatal UX (e.g. show a toast instead of crashing the render).",
-      example: `defineStore('user', {
+      example: `defineSchemaStore('user', {
   schema: zodSchema(z.object({ name: z.string(), age: z.number() })),
   initial: { name: '', age: 0 },
   setup: ({ state, set, patch, reset }) => ({
@@ -208,7 +209,7 @@ deepPatch({ prefs: { theme: 'dark', density: 'compact' } })  // full nested obje
         '`initial` is REQUIRED and is type-checked against `InferSchema<S>`. A bad shape is a TypeScript error',
         '`setup`-returned keys MUST NOT collide with schema field names — defineStore throws at construction',
       ],
-      seeAlso: ['defineStore (schema mode)', 'SchemaStoreContext'],
+      seeAlso: ['defineSchemaStore', 'SchemaStoreContext'],
     },
     {
       name: 'SchemaStoreContext',
@@ -217,7 +218,7 @@ deepPatch({ prefs: { theme: 'dark', density: 'compact' } })  // full nested obje
         'interface SchemaStoreContext<T> { state: SignalsOf<T>; set: (next: T) => void; patch: (partial: Partial<T>) => void; reset: () => void }',
       summary:
         'Argument passed to the schema-mode `setup` function. `state` is the per-field signals map (`state.name` is `Signal<string>` etc.). `set` / `patch` / `reset` are validated mutation helpers — calling them from inside setup actions is the canonical way to write validated state.',
-      example: `defineStore('counter', {
+      example: `defineSchemaStore('counter', {
   schema: zodSchema(z.object({ count: z.number().nonnegative() })),
   initial: { count: 0 },
   setup: ({ state, patch }) => ({
@@ -229,7 +230,7 @@ deepPatch({ prefs: { theme: 'dark', density: 'compact' } })  // full nested obje
         '`state.x.set(v)` skips validation — for guaranteed validation, call `set`/`patch` from the context',
         '`state` contains SIGNALS, not values. Read via `state.x()`; assign via `set`/`patch` or direct `state.x.set()`',
       ],
-      seeAlso: ['defineStore (schema mode)', 'SchemaStoreConfig'],
+      seeAlso: ['defineSchemaStore', 'SchemaStoreConfig'],
     },
     {
       name: 'StoreApi',
@@ -409,7 +410,7 @@ function callAction<K extends keyof CartActions>(name: K, ...args: Parameters<Ca
       signature: 're-exported verbatim from @pyreon/reactivity: signal, computed, effect, batch',
       summary:
         'Convenience re-exports of the four `@pyreon/reactivity` primitives a `setup()` function reaches for constantly, so a store module rarely needs a second import from `@pyreon/reactivity` alongside `defineStore`. `signal`/`computed` are what setup CLASSIFIES into store state (a returned `signal(...)` becomes tracked state; a returned `computed(...)` is passed through as a derived read); `effect`/`batch` are for internal setup logic (a store-owned effect runs inside the store\'s own scope — see the "Scope ownership" gotcha — and `batch` groups several signal writes inside an action into one notification, same as anywhere else in the framework). See `@pyreon/reactivity`\'s manifest for the full API of each — this package adds no behavior on top, it only re-exports.',
-      example: `import { defineStore, signal, computed, batch } from '@pyreon/store'
+      example: `import { defineStore, signal, computed, batch, defineSchemaStore } from '@pyreon/store'
 
 export const useCounter = defineStore('counter', () => {
   const count = signal(0)

@@ -15,5 +15,6 @@
   "@pyreon/flow::core": 21970,
   "@pyreon/charts::chart-line": 40300,
   "@pyreon/charts::chart-pie": 26210,
-  "@pyreon/zero::web-vitals": 1500
+  "@pyreon/zero::web-vitals": 1500,
+  "@pyreon/store::defineStore": 2700
 }

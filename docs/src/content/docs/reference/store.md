@@ -34,7 +34,7 @@ A full, end-to-end usage of the package:
 
 ```tsx
 import { signal, computed } from '@pyreon/reactivity'
-import { defineStore, addStorePlugin, resetAllStores } from '@pyreon/store'
+import { defineStore, addStorePlugin, resetAllStores, defineSchemaStore } from '@pyreon/store'
 
 // Define a store — setup function runs once per store ID.
 // Signals → tracked state, functions → wrapped actions.
@@ -89,7 +89,7 @@ setStoreRegistryProvider(() => als.getStore() ?? new Map())
 | Symbol | Kind | Summary |
 | --- | --- | --- |
 | [`defineStore`](#definestore-function) | function | Define a composition-style store. |
-| [`defineStore (schema mode)`](#definestore-schema-mode-function) | function | Schema-driven `defineStore` overload. |
+| [`defineSchemaStore`](#defineschemastore-function) | function | Define a schema-validated store (a separate export from `defineStore`, so a plain store's bundle never carries the valid |
 | [`SchemaStoreApi`](#schemastoreapi-type) | type | Return type of the schema-driven `defineStore` overload — STRICTLY TYPED from the schema. |
 | [`DeepPartial`](#deeppartial-type) | type | Recursive partial — every property optional at every depth. |
 | [`SchemaStoreConfig`](#schemastoreconfig-type) | type | Config object passed as the 2nd arg of the schema-mode `defineStore` overload. |
@@ -139,27 +139,28 @@ patch({ count: 42 })
 - Forgetting `dispose()` / `resetAllStores()` in tests — the store persists in the global registry across test cases, leaking state into the next test. Put `afterEach(() => resetAllStores())` in setup
 - Returning a non-signal, non-function value from `setup` (a plain object/array) and expecting it to be reactive — only signals become tracked state. Classification is duck-typed: signals = `.set` + `.peek`, computeds = `.dispose` (and not a signal), everything-else-callable = action. A plain object is none of these and is passed through inert
 - Mutating state by reassigning `store.count` — it is a frozen accessor; write via `store.increment()` (an action) or `patch({ count })`. Direct property assignment is silently ineffective
+- Passing a schema config (`{ schema, initial }`) to `defineStore` — schema-validated stores are `defineSchemaStore(id, config)`. `defineStore` takes a setup function only (dev builds throw with this pointer)
 - Registering an `addStorePlugin` AFTER the store was first created and expecting it to apply — plugins run only at creation time. The already-created store never sees it (see `addStorePlugin` mistakes)
 - Defining the same id twice with different setups (or editing a store module under HMR) and expecting the new setup to apply — the registry returns the FIRST instance; the second definition dev-warns once per id and is otherwise inert until `resetStore(id)` or a full reload
 - Expecting persisted state to need a middleware — return `useStorage()` (from `@pyreon/storage`) signals from setup instead; a StorageSignal IS a signal, so it classifies as state and `patch`/`reset`/`subscribe`/`dehydrateStores` all flow through it (cross-tab sync included)
 
-**See also:** `StoreApi` · `addStorePlugin` · `resetStore` · `defineStore (schema mode)`
+**See also:** `StoreApi` · `addStorePlugin` · `resetStore` · `defineSchemaStore`
 
 ---
 
-### `defineStore (schema mode)` `function`
+### `defineSchemaStore` `function`
 
 ```ts
 <S, U extends Record<string, unknown> = {}>(id: string, config: SchemaStoreConfig<S, U>) => () => SchemaStoreApi<SignalsOf<InferSchema<S>> & U>
 ```
 
-Schema-driven `defineStore` overload. Accepts a `TypedSchemaAdapter` (from `@pyreon/validation` — Tier A.1) OR a Standard Schema-compliant schema (Tier A.2, e.g. raw zod 3.24+ / valibot 1.0+ / arktype 2.0+ / Effect Schema) plus an `initial` state. Field types are inferred from the schema — zero manual annotations. Returns a hook whose `store` exposes per-field signals at the top level alongside any setup-returned actions/computeds. `set` (full replace) and `patch` (partial merge) validate every write through the schema; direct signal writes (`store.field.set(v)`) bypass validation by design as an escape hatch for hot paths. The PARSED initial is written to signals — zod `.default()` / `.transform()` work correctly. Async validators are rejected at `defineStore`-time. For libraries without Standard Schema support (yup, joi, ajv, io-ts, etc.), users author a 5-10 line adapter (Tier B) matching the `_infer` + `parse` shape.
+Define a schema-validated store (a separate export from `defineStore`, so a plain store's bundle never carries the validation bridge). Accepts a `TypedSchemaAdapter` (from `@pyreon/validation` — Tier A.1) OR a Standard Schema-compliant schema (Tier A.2, e.g. raw zod 3.24+ / valibot 1.0+ / arktype 2.0+ / Effect Schema) plus an `initial` state. Field types are inferred from the schema — zero manual annotations. Returns a hook whose `store` exposes per-field signals at the top level alongside any setup-returned actions/computeds. `set` (full replace) and `patch` (partial merge) validate every write through the schema; direct signal writes (`store.field.set(v)`) bypass validation by design as an escape hatch for hot paths. The PARSED initial is written to signals — zod `.default()` / `.transform()` work correctly. Async validators are rejected at `defineSchemaStore`-time. For libraries without Standard Schema support (yup, joi, ajv, io-ts, etc.), users author a 5-10 line adapter (Tier B) matching the `_infer` + `parse` shape.
 
 **Example**
 
 ```tsx
 import { zodSchema } from '@pyreon/validation'
-import { defineStore, computed } from '@pyreon/store'
+import { computed, defineSchemaStore } from '@pyreon/store'
 import { z } from 'zod'
 
 const UserSchema = zodSchema(z.object({
@@ -167,7 +168,7 @@ const UserSchema = zodSchema(z.object({
   age: z.number(),
 }))
 
-const useUser = defineStore('user', {
+const useUser = defineSchemaStore('user', {
   schema: UserSchema,
   initial: { name: '', age: 0 },
   setup: ({ state }) => ({
@@ -228,7 +229,7 @@ u.update('items', items => items.filter(x => x.id !== 1))  // transform single f
 - Calling `update` on a setup-returned action/computed key — `update`'s key is constrained to the schema FIELD names only (typos and non-field keys fail typecheck). Actions/computeds are not writable state
 - Expecting the FUNCTIONAL `patch(fn)` form to validate — only the OBJECT form (`patch({ … })`) runs through the schema. The `patch(state => …)` callback is a raw-signal escape hatch, unvalidated by design (same as direct `store.field.set(v)`)
 
-**See also:** `defineStore (schema mode)` · `DeepPartial` · `StoreApi`
+**See also:** `defineSchemaStore` · `DeepPartial` · `StoreApi`
 
 ---
 
@@ -271,7 +272,7 @@ Config object passed as the 2nd arg of the schema-mode `defineStore` overload. `
 **Example**
 
 ```tsx
-defineStore('user', {
+defineSchemaStore('user', {
   schema: zodSchema(z.object({ name: z.string(), age: z.number() })),
   initial: { name: '', age: 0 },
   setup: ({ state, set, patch, reset }) => ({
@@ -287,7 +288,7 @@ defineStore('user', {
 - `initial` is REQUIRED and is type-checked against `InferSchema<S>`. A bad shape is a TypeScript error
 - `setup`-returned keys MUST NOT collide with schema field names — defineStore throws at construction
 
-**See also:** `defineStore (schema mode)` · `SchemaStoreContext`
+**See also:** `defineSchemaStore` · `SchemaStoreContext`
 
 ---
 
@@ -302,7 +303,7 @@ Argument passed to the schema-mode `setup` function. `state` is the per-field si
 **Example**
 
 ```tsx
-defineStore('counter', {
+defineSchemaStore('counter', {
   schema: zodSchema(z.object({ count: z.number().nonnegative() })),
   initial: { count: 0 },
   setup: ({ state, patch }) => ({
@@ -317,7 +318,7 @@ defineStore('counter', {
 - `state.x.set(v)` skips validation — for guaranteed validation, call `set`/`patch` from the context
 - `state` contains SIGNALS, not values. Read via `state.x()`; assign via `set`/`patch` or direct `state.x.set()`
 
-**See also:** `defineStore (schema mode)` · `SchemaStoreConfig`
+**See also:** `defineSchemaStore` · `SchemaStoreConfig`
 
 ---
 
@@ -594,7 +595,7 @@ Convenience re-exports of the four `@pyreon/reactivity` primitives a `setup()` f
 **Example**
 
 ```tsx
-import { defineStore, signal, computed, batch } from '@pyreon/store'
+import { defineStore, signal, computed, batch, defineSchemaStore } from '@pyreon/store'
 
 export const useCounter = defineStore('counter', () => {
   const count = signal(0)
