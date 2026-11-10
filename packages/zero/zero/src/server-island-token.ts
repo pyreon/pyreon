@@ -113,22 +113,31 @@ export function createIslandSigner(options: ServerIslandSignatureOptions = {}): 
     )
   }
   const configured = options.secret ?? envSecrets()
-  const rawKeys: Uint8Array<ArrayBuffer>[] = configured
+  // Validated now (a bad secret is a startup error), encoded now.
+  const configuredKeys: Uint8Array<ArrayBuffer>[] | undefined = configured
     ? normalizeSecrets(configured, 'serverIslands').map((s) => enc.encode(s))
-    : [processSecret()]
-  // Imported keys are cached per signer (bounded by the secret count).
-  const keys = rawKeys.map((k) =>
-    subtle.importKey('raw', k, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign', 'verify']),
-  )
+    : undefined
   const maxAge = options.maxAge ?? DEFAULT_ISLAND_SIGNATURE_MAX_AGE
   if (!(maxAge > 0) || !Number.isFinite(maxAge)) {
     throw new Error(`[Pyreon] serverIslands.maxAge must be a positive number of seconds (got ${String(maxAge)}).`)
   }
 
+  // Generating the per-process secret and importing the keys wait for the
+  // first sign / verify: `createServer()` runs at module scope in a server
+  // entry, and workerd forbids random values and crypto I/O there ("Disallowed
+  // operation called within global scope"). Imported keys are cached per
+  // signer (bounded by the secret count).
+  let keys: Promise<CryptoKey>[] | undefined
+  const getKeys = (): Promise<CryptoKey>[] =>
+    (keys ??= (configuredKeys ?? [processSecret()]).map((k) =>
+      subtle.importKey('raw', k, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign', 'verify']),
+    ))
+
   return {
     maxAgeMs: maxAge * 1000,
     async sign(name, page, props, expiresAt) {
-      const mac = new Uint8Array(await subtle.sign('HMAC', await keys[0]!, message(name, page, expiresAt, props)))
+      const key = await getKeys()[0]!
+      const mac = new Uint8Array(await subtle.sign('HMAC', key, message(name, page, expiresAt, props)))
       return `${expiresAt}.${toB64url(mac)}`
     },
     async verify(name, page, props, sig) {
@@ -142,7 +151,7 @@ export function createIslandSigner(options: ServerIslandSignatureOptions = {}): 
       const mac = fromB64url(sig.slice(dot + 1))
       if (!mac || mac.length !== 32) return false
       const data = message(name, page, expiresAt, props)
-      for (const key of keys) {
+      for (const key of getKeys()) {
         if (await subtle.verify('HMAC', await key, mac, data)) return true
       }
       return false
@@ -228,6 +237,16 @@ export function islandSignaturesExpiring(
 let warnedUnsignedPrerender = false
 
 /**
+ * `s` without its trailing `/` run. A linear scan: the regex `/\/+$/` retries
+ * the run from every start position, quadratic on a long run of slashes.
+ */
+export function trimTrailingSlashes(s: string): string {
+  let end = s.length
+  while (end > 0 && s.charCodeAt(end - 1) === 47 /* / */) end--
+  return end === s.length ? s : s.slice(0, end)
+}
+
+/**
  * Request locals for a PRERENDERED (SSG) page: a mint that signs its
  * server-island markers without expiry, for the page's public pathname
  * (`base` + `path`). The runtime server must verify with the same secret, so
@@ -238,7 +257,7 @@ let warnedUnsignedPrerender = false
 export function prerenderServerIslandLocals(path: string, base?: string): Record<string, unknown> {
   const q = path.search(/[?#]/)
   const pathname = q === -1 ? path : path.slice(0, q)
-  const prefix = base && base !== '/' ? base.replace(/\/+$/, '') : ''
+  const prefix = base && base !== '/' ? trimTrailingSlashes(base) : ''
   const page = `${prefix}${pathname}` || '/'
   if (!hasSharedIslandSecret()) {
     const unsigned: ServerIslandMint = async (name) => {

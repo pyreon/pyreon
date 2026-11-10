@@ -8,7 +8,7 @@ import type { ComponentFn } from '@pyreon/core'
 import { h } from '@pyreon/core'
 import { renderToString, runWithRequestContext } from '@pyreon/runtime-server'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { provideRequestLocals, useRequestLocals } from '../middleware'
+import { provideRequestLocals, RequestLocalsCtx, useRequestLocals } from '../middleware'
 import {
   _resetServerIslands,
   getRegisteredServerIslands,
@@ -80,6 +80,28 @@ describe('serverIsland — signed markers', () => {
     expect(calls).toEqual([['CartBadge', JSON.stringify({ label: 'Cart' })]])
     expect(html).toContain('data-page="/shop"')
     expect(html).toContain('data-sig="123.abc"')
+  })
+
+  it('a SECOND copy of the middleware module reads the locals the handler provided', async () => {
+    // A production server bundle can hold two copies of `middleware.ts`: the
+    // handler provides locals through one (`@pyreon/server`), a route chunk's
+    // `serverIsland()` reads through the other (`@pyreon/server/client`).
+    // With per-copy context ids the reader got `{}` and the island rendered
+    // unsigned (every fragment then 403'd).
+    // @ts-expect-error -- a query-suffixed specifier: Vite loads a second module instance
+    const copy = (await import('../middleware?second-copy')) as typeof import('../middleware')
+    expect(copy.RequestLocalsCtx).not.toBe(RequestLocalsCtx) // genuinely two copies
+    let seen: unknown
+    const Reader: ComponentFn = () => {
+      seen = copy.useRequestLocals()[SERVER_ISLAND_MINT]
+      return null
+    }
+    const mint: ServerIslandMint = async () => null
+    await runWithRequestContext(async () => {
+      provideRequestLocals({ [SERVER_ISLAND_MINT]: mint })
+      return renderToString(h(Reader, {}))
+    })
+    expect(seen).toBe(mint)
   })
 
   it('signs empty props as the empty string (no data-props attribute)', async () => {

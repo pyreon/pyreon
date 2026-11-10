@@ -23,6 +23,7 @@ import {
   ISLAND_SECRET_ENV,
   islandSignaturesExpiring,
   prerenderServerIslandLocals,
+  trimTrailingSlashes,
 } from '../server-island-token'
 import type { RouteMiddlewareEntry } from '../types'
 
@@ -224,6 +225,51 @@ describe('prerendered pages', () => {
       expect(await mint('PublicHello', '')).toBeNull()
       expect(warn).toHaveBeenCalledWith(expect.stringContaining(ISLAND_SECRET_ENV))
     } finally {
+      vi.unstubAllEnvs()
+    }
+  })
+})
+
+describe('the base prefix of a prerendered page', () => {
+  it('drops every trailing slash of `base`', () => {
+    expect(trimTrailingSlashes('/app///')).toBe('/app')
+    expect(trimTrailingSlashes('/app')).toBe('/app')
+    expect(trimTrailingSlashes('///')).toBe('')
+    expect(trimTrailingSlashes('')).toBe('')
+  })
+
+  it('is linear in a long run of slashes (the `/\\/+$/` regex was quadratic)', () => {
+    // 100k slashes not at the end: the backtracking regex retries the run
+    // from every position (~seconds); a linear scan takes microseconds.
+    const hostile = `a${'/'.repeat(100_000)}b`
+    const t0 = performance.now()
+    expect(trimTrailingSlashes(hostile)).toBe(hostile)
+    expect(trimTrailingSlashes(`${hostile}//`)).toBe(hostile)
+    expect(performance.now() - t0).toBeLessThan(250)
+  })
+})
+
+describe('createServer() at module scope (workerd)', () => {
+  it('generates no random secret and imports no key until the first sign / verify', async () => {
+    // workerd rejects random values and crypto I/O in global scope ("Disallowed
+    // operation called within global scope"), and a server entry calls
+    // createServer() — hence createIslandSigner() — at module scope.
+    vi.stubEnv(ISLAND_SECRET_ENV, '')
+    delete (globalThis as { __PYREON_ISLAND_PROCESS_SECRET__?: unknown }).__PYREON_ISLAND_PROCESS_SECRET__
+    const random = vi.spyOn(globalThis.crypto, 'getRandomValues')
+    const importKey = vi.spyOn(globalThis.crypto.subtle, 'importKey')
+    try {
+      const signer = createIslandSigner()
+      createIslandSigner({ secret: SECRET })
+      expect(random).not.toHaveBeenCalled()
+      expect(importKey).not.toHaveBeenCalled()
+      const sig = await signer.sign('A', '/p', '', 0)
+      expect(random).toHaveBeenCalledTimes(1)
+      expect(await signer.verify('A', '/p', '', sig)).toBe(true)
+      expect(importKey).toHaveBeenCalledTimes(1) // cached after the first use
+    } finally {
+      random.mockRestore()
+      importKey.mockRestore()
       vi.unstubAllEnvs()
     }
   })
