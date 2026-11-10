@@ -510,6 +510,8 @@ bun scripts/bench/core/router.ts && bun scripts/bench/core/validate.ts
 cd packages/fundamentals/validate && bun bench/validation.ts   # likewise store, http, rx, table, charts (bench/*.ts)
 ```
 
+The library scenarios carry rival arms beyond the React adapter (`bun run bench:flow`, `bench:table`, `bench:virtual` in `examples/benchmark`, one scenario per run): flow — React Flow 12, Svelte Flow 1, Vue Flow 1, JointJS 4; table — TanStack Table on React, Solid, Vue and Svelte, AG Grid Community without row virtualisation (plus an unranked default, virtualised grid); virtual — TanStack Virtual on React, Solid and Vue, react-window 2, virtua, vue-virtual-scroller. Skipped rivals and dropped ops are listed in each scenario file's header.
+
 Overnight-only suites: `bun bench-ssr.ts --wait-quiet 4 && bun bench-charts-bundle.ts` (in `examples/benchmark`), `cd ../real-bench && bun bench.ts --repeat 4 --wait-quiet 4`, `cd ../form-bench && bun bench-form.ts --repeat 3 --wait-quiet 4`, and from the root `bun run bench:ssr-cross && bun run bench:head && bun scripts/bench/core/styler.ts`.
 
 Every fundamentals package: `cd packages/fundamentals/<pkg> && NODE_ENV=production bun bench/<file>.ts` (the package's `bench*` script).

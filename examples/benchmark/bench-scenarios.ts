@@ -170,17 +170,36 @@ const SCENARIOS: { id: string; label: string; frameworks: string[] }[] = [
   {
     id: 'flow',
     label: 'flow diagram — @pyreon/flow vs React Flow 12 (500 nodes / 499 edges)',
-    frameworks: ['Pyreon', 'React Flow 12'].filter((f) => (NARROW ? NARROW.includes(f) : true)),
+    // Svelte Flow / Vue Flow / JointJS added 2026-11 (see src/impl/scenario-flow.ts).
+    frameworks: ['Pyreon', 'React Flow 12', 'Svelte Flow 1', 'Vue Flow 1', 'JointJS 4'].filter((f) => (NARROW ? NARROW.includes(f) : true)),
   },
   {
     id: 'virtual',
     label: 'virtual list — @pyreon/virtual vs @tanstack/react-virtual (10,000 rows)',
-    frameworks: ['Pyreon', 'React 19 (react-virtual, memo rows)'].filter((f) => (NARROW ? NARROW.includes(f) : true)),
+    frameworks: [
+      'Pyreon',
+      'React 19 (react-virtual, memo rows)',
+      // Rival arms added 2026-11 (see src/impl/scenario-virtual.ts).
+      'React 19 (react-window)',
+      'React 19 (virtua)',
+      'Solid (solid-virtual)',
+      'Vue 3 (vue-virtual)',
+      'Vue 3 (vue-virtual-scroller)',
+    ].filter((f) => (NARROW ? NARROW.includes(f) : true)),
   },
   {
     id: 'table',
     label: 'data table — @pyreon/table vs @tanstack/react-table (1,000 rows × 6 cols)',
-    frameworks: ['Pyreon', 'React 19 (react-table, memo rows)'].filter((f) => (NARROW ? NARROW.includes(f) : true)),
+    frameworks: [
+      'Pyreon',
+      'React 19 (react-table, memo rows)',
+      // Rival arms added 2026-11 (see src/impl/scenario-table.ts).
+      'Solid (solid-table)',
+      'Vue 3 (vue-table)',
+      'Svelte 5 (svelte-table)',
+      'AG Grid 36 (no row virtualisation)',
+      'AG Grid 36 (default, virtualised)',
+    ].filter((f) => (NARROW ? NARROW.includes(f) : true)),
   },
   {
     id: 'charts',
@@ -240,6 +259,9 @@ const NON_RANKING = new Set([
   'Chart.js 4 (defaults, no decimation)',
   // Raw 2D stroke of every point, no axes — a drift control, not a competitor.
   'Vanilla canvas (control)',
+  // table: AG Grid as shipped renders only its viewport, so its rows are not
+  // the same work as the arms that render all 6,000 cells.
+  'AG Grid 36 (default, virtualised)',
 ])
 
 interface SuiteResult {
@@ -307,6 +329,25 @@ if (scenarios.length === 0) {
 }
 
 load.printIdentity()
+// Installed rival versions for the library scenarios (read from disk, not
+// hard-coded, so a lockfile move cannot print a stale version).
+const RIVAL_PACKAGES: Record<string, string[]> = {
+  flow: ['@xyflow/react', '@xyflow/svelte', '@vue-flow/core', '@joint/core'],
+  table: ['@tanstack/react-table', '@tanstack/solid-table', '@tanstack/vue-table', '@tanstack/svelte-table', 'ag-grid-community'],
+  virtual: ['@tanstack/react-virtual', '@tanstack/solid-virtual', '@tanstack/vue-virtual', 'react-window', 'virtua', 'vue-virtual-scroller'],
+}
+for (const sc of scenarios) {
+  const pkgs = RIVAL_PACKAGES[sc.id]
+  if (!pkgs) continue
+  const versions = pkgs.map((p) => {
+    try {
+      return `${p}@${(JSON.parse(readFileSync(`${import.meta.dir}/node_modules/${p}/package.json`, 'utf8')) as { version: string }).version}`
+    } catch {
+      return `${p}@?`
+    }
+  })
+  console.log(`[bench-scenarios] ${sc.id} rivals installed: ${versions.join(' · ')}`)
+}
 stamp('load BEFORE build')
 if (!POOL_FILES) {
   console.log('[bench-scenarios] building…')
