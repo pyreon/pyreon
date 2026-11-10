@@ -35,10 +35,10 @@ import {
   _captureRun,
   _frameReads,
   _releaseRun,
+  type EffectScope,
   type RunCapture,
 } from '@pyreon/reactivity'
 import { setupDelegation } from './delegate'
-import type { EffectScope } from '@pyreon/reactivity'
 import { registerComponent, unregisterComponent } from './devtools'
 import { _takePendingForAdoption, detachNode, mountFor, mountKeyedList, mountReactive } from './nodes'
 import { applyProps, applySelectValueProp } from './props'
