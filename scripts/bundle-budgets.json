@@ -53,7 +53,7 @@
   "@pyreon/rx": 2304,
   "@pyreon/server": 5860,
   "@pyreon/sized-map": 512,
-  "@pyreon/solid-compat": 4864,
+  "@pyreon/solid-compat": 5045,
   "@pyreon/state-tree": 6170,
   "@pyreon/auth": 9000,
   "@pyreon/storage": 3625,
@@ -71,7 +71,8 @@
   "@pyreon/validate": 17600,
   "@pyreon/validation": 1792,
   "@pyreon/virtual": 1294,
-  "@pyreon/vue-compat": 5961,
+  "@pyreon/vite-plugin": 13640,
+  "@pyreon/vue-compat": 6278,
   "@pyreon/zero": 9310,
   "@pyreon/zero-cli": 5600,
   "@pyreon/zero-content": 11428

@@ -45,7 +45,6 @@ import {
   type EffectScope,
   effectScope,
   getCurrentScope,
-  onScopeDispose,
   batch as pyreonBatch,
   computed as pyreonComputed,
   createSelector as pyreonCreateSelector,
