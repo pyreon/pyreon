@@ -943,6 +943,27 @@ const STORE_SIGNAL_SWEEP_THRESHOLD = 256
  */
 export const _STORE_SIGNAL_CACHE = Symbol.for('pyreon/solid-compat:store-signal-cache')
 
+/**
+ * Brand for store updaters that return the COMPLETE next value (`produce`,
+ * `reconcile`): `setStore` replaces with their result instead of merging it.
+ */
+const REPLACING_UPDATER: unique symbol = Symbol('pyreon.solid-compat.replacingUpdater')
+
+function markReplacing<F extends (...args: never[]) => unknown>(fn: F): F {
+  ;(fn as unknown as Record<symbol, boolean>)[REPLACING_UPDATER] = true
+  return fn
+}
+
+function isReplacingUpdater(value: unknown): boolean {
+  return typeof value === 'function' && (value as unknown as Record<symbol, boolean>)[REPLACING_UPDATER] === true
+}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false
+  const proto = Object.getPrototypeOf(value)
+  return proto === Object.prototype || proto === null
+}
+
 export function createStore<T extends object>(
   initialValue: T,
 ): [T, SetStoreFunction<T>] {
@@ -1126,16 +1147,54 @@ export function createStore<T extends object>(
     }
   }
 
+  /**
+   * Write `value` (or `value(prev)`) at `target[key]` with Solid's rule: a plain
+   * object written over a plain object is SHALLOW-MERGED into it
+   * (`setStore('user', { name })` keeps the user's other fields); anything else
+   * replaces. `produce` / `reconcile` return the complete next value, so they
+   * always replace. This used to replace unconditionally, silently dropping the
+   * fields the update did not name.
+   */
+  function assignAt(target: Record<string | number, unknown>, key: string | number, value: unknown): void {
+    const prev = target[key]
+    const next = typeof value === 'function' ? (value as (prev: unknown) => unknown)(prev) : value
+    if (
+      !isReplacingUpdater(value) &&
+      next !== prev &&
+      isPlainRecord(prev) &&
+      isPlainRecord(next)
+    ) {
+      safeAssign(prev, next)
+      return
+    }
+    // `Object.defineProperty` instead of `target[key] = next` so the write
+    // bypasses the prototype chain entirely — even if a setter has been
+    // installed on `Object.prototype` for `key`, an OWN data property is
+    // installed without invoking it (CodeQL `js/prototype-polluting-assignment`;
+    // callers already refuse `__proto__` / `constructor` / `prototype` keys).
+    Object.defineProperty(target, key, {
+      value: next,
+      writable: true,
+      enumerable: true,
+      configurable: true,
+    })
+  }
+
   function applyAtPath(obj: unknown, path: unknown[], value: unknown): void {
     if (path.length === 0) {
       // Apply value to obj itself (top-level update). `safeAssign`
       // instead of `Object.assign` filters `__proto__`-keyed payloads.
-      if (typeof value === 'function') {
-        const result = (value as (prev: unknown) => unknown)(obj)
-        safeAssign(obj as object, result)
-      } else {
-        safeAssign(obj as object, value)
+      const result = typeof value === 'function' ? (value as (prev: unknown) => unknown)(obj) : value
+      // `undefined` / the draft itself: the function mutated the draft in place.
+      if (result === undefined || result === obj) return
+      if (isReplacingUpdater(value) && result !== null && typeof result === 'object') {
+        // produce / reconcile hand back the COMPLETE next state: drop keys it no
+        // longer has, so a `delete` inside `produce` is not undone by a merge.
+        for (const k of Object.keys(obj as object)) {
+          if (!Object.hasOwn(result, k)) delete (obj as Record<string, unknown>)[k]
+        }
       }
+      safeAssign(obj as object, result)
       return
     }
 
@@ -1147,7 +1206,7 @@ export function createStore<T extends object>(
         for (let i = 0; i < obj.length; i++) {
           if ((head as (item: unknown, index: number) => boolean)(obj[i], i)) {
             if (rest.length === 0) {
-              obj[i] = typeof value === 'function' ? (value as (prev: unknown) => unknown)(obj[i]) : value
+              assignAt(obj as unknown as Record<number, unknown>, i, value)
             } else {
               applyAtPath(obj[i], rest, value)
             }
@@ -1169,34 +1228,7 @@ export function createStore<T extends object>(
     if (key === '__proto__' || key === 'constructor' || key === 'prototype') return
 
     if (rest.length === 0) {
-      // Last path segment — set the value.
-      //
-      // `Object.defineProperty` instead of `obj[key] = value` so the
-      // write bypasses the prototype chain entirely — even if a
-      // setter has been installed on `Object.prototype` for `key`,
-      // we install an OWN data property on `obj` without invoking it.
-      // This closes CodeQL `js/prototype-polluting-assignment`
-      // (alert #22 stayed open after the first fix because CodeQL's
-      // taint-tracking didn't recognise the guard pattern alone —
-      // the bracket-write itself was the flagged sink, and the
-      // analyser conservatively flags any bracket-write into a
-      // user-typed object). `defineProperty` with a data descriptor
-      // is the documented safe replacement; combined with the
-      // explicit `===` guard above, the write is double-safe.
-      // Semantics are identical to `obj[key] = value` for a plain
-      // data property; the only difference is that setter chains on
-      // the prototype are NOT triggered.
-      const target = obj as Record<string | number, unknown>
-      const nextValue =
-        typeof value === 'function'
-          ? (value as (prev: unknown) => unknown)(target[key])
-          : value
-      Object.defineProperty(target, key, {
-        value: nextValue,
-        writable: true,
-        enumerable: true,
-        configurable: true,
-      })
+      assignAt(obj as Record<string | number, unknown>, key, value)
     } else {
       // Recurse into nested object
       applyAtPath((obj as Record<string | number, unknown>)[key], rest, value)
@@ -1204,10 +1236,15 @@ export function createStore<T extends object>(
   }
 
   const setStore: SetStoreFunction<T> = (...args: unknown[]) => {
-    if (args.length === 1 && typeof args[0] === 'function') {
-      // Function form: setStore(state => { state.x = 1 })
+    if (args.length === 1) {
+      // Whole-state forms, as in Solid: `setStore({ x: 1 })` merges,
+      // `setStore(s => ({ ...s, x: 1 }))` merges what the function returns,
+      // `setStore(produce(...))` / `setStore(reconcile(...))` replace, and the
+      // compat-only `setStore(s => { s.x = 1 })` keeps its draft mutation.
+      // Only the mutate-in-place function form used to work: an object was a
+      // no-op and a returned value was discarded.
       const draft = deepClone(raw)
-      ;(args[0] as (state: T) => void)(draft)
+      applyAtPath(draft, [], args[0])
       updateRaw(draft)
     } else if (args.length >= 2) {
       // Path form with support for numeric indices and filter predicates
@@ -1227,7 +1264,7 @@ export function createStore<T extends object>(
  * Used with setStore: `setStore(reconcile(newData))`
  */
 export function reconcile<T extends object>(value: T): (state: T) => T {
-  return () => value
+  return markReplacing(() => value)
 }
 
 /**
@@ -1243,11 +1280,11 @@ export function unwrap<T>(value: T): T {
  * Returns a function that clones the state, applies mutations, and returns the result.
  */
 export function produce<T extends object>(fn: (state: T) => void): (state: T) => T {
-  return (state: T) => {
+  return markReplacing((state: T) => {
     const draft = deepClone(state)
     fn(draft)
     return draft
-  }
+  })
 }
 
 // ─── startTransition / useTransition ────────────────────────────────────────
