@@ -1,6 +1,6 @@
 // Schema.is() boolean check + the compile-time verdict fast-path hook.
-import { describe, expect, it } from 'vitest'
-import { s } from '../v1'
+import { afterEach, describe, expect, it } from 'vitest'
+import { configure, s } from '../v1'
 
 describe('Schema.is() — fallback (no attached verdict)', () => {
   it('agrees with parse().ok for primitives', () => {
@@ -22,26 +22,48 @@ describe('Schema.is() — fallback (no attached verdict)', () => {
   })
 })
 
-describe('Schema.is() — attached compile-time verdict (fast path)', () => {
-  it('consults the attached verdict instead of parse', () => {
+describe('Schema.is() — attached compile-time verdict (eval-free path)', () => {
+  // The build-attached verdict (`compileValidators`) is the eval-free compiled
+  // path: `.is()` consults it only when the runtime verdict JIT did not serve
+  // the schema (JIT off — a CSP without 'unsafe-eval' — or a refused shape).
+  // With the JIT on, the runtime verdict wins, because it is the faster one.
+  afterEach(() => configure({ jit: true }))
+
+  it('with the JIT on, the runtime verdict wins over an attached one', () => {
+    const schema = s.string().min(100)
+    schema._attachCompiledVerdict(() => true)
+    expect(schema.is('short')).toBe(false) // the runtime verdict decides
+    expect(schema.is('x'.repeat(100))).toBe(true)
+  })
+
+  it('with the JIT off, .is() consults the attached verdict instead of parse', () => {
+    configure({ jit: false })
     // A schema that REJECTS everything non-empty, but the attached verdict says
     // "always valid" — `.is()` must return the verdict's answer, proving the
-    // runtime op-array is bypassed.
+    // interpreter is bypassed.
     const schema = s.string().min(100)
-    expect(schema.is('short')).toBe(false) // fallback path: too short
+    expect(schema.is('short')).toBe(false) // interpreter: too short
     schema._attachCompiledVerdict(() => true)
-    expect(schema.is('short')).toBe(true) // fast path wins
+    expect(schema.is('short')).toBe(true) // attached verdict wins
     expect(schema.parse('short').ok).toBe(false) // parse() is unaffected
   })
 
-  it('attached verdict can also reject what parse accepts', () => {
+  it('with the JIT off, an attached verdict can also reject what parse accepts', () => {
+    configure({ jit: false })
     const schema = s.string()
     expect(schema.is('ok')).toBe(true)
     schema._attachCompiledVerdict(() => false)
     expect(schema.is('ok')).toBe(false)
   })
 
+  it('a refused shape (async refine) consults the attached verdict with the JIT on', () => {
+    const schema = s.string().refine(async () => true, { message: 'x' })
+    schema._attachCompiledVerdict(() => true)
+    expect(schema.is('ok')).toBe(true)
+  })
+
   it('a post-attach chained method invalidates the verdict (falls back)', () => {
+    configure({ jit: false })
     const schema = s.string()
     schema._attachCompiledVerdict(() => false) // pretend "always invalid"
     expect(schema.is('ok')).toBe(false)
