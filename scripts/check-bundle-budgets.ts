@@ -547,37 +547,28 @@ const REACH_RATIO_FLOOR_BYTES = 4096
 const MIN_REACH_RATIO = 0.05
 
 /**
- * The gzip output differs slightly between the machine a contributor measures
- * on (macOS) and the ubuntu runner that gates the PR — measured at ~177 B on a
- * 16.5 KB package, about 1.1%. A budget with LESS headroom than that delta is
- * not merely tight, it is UN-SATISFIABLE: the same commit gets a different
- * verdict per machine, so `validate-fast` passes locally and CI goes red, and
- * re-running locally only reconfirms the wrong answer.
+ * The minimum headroom every budget carries: 1.5% of the measured size, and
+ * never less than 64 B. A budget set to within a few bytes of today's size
+ * turns the next unrelated PR that adds a line to the package red, so a budget
+ * that close is reported as a failure of the BUDGET, in the same place as the
+ * other measurement-validity checks above.
  *
- * This is the same defect class as the empty-bundle detection above — a
- * measurement the gate cannot make reliably, reported as a verdict about the
- * package — so it is checked in the same place rather than left as advice
- * printed after a failure has already been declared.
- *
- * Note tight is not itself bad: a small budget makes the gate MORE sensitive to
- * real growth, which is the point. The failure mode is specifically headroom
- * below the measurement's own noise.
+ * The verdict is a function of the measured bytes and the budget only — never
+ * of the machine. Until 2026-11 a run outside CI inflated its measurement by a
+ * presumed 1.1% "macOS is smaller than ubuntu" delta before judging. That delta
+ * no longer exists: with the pinned bun, the same `lib/` bundles and gzips to
+ * identical bytes on macOS arm64 and the ubuntu runner (`@pyreon/core` read
+ * 7867 B in both on 2026-11-10; #4266 found every package bit-identical across
+ * macOS arm64, Linux arm64 and Linux x64). The deltas observed in 2026-09 came
+ * from mismatched bun versions and stale `lib/` trees, not from the platform.
+ * The inflation therefore made the local verdict STRICTER than CI's on the same
+ * bytes: `@pyreon/server` (6139 B measured on both, budget 6280) passed CI and
+ * failed every local `validate-fast` (#4288). A stale `lib/` is the remaining
+ * way two machines disagree, and the fix for that is rebuilding, not a fudge
+ * factor.
  */
-const GZIP_PLATFORM_VARIANCE = 0.015
-const GZIP_PLATFORM_VARIANCE_FLOOR_BYTES = 64
-
-/**
- * How much LARGER the gating machine measures than a contributor's.
- *
- * Distinct from {@link GZIP_PLATFORM_VARIANCE}, and the distinction is the same
- * one {@link SUGGESTION_MARGIN} draws: this is an OBSERVATION about two
- * machines (~177 B on a 16.5 KB package, ~1.1%; `@pyreon/toast` read 3018 B on
- * macOS against 3068 B on ubuntu, 1.66%), while the variance is the POLICY for
- * how much headroom a budget must carry. Using the policy figure to inflate a
- * measurement makes the check stricter than the thing it models — measured
- * here, it failed a package CI accepts.
- */
-export const GZIP_PLATFORM_DELTA = 0.011
+const HEADROOM_FRACTION = 0.015
+const HEADROOM_FLOOR_BYTES = 64
 
 /**
  * Prints the KNOWN thin-headroom debt on every run, green or red.
@@ -593,7 +584,7 @@ function printThinHeadroom(
   /* eslint-disable no-console */
   if (known.length > 0) {
     console.log(
-      `  ⚠ ${known.length} budget(s) sit below the ~${(GZIP_PLATFORM_VARIANCE * 100).toFixed(1)}% macOS/ubuntu gzip variance and cannot be measured reliably (grandfathered in "_thinHeadroom"):`,
+      `  ⚠ ${known.length} budget(s) sit below the ~${(HEADROOM_FRACTION * 100).toFixed(1)}% minimum headroom (grandfathered in "_thinHeadroom"):`,
     )
     for (const t of known) {
       console.log(
@@ -610,66 +601,46 @@ function printThinHeadroom(
 }
 
 /**
- * Whether a budget carries enough headroom to be measurable on BOTH platforms.
+ * Whether a budget carries the minimum headroom over a measurement.
  *
- * Pure so it can be tested against the two figures the same commit produces on
- * the two machines, which is the one thing an env-var toggle cannot do: setting
- * `CI=true` locally only disables the inflation, it does not reproduce ubuntu's
- * larger gzip.
- *
- * @param measured  what THIS machine measured
- * @param onGating  true when this machine IS the gating one (CI), so the
- *                  measurement stands; false when it may be up to
- *                  {@link GZIP_PLATFORM_DELTA} smaller than the gating figure.
+ * Takes no notion of which machine measured: the same bytes get the same
+ * verdict in CI and on a laptop. See {@link HEADROOM_FRACTION} for why the
+ * former "inflate when not in CI" arm was removed.
  */
-export function headroomIsSufficient(measured: number, budget: number, onGating: boolean): boolean {
-  const worstCase = onGating ? measured : measured * (1 + GZIP_PLATFORM_DELTA)
-  return budget - worstCase >= requiredHeadroom(worstCase)
+export function headroomIsSufficient(measured: number, budget: number): boolean {
+  return budget - measured >= requiredHeadroom(measured)
 }
 
 /**
- * Is this budget THIN — under budget here, but without the headroom to stay
- * under on the gating machine?
+ * Is this budget THIN — under budget, but without the minimum headroom?
  *
- * The loop used to re-derive this as `headroom >= 0 && headroom < required`,
- * which let a NEGATIVE worst-case headroom through: this machine measures
- * under the budget, the inflated gating figure does not — the most at-risk
- * budget of all, reported as nothing. Found on `@pyreon/http` (5935 B locally
- * against 6000, ~6000.3 B in CI). One predicate, used by the loop and tested.
- * A budget this machine already exceeds is a violation, not thin.
+ * A budget the measurement already exceeds is a violation, not thin. One
+ * predicate, used by the loop and tested.
  */
-export function isThinHeadroom(measured: number, budget: number, onGating: boolean): boolean {
-  return measured <= budget && !headroomIsSufficient(measured, budget, onGating)
+export function isThinHeadroom(measured: number, budget: number): boolean {
+  return measured <= budget && !headroomIsSufficient(measured, budget)
 }
 
-/** The minimum headroom a budget needs to be measurable on both platforms. */
+/** The minimum headroom a budget needs over a measurement. */
 export function requiredHeadroom(measured: number): number {
-  return Math.max(GZIP_PLATFORM_VARIANCE_FLOOR_BYTES, measured * GZIP_PLATFORM_VARIANCE)
+  return Math.max(HEADROOM_FLOOR_BYTES, measured * HEADROOM_FRACTION)
 }
 
 /**
  * How much a SUGGESTED budget carries beyond the bare minimum.
  *
- * Deliberately larger than {@link GZIP_PLATFORM_VARIANCE}, because the two
- * answer different questions. The variance answers "is this budget measurable
- * on both platforms?" — a property of the budget. The suggestion answers "what
- * should I set it to?", and it is computed from the number THIS machine
- * measured, which on macOS runs BELOW the ubuntu figure that actually gates the
- * PR. Measured on `@pyreon/toast`: macOS 3018 B, ubuntu 3068 B — a 1.66% delta,
- * above the 1.5% the variance uses.
- *
- * So a suggestion pinned to the minimum is short by the very delta the message
- * warns about: follow it on macOS and CI fails again, a few dozen bytes higher.
- * That happened three times in one afternoon (`@pyreon/native-compiler`,
- * `@pyreon/toast`, `@pyreon/table`) before this was fixed. Being generous here
- * costs a few dozen bytes of slack; being short costs a CI round trip.
+ * Deliberately larger than {@link HEADROOM_FRACTION}: a suggestion pinned to
+ * the minimum turns red again with the next PR that adds a few bytes to the
+ * package, and when the 2026-09 platform deltas were real (mismatched bun
+ * versions, measured at 1.66% on `@pyreon/toast`) it was short three times in
+ * one afternoon. Being generous costs a few dozen bytes of slack; being short
+ * costs a CI round trip.
  */
 const SUGGESTION_MARGIN = 0.03
 
 /**
- * A budget to set, safe on either platform: assume the gating machine measures
- * up to {@link SUGGESTION_MARGIN} larger than this one, and give THAT figure
- * the headroom it will be asked for.
+ * A budget to set: {@link SUGGESTION_MARGIN} over the measurement, plus the
+ * minimum headroom that larger figure would be asked for.
  */
 export function suggestedBudget(measured: number): number {
   const worstCaseRemote = measured * (1 + SUGGESTION_MARGIN)
@@ -1106,7 +1077,7 @@ async function main(): Promise<void> {
   const violations: Violation[] = []
   const missing: MissingBudget[] = []
 
-  // ── Un-satisfiable budgets (headroom below the platform gzip variance) ──
+  // ── Thin budgets (headroom below the minimum, see HEADROOM_FRACTION) ──
   //
   // Ratcheted rather than gated outright, and the distinction is deliberate: a
   // thin budget is a defect in the BUDGET FILE, not in the package, so failing
@@ -1137,25 +1108,11 @@ async function main(): Promise<void> {
       missing.push({ name: r.name, current: r.gzip })
       continue
     }
-    // Judged against the WORST-CASE gating measurement, not this machine's.
-    //
-    // Both terms used to read `r.gzip`, which made THIS CHECK's own verdict
-    // platform-dependent — the exact disease it diagnoses. On macOS a budget
-    // passes at `gzip * 1.015`; on the ubuntu runner the same budget is judged
-    // against a number ~1.1% larger, so anything in `[1.015, 1.026] * gzip`
-    // passed locally and failed in CI. Measured on `@pyreon/core`: a 63 B band
-    // for a package that size, and a contributor re-running locally to
-    // "confirm" the fix only reconfirms the wrong answer.
-    //
-    // In CI the measurement IS the gating one, so it stands as measured;
-    // elsewhere it is inflated by the platform delta so the two agree. Nothing
-    // in the current table sits in that band, so this changes no verdict today
-    // — it stops the class recurring.
-    const onGating = process.env.CI !== undefined
-    const worstCase = onGating ? r.gzip : r.gzip * (1 + GZIP_PLATFORM_DELTA)
-    const headroom = budget - worstCase
-    const required = requiredHeadroom(worstCase)
-    if (isThinHeadroom(r.gzip, budget, onGating)) {
+    // Judged on the measured bytes alone, with no `CI` branch: the same bytes
+    // must get the same verdict on every machine (see HEADROOM_FRACTION).
+    const headroom = budget - r.gzip
+    const required = requiredHeadroom(r.gzip)
+    if (isThinHeadroom(r.gzip, budget)) {
       const entry = { name: r.name, current: r.gzip, budget, headroom, required }
       if (grandfathered.has(r.name)) thinKnown.push(entry)
       else thinNew.push(entry)
@@ -1216,16 +1173,14 @@ async function main(): Promise<void> {
       // eslint-disable-next-line no-console
       console.error(`✗ ${violations.length} package(s) over budget:\n`)
       for (const v of violations) {
-        // A budget whose headroom is thinner than the measurement's own
-        // variance fails on CI while passing locally, which reads as a
-        // mystery rather than as a budget that was set too tight. gzip output
-        // differs slightly between macOS and the ubuntu runner — measured at
-        // ~177 B on a 16.5 KB package, about 1.1% — so say so when the overage
-        // is inside that band, instead of leaving the next person to rediscover
-        // it. (`--update` gives 25% headroom; these are hand-set values.)
-        const withinNoise = v.overBy <= requiredHeadroom(v.current)
-        const note = withinNoise
-          ? `\n      ↳ that is within the ~1.5% macOS/ubuntu gzip variance — this budget has too little headroom to be measured reliably. Raise it clear of the noise rather than shaving the package.`
+        // An overage smaller than the minimum headroom usually means several
+        // merged PRs each added a little to a budget that had been set close to
+        // its measurement, so none of them crossed it alone. Say so, instead of
+        // leaving the next person to bisect a few dozen bytes. (`--update`
+        // gives 25% headroom; these are hand-set values.)
+        const withinMargin = v.overBy <= requiredHeadroom(v.current)
+        const note = withinMargin
+          ? `\n      ↳ that is within the ~${(HEADROOM_FRACTION * 100).toFixed(1)}% minimum headroom — the budget was set too close to its measurement. Find which merges added the bytes, then raise the entry by hand with ~3% over the new measurement and name what the bytes bought.`
           : ''
         // eslint-disable-next-line no-console
         console.error(
@@ -1252,17 +1207,17 @@ async function main(): Promise<void> {
     if (thinNew.length > 0) {
       // eslint-disable-next-line no-console
       console.error(
-        `\n✗ ${thinNew.length} budget(s) have LESS headroom than the measurement's own noise:\n`,
+        `\n✗ ${thinNew.length} budget(s) have LESS than the minimum headroom:\n`,
       )
       for (const t of thinNew) {
         // eslint-disable-next-line no-console
         console.error(
-          `  ${t.name}: budget ${t.budget} B is only ${Math.floor(t.headroom)} B above the measured ${t.current} B — needs at least ${Math.ceil(t.required)} B (~${(GZIP_PLATFORM_VARIANCE * 100).toFixed(1)}%). Suggested budget: ${suggestedBudget(t.current)} B (clear of a gating machine that measures larger than this one).`,
+          `  ${t.name}: budget ${t.budget} B is only ${Math.floor(t.headroom)} B above the measured ${t.current} B — needs at least ${Math.ceil(t.required)} B (~${(HEADROOM_FRACTION * 100).toFixed(1)}%). Suggested budget: ${suggestedBudget(t.current)} B.`,
         )
       }
       // eslint-disable-next-line no-console
       console.error(
-        `\nA budget this tight is not strict, it is UN-SATISFIABLE: gzip differs by ~1.1% between macOS and the ubuntu runner, so the same commit passes locally and fails CI, and re-running locally only reconfirms the wrong answer. Raise the budget clear of the noise. If it genuinely must stay this tight, add the package to "_thinHeadroom" in scripts/bundle-budgets.json with a reason — that list can only shrink.`,
+        `\nA budget this close to its measurement turns red on the next PR that adds a few bytes to the package, whoever wrote it. The verdict is the same on every machine (it reads only the measured bytes), so a different local result means a stale lib/: rebuild before comparing. Find what grew the package, then raise the entry by hand and name what the bytes bought. If it genuinely must stay this tight, add the package to "_thinHeadroom" in scripts/bundle-budgets.json with a reason — that list can only shrink.`,
       )
     }
     if (unmeasurable.length > 0) {
