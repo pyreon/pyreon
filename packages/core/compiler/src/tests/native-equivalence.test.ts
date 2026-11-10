@@ -1277,6 +1277,22 @@ describe('SSR compile-to-string fast path (ssrTemplate) syntax and optional nati
   test('fully static element (no holes)', () => {
     compareSsrTemplate(`const A = <div class="x" id="y">hello</div>`)
   })
+  // JSX inside an expression hole: preserved + re-walked when the expression
+  // needs no rewrite, else generated text with the call deferred.
+  test('JSX-bearing expression holes (preserved, deferred, residual)', () => {
+    compareSsrTemplate(
+      `function P() { const d = useData(); return <main><ul id="items">{d.items.map((item) => <li><Link href={\`/i/\${item.id}\`}>{item.name}</Link>{' '}<span class="p">{fmt(item.price)}</span></li>)}</ul></main> }`,
+    )
+    compareSsrTemplate(`const frag = <div class="p">{c ? <Consumer /> : null}</div>`)
+    compareSsrTemplate(`const frag = <div class="p">{c ? <b>x</b> : <Consumer />}</div>`)
+    compareSsrTemplate(`const frag = <div>{c && <span><Widget /></span>}</div>`)
+    compareSsrTemplate(`const frag = <ul><b>x</b>{xs.map((x) => <Row x={x} />)}{tail}</ul>`)
+    compareSsrTemplate(`const frag = <ul>{xs.map((x) => <li>{x.ok ? <Ok /> : null}</li>)}</ul>`)
+    compareSsrTemplate(`const frag = <For each={xs} by={(x) => x.id}>{(x) => <li>{x.ok ? <Ok /> : 'n'}</li>}</For>`)
+    compareSsrTemplate(`function C(props) { return <div>{props.items.map((i) => <Row i={i} />)}</div> }`)
+    compareSsrTemplate(`const s = signal(1); const frag = <div>{[1, 2].map((i) => <Row v={s} i={i} />)}</div>`)
+    compareSsrTemplate(`const frag = <div><>{xs.map((x) => <p><Comp /></p>)}</></div>`)
+  })
   test('dynamic prop text child (baked markers + _esc)', () => {
     compareSsrTemplate(`function C(props) { return <div>{props.x}</div> }`)
   })

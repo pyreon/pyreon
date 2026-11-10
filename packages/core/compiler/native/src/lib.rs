@@ -666,6 +666,12 @@ struct Ctx<'a> {
     needs_ssr_children_import: bool,
     needs_ssr_item_import: bool,
     needs_ssr_node_import: bool,
+    /// `_ssrDeferred` without `_ssrNode` (a deferred call whose only preserved
+    /// or JSX-bearing holes are expressions). Mirrors JS `needsSsrDeferredImport`.
+    needs_ssr_deferred_import: bool,
+    /// Set by `ssr_lower_nested_elements`: its `Some` result still contains JSX
+    /// in an operand kept as source. Mirrors JS `ssrLowerResidualJsx`.
+    ssr_lower_residual_jsx: bool,
     needs_ssr_for_keyed_import: bool,
     needs_esc_import: bool,
     needs_esc_sole_import: bool,
@@ -847,6 +853,8 @@ impl<'a> Ctx<'a> {
             needs_ssr_children_import: false,
             needs_ssr_item_import: false,
             needs_ssr_node_import: false,
+            needs_ssr_deferred_import: false,
+            ssr_lower_residual_jsx: false,
             needs_ssr_for_keyed_import: false,
             needs_esc_import: false,
             needs_esc_sole_import: false,
@@ -1103,6 +1111,8 @@ impl<'a> Ctx<'a> {
             }
             if self.needs_ssr_node_import {
                 ssr_imports.push("_ssrNode");
+                ssr_imports.push("_ssrDeferred");
+            } else if self.needs_ssr_deferred_import {
                 ssr_imports.push("_ssrDeferred");
             }
             if self.needs_ssr_for_keyed_import {
@@ -5881,7 +5891,24 @@ struct SsrBuf {
     /// `try_ssr_template_emit` brackets it with replacements and re-walks it so
     /// its props transform in place. Spans (not node refs) are stored so
     /// `SsrBuf` needs no lifetime parameter. Mirrors the JS `SsrBuf.holeSrc`.
-    hole_src: Vec<Option<(u32, u32)>>,
+    hole_src: Vec<Option<SrcHole>>,
+    /// A GENERATED hole's text contains JSX — rendered by `_esc`/`_escSole` the
+    /// moment the `_ssr(...)` arguments evaluate, so the call is wrapped in
+    /// `_ssrDeferred` like a preserved component hole. Propagates from `.map` /
+    /// `<For>` item buffers. Mirrors JS `SsrBuf.deferJsx`.
+    defer_jsx: bool,
+}
+
+/// A preserved source span plus the helper text wrapped around it:
+/// `_ssrNode(`…`)` for a component child, `_esc(`/`_escSole(`…`)` for an
+/// expression child. `is_expr` picks the re-walk (expression vs element).
+#[derive(Clone, Copy)]
+struct SrcHole {
+    start: u32,
+    end: u32,
+    open: &'static str,
+    close: &'static str,
+    is_expr: bool,
 }
 
 impl SsrBuf {
@@ -5891,6 +5918,7 @@ impl SsrBuf {
             holes: Vec::new(),
             hole_str: Vec::new(),
             hole_src: Vec::new(),
+            defer_jsx: false,
         }
     }
     fn emit_static(&mut self, s: &str) {
@@ -5912,9 +5940,19 @@ impl SsrBuf {
     /// A hole whose text is the child's OWN source range, left in place.
     /// Mirrors the JS `ssrEmitSourceHole`.
     fn emit_source_hole(&mut self, start: u32, end: u32) {
+        self.emit_source_hole_wrapped(start, end, "_ssrNode(", ")", false);
+    }
+    fn emit_source_hole_wrapped(
+        &mut self,
+        start: u32,
+        end: u32,
+        open: &'static str,
+        close: &'static str,
+        is_expr: bool,
+    ) {
         self.holes.push(String::new());
         self.hole_str.push(false);
-        self.hole_src.push(Some((start, end)));
+        self.hole_src.push(Some(SrcHole { start, end, open, close, is_expr }));
         self.statics.push(String::new());
     }
 }
@@ -6698,6 +6736,9 @@ fn ssr_try_map(buf: &mut SsrBuf, expr: &Expression, sole: bool, ctx: &mut Ctx) -
         Some(s) => s,
         None => return false,
     };
+    if item_buf.defer_jsx {
+        buf.defer_jsx = true;
+    }
     let recv = slice_expr(&member.object, ctx);
     // Param text: flat ESTree param list start..end (items, then rest).
     let items = &cb.params.items;
@@ -6749,6 +6790,11 @@ fn ssr_lower_element_text(el: &JSXElement, ctx: &mut Ctx) -> Option<String> {
     if eb.hole_src.iter().any(|h| h.is_some()) {
         return None;
     }
+    // Generated text that still builds JSX must render at the h() position,
+    // which only a whole-call `_ssrDeferred` gives. Mirrors JS.
+    if eb.defer_jsx {
+        return None;
+    }
     ctx.needs_ssr_import = true;
     Some(ssr_call_text(&eb, SsrMode::Recursed, ctx))
 }
@@ -6769,12 +6815,18 @@ fn ssr_lower_element_text(el: &JSXElement, ctx: &mut Ctx) -> Option<String> {
 /// its slice, and an all-unlowerable expression returns `None` so the emit is
 /// byte-for-byte the pre-existing VNode path. Mirrors JS `ssrLowerNestedElements`.
 fn ssr_lower_nested_elements(expr: &Expression, ctx: &mut Ctx) -> Option<String> {
+    ctx.ssr_lower_residual_jsx = false;
     match expr {
-        Expression::JSXElement(el) => ssr_lower_element_text(el, ctx),
+        Expression::JSXElement(el) => {
+            let whole = ssr_lower_element_text(el, ctx);
+            ctx.ssr_lower_residual_jsx = false;
+            whole
+        }
         Expression::LogicalExpression(l) if l.operator == LogicalOperator::And => {
             match unwrap_type_layers(&l.right) {
                 Expression::JSXElement(el) => {
                     let lowered = ssr_lower_element_text(el, ctx)?;
+                    ctx.ssr_lower_residual_jsx = contains_jsx_in_expr(&l.left);
                     Some(format!("{} && {}", slice_expr(&l.left, ctx), lowered))
                 }
                 _ => None,
@@ -6792,6 +6844,10 @@ fn ssr_lower_nested_elements(expr: &Expression, ctx: &mut Ctx) -> Option<String>
             if lowered_cons.is_none() && lowered_alt.is_none() {
                 return None;
             }
+            // An arm left as source (`cond ? <div/> : <Comp/>`) still builds JSX.
+            ctx.ssr_lower_residual_jsx = contains_jsx_in_expr(&c.test)
+                || (lowered_cons.is_none() && contains_jsx_in_expr(&c.consequent))
+                || (lowered_alt.is_none() && contains_jsx_in_expr(&c.alternate));
             let cons_text = lowered_cons.unwrap_or_else(|| slice_expr(&c.consequent, ctx));
             let alt_text = lowered_alt.unwrap_or_else(|| slice_expr(&c.alternate, ctx));
             Some(format!(
@@ -6959,6 +7015,9 @@ fn ssr_serialize_expr_child(
     // runtime (`{r.render}`), and h() elides that accessor's markers because it
     // is the item element's only child — so `_esc` would diverge.
     if mode == SsrMode::MapItem {
+        if contains_jsx_in_expr(expr) {
+            buf.defer_jsx = true;
+        }
         let t = slice_expr(expr, ctx);
         if sole {
             emit_esc_sole_hole(buf, t, ctx);
@@ -6975,8 +7034,41 @@ fn ssr_serialize_expr_child(
     // `cond ? <el> : …`) so the taken branch builds a string, not a VNode. The
     // reconstructed text is byte-identical through `_esc`/`_escSole` (see
     // `ssr_lower_nested_elements`); `None` keeps the pre-existing slice path.
-    let expr_text =
-        ssr_lower_nested_elements(expr, ctx).unwrap_or_else(|| slice_expr(expr, ctx));
+    let lowered = ssr_lower_nested_elements(expr, ctx);
+    if lowered.is_none() && contains_jsx_in_expr(expr) {
+        // JSX the two lowerings above could not turn into a string (a `.map`
+        // item holding a component, a component ternary arm). When the
+        // expression needs no rewrite of its own, PRESERVE it — `_esc(` /
+        // `_escSole(` around the untouched range — and re-walk it so its nested
+        // roots template exactly as on the client. Recursed mode only. Mirrors
+        // JS `ssrSerializeExprChild`.
+        let sp = expr.span();
+        if mode == SsrMode::Recursed
+            && slice_expr(expr, ctx) == ctx.source[sp.start as usize..sp.end as usize]
+        {
+            if sole {
+                ctx.needs_esc_sole_import = true;
+                buf.emit_source_hole_wrapped(sp.start, sp.end, "_escSole(", ")", true);
+            } else {
+                let wrapped = should_wrap(expr, ctx);
+                ctx.needs_esc_import = true;
+                if wrapped {
+                    buf.emit_static("<!--$-->");
+                }
+                buf.emit_source_hole_wrapped(sp.start, sp.end, "_esc(", ")", true);
+                if wrapped {
+                    buf.emit_static("<!--/$-->");
+                }
+            }
+            return true;
+        }
+        // Kept as generated text: the hole renders the VNodes it builds as soon
+        // as it is evaluated, so the call must be deferred (see `DeferredHtml`).
+        buf.defer_jsx = true;
+    } else if lowered.is_some() && ctx.ssr_lower_residual_jsx {
+        buf.defer_jsx = true;
+    }
+    let expr_text = lowered.unwrap_or_else(|| slice_expr(expr, ctx));
     // SOLE child of this element → no markers on EITHER side, whatever the
     // expression's static shape; `_escSole` decides from the runtime value kind.
     if sole {
@@ -7072,6 +7164,9 @@ fn ssr_try_for_keyed(buf: &mut SsrBuf, el: &JSXElement, ctx: &mut Ctx) -> bool {
         Some(s) => s,
         None => return false,
     };
+    if item_buf.defer_jsx {
+        buf.defer_jsx = true;
+    }
     // Param text: same extraction as ssr_try_map.
     let items = &cb.params.items;
     let first_start = items
@@ -7390,6 +7485,61 @@ fn is_ident_char(c: u8) -> bool {
 /// Preserved component-child holes are recorded as SPANS (so `SsrBuf` needs no
 /// lifetime parameter); this maps a span back to its node so it can be walked.
 /// Depth is a template subtree, so the linear scan is trivially small.
+/// The (type-unwrapped) expression of a JSX expression-container child at
+/// `start..end`, searched through DOM descendants and fragments — where
+/// `ssr_serialize_expr_child` preserved it.
+fn find_jsx_child_expr_by_span<'a>(
+    children: &'a [JSXChild<'a>],
+    start: u32,
+    end: u32,
+) -> Option<&'a Expression<'a>> {
+    for child in children {
+        match child {
+            JSXChild::ExpressionContainer(c) => {
+                if let Some(e) = jsx_expr_as_expression(&c.expression) {
+                    let u = unwrap_type_layers(e);
+                    if u.span().start == start && u.span().end == end {
+                        return Some(u);
+                    }
+                }
+            }
+            JSXChild::Element(c) => {
+                if let Some(found) = find_jsx_child_expr_by_span(&c.children, start, end) {
+                    return Some(found);
+                }
+            }
+            JSXChild::Fragment(frag) => {
+                if let Some(found) = find_jsx_child_expr_by_span(&frag.children, start, end) {
+                    return Some(found);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+/// Re-walk a preserved expression child with the flags its container position
+/// implies — the same set `handle_jsx_expression_child`'s plain-recurse tail
+/// uses — so nested roots transform exactly as the JS `walkNode(expr)` does.
+fn walk_preserved_child_expr(expr: &Expression, ctx: &mut Ctx) {
+    let old = ctx.parent_is_jsx;
+    let old_eager = ctx.parent_eager_mount;
+    ctx.parent_is_jsx = false;
+    ctx.parent_eager_mount =
+        matches!(expr, Expression::JSXElement(_) | Expression::JSXFragment(_));
+    let is_render_cb = matches!(
+        expr,
+        Expression::ArrowFunctionExpression(_) | Expression::FunctionExpression(_)
+    );
+    let old_cb = ctx.in_jsx_child_callback;
+    ctx.in_jsx_child_callback = is_render_cb;
+    walk_expression(expr, ctx);
+    ctx.in_jsx_child_callback = old_cb;
+    ctx.parent_is_jsx = old;
+    ctx.parent_eager_mount = old_eager;
+}
+
 fn find_jsx_element_by_span<'a>(
     el: &'a JSXElement<'a>,
     start: u32,
@@ -7459,7 +7609,7 @@ fn try_ssr_template_emit(el: &JSXElement, ctx: &mut Ctx) -> bool {
     // template path's `needs_braces` already relies on).
     let needs_braces = ctx.parent_is_jsx;
 
-    let preserved: Vec<(usize, (u32, u32))> = buf
+    let preserved: Vec<(usize, SrcHole)> = buf
         .hole_src
         .iter()
         .enumerate()
@@ -7467,7 +7617,11 @@ fn try_ssr_template_emit(el: &JSXElement, ctx: &mut Ctx) -> bool {
         .collect();
 
     if preserved.is_empty() {
-        let call = ssr_call_text(&buf, SsrMode::Recursed, ctx);
+        let mut call = ssr_call_text(&buf, SsrMode::Recursed, ctx);
+        if buf.defer_jsx {
+            call = format!("_ssrDeferred(() => {})", call);
+            ctx.needs_ssr_deferred_import = true;
+        }
         let text = brace_template_child(call, ctx);
         ctx.add_replacement(start, end, text);
         ctx.needs_ssr_import = true;
@@ -7499,15 +7653,17 @@ fn try_ssr_template_emit(el: &JSXElement, ctx: &mut Ctx) -> bool {
     };
 
     let (first_idx, first_span) = preserved[0];
+    ctx.needs_ssr_deferred_import = true;
     // The whole call is wrapped in `_ssrDeferred(() => …)` — a hole is an
     // ordinary argument evaluated at the CALL SITE, which is wrong for a hole
     // that RENDERS a component (rendering pushes context; h() defers it).
     // Wrapping the CALL rather than the hole also makes it composable: a nested
     // `_ssr` collapses into this same call. Mirrors the JS backend exactly.
     let mut prefix = format!(
-        "_ssrDeferred(() => _ssr([{}]{}, _ssrNode(",
+        "_ssrDeferred(() => _ssr([{}]{}, {}",
         statics_arr,
-        generated_up_to(first_idx, &mut hole, &buf)
+        generated_up_to(first_idx, &mut hole, &buf),
+        first_span.open
     );
     // Bracketed emission: the closing edit adds the matching `)}`/`}` — so the
     // lazy wrap is spelled out here rather than routed through
@@ -7522,18 +7678,28 @@ fn try_ssr_template_emit(el: &JSXElement, ctx: &mut Ctx) -> bool {
             prefix = format!("{{{}", prefix);
         }
     }
-    ctx.add_replacement(start, first_span.0, prefix);
+    ctx.add_replacement(start, first_span.start, prefix);
     hole = first_idx + 1;
 
     for k in 1..preserved.len() {
         let (idx, span) = preserved[k];
-        let between = format!("){}, _ssrNode(", generated_up_to(idx, &mut hole, &buf));
-        ctx.add_replacement(preserved[k - 1].1 .1, span.0, between);
+        let between = format!(
+            "{}{}, {}",
+            preserved[k - 1].1.close,
+            generated_up_to(idx, &mut hole, &buf),
+            span.open
+        );
+        ctx.add_replacement(preserved[k - 1].1.end, span.start, between);
         hole = idx + 1;
     }
 
     // Two closers for the call + one for the `_ssrDeferred(() => …)` wrap.
-    let mut suffix = format!("){}))", generated_up_to(buf.holes.len(), &mut hole, &buf));
+    let last = preserved[preserved.len() - 1].1;
+    let mut suffix = format!(
+        "{}{}))",
+        last.close,
+        generated_up_to(buf.holes.len(), &mut hole, &buf)
+    );
     if needs_braces {
         suffix = if lazy_child {
             format!("{})}}", suffix)
@@ -7541,13 +7707,17 @@ fn try_ssr_template_emit(el: &JSXElement, ctx: &mut Ctx) -> bool {
             format!("{}}}", suffix)
         };
     }
-    ctx.add_replacement(preserved[preserved.len() - 1].1 .1, end, suffix);
+    ctx.add_replacement(last.end, end, suffix);
 
     // The preserved subtrees are NOT covered by any replacement above, so they
     // still need their normal visit — reactive props, nested templates, signal
     // auto-call. This is the whole point of preserving rather than re-emitting.
-    for (_, (ps, pe)) in &preserved {
-        if let Some(child) = find_jsx_element_by_span(el, *ps, *pe) {
+    for (_, h) in &preserved {
+        if h.is_expr {
+            if let Some(e) = find_jsx_child_expr_by_span(&el.children, h.start, h.end) {
+                walk_preserved_child_expr(e, ctx);
+            }
+        } else if let Some(child) = find_jsx_element_by_span(el, h.start, h.end) {
             handle_jsx_element(child, ctx);
         }
     }
