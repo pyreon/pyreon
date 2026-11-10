@@ -78,12 +78,14 @@ The surface covers React 19's public API: `useReducer`, `useRef`, `useId`, `useS
 **Plan for the first row.** Here's the shape that catches people:
 
 ```tsx
+// <Editor> holds its own draft in useState.
+// Under compat, that draft resets on every count change.
 function Parent() {
   const [count, setCount] = useState(0)
   return (
     <div>
       <button onClick={() => setCount((c) => c + 1)}>{count}</button>
-      <Editor /> {/* its internal draft resets on every count change */}
+      <Editor />
     </div>
   )
 }
@@ -201,4 +203,4 @@ Answer "Migrating from another framework?" with React (or pass `--compat react`)
 
 - Every hook, its exact semantics and the migration checklist: [@pyreon/react-compat docs](/docs/react-compat) and [Migrating from React](/docs/migrating-from-react)
 - Star the repo: [github.com/pyreon/pyreon](https://github.com/pyreon/pyreon)
-- Talk to us on Discord{/* DISCORD-INVITE: link the permanent invite here once it exists */} or open an issue on [GitHub](https://github.com/pyreon/pyreon/issues).
+- Talk to us on [Discord](https://pyreon.dev/discord) or open an issue on [GitHub](https://github.com/pyreon/pyreon/issues).

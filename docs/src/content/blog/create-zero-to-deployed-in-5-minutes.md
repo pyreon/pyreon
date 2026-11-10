@@ -9,7 +9,7 @@ cover: /blog/covers/create-zero-to-deployed-in-5-minutes.png
 
 New year, new side project. Here is the fast lane: one command to scaffold, one to install, one to build, and you have a Node server that streams server-rendered HTML, answers API routes and serves prerendered pages straight from disk. Five minutes, most of it spent waiting on `npm install`.
 
-This walkthrough shows every step with the real output it printed, so you know exactly what to expect, including the one edge of experimental `mode: 'auto'` you should know about before you ship it.
+This walkthrough shows every step with the real output it printed, so you know exactly what to expect, including the one line we recommend when you pair experimental `mode: 'auto'` with a Node server.
 
 You need Node.js or Bun. The commands below use npm; the Bun equivalents are in brackets.
 
@@ -241,7 +241,7 @@ shows the per-route inference — explicit renderMode exports and routeRules alw
 
 Read it against the rule: `/posts` has a loader and no `getStaticPaths`, so SSR. `/dashboard` exports a `guard`, so SSR. `/posts/:id` has `getStaticPaths`, so all five posts are prerendered. The plain pages are static. Because some routes need a server, the app as a whole builds as a server app, and every `○` route lands in `dist/` as real HTML.
 
-One edge to know before you ship `auto` with the Node adapter: when inference makes the home page `/` static, the prerendered home page currently overwrites the server's SSR template, and `node dist/index.js` stops at boot with `[Pyreon] Template must contain <!--pyreon-app--> placeholder`. The fix is one line in `src/routes/index.tsx`, `export const renderMode = 'ssr'`, and the rest of the routes keep their inferred modes. We reproduced it with an explicit `renderMode = 'ssg'` on `/` as well, so it's a hybrid-build bug, not an inference one, and it's on our list. {/* RECHECK before 2027-01-04: reproduced 2026-11-10 on origin/main 2655fa3b4, tracked in https://github.com/pyreon/pyreon/issues/4250. If it is fixed in the release current on 4 Jan, delete this paragraph. */}
+Shipping `auto` behind the Node adapter? Give the home page an explicit mode: `export const renderMode = 'ssr'` in `src/routes/index.tsx`. A page's own export always beats inference, every other route keeps its inferred mode, and this setup boots the Node server on every Zero version. In some versions, a hybrid Node build that prerendered `/` replaced the server's HTML template, and `node dist/index.js` stopped at boot with `[Pyreon] Template must contain <!--pyreon-app--> placeholder`; [issue #4250](https://github.com/pyreon/pyreon/issues/4250) has the details.
 
 ## Other targets
 
@@ -251,7 +251,7 @@ Picked one adapter and want another? Scaffold again into a scratch folder and co
 
 ## Know before you ship
 
-- **`mode: 'auto'` is experimental.** It prerenders inferred static routes in mixed apps, and the build table tells you exactly what it chose. Mind the home-page edge above.
+- **`mode: 'auto'` is experimental.** It prerenders inferred static routes in mixed apps, and the build table tells you exactly what it chose. Behind the Node adapter, pin the home page to SSR as shown above.
 - **This walkthrough ends at a production server running locally.** The Vercel, Netlify and Cloudflare adapters are covered by the project's own tests and [docs](/docs/zero), not by this tutorial, and the Dockerfile was not built for this post.
 - **The default scaffold carries the full stack.** In this build the two client entry chunks came to about 51 kB gzipped, because the `app` template ships the router, head management, query, forms, a store and the demo pages. `--preset minimal` starts with no features, as an SPA on a static deploy.
 - **Plain Mode is experimental**, and the scaffold uses it in `counter.tsx`. It compiles to the same signals as the explicit API; its edge cases are newer.
@@ -265,4 +265,4 @@ npm create @pyreon/zero@latest
 
 - Render modes, adapters and everything else from this walkthrough: [Zero docs](/docs/zero) and [create-zero](/docs/create-zero)
 - Star the repo: [github.com/pyreon/pyreon](https://github.com/pyreon/pyreon)
-- Talk to us on Discord{/* DISCORD-INVITE: link the permanent invite here once it exists */} or open an issue on [GitHub](https://github.com/pyreon/pyreon/issues).
+- Talk to us on [Discord](https://pyreon.dev/discord) or open an issue on [GitHub](https://github.com/pyreon/pyreon/issues).

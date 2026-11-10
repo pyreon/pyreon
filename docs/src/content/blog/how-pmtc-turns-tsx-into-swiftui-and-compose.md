@@ -64,6 +64,7 @@ export function TodoApp() {
     todos.set(todos().map(t => t.id === id ? { ...t, done: !t.done } : t))
   }
   // addTodo, remove, clearCompleted, visible ...
+  // (JSX trimmed below: the todo list and the filter buttons are left out)
 
   return (
     <Stack gap={2} data-testid="todo-app">
@@ -74,10 +75,8 @@ export function TodoApp() {
         placeholder="What needs to be done?"
         data-testid="new-todo"
       />
-      {/* <TransitionGroup><For each={…visible} by={(t) => t.id}>…</For></TransitionGroup> */}
       <Inline gap={2} align="center">
         <Text>{remaining} remaining</Text>
-        {/* filter buttons */}
         <Show when={signalOf<typeof hasCompleted>(hasCompleted)}>
           <Button onPress={clearCompleted}>Clear completed</Button>
         </Show>
@@ -374,4 +373,4 @@ npm create @pyreon/multiplatform@latest
 
 - Docs: [How PMTC works, with the full supported-TypeScript reference](/docs/multiplatform), and [the primitives](/docs/primitives)
 - Star the repo: [github.com/pyreon/pyreon](https://github.com/pyreon/pyreon)
-- Talk to us on Discord{/* DISCORD-INVITE: link the permanent invite here once it exists */} or open an issue on [GitHub](https://github.com/pyreon/pyreon/issues). If something you expected to lower does not, paste the warning: named warnings exist so bug reports can be specific.
+- Talk to us on [Discord](https://pyreon.dev/discord) or open an issue on [GitHub](https://github.com/pyreon/pyreon/issues). If something you expected to lower does not, paste the warning: named warnings exist so bug reports can be specific.

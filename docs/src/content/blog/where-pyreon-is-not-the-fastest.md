@@ -13,7 +13,7 @@ That is our clearest loss to another framework, it holds in both runs at 1.15–
 
 We publish where we lose, so you can trust where we win. This post walks that list with the same care we give a win: the number, the cause as far as we have traced it, whether it follows from a design choice, and what we have already measured or shipped.
 
-> **All figures:** `BENCHMARKS.md`, run of 2026-11-05, Apple M3 Max, real Chromium 156 unless stated. Medians with bootstrap 95% intervals; "loss" means the intervals are disjoint; "one run" where marked. Synthetic and author-run. Every number reproduces from [pyreon.dev/docs/benchmarks](/docs/benchmarks). If the record has been re-run by the time you read this, the record wins over this post.
+> **All figures:** `BENCHMARKS.md`, run of 2026-11-05, Apple M3 Max, real Chromium 156 unless stated. Medians with bootstrap 95% intervals; "loss" means the intervals are disjoint; "one run" where marked. Synthetic and author-run. Every number reproduces from [pyreon.dev/docs/benchmarks](/docs/benchmarks). The benchmark record is the source of truth; if it differs from this post, the record wins.
 
 Two ground rules first. **We wrote and judge every one of these benchmarks**, so read them as the author's report. A keyed implementation for krausest/js-framework-benchmark is staged in the repo (`contrib/krausest/pyreon-keyed/`) for the independent check. And **a tie is not a loss, but it is not a win either**, so the ties where we once claimed wins are on this list too. The story of how those claims came down is in [We keep retracting our own benchmark wins](/blog/we-keep-retracting-our-benchmark-wins).
 
@@ -48,7 +48,7 @@ Solid pays the same class of cost. Its own unranked "eager props" diagnostic arm
 
 **What we tried.** We shipped null-prototype props objects in November 2026. Each per-instance getter on a plain `{}` was building a fresh V8 hidden class; a null-prototype object halves that work, and the gap went from 1.19–1.20× to 1.14–1.16× in an interleaved A/B. We measured and refuted two more ideas: emitting getters directly instead of going through the props pipeline (hand-written getters were slower), and moving mount-path module variables onto holder objects, the trick that sped up the reactivity core by 21–32%. Our internal benchmark guide now records that no single lever is left on this op.
 
-After the record, we merged a compiler change aimed straight at that chain (#4199). A prop built only from static values is now evaluated once, and a prop passed straight through is forwarded instead of wrapped again, so a value threaded down N levels is one call deep instead of N. Its own A/B ran on a shared, noisy machine and looks promising, but the quiet-machine run that the record requires has not happened yet. Until it does, the published number is the loss above.
+After the record, we merged a compiler change aimed straight at that chain (#4199). A prop built only from static values is now evaluated once, and a prop passed straight through is forwarded instead of wrapped again, so a value threaded down N levels is one call deep instead of N. Its own A/B ran on a shared, noisy machine, which the record does not accept, so the number in this post is the 2026-11-05 loss above.
 
 ## 2. On the row board, we tie the leaders
 
@@ -135,13 +135,13 @@ The figure has grown: 16.6 KB on 2026-10-20, 17.2 KB now. Our bundle-budget hist
 
 **Router**, 10 routes: Hono averages 1.91× faster and wins 6 of 7 rows (one run). At 50 and 200 routes Pyreon averages within 1.00–1.03× of radix3, a tie because the average row has no interval. Per row, Pyreon trails the best matcher on static, nested-static, dynamic, nested-dynamic and splat matches at every size, and wins miss → catch-all.
 
-The harness has changed since that run. A fix (#4142) makes Hono's arm build its params object inside the timed call, as every other arm already did, so Hono's rows will move on the next quiet-machine run. The record will say by how much.
+The harness has changed since that run. A fix (#4142) makes Hono's arm build its params object inside the timed call, as every other arm already did, so the Hono rows above come from the harness as it was before that fix.
 
 **Validation**, ten-library protocol bench: six of 24 cells are lost. Zod's compiled mode wins three valid-input parses (email, int, array of 20). Arktype wins `object.user` valid, partly because it returns the input aliased instead of cloning it. typia and arktype win the email checks. Pyreon wins or ties the other 18, including every invalid-input parse.
 
 ## 10. Store setup and the smaller rows
 
-`@pyreon/store` takes **28.9× longer than Zustand to set up a store** (483 vs 17 ns), because each store creates two signals and registers itself. It is paid once per store, and it buys reactive reads. Part of that figure was the harness building Pyreon's store id string inside the timed loop; #4142 moved that out, and the next run will show how much it was.
+`@pyreon/store` takes **28.9× longer than Zustand to set up a store** (483 vs 17 ns), because each store creates two signals and registers itself. It is paid once per store, and it buys reactive reads. Part of that figure was the harness building Pyreon's store id string inside the timed loop; #4142 moved that out after the run quoted here.
 
 The rest: store reads 1.7× slower (5 vs 3 ns), storage reads 1.5× (4 vs 3 ns), `url-state` integer parsing 1.1×. In the form benchmark, Solid's modular-forms retains less heap (2.33 vs 2.42 MB), even though Pyreon leads all four timed operations. Under happy-dom, `@pyreon/table` mounts 1,000 rows 1.3× slower than react-table and `@pyreon/virtual` mounts 1.1× slower; in real Chromium, table mount ties or wins by 1.03× and virtual mount wins by 1.15×. happy-dom is not a browser, so those rows measure relative work only.
 
@@ -149,8 +149,8 @@ One for server authors: importing Pyreon's `lib/` in Node **without a bundler** 
 
 ## What this list does not cover
 
-- **Not measured at all:** streaming SSR, portals, async waterfalls, startup metrics, krausest's memory metrics, Firefox and Safari, and any independent third-party run. A full-stack suite (`@pyreon/zero` against eight meta-frameworks) now lives in the repo; no result from it is published yet.
-- **Several scenario intervals are still pooled.** The cluster-bootstrap fix covers the row board. Close scenario verdicts (context, effect-list update and dispose, table mount, the 10k chart mounts) stay provisional until re-run.
+- **Not measured at all:** streaming SSR, portals, async waterfalls, startup metrics, krausest's memory metrics, Firefox and Safari, and any independent third-party run. A full-stack suite (`@pyreon/zero` against eight meta-frameworks) lives in the repo; this post quotes no result from it.
+- **Several scenario intervals are still pooled.** The cluster-bootstrap fix covers the row board. The close scenario verdicts quoted here (context, effect-list update and dispose, table mount, the 10k chart mounts) come from pooled intervals, so read them as provisional.
 - **Some of the "why" is internal analysis.** The profiles behind sections 1, 2, 3 and 7 come from our benchmark guide, not from the published record.
 - **Some losses will not close.** Deep-tree mount and signal creation follow from choices we made for the programming model. We would rather explain them than hide them.
 
@@ -166,4 +166,4 @@ npm create @pyreon/zero@latest
 
 - Docs: [pyreon.dev/docs](/docs). The rules that keep an app on the fast path: [The seven rules of fine-grained reactivity](/blog/seven-rules-of-fine-grained-reactivity).
 - Star the repo: [github.com/pyreon/pyreon](https://github.com/pyreon/pyreon)
-- Talk to us on Discord{/* DISCORD-INVITE: link the permanent invite here once it exists */} or open an issue on [GitHub](https://github.com/pyreon/pyreon/issues). Found a harness bug? That is our favourite kind of issue.
+- Talk to us on [Discord](https://pyreon.dev/discord) or open an issue on [GitHub](https://github.com/pyreon/pyreon/issues). Found a harness bug? That is our favourite kind of issue.

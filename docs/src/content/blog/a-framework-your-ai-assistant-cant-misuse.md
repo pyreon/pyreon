@@ -150,18 +150,20 @@ The full response also marks the three footguns inline. This is the compiler's o
 
 The [Reactivity Lens](/docs/reactivity-lens) shows that classification as inlay hints, the ghost text TypeScript uses for inferred types:
 
-```tsx
+```text
 function Counter(props) {
   const count = signal(0)
   return (
     <div>
-      {count()}          {/* live */}
-      {props.label}      {/* live·prop */}
-      {"hello"}          {/* static */}
+      {count()}          live
+      {props.label}      live·prop
+      {"hello"}          static
     </div>
   )
 }
 ```
+
+(The words on the right are the hints your editor draws as ghost text; they are not in the file.)
 
 The full set is `live`, `live·prop`, `live·attr`, `static` and `hoisted`. It is served by `@pyreon/lint`'s language server, `pyreon-lint --lsp`, so any LSP-capable editor can show it, and the same server publishes the detector findings as warnings. The hint to watch for is `static` where you expected `live`. For you, that is a glance. For an agent working inside the editor, it is the same verdict the MCP tool returns.
 
@@ -266,4 +268,4 @@ The new app already has `.mcp.json` in it. Point your assistant at it and ask fo
 
 - Docs: [MCP server setup](/docs/mcp), [Reactivity Lens](/docs/reactivity-lens), [`pyreon check`](/docs/cli)
 - Star the repo: [github.com/pyreon/pyreon](https://github.com/pyreon/pyreon)
-- Talk to us on Discord{/* DISCORD-INVITE: link the permanent invite here once it exists */} or open an issue on [GitHub](https://github.com/pyreon/pyreon/issues).
+- Talk to us on [Discord](https://pyreon.dev/discord) or open an issue on [GitHub](https://github.com/pyreon/pyreon/issues).

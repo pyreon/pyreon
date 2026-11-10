@@ -123,18 +123,20 @@ That is the value that typechecks in plain JavaScript and renders silently wrong
 
 The `explain_reactivity` verdict also lives in your editor. Run `@pyreon/lint`'s language server (`pyreon-lint --lsp`) and each expression gets a ghost-text hint:
 
-```tsx
+```text
 function Counter(props) {
   const count = signal(0)
   return (
     <div>
-      {count()}          {/* live */}
-      {props.label}      {/* live·prop */}
-      {"hello"}          {/* static */}
+      {count()}          live
+      {props.label}      live·prop
+      {"hello"}          static
     </div>
   )
 }
 ```
+
+(The words on the right are the hints your editor draws as ghost text; they are not in the file.)
 
 Watch for `static` where you expected `live`. That catches the "my UI does not update" bug while you are typing, and it reviews whatever your assistant just pasted in. The Rust and JavaScript compiler backends emit byte-identical lens data, so the editor shows exactly what the build will do. The same server publishes the detector findings as ordinary warnings. More in the [Reactivity Lens docs](/docs/reactivity-lens).
 
@@ -196,4 +198,4 @@ Open the new app in Claude Code or Cursor, approve the Pyreon MCP server, and as
 
 - Docs: [the MCP server, every tool with an example](/docs/mcp)
 - Star the repo: [github.com/pyreon/pyreon](https://github.com/pyreon/pyreon)
-- Talk to us on Discord{/* DISCORD-INVITE: link the permanent invite here once it exists */} or open an issue on [GitHub](https://github.com/pyreon/pyreon/issues).
+- Talk to us on [Discord](https://pyreon.dev/discord) or open an issue on [GitHub](https://github.com/pyreon/pyreon/issues).

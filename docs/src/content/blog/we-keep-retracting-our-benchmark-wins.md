@@ -163,7 +163,7 @@ These are not footnotes:
 
 *Synthetic, author-run, Apple M3 Max. Reproduce: [pyreon.dev/docs/benchmarks](/docs/benchmarks).*
 
-One more correction is already queued. A harness fix merged after the record (#4142) makes Hono's router arm build its params object inside the timed call, as every other arm already did, and stops the store bench building Pyreon's store id inside the timed loop. Both figures above predate it and will move on the next quiet-machine run. When they do, section 0 will say by how much.
+One more correction is already queued. A harness fix merged after the record (#4142) makes Hono's router arm build its params object inside the timed call, as every other arm already did, and stops the store bench building Pyreon's store id inside the timed loop. Both figures above come from the run before it. The benchmark record is the source of truth; if it differs from this post, the record wins.
 
 ## What is still open
 
@@ -191,4 +191,4 @@ npm create @pyreon/zero@latest
 
 - Docs: [pyreon.dev/docs](/docs). Why a component runs once: [the first post in this series](/blog/components-run-once).
 - Star the repo: [github.com/pyreon/pyreon](https://github.com/pyreon/pyreon)
-- Talk to us on Discord{/* DISCORD-INVITE: link the permanent invite here once it exists */} or open an issue on [GitHub](https://github.com/pyreon/pyreon/issues).
+- Talk to us on [Discord](https://pyreon.dev/discord) or open an issue on [GitHub](https://github.com/pyreon/pyreon/issues).
