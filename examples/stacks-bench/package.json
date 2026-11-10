@@ -1,0 +1,32 @@
+{
+  "name": "@pyreon/example-stacks-bench",
+  "version": "0.50.0",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "setup": "bun setup.ts",
+    "gate": "bun gate.ts",
+    "bench:stacks": "bun bench-stacks.ts",
+    "typecheck": "tsc --noEmit",
+    "lint": "oxlint ."
+  },
+  "dependencies": {
+    "@pyreon/core": "workspace:*",
+    "@pyreon/head": "workspace:*",
+    "@pyreon/reactivity": "workspace:*",
+    "@pyreon/router": "workspace:*",
+    "@pyreon/runtime-dom": "workspace:*",
+    "@pyreon/server": "workspace:*",
+    "@pyreon/zero": "workspace:*"
+  },
+  "devDependencies": {
+    "@pyreon/tsconfig": "workspace:*",
+    "@pyreon/vite-plugin": "workspace:*",
+    "@types/bun": "^1.4.4",
+    "autocannon": "9.0.0",
+    "playwright": "1.64.1",
+    "typescript": "^6.0.3",
+    "vite": "^8.3.5"
+  }
+}
