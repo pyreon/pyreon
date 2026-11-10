@@ -537,6 +537,12 @@ In `@pyreon/router`'s default `mode: 'hash'`, the route and its query live in th
 
 ---
 
+### A tool argument passed to `git` or the filesystem without validation
+
+An MCP tool's arguments are written by a model that may be reading untrusted text, so treat them as attacker input. An argv element that can start with `-` is an OPTION to the child process (`git show --output=<file>:x` writes a file), and a path argument that is read and echoed back (even inside a parse error) leaks any file the process can read. **Rules: (1) a git revision passes a ref/revision charset that cannot start with `-`, and the argv puts `--end-of-options` before it; (2) a path argument must resolve, after `realpath`, inside the project root (the server's cwd) or the tool returns a `[Pyreon]` error; (3) route every such argument through ONE funnel per package, not a per-call-site check.** Code: `packages/tools/mcp/src/tool-input.ts` (`parseGitRevSpec`, `gitShowArgs`, `resolveInsideProject`), `packages/tools/lathe/src/cli/run.ts:readInput` + `cli/main.ts:gitShow`. Tests: `mcp/src/tests/lathe.test.ts` (`tool arguments that reach git or the filesystem`), `lathe/src/tests/contract-diff.test.ts` (`refuses a <rev>:<path> whose revision git would parse as an option`).
+
+---
+
 ### Inferring a singleton member in the surrounding component scope
 
 A fractional store/model field was unknown to its computed/view/action body, leaving an `Int` return around a `Double` expression. Seed inference from the declaration’s own fields, carry cumulative computed/view types, and restore emitter context in `finally`. Refine default parameter types before return inference and coerce integer callers against the known signature. Keep syntactic parameter guards independent of successful return inference; unsupported array/rest helper parameters still require a named decline. Validate with real Swift/Kotlin compilers; unchanged golden output can preserve invalid code. Reference: `native-compiler/src/tests/singleton-fractional-members.test.ts`.

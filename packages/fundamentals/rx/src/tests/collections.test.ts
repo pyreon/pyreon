@@ -466,3 +466,23 @@ describe('sample', () => {
     expect(s()).toHaveLength(2)
   })
 })
+
+describe('sortBy — parity with Array#sort', () => {
+  it('keeps equal keys in input order (stable), in both directions', () => {
+    const rows = [
+      { id: 'a', k: 2 }, { id: 'b', k: 1 }, { id: 'c', k: 2 }, { id: 'd', k: 1 }, { id: 'e', k: 3 },
+    ]
+    expect(sortBy(rows, 'k').map((r) => r.id)).toEqual(['b', 'd', 'a', 'c', 'e'])
+    expect(sortBy(rows, 'k', 'desc').map((r) => r.id)).toEqual(['e', 'a', 'c', 'b', 'd'])
+  })
+
+  it('matches the comparison sort over a random mix of strings and numbers', () => {
+    let seed = 7
+    const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647)
+    for (let t = 0; t < 50; t++) {
+      const rows = Array.from({ length: 40 }, (_, i) => ({ i, k: rnd() < 0.5 ? Math.floor(rnd() * 10) : String(Math.floor(rnd() * 10)) }))
+      const ref = [...rows].sort((a, b) => (a.k < b.k ? -1 : a.k > b.k ? 1 : 0))
+      expect(sortBy(rows, 'k').map((r) => r.i)).toEqual(ref.map((r) => r.i))
+    }
+  })
+})

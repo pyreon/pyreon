@@ -3,6 +3,7 @@ import { NODE_ADAPTER_OUTPUT } from './contract'
 import { SCHEDULER_RUNTIME, serializeJobs } from './cron'
 import { stageClientThenServer } from './stage'
 import { STATIC_MIME_TYPES } from './mime'
+import { REQUEST_RUNTIME } from './request-runtime'
 import { validateBuildInputs } from './validate'
 
 /**
@@ -119,9 +120,20 @@ function staticPath(pathname) {
   return pathname.startsWith(BASE + "/") ? pathname.slice(BASE.length) : null
 }
 
+// The request URL: origin from the transport + Host, the request-target only
+// as a PATH. \`new URL(req.url, origin)\` let a target like \`//other.host/x\`
+// pick the URL's origin, which the server-action CSRF check compares against.
+${REQUEST_RUNTIME}
 const server = createServer(async (req, res) => {
-  const url = new URL(req.url ?? "/", requestOrigin(req))
-  const staticPathname = staticPath(url.pathname)
+  const url = __pyreonRequestUrl(req.url, requestOrigin(req))
+  if (url === null) {
+    res.writeHead(400, { "content-type": "text/plain" })
+    res.end("Bad Request")
+    return
+  }
+  // Hidden files (\`/.vite/manifest.json\`, \`/.env\`) are never served as
+  // static files; only \`/.well-known/\` is public.
+  const staticPathname = __pyreonIsHiddenPath(url.pathname) ? null : staticPath(url.pathname)
 
   // Serve existing static files (js / css / images / fonts / prerendered
   // .html / public assets). The root "/" deliberately has NO index.html

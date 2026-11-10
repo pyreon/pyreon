@@ -1254,6 +1254,25 @@ final class PyreonRouterQueryTests: XCTestCase {
         XCTAssertEqual(router.path, [])
     }
 
+    /// A refused initial path contributes no params, and a tab router opens on
+    /// its FIRST tab — selecting the target's tab would render its root, which
+    /// can be the refused path itself.
+    func testColdDeepLinkRefusalClearsParamsAndTabSelection() throws {
+        let guarded = [
+            RouteRecord(path: "/users/:id", component: { AnyView(Text("u")) }, beforeEnter: { _ in false }),
+            RouteRecord(path: "/me", component: { AnyView(Text("me")) }, beforeEnter: { _ in false }),
+        ]
+        let router = PyreonRouter(initialPath: ["/users/42"], routes: guarded)
+        XCTAssertEqual(router.params, [:])
+        let tabbed = PyreonRouter(
+            initialPath: ["/me"],
+            routes: guarded,
+            tabs: [PyreonRouterTab(name: "feed", root: "/feed"), PyreonRouterTab(name: "me", root: "/me")],
+        )
+        XCTAssertEqual(tabbed.activeTab, "feed")
+        XCTAssertEqual(tabbed.currentPath, "/feed")
+    }
+
     /// An ALLOWED initial path is untouched — the guard must not become
     /// "never honour a deep link".
     func testColdDeepLinkIsKeptWhenAllowed() throws {
