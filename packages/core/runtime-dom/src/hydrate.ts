@@ -16,7 +16,7 @@
  * Falls back to mountChild() whenever DOM structure doesn't match the VNode.
  */
 
-import type { ComponentFn, LazyComponent, RefProp, VNode, VNodeChild } from '@pyreon/core'
+import type { ComponentFn, LazyComponent, LifecycleHooks, RefProp, VNode, VNodeChild } from '@pyreon/core'
 import {
   _setSuspenseHydrating,
   dispatchToErrorBoundary,
@@ -24,7 +24,8 @@ import {
   Fragment,
   PortalSymbol,
   reportError,
-  runWithHooks,
+  _runHooked,
+  _takeHooks,
   SuspenseBoundaryContext,
   useContext,
 } from '@pyreon/core'
@@ -1797,7 +1798,8 @@ function hydrateComponent(
   // `_rp` thunks become getters — so a forwarded getter prop stays live here too.
   const mergedProps = componentProps(vnode)
 
-  let result: ReturnType<typeof runWithHooks>
+  let output: VNodeChild
+  let hooks: LifecycleHooks
   // Compiled-template ADOPTION (component-root fast path). A component whose
   // body is a static DOM subtree returns a `_tpl()` NativeItem. Arm the
   // one-shot target with this component's SSR cursor so a root `_tpl` whose
@@ -1810,7 +1812,8 @@ function hydrateComponent(
   const adoptTarget = domNode !== null && domNode.nodeType === 1 ? (domNode as Element) : null
   if (adoptTarget !== null) _setTplAdoptTarget(adoptTarget)
   try {
-    result = runWithHooks(vnode.type as ComponentFn, mergedProps)
+    output = _runHooked(vnode.type as ComponentFn, mergedProps)
+    hooks = _takeHooks()
   } catch (err) {
     if (adoptTarget !== null) _setTplAdoptTarget(null)
     setCurrentScope(null)
@@ -1833,7 +1836,6 @@ function hydrateComponent(
   if (adoptTarget !== null) _setTplAdoptTarget(null)
   setCurrentScope(null)
 
-  const { vnode: output, hooks } = result
 
   // Register onUpdate hooks with the scope
   if (hooks.update) {
