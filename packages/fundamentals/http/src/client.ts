@@ -177,13 +177,16 @@ function buildBody(
   headers: Headers,
   stringifyJson: ((value: unknown) => string) | undefined,
 ): BodyInit | null {
-  const given = [
-    options.json !== undefined && 'json',
-    options.form !== undefined && 'form',
-    options.multipart !== undefined && 'multipart',
-    options.body !== undefined && options.body !== null && 'body',
-  ].filter((k): k is string => k !== false)
-  if (given.length > 1) {
+  // Count the body kinds with plain booleans: the "more than one" check runs
+  // on every request, and the message array is only worth building to throw.
+  const hasJson = options.json !== undefined
+  const hasForm = options.form !== undefined
+  const hasMultipart = options.multipart !== undefined
+  const hasBody = options.body !== undefined && options.body !== null
+  if (+hasJson + +hasForm + +hasMultipart + +hasBody > 1) {
+    const given = [hasJson && 'json', hasForm && 'form', hasMultipart && 'multipart', hasBody && 'body'].filter(
+      (k): k is string => k !== false,
+    )
     throw new Error(
       `[Pyreon] http: pass ONE of \`json\`, \`form\`, \`multipart\` or \`body\` — got ${given.map((k) => `\`${k}\``).join(' and ')}. Each is a different encoding of the same body.`,
     )
