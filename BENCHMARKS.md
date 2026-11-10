@@ -505,6 +505,7 @@ bun bench-scenarios.ts --scenario <flow|table|virtual|charts|charts-libs> --repe
 bun bench-hydration.ts --repeat 5 --wait-quiet 4 && bun bench-apppage.ts --repeat 3 --wait-quiet 4
 bun bench-crossover.ts --repeat 3            # add --target-ms 10|20|80|160 for the K check
 bun bench-bundle.ts
+bun bench-charts-libs-bundle.ts   # charts-libs rivals' minimal line-chart bundle (no timing)
 cd ../.. && bun scripts/bench/core/reactivity.ts && bun scripts/bench/core/reactivity.ts --runtime node
 bun scripts/bench/core/router.ts && bun scripts/bench/core/validate.ts
 cd packages/fundamentals/validate && bun bench/validation.ts   # likewise store, http, rx, table, charts (bench/*.ts)

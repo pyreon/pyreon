@@ -74,7 +74,7 @@ export const SCENARIOS: ScenarioDef[] = [
   },
   {
     id: 'charts-libs',
-    label: 'charts — @pyreon/charts vs uPlot, Chart.js, Recharts (line 1k–1M, update, 1k bars; 800×300)',
+    label: 'charts — @pyreon/charts vs uPlot, Chart.js, Recharts, visx, Observable Plot, D3, lightweight-charts (line 1k–1M, update, 1k bars; 800×300)',
     frameworks: CHARTS_LIBS_FRAMEWORKS,
     run: runChartsLibs,
   },
