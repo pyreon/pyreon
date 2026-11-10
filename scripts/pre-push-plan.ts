@@ -425,7 +425,7 @@ export function recordPasses(cache: PassCache, keys: readonly string[], now: num
 
 export function readCacheFile(dir: string): PassCache {
   const file = join(dir, PASS_CACHE_FILE)
-  return parseCache(existsSync(file) ? readFileSync(file, 'utf8') : null)
+  return parseCache(readTextOrNull(file))
 }
 
 export function writeCacheFile(dir: string, cache: PassCache): void {
@@ -459,6 +459,16 @@ export function detectKotlinHome(): string | null {
     if (existsSync(join(home, 'lib', 'kotlin-compiler.jar'))) return home
   }
   return null
+}
+
+/** A file's text, or null when it does not exist (read first, no exists-check race). */
+export function readTextOrNull(file: string): string | null {
+  try {
+    return readFileSync(file, 'utf8')
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return null
+    throw err
+  }
 }
 
 // ── Repository readers (used by scripts/pre-push.ts) ───────────────────────

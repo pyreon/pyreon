@@ -5,6 +5,7 @@ import {
   buildSteps,
   DURATIONS_MAX_AGE_MS,
   DURATIONS_MAX_ENTRIES,
+  EMPTY_LOCK_RECLAIM_MS,
   MIN_STEP_MS,
   parseDurations,
   recordDuration,
@@ -232,6 +233,27 @@ describe('lock files', () => {
     // Repeated every 30s, not every poll.
     expect(logs.length).toBe(3)
     if (!got.ok) expect(got.reason).toMatch(/stayed held by pid 100/)
+  })
+
+  it('an empty lock (crash between mkdir and the pid write) is reclaimed after a minute of waiting, not before', async () => {
+    const lock = join(dir, 'pyreon-pre-push.lock')
+    mkdirSync(lock)
+    expect(tryAcquireLock(lock, { pid: 1 }, () => true)).toEqual({ ok: false, holder: null })
+    let t = 0
+    const got = await waitForLock({
+      lockDir: lock,
+      owner: { pid: 200 },
+      budgetMs: 120_000,
+      now: () => t,
+      sleep: async (ms) => {
+        t += ms
+      },
+      log: () => {},
+      alive: () => true,
+    })
+    expect(got.ok).toBe(true)
+    expect(t).toBeGreaterThanOrEqual(EMPTY_LOCK_RECLAIM_MS)
+    expect(t).toBeLessThan(EMPTY_LOCK_RECLAIM_MS + 5_000)
   })
 
   it('a waiting push takes the lock as soon as the holder releases it', async () => {

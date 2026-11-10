@@ -5,12 +5,15 @@
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { execFileSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { createHash } from 'node:crypto'
+import { mkdirSync, mkdtempSync, readFileSync, readlinkSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import {
   emit,
+  fileContribution,
   fingerprint,
+  hashFiles,
   gatedApps,
   lockClosure,
   narrow,
@@ -238,5 +241,66 @@ describe('the real repository — input-list guards', () => {
     expect(roots.some((r) => r.startsWith('packages/native/'))).toBe(true)
     expect(roots.some((r) => r.startsWith('examples/native-'))).toBe(true)
     expect(lockClosure(l, roots).filter((line) => line.includes('=MISSING'))).toEqual([])
+  })
+})
+
+describe('hashFiles reads first, never stat-then-read (CodeQL js/file-system-race)', () => {
+  // The pre-fix implementation, kept verbatim as the reference: the fix must
+  // feed the hash exactly the same bytes, so unchanged trees keep their
+  // fingerprints across the change.
+  function hashFilesStatThenRead(root: string, files: readonly string[], h: ReturnType<typeof createHash>): void {
+    for (const f of files) {
+      const abs = join(root, f)
+      h.update(`file\0${f}\0`)
+      const st = statSync(abs, { throwIfNoEntry: false })
+      if (!st) h.update('missing\0')
+      else if (st.isDirectory()) h.update(`dir-link\0${readlinkSync(abs)}`)
+      else h.update(readFileSync(abs))
+      h.update('\0')
+    }
+  }
+  const digest = (fn: typeof hashFiles, root: string, files: string[]) => {
+    const h = createHash('sha256')
+    fn(root, files, h)
+    return h.digest('hex')
+  }
+
+  let tree: string
+  beforeEach(() => {
+    tree = mkdtempSync(join(tmpdir(), 'fp-hash-'))
+    mkdirSync(join(tree, 'app/src'), { recursive: true })
+    writeFileSync(join(tree, 'app/src/a.swift'), 'struct A {}\n')
+    writeFileSync(join(tree, 'app/b.kt'), 'class B\n')
+    mkdirSync(join(tree, 'shared'))
+    writeFileSync(join(tree, 'shared/c.txt'), 'c')
+    symlinkSync('../shared/c.txt', join(tree, 'app/link-to-file'))
+    symlinkSync('../shared', join(tree, 'app/link-to-dir'))
+    symlinkSync('../nowhere', join(tree, 'app/dangling'))
+  })
+  afterEach(() => rmSync(tree, { recursive: true, force: true }))
+
+  const LISTED = ['app/b.kt', 'app/dangling', 'app/link-to-dir', 'app/link-to-file', 'app/src/a.swift', 'app/removed.kt']
+
+  it('produces a byte-identical digest to the stat-then-read version on a fixture tree', () => {
+    expect(digest(hashFiles, tree, LISTED)).toBe(digest(hashFilesStatThenRead, tree, LISTED))
+  })
+
+  it('a file: its bytes; a link to a file: the target bytes; a link to a directory: its target', () => {
+    expect(fileContribution(join(tree, 'app/b.kt'))).toEqual(Buffer.from('class B\n'))
+    expect(fileContribution(join(tree, 'app/link-to-file'))).toEqual(Buffer.from('c'))
+    expect(fileContribution(join(tree, 'app/link-to-dir'))).toBe('dir-link\0../shared')
+  })
+
+  it('a file removed between listing and reading, or a dangling link, is the missing marker', () => {
+    writeFileSync(join(tree, 'app/gone.kt'), 'x')
+    const listed = ['app/gone.kt']
+    rmSync(join(tree, 'app/gone.kt'))
+    expect(fileContribution(join(tree, listed[0]!))).toBe('missing\0')
+    expect(fileContribution(join(tree, 'app/dangling'))).toBe('missing\0')
+  })
+
+  it('a real directory in the list throws (the job fails closed), as before', () => {
+    expect(() => fileContribution(join(tree, 'shared'))).toThrow()
+    expect(() => digest(hashFilesStatThenRead, tree, ['shared'])).toThrow()
   })
 })

@@ -101,7 +101,12 @@ function walk(root: string, dir: string): string[] {
       else if (entry.isFile() || entry.isSymbolicLink()) files.push(child)
     }
   }
-  if (existsSync(join(root, dir))) visit(dir)
+  try {
+    visit(dir)
+  } catch (err) {
+    // An absent top directory contributes nothing; anything else is unexpected.
+    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err
+  }
   return files.sort()
 }
 
@@ -116,15 +121,34 @@ function tracked(root: string): string[] {
     .filter(Boolean)
 }
 
-function hashFiles(root: string, files: readonly string[], h: ReturnType<typeof createHash>): void {
+/**
+ * The bytes one listed file contributes to the hash. A file (or a link to one)
+ * contributes its contents, a link to a directory its target, and a path that
+ * no longer resolves (removed after listing, or a dangling link) the explicit
+ * `missing` marker.
+ *
+ * It reads FIRST and branches on the error, never stat-then-read: a check
+ * followed by a use of the same path is a race (CodeQL js/file-system-race),
+ * and the read is the only operation whose result is the truth. The bytes are
+ * exactly what the previous stat-then-read version fed in, so fingerprints of
+ * unchanged trees are identical. Any other error (a real directory in the
+ * list, EACCES, …) throws, which fails the job closed.
+ */
+export function fileContribution(abs: string): Buffer | string {
+  try {
+    return readFileSync(abs)
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code
+    if (code === 'ENOENT') return 'missing\0'
+    if (code === 'EISDIR') return `dir-link\0${readlinkSync(abs)}`
+    throw err
+  }
+}
+
+export function hashFiles(root: string, files: readonly string[], h: ReturnType<typeof createHash>): void {
   for (const f of files) {
-    const abs = join(root, f)
     h.update(`file\0${f}\0`)
-    // A file (or a link to one) is hashed by its bytes, a link to a directory by its target.
-    const st = statSync(abs, { throwIfNoEntry: false })
-    if (!st) h.update('missing\0')
-    else if (st.isDirectory()) h.update(`dir-link\0${readlinkSync(abs)}`)
-    else h.update(readFileSync(abs))
+    h.update(fileContribution(join(root, f)))
     h.update('\0')
   }
 }
@@ -135,7 +159,7 @@ export function workflowScripts(root: string): string[] {
   const names = new Set<string>()
   for (const m of text.matchAll(/(?<![\w./-])scripts\/[\w./-]+/g)) {
     const p = m[0].replace(/[.]+$/, '')
-    if (existsSync(join(root, p)) && statSync(join(root, p)).isFile()) names.add(p)
+    if (statSync(join(root, p), { throwIfNoEntry: false })?.isFile()) names.add(p)
   }
   return [...names].sort()
 }

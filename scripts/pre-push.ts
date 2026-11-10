@@ -49,7 +49,7 @@
  */
 
 import { execFileSync, spawn, type ChildProcess } from 'node:child_process'
-import { existsSync, mkdirSync, readFileSync, renameSync, rmdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, renameSync, rmdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { gitChangedFiles, SCRIPT_TEST_PACKAGE } from './affected'
 import {
@@ -64,6 +64,7 @@ import {
   type Plan,
   parseCache,
   readCacheFile,
+  readTextOrNull,
   readTargetingSources,
   recordPasses,
   type WorkspaceInfo,
@@ -85,6 +86,8 @@ const ROOT = resolve(import.meta.dirname, '..')
 export const DEFAULT_CAP_SEC = 300
 /** A check is not started with less time than this left. */
 export const MIN_STEP_MS = 10_000
+/** A lock seen without a pid file for this long is a crashed run's, and is reclaimed. */
+export const EMPTY_LOCK_RECLAIM_MS = 60_000
 /** How often a waiting push repeats who holds the lock. */
 export const LOCK_REPORT_EVERY_MS = 30_000
 
@@ -323,6 +326,8 @@ export function tryAcquireLock(
   lockDir: string,
   owner: LockOwner,
   alive: (pid: number) => boolean = isAlive,
+  /** Reclaim a lock with no pid file (a crash between mkdir and the pid write). */
+  reclaimEmpty = false,
 ): { ok: true } | { ok: false; holder: LockOwner | null } {
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
@@ -336,9 +341,11 @@ export function tryAcquireLock(
     }
     const holder = readHolder(lockDir)
     if (holder !== null && alive(holder.pid)) return { ok: false, holder }
-    if (holder === null && Date.now() - mtimeMs(lockDir) < 60_000) {
-      // Created a moment ago and not yet written: treat as held. An empty lock
-      // older than a minute is a crash between mkdir and the pid write.
+    if (holder === null && !reclaimEmpty) {
+      // Created a moment ago and not yet written: treat as held. The waiter
+      // passes `reclaimEmpty` once it has seen the lock empty for a minute (a
+      // crash between mkdir and the pid write) — timed by the waiter's own
+      // clock, not by a stat of the directory followed by a removal.
       return { ok: false, holder: null }
     }
     // A crashed run cannot release: remove exactly this stale lock and retry.
@@ -351,14 +358,6 @@ export function tryAcquireLock(
     }
   }
   return { ok: false, holder: readHolder(lockDir) }
-}
-
-function mtimeMs(path: string): number {
-  try {
-    return statSync(path).mtimeMs
-  } catch {
-    return 0
-  }
 }
 
 function readHolder(lockDir: string): LockOwner | null {
@@ -409,14 +408,18 @@ export async function waitForLock(opts: {
   const start = opts.now()
   let lastReport = -Infinity
   let holder: LockOwner | null = null
+  let emptySince: number | null = null
   for (;;) {
-    const got = tryAcquireLock(opts.lockDir, opts.owner, opts.alive)
+    const reclaimEmpty = emptySince !== null && opts.now() - emptySince >= EMPTY_LOCK_RECLAIM_MS
+    const got = tryAcquireLock(opts.lockDir, opts.owner, opts.alive, reclaimEmpty)
     if (got.ok) {
       if (holder !== null || lastReport > -Infinity) opts.log(`lock acquired after waiting ${secs(opts.now() - start)}`)
       return got
     }
     holder = got.holder
     const t = opts.now()
+    if (holder === null) emptySince ??= t
+    else emptySince = null
     const left = opts.budgetMs - (t - start)
     if (left <= 0) {
       return { ok: false, reason: `the pre-push lock stayed held by ${describeHolder(holder, t)}` }
@@ -582,7 +585,7 @@ async function main(): Promise<void> {
 
   const lockDir = join(cacheDir, LOCK_DIR_NAME)
   const durationsFile = join(cacheDir, DURATIONS_FILE)
-  const readDurations = () => parseDurations(existsSync(durationsFile) ? readFileSync(durationsFile, 'utf8') : null)
+  const readDurations = () => parseDurations(readTextOrNull(durationsFile))
   const owner: LockOwner = {
     pid: process.pid,
     worktree: ROOT,
