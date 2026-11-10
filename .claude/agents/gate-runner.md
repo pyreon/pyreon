@@ -39,7 +39,7 @@ the workspace typecheck as required checks.
 | Release Readiness | `bun run check-release-readiness` |
 | Manifest Depth | restore the eroded entries/mistakes |
 | Lint Ratchet | fix the finding or scope it with a rationale. Never raise a baseline |
-| Diagnose Catalog | add an `ERROR_PATTERNS` entry in `packages/core/compiler/src/diagnose.ts` (the count must grow; rewording fails). Keep `createSourceFile` / `SyntaxKind` / `createLanguageService` out of string literals |
+| Diagnose Catalog | the log names each new or edited message that no pattern matches: add an `ERROR_PATTERNS` entry in `packages/core/compiler/src/diagnose.ts` that matches it (an edited message counts as new). Keep `createSourceFile` / `SyntaxKind` / `createLanguageService` out of string literals |
 | Export Entries | rename the file or the `exports` key — the build derives entries from the key |
 | tsconfig presets | add the `@pyreon/tsconfig` devDep and extend a preset |
 | `TS2307` on a workspace subpath | a `bun.lock` reset dropped a dep edge; `git diff <parent-branch> -- bun.lock` must be empty |

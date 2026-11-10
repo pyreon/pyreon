@@ -21,12 +21,14 @@ name: PR Gates
 # impact).
 #
 # ── Diagnose Catalog ──
-# PRs touching framework error-surface paths (`runtime-dom`,
-# `runtime-server`, `core`, `compiler`, `router`) must grow the
-# `ERROR_PATTERNS` catalog that `pyreon doctor diagnose` + the MCP
-# `diagnose` tool pattern-match against — or carry `skip-diagnose-catalog`.
-# `changeset-release/*` branches auto-skip (version bumps touch sensitive
-# paths but add no error surface). See `scripts/check-diagnose-catalog.ts`.
+# A PR that adds or edits a user-visible error or warning message in the
+# framework's error-surface source (`runtime-dom`, `runtime-server`, `core`,
+# `compiler`, `router`) must leave it matched by the `ERROR_PATTERNS` catalog
+# that `pyreon doctor diagnose` + the MCP `diagnose` tool pattern-match
+# against (an existing entry, or a new one) — or carry `skip-diagnose-catalog`.
+# The demand comes from the diff's content: a perf-only change, or a message
+# that was only moved or reformatted, demands nothing. `changeset-release/*`
+# branches auto-skip. See `scripts/check-diagnose-catalog.ts`.
 
 on:
   # NO `branches:` filter — deliberately. A PR whose base is another FEATURE
@@ -86,7 +88,7 @@ jobs:
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version-file: .bun-version
-      - name: Verify catalog growth (or skip-label)
+      - name: Verify new messages are catalogued (or skip-label)
         env:
           BASE_REF: ${{ github.event.pull_request.base.ref }}
           HEAD_REF: ${{ github.event.pull_request.head.ref }}
