@@ -215,28 +215,21 @@ export async function runAppPage(
   if (teardown) (teardown as Teardown)()
   teardown = null
 
-  // Retained heap of ONE hydrated page, untimed: post-GC `usedJSHeapSize`
-  // with the page hydrated minus with only the fixture HTML injected. The
-  // median of 5 takes out allocation-site noise. Needs `--expose-gc` and
-  // `--enable-precise-memory-info` (the driver launches with both).
-  const gc = (globalThis as { gc?: () => void }).gc
-  const mem = (performance as { memory?: { usedJSHeapSize: number } }).memory
-  if (gc && mem) {
-    const deltas: number[] = []
-    for (let i = 0; i < 5; i++) {
-      inject()
-      gc()
-      gc()
-      const before = mem.usedJSHeapSize
-      teardown = await target.hydrate(host)
-      gc()
-      gc()
-      deltas.push(mem.usedJSHeapSize - before)
-      ;(teardown as Teardown)()
-      teardown = null
+  // `?heap=1`: leave hooks for an outside driver (bench-apppage-heap.ts) to
+  // measure the retained heap of ONE hydrated page with CDP — a forced GC and
+  // `Runtime.getHeapUsage` on each side of `hydrate()`. Untimed.
+  if (new URL(location.href).searchParams.get('heap') === '1') {
+    ;(globalThis as { __appPageHeapHooks?: unknown }).__appPageHeapHooks = {
+      inject,
+      hydrate: async () => {
+        teardown = await target.hydrate(host)
+      },
+      teardown: () => {
+        if (teardown) (teardown as Teardown)()
+        teardown = null
+      },
     }
-    deltas.sort((a, b) => a - b)
-    ;(globalThis as { __appPageHeap?: unknown }).__appPageHeap = deltas[2]
+    return suite
   }
   host.remove()
   return suite
