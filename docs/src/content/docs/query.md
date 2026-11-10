@@ -1293,6 +1293,7 @@ Prefetch queries on the server, serialize them, and hydrate on the client:
 ```ts
 // --- server.ts ---
 import { QueryClient, dehydrate } from '@pyreon/query'
+import { stringifyLoaderDataForScript } from '@pyreon/router'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -1316,10 +1317,14 @@ await Promise.all([
 
 const dehydratedState = dehydrate(queryClient)
 
-// Embed in HTML
+// Embed in HTML. Never interpolate a bare JSON.stringify into a <script>: cached
+// data is user data, so a string containing </script> or <!--<script> breaks out
+// of the element (XSS), and a "__proto__" key becomes the prototype when the
+// literal is evaluated. stringifyLoaderDataForScript (from @pyreon/router)
+// neutralises both.
 const html = `
   <script>
-    window.__PYREON_QUERY_STATE__ = ${JSON.stringify(dehydratedState)}
+    window.__PYREON_QUERY_STATE__ = ${stringifyLoaderDataForScript(dehydratedState)}
   </script>
 `
 ```

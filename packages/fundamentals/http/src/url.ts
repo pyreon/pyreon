@@ -50,8 +50,32 @@ export function joinUrl(base: string | undefined, path: string): string {
 const PATH_TOKEN = /\\:|:([A-Za-z_][A-Za-z0-9_]*)/g
 
 /**
- * Substitute `:name` placeholders. Values are `encodeURIComponent`-encoded,
- * so an id containing `/` or `?` can never break out of its segment.
+ * Encode ONE path-parameter value — `encodeURIComponent`, plus the one value
+ * class it leaves able to leave its segment: a value that is exactly `.` or
+ * `..`.
+ *
+ * `encodeURIComponent` leaves `.` alone, and the WHATWG URL parser (so
+ * `fetch`, and OkHttp on Android) resolves a `.` / `..` segment as a dot
+ * segment — `/orgs/acme/members/:user/sessions` with `user: '..'` reaches
+ * `/orgs/acme/sessions`, with the request's credentials. Single-encoding does
+ * NOT help: the parser treats `%2E` / `%2e%2E` as dot segments too. So the dots
+ * are encoded TWICE (`%252E`): the server decodes that to the literal text
+ * `%2E`, an identifier that addresses no resource, and the request can never
+ * reach a different endpoint. Every other value is byte-identical to
+ * `encodeURIComponent` (and to the native runtimes' `PyreonURL.encodePathParam`,
+ * which apply the same rule — one source file must produce one URL).
+ */
+export function encodePathParam(value: string): string {
+  if (value === '.') return '%252E'
+  if (value === '..') return '%252E%252E'
+  return encodeURIComponent(value)
+}
+
+/**
+ * Substitute `:name` placeholders. Values go through {@link encodePathParam}
+ * (`encodeURIComponent`, with `.` / `..` made inert), so an id containing
+ * `/` or `?` — or an id that IS a dot segment — can never break out of its
+ * segment.
  *
  * `\\:` writes a LITERAL colon — the escape for paths such as Google's custom
  * verbs, `/v1/:name\\:cancel`, where an unescaped `:cancel` would read as a
@@ -72,7 +96,7 @@ export function applyPathParams(path: string, params: PathParams | undefined): s
           `Pass it as \`{ params: { ${name}: … } }\`, or write \`\\\\:\` for a literal colon.`,
       )
     }
-    return encodeURIComponent(String(value))
+    return encodePathParam(String(value))
   })
 }
 

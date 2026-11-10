@@ -6,9 +6,97 @@ import type {
   Machine,
   MachineConfig,
   MachineEvent,
+  StateConfig,
   TransitionCallback,
   TransitionConfig,
 } from './types'
+
+// Max eventless ('always') steps in one macrostep — guards an infinite
+// always-loop (a config error) instead of hanging.
+const MAX_ALWAYS_STEPS = 1000
+
+// Max events processed by ONE top-level send() (the event itself + everything
+// queued by listeners/watchers during its run-to-completion drain) — guards an
+// infinite send loop the same way MAX_ALWAYS_STEPS guards an always-loop.
+const MAX_EVENTS_PER_SEND = 10_000
+
+// Guards are pure predicates — a guard that throws is treated as "denied"
+// (no transition) rather than crashing send()/can(). Lets `can(event)` be
+// called without a payload against a payload-reading guard, and keeps a
+// buggy guard from taking down an event dispatch.
+function safeGuard(guard: (payload?: unknown) => boolean, payload?: unknown): boolean {
+  try {
+    return guard(payload)
+  } catch {
+    return false
+  }
+}
+
+function callListener(kind: string, run: () => void): void {
+  try {
+    run()
+  } catch (err) {
+    // Reported in production too: swallowing a user callback's error
+    // silently would hide a real bug. Not rethrown, so the transition (and
+    // every other subscriber) still completes.
+    console.error(`[Pyreon] machine: an ${kind} listener threw; the transition continued.`, err)
+  }
+}
+
+// Every lookup keyed by a caller-controlled name (a state or an event) must
+// be an OWN-property lookup. `x in states` / `on[event]` also see
+// Object.prototype, so `send('toString')` found a "transition" (the inherited
+// function), resolved its `.target` to `undefined`, and moved the machine
+// into an undefined state — permanently stuck, no error.
+function isStateOf(states: object, name: unknown): boolean {
+  return typeof name === 'string' && Object.hasOwn(states, name)
+}
+
+function checkTarget(states: object, target: string, stateName: string): void {
+  if (!isStateOf(states, target)) {
+    throw new Error(
+      `[Pyreon] machine: transition target '${target}' (from state '${stateName}') is not defined in states`,
+    )
+  }
+}
+
+/**
+ * Validate the initial state and every transition target. A non-existent /
+ * typo'd target would otherwise silently `current.set(...)` into a state the
+ * machine has no config for, leaving it PERMANENTLY STUCK — `matches(...)`
+ * false for every real state, `nextEvents()` empty, every subsequent `send()`
+ * a no-op — with no error and no warning. This is the same failure class
+ * `initial` is already guarded against, and (unlike TS) it also covers JS
+ * consumers.
+ *
+ * Own-enumerable keys only (what `Object.keys`/`Object.values` saw), walked
+ * without building the key/value arrays — this runs on every createMachine.
+ */
+function validateConfig(
+  initial: string,
+  states: Record<string, StateConfig<string, string>>,
+): void {
+  if (!isStateOf(states, initial)) {
+    throw new Error(`[Pyreon] machine: initial state '${initial}' is not defined in states`)
+  }
+  for (const stateName in states) {
+    if (!Object.hasOwn(states, stateName)) continue
+    const sc = states[stateName] as StateConfig<string, string>
+    const on = sc.on as Record<string, TransitionConfig<string> | undefined> | undefined
+    if (on) {
+      for (const ev in on) {
+        if (!Object.hasOwn(on, ev)) continue
+        const tr = on[ev]
+        if (tr === undefined) continue
+        checkTarget(states, typeof tr === 'string' ? tr : tr.target, stateName)
+      }
+    }
+    if (sc.always) {
+      const list = Array.isArray(sc.always) ? sc.always : [sc.always]
+      for (const tr of list) checkTarget(states, typeof tr === 'string' ? tr : tr.target, stateName)
+    }
+  }
+}
 
 /**
  * Create a reactive state machine — a constrained signal with type-safe transitions.
@@ -47,78 +135,21 @@ export function createMachine<const TConfig extends MachineConfig<string, string
 
   const { initial, states } = config as unknown as MachineConfig<TState, TEvent>
 
-  // Every lookup keyed by a caller-controlled name (a state or an event) must
-  // be an OWN-property lookup. `x in states` / `on[event]` also see
-  // Object.prototype, so `send('toString')` found a "transition" (the inherited
-  // function), resolved its `.target` to `undefined`, and moved the machine
-  // into an undefined state — permanently stuck, no error.
-  const isState = (name: unknown): boolean =>
-    typeof name === 'string' && Object.hasOwn(states, name)
-
-  // Validate initial state
-  if (!isState(initial)) {
-    throw new Error(`[Pyreon] machine: initial state '${initial}' is not defined in states`)
-  }
-
-  // Validate every transition target. A non-existent / typo'd target would
-  // otherwise silently `current.set(...)` into a state the machine has no
-  // config for, leaving it PERMANENTLY STUCK — `matches(...)` false for every
-  // real state, `nextEvents()` empty, every subsequent `send()` a no-op — with
-  // no error and no warning. This is the same failure class `initial` is
-  // already guarded against, and (unlike TS) it also covers JS consumers.
-  for (const stateName of Object.keys(states) as TState[]) {
-    const sc = states[stateName]
-    const targets: TState[] = []
-    if (sc.on) {
-      for (const tr of Object.values(sc.on) as (TransitionConfig<TState> | undefined)[]) {
-        if (tr === undefined) continue
-        targets.push(typeof tr === 'string' ? tr : tr.target)
-      }
-    }
-    if (sc.always) {
-      const list = Array.isArray(sc.always) ? sc.always : [sc.always]
-      for (const tr of list) targets.push(typeof tr === 'string' ? tr : tr.target)
-    }
-    for (const target of targets) {
-      if (!isState(target)) {
-        throw new Error(
-          `[Pyreon] machine: transition target '${target}' (from state '${stateName}') is not defined in states`,
-        )
-      }
-    }
-  }
+  validateConfig(initial, states as Record<string, StateConfig<string, string>>)
 
   const current = signal<TState>(initial)
-  const enterListeners = new Map<TState, Set<EnterCallback<TEvent>>>()
-  const exitListeners = new Map<TState, Set<EnterCallback<TEvent>>>()
-  const transitionListeners = new Set<TransitionCallback<TState, TEvent>>()
-  const doneListeners = new Set<EnterCallback<TEvent>>()
+  // Listener collections are created on first subscription: most machines
+  // never register one, so allocating four Map/Sets per instance up front was
+  // pure create cost and retained heap.
+  let enterListeners: Map<TState, Set<EnterCallback<TEvent>>> | undefined
+  let exitListeners: Map<TState, Set<EnterCallback<TEvent>>> | undefined
+  let transitionListeners: Set<TransitionCallback<TState, TEvent>> | undefined
+  let doneListeners: Set<EnterCallback<TEvent>> | undefined
 
   // Synthetic event used for the eventless cascade at creation/reset, where no
   // real event triggered the transition. Listeners registered after creation
   // never observe it; it only fills the callback signature.
-  const INIT_EVENT: MachineEvent<TEvent> = { type: '' as TEvent }
-
-  // Max eventless ('always') steps in one macrostep — guards an infinite
-  // always-loop (a config error) instead of hanging.
-  const MAX_ALWAYS_STEPS = 1000
-
-  // Max events processed by ONE top-level send() (the event itself + everything
-  // queued by listeners/watchers during its run-to-completion drain) — guards an
-  // infinite send loop the same way MAX_ALWAYS_STEPS guards an always-loop.
-  const MAX_EVENTS_PER_SEND = 10_000
-
-  // Guards are pure predicates — a guard that throws is treated as "denied"
-  // (no transition) rather than crashing send()/can(). Lets `can(event)` be
-  // called without a payload against a payload-reading guard, and keeps a
-  // buggy guard from taking down an event dispatch.
-  function safeGuard(guard: (payload?: unknown) => boolean, payload?: unknown): boolean {
-    try {
-      return guard(payload)
-    } catch {
-      return false
-    }
-  }
+  const initEvent = (): MachineEvent<TEvent> => ({ type: '' as TEvent })
 
   function resolveTransition(event: TEvent, payload?: unknown): TState | null {
     const stateConfig = states[current.peek()]
@@ -164,29 +195,19 @@ export function createMachine<const TConfig extends MachineConfig<string, string
   // throwing onEnter skipped the remaining listeners, the `always` cascade and
   // onDone — so one buggy subscriber could desynchronise every other one.
   function doTransition(from: TState, to: TState, event: MachineEvent<TEvent>): void {
-    const exits = exitListeners.get(from)
+    const exits = exitListeners?.get(from)
     if (exits) for (const cb of exits) callListener('onExit', () => cb(event))
 
     current.set(to)
 
-    for (const cb of transitionListeners) callListener('onTransition', () => cb(from, to, event))
+    if (transitionListeners)
+      for (const cb of transitionListeners) callListener('onTransition', () => cb(from, to, event))
 
-    const enters = enterListeners.get(to)
+    const enters = enterListeners?.get(to)
     if (enters) for (const cb of enters) callListener('onEnter', () => cb(event))
 
-    if (states[to]?.final) {
+    if (doneListeners && states[to]?.final) {
       for (const cb of doneListeners) callListener('onDone', () => cb(event))
-    }
-  }
-
-  function callListener(kind: string, run: () => void): void {
-    try {
-      run()
-    } catch (err) {
-      // Reported in production too: swallowing a user callback's error
-      // silently would hide a real bug. Not rethrown, so the transition (and
-      // every other subscriber) still completes.
-      console.error(`[Pyreon] machine: an ${kind} listener threw; the transition continued.`, err)
     }
   }
 
@@ -276,10 +297,15 @@ export function createMachine<const TConfig extends MachineConfig<string, string
     return current.peek()
   }
 
-  machine.matches = (...matchStates: TState[]): boolean => {
+  // A tracked read plus a comparison. `arguments` instead of a rest parameter:
+  // the common one-state call allocates no array.
+  machine.matches = function matches(first: TState): boolean {
     const state = current()
-    return matchStates.includes(state)
-  }
+    const n = arguments.length
+    if (n === 1) return first === state
+    for (let i = 0; i < n; i++) if (arguments[i] === state) return true
+    return false
+  } as (...matchStates: TState[]) => boolean
 
   // `can(event, payload?)` predicts `send(event, payload)` exactly: it evaluates
   // the guard (throw-safe → denied) with the given payload, or `undefined` if
@@ -312,60 +338,63 @@ export function createMachine<const TConfig extends MachineConfig<string, string
     // final state, never a transient `always` step.
     batch(() => {
       current.set(initial)
-      runAlways(INIT_EVENT)
+      runAlways(initEvent())
     })
   }
 
   machine.onEnter = (state: TState, callback: EnterCallback<TEvent>): (() => void) => {
-    if (!enterListeners.has(state)) {
-      enterListeners.set(state, new Set())
-    }
-    enterListeners.get(state)!.add(callback)
+    const byState = (enterListeners ??= new Map())
+    let set = byState.get(state)
+    if (!set) byState.set(state, (set = new Set()))
+    set.add(callback)
 
     return () => {
-      enterListeners.get(state)?.delete(callback)
+      enterListeners?.get(state)?.delete(callback)
     }
   }
 
   machine.onExit = (state: TState, callback: EnterCallback<TEvent>): (() => void) => {
-    if (!exitListeners.has(state)) {
-      exitListeners.set(state, new Set())
-    }
-    exitListeners.get(state)!.add(callback)
+    const byState = (exitListeners ??= new Map())
+    let set = byState.get(state)
+    if (!set) byState.set(state, (set = new Set()))
+    set.add(callback)
 
     return () => {
-      exitListeners.get(state)?.delete(callback)
+      exitListeners?.get(state)?.delete(callback)
     }
   }
 
   machine.onTransition = (callback: TransitionCallback<TState, TEvent>): (() => void) => {
-    transitionListeners.add(callback)
+    ;(transitionListeners ??= new Set()).add(callback)
     return () => {
-      transitionListeners.delete(callback)
+      transitionListeners?.delete(callback)
     }
   }
 
   machine.onDone = (callback: EnterCallback<TEvent>): (() => void) => {
-    doneListeners.add(callback)
+    ;(doneListeners ??= new Set()).add(callback)
     return () => {
-      doneListeners.delete(callback)
+      doneListeners?.delete(callback)
     }
   }
 
   machine.dispose = (): void => {
-    enterListeners.clear()
-    exitListeners.clear()
-    transitionListeners.clear()
-    doneListeners.clear()
+    enterListeners?.clear()
+    exitListeners?.clear()
+    transitionListeners?.clear()
+    doneListeners?.clear()
   }
 
   // Settle the initial state's eventless ('always') transitions at creation —
   // no listeners exist yet, so this only resolves the reported initial state.
   // Batched so a reader created between machine construction and its first read
-  // never observes a transient initial `always` step.
-  batch(() => {
-    runAlways(INIT_EVENT)
-  })
+  // never observes a transient initial `always` step. Skipped outright when the
+  // initial state has no `always` (nothing can fire, so nothing to batch).
+  if (states[initial].always) {
+    batch(() => {
+      runAlways(initEvent())
+    })
+  }
 
   return machine as Machine<TState, TEvent>
 }

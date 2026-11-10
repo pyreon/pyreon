@@ -29,14 +29,66 @@ import { runWithRequestContext } from '@pyreon/runtime-server'
 
 const DATA_PREFIX = '/_pyreon/data'
 
+/**
+ * The page path a data-endpoint request targets, in the ONE form both the
+ * route-middleware gate (`routingPathname`) and the endpoint itself consume —
+ * or `null` when the `path` parameter is not a page path a client router
+ * produces.
+ *
+ * The gate used to re-parse the target with `new URL(target, base)`, while the
+ * endpoint handed the raw string to the router. The two read different pages:
+ * WHATWG parsing turns `//admin/report` into host `admin` + path `/report` and
+ * `\` into `/`, and resolves `.`/`..` segments, whereas the router drops empty
+ * segments and compares the rest verbatim. So `?path=//admin/report` skipped
+ * `/admin/report`'s middleware and was then served `/admin/report`'s
+ * serverLoader data.
+ *
+ * Canonical form: the pathname with runs of `/` collapsed (the router ignores
+ * empty segments, so this never changes which route matches), then the query;
+ * the fragment is dropped. Refused: a target that does not start with `/`, and
+ * any `\`, control character, or `.`/`..` segment — a browser location never
+ * contains them, so they are only ever a parser-differential probe.
+ */
+export function dataEndpointTarget(url: URL): string | null {
+  const raw = url.searchParams.get('path')
+  if (!raw || raw.charCodeAt(0) !== 47) return null
+  const hashAt = raw.indexOf('#')
+  const beforeHash = hashAt === -1 ? raw : raw.slice(0, hashAt)
+  const queryAt = beforeHash.indexOf('?')
+  const pathname = queryAt === -1 ? beforeHash : beforeHash.slice(0, queryAt)
+  const query = queryAt === -1 ? '' : beforeHash.slice(queryAt)
+  for (let i = 0; i < pathname.length; i++) {
+    const c = pathname.charCodeAt(i)
+    // `\` (92), C0 controls and DEL — WHATWG parsing rewrites or strips them.
+    if (c === 92 || c < 32 || c === 127) return null
+  }
+  const segments = pathname.split('/').filter((s) => s.length > 0)
+  if (segments.some((s) => s === '.' || s === '..')) return null
+  // A trailing slash is kept (it is part of what the client asked for).
+  const canonical =
+    segments.length === 0 ? '/' : `/${segments.join('/')}${pathname.endsWith('/') ? '/' : ''}`
+  return canonical + query
+}
+
+/** The pathname part of {@link dataEndpointTarget} (what route middleware matches). */
+export function dataEndpointTargetPathname(url: URL): string | null {
+  const target = dataEndpointTarget(url)
+  if (target === null) return null
+  const q = target.indexOf('?')
+  return q === -1 ? target : target.slice(0, q)
+}
+
 export function createDataEndpointMiddleware(routes: RouteRecord[]): Middleware {
   return async (ctx) => {
     if (ctx.url.pathname !== DATA_PREFIX) return
     if (ctx.req.method !== 'GET') {
       return new Response(null, { status: 405, headers: { Allow: 'GET' } })
     }
-    const path = ctx.url.searchParams.get('path')
-    if (!path || !path.startsWith('/')) {
+    // The SAME normalised target the route-middleware gate matched
+    // (`routingPathname` → `dataEndpointTargetPathname`), so the page whose
+    // middleware ran is the page whose loaders run.
+    const path = dataEndpointTarget(ctx.url)
+    if (path === null) {
       return new Response(JSON.stringify({ error: 'missing or invalid path' }), {
         status: 400,
         headers: { 'Content-Type': 'application/json' },

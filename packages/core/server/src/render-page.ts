@@ -42,7 +42,7 @@ import {
   safeRedirectLocation,
   RouterProvider,
   serializeLoaderData,
-  stringifyLoaderData,
+  stringifyLoaderDataForScript,
 } from '@pyreon/router'
 import { runWithRequestContext } from '@pyreon/runtime-server'
 import { provideRequestLocals, useRequestLocals } from './middleware'
@@ -216,7 +216,7 @@ export async function renderPage(
     const loaderData = serializeLoaderData(router as never)
     let loaderScript
       = loaderData && Object.keys(loaderData).length > 0
-        ? `<script${nonceAttr}>window.__PYREON_LOADER_DATA__=${stringifyLoaderData(loaderData)}</script>`
+        ? `<script${nonceAttr}>window.__PYREON_LOADER_DATA__=${stringifyLoaderDataForScript(loaderData)}</script>`
         : ''
 
     // SSR store-state hydration — decoupled bridge (set by @pyreon/store on
@@ -230,7 +230,7 @@ export async function renderPage(
     if (dehydrateStores) {
       const storeState = dehydrateStores()
       if (storeState && Object.keys(storeState).length > 0) {
-        loaderScript += `<script${nonceAttr}>window.__PYREON_STORE_STATE__=${stringifyLoaderData(storeState)}</script>`
+        loaderScript += `<script${nonceAttr}>window.__PYREON_STORE_STATE__=${stringifyLoaderDataForScript(storeState)}</script>`
       }
     }
 

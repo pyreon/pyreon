@@ -31,6 +31,12 @@ A loader that reads the request's `Cookie`/`Authorization` can return a plain `2
 
 ---
 
+### A gate that computes its target differently from the handler it guards, or a cache in front of the gate
+
+Path-keyed middleware is only a gate if it matches the SAME normalised target the handler then serves, and every cache (in-process ISR, a CDN via `public`/`s-maxage`) sits AFTER it. Shapes shipped in zero: the `/_pyreon/data` gate re-parsed `?path=` with `new URL()` (`//admin/report` → host `admin`) while the router dropped empty segments and served `/admin/report`'s serverLoader data; the ISR cache wrapped the whole page handler, so a HIT ran no middleware; `/_zero/og/<page>.png` ran the page's loader but was gated as `/_zero/og/…` and answered `public, s-maxage`. Fix shape: one normaliser both sides call (`dataEndpointTarget`), every endpoint that runs a page's loaders mapped to that page in `routingPathname`, middleware run in front of the cache with its state carried to the render (`isr-gate.ts`), and a shared-cacheable header only on responses no gate admitted. Never re-parse an attacker-supplied path with a different parser than the consumer's (WHATWG `URL` rewrites `\`, resolves `..`, and reads `//x` as a host). An endpoint whose request does not name its page (server-island fragments) gets the page from a server SIGNATURE: the page render signs each marker (HMAC over name + page pathname + props + expiry, `server-island-token.ts`), `routingPathname` gates the fragment as its `page` parameter, and the endpoint verifies the signature over that same value before decoding props — a caller-chosen `page` passes an empty gate and then fails verification (403). A signed value cached in HTML must outlive the cache: ISR re-renders an entry past half its signatures' lifetime instead of serving it. Reference: `packages/zero/zero/src/{pipeline,data-endpoint-middleware,isr-gate,og-route,server-island-token,server-islands-middleware}.ts`; locked by `tests/gate-every-page-path.test.ts` and `tests/server-island-signatures.test.ts`.
+
+---
+
 ### Comparing origins by prefix, trusting the first `X-Forwarded-For` entry
 
 Both treat an attacker-shaped string as structured truth.
@@ -91,7 +97,7 @@ Vite's config bundler resolves `@pyreon/zero` and `@pyreon/vite-plugin` through 
 
 ### Bare `JSON.stringify(loaderData)` for SSR data embedding
 
-It throws an opaque error on cycles and silently drops functions. All embed sites use `stringifyLoaderData` from `@pyreon/router` (`packages/core/router/src/loader.ts`), which detects cycles and throws `[Pyreon] Loader returned circular reference at "<route-path>"…`, and strips functions/symbols (including array slots). A boundary that serializes user data owns the serialization and its error message.
+It throws an opaque error on cycles and silently drops functions. All executable embed sites use `stringifyLoaderDataForScript` (JSON responses use `stringifyLoaderData`) from `@pyreon/router` (`packages/core/router/src/loader.ts`), which detects cycles and throws `[Pyreon] Loader returned circular reference at "<route-path>"…`, and strips functions/symbols (including array slots). A boundary that serializes user data owns the serialization and its error message.
 
 ---
 

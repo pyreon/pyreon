@@ -152,8 +152,19 @@ test.describe("SSR node deploy artifact", () => {
 
     // 2. The fragment endpoint renders per request: two fetches → two
     //    DIFFERENT stamps (the inverse of hybrid-static's static-first
-    //    proof, where two fetches must be IDENTICAL).
-    const propsQ = `?props=${encodeURIComponent(JSON.stringify({ label: "now" }))}`;
+    //    proof, where two fetches must be IDENTICAL). The page signed the
+    //    marker (`data-page` + `data-sig`); the fragment request sends them
+    //    back, and an unsigned request is refused.
+    const attr = (n: string) =>
+      (new RegExp(`${n}="([^"]*)"`).exec(raw)?.[1] ?? "").replace(/&quot;/g, '"').replace(/&amp;/g, "&");
+    expect(attr("data-sig")).toMatch(/^\d+\./);
+    const propsQ =
+      `?props=${encodeURIComponent(attr("data-props"))}` +
+      `&page=${encodeURIComponent(attr("data-page"))}&sig=${encodeURIComponent(attr("data-sig"))}`;
+    const unsigned = await page.request.get(
+      `/_pyreon/fragment/ServerStamp?props=${encodeURIComponent(JSON.stringify({ label: "now" }))}`,
+    );
+    expect(unsigned.status()).toBe(403);
     const f1 = await (
       await page.request.get(`/_pyreon/fragment/ServerStamp${propsQ}`)
     ).text();
@@ -165,9 +176,9 @@ test.describe("SSR node deploy artifact", () => {
     expect(f2).toContain("now:");
     expect(f1).not.toBe(f2);
 
-    // 3. Unknown island names 404 (the endpoint allowlist).
+    // 3. Unknown or unsigned island names are refused before any lookup.
     const nope = await page.request.get("/_pyreon/fragment/NotRegistered");
-    expect(nope.status()).toBe(404);
+    expect(nope.status()).toBe(403);
 
     // 4. In the browser, the client activation swaps the fragment in.
     await page.goto("/server-island-demo");
@@ -373,6 +384,55 @@ test.describe("server functions (<Form> + route action)", () => {
       await expect(page).toHaveURL(/\/about$/);
       const list = await page.request.get("/form-actions");
       expect(await list.text()).toContain("nojs-leaver");
+    });
+  });
+
+  /**
+   * `defineAction(schema, handler)` — `examples/ssr-showcase/src/routes/form-actions-validated.tsx`.
+   * The Standard Schema runs on the server before the handler: an invalid
+   * form answers 422 with per-field messages, a valid one reaches the handler
+   * with the parsed (coerced) output — with and without JavaScript.
+   */
+  test.describe("validated action input (defineAction(schema, handler))", () => {
+    test.describe("without JavaScript", () => {
+      test.use({ javaScriptEnabled: false });
+
+      test("an invalid form answers 422 with per-field messages; a valid one reaches the handler", async ({
+        page,
+      }) => {
+        await page.goto("/form-actions-validated");
+        await page.getByTestId("email-input").fill("not-an-email");
+        await page.getByTestId("age-input").fill("9");
+        const [resp] = await Promise.all([
+          page.waitForResponse((r) => r.request().method() === "POST"),
+          page.getByTestId("signup").click(),
+        ]);
+        expect(resp.status()).toBe(422);
+        await expect(page.getByTestId("email-error")).toHaveText("Enter an email address");
+        await expect(page.getByTestId("age-error")).toHaveText("Must be 13 or older");
+        await expect(page.getByTestId("welcome")).toHaveText("none");
+
+        await page.getByTestId("email-input").fill("ada@example.com");
+        await page.getByTestId("age-input").fill("36");
+        await page.getByTestId("signup").click();
+        await expect(page.getByTestId("welcome")).toHaveText("ada@example.com (37 next year)");
+      });
+    });
+
+    test("with JavaScript: field errors render without a navigation", async ({ page }) => {
+      const errors: string[] = [];
+      page.on("pageerror", (e) => errors.push(e.message));
+      await page.goto("/form-actions-validated");
+      await page.waitForLoadState("networkidle");
+      await page.getByTestId("email-input").fill("nope");
+      await page.getByTestId("age-input").fill("20");
+      await page.getByTestId("signup").click();
+      await expect(page.getByTestId("email-error")).toHaveText("Enter an email address");
+      await expect(page.getByTestId("age-error")).toHaveText("");
+      await page.getByTestId("email-input").fill("grace@example.com");
+      await page.getByTestId("signup").click();
+      await expect(page.getByTestId("welcome")).toHaveText("grace@example.com (21 next year)");
+      expect(errors).toEqual([]);
     });
   });
 

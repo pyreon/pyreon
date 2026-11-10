@@ -2,10 +2,18 @@ import { SizedMap } from '@pyreon/sized-map'
 import { PREVIEW_COOKIE } from './preview'
 import { readCookie } from './utils/signed-cookie'
 import type { ISRConfig } from './types'
+import { islandSignaturesExpiring } from './server-island-token'
 
 // Dev-mode counter sink — see packages/internals/perf-harness for contract.
 // Zero cost in prod (gate folds to `false`, optional-chain short-circuits).
 const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number) => void }
+
+/**
+ * `@pyreon/server`'s `REMOTE_ADDRESS` (`Symbol.for` — a registry key, so this
+ * module stays free of the server barrel; `isr` is also re-exported by the
+ * edge entry).
+ */
+const REMOTE_ADDRESS_KEY: unique symbol = Symbol.for('pyreon.remoteAddress') as never
 
 // Module-level dedup for the default-cacheKey dev warning. Keyed on the
 // per-handler `deriveKey` function reference (one per `createISRHandler`
@@ -637,6 +645,14 @@ export function createISRHandler(
           headers: originalReq.headers,
           signal: controller.signal,
         })
+        // The requester's socket address too: the re-render runs the app and
+        // route middleware again (`isr-gate.ts`), and an IP allow-list or a
+        // rate limiter keys on it — without it the revalidation was refused
+        // (or counted against no one) and the stale entry never refreshed.
+        const remote = (originalReq as unknown as Record<symbol, unknown>)[REMOTE_ADDRESS_KEY]
+        if (typeof remote === 'string') {
+          ;(req as unknown as Record<symbol, unknown>)[REMOTE_ADDRESS_KEY] = remote
+        }
       }
       // Bound the revalidation so a hung handler can't pin `key` in
       // `revalidating` forever. PR-S5: abort the inner handler via the
@@ -730,7 +746,11 @@ export function createISRHandler(
     // TTL/eviction policy and typically just read directly.
     const entry = await store.get(key)
 
-    if (entry) {
+    // An entry whose server-island signatures are past half their lifetime
+    // is re-rendered instead of served: its visitors' fragment requests would
+    // otherwise be refused once the signatures expire (an ISR entry can be
+    // served stale for as long as nobody revalidates it).
+    if (entry && !islandSignaturesExpiring(entry.headers, entry.timestamp)) {
       const age = Date.now() - entry.timestamp
 
       if (age > revalidateMs) {

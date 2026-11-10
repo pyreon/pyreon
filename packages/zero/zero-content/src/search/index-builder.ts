@@ -97,6 +97,7 @@ export interface BuildIndexResult {
 // MiniSearch's `loadJSON` requires build-time + runtime options to
 // match or scoring silently diverges. Pre-fix the two were duplicated
 // inline (PR-A audit L12); aligning them is structural here.
+import { replaceDelimited, replaceMarkdownLinks } from '../_shared/linear-scan'
 import { MINISEARCH_OPTIONS as DEFAULT_MS_OPTIONS } from '../_shared/minisearch-options'
 
 /**
@@ -274,10 +275,12 @@ export function stripMarkdown(source: string): string {
   // Drop fenced code blocks AND inline code.
   out = out.replace(/```[\s\S]*?```/g, ' ')
   out = out.replace(/`[^`]*`/g, ' ')
-  // Drop HTML tags.
-  out = out.replace(/<[^>]+>/g, ' ')
-  // Drop image/link syntax — keep the text.
-  out = out.replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1')
+  // Drop HTML tags — `/<[^>]+>/g`, and link/image syntax keeping the text —
+  // `/!?\[([^\]]*)\]\([^)]*\)/g → '$1'`. Both regexes were QUADRATIC on
+  // an unclosed opener run (`'['.repeat(1e5)` took seconds); the scanners
+  // produce the identical result in linear time (see `_shared/linear-scan`).
+  out = replaceDelimited(out, '<', '>', 1, () => ' ')
+  out = replaceMarkdownLinks(out)
   // Drop heading lines entirely (NOT just the marker) — the heading
   // text is ALREADY stored in the doc's `headings` field, so leaving
   // it in `body` double-indexes it. Pre-fix (PR-D audit C7) the docs site
