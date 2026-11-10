@@ -2,6 +2,7 @@
 // Users can import QueryClient, dehydrate, etc. from @pyreon/query directly.
 
 export type {
+  DataTag,
   DefaultError,
   DehydratedState,
   FetchInfiniteQueryOptions,
@@ -64,6 +65,7 @@ export type { UseInfiniteQueryOptions, UseInfiniteQueryResult } from './use-infi
 export { useInfiniteQuery } from './use-infinite-query'
 export { useIsFetching, useIsMutating } from './use-is-fetching'
 export { defineQueries } from './define-queries'
+export { infiniteQueryOptions, mutationOptions, queryOptions } from './query-options'
 export type { MutationOptions, UseMutationResult } from './use-mutation'
 export { useMutation } from './use-mutation'
 export type { UseMutationStateOptions } from './use-mutation-state'
