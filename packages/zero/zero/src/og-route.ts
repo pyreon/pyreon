@@ -42,6 +42,7 @@ import { createRouter, resolveRoute } from '@pyreon/router'
 import { renderToString, runWithRequestContext } from '@pyreon/runtime-server'
 import type { Middleware } from '@pyreon/server'
 import {
+  absoluteOgUrl,
   injectOgMeta,
   OG_DEFAULT_HEIGHT,
   OG_DEFAULT_WIDTH,
@@ -227,11 +228,27 @@ export function createOgImageMiddleware(
   }
 }
 
+/** Whether any route in the tree declares an `og` export. */
+function anyRouteHasOg(routes: readonly RouteRecord[]): boolean {
+  for (const r of routes) {
+    if (typeof (r as RouteRecord & OgRecord).og === 'function') return true
+    if (r.children && anyRouteHasOg(r.children)) return true
+  }
+  return false
+}
+
 /**
  * Wrap an SSR page handler so HTML responses for routes declaring `og`
- * carry `<meta property="og:image">` pointing at the runtime endpoint
- * (absolute, from the request origin). Streams pass through: bytes are
- * held only until the first `</head>`, then forwarded unbuffered.
+ * carry `<meta property="og:image">` pointing at the runtime endpoint.
+ * The URL is absolute: from `routeOg.siteUrl` when set, else from the
+ * request's own origin. Streams pass through: bytes are held only until the
+ * first `</head>`, then forwarded unbuffered.
+ *
+ * A host-derived URL is per-request data, so this wrapper must sit OUTSIDE
+ * any shared response cache (`createServer` applies it to the final handler,
+ * after ISR): a page stored with one request's `Host` in its `og:image` was
+ * served to every later visitor. Returns `handler` itself when no route
+ * declares `og`.
  * @internal
  */
 export function withRouteOgMeta(
@@ -241,12 +258,16 @@ export function withRouteOgMeta(
 ): (req: Request) => Promise<Response> {
   const width = config.width ?? OG_DEFAULT_WIDTH
   const height = config.height ?? OG_DEFAULT_HEIGHT
+  if (!anyRouteHasOg(routes)) return handler
+  const siteUrl = config.siteUrl
   return async (req) => {
     const res = await handler(req)
     if (!res.body || !(res.headers.get('content-type') ?? '').includes('text/html')) return res
     const url = new URL(req.url)
     if (!routeHasOg(routes, url.pathname)) return res
-    const tags = ogMetaTags(new URL(ogEndpointPath(url.pathname), url.origin).href, width, height)
+    const endpoint = ogEndpointPath(url.pathname)
+    const href = siteUrl ? absoluteOgUrl(endpoint, siteUrl) : new URL(endpoint, url.origin).href
+    const tags = ogMetaTags(href, width, height)
     const headers = new Headers(res.headers)
     headers.delete('content-length')
     return new Response(res.body.pipeThrough(headInjector(tags)), {

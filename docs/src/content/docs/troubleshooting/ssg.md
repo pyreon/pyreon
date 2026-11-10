@@ -47,6 +47,24 @@ Both treat an attacker-shaped string as structured truth.
 
 ---
 
+### Parsing a request-target as a URL relative to a base
+
+`new URL(req.url, origin)` resolves `//other.host/x` and `/\other.host/x` as scheme-relative URLs and `http://other.host/x` as an absolute one, so the CLIENT chooses the URL's origin. Server actions compare the browser's `Origin` header against that origin (the CSRF baseline), so a browser form posting to `https://victim//attacker/_zero/actions/<id>` passed with `Origin: attacker`. The origin comes from trusted config or the transport + `Host`; the target only ever contributes a PATH and query. Every runner and dev entry builds the URL through `requestUrlFromTarget(target, origin)` (`packages/zero/zero/src/adapters/request-runtime.ts`; the emitted runners embed `REQUEST_RUNTIME`, kept equal by a differential test; `@pyreon/vite-plugin` carries `_requestUrlFromTarget` with the same contract). A Host that would re-shape the URL (`/ ? # @ \` or whitespace) is rejected (400). Locks: `tests/request-origin-security.test.ts`, the node runtime-contract test in `tests/adapters.test.ts`, `tests/integration/dev-pipeline.test.ts`.
+
+---
+
+### A request-derived value inside a shared cache's stored body
+
+Anything built from `Host`/`X-Forwarded-*` (an absolute `og:image`, a canonical link) rendered INSIDE the ISR-cached handler is stored once and served to every later visitor, and the default ISR key has no host, so one spoofed-Host request poisons the page. Prefer configured origins (`routeOg.siteUrl`); a per-request value is injected OUTSIDE the cache (`createServer` wraps the final handler with `withRouteOgMeta`, after ISR).
+
+---
+
+### Build internals served as static files
+
+Vite's `.vite/manifest.json` is an internal module graph. A plugin that enables it must remove it on EVERY exit of its hook, not only the main path (the SSG plugin's hybrid early return left it in `dist/`); adapter staging never copies `.vite/`; and the node/bun/deno static servers refuse any path with a `.`-prefixed segment except `/.well-known/` (`isHiddenStaticPath`), falling through to SSR.
+
+---
+
 ### `cp(src, dest)` with `dest` equal to or inside `src`
 
 Node's `fs.cp` throws `ERR_FS_CP_EINVAL`. zero's SSR plugin passes `clientOutDir === outDir === distDir` with the server bundle at `distDir/server`, and it catches adapter throws, so the failure was silent and no deploy artifact was staged. All adapters stage through `materialize(src, dest, { preserve })` (`packages/zero/zero/src/adapters/stage.ts`): same dir → no-op; dest inside src → copy top-level entries individually; disjoint → whole-dir copy. Adapter tests must use the same-dir shape production passes. Locks: `tests/{stage,adapters}.test.ts` (same-dir block).

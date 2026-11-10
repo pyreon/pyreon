@@ -458,7 +458,7 @@ createISRHandler(handler, {
       signature:
         'type OgImage<TData = unknown, TParams = Record<string, string>> = (ctx: { path: string; params: TParams; data: TData | undefined }) => VNodeChild // route file `export const og`',
       summary:
-        'Per-route Open Graph image from JSX. A page route exports `og` — a component rendering the card as SVG JSX from its params + loader data. SSG paths rasterize at BUILD time to a content-hashed PNG under `assets/og/` and get `og:image` (+ width/height, `twitter:card`) injected; SSR/ISR routes are served at request time from `/_zero/og/<path>.png` (CDN `s-maxage` + `stale-while-revalidate`) with an absolute `og:image` injected into the page. Referenced only from the server graph — never the client bundle. Rasterizer: the optional peer `sharp`. Size + absolute origin via `zero({ routeOg: { width, height, siteUrl } })`.',
+        'Per-route Open Graph image from JSX. A page route exports `og` — a component rendering the card as SVG JSX from its params + loader data. SSG paths rasterize at BUILD time to a content-hashed PNG under `assets/og/` and get `og:image` (+ width/height, `twitter:card`) injected; SSR/ISR routes are served at request time from `/_zero/og/<path>.png` (CDN `s-maxage` + `stale-while-revalidate`) with an absolute `og:image` injected into the page (origin from `routeOg.siteUrl`, else the request; injected outside the ISR cache). Referenced only from the server graph — never the client bundle. Rasterizer: the optional peer `sharp`. Size + absolute origin via `zero({ routeOg: { width, height, siteUrl } })`.',
       example: `import type { OgImage } from '@pyreon/zero/server'
 
 export const og: OgImage<{ title: string }> = ({ data }) => (

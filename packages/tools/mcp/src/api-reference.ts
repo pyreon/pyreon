@@ -4115,6 +4115,27 @@ usePrefetchQuery(() => ({ queryKey: ['user', id], queryFn: fetchUser }))
     notes: `Infinite-query variant of \`usePrefetchQuery\` — warms the first page of a paginated query into the cache during setup, only when the key isn't already cached. Requires \`initialPageParam\` + \`getNextPageParam\` like \`useInfiniteQuery\`. Pair with \`useSuspenseInfiniteQuery\` in a child. See also: usePrefetchQuery, useSuspenseInfiniteQuery, useInfiniteQuery.`,
   },
 
+  'query/queryOptions': {
+    signature: '<TQueryFnData, TError, TData, TQueryKey>(options: UseQueryOptions<TQueryFnData, TError, TData, TQueryKey>) => UseQueryOptions<…> & { queryKey: DataTag<TQueryKey, TQueryFnData, TError> }',
+    example: `const userQuery = (id: number) =>
+  queryOptions({ queryKey: ['user', id], queryFn: () => fetchUser(id) })
+
+const user = useQuery(() => userQuery(userId()))       // reactive: userId() is read in the accessor
+const cached = client.getQueryData(userQuery(1).queryKey) // User | undefined — no generic needed
+
+const feed = infiniteQueryOptions({
+  queryKey: ['feed'],
+  queryFn: ({ pageParam }) => fetchPage(pageParam),
+  initialPageParam: 0,
+  getNextPageParam: (last) => last.next,
+})
+const createPost = mutationOptions({ mutationFn: (p: NewPost) => api.create(p), invalidates: [['posts']] })`,
+    notes: 'Declare a query once, typed, and reuse it in `useQuery`, `useSuspenseQuery`, `usePrefetchQuery` and the imperative `QueryClient` API. Returns `options` unchanged at runtime; the returned `queryKey` is tagged (TanStack `DataTag`) with the `queryFn` result and error types, so `client.getQueryData(opts.queryKey)` / `setQueryData` are typed without a hand-written generic. `infiniteQueryOptions` tags the key with `InfiniteData<TQueryFnData, TPageParam>`; `mutationOptions` is the same declare-once helper for `useMutation` (including `invalidates`). See also: useQuery, useInfiniteQuery, useMutation, useQueryClient.',
+    mistakes: `- Passing the result straight to \`useQuery(queryOptions(…))\` — \`useQuery\` takes an options FUNCTION: \`useQuery(() => queryOptions(…))\` (or \`useQuery(() => userQuery(id()))\`)
+- Building the options once OUTSIDE the accessor from a signal value (\`const o = userQuery(id())\`) — the key is then fixed; call the factory inside the accessor so the signal read stays reactive
+- Expecting it to lower on a native target — the PMTC \`useQuery\` lowering reads an inline options object; write the object inline in native-shared code`,
+  },
+
   'query/useSubscription': {
     signature: '(options: UseSubscriptionOptions) => UseSubscriptionResult',
     example: `const sub = useSubscription({
@@ -9558,7 +9579,7 @@ export const og: OgImage<{ title: string }> = ({ data }) => (
     <text x="80" y="330" font-size="72" fill="#fff">{data?.title}</text>
   </svg>
 )`,
-    notes: 'Per-route Open Graph image from JSX. A page route exports `og` — a component rendering the card as SVG JSX from its params + loader data. SSG paths rasterize at BUILD time to a content-hashed PNG under `assets/og/` and get `og:image` (+ width/height, `twitter:card`) injected; SSR/ISR routes are served at request time from `/_zero/og/<path>.png` (CDN `s-maxage` + `stale-while-revalidate`) with an absolute `og:image` injected into the page. Referenced only from the server graph — never the client bundle. Rasterizer: the optional peer `sharp`. Size + absolute origin via `zero({ routeOg: { width, height, siteUrl } })`. See also: zero, seoPlugin.',
+    notes: 'Per-route Open Graph image from JSX. A page route exports `og` — a component rendering the card as SVG JSX from its params + loader data. SSG paths rasterize at BUILD time to a content-hashed PNG under `assets/og/` and get `og:image` (+ width/height, `twitter:card`) injected; SSR/ISR routes are served at request time from `/_zero/og/<path>.png` (CDN `s-maxage` + `stale-while-revalidate`) with an absolute `og:image` injected into the page (origin from `routeOg.siteUrl`, else the request; injected outside the ISR cache). Referenced only from the server graph — never the client bundle. Rasterizer: the optional peer `sharp`. Size + absolute origin via `zero({ routeOg: { width, height, siteUrl } })`. See also: zero, seoPlugin.',
     mistakes: `- Rendering HTML (\`<div>\`) instead of an \`<svg>\` root — sharp rasterizes SVG via librsvg, which does not lay out HTML or \`<foreignObject>\`; the build fails with a \`[Pyreon]\` error naming the fix
 - Omitting \`routeOg.siteUrl\` for SSG — most crawlers (Facebook, LinkedIn, Slack) need an ABSOLUTE og:image URL; without it the build-time tag is root-relative
 - Expecting \`vite dev\` to serve \`/_zero/og/…\` — the image is produced by the build / production server; preview with a build
