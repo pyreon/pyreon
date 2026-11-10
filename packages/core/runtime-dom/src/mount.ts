@@ -22,6 +22,7 @@ import {
   useContext,
 } from '@pyreon/core'
 import {
+  _noopDispose,
   effectScope,
   getContextOwner,
   renderEffect,
@@ -807,6 +808,8 @@ function mountComponent(
 export interface PolyTextCore {
   apply: (v: VNodeChild) => void
   dispose: Cleanup
+  /** True while the core holds a mounted subtree (its `dispose` has work). */
+  mounted: () => boolean
 }
 
 export function createPolyTextCore(
@@ -875,6 +878,7 @@ export function createPolyTextCore(
         marker?.parentNode?.removeChild(marker)
       }
     },
+    mounted: () => mode === 'sub',
   }
 }
 
@@ -898,6 +902,10 @@ export function bindPolymorphicText(
 ): Cleanup {
   const core = createPolyTextCore(text, parentAtSetup, getContextOwner())
   const dispose = renderEffect(() => core.apply(child()))
+  // Dead binding whose value was text: nothing re-runs it and the core holds
+  // no subtree, so there is nothing to tear down. A first value that mounted a
+  // subtree keeps the core's disposer (it removes that subtree).
+  if (dispose === _noopDispose && !core.mounted()) return _noopDispose
   return () => {
     dispose()
     core.dispose()
@@ -1010,6 +1018,9 @@ function mountAccessorChild(
   }
   // Textish — this dispatcher IS the binding (bindPolymorphicText's shape).
   if (depthAtEntry > 0) {
+    // Dead (tracked nothing): the core is in text mode and can never leave it,
+    // and the text node leaves with its parent element.
+    if (disposeEffect === _noopDispose) return noop
     return () => {
       disposeEffect()
       core?.dispose()
