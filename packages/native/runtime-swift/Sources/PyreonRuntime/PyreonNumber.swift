@@ -26,6 +26,19 @@ public func pyreonNumberString(_ v: Double) -> String {
 /// The integer overload: `String(Int)` already matches JavaScript.
 public func pyreonNumberString(_ v: Int) -> String { String(v) }
 
+/// JavaScript's `Math.round`: the nearest integer, a tie rounding toward +Infinity (`-2.5` is `-2`), and NaN,
+/// ±Infinity and every value already whole (|x| >= 2^52) returned unchanged. The Android emit calls the same
+/// function, so `Math.round(0 / 0) + 1` is NaN on both targets (and `0` once stored into an integer field)
+/// instead of `1` on Android, where `java.lang.Math.round` turns NaN into `0` and saturates at `Long.MAX_VALUE`.
+/// `floor(x + 0.5)` is not this either: `0.49999999999999994 + 0.5` rounds to `1.0` before the floor.
+public func pyreonRound(_ x: Double) -> Double {
+    if !x.isFinite || abs(x) >= 4_503_599_627_370_496.0 { return x }
+    let f = floor(x)
+    let r = x - f >= 0.5 ? f + 1 : f
+    // `Math.round(-0.4)` is -0, as on the web.
+    return r == 0 && x < 0 ? -0.0 : r
+}
+
 /// A whole-valued `Double` (`Math.floor(x)`, `Math.round(a / b)`, ...) stored into an
 /// INTEGER field. Swift's `Int(_:)` TRAPS on NaN, ±Infinity and anything outside
 /// `Int`'s range, which `Math.floor(NaN)` or `Math.round(x / 0)` reach at runtime.

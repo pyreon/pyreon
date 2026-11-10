@@ -4827,11 +4827,10 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
           // which breaks ties toward POSITIVE infinity. They disagree on every
           // negative half — executed on real toolchains over
           // [-0.5, -1.5, 2.5, -2.5]: JS/Kotlin `0 -1 3 -2`, `.rounded()`
-          // `-1 -2 3 -3`. Kotlin keeps `java.lang.Math.round` (widened to Double in math-lowering — it returns Long): it is
-          // SPECIFIED as `floor(x + 0.5)`, so it already matches JS (correct,
-          // if by a coincidence of Java's own choice of rule).
+          // `-1 -2 3 -3`. Nor is `(x + 0.5).rounded(.down)`: `0.49999999999999994 + 0.5` rounds to 1.0 first. Both targets
+          // call the runtime's `pyreonRound`, which is JS's rule and lets NaN / ±Infinity through (#4258).
           case 'round':
-            if (args.length === 1) return `((Double(${args[0]!})) + 0.5).rounded(.down)`
+            if (args.length === 1) return `pyreonRound(Double(${args[0]!}))`
             break
           // floor/ceil/trunc return DOUBLE — JS Math.floor returns a
           // NUMBER, and the old `Int(floor(...))` wrap poisoned every
