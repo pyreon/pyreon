@@ -1,3 +1,5 @@
+import { replaceDelimited, replaceQuotedPairs } from '../_shared/linear-scan'
+
 // ─── Code fence meta parser ────────────────────────────────────────────────
 //
 // Markdown code fences accept a "meta" string after the language token:
@@ -59,14 +61,16 @@ export function parseCodeFenceMeta(meta: string | null | undefined): CodeMeta {
   // is left intact (the codegroup plugin only reads it, never
   // mutates). Treating `[npm]` as an unknown token would surface a
   // warning for every tab inside a `:::code-group`.
-  remaining = remaining.replace(/\[[^\]]*\]/g, '').trim()
+  // `replaceDelimited` is `/\[[^\]]*\]/g` without the quadratic retry on
+  // an unclosed `[` run (see `_shared/linear-scan`).
+  remaining = replaceDelimited(remaining, '[', ']', 0, () => '').trim()
 
   // 1. Highlight ranges in `{...}` form. Scan the meta for ALL
   // `{...}` groups and collect their numbers. Allowing multiple
   // groups (`{1} {3-5}`) is forgiving for authors who format
   // mid-edit; the dedupe step folds them.
-  const rangeRe = /\{([^}]*)\}/g
-  remaining = remaining.replace(rangeRe, (_, body: string) => {
+  // `/\{([^}]*)\}/g`, linear (see `_shared/linear-scan`).
+  remaining = replaceDelimited(remaining, '{', '}', 0, (body) => {
     for (const token of body.split(',')) {
       const t = token.trim()
       if (t.length === 0) continue
@@ -92,9 +96,10 @@ export function parseCodeFenceMeta(meta: string | null | undefined): CodeMeta {
 
   // 2. Quoted key=value pairs. Match BOTH single and double quotes.
   // The regex captures the key + the value (without quotes).
-  const kvRe = /([A-Za-z][\w-]*)=("([^"]*)"|'([^']*)')/g
-  remaining = remaining.replace(kvRe, (_, key: string, _qVal: string, dq?: string, sq?: string) => {
-    const value = dq ?? sq ?? ''
+  // `replaceQuotedPairs` is `/([A-Za-z][\w-]*)=("([^"]*)"|'([^']*)')/g`
+  // without its quadratic retry on a long run with no `=` (see
+  // `_shared/linear-scan`).
+  remaining = replaceQuotedPairs(remaining, (key, value) => {
     if (key === 'filename' || key === 'title') {
       result.filename = value
     } else {

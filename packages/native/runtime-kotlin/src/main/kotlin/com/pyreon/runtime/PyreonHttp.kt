@@ -707,6 +707,13 @@ object PyreonURL {
      */
     @JvmStatic
     fun encodePathParam(value: String): String {
+        // A value that is EXACTLY `.` or `..` is mirrored from the web's
+        // `encodePathParam`: left intact it is a dot segment, which OkHttp and
+        // servers resolve, so the request (with its credentials) reaches a
+        // different endpoint. `%2E` is no fix (OkHttp treats it as a dot too),
+        // so the dots are encoded twice -- `%252E` -- an inert identifier.
+        if (value == ".") return "%252E"
+        if (value == "..") return "%252E%252E"
         val out = StringBuilder(value.length)
         for (byte in value.toByteArray(Charsets.UTF_8)) {
             val b = byte.toInt() and 0xFF

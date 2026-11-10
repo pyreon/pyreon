@@ -753,7 +753,7 @@ export default defineConfig({
 
 ```tsx
 import { renderWithHead } from '@pyreon/head/ssr'
-import { createRouter, serializeLoaderData, stringifyLoaderData } from '@pyreon/router'
+import { createRouter, serializeLoaderData, stringifyLoaderDataForScript } from '@pyreon/router'
 import { routes } from './routes'
 import { App } from './App'
 
@@ -778,7 +778,7 @@ export async function handler(req: Request): Promise<Response> {
     .map(([k, v]) => `${k}="${v}"`)
     .join(' ')
   // Escapes `<`, U+2028 and U+2029 so the JSON is safe inside an inline <script>
-  const loaderData = stringifyLoaderData(serializeLoaderData(router))
+  const loaderData = stringifyLoaderDataForScript(serializeLoaderData(router))
 
   return new Response(
     `<!DOCTYPE html>

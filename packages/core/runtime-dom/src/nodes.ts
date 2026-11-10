@@ -1630,6 +1630,31 @@ function smallKPlace(
 }
 
 /**
+ * Move an EXISTING node with the DOM's state-preserving move when the browser
+ * has one (`ParentNode.moveBefore`, Chromium 133+). A plain `insertBefore`
+ * removes and re-inserts: the moved subtree loses focus, restarts CSS
+ * animations and transitions, reloads iframes and resets media and scroll
+ * state. `moveBefore` keeps all of that, so a keyed reorder no longer disturbs
+ * the rows it moves.
+ *
+ * It applies only to a node already connected under a connected parent in the
+ * same document; anything else (a detached parent, a fragment, a DOM without
+ * the method) takes `insertBefore`, as does any move the browser rejects.
+ */
+function moveNode(parent: Node, node: Node, before: Node | null): void {
+  const move = (parent as { moveBefore?: (node: Node, child: Node | null) => void }).moveBefore
+  if (move !== undefined && parent.isConnected && node.isConnected && node.ownerDocument === parent.ownerDocument) {
+    try {
+      move.call(parent, node, before)
+      return
+    } catch {
+      // Rejected by the browser — fall through to the plain insert.
+    }
+  }
+  parent.insertBefore(node, before)
+}
+
+/**
  * Move startNode and all siblings belonging to this entry to just before `before`.
  * Stops at the next entry anchor (identified via WeakSet) or the tail marker.
  *
@@ -1642,7 +1667,7 @@ function moveEntryBefore(parent: Node, startNode: Node, endNode: Node | null, be
   // neighbor inspection, no module-level anchor registry (the prior WeakSet
   // registry retained its grown backing table forever).
   if (endNode === null) {
-    parent.insertBefore(startNode, before)
+    moveNode(parent, startNode, before)
     return
   }
   // Multi-node slow path (fragments, components with multiple root nodes):
@@ -1651,7 +1676,7 @@ function moveEntryBefore(parent: Node, startNode: Node, endNode: Node | null, be
   let cur: Node | null = startNode
   while (cur && cur !== before) {
     const next: Node | null = cur.nextSibling
-    parent.insertBefore(cur, before)
+    moveNode(parent, cur, before)
     if (cur === endNode) return
     cur = next
   }

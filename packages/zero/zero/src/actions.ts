@@ -26,9 +26,9 @@ interface RegisteredAction {
 }
 
 /** Client-side callable action returned by defineAction. */
-export interface Action<T = unknown> {
+export interface Action<T = unknown, TInput = unknown> {
   /** Call the action with JSON data. */
-  (data?: unknown): Promise<T>
+  (data?: TInput): Promise<T>
   /** The action's unique ID. */
   actionId: string
 }
@@ -76,7 +76,32 @@ let warnedPluginless = false
  * // In a component:
  * const result = await createPost({ title: 'Hello', body: '...' })
  */
-export function defineAction<T = unknown>(handler: ActionHandler<T>): Action<T> {
+export function defineAction<T = unknown>(handler: ActionHandler<T>): Action<T>
+/**
+ * Define a server action whose input is validated by a Standard Schema
+ * (zod, valibot, arktype, `@pyreon/validate`'s `s`) BEFORE the handler runs.
+ * The handler receives the schema's parsed OUTPUT; an invalid input never
+ * reaches it and the action returns `fail(422, { error, issues, fields })` —
+ * so a `<Form>` page reads `useSubmission(action).result()?.fields?.email`.
+ *
+ * The input is the JSON body, or — for a form post — the form fields as an
+ * object (a repeated name becomes an array; values stay strings / `File`s, so
+ * use coercing schemas for numbers and booleans).
+ *
+ * @example
+ * export const createPost = defineAction(
+ *   z.object({ title: z.string().min(1), body: z.string() }),
+ *   async (input, ctx) => db.posts.insert(input), // input: { title: string; body: string }
+ * )
+ */
+export function defineAction<S extends StandardSchemaV1, T = unknown>(
+  input: S,
+  handler: (input: StandardSchemaV1.InferOutput<S>, ctx: ActionContext) => T | Promise<T>,
+): Action<T | ActionFailure<ActionInputError>, StandardSchemaV1.InferInput<S>>
+export function defineAction(
+  schemaOrHandler: StandardSchemaV1 | ActionHandler,
+  inputHandler?: (input: unknown, ctx: ActionContext) => unknown,
+): Action<unknown> {
   // Reaching this function means the plugin did NOT rewrite the call.
   if (typeof globalThis.window !== 'undefined') {
     const message =
@@ -89,7 +114,7 @@ export function defineAction<T = unknown>(handler: ActionHandler<T>): Action<T> 
       console.warn(message)
     }
   }
-  return _defineActionWithId(`action_${crypto.randomUUID()}`, handler)
+  return _defineActionWithId(`action_${crypto.randomUUID()}`, schemaOrHandler as never, inputHandler as never)
 }
 
 /**
@@ -100,8 +125,12 @@ export function defineAction<T = unknown>(handler: ActionHandler<T>): Action<T> 
  */
 export function _defineActionWithId<T = unknown>(
   id: string,
-  handler: ActionHandler<T>,
+  schemaOrHandler: ActionHandler<T> | StandardSchemaV1,
+  inputHandler?: (input: unknown, ctx: ActionContext) => T | Promise<T>,
 ): Action<T> {
+  // With a schema the handler can also return the 422 failure — part of the
+  // public overload's result type, so the cast only widens what `T` names.
+  const handler = resolveHandler<T>(id, schemaOrHandler, inputHandler) as ActionHandler<T>
   actionRegistry.set(id, { id, handler: handler as ActionHandler })
 
   const callable = async (data?: unknown): Promise<T> => {
@@ -170,6 +199,108 @@ export function _resetActions(): void {
   actionModuleLoaders = new Map()
   _resetSubmissions()
   warnedPluginless = false
+}
+
+// ─── Input validation (Standard Schema) ─────────────────────────────────────
+
+/**
+ * The Standard Schema contract (https://standardschema.dev) that zod,
+ * valibot, arktype and `@pyreon/validate` implement — declared here so zero
+ * depends on no validation library.
+ */
+export interface StandardSchemaV1<Input = unknown, Output = Input> {
+  readonly '~standard': {
+    readonly version: 1
+    readonly vendor: string
+    readonly validate: (
+      value: unknown,
+    ) => StandardSchemaV1.Result<Output> | Promise<StandardSchemaV1.Result<Output>>
+    readonly types?: { readonly input: Input; readonly output: Output } | undefined
+  }
+}
+
+export declare namespace StandardSchemaV1 {
+  type Result<Output> =
+    | { readonly value: Output; readonly issues?: undefined }
+    | { readonly issues: ReadonlyArray<Issue> }
+  interface Issue {
+    readonly message: string
+    readonly path?: ReadonlyArray<PropertyKey | { readonly key: PropertyKey }> | undefined
+  }
+  type InferInput<S extends StandardSchemaV1> = NonNullable<S['~standard']['types']>['input']
+  type InferOutput<S extends StandardSchemaV1> = NonNullable<S['~standard']['types']>['output']
+}
+
+/** The `fail(422, …)` data an action returns when its input schema rejects the input. */
+export interface ActionInputError {
+  /** Always `'Invalid input'`. */
+  error: string
+  /** The schema's issues, with each path flattened to a dotted string (`''` at the root). */
+  issues: Array<{ message: string; path: string }>
+  /** Messages per field path — `fields.email`, `fields['items.0.qty']`. */
+  fields: Record<string, string[]>
+}
+
+function isStandardSchema(value: unknown): value is StandardSchemaV1 {
+  // arktype schemas are FUNCTIONS carrying `~standard`, so a function is not
+  // proof of a handler — check the marker first.
+  return (
+    (typeof value === 'object' || typeof value === 'function') &&
+    value !== null &&
+    typeof (value as Partial<StandardSchemaV1>)['~standard']?.validate === 'function'
+  )
+}
+
+function resolveHandler<T>(
+  id: string,
+  schemaOrHandler: ActionHandler<T> | StandardSchemaV1,
+  inputHandler: ((input: unknown, ctx: ActionContext) => T | Promise<T>) | undefined,
+): ActionHandler<T | ActionFailure<ActionInputError>> {
+  if (!isStandardSchema(schemaOrHandler)) {
+    if (typeof schemaOrHandler !== 'function') {
+      throw new Error(
+        `[Pyreon] defineAction() for ${id}: the first argument must be a handler function or a Standard Schema ` +
+          '(zod, valibot, arktype, @pyreon/validate) followed by the handler.',
+      )
+    }
+    return schemaOrHandler
+  }
+  if (typeof inputHandler !== 'function') {
+    throw new Error(
+      `[Pyreon] defineAction(schema, handler) for ${id}: the handler is missing. ` +
+        'Pass it as the second argument: `defineAction(schema, async (input, ctx) => { … })`.',
+    )
+  }
+  const schema = schemaOrHandler
+  return async (ctx) => {
+    const raw = ctx.formData ? formDataToObject(ctx.formData) : ctx.json
+    const result = await schema['~standard'].validate(raw)
+    if (result.issues) return fail(422, toInputError(result.issues))
+    return inputHandler(result.value, ctx)
+  }
+}
+
+/** Form fields as an object: a repeated name becomes an array of its values. */
+function formDataToObject(formData: FormData): Record<string, FormDataEntryValue | FormDataEntryValue[]> {
+  const out: Record<string, FormDataEntryValue | FormDataEntryValue[]> = Object.create(null)
+  for (const key of new Set(formData.keys())) {
+    const all = formData.getAll(key)
+    out[key] = all.length === 1 ? all[0]! : all
+  }
+  return out
+}
+
+function toInputError(issues: ReadonlyArray<StandardSchemaV1.Issue>): ActionInputError {
+  const fields: Record<string, string[]> = {}
+  const flat = issues.map((issue) => {
+    const path = (issue.path ?? [])
+      .map((seg) => String(typeof seg === 'object' && seg !== null ? seg.key : seg))
+      .join('.')
+    if (!Object.hasOwn(fields, path)) fields[path] = []
+    fields[path]!.push(issue.message)
+    return { message: issue.message, path }
+  })
+  return { error: 'Invalid input', issues: flat, fields }
 }
 
 // ─── Results: fail() ────────────────────────────────────────────────────────

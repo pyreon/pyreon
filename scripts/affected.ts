@@ -56,6 +56,18 @@
  * change would silently skip every shard cell because no per-package
  * `--filter=` flag would land in any one cell's output.
  *
+ * ## Script filter
+ *
+ * `--script=<name>` drops affected packages whose `package.json` has no
+ * `<name>` script, and returns an empty string when none is left. The test
+ * cells pass `--script=test`: bun exits 1 when EVERY package a filter matches
+ * lacks the script, and the wording of that error changes between bun
+ * releases ("No packages matched the filter" in 1.3, "No workspace packages
+ * matched the filter" in 1.4.0, `Script "test" not found in N packages` in
+ * 1.4.4), so dropping them here is the only shape that cannot rot. A
+ * `--filter=*` escalation is returned unchanged: bun skips script-less
+ * packages itself when at least one match has the script.
+ *
  * ## Usage
  *
  *   bun run scripts/affected.ts                    # base = origin/main
@@ -189,10 +201,13 @@ export interface Workspace {
   name: string
   dir: string // absolute
   deps: string[] // @pyreon/* names
+  /** `package.json` script names; absent on hand-built test fixtures. */
+  scriptNames?: string[] | undefined
 }
 
 function readPkg(pkgJsonPath: string): {
   name?: string
+  scripts?: Record<string, string>
   dependencies?: Record<string, string>
   devDependencies?: Record<string, string>
   peerDependencies?: Record<string, string>
@@ -227,7 +242,12 @@ export function discoverWorkspaces(root: string = ROOT): Workspace[] {
         if (!existsSync(pkgJson)) continue
         const json = readPkg(pkgJson)
         if (!json.name) continue
-        result.push({ name: json.name, dir: pkgPath, deps: collectPyreonDeps(json) })
+        result.push({
+          name: json.name,
+          dir: pkgPath,
+          deps: collectPyreonDeps(json),
+          scriptNames: Object.keys(json.scripts ?? {}),
+        })
       }
     }
   }
@@ -241,7 +261,12 @@ export function discoverWorkspaces(root: string = ROOT): Workspace[] {
       if (!existsSync(pkgJson)) continue
       const json = readPkg(pkgJson)
       if (!json.name) continue
-      result.push({ name: json.name, dir: exPath, deps: collectPyreonDeps(json) })
+      result.push({
+        name: json.name,
+        dir: exPath,
+        deps: collectPyreonDeps(json),
+        scriptNames: Object.keys(json.scripts ?? {}),
+      })
     }
   }
 
@@ -250,7 +275,12 @@ export function discoverWorkspaces(root: string = ROOT): Workspace[] {
   if (existsSync(docsPkg)) {
     const json = readPkg(docsPkg)
     if (json.name)
-      result.push({ name: json.name, dir: join(root, 'docs'), deps: collectPyreonDeps(json) })
+      result.push({
+        name: json.name,
+        dir: join(root, 'docs'),
+        deps: collectPyreonDeps(json),
+        scriptNames: Object.keys(json.scripts ?? {}),
+      })
   }
 
   return result
@@ -408,6 +438,12 @@ export function computeAffectedFlags(opts: {
    * reviewable.
    */
   directOnly?: boolean | undefined
+  /**
+   * Keep only workspaces that declare this `package.json` script (see the
+   * "Script filter" section of the module doc). A workspace without a
+   * `scriptNames` list (hand-built fixture) counts as not declaring it.
+   */
+  requireScript?: string | undefined
 }): string {
   const { changed, workspaces, category } = opts
   const exclude = opts.exclude ?? []
@@ -481,6 +517,13 @@ export function computeAffectedFlags(opts: {
 
   if (category) {
     closure = filterByCategory(closure, workspaces, category, root, exclude)
+    if (closure.size === 0) return ''
+  }
+
+  if (opts.requireScript) {
+    const script = opts.requireScript
+    const byName = new Map(workspaces.map((w) => [w.name, w]))
+    closure = new Set([...closure].filter((name) => byName.get(name)?.scriptNames?.includes(script)))
     if (closure.size === 0) return ''
   }
 
@@ -601,6 +644,7 @@ function main(): void {
   let hasAffected = false
   let directOnly = false
   let filesFromStdin = false
+  let requireScript: string | undefined
   for (const arg of process.argv.slice(2)) {
     if (arg.startsWith('--base=')) base = arg.slice('--base='.length)
     else if (arg.startsWith('--category=')) category = arg.slice('--category='.length)
@@ -630,6 +674,9 @@ function main(): void {
     // UNKNOWABLE (null → `--filter=*`), never as "nothing changed": a PR with
     // zero files cannot reach CI, so an empty read means the pipe failed.
     else if (arg === '--files-from-stdin') filesFromStdin = true
+    // `--script=<name>` drops affected packages without that script — see the
+    // "Script filter" section of the module doc.
+    else if (arg.startsWith('--script=')) requireScript = arg.slice('--script='.length)
   }
 
   const changed = filesFromStdin ? readFilesFromStdin() : gitChangedFiles(base)
@@ -646,7 +693,14 @@ function main(): void {
   }
 
   const workspaces = discoverWorkspaces()
-  const flags = computeAffectedFlags({ changed, workspaces, category, exclude, directOnly })
+  const flags = computeAffectedFlags({
+    changed,
+    workspaces,
+    category,
+    exclude,
+    directOnly,
+    requireScript,
+  })
   process.stdout.write(flags)
 }
 
