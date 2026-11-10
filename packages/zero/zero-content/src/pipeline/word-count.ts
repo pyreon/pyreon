@@ -47,3 +47,40 @@ function walk(node: Nodes): number {
 export function countWords(tree: Root): number {
   return walk(tree)
 }
+
+function plainText(node: Nodes): string {
+  switch (node.type) {
+    case 'text':
+    case 'inlineCode':
+      return node.value
+    case 'image':
+    case 'imageReference':
+    case 'html':
+    case 'footnoteReference':
+      return ''
+    default:
+      break
+  }
+  if (!('children' in node)) return ''
+  return node.children.map((c) => plainText(c as Nodes)).join('')
+}
+
+/**
+ * The first paragraph of a markdown tree as plain text, whitespace
+ * collapsed, cut at a word boundary to at most `max` characters (with `…`
+ * when cut). Empty when the body has no top-level paragraph.
+ *
+ * @internal exported for the pipeline + tests
+ */
+export function excerptOf(tree: Root, max = 200): string {
+  for (const node of tree.children) {
+    if (node.type !== 'paragraph') continue
+    const text = plainText(node).replace(/\s+/g, ' ').trim()
+    if (text.length === 0) continue
+    if (text.length <= max) return text
+    const cut = text.slice(0, max)
+    const space = cut.lastIndexOf(' ')
+    return `${(space > max / 2 ? cut.slice(0, space) : cut).replace(/[\s,;:.–—-]+$/, '')}…`
+  }
+  return ''
+}

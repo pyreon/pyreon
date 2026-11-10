@@ -177,7 +177,8 @@ export default blog.IndexPage
 
 // src/routes/blog/page/[page].tsx   → getStaticPaths = blog.pagePaths, default blog.IndexPage
 // src/routes/blog/[slug].tsx        → getStaticPaths = blog.postPaths, default blog.PostPage
-// src/routes/blog/tags/[tag].tsx    → getStaticPaths = blog.tagPaths,  default blog.TagPage
+// src/routes/blog/tags/[tag]/index.tsx       → getStaticPaths = blog.tagPaths,     default blog.TagPage
+// src/routes/blog/tags/[tag]/page/[page].tsx → getStaticPaths = blog.tagPagePaths, default blog.TagPage
 ```
 
 Optional default styles: `import '@pyreon/zero-content/blog.css'` before your own stylesheet (one-class specificity; colours from `--pyreon-blog-*` variables, falling back to the surrounding text colour). The RSS feed stays in the plugin's `seo.rss` option. Full guide: [pyreon.dev/docs/blog](https://pyreon.dev/docs/blog).

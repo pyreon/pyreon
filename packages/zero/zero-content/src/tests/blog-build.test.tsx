@@ -27,15 +27,19 @@ vi.mock('@pyreon/router', async (importOriginal) => ({
 }))
 
 const { default: content } = await import('../plugin')
-const { _resetRegistryForTesting } = await import('../runtime')
+const { _getRegistry, _resetRegistryForTesting, getEntry } = await import('../runtime')
 
 // `'runtime'` bundles unpublished posts and judges them against the clock
 // at query time, so its published dates are in the past and its future post
 // far in the future — the test must not change verdict as real time passes.
 const NOW = '2025-11-16T12:00:00Z'
 
-const post = (slug: string, fm: string) =>
-  `---\ntitle: Title ${slug}\ndescription: About ${slug}\n${fm}\n---\n\nBODY_${slug.toUpperCase().replace(/-/g, '_')} words here.\n`
+// The first paragraph becomes the excerpt (listing metadata); the second
+// holds DEEP_<slug>, which only the post's own page chunk may contain.
+const post = (slug: string, fm: string) => {
+  const mark = slug.toUpperCase().replace(/-/g, '_')
+  return `---\ntitle: Title ${slug}\ndescription: About ${slug}\n${fm}\n---\n\nBODY_${mark} words here.\n\nDEEP_${mark} is the rest of the article.\n`
+}
 
 // Published: p1 (newest) … p5 (oldest). Unpublished: a draft and a post
 // dated a week after the build — both newest-looking and sharing tags with
@@ -174,6 +178,63 @@ describe.each(['omit', 'runtime'] as const)('a production blog build (unpublishe
     for (const tag of ['secret-draft-tag', 'secret-future-tag']) {
       expect((await render(blog.TagPage, { tag })).html).toContain('pyreon-blog-notfound')
     }
+    // Tag pagination counts published posts only: `signals` has 3 (2 per
+    // page → 2 pages); with the draft and the future post it would have 5.
+    expect(await blog.tagPagePaths()).toEqual([
+      { params: { tag: 'signals', page: '2' } },
+      { params: { tag: 'ssr', page: '2' } },
+    ])
+    const page2 = await render(blog.TagPage, { tag: 'signals', page: '2' })
+    expect(page2.html).toContain('Page 2 of 2')
+    expect(page2.html).not.toMatch(LEAKS)
+    expect((await render(blog.TagPage, { tag: 'signals', page: '3' })).html).toContain('pyreon-blog-notfound')
+  })
+
+  it('listings read one metadata chunk — no listing pulls in a post body', async () => {
+    // Statically: a chunk that lists several posts (the metadata chunk)
+    // holds their titles and excerpts but no body beyond the excerpt.
+    const files = (await fs.readdir(DIST, { recursive: true })).filter((f) => f.endsWith('.js'))
+    const listing: string[] = []
+    for (const f of files) {
+      const js = await readDist(f)
+      if (js.includes('Title p1') && js.includes('Title p5')) listing.push(f)
+    }
+    expect(listing.length, 'a metadata chunk exists').toBeGreaterThan(0)
+    for (const f of listing) expect(await readDist(f), f).not.toMatch(/DEEP_P\d/)
+    // At runtime: rendering every listing calls no entry's body loader;
+    // a post page loads exactly its own body.
+    const runtime = _getRegistry()['blog']!
+    const originals = { ...runtime.loaders }
+    const loaded: string[] = []
+    for (const [slug, load] of Object.entries(originals)) {
+      runtime.loaders[slug] = async () => {
+        loaded.push(slug)
+        return load()
+      }
+    }
+    try {
+      await render(blog.IndexPage)
+      await render(blog.IndexPage, { page: '2' })
+      await render(blog.TagPage, { tag: 'signals' })
+      await render(blog.TagPage, { tag: 'signals', page: '2' })
+      await blog.getTags()
+      expect(loaded).toEqual([])
+      const p2 = await render(blog.PostPage, { slug: 'p2' })
+      expect(p2.html).toContain('DEEP_P2')
+      expect(loaded).toEqual(['p2'])
+    } finally {
+      Object.assign(runtime.loaders, originals)
+    }
+  })
+
+  it('ships frontmatter values typed (a YAML date is a Date, not a string)', async () => {
+    // From the metadata chunk (listings)…
+    const [newest] = await blog.getPosts()
+    expect(newest!.entry.data['date']).toBeInstanceOf(Date)
+    // …and from the post's own page module.
+    expect((await getEntry('blog', 'p1'))!.data['date']).toBeInstanceOf(Date)
+    expect(newest!.excerpt).toBe('BODY_P1 words here.')
+    expect(newest!.wordCount).toBe(12)
   })
 
   it('post pages: previous/next and related posts skip them; their own pages do not exist', async () => {

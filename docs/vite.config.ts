@@ -51,7 +51,7 @@ export default defineConfig({
           path: 'blog/rss.xml',
           title: 'Pyreon blog',
           description:
-            'Notes from building Pyreon: how the compiler and runtime work, measured benchmark results (losses included), and release write-ups.',
+            'How Pyreon works and what it can do: components that run once, one codebase for web, iOS and Android, and benchmarks you can run yourself.',
           language: 'en',
           content: 'full',
         },

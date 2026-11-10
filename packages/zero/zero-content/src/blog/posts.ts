@@ -1,5 +1,5 @@
 import type { CollectionEntry } from '../types'
-import type { BlogFrontmatter } from './schema'
+import type { BlogFrontmatter, BlogPostData } from './schema'
 
 // ─── Blog posts — the normalised model and the pure queries over it ────────
 //
@@ -49,6 +49,8 @@ export interface BlogPost {
   authors: BlogAuthor[]
   /** Frontmatter `canonical` — set only for a post first published elsewhere. */
   canonical: string | undefined
+  /** The first paragraph as plain text (≤ 200 characters), counted at build. */
+  excerpt: string
   /** Words in the body, counted when the markdown was compiled. */
   wordCount: number
   /** Whole minutes at the blog's reading speed, at least 1. */
@@ -119,7 +121,10 @@ function resolveAuthors(value: unknown, ctx: BlogPostContext): BlogAuthor[] {
  * `Date`, tags to slugs + URLs, author keys to authors).
  */
 export function toBlogPost(entry: CollectionEntry, ctx: BlogPostContext): BlogPost {
-  const data = entry.data as Partial<BlogFrontmatter>
+  // `BlogPostData` from a `blogCollection()` (the plugin ships the schema's
+  // parsed output); read defensively so a hand-built entry with the raw
+  // written shape works too.
+  const data = entry.data as Partial<BlogPostData> | Partial<BlogFrontmatter>
   const tagNames = Array.isArray(data.tags) ? data.tags.filter((t) => typeof t === 'string') : []
   const seen = new Set<string>()
   const tags: BlogTag[] = []
@@ -144,6 +149,7 @@ export function toBlogPost(entry: CollectionEntry, ctx: BlogPostContext): BlogPo
     cover,
     authors: resolveAuthors(data.author, ctx),
     canonical: typeof data.canonical === 'string' ? data.canonical : undefined,
+    excerpt: entry.excerpt,
     wordCount: entry.wordCount,
     readingMinutes: readingMinutes(entry.wordCount, ctx.wordsPerMinute),
     entry,

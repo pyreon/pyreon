@@ -35,6 +35,8 @@ export interface ContentModule<TFrontmatter = Record<string, unknown>> {
    * it, and the runtime then reports `0`.
    */
   wordCount?: number
+  /** The first paragraph as plain text (≤ 200 characters). */
+  excerpt?: string
 }
 
 /**
@@ -181,4 +183,6 @@ export interface CollectionEntry<TData = Record<string, unknown>> {
    * page in the browser.
    */
   wordCount: number
+  /** The first paragraph as plain text (≤ 200 characters), for listings. */
+  excerpt: string
 }

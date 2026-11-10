@@ -68,8 +68,8 @@ bun run preview
 
 The blog runs on `@pyreon/zero-content/blog` (guide: `/docs/blog`):
 `blogCollection()` in `content.config.ts`, `defineBlog(...)` in
-`src/blog/blog.ts`, four one-line routes under `src/routes/blog/` (index,
-`page/[page]`, `[slug]`, `tags/[tag]`), and `src/blog/PostFooter.tsx` for the
+`src/blog/blog.ts`, five one-line routes under `src/routes/blog/` (index,
+`page/[page]`, `[slug]`, `tags/[tag]/index`, `tags/[tag]/page/[page]`), and `src/blog/PostFooter.tsx` for the
 call to action, share links and newsletter form after every post. The
 newsletter form renders nothing until `NEWSLETTER_ACTION` in
 `src/blog/site.ts` is set to the provider's form endpoint.

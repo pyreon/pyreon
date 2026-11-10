@@ -7,7 +7,7 @@ export const SITE_ORIGIN = 'https://pyreon.dev'
 export const BLOG_TITLE = 'Pyreon blog'
 export const BLOG_FEED = '/blog/rss.xml'
 export const BLOG_DESCRIPTION =
-  'Notes from building Pyreon: how the compiler and runtime work, measured benchmark results (losses included), and release write-ups.'
+  'How Pyreon works and what it can do: components that run once, one codebase for web, iOS and Android, and benchmarks you can run yourself.'
 
 /**
  * Form action of the newsletter sign-up (the provider's subscribe endpoint).

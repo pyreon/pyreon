@@ -4,10 +4,10 @@ import type { StandardSchemaIssue } from '../schema-validate'
 // ─── Blog frontmatter — a Standard Schema validator with no dependency ─────
 //
 // Written by hand rather than with zod so a blog does not pull a validator
-// into the app. It VALIDATES and does not transform: the compiled module
-// carries the frontmatter exactly as written (a YAML date arrives as an ISO
-// string at runtime), so the declared output type is the written shape,
-// and `toBlogPost` normalises it.
+// into the app. It validates the frontmatter AS WRITTEN (`BlogFrontmatter`)
+// and outputs it normalised (`BlogPostData`: dates as `Date`, `tags` and
+// `author` as lists, `draft` as a boolean). The content plugin ships the
+// schema's output, so `entry.data` at runtime is exactly `BlogPostData`.
 
 /** A frontmatter date: YAML reads `2026-11-16` as a `Date`; quoted, a string. */
 export type FrontmatterDate = Date | string
@@ -131,6 +131,48 @@ export function validateBlogFrontmatter(input: unknown): StandardSchemaIssue[] {
   return issues
 }
 
+/** A post's frontmatter as the blog schema outputs it (what `entry.data` holds). */
+export interface BlogPostData {
+  title: string
+  description: string
+  date: Date
+  updated?: Date | undefined
+  slug?: string | undefined
+  tags: string[]
+  cover?: string | undefined
+  coverAlt?: string | undefined
+  /** Author keys or names; empty when the frontmatter names none. */
+  author: string[]
+  canonical?: string | undefined
+  draft: boolean
+}
+
+function toDateValue(value: FrontmatterDate): Date {
+  return value instanceof Date ? value : new Date(value)
+}
+
+/**
+ * Normalise validated frontmatter into `BlogPostData`.
+ *
+ * @internal exported for testing; use `blogSchema`
+ */
+export function normalizeBlogFrontmatter(input: BlogFrontmatter): BlogPostData {
+  const out: BlogPostData = {
+    title: input.title,
+    description: input.description,
+    date: toDateValue(input.date),
+    tags: input.tags ?? [],
+    author: input.author === undefined ? [] : Array.isArray(input.author) ? input.author : [input.author],
+    draft: input.draft === true,
+  }
+  if (input.updated !== undefined) out.updated = toDateValue(input.updated)
+  if (input.slug !== undefined) out.slug = input.slug
+  if (input.cover !== undefined) out.cover = input.cover
+  if (input.coverAlt !== undefined) out.coverAlt = input.coverAlt
+  if (input.canonical !== undefined) out.canonical = input.canonical
+  return out
+}
+
 /** The blog frontmatter schema (Standard Schema v1). */
 export interface BlogSchema {
   readonly '~standard': {
@@ -139,7 +181,7 @@ export interface BlogSchema {
     readonly validate: (
       input: unknown,
     ) =>
-      | { value: BlogFrontmatter; issues?: undefined }
+      | { value: BlogPostData; issues?: undefined }
       | { issues: ReadonlyArray<StandardSchemaIssue> }
   }
 }
@@ -154,7 +196,7 @@ export const blogSchema: BlogSchema = {
     vendor: 'pyreon-blog',
     validate(input) {
       const issues = validateBlogFrontmatter(input)
-      return issues.length > 0 ? { issues } : { value: input as BlogFrontmatter }
+      return issues.length > 0 ? { issues } : { value: normalizeBlogFrontmatter(input as BlogFrontmatter) }
     },
   },
 }

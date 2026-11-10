@@ -75,9 +75,25 @@ describe('blogSchema', () => {
     expect(messages([])).toHaveLength(1)
   })
 
-  it('is a Standard Schema that validates without transforming', () => {
-    const ok = blogSchema['~standard'].validate(valid)
-    expect(ok).toEqual({ value: valid })
+  it('is a Standard Schema that outputs the normalised post data', () => {
+    const ok = blogSchema['~standard'].validate({ ...valid, date: '2026-11-16', updated: '2026-11-20', author: 'ada' })
+    expect(ok).toEqual({
+      value: {
+        title: valid.title,
+        description: valid.description,
+        date: new Date('2026-11-16'),
+        updated: new Date('2026-11-20'),
+        slug: valid.slug,
+        tags: valid.tags,
+        cover: valid.cover,
+        author: ['ada'],
+        draft: false,
+      },
+    })
+    // Defaults: no tags → [], no author → [], draft → false.
+    expect(blogSchema['~standard'].validate({ title: 'T', description: 'D', date: valid.date })).toEqual({
+      value: { title: 'T', description: 'D', date: valid.date, tags: [], author: [], draft: false },
+    })
     const bad = blogSchema['~standard'].validate({})
     expect('issues' in bad && bad.issues !== undefined && bad.issues.length).toBe(3)
   })

@@ -142,6 +142,16 @@ describe('IndexPage', () => {
     })
   })
 
+  it('lists only the most-used tags on the index (indexTags)', async () => {
+    const top1 = defineBlog({ siteUrl: 'https://example.dev', title: 'B', description: 'D', indexTags: 1 })
+    const { html } = await render(top1.IndexPage)
+    const tagList = html.slice(html.indexOf('aria-label="All tags"'), html.indexOf('</ul>', html.indexOf('aria-label="All tags"')))
+    expect(tagList).toContain('href="/blog/tags/signals"')
+    expect(tagList).not.toContain('href="/blog/tags/ssr"')
+    const none = defineBlog({ siteUrl: 'https://example.dev', title: 'B', description: 'D', indexTags: 0 })
+    expect((await render(none.IndexPage)).html).not.toContain('aria-label="All tags"')
+  })
+
   it('renders page 2 and treats /page/1, /page/3 and junk as not found', async () => {
     const two = await render(blog.IndexPage, { page: '2' })
     expect(two.html).toContain('href="/blog/oldest"')
@@ -164,8 +174,28 @@ describe('TagPage', () => {
     expect(html).not.toMatch(/Draft post|Future post/)
     const ld = jsonLd(head)
     expect(ld['@type']).toBe('CollectionPage')
-    expect((ld['hasPart'] as unknown[]).length).toBe(3)
+    // pageSize 2: the first page holds two of the three.
+    expect((ld['hasPart'] as unknown[]).length).toBe(2)
     expect(head).toContain('href="https://example.dev/blog/tags/signals"')
+  })
+
+  it('paginates with the index page size and pager; /page/1 and past-the-end are not found', async () => {
+    const one = await render(blog.TagPage, { tag: 'signals' })
+    expect(one.html).toContain('Page 1 of 2')
+    expect(one.html).toContain('href="/blog/tags/signals/page/2"')
+    expect(one.html).toContain('href="/blog/newest"')
+    expect(one.html).not.toContain('href="/blog/oldest"')
+    const two = await render(blog.TagPage, { tag: 'signals', page: '2' })
+    expect(two.html).toContain('Page 2 of 2')
+    expect(two.html).toContain('href="/blog/oldest"')
+    expect(two.html).toContain('href="/blog/tags/signals"')
+    expect(two.head).toContain('<title>Posts tagged #signals — page 2 | Example blog</title>')
+    expect(two.head).toContain('href="https://example.dev/blog/tags/signals/page/2"')
+    for (const page of ['1', '3', 'x']) {
+      expect((await render(blog.TagPage, { tag: 'signals', page })).html).toContain('pyreon-blog-notfound')
+    }
+    expect(await blog.tagPagePaths()).toEqual([{ params: { tag: 'signals', page: '2' } }])
+    expect(blog.tagPageUrl('ssr', 1)).toBe('/blog/tags/ssr')
   })
 
   it('a tag only an unpublished post carries has no page', async () => {

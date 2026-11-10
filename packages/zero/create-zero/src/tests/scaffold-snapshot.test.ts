@@ -191,7 +191,8 @@ describe('scaffold — output file-set snapshots', () => {
         'src/routes/blog/index.tsx',
         'src/routes/blog/[slug].tsx',
         'src/routes/blog/page/[page].tsx',
-        'src/routes/blog/tags/[tag].tsx',
+        'src/routes/blog/tags/[tag]/index.tsx',
+        'src/routes/blog/tags/[tag]/page/[page].tsx',
       ]) {
         expect(files).toContain(route)
       }

@@ -5,7 +5,7 @@ A minimal blog built with [`@pyreon/zero`](https://github.com/pyreon/pyreon/tree
 ## What it shows
 
 - **Static routes** — `/`, `/about`, `/blog` auto-detected from the file-system router
-- **Markdown blog on `@pyreon/zero-content/blog`** — posts in `src/content/blog/`, the blog defined once in [`src/blog.ts`](src/blog.ts) (`defineBlog`), four one-line routes (index, `/blog/page/:page`, `/blog/:slug`, `/blog/tags/:tag`); the same module as pyreon.dev/blog
+- **Markdown blog on `@pyreon/zero-content/blog`** — posts in `src/content/blog/`, the blog defined once in [`src/blog.ts`](src/blog.ts) (`defineBlog`), five one-line routes (index, `/blog/page/:page`, `/blog/:slug`, `/blog/tags/:tag`, `/blog/tags/:tag/page/:page`); the same module as pyreon.dev/blog
 - **Dynamic routes with `getStaticPaths`** — `/blog/:slug` enumerates 3 posts, `/blog/tags/:tag` every tag ([`src/routes/blog/[slug].tsx`](src/routes/blog/[slug].tsx))
 - **Build-time ISR via `revalidate` export** — `/blog/<slug>` revalidates every hour; entries land in `dist/_pyreon-revalidate.json`
 - **`vercelRevalidateHandler` scaffold** — drop-in webhook at [`src/routes/api/_pyreon-revalidate.ts`](src/routes/api/_pyreon-revalidate.ts) that platform adapters call on CMS publish
@@ -74,7 +74,8 @@ src/
 │   ├── blog/
 │   │   ├── index.tsx                # blog listing (/blog)
 │   │   ├── page/[page].tsx          # listing pages (/blog/page/2, …)
-│   │   ├── tags/[tag].tsx           # tag pages (/blog/tags/<tag>)
+│   │   ├── tags/[tag]/index.tsx     # tag pages (/blog/tags/<tag>)
+│   │   ├── tags/[tag]/page/[page].tsx  # tag pages 2..n
 │   │   └── [slug].tsx               # post page (getStaticPaths + revalidate)
 │   └── api/
 │       ├── echo/[...path].ts        # /api/echo/* — streaming catch-all

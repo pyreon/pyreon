@@ -3,6 +3,7 @@ import { transform as esbuildTransform } from 'esbuild'
 import type { Plugin, ResolvedConfig, ViteDevServer } from 'vite'
 import { withSilent } from '@pyreon/reactivity'
 import { compileMarkdown } from './pipeline/parse'
+import { slugFromPath } from './_shared/derive-slug'
 import type { HighlighterOptions } from './pipeline/highlighter'
 import {
   renderPerComponentVirtual,
@@ -36,7 +37,8 @@ import { parseFrontmatter } from './pipeline/frontmatter'
 import { isPublished, readPublishTime } from './publish'
 import { markdownToFeedHtml } from './seo/feed-html'
 import { generateSitemap, joinUrl, type SitemapPage } from './seo/sitemap'
-import { renderVirtualCollections } from './virtual-collections'
+import { renderMetaModule, renderVirtualCollections, VIRTUAL_META_PREFIX } from './virtual-collections'
+import type { MetaModuleEntry } from './virtual-collections'
 import { writeContentTypes } from './type-emit/content-types'
 import {
   emitFrontmatterSchemas,
@@ -304,6 +306,8 @@ function computeCompileCacheKey(
   code: string,
   opts: import('./pipeline/parse').CompileOptions,
   compileJsxEnabled: boolean,
+  /** The owning collection: its schema decides the shipped frontmatter. */
+  collection: string | null = null,
 ): string {
   // `JSON.stringify(opts)` is cheap because opts is shallow; the same
   // value passed every transform produces the same key string.
@@ -311,6 +315,7 @@ function computeCompileCacheKey(
     h: opts.highlight ?? null,
     hl: opts.highlighter ?? null,
     j: compileJsxEnabled,
+    c: collection,
   })
   return `${id}|${code.length}|${fnv1aHash(code)}|${fnv1aHash(optsKey)}`
 }
@@ -398,6 +403,9 @@ export function collectionSlugFor(
     .split(path.sep)
     .join('/')
 }
+
+/** Frontmatter that does not match its collection schema (message lists every issue). */
+class FrontmatterSchemaError extends Error {}
 
 /**
  * What the build remembers about each collection entry beyond its search
@@ -759,6 +767,58 @@ export default function content(options: ContentPluginOptions = {}): Plugin {
     return findCollectionForFileImpl(id, loadedConfig.config.collections, root)
   }
 
+  /**
+   * The frontmatter an entry SHIPS: its collection schema's parsed output
+   * (defaults applied, values typed as the schema says), so the runtime
+   * value is the one the generated `CollectionSchemas` types promise.
+   * Throws the formatted issues when the frontmatter does not validate.
+   */
+  const parseEntryFrontmatter = async (
+    collectionName: string,
+    raw: Record<string, unknown>,
+    file: string,
+  ): Promise<Record<string, unknown>> => {
+    const def = loadedConfig?.config.collections[collectionName]
+    if (!def || !isStandardSchema(def.schema)) return raw
+    const v = await validateAgainstSchema(def.schema, raw)
+    if (!v.ok) throw new FrontmatterSchemaError(formatSchemaIssues(v.issues, reportPath(file), collectionName))
+    const value = v.value
+    if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+      throw new FrontmatterSchemaError(
+        `[@pyreon/zero-content] ${reportPath(file)}: the "${collectionName}" schema must output an object (the frontmatter), got ${Array.isArray(value) ? 'an array' : typeof value}.`,
+      )
+    }
+    return value as Record<string, unknown>
+  }
+
+  /**
+   * Every entry file of a collection, minus the unpublished ones a
+   * production build omits — the same set the virtual collections glob
+   * bundles.
+   */
+  const collectionFiles = async (collectionName: string): Promise<string[]> => {
+    if (loadedConfig === null) return []
+    const def = loadedConfig.config.collections[collectionName]
+    if (!def) return []
+    const root = resolvedConfig?.root ?? process.cwd()
+    const dir = path.resolve(root, def.path ?? `src/content/${collectionName}`)
+    let files: string[]
+    try {
+      files = (await fsp.readdir(dir, { recursive: true }))
+        .filter((f) => /\.mdx?$/.test(f))
+        .map((f) => path.join(dir, f))
+    } catch {
+      return []
+    }
+    if (isProductionBuild()) {
+      const excluded = new Set(
+        (await collectUnpublishedFiles(loadedConfig.config, root, publishNow))[collectionName] ?? [],
+      )
+      files = files.filter((f) => !excluded.has(f))
+    }
+    return files.sort()
+  }
+
   return {
     name: 'pyreon-zero-content',
     enforce: 'pre',
@@ -819,6 +879,16 @@ Until this file exists, getCollection() / getEntry() will throw "No content coll
 
     async configureServer(server) {
       viteServer = server
+      // A new or deleted entry changes its collection's listing metadata.
+      const staleMeta = (file: string): void => {
+        if (!isMarkdownId(file)) return
+        const collectionName = findCollectionForFile(file)
+        if (collectionName === null) return
+        const mod = server.moduleGraph.getModuleById('\0' + VIRTUAL_META_PREFIX + collectionName)
+        if (mod) server.moduleGraph.invalidateModule(mod)
+      }
+      server.watcher?.on('add', staleMeta)
+      server.watcher?.on('unlink', staleMeta)
       // For `.ts` / `.mts` configs we need Vite's ssrLoadModule so
       // TypeScript transforms apply. Now's the time.
       if (loadedConfig === null && resolvedConfig) {
@@ -998,6 +1068,7 @@ Until this file exists, getCollection() / getEntry() will throw "No content coll
         return '\0' + source
       }
       if (source === VIRTUAL_COLLECTIONS_ID) return RESOLVED_VIRTUAL_COLLECTIONS_ID
+      if (source.startsWith(VIRTUAL_META_PREFIX)) return '\0' + source
       return null
     },
 
@@ -1054,6 +1125,39 @@ export {}
         }
         return renderVirtualCollections({ config: loadedConfig.config, root })
       }
+      if (id.startsWith('\0' + VIRTUAL_META_PREFIX)) {
+        const collectionName = id.slice(('\0' + VIRTUAL_META_PREFIX).length)
+        const def = loadedConfig?.config.collections[collectionName]
+        if (!def) return renderMetaModule([])
+        const root = resolvedConfig?.root ?? process.cwd()
+        const collectionDir = path.resolve(root, def.path ?? `src/content/${collectionName}`)
+        // In dev it is marked stale when an entry changes (handleHotUpdate)
+        // and when one is added or removed (the watcher in
+        // configureServer). Not `addWatchFile(dir)`: Vite treats a watched
+        // file of a module as an import and fails to resolve a directory.
+        const entries: MetaModuleEntry[] = []
+        for (const file of await collectionFiles(collectionName)) {
+          const source = await fsp.readFile(file, 'utf8')
+          try {
+            // No highlighting: only frontmatter, headings, word count and
+            // excerpt are kept — the body is the page chunk's business.
+            const result = await compileMarkdown(source, file, {
+              highlight: false,
+              frontmatter: (raw) => parseEntryFrontmatter(collectionName, raw, file),
+            })
+            entries.push({
+              slug: slugFromPath(path.relative(collectionDir, file)),
+              frontmatter: result.frontmatter,
+              headings: result.headings,
+              wordCount: result.wordCount,
+              excerpt: result.excerpt,
+            })
+          } catch (err) {
+            this.error((err as Error).message)
+          }
+        }
+        return renderMetaModule(entries)
+      }
       return null
     },
 
@@ -1082,8 +1186,13 @@ export {}
         // we can resolve relative `.md` references against the
         // collection's base path.
         opts.resolveInternalLink = makeInternalLinkResolver(id)
+        // Ship the collection schema's parsed output, not the raw YAML.
+        const owningCollection = findCollectionForFile(id)
+        if (owningCollection !== null) {
+          opts.frontmatter = (raw) => parseEntryFrontmatter(owningCollection, raw, id)
+        }
         const compileJsxEnabled = options.compileJsx !== false
-        const cacheKey = computeCompileCacheKey(id, code, opts, compileJsxEnabled)
+        const cacheKey = computeCompileCacheKey(id, code, opts, compileJsxEnabled, owningCollection)
         const cached = COMPILE_CACHE.get(cacheKey)
 
         // Cache HIT — pre-pulled `code` for the inner SSR sub-build,
@@ -1174,23 +1283,10 @@ export {}
           }
         }
 
-        // Validate frontmatter against the owning collection's schema.
-        // Errors halt the build with a path-prefixed message naming
-        // every issue (path + message).
         const collectionName = findCollectionForFile(id)
         if (collectionName !== null && loadedConfig) {
-          const def = loadedConfig.config.collections[collectionName]!
-          if (isStandardSchema(def.schema)) {
-            const v = await validateAgainstSchema(
-              def.schema,
-              result.frontmatter,
-            )
-            if (!v.ok) {
-              this.error(
-                formatSchemaIssues(v.issues, reportPath(id), collectionName),
-              )
-            }
-          }
+          // (Frontmatter was validated — and replaced by the schema's
+          // parsed output — inside compileMarkdown via `opts.frontmatter`.)
           // Stash the entry for the search index. The body text comes
           // from the ORIGINAL markdown source (not the JSX-compiled
           // output) — `stripMarkdown` undoes code fences, HTML tags,
@@ -1296,10 +1392,14 @@ export {}
         })
         return { code: compiled.code, map: null }
       } catch (err) {
-        const message = (err as Error).message
-        this.error(
-          `[@pyreon/zero-content] failed to compile ${reportPath(id)}: ${message}`,
-        )
+        // A schema failure already names the file and every issue.
+        if (err instanceof FrontmatterSchemaError) {
+          this.error(err.message)
+        } else {
+          this.error(
+            `[@pyreon/zero-content] failed to compile ${reportPath(id)}: ${(err as Error).message}`,
+          )
+        }
       }
     },
 
@@ -1398,6 +1498,19 @@ export {}
       // warming step's `transformRequest` calls are idempotent.
       if (isMarkdownId(ctx.file)) {
         _devIndexWarmed = false
+        // The collection's metadata module (listings) holds this entry's
+        // frontmatter, headings, word count and excerpt: mark it stale so
+        // the next SSR render or page load rebuilds it. It is deliberately
+        // NOT returned for HMR propagation: it is reached through the
+        // collections registry every page imports, so propagating would
+        // turn every markdown edit into a full reload of every page. An
+        // open listing picks up an edited title on its next load.
+        const collectionName = findCollectionForFile(ctx.file)
+        const metaMod =
+          collectionName === null
+            ? undefined
+            : ctx.server.moduleGraph.getModuleById('\0' + VIRTUAL_META_PREFIX + collectionName)
+        if (metaMod) ctx.server.moduleGraph.invalidateModule(metaMod)
       }
       // 1. src/mdx/ — invalidate the components virtual module.
       if (isUnderMdxDir(ctx.file)) {

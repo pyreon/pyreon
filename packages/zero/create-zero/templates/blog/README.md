@@ -14,7 +14,7 @@ bun run dev          # → http://localhost:3000
 - **`src/content/blog/`** — your posts, one markdown file each (the file name is the URL)
 - **`content.config.ts`** — declares the `blog` collection (`blogCollection()`: frontmatter schema + publish dates)
 - **`src/blog.ts`** — the blog: site URL, title, authors, page size (`defineBlog`)
-- **`src/routes/blog/`** — four one-line routes: the index, its pages, a post, a tag page
+- **`src/routes/blog/`** — five one-line routes: the index and its pages, a post, a tag page and its pages
 - **`src/routes/index.tsx`** — landing page with the latest posts
 - **`src/routes/about.tsx`** — about page
 - **`vite.config.ts`** — the content plugin also writes the RSS feed to `/blog/rss.xml`

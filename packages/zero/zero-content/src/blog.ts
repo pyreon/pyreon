@@ -6,14 +6,15 @@
 //
 //   content.config.ts   collections: { blog: blogCollection() }
 //   src/blog.ts         export const blog = defineBlog({ siteUrl, title, description })
-//   src/routes/blog/…   four one-line route files (see `defineBlog`)
+//   src/routes/blog/…   five one-line route files (see `defineBlog`)
 //
 // Optional default styles: `import '@pyreon/zero-content/blog.css'`.
 
-export { blogCollection, blogSchema, validateBlogFrontmatter } from './blog/schema'
+export { blogCollection, blogSchema, normalizeBlogFrontmatter, validateBlogFrontmatter } from './blog/schema'
 export type {
   BlogCollectionOptions,
   BlogFrontmatter,
+  BlogPostData,
   BlogSchema,
   FrontmatterDate,
 } from './blog/schema'

@@ -33,6 +33,12 @@ export interface CollectionRuntime<TData = Record<string, unknown>> {
   type: 'pages' | 'data'
   /** Loader map: slug → async loader. Populated from `import.meta.glob`. */
   loaders: Record<string, () => Promise<ContentModule<TData>>>
+  /**
+   * The collection's metadata module (frontmatter, headings, word count and
+   * excerpt of every entry, no bodies). Emitted by the plugin; listings read
+   * it so they never load an entry's page chunk.
+   */
+  meta?: () => Promise<{ entries: CollectionMetaEntry[] }>
   /** The collection's `publishDate` frontmatter field, when declared. */
   publishDate?: string
   /**
@@ -78,6 +84,58 @@ export function _getRegistry(): CollectionRegistry {
     )
   }
   return _registry
+}
+
+/**
+ * One entry of a collection's METADATA module — everything a listing needs,
+ * without the body. The plugin emits one such module per collection
+ * (`virtual:zero-content/meta/<name>`), so `getCollection` loads one small
+ * chunk instead of every entry's compiled page.
+ */
+export interface CollectionMetaEntry {
+  slug: string
+  frontmatter: Record<string, unknown>
+  headings: Heading[]
+  wordCount: number
+  excerpt: string
+}
+
+/**
+ * Every entry of a collection. From its metadata module when the registry
+ * has one (the plugin always emits it), so no entry body is loaded until
+ * `render()` is called; otherwise (a hand-built registry) from the full
+ * loaders.
+ */
+async function loadEntries(collection: CollectionRuntime<unknown>): Promise<CollectionEntry[]> {
+  if (collection.meta) {
+    const { entries } = await collection.meta()
+    return entries
+      .filter((meta) => collection.loaders[meta.slug] !== undefined)
+      .sort((a, b) => (a.slug < b.slug ? -1 : a.slug > b.slug ? 1 : 0))
+      .map((meta) => ({
+        slug: meta.slug,
+        data: meta.frontmatter,
+        // The body is a separate chunk, loaded on demand.
+        render: async () => (await collection.loaders[meta.slug]!()).default,
+        headings: meta.headings,
+        wordCount: meta.wordCount,
+        excerpt: meta.excerpt,
+      }))
+  }
+  const slugs = Object.keys(collection.loaders).sort()
+  return Promise.all(
+    slugs.map(async (slug): Promise<CollectionEntry> => {
+      const mod = await collection.loaders[slug]!()
+      return {
+        slug,
+        data: mod.frontmatter as Record<string, unknown>,
+        render: async () => mod.default,
+        headings: mod.headings ?? [],
+        wordCount: mod.wordCount ?? 0,
+        excerpt: mod.excerpt ?? '',
+      }
+    }),
+  )
 }
 
 /**
@@ -132,19 +190,7 @@ export async function getCollection(
       `[@pyreon/zero-content] Collection "${name}" is not defined. Available collections: ${available}.`,
     )
   }
-  const slugs = Object.keys(collection.loaders).sort()
-  const entries = await Promise.all(
-    slugs.map(async (slug): Promise<CollectionEntry> => {
-      const mod = await collection.loaders[slug]!()
-      return {
-        slug,
-        data: mod.frontmatter as Record<string, unknown>,
-        render: async () => mod.default,
-        headings: mod.headings ?? [],
-        wordCount: mod.wordCount ?? 0,
-      }
-    }),
-  )
+  const entries = await loadEntries(collection)
   // PR-J audit M13 — draft filtering. The default is environment-aware:
   // production builds skip drafts (so a `draft: true` page can be
   // staged in source without leaking to a public deploy); dev mode
@@ -211,6 +257,7 @@ export async function getEntry(
     render: async () => mod.default,
     headings: mod.headings ?? [],
     wordCount: mod.wordCount ?? 0,
+    excerpt: mod.excerpt ?? '',
   }
 }
 
@@ -243,6 +290,7 @@ export async function getEntries(
         render: async () => mod.default,
         headings: mod.headings ?? [],
         wordCount: mod.wordCount ?? 0,
+        excerpt: mod.excerpt ?? '',
       }
     }),
   )

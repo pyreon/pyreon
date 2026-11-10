@@ -60,7 +60,7 @@ export const blog = defineBlog({
 })
 ```
 
-**4. The routes.** Four files, each pointing at the blog:
+**4. The routes.** Five one-line files, each pointing at the blog:
 
 ```tsx
 // src/routes/blog/index.tsx — /blog
@@ -83,9 +83,16 @@ export default blog.PostPage
 ```
 
 ```tsx
-// src/routes/blog/tags/[tag].tsx — /blog/tags/<tag>
-import { blog } from '../../../blog'
+// src/routes/blog/tags/[tag]/index.tsx — /blog/tags/<tag>
+import { blog } from '../../../../blog'
 export const getStaticPaths = blog.tagPaths
+export default blog.TagPage
+```
+
+```tsx
+// src/routes/blog/tags/[tag]/page/[page].tsx — /blog/tags/<tag>/page/2, …
+import { blog } from '../../../../../blog'
+export const getStaticPaths = blog.tagPagePaths
 export default blog.TagPage
 ```
 
@@ -113,9 +120,13 @@ author: ada                  # an `authors` key, a plain name, or a list
 The post, in markdown — callouts, code groups and MDX components all work.
 ```
 
-`title`, `description` and `date` are required. Unknown fields fail the build, so a typo such as `tag:` cannot silently drop the tags. The schema validates and does not transform: at runtime the frontmatter is exactly what you wrote, and the blog turns it into a `BlogPost` (dates as `Date`, tags with slugs and URLs, author keys resolved).
+`title`, `description` and `date` are required. Unknown fields fail the build, so a typo such as `tag:` cannot silently drop the tags. The schema's output is what ships: `entry.data` is a `BlogPostData` with dates as `Date`, `tags` and `author` as lists and `draft` as a boolean, and the blog turns it into a `BlogPost` (tags with slugs and URLs, author keys resolved).
 
-Reading time comes from the word count the content plugin records when it compiles the file (`entry.wordCount`), so nothing walks the page in the browser. The default speed is 230 words per minute (`wordsPerMinute`).
+Reading time and the excerpt (the first paragraph, as plain text) are recorded when the content plugin compiles the file (`entry.wordCount`, `entry.excerpt`), so nothing walks the page in the browser. The default speed is 230 words per minute (`wordsPerMinute`).
+
+## What a listing loads
+
+The index, its pages, tag pages, tag counts, previous/next and related posts all read one small **metadata chunk** per collection: each post's frontmatter, slug, headings, word count and excerpt, and no bodies. A post's body is a separate chunk that only its own page loads. With the 15 posts of pyreon.dev, `/blog` went from loading every post (all 15 article chunks) to loading the metadata chunk alone.
 
 ## Scheduling posts by date
 
@@ -140,7 +151,7 @@ The feed is written by the content plugin's `seo.rss` option (step 1): published
 
 ## Tags
 
-Every tag gets a page at `/blog/tags/<tag>`, and the index lists all tags with their post counts. Tag URLs are slugs — `Web Dev` becomes `web-dev`, and `C++` and `C#` stay distinct from `C`. Tags that differ only in spelling (`Web Dev`, `web-dev`) are one tag; the newest post's spelling is shown. Related posts are the posts sharing the most tags with the current one, newest first on a tie; a post that shares no tag is never "related".
+Every tag gets a page at `/blog/tags/<tag>`, paginated like the index (same `pageSize`, same pager, `/blog/tags/<tag>/page/2`…), and the index lists the most-used tags with their post counts (`indexTags`, 10 by default). Tag URLs are slugs — `Web Dev` becomes `web-dev`, and `C++` and `C#` stay distinct from `C`. Tags that differ only in spelling (`Web Dev`, `web-dev`) are one tag; the newest post's spelling is shown. Related posts are the posts sharing the most tags with the current one, newest first on a tie; a post that shares no tag is never "related".
 
 ## SEO
 
@@ -175,7 +186,7 @@ Point `bodyClass` at your prose styles, and use `postFooter` to add anything aft
 
 | Export | Use |
 | --- | --- |
-| `blog.getPosts()`, `getPost(slug)`, `getTags()` | published posts, newest first; tags with counts |
+| `blog.getPosts()`, `getPost(slug)`, `getTags()` | published posts, newest first; tags with counts (read from the metadata chunk) |
 | `paginate`, `postsWithTag`, `countTags`, `adjacentPosts`, `relatedPosts` | pure queries over a post list |
 | `PostList`, `PostCard`, `PostHeader`, `PostMeta`, `TagList`, `Pagination`, `PostNav`, `RelatedPosts` | the pieces the routes are made of |
 | `ShareLinks` | X, Bluesky, LinkedIn and Mastodon share links as plain intent URLs — no script, no tracking |
@@ -192,6 +203,7 @@ Point `bodyClass` at your prose styles, and use `postFooter` to add anything aft
 | `heading` | `title` | the index `<h1>` |
 | `pageSize` | `10` | posts per index page |
 | `relatedCount` | `3` | related posts per post (`0` turns them off) |
+| `indexTags` | `10` | most-used tags listed on the index (`0` hides the list) |
 | `locale` | `'en-US'` | locale of displayed dates (always rendered in UTC) |
 | `language` | — | JSON-LD `inLanguage` |
 | `wordsPerMinute` | `230` | reading speed |

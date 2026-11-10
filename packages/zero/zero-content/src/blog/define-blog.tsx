@@ -33,7 +33,8 @@ import type { BlogSeoSite } from './seo'
 //   src/routes/blog/index.tsx        export default blog.IndexPage
 //   src/routes/blog/page/[page].tsx  getStaticPaths = blog.pagePaths; default blog.IndexPage
 //   src/routes/blog/[slug].tsx       getStaticPaths = blog.postPaths; default blog.PostPage
-//   src/routes/blog/tags/[tag].tsx   getStaticPaths = blog.tagPaths;  default blog.TagPage
+//   src/routes/blog/tags/[tag]/index.tsx        getStaticPaths = blog.tagPaths;     default blog.TagPage
+//   src/routes/blog/tags/[tag]/page/[page].tsx  getStaticPaths = blog.tagPagePaths; default blog.TagPage
 //
 // Every listing, count, page count, previous/next and related list is
 // computed from `getPosts()` — the PUBLISHED posts — so a draft or a
@@ -56,6 +57,11 @@ export interface BlogConfig {
   pageSize?: number
   /** Related posts under a post. Default `3`; `0` turns them off. */
   relatedCount?: number
+  /**
+   * The most-used tags listed on the index (every tag still has its page
+   * and appears on its posts). Default `10`; `0` hides the list.
+   */
+  indexTags?: number
   /** Locale of displayed dates. Default `en-US`. Dates always render in UTC. */
   locale?: string
   /** BCP 47 language of the posts (JSON-LD `inLanguage`), e.g. `en`. */
@@ -93,6 +99,7 @@ export interface ResolvedBlogConfig extends BlogSeoSite {
   heading: string
   pageSize: number
   relatedCount: number
+  indexTags: number
   locale: string
   feedPath: string | undefined
   bodyClass: string
@@ -117,7 +124,7 @@ export interface Blog {
   IndexPage: ComponentFn
   /** A post (`/blog/[slug]`). */
   PostPage: ComponentFn
-  /** Posts with one tag (`/blog/tags/[tag]`). */
+  /** Posts with one tag (`/blog/tags/[tag]` and `/blog/tags/[tag]/page/[page]`). */
   TagPage: ComponentFn
   /** `getStaticPaths` of `/blog/page/[page]`: pages 2..n. */
   pagePaths: BlogStaticPaths<{ page: string }>
@@ -125,6 +132,10 @@ export interface Blog {
   postPaths: BlogStaticPaths<{ slug: string }>
   /** `getStaticPaths` of `/blog/tags/[tag]`: every tag of a published post. */
   tagPaths: BlogStaticPaths<{ tag: string }>
+  /** `getStaticPaths` of `/blog/tags/[tag]/page/[page]`: pages 2..n of every tag. */
+  tagPagePaths: BlogStaticPaths<{ tag: string; page: string }>
+  /** Site path of page `n` of a tag (`/blog/tags/<tag>` for page 1). */
+  tagPageUrl(tagSlug: string, page: number): string
 }
 
 const DefaultNotFound: ComponentFn = () =>
@@ -160,6 +171,7 @@ export function resolveBlogConfig(config: BlogConfig): ResolvedBlogConfig {
     heading: config.heading ?? config.title,
     pageSize,
     relatedCount: config.relatedCount ?? 3,
+    indexTags: config.indexTags ?? 10,
     locale: config.locale ?? 'en-US',
     feedPath: config.feedPath,
     bodyClass: config.bodyClass ?? 'pyreon-blog-post__body',
@@ -234,6 +246,9 @@ export function defineBlog(input: BlogConfig): Blog {
     return sortNewestFirst(entries.map((entry) => toBlogPost(entry, config.post)))
   }
 
+  const tagPageUrl = (tagSlug: string, page: number): string =>
+    page <= 1 ? `${config.basePath}/tags/${tagSlug}` : `${config.basePath}/tags/${tagSlug}/page/${page}`
+
   const pageUrl = (page: number): string =>
     page <= 1 ? config.basePath || '/' : `${config.basePath}/page/${page}`
 
@@ -242,7 +257,8 @@ export function defineBlog(input: BlogConfig): Blog {
     const posts = await getPosts()
     const page = paginate(posts, pageFromParam(props.page), config.pageSize)
     if (page === undefined) return h(config.notFound, null)
-    const tags = countTags(posts)
+    // Most used first; a long tail would push the posts below the fold.
+    const tags = countTags(posts).slice(0, config.indexTags)
     const title = page.page === 1 ? config.title : `${config.heading} — page ${page.page}`
     setHead(
       blogListHead(config, {
@@ -273,19 +289,24 @@ export function defineBlog(input: BlogConfig): Blog {
     )
   }
 
-  const TagBody: AsyncComponent<{ tag: string | undefined }> = async (props) => {
+  const TagBody: AsyncComponent<{ tag: string | undefined; page: string | undefined }> = async (props) => {
     const setHead = deferredHead()
     const posts = await getPosts()
     const tagged = props.tag === undefined ? [] : postsWithTag(posts, props.tag)
     if (tagged.length === 0) return h(config.notFound, null)
+    // Same page size and pager as the index; `/page/1` is the tag page itself.
+    const page = paginate(tagged, pageFromParam(props.page), config.pageSize)
+    if (page === undefined) return h(config.notFound, null)
     const tag = countTags(tagged).find((t) => t.slug === props.tag) as BlogTagCount
-    const title = `Posts tagged #${tag.name}`
+    const heading = `Posts tagged #${tag.name}`
+    const title = page.page === 1 ? heading : `${heading} — page ${page.page}`
+    const href = (n: number): string => tagPageUrl(tag.slug, n)
     setHead(
       blogListHead(config, {
-        path: tag.url,
+        path: href(page.page),
         title,
         description: `${tag.count} ${tag.count === 1 ? 'post' : 'posts'} tagged #${tag.name} on ${config.title}.`,
-        posts: tagged,
+        posts: page.items,
         kind: 'collection',
       }),
     )
@@ -295,12 +316,13 @@ export function defineBlog(input: BlogConfig): Blog {
           <RouterLink class="pyreon-blog__back" to={pageUrl(1)}>
             ← All posts
           </RouterLink>
-          <h1 class="pyreon-blog__title">{title}</h1>
+          <h1 class="pyreon-blog__title">{heading}</h1>
           <p class="pyreon-blog__description">
             {tag.count} {tag.count === 1 ? 'post' : 'posts'}
           </p>
         </header>
-        <PostList posts={tagged} locale={config.locale} coverSize={config.coverSize} />
+        <PostList posts={page.items} locale={config.locale} coverSize={config.coverSize} />
+        <Pagination page={page.page} pageCount={page.pageCount} href={href} />
       </div>
     )
   }
@@ -354,7 +376,8 @@ export function defineBlog(input: BlogConfig): Blog {
     pageUrl,
     absoluteUrl: (path) => absoluteUrl(config.siteUrl, path),
     IndexPage: () => suspended(IndexBody, { page: param('page') }),
-    TagPage: () => suspended(TagBody, { tag: param('tag') }),
+    TagPage: () => suspended(TagBody, { tag: param('tag'), page: param('page') }),
+    tagPageUrl,
     PostPage: () => suspended(PostBody, { slug: param('slug') }),
     async pagePaths() {
       const posts = await getPosts()
@@ -372,6 +395,14 @@ export function defineBlog(input: BlogConfig): Blog {
         }
       }
       return posts.map((post) => ({ params: { slug: post.slug } }))
+    },
+    async tagPagePaths() {
+      const out: Array<{ params: { tag: string; page: string } }> = []
+      for (const tag of countTags(await getPosts())) {
+        const pageCount = Math.ceil(tag.count / config.pageSize)
+        for (let page = 2; page <= pageCount; page++) out.push({ params: { tag: tag.slug, page: String(page) } })
+      }
+      return out
     },
     async tagPaths() {
       return countTags(await getPosts()).map((tag) => ({ params: { tag: tag.slug } }))
