@@ -1002,6 +1002,15 @@ Types: `ValidateConfig`, `FormatValidator`, `ServerCheckFn` (`(value, context?) 
 
 The compiler's tree-shakeable emit target (see "Tree-shaking" above): lean base constructors (`object`, `string`, `number`, …) plus standalone check actions (`minLength`, `email`, `minValue`, `integer`, …), composed with `.check(...)` or `pipe(schema, ...actions)`. Verdicts are identical to the chainable form.
 
+`mini` ships **without the runtime JIT** (about 3.5 KB gz): its schemas compile through the interpreter, which returns identical results. A 4-field object costs 5.2 KB gz with `mini` against 13.8 KB through the main entry. To get the JIT's speed back, opt in once before the first parse:
+
+```ts
+import { enableJit } from '@pyreon/validate/jit'
+enableJit()
+```
+
+The main entry installs the JIT for you, and `pyreon({ optimizeValidators: true })` adds the `enableJit()` call to every module it rewrites, so neither changes speed.
+
 ### JSON Schema entry (`@pyreon/validate/json-schema`)
 
 | Export | Description |
