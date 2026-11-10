@@ -109,13 +109,11 @@ describe('parse-fast JIT — primitive roots and fields', () => {
     0, 1, -1, 42, 150, 151, 1.5, NaN, Infinity, -0, 3, 2 ** 53, true, false, 42n, new Date('2026-06-22'),
     new Date('invalid'), ...BADS,
   ]
-  // A scalar root whose checks include a predicate call (a format/regex) is
-  // deliberately NOT served (see `tryCompileJitFast`): its invalid path would
-  // run the predicate twice. Every other scalar root is served.
-  const refusedRoots = new Set(['string.email', 'string.regex', 'string.url'])
+  // A scalar root is deliberately NOT served (see `tryCompileJitFast`): its
+  // invalid path would pay its checks twice for no measurable valid gain.
   for (const [name, sc] of schemas) {
     it(name, () => {
-      if (refusedRoots.has(name)) {
+      {
         expect(tryCompileJitFast(sc)).toBeNull()
         for (const input of inputs) {
           const ctx: ParseCtx = { issues: [], path: [] }
@@ -124,10 +122,7 @@ describe('parse-fast JIT — primitive roots and fields', () => {
           expect(r.ok, `${name} :: input=${safe(input)}`).toBe(ctx.issues.length === 0)
           if (r.ok) expect(r.value).toEqual(interp)
         }
-        return
       }
-      expect(tryCompileJitFast(sc), name).not.toBeNull()
-      for (const input of inputs) agree(sc, input, name)
     })
   }
   // ...but the same scalars as FIELDS are served, inside an object root.
@@ -219,8 +214,9 @@ describe('parse-fast JIT — objects, arrays, discriminated unions, strict', () 
       for (const input of inputs()) agree(sc, input, name)
     })
   }
-  it('fast served every one of these schemas', () => {
-    expect(cases.filter(([, sc]) => tryCompileJitFast(sc) !== null).length).toBe(cases.length)
+  it('fast served every object/array root, and refused the discriminated-union roots', () => {
+    const refused = new Set(['du', 'strictDu'])
+    for (const [name, sc] of cases) expect(tryCompileJitFast(sc) === null, name).toBe(refused.has(name))
   })
 
   it('a __proto__ key lands as an OWN property, never the prototype', () => {

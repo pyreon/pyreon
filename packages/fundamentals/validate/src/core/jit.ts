@@ -454,17 +454,19 @@ class CheckUnsupported extends Error {}
  * otherwise, and `parse` keeps its single-pass seam.
  */
 export function tryCompileJitFast(schema: Schema<unknown>): JitFastValidator | null {
-  // A SCALAR root is served only when every check is an inline condition.
-  // The failure path re-runs the full validator, so an invalid input pays its
-  // checks twice: a few compares for `number().int().min().max()` (invalid
-  // 28.9 → 32.1 ns, for a valid-path gain in the tight loop of 3.45 → 1.2 ns),
-  // but a whole predicate call for a format check — `string().email()` invalid
-  // went 59 → 83 ns (the scanner ran in both passes) while its valid parse
-  // gained nothing measurable (29.5 → 29.2). bun/JSC, process-isolated A/B,
-  // 4 rounds, 2026-11-10. Composite roots are always served: the per-field
-  // ctx plumbing they skip pays (object.user valid 42.4 → 39.4 ns).
+  // OBJECT and ARRAY roots only. The failure path re-runs the full validator,
+  // so an invalid input pays its checks twice, and that has to be bought back
+  // on the valid path. Measured (bun/JSC, process-isolated A/B, 4 rounds,
+  // two runs each, 2026-11-10):
+  //  - object.user valid 42.4 → 39.4 ns: the skipped per-field ctx plumbing
+  //    pays, and the invalid cost is inside noise (214 → 217);
+  //  - a scalar root bought ~0.2 ns valid (int 4.61 → 4.4) for +2.4 ns invalid
+  //    (29.7 → 32.1), and a format scalar +24 ns invalid (email 59 → 83: the
+  //    scanner ran twice);
+  //  - a discriminated-union root bought nothing valid (du 7.7–8.3 either way)
+  //    for +4 ns invalid (80 → 84).
   const root = schema as unknown as FieldLike
-  if (isInlinePrimitive(root) && fieldCheckOps(root).some((op) => inlineCheckCond(op, 'v') === null)) return null
+  if (!isPlainObject(root) && !isInlineArray(root)) return null
   return compileJit(schema, 'fast') as JitFastValidator | null
 }
 
