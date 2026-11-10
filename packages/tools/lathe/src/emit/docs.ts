@@ -204,7 +204,7 @@ function indexPage(
     lines.push("| Code | Where | Detail |", "| --- | --- | --- |");
     for (const n of losses) {
       lines.push(
-        `| ${code(n.code, true)} | ${code(n.at, true)} | ${md(n.message)} |`,
+        `| ${code(n.code, true)} | ${code(n.at, true)} | ${prose(n.message, true)} |`,
       );
     }
     lines.push("");
@@ -220,7 +220,7 @@ function indexPage(
     lines.push("| Code | Where | Detail |", "| --- | --- | --- |");
     for (const n of choices) {
       lines.push(
-        `| ${code(n.code, true)} | ${code(n.at, true)} | ${md(n.message)} |`,
+        `| ${code(n.code, true)} | ${code(n.at, true)} | ${prose(n.message, true)} |`,
       );
     }
     lines.push("");
@@ -248,7 +248,7 @@ function tagPage(
     if (op.summary) lines.push(md(op.summary), "");
 
     lines.push(`- **Reach** — ${reachLabel(info)}`);
-    if (info?.reason) lines.push(`  - ${md(info.reason)}`);
+    if (info?.reason) lines.push(`  - ${prose(info.reason)}`);
     if (!isStreamOnly(op))
       lines.push(`- **Response** — ${typeCell(op.response)}`);
     if (op.stream) {
@@ -532,12 +532,31 @@ const MD_SYNTAX = /[!#$%&()*+\-/:<=>@[\\\]^_`{|}~]/g;
  * go, as in every other emitted context.
  */
 function md(value: string): string {
-  return value
-    .replace(/[\r\n]+/g, " ")
-    .replace(CONTROL_CHARS, "")
+  return escapeProse(flatten(value).trim());
+}
+
+/**
+ * `md()` for lathe's OWN sentences -- a reach reason, a note -- which quote
+ * names in backticks and interpolate spec values into them. The backticked
+ * spans stay code (through `code()`, so a backtick in a spec value cannot
+ * close one) and everything between them is escaped as prose.
+ */
+function prose(value: string, inCell = false): string {
+  return flatten(value)
     .trim()
-    .replace(MD_SYNTAX, "\\$&")
-    .replace(/^(\d+)\./, "$1\\.");
+    .split(/(`[^`]+`)/)
+    .map((part, i) =>
+      i % 2 === 1 ? code(part.slice(1, -1), inCell) : escapeProse(part),
+    )
+    .join("");
+}
+
+function flatten(value: string): string {
+  return value.replace(/[\r\n]+/g, " ").replace(CONTROL_CHARS, "");
+}
+
+function escapeProse(value: string): string {
+  return value.replace(MD_SYNTAX, "\\$&").replace(/^(\d+)\./, "$1\\.");
 }
 
 /**
@@ -553,7 +572,7 @@ function md(value: string): string {
  * sees code spans.
  */
 function code(value: string, inCell = false): string {
-  let v = value.replace(/[\r\n]+/g, " ").replace(CONTROL_CHARS, "");
+  let v = flatten(value);
   if (inCell) v = mdCell(v);
   if (v.trim() === "") return "";
   const ticks = "`".repeat(longestRun(v, "`") + 1);
