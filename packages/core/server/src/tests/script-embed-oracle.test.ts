@@ -40,7 +40,7 @@ const HOSTILE_STRINGS = [
   '<script>',
   '-->',
   '</',
-  'a b c',
+  'a\u2028b\u2029c',
   '"__proto__":{"admin":true}',
   '\\"__proto__\\":',
   'back\\',
@@ -59,7 +59,7 @@ const KEYS = [
   '<!--',
   '"__proto__":',
   '\\',
-  'k ',
+  'k\u2028',
   'name',
   'id',
 ]
@@ -179,7 +179,7 @@ describe('inline state embed — breakout + round-trip oracle', () => {
   })
 
   test('the payload stays JSON text when no own __proto__ key exists', () => {
-    const input = { a: ['</script>', '<!--', ' '], b: { constructor: 1, prototype: 2 } }
+    const input = { a: ['</script>', '<!--', '\u2028'], b: { constructor: 1, prototype: 2 } }
     expect(JSON.parse(stringifyLoaderDataForScript(input))).toEqual(input)
   })
 })
