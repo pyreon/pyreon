@@ -162,30 +162,59 @@ describe('linear content scanners are exactly the regexes they replace', () => {
 })
 
 describe('content parsing stays linear on adversarial input', () => {
+  // The verdict is about GROWTH, not about a wall-clock budget: a shared or
+  // coverage-instrumented CI runner is several times slower than a laptop,
+  // and a loaded one stretches wall-clock time with time spent waiting for a
+  // core (the frontmatter cases spend most of their time in the YAML parser,
+  // which is linear but not cheap — 285 ms wall-clock for 1e5 blank lines
+  // under coverage on CI). So timings are this process's CPU time, not wall
+  // time, and each case is timed at n and at 4n: a linear scan
+  // grows ~4x, a quadratic one ~16x. A case passes when it either stays
+  // under a generous absolute bound at 4n (the linear scans take a few ms;
+  // the old regexes took seconds — 1.8 s for the blank-line sweep at 1e5,
+  // 4.1 s for the `[` run) OR grows clearly sub-quadratically. Only an
+  // input that is BOTH slow and super-linear fails, which is the regression
+  // this guards. Each timing is the minimum of several runs, so one GC pause
+  // or scheduler hiccup cannot fake growth.
   const N = 1e5
-  // Generous: the linear scans take a few ms; the old regexes took seconds
-  // (1.8 s for the blank-line sweep, 4.1 s for the `[` run).
-  const BOUND_MS = 200
+  const FAST_MS = 200
+  const MAX_GROWTH = 8
+  const SAMPLES = 3
   const time = (fn: () => unknown): number => {
-    const start = performance.now()
-    fn()
-    return performance.now() - start
+    let best = Number.POSITIVE_INFINITY
+    for (let i = 0; i < SAMPLES; i++) {
+      const start = process.cpuUsage()
+      fn()
+      const used = process.cpuUsage(start)
+      best = Math.min(best, (used.user + used.system) / 1000)
+    }
+    return best
   }
 
-  it.each([
-    ['search: unclosed [ run', () => stripMarkdown('['.repeat(N))],
-    ['search: [a]( run with no )', () => stripMarkdown('[a]('.repeat(N / 4))],
-    ['search: unclosed < run', () => stripMarkdown('<'.repeat(N))],
-    ['frontmatter: blank lines', () => parseFrontmatter(`---\n${'\n'.repeat(N)}x: 1\n---\n`)],
-    ['frontmatter: CR line breaks', () => parseFrontmatter(`---\n${'\r'.repeat(N)}x: 1\n---\n`)],
-    ['code meta: unclosed [ run', () => parseCodeFenceMeta('['.repeat(N))],
-    ['code meta: unclosed { run', () => parseCodeFenceMeta('{'.repeat(N))],
-    ['code meta: long key run with no =', () => parseCodeFenceMeta('a'.repeat(N))],
-    ['code-group label: unclosed [ run', () => parseLabel('['.repeat(N))],
-    ['directive normalize: blank lines', () => normalizeDirectiveFences(`${'\n'.repeat(N)}x`)],
-    ['directive normalize: CR line breaks', () => normalizeDirectiveFences(`${'\r'.repeat(N)}x`)],
+  it.each<[string, (n: number) => unknown]>([
+    ['search: unclosed [ run', (n) => stripMarkdown('['.repeat(n))],
+    ['search: [a]( run with no )', (n) => stripMarkdown('[a]('.repeat(n / 4))],
+    ['search: unclosed < run', (n) => stripMarkdown('<'.repeat(n))],
+    ['frontmatter: blank lines', (n) => parseFrontmatter(`---\n${'\n'.repeat(n)}x: 1\n---\n`)],
+    ['frontmatter: CR line breaks', (n) => parseFrontmatter(`---\n${'\r'.repeat(n)}x: 1\n---\n`)],
+    ['code meta: unclosed [ run', (n) => parseCodeFenceMeta('['.repeat(n))],
+    ['code meta: unclosed { run', (n) => parseCodeFenceMeta('{'.repeat(n))],
+    ['code meta: long key run with no =', (n) => parseCodeFenceMeta('a'.repeat(n))],
+    ['code-group label: unclosed [ run', (n) => parseLabel('['.repeat(n))],
+    ['directive normalize: blank lines', (n) => normalizeDirectiveFences(`${'\n'.repeat(n)}x`)],
+    ['directive normalize: CR line breaks', (n) => normalizeDirectiveFences(`${'\r'.repeat(n)}x`)],
   ])('%s', (_name, fn) => {
-    fn() // warm
-    expect(time(fn)).toBeLessThan(BOUND_MS)
+    const small = N / 4
+    fn(small) // warm
+    const tSmall = time(() => fn(small))
+    const tLarge = time(() => fn(N))
+    // Floor the small timing at 0.05 ms so a sub-resolution reading cannot
+    // turn timer granularity into "growth".
+    const growth = tLarge / Math.max(tSmall, 0.05)
+    const verdict = { tSmallMs: tSmall, tLargeMs: tLarge, growth }
+    expect(
+      tLarge < FAST_MS || growth < MAX_GROWTH,
+      `slow AND super-linear: ${JSON.stringify(verdict)}`,
+    ).toBe(true)
   })
 })
