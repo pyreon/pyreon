@@ -826,8 +826,18 @@ public enum PyreonURL {
     /// application/x-www-form-urlencoded, where a space is `+` and `'` is
     /// `%27`; the same character differs by position, so one encoder for both
     /// positions is wrong in both.
+    ///
+    /// A value that is EXACTLY `.` or `..` is the one exception, mirrored from
+    /// the web: `encodeURIComponent` leaves it intact, and a dot segment is
+    /// resolved by URL parsers and servers, so `/orgs/a/members/\(user)/x` with
+    /// `user == ".."` would reach a DIFFERENT endpoint with the request's
+    /// credentials. `%2E` is no fix (WHATWG and OkHttp treat it as a dot
+    /// too), so the dots are encoded twice — `%252E` — which decodes to an
+    /// identifier that addresses nothing.
     public static func encodePathParam(_ value: String) -> String {
-        value.addingPercentEncoding(withAllowedCharacters: unreserved) ?? value
+        if value == "." { return "%252E" }
+        if value == ".." { return "%252E%252E" }
+        return value.addingPercentEncoding(withAllowedCharacters: unreserved) ?? value
     }
 
     /// Integer overload. `String(Int)` already matches JavaScript's

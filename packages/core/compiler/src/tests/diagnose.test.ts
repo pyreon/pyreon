@@ -7,6 +7,21 @@ import { diagnoseError } from '../diagnose'
 const SRC = join(dirname(fileURLToPath(import.meta.url)), '..')
 
 describe('diagnoseError (browser-safe error catalog)', () => {
+  it('explains a loader notFound() that answered 500 (SSR and the data endpoint)', () => {
+    for (const message of [
+      '[Pyreon] SSR render failed for /items/9999: Error: Not Found',
+      'Error: [Pyreon Router] data endpoint returned HTTP 500',
+      'notFound() in my loader returns 500 Internal Server Error',
+    ]) {
+      const result = diagnoseError(message)
+      expect(result, message).not.toBeNull()
+      expect(result!.cause).toContain('notFound()')
+      expect(result!.fix).toContain('HTTP 404')
+    }
+    // A generic SSR failure is not this entry.
+    expect(diagnoseError('[Pyreon] SSR render failed for /x: TypeError: data is not a function')?.cause ?? '').not.toContain('notFound()')
+  })
+
   it('explains first-loader data that stays empty without diagnosing an in-flight loader', () => {
     for (const message of [
       'useLoaderData() is undefined after the first loader resolved',

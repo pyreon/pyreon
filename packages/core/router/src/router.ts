@@ -3,7 +3,8 @@ import type { VNodeChild } from '@pyreon/core'
 import { batch, computed, isClient, signal, untrack } from '@pyreon/reactivity'
 import type { Computed, Signal } from '@pyreon/reactivity'
 import { SizedMap } from '@pyreon/sized-map'
-import { buildNameIndex, buildPath, resolveRoute, stringifyQuery } from './match'
+import { buildNameIndex, buildPath, resolveLoaderNotFound, resolveRoute, stringifyQuery } from './match'
+import { isNotFoundError } from './not-found'
 import { classifyRedirectTarget, getRedirectInfo, redirect as throwRedirect } from './redirect'
 import { ScrollManager } from './scroll'
 import { classifyHref } from './typed-routes'
@@ -633,7 +634,18 @@ export function createRouter<TNames extends string = string>(
   // ── Signals ───────────────────────────────────────────────────────────────
 
   const currentPath = signal(normalizeTrailingSlash(getInitialLocation(), trailingSlash))
-  const currentRoute = computed<ResolvedRoute>(() => resolveRoute(currentPath(), routes))
+  // Loader-not-found state: the pathname whose loaders threw `notFound()`
+  // ("matched route, missing resource"). While it equals the current path the
+  // route resolves to the not-found fallback chain, so SSR (status 404), the
+  // hydrating client (seeded from the loader-data blob) and client navigation
+  // all render the SAME chain. Written only by commitNavigation, preload,
+  // prefetch, revalidate and hydrateLoaderData; the next commit overwrites it.
+  const loaderNotFound = signal<string | null>(null)
+  const currentRoute = computed<ResolvedRoute>(() => {
+    const r = resolveRoute(currentPath(), routes)
+    const nf = loaderNotFound()
+    return nf !== null && nf === r.path ? resolveLoaderNotFound(r, routes) : r
+  })
 
   // ── Tabs: one back stack per tab ──────────────────────────────────────────
   //
@@ -1000,6 +1012,13 @@ export function createRouter<TNames extends string = string>(
     // redirect is intentional flow control, not an error.
     const info = getRedirectInfo(result.reason)
     if (info) return { action: 'redirect', target: info.url }
+    // `notFound()` from a loader is flow control too: the navigation commits
+    // into the not-found state (the fallback chain renders), not an error.
+    if (isNotFoundError(result.reason)) {
+      router._loaderData.set(record, undefined)
+      to._loaderNotFound = true
+      return { action: 'continue' }
+    }
     if (router._onError) {
       const cancel = router._onError(result.reason, to)
       if (cancel === false) return { action: 'cancel' }
@@ -1275,10 +1294,16 @@ export function createRouter<TNames extends string = string>(
         // own matched record at that position.
         data?: Record<string, unknown>
         redirect?: { to: string; status?: number }
+        // A server loader threw `notFound()`.
+        notFound?: boolean
       }
       if (gen !== _navGen) return { action: 'cancel' }
       if (payload.redirect) {
         return { action: 'redirect', target: payload.redirect.to }
+      }
+      if (payload.notFound === true) {
+        to._loaderNotFound = true
+        return { action: 'continue' }
       }
       const data = payload.data ?? {}
       for (let i = 0; i < to.matched.length; i++) {
@@ -1317,6 +1342,11 @@ export function createRouter<TNames extends string = string>(
       // new navigation's data (empty when the chain had no middleware —
       // middleware data is per-navigation). See useMiddlewareData.
       router._committedMiddlewareData = to._middlewareData ?? {}
+      // A loader of THIS navigation threw `notFound()` → the not-found state
+      // for its path; otherwise clear any previous one. Written in the same
+      // batch as the path so no reader sees the new path with a stale state.
+      const nf = to._loaderNotFound === true ? to.path : null
+      const nfChanged = nf !== loaderNotFound.peek()
       if (tabPlan !== null) {
         // The stacks, the active tab and the URL move as ONE step, so no reader
         // sees a stack whose top disagrees with the path.
@@ -1325,6 +1355,12 @@ export function createRouter<TNames extends string = string>(
         batch(() => {
           tabStacks.get(tabPlan.tab)?.set(stack)
           activeTabSig.set(tabPlan.tab)
+          if (nfChanged) loaderNotFound.set(nf)
+          currentPath.set(path)
+        })
+      } else if (nfChanged) {
+        batch(() => {
+          loaderNotFound.set(nf)
           currentPath.set(path)
         })
       } else {
@@ -1796,6 +1832,7 @@ export function createRouter<TNames extends string = string>(
     _maxCacheSize: maxCacheSize,
     _navigationStartTime: Date.now(),
     _committedMiddlewareData: {},
+    _loaderNotFound: loaderNotFound,
     _loaderCache: new SizedMap({ maxEntries: maxCacheSize }),
     _loaderInflight: new Map(),
     _executeLoader: (record, ctx) => executeLoader(record, ctx),
@@ -1917,6 +1954,7 @@ export function createRouter<TNames extends string = string>(
       // `router.preload(...)` during a navigation destroyed the nav's
       // abort capability.
       const ac = new AbortController()
+      let notFoundThrown = false
       await Promise.all(
         resolved.matched
           // Phase 5 — `serverLoader` runs here exactly like `loader`: this
@@ -1931,17 +1969,35 @@ export function createRouter<TNames extends string = string>(
             // would let synchronous throws escape past the `await` and
             // surface as an uncaught exception in the Vite dev SSR pipeline.
             const run = r.serverLoader ?? r.loader
-            const data = await Promise.resolve().then(() =>
-              run!({
-                params: resolved.params,
-                query: resolved.query,
-                signal: ac.signal,
-                ...(request ? { request } : {}),
-              }),
-            )
+            let data: unknown
+            try {
+              data = await Promise.resolve().then(() =>
+                run!({
+                  params: resolved.params,
+                  query: resolved.query,
+                  signal: ac.signal,
+                  ...(request ? { request } : {}),
+                }),
+              )
+            } catch (err) {
+              // `notFound()` is not a render failure: the page renders the
+              // not-found chain (SSR status 404). Anything else — including
+              // `redirect()` — still rejects.
+              if (!isNotFoundError(err)) throw err
+              notFoundThrown = true
+              return
+            }
             router._loaderData.set(r, data)
           }),
       )
+      // The not-found chain needs no extra component loading: its layouts are
+      // a prefix of this chain (loaded above) and its leaf is the eager
+      // `notFoundComponent`.
+      if (notFoundThrown) {
+        loaderNotFound.set(resolved.path)
+      } else if (loaderNotFound.peek() === resolved.path) {
+        loaderNotFound.set(null)
+      }
     },
 
     async runServerLoaders(path: string, request?: Request) {
@@ -1963,13 +2019,19 @@ export function createRouter<TNames extends string = string>(
         ...(request ? { request } : {}),
       }
       const data: Record<number, unknown> = {}
+      let notFoundThrown = false
       try {
         await Promise.all(
           resolved.matched.map(async (r, i) => {
             if (typeof r.serverLoader !== 'function') return
             // Same sync-throw-to-rejection wrap as preload so a synchronous
             // `redirect()` / `notFound()` is caught, not leaked.
-            data[i] = await Promise.resolve().then(() => r.serverLoader!(loaderCtx))
+            try {
+              data[i] = await Promise.resolve().then(() => r.serverLoader!(loaderCtx))
+            } catch (err) {
+              if (!isNotFoundError(err)) throw err
+              notFoundThrown = true
+            }
           }),
         )
       } catch (err) {
@@ -1979,12 +2041,16 @@ export function createRouter<TNames extends string = string>(
         }
         throw err
       }
+      if (notFoundThrown) return { kind: 'notFound' as const }
       return { kind: 'data' as const, data }
     },
 
     async revalidate() {
       // Re-run the CURRENT chain's loaders in place (see Router.revalidate).
-      const to = currentRoute()
+      // A COPY, as in `navigate`: the loader pipeline annotates `to`
+      // (`_loaderNotFound`), and the current route may be a resolution shared
+      // with later navigations (static routes cache a frozen one).
+      const to: ResolvedRoute = { ...currentRoute() }
       if (to.matched.length === 0) return
       const ctx = { params: to.params, query: to.query }
       // Drop the chain's cached entries so executeLoader re-runs instead of
@@ -2006,6 +2072,8 @@ export function createRouter<TNames extends string = string>(
         return
       }
       if (outcome.action !== 'continue') return
+      // The resource disappeared since the page loaded → not-found state.
+      if (to._loaderNotFound === true) loaderNotFound.set(to.path)
       // Wake loader-bearing depthEntries so route components re-render with
       // the fresh data (same tick mechanism the SWR background path uses).
       loadingSignal.update((n) => n + 1)

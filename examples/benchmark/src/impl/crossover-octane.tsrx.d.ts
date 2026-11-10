@@ -8,6 +8,14 @@
  * precondition gates), which is a stronger guarantee than types for a
  * benchmark.
  */
-import type { BenchSuite } from '../runner'
+import type { BenchSuite, Row } from '../runner'
 
 export declare function runCrossoverOctane(container: HTMLElement): Promise<BenchSuite>
+
+/** The keyed rows component; `onMounted` receives its state setters once. */
+export declare function App(props: {
+  onMounted: (setters: {
+    setRows: (rows: Row[]) => void
+    setSelected: (id: number | null) => void
+  }) => void
+}): unknown

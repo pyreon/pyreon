@@ -1332,6 +1332,28 @@ export function _resolveGeneralForTest(rawPath: string, routes: RouteRecord[]): 
   return resolveGeneral(rawPath, routes, getIndex(routes))
 }
 
+/**
+ * The not-found state of a route that MATCHED but whose loader threw
+ * `notFound()` ("matched route, missing resource"). Same chain an unmatched
+ * URL resolves to — the deepest `notFoundComponent` inside its ancestor
+ * layouts — keeping the URL's path, params, query and hash. `matched` is
+ * empty when no record carries a `notFoundComponent`; `isNotFound` is `true`
+ * either way, so SSR answers 404.
+ */
+export function resolveLoaderNotFound(route: ResolvedRoute, routes: RouteRecord[]): ResolvedRoute {
+  const nfb = findNotFoundFallback(routes, route.path, getIndex(routes).notFoundTrie)
+  return {
+    path: route.path,
+    params: route.params,
+    query: route.query,
+    hash: route.hash,
+    matched: nfb ?? [],
+    meta: nfb ? mergeMeta(nfb) : {},
+    search: {},
+    isNotFound: true,
+  }
+}
+
 // ─── notFoundComponent walking ───────────────────────────────────────────────
 
 /** Synthetic leaf RouteRecord used by the 404 fallback. Carries no real

@@ -573,6 +573,11 @@ Contracts worth knowing:
 
 - **Always deferred** — even on a fully-SSR page the island arrives via the fragment fetch. That's what makes the surrounding page's cacheability unconditional.
 - **Allowlisted endpoint** — only registered island names render; unknown names 404. Hostile `props` return 400, never a 500.
+- **Fragments are signed and gated as their page.** When the server renders a marker it signs it — HMAC-SHA256 over the island name, the page's pathname, the encoded props and an expiry — and stamps `data-page` + `data-sig` on it; the client sends both back unchanged. The endpoint verifies the signature before it decodes the props or renders anything (missing, tampered or expired → `403`), and the page's route middleware runs for the fragment, so an island on an auth-gated page is gated too. A fragment that route middleware let through, or a request carrying `Cookie`/`Authorization`, is answered `private, no-store` whatever the island's `cache` says.
+- **Set `PYREON_ISLAND_SECRET`** (≥ 32 characters, e.g. `openssl rand -base64 32`; comma-separated to rotate — the first signs, all verify), or pass `createServer({ serverIslands: { secret } })`. Without one, each server process signs with its own random secret, so a fragment only verifies on the process that rendered its page — fine for one instance, broken behind a load balancer. Prerendered (SSG) pages are signed at build time and only with this shared secret (set it at build time and on the server); without it their markers stay unsigned, the build warns, and their fragments are refused.
+- **Signature lifetime**: SSR and ISR signatures last `serverIslands.maxAge` seconds (default one day). The ISR cache never serves a page past half that lifetime — it re-renders it — so a visitor always has at least half of it to fetch the fragments. A CDN that caches page HTML must not keep it longer than that either. Prerendered pages are signed without expiry (rotate the secret to revoke).
+- **Client-rendered markers** (an SPA navigation renders the page in the browser, where nothing can sign) get a `403` first; the client then fetches the current page's server HTML once — through the same middleware — takes the signed marker with the same name and props from it, and retries. That costs one extra page request per navigation that renders server islands; a marker whose props only the client could compute finds no match and keeps its fallback.
+- **Never trust a prop for authorization.** A signature proves the server rendered those props on that page, not for this visitor: authorize from the request (`useRequestLocals()`, the session).
 - **Fragments default to `Cache-Control: no-store`**. The `cache` option sets a custom value for deferred-but-public fragments — never cache a fragment that varies on cookies (the same auth caveat as ISR's `cacheKey`).
 - **Failure degrades to the fallback** — a failed fragment fetch leaves the fallback content in place and flags the marker (`data-island-error="fragment-failed"`); the page never breaks.
 - **Cold starts work**: the endpoint warms lazy route modules once on a registry miss, so a fragment request hitting a freshly-restarted server (pages served from CDN cache) still resolves.
@@ -1090,6 +1095,34 @@ A plain `<form method="post">` without `<Form>` also reaches the route's `action
 
 `<Form>` also takes `resetOnSuccess` (default `true`) and `onSuccess(data)`. Other attributes pass through to the `<form>` element; add `enctype="multipart/form-data"` for file inputs.
 
+### Validating the input — `defineAction(schema, handler)`
+
+Pass a [Standard Schema](https://standardschema.dev) (zod, valibot, arktype, `@pyreon/validate`'s `s`) before the handler and the input is validated before the handler runs. The handler receives the schema's parsed output, typed:
+
+```tsx title="src/routes/posts/new.tsx"
+import { z } from 'zod'
+import { defineAction, Form, useSubmission } from '@pyreon/zero/actions'
+
+export const action = defineAction(
+  z.object({ title: z.string().min(1, 'Title is required'), views: z.coerce.number().int() }),
+  async (input, ctx) => db.posts.insert(input), // input: { title: string; views: number }
+)
+
+export default function NewPost() {
+  const sub = useSubmission(action)
+  return (
+    <Form action={action}>
+      <input name="title" />
+      <p>{() => sub.result()?.fields?.title?.join(', ') ?? ''}</p>
+      <input name="views" />
+      <button>Create</button>
+    </Form>
+  )
+}
+```
+
+An invalid input never reaches the handler: the action returns `fail(422, { error: 'Invalid input', issues, fields })`, where `fields` maps each dotted path (`title`, `items.0.qty`, `''` for the root) to its messages. The input is the JSON body for a direct call, or the form fields as an object for a form post. A repeated name becomes an array, and values stay strings or `File`s, so use coercing schemas (`z.coerce.number()`) for numbers and booleans in forms. Called on the server, the action validates too and returns the failure instead of running the handler.
+
 ### Calling an action directly
 
 A `defineAction` result is also a plain async function: `await createPost({ title })` POSTs JSON to `/_zero/actions/<id>` and resolves with the handler's return value. On the server it calls the handler directly. The `ActionContext` exposes `request`, `json` (for JSON bodies), `formData` (for form and multipart bodies) and `headers`.
@@ -1343,7 +1376,7 @@ export const og: OgImage<{ title: string }, { slug: string }> = ({ data, params 
 ```
 
 - **SSG paths** — rendered at **build** time to a content-hashed PNG (`dist/assets/og/<path>.<hash>.png`), and that page's `<head>` gets `og:image` + `og:image:width/height` + `twitter:card`. The loader data is the value the page itself rendered with (loaders run once per path).
-- **SSR / ISR routes** — served at request time from `/_zero/og/<path>.png` (auto-mounted by `createServer`), and the rendered page carries the matching **absolute** `og:image` (from `routeOg.siteUrl` when set, otherwise the request origin — injected per response, outside the ISR cache, so one request's `Host` never reaches another visitor). The endpoint answers `Cache-Control: public, max-age=0, s-maxage=3600, stale-while-revalidate=3600`, so a CDN caches and revalidates it (ISR at the edge; the in-process ISR cache deliberately never stores `/_zero/*` endpoints).
+- **SSR / ISR routes** — served at request time from `/_zero/og/<path>.png` (auto-mounted by `createServer`), and the rendered page carries the matching **absolute** `og:image` (from `routeOg.siteUrl` when set, otherwise the request origin — injected per response, outside the ISR cache, so one request's `Host` never reaches another visitor). The endpoint answers `Cache-Control: public, max-age=0, s-maxage=3600, stale-while-revalidate=3600`, so a CDN caches and revalidates it (ISR at the edge; the in-process ISR cache deliberately never stores `/_zero/*` endpoints). The page's route middleware gates the image, and when the page has route middleware or the request carried a `Cookie`/`Authorization` header the image is `private, no-store` instead: a CDN would otherwise replay what one admitted request saw to everyone.
 - An explicit `og:image` (from `useHead`/`<Meta>`) always wins — nothing is injected over it.
 - The `og` export is referenced **only** from the server graph (the SSG sub-build and the SSR bundle), via a lazy import — it never reaches the client bundle.
 
@@ -1520,9 +1553,13 @@ export default createServer({
 3. the framework endpoints: API routes, island fragments, the server-loader data endpoint (`/_pyreon/data`) and server actions (`/_zero/actions/*`);
 4. the page render.
 
-Because app-wide and route middleware run first, an auth check protects API routes, actions and loader data as well as pages. Route middleware is matched on the pathname (a query string can't skip it), with `base` and the i18n locale prefix removed. For the data endpoint it is matched on the page the data belongs to, so `/_pyreon/data?path=/admin` runs `/admin`'s middleware.
+Because app-wide and route middleware run first, an auth check protects API routes, actions and loader data as well as pages. Route middleware is matched on the pathname (a query string can't skip it), with `base` and the i18n locale prefix removed. For the data endpoint it is matched on the page the data belongs to, so `/_pyreon/data?path=/admin` runs `/admin`'s middleware (a server-island fragment likewise runs the middleware of the page that signed its marker); the target is normalised once (doubled slashes collapsed; `\`, control characters and `.`/`..` segments refused with a 400), and the endpoint serves exactly the page that was gated. The OG image endpoint is gated the same way: `/_zero/og/admin.png` runs `/admin`'s middleware.
 
-With `mode: 'isr'`, only HTML page renders are cached. API routes and the framework endpoints always run live, and responses keep their own content type.
+With `mode: 'isr'`, only HTML page renders are cached. API routes and the framework endpoints always run live, and responses keep their own content type. The cache sits **after** the middleware: app-wide and route middleware run for every request, including a cache HIT, so a page rendered for a request your middleware admitted is never served to one it would refuse. Middleware runs once per request (not again inside the render), and the headers it sets apply to cached responses too.
+
+**Server-island fragments are gated as their page.** `/_pyreon/fragment/<name>` carries the signed pathname of the page that rendered its marker, so that page's route middleware runs for it, and the endpoint refuses (`403`) any name, page or props the server did not sign. See [Server Islands](#server-islands).
+
+**App-wide middleware that gates by path** must match the page a request serves, not the raw URL: compare against `routingPathname(ctx.url, config)` from `@pyreon/zero/pipeline`, which maps the data, OG and server-island fragment endpoints to their page and strips `base` and the locale prefix.
 
 ### startClient
 

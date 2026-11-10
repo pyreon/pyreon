@@ -418,7 +418,26 @@ function fieldDefinedWhenValid(field: FieldLike): boolean {
  * `.is()` between 5× and 33× on invalid input, and (because the strip-clone
  * is built too) ~2× on valid arrays.
  */
-export type JitMode = 'parse' | 'check'
+export type JitMode = 'parse' | 'check' | 'fast'
+
+/**
+ * The FAILURE sentinel a `'fast'`-mode validator returns. Module-level and
+ * unique, so no input value can ever equal it — `v !== JIT_FAIL` is the
+ * whole verdict at the seam.
+ */
+import { JIT_FAIL } from './jit-hook'
+export { JIT_FAIL }
+
+/**
+ * A `'fast'`-mode validator: takes ONLY the input and returns the validated
+ * OUTPUT value (the same stripped clone the parse validator builds), or
+ * {@link JIT_FAIL} at the first failure site. No ctx parameter, no issue
+ * objects, no path bookkeeping, no `issues.length` read at the seam — the
+ * compiled-Zod seam shape. The issues for a failure are produced by
+ * re-running the full parse validator, so invalid input pays a cheap early
+ * exit plus the parse it always paid.
+ */
+export type JitFastValidator = (input: unknown) => unknown
 
 /**
  * Thrown by the emitter when a subtree cannot be expressed in verdict mode
@@ -428,6 +447,29 @@ export type JitMode = 'parse' | 'check'
  * the previous `.is()` behaviour. NEVER thrown in parse mode.
  */
 class CheckUnsupported extends Error {}
+
+/**
+ * Parse-FAST twin of {@link tryCompileJit} — see {@link JitFastValidator}.
+ * Expressible for exactly the shapes the verdict emitter accepts (no
+ * `_runInto` fallback, every check inline or a pure `_pred`); `null`
+ * otherwise, and `parse` keeps its single-pass seam.
+ */
+export function tryCompileJitFast(schema: Schema<unknown>): JitFastValidator | null {
+  // OBJECT and ARRAY roots only. The failure path re-runs the full validator,
+  // so an invalid input pays its checks twice, and that has to be bought back
+  // on the valid path. Measured (bun/JSC, process-isolated A/B, 4 rounds,
+  // two runs each, 2026-11-10):
+  //  - object.user valid 42.4 → 39.4 ns: the skipped per-field ctx plumbing
+  //    pays, and the invalid cost is inside noise (214 → 217);
+  //  - a scalar root bought ~0.2 ns valid (int 4.61 → 4.4) for +2.4 ns invalid
+  //    (29.7 → 32.1), and a format scalar +24 ns invalid (email 59 → 83: the
+  //    scanner ran twice);
+  //  - a discriminated-union root bought nothing valid (du 7.7–8.3 either way)
+  //    for +4 ns invalid (80 → 84).
+  const root = schema as unknown as FieldLike
+  if (!isPlainObject(root) && !isInlineArray(root)) return null
+  return compileJit(schema, 'fast') as JitFastValidator | null
+}
 
 /** Verdict-only twin of {@link tryCompileJit} — see {@link JitMode}. */
 export function tryCompileJitCheck(schema: Schema<unknown>): ((input: unknown) => boolean) | null {
@@ -458,6 +500,10 @@ export function tryCompileJit(schema: Schema<unknown>): SyncValidator | null {
  */
 function compileJit(schema: Schema<unknown>, mode: JitMode, emitAsync = true): unknown {
   const CHECK = mode === 'check'
+  // FAST builds the output value like parse, but every failure site returns
+  // the FAIL sentinel like a verdict returns false: neither touches a ctx.
+  const FAST = mode === 'fast'
+  const NOCTX = CHECK || FAST
   const root = schema as unknown as FieldLike
   // JIT a composite root (object/array/discriminated-union) OR an
   // inline-primitive root (string / number / … with only checks). A primitive
@@ -482,6 +528,10 @@ function compileJit(schema: Schema<unknown>, mode: JitMode, emitAsync = true): u
     const keyLit = (k: string): string => JSON.stringify(k)
     let uid = 0
     const nv = (): string => `t${uid++}`
+    // The statement every failure site emits in a ctx-free mode. `F` is the
+    // fast factory's own parameter (bound to JIT_FAIL), so the hot compare
+    // reads a closure slot rather than an `H[k]` array element.
+    const FAIL_STMT = CHECK ? 'return false;' : 'return F;'
 
     /**
      * The condition under which a `.strict()` scan must RUN — i.e. the
@@ -592,7 +642,7 @@ function compileJit(schema: Schema<unknown>, mode: JitMode, emitAsync = true): u
       // `for...in` walks INHERITED enumerable properties too, so counting with
       // it would diverge from the interpreter on any object with an enumerable
       // prototype.)
-      const scan = `for (var ${iv} = 0; ${iv} < ${ksv}.length; ${iv}++) { if (!${setRef}.has(${ksv}[${iv}])) return false; }`
+      const scan = `for (var ${iv} = 0; ${iv} < ${ksv}.length; ${iv}++) { if (!${setRef}.has(${ksv}[${iv}])) ${FAIL_STMT} }`
       const miss = strictShortCircuitMiss(shape, srcVar, ksv)
       return `var ${ksv} = Object.keys(${srcVar}); ${miss ? `if (${miss}) { ${scan} }` : scan}`
     }
@@ -660,10 +710,10 @@ function compileJit(schema: Schema<unknown>, mode: JitMode, emitAsync = true): u
           // run against a real ctx and be asked whether it pushed anything,
           // which is exactly the allocation this mode exists to avoid — so
           // the whole compile bails and `.is()` keeps its previous path.
-          if (CHECK) {
+          if (NOCTX) {
             const c = inlineCheckCond(op, ve) ?? (op._pred ? `!${cap(op._pred)}(${ve})` : null)
             if (!c) throw new CheckUnsupported()
-            return `if (${c}) return false;`
+            return `if (${c}) ${FAIL_STMT}`
           }
           const call = `${cap(wrapCheckWithPath(op._checkFn!, tmplOf(ps)))}(${ve}, ctx${idxArg});`
           // Failure condition — inline ONLY cheap literal conditions (length /
@@ -707,8 +757,9 @@ function compileJit(schema: Schema<unknown>, mode: JitMode, emitAsync = true): u
     // and `P` stay pointing at the same array.
     const flushPath = (ps: PathState): { pre: string; post: string } => {
       // Verdict mode reports no issues, so no path is ever observed — and
-      // there is no ctx to materialize one from.
-      if (CHECK) return { pre: '', post: '' }
+      // there is no ctx to materialize one from (FAST: the same — a failure
+      // returns the sentinel and the full parse re-run builds the path).
+      if (NOCTX) return { pre: '', post: '' }
       const pushes: string[] = []
       for (const t of ps.tmpl) pushes.push(`P.push(${typeof t === 'string' ? JSON.stringify(t) : t.dyn});`)
       const n = ps.tmpl.length
@@ -800,10 +851,10 @@ function compileJit(schema: Schema<unknown>, mode: JitMode, emitAsync = true): u
       if (isInlinePrimitive(field)) {
         const kind = field._kind as PrimKind
         const litRef = kind === 'literal' ? cap(field.value) : ''
-        if (CHECK) {
+        if (NOCTX) {
           const checksC = genChecks(fieldCheckOps(field), srcVar, ps)
           lines.push(
-            `if (${typeFailExpr(kind, srcVar, litRef)}) return false; ${checksC} ${onValid(srcVar)}`,
+            `if (${typeFailExpr(kind, srcVar, litRef)}) ${FAIL_STMT} ${checksC} ${onValid(srcVar)}`,
           )
           return
         }
@@ -833,13 +884,13 @@ function compileJit(schema: Schema<unknown>, mode: JitMode, emitAsync = true): u
         return
       }
       if (depth <= MAX_DEPTH && isPlainObject(field, CHECK)) {
-        const objFail = CHECK
-          ? 'return false;'
+        const objFail = NOCTX
+          ? FAIL_STMT
           : `${cap((val: unknown, c: ParseCtx, ...idx: number[]) => {
               c.issues.push(typeIssue('object', val, jitEffectivePath(c, sfx, idx)))
             })}(${srcVar}, ctx${idxArg});`
         lines.push(`if (typeof ${srcVar} !== "object" || ${srcVar} === null || Array.isArray(${srcVar})) { ${objFail} } else {`)
-        if (CHECK && field._unknownKeys === 'strict') {
+        if (NOCTX && field._unknownKeys === 'strict') {
           lines.push(strictScan(field.shape as Record<string, FieldLike>, srcVar))
         }
         genObjectValue(
@@ -850,7 +901,7 @@ function compileJit(schema: Schema<unknown>, mode: JitMode, emitAsync = true): u
           depth + 1,
           ps,
           undefined,
-          !CHECK && field._unknownKeys === 'strict'
+          !NOCTX && field._unknownKeys === 'strict'
             ? strictReport(field.shape as Record<string, FieldLike>, srcVar, ps)
             : undefined,
         )
@@ -862,9 +913,9 @@ function compileJit(schema: Schema<unknown>, mode: JitMode, emitAsync = true): u
         // deferral), so a schema containing an array keeps the async machinery.
         // Verdict mode never defers (a fallback is refused outright), so it
         // needs none of the A/B pending machinery.
-        if (!CHECK) usesAsyncMachinery = true
-        const arrFail = CHECK
-          ? 'return false;'
+        if (!NOCTX) usesAsyncMachinery = true
+        const arrFail = NOCTX
+          ? FAIL_STMT
           : `${cap((val: unknown, c: ParseCtx, ...idx: number[]) => {
               c.issues.push(typeIssue('array', val, jitEffectivePath(c, sfx, idx)))
             })}(${srcVar}, ctx${idxArg});`
@@ -896,7 +947,11 @@ function compileJit(schema: Schema<unknown>, mode: JitMode, emitAsync = true): u
         // array's OWN checks run nothing can have failed — the interpreter's
         // "skip own checks when an element failed" guard is unreachable and
         // the checks run unconditionally.
-        if (!CHECK) {
+        if (FAST) {
+          // FAST: a failing element has already returned the sentinel, so no
+          // issue baseline is needed — only the output array.
+          lines.push(`let ${arrV} = [];`)
+        } else if (!CHECK) {
           // `a0V` is the pending-slot baseline, read ONLY by the deferred
           // own-check arm below — which cannot exist without a fallback.
           lines.push(
@@ -930,7 +985,7 @@ function compileJit(schema: Schema<unknown>, mode: JitMode, emitAsync = true): u
         // the checks defer too (they must observe the final issue state,
         // post-settlement) — the deferred closure reconstructs the path via
         // its own wrapper, so it runs with `sfxArr` captured, not the live P.
-        if (arrChecks && CHECK) {
+        if (arrChecks && NOCTX) {
           lines.push(arrChecks)
         } else if (arrChecks) {
           // Without a fallback nothing can defer, so `A === null` holds for the
@@ -1023,7 +1078,7 @@ function compileJit(schema: Schema<unknown>, mode: JitMode, emitAsync = true): u
         const tagV = nv()
         lines.push(
           `if (typeof ${srcVar} !== "object" || ${srcVar} === null || Array.isArray(${srcVar})) { ${
-            CHECK ? 'return false;' : `${notObj}(${srcVar}, ctx${idxArg});`
+            NOCTX ? FAIL_STMT : `${notObj}(${srcVar}, ctx${idxArg});`
           } } else {`,
         )
         lines.push(`let ${tagV} = ${srcVar}[${keyLit(disc)}];`)
@@ -1064,7 +1119,7 @@ function compileJit(schema: Schema<unknown>, mode: JitMode, emitAsync = true): u
               fieldCheckOps(discField).length === 0
                 ? { key: disc, varExpr: tagV }
                 : undefined
-            if (CHECK && member._unknownKeys === 'strict') {
+            if (NOCTX && member._unknownKeys === 'strict') {
               lines.push(strictScan(member.shape as Record<string, FieldLike>, srcVar))
             }
             genObjectValue(
@@ -1075,7 +1130,7 @@ function compileJit(schema: Schema<unknown>, mode: JitMode, emitAsync = true): u
               depth + 1,
               ps,
               preset,
-              !CHECK && member._unknownKeys === 'strict'
+              !NOCTX && member._unknownKeys === 'strict'
                 ? strictReport(member.shape as Record<string, FieldLike>, srcVar, ps)
                 : undefined,
             )
@@ -1093,7 +1148,7 @@ function compileJit(schema: Schema<unknown>, mode: JitMode, emitAsync = true): u
         // produce a value — the parse has failed (root falls through to
         // `return input`; a nested position leaves the field unassigned,
         // unobservable on a failed parse).
-        lines.push(CHECK ? 'default: return false;' : `default: ${badTag}(${tagV}, ctx${idxArg});`)
+        lines.push(NOCTX ? `default: ${FAIL_STMT}` : `default: ${badTag}(${tagV}, ctx${idxArg});`)
         lines.push(`}`)
         lines.push(`}`)
         return
@@ -1108,7 +1163,7 @@ function compileJit(schema: Schema<unknown>, mode: JitMode, emitAsync = true): u
       // inspecting the issues it pushed — precisely the allocation verdict
       // mode exists to avoid, and it can run user code (refine/transform).
       // Refuse the whole compile; `.is()` keeps its previous path.
-      if (CHECK) throw new CheckUnsupported()
+      if (NOCTX) throw new CheckUnsupported()
       const run = cap((val: unknown, c: ParseCtx) => field._runInto(val, c))
       const fv = nv()
       const { pre, post } = flushPath(ps)
@@ -1308,6 +1363,12 @@ function compileJit(schema: Schema<unknown>, mode: JitMode, emitAsync = true): u
       // nothing while the line stays dead.
       genValue(root, 'input', () => 'return true;', () => '', 0, { tmpl: [] })
       lines.push('return false;')
+    } else if (FAST) {
+      // Root valid ⇒ return the built value. The trailing fall-through is
+      // unreachable for the same reason as verdict mode's, and fails CLOSED
+      // the same way: the seam then re-runs the full parse, which decides.
+      genValue(root, 'input', (r) => `return ${r};`, () => '', 0, { tmpl: [] })
+      lines.push('return F;')
     } else {
       genValue(root, 'input', BARRIER, (p) => `return ${p};`, 0, { tmpl: [] })
       lines.push(BARRIER('input'))
@@ -1329,6 +1390,14 @@ function compileJit(schema: Schema<unknown>, mode: JitMode, emitAsync = true): u
         h: unknown[],
       ) => (input: unknown) => boolean
       return checkFactory(helpers)
+    }
+    if (FAST) {
+      // eslint-disable-next-line no-new-func
+      const fastFactory = new Function('H', 'F', `return function jitFast(input) {\n${lines.join('\n')}\n}`) as (
+        h: unknown[],
+        f: typeof JIT_FAIL,
+      ) => JitFastValidator
+      return fastFactory(helpers, JIT_FAIL)
     }
     // `P` is read ONLY by `flushPath`'s emitted pushes/pops, and `mutRef` is
     // set exactly when one was emitted — so on a scalar or a flat object of

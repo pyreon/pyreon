@@ -49,6 +49,28 @@ function compilerExportSubpath(name: string): 'analyze' | 'audits' | 'validate' 
 
 export const ERROR_PATTERNS: ErrorPattern[] = [
   {
+    // A loader's notFound() answered HTTP 500: on router versions
+    // before the loader-not-found fix, every path that ran loaders (SSR
+    // preload, the /_pyreon/data endpoint) treated the branded error like any
+    // other loader failure.
+    pattern:
+      /SSR render failed[^\n]*\bNot Found\b|data endpoint returned HTTP 500|notFound\(\)[^\n]*\b(?:500|Internal Server Error)\b/i,
+    diagnose: () => ({
+      cause:
+        "A route `loader` / `serverLoader` threw `notFound()`. On router versions before the loader-not-found fix, SSR treated it like any loader failure (`[Pyreon] SSR render failed … Error: Not Found`, HTTP 500), the `/_pyreon/data` endpoint answered 500 (`[Pyreon Router] data endpoint returned HTTP 500` on client navigation), and an isomorphic loader's `notFound()` went to `onError` and rendered the page with `undefined` data.",
+      fix: 'Upgrade the router package (and zero, for the data endpoint). A loader\'s `notFound()` now puts the route in the not-found state: it renders the nearest `notFoundComponent` / `_404.tsx` inside its layouts, SSR answers HTTP 404 (string and stream), the data endpoint answers `{ notFound: true }`, and the hydrating client resolves the same page. Add a `_404.tsx` (or `notFoundComponent`) for a styled page; without one the response is still a 404. Remove any middleware that worked around the 500.',
+      fixCode: `// routes/_404.tsx — rendered inside _layout.tsx for unmatched URLs AND loader notFound()
+export default function NotFound() { return <h1>Not found</h1> }
+
+// routes/items/[id].server.ts — notFound is exported by the router package
+export async function serverLoader({ params }) {
+  const item = await db.items.find(params.id)
+  if (!item) notFound()   // -> HTTP 404 with _404.tsx, not a 500
+  return item
+}`,
+    }),
+  },
+  {
     pattern: /\b([A-Za-z_$][\w$]*)\([^)]*\)\??\.(set|update|peek|trigger) is not a function/,
     diagnose: (m) => ({
       cause: `A signal method is called on its value: \`${m[1]}().${m[2]}\`.`,

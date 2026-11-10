@@ -629,6 +629,8 @@ struct Ctx<'a> {
     needs_tpl_import: bool,
     needs_rp_import: bool,
     needs_rpd_import: bool,
+    needs_pk_import: bool,
+    needs_pp_import: bool,
     needs_lc_import: bool,
     needs_fuse_import: bool,
     needs_wrap_spread_import: bool,
@@ -672,6 +674,12 @@ struct Ctx<'a> {
     needs_ssr_attr_url_import: bool,
 
     props_names: FxHashSet<String>,
+    /// The subset of `props_names` the static-prop fold may read through
+    /// `_pk` / `_pp`. Mirrors jsx.ts `foldPropsNames`.
+    fold_props: FxHashSet<String>,
+    /// Name of the capitalized `const X = …` declarator whose initializer (an
+    /// arrow or function expression) is being walked; taken by that function.
+    fold_decl_name: Option<String>,
     prop_derived_vars: FxHashMap<String, Span>,
     /// Undo log for lexical scoping of `prop_derived_vars` (issue #3815).
     prop_derived_log: Vec<ScopeLog>,
@@ -860,6 +868,8 @@ impl<'a> Ctx<'a> {
             needs_tpl_import: false,
             needs_rp_import: false,
             needs_rpd_import: false,
+            needs_pk_import: false,
+            needs_pp_import: false,
             needs_lc_import: false,
             needs_fuse_import: false,
             needs_wrap_spread_import: false,
@@ -886,6 +896,8 @@ impl<'a> Ctx<'a> {
             needs_text_slot_import: false,
             needs_mount_child_import: false,
             props_names: FxHashSet::default(),
+            fold_props: FxHashSet::default(),
+            fold_decl_name: None,
             prop_derived_vars: FxHashMap::default(),
             prop_derived_log: Vec::new(),
             prop_derived_fn_inits: FxHashSet::default(),
@@ -1120,6 +1132,8 @@ impl<'a> Ctx<'a> {
 
         if self.needs_rp_import
             || self.needs_rpd_import
+            || self.needs_pk_import
+            || self.needs_pp_import
             || self.needs_lc_import
             || self.needs_fuse_import
             || self.needs_wrap_spread_import
@@ -1136,6 +1150,12 @@ impl<'a> Ctx<'a> {
             }
             if self.needs_lc_import {
                 core_imports.push("_lc");
+            }
+            if self.needs_pk_import {
+                core_imports.push("_pk");
+            }
+            if self.needs_pp_import {
+                core_imports.push("_pp");
             }
             if self.needs_rp_import {
                 core_imports.push("_rp");
@@ -4638,6 +4658,8 @@ enum ScopeLog {
     Alias(String, Option<Span>),
     /// A newly-registered props name; undo removes it.
     Props(String),
+    /// A newly-registered fold-eligible props name; undo removes it.
+    Fold(String),
     /// A newly-registered signal / selector variable; undo removes it.
     Signal(String),
     Selector(String),
@@ -4701,6 +4723,9 @@ fn pop_prop_derived_scope(ctx: &mut Ctx, mark: usize) {
             ScopeLog::Props(name) => {
                 ctx.props_names.remove(name.as_str());
             }
+            ScopeLog::Fold(name) => {
+                ctx.fold_props.remove(name.as_str());
+            }
             ScopeLog::Signal(name) => {
                 ctx.signal_vars.remove(name.as_str());
             }
@@ -4753,7 +4778,9 @@ fn walk_statement_inner(stmt: &Statement, ctx: &mut Ctx) {
             collect_prop_derived(decl, ctx);
             for declarator in &decl.declarations {
                 if let Some(init) = &declarator.init {
+                    set_fold_decl_name(declarator, init, ctx);
                     walk_expression(init, ctx);
+                    ctx.fold_decl_name = None;
                 }
             }
         }
@@ -4839,7 +4866,9 @@ fn walk_statement_inner(stmt: &Statement, ctx: &mut Ctx) {
                         collect_prop_derived(decl, ctx);
                         for declarator in &decl.declarations {
                             if let Some(init) = &declarator.init {
+                                set_fold_decl_name(declarator, init, ctx);
                                 walk_expression(init, ctx);
+                                ctx.fold_decl_name = None;
                             }
                         }
                     }
@@ -4929,7 +4958,9 @@ fn walk_statement_inner(stmt: &Statement, ctx: &mut Ctx) {
                         collect_prop_derived(vd, ctx);
                         for declarator in &vd.declarations {
                             if let Some(init) = &declarator.init {
+                                set_fold_decl_name(declarator, init, ctx);
                                 walk_expression(init, ctx);
+                                ctx.fold_decl_name = None;
                             }
                         }
                     }
@@ -5500,6 +5531,8 @@ fn handle_jsx_attribute(
             if let Some(name) = bare_signal_callee(expr, ctx) {
                 ctx.add_replacement(sp.start, sp.end, format!("_rpd({})", name));
                 ctx.needs_rpd_import = true;
+            } else if let Some(folded) = fold_prop_emit(expr, &inner, ctx) {
+                ctx.add_replacement(sp.start, sp.end, folded);
             } else {
                 ctx.add_replacement(sp.start, sp.end, format!("_rp(() => {})", inner));
                 ctx.needs_rp_import = true;
@@ -9811,6 +9844,8 @@ fn process_children(
 // ─── Component props detection ──────────────────────────────────────────────
 
 fn maybe_register_component_props_fn(func: &oxc_ast::ast::Function, ctx: &mut Ctx) {
+    // Taken unconditionally so a pending declarator name never leaks.
+    let decl_name = ctx.fold_decl_name.take();
     if func.params.items.is_empty() {
         return;
     }
@@ -9819,12 +9854,25 @@ fn maybe_register_component_props_fn(func: &oxc_ast::ast::Function, ctx: &mut Ct
         if let Some(body) = &func.body {
             if body_contains_jsx(body) {
                 register_props_name(ctx, id.name.as_str());
+                let capitalized = if func.is_function_declaration() {
+                    func.id.as_ref().is_some_and(|i| is_capitalized(i.name.as_str()))
+                } else {
+                    decl_name.is_some()
+                };
+                if capitalized {
+                    let mut c = BindingWriteCounter { name: id.name.as_str(), count: 0 };
+                    c.visit_function(func, oxc_syntax::scope::ScopeFlags::empty());
+                    if c.count == 1 {
+                        register_fold_props_name(ctx, id.name.as_str());
+                    }
+                }
             }
         }
     }
 }
 
 fn maybe_register_component_props_arrow(arrow: &ArrowFunctionExpression, ctx: &mut Ctx) {
+    let decl_name = ctx.fold_decl_name.take();
     if arrow.params.items.is_empty() {
         return;
     }
@@ -9832,8 +9880,142 @@ fn maybe_register_component_props_arrow(arrow: &ArrowFunctionExpression, ctx: &m
     if let BindingPattern::BindingIdentifier(id) = &first.pattern {
         if arrow_contains_jsx(arrow) {
             register_props_name(ctx, id.name.as_str());
+            if decl_name.is_some() {
+                let mut c = BindingWriteCounter { name: id.name.as_str(), count: 0 };
+                c.visit_arrow_function_expression(arrow);
+                if c.count == 1 {
+                    register_fold_props_name(ctx, id.name.as_str());
+                }
+            }
         }
     }
+}
+
+/// A capitalized `const X = (…) => …` / `const X = function (…) {…}`
+/// declarator marks its initializer as a component for the static-prop fold.
+/// Mirrors jsx.ts `isCapitalizedComponent`'s declarator arm.
+fn set_fold_decl_name(declarator: &VariableDeclarator, init: &Expression, ctx: &mut Ctx) {
+    ctx.fold_decl_name = None;
+    if !matches!(init, Expression::ArrowFunctionExpression(_) | Expression::FunctionExpression(_)) {
+        return;
+    }
+    if let BindingPattern::BindingIdentifier(id) = &declarator.id {
+        if is_capitalized(id.name.as_str()) {
+            ctx.fold_decl_name = Some(id.name.to_string());
+        }
+    }
+}
+
+fn is_capitalized(name: &str) -> bool {
+    name.as_bytes().first().is_some_and(|b| b.is_ascii_uppercase())
+}
+
+/// Counts how often `name` is BOUND or WRITTEN inside a function, nested
+/// functions included. Mirrors jsx.ts `countBindingsAndWrites`: a props param
+/// is fold-eligible only when the count is exactly 1 (the param itself).
+struct BindingWriteCounter<'n> {
+    name: &'n str,
+    count: u32,
+}
+
+impl<'a, 'n> Visit<'a> for BindingWriteCounter<'n> {
+    fn visit_binding_identifier(&mut self, it: &BindingIdentifier<'a>) {
+        if it.name.as_str() == self.name {
+            self.count += 1;
+        }
+    }
+    fn visit_simple_assignment_target(&mut self, it: &SimpleAssignmentTarget<'a>) {
+        if let SimpleAssignmentTarget::AssignmentTargetIdentifier(id) = it {
+            if id.name.as_str() == self.name {
+                self.count += 1;
+            }
+        }
+        oxc_ast_visit::walk::walk_simple_assignment_target(self, it);
+    }
+    fn visit_assignment_target_property_identifier(
+        &mut self,
+        it: &AssignmentTargetPropertyIdentifier<'a>,
+    ) {
+        if it.binding.name.as_str() == self.name {
+            self.count += 1;
+        }
+        oxc_ast_visit::walk::walk_assignment_target_property_identifier(self, it);
+    }
+}
+
+fn register_fold_props_name(ctx: &mut Ctx, name: &str) {
+    if ctx.fold_props.insert(name.to_string()) {
+        ctx.prop_derived_log.push(ScopeLog::Fold(name.to_string()));
+    }
+}
+
+/// Static-prop fold emit (mirrors jsx.ts `foldPropEmit`): `_pp(props, "k")`
+/// for an exact pass-through, `_pk(…) ? (e) : _rp(() => e)` for an expression
+/// built only from fold-eligible `props.k` reads, primitive literals and
+/// operators that cannot run user code on primitives.
+fn fold_prop_emit(expr: &Expression, inner: &str, ctx: &mut Ctx) -> Option<String> {
+    if ctx.fold_props.is_empty() {
+        return None;
+    }
+    fn member_key(e: &Expression, fold: &FxHashSet<String>) -> Option<String> {
+        if let Expression::StaticMemberExpression(m) = e {
+            if m.optional {
+                return None;
+            }
+            if let Expression::Identifier(obj) = &m.object {
+                if fold.contains(obj.name.as_str()) {
+                    return Some(format!("{}, \"{}\"", obj.name, m.property.name));
+                }
+            }
+        }
+        None
+    }
+    fn ok(e: &Expression, fold: &FxHashSet<String>, reads: &mut Vec<String>) -> bool {
+        let e = unwrap_type_layers(e);
+        match e {
+            Expression::StringLiteral(_)
+            | Expression::NumericLiteral(_)
+            | Expression::BooleanLiteral(_)
+            | Expression::NullLiteral(_) => true,
+            Expression::StaticMemberExpression(_) => match member_key(e, fold) {
+                Some(k) => {
+                    if !reads.contains(&k) {
+                        reads.push(k);
+                    }
+                    true
+                }
+                None => false,
+            },
+            Expression::TemplateLiteral(t) => t.expressions.iter().all(|x| ok(x, fold, reads)),
+            Expression::UnaryExpression(u) => {
+                u.operator != UnaryOperator::Delete && ok(&u.argument, fold, reads)
+            }
+            Expression::BinaryExpression(b) => {
+                b.operator != BinaryOperator::In
+                    && b.operator != BinaryOperator::Instanceof
+                    && ok(&b.left, fold, reads)
+                    && ok(&b.right, fold, reads)
+            }
+            Expression::LogicalExpression(l) => ok(&l.left, fold, reads) && ok(&l.right, fold, reads),
+            Expression::ConditionalExpression(c) => {
+                ok(&c.test, fold, reads) && ok(&c.consequent, fold, reads) && ok(&c.alternate, fold, reads)
+            }
+            _ => false,
+        }
+    }
+    let top = unwrap_type_layers(expr);
+    if let Some(k) = member_key(top, &ctx.fold_props) {
+        ctx.needs_pp_import = true;
+        return Some(format!("_pp({})", k));
+    }
+    let mut reads: Vec<String> = Vec::new();
+    if !ok(top, &ctx.fold_props, &mut reads) || reads.is_empty() {
+        return None;
+    }
+    ctx.needs_pk_import = true;
+    ctx.needs_rp_import = true;
+    let conds: Vec<String> = reads.iter().map(|r| format!("_pk({})", r)).collect();
+    Some(format!("{} ? ({}) : _rp(() => {})", conds.join(" && "), inner, inner))
 }
 
 fn body_contains_jsx(body: &FunctionBody) -> bool {
