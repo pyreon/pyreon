@@ -637,6 +637,31 @@ class TasksAppInstrumentedTest {
      * the field shows the day in the device's format), and confirm a time in an
      * EMPTY time field.
      */
+    /**
+     * Tap a node the way a finger does: a real touch through the system's input
+     * pipeline (UiAutomator), at the node's centre on SCREEN. `performClick()`
+     * injects straight into the Compose root, so it "taps" a control even when
+     * the status bar (a window above the app) covers it and a finger cannot
+     * reach it (#4292: the first control of a screen sat under the status bar on
+     * API 35+, where Android forces edge-to-edge). The node must also lie below
+     * the system bars, which fails fast with the reason instead of a timeout.
+     */
+    private fun fingerTap(tag: String) {
+        val node = composeRule.onNodeWithTag(tag).fetchSemanticsNode()
+        val top = composeRule.runOnUiThread {
+            ViewCompat.getRootWindowInsets(composeRule.activity.window.decorView)
+                ?.getInsets(WindowInsetsCompat.Type.systemBars())?.top ?: 0
+        }
+        assertTrue(
+            "'$tag' starts at y=${node.positionOnScreen.y} on screen, under the system bars (inset top $top): no finger can tap it",
+            node.positionOnScreen.y >= top,
+        )
+        val x = (node.positionOnScreen.x + node.size.width / 2f).toInt()
+        val y = (node.positionOnScreen.y + node.size.height / 2f).toInt()
+        assertTrue("UiAutomator could not inject a tap at ($x, $y)", UiDevice.getInstance(InstrumentationRegistry.getInstrumentation()).click(x, y))
+        composeRule.waitForIdle()
+    }
+
     @Test
     fun dateFieldsPickThroughTheNativeDatePicker() {
         composeRule.onNodeWithTag("login-username").performTextInput("abcde")
@@ -646,7 +671,7 @@ class TasksAppInstrumentedTest {
         assertTagDisplayed("dates-page", "after tasks-dates (/tasks -> /dates)")
 
         waitForTagText("dates-day-value", "2026-10-22")
-        composeRule.onNodeWithTag("dates-day").performClick()
+        fingerTap("dates-day")
         // The picker is a Dialog — its own window. Wait for its title through the
         // Compose rule, which searches every window's semantics root, with the same
         // generous budget the Modal test uses (a Dialog's window can register well
@@ -679,7 +704,7 @@ class TasksAppInstrumentedTest {
         composeRule.onAllNodes(hasText("Pick a time")).fetchSemanticsNodes().let {
             assertTrue("the empty time field does not show its placeholder", it.isNotEmpty())
         }
-        composeRule.onNodeWithTag("dates-time").performClick()
+        fingerTap("dates-time")
         composeRule.waitUntil(timeoutMillis = 20_000) { composeRule.onAllNodes(hasText("OK")).fetchSemanticsNodes().isNotEmpty() }
         composeRule.onNodeWithText("OK").performClick()
         composeRule.waitUntil(timeoutMillis = 5_000) {
@@ -707,7 +732,7 @@ class TasksAppInstrumentedTest {
         composeRule.onAllNodesWithText("Pick a fruit").fetchSemanticsNodes().let {
             assertTrue("the placeholder is not shown while nothing is selected", it.isNotEmpty())
         }
-        composeRule.onNodeWithTag("select-fruit").performClick()
+        fingerTap("select-fruit")
         composeRule.waitUntil(timeoutMillis = 5_000) {
             composeRule.onAllNodesWithText("Apple").fetchSemanticsNodes().isNotEmpty()
         }
