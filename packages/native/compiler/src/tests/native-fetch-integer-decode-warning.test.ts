@@ -106,7 +106,8 @@ export function R() {
     for (const target of ['swift', 'kotlin'] as const) {
       const r = transform(src, { target })
       expect(integerWarnings(r.warnings)).toEqual([])
-      expect(r.code).toContain('var km: Int')
+      // The 64-bit integer on both targets: Swift `Int`, Kotlin `Long` (never the 32-bit `kotlin.Int`).
+      expect(r.code).toContain(target === 'swift' ? 'var km: Int' : 'var km: Long')
     }
   })
 
