@@ -2,9 +2,8 @@
 // render (and the static-path enumeration) reads through `getCollection`.
 import 'virtual:zero-content/collections'
 import { defineBlog } from '@pyreon/zero-content/blog'
-import { PostFooter } from './PostFooter'
 import { PyreonNotFound } from '../components/PyreonNotFound'
-import { BLOG_DESCRIPTION, BLOG_FEED, BLOG_TITLE, SITE_ORIGIN } from './site'
+import { BLOG_DESCRIPTION, BLOG_FEED, BLOG_TITLE, NEWSLETTER_ACTION, SITE_ORIGIN } from './site'
 
 /**
  * pyreon.dev/blog — `@pyreon/zero-content/blog` over the `blog` collection
@@ -31,6 +30,18 @@ export const blog = defineBlog({
   coverSize: { width: 1600, height: 840 },
   // The docs typography, so code, tables and callouts look like the docs.
   bodyClass: 'docs-content vp-doc pyreon-blog-post__body',
-  postFooter: PostFooter,
+  // Every post ends with its own tailored "Start building" section (the
+  // right scaffold command, docs and Discord links), so no call-to-action
+  // box here: after a post come the share links (default), the RSS link
+  // (default, from `feedPath`) and the newsletter form, which renders
+  // nothing until NEWSLETTER_ACTION is set.
+  postEnd: {
+    cta: false,
+    newsletter: {
+      action: NEWSLETTER_ACTION,
+      heading: 'Get new posts by email',
+      description: 'One email per post. No tracking, unsubscribe any time.',
+    },
+  },
   notFound: PyreonNotFound,
 })

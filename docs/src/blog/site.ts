@@ -1,4 +1,4 @@
-// Blog constants shared by the blog, the post footer and the root layout.
+// Blog constants shared by the blog and the root layout.
 // Kept apart from blog.ts so the root layout does not pull the blog module
 // (its pages and components) into every page.
 

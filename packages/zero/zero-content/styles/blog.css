@@ -28,6 +28,7 @@
 .pyreon-blog-postnav,
 .pyreon-blog-related,
 .pyreon-blog-share,
+.pyreon-blog-cta,
 .pyreon-blog-newsletter,
 .pyreon-blog-status {
   --_muted: var(--pyreon-blog-muted, color-mix(in srgb, currentColor 62%, transparent));
@@ -260,6 +261,43 @@
 .pyreon-blog-postnav__label {
   color: var(--_muted);
   font-size: 0.8rem;
+}
+
+/* End of a post: call to action, share links, feed, newsletter */
+.pyreon-blog-end {
+  display: grid;
+  gap: 1.25rem;
+}
+.pyreon-blog-end__feed {
+  margin: 0;
+}
+.pyreon-blog-cta {
+  padding: 1.25rem;
+  border: 1px solid var(--_accent);
+  border-radius: var(--_radius);
+}
+.pyreon-blog-cta__heading {
+  margin: 0 0 0.25rem;
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+.pyreon-blog-cta__text {
+  margin: 0 0 0.75rem;
+  color: var(--_muted);
+}
+.pyreon-blog-cta__command {
+  margin: 0 0 0.75rem;
+  padding: 0.6rem 0.9rem;
+  overflow-x: auto;
+  border: 1px solid var(--_border);
+  border-radius: 0.5rem;
+  font-family: var(--pyreon-blog-meta-font, ui-monospace, monospace);
+}
+.pyreon-blog-cta__links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.5rem;
+  margin: 0;
 }
 
 /* Share links */

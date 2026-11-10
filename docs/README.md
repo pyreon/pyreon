@@ -69,10 +69,12 @@ bun run preview
 The blog runs on `@pyreon/zero-content/blog` (guide: `/docs/blog`):
 `blogCollection()` in `content.config.ts`, `defineBlog(...)` in
 `src/blog/blog.ts`, five one-line routes under `src/routes/blog/` (index,
-`page/[page]`, `[slug]`, `tags/[tag]/index`, `tags/[tag]/page/[page]`), and `src/blog/PostFooter.tsx` for the
-call to action, share links and newsletter form after every post. The
-newsletter form renders nothing until `NEWSLETTER_ACTION` in
-`src/blog/site.ts` is set to the provider's form endpoint.
+`page/[page]`, `[slug]`, `tags/[tag]/index`, `tags/[tag]/page/[page]`).
+Every post ends with its own "Start building" section in the markdown, so
+`postEnd` turns the module's call-to-action box off: after a post come the
+share links, the RSS link and the newsletter form, which renders nothing
+until `NEWSLETTER_ACTION` in `src/blog/site.ts` is set to the provider's
+form endpoint.
 
 Posts live in `src/content/blog/<slug>.md`:
 

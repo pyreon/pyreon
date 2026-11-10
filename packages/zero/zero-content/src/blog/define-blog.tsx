@@ -10,11 +10,12 @@ import {
   Pagination,
   PostHeader,
   PostList,
+  PostEnd,
   PostNav,
   RelatedPosts,
   TagList,
 } from './components'
-import type { CoverSize } from './components'
+import type { CallToActionProps, CoverSize, NewsletterFormProps } from './components'
 import {
   adjacentPosts,
   countTags,
@@ -85,10 +86,27 @@ export interface BlogConfig {
   feedPath?: string
   /** Class of the element wrapping a post body — point it at your prose styles. */
   bodyClass?: string
-  /** Rendered after a post body (share links, a call to action, a sign-up form…). */
+  /**
+   * What follows every post body, each part on or off: a call-to-action box
+   * (`cta`, off unless given), share links (`share`, on by default), a "Follow
+   * via RSS" link (`feed`, on when `feedPath` is set) and a newsletter form
+   * (`newsletter`, off unless given). `false` renders none of it. Turn `cta`
+   * off when your posts end with their own closing.
+   */
+  postEnd?: BlogPostEnd | false
+  /** A component rendered after the post end, for anything else. */
   postFooter?: ComponentFn<{ post: BlogPost }>
   /** Rendered for an unknown post, tag or page. */
   notFound?: ComponentFn
+}
+
+/** What `defineBlog` renders after every post (see `BlogConfig.postEnd`). */
+export interface BlogPostEnd {
+  cta?: CallToActionProps | false
+  share?: boolean | { mastodonInstance?: string }
+  /** Default `true` when `feedPath` is set. */
+  feed?: boolean
+  newsletter?: NewsletterFormProps | false
 }
 
 /** A `getStaticPaths` export (structurally `GetStaticPaths` from `@pyreon/zero/server`). */
@@ -103,6 +121,7 @@ export interface ResolvedBlogConfig extends BlogSeoSite {
   locale: string
   feedPath: string | undefined
   bodyClass: string
+  postEnd: BlogPostEnd | false
   postFooter: ComponentFn<{ post: BlogPost }> | undefined
   notFound: ComponentFn
   post: BlogPostContext
@@ -175,6 +194,7 @@ export function resolveBlogConfig(config: BlogConfig): ResolvedBlogConfig {
     locale: config.locale ?? 'en-US',
     feedPath: config.feedPath,
     bodyClass: config.bodyClass ?? 'pyreon-blog-post__body',
+    postEnd: config.postEnd ?? {},
     postFooter: config.postFooter,
     notFound: config.notFound ?? DefaultNotFound,
     post: {
@@ -356,6 +376,16 @@ export function defineBlog(input: BlogConfig): Blog {
         ) : null}
         <div class={config.bodyClass}>{h(Content, null)}</div>
         <footer class="pyreon-blog-post__footer">
+          {config.postEnd !== false ? (
+            <PostEnd
+              url={absoluteUrl(config.siteUrl, post.url)}
+              title={post.title}
+              cta={config.postEnd.cta}
+              share={config.postEnd.share}
+              feedPath={config.postEnd.feed !== false ? config.feedPath : undefined}
+              newsletter={config.postEnd.newsletter}
+            />
+          ) : null}
           {Footer !== undefined ? h(Footer, { post }) : null}
           <RelatedPosts posts={related} locale={config.locale} />
           <PostNav previous={previous} next={next} />

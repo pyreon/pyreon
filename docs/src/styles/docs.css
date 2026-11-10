@@ -3675,7 +3675,8 @@ a.px-footer-item:hover {
 .pyreon-blog-post__back,
 .pyreon-blog-pagination a,
 .pyreon-blog-related__link,
-.blog-cta__links a,
+.pyreon-blog-end__feed a,
+.pyreon-blog-cta__link,
 .pyreon-blog-share__link {
   color: var(--link);
   font-weight: 500;
@@ -3686,7 +3687,8 @@ a.px-footer-item:hover {
 .pyreon-blog-post__back:hover,
 .pyreon-blog-pagination a:hover,
 .pyreon-blog-related__link:hover,
-.blog-cta__links a:hover,
+.pyreon-blog-end__feed a:hover,
+.pyreon-blog-cta__link:hover,
 .pyreon-blog-share__link:hover {
   text-decoration: underline;
 }
@@ -3734,42 +3736,15 @@ a.px-footer-item:hover {
   color: var(--text-strong);
   font-weight: 500;
 }
-/* End of every post — call to action, share links, newsletter. */
-.blog-post-footer {
-  display: grid;
-  gap: 1.25rem;
-}
-.blog-cta {
-  padding: 1.25rem 1.5rem;
-  border: 1px solid var(--ember-ring);
-  border-radius: var(--radius-lg);
+/* End of every post — share links, RSS, newsletter. (Each post carries its
+   own "Start building" closing, so `postEnd.cta` is off; `.pyreon-blog-cta`
+   styling below is for sites that turn it on.) */
+.pyreon-blog-cta {
+  border-color: var(--ember-ring);
   background: var(--ember-bg);
 }
-.blog-cta__title {
-  margin: 0 0 0.25rem;
-  font-size: 1.15rem;
-  font-weight: 600;
+.pyreon-blog-cta__heading {
   color: var(--text-strong);
-}
-.blog-cta__text {
-  margin: 0 0 0.75rem;
-  color: var(--text-muted);
-  line-height: 1.55;
-}
-.blog-cta__command {
-  margin: 0 0 0.75rem;
-  padding: 0.6rem 0.9rem;
-  overflow-x: auto;
-  border-radius: 6px;
-  background: var(--bg-well);
-  font-family: var(--font-mono);
-  font-size: 0.9rem;
-}
-.blog-cta__links {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem 1.5rem;
-  margin: 0;
 }
 .pyreon-blog-share {
   font-size: 0.9rem;

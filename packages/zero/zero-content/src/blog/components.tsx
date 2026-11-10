@@ -472,3 +472,98 @@ export function NewsletterForm(props: NewsletterFormProps): VNodeChild {
     </Show>
   )
 }
+
+export interface CallToActionLink {
+  label: string
+  /** An in-app path (client-side navigation) or an absolute URL. For the feed, use `PostEnd`'s `feedPath`. */
+  href: string
+}
+
+export interface CallToActionProps {
+  heading: string
+  text?: string | undefined
+  /** A shell command shown in a code block, e.g. `npm create @pyreon/zero@latest`. */
+  command?: string | undefined
+  links?: readonly CallToActionLink[] | undefined
+}
+
+/** A call-to-action box: heading, a line of text, an optional command and links. */
+export function CallToAction(props: CallToActionProps): VNodeChild {
+  return (
+    <section class="pyreon-blog-cta" aria-label={props.heading}>
+      <p class="pyreon-blog-cta__heading">{props.heading}</p>
+      <Show when={props.text !== undefined}>{() => <p class="pyreon-blog-cta__text">{props.text}</p>}</Show>
+      <Show when={props.command !== undefined}>
+        {() => (
+          <pre class="pyreon-blog-cta__command">
+            <code>{props.command}</code>
+          </pre>
+        )}
+      </Show>
+      <Show when={(props.links ?? []).length > 0}>
+        {() => (
+          <p class="pyreon-blog-cta__links">
+            <For each={[...(props.links ?? [])]} by={(link) => link.href}>
+              {(link) => (
+                <RouterLink to={link.href} class="pyreon-blog-cta__link">
+                  {link.label}
+                </RouterLink>
+              )}
+            </For>
+          </p>
+        )}
+      </Show>
+    </section>
+  )
+}
+
+export interface PostEndProps {
+  /** Absolute URL of the post (share links). */
+  url: string
+  title: string
+  /** The call-to-action box; omitted or `false` renders none. */
+  cta?: CallToActionProps | false | undefined
+  /** Share links. Default `true`. */
+  share?: boolean | { mastodonInstance?: string | undefined } | undefined
+  /** Site path of the RSS feed; a "Follow via RSS" link when set. */
+  feedPath?: string | undefined
+  /** A newsletter sign-up form (renders nothing while its `action` is empty). */
+  newsletter?: NewsletterFormProps | false | undefined
+}
+
+/**
+ * The end of a post: an optional call to action, share links, a feed link
+ * and a newsletter form — each one on or off. A site whose posts carry
+ * their own closing turns `cta` off and keeps the rest.
+ */
+export function PostEnd(props: PostEndProps): VNodeChild {
+  const share = props.share ?? true
+  return (
+    <div class="pyreon-blog-end">
+      <Show when={props.cta !== undefined && props.cta !== false}>
+        {() => <CallToAction {...(props.cta as CallToActionProps)} />}
+      </Show>
+      <Show when={share !== false}>
+        {() => (
+          <ShareLinks
+            url={props.url}
+            title={props.title}
+            mastodonInstance={typeof share === 'object' ? share.mastodonInstance : undefined}
+          />
+        )}
+      </Show>
+      <Show when={props.feedPath !== undefined}>
+        {() => (
+          <p class="pyreon-blog-end__feed">
+            <a href={props.feedPath} rel="alternate" type="application/rss+xml">
+              Follow the blog via RSS
+            </a>
+          </p>
+        )}
+      </Show>
+      <Show when={props.newsletter !== undefined && props.newsletter !== false}>
+        {() => <NewsletterForm {...(props.newsletter as NewsletterFormProps)} />}
+      </Show>
+    </div>
+  )
+}

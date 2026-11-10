@@ -20,7 +20,7 @@ export type {
 } from './blog/schema'
 
 export { defineBlog, pageFromParam, resolveBlogConfig } from './blog/define-blog'
-export type { Blog, BlogConfig, BlogStaticPaths, ResolvedBlogConfig } from './blog/define-blog'
+export type { Blog, BlogConfig, BlogPostEnd, BlogStaticPaths, ResolvedBlogConfig } from './blog/define-blog'
 
 export {
   adjacentPosts,
@@ -52,11 +52,13 @@ export type { BlogListHeadOptions, BlogSeoSite } from './blog/seo'
 
 export {
   Byline,
+  CallToAction,
   CoverImage,
   NewsletterForm,
   Pagination,
   PostCard,
   PostDate,
+  PostEnd,
   PostHeader,
   PostList,
   PostMeta,
@@ -68,12 +70,15 @@ export {
 } from './blog/components'
 export type {
   BylineProps,
+  CallToActionLink,
+  CallToActionProps,
   CoverImageProps,
   CoverSize,
   NewsletterFormProps,
   PaginationProps,
   PostCardProps,
   PostDateProps,
+  PostEndProps,
   PostHeaderProps,
   PostListProps,
   PostMetaProps,

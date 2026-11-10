@@ -182,13 +182,33 @@ The components render plain HTML with `pyreon-blog-*` classes. The optional styl
 }
 ```
 
-Point `bodyClass` at your prose styles, and use `postFooter` to add anything after each post — this site adds a call to action, share links and a newsletter form there. To change a page more deeply, write the route yourself from the queries and components:
+Point `bodyClass` at your prose styles. What follows each post is `postEnd`, every part on or off:
+
+```ts
+defineBlog({
+  // …
+  postEnd: {
+    cta: {                        // off unless given
+      heading: 'Start building',
+      text: 'Scaffold an app in under a minute.',
+      command: 'npm create @pyreon/zero@latest',
+      links: [{ label: 'Docs', href: '/docs' }, { label: 'GitHub', href: 'https://github.com/…' }],
+    },
+    share: true,                  // X, Bluesky, LinkedIn, Mastodon (default on)
+    feed: true,                   // "Follow the blog via RSS" (default on when feedPath is set)
+    newsletter: { action: '' },   // a sign-up form; renders nothing while action is empty
+  },
+})
+```
+
+When your posts end with their own closing, set `cta: false` so the page has one ending, not two — this site does that and keeps the share links, the RSS link and the newsletter slot. `postEnd: false` renders none of it, and `postFooter` adds any component of your own after it. To change a page more deeply, write the route yourself from the queries and components:
 
 | Export | Use |
 | --- | --- |
 | `blog.getPosts()`, `getPost(slug)`, `getTags()` | published posts, newest first; tags with counts (read from the metadata chunk) |
 | `paginate`, `postsWithTag`, `countTags`, `adjacentPosts`, `relatedPosts` | pure queries over a post list |
 | `PostList`, `PostCard`, `PostHeader`, `PostMeta`, `TagList`, `Pagination`, `PostNav`, `RelatedPosts` | the pieces the routes are made of |
+| `PostEnd`, `CallToAction` | the end-of-post block and its call-to-action box |
 | `ShareLinks` | X, Bluesky, LinkedIn and Mastodon share links as plain intent URLs — no script, no tracking |
 | `NewsletterForm` | a plain form that posts to `action`; renders nothing while `action` is empty |
 
@@ -213,5 +233,6 @@ Point `bodyClass` at your prose styles, and use `postFooter` to add anything aft
 | `titleTemplate` | `'%s \| <title>'` | page title of posts and listings |
 | `feedPath` | — | RSS link on the index |
 | `bodyClass` | `'pyreon-blog-post__body'` | class of the post body wrapper |
-| `postFooter` | — | component rendered after each post |
+| `postEnd` | share + feed | after each post: `cta`, `share`, `feed`, `newsletter` (each optional), or `false` |
+| `postFooter` | — | a component rendered after `postEnd` |
 | `notFound` | built-in | component for an unknown post, tag or page |

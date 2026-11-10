@@ -277,6 +277,44 @@ describe('PostPage', () => {
     expect(html).toContain('class="prose"')
     expect(html).toContain('Updated')
   })
+
+  it('ends a post with share links and the feed link by default, and no call to action', async () => {
+    // `blog` sets feedPath and no postEnd.
+    const { html } = await render(blog.PostPage, { slug: 'middle' })
+    expect(html).toContain('class="pyreon-blog-end"')
+    expect(html).toContain('https://x.com/intent/post?text=Middle')
+    expect(html).toContain('href="/blog/rss.xml" rel="alternate"')
+    expect(html).not.toContain('pyreon-blog-cta')
+    expect(html).not.toContain('<form')
+  })
+
+  it('renders the call to action and newsletter when the host fills them in, each part switchable', async () => {
+    const full = defineBlog({
+      siteUrl: 'https://example.dev',
+      title: 'B',
+      description: 'D',
+      feedPath: '/feed.xml',
+      postEnd: {
+        cta: { heading: 'Start building', text: 'Scaffold an app.', command: 'npm create x', links: [{ label: 'Docs', href: '/docs' }] },
+        share: { mastodonInstance: 'hachyderm.io' },
+        newsletter: { action: 'https://news.example/s' },
+      },
+    })
+    const { html } = await render(full.PostPage, { slug: 'middle' })
+    expect(html).toContain('<p class="pyreon-blog-cta__heading">Start building</p>')
+    expect(html).toContain('npm create x')
+    expect(html).toContain('href="/docs"')
+    expect(html).toContain('https://hachyderm.io/share')
+    expect(html).toContain('action="https://news.example/s"')
+    // The pieces stay optional: no share, no feed link, nothing at all.
+    const quiet = defineBlog({ siteUrl: 'https://example.dev', title: 'B', description: 'D', feedPath: '/feed.xml', postEnd: { share: false, feed: false } })
+    const q = await render(quiet.PostPage, { slug: 'middle' })
+    expect(q.html).toContain('class="pyreon-blog-end"')
+    expect(q.html).not.toContain('intent/post')
+    expect(q.html).not.toContain('/feed.xml')
+    const none = defineBlog({ siteUrl: 'https://example.dev', title: 'B', description: 'D', postEnd: false })
+    expect((await render(none.PostPage, { slug: 'middle' })).html).not.toContain('pyreon-blog-end')
+  })
 })
 
 describe('config', () => {
