@@ -1,0 +1,24 @@
+{
+  "id": "react-router",
+  "label": "React Router 8 framework mode (ex-Remix)",
+  "docs": [
+    "https://reactrouter.com/start/framework/installation",
+    "https://reactrouter.com/start/framework/routing",
+    "https://reactrouter.com/start/framework/data-loading",
+    "https://reactrouter.com/start/framework/actions",
+    "https://reactrouter.com/how-to/error-boundary",
+    "https://reactrouter.com/start/framework/deploying"
+  ],
+  "packages": ["react-router", "@react-router/serve", "@react-router/dev", "react", "react-dom", "vite"],
+  "build": ["npm", "run", "build"],
+  "start": ["node", "node_modules/@react-router/serve/bin.cjs", "build/server/index.js"],
+  "dataFile": "app/data.ts",
+  "hydration": "full",
+  "streaming": "streamed (default entry.server: renderToPipeableStream, onShellReady for browsers / onAllReady for bots via isbot)",
+  "notes": [
+    "React Router 7 framework mode is now published as react-router 8 (npm latest 8.5.1); same framework-mode APIs (routes.ts, route-module loader/action, react-router-serve).",
+    "react-router-serve = express + compression() + morgan('tiny') request logging to stdout + express.static for build/client, then the request handler. compression only applies when the client sends Accept-Encoding (the load generator sends none).",
+    "Loader data is serialized into the HTML (turbo-stream) for hydration.",
+    "The default entry.server/entry.client (no custom files) are used."
+  ]
+}

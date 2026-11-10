@@ -1,6 +1,7 @@
 import type { Adapter, AdapterBuildOptions, AdapterRevalidateResult } from '../types'
 import { BUN_ADAPTER_OUTPUT } from './contract'
 import { SCHEDULER_RUNTIME, serializeJobs } from './cron'
+import { REQUEST_RUNTIME } from './request-runtime'
 import { stageClientThenServer } from './stage'
 import { validateBuildInputs } from './validate'
 
@@ -87,6 +88,9 @@ try {
 // empty \`PORT\` falls back too; \`PORT=0\` binds an ephemeral port.
 const PORT = process.env.PORT ? Number(process.env.PORT) : ${port}
 
+// \`__pyreonIsHiddenPath\`: hidden files (\`/.vite/manifest.json\`, \`/.env\`)
+// are never served as static files; only \`/.well-known/\` is public.
+${REQUEST_RUNTIME}
 Bun.serve({
   port: PORT,
   // Bun defaults to \`development: true\` unless NODE_ENV says otherwise, and
@@ -116,7 +120,7 @@ Bun.serve({
         : url.pathname.startsWith(BASE + "/")
           ? url.pathname.slice(BASE.length)
           : null
-    if (req.method === "GET" && staticPathname !== null) {
+    if (req.method === "GET" && staticPathname !== null && !__pyreonIsHiddenPath(staticPathname)) {
       let decoded
       try {
         decoded = decodeURIComponent(staticPathname)

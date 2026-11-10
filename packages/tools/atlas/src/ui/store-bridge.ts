@@ -22,6 +22,8 @@ export interface StoreMutation {
   storeId: string
   type: 'direct' | 'patch'
   events: { key: string; newValue: unknown; oldValue: unknown }[]
+  /** Lazy snapshot — built by `@pyreon/store` on first read. */
+  state: Record<string, unknown>
 }
 
 export type Recorder = (mutation: StoreMutation, state: Record<string, unknown>) => void
@@ -32,7 +34,7 @@ interface StoreModule {
     plugin: (api: {
       id: string
       store: Record<string, unknown>
-      subscribe?: (cb: Recorder) => () => void
+      subscribe?: (cb: (mutation: StoreMutation) => void) => () => void
     }) => void | (() => void),
   ) => void
 }
@@ -76,10 +78,11 @@ export function installStoreRecorder(recorder: Recorder): void {
       moduleAvailable = true
       mod.addStorePlugin((api) => {
         if (typeof api.subscribe !== 'function') return
-        return api.subscribe((mutation, state) => {
+        return api.subscribe((mutation) => {
           // Read through `active` on every write, so Stop takes effect
-          // immediately for stores that were already created.
-          active?.(mutation, state)
+          // immediately for stores that were already created. The snapshot
+          // is lazy on the mutation; read it only while recording.
+          if (active) active(mutation, mutation.state)
         })
       })
     } catch {
