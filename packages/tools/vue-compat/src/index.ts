@@ -348,6 +348,9 @@ export function shallowReadonly<T extends object>(obj: T): Readonly<T> {
  * these three; this compat layer already THROWS on a readonly write (see the
  * module header), and every write path now does the same.
  */
+const readonlyWriteError = (what: string): Error =>
+  new Error(`[Pyreon] Cannot ${what} a readonly object. Mutate the source passed to readonly() instead.`)
+
 const readonlyWriteTraps: Pick<
   ProxyHandler<object>,
   'set' | 'deleteProperty' | 'defineProperty' | 'setPrototypeOf' | 'preventExtensions'
@@ -355,25 +358,20 @@ const readonlyWriteTraps: Pick<
   set(_target, key) {
     // Internal symbols used for identification are allowed
     if (key === V_IS_READONLY || key === V_RAW) return true
-    throw new Error(`[Pyreon] Cannot set property "${String(key)}" on a readonly object`)
+    throw readonlyWriteError(`set property "${String(key)}" on`)
   },
   deleteProperty(_target, key) {
-    throw new Error(`[Pyreon] Cannot delete property "${String(key)}" from a readonly object`)
+    throw readonlyWriteError(`delete property "${String(key)}" from`)
   },
   defineProperty(_target, key) {
-    throw new Error(
-      `[Pyreon] Cannot define property "${String(key)}" on a readonly object. Mutate the source object passed to readonly() instead.`,
-    )
+    throw readonlyWriteError(`define property "${String(key)}" on`)
   },
   setPrototypeOf() {
-    throw new Error(
-      '[Pyreon] Cannot set the prototype of a readonly object. Mutate the source object passed to readonly() instead.',
-    )
+    throw readonlyWriteError('set the prototype of')
   },
   preventExtensions() {
-    throw new Error(
-      '[Pyreon] Cannot prevent extensions on (or freeze/seal) a readonly object. Freeze the source object passed to readonly() instead.',
-    )
+    // Also the path Object.freeze / Object.seal take.
+    throw readonlyWriteError('prevent extensions on')
   },
 }
 
