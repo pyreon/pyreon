@@ -136,6 +136,9 @@ JSON leaves Kotlin's `$` interpolation marker alone (`'due: $total now'` reads a
   - Sanitise identifiers universally (`swiftIdent`/`kotlinIdent`) so declaration, memberwise init and member access agree. String-literal-union enum cases go through `swiftEnumCase` (camelCase + raw value) and `kotlinMember` (backticks). A Swift struct with a renamed field gets `CodingKeys`.
   - Keep `parseInt(s, radix)`'s radix. Coerce Double concat operands with `pyreonNumString` so `250.0` prints as JS prints `250`.
   - When a correct helper exists, audit for sites that bypass it by grepping the raw primitive (`JSON.stringify(`, `.join(`, `${f.name}`).
+  - This is a security boundary, not only correctness: shared source (and an OpenAPI spec lathe turns into it) is text that must stay text on device. A Swift raw string `#"…"#` is NOT safe for a spliced value, because `\#(…)` still interpolates in it. A `.regex()` written raw ran arbitrary Swift. Use `swiftStr`, which writes an ordinary escaped string.
+  - A value spliced into an enum case or identifier is checked first: against a fixed list (HTTP method, flow `<Handle position>`) or against identifier characters (theme token names, rocketstyle state and property names). An unknown value gets a warning and is never emitted.
+  - Lock: `native/compiler/src/tests/native-emit-quoting-gate.test.ts` scans every plugin and compiler emitter for `JSON.stringify(` and raw `#"${`. Each allowed use is listed with its reason. `native-emit-literal-breakout.test.ts` compiles breakout payloads through every fixed site and lexes the Swift and Kotlin output for code-context hits.
   - Known limitation: `inlineValueConsts` (`emit-swift.ts`) substitutes each value const at every use with no sharing, so a chain where each const references the previous twice grows exponentially.
   - Lock: `native/compiler/src/tests/native-string-literal-quoting.test.ts` (real swiftc/kotlinc).
 

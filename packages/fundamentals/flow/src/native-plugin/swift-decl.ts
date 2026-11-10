@@ -105,8 +105,8 @@ export function swiftFlowStateDecl(d: FlowStateDecl): string {
           ...(e.deletable !== undefined ? [`deletable: ${e.deletable}`] : []),
           ...(e.reconnectable !== undefined ? [`reconnectable: ${e.reconnectable}`] : []),
           ...(e.interactionWidth !== undefined ? [`interactionWidth: ${e.interactionWidth}`] : []),
-          ...(e.cssClass !== undefined ? [`className: ${JSON.stringify(e.cssClass)}`] : []),
-          ...(e.style !== undefined ? [`style: ${JSON.stringify(e.style)}`] : []),
+          ...(e.cssClass !== undefined ? [`className: ${swiftStr(e.cssClass)}`] : []),
+          ...(e.style !== undefined ? [`style: ${swiftStr(e.style)}`] : []),
           ...(e.data !== undefined && swiftFlowData(e.data) !== null ? [`data: ${swiftFlowData(e.data)}`] : []),
           ...(e.pathOptions?.curvature !== undefined ? [`curvature: ${e.pathOptions.curvature}`] : []),
           ...(e.pathOptions?.borderRadius !== undefined ? [`borderRadius: ${e.pathOptions.borderRadius}`] : []),
@@ -163,8 +163,8 @@ export function swiftFlowStateDecl(d: FlowStateDecl): string {
       ...(d.connectionValidator !== undefined ? [`isValidConnection: ${host.expr(d.connectionValidator, 0)}`] : []),
       ...(rowFields.some((field) => field.name === 'label') ? ['searchText: { $0.label }'] : []),
       ...(d.reducedMotion !== undefined ? [`reducedMotion: ${d.reducedMotion}`] : []),
-      ...(d.deleteKeys !== undefined ? [`deleteKeys: ${d.deleteKeys === null ? 'nil' : `[${d.deleteKeys.map((key) => JSON.stringify(key)).join(', ')}]`}`] : []),
-      ...(['multiSelectionKey', 'selectionKey', 'zoomActivationKey'] as const).flatMap((key) => d[key] === undefined ? [] : [`${key}: ${d[key] === null ? 'nil' : JSON.stringify(d[key])}`]),
+      ...(d.deleteKeys !== undefined ? [`deleteKeys: ${d.deleteKeys === null ? 'nil' : `[${d.deleteKeys.map((key) => swiftStr(key)).join(', ')}]`}`] : []),
+      ...(['multiSelectionKey', 'selectionKey', 'zoomActivationKey'] as const).flatMap((key) => d[key] === undefined ? [] : [`${key}: ${d[key] === null ? 'nil' : swiftStr(d[key])}`]),
       ...(d.preventScrolling !== undefined ? [`preventScrolling: ${d.preventScrolling}`] : []),
     ]
       // Swift requires labelled arguments in declaration order; sort by the

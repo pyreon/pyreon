@@ -3,8 +3,9 @@
  * (`getBezierPath`, `computeLayout`, …), calls and member reads rooted at a flow binding,
  * and `MarkerType.*`. Moved verbatim from the compiler's Kotlin expression emitter.
  */
-import { type CallExprIR, type ExprIR, type MemberExprIR, kotlinIdent, substituteIdentifier } from '@pyreon/native-compiler/plugin-api'
+import { type CallExprIR, type ExprIR, type MemberExprIR, kotlinIdent, kotlinStr, substituteIdentifier } from '@pyreon/native-compiler/plugin-api'
 import { host } from './kotlin-facade'
+import { isFlowHandlePosition } from './collect'
 import { FLOW_PATH_HELPERS_KOTLIN, FLOW_SET_CENTER_KEYS, kotlinFlowConnectionLiteral, kotlinFlowData, kotlinFlowDurationOption, kotlinFlowEdgeListLiteral, kotlinFlowEdgeLiteral, kotlinFlowExtentLiteral, kotlinFlowGeometryLiteral, kotlinFlowHandlesLiteral, kotlinFlowLayoutOptions, kotlinFlowMarkerLiteral, kotlinFlowNodeExtentArgs, kotlinFlowNodeListLiteral, kotlinFlowNodeLiteral, kotlinFlowPathHelper, kotlinFlowPositionExpr, kotlinFlowPositionLiteral, kotlinFlowPositionsLiteral, kotlinFlowReconnectLiteral, kotlinFlowViewportLiteral, ktChartDouble, resolveKotlinStaticFlowValue, warnDroppedFlowFieldsKt } from './kotlin-literals'
 import { FLOW_LAYOUT_OPTION_KEYS, FLOW_MARKER_LITERAL_SHAPE, HANDLED_FLOW_EDGE_FIELDS, HANDLED_FLOW_NODE_FIELDS, LOWERED_FLOW_CONFIG_PROPERTIES, LOWERED_FLOW_METHODS, LOWERED_FLOW_PROPERTY_READS, droppedFlowEdgePatchWarning, flowLayoutOptionsDroppedWarning, flowRectLiteralFields, flowSignalWriteWarning, unloweredFlowLiteralWarning, unloweredFlowMemberWarning, unsupportedFlowOptionsWarning } from './lowering'
 
@@ -188,13 +189,13 @@ export function lowerKotlinFlowCall(e: CallExprIR, indent: number): string | und
               if (item.kind !== 'object') return null
               const fields = new Map(item.fields.map((field) => [field.name, field.value]))
               const position = fields.get('position')
-              if (!fields.has('id') || !fields.has('type') || !fields.has('x') || !fields.has('y') || position?.kind !== 'literal' || typeof position.value !== 'string') return null
+              if (!fields.has('id') || !fields.has('type') || !fields.has('x') || !fields.has('y') || position?.kind !== 'literal' || !isFlowHandlePosition(position.value)) return null
               const nativePosition = position.value[0]!.toUpperCase() + position.value.slice(1)
               return `PyreonFlowMeasuredHandle(id = ${host.expr(fields.get('id')!, indent)}, type = ${host.expr(fields.get('type')!, indent)}, position = PyreonFlowPosition.${nativePosition}, x = ${ktChartDouble(host.expr(fields.get('x')!, indent))}, y = ${ktChartDouble(host.expr(fields.get('y')!, indent))})`
             })
             if (emitted.every((value) => value !== null)) return `${kotlinIdent(flowName)}.updateNodeMeasurement(${baseArgs}, listOf(${emitted.join(', ')}))`
           }
-          host.warn(`createFlow binding \`${flowName}\`: \`_setNodeMeasurement\` handle geometry must be a literal array to lower natively.`)
+          host.warn(`createFlow binding \`${flowName}\`: \`_setNodeMeasurement\` handle geometry must be a literal array of \`{ id, type, x, y, position }\` objects, with \`position\` one of top, right, bottom or left, to lower natively.`)
         }
         // Nothing silent inside the boundary — mirrors emit-swift.ts exactly.
         if (!LOWERED_FLOW_METHODS.has(member) && !LOWERED_FLOW_PROPERTY_READS.has(member)) {
@@ -528,7 +529,7 @@ if (
 /** `MarkerType.Arrow` / `MarkerType.ArrowClosed` → the marker-type string the runtime expects. */
 export function lowerKotlinMarkerType(e: MemberExprIR): string | undefined {
   if (e.object.kind === 'identifier' && e.object.name === 'MarkerType' && (e.property === 'Arrow' || e.property === 'ArrowClosed')) {
-          return JSON.stringify(e.property.toLowerCase())
+          return kotlinStr(e.property.toLowerCase())
         }
   return undefined
 }
@@ -544,7 +545,7 @@ export function lowerKotlinEdgeDataRead(e: MemberExprIR, indent: number): string
     e.object.object.kind === 'member' && e.object.object.property === 'edge' &&
     e.object.object.object.kind === 'identifier' && e.object.object.object.name === host.component().propsParamName
   ) {
-    return `${host.expr(e.object, indent)}?.get(${JSON.stringify(e.property)})`
+    return `${host.expr(e.object, indent)}?.get(${kotlinStr(e.property)})`
   }
   return undefined
 }
