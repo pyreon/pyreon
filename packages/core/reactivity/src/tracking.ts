@@ -53,7 +53,12 @@ interface TrackingFrame {
    */
   n: unknown[] | null
 }
-const _t: TrackingFrame = {
+/**
+ * @internal Exported ONLY for `computed.ts`'s CHECK-state dep refresh, which
+ * suspends `e` inline around a loop of dep pulls instead of paying a
+ * `runUntracked` closure per pull (see `refreshDeps` there).
+ */
+export const _t: TrackingFrame = {
   e: null,
   d: null,
   i: -1,
