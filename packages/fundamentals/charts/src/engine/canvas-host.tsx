@@ -20,7 +20,7 @@ import type { VNode } from '@pyreon/core'
 import { batch, computed, effect, isClient, isServer, signal, untrack } from '@pyreon/reactivity'
 import { chartRowCount, chartTable, chartTableRow, describeChart } from './a11y'
 import type { A11yInput, A11yTable } from './a11y'
-import { canvasMeasure, canvasSizeAttrs, paint, prepareCanvas, trackChartImages } from './canvas-web'
+import { canvasSizeAttrs, paint, prepareCanvas, sharedCanvasMeasure, trackChartImages } from './canvas-web'
 import { cmdsEqual, sameCmdShape, tweenCmds, universalTweenCmds } from './cmd-tween'
 import { placeLegend } from './legend'
 import type { LegendEntry, LegendPosition } from './legend'
@@ -793,7 +793,7 @@ export function canvasHost<L>(rawSpec: CanvasHostSpec<L>): VNode {
       ssrFrame.remove()
       ssrFrame = null
     }
-    const measure = canvasMeasure(ctx, FONT)
+    const measure = sharedCanvasMeasure(ctx, FONT)
     const f = frame(w, hgt, measure, t)
     last = f
     const family = transposed() ? transposeCmds(spec.render(f.layout, measure, t, entrance, effectTime)) : spec.render(f.layout, measure, t, entrance, effectTime)
@@ -857,7 +857,7 @@ export function canvasHost<L>(rawSpec: CanvasHostSpec<L>): VNode {
     if (f !== null && f.w === w && f.hgt === hgt) return f
     const ctx = el.getContext('2d')
     if (ctx === null) return null
-    return frame(w, hgt, canvasMeasure(ctx, FONT), theme())
+    return frame(w, hgt, sharedCanvasMeasure(ctx, FONT), theme())
   }
 
   const localPoint = (el: HTMLCanvasElement, ev: { clientX: number; clientY: number }): { x: Double; y: Double } => {
