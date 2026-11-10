@@ -515,7 +515,12 @@ app.get('/page', async (req, res) => {
 
 ```tsx
 import { runWithRequestContext, renderToString } from '@pyreon/runtime-server'
-import { createRouter, prefetchLoaderData } from '@pyreon/router'
+import {
+  createRouter,
+  prefetchLoaderData,
+  serializeLoaderData,
+  stringifyLoaderDataForScript,
+} from '@pyreon/router'
 import { h } from '@pyreon/core'
 
 app.get('*', async (req, res) => {
@@ -1026,7 +1031,7 @@ export async function handler(req: Request): Promise<Response> {
       <head><meta charset="UTF-8" /></head>
       <body>
         <div id="app">${html}</div>
-        <script>window.__INITIAL_DATA__ = ${JSON.stringify(/* serialized data */)};</script>
+        <script>window.__INITIAL_DATA__ = ${stringifyLoaderDataForScript(serializeLoaderData(router))};</script>
         <script type="module" src="/client.js"></script>
       </body>
     </html>`,

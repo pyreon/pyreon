@@ -36,13 +36,13 @@ export function normalizeSecrets(secret: string | readonly string[], who: string
   return list
 }
 
-function toB64url(bytes: Uint8Array): string {
+export function toB64url(bytes: Uint8Array): string {
   let bin = ''
   for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]!)
   return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
 }
 
-function fromB64url(s: string): Uint8Array<ArrayBuffer> | null {
+export function fromB64url(s: string): Uint8Array<ArrayBuffer> | null {
   if (!/^[A-Za-z0-9_-]*$/.test(s)) return null
   try {
     const bin = atob(s.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - (s.length % 4)) % 4))
