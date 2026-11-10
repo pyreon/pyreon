@@ -82,7 +82,7 @@ export async function runCrossoverPyreon(container: HTMLElement): Promise<BenchS
     selectReset()
     selectFn()
     container.getBoundingClientRect()
-  }, targetMs)
+  }, targetMs, 'select')
 
   await bench('select row (batch cycle)', suite, selectFn, {
     reset: selectReset,
@@ -119,7 +119,7 @@ export async function runCrossoverPyreon(container: HTMLElement): Promise<BenchS
     partialReset()
     partialFn()
     container.getBoundingClientRect()
-  }, targetMs)
+  }, targetMs, 'partial')
 
   await bench('partial update (every 10th) (batch cycle)', suite, partialFn, {
     reset: partialReset,
@@ -162,7 +162,7 @@ export async function runCrossoverPyreon(container: HTMLElement): Promise<BenchS
     swap()
     swap()
     container.getBoundingClientRect()
-  }, targetMs)
+  }, targetMs, 'swap')
   if (rows()[lo]?.id !== canonicalIdAtLo) swap()
 
   // One probe serves both halves: after the reset-swap the far-end id sits at
