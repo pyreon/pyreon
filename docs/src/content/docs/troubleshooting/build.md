@@ -492,6 +492,12 @@ Compose's `Modifier.weight` is an extension on `ColumnScope` / `RowScope`, and `
 
 ---
 
+### A native WebView bridge is for the page the app loaded, not for every frame or origin.
+
+WKWebView script-message handlers and Android `addJavascriptInterface` objects are visible in EVERY frame of whatever document is loaded, and a navigation delegate that does not exist lets the main frame wander to any origin, which then receives `data` pushes and can drive `onMessage`. The web host reaches only same-origin / `srcdoc` frames, so native must match: pin the origin the host's own load commits to (after its redirects), keep the main frame on it (user-tapped link off it → system browser, anything else cancelled), deliver messages only from the main frame of that origin (iOS: `WKScriptMessage.frameInfo.isMainFrame` + `securityOrigin`; Android without androidx.webkit: a per-view token closed over by a main-frame-only shim, plus the main frame's URL origin re-read on the main thread), and push data / relay only while the main frame shows it. Asset `src` must not escape the asset dir (`..`, scheme, backslash), and Android file access is explicitly off. The decisions are pure functions so they run without a device: `PyreonWebView.swift` (`pyreonWebViewNavigationDecision`, `pyreonWebViewMayDeliver`, `pyreonWebViewAssetName`) / `PyreonWebChromePolicy.kt`, locked by `hooks/native/tests/PyreonWebViewTests.swift` and `PyreonWebChromePolicyTest.kt`.
+
+---
+
 ### A WebView callback must be answered exactly once on every path.
 
 An Android `onShowFileChooser` `ValueCallback` that is never answered leaves the page's file input dead until the view is recreated; a dropped WKUIDelegate completion handler raises in WebKit. Answer on success, on denial, on dismissal, when a newer request replaces a pending one, and when the view is released. In Swift 6 the WKUIDelegate methods only match with `@MainActor @Sendable` completion types; a "nearly matches optional requirement" warning means WebKit never calls them. Reference: `hooks/native/kotlin/com/pyreon/runtime/PyreonWebChromePolicy.kt` (`PyreonOnceSlot`, `PyreonPermissionQueue`).
