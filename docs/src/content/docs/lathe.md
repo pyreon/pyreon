@@ -1405,9 +1405,11 @@ jobs:
       - run: bun install --frozen-lockfile
       - name: Diff the contract
         id: diff
+        env:
+          BASE_REF: ${{ github.base_ref }}
         run: |
           set +e
-          bunx lathe diff "origin/${{ github.base_ref }}:openapi.yaml" openapi.yaml \
+          bunx lathe diff "origin/${BASE_REF}:openapi.yaml" openapi.yaml \
             --format markdown --fail-on-breaking > contract.md
           echo "code=$?" >> "$GITHUB_OUTPUT"
       - name: Summary

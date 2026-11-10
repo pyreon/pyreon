@@ -139,6 +139,90 @@ fun pyreonOriginHost(origin: String?): String? {
     return host.ifEmpty { null }
 }
 
+// ── Origin scope — mirror of the iOS host (see "Origin scope" in
+//    PyreonWebView.kt). `data` and the reverse bridge belong to the page the
+//    APP loaded, as on the web, where the host reaches only same-origin frames.
+
+/**
+ * An origin as `scheme://host[:port]`, lower-cased, default ports dropped.
+ * `file:` is one origin (`file://`, the bundled app content). Anything else
+ * without an `http(s)` host (`about:`, `data:`, `blob:`, `javascript:`, a
+ * custom scheme, an unparsable string) is OPAQUE: null, never allowed.
+ */
+fun pyreonWebViewOrigin(url: String?): String? {
+    if (url.isNullOrEmpty()) return null
+    val uri = try { java.net.URI(url) } catch (_: Exception) { return null }
+    val scheme = uri.scheme?.lowercase() ?: return null
+    if (scheme == "file") return "file://"
+    if (scheme != "http" && scheme != "https") return null
+    val host = uri.host?.lowercase()?.ifEmpty { null } ?: return null
+    val defaultPort = if (scheme == "https") 443 else 80
+    val port = uri.port
+    return if (port > 0 && port != defaultPort) "$scheme://$host:$port" else "$scheme://$host"
+}
+
+/** What to do with a main-frame navigation. */
+enum class PyreonWebViewNavigation { ALLOW, CANCEL, OPEN_EXTERNALLY }
+
+/**
+ * The navigation policy. A sub-frame navigates freely (it never gets the bridge
+ * or the data). The main frame may go anywhere while the load the HOST started
+ * is pending (its server redirects), and afterwards only within the origin that
+ * load committed to. A user-activated main-frame link off it is handed to the
+ * system (as `window.open` is); anything else is cancelled.
+ */
+fun pyreonWebViewNavigationDecision(
+    isMainFrame: Boolean,
+    initialLoadPending: Boolean,
+    url: String?,
+    allowedOrigin: String?,
+    userActivated: Boolean,
+): PyreonWebViewNavigation {
+    if (!isMainFrame || initialLoadPending) return PyreonWebViewNavigation.ALLOW
+    if (allowedOrigin != null && pyreonWebViewOrigin(url) == allowedOrigin) return PyreonWebViewNavigation.ALLOW
+    if (userActivated && pyreonMayOpenExternally(url)) return PyreonWebViewNavigation.OPEN_EXTERNALLY
+    return PyreonWebViewNavigation.CANCEL
+}
+
+/** Whether a document at [url] (the MAIN frame's) may get the data and the bridge. */
+fun pyreonWebViewMayDeliver(url: String?, allowedOrigin: String?): Boolean {
+    if (allowedOrigin == null) return false
+    return pyreonWebViewOrigin(url) == allowedOrigin
+}
+
+/**
+ * The bridge token check: `addJavascriptInterface` exposes the bridge object to
+ * EVERY frame, so the main-frame-only shim carries a per-view secret that a
+ * cross-origin sub-frame cannot read. Constant-time so a guessing frame learns
+ * nothing from timing.
+ */
+fun pyreonWebViewTokenMatches(expected: String, given: String?): Boolean {
+    if (given == null || given.length != expected.length) return false
+    var diff = 0
+    for (i in expected.indices) diff = diff or (expected[i].code xor given[i].code)
+    return diff == 0
+}
+
+/**
+ * A `src` that names a BUNDLED asset: a relative path with no `..` / `.` /
+ * empty segment, no scheme and no backslash (also after percent-decoding).
+ * null when it would escape `file:///android_asset/`.
+ */
+fun pyreonWebViewAssetPath(src: String): String? {
+    if (src.isEmpty() || src.startsWith("/") || src.contains('\\') || src.contains(':')) return null
+    val decoded = try { java.net.URLDecoder.decode(src.replace("+", "%2B"), "UTF-8") } catch (_: Exception) { return null }
+    if (decoded.contains('\\') || decoded.contains(':')) return null
+    if (decoded.split('/').any { it == ".." || it == "." || it.isEmpty() }) return null
+    return src
+}
+
+/** A `src` that names a remote page: `http(s)` with a host. */
+fun pyreonWebViewIsRemoteSrc(src: String): Boolean {
+    val uri = try { java.net.URI(src) } catch (_: Exception) { return false }
+    val scheme = uri.scheme?.lowercase() ?: return false
+    return (scheme == "http" || scheme == "https") && !uri.host.isNullOrEmpty()
+}
+
 /**
  * A callback WebView requires to be answered EXACTLY once. `onShowFileChooser`
  * is the sharp case: a `ValueCallback` that is never answered leaves the page's
