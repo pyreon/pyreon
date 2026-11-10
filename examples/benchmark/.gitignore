@@ -2,3 +2,5 @@ public/hydration-fixtures.json
 src/bundle-entries/
 dist-bundle/
 public/apppage-fixtures.json
+lib-bundle/.entries/
+dist-lib-bundle/

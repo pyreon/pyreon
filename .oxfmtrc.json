@@ -20,6 +20,7 @@
     "tests/browser",
     "**/templates",
     "**/*.html",
-    "packages/native/compiler/src/built-in-services.generated.ts"
+    "packages/native/compiler/src/built-in-services.generated.ts",
+    "examples/stacks-bench/apps"
   ]
 }
