@@ -33,18 +33,63 @@ function defaultDateOptions(name: string): Intl.DateTimeFormatOptions {
 }
 
 /**
- * Build a memoized Intl formatter registry. Every formatter is cached by
- * `${locale}|${optionsKey}` so repeated `n()`/`d()`/`rt()` calls (the common
- * case in a rendered list) reuse one `Intl.*Format` instance instead of
- * allocating per call. Pure (no reactivity) — `create-i18n` reads `locale()`
- * around these so the reactivity lives at the instance boundary.
+ * Bound on the locales and on the option sets cached per locale. The locale is
+ * whatever reaches `t()`/`n()`/`d()` — on a server often request-derived — and
+ * option objects can be built per call, so neither is a small finite set
+ * (leak-class C). Real apps use a handful of each; on overflow the oldest
+ * locale (FIFO) or the whole option table for that locale is dropped.
+ */
+const FORMATTER_LOCALE_CAP = 64
+const FORMATTER_OPTIONS_CAP = 64
+
+/**
+ * Formatters of one kind for one locale. `def` is the no-options formatter,
+ * `named` is keyed by a named-format / inline-spec name, `byJson` by the
+ * `JSON.stringify` of an options object. Separate tables, so no key-prefix
+ * string is built per call and a name can never collide with a JSON key.
+ */
+interface LocaleFormatters<F> {
+  def: F | undefined
+  named: Map<string, F>
+  byJson: Map<string, F>
+}
+
+function formatterTable<F>() {
+  const byLocale = new Map<string, LocaleFormatters<F>>()
+  return (locale: string): LocaleFormatters<F> => {
+    let t = byLocale.get(locale)
+    if (t === undefined) {
+      if (byLocale.size >= FORMATTER_LOCALE_CAP) {
+        byLocale.delete(byLocale.keys().next().value as string)
+      }
+      t = { def: undefined, named: new Map(), byJson: new Map() }
+      byLocale.set(locale, t)
+    }
+    return t
+  }
+}
+
+function boundedSet<F>(map: Map<string, F>, key: string, f: F): F {
+  if (map.size >= FORMATTER_OPTIONS_CAP) map.clear()
+  map.set(key, f)
+  return f
+}
+
+/**
+ * Build a memoized Intl formatter registry. Every formatter is cached per
+ * (locale, options) so repeated `n()`/`d()`/`rt()` calls (the common case in a
+ * rendered list) reuse one `Intl.*Format` instance instead of allocating per
+ * call. A named format or no options is a plain table lookup; only an options
+ * OBJECT pays a `JSON.stringify` for its key. Pure (no reactivity) —
+ * `create-i18n` reads `locale()` around these so the reactivity lives at the
+ * instance boundary.
  *
  * `/core`-safe: depends only on `Intl` + the config; no `@pyreon/core` JSX.
  */
 export function createFormatters(config: FormatterConfig) {
-  const numCache = new Map<string, Intl.NumberFormat>()
-  const dtCache = new Map<string, Intl.DateTimeFormat>()
-  const rtCache = new Map<string, Intl.RelativeTimeFormat>()
+  const numTable = formatterTable<Intl.NumberFormat>()
+  const dtTable = formatterTable<Intl.DateTimeFormat>()
+  const rtTable = formatterTable<Intl.RelativeTimeFormat>()
 
   /** Look up a named format for `locale`, falling back to `fallbackLocale`. */
   function resolveNamed<O>(
@@ -62,45 +107,55 @@ export function createFormatters(config: FormatterConfig) {
     return obj !== undefined && key !== undefined && Object.hasOwn(obj, key) ? obj[key] : undefined
   }
 
-  function numberFormatter(locale: string, options?: Intl.NumberFormatOptions | string) {
-    const opts =
-      typeof options === 'string' ? (resolveNamed(config.numberFormats, locale, options) ?? {}) : (options ?? {})
-    const key = `${locale}|${typeof options === 'string' ? `@${options}` : JSON.stringify(opts)}`
-    let f = numCache.get(key)
-    if (!f) {
-      f = new Intl.NumberFormat(locale, opts)
-      numCache.set(key, f)
+  /**
+   * The shared (locale, options) memo for one formatter kind. A string option
+   * is a format NAME, resolved to its options only on a cache miss (the
+   * resolution is a pure function of the fixed config and the locale).
+   */
+  function cached<F, O extends object>(
+    table: (locale: string) => LocaleFormatters<F>,
+    locale: string,
+    options: O | string | undefined,
+    namedOptions: (name: string) => O,
+    make: (locale: string, opts: O) => F,
+  ): F {
+    const t = table(locale)
+    if (options === undefined) return (t.def ??= make(locale, {} as O))
+    if (typeof options === 'string') {
+      const f = t.named.get(options)
+      return f !== undefined ? f : boundedSet(t.named, options, make(locale, namedOptions(options)))
     }
-    return f
+    const key = JSON.stringify(options)
+    const f = t.byJson.get(key)
+    return f !== undefined ? f : boundedSet(t.byJson, key, make(locale, options))
   }
 
-  function dateFormatter(locale: string, options?: Intl.DateTimeFormatOptions | string) {
-    const opts =
-      typeof options === 'string'
-        ? (resolveNamed(config.dateFormats, locale, options) ?? defaultDateOptions(options))
-        : (options ?? {})
-    const key = `${locale}|${typeof options === 'string' ? `@${options}` : JSON.stringify(opts)}`
-    let f = dtCache.get(key)
-    if (!f) {
-      f = new Intl.DateTimeFormat(locale, opts)
-      dtCache.set(key, f)
-    }
-    return f
-  }
+  const numberFormatter = (locale: string, options?: Intl.NumberFormatOptions | string) =>
+    cached(
+      numTable,
+      locale,
+      options,
+      (name) => resolveNamed(config.numberFormats, locale, name) ?? {},
+      (loc, opts) => new Intl.NumberFormat(loc, opts),
+    )
 
-  function relativeTimeFormatter(locale: string, options?: Intl.RelativeTimeFormatOptions | string) {
-    const opts =
-      typeof options === 'string'
-        ? (resolveNamed(config.relativeTimeFormats, locale, options) ?? {})
-        : (options ?? {})
-    const key = `${locale}|${typeof options === 'string' ? `@${options}` : JSON.stringify(opts)}`
-    let f = rtCache.get(key)
-    if (!f) {
-      f = new Intl.RelativeTimeFormat(locale, opts)
-      rtCache.set(key, f)
-    }
-    return f
-  }
+  const dateFormatter = (locale: string, options?: Intl.DateTimeFormatOptions | string) =>
+    cached(
+      dtTable,
+      locale,
+      options,
+      (name) => resolveNamed(config.dateFormats, locale, name) ?? defaultDateOptions(name),
+      (loc, opts) => new Intl.DateTimeFormat(loc, opts),
+    )
+
+  const relativeTimeFormatter = (locale: string, options?: Intl.RelativeTimeFormatOptions | string) =>
+    cached(
+      rtTable,
+      locale,
+      options,
+      (name) => resolveNamed(config.relativeTimeFormats, locale, name) ?? {},
+      (loc, opts) => new Intl.RelativeTimeFormat(loc, opts),
+    )
 
   const n = (locale: string, value: number | bigint, options?: Intl.NumberFormatOptions | string): string => {
     if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('i18n.formatNumber')
@@ -136,11 +191,17 @@ export function createFormatters(config: FormatterConfig) {
    * (number/date/relative-time) tables → `String(value)`.
    */
   function format(value: unknown, spec: string, locale: string): string {
-    // `split(',')` always yields ≥1 element, so `parts[0]` is always a string.
-    const parts = spec.split(',').map((p) => p.trim())
-    const name = parts[0]!
-    const unit = (parts[1] ?? 'second') as Intl.RelativeTimeFormatUnit
+    const parsed = parseSpec(spec)
+    return formatParsed(value, parsed.name, parsed.unit, locale)
+  }
 
+  /** {@link format} with the spec already split by {@link parseSpec}. */
+  function formatParsed(
+    value: unknown,
+    name: string,
+    unit: Intl.RelativeTimeFormatUnit,
+    locale: string,
+  ): string {
     // 1. Custom named formatter wins.
     const custom = ownAt(config.formats, name)
     if (typeof custom === 'function') return custom(value, locale)
@@ -168,7 +229,17 @@ export function createFormatters(config: FormatterConfig) {
     return value == null ? '' : String(value)
   }
 
-  return { n, d, rt, format }
+  return { n, d, rt, format, formatParsed }
 }
 
 export type Formatters = ReturnType<typeof createFormatters>
+
+/**
+ * Split an inline format spec (`relativetime, day`) into its name and the
+ * relative-time unit (default `second`). Done once per compiled placeholder.
+ */
+export function parseSpec(spec: string): { name: string; unit: Intl.RelativeTimeFormatUnit } {
+  // `split(',')` always yields ≥1 element, so `parts[0]` is always a string.
+  const parts = spec.split(',').map((p) => p.trim())
+  return { name: parts[0]!, unit: (parts[1] ?? 'second') as Intl.RelativeTimeFormatUnit }
+}
