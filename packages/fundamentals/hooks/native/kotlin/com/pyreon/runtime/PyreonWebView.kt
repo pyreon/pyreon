@@ -29,8 +29,8 @@
 //
 //     window.pyreonPostMessage("the-payload-string");
 //
-// That shim forwards to `window.__pyreonNative.postMessage(...)` (an
-// `addJavascriptInterface` bridge); the bridge marshals to the MAIN thread
+// That shim forwards to `window.__pyreonNative.postMessage(token, ...)` (an
+// `addJavascriptInterface` bridge; see "Origin scope"); the bridge marshals to the MAIN thread
 // (`@JavascriptInterface` callbacks run on a background JavaBridge thread)
 // and invokes the native `onMessage` callback — so a webview-hosted chart
 // can drive native signals. The payload is a plain string. Same unified
@@ -65,6 +65,32 @@
 // extension compiles) and `Modifier.fillMaxSize()` elsewhere; the compiler
 // decides, because only it knows the parent. A weighted or filled host arrives
 // with a non-zero minimum height, which the default below leaves alone.
+//
+// ## Origin scope
+//
+// `data` and the reverse bridge belong to the page the APP loaded, as on the
+// web (the host reaches only a same-origin / `srcdoc` frame) and on iOS. The
+// decisions are in PyreonWebChromePolicy.kt, where the JVM test runs them:
+//
+// - The allowed origin is the one the host's own load starts on, after its
+//   server redirects (`onPageStarted`): `file://` for inline `html` and
+//   bundled `src`, the remote page's `scheme://host[:port]` otherwise.
+// - After that the MAIN frame stays on that origin (`shouldOverrideUrlLoading`):
+//   a user-tapped link off it is handed to the system (`http(s)` / `mailto` /
+//   `tel` / `sms`); any other off-origin main-frame navigation is cancelled.
+//   Sub-frames navigate freely but never get the bridge or the data.
+// - `addJavascriptInterface` exposes `__pyreonNative` to EVERY frame and there
+//   is no per-frame filter without androidx.webkit, so the shim — evaluated in
+//   the main frame only, and only on the allowed origin — closes over a
+//   per-view random token that every message must carry; a cross-origin
+//   sub-frame cannot read it. Each message is also dropped unless the main
+//   frame still shows the allowed origin.
+// - `data` is pushed, and a host-group relay evaluated, only while the main
+//   frame shows the allowed origin.
+// - No file access beyond `file:///android_asset/` (`allowFileAccess`,
+//   `allowFileAccessFromFileURLs`, `allowUniversalAccessFromFileURLs` and
+//   `allowContentAccess` all false), and a bundled `src` with a `..` segment,
+//   a scheme or a backslash is refused.
 //
 // ## Policy posture (Play Store / App Store)
 //
@@ -186,6 +212,15 @@ fun PyreonWebView(
                 @Suppress("SetJavaScriptEnabled")
                 settings.javaScriptEnabled = true
                 settings.domStorageEnabled = domStorage
+                // No file:// reach beyond the bundled assets (file:///android_asset
+                // is exempt from allowFileAccess), and no file page may read
+                // another file or any origin. Explicit, not the API-level default.
+                settings.allowFileAccess = false
+                settings.allowContentAccess = false
+                @Suppress("DEPRECATION")
+                settings.allowFileAccessFromFileURLs = false
+                @Suppress("DEPRECATION")
+                settings.allowUniversalAccessFromFileURLs = false
                 // `target="_blank"` / `window.open` reach onCreateWindow (and are
                 // handed to the system) instead of replacing this page in place.
                 settings.setSupportMultipleWindows(true)
@@ -196,19 +231,50 @@ fun PyreonWebView(
                 // (this JS interface) to the native `onMessage` callback.
                 addJavascriptInterface(PyreonJsBridge(state), "__pyreonNative")
                 webViewClient = object : WebViewClient() {
+                    override fun shouldOverrideUrlLoading(
+                        view: WebView,
+                        request: android.webkit.WebResourceRequest,
+                    ): Boolean {
+                        val url = request.url?.toString()
+                        return when (
+                            pyreonWebViewNavigationDecision(
+                                isMainFrame = request.isForMainFrame,
+                                initialLoadPending = state.initialLoadPending,
+                                url = url,
+                                allowedOrigin = state.allowedOrigin,
+                                userActivated = request.hasGesture(),
+                            )
+                        ) {
+                            PyreonWebViewNavigation.ALLOW -> false
+                            PyreonWebViewNavigation.CANCEL -> true
+                            PyreonWebViewNavigation.OPEN_EXTERNALLY -> {
+                                if (url != null) chrome.openExternally(url)
+                                true
+                            }
+                        }
+                    }
+
                     override fun onPageStarted(
                         view: WebView,
                         url: String?,
                         favicon: android.graphics.Bitmap?,
                     ) {
-                        // Define the unified reverse-bridge API early so
-                        // page scripts can call it.
-                        view.evaluateJavascript(PYREON_REVERSE_BRIDGE_SHIM, null)
+                        // The host's own load (after its redirects) pins the origin.
+                        if (state.initialLoadPending) {
+                            state.initialLoadPending = false
+                            state.allowedOrigin = pyreonWebViewOrigin(url)
+                        }
+                        // Define the unified reverse-bridge API early so page
+                        // scripts can call it — only on the allowed origin.
+                        if (pyreonWebViewMayDeliver(url, state.allowedOrigin)) {
+                            view.evaluateJavascript(state.bridgeShim(), null)
+                        }
                     }
 
                     override fun onPageFinished(view: WebView, url: String?) {
                         state.loaded = true
-                        view.evaluateJavascript(PYREON_REVERSE_BRIDGE_SHIM, null)
+                        if (!pyreonWebViewMayDeliver(view.url, state.allowedOrigin)) return
+                        view.evaluateJavascript(state.bridgeShim(), null)
                         pushPyreonData(view, state.latestData)
                     }
                 }
@@ -221,11 +287,13 @@ fun PyreonWebView(
             state.onMessage = onMessage
             val key = (html ?: "") + "" + (src ?: "")
             if (state.loadedKey != key) {
-                // html/src changed → (re)load; onPageFinished pushes data.
+                // html/src changed → (re)load; onPageFinished pushes data. The
+                // new load decides the origin; until it starts nothing is allowed.
                 state.loadedKey = key
                 state.loaded = false
-                loadPyreonWebView(webView, html, src)
-            } else if (state.loaded) {
+                state.allowedOrigin = null
+                state.initialLoadPending = loadPyreonWebView(webView, html, src)
+            } else if (state.loaded && pyreonWebViewMayDeliver(webView.url, state.allowedOrigin)) {
                 // data-only change → push without reloading.
                 pushPyreonData(webView, data)
             }
@@ -255,6 +323,26 @@ private class PyreonWebViewState {
     var webView: WeakReference<WebView>? = null
     /** The host group this page joined (null = none). */
     var group: String? = null
+    /** The origin the host's own load landed on — the only one that gets the
+     *  data push and the bridge (see "Origin scope" in the file header). */
+    var allowedOrigin: String? = null
+    /** True from the host starting a load until that load's page starts. */
+    var initialLoadPending: Boolean = false
+    /** Per-view secret the main-frame shim passes with every message: the JS
+     *  interface object is visible to every frame, the shim's closure is not. */
+    val bridgeToken: String = java.util.UUID.randomUUID().toString()
+
+    /** Whether the hosted main frame currently shows the allowed origin. */
+    fun mainFrameAllowed(): Boolean {
+        val view = webView?.get() ?: return false
+        return pyreonWebViewMayDeliver(view.url, allowedOrigin)
+    }
+
+    /** The unified `window.pyreonPostMessage(...)` reverse-bridge API (mirror of
+     *  the iOS WKUserScript shim), closing over this view's [bridgeToken]. */
+    fun bridgeShim(): String =
+        "(function(){var n=window.__pyreonNative,t=${JSONObject.quote(bridgeToken)};" +
+            "window.pyreonPostMessage=function(m){n.postMessage(t,String(m));};})();"
 }
 
 /**
@@ -304,6 +392,8 @@ private object PyreonWebViewGroups {
         val js = "if (typeof window.__pyreonWebViewGroupMessage === 'function') window.__pyreonWebViewGroupMessage(${JSONObject.quote(message)});"
         for (member in set) {
             if (member === from) continue
+            // A sibling whose main frame left its origin gets nothing relayed.
+            if (!member.mainFrameAllowed()) continue
             member.webView?.get()?.evaluateJavascript(js, null)
         }
     }
@@ -321,18 +411,20 @@ private class PyreonJsBridge(private val state: PyreonWebViewState) {
     private val mainHandler = Handler(Looper.getMainLooper())
 
     @JavascriptInterface
-    fun postMessage(message: String) {
+    fun postMessage(token: String?, message: String?) {
+        if (message == null) return
+        // A frame without the main-frame shim's token (any sub-frame, whatever
+        // its origin) gets nothing through.
+        if (!pyreonWebViewTokenMatches(state.bridgeToken, token)) return
         mainHandler.post {
+            // ...and only while the main frame shows the allowed origin (read on
+            // the main thread: WebView.getUrl() is main-thread only).
+            if (!state.mainFrameAllowed()) return@post
             // Reserved host-group traffic is consumed and never forwarded.
             if (!PyreonWebViewGroups.handle(message, state)) state.onMessage?.invoke(message)
         }
     }
 }
-
-/** Defines the unified `window.pyreonPostMessage(...)` reverse-bridge API
- *  (mirror of the iOS WKUserScript shim). */
-private const val PYREON_REVERSE_BRIDGE_SHIM =
-    "window.pyreonPostMessage = function(m) { window.__pyreonNative.postMessage(String(m)); };"
 
 /** Push the latest JSON into `window.__pyreonData` + fire `pyreondata`. */
 private fun pushPyreonData(webView: WebView, json: String?) {
@@ -343,13 +435,32 @@ private fun pushPyreonData(webView: WebView, json: String?) {
     )
 }
 
-private fun loadPyreonWebView(webView: WebView, html: String?, src: String?) {
-    when {
-        html != null ->
-            webView.loadDataWithBaseURL("file:///android_asset/", html, "text/html", "UTF-8", null)
-        src != null && (src.startsWith("http://") || src.startsWith("https://")) ->
-            webView.loadUrl(src)
-        src != null ->
-            webView.loadUrl("file:///android_asset/$src")
+private const val PYREON_ASSET_BASE = "file:///android_asset/"
+
+/**
+ * `html` → `loadDataWithBaseURL` (the history URL is the base too, so
+ * `getUrl()` reports the `file://` origin rather than `about:blank`); a remote
+ * `http(s)` `src` → `loadUrl`; any other `src` must be a bundled asset path
+ * that cannot escape the asset directory. Returns whether a load started.
+ */
+private fun loadPyreonWebView(webView: WebView, html: String?, src: String?): Boolean {
+    if (html != null) {
+        webView.loadDataWithBaseURL(PYREON_ASSET_BASE, html, "text/html", "UTF-8", PYREON_ASSET_BASE)
+        return true
     }
+    if (src == null) return false
+    if (pyreonWebViewIsRemoteSrc(src)) {
+        webView.loadUrl(src)
+        return true
+    }
+    val asset = pyreonWebViewAssetPath(src)
+    if (asset == null) {
+        android.util.Log.w(
+            "PyreonWebView",
+            "[Pyreon] <WebView src=\"$src\">: not loaded — src must be an http(s) URL or a bundled asset path without '..' segments.",
+        )
+        return false
+    }
+    webView.loadUrl(PYREON_ASSET_BASE + asset)
+    return true
 }

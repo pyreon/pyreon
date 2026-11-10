@@ -23,7 +23,7 @@
 
 import { existsSync } from 'node:fs'
 import { recordSsgOutcome } from './ssg-outcome'
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, rm, rmdir, writeFile } from 'node:fs/promises'
 import { dirname, join, relative, resolve, sep } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { withSilent } from '@pyreon/reactivity'
@@ -1294,6 +1294,19 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
   // closeBundle must NOT delete it post-build (it's theirs); when only the
   // modulepreload feature enabled it, closeBundle cleans it up (internal).
   let userEnabledManifest = false
+  // True when `config()` turned the manifest on for modulepreload and the
+  // user did not ask for it: then it is an internal artifact this plugin
+  // must remove on EVERY closeBundle path (a hybrid SSR/ISR build with no
+  // static route returned early and left it in `dist/`, from where the
+  // node/bun/deno runners served `/.vite/manifest.json`).
+  let manifestIsInternal = false
+  const dropInternalManifest = async (): Promise<void> => {
+    if (!manifestIsInternal || distDir === '') return
+    await rm(join(distDir, '.vite', 'manifest.json'), { force: true }).catch(() => {})
+    // Remove the then-empty `.vite/` too; a non-empty one (another tool's
+    // files) is left alone — rmdir refuses it.
+    await rmdir(join(distDir, '.vite')).catch(() => {})
+  }
 
   /**
    * One-line notice when an inner-build env flag is set but NO zero
@@ -1330,6 +1343,7 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
       // don't delete it post-build.
       const m = userViteConfig.build?.manifest
       userEnabledManifest = m === true || typeof m === 'string'
+      manifestIsInternal = !userEnabledManifest
       return { build: { manifest: true } }
     },
 
@@ -1380,8 +1394,12 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
       //     scan finds a declared static mode.
       const appMode = config.mode ?? 'ssr'
       const hybrid = appMode === 'ssr' || appMode === 'isr'
-      if (appMode !== 'ssg' && !hybrid) return
+      if (appMode !== 'ssg' && !hybrid) {
+        await dropInternalManifest()
+        return
+      }
       if (hybrid && !(await hybridHasStaticRoutes(join(root, 'src', 'routes'), config))) {
+        await dropInternalManifest()
         return
       }
 
@@ -1940,9 +1958,7 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
       // Clean up the Vite build manifest — it's an internal artifact this
       // plugin enabled (via `config()`) only to drive per-route modulepreload;
       // it should not ship to the host. Skip when the USER enabled it.
-      if (modulePreloadEnabled && !userEnabledManifest) {
-        await rm(join(distDir, '.vite', 'manifest.json'), { force: true }).catch(() => {})
-      }
+      await dropInternalManifest()
 
       // PR F — Sitemap path manifest.
       //
@@ -2348,6 +2364,10 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
         }
       }
       } finally {
+        // Every exit (an early `return`, a throw) removes the internal
+        // manifest; the normal path already did, before the adapter staged
+        // the client dir.
+        await dropInternalManifest()
         // PR-S13: ensure the per-build mkdir cache is cleared even if the
         // render loop above throws. The cache holds resolved-mkdir
         // Promises keyed by absolute path; entries point at directories

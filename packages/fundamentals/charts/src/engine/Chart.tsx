@@ -16,7 +16,7 @@ import { batch, effect, isClient, isServer, signal, untrack } from '@pyreon/reac
 import { getFrameSerializer } from './frame-seam'
 import { canKeyMorph, keyedGeometry, keyedGeoCmds, keyedMorphGeometry, maskForMorph, morphMatches } from './keyed-morph'
 import type { KeyedGeo } from './keyed-morph'
-import { canvasMeasure, canvasSizeAttrs, paint, prepareCanvas } from './canvas-web'
+import { canvasSizeAttrs, paint, prepareCanvas, sharedCanvasMeasure } from './canvas-web'
 import { placeLegend } from './legend'
 import type { LegendPager } from './legend'
 import { renderTitle } from './title'
@@ -1029,7 +1029,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
     const hgt = props.height ?? 200
     const ctx = prepareCanvas(el, w, hgt, theme().background)
     if (ctx === null) return
-    const painted = frameAt(w, hgt, canvasMeasure(ctx, FONT))
+    const painted = frameAt(w, hgt, sharedCanvasMeasure(ctx, FONT))
     paint(ctx, painted, w, hgt, FONT)
     canvasPainted = true
     // The server's first-frame SVG stood in for the canvas until now.
@@ -1460,7 +1460,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
     const ctx = el.getContext('2d')
     if (ctx === null) return null
     const spec = withFrameDomain(buildSpec(readData(), plotW > 0.0 ? plotW : w, hgt - topOffset - bottomOffset))
-    return { spec, layout: layoutChart(spec, canvasMeasure(ctx, FONT)) }
+    return { spec, layout: layoutChart(spec, sharedCanvasMeasure(ctx, FONT)) }
   }
   /** The plot rect at the current size (in PLOT space — right of a side legend, under the chrome) — gestures are plot-relative. */
   const plotNow = (): Rect | null => frameNow()?.layout.plot ?? null

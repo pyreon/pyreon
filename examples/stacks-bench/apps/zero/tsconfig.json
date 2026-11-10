@@ -1,0 +1,5 @@
+{
+  "extends": "@pyreon/tsconfig/example-bun.json",
+  "compilerOptions": { "types": ["bun"], "noEmit": true },
+  "include": ["src", "vite.config.ts"]
+}

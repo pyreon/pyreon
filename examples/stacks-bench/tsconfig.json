@@ -1,0 +1,9 @@
+{
+  "extends": "@pyreon/tsconfig/example-bun.json",
+  "compilerOptions": {
+    "types": ["bun", "node"],
+    "allowImportingTsExtensions": true,
+    "noEmit": true
+  },
+  "include": ["*.ts", "lib", "shared"]
+}

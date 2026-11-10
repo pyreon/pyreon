@@ -124,6 +124,7 @@ Framework packages emit counters via `globalThis.__pyreon_count__?.('name')` wit
 
 Signal ~152 B, signal + effect ~690 B, signal + computed ~688 B (a computed is ≈3.5× a signal — prefer plain signals), `effectScope` ~64 B (node 26, 2026-11). Measure with `bun run measure-memory` under `NODE_ENV=production`.
 
+- **Dead bindings cost nothing.** A `renderEffect` / `_bind` whose first run tracked no dependency returns the shared `_noopDispose` and registers nothing with the scope (nothing can ever re-run it). `_bindProp` on an own data property holding a primitive writes the text once and returns it too, and `bindPolymorphicText` / `_bindText`'s fallback / a textish accessor child drop their wrapper when the binding is dead and no subtree was mounted. Every binding that reads only literal props is one of these. Never key a map or set by disposer identity: all dead bindings share one function. Locked by `dead-binding.test.ts` (reactivity) and `dead-binding-elision.test.tsx` (runtime-dom).
 - V8 gives `[]` a 16-slot backing store on its first `push` (184 B retained for one element, against 56 B for `[x]`). Long-lived per-owner arrays must not keep that slack: owners keep an exact-size copy of their first-run deps (`exactDeps` in `tracking.ts`), and the `onCleanup` collector and `EffectScope._effects` start from `[x]`.
 
 ### Introspection (dev/test, `@pyreon/reactivity`)
