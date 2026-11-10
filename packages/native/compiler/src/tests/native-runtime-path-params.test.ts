@@ -89,6 +89,20 @@ describe('endpoint DSL — a RUNTIME path param lowers through useQuery', () => 
     expect(r.code).toContain('"/api/users/\\(PyreonURL.encodePathParam(id))/posts/7"')
   })
 
+  it('bakes a LITERAL dot-segment param inert, exactly as the web encodes it', () => {
+    // The compile-time encoder is the web's own `encodePathParam`: a `..`
+    // left intact (or as `%2E%2E`) is resolved by the URL parser and the
+    // request reaches the parent route on every platform.
+    const src = app(
+      `const u = useQuery<User>(() => getPost.query({ params: { uid: '..', pid: '.' } }))`,
+      `api.endpoint('GET /users/:uid/posts/:pid')`,
+    ).replace('const getUser =', 'const getPost =')
+    for (const r of [swift(src), kotlin(src)]) {
+      expect(r.warnings).toEqual([])
+      expect(r.code).toContain('/api/users/%252E%252E/posts/%252E')
+    }
+  })
+
   it('appends a literal query string AFTER the interpolated path', () => {
     const src = app(
       `const u = useQuery<User>(() => getUser.query({ params: { id: id() }, query: { full: true } }))`,

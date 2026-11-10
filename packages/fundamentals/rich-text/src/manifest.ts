@@ -77,7 +77,7 @@ editor.chain()?.toggleBold().run()  // run a command
       mistakes: [
         'Forgetting to declare @pyreon/runtime-dom in consumer app deps — <RichText> JSX emits _tpl() which needs runtime-dom',
         'Calling editor.json(newDoc) to write — that reads and ignores the argument. Use editor.json.set(newDoc)',
-        'Reading editor.html() / editor.chain() before mount — the TipTap Editor is created on mount (async, lazy import). html falls back to the initial string; chain() returns null. Use editor.json.set(...) to set content independently of the view',
+        'Reading editor.html() / editor.chain() before mount — the TipTap Editor is created on mount (async, lazy import). html falls back to the initial string (verbatim — it is your own input; sanitize stored HTML before rendering it), or, after a pre-mount json.set / with JSON content, to an engine-free serialization that drops `javascript:` / `data:` link hrefs (the same `isUnsafeUrl` rule the framework applies to every URL attribute); chain() returns null. Use editor.json.set(...) to set content independently of the view',
         'Hand-rolling the applyingExternal flag pair for external sync — use bindRichTextToSignal instead',
         'Forgetting editor.dispose() on unmount — like @pyreon/code, the instance is user-owned (the component does not auto-dispose so it can be re-mounted). A re-mount restores the CURRENT document (edits are preserved), and a dispose() during the pending async mount is safe (no leaked editor)',
         'Relying on a thrown error to debug a broken extension set (e.g. starterKit:false with no schema-providing extension) — mount failures no longer surface as an unhandled rejection; pass onError to observe them, otherwise they log a [Pyreon] message in dev',

@@ -207,6 +207,23 @@ The relay also refuses an awareness (presence) update that names a clientId
 owned by another connection, so a client cannot overwrite a peer's cursor — or
 get the peer's presence purged when it disconnects.
 
+**Cross-site pages are refused.** WebSockets are not subject to CORS, and a
+browser sends your relay domain's cookies with an upgrade that ANY site's page
+opens. So a browser upgrade whose `Origin` is not the relay's own (same host as
+the upgrade's `Host`) is closed with **4403** before `authorize` runs. Clients
+that send no `Origin` (Node, Bun, native apps) are unaffected. If your app is
+served from another origin, or a proxy rewrites `Host`, list it:
+
+```ts
+createSyncServer({
+  allowedOrigins: ['https://app.example.com'], // or (origin) => boolean
+  authorize,
+})
+```
+
+`authorize` receives the checked `origin` too. If it reads cookies, keep that
+list tight — a cookie alone does not prove the page is yours.
+
 > **Omitting `authorize` makes an open relay.** Every connection is accepted, so
 > anyone who can reach the port joins any room and reads and rewrites its
 > document. That default exists for local development only, and
