@@ -50,6 +50,29 @@ Tier-1 drains in subscription order, not topological order, so a queued evaluato
 
 ---
 
+### A queue routing rule that is only valid while a pass runs
+
+The effect drain parks a re-enqueue of an effect that "already ran this pass" in `nextEffects`, which is promoted once at the end of each pass.
+  - If that rule is still in force BETWEEN passes (a tier-1 refresh after the pass re-queues an effect that ran in it), the entry lands after the promotion, the loop sees its live queues empty and exits, and the effect never re-runs: a silent lost update. `runEffectPass` closes its generation (`_b.g++`) on exit, so outside a running pass every enqueue goes to the current queue.
+  - Any new queue or routing flag must answer: who drains an entry added after the loop's last look? Test: `contract/bug-regressions.test.ts` (B1).
+
+---
+
+### Notifying the reader that pulled the change
+
+A read that re-evaluates a changed computed propagates the change to the computed's subscribers. The reader doing the read is one of them, and it is reading the new value right now.
+  - Re-queueing it ran every such effect twice per change (twice at creation, the second time nested inside the first). `computed.ts:pullReader` skips that reader unless it already read the computed earlier in the same run, when its earlier read is stale and the re-run is real. Test: `contract/bug-regressions.test.ts` (B2).
+
+---
+
+### Assigning per-run effect state that a re-entered run already set
+
+An effect that writes a signal it read during its first run re-runs NESTED inside that run. Whatever the inner run stored (inner effects, `onCleanup` callbacks, the returned cleanup) must be appended to, never overwritten by, the enclosing run; overwriting leaked inner effects that not even `scope.stop()` reached.
+  - `onCleanup` callbacks registered before a throw are kept the same way (they used to be dropped).
+  - Test: `contract/bug-regressions.test.ts` (B3).
+
+---
+
 ### Stale closures
 
 `signal.peek()` captured in long-lived closures loses reactivity.

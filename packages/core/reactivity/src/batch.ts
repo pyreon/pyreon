@@ -302,6 +302,14 @@ function runEffectPass(): void {
     }
     clearQueue(next)
   }
+  // The pass is over: close its generation. `_vg === _b.g` means "already ran
+  // in the pass that is RUNNING", and only while one runs may a re-enqueue be
+  // parked in `nextEffects` — that queue was just promoted and is not looked
+  // at again. Without this bump, an effect re-enqueued between passes (a
+  // tier-1 refresh after the pass re-queues an effect that ran in it) landed
+  // in `nextEffects` after the promotion, the drain loop saw both live queues
+  // empty and exited, and the effect never re-ran: a lost update.
+  _b.g++
 }
 
 /**
@@ -600,6 +608,27 @@ export function propagateLazyDirty(
       _b.r = false
     }
   }
+}
+
+/**
+ * Make `runner` read as already queued, so a dispatch running now does not
+ * enqueue it; returns its previous queue state for {@link _restoreRunner}.
+ * Used by a pull that re-evaluates a changed computed, whose reader is
+ * reading the new value right now (computed.ts `pullReader`). Cold path:
+ * zero cost on any dispatch.
+ */
+export function _muteRunner(runner: () => void): number {
+  const q = runner as QueuedEffect
+  const prev = q._eq ?? EQ.Idle
+  // Inside a pass a runner that already ran routes to the next pass (Next);
+  // otherwise to the current one (Cur). Claiming that slot dedups it.
+  q._eq = q._vg === _b.g ? EQ.Next : EQ.Cur
+  return prev
+}
+
+/** Pair of {@link _muteRunner}. */
+export function _restoreRunner(runner: () => void, prev: number): void {
+  ;(runner as QueuedEffect)._eq = prev as EQ
 }
 
 export function enqueuePendingNotification(notify: () => void): void {

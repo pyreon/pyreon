@@ -119,8 +119,8 @@ The contract suite is the definition of `@pyreon/reactivity`'s observable behavi
 
 - One file per group: `effects-and-batch`, `derivation`, `direct-and-subscribers`, `errors`, `ownership-and-cleanup`, `dependencies`, `selector`.
 - `accidental/` pins behaviour that is a property of today's implementation, not a promise (evaluation counts below an unchanged node, eager `{ equals }`, run order within a flush, nested first-run re-entrancy). Each assertion carries the value it becomes under the planned core; update those deliberately, never to make a change pass.
-- `known-bugs.test.ts` holds bugs as `test.fails` with the correct assertion. A fix turns them red: switch them to `test`.
-- `differential-fuzz.test.ts` checks random graphs and operation sequences against a from-scratch reference model. A failing seed prints a shrunk reproduction and a replay command. Knobs: `REACTIVITY_FUZZ_CASES`, `REACTIVITY_FUZZ_STEPS`, `REACTIVITY_FUZZ_SEED`, `REACTIVITY_FUZZ_ASSERT_WASTED=1` (zero wasted evaluations), `REACTIVITY_FUZZ_STRICT=1` (the known-bug metrics are zero). `--reporter=verbose` prints the metric line.
+- `bug-regressions.test.ts` holds the bugs the fuzz found (a lost update between effect passes, an extra run of the reader that pulled a changed computed, an inner effect leaked by a re-entered run). A newly found bug goes there as `test.fails` with the correct assertion until it is fixed.
+- `differential-fuzz.test.ts` checks random graphs and operation sequences against a from-scratch reference model. A failing seed prints a shrunk reproduction and a replay command. Knobs: `REACTIVITY_FUZZ_CASES`, `REACTIVITY_FUZZ_STEPS`, `REACTIVITY_FUZZ_SEED`, `REACTIVITY_FUZZ_ASSERT_WASTED=1` (zero wasted evaluations), `REACTIVITY_FUZZ_STRICT=0` (count the bug metrics instead of asserting them). `--reporter=verbose` prints the metric line.
 - A new guarantee gets a contract test, plus a fuzz operation when the generator does not reach it. Tests that read internals (`_s1`, `_dirty`, `_d1`, …) protect the current storage, not the contract. Do not use them to define behaviour.
 
 ### Batch (`batch.ts`)

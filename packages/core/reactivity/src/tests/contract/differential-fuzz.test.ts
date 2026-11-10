@@ -25,7 +25,7 @@
  *   REACTIVITY_FUZZ_STEPS=<n>   ops per case (default 30)
  *   REACTIVITY_FUZZ_SEED=<n>    run only this seed (replay a failure)
  *   REACTIVITY_FUZZ_ASSERT_WASTED=1  also assert zero wasted evaluations
- *   REACTIVITY_FUZZ_STRICT=1    also assert the known-bug metrics are zero
+ *   REACTIVITY_FUZZ_STRICT=0    count the B1–B3 metrics instead of asserting them
  *
  * WASTED EVALUATIONS are counted, not asserted (stage i): a computed evaluated
  * although it read exactly the same values as its previous evaluation. The
@@ -33,10 +33,10 @@
  * unchanged node and the new core to waste none; stage (ii) turns the knob on
  * by default.
  *
- * KNOWN BUGS found by this fuzz on today's core are counted the same way
+ * BUGS this fuzz found on the core are tracked as metrics
  * (`staleAfterEffectWrite`, `extraEffectRuns`, `leakAfterExtraRun`; each is
- * pinned by a `test.fails` in `known-bugs.test.ts`). Every other check is
- * asserted. Run `vitest --reporter=verbose` to see the metric line.
+ * fixed, with regressions in `bug-regressions.test.ts`) and are asserted zero
+ * unless REACTIVITY_FUZZ_STRICT=0. Run `vitest --reporter=verbose` to see the metric line.
  */
 import {
   batch,
@@ -321,20 +321,20 @@ interface Stats {
   checks: number
   /**
    * Effects left on a stale value after an effect wrote a signal in the same
-   * flush (the effect-pass bug pinned by `known-bugs.test.ts`). Counted, and
-   * asserted only with REACTIVITY_FUZZ_STRICT=1, until it is fixed.
+   * flush (B1, `bug-regressions.test.ts`). Counted, and
+   * asserted zero unless REACTIVITY_FUZZ_STRICT=0.
    */
   staleAfterEffectWrite: number
   /**
    * Effect runs beyond the one a change calls for (the "first read of a stale
-   * computed re-queues the reader" bug pinned by `known-bugs.test.ts`).
-   * Counted, and asserted only with REACTIVITY_FUZZ_STRICT=1.
+   * computed re-queues the reader" bug, B2).
+   * Asserted zero unless REACTIVITY_FUZZ_STRICT=0.
    */
   extraEffectRuns: number
   /**
    * Subscriptions left after `scope.stop()` in a case that had an extra run:
    * a nested duplicate first run of an effect overwrites its inner-effect list
-   * and the first inner effect is never disposed (`known-bugs.test.ts`).
+   * and the first inner effect is never disposed (B3).
    */
   leakAfterExtraRun: number
 }
@@ -1194,7 +1194,10 @@ function runCase(c: Case, stats: Stats, stopAtFirst = false): string[] {
                 fail(
                   `${where()}: directComputed ${rec.id} fired ${fired}× (${writerRuns} writer runs)`,
                 )
-              if ((ch && fired === 0) || (fired > 0 && rec.seen !== post[node])) {
+              if (
+                !rec.disposedInFlush &&
+                ((ch && fired === 0) || (fired > 0 && rec.seen !== post[node]))
+              ) {
                 if (STRICT)
                   fail(
                     `${where()}: directComputed ${rec.id} left on ${rec.seen}, want ${post[node]}`,
@@ -1352,7 +1355,7 @@ const CASES = Number(env('REACTIVITY_FUZZ_CASES') ?? 1500)
 const STEPS = Number(env('REACTIVITY_FUZZ_STEPS') ?? 30)
 const ONLY = env('REACTIVITY_FUZZ_SEED')
 const ASSERT_WASTED = env('REACTIVITY_FUZZ_ASSERT_WASTED') === '1'
-const STRICT = env('REACTIVITY_FUZZ_STRICT') === '1'
+const STRICT = env('REACTIVITY_FUZZ_STRICT') !== '0'
 
 describe('differential fuzz against a from-scratch reference', () => {
   const stats: Stats = {
@@ -1389,6 +1392,27 @@ describe('differential fuzz against a from-scratch reference', () => {
     },
     Math.max(20_000, CASES * STEPS * 0.5),
   ) // long local runs scale the timeout
+
+  // Seeds that expose B1 (53) and B2 (46: an extra run at creation) under the
+  // current generator; B3 needs a first-run self-write the generator does not
+  // make, so `bug-regressions.test.ts` covers it. Always strict.
+  test('regression seeds for B1 and B2 run clean', () => {
+    for (const seed of [46, 53]) {
+      const s: Stats = {
+        evaluations: 0,
+        wasted: 0,
+        checks: 0,
+        staleAfterEffectWrite: 0,
+        extraEffectRuns: 0,
+        leakAfterExtraRun: 0,
+      }
+      expect(runCase(generateCase(seed, 30), s), `seed ${seed}`).toEqual([])
+      expect(
+        [s.staleAfterEffectWrite, s.extraEffectRuns, s.leakAfterExtraRun],
+        `seed ${seed}`,
+      ).toEqual([0, 0, 0])
+    }
+  })
 
   // Stage (i): reported, not asserted. Stage (ii) asserts zero (design §2:
   // "wasted evaluations below an unchanged node" close by construction).

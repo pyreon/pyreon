@@ -2,6 +2,8 @@ import {
   type Stale,
   _markLazyAndPropagate,
   _markRecompute,
+  _muteRunner,
+  _restoreRunner,
   closeInlineBatch,
   enqueueEagerRefresh,
   enqueuePendingNotification,
@@ -158,7 +160,20 @@ function cleanupLocalDeps(deps: SubscriberHost[], fn: () => void): void {
 type LazyNotifyFn = (() => void) & { _c?: { _dirty: Stale; _disposed: boolean } }
 
 function dispatchEagerChange(read: ComputedFn<unknown>): void {
-  if (read._s1 !== null || read._s !== null) propagateLazyDirty(read)
+  if (read._s1 !== null || read._s !== null) {
+    // A change found by a PULL: the subscriber doing the read is about to see
+    // the new value, so it must not be re-queued for it (see `pullReader`).
+    // Dispatch only marks and enqueues (the drain runs later), so muting the
+    // reader around it is enough. `propagateEagerChange` is left untouched on
+    // purpose: it runs on every hop of a chain pull and must stay inlinable.
+    const reader = _t.e === null ? null : pullReader(read)
+    if (reader === null) propagateLazyDirty(read)
+    else {
+      const muted = _muteRunner(reader)
+      propagateLazyDirty(read)
+      _restoreRunner(reader, muted)
+    }
+  }
   if (read._d1) enqueuePendingNotification(read._d1)
   else if (read._d) for (const f of read._d) enqueuePendingNotification(f)
 }
@@ -208,6 +223,31 @@ function propagateEagerChange(read: ComputedFn<unknown>): void {
       closeInlineBatch()
     }
   }
+}
+
+/**
+ * The tracking subscriber whose read of `read` is evaluating it right now —
+ * or null when there is none, or when that subscriber already read `read`
+ * EARLIER in the same run (it then holds the old value and must re-run).
+ *
+ * A pull that re-evaluates a changed computed propagates the change to the
+ * computed's subscribers. The reader that pulled is one of them (it was
+ * subscribed before the evaluation, or still is from its previous run), and
+ * it is reading the new value at this very moment: re-queueing it only
+ * produced a second, identical run (an effect over a computed that changed
+ * while unobserved ran twice per change, and twice at creation — the second
+ * time NESTED inside the first). Called only on a real change after a pull,
+ * so the scan is off the hot path.
+ */
+function pullReader(read: ComputedFn<unknown>): (() => void) | null {
+  const reader = _t.e
+  if (reader === null) return null
+  const deps = _t.d as SubscriberHost[]
+  // This read's own position: verify mode advanced the cursor past it; a
+  // collect-mode (or just-diverged) read appended it.
+  const self = _t.i >= 0 ? _t.i - 1 : deps.length - 1
+  for (let k = 0; k < self; k++) if (deps[k] === (read as unknown as SubscriberHost)) return null
+  return reader
 }
 
 /** A computed as seen by the iterative dep check (signals carry no `_dirty`). */
