@@ -959,16 +959,23 @@ async function streamElementNode(vnode: VNode, enqueue: (s: string) => void): Pr
       // once per streamed element, and the `<select>` frame was the only case
       // that allocated one before.
       const sole = soleAccessorChild(children)
-      if (frame) {
-        await _selectValueAls.run(frame, async () => {
-          if (sole) await streamNode(sole(), enqueue)
-          else for (const child of children) await streamNode(child, enqueue)
-        })
-      } else if (sole) {
-        await streamNode(sole(), enqueue)
-      } else {
-        for (const child of children) await streamNode(child, enqueue)
+      // Namespace scope for the children (see `childForeignFlag`): only
+      // `<svg>`/`<math>`/`<foreignObject>` pay for an ALS frame.
+      const streamChildren = async (): Promise<void> => {
+        if (frame) {
+          await _selectValueAls.run(frame, async () => {
+            if (sole) await streamNode(sole(), enqueue)
+            else for (const child of children) await streamNode(child, enqueue)
+          })
+        } else if (sole) {
+          await streamNode(sole(), enqueue)
+        } else {
+          for (const child of children) await streamNode(child, enqueue)
+        }
       }
+      await (childForeignFlag(tag) === undefined
+        ? streamChildren()
+        : inChildNamespace(tag, streamChildren))
     }
   }
   enqueue(`</${tag}>`)
@@ -1681,7 +1688,13 @@ function renderElement(vnode: VNode): MaybeAsync {
     const renderInner = sole
       ? () => renderNode(sole())
       : () => renderChildList(children, 0, '')
-    const inner = frame ? _selectValueAls.run(frame, renderInner) : renderInner()
+    // Only `<svg>`/`<math>`/`<foreignObject>` enter a namespace scope (see
+    // `childForeignFlag`); every other element pays one Set-free tag compare.
+    const inner = frame
+      ? _selectValueAls.run(frame, renderInner)
+      : childForeignFlag(tag) === undefined
+        ? renderInner()
+        : inChildNamespace(tag, renderInner)
     if (typeof inner !== 'string') {
       const open = html
       return inner.then((s) => `${open}${s}</${tag}>`)
@@ -2857,15 +2870,64 @@ function rawTextChildren(children: readonly VNodeChild[]): {
 }
 
 const SCRIPT_BREAKOUT_RE = /(<\/|<)(s)(cript)/gi
-const STYLE_BREAKOUT_RE = /<\/(style)/gi
+// Every `<` that could OPEN A TAG: `<` followed by a letter or `/`.
+const STYLE_TAG_OPEN_RE = /<(?=[A-Za-z/])/g
 
-function escapeRawText(tag: string, text: string): string {
+// ─── Raw text is only raw in the HTML namespace ──────────────────────────────
+//
+// `<script>` and `<style>` are raw-text elements ONLY when the parser is in
+// HTML content. Inside `<svg>` or `<math>` (foreign content) they are ordinary
+// foreign elements: the tokenizer is back in the data state, so `<img …>` in
+// their text is a TAG — and an HTML breakout tag at that, which pops out of the
+// SVG and lands as a live `<img onerror>` — while character references ARE
+// decoded. The raw-text escape above (which neutralises only the element's own
+// end tag) is therefore an XSS inside SVG/MathML:
+//
+//   h('svg', null, h('style', null, userCss))   // userCss = '<img src=x onerror=…>'
+//   -> <svg><style><img src=x onerror=…></style></svg>   (img parsed, handler live)
+//
+// Two encodings, chosen so the class closes on every path:
+//  - `<style>`: escape every tag-opening `<` as the CSS escape `\3c ` — legal
+//    CSS with the same meaning in strings/url(), and inert markup in BOTH
+//    namespaces, so it needs no knowledge of where the element sits. That
+//    matters because a compiled `_ssr` template bakes `<svg>` as static text
+//    and renders a child hole through `renderNode` with no tree around it.
+//    `<!--` (a CSS CDO token, and only a comment opener in foreign content) is
+//    left alone.
+//  - `<script>`: JavaScript has no context-free escape for `<` in CODE position
+//    (`i<n`), so the renderer tracks the namespace (`_foreignAls`, set by
+//    `<svg>`/`<math>`, cleared by `<foreignObject>`) and, in foreign content,
+//    uses `escapeHtml` — exact there, because the parser decodes the entities
+//    back to the original source.
+function escapeRawText(tag: string, text: string, foreign: boolean): string {
   if (tag === 'script') {
+    if (foreign) return escapeHtml(text)
     return text.replace(SCRIPT_BREAKOUT_RE, (_m, prefix: string, s: string, rest: string) =>
       `${prefix}${s === 's' ? '\\u0073' : '\\u0053'}${rest}`,
     )
   }
-  return text.replace(STYLE_BREAKOUT_RE, '<\\/$1')
+  return text.replace(STYLE_TAG_OPEN_RE, '\\3c ')
+}
+
+/**
+ * The namespace flag an element sets for its CHILDREN: `true` for `<svg>` and
+ * `<math>` (foreign content), `false` for `<foreignObject>` (back to HTML),
+ * `undefined` to inherit. Other HTML integration points (`<desc>`, `<mtext>`,
+ * …) inherit `true`, which only over-escapes a script there — never unsafe.
+ */
+function childForeignFlag(tag: string): boolean | undefined {
+  if (tag === 'svg' || tag === 'math') return true
+  if (tag === 'foreignObject') return false
+  return undefined
+}
+
+const _foreignAls = new AsyncLocalStorage<boolean>()
+
+/** Run `fn` (an element's children render) under the element's namespace. */
+function inChildNamespace<T>(tag: string, fn: () => T): T {
+  const flag = childForeignFlag(tag)
+  if (flag === undefined || flag === (_foreignAls.getStore() ?? false)) return fn()
+  return _foreignAls.run(flag, fn)
 }
 
 /**
@@ -2879,7 +2941,9 @@ function rawTextContent(
 ): { html: string } | { fallback: readonly VNodeChild[] } | null {
   if (tag !== 'script' && tag !== 'style') return null
   const r = rawTextChildren(children)
-  return r.ok ? { html: escapeRawText(tag, r.text) } : { fallback: r.resolved }
+  return r.ok
+    ? { html: escapeRawText(tag, r.text, _foreignAls.getStore() === true) }
+    : { fallback: r.resolved }
 }
 
 function textareaValue(tag: string, props: Record<string, unknown> | null): string | null {
