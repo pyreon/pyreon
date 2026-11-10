@@ -21,11 +21,8 @@ import {
   SuspenseBoundaryContext,
   useContext,
 } from '@pyreon/core'
+import { _captureRun, _frameReads, _releaseRun, type RunCapture } from '@pyreon/reactivity'
 import {
-  _captureRun,
-  _frameReads,
-  _releaseRun,
-  type RunCapture,
   effectScope,
   getContextOwner,
   renderEffect,
