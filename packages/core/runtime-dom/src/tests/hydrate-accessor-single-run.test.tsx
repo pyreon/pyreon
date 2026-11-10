@@ -17,7 +17,7 @@ import {
   _applyProps, _bindDirect, _bindProp, _bindText, _mountChild, _mountSlot, _setAttr, _setChild, _setChildAt,
   _setClass, _setStyle, _textSlot, _tpl, hydrateRoot,
 } from '../index'
-import { disableHydrationWarnings } from '../hydration-debug'
+import { disableHydrationWarnings, enableHydrationWarnings } from '../hydration-debug'
 import { bindPolymorphicText } from '../mount'
 
 const DEPS: Record<string, unknown> = {
@@ -54,9 +54,9 @@ async function ssrThenHydrate(source: string, S: Record<string, unknown> & { cal
   host.innerHTML = html
   document.body.appendChild(host)
   S.calls = 0
-  const restore = disableHydrationWarnings()
+  disableHydrationWarnings()
   const dispose = hydrateRoot(host, h(build(source, { S }, false) as never, null))
-  restore?.()
+  enableHydrationWarnings()
   return { host, dispose, hydrateCalls: S.calls as number }
 }
 
@@ -132,9 +132,9 @@ describe('hydration evaluates a reactive accessor ONCE', () => {
     host.innerHTML = html
     document.body.appendChild(host)
     calls = 0
-    const restore = disableHydrationWarnings()
+    disableHydrationWarnings()
     const dispose = hydrateRoot(host, h(view, null))
-    restore?.()
+    enableHydrationWarnings()
     expect(calls).toBe(1)
     const text = [...host.querySelector('p')!.childNodes].find((c) => c.nodeType === 3 && c.textContent === '1')
     expect(text).toBeDefined()
