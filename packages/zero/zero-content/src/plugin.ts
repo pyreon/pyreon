@@ -674,6 +674,11 @@ export default function content(options: ContentPluginOptions = {}): Plugin {
   // buildStart so dev → build doesn't carry stale dev-mode entries.
   const searchEntries: Map<string, Map<string, CollectionEntryForIndex>> =
     new Map()
+  // Whether this run's OUTER client build wrote the index and SEO outputs.
+  // An islands-only static site compiles no Markdown in its client build
+  // (no page module runs in the browser), so only @pyreon/zero's inner SSG
+  // build sees the entries; then the inner build writes them instead.
+  let clientBuildEmitted = false
   // Frontmatter + raw source per collection entry, keyed like
   // `searchEntries`. Read at closeBundle for publish filtering and RSS
   // bodies. Cleared per build alongside `searchEntries`.
@@ -968,6 +973,7 @@ Until this file exists, getCollection() / getEntry() will throw "No content coll
       searchEntries.clear()
       entryMeta.clear()
       publishNow = resolvePublishNow()
+      if (process.env.PYREON_ZERO_SSG_INNER_BUILD !== '1') clientBuildEmitted = false
       // Build mode (not dev) needs an ssrLoadModule fallback too. We
       // use Rollup's resolution by importing the file directly via
       // `import()`. This works when the consumer's bundler can resolve
@@ -1315,22 +1321,26 @@ export {}
       // for `vite dev`). SSR sub-builds skip via `command !== 'build'`
       // check at the transform-collection step.
       if (!loadedConfig || resolvedConfig?.command !== 'build') return
-      // Skip @pyreon/zero's INNER SSG server build. That build is also
-      // `command: 'build'`, so it slips past the gate above — but it (a) only
-      // produces the synthetic SSR server bundle in `dist/.zero-ssg-server/`
-      // (the outer client build already wrote the search index to `dist/`),
-      // and (b) sets `build.outDir` to an ABSOLUTE path, which previously
-      // doubled into `<root>/<root>/dist/.zero-ssg-server/…` via path.join.
-      // The outer build owns the index; the inner build must not re-emit it.
-      if (process.env.PYREON_ZERO_SSG_INNER_BUILD === '1') return
+      // @pyreon/zero's INNER SSG server build is also `command: 'build'`, so
+      // it slips past the gate above. Its `build.outDir` is the ABSOLUTE
+      // `dist/.zero-ssg-server/` (which previously doubled into
+      // `<root>/<root>/dist/…` via path.join). The outer client build owns
+      // the index: the inner build writes it only when the client build had
+      // no entries — a static site whose client build compiles no Markdown
+      // (islands only) — and then into the inner build's parent, `dist/`.
+      const innerBuild = process.env.PYREON_ZERO_SSG_INNER_BUILD === '1'
+      if (innerBuild && clientBuildEmitted) return
       if (searchEntries.size === 0) return
       // `path.resolve` (not `path.join`) so an absolute `build.outDir` resets
       // the base instead of concatenating onto `root` (join would produce a
       // doubled `<root>/<absolute-outDir>` path).
-      const outDir = path.resolve(
+      const buildOutDir = path.resolve(
         resolvedConfig.root,
         resolvedConfig.build.outDir,
       )
+      if (innerBuild && path.basename(buildOutDir) !== '.zero-ssg-server') return
+      const outDir = innerBuild ? path.dirname(buildOutDir) : buildOutDir
+      if (!innerBuild) clientBuildEmitted = true
       // Walk each collection's accumulated entries, sorted by slug for
       // deterministic output (same slug order across builds keeps git
       // diffs minimal if the artifact ever gets committed).
