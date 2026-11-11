@@ -50,12 +50,13 @@ describe('buildNodes', () => {
 })
 
 describe('createModel', () => {
-  it('filters by kind and query together', () => {
+  it('the query filters the list, which keeps sidebar order', () => {
     const m = createModel(report)
-    m.kind.set('external')
     m.query.set('left')
     expect(m.shown().map((n) => n.id)).toEqual(['left-pad'])
-    m.kind.set('internal')
+    m.query.set('fix/')
+    expect(m.shown().every((n) => n.kind === 'internal')).toBe(true)
+    m.query.set('nothing-is-called-this')
     expect(m.shown()).toHaveLength(0)
   })
 

@@ -19,8 +19,10 @@ import type { ModelInit } from './model'
 export const THEME_KEY = 'pyreon-theme'
 /** Loom's own key before it joined the shared one — still read as a fallback. */
 export const LEGACY_THEME_KEY = 'loom:theme'
-/** The layout breakpoint below which the sidebar + detail panel become drawers. */
+/** Below this the detail panel becomes a drawer (closed by default). */
 export const MOBILE_QUERY = '(max-width: 760px)'
+/** Below this the package list becomes a drawer — the design's 860 px step. */
+export const NAV_QUERY = '(max-width: 860px)'
 
 interface StorageLike {
   getItem(key: string): string | null
@@ -99,12 +101,11 @@ export interface PrefsEnv {
 
 /** Resolve the starting state from an environment — pure. */
 export function prefsFrom(env: PrefsEnv): ModelInit {
-  const mobile = env.matches(MOBILE_QUERY)
   const sel = selFromHash(env.hash)
   return {
     dark: resolveDark(storedTheme(env.storage), env.matches('(prefers-color-scheme: light)')),
-    navOpen: !mobile,
-    panelOpen: !mobile,
+    navOpen: !env.matches(NAV_QUERY),
+    panelOpen: !env.matches(MOBILE_QUERY),
     ...(sel ? { selId: sel } : {}),
   }
 }
