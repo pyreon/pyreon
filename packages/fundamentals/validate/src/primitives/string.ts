@@ -79,9 +79,11 @@ function isEmailStandard(v: string): boolean {
   for (; i < len; i++) {
     c = v.charCodeAt(i)
     if (c === 64 /* @ */) break
-    if (c === 46 /* . */) {
-      if (prev === 0 || prev === 46) return false // leading or consecutive dot
-    } else if (!((EMAIL_CT[c]! & 1) as number)) return false
+    // One table load decides every ordinary local char; only a char outside
+    // the local set (the dot, or a reject) takes the second branch.
+    if (!((EMAIL_CT[c]! & 1) as number)) {
+      if (c !== 46 /* . */ || prev === 0 || prev === 46) return false // bad char, leading or consecutive dot
+    }
     prev = c
   }
   // Non-empty local, an `@` present, last local char in the END set.
@@ -89,21 +91,26 @@ function isEmailStandard(v: string): boolean {
   i++ // skip @
   let segStart = i
   let lastDot = -1
+  // AND of the current label's char flags: bit 4 survives iff every char of
+  // the label is alpha, so the TLD verdict needs no second pass.
+  let seg = 4
   for (; i < len; i++) {
     c = v.charCodeAt(i)
     if (c === 46 /* . */) {
       if (i === segStart) return false // empty label
-      if (!((EMAIL_CT[v.charCodeAt(segStart)]! & 8) as number)) return false // label starts alnum
       lastDot = i
       segStart = i + 1
-    } else if (!((EMAIL_CT[c]! & 16) as number)) return false // label char: alnum | -
+      seg = 4
+    } else {
+      const f = EMAIL_CT[c]! as number
+      if (!(f & 16)) return false // label char: alnum | -
+      if (i === segStart && !(f & 8)) return false // label starts alnum
+      seg &= f
+    }
   }
   if (lastDot === -1) return false // at least one dot in the domain
   if (len - segStart < 2) return false // TLD >= 2 chars
-  for (let k = segStart; k < len; k++) {
-    if (!((EMAIL_CT[v.charCodeAt(k)]! & 4) as number)) return false // TLD alpha-only
-  }
-  return true
+  return (seg & 4) !== 0 // TLD alpha-only
 }
 
 /**
@@ -488,7 +495,9 @@ export class StringSchema extends SchemaBase<string> {
     return this._format(
       'check:string:email',
       'email',
-      (v: string): boolean => validateEmail(v, precision),
+      // 'standard' (the default) hands the scanner itself to the resolver —
+      // one call level fewer on every valid parse than the precision switch.
+      precision === 'standard' ? isEmailStandard : (v: string): boolean => validateEmail(v, precision),
       'invalid_format',
       'Invalid email',
       'validate.string.email',

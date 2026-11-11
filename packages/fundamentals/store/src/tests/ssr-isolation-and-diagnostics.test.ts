@@ -17,7 +17,7 @@
 import { AsyncLocalStorage } from 'node:async_hooks'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import { signal } from '@pyreon/reactivity'
-import { defineStore, resetAllStores, setStoreRegistryProvider } from '../index'
+import { defineStore, resetAllStores, setStoreRegistryProvider, defineSchemaStore } from '../index'
 
 const defaultProvider = new Map<string, unknown>()
 
@@ -70,7 +70,7 @@ describe('concurrent SSR isolation (AsyncLocalStorage provider)', () => {
     const als = new AsyncLocalStorage<Map<string, unknown>>()
     setStoreRegistryProvider(() => als.getStore() ?? new Map())
 
-    const useUser = defineStore('ssr-user', {
+    const useUser = defineSchemaStore('ssr-user', {
       schema: {
         '~standard': {
           version: 1 as const,

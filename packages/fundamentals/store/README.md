@@ -14,7 +14,7 @@ bun add @pyreon/store @pyreon/reactivity
 
 ```ts
 // @check
-import { defineStore, signal, computed } from '@pyreon/store'
+import { defineStore, signal, computed, defineSchemaStore } from '@pyreon/store'
 
 const useCounter = defineStore('counter', () => {
   const count = signal(0)
@@ -105,13 +105,13 @@ subscribe((m) => {
 
 ## Schema-driven stores
 
-Pass a `{ schema, initial, setup? }` config instead of a setup function to derive per-field signals AND their types from a validation schema (zod / valibot / arktype / any Standard Schema-compliant lib, or a `@pyreon/validation` adapter). Every `set` / `patch` / `deepPatch` / `update` validates through the schema, and field types are inferred end-to-end — no manual annotations, no casts.
+Use `defineSchemaStore(id, { schema, initial, setup? })` to derive per-field signals AND their types from a validation schema (zod / valibot / arktype / any Standard Schema-compliant lib, or a `@pyreon/validation` adapter). Every `set` / `patch` / `deepPatch` / `update` validates through the schema, and field types are inferred end-to-end — no manual annotations, no casts.
 
 ```ts
-import { defineStore, computed } from '@pyreon/store'
+import { defineStore, computed, defineSchemaStore } from '@pyreon/store'
 import { z } from 'zod'
 
-const useUser = defineStore('user', {
+const useUser = defineSchemaStore('user', {
   schema: z.object({ name: z.string().min(1), age: z.number().int() }),
   initial: { name: 'Alice', age: 30 },
   setup: ({ state }) => ({
@@ -128,7 +128,7 @@ u.update('age', n => n + 1)       // n: number — typed from the schema, no cas
 u.store.age.set(-1)               // direct signal write — bypasses validation (escape hatch)
 ```
 
-The hook returns a `SchemaStoreApi<TRaw, TStore>`: `state` / `set` / `patch` / `deepPatch` / `update` are all schema-typed, so a wrong-typed value, an unknown field, or an `update` on a non-field key fails typecheck. Standard Schema-compliant schemas (zod 3.24+, valibot 1.0+, arktype 2.0+) are auto-detected — pass them raw; other libraries wrap in a small `TypedSchemaAdapter`. Invalid `initial` throws at `defineStore`-time, and async validators are rejected. See the [guide](https://pyreon.dev/docs/store#schema-driven-stores) for `deepPatch`, `onValidationError`, and per-library adapter details.
+The hook returns a `SchemaStoreApi<TRaw, TStore>`: `state` / `set` / `patch` / `deepPatch` / `update` are all schema-typed, so a wrong-typed value, an unknown field, or an `update` on a non-field key fails typecheck. Standard Schema-compliant schemas (zod 3.24+, valibot 1.0+, arktype 2.0+) are auto-detected — pass them raw; other libraries wrap in a small `TypedSchemaAdapter`. Invalid `initial` throws at `defineSchemaStore`-time, and async validators are rejected. See the [guide](https://pyreon.dev/docs/store#schema-driven-stores) for `deepPatch`, `onValidationError`, and per-library adapter details.
 
 ## Plugins
 
@@ -156,7 +156,7 @@ There is no "persist middleware" — none is needed. `@pyreon/storage`'s `useSto
 ```ts
 import { computed, signal } from '@pyreon/reactivity'
 import { useStorage } from '@pyreon/storage'
-import { defineStore } from '@pyreon/store'
+import { defineStore, defineSchemaStore } from '@pyreon/store'
 
 const useCart = defineStore('cart', () => {
   const lines = useStorage<CartLine[]>('cart.lines', [])   // persisted (localStorage)
@@ -168,7 +168,7 @@ const useCart = defineStore('cart', () => {
 })
 ```
 
-(Shipped shape — `examples/app-showcase`'s shop cart + todos stores use exactly this.) Two caveats: `reset()` restores the value read from storage at store-creation time (the setup-time snapshot), not your declared default — call `lines.remove()` to clear the persisted value itself. And if the persisted SHAPE evolves across releases, validate/migrate on read (wrap the raw value in setup, or use a schema-mode store and normalize in an action) — there is no built-in `version`/`migrate` option.
+(Shipped shape — `examples/app-showcase`'s shop cart + todos stores use exactly this.) Two caveats: `reset()` restores the value read from storage at store-creation time (the setup-time snapshot), not your declared default — call `lines.remove()` to clear the persisted value itself. And if the persisted SHAPE evolves across releases, validate/migrate on read (wrap the raw value in setup, or use a `defineSchemaStore` store and normalize in an action) — there is no built-in `version`/`migrate` option.
 
 ## Store families — parameterized stores
 
@@ -234,7 +234,7 @@ never reach the HTML — a session, an auth token — opts out:
 
 ```ts
 const useSession = defineStore('session', () => ({ token: signal('') }), { ssr: false })
-// schema stores: defineStore('secrets', { schema, initial, ssr: false })
+// schema stores: defineSchemaStore('secrets', { schema, initial, ssr: false })
 ```
 
 It is never serialized, and on the client it ignores any server snapshot.

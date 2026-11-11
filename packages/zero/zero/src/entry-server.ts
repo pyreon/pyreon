@@ -8,9 +8,12 @@ import { createActionRerenderMiddleware } from './form-actions-server'
 import type { ApiRouteEntry } from './api-routes'
 import { createApp } from './app'
 import { createISRHandler } from './isr'
+import type { PipelineGate } from './isr-gate'
+import { createPipelineGate } from './isr-gate'
 import { createRequestPipeline, matchPattern, trimTrailingSlashes } from './pipeline'
 import { collectRouteModes, resolveRenderModeForPath } from './route-modes'
 import { withRouteOgMeta } from './og-route'
+import type { ServerIslandSignatureOptions } from './server-island-token'
 import { render404Page } from './not-found'
 import type { RenderMode, RouteMiddlewareEntry, ZeroConfig } from './types'
 
@@ -71,6 +74,16 @@ export interface CreateServerOptions {
    * mounting the middleware manually elsewhere in the chain).
    */
   actions?: CreateActionMiddlewareOptions | false
+  /**
+   * Server-island fragment signing. Every marker the server renders is signed
+   * (name + page + props + expiry); the fragment endpoint refuses anything
+   * else and runs the declaring page's route middleware. `secret` defaults to
+   * the `PYREON_ISLAND_SECRET` environment variable, then to a random
+   * per-process secret — set one when more than one instance serves the app,
+   * or when prerendered pages contain server islands. `maxAge` (seconds,
+   * default one day) bounds SSR / ISR signatures.
+   */
+  serverIslands?: ServerIslandSignatureOptions
 }
 
 /**
@@ -161,10 +174,15 @@ export function createServer(options: CreateServerOptions): (req: Request) => Pr
     ...(options.routeMiddleware ? { routeMiddleware: options.routeMiddleware } : {}),
     ...(options.apiRoutes ? { apiRoutes: options.apiRoutes } : {}),
     ...(options.actions !== undefined ? { actions: options.actions } : {}),
+    ...(options.serverIslands ? { serverIslands: options.serverIslands } : {}),
     // No-JS form posts re-render their page through a handler that does
     // NOT run this pipeline again (assigned below).
     renderActionPage: (req) => renderForAction!(req),
   })
+  // The page handlers' only middleware: it runs `allMiddleware`, except for a
+  // request whose middleware already ran in front of the ISR cache (see
+  // `isr-gate.ts`) — a cache must never sit in front of the gates.
+  const gate = createPipelineGate(allMiddleware)
 
   const { App } = createApp({
     routes: options.routes,
@@ -213,7 +231,7 @@ export function createServer(options: CreateServerOptions): (req: Request) => Pr
   const baseHandler = createHandler({
     App,
     routes: options.routes,
-    middleware: allMiddleware,
+    middleware: [gate.pageMiddleware],
     // `ssr.mode` decides. A zero build always sets it (resolveConfig
     // defaults it to 'string'; `ssr: { mode: 'stream' }` opts into the
     // streamed shell + out-of-order Suspense). The `mode: 'ssr'` fallback
@@ -269,13 +287,14 @@ export function createServer(options: CreateServerOptions): (req: Request) => Pr
         createHandler({
           App,
           routes: options.routes,
-          middleware: allMiddleware,
+          middleware: [gate.pageMiddleware],
           mode: 'string',
           ...(resolvedTemplate ? { template: resolvedTemplate } : {}),
           ...(resolvedClientEntry !== undefined ? { clientEntry: resolvedClientEntry } : {}),
           ...(config.base && config.base !== '/' ? { base: config.base } : {}),
         }),
       isEndpoint,
+      gate,
     ),
     options.routes,
     config.routeOg,
@@ -337,7 +356,7 @@ export function createServer(options: CreateServerOptions): (req: Request) => Pr
 export const PIPELINE_OPTIONS: unique symbol = Symbol.for('pyreon.zero.pipelineOptions') as never
 
 export type PipelineTaggedHandler = ((req: Request) => Promise<Response>) & {
-  [PIPELINE_OPTIONS]?: Pick<CreateServerOptions, 'middleware' | 'actions'>
+  [PIPELINE_OPTIONS]?: Pick<CreateServerOptions, 'middleware' | 'actions' | 'serverIslands'>
 }
 
 function withPipelineOptions(
@@ -348,6 +367,7 @@ function withPipelineOptions(
   tagged[PIPELINE_OPTIONS] = {
     ...(options.middleware ? { middleware: options.middleware } : {}),
     ...(options.actions !== undefined ? { actions: options.actions } : {}),
+    ...(options.serverIslands ? { serverIslands: options.serverIslands } : {}),
   }
   return tagged
 }
@@ -403,10 +423,11 @@ export function wirePerRouteModes(
   builtTemplate: string | undefined,
   makeBufferedHandler?: () => RequestHandler,
   isEndpoint?: (pathname: string) => boolean,
+  gate?: PipelineGate,
 ): RequestHandler {
   const entries = collectRouteModes(routes, appMode, config.routeRules)
   const divergent = entries.some((e) => e.declared && e.mode !== appMode)
-  if (!divergent) return wireRenderMode(appMode, baseHandler, config, isEndpoint)
+  if (!divergent) return wireRenderMode(appMode, baseHandler, config, isEndpoint, gate)
 
   const needsIsr = appMode === 'isr' || entries.some((e) => e.declared && e.mode === 'isr')
   // The cached handler must produce BUFFERED responses (the SWR cache
@@ -415,8 +436,12 @@ export function wirePerRouteModes(
   // factory the caller supplies. No factory (tests, custom embeddings) →
   // fall back to the base handler (correct for string-mode bases).
   const isrBase = appMode === 'isr' ? baseHandler : (makeBufferedHandler?.() ?? baseHandler)
-  const isrHandler = needsIsr ? createISRHandler(isrBase, config.isr ?? { revalidate: 60 }) : null
-
+  // The middleware chain runs in FRONT of the cache (a HIT must pass the same
+  // gates as a render); without a gate (tests, custom embeddings) the cache
+  // wraps a handler that runs its own middleware, as before.
+  const isrHandler = needsIsr
+    ? gateCache(createISRHandler(isrBase, config.isr ?? { revalidate: 60 }), gate)
+    : null
   // CSR shell for 'spa' routes: the built template with the injection
   // placeholders blanked. `startClient` sees no SSR content and takes the
   // mount + run-loaders cold-start path (the documented SPA contract).
@@ -426,6 +451,17 @@ export function wirePerRouteModes(
         .replace('<!--pyreon-app-->', '')
         .replace('<!--pyreon-scripts-->', '')
     : undefined
+
+  const spaShellResponse = (): Response =>
+    new Response(spaShell, {
+      status: 200,
+      headers: { 'Content-Type': 'text/html; charset=utf-8' },
+    })
+  // The CSR shell is a response too: the app and route middleware (redirects,
+  // security headers) run before it is served.
+  const serveSpaShell: RequestHandler = gate
+    ? gate.wrapCache(async () => spaShellResponse())
+    : async () => spaShellResponse()
 
   const basePrefix = config.base && config.base !== '/' ? trimTrailingSlashes(config.base) : ''
   return async (req: Request) => {
@@ -441,12 +477,7 @@ export function wirePerRouteModes(
         routePath = routePath.slice(basePrefix.length)
     }
     const mode = resolveRenderModeForPath(routes, routePath, appMode, config.routeRules)
-    if (mode === 'spa' && spaShell !== undefined && req.method === 'GET') {
-      return new Response(spaShell, {
-        status: 200,
-        headers: { 'Content-Type': 'text/html; charset=utf-8' },
-      })
-    }
+    if (mode === 'spa' && spaShell !== undefined && req.method === 'GET') return serveSpaShell(req)
     if (mode === 'isr' && isrHandler) return isrHandler(req)
     return baseHandler(req)
   }
@@ -457,6 +488,7 @@ export function wireRenderMode(
   baseHandler: RequestHandler,
   config: ZeroConfig,
   isEndpoint?: (pathname: string) => boolean,
+  gate?: PipelineGate,
 ): RequestHandler {
   switch (mode) {
     case 'isr': {
@@ -464,7 +496,7 @@ export function wireRenderMode(
       // didn't provide config.isr — beats silently falling back to
       // SSR (which is what the pre-PR-S5 code did).
       const isrConfig = config.isr ?? { revalidate: 60 }
-      const isr = createISRHandler(baseHandler, isrConfig)
+      const isr = gateCache(createISRHandler(baseHandler, isrConfig), gate)
       if (!isEndpoint) return isr
       return (req) => (isEndpoint(new URL(req.url).pathname) ? baseHandler(req) : isr(req))
     }
@@ -481,6 +513,11 @@ export function wireRenderMode(
       return baseHandler
     }
   }
+}
+
+/** The cache behind the middleware chain when a gate is supplied (`isr-gate.ts`). */
+function gateCache(cached: RequestHandler, gate: PipelineGate | undefined): RequestHandler {
+  return gate ? gate.wrapCache(cached) : cached
 }
 
 /** Walk the route tree looking for any record with a `notFoundComponent`. */

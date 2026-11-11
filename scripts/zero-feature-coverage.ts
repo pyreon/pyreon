@@ -171,6 +171,11 @@ export const ZERO_FEATURE_COVERAGE: Record<string, Coverage> = {
     spec: 'e2e/ssr-node.spec.ts',
     evidence: 'with JavaScript: submits via fetch, no navigation, loaders revalidate',
   },
+  'Validating the input — `defineAction(schema, handler)`': {
+    kind: 'e2e',
+    spec: 'e2e/ssr-node.spec.ts',
+    evidence: 'an invalid form answers 422 with per-field messages; a valid one reaches the handler',
+  },
   'Calling an action directly': {
     kind: 'e2e',
     spec: 'e2e/production-truth.shared.ts',

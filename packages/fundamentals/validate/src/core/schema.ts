@@ -21,8 +21,8 @@
 import type { FieldMeta, StandardSchemaIssue, StandardSchemaV1 } from '../types'
 import { META_SLOT } from '../types'
 import { type PyreonIssue, ValidationError, snapshotPath } from './issue'
-import type { JitValidator } from './jit'
-import { tryCompileJit, tryCompileJitCheck } from './jit-hook'
+import type { JitFastValidator, JitValidator } from './jit'
+import { JIT_FAIL, tryCompileJit, tryCompileJitCheck, tryCompileJitFast } from './jit-hook'
 import type { CatchOp, CheckOpts, Op, ParseCtx, PendingCheck } from './ops'
 import { EMPTY_PATH, makeCtx } from './ops'
 import { getServerCheck } from './registry'
@@ -186,10 +186,18 @@ export abstract class Schema<T> {
   private _ownParse?: ((input: unknown) => Result<T>) | undefined
 
   /**
+   * The own-property `is` installed when the verdict JIT served this schema —
+   * the verdict function itself (see `_getCompiled`). Remembered for the same
+   * reason as {@link _ownParse}.
+   */
+  private _ownIs?: ((input: unknown) => boolean) | undefined
+
+  /**
    * Build-attached specialized VERDICT function (`@pyreon/compiler`'s
-   * `emitValidator` via `@pyreon/vite-plugin`). When present, {@link is} uses it
-   * directly — a monomorphic, fully-inlined boolean check with no op-array
-   * traversal. Only EMITTABLE schemas (primitives + checks + object/array +
+   * `emitValidator` via `@pyreon/vite-plugin`). {@link is} uses it when the
+   * runtime verdict JIT did not serve the schema — the JIT is off (CSP) or
+   * refused the shape — where it is the eval-free compiled path. With the JIT
+   * on, the runtime verdict wins: it is the faster of the two. Only EMITTABLE schemas (primitives + checks + object/array +
    * optional, no transform/default/coercion) get one, and the cross-runtime
    * equivalence gate proves its verdict matches the interpreter's. Cleared by
    * `_invalidateCompile` so a post-attach chain can never use a stale verdict.
@@ -302,14 +310,13 @@ export abstract class Schema<T> {
     // MEASURED SEAM COST: 1.27ns/op (12.51 via this method vs 11.24 calling the
     // compiled function directly, 8-field strict shape, 500k iterations).
     //
-    // It can be removed by caching the compiled function as an OWN `is`
-    // property, so `schema.is` IS the compiled function. Deliberately not done:
-    // the compiled verdict must be invalidated whenever the schema tree changes
-    // (chained methods are copy-on-write now, but `_ops` is still reachable for
-    // direct internal mutation), and an own-property cache makes
-    // stale-after-mutation the failure mode — `.is()` disagreeing with
-    // `.parse().ok`, which shipped once already and is locked by
-    // `jit-check-differential`. 1.27ns is not worth re-opening that class.
+    // Removed for every schema the verdict JIT serves: `_getCompiled` installs
+    // the verdict function as the instance's OWN `is` in the same pass that
+    // builds `_compiled` / `_jitCheck`, and `_invalidateCompile` deletes it with
+    // them — so it is exactly as fresh as `_jitCheck` was when this method read
+    // it (the `is(x) === parse(x).ok` snapshot contract, locked by
+    // `jit-check-differential`, is unchanged). This prototype body now runs only
+    // for the FIRST call (it compiles) and for shapes the verdict JIT refuses.
     //
     // For scale: it is ~1/3 of the gap to typia on this shape. The other ~2/3
     // is the generated code itself, even though both emit the same
@@ -328,7 +335,6 @@ export abstract class Schema<T> {
     // So on the ASSERT cells typia is genuinely faster at near-identical work.
     // The parse cells are a different story — there it returns the input by
     // reference where `parseOrThrow` builds a stripped clone.
-    if (this._compiledVerdict) return this._compiledVerdict(input)
     // Verdict-only JIT: no ctx, no issue objects, no output value — the
     // whole reason `.is()` exists. Falls through to the seams below for any
     // shape the verdict emitter refuses.
@@ -344,6 +350,12 @@ export abstract class Schema<T> {
       check = this._jitCheck
     }
     if (check !== undefined && check !== null) return check(input)
+    // A build-attached verdict (`compileValidators`) is consulted only when
+    // the runtime verdict JIT did NOT serve this schema — i.e. the JIT is off
+    // (`configure({ jit: false })`, a CSP without 'unsafe-eval') or refused
+    // the shape. There it is the eval-free compiled path; with the JIT on it
+    // used to WIN precedence and measured ~2× slower than the runtime verdict.
+    if (this._compiledVerdict) return this._compiledVerdict(input)
     // Pure-JIT fast seam (see {@link _pureCtx}): the verdict is just "did the
     // reused ctx accumulate issues?" — no Result object at all. The issues
     // never escape here, so truncating the array (not replacing it) is safe.
@@ -703,10 +715,12 @@ export abstract class Schema<T> {
     // only to `delete` it again would push the clone to a slow dictionary-mode
     // shape on some engines.
     const ownParse = this._ownParse
+    const ownIs = this._ownIs
     const src = this as unknown as Record<string, unknown>
     const dst = clone as unknown as Record<string, unknown>
     for (const key of Object.keys(src)) {
       if (key === 'parse' && src[key] === ownParse) continue
+      if (key === 'is' && src[key] === ownIs) continue
       dst[key] = src[key]
     }
     clone._ops = op === undefined ? this._ops.slice() : [...this._ops, op]
@@ -746,6 +760,10 @@ export abstract class Schema<T> {
     if (this._ownParse !== undefined) {
       if (this.parse === this._ownParse) delete (this as { parse?: unknown }).parse
       this._ownParse = undefined
+    }
+    if (this._ownIs !== undefined) {
+      if (this.is === this._ownIs) delete (this as { is?: unknown }).is
+      this._ownIs = undefined
     }
     // The reused pure ctx is only valid for the compiled tree it was created
     // with — a post-compile chained op (`.refine()` on an already-parsed
@@ -805,8 +823,21 @@ export abstract class Schema<T> {
       // never disagree. A subclass that overrides `parse` keeps its override
       // (the prototype identity check), and a non-pure tree keeps the
       // prototype method — nothing changes for either.
+      //
+      // PARSE-FAST (pure trees only): a third emission of the same snapshot
+      // that builds the output value but takes no ctx and returns the
+      // `JIT_FAIL` sentinel at the first failure site — compiled Zod's seam
+      // shape. The installed `parse` runs it first and re-runs the full
+      // validator only when it fails, to build the issues. Same pass, same
+      // snapshot, deleted together — the staleness contract above holds.
       if (this._pureCtx !== undefined && this.parse === Schema.prototype.parse) {
-        installOwnParse(this, this._compiled, this._pureCtx)
+        installOwnParse(this, this._compiled, this._pureCtx, tryCompileJitFast(this))
+      }
+      // OWN-PROPERTY `is`: the verdict function itself, no seam at all.
+      const check = this._jitCheck
+      if (check !== null && check !== undefined && this.is === Schema.prototype.is) {
+        ;(this as { is: (input: unknown) => boolean }).is = check
+        this._ownIs = check
       }
     }
     return this._compiled
@@ -837,12 +868,33 @@ export abstract class Schema<T> {
  * and its reused ctx — see the note in `_getCompiled`. Same body as the
  * prototype method's pure branch, minus the `this` loads.
  */
-function installOwnParse<T>(schema: Schema<T>, compiled: SyncValidator, pure: ParseCtx): void {
-  const parse = (input: unknown): Result<T> => {
+function installOwnParse<T>(
+  schema: Schema<T>,
+  compiled: SyncValidator,
+  pure: ParseCtx,
+  fast: JitFastValidator | null,
+): void {
+  const full = (input: unknown): Result<T> => {
     const value = compiled(input, pure)
     if (pure.issues.length === 0) return { ok: true, value: value as T }
     return pureFail(pure)
   }
+  // With a fast twin the hot seam is one call and one identity compare; the
+  // full validator runs only on a failure (to build the issues) and then
+  // decides the Result on its own, so a spurious FAIL could only cost time.
+  // The other direction — fast accepting what the full validator rejects, or
+  // building a different value — would be a wrong answer; it is locked by
+  // `jit-fast-differential.test.ts` against the interpreter.
+  // The sentinel is read from a closure slot, not the imported binding.
+  const FAIL = JIT_FAIL
+  const parse =
+    fast === null
+      ? full
+      : (input: unknown): Result<T> => {
+          const value = fast(input)
+          if (value !== FAIL) return { ok: true, value: value as T }
+          return full(input)
+        }
   // Plain assignment, not `defineProperty` with custom attributes: JSC keeps a
   // plain-assigned own property on a cacheable structure, while a
   // non-enumerable define pushed the instance to a slow lookup and gave the

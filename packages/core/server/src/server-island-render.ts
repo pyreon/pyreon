@@ -6,10 +6,12 @@
  * endpoint. The client-safe half (the `serverIsland()` marker component +
  * registry) lives in `server-island.ts`.
  *
- * SECURITY CONTRACT — the props are CLIENT-CONTROLLED. The endpoint is public
- * and unauthenticated, and while the island NAME is allowlisted (only
- * registered islands render) the props are whatever the caller put in the
- * query string. A fragment therefore renders with attacker-chosen props inside
+ * SECURITY CONTRACT — this function does NOT authenticate. zero's endpoint
+ * verifies the marker's signature (name + page + props + expiry) and runs the
+ * declaring page's route middleware BEFORE calling it; a custom endpoint that
+ * calls it directly gets the old public shape: the island NAME is allowlisted
+ * (only registered islands render) but the props are whatever the caller put
+ * in the query string. A fragment then renders with attacker-chosen props inside
  * a full request context: authorize from the REQUEST — `useRequestLocals()`,
  * the session cookie — never from a prop. An island that reads a `userId` prop
  * and returns that user's data is an IDOR by construction.

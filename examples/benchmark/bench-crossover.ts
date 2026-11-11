@@ -166,6 +166,21 @@ function parseArgs(argv: string[]): CliArgs {
   return args
 }
 
+/**
+ * `--k swap=40,partial=20,select=2000`: pin the batch K per op for EVERY arm
+ * instead of calibrating it per arm and page (see `calibrateK`). Use it for
+ * any head-to-head verdict on a batch row; sweep it to check K-independence.
+ */
+const FIXED_K: [string, number][] = (() => {
+  const i = process.argv.indexOf('--k')
+  if (i < 0) return []
+  return (process.argv[i + 1] ?? '')
+    .split(',')
+    .map((kv) => kv.split('=') as [string, string])
+    .filter(([op, n]) => ['select', 'partial', 'swap'].includes(op) && Number(n) > 0)
+    .map(([op, n]) => [op, Number(n)] as [string, number])
+})()
+
 function shuffled<T>(input: readonly T[]): T[] {
   const out = [...input]
   for (let i = out.length - 1; i > 0; i--) {
@@ -247,6 +262,7 @@ async function runCell(
       rows: String(rows),
     })
     if (targetMs !== undefined) q.set('targetMs', String(targetMs))
+    for (const [op, k] of FIXED_K) q.set(`k${op}`, String(k))
     await page.goto(`${baseUrl}/?${q}`, { waitUntil: 'load' })
 
     await page.waitForFunction(

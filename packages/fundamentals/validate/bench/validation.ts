@@ -107,7 +107,9 @@ import Joi from 'joi'
 // here. See `bench/typia/README.md` for why the emitted file is checked in
 // and what limits the drift risk.
 import * as typiaGen from './typia/generated.js'
-import { s } from '../src/v1'
+// The MAIN entry, not `../src/v1`: since the `mini` split (#4193) the runtime
+// JIT is installed by `src/index.ts`, and `v1` alone runs the interpreter.
+import { s } from '../src/index'
 import { cpus as benchCpus, loadavg as benchLoadavg } from 'node:os'
 
 // Runtime banner — which ENGINE produced these numbers (bun = JavaScriptCore,
