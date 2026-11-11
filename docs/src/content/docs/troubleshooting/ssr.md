@@ -239,6 +239,12 @@ Use `isServer` / `isClient` from `@pyreon/reactivity` (re-exported by `@pyreon/c
 
 ---
 
+### A skip-animation path that skips the end state too
+
+The initially-hidden render bakes the hidden state (class/style) onto the element, and only the animated enter cleared it. `@pyreon/kinetic`'s reduced-motion branch fired the callbacks and completed the state machine without touching the element, so a scroll-reveal stayed at `opacity: 0` forever for users with `prefers-reduced-motion: reduce` (#4336). The collapses' reduced branch also waited for the inner content ref, which a reopen mounts on the same stage change, and stuck at `height: 0px` (the animation-end listener, the only other way out, is off under reduced motion). Any instant / no-animation / skip path must land on the same END state the animated path reaches (enter: `enterTo` + `enterToStyle`, hidden classes removed; leave: `leaveTo` + `leaveToStyle`) and must not depend on DOM the animation needs but it does not. Code: `packages/ui-system/kinetic/src/reduced-motion.ts:applyReducedMotionEnd`, the collapses' `reducedMotion()` branch. Tests: `__tests__/reduced-motion-end-state.test.tsx`, `__tests__/reduced-motion-reveal.browser.test.tsx` (CDP-emulated media).
+
+---
+
 ### Non-reflecting property on the client vs attribute on the server (reset default)
 
 Setting `input.value`/`textarea.value` as a property never creates the content attribute that `form.reset()` restores, so reset cleared a client-mounted field and restored a hydrated one. `applyValueProp` (compiler: `_setValue`) sets the property and establishes `defaultValue` on the first application only — re-establishing it on every keystroke of a controlled input turns reset into a no-op. The first-write marker is a `Symbol`-keyed own property, not a module-level Map. `select` and media `muted` are deliberately left diverging (React, Preact and Solid do the same). Code: `packages/core/runtime-dom/src/props.ts:applyValueProp`, both compiler backends' `attrSetter`/`attr_setter`. Tests: `input-default-value.browser.test.tsx`, `compiler-integration.test.tsx`, the parity fuzz's `input.value`/`textarea.value` entries.

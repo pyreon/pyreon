@@ -106,7 +106,12 @@ const CollapseRenderer = ({
     (currentStage) => {
       const wrapper = wrapperRef.current
       const content = contentRef.current
-      if (!wrapper || !content) return
+      // Reduced motion measures nothing, so it needs only the wrapper. On a
+      // reopen the content is not mounted yet — `<Show when={shouldRender}>`
+      // mounts it on this very stage change — and returning early left the
+      // stage at `entering` with `height: 0px` forever: `useAnimationEnd`, the
+      // only other way out, is switched off under reduced motion.
+      if (!wrapper) return
 
       if (reducedMotion()) {
         if (currentStage === 'entering') {
@@ -124,6 +129,8 @@ const CollapseRenderer = ({
         }
         return
       }
+
+      if (!content) return
 
       if (currentStage === 'entering') {
         readLive<TransitionCallbacks['onEnter']>(callbacks, 'onEnter')?.()
