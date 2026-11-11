@@ -1,0 +1,329 @@
+{
+ "meta": {
+  "title": "Pyreon docs",
+  "description": "Guides, API reference and live examples for Pyreon: one TypeScript codebase for the web, iOS and Android."
+ },
+ "banner": {
+  "kind": "preview",
+  "label": "experimental",
+  "text": "iOS and Android are experimental. The capability matrix shows exactly what is proven on a real simulator and emulator today.",
+  "link": {
+   "label": "See what runs on device",
+   "href": "/docs/multiplatform#production-capability-matrix-weighted-rung-labeled"
+  },
+  "source": "docs/src/content/docs/multiplatform.md (status line and \"Production capability matrix (weighted, rung-labeled)\"); stability-and-direction.md"
+ },
+ "hero": {
+  "eyebrow": "Pyreon docs",
+  "title": "Build the website. Get the apps.",
+  "lede": "Pyreon is a full-stack TypeScript framework with 40 products in the box. Pick where you are starting, and the docs take it from there."
+ },
+ "startHere": [
+  {
+   "id": "web",
+   "title": "I'm building a website",
+   "text": "SSR, SSG, ISR or SPA per route, with forms, data and the store already wired.",
+   "command": "npm create @pyreon/zero@latest",
+   "href": "/docs/quickstart",
+   "productIds": [
+    "zero",
+    "form",
+    "query"
+   ],
+   "source": "packages/zero/create-zero/package.json (@pyreon/create-zero); docs quickstart.md, create-zero.md"
+  },
+  {
+   "id": "apps",
+   "title": "I want the phone apps too",
+   "text": "One `src/App.tsx` compiled to SwiftUI and Jetpack Compose, next to the website. Experimental.",
+   "command": "npm create @pyreon/multiplatform@latest",
+   "href": "/docs/create-multiplatform",
+   "productIds": [
+    "native",
+    "primitives"
+   ],
+   "status": "experimental",
+   "source": "packages/zero/create-multiplatform/package.json (@pyreon/create-multiplatform); docs create-multiplatform.md"
+  },
+  {
+   "id": "react",
+   "title": "I'm coming from React",
+   "text": "Swap `react` imports for the compat layer, keep shipping, and port screens to signals when it pays.",
+   "command": "npm install @pyreon/react-compat",
+   "alt": {
+    "label": "or start fresh with compat wired in",
+    "command": "npm create @pyreon/zero@latest my-app -- --compat react"
+   },
+   "href": "/docs/migrating-from-react",
+   "productIds": [
+    "migrate"
+   ],
+   "source": "docs react-compat.md \"Installation\"; packages/zero/create-zero/src/args.ts (--compat none|react|vue|solid|preact)"
+  },
+  {
+   "id": "one",
+   "title": "I just need one product",
+   "text": "Forms, charts, i18n, validation: each one installs on its own, without the rest of the stack.",
+   "command": "npm install @pyreon/form",
+   "href": "/docs/form",
+   "productIds": [
+    "form"
+   ],
+   "source": "docs form.md \"Installation\""
+  }
+ ],
+ "tiles": {
+  "title": "Products people start with",
+  "text": "Each card carries one number from the benchmark record, with the conditions it was measured under.",
+  "items": [
+   {
+    "productId": "zero",
+    "name": "Zero",
+    "href": "/docs/zero",
+    "proof": {
+     "stat": "6.5×",
+     "label": "faster server rendering than React 19 at 1,000 rows (compiled SSR, 109.9 vs 714.4 µs)",
+     "condition": "one run, overnight pass, M3 Max, synthetic, author-run",
+     "source": "00-brief/BENCHMARKS-2026-11-05.md §5"
+    }
+   },
+   {
+    "productId": "form",
+    "name": "Forms",
+    "href": "/docs/form",
+    "proof": {
+     "stat": "3×",
+     "label": "faster mount than React Hook Form (12 fields, 210 vs 640 µs); fastest of 7 libraries on all 4 timed ops",
+     "condition": "one run, overnight pass, real Chromium",
+     "source": "00-brief/BENCHMARKS-2026-11-05.md §6 form-bench"
+    }
+   },
+   {
+    "productId": "validation",
+    "name": "Validation",
+    "href": "/docs/validate",
+    "proof": {
+     "stat": "12 of 12",
+     "label": "cells won against zod, valibot and arktype on a multi-schema workload",
+     "condition": "one run, final pass",
+     "source": "00-brief/BENCHMARKS-2026-11-05.md §9 Validate"
+    }
+   },
+   {
+    "productId": "charts",
+    "name": "Charts",
+    "href": "/docs/charts",
+    "proof": {
+     "stat": "8.7×",
+     "label": "faster than ECharts 6 mounting a 100,000-point line chart (4.36 vs 37.95 ms)",
+     "condition": "one run, final pass, real Chromium",
+     "source": "00-brief/BENCHMARKS-2026-11-05.md §2 charts"
+    }
+   },
+   {
+    "productId": "flow",
+    "name": "Flow",
+    "href": "/docs/flow",
+    "proof": {
+     "stat": "6/6",
+     "label": "operations won against React Flow 12 (500 nodes): mount, drag, select, add, pan and zoom, unmount",
+     "condition": "one run, real Chromium, synthetic, author-run",
+     "source": "00-brief/BENCHMARKS-2026-11-05.md §2 flow vs React Flow 12: wins all six ops, 1.17–210×, one run. Headline uses 6/6, not 210×: the record says the drag/pan ratios are mostly React Flow re-rendering node wrappers"
+    }
+   },
+   {
+    "productId": "i18n",
+    "name": "i18n",
+    "href": "/docs/i18n",
+    "proof": {
+     "stat": "12×",
+     "label": "faster `t()` than i18next",
+     "condition": "one run, overnight pass, bun",
+     "source": "00-brief/BENCHMARKS-2026-11-05.md §10 i18n"
+    }
+   },
+   {
+    "productId": "machine",
+    "name": "State Machines",
+    "href": "/docs/machine",
+    "proof": {
+     "stat": "34.7×",
+     "label": "faster `send` than XState",
+     "condition": "one run, overnight pass, bun",
+     "source": "00-brief/BENCHMARKS-2026-11-05.md §10 machine"
+    }
+   },
+   {
+    "productId": "reactivity",
+    "name": "Reactivity",
+    "href": "/docs/reactivity",
+    "proof": {
+     "stat": "2.0–2.1×",
+     "label": "faster effect propagation than Preact Signals",
+     "condition": "V8, two runs, final pass",
+     "source": "00-brief/BENCHMARKS-2026-11-05.md §8"
+    }
+   }
+  ],
+  "link": {
+   "label": "All 40 products",
+   "href": "/products"
+  }
+ },
+ "whyFast": {
+  "title": "Why it's fast",
+  "text": "Components run once. The compiler binds each signal to the exact DOM node that reads it, so a click updates one text node: no virtual DOM to diff, nothing to memoise, no dependency arrays.",
+  "code": {
+   "file": "Counter.tsx",
+   "lang": "tsx",
+   "source": "import { signal } from '@pyreon/reactivity'\n\nexport function Counter() {\n  const count = signal(0)\n  // this function runs once; a click updates one text node\n  return <button onClick={() => count.update((n) => n + 1)}>{count()}</button>\n}"
+  },
+  "compiled": {
+   "label": "What the compiler emits (abridged)",
+   "lang": "js",
+   "source": "return _tpl('<button> </button>', (__root) => {\n  const __t0 = __root.firstChild\n  __root.__ev_click = () => count.update((n) => n + 1)\n  return _bindText(count, __t0)\n})"
+  },
+  "live": {
+   "component": "Counter",
+   "note": "Mounted live with `<Example>`: the function runs once, and the text node updates on every click."
+  },
+  "link": {
+   "label": "Components run once, step by step",
+   "href": "/docs/tutorial/04-components"
+  },
+  "source": "Compiled with transformJSX (packages/core/compiler) on e314cc619; output trimmed of the import line and formatting only."
+ },
+ "proofStrip": {
+  "items": [
+   {
+    "stat": "2.6×",
+    "label": "faster than React 19 creating 10,000 rows (72.6 vs 192.0 ms)",
+    "condition": "real Chromium, final pass run 1 table",
+    "source": "00-brief/BENCHMARKS-2026-11-05.md §1"
+   },
+   {
+    "stat": "17.2 KB",
+    "label": "for the same keyed-table app, gzip; React ships 69.6 KB (and Solid 7.5 KB, which we print too)",
+    "condition": "final pass, deterministic",
+    "source": "00-brief/BENCHMARKS-2026-11-05.md §7"
+   },
+   {
+    "stat": "3.08 MB",
+    "label": "retained heap after the row suite, tied lightest framework with Preact (3.09 MB)",
+    "condition": "both runs, final pass",
+    "source": "00-brief/BENCHMARKS-2026-11-05.md §1"
+   },
+   {
+    "stat": "6.5×",
+    "label": "faster server rendering than React 19 at 1,000 rows (compiled SSR, 109.9 vs 714.4 µs)",
+    "condition": "one run, overnight pass, M3 Max, synthetic, author-run",
+    "source": "00-brief/BENCHMARKS-2026-11-05.md §5"
+   }
+  ],
+  "footer": "Synthetic, author-run, Apple M3 Max, record of 5 Nov 2026. Every loss is on the same page, and so are the claims this record withdrew.",
+  "link": {
+   "label": "Don't trust us. Run it.",
+   "href": "/docs/benchmarks"
+  }
+ },
+ "whatsNew": {
+  "title": "What's new on main",
+  "text": "Merged since the last release and shipping in the next one. Until it publishes, `npm create @pyreon/zero@latest` installs the current release without these.",
+  "items": [
+   {
+    "area": "Native",
+    "title": "`effect()` runs on iOS and Android",
+    "text": "Runs when the view appears and again when a signal it reads changes, cleanup included. Before, it was dropped with a warning.",
+    "href": "/docs/multiplatform",
+    "status": "next release",
+    "source": "facts.md \"What shipped since 5 Nov\" (#4134); multiplatform.md"
+   },
+   {
+    "area": "Native",
+    "title": "More plain TypeScript compiles natively",
+    "text": "Timers, `Date`, `enum`s, module-scope signals, `throw` / `try` / `catch`, `JSON.parse` and a schema's `.parse()` now lower to Swift and Kotlin.",
+    "href": "/docs/multiplatform",
+    "status": "next release",
+    "source": "facts.md (#4136, #4154, #4146, #4155, #4100, #4101, #4102); multiplatform.md"
+   },
+   {
+    "area": "Primitives",
+    "title": "`<Select>` and date and time fields",
+    "text": "One choice with each platform's own picker, and `<Field kind=\"date\" | \"time\" | \"datetime\">` with `min` / `max` on web, iOS and Android.",
+    "href": "/docs/primitives",
+    "status": "next release",
+    "source": "facts.md (#4056, #4057); primitives.md"
+   },
+   {
+    "area": "Hooks",
+    "title": "Eight more hooks lower to iOS and Android",
+    "text": "`useDocumentVisibility`, `usePrevious`, `useUpdateEffect`, `useReducedMotion`, `useKeyboard`, `useInfiniteQuery`, `useLatest` and colour-scheme `useMediaQuery`.",
+    "href": "/docs/reference/hooks",
+    "status": "next release",
+    "source": "facts.md (#4149, #4158, #4165, #4166, #4167, #4168, #4171); reference/hooks.md"
+   },
+   {
+    "area": "Query",
+    "title": "`queryOptions()`: declare a query once",
+    "text": "Reuse it in hooks and in the client; the key carries the data type, so `getQueryData(opts.queryKey)` is typed without a generic.",
+    "href": "/docs/query#reusable-query-options-queryoptions",
+    "status": "next release",
+    "source": "facts.md (#4188); query.md \"Reusable query options\""
+   },
+   {
+    "area": "Zero",
+    "title": "`mode: 'auto'` prerenders the routes it infers as SSG",
+    "text": "Even in a build that also has SSR routes. One resolver now answers \"what mode does this page get\" everywhere. `auto` stays experimental.",
+    "href": "/docs/guides/ssr-ssg-isr",
+    "status": "next release",
+    "source": "facts.md (#4138); zero.md"
+   },
+   {
+    "area": "Head",
+    "title": "One copy of each head tag after hydration",
+    "text": "Server-rendered pages no longer end up with two of every `<meta>`, `<link>` and JSON-LD tag. Also: `createUniqueId()` ids now match between server and client.",
+    "href": "/docs/head",
+    "status": "next release",
+    "source": "facts.md (#4161, #4160); head.md"
+   },
+   {
+    "area": "Validation",
+    "title": "`@pyreon/validate/mini`",
+    "text": "Ships without the runtime JIT: a 4-field object schema is 5.2 KB gzip through `mini` vs 13.8 KB through the main entry (author-measured). `enableJit()` brings the JIT back.",
+    "href": "/docs/validate#mini-entry-pyreonvalidatemini",
+    "status": "next release",
+    "source": "facts.md (#4193); validate.md \"Mini entry\""
+   },
+   {
+    "area": "Content",
+    "title": "Scheduled entries",
+    "text": "`publishDate` plus `unpublished: 'omit'` keeps future-dated posts out of a production build; they appear with the first build on or after their date. It is how pyreon.dev/blog publishes.",
+    "href": "/docs/zero-content#drafts-and-scheduled-entries",
+    "status": "next release",
+    "source": "facts.md \"Blog\"; zero-content.md \"Drafts and scheduled entries\""
+   },
+   {
+    "area": "Store",
+    "title": "Heads-up: `subscribe` changed shape",
+    "text": "The state is now `mutation.state`, built on first read; the second `state` argument is gone. Update `subscribe((mutation, state) => …)` callbacks when you upgrade.",
+    "href": "/docs/store",
+    "status": "next release",
+    "kind": "breaking",
+    "source": "facts.md (#4222); store.md"
+   }
+  ],
+  "footer": "Plus security hardening in Zero, MCP, Lathe, the native WebView and the serialisers, and a batch of fixes found by new browser gates on the example apps.",
+  "link": {
+   "label": "Read the blog",
+   "href": "/blog"
+  }
+ },
+ "counts": {
+  "docPages": "200+",
+  "note": "facts.md: say \"200+\" (221 Markdown files counted on main)."
+ },
+ "next": {
+  "label": "Quickstart",
+  "href": "/docs/quickstart"
+ }
+}
