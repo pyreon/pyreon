@@ -1,4 +1,4 @@
-import { For } from '@pyreon/core'
+import { For, onUnmount } from '@pyreon/core'
 import { computed, defineStore, signal } from '@pyreon/store'
 import { DemoSurface, GlowCard } from '../kit/cards'
 import { DemoGrid, PaperButton, PaperLabel } from '../kit/demo'
@@ -40,14 +40,20 @@ export default function DemoStore() {
   const depth = signal(0)
   let undoing = false
 
-  cart.onAction(({ name, args, after }) => {
+  // The store is a singleton: drop these listeners when the demo unmounts.
+  const offAction = cart.onAction(({ name, args, after }) => {
     after(() => actions.push(`${name}(${args.map((a) => JSON.stringify(a)).join(', ')})`))
   })
-  cart.subscribe((mutation) => {
+  const offMutation = cart.subscribe((mutation) => {
     mutations.push(`${mutation.type} · ${mutation.events.map((e) => e.key).join(', ')}${undoing ? ' (undo)' : ''}`, undoing ? 'accent' : 'plain')
     if (undoing) return
     history.push(mutation.state)
     depth.set(history.length - 1)
+  })
+
+  onUnmount(() => {
+    offAction()
+    offMutation()
   })
 
   const undo = () => {
