@@ -1,0 +1,237 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`doctor machine output is locked > --gha 1`] = `
+"::notice::pyreon doctor score: 94/100 (A) — 2 errors, 1 warnings, 1 info
+::warning title=islands-audit/empty-scan::matched no files
+::error title=audit-tests/no-browser-smoke,file=packages/ui/src/index.ts::Browser package has no real-Chromium smoke test — add src/tests/ui.browser.test.tsx
+::error title=audit-tests/project::Project-wide
+::warning title=pyreon/no-missing-for-by,file=src/routes/inbox.tsx,line=42,col=7::<For> without \`by\` recreates every row on reorder — <For each={messages} by={(m) => m.id}>
+::notice title=pyreon/doc-note,file=README.md::A note, with: colons, commas%0Aand a newline"
+`;
+
+exports[`doctor machine output is locked > --gha for a report that measured nothing 1`] = `
+"::warning::pyreon doctor measured nothing — every gate was skipped or matched no files. Check the workspace layout or pass --roots.
+::warning title=lint/empty-scan::lint matched no files"
+`;
+
+exports[`doctor machine output is locked > --json 1`] = `
+"{
+  "score": 94,
+  "grade": "A",
+  "measured": true,
+  "categories": [
+    {
+      "category": "correctness",
+      "score": 100,
+      "errors": 0,
+      "warnings": 0,
+      "infos": 0,
+      "grade": "A",
+      "included": true
+    },
+    {
+      "category": "performance",
+      "score": 97,
+      "errors": 0,
+      "warnings": 1,
+      "infos": 0,
+      "grade": "A",
+      "included": true
+    },
+    {
+      "category": "architecture",
+      "score": 100,
+      "errors": 0,
+      "warnings": 0,
+      "infos": 0,
+      "grade": "A",
+      "included": false
+    },
+    {
+      "category": "testing",
+      "score": 80,
+      "errors": 2,
+      "warnings": 0,
+      "infos": 0,
+      "grade": "B",
+      "included": true
+    },
+    {
+      "category": "documentation",
+      "score": 99,
+      "errors": 0,
+      "warnings": 0,
+      "infos": 1,
+      "grade": "A",
+      "included": true
+    },
+    {
+      "category": "best-practices",
+      "score": 100,
+      "errors": 0,
+      "warnings": 0,
+      "infos": 0,
+      "grade": "A",
+      "included": false
+    }
+  ],
+  "gates": [
+    {
+      "gate": "lint",
+      "category": "correctness",
+      "findings": [
+        {
+          "category": "performance",
+          "severity": "warning",
+          "code": "pyreon/no-missing-for-by",
+          "gate": "lint",
+          "message": "<For> without \`by\` recreates every row on reorder",
+          "location": {
+            "path": "/repo/src/routes/inbox.tsx",
+            "relPath": "src/routes/inbox.tsx",
+            "line": 42,
+            "column": 7
+          },
+          "fix": "<For each={messages} by={(m) => m.id}>",
+          "fixable": true
+        },
+        {
+          "category": "documentation",
+          "severity": "info",
+          "code": "pyreon/doc-note",
+          "gate": "lint",
+          "message": "A note, with: colons, commas\\nand a newline",
+          "location": {
+            "path": "/repo/README.md",
+            "relPath": "README.md"
+          }
+        }
+      ],
+      "meta": {
+        "elapsedMs": 380,
+        "scanned": 412
+      }
+    },
+    {
+      "gate": "audit-tests",
+      "category": "testing",
+      "findings": [
+        {
+          "category": "testing",
+          "severity": "error",
+          "code": "audit-tests/no-browser-smoke",
+          "gate": "audit-tests",
+          "message": "Browser package has no real-Chromium smoke test",
+          "location": {
+            "path": "/repo/packages/ui/src/index.ts",
+            "relPath": "packages/ui/src/index.ts"
+          },
+          "relatedLocations": [
+            {
+              "path": "/repo/packages/ui/package.json",
+              "relPath": "packages/ui/package.json",
+              "line": 3,
+              "label": "declared"
+            }
+          ],
+          "fix": "add src/tests/ui.browser.test.tsx"
+        },
+        {
+          "category": "testing",
+          "severity": "error",
+          "code": "audit-tests/project",
+          "gate": "audit-tests",
+          "message": "Project-wide"
+        }
+      ],
+      "meta": {
+        "elapsedMs": 120,
+        "scanned": 9
+      }
+    },
+    {
+      "gate": "bundle-budgets",
+      "category": "performance",
+      "findings": [],
+      "meta": {
+        "elapsedMs": 0,
+        "skipped": true,
+        "skipReason": "needs --full"
+      }
+    },
+    {
+      "gate": "islands-audit",
+      "category": "architecture",
+      "findings": [],
+      "meta": {
+        "elapsedMs": 0,
+        "skipped": true,
+        "emptyScan": true,
+        "skipReason": "matched no files"
+      }
+    }
+  ],
+  "findings": [
+    {
+      "category": "testing",
+      "severity": "error",
+      "code": "audit-tests/no-browser-smoke",
+      "gate": "audit-tests",
+      "message": "Browser package has no real-Chromium smoke test",
+      "location": {
+        "path": "/repo/packages/ui/src/index.ts",
+        "relPath": "packages/ui/src/index.ts"
+      },
+      "relatedLocations": [
+        {
+          "path": "/repo/packages/ui/package.json",
+          "relPath": "packages/ui/package.json",
+          "line": 3,
+          "label": "declared"
+        }
+      ],
+      "fix": "add src/tests/ui.browser.test.tsx"
+    },
+    {
+      "category": "testing",
+      "severity": "error",
+      "code": "audit-tests/project",
+      "gate": "audit-tests",
+      "message": "Project-wide"
+    },
+    {
+      "category": "performance",
+      "severity": "warning",
+      "code": "pyreon/no-missing-for-by",
+      "gate": "lint",
+      "message": "<For> without \`by\` recreates every row on reorder",
+      "location": {
+        "path": "/repo/src/routes/inbox.tsx",
+        "relPath": "src/routes/inbox.tsx",
+        "line": 42,
+        "column": 7
+      },
+      "fix": "<For each={messages} by={(m) => m.id}>",
+      "fixable": true
+    },
+    {
+      "category": "documentation",
+      "severity": "info",
+      "code": "pyreon/doc-note",
+      "gate": "lint",
+      "message": "A note, with: colons, commas\\nand a newline",
+      "location": {
+        "path": "/repo/README.md",
+        "relPath": "README.md"
+      }
+    }
+  ],
+  "totals": {
+    "errors": 2,
+    "warnings": 1,
+    "infos": 1
+  },
+  "elapsedMs": 500,
+  "timestamp": "2026-11-11T00:00:00.000Z"
+}"
+`;
