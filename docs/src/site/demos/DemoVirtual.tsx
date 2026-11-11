@@ -54,7 +54,7 @@ export default function DemoVirtual() {
   let frame = 0
 
   // Hand the scroller to the virtualizer only once it is in the document.
-  // A ref fires while the element still belongs to the template's inert
+  // A ref fires (#4390) while the element still belongs to the template's inert
   // document (no window), and @pyreon/virtual then attaches its scroll and
   // resize observers to nothing and never re-attaches. Registered BEFORE
   // useVirtualizer so this mount hook runs first.

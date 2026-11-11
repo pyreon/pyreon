@@ -79,7 +79,7 @@ export default function DemoDnd() {
   let list: HTMLElement | null = null
   onMount(() => {
     // Register the container once it is in the document. Its ref fires while
-    // the element still belongs to the template's inert document, where
+    // the element still belongs to the template's inert document (#4390), where
     // getComputedStyle is empty, and the drag library's auto-scroll then
     // warns that the list "appears not to be scrollable" (the ul is
     // overflow-y: auto so it can auto-scroll). Items register through their refs.

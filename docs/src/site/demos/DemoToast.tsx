@@ -89,7 +89,7 @@ export default function DemoToast() {
   }
   onUnmount(teardown)
   // A client-side navigation removes the island's DOM but never unmounts its
-  // hydrated root (@pyreon/server's island hydration drops hydrateRoot's
+  // hydrated root (#4387) (@pyreon/server's island hydration drops hydrateRoot's
   // cleanup), so onUnmount does not run and the Toaster, its toasts and the
   // style above would follow the reader to the next page. Leaving the route
   // tears the demo down instead.

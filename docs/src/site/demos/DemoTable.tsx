@@ -212,6 +212,7 @@ export default function DemoTable() {
                       {(header) => (
                         <th
                           scope="col"
+                          // A plain expression the compiler makes reactive: the JSX types reject an accessor here (#4392).
                           aria-sort={ariaSort(header.column.getIsSorted())}
                         >
                           <button type="button" onClick={header.column.getToggleSortingHandler()}>

@@ -278,7 +278,7 @@ function PostsTable(props: { posts: PostsFeature }) {
  * the request counters). The picker on the card describes every generated
  * member; `fields` lists the real introspected fields.
  *
- * Teardown: a zero island is never unmounted on client-side navigation (its
+ * Teardown: a zero island is never unmounted on client-side navigation (#4387; its
  * hydration root is not disposed; reported with the products-b demos), so the
  * provider (which mounts the client's focus/online listeners) renders inside a
  * `Show` this demo closes once its root leaves the document.

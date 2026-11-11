@@ -155,7 +155,7 @@ function EditorScope() {
  * site's own keys. The editor toggle mounts a component that holds the
  * `editor` scope; unmounting it releases the scope.
  *
- * Teardown: a zero island is never unmounted on client-side navigation (its
+ * Teardown: a zero island is never unmounted on client-side navigation (#4387; its
  * hydration root is not disposed; reported with the products-b demos), so the
  * bindings and the scope live in children that this demo unmounts itself
  * once its root leaves the document. That runs the package's own cleanup.

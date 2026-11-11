@@ -228,7 +228,7 @@ export default function DemoDocument() {
     stop?.()
   })
 
-  // `srcdoc` is not in @pyreon/core's iframe attribute types (reported), so the frame gets it by ref.
+  // `srcdoc` is not in @pyreon/core's iframe attribute types (#4392), so the frame gets it by ref.
   let stopFrame: (() => void) | undefined
   const showHtml = (el: HTMLIFrameElement | null) => {
     stopFrame?.()
@@ -292,7 +292,7 @@ export default function DemoDocument() {
           </Chips>
           <Small>Binary formats load their library on first use: this button fetches pdfmake, renders the same tree and saves it.</Small>
           {/* No .docx button yet: render(node, 'docx') calls Packer.toBuffer, which throws
-              "nodebuffer is not supported by this platform" in a browser (reported with this demo). */}
+              "nodebuffer is not supported by this platform" in a browser (#4389). */}
           <Downloads>
             <DownloadButton type="button" onClick={() => void savePdf()}>
               Download .pdf
