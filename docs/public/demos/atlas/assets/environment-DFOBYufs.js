@@ -1,0 +1,1 @@
+var e=typeof document>`u`,t=typeof document<`u`;export{e as n,t};

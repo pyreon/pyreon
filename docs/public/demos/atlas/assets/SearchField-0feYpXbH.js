@@ -1,0 +1,1 @@
+import{t as e}from"./jsx-runtime-DA0IVWSW.js";function t(t){return e(`input`,{type:`search`,placeholder:()=>t.placeholder??`Search…`,"data-max-items":()=>String(t.maxItems??5),"data-accent":()=>t.color??`#3b82f6`})}export{t as SearchField};

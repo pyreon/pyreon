@@ -1,0 +1,1 @@
+import{t as e}from"./chip-kit-BNNFm-_m.js";var t=e.attrs({tag:`div`,contentDirection:`rows`,contentAlignX:`block`}).theme(()=>({gap:`10px`,minWidth:`180px`})).sizes(()=>({tight:{gap:`4px`},loose:{gap:`18px`}}));export{t as Stack};

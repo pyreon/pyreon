@@ -1,0 +1,1 @@
+var e=Symbol.for(`Pyreon.Fragment`),t={};function n(e,n,...i){let a=n??t;return{type:e,props:a,children:r(i),key:a.key??null}}function r(e){for(let t=0;t<e.length;t++)if(Array.isArray(e[t]))return i(e);return e}function i(e){let t=[];for(let n of e)Array.isArray(n)?t.push(...i(n)):t.push(n);return t}export{e as n,n as r,t};
