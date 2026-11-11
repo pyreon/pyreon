@@ -78,11 +78,11 @@ describe('the native audit reports what cannot cross to iOS/Android', () => {
     ).toEqual([])
   })
 
-  it('reports an ENUM, which has no native counterpart', () => {
-    // A TS enum lowers to a runtime object the native emitters cannot
-    // represent. The message has to name the alternative, or the author is
-    // told only that their code is wrong.
-    const diags = shared('export enum Mode { A, B }\n')
+  it('reports an ENUM PMTC cannot lower (mixed string / number members)', () => {
+    // String enums and literal numeric enums LOWER since #4146; a mixed one
+    // has no native counterpart. The message has to name the alternative, or
+    // the author is told only that their code is wrong.
+    const diags = shared("export enum Mode { A = 'a', B = 1 }\n")
     const enumDiag = diags.find((d) => /enum/i.test(d.message))
     expect(enumDiag, 'the enum is reported').toBeTruthy()
     // The remedy travels WITH the finding, in `suggested` — a diagnostic that
@@ -104,7 +104,7 @@ describe('the native audit reports what cannot cross to iOS/Android', () => {
   })
 
   it('orders diagnostics by position, so two runs read the same', () => {
-    const diags = shared('export class B { x = 1 }\nexport enum A { X }\n')
+    const diags = shared("export class B { x = 1 }\nexport enum A { X = 'x', Y = 2 }\n")
     const keys = diags.map((d) => d.line * 1000 + d.column)
     expect(keys).toEqual([...keys].sort((a, b) => a - b))
   })
