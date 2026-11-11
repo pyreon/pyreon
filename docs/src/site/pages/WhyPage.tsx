@@ -9,6 +9,7 @@ import { usePageHead } from '../head'
 import { emberWordOf } from './ember'
 import { RivalSwitcher } from './RivalSwitcher'
 import { SiteSections, type SectionFigure } from './SiteSections'
+import { WideDiagram } from './WideDiagram'
 
 /**
  * `/why/<id>` — one template for the five story pages
@@ -62,7 +63,15 @@ function figuresFor(page: Data, svgs: Record<string, string>, T: WhyTemplate): S
     const at = page.sections.findIndex((s) => s.kind === slot.kind && seen++ === (slot.nth ?? 0))
     if (at < 0) continue
     const caption = slot.caption ? T.diagram[slot.caption] : undefined
-    out.push({ at, place: slot.place, node: <Diagram svg={svg} caption={caption} scrollLabel={slot.place === 'after' ? T.diagram.scroll : undefined} /> })
+    const node =
+      slot.place === 'after' ? (
+        <WideDiagram>
+          <Diagram svg={svg} caption={caption} scrollLabel={T.diagram.scroll} />
+        </WideDiagram>
+      ) : (
+        <Diagram svg={svg} caption={caption} />
+      )
+    out.push({ at, place: slot.place, node })
   }
   if (page.id === 'components-run-once') {
     const at = page.sections.findIndex((s) => s.kind === 'code')

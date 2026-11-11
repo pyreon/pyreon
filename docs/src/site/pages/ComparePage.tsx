@@ -18,6 +18,7 @@ import { font, text } from '../theme'
 import { usePageHead } from '../head'
 import { emberWordOf } from './ember'
 import { RivalSwitcher } from './RivalSwitcher'
+import { WideDiagram } from './WideDiagram'
 
 /**
  * `/compare/<rival>` — one template for the six rival pages
@@ -107,7 +108,9 @@ export function ComparePage(props: { view: CompareView }) {
           <Section size="tight" id="chart">
             <Wrap>
               <SectionHead label={chart.label} title={chart.title} />
-              <Diagram svg={props.view.svg} scrollLabel={fill(chart.scroll, { rival: d.rival })} />
+              <WideDiagram>
+                <Diagram svg={props.view.svg} scrollLabel={fill(chart.scroll, { rival: d.rival })} />
+              </WideDiagram>
               <CaveatLine text={measured ? meta.caveat : T.chart.diagram.caveat} link={T.chart.link} />
             </Wrap>
           </Section>

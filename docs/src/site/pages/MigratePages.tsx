@@ -17,6 +17,7 @@ import { font, text, weight } from '../theme'
 import { usePageHead } from '../head'
 import { emberWordOf } from './ember'
 import { RivalSwitcher } from './RivalSwitcher'
+import { WideDiagram } from './WideDiagram'
 
 /**
  * `/migrate` and `/migrate/<framework>` (`content/pages/migrate/*`): the
@@ -99,7 +100,11 @@ export function MigrateLandingPage(props: { view: MigrateLandingView }) {
         <Wrap>
           <SectionHead label={L.steps.label} title={L.steps.title} />
           <Stack>
-            {props.view.svg ? <Diagram svg={props.view.svg} caption={L.steps.caption} scrollLabel={L.steps.scroll} /> : null}
+            {props.view.svg ? (
+              <WideDiagram>
+                <Diagram svg={props.view.svg} caption={L.steps.caption} scrollLabel={L.steps.scroll} />
+              </WideDiagram>
+            ) : null}
             <StepList items={d.steps.map((s) => ({ title: s.title, text: s.text, code: s.code, file: s.file, codeHtml: htmlOf(s) }))} />
           </Stack>
         </Wrap>
@@ -200,7 +205,9 @@ export function MigrateLayerPage(props: { view: MigrateLayerView }) {
         <Section size="tight" id="before-after">
           <Wrap>
             <SectionHead label={L.beforeAfter.label} title={fill(L.beforeAfter.title, { name: d.name })} />
-            <Diagram svg={props.view.svg} caption={L.beforeAfter.caption} scrollLabel={fill(L.beforeAfter.scroll, { name: d.name })} />
+            <WideDiagram>
+              <Diagram svg={props.view.svg} caption={L.beforeAfter.caption} scrollLabel={fill(L.beforeAfter.scroll, { name: d.name })} />
+            </WideDiagram>
           </Wrap>
         </Section>
       ) : null}

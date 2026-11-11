@@ -858,7 +858,7 @@
     "method": {
       "label": "method",
       "title": "How we measure.",
-      "text": "Synthetic benchmarks can't predict your app. They can be run honestly. Apple M3 Max, Chromium 156, Node 26 (V8) and Bun 1.4 (JavaScriptCore).",
+      "text": "Synthetic benchmarks can't predict your app. They can be run fairly. Apple M3 Max, Chromium 156, Node 26 (V8) and Bun 1.4 (JavaScriptCore).",
       "guide": {
         "text": "The suites and how to run them are documented in the",
         "link": {
@@ -936,7 +936,7 @@
     },
     "apps": {
       "label": "real-app shapes",
-      "title": "Forms and to-do lists, the apps people actually build.",
+      "title": "Forms and to-do lists, the apps people build every day.",
       "text": "A 12-field form against six form libraries, and TodoMVC against React 19. One run each.",
       "forms": {
         "chart": "Forms chart",
