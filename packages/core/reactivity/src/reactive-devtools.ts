@@ -605,8 +605,14 @@ export function _rdRecordFire(node: object): void {
  * The binding-label frame. `depth > 0` while some binding's first run is open;
  * `kind === null` until the first DOM setter inside it reports a target. Nested
  * first runs (a binding that mounts a subtree whose bindings run their own
- * first runs) save the outer frame on `_bfSaved` and restore it on close —
- * strictly LIFO, and every open is paired with a close in a `finally`.
+ * first runs) save the outer frame on `_bfSaved` and restore it on close.
+ *
+ * Leak class A (position-based pop) does not apply: a first run is synchronous
+ * and every open is paired with a close in a `finally` in the same call frame
+ * (`renderEffect`, `_bind`, `_bindDirect`), so closes are strictly LIFO and no
+ * reactive boundary can interleave them. Entries are primitive strings, at most
+ * three per nesting level, and the stack is truncated whenever the outermost
+ * frame closes. Dev only.
  */
 const _bf: {
   depth: number
@@ -670,6 +676,9 @@ export function _rdCloseBindingFrame(): BindingTarget | null {
       _bf.kind = null
       _bf.target = undefined
       _bf.key = undefined
+      // Back at the outermost frame the saved stack is empty by construction;
+      // truncating anyway bounds it even if a caller ever broke the pairing.
+      _bfSaved.length = 0
     }
     return out
   }
