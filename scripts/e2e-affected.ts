@@ -295,6 +295,20 @@ const SUITES: Suite[] = [
     triggers: ['packages/zero/zero/src/https', 'e2e/https-dev', 'e2e/fixtures/https-dev'],
   },
   {
+    // Zero's dev error overlay in a real browser against a real dev server:
+    // SSR, loader and hydration failures from its own fixture app. Also
+    // triggered by the router (the dev loader-error tag), the runtime's
+    // hydration reporting and the diagnose catalog the fix box reads.
+    name: 'zero-dev-overlay',
+    script: 'test:e2e:zero-dev-overlay',
+    triggers: [
+      ...ROUTER_CORE,
+      'packages/core/runtime-dom/src/hydrat',
+      'packages/core/compiler/src/diagnose.ts',
+      'e2e/zero-dev-overlay.spec.ts',
+    ],
+  },
+  {
     name: 'ssg-subpath',
     script: 'test:e2e:ssg-subpath',
     triggers: [...ROUTER_CORE, 'examples/ssr-showcase/', 'e2e/ssg-subpath'],

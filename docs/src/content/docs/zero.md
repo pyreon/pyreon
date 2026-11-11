@@ -1824,6 +1824,28 @@ have since removed is genuinely unpleasant to debug.
 - The certificate is cached under `node_modules/.pyreon-https` and reissued
   automatically when the host list changes or expiry approaches.
 
+## Development Error Overlay
+
+When something fails during `vite dev`, zero shows what failed, where, and, when it knows one, how to fix it. Nothing to configure, and nothing of it reaches a build.
+
+| What failed | How it shows | Chip and phase |
+| --- | --- | --- |
+| A component throws while the server renders the page | the server answers 500 with the overlay page | `Server render failed` · `SSR` |
+| A route `loader` / `serverLoader` throws | the server answers 500 with the overlay page | `Loader threw` · `loader` |
+| A request middleware throws | the server answers 500 with the overlay page | `Middleware threw` · `middleware` |
+| Hydration reports a mismatch | the page loads and the overlay opens over it | `Hydration mismatch` · `client` |
+
+Each overlay carries the route that matched, the error message, the first stack frame in your own code as a link (it and **Open in editor** call Vite's `/__open-in-editor`), that file's lines around the error with the failing line marked, and the stack with framework and dependency frames dimmed. **How to fix it** comes from the same diagnose catalog as the MCP `diagnose` tool and appears only when an entry matches the message; otherwise the box is left out. **Copy for your AI assistant** copies all of it as plain text. **Reload** reloads; **Esc** dismisses.
+
+A hydration mismatch shows the runtime's own warning, what the server HTML had against what the client rendered, and the DOM path. It has no file link or code frame: the runtime knows where in the tree the two renders diverged, not which source line produced them.
+
+The overlay is self-contained HTML and CSS (system fonts, no app styles), so it shows even when the app cannot render. It follows the stored `zero-theme` preference, else the OS colour scheme, and respects reduced motion.
+
+Known limits:
+
+- Positions come from Vite's source maps. With the native compiler backend those land a line or two below the real line ([#4418](https://github.com/pyreon/pyreon/issues/4418)), so check the lines around the marked one.
+- Hydration mismatches open the overlay only when the runtime reports them. A text divergence inside compiled JSX is currently corrected without a report ([#4419](https://github.com/pyreon/pyreon/issues/4419)); `h()` content and element mismatches are reported.
+
 ## i18n
 
 Two independent layers, both keyed off the same `I18nRoutingConfig`:

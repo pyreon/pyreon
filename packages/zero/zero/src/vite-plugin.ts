@@ -48,7 +48,13 @@ function resolveNestedPackage(root: string, name: string): string | undefined {
   if (existsSync(nested)) return nested
   return undefined
 }
-import { renderErrorOverlay } from "./error-overlay";
+import {
+	DEV_OVERLAY_RESOLVED_ID,
+	DEV_OVERLAY_SCRIPT_SRC,
+	DEV_OVERLAY_VIRTUAL_ID,
+	devOverlayModuleSource,
+	renderErrorOverlay,
+} from "./error-overlay";
 import {
 	generateMiddlewareModule,
 	applyModeInference,
@@ -371,42 +377,39 @@ export function zeroPlugin(userInput: ZeroUserConfig = {}): Plugin[] {
 			// add/unlink handler above, where route-SET changes actually land.
 		},
 
-		/**
-		 * W19 — auto-inject the client entry script
-		 * before `<!--pyreon-scripts-->` so users don't have to remember
-		 * to add `<script type="module" src="/src/entry-client.ts">` to
-		 * `index.html` by hand.
-		 *
-		 * Skipped when:
-		 * - `config.entryClient === false` (explicit opt-out)
-		 * - html doesn't contain `<!--pyreon-scripts-->` (not a Zero-shaped template)
-		 * - html already contains a `<script type="module"` referencing the entry
-		 */
+		/** The client entry script (see `injectClientEntry`), plus the dev overlay module in dev. */
 		transformIndexHtml: {
 			order: 'pre',
-			handler(html) {
-				if (config.entryClient === false) return html;
-				const entry = config.entryClient ?? '/src/entry-client.ts';
-				if (!html.includes('<!--pyreon-scripts-->')) return html;
-				if (html.includes(`src="${entry}"`)) return html;
-				if (html.includes(`src='${entry}'`)) return html;
-				const tag = `<script type="module" src="${entry}"></script>`;
-				// Replacer function: `entry` is user config and must not be
-				// read as a `$`-replacement pattern.
-				return html.replace(
-					'<!--pyreon-scripts-->',
-					() => `${tag}\n    <!--pyreon-scripts-->`,
-				);
+			handler(html, ctx) {
+				const out = injectClientEntry(html, config.entryClient);
+				// Dev only: the hydration-mismatch overlay. `ctx.server` is set
+				// only by the dev server, so a build never sees the tag. In head,
+				// so it runs before the entry (module scripts run in document
+				// order) and its handler is registered before hydration. No
+				// hydration in an all-SPA app, so nothing to install there.
+				if (!ctx?.server || config.mode === 'spa') return out;
+				return {
+					html: out,
+					tags: [
+						{
+							tag: 'script',
+							attrs: { type: 'module', src: DEV_OVERLAY_SCRIPT_SRC },
+							injectTo: 'head' as const,
+						},
+					],
+				};
 			},
 		},
 
 		resolveId(id) {
+			if (id === DEV_OVERLAY_VIRTUAL_ID) return DEV_OVERLAY_RESOLVED_ID;
 			if (id === VIRTUAL_ROUTES_ID) return RESOLVED_VIRTUAL_ROUTES_ID;
 			if (id === VIRTUAL_MIDDLEWARE_ID) return RESOLVED_VIRTUAL_MIDDLEWARE_ID;
 			if (id === VIRTUAL_API_ROUTES_ID) return RESOLVED_VIRTUAL_API_ROUTES_ID;
 		},
 
 		async load(id, loadOptions) {
+			if (id === DEV_OVERLAY_RESOLVED_ID) return devOverlayModuleSource();
 			if (id === RESOLVED_VIRTUAL_ROUTES_ID) {
 				try {
 					// Detect each file's optional exports up front so the
@@ -550,7 +553,11 @@ export function zeroPlugin(userInput: ZeroUserConfig = {}): Plugin[] {
 						server.ssrFixStacktrace(error);
 						logDevSsrError(server, req.url, error);
 						if (res.headersSent) return res.end();
-						const html = renderErrorOverlay(error);
+						const html = renderErrorOverlay(error, {
+							root,
+							url: req.originalUrl ?? req.url,
+							kind: "middleware",
+						});
 						res.statusCode = 500;
 						res.setHeader("Content-Type", "text/html; charset=utf-8");
 						res.end(html);
@@ -650,7 +657,11 @@ export function zeroPlugin(userInput: ZeroUserConfig = {}): Plugin[] {
 								const error = err instanceof Error ? err : new Error(String(err));
 								server.ssrFixStacktrace(error);
 								logDevSsrError(server, req.url, error);
-								const html = renderErrorOverlay(error);
+								const html = renderErrorOverlay(error, {
+									root,
+									url: req.originalUrl ?? req.url,
+									...devSsrErrorContext.get(error),
+								});
 								res.statusCode = 500;
 								res.setHeader("Content-Type", "text/html; charset=utf-8");
 								res.setHeader("Content-Length", Buffer.byteLength(html));
@@ -758,7 +769,10 @@ export function zeroPlugin(userInput: ZeroUserConfig = {}): Plugin[] {
 					const error = err instanceof Error ? err : new Error(String(err));
 					server.ssrFixStacktrace(error);
 					logDevSsrError(server, req.url, error);
-					const html = renderErrorOverlay(error);
+					const html = renderErrorOverlay(error, {
+						root,
+						url: req.originalUrl ?? req.url,
+					});
 					res.statusCode = 500;
 					res.setHeader("Content-Type", "text/html; charset=utf-8");
 					res.setHeader("Content-Length", Buffer.byteLength(html));
@@ -1198,6 +1212,26 @@ export function detectConventionFavicon(root: string = process.cwd()): string | 
 }
 
 /**
+ * W19 — put the client entry script before `<!--pyreon-scripts-->` so users
+ * don't have to add `<script type="module" src="/src/entry-client.ts">` to
+ * `index.html` by hand. Unchanged when `entryClient === false`, when the
+ * template has no `<!--pyreon-scripts-->` (not a Zero-shaped template), or
+ * when it already references the entry.
+ * @internal
+ */
+export function injectClientEntry(html: string, entryClient: string | false | undefined): string {
+	if (entryClient === false) return html;
+	const entry = entryClient ?? '/src/entry-client.ts';
+	if (!html.includes('<!--pyreon-scripts-->')) return html;
+	if (html.includes(`src="${entry}"`)) return html;
+	if (html.includes(`src='${entry}'`)) return html;
+	const tag = `<script type="module" src="${entry}"></script>`;
+	// Replacer function: `entry` is user config and must not be read as a
+	// `$`-replacement pattern.
+	return html.replace('<!--pyreon-scripts-->', () => `${tag}\n    <!--pyreon-scripts-->`);
+}
+
+/**
  * Injects zero's pre-paint `themeScript` into every page `<head>` (prepend,
  * so it runs before stylesheets paint — that's the whole FOUC-prevention
  * point). Content is the same `themeScript` string users previously pasted
@@ -1599,6 +1633,15 @@ async function handle404(
 }
 
 /**
+ * Phase and route of a dev SSR failure, keyed by the thrown error. Weak, so
+ * an entry lives exactly as long as the error object; nothing to evict.
+ */
+const devSsrErrorContext = new WeakMap<
+	object,
+	{ kind: "render" | "server"; route?: string }
+>();
+
+/**
  * Dev-mode SSR render pipeline. Returns the composed HTML string, or `null`
  * if the URL doesn't match any known route (caller falls through to the 404
  * middleware). Mirrors the production `createServer` flow:
@@ -1685,16 +1728,49 @@ async function renderSsr(
 	// the layout chrome. `bailOnUnmatched` covers the remaining case (no
 	// reachable `notFoundComponent` → `matched` stays empty → fall through
 	// to `handle404`'s static fallback).
-	const result = await serverPkg.renderPage(
-		App as Parameters<typeof serverPkg.renderPage>[0],
-		routerInst as Parameters<typeof serverPkg.renderPage>[1],
-		routerPath,
-		{
-			...(req ? { request: req } : {}),
-			...(locals ? { locals } : {}),
-			bailOnUnmatched: true,
-		},
-	);
+	// Dev error overlay: remember whether the failure came after the preload
+	// (loaders, lazy route modules) finished — then it is the render — and
+	// which route matched. A loader failure is tagged by the router itself.
+	// This router is per-request, so wrapping its `preload` touches nothing
+	// shared.
+	let preloaded = false;
+	const devRouter = routerInst as unknown as {
+		preload: (...args: unknown[]) => Promise<void>;
+		currentRoute?: () => { matched?: Array<{ path?: string }> } | undefined;
+	};
+	const preload = devRouter.preload.bind(routerInst);
+	devRouter.preload = async (...args: unknown[]) => {
+		await preload(...args);
+		preloaded = true;
+	};
+
+	let result: Awaited<ReturnType<typeof serverPkg.renderPage>>;
+	try {
+		result = await serverPkg.renderPage(
+			App as Parameters<typeof serverPkg.renderPage>[0],
+			routerInst as Parameters<typeof serverPkg.renderPage>[1],
+			routerPath,
+			{
+				...(req ? { request: req } : {}),
+				...(locals ? { locals } : {}),
+				bailOnUnmatched: true,
+			},
+		);
+	} catch (err) {
+		if (typeof err === "object" && err !== null) {
+			let route: string | undefined;
+			try {
+				route = devRouter.currentRoute?.()?.matched?.at(-1)?.path;
+			} catch {
+				route = undefined;
+			}
+			devSsrErrorContext.set(err, {
+				kind: preloaded ? "render" : "server",
+				...(route ? { route } : {}),
+			});
+		}
+		throw err;
+	}
 
 	if (result.kind === "unmatched") return null;
 	if (result.kind === "redirect") {
