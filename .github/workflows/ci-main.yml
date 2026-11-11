@@ -16,7 +16,10 @@ name: CI (main)
 on:
   push:
     branches: [main]
-  merge_group:
+  # NO `merge_group` (dropped 2026-11-10): neither coverage job is a required
+  # check, so the merge queue never waits for them, and in the queue each
+  # group only paid ~18 runner-minutes for a verdict nothing read. Main's push
+  # run (coalesced to the latest commit) remains the full-coverage backstop.
   pull_request:
     paths:
       - .github/workflows/ci-main.yml
@@ -30,7 +33,7 @@ on:
 
 concurrency:
   group: ci-main-${{ github.ref }}
-  # Latest PR head wins. Main/merge-group runs finish and coalesce pending work.
+  # Latest PR head wins. Main runs finish and coalesce pending work.
   # Use the same boolean expression as ci.yml (avoid a string-valued false).
   cancel-in-progress: ${{ github.event_name == 'pull_request' && true || false }}
 
@@ -46,18 +49,18 @@ jobs:
     # P3c — runs the full test suite, same lib/-requiring tests as
     # `test-cell`. Needs Bootstrap.
     #
-    # Scoped to main, merge_group and coverage-infrastructure PRs. The original
+    # Scoped to main and coverage-infrastructure PRs. The original
     # "runs on every trigger" claim estimated ~30s added to PR CI; actual
     # CI measurement showed 262s (4.4 min) — 9× the estimate. That's a
     # 262s slice off the PR critical path for a check that only catches
-    # numeric regressions main / merge_queue already gate on, and is
+    # numeric regressions main already catches, and is
     # functionally duplicated for PR-visible feedback by the
     # `Coverage` floor gate (runs always, ~5s).
     #
-    # Trade-off restored: a PR that drops a package's actual coverage from
-    # 92% to 88% (still above the floor) passes `Coverage` but fails
-    # `Coverage (Full)` at merge-queue time. Same safety as before; the
-    # signal just lands at merge-time instead of PR-time.
+    # Trade-off: a PR that drops a package's actual coverage from 92% to 88%
+    # (still above the floor) passes `Coverage` and is caught by
+    # `Coverage (Full)` on main after it merges. It is not a required check,
+    # so it does not run in the merge queue.
     # Ordinary docs/package PRs retain their affected coverage gate in ci.yml.
     #
     # 2026-07 restoration: this job had gone red-on-arrival (12 packages below
@@ -130,7 +133,7 @@ jobs:
     # 30-minute script ceiling could never finish that valid run. The script
     # allows 60 minutes for native coverage; this job also budgets setup and
     # cache transfers. Individual compiles and test cases remain bounded.
-    if: ${{ github.event_name == 'push' || github.event_name == 'merge_group' }}
+    if: ${{ github.event_name == 'push' }}
     runs-on: ubuntu-latest
     timeout-minutes: 75
     steps:
