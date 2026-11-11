@@ -392,6 +392,24 @@ export function createFlow<TData = Record<string, unknown>>(
   // times or when the instance is disposed mid-animation.
   let _layoutFrameId: number | null = null
   let _viewportFrameId: number | null = null
+  // The running animated layout's promise resolver, and a per-call token.
+  // `layout()` resolves when ITS layout is applied and visible; a later
+  // `layout()` (or `dispose()`) supersedes it — the superseded call settles
+  // right away, and a superseded ELK computation that finishes late is
+  // dropped instead of overwriting the newer layout (leak class F).
+  let _layoutSettle: (() => void) | null = null
+  let _layoutToken = 0
+
+  /** Stop the running layout animation (if any) and settle its promise. */
+  function stopLayoutAnimation(): void {
+    if (_layoutFrameId !== null) {
+      _caf(_layoutFrameId)
+      _layoutFrameId = null
+    }
+    const settle = _layoutSettle
+    _layoutSettle = null
+    settle?.()
+  }
 
   // ── Safe rAF / cAF ───────────────────────────────────────────────────────
   // Two scenarios where the browser globals are unavailable:
@@ -1048,10 +1066,22 @@ export function createFlow<TData = Record<string, unknown>>(
     // (which overlap large nodes and over-space small ones).
     const measuredNodes = currentNodes.map((n) => ({ ...n, ...nodeDims(n) }))
 
+    const token = ++_layoutToken
     const positions = await computeLayout(measuredNodes, currentEdges, algorithm, options)
+    // A later layout() started while this one was computing: it owns the
+    // graph now. Applying this (older) result would overwrite it.
+    if (token !== _layoutToken) return
+
+    // Whatever this call does, a still-running earlier animation must stop
+    // first — otherwise its next frame overwrites the positions applied here.
+    stopLayoutAnimation()
 
     checkpoint()
-    const animate = options.animate !== false && !reducedMotion()
+    // No animation frames available (SSR, Node, a torn-down test env): the
+    // frames would never run and the promise would never settle, so apply the
+    // final positions at once — the same end state.
+    const animate =
+      options.animate !== false && !reducedMotion() && typeof requestAnimationFrame === 'function'
     const duration = options.animationDuration ?? 300
 
     if (!animate) {
@@ -1073,13 +1103,9 @@ export function createFlow<TData = Record<string, unknown>>(
       return
     }
 
-    // Animated transition — interpolate positions over duration.
-    // Cancel any in-flight layout animation to prevent frame stacking.
-    if (_layoutFrameId !== null) {
-      _caf(_layoutFrameId)
-      _layoutFrameId = null
-    }
-
+    // Animated transition — interpolate positions over duration. The returned
+    // promise settles on the LAST frame (final positions written), or when a
+    // later layout() / dispose() supersedes this one.
     const startPositions = new Map(currentNodes.map((n) => [n.id, { ...n.position }]))
     const targetPositions = new Map(positions.map((p) => [p.id, p.position]))
 
@@ -1114,10 +1140,16 @@ export function createFlow<TData = Record<string, unknown>>(
         _layoutFrameId = _raf(animateFrame)
       } else {
         _layoutFrameId = null
+        const settle = _layoutSettle
+        _layoutSettle = null
+        settle?.()
       }
     }
 
-    _layoutFrameId = _raf(animateFrame)
+    return new Promise<void>((resolve) => {
+      _layoutSettle = resolve
+      _layoutFrameId = _raf(animateFrame)
+    })
   }
 
   // ── Batch ────────────────────────────────────────────────────────────────
@@ -1994,10 +2026,10 @@ export function createFlow<TData = Record<string, unknown>>(
     edgeMouseLeaveListeners.clear()
     containerEl = null
     // Cancel any in-flight animations to prevent stale state mutations
-    if (_layoutFrameId !== null) {
-      _caf(_layoutFrameId)
-      _layoutFrameId = null
-    }
+    // Settles a running layout() promise rather than leaving it pending, and
+    // invalidates any layout still computing.
+    _layoutToken++
+    stopLayoutAnimation()
     if (_viewportFrameId !== null) {
       _caf(_viewportFrameId)
       _viewportFrameId = null
