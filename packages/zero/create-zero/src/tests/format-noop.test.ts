@@ -34,6 +34,7 @@ function unformatted(root: string): string[] {
     execFileSync(OXFMT, ['--list-different', '--ignore-path', NO_IGNORE, '-c', CONFIG, root], {
       encoding: 'utf8',
     })
+
     return []
   } catch (err) {
     const out = String((err as { stdout?: unknown }).stdout ?? '')

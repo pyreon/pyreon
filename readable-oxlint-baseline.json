@@ -1,6 +1,6 @@
 {
   "description": "Readable oxlint ratchet — findings of `@pyreon/lint/oxlint/readable.json` (via scripts/oxlint-readable.jsonc) per (file, rule) may only DECREASE, and a file not listed here must have none. Checked by `bun scripts/check-readable-oxlint-ratchet.ts` (validate-fast + CI). Split the function, or fix with `bunx oxlint -c scripts/oxlint-readable.jsonc --fix <file>` for curly / newline-after-import / else-return; then tighten with `--update`. Never raise a count to absorb a finding.",
-  "total": 3243,
+  "total": 3242,
   "files": {
     "contrib/moltar/pyreon/bench-vs-typia.mjs": {"eslint(complexity)":1,"eslint(no-else-return)":4},
     "docs/scripts/gen-examples-gallery.ts": {"eslint(curly)":2},
@@ -1280,7 +1280,6 @@
     "packages/tools/lint/src/rules/web-perf/no-layout-thrash.ts": {"eslint(complexity)":1,"eslint(no-useless-return)":1},
     "packages/tools/lint/src/runner.ts": {"eslint(complexity)":1,"eslint(max-lines-per-function)":1,"eslint(max-params)":2},
     "packages/tools/lint/src/utils/component-context.ts": {"eslint(curly)":1},
-    "packages/tools/lint/src/utils/deferred-callbacks.ts": {"eslint(complexity)":1},
     "packages/tools/loom/src/cli/index.ts": {"eslint(complexity)":1,"eslint(max-lines-per-function)":1},
     "packages/tools/loom/src/core/config.ts": {"eslint(complexity)":1},
     "packages/tools/loom/src/core/detect.ts": {"eslint(complexity)":1},
