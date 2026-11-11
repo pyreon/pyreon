@@ -931,6 +931,69 @@ export function Profiler(props: {
   return props.children ?? null
 }
 
+// ─── React 19.x additions: useEffectEvent / Activity / ViewTransition / cache ─
+
+/**
+ * React-compatible `useEffectEvent` — a STABLE function that always calls the
+ * latest `fn`. Pass it to an effect without listing it in the deps: the event
+ * reads the newest props and state, while the effect does not re-run when
+ * they change.
+ *
+ * @example
+ * const onConnected = useEffectEvent(() => showToast(theme))
+ * useEffect(() => { conn.on('connected', onConnected) }, [roomId])
+ */
+export function useEffectEvent<A extends unknown[], R>(fn: (...args: A) => R): (...args: A) => R {
+  const latest = useRef(fn)
+  latest.current = fn
+  const stable = useRef<((...args: A) => R) | undefined>(undefined)
+  if (stable.current === undefined) stable.current = (...args: A) => latest.current(...args)
+  return stable.current
+}
+
+/**
+ * React-compatible `<Activity mode>`. `'hidden'` keeps the children mounted
+ * but not displayed; `'visible'` (the default) shows them. Rendered through a
+ * wrapper element with `display: contents` while visible, so it adds no box to
+ * the layout (a CSS child selector does see the wrapper). React also pauses a
+ * hidden tree's effects; Pyreon does not, so effects keep running while hidden.
+ */
+export function Activity(props: {
+  mode?: 'visible' | 'hidden' | undefined
+  children?: VNodeChild
+}): VNodeChild {
+  return h(
+    'div',
+    { 'data-activity': '', style: props.mode === 'hidden' ? 'display:none' : 'display:contents' },
+    props.children ?? null,
+  )
+}
+
+/**
+ * React-compatible `<ViewTransition>` — renders its children. React animates
+ * their changes with the View Transitions API; Pyreon renders them without
+ * the animation (wrap the state update in `document.startViewTransition`
+ * yourself if you need it).
+ */
+export function ViewTransition(props: {
+  name?: string | undefined
+  children?: VNodeChild
+  [key: string]: unknown
+}): VNodeChild {
+  return props.children ?? null
+}
+
+/**
+ * React-compatible `cache(fn)`. React memoizes only inside Server Components;
+ * on the client its `cache` returns the function unchanged, and so does this.
+ */
+function reactCache<T extends (...args: never[]) => unknown>(fn: T): T {
+  return fn
+}
+// Exported under React's name; a module-level `cache` binding would shadow
+// the local `cache` slot inside `memo`.
+export { reactCache as cache }
+
 // ─── Component / PureComponent (class stubs) ────────────────────────────────
 
 /**
