@@ -1,10 +1,15 @@
 import { onMount, onUnmount } from '@pyreon/core'
+import { useHead } from '@pyreon/head'
 import { signal } from '@pyreon/reactivity'
 import { RouterView } from '@pyreon/router'
 import { Search } from '@pyreon/zero-content'
 import { Header } from '../../components/Header'
 import { PrimaryNavigation } from '../../components/PrimaryNavigation'
 import { Sidebar } from '../../components/Sidebar'
+// The docs stylesheet is linked from here, not imported by the client entry,
+// so marketing pages never download it. `?url` emits it as its own processed
+// asset (vite-plugins/legacy-css-layer.ts still puts it in `@layer docs`).
+import docsCssHref from '../../styles/docs.css?url'
 
 /**
  * Docs layout — the reading shell for `/docs` and `/docs/*`:
@@ -23,6 +28,7 @@ import { Sidebar } from '../../components/Sidebar'
  * layout itself is redesigned in a later slice.
  */
 export function layout() {
+  useHead({ link: [{ rel: 'stylesheet', href: docsCssHref }] })
   const drawerOpen = signal(false)
 
   const setPageScrollLocked = (locked: boolean) => {

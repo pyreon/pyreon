@@ -6,6 +6,7 @@ import { font, motion, paper, radius, text, weight } from '../theme'
 import { el, type ButtonAttrs, focusRing, tone, txt } from './bases'
 import { GlowCard } from './cards'
 import { AutoGrid } from './layout'
+import { KitScope } from './scope'
 
 /**
  * Building blocks for the live demos on product pages: the meter panel on
@@ -14,12 +15,18 @@ import { AutoGrid } from './layout'
  * both themes.
  */
 
-/** Two columns from 960px: the app on one side, what it does on the other. */
+/**
+ * Two columns from 960px: the app on one side, what it does on the other.
+ * The root of every product demo: it opens `KitScope`, so a demo island can
+ * use kit components when it hydrates on a static page.
+ */
 export function DemoGrid(props: { children?: VNodeChild }) {
   return (
-    <AutoGrid cols={2} gap={16}>
-      {props.children}
-    </AutoGrid>
+    <KitScope>
+      <AutoGrid cols={2} gap={16}>
+        {props.children}
+      </AutoGrid>
+    </KitScope>
   )
 }
 

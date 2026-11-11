@@ -1,8 +1,9 @@
 import type { VNodeChild } from '@pyreon/core'
 import { For } from '@pyreon/core'
-import { useClipboard } from '@pyreon/hooks'
 import { font, motion, radius, text, weight } from '../theme'
 import { el, focusRing, tone, txt, type LinkAttrs, type ButtonAttrs } from './bases'
+import { CommandLine } from './command'
+import { CopyButtonIsland } from './islands'
 import { isFileHref, useLinkClick } from './link'
 
 const PillBase = el
@@ -84,91 +85,16 @@ export function Pill(props: {
   )
 }
 
-const CmdBox = el
-  .config({ name: 'InstallCommand' })
-  .attrs({ contentDirection: 'inline', contentAlignY: 'center', gap: 14 })
-  .theme((_t, m) => ({
-    height: 50,
-    maxWidth: '100%',
-    minWidth: 0,
-    paddingLeft: { xs: 14, sm: 22 },
-    paddingRight: 8,
-    borderRadius: radius.pill,
-    border: '1px solid',
-    borderColor: tone(m, 'line2'),
-    backgroundColor: tone(m, 'sheen'),
-    fontFamily: font.mono,
-    fontSize: { xs: 12, sm: text.ui.size },
-    color: tone(m, 'text'),
-  }))
-  .variants((_t, m) => ({
-    default: {},
-    /** Hero and closing CTA only: the video end card's ember ring + glow. [A12] */
-    hot: {
-      borderColor: tone(m, 'hotRing'),
-      boxShadow: tone(m, 'hotGlow'),
-    },
-  }))
-
-const CmdText = txt
-  .config({ name: 'InstallCommandText' })
-  .attrs({ tag: 'code' })
-  .theme(() => ({
-    display: 'block',
-    minWidth: 0,
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
-    fontFamily: 'inherit',
-    fontSize: 'inherit',
-    color: 'inherit',
-    backgroundColor: 'transparent',
-    padding: 0,
-    border: 'none',
-  }))
-
-const CmdPrompt = txt
-  .config({ name: 'InstallCommandPrompt' })
-  .attrs({ tag: 'span', 'aria-hidden': 'true' })
-  .theme((_t, m) => ({ color: tone(m, 'prompt'), marginRight: 8 }))
-
-const CmdButton = el
-  .config({ name: 'InstallCommandCopy' })
-  .attrs<ButtonAttrs>({ tag: 'button', contentAlignY: 'center' })
-  .theme((_t, m) => ({
-    height: 34,
-    flexShrink: 0,
-    paddingLeft: 14,
-    paddingRight: 14,
-    borderRadius: radius.pill,
-    border: 'none',
-    backgroundColor: tone(m, 'line'),
-    color: tone(m, 'mist'),
-    fontFamily: font.mono,
-    fontSize: 11.5,
-    transition: `color ${motion.hover}`,
-    hover: { color: tone(m, 'text') },
-    focus: focusRing(m),
-  }))
-
-/** `.cmd` — a shell command with a copy button (`useClipboard`). */
+/**
+ * `.cmd` — a shell command with a copy button. The line is plain server HTML;
+ * the copy button is a small island (`CopyButtonIsland`), so a static page
+ * ships a few hundred bytes for it instead of the kit's styling runtime.
+ * `variant="hot"` (hero and closing CTA only) adds the ember ring. [A12]
+ * Inside another island use `InlineCommand` (`kit/command.tsx`) instead:
+ * islands do not nest.
+ */
 export function InstallCommand(props: { command: string; variant?: 'default' | 'hot' | undefined }) {
-  const { copy, copied } = useClipboard()
-  return (
-    <CmdBox variant={props.variant ?? 'default'}>
-      <CmdText title={props.command}>
-        <CmdPrompt>$</CmdPrompt>
-        {props.command}
-      </CmdText>
-      <CmdButton
-        type="button"
-        aria-label={() => (copied() ? `Copied: ${props.command}` : `Copy ${props.command}`)}
-        onClick={() => void copy(props.command)}
-      >
-        <span aria-live="polite">{() => (copied() ? 'copied' : 'copy')}</span>
-      </CmdButton>
-    </CmdBox>
-  )
+  return <CommandLine command={props.command} variant={props.variant} copy={<CopyButtonIsland text={props.command} />} />
 }
 
 /** `.p-api .chips span` — a mono tag. */

@@ -4,6 +4,8 @@ import { el, tone } from '../kit/bases'
 import { SiteFooter } from './SiteFooter'
 import { SiteHeader } from './SiteHeader'
 import { SkipLink } from './parts'
+import { sheet } from '@pyreon/styler'
+import { SITE_CSS, SITE_CSS_KEY } from '../kit/site-css'
 
 const Page = el
   .config({ name: 'SitePage' })
@@ -31,11 +33,15 @@ const Main = el.config({ name: 'SiteMain' }).attrs({ tag: 'main', block: true, c
  * through `routes/(site)/_layout.tsx`, and directly from `_404.tsx`.
  */
 export function SiteShell(props: { children?: VNodeChild }) {
+  // The islands' plain stylesheet (kit/site-css.ts): into this request's
+  // <style> on the server, into the live sheet when the docs app renders a
+  // marketing page in the browser. Idempotent by key.
+  sheet.injectRules([SITE_CSS], SITE_CSS_KEY)
   return (
     <Page>
       <SkipLink href="#site-main">Skip to content</SkipLink>
       <SiteHeader />
-      <Main id="site-main" tabIndex={-1}>
+      <Main id="site-main" tabIndex={-1} data-site-static="">
         {props.children}
       </Main>
       <SiteFooter />

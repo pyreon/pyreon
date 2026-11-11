@@ -60,3 +60,11 @@ declare module '*.mdx' {
   export const headings: Array<{ level: number; text: string; slug: string }>
   export const slug: string
 }
+
+// `@pyreon/vite-plugin` (islands: true): every `island()` declaration in the
+// app, for `hydrateIslandsAuto()` on static pages (site/static-client.ts).
+declare module 'virtual:pyreon/islands-registry' {
+  import type { ComponentFn } from '@pyreon/core'
+  export const __pyreonIslandRegistry: Record<string, () => Promise<{ default: ComponentFn } | ComponentFn>>
+  export const __pyreonIslandsEnabled: boolean
+}
