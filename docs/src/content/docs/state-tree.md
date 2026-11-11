@@ -3,6 +3,10 @@ title: State Tree
 description: MobX-State-Tree-inspired reactive models with snapshots, patches, and middleware.
 ---
 
+<ProductPitch id="statetree" />
+
+<LiveDemo id="statetree" />
+
 `@pyreon/state-tree` provides structured, composable reactive models built on `@pyreon/reactivity` signals. Define models with typed state, computed views, and actions -- then observe changes via JSON patches and intercept actions with middleware.
 
 <PackageBadge name="@pyreon/state-tree" href="/docs/state-tree" />
@@ -1692,3 +1696,11 @@ The `self` parameter in `views` and `actions` is a `Proxy` over the instance obj
 ### Tracked Signals
 
 State signals are wrapped in a `trackedSignal()` that intercepts `.set()` and `.update()` calls to emit patches. Reads are pass-through with zero overhead. When no patch listeners are registered, patch object allocation is skipped entirely for performance.
+
+<BenchCallout id="statetree" />
+
+<ComingFrom id="statetree" />
+
+<InlineSell id="store" />
+
+<CrossSell id="statetree" />

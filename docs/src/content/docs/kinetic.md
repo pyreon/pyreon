@@ -3,6 +3,10 @@ title: Kinetic
 description: CSS-transition-based animation components for Pyreon — enter/leave transitions, staggered groups, height collapse, and keyed list animations.
 ---
 
+<ProductPitch id="kinetic" />
+
+<LiveDemo id="kinetic" />
+
 `@pyreon/kinetic` is a CSS-transition animation engine for Pyreon. A single factory — `kinetic(tag)` — produces a renderable, chainable component that animates an element as it enters and leaves the DOM. There are no JavaScript animation loops: kinetic applies CSS classes or inline styles at the right frames of the transition lifecycle and lets the browser do the work.
 
 <PackageBadge name="@pyreon/kinetic" href="/docs/kinetic" />
@@ -526,3 +530,11 @@ For the full library see [`@pyreon/kinetic-presets`](/docs/kinetic-presets).
 | `TransitionStateResult` | Return shape of `useTransitionState` |
 | `UseTransitionState` | Signature type of `useTransitionState` |
 | `UseAnimationEnd` | Signature type of `useAnimationEnd` |
+
+<BenchCallout id="kinetic" />
+
+<ComingFrom id="kinetic" />
+
+<InlineSell id="design" />
+
+<CrossSell id="kinetic" />

@@ -3,6 +3,10 @@ title: Zero Content
 description: Markdown-driven Pyreon sites. Compile-time .md → JSX, typed collections, MDX components, callouts, code-groups, Shiki, and inline live examples.
 ---
 
+<ProductPitch id="content" />
+
+<LiveDemo id="content" />
+
 `@pyreon/zero-content` is the content layer for `@pyreon/zero`. Author in `.md` / `.mdx` and get fully-typed content collections, MDX components, Shiki-highlighted code, callouts, tabbed code-groups, math + diagrams, search, and inline live examples — all compiled to real Pyreon JSX at build time. It powers this docs site.
 
 <PackageBadge name="@pyreon/zero-content" href="/docs/zero-content" />
@@ -668,3 +672,11 @@ The plugin surfaces non-fatal compile warnings via Vite (with a clickable, root-
 Full API in MCP `get_api('@pyreon/zero-content/<name>')` or the package README at [`packages/zero/zero-content/README.md`](https://github.com/pyreon/pyreon/blob/main/packages/zero/zero-content/README.md).
 
 See also: [Live Examples](./live-examples) for the full `<Example>` walkthrough.
+
+<BenchCallout id="content" />
+
+<ComingFrom id="content" />
+
+<InlineSell id="zero" />
+
+<CrossSell id="content" />

@@ -2,6 +2,10 @@
 title: Multi-Platform Pyreon
 ---
 
+<ProductPitch id="native" />
+
+<LiveDemo id="native" />
+
 # Multi-Platform Pyreon
 
 > **Status:** PMTC (Pyreon Multi-Target Compiler) is **experimental — demo-quality, not production-ready.** The single number for "how much is device-proven" is the gated weighted matrix at the bottom of this page (`check-multiplatform-matrix` fails CI when its headline disagrees with its table) — do not quote a score from memory or from an older revision of this page. The 15-primitive canonical vocabulary spans all three targets — every primitive has a real web DOM runtime AND emits SwiftUI + Jetpack Compose. **Be precise about what "validated" means**, because the layers differ sharply in strength:
@@ -1876,3 +1880,11 @@ The runtime packages exist, with one reactive container per data/service hook:
 - Example apps: `examples/native-todomvc-{ios,android,web}/` + `examples/native-router-demo-{ios,web}/` — `native-router-demo-ios` ships a full XcodeGen host shell (#1105) so `bash scripts/build.sh` produces a buildable Xcode project, not a source-only stub. `examples/native-todomvc-web/README.md` was also corrected (#1106) so it no longer references a fictional `src/TodoApp.tsx` — the one-source contract (Phase E3) keeps the shared TodoApp source in `examples/native-todomvc-ios/src/`.
 - Native validation gates: `.github/workflows/native-validate.yml` (compiler fixtures and real-SDK Swift typechecks) and `.github/workflows/native-device.yml` (example builds and Simulator/emulator tests); selected automatically for relevant PRs, with nightly and manual runs. The `native-device` label forces every device lane.
 - `.agents/guides/multiplatform/README.md` — agent-context summary of the layered model
+
+<BenchCallout id="native" />
+
+<ComingFrom id="native" />
+
+<InlineSell id="primitives" />
+
+<CrossSell id="native" />

@@ -3,6 +3,10 @@ title: '@pyreon/primitives'
 description: 'The canonical multi-platform UI vocabulary — 21 primitives plus Transition, TransitionGroup, WebView and per-platform escape hatches, each compiled to DOM, SwiftUI and Compose from one source.'
 ---
 
+<ProductPitch id="primitives" />
+
+<LiveDemo id="primitives" />
+
 # @pyreon/primitives
 
 One vocabulary, three outputs. Write a component once with these primitives: on
@@ -1286,3 +1290,11 @@ rocketstyle-style components. Those are not available on native.
   multiplatform app.
 - [API reference](/docs/reference/primitives): the generated reference, with
   common mistakes for each API.
+
+<BenchCallout id="primitives" />
+
+<ComingFrom id="primitives" />
+
+<InlineSell id="native" />
+
+<CrossSell id="primitives" />

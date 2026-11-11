@@ -3,6 +3,10 @@ title: '@pyreon/router'
 description: Type-safe client-side router with nested routes, navigation guards, data loaders, and scroll restoration.
 ---
 
+<ProductPitch id="router" />
+
+<LiveDemo id="router" />
+
 `@pyreon/router` is Pyreon's type-safe client-side router. It supports nested routes, TypeScript param inference from path strings, navigation guards, data loaders, lazy loading with retries, scroll restoration, and both hash and history mode.
 
 <PackageBadge name="@pyreon/router" href="/docs/router" />
@@ -2868,3 +2872,11 @@ router.push({ name: 'user', params: { id: '42' } })
 <APICard name="RouterViewProps" type="type" signature="interface RouterViewProps" description="Props for the RouterView component." />
 
 <APICard name="RouterLinkProps" type="type" signature="interface RouterLinkProps" description="Props for the RouterLink component." />
+
+<BenchCallout id="router" />
+
+<ComingFrom id="router" />
+
+<InlineSell id="zero" />
+
+<CrossSell id="router" />

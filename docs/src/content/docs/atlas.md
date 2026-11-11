@@ -3,6 +3,10 @@ title: Atlas
 description: The AI-native component workbench — derives, verifies, and serves a machine-readable component catalog from your source.
 ---
 
+<ProductPitch id="atlas" />
+
+<LiveDemo id="atlas" />
+
 `@pyreon/atlas` is a component workbench that inverts Storybook's model: **you don't author stories — Atlas derives them.** Your components and their TypeScript types are the source of truth. Atlas infers controls from prop types, generates scenarios from variant axes (rocketstyle dimensions included), verifies every scenario with a five-check pipeline, and writes the result as a machine-readable catalog that both humans (the workbench) and AI assistants (the agent guide) consume.
 
 <PackageBadge name="@pyreon/atlas" href="/docs/atlas" />
@@ -358,3 +362,11 @@ The scan runs `play` **instead of** the automatic click-walk; a throw fails the 
 - `verify-browser` can't drive components defined in workbench-host files — the summary names each one (`notDriven`), never silently skips.
 - The leak check skips (never fake-passes) without a GC hook.
 - Reactive coverage is a **measurement**, not a threshold gate — the findings carry the numbers; judge them.
+
+<BenchCallout id="atlas" />
+
+<ComingFrom id="atlas" />
+
+<InlineSell id="design" />
+
+<CrossSell id="atlas" />

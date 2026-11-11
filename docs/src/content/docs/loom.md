@@ -3,6 +3,10 @@ title: Loom
 description: The monorepo dependency observatory — workspace graph, version-sync drift, cycles, phantom deps, and blast radius, as data.
 ---
 
+<ProductPitch id="loom" />
+
+<LiveDemo id="loom" />
+
 `@pyreon/loom` reads your workspace the way an install tool does and turns its dependency fabric into **data**: the internal graph (depths, cycles, blast radius), the external version-usage map, and a detector-driven issue list with honest severities. One scan, three consumers: your terminal, your CI, and the observatory UI.
 
 <PackageBadge name="@pyreon/loom" href="/docs/loom" />
@@ -129,3 +133,11 @@ A `pyreon.config.*` that exists but fails to load is a **named error**, never a 
 The machine surface is `loom-report.json` — stable issue codes, structured evidence per finding, and the full model (packages, edges, depths, reach) for your own tooling.
 
 It is written **next to the root manifest** — the workspace root, not a `dist/` or a temp dir — because that is where a CI step and your own tooling look for it without being told. It is a generated artifact, regenerated on every scan, so **gitignore it**: on a large monorepo it is hundreds of kilobytes, and running the gate above then `git add .` is enough to commit it by accident. Use `--no-write` when you only want the exit code (that is what `pyreon doctor`'s `dependency-fabric` gate does — auditing a repo must not leave a file in it), or `--json` to send the report to stdout instead.
+
+<BenchCallout id="loom" />
+
+<ComingFrom id="loom" />
+
+<InlineSell id="tooling" />
+
+<CrossSell id="loom" />

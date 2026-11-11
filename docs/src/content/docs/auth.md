@@ -3,6 +3,10 @@ title: Auth
 description: Sign-in with OpenID Connect on web, iOS and Android from one call — plus ID-token verification, signed sessions, TOTP, passkeys and route guards, secure by default
 ---
 
+<ProductPitch id="auth" />
+
+<LiveDemo id="auth" />
+
 `@pyreon/auth` is authentication for Pyreon apps, built on Web Crypto and `fetch` so the same code runs in the browser, Node, Bun and Cloudflare workerd. Its centre is `useOidc` — a reactive OpenID Connect sign-in that is **one call on web, iOS and Android**. Around it sit the pieces a real product needs: ID-token verification, signed cookie sessions, two-factor codes (TOTP), passkeys, attempt limiting and an open-redirect-proof route guard.
 
 <PackageBadge name="@pyreon/auth" href="/docs/auth" />
@@ -704,3 +708,11 @@ The live demo at the top of this page is built exactly this way — its provider
 | Passport bridge (`@pyreon/auth/passport`, server only) | `runStrategy(strategy, input, options?)` — run any Passport strategy without Express or Passport itself; resolves with a `PassportOutcome` (`success` / `fail` / `redirect` / `pass`) and rejects only on a strategy `error()`. Types: `PassportStrategyLike`, `PassportRequest`, `PassportInput`, `PassportOutcome` |
 
 Every signature, option, option / result type and common mistake is in the [API reference](/docs/reference/auth).
+
+<BenchCallout id="auth" />
+
+<ComingFrom id="auth" />
+
+<InlineSell id="permissions" />
+
+<CrossSell id="auth" />

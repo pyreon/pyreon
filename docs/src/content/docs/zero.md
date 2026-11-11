@@ -3,6 +3,10 @@ title: Zero
 description: Full-stack meta-framework for Pyreon applications.
 ---
 
+<ProductPitch id="zero" />
+
+<LiveDemo id="zero" />
+
 `@pyreon/zero` is a batteries-included meta-framework for Pyreon, similar to Next.js for React or Nuxt for Vue. It provides file-system routing, SSR/SSG/ISR/SPA rendering modes, optimized components, a theme system, SEO utilities, font/image optimization, and production deployment adapters — everything you need to ship a full-stack Pyreon application.
 
 <PackageBadge name="@pyreon/zero" href="/docs/zero" status="beta" />
@@ -1991,3 +1995,11 @@ There are no `@pyreon/zero/adapter-*` or `@pyreon/zero/isr` subpaths. Adapters a
 - **[SSG reference](/docs/ssg)** — static generation, dynamic routes, redirects, i18n, build-time ISR, adapters, error handling.
 - **[Router](/docs/router)** — the routing primitives Zero is built on.
 - **[Create Zero](/docs/create-zero)** — project scaffolding.
+
+<BenchCallout id="zero" />
+
+<ComingFrom id="zero" />
+
+<InlineSell id="content" />
+
+<CrossSell id="zero" />

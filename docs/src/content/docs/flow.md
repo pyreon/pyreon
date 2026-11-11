@@ -3,6 +3,10 @@ title: Flow
 description: Reactive flow diagrams for Pyreon — signal-native nodes, edges, pan/zoom, a built-in seven-mode layout engine.
 ---
 
+<ProductPitch id="flow" />
+
+<LiveDemo id="flow" />
+
 `@pyreon/flow` provides reactive flow diagrams for Pyreon. Signal-native nodes and edges, pan/zoom without D3, a built-in seven-mode layout engine (code-split, zero dependencies), and per-node O(1) reactivity. Built from the ground up for signal-based frameworks — each node mounts **exactly once** across the lifetime of the graph, and a drag, selection click, or `updateNode` patches that node in place instead of remounting it.
 
 <PackageBadge name="@pyreon/flow" href="/docs/flow" />
@@ -1461,3 +1465,11 @@ State that lives only in memory, flow graphs included, is lost when the app is c
 | Auto-layout            | Separate elkjs/dagre setup   | `flow.layout('layered')` — seven modes built in |
 | Undo/redo              | DIY                          | Built-in, automatic checkpoints on every mutation |
 | Connection rules       | `isValidConnection` callback | Declarative `connectionRules` AND an `isValidConnection` veto |
+
+<BenchCallout id="flow" />
+
+<ComingFrom id="flow" />
+
+<InlineSell id="dnd" />
+
+<CrossSell id="flow" />

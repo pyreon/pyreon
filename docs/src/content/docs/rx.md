@@ -3,6 +3,10 @@ title: Rx
 description: Signal-aware reactive transforms for Pyreon — filter, map, sortBy, groupBy, pipe, debounce, throttle
 ---
 
+<ProductPitch id="rx" />
+
+<LiveDemo id="rx" />
+
 `@pyreon/rx` is a library of **signal-aware reactive data transforms**. Every collection and aggregation function is overloaded: pass a `Signal<T[]>` and you get back a `Computed` that auto-tracks and re-derives whenever the source changes; pass a plain `T[]` and you get a one-shot static result. The same `filter` / `map` / `sortBy` / `groupBy` you reach for on arrays, but they participate in Pyreon's reactivity graph for free.
 
 <PackageBadge name="@pyreon/rx" href="/docs/rx" />
@@ -696,3 +700,11 @@ Composes left-to-right into **one** computed; signal source → `Computed`, plai
 ## Multiplatform
 
 On iOS and Android (PMTC), the `rx` namespace functions and their standalone forms lower to native collection operations (import aliases included); an unsupported function warns by name at compile time.
+
+<BenchCallout id="rx" />
+
+<ComingFrom id="rx" />
+
+<InlineSell id="reactivity" />
+
+<CrossSell id="rx" />
