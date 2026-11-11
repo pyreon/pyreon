@@ -306,7 +306,7 @@ validate("a@b.co").length // 0
 import { detectReactPatterns } from "@pyreon/compiler/analyze"
 
 const diags = detectReactPatterns("const [n,setN] = useState(0)", "x.tsx")
-console.log(diags[0]?.code) // "react-use-state"
+console.log(diags[0]?.code) // "use-state"
 
 import { migrateReactCode } from "@pyreon/compiler/analyze"
 

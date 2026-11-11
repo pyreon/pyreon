@@ -20,6 +20,15 @@ import { assertClassicTs } from './ts'
 // Types
 // ═══════════════════════════════════════════════════════════════════════════════
 
+/**
+ * Every code `detectReactPatterns` can report. Each one must be EMITTED by a
+ * detector and have a pre-filter trigger in {@link REACT_PATTERN_TRIGGERS}
+ * (the `Record` type makes a missing trigger a compile error), and the test
+ * `react-prefilter-contract.test.ts` runs one fixture per code through both.
+ * (`useLayoutEffect` reports under the `use-effect-*` codes; `createContext` /
+ * `useContext` imports under `react-import`; `dangerouslySetInnerHTML` is a
+ * supported Pyreon prop, so it is not a mistake.)
+ */
 export type ReactDiagnosticCode =
   | 'react-import'
   | 'react-dom-import'
@@ -33,18 +42,13 @@ export type ReactDiagnosticCode =
   | 'use-ref-dom'
   | 'use-ref-box'
   | 'use-reducer'
-  | 'use-layout-effect'
   | 'memo-wrapper'
   | 'forward-ref'
   | 'class-name-prop'
   | 'html-for-prop'
   | 'on-change-input'
-  | 'dangerously-set-inner-html'
   | 'dot-value-signal'
   | 'array-map-jsx'
-  | 'key-on-for-child'
-  | 'create-context-import'
-  | 'use-context-import'
 
 export interface ReactDiagnostic {
   /** Machine-readable code for filtering and programmatic handling */
@@ -1136,24 +1140,53 @@ function findLastImportEnd(code: string): number {
 // Quick scan (regex-based, for fast pre-filtering)
 // ═══════════════════════════════════════════════════════════════════════════════
 
-/** Fast regex check — returns true if code likely contains React patterns worth analyzing */
+/**
+ * The cheap textual TRIGGER of each React detector — a regex every source the
+ * detector can report on must match. Keyed by code, so adding a code to
+ * {@link ReactDiagnosticCode} without a trigger fails to compile, and
+ * `hasReactPatterns` is derived from this table rather than hand-maintained.
+ *
+ * Each trigger may over-match (the AST detector decides); it must never
+ * under-match. The previous hand-written pre-filter had no `.map(`, `onChange`,
+ * compound `.value +=`, bare `memo(` or `useLayoutEffect` test, so `pyreon
+ * check` and doctor's react-patterns gate skipped files whose only React habit
+ * was one of those (#4304).
+ */
+export const REACT_PATTERN_TRIGGERS: Readonly<Record<ReactDiagnosticCode, RegExp>> = {
+  // Any import / re-export whose specifier starts with `react` (react,
+  // react-dom, react-dom/client, react-router-dom, …), incl. side-effect imports.
+  'react-import': /['"]react/,
+  'react-dom-import': /['"]react-dom/,
+  'react-router-import': /['"]react-router/,
+  'use-state': /\buseState\b/,
+  'use-effect-mount': /\buse(?:Layout)?Effect\b/,
+  'use-effect-deps': /\buse(?:Layout)?Effect\b/,
+  'use-effect-no-deps': /\buse(?:Layout)?Effect\b/,
+  'use-memo': /\buseMemo\b/,
+  'use-callback': /\buseCallback\b/,
+  'use-ref-dom': /\buseRef\b/,
+  'use-ref-box': /\buseRef\b/,
+  'use-reducer': /\buseReducer\b/,
+  'memo-wrapper': /\bmemo\b/,
+  'forward-ref': /\bforwardRef\b/,
+  'class-name-prop': /\bclassName\b/,
+  'html-for-prop': /\bhtmlFor\b/,
+  'on-change-input': /\bonChange\b/,
+  // A write to `.value` — plain or compound (`+=`, `??=`, …), not `==`.
+  'dot-value-signal': /\.value\s*(?:[-+*/%&|^]|\*\*|<<|>>>?|&&|\|\||\?\?)?=(?!=)/,
+  'array-map-jsx': /\.map\s*\(/,
+}
+
+const REACT_TRIGGER_LIST: readonly RegExp[] = [...new Set(Object.values(REACT_PATTERN_TRIGGERS))]
+
+/**
+ * Fast regex pre-filter — `true` if `code` matches the trigger of ANY React
+ * detector (see {@link REACT_PATTERN_TRIGGERS}), so it is worth running
+ * `detectReactPatterns`. Never false for a file the detectors would report on.
+ */
 export function hasReactPatterns(code: string): boolean {
-  return (
-    /\bfrom\s+['"]react/.test(code) ||
-    /\bfrom\s+['"]react-dom/.test(code) ||
-    /\bfrom\s+['"]react-router/.test(code) ||
-    /\buseState\s*[<(]/.test(code) ||
-    /\buseEffect\s*\(/.test(code) ||
-    /\buseMemo\s*\(/.test(code) ||
-    /\buseCallback\s*\(/.test(code) ||
-    /\buseRef\s*[<(]/.test(code) ||
-    /\buseReducer\s*[<(]/.test(code) ||
-    /\bReact\.memo\b/.test(code) ||
-    /\bforwardRef\s*[<(]/.test(code) ||
-    /\bclassName[=\s]/.test(code) ||
-    /\bhtmlFor[=\s]/.test(code) ||
-    /\.value\s*=/.test(code)
-  )
+  for (const re of REACT_TRIGGER_LIST) if (re.test(code)) return true
+  return false
 }
 
 // Error-diagnosis catalog moved to the browser-safe `./diagnose` module

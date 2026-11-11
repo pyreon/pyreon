@@ -1,3 +1,4 @@
+import { For } from "@pyreon/core"
 import type { GetStaticPaths } from "@pyreon/zero/server"
 import { useHead } from "@pyreon/head"
 import { Link } from "@pyreon/zero/link"
@@ -54,9 +55,9 @@ export default function PostPage() {
         <div class="post-meta">{post.date}</div>
         {post.tags && post.tags.length > 0 ? (
           <div class="tags">
-            {post.tags.map((t) => (
+            <For each={post.tags} by={(t) => t}>{(t) => (
               <span class="tag">#{t}</span>
-            ))}
+            )}</For>
           </div>
         ) : null}
       </header>

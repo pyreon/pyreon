@@ -463,6 +463,19 @@ describe('the counters read the source, not a cached build', () => {
     })
   })
 
+  it('counts the React detector codes out of their union too (#4304)', () => {
+    build({
+      'packages/core/compiler/src/react-intercept.ts':
+        `export type ReactDiagnosticCode =\n  | 'use-state'\n  | 'array-map-jsx'\n\nexport const x = 1\n`,
+      'packages/core/compiler/src/manifest.ts': `'"coming from React" mistakes — 3 codes today: …'\n`,
+    })
+    return run().then((r) => {
+      const drift = forCheck(r, 'react-detector-code-count').filter((f) => f.code.endsWith('-drift'))
+      expect(drift.length).toBe(1)
+      expect(drift[0]?.message).toContain('actual 2')
+    })
+  })
+
   it('counts lint categories by DIRECTORY content, not by directory name', () => {
     // The category a rule declares is what the docs count; a folder that
     // holds no rule declaring one must not add to the total.
