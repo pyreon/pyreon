@@ -720,7 +720,7 @@ async function hydrateIsland(
  * children carry the boxes; any of them entering the viewport counts.
  */
 function visibilityTargets(el: HTMLElement): Element[] {
-  if (getComputedStyle(el).display !== 'contents') return [el]
+  if (typeof getComputedStyle === 'undefined' || getComputedStyle(el).display !== 'contents') return [el]
   const children = [...el.children]
   return children.length > 0 ? children : [el]
 }
