@@ -1,3 +1,5 @@
+import { finding, header, plural, verdict } from '@pyreon/ansi'
+import { type TermChoice, termFor } from './reporter'
 import { allRules } from './rules/index'
 import type { LintConfig, RuleOptions, Severity } from './types'
 import { isProjectDependency } from './utils/project-deps'
@@ -153,52 +155,44 @@ export function explainRuleState(
   }
 }
 
-/** Render a `RuleState` for the terminal. */
-export function formatRuleState(state: RuleState): string {
-  const lines: string[] = []
-  lines.push('')
-  lines.push(`  ${state.ruleId}`)
+/**
+ * Render a `RuleState` for the terminal, in the shared CLI theme: header,
+ * each reason as a finding (`! code · detail`, `fix:`), then the verdict
+ * (`✓ WILL RUN` / `✗ WILL NOT RUN` / `✗ unknown rule`) as the last line.
+ * `opts` renders for a given terminal (colour level, background, symbols,
+ * width); anything left out is detected from stdout.
+ */
+export function formatRuleState(state: RuleState, opts: TermChoice = {}): string {
+  const t = termFor(opts)
+  const lines: string[] = [header(t, 'pyreon-lint --why-off', state.ruleId)]
 
   if (!state.found) {
-    lines.push('')
-    lines.push('  ✗ unknown rule')
     if (state.suggestions.length > 0) {
-      lines.push('')
-      lines.push('  Did you mean:')
+      lines.push('', '  Did you mean:')
       for (const s of state.suggestions) lines.push(`    ${s}`)
     }
-    lines.push('')
-    lines.push('  Run `pyreon-lint --list` for the full set.')
-    lines.push('')
+    lines.push('', verdict(t, 'err', `unknown rule ${state.ruleId}`, ['run pyreon-lint --list for the full set']))
     return lines.join('\n')
   }
 
-  lines.push('')
-  lines.push(
-    state.willRun
-      ? `  ✓ WILL RUN — severity: ${state.severity}`
-      : `  ✗ WILL NOT RUN — severity: ${state.severity}`,
-  )
-
   if (state.reasons.length > 0) {
-    lines.push('')
     for (const r of state.reasons) {
-      lines.push(`  [${r.code}]`)
-      lines.push(`    ${r.detail}`)
-      lines.push(`    fix: ${r.fix}`)
-      lines.push('')
+      lines.push('', ...finding(t, { severity: 'warning', source: r.code, message: r.detail, fix: r.fix }, { width: t.width }))
     }
   } else {
-    lines.push('')
-    lines.push('  Nothing is suppressing it.')
-    lines.push('')
+    lines.push('', `  ${t.ok(t.sym('ok'))} Nothing is suppressing it.`)
   }
 
   if (state.exemptPaths.length > 0) {
-    lines.push('  Configured exemptPaths (a file under any of these is skipped):')
-    for (const p of state.exemptPaths) lines.push(`    ${p}`)
-    lines.push('')
+    lines.push('', `  ${t.info(t.sym('info'))} Configured exemptPaths (a file under any of these is skipped):`)
+    for (const p of state.exemptPaths) lines.push(`      ${p}`)
   }
 
+  lines.push(
+    '',
+    state.willRun
+      ? verdict(t, 'ok', 'WILL RUN', [`severity: ${state.severity}`])
+      : verdict(t, 'err', 'WILL NOT RUN', [`severity: ${state.severity}`, plural(state.reasons.length, 'reason')]),
+  )
   return lines.join('\n')
 }
