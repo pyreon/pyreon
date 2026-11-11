@@ -1,4 +1,4 @@
-import { el, txt } from '../../factory'
+import { el, tones, txt } from '../../factory'
 
 /**
  * Semantic form grouping — a real `<fieldset>` with a themed border. Pair
@@ -12,10 +12,10 @@ const Fieldset = el
     contentDirection: 'rows',
     contentAlignX: 'left',
     contentAlignY: 'center', block: true, gap: 3 })
-  .theme((t) => ({
+  .theme((t, m) => ({
     borderWidth: t.borderWidth.base,
     borderStyle: t.borderStyle.base,
-    borderColor: t.color.system.base[200],
+    borderColor: tones(t, m).divider,
     borderRadius: t.borderRadius.base,
     paddingTop: t.spacing.medium,
     paddingBottom: t.spacing.medium,
@@ -29,10 +29,10 @@ export default Fieldset
 export const FieldsetLegend = txt
   .config({ name: 'FieldsetLegend' })
   .attrs({ tag: 'legend' })
-  .theme((t) => ({
+  .theme((t, m) => ({
     fontSize: t.fontSize.small,
     fontWeight: t.fontWeight.semibold,
-    color: t.color.system.base[700],
+    color: tones(t, m).textMuted,
     paddingLeft: t.spacing.xxSmall,
     paddingRight: t.spacing.xxSmall,
   }))

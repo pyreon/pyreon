@@ -1,13 +1,14 @@
-import { el } from '../../factory'
+import { el, tones } from '../../factory'
 import { FileUploadBase } from '@pyreon/ui-primitives'
 
-const FileUpload = el.config({ name: 'FileUpload', component: FileUploadBase }).theme((t) => ({
+const FileUpload = el.config({ name: 'FileUpload', component: FileUploadBase }).theme((t, m) => ({
   borderWidth: t.borderWidth.medium,
   borderStyle: t.borderStyle.dashed,
-  borderColor: t.color.system.base[300],
+  borderColor: tones(t, m).border,
   borderRadius: t.borderRadius.medium,
   padding: t.spacing.large,
   backgroundColor: t.color.system.base[50],
+  color: tones(t, m).text,
   textAlign: 'center',
   cursor: 'pointer',
   transition: t.transition.fast,
