@@ -11,7 +11,7 @@ import { inlineText } from '../kit/inline'
 import { AutoGrid, Section, SectionHead, Wrap } from '../kit/layout'
 import { Reveal } from '../kit/motion'
 import { CaveatLine, EndCTA, HookHero, ProofBand, TextLink } from '../kit/proof'
-import { CompareStrip, Diagram } from '../kit/story'
+import { CompareStrip, Diagram, InlineText } from '../kit/story'
 import { Eyebrow, Heading, Lede, renderInline } from '../kit/type'
 import { font, text } from '../theme'
 import { useSitePageHead } from './assets'
@@ -169,7 +169,11 @@ export function ComparePage(props: { view: CompareView }) {
             </Heading>
             <PlainList>
               <For each={d.pickTheOther.items} by={(i) => i}>
-                {(i) => <li>{renderInline(i)}</li>}
+                {(i) => (
+                  <li>
+                    <InlineText>{renderInline(i)}</InlineText>
+                  </li>
+                )}
               </For>
             </PlainList>
           </Stack>

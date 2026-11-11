@@ -10,7 +10,7 @@ import { inlineText } from '../kit/inline'
 import { AutoGrid, Section, SectionHead, Wrap } from '../kit/layout'
 import { Reveal } from '../kit/motion'
 import { EndCTA, HookHero } from '../kit/proof'
-import { Diagram, LinkCards, StepList } from '../kit/story'
+import { Diagram, InlineText, LinkCards, StepList } from '../kit/story'
 import { Eyebrow, Heading, Lede, renderInline, StatusDot } from '../kit/type'
 import { font, text, weight } from '../theme'
 import { useSitePageHead } from './assets'
@@ -59,7 +59,7 @@ function Checklist(props: { items: readonly string[]; tone: 'ok' | 'warn' }) {
         {(i) => (
           <Bullet>
             <StatusDot state={props.tone} />
-            <span>{renderInline(i)}</span>
+            <InlineText>{renderInline(i)}</InlineText>
           </Bullet>
         )}
       </For>

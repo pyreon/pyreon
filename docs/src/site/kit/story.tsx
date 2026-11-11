@@ -14,6 +14,14 @@ import { Eyebrow, Heading, Lede, renderInline, StatusBadge } from './type'
  * list, a before → after strip and link cards.
  */
 
+/**
+ * A span for inline-grammar content (`renderInline` arrays). Wrapping the
+ * array in a component, not a bare `<span>`, keeps hydration adopting the
+ * server DOM: a bare element holding a mixed text/element array beside other
+ * children is rebuilt instead (pyreon/pyreon#4385).
+ */
+export const InlineText = txt.config({ name: 'InlineText' }).attrs({ tag: 'span' })
+
 // ─── Prose ────────────────────────────────────────────────────────────────
 
 const ProseBox = el
@@ -271,13 +279,13 @@ export function CompareStrip(props: {
         {(i) => (
           <StripRow>
             <Eyebrow>{renderInline(i.label)}</Eyebrow>
-            <span>
-              {props.beforeName ? <SrOnly>{`${props.beforeName}: `}</SrOnly> : null}
+            <InlineText>
+              <SrOnly>{props.beforeName ? `${props.beforeName}: ` : ''}</SrOnly>
               {renderInline(i.before)}
-            </span>
+            </InlineText>
             <StripArrow>→</StripArrow>
             <StripAfter>
-              {props.afterName ? <SrOnly>{`${props.afterName}: `}</SrOnly> : null}
+              <SrOnly>{props.afterName ? `${props.afterName}: ` : ''}</SrOnly>
               {renderInline(i.after)}
             </StripAfter>
           </StripRow>

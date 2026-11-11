@@ -11,7 +11,7 @@ import { Chip, Pill } from '../../kit/controls'
 import { AutoGrid, Section, SectionHead, Wrap } from '../../kit/layout'
 import { Reveal } from '../../kit/motion'
 import { CaveatLine, Numeral } from '../../kit/proof'
-import { Diagram } from '../../kit/story'
+import { Diagram, InlineTextLink } from '../../kit/story'
 import { DataTable, TableDisclosure, TableNote } from '../../kit/table'
 import { ToggleChips } from '../../kit/toggles'
 import { inlineText } from '../../kit/inline'
@@ -307,7 +307,7 @@ export function BenchmarksPage(props: { view: BenchmarksView }) {
           <NumberedCards items={d.method.map(([title, body]) => ({ title, text: body }))} />
           <TableNote>
             {d.krausest} The suites and how to run them are documented in the{' '}
-            <a href="/docs/benchmarks">benchmarks guide</a>.
+            <InlineTextLink href="/docs/benchmarks">benchmarks guide</InlineTextLink>.
           </TableNote>
         </Wrap>
       </Section>
@@ -610,7 +610,7 @@ export function BenchmarksPage(props: { view: BenchmarksView }) {
                         <For each={prNumbers(b.pr)} by={(n) => n}>
                           {(n) => (
                             <>
-                              <a href={prHref(n)} rel="noopener">{`PR #${n}`}</a>{' '}
+                              <InlineTextLink href={prHref(n)}>{`PR #${n}`}</InlineTextLink>{' '}
                             </>
                           )}
                         </For>

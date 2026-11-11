@@ -3,6 +3,7 @@ import type { SiteSection } from '../content/types-site'
 import { el, focusRing, tone, txt, type LinkAttrs } from '../kit/bases'
 import { GlowCard } from '../kit/cards'
 import { AutoGrid, SectionHead } from '../kit/layout'
+import { InlineText } from '../kit/story'
 import { Eyebrow, Heading, Lede, renderInline } from '../kit/type'
 import { font, radius, text, weight } from '../theme'
 
@@ -169,18 +170,18 @@ export function BrandSection(props: { s: BrandSectionData }) {
             <For each={s.items} by={(i) => i.do}>
               {(i) => (
                 <DoDont>
-                  <span>
+                  <InlineText>
                     <Verdict state="ok">Do</Verdict>
                     {renderInline(i.do)}
-                  </span>
-                  <span>
+                  </InlineText>
+                  <InlineText>
                     <Verdict state="err">Don't</Verdict>
                     {renderInline(i.dont)}
-                  </span>
-                  <span>
+                  </InlineText>
+                  <InlineText>
                     <Verdict state="why">Why</Verdict>
                     {renderInline(i.why)}
-                  </span>
+                  </InlineText>
                 </DoDont>
               )}
             </For>
