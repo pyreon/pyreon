@@ -13,7 +13,9 @@ const Media = el
   .attrs({ block: true })
   .theme(() => ({
     extendCss: `
+      position: relative;
       & video, & img { display: block; width: 100%; height: auto; }
+      & > video { position: absolute; inset: 0; height: 100%; object-fit: cover; }
       [data-theme='light'] & > [data-for='dark'], [data-theme='dark'] & > [data-for='light'] { display: none; }
     `,
   }))
@@ -75,15 +77,11 @@ export default function HeroLoop(props: { loop: Loop }) {
   return (
     <div>
       <Media>
-        <Show
-          when={() => play() && !reduced()}
-          fallback={
-            <>
-              <Poster side={props.loop.dark.large} theme="dark" alt={props.loop.alt} width={props.loop.width} height={props.loop.height} />
-              <Poster side={props.loop.light.large} theme="light" alt={props.loop.alt} width={props.loop.width} height={props.loop.height} />
-            </>
-          }
-        >
+        {/* The posters stay in the DOM (the server HTML is adopted as is); the
+            video is laid over them once it may play. */}
+        <Poster side={props.loop.dark.large} theme="dark" alt={props.loop.alt} width={props.loop.width} height={props.loop.height} />
+        <Poster side={props.loop.light.large} theme="light" alt={props.loop.alt} width={props.loop.width} height={props.loop.height} />
+        <Show when={() => play() && !reduced()}>
           {() => {
             const s = side()
             return (
@@ -94,7 +92,7 @@ export default function HeroLoop(props: { loop: Loop }) {
                 playsInline
                 preload="metadata"
                 poster={s.poster.src}
-                aria-label={props.loop.alt}
+                aria-hidden="true"
                 width={small() ? props.loop.smallWidth : props.loop.width}
                 height={small() ? props.loop.smallHeight : props.loop.height}
               >
