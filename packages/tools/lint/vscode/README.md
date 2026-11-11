@@ -9,8 +9,12 @@ Real-time Pyreon-specific diagnostics in VS Code.
 ```bash
 # From the monorepo root
 cd packages/tools/lint/vscode
+npm install   # the extension's one dependency, vscode-languageclient
 ln -s "$(pwd)" ~/.vscode/extensions/pyreon-lint
 ```
+
+Without `npm install` the extension cannot load its language client and does
+nothing.
 
 Reload VS Code. The extension activates on any `.ts`, `.tsx`, `.js`, `.jsx` file.
 

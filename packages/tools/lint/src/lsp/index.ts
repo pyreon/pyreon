@@ -910,32 +910,47 @@ function sendNotification(method: string, params: any) {
  * Start the LSP server. Reads JSON-RPC messages from stdin,
  * processes them, and writes responses to stdout.
  */
+/**
+ * Split complete JSON-RPC frames off the front of `buffer`.
+ *
+ * `Content-Length` counts BYTES. The previous reader decoded stdin to a string
+ * and sliced by characters, so any message holding a non-ASCII character (an
+ * em dash in a comment is enough) was framed short: the reader waited for
+ * bytes that had already arrived, then cut the next frame in the wrong place
+ * and dropped both as malformed JSON. Framing on a `Buffer` keeps the counts
+ * in the unit the protocol uses.
+ *
+ * @internal — exported for tests.
+ */
+export function _takeFrames(buffer: Buffer): { bodies: string[]; rest: Buffer } {
+  const bodies: string[] = []
+  let rest = buffer
+  while (true) {
+    const headerEnd = rest.indexOf('\r\n\r\n')
+    if (headerEnd === -1) break
+    const header = rest.subarray(0, headerEnd).toString('ascii')
+    const match = header.match(/Content-Length:\s*(\d+)/i)
+    if (!match) {
+      rest = rest.subarray(headerEnd + 4)
+      continue
+    }
+    const contentLength = Number.parseInt(match[1]!, 10)
+    const bodyStart = headerEnd + 4
+    if (rest.length < bodyStart + contentLength) break
+    bodies.push(rest.subarray(bodyStart, bodyStart + contentLength).toString('utf8'))
+    rest = rest.subarray(bodyStart + contentLength)
+  }
+
+  return { bodies, rest }
+}
+
 export function startLspServer(): void {
-  let buffer = ''
+  let buffer: Buffer = Buffer.alloc(0)
 
-  process.stdin.setEncoding('utf-8')
-  process.stdin.on('data', (chunk: string) => {
-    buffer += chunk
-
-    // Parse Content-Length header + body
-    while (true) {
-      const headerEnd = buffer.indexOf('\r\n\r\n')
-      if (headerEnd === -1) break
-
-      const header = buffer.slice(0, headerEnd)
-      const match = header.match(/Content-Length:\s*(\d+)/i)
-      if (!match) {
-        buffer = buffer.slice(headerEnd + 4)
-        continue
-      }
-
-      const contentLength = Number.parseInt(match[1]!, 10)
-      const bodyStart = headerEnd + 4
-      if (buffer.length < bodyStart + contentLength) break
-
-      const body = buffer.slice(bodyStart, bodyStart + contentLength)
-      buffer = buffer.slice(bodyStart + contentLength)
-
+  process.stdin.on('data', (chunk: Buffer) => {
+    const { bodies, rest } = _takeFrames(Buffer.concat([buffer, chunk]))
+    buffer = rest
+    for (const body of bodies) {
       try {
         const msg = JSON.parse(body) as JsonRpcMessage
         const response = _handleMessage(msg)

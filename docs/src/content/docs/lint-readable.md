@@ -85,6 +85,8 @@ The `pyreon-lint` language server offers a `source.fixAll.pyreon` code action. I
 }
 ```
 
+New `create-zero` (with lint) and `create-multiplatform` projects ship exactly these two files (`.vscode/settings.json` and `.vscode/extensions.json`, which recommends the oxc extension). The Pyreon Lint extension is installed from source for now (see its README); without it the `source.fixAll.pyreon` entry is simply inert.
+
 Any LSP client can request the same action (`textDocument/codeAction` with `only: ["source.fixAll.pyreon"]`). From the command line, `pyreon-lint --fix .` applies the same edits.
 
 ## The rules

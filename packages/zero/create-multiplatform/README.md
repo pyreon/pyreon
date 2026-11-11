@@ -49,6 +49,7 @@ my-app/
                                # readable preset (blank lines, sections, JSX depth)
   .oxlintrc.json               # extends @pyreon/lint/oxlint/readable.json (size limits)
   oxfmt.config.ts              # re-exports the @pyreon/lint/oxfmt formatter preset
+  .vscode/                     # format + fix on save; recommends the oxc extension
   ios/project.yml  ios/Sources/{App,ContentView}.swift  ios/Info.plist
   android/{settings,build}.gradle.kts  android/app/...   MainActivity.kt
   scripts/build-ios.sh  scripts/build-android.sh  scripts/ensure-release-keystore.sh

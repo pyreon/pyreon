@@ -299,6 +299,29 @@ android/keystore.properties
 export { readableStrict as default } from '@pyreon/lint/oxfmt'
 `,
   )
+  // Editor: recommend the oxc extension (oxfmt + oxlint) and run the fixes on
+  // save. Inert in every other editor; the same files create-zero writes.
+  add(
+    '.vscode/extensions.json',
+    `{
+  "recommendations": ["oxc.oxc-vscode"]
+}
+`,
+  )
+  add(
+    '.vscode/settings.json',
+    `{
+  // oxfmt formats on save (oxfmt.config.ts); the fix-all actions add the
+  // readable blank lines (@pyreon/lint) and apply oxlint's fixes.
+  "editor.defaultFormatter": "oxc.oxc-vscode",
+  "editor.formatOnSave": true,
+  "editor.codeActionsOnSave": {
+    "source.fixAll.oxc": "explicit",
+    "source.fixAll.pyreon": "explicit"
+  }
+}
+`,
+  )
   add(
     'index.html',
     `<!doctype html>

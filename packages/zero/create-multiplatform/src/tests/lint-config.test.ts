@@ -178,6 +178,13 @@ describe('the scaffolded readable setup', () => {
     expect(pkg.devDependencies.oxfmt).toBeDefined()
   })
 
+  it('ships editor settings that format and fix on save', () => {
+    expect(JSON.parse(file('.vscode/extensions.json')).recommendations).toEqual(['oxc.oxc-vscode'])
+    const settings = file('.vscode/settings.json')
+    expect(settings).toContain('"source.fixAll.pyreon": "explicit"')
+    expect(settings).toContain('"editor.defaultFormatter": "oxc.oxc-vscode"')
+  })
+
   it('turns on block padding, so new code gets spacing between its parts', () => {
     const rc = JSON.parse(findConfig()) as { rules?: Record<string, string> }
     expect(rc.rules?.['pyreon/padding-around-multiline-blocks']).toBe('warn')

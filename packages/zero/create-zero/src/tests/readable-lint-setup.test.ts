@@ -85,6 +85,16 @@ describe('the scaffolded readable setup', () => {
     expect(pkg.exports['./oxfmt'].import).toBe('./lib/oxfmt.js')
   })
 
+  it('ships editor settings that format and fix on save', async () => {
+    const dir = await scaffolded({})
+    expect(JSON.parse(readFileSync(join(dir, '.vscode', 'extensions.json'), 'utf8')).recommendations).toEqual([
+      'oxc.oxc-vscode',
+    ])
+    const settings = readFileSync(join(dir, '.vscode', 'settings.json'), 'utf8')
+    expect(settings).toContain('"source.fixAll.pyreon": "explicit"')
+    expect(settings).toContain('"editor.formatOnSave": true')
+  })
+
   it('adds the tools and the lint / format / fix scripts only when lint is on', () => {
     const on = JSON.parse(generatePackageJson(config({ lint: true })))
     expect(on.devDependencies).toMatchObject({ oxlint: OXLINT_RANGE, oxfmt: OXFMT_RANGE })
@@ -101,7 +111,7 @@ describe('the scaffolded readable setup', () => {
 
   it('writes no lint files when lint is off', async () => {
     const dir = await scaffolded({ lint: false })
-    for (const f of ['.pyreonlintrc.json', '.oxlintrc.json', 'oxfmt.config.ts']) {
+    for (const f of ['.pyreonlintrc.json', '.oxlintrc.json', 'oxfmt.config.ts', '.vscode/settings.json']) {
       expect(existsSync(join(dir, f)), f).toBe(false)
     }
   })

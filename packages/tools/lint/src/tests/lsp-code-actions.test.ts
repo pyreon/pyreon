@@ -9,6 +9,7 @@ import {
   _handleMessage,
   _reloadConfig,
   _resetOpenDocuments,
+  _takeFrames,
   _toLspDiagnostics,
   FIX_ALL_KIND,
 } from '../lsp/index'
@@ -244,5 +245,29 @@ describe('LSP diagnostic ranges', () => {
     const text = 'const a = {\n  x: 1,\n}\n'
     const [d] = _toLspDiagnostics([diag(10, 21)], text)
     expect(d!.range).toEqual({ start: { line: 0, character: 10 }, end: { line: 2, character: 1 } })
+  })
+})
+
+describe('LSP framing', () => {
+  const frame = (body: string) => `Content-Length: ${Buffer.byteLength(body)}\r\n\r\n${body}`
+
+  it('frames by BYTES, so a message with non-ASCII text is read whole', () => {
+    // Regression: the reader sliced a decoded string by characters, so an em
+    // dash made every following frame misaligned and both were dropped.
+    const a = JSON.stringify({ jsonrpc: '2.0', method: 'x', params: { text: '// a — b →' } })
+    const b = JSON.stringify({ jsonrpc: '2.0', method: 'y' })
+    const { bodies, rest } = _takeFrames(Buffer.from(frame(a) + frame(b)))
+    expect(bodies).toEqual([a, b])
+    expect(rest.length).toBe(0)
+  })
+
+  it('keeps an incomplete frame for the next chunk, even split inside a multi-byte character', () => {
+    const a = JSON.stringify({ jsonrpc: '2.0', method: 'x', params: { text: '→→→' } })
+    const bytes = Buffer.from(frame(a))
+    const cut = bytes.length - 4 // inside the last arrow
+    const first = _takeFrames(bytes.subarray(0, cut))
+    expect(first.bodies).toEqual([])
+    const second = _takeFrames(Buffer.concat([first.rest, bytes.subarray(cut)]))
+    expect(second.bodies).toEqual([a])
   })
 })

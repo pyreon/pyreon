@@ -60,6 +60,8 @@ describe('scaffold — output file-set snapshots', () => {
           ".mcp.json",
           ".oxlintrc.json",
           ".pyreonlintrc.json",
+          ".vscode/extensions.json",
+          ".vscode/settings.json",
           "CLAUDE.md",
           "README.md",
           "env.d.ts",
