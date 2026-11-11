@@ -126,6 +126,7 @@ const { isDragging } = useDraggable({
 
 **Common mistakes**
 
+- Passing `preview: { render, offset }` directly — build it with `dragPreview({ render, offset })` from `@pyreon/dnd`. The preview is a separate import so draggables without one ship none of its code; dev builds throw with this pointer
 - Passing the element itself instead of a getter — `element: el` captures `null` (refs are not populated at hook-call time); pass `element: () => el` so the deferred microtask setup reads the mounted node
 - Passing an object `data` and expecting it to track current state — the object form is captured once at hook-call time; use the function form `data: () => ({ id: item.id(), position: position() })` for dynamic payloads (resolved fresh at each drag start)
 - Passing a captured boolean for `disabled` when you want live toggling — `disabled: isSaving()` snapshots once; `disabled: () => isSaving()` is re-evaluated on every drag attempt

@@ -754,7 +754,7 @@ CamelCase prop names are converted to kebab-case HTML attributes. Two special ca
 
 ### URL Injection Protection
 
-URL-bearing attributes (`href`, `src`, `action`, `formaction`, `poster`, `cite`, `data`, and SVG's `xlink:href`) are checked for `javascript:` URI schemes, and for `data:` schemes that aren't a safe image payload. If detected, the attribute is silently omitted to prevent XSS. This guard is the exact same logic the client `h()` path and the compiled-template path use (one shared module), so a URL blocked on one is blocked everywhere — an SSR page can never emit raw markup that the client would have refused to render:
+URL-bearing attributes (`href`, `src`, `action`, `formaction`, `poster`, `cite`, `data`, and SVG's `xlink:href`) are checked for `javascript:` and `vbscript:` URI schemes (after the URL parser's own control-character normalisation), and for `data:` schemes that aren't a safe image payload. If detected, the attribute is silently omitted to prevent XSS. This guard is the exact same logic the client `h()` path and the compiled-template path use (one shared module), so a URL blocked on one is blocked everywhere — an SSR page can never emit raw markup that the client would have refused to render:
 
 ```tsx
 <a href="javascript:alert(1)" />

@@ -1,5 +1,6 @@
 import { effect, signal } from '@pyreon/reactivity'
 import { describe, expect, it } from 'vitest'
+import { dragPreview } from './drag-preview'
 import { useDraggable } from './use-draggable'
 import { useDroppable } from './use-droppable'
 import { useSortable } from './use-sortable'
@@ -45,7 +46,7 @@ describe('useDraggable — custom native drag preview (real pdnd)', () => {
     useDraggable({
       element: () => card,
       data: { id: 'card-1' },
-      preview: {
+      preview: dragPreview({
         render: (container) => {
           rendered.push(container)
           const ghost = document.createElement('div')
@@ -54,7 +55,7 @@ describe('useDraggable — custom native drag preview (real pdnd)', () => {
           return () => cleanedUp.push(true)
         },
         offset: 'pointer-outside',
-      },
+      }),
     })
     await microtasks()
 

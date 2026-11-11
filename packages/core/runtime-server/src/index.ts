@@ -175,7 +175,11 @@ class DeferredHtml {
  * (the concatenated stream equals the string render).
  */
 class StreamHole {
-  constructor(readonly node: VNodeChild) {}
+  /** `ns`: the parser namespace the node renders in (see `nsAfterPath`), or undefined to inherit. */
+  constructor(
+    readonly node: VNodeChild,
+    readonly ns?: number,
+  ) {}
 }
 
 /** Ordered output of an `_ssr(...)` call that contains a `StreamHole`. */
@@ -959,16 +963,22 @@ async function streamElementNode(vnode: VNode, enqueue: (s: string) => void): Pr
       // once per streamed element, and the `<select>` frame was the only case
       // that allocated one before.
       const sole = soleAccessorChild(children)
-      if (frame) {
-        await _selectValueAls.run(frame, async () => {
-          if (sole) await streamNode(sole(), enqueue)
-          else for (const child of children) await streamNode(child, enqueue)
-        })
-      } else if (sole) {
-        await streamNode(sole(), enqueue)
-      } else {
-        for (const child of children) await streamNode(child, enqueue)
+      // Namespace scope for the children (see `nsCode`): only
+      // `<svg>`/`<math>`/`<foreignObject>` pay for an ALS frame.
+      const streamChildren = async (): Promise<void> => {
+        if (frame) {
+          await _selectValueAls.run(frame, async () => {
+            if (sole) await streamNode(sole(), enqueue)
+            else for (const child of children) await streamNode(child, enqueue)
+          })
+        } else if (sole) {
+          await streamNode(sole(), enqueue)
+        } else {
+          for (const child of children) await streamNode(child, enqueue)
+        }
       }
+      const code = nsCode(tag)
+      await (code === undefined ? streamChildren() : inChildNamespace(code, streamChildren))
     }
   }
   enqueue(`</${tag}>`)
@@ -1043,7 +1053,8 @@ async function streamPart(p: unknown, enqueue: (s: string) => void): Promise<voi
     return
   }
   if (p instanceof StreamHole) {
-    await streamNode(p.node, enqueue)
+    const node = p.node
+    await (p.ns === undefined ? streamNode(node, enqueue) : inNs(p.ns, () => streamNode(node, enqueue)))
     return
   }
   if (p instanceof Promise) {
@@ -1681,7 +1692,14 @@ function renderElement(vnode: VNode): MaybeAsync {
     const renderInner = sole
       ? () => renderNode(sole())
       : () => renderChildList(children, 0, '')
-    const inner = frame ? _selectValueAls.run(frame, renderInner) : renderInner()
+    // Only `<svg>`/`<math>`/`<foreignObject>` enter a namespace scope (see
+    // `nsCode`); every other element pays one length-gated tag compare.
+    const code = frame ? undefined : nsCode(tag)
+    const inner = frame
+      ? _selectValueAls.run(frame, renderInner)
+      : code === undefined
+        ? renderInner()
+        : inChildNamespace(code, renderInner)
     if (typeof inner !== 'string') {
       const open = html
       return inner.then((s) => `${open}${s}</${tag}>`)
@@ -1711,11 +1729,12 @@ function renderElement(vnode: VNode): MaybeAsync {
  * async). The result is FINAL (escaped text OR raw mounted HTML) — `_ssr`
  * concatenates it verbatim.
  */
-export function _esc(v: unknown): MaybeAsync {
+export function _esc(v: unknown, ns?: string): MaybeAsync {
   if (typeof v === 'string') return escapeHtml(v)
   if (typeof v === 'number') return String(v)
   if (v == null || v === false) return ''
   if (v === true) return 'true'
+  if (ns !== undefined) return inNs(nsAfterPath(ns), () => renderNode(v as VNodeChild))
   return renderNode(v as VNodeChild)
 }
 
@@ -1733,11 +1752,12 @@ export function _esc(v: unknown): MaybeAsync {
  * case the compiler cannot see at all, a plain identifier that happens to hold
  * a function.
  */
-export function _escSole(v: unknown): MaybeAsync {
+export function _escSole(v: unknown, ns?: string): MaybeAsync {
   if (typeof v === 'string') return escapeHtml(v)
   if (typeof v === 'number') return String(v)
   if (v == null || v === false) return ''
   if (v === true) return 'true'
+  if (ns !== undefined) return inNs(nsAfterPath(ns), () => _escSole(v))
   // The one divergence from `_esc`: unwrap the accessor WITHOUT markers.
   if (typeof v === 'function') return renderNode((v as () => VNodeChild)())
   return renderNode(v as VNodeChild)
@@ -2186,8 +2206,9 @@ export function _ssrChildren(items: readonly unknown[]): RawHtml | Promise<RawHt
  * inside an `_ssrDeferred` thunk, which is what places it at the h() path's
  * render time. Calling it eagerly is the bug documented on `DeferredHtml`.
  */
-export function _ssrNode(node: VNodeChild): MaybeAsync | StreamHole {
-  if (_streamHoleMode) return new StreamHole(node)
+export function _ssrNode(node: VNodeChild, ns?: string): MaybeAsync | StreamHole {
+  if (_streamHoleMode) return new StreamHole(node, ns === undefined ? undefined : nsAfterPath(ns))
+  if (ns !== undefined) return inNs(nsAfterPath(ns), () => renderNode(node))
   return renderNode(node)
 }
 
@@ -2856,16 +2877,114 @@ function rawTextChildren(children: readonly VNodeChild[]): {
   return { ok, text: out, resolved }
 }
 
-const SCRIPT_BREAKOUT_RE = /(<\/|<)(s)(cript)/gi
-const STYLE_BREAKOUT_RE = /<\/(style)/gi
+// Inside an HTML-namespace `<script>`, every `<` that could open the element's
+// own end tag, re-enter it (`<script` starts the double-escaped state), or close
+// an enclosing RAW-TEXT / RCDATA ancestor. That last group is real: a `<script>`
+// VNode under `<noscript>` (raw text while scripting is on), `<textarea>`,
+// `<title>`, `<iframe>`, `<noembed>`, `<noframes>` or `<xmp>` sits inside the
+// ANCESTOR's raw text, which ends at the ancestor's end tag — so
+// `</noscript><img onerror=…>` in the script's text closed the noscript and
+// landed a live element. The escape rewrites the first letter of the name as a
+// `\uXXXX` escape: identical meaning inside a JS string, template, regex body or
+// JSON string, and a legal identifier escape in code position.
+const SCRIPT_BREAKOUT_RE =
+  /<(\/?)(script|style|title|textarea|noscript|noembed|noframes|iframe|xmp)/gi
+// Every `<` that could OPEN A TAG: `<` followed by a letter or `/`.
+const STYLE_TAG_OPEN_RE = /<(?=[A-Za-z/])/g
 
-function escapeRawText(tag: string, text: string): string {
+// ─── Raw text is only raw in the HTML namespace ──────────────────────────────
+//
+// `<script>` and `<style>` are raw-text elements ONLY when the parser is in
+// HTML content. Inside `<svg>` or `<math>` (foreign content) they are ordinary
+// foreign elements: the tokenizer is back in the data state, so `<img …>` in
+// their text is a TAG — and an HTML breakout tag at that, which pops out of the
+// SVG and lands as a live `<img onerror>` — `<!--` opens a COMMENT that can
+// swallow the rest of the SVG (and be closed by a later sink's `-->`), and
+// character references ARE decoded:
+//
+//   h('svg', null, h('style', null, userCss))   // userCss = '<img src=x onerror=…>'
+//   -> <svg><style><img src=x onerror=…></style></svg>   (img parsed, handler live)
+//
+// So the escape is chosen by the NAMESPACE the parser will be in:
+//  - foreign content: `escapeHtml` for both — exact there, because the parser
+//    decodes the entities back to the original text, and no `<` survives.
+//  - HTML: the raw-text escapes above. Style's is CSS-equivalent (`\3c ` is a
+//    CSS escape for `<`) and inert in both namespaces, as a second line.
+function escapeRawText(tag: string, text: string, ns: number): string {
+  if (ns !== NS_HTML) return escapeHtml(text)
   if (tag === 'script') {
-    return text.replace(SCRIPT_BREAKOUT_RE, (_m, prefix: string, s: string, rest: string) =>
-      `${prefix}${s === 's' ? '\\u0073' : '\\u0053'}${rest}`,
+    return text.replace(SCRIPT_BREAKOUT_RE, (m, slash: string, name: string) =>
+      slash === '' && name.toLowerCase() !== 'script' // only `<script` re-enters
+        ? m
+        : `<${slash}\\u${name.charCodeAt(0).toString(16).padStart(4, '0')}${name.slice(1)}`,
     )
   }
-  return text.replace(STYLE_BREAKOUT_RE, '<\\/$1')
+  return text.replace(STYLE_TAG_OPEN_RE, '\\3c ')
+}
+
+// ─── The parser's namespace, tracked through the render ──────────────────────
+//
+// The namespace an element's CHILDREN are parsed in. Only three tags change it,
+// and the transitions are the HTML parser's, with every uncertain case resolved
+// toward FOREIGN (over-escaping a script is a content bug; under-escaping one
+// is an XSS):
+//  - `<svg>` enters SVG — unless already in MathML, where the parser makes it
+//    a MathML element (outside `annotation-xml`), so it stays MathML.
+//  - `<math>` enters MathML. Inside SVG the parser makes it an SVG element;
+//    calling that MathML only removes the `<foreignObject>` exit below.
+//  - `<foreignObject>` returns to HTML only from SVG. A MathML `foreignobject`
+//    is NOT an integration point, so its children stay foreign.
+// Tag names compare ASCII-case-insensitively, as the tokenizer lowercases them
+// (`h('SVG')` is an `<svg>`). Other integration points (`<desc>`, `<title>`,
+// `<mi>`, …) and breakout tags (`<p>` inside SVG) stay foreign: over-escape
+// only. The compiled `_ssr` path bakes these tags into static strings, so the
+// compiler passes each child hole the path of baked namespace tags above it
+// (`"s"`, `"sf"`, …) and the hole helpers fold it with `stepNs`.
+const NS_HTML = 0
+const NS_SVG = 1
+const NS_MATH = 2
+
+const _nsAls = new AsyncLocalStorage<number>()
+
+/** `tag` equals the lowercase `name`, ignoring ASCII case. */
+function tagIs(tag: string, name: string): boolean {
+  return tag === name || (tag.length === name.length && tag.toLowerCase() === name)
+}
+
+/** `'s'` / `'m'` / `'f'` for the namespace-changing tags, else undefined. Length-gated, so ordinary tags pay one compare. */
+function nsCode(tag: string): string | undefined {
+  const n = tag.length
+  if (n === 3) return tagIs(tag, 'svg') ? 's' : undefined
+  if (n === 4) return tagIs(tag, 'math') ? 'm' : undefined
+  if (n === 13) return tagIs(tag, 'foreignobject') ? 'f' : undefined
+  return undefined
+}
+
+function stepNs(code: string, parent: number): number {
+  if (code === 's') return parent === NS_MATH ? NS_MATH : NS_SVG
+  if (code === 'm') return NS_MATH
+  return parent === NS_SVG ? NS_HTML : parent
+}
+
+function currentNs(): number {
+  return _nsAls.getStore() ?? NS_HTML
+}
+
+/** Run `fn` under namespace `ns` (no frame when it is already current). */
+function inNs<T>(ns: number, fn: () => T): T {
+  return ns === currentNs() ? fn() : _nsAls.run(ns, fn)
+}
+
+/** Run `fn` (an element's children render) under the element's namespace. */
+function inChildNamespace<T>(code: string, fn: () => T): T {
+  return inNs(stepNs(code, currentNs()), fn)
+}
+
+/** The namespace after a compiled hole's baked path (`"s"`, `"sf"`, …). */
+function nsAfterPath(path: string): number {
+  let ns = currentNs()
+  for (let i = 0; i < path.length; i++) ns = stepNs(path[i]!, ns)
+  return ns
 }
 
 /**
@@ -2879,7 +2998,9 @@ function rawTextContent(
 ): { html: string } | { fallback: readonly VNodeChild[] } | null {
   if (tag !== 'script' && tag !== 'style') return null
   const r = rawTextChildren(children)
-  return r.ok ? { html: escapeRawText(tag, r.text) } : { fallback: r.resolved }
+  return r.ok
+    ? { html: escapeRawText(tag, r.text, currentNs()) }
+    : { fallback: r.resolved }
 }
 
 function textareaValue(tag: string, props: Record<string, unknown> | null): string | null {

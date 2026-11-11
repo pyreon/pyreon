@@ -12,7 +12,8 @@
  * DIFFERENCES FROM VUE 3:
  *  - `deep` option in watch() is ignored — Pyreon tracks dependencies automatically.
  *  - `shallowReactive` uses per-property signals (still shallow, but Pyreon-flavored).
- *  - `readonly` returns a Proxy that throws on set (not Vue's readonly proxy).
+ *  - `readonly` returns a Proxy that THROWS on every write (set, delete, defineProperty,
+ *    setPrototypeOf, preventExtensions) where Vue warns and ignores set/delete only.
  *  - `defineComponent` only supports Composition API (setup function), not Options API.
  *  - Components re-execute their body on state change (hook-indexed re-render model).
  *
@@ -40,6 +41,7 @@ import {
 import {
   batch,
   createStore,
+  markRaw as markRawStore,
   effect,
   computed as pyreonComputed,
   nextTick as pyreonNextTick,
@@ -85,7 +87,7 @@ export function ref<T>(value: T): Ref<T> {
 
     const s = signal(value)
     const { scheduleRerender } = ctx
-    const r = {
+    const r = markRawStore({
       [V_IS_REF]: true as const,
       get value(): T {
         return s()
@@ -97,14 +99,14 @@ export function ref<T>(value: T): Ref<T> {
       /** @internal — access underlying signal for triggerRef */
       _signal: s,
       _scheduleRerender: scheduleRerender,
-    }
+    })
     ctx.hooks[idx] = r
     return r as Ref<T>
   }
 
   // Outside component
   const s = signal(value)
-  const r = {
+  const r = markRawStore({
     [V_IS_REF]: true as const,
     get value(): T {
       return s()
@@ -114,7 +116,7 @@ export function ref<T>(value: T): Ref<T> {
     },
     /** @internal — access underlying signal for triggerRef */
     _signal: s,
-  }
+  })
   return r as Ref<T>
 }
 
@@ -208,7 +210,7 @@ export function computed<T>(
     const setter = typeof fnOrOptions === 'object' ? fnOrOptions.set : undefined
     const c = pyreonComputed(getter)
     const { scheduleRerender } = ctx
-    const r = {
+    const r = markRawStore({
       [V_IS_REF]: true as const,
       get value(): T {
         return c()
@@ -220,7 +222,7 @@ export function computed<T>(
         setter(v)
         scheduleRerender()
       },
-    }
+    })
     ctx.hooks[idx] = r
     return r as ComputedRef<T>
   }
@@ -229,7 +231,7 @@ export function computed<T>(
   const getter = typeof fnOrOptions === 'function' ? fnOrOptions : fnOrOptions.get
   const setter = typeof fnOrOptions === 'object' ? fnOrOptions.set : undefined
   const c = pyreonComputed(getter)
-  const r = {
+  const r = markRawStore({
     [V_IS_REF]: true as const,
     get value(): T {
       return c()
@@ -240,7 +242,7 @@ export function computed<T>(
       }
       setter(v)
     },
-  }
+  })
   return r as ComputedRef<T>
 }
 
@@ -248,53 +250,244 @@ export function computed<T>(
 
 // WeakMap to track raw objects behind reactive proxies
 const rawMap = new WeakMap<object, object>()
+/**
+ * raw object → its component-free `reactive()` proxy, so `reactive(raw)` is
+ * the SAME proxy every time (Vue's `reactiveMap`). Weak on the raw object: an
+ * entry lives exactly as long as the object it describes, so no eviction policy
+ * is needed (not a class-C cache).
+ */
+const reactiveCache = new WeakMap<object, object>()
+
+function isCollection(v: object): v is Map<unknown, unknown> | Set<unknown> {
+  return v instanceof Map || v instanceof Set
+}
+
+function isIntegerKey(key: PropertyKey): boolean {
+  return typeof key === 'string' && key !== '' && String(Math.trunc(Number(key))) === key
+}
 
 /**
- * Creates a deeply reactive proxy from a plain object.
- * Backed by Pyreon's `createStore()`.
- *
- * Inside a component: hook-indexed. Proxy wrapper intercepts sets to
- * call `scheduleRerender()`.
+ * Wrap a `createStore` proxy (or a raw Map/Set) with the Vue-specific layer:
+ * - a ref stored in an object property is UNWRAPPED on read and written
+ *   THROUGH on assignment (Vue does this for object properties, not array
+ *   indexes);
+ * - a Map/Set is made reactive (`createStore` leaves collections raw, so
+ *   `map.set` used to notify nobody);
+ * - nested values get the same layer (cached per target, so identity is stable);
+ * - `onWrite` (a component's re-render) fires on writes at ANY depth.
  */
-export function reactive<T extends object>(obj: T): T {
-  if ((obj as Record<symbol, boolean>)[V_SKIP]) return obj
+function makeVueReactive<T extends object>(
+  target: T,
+  raw: object,
+  onWrite: (() => void) | null,
+  cache: WeakMap<object, object>,
+): T {
+  const hit = cache.get(target)
+  if (hit) return hit as T
+  const proxy = isCollection(target)
+    ? makeCollection(target, onWrite, cache)
+    : new Proxy(target, {
+        get(t, key, receiver) {
+          const v = Reflect.get(t, key, receiver)
+          if (typeof key === 'symbol') return v
+          if (isRef(v)) {
+            return Array.isArray(t) && isIntegerKey(key) ? v : (v as Ref).value
+          }
+          if (v !== null && typeof v === 'object' && !(v as Record<symbol, boolean>)[V_SKIP]) {
+            const inner = rawMap.get(v as object) ?? (v as object)
+            return makeVueReactive(v as object, inner, onWrite, cache)
+          }
+          return v
+        },
+        set(t, key, value, receiver) {
+          const old = Reflect.get(t, key, receiver)
+          const next = value !== null && typeof value === 'object' ? (rawMap.get(value) ?? value) : value
+          let result = true
+          if (!Array.isArray(t) && isRef(old) && !isRef(next)) {
+            ;(old as Ref).value = next
+          } else {
+            result = Reflect.set(t, key, next, receiver)
+          }
+          onWrite?.()
+          return result
+        },
+        deleteProperty(t, key) {
+          const result = Reflect.deleteProperty(t, key)
+          onWrite?.()
+          return result
+        },
+      })
+  cache.set(target, proxy)
+  rawMap.set(proxy, raw)
+  return proxy as T
+}
+
+/**
+ * Reactive Map/Set: one version signal per collection, read by every query
+ * method and bumped by every mutation that changes something. Coarser than
+ * Vue's per-key tracking (a `get('a')` re-runs on `set('b', …)`), but never
+ * stale. Object values come back through the reactive layer, as in Vue.
+ */
+function makeCollection(
+  target: Map<unknown, unknown> | Set<unknown>,
+  onWrite: (() => void) | null,
+  cache: WeakMap<object, object>,
+): object {
+  const version = signal(0)
+  const bump = () => {
+    version.set(version.peek() + 1)
+    onWrite?.()
+  }
+  const wrap = (v: unknown): unknown =>
+    v !== null && typeof v === 'object' && !(v as Record<symbol, boolean>)[V_SKIP]
+      ? makeVueReactive(isCollection(v as object) ? (v as object) : createStore(v as object), v as object, onWrite, cache)
+      : v
+  const unwrapArg = (v: unknown): unknown =>
+    v !== null && typeof v === 'object' ? (rawMap.get(v as object) ?? v) : v
+  const isMap = target instanceof Map
+  const proxyRef: object = new Proxy(target, {
+    get(t, key) {
+      if (key === 'size') {
+        version()
+        return t.size
+      }
+      switch (key) {
+        case 'get':
+          return (k: unknown) => {
+            version()
+            return wrap((t as Map<unknown, unknown>).get(unwrapArg(k)))
+          }
+        case 'has':
+          return (k: unknown) => {
+            version()
+            return t.has(unwrapArg(k))
+          }
+        case 'set':
+          return (k: unknown, v: unknown) => {
+            const m = t as Map<unknown, unknown>
+            const rk = unwrapArg(k)
+            const rv = unwrapArg(v)
+            const changed = !m.has(rk) || !Object.is(m.get(rk), rv)
+            m.set(rk, rv)
+            if (changed) bump()
+            return proxyRef
+          }
+        case 'add':
+          return (v: unknown) => {
+            const rv = unwrapArg(v)
+            if (!(t as Set<unknown>).has(rv)) {
+              ;(t as Set<unknown>).add(rv)
+              bump()
+            }
+            return proxyRef
+          }
+        case 'delete':
+          return (k: unknown) => {
+            const removed = t.delete(unwrapArg(k))
+            if (removed) bump()
+            return removed
+          }
+        case 'clear':
+          return () => {
+            if (t.size === 0) return
+            t.clear()
+            bump()
+          }
+        case 'forEach':
+          return (cb: (v: unknown, k: unknown, c: unknown) => void, thisArg?: unknown) => {
+            version()
+            t.forEach((v, k) => cb.call(thisArg, wrap(v), isMap ? wrap(k) : wrap(v), proxyRef))
+          }
+        case 'keys':
+        case 'values':
+        case 'entries':
+        case Symbol.iterator:
+          return () => {
+            version()
+            const kind =
+              key === Symbol.iterator ? (isMap ? 'entries' : 'values') : (key as 'keys' | 'values' | 'entries')
+            const it = (t as Map<unknown, unknown>)[kind]() as Iterator<unknown>
+            return {
+              next() {
+                const r = it.next()
+                if (r.done) return r
+                const value =
+                  kind === 'entries'
+                    ? [wrap((r.value as unknown[])[0]), wrap((r.value as unknown[])[1])]
+                    : wrap(r.value)
+                return { done: false, value }
+              },
+              [Symbol.iterator]() {
+                return this
+              },
+            }
+          }
+        default: {
+          const v = Reflect.get(t, key, t)
+          return typeof v === 'function' ? (v as (...a: unknown[]) => unknown).bind(t) : v
+        }
+      }
+    },
+  })
+  return proxyRef
+}
+
+/**
+ * Creates a deeply reactive proxy from a plain object (or a Map / Set).
+ * Backed by Pyreon's `createStore()`, with Vue's ref unwrapping on top.
+ *
+ * - `reactive(raw)` returns the same proxy for the same raw object, and
+ *   `reactive(proxy)` returns `proxy` (Vue's identity rules).
+ * - Inside a component: hook-indexed, and a write at any depth schedules the
+ *   component's re-render.
+ */
+/**
+ * Vue's `UnwrapNestedRefs`: a ref stored in an object property reads as its
+ * value. Collections, functions and built-ins are left as they are; array
+ * elements keep their refs (Vue does not unwrap array indexes).
+ */
+export type UnwrapNestedRefs<T> =
+  T extends Ref<infer V>
+    ? V
+    : // oxlint-disable-next-line typescript/no-unsafe-function-type -- any callable is left untouched
+      T extends Function | Map<unknown, unknown> | Set<unknown> | WeakMap<object, unknown> | WeakSet<object> | Date | RegExp | Promise<unknown>
+      ? T
+      : T extends readonly unknown[]
+        ? T
+        : T extends object
+          ? { [K in keyof T]: UnwrapNestedRefs<T[K]> }
+          : T
+
+export function reactive<T extends object>(obj: T): UnwrapNestedRefs<T> {
+  if ((obj as Record<symbol, boolean>)[V_SKIP]) return obj as UnwrapNestedRefs<T>
+  // Already reactive: Vue returns the proxy itself.
+  if (rawMap.has(obj)) return obj as UnwrapNestedRefs<T>
 
   const ctx = getCurrentCtx()
   if (ctx) {
     const idx = getHookIndex()
-    if (idx < ctx.hooks.length) return ctx.hooks[idx] as T
+    if (idx < ctx.hooks.length) return ctx.hooks[idx] as UnwrapNestedRefs<T>
 
-    const proxy = createStore(obj)
-    rawMap.set(proxy as object, obj)
-    const { scheduleRerender } = ctx
-    const wrapped = new Proxy(proxy, {
-      set(target, key, value, receiver) {
-        const result = Reflect.set(target, key, value, receiver)
-        scheduleRerender()
-        return result
-      },
-      deleteProperty(target, key) {
-        const result = Reflect.deleteProperty(target, key)
-        scheduleRerender()
-        return result
-      },
-    })
-    rawMap.set(wrapped as object, obj)
+    const base = isCollection(obj) ? obj : createStore(obj)
+    const wrapped = makeVueReactive(base, obj, ctx.scheduleRerender, new WeakMap())
     ctx.hooks[idx] = wrapped
-    return wrapped as T
+    return wrapped as UnwrapNestedRefs<T>
   }
 
-  // Outside component
-  const proxy = createStore(obj)
-  rawMap.set(proxy as object, obj)
-  return proxy
+  // Outside component — one proxy per raw object.
+  const cached = reactiveCache.get(obj)
+  if (cached) return cached as UnwrapNestedRefs<T>
+  const base = isCollection(obj) ? obj : createStore(obj)
+  const proxy = makeVueReactive(base, obj, null, new WeakMap())
+  reactiveCache.set(obj, proxy)
+  return proxy as UnwrapNestedRefs<T>
 }
 
 /**
  * Creates a shallow reactive proxy — same as `reactive()` in Pyreon.
  */
 export function shallowReactive<T extends object>(obj: T): T {
-  return reactive(obj)
+  return reactive(obj) as unknown as T
 }
 
 /**
@@ -334,6 +527,46 @@ export function shallowReadonly<T extends object>(obj: T): Readonly<T> {
   return _createShallowReadonlyProxy(obj)
 }
 
+/**
+ * The write traps every readonly proxy (deep or shallow) shares.
+ *
+ * A readonly proxy must reject EVERY operation that would change the target,
+ * not just `[[Set]]` and `[[Delete]]`: a Proxy forwards each internal method
+ * it does not trap straight to the target, so `Object.defineProperty(ro, k, d)`
+ * (also the path `Object.assign`-free libraries, `Object.freeze` and decorators
+ * take), `Object.setPrototypeOf(ro, p)` and `Object.preventExtensions(ro)`
+ * mutated the "readonly" source. Vue 3's own readonly handler traps only
+ * `set`/`deleteProperty` too, so there is no upstream behaviour to mirror for
+ * these three; this compat layer already THROWS on a readonly write (see the
+ * module header), and every write path now does the same.
+ */
+const readonlyWriteError = (what: string): Error =>
+  new Error(`[Pyreon] Cannot ${what} a readonly object. Mutate the source passed to readonly() instead.`)
+
+const readonlyWriteTraps: Pick<
+  ProxyHandler<object>,
+  'set' | 'deleteProperty' | 'defineProperty' | 'setPrototypeOf' | 'preventExtensions'
+> = {
+  set(_target, key) {
+    // Internal symbols used for identification are allowed
+    if (key === V_IS_READONLY || key === V_RAW) return true
+    throw readonlyWriteError(`set property "${String(key)}" on`)
+  },
+  deleteProperty(_target, key) {
+    throw readonlyWriteError(`delete property "${String(key)}" from`)
+  },
+  defineProperty(_target, key) {
+    throw readonlyWriteError(`define property "${String(key)}" on`)
+  },
+  setPrototypeOf() {
+    throw readonlyWriteError('set the prototype of')
+  },
+  preventExtensions() {
+    // Also the path Object.freeze / Object.seal take.
+    throw readonlyWriteError('prevent extensions on')
+  },
+}
+
 function _createShallowReadonlyProxy<T extends object>(obj: T): Readonly<T> {
   const proxy = new Proxy(obj, {
     get(target, key) {
@@ -342,15 +575,17 @@ function _createShallowReadonlyProxy<T extends object>(obj: T): Readonly<T> {
       return Reflect.get(target, key)
       // NO recursive wrapping — shallow
     },
-    set(_target, key) {
-      if (key === V_IS_READONLY || key === V_RAW) return true
-      throw new Error(`[Pyreon] Cannot set property "${String(key)}" on a readonly object`)
-    },
-    deleteProperty(_target, key) {
-      throw new Error(`[Pyreon] Cannot delete property "${String(key)}" from a readonly object`)
-    },
+    ...readonlyWriteTraps,
   })
   return proxy as Readonly<T>
+}
+
+function _wrapReadonlyValue(value: unknown): unknown {
+  // Recursively wrap nested objects in readonly
+  if (value !== null && typeof value === 'object' && !isRef(value)) {
+    return _createReadonlyProxy(value as object)
+  }
+  return value
 }
 
 function _createReadonlyProxy<T extends object>(obj: T): Readonly<T> {
@@ -358,21 +593,22 @@ function _createReadonlyProxy<T extends object>(obj: T): Readonly<T> {
     get(target, key) {
       if (key === V_IS_READONLY) return true
       if (key === V_RAW) return target
-      const value = Reflect.get(target, key)
-      // Recursively wrap nested objects in readonly
-      if (value !== null && typeof value === 'object' && !isRef(value)) {
-        return _createReadonlyProxy(value as object)
+      return _wrapReadonlyValue(Reflect.get(target, key))
+    },
+    // A descriptor read is the second way to reach a nested object:
+    // `Object.getOwnPropertyDescriptor(ro, 'nested').value` handed out the RAW
+    // nested source, writable through ordinary assignment. Wrap the value as
+    // `get` does. The Proxy invariant only pins `value` for a property that is
+    // both non-configurable and non-writable, so that one case (whose nested
+    // object is still reachable read-only through `get`) is returned as is.
+    getOwnPropertyDescriptor(target, key) {
+      const desc = Reflect.getOwnPropertyDescriptor(target, key)
+      if (desc && 'value' in desc && (desc.configurable || desc.writable)) {
+        desc.value = _wrapReadonlyValue(desc.value)
       }
-      return value
+      return desc
     },
-    set(_target, key) {
-      // Internal symbols used for identification are allowed
-      if (key === V_IS_READONLY || key === V_RAW) return true
-      throw new Error(`[Pyreon] Cannot set property "${String(key)}" on a readonly object`)
-    },
-    deleteProperty(_target, key) {
-      throw new Error(`[Pyreon] Cannot delete property "${String(key)}" from a readonly object`)
-    },
+    ...readonlyWriteTraps,
   })
   return proxy as Readonly<T>
 }
@@ -412,7 +648,7 @@ export function toRef<T extends object, K extends keyof T>(obj: T, key: K): Ref<
 }
 
 function _createToRef<T extends object, K extends keyof T>(obj: T, key: K): Ref<T[K]> {
-  const r = {
+  const r = markRawStore({
     [V_IS_REF]: true as const,
     get value(): T[K] {
       return obj[key]
@@ -420,7 +656,7 @@ function _createToRef<T extends object, K extends keyof T>(obj: T, key: K): Ref<
     set value(newValue: T[K]) {
       obj[key] = newValue
     },
-  }
+  })
   return r as Ref<T[K]>
 }
 
@@ -457,9 +693,9 @@ export function toRefs<T extends object>(obj: T): { [K in keyof T]: Ref<T[K]> } 
 export interface WatchOptions {
   /** Call the callback immediately with current value. Default: false */
   immediate?: boolean
-  /** Ignored in Pyreon — dependencies are tracked automatically. */
+  /** Track every nested property of what the source returns (Vue's `deep`). A `reactive()` source is always deep. */
   deep?: boolean
-  /** Accepted for compatibility but not meaningfully differentiated in Pyreon. */
+  /** `'sync'` calls back on every change; `'pre'` (default) and `'post'` batch the changes of one tick into one call, as in Vue. */
   flush?: 'pre' | 'post' | 'sync'
 }
 
@@ -486,14 +722,20 @@ export function watch<T extends readonly WatchSource<any>[]>(
   ) => void,
   options?: WatchOptions,
 ): () => void
+/** A `reactive()` object: watched deeply, as in Vue. */
+export function watch<T extends object>(
+  source: T,
+  cb: (newValue: T, oldValue: T | undefined, onCleanup: (fn: () => void) => void) => void,
+  options?: WatchOptions,
+): () => void
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function watch<T>(
-  source: WatchSource<T> | WatchSource<T>[],
+  source: WatchSource<T> | WatchSource<T>[] | T,
   cb: (newValue: T, oldValue: T | undefined, onCleanup: (fn: () => void) => void) => void,
   options?: WatchOptions,
 ): () => void {
-  // Array of sources — multi-watch
-  if (Array.isArray(source)) {
+  // Array of sources — multi-watch. A `reactive([])` is ONE deep source.
+  if (Array.isArray(source) && !isReactive(source)) {
     return _watchArray(
       source as WatchSource<unknown>[],
       cb as (newValue: unknown, oldValue: unknown) => void,
@@ -503,12 +745,112 @@ export function watch<T>(
   return _watchSingle(source as WatchSource<T>, cb, options)
 }
 
+/**
+ * Read every nested property of `value` inside the current tracking frame, so a
+ * watcher subscribes to all of it (Vue's `traverse`). Returns `value`.
+ */
+function _traverse<T>(value: T, seen: Set<unknown> = new Set()): T {
+  if (value === null || typeof value !== 'object' || seen.has(value)) return value
+  seen.add(value)
+  if (Array.isArray(value)) {
+    for (let i = 0; i < value.length; i++) _traverse(value[i], seen)
+  } else if (value instanceof Map || value instanceof Set) {
+    value.forEach((v: unknown) => {
+      _traverse(v, seen)
+    })
+  } else {
+    for (const key of Object.keys(value)) _traverse((value as Record<string, unknown>)[key], seen)
+  }
+  return value
+}
+
+/**
+ * The tracked getter for one watch source, with Vue's rules:
+ * - a ref reads `.value`; a function is called;
+ * - a `reactive()` object is watched DEEPLY (Vue's default for that source),
+ *   so `watch(state, cb)` fires on any nested mutation;
+ * - `deep: true` traverses whatever the ref/getter returns.
+ * A `reactive()` source used to be called as a function — the watcher threw
+ * "getter is not a function" inside its effect and never fired.
+ */
+function _watchGetter(source: unknown, deep: boolean): () => unknown {
+  if (isRef(source)) {
+    const r = source as Ref
+    return deep ? () => _traverse(r.value) : () => r.value
+  }
+  if (typeof source === 'function') {
+    const fn = source as () => unknown
+    return deep ? () => _traverse(fn()) : fn
+  }
+  if (isReactive(source)) return () => _traverse(source)
+  if (process.env.NODE_ENV !== 'production') {
+    // oxlint-disable-next-line no-console
+    console.warn(
+      '[Pyreon] vue-compat watch(): invalid source — pass a ref, a getter function, a reactive() object, or an array of these. The watcher will never fire.',
+    )
+  }
+  return () => source
+}
+
+/**
+ * Delivery of a watcher's callback, by `flush` (https://vuejs.org/guide/essentials/watchers.html#callback-flush-timing).
+ * `'sync'` calls it on every change. The default (`'pre'`, and `'post'`) batches:
+ * every change in the same tick collapses into ONE call with the latest value
+ * and the value from before the first change, and no call at all when the
+ * value is back where it started — Vue's scheduler. It used to fire once per
+ * write: `c.value = 1; c.value = 2; c.value = 3` called back three times.
+ */
+function _watchDispatch(
+  flush: WatchOptions['flush'],
+  fire: (n: unknown, o: unknown) => void,
+): ((n: unknown, o: unknown) => void) & { cancel: () => void } {
+  if (flush === 'sync') return Object.assign(fire, { cancel: () => {} })
+  let pending = false
+  let active = true
+  // A write the callback makes to its own source does not call it again (the
+  // guard the synchronous version had; without it a normalising callback
+  // re-queues itself on every write).
+  let firing = false
+  let first: unknown
+  let latest: unknown
+  const d = (n: unknown, o: unknown) => {
+    if (firing) return
+    latest = n
+    if (pending) return
+    pending = true
+    first = o
+    queueMicrotask(() => {
+      pending = false
+      if (!active || !_watchValueChanged(latest, first)) return
+      firing = true
+      try {
+        fire(latest, first)
+      } finally {
+        firing = false
+      }
+    })
+  }
+  return Object.assign(d, {
+    cancel: () => {
+      active = false
+    },
+  })
+}
+
+/** Vue's `hasChanged`, element-wise for multi-source arrays; an object always counts (it may have mutated in place). */
+function _watchValueChanged(a: unknown, b: unknown): boolean {
+  if (Array.isArray(a) && Array.isArray(b) && !isReactive(a)) {
+    return a.length !== b.length || a.some((v, i) => _watchValueChanged(v, b[i]))
+  }
+  return !Object.is(a, b) || (a !== null && typeof a === 'object')
+}
+
 function _watchArray(
   sources: WatchSource<unknown>[],
   cb: (newValues: unknown, oldValues: unknown, onCleanup: (fn: () => void) => void) => void,
   options?: WatchOptions,
 ): () => void {
-  const getters = sources.map((s) => (isRef(s) ? () => (s as Ref).value : (s as () => unknown)))
+  const getters = sources.map((s) => _watchGetter(s, options?.deep === true))
 
   let cleanupFn: (() => void) | undefined
   const onCleanup = (fn: () => void) => {
@@ -521,6 +863,11 @@ function _watchArray(
       cleanupFn = undefined
     }
   }
+
+  const dispatch = _watchDispatch(options?.flush, (n: unknown, o: unknown) => {
+    runCleanup()
+    ;(cb as (n: unknown, o: unknown, c: (fn: () => void) => void) => void)(n, o, onCleanup)
+  })
 
   const ctx = getCurrentCtx()
   if (ctx) {
@@ -554,8 +901,7 @@ function _watchArray(
         if (skipFirstRun) {
           skipFirstRun = false
         } else if (initialized) {
-          runCleanup()
-          cb([...newValues], oldValues ? [...oldValues] : getters.map(() => undefined), onCleanup)
+          dispatch([...newValues], oldValues ? [...oldValues] : getters.map(() => undefined))
         }
         oldValues = [...newValues]
         initialized = true
@@ -565,6 +911,7 @@ function _watchArray(
     })
 
     const stop = () => {
+      dispatch.cancel()
       runCleanup()
       e.dispose()
     }
@@ -601,8 +948,7 @@ function _watchArray(
       if (skipFirstRun) {
         skipFirstRun = false
       } else if (initialized) {
-        runCleanup()
-        cb([...newValues], oldValues ? [...oldValues] : getters.map(() => undefined), onCleanup)
+        dispatch([...newValues], oldValues ? [...oldValues] : getters.map(() => undefined))
       }
       oldValues = [...newValues]
       initialized = true
@@ -612,6 +958,7 @@ function _watchArray(
   })
 
   const stop = () => {
+    dispatch.cancel()
     runCleanup()
     e.dispose()
   }
@@ -640,12 +987,17 @@ function _watchSingle<T>(
     }
   }
 
+  const dispatch = _watchDispatch(options?.flush, (n: unknown, o: unknown) => {
+    runCleanup()
+    ;(cb as (n: unknown, o: unknown, c: (fn: () => void) => void) => void)(n, o, onCleanup)
+  })
+
   const ctx = getCurrentCtx()
   if (ctx) {
     const idx = getHookIndex()
     if (idx < ctx.hooks.length) return ctx.hooks[idx] as () => void
 
-    const getter = isRef(source) ? () => source.value : (source as () => T)
+    const getter = _watchGetter(source, options?.deep === true) as () => T
     let oldValue: T | undefined
     let initialized = false
 
@@ -670,8 +1022,7 @@ function _watchSingle<T>(
         if (skipFirstRun) {
           skipFirstRun = false
         } else if (initialized) {
-          runCleanup()
-          cb(newValue, oldValue, onCleanup)
+          dispatch(newValue, oldValue)
         }
         oldValue = newValue
         initialized = true
@@ -681,6 +1032,7 @@ function _watchSingle<T>(
     })
 
     const stop = () => {
+      dispatch.cancel()
       runCleanup()
       e.dispose()
     }
@@ -690,7 +1042,7 @@ function _watchSingle<T>(
   }
 
   // Outside component
-  const getter = isRef(source) ? () => source.value : (source as () => T)
+  const getter = _watchGetter(source, options?.deep === true) as () => T
   let oldValue: T | undefined
   let initialized = false
 
@@ -715,8 +1067,7 @@ function _watchSingle<T>(
       if (skipFirstRun) {
         skipFirstRun = false
       } else if (initialized) {
-        runCleanup()
-        cb(newValue, oldValue, onCleanup)
+        dispatch(newValue, oldValue)
       }
       oldValue = newValue
       initialized = true
@@ -726,6 +1077,7 @@ function _watchSingle<T>(
   })
 
   const stop = () => {
+    dispatch.cancel()
     runCleanup()
     e.dispose()
   }
@@ -2016,7 +2368,7 @@ export function customRef<T>(
     () => { s(); return undefined as never }, // track — reading the signal subscribes
     () => s.set(s.peek() + 1), // trigger — bump version to re-notify
   )
-  return {
+  return markRawStore({
     [V_IS_REF]: true as const,
     get value(): T {
       return get()
@@ -2024,7 +2376,7 @@ export function customRef<T>(
     set value(v: T) {
       set(v)
     },
-  } as Ref<T>
+  }) as Ref<T>
 }
 
 // ─── version ─────────────────────────────────────────────────────────────────

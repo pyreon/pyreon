@@ -55,7 +55,7 @@ describe('only the break-out sequences are neutralised', () => {
   it('`</style` inside a style cannot close the element', async () => {
     const out = await renderToString(h('style', null, 'x { content: "</style><img onerror=1>" }'))
     expect(out).not.toContain('</style><img')
-    expect(out).toContain('<\\/style><img')
+    expect(out).toContain('\\3c /style>\\3c img')
   })
 
   it('`</script`, `<script` and `<!--<script` inside a script cannot break out', async () => {

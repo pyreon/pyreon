@@ -423,7 +423,7 @@ describe('@pyreon/vue-compat', () => {
 
   // ─── watch ──────────────────────────────────────────────────────────────
 
-  it('watch() fires on ref change', () => {
+  it('watch() fires on ref change', async () => {
     const count = ref(0)
     const calls: number[] = []
 
@@ -432,13 +432,15 @@ describe('@pyreon/vue-compat', () => {
     })
 
     count.value = 1
+    await Promise.resolve()
     count.value = 2
+    await Promise.resolve()
 
     expect(calls).toEqual([1, 2])
     stop()
   })
 
-  it('watch() provides old and new values', () => {
+  it('watch() provides old and new values', async () => {
     const count = ref(10)
     const history: [number, number | undefined][] = []
 
@@ -447,7 +449,9 @@ describe('@pyreon/vue-compat', () => {
     })
 
     count.value = 20
+    await Promise.resolve()
     count.value = 30
+    await Promise.resolve()
 
     expect(history).toEqual([
       [20, 10],
@@ -473,7 +477,7 @@ describe('@pyreon/vue-compat', () => {
     stop()
   })
 
-  it('watch() with getter function as source', () => {
+  it('watch() with getter function as source', async () => {
     const count = ref(0)
     const calls: number[] = []
 
@@ -485,11 +489,12 @@ describe('@pyreon/vue-compat', () => {
     )
 
     count.value = 5
+    await Promise.resolve()
     expect(calls).toContain(10)
     stop()
   })
 
-  it('watch() stop function disposes watcher', () => {
+  it('watch() stop function disposes watcher', async () => {
     const count = ref(0)
     const calls: number[] = []
 
@@ -498,14 +503,16 @@ describe('@pyreon/vue-compat', () => {
     })
 
     count.value = 1
+    await Promise.resolve()
     expect(calls).toEqual([1])
 
     stop()
     count.value = 2
+    await Promise.resolve()
     expect(calls).toEqual([1])
   })
 
-  it('watch() is hook-indexed inside component', () => {
+  it('watch() is hook-indexed inside component', async () => {
     const count = ref(0)
     const calls: number[] = []
     const runner = createHookRunner(() => {
@@ -518,11 +525,12 @@ describe('@pyreon/vue-compat', () => {
     expect(stop1).toBe(stop2)
 
     count.value = 1
+    await Promise.resolve()
     expect(calls).toEqual([1])
     stop1()
   })
 
-  it('watch with immediate tracks subsequent changes too', () => {
+  it('watch with immediate tracks subsequent changes too', async () => {
     const count = ref(0)
     const calls: [number, number | undefined][] = []
 
@@ -537,6 +545,7 @@ describe('@pyreon/vue-compat', () => {
     expect(calls[0]).toEqual([0, undefined])
 
     count.value = 10
+    await Promise.resolve()
     const lastCall = calls[calls.length - 1]!
     expect(lastCall[0]).toBe(10)
 

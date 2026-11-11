@@ -11,10 +11,22 @@
 
 import type { ComponentFn, Props, VNode, VNodeChild } from '@pyreon/core'
 import { _compatProps, Fragment, h, isNativeCompat, mapCompatDomProps, onUnmount } from '@pyreon/core'
-import { signal } from '@pyreon/reactivity'
+import { getCurrentScope, onScopeDispose, signal } from '@pyreon/reactivity'
 import type { Component } from './index'
 
 export { Fragment }
+
+/**
+ * Register teardown on the component's SCOPE when there is one. `mount.ts`
+ * stops a component's scope BEFORE tearing down its subtree, so scope
+ * callbacks run parent-before-child — React's (and Preact's) unmount order for
+ * effect cleanups and `componentWillUnmount`. `onUnmount` hooks run after the
+ * subtree, i.e. child-before-parent, which is what this used to use.
+ */
+function onTeardown(fn: () => void): void {
+  if (getCurrentScope()) onScopeDispose(fn)
+  else onUnmount(fn)
+}
 
 // ─── Render context (used by hooks) ──────────────────────────────────────────
 
@@ -27,6 +39,13 @@ export interface RenderContext {
   pendingLayoutEffects: EffectEntry[]
   /** Set to true when the component is unmounted */
   unmounted: boolean
+  /**
+   * True while a render runs because the component itself asked for it (a
+   * `useState` setter, `dispatch`, a context change, an external store). `memo`
+   * reads it: React never skips such a render, only a parent-driven one whose
+   * props are shallow-equal.
+   */
+  _selfUpdate?: boolean
 }
 
 export interface EffectEntry {
@@ -121,7 +140,7 @@ function wrapClassComponent(ClassComp: Function): ComponentFn {
 
     // Lifecycle: componentWillUnmount
     let didMountFired = false
-    onUnmount(() => {
+    onTeardown(() => {
       /* v8 ignore next 3 — defensive typeof componentWillUnmount guard */
       if (typeof instance.componentWillUnmount === 'function') {
         instance.componentWillUnmount()
@@ -194,6 +213,7 @@ function wrapCompatComponent(preactComponent: Function): ComponentFn {
     }
 
     const version = signal(0)
+    let renderedVersion = 0
     let updateScheduled = false
 
     ctx.scheduleRerender = () => {
@@ -208,7 +228,7 @@ function wrapCompatComponent(preactComponent: Function): ComponentFn {
     }
 
     // Register cleanup for all hooks on unmount
-    onUnmount(() => {
+    onTeardown(() => {
       ctx.unmounted = true
       for (const hook of ctx.hooks) {
         /* v8 ignore next 4 — defensive hook-shape narrowing */
@@ -221,7 +241,10 @@ function wrapCompatComponent(preactComponent: Function): ComponentFn {
 
     // Return reactive accessor — Pyreon's mountChild calls mountReactive
     return () => {
-      version() // tracked read — triggers re-execution when state changes
+      // tracked read — triggers re-execution when state changes
+      const v = version()
+      ctx._selfUpdate = v !== renderedVersion
+      renderedVersion = v
       beginRender(ctx)
       const result = (preactComponent as ComponentFn)(props)
       const layoutEffects = ctx.pendingLayoutEffects
