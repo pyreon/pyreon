@@ -478,3 +478,34 @@ describe('diagnoseError — null-prototype props', () => {
     expect(diagnoseError('TypeError: count is not a function')?.cause).not.toContain('null-prototype')
   })
 })
+
+describe('diagnoseError — JSON script body given the script-code escape', () => {
+  // The real message: parse JSON-LD whose `<!--` got the pre-fix `<\!--` rewrite.
+  const engineMessage = (() => {
+    const body = JSON.stringify({ description: 'a <!-- b' }).replace(/<!--/g, '<\\!--')
+    try {
+      JSON.parse(body)
+    } catch (err) {
+      return (err as Error).message
+    }
+    throw new Error('expected JSON.parse to reject `\\!`')
+  })()
+
+  it.each([
+    engineMessage,
+    'SyntaxError: Bad escaped character in JSON at position 8 (line 1 column 9)',
+    'SyntaxError: JSON.parse: bad escaped character at line 1 column 25 of the JSON data',
+    'SyntaxError: JSON Parse error: Invalid escape character !',
+  ])('%s → escapeJsonForScript guidance', (message) => {
+    const result = diagnoseError(message)
+    expect(result?.cause).toContain('<\\!--')
+    expect(result?.fix).toContain('escapeJsonForScript')
+    expect(result?.fixCode).toContain("from '@pyreon/core'")
+  })
+
+  it('leaves other JSON syntax errors alone', () => {
+    expect(diagnoseError('SyntaxError: Unexpected end of JSON input')?.fix ?? '').not.toContain(
+      'escapeJsonForScript',
+    )
+  })
+})

@@ -7,7 +7,7 @@
  */
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import { batch, signal } from '@pyreon/reactivity'
-import { addStorePlugin, defineStore, resetAllStores } from '../index'
+import { addStorePlugin, defineStore, resetAllStores, defineSchemaStore } from '../index'
 import type { SchemaIssue } from '../index'
 
 afterEach(() => resetAllStores())
@@ -99,7 +99,7 @@ describe('subscriber removing itself mid-notification', () => {
 
 describe('schema-mode edge paths', () => {
   test('setup ctx set/patch/reset helpers route through the validated wrapper', () => {
-    const useStore = defineStore('cov-ctx-helpers', {
+    const useStore = defineSchemaStore('cov-ctx-helpers', {
       schema: stdSchema((v) => {
         const val = v as { count: number }
         return typeof val.count === 'number' && val.count >= 0
@@ -125,7 +125,7 @@ describe('schema-mode edge paths', () => {
   })
 
   test('wrapper patch functional form is an unvalidated escape hatch', () => {
-    const useStore = defineStore('cov-fn-patch', {
+    const useStore = defineSchemaStore('cov-fn-patch', {
       schema: stdSchema((v) => {
         const val = v as { count: number }
         return val.count >= 0 ? { value: val } : { issues: [{ message: 'no negatives' }] }
@@ -140,7 +140,7 @@ describe('schema-mode edge paths', () => {
 
   test('onValidationError suppresses the throw and skips the write for patch/deepPatch/update', () => {
     const errors: { issues: SchemaIssue[]; op: string }[] = []
-    const useStore = defineStore('cov-validation-cb', {
+    const useStore = defineSchemaStore('cov-validation-cb', {
       schema: stdSchema((v) => {
         const val = v as { count: number; prefs: { theme: string } }
         return val.count >= 0
@@ -161,7 +161,7 @@ describe('schema-mode edge paths', () => {
   })
 
   test('deepPatch replaces non-plain-object branches (array top level)', () => {
-    const useStore = defineStore('cov-deep-replace', {
+    const useStore = defineSchemaStore('cov-deep-replace', {
       schema: stdSchema((v) => ({ value: v as { items: number[] } })),
       initial: { items: [1, 2] },
     })
@@ -172,7 +172,7 @@ describe('schema-mode edge paths', () => {
 
   test('a schema that turns async at runtime throws with a clear message', () => {
     let calls = 0
-    const useStore = defineStore('cov-late-async', {
+    const useStore = defineSchemaStore('cov-late-async', {
       schema: stdSchema((v) => {
         calls++
         if (calls > 1) return Promise.resolve({ value: v })
@@ -186,7 +186,7 @@ describe('schema-mode edge paths', () => {
 
   test('reset() falls back to inner.reset() when the initial no longer re-parses', () => {
     let calls = 0
-    const useStore = defineStore('cov-reset-fallback', {
+    const useStore = defineSchemaStore('cov-reset-fallback', {
       schema: stdSchema((v) => {
         calls++
         // Valid at init; becomes async later so reset()'s re-parse bails to
@@ -228,7 +228,7 @@ describe('plugin cleanup error handling', () => {
 
 describe('remaining branch arms', () => {
   test('schema setup returning undefined yields a signals-only store', () => {
-    const useStore = defineStore('cov-setup-undefined', {
+    const useStore = defineSchemaStore('cov-setup-undefined', {
       schema: stdSchema((v) => ({ value: v as { count: number } })),
       initial: { count: 4 },
       // Returns undefined — the `?? {}` fallback arm.

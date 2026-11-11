@@ -780,6 +780,8 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin<any>
   let collapseResolverInit: Promise<
     import('./rocketstyle-collapse').CollapseResolver | null
   > | null = null
+  // An opted-in collapse that can collapse NOTHING says so once per build.
+  let collapseUnavailableWarned = false
 
   /**
    * Lazily spin ONE programmatic Vite SSR server (bound to the project's
@@ -1202,7 +1204,12 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin<any>
       // user keeps writing the chainable API. Scoped to `.ts` modules (where
       // validation schemas overwhelmingly live), mirroring the compiled-verdict
       // `.ts` early-return: esbuild compiles the rewritten source after us.
-      if (optimizeValidatorsEnabled && isBuild && getExt(id) === '.ts' && code.includes('@pyreon/validate')) {
+      if (
+        optimizeValidatorsEnabled &&
+        isBuild &&
+        getExt(id) === '.ts' &&
+        code.includes('@pyreon/validate')
+      ) {
         // Lazy: `optimize-validators` imports `@pyreon/compiler/validate`
         // (the TypeScript compiler API). Loaded only when the option is on, so
         // the plugin's static graph never pulls `typescript`.
@@ -1425,6 +1432,14 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin<any>
               collapseRocketstyle = { candidates, sites, mode: collapseMode }
             }
           }
+          // After the loop: a capability failure surfaces during `resolve`.
+          const why = resolver
+            ? resolver.unavailable()
+            : '[Pyreon] collapse is OFF for this build: its resolver failed to load.'
+          if (why && !collapseUnavailableWarned) {
+            collapseUnavailableWarned = true
+            this.warn(why)
+          }
         }
       }
 
@@ -1457,12 +1472,14 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin<any>
               { skipSelf: true },
             )
             ssrTemplateAuto = resolvedRs != null
-            if (!ssrTemplateAuto && !ssrTemplateAutoWarned && !isBuild) {
+            // Dev AND build: a production build that silently falls back to
+            // the slower h() walk is the case that costs the most.
+            if (!ssrTemplateAuto && !ssrTemplateAutoWarned) {
               ssrTemplateAutoWarned = true
               this.warn(
                 '[Pyreon] SSR compile-to-string fast path is OFF: `@pyreon/runtime-server` is not resolvable from this app. ' +
                   'Add it to your dependencies to enable the faster `_ssr` render, or pass `pyreon({ ssrTemplate: false })` to silence this. ' +
-                  'Falling back to the h() SSR path (no behavior change).',
+                  'Falling back to the slower h() SSR path (same HTML).',
               )
             }
           }
