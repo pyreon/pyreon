@@ -97,11 +97,15 @@ export function rebase(section: LatheSection, from: string, cwd: string): LatheS
   const output = fix(section.output)
   if (input !== undefined) out.input = input
   if (output !== undefined) out.output = output
+  const refRoot = fix(section.refRoot)
+  if (refRoot !== undefined) out.refRoot = refRoot
   if (section.projects) {
     out.projects = section.projects.map((p) => {
       const q = { ...p, input: fix(p.input) ?? p.input }
       const o = fix(p.output)
-      return o === undefined ? q : { ...q, output: o }
+      const r = fix(p.refRoot)
+      const withOutput = o === undefined ? q : { ...q, output: o }
+      return r === undefined ? withOutput : { ...withOutput, refRoot: r }
     })
   }
   return out

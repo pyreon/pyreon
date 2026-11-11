@@ -117,6 +117,12 @@ export interface PullOptions {
   out?: ((text: string) => void) | undefined
   /** Colour the output. */
   color?: boolean | undefined
+  /**
+   * Other origins a referenced document may be fetched from -- see
+   * `LatheSection.refOrigins`. By default a document's `$ref`s (and their
+   * redirects) stay on that document's own origin.
+   */
+  refOrigins?: readonly string[] | undefined
 }
 
 interface CacheEntry {
@@ -240,7 +246,12 @@ export async function pullSpec(url: string, dest: string, opts: PullOptions = {}
   const refs = referencedDocuments(parsed, url)
   if (refs.length > 0) {
     const rootOrigin = new URL(url).origin
-    const read = documentFetcher(cache, cacheFile, (id) => (new URL(id).origin === rootOrigin ? opts.headers : undefined))
+    const read = documentFetcher(
+      cache,
+      cacheFile,
+      (id) => (new URL(id).origin === rootOrigin ? opts.headers : undefined),
+      refOriginPolicy(opts.refOrigins),
+    )
     const docs = await collectDocumentsAsync(parsed, url, read)
     const failed = [...docs].filter((entry): entry is [string, { error: string }] => 'error' in entry[1])
     if (failed.length > 0) {
@@ -340,15 +351,25 @@ function storeBody(
  * url>` beside the index), so a `304` is answered from disk. A non-http id --
  * a `file://` in a downloaded spec -- is refused: remote content never makes
  * this read the local disk.
+ *
+ * `allow(target, from)` decides which URLs a document may make this fetch --
+ * checked for the reference itself and again for every redirect hop, which
+ * are followed by hand so a same-origin URL cannot bounce the request to an
+ * internal address. See {@link refOriginPolicy}.
  */
 export function documentFetcher(
   cache: Record<string, CacheEntry>,
   cacheFile: string | undefined,
   headersFor: (id: string) => Record<string, string> | undefined,
-): (id: string) => Promise<ReadOutcome> {
-  return async (id) => {
+  allow: (target: string, from: string) => string | undefined = refOriginPolicy(undefined),
+): (id: string, from?: string) => Promise<ReadOutcome> {
+  return async (id, from) => {
     if (!/^https?:\/\//i.test(id)) {
       return { error: 'a remote spec can only reference other http(s) documents, not local files.' }
+    }
+    if (from !== undefined) {
+      const refused = allow(id, from)
+      if (refused) return { error: refused }
     }
     const entry = cache[`doc:${id}`]
     const cachedBody = entry ? readCachedBody(cacheFile, id, entry) : undefined
@@ -358,8 +379,23 @@ export function documentFetcher(
       if (entry.lastModified) conditional['if-modified-since'] = entry.lastModified
     }
     let res: Response
+    let at = id
     try {
-      res = await fetch(id, { headers: { ...headersFor(id), ...conditional }, signal: AbortSignal.timeout(PULL_TIMEOUT_MS) })
+      for (let hops = 0; ; hops++) {
+        res = await fetch(at, {
+          headers: { ...headersFor(at), ...conditional },
+          redirect: 'manual',
+          signal: AbortSignal.timeout(PULL_TIMEOUT_MS),
+        })
+        const location = res.status >= 300 && res.status < 400 && res.status !== 304 ? res.headers.get('location') : null
+        if (location === null) break
+        if (hops >= MAX_REDIRECTS) return { error: `more than ${MAX_REDIRECTS} redirects` }
+        const next = new URL(location, at).href
+        if (!/^https?:\/\//i.test(next)) return { error: `redirected to ${next}, which is not an http(s) URL` }
+        const refused = allow(next, at)
+        if (refused) return { error: `redirected: ${refused}` }
+        at = next
+      }
     } catch (err) {
       return { error: err instanceof Error ? err.message : String(err) }
     }
@@ -379,6 +415,77 @@ export function documentFetcher(
       return { error: err instanceof Error ? err.message : String(err) }
     }
   }
+}
+
+/** How many redirects one referenced document may take. */
+const MAX_REDIRECTS = 5
+
+/**
+ * Which URLs a document may make lathe fetch -- shared by `lathe pull` and
+ * `remoteRefs: 'fetch'`.
+ *
+ * A remote spec is someone else's input, and following its `$ref`s to any
+ * host made lathe a request forwarder: `$ref: http://169.254.169.254/...`
+ * fetched a cloud metadata endpoint from the developer's machine (or CI
+ * runner) and bundled the response into the written spec. So a REMOTE
+ * document may reference only its own origin, plus the origins in
+ * `refOrigins`. `'*'` there allows any origin except a loopback, private or
+ * link-local address -- unless the referencing document is itself served
+ * from one (a spec on `localhost` referencing its siblings). A LOCAL
+ * document is the user's own file and may name any URL.
+ */
+export function refOriginPolicy(refOrigins: readonly string[] | undefined): (target: string, from: string) => string | undefined {
+  const named = new Set((refOrigins ?? []).filter((o) => o !== '*').map((o) => new URL(o).origin))
+  const any = (refOrigins ?? []).includes('*')
+  return (target, from) => {
+    if (!/^https?:\/\//i.test(from)) return undefined
+    const t = new URL(target)
+    const f = new URL(from)
+    if (t.origin === f.origin || named.has(t.origin)) return undefined
+    if (any && (!isInternalHost(t.hostname) || isInternalHost(f.hostname))) return undefined
+    const why = any ? `${t.origin} is a loopback, private or link-local address` : `it leaves ${f.origin} for ${t.origin}`
+    return (
+      `[Pyreon] lathe: ${from} references ${target}, which is refused: ${why}. ` +
+      `A remote spec may only reference its own origin unless you allow another -- \`refOrigins: ['${t.origin}']\` in the lathe config, or \`--ref-origin ${t.origin}\` for \`lathe pull\`.`
+    )
+  }
+}
+
+/**
+ * Whether a URL's hostname is a loopback, private, link-local or otherwise
+ * internal LITERAL address (or `localhost`). Names that only RESOLVE to such
+ * an address are not caught -- that needs DNS -- which is why the default is
+ * same-origin, and this check only narrows `refOrigins: ['*']`.
+ */
+export function isInternalHost(hostname: string): boolean {
+  const h = hostname.toLowerCase().replace(/^\[|\]$/g, '')
+  if (h === 'localhost' || h.endsWith('.localhost') || h === '') return true
+  const v4 = /^(\d+)\.(\d+)\.(\d+)\.(\d+)$/.exec(h)
+  if (v4) return internalV4(v4.slice(1).map(Number))
+  if (!h.includes(':')) return false
+  // IPv6, as the URL parser serializes it (compressed, lowercase hex).
+  if (h === '::' || h === '::1') return true
+  const mapped = /^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/.exec(h)
+  if (mapped) {
+    const hi = parseInt(mapped[1] as string, 16)
+    const lo = parseInt(mapped[2] as string, 16)
+    return internalV4([hi >> 8, hi & 255, lo >> 8, lo & 255])
+  }
+  const first = parseInt(h.split(':')[0] || '0', 16)
+  // fc00::/7 unique-local, fe80::/10 link-local.
+  return (first & 0xfe00) === 0xfc00 || (first & 0xffc0) === 0xfe80
+}
+
+function internalV4([a, b]: number[]): boolean {
+  const x = a as number
+  const y = b as number
+  return (
+    x === 0 || x === 10 || x === 127 ||
+    (x === 100 && y >= 64 && y <= 127) ||
+    (x === 169 && y === 254) ||
+    (x === 172 && y >= 16 && y <= 31) ||
+    (x === 192 && y === 168)
+  )
 }
 
 /** The document cache index under `cacheDir`, and a function persisting it. */
