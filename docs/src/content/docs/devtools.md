@@ -59,7 +59,7 @@ The extension reads everything through a global hook the framework attaches in t
 
 | Member | Description |
 | --- | --- |
-| `version` | Hook protocol version. |
+| `version` | The `@pyreon/runtime-dom` version that installed the hook (`"0.53.0"`). Detect what the hook can do by the presence of a member, not by this version. |
 | `getComponentTree()` | Root components as a collapsible hierarchy. |
 | `getAllComponents()` | Flat list of every mounted component entry. |
 | `highlight(id)` | Briefly outlines a component's DOM element. |

@@ -35,6 +35,10 @@ import {
   type ReactiveGraph,
   type UpdateCause,
 } from '@pyreon/reactivity'
+// The same named import `index.ts` makes for `registerSingleton`: the build
+// inlines the one field (`var version = "0.53.0"`), so no JSON module reaches
+// the client and the hook adds no bytes the package did not already ship.
+import { version as runtimeDomVersion } from '../package.json' with { type: 'json' }
 import { type BoundReactiveNode, nodesForElement } from './binding-registry'
 
 export interface DevtoolsComponentEntry {
@@ -56,6 +60,10 @@ export interface DevtoolsComponentEntry {
 }
 
 export interface PyreonDevtools {
+  /**
+   * The `@pyreon/runtime-dom` version that installed the hook (`"0.53.0"`).
+   * Detect hook capabilities by the presence of a member, not by this version.
+   */
   readonly version: string
   getComponentTree(): DevtoolsComponentEntry[]
   getAllComponents(): DevtoolsComponentEntry[]
@@ -656,7 +664,7 @@ export function installDevTools(): void {
   _installed = true
 
   const devtools: PyreonDevtools = {
-    version: '0.1.0',
+    version: runtimeDomVersion,
 
     getComponentTree() {
       return Array.from(_components.values()).filter((e) => e.parentId === null)
