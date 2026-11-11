@@ -1,0 +1,417 @@
+{
+ "id": "migrate",
+ "route": "/products/migrate",
+ "name": "Migrate",
+ "package": "Pyreon Compat",
+ "category": "tools · migration",
+ "hero": {
+  "title": "Keep your React code. Move to Pyreon one screen at a time.",
+  "lede": "Compatibility layers for React, Preact, Vue, Solid and Svelte cover each framework's public API with near-full parity, so your components run on Pyreon's engine. Then `pyreon check` and a codemod help you rewrite each screen in native Pyreon, where a component runs once.",
+  "install": "bun add @pyreon/react-compat @pyreon/vite-plugin",
+  "ctaShort": "Start migrating",
+  "facts": [
+   {
+    "key": "layers",
+    "value": "React · Preact · Vue · Solid · Svelte"
+   },
+   {
+    "key": "first step",
+    "value": "`pyreon({ compat: 'react' })`<small>imports from react stay as they are</small>"
+   },
+   {
+    "key": "React surface",
+    "value": "41 exports<small>use, useActionState, useOptimistic included</small>"
+   },
+   {
+    "key": "guides",
+    "value": "6<small>React, Vue, Solid, Svelte, Angular, React Native</small>"
+   }
+  ]
+ },
+ "proof": [
+  {
+   "stat": "41",
+   "label": "React exports in @pyreon/react-compat, React 19 hooks included, plus createRoot and render in /dom",
+   "source": "packages/tools/react-compat/src/index.ts, dom.ts (counted)"
+  },
+  {
+   "stat": "5",
+   "label": "compat example apps driven in real Chromium by their own end-to-end suites",
+   "source": "e2e-configs/compat-layers.config.ts, e2e/*-compat.spec.ts"
+  },
+  {
+   "stat": "6",
+   "label": "migration guides: React, Vue, Solid, Svelte, Angular, and React Native for the experimental iOS and Android targets",
+   "source": "docs/src/content/docs/migrating-from-*.md"
+  }
+ ],
+ "why": {
+  "title": "No big-bang rewrite.",
+  "items": [
+   {
+    "title": "Your imports stay",
+    "text": "`pyreon({ compat: 'react' })` points `react`, `react-dom`, `react-dom/client` and the JSX runtime at `@pyreon/react-compat`. The repo's own React example imports from 'react' in 15 files and runs on Pyreon."
+   },
+   {
+    "title": "React's rules, kept",
+    "text": "`useState` returns the value, the component body re-runs on change, deps arrays are honoured and closures go stale exactly as they do in React. Code written for that model keeps its meaning."
+   },
+   {
+    "title": "Pyreon inside, React outside",
+    "text": "Pyreon's router, query, form, toast and i18n providers ship with the `nativeCompat` marker, so they work inside a compat tree. Mark your own Pyreon helpers the same way and React code can read their context."
+   },
+   {
+    "title": "A checklist for the rewrite",
+    "text": "`pyreon check src/` lists the React patterns it finds, each with its line and the Pyreon replacement (“Read: count(), Write: count.set(x)”), and exits non-zero. Burn the list down screen by screen."
+   }
+  ]
+ },
+ "difference": {
+  "title": "Same search box. One re-renders on every keystroke.",
+  "before": {
+   "label": "React · runs unchanged on react-compat",
+   "caption": "Every keystroke re-runs the whole body; useMemo and its deps array keep the filter from running more than it must. Typechecked and mounted on @pyreon/react-compat as written.",
+   "code": "import { useState, useMemo } from 'react'\n\nexport function Search(props: { items: string[] }) {\n  const [query, setQuery] = useState('')\n  const matches = useMemo(\n    () => props.items.filter((item) => item.includes(query)),\n    [props.items, query],\n  )\n\n  return (\n    <div className=\"search\">\n      <input value={query} onChange={(e) => setQuery(e.currentTarget.value)} />\n      <p>{matches.length} matches</p>\n      <ul>\n        {matches.map((item) => (\n          <li key={item}>{item}</li>\n        ))}\n      </ul>\n    </div>\n  )\n}"
+  },
+  "after": {
+   "label": "native Pyreon",
+   "caption": "The body runs once. `query` is a signal and `matches` a computed, so a keystroke updates the count and the list, and nothing else. No deps array to keep in sync.",
+   "code": "import { For } from '@pyreon/core'\nimport { computed, signal } from '@pyreon/reactivity'\n\nexport function Search(props: { items: string[] }) {\n  const query = signal('')\n  const matches = computed(() =>\n    props.items.filter((item) => item.includes(query())),\n  )\n\n  return (\n    <div class=\"search\">\n      <input value={query()} onInput={(e) => query.set(e.currentTarget.value)} />\n      <p>{matches().length} matches</p>\n      <ul>\n        <For each={matches} by={(item) => item}>\n          {(item) => <li>{item}</li>}\n        </For>\n      </ul>\n    </div>\n  )\n}"
+  }
+ },
+ "extraSectionsHtml": "<section class=\"p-sec tight\"><div class=\"wrap\"><div class=\"head\"><div class=\"label\">the layers</div><h2>Five frameworks, one engine.</h2></div><div class=\"p-inside c3\"><div class=\"card\"><div class=\"in\"><span class=\"pk\">@pyreon/react-compat</span><b>React</b><p>41 exports: hooks including use, useActionState and useOptimistic, plus Suspense, lazy, memo, portals; createRoot from /dom. Class components are stubs.</p></div></div><div class=\"card\"><div class=\"in\"><span class=\"pk\">@pyreon/preact-compat</span><b>Preact</b><p>The root, /hooks and /signals entry points. Class components get componentDidMount, componentDidUpdate and componentWillUnmount.</p></div></div><div class=\"card\"><div class=\"in\"><span class=\"pk\">@pyreon/vue-compat</span><b>Vue</b><p>The Composition API: ref, reactive, computed, watch, lifecycle, provide/inject, Teleport, KeepAlive, Transition. No .vue compiler.</p></div></div><div class=\"card\"><div class=\"in\"><span class=\"pk\">@pyreon/solid-compat</span><b>Solid</b><p>Signals, stores, resources and For, Show, Switch, Index, Dynamic. Updates are per component, not per node.</p></div></div><div class=\"card\"><div class=\"in\"><span class=\"pk\">@pyreon/svelte-compat</span><b>Svelte</b><p>svelte/store, onMount, onDestroy, tick, context and createEventDispatcher. Not a .svelte compiler.</p></div></div></div><div class=\"p-inside c3\" style=\"margin-top:12px\"><div class=\"card hot\"><div class=\"in\"><span class=\"pk\">@pyreon/cli · pyreon check</span><b>The checklist</b><p>Lists the React patterns left in each file, with the line and the Pyreon replacement. Exits non-zero, so it gates CI.</p></div></div><div class=\"card\"><div class=\"in\"><span class=\"pk\">@pyreon/mcp · migrate_react</span><b>First-pass codemod</b><p>Rewrites React imports, hook declarations and JSX attributes. Setter calls and reads of the old state you finish by hand; TypeScript flags the dangling setters.</p></div></div><div class=\"card\"><div class=\"in\"><span class=\"pk\">pyreon.dev/docs</span><b>Guides</b><p>Step by step from React, Vue, Solid, Svelte and Angular, and from React Native to the experimental iOS and Android targets.</p></div></div></div></div></section>",
+ "demo": {
+  "title": "Pick where you're coming from.",
+  "text": "Step one is a line of config or an import. Step two, when you are ready, is native Pyreon. An illustrative code diff, not a live migration.",
+  "component": "DemoMigrate",
+  "reference": "pkg-migrate.html#demo",
+  "referenceHtml": "<div class=\"mg-demo\">\n  <div class=\"ds-ctl\"><span class=\"label\">from</span><div class=\"seg\" id=\"mg-s\"><button type=\"button\" aria-pressed=\"true\">React</button><button type=\"button\">Preact</button><button type=\"button\">Vue</button><button type=\"button\">Solid</button><button type=\"button\">Svelte</button></div></div>\n  <div class=\"mg-steps\">\n    <div class=\"card\"><div class=\"in\"><span class=\"label\">step 1 · today</span><h3>Swap the import</h3><pre class=\"mg-diff\"><span class=\"er\" id=\"mg-a\"></span>\n<span class=\"ok\" id=\"mg-b\"></span></pre><p class=\"note\" id=\"mg-note\"></p></div></div>\n    <div class=\"card\"><div class=\"in\"><span class=\"label\">step 2 · before</span><h3>Your component</h3><pre id=\"mg-old\"></pre></div></div>\n    <div class=\"card hot\"><div class=\"in\"><span class=\"label\">step 2 · after</span><h3>Native Pyreon</h3><pre id=\"mg-new\"></pre></div></div>\n  </div>\n</div>",
+  "referenceCss": ".ds-ctl{display:grid;grid-template-columns:60px 1fr;align-items:center;gap:10px;margin-bottom:16px}.seg{display:flex;gap:2px;padding:3px;border:1px solid var(--line);border-radius:999px;width:fit-content;flex-wrap:wrap}.seg button{height:30px;padding:0 12px;border:0;border-radius:999px;background:transparent;color:var(--fog);font-family:var(--mono);font-size:12px;cursor:pointer}.seg button[aria-pressed=\"true\"]{background:var(--line);color:var(--ivory)}\n.mg-steps{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}@media(max-width:1000px){.mg-steps{grid-template-columns:minmax(0,1fr)}}.mg-steps .in{padding:20px}.mg-steps h3{margin:8px 0 12px;font-size:18px;font-weight:500;color:var(--ivory)}.mg-steps pre{margin:0 0 10px;font-size:12.2px;line-height:1.75;color:var(--s-fg);white-space:pre-wrap;word-break:break-word}.mg-diff .er{color:var(--err)}.mg-diff .ok{color:var(--ok)}",
+  "referenceJs": "var MIG={\"React\": [\"@pyreon/react-compat\", \"plugins: [react()]\", \"plugins: [pyreon({ compat: 'react' })]\", \"import { useEffect, useState } from 'react'\\n\\nexport function Counter() {\\n  const [count, setCount] = useState(0)\\n  useEffect(() => {\\n    document.title = `Clicked ${count} times`\\n  }, [count])\\n  return (\\n    <button onClick={() => setCount((c) => c + 1)}>\\n      Clicked {count} times\\n    </button>\\n  )\\n}\", \"import { effect, signal } from '@pyreon/reactivity'\\n\\nexport function Counter() {\\n  const count = signal(0)\\n  effect(() => {\\n    document.title = `Clicked ${count()} times`\\n  })\\n  return (\\n    <button onClick={() => count.update((c) => c + 1)}>\\n      Clicked {count()} times\\n    </button>\\n  )\\n}\", \"react, react-dom and the JSX runtime resolve to @pyreon/react-compat. Function components and hooks, React 19 ones included. Class components are stubs.\"], \"Preact\": [\"@pyreon/preact-compat\", \"plugins: [preact()]\", \"plugins: [pyreon({ compat: 'preact' })]\", \"import { computed, effect, signal } from '@preact/signals'\\n\\nconst count = signal(0)\\nconst double = computed(() => count.value * 2)\\neffect(() => console.log(double.value))\\ncount.value++\", \"import { computed, effect, signal } from '@pyreon/reactivity'\\n\\nconst count = signal(0)\\nconst double = computed(() => count() * 2)\\neffect(() => console.log(double()))\\ncount.update((n) => n + 1)\", \"preact, preact/hooks and @preact/signals resolve to @pyreon/preact-compat, with the same three entry points.\"], \"Vue\": [\"@pyreon/vue-compat\", \"import { computed, ref, watch } from 'vue'\", \"import { computed, ref, watch } from '@pyreon/vue-compat'\", \"import { computed, ref, watch } from 'vue'\\n\\nconst count = ref(0)\\nconst double = computed(() => count.value * 2)\\nwatch(count, (next, prev) => console.log(prev, '→', next, 'double', double.value))\\ncount.value++\", \"import { computed, signal, watch } from '@pyreon/reactivity'\\n\\nconst count = signal(0)\\nconst double = computed(() => count() * 2)\\nwatch(count, (next, prev) => console.log(prev, '→', next, 'double', double()))\\ncount.update((n) => n + 1)\", \"The Composition API: ref, reactive, computed, watch, lifecycle, provide/inject. Not a .vue compiler, and no Options API.\"], \"Solid\": [\"@pyreon/solid-compat\", \"plugins: [solid()]\", \"plugins: [pyreon({ compat: 'solid' })]\", \"import { createEffect, createSignal, Show } from 'solid-js'\\n\\nexport function Toggle() {\\n  const [open, setOpen] = createSignal(false)\\n  createEffect(() => console.log('open:', open()))\\n  return (\\n    <>\\n      <button onClick={() => setOpen(!open())}>Toggle</button>\\n      <Show when={open()}>\\n        <p>Hello</p>\\n      </Show>\\n    </>\\n  )\\n}\", \"import { Show } from '@pyreon/core'\\nimport { effect, signal } from '@pyreon/reactivity'\\n\\nexport function Toggle() {\\n  const open = signal(false)\\n  effect(() => console.log('open:', open()))\\n  return (\\n    <>\\n      <button onClick={() => open.update((v) => !v)}>Toggle</button>\\n      <Show when={open}>\\n        <p>Hello</p>\\n      </Show>\\n    </>\\n  )\\n}\", \"Signals, stores, resources and control flow. A compat component re-runs as a whole, not node by node.\"], \"Svelte\": [\"@pyreon/svelte-compat\", \"import { derived, writable } from 'svelte/store'\", \"import { derived, writable } from '@pyreon/svelte-compat/store'\", \"import { derived, writable } from 'svelte/store'\\n\\nconst count = writable(0)\\nconst double = derived(count, ($count) => $count * 2)\\nconst stop = double.subscribe((value) => console.log(value))\\ncount.update((n) => n + 1)\\nstop()\", \"import { computed, effect, signal } from '@pyreon/reactivity'\\n\\nconst count = signal(0)\\nconst double = computed(() => count() * 2)\\nconst logger = effect(() => console.log(double()))\\ncount.update((n) => n + 1)\\nlogger.dispose()\", \"Stores, lifecycle and context: the APIs you import. Not a .svelte compiler, and no rune syntax.\"]};(function(){var $=function(i){return document.getElementById(i)};function show(k){var m=MIG[k];$('mg-a').textContent='- '+m[1];$('mg-b').textContent='+ '+m[2];$('mg-old').textContent=m[3];$('mg-new').textContent=m[4];$('mg-note').textContent=m[5]}\ndocument.querySelectorAll('#mg-s button').forEach(function(b){b.onclick=function(){document.querySelectorAll('#mg-s button').forEach(function(x){x.setAttribute('aria-pressed',x===b)});show(b.textContent)}});show('React');})();",
+  "spec": "Same layout and segmented control as the reference. Step one shows a two-line diff: for React, Preact and Solid the framework Vite plugin line becomes `pyreon({ compat })`; for Vue and Svelte the import moves to the compat package (their Vite plugins compile .vue/.svelte files, which the compat layers do not replace). Step two shows a small component or store before and after; every snippet is typechecked, and the Pyreon side is compiled with transformJSX and run."
+ },
+ "features": {
+  "title": "Everything a migration needs.",
+  "items": [
+   {
+    "name": "react-compat",
+    "text": "41 exports: `use`, `useActionState`, `useOptimistic`, `useSyncExternalStore`, Suspense, lazy, portals; `createRoot` from `/dom`."
+   },
+   {
+    "name": "preact-compat",
+    "text": "root, `/hooks` and `/signals` entry points; signals keep their `.value`."
+   },
+   {
+    "name": "vue-compat",
+    "text": "ref, reactive, computed, watch, effectScope, provide/inject, `defineComponent` with setup, `createApp`."
+   },
+   {
+    "name": "solid-compat",
+    "text": "createSignal, createStore, createResource, and For, Show, Switch, Index, Dynamic."
+   },
+   {
+    "name": "svelte-compat",
+    "text": "the `svelte/store` contract (subscribe, set, update, lazy start and stop), lifecycle, context, `createEventDispatcher`."
+   },
+   {
+    "name": "Vite aliasing",
+    "text": "`compat: 'react' | 'preact' | 'vue' | 'solid' | 'svelte'` redirects the imports for you."
+   },
+   {
+    "name": "Scaffold a compat app",
+    "text": "`create-zero --compat react` (also vue, solid, preact) starts a Zero app wired for it."
+   },
+   {
+    "name": "Mixed trees",
+    "text": "`nativeCompat` lets native Pyreon components and providers sit inside compat code."
+   },
+   {
+    "name": "pyreon check",
+    "text": "React patterns with line, message and suggested code; `--fix` applies the first-pass rewrites in place, and setter calls stay for you to finish."
+   },
+   {
+    "name": "MCP tools",
+    "text": "`migrate_react` for a first-pass rewrite, `migrate_pyreon` for `sig(v)` to `sig.set(v)` and `<For key>` to `by`, `validate` for what is left."
+   }
+  ]
+ },
+ "api": {
+  "title": "Pick your starting point.",
+  "groups": [
+   {
+    "name": "packages",
+    "items": [
+     "@pyreon/react-compat",
+     "@pyreon/preact-compat",
+     "@pyreon/vue-compat",
+     "@pyreon/solid-compat",
+     "@pyreon/svelte-compat"
+    ]
+   },
+   {
+    "name": "entry points",
+    "items": [
+     "@pyreon/react-compat/dom",
+     "@pyreon/preact-compat/hooks",
+     "@pyreon/preact-compat/signals",
+     "@pyreon/svelte-compat/store"
+    ]
+   },
+   {
+    "name": "setup · @pyreon/vite-plugin, @pyreon/core",
+    "items": [
+     "pyreon({ compat })",
+     "nativeCompat"
+    ]
+   },
+   {
+    "name": "rewrite tools · pyreon check flags, @pyreon/mcp tools",
+    "items": [
+     "--fix",
+     "--json",
+     "migrate_react",
+     "migrate_pyreon",
+     "validate"
+    ]
+   }
+  ]
+ },
+ "limits": [
+  {
+   "title": "Nested state resets when a parent re-renders",
+   "text": "In react- and preact-compat a parent re-render rebuilds its subtree, so a child's useState and useRef go back to their initial values and useEffect([]) runs again. memo does not stop it. Lift that state up."
+  },
+  {
+   "title": "Class components",
+   "text": "React's Component and PureComponent are import-only stubs. preact-compat runs componentDidMount, componentDidUpdate and componentWillUnmount, but has no class error boundaries."
+  },
+  {
+   "title": "No concurrent mode",
+   "text": "useTransition, useDeferredValue, startTransition and flushSync run synchronously; useLayoutEffect and useInsertionEffect behave like useEffect."
+  },
+  {
+   "title": "No .vue or .svelte compiler",
+   "text": "vue-compat is the Composition API (no Options API, no templates); svelte-compat covers stores and lifecycle, not rune syntax."
+  },
+  {
+   "title": "Solid and Svelte compat update per component",
+   "text": "A change re-runs the component, not one DOM node. In svelte-compat, onDestroy also fires when an ancestor re-renders."
+  },
+  {
+   "title": "Some React libraries need their vanilla entry",
+   "text": "Libraries built on public hooks generally work. zustand/react, heavy react-aria hooks and @xyflow/react do not; use zustand/vanilla or the Pyreon package instead."
+  },
+  {
+   "title": "The codemod is a first pass",
+   "text": "migrate_react rewrites imports, hook declarations and attributes. Setter calls and reads of the old state stay as written, and a `useRef` becomes a signal, so its `.current` uses need rewriting too. TypeScript flags the dangling setters and arithmetic on a signal; `pyreon check` flags a signal left uncalled in a template string."
+  },
+  {
+   "title": "Dev server needs the next release",
+   "text": "The published compat packages ship no `jsxDEV`, so `vite dev` renders a blank page; `vite build` is unaffected. The fix is on main and lands in the next release."
+  }
+ ],
+ "comingFrom": [
+  {
+   "lib": "React",
+   "title": "useState and useEffect",
+   "before": "import { useEffect, useState } from 'react'\n\nexport function Counter() {\n  const [count, setCount] = useState(0)\n  useEffect(() => {\n    document.title = `Clicked ${count} times`\n  }, [count])\n  return (\n    <button onClick={() => setCount((c) => c + 1)}>\n      Clicked {count} times\n    </button>\n  )\n}",
+   "after": "import { effect, signal } from '@pyreon/reactivity'\n\nexport function Counter() {\n  const count = signal(0)\n  effect(() => {\n    document.title = `Clicked ${count()} times`\n  })\n  return (\n    <button onClick={() => count.update((c) => c + 1)}>\n      Clicked {count()} times\n    </button>\n  )\n}",
+   "note": "No deps array: the effect re-runs when `count` changes because it reads `count()`."
+  },
+  {
+   "lib": "Vue",
+   "title": "ref, computed, watch",
+   "before": "import { computed, ref, watch } from 'vue'\n\nconst count = ref(0)\nconst double = computed(() => count.value * 2)\nwatch(count, (next, prev) => console.log(prev, '→', next, 'double', double.value))\ncount.value++",
+   "after": "import { computed, signal, watch } from '@pyreon/reactivity'\n\nconst count = signal(0)\nconst double = computed(() => count() * 2)\nwatch(count, (next, prev) => console.log(prev, '→', next, 'double', double()))\ncount.update((n) => n + 1)",
+   "note": "A signal is read by calling it, not through `.value`. `watch` takes the signal itself as its source."
+  },
+  {
+   "lib": "Solid",
+   "title": "createSignal and Show",
+   "before": "import { createEffect, createSignal, Show } from 'solid-js'\n\nexport function Toggle() {\n  const [open, setOpen] = createSignal(false)\n  createEffect(() => console.log('open:', open()))\n  return (\n    <>\n      <button onClick={() => setOpen(!open())}>Toggle</button>\n      <Show when={open()}>\n        <p>Hello</p>\n      </Show>\n    </>\n  )\n}",
+   "after": "import { Show } from '@pyreon/core'\nimport { effect, signal } from '@pyreon/reactivity'\n\nexport function Toggle() {\n  const open = signal(false)\n  effect(() => console.log('open:', open()))\n  return (\n    <>\n      <button onClick={() => open.update((v) => !v)}>Toggle</button>\n      <Show when={open}>\n        <p>Hello</p>\n      </Show>\n    </>\n  )\n}",
+   "note": "Closest of the five. Pass `<Show>` the signal (or an accessor) so the condition stays reactive."
+  },
+  {
+   "lib": "Svelte stores",
+   "title": "writable, derived, subscribe",
+   "before": "import { derived, writable } from 'svelte/store'\n\nconst count = writable(0)\nconst double = derived(count, ($count) => $count * 2)\nconst stop = double.subscribe((value) => console.log(value))\ncount.update((n) => n + 1)\nstop()",
+   "after": "import { computed, effect, signal } from '@pyreon/reactivity'\n\nconst count = signal(0)\nconst double = computed(() => count() * 2)\nconst logger = effect(() => console.log(double()))\ncount.update((n) => n + 1)\nlogger.dispose()",
+   "note": "`effect` replaces the manual subscribe, and `dispose()` replaces the unsubscribe."
+  },
+  {
+   "lib": "Preact signals",
+   "title": "signal, computed, effect",
+   "before": "import { computed, effect, signal } from '@preact/signals'\n\nconst count = signal(0)\nconst double = computed(() => count.value * 2)\neffect(() => console.log(double.value))\ncount.value++",
+   "after": "import { computed, effect, signal } from '@pyreon/reactivity'\n\nconst count = signal(0)\nconst double = computed(() => count() * 2)\neffect(() => console.log(double()))\ncount.update((n) => n + 1)",
+   "note": "Same three names. Drop `.value`: call the signal to read it, `.set` or `.update` to write."
+  }
+ ],
+ "recipes": [
+  {
+   "title": "Run a React app on Pyreon",
+   "text": "Swap the React Vite plugin for Pyreon's. Imports from react and react-dom resolve to the compat layer; for TypeScript, map `react` to the compat package in `paths`, as `examples/react-compat/tsconfig.json` does.",
+   "code": "// vite.config.ts\nimport pyreon from '@pyreon/vite-plugin'\nimport { defineConfig } from 'vite'\n\nexport default defineConfig({\n  // replaces @vitejs/plugin-react: react, react-dom, react-dom/client\n  // and the JSX runtime now resolve to @pyreon/react-compat\n  plugins: [pyreon({ compat: 'react' })],\n})",
+   "status": "next release"
+  },
+  {
+   "title": "List what's left to rewrite",
+   "text": "Real output on a React counter. Each finding says what to write instead, and `--fix` applies the rewrites it marks auto-fixable as a first pass: setter calls stay for you to finish.",
+   "code": "$ pyreon check src/Counter.tsx\n  src/Counter.tsx\n    1:0  [react:react-import] (auto-fixable — run with --fix)\n      Import from 'react' is a React package. Use Pyreon equivalent.\n      → import { ... } from \"@pyreon/core\"\n    4:28  [react:use-state] (auto-fixable — run with --fix)\n      useState is a React API. In Pyreon, use signal(). Read: count(), Write: count.set(x)\n      → count = signal(0)\n    5:2  [react:use-effect-deps] (auto-fixable — run with --fix)\n      useEffect with dependency array. In Pyreon, effect() auto-tracks dependencies — no array needed.\n      → effect(() => {\n  // reads are auto-tracked\n})\n    9:12  [react:class-name-prop] (auto-fixable — run with --fix)\n      'className' is a React JSX attribute. Use 'class' in Pyreon (standard HTML).\n      → class=\"counter\"\n\n  4 findings in 1 file  ·  some are auto-fixable with --fix\n# exit code 1: use it as a pre-commit or CI gate"
+  },
+  {
+   "title": "Use a Pyreon provider from React code",
+   "text": "Mark a Pyreon component that calls `provide`, `onMount` or `effect` with `nativeCompat`, and React components below it read its context through their own `useContext`.",
+   "code": "// theme.ts: a native Pyreon provider\nimport { createContext, nativeCompat, provide } from '@pyreon/core'\nimport type { VNodeChild } from '@pyreon/core'\n\nexport const Theme = createContext<'light' | 'dark'>('light')\n\n// It calls provide(), so mark it: the React-compat JSX runtime\n// then calls it as a Pyreon component instead of wrapping it.\nexport const ThemeProvider = nativeCompat(\n  (props: { theme: 'light' | 'dark'; children?: VNodeChild }) => {\n    provide(Theme, props.theme)\n    return props.children\n  },\n)\n\n// Badge.tsx: plain React code, reading the Pyreon context\nimport { useContext } from 'react'\nimport { Theme } from './theme'\n\nexport function Badge() {\n  const theme = useContext(Theme)\n  return <span className={`badge ${theme}`}>{theme}</span>\n}\n\n// <ThemeProvider theme=\"dark\"><Badge /></ThemeProvider>\n// renders <span class=\"badge dark\">dark</span>"
+  }
+ ],
+ "faq": [
+  {
+   "q": "Will my app behave exactly as it does on React?",
+   "a": "No. It is near-full parity with each framework's public API, and each package's README lists where it differs: nested state across parent re-renders, class components, concurrent mode, layout-effect timing."
+  },
+  {
+   "q": "Will my React libraries work?",
+   "a": "Libraries that only use public hooks (useState, useEffect, useReducer, useMemo, useRef) generally do. Libraries that reach into React internals or its scheduler, such as zustand/react, do not; their vanilla entry points do."
+  },
+  {
+   "q": "Is a compat app as fast as native Pyreon?",
+   "a": "We publish no compat benchmark. A compat component re-runs its body on every state change, in the Vue, Solid and Svelte layers too, where the real frameworks update finer than that; a native Pyreon component runs once. The numbers elsewhere on this site are for native Pyreon."
+  },
+  {
+   "q": "What does migrate_react change today?",
+   "a": "On a React counter it turned useState into signal, useEffect into effect, className into class and removed the React import. It left `setCount(count + 1)` and the reads of `count` as written, so the file needs those finished by hand before it runs; TypeScript reports `setCount` as undefined."
+  },
+  {
+   "q": "Can I mix native Pyreon components into a compat app?",
+   "a": "Yes. Pyreon's own providers are marked already; mark your own with `nativeCompat` when they call provide, onMount or effect."
+  },
+  {
+   "q": "Does it handle .vue or .svelte files?",
+   "a": "No. The Vue and Svelte layers cover what your code imports. Single-file components need their own compiler."
+  }
+ ],
+ "related": [
+  {
+   "href": "/products/ai",
+   "category": "tools",
+   "name": "AI and MCP",
+   "text": "migrate_react and validate, from your editor.",
+   "package": "@pyreon/mcp"
+  },
+  {
+   "href": "/products/tooling",
+   "category": "tools",
+   "name": "Tooling",
+   "text": "`pyreon check` and `doctor` find what is left.",
+   "package": "@pyreon/cli · lint · devtools · mcp · testing"
+  },
+  {
+   "href": "/products/reactivity",
+   "category": "core",
+   "name": "Reactivity",
+   "text": "What you're migrating to.",
+   "package": "@pyreon/reactivity"
+  }
+ ],
+ "end": {
+  "title": "Move the app first. Rewrite it when the roadmap has room.",
+  "cta": "Read the migration guides"
+ },
+ "benchmarks": null,
+ "glyphSvg": "<rect x=\"10\" y=\"36\" width=\"44\" height=\"48\" stroke=\"currentColor\" stroke-width=\"10\" fill=\"none\"/><path d=\"M62 60 H84 M74 48 L86 60 L74 72\" stroke=\"currentColor\" stroke-width=\"10\" fill=\"none\"/><circle cx=\"100\" cy=\"60\" r=\"12\" fill=\"url(#eg)\"/>",
+ "sources": [
+  {
+   "claim": "react-compat 41 exports incl. use, useActionState, useOptimistic, useSyncExternalStore; /dom exports createRoot, render",
+   "path": "packages/tools/react-compat/src/index.ts, src/dom.ts (Object.keys of the module, .scratch/tools/loom-migrate/exports.ts)"
+  },
+  {
+   "claim": "near-full public-API parity wording; value + re-render model; deps arrays and stale closures as in React",
+   "path": "00-brief/facts.md line 173; packages/tools/react-compat/README.md \"Key differences from React\""
+  },
+  {
+   "claim": "vite plugin compat aliases react, react-dom, react-dom/client, jsx runtimes",
+   "path": "packages/tools/vite-plugin/src/index.ts COMPAT_ALIASES (~line 430) and resolveId redirect (~line 545)"
+  },
+  {
+   "claim": "React example imports from react in 15 files",
+   "path": "grep -rln \"from 'react'\" examples/react-compat/src | wc -l = 15; examples/react-compat/vite.config.ts uses pyreon({ compat: 'react' })"
+  },
+  {
+   "claim": "difference before-side runs unchanged on react-compat",
+   "path": ".scratch/tools/loom-migrate/compat-run: tsc with react -> react-compat paths exit 0; bun run.tsx (happy-dom) typing \"ap\" goes 3 matches -> 2 matches"
+  },
+  {
+   "claim": "difference after-side compiles and updates",
+   "path": ".scratch/tools/loom-migrate/native-run: tsc exit 0; transformJSX (compile.ts) no warnings; mounted, typing \"ap\" goes 3 matches -> 2 matches"
+  },
+  {
+   "claim": "comingFrom Pyreon sides",
+   "path": "tsc -p tsconfig.cf.json exit 0; vue/svelte/preact snippets run with bun; React and Solid snippets compiled with transformJSX and mounted (Clicked 2 times; Show toggles <p>Hello</p>)"
+  },
+  {
+   "claim": "comingFrom rival sides",
+   "path": "typechecked against the compat layers that mirror each API (tsconfig.rival*.json): React, Vue, Preact signals, Solid exit 0; the Svelte derived() snippet fails only on svelte-compat typing (TS7006, reported as a bug); written to each library public API as of Nov 2026"
+  },
+  {
+   "claim": "nativeCompat recipe works",
+   "path": ".scratch/tools/loom-migrate/compat-run run3.tsx prints <span class=\"badge dark\">dark</span>; rule from AGENTS.md \"Compat apps\" and docs/src/content/docs/native-compat.md"
+  },
+  {
+   "claim": "Pyreon providers ship marked (router, query, form, toast, i18n...)",
+   "path": "docs/src/content/docs/native-compat.md \"Components shipped marked\"; grep nativeCompat( in packages/*/*/src"
+  },
+  {
+   "claim": "pyreon check output quoted",
+   "path": "node packages/tools/cli/lib/index.js check counter.tsx (NO_COLOR=1), exit 1; suggested-code lines omitted, messages verbatim except one line wrap and \"(standard HTML)\" trimmed"
+  },
+  {
+   "claim": "migrate_react behaviour on main: declarations and attributes rewritten, setCount(...) and reads left; memo reported removed but kept",
+   "path": "packages/core/compiler/src/react-intercept.ts migrateReactCode, run via .scratch/tools/loom-migrate/mig/run.ts on counter.tsx and search.tsx; fuller rewrite is open PR pyreon/pyreon#4289 (not described)"
+  },
+  {
+   "claim": "migrate_pyreon fixes",
+   "path": "packages/tools/mcp/src/index.ts migrate_pyreon tool comment"
+  },
+  {
+   "claim": "create-zero --compat none|react|vue|solid|preact",
+   "path": "packages/zero/create-zero/src/args.ts line 278"
+  },
+  {
+   "claim": "limits: nested state reset, class stubs, concurrent no-ops, layout effects",
+   "path": "packages/tools/react-compat/README.md Gotchas; preact-compat/README.md Key differences"
+  },
+  {
+   "claim": "svelte-compat onDestroy on ancestor re-render; beforeUpdate/afterUpdate; no runes",
+   "path": "packages/tools/svelte-compat/README.md Key differences + Gotchas"
+  },
+  {
+   "claim": "solid-compat per-component update",
+   "path": "packages/tools/solid-compat/README.md intro + Gotchas"
+  },
+  {
+   "claim": "vue-compat Composition API only, no templates",
+   "path": "docs/src/content/docs/vue-compat.md line 87 and 1169"
+  },
+  {
+   "claim": "third-party React libs that do/do not work",
+   "path": "packages/tools/react-compat/README.md \"Third-party React hook library compatibility\""
+  },
+  {
+   "claim": "5 compat e2e suites in real Chromium",
+   "path": "e2e-configs/compat-layers.config.ts projects react/preact/vue/solid/svelte-compat"
+  },
+  {
+   "claim": "Vite recipe marked next release",
+   "path": "published @pyreon/react-compat@0.53.0 lib/jsx-runtime.js exports only Fragment, jsx, jsxs (no jsxDEV), so vite dev renders a blank page (pyreon/pyreon#4284); a build from main exports jsxDEV"
+  },
+  {
+   "claim": "no compat rows in the benchmark record",
+   "path": "grep -i compat 00-brief/BENCHMARKS-2026-11-05.md: no matches"
+  },
+  {
+   "claim": "Published compat jsx-runtime lacks jsxDEV; vite dev blank page; fix on main (open PR #4284 also adds separate jsx-dev-runtime entries)",
+   "path": "npm pack @pyreon/react-compat@0.53.0 → package/lib/jsx-runtime.js exports { Fragment, jsx, jsxs }; github.com/pyreon/pyreon/pull/4284"
+  }
+ ]
+}

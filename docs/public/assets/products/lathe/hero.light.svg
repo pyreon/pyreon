@@ -1,0 +1,53 @@
+<svg data-theme="light" xmlns="http://www.w3.org/2000/svg" class="pxa pq-lathe" viewBox="0 0 640 420" width="640" height="420" role="img" aria-labelledby="pq-lathe-t pq-lathe-d" fill="none">
+<title id="pq-lathe-t">lathe generate turns one OpenAPI spec into 29 typed files</title>
+<desc id="pq-lathe-d">Terminal output of a real lathe generate run on the Bookshelf API (4 models, 4 operations, multiplatform target): it writes schemas, a typed client, query hooks, mocks, native screens and docs, 29 of 29 files, and reports 3 of 4 operations reaching native with the Swift and Kotlin builds compiled.</desc>
+<style>
+.pxa{--px-bg:#0A0A0E;--px-card:#111118;--px-raised:#181822;--px-line:#23232E;--px-line2:#2E2E3B;--px-text:#F4EFE6;--px-strong:#FFFCF5;--px-mist:#C9C4B8;--px-fog:#8A8696;--px-hint:#8A8696;--px-dim:#5C5867;--px-accent:#FF5E1A;--px-accent-text:#FF8A4C;--px-warm:#FFC83D;--px-plasma:#FF1F8C;--px-ok:#4ADE80;--px-warn:#FACC15;--px-err:#F87171;--px-link:#22D3EE;--px-violet:#A78BFA;--px-bar:#3A3846;--px-g1:#FF1F8C;--px-g2:#FF5E1A;--px-g3:#FFC83D;--px-glow:rgba(255,94,26,.16)}
+@media (prefers-color-scheme: light){.pxa{--px-bg:#FAF5EB;--px-card:#FFFFFF;--px-raised:#F4EFE6;--px-line:#E6DFD2;--px-line2:#D6CFC2;--px-text:#14141C;--px-strong:#0A0A0E;--px-mist:#45414F;--px-fog:#67637A;--px-hint:#8E8A9A;--px-dim:#B5AFA3;--px-accent:#E84A0F;--px-accent-text:#A8380A;--px-warm:#8A5A00;--px-plasma:#E40C70;--px-ok:#11692F;--px-warn:#8A5A00;--px-err:#B91C1C;--px-link:#0A6E89;--px-violet:#6D28D9;--px-bar:#D9D2C4;--px-g1:#D1106F;--px-g2:#C2410C;--px-g3:#9A6200;--px-glow:rgba(232,74,15,.10)}}
+[data-theme="dark"] .pxa,.pxa[data-theme="dark"]{--px-bg:#0A0A0E;--px-card:#111118;--px-raised:#181822;--px-line:#23232E;--px-line2:#2E2E3B;--px-text:#F4EFE6;--px-strong:#FFFCF5;--px-mist:#C9C4B8;--px-fog:#8A8696;--px-hint:#8A8696;--px-dim:#5C5867;--px-accent:#FF5E1A;--px-accent-text:#FF8A4C;--px-warm:#FFC83D;--px-plasma:#FF1F8C;--px-ok:#4ADE80;--px-warn:#FACC15;--px-err:#F87171;--px-link:#22D3EE;--px-violet:#A78BFA;--px-bar:#3A3846;--px-g1:#FF1F8C;--px-g2:#FF5E1A;--px-g3:#FFC83D;--px-glow:rgba(255,94,26,.16)}
+[data-theme="light"] .pxa,.pxa[data-theme="light"]{--px-bg:#FAF5EB;--px-card:#FFFFFF;--px-raised:#F4EFE6;--px-line:#E6DFD2;--px-line2:#D6CFC2;--px-text:#14141C;--px-strong:#0A0A0E;--px-mist:#45414F;--px-fog:#67637A;--px-hint:#8E8A9A;--px-dim:#B5AFA3;--px-accent:#E84A0F;--px-accent-text:#A8380A;--px-warm:#8A5A00;--px-plasma:#E40C70;--px-ok:#11692F;--px-warn:#8A5A00;--px-err:#B91C1C;--px-link:#0A6E89;--px-violet:#6D28D9;--px-bar:#D9D2C4;--px-g1:#D1106F;--px-g2:#C2410C;--px-g3:#9A6200;--px-glow:rgba(232,74,15,.10)}
+.pq-lathe{font-family:'Space Grotesk',ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif}
+.pq-lathe .m{font-family:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,monospace}
+.pq-lathe .pq-lathe-rm{opacity:0}
+@media (prefers-reduced-motion: reduce){.pq-lathe *{animation:none!important;transition:none!important}.pq-lathe .pq-lathe-rm{opacity:1}.pq-lathe .pq-lathe-am{opacity:0}}
+
+.pq-lathe .tw{fill:var(--px-card);stroke:var(--px-bar);stroke-width:1.5}
+.pq-lathe .tb{fill:var(--px-raised)}
+.pq-lathe .tt{fill:var(--px-fog);font-size:12px;letter-spacing:.06em}
+.pq-lathe .ln{font-size:13px;white-space:pre}
+.pq-lathe .c-cmd{fill:var(--px-strong)} .pq-lathe .c-dim{fill:var(--px-fog)} .pq-lathe .c-txt{fill:var(--px-mist)}
+.pq-lathe .c-ok{fill:var(--px-ok)} .pq-lathe .c-hot{fill:var(--px-accent-text)} .pq-lathe .c-warm{fill:var(--px-warm)} .pq-lathe .c-link{fill:var(--px-link)}
+.pq-lathe .c-pr{fill:var(--px-link)}
+@keyframes pq-lathe-in{from{opacity:0}to{opacity:1}}
+@keyframes pq-lathe-ul{0%{stroke-dashoffset:var(--len);opacity:0}1%{opacity:1}100%{stroke-dashoffset:0;opacity:1}}
+@keyframes pq-lathe-pulse{0%{opacity:0}40%{opacity:.9}100%{opacity:0}}
+.pq-lathe .rv{animation:pq-lathe-in 160ms ease-out both}
+.pq-lathe .ul{stroke:var(--px-accent);stroke-width:2.5;stroke-linecap:round}
+.pq-lathe .ulA{animation:pq-lathe-ul 200ms cubic-bezier(.2,.7,.3,1) 1300ms both}
+.pq-lathe .glow{fill:var(--px-accent);animation:pq-lathe-pulse 200ms ease-out 1300ms both;opacity:0}
+.pq-lathe .cap{fill:var(--px-hint);font-size:12.5px}
+</style>
+<defs><linearGradient id="pq-lathe-eg" x1="0" y1="0" x2="1" y2="0"><stop offset="0" style="stop-color:var(--px-g1)"/><stop offset=".55" style="stop-color:var(--px-g2)"/><stop offset="1" style="stop-color:var(--px-g3)"/></linearGradient><linearGradient id="pq-lathe-egu" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="640" y2="0"><stop offset="0" style="stop-color:var(--px-g1)"/><stop offset=".55" style="stop-color:var(--px-g2)"/><stop offset="1" style="stop-color:var(--px-g3)"/></linearGradient><linearGradient id="pq-lathe-egv" x1="0" y1="1" x2="0" y2="0"><stop offset="0" style="stop-color:var(--px-g1)"/><stop offset=".55" style="stop-color:var(--px-g2)"/><stop offset="1" style="stop-color:var(--px-g3)"/></linearGradient><linearGradient id="pq-lathe-egd" x1="0" y1="0" x2="1" y2="1"><stop offset="0" style="stop-color:var(--px-g1)"/><stop offset=".55" style="stop-color:var(--px-g2)"/><stop offset="1" style="stop-color:var(--px-g3)"/></linearGradient></defs>
+<rect class="tw" x="16" y="14" width="608" height="376" rx="14"/>
+<path class="tb" d="M17 48 V28 a13 13 0 0 1 13 -13 H610 a13 13 0 0 1 13 13 V48 Z"/>
+<circle cx="36" cy="32" r="4.5" style="fill:var(--px-bar)"/><circle cx="51" cy="32" r="4.5" style="fill:var(--px-bar)"/><circle cx="66" cy="32" r="4.5" style="fill:var(--px-bar)"/>
+<text class="m tt" x="320" y="36" text-anchor="middle">bookshelf · lathe generate</text>
+<text class="m ln rv" x="34" y="66" style="animation-delay:150ms"><tspan class="c-pr">$ </tspan><tspan class="c-cmd">lathe generate</tspan></text>
+<text class="m ln rv" x="34" y="86.5" style="animation-delay:220ms"><tspan class="c-dim">lathe / </tspan><tspan class="c-cmd">Bookshelf 1.2.0</tspan></text>
+<text class="m ln rv" x="34" y="107" style="animation-delay:290ms"><tspan class="c-txt">  4 models  4 operations  target=multiplatform</tspan></text>
+<text class="m ln rv" x="34" y="127.5" style="animation-delay:360ms"><tspan class="c-dim">  plugins: schemas, client, queries, mocks, faker, atlas, docs</tspan></text>
+<text class="m ln rv" x="34" y="148" style="animation-delay:430ms"><tspan class="c-ok">  + </tspan><tspan class="c-txt">src/gen/schemas/Book.ts</tspan></text>
+<text class="m ln rv" x="34" y="168.5" style="animation-delay:500ms"><tspan class="c-ok">  + </tspan><tspan class="c-txt">src/gen/client.ts</tspan></text>
+<text class="m ln rv" x="34" y="189" style="animation-delay:570ms"><tspan class="c-ok">  + </tspan><tspan class="c-txt">src/gen/queries/books.ts</tspan></text>
+<text class="m ln rv" x="34" y="209.5" style="animation-delay:640ms"><tspan class="c-ok">  + </tspan><tspan class="c-txt">src/gen/mocks.ts</tspan></text>
+<text class="m ln rv" x="34" y="230" style="animation-delay:710ms"><tspan class="c-ok">  + </tspan><tspan class="c-txt">src/gen/books.native.tsx</tspan></text>
+<text class="m ln rv" x="34" y="250.5" style="animation-delay:780ms"><tspan class="c-ok">  + </tspan><tspan class="c-txt">src/gen/docs/books.md</tspan></text>
+<text class="m ln rv" x="34" y="271" style="animation-delay:850ms"><tspan class="c-dim">  ⋯ 23 more</tspan></text>
+<text class="m ln rv" x="34" y="291.5" style="animation-delay:920ms"><tspan class="c-cmd">  29 of 29 file(s) written</tspan></text>
+<rect class="glow" x="43.6" y="275.5" width="199.2" height="23" rx="5"/>
+<line class="ul ulA" x1="49.6" y1="296.5" x2="236.79999999999998" y2="296.5" style="--len:187.2;stroke-dasharray:187.2"/>
+<text class="m ln rv" x="34" y="312" style="animation-delay:990ms"><tspan class="c-dim">  native reach  </tspan><tspan class="c-txt">3/4 operations</tspan></text>
+<text class="m ln rv" x="34" y="332.5" style="animation-delay:1060ms"><tspan class="c-dim">  lowers </tspan><tspan class="c-txt">books.native.tsx swift   </tspan><tspan class="c-ok">compiled</tspan></text>
+<text class="m ln rv" x="34" y="353" style="animation-delay:1130ms"><tspan class="c-dim">  lowers </tspan><tspan class="c-txt">books.native.tsx kotlin  </tspan><tspan class="c-ok">compiled</tspan></text>
+<text class="m cap" x="20" y="410">real output · createBook (POST) stays web-only: PMTC does not lower mutations yet</text>
+</svg>

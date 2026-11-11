@@ -1,0 +1,87 @@
+<svg data-theme="light" xmlns="http://www.w3.org/2000/svg" class="pxa pq-permissions" viewBox="0 0 640 400" width="640" height="400" role="img" aria-labelledby="pq-permissions-t pq-permissions-d" fill="none">
+<title id="pq-permissions-t">Downgrade the plan and the Export button hides itself</title>
+<desc id="pq-permissions-d">Schematic: a plan signal switches from pro to free. The rule 'reports.export': () =&gt; plan() === 'pro' re-checks, can('reports.export') turns false, and the Export button in the toolbar disappears while Edit and Share stay as they are. Then the plan goes back to pro and Export returns.</desc>
+<style>
+.pxa{--px-bg:#0A0A0E;--px-card:#111118;--px-raised:#181822;--px-line:#23232E;--px-line2:#2E2E3B;--px-text:#F4EFE6;--px-strong:#FFFCF5;--px-mist:#C9C4B8;--px-fog:#8A8696;--px-hint:#8A8696;--px-dim:#5C5867;--px-accent:#FF5E1A;--px-accent-text:#FF8A4C;--px-warm:#FFC83D;--px-plasma:#FF1F8C;--px-ok:#4ADE80;--px-warn:#FACC15;--px-err:#F87171;--px-link:#22D3EE;--px-violet:#A78BFA;--px-bar:#3A3846;--px-g1:#FF1F8C;--px-g2:#FF5E1A;--px-g3:#FFC83D;--px-glow:rgba(255,94,26,.16)}
+@media (prefers-color-scheme: light){.pxa{--px-bg:#FAF5EB;--px-card:#FFFFFF;--px-raised:#F4EFE6;--px-line:#E6DFD2;--px-line2:#D6CFC2;--px-text:#14141C;--px-strong:#0A0A0E;--px-mist:#45414F;--px-fog:#67637A;--px-hint:#8E8A9A;--px-dim:#B5AFA3;--px-accent:#E84A0F;--px-accent-text:#A8380A;--px-warm:#8A5A00;--px-plasma:#E40C70;--px-ok:#11692F;--px-warn:#8A5A00;--px-err:#B91C1C;--px-link:#0A6E89;--px-violet:#6D28D9;--px-bar:#D9D2C4;--px-g1:#D1106F;--px-g2:#C2410C;--px-g3:#9A6200;--px-glow:rgba(232,74,15,.10)}}
+[data-theme="dark"] .pxa,.pxa[data-theme="dark"]{--px-bg:#0A0A0E;--px-card:#111118;--px-raised:#181822;--px-line:#23232E;--px-line2:#2E2E3B;--px-text:#F4EFE6;--px-strong:#FFFCF5;--px-mist:#C9C4B8;--px-fog:#8A8696;--px-hint:#8A8696;--px-dim:#5C5867;--px-accent:#FF5E1A;--px-accent-text:#FF8A4C;--px-warm:#FFC83D;--px-plasma:#FF1F8C;--px-ok:#4ADE80;--px-warn:#FACC15;--px-err:#F87171;--px-link:#22D3EE;--px-violet:#A78BFA;--px-bar:#3A3846;--px-g1:#FF1F8C;--px-g2:#FF5E1A;--px-g3:#FFC83D;--px-glow:rgba(255,94,26,.16)}
+[data-theme="light"] .pxa,.pxa[data-theme="light"]{--px-bg:#FAF5EB;--px-card:#FFFFFF;--px-raised:#F4EFE6;--px-line:#E6DFD2;--px-line2:#D6CFC2;--px-text:#14141C;--px-strong:#0A0A0E;--px-mist:#45414F;--px-fog:#67637A;--px-hint:#8E8A9A;--px-dim:#B5AFA3;--px-accent:#E84A0F;--px-accent-text:#A8380A;--px-warm:#8A5A00;--px-plasma:#E40C70;--px-ok:#11692F;--px-warn:#8A5A00;--px-err:#B91C1C;--px-link:#0A6E89;--px-violet:#6D28D9;--px-bar:#D9D2C4;--px-g1:#D1106F;--px-g2:#C2410C;--px-g3:#9A6200;--px-glow:rgba(232,74,15,.10)}
+.pq-permissions{font-family:'Space Grotesk',ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif}
+.pq-permissions .m{font-family:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,monospace}
+.pq-permissions .pq-permissions-rm{opacity:0}
+@media (prefers-reduced-motion: reduce){.pq-permissions *{animation:none!important;transition:none!important}.pq-permissions .pq-permissions-rm{opacity:1}.pq-permissions .pq-permissions-am{opacity:0}}
+
+.pq-permissions .ln{stroke:var(--px-hint);stroke-width:1.5}
+.pq-permissions .dash{stroke:var(--px-hint);stroke-width:1.5;stroke-dasharray:4 6}
+.pq-permissions .bx{fill:var(--px-card);stroke:var(--px-bar);stroke-width:1.5}
+.pq-permissions .bx2{fill:var(--px-raised);stroke:var(--px-bar);stroke-width:1.5}
+.pq-permissions .act{fill:none;stroke:var(--px-text);stroke-width:2}
+.pq-permissions .lab{fill:var(--px-fog);font-size:14px;letter-spacing:.02em}
+.pq-permissions .eb{fill:var(--px-fog);font-size:13px;letter-spacing:.16em}
+.pq-permissions .val{fill:var(--px-text);font-size:20px;font-weight:500}
+.pq-permissions .big{fill:var(--px-strong);font-size:30px;font-weight:600;letter-spacing:-.02em}
+.pq-permissions .txt{fill:var(--px-text);font-size:16px}
+.pq-permissions .mt{fill:var(--px-mist);font-size:14px}
+.pq-permissions .hint{fill:var(--px-fog);font-size:13px}
+.pq-permissions .ember{stroke:url(#pq-permissions-eg);stroke-width:2.5;stroke-linecap:round;stroke-dasharray:36 2000;fill:none}
+.pq-permissions .emS{stroke:url(#pq-permissions-eg);stroke-width:2.5;fill:none}
+.pq-permissions .ring{fill:none;stroke:var(--px-accent);stroke-width:2}
+.pq-permissions .ok{fill:var(--px-ok)} .pq-permissions .warm{fill:var(--px-warm)} .pq-permissions .hot{fill:var(--px-accent)} .pq-permissions .err{fill:var(--px-err)}
+.pq-permissions .okT{fill:var(--px-ok)} .pq-permissions .warmT{fill:var(--px-warm)} .pq-permissions .hotT{fill:var(--px-accent-text)} .pq-permissions .errT{fill:var(--px-err)} .pq-permissions .linkT{fill:var(--px-link)}
+.pq-permissions .focus{fill:none;stroke:var(--px-link);stroke-width:2;stroke-dasharray:3 3}
+@keyframes pq-permissions-k0{0.0000%{opacity:1;animation-timing-function:step-end}15.0000%{opacity:0;animation-timing-function:step-end}62.5000%{opacity:1;animation-timing-function:step-end}100.0000%{opacity:0;animation-timing-function:step-end}}
+@keyframes pq-permissions-k1{0.0000%{opacity:0;animation-timing-function:step-end}15.0000%{opacity:1;animation-timing-function:step-end}62.5000%{opacity:0;animation-timing-function:step-end}100.0000%{opacity:0;animation-timing-function:step-end}}
+@keyframes pq-permissions-k2{0%{opacity:0}15.0000%{opacity:0}16.0000%{opacity:1}17.5000%{opacity:0}62.5000%{opacity:0}63.5000%{opacity:1}65.0000%{opacity:0}100%{opacity:0}}
+@keyframes pq-permissions-k3{0%{stroke-dashoffset:36;opacity:0}15.7500%{stroke-dashoffset:36;opacity:1}17.5000%{stroke-dashoffset:-44;opacity:1}17.5125%{stroke-dashoffset:36;opacity:0}63.2500%{stroke-dashoffset:36;opacity:1}65.0000%{stroke-dashoffset:-44;opacity:1}65.0125%{stroke-dashoffset:36;opacity:0}100%{stroke-dashoffset:36;opacity:0}}
+@keyframes pq-permissions-k4{0.0000%{opacity:1;animation-timing-function:step-end}15.0000%{opacity:0;animation-timing-function:step-end}62.5000%{opacity:1;animation-timing-function:step-end}100.0000%{opacity:0;animation-timing-function:step-end}}
+@keyframes pq-permissions-k5{0.0000%{opacity:0;animation-timing-function:step-end}15.0000%{opacity:1;animation-timing-function:step-end}62.5000%{opacity:0;animation-timing-function:step-end}100.0000%{opacity:0;animation-timing-function:step-end}}
+@keyframes pq-permissions-k6{0%{stroke-dashoffset:36;opacity:0}17.5000%{stroke-dashoffset:36;opacity:1}19.5000%{stroke-dashoffset:-50;opacity:1}19.5125%{stroke-dashoffset:36;opacity:0}65.0000%{stroke-dashoffset:36;opacity:1}67.0000%{stroke-dashoffset:-50;opacity:1}67.0125%{stroke-dashoffset:36;opacity:0}100%{stroke-dashoffset:36;opacity:0}}
+@keyframes pq-permissions-k7{0.0000%{opacity:1;animation-timing-function:step-end}15.0000%{opacity:0;animation-timing-function:step-end}62.5000%{opacity:1;animation-timing-function:step-end}100.0000%{opacity:0;animation-timing-function:step-end}}
+@keyframes pq-permissions-k8{0.0000%{opacity:0;animation-timing-function:step-end}15.0000%{opacity:1;animation-timing-function:step-end}62.5000%{opacity:0;animation-timing-function:step-end}100.0000%{opacity:0;animation-timing-function:step-end}}
+@keyframes pq-permissions-k9{0%{opacity:0}19.5000%{opacity:0}20.5000%{opacity:1}22.0000%{opacity:0}67.0000%{opacity:0}68.0000%{opacity:1}69.5000%{opacity:0}100%{opacity:0}}
+.pq-permissions .k0{animation:pq-permissions-k0 8000ms linear infinite}
+.pq-permissions .k1{animation:pq-permissions-k1 8000ms linear infinite}
+.pq-permissions .k2{animation:pq-permissions-k2 8000ms linear infinite}
+.pq-permissions .k3{animation:pq-permissions-k3 8000ms linear infinite}
+.pq-permissions .k4{animation:pq-permissions-k4 8000ms linear infinite}
+.pq-permissions .k5{animation:pq-permissions-k5 8000ms linear infinite}
+.pq-permissions .k6{animation:pq-permissions-k6 8000ms linear infinite}
+.pq-permissions .k7{animation:pq-permissions-k7 8000ms linear infinite}
+.pq-permissions .k8{animation:pq-permissions-k8 8000ms linear infinite}
+.pq-permissions .k9{animation:pq-permissions-k9 8000ms linear infinite}
+@media (prefers-reduced-motion: reduce){.pq-permissions .k0{opacity:0}.pq-permissions .k1{opacity:1}.pq-permissions .k2{opacity:0}.pq-permissions .k3{opacity:0}.pq-permissions .k4{opacity:0}.pq-permissions .k5{opacity:1}.pq-permissions .k6{opacity:0}.pq-permissions .k7{opacity:0}.pq-permissions .k8{opacity:1}.pq-permissions .k9{opacity:0}}
+</style>
+<defs><linearGradient id="pq-permissions-eg" x1="0" y1="0" x2="1" y2="0"><stop offset="0" style="stop-color:var(--px-g1)"/><stop offset=".55" style="stop-color:var(--px-g2)"/><stop offset="1" style="stop-color:var(--px-g3)"/></linearGradient><linearGradient id="pq-permissions-egu" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="640" y2="0"><stop offset="0" style="stop-color:var(--px-g1)"/><stop offset=".55" style="stop-color:var(--px-g2)"/><stop offset="1" style="stop-color:var(--px-g3)"/></linearGradient><linearGradient id="pq-permissions-egv" x1="0" y1="1" x2="0" y2="0"><stop offset="0" style="stop-color:var(--px-g1)"/><stop offset=".55" style="stop-color:var(--px-g2)"/><stop offset="1" style="stop-color:var(--px-g3)"/></linearGradient><linearGradient id="pq-permissions-egd" x1="0" y1="0" x2="1" y2="1"><stop offset="0" style="stop-color:var(--px-g1)"/><stop offset=".55" style="stop-color:var(--px-g2)"/><stop offset="1" style="stop-color:var(--px-g3)"/></linearGradient></defs>
+
+<text class="m eb" x="24" y="34">CREATEPERMISSIONS · ONE REACTIVE CAN()</text>
+<!-- plan signal -->
+<rect class="bx" x="24" y="80" width="168" height="96" rx="14"/>
+<text class="m lab" x="40" y="106">plan()</text>
+<g class="k0"><text class="m val" x="40" y="146">'pro'</text></g>
+<g class="k1"><text class="m val" x="40" y="146">'free'</text></g>
+<rect class="ring k2" x="20" y="76" width="176" height="104" rx="17"/>
+<!-- rule -->
+<rect class="bx" x="236" y="80" width="380" height="96" rx="14"/>
+<text class="m lab" x="252" y="106">rule</text>
+<text class="m mt" x="252" y="136">'reports.export': () =&gt;</text>
+<text class="m mt" x="268" y="160">plan() === 'pro'</text>
+<line class="ln" x1="192" y1="128" x2="236" y2="128"/>
+<line class="ember k3" x1="192" y1="128" x2="236" y2="128"/>
+<!-- can() -->
+<text class="m mt" x="252" y="214">can('reports.export')</text>
+<g class="k4"><text class="m okT m" x="452" y="214" style="font-size:14px">→ true</text></g>
+<g class="k5"><text class="m errT m" x="452" y="214" style="font-size:14px">→ false</text></g>
+<line class="ln" x1="426" y1="176" x2="426" y2="196"/>
+<path class="ln" d="M500 224 C 500 244, 470 246, 470 262" stroke-dasharray="3 5"/>
+<path class="ember k6" d="M500 224 C 500 244, 470 246, 470 262"/>
+<!-- toolbar -->
+<rect class="bx" x="24" y="246" width="592" height="72" rx="16"/>
+<g><rect class="bx2" x="48" y="262" width="100" height="40" rx="10"/><text class="txt" x="98" y="288" text-anchor="middle">Edit</text></g>
+<g><rect class="bx2" x="164" y="262" width="100" height="40" rx="10"/><text class="txt" x="214" y="288" text-anchor="middle">Share</text></g>
+<g class="k7"><rect class="bx2" x="420" y="262" width="100" height="40" rx="10"/><text class="txt" x="470" y="288" text-anchor="middle">Export</text></g>
+<g class="k8"><rect x="420" y="262" width="100" height="40" rx="10" class="dash"/></g>
+<rect class="ring k9" x="416" y="258" width="108" height="48" rx="13"/>
+<rect class="ring pq-permissions-rm" x="416" y="258" width="108" height="48" rx="13"/>
+<text class="m hint" x="48" y="344">Edit and Share never read plan(), so they stay as they are</text>
+<text class="m hint" x="24" y="390">roles · ownership · flags · plan tiers · wildcards like 'posts.*'</text>
+</svg>

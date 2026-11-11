@@ -1,0 +1,337 @@
+{
+ "id": "permissions",
+ "route": "/products/permissions",
+ "name": "Permissions",
+ "package": "@pyreon/permissions",
+ "category": "fundamentals · access control",
+ "hero": {
+  "title": "Downgrade the plan. The Export button hides itself.",
+  "lede": "Roles, ownership rules, feature flags and plan tiers behind one reactive function, `can()`. A rule that reads a signal re-checks when the signal changes, so every button, route and menu that asked follows on its own.",
+  "install": "bun add @pyreon/permissions",
+  "ctaShort": "Install",
+  "facts": [
+   {
+    "key": "one call",
+    "value": "`can('posts.update', post)`<small>Rules are `true`, `false` or a predicate.</small>"
+   },
+   {
+    "key": "vs CASL 7",
+    "value": "1.3–1.9× on the resolver race<small>One run, bun/JavaScriptCore, author-run. Exact deny ties.</small>"
+   },
+   {
+    "key": "wildcards",
+    "value": "`posts.*` · `posts.**` · `*`<small>Most specific wins, so a deny beats a broad grant.</small>"
+   },
+   {
+    "key": "iOS and Android",
+    "value": "{dot:ok} `can`, `all`, `any` lower to a native runtime<small>Native targets are experimental.</small>"
+   }
+  ]
+ },
+ "proof": [
+  {
+   "stat": "1.3–1.9×",
+   "label": "faster than CASL when both resolve every check",
+   "source": "BENCHMARKS.md §10, permissions row · overnight run, one run, bun/JavaScriptCore"
+  },
+  {
+   "stat": "3",
+   "label": "runtime exports: `createPermissions`, `PermissionsProvider`, `usePermissions`",
+   "source": "packages/fundamentals/permissions/src/index.ts"
+  }
+ ],
+ "why": {
+  "title": "Access rules that keep up with the user.",
+  "items": [
+   {
+    "title": "Rules that read signals re-check by themselves",
+    "text": "`'posts.update': (post) => (post as Post).authorId === me().id`. Switch accounts with `me.set(…)` and every `can('posts.update', post)` on screen re-evaluates. Nothing to rebuild, no `ability.update(rules)`."
+   },
+   {
+    "title": "One shape for every model",
+    "text": "Role grants are booleans, ownership is a predicate, a feature flag is `() => flags().beta`, a plan tier is `() => plan() === 'pro'`. All of them are string keys you check the same way."
+   },
+   {
+    "title": "Wildcards with a clear winner",
+    "text": "`billing.**` grants the subtree, `billing.refunds.**: false` carves out refunds. Lookups go exact, then `*`, then `**`, most specific first, so the deny wins."
+   },
+   {
+    "title": "Fails closed",
+    "text": "A predicate that throws, or returns anything other than `true`, denies. `can.assert()` throws `[Pyreon] permission denied: 'posts.delete'` for loaders and server actions."
+   }
+  ]
+ },
+ "difference": {
+  "title": "Stop rebuilding the ability on every login.",
+  "before": {
+   "label": "CASL 7",
+   "caption": "An ability object built from the user. When the user or plan changes, you build it again and push the rules in.",
+   "code": "import { AbilityBuilder, createMongoAbility, subject } from '@casl/ability'\n\nfunction defineAbilityFor(user: { id: string }) {\n  const { can, cannot, build } = new AbilityBuilder(createMongoAbility)\n  can('read', 'Post')\n  can('update', 'Post', { authorId: user.id })\n  cannot('delete', 'Post')\n  return build()\n}\n\nconst ability = defineAbilityFor(user)\nability.can('update', subject('Post', post))  // true for Ada's post\n\n// user switches account:\nability.update(defineAbilityFor(nextUser).rules)"
+  },
+  "after": {
+   "label": "with @pyreon/permissions",
+   "caption": "The rule reads the signal. Change the signal and every check that depends on it re-runs.",
+   "code": "import { createPermissions } from '@pyreon/permissions'\n\nconst can = createPermissions({\n  'posts.read': true,\n  'posts.update': (post) => (post as Post | undefined)?.authorId === me().id,\n  'posts.delete': false,\n})\n\ncan('posts.update', post)  // true for Ada's post\n\n// user switches account:\nme.set(nextUser)           // every check on screen re-evaluates"
+  }
+ },
+ "comingFrom": [
+  {
+   "lib": "CASL",
+   "title": "Action and subject become one dotted key.",
+   "before": "// @casl/react (reads the ability from <AbilityProvider>)\n<Can I=\"update\" this={subject('Post', post)}>\n  <button>Edit</button>\n</Can>\n\n// in a loader or server action\nForbiddenError.from(ability).throwUnlessCan('delete', 'Post')\n// throws 'Cannot execute \"delete\" on \"Post\"'",
+   "after": "<Show when={() => can('posts.update', post)}>\n  <button>Edit</button>\n</Show>\n\ncan.assert('posts.delete')\n// throws \"[Pyreon] permission denied: 'posts.delete'\"",
+   "note": "The models differ: CASL matches (action, subject) pairs with MongoDB-style conditions; Pyreon checks dotted string keys, and a condition is a plain function. Conditions you wrote as `{ authorId: user.id }` become `(post) => (post as Post).authorId === me().id`."
+  }
+ ],
+ "extraSectionsHtml": null,
+ "demo": {
+  "title": "Switch roles and watch the UI.",
+  "text": "Three roles, one post written by Ada. Each button reads can(); nothing else re-renders when the role changes.",
+  "component": "DemoPermissions",
+  "reference": "pkg-permissions.html#demo",
+  "referenceHtml": "<div class=\"p-demo\">\n  <div class=\"card\"><div class=\"in\">\n    <div class=\"ds-ctl\"><span class=\"label\">signed in as</span><div class=\"seg\" id=\"pm-user\"><button type=\"button\" aria-pressed=\"true\">Ada · editor</button><button type=\"button\">Bo · viewer</button><button type=\"button\">Cy · admin</button></div></div>\n    <pre id=\"pm-rules\" style=\"margin-top:10px;padding:14px;border:1px solid var(--line);border-radius:10px;background:var(--well);font-size:12px;line-height:1.7\"></pre>\n  </div></div>\n  <div class=\"ui\"><div style=\"font-size:12px;color:#5E5A69\">Post by Ada</div><div style=\"font-size:18px;font-weight:650;margin:4px 0 14px\">Launch checklist</div><div id=\"pm-btns\" style=\"display:flex;gap:8px;flex-wrap:wrap\"></div><div class=\"hint\" id=\"pm-why\" style=\"margin-top:14px\"></div></div>\n</div>",
+  "referenceCss": ".ds-ctl{display:grid;grid-template-columns:80px 1fr;align-items:center;gap:10px}.seg{display:flex;gap:2px;padding:3px;border:1px solid var(--line);border-radius:999px;width:fit-content;flex-wrap:wrap}.seg button{height:30px;padding:0 14px;border:0;border-radius:999px;background:transparent;color:var(--fog);font-family:var(--mono);font-size:12px;cursor:pointer}.seg button[aria-pressed=\"true\"]{background:var(--line);color:var(--ivory)}\n.logbox{font-family:var(--mono);font-size:12px;line-height:1.85;color:var(--mist);min-height:120px;max-height:240px;overflow:auto}.logbox div{border-bottom:1px solid var(--line);padding:3px 0}.logbox b{color:var(--accent);font-weight:400}",
+  "referenceJs": "(function(){var U=[{n:'Ada',role:'editor',rules:{'posts.read':true,'posts.update':'author','posts.delete':'author','users.manage':false}},{n:'Bo',role:'viewer',rules:{'posts.read':true,'posts.update':false,'posts.delete':false,'users.manage':false}},{n:'Cy',role:'admin',rules:{'*':true}}],cur=0,A=[['Read','posts.read'],['Edit','posts.update'],['Delete','posts.delete'],['Manage users','users.manage']];\nfunction can(u,k){var r=u.rules;var v=k in r?r[k]:('*' in r?r['*']:false);if(v==='author')return u.n==='Ada';return!!v}\nfunction r(){var u=U[cur];document.getElementById('pm-rules').innerHTML='<span class=\"f\">createPermissions</span>({\\n'+Object.keys(u.rules).map(function(k){var v=u.rules[k];return '  <span class=\"s\">\\''+k+'\\'</span>: '+(v==='author'?'(post) =&gt; post.authorId === me().id':'<span class=\"k\">'+v+'</span>')}).join(',\\n')+'\\n})';document.getElementById('pm-btns').innerHTML=A.map(function(a){var ok=can(u,a[1]);return '<button type=\"button\" class=\"sec\"'+(ok?'':' disabled style=\"opacity:.4;cursor:not-allowed\"')+'>'+a[0]+'</button>'}).join('');document.getElementById('pm-why').textContent=u.n+' ('+u.role+'): '+A.filter(function(a){return can(u,a[1])}).map(function(a){return a[0].toLowerCase()}).join(', ')}\ndocument.querySelectorAll('#pm-user button').forEach(function(b,i){b.onclick=function(){document.querySelectorAll('#pm-user button').forEach(function(x,j){x.setAttribute('aria-pressed',j===i)});cur=i;r()}});r();})();"
+ },
+ "features": {
+  "title": "Everything `can` does.",
+  "items": [
+   {
+    "name": "`can(key, context?)`",
+    "text": "Reactive in JSX, `computed` and `effect`; pass the post, the team or the order as context."
+   },
+   {
+    "name": "`can.not(key)`",
+    "text": "The inverse, for \"show the upgrade banner\"."
+   },
+   {
+    "name": "`can.all(…)` / `can.any(…)`",
+    "text": "AND and OR over several keys, with one shared context."
+   },
+   {
+    "name": "`can.assert(key, ctx?, msg?)`",
+    "text": "Throws a `[Pyreon]` error on deny, for loaders, guards and server actions."
+   },
+   {
+    "name": "`can.set(map)`",
+    "text": "Replace every rule after login, in one batch."
+   },
+   {
+    "name": "`can.patch(map)`",
+    "text": "Merge a few rules when the plan changes."
+   },
+   {
+    "name": "`can.clear()`",
+    "text": "Deny everything on logout."
+   },
+   {
+    "name": "`can.granted` / `can.entries`",
+    "text": "Computed lists of what is granted, for a settings page or a debug panel."
+   },
+   {
+    "name": "`<PermissionsProvider>`",
+    "text": "One instance per request on the server, one per test."
+   },
+   {
+    "name": "`usePermissions(['posts.edit'])`",
+    "text": "A self-contained instance from a list of grants, for a story or a test, no provider needed."
+   }
+  ]
+ },
+ "recipes": [
+  {
+   "title": "Plan tiers as rules",
+   "text": "The rule reads the plan signal. Upgrade, and the CSV export appears without a reload.",
+   "code": "const plan = signal<'free' | 'pro'>('free')\n\nconst can = createPermissions({\n  'export.csv': () => plan() === 'pro',\n  'seats.invite': () => plan() !== 'free',\n})\n\nconst Toolbar = () => (\n  <Show when={() => can('export.csv')}>\n    <button>Export CSV</button>\n  </Show>\n)\n\nplan.set('pro')   // the button appears"
+  },
+  {
+   "title": "Grant a subtree, carve out one branch",
+   "text": "Finance can do everything under billing except issue refunds. The more specific deny wins.",
+   "code": "can.set({\n  'billing.**': true,\n  'billing.refunds.**': false,\n  'admin.*': true,\n  'admin.users': false,\n})\n\ncan('billing.invoices.export') // true\ncan('billing.refunds.issue')   // false\ncan('admin.settings')          // true\ncan('admin.users')             // false\ncan('admin.users.edit')        // false: '*' is one segment"
+  }
+ ],
+ "api": {
+  "title": "Three exports, one callable.",
+  "groups": [
+   {
+    "name": "create",
+    "items": [
+     "createPermissions",
+     "PermissionsProvider",
+     "usePermissions"
+    ]
+   },
+   {
+    "name": "check (methods on the instance)",
+    "items": [
+     "not",
+     "all",
+     "any",
+     "assert"
+    ]
+   },
+   {
+    "name": "update (methods on the instance)",
+    "items": [
+     "set",
+     "patch",
+     "clear"
+    ]
+   },
+   {
+    "name": "inspect (computed on the instance)",
+    "items": [
+     "granted",
+     "entries"
+    ]
+   },
+   {
+    "name": "types",
+    "items": [
+     "Permissions",
+     "PermissionMap",
+     "PermissionValue",
+     "PermissionPredicate"
+    ]
+   }
+  ]
+ },
+ "limits": [
+  {
+   "title": "Hiding a button is not authorization",
+   "text": "Check again where the data lives: call `can.assert()` in the loader or server action, with rules built from the server's own session."
+  },
+  {
+   "title": "One instance per request on the server",
+   "text": "Create the instance inside the request and pass it through `<PermissionsProvider>`, so two users never share rules during SSR."
+  },
+  {
+   "title": "`*` is one segment",
+   "text": "`admin.*` matches `admin.users` but not `admin.users.edit`. Use `admin.**` for the whole subtree."
+  },
+  {
+   "title": "Strings, not Mongo queries",
+   "text": "There is no condition language to serialize and send to a client. If your rules come from a database as CASL-style JSON, map them to keys and predicates once, at login."
+  }
+ ],
+ "faq": [
+  {
+   "q": "Is it faster than CASL?",
+   "a": "On the fair race, where both libraries resolve every check because the rule map holds one ownership predicate, 1.3–1.9× (one run, bun). An exact deny ties. The record also lists 2.7–13.8× for repeated checks of a static map, and says plainly that those are a cache read, not a race."
+  },
+  {
+   "q": "Does a predicate re-run when the data it reads changes?",
+   "a": "Yes, when it reads signals. `can('posts.update', post)` inside JSX tracks whatever the predicate reads, `me()` included, and re-checks when it changes."
+  },
+  {
+   "q": "How do I load rules after login?",
+   "a": "`can.set(rulesFor(user))` replaces the map in one batch, and every reactive check updates once. `can.clear()` on logout denies everything."
+  },
+  {
+   "q": "Can I use it outside components?",
+   "a": "`createPermissions` is plain TypeScript: call `can()` in a route guard, a store action or a test without a provider."
+  }
+ ],
+ "related": [
+  {
+   "href": "/products/router",
+   "category": "core",
+   "name": "Router",
+   "text": "Guard routes with `can()` in a `beforeEnter`.",
+   "package": "@pyreon/router"
+  },
+  {
+   "href": "/products/zero",
+   "category": "framework",
+   "name": "Zero",
+   "text": "Check `can.assert()` in loaders and server actions.",
+   "package": "@pyreon/zero"
+  },
+  {
+   "href": "/products/feature",
+   "category": "fundamentals",
+   "name": "Feature",
+   "text": "Put a `can()` check in front of the create, update and delete hooks it generates.",
+   "package": "@pyreon/feature"
+  }
+ ],
+ "end": {
+  "title": "Who can do what, in one function your UI already listens to.",
+  "cta": "Read the permissions guide"
+ },
+ "benchmarks": {
+  "rival": "vs @casl/ability 7 · bun/JavaScriptCore, one process per operation and library",
+  "run": "overnight run, one run",
+  "h": "1.3–1.9× faster than CASL when both resolve.",
+  "p": "Both libraries must return the same boolean for every check before timing. The race uses a rule map with one ownership predicate, which switches off Pyreon's memo the way a real app does, so both sides resolve every call. Exact deny is a tie.",
+  "rows": [
+   {
+    "op": "resolver race (full resolution)",
+    "pyreon": null,
+    "rival": null,
+    "unit": "x",
+    "verdict": "win",
+    "label": "1.3–1.9×"
+   },
+   {
+    "op": "exact deny",
+    "pyreon": null,
+    "rival": null,
+    "unit": "x",
+    "verdict": "tie",
+    "label": "could not distinguish"
+   },
+   {
+    "op": "repeated check, static map",
+    "pyreon": null,
+    "rival": null,
+    "unit": "x",
+    "verdict": "info",
+    "label": "2.7–13.8×, a cache read, not a race"
+   }
+  ]
+ },
+ "glyphSvg": "<path d=\"M60 12 L100 28 V60 C100 86 82 102 60 110 C38 102 20 86 20 60 V28 Z\" stroke=\"currentColor\" stroke-width=\"10\" fill=\"none\" stroke-linejoin=\"round\"/><circle cx=\"60\" cy=\"58\" r=\"14\" fill=\"url(#eg)\"/>",
+ "sources": [
+  {
+   "claim": "vs CASL: fair resolver race 1.3–1.9×; exact deny tie; memo-hit 2.7–13.8× is a cache read",
+   "path": "00-brief/BENCHMARKS-2026-11-05.md §10 permissions row; packages/fundamentals/permissions/bench/permissions-bench.ts header \"THE MEMO\""
+  },
+  {
+   "claim": "Same results from Pyreon and CASL 7 for read/update(own)/update(other)/delete",
+   "path": ".scratch/app/perm.ts (CASL 7.1.1 installed; record measured 7.0.2)"
+  },
+  {
+   "claim": "Predicate reading a signal re-evaluates in an effect when the signal changes",
+   "path": ".scratch/app/perm.ts \"predicate re-run on signal [true,false]\""
+  },
+  {
+   "claim": "Wildcard precedence: billing.** / billing.refunds.** false; admin.* one segment",
+   "path": ".scratch/app/perm.ts \"wild\" line; packages/fundamentals/permissions/src/permissions.ts resolve()"
+  },
+  {
+   "claim": "Throwing or non-true predicate denies (fail closed)",
+   "path": "packages/fundamentals/permissions/src/permissions.ts evaluate() comment l.10-18"
+  },
+  {
+   "claim": "can.assert message \"[Pyreon] permission denied: 'key'\"",
+   "path": "packages/fundamentals/permissions/src/permissions.ts l.277"
+  },
+  {
+   "claim": "can.granted and can.entries computeds exist",
+   "path": "packages/fundamentals/permissions/src/types.ts l.150-156"
+  },
+  {
+   "claim": "usePermissions(grants) builds a self-contained instance",
+   "path": "packages/fundamentals/permissions/src/context.ts l.45-64"
+  },
+  {
+   "claim": "Native tier service-backend: read surface lowers to PyreonPermissions (can/all/any)",
+   "path": "packages/fundamentals/permissions/src/manifest.ts multiplatform"
+  },
+  {
+   "claim": "Memo capped at 4096 keys, used only for all-static maps without context",
+   "path": "packages/fundamentals/permissions/src/permissions.ts RESOLVE_CACHE_CAP, l.191-209"
+  }
+ ]
+}

@@ -1,6 +1,6 @@
 import { For, Show } from '@pyreon/core'
-import { useHead } from '@pyreon/head'
 import { EXTRA_SECTIONS } from '../content/extra-sections'
+import { EXTRA_SECTIONS_MORE } from '../content/extra-sections.more'
 import type { ExtraSection, ProductData } from '../content/model'
 import { DEMOS } from '../demos/registry'
 import { HeroVisualFigure, InlineSvg } from '../demos/_asset'
@@ -11,7 +11,9 @@ import { BenchmarkTable } from '../kit/bench'
 import { FactList, FeatureList, Faq, LimitNote, NumberedCards, StatRow, StepCards, ApiGroups } from '../kit/blocks'
 import { EmberGradientDefs, GlowCard, ProductTag } from '../kit/cards'
 import { ExtraCallout, ExtraPackageCard, NextReleaseNote } from '../kit/extras'
-import { BeforeAfter, CodeCard, ComingFrom } from '../kit/code'
+import { ExtraMoreBody, isExtraMore } from '../kit/extra'
+import { comingFromTitle, RecipeCard } from '../kit/recipe'
+import { BeforeAfter, ComingFrom } from '../kit/code'
 import { InstallCommand, Pill } from '../kit/controls'
 import { useLinkClick } from '../kit/link'
 import { AutoGrid, Section, SectionHead, Wrap } from '../kit/layout'
@@ -19,6 +21,7 @@ import { Reveal } from '../kit/motion'
 import { ProofBand } from '../kit/proof'
 import { Eyebrow, Heading, Lede, renderInline } from '../kit/type'
 import { inlineText } from '../kit/inline'
+import { usePageHead } from '../head'
 
 /**
  * One template renders every product page from `content/products/<id>.json`.
@@ -115,7 +118,9 @@ function Extra(props: { section: ExtraSection; svgs?: Record<string, { alt: stri
       <Section size="tight">
         <Wrap>
           <SectionHead label={s.label} title={s.title} text={s.text} />
-          {s.kind === 'packages' ? (
+          {isExtraMore(s) ? (
+            <ExtraMoreBody section={s} />
+          ) : s.kind === 'packages' ? (
             <AutoGrid min={s.cols ? undefined : 250} cols={s.cols} gap={12}>
               <For each={s.items} by={(i) => i.pkg}>
                 {(i) => <ExtraPackageCard item={i} />}
@@ -139,37 +144,15 @@ export function ProductPage(props: { data: ProductData }) {
   const d = props.data
   const click = useLinkClick()
   const Demo = DEMOS[d.demo.component]
-  const extra = d.extraSections ?? EXTRA_SECTIONS[d.id] ?? []
+  const extra = d.extraSections ?? EXTRA_SECTIONS[d.id] ?? EXTRA_SECTIONS_MORE[d.id] ?? []
   const docsHref = `/docs/${d.id}`
   // An unreleased product's install line is a comment (`# … next release`):
   // show it as a status note, never as a command to copy.
   const unreleased = d.hero.install.trimStart().startsWith('#')
-  const url = `https://pyreon.dev${d.route}`
-  const og = d.visuals?.og
-
-  useHead({
+  usePageHead({
+    path: d.route,
     title: `${d.name} — ${inlineText(d.hero.title)} · Pyreon`,
-    meta: [
-      { name: 'description', content: inlineText(d.hero.lede) },
-      { property: 'og:title', content: `${d.name} · Pyreon` },
-      { property: 'og:description', content: inlineText(d.hero.lede) },
-      { property: 'og:type', content: 'website' },
-      { property: 'og:url', content: url },
-      ...(og
-        ? [
-            { property: 'og:image', content: `https://pyreon.dev${og.src}` },
-            { property: 'og:image:width', content: String(og.width) },
-            { property: 'og:image:height', content: String(og.height) },
-            { property: 'og:image:alt', content: og.alt },
-            { name: 'twitter:image', content: `https://pyreon.dev${og.src}` },
-            { name: 'twitter:image:alt', content: og.alt },
-          ]
-        : []),
-      { name: 'twitter:card', content: 'summary_large_image' },
-      { name: 'twitter:title', content: `${d.name} · Pyreon` },
-      { name: 'twitter:description', content: inlineText(d.hero.lede) },
-    ],
-    link: [{ rel: 'canonical', href: url }],
+    description: inlineText(d.hero.lede),
   })
 
   return (
@@ -245,9 +228,9 @@ export function ProductPage(props: { data: ProductData }) {
         <Reveal>
           <Section size="tight">
             <Wrap>
-              <SectionHead label="coming from" title={`Coming from ${(d.comingFrom ?? []).map((c) => c.lib).join(' or ')}?`} />
+              <SectionHead label="coming from" title={comingFromTitle((d.comingFrom ?? []).map((c) => c.lib))} />
               <Stack>
-                <For each={d.comingFrom ?? []} by={(c) => c.lib}>
+                <For each={d.comingFrom ?? []} by={(c) => c.title}>
                   {(c) => (
                     <Stack>
                       <Heading tag="h3" size="card">
@@ -302,12 +285,7 @@ export function ProductPage(props: { data: ProductData }) {
               <Stack>
                 <For each={d.recipes ?? []} by={(r) => r.title}>
                   {(r) => (
-                    <CodeCard
-                      label={r.status ? `${r.title} · ${r.status}` : r.title}
-                      caption={r.text}
-                      code={r.code}
-                      html={r.codeHtml}
-                    />
+                    <RecipeCard title={r.title} text={r.text} code={r.code} codeHtml={r.codeHtml} status={r.status} />
                   )}
                 </For>
               </Stack>

@@ -114,6 +114,32 @@ describe('rich-text editor in real browser', () => {
     unmount()
   })
 
+  // The list commands come from prosemirror-schema-list, which builds a
+  // Fragment from ITS copy of prosemirror-model. With two copies installed
+  // (the lockfile once nested 1.25.11 under schema-list/commands/state/…
+  // while @tiptap/pm used 1.25.12) every list toggle threw "Can not convert
+  // <> to a Fragment (looks like multiple versions of prosemirror-model were
+  // loaded)". Bold and headings never touched that path, so only lists broke.
+  it('list commands wrap and unwrap (one prosemirror-model instance)', async () => {
+    const editor = createRichTextEditor({ content: '<p>one</p>' })
+    const { unmount } = mountInBrowser(h(RichText, { instance: editor }))
+    await waitForView(editor)
+    await flush()
+
+    editor.chain()?.focus().setTextSelection(2).toggleBulletList().run()
+    await flush()
+    expect(editor.html()).toContain('<ul><li><p>one</p></li></ul>')
+    editor.chain()?.focus().toggleOrderedList().run()
+    await flush()
+    expect(editor.html()).toContain('<ol><li><p>one</p></li></ol>')
+    editor.chain()?.focus().toggleOrderedList().run()
+    await flush()
+    expect(editor.html()).not.toMatch(/<[ou]l>/)
+    expect(editor.html()).toContain('<p>one</p>')
+    editor.dispose()
+    unmount()
+  })
+
   it('isActive reflects marks at the selection (toolbar primitive)', async () => {
     const editor = createRichTextEditor({ content: '<p>plain</p>' })
     const { unmount } = mountInBrowser(h(RichText, { instance: editor }))

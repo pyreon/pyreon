@@ -1,0 +1,573 @@
+{
+ "id": "charts",
+ "route": "/products/charts",
+ "name": "Charts",
+ "package": "@pyreon/charts",
+ "category": "fundamentals · data visualisation",
+ "hero": {
+  "title": "A quarter of ECharts' weight. Up to 8.7× faster.",
+  "lede": "Write a chart as JSX: rows in, marks as children, field names checked against your row type. Axes, an accessible data table and a spoken description come without asking (the tooltip is one `<Tooltip />` child), on canvas in the browser, as SVG on the server, and natively on iOS and Android.",
+  "install": "bun add @pyreon/charts",
+  "ctaShort": "Install",
+  "facts": [
+   {
+    "key": "vs ECharts 6",
+    "value": "2.5–8.7× faster<small>all four timed operations, one run</small>"
+   },
+   {
+    "key": "line chart, gzip",
+    "value": "38.0 KB<small>ECharts 6, tree-shaken: 155.9 KB</small>"
+   },
+   {
+    "key": "chart families",
+    "value": "20, plus the cartesian marks<small>pie, sankey, treemap, candlestick, map…</small>"
+   },
+   {
+    "key": "renders to",
+    "value": "canvas · SVG strings · iOS and Android<small>native targets are experimental</small>"
+   }
+  ]
+ },
+ "proof": [
+  {
+   "stat": "8.7×",
+   "label": "faster than ECharts 6 to mount a 100,000-point line (4.36 vs 37.95 ms).",
+   "source": "BENCHMARKS.md §2, charts vs ECharts 6, final pass, one run, real Chromium, M3 Max"
+  },
+  {
+   "stat": "38.0 KB",
+   "label": "gzipped for a line chart. ECharts 6, tree-shaken the documented way: 155.9 KB.",
+   "source": "BENCHMARKS.md §7, bench:charts-bundle, overnight run"
+  },
+  {
+   "stat": "1.9×",
+   "label": "faster than uPlot to update a 10,000-point line (1.17 vs 2.25 ms).",
+   "source": "BENCHMARKS.md §2, charts-libs, final pass, two runs (1.89–1.92×, row input)"
+  }
+ ],
+ "why": {
+  "title": "Charts that behave like the rest of your UI.",
+  "items": [
+   {
+    "title": "Marks are children",
+    "text": "A combo chart is a `<Bar>` beside a `<Line>`. A second axis is `<Line axis=\"right\">` plus `<Axis y2>`. Wrap a mark in `<Show>` and its series comes and goes with the signal."
+   },
+   {
+    "title": "Typos fail typecheck",
+    "text": "`<Chart<Row>>` checks `x` against your row. Declare `const RowBar = Bar<Row>` once and every `y=\"revnue\"` is a type error. It compiles to `Bar` itself, so it costs nothing."
+   },
+   {
+    "title": "Accessible without asking",
+    "text": "Every chart renders an offscreen data table and an `aria-label` written from the data: \"rising 45% from 100 to 145\". Left and Right walk the points; Up and Down switch series."
+   },
+   {
+    "title": "Pay for what you draw",
+    "text": "Each mark and family is an imported binding. A pie costs 19.1 KB gzipped (ECharts: 117.2 KB), and a chart without `<Toolbox>` carries no tool strip. CI import budgets keep it that way."
+   }
+  ]
+ },
+ "difference": {
+  "title": "The options object goes. The effect goes with it.",
+  "before": {
+   "label": "React + ECharts 6",
+   "caption": "Register the pieces, init on a ref, resize by hand, dispose on unmount, and reshape your rows into parallel arrays on every change.",
+   "code": "import { useEffect, useRef } from 'react'\nimport * as echarts from 'echarts/core'\nimport { BarChart, LineChart } from 'echarts/charts'\nimport { GridComponent, LegendComponent, TooltipComponent } from 'echarts/components'\nimport { CanvasRenderer } from 'echarts/renderers'\n\necharts.use([BarChart, LineChart, GridComponent, TooltipComponent, LegendComponent, CanvasRenderer])\n\ntype Row = { month: string; revenue: number; target: number }\n\nexport function Revenue({ rows }: { rows: Row[] }) {\n  const el = useRef<HTMLDivElement>(null)\n  const chart = useRef<echarts.ECharts | null>(null)\n\n  useEffect(() => {\n    const instance = echarts.init(el.current!)\n    chart.current = instance\n    const onResize = () => instance.resize()\n    window.addEventListener('resize', onResize)\n    return () => {\n      window.removeEventListener('resize', onResize)\n      instance.dispose()\n    }\n  }, [])\n\n  useEffect(() => {\n    chart.current?.setOption({\n      xAxis: { type: 'category', data: rows.map((r) => r.month) },\n      yAxis: { type: 'value', axisLabel: { formatter: (v: number) => `$${v}` } },\n      tooltip: { trigger: 'axis' },\n      legend: {},\n      series: [\n        { type: 'bar', name: 'Revenue', data: rows.map((r) => r.revenue) },\n        { type: 'line', name: 'Target', data: rows.map((r) => r.target) },\n      ],\n    })\n  }, [rows])\n\n  return <div ref={el} style={{ height: 320 }} />\n}"
+  },
+  "after": {
+   "label": "with @pyreon/charts",
+   "caption": "Rows in, marks as children. Resizing, disposal and repaint on data change are the chart's job. Field names are checked.",
+   "code": "import { Axis, Bar, Chart, Legend, Line, Tooltip, currency } from '@pyreon/charts'\n\ntype Row = { month: string; revenue: number; target: number }\nconst RowBar = Bar<Row>\nconst RowLine = Line<Row>\n\nexport const Revenue = (props: { rows: Row[] }) => (\n  <Chart<Row> data={props.rows} x=\"month\" height={320}>\n    <RowBar y=\"revenue\" label=\"Revenue\" />\n    <RowLine y=\"target\" label=\"Target\" />\n    <Axis y format={currency('$')} />\n    <Tooltip />\n    <Legend />\n  </Chart>\n)"
+  }
+ },
+ "extraSectionsHtml": null,
+ "demo": {
+  "title": "Swap the mark, keep the data.",
+  "text": "Same rows, different marks. In the package this is one JSX child changing, and the canvas repaints in place.",
+  "component": "DemoCharts",
+  "reference": "pkg-charts.html#demo",
+  "referenceHtml": "<div class=\"p-demo\">\n  <div class=\"card\"><div class=\"in\">\n    <div class=\"ds-ctl\"><span class=\"label\">mark</span><div class=\"seg\" id=\"c-mark\"><button type=\"button\" aria-pressed=\"true\">Bar</button><button type=\"button\">Line</button><button type=\"button\">Area</button><button type=\"button\">Dot</button></div></div>\n    <div class=\"ds-ctl\"><span class=\"label\">data</span><div class=\"seg\" id=\"c-data\"><button type=\"button\" aria-pressed=\"true\">revenue</button><button type=\"button\">users</button></div></div>\n    <pre id=\"c-code\" style=\"margin-top:8px;padding:14px;border:1px solid var(--line);border-radius:10px;background:var(--well)\"></pre>\n  </div></div>\n  <div class=\"ui\" style=\"padding:20px\"><svg id=\"c-svg\" viewBox=\"0 0 520 300\" role=\"img\" aria-label=\"Chart preview\" style=\"width:100%;height:auto;display:block\"></svg></div>\n</div>",
+  "referenceCss": ".ds-ctl{display:grid;grid-template-columns:60px 1fr;align-items:center;gap:10px}.seg{display:flex;gap:2px;padding:3px;border:1px solid var(--line);border-radius:999px;width:fit-content;flex-wrap:wrap}.seg button{height:30px;padding:0 14px;border:0;border-radius:999px;background:transparent;color:var(--fog);font-family:var(--mono);font-size:12px;cursor:pointer}.seg button[aria-pressed=\"true\"]{background:var(--line);color:var(--ivory)}",
+  "referenceJs": "(function(){var M=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug'],D={revenue:[42,51,48,63,71,68,84,92],users:[1.2,1.9,2.4,2.2,3.1,3.8,4.0,4.9]},T={revenue:[45,50,55,60,65,70,75,80],users:[1.5,2,2.5,3,3.5,4,4.5,5]},S={mark:'Bar',data:'revenue'};\nfunction r(){var v=D[S.data],t=T[S.data],mx=Math.max.apply(0,v.concat(t))*1.15,W=520,H=300,L=44,B=34,pw=(W-L-10)/v.length,y=function(x){return H-B-(x/mx)*(H-B-16)};var g='';for(var i=0;i<=4;i++){var yy=y(mx/4*i);g+='<line x1=\"'+L+'\" x2=\"'+(W-6)+'\" y1=\"'+yy+'\" y2=\"'+yy+'\" stroke=\"#E6DFD2\"/><text x=\"'+(L-8)+'\" y=\"'+(yy+4)+'\" text-anchor=\"end\" font-size=\"11\" fill=\"#5E5A69\">'+(S.data==='revenue'?'$'+Math.round(mx/4*i):(mx/4*i).toFixed(1)+'k')+'</text>'}\nM.forEach(function(m,i){g+='<text x=\"'+(L+pw*i+pw/2)+'\" y=\"'+(H-12)+'\" text-anchor=\"middle\" font-size=\"11\" fill=\"#5E5A69\">'+m+'</text>'});var pts=v.map(function(x,i){return[L+pw*i+pw/2,y(x)]});\nif(S.mark==='Bar')v.forEach(function(x,i){g+='<rect x=\"'+(L+pw*i+pw*.18)+'\" y=\"'+y(x)+'\" width=\"'+(pw*.64)+'\" height=\"'+(H-B-y(x))+'\" rx=\"3\" fill=\"#C2410C\"/>'});\nif(S.mark==='Area')g+='<path d=\"M'+pts[0][0]+','+(H-B)+' L'+pts.map(function(p){return p.join(',')}).join(' L')+' L'+pts[pts.length-1][0]+','+(H-B)+' Z\" fill=\"rgba(194,65,12,.18)\"/>';\nif(S.mark==='Line'||S.mark==='Area')g+='<polyline points=\"'+pts.map(function(p){return p.join(',')}).join(' ')+'\" fill=\"none\" stroke=\"#C2410C\" stroke-width=\"2.5\"/>';\nif(S.mark==='Dot')pts.forEach(function(p){g+='<circle cx=\"'+p[0]+'\" cy=\"'+p[1]+'\" r=\"6\" fill=\"#C2410C\"/>'});\ng+='<polyline points=\"'+t.map(function(x,i){return(L+pw*i+pw/2)+','+y(x)}).join(' ')+'\" fill=\"none\" stroke=\"#0A6E89\" stroke-width=\"2\" stroke-dasharray=\"5 4\"/>';\ng+='<g font-size=\"11\" fill=\"#14141C\"><rect x=\"'+(W-170)+'\" y=\"6\" width=\"10\" height=\"10\" fill=\"#C2410C\"/><text x=\"'+(W-155)+'\" y=\"15\">'+S.data+'</text><line x1=\"'+(W-90)+'\" x2=\"'+(W-76)+'\" y1=\"11\" y2=\"11\" stroke=\"#0A6E89\" stroke-width=\"2\" stroke-dasharray=\"4 3\"/><text x=\"'+(W-70)+'\" y=\"15\">target</text></g>';\ndocument.getElementById('c-svg').innerHTML=g;document.getElementById('c-code').innerHTML='<span class=\"p\">&lt;</span><span class=\"t\">Chart</span> data={rows} x=<span class=\"s\">\"month\"</span><span class=\"p\">&gt;</span>\\n  <span class=\"p\">&lt;</span><span class=\"t\">'+S.mark+'</span> y=<span class=\"s\">\"'+S.data+'\"</span> <span class=\"p\">/&gt;</span>\\n  <span class=\"p\">&lt;</span><span class=\"t\">Line</span> y=<span class=\"s\">\"target\"</span> dash={[5, 4]} <span class=\"p\">/&gt;</span>\\n  <span class=\"p\">&lt;</span><span class=\"t\">Axis</span> y <span class=\"p\">/&gt;</span> <span class=\"p\">&lt;</span><span class=\"t\">Legend</span> <span class=\"p\">/&gt;</span>\\n<span class=\"p\">&lt;/</span><span class=\"t\">Chart</span><span class=\"p\">&gt;</span>'}\n['c-mark','c-data'].forEach(function(id){var g=document.getElementById(id);g.querySelectorAll('button').forEach(function(b){b.onclick=function(){g.querySelectorAll('button').forEach(function(x){x.setAttribute('aria-pressed',x===b)});S[id==='c-mark'?'mark':'data']=b.textContent;r()}})});r();})();",
+  "spec": "Mount a real @pyreon/charts <Chart> over eight monthly rows (revenue, users and a target line). The \"mark\" control swaps the first child between <Bar>, <Line>, <Area> and <Dot>; the \"data\" control switches its y field between revenue and users. The target stays a <Line dash={[5, 4]}> and the chart carries <Axis y>, <Tooltip> and <Legend>. Keep the code panel showing the exact JSX being rendered. Tab into the canvas and use the arrow keys to show that keyboard focus and the spoken description come for free."
+ },
+ "features": {
+  "title": "A whole charting engine, and none of it borrowed.",
+  "items": [
+   {
+    "name": "Cartesian marks:",
+    "text": "`Bar` (stacked, grouped, waterfall), `Line`, `Area`, `StackedArea`, `Dot` with area-mapped bubbles, `Band`, `Histogram`, error bars on every mark."
+   },
+   {
+    "name": "Indicators as marks:",
+    "text": "`Sma`, `Ema`, `Trend` and `Bollinger` layer over the series they smooth."
+   },
+   {
+    "name": "Family marks:",
+    "text": "`<Arc>` is a pie or donut, `<Stage>` a funnel, `<Cell>` a heatmap, `<Candle>` a candlestick. Same `<Chart>`, same grammar."
+   },
+   {
+    "name": "16 family components:",
+    "text": "Sankey, treemap, sunburst, tree, graph, chord, river, polar, radar, gauge, gantt, calendar, parallel, boxplot, single axis and GeoJSON maps."
+   },
+   {
+    "name": "Chrome as children:",
+    "text": "`Axis`, `Scale`, `Tooltip`, `Legend`, `Zoom` and `Toolbox`. `Zoom` and `Toolbox` carry their own code, so a chart without them ships no zoom or tool strip."
+   },
+   {
+    "name": "Keyed updates:",
+    "text": "`by=\"id\"` makes bars and lines slide, grow in and shrink out by row, like `<For by>`."
+   },
+   {
+    "name": "One formatter, every surface:",
+    "text": "`currency`, `percent`, `compact`, `fixed` and `date` feed the axis, the tooltip and the accessible table at once. `locale=\"de-DE\"` switches to Intl."
+   },
+   {
+    "name": "Long data and small multiples:",
+    "text": "`color=\"region\"` pivots long-format rows into one series per value; `facet=\"region\"` draws one panel per value on a shared y domain."
+   },
+   {
+    "name": "Big series:",
+    "text": "M4 decimation before every stroke, `maxPoints` thins with LTTB. The engine's marks (`line`, `bars`) also take a `Float64Array` or `number[]` column, a plain `number[]` used without a copy, and `density=\"device\"` trades detail for speed.",
+    "status": "next release"
+   },
+   {
+    "name": "SVG on the server:",
+    "text": "`chartToSvg` plus a serializer per family, from `@pyreon/charts/svg`. Deterministic output, so a snapshot test asserts geometry, not pixels."
+   }
+  ]
+ },
+ "api": {
+  "title": "60 exports on the main entry. Two more entries for servers and tinkerers.",
+  "groups": [
+   {
+    "name": "chart and marks",
+    "items": [
+     "Chart",
+     "Bar",
+     "Line",
+     "Area",
+     "StackedArea",
+     "Dot",
+     "Band",
+     "Histogram",
+     "Rule",
+     "Label",
+     "Arc",
+     "Stage",
+     "Cell",
+     "Candle"
+    ]
+   },
+   {
+    "name": "indicators",
+    "items": [
+     "Sma",
+     "Ema",
+     "Trend",
+     "Bollinger"
+    ]
+   },
+   {
+    "name": "chrome",
+    "items": [
+     "Axis",
+     "Scale",
+     "Tooltip",
+     "Legend",
+     "Zoom",
+     "Toolbox"
+    ]
+   },
+   {
+    "name": "families",
+    "items": [
+     "SankeyChart",
+     "TreemapChart",
+     "SunburstChart",
+     "TreeChart",
+     "GraphChart",
+     "ChordChart",
+     "RiverChart",
+     "PolarChart",
+     "RadarChart",
+     "GaugeChart",
+     "GanttChart",
+     "CalendarChart",
+     "ParallelChart",
+     "BoxplotChart",
+     "SingleAxisChart",
+     "MapChart",
+     "registerMap",
+     "geoShapes",
+     "gaugeDial",
+     "visualMap"
+    ]
+   },
+   {
+    "name": "format and curves",
+    "items": [
+     "currency",
+     "percent",
+     "compact",
+     "fixed",
+     "date",
+     "plain",
+     "formatDate",
+     "registerLocale",
+     "smooth",
+     "step"
+    ]
+   },
+   {
+    "name": "theme and control",
+    "items": [
+     "ChartThemeProvider",
+     "useChartTheme",
+     "chartThemes",
+     "palettes",
+     "createChartLink",
+     "createChartHandle"
+    ]
+   },
+   {
+    "name": "@pyreon/charts/svg",
+    "items": [
+     "chartToSvg",
+     "pieToSvg",
+     "sankeyToSvg",
+     "treemapToSvg",
+     "geoToSvg"
+    ]
+   },
+   {
+    "name": "@pyreon/charts/engine (no stability promise)",
+    "items": [
+     "PlotChart",
+     "bars",
+     "line",
+     "area",
+     "points",
+     "sonifyValues"
+    ]
+   }
+  ]
+ },
+ "limits": [
+  {
+   "title": "Give the marks the row type too",
+   "text": "`<Chart<Row>>` checks the chart's own channels. JSX cannot pass a type argument down to children, so declare `const RowBar = Bar<Row>` once to check a mark's field names."
+  },
+  {
+   "title": "iOS and Android are experimental",
+   "text": "The engine is generated into Swift and Kotlin and `<Chart>` draws natively. Column inputs, `density`, `locale`, `facet`, `<Histogram>` and the event props (`onSelect` taps do cross) stay on the web, and the compiler names each one."
+  },
+  {
+   "title": "The server draws the first frame",
+   "text": "Import `@pyreon/charts/svg` on the server and every chart ships its first frame as SVG in the HTML. Tooltips, zoom and keyboard focus attach in the browser."
+  },
+  {
+   "title": "Stay on the main entry",
+   "text": "`@pyreon/charts/engine` exposes every layout, hit test and the array form `<PlotChart>`. It is useful and it is outside the stability promise."
+  }
+ ],
+ "related": [
+  {
+   "href": "/products/table",
+   "category": "fundamentals",
+   "name": "Table",
+   "text": "The same rows as a sortable table.",
+   "package": "@pyreon/table"
+  },
+  {
+   "href": "/products/query",
+   "category": "fundamentals",
+   "name": "Query",
+   "text": "Fetched data straight into a chart.",
+   "package": "@pyreon/query"
+  },
+  {
+   "href": "/products/native",
+   "category": "multiplatform",
+   "name": "Native",
+   "text": "The same chart as a SwiftUI or Compose canvas.",
+   "package": "Pyreon Native · PMTC"
+  }
+ ],
+ "end": {
+  "title": "Delete the options object. Keep the chart.",
+  "cta": "Read the charts guide"
+ },
+ "benchmarks": {
+  "rival": "vs ECharts 6, uPlot 1.6, Chart.js 4 and Recharts 3 · real Chromium, M3 Max",
+  "run": "final pass: ECharts one run, uPlot / Chart.js / Recharts two runs (Recharts run 1 only); bundle sizes overnight run",
+  "h": "8.7× faster than ECharts at 100,000 points.",
+  "p": "Every ECharts row is a win, and the line chart ships at a quarter of the size. Against uPlot and Chart.js, updates and bar mounts win and two line mounts tie. The default row-object input loses two line mounts by 1.16–1.20×; they are in the table. Every Pyreon run also builds an offscreen accessible data table, which no other library draws.",
+  "rows": [
+   {
+    "op": "mount 100,000 points (vs ECharts)",
+    "pyreon": 4.36,
+    "rival": 37.95,
+    "unit": "ms",
+    "verdict": "win",
+    "label": "8.70× vs ECharts 6"
+   },
+   {
+    "op": "update 100,000 points (vs ECharts)",
+    "pyreon": 5.74,
+    "rival": 29.56,
+    "unit": "ms",
+    "verdict": "win",
+    "label": "5.15× vs ECharts 6"
+   },
+   {
+    "op": "mount 1,000 points (vs ECharts)",
+    "pyreon": 1.03,
+    "rival": 4.06,
+    "unit": "ms",
+    "verdict": "win",
+    "label": "3.9× vs ECharts 6"
+   },
+   {
+    "op": "update one of 1,000 (vs ECharts)",
+    "pyreon": 0.722,
+    "rival": 1.82,
+    "unit": "ms",
+    "verdict": "win",
+    "label": "2.52× vs ECharts 6"
+   },
+   {
+    "op": "spec → SVG string (vs ECharts SSR)",
+    "pyreon": null,
+    "rival": null,
+    "unit": "x",
+    "verdict": "win",
+    "label": "7.4–8.2× across bars 1k, bars 10k, line 10k (bun, one run, median of 15, no CI)"
+   },
+   {
+    "op": "line chart bundle, gzip",
+    "pyreon": 38.0,
+    "rival": 155.9,
+    "unit": "KB",
+    "verdict": "win",
+    "label": "4.10× smaller than tree-shaken ECharts"
+   },
+   {
+    "op": "pie chart bundle, gzip",
+    "pyreon": 19.1,
+    "rival": 117.2,
+    "unit": "KB",
+    "verdict": "win",
+    "label": "6.1× smaller than tree-shaken ECharts"
+   },
+   {
+    "op": "update line, 10,000 (vs uPlot)",
+    "pyreon": 1.17,
+    "rival": 2.25,
+    "unit": "ms",
+    "verdict": "win",
+    "label": "1.89–1.92× (rows); columns 2.06–2.08×"
+   },
+   {
+    "op": "update line, 100,000 (vs Chart.js)",
+    "pyreon": 2.64,
+    "rival": 3.83,
+    "unit": "ms",
+    "verdict": "win",
+    "label": "1.44–1.45× (rows); columns 1.83–1.85×"
+   },
+   {
+    "op": "mount bars, 1,000 (vs Chart.js)",
+    "pyreon": 5.28,
+    "rival": 11.24,
+    "unit": "ms",
+    "verdict": "win",
+    "label": "2.11–2.23× (both inputs)"
+   },
+   {
+    "op": "mount line, 100,000 (vs Recharts)",
+    "pyreon": 5.77,
+    "rival": 644,
+    "unit": "ms",
+    "verdict": "info",
+    "label": "112× vs Recharts 3, one run (Recharts ran in run 1 only, no verdict)"
+   },
+   {
+    "op": "mount line, 1,000 (vs uPlot)",
+    "pyreon": 2.79,
+    "rival": 2.76,
+    "unit": "ms",
+    "verdict": "tie",
+    "label": "tie, both inputs, both runs"
+   },
+   {
+    "op": "mount line, 100,000 (vs uPlot)",
+    "pyreon": 5.77,
+    "rival": 5.26,
+    "unit": "ms",
+    "verdict": "tie",
+    "label": "tie, both inputs, both runs"
+   },
+   {
+    "op": "mount line, 10,000 (vs uPlot)",
+    "pyreon": 3.84,
+    "rival": 3.19,
+    "unit": "ms",
+    "verdict": "loss",
+    "label": "uPlot 1.17–1.20× (rows); columns lose run 1, tie run 2"
+   },
+   {
+    "op": "mount line, 1,000,000 (vs Chart.js)",
+    "pyreon": 14.92,
+    "rival": 12.81,
+    "unit": "ms",
+    "verdict": "loss",
+    "label": "Chart.js 1.16–1.20× (rows); columns tie"
+   }
+  ]
+ },
+ "glyphSvg": "<path d=\"M20 100 H104\" stroke=\"currentColor\" stroke-width=\"10\" stroke-linecap=\"square\"/><path d=\"M30 86 V60 M54 86 V40 M78 86 V70\" stroke=\"currentColor\" stroke-width=\"12\" stroke-linecap=\"square\"/><circle cx=\"96\" cy=\"30\" r=\"14\" fill=\"url(#eg)\"/>",
+ "comingFrom": [
+  {
+   "lib": "ECharts",
+   "title": "An option object becomes a mark.",
+   "before": "import * as echarts from 'echarts/core'\nimport { PieChart } from 'echarts/charts'\nimport { LegendComponent, TooltipComponent } from 'echarts/components'\nimport { CanvasRenderer } from 'echarts/renderers'\n\necharts.use([PieChart, TooltipComponent, LegendComponent, CanvasRenderer])\n\ntype Share = { browser: string; pct: number }\n\nexport function mountBrowsers(el: HTMLElement, share: Share[]) {\n  const chart = echarts.init(el)\n  chart.setOption({\n    tooltip: { trigger: 'item' },\n    legend: {},\n    series: [\n      {\n        type: 'pie',\n        radius: ['40%', '70%'],\n        data: share.map((d) => ({ name: d.browser, value: d.pct })),\n      },\n    ],\n  })\n  return () => chart.dispose()\n}",
+   "after": "import { Arc, Chart, Legend, Tooltip } from '@pyreon/charts'\n\ntype Share = { browser: string; pct: number }\n\nexport const Browsers = (props: { share: Share[] }) => (\n  <Chart<Share> data={props.share} height={280}>\n    <Arc value=\"pct\" label=\"browser\" innerRadius={0.57} />\n    <Tooltip />\n    <Legend />\n  </Chart>\n)",
+   "note": "`innerRadius={0.57}` is ECharts' `['40%', '70%']` as a fraction of the outer radius. The docs' migration table maps each series type to its mark: `bar` to `<Bar>`, `pie` to `<Arc>`, `markLine` to `<Rule>`, `dataZoom` to `<Zoom>`. On the four timed operations in the record, the same engine is 2.5–8.7× faster than ECharts 6 (one run)."
+  },
+  {
+   "lib": "Chart.js",
+   "title": "Stop copying data into the chart.",
+   "before": "import { CategoryScale, Chart, Legend, LineController, LineElement, LinearScale, PointElement, Tooltip } from 'chart.js'\n\nChart.register(LineController, LineElement, PointElement, CategoryScale, LinearScale, Tooltip, Legend)\n\ntype Day = { day: string; visitors: number }\n\nexport function mountVisitors(canvas: HTMLCanvasElement, days: Day[]) {\n  const chart = new Chart(canvas, {\n    type: 'line',\n    data: {\n      labels: days.map((d) => d.day),\n      datasets: [{ label: 'Visitors', data: days.map((d) => d.visitors), tension: 0.3 }],\n    },\n    options: {\n      scales: { y: { ticks: { callback: (v) => `${Number(v) / 1000}k` } } },\n    },\n  })\n\n  // When the data changes, copy it back in and ask for a redraw.\n  return function load(next: Day[]) {\n    chart.data.labels = next.map((d) => d.day)\n    chart.data.datasets[0]!.data = next.map((d) => d.visitors)\n    chart.update()\n  }\n}",
+   "after": "import { Axis, Chart, Legend, Line, Tooltip, compact, smooth } from '@pyreon/charts'\nimport { signal } from '@pyreon/reactivity'\n\ntype Day = { day: string; visitors: number }\nexport const visits = signal<Day[]>([])\n\nexport const Visitors = () => (\n  <Chart data={visits} x=\"day\" height={280}>\n    <Line y=\"visitors\" label=\"Visitors\" curve={smooth} />\n    <Axis y format={compact} />\n    <Tooltip />\n    <Legend />\n  </Chart>\n)\n\n// When the data changes, write the signal. The canvas repaints in place.\nexport function load(next: Day[]) {\n  visits.set(next)\n}",
+   "note": "No `register` list, no `chart.update()`: the chart reads the signal. `smooth` is a monotone cubic, so it never draws a peak the data does not have. Against Chart.js 4 with decimation, bar mounts are 2.11–2.23× faster and 100,000-point updates 1.44–1.45× (two runs); a 1,000,000-point mount with row objects is 1.16–1.20× slower."
+  },
+  {
+   "lib": "Recharts",
+   "title": "The same shape, on canvas, checked.",
+   "before": "import { Bar, CartesianGrid, ComposedChart, Legend, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'\n\ntype Row = { month: string; revenue: number; target: number }\n\nexport const Revenue = ({ rows }: { rows: Row[] }) => (\n  <ResponsiveContainer width=\"100%\" height={320}>\n    <ComposedChart data={rows}>\n      <CartesianGrid strokeDasharray=\"3 3\" />\n      <XAxis dataKey=\"month\" />\n      <YAxis tickFormatter={(v: number) => `$${v}`} />\n      <Tooltip />\n      <Legend />\n      <Bar dataKey=\"revenue\" name=\"Revenue\" fill=\"#8884d8\" />\n      <Line dataKey=\"target\" name=\"Target\" stroke=\"#82ca9d\" />\n    </ComposedChart>\n  </ResponsiveContainer>\n)",
+   "after": "import { Axis, Bar, Chart, Legend, Line, Tooltip } from '@pyreon/charts'\n\ntype Row = { month: string; revenue: number; target: number }\nconst RowBar = Bar<Row>\nconst RowLine = Line<Row>\n\nexport const Revenue = (props: { rows: Row[] }) => (\n  <Chart<Row> data={props.rows} x=\"month\" height={320}>\n    <RowBar y=\"revenue\" label=\"Revenue\" />\n    <RowLine y=\"target\" label=\"Target\" />\n    <Axis y format={(v) => `$${v}`} />\n    <Tooltip />\n    <Legend />\n  </Chart>\n)",
+   "note": "Recharts already composes with JSX, so the move is mostly renames: `dataKey` becomes `y`, `ComposedChart` becomes `<Chart>`, and `ResponsiveContainer` goes away because the chart fills its container. In the same run Recharts 3 took 644 ms to mount a 100,000-point line; the Pyreon engine took 5.77 ms."
+  }
+ ],
+ "recipes": [
+  {
+   "title": "A live chart that keeps the last minute",
+   "text": "Push a reading every second and keep sixty. `by=\"t\"` matches rows by key, so the line slides left instead of every point morphing into its neighbour.",
+   "code": "import { onMount } from '@pyreon/core'\nimport { Chart, Line, Tooltip } from '@pyreon/charts'\nimport { signal } from '@pyreon/reactivity'\n\ntype Tick = { t: number; label: string; latency: number }\n\nexport const LiveLatency = (props: { read: () => number }) => {\n  const ticks = signal<Tick[]>([])\n  onMount(() => {\n    let t = 0\n    const id = setInterval(() => {\n      t += 1\n      const next = { t, label: `${t}s`, latency: props.read() }\n      ticks.update((rows) => [...rows.slice(-59), next])\n    }, 1000)\n    return () => clearInterval(id)\n  })\n  return (\n    <Chart data={ticks} x=\"label\" by=\"t\" height={200} title=\"Latency, last 60 s\">\n      <Line y=\"latency\" label=\"Latency (ms)\" />\n      <Tooltip />\n    </Chart>\n  )\n}"
+  },
+  {
+   "title": "Price and volume, zoomed together",
+   "text": "One `createChartLink()` shares the zoom window between charts, and the crosshair too once each has `<Tooltip crosshair />`. The navigator strip and the preset buttons sit under the price chart.",
+   "code": "import { Bar, Chart, Line, Tooltip, Zoom, createChartLink } from '@pyreon/charts'\n\ntype Day = { day: string; close: number; volume: number }\n\nexport const PriceAndVolume = (props: { days: Day[] }) => {\n  const link = createChartLink()\n  return (\n    <>\n      <Chart<Day> data={props.days} x=\"day\" height={240}>\n        <Line y=\"close\" label=\"Close\" />\n        <Tooltip crosshair />\n        <Zoom inside navigator link={link} presets={[{ label: '1M', count: 21 }, { label: 'All', count: 0 }]} />\n      </Chart>\n      <Chart<Day> data={props.days} x=\"day\" height={120}>\n        <Bar y=\"volume\" label=\"Volume\" />\n        <Tooltip crosshair />\n        <Zoom inside link={link} />\n      </Chart>\n    </>\n  )\n}"
+  },
+  {
+   "title": "A chart in an email",
+   "text": "On a server there is no canvas. `chartToSvg` returns an SVG string with `role=\"img\"` and a title, ready for an email, a PDF or a static page.",
+   "code": "import { chartToSvg } from '@pyreon/charts/svg'\nimport { bars, line } from '@pyreon/charts/engine'\n\ntype Row = { month: string; revenue: number; target: number }\nconst rows: Row[] = [\n  { month: 'Jan', revenue: 3200, target: 3000 },\n  { month: 'Feb', revenue: 4100, target: 3400 },\n  { month: 'Mar', revenue: 3800, target: 3800 },\n]\n\n// A string, with no DOM: write it into an email, a PDF or a static page.\nexport const svg = chartToSvg({\n  data: rows,\n  x: (d) => d.month,\n  marks: [bars((d: Row) => d.revenue, { label: 'Revenue' }), line((d: Row) => d.target, { label: 'Target' })],\n  title: 'Monthly revenue',\n  width: 640,\n  height: 320,\n})"
+  }
+ ],
+ "faq": [
+  {
+   "q": "Is this a wrapper around ECharts?",
+   "a": "Not any more. It used to be. The engine that replaced it is plain TypeScript over a flat draw list, and the package depends on nothing outside Pyreon. The docs carry a table from ECharts options to marks, and `pyreon check` lists any import still on the old wrapper."
+  },
+  {
+   "q": "Canvas or SVG?",
+   "a": "Canvas in the browser: one element, however many points. SVG on the server, from the same draw list, through `@pyreon/charts/svg`. Import that entry on the server and every `<Chart>` ships its first frame as SVG in the HTML."
+  },
+  {
+   "q": "Where does it lose?",
+   "a": "Mounting a line from row objects: 1.17–1.20× behind uPlot at 10,000 points and 1.16–1.20× behind Chart.js at 1,000,000 (two runs). The columnar input coming in the next release (a `number[]` column instead of row objects) ties Chart.js at a million. Every Pyreon run also builds the accessible table, which the others skip."
+  },
+  {
+   "q": "Does it run on iOS and Android?",
+   "a": "Yes, experimentally. The geometry is generated into Swift and Kotlin and compiled by the real toolchains on every change, and `<Chart>` and the family components lower to a native canvas over the same draw list. VoiceOver gets an Audio Graph through `AXChartDescriptor`. What stays web-only is named at compile time."
+  },
+  {
+   "q": "How big is it, really?",
+   "a": "38.0 KB gzipped for a line chart and 19.1 KB for a pie, measured beyond an 11.2 KB Pyreon runtime baseline (overnight run). Tree-shaken ECharts: 155.9 KB and 117.2 KB."
+  },
+  {
+   "q": "Can I trust the numbers?",
+   "a": "They are author-run and synthetic, on one M3 Max. Every one comes with its run count, and the harness is in the repo: `bun bench-scenarios.ts --scenario charts` in `examples/benchmark`. Run it."
+  }
+ ],
+ "sources": [
+  {
+   "claim": "ECharts 6 head-to-head: mount 1k 1.03 vs 4.06 ms, mount 100k 4.36 vs 37.95, update 100k 5.74 vs 29.56, update 1k 722 µs vs 1.82 ms; range 2.5–8.7×; one run. Benchmarked component is PlotChart, the array form <Chart> resolves to",
+   "path": "00-brief/BENCHMARKS-2026-11-05.md §2 \"Charts — @pyreon/charts vs ECharts 6\"; packages/fundamentals/charts/src/engine/grammar.tsx (Chart resolves children into PlotChart props)"
+  },
+  {
+   "claim": "uPlot / Chart.js / Recharts rows, ties, losses (rows 1.17–1.20× vs uPlot at 10k, 1.16–1.20× vs Chart.js at 1M), two runs, Recharts run 1 only; 112× = 644 / 5.77",
+   "path": "00-brief/BENCHMARKS-2026-11-05.md §2 \"Charts — vs uPlot 1.6, Chart.js 4, Recharts 3\" and footnote ¹; §14 losses item 5"
+  },
+  {
+   "claim": "Bundle: line 38.0 vs 155.9 KB (4.10×), pie 19.1 vs 117.2 KB (6.12×), beyond 11.2 KB runtime baseline, overnight run",
+   "path": "00-brief/BENCHMARKS-2026-11-05.md §7 \"Charts (bench:charts-bundle …)\""
+  },
+  {
+   "claim": "Engine spec → SVG vs ECharts SSR 8.2× / 7.5× / 7.4×, median of 15, no CI",
+   "path": "00-brief/BENCHMARKS-2026-11-05.md §10 row \"charts engine\""
+  },
+  {
+   "claim": "Main entry exports 60 runtime values; /svg exports 22 (chartToSvg + 21 serializers)",
+   "path": "packages/fundamentals/charts/src/index.ts, src/svg.ts; counted with .scratch/tools/charts-flow/probe.ts (Object.keys of the module)"
+  },
+  {
+   "claim": "20 chart families beyond the cartesian marks (pie, gauge, funnel, radar, candlestick, heatmap, boxplot, treemap, sunburst, tree, sankey, graph, chord, river, polar, single-axis, gantt, calendar, parallel, map); 16 are components, 4 are family marks",
+   "path": "packages/fundamentals/charts/src/manifest.ts features[3]; src/index.ts family exports"
+  },
+  {
+   "claim": "Mark field names are only checked when the mark gets the row type (const RowBar = Bar<Row>); <Chart<Row>> checks its own channels",
+   "path": "packages/fundamentals/charts/README.md \"<Chart>\"; manifest Chart.mistakes[2]; verified by tsc in .scratch/tools/charts-flow (x=\"mm\" and RowBar y=\"vv\" both TS2322)"
+  },
+  {
+   "claim": "Offscreen data table by default, aria-label from describeChart, \"rising 45% from 100 to 145\", Up/Down follow one series",
+   "path": "docs/src/content/docs/charts.md \"Accessibility\"; packages/fundamentals/charts/CHANGELOG.md 0.52.0 (#3709)"
+  },
+  {
+   "claim": "iOS AXChartDescriptor (Audio Graph); Android one TalkBack node per category",
+   "path": "docs/src/content/docs/charts.md \"Accessibility\""
+  },
+  {
+   "claim": "Native: engine generated into PyreonChartEngine.swift/.kt, drift-locked and compiled by swiftc/kotlinc; <Chart> lowers to PyreonChartCanvas; web-only: Histogram reshape, locale, facet, density, columns, event props",
+   "path": "docs/src/content/docs/charts.md \"Native\" and \"Big data\"; packages/fundamentals/charts/README.md \"Native geometry\""
+  },
+  {
+   "claim": "Column marks (Float64Array / number[], zero-copy) and density prop are unreleased (status next release); the main-entry <Chart> grammar shipped in 0.53.0",
+   "path": ".changeset/charts-columnar-marks.md; git diff @pyreon/charts@0.53.0 HEAD -- packages/fundamentals/charts/src/index.ts (no change)"
+  },
+  {
+   "claim": "Zero third-party dependencies (only @pyreon/* deps and peers)",
+   "path": "packages/fundamentals/charts/package.json dependencies / peerDependencies"
+  },
+  {
+   "claim": "Was an ECharts wrapper until 0.51; migration table; pyreon check lists wrapper imports",
+   "path": "docs/src/content/docs/charts.md \"Migrating from 0.51\""
+  },
+  {
+   "claim": "pyreon check reports imports still on the 0.51 ECharts wrapper (detector code charts-legacy-import)",
+   "path": "packages/core/compiler/src/charts-migration.ts (findChartsLegacyImports, wired in pyreon-intercept.ts line 106); packages/tools/cli/src/check.ts runs detectPyreonPatterns"
+  },
+  {
+   "claim": "Arc innerRadius={0.57} equals ECharts radius [40%, 70%]",
+   "path": "docs/src/content/docs/charts.md \"Migrating from 0.51\" table row for pie"
+  },
+  {
+   "claim": "`dash` (not `dashed`) is the mark prop for a dashed line",
+   "path": "packages/fundamentals/charts/src/engine/marks.ts line 132 (MarkOptions.dash)"
+  },
+  {
+   "claim": "First-frame SVG in SSR when @pyreon/charts/svg is imported on the server",
+   "path": "packages/fundamentals/charts/src/svg.ts (setFrameSerializer side effect); README entry table"
+  },
+  {
+   "claim": "Pyreon code samples typecheck and compile",
+   "path": ".scratch/tools/charts-flow/samples/charts/*.tsx: tsc --noEmit (tsconfig.json, source via paths) clean; transformJSX from packages/core/compiler: 0 warnings; recipe-svg.ts executed with bun (3,055-char SVG, role=\"img\", title present)"
+  },
+  {
+   "claim": "Rival code (React 19 + echarts 6.1.0, chart.js 4.6.1, recharts 3.10.1) typechecks",
+   "path": ".scratch/tools/charts-flow/rival/*.ts(x): tsc against examples/benchmark/node_modules types, clean; not executed in a browser"
+  }
+ ]
+}

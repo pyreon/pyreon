@@ -28,6 +28,8 @@ export default definePlaywrightConfig({
     { name: 'site-pages', testMatch: /site-pages\.spec\.ts$/, port: 5191 },
     // Product pages, core/platform and data/state groups (pages, demos, widths, contrast).
     { name: 'site-products-a', testMatch: /site-products-a\.spec\.ts$/, port: 5191 },
+    // The app-building-blocks and visual-and-tools product pages and their demos.
+    { name: 'site-products-b', testMatch: /\/site-products-b[^/]*\.spec\.ts$/, port: 5191 },
   ],
   webServer: [
     {
