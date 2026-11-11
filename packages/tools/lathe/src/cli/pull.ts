@@ -40,7 +40,7 @@ import { bundle, collectDocumentsAsync, referencedDocuments, type ReadOutcome } 
 import { openApiVersionProblem } from '../input/openapi'
 import { parseSpecText } from '../input/yaml'
 
-import { createTerm, finding, type Term } from '@pyreon/ansi'
+import { createTerm, finding, type Term, wrap } from '@pyreon/ansi'
 
 /**
  * A pull failure on stderr in the shared theme: `✗ lathe pull · <problem>`,
@@ -305,7 +305,11 @@ export async function pullSpec(url: string, dest: string, opts: PullOptions = {}
     `  ${t.ok(t.sym('ok'))} ${previous === undefined ? 'fetched' : 'updated'}  ${t.underline(dest)} ${t.dim(
       `${b} ${written.length} bytes${bundledNote ? ` ${b} ${bundledNote}` : ''}`,
     )}\n` +
-      (advice ? `    ${t.info(t.sym('info'))} ${advice.trim().replace(/\n\s+/g, ' ')}\n` : '') +
+      (advice
+        ? `${wrap(advice.trim().replace(/\n\s+/g, ' '), t.width, t.width - 6, '      ')
+            .map((l, i) => (i === 0 ? `    ${t.info(t.sym('info'))} ${l}` : l))
+            .join('\n')}\n`
+        : '') +
       `    ${t.dim('next:')} review the diff, then run lathe generate\n`,
   )
   return 0
