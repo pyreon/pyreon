@@ -1,3 +1,4 @@
+import type { ThemeModeCallback } from '@pyreon/rocketstyle'
 import type { Theme } from '@pyreon/ui-theme'
 
 /**
@@ -50,3 +51,26 @@ export const disabledState = () => ({
   opacity: 0.5,
   cursor: 'not-allowed',
 })
+
+/** System colours that carry the fill roles (`base` / `contrast` / `hover`) and `text` / `textDark`. */
+export type FillTone = 'primary' | 'success' | 'info' | 'error' | 'warning'
+
+/**
+ * A solid fill with its text: `base` behind, `contrast` on it, `hover` when
+ * hovered. The theme pairs these to pass 4.5:1, so a component never assumes
+ * white text on a coloured fill (white on blue-500 is 3.68:1, on the brand's
+ * ember 3.06:1).
+ */
+export const solidFill = (t: Theme, tone: FillTone) => ({
+  backgroundColor: t.color.system[tone].base,
+  color: t.color.system[tone].contrast,
+  hover: { backgroundColor: t.color.system[tone].hover },
+})
+
+/**
+ * Text in a tone, on the page or on that tone's tints (`50`–`200`): the theme's
+ * `text` in light mode and `textDark` in dark mode. The opacity steps (`700`,
+ * `800`) are not text colours — composited they are 1.8–2.7:1.
+ */
+export const tintText = (t: Theme, m: ThemeModeCallback, tone: FillTone) =>
+  m(t.color.system[tone].text, t.color.system[tone].textDark)

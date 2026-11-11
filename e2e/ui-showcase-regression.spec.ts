@@ -517,8 +517,8 @@ test.describe('ui-showcase — pseudo-state CSS rules', () => {
       (el) => getComputedStyle(el).backgroundColor,
     )
 
-    // Button.primary.hover.backgroundColor = primary[800] (darker
-    // shade). Pre-fix or rocketstyle hover-slice regression: same
+    // Button.primary.hover.backgroundColor = primary.hover (a lighter
+    // solid shade). Pre-fix or rocketstyle hover-slice regression: same
     // color before + after.
     expect(after).not.toBe(before)
   })

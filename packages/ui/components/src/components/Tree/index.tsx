@@ -93,14 +93,14 @@ export const TreeItem = el
     extendCss: `
       &[aria-selected='true'] {
         background-color: ${t.color.system.primary[50]};
-        color: ${t.color.system.primary[700]};
+        color: ${t.color.system.primary.text};
       }
     `,
   }))
   .states((t) => ({
     selected: {
       backgroundColor: t.color.system.primary[50],
-      color: t.color.system.primary[700],
+      color: t.color.system.primary.text,
     },
   }))
 

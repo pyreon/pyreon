@@ -71,7 +71,7 @@ export const TimelineItem = el
           font-size: 10px;
           border-radius: 50%;
           background: ${t.color.system.success.base};
-          color: ${t.color.system.light.base};
+          color: ${t.color.system.success.contrast};
         }
       `,
     },
