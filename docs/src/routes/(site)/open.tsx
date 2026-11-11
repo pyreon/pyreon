@@ -1,4 +1,5 @@
 import stats from 'virtual:pyreon-open-stats'
+import { OPEN_COPY } from '../../site/content/channels'
 import { usePageHead } from '../../site/head'
 import { OpenStatsView } from '../../open/OpenStatsView'
 
@@ -13,11 +14,6 @@ if (import.meta.env.SSR) await import('@pyreon/charts/svg')
  * visitor's browser ever calls GitHub or npm.
  */
 export default function OpenPage() {
-  usePageHead({
-    path: '/open',
-    title: 'Open stats · Pyreon',
-    description:
-      'Pyreon in numbers, live: GitHub stars, contributors, issues, releases and npm downloads, plus the benchmark record with every withdrawn claim.',
-  })
+  usePageHead({ path: OPEN_COPY.route, title: OPEN_COPY.meta.title, description: OPEN_COPY.meta.description })
   return <OpenStatsView stats={stats} />
 }

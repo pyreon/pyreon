@@ -1,9 +1,6 @@
-// `?url` emits each stylesheet as its own processed asset. The `docs` cascade
-// layer: docs-v3.css declares it itself; vite-plugins/legacy-css-layer.ts
-// wraps site-pages.css and blog.css in it.
-import blogHref from '@pyreon/zero-content/blog.css?url'
+// `?url` emits each stylesheet as its own processed asset. docs-v3.css
+// declares the `docs` cascade layer itself.
 import docsHref from './docs-v3.css?url'
-import sitePagesHref from './site-pages.css?url'
 
 /**
  * Stylesheets that only one side of the site needs. The client entry carries
@@ -11,11 +8,13 @@ import sitePagesHref from './site-pages.css?url'
  * and the older marketing pages read); each layout links its own sheets:
  *
  *   - `DOCS_STYLESHEETS`: the docs layout (`routes/docs/_layout.tsx`).
- *   - `SITE_STYLESHEETS`: the marketing layout (`routes/(site)/_layout.tsx`):
- *     the older pages' styles (blog, showcase, open) and the blog's.
+ *   - `SITE_STYLESHEETS`: the marketing layout (`routes/(site)/_layout.tsx`).
+ *     Empty: every marketing page, the blog included, is styled by the kit
+ *     (CSS-in-JS in the server HTML). Kept so a marketing-only sheet has one
+ *     place to go.
  */
 export const DOCS_STYLESHEETS: readonly string[] = [docsHref]
-export const SITE_STYLESHEETS: readonly string[] = [sitePagesHref, blogHref]
+export const SITE_STYLESHEETS: readonly string[] = []
 
 const isDocsPath = (path: string): boolean => path === '/docs' || path.startsWith('/docs/')
 

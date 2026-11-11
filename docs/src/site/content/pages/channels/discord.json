@@ -1,0 +1,56 @@
+{
+  "route": "/discord",
+  "destination": "the Pyreon Discord",
+  "meta": {
+    "title": "Community · Pyreon",
+    "description": "Talk to the people building Pyreon: questions, bug reports and ideas, answered in the open."
+  },
+  "hero": {
+    "eyebrow": "discord",
+    "title": "Talk to the people building Pyreon.",
+    "lede": "The Pyreon Discord opens with the launch. Until then the conversation happens on GitHub, where every question and every answer stays searchable for the next person who hits the same thing.",
+    "actions": [
+      {
+        "label": "Ask a question or report a bug",
+        "href": "https://github.com/pyreon/pyreon/issues/new/choose"
+      },
+      {
+        "label": "Browse open issues",
+        "href": "https://github.com/pyreon/pyreon/issues"
+      }
+    ]
+  },
+  "sections": [
+    {
+      "kind": "links",
+      "title": "Other ways to follow along",
+      "items": [
+        {
+          "label": "The blog",
+          "href": "/blog",
+          "text": "How the compiler and the runtime work, and release write-ups."
+        },
+        {
+          "label": "Releases on GitHub",
+          "href": "https://github.com/pyreon/pyreon/releases",
+          "text": "Watch the repository and pick Releases to hear about each one."
+        },
+        {
+          "label": "Open stats",
+          "href": "/open",
+          "text": "The project in live numbers, refreshed daily."
+        },
+        {
+          "label": "Community",
+          "href": "/community",
+          "text": "How to contribute, good first issues and where to report a bug."
+        }
+      ]
+    }
+  ],
+  "redirect": {
+    "title": "Taking you to {destination}.",
+    "text": "If nothing happens in a second, use the link below.",
+    "cta": "Continue to {destination}"
+  }
+}

@@ -1,0 +1,192 @@
+{
+  "route": "/showcase",
+  "meta": {
+    "title": "Showcase · Pyreon",
+    "description": "What you can build with Pyreon: a full-stack Zero app with dashboards, chat, kanban and document export, a local-first collaborative board, one tasks app for web, iOS and Android, and React, Vue, Solid, Preact and Svelte code running on Pyreon."
+  },
+  "hero": {
+    "eyebrow": "showcase",
+    "title": "Real apps, built with Pyreon.",
+    "lede": "Every app on this page lives in the repository and every screenshot is taken from the running app. Clone once and each one is a single command away.",
+    "actions": [
+      {
+        "label": "Browse the examples on GitHub",
+        "href": "https://github.com/pyreon/pyreon/tree/main/examples"
+      },
+      {
+        "label": "Start with the guide",
+        "href": "/docs/getting-started"
+      }
+    ]
+  },
+  "setup": {
+    "title": "Clone once.",
+    "text": "You need Bun. `bun install` also builds every package, then each example below runs with its own command.",
+    "command": "git clone https://github.com/pyreon/pyreon.git && cd pyreon && bun install"
+  },
+  "featured": {
+    "label": "one zero app",
+    "title": "Twelve apps in one Zero project.",
+    "text": "Todos, a blog, chat, kanban, a forms wizard, invoice and resume builders that export PDF and DOCX, an i18n shop and a node-graph editor, each a file-routed section of one app. The dashboard puts queries, a sortable table, charts, a virtualized list, role-based permissions and toasts on one page.",
+    "example": {
+      "dir": "app-showcase",
+      "title": "App showcase",
+      "summary": "One Zero app with twelve file-routed sections, from a todo list to a node-graph editor.",
+      "highlights": [
+        "zero",
+        "query",
+        "table",
+        "charts",
+        "flow",
+        "document",
+        "form",
+        "permissions",
+        "ui-components"
+      ],
+      "run": "cd examples/app-showcase && bun run dev -- --port 5181",
+      "open": "http://localhost:5181/dashboard"
+    },
+    "captures": [
+      {
+        "file": "showcase/app-dashboard.png",
+        "label": "Dashboard: query, charts, coolgrid"
+      },
+      {
+        "file": "showcase/app-kanban.png",
+        "label": "Kanban: drag and drop, undo, roles"
+      },
+      {
+        "file": "showcase/app-chat.png",
+        "label": "Chat: channels and threads"
+      },
+      {
+        "file": "showcase/app-invoice.png",
+        "label": "Invoice: export to PDF and DOCX"
+      },
+      {
+        "file": "showcase/app-todos.png",
+        "label": "Todos: filters in the URL, shortcuts"
+      }
+    ]
+  },
+  "more": {
+    "label": "more examples",
+    "title": "More from the repository.",
+    "text": "Each one is a complete app in `examples/`, with its source one click away.",
+    "items": [
+      {
+        "dir": "hn-clone",
+        "title": "Hacker News clone",
+        "summary": "A statically generated Zero app reading the live Hacker News API: top, new, ask, show and jobs feeds, search, bookmarks, a sortable leaderboard and a stats page with charts, in English, Czech and German.",
+        "highlights": [
+          "zero",
+          "query",
+          "i18n",
+          "head",
+          "charts",
+          "storage",
+          "toast"
+        ],
+        "run": "cd examples/hn-clone && bun run dev -- --port 5235",
+        "open": "http://localhost:5235",
+        "note": "Needs an internet connection: the stories come from api.hnpwa.com."
+      },
+      {
+        "dir": "collab-board",
+        "title": "Collaborative board",
+        "summary": "A local-first kanban board on `@pyreon/sync`: open it in two tabs and every edit, presence dot and cursor syncs live, with IndexedDB keeping the board across reloads. Card notes are a shared code editor stored as a CRDT.",
+        "highlights": [
+          "sync",
+          "dnd",
+          "virtual",
+          "code",
+          "query",
+          "form",
+          "toast"
+        ],
+        "run": "cd examples/collab-board && bun run dev -- --port 5189",
+        "open": "http://localhost:5189",
+        "note": "For sync across devices, also run the relay: `bun examples/collab-board/relay.ts`.",
+        "liveDemo": "/showcase/collab-board/"
+      },
+      {
+        "dir": "native-tasks-web",
+        "title": "Tasks, on the web and on device",
+        "summary": "A tasks app written once in `examples/native-tasks/src/TasksApp.tsx`: sign-in, task lists and detail screens, a dashboard and a chart gallery. The same source compiles to SwiftUI for iOS and Jetpack Compose for Android.",
+        "highlights": [
+          "primitives",
+          "charts",
+          "store",
+          "router",
+          "query",
+          "form",
+          "auth"
+        ],
+        "run": "cd examples/native-tasks-web && bun run dev -- --port 5204",
+        "open": "http://localhost:5204",
+        "note": "Sign in with any name of three or more characters.",
+        "alsoSource": [
+          {
+            "label": "Shared source",
+            "dir": "native-tasks"
+          },
+          {
+            "label": "iOS project",
+            "dir": "native-tasks-ios"
+          },
+          {
+            "label": "Android project",
+            "dir": "native-tasks-android"
+          }
+        ]
+      },
+      {
+        "dir": "react-compat",
+        "title": "React, Vue, Solid, Preact and Svelte compat",
+        "summary": "Five apps, each written against its framework's own API (React hooks, the Vue Composition API, Solid signals, Preact hooks, Svelte stores) and running on Pyreon's reactive engine through one compiler option.",
+        "highlights": [
+          "react-compat",
+          "core",
+          "reactivity",
+          "runtime-dom"
+        ],
+        "run": "cd examples/react-compat && bun run dev -- --port 5177",
+        "open": "http://localhost:5177",
+        "liveDemo": "/showcase/react-compat/",
+        "alsoSource": [
+          {
+            "label": "Vue",
+            "dir": "vue-compat"
+          },
+          {
+            "label": "Solid",
+            "dir": "solid-compat"
+          },
+          {
+            "label": "Preact",
+            "dir": "preact-compat"
+          },
+          {
+            "label": "Svelte",
+            "dir": "svelte-compat"
+          }
+        ]
+      }
+    ]
+  },
+  "submit": {
+    "label": "built something?",
+    "title": "Put your app here.",
+    "text": "This page shows projects people build with Pyreon, and none are listed yet. Open an issue with a link, a screenshot and the packages you used, and yours can be the first.",
+    "cta": {
+      "label": "Submit your project",
+      "href": "https://github.com/pyreon/pyreon/issues/new?title=Showcase%3A+"
+    }
+  },
+  "labels": {
+    "source": "Source on GitHub",
+    "liveDemo": "Open the live demo",
+    "open": "Then open {url}",
+    "packages": "Pyreon packages it uses"
+  }
+}

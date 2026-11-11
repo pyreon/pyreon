@@ -56,6 +56,7 @@ copy(join(from, 'content/_products.json'), join(app, '_products.json'))
 const CHECKED: readonly { file: string; type: string; from: string }[] = [
   { file: '_home.json', type: 'HomeData', from: './home' },
   { file: '_project.json', type: 'ProjectFile', from: './types-site' },
+  { file: '_channels.json', type: 'ChannelsFile', from: './types-site' },
 ]
 for (const { file, type, from: typeFrom } of CHECKED) {
   copy(join(from, `content/${file}`), join(app, file))
@@ -132,6 +133,11 @@ write('migrate/_meta.json', {
 const project = read('_project.json')
 reset('project')
 for (const id of ['status', 'releases', 'community', 'brand']) write(`project/${id}.json`, project[id])
+
+// Blog, showcase, open stats and the two stable links: one file per page.
+const channels = read('_channels.json')
+reset('channels')
+for (const id of ['blog', 'showcase', 'open', 'discord', 'newsletter']) write(`channels/${id}.json`, channels[id])
 
 write('benchmarks.json', read('_benchmarks.json'))
 write('_sitemap.json', read('_sitemap.json'))

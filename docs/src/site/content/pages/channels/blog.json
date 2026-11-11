@@ -1,0 +1,77 @@
+{
+  "route": "/blog",
+  "meta": {
+    "title": "Pyreon blog",
+    "description": "How Pyreon works and what it can do: components that run once, one codebase for web, iOS and Android, and benchmarks you can run yourself."
+  },
+  "hero": {
+    "eyebrow": "blog",
+    "title": "Notes from the people building Pyreon.",
+    "lede": "How the compiler and the runtime work, what each release changed, and the numbers behind the claims, losses included. Every post links the code it talks about.",
+    "actions": [
+      {
+        "label": "RSS feed",
+        "href": "/blog/rss.xml"
+      },
+      {
+        "label": "Newsletter",
+        "href": "/newsletter"
+      }
+    ]
+  },
+  "tagsLabel": "Browse posts by tag",
+  "allTags": "all posts",
+  "latest": "Latest",
+  "readPost": "Read the post →",
+  "list": {
+    "title": "More posts",
+    "text": "Newest first."
+  },
+  "empty": {
+    "title": "The first post is on its way.",
+    "text": "Posts are published on their date with the next daily deploy. Subscribe to the RSS feed and the first one reaches you the day it goes out."
+  },
+  "tag": {
+    "eyebrow": "tag",
+    "title": "Posts tagged #{tag}",
+    "lede": "{count} {posts} tagged #{tag}, newest first.",
+    "posts": [
+      "post",
+      "posts"
+    ]
+  },
+  "pager": "More pages of posts",
+  "page": "Page {page} of {pages}",
+  "newer": "← Newer posts",
+  "older": "Older posts →",
+  "subscribe": {
+    "title": "Get new posts",
+    "text": "Every post goes to the RSS feed in full, the day it is published. No tracking, nothing to unsubscribe from.",
+    "links": [
+      {
+        "label": "RSS feed",
+        "href": "/blog/rss.xml"
+      },
+      {
+        "label": "Newsletter",
+        "href": "/newsletter"
+      },
+      {
+        "label": "Releases on GitHub",
+        "href": "https://github.com/pyreon/pyreon/releases"
+      }
+    ]
+  },
+  "post": {
+    "back": "← All posts",
+    "toc": "In this post",
+    "copyLink": "Copy link",
+    "copied": "Copied",
+    "byline": "By {author}",
+    "share": "Share",
+    "more": "Keep reading",
+    "previous": "Previous post",
+    "next": "Next post",
+    "related": "Related"
+  }
+}

@@ -49,14 +49,3 @@ export function SiteShell(props: { children?: VNodeChild }) {
     </Page>
   )
 }
-
-/**
- * Top/bottom room for pages whose content predates the redesign (blog,
- * showcase, open, discord, newsletter): they were laid out under the old
- * static header, so they need clearance below the floating bar. Kit pages
- * start with a hero `Section`, which carries its own.
- */
-export const PageFrame = el
-  .config({ name: 'SitePageFrame' })
-  .attrs({ block: true, contentAlignX: 'block', contentAlignY: 'top' })
-  .theme(() => ({ paddingTop: { xs: 104, md: 128 }, paddingBottom: { xs: 64, md: 96 } }))

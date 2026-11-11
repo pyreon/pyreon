@@ -20,7 +20,16 @@ export type {
 } from './blog/schema'
 
 export { defineBlog, pageFromParam, resolveBlogConfig } from './blog/define-blog'
-export type { Blog, BlogConfig, BlogPostEnd, BlogStaticPaths, ResolvedBlogConfig } from './blog/define-blog'
+export type {
+  Blog,
+  BlogConfig,
+  BlogListView,
+  BlogPostEnd,
+  BlogPostView,
+  BlogStaticPaths,
+  BlogViews,
+  ResolvedBlogConfig,
+} from './blog/define-blog'
 
 export {
   adjacentPosts,

@@ -1,9 +1,8 @@
 import type { Plugin } from 'vite'
 
 /**
- * Puts the site's hand-written stylesheets (tokens.css, site-pages.css and
- * zero-content's blog.css) into one CSS cascade layer, `docs`, BELOW the UI
- * system's layers. (styles/docs-v3.css opens its own `@layer docs` block.)
+ * Puts the site's one hand-written global stylesheet (tokens.css) into the
+ * CSS cascade layer `docs`, BELOW the UI system's layers. (styles/docs-v3.css opens its own `@layer docs` block.)
  *
  * Why: @pyreon/styler emits every kit component into `@layer elements` /
  * `@layer rocketstyle`, and unlayered CSS always beats layered CSS whatever
@@ -15,10 +14,7 @@ import type { Plugin } from 'vite'
  * The order statement `@layer docs, elements, rocketstyle;` is the first
  * style in index.html, so the layers are ordered before any of them appears.
  */
-const LAYERED = [
-  /\/docs\/src\/styles\/(?:tokens|site-pages)\.css$/,
-  /\/zero-content\/styles\/blog\.css$/,
-]
+const LAYERED = [/\/docs\/src\/styles\/tokens\.css$/]
 
 export default function legacyCssLayer(): Plugin {
   return {
@@ -27,8 +23,8 @@ export default function legacyCssLayer(): Plugin {
     transform(code, id) {
       const [path = id, query = ''] = id.split('?')
       if (!LAYERED.some((re) => re.test(path))) return null
-      // `site-pages.css?url` (styles/sheets.ts) is the JS module that exports
-      // the asset URL; the stylesheet itself comes through here again as CSS.
+      // A `?url` import is the JS module that exports the asset URL; the
+      // stylesheet itself comes through here again as CSS.
       if (/(?:^|&)url\b/.test(query)) return null
       if (/^\s*@(?:import|charset)\b/m.test(code)) {
         throw new Error(

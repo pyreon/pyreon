@@ -392,3 +392,87 @@ describe('ShareLinks + NewsletterForm (SSR)', () => {
     expect((await renderWithHead(h(TagList, { tags: [] }))).html).not.toContain('<ul')
   })
 })
+
+describe('views — a site replaces the markup, the blog keeps the data, 404s and head', () => {
+  const seen: { index: unknown[]; tag: unknown[]; post: unknown[] } = { index: [], tag: [], post: [] }
+  const themed = defineBlog({
+    siteUrl: 'https://example.dev',
+    title: 'Themed blog',
+    description: 'Notes.',
+    pageSize: 2,
+    relatedCount: 1,
+    views: {
+      index: (v) => {
+        seen.index.push(v)
+        return h('main', { class: 'site-index' }, `INDEX ${v.page}/${v.pageCount} of ${v.total}: ${v.posts.map((p) => p.slug).join(',')} tags=${v.tags.map((t) => `${t.slug}:${t.count}`).join(',')} next=${v.href(v.page + 1)}`)
+      },
+      tag: (v) => {
+        seen.tag.push(v)
+        return h('main', { class: 'site-tag' }, `TAG ${v.tag?.name} ${v.page}/${v.pageCount} of ${v.total}: ${v.posts.map((p) => p.slug).join(',')} page2=${v.href(2)}`)
+      },
+      post: (v) => {
+        seen.post.push(v)
+        return h(
+          'article',
+          { class: 'site-post' },
+          `POST ${v.post.slug} prev=${v.previous?.slug ?? '-'} next=${v.next?.slug ?? '-'} related=${v.related.map((p) => p.slug).join(',')} toc=${v.headings.map((x) => x.slug).join(',')} url=${v.url} status=${v.status ?? '-'}`,
+          h(v.Content, null),
+        )
+      },
+    },
+  })
+
+  beforeEach(() => {
+    seen.index.length = 0
+    seen.tag.length = 0
+    seen.post.length = 0
+  })
+
+  it('the index view gets the page, the page count, the total, the top tags and the pager URLs', async () => {
+    const { html, head } = await render(themed.IndexPage)
+    expect(html).toContain('INDEX 1/2 of 3: newest,middle tags=signals:3,ssr:2 next=/blog/page/2')
+    expect(html).not.toContain('pyreon-blog')
+    expect(head).toContain('<title>Themed blog</title>')
+    expect(head).toContain('<link rel="canonical" href="https://example.dev/blog"')
+    const two = await render(themed.IndexPage, { page: '2' })
+    expect(two.html).toContain('INDEX 2/2 of 3: oldest')
+    expect(seen.index).toHaveLength(2)
+  })
+
+  it('the tag view gets the tag, its page and its own pager', async () => {
+    const { html, head } = await render(themed.TagPage, { tag: 'signals' })
+    expect(html).toContain('TAG signals 1/2 of 3: newest,middle page2=/blog/tags/signals/page/2')
+    expect(head).toContain('CollectionPage')
+  })
+
+  it('the post view gets the body, its headings, neighbours, related posts and absolute URL', async () => {
+    const loaders: Registry[string]['loaders'] = {}
+    for (const f of FIXTURES) {
+      loaders[f.slug] = async () => ({
+        default: (() => h('p', null, `BODY:${f.slug}`)) as ComponentFn<Record<string, never>>,
+        frontmatter: f.frontmatter,
+        headings: f.slug === 'middle' ? [{ level: 2, text: 'One', slug: 'one' }, { level: 3, text: 'Two', slug: 'two' }] : [],
+        slug: f.slug,
+        wordCount: 300,
+      })
+    }
+    _setRegistry({ blog: { name: 'blog', type: 'pages', loaders, publishDate: 'date', publishCutoff: NOW } })
+    const { html, head } = await render(themed.PostPage, { slug: 'middle' })
+    expect(html).toContain('POST middle prev=oldest next=newest related=newest toc=one,two url=https://example.dev/blog/middle status=-')
+    expect(html).toContain('BODY:middle')
+    expect(head).toContain('BlogPosting')
+  })
+
+  it('never calls a view for a missing post, tag or page: the not-found view renders instead', async () => {
+    expect((await render(themed.PostPage, { slug: 'draft' })).html).toContain('pyreon-blog-notfound')
+    expect((await render(themed.TagPage, { tag: 'secret' })).html).toContain('pyreon-blog-notfound')
+    expect((await render(themed.IndexPage, { page: '9' })).html).toContain('pyreon-blog-notfound')
+    expect(seen.post.length + seen.tag.length + seen.index.length).toBe(0)
+  })
+
+  it('the post view sees the preview status of an unpublished post in development', async () => {
+    vi.stubEnv('NODE_ENV', 'development')
+    expect((await render(themed.PostPage, { slug: 'draft' })).html).toContain('status=draft')
+    expect((await render(themed.PostPage, { slug: 'future' })).html).toContain('status=scheduled')
+  })
+})

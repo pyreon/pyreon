@@ -29,6 +29,7 @@ import {
 import type { BlogAuthor, BlogPost, BlogPostContext, BlogTagCount } from './posts'
 import { absoluteUrl, blogListHead, blogPostHead } from './seo'
 import type { BlogSeoSite } from './seo'
+import type { Heading } from '../types'
 
 // ─── defineBlog — one object a Zero app wires into four route files ───────
 //
@@ -99,6 +100,66 @@ export interface BlogConfig {
   postFooter?: ComponentFn<{ post: BlogPost }>
   /** Rendered for an unknown post, tag or page. */
   notFound?: ComponentFn
+  /**
+   * Replace the markup of a page type while keeping everything else the
+   * blog does (queries, pagination, 404s, head tags, JSON-LD, static paths).
+   * Each view receives the page's computed data as plain props (see
+   * `BlogListView` and `BlogPostView`); a page type without a view renders
+   * the default markup (the `pyreon-blog-*` classes `blog.css` styles).
+   */
+  views?: BlogViews
+}
+
+/**
+ * The data of one listing page: the index (and its pages) or a tag (and its pages).
+ * (A type alias, not an interface, so it is a valid props object for `h`.)
+ */
+export type BlogListView = {
+  kind: 'index' | 'tag'
+  /** The posts on this page, newest first. */
+  posts: BlogPost[]
+  /** 1-based page number. */
+  page: number
+  pageCount: number
+  /** Posts in the whole listing, every page. */
+  total: number
+  /** Site path of page `n` of this listing. */
+  href: (page: number) => string
+  /** The most-used tags of all published posts (`indexTags` of them), most used first. */
+  tags: BlogTagCount[]
+  /** The tag of a tag page; `undefined` on the index. */
+  tag: BlogTagCount | undefined
+  config: ResolvedBlogConfig
+}
+
+/** The data of a post page. */
+export type BlogPostView = {
+  post: BlogPost
+  /** The compiled body. */
+  Content: ComponentFn
+  /** The body's level 2 and 3 headings, for a table of contents. */
+  headings: Heading[]
+  /** The next older published post. */
+  previous: BlogPost | undefined
+  /** The next newer published post. */
+  next: BlogPost | undefined
+  /** Up to `relatedCount` published posts sharing a tag. */
+  related: BlogPost[]
+  /** Only set while previewing an unpublished post in development. */
+  status: 'draft' | 'scheduled' | undefined
+  /** Absolute URL of the post (share links). */
+  url: string
+  config: ResolvedBlogConfig
+}
+
+/** Replacement markup per page type (`BlogConfig.views`). */
+export interface BlogViews {
+  /** `/blog` and `/blog/page/[page]`. */
+  index?: ComponentFn<BlogListView>
+  /** `/blog/tags/[tag]` and its pages. */
+  tag?: ComponentFn<BlogListView>
+  /** `/blog/[slug]`. */
+  post?: ComponentFn<BlogPostView>
 }
 
 /** What `defineBlog` renders after every post (see `BlogConfig.postEnd`). */
@@ -125,6 +186,7 @@ export interface ResolvedBlogConfig extends BlogSeoSite {
   postEnd: BlogPostEnd | false
   postFooter: ComponentFn<{ post: BlogPost }> | undefined
   notFound: ComponentFn
+  views: BlogViews
   post: BlogPostContext
 }
 
@@ -198,6 +260,7 @@ export function resolveBlogConfig(config: BlogConfig): ResolvedBlogConfig {
     postEnd: config.postEnd ?? {},
     postFooter: config.postFooter,
     notFound: config.notFound ?? DefaultNotFound,
+    views: config.views ?? {},
     post: {
       basePath: basePath === '/' ? '' : basePath,
       authors,
@@ -249,6 +312,91 @@ function suspended<P extends Record<string, unknown>>(body: AsyncComponent<P>, p
   return h(Suspense, { fallback: null }, h(body as unknown as ComponentFn<P>, props))
 }
 
+/** `<h1>` of a tag page: `Posts tagged #<name>`. */
+function tagHeading(tag: BlogTagCount): string {
+  return `Posts tagged #${tag.name}`
+}
+
+/** The index markup when `views.index` is not set. */
+function DefaultIndexView(view: BlogListView): VNodeChild {
+  const config = view.config
+  return (
+    <div class="pyreon-blog">
+      <header class="pyreon-blog__header">
+        <h1 class="pyreon-blog__title">{config.heading}</h1>
+        <p class="pyreon-blog__description">{config.description}</p>
+        {config.feedPath !== undefined ? (
+          <p class="pyreon-blog__feed">
+            <a href={config.feedPath} rel="alternate" type="application/rss+xml">
+              Subscribe via RSS
+            </a>
+          </p>
+        ) : null}
+        <TagList tags={view.tags} label="All tags" />
+      </header>
+      <PostList posts={view.posts} locale={config.locale} coverSize={config.coverSize} />
+      <Pagination page={view.page} pageCount={view.pageCount} href={view.href} />
+    </div>
+  )
+}
+
+/** The tag page markup when `views.tag` is not set. */
+function DefaultTagView(view: BlogListView): VNodeChild {
+  const config = view.config
+  const tag = view.tag as BlogTagCount
+  return (
+    <div class="pyreon-blog pyreon-blog--tag">
+      <header class="pyreon-blog__header">
+        <RouterLink class="pyreon-blog__back" to={view.config.basePath || '/'}>
+          ← All posts
+        </RouterLink>
+        <h1 class="pyreon-blog__title">{tagHeading(tag)}</h1>
+        <p class="pyreon-blog__description">
+          {tag.count} {tag.count === 1 ? 'post' : 'posts'}
+        </p>
+      </header>
+      <PostList posts={view.posts} locale={config.locale} coverSize={config.coverSize} />
+      <Pagination page={view.page} pageCount={view.pageCount} href={view.href} />
+    </div>
+  )
+}
+
+/** The post markup when `views.post` is not set. */
+function DefaultPostView(view: BlogPostView): VNodeChild {
+  const config = view.config
+  const post = view.post
+  const Footer = config.postFooter
+  return (
+    <article class="pyreon-blog-post">
+      <PostHeader
+        post={post}
+        locale={config.locale}
+        back={{ href: config.basePath || '/', label: 'All posts' }}
+        status={view.status}
+      />
+      {post.cover !== undefined ? (
+        <CoverImage cover={post.cover} class="pyreon-blog-post__cover" size={config.coverSize} loading="eager" />
+      ) : null}
+      <div class={config.bodyClass}>{h(view.Content, null)}</div>
+      <footer class="pyreon-blog-post__footer">
+        {config.postEnd !== false ? (
+          <PostEnd
+            url={view.url}
+            title={post.title}
+            cta={config.postEnd.cta}
+            share={config.postEnd.share}
+            feedPath={config.postEnd.feed !== false ? config.feedPath : undefined}
+            newsletter={config.postEnd.newsletter}
+          />
+        ) : null}
+        {Footer !== undefined ? h(Footer, { post }) : null}
+        <RelatedPosts posts={view.related} locale={config.locale} />
+        <PostNav previous={view.previous} next={view.next} />
+      </footer>
+    </article>
+  )
+}
+
 /**
  * Define a blog over a content collection (see `blogCollection`). Returns
  * the queries, the four route components and their `getStaticPaths`.
@@ -278,8 +426,6 @@ export function defineBlog(input: BlogConfig): Blog {
     const posts = await getPosts()
     const page = paginate(posts, pageFromParam(props.page), config.pageSize)
     if (page === undefined) return h(config.notFound, null)
-    // Most used first; a long tail would push the posts below the fold.
-    const tags = countTags(posts).slice(0, config.indexTags)
     const title = page.page === 1 ? config.title : `${config.heading} — page ${page.page}`
     setHead(
       blogListHead(config, {
@@ -290,24 +436,19 @@ export function defineBlog(input: BlogConfig): Blog {
         kind: 'blog',
       }),
     )
-    return (
-      <div class="pyreon-blog">
-        <header class="pyreon-blog__header">
-          <h1 class="pyreon-blog__title">{config.heading}</h1>
-          <p class="pyreon-blog__description">{config.description}</p>
-          {config.feedPath !== undefined ? (
-            <p class="pyreon-blog__feed">
-              <a href={config.feedPath} rel="alternate" type="application/rss+xml">
-                Subscribe via RSS
-              </a>
-            </p>
-          ) : null}
-          <TagList tags={tags} label="All tags" />
-        </header>
-        <PostList posts={page.items} locale={config.locale} coverSize={config.coverSize} />
-        <Pagination page={page.page} pageCount={page.pageCount} href={pageUrl} />
-      </div>
-    )
+    const view: BlogListView = {
+      kind: 'index',
+      posts: page.items,
+      page: page.page,
+      pageCount: page.pageCount,
+      total: posts.length,
+      href: pageUrl,
+      // Most used first; a long tail would push the posts below the fold.
+      tags: countTags(posts).slice(0, config.indexTags),
+      tag: undefined,
+      config,
+    }
+    return h(config.views.index ?? DefaultIndexView, view)
   }
 
   const TagBody: AsyncComponent<{ tag: string | undefined; page: string | undefined }> = async (props) => {
@@ -319,7 +460,7 @@ export function defineBlog(input: BlogConfig): Blog {
     const page = paginate(tagged, pageFromParam(props.page), config.pageSize)
     if (page === undefined) return h(config.notFound, null)
     const tag = countTags(tagged).find((t) => t.slug === props.tag) as BlogTagCount
-    const heading = `Posts tagged #${tag.name}`
+    const heading = tagHeading(tag)
     const title = page.page === 1 ? heading : `${heading} — page ${page.page}`
     const href = (n: number): string => tagPageUrl(tag.slug, n)
     setHead(
@@ -331,21 +472,18 @@ export function defineBlog(input: BlogConfig): Blog {
         kind: 'collection',
       }),
     )
-    return (
-      <div class="pyreon-blog pyreon-blog--tag">
-        <header class="pyreon-blog__header">
-          <RouterLink class="pyreon-blog__back" to={pageUrl(1)}>
-            ← All posts
-          </RouterLink>
-          <h1 class="pyreon-blog__title">{heading}</h1>
-          <p class="pyreon-blog__description">
-            {tag.count} {tag.count === 1 ? 'post' : 'posts'}
-          </p>
-        </header>
-        <PostList posts={page.items} locale={config.locale} coverSize={config.coverSize} />
-        <Pagination page={page.page} pageCount={page.pageCount} href={href} />
-      </div>
-    )
+    const view: BlogListView = {
+      kind: 'tag',
+      posts: page.items,
+      page: page.page,
+      pageCount: page.pageCount,
+      total: tagged.length,
+      href,
+      tags: countTags(posts).slice(0, config.indexTags),
+      tag,
+      config,
+    }
+    return h(config.views.tag ?? DefaultTagView, view)
   }
 
   const PostBody: AsyncComponent<{ slug: string | undefined }> = async (props) => {
@@ -361,38 +499,18 @@ export function defineBlog(input: BlogConfig): Blog {
     const post = toBlogPost(entry, config.post)
     setHead(blogPostHead(config, post))
     const { previous, next } = adjacentPosts(posts, post.slug)
-    const related = config.relatedCount > 0 ? relatedPosts(posts, post, config.relatedCount) : []
-    const Content = await entry.render()
-    const Footer = config.postFooter
-    return (
-      <article class="pyreon-blog-post">
-        <PostHeader
-          post={post}
-          locale={config.locale}
-          back={{ href: pageUrl(1), label: 'All posts' }}
-          status={published ? undefined : entry.data['draft'] === true ? 'draft' : 'scheduled'}
-        />
-        {post.cover !== undefined ? (
-          <CoverImage cover={post.cover} class="pyreon-blog-post__cover" size={config.coverSize} loading="eager" />
-        ) : null}
-        <div class={config.bodyClass}>{h(Content, null)}</div>
-        <footer class="pyreon-blog-post__footer">
-          {config.postEnd !== false ? (
-            <PostEnd
-              url={absoluteUrl(config.siteUrl, post.url)}
-              title={post.title}
-              cta={config.postEnd.cta}
-              share={config.postEnd.share}
-              feedPath={config.postEnd.feed !== false ? config.feedPath : undefined}
-              newsletter={config.postEnd.newsletter}
-            />
-          ) : null}
-          {Footer !== undefined ? h(Footer, { post }) : null}
-          <RelatedPosts posts={related} locale={config.locale} />
-          <PostNav previous={previous} next={next} />
-        </footer>
-      </article>
-    )
+    const view: BlogPostView = {
+      post,
+      Content: (await entry.render()) as ComponentFn,
+      headings: entry.headings,
+      previous,
+      next,
+      related: config.relatedCount > 0 ? relatedPosts(posts, post, config.relatedCount) : [],
+      status: published ? undefined : entry.data['draft'] === true ? 'draft' : 'scheduled',
+      url: absoluteUrl(config.siteUrl, post.url),
+      config,
+    }
+    return h(config.views.post ?? DefaultPostView, view)
   }
 
   return {

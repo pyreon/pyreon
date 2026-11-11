@@ -8,6 +8,7 @@ import inlineCriticalCss from './vite-plugins/inline-critical-css'
 import lastUpdated from './vite-plugins/last-updated'
 import legacyCssLayer from './vite-plugins/legacy-css-layer'
 import openStats from './vite-plugins/open-stats'
+import blogCopy from './src/site/content/pages/channels/blog.json'
 import docsHomeContent from './vite-plugins/docs-home-content'
 import productContent from './vite-plugins/product-content'
 import sitePagesContent from './vite-plugins/site-pages-content'
@@ -40,8 +41,7 @@ import { SITE_LINKS } from './src/site-links'
 // the SSG entry's createApp call.
 export default defineConfig({
   plugins: [
-    // tokens.css / site-pages.css / blog.css → `@layer docs`, below
-    // the UI system's layers (see the plugin).
+    // tokens.css → `@layer docs`, below the UI system's layers (see the plugin).
     legacyCssLayer(),
     // Product content JSON → Shiki-highlighted code at build time.
     productContent(),
@@ -67,9 +67,8 @@ export default defineConfig({
         rss: {
           collection: 'blog',
           path: 'blog/rss.xml',
-          title: 'Pyreon blog',
-          description:
-            'How Pyreon works and what it can do: components that run once, one codebase for web, iOS and Android, and benchmarks you can run yourself.',
+          title: blogCopy.meta.title,
+          description: blogCopy.meta.description,
           language: 'en',
           content: 'full',
         },
