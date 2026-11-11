@@ -1,211 +1,210 @@
+import { For, Show } from '@pyreon/core'
 import { island } from '@pyreon/zero'
-import {
-  formatCount,
-  formatDay,
-  formatTimestamp,
-  type OpenStats,
-  type RepoStats,
-  type Stat,
-  REPO,
-} from './stats'
+import { fill, OPEN_COPY } from '../site/content/channels'
+import { el, tone, txt } from '../site/kit/bases'
+import { GlowCard } from '../site/kit/cards'
+import { Pill } from '../site/kit/controls'
+import { AutoGrid, Section, SectionHead, Wrap } from '../site/kit/layout'
+import { CaveatLine } from '../site/kit/proof'
+import { Reveal } from '../site/kit/motion'
+import { LinkCards } from '../site/kit/story'
+import { Eyebrow, Heading, Lede, renderInline } from '../site/kit/type'
+import { font, text, weight } from '../site/theme'
+import { downloadTiles, tileView, type TileView } from './model'
+import { formatTimestamp, type OpenStats } from './stats'
 
-const GITHUB = `https://github.com/${REPO}`
-export const UNAVAILABLE = 'unavailable right now'
+/**
+ * `/open` — the project in live numbers, fetched once per build
+ * (`vite-plugins/open-stats.ts`), copy from `_channels.json`. Static HTML;
+ * the download chart is the one island (tooltip, keyboard), and the server
+ * renders its first frame as SVG.
+ */
 
-interface TileProps {
-  label: string
-  stat: Stat<number>
-  hint?: string | undefined
-  href?: string
-}
+// The chart is interactive, so on this static page it is an island.
+const TrendChartIsland = island(() => import('./TrendChart'), { name: 'OpenTrendChart', hydrate: 'visible', prefetch: 'idle' })
 
-/** One number. A missing number says so — it never renders as 0. */
-function Tile(props: TileProps) {
-  const stat = props.stat
+const Hero = el.config({ name: 'OpenHero' }).attrs({ block: true, contentAlignX: 'block', gap: 22 }).theme(() => ({ maxWidth: 860 }))
+const Row = el.config({ name: 'OpenRow' }).attrs({ block: true, contentDirection: 'inline', contentAlignY: 'center', gap: 10 }).theme(() => ({ flexWrap: 'wrap' }))
+const Stack = el.config({ name: 'OpenStack' }).attrs({ block: true, contentAlignX: 'block', gap: 18 })
+
+const Updated = txt
+  .config({ name: 'OpenUpdated' })
+  .attrs({ tag: 'p' })
+  .theme((_t, m) => ({ margin: 0, fontFamily: font.mono, fontSize: text.mono.size, color: tone(m, 'fog') }))
+
+const Value = txt
+  .config({ name: 'OpenValue' })
+  .attrs({ tag: 'p' })
+  .theme((_t, m) => ({
+    margin: 0,
+    fontFamily: font.sans,
+    fontSize: 'clamp(30px, 3.4vw, 42px)',
+    lineHeight: 1.05,
+    letterSpacing: '-.03em',
+    fontWeight: weight.medium,
+    color: tone(m, 'strong'),
+    extendCss: 'font-variant-numeric: tabular-nums;',
+  }))
+  .states((_t, m) => ({
+    default: {},
+    missing: { fontSize: text.ui.size, lineHeight: 1.5, letterSpacing: 0, fontFamily: font.mono, color: tone(m, 'fog') },
+  }))
+
+const Hint = txt
+  .config({ name: 'OpenHint' })
+  .attrs({ tag: 'p' })
+  .theme((_t, m) => ({ margin: 0, fontFamily: font.mono, fontSize: text.mono.size, lineHeight: 1.5, color: tone(m, 'fog') }))
+
+const Figure = el
+  .config({ name: 'OpenChart' })
+  .attrs({ tag: 'figure', block: true, gap: 12 })
+  .theme((_t, m) => ({
+    margin: 0,
+    marginTop: 8,
+    padding: { xs: 16, md: 24 },
+    borderRadius: 22,
+    border: '1px solid',
+    borderColor: tone(m, 'line'),
+    backgroundColor: tone(m, 'card'),
+    minWidth: 0,
+  }))
+
+const Caption = txt
+  .config({ name: 'OpenChartCaption' })
+  .attrs({ tag: 'figcaption' })
+  .theme((_t, m) => ({ fontFamily: font.sans, fontSize: text.small.size, lineHeight: text.small.lineHeight, color: tone(m, 'mist') }))
+
+function Tile(props: { tile: TileView }) {
+  const t = props.tile
   const body = (
     <>
-      <span class="open-tile__label">{props.label}</span>
-      {stat.ok ? (
-        <span class="open-tile__value">{formatCount(stat.value)}</span>
+      <Eyebrow>{t.label}</Eyebrow>
+      {t.value !== null ? (
+        <Value data-open-value="">{t.value}</Value>
       ) : (
-        <span class="open-tile__value open-tile__value--missing" title={stat.reason}>
-          {UNAVAILABLE}
-        </span>
+        <Value state="missing" title={t.reason} data-open-value="">
+          {OPEN_COPY.unavailable}
+        </Value>
       )}
-      {props.hint ? <span class="open-tile__hint">{props.hint}</span> : null}
+      <Show when={() => t.hint !== undefined}>
+        <Hint>{t.hint ?? ''}</Hint>
+      </Show>
     </>
   )
-  return props.href ? (
-    <a class="open-tile open-tile--link" href={props.href} rel="noopener">
+  return t.href ? (
+    <GlowCard href={t.href} padding="compact">
       {body}
-    </a>
+    </GlowCard>
   ) : (
-    <div class="open-tile">{body}</div>
+    <GlowCard padding="compact">{body}</GlowCard>
   )
 }
 
-// The chart is interactive (tooltip, keyboard), so on this static page it is
-// an island; the server still renders its first frame as SVG.
-const TrendChartIsland = island(() => import('./TrendChart'), { name: 'OpenTrendChart', hydrate: 'visible', prefetch: 'idle' })
+function Tiles(props: { tiles: readonly TileView[] }) {
+  return (
+    <AutoGrid min={220} gap={12} tag="ul">
+      <For each={props.tiles} by={(t) => t.label}>
+        {(t) => (
+          <li>
+            <Tile tile={t} />
+          </li>
+        )}
+      </For>
+    </AutoGrid>
+  )
+}
 
 function DownloadTrend(props: { stats: OpenStats }) {
   const trend = props.stats.npm.trend
-  if (!trend.ok) {
-    return (
-      <p class="open-chart open-chart--missing">
-        Download history is {UNAVAILABLE}. It comes back with the next deploy.
-      </p>
-    )
-  }
+  if (!trend.ok) return <CaveatLine text={OPEN_COPY.downloads.chartMissing} />
   return (
-    <figure class="open-chart">
+    <Figure>
       <TrendChartIsland label={trend.value.label} points={trend.value.points} />
-      <figcaption>
-        Weekly downloads of {trend.value.label}, the package every Pyreon app installs, from npm's
-        public download counts.
-      </figcaption>
-    </figure>
+      <Caption>{fill(OPEN_COPY.downloads.chart, { package: trend.value.label })}</Caption>
+    </Figure>
   )
 }
 
 export function OpenStatsView(props: { stats: OpenStats }) {
+  const c = OPEN_COPY
   const stats = props.stats
-  const gh = stats.github
-  const release = gh.latestRelease
-  const repo = stats.repo
-  const fromRepo = (key: keyof RepoStats): Stat<number> =>
-    repo.ok ? { ok: true, value: repo.value[key] } : repo
-
   return (
-    <div class="site-page open-page">
-      <header class="site-page__hero">
-        <p class="site-page__eyebrow">Open stats</p>
-        <h1>Built in the open. Counted in public.</h1>
-        <p class="site-page__lead">
-          Every number on this page is pulled from GitHub, npm and the repository itself on every
-          daily deploy. Nobody types them in, nobody rounds them up. Here is what has shipped.
-        </p>
-        <p class="open-updated">
-          Last updated <time datetime={stats.generatedAt}>{formatTimestamp(stats.generatedAt)}</time>
-        </p>
-      </header>
+    <>
+      <Section size="hero">
+        <Wrap>
+          <Hero>
+            <Eyebrow>{c.hero.eyebrow}</Eyebrow>
+            <Heading tag="h1" size="hero">
+              {c.hero.title}
+            </Heading>
+            <Lede size="hero">{renderInline(c.hero.lede)}</Lede>
+            <Row>
+              <For each={c.hero.actions} by={(a) => a.label}>
+                {(a) => (
+                  <Pill href={a.href ?? '/'} variant="solid">
+                    {a.label}
+                  </Pill>
+                )}
+              </For>
+            </Row>
+            <Updated>
+              {`${c.updated} `}
+              <time datetime={stats.generatedAt}>{formatTimestamp(stats.generatedAt)}</time>
+            </Updated>
+          </Hero>
+        </Wrap>
+      </Section>
 
-      <section class="site-section" aria-labelledby="open-work">
-        <h2 id="open-work">The work</h2>
-        <p class="site-section__intro">
-          Commits, pull requests, releases, packages and tests, counted straight from the source.
-        </p>
-        <div class="open-grid open-grid--hero">
-          <Tile label="Commits on main" stat={gh.commits} href={`${GITHUB}/commits/main`} />
-          <Tile
-            label="Merged pull requests"
-            stat={gh.mergedPrs}
-            href={`${GITHUB}/pulls?q=is%3Apr+is%3Amerged`}
-          />
-          <Tile
-            label="Releases published"
-            stat={gh.releases}
-            hint={release.ok ? `Latest: ${release.value.tag}, ${formatDay(release.value.date)}` : undefined}
-            href={release.ok ? release.value.url : `${GITHUB}/releases`}
-          />
-          <Tile label="Published packages" stat={fromRepo('publishedPackages')} href="/docs/package-catalog" />
-          <Tile
-            label="Test files"
-            stat={fromRepo('testFiles')}
-            hint={repo.ok ? `${formatCount(repo.value.browserTestFiles)} of them run in real Chromium` : undefined}
-          />
-          <Tile
-            label="Lint rules"
-            stat={fromRepo('lintRules')}
-            hint={repo.ok ? `in ${repo.value.lintCategories} categories` : undefined}
-            href="/docs/lint"
-          />
-          <Tile label="MCP tools" stat={fromRepo('mcpTools')} href="/docs/mcp" />
-          <Tile label="Docs pages" stat={fromRepo('docPages')} href="/docs/getting-started" />
-        </div>
-        <p class="open-note">
-          Repository counts come from the same code as the{' '}
-          <a href={`${GITHUB}/blob/main/scripts/check-doc-claims.ts`} rel="noopener">
-            doc-claims check
-          </a>
-          , which fails CI the moment a number in the docs drifts from the code.
-        </p>
-      </section>
+      <Section size="tight" aria-labelledby="open-work">
+        <Wrap>
+          <SectionHead id="open-work" label={c.work.label} title={c.work.title} text={c.work.text} />
+          <Stack>
+            <Tiles tiles={c.work.tiles.map((t) => tileView(stats, t))} />
+            <CaveatLine text={c.work.note} link={c.work.noteLink} />
+          </Stack>
+        </Wrap>
+      </Section>
 
-      <section class="site-section" aria-labelledby="open-npm">
-        <h2 id="open-npm">Downloads</h2>
-        <p class="site-section__intro">Installs from npm in the last 7 days, with the last 30 underneath.</p>
-        <div class="open-grid">
-          {stats.npm.packages.map((p) => (
-            <Tile
-              label={p.name}
-              stat={p.weekly}
-              hint={p.monthly.ok ? `${formatCount(p.monthly.value)} in the last 30 days` : undefined}
-              href={`https://www.npmjs.com/package/${p.name}`}
-            />
-          ))}
-        </div>
-        <DownloadTrend stats={stats} />
-      </section>
+      <Reveal>
+        <Section aria-labelledby="open-npm">
+          <Wrap>
+            <SectionHead id="open-npm" label={c.downloads.label} title={c.downloads.title} text={c.downloads.text} />
+            <Stack>
+              <Tiles tiles={downloadTiles(stats, c)} />
+              <DownloadTrend stats={stats} />
+            </Stack>
+          </Wrap>
+        </Section>
+      </Reveal>
 
-      <section class="site-section" aria-labelledby="open-community">
-        <h2 id="open-community">Community</h2>
-        <p class="site-section__intro">
-          This is where it starts. The first stars, the first forks and the first outside
-          contributors are being counted right now, and yours can be one of them.
-        </p>
-        <div class="open-grid">
-          <Tile label="Stars" stat={gh.stars} href={`${GITHUB}/stargazers`} />
-          <Tile label="Forks" stat={gh.forks} href={`${GITHUB}/forks`} />
-          <Tile label="Contributors" stat={gh.contributors} href={`${GITHUB}/graphs/contributors`} />
-          <Tile label="Open issues" stat={gh.openIssues} href={`${GITHUB}/issues`} />
-          <Tile
-            label="Closed issues"
-            stat={gh.closedIssues}
-            href={`${GITHUB}/issues?q=is%3Aissue+is%3Aclosed`}
-          />
-        </div>
-        <p class="site-actions">
-          <a class="site-button site-button--primary" href={GITHUB} rel="noopener">
-            Star the repo on GitHub
-          </a>
-          <a class="site-button" href={`${GITHUB}/issues`} rel="noopener">
-            Find an issue to pick up
-          </a>
-          <a class="site-button" href={`${GITHUB}/blob/main/CONTRIBUTING.md`} rel="noopener">
-            Read the contributing guide
-          </a>
-        </p>
-      </section>
+      <Reveal>
+        <Section size="tight" aria-labelledby="open-community">
+          <Wrap>
+            <SectionHead id="open-community" label={c.community.label} title={c.community.title} text={c.community.text} />
+            <Stack>
+              <Tiles tiles={c.community.tiles.map((t) => tileView(stats, t))} />
+              <Row>
+                <For each={c.community.actions.map((a, i) => ({ a, i }))} by={(x) => x.i}>
+                  {(x) => (
+                    <Pill href={x.a.href ?? '/'} variant={x.i === 0 ? 'solid' : 'ghost'}>
+                      {x.a.label}
+                    </Pill>
+                  )}
+                </For>
+              </Row>
+            </Stack>
+          </Wrap>
+        </Section>
+      </Reveal>
 
-      <section class="site-section open-bench" aria-labelledby="open-bench">
-        <h2 id="open-bench">Benchmarks, losses included</h2>
-        <p>
-          Every performance claim Pyreon makes is in one record, with the method, the machine and
-          the cases where another framework wins. When a number turns out wrong, it is withdrawn
-          in the record itself, with the reason, and the history keeps every edit.
-        </p>
-        <ul class="site-links">
-          <li>
-            <a href={`${GITHUB}/blob/main/BENCHMARKS.md`} rel="noopener">
-              The benchmark record
-            </a>
-          </li>
-          <li>
-            <a href={`${GITHUB}/blob/main/BENCHMARKS.md#0-what-changed-and-what-is-withdrawn`} rel="noopener">
-              What changed, and what is withdrawn
-            </a>
-          </li>
-          <li>
-            <a href={`${GITHUB}/commits/main/BENCHMARKS.md`} rel="noopener">
-              Every revision of the record
-            </a>
-          </li>
-          <li>
-            <a href="/docs/benchmarks">How the benchmarks are run</a>
-          </li>
-        </ul>
-      </section>
-    </div>
+      <Reveal>
+        <Section aria-labelledby="open-bench">
+          <Wrap>
+            <SectionHead id="open-bench" label={c.benchmarks.label} title={c.benchmarks.title} text={c.benchmarks.text} />
+            <LinkCards items={c.benchmarks.links} />
+          </Wrap>
+        </Section>
+      </Reveal>
+    </>
   )
 }

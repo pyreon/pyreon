@@ -97,11 +97,12 @@ The blog runs on `@pyreon/zero-content/blog` (guide: `/docs/blog`):
 `blogCollection()` in `content.config.ts`, `defineBlog(...)` in
 `src/blog/blog.ts`, five one-line routes under `src/routes/(site)/blog/` (index,
 `page/[page]`, `[slug]`, `tags/[tag]/index`, `tags/[tag]/page/[page]`).
-Every post ends with its own "Start building" section in the markdown, so
-`postEnd` turns the module's call-to-action box off: after a post come the
-share links, the RSS link and the newsletter form, which renders nothing
-until `NEWSLETTER_ACTION` in `src/blog/site.ts` is set to the provider's
-form endpoint.
+The module decides what exists (published posts only) and writes the head
+tags; `views` draws the index, tag and post pages in the site kit
+(`src/blog/views/`), with every label from `_channels.json` (`blog`). Every
+post ends with its own "Start building" section in the markdown; after it
+come share links, a copy-link button, the subscribe band and the posts to
+read next. The newsletter launches through `/newsletter` (below).
 
 Posts live in `src/content/blog/<slug>.md`:
 
@@ -112,7 +113,8 @@ description: "One or two sentences — the index card, meta description and RSS 
 date: 2026-11-16          # PUBLISH date (UTC calendar day)
 slug: post-slug           # must equal the file name
 tags: [javascript, webdev]
-cover: /blog/covers/post-slug.png   # 1600x840, file in public/blog/covers/
+cover: /blog/covers/post-slug.png   # 1600x840 PNG in public/blog/covers/, then run
+                                    # bun scripts/blog-cover-variants.ts (WebP for the page)
 # coverAlt: What the cover shows   # optional; without it the cover is decorative
 # updated: 2026-11-20     # optional; last meaningful revision
 # author: vit             # optional; defaults to vit (authors in src/blog/blog.ts)
@@ -158,13 +160,14 @@ Four standalone pages that posts link to, so their addresses must never move.
   renders as "unavailable right now" and never fails the build. CI passes
   `GITHUB_TOKEN`; locally it works without one.
   `PYREON_OPEN_STATS_OFFLINE=1 bun run build` skips the network.
-- **`/showcase`** (`src/routes/(site)/showcase.tsx`, `src/showcase/examples.ts`):
-  the examples gallery. Screenshots are in `public/showcase/` (WebP, 960x600
-  desktop, 360x640 phone). The deploy also builds `examples/collab-board` and
-  `examples/react-compat` into `/showcase/<name>/` as live demos (see
-  `.github/workflows/docs.yml`).
+- **`/showcase`** (`src/routes/(site)/showcase.tsx`, `src/showcase/ShowcasePage.tsx`):
+  the examples from the repository. The copy is `_channels.json` (`showcase`);
+  the screenshots are real captures from the asset set (slot `showcase-card`,
+  synced by `scripts/sync-site-assets.ts`). The deploy also builds
+  `examples/collab-board` and `examples/react-compat` into `/showcase/<name>/`
+  as live demos (see `.github/workflows/docs.yml`).
 - **`/discord`** and **`/newsletter`**: stable links driven by
-  `src/site-links.ts`.
+  `src/site-links.ts`, copy from `_channels.json`.
 
 ### Switching on /discord or /newsletter
 
@@ -187,7 +190,7 @@ While a target is `null`, `/discord` points people to GitHub issues and
 
 The site's own unit tests (`bun run test` in `docs/`) cover the stats
 fetchers, including every failure path, the link config and the showcase data;
-`e2e/docs.spec.ts` checks the four pages in the built site.
+`e2e/site-project.spec.ts` checks the blog and the four pages in the built site.
 
 ## Deploy
 

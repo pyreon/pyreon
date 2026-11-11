@@ -30,10 +30,13 @@ export default definePlaywrightConfig({
     { name: 'site-products-a', testMatch: /site-products-a\.spec\.ts$/, port: 5191 },
     // The app-building-blocks and visual-and-tools product pages and their demos.
     { name: 'site-products-b', testMatch: /\/site-products-b[^/]*\.spec\.ts$/, port: 5191 },
+    // The blog, showcase, open stats and stable-link pages (posts, islands, widths, contrast).
+    { name: 'site-project', testMatch: /site-project\.spec\.ts$/, port: 5191 },
   ],
   webServer: [
     {
-      command: 'bun run --filter=@pyreon/docs build && bun scripts/serve-ssg.ts docs/dist 5191',
+      // Every scheduled blog post is published in this build (site-project.spec.ts tests posts, tags and paging).
+      command: 'PYREON_CONTENT_NOW=2099-01-01 bun run --filter=@pyreon/docs build && bun scripts/serve-ssg.ts docs/dist 5191',
       port: 5191,
       cwd: '..',
       timeout: 300_000,
