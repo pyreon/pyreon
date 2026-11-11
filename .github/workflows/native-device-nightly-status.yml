@@ -1,0 +1,120 @@
+name: Native Device Nightly Status
+
+# The nightly `Native Device Build` (schedule) has no human watching the
+# Actions tab: the per-PR runs are required checks, but a nightly drift
+# failure on main gates nothing. The gate was once red for 13 consecutive
+# nights (2026-05-29 → 2026-06-10) before anyone noticed. This workflow
+# keeps ONE sticky issue in step with the nightly: a red nightly creates it
+# or comments on it, a green nightly closes it.
+#
+# It used to be a job inside native-device.yml (`if: always() &&
+# github.event_name == 'schedule'`). As a job there it created a check row,
+# `skipped` or `cancelled`, on every pull request that ran the device
+# workflow — a cancelled superseded run showed it as a failed-looking check.
+# A `workflow_run` trigger runs it after the nightly instead, in the
+# default-branch context, so pull requests never see it. Runs for pull
+# request device builds are skipped at the job level (no runner).
+on:
+  workflow_run:
+    workflows:
+      - Native Device Build
+    types: [completed]
+
+# Nothing at the workflow level (Scorecard TokenPermissionsID): the one job
+# below gets exactly what it uses.
+permissions: {}
+
+jobs:
+  notify:
+    name: Nightly status → sticky issue
+    if: github.event.workflow_run.event == 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: read # read the nightly run's job conclusions
+      issues: write # create / comment on / close the sticky issue
+    steps:
+      # `retries: 3` for transient GitHub API 5xx — but DELIBERATELY NOT
+      # wrapped in a swallow-all `catch` like the advisory PR-comment steps
+      # in bundle-size-diff / perf / leak-sweep. There, the comment REPORTS
+      # alongside a real gate, so a failed post must not turn the check red.
+      # Here the notification IS the deliverable: if the sticky issue can't
+      # be written, a red nightly would vanish silently — the catalogued
+      # dead-gate class. So this one still fails loudly after retries.
+      - name: Create / update / close the sticky failure issue
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          retries: 3
+          script: |
+            const title = '[native-device] Nightly device build is RED'
+            const run = context.payload.workflow_run
+            const { data } = await github.rest.actions.listJobsForWorkflowRun({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              run_id: run.id,
+              filter: 'latest',
+              per_page: 100,
+            })
+            // ANY non-success result is red, and so is a lane that is MISSING
+            // from the run: a job killed by `timeout-minutes` reports
+            // `cancelled`, not `failure`, so a chronically-timing-out nightly
+            // once read as green — and AUTO-CLOSED the sticky issue.
+            const result = (name) => data.jobs.find((j) => j.name === name)?.conclusion ?? 'missing'
+            const ios = result('iOS — xcodebuild (Simulator SDK)')
+            const android = result('Android — gradlew assembleDebug')
+            const failed = [ios, android].some((r) => r !== 'success')
+            const runUrl = run.html_url
+            const { data: issues } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              creator: 'github-actions[bot]',
+              per_page: 100,
+            })
+            const sticky = issues.find((i) => i.title === title)
+            if (failed) {
+              const line = [
+                `Nightly run failed: ${runUrl}`,
+                `- iOS (xcodebuild + XCUITest): **${ios}**`,
+                `- Android (gradle + Compose test): **${android}**`,
+              ].join('\n')
+              if (sticky) {
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: sticky.number,
+                  body: line,
+                })
+              } else {
+                await github.rest.issues.create({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  title,
+                  body: [
+                    'The nightly native-device build (real xcodebuild iOS Simulator +',
+                    'real gradle Android Emulator against the PMTC-emitted examples)',
+                    'is failing. This issue is managed by the workflow: it gets one',
+                    'comment per failed nightly and AUTO-CLOSES on the next green run.',
+                    '',
+                    'Streak gate: `bun scripts/check-native-device-streak.ts` needs 14',
+                    'consecutive green nightlies before native-device can be promoted',
+                    'to a required check — every red night resets that clock.',
+                    '',
+                    line,
+                  ].join('\n'),
+                })
+              }
+            } else if (sticky) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: sticky.number,
+                body: `Nightly run is green again: ${runUrl} — auto-closing.`,
+              })
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: sticky.number,
+                state: 'closed',
+              })
+            }
