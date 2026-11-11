@@ -621,9 +621,71 @@ function detectDotValueSignal(ctx: DetectContext, node: ts.PropertyAccessExpress
   }
 }
 
+/**
+ * Whether an inline `.map` callback renders JSX: an arrow / function whose
+ * result (expression body, or any `return` in its own body) is JSX, possibly
+ * behind parentheses, `as`, `!`, a conditional or `&&` / `||` / `??`.
+ * `undefined` when the callback is not inline (`items.map(renderRow)`), so
+ * the caller decides what an unknown callback means.
+ */
+function mapCallbackRendersJsx(callback: ts.Expression | undefined): boolean | undefined {
+  if (!callback || (!ts.isArrowFunction(callback) && !ts.isFunctionExpression(callback))) {
+    return undefined
+  }
+  const isJsx = (e: ts.Expression): boolean => {
+    let cur: ts.Expression = e
+    while (
+      ts.isParenthesizedExpression(cur) ||
+      ts.isAsExpression(cur) ||
+      ts.isNonNullExpression(cur) ||
+      ts.isSatisfiesExpression(cur)
+    ) {
+      cur = cur.expression
+    }
+    if (ts.isJsxElement(cur) || ts.isJsxSelfClosingElement(cur) || ts.isJsxFragment(cur)) return true
+    if (ts.isConditionalExpression(cur)) return isJsx(cur.whenTrue) || isJsx(cur.whenFalse)
+    if (ts.isBinaryExpression(cur)) {
+      const op = cur.operatorToken.kind
+      if (
+        op === ts.SyntaxKind.AmpersandAmpersandToken ||
+        op === ts.SyntaxKind.BarBarToken ||
+        op === ts.SyntaxKind.QuestionQuestionToken
+      ) {
+        return isJsx(cur.left) || isJsx(cur.right)
+      }
+    }
+    return false
+  }
+  const body = callback.body
+  if (!ts.isBlock(body)) return isJsx(body)
+  let found = false
+  const visit = (n: ts.Node): void => {
+    if (found) return
+    // A nested function's `return` belongs to that function, not the callback.
+    if (ts.isFunctionLike(n)) return
+    if (ts.isReturnStatement(n) && n.expression && isJsx(n.expression)) {
+      found = true
+      return
+    }
+    ts.forEachChild(n, visit)
+  }
+  ts.forEachChild(body, visit)
+  return found
+}
+
 function detectArrayMapJsx(ctx: DetectContext, node: ts.CallExpression): void {
   const parent = node.parent
-  if (ts.isJsxExpression(parent)) {
+  // Only a `.map()` RENDERED as children is the React list habit:
+  // `<ul>{items.map((i) => <li/>)}</ul>`. An attribute value that maps data
+  // (`rows={lines.map((l) => [l.item, l.qty])}`) and a callback that returns
+  // no JSX are ordinary array code and were false positives (#4363). A
+  // callback that is not inline (`items.map(renderRow)`) is still reported in
+  // child position: it is rendered either way.
+  if (
+    ts.isJsxExpression(parent) &&
+    (ts.isJsxElement(parent.parent) || ts.isJsxFragment(parent.parent)) &&
+    mapCallbackRendersJsx(node.arguments[0]) !== false
+  ) {
     const arrayExpr = detectGetNodeText(
       ctx,
       (node.expression as ts.PropertyAccessExpression).expression,
