@@ -2020,7 +2020,12 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
     dangerouslySetInnerHTML: { __html: isServer ? serverFrameSvg() : '' },
     ref: (el: Element | null) => {
       if (el === null) return
-      if (canvasPainted) el.remove()
+      // Never remove it from inside its own ref: during hydration the canvas
+      // (claimed first) has usually painted already, and the walk is still
+      // on this element. Removing it there left the walk with no next
+      // sibling, so the tooltip, live region and table mounted a second time.
+      // A microtask runs after the synchronous hydration or mount pass.
+      if (canvasPainted) queueMicrotask(() => el.remove())
       else ssrFrame = el
     },
   })
