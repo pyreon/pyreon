@@ -102,13 +102,14 @@ describe('TodoMVC compile baseline', () => {
         private func clearCompleted() {
           todos = todos.filter({ t in !t.done })
         }
+        private func isDone(_ id: Int) -> Bool { todos.contains(where: { t in t.id == id && t.done }) }
         var body: some View {
           VStack(spacing: 8) {
             TextField("What needs to be done?", text: $draft)
               .onSubmit { addTodo() }.accessibilityIdentifier("new-todo")
             VStack {
               ForEach(visible, id: \\.id) { t in
-                TodoRow(todo: t, onToggle: { toggle(t.id) }, onRemove: { remove(t.id) })
+                TodoRow(todo: t, done: isDone(t.id), onToggle: { toggle(t.id) }, onRemove: { remove(t.id) })
               }
             }
             .animation(.default, value: visible.count)
@@ -127,12 +128,13 @@ describe('TodoMVC compile baseline', () => {
 
       struct TodoRow: View {
         let todo: Todo
+        let done: Bool
         let onToggle: () -> Void
         let onRemove: () -> Void
         var body: some View {
           HStack(alignment: .center, spacing: 8) {
             Toggle("", isOn: Binding(
-                get: { todo.done },
+                get: { done },
                 set: { _ in onToggle() }
               ))
             Text(verbatim: "\\(todo.text)")
@@ -610,18 +612,19 @@ export function App() { return <Text>x</Text> }`
     // don't accept onClick: parameters, so including events there would
     // produce a typecheck error.
     const out = transform(source, { target: 'swift' })
-    expect(out.code).toContain('TodoRow(todo: t, onToggle: { toggle(t.id) }, onRemove: { remove(t.id) })')
+    expect(out.code).toContain('TodoRow(todo: t, done: isDone(t.id), onToggle: { toggle(t.id) }, onRemove: { remove(t.id) })')
   })
 
   it('Phase 2 — user-defined component JSX forwards event handlers as constructor args (Kotlin)', () => {
     const out = transform(source, { target: 'kotlin' })
-    expect(out.code).toContain('TodoRow(todo = t, onToggle = { toggle(t.id) }, onRemove = { remove(t.id) })')
+    expect(out.code).toContain('TodoRow(todo = t, done = isDone(t.id), onToggle = { toggle(t.id) }, onRemove = { remove(t.id) })')
   })
 
-  it('Phase E2 — <Toggle value={props.todo.done} onChange={props.onToggle}> emits SwiftUI custom Binding', () => {
+  it('Phase E2 — <Toggle value={props.done} onChange={props.onToggle}> emits SwiftUI custom Binding', () => {
     // The TodoMVC TodoRow uses parent-owns-state: the row reads
-    // `props.todo.done` (NON-SIGNAL — it's a plain field on a
-    // parent-passed object) and writes via `props.onToggle()` (a
+    // `props.done` (NON-SIGNAL — a plain value the parent reads live by
+    // id, #4468; it was `props.todo.done`, which went stale on web) and
+    // writes via `props.onToggle()` (a
     // callback prop). SwiftUI's `Toggle("", isOn: ...)` requires a
     // `Binding<Bool>` for the `isOn` arg; for non-signal sources the
     // canonical idiom is a custom `Binding(get:set:)` that reads the
@@ -631,10 +634,10 @@ export function App() { return <Text>x</Text> }`
     // typecheck-clean but functionally a no-op).
     const out = transform(source, { target: 'swift' })
     expect(out.code).toContain('Toggle("", isOn: Binding(')
-    expect(out.code).toContain('get: { todo.done }')
+    expect(out.code).toContain('get: { done }')
     expect(out.code).toContain('set: { _ in onToggle() }')
     expect(out.code).not.toContain('Checkbox(')
-    expect(out.code).not.toContain('Image(systemName: todo.done')
+    expect(out.code).not.toContain('Image(systemName: done')
   })
 
   it('Phase 2 — function-typed prop / decl handlers call inside trailing closures', () => {

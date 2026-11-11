@@ -97,6 +97,15 @@ export function TodoApp() {
     todos.set(todos().filter(t => !t.done))
   }
 
+  // A web `<For>` row runs once per key, so its `t` is the todo as it was
+  // when the row mounted: `toggle` replaces the object under the same id, and
+  // a row reading `t.done` (or `props.todo.done` in `TodoRow`) keeps the first
+  // value on web. It shows the moment something other than this checkbox
+  // changes `done` — a second tab writing the same storage key. iOS and
+  // Android redraw the row, so only web went stale. Read the live value by id:
+  // the call keeps it reactive on web and lowers to a plain lookup on native.
+  const isDone = (id: number) => todos().some(t => t.id === id && t.done)
+
   return (
     <Stack gap={2} data-testid="todo-app">
       <Field
@@ -119,6 +128,7 @@ export function TodoApp() {
           {(t) => (
             <TodoRow
               todo={t}
+              done={isDone(t.id)}
               onToggle={() => toggle(t.id)}
               onRemove={() => remove(t.id)}
             />
@@ -139,10 +149,13 @@ export function TodoApp() {
   )
 }
 
-export function TodoRow(props: { todo: Todo; onToggle: () => void; onRemove: () => void }) {
+// `done` arrives as its own prop, not as `props.todo.done`: the parent reads
+// it live by id (see `isDone`), while `todo` is the object the row mounted
+// with — fine for `text`, which nothing replaces.
+export function TodoRow(props: { todo: Todo; done: boolean; onToggle: () => void; onRemove: () => void }) {
   return (
     <Inline gap={2} align="center">
-      <Toggle value={props.todo.done} onChange={props.onToggle} />
+      <Toggle value={props.done} onChange={props.onToggle} />
       <Text>{props.todo.text}</Text>
       <Button onPress={props.onRemove}>Remove</Button>
     </Inline>

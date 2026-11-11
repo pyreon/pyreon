@@ -7432,13 +7432,13 @@
       "warnings": 1
     },
     "example:native-todomvc-ios/TodoApp.tsx|swift": {
-      "sha": "df8a372ebb3a47e2303c206e324d6f2a55db33eed960d7ecb98513b1ee2887e1",
-      "bytes": 2447,
+      "sha": "48b404fdbd4600c1e121a45af132209902952e2dda65dae789af810bd4e82d66",
+      "bytes": 2577,
       "warnings": 0
     },
     "example:native-todomvc-ios/TodoApp.tsx|kotlin": {
-      "sha": "da749d571f6a85808bb3d898385c0c6d26a2f78baf91ce58f7e33e2beb831cc5",
-      "bytes": 2978,
+      "sha": "4839256ad678c192a21583288b9c5172ce2a1ee618aa6323f0c498ca58af4a00",
+      "bytes": 3075,
       "warnings": 0
     },
     "example:native-viz/VizApp.tsx|swift": {
