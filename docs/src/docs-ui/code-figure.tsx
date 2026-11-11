@@ -12,9 +12,11 @@ export function CodeFigure(props: { label: string; lang: string; source: string;
       {/* Build-time Shiki output of repo-owned content (vite-plugins/docs-home-content.ts, product-content.ts).
           A focusable region: the code scrolls sideways on its own, so the keyboard must reach it. */}
       <When on={props.html}>
+        {/* oxlint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- the code scrolls sideways inside this region, so keyboard users must be able to focus it (WCAG 2.1.1, axe scrollable-region-focusable) */}
         <section class="dx-code__body dx-shiki" tabIndex={0} aria-label={props.label} dangerouslySetInnerHTML={{ __html: props.html ?? '' }} />
       </When>
       <When on={!props.html}>
+        {/* oxlint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- the code scrolls sideways inside this region, so keyboard users must be able to focus it (WCAG 2.1.1, axe scrollable-region-focusable) */}
         <section class="dx-code__body" tabIndex={0} aria-label={props.label}>
           <pre>
             <code>{props.source}</code>

@@ -149,6 +149,7 @@ export default function SearchDialog(props: { open: () => boolean; onClose: () =
   }
 
   return (
+    // oxlint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-noninteractive-element-interactions -- pointer-only dismissal on the ::backdrop; the keyboard closes the modal dialog with Escape and its close button
     <dialog
       class="dx-sdlg"
       aria-label="Search the docs"
@@ -158,8 +159,6 @@ export default function SearchDialog(props: { open: () => boolean; onClose: () =
         // back. A listener, not `onClose`: the JSX types lack it (#4369).
         el?.addEventListener('close', () => props.onClose())
       }}
-      // Pointer-only dismissal on the backdrop; the keyboard has Escape and the Esc button.
-      // oxlint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-noninteractive-element-interactions
       onClick={(e: MouseEvent) => {
         // A click on the ::backdrop lands on the dialog element itself.
         if (e.target === dialog) props.onClose()
@@ -194,10 +193,12 @@ export default function SearchDialog(props: { open: () => boolean; onClose: () =
             Esc
           </button>
         </div>
+        {/* oxlint-disable-next-line jsx-a11y/prefer-tag-over-role -- the ARIA combobox/listbox pattern: native <select>/<option> cannot hold links, glyphs and descriptions */}
         <div class="dx-search-results" id="dx-search-results" role="listbox" aria-label="Results">
           {/* A group re-renders when its hits change (its key carries them). */}
           <For each={() => grouped()} by={(g) => `${g.group}|${g.hits.map((h) => `${h.index}:${h.url}`).join(',')}`}>
             {(g) => (
+              // oxlint-disable-next-line jsx-a11y/prefer-tag-over-role -- the ARIA combobox/listbox pattern: native <select>/<option> cannot hold links, glyphs and descriptions
               <div role="group" aria-label={g.group} class="dx-search-group">
                 <p class="dx-eyebrow" aria-hidden="true">
                   {g.group}
@@ -208,6 +209,7 @@ export default function SearchDialog(props: { open: () => boolean; onClose: () =
                     return (
                       <a
                         id={optionId(i)}
+                        // oxlint-disable-next-line jsx-a11y/prefer-tag-over-role -- the ARIA combobox/listbox pattern: native <select>/<option> cannot hold links, glyphs and descriptions
                         role="option"
                         href={h.url}
                         class="dx-search-hit"

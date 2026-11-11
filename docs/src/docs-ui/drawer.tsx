@@ -72,6 +72,7 @@ export function DocsDrawer(props: { path: () => string; onSearch: () => void }) 
         Browse docs
         <span class="dx-drawer-btn__where">{where}</span>
       </button>
+      {/* oxlint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-noninteractive-element-interactions -- pointer-only dismissal on the ::backdrop; the keyboard closes the modal dialog with Escape and its close button */}
       <dialog
         id="dx-drawer"
         class="dx-drawer"
@@ -86,8 +87,6 @@ export function DocsDrawer(props: { path: () => string; onSearch: () => void }) 
             button?.focus()
           })
         }}
-        // Pointer-only dismissal on the backdrop; the keyboard has Escape and the Close button.
-        // oxlint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-noninteractive-element-interactions
         onClick={(e: MouseEvent) => {
           if (e.target === dialog) close()
         }}
