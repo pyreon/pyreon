@@ -7412,8 +7412,8 @@
       "warnings": 0
     },
     "example:native-router-demo-ios/RouterApp.tsx|swift": {
-      "sha": "0c82400ac022e7f906075f9252fc72828fd0efe0a6d2447838414947b9268640",
-      "bytes": 34620,
+      "sha": "5117eb73db9822d30306a30e70e79a181c2c52fad57d466d8a6220323d275178",
+      "bytes": 34622,
       "warnings": 1
     },
     "example:native-router-demo-ios/RouterApp.tsx|kotlin": {
