@@ -16,8 +16,8 @@
  * PR-time fast gate (~5s) — proves the floor / exemption invariant holds
  * but does NOT detect actual coverage regressions in a PR's changes.
  *
- * The full run (no flag) is the canonical safety net on main and merge
- * groups. Coverage-infrastructure PRs also execute it; ordinary PRs
+ * The full run (no flag) is the canonical safety net on main.
+ * Coverage-infrastructure PRs also execute it; ordinary PRs
  * measure only their directly changed packages.
  *
  * ## Coverage floor (PR #323 → #324 → #1266 → #1279 → THIS PR)
@@ -1508,7 +1508,7 @@ if (isFloorOnly) {
     `\n✅ Floor-config check passed (${packages.length} packages, ` +
       `MINIMUM_FLOOR=${MINIMUM_FLOOR}% / MINIMUM_BRANCH_FLOOR=${MINIMUM_BRANCH_FLOOR}%, ` +
       `${Object.keys(BELOW_FLOOR_EXEMPTIONS).length} exemptions current).\n` +
-      `Full coverage runs on push:main, merge_group and coverage-infrastructure PRs.\n`,
+      `Full coverage runs on push:main and coverage-infrastructure PRs.\n`,
   )
   process.exit(0)
 }

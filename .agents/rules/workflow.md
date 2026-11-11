@@ -35,7 +35,7 @@ Priorities: correctness > performance > DX > AI-friendliness.
 
 ## Recurring CI failure modes
 
-Run `bun run validate-fast` before every push; the pre-push hook runs it too. The hook is light by design (direct-only, see "Pre-push hook"); the full verification is CI's job. When CI fails on a gate, ask whether `validate-fast` would have caught it — if yes, that is a workflow failure. Most gate names below are step names inside the `Fast Gates` or `Build` jobs; the fix commands are the same.
+Run `bun run validate-fast` before every push; the pre-push hook runs it too. The hook checks what the push can break within a time cap (see "Pre-push hook"); the full verification is CI's job. When CI fails on a gate, ask whether `validate-fast` would have caught it — if yes, that is a workflow failure. Most gate names below are step names inside the `Fast Gates` or `Build` jobs; the fix commands are the same.
 
 When CI fails on a gate not listed here, add a row in the same PR.
 
@@ -60,8 +60,8 @@ When CI fails on a gate not listed here, add a row in the same PR.
 | `check-multiplatform-tier`                                | A manifest lacks `multiplatform: { tier, rationale }`, a published package has neither manifest nor exemption, or the docs table drifted                                                                                                                       | Declare the tier (rationale required for `web-only`) or add an API-less package to `NO_MANIFEST_EXEMPT`. Table drift: `bun scripts/check-multiplatform-tier.ts --write-table`.                                               |
 | `Check Manifest Depth`                                    | A `LOCKED` package's manifest density dropped below its floor                                                                                                                                                                                                  | `bun run check-manifest-depth`. When raising a package to density, add it to `LOCKED` in `scripts/check-manifest-depth.ts` with the numbers achieved.                                                                        |
 | `Check Manifest Examples`                                 | A manifest `example`/`longExample` no longer typechecks against the shipped export                                                                                                                                                                             | `bun run check-manifest-examples`; fix the example to match the shipped runtime. Harness limitations go in `NON_ENFORCED` in `scripts/check-manifest-examples.ts` with a rationale (the list only shrinks).                  |
-| `Diagnose Catalog` (`pr-gates.yml`)                       | Source change in `packages/core/{runtime-dom,runtime-server,core,compiler,router}/src/` without a new `ERROR_PATTERNS` entry                                                                                                                                   | Add an entry in `packages/core/compiler/src/diagnose.ts`, or the `skip-diagnose-catalog` label for catalog-irrelevant changes.                                                                                               |
-| `Diagnose Catalog` after editing `diagnose.ts`            | You reworded an entry instead of adding one (the gate compares counts). Separately, an entry containing `createSourceFile` / `SyntaxKind` / `createLanguageService` trips `diagnose.test.ts`'s browser-bundle check, because string literals survive bundling. | When a fix removes an error, teach the residual footgun. Name TS members via `ScriptTarget`/`ScriptKind`/`ESNext`. No gate reruns the compiler suite after a diagnose edit — run `bun run --filter='@pyreon/compiler' test`. |
+| `Diagnose Catalog` (`pr-gates.yml`)                       | The PR adds or edits a user-visible message (a `[Pyreon]` string, an `Error` constructor argument, a `console.warn`/`warn…()` argument, a `throw` or `message:` literal) in `packages/core/{runtime-dom,runtime-server,core,compiler,router}/src/` that no `ERROR_PATTERNS` regex matches, and the catalog did not grow. The log names each message with its file and line | Add an entry in `packages/core/compiler/src/diagnose.ts` whose pattern matches the message (with a test). The `skip-diagnose-catalog` label is only for a message no user can act on. A perf-only change or a moved/reformatted message demands nothing |
+| `Diagnose Catalog` after editing `diagnose.ts`            | An entry containing `createSourceFile` / `SyntaxKind` / `createLanguageService` trips `diagnose.test.ts`'s browser-bundle check, because string literals survive bundling. | Name TS members via `ScriptTarget`/`ScriptKind`/`ESNext`. No gate reruns the compiler suite after a diagnose edit — run `bun run --filter='@pyreon/compiler' test`. |
 | mcp `token-budget.test.ts` density caps                   | A new `anti-patterns.md` entry's index line is too dense (average ≥ 55 tokens per entry, or one line ≥ 100)                                                                                                                                                    | Tighten the entry's title and hook. Do not raise the caps. If the 12,000-token total trips, paginate `get_anti_patterns`.                                                                                                    |
 
 ### Lint and ratchets
@@ -204,19 +204,41 @@ Restack in dependency order, not PR order. Never use a bare `git stash pop` duri
 
 ## Pre-push hook
 
-**The contract: local = fast and direct-only; CI = the full gate.** CI minutes are free and CI is a required merge gate, so the hook catches only the cheap, likely failures before they cost a round trip. It never runs the reverse-dependency closure: a change in `@pyreon/reactivity` used to select 136 of 140 workspaces (including the 30+ minute native-compiler suite), and the repository-wide lock then queued every other push behind it.
+**The contract: the hook checks what this push can break, within a hard time cap; CI is the full gate.** It is meant to be run on every push. When it ran the whole workspace wall behind a repository-wide lock (one budgets-file push held every other worktree for 25+ minutes, 2026-11-10), everyone pushed with `PYREON_SKIP_PRE_PUSH=1` and lost even the cheap gates.
 
-`.githooks/pre-push` (installed via `core.hooksPath` by `bun scripts/install-git-hooks.ts`) runs:
+`.githooks/pre-push` (installed via `core.hooksPath` by `bun scripts/install-git-hooks.ts`) handles the bypass and git's environment, then runs `scripts/pre-push.ts` (order, cap, lock). The plan comes from `scripts/pre-push-plan.ts` (`PATH_RULES`): each changed path matches one rule, and the plan is the union.
 
-1. `bun run validate-fast` — lint, `lint:pyreon` and the cheap gates listed in `scripts/validate-fast.ts`, run concurrently (`--serial` to isolate one, `--json` for machine output). A few seconds warm, but it slows sharply under machine load, so this step's default timeout is 900s.
-2. Typecheck of the DIRECTLY changed workspaces (`scripts/affected.ts --changed-only` semantics, plus the leaf seeds: `scripts/**`, `e2e/**` and non-`ci.yml` workflows map to `@pyreon/test-utils`, doc inputs to their parser). A root-file change (`scripts/affected.ts:isRootFile`: `bun.lock`, root `package.json`/`tsconfig*.json`/`vitest.*.ts`, `.bun-version`, `ci.yml`, shared actions) typechecks the whole workspace instead, with an 1800s budget.
-3. Tests of the DIRECTLY changed workspaces only — never the closure, and never the whole workspace, even on a root-file change. Packages under `packages/native/` run only when they themselves changed, as their own step with a 7200s budget: vitest suites with `--maxWorkers=4`, and `KOTLIN_HOME` derived from the `kotlinc` on PATH when it is not already set (no hard-coded install path).
+| Changed path | Checks |
+| --- | --- |
+| a file inside a workspace | typecheck + tests of that workspace (never its dependents — CI runs the closure) |
+| root `tsconfig*.json` | validate-fast only (`check-tsconfig-presets`); CI typechecks the workspace |
+| `bun.lock`, root `package.json`, `.bun-version` | `bun install --frozen-lockfile --dry-run` |
+| root `vitest.*.ts` (every suite's setup) | the `@pyreon/test-utils` suite as a setup smoke test |
+| `.github/workflows/*`, `.github/actions/**` | the `@pyreon/test-utils` tests that name the file (validate-fast already runs the CI-config gates) |
+| `scripts/**` | the `@pyreon/test-utils` tests that name the file, or name a script that imports or reads it (transitively, comments ignored); `@pyreon/test-utils` typecheck when it is code. `scripts/bundle-budgets.json` → the 8 test files that read it, not the 137-file suite |
+| `e2e/**`, `.claude/**`, `.githooks/**` | the `@pyreon/test-utils` tests that name the file |
+| Markdown, `.agents/**`, `.changeset/**`, `llms*.txt` outside a workspace | nothing beyond validate-fast (a doc input also runs its parser package, e.g. `anti-patterns.md` → `@pyreon/mcp`) |
+| any other root file | fallback: the full `@pyreon/test-utils` suite (the package that tests repository-level files) |
 
-`scripts/pre-push-plan.ts` computes the selection and prints what it runs, what it skips as already passed, which unchanged native packages it leaves out, and how many reverse dependents it drops for CI to cover.
+validate-fast (lint, `lint:pyreon`, the doc/dist/budget/manifest/CI-config gates in `scripts/validate-fast.ts`) runs on every push. The hook never typechecks or tests beyond the directly changed packages: the machine is shared and allows one heavy run at a time, and the reverse-dependency closure and the workspace typecheck are CI's. Packages under `packages/native/` run only when they themselves changed (`--maxWorkers=4` for vitest suites, `KOTLIN_HOME` derived from the `kotlinc` on PATH).
+
+Order and time:
+
+- Checks run cheapest and most likely first: validate-fast, the lockfile dry run, then (under the lock) the changed packages' typecheck (one package at a time), their tests, the native suites. The cap therefore drops the slow tail first.
+- **One wall-clock cap for the whole run, lock wait included: 300 s** (`PYREON_PRE_PUSH_CAP_SEC`; `PYREON_PRE_PUSH_TIMEOUT_SEC` is an alias). Measured 2026-11-10 at load 10–80: validate-fast 10–36 s, the full `@pyreon/test-utils` suite 38 s, the largest web package suites 8–22 s, whole example pushes 12–40 s. It is kept short for a second reason: git opens the SSH connection before the hook and leaves it idle, and GitHub drops an idle session after some minutes, so a long hook fails the push it validated (seen with a 20-minute hook; the exact window is unmeasured).
+- **A failing check blocks the push; a timeout does not.** On the cap the hook stops the running check, prints every check it did not run with the reason, and lets the push through: a push is reversible and CI runs every one of those checks behind a required check, so the cost is at most a CI round trip. Failing closed on a clock is what made everyone skip the hook.
+- A suite whose last recorded duration exceeds the time left is not started (it could only be killed at the cap) and is listed as not checked. Durations live in `<git common dir>/pyreon-pre-push-durations.json` (latest per suite, capped at 500 entries and 30 days).
+
+Lock:
+
+- Only the CPU-heavy part (typecheck and tests) runs under the per-repository lock (`<git common dir>/pyreon-pre-push.lock`; concurrent walls exhausted vitest/kotlinc workers and raced over shared scratch). validate-fast and the lockfile check run outside it.
+- A push that finds the lock held waits inside its own cap, and every 30 s names the holder: pid, branch, worktree, the check it is running and for how long. Every holder is capped too, so the wait is bounded. If the cap runs out first, the locked checks are listed as not checked.
+- A lock whose holder process is gone is reclaimed. The lock still writes `pid` first, so an older hook in another worktree reads it.
+- The lock is shared by every worktree of the repository, and each worktree runs its OWN checked-out copy of `.githooks/pre-push`. A stale worktree on an old branch therefore still runs the old hook, which can hold the lock for its full uncapped wall (seen 2026-11-10: a pre-#4148 hook from the primary checkout held it for 15+ minutes). The new runner's wait stays inside its cap and names the holder (`held by pid 63734 (an older hook that records no details)`); update or remove stale worktrees rather than skipping the hook.
 
 Pass cache:
 
-- A pass is recorded per package and step (typecheck, test) under a key over git's view of the working tree (tracked plus untracked-not-ignored files): the package's own files, every transitive `@pyreon/*` dependency's files, its leaf inputs (`scripts/**` for `@pyreon/test-utils`, doc inputs for their parser), every root file and the bun version. An unchanged package is skipped on a re-push, a rebase or a merge from main that did not touch its inputs.
+- A pass is recorded per package and step (typecheck, test) under a key over git's view of the working tree (tracked plus untracked-not-ignored files): the package's own files, every transitive `@pyreon/*` dependency's files, its leaf inputs (`scripts/**` for `@pyreon/test-utils`, doc inputs for their parser), every root file and the bun version. An unchanged package is skipped on a re-push, a rebase or a merge from main that did not touch its inputs. A targeted `@pyreon/test-utils` run records nothing (it is not a pass of the whole suite).
 - Only passes are written; a failure records nothing and re-runs next time. The store is `<git common dir>/pyreon-pre-push-pass-cache.json`, shared by every worktree, capped at 4000 entries and 30 days, written atomically.
 - A test that reads files outside those inputs can be satisfied by a stale pass locally. CI never uses this cache, so it still catches that. `PYREON_PRE_PUSH_NO_CACHE=1 git push` ignores the cache for one push.
 
@@ -230,10 +252,9 @@ If the hook stops running something, move it into a required CI job in the same 
 
 Behaviour:
 
-- One run per repository at a time (a lock in the git common dir); a stale lock from a crashed run is reclaimed.
-- Ordinary steps have a 300s timeout (`PYREON_PRE_PUSH_TIMEOUT_SEC` overrides every budget). A timed-out step is killed with guidance; a clock timeout cleans up only the owned process tree and is not an assertion failure.
-- It warns about `vitest` processes older than 10 minutes (possibly from another worktree) but does not kill them.
-- A planner failure fails the push (it never silently selects nothing). No committed changes versus `origin/main`: typecheck and tests are skipped.
+- It warns about `vitest` processes older than 10 minutes (possibly from another worktree) but does not kill them; a timed-out check is stopped through its own process group only.
+- A planner failure fails the push (it never silently selects nothing). No committed changes versus the base: only validate-fast runs.
+- `PYREON_PRE_PUSH_BASE=<rev>` changes the diff base (default `origin/main`). `bun scripts/pre-push.ts --cache-dir="$(git rev-parse --git-common-dir)" --plan-only` prints the checks and their commands without running them.
 
 Bypass: `PYREON_SKIP_PRE_PUSH=1 git push` (one-off) or `git push --no-verify`. Disable with `git config --unset core.hooksPath`; re-enable with `bun scripts/install-git-hooks.ts`.
 
@@ -254,7 +275,7 @@ When the change warrants it:
 8. A published `package.json`: `bun run check-distribution` (`sideEffects` declared, source maps shipped — checked with `npm pack --dry-run`).
 9. Signals, mount, router or fs-router behaviour: `bun run test:e2e` (needs `bunx playwright install chromium`).
 10. Docs or an API docs reference: `bun scripts/check-doc-examples.ts` typechecks doc code blocks whose first line is `// @check` (opt-in).
-11. A user-visible error path in `packages/core/{runtime-dom,runtime-server,core,compiler,router}/src/`: add an `ERROR_PATTERNS` entry in `packages/core/compiler/src/diagnose.ts`. The `Diagnose Catalog` gate ignores `package.json`, docs, `tsconfig.json`, tests and stories (`scripts/check-diagnose-catalog.ts:isSensitiveSourceFile`) and auto-skips `changeset-release/*` branches.
+11. A new or edited user-visible message in `packages/core/{runtime-dom,runtime-server,core,compiler,router}/src/`: make sure an `ERROR_PATTERNS` entry in `packages/core/compiler/src/diagnose.ts` matches it. The `Diagnose Catalog` gate compares the messages in the base and HEAD content of each changed source file (`scripts/check-diagnose-catalog.ts:extractMessages`), so only a new or reworded message demands an entry; it ignores `package.json`, docs, `tsconfig.json`, tests and stories (`isSensitiveSourceFile`) and auto-skips `changeset-release/*` branches. Run it locally with `bun scripts/check-diagnose-catalog.ts`.
 12. Source in a published package: `bun changeset`. The `Changeset` gate ignores private packages, changeset-`ignore`d workspaces (examples, docs) and test/spec/story files (`scripts/check-changeset-required.ts:isConsumerAffectingFile`, sharing `scripts/test-paths.ts` with the diagnose gate). `scripts/publish.ts` strips `src/` from tarballs (`stripSrcFromFiles`). The `skip-changeset` label covers genuinely consumer-irrelevant edits.
 
 Never run `gh pr merge` unless the maintainer said "merge it" for that specific PR.
