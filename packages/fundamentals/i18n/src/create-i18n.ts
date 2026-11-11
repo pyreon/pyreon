@@ -1,4 +1,5 @@
 import { computed, signal } from '@pyreon/reactivity'
+import { localeDirection } from './direction'
 import { createFormatters } from './formatters'
 import { interpolate } from './interpolation'
 import { resolvePluralCategory } from './pluralization'
@@ -257,6 +258,7 @@ export function createI18n(options: I18nOptions): I18nInstance {
     numberFormats,
     dateFormats,
     relativeTimeFormats,
+    listFormats,
     formats,
   } = options
 
@@ -266,6 +268,7 @@ export function createI18n(options: I18nOptions): I18nInstance {
     numberFormats,
     dateFormats,
     relativeTimeFormats,
+    listFormats,
     formats,
   })
 
@@ -539,6 +542,12 @@ export function createI18n(options: I18nOptions): I18nInstance {
     opts?: Intl.RelativeTimeFormatOptions | string,
   ): string => formatters.rt(locale(), value, unit, opts)
 
+  const l = (values: Iterable<string>, opts?: Intl.ListFormatOptions | string): string =>
+    formatters.l(locale(), values, opts)
+
+  // An explicit locale is not reactive; the no-arg form reads `locale()`.
+  const dir = (loc?: string) => localeDirection(loc ?? locale())
+
   const loadNamespace = async (namespace: string, loc?: string): Promise<void> => {
     if (!loader) return
 
@@ -621,6 +630,8 @@ export function createI18n(options: I18nOptions): I18nInstance {
     n,
     d,
     rt,
+    l,
+    dir,
     locale,
     loadNamespace,
     isLoading,

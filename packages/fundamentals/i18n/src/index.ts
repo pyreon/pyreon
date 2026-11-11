@@ -20,6 +20,7 @@ export type {
   I18nOptions,
   InterpolationValue,
   InterpolationValues,
+  ListFormats,
   NamedFormatters,
   NamespaceLoader,
   NumberFormats,
@@ -28,6 +29,7 @@ export type {
   TranslationDictionary,
   TranslationMessages,
 } from './types'
+export type { TextDirection } from './direction'
 export type {
   MessageKeys,
   TranslationParams,

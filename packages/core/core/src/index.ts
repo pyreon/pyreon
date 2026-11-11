@@ -7,7 +7,14 @@ import { registerSingleton } from '@pyreon/reactivity'
 // aid, not a load-bearing identity check.
 registerSingleton(__pkgName, __pkgVersion, import.meta.url)
 
-export { defineComponent, dispatchToErrorBoundary, propagateError, runWithHooks } from './component'
+export {
+  _runHooked,
+  _takeHooks,
+  defineComponent,
+  dispatchToErrorBoundary,
+  propagateError,
+  runWithHooks,
+} from './component'
 export { isNativeCompat, NATIVE_COMPAT_MARKER, nativeCompat } from './compat-marker'
 // Re-exported from @pyreon/reactivity so existing imports from @pyreon/core
 // keep working AND every package below core in the dep chain can still reach
@@ -104,6 +111,7 @@ export type { Directive, DirectiveEntry } from './directive'
 export { use } from './directive'
 export type { AsyncLike, AsyncProps } from './async'
 export { _resetAsyncWarning, Async } from './async'
+export { escapeJsonForScript } from './script-json'
 export type { MatchProps, ShowProps, SwitchProps } from './show'
 export { Match, MatchSymbol, Show, Switch } from './show'
 export type { ClassValue } from './style'

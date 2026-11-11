@@ -752,6 +752,21 @@ if (isClient) {
       seeAlso: ['onMount'],
     },
     {
+      name: 'escapeJsonForScript',
+      kind: 'function',
+      signature: '(json: string) => string',
+      summary:
+        "Neutralise JSON TEXT for the body of an inline `<script>`: every `<` becomes `\\u003C` (so `</script`, `<!--` and `<script` cannot form) and U+2028/U+2029 are escaped. Every escape is a valid JSON escape, so the block still `JSON.parse`s to an identical value — unlike the `<\\/` / `<\\!--` rewrite, where `\\!` is not a JSON escape. The one recipe `@pyreon/head` uses for JSON data blocks (JSON-LD, speculation rules, import maps) and `@pyreon/zero`'s `jsonLd()` uses. For a JSON block or response only: an executable `window.X=…` assignment also needs the `__proto__`-key handling of `@pyreon/router`'s loader-data serializer, and script CODE must not take it (`\\u003C` outside a string breaks `<` operators).",
+      example: `import { escapeJsonForScript } from '@pyreon/core'
+
+const tag = \`<script type="application/ld+json">\${escapeJsonForScript(JSON.stringify(data))}</script>\``,
+      mistakes: [
+        'Interpolating a bare `JSON.stringify` into a `<script>` — a string value containing `</script>` or `<!--<script>` breaks out of the element',
+        'Escaping with `<\\/` and `<\\!--` inside a JSON block — `\\!` is not a JSON escape, so the block no longer parses and its data is dropped',
+        'Passing JavaScript SOURCE instead of JSON text — `\\u003C` outside a string literal is a syntax error',
+      ],
+    },
+    {
       name: 'defineComponent',
       kind: 'function',
       signature: '<P>(fn: ComponentFn<P>) => ComponentFn<P>',

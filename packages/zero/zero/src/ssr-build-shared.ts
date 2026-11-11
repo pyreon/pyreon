@@ -28,6 +28,27 @@ import type { PyreonPluginOptions } from '@pyreon/vite-plugin'
 import type { BuildOptions, Plugin } from 'vite'
 import { _enterInnerBuild, _exitInnerBuild } from './build-flags'
 import { innerPyreonOptions } from './inner-pyreon-options'
+
+/**
+ * zero's optional native peers — every `peerDependenciesMeta[*].optional`
+ * entry in zero's package.json (locked by `ssr-build-optional-peers.test.ts`).
+ * zero imports each one only lazily (`await import('sharp')`), so the server
+ * must start without it.
+ *
+ * The node SSR sub-build always keeps them EXTERNAL. Vite externalizes a
+ * dependency only when it resolves from the app root; inside a workspace (or
+ * any layout where the peer resolves only from zero's own `node_modules`)
+ * zero is linked, so Vite BUNDLES the peer. Rolldown can then place a shared
+ * runtime helper (`__exportAll`) in the peer's chunk, the entry imports that
+ * chunk statically, and the native module evaluates at startup — crashing
+ * on a missing binary. External, the lazy import stays a lazy runtime
+ * `import('sharp')`, exactly what an npm consumer of zero gets: present →
+ * loaded on first use, absent → only that feature fails.
+ *
+ * Edge builds (`noExternal: true`, webworker) are left as they are: a worker
+ * cannot load a native addon either way.
+ */
+export const OPTIONAL_NATIVE_PEERS: readonly string[] = ['sharp']
 import type { ZeroConfig } from './types'
 
 /**
@@ -356,8 +377,7 @@ export async function buildSsrBundle(options: BuildSsrBundleOptions): Promise<vo
       import('./vite-plugin'),
       import('@pyreon/vite-plugin'),
     ])
-    const pyreon = (pyreonModule as { default: (options?: PyreonPluginOptions) => unknown })
-      .default
+    const pyreon = (pyreonModule as { default: (options?: PyreonPluginOptions) => unknown }).default
 
     // Forward user-supplied plugins from the outer Vite config so non-
     // zero plugins (most importantly @pyreon/zero-content's content()
@@ -414,8 +434,7 @@ export async function buildSsrBundle(options: BuildSsrBundleOptions): Promise<vo
       'pyreon-zero-i18n-routing',
     ])
     const userPlugins = (options.userPlugins ?? []).filter((p) => {
-      const name =
-        typeof p === 'object' && p !== null ? (p as { name?: string }).name : ''
+      const name = typeof p === 'object' && p !== null ? (p as { name?: string }).name : ''
       if (!name) return true
       return !RE_ADDED_PLUGIN_NAMES.has(name)
     })
@@ -453,7 +472,9 @@ export async function buildSsrBundle(options: BuildSsrBundleOptions): Promise<vo
         zeroPlugin(innerZeroConfig),
         ...userPlugins,
       ] as Plugin[],
-      ...(options.edge ? { ssr: { target: 'webworker' as const, noExternal: true as const } } : {}),
+      ...(options.edge
+        ? { ssr: { target: 'webworker' as const, noExternal: true as const } }
+        : { ssr: { external: [...OPTIONAL_NATIVE_PEERS] } }),
       // NOTE this REPLACES the user's whole `resolve` block, so a
       // `resolve.alias` from their vite.config does not reach this build. That
       // is an un-threaded surface, NOT a known failure — if an alias ever turns
@@ -509,10 +530,7 @@ export async function materializeEntry(entryPath: string, source: string): Promi
  * @internal
  */
 let _atomicSeq = 0
-export async function writeFileAtomic(
-  target: string,
-  content: string | Uint8Array,
-): Promise<void> {
+export async function writeFileAtomic(target: string, content: string | Uint8Array): Promise<void> {
   const tmp = `${target}.tmp.${process.pid}.${++_atomicSeq}`
   try {
     await writeFile(tmp, content)
@@ -582,10 +600,10 @@ export function injectIntoTemplate(
       const openLen = '<div id="app">'.length // both quote styles same length
       const closeIdx = html.indexOf('</div>', openIdx + openLen)
       if (closeIdx !== -1) {
-        html
-          = html.slice(0, openIdx)
-          + `<div id="app">${result.appHtml}</div>`
-          + html.slice(closeIdx + '</div>'.length)
+        html =
+          html.slice(0, openIdx) +
+          `<div id="app">${result.appHtml}</div>` +
+          html.slice(closeIdx + '</div>'.length)
       } else {
         html = html.replace('</body>', () => `<div id="app">${result.appHtml}</div></body>`)
       }

@@ -89,6 +89,14 @@ export type OgImage<TData = unknown, TParams extends Record<string, string> = Re
   ctx: OgContext<TData, TParams>,
 ) => VNodeChild
 
+/**
+ * `ctx.locals` flag the route-middleware dispatcher (`pipeline.ts`) sets when
+ * any route middleware matched the request's routing path — for the OG
+ * endpoint, the target page's.
+ * @internal
+ */
+export const ROUTE_MIDDLEWARE_RAN = 'zero:routeMiddlewareRan'
+
 /** Route-record field the generated route module sets (server graph only). */
 interface OgRecord {
   og?: () => Promise<OgImage | undefined>
@@ -200,12 +208,21 @@ export function createOgImageMiddleware(
     const svg = await renderRouteOgSvg(routes, pagePath, ctx.req)
     if (svg === null) return new Response('Not Found', { status: 404 })
     const png = await rasterizeOgSvg(svg, width, height)
+    // A shared cache sits AFTER the origin's gates: a `public` image rendered
+    // for a request the page's middleware admitted (or from a loader that read
+    // the caller's credentials) would be replayed by the CDN to everyone.
+    const personal =
+      ctx.locals[ROUTE_MIDDLEWARE_RAN] === true ||
+      ctx.req.headers.has('cookie') ||
+      ctx.req.headers.has('authorization')
     return new Response(ctx.req.method === 'HEAD' ? null : new Uint8Array(png), {
       status: 200,
       headers: {
         'Content-Type': 'image/png',
         'Content-Length': String(png.byteLength),
-        'Cache-Control': `public, max-age=0, s-maxage=${ttl}, stale-while-revalidate=${ttl}`,
+        'Cache-Control': personal
+          ? 'private, no-store'
+          : `public, max-age=0, s-maxage=${ttl}, stale-while-revalidate=${ttl}`,
       },
     })
   }

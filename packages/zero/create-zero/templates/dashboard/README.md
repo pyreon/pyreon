@@ -29,9 +29,13 @@ bun run dev          # → http://localhost:3000
 
 ### Data + auth layer
 
-- **`src/lib/auth.ts`** — auth surface (in-memory stub OR Supabase if you selected the integration)
+- **`src/lib/auth.ts`** — auth surface, server-only (in-memory stub OR Supabase if you selected the integration)
+- **`src/lib/session-cookie.ts`** — the session cookie: set by the server, `HttpOnly; SameSite=Lax`, `Secure` off localhost
+- **`src/routes/api/{signin,signup,session,signout}.ts`** — the endpoints the pages call; page JavaScript never sees a session id
+- **`src/routes/app/_layout.tsx`** — route guard for `/app/*` (asks `/api/session`)
 - **`src/lib/db.ts`** — data layer (in-memory stub OR Supabase)
-- **`src/middleware/auth.ts`** — route guard for `/app/*`
+
+The in-memory stub hashes passwords (PBKDF2, Web Crypto) and uses 256-bit random session ids, but it is a starting point, not an auth system: no persistence, rate limiting or password reset. The **demo account** (`demo@example.com` / `demo1234`) exists only under `bun run dev`; a production build has no seeded user.
 
 If you scaffolded with `--integrations supabase`, the `auth.ts` + `db.ts` stubs are replaced with real Supabase wiring + `src/lib/supabase.ts`.
 

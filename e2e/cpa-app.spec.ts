@@ -62,6 +62,38 @@ test.describe('cpa-app — runtime', () => {
     await expect(display).toHaveText('0')
   })
 
+  test('nav <Link> active class + aria-current follow a CLIENT navigation', async ({ page }) => {
+    // The default <Link> renders its <a> through the compiled-template paths
+    // (`_ssr` on the server, `_tpl` on the client). Its class and aria-current
+    // are reactive bindings there: if either were bound once (a bare function
+    // value is not an accessor on `_setClass`), the server-rendered state
+    // would stick after a client-side navigation.
+    const consoleErrors = captureRealConsoleErrors(page)
+    await page.goto('/counter')
+    const display = page.locator('.counter-display').first()
+    await page.locator('.counter-controls').first().locator('button').last().click()
+    await expect(display).toHaveText('1') // hydrated
+    await page.evaluate(() => {
+      ;(window as unknown as { __noReload?: boolean }).__noReload = true
+    })
+    const nav = page.locator('.app-nav').first()
+    const counter = nav.locator('a[href="/counter"]')
+    const about = nav.locator('a[href="/about"]')
+    await expect(counter).toHaveClass(/nav-active/)
+    await expect(counter).toHaveAttribute('aria-current', 'page')
+    await about.click()
+    await expect(page).toHaveURL(/\/about$/)
+    await expect(about).toHaveClass(/nav-active/)
+    await expect(about).toHaveAttribute('aria-current', 'page')
+    await expect(counter).not.toHaveClass(/nav-active/)
+    await expect(counter).not.toHaveAttribute('aria-current', 'page')
+    // Same document: the router navigated on the client, not a full load.
+    expect(
+      await page.evaluate(() => (window as unknown as { __noReload?: boolean }).__noReload),
+    ).toBe(true)
+    expect(consoleErrors).toEqual([])
+  })
+
   test('posts route renders + loader populated', async ({ page }) => {
     await page.goto('/posts')
     // Sanity-check: the route loads SOMETHING. The double-mount workaround

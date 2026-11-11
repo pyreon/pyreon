@@ -1,6 +1,6 @@
 ---
 title: "Complete API — API Reference"
-description: "Fine-grained reactivity: signal, computed, effect, batch, onCleanup, createStore, watch, createResource, untrack"
+description: "Fine-grained reactivity: signal, computed, linked, effect, batch, onCleanup, createStore, watch, createResource, untrack"
 ---
 
 # @pyreon/reactivity — API Reference
@@ -22,6 +22,7 @@ See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multipla
 - Owns its native compiler frontend through the optional ./native-plugin tooling entry; the native CLI discovers it from package metadata
 - signal&lt;T&gt;() — callable function with .set(), .update(), .trigger()
 - computed&lt;T&gt;() — auto-tracked derivation; caches its value, but notifies downstream on every dependency change unless you pass `equals`
+- linked&lt;T&gt;() — writable derived value that resets when its source changes (Angular linkedSignal)
 - effect() / renderEffect() — side-effects with auto-tracking
 - batch() / nextTick() — write-grouping + flush awaiter
 - onCleanup() — register cleanup with the current owner (effect run, component setup, or runInScope/onMount)
@@ -89,6 +90,7 @@ effect(() => {
 | [`isServer`](#isserver-constant) | constant | Canonical runtime environment flag — `true` when there is no DOM (`typeof document === 'undefined'`), i.e. |
 | [`isClient`](#isclient-constant) | constant | Inverse of `isServer` — `true` on a browser main thread where a DOM is available (`typeof document !== 'undefined'`). |
 | [`computed`](#computed-function) | function | Create a derived value that caches its result and recomputes lazily. |
+| [`linked`](#linked-function) | function | A writable derived value (Angular `linkedSignal`): it follows its source like a `computed`, can be overwritten with `.se |
 | [`effect`](#effect-function) | function | Run a side effect that auto-tracks signal dependencies and re-runs when they change. |
 | [`renderEffect`](#rendereffect-function) | function | DOM-specific effect with a lighter dependency tracking path — uses a local array for deps instead of the full `EffectSco |
 | [`batch`](#batch-function) | function | Group multiple signal writes so subscribers fire only once — after the batch completes. |
@@ -267,6 +269,42 @@ doubled()  // 10
 - Reasoning about memory from stale branches — a re-evaluated computed drops subscriptions to sources it no longer reads (exact dep list per evaluation), so `dispose()` fully unsubscribes even after conditional-branch flips
 
 **See also:** `signal` · `effect`
+
+---
+
+### `linked` `function`
+
+```ts
+<T>(compute: () => T, options?: LinkedOptions<T>) => LinkedSignal<T> | <S, T>(source: () => S, compute: (source: S, previous: { source: S; value: T } | undefined) => T, options?: LinkedOptions<T>) => LinkedSignal<T>
+```
+
+A writable derived value (Angular `linkedSignal`): it follows its source like a `computed`, can be overwritten with `.set()` / `.update()` like a signal, and resets when the source changes. `linked(() => expr)` resets whenever `expr` changes; `linked(source, (s, prev) => value)` tracks only `source` and runs `compute` untracked with the new source value and the previous `{ source, value }` (including a local override), so it can keep a previous choice that is still valid. The source is compared with `Object.is` — a recomputation to the same source value keeps the override; a write made after a pending source change wins. Lazy like `computed`. Returns `LinkedSignal<T>`: call to read, `.peek()`, `.set()`, `.update()`, `.dispose()` (only needed outside a component or effect scope). No native lowering yet.
+
+**Example**
+
+```tsx
+import { linked, signal } from '@pyreon/reactivity'
+
+const options = signal(['small', 'medium', 'large'])
+const size = linked(() => options()[0])
+size.set('large')                    // the user's choice
+options.set(['s', 'm'])              // list changed → size() === 's'
+
+// keep the previous choice when the new list still contains it
+// (annotate the return type: T cannot be inferred from a body that reads prev.value)
+const kept = linked(options, (opts, prev): string =>
+  prev && opts.includes(prev.value) ? prev.value : opts[0])
+```
+
+**Common mistakes**
+
+- Writing `signal` + `watch(source, v => sel.set(...))` by hand — it is eager, runs the reset as a separate effect (one stale read in between), and must be disposed; `linked` is one lazy node
+- Reading other signals inside the two-argument `compute` and expecting them to reset the value — `compute` runs untracked; only `source` is tracked. Put every reset trigger in `source`
+- Expecting a source that recomputes to an EQUAL value to reset the override — the source is compared with `Object.is`; return a new identity (or a different value) to force a reset
+- Leaving the two-argument `compute` unannotated while its body reads `prev.value` — TypeScript cannot infer `T` from a body that depends on it and falls back to `unknown`; annotate the return type (`(opts, prev): string => …`)
+- Destructuring `const { set } = sel` — the methods are shared and use `this`, as with `signal`; call `sel.set(v)`
+
+**See also:** `computed` · `signal` · `watch`
 
 ---
 

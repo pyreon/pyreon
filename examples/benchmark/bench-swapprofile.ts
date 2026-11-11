@@ -1,5 +1,5 @@
 /**
- * Swap-rows diagnosis in REAL Chromium: Pyreon vs Vue 3.6 Vapor (RC) vs
+ * Swap-rows diagnosis in REAL Chromium: Pyreon vs Vue 3.6 Vapor (RC) vs Octane vs
  * hand-written Vanilla, on the row board's exact markup and update shape
  * (`src/impl/profile-swap.tsx`, served behind `?profileSwap=1`).
  *
@@ -87,7 +87,7 @@ try {
     }
   }
 
-  await page.goto(`http://localhost:${PORT}/?profileSwap=1`)
+  await page.goto(`http://localhost:${PORT}/?profileSwap=1&swapRows=${process.env.SWAP_ROWS ?? 1000}`)
   await page.waitForFunction(() => '__swapBench' in globalThis, undefined, { timeout: 30_000 })
   const isolated = await page.evaluate(() => crossOriginIsolated)
   console.log(`[swapprofile] crossOriginIsolated=${isolated} arms=${ARMS.join(',')}`)
@@ -97,8 +97,9 @@ try {
     { swap: () => unknown; flush: () => void; ids: () => number[]; churn: (n: number) => unknown }
   >
 
-  // Correctness: one swap must exchange positions 1 and 998, a second restores.
-  const check = await page.evaluate(async (arms) => {
+  // Correctness: one swap must exchange positions 1 and rows-2, a second restores.
+  const check = await page.evaluate(async ({ arms, rows }) => {
+    const last = rows - 2
     const d = (globalThis as never as { __swapBench: Drivers }).__swapBench
     const out: Record<string, string> = {}
     for (const a of arms) {
@@ -108,10 +109,10 @@ try {
       await d[a]!.swap()
       const after = d[a]!.ids()
       const ok =
-        before.length === 1000 &&
-        mid[1] === before[998] &&
-        mid[998] === before[1] &&
-        mid[500] === before[500] &&
+        before.length === rows &&
+        mid[1] === before[last] &&
+        mid[last] === before[1] &&
+        mid[rows >> 1] === before[rows >> 1] &&
         after.join() === before.join()
       // DOM-op census for one swap: every mutating Node/Element call, in order.
       const log: string[] = []
@@ -135,10 +136,10 @@ try {
         for (const [proto, m, orig] of patched) proto[m] = orig
       }
       await d[a]!.swap()
-      out[a] = ok ? `ok ops=[${log.join(',')}]` : `FAIL ${before.length} ${mid[1]}/${before[998]}`
+      out[a] = ok ? `ok ops=[${log.join(',')}]` : `FAIL ${before.length} ${mid[1]}/${before[last]}`
     }
     return out
-  }, ARMS)
+  }, { arms: ARMS, rows: Number(process.env.SWAP_ROWS ?? 1000) })
   console.log('[swapprofile] correctness', JSON.stringify(check))
   if (CHURN > 0) {
     await page.evaluate(

@@ -67,20 +67,19 @@ export function markStoreSsrExcluded(api: object): void {
  * `JSON.stringify` lets a stored string close the element (`</script>`) or open
  * the script-data-double-escaped state (`<!--<script`), and U+2028 / U+2029 are
  * legal in JSON strings but are line terminators inside a `<script>` body.
- * Escaping the whole `<` class covers all three and round-trips byte-identically
- * through `JSON.parse`, so the hydrated data is unchanged.
+ * The script is also EVALUATED as a JavaScript object literal, where a
+ * `"__proto__":` key sets the prototype instead of creating the key — a
+ * user-keyed map in a store would lose it and inherit its fields.
+ * `stringifyLoaderDataForScript` from `@pyreon/router` (the serializer
+ * `@pyreon/server` uses for this exact payload) handles all of it.
  *
  * @example
  * // server, after render:
- * const scriptSafeJson = (value: unknown): string =>
- *   JSON.stringify(value)
- *     .replace(/</g, '\\u003C')
- *     .replace(/\u2028/g, '\\u2028')
- *     .replace(/\u2029/g, '\\u2029')
+ * import { stringifyLoaderDataForScript } from '@pyreon/router'
  *
  * const stores = dehydrateStores()
  * html = html.replace('</head>',
- *   `<script>window.__PYREON_STORE_STATE__=${scriptSafeJson(stores)}</script></head>`)
+ *   `<script>window.__PYREON_STORE_STATE__=${stringifyLoaderDataForScript(stores)}</script></head>`)
  */
 export function dehydrateStores(
   filter?: (id: string) => boolean,
