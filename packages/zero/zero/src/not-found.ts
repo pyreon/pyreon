@@ -114,7 +114,9 @@ export async function render404Page(
 
 	let html: string;
 	if (template?.includes("<!--pyreon-app-->")) {
-		html = template.replace("<!--pyreon-app-->", body);
+		// Function replacer: `body` is rendered page HTML, and a replacement
+		// STRING would expand `$&` / `$'` / `` $` `` found in it.
+		html = template.replace("<!--pyreon-app-->", () => body);
 	} else {
 		html = `<!DOCTYPE html>
 <html lang="en">

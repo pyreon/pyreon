@@ -23,6 +23,11 @@ on:
     paths:
       # Any change to the docs source itself
       - 'docs/**'
+      # The generated llms.txt / llms-full.txt the site publishes at its root
+      # (docs/vite-plugins/publish-llms-txt.ts) — a manifest change regenerates
+      # them without touching docs/**.
+      - 'llms.txt'
+      - 'llms-full.txt'
       # Framework packages the docs build transitively depends on —
       # a fix in any of these can change what ships on the docs site,
       # so any of them retriggers a deploy.
@@ -57,6 +62,8 @@ on:
   pull_request:
     paths:
       - 'docs/**'
+      - 'llms.txt'
+      - 'llms-full.txt'
       - 'packages/zero/zero/**'
       - 'packages/zero/zero-content/**'
       - 'packages/tools/vite-plugin/**'
@@ -89,13 +96,18 @@ on:
 
 concurrency:
   # Per-ref so a PR's build can't cancel main's in-flight deploy (and vice
-  # versa). On main this still coalesces rapid pushes to the latest deploy.
-  # The daily schedule shares main's group: whichever of a scheduled and a
-  # push run starts later cancels the other, and it builds the same or a
-  # newer main, so nothing is lost. Deploy Docs is not a required check, so a
-  # cancelled run blocks nothing.
+  # versa). A PR cancels its superseded build.
+  #
+  # On main the RUNNING deploy is never cancelled; a newer push replaces only
+  # the PENDING one (GitHub keeps one pending run per group), so a burst of
+  # merges still collapses to the in-flight deploy plus the latest main. It
+  # used to cancel the running one too, which under a backed-up runner pool
+  # meant no deploy ever finished: measured 2026-11-10, 12 main deploys
+  # started 08:16–15:36 UTC, 11 were cancelled — most after waiting about
+  # an hour for a runner — and pyreon.dev updated once in 7.5 hours. The
+  # daily schedule shares main's group and coalesces the same way.
   group: deploy-docs-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 # Read-only by default; `pages: write` + `id-token: write` belong to the
 # `deploy` job alone. At file scope they were ALSO granted to `build`, which
@@ -168,6 +180,21 @@ jobs:
             cat docs/dist/_pyreon-ssg-errors.json
             exit 1
           fi
+
+      - name: llms.txt and llms-full.txt are published
+        # The docs, the README and the blog tell AI tools to read
+        # https://pyreon.dev/llms.txt and /llms-full.txt. Both are generated at
+        # the repo root by `bun run gen-docs`, and nothing put them in the site,
+        # so both URLs were 404. docs/vite-plugins/publish-llms-txt.ts emits
+        # them; this checks the build output really holds both, byte-identical
+        # to the generated files.
+        run: |
+          for f in llms.txt llms-full.txt; do
+            if ! cmp -s "$f" "docs/dist/$f"; then
+              echo "::error::docs/dist/$f is missing or differs from the generated $f at the repo root, so https://pyreon.dev/$f would 404 or be stale. See docs/vite-plugins/publish-llms-txt.ts."
+              exit 1
+            fi
+          done
 
       - name: Build the Atlas workbench site
         shell: bash

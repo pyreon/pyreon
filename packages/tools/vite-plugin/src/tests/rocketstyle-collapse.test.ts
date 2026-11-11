@@ -1,4 +1,5 @@
-import { existsSync } from 'node:fs'
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
@@ -36,9 +37,7 @@ describe('deriveCollapse (pure extraction)', () => {
     const dark = '<button class="C D" data-x="1"><span class="inner">Save</span></button>'
     const r = deriveCollapse(light, dark, ['.A{}', '.C{}'])
     expect(r).not.toBeNull()
-    expect(r?.templateHtml).toBe(
-      '<button data-x="1"><span class="inner">Save</span></button>',
-    )
+    expect(r?.templateHtml).toBe('<button data-x="1"><span class="inner">Save</span></button>')
     expect(r?.lightClass).toBe('A B')
     expect(r?.darkClass).toBe('C D')
     expect(r?.key).toMatch(/^[0-9a-z]+$/)
@@ -55,11 +54,9 @@ describe('deriveCollapse (pure extraction)', () => {
   })
 
   it('light===dark class is valid (mode-invariant component) — NOT a bail', () => {
-    const r = deriveCollapse(
-      '<button class="same">x</button>',
-      '<button class="same">x</button>',
-      ['.same{}'],
-    )
+    const r = deriveCollapse('<button class="same">x</button>', '<button class="same">x</button>', [
+      '.same{}',
+    ])
     expect(r).not.toBeNull()
     expect(r?.lightClass).toBe('same')
     expect(r?.darkClass).toBe('same')
@@ -189,6 +186,38 @@ describe('createCollapseResolver — real @pyreon/ui-components Button via Vite 
       config: DEFAULT_COLLAPSE_CONFIG,
     })
     expect(r).toBeNull()
+    // A per-site bail is NOT a capability failure — no build warning.
+    expect(resolver.unavailable()).toBeNull()
+  }, 60_000)
+})
+
+describe('createCollapseResolver — capability missing from the app root', () => {
+  // An app root from which `@pyreon/runtime-server` does not resolve: every
+  // site would bail, and before `unavailable()` that was indistinguishable
+  // from "no site was eligible" — an opted-in collapse silently no-op'd.
+  let root: string
+  let resolver: CollapseResolver
+  beforeAll(async () => {
+    root = mkdtempSync(join(tmpdir(), 'pyreon-collapse-nors-'))
+    writeFileSync(join(root, 'package.json'), '{"name":"nors","type":"module"}')
+    resolver = await createCollapseResolver(root)
+  }, 60_000)
+  afterAll(async () => {
+    await resolver?.dispose()
+    rmSync(root, { recursive: true, force: true })
+  })
+
+  it('bails every site AND reports why', async () => {
+    const r = await resolver.resolve({
+      component: { name: 'Button', source: '@pyreon/ui-components' },
+      props: { state: 'primary' },
+      childrenText: 'x',
+      config: DEFAULT_COLLAPSE_CONFIG,
+    })
+    expect(r).toBeNull()
+    const why = resolver.unavailable()
+    expect(why).toContain('[Pyreon] collapse is OFF')
+    expect(why).toContain('@pyreon/runtime-server')
   }, 60_000)
 })
 
@@ -202,9 +231,8 @@ describe('end-to-end pipeline — real Button through resolver → scanner → c
   })
 
   it('the emitted _rsCollapse embeds the REAL SSR-resolved class + template byte-for-byte', async () => {
-    const { transformJSX, scanCollapsibleSites, rocketstyleCollapseKey } = await import(
-      '@pyreon/compiler'
-    )
+    const { transformJSX, scanCollapsibleSites, rocketstyleCollapseKey } =
+      await import('@pyreon/compiler')
     const src = `
 import { Button } from '@pyreon/ui-components'
 export const Save = () => <Button state="primary" size="medium">Save</Button>`
@@ -213,9 +241,7 @@ export const Save = () => <Button state="primary" size="medium">Save</Button>`
     const sites = scanCollapsibleSites(src, 'Save.tsx', new Set(['@pyreon/ui-components']))
     expect(sites).toHaveLength(1)
     const site = sites[0]!
-    expect(site.key).toBe(
-      rocketstyleCollapseKey(site.componentName, site.props, site.childrenText),
-    )
+    expect(site.key).toBe(rocketstyleCollapseKey(site.componentName, site.props, site.childrenText))
 
     // 2. resolver SSR-renders the REAL component (light + dark)
     const resolved = await resolver.resolve({
@@ -450,10 +476,7 @@ describe('audit #7+#8: resolver serialization + per-site buffer isolation', () =
       childrenText: 'ConcurrentB',
       config: DEFAULT_COLLAPSE_CONFIG,
     }
-    const [a, b] = await Promise.all([
-      resolver.resolve(inputA),
-      resolver.resolve(inputB),
-    ])
+    const [a, b] = await Promise.all([resolver.resolve(inputA), resolver.resolve(inputB)])
     expect(a).not.toBeNull()
     expect(b).not.toBeNull()
     if (!a || !b) return
@@ -575,17 +598,9 @@ export const Save = () => <Button state="primary" size="medium">Save</Button>`
     return { warn: () => {}, resolve: async () => null }
   }
   function callConfig(p: ReturnType<typeof pyreon>, root: string) {
-    ;(p.config as unknown as (u: unknown, e: unknown) => unknown)(
-      { root },
-      { command: 'build' },
-    )
+    ;(p.config as unknown as (u: unknown, e: unknown) => unknown)({ root }, { command: 'build' })
   }
-  function callTransform(
-    p: ReturnType<typeof pyreon>,
-    code: string,
-    id: string,
-    ssr: boolean,
-  ) {
+  function callTransform(p: ReturnType<typeof pyreon>, code: string, id: string, ssr: boolean) {
     return (
       p.transform as unknown as (
         this: unknown,

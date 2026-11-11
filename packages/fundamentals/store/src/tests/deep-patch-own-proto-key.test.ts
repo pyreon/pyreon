@@ -6,12 +6,12 @@
  * fields the payload never had as own keys — past any app-side guard that
  * checked the body for them.
  */
-import { defineStore } from '@pyreon/store'
+import { defineSchemaStore } from '@pyreon/store'
 import { zodSchema } from '@pyreon/validation/zod'
 import { describe, expect, it } from 'vitest'
 import { z } from 'zod'
 
-describe('schema-driven defineStore — deepPatch with an own __proto__ key', () => {
+describe('defineSchemaStore — deepPatch with an own __proto__ key', () => {
   const Schema = zodSchema(
     z.object({
       name: z.string(),
@@ -20,7 +20,7 @@ describe('schema-driven defineStore — deepPatch with an own __proto__ key', ()
   )
 
   it('does not graft a nested own __proto__ key into the prototype chain', () => {
-    const useS = defineStore('deep-patch-own-proto-nested', { schema: Schema, initial: { name: 'a', profile: { bio: '' } } })
+    const useS = defineSchemaStore('deep-patch-own-proto-nested', { schema: Schema, initial: { name: 'a', profile: { bio: '' } } })
     const s = useS()
     const body = JSON.parse('{"profile":{"bio":"hi","__proto__":{"role":"admin"}}}')
     // The app-side guard a caller would write: the body carries no `role`.
@@ -33,7 +33,7 @@ describe('schema-driven defineStore — deepPatch with an own __proto__ key', ()
   })
 
   it('does not graft a top-level own __proto__ key either', () => {
-    const useS = defineStore('deep-patch-own-proto-top', {
+    const useS = defineSchemaStore('deep-patch-own-proto-top', {
       schema: zodSchema(z.object({ name: z.string(), role: z.string().optional() })),
       initial: { name: 'a' },
     })
