@@ -231,17 +231,17 @@ export default function DemoDocument() {
 
   // `srcdoc` is not in @pyreon/core's iframe attribute types (#4392), so the frame gets it by ref.
   let stopFrame: (() => void) | undefined
-  const showHtml = (el: HTMLIFrameElement | null) => {
+  const showHtml = (frame: HTMLIFrameElement | null) => {
     stopFrame?.()
     stopFrame = undefined
-    if (el === null) return
+    if (frame === null) return
     stopFrame = watch(
       () => output(),
       (html) => {
         // The frame is sandboxed without allow-scripts, so a <script> in the
         // output never runs; Chromium still logs "Blocked script execution" for
         // each one. Drop them: the frame shows the same document, quietly.
-        el.srcdoc = html.replace(/<script\b[\s\S]*?<\/script>/gi, '')
+        frame.srcdoc = html.replace(/<script\b[\s\S]*?<\/script>/gi, '')
       },
       { immediate: true },
     )

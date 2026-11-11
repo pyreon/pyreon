@@ -124,11 +124,11 @@ export default function DemoPermissions() {
             {(a) => {
               // One computed per button: the check re-runs once per change, however
               // often the button reads its `disabled` prop.
-              const allowed = computed(() => check(a.key))
+              const permitted = computed(() => check(a.key))
               return (
                 // The compiler wraps this read in _rp(): each button updates on its own.
                 // pyreon-lint-disable-next-line pyreon/no-signal-in-props
-                <PaperButton type="button" disabled={!allowed()}>
+                <PaperButton type="button" disabled={!permitted()}>
                   {a.label}
                 </PaperButton>
               )

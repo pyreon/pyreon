@@ -294,7 +294,7 @@ export default function DemoFlow() {
           </Counter>
         </Bar>
         <Canvas>
-          <div ref={(el: HTMLElement | null) => (canvasEl = el)} style="position: absolute; inset: 0">
+          <div ref={(node: HTMLElement | null) => (canvasEl = node)} style="position: absolute; inset: 0">
             <Flow
               instance={flow}
               nodeTypes={NODE_TYPES}

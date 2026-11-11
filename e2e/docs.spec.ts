@@ -3,7 +3,6 @@ import { readdirSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { waitForDocs } from './docs-islands'
 import { waitForNav } from './site-islands'
-import { SITE_LINKS } from '../docs/src/site-links'
 
 // Discover the runnable files independently of the gallery generator. A new
 // example gets a real-browser check; a generator omission cannot silently pass.
