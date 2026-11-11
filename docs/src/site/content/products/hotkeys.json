@@ -6,6 +6,7 @@
  "category": "fundamentals · keyboard",
  "hero": {
   "title": "You have written this `keydown` listener before. It was the last time.",
+  "emberWord": "last",
   "lede": "`useHotkey('mod+s', save)` is ⌘S on a Mac and Ctrl+S everywhere else, skips text fields, stops the browser's own save dialog and unregisters when the component goes. Sequences like `g i`, scopes for the editor, and a list of every shortcut for your help dialog come with it.",
   "install": "bun add @pyreon/hotkeys",
   "ctaShort": "Install",

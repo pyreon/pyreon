@@ -6,6 +6,7 @@
  "category": "fundamentals · data fetching",
  "hero": {
   "title": "TanStack Query, minus the re-render.",
+  "emberWord": "re-render",
   "lede": "The same query core you trust for caching, dedup and refetching, with every result field as its own signal. When data changes, one text node updates: 1 derivation where `@tanstack/react-query` does 8.",
   "install": "bun add @pyreon/query",
   "ctaShort": "Install",

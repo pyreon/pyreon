@@ -6,6 +6,7 @@
  "category": "fundamentals · access control",
  "hero": {
   "title": "Downgrade the plan. The Export button hides itself.",
+  "emberWord": "itself",
   "lede": "Roles, ownership rules, feature flags and plan tiers behind one reactive function, `can()`. A rule that reads a signal re-checks when the signal changes, so every button, route and menu that asked follows on its own.",
   "install": "bun add @pyreon/permissions",
   "ctaShort": "Install",

@@ -6,6 +6,7 @@
  "category": "fundamentals · persistence",
  "hero": {
   "title": "A signal that remembers. In every tab, after every reload.",
+  "emberWord": "remembers",
   "lede": "`useStorage('theme', 'light')` is a signal backed by localStorage: read it with `theme()`, write it with `theme.set()`, and every open tab follows. Session storage, cookies (readable during SSR), IndexedDB and custom backends work the same way, with versioned migrations built in.",
   "install": "bun add @pyreon/storage",
   "ctaShort": "Install",

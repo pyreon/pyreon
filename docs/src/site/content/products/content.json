@@ -6,6 +6,7 @@
  "category": "zero · content",
  "hero": {
   "title": "A typo in your frontmatter fails the build. Not your readers.",
+  "emberWord": "fails",
   "lede": "Write docs and blogs in Markdown or MDX. Zero compiles every page to real Pyreon components at build time, checks each frontmatter block against your schema, and writes the search index, sitemap, RSS feed and llms.txt for you.",
   "install": "bun add @pyreon/zero-content",
   "ctaShort": "Install",

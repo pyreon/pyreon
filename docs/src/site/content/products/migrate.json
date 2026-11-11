@@ -6,6 +6,7 @@
  "category": "tools · migration",
  "hero": {
   "title": "Keep your React code. Move to Pyreon one screen at a time.",
+  "emberWord": "one screen",
   "lede": "Compatibility layers for React, Preact, Vue, Solid and Svelte cover each framework's public API with near-full parity, so your components run on Pyreon's engine. Then `pyreon check` and a codemod help you rewrite each screen in native Pyreon, where a component runs once.",
   "install": "bun add @pyreon/react-compat @pyreon/vite-plugin",
   "ctaShort": "Start migrating",

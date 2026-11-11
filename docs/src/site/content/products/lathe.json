@@ -6,6 +6,7 @@
  "category": "tools · api clients",
  "hero": {
   "title": "121 lines of OpenAPI in. 1,133 lines of typed client you never write.",
+  "emberWord": "never",
   "lede": "Lathe turns your OpenAPI spec into validated schemas, typed endpoints and query hooks for Pyreon, plus mocks, fake-data factories, docs and MCP tools. It fails CI when the committed client is stale, names every hook a breaking spec change touches, and can emit native modules that it compiles for iOS and Android before telling you they work.",
   "install": "bun add -D @pyreon/lathe",
   "ctaShort": "Try it",

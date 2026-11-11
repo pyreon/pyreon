@@ -6,6 +6,7 @@
  "category": "fundamentals · structured state",
  "hero": {
   "title": "The MobX-State-Tree model, with 9.5× faster actions.",
+  "emberWord": "9.5×",
   "lede": "Models with views and actions, JSON snapshots, patches you can record and replay, middleware, references by id. The ideas MobX-State-Tree made popular, built on signals instead of observables, and measured against MST 9 op for op.",
   "install": "bun add @pyreon/state-tree",
   "ctaShort": "Install",

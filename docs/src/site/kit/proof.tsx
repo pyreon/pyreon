@@ -361,6 +361,22 @@ export function splitEmber(title: string, word: string): [string, string, string
   return [title.slice(0, i), word, title.slice(i + word.length)]
 }
 
+/**
+ * A headline's text with its one ember word in the display gradient (with
+ * the underline sweep), inline formatting (`code`) kept on both sides. For a
+ * heading component that sets its own size (the product hero).
+ */
+export function EmberText(props: { text: string; word: string }) {
+  const [before, word, after] = splitEmber(props.text, props.word)
+  return (
+    <>
+      {renderInline(before)}
+      {word ? <EmberWord>{word}</EmberWord> : null}
+      {renderInline(after)}
+    </>
+  )
+}
+
 /** The `<h1>` with one span in the display gradient (with the underline sweep). */
 export function HookTitleText(props: { title: string; emberWord: string }) {
   const [before, word, after] = splitEmber(props.title, props.emberWord)

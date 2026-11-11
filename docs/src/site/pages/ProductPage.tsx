@@ -18,7 +18,7 @@ import { InstallCommand, Pill } from '../kit/controls'
 import { useLinkClick } from '../kit/link'
 import { AutoGrid, Section, SectionHead, Wrap } from '../kit/layout'
 import { Reveal } from '../kit/motion'
-import { ProofBand } from '../kit/proof'
+import { EmberText, ProofBand } from '../kit/proof'
 import { Eyebrow, Heading, Lede, renderInline } from '../kit/type'
 import { inlineText } from '../kit/inline'
 import { usePageHead } from '../head'
@@ -169,7 +169,7 @@ export function ProductPage(props: { data: ProductData }) {
             <div>
               <ProductTag glyph={d.glyphSvg} name={d.package} category={d.category} />
               <Heading tag="h1" size="hero">
-                {d.hero.title}
+                <EmberText text={d.hero.title} word={d.hero.emberWord} />
               </Heading>
               <Lede size="hero">{renderInline(d.hero.lede)}</Lede>
               <Ctas id="install">

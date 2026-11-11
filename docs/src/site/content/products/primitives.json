@@ -6,6 +6,7 @@
  "category": "core · cross-platform UI",
  "hero": {
   "title": "One Toggle. The real iOS switch and the real Android switch.",
+  "emberWord": "real",
   "lede": "One name per idea: Stack, Text, Field, Toggle, Modal and the rest. On the web they render plain DOM; in a native build the compiler emits the platform's own SwiftUI and Jetpack Compose views from the same .tsx.",
   "install": "bun add @pyreon/primitives",
   "ctaShort": "Install",

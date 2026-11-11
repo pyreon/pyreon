@@ -6,6 +6,7 @@
  "category": "framework · full stack",
  "hero": {
   "title": "Stop choosing between a static site and a server app.",
+  "emberWord": "Stop",
   "lede": "Every page in a Zero app picks how it renders: built once, cached and refreshed, rendered per request, or client-only. One line per page. Loaders, server actions, islands and seven deploy targets come in the same box.",
   "install": "npm create @pyreon/zero@latest",
   "ctaShort": "Create an app",

@@ -6,6 +6,7 @@
  "category": "tools · component catalog",
  "hero": {
   "title": "Write the component. Atlas writes the scenarios and tests every one.",
+  "emberWord": "every one",
   "lede": "Atlas reads your Pyreon components and their prop types, derives a scenario for every variant, and runs six checks on each: accessibility, interaction, leaks, SSR parity, reactivity coverage and a visual snapshot. You get a workbench, a static docs site and a catalog your coding agent can read, and a check that could not run is reported as not run, never as passed.",
   "install": "bun add -D @pyreon/atlas",
   "ctaShort": "Try it",

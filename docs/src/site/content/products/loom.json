@@ -6,6 +6,7 @@
  "category": "tools · monorepo health",
  "hero": {
   "title": "Find the imports that only work by luck.",
+  "emberWord": "luck",
   "lede": "Loom reads every package.json and every source import in your workspace, then names the runtime cycles, undeclared imports, version splits and the blast radius of each package. One command fails CI on real errors; another opens the whole graph in your browser.",
   "install": "npx @pyreon/loom scan .",
   "ctaShort": "Scan a repo",

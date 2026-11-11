@@ -37,6 +37,14 @@ function assetPaths(v: ProductVisuals): string[] {
 }
 
 describe('product pages', () => {
+  it.each(IDS)('%s: the hero ember word is in the title, outside code', (id) => {
+    const hero = read<{ hero: { title: string; emberWord: string } }>(resolve(site, `content/products/${id}.json`)).hero
+    const i = hero.title.indexOf(hero.emberWord)
+    expect(hero.emberWord.length, `${id}: emberWord`).toBeGreaterThan(0)
+    expect(i, `${id}: "${hero.emberWord}" in "${hero.title}"`).toBeGreaterThanOrEqual(0)
+    expect(hero.title.slice(0, i).split('`').length % 2, `${id}: ember word inside backticks`).toBe(1)
+  })
+
   it('covers all 40 products, and the products index lists exactly them', () => {
     expect(IDS).toHaveLength(40)
     const index = read<{ groups?: { products: { id: string }[] }[]; products?: { id: string }[] }>(resolve(site, 'content/_products.json'))

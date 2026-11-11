@@ -6,6 +6,7 @@
  "category": "fundamentals · translations",
  "hero": {
   "title": "`count === 1` is not a plural rule.",
+  "emberWord": "not",
   "lede": "Translations, plurals, prices and dates that follow each language's own rules, and switch language live without a reload or a re-render. The message format is i18next's, so your JSON files come with you.",
   "install": "bun add @pyreon/i18n",
   "ctaShort": "Install",

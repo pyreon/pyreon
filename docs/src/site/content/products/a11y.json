@@ -6,6 +6,7 @@
  "category": "fundamentals · accessibility",
  "hero": {
   "title": "One line, and screen readers hear “Saved”.",
+  "emberWord": "“Saved”",
   "lede": "`announce('Saved')` speaks to screen-reader users from anywhere in your app, with no provider and nothing to mount. Add a signal-driven live region, a skip link, visually hidden labels and ARIA ids: the pieces single-page apps usually leave out.",
   "install": "bun add @pyreon/a11y",
   "ctaShort": "Install",

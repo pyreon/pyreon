@@ -6,6 +6,7 @@
  "category": "fundamentals · data grids",
  "hero": {
   "title": "Edit one cell. One cell updates. No `React.memo`.",
+  "emberWord": "One cell",
   "lede": "TanStack Table v9, with the table's state stored in Pyreon signals. Sort, filter, paginate and group with the API you know; change one price and exactly one text node changes, at 100 rows or 1,000, with no memo comparator to keep correct.",
   "install": "bun add @pyreon/table",
   "ctaShort": "Install",

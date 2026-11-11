@@ -6,6 +6,7 @@
  "category": "ui system · 11 packages",
  "hero": {
   "title": "Write every variant once. Get every combination, dark mode included.",
+  "emberWord": "once",
   "lede": "Describe states, sizes and variants as separate dimensions and rocketstyle turns each into a typed prop, with `mode(light, dark)` right next to the value. Underneath: the CSS-in-JS engine that beat Emotion and goober on every operation we timed, plus layout primitives, a responsive grid and motion.",
   "install": "bun add @pyreon/rocketstyle @pyreon/elements @pyreon/ui-core @pyreon/unistyle",
   "ctaShort": "Install",

@@ -6,6 +6,7 @@
  "category": "fundamentals · CRUD",
  "hero": {
   "title": "You have built this CRUD screen before. Declare it this time.",
+  "emberWord": "Declare",
   "lede": "Give `defineFeature` a name, a Zod schema and a REST path. You get the list, detail and search queries, create, update and delete mutations that refresh the list, a validated form that saves itself, a table with columns from the schema, and a store, all wired to Pyreon's query, form, table and store packages.",
   "install": "bun add @pyreon/feature",
   "ctaShort": "Install",

@@ -6,6 +6,7 @@
  "category": "multiplatform · iOS and Android",
  "hero": {
   "title": "Build the website. Get the iPhone and Android apps.",
+  "emberWord": "apps",
   "lede": "PMTC compiles the components you build from Pyreon's primitives into SwiftUI for iOS and Jetpack Compose for Android. Your buttons, fields and lists become the platform's own views, with no JavaScript engine shipped to draw them. Experimental, and we mean it.",
   "install": "npm create @pyreon/multiplatform@latest my-app",
   "ctaShort": "Create an app",

@@ -6,6 +6,7 @@
  "category": "fundamentals · local-first",
  "hero": {
   "title": "Same signal. Now it's multiplayer, and it works offline.",
+  "emberWord": "multiplayer",
   "lede": "A synced value is still a signal, backed by a CRDT. Edits from other tabs, devices and people merge, survive offline and come back after a reload, and each remote change updates only the DOM that reads it. Yjs does the merging; a relay server with per-room auth is included.",
   "install": "bun add @pyreon/sync",
   "ctaShort": "Install",

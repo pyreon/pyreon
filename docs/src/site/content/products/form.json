@@ -6,6 +6,7 @@
  "category": "fundamentals · forms",
  "hero": {
   "title": "Type in one field. The other eleven never notice.",
+  "emberWord": "never",
   "lede": "Every field's value, error, touched and dirty flag is its own signal, so a keystroke updates one input and nothing else. On a 12-field form against six popular form libraries, it was the fastest at all four timed operations.",
   "install": "bun add @pyreon/form",
   "ctaShort": "Install",

@@ -6,6 +6,7 @@
  "category": "tools · developer experience",
  "hero": {
   "title": "Catch the bug that type-checks and never updates.",
+  "emberWord": "never",
   "lede": "`pyreon doctor` runs up to ten gates over your app and returns one score from 0 to 100, with the fix printed under each finding. Behind it: 133 lint rules that know what a signal is, a test kit that can assert an effect did not re-run, and a DevTools panel for the reactive graph.",
   "install": "bun add -D @pyreon/cli @pyreon/lint @pyreon/testing",
   "ctaShort": "Install",

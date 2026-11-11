@@ -6,6 +6,7 @@
  "category": "fundamentals · hooks",
  "hero": {
   "title": "65 hooks. Zero cleanup code to write.",
+  "emberWord": "Zero",
   "lede": "From `useToggle` and `useClickOutside` to `useShare`, `useBiometrics` and `useGeolocation`. Each one removes its own listeners, timers and observers when the component unmounts, renders safely on the server, and hands back signals you can read anywhere.",
   "install": "bun add @pyreon/hooks",
   "ctaShort": "Install",

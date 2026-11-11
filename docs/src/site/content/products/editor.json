@@ -6,6 +6,7 @@
  "category": "fundamentals · editors",
  "hero": {
   "title": "Delete the useEffect that keeps your editor in sync.",
+  "emberWord": "Delete",
   "lede": "TipTap for rich text and CodeMirror 6 for code, wrapped so the document is a writable signal. Toolbars, word counts and save buttons read it directly, and a write from outside lands in the editor without echoing back.",
   "install": "bun add @pyreon/rich-text @pyreon/code",
   "ctaShort": "Install",

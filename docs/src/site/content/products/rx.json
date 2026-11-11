@@ -6,6 +6,7 @@
  "category": "fundamentals · reactive data",
  "hero": {
   "title": "`items().sort()` just mutated your state. `sortBy` does not.",
+  "emberWord": "mutated",
   "lede": "Filter, sort, group, search, sum: 43 functions in one package. Pass a signal and get a live computed back; pass a plain array and get an array. Derived lists become one line each, they never mutate the source, and `pipe` runs a whole chain as one reactive node.",
   "install": "bun add @pyreon/rx",
   "ctaShort": "Install",

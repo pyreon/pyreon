@@ -6,6 +6,7 @@
  "category": "fundamentals · diagrams",
  "hero": {
   "title": "Drag one node. Nothing else re-renders.",
+  "emberWord": "Nothing",
   "lede": "Node editors and diagrams on signals: nodes, edges, handles, pan and zoom, a minimap and seven layout algorithms, all built in. Each custom node mounts once and updates in place, and it beat React Flow 12 on all six operations we timed.",
   "install": "bun add @pyreon/flow",
   "ctaShort": "Install",

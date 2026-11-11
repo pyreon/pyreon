@@ -6,6 +6,7 @@
  "category": "fundamentals · feedback",
  "hero": {
   "title": "`toast('Saved')`. From a store, a loader, anywhere.",
+  "emberWord": "anywhere",
   "lede": "Mount one `<Toaster />`, then call `toast()` from components, stores, route loaders or a plain `fetch` wrapper. No provider, no hook, no context. Promise toasts, actions, a countdown that waits while the user reads, and the right screen-reader role for each type come with it.",
   "install": "bun add @pyreon/toast",
   "ctaShort": "Install",

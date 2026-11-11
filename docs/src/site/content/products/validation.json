@@ -6,6 +6,7 @@
  "category": "fundamentals · schema validation",
  "hero": {
   "title": "Write it like Zod. It won all 12 cells of our workload bench.",
+  "emberWord": "all 12",
   "lede": "`s` is a schema library with the chain you already know, compiled to one flat function on first parse. The same schema runs light in the browser and strict on the server, and Zod, Valibot or ArkType schemas plug into every Pyreon package that takes one.",
   "install": "bun add @pyreon/validate",
   "ctaShort": "Install",

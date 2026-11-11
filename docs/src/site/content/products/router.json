@@ -6,6 +6,7 @@
  "category": "core · routing",
  "hero": {
   "title": "Every navigation runs your guards. The Back button too.",
+  "emberWord": "Back",
   "lede": "Nested routes, loaders that finish before the page renders, guards, middleware and leave blockers, and `await router.push()` tells you whether the navigation committed, was cancelled or was superseded. The same route table runs in the browser, on the server and in the experimental iOS and Android builds.",
   "install": "bun add @pyreon/router",
   "ctaShort": "Install",

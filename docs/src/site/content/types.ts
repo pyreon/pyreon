@@ -14,6 +14,8 @@ export interface ProductPage {
   category: string              // 'fundamentals · forms'
   hero: {
     title: string
+    /** The one word (or short phrase) of `title` that carries the hook: rendered in the ember gradient with the underline sweep. Must occur in `title`, outside backticks. */
+    emberWord: string
     lede: string
     install: string             // shown in <InstallCommand>
     ctaShort: string            // nav pill label

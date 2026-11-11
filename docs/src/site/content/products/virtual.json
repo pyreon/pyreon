@@ -6,6 +6,7 @@
  "category": "fundamentals · large lists",
  "hero": {
   "title": "A hundred thousand rows. Twenty in the DOM.",
+  "emberWord": "Twenty",
   "lede": "TanStack Virtual with its state in Pyreon signals. Only the rows on screen exist, and a scroll adds the rows coming in and removes the ones going out: the rows that stay do no work, because there is no component to re-render.",
   "install": "bun add @pyreon/virtual",
   "ctaShort": "Install",

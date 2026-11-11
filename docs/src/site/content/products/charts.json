@@ -6,6 +6,7 @@
  "category": "fundamentals · data visualisation",
  "hero": {
   "title": "A quarter of ECharts' weight. Up to 8.7× faster.",
+  "emberWord": "8.7×",
   "lede": "Write a chart as JSX: rows in, marks as children, field names checked against your row type. Axes, an accessible data table and a spoken description come without asking (the tooltip is one `<Tooltip />` child), on canvas in the browser, as SVG on the server, and natively on iOS and Android.",
   "install": "bun add @pyreon/charts",
   "ctaShort": "Install",

@@ -6,6 +6,7 @@
  "category": "fundamentals · interaction",
  "hero": {
   "title": "A sortable list in one hook. Keyboard users included.",
+  "emberWord": "one hook",
   "lede": "Reorder lists, build kanban boards and take file drops on Atlassian's pragmatic-drag-and-drop. Space picks an item up, the arrows move it, a screen reader hears every step, and every drag state is a signal your JSX reads directly.",
   "install": "bun add @pyreon/dnd",
   "ctaShort": "Install",

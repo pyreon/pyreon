@@ -6,6 +6,7 @@
  "category": "fundamentals · state",
  "hero": {
   "title": "Global state with no selectors to write.",
+  "emberWord": "no selectors",
   "lede": "A store is a setup function: signals for state, computeds for derived values, plain functions for actions. Components read what they need and only that text updates, so there are no selectors, no equality functions and no provider. Patching, subscriptions, action hooks, reset and per-request SSR isolation are built in.",
   "install": "bun add @pyreon/store",
   "ctaShort": "Install",

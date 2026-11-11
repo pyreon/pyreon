@@ -6,6 +6,7 @@
  "category": "ui system · animation",
  "hero": {
   "title": "A presence animation is one line. The compositor runs it.",
+  "emberWord": "compositor",
   "lede": "`kinetic('div').preset(fadeUp)` gives you a component that animates in and out: fades, slides, zooms and height collapses. It runs on CSS transitions with no JavaScript animation loop, and renders on the server with its hidden state inlined.",
   "install": "bun add @pyreon/kinetic @pyreon/kinetic-presets",
   "ctaShort": "Install",

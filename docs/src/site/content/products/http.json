@@ -6,6 +6,7 @@
  "category": "fundamentals · requests",
  "hero": {
   "title": "Your API sent { id: 7 }. Your client called it a User.",
+  "emberWord": "User",
   "lede": "`@pyreon/http` is a `fetch` client that checks what comes back against your schema, times out by default, encodes path params for you and keeps errors typed. Retries, auth and mocks are plain middleware, and the core has zero dependencies.",
   "install": "bun add @pyreon/http",
   "ctaShort": "Install",

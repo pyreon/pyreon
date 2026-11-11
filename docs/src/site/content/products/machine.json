@@ -6,6 +6,7 @@
  "category": "fundamentals · state",
  "hero": {
   "title": "The spinner and the error, on screen together? Not any more.",
+  "emberWord": "together",
   "lede": "A machine is a signal that can only hold the states you declare and only moves along the events you allow. Read it like any signal, render from `matches()`, and let `can()` and `nextEvents()` enable the buttons. Against XState it sends events 34.7× faster.",
   "install": "bun add @pyreon/machine",
   "ctaShort": "Install",

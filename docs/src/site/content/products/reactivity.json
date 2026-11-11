@@ -6,6 +6,7 @@
  "category": "core · signals",
  "hero": {
   "title": "Delete useMemo, useCallback and every dependency array.",
+  "emberWord": "Delete",
   "lede": "Signals know who reads them, so derived values and effects keep themselves up to date and a write touches only what depends on it. It is the engine under every Pyreon app, with no dependencies, and it runs on its own in Node, Bun, a worker or a script.",
   "install": "bun add @pyreon/reactivity",
   "ctaShort": "Install",

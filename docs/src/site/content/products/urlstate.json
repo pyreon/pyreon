@@ -6,6 +6,7 @@
  "category": "fundamentals · url",
  "hero": {
   "title": "Refresh. Paste the link. The filters are still there.",
+  "emberWord": "still",
   "lede": "`useUrlState('page', 1)` is a signal that lives in the address bar, typed from its default. Search, sort, tabs and pagination survive a reload, a shared link and the back button, with no parsers to write and no adapter to mount.",
   "install": "bun add @pyreon/url-state",
   "ctaShort": "Install",

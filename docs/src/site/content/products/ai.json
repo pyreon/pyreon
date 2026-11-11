@@ -6,6 +6,7 @@
  "category": "tools · AI-assisted development",
  "hero": {
   "title": "Your assistant learned React. This teaches it Pyreon.",
+  "emberWord": "Pyreon",
   "lede": "An MCP server gives Claude Code, Cursor, Windsurf or any MCP client 24 tools: the real API from each package's manifest, the compiler's verdict on a snippet, and your own routes and components. In the editor, the Reactivity Lens marks each JSX expression `live` or `static` while you type.",
   "install": "bun add -D @pyreon/mcp",
   "ctaShort": "Add to your editor",

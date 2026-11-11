@@ -6,6 +6,7 @@
  "category": "fundamentals · documents",
  "hero": {
   "title": "Write the report once. Send it as a PDF, a spreadsheet or a Slack message.",
+  "emberWord": "once",
   "lede": "Build invoices, reports and notifications from JSX, then render the same tree to any of 20 formats, from PDF and Word to Teams cards and Notion blocks. Text formats need nothing else; PDF, Word, Excel and PowerPoint use an engine you install only if you emit them.",
   "install": "bun add @pyreon/document",
   "ctaShort": "Install",
