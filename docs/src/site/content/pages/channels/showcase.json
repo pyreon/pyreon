@@ -2,7 +2,7 @@
   "route": "/showcase",
   "meta": {
     "title": "Showcase · Pyreon",
-    "description": "What you can build with Pyreon: a full-stack Zero app with dashboards, chat, kanban and document export, a local-first collaborative board, one tasks app for web, iOS and Android, and React, Vue, Solid, Preact and Svelte code running on Pyreon."
+    "description": "What you can build with Pyreon: a full-stack Zero app with dashboards, chat, kanban and document export, a local-first collaborative board, one tasks app for web, iOS and Android (experimental), and React, Vue, Solid, Preact and Svelte code running on Pyreon."
   },
   "hero": {
     "eyebrow": "showcase",

@@ -7,7 +7,7 @@ export const checked = {
     "route": "/blog",
     "meta": {
       "title": "Pyreon blog",
-      "description": "How Pyreon works and what it can do: components that run once, one codebase for web, iOS and Android, and benchmarks you can run yourself."
+      "description": "How Pyreon works and what it can do: components that run once, one codebase for the web and, experimentally, iOS and Android, and benchmarks you can run yourself."
     },
     "hero": {
       "eyebrow": "blog",
@@ -84,7 +84,7 @@ export const checked = {
     "route": "/showcase",
     "meta": {
       "title": "Showcase · Pyreon",
-      "description": "What you can build with Pyreon: a full-stack Zero app with dashboards, chat, kanban and document export, a local-first collaborative board, one tasks app for web, iOS and Android, and React, Vue, Solid, Preact and Svelte code running on Pyreon."
+      "description": "What you can build with Pyreon: a full-stack Zero app with dashboards, chat, kanban and document export, a local-first collaborative board, one tasks app for web, iOS and Android (experimental), and React, Vue, Solid, Preact and Svelte code running on Pyreon."
     },
     "hero": {
       "eyebrow": "showcase",
@@ -339,7 +339,7 @@ export const checked = {
           "href": "/docs/getting-started"
         }
       ],
-      "note": "Repository counts come from the same code as the doc-claims check, which fails CI the moment a number in the docs drifts from the code.",
+      "note": "The package, lint-rule, MCP-tool and doc-page counts come from the same code as the doc-claims check, which fails CI the moment a number in the docs drifts from the code.",
       "noteLink": {
         "label": "The doc-claims check →",
         "href": "https://github.com/pyreon/pyreon/blob/main/scripts/check-doc-claims.ts"

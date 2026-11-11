@@ -65,7 +65,7 @@
         "href": "/docs/getting-started"
       }
     ],
-    "note": "Repository counts come from the same code as the doc-claims check, which fails CI the moment a number in the docs drifts from the code.",
+    "note": "The package, lint-rule, MCP-tool and doc-page counts come from the same code as the doc-claims check, which fails CI the moment a number in the docs drifts from the code.",
     "noteLink": {
       "label": "The doc-claims check →",
       "href": "https://github.com/pyreon/pyreon/blob/main/scripts/check-doc-claims.ts"

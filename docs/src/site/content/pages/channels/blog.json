@@ -2,7 +2,7 @@
   "route": "/blog",
   "meta": {
     "title": "Pyreon blog",
-    "description": "How Pyreon works and what it can do: components that run once, one codebase for web, iOS and Android, and benchmarks you can run yourself."
+    "description": "How Pyreon works and what it can do: components that run once, one codebase for the web and, experimentally, iOS and Android, and benchmarks you can run yourself."
   },
   "hero": {
     "eyebrow": "blog",
