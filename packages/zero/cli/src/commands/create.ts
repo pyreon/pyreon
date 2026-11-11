@@ -11,6 +11,7 @@
  * shipped for a long time, so the command always failed with
  * "Template not found".
  */
+import { reportFailure } from './report'
 import { spawnSync } from 'node:child_process'
 import { createRequire } from 'node:module'
 import { dirname, join } from 'node:path'
@@ -37,7 +38,7 @@ export function runCreate(args: readonly string[]): number {
     stdio: 'inherit',
   })
   if (result.error) {
-    console.error(`[Pyreon] zero create: could not start @pyreon/create-zero: ${result.error.message}`)
+    reportFailure('zero create', 'could not start @pyreon/create-zero', result.error, 'reinstall: npm install @pyreon/zero-cli')
     return 1
   }
   return result.status ?? 1

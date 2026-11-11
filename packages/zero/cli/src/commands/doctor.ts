@@ -1,3 +1,4 @@
+import { reportFailure } from './report'
 import { resolve } from 'node:path'
 
 export interface DoctorOptions {
@@ -26,7 +27,7 @@ export async function doctor(root: string | undefined, options: DoctorOptions) {
       process.exit(1)
     }
   } catch (error) {
-    console.error('[Pyreon] Doctor failed:', error)
+    reportFailure('zero doctor', 'Doctor failed', error)
     process.exit(1)
   }
 }

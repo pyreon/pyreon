@@ -1,3 +1,4 @@
+import { reportFailure } from './report'
 import { resolve } from 'node:path'
 import { build as viteBuild } from 'vite'
 
@@ -53,7 +54,7 @@ export async function build(root: string | undefined) {
   } catch (error) {
     // Keep the stack (and a Rolldown/Vite `frame`/`loc`): the message alone
     // hid WHERE a build failed.
-    console.error('[Pyreon] Build failed:', error)
+    reportFailure('zero build', 'Build failed', error)
     process.exit(1)
   }
 }
