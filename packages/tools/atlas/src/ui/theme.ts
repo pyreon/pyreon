@@ -16,6 +16,7 @@
  *   reach only the preview surface and the Theme Lab tiles, each inside its own
  *   `<PyreonUI>`, never the chrome.
  */
+import { isServer } from '@pyreon/reactivity'
 
 /**
  * Typography, shape, and motion scales — the STRUCTURAL half of the theme.
@@ -529,7 +530,7 @@ export function themeBootScript(): string {
 
 /** Read the shared preference in the browser (dark on the server). */
 export function readThemeMode(): ThemeMode {
-  if (typeof document === 'undefined') return 'dark'
+  if (isServer) return 'dark'
   let stored: string | null = null
   try {
     stored = localStorage.getItem(THEME_STORAGE_KEY)
@@ -543,6 +544,7 @@ export function readThemeMode(): ThemeMode {
 
 /** Persist an explicit choice. A failed write only means it does not survive a reload. */
 export function writeThemeMode(mode: ThemeMode): void {
+  if (isServer) return
   try {
     localStorage.setItem(THEME_STORAGE_KEY, mode)
   } catch {
