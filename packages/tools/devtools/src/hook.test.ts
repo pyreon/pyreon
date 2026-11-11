@@ -130,7 +130,11 @@ describe('createHook', () => {
     // Every fire of the cascade lands in the same clock tick, as it does in
     // a browser whose `performance.now()` is coarsened to 100 µs. The
     // inspector must still pick the computed (it fired after the signal).
-    const clock = vi.spyOn(performance, 'now').mockReturnValue(1000)
+    // Later than any real timestamp already recorded (activation, mounts): a
+    // fixed small value (the old `1000`) is EARLIER than the earlier fires once
+    // the test process has been up more than a second, as it has on a loaded
+    // CI runner, so the inspector picked an older cascade and the chain was [].
+    const clock = vi.spyOn(performance, 'now').mockReturnValue(performance.now() + 1_000_000)
     draft.set('Ship it')
     clock.mockRestore()
     h1.handle({ type: 'get-all' })
