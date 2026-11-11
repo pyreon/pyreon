@@ -6,7 +6,11 @@
 .site-page {
   max-width: 1080px;
   margin: 0 auto;
-  padding: 3rem 1.5rem 5rem;
+  /* Clear the marketing shell's floating nav bar (top 16px + 54px high). */
+  padding: 8rem 1.5rem 5rem;
+}
+@media (max-width: 640px) {
+  .site-page { padding: 6.5rem 1rem 4rem; }
 }
 .site-page__hero {
   max-width: 760px;

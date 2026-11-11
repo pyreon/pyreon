@@ -7,7 +7,7 @@ import { BLOG_DESCRIPTION, BLOG_FEED, BLOG_TITLE, NEWSLETTER_ACTION, SITE_ORIGIN
 
 /**
  * pyreon.dev/blog — `@pyreon/zero-content/blog` over the `blog` collection
- * in content.config.ts. The four files under `src/routes/blog/` are the
+ * in content.config.ts. The files under `src/routes/(site)/blog/` are the
  * index, its pages, a post and a tag page; everything they show is computed
  * from the PUBLISHED posts.
  */

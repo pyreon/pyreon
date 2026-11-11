@@ -17,13 +17,40 @@ production) landed in the cutover PR.
 | `src/content/blog/`         | Blog posts → `/blog/<slug>`, tags at `/blog/tags/<tag>`, feed at `/blog/rss.xml` |
 | `public/blog/covers/`       | Blog cover images (1600x840 PNG)                       |
 | `src/mdx/`                  | Convention-scanned components (PascalCase, used inline in `.md`) |
-| `src/components/`           | Layout shells used by `[...slug].tsx`                  |
-| `src/routes/`               | fs-router pages — index + catch-all `[...slug].tsx`    |
+| `src/components/`           | Docs layout pieces (header, sidebar, toc) and the pre-redesign landing |
+| `src/routes/`               | fs-router pages: `_layout.tsx` (root: head defaults + `<PyreonUI>`), `docs/` (docs shell), `(site)/` (marketing shell: home, products, brand, blog, showcase, open, discord, newsletter) |
+| `src/site/`                 | The redesigned marketing site: `theme.ts` (every token), `kit/` (rocketstyle components), `shell/` (nav, mega menu, mobile sheet, footer), `pages/`, `demos/` (live product demos as islands), `content/` (the content set, synced) |
 | `src/styles/`               | docs.css + syntax themes                               |
 | `src/examples/`             | Real `.tsx` example components mounted via `<Example>` |
 | `content.config.ts`         | `defineCollection({ schema })` declarations            |
 | `vite.config.ts`            | Vite + zero + zero-content + last-updated plugin wire  |
 | `vite-plugins/`             | `last-updated` (per-page git mtime injection)          |
+
+## Marketing site (`src/site/`)
+
+Built with Pyreon's own UI system (rocketstyle on `@pyreon/elements`, styler,
+unistyle, coolgrid, kinetic). The root `<PyreonUI>` runs in CSS-variables mode
+(`src/site/ui-init.ts`): every `mode(light, dark)` pair is one custom
+property, so prerendered HTML serves both themes and the pre-paint script in
+`index.html` picks one (stored choice under `pyreon-theme`, else the OS).
+The hand-written stylesheets sit in a `docs` cascade layer below the UI
+system's layers (`vite-plugins/legacy-css-layer.ts`).
+
+- **Tokens:** `src/site/theme.ts` is the only place a colour, size or easing
+  lives. Kit components read it directly (`tone(m, 'text')` for mode pairs).
+- **Kit gallery:** `/brand/kit` shows every component in both themes.
+- **Content:** `src/site/content/` is a copy of the content set
+  (`pyreon-promo/09-site`). Re-sync with
+  `bun scripts/sync-site-content.ts <path-to-09-site> [id ...]`; never edit the
+  copied JSON here. App-side additions live in `content/model.ts` and
+  `content/extra-sections.ts`.
+- **Adding a product page:** sync its `<id>.json`, write
+  `src/site/demos/Demo<Name>.tsx` with the real package, add one line to
+  `src/site/demos/registry.ts`. The route `/products/[id]` prerenders every
+  content file present; code in it is highlighted at build time
+  (`vite-plugins/product-content.ts`).
+- **Tests:** `bun run test` (unit, incl. token contrast) and the real-Chromium
+  shell spec `e2e/site-shell.spec.ts` (`bun run test:e2e:docs`).
 
 ## Run
 
@@ -68,7 +95,7 @@ bun run preview
 
 The blog runs on `@pyreon/zero-content/blog` (guide: `/docs/blog`):
 `blogCollection()` in `content.config.ts`, `defineBlog(...)` in
-`src/blog/blog.ts`, five one-line routes under `src/routes/blog/` (index,
+`src/blog/blog.ts`, five one-line routes under `src/routes/(site)/blog/` (index,
 `page/[page]`, `[slug]`, `tags/[tag]/index`, `tags/[tag]/page/[page]`).
 Every post ends with its own "Start building" section in the markdown, so
 `postEnd` turns the module's call-to-action box off: after a post come the
@@ -121,7 +148,7 @@ published ones).
 
 Four standalone pages that posts link to, so their addresses must never move.
 
-- **`/open`** (`src/routes/open.tsx`, `src/open/`): live project numbers. They
+- **`/open`** (`src/routes/(site)/open.tsx`, `src/open/`): live project numbers. They
   are fetched once per build by `vite-plugins/open-stats.ts` (GitHub repo,
   search and release APIs; npm download ranges for `@pyreon/core`,
   `@pyreon/zero` and `@pyreon/create-zero`) and baked into the page, so the
@@ -131,7 +158,7 @@ Four standalone pages that posts link to, so their addresses must never move.
   renders as "unavailable right now" and never fails the build. CI passes
   `GITHUB_TOKEN`; locally it works without one.
   `PYREON_OPEN_STATS_OFFLINE=1 bun run build` skips the network.
-- **`/showcase`** (`src/routes/showcase.tsx`, `src/showcase/examples.ts`):
+- **`/showcase`** (`src/routes/(site)/showcase.tsx`, `src/showcase/examples.ts`):
   the examples gallery. Screenshots are in `public/showcase/` (WebP, 960x600
   desktop, 360x640 phone). The deploy also builds `examples/collab-board` and
   `examples/react-compat` into `/showcase/<name>/` as live demos (see

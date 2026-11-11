@@ -45,7 +45,7 @@
    },
    {
     "title": "The same call on the phone",
-    "text": "Compiled for iOS, `announce()` becomes a VoiceOver announcement; on Android the compiler hosts polite and assertive live regions for TalkBack. Politeness carries over on both.",
+    "text": "Compiled for iOS (native targets are experimental), `announce()` becomes a VoiceOver announcement; on Android the compiler hosts polite and assertive live regions for TalkBack. Politeness carries over on both (iOS 17 and later).",
     "status": "next release"
    }
   ]
@@ -93,15 +93,15 @@
     "text": "empties the region so stale text is not read again later"
    },
    {
-    "name": "<LiveRegion>",
+    "name": "`<LiveRegion>`",
     "text": "driven by a signal, with `visible` for status text everyone should see"
    },
    {
-    "name": "<VisuallyHidden>",
+    "name": "`<VisuallyHidden>`",
     "text": "labels and headings for assistive tech, kept in the accessibility tree"
    },
    {
-    "name": "<SkipLink>",
+    "name": "`<SkipLink>`",
     "text": "moves scroll and keyboard focus past the navigation (WCAG 2.4.1)"
    },
    {
@@ -109,7 +109,7 @@
     "text": "unique ids for `aria-labelledby`, `aria-describedby` and `for`"
    },
    {
-    "name": "<RouteAnnouncer> and useRouteAnnouncer",
+    "name": "`<RouteAnnouncer>` and `useRouteAnnouncer`",
     "text": "custom route-change wording, with a dev warning if two announcers run at once"
    },
    {
@@ -119,7 +119,7 @@
   ]
  },
  "api": {
-  "title": "8 exports, two entry points.",
+  "title": "8 exports for your app, two entry points.",
   "groups": [
    {
     "name": "announcements",
@@ -196,7 +196,7 @@
    "category": "ui system",
    "name": "Motion",
    "text": "Animations that respect reduced motion.",
-   "package": "@pyreon/kinetic"
+   "package": "@pyreon/kinetic + kinetic-presets"
   }
  ],
  "end": {
@@ -232,11 +232,11 @@
    "a": "Screen readers often ignore a live region that is created and filled in the same moment, and rapid writes overwrite each other. The short wait lets the region exist first and lets messages sent together be joined into one announcement."
   },
   {
-   "q": "announce() or <LiveRegion>?",
+   "q": "`announce()` or `<LiveRegion>`?",
    "a": "`announce()` for one-off events with no place in the layout, like \"Copied\". `<LiveRegion>` when the status already lives somewhere on the page, like a result count or a \"Saving…\" line."
   },
   {
-   "q": "Do I need <RouteAnnouncer> with the Pyreon router?",
+   "q": "Do I need `<RouteAnnouncer>` with the Pyreon router?",
    "a": "Usually not: the root `<RouterView>` announces route changes on its own. Use `<RouteAnnouncer>` for custom wording or politeness, and pass `announceRouteChanges={false}` to `<RouterView>` when you do."
   },
   {

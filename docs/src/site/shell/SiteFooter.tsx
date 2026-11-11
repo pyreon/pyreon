@@ -26,7 +26,7 @@ const Grid = el
     gridTemplateColumns: {
       xs: 'repeat(2, minmax(0, 1fr))',
       md: 'repeat(3, minmax(0, 1fr))',
-      xl: 'minmax(0, 1.6fr) repeat(5, minmax(0, 1fr))',
+      xl: 'minmax(0, 2fr) repeat(5, minmax(0, 1fr))',
     },
     gap: 36,
   }))
