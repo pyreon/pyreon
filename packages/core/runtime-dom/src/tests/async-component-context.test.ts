@@ -27,11 +27,21 @@
  * unmount closure makes the sibling spec read `'from-async'`; dropping the
  * `setHydrating(true)` around the async hydrate makes the Suspense spec show
  * the fallback instead of the server node.
+ *
+ * Seeing its ancestors' context means the resolved subtree now also sees an
+ * enclosing `<Suspense>`. A still-loading `lazy()` in it registers there, and
+ * the boundary moves its content off-screen synchronously — which, outside a
+ * batch, happened halfway through the continuation's `mountChild` and threw
+ * `insertBefore` NotFoundError, leaving an empty route. The continuation now
+ * runs in a `batch()` (as every effect-driven mount already does) and mounts
+ * into the placeholder's LIVE parent (the content may already be off-screen
+ * for another pending load). Bisect: without the batch the first Suspense
+ * mount spec throws; with the setup-time `parent` the second one does.
  */
 import { Suspense, createContext, h, lazy, provide, useContext } from '@pyreon/core'
 import type { ComponentFn } from '@pyreon/core'
 import { renderToString } from '@pyreon/runtime-server'
-import { afterEach, describe, expect, test } from 'vitest'
+import { afterEach, describe, expect, test, vi } from 'vitest'
 import { hydrateRoot } from '../hydrate'
 import { disableHydrationWarnings, mount } from '../index'
 
@@ -161,5 +171,74 @@ describe('async component hydrate runs inside the hydration walk', () => {
     await settle()
     expect(el.querySelector('.q')).toBe(serverQuote)
     expect(el.querySelector('.q')?.textContent).toBe('quote:a')
+  })
+})
+
+describe('async component under a <Suspense> on mount', () => {
+  const Quote: ComponentFn = () => h('p', { class: 'q' }, 'quote')
+  function pendingLazy(): { L: ComponentFn; release: () => void } {
+    let resolve!: (m: { default: ComponentFn }) => void
+    const L = lazy(() => new Promise<{ default: ComponentFn }>((r) => (resolve = r)))
+    return { L: L as unknown as ComponentFn, release: () => resolve({ default: Quote }) }
+  }
+  const fallback = (): ReturnType<typeof h> => h('i', { class: 'fb' }, 'loading')
+  const errorText = (spy: { mock: { calls: unknown[][] } }): string[] =>
+    spy.mock.calls.map((c) => c.map(String).join(' '))
+
+  test('a still-loading lazy() in the resolved subtree suspends the boundary without breaking the mount', async () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      const { L, release } = pendingLazy()
+      const Article = (): ReturnType<typeof h> =>
+        h('section', null, h('h2', null, 'title'), h(L, null), h('footer', null, 'end'))
+      const AsyncBody = (async () => {
+        await new Promise((r) => setTimeout(r, 0))
+        return h('div', { class: 'body' }, h(Article, null))
+      }) as unknown as ComponentFn
+      const el = container()
+      mount(h('main', null, h(Suspense, { fallback: fallback() }, h(AsyncBody, null))), el)
+
+      await settle()
+      expect(errorText(errors)).toEqual([])
+      expect(el.querySelector('.fb')).not.toBeNull()
+
+      release()
+      await settle()
+      expect(errorText(errors)).toEqual([])
+      expect(el.querySelector('.fb')).toBeNull()
+      expect(el.querySelector('.body section h2')?.textContent).toBe('title')
+      expect(el.querySelector('.body section .q')?.textContent).toBe('quote')
+      expect(el.querySelector('.body section footer')?.textContent).toBe('end')
+    } finally {
+      errors.mockRestore()
+    }
+  })
+
+  test('an async component that resolves while its boundary is off-screen for another load mounts there', async () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      const { L, release } = pendingLazy()
+      const AsyncBody = (async () => {
+        await new Promise((r) => setTimeout(r, 0))
+        return h('div', { class: 'body' }, 'async body')
+      }) as unknown as ComponentFn
+      const Both = (() => [h(AsyncBody, null), h(L, null)]) as unknown as ComponentFn
+      const el = container()
+      mount(h('main', null, h(Suspense, { fallback: fallback() }, h('span', null, 'x'), h(Both, null))), el)
+
+      // AsyncBody resolves while the sibling lazy still holds the boundary.
+      await settle()
+      expect(errorText(errors)).toEqual([])
+      expect(el.querySelector('.fb')).not.toBeNull()
+
+      release()
+      await settle()
+      expect(errorText(errors)).toEqual([])
+      expect(el.querySelector('.fb')).toBeNull()
+      expect(el.querySelector('.body')?.textContent).toBe('async body')
+      expect(el.querySelector('.q')?.textContent).toBe('quote')
+    } finally {
+      errors.mockRestore()
+    }
   })
 })
