@@ -29,7 +29,7 @@
  *
  * DELIBERATE EXEMPTION — notifier jobs (`NOTIFIER_WORKFLOWS`): when the
  * notification IS the job's deliverable rather than a side-channel next to a
- * real gate (`native-device.yml`'s nightly sticky issue), swallowing the
+ * real gate (`native-device-nightly-status.yml`'s sticky issue), swallowing the
  * error would let a red nightly vanish silently — the catalogued dead-gate
  * class. Those keep `retries:` but must stay LOUD, so the catch half is not
  * required (and the gate asserts they still carry retries).
@@ -54,7 +54,7 @@ const WORKFLOWS_DIR = join(REPO_ROOT, '.github/workflows')
  * Workflows whose comment/issue post IS the deliverable — retries required,
  * swallow-all catch deliberately NOT required (see the header rationale).
  */
-export const NOTIFIER_WORKFLOWS = new Set(['native-device.yml', 'published-state.yml', 'zero-freshness.yml'])
+export const NOTIFIER_WORKFLOWS = new Set(['native-device-nightly-status.yml', 'published-state.yml', 'zero-freshness.yml'])
 
 /** Octokit calls that write a PR comment / issue — the steps this gate covers. */
 const COMMENT_CALL_RE = /issues\.(createComment|updateComment|create)\b/

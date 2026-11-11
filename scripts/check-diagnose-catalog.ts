@@ -1,9 +1,10 @@
 #!/usr/bin/env bun
 /**
- * CI guard: PRs touching framework error-surface SOURCE CODE in
- * `runtime-dom/`, `runtime-server/`, `core/`, `compiler/`, `router/` must
- * grow the `ERROR_PATTERNS` catalog in
- * `packages/core/compiler/src/diagnose.ts` — or carry a
+ * CI guard: a PR that ADDS OR EDITS a user-visible error or warning message in
+ * the framework's error-surface source (`runtime-dom/`, `runtime-server/`,
+ * `core/`, `compiler/`, `router/`) must leave that message matched by the
+ * `ERROR_PATTERNS` catalog in `packages/core/compiler/src/diagnose.ts` — an
+ * existing entry that already matches it, or a new entry — or carry the
  * `skip-diagnose-catalog` label.
  *
  * ## Why
@@ -66,21 +67,38 @@
  *   `packages/internals/test-utils/src/tests/check-diagnose-catalog.test.ts`.
  *   Same shape as `scripts/affected.ts` / `scripts/e2e-affected.ts`.
  *
+ * ## What counts as a message (the demand comes from the diff's CONTENT)
+ *
+ * The first versions demanded catalog growth whenever a sensitive source file
+ * changed at all. On 2026-11-10 that fired on 13 PRs, and more than ten of
+ * them were perf-only changes that touched no message and needed the label.
+ * A directory says nothing about error surface; a message string does. So the
+ * gate lexes the base (merge-base) and HEAD content of each changed sensitive
+ * file (`extractMessages`) and collects every string or template literal that
+ *
+ * - contains `[Pyreon]`, or
+ * - is an argument of `new XError(…)` / `XError(…)`, `console.warn|error(…)`
+ *   or a `warn…(` helper (`warn`, `warnOutsideSetup`, `_warnTextCoercion`), or
+ * - follows `throw`, or is the value of a `message:` property,
+ *
+ * joining `+`-concatenated pieces and normalizing whitespace, quote escapes and
+ * interpolations (`${}`). A HEAD message whose normalized text exists nowhere
+ * at base is new or edited; one that was moved, re-quoted or re-wrapped is not.
+ * The catalog file itself is excluded (its strings are diagnoses, not errors).
+ *
  * ## Mechanics
  *
- * 1. Get changed-file list via `git diff origin/${BASE_REF}...HEAD`.
- * 2. Filter through `isSensitiveSourceFile`. If none → exit 0.
- * 3. If `HAS_SKIP_LABEL=true` → exit 0 (deliberate bypass).
- * 4. If `HEAD_REF` matches `changeset-release/*` → exit 0 (release PR).
- * 5. Count `ERROR_PATTERNS` entries in `diagnose.ts` at HEAD and at the
- *    MERGE-BASE of `origin/${BASE_REF}` and HEAD — the same base step 1
- *    diffs against. If HEAD count > base count → pass. Never the tip of
- *    `origin/${BASE_REF}`: a queued job fetches the base AFTER the event
- *    froze the PR's merge ref, so an entry that landed on the base in
- *    between was counted against the PR (2026-11-10: #4289 saw
- *    `base=123 → head=122`, #4284's own new entry read as no growth).
- * 6. Otherwise → fail with a clear "add a new entry, or label to bypass"
- *    message.
+ * 1. Changed files via `git diff --no-renames <base>...HEAD`; a failure to
+ *    compute it fails CLOSED.
+ * 2. No sensitive file → pass. Release branch or label → pass.
+ * 3. No new or edited message → pass (`skip-no-message-change`).
+ * 4. Every new message matched by a HEAD `ERROR_PATTERNS` regex (tried with a
+ *    few stand-ins for each `${}`) → pass.
+ * 5. Otherwise the catalog must have grown, or the gate fails and names each
+ *    unmatched message with its file and line.
+ *
+ * `--base=<rev> --head=<rev>` evaluates any two revisions without a checkout
+ * (e.g. a merged PR's squash commit against its parent).
  */
 
 import { gitChangedFilesZ } from './changed-files'
@@ -138,6 +156,323 @@ export function isSensitiveSourceFile(file: string): boolean {
   if (file.endsWith('/src/manifest.ts')) return false
 
   return true
+}
+
+// ─── User-visible messages (what the gate actually asks about) ─────────────
+
+/**
+ * One user-visible message found in a source file. `text` is normalized so a
+ * message that was only moved, re-quoted, re-wrapped or split across `+` keeps
+ * the same identity: whitespace runs collapse to one space, quote escapes are
+ * dropped, and every interpolation or non-literal operand becomes `${}`.
+ */
+export interface SourceMessage {
+  text: string
+  file: string
+  line: number
+}
+
+type Tok =
+  | { k: 'str'; text: string; line: number }
+  | { k: 'regex'; body: string; flags: string; line: number }
+  | { k: 'id'; text: string; line: number }
+  | { k: 'num'; line: number }
+  | { k: 'p'; text: string; line: number }
+
+/** Keywords after which a `/` starts a regular expression, not a division. */
+const REGEX_AFTER_KEYWORD = new Set([
+  'return', 'typeof', 'instanceof', 'in', 'of', 'new', 'delete', 'void', 'throw',
+  'case', 'do', 'else', 'yield', 'await',
+])
+
+/**
+ * A small TypeScript lexer: just enough to find string/template literals,
+ * regex literals, identifiers and punctuation without mistaking a comment, a
+ * regex or a division for a string. It runs without `node_modules` (the gate's
+ * CI job installs nothing), which is why it is not the TypeScript parser.
+ */
+export function lexSource(src: string): Tok[] {
+  const n = src.length
+  let line = 1
+
+  const readQuoted = (start: number): [string, number] => {
+    const q = src[start]!
+    let j = start + 1
+    let text = ''
+    while (j < n && src[j] !== q && src[j] !== '\n') {
+      if (src[j] === '\\') {
+        if (src[j + 1] === '\n') line++
+        text += src.slice(j, j + 2)
+        j += 2
+      } else text += src[j++]
+    }
+    return [text, j + 1]
+  }
+
+  // A template literal from its opening backtick: its text with `${}` for each
+  // interpolation, and the index after the closing backtick. Interpolations are
+  // lexed as code (they can hold strings, regexes, templates and braces) into a
+  // scratch list that is dropped.
+  const readTemplate = (start: number): [string, number] => {
+    let j = start + 1
+    let text = ''
+    while (j < n) {
+      const c = src[j]!
+      if (c === '\\') {
+        if (src[j + 1] === '\n') line++
+        text += src.slice(j, j + 2)
+        j += 2
+      } else if (c === '`') {
+        return [text, j + 1]
+      } else if (c === '$' && src[j + 1] === '{') {
+        text += '${}'
+        j = scan(j + 2, true, [])
+      } else {
+        if (c === '\n') line++
+        text += c
+        j++
+      }
+    }
+    return [text, j]
+  }
+
+  // Lexes from `start` into `toks`. With `untilBrace`, stops after the `}`
+  // that closes an interpolation (depth 0) and returns the index after it.
+  function scan(start: number, untilBrace: boolean, toks: Tok[]): number {
+    let i = start
+    let depth = 0
+    const regexAllowed = (): boolean => {
+      const last = toks[toks.length - 1]
+      if (!last) return true
+      if (last.k === 'id') return REGEX_AFTER_KEYWORD.has(last.text)
+      if (last.k === 'num' || last.k === 'str' || last.k === 'regex') return false
+      return last.text !== ')' && last.text !== ']'
+    }
+    while (i < n) {
+      const c = src[i]!
+      if (c === '\n') {
+        line++
+        i++
+      } else if (c === ' ' || c === '\t' || c === '\r') i++
+      else if (c === '/' && src[i + 1] === '/') {
+        const nl = src.indexOf('\n', i)
+        i = nl === -1 ? n : nl
+      } else if (c === '/' && src[i + 1] === '*') {
+        const end = src.indexOf('*/', i + 2)
+        const stop = end === -1 ? n : end + 2
+        for (let j = i; j < stop; j++) if (src[j] === '\n') line++
+        i = stop
+      } else if (c === "'" || c === '"') {
+        const startLine = line
+        const [text, end] = readQuoted(i)
+        toks.push({ k: 'str', text, line: startLine })
+        i = end
+      } else if (c === '`') {
+        const startLine = line
+        const [text, end] = readTemplate(i)
+        toks.push({ k: 'str', text, line: startLine })
+        i = end
+      } else if (c === '/' && regexAllowed()) {
+        let j = i + 1
+        let inClass = false
+        while (j < n && src[j] !== '\n') {
+          const d = src[j]!
+          if (d === '\\') j += 2
+          else {
+            if (d === '[') inClass = true
+            else if (d === ']') inClass = false
+            else if (d === '/' && !inClass) break
+            j++
+          }
+        }
+        const body = src.slice(i + 1, j)
+        let k = j + 1
+        while (k < n && /[a-z]/i.test(src[k]!)) k++
+        toks.push({ k: 'regex', body, flags: src.slice(j + 1, k), line })
+        i = k
+      } else if (/[A-Za-z_$]/.test(c)) {
+        let j = i + 1
+        while (j < n && /[\w$]/.test(src[j]!)) j++
+        toks.push({ k: 'id', text: src.slice(i, j), line })
+        i = j
+      } else if (/[0-9]/.test(c)) {
+        let j = i + 1
+        while (j < n && /[\w.]/.test(src[j]!)) j++
+        toks.push({ k: 'num', line })
+        i = j
+      } else {
+        if (untilBrace) {
+          if (c === '{') depth++
+          else if (c === '}' && depth-- === 0) return i + 1
+        }
+        toks.push({ k: 'p', text: c, line })
+        i++
+      }
+    }
+    return i
+  }
+
+  const toks: Tok[] = []
+  scan(0, false, toks)
+  return toks
+}
+
+/** Collapse a literal's raw text to its identity (see `SourceMessage`). */
+export function normalizeMessage(raw: string): string {
+  return raw.replace(/\\(['"`])/g, '$1').replace(/\s+/g, ' ').trim()
+}
+
+/**
+ * Whether a call or constructor with this callee emits a user-visible message
+ * through its arguments: `new XError(…)` / `XError(…)`, `console.warn|error(…)`,
+ * any `warn…(` helper (`warn`, `warnOutsideSetup`, `_warnTextCoercion`, a
+ * `logger.warn`), which is how the framework's dev warnings are written.
+ */
+function isMessageCallee(name: string | undefined, object: string | undefined): boolean {
+  if (name === undefined) return false
+  if (name.endsWith('Error')) return true
+  if (object === 'console' && (name === 'warn' || name === 'error')) return true
+  return /^_?warn/i.test(name)
+}
+
+/**
+ * Every user-visible message in one source file: a string or template literal
+ * (with `+`-joined pieces) that contains `[Pyreon]`, is an argument of a
+ * message-emitting call (see `isMessageCallee`), follows `throw`, or is the
+ * value of a `message:` property.
+ */
+export function extractMessages(source: string, file: string): SourceMessage[] {
+  const toks = lexSource(source)
+  const out: SourceMessage[] = []
+  // One frame per open bracket; `(` frames remember whether their callee emits messages.
+  const frames: boolean[] = []
+  const isP = (t: Tok | undefined, text: string) => t?.k === 'p' && t.text === text
+  let i = 0
+  while (i < toks.length) {
+    const t = toks[i]!
+    if (t.k === 'p') {
+      if (t.text === '(') {
+        const prev = toks[i - 1]
+        const name = prev?.k === 'id' ? prev.text : undefined
+        const obj = isP(toks[i - 2], '.') && toks[i - 3]?.k === 'id' ? (toks[i - 3] as { text: string }).text : undefined
+        frames.push(isMessageCallee(name, obj))
+      } else if (t.text === '[' || t.text === '{') frames.push(false)
+      else if (t.text === ')' || t.text === ']' || t.text === '}') frames.pop()
+      i++
+      continue
+    }
+    if (t.k !== 'str') {
+      i++
+      continue
+    }
+    // Build the `+`-joined group starting at this literal.
+    let text = isP(toks[i - 1], '+') ? '${}' : ''
+    text += t.text
+    let j = i + 1
+    while (isP(toks[j], '+')) {
+      const next = toks[j + 1]
+      if (next?.k === 'str') {
+        text += next.text
+        j += 2
+        continue
+      }
+      if (next?.k !== 'id' && next?.k !== 'num') break
+      // A simple operand: identifier(.identifier)* with optional call parens.
+      j += 2
+      while (isP(toks[j], '.') && toks[j + 1]?.k === 'id') j += 2
+      if (isP(toks[j], '(')) {
+        let depth = 0
+        do {
+          if (isP(toks[j], '(')) depth++
+          else if (isP(toks[j], ')')) depth--
+          j++
+        } while (j < toks.length && depth > 0)
+      }
+      text += '${}'
+    }
+    const before = toks[i - 1]
+    const inMessageCall = frames.length > 0 && frames[frames.length - 1] === true
+    const afterThrow = before?.k === 'id' && before.text === 'throw'
+    const messageProp = isP(before, ':') && toks[i - 2]?.k === 'id' && (toks[i - 2] as { text: string }).text === 'message'
+    const normalized = normalizeMessage(text)
+    if (normalized !== '' && (normalized.includes('[Pyreon]') || inMessageCall || afterThrow || messageProp)) {
+      out.push({ text: normalized, file, line: t.line })
+    }
+    i = j
+  }
+  return out
+}
+
+/**
+ * The regex of every `pattern:` in the `ERROR_PATTERNS` array of a catalog
+ * source. Unparseable patterns are skipped (the count check still sees them).
+ */
+export function extractCatalogPatterns(source: string): RegExp[] {
+  const start = source.indexOf(CATALOG_MARKER)
+  if (start === -1) return []
+  const toks = lexSource(source.slice(start + CATALOG_MARKER.length - 1))
+  const out: RegExp[] = []
+  let depth = 0
+  for (let i = 0; i < toks.length; i++) {
+    const t = toks[i]!
+    if (t.k === 'p' && t.text === '[') depth++
+    else if (t.k === 'p' && t.text === ']' && --depth === 0) break
+    else if (t.k === 'regex' && toks[i - 1]?.k === 'p' && (toks[i - 1] as { text: string }).text === ':') {
+      const key = toks[i - 2]
+      if (key?.k !== 'id' || key.text !== 'pattern') continue
+      try {
+        out.push(new RegExp(t.body, t.flags))
+      } catch {
+        /* not a pattern this lexer can rebuild; ignore */
+      }
+    }
+  }
+  return out
+}
+
+/** Stand-ins for `${}` when asking whether a catalog pattern matches a message. */
+const PLACEHOLDER_SAMPLES = ['x', 'foo', 'Foo', '0', '']
+
+/** Whether any catalog pattern matches the message for some interpolated value. */
+export function isCatalogued(message: string, patterns: readonly RegExp[]): boolean {
+  return PLACEHOLDER_SAMPLES.some((s) => {
+    const sample = message.split('${}').join(s)
+    return patterns.some((p) => {
+      p.lastIndex = 0
+      return p.test(sample)
+    })
+  })
+}
+
+export interface FileSources {
+  path: string
+  /** Content at the base ref, or null when the file is new. */
+  base: string | null
+  /** Content at HEAD, or null when the file was deleted. */
+  head: string | null
+}
+
+/**
+ * Messages present at HEAD whose normalized text exists nowhere at base among
+ * the sensitive files the PR touched. A message that was moved, re-quoted,
+ * re-wrapped or split differently has the same text on both sides, so it is not
+ * new; an edited message is. The catalog file itself is not an error surface.
+ */
+export function newMessages(sources: readonly FileSources[]): SourceMessage[] {
+  const relevant = sources.filter((s) => isSensitiveSourceFile(s.path) && s.path !== CATALOG_FILE)
+  const baseTexts = new Set<string>()
+  for (const s of relevant) if (s.base !== null) for (const m of extractMessages(s.base, s.path)) baseTexts.add(m.text)
+  const seen = new Set<string>()
+  const out: SourceMessage[] = []
+  for (const s of relevant) {
+    if (s.head === null) continue
+    for (const m of extractMessages(s.head, s.path)) {
+      if (baseTexts.has(m.text) || seen.has(m.text)) continue
+      seen.add(m.text)
+      out.push(m)
+    }
+  }
+  return out
 }
 
 /** True if ANY file in the list is a sensitive source-code change. */
@@ -229,52 +564,40 @@ function git(...args: string[]): string {
  * base branch, and any local run in a clone lacking the ref — i.e. exactly the
  * situations where a human is least likely to read the log.
  */
-function changedFiles(baseRef: string): string[] | null {
-  // `git diff --name-only` requires the merge-base form `<base>...HEAD`
+function changedFiles(baseRev: string, headRev: string): string[] | null {
+  // `git diff --name-only` requires the merge-base form `<base>...<head>`
   // to compare only commits unique to HEAD, not the union of both
   // branches' changes since divergence.
   try {
     // `--no-renames`: a file moved OUT of a sensitive package must still count.
-    return gitChangedFilesZ(`origin/${baseRef}...HEAD`, { args: ['--no-renames'] })
+    return gitChangedFilesZ(`${baseRev}...${headRev}`, { args: ['--no-renames'] })
   } catch (err) {
     // Loud, and NOT an empty diff.
     console.error(
-      `[check-diagnose-catalog] could not compute the diff against origin/${baseRef}: ` +
+      `[check-diagnose-catalog] could not compute the diff against ${baseRev}: ` +
         `${err instanceof Error ? err.message : String(err)}`,
     )
     return null
   }
 }
 
-/**
- * The commit the PR's catalog growth is measured from: the merge-base of
- * `origin/<baseRef>` and HEAD, or `null` when it cannot be computed. In CI
- * HEAD is the PR's merge ref, whose first parent is the base as of the
- * event, so this is that parent even when the base has moved on since.
- */
-function catalogBase(baseRef: string): string | null {
+/** The merge-base the `...` diff compares against, or null when git cannot find it. */
+function mergeBase(baseRev: string, headRev: string): string | null {
   try {
-    return git('merge-base', `origin/${baseRef}`, 'HEAD')
-  } catch (err) {
-    console.error(
-      `[check-diagnose-catalog] could not compute the merge-base with origin/${baseRef}: ` +
-        `${err instanceof Error ? err.message : String(err)}`,
-    )
-    return null
-  }
-}
-
-function readFileAt(ref: string, path: string): string | null {
-  try {
-    return git('show', `${ref}:${path}`)
+    return git('merge-base', baseRev, headRev) || null
   } catch {
     return null
   }
 }
 
-function readFileAtHead(path: string): string | null {
+/** A file's content at a revision, or null when it does not exist there. */
+function readFileAt(ref: string, path: string): string | null {
   try {
-    return git('show', `HEAD:${path}`)
+    return execFileSync('git', ['show', `${ref}:${path}`], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+      maxBuffer: 64 * 1024 * 1024,
+    })
   } catch {
     return null
   }
@@ -290,14 +613,18 @@ export type GateResult =
   | { kind: 'skip-no-sensitive-files' }
   | { kind: 'skip-release-pr'; headRef: string }
   | { kind: 'skip-label' }
+  | { kind: 'skip-no-message-change'; touched: string[] }
   | { kind: 'skip-missing-base-catalog' }
   | { kind: 'fail-parse'; baseCount: number; headCount: number }
   | { kind: 'fail-missing-head-catalog' }
-  | { kind: 'fail-no-growth'; baseCount: number; headCount: number; touched: string[] }
-  | { kind: 'ok'; baseCount: number; headCount: number }
+  | { kind: 'fail-uncatalogued'; baseCount: number; headCount: number; uncovered: SourceMessage[] }
+  | { kind: 'ok-covered'; messages: number }
+  | { kind: 'ok'; baseCount: number; headCount: number; messages: number }
 
 export interface GateInputs {
   files: string[]
+  /** Base and HEAD content of every changed sensitive file. */
+  sources: FileSources[]
   hasSkipLabel: boolean
   headRef: string
   baseSource: string | null
@@ -308,6 +635,11 @@ export interface GateInputs {
  * Pure policy evaluator. All side-effecting reads (git, env) happen in
  * `main()`; the result is computed here from plain data so the unit
  * tests can drive every branch without spawning a subprocess.
+ *
+ * The demand comes from the diff's CONTENT: a sensitive file changing is not
+ * enough, a user-visible message must be new or edited (`newMessages`). Such a
+ * message passes when a HEAD catalog pattern already matches it, or when the
+ * catalog grew in this PR.
  */
 export function evaluateGate(inp: GateInputs): GateResult {
   if (!touchesSensitivePaths(inp.files)) {
@@ -320,6 +652,11 @@ export function evaluateGate(inp: GateInputs): GateResult {
 
   if (inp.hasSkipLabel) {
     return { kind: 'skip-label' }
+  }
+
+  const added = newMessages(inp.sources)
+  if (added.length === 0) {
+    return { kind: 'skip-no-message-change', touched: sensitivePackagesTouched(inp.files) }
   }
 
   if (inp.baseSource === null) {
@@ -337,16 +674,17 @@ export function evaluateGate(inp: GateInputs): GateResult {
     return { kind: 'fail-parse', baseCount, headCount }
   }
 
-  if (headCount > baseCount) {
-    return { kind: 'ok', baseCount, headCount }
+  const patterns = extractCatalogPatterns(inp.headSource)
+  const uncovered = added.filter((m) => !isCatalogued(m.text, patterns))
+  if (uncovered.length === 0) {
+    return { kind: 'ok-covered', messages: added.length }
   }
 
-  return {
-    kind: 'fail-no-growth',
-    baseCount,
-    headCount,
-    touched: sensitivePackagesTouched(inp.files),
+  if (headCount > baseCount) {
+    return { kind: 'ok', baseCount, headCount, messages: added.length }
   }
+
+  return { kind: 'fail-uncatalogued', baseCount, headCount, uncovered }
 }
 
 /**
@@ -373,32 +711,46 @@ function main(): void {
   const HEAD_REF = REF_ALLOWLIST.test(RAW_HEAD_REF) ? RAW_HEAD_REF : ''
   const HAS_SKIP_LABEL = process.env['HAS_SKIP_LABEL'] === 'true'
 
-  const files = changedFiles(BASE_REF)
-  if (files === null) {
+  // `--base=<rev>` / `--head=<rev>` evaluate any two revisions (e.g. a merged
+  // PR's squash commit against its parent) without checking them out.
+  const argRev = (name: string): string | undefined => {
+    const hit = process.argv.find((a) => a.startsWith(`--${name}=`))
+    const value = hit?.slice(name.length + 3)
+    if (value !== undefined && !/^[a-zA-Z0-9._/^~-]+$/.test(value)) {
+      console.error(`[check-diagnose-catalog] FAILED — --${name} "${value}" is not a plain revision.`)
+      process.exit(1)
+    }
+    return value
+  }
+  const baseRev = argRev('base') ?? `origin/${BASE_REF}`
+  const headRev = argRev('head') ?? 'HEAD'
+
+  const files = changedFiles(baseRev, headRev)
+  const base = files === null ? null : mergeBase(baseRev, headRev)
+  if (files === null || base === null) {
     // Fail CLOSED. A gate that cannot see the diff has verified nothing, and
     // this one is a pinned required check — reporting success here asserts a
     // fact about a diff that was never obtained.
     console.error(
       `[check-diagnose-catalog] REFUSING to pass: the diff could not be computed, so this gate ` +
-        `verified NOTHING. Check that origin/${BASE_REF} exists in this clone ` +
+        `verified NOTHING. Check that ${baseRev} exists in this clone ` +
         `(CI uses fetch-depth: 0; a shallow clone or a renamed base branch will not have it).`,
     )
     process.exit(1)
   }
-  const base = catalogBase(BASE_REF)
-  if (base === null) {
-    // Fail CLOSED, as for the diff above: without a base there is no growth to measure.
-    console.error(
-      `[check-diagnose-catalog] REFUSING to pass: no merge-base between origin/${BASE_REF} and HEAD, ` +
-        `so catalog growth could not be measured.`,
-    )
-    process.exit(1)
-  }
+  // Contents at the merge-base, not the base branch tip: a message main edited
+  // after this branch forked must not read as this PR's change.
+  const sources: FileSources[] = files.filter(isSensitiveSourceFile).map((path) => ({
+    path,
+    base: readFileAt(base, path),
+    head: readFileAt(headRev, path),
+  }))
   const baseSource = readFileAt(base, CATALOG_FILE)
-  const headSource = readFileAtHead(CATALOG_FILE)
+  const headSource = readFileAt(headRev, CATALOG_FILE)
 
   const result = evaluateGate({
     files,
+    sources,
     hasSkipLabel: HAS_SKIP_LABEL,
     headRef: HEAD_REF,
     baseSource,
@@ -429,7 +781,7 @@ function main(): void {
 
     case 'skip-missing-base-catalog':
       console.log(
-        `[check-diagnose-catalog] Could not read \`${CATALOG_FILE}\` at the merge-base with origin/${BASE_REF} — skipping (likely a first-time-add of the catalog file).`,
+        `[check-diagnose-catalog] Could not read \`${CATALOG_FILE}\` at the merge-base with ${baseRev} — skipping (likely a first-time-add of the catalog file).`,
       )
       process.exit(0)
       break
@@ -448,30 +800,42 @@ function main(): void {
       process.exit(1)
       break
 
-    case 'ok':
+    case 'skip-no-message-change':
       console.log(
-        `[check-diagnose-catalog] OK — catalog grew by ${result.headCount - result.baseCount} entry(s). base=${result.baseCount} → head=${result.headCount}.`,
+        `[check-diagnose-catalog] Sensitive source touched (${result.touched.join(', ')}), but no ` +
+          'user-visible error or warning message was added or changed — gate not applicable.',
       )
       process.exit(0)
       break
 
-    case 'fail-no-growth':
-      console.error(
-        `[check-diagnose-catalog] Sensitive source touched (${result.touched.join(', ')}).`,
+    case 'ok-covered':
+      console.log(
+        `[check-diagnose-catalog] OK — ${result.messages} new or edited message(s), each already matched by an ERROR_PATTERNS entry.`,
       )
-      console.error(
-        `[check-diagnose-catalog] FAILED — this PR changes framework error-surface source code,`,
+      process.exit(0)
+      break
+
+    case 'ok':
+      console.log(
+        `[check-diagnose-catalog] OK — ${result.messages} new or edited message(s); catalog grew by ${result.headCount - result.baseCount} entry(s). base=${result.baseCount} → head=${result.headCount}.`,
       )
+      process.exit(0)
+      break
+
+    case 'fail-uncatalogued':
       console.error(
-        '  but ERROR_PATTERNS did not grow. Every bug fix in a framework subsystem that',
+        `[check-diagnose-catalog] FAILED — this PR adds or edits ${result.uncovered.length} user-visible ` +
+          'message(s) that no ERROR_PATTERNS entry matches:',
       )
-      console.error(
-        '  could surface as a user-visible error is an opportunity to teach the diagnose tool.',
-      )
+      for (const m of result.uncovered.slice(0, 20)) {
+        console.error(`  ${m.file}:${m.line}  ${JSON.stringify(m.text)}`)
+      }
+      if (result.uncovered.length > 20) console.error(`  … and ${result.uncovered.length - 20} more`)
       console.error('')
       console.error(
-        `Either add a new entry to \`ERROR_PATTERNS\` in \`${CATALOG_FILE}\`:`,
+        `Add an entry to \`ERROR_PATTERNS\` in \`${CATALOG_FILE}\` whose pattern matches the message`,
       )
+      console.error('(and a test for it), so `pyreon doctor diagnose` and the MCP `diagnose` tool can explain it:')
       console.error('')
       console.error('  {')
       console.error("    pattern: /your-error-regex/,")
@@ -479,12 +843,9 @@ function main(): void {
       console.error('  },')
       console.error('')
       console.error(
-        'Or, if this PR is genuinely catalog-irrelevant (internal refactor / perf-only /',
+        "If the message is not one a user can act on (an internal invariant, a debug string), add the",
       )
-      console.error(
-        "type tightening / docs-only change in core), add the 'skip-diagnose-catalog' label",
-      )
-      console.error('to bypass.')
+      console.error("'skip-diagnose-catalog' label to bypass.")
       console.error(
         `[check-diagnose-catalog] ERROR_PATTERNS entries: base=${result.baseCount} → head=${result.headCount}.`,
       )

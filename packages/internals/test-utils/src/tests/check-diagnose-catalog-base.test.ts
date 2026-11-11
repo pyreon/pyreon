@@ -70,22 +70,24 @@ function runGate(root: string) {
 }
 
 /**
- * main@t0 has entries a,b. The PR branches at t0 and touches runtime-dom
- * source; `withEntry` decides whether it also adds entry `pr` (at the end).
- * Then main moves to t1 by adding entry `main1` (at the start, so the two
- * additions do not conflict).
+ * main@t0 has entries zza,zzb. The PR branches at t0 and adds a new
+ * user-visible message to runtime-dom source that no entry matches, so the
+ * gate falls through to the growth count; `withEntry` decides whether the PR
+ * also adds entry `zzpr` (at the end). Then main moves to t1 by adding entry
+ * `zzmain` (at the start, so the two additions do not conflict). No pattern
+ * matches the message, so only the counts decide the verdict.
  */
 function scenario(withEntry: boolean) {
   const r = repo()
-  r.write(CATALOG_FILE, catalog(['a', 'b']))
+  r.write(CATALOG_FILE, catalog(['zza', 'zzb']))
   r.write('packages/core/runtime-dom/src/x.ts', 'export const x = 1\n')
   const t0 = r.commit('base')
   r.git('checkout', '-q', '-b', 'pr')
-  r.write('packages/core/runtime-dom/src/x.ts', 'export const x = 2\n')
-  if (withEntry) r.write(CATALOG_FILE, catalog(['a', 'b', 'pr']))
+  r.write('packages/core/runtime-dom/src/x.ts', "export const x = 1\nthrow new Error('[Pyreon] Boom.')\n")
+  if (withEntry) r.write(CATALOG_FILE, catalog(['zza', 'zzb', 'zzpr']))
   const pr = r.commit('pr')
   r.git('checkout', '-q', 'main')
-  r.write(CATALOG_FILE, catalog(['main1', 'a', 'b']))
+  r.write(CATALOG_FILE, catalog(['zzmain', 'zza', 'zzb']))
   const t1 = r.commit('main moves on')
   // What a fetch in the job sees: origin/main is the moved tip.
   r.git('update-ref', 'refs/remotes/origin/main', t1)
@@ -111,7 +113,7 @@ describe('check-diagnose-catalog measures growth from the merge-base', () => {
     expect(r.status).toBe(0)
   })
 
-  it('still fails a PR that touches error-surface source without adding an entry', () => {
+  it('still fails a PR that adds an uncatalogued message without adding an entry', () => {
     const s = scenario(false)
     s.git('checkout', '-q', 'pr')
     const r = runGate(s.root)
