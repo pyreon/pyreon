@@ -50,8 +50,8 @@ function App() {
 function User() {
   const route = useRoute<'/user/:id'>()
   const data = useLoaderData<{ name: string }>()
-  const params = useTypedSearchParams({ page: 'number', q: 'string' })
-  return <h1>{data.name} (id={route().params.id}, page={params().page})</h1>
+  const [search] = useTypedSearchParams({ page: 'number', q: 'string' })
+  return <h1>{data.name} (id={route().params.id}, page={search().page ?? 1})</h1>
 }
 
 mount(<App />, document.getElementById('app')!)
@@ -257,9 +257,10 @@ Structural sharing — returns the same object reference when validated values h
 For untyped or single-shot reads:
 
 ```ts
-const params = useSearchParams()         // accessor → URLSearchParams
-const typed = useTypedSearchParams({ page: 'number', q: 'string' })
-typed().page // number (NaN coerced to 0)
+const [params, setParams] = useSearchParams() // strings
+const [typed, setTyped] = useTypedSearchParams({ page: 'number', q: 'string' })
+typed().page // number | undefined (undefined when absent or not a number)
+setTyped({ page: 2 }) // other query params and the hash are kept
 ```
 
 ## View Transitions

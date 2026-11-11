@@ -47,9 +47,9 @@ beforeEach(() => {
 const form = { "content-type": "application/x-www-form-urlencoded", "x-auth": "ok" };
 
 describe("zero dev runs route form actions", { timeout: DEV_SERVER_TEST_TIMEOUT_MS }, () => {
-	// FIRST: nothing has rendered or imported extra-actions.ts yet.
+	// FIRST: nothing has rendered or imported routes/extra.ts yet.
 	it("a fresh dev server answers an action whose module nothing has loaded (manifest)", async () => {
-		const res = await devFetch(`${baseUrl}/_zero/actions/${actionId("src/extra-actions.ts", "ping")}`, "fresh action", {
+		const res = await devFetch(`${baseUrl}/_zero/actions/${actionId("src/routes/extra.ts", "ping")}`, "fresh action", {
 			observe: state,
 			method: "POST",
 			headers: { "content-type": "application/json" },
@@ -138,9 +138,9 @@ describe("zero dev runs route form actions", { timeout: DEV_SERVER_TEST_TIMEOUT_
 		expect(without.status).toBe(405);
 	});
 
-	it("an action added mid-session in a NEW non-route module joins the manifest", async () => {
-		const file = join(FIXTURE_DIR, "src", "late-actions.ts");
-		const id = actionId("src/late-actions.ts", "late");
+	it("an action added mid-session in a NEW page module joins the manifest", async () => {
+		const file = join(FIXTURE_DIR, "src", "routes", "late.ts");
+		const id = actionId("src/routes/late.ts", "late");
 		const call = () =>
 			devFetch(`${baseUrl}/_zero/actions/${id}`, "late action", {
 				observe: state,
@@ -153,7 +153,7 @@ describe("zero dev runs route form actions", { timeout: DEV_SERVER_TEST_TIMEOUT_
 			expect((await call()).status).toBe(404);
 			writeFileSync(
 				file,
-				"import { defineAction } from '@pyreon/zero/actions'\nexport const late = defineAction(async () => ({ late: true }))\n",
+				"import { defineAction } from '@pyreon/zero/actions'\nexport const late = defineAction(async () => ({ late: true }))\nexport default function Late() {\n  return null\n}\n",
 			);
 			// Drive the watcher's real entrypoint (OS file events are unreliable
 			// in CI — see the zero-hmr harness).

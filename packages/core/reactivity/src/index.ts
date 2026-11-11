@@ -111,6 +111,14 @@ export {
   signal,
 } from './signal'
 export { type WrapSignalOptions, wrapSignal } from './wrap-signal'
-export { createStore, isStore, markRaw, shallowReactive } from './store'
-export { runUntracked, runUntracked as untrack } from './tracking'
+export { createStore, isStore, markRaw, shallowReactive, snapshot } from './store'
+export { _captureRun, _releaseRun, type RunCapture } from './effect'
+export {
+  _frameReads,
+  _replayReads,
+  _sampleReads,
+  runUntracked,
+  runUntracked as untrack,
+  type SubscriberHost,
+} from './tracking'
 export { type WatchOptions, watch } from './watch'

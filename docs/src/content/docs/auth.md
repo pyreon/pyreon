@@ -11,6 +11,10 @@ Everything is secure by default — S256 PKCE, `state` and `nonce`, the RFC 9207
 
 ## Installation
 
+:::warning
+`@pyreon/auth` is **not on npm yet**: it ships in the next Pyreon release. Until then the commands below will fail; the package is available from the repository (`packages/fundamentals/auth`) if you build Pyreon from source.
+:::
+
 :::code-group
 
 ```bash [npm]

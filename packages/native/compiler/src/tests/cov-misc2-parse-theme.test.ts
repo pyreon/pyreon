@@ -100,11 +100,18 @@ describe('parse-theme — top-level key shapes', () => {
 
   it('reads a string key and a NUMERIC key, and skips a spread', () => {
     const src = `const base = {}
-      const theme = { ...base, 'data-x': 1, 900: '#eee', spacing: { md: 12 } }`
+      const theme = { ...base, 'data_x': 1, 900: '#eee', spacing: { md: 12 } }`
     expect(entriesOf(src, 'globals')).toEqual([
-      { name: 'data-x', value: { kind: 'number', value: 1 } },
+      { name: 'data_x', value: { kind: 'number', value: 1 } },
       { name: '900', value: { kind: 'string', value: '#eee' } },
     ])
+  })
+
+  it('skips a key that is not identifier characters — a token name becomes a Swift/Kotlin identifier', () => {
+    const src = `const theme = { 'data-x': 1, color: { 'a = 1; pwn(); let b': '#fff', ok: '#000' } }`
+    expect(entriesOf(src, 'globals')).toEqual([])
+    expect(entriesOf(src, 'color')).toEqual([{ name: 'ok', value: { kind: 'string', value: '#000' } }])
+    expect(parseTheme(src).warnings.filter((w) => w.includes('becomes a Swift/Kotlin identifier'))).toHaveLength(2)
   })
 
   it('skips a top-level key whose Literal is neither string nor number (a regex)', () => {

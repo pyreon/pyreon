@@ -37,7 +37,7 @@ function emitSwiftChartHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, ind
   // default is transparent, so a host without a theme is emitted as before).
   // The grammar element has no ground of its own: its desugared host does.
   if (e.tag === GRAMMAR_CHART_HOST || inner === 'EmptyView()') return inner
-  const bg = chartThemeFields(chartAttrExpr(e, 'theme'), e.tag, () => {}, SWIFT_CHART_TARGET.list, host.colorScope(), swiftChartScheme).background
+  const bg = chartThemeFields(chartAttrExpr(e, 'theme'), e.tag, () => {}, SWIFT_CHART_TARGET, host.colorScope(), swiftChartScheme).background
   return bg === '""' ? inner : `${inner}.background(pyreonChartColor(${bg}))`
 }
 

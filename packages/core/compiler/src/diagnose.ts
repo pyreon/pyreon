@@ -297,13 +297,6 @@ try { load() } catch (err) { return <p>{err.message}</p> }`,
       fix: 'Align `@pyreon/core` and `@pyreon/compiler` (and `@pyreon/vite-plugin`) to the same version — `pyreon upgrade` does this — and make sure only ONE `@pyreon/core` resolves (`pyreon info` reports version skew and duplicates). In the monorepo, run `bun scripts/bootstrap.ts` so the built `lib/` catches up with source.',
       fixCode:
         '// every @pyreon/* package on ONE version — the compiler\'s emit and core\'s exports move together\n// package.json\n"@pyreon/core": "0.52.0",\n"@pyreon/compiler": "0.52.0",\n"@pyreon/vite-plugin": "0.52.0"\n\n// or, in one step:\n// npx pyreon upgrade',
-      // package.json
-      '@pyreon/core': '0.52.0',
-      '@pyreon/compiler': '0.52.0',
-      '@pyreon/vite-plugin': '0.52.0',
-
-      // or, in one step:
-      // npx pyreon upgrade",
     }),
   },
   {
@@ -744,7 +737,7 @@ expect(extractDocumentTree(vnode).props).toEqual({})
 // GOOD — the real \`h()\` shape, which is what ships
 import { h } from '@pyreon/core'
 expect(extractDocumentTree(h(DocDocument, { title: 'Test' })).props.title).toBe('Test')`,
-      docs: '.agents/rules/test-environment-parity.md',
+      related: 'See `.agents/rules/test-environment-parity.md` (the test-environment parity rules the audit enforces).',
     }),
   },
   {
@@ -2388,6 +2381,22 @@ zero({ mode: 'ssg', ssg: { workers: 1 } })`,
         fixCode: `import { ${name} } from '@pyreon/compiler/${subpath}'`,
       }
     },
+  },
+  {
+    // `migrateReactCode` (MCP `migrate_react`, `pyreon check --fix`,
+    // `doctor --fix`) applies its rewrites as non-overlapping source spans; a
+    // structural edit swallows the edits inside what it replaces. Two edits
+    // that overlap WITHOUT one containing the other mean an input shape the
+    // migrator did not anticipate, so it refuses rather than drop either edit
+    // (the pre-#4287 dedupe silently dropped one, e.g. the `memo` unwrap).
+    pattern: /migrateReactCode: two rewrites overlap at offset (\d+)/,
+    diagnose: (m) => ({
+      cause: `The React-to-Pyreon migrator planned two rewrites whose source ranges partly overlap, around character offset ${m[1] ?? '?'} of the input. That is an input shape it does not handle (typically two constructs it rewrites, such as a \`memo\`/\`forwardRef\` wrapper and a hook call or JSX attribute, nested or adjacent in an unusual way). It stops instead of writing output with one of the rewrites silently missing, so nothing was changed.`,
+      fix: 'Find the construct at that offset of the file or snippet you passed (count characters from the start; in an editor, "go to offset"). Migrate the rest by passing the code without it, convert that construct by hand, and report the input at https://github.com/pyreon/pyreon/issues so the migrator learns the shape.',
+      fixCode: `// locate the offset the error names (0-based) in the input:
+const src = readFileSync('Component.tsx', 'utf8')
+console.log(JSON.stringify(src.slice(offset - 40, offset + 40)))`,
+    }),
   },
   {
     // Per-tab back stacks (#4060). `router.selectTab(name)` / `<Tabs router>`

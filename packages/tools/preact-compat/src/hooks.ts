@@ -150,16 +150,21 @@ export function useCallback<T extends (...args: never[]) => unknown>(fn: T, deps
 /**
  * Preact-compatible `useRef` — returns `{ current }` persisted across re-renders.
  */
-export function useRef<T>(initial?: T): { current: T | null } {
+export function useRef<T>(initial: T): { current: T }
+export function useRef<T>(initial: T | null): { current: T | null }
+export function useRef<T = undefined>(): { current: T | undefined }
+export function useRef<T>(initial?: T): { current: T | undefined } {
   const ctx = requireCtx()
   const idx = getHookIndex()
 
   if (ctx.hooks.length <= idx) {
-    const ref = { current: initial !== undefined ? (initial as T) : null }
-    ctx.hooks.push(ref)
+    // `useRef()` starts at `undefined`, exactly as Preact does — it used to be
+    // coerced to `null`, which broke the lazy-init idiom
+    // `if (ref.current === undefined) ref.current = create()`.
+    ctx.hooks.push({ current: initial })
   }
 
-  return ctx.hooks[idx] as { current: T | null }
+  return ctx.hooks[idx] as { current: T | undefined }
 }
 
 // ─── useReducer ──────────────────────────────────────────────────────────────
@@ -252,10 +257,18 @@ export function memo<P extends Record<string, unknown>>(
         ctx.hooks.push({ prevProps: null as P | null, prevResult: null as VNodeChild })
       }
       const cache = ctx.hooks[idx] as { prevProps: P | null; prevResult: VNodeChild }
-      if (cache.prevProps !== null && compare(cache.prevProps, props)) {
+      // Compare a SNAPSHOT, not the live props object: the wrapper hands the
+      // same object to every render of this instance (a native parent's
+      // reactive props are getters on it), so comparing it with itself was
+      // always "equal". And never skip a render the component asked for
+      // itself (state, context, store) — React's memo only skips a
+      // parent-driven render with shallow-equal props. Both used to return the
+      // stale cached result, silently dropping the update.
+      const snapshot = { ...props }
+      if (!ctx._selfUpdate && cache.prevProps !== null && compare(cache.prevProps, snapshot)) {
         return cache.prevResult
       }
-      cache.prevProps = props
+      cache.prevProps = snapshot
       cache.prevResult = component(props)
       return cache.prevResult
     }

@@ -17,6 +17,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { main } from '../cli/main'
+import { isInternalHost, refOriginPolicy } from '../cli/pull'
+import { parseArgv } from '../cli/run'
 
 const SPEC = `openapi: 3.1.0
 info: { title: Remote, version: '1' }
@@ -105,9 +107,14 @@ beforeAll(async () => {
         '/split/foreign.yaml': 'type: string\n',
         '/split/broken.yaml': splitRoot('missing.yaml'),
         '/split/local.yaml': splitRoot('file:///etc/hosts'),
+        // Same origin on paper, but the document redirects to another one.
+        '/split/bounce-root.yaml': splitRoot('bounce.yaml'),
       }
       const body = docs[req.url]
-      if (body === undefined) {
+      if (req.url === '/split/bounce.yaml') {
+        res.writeHead(302, { location: `http://localhost:${port}/split/foreign.yaml` })
+        res.end()
+      } else if (body === undefined) {
         res.writeHead(404)
         res.end('nope')
       } else if (
@@ -307,7 +314,9 @@ describe('lathe pull', () => {
     mkdirSync(join(dir, 'node_modules'))
     splitRequests.length = 0
     const url = `http://127.0.0.1:${port}/split/openapi.yaml`
-    expect(await silently(() => main(['pull', url, '--token', 's3cret'], dir))).toBe(0)
+    // The root references `localhost`, another origin, so it is named.
+    const pull = (): Promise<number> => main(['pull', url, '--token', 's3cret', '--ref-origin', `http://localhost:${port}`], dir)
+    expect(await silently(pull)).toBe(0)
     const written = readFileSync(join(dir, 'openapi.yaml'), 'utf8')
     // Nothing points outside the file any more.
     expect(written).not.toMatch(/\$ref: .*\.yaml/)
@@ -324,7 +333,7 @@ describe('lathe pull', () => {
     // A second pull is conditional per DOCUMENT, and a 304 is answered from
     // the cached body -- the bundle is identical.
     splitRequests.length = 0
-    expect(await silently(() => main(['pull', url, '--token', 's3cret'], dir))).toBe(0)
+    expect(await silently(pull)).toBe(0)
     expect(splitRequests.find((r) => r.url === '/split/models/pet.yaml')?.inm).toBe('"pet-1"')
     // The ROOT is conditional too, on its own cached body -- and a 304 on it
     // still re-checks every part rather than "confirming" the bundle.
@@ -334,7 +343,7 @@ describe('lathe pull', () => {
     // A locally EDITED bundle is re-downloaded unconditionally.
     writeFileSync(join(dir, 'openapi.yaml'), '# edited\n')
     splitRequests.length = 0
-    expect(await silently(() => main(['pull', url, '--token', 's3cret'], dir))).toBe(0)
+    expect(await silently(pull)).toBe(0)
     expect(splitRequests.find((r) => r.url === '/split/openapi.yaml')?.inm).toBeUndefined()
     expect(readFileSync(join(dir, 'openapi.yaml'), 'utf8')).toBe(written)
     rmSync(dir, { recursive: true, force: true })
@@ -371,6 +380,44 @@ describe('lathe pull', () => {
     rmSync(dir, { recursive: true, force: true })
   })
 
+  it("a `$ref` to another origin is refused by default: nothing is fetched there, nothing is written", async () => {
+    // A downloaded spec is someone else's input. Following its `$ref` to any
+    // host let it make this machine request an internal service (a cloud
+    // metadata endpoint) and bundle the response into the written spec.
+    const dir = project()
+    splitRequests.length = 0
+    const err = vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+    const code = await main(['pull', `http://127.0.0.1:${port}/split/openapi.yaml`, '--token', 's3cret'], dir)
+    const said = err.mock.calls.map((c) => String(c[0])).join('')
+    err.mockRestore()
+    expect(code).toBe(1)
+    expect(said).toContain(`leaves http://127.0.0.1:${port} for http://localhost:${port}`)
+    expect(said).toContain(`--ref-origin http://localhost:${port}`)
+    expect(splitRequests.filter((r) => r.host?.startsWith('localhost'))).toEqual([])
+    expect(existsSync(join(dir, 'openapi.yaml'))).toBe(false)
+    rmSync(dir, { recursive: true, force: true })
+  })
+
+  it('a same-origin `$ref` that REDIRECTS to another origin is refused at the hop', async () => {
+    const dir = project()
+    splitRequests.length = 0
+    const err = vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+    const code = await main(['pull', `http://127.0.0.1:${port}/split/bounce-root.yaml`], dir)
+    const said = err.mock.calls.map((c) => String(c[0])).join('')
+    err.mockRestore()
+    expect(code).toBe(1)
+    expect(said).toContain('redirected: [Pyreon] lathe:')
+    expect(said).toContain(`for http://localhost:${port}`)
+    expect(splitRequests.filter((r) => r.host?.startsWith('localhost'))).toEqual([])
+    expect(existsSync(join(dir, 'openapi.yaml'))).toBe(false)
+    rmSync(dir, { recursive: true, force: true })
+  })
+
+  it('`--ref-origin` takes an origin, not a URL with a path', () => {
+    expect(parseArgv(['pull', 'http://x.test/a.yaml', '--ref-origin', 'http://y.test/path']).errors[0]).toContain('is not an origin')
+    expect(parseArgv(['generate', '--ref-origin', 'http://y.test']).errors[0]).toContain('only apply to `lathe pull`')
+  })
+
   it('an unreachable host fails without writing', async () => {
     const dir = project()
     // Port 1 is reserved and nothing listens on it.
@@ -378,5 +425,34 @@ describe('lathe pull', () => {
     expect(code).toBe(1)
     expect(existsSync(join(dir, 'openapi.yaml'))).toBe(false)
     rmSync(dir, { recursive: true, force: true })
+  })
+})
+
+describe('refOriginPolicy: which URLs a remote document may make lathe fetch', () => {
+  it('same origin by default; a named origin; never decided for a LOCAL referrer', () => {
+    const strict = refOriginPolicy(undefined)
+    expect(strict('https://a.test/x.yaml', 'https://a.test/root.yaml')).toBeUndefined()
+    expect(strict('https://b.test/x.yaml', 'https://a.test/root.yaml')).toContain('leaves https://a.test for https://b.test')
+    expect(strict('http://169.254.169.254/latest/meta-data', 'https://a.test/root.yaml')).toContain('refused')
+    // The user's own file on disk chose the URL.
+    expect(strict('https://b.test/x.yaml', '/home/me/openapi.yaml')).toBeUndefined()
+    expect(refOriginPolicy(['https://b.test'])('https://b.test/x.yaml', 'https://a.test/root.yaml')).toBeUndefined()
+  })
+
+  it("`*` allows any PUBLIC origin; an internal literal only when named or when the referrer is internal too", () => {
+    const any = refOriginPolicy(['*'])
+    expect(any('https://b.test/x.yaml', 'https://a.test/root.yaml')).toBeUndefined()
+    for (const internal of ['http://127.0.0.1:9/x', 'http://169.254.169.254/x', 'http://10.1.2.3/x', 'http://[::1]/x', 'http://[::ffff:127.0.0.1]/x', 'http://localhost/x', 'http://2130706433/x', 'http://[fe80::1]/x', 'http://[fd00::1]/x', 'http://192.168.0.1/x', 'http://172.20.0.1/x', 'http://100.64.0.1/x', 'http://0.0.0.0/x']) {
+      expect(any(internal, 'https://a.test/root.yaml'), internal).toContain('loopback, private or link-local')
+    }
+    expect(any('http://127.0.0.1:9/x', 'http://localhost:8080/root.yaml')).toBeUndefined()
+    expect(refOriginPolicy(['*', 'http://127.0.0.1:9'])('http://127.0.0.1:9/x', 'https://a.test/root.yaml')).toBeUndefined()
+  })
+
+  it('isInternalHost reads the hostname as the URL parser serializes it', () => {
+    expect(isInternalHost(new URL('http://0x7f.1/').hostname)).toBe(true)
+    expect(isInternalHost(new URL('http://172.32.0.1/').hostname)).toBe(false)
+    expect(isInternalHost(new URL('http://[2001:db8::1]/').hostname)).toBe(false)
+    expect(isInternalHost(new URL('https://example.test/').hostname)).toBe(false)
   })
 })

@@ -12,11 +12,18 @@
 // All from the SHARED `../native-tasks/src/TasksApp.tsx` source
 // (introduced by #1449) — same .tsx the web sibling at
 // `native-tasks-web/` (#1456) imports.
+//
+// `-PyreonWebViewScope <scenario>` (UITest only) shows the <WebView>
+// origin-scope probe instead; see WebViewScopeProbe.swift.
 
 import SwiftUI
 
 struct ContentView: View {
     var body: some View {
-        TasksApp()
+        if let scenario = UserDefaults.standard.string(forKey: "PyreonWebViewScope") {
+            WebViewScopeProbe(scenario: scenario)
+        } else {
+            TasksApp()
+        }
     }
 }

@@ -588,9 +588,9 @@ describe('useCallback', () => {
 // ─── useRef ───────────────────────────────────────────────────────────────────
 
 describe('useRef', () => {
-  test('returns { current } with null default', () => {
+  test('returns { current } starting at undefined (React/Preact parity)', () => {
     const ref = withHookCtx(() => useRef<HTMLDivElement>())
-    expect(ref.current).toBeNull()
+    expect(ref.current).toBeUndefined()
   })
 
   test('returns { current } with initial value', () => {

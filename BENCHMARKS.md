@@ -505,13 +505,18 @@ bun bench-scenarios.ts --scenario <flow|table|virtual|charts|charts-libs> --repe
 bun bench-hydration.ts --repeat 5 --wait-quiet 4 && bun bench-apppage.ts --repeat 3 --wait-quiet 4
 bun bench-crossover.ts --repeat 3            # add --target-ms 10|20|80|160 for the K check
 bun bench-bundle.ts
+bun bench-charts-libs-bundle.ts   # charts-libs rivals' minimal line-chart bundle (no timing)
 cd ../.. && bun scripts/bench/core/reactivity.ts && bun scripts/bench/core/reactivity.ts --runtime node
 bun scripts/bench/core/router.ts && bun scripts/bench/core/validate.ts
 cd packages/fundamentals/validate && bun bench/validation.ts   # likewise store, http, rx, table, charts (bench/*.ts)
 ```
 
+The library scenarios carry rival arms beyond the React adapter (`bun run bench:flow`, `bench:table`, `bench:virtual` in `examples/benchmark`, one scenario per run): flow — React Flow 12, Svelte Flow 1, Vue Flow 1, JointJS 4; table — TanStack Table on React, Solid, Vue and Svelte, AG Grid Community without row virtualisation (plus an unranked default, virtualised grid); virtual — TanStack Virtual on React, Solid and Vue, react-window 2, virtua, vue-virtual-scroller. Skipped rivals and dropped ops are listed in each scenario file's header.
+
 Overnight-only suites: `bun bench-ssr.ts --wait-quiet 4 && bun bench-charts-bundle.ts` (in `examples/benchmark`), `cd ../real-bench && bun bench.ts --repeat 4 --wait-quiet 4`, `cd ../form-bench && bun bench-form.ts --repeat 3 --wait-quiet 4`, and from the root `bun run bench:ssr-cross && bun run bench:head && bun scripts/bench/core/styler.ts`.
 
 Every fundamentals package: `cd packages/fundamentals/<pkg> && NODE_ENV=production bun bench/<file>.ts` (the package's `bench*` script).
+
+Multi-library head-to-heads (shared harness `scripts/bench/rivals-harness.ts`: one process per op × arm × round, cluster-bootstrap CI95 over processes; not yet in the tables above): `bun run bench:rivals` in `packages/fundamentals/{i18n,machine,query,dnd}` (i18n vs i18next / FormatJS / vue-i18n / Lingui / Paraglide; machine vs XState / Robot; query vs react-query / SWR / Apollo, happy-dom; dnd vs dnd-kit, happy-dom), and `bun run bench:styler-floors` from the root (styler vs Emotion / goober with vanilla-extract, StyleX and Tailwind as non-ranking zero-runtime floors).
 
 Full-stack meta-frameworks (`@pyreon/zero` vs React Router framework mode, Next.js App Router, SvelteKit, SolidStart, Nuxt, Astro, TanStack Start, Qwik City — the same list/detail/form/counter app, production builds on each framework's own Node server; SSR throughput and latency, TTFB, cold start, HTML and first-load JS bytes, hydration window and first click in Chromium): `cd examples/stacks-bench && bun setup.ts && bun bench-stacks.ts && bun bench-stacks.ts --report` (`bun run bench:stacks`; one arm per invocation: `bun bench-stacks.ts <id>`). Method, fairness notes and per-arm audit notes: `examples/stacks-bench/README.md`. No result from it is published in this file yet.

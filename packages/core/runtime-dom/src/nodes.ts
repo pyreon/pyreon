@@ -2,8 +2,24 @@ import type { VNode, VNodeChild } from '@pyreon/core'
 
 type MountFn = (child: VNodeChild, parent: Node, anchor: Node | null) => Cleanup
 
-import type { EffectScope } from '@pyreon/reactivity'
-import { effect, effectScope, getContextOwner, getCurrentScope, runUntracked, runWithContextOwner, setCurrentScope } from '@pyreon/reactivity'
+/**
+ * An accessor's value from a call the caller ALREADY made, plus the sources
+ * that call read. `mountReactive` / `mountKeyedList` use it for their first
+ * run instead of calling the accessor again: the value mounts as-is and the
+ * reads are replayed into the effect's frame (`_replayReads`), which records
+ * exactly the subscriptions a second call would have. Each accessor is user
+ * code (a `.map`, a compat component body), so a second call at mount was a
+ * second evaluation, not just a second read.
+ */
+export interface FirstRun<T> {
+  value: T
+  reads: SubscriberHost[]
+  /** Effects / `onCleanup`s that call registered, re-homed into this run. */
+  run: RunCapture
+}
+
+import type { EffectScope, RunCapture, SubscriberHost } from '@pyreon/reactivity'
+import { _releaseRun, _replayReads, effect, effectScope, getContextOwner, getCurrentScope, runUntracked, runWithContextOwner, setCurrentScope } from '@pyreon/reactivity'
 
 
 /**
@@ -93,6 +109,7 @@ export function mountReactive(
   parent: Node,
   anchor: Node | null,
   mount: (child: VNodeChild, p: Node, a: Node | null) => Cleanup,
+  first?: FirstRun<VNodeChild>,
 ): Cleanup {
   if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('runtime.mountReactive')
   const marker = document.createComment('pyreon')
@@ -126,8 +143,15 @@ export function mountReactive(
   const e = effect(() => {
     const myGen = ++generation
     // Read the accessor FIRST: the identity check needs the value, and the
-    // read is what establishes this effect's dependencies either way.
-    const value = accessor()
+    // read is what establishes this effect's dependencies either way. A
+    // caller-supplied first run stands in for the first call (see `FirstRun`).
+    let value: VNodeChild
+    if (first !== undefined) {
+      value = first.value
+      _replayReads(first.reads)
+      _releaseRun(first.run)
+      first = undefined
+    } else value = accessor()
 
     // An accessor can re-run and produce the SAME value — `<Show when={() =>
     // sel() !== undefined}>` re-runs on every `sel` change while the verdict
@@ -306,6 +330,7 @@ export function mountKeyedList(
   parent: Node,
   listAnchor: Node | null,
   mountVNode: (vnode: VNode, p: Node, a: Node | null) => Cleanup,
+  first?: FirstRun<VNode[]>,
 ): Cleanup {
   const startMarker = document.createComment('')
   const tailMarker = document.createComment('')
@@ -490,7 +515,13 @@ export function mountKeyedList(
   }
 
   const e = effect(() => {
-    const newList = accessor()
+    let newList: VNode[]
+    if (first !== undefined) {
+      newList = first.value
+      _replayReads(first.reads)
+      _releaseRun(first.run)
+      first = undefined
+    } else newList = accessor()
     const n = newList.length
     // Same untracking rationale as mountFor — see comment there. Child
     // mounts via mountVNode must not re-track on this effect's run.
@@ -862,7 +893,7 @@ export function _takePendingForAdoption(): ForAdoption | null {
 }
 
 export function mountFor<T>(
-  source: () => T[],
+  source: () => readonly T[],
   getKey: (item: T) => string | number,
   renderItem: (item: T) => import('@pyreon/core').VNode | import('@pyreon/core').NativeItem,
   parent: Node,
@@ -1034,7 +1065,7 @@ export function mountFor<T>(
    *  - When the For itself is still inside an outer row's not-yet-attached
    *    subtree, `liveParent` is that subtree and the two shapes cost the same.
    */
-  const handleFreshRender = (items: T[], n: number, liveParent: Node) => {
+  const handleFreshRender = (items: readonly T[], n: number, liveParent: Node) => {
     const keys = new Array<string | number>(n)
     // Duplicate detection reuses `cache` instead of a second `Set`. `cache` is
     // provably EMPTY here (this path only runs when `currentKeys.length === 0`,
@@ -1056,7 +1087,7 @@ export function mountFor<T>(
     currentKeys = keys
   }
 
-  const collectNewKeys = (items: T[], n: number): (string | number)[] => {
+  const collectNewKeys = (items: readonly T[], n: number): (string | number)[] => {
     const newKeys = new Array<string | number>(n)
     for (let i = 0; i < n; i++) {
       newKeys[i] = getKey(items[i] as T)
@@ -1073,7 +1104,7 @@ export function mountFor<T>(
   }
 
   const handleReplaceAll = (
-    items: T[],
+    items: readonly T[],
     n: number,
     newKeys: (string | number)[],
     liveParent: Node,
@@ -1232,7 +1263,7 @@ export function mountFor<T>(
    * `tryContiguousRemoval`.
    */
   const tryContiguousInsertion = (
-    items: T[],
+    items: readonly T[],
     n: number,
     newKeys: (string | number)[],
     liveParent: Node,
@@ -1282,7 +1313,7 @@ export function mountFor<T>(
   }
 
   const mountNewForEntries = (
-    items: T[],
+    items: readonly T[],
     n: number,
     newKeys: (string | number)[],
     liveParent: Node,
@@ -1375,7 +1406,7 @@ export function mountFor<T>(
   }
 
   const handleIncrementalUpdate = (
-    items: T[],
+    items: readonly T[],
     n: number,
     newKeys: (string | number)[],
     liveParent: Node,

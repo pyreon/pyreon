@@ -11,7 +11,6 @@ import { MutationObserver } from '@tanstack/query-core'
 import { useQueryClient } from './query-client'
 import { makeResultProto } from './result-proto'
 
-
 // Dev-time counter sink — see packages/internals/perf-harness for contract.
 const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number) => void }
 
@@ -81,7 +80,7 @@ export interface MutationOptions<
    * })
    * ```
    */
-  invalidates?: import('@tanstack/query-core').QueryKey[]
+  invalidates?: import('@tanstack/query-core').QueryKey[] | undefined
 }
 
 /**
@@ -112,7 +111,12 @@ export function useMutation<
   const { invalidates, ...coreOptions } = options
 
   // Wire auto-invalidation into onSuccess
-  const finalOptions = { ...coreOptions } as MutationObserverOptions<TData, TError, TVariables, TContext>
+  const finalOptions = { ...coreOptions } as MutationObserverOptions<
+    TData,
+    TError,
+    TVariables,
+    TContext
+  >
   if (invalidates && invalidates.length > 0) {
     const userOnSuccess = options.onSuccess
     finalOptions.onSuccess = (data, variables, onMutateResult, context) => {

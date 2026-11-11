@@ -1229,7 +1229,7 @@ Efficient reactive list rendering with keyed reconciliation. Unlike a plain `.ma
 <PropTable
   title="For Props"
   props={[
-    { name: "each", type: "T[] | (() => T[])", required: true, description: "The source array, or an accessor returning it (use the accessor form for reactive lists)." },
+    { name: "each", type: "readonly T[] | (() => readonly T[])", required: true, description: "The source array, or an accessor returning it (use the accessor form for reactive lists). Readonly arrays (`as const` data, readonly props) are accepted; For never mutates the list." },
     { name: "by", type: "(item: T) => string | number", required: true, description: "Key function for unique, stable identifiers. Receives only the item — no index is passed. Used for reconciliation." },
     { name: "children", type: "(item: T) => VNode", required: true, description: "Render function called once per unique key." },
   ]}
@@ -2198,7 +2198,7 @@ Dispatch an error to the nearest active `ErrorBoundary`. Returns `true` if the b
 
 <APICard name="Show" type="component" signature={"Show(props: { when: unknown | (() => unknown); fallback?: VNodeChild; children?: VNodeChild }): VNode"} description="Conditionally renders children when `when` (a value, or an accessor for reactive conditions) is truthy. Renders `fallback` otherwise." />
 
-<APICard name="For" type="component" signature={"For<T>(props: { each: T[] | (() => T[]); by: (item: T) => string | number; children: (item: T) => VNode | NativeItem }): VNode"} description="Keyed reactive list rendering with O(n) reconciliation. Only new keys invoke the render function; existing keys reuse cached VNodes." />
+<APICard name="For" type="component" signature={"For<T>(props: { each: readonly T[] | (() => readonly T[]); by: (item: T) => string | number; children: (item: T) => VNode | NativeItem }): VNode"} description="Keyed reactive list rendering with O(n) reconciliation. Only new keys invoke the render function; existing keys reuse cached VNodes." />
 
 <APICard name="Switch/Match" type="component" signature="Switch(props: { fallback?: VNodeChild; children: Match[] }): VNode" description="Multi-branch conditional rendering. Evaluates each Match child in order and renders the first whose `when()` is truthy." />
 

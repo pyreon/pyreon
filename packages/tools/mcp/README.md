@@ -141,7 +141,7 @@ Serves `docs/src/content/docs/patterns/<name>.md` from the monorepo, or the pack
 migrate_react({ code: "import { useState } from 'react'\nconst [c, setC] = useState(0)" })
 ```
 
-One-shot codemod — `useState` → `signal`, `useEffect` → `effect`, `useMemo` → `computed`, `className` → `class`, `htmlFor` → `for`. Not a runtime adapter; for that see `@pyreon/react-compat`.
+One-shot codemod whose output updates: `useState` → `signal` (reads become `count()`, `setCount(v)` becomes `count.set(v)` / `count.update(fn)`), `useReducer` → `signal` + `dispatch`, `useEffect` → `effect` / `onMount`, `useMemo` → `computed`, `useRef(v)` → `{ current: v }`, `className` → `class`, `htmlFor` → `for`. What it cannot convert safely stays in place and is listed under "Remaining issues" with the reason, plus whatever `validate` still finds in the output. Not a runtime adapter; for that see `@pyreon/react-compat`.
 
 ### `explain_reactivity`
 

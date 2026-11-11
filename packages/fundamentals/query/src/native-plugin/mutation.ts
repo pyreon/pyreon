@@ -386,6 +386,10 @@ export const recognizeMutateCall: MethodCallRecognizer = (site, ctx) => {
     runtimeValues: true,
   })
   if (resolved === null) return null
+  // The response decodes into `useMutation<T>`'s T: record it, so the endpoint's `response` schema refines T's number
+  // fields (without it an `s.number()` field stayed an integer and a fractional reply failed to decode), and with no
+  // schema an integer-default field is named (#3956).
+  if (!isVoid(binding.type)) ctx.recordDecode(binding.type, resolved.response)
   const parse = (fn: AnyNode) => callbackOf(ctx.functionDeclaration(`__${name}_cb`, fn))
   const call = readCallbacks(site.args[1] as AnyNode | undefined, where, (m) => ctx.report(`${where}: ${m}`), parse)
   const args: ExprIR[] = []

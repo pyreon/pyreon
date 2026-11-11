@@ -1,6 +1,6 @@
 import type { Adapter, AdapterBuildOptions, AdapterRevalidateResult } from '../types'
 import { assetUrlPrefix, writeAssetCacheHeaders } from './cache-headers'
-import { CLOUDFLARE_ADAPTER_OUTPUT, EDGE_SERVER_SUBDIR } from './contract'
+import { CLOUDFLARE_ADAPTER_OUTPUT, EDGE_SERVER_SUBDIR, ADAPTER_RESERVED_OUTPUTS } from './contract'
 import { stageClientThenServer } from './stage'
 import { listStaticFiles } from './static-files'
 import { validateBuildInputs } from './validate'
@@ -50,6 +50,7 @@ const CLOUDFLARE_ROUTES_RULE_LIMIT = 100
 export function cloudflareAdapter(): Adapter {
   return {
     name: 'cloudflare',
+    reservedOutputs: ADAPTER_RESERVED_OUTPUTS.cloudflare,
     // Every route already runs on workerd, so `runtime = 'edge'` needs no
     // second bundle. Pages has no cron triggers (Workers-only) → no schedules.
     capabilities: { edgeRoutes: 'native' },

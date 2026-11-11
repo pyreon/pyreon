@@ -367,7 +367,7 @@ describe('onScopeDispose()', () => {
 })
 
 describe('watch() with array source', () => {
-  it('watches multiple refs', () => {
+  it('watches multiple refs', async () => {
     const a = ref(1)
     const b = ref('hello')
     const calls: Array<[unknown[], unknown[]]> = []
@@ -377,10 +377,12 @@ describe('watch() with array source', () => {
     })
 
     a.value = 2
+    await Promise.resolve()
     expect(calls.length).toBeGreaterThanOrEqual(1)
     expect(calls[calls.length - 1]![0]).toEqual([2, 'hello'])
 
     b.value = 'world'
+    await Promise.resolve()
     expect(calls[calls.length - 1]![0]).toEqual([2, 'world'])
 
     stop()
@@ -403,7 +405,7 @@ describe('watch() with array source', () => {
     stop()
   })
 
-  it('watches array of getter functions', () => {
+  it('watches array of getter functions', async () => {
     const count = ref(0)
     const calls: unknown[][] = []
 
@@ -415,6 +417,7 @@ describe('watch() with array source', () => {
     )
 
     count.value = 5
+    await Promise.resolve()
     expect(calls[calls.length - 1]).toEqual([5, 10])
     stop()
   })
@@ -1004,7 +1007,7 @@ describe('template ref with Vue ref', () => {
 })
 
 describe('watch() flush option', () => {
-  it('accepts flush option without error', () => {
+  it('accepts flush option without error', async () => {
     const count = ref(0)
     const values: number[] = []
 
@@ -1013,6 +1016,7 @@ describe('watch() flush option', () => {
     }, { flush: 'post' })
 
     count.value = 1
+    await Promise.resolve()
     expect(values).toContain(1)
     stop()
   })
@@ -1204,7 +1208,7 @@ describe('watchSyncEffect onCleanup', () => {
 // ─── watch onCleanup (3rd parameter) ────────────────────────────────────────
 
 describe('watch onCleanup', () => {
-  it('passes onCleanup as 3rd argument to callback', () => {
+  it('passes onCleanup as 3rd argument to callback', async () => {
     let cleaned = false
     const r = ref(0)
     const stop = watch(r, (_newVal, _oldVal, onCleanup) => {
@@ -1213,13 +1217,15 @@ describe('watch onCleanup', () => {
       })
     })
     r.value = 1
+    await Promise.resolve()
     expect(cleaned).toBe(false) // first cb, no previous cleanup
     r.value = 2 // second change → cleanup from first callback runs
+    await Promise.resolve()
     expect(cleaned).toBe(true)
     stop()
   })
 
-  it('runs cleanup on stop', () => {
+  it('runs cleanup on stop (watch)', async () => {
     let cleaned = false
     const r = ref(0)
     const stop = watch(r, (_newVal, _oldVal, onCleanup) => {
@@ -1228,12 +1234,13 @@ describe('watch onCleanup', () => {
       })
     })
     r.value = 1 // trigger first callback
+    await Promise.resolve()
     expect(cleaned).toBe(false)
     stop()
     expect(cleaned).toBe(true)
   })
 
-  it('passes onCleanup to array watch callback', () => {
+  it('passes onCleanup to array watch callback', async () => {
     let cleaned = false
     const a = ref(0)
     const b = ref(0)
@@ -1243,8 +1250,10 @@ describe('watch onCleanup', () => {
       })
     })
     a.value = 1
+    await Promise.resolve()
     expect(cleaned).toBe(false)
     b.value = 1 // second change → cleanup from first callback
+    await Promise.resolve()
     expect(cleaned).toBe(true)
     stop()
   })
@@ -1486,7 +1495,7 @@ describe('getCurrentInstance()', () => {
     let inst1: ReturnType<typeof getCurrentInstance> = null
     let inst2: ReturnType<typeof getCurrentInstance> = null
     let renderCount = 0
-    const r = ref(0)
+    let r: { value: number } | null = null
 
     // Use jsx() so the component is wrapped → hook context + _props active
     // (this is how real vue-compat apps run via the vite plugin).
@@ -1495,7 +1504,8 @@ describe('getCurrentInstance()', () => {
       if (renderCount === 0) inst1 = i
       else inst2 = i
       renderCount++
-      void r.value // track → forces a re-render
+      // Hook-indexed ref: its setter schedules a re-render of THIS component.
+      r = ref(0)
       return jsx('div', { children: 'c' })
     }
 
@@ -1513,8 +1523,10 @@ describe('getCurrentInstance()', () => {
     expect(inst1!.slots.default!()).toBe('kid')
 
     // Stable uid across re-render (hook-indexed)
-    r.value = 1
+    expect(renderCount).toBe(1) // one render at mount
+    r!.value = 1
     await new Promise((res) => setTimeout(res, 30))
+    expect(renderCount).toBe(2)
     expect(inst2).not.toBeNull()
     expect(inst2!.uid).toBe(inst1!.uid)
     unmount()
