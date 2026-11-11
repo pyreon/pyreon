@@ -113,6 +113,15 @@ export default function DemoTable() {
   const lastCells = signal<number | string>('–')
   const lastWrites = signal<number | string>('–')
   const status = signal('')
+  // The server (and the hydrating first render) draw only the first rows that
+  // fill the box; the rest arrive after mount. 1,000 server-rendered rows
+  // would put ~250 KB of table into the page's HTML.
+  const FIRST_PAGE = 40
+  const allRows = signal(false)
+  const rowsToRender = () => {
+    const rows = table.getRowModel().rows
+    return allRows() ? rows : rows.slice(0, FIRST_PAGE)
+  }
 
   // Plain counters: cell accessors bump `cellRuns`; the observer adds to `writes`.
   let cellRuns = 0
@@ -138,6 +147,7 @@ export default function DemoTable() {
   }))
 
   onMount(() => {
+    allRows.set(true)
     if (!tbody) return
     observer = new MutationObserver((records) => {
       writes += records.length
@@ -236,65 +246,73 @@ export default function DemoTable() {
                 tbody = n ?? undefined
               }}
             >
-              <For each={() => table.getRowModel().rows} by={(r) => r.id}>
-                {(row) => (
-                  <tr>
-                    <For each={() => visibleCells(table, row.id)} by={(c) => c.id}>
-                      {(cell) => {
-                        const text = () => {
-                          cellRuns++
-                          return flexRenderCell(table, row.id, cell.column.id)
-                        }
-                        if (cell.column.id !== 'price') {
-                          return <td class={cell.column.id === 'stock' ? 'num' : undefined}>{text}</td>
-                        }
-                        const id = row.original.id
-                        return (
-                          <td class="price">
-                            <button
-                              type="button"
-                              onDblClick={() => editing.set(id)}
-                              onClick={(e: MouseEvent) => {
-                                // Enter / Space fire a click with detail 0; a pointer needs a double-click.
-                                if (e.detail === 0) editing.set(id)
-                              }}
-                            >
-                              {text}
-                            </button>
-                            {() =>
-                              editing() === id ? (
-                                <input
-                                  type="number"
-                                  min="0"
-                                  step="1"
-                                  aria-label={`New price for ${row.original.name}`}
-                                  value={String(find(id)?.price ?? '')}
-                                  ref={(n: HTMLInputElement | null) => {
-                                    queueMicrotask(() => {
-                                      n?.focus()
-                                      n?.select()
-                                    })
-                                  }}
-                                  onKeyDown={(e: KeyboardEvent) => {
-                                    if (e.key === 'Enter') {
-                                      // Without this the Enter's keypress lands on the price button
-                                      // focused below and re-opens the editor.
-                                      e.preventDefault()
-                                      close(e, id, (e.target as HTMLInputElement).value)
-                                    }
-                                    if (e.key === 'Escape') close(e, id, null)
-                                  }}
-                                  onBlur={(e: FocusEvent) => commit(id, (e.target as HTMLInputElement).value)}
-                                />
-                              ) : null
+              {/* Once all rows are in, the server-rendered first page is re-mounted, not
+                  kept: a hydrated row sometimes replaced its text nodes on an edit (8 DOM
+                  records for one changed cell) instead of writing the one that changed. */}
+              {() => {
+                allRows()
+                return (
+                  <For each={rowsToRender} by={(r) => r.id}>
+                    {(row) => (
+                      <tr>
+                        <For each={() => visibleCells(table, row.id)} by={(c) => c.id}>
+                          {(cell) => {
+                            const text = () => {
+                              cellRuns++
+                              return flexRenderCell(table, row.id, cell.column.id)
                             }
-                          </td>
-                        )
-                      }}
-                    </For>
-                  </tr>
-                )}
-              </For>
+                            if (cell.column.id !== 'price') {
+                              return <td class={cell.column.id === 'stock' ? 'num' : undefined}>{text}</td>
+                            }
+                            const id = row.original.id
+                            return (
+                              <td class="price">
+                                <button
+                                  type="button"
+                                  onDblClick={() => editing.set(id)}
+                                  onClick={(e: MouseEvent) => {
+                                    // Enter / Space fire a click with detail 0; a pointer needs a double-click.
+                                    if (e.detail === 0) editing.set(id)
+                                  }}
+                                >
+                                  {text}
+                                </button>
+                                {() =>
+                                  editing() === id ? (
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      step="1"
+                                      aria-label={`New price for ${row.original.name}`}
+                                      value={String(find(id)?.price ?? '')}
+                                      ref={(n: HTMLInputElement | null) => {
+                                        queueMicrotask(() => {
+                                          n?.focus()
+                                          n?.select()
+                                        })
+                                      }}
+                                      onKeyDown={(e: KeyboardEvent) => {
+                                        if (e.key === 'Enter') {
+                                          // Without this the Enter's keypress lands on the price button
+                                          // focused below and re-opens the editor.
+                                          e.preventDefault()
+                                          close(e, id, (e.target as HTMLInputElement).value)
+                                        }
+                                        if (e.key === 'Escape') close(e, id, null)
+                                      }}
+                                      onBlur={(e: FocusEvent) => commit(id, (e.target as HTMLInputElement).value)}
+                                    />
+                                  ) : null
+                                }
+                              </td>
+                            )
+                          }}
+                        </For>
+                      </tr>
+                    )}
+                  </For>
+                )
+              }}
             </tbody>
           </table>
         </TableBox>
