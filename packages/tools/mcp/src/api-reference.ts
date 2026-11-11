@@ -38,7 +38,8 @@ items.trigger()           // force subscribers to re-run`,
 - \`const [val, setVal] = signal(0)\` — signals are not destructurable tuples. The whole return value IS the signal
 - \`{count}\` in JSX — renders the signal function itself, not its value. Use \`{count()}\` or \`{() => count()}\`
 - \`.peek()\` inside \`effect()\` / \`computed()\` — bypasses tracking, creates stale reads. Only use \`.peek()\` for loop-prevention guards
-- Mutating a held object in place then \`set(sameReference)\` — a no-op (Object.is gate), subscribers never re-run. Prefer an immutable \`set(newObject)\`; if you deliberately own a mutable value, mutate then \`.trigger()\``,
+- Mutating a held object in place then \`set(sameReference)\` — a no-op (Object.is gate), subscribers never re-run. Prefer an immutable \`set(newObject)\`; if you deliberately own a mutable value, mutate then \`.trigger()\`
+- Passing a method detached from its signal — \`ref={el.set}\`, \`onInput={value.set}\`, \`promise.then(count.set)\`. The methods live on a shared prototype and read \`this\`, so the detached call throws (dev: \`[Pyreon] signal.set() was called without its signal\`; the compiler warns \`signal-method-reference\` on the JSX shape). Pass an arrow: \`ref={(node) => el.set(node)}\``,
   },
 
   'reactivity/isServer': {

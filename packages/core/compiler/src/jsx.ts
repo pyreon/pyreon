@@ -118,6 +118,7 @@ export interface CompilerWarning {
     | 'circular-prop-derived'
     | 'duplicate-jsx-attr'
     | 'plain-mode'
+    | 'signal-method-reference'
 }
 
 /**
@@ -3130,6 +3131,71 @@ export function transformJSX_JS(
     return true
   }
 
+  /**
+   * `ref={panel.set}` / `onClick={count.update}`: a signal METHOD passed as an
+   * attribute value by reference. Signal methods read `this` (they live on a
+   * shared prototype, not on each signal), so the detached reference throws
+   * when the runtime calls it. Warn with the arrow that works (#4356).
+   *
+   * Runs at the head of every JSX element the walk reaches, BEFORE template
+   * emission (which swallows the subtree), and covers the element's attributes
+   * plus its directly nested elements; `_methodRefScanned` keeps an element
+   * from being reported twice when the walk later reaches it. JSX inside an
+   * expression container is reached by the walk itself. Mirrors
+   * `check_signal_method_refs` in native/src/lib.rs.
+   */
+  const _methodRefScanned = new Set<number>()
+  function checkSignalMethodRefs(el: N): void {
+    if (_methodRefScanned.has(el.start as number)) return
+    const unwrap = (e: N): N => {
+      let cur = e
+      while (
+        cur &&
+        (cur.type === 'ParenthesizedExpression' ||
+          cur.type === 'TSAsExpression' ||
+          cur.type === 'TSSatisfiesExpression' ||
+          cur.type === 'TSNonNullExpression' ||
+          cur.type === 'TSTypeAssertion')
+      )
+        cur = cur.expression
+      return cur
+    }
+    const visit = (node: N): void => {
+      _methodRefScanned.add(node.start as number)
+      for (const attr of jsxAttrs(node)) {
+        if (attr.type !== 'JSXAttribute' || attr.value?.type !== 'JSXExpressionContainer') continue
+        const value = attr.value.expression
+        if (!value || value.type === 'JSXEmptyExpression') continue
+        const member = unwrap(value)
+        if (
+          member?.type !== 'MemberExpression' ||
+          member.computed ||
+          member.optional ||
+          member.property?.type !== 'Identifier' ||
+          !SIGNAL_METHOD_NAMES.has(member.property.name as string)
+        )
+          continue
+        const object = unwrap(member.object)
+        if (object?.type !== 'Identifier' || !isActiveSignal(object.name)) continue
+        const ref = `${object.name}.${member.property.name as string}`
+        const attrName = jsxAttrName(attr)
+        warn(
+          member,
+          `"${ref}" is passed by reference, so it runs without its signal and throws: signal methods read "this". Pass an arrow instead: ${attrName}={(v) => ${ref}(v)}.`,
+          'signal-method-reference',
+        )
+      }
+      const visitChildren = (children: N[] | undefined): void => {
+        for (const child of children ?? []) {
+          if (child.type === 'JSXElement') visit(child)
+          else if (child.type === 'JSXFragment') visitChildren(child.children)
+        }
+      }
+      visitChildren(node.children)
+    }
+    visit(el)
+  }
+
   function checkForWarnings(node: N): void {
     const tagName = jsxTagName(node)
     if (tagName !== 'For') return
@@ -4325,6 +4391,8 @@ export function transformJSX_JS(
         // Already being called: signal() — don't double-flag
       } else if (isNonComputedKeyPosition(node, parent)) {
         // `{ source: 1 }` / `class { source = 1 }` — a NAME, not a read
+      } else if (isSignalMethodRef(node)) {
+        // `sig.set` by reference — a stable function, not a reactive read
       } else {
         return true
       }
@@ -4596,6 +4664,7 @@ export function transformJSX_JS(
 
     // ── JSX processing (was pass 3) ──
     if (node.type === 'JSXElement') {
+      checkSignalMethodRefs(node)
       if (tryRocketstyleCollapse(node)) {
         // Collapsed to _rsCollapse — children are baked into the SSR-
         // resolved template; do not recurse into the subtree.
@@ -6733,6 +6802,8 @@ export function transformJSX_JS(
         if (grand && grand.type === 'CallExpression' && grand.callee === parent) return false
       }
       if (parent && parent.type === 'CallExpression' && parent.callee === node) return false // already called
+      // `sig.set` by reference — the signal's method, not a read of its value.
+      if (isSignalMethodRef(node)) return false
       // Object-literal / class member KEY named like a signal (`{ source: 1 }`,
       // `class { source = 1 }`) is a name, not a read. Mirrors the key skips in
       // findSignalIdents below. Shorthand `{ source }` stays a READ: it
@@ -6990,6 +7061,8 @@ export function transformJSX_JS(
         // Preserve called signal references through type and optional-chain
         // wrappers; computed keys and call arguments still read signal values.
         if (isSignalCallTarget(node)) return
+        // `sig.set` passed by reference — the signal's method, not a value read.
+        if (isSignalMethodRef(node)) return
         // Skip declaration positions
         if (parent && parent.type === 'VariableDeclarator' && parent.id === node) return
         // Skip object property keys and shorthand properties ({ name } or { name: val })
@@ -7018,6 +7091,40 @@ export function transformJSX_JS(
     }
     findSignalIdents(expr)
     return idents
+  }
+
+  /**
+   * `sig.set` / `sig.update` / … written WITHOUT a call: a reference to the
+   * signal's own method (`ref={panel.set}`, `onInput={value.set}`), not a read
+   * of a field on the signal's value. Auto-calling it emitted `panel().set`,
+   * which is `undefined` (or throws on `null`). Only the Signal / Computed API
+   * names are exempt, so `user.name` still reads `user().name`. A CALLED
+   * member (`sig.anything(...)`) is handled by `isSignalCallTarget`. Optional
+   * chains are not exempt (`sig?.set` keeps the old reading in both backends).
+   */
+  function isSignalMethodRef(node: N): boolean {
+    let outer = node
+    let parent = findParent(outer)
+    while (
+      parent &&
+      (parent.type === 'ParenthesizedExpression' ||
+        parent.type === 'TSAsExpression' ||
+        parent.type === 'TSSatisfiesExpression' ||
+        parent.type === 'TSNonNullExpression' ||
+        parent.type === 'TSTypeAssertion')
+    ) {
+      outer = parent
+      parent = findParent(outer)
+    }
+    return (
+      !!parent &&
+      parent.type === 'MemberExpression' &&
+      parent.object === outer &&
+      !parent.computed &&
+      !parent.optional &&
+      parent.property?.type === 'Identifier' &&
+      SIGNAL_METHOD_NAMES.has(parent.property.name as string)
+    )
   }
 
   function isSignalCallTarget(node: N): boolean {
@@ -7185,6 +7292,22 @@ function isStatefulCall(node: N): boolean {
 }
 
 /** Check if a call expression creates a callable reactive value (`signal(...)` or `computed(...)`). */
+/**
+ * The Signal / Computed API members a `sig.<name>` reference means the signal's
+ * OWN method by (see `isSignalMethodRef`). Mirrors `SIGNAL_METHOD_NAMES` in
+ * `native/src/lib.rs`.
+ */
+const SIGNAL_METHOD_NAMES = new Set([
+  'set',
+  'update',
+  'peek',
+  'trigger',
+  'subscribe',
+  'direct',
+  'debug',
+  'dispose',
+])
+
 function isSignalCall(node: N): boolean {
   if (node.type !== 'CallExpression') return false
   const callee = node.callee

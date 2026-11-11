@@ -771,6 +771,8 @@ struct Ctx<'a> {
 
     /// Signal variables: `const x = signal(...)` or `const x = computed(...)`
     signal_vars: FxHashSet<String>,
+    /// JSX elements already scanned by `check_signal_method_refs`.
+    method_ref_scanned: FxHashSet<u32>,
     /// Shadowed signal names in current scope (for scope-aware auto-call)
     shadowed_signals: FxHashSet<String>,
     /// Selector variables: `const x = createSelector(...)` — drives the
@@ -929,6 +931,7 @@ impl<'a> Ctx<'a> {
             in_jsx_child_callback: false,
             in_callback_argument: false,
             signal_vars: FxHashSet::default(),
+            method_ref_scanned: FxHashSet::default(),
             shadowed_signals: FxHashSet::default(),
             selector_vars: FxHashSet::default(),
             shadowed_selectors: FxHashSet::default(),
@@ -2065,6 +2068,8 @@ fn expr_children_any_dynamic(expr: &Expression, ctx: &mut Ctx) -> bool {
         Expression::SequenceExpression(s) => s.expressions.iter().any(|e| is_dynamic(e, ctx)),
         Expression::ParenthesizedExpression(p) => is_dynamic(&p.expression, ctx),
         Expression::TemplateLiteral(t) => t.expressions.iter().any(|e| is_dynamic(e, ctx)),
+        // `sig.set` by reference — a stable function, not a reactive read.
+        Expression::StaticMemberExpression(m) if is_signal_method_ref(m, ctx, &[]) => false,
         Expression::StaticMemberExpression(m) => is_dynamic(&m.object, ctx),
         Expression::ComputedMemberExpression(m) => {
             is_dynamic(&m.object, ctx) || is_dynamic(&m.expression, ctx)
@@ -3567,6 +3572,7 @@ fn references_signal_var(expr: &Expression, ctx: &Ctx) -> bool {
         Expression::ArrayExpression(arr) => arr.elements.iter().any(|el| {
             el.as_expression().map_or(false, |e| references_signal_var(e, ctx))
         }),
+        Expression::StaticMemberExpression(m) if is_signal_method_ref(m, ctx, &[]) => false,
         Expression::StaticMemberExpression(m) => references_signal_var(&m.object, ctx),
         Expression::ComputedMemberExpression(m) => {
             references_signal_var(&m.object, ctx) || references_signal_var(&m.expression, ctx)
@@ -4061,6 +4067,10 @@ fn collect_signal_idents(
 
     // Skip property name positions on member expressions
     if let Expression::StaticMemberExpression(m) = expr {
+        // `sig.set` passed by reference — the signal's method, not a value read.
+        if is_signal_method_ref(m, ctx, shadows) {
+            return;
+        }
         collect_signal_idents(&m.object, ctx, out, range_start, range_end, shadows);
         return; // don't collect .property
     }
@@ -4450,6 +4460,19 @@ fn collect_signal_idents_stmt(
 
 /// EXACTLY-BARE check: parens / TS type layers unwrap to an active,
 /// non-shadowed signal Identifier.
+/// The Signal / Computed API members a `sig.<name>` reference means the
+/// signal's OWN method by. Mirrors `SIGNAL_METHOD_NAMES` in `src/jsx.ts`.
+const SIGNAL_METHOD_NAMES: [&str; 8] =
+    ["set", "update", "peek", "trigger", "subscribe", "direct", "debug", "dispose"];
+
+/// `sig.set` / `sig.update` / … written WITHOUT a call: a reference to the
+/// signal's own method (`ref={panel.set}`), not a read of a field on its value.
+/// Auto-calling it emitted `panel().set`. Mirrors `isSignalMethodRef` in jsx.ts.
+fn is_signal_method_ref(m: &StaticMemberExpression, ctx: &Ctx, shadows: &[String]) -> bool {
+    SIGNAL_METHOD_NAMES.contains(&m.property.name.as_str())
+        && is_bare_active_signal(&m.object, ctx, shadows)
+}
+
 fn is_bare_active_signal(expr: &Expression, ctx: &Ctx, shadows: &[String]) -> bool {
     let mut cur = expr;
     loop {
@@ -5369,6 +5392,10 @@ fn walk_jsx_child(child: &JSXChild, ctx: &mut Ctx) {
 // ─── JSX element handling ────────────────────────────────────────────────────
 
 fn handle_jsx_element(el: &JSXElement, ctx: &mut Ctx) {
+    // `ref={panel.set}` — mirrors the JS `checkSignalMethodRefs` at the same
+    // walk position (before any emit path swallows the subtree).
+    check_signal_method_refs(el, ctx);
+
     // Rocketstyle-collapse: a candidate component with a resolved site collapses
     // to a single `__rsCollapse` cloneNode — children are baked into the SSR-
     // resolved template, so do NOT recurse into the subtree. Mirrors the JS
@@ -5455,6 +5482,57 @@ fn handle_jsx_element(el: &JSXElement, ctx: &mut Ctx) {
     ctx.parent_is_component_jsx_element = old_parent_is_component;
     ctx.parent_component_has_sole_child = old_sole_child;
     ctx.parent_eager_mount = old_eager;
+}
+
+/// `ref={panel.set}` / `onClick={count.update}`: a signal METHOD passed as an
+/// attribute value by reference. Signal methods read `this`, so the detached
+/// reference throws when called. Warns with the arrow that works (#4356).
+/// Covers the element's attributes and its directly nested elements;
+/// `method_ref_scanned` keeps an element from being reported twice. Mirrors
+/// `checkSignalMethodRefs` in src/jsx.ts.
+fn check_signal_method_refs(el: &JSXElement, ctx: &mut Ctx) {
+    if ctx.method_ref_scanned.contains(&el.span.start) {
+        return;
+    }
+    scan_signal_method_refs(el, ctx);
+}
+
+fn scan_signal_method_refs(el: &JSXElement, ctx: &mut Ctx) {
+    ctx.method_ref_scanned.insert(el.span.start);
+    for attr in &el.opening_element.attributes {
+        let JSXAttributeItem::Attribute(a) = attr else { continue };
+        let Some(JSXAttributeValue::ExpressionContainer(container)) = &a.value else { continue };
+        let Some(value) = container.expression.as_expression() else { continue };
+        let Expression::StaticMemberExpression(m) = unwrap_type_layers(value) else { continue };
+        let method = m.property.name.as_str();
+        if !SIGNAL_METHOD_NAMES.contains(&method) {
+            continue;
+        }
+        let Expression::Identifier(object) = unwrap_type_layers(&m.object) else { continue };
+        if !is_active_signal(object.name.as_str(), ctx) {
+            continue;
+        }
+        let reference = format!("{}.{}", object.name.as_str(), method);
+        let attr_name = jsx_attr_name(&a.name).to_string();
+        ctx.warn(
+            m.span,
+            format!(
+                "\"{reference}\" is passed by reference, so it runs without its signal and throws: signal methods read \"this\". Pass an arrow instead: {attr_name}={{(v) => {reference}(v)}}."
+            ),
+            "signal-method-reference",
+        );
+    }
+    scan_signal_method_ref_children(&el.children, ctx);
+}
+
+fn scan_signal_method_ref_children(children: &[JSXChild], ctx: &mut Ctx) {
+    for child in children {
+        match child {
+            JSXChild::Element(e) => scan_signal_method_refs(e, ctx),
+            JSXChild::Fragment(f) => scan_signal_method_ref_children(&f.children, ctx),
+            _ => {}
+        }
+    }
 }
 
 fn check_for_warnings(el: &JSXElement, ctx: &mut Ctx) {

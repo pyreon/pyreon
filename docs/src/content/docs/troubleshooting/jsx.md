@@ -223,3 +223,9 @@ Emit ARIA state as the strings `'true'`/`'false'` (or `'mixed'`), never booleans
   - Assert the value and absence (`getAttribute('aria-checked') === 'true'`), never `hasAttribute`, which passes for `""`. Locked by `ui/primitives/src/aria-state.browser.test.tsx`. See `.agents/rules/code-style.md` "Render-function primitives provide ARIA helpers".
 
 ---
+
+### Passing a signal method by reference: `ref={el.set}`, `onInput={value.set}`, `promise.then(count.set)`.
+
+Signal methods live on a shared prototype and read `this`, so the detached reference throws when called (dev: `[Pyreon] signal.set() was called without its signal`). Pass an arrow: `ref={(node) => el.set(node)}`. The compiler warns `signal-method-reference` on the JSX shape and leaves the member as written; it used to auto-call the object and emit `el().set` (the value's field, `undefined`), so the ref was silently dropped (#4356). Only the Signal / Computed API names (`set`, `update`, `peek`, `trigger`, `subscribe`, `direct`, `debug`, `dispose`) are exempt from the auto-call; `user.name` still reads `user().name`.
+
+---

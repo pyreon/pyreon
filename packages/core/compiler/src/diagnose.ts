@@ -2440,6 +2440,16 @@ zero({ mode: 'ssg', ssg: { workers: 1 } })`,
       fixCode: '<For each={items} by={(item) => item.id}>{(item) => <li>{item.name}</li>}</For>',
     }),
   },
+  {
+    // jsx.ts `signal-method-reference` warning: `onInput={sig.set}` hands the
+    // method to the runtime without its signal, so `this` is gone when it runs.
+    pattern: /"([^"\n]+)" is passed by reference, so it runs without its signal and throws/,
+    diagnose: (m) => ({
+      cause: `\`${m[1]}\` is a signal method (set, update, peek, subscribe) passed by reference. A signal is a function with methods on it that read \`this\`; once the method is detached and called by the runtime as a plain handler, \`this\` is undefined and it throws.`,
+      fix: 'Pass an arrow that calls the method on the signal: `onInput={(v) => sig.set(v)}`. For a handler that ignores the event, `onClick={() => sig.set(0)}`.',
+      fixCode: `${m[1]?.replace(/\.[a-z]+$/i, '') ?? 'sig'}.set(value)`,
+    }),
+  },
 ]
 
 /** Diagnose an error message and return structured fix information */
