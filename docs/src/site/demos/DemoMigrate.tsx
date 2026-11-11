@@ -84,7 +84,7 @@ export default function DemoMigrate() {
         label="pyreon check output on the React example"
         title="React example · step 2 before → after"
         command="pyreon check"
-        source="captured 2026-11-11 on the React pair (pick React above to see the files)"
+        source="captured 2026-11-11 with the worktree CLI on the React pair (pick React above to see the files)"
         autoplay
         delay={160}
       />

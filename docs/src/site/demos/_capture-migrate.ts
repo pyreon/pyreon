@@ -2,15 +2,18 @@
  * Data for the Migrate demo (DemoMigrate.tsx).
  *
  * MIGRATIONS: the step-one config lines and the step-two snippets from the
- * page's reference prototype (content/products/migrate.json → demo); the
- * React pair is the one the `pyreon check` capture below ran on
- * (pyreon-promo/06-videos/captures/text/c30-Counter.{react,pyreon}.tsx).
- * The diffs are ILLUSTRATIVE, and the demo says so.
+ * page's reference prototype (content/products/migrate.json → demo). The
+ * React "before" is pyreon-promo/06-videos/captures/text/c30-Counter.react.tsx;
+ * its "after" sets the title with @pyreon/head's useHead (the c30 version's
+ * `effect(() => { document.title = … })` fails pyreon-lint's
+ * no-imperative-effect-on-create). Every Pyreon-side snippet typechecks
+ * under the docs tsconfig, lints clean (pyreon-lint) and passes the MCP
+ * `validate` tool (checked 2026-11-11). The diffs are ILLUSTRATIVE, and
+ * the demo says so.
  *
  * CHECK_BEFORE / CHECK_AFTER: real `pyreon check src/Counter.tsx` output on
- * those two files, re-captured 2026-11-11 with the worktree's CLI
- * (`bun packages/tools/cli/src/index.ts check src/Counter.tsx`); identical
- * to the c30-check-{react,pyreon}.txt captures. Exit codes 1 and 0.
+ * the React pair, captured 2026-11-11 with the worktree's CLI
+ * (`bun packages/tools/cli/src/index.ts check src/Counter.tsx`). Exit codes 1 and 0.
  */
 export type Framework = 'React' | 'Preact' | 'Vue' | 'Solid' | 'Svelte'
 
@@ -29,7 +32,7 @@ export const MIGRATIONS: Record<Framework, Migration> = {
     "from": "plugins: [react()]",
     "to": "plugins: [pyreon({ compat: 'react' })]",
     "before": "import { useState, useEffect } from 'react'\n\nexport function Counter() {\n  const [count, setCount] = useState(0)\n  useEffect(() => {\n    document.title = `Count: ${count}`\n  }, [count])\n  return <button onClick={() => setCount((n) => n + 1)}>Count: {count}</button>\n}",
-    "after": "import { signal, effect } from '@pyreon/reactivity'\n\nexport function Counter() {\n  const count = signal(0)\n  effect(() => {\n    document.title = `Count: ${count()}`\n  })\n  return <button onClick={() => count.update((n) => n + 1)}>Count: {count()}</button>\n}",
+    "after": "import { useHead } from '@pyreon/head'\nimport { signal } from '@pyreon/reactivity'\n\nexport function Counter() {\n  const count = signal(0)\n  useHead(() => ({ title: `Count: ${count()}` }))\n  return <button onClick={() => count.update((n) => n + 1)}>Count: {count()}</button>\n}",
     "note": "react, react-dom and the JSX runtime resolve to @pyreon/react-compat. Function components and hooks, React 19 ones included. Class components are stubs."
   },
   "Preact": {
