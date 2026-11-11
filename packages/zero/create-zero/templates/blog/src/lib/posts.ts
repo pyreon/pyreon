@@ -1,4 +1,4 @@
-import type { ComponentFn } from "@pyreon/core"
+import type { ComponentFn } from '@pyreon/core'
 
 export interface PostMeta {
   title: string
@@ -22,16 +22,16 @@ interface PostModule {
  * loads modules so SSG renders see frontmatter immediately. The slug is the
  * filename without extension (`welcome.tsx` → `welcome`).
  */
-const modules = import.meta.glob<PostModule>("../content/posts/*.tsx", {
+const modules = import.meta.glob<PostModule>('../content/posts/*.tsx', {
   eager: true,
 })
 
 export const posts: Post[] = Object.entries(modules)
   .map(([path, mod]) => {
     const slug = path
-      .split("/")
+      .split('/')
       .pop()!
-      .replace(/\.tsx$/, "")
+      .replace(/\.tsx$/, '')
 
     return { ...mod.meta, slug, Component: mod.default }
   })

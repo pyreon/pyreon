@@ -103,38 +103,38 @@ export function generateNetlifyToml(renderMode: RenderMode): string {
 # (NETLIFY_ADAPTER_OUTPUT) — locked by create-zero's adapter-contract test.
 `
   const assetHeaders = `[[headers]]
-  for = "/assets/*"
-  [headers.values]
-    Cache-Control = "public, max-age=31536000, immutable"
+for = "/assets/*"
+[headers.values]
+Cache-Control = "public, max-age=31536000, immutable"
 `
   if (renderMode === 'ssg') {
     return `${header}[build]
-  command = "bun run build"
-  publish = "dist"
+command = "bun run build"
+publish = "dist"
 
 ${assetHeaders}`
   }
   if (renderMode === 'spa') {
     return `${header}[build]
-  command = "bun run build"
-  publish = "dist"
+command = "bun run build"
+publish = "dist"
 
 ${assetHeaders}
 [[redirects]]
-  from = "/*"
-  to = "/index.html"
-  status = 200
+from = "/*"
+to = "/index.html"
+status = 200
 `
   }
   // ssr-stream | ssr-string | isr — the netlify adapter stages the
   // deployable tree during `bun run build` (zero's ssr-plugin post-step).
   return `${header}[build]
-  command = "bun run build"
-  publish = "dist/publish"
+command = "bun run build"
+publish = "dist/publish"
 
 [functions]
-  directory = "dist/netlify/functions"
-  node_bundler = "esbuild"
+directory = "dist/netlify/functions"
+node_bundler = "esbuild"
 
 ${assetHeaders}`
 }

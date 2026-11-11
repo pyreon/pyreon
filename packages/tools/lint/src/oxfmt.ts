@@ -60,7 +60,9 @@ export const readable: OxfmtPreset = {
   bracketSameLine: false,
   sortImports: { newlinesBetween: true },
   singleAttributePerLine: false,
-  ignorePatterns: ['**/dist', '**/lib', '**/*.generated.*'],
+  // Anchored to the project root: `**/lib` would also skip an app's own
+  // `src/lib/` source folder. Files in `.gitignore` are skipped anyway.
+  ignorePatterns: ['/dist', '/lib', '**/*.generated.*'],
 }
 
 /**

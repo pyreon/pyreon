@@ -9,13 +9,12 @@
  * directory. Writing it at scaffold time keeps the repo's lint run clean.
  */
 export function generateOxlintConfig(): string {
-  return `${JSON.stringify(
-    {
-      $schema: './node_modules/oxlint/configuration_schema.json',
-      extends: ['./node_modules/@pyreon/lint/oxlint/readable.json'],
-      ignorePatterns: ['dist', '.zero'],
-    },
-    null,
-    2,
-  )}\n`
+  // Written as oxfmt lays it out (short arrays on one line), so the
+  // project's first `bun run format` leaves it alone.
+  return `{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "extends": ["./node_modules/@pyreon/lint/oxlint/readable.json"],
+  "ignorePatterns": ["dist", ".zero"]
+}
+`
 }

@@ -1,15 +1,15 @@
-import { useHead } from "@pyreon/head"
-import { Link } from "@pyreon/zero/link"
+import { useHead } from '@pyreon/head'
+import { Link } from '@pyreon/zero/link'
 
 export const meta = {
-  title: "Pyreon Zero",
-  description: "The signal-based meta-framework. Build fast, stay fast.",
+  title: 'Pyreon Zero',
+  description: 'The signal-based meta-framework. Build fast, stay fast.',
 }
 
 export default function Home() {
   useHead({
-    title: "Pyreon Zero — The Signal-Based Meta-Framework",
-    meta: [{ name: "description", content: meta.description }],
+    title: 'Pyreon Zero — The Signal-Based Meta-Framework',
+    meta: [{ name: 'description', content: meta.description }],
   })
 
   return (
@@ -26,7 +26,10 @@ export default function Home() {
           SSR, SSG, ISR — everything you need, nothing you don't.
         </p>
         <div class="hero-actions">
-          <Link href="/counter" class="btn btn-primary">
+          <Link
+            href="/counter"
+            class="btn btn-primary"
+          >
             See it in action
           </Link>
           <a
@@ -43,6 +46,7 @@ export default function Home() {
           <div class="code-block-header">
             <span>terminal</span>
           </div>
+          {/* prettier-ignore */}
           <pre>
             <code>
               <span class="cm"># Create a new project in seconds</span>{"\n"}
@@ -115,9 +119,26 @@ export default function Home() {
               stroke-linejoin="round"
               aria-hidden="true"
             >
-              <rect x="2" y="3" width="20" height="14" rx="2" ry="2" />
-              <line x1="8" y1="21" x2="16" y2="21" />
-              <line x1="12" y1="17" x2="12" y2="21" />
+              <rect
+                x="2"
+                y="3"
+                width="20"
+                height="14"
+                rx="2"
+                ry="2"
+              />
+              <line
+                x1="8"
+                y1="21"
+                x2="16"
+                y2="21"
+              />
+              <line
+                x1="12"
+                y1="17"
+                x2="12"
+                y2="21"
+              />
             </svg>
           </div>
           <h3>SSR / SSG / ISR / SPA</h3>
@@ -145,7 +166,7 @@ export default function Home() {
           </div>
           <h3>Font & Image Optimization</h3>
           <p>
-            Automatic Google Fonts inlining, font-display swap, and an <code>{"<Image>"}</code>{" "}
+            Automatic Google Fonts inlining, font-display swap, and an <code>{'<Image>'}</code>{' '}
             component with lazy loading and blur-up placeholders.
           </p>
         </div>
@@ -186,8 +207,17 @@ export default function Home() {
               stroke-linejoin="round"
               aria-hidden="true"
             >
-              <circle cx="12" cy="12" r="10" />
-              <line x1="2" y1="12" x2="22" y2="12" />
+              <circle
+                cx="12"
+                cy="12"
+                r="10"
+              />
+              <line
+                x1="2"
+                y1="12"
+                x2="22"
+                y2="12"
+              />
               <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
             </svg>
           </div>
@@ -207,13 +237,22 @@ export default function Home() {
           Explore the demo pages to see Zero's features in action.
         </p>
         <div style="display: flex; gap: var(--space-md); justify-content: center; flex-wrap: wrap;">
-          <Link href="/counter" class="btn btn-secondary">
+          <Link
+            href="/counter"
+            class="btn btn-secondary"
+          >
             Signal Reactivity
           </Link>
-          <Link href="/posts" class="btn btn-secondary">
+          <Link
+            href="/posts"
+            class="btn btn-secondary"
+          >
             Data Loading
           </Link>
-          <Link href="/about" class="btn btn-secondary">
+          <Link
+            href="/about"
+            class="btn btn-secondary"
+          >
             About Zero
           </Link>
         </div>

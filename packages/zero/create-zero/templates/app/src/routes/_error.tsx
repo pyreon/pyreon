@@ -1,5 +1,5 @@
-import { useHead } from "@pyreon/head"
-import { Link } from "@pyreon/zero/link"
+import { useHead } from '@pyreon/head'
+import { Link } from '@pyreon/zero/link'
 
 interface ErrorPageProps {
   /**
@@ -15,24 +15,23 @@ interface ErrorPageProps {
 }
 
 export default function ErrorPage(props: ErrorPageProps = {}) {
-  useHead({ title: "Something went wrong — Zero" })
+  useHead({ title: 'Something went wrong — Zero' })
 
   // `process.env.NODE_ENV` is replaced at build time by every bundler, so
   // this branch — and the details block below — is removed from production
   // builds. Never render internals to public output.
-  const isDev = process.env.NODE_ENV !== "production"
+  const isDev = process.env.NODE_ENV !== 'production'
 
   // Log the caught error in EVERY environment: in production this is the
   // only trace an operator gets. (The lint rule below guards library dev
   // warnings; an app's error log is not one.)
   if (props.error !== undefined) {
     // pyreon-lint-ignore pyreon/dev-guard-warnings
-    console.error("[Pyreon] route error boundary caught:", props.error)
+    console.error('[Pyreon] route error boundary caught:', props.error)
   }
 
   const err = props.error
-  const message =
-    err instanceof Error ? err.message : err !== undefined ? String(err) : null
+  const message = err instanceof Error ? err.message : err !== undefined ? String(err) : null
   const stack = err instanceof Error ? err.stack : null
 
   return (
@@ -57,13 +56,17 @@ export default function ErrorPage(props: ErrorPageProps = {}) {
             </pre>
           )}
           <p style="margin-top: var(--space-sm); font-size: 11px; color: var(--c-text-muted);">
-            This detail block only renders in development. Production builds show
-            only the generic message above.
+            This detail block only renders in development. Production builds show only the generic
+            message above.
           </p>
         </details>
       )}
 
-      <Link href="/" class="btn btn-primary" style="margin-top: var(--space-md);">
+      <Link
+        href="/"
+        class="btn btn-primary"
+        style="margin-top: var(--space-md);"
+      >
         Back to Home
       </Link>
     </div>

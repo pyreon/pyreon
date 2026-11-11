@@ -1,7 +1,7 @@
 ---
 description: Pyreon Zero project rules
 globs:
-  - "**/*.{ts,tsx}"
+  - '**/*.{ts,tsx}'
 alwaysApply: true
 ---
 

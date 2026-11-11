@@ -1,17 +1,18 @@
-import { For } from "@pyreon/core"
-import { useHead } from "@pyreon/head"
-import { Link } from "@pyreon/zero/link"
-import { posts } from "../../lib/posts"
+import { For } from '@pyreon/core'
+import { useHead } from '@pyreon/head'
+import { Link } from '@pyreon/zero/link'
+
+import { posts } from '../../lib/posts'
 
 export const meta = {
-  title: "All posts",
-  description: "Every post on this blog, newest first.",
+  title: 'All posts',
+  description: 'Every post on this blog, newest first.',
 }
 
 export default function BlogIndex() {
   useHead({
     title: meta.title,
-    meta: [{ name: "description", content: meta.description }],
+    meta: [{ name: 'description', content: meta.description }],
   })
 
   return (
@@ -20,11 +21,17 @@ export default function BlogIndex() {
       <p>{posts.length} posts in total.</p>
 
       <ul class="post-list">
-        <For each={posts} by={(post) => post.slug}>
+        <For
+          each={posts}
+          by={(post) => post.slug}
+        >
           {(post) => (
             <li>
               <h2 class="post-title">
-                <Link href={`/blog/${post.slug}`} prefetch="hover">
+                <Link
+                  href={`/blog/${post.slug}`}
+                  prefetch="hover"
+                >
                   {post.title}
                 </Link>
               </h2>
@@ -32,10 +39,11 @@ export default function BlogIndex() {
               <p class="post-summary">{post.description}</p>
               {post.tags && post.tags.length > 0 ? (
                 <div class="tags">
-                  <For each={post.tags} by={(t) => t}>
-                    {(t) => (
-                      <span class="tag">#{t}</span>
-                    )}
+                  <For
+                    each={post.tags}
+                    by={(t) => t}
+                  >
+                    {(t) => <span class="tag">#{t}</span>}
                   </For>
                 </div>
               ) : null}

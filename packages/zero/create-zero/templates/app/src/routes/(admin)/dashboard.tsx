@@ -1,10 +1,10 @@
-import { isClient } from "@pyreon/core"
-import { useHead } from "@pyreon/head"
-import type { MiddlewareContext } from "@pyreon/server"
-import type { LoaderContext } from "@pyreon/zero"
+import { isClient } from '@pyreon/core'
+import { useHead } from '@pyreon/head'
+import type { MiddlewareContext } from '@pyreon/server'
+import type { LoaderContext } from '@pyreon/zero'
 
 export const meta = {
-  title: "Dashboard — Pyreon Zero",
+  title: 'Dashboard — Pyreon Zero',
 }
 
 /**
@@ -15,21 +15,21 @@ export const meta = {
  * Returning a string redirects to that path.
  */
 /** The demo's fake session flag. A real app checks a session cookie or token. */
-const DEMO_AUTH_KEY = "zero-demo-auth"
+const DEMO_AUTH_KEY = 'zero-demo-auth'
 
 /** Log out of the demo: clear the flag and leave the protected route. */
 function signOutDemo() {
   localStorage.removeItem(DEMO_AUTH_KEY)
-  window.location.href = "/about"
+  window.location.href = '/about'
 }
 
 export function guard() {
   // Simulate auth check — in a real app, check session/token
   // `isClient` guards the browser-only read: the guard also runs during SSR.
-  const isAuthenticated = isClient && localStorage.getItem(DEMO_AUTH_KEY) === "true"
+  const isAuthenticated = isClient && localStorage.getItem(DEMO_AUTH_KEY) === 'true'
 
   if (!isAuthenticated) {
-    return "/about" // Redirect unauthenticated users
+    return '/about' // Redirect unauthenticated users
   }
 
   return true // Allow navigation
@@ -44,16 +44,16 @@ export function guard() {
  */
 export const middleware = (ctx: MiddlewareContext) => {
   // Add server timing header to track route performance
-  ctx.headers.set("Server-Timing", `route;desc="Dashboard"`)
+  ctx.headers.set('Server-Timing', `route;desc="Dashboard"`)
 }
 
 export async function loader(_ctx: LoaderContext) {
   return {
-    user: "Demo User",
+    user: 'Demo User',
     stats: {
       views: 12_847,
       routes: 6,
-      buildTime: "1.2s",
+      buildTime: '1.2s',
     },
   }
 }
@@ -67,7 +67,7 @@ export default function Dashboard() {
         <span class="badge">Protected Route</span>
         <h1 style="margin-top: var(--space-md);">Dashboard</h1>
         <p>
-          This route is protected by a <code>guard</code> function and uses per-route{" "}
+          This route is protected by a <code>guard</code> function and uses per-route{' '}
           <code>middleware</code> for server-side logging.
         </p>
       </div>
@@ -87,10 +87,14 @@ export default function Dashboard() {
         </div>
       </div>
 
-      <div class="code-block" style="max-width: 520px; margin: var(--space-2xl) auto 0;">
+      <div
+        class="code-block"
+        style="max-width: 520px; margin: var(--space-2xl) auto 0;"
+      >
         <div class="code-block-header">
           <span>dashboard.tsx</span>
         </div>
+        {/* prettier-ignore */}
         <pre>
           <code>
             <span class="cm">{"// Navigation guard — protect routes"}</span>{"\n"}

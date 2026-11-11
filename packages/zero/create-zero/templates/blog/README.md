@@ -45,15 +45,15 @@ The post auto-appears in the listing, gets a per-route HTML at build time, and l
 
 ## Scripts
 
-| Command | What it does |
-| --- | --- |
-| `bun run dev` | Dev server with HMR |
-| `bun run build` | Pre-render every post + index → static HTML |
-| `bun run preview` | Serve the production build locally |
-| `bun run doctor` | Audit the project (lint + types + perf budgets) |
-| `bun run lint` | Run oxlint and `@pyreon/lint` with the `readable` preset |
-| `bun run format` | Format with oxfmt (`oxfmt.config.ts`) |
-| `bun run fix` | Format, then apply every lint autofix (blank lines, imports) |
+| Command           | What it does                                                 |
+| ----------------- | ------------------------------------------------------------ |
+| `bun run dev`     | Dev server with HMR                                          |
+| `bun run build`   | Pre-render every post + index → static HTML                  |
+| `bun run preview` | Serve the production build locally                           |
+| `bun run doctor`  | Audit the project (lint + types + perf budgets)              |
+| `bun run lint`    | Run oxlint and `@pyreon/lint` with the `readable` preset     |
+| `bun run format`  | Format with oxfmt (`oxfmt.config.ts`)                        |
+| `bun run fix`     | Format, then apply every lint autofix (blank lines, imports) |
 
 ## Deploying
 

@@ -1,5 +1,5 @@
-import { sendEmail } from '../../../lib/email'
 import WelcomeEmail from '../../../emails/welcome'
+import { sendEmail } from '../../../lib/email'
 
 export async function GET(request: Request) {
   const url = new URL(request.url)

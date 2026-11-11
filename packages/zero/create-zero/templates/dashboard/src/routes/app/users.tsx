@@ -1,10 +1,11 @@
-import { signal } from "@pyreon/reactivity"
-import { For, onMount } from "@pyreon/core"
-import { useHead } from "@pyreon/head"
-import { listUsers, type User } from "../../lib/db"
+import { For, onMount } from '@pyreon/core'
+import { useHead } from '@pyreon/head'
+import { signal } from '@pyreon/reactivity'
+
+import { listUsers, type User } from '../../lib/db'
 import { formatDate } from '../../lib/format'
 
-export const meta = { title: "Users" }
+export const meta = { title: 'Users' }
 
 export default function Users() {
   useHead({ title: meta.title })
@@ -32,7 +33,10 @@ export default function Users() {
           </tr>
         </thead>
         <tbody>
-          <For each={users} by={(u) => u.id}>
+          <For
+            each={users}
+            by={(u) => u.id}
+          >
             {(u) => (
               <tr>
                 <td>{u.name}</td>

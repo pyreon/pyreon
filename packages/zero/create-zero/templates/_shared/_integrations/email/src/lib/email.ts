@@ -1,7 +1,7 @@
-import { Resend } from 'resend'
-import { extractDocNode } from '@pyreon/document-primitives'
-import { render } from '@pyreon/document'
 import type { ComponentFn, Props } from '@pyreon/core'
+import { render } from '@pyreon/document'
+import { extractDocNode } from '@pyreon/document-primitives'
+import { Resend } from 'resend'
 
 const resend = new Resend(process.env.RESEND_API_KEY)
 const FROM = process.env.EMAIL_FROM ?? 'noreply@example.com'

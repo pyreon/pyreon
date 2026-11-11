@@ -1,16 +1,17 @@
-import { signal } from "@pyreon/reactivity"
-import { useHead } from "@pyreon/head"
-import { Link } from "@pyreon/zero/link"
-import { useRouter } from "@pyreon/router"
-import { postCredentials } from "../lib/post-credentials"
+import { useHead } from '@pyreon/head'
+import { signal } from '@pyreon/reactivity'
+import { useRouter } from '@pyreon/router'
+import { Link } from '@pyreon/zero/link'
 
-export const meta = { title: "Create an account" }
+import { postCredentials } from '../lib/post-credentials'
+
+export const meta = { title: 'Create an account' }
 
 export default function Signup() {
   useHead({ title: meta.title })
 
-  const email = signal("")
-  const password = signal("")
+  const email = signal('')
+  const password = signal('')
   const error = signal<string | null>(null)
   const submitting = signal(false)
 
@@ -23,7 +24,7 @@ export default function Signup() {
 
     // Same server-side flow as login.tsx: the endpoint creates the account and
     // sets the HttpOnly session cookie.
-    const message = await postCredentials("/api/signup", email(), password())
+    const message = await postCredentials('/api/signup', email(), password())
     submitting.set(false)
 
     if (message) {
@@ -31,12 +32,15 @@ export default function Signup() {
       return
     }
 
-    await router.push("/app/dashboard")
+    await router.push('/app/dashboard')
   }
 
   return (
     <div class="auth-shell">
-      <form class="auth-card" onSubmit={handleSubmit}>
+      <form
+        class="auth-card"
+        onSubmit={handleSubmit}
+      >
         <h1>Create an account</h1>
 
         <div class="field">
@@ -64,8 +68,13 @@ export default function Signup() {
 
         {() => (error() ? <div class="error">{error()}</div> : null)}
 
-        <button type="submit" class="btn btn-primary" disabled={submitting} style="width: 100%; justify-content: center; margin-top: 1rem;">
-          {() => (submitting() ? "Creating…" : "Create account")}
+        <button
+          type="submit"
+          class="btn btn-primary"
+          disabled={submitting}
+          style="width: 100%; justify-content: center; margin-top: 1rem;"
+        >
+          {() => (submitting() ? 'Creating…' : 'Create account')}
         </button>
 
         <p style="margin-top: 1rem; font-size: 0.875rem; color: var(--c-text-muted); text-align: center;">

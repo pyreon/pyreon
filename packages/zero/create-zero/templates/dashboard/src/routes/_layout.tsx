@@ -1,6 +1,6 @@
-import { RouterView } from "@pyreon/router"
-import { Link } from "@pyreon/zero/link"
-import { ThemeToggle } from "@pyreon/zero/theme"
+import { RouterView } from '@pyreon/router'
+import { Link } from '@pyreon/zero/link'
+import { ThemeToggle } from '@pyreon/zero/theme'
 
 /**
  * Public marketing layout. Wraps `/`, `/login`, `/signup` — anything outside
@@ -13,12 +13,18 @@ export function layout() {
 export function MarketingHeader() {
   return (
     <header class="marketing-header">
-      <Link href="/" class="marketing-logo">
+      <Link
+        href="/"
+        class="marketing-logo"
+      >
         Dashboard
       </Link>
       <nav class="marketing-nav">
         <Link href="/login">Sign in</Link>
-        <Link href="/signup" class="btn btn-primary">
+        <Link
+          href="/signup"
+          class="btn btn-primary"
+        >
           Get started
         </Link>
         <ThemeToggle />

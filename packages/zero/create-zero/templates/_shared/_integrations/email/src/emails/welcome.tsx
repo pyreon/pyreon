@@ -22,7 +22,10 @@ export interface WelcomeEmailProps {
  */
 export default function WelcomeEmail(props: WelcomeEmailProps) {
   return (
-    <DocDocument title="Welcome" subject="Welcome to your new account">
+    <DocDocument
+      title="Welcome"
+      subject="Welcome to your new account"
+    >
       <DocPage>
         <DocSection>
           <DocHeading level="h1">Welcome, {props.name}.</DocHeading>
@@ -32,8 +35,8 @@ export default function WelcomeEmail(props: WelcomeEmailProps) {
 
         <DocSection>
           <DocText>
-            Your account is ready. The dashboard is the fastest way to get started — log
-            in any time at:
+            Your account is ready. The dashboard is the fastest way to get started — log in any time
+            at:
           </DocText>
           <DocText>{props.appUrl}</DocText>
         </DocSection>

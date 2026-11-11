@@ -1,9 +1,10 @@
-import { For } from "@pyreon/core"
-import type { GetStaticPaths } from "@pyreon/zero/server"
-import { useHead } from "@pyreon/head"
-import { Link } from "@pyreon/zero/link"
-import { useRoute } from "@pyreon/router"
-import { postBySlug, postSlugs } from "../../lib/posts"
+import { For } from '@pyreon/core'
+import { useHead } from '@pyreon/head'
+import { useRoute } from '@pyreon/router'
+import { Link } from '@pyreon/zero/link'
+import type { GetStaticPaths } from '@pyreon/zero/server'
+
+import { postBySlug, postSlugs } from '../../lib/posts'
 
 /**
  * Enumerate the dynamic `:slug` values at build time. The SSG plugin expands
@@ -39,10 +40,10 @@ export default function PostPage() {
   useHead({
     title: post.title,
     meta: [
-      { name: "description", content: post.description },
-      { property: "og:title", content: post.title },
-      { property: "og:description", content: post.description },
-      { property: "og:type", content: "article" },
+      { name: 'description', content: post.description },
+      { property: 'og:title', content: post.title },
+      { property: 'og:description', content: post.description },
+      { property: 'og:type', content: 'article' },
     ],
   })
 
@@ -55,10 +56,11 @@ export default function PostPage() {
         <div class="post-meta">{post.date}</div>
         {post.tags && post.tags.length > 0 ? (
           <div class="tags">
-            <For each={post.tags} by={(t) => t}>
-              {(t) => (
-                <span class="tag">#{t}</span>
-              )}
+            <For
+              each={post.tags}
+              by={(t) => t}
+            >
+              {(t) => <span class="tag">#{t}</span>}
             </For>
           </div>
         ) : null}

@@ -1,29 +1,29 @@
-import { For } from "@pyreon/core"
-import { useHead } from "@pyreon/head"
-import { Link } from "@pyreon/zero/link"
+import { For } from '@pyreon/core'
+import { useHead } from '@pyreon/head'
+import { Link } from '@pyreon/zero/link'
 
 export const meta = {
-  title: "About — Pyreon Zero",
-  description: "Learn about the Pyreon Zero meta-framework.",
+  title: 'About — Pyreon Zero',
+  description: 'Learn about the Pyreon Zero meta-framework.',
 }
 
 /** What a Zero app is built from — one row per piece. */
 const STACK: [name: string, description: string][] = [
-  ["Pyreon", "Signal-based UI framework with JSX"],
-  ["Vite", "Lightning-fast dev server and optimized builds"],
-  ["File Router", "Drop a file, get a route — layouts, guards, loaders"],
-  ["SSR / SSG / ISR", "Every rendering strategy, per-route overrides"],
-  ["<Image>", "Lazy loading, responsive srcset, blur-up placeholders"],
-  ["<Link>", "Prefetch on hover or viewport entry for instant nav"],
-  ["Font Plugin", "Google Fonts optimization, preconnect, font-display:swap"],
-  ["Cache MW", "Immutable hashed assets, stale-while-revalidate pages"],
-  ["SEO Tools", "Sitemap, robots.txt, JSON-LD structured data"],
+  ['Pyreon', 'Signal-based UI framework with JSX'],
+  ['Vite', 'Lightning-fast dev server and optimized builds'],
+  ['File Router', 'Drop a file, get a route — layouts, guards, loaders'],
+  ['SSR / SSG / ISR', 'Every rendering strategy, per-route overrides'],
+  ['<Image>', 'Lazy loading, responsive srcset, blur-up placeholders'],
+  ['<Link>', 'Prefetch on hover or viewport entry for instant nav'],
+  ['Font Plugin', 'Google Fonts optimization, preconnect, font-display:swap'],
+  ['Cache MW', 'Immutable hashed assets, stale-while-revalidate pages'],
+  ['SEO Tools', 'Sitemap, robots.txt, JSON-LD structured data'],
 ]
 
 export default function About() {
   useHead({
     title: meta.title,
-    meta: [{ name: "description", content: meta.description }],
+    meta: [{ name: 'description', content: meta.description }],
   })
 
   return (
@@ -78,7 +78,10 @@ export default function About() {
           The Stack
         </h2>
         <div style="display: grid; gap: var(--space-sm);">
-          <For each={STACK} by={([name]) => name}>
+          <For
+            each={STACK}
+            by={([name]) => name}
+          >
             {([name, desc]) => (
               <div
                 class="card"
@@ -99,10 +102,16 @@ export default function About() {
           Ready to build something?
         </h2>
         <div style="display: flex; gap: var(--space-md); justify-content: center;">
-          <Link href="/" class="btn btn-primary">
+          <Link
+            href="/"
+            class="btn btn-primary"
+          >
             Get Started
           </Link>
-          <Link href="/counter" class="btn btn-secondary">
+          <Link
+            href="/counter"
+            class="btn btn-secondary"
+          >
             Try the Demo
           </Link>
         </div>

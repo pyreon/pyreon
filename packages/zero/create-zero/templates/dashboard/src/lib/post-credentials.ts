@@ -10,16 +10,16 @@ export async function postCredentials(
 ): Promise<string | null> {
   try {
     const res = await fetch(url, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      credentials: "same-origin",
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      credentials: 'same-origin',
       body: JSON.stringify({ email, password }),
     })
     if (res.ok) return null
     const body = (await res.json().catch(() => ({}))) as { error?: string }
 
-    return body.error ?? "Request failed"
+    return body.error ?? 'Request failed'
   } catch {
-    return "Network error — please try again"
+    return 'Network error — please try again'
   }
 }
