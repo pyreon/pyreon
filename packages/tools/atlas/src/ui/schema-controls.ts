@@ -127,3 +127,95 @@ export function validateValues(
     }),
   }
 }
+
+// ── Where each control comes from ─────────────────────────────────────────
+
+/** One row of the Schema panel's table. */
+export interface SchemaRow {
+  key: string
+  /** The value's type as declared (`string`, `boolean?`, `soft | solid`). */
+  type: string
+  /** The editor the Controls panel renders for it. */
+  control: 'text' | 'select' | 'switch' | 'number' | 'color'
+  /** Which declaration it came from, in words. */
+  source: string
+  /** `atlas dev` saw it appear on a rescan at this time (epoch ms). */
+  addedAt?: number
+}
+
+/** `ControlSource` in the words the panel shows. */
+export const SOURCE_LABEL: Record<string, string> = {
+  'prop-type': 'prop type',
+  dimension: 'rocketstyle dimension',
+  content: 'content seed',
+  spec: 'defineComponent',
+}
+
+const CONTROL_OF: Record<WorkbenchControl['type'], SchemaRow['control']> = {
+  text: 'text',
+  enum: 'select',
+  bool: 'switch',
+  number: 'number',
+  color: 'color',
+}
+
+function controlType(c: WorkbenchControl): string {
+  // An enum's members ARE its type (a TS union), and the fact that decides
+  // whether a usage is correct — the drift a derived control list removes.
+  if (c.type === 'enum') return c.options?.length ? c.options.join(' | ') : 'enum'
+  if (c.type === 'bool') return 'boolean'
+  if (c.type === 'text') return 'string'
+  return c.type
+}
+
+/**
+ * The Schema panel's table: every control the component exposes, with the
+ * declaration it came from, plus every schema field the controls do not
+ * already cover.
+ *
+ * A field the schema declares is sourced `schema` even when the catalog also
+ * lists a control for it: the schema is the contract the live values are
+ * validated against, so it is the declaration that decides. A hand-written
+ * catalog's controls carry no provenance and read `catalog` — the entry
+ * itself is the declaration.
+ */
+export function schemaRows(controls: readonly WorkbenchControl[], fields: readonly FieldInfo[]): SchemaRow[] {
+  const byName = new Map(fields.map((f) => [f.name, f]))
+  const fieldRow = (f: FieldInfo, addedAt?: number): SchemaRow => {
+    const ctrl = fieldToControl(f)
+    const base = f.type === 'enum' && f.enumValues?.length ? f.enumValues.join(' | ') : f.type
+    return {
+      key: f.name,
+      type: f.optional ? `${base}?` : base,
+      control: CONTROL_OF[ctrl.type],
+      source: 'schema',
+      ...(addedAt ? { addedAt } : {}),
+    }
+  }
+  const rows: SchemaRow[] = controls.map((c) => {
+    const field = byName.get(c.key)
+    if (field) return fieldRow(field, c.addedAt)
+    return {
+      key: c.key,
+      type: controlType(c),
+      control: CONTROL_OF[c.type],
+      source: (c.source && SOURCE_LABEL[c.source]) ?? 'catalog',
+      ...(c.addedAt ? { addedAt: c.addedAt } : {}),
+    }
+  })
+  const listed = new Set(controls.map((c) => c.key))
+  for (const f of fields) if (!listed.has(f.name)) rows.push(fieldRow(f))
+  return rows
+}
+
+/** "just now" / "3 min ago" / "2 h ago" — coarse on purpose, it is a nudge. */
+export function addedAgo(at: number, now: number): string {
+  const s = Math.max(0, Math.round((now - at) / 1000))
+  if (s < 60) return 'added just now'
+  const min = Math.floor(s / 60)
+  if (min < 60) return `added ${min} min ago`
+  return `added ${Math.floor(min / 60)} h ago`
+}
+
+/** Rows this recent carry the "new" chip. */
+export const NEW_FOR_MS = 10 * 60 * 1000

@@ -63,3 +63,21 @@ export const PreviewSurface = el
     },
     plain: {},
   }))
+  // Canvas → Layout (Storybook's `layout`). `centered` is the theme above;
+  // the other two move the component to the top-left — where a form or a
+  // table sits in a page — and `fullscreen` also drops the gutter and the
+  // surface edge so a page section can touch the frame. Alignment goes
+  // through `extendCss` because it overrides the centring the attrs set.
+  .multiple(() => ({
+    centered: {},
+    padded: {
+      padding: '16px',
+      extendCss: 'justify-content:flex-start;align-items:flex-start;',
+    },
+    fullscreen: {
+      padding: '0',
+      border: 'none',
+      borderRadius: '0',
+      extendCss: 'justify-content:flex-start;align-items:stretch;flex:1 1 auto;',
+    },
+  }))

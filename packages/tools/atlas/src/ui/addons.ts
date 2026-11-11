@@ -179,7 +179,31 @@ export function pseudoProps(active: PseudoId | null): Record<string, boolean> {
  */
 export const OUTLINE_CSS = `& *, & *::before, & *::after { outline: 1px solid ${PREVIEW_COLORS.outline} !important; outline-offset: -1px; }`
 
-// ── registry ────────────────────────────────────────────────────────────────
+// ── stage layout ────────────────────────────────────────────────────────────
+
+/**
+ * How the preview sits on the stage — Storybook's `layout` parameter, with
+ * the same three meanings so a reader who knows one knows the other:
+ *
+ * - `centered` — the component in the middle with room around it (the
+ *   default: a button, a badge, a card).
+ * - `padded` — top-left with a small gutter: how a form, a list or a table
+ *   sits in a page, where centring hides a broken left edge.
+ * - `fullscreen` — no gutter and no surface edge: a page section, a navbar or
+ *   a layout shell, which must touch the frame's edges to be judged.
+ */
+export type CanvasLayout = 'centered' | 'padded' | 'fullscreen'
+
+export const CANVAS_LAYOUTS: readonly { id: CanvasLayout; label: string }[] = [
+  { id: 'centered', label: 'Centered' },
+  { id: 'padded', label: 'Padded' },
+  { id: 'fullscreen', label: 'Fullscreen' },
+]
+
+/** A link's layout, or `undefined` for anything that is not one of the three. */
+export function parseLayout(value: string | undefined): CanvasLayout | undefined {
+  return CANVAS_LAYOUTS.find((l) => l.id === value)?.id
+}
 
 // ── locale / direction ──────────────────────────────────────────────────────
 
@@ -251,6 +275,6 @@ export const ADDON_TABS: readonly AddonTab[] = [
   { id: 'controls', title: 'Controls', hint: 'Edit the component props live' },
   { id: 'actions', title: 'Actions', hint: 'Log events the component emits' },
   { id: 'a11y', title: 'A11y', hint: 'Static accessibility checks' },
-  { id: 'canvas', title: 'Canvas', hint: 'Zoom, grid and measure on the stage' },
+  { id: 'canvas', title: 'Canvas', hint: 'Zoom, grid, measure and layout on the stage' },
   { id: 'addons', title: 'Addons', hint: 'Viewport, background, outline, pseudo state, locale' },
 ]

@@ -107,6 +107,8 @@ export function Canvas(props: { model: WorkbenchModel }) {
         data-testid="canvas-stage"
         data-grid={() => (m.grid() ? 'on' : 'off')}
         state={() => (m.grid() ? 'grid' : 'plain') as never}
+        multiple={() => m.layout() as never}
+        data-layout={() => m.layout()}
         onPointerMove={onStageMove}
         onPointerLeave={onStageLeave}
         {...({ innerRef: stageRef } as Record<string, unknown>)}
@@ -129,6 +131,7 @@ export function Canvas(props: { model: WorkbenchModel }) {
         */}
         <C.Frame
           data-testid="canvas-frame"
+          multiple={() => m.layout() as never}
           size={() => (VIEWPORT_SIZE[m.viewport()] ?? 'vFull') as never}
           variant={() => (pinned() ? 'framed' : 'bare') as never}
           {...({
@@ -159,10 +162,13 @@ export function Canvas(props: { model: WorkbenchModel }) {
                 // An adopted overlay (a modal, a drawer) is confined to this
                 // surface — give it a viewport-sized box to open into rather
                 // than the 220px a closed component needs.
-                return `${bg}min-height:${m.overlayOpen() ? 520 : 220}px;`
+                // Fullscreen grows with the frame (its `multiple` dimension).
+                const min = m.overlayOpen() ? 520 : m.layout() === 'fullscreen' ? 0 : 220
+                return `${bg}min-height:${min}px;`
               }),
             } as Record<string, unknown>)}
             state={() => (m.outline() ? 'outlined' : 'plain') as never}
+            multiple={() => m.layout() as never}
           >
             {() => m.preview()}
           </C.PreviewSurface>

@@ -9,6 +9,10 @@
  * that read the signal graph and the compiler (Update cause, Reactive
  * coverage, Lens), then the environment (Canvas, Addons).
  *
+ * The four light panels (Controls — the opening tab — Actions, A11y, Canvas,
+ * Addons) are in the main bundle; the rest load their body on first open
+ * (./lazy). Their metadata lives HERE so the strip and `?p=` links never wait.
+ *
  * Mapping to Storybook's addon set: `controls` ≈ addon-controls, `actions` ≈
  * addon-actions, `a11y` ≈ addon-a11y, and `addons` folds together
  * addon-viewport, addon-backgrounds, addon-pseudo-states and addon-outline.
@@ -18,27 +22,60 @@ import { a11yPanel } from './A11yPanel'
 import { actionsPanel } from './ActionsPanel'
 import { addonsPanel, canvasPanel } from './CanvasPanel'
 import { controlsPanel } from './ControlsPanel'
-import { registerLensPanel } from './LensPanel'
-import { registerPerfPanel } from './PerfPanel'
-import { registerPermissionsPanel } from './PermissionsPanel'
-import { registerQueryPanel } from './QueryPanel'
-import { registerReactiveCoveragePanel } from './ReactiveCoveragePanel'
-import { registerSchemaPanel } from './SchemaPanel'
-import { registerStorePanel } from './StorePanel'
-import { registerUpdateCausePanel } from './UpdateCausePanel'
+import { lazyPanel } from './lazy'
 
 export function registerBuiltinPanels(): void {
   registerAddonPanel(controlsPanel)
-  registerSchemaPanel()
+  registerAddonPanel(
+    lazyPanel(
+      { id: 'schema', title: 'Schema', hint: 'Where each control comes from, and a live validation verdict' },
+      () => import('./SchemaPanel'),
+    ),
+  )
   registerAddonPanel(actionsPanel)
   registerAddonPanel(a11yPanel)
-  registerPerfPanel()
-  registerPermissionsPanel()
-  registerQueryPanel()
-  registerStorePanel()
-  registerUpdateCausePanel()
-  registerReactiveCoveragePanel()
-  registerLensPanel()
+  registerAddonPanel(
+    lazyPanel(
+      { id: 'perf', title: 'Perf', hint: 'Framework work done per interaction (counters, not timings)' },
+      () => import('./PerfPanel'),
+    ),
+  )
+  registerAddonPanel(
+    lazyPanel(
+      { id: 'permissions', title: 'Permissions', hint: 'The scenario as each role sees it, judged against the role policy' },
+      () => import('./PermissionsPanel'),
+    ),
+  )
+  registerAddonPanel(
+    lazyPanel(
+      { id: 'data', title: 'Query', hint: 'Loading / success / error / refetching, without a network' },
+      () => import('./QueryPanel'),
+    ),
+  )
+  registerAddonPanel(
+    lazyPanel(
+      { id: 'store', title: 'Store', hint: 'Writes this interaction made, steppable — @pyreon/store only' },
+      () => import('./StorePanel'),
+    ),
+  )
+  registerAddonPanel(
+    lazyPanel(
+      { id: 'why', title: 'Update cause', hint: 'The exact signal → computed → effect chain behind an update' },
+      () => import('./UpdateCausePanel'),
+    ),
+  )
+  registerAddonPanel(
+    lazyPanel(
+      { id: 'reactivity', title: 'Reactive coverage', hint: 'Which reactive edges never fired' },
+      () => import('./ReactiveCoveragePanel'),
+    ),
+  )
+  registerAddonPanel(
+    lazyPanel(
+      { id: 'lens', title: 'Lens', hint: "The compiler's live/static verdict for each expression" },
+      () => import('./LensPanel'),
+    ),
+  )
   registerAddonPanel(canvasPanel)
   registerAddonPanel(addonsPanel)
 }

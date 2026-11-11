@@ -17,8 +17,12 @@ import { isStoreAvailable } from './store-bridge'
 type Predicate = (m: WorkbenchModel) => boolean
 
 const BUILTIN: Record<string, Predicate> = {
-  // No schema declared → the panel can only say so.
-  schema: (m) => m.sel()?.schema !== undefined,
+  // The table lists where every control came from, so it has something to say
+  // for any component with a control — and for a schema with no control yet.
+  schema: (m) => {
+    const c = m.sel()
+    return c !== undefined && (c.controls.length > 0 || c.schema !== undefined)
+  },
   // The Data panel feeds `ctx.query`; a component that neither declares a
   // `queryData` control nor pins one in a scenario has not been wired to it.
   data: (m) => {

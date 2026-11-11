@@ -35,6 +35,8 @@ export interface UrlState {
   query?: string
   /** The Roles panel's active role. */
   role?: string
+  /** The stage layout (centered / padded / fullscreen). */
+  layout?: string
   /**
    * `?embed` — the workbench is a GUEST in another page (an iframe on a
    * product page or in docs). It keeps the flag across its own URL rewrites,
@@ -195,6 +197,7 @@ export const SHIPPED_DEFAULTS: Required<UrlDefaults> = {
   pseudo: '',
   query: 'success',
   role: 'anonymous',
+  layout: 'centered',
 }
 
 /**
@@ -224,6 +227,7 @@ export function serializeUrlState(state: UrlState, defaults: UrlDefaults = {}): 
   put('pseudo', state.pseudo)
   put('query', state.query)
   put('role', state.role)
+  put('layout', state.layout)
   if (state.args && Object.keys(state.args).length > 0) {
     params.set(ARGS_KEY, JSON.stringify(state.args))
   }
@@ -266,6 +270,8 @@ export function parseUrlState(query: string): UrlState {
   if (queryState) state.query = queryState
   const role = params.get('role')
   if (role) state.role = role
+  const layout = params.get('layout')
+  if (layout) state.layout = layout
 
   const args = params.get(ARGS_KEY)
   if (args) {

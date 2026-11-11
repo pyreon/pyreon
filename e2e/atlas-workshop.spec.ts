@@ -588,27 +588,25 @@ test.describe('Roles panel — permission sets', () => {
     await expect(preview).not.toContainText('Delete project')
   })
 
-  test('reports the keys the component actually consulted', async ({ browser }) => {
+  test('each role card reports the keys its own render consulted', async ({ browser }) => {
     const page = await open(browser)
     await page.getByRole('button', { name: 'Danger zone' }).click()
     await page.getByTestId('addon-tab-permissions').click()
-    await page.getByTestId('role-viewer').click()
 
-    const rows = page.locator('[data-testid="perm-row"]')
-    await expect(rows.first()).toBeVisible()
-    const text = (await page.getByTestId('perm-summary').textContent()) ?? ''
-    // Both keys consulted, one granted and one denied — not a fabricated tally.
-    expect(text).toMatch(/2 key\(s\) consulted/)
-    expect(text).toMatch(/1 granted/)
-    expect(text).toMatch(/1 denied/)
+    // Both keys consulted, per role, with that role's answer — the viewer may
+    // read and not delete; the admin may do both. Not a fabricated tally.
+    await expect(page.getByTestId('role-keys-viewer')).toHaveText('posts.read ✓ · posts.delete ✗')
+    await expect(page.getByTestId('role-keys-admin')).toHaveText('posts.read ✓ · posts.delete ✓')
   })
 
   test('flags a component that never consulted a permission', async ({ browser }) => {
     const page = await open(browser)
     await page.getByTestId('addon-tab-permissions').click()
     // The default Button guards nothing, so switching roles proves nothing
-    // about it — the panel has to SAY that rather than show an empty list.
-    await expect(page.getByTestId('perm-unguarded')).toBeVisible()
+    // about it — every card has to SAY that rather than read "safe".
+    for (const id of ['anonymous', 'viewer', 'editor', 'admin']) {
+      await expect(page.getByTestId(`role-card-${id}`)).toHaveAttribute('data-verdict', 'unguarded')
+    }
   })
 })
 
@@ -663,8 +661,10 @@ test('schema panel derives fields and validates the live values', async ({ brows
   // Scoped to the variant row: asserting across all three fields is a strict-
   // mode violation, and `.first()` would silently pass on the wrong row.
   await expect(
-    page.locator('[data-testid="schema-field"]').filter({ hasText: 'Variant' }),
+    page.locator('[data-testid="schema-field"]').filter({ hasText: 'variant' }),
   ).toContainText('soft | solid | outline')
+  // Each field says where it came from — here, the schema.
+  await expect(page.locator('[data-testid="schema-source"]')).toHaveText(['schema', 'schema', 'schema'])
 
   // Valid to start.
   await expect(page.getByTestId('schema-verdict')).toContainText('valid')
@@ -682,11 +682,14 @@ test('schema panel derives fields and validates the live values', async ({ brows
   await expect(page.locator('[data-testid="schema-issue"]').first()).toContainText('label')
 })
 
-test('schema panel says so when a scenario has no schema', async ({ browser }) => {
+test('schema panel says so when a component has no schema, and still sources its controls', async ({ browser }) => {
   const page = await open(browser)
-  await page.getByRole('button', { name: 'Project list' }).click()
+  await page.getByRole('button', { name: 'Text field' }).click()
   await page.getByTestId('addon-tab-schema').click()
-  await expect(page.getByTestId('schema-none')).toBeVisible()
+  await expect(page.getByTestId('schema-lead')).toContainText('declares no schema')
+  // A hand-written catalog's controls are declared by the catalog entry.
+  await expect(page.locator('[data-testid="schema-source"]').first()).toHaveText('catalog')
+  await expect(page.getByTestId('schema-verdict')).toHaveCount(0)
 })
 
 /**

@@ -277,7 +277,7 @@ async function contrastFailures(page: Page): Promise<string[]> {
       const text = t.textContent?.trim()
       const el = t.parentElement
       if (!text || !el) continue
-      if (el.closest('[data-testid="canvas-preview"],[data-testid^="lab-tile"],svg,script,style')) continue
+      if (el.closest('[data-testid="canvas-preview"],[data-testid^="lab-tile"],[data-testid^="role-mini-"],svg,script,style')) continue
       const r = el.getBoundingClientRect()
       const cs = getComputedStyle(el)
       if (r.width === 0 || r.height === 0 || cs.visibility === 'hidden' || Number(cs.opacity) === 0) continue
@@ -362,10 +362,9 @@ test.describe('every panel renders its real data', () => {
     await expect(page.locator('[data-testid="perf-row"]').first()).toBeVisible()
   })
 
-  test('Permissions → the keys the render consulted, per role', async ({ browser }) => {
+  test('Permissions → the keys each role\'s render consulted', async ({ browser }) => {
     const { page } = await open(browser, { path: '/?c=danger-zone&p=permissions' })
-    await page.getByTestId('role-viewer').click()
-    await expect(page.locator('[data-testid="perm-row"]').first()).toBeVisible()
+    await expect(page.getByTestId('role-keys-viewer')).toHaveText('posts.read ✓ · posts.delete ✗')
   })
 
   test('Query → each state re-renders the component', async ({ browser }) => {
@@ -440,4 +439,156 @@ test.describe('every panel renders its real data', () => {
       .poll(() => page.getByTestId('canvas-preview').evaluate((el) => getComputedStyle(el).direction))
       .toBe('rtl')
   })
+})
+
+/**
+ * The design parts #4440 left out for want of a data source: the stage
+ * layout, every role side by side with a policy verdict, each control's
+ * provenance, and the coverage % bar. (The Lens "Fix:" line and "added N min
+ * ago" need `atlas dev` — they are in `atlas-dev.spec.ts`.)
+ *
+ * Each part: real data, keyboard operable, no horizontal scroll at the five
+ * audit widths, inside the drawer layout below 860px and under `?embed`.
+ */
+test.describe('the #4440 parts', () => {
+  const box = (page: Page, sel: string) =>
+    page.locator(sel).first().evaluate((el) => {
+      const r = el.getBoundingClientRect()
+      return { x: r.x, y: r.y, w: r.width, h: r.height }
+    })
+
+  test('Canvas → Layout moves the component and travels in the link', async ({ browser }) => {
+    const { page } = await open(browser, { path: '/?c=input&p=canvas' })
+    const child = '[data-testid="canvas-preview"] > *'
+    const centered = await box(page, child)
+    const surface0 = await box(page, '[data-testid="canvas-preview"]')
+    // Centered: the component sits in the middle of the surface.
+    expect(Math.abs(centered.x + centered.w / 2 - (surface0.x + surface0.w / 2))).toBeLessThan(2)
+
+    // Keyboard: focus the option and press Space.
+    await page.getByTestId('layout-padded').focus()
+    await page.keyboard.press('Space')
+    await expect(page.getByTestId('layout-padded')).toHaveAttribute('aria-pressed', 'true')
+    await expect.poll(() => page.evaluate(() => location.search)).toContain('layout=padded')
+    const surface = await box(page, '[data-testid="canvas-preview"]')
+    const padded = await box(page, child)
+    // Top-left, inside a 16px gutter (+1px surface edge).
+    expect(padded.x - surface.x).toBeLessThanOrEqual(18)
+    expect(padded.y - surface.y).toBeLessThanOrEqual(18)
+
+    await page.getByTestId('layout-fullscreen').click()
+    // Fullscreen: the surface fills the stage edge to edge.
+    const stage = await box(page, '[data-testid="canvas-stage"]')
+    await expect.poll(async () => (await box(page, '[data-testid="canvas-preview"]')).h).toBeGreaterThan(stage.h - 2)
+    const full = await box(page, '[data-testid="canvas-preview"]')
+    expect(Math.abs(full.x - stage.x)).toBeLessThan(2)
+    expect(Math.abs(full.w - stage.w)).toBeLessThan(2)
+
+    // A reload keeps it — the link carries the layout.
+    await page.reload({ waitUntil: 'networkidle' })
+    await expect(page.getByTestId('canvas-stage')).toHaveAttribute('data-layout', 'fullscreen')
+  })
+
+  test('Permissions → every role side by side, the missing guard flagged by policy', async ({ browser }) => {
+    const { page, errors } = await open(browser, { path: '/?c=row-actions&p=permissions' })
+    // Row actions guards Edit and forgets Delete: every role but admin is a
+    // violation, named with the policy that withholds it.
+    for (const id of ['anonymous', 'viewer', 'editor']) {
+      await expect(page.getByTestId(`role-card-${id}`)).toHaveAttribute('data-verdict', 'violation')
+      await expect(page.getByTestId(`role-verdict-${id}`)).toContainText(
+        `"Delete" rendered for ${id} with no can() check · policy: admin only`,
+      )
+    }
+    await expect(page.getByTestId('role-card-admin')).toHaveAttribute('data-verdict', 'ok')
+    await expect(page.getByTestId('role-verdict-admin')).toContainText('matches policy')
+    // Each card is the REAL render under that role: Edit only where granted.
+    await expect(page.getByTestId('role-mini-viewer')).not.toContainText('Edit')
+    await expect(page.getByTestId('role-mini-editor')).toContainText('Edit')
+    // The violation card is the red one.
+    const border = await page
+      .getByTestId('role-card-viewer')
+      .evaluate((el) => getComputedStyle(el).borderTopColor)
+    const okBorder = await page.getByTestId('role-card-admin').evaluate((el) => getComputedStyle(el).borderTopColor)
+    expect(border).not.toBe(okBorder)
+    // The minis are pictures: nothing inside them takes focus.
+    await expect(page.getByTestId('role-mini-admin')).toHaveAttribute('inert', '')
+
+    // Keyboard: a role chip renders the CANVAS under that role.
+    await page.getByTestId('role-admin').focus()
+    await page.keyboard.press('Enter')
+    await expect(page.getByTestId('role-admin')).toHaveAttribute('aria-pressed', 'true')
+    await expect(page.getByTestId('canvas-preview')).toContainText('Edit')
+    await expect.poll(() => page.evaluate(() => location.search)).toContain('role=admin')
+    expect(errors).toEqual([])
+  })
+
+  test('Schema → each control names its source', async ({ browser }) => {
+    const { page } = await open(browser, { path: '/?c=button&p=schema' })
+    await expect(page.locator('[data-testid="schema-field"]').first()).toBeVisible()
+    await expect(page.locator('[data-testid="schema-source"]').first()).toHaveText('catalog')
+    // A real <table>, with column headers for assistive tech.
+    await expect(page.getByRole('columnheader', { name: 'source' })).toBeVisible()
+  })
+
+  test('Reactive coverage → the % bar is the recorded percentage', async ({ browser }) => {
+    const { page } = await open(browser, { path: '/?c=toggle&p=reactivity' })
+    await page.getByTestId('coverage-toggle').click()
+    await page.locator('[data-testid="canvas-preview"] label').first().click()
+    await page.getByTestId('coverage-toggle').click()
+    const pct = Number.parseFloat((await page.getByTestId('coverage-percent').textContent()) ?? '')
+    expect(Number.isFinite(pct)).toBe(true)
+    // The same report's denominator, stated in the caption and the stats.
+    await expect(page.getByTestId('coverage-head')).toContainText(/of the [1-9]\d* reactive nodes/)
+    // The fill's width IS that percentage of the track (0 is a real answer:
+    // the workbench remounts a component per control edit, so its effects
+    // often only ran at mount — the bar must say so, not round it up).
+    await expect
+      .poll(() => page.getByTestId('coverage-fill').evaluate((el) => (el as HTMLElement).style.width))
+      .toBe(`${pct}%`)
+    // Polled: the fill animates to its width.
+    await expect
+      .poll(async () => {
+        const [fill, track] = await Promise.all([
+          box(page, '[data-testid="coverage-fill"]'),
+          box(page, '[data-testid="coverage-bar"]'),
+        ])
+        return Math.abs(fill.w - (track.w * pct) / 100) < 1.5
+      })
+      .toBe(true)
+  })
+
+  const PARTS = [
+    { name: 'layout', path: '/?c=input&p=canvas&layout=fullscreen' },
+    { name: 'permissions', path: '/?c=row-actions&p=permissions' },
+    { name: 'schema', path: '/?c=badge&p=schema' },
+  ]
+
+  for (const theme of ['dark', 'light'] as const) {
+    test(`${theme}: the new parts — no horizontal overflow, AA chrome text, drawer below 860, ?embed`, async ({
+      browser,
+    }) => {
+      test.setTimeout(180_000)
+      for (const width of WIDTHS) {
+        for (const part of PARTS) {
+          for (const embed of [false, true]) {
+            const path = embed ? `${part.path}&embed` : part.path
+            const { page, ctx } = await open(browser, { theme, width, path })
+            const where = `${theme} @${width} ${part.name}${embed ? ' ?embed' : ''}`
+            const overflow = await page.evaluate(
+              () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+            )
+            expect(overflow, `${where}: horizontal overflow`).toBeLessThanOrEqual(0)
+            expect(await contrastFailures(page), where).toEqual([])
+            if (embed) await expect(page.getByTestId('atlas-shell')).toHaveAttribute('data-embed', 'true')
+            // Below 860 the catalog is a drawer: closed, behind its toggle.
+            if (width < 860) {
+              await expect(page.getByTestId('toggle-drawer')).toBeVisible()
+              await expect(page.getByTestId('sidebar-drawer')).toBeHidden()
+            }
+            await ctx.close()
+          }
+        }
+      }
+    })
+  }
 })
