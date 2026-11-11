@@ -885,6 +885,25 @@ batch(() => {
 // Effects that depend on both run only once
 ```
 
+### `useSignal`, `useComputed`, `useSignalEffect`
+
+The component hooks from `@preact/signals`, for use inside a component:
+
+- `useSignal(initial)`: a signal created on the first render; later renders return the same one.
+- `useComputed(fn)`: a computed created once that always runs `fn` from the latest render.
+- `useSignalEffect(fn)`: an effect that tracks the signals `fn` reads, runs `fn` from the latest render, and is disposed on unmount. A function returned from `fn` is its cleanup.
+
+```tsx
+import { useComputed, useSignal, useSignalEffect } from '@preact/signals'
+
+function Counter() {
+  const count = useSignal(0)
+  const doubled = useComputed(() => count.value * 2)
+  useSignalEffect(() => console.log(count.value))
+  return <button onClick={() => count.value++}>{doubled.value}</button>
+}
+```
+
 ### Migrating from Preact Signals to Pyreon Signals
 
 The `.value` accessor API is identical between `@preact/signals` and `@pyreon/preact-compat/signals`. The migration is a simple import swap:
