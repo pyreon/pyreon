@@ -1,6 +1,5 @@
 import { isAbsolute, relative } from 'node:path'
 import {
-  createTerm,
   fileUrl,
   formatCounts,
   formatElapsed,
@@ -10,12 +9,12 @@ import {
   plural,
   severityStyle,
   type Term,
-  term as defaultTerm,
   verdict,
   visibleWidth,
   wrap,
   WRAP_WIDTH,
 } from '@pyreon/ansi'
+import { termFor } from './term-for'
 import type { Diagnostic, LintResult } from './types'
 
 export interface TextFormatOptions {
@@ -43,12 +42,6 @@ export interface TextFormatOptions {
 
 /** The terminal options every text formatter takes. Primitives only: no `@pyreon/ansi` type is public. */
 export type TermChoice = Pick<TextFormatOptions, 'color' | 'theme' | 'unicode' | 'width'>
-
-/** @internal The `Term` for a set of choices; the process's stdout when none are given. */
-export const termFor = (opts: TermChoice): Term =>
-  opts.color === undefined && opts.theme === undefined && opts.unicode === undefined && opts.width === undefined
-    ? defaultTerm
-    : createTerm({ level: opts.color, theme: opts.theme, unicode: opts.unicode, width: opts.width })
 
 const displayPath = (filePath: string, cwd: string): string => {
   if (!isAbsolute(filePath)) return filePath

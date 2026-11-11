@@ -1,5 +1,6 @@
 import { finding, header, plural, verdict } from '@pyreon/ansi'
-import { type TermChoice, termFor } from './reporter'
+import type { TermChoice } from './reporter'
+import { termFor } from './term-for'
 import { allRules } from './rules/index'
 import type { LintConfig, RuleOptions, Severity } from './types'
 import { isProjectDependency } from './utils/project-deps'

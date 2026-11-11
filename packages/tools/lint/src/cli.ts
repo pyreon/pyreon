@@ -8,7 +8,6 @@ import {
   interrupted,
   onInterrupt,
   plural,
-  type Term,
   verdict,
   wrap,
 } from '@pyreon/ansi'
@@ -18,7 +17,8 @@ import { initConfig } from './init'
 import { listRules } from './lint'
 import { lintAsync } from './parallel'
 import { startLspServer } from './lsp/index'
-import { formatCompact, formatGha, formatJSON, formatText } from './reporter'
+import { formatCompact, formatGha, formatJSON, formatText, type TermChoice } from './reporter'
+import { termFor } from './term-for'
 import { groupOf } from './rules/groups'
 import type { PresetName, RuleGroup, Severity } from './types'
 import { watchAndLint } from './watcher'
@@ -83,7 +83,8 @@ const SEVERITY_ROLE = { error: 'err', warn: 'warn', info: 'info', off: 'dim' } a
  * description wrapped under its own column, `fixable` when it is), then
  * the totals. Exported for tests.
  */
-export function formatRuleList(t: Term): string {
+export function formatRuleList(opts: TermChoice = {}): string {
+  const t = termFor(opts)
   const rules = listRules()
   const maxId = Math.max(...rules.map((r) => r.id.length))
   const maxCat = Math.max(...rules.map((r) => r.category.length))
@@ -121,7 +122,7 @@ export function formatRuleList(t: Term): string {
 }
 
 function printList() {
-  console.log(formatRuleList(createTerm()))
+  console.log(formatRuleList())
 }
 
 /** A usage problem on stderr in the shared theme: `✗ pyreon-lint · problem`, then `fix:`. */
@@ -132,7 +133,11 @@ function usageProblem(message: string, fix: string): void {
 }
 
 /** `--init`: the outcome as the verdict (last line), any guidance above it. */
-export function formatInitResult(t: Term, r: { status: 'written' | 'exists' | 'no-package-json'; message: string }): string {
+export function formatInitResult(
+  r: { status: 'written' | 'exists' | 'no-package-json'; message: string },
+  opts: TermChoice = {},
+): string {
+  const t = termFor(opts)
   const [first = '', ...rest] = r.message.split('\n')
   const status = r.status === 'written' ? 'ok' : r.status === 'exists' ? 'warn' : 'err'
   const body = rest.filter((l, i) => !(i === 0 && l === ''))
@@ -307,7 +312,7 @@ export async function runCli(argv: string[]): Promise<number | null> {
 
   if (args.runInit) {
     const r = initConfig(resolve('.'))
-    console.log(formatInitResult(createTerm(), r))
+    console.log(formatInitResult(r))
     return r.status === 'written' ? 0 : 1
   }
 

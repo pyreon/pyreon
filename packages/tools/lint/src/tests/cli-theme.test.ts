@@ -4,7 +4,7 @@
  * colour level on both backgrounds and with ASCII symbols; NO_COLOR output
  * is complete; nothing wider than the window except an unbreakable token.
  */
-import { createTerm, stripAnsi } from '@pyreon/ansi'
+import { stripAnsi } from '@pyreon/ansi'
 import { describe, expect, it } from 'vitest'
 import { formatInitResult, formatRuleList } from '../cli'
 import { formatGha } from '../reporter'
@@ -75,20 +75,20 @@ describe('--why-off', () => {
 
 describe('--list', () => {
   it('renders at truecolor (one level is enough: the roles are the reporter’s)', () => {
-    const text = formatRuleList(createTerm({ level: 3, theme: 'dark', unicode: true }))
+    const text = formatRuleList({ color: 3, theme: 'dark', unicode: true })
     // The registry grows; lock the shape of the first section, not the count.
     const firstSection = text.split('\n\n').slice(0, 2).join('\n\n')
     expect(show(firstSection)).toMatchSnapshot()
   })
 
   it('wraps every description at 100 columns and ends on the total', () => {
-    const text = formatRuleList(createTerm({ level: 0, unicode: true, width: 100 }))
+    const text = formatRuleList({ color: 0, unicode: true, width: 100 })
     for (const line of text.split('\n')) expect(line.length, line).toBeLessThanOrEqual(100)
     expect(text.split('\n').at(-1)).toMatch(/^\d+ rules total · \d+ fixable$/)
   })
 
   it('stacks the description under the id in a narrow window', () => {
-    const text = formatRuleList(createTerm({ level: 0, unicode: true, width: 50 }))
+    const text = formatRuleList({ color: 0, unicode: true, width: 50 })
     for (const line of text.split('\n')) {
       // A line that is one unbreakable token (a long rule id or API list)
       // may overflow; wrapping never splits a token.
@@ -98,8 +98,8 @@ describe('--list', () => {
   })
 
   it('NO_COLOR output is complete', () => {
-    const plain = formatRuleList(createTerm({ level: 0, unicode: true }))
-    expect(stripAnsi(formatRuleList(createTerm({ level: 3, unicode: true })))).toBe(plain)
+    const plain = formatRuleList({ color: 0, unicode: true })
+    expect(stripAnsi(formatRuleList({ color: 3, unicode: true }))).toBe(plain)
     expect(plain).toMatch(/ (error|warn |info |off  ) /)
   })
 })
@@ -112,11 +112,10 @@ describe('--init', () => {
   }
   for (const [name, opts] of LEVELS.filter(([n]) => n === 'plain' || n === 'truecolor dark' || n === 'ascii')) {
     it(`renders at ${name}`, () => {
-      const t = createTerm({ level: opts.color, theme: 'theme' in opts ? opts.theme : undefined, unicode: opts.unicode })
       const out = [
-        formatInitResult(t, written),
-        formatInitResult(t, { status: 'exists', message: '.pyreonlintrc.json already exists — leaving it alone.' }),
-        formatInitResult(t, { status: 'no-package-json', message: 'No package.json here, so the preset cannot be inferred.' }),
+        formatInitResult(written, opts),
+        formatInitResult({ status: 'exists', message: '.pyreonlintrc.json already exists — leaving it alone.' }, opts),
+        formatInitResult({ status: 'no-package-json', message: 'No package.json here, so the preset cannot be inferred.' }, opts),
       ]
       expect(show(out.join('\n\n'))).toMatchSnapshot()
     })
