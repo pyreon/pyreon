@@ -1,6 +1,8 @@
 import { For, Show } from '@pyreon/core'
 import { useHead } from '@pyreon/head'
 import { EXTRA_SECTIONS } from '../content/extra-sections'
+import { EXTRA_SECTIONS_MORE } from '../content/extra-sections.more'
+import { ProductHeroVisual } from '../demos/_asset-b'
 import type { ExtraSection, ProductData } from '../content/model'
 import { DEMOS } from '../demos/registry'
 import { PRODUCTS, productHref } from '../nav'
@@ -9,6 +11,7 @@ import { el, pair, tone } from '../kit/bases'
 import { BenchmarkTable } from '../kit/bench'
 import { FactList, FeatureList, Faq, LimitNote, NumberedCards, StatRow, StepCards, ApiGroups } from '../kit/blocks'
 import { EmberGradientDefs, GlowCard, PackageCard, ProductTag } from '../kit/cards'
+import { ExtraMoreBody, isExtraMore } from '../kit/extra'
 import { BeforeAfter, CodeCard, ComingFrom } from '../kit/code'
 import { InstallCommand, Pill } from '../kit/controls'
 import { useLinkClick } from '../kit/link'
@@ -101,7 +104,9 @@ function Extra(props: { section: ExtraSection }) {
       <Section size="tight">
         <Wrap>
           <SectionHead label={s.label} title={s.title} text={s.text} />
-          {s.kind === 'packages' ? (
+          {isExtraMore(s) ? (
+            <ExtraMoreBody section={s} />
+          ) : s.kind === 'packages' ? (
             <AutoGrid min={s.cols ? undefined : 250} cols={s.cols} gap={12}>
               <For each={s.items} by={(i) => i.pkg}>
                 {(i) => <PackageCard pkg={i.pkg} kind={i.role} text={i.text} />}
@@ -122,7 +127,7 @@ export function ProductPage(props: { data: ProductData }) {
   const d = props.data
   const click = useLinkClick()
   const Demo = DEMOS[d.demo.component]
-  const extra = d.extraSections ?? EXTRA_SECTIONS[d.id] ?? []
+  const extra = d.extraSections ?? EXTRA_SECTIONS[d.id] ?? EXTRA_SECTIONS_MORE[d.id] ?? []
   const docsHref = `/docs/${d.id}`
 
   useHead({
@@ -158,6 +163,7 @@ export function ProductPage(props: { data: ProductData }) {
             </div>
             <FactList facts={d.hero.facts} />
           </HeroGrid>
+          <ProductHeroVisual id={d.id} />
         </Wrap>
       </Section>
 

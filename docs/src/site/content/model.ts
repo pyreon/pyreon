@@ -1,3 +1,4 @@
+import type { ExtraSectionMore } from './extra-sections.more'
 import type { ProductIndex, ProductPage } from './types'
 
 /**
@@ -47,6 +48,7 @@ export type ExtraSection =
       text?: string
       stats: { value: string; label: string }[]
     }
+  | ExtraSectionMore
 
 export type ProductData = Omit<ProductPage, 'difference' | 'comingFrom' | 'recipes'> & {
   difference: null | { title: string; before: HighlightedCode; after: HighlightedCode }
