@@ -34,6 +34,8 @@ import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.captureToImage
+import androidx.compose.ui.test.performKeyInput
+import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.swipe
 import androidx.compose.ui.test.longClick
@@ -627,6 +629,42 @@ class TasksAppInstrumentedTest {
 
         composeRule.onNodeWithTag("streams-back").performClick()
         assertTagDisplayed("tasks-page", "after streams-back (/streams -> /tasks)")
+    }
+
+    /**
+     * useInfiniteQuery, useLatest, useMediaQuery and useKeyboard on the emulator (same assertions as the iOS test,
+     * plus a real key press: the Compose test rule can deliver a hardware key, the simulator cannot).
+     */
+    @Test
+    fun hooksInfiniteQueryLatestMediaQueryKeyboard() {
+        composeRule.onNodeWithTag("login-username").performTextInput("abcde")
+        composeRule.onNodeWithTag("login-submit").performClick()
+        assertTagDisplayed("tasks-page", "after login-submit")
+        composeRule.onNodeWithTag("tasks-hooks").performClick()
+        assertTagDisplayed("hooks-page", "after tasks-hooks (/tasks -> /hooks)")
+
+        waitForTagText("hooks-pages", "1")
+        composeRule.onNodeWithTag("hooks-more").assertTextEquals("true")
+        composeRule.onNodeWithTag("hooks-fetch-more").performClick()
+        waitForTagText("hooks-pages", "2")
+        composeRule.onNodeWithTag("hooks-more").assertTextEquals("true")
+        composeRule.onNodeWithTag("hooks-fetch-more").performClick()
+        waitForTagText("hooks-pages", "3")
+        waitForTagText("hooks-more", "false")
+
+        composeRule.onNodeWithTag("hooks-latest").assertTextEquals("0")
+        repeat(3) { composeRule.onNodeWithTag("hooks-tap").performClick() }
+        waitForTagText("hooks-taps", "3")
+        composeRule.onNodeWithTag("hooks-latest").assertTextEquals("2")
+
+        composeRule.onNodeWithTag("hooks-dark").assertTextEquals("light")
+
+        composeRule.onNodeWithTag("hooks-key").assertTextEquals("0")
+        composeRule.onNodeWithTag("hooks-page").performKeyInput { keyDown(Key.K); keyUp(Key.K) }
+        waitForTagText("hooks-key", "1")
+
+        composeRule.onNodeWithTag("hooks-back").performClick()
+        assertTagDisplayed("tasks-page", "after hooks-back (/hooks -> /tasks)")
     }
 
     /**

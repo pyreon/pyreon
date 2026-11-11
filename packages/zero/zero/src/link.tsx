@@ -192,15 +192,32 @@ export function useLink<const T extends string = string>(props: LinkProps<T>): U
 
   // Only INTERNAL navigations are intercepted; external / mailto / hash are
   // left to the browser. `external` prop overrides the auto-classification.
+  // One classification per (href, config), not one per caller: a single SSR
+  // render asks for it from `target()`, `rel()` (via `target()`) and the
+  // active-state reads, and `classifyHref` runs up to five regexes each time.
+  // Keyed on the inputs, so a reactive `href` still re-classifies on change.
+  let kindHref: string | undefined
+  let kindConfig: LinkConfig | undefined
+  let kind: ReturnType<typeof classifyHref> | undefined
+  const kindOf = (): ReturnType<typeof classifyHref> => {
+    const href = hrefOf()
+    const config = linkConfigOf(router)
+    if (kind === undefined || href !== kindHref || config !== kindConfig) {
+      kindHref = href
+      kindConfig = config
+      kind = classifyHref(href, config)
+    }
+    return kind
+  }
   const isInternal = (): boolean => {
     if (props.external === true) return false
     if (props.external === false) return true
-    return classifyHref(hrefOf(), linkConfigOf(router)) === 'internal'
+    return kindOf() === 'internal'
   }
   const isExternalNewTab = (): boolean => {
     if (props.external === false) return false
     if (props.external === true) return true
-    return classifyHref(hrefOf(), linkConfigOf(router)) === 'external'
+    return kindOf() === 'external'
   }
   // The path client navigation actually pushes (absolute same-origin URLs are
   // stripped to `/path?q#h`; bare paths pass through).
@@ -365,28 +382,44 @@ export function createLink(
 /**
  * Default navigation link built on an `<a>` tag.
  *
+ * Renders the same `<a>` as `createLink` around a plain anchor, but as ONE
+ * component with no spreads: the `createLink` route costs a second component
+ * render (props merge, hook frame, a 13-prop `jsx` call with four
+ * `_wrapSpread`s) per link, and the conditional spreads kept the `<a>` off the
+ * compiled-template paths (`_tpl` on the client, `_ssr` on the server). A list
+ * page renders one of these per row. Attribute order is unchanged, and an
+ * absent value is `undefined` (attribute omitted), exactly as the spread
+ * omitted it.
+ *
  * @example
  * <Link href="/about" prefetch="viewport">About</Link>
  * <Link href="/posts" activeClass="nav-active">Posts</Link>
  */
-export const Link = createLink((props: LinkRenderProps) => (
-  <a
-    ref={props.ref}
-    href={props.href}
-    {...(props.class ? { class: props.class } : {})}
-    {...(props.style ? { style: props.style } : {})}
-    {...(props.target ? { target: props.target } : {})}
-    {...(props.rel ? { rel: props.rel } : {})}
-    {...(props['aria-label'] ? { 'aria-label': props['aria-label'] } : {})}
-    // An ACCESSOR, not a spread: a spread reads `isExactActive()` once at
-    // setup, so `aria-current` never moved after a client-side navigation and
-    // assistive tech kept announcing the first page as current. `undefined`
-    // removes the attribute.
-    aria-current={() => (props.isExactActive() ? 'page' : undefined)}
-    onClick={props.onClick}
-    onMouseEnter={props.onMouseEnter}
-    onTouchStart={props.onTouchStart}
-  >
-    {props.children}
-  </a>
-))
+export const Link = function Link(props: LinkProps) {
+  const link = useLink(props)
+  // External-ness is a property of `href`; resolve target/rel once at render
+  // (same as `createLink`).
+  const target = link.target() || undefined
+  const rel = link.rel() || undefined
+  return (
+    <a
+      ref={link.ref}
+      href={props.href}
+      // A CALL, so the compiled sinks track it (active classes follow
+      // navigation); a bare function value is not an accessor on `_setClass`.
+      class={link.classes()}
+      style={props.style || undefined}
+      target={target}
+      rel={rel}
+      aria-label={props['aria-label'] || undefined}
+      // An ACCESSOR: `aria-current` must follow client-side navigation, and
+      // `undefined` removes the attribute.
+      aria-current={() => (link.isExactActive() ? 'page' : undefined)}
+      onClick={link.handleClick}
+      onMouseEnter={link.handleMouseEnter}
+      onTouchStart={link.handleTouchStart}
+    >
+      {props.children}
+    </a>
+  )
+} as unknown as { <const T extends string>(props: LinkProps<T>): any }
