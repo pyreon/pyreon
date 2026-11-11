@@ -439,17 +439,32 @@ const COMPAT_ALIASES: Record<CompatFramework, Record<string, string>> = {
   preact: {
     preact: '@pyreon/preact-compat',
     'preact/hooks': '@pyreon/preact-compat/hooks',
+    // Preact's React-shaped API (core + hooks in one module).
+    'preact/compat': '@pyreon/preact-compat/compat',
     'preact/jsx-runtime': '@pyreon/preact-compat/jsx-runtime',
     'preact/jsx-dev-runtime': '@pyreon/preact-compat/jsx-runtime',
+    'preact/compat/jsx-runtime': '@pyreon/preact-compat/jsx-runtime',
+    'preact/compat/jsx-dev-runtime': '@pyreon/preact-compat/jsx-runtime',
     '@preact/signals': '@pyreon/preact-compat/signals',
+    '@preact/signals-core': '@pyreon/preact-compat/signals',
   },
   vue: {
     vue: '@pyreon/vue-compat',
     'vue/jsx-runtime': '@pyreon/vue-compat/jsx-runtime',
     'vue/jsx-dev-runtime': '@pyreon/vue-compat/jsx-runtime',
+    // `vue` is a re-export of these three; libraries import them directly.
+    // Mixing the real ones with the compat layer would split reactivity.
+    '@vue/reactivity': '@pyreon/vue-compat',
+    '@vue/runtime-core': '@pyreon/vue-compat',
+    '@vue/runtime-dom': '@pyreon/vue-compat',
   },
   solid: {
     'solid-js': '@pyreon/solid-compat',
+    // solid-compat's main entry also carries the `solid-js/web` surface
+    // (`render`, `hydrate`, `Portal`, `Dynamic`) and the `solid-js/store`
+    // surface (`createStore`, `produce`, `reconcile`, `unwrap`).
+    'solid-js/web': '@pyreon/solid-compat',
+    'solid-js/store': '@pyreon/solid-compat',
     'solid-js/jsx-runtime': '@pyreon/solid-compat/jsx-runtime',
     'solid-js/jsx-dev-runtime': '@pyreon/solid-compat/jsx-runtime',
   },
@@ -460,6 +475,38 @@ const COMPAT_ALIASES: Record<CompatFramework, Record<string, string>> = {
     'svelte/jsx-runtime': '@pyreon/svelte-compat/jsx-runtime',
     'svelte/jsx-dev-runtime': '@pyreon/svelte-compat/jsx-runtime',
   },
+}
+
+/**
+ * The bare specifiers that belong to each compat framework. An import of one
+ * of these that is NOT in {@link COMPAT_ALIASES} resolves to the real
+ * framework package (if installed) — usually a mistake in compat mode, since
+ * the real framework's runtime does not integrate with Pyreon's — so the
+ * plugin warns once per specifier. Locked against the compat packages'
+ * export maps by `compat-alias-coverage.test.ts`.
+ */
+const COMPAT_FRAMEWORK_SPECIFIERS: Record<CompatFramework, readonly RegExp[]> = {
+  react: [/^react(?:\/|$)/, /^react-dom(?:\/|$)/],
+  preact: [/^preact(?:\/|$)/, /^@preact\/signals(?:-core)?(?:\/|$)/],
+  vue: [/^vue(?:\/|$)/, /^@vue\//],
+  solid: [/^solid-js(?:\/|$)/],
+  svelte: [/^svelte(?:\/|$)/],
+}
+
+/** @internal — exported for tests. */
+export function _compatAliasTable(compat: CompatFramework): Readonly<Record<string, string>> {
+  return COMPAT_ALIASES[compat]
+}
+
+/**
+ * True when `id` is a specifier of the compat framework that the plugin does
+ * NOT redirect (so it falls through to the real package).
+ *
+ * @internal — exported for tests.
+ */
+export function _isUnaliasedFrameworkImport(compat: CompatFramework, id: string): boolean {
+  if (COMPAT_ALIASES[compat][id]) return false
+  return COMPAT_FRAMEWORK_SPECIFIERS[compat].some((re) => re.test(id))
 }
 
 /**
@@ -842,6 +889,9 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin<any>
   // Cache `isPyreonWorkspaceFile` lookups by directory — package.json reads
   // happen at most once per containing directory across the build.
   const pyreonWorkspaceDirCache = new Map<string, boolean>()
+  // Framework specifiers already warned about as unaliased (one warning per
+  // specifier per plugin instance; bounded by the distinct imports in the app).
+  const warnedUnaliased = new Set<string>()
 
   // ── Island declaration registry ─────────────────────────────────────────
   // Tracks every `island(() => import('PATH'), { name: 'X', hydrate: 'Y' })`
@@ -1137,7 +1187,18 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin<any>
       }
 
       const target = _getCompatTarget(compat, id)
-      if (!target) return
+      if (!target) {
+        if (compat && _isUnaliasedFrameworkImport(compat, id) && !warnedUnaliased.has(id)) {
+          warnedUnaliased.add(id)
+          this.warn(
+            `[Pyreon] compat "${compat}": "${id}" is not provided by @pyreon/${compat}-compat, so it ` +
+              `resolves to the real package (if installed), whose runtime does not work with Pyreon's. ` +
+              `Import the equivalent from "@pyreon/${compat}-compat" instead, or check the compat docs ` +
+              `for what is supported.`,
+          )
+        }
+        return
+      }
 
       // Vite 8 resolves the "bun" condition natively via resolve.conditions.
       // Delegate to Vite's resolver instead of manual package.json parsing.
