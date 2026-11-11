@@ -103,7 +103,7 @@ const VirtualList = defineComponent(() => {
 2. Based on the container size, estimated item sizes, and current scroll position, it calculates which items are visible
 3. It returns only the visible items (plus overscan) as `VirtualItem` objects
 4. When the user scrolls, the virtualizer recalculates and updates the reactive signals
-5. An `effect` tracks the reactive options function, so changes to `count`, `estimateSize`, or other options trigger an automatic recalculation
+5. An `effect` tracks the reactive options function, so a change to `count` or another option triggers an automatic recalculation. Sizes already estimated are cached, so a changed `estimateSize` result takes effect after `virtual.instance.measure()` (see [Reactive Options](#reactive-options))
 
 ### UseVirtualizerResult
 

@@ -384,6 +384,37 @@ const checks: ClaimCheck[] = [
     ],
   },
   {
+    // `rx` object members other than `pipe`. The manifest's breakdown summed
+    // to 43 while its headline said 42 (#4367).
+    name: 'rx function count',
+    codeId: 'rx-function-count',
+    actual: (repoRoot) => {
+      const p = join(repoRoot, 'packages/fundamentals/rx/src/index.ts')
+      if (!existsSync(p)) return -1
+      const block = readFileSync(p, 'utf8').match(/export const rx[^=]*=\s*(?:Object\.freeze\()?\{([\s\S]*?)\}/)?.[1] ?? ''
+      const names = block.split(/[,\n]/).map((s) => s.trim().split(':')[0]!.trim()).filter((n) => /^\w+$/.test(n))
+      return names.filter((n) => n !== 'pipe').length
+    },
+    claims: [
+      { file: 'packages/fundamentals/rx/src/manifest.ts', pattern: /(\d+) functions(?: plus pipe| across collections|')/, all: true },
+      { file: 'docs/src/content/docs/rx.md', pattern: /all (\d+) functions plus `pipe`/ },
+    ],
+  },
+  {
+    // TanStack Table features `@pyreon/table` re-exports (and `stockFeatures` holds).
+    name: 'table feature count',
+    codeId: 'table-feature-count',
+    actual: (repoRoot) => {
+      const p = join(repoRoot, 'packages/fundamentals/table/src/index.ts')
+      if (!existsSync(p)) return -1
+      return new Set(readFileSync(p, 'utf8').match(/\b(?!core)[a-z]\w*Feature\b/g) ?? []).size
+    },
+    claims: [
+      { file: 'packages/fundamentals/table/src/manifest.ts', pattern: /all (\d+) features/, all: true },
+      { file: '.agents/guides/fundamentals/references/table.md', pattern: /`stockFeatures` is all (\d+) features/ },
+    ],
+  },
+  {
     name: 'doc page count',
     codeId: 'doc-count',
     actual: countDocPages,
@@ -435,6 +466,16 @@ const checks: ClaimCheck[] = [
         pattern: /Pyreon-specific rules \((\d+) rules, \d+ categories/,
       },
       {
+        // The VS Code extension's README. It said "56 rules" against 133
+        // because it was not a claim surface (#4367).
+        file: 'packages/tools/lint/vscode/README.md',
+        pattern: /^## (\d+) rules$/m,
+      },
+      {
+        file: 'packages/tools/lint/vscode/README.md',
+        pattern: /^(\d+) rules across \d+ categories/m,
+      },
+      {
         // The scaffolder's lint prompt, which every `create-pyreon-app` user
         // reads. It shipped "59" in 0.53.0 against an actual 133, because it
         // was not a claim surface.
@@ -468,6 +509,10 @@ const checks: ClaimCheck[] = [
       {
         file: '.agents/rules/code-style.md',
         pattern: /Pyreon-specific rules \(\d+ rules, (\d+) categories/,
+      },
+      {
+        file: 'packages/tools/lint/vscode/README.md',
+        pattern: /^\d+ rules across (\d+) categories/m,
       },
     ],
   },
@@ -504,6 +549,13 @@ const checks: ClaimCheck[] = [
         file: 'packages/fundamentals/document/README.md',
         pattern: /one template, (\d+) output formats/,
         rejectHedged: /one template, (\d+)\+ output formats/,
+      },
+      {
+        // It said "14+ formats" (4 places) against 20 (#4315).
+        file: 'packages/ui-system/document-primitives/src/manifest.ts',
+        pattern: /(\d+) formats/,
+        rejectHedged: /(\d+)\+ formats/,
+        all: true,
       },
     ],
   },

@@ -5,12 +5,9 @@ import { createUniqueId } from '@pyreon/core'
  * `aria-describedby`, `aria-controls`, `for`/`id` pairing, etc.). Wraps
  * `@pyreon/core`'s `createUniqueId()`.
  *
- * SSR caveat: the id comes from a counter, so server and client agree only
- * while both call it in the same order the same number of times. The counter
- * is not currently reset per SSR request, so a long-running server can hand
- * out ids the hydrating client does not reproduce. The relationship still
- * works (the client re-renders both ends with its own id) — do not rely on a
- * server-rendered id being byte-identical after hydration.
+ * SSR: the id comes from a counter that is scoped per SSR request, so server
+ * and client agree as long as both call it in the same order the same number
+ * of times.
  *
  * Use it to wire two elements together when you don't have a natural id:
  *

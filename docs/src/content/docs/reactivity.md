@@ -587,14 +587,15 @@ batch(() => {
 // Now the outermost batch ends -- effects run once with final values
 ```
 
-### Batch with Return Values
+### Reading a value after a batch
 
-Batch returns the result of the callback:
+`batch(fn)` returns nothing (`batch(fn: () => void): void`). Read what you need after it, or with `.peek()` inside it:
 
 ```ts
-const result = batch(() => {
+let result = 0
+batch(() => {
   count.set(10)
-  return count.peek() // 10
+  result = count.peek() // 10
 })
 ```
 

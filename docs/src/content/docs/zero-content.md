@@ -30,7 +30,7 @@ Three files. No additional wiring.
 ```ts
 // vite.config.ts
 import pyreon from '@pyreon/vite-plugin'
-import zero from '@pyreon/zero'
+import zero from '@pyreon/zero/server'
 import content from '@pyreon/zero-content/plugin'
 
 export default {
@@ -527,11 +527,28 @@ The decision is made at **build** time on a static site, so a scheduled entry go
 
 ## `defineContentRoute` — the route helper
 
-A catch-all content route normally needs an async-component + `<Suspense>` + `getStaticPaths` + the registry-import side effect. `defineContentRoute(name)` collapses all of it into one line:
+A catch-all content route needs an async component inside `<Suspense>` that loads the entry for the slug. `defineContentRoute(name)` returns that component:
 
 ```tsx
 // src/routes/docs/[...slug].tsx
 import { defineContentRoute } from '@pyreon/zero-content'
+
+export default defineContentRoute('docs')
+```
+
+It returns only the route component. For a static (SSG) build, the route file also exports `getStaticPaths` and imports the collection registry, which the SSG render needs because it does not go through `entry-client`:
+
+```tsx
+// src/routes/docs/[...slug].tsx
+import 'virtual:zero-content/collections'
+import { defineContentRoute } from '@pyreon/zero-content'
+import type { GetStaticPaths } from '@pyreon/zero/server'
+
+const files = import.meta.glob('../../content/docs/**/*.md')
+export const getStaticPaths: GetStaticPaths<{ slug: string }> = () =>
+  Object.keys(files).map((p) => ({
+    params: { slug: p.replace('../../content/docs/', '').replace(/\.mdx?$/, '') },
+  }))
 
 export default defineContentRoute('docs')
 ```

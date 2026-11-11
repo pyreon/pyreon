@@ -19,8 +19,8 @@ export default function App() {
       <header>
         <h1>Pyreon — React Compat</h1>
         <p class="subtitle">
-          Familiar React hooks running on Pyreon's reactive engine. No hooks rules, no stale
-          closures, automatic dependency tracking.
+          Familiar React hooks running on Pyreon's reactive engine, with React's semantics:
+          hooks rules, deps arrays and closures behave as they do in React.
         </p>
         <p class="api-count">
           <strong>19 APIs</strong> demonstrated across <strong>14 interactive examples</strong>

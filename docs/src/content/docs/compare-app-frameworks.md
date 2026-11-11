@@ -33,7 +33,7 @@ Expo, React Native, Flutter, Kotlin Multiplatform and Capacitor all start from a
 2. **OS redesigns arrive for free.** A generated SwiftUI `Toggle` *is* the platform toggle, so a new OS design language reaches your app without a framework release. Frameworks that draw their own widgets have to re-imitate each redesign.
 3. **Real web from the same source.** The same components server-render, hydrate and index like any other web page — no canvas rendering and no separate web codebase. Of the mobile-first frameworks above, this is the combination the others do not offer in production today.
 4. **Signals map directly onto the platforms.** Fine-grained signals line up with SwiftUI's `@Observable` and Compose's `State`: there is no re-render model to learn or work around.
-5. **Errors name the fix.** Code outside the compilable subset produces a *named* warning, not a silent miscompile, which also makes the compiler a useful feedback loop for AI coding agents. The framework ships an MCP server and `llms.txt` for the same reason.
+5. **Errors name the fix.** Code outside the compilable subset almost always produces a *named* warning rather than a silent miscompile (the rare silent cases are tracked as bugs), which also makes the compiler a useful feedback loop for AI coding agents. The framework ships an MCP server and `llms.txt` for the same reason.
 
 ## Where Pyreon is behind
 

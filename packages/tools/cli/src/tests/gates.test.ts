@@ -183,7 +183,13 @@ describe('runDocClaimsGate', () => {
     //
     // 45 with the create-zero lint prompt ("Include @pyreon/lint? (N
     // Pyreon-specific rules)"), which shipped 59 against a real 133.
-    expect(result.meta.scanned).toBe(45)
+    //
+    // 53 with the #4367 docs pass: the lint VS Code README (+2 rule-count,
+    // +1 category-count; it said "56 rules"), the rx function count (+2; the
+    // manifest's breakdown summed to 43 under a "42"), the table feature
+    // count (+2; the guide said 16 of 17) and the document-primitives format
+    // count (+1; "14+ formats" against 20).
+    expect(result.meta.scanned).toBe(53)
     // The real repo must be drift-free — this gate runs in CI; if a
     // count claim drifts, EVERY PR's doctor run fails until it's fixed.
     const errs = result.findings.filter((f) => f.severity === 'error')

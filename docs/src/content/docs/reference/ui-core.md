@@ -26,7 +26,7 @@ See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multipla
 - init() callable directly for custom environments (tests, SSR without PyreonUI)
 - init(&#123; cssVariables: true &#125;) — opt-in CSS-variables theming: theme becomes custom properties, dark/light is one attribute write (no re-render)
 - cssVariablesPrePaintScript() — blocking &lt;head&gt; script that sets the mode attribute on documentElement before first paint (FOUC fix)
-- enrichTheme() (re-exported from @pyreon/unistyle) merges user theme with defaults
+- enrichTheme() (from @pyreon/unistyle, not re-exported here) merges a user theme with the defaults
 - Zero-dep utilities: get, set, merge, pick, omit, throttle, isEmpty, isEqual
 - HTML_TAGS / HTML_TEXT_TAGS constants drive Element / Text base tag dispatching
 

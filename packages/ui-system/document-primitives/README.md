@@ -26,7 +26,7 @@ function ReportTemplate({ data }: { data: () => Report }) {
       author={() => data().author}
     >
       <DocPage>
-        <DocHeading level={1}>Q4 Highlights</DocHeading>
+        <DocHeading level="h1">Q4 Highlights</DocHeading>
         <DocText>Revenue grew {() => data().revenueDelta}% year-over-year.</DocText>
         <DocList>
           {() => data().bullets.map((b) => <DocListItem>{b}</DocListItem>)}
@@ -43,7 +43,7 @@ function ReportTemplate({ data }: { data: () => Report }) {
 const tree = extractDocNode(() => <ReportTemplate data={() => store.report} />)
 const pdfBuffer = await render(tree, 'pdf')
 await download(tree, 'q4-report.pdf')   // browser shortcut
-const markdown = await render(tree, 'markdown')
+const markdown = await render(tree, 'md')
 const docxBuffer = await render(tree, 'docx')
 ```
 

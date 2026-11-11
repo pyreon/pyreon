@@ -32,7 +32,7 @@ const i18n = createI18n({
     },
   },
   // Async namespace loading — deduplicates concurrent requests:
-  loader: (locale, ns) => import(\`./locales/\${locale}/\${ns}.json\`),
+  loader: async (locale, ns) => (await import(\`./locales/\${locale}/\${ns}.json\`)).default,
 })
 
 // Use the t() function — reactive, re-evaluates on locale change:
@@ -108,7 +108,7 @@ interpolate('Hello, {{name}}!', { name: 'Server' })  // 'Hello, Server!'`,
       example: `const i18n = createI18n({
   locale: 'en',
   messages: { en: { greeting: 'Hello, {{name}}!' } },
-  loader: (locale, ns) => import(\`./locales/\${locale}/\${ns}.json\`),
+  loader: async (locale, ns) => (await import(\`./locales/\${locale}/\${ns}.json\`)).default,
   fallbackLocale: 'en',
 })
 

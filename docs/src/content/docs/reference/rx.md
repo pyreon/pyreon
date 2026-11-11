@@ -20,7 +20,7 @@ See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multipla
 ## Features
 
 - Every function overloaded: Signal&lt;T[]&gt; → Computed, T[] → plain
-- 42 functions across 6 categories: collections (26 — incl. intersection/difference/union set ops, signal-aware on both inputs), aggregation (8), operators (5), timing (2), search (1), pipe (1)
+- 42 functions plus pipe, across 6 categories: collections (26 — incl. intersection/difference/union set ops, signal-aware on both inputs), aggregation (8), operators (5), timing (2), search (1), pipe (1)
 - pipe(source, ...fns) collapses a chain into ONE computed — one recompute per source change vs N for N separate calls
 - Namespaced rx object for dot-notation usage (rx.filter, rx.map, etc.)
 - Individual named exports for tree-shaking
