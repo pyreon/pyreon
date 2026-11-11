@@ -1,0 +1,364 @@
+{
+ "id": "native",
+ "route": "/products/native",
+ "name": "Native",
+ "package": "Pyreon Native · PMTC",
+ "category": "multiplatform · iOS and Android",
+ "hero": {
+  "title": "Build the website. Get the iPhone and Android apps.",
+  "lede": "PMTC compiles the components you build from Pyreon's primitives into SwiftUI for iOS and Jetpack Compose for Android. Your buttons, fields and lists become the platform's own views, with no JavaScript engine shipped to draw them. Experimental, and we mean it.",
+  "install": "npm create @pyreon/multiplatform@latest my-app",
+  "ctaShort": "Create an app",
+  "facts": [
+   {
+    "key": "targets",
+    "value": "web · iOS (SwiftUI) · Android (Jetpack Compose)"
+   },
+   {
+    "key": "on the device",
+    "value": "SwiftUI and Compose views<small>No JavaScript engine renders your UI. A `<WebView>` appears only where you put one.</small>"
+   },
+   {
+    "key": "feedback",
+    "value": "1–9 ms<small>to compile the shared source in memory: `pyreon-native check` names what won't compile before Xcode opens.</small>"
+   },
+   {
+    "key": "status",
+    "value": "{dot:warn}experimental<small>What is proven on a device is listed in the public matrix on the multiplatform page.</small>"
+   }
+  ]
+ },
+ "why": {
+  "title": "Not a web page in an app costume.",
+  "items": [
+   {
+    "title": "The platform's own views",
+    "text": "A generated `Toggle` is the iOS toggle and the Android switch, so the next OS redesign reaches your app without a Pyreon release. `<Stack>` becomes `VStack` and `Column`; `<Field>` becomes `TextField`."
+   },
+   {
+    "title": "Signals become platform state",
+    "text": "`signal()` and `computed()` compile to `@State` and `@Observable` on iOS, and `mutableStateOf` and `derivedStateOf` on Android. There is no re-render model to learn or work around, on the web or on the device."
+   },
+   {
+    "title": "Errors that name the problem",
+    "text": "Code outside the native subset almost always gets a warning that names the construct and the file, often the line too, in milliseconds, before Xcode or Gradle runs. `--typecheck` adds a real `swiftc` pass on macOS."
+   },
+   {
+    "title": "Plain TypeScript keeps compiling",
+    "text": "`effect()`, `setTimeout` and `setInterval`, `Date`, string and numeric `enum`s, `try`/`catch` and a typed `JSON.parse` now lower to Swift and Kotlin instead of stopping the build.",
+    "status": "next release"
+   }
+  ]
+ },
+ "difference": {
+  "title": "The same screen, written twice by hand, or once.",
+  "before": {
+   "label": "ios/TodoApp.swift + android/TodoApp.kt",
+   "caption": "Two languages, two state models, two places to fix every bug. This is PMTC's real output for the file on the right, imports left out.",
+   "code": "// iOS: SwiftUI\nstruct Todo: Codable {\n  var id: Int\n  var text: String\n}\n\nstruct TodoApp: View {\n  @PyreonAppStorage(\"todos\") private var todos: [Todo] = []\n  @State private var draft: String = \"\"\n  private func add() {\n    todos = (todos + [Todo(id: Int(Date().timeIntervalSince1970 * 1000), text: draft)])\n    draft = \"\"\n  }\n  private func remove(_ id: Int) { todos = todos.filter({ t in t.id != id }) }\n  var body: some View {\n    VStack(spacing: 12) {\n      TextField(\"What needs doing?\", text: $draft)\n      Button(\"Add\") { add() }\n      ForEach(todos, id: \\.id) { t in\n        HStack(spacing: 8) {\n          Text(verbatim: \"\\(t.text)\")\n          Button(\"Remove\") { remove(t.id) }\n        }\n      }\n    }\n  }\n}\n\n// Android: Jetpack Compose\n@Serializable\ndata class Todo(var id: Long, var text: String)\n\n@Composable\nfun TodoApp() {\n  var todos by rememberPyreonStorage<List<Todo>>(\"todos\", listOf())\n  var draft by remember { mutableStateOf(\"\") }\n  fun add() {\n    todos = (todos + listOf(Todo(id = System.currentTimeMillis(), text = draft)))\n    draft = \"\"\n  }\n  fun remove(id: Long) {\n    todos = todos.filter({ t -> t.id != id })\n  }\n  Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {\n    TextField(value = draft, onValueChange = { text -> draft = text }, placeholder = { Text(\"What needs doing?\") }, singleLine = true)\n    Button(onClick = { add() }) {\n      Text(\"Add\")\n    }\n    LazyColumn {\n      items(todos, key = { it.id }) { t ->\n        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {\n          Text(text = \"${t.text}\")\n          Button(onClick = { remove(t.id) }) {\n            Text(\"Remove\")\n          }\n        }\n      }\n    }\n  }\n}"
+  },
+  "after": {
+   "label": "src/TodoApp.tsx",
+   "caption": "What you write. The same file also renders on the web.",
+   "code": "import { signal } from '@pyreon/reactivity'\nimport { For } from '@pyreon/core'\nimport { useStorage } from '@pyreon/storage'\nimport { Stack, Inline, Text, Field, Button } from '@pyreon/primitives'\n\ntype Todo = { id: number; text: string }\n\nexport function TodoApp() {\n  const todos = useStorage<Todo[]>('todos', [])\n  const draft = signal('')\n\n  const add = () => {\n    todos.set([...todos(), { id: Date.now(), text: draft() }])\n    draft.set('')\n  }\n  const remove = (id: number) => todos.set(todos().filter((t) => t.id !== id))\n\n  return (\n    <Stack gap=\"md\">\n      <Field value={draft} onChangeText={(text) => draft.set(text)} placeholder=\"What needs doing?\" />\n      <Button onPress={add}>Add</Button>\n      <For each={todos} by={(t) => t.id}>\n        {(t) => (\n          <Inline gap=\"sm\">\n            <Text>{t.text}</Text>\n            <Button onPress={() => remove(t.id)}>Remove</Button>\n          </Inline>\n        )}\n      </For>\n    </Stack>\n  )\n}"
+  }
+ },
+ "extraSectionsHtml": "<section class=\"p-sec tight\"><div class=\"wrap\"><div class=\"head\"><div class=\"label\">how it ships</div><h2>Three steps from TSX to the App Store build.</h2></div><div class=\"p-steps\"><div class=\"card\"><div class=\"in\"><span class=\"num\">01</span><h3>You write TSX</h3><p>Primitives, signals and the Pyreon packages you already use on the web. One <code class=\"mono\">src/App.tsx</code>.</p></div></div><div class=\"card\"><div class=\"in\"><span class=\"num\">02</span><h3>PMTC compiles it</h3><p>At build time the compiler emits Swift for iOS and Kotlin for Android. A construct it can't lower almost always gets a named warning, in milliseconds.</p></div></div><div class=\"card\"><div class=\"in\"><span class=\"num\">03</span><h3>Xcode and Gradle build it</h3><p>The generated source links against small Swift and Kotlin runtimes. What lands on the phone is a SwiftUI or Compose app. No JavaScript engine draws its screens.</p></div></div></div></div></section><section class=\"p-sec tight\"><div class=\"wrap\"><div class=\"head\"><div class=\"label\">runs on native today</div><h2>The parts of your app that come along.</h2><p>Anything bound to the DOM (a code editor, a rich-text editor) stays on the web, or runs inside a WebView with a two-way data bridge.</p></div><div class=\"p-inside\"><div class=\"card\"><div class=\"in\"><span class=\"pk\">@pyreon/primitives</span><b>UI</b><p>The canonical primitives (22 in the next release) → SwiftUI and Compose views.</p></div></div><div class=\"card\"><div class=\"in\"><span class=\"pk\">@pyreon/reactivity</span><b>state</b><p>signal, computed and effect → platform state.</p></div></div><div class=\"card\"><div class=\"in\"><span class=\"pk\">@pyreon/router</span><b>navigation</b><p>Nested routes, guards, loaders and inbound deep links.</p></div></div><div class=\"card\"><div class=\"in\"><span class=\"pk\">@pyreon/form</span><b>forms</b><p>Validated forms, proven on device.</p></div></div><div class=\"card\"><div class=\"in\"><span class=\"pk\">@pyreon/store · state-tree · machine</span><b>state</b><p>Stores, models and state machines.</p></div></div><div class=\"card\"><div class=\"in\"><span class=\"pk\">@pyreon/i18n · permissions</span><b>app logic</b><p>Translations and access rules.</p></div></div><div class=\"card\"><div class=\"in\"><span class=\"pk\">@pyreon/storage</span><b>persistence</b><p>Persisted signals on the platform's own storage, on iOS and Android.</p></div></div><div class=\"card\"><div class=\"in\"><span class=\"pk\">@pyreon/charts</span><b>charts</b><p>Every chart family, drawn natively.</p></div></div><div class=\"card\"><div class=\"in\"><span class=\"pk\">@pyreon/hooks</span><b>device</b><p>useClipboard, useColorScheme, useFetch, useOnline and more.</p></div></div><div class=\"card\"><div class=\"in\"><span class=\"pk\">@pyreon/toast</span><b>feedback</b><p>A native overlay over the same toast() queue.</p></div></div><div class=\"card\"><div class=\"in\"><span class=\"pk\">@pyreon/rx</span><b>data</b><p>Collection transforms lower to native operations.</p></div></div><div class=\"card\"><div class=\"in\"><span class=\"pk\">Design System</span><b>styling</b><p>styled(), rocketstyle, Element and coolgrid patterns lower too.</p></div></div></div></div></section><section class=\"p-sec tight\"><div class=\"wrap\"><div class=\"head\"><div class=\"label\">the dev loop</div><h2>Fast enough to stay in flow.</h2><p>Measured on an Apple-silicon Mac with the iOS 18.5 simulator and the scaffolded app. <code class=\"mono\">pyreon-native check --watch</code> answers \"will this run on the device?\" without opening Xcode.</p></div><div class=\"p-times\"><div><b>1–9 ms</b><span>compile the shared source</span></div><div><b>≈ 3 s</b><span>edit, rebuild, reinstall, relaunch</span></div><div><b>≈ 31 s</b><span>first run, from nothing to a running simulator</span></div><div><b>0 s</b><span>comment-only edits skip the native build</span></div></div></div></section><section class=\"p-sec tight\"><div class=\"wrap\"><div class=\"head\"><div class=\"label\">under the hood</div><h2>Six packages, all on npm.</h2><p>The runtimes ship as Swift and Kotlin source through npm, so the Pyreon side of your native targets resolves from the same lockfile as the web app. <code class=\"mono\">npm create @pyreon/multiplatform@latest</code> wires it all up.</p></div><div class=\"p-inside c3\"><div class=\"card\"><div class=\"in\"><span class=\"pk\">@pyreon/native-compiler</span><b>TypeScript</b><p>PMTC itself: TSX in, SwiftUI and Compose out.</p></div></div><div class=\"card\"><div class=\"in\"><span class=\"pk\">@pyreon/native-cli</span><b>TypeScript</b><p>The pyreon-native binary: build, check, dev, assets, wire.</p></div></div><div class=\"card\"><div class=\"in\"><span class=\"pk\">@pyreon/native-runtime-swift</span><b>Swift</b><p>Core iOS runtime: tokens, HTTP, JSON, charts engine.</p></div></div><div class=\"card\"><div class=\"in\"><span class=\"pk\">@pyreon/native-runtime-kotlin</span><b>Kotlin</b><p>The Android twin, plus storage backends.</p></div></div><div class=\"card\"><div class=\"in\"><span class=\"pk\">@pyreon/native-router-swift</span><b>Swift</b><p>The router API on NavigationStack.</p></div></div><div class=\"card\"><div class=\"in\"><span class=\"pk\">@pyreon/native-router-kotlin</span><b>Kotlin</b><p>The router API on Compose state.</p></div></div></div></div></section>",
+ "demo": {
+  "title": "Same component, three targets.",
+  "text": "Pick a primitive and see what each platform gets. The output is abridged; the real emit adds tokens, accessibility and modifiers.",
+  "component": "DemoNative",
+  "reference": "pkg-native.html#demo",
+  "referenceHtml": "<div class=\"nv-demo\">\n  <div class=\"ds-ctl\"><span class=\"label\">source</span><div class=\"seg\" id=\"nv-s\"><button type=\"button\" aria-pressed=\"true\">Stack</button><button type=\"button\">Field</button><button type=\"button\">Toggle</button><button type=\"button\">Button</button><button type=\"button\">For</button></div></div>\n  <div class=\"nv-grid\">\n    <div class=\"card\"><div class=\"in\"><div class=\"nv-h\"><span>TSX · you write</span></div><pre id=\"nv-tsx\"></pre></div></div>\n    <div class=\"card\"><div class=\"in\"><div class=\"nv-h\"><span>Web · DOM</span></div><pre id=\"nv-web\"></pre></div></div>\n    <div class=\"card hot\"><div class=\"in\"><div class=\"nv-h\"><span>iOS · SwiftUI</span></div><pre id=\"nv-ios\"></pre></div></div>\n    <div class=\"card hot\"><div class=\"in\"><div class=\"nv-h\"><span>Android · Compose</span></div><pre id=\"nv-and\"></pre></div></div>\n  </div>\n</div>",
+  "referenceCss": ".ds-ctl{display:grid;grid-template-columns:60px 1fr;align-items:center;gap:10px;margin-bottom:16px}.seg{display:flex;gap:2px;padding:3px;border:1px solid var(--line);border-radius:999px;width:fit-content;flex-wrap:wrap}.seg button{height:30px;padding:0 12px;border:0;border-radius:999px;background:transparent;color:var(--fog);font-family:var(--mono);font-size:12px;cursor:pointer}.seg button[aria-pressed=\"true\"]{background:var(--line);color:var(--ivory)}\n.nv-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}@media(max-width:1100px){.nv-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:620px){.nv-grid{grid-template-columns:minmax(0,1fr)}}\n.nv-grid .in{padding:18px}.nv-h{font-family:var(--mono);font-size:10.5px;letter-spacing:.18em;text-transform:uppercase;color:var(--fog);margin-bottom:12px}.nv-grid pre{margin:0;font-size:12.2px;line-height:1.75;color:var(--s-fg);white-space:pre-wrap;word-break:break-word;min-height:150px}",
+  "referenceJs": "(function(){var D={\nStack:['<Stack gap=\"md\">\\n  <Text>Hello</Text>\\n  <Text>World</Text>\\n</Stack>','<div style=\"display:flex;\\n  flex-direction:column;\\n  gap:12px\">\\n  <span>Hello</span>\\n  <span>World</span>\\n</div>','VStack(spacing: 12) {\\n  Text(\"Hello\")\\n  Text(\"World\")\\n}','Column(\\n  verticalArrangement =\\n    Arrangement.spacedBy(12.dp)\\n) {\\n  Text(\"Hello\")\\n  Text(\"World\")\\n}'],\nField:['const name = signal(\\'\\')\\n\\n<Field\\n  value={name}\\n  onChangeText={(t) => name.set(t)}\\n/>','<input\\n  value=\"…\"\\n  oninput=\"name.set(…)\">','@State var name = \"\"\\n\\nTextField(\"\", text: $name)','var name by remember {\\n  mutableStateOf(\"\")\\n}\\nTextField(\\n  value = name,\\n  onValueChange = { name = it }\\n)'],\nToggle:['const on = signal(false)\\n\\n<Toggle\\n  value={on}\\n  onChange={(v) => on.set(v)}\\n/>','<input type=\"checkbox\"\\n  role=\"switch\">','@State var on = false\\n\\nToggle(\"\", isOn: $on)','var on by remember {\\n  mutableStateOf(false)\\n}\\nSwitch(\\n  checked = on,\\n  onCheckedChange = { on = it }\\n)'],\nButton:['<Button onPress={save}>\\n  Save\\n</Button>','<button type=\"button\"\\n  onclick=\"save()\">\\n  Save\\n</button>','Button(\"Save\") {\\n  save()\\n}','Button(onClick = { save() }) {\\n  Text(\"Save\")\\n}'],\nFor:['<For each={todos}\\n  by={(t) => t.id}>\\n  {(t) => <Text>{t.text}</Text>}\\n</For>','<!-- keyed list, -->\\n<!-- one node per todo -->\\n<span>Buy milk</span>\\n<span>Ship v1</span>','ForEach(todos,\\n  id: \\\\.id) { t in\\n  Text(t.text)\\n}','LazyColumn {\\n  items(todos,\\n    key = { it.id }) { t ->\\n    Text(t.text)\\n  }\\n}']};\nvar $=function(i){return document.getElementById(i)};function show(k){var d=D[k];$('nv-tsx').textContent=d[0];$('nv-web').textContent=d[1];$('nv-ios').textContent=d[2];$('nv-and').textContent=d[3]}\ndocument.querySelectorAll('#nv-s button').forEach(function(b){b.onclick=function(){document.querySelectorAll('#nv-s button').forEach(function(x){x.setAttribute('aria-pressed',x===b)});show(b.textContent)}});show('Stack');})();"
+ },
+ "features": {
+  "title": "Everything between your TSX and the store build.",
+  "items": [
+   {
+    "name": "npm create @pyreon/multiplatform@latest",
+    "text": "scaffolds the web, iOS and Android projects in one repo, deep-link scheme included"
+   },
+   {
+    "name": "Canonical primitives,",
+    "text": "from `Stack` to `Video`, each a SwiftUI and a Compose view; the next release brings the set to 22"
+   },
+   {
+    "name": "`<Select>` and date and time `<Field>`s",
+    "text": "with each platform's own picker",
+    "status": "next release"
+   },
+   {
+    "name": "pyreon-native check --watch",
+    "text": "answers \"will this run on the device?\" in milliseconds"
+   },
+   {
+    "name": "pyreon-native dev",
+    "text": "rebuilds, reinstalls and relaunches the simulator app in about 3 s (warm)"
+   },
+   {
+    "name": "Module-scope signals",
+    "text": "become one observable singleton per file",
+    "status": "next release"
+   },
+   {
+    "name": "useNativeModule",
+    "text": "calls a Swift or Kotlin class you write, and the platform compiler type-checks the calls"
+   },
+   {
+    "name": "A two-way `<WebView>`",
+    "text": "hosts web-only pieces such as a code editor inside the native app"
+   },
+   {
+    "name": "The native router:",
+    "text": "nested routes, guards, loaders and inbound deep links, cold and warm"
+   },
+   {
+    "name": "Device-tested in CI:",
+    "text": "XCUITest on an iOS Simulator and Compose UI tests on an Android emulator gate every native change"
+   }
+  ]
+ },
+ "api": {
+  "title": "Five names in your code, six packages underneath.",
+  "groups": [
+   {
+    "name": "in your code (@pyreon/primitives)",
+    "items": [
+     "useNativeModule",
+     "WebView",
+     "NativeIOS",
+     "NativeAndroid",
+     "Web"
+    ]
+   },
+   {
+    "name": "packages",
+    "items": [
+     "@pyreon/native-compiler",
+     "@pyreon/native-cli",
+     "@pyreon/native-runtime-swift",
+     "@pyreon/native-runtime-kotlin",
+     "@pyreon/native-router-swift",
+     "@pyreon/native-router-kotlin"
+    ]
+   }
+  ]
+ },
+ "limits": [
+  {
+   "title": "Experimental, and the matrix says how much",
+   "text": "Each area is credited only for behaviour asserted on a simulator or emulator, and a CI gate keeps the headline equal to the table. Check it on the multiplatform page before you plan a release around it."
+  },
+  {
+   "title": "A subset of TypeScript compiles",
+   "text": "Signals, typed props, the primitives, `<For>`/`<Show>` and the supported hooks lower. Run `pyreon-native check` while you write, and keep the rest in web-only files."
+  },
+  {
+   "title": "No over-the-air code updates",
+   "text": "Native logic is compiled, so fixes ship through the stores. Data-driven config and `<WebView>` content are the ways to change behaviour between releases."
+  },
+  {
+   "title": "A rebuild loop, not hot reload",
+   "text": "Native changes restart the app and reset in-memory state. Iterate on UI in the web build, where hot reload works."
+  },
+  {
+   "title": "Packages compile only with a port",
+   "text": "PMTC lowers your source, not arbitrary npm packages. DOM-bound libraries stay on the web or run inside a `<WebView>`."
+  }
+ ],
+ "related": [
+  {
+   "href": "/products/primitives",
+   "category": "core",
+   "name": "Primitives",
+   "text": "The components that compile to native views.",
+   "package": "@pyreon/primitives"
+  },
+  {
+   "href": "/products/router",
+   "category": "core",
+   "name": "Router",
+   "text": "The same routes, guards and loaders on iOS and Android.",
+   "package": "@pyreon/router"
+  },
+  {
+   "href": "/products/reactivity",
+   "category": "core",
+   "name": "Reactivity",
+   "text": "The signals that become `@Observable` and `mutableStateOf`.",
+   "package": "@pyreon/reactivity"
+  },
+  {
+   "href": "/products/form",
+   "category": "fundamentals",
+   "name": "Forms",
+   "text": "Validated forms, proven on device.",
+   "package": "@pyreon/form"
+  }
+ ],
+ "end": {
+  "title": "Your next app is already half written. It's your website.",
+  "cta": "Read the multiplatform guide"
+ },
+ "benchmarks": null,
+ "glyphSvg": "<rect x=\"32\" y=\"10\" width=\"56\" height=\"100\" rx=\"12\" stroke=\"currentColor\" stroke-width=\"10\" fill=\"none\"/><circle cx=\"60\" cy=\"58\" r=\"16\" fill=\"url(#eg)\"/>",
+ "proof": [
+  {
+   "stat": "22",
+   "label": "canonical primitives in the next release (17 today), each with a web runtime and a SwiftUI and Compose emit",
+   "source": "docs/src/content/docs/primitives.md; facts.md (22 canonical primitives)"
+  },
+  {
+   "stat": "≈ 3 s",
+   "label": "from saving a .tsx file to the scaffolded app relaunched on the iOS simulator (warm, author-measured)",
+   "source": "docs/src/content/docs/native-dev-loop.md \"Measured timings\" (Apple-silicon Mac, iOS 18.5 simulator)"
+  },
+  {
+   "stat": "4",
+   "label": "required CI checks on every native change: real Xcode and Gradle builds that run UI tests on an iOS Simulator and an Android emulator, plus Swift and Kotlin emit validation",
+   "source": "docs/src/content/docs/multiplatform.md status note; .github/workflows/native-device.yml"
+  }
+ ],
+ "comingFrom": [
+  {
+   "lib": "React Native / Expo",
+   "title": "A counter",
+   "before": "import { useState } from 'react'\nimport { Pressable, Text } from 'react-native'\n\nexport function Counter() {\n  const [n, setN] = useState(0)\n  return (\n    <Pressable onPress={() => setN(n + 1)}>\n      <Text>{n}</Text>\n    </Pressable>\n  )\n}",
+   "after": "import { signal } from '@pyreon/reactivity'\nimport { Press, Text } from '@pyreon/primitives'\n\nexport function Counter() {\n  const n = signal(0)\n  return (\n    <Press onPress={() => n.set(n() + 1)}>\n      <Text>{n()}</Text>\n    </Press>\n  )\n}",
+   "note": "Your JSX habits carry over; the component runs once and only the text updates. Expo is ahead where it counts for some teams: over-the-air updates (compiled native code cannot be patched that way), a much larger native SDK catalog and hosted builds. Pyreon gives you the platform's own SwiftUI and Compose views with no JavaScript engine, and a server-rendered website from the same source."
+  },
+  {
+   "lib": "Flutter",
+   "title": "The same counter",
+   "before": "import 'package:flutter/material.dart';\n\nclass Counter extends StatefulWidget {\n  const Counter({super.key});\n\n  @override\n  State<Counter> createState() => _CounterState();\n}\n\nclass _CounterState extends State<Counter> {\n  int n = 0;\n\n  @override\n  Widget build(BuildContext context) {\n    return TextButton(\n      onPressed: () => setState(() => n++),\n      child: Text('$n'),\n    );\n  }\n}",
+   "after": "import { signal } from '@pyreon/reactivity'\nimport { Press, Text } from '@pyreon/primitives'\n\nexport function Counter() {\n  const n = signal(0)\n  return (\n    <Press onPress={() => n.set(n() + 1)}>\n      <Text>{n()}</Text>\n    </Press>\n  )\n}",
+   "note": "Flutter draws its own pixels and leads on animation, desktop and maturity: its mobile targets are production, ours are experimental. Pyreon emits the platform's own widgets, so an OS redesign arrives for free, and the web build is real HTML with server rendering and SEO rather than a canvas."
+  }
+ ],
+ "recipes": [
+  {
+   "title": "A countdown on three platforms",
+   "text": "Timers lower to a small `PyreonTimers` runtime: main-thread callbacks after at least `ms`, and on iOS the timer keeps firing while the user scrolls, as in a browser. Start it in `onMount` and return the cleanup.",
+   "status": "next release",
+   "code": "import { signal, computed } from '@pyreon/reactivity'\nimport { onMount } from '@pyreon/core'\nimport { Stack, Text, Button } from '@pyreon/primitives'\n\nexport function Countdown() {\n  const left = signal(10)\n  const done = computed(() => left() === 0)\n\n  onMount(() => {\n    const id = setInterval(() => {\n      if (left() > 0) left.set(left() - 1)\n    }, 1000)\n    return () => clearInterval(id)\n  })\n\n  return (\n    <Stack gap=\"md\">\n      <Text>{done() ? 'Lift off' : `T-minus ${left()}`}</Text>\n      <Button onPress={() => left.set(10)}>Restart</Button>\n    </Stack>\n  )\n}"
+  },
+  {
+   "title": "State shared across components",
+   "text": "Module-scope signals become one observable singleton for the file (`@Observable` on iOS, an `object` with `mutableStateOf` on Android), so every component in the file that reads them updates. The string `enum` becomes a native `enum`.",
+   "status": "next release",
+   "code": "import { signal, computed } from '@pyreon/reactivity'\nimport { Stack, Inline, Text, Button } from '@pyreon/primitives'\n\nenum Plan {\n  Free = 'free',\n  Pro = 'pro',\n}\n\n// Shared by every component in this file: one observable singleton natively.\nconst plan = signal<Plan>(Plan.Free)\nconst seats = signal(1)\nconst monthly = computed(() => (plan() === Plan.Pro ? 12 * seats() : 0))\n\nexport function PriceBadge() {\n  return <Text>{`$${monthly()} a month`}</Text>\n}\n\nexport function PlanPicker() {\n  return (\n    <Stack gap=\"md\">\n      <Inline gap=\"sm\">\n        <Button onPress={() => plan.set(Plan.Free)}>Free</Button>\n        <Button onPress={() => plan.set(Plan.Pro)}>Pro</Button>\n      </Inline>\n      <Button onPress={() => seats.set(seats() + 1)}>Add a seat</Button>\n      <Text>{`${seats()} seats`}</Text>\n      <PriceBadge />\n    </Stack>\n  )\n}"
+  },
+  {
+   "title": "Import pasted JSON safely",
+   "text": "`JSON.parse` with a cast becomes a typed, throwing decode (`JSONDecoder` on iOS, kotlinx-serialization on Android), and `try`/`catch` maps one to one. Malformed JSON lands in the `catch` on every target; natively the decode is stricter, so a wrong-shaped list lands there too.",
+   "status": "next release",
+   "code": "import { signal } from '@pyreon/reactivity'\nimport { Stack, Field, Text, Button } from '@pyreon/primitives'\n\ntype Contact = { name: string; email: string }\n\nexport function ImportContacts() {\n  const raw = signal('')\n  const count = signal(0)\n  const problem = signal('')\n\n  const importNow = () => {\n    try {\n      const list = JSON.parse(raw()) as Contact[]\n      count.set(list.length)\n      problem.set('')\n    } catch (e) {\n      problem.set('That is not a contact list')\n    }\n  }\n\n  return (\n    <Stack gap=\"md\">\n      <Field value={raw} onChangeText={(t) => raw.set(t)} placeholder=\"Paste JSON\" />\n      <Button onPress={importNow}>Import</Button>\n      <Text>{problem() === '' ? `${count()} contacts` : problem()}</Text>\n    </Stack>\n  )\n}"
+  }
+ ],
+ "faq": [
+  {
+   "q": "Is there a JavaScript engine on the phone?",
+   "a": "Not for your UI or your logic: the build is Swift and Kotlin source compiled by Xcode and Gradle. A `<WebView>` you place on purpose (to host a code editor, say) runs web content inside the system web view, like any native app's."
+  },
+  {
+   "q": "Can I ship a store app with it today?",
+   "a": "The native targets are experimental. Screens that are mostly forms, lists, navigation and data are the strong part; heavy animation and a long list of third-party SDKs are not. The matrix on the multiplatform page states what is proven on a device."
+  },
+  {
+   "q": "What happens when I write something it can't compile?",
+   "a": "You almost always get a warning that names the construct and the file (often the line too), from `pyreon-native check` or the editor through `pyreon-native check --lsp`. It does not try to run unsupported code on the device."
+  },
+  {
+   "q": "How do I call a native SDK it doesn't wrap?",
+   "a": "Write a Swift or Kotlin class in your app and call it with `useNativeModule('Name')`. Member calls pass straight through, so Xcode and Gradle type-check them. It is more glue than installing an Expo module."
+  },
+  {
+   "q": "Do I need a Mac?",
+   "a": "For iOS, yes: Xcode builds the app, and `--typecheck` needs `swiftc`. Android builds with Gradle on any machine with the Android SDK, and the web build runs anywhere."
+  }
+ ],
+ "sources": [
+  {
+   "claim": "Native targets are experimental (demo-quality, not production-ready)",
+   "path": "docs/src/content/docs/multiplatform.md status line; stability-and-direction.md; compare-app-frameworks.md"
+  },
+  {
+   "claim": "No JavaScript engine or VM on the device; generated SwiftUI / Compose",
+   "path": "docs/src/content/docs/compare-app-frameworks.md table and \"Where Pyreon is structurally different\" 1"
+  },
+  {
+   "claim": "A generated Toggle is the platform toggle; OS redesigns arrive for free",
+   "path": "docs/src/content/docs/compare-app-frameworks.md \"structurally different\" 2"
+  },
+  {
+   "claim": "signal/computed → @State/@Observable and mutableStateOf/derivedStateOf",
+   "path": "docs/src/content/docs/multiplatform.md \"Layer 0 — Reactive core\""
+  },
+  {
+   "claim": "Outside the subset: named warning \"almost always\" (wording rule)",
+   "path": "facts.md status labels; docs multiplatform.md"
+  },
+  {
+   "claim": "check compiles in memory, --typecheck runs swiftc against the real SwiftUI SDK, --watch, --lsp",
+   "path": "packages/native/cli/src/cli.ts printUsage"
+  },
+  {
+   "claim": "Dev loop: 1–9 ms compile, ~31 s first run, ~3 s warm rebuild, comment-only edits skip the build",
+   "path": "docs/src/content/docs/native-dev-loop.md \"Measured timings\""
+  },
+  {
+   "claim": "Four required native checks (xcodebuild, gradlew assembleDebug, validate emitted Swift + Kotlin, real-SDK Swift typecheck); XCUITest + Compose UI tests",
+   "path": "docs/src/content/docs/multiplatform.md status note (layers 2–3); .github/workflows/native-device.yml"
+  },
+  {
+   "claim": "effect() in a component body, timers (PyreonTimers), Date, enums, module-scope signals, throw/try/catch, JSON.parse, schema .parse lower (main only)",
+   "path": "facts.md \"What shipped since 5 Nov\"; docs multiplatform.md Statements/expressions tables, \"Error handling\", \"Module scope\""
+  },
+  {
+   "claim": "Select and Field kind=date|time|datetime with native pickers (main only)",
+   "path": "facts.md; docs/src/content/docs/primitives.md mapping table"
+  },
+  {
+   "claim": "Difference \"before\" is the real PMTC emit for the TodoApp file",
+   "path": "/tmp/wt-site-content/.scratch/core/parent/native/out2/{ios/TodoApp.swift,android/TodoApp.kt} (pyreon-native build)"
+  },
+  {
+   "claim": "All native samples pass pyreon-native check (0 warnings, both targets) and swiftc -typecheck against the real iOS SDK (TodoApp needs the runtime linked, so its typecheck was not run standalone)",
+   "path": "/tmp/wt-site-content/.scratch/core/parent/native/src2 (check --typecheck: 0 errors)"
+  },
+  {
+   "claim": "Over-the-air updates not possible; Expo leads on SDK catalog and hosted builds; Flutter leads on animation and desktop",
+   "path": "docs/src/content/docs/compare-app-frameworks.md \"Where Pyreon is behind\""
+  },
+  {
+   "claim": "React Native counter and component-runs-once mapping",
+   "path": "docs/src/content/docs/migrating-from-react-native.md"
+  },
+  {
+   "claim": "useNativeModule calls an app-provided Swift/Kotlin class; member calls type-checked by the platform compiler",
+   "path": "docs/src/content/docs/migrating-from-react-native.md \"Device APIs\""
+  },
+  {
+   "claim": "Native router: nested routes, beforeEnter, loaders, inbound deep links device-proven cold and warm",
+   "path": "docs/src/content/docs/migrating-from-react-native.md \"Navigation\"; multiplatform.md"
+  },
+  {
+   "claim": "Six native packages on npm",
+   "path": "npm view @pyreon/native-{compiler,cli,runtime-swift,runtime-kotlin,router-swift,router-kotlin} version (all 0.53.0, checked 11 Nov)"
+  },
+  {
+   "claim": "create-multiplatform --scheme for deep links",
+   "path": "docs/src/content/docs/create-multiplatform.md \"CLI usage\""
+  },
+  {
+   "claim": "Known bug avoided in the recipes: setInterval in a component body re-runs (#4251), so the countdown starts it in onMount",
+   "path": "facts.md \"Known open bugs\""
+  },
+  {
+   "claim": "Flutter and React Native before code",
+   "path": "written from each framework's documented counter shape; not compiled (no Flutter or RN toolchain in the checkout)"
+  }
+ ]
+}

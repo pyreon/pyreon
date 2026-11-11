@@ -1,4 +1,5 @@
 import type { ProductIndex, ProductPage } from './types'
+import type { ProductVisuals } from './visuals'
 
 /**
  * The app's view of a product content file.
@@ -31,7 +32,17 @@ export type ExtraSection =
       text?: string
       /** Fixed column count from 960px; omitted = auto-fit (min 250px). */
       cols?: 1 | 2 | 3
-      items: { pkg: string; role: string; text: string }[]
+      items: {
+        pkg: string
+        role: string
+        text: string
+        /** The card to start with (ember ring). */
+        hot?: boolean
+        /** A command shown under the text (e.g. the install line). */
+        command?: string
+        /** A link to the product page that sells this package. */
+        link?: { label: string; href: string }
+      }[]
     }
   | {
       kind: 'steps'
@@ -39,6 +50,8 @@ export type ExtraSection =
       title: string
       text?: string
       items: { title: string; text: string }[]
+      /** Key into the page's `visuals.svgs`: an animated diagram under the steps. */
+      visual?: string
     }
   | {
       kind: 'stats'
@@ -47,12 +60,22 @@ export type ExtraSection =
       text?: string
       stats: { value: string; label: string }[]
     }
+  | {
+      /** One ember-ringed card pointing at a companion product. */
+      kind: 'callout'
+      label: string
+      title: string
+      text: string
+      links: { label: string; href: string; solid?: boolean }[]
+    }
 
 export type ProductData = Omit<ProductPage, 'difference' | 'comingFrom' | 'recipes'> & {
   difference: null | { title: string; before: HighlightedCode; after: HighlightedCode }
   comingFrom?: { lib: string; title: string; before: string; after: string; note?: string; beforeHtml?: string; afterHtml?: string }[]
   recipes?: { title: string; text: string; code: string; codeHtml?: string; status?: string }[]
   extraSections?: ExtraSection[]
+  /** The page's hero visual, share image and diagrams (content/visuals.ts), attached by the loader. */
+  visuals?: ProductVisuals
 }
 
 export type Benchmarks = NonNullable<ProductPage['benchmarks']>

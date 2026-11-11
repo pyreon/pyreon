@@ -1,0 +1,366 @@
+{
+ "id": "query",
+ "route": "/products/query",
+ "name": "Query",
+ "package": "@pyreon/query",
+ "category": "fundamentals · data fetching",
+ "hero": {
+  "title": "TanStack Query, minus the re-render.",
+  "lede": "The same query core you trust for caching, dedup and refetching, with every result field as its own signal. When data changes, one text node updates: 1 derivation where `@tanstack/react-query` does 8.",
+  "install": "bun add @pyreon/query",
+  "ctaShort": "Install",
+  "facts": [
+   {
+    "key": "engine",
+    "value": "`@tanstack/query-core` 5<small>Re-exported, so `QueryClient` and friends import from here.</small>"
+   },
+   {
+    "key": "data change → DOM",
+    "value": "5.6× faster than react-query<small>Same core, happy-dom, one run.</small>"
+   },
+   {
+    "key": "live data",
+    "value": "WebSocket, SSE, streams<small>`useSubscription`, `useSSE`, `useStream` write into the same cache.</small>"
+   },
+   {
+    "key": "native",
+    "value": "{dot:warn}`useQuery` on iOS and Android<small>Experimental; lowers to a native `PyreonQuery`.</small>"
+   }
+  ]
+ },
+ "why": {
+  "title": "What changes when the cache is made of signals.",
+  "items": [
+   {
+    "title": "One field changes, one node updates",
+    "text": "`data`, `error`, `status`, `isFetching` and the rest are separate signals, created only when you first read them. A background refetch flips `isFetching` without touching the text that shows the name."
+   },
+   {
+    "title": "Keys that read signals",
+    "text": "Options are a function, so `queryKey: ['user', props.userId]` tracks the prop. Change it and the query refetches. No dependency array to forget."
+   },
+   {
+    "title": "Live data, same cache",
+    "text": "`useSubscription` (WebSocket, reconnect with backoff), `useSSE` and `useStream` hand you the `QueryClient`, so a push message can patch or invalidate cached data the rest of the app already reads."
+   },
+   {
+    "title": "Declare a query once",
+    "text": "`queryOptions`, `infiniteQueryOptions` and `mutationOptions` give one typed definition for hooks, prefetching and `client.getQueryData` with no generic.",
+    "status": "next release"
+   }
+  ]
+ },
+ "difference": {
+  "title": "Delete the three states and the race.",
+  "before": {
+   "label": "React, fetching by hand",
+   "caption": "Three pieces of state, an effect, no cache, and a slow answer for the previous id can overwrite the current one.",
+   "code": "import { useEffect, useState } from 'react'\ntype User = { id: number; name: string }\n\nfunction UserName({ userId }: { userId: number }) {\n  const [data, setData] = useState<User>()\n  const [error, setError] = useState<Error>()\n  const [loading, setLoading] = useState(false)\n\n  useEffect(() => {\n    setLoading(true)\n    fetchUser(userId) // a slow answer for the old id can land last\n      .then(setData, setError)\n      .finally(() => setLoading(false))\n  }, [userId])\n\n  if (loading) return <p>Loading…</p>\n  if (error) return <p>{error.message}</p>\n  return <h1>{data?.name}</h1>\n}"
+  },
+  "after": {
+   "label": "with @pyreon/query",
+   "caption": "Cached, deduplicated, retried, and refetched when `userId` changes. Only the `<h1>` text updates.",
+   "code": "import { useQuery } from '@pyreon/query'\ntype User = { id: number; name: string }\n\nfunction UserName(props: { userId: number }) {\n  const user = useQuery(() => ({\n    queryKey: ['user', props.userId],\n    queryFn: () => fetchUser(props.userId),\n  }))\n\n  return (\n    <h1>\n      {() => (user.isPending() ? 'Loading…' : user.error()?.message ?? user.data()?.name)}\n    </h1>\n  )\n}"
+  }
+ },
+ "extraSectionsHtml": null,
+ "demo": {
+  "title": "Three readers, one query.",
+  "text": "Three boxes read three fields of one query. The counters show how often each one re-ran. Refetch, change the data, or return identical data: each box moves only when its own field does.",
+  "component": "DemoQuery",
+  "reference": "pkg-query.html#demo",
+  "referenceHtml": "<div class=\"p-demo\">\n  <div class=\"card\"><div class=\"in\">\n    <div class=\"meter\">\n      <div id=\"q-mf\"><span>reads isFetching() · <em id=\"q-vf\" style=\"font-style:normal\">false</em></span><b id=\"q-cf\">1</b></div>\n      <div id=\"q-md\"><span>reads data() · <em id=\"q-vd\" style=\"font-style:normal\">Ada</em></span><b id=\"q-cd\">1</b></div>\n      <div id=\"q-me\"><span>reads error() · <em id=\"q-ve\" style=\"font-style:normal\">null</em></span><b id=\"q-ce\">1</b></div>\n    </div>\n  </div></div>\n  <div class=\"ui\">\n    <label>Actions</label>\n    <div style=\"display:grid;gap:8px\">\n      <button class=\"sec\" type=\"button\" id=\"q-u\">Next user (userId.set)</button>\n      <button class=\"sec\" type=\"button\" id=\"q-r\">Refetch, same data</button>\n      <button class=\"sec\" type=\"button\" id=\"q-x\">Make the next fetch fail</button>\n    </div>\n    <div class=\"hint\" style=\"margin-top:14px\">Simulated network: about 600 ms per request.</div>\n  </div>\n</div>",
+  "referenceCss": ".meter em{color:var(--ivory)}",
+  "referenceJs": "(function(){var $=function(i){return document.getElementById(i)};var C={f:1,d:1,e:1},names=['Ada','Grace','Linus','Margaret','Edsger'],u=0,fail=false,data='Ada',err=null;\nfunction b(k,v){C[k]++;$('q-c'+k).textContent=C[k];$('q-v'+k).textContent=v;var m=$('q-m'+k);m.classList.remove('flash');void m.offsetWidth;m.classList.add('flash');setTimeout(function(){m.classList.remove('flash')},450)}\nfunction go(next){b('f','true');setTimeout(function(){b('f','false');if(fail){fail=false;if(!err){err='Error 500';b('e',err)}return}if(err){err=null;b('e','null')}if(next&&next!==data){data=next;b('d',data)}},600)}\n$('q-u').onclick=function(){u++;go(names[u%names.length])};$('q-r').onclick=function(){go(data)};$('q-x').onclick=function(){fail=true;go()};})();"
+ },
+ "features": {
+  "title": "The TanStack surface, plus live data.",
+  "items": [
+   {
+    "name": "`useQuery`, `useMutation`, `useInfiniteQuery`, `useQueries`",
+    "text": "with signal-reading options."
+   },
+   {
+    "name": "`defineQueries`",
+    "text": "named parallel queries in one declaration."
+   },
+   {
+    "name": "Suspense",
+    "text": "`useSuspenseQuery`, `useSuspenseInfiniteQuery`, `useSuspenseQueries` and a `QuerySuspense` boundary."
+   },
+   {
+    "name": "`invalidates` on mutations",
+    "text": "`useMutation({ mutationFn, invalidates: [['posts']] })` refetches on success without an `onSuccess`."
+   },
+   {
+    "name": "Typed reusable options",
+    "text": "`queryOptions`, `infiniteQueryOptions`, `mutationOptions`; the key carries the data type.",
+    "status": "next release"
+   },
+   {
+    "name": "SSR hydration",
+    "text": "`dehydrate` on the server, `HydrationBoundary` on the client, no refetch on load."
+   },
+   {
+    "name": "Prefetch",
+    "text": "`usePrefetchQuery`, `usePrefetchInfiniteQuery`, or `client.prefetchQuery` on hover."
+   },
+   {
+    "name": "Realtime",
+    "text": "`useSubscription` for WebSocket, `useSSE` for Server-Sent Events, `useStream` for SSE or NDJSON as reactive state."
+   },
+   {
+    "name": "Offline",
+    "text": "`@pyreon/query/persist` restores the cache before the first fetch."
+   },
+   {
+    "name": "Native mutations and infinite lists",
+    "text": "`useMutation` over an `@pyreon/http` endpoint and `useInfiniteQuery` lower to iOS and Android. Experimental.",
+    "status": "next release"
+   }
+  ]
+ },
+ "api": {
+  "title": "The hooks, the boundaries, and the core.",
+  "groups": [
+   {
+    "name": "queries",
+    "items": [
+     "useQuery",
+     "useQueries",
+     "useInfiniteQuery",
+     "defineQueries",
+     "useSuspenseQuery",
+     "useSuspenseQueries",
+     "useSuspenseInfiniteQuery",
+     "usePrefetchQuery",
+     "usePrefetchInfiniteQuery"
+    ]
+   },
+   {
+    "name": "mutations",
+    "items": [
+     "useMutation",
+     "useMutationState",
+     "useIsMutating"
+    ]
+   },
+   {
+    "name": "live data",
+    "items": [
+     "useSubscription",
+     "useSSE",
+     "useStream"
+    ]
+   },
+   {
+    "name": "definitions (next release)",
+    "items": [
+     "queryOptions",
+     "infiniteQueryOptions",
+     "mutationOptions"
+    ]
+   },
+   {
+    "name": "providers and boundaries",
+    "items": [
+     "QueryClientProvider",
+     "useQueryClient",
+     "HydrationBoundary",
+     "QuerySuspense",
+     "QueryErrorResetBoundary",
+     "IsRestoringProvider",
+     "useIsFetching"
+    ]
+   },
+   {
+    "name": "core re-exports",
+    "items": [
+     "QueryClient",
+     "QueryCache",
+     "MutationCache",
+     "dehydrate",
+     "hydrate",
+     "keepPreviousData",
+     "skipToken"
+    ]
+   },
+   {
+    "name": "subpaths",
+    "items": [
+     "@pyreon/query/persist",
+     "@pyreon/query/devtools"
+    ]
+   }
+  ]
+ },
+ "limits": [
+  {
+   "title": "Pass `useQuery` a function",
+   "text": "`useQuery(() => ({ … }))`, so the key can read signals and props. `useMutation` takes a plain object."
+  },
+  {
+   "title": "Don't return early on `isPending()`",
+   "text": "A component runs once, so `if (user.isPending()) return …` pins it to the first branch. Use `<Show>`, `<Switch>`/`<Match>` or an accessor."
+  },
+  {
+   "title": "Create the `QueryClient` once",
+   "text": "At module scope or app setup, not inside a component that might mount twice."
+  },
+  {
+   "title": "Native covers the common hooks",
+   "text": "On iOS and Android `useQuery` and `useStream` lower today, and `useMutation` and `useInfiniteQuery` join them in the next release; `QueryClient` config, devtools and suspense queries stay web."
+  }
+ ],
+ "related": [
+  {
+   "href": "/products/http",
+   "category": "fundamentals",
+   "name": "HTTP",
+   "text": "Typed endpoints that double as query keys.",
+   "package": "@pyreon/http"
+  },
+  {
+   "href": "/products/lathe",
+   "category": "tools",
+   "name": "Lathe",
+   "text": "Generates typed query hooks from your OpenAPI spec.",
+   "package": "@pyreon/lathe"
+  },
+  {
+   "href": "/products/form",
+   "category": "fundamentals",
+   "name": "Forms",
+   "text": "Submit with `useMutation`, then `reset()` to what came back.",
+   "package": "@pyreon/form"
+  }
+ ],
+ "end": {
+  "title": "Same cache. Fewer spinners spinning for nothing.",
+  "cta": "Read the data-fetching guide"
+ },
+ "benchmarks": {
+  "rival": "vs @tanstack/react-query 5.105 on the same query core · happy-dom",
+  "run": "overnight run, one run, happy-dom (relative work, not browser time)",
+  "h": "Same engine as TanStack Query. 5.6× less time from new data to the DOM.",
+  "p": "Both adapters wrap the same `@tanstack/query-core`, so this measures what happens after the data arrives. Across components, react-query's tracked props are field-aware too and tie; the gap is inside one component.",
+  "rows": [
+   {
+    "op": "data change → DOM",
+    "pyreon": null,
+    "rival": null,
+    "unit": "x",
+    "verdict": "win",
+    "label": "5.6× faster"
+   },
+   {
+    "op": "field derivations per change",
+    "pyreon": 1,
+    "rival": 8,
+    "unit": "",
+    "verdict": "win",
+    "label": "1 vs 8"
+   },
+   {
+    "op": "mount",
+    "pyreon": null,
+    "rival": null,
+    "unit": "x",
+    "verdict": "win",
+    "label": "1.2× faster"
+   }
+  ]
+ },
+ "glyphSvg": "<path d=\"M40 18 H20 V102 H40 M80 18 H100 V102 H80\" stroke=\"currentColor\" stroke-width=\"10\" fill=\"none\" stroke-linecap=\"square\"/><circle cx=\"60\" cy=\"60\" r=\"18\" fill=\"url(#eg)\"/>",
+ "proof": [
+  {
+   "stat": "1 vs 8",
+   "label": "field derivations when a component reading every field sees new data, against `@tanstack/react-query`.",
+   "source": "BENCHMARKS.md §10 'query ⚠ happy-dom' row, overnight run, one run"
+  },
+  {
+   "stat": "5.6×",
+   "label": "faster from a data change to the DOM, on the same query core.",
+   "source": "BENCHMARKS.md §10 query row, happy-dom: relative work, not browser time"
+  },
+  {
+   "stat": "0",
+   "label": "component re-runs on a data change; React re-renders the component once.",
+   "source": "docs/src/content/docs/query.md 'Benchmark — fine-grained vs @tanstack/react-query'"
+  }
+ ],
+ "comingFrom": [
+  {
+   "lib": "TanStack Query (React)",
+   "title": "Same options, as a function. Same client.",
+   "before": "import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'\ntype User = { id: number; name: string }\n\nfunction Profile({ userId }: { userId: number }) {\n  const client = useQueryClient()\n  const user = useQuery({\n    queryKey: ['user', userId],\n    queryFn: () => fetchUser(userId),\n  })\n  const rename = useMutation({\n    mutationFn: saveUser,\n    onSuccess: () => client.invalidateQueries({ queryKey: ['user', userId] }),\n  })\n\n  if (user.isPending) return <p>Loading…</p>\n  if (user.isError) return <p>{user.error.message}</p>\n  return (\n    <button onClick={() => rename.mutate({ ...user.data, name: 'Ada' })}>\n      {user.data.name}\n    </button>\n  )\n}",
+   "after": "import { Match, Switch } from '@pyreon/core'\nimport { useMutation, useQuery } from '@pyreon/query'\ntype User = { id: number; name: string }\n\nfunction Profile(props: { userId: number }) {\n  const user = useQuery(() => ({\n    queryKey: ['user', props.userId], // reads a prop: a new id refetches\n    queryFn: () => fetchUser(props.userId),\n  }))\n  const rename = useMutation({\n    mutationFn: saveUser,\n    invalidates: [['user']],\n  })\n\n  return (\n    <Switch>\n      <Match when={() => user.isPending()}><p>Loading…</p></Match>\n      <Match when={() => user.isError()}><p>{() => user.error()?.message}</p></Match>\n      <Match when={() => user.data()}>\n        <button onClick={() => rename.mutate({ ...user.data()!, name: 'Ada' })}>\n          {() => user.data()?.name}\n        </button>\n      </Match>\n    </Switch>\n  )\n}",
+   "note": "Keys, `queryFn`, `staleTime`, `QueryClient` and `invalidateQueries` are TanStack's own. The changes: options are a function, results are called (`user.data()`), branches use `<Match>` instead of early returns, and `invalidates` replaces the `onSuccess` boilerplate."
+  }
+ ],
+ "recipes": [
+  {
+   "title": "One query definition, used everywhere",
+   "text": "Declare it once; use it in a hook, prefetch it on hover, and read or patch the cache with full types.",
+   "code": "import { QueryClient, queryOptions, useQuery, useQueryClient } from '@pyreon/query'\nimport { signal } from '@pyreon/reactivity'\ntype User = { id: number; name: string }\n\n// declare once...\nconst userQuery = (id: number) =>\n  queryOptions({ queryKey: ['user', id], queryFn: () => fetchUser(id), staleTime: 60_000 })\n\n// ...use in a component (the factory runs inside the accessor, so it stays reactive)\nconst selected = signal(1)\nfunction UserName() {\n  const user = useQuery(() => userQuery(selected()))\n  const client = useQueryClient()\n  return (\n    <a onMouseEnter={() => client.prefetchQuery(userQuery(selected() + 1))}>\n      {() => user.data()?.name}\n    </a>\n  )\n}\n\n// ...and in the client, typed without a generic\nfunction rename(client: QueryClient, id: number, name: string) {\n  client.setQueryData(userQuery(id).queryKey, (u) => u && { ...u, name })\n  return client.getQueryData(userQuery(id).queryKey) // User | undefined\n}",
+   "status": "next release"
+  },
+  {
+   "title": "Orders that update from a WebSocket",
+   "text": "The socket patches the cached list; every component already reading `['orders']` updates in place.",
+   "code": "import { useQuery, useSubscription } from '@pyreon/query'\ntype Order = { id: string; status: string }\n\nfunction Orders() {\n  const orders = useQuery(() => ({ queryKey: ['orders'], queryFn: fetchOrders }))\n  const live = useSubscription({\n    url: 'wss://api.example.com/ws',\n    onMessage: (event, client) => {\n      const msg = JSON.parse(event.data) as { type: string; order: Order }\n      if (msg.type === 'order-updated') {\n        client.setQueryData<Order[]>(['orders'], (list) =>\n          list?.map((o) => (o.id === msg.order.id ? msg.order : o)),\n        )\n      }\n    },\n  })\n  return (\n    <p>\n      {() => orders.data()?.length ?? 0} orders · socket {() => live.status()}\n    </p>\n  )\n}"
+  }
+ ],
+ "faq": [
+  {
+   "q": "Is this a fork of TanStack Query?",
+   "a": "No. It depends on `@tanstack/query-core` and re-exports it. Caching, retries, dedup and invalidation are TanStack's code; the adapter turns results into signals."
+  },
+  {
+   "q": "The benchmark says happy-dom. Does that matter?",
+   "a": "Yes: happy-dom is a JavaScript DOM, so the ratio and the derivation counts mean something and the absolute times do not. It is one overnight run that we wrote. Reproduce with `bun run --filter=@pyreon/query bench:react-query`."
+  },
+  {
+   "q": "Where is react-query just as good?",
+   "a": "Across components. If one component reads only `status` and another only `data`, react-query's tracked props skip the right one too; that row is a tie in the docs. The gap is inside a single component that reads several fields."
+  },
+  {
+   "q": "Can I use the TanStack devtools?",
+   "a": "Yes: `<QueryDevtools />` from `@pyreon/query/devtools` is the TanStack panel."
+  }
+ ],
+ "sources": [
+  {
+   "claim": "data change → DOM 5.6×, mount 1.2×, 1 vs 8 derivations (happy-dom, overnight, one run)",
+   "path": "BENCHMARKS.md §10 query row"
+  },
+  {
+   "claim": "Cross-component tie; 0 re-runs vs 1 re-render intra-component",
+   "path": "docs/src/content/docs/query.md 'Benchmark — fine-grained vs @tanstack/react-query'"
+  },
+  {
+   "claim": "queryOptions/infiniteQueryOptions/mutationOptions unreleased; typed getQueryData",
+   "path": ".changeset/query-options-helpers.md; packages/fundamentals/query/src/query-options.ts; scratch run-qo.ts + tsc"
+  },
+  {
+   "claim": "useMutation invalidates option",
+   "path": "packages/fundamentals/query/src/use-mutation.ts L64-112"
+  },
+  {
+   "claim": "useSubscription reconnect with exponential backoff, status signal",
+   "path": "docs/src/content/docs/query.md 'WebSocket Subscriptions'"
+  },
+  {
+   "claim": "Native: useQuery → PyreonQuery; useMutation, useInfiniteQuery lowering unreleased",
+   "path": "packages/fundamentals/query/src/manifest.ts multiplatform; .changeset/native-runtime-request-data.md, native-use-infinite-query.md"
+  },
+  {
+   "claim": "Profile sample: loads, mutation invalidates and refetches, prop change refetches",
+   "path": "scratch run-query.tsx (Loading… → Grace → Ada → Alan, 3 fetches) through transformJSX"
+  },
+  {
+   "claim": "Draft fixes: removed version fact '0.53.0', '29 exports', related href 'Lathe.html'",
+   "path": "packages/fundamentals/query/src/index.ts"
+  }
+ ]
+}

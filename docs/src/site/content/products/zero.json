@@ -1,0 +1,479 @@
+{
+ "id": "zero",
+ "route": "/products/zero",
+ "name": "Zero",
+ "package": "@pyreon/zero",
+ "category": "framework · full stack",
+ "hero": {
+  "title": "Stop choosing between a static site and a server app.",
+  "lede": "Every page in a Zero app picks how it renders: built once, cached and refreshed, rendered per request, or client-only. One line per page. Loaders, server actions, islands and seven deploy targets come in the same box.",
+  "install": "npm create @pyreon/zero@latest",
+  "ctaShort": "Create an app",
+  "facts": [
+   {
+    "key": "render modes",
+    "value": "SSG · ISR · SSR · SPA<small>Per page with `export const renderMode`, or by glob with `routeRules`.</small>"
+   },
+   {
+    "key": "server rendering",
+    "value": "6.5× faster than React 19<small>Compiled SSR, 1,000 rows. One run, synthetic, author-run.</small>"
+   },
+   {
+    "key": "deploy",
+    "value": "Node, Bun, Deno, Vercel, Netlify, Cloudflare, static<small>Picked from the build environment if you don't choose.</small>"
+   },
+   {
+    "key": "forms",
+    "value": "work before JavaScript loads<small>`<Form>` posts to the page; JavaScript upgrades it to fetch.</small>"
+   }
+  ]
+ },
+ "why": {
+  "title": "The parts of a web app you would otherwise assemble.",
+  "items": [
+   {
+    "title": "One line decides each page",
+    "text": "`export const renderMode = 'ssg'` on the landing page, `'isr'` on the blog, `'spa'` on the dashboard. A layout's choice cascades to the pages under it, and the build prints a table of what each route got."
+   },
+   {
+    "title": "Cache the page, not the person",
+    "text": "`serverIsland()` leaves a hole in a cached page that is filled per request: a cart badge, a greeting, a live price. The page around it stays on the CDN, and visitors without JavaScript see the fallback."
+   },
+   {
+    "title": "Forms that work with JavaScript off",
+    "text": "`<Form>` renders a real `<form method=\"post\">`. With JavaScript, the same action runs over fetch with `pending()` and the optimistic `input()`. A redirect answers 303, so a refresh never resubmits."
+   },
+   {
+    "title": "Server code stays on the server",
+    "text": "A `.server.ts` file next to a route is never imported by the client bundle, and the Vite plugin strips each `defineAction` handler, plus the imports only it used, out of the browser build. Pyreon's own CI builds real apps and fails if a server-only marker turns up in their client files."
+   }
+  ]
+ },
+ "difference": {
+  "title": "A form with a server action: three files, or one.",
+  "before": {
+   "label": "Next.js App Router",
+   "caption": "A server action file, a client component for the pending state and the error, and the page that renders it.",
+   "code": "// app/posts/new/actions.ts\n'use server'\nimport { redirect } from 'next/navigation'\nimport { db } from '@/lib/db'\n\nexport async function createPost(prev: { error?: string }, formData: FormData) {\n  const title = String(formData.get('title') ?? '').trim()\n  if (!title) return { error: 'Title is required' }\n  const id = await db.posts.create({ title })\n  redirect(`/posts/${id}`)\n}\n\n// app/posts/new/form.tsx\n'use client'\nimport { useActionState } from 'react'\nimport { createPost } from './actions'\n\nexport function NewPostForm() {\n  const [state, action, pending] = useActionState(createPost, {})\n  return (\n    <form action={action}>\n      <input name=\"title\" />\n      <button disabled={pending}>Create</button>\n      <p>{state.error}</p>\n    </form>\n  )\n}\n\n// app/posts/new/page.tsx\nimport { NewPostForm } from './form'\nexport default function Page() {\n  return <NewPostForm />\n}"
+  },
+  "after": {
+   "label": "Zero",
+   "caption": "One route file. The handler never reaches the browser, and the form works before JavaScript loads.",
+   "code": "// src/routes/posts/new.tsx\nimport { redirect } from '@pyreon/router'\nimport { defineAction, fail, Form, useSubmission } from '@pyreon/zero/actions'\nimport { db } from '../../server/db'\n\nexport const action = defineAction(async ({ formData }) => {\n  const title = String(formData?.get('title') ?? '').trim()\n  if (!title) return fail(422, { error: 'Title is required' })\n  const id = await db.posts.create({ title })\n  throw redirect(`/posts/${id}`)\n})\n\nexport default function NewPost() {\n  const submission = useSubmission(action)\n  return (\n    <Form action={action}>\n      <input name=\"title\" />\n      <button disabled={submission.pending()}>Create</button>\n      <p>{() => submission.result()?.error ?? ''}</p>\n    </Form>\n  )\n}"
+  }
+ },
+ "extraSectionsHtml": "<section class=\"p-sec tight\"><div class=\"wrap\"><div class=\"head\"><div class=\"label\">also in the box</div><h2>The pieces Zero is made of.</h2></div><div class=\"p-inside c3\"><div class=\"card\"><div class=\"in\"><span class=\"pk\">@pyreon/head</span><b>metadata</b><p>Title, meta and link tags from any component, SSR-ready.</p></div></div><div class=\"card\"><div class=\"in\"><span class=\"pk\">@pyreon/server</span><b>server</b><p>The SSR handler, SSG prerendering and islands underneath Zero.</p></div></div><div class=\"card\"><div class=\"in\"><span class=\"pk\">@pyreon/zero-content</span><b>content</b><p>Markdown and MDX collections. <a href=\"pkg-content.html\">See Content →</a></p></div></div><div class=\"card\"><div class=\"in\"><span class=\"pk\">@pyreon/create-zero</span><b>scaffold</b><p>npm create @pyreon/zero@latest gets you a running app.</p></div></div><div class=\"card\"><div class=\"in\"><span class=\"pk\">@pyreon/meta</span><b>all-in-one</b><p>One import for the whole fundamentals ecosystem.</p></div></div><div class=\"card\"><div class=\"in\"><span class=\"pk\">@pyreon/zero-cli</span><b>cli</b><p>Dev, build and preview commands.</p></div></div></div></div></section>",
+ "demo": {
+  "title": "Pick a route to see how it renders.",
+  "text": "A sample src/routes folder. Each file chooses its own rendering with one export.",
+  "component": "DemoZero",
+  "reference": "pkg-zero.html#demo",
+  "referenceHtml": "<div class=\"card\"><div class=\"in z-exp\">\n  <div class=\"z-tree\"><div class=\"label\" style=\"padding:4px 12px 12px\">src/routes</div><div id=\"z-tree\"></div><div class=\"z-dimf\">_layout.tsx · _404.tsx · _error.tsx · _loading.tsx</div></div>\n  <div class=\"z-detail\" id=\"z-detail\" aria-live=\"polite\"></div>\n</div></div>",
+  "referenceCss": ".card > .in.z-exp{display:grid;grid-template-columns:300px minmax(0,1fr);padding:0;gap:0}@media(max-width:860px){.card > .in.z-exp{grid-template-columns:minmax(0,1fr)}}\n.z-tree{border-right:1px solid var(--line);padding:18px 12px}@media(max-width:860px){.z-tree{border-right:0;border-bottom:1px solid var(--line)}}\n.z-tree button{display:grid;grid-template-columns:1fr auto;align-items:center;gap:10px;width:100%;padding:9px 12px;border:0;border-radius:10px;background:transparent;color:var(--mist);font-family:var(--mono);font-size:12.5px;text-align:left;cursor:pointer}\n.z-tree button:hover{background:rgba(255,255,255,.03);color:var(--ivory)}.z-tree button[aria-pressed=\"true\"]{background:rgba(255,94,26,.09);color:var(--ivory);box-shadow:inset 0 0 0 1px rgba(255,94,26,.4)}\n.z-dimf{color:var(--fog);font-size:12px;padding:8px 12px;font-family:var(--mono)}\n.mode{font-size:10px;letter-spacing:.14em;text-transform:uppercase;padding:3px 8px;border-radius:999px;border:1px solid var(--line-2);color:var(--mist);font-family:var(--mono)}\n.mode.ssg{color:var(--link);border-color:rgba(34,211,238,.4)}.mode.isr{color:var(--warm-t);border-color:rgba(255,200,61,.4)}.mode.ssr{color:var(--accent);border-color:rgba(255,94,26,.45)}.mode.api{color:#A78BFA;border-color:rgba(167,139,250,.4)}\n.z-detail{padding:30px 34px;display:flex;flex-direction:column;gap:18px}.z-detail h3{font-size:30px;font-weight:500;letter-spacing:-.03em;margin:0}\n.z-detail p{margin:0;color:var(--mist);font-size:15.5px;line-height:1.6;font-weight:300;max-width:560px}\n.z-props{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));border-top:1px solid var(--line);border-bottom:1px solid var(--line)}@media(max-width:640px){.z-props{grid-template-columns:minmax(0,1fr)}}\n.z-props > div{padding:14px 16px 14px 0}.z-props > div + div{padding-left:16px;border-left:1px solid var(--line)}\n.z-props .k2{font-family:var(--mono);font-size:10.5px;letter-spacing:.18em;text-transform:uppercase;color:var(--fog)}.z-props .v2{margin-top:6px;font-size:14.5px;color:var(--ivory)}\n.z-ex{font-family:var(--mono);font-size:13px;padding:12px 14px;border-radius:10px;background:var(--well);border:1px solid var(--line);color:var(--s-fg);white-space:pre;overflow-x:auto}",
+  "referenceJs": "(function(){var R=[{f:'index.tsx',u:'/',m:'ssg',t:'Built once, served from a CDN',d:'Rendered to static HTML at build time.',w:'at build',c:'CDN, until the next deploy',j:'only interactive parts',e:\"export const renderMode = 'ssg'\"},{f:'blog/[slug].tsx',u:'/blog/:slug',m:'isr',t:'Cached, refreshed in the background',d:'Rendered on the first request, cached, then refreshed on a timer or when you invalidate a tag.',w:'first request, then after isr.revalidate (60 s by default)',c:'ISR cache with tag invalidation',j:'only interactive parts',e:\"export const renderMode = 'isr'\"},{f:'account.tsx',u:'/account',m:'ssr',t:'Rendered per request',d:'Rendered on the server for each visitor, with streaming available for Suspense boundaries.',w:'every request',c:'none, personalised',j:'hydrated',e:\"export const renderMode = 'ssr'\"},{f:'(app)/dashboard.tsx',u:'/dashboard',m:'spa',t:'Runs in the browser',d:'A static shell; the page renders client-side. Folders in parentheses group files without changing the URL.',w:'in the browser',c:'static shell',j:'the app (no server HTML to hydrate)',e:\"export const renderMode = 'spa'\"},{f:'api/posts.ts',u:'/api/posts',m:'api',t:'An API endpoint',d:'Export GET, POST, PUT or DELETE and it becomes an endpoint, with the same middleware as your pages.',w:'every request',c:'your headers',j:'none',e:'export function GET() { … }\\nexport function POST({ request }) { … }'}],s=0;\nfunction r(){document.getElementById('z-tree').innerHTML=R.map(function(x,i){return '<button type=\"button\" data-r=\"'+i+'\" aria-pressed=\"'+(i===s)+'\"><span>'+x.f+'</span><span class=\"mode '+x.m+'\">'+x.m+'</span></button>'}).join('');document.querySelectorAll('[data-r]').forEach(function(b){b.onclick=function(){s=+b.dataset.r;r()}});var x=R[s];document.getElementById('z-detail').innerHTML='<div style=\"display:flex;gap:12px;align-items:center\"><span class=\"mode '+x.m+'\">'+x.m+'</span><span class=\"mono\" style=\"font-size:13px;color:var(--fog)\">'+x.u+'</span></div><h3>'+x.t+'</h3><p>'+x.d+'</p><div class=\"z-props\"><div><div class=\"k2\">renders</div><div class=\"v2\">'+x.w+'</div></div><div><div class=\"k2\">cached</div><div class=\"v2\">'+x.c+'</div></div><div><div class=\"k2\">javascript</div><div class=\"v2\">'+x.j+'</div></div></div><div class=\"z-ex\">'+x.e.replace(/</g,'&lt;')+'</div>'}r();})();"
+ },
+ "features": {
+  "title": "Included, configured, and out of the bundle when you don't use it.",
+  "items": [
+   {
+    "name": "File-system routing",
+    "text": "with layouts, URL-invisible `(groups)`, and `_error`, `_loading` and `_404` files per segment"
+   },
+   {
+    "name": "Typed routes:",
+    "text": "`typedRoutes: true` makes `<Link href=\"/postz/1\">` a compile error"
+   },
+   {
+    "name": "Server loaders",
+    "text": "in a `.server.ts` file, fetched in one request per navigation"
+   },
+   {
+    "name": "Server actions",
+    "text": "with a no-JavaScript fallback, pending state, an origin check and a 1 MiB body limit"
+   },
+   {
+    "name": "Schema-validated actions:",
+    "text": "`defineAction(schema, handler)` with any Standard Schema",
+    "status": "next release"
+   },
+   {
+    "name": "ISR with tag invalidation:",
+    "text": "a webhook calls `revalidateTag('posts')` on the ISR handler, and `createFsStore` survives a restart"
+   },
+   {
+    "name": "Server islands",
+    "text": "for per-request fragments inside cached pages"
+   },
+   {
+    "name": "Optimised images, self-hosted fonts, favicons and OG images drawn in JSX,",
+    "text": "plus a service worker that precaches exactly what shipped"
+   },
+   {
+    "name": "Env validation:",
+    "text": "only `ZERO_PUBLIC_*` reaches the client, and a missing declared variable fails the build"
+   },
+   {
+    "name": "Sessions, CSP nonces, CORS and rate limits,",
+    "text": "through the same request pipeline in dev and production"
+   }
+  ]
+ },
+ "api": {
+  "title": "Split by where it runs: the main entry is browser-safe.",
+  "groups": [
+   {
+    "name": "@pyreon/zero (browser-safe)",
+    "items": [
+     "Link",
+     "Image",
+     "Script",
+     "Meta",
+     "Icon",
+     "island",
+     "serverIsland",
+     "useLocale",
+     "setLocale",
+     "registerServiceWorker"
+    ]
+   },
+   {
+    "name": "@pyreon/zero/actions",
+    "items": [
+     "defineAction",
+     "fail",
+     "Form",
+     "useSubmission"
+    ]
+   },
+   {
+    "name": "@pyreon/zero/server (its default export is the zero() plugin)",
+    "items": [
+     "defineConfig",
+     "createServer",
+     "createApp",
+     "createISRHandler",
+     "createMemoryStore",
+     "createFsStore",
+     "nodeAdapter",
+     "bunAdapter",
+     "denoAdapter",
+     "vercelAdapter",
+     "netlifyAdapter",
+     "cloudflareAdapter",
+     "staticAdapter",
+     "https",
+     "sessionMiddleware",
+     "getSession",
+     "seoPlugin",
+     "faviconPlugin"
+    ]
+   },
+   {
+    "name": "@pyreon/zero/env · /csp · /cors · /rate-limit · /font · /web-vitals",
+    "items": [
+     "validateEnv",
+     "publicEnv",
+     "cspMiddleware",
+     "useNonce",
+     "corsMiddleware",
+     "rateLimitMiddleware",
+     "fontPlugin",
+     "reportWebVitals"
+    ]
+   }
+  ]
+ },
+ "limits": [
+  {
+   "title": "`mode: 'auto'` is experimental",
+   "text": "Zero can infer each page's mode from its exports. Read the mode table the build prints, and declare `renderMode` on any page where the answer matters."
+  },
+  {
+   "title": "Streaming is opt-in",
+   "text": "Set `ssr: { mode: 'stream' }`. ISR routes always render buffered, because the cache stores whole responses."
+  },
+  {
+   "title": "More than one server needs shared state",
+   "text": "The default ISR store is in memory and `createFsStore` is for a single box. Behind a load balancer, plug in a shared store (Redis, KV). From the next release, server-island fragments are signed: set the same `PYREON_ISLAND_SECRET` on every instance."
+  },
+  {
+   "title": "Big static builds multiply",
+   "text": "Dynamic routes times locales adds up. Use `ssg.concurrency`, `ssg.workers` and `onProgress` on large sites."
+  }
+ ],
+ "related": [
+  {
+   "href": "/products/content",
+   "category": "zero",
+   "name": "Content",
+   "text": "Markdown collections with typed frontmatter, on Zero's routes.",
+   "package": "@pyreon/zero-content"
+  },
+  {
+   "href": "/products/router",
+   "category": "core",
+   "name": "Router",
+   "text": "The loaders, guards and redirects under every Zero route.",
+   "package": "@pyreon/router"
+  },
+  {
+   "href": "/products/query",
+   "category": "fundamentals",
+   "name": "Query",
+   "text": "Client-side caching on top of your loaders.",
+   "package": "@pyreon/query"
+  }
+ ],
+ "end": {
+  "title": "The static site and the app were one project all along.",
+  "cta": "Follow the Zero guide"
+ },
+ "benchmarks": {
+  "rival": "vs Vue 3, Svelte 5, React 19, Preact, Solid, Unhead",
+  "run": "overnight run, one run (SSR, renderToString, head) · final pass (hydration: table two runs, app page one run)",
+  "h": "Compiled server rendering led at every size we measured.",
+  "p": "Fastest at 10, 100 and 1,000 rows against Vue 3, Svelte 5 and React 19, and 5.7–6.6× ahead of React. Hydrating a whole app page was the fastest of four. A 1,000-row table hydrates level with Vue, and Vue is marginally ahead on its total in one of two runs.",
+  "rows": [
+   {
+    "op": "compiled SSR, 10 rows",
+    "pyreon": 1.8,
+    "rival": 2.18,
+    "unit": "µs",
+    "verdict": "win",
+    "label": "1.21× vs Svelte 5 (5.7× vs React 19)"
+   },
+   {
+    "op": "compiled SSR, 100 rows",
+    "pyreon": 11.64,
+    "rival": 15.66,
+    "unit": "µs",
+    "verdict": "win",
+    "label": "1.35× vs Vue 3 (6.6× vs React 19)"
+   },
+   {
+    "op": "compiled SSR, 1,000 rows",
+    "pyreon": 109.9,
+    "rival": 124.9,
+    "unit": "µs",
+    "verdict": "win",
+    "label": "1.14× vs Vue 3 (6.5× vs React 19)"
+   },
+   {
+    "op": "renderToString, card",
+    "pyreon": null,
+    "rival": null,
+    "unit": "x",
+    "verdict": "win",
+    "label": "8.95M/s · 4.68× vs Solid, byte-identical output"
+   },
+   {
+    "op": "renderToString, 1,000-item list",
+    "pyreon": null,
+    "rival": null,
+    "unit": "x",
+    "verdict": "win",
+    "label": "11.3K/s · 1.72× vs Solid"
+   },
+   {
+    "op": "hydrate app page (2,206 nodes)",
+    "pyreon": 4.02,
+    "rival": 4.15,
+    "unit": "ms",
+    "verdict": "win",
+    "label": "1.03× vs React 19, 1.11× vs Vue 3 (one run)"
+   },
+   {
+    "op": "hydrate 1,000-row table: framework walk",
+    "pyreon": 1.16,
+    "rival": 1.17,
+    "unit": "ms",
+    "verdict": "tie",
+    "label": "level with Vue 3 in both runs"
+   },
+   {
+    "op": "hydrate 1,000-row table: total",
+    "pyreon": 6.04,
+    "rival": 5.99,
+    "unit": "ms",
+    "verdict": "split",
+    "label": "tie in run 1, Vue 3 1.01× ahead in run 2"
+   },
+   {
+    "op": "head serialize, 5 / 20 / 50 tags",
+    "pyreon": null,
+    "rival": null,
+    "unit": "x",
+    "verdict": "win",
+    "label": "1.50× / 1.27× / 1.22× vs Unhead"
+   }
+  ]
+ },
+ "glyphSvg": "<path d=\"M36 22 H84 L36 98 H84\" stroke=\"currentColor\" stroke-width=\"10\" fill=\"none\" stroke-linecap=\"square\"/><circle cx=\"92\" cy=\"30\" r=\"14\" fill=\"url(#eg)\"/>",
+ "proof": [
+  {
+   "stat": "6.5×",
+   "label": "faster compiled server rendering than React 19 at 1,000 rows (109.9 vs 714.4 µs a render)",
+   "source": "BENCHMARKS.md 2026-11-05 §5, overnight run, one run"
+  },
+  {
+   "stat": "4.02 ms",
+   "label": "to hydrate a 2,206-node app page: the fastest of Pyreon, React 19, Preact and Vue 3",
+   "source": "BENCHMARKS.md 2026-11-05 §4, final pass, one run"
+  },
+  {
+   "stat": "6.6 KB",
+   "label": "of hydration code (gzip) a production build drops on its own when every page is client-only",
+   "source": "docs/src/content/docs/zero.md, \"SPA apps ship without hydration code\" (measured on examples/kanban)"
+  }
+ ],
+ "comingFrom": [
+  {
+   "lib": "React Router (framework mode)",
+   "title": "A route module with a loader and an action",
+   "before": "// app/routes/posts.new.tsx\nimport { Form, redirect, useNavigation } from 'react-router'\nimport type { Route } from './+types/posts.new'\nimport { db } from '../db.server'\n\nexport async function action({ request }: Route.ActionArgs) {\n  const formData = await request.formData()\n  const title = String(formData.get('title') ?? '').trim()\n  if (!title) return { error: 'Title is required' }\n  const id = await db.posts.create({ title })\n  return redirect(`/posts/${id}`)\n}\n\nexport default function NewPost({ actionData }: Route.ComponentProps) {\n  const navigation = useNavigation()\n  return (\n    <Form method=\"post\">\n      <input name=\"title\" />\n      <button disabled={navigation.state === 'submitting'}>Create</button>\n      <p>{actionData?.error}</p>\n    </Form>\n  )\n}",
+   "after": "// src/routes/posts/new.tsx\nimport { redirect } from '@pyreon/router'\nimport { defineAction, fail, Form, useSubmission } from '@pyreon/zero/actions'\nimport { db } from '../../server/db'\n\nexport const action = defineAction(async ({ formData }) => {\n  const title = String(formData?.get('title') ?? '').trim()\n  if (!title) return fail(422, { error: 'Title is required' })\n  const id = await db.posts.create({ title })\n  throw redirect(`/posts/${id}`)\n})\n\nexport default function NewPost() {\n  const submission = useSubmission(action)\n  return (\n    <Form action={action}>\n      <input name=\"title\" />\n      <button disabled={submission.pending()}>Create</button>\n      <p>{() => submission.result()?.error ?? ''}</p>\n    </Form>\n  )\n}",
+   "note": "The shape you know: the file is the route, and the action sits next to the page. Routes come from the folder with no `routes.ts` to keep in sync, `pending()` and `result()` are signals, and one more line (`export const renderMode`) makes any page static, cached or client-only."
+  },
+  {
+   "lib": "Next.js App Router",
+   "title": "A cached page that refreshes itself",
+   "before": "// app/blog/[slug]/page.tsx\nexport const revalidate = 60\n\nexport default async function Post({ params }: { params: Promise<{ slug: string }> }) {\n  const { slug } = await params\n  const post = await getPost(slug)\n  return <h1>{post.title}</h1>\n}",
+   "after": "// src/routes/blog/[slug].tsx\nimport { useLoaderData, type LoaderData } from '@pyreon/router'\n\nexport const renderMode = 'isr' // refreshed after zero({ isr: { revalidate } }), 60 s by default\n\nexport const loader = ({ params }: { params: Record<string, string> }) => getPost(params.slug!)\n\nexport default function Post() {\n  const post = useLoaderData<LoaderData<typeof loader>>()\n  return <h1>{post.title}</h1>\n}",
+   "note": "The refresh interval is set once for the app in `zero({ isr })`, not per page. A `loader` also runs in the browser on client-side navigation; put database code in a `.server.ts` file next to the route instead. On-demand refresh goes by tag: the ISR handler's `revalidateTag('posts')` drops every cached page that rendered posts."
+  }
+ ],
+ "recipes": [
+  {
+   "title": "One app, four rendering strategies",
+   "text": "Set the default once and override by path. A page's own `renderMode` export still wins over the rule, and the build prints the mode each route resolved to.",
+   "code": "// vite.config.ts\nimport pyreon from '@pyreon/vite-plugin'\nimport zero from '@pyreon/zero/server'\n\nexport default {\n  plugins: [\n    pyreon(),\n    zero({\n      mode: 'ssr', // the default for any route that does not say otherwise\n      isr: { revalidate: 60 },\n      routeRules: {\n        '/about': { renderMode: 'ssg' }, // built once, served from the CDN\n        '/blog/**': { renderMode: 'isr' }, // cached, refreshed every 60 s\n        '/app/**': { renderMode: 'spa' }, // client-only dashboard\n      },\n    }),\n  ],\n}"
+  },
+  {
+   "title": "A personal cart badge on a cached page",
+   "text": "The pricing page is cached for everyone. The badge is fetched per visitor from a fragment endpoint that `createServer` mounts for you, and it renders with the request's locals, exactly like a page.",
+   "code": "// src/islands/CartBadge.tsx: rendered per request, on the server\nimport { useRequestLocals } from '@pyreon/server'\n\nexport default function CartBadge() {\n  // set by your session middleware: ctx.locals.cartCount = …\n  const count = Number(useRequestLocals().cartCount ?? 0)\n  return <a href=\"/cart\">Cart ({count})</a>\n}\n\n// src/routes/pricing.tsx: the page is cached, the badge is not\nimport { serverIsland } from '@pyreon/zero'\n\nexport const renderMode = 'isr'\n\nconst CartBadge = serverIsland(() => import('../islands/CartBadge'), {\n  name: 'CartBadge',\n  fallback: <a href=\"/cart\">Cart</a>,\n})\n\nexport default function Pricing() {\n  return (\n    <main>\n      <header>\n        <CartBadge />\n      </header>\n      <h1>Pricing</h1>\n    </main>\n  )\n}"
+  },
+  {
+   "title": "A server action that validates its input",
+   "text": "Pass any Standard Schema (Zod, Valibot, ArkType or `@pyreon/validate`) before the handler. Bad input never reaches it: the action answers 422 with messages per field, and the handler receives typed, parsed data.",
+   "status": "next release",
+   "code": "// src/routes/posts/new.tsx\nimport { s } from '@pyreon/validate'\nimport { defineAction, Form, useSubmission } from '@pyreon/zero/actions'\nimport { db } from '../../server/db'\n\nexport const action = defineAction(\n  s.object({ title: s.string().min(3), tags: s.array(s.string()) }),\n  async (input) => db.posts.insert(input), // input: { title: string; tags: string[] }\n)\n\nexport default function NewPost() {\n  const sub = useSubmission(action)\n  const titleError = () => {\n    const r = sub.result()\n    return r && 'fields' in r ? (r.fields.title?.join(', ') ?? '') : ''\n  }\n  return (\n    <Form action={action}>\n      <input name=\"title\" />\n      <p>{titleError}</p>\n      <input name=\"tags\" value=\"news\" />\n      <input name=\"tags\" value=\"release\" />\n      <button>Publish</button>\n    </Form>\n  )\n}"
+  }
+ ],
+ "faq": [
+  {
+   "q": "Is it ready for production?",
+   "a": "Zero is pre-1.0: breaking changes land in minor versions with a changelog entry, and `pyreon upgrade --write` aligns your `@pyreon/*` versions and runs the codemod for any break that can be migrated mechanically. pyreon.dev itself is built and deployed with it."
+  },
+  {
+   "q": "How is it different from Next.js?",
+   "a": "One render pipeline for every mode, so the same loader works in SSR, ISR, SSG and SPA, and the mode is a per-page export. There are no server and client component trees to split. Components run once and update through signals, so there is nothing to memoise."
+  },
+  {
+   "q": "Do I have to use Vite?",
+   "a": "Yes. Zero is a set of Vite plugins: `pyreon()` compiles the JSX and `zero()` adds routing, rendering and the build. `zero dev`, `zero build` and `zero preview` wrap them."
+  },
+  {
+   "q": "Where can I deploy it?",
+   "a": "Node, Bun, Deno, Vercel, Netlify, Cloudflare Pages or any static host. Leave `adapter` unset and the build picks it from the platform's environment. A route can ask for the edge with `export const runtime`, and the build fails if the adapter can't do it."
+  },
+  {
+   "q": "Is it faster than Next.js on a real app?",
+   "a": "We don't claim that yet. The repo has a suite that builds the same app with Zero, Next.js, React Router, SvelteKit, SolidStart, Nuxt, Astro, TanStack Start and Qwik City (`bun run bench:stacks`), and no result from it is published. The numbers on this page are component-level server rendering and hydration."
+  }
+ ],
+ "sources": [
+  {
+   "claim": "renderMode export per page, cascading from layouts; routeRules globs; precedence file > rule > app mode",
+   "path": "docs/src/content/docs/zero.md \"Per-route render modes\"; packages/zero/zero/src/route-modes.ts resolveRenderModeForPath"
+  },
+  {
+   "claim": "Every build prints a per-route mode table",
+   "path": ".agents/guides/zero/README.md \"Mode visibility\"; packages/zero/zero/src/route-modes.ts formatRouteModeTable"
+  },
+  {
+   "claim": "Compiled SSR 1.80/11.64/109.9 µs vs Svelte 2.18, Vue 15.66/124.9, React 10.30/76.52/714.4",
+   "path": "00-brief/BENCHMARKS-2026-11-05.md §5 (overnight, one run)"
+  },
+  {
+   "claim": "App page hydration 4.02 ms vs React 4.15, Preact 4.30, Vue 4.47; table walk tie; total Vue 1.01× in run 2",
+   "path": "00-brief/BENCHMARKS-2026-11-05.md §4"
+  },
+  {
+   "claim": "renderToString card 8.95M/s 4.68× vs Solid; list-1000 11.3K/s 1.72×",
+   "path": "00-brief/BENCHMARKS-2026-11-05.md §5 bench:ssr-cross"
+  },
+  {
+   "claim": "Head serialize 1.50/1.27/1.22× vs Unhead",
+   "path": "00-brief/BENCHMARKS-2026-11-05.md §9"
+  },
+  {
+   "claim": "All-SPA build compiles hydration out: 6.6 KB gz on examples/kanban",
+   "path": "docs/src/content/docs/zero.md \"SPA apps ship without hydration code\"; packages/zero/zero/src/client-flags-plugin.ts"
+  },
+  {
+   "claim": "Adapters node, bun, deno, vercel, netlify, cloudflare, static; auto-detected from VERCEL / NETLIFY / CF_PAGES",
+   "path": "packages/zero/zero/src/server.ts (adapter exports); docs zero.md ZeroConfig \"adapter\""
+  },
+  {
+   "claim": "<Form> renders a real form, 303 on redirect, pending()/input()/result(), origin check, 1 MiB body limit",
+   "path": "docs/src/content/docs/zero.md \"Server Actions\" and \"Security\"; packages/zero/zero/src/actions.ts DEFAULT_ACTION_BODY_LIMIT"
+  },
+  {
+   "claim": "defineAction handler stripped from the client bundle; requires zero()",
+   "path": "packages/zero/zero/src/actions.ts defineAction doc comment; docs zero.md \"Handlers stay on the server\""
+  },
+  {
+   "claim": "defineAction(schema, handler) is main-only (not in 0.53.0)",
+   "path": "git show @pyreon/zero@0.53.0:packages/zero/zero/src/actions.ts has no StandardSchemaV1"
+  },
+  {
+   "claim": ".server.ts never imported by the client; artifact sentinel scan in CI; single-fetch /_pyreon/data",
+   "path": "docs zero.md \"Server Loaders\"; .agents/guides/zero/README.md \"App budget + client leaks\" (scripts/zero-app-checks.ts)"
+  },
+  {
+   "claim": "serverIsland marker, fragment endpoint, fallback for no-JS, useRequestLocals inside",
+   "path": "docs zero.md \"Server Islands\"; packages/core/server/src/server-island.ts"
+  },
+  {
+   "claim": "Island signing and PYREON_ISLAND_SECRET are main-only",
+   "path": "packages/zero/zero/src/server-island-token.ts absent at tag @pyreon/zero@0.53.0"
+  },
+  {
+   "claim": "revalidateTag + createFsStore survives restarts",
+   "path": "docs zero.md \"ISR: tag-based invalidation + filesystem store\""
+  },
+  {
+   "claim": "typedRoutes makes a mistyped Link href a compile error",
+   "path": "docs zero.md \"Typed routes\"; packages/zero/zero/src/route-types-gen.ts"
+  },
+  {
+   "claim": "Only ZERO_PUBLIC_* inlined; zero({ env }) fails the build on a missing var",
+   "path": ".agents/guides/zero/README.md env bullets; packages/zero/zero/src/public-env.ts"
+  },
+  {
+   "claim": "mode auto is EXPERIMENTAL",
+   "path": "docs zero.md ZeroConfig mode row; facts.md status labels"
+  },
+  {
+   "claim": "Zero is a set of Vite plugins; zero-cli dev/build/preview",
+   "path": "docs zero.md \"Configuration\"; packages/zero/cli/package.json"
+  },
+  {
+   "claim": "stacks-bench exists with no published result",
+   "path": "00-brief/BENCHMARKS-2026-11-05.md \"Reproduce\"; examples/stacks-bench"
+  },
+  {
+   "claim": "Per-route runtime declaration fails the build when unsupported",
+   "path": ".agents/guides/zero/README.md \"SSR and ISR\" (deploy-scan.ts)"
+  },
+  {
+   "claim": "React Router framework-mode and Next.js before code",
+   "path": "written from each library's documented API (react-router v7 route modules; Next.js App Router useActionState / revalidate); not typechecked: neither library is installed in the checkout"
+  },
+  {
+   "claim": "All Pyreon samples on this page compile with transformJSX and pass tsc",
+   "path": "/tmp/wt-site-content/.scratch/core/parent/zero (compile.ts, tsconfig.json)"
+  }
+ ]
+}

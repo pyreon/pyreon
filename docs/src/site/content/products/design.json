@@ -1,0 +1,433 @@
+{
+ "id": "design",
+ "route": "/products/design",
+ "name": "Design System",
+ "package": "@pyreon/rocketstyle · styler · elements · coolgrid · kinetic",
+ "category": "ui system · 11 packages",
+ "hero": {
+  "title": "Write every variant once. Get every combination, dark mode included.",
+  "lede": "Describe states, sizes and variants as separate dimensions and rocketstyle turns each into a typed prop, with `mode(light, dark)` right next to the value. Underneath: the CSS-in-JS engine that beat Emotion and goober on every operation we timed, plus layout primitives, a responsive grid and motion.",
+  "install": "bun add @pyreon/rocketstyle @pyreon/elements @pyreon/ui-core @pyreon/unistyle",
+  "ctaShort": "Install",
+  "facts": [
+   {
+    "key": "dimensions",
+    "value": "states · sizes · variants · multiple · modifiers<small>Plus your own. Each one is a typed prop.</small>"
+   },
+   {
+    "key": "CSS engine",
+    "value": "won 4 of 4 timed ops vs Emotion and goober<small>Overnight run, one run, bun.</small>"
+   },
+   {
+    "key": "dark mode",
+    "value": "`mode(light, dark)` beside the value<small>With CSS variables on, a flip is one attribute write.</small>"
+   },
+   {
+    "key": "native",
+    "value": "{dot:warn}`styled(Prim)`, Element, grid and rocketstyle lower to SwiftUI and Compose<small>Experimental. A reactive dimension flip is device-tested.</small>"
+   }
+  ]
+ },
+ "why": {
+  "title": "The parts of a design system every team rebuilds.",
+  "items": [
+   {
+    "title": "Dimensions, not branches",
+    "text": "`.states()`, `.sizes()` and `.variants()` each describe one axis. `<Button state=\"danger\" size=\"lg\">` merges base → state → size → variant at render. Five dimensions are built in, and a custom one (`tones` → `tone=\"warn\"`) is one line of config."
+   },
+   {
+    "title": "Dark mode lives next to the value",
+    "text": "Write `mode('#c2410c', '#ff5e1a')` inside `.theme()` or any dimension. `<PyreonUI mode=\"system\">` follows the OS, and `init({ cssVariables: true })` turns a flip into one attribute write on `<html>`."
+   },
+   {
+    "title": "An engine that wins its benchmarks",
+    "text": "styler beat Emotion by 3.4–6.3× and goober by 2.2–4.0× on cold insert, warm dedup, dynamic resolve and SSR collect; SSR collect also beat styled-components 2.3× (one run). Rules dedupe by hash, and the SSR `<style>` takes a CSP nonce."
+   },
+   {
+    "title": "One system for iOS and Android too",
+    "text": "`styled(Prim)`, `Element`, coolgrid, attrs, `<PyreonUI>` and rocketstyle chains over a primitive lower to SwiftUI and Compose, with `defineTheme` tokens resolved at compile time. Experimental: a rocketstyle state flip is asserted on both device gates."
+   }
+  ]
+ },
+ "difference": {
+  "title": "Variants as data, not as ternaries.",
+  "before": {
+   "label": "React + styled-components",
+   "caption": "Each dimension is a ternary inside every rule it touches, and dark mode nests another one inside that.",
+   "code": "import styled from 'styled-components'\n\ndeclare module 'styled-components' {\n  interface DefaultTheme { dark: boolean }\n}\n\ntype Props = { $state?: 'primary' | 'danger'; $size?: 'sm' | 'md' | 'lg' }\n\nconst Button = styled.button<Props>`\n  border-radius: 6px;\n  color: ${(p) => (p.theme.dark ? '#0a0a0e' : '#fff')};\n  padding: ${(p) =>\n    p.$size === 'sm' ? '6px 12px' : p.$size === 'lg' ? '10px 20px' : '8px 16px'};\n  background: ${(p) =>\n    p.$state === 'danger'\n      ? p.theme.dark ? '#f87171' : '#b91c1c'\n      : p.theme.dark ? '#ff5e1a' : '#c2410c'};\n`\n\n<Button $state=\"danger\" $size=\"lg\">Delete</Button>"
+  },
+  "after": {
+   "label": "Pyreon + rocketstyle",
+   "caption": "Each dimension is declared once and becomes a typed prop. Dark mode is `mode()` beside the value.",
+   "code": "import rocketstyle from '@pyreon/rocketstyle'\nimport { Element } from '@pyreon/elements'\n\nconst Button = rocketstyle()({ name: 'Button', component: Element })\n  .attrs({ tag: 'button' })\n  .theme((t, mode) => ({\n    borderRadius: 6,\n    paddingX: 16,\n    paddingY: 8,\n    color: mode('#fff', '#0a0a0e'),\n  }))\n  .states((t, mode) => ({\n    primary: { backgroundColor: mode('#c2410c', '#ff5e1a') },\n    danger: { backgroundColor: mode('#b91c1c', '#f87171') },\n  }))\n  .sizes({\n    sm: { paddingX: 12, paddingY: 6 },\n    lg: { paddingX: 20, paddingY: 10 },\n  })\n\n\n<Button state=\"danger\" size=\"lg\">Delete</Button>"
+  }
+ },
+ "extraSectionsHtml": "<section class=\"p-sec tight\"><div class=\"wrap\"><div class=\"head\"><div class=\"label\">inside the design system</div><h2>Eleven packages, one system.</h2><p>Use the whole thing through your components, or take only the layer you need: styler works on its own.</p></div><div class=\"p-inside\"><div class=\"card\"><div class=\"in\"><span class=\"pk\">@pyreon/rocketstyle</span><b>dimensions</b><p>States, sizes, variants and your own axes as typed props.</p></div></div><div class=\"card\"><div class=\"in\"><span class=\"pk\">@pyreon/styler</span><b>CSS-in-JS</b><p>styled, css, keyframes and global styles, deduplicated and SSR-safe.</p></div></div><div class=\"card\"><div class=\"in\"><span class=\"pk\">@pyreon/unistyle</span><b>responsive engine</b><p>Breakpoints, responsive values and themes as CSS variables.</p></div></div><div class=\"card\"><div class=\"in\"><span class=\"pk\">@pyreon/attrs</span><b>composition</b><p>Chainable default props; call-site props always win.</p></div></div><div class=\"card\"><div class=\"in\"><span class=\"pk\">@pyreon/elements</span><b>layout</b><p>Element, Text, List, Overlay and Portal.</p></div></div><div class=\"card\"><div class=\"in\"><span class=\"pk\">@pyreon/coolgrid</span><b>grid</b><p>Container, Row and Col with your own columns and breakpoints.</p></div></div><div class=\"card\"><div class=\"in\"><span class=\"pk\">@pyreon/ui-core</span><b>provider</b><p>PyreonUI: theme and light, dark or system mode in one component.</p></div></div><div class=\"card\"><div class=\"in\"><span class=\"pk\">@pyreon/kinetic</span><b>motion</b><p>Enter, leave, collapse, stagger and keyed-list animation on CSS transitions. <a href=\"/products/kinetic\">See Motion →</a></p></div></div><div class=\"card\"><div class=\"in\"><span class=\"pk\">@pyreon/kinetic-presets</span><b>motion</b><p>122 ready-made animations, imported one by one.</p></div></div><div class=\"card\"><div class=\"in\"><span class=\"pk\">@pyreon/document-primitives</span><b>documents</b><p>18 document components (DocPage, DocTable, DocText…) themed like the rest of your UI.</p></div></div><div class=\"card\"><div class=\"in\"><span class=\"pk\">@pyreon/connector-document</span><b>documents</b><p>The bridge from ui-system components to the @pyreon/document export pipeline.</p></div></div></div></div></section>",
+ "demo": {
+  "title": "Change the dimensions.",
+  "text": "One component, every combination of state, size and variant, in light or dark mode. The props on the right are all the code a consumer writes.",
+  "component": "DemoDesign",
+  "reference": "pkg-design.html#demo",
+  "referenceHtml": "<div class=\"p-demo\">\n  <div class=\"card\"><div class=\"in\">\n    <div class=\"ds-ctl\"><span class=\"label\">state</span><div class=\"seg\" data-d=\"state\"><button type=\"button\" aria-pressed=\"true\">primary</button><button type=\"button\">secondary</button><button type=\"button\">danger</button></div></div>\n    <div class=\"ds-ctl\"><span class=\"label\">size</span><div class=\"seg\" data-d=\"size\"><button type=\"button\">sm</button><button type=\"button\" aria-pressed=\"true\">md</button><button type=\"button\">lg</button></div></div>\n    <div class=\"ds-ctl\"><span class=\"label\">variant</span><div class=\"seg\" data-d=\"variant\"><button type=\"button\" aria-pressed=\"true\">solid</button><button type=\"button\">outline</button></div></div>\n    <div class=\"ds-ctl\"><span class=\"label\">mode</span><div class=\"seg\" data-d=\"mode\"><button type=\"button\" aria-pressed=\"true\">light</button><button type=\"button\">dark</button></div></div>\n    <pre id=\"ds-code\" style=\"margin-top:8px;padding:14px;border:1px solid var(--line);border-radius:10px;background:var(--well)\"></pre>\n  </div></div>\n  <div class=\"ds-stage\" id=\"ds-stage\"><div class=\"ds-card\"><div class=\"ds-t\">Delete project?</div><div class=\"ds-p\">This removes the project and its 12 deployments.</div><div style=\"display:flex;gap:10px;flex-wrap:wrap\"><button type=\"button\" class=\"ds-b\" id=\"ds-btn\">Delete</button><button type=\"button\" class=\"ds-b ghost\">Cancel</button></div></div></div>\n</div>",
+  "referenceCss": ".ds-ctl{display:grid;grid-template-columns:70px 1fr;align-items:center;gap:10px}.seg{display:flex;gap:2px;padding:3px;border:1px solid var(--line);border-radius:999px;width:fit-content;flex-wrap:wrap}.seg button{height:30px;padding:0 14px;border:0;border-radius:999px;background:transparent;color:var(--fog);font-family:var(--mono);font-size:12px;cursor:pointer}.seg button[aria-pressed=\"true\"]{background:var(--line);color:var(--ivory)}\n.ds-stage{border-radius:16px;display:grid;place-items:center;padding:40px 24px;transition:background .3s;min-height:300px}.ds-card{width:min(360px,100%);border-radius:14px;padding:24px;font-family:system-ui,sans-serif;transition:all .3s}.ds-t{font-size:18px;font-weight:650;margin-bottom:6px}.ds-p{font-size:14px;margin-bottom:18px;opacity:.8}\n.ds-b{border-radius:8px;font:inherit;font-weight:600;cursor:pointer;border:1.5px solid transparent;transition:all .2s}.ds-b.ghost{background:transparent;border-color:currentColor;opacity:.7;padding:8px 16px;font-size:14px}",
+  "referenceJs": "(function(){var S={state:'primary',size:'md',variant:'solid',mode:'light'};var C={light:{primary:'#C2410C',secondary:'var(--hover-line)',danger:'#B91C1C',bg:'var(--ivory)',card:'#FFFCF5',fg:'#14141C'},dark:{primary:'#FF5E1A',secondary:'var(--mist)',danger:'#F87171',bg:'#0A0A0E',card:'#181822',fg:'var(--ivory)'}};var Z={sm:['6px 12px','13px'],md:['8px 16px','14px'],lg:['11px 22px','16px']};\nfunction r(){var c=C[S.mode],col=c[S.state],b=document.getElementById('ds-btn');var st=document.getElementById('ds-stage');st.style.background=c.bg;var card=st.querySelector('.ds-card');card.style.background=c.card;card.style.color=c.fg;card.style.boxShadow=S.mode==='light'?'0 10px 30px -10px rgba(0,0,0,.2)':'0 0 0 1px #2E2E3B';b.style.padding=Z[S.size][0];b.style.fontSize=Z[S.size][1];if(S.variant==='solid'){b.style.background=col;b.style.color=S.mode==='dark'?'#0A0A0E':'#fff';b.style.borderColor=col}else{b.style.background='transparent';b.style.color=col;b.style.borderColor=col}\ndocument.getElementById('ds-code').innerHTML='<span class=\"p\">&lt;</span><span class=\"t\">Button</span>\\n  state=<span class=\"s\">\"'+S.state+'\"</span>\\n  size=<span class=\"s\">\"'+S.size+'\"</span>\\n  variant=<span class=\"s\">\"'+S.variant+'\"</span>\\n<span class=\"p\">&gt;</span>Delete<span class=\"p\">&lt;/</span><span class=\"t\">Button</span><span class=\"p\">&gt;</span>\\n<span class=\"c\">// mode comes from &lt;PyreonUI mode=\"'+S.mode+'\"&gt;</span>'}\ndocument.querySelectorAll('.seg').forEach(function(g){g.querySelectorAll('button').forEach(function(b){b.onclick=function(){g.querySelectorAll('button').forEach(function(x){x.setAttribute('aria-pressed',x===b)});S[g.dataset.d]=b.textContent;r()}})});r();})();"
+ },
+ "features": {
+  "title": "Eleven packages that make one design system.",
+  "items": [
+   {
+    "name": "rocketstyle:",
+    "text": "five built-in dimensions plus your own, each a typed prop, with results cached per definition"
+   },
+   {
+    "name": "Pseudo-states as objects:",
+    "text": "`hover`, `focus`, `active`, `pressed` and `disabled` compile to CSS selectors"
+   },
+   {
+    "name": "styler:",
+    "text": "`styled()`, `css`, `keyframes`, `createGlobalStyle`, `$`-transient props and `as`"
+   },
+   {
+    "name": "Server rendering:",
+    "text": "per-request sheets, a CSP nonce on the critical `<style>`, and a streaming flush"
+   },
+   {
+    "name": "elements:",
+    "text": "Element, Text, List, Overlay and Portal layout primitives"
+   },
+   {
+    "name": "useOverlay:",
+    "text": "dropdowns, tooltips and modals with viewport flip, Escape, click-outside and a focus trap for modals"
+   },
+   {
+    "name": "coolgrid:",
+    "text": "Container, Row and Col; every numeric prop takes a value, a mobile-first array or a breakpoint object"
+   },
+   {
+    "name": "PyreonUI:",
+    "text": "one provider for theme and mode, plus `cssVariablesPrePaintScript()` so dark mode never flashes"
+   },
+   {
+    "name": "attrs:",
+    "text": "chainable default props on any component, and whatever the call site passes still wins"
+   },
+   {
+    "name": "More of it on native:",
+    "text": "several dynamic dimensions, nested style ternaries, pressed styles and `<List>` lower to iOS and Android",
+    "status": "next release"
+   }
+  ]
+ },
+ "api": {
+  "title": "One import per job.",
+  "groups": [
+   {
+    "name": "rocketstyle · chain: .theme .states .sizes .variants .multiple .modifiers .attrs .styles .config .compose",
+    "items": [
+     "rocketstyle",
+     "Provider",
+     "isRocketComponent",
+     "resolveModeVar",
+     "resolveTheme"
+    ]
+   },
+   {
+    "name": "styler",
+    "items": [
+     "styled",
+     "css",
+     "keyframes",
+     "createGlobalStyle",
+     "useCSS",
+     "defineTheme",
+     "ThemeProvider",
+     "useTheme",
+     "useThemeAccessor",
+     "createSheet",
+     "sheet"
+    ]
+   },
+   {
+    "name": "layout",
+    "items": [
+     "Element",
+     "Text",
+     "List",
+     "Overlay",
+     "useOverlay",
+     "Portal",
+     "Container",
+     "Row",
+     "Col"
+    ]
+   },
+   {
+    "name": "theme and mode",
+    "items": [
+     "PyreonUI",
+     "useMode",
+     "init",
+     "enrichTheme",
+     "themeToCssVars",
+     "cssVariablesPrePaintScript",
+     "makeItResponsive",
+     "breakpoints"
+    ]
+   },
+   {
+    "name": "motion",
+    "items": [
+     "kinetic",
+     "presets",
+     "useTransitionState"
+    ]
+   },
+   {
+    "name": "documents",
+    "items": [
+     "DocDocument",
+     "DocPage",
+     "DocText",
+     "DocTable",
+     "extractDocNode",
+     "DocumentPreview"
+    ]
+   }
+  ]
+ },
+ "limits": [
+  {
+   "title": "You build the components",
+   "text": "These packages are the system, not a widget kit. A ready-made component library built on them exists in the repo but is not published yet, so today your Button is about twenty lines of rocketstyle."
+  },
+  {
+   "title": "Give the grid its theme",
+   "text": "Container, Row and Col read columns and breakpoints from context. Render them under coolgrid's `Provider theme={theme}`, or a `PyreonUI` theme that carries the grid keys; without them a responsive Col is moved off-screen and a fixed size is ignored."
+  },
+  {
+   "title": "CSS variables buy a clean flip, not speed",
+   "text": "`cssVariables` mode makes dark mode one attribute write with no flash. In our overnight run (300 components flipping 20 times, nine runs on a dev server), classic mode was 1.13× faster, so pick it for the flip, not the clock."
+  },
+  {
+   "title": "Native lowers the authored patterns",
+   "text": "The CSS runtime stays on the web. Responsive values, `Overlay`, `Portal` and arbitrary selectors warn by name in a native build."
+  }
+ ],
+ "related": [
+  {
+   "href": "/products/primitives",
+   "category": "core",
+   "name": "Primitives",
+   "text": "The cross-platform components your styles wrap on web, iOS and Android.",
+   "package": "@pyreon/primitives"
+  },
+  {
+   "href": "/products/atlas",
+   "category": "tools",
+   "name": "Atlas",
+   "text": "Scenarios generated from your rocketstyle dimensions.",
+   "package": "@pyreon/atlas"
+  },
+  {
+   "href": "/products/kinetic",
+   "category": "ui system",
+   "name": "Motion",
+   "text": "Enter and leave animations with 122 presets.",
+   "package": "@pyreon/kinetic + kinetic-presets"
+  },
+  {
+   "href": "/products/document",
+   "category": "fundamentals",
+   "name": "Documents",
+   "text": "Render one document tree to PDF, DOCX and 18 more formats.",
+   "package": "@pyreon/document"
+  }
+ ],
+ "end": {
+  "title": "Name each dimension once. Stop naming the combinations.",
+  "cta": "Read the styling guide"
+ },
+ "benchmarks": {
+  "rival": "vs Emotion, goober, styled-components · bun (JavaScriptCore)",
+  "run": "overnight run, one run",
+  "h": "The fastest CSS-in-JS engine we measured, on all four operations.",
+  "p": "styler is the engine under every rocketstyle component. Static styles resolve once; repeats hit a hash-keyed dedup cache, and SSR collection inserts each rule in constant time. styled-components appears only in SSR collect, where its figure includes a React render pass.",
+  "rows": [
+   {
+    "op": "warm dedup (repeat identical CSS)",
+    "pyreon": null,
+    "rival": null,
+    "unit": "x",
+    "verdict": "win",
+    "label": "6.34× vs Emotion · 3.81× vs goober"
+   },
+   {
+    "op": "dynamic resolve (prop interpolation)",
+    "pyreon": null,
+    "rival": null,
+    "unit": "x",
+    "verdict": "win",
+    "label": "5.26× vs Emotion · 2.17× vs goober"
+   },
+   {
+    "op": "SSR collect",
+    "pyreon": null,
+    "rival": null,
+    "unit": "x",
+    "verdict": "win",
+    "label": "3.56× / 3.99× / 2.30× vs Emotion / goober / styled-components"
+   },
+   {
+    "op": "cold insert (fresh sheet)",
+    "pyreon": null,
+    "rival": null,
+    "unit": "x",
+    "verdict": "win",
+    "label": "3.38× vs Emotion · 3.59× vs goober"
+   }
+  ]
+ },
+ "glyphSvg": "<rect x=\"14\" y=\"14\" width=\"40\" height=\"40\" rx=\"6\" stroke=\"currentColor\" stroke-width=\"10\" fill=\"none\"/><path d=\"M66 106 L86 66 L106 106 Z\" stroke=\"currentColor\" stroke-width=\"10\" fill=\"none\" stroke-linejoin=\"round\"/><circle cx=\"34\" cy=\"86\" r=\"20\" fill=\"url(#eg)\"/>",
+ "proof": [
+  {
+   "stat": "6.3×",
+   "label": "faster than Emotion at serving a style it has already seen (warm dedup)",
+   "source": "BENCHMARKS.md 2026-11-05 §9 Styler, overnight run, one run"
+  },
+  {
+   "stat": "4 / 4",
+   "label": "timed operations where styler beat both Emotion and goober",
+   "source": "BENCHMARKS.md 2026-11-05 §9 and §12 (styler row), overnight run, one run"
+  },
+  {
+   "stat": "2.3×",
+   "label": "faster than styled-components at collecting styles for server rendering (its figure includes a React render pass)",
+   "source": "BENCHMARKS.md 2026-11-05 §9 Styler (SSR collect), overnight run, one run"
+  }
+ ],
+ "comingFrom": [
+  {
+   "lib": "styled-components",
+   "title": "Keep your tagged templates.",
+   "before": "import styled from 'styled-components'\n\nconst Tab = styled.button<{ $active?: boolean }>`\n  padding: 8px 14px;\n  border: 0;\n  border-bottom: 2px solid ${(p) => (p.$active ? '#ff5e1a' : 'transparent')};\n  color: ${(p) => (p.$active ? '#0a0a0e' : '#6b6b76')};\n  &:hover { color: #0a0a0e; }\n`\n\nexport const Tabs = () => (\n  <nav>\n    <Tab $active>Overview</Tab>\n    <Tab>Settings</Tab>\n  </nav>\n)",
+   "after": "import { styled } from '@pyreon/styler'\n\nconst Tab = styled('button')<{ $active?: boolean }>`\n  padding: 8px 14px;\n  border: 0;\n  border-bottom: 2px solid ${(p) => (p.$active ? '#ff5e1a' : 'transparent')};\n  color: ${(p) => (p.$active ? '#0a0a0e' : '#6b6b76')};\n  &:hover { color: #0a0a0e; }\n`\n\nexport const Tabs = () => (\n  <nav>\n    <Tab $active>Overview</Tab>\n    <Tab>Settings</Tab>\n  </nav>\n)",
+   "note": "Same template syntax, same `$`-transient props; the import changes. `styled.button` works too. For iOS and Android, wrap a primitive instead of an HTML tag: `styled(Prim)` is the form the native compiler lowers."
+  }
+ ],
+ "recipes": [
+  {
+   "title": "A theme toggle with one card definition",
+   "text": "`PyreonUI` takes a signal-driven mode. The card declares both colours once; flipping the signal swaps its class, nothing remounts.",
+   "code": "import { signal } from '@pyreon/reactivity'\nimport { PyreonUI } from '@pyreon/ui-core'\nimport { enrichTheme } from '@pyreon/unistyle'\nimport rocketstyle from '@pyreon/rocketstyle'\nimport { Element } from '@pyreon/elements'\n\nconst theme = enrichTheme({ rootSize: 16 })\n\nconst Card = rocketstyle()({ name: 'Card', component: Element })\n  .attrs({ direction: 'rows', gap: 8 })\n  .theme((t, mode) => ({\n    padding: 24,\n    borderRadius: 12,\n    backgroundColor: mode('#ffffff', '#16161d'),\n    color: mode('#0a0a0e', '#f4efe6'),\n  }))\n\nexport function App() {\n  const scheme = signal<'light' | 'dark'>('light')\n  return (\n    <PyreonUI theme={theme} mode={() => scheme()}>\n      <button onClick={() => scheme.update((m) => (m === 'light' ? 'dark' : 'light'))}>\n        Toggle theme\n      </button>\n      <Card>One definition, both modes.</Card>\n    </PyreonUI>\n  )\n}"
+  },
+  {
+   "title": "A responsive product grid",
+   "text": "One column on phones, two from `sm`, three from `md`. Array values are mobile-first and cascade upward.",
+   "code": "import { For } from '@pyreon/core'\nimport { Provider, Container, Row, Col, theme } from '@pyreon/coolgrid'\n\nconst products = ['Zero', 'Native', 'Charts', 'Forms', 'Flow', 'Table']\n\nexport const ProductGrid = () => (\n  <Provider theme={theme}>\n    <Container gap={16}>\n      <Row>\n        <For each={products} by={(name) => name}>\n          {(name) => <Col size={[12, 6, 4]}>{name}</Col>}\n        </For>\n      </Row>\n    </Container>\n  </Provider>\n)"
+  }
+ ],
+ "faq": [
+  {
+   "q": "Do I need all eleven packages?",
+   "a": "No. styler has no other ui-system dependency and works on its own. rocketstyle brings styler and ui-core; elements and coolgrid bring unistyle. kinetic and the document packages are separate installs."
+  },
+  {
+   "q": "Does changing the theme or mode re-render my components?",
+   "a": "No. A theme or mode change re-resolves the CSS and updates the class name in place; components run once and nothing remounts."
+  },
+  {
+   "q": "Can I still use Tailwind?",
+   "a": "Yes for markup: `class` is passed through as written, and kinetic takes Tailwind utilities through `.enterClass()` / `.leaveClass()`. The design system earns its place when you want themed, dimensioned components with dark mode built in."
+  },
+  {
+   "q": "Does it work with SSR and streaming?",
+   "a": "Yes. `sheet.getStyleTag(nonce)` inlines the critical CSS for string rendering, `createSheet()` isolates a request, and a streaming flush sends only the rules each chunk needs."
+  },
+  {
+   "q": "How fast is it, really?",
+   "a": "In our overnight run, styler beat Emotion and goober on all four timed operations and styled-components on SSR collect. One run, author-run, synthetic; the reproduce command is `bun scripts/bench/core/styler.ts`."
+  }
+ ],
+ "sources": [
+  {
+   "claim": "Five built-in dimensions; custom dimensions via factory config; dimension props are singular strings",
+   "path": "packages/ui-system/rocketstyle/src/manifest.ts (longExample, features); docs/src/content/docs/rocketstyle.md \"Custom Dimensions\""
+  },
+  {
+   "claim": "mode(light, dark) is the 2nd argument of .theme() and dimension callbacks (draft used a free mode() inside a plain .states object, which is not in scope)",
+   "path": "docs/src/content/docs/rocketstyle.md \"Dark/Light Mode\""
+  },
+  {
+   "claim": "Resolution order base → state → size → variant",
+   "path": "docs/src/content/docs/rocketstyle.md \"Why Rocketstyle?\""
+  },
+  {
+   "claim": "cssVariables: a dark/light flip is one attribute write; cssVariablesPrePaintScript prevents FOUC; mode=\"system\" follows matchMedia",
+   "path": "docs/src/content/docs/ui-core.md \"CSS-Variables Theming Mode\", \"FOUC Prevention\", \"mode=system\""
+  },
+  {
+   "claim": "styler vs Emotion/goober/styled-components ratios (cold 3.38/3.59, warm 6.34/3.81, dynamic 5.26/2.17, SSR 3.56/3.99/2.30), overnight run",
+   "path": "00-brief/BENCHMARKS-2026-11-05.md §9 Styler, §12 styler row; reproduce scripts/bench/core/styler.ts"
+  },
+  {
+   "claim": "classic mode 1.13× faster than cssVariables on theme flips (300 components, 20 flips), withdrawn opposite claim",
+   "path": "00-brief/BENCHMARKS-2026-11-05.md §0 withdrawn table, §11"
+  },
+  {
+   "claim": "Native: styled(Prim), Element, coolgrid, attrs, PyreonUI, rocketstyle chains lower; unistyle web-only; Overlay/Portal warn per construct",
+   "path": "packages/ui-system/*/src/manifest.ts multiplatform blocks; docs/src/content/docs/multiplatform.md line ~71 and line ~90"
+  },
+  {
+   "claim": "Device evidence: rocketstyle reactive dimension flip asserted on both device gates; colour not asserted",
+   "path": "docs/src/content/docs/multiplatform.md capability matrix, \"Styling & design system\" row"
+  },
+  {
+   "claim": "Next release: several dynamic dimensions + nested ternaries (#4055), <List> lowers (#4081), active/pressed styles lower (#4095), all after 0.53.0",
+   "path": "git log @pyreon/kinetic@0.53.0..HEAD -- packages/ui-system"
+  },
+  {
+   "claim": "styled.div does not lower natively; styled(Prim) does",
+   "path": "commit e5f746db8 (#4037); packages/ui-system/styler/src/manifest.ts multiplatform rationale"
+  },
+  {
+   "claim": "useOverlay: viewport flip, ESC, click-outside, scroll tracking, hover delay, modal focus trap",
+   "path": "packages/ui-system/elements/src/manifest.ts features"
+  },
+  {
+   "claim": "coolgrid numeric props accept value, mobile-first array or breakpoint object; context cascade",
+   "path": "docs/src/content/docs/coolgrid.md \"Responsive Values\", \"Context Cascading\""
+  },
+  {
+   "claim": "Without a grid theme, Col renders position:fixed; left:-9999px (hidden); with coolgrid theme it renders 100%/50%/33% columns",
+   "path": ".scratch/core/fork-b/out/run-design.ts + run-ssr.ts (happy-dom and renderToString runs)"
+  },
+  {
+   "claim": "document-primitives: 18 components, 20 output formats",
+   "path": "docs/src/content/docs/document-primitives.md intro; packages/fundamentals/document/src/manifest.ts tagline"
+  },
+  {
+   "claim": "Component library in repo is private (74 component directories)",
+   "path": "packages/ui/components/package.json (\"private\": true); packages/ui/components/src/components/"
+  },
+  {
+   "claim": "Styler SSR: getStyleTag(nonce), createSheet per request, flushSSRPending streaming",
+   "path": "docs/src/content/docs/styler.md \"CSP nonce\", \"Per-Request Isolation\"; packages/ui-system/styler/src/sheet.ts"
+  },
+  {
+   "claim": "Theme swaps re-resolve CSS but do not remount",
+   "path": "packages/ui-system/styler/README.md \"Gotchas\""
+  },
+  {
+   "claim": "Package dependency shape (styler no deps; rocketstyle → styler, ui-core; elements/coolgrid → unistyle)",
+   "path": "packages/ui-system/{styler,rocketstyle,elements,coolgrid}/package.json"
+  },
+  {
+   "claim": "Code samples compile with transformJSX, typecheck with tsc, and render (rocketstyle dark danger → #f87171, lg → 10px 20px padding; styler $active rule)",
+   "path": ".scratch/core/fork-b/{design-after,design-recipe-theme,design-recipe-grid,design-from-sc}.tsx, compile.ts, out/run-design.ts, out/run-ssr.ts"
+  },
+  {
+   "claim": "Atlas generates scenarios from rocketstyle dimension axes",
+   "path": "packages/tools/atlas/src/manifest.ts"
+  }
+ ]
+}

@@ -26,6 +26,8 @@ export default definePlaywrightConfig({
     { name: 'site-home', testMatch: /site-home\.spec\.ts$/, port: 5191 },
     // Story, compare, migrate, benchmarks and project pages (routes, widths, switchers, contrast).
     { name: 'site-pages', testMatch: /site-pages\.spec\.ts$/, port: 5191 },
+    // Product pages, core/platform and data/state groups (pages, demos, widths, contrast).
+    { name: 'site-products-a', testMatch: /site-products-a\.spec\.ts$/, port: 5191 },
   ],
   webServer: [
     {

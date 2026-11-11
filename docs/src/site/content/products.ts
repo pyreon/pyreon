@@ -1,4 +1,5 @@
 import type { ProductData } from './model'
+import { loadVisuals } from './visuals'
 
 /**
  * Product content files, one lazy chunk each (`import.meta.glob`), so a
@@ -23,5 +24,9 @@ export function hasProduct(id: string): boolean {
 
 export async function loadProduct(id: string): Promise<ProductData | undefined> {
   const load = LOADERS.get(id)
-  return load ? load() : undefined
+  if (!load) return undefined
+  // The page's visuals (hero, share image) ride along when the asset sync has
+  // written them; both are lazy chunks of their own.
+  const [data, visuals] = await Promise.all([load(), loadVisuals(id)])
+  return visuals ? { ...data, visuals } : data
 }

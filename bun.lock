@@ -93,6 +93,7 @@
         "@pyreon/http": "workspace:*",
         "@pyreon/i18n": "workspace:*",
         "@pyreon/kinetic": "workspace:*",
+        "@pyreon/kinetic-presets": "workspace:*",
         "@pyreon/machine": "workspace:*",
         "@pyreon/permissions": "workspace:*",
         "@pyreon/primitives": "workspace:*",

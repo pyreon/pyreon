@@ -1,0 +1,367 @@
+{
+ "id": "primitives",
+ "route": "/products/primitives",
+ "name": "Primitives",
+ "package": "@pyreon/primitives",
+ "category": "core · cross-platform UI",
+ "hero": {
+  "title": "One Toggle. The real iOS switch and the real Android switch.",
+  "lede": "One name per idea: Stack, Text, Field, Toggle, Modal and the rest. On the web they render plain DOM; in a native build the compiler emits the platform's own SwiftUI and Jetpack Compose views from the same .tsx.",
+  "install": "bun add @pyreon/primitives",
+  "ctaShort": "Install",
+  "facts": [
+   {
+    "key": "primitives",
+    "value": "22 canonical<small>Gesture, Canvas, Select, Tabs and Split arrive in the next release. Plus Transition, TransitionGroup, WebView and three escape hatches.</small>"
+   },
+   {
+    "key": "targets",
+    "value": "DOM · SwiftUI · Jetpack Compose"
+   },
+   {
+    "key": "tokens",
+    "value": "one scale, same numbers everywhere<small>gap=\"md\" is 12 px on the web, 12 pt on iOS, 12 dp on Android.</small>"
+   },
+   {
+    "key": "status",
+    "value": "{dot:warn}native targets experimental<small>Device-tested in CI with XCUITest and Compose UI tests.</small>"
+   }
+  ]
+ },
+ "why": {
+  "title": "Learn one vocabulary. Ship three kinds of UI.",
+  "items": [
+   {
+    "title": "One name per idea",
+    "text": "`<Stack>`, not View, VStack, Column or div. `onPress` on every target, not onClick here and action there. `value` plus `onChangeText` for every text field."
+   },
+   {
+    "title": "Native, not imitated",
+    "text": "`<Toggle>` becomes SwiftUI `Toggle` and Compose `Switch`. `<Modal>` becomes a `.sheet` and a `Dialog`. `<Field kind=\"password\">` becomes `SecureField`. When the OS restyles its controls, your app follows."
+   },
+   {
+    "title": "Accessibility that reaches the device",
+    "text": "`accessibilityLabel` becomes `aria-label`, SwiftUI `.accessibilityLabel` and a Compose `contentDescription`. `data-testid` becomes an accessibility identifier and a `testTag`, so one id drives Playwright, XCUITest and Compose tests."
+   },
+   {
+    "title": "Escape hatches included",
+    "text": "`<Web>`, `<NativeIOS>` and `<NativeAndroid>` render a branch on one target only. `useNativeModule` calls your own Swift or Kotlin. `<WebView>` hosts a web-only component, with `data` in and `onMessage` out."
+   }
+  ]
+ },
+ "difference": {
+  "title": "One screen. Today you write it three times.",
+  "before": {
+   "label": "web/Signup.tsx · ios/Signup.swift · android/Signup.kt",
+   "caption": "The same sign-up form in React, SwiftUI and Compose. Three files, three state models, three reviews for every change.",
+   "code": "// web/Signup.tsx (React)\nimport { useState } from 'react'\n\nexport function Signup({ onSubmit }: { onSubmit: (email: string) => void }) {\n  const [email, setEmail] = useState('')\n  return (\n    <div style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: 16 }}>\n      <b>Create your account</b>\n      <input type=\"email\" value={email} onChange={(e) => setEmail(e.target.value)} />\n      <button disabled={email === ''} onClick={() => onSubmit(email)}>Continue</button>\n    </div>\n  )\n}\n\n// ios/Signup.swift\nstruct Signup: View {\n  let onSubmit: (String) -> Void\n  @State private var email = \"\"\n  var body: some View {\n    VStack(spacing: 12) {\n      Text(\"Create your account\").bold()\n      TextField(\"\", text: $email).keyboardType(.emailAddress)\n      Button(\"Continue\") { onSubmit(email) }.disabled(email.isEmpty)\n    }\n    .padding(16)\n  }\n}\n\n// android/Signup.kt\n@Composable\nfun Signup(onSubmit: (String) -> Unit) {\n  var email by remember { mutableStateOf(\"\") }\n  Column(verticalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.padding(16.dp)) {\n    Text(\"Create your account\", fontWeight = FontWeight.Bold)\n    TextField(\n      value = email,\n      onValueChange = { email = it },\n      keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),\n    )\n    Button(onClick = { onSubmit(email) }, enabled = email.isNotEmpty()) { Text(\"Continue\") }\n  }\n}"
+  },
+  "after": {
+   "label": "src/Signup.tsx",
+   "caption": "One file. The Swift and Kotlin the compiler emits for it have the same shape as the hand-written two on the left: VStack(spacing: 12), Column with spacedBy(12.dp), a TextField with the email keyboard.",
+   "code": "import { signal } from '@pyreon/reactivity'\nimport { Stack, Text, Field, Button } from '@pyreon/primitives'\n\nexport function Signup(props: { onSubmit: (email: string) => void }) {\n  const email = signal('')\n  return (\n    <Stack gap=\"md\" padding={4}>\n      <Text weight=\"bold\">Create your account</Text>\n      <Field kind=\"email\" value={email()} onChangeText={(t) => email.set(t)} />\n      <Button onPress={() => props.onSubmit(email())} disabled={email() === ''}>\n        Continue\n      </Button>\n    </Stack>\n  )\n}"
+  }
+ },
+ "extraSectionsHtml": "<section class=\"p-sec tight\"><div class=\"wrap\"><div class=\"card hot\"><div class=\"in\" style=\"padding:34px;display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:28px;align-items:center\">\n  <div><span class=\"label\" style=\"color:var(--accent)\">pairs with</span><h3 style=\"font-size:28px\">Design System</h3><p>Primitives keep a small, fixed token scale so every target agrees on the numbers. When you want your own look, wrap them: <code class=\"mono\">styled(Stack)</code> and rocketstyle chains over a primitive lower to SwiftUI and Compose as well. Web-only apps that need breakpoints and theme-aware CSS use the Design System's elements directly.</p></div>\n  <div style=\"display:grid;gap:8px\"><a class=\"pill solid lg\" href=\"pkg-design.html\" style=\"justify-content:center\">Explore the Design System →</a><a class=\"pill lg\" href=\"pkg-native.html\" style=\"justify-content:center\">How one codebase ships three apps</a></div>\n</div></div></div></section>",
+ "demo": {
+  "title": "Pick a primitive, see all three outputs.",
+  "text": "What each primitive becomes on each platform, taken from the compiler's own output (abridged: the real emit adds tokens, accessibility and modifiers).",
+  "component": "DemoPrimitives",
+  "reference": "pkg-primitives.html#demo",
+  "referenceHtml": "<div class=\"card\"><div class=\"in\"><div class=\"pick\" id=\"pr-pick\"></div><div class=\"tri\" id=\"pr-out\" style=\"margin-top:14px\"></div></div></div>",
+  "referenceCss": ".ds-ctl{display:grid;grid-template-columns:80px 1fr;align-items:center;gap:10px}.seg{display:flex;gap:2px;padding:3px;border:1px solid var(--line);border-radius:999px;width:fit-content;flex-wrap:wrap}.seg button{height:30px;padding:0 14px;border:0;border-radius:999px;background:transparent;color:var(--fog);font-family:var(--mono);font-size:12px;cursor:pointer}.seg button[aria-pressed=\"true\"]{background:var(--line);color:var(--ivory)}\n.pick{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:6px}.pick button{height:38px;border-radius:10px;border:1px solid var(--line);background:transparent;color:var(--mist);font-family:var(--mono);font-size:12px;cursor:pointer}.pick button[aria-pressed=\"true\"]{border-color:rgba(255,94,26,.55);background:rgba(255,94,26,.08);color:var(--ivory)}\n.tri{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}@media(max-width:760px){.tri{grid-template-columns:minmax(0,1fr)}}.tri div{border:1px solid var(--line);border-radius:12px;padding:14px;background:var(--well)}.tri .label{display:block;margin-bottom:8px}.tri code{font-size:12.5px;color:var(--s-fg);white-space:pre-wrap;display:block}\n.urlbar{display:flex;align-items:center;gap:8px;padding:9px 12px;border-radius:10px;background:#EDE6D6;font-family:var(--mono);font-size:12px;color:var(--hover-line);margin-bottom:16px;overflow:hidden;white-space:nowrap}.urlbar b{color:#C2410C;font-weight:500}",
+  "referenceJs": "(function(){var P={\"Stack\": [\"<div style=\\\"display:flex;\\n  flex-direction:column;\\n  gap:12px\\\">\", \"VStack(spacing: 12) {\\n  \\u2026\\n}\", \"Column(\\n  verticalArrangement =\\n    Arrangement.spacedBy(12.dp)\\n) { \\u2026 }\"], \"Inline\": [\"<div style=\\\"display:flex;\\n  flex-direction:row\\\">\", \"HStack { \\u2026 }\", \"Row { \\u2026 }\"], \"Text\": [\"<span>\\u2026</span>\", \"Text(\\\"\\u2026\\\")\", \"Text(\\\"\\u2026\\\")\"], \"Button\": [\"<button>Save</button>\", \"Button(\\\"Save\\\") { \\u2026 }\", \"Button(onClick = { \\u2026 }) {\\n  Text(\\\"Save\\\")\\n}\"], \"Field\": [\"<input value=\\u2026>\", \"TextField(\\\"\\\", text: Binding(\\u2026))\", \"TextField(draft,\\n  onValueChange = { \\u2026 })\"], \"Toggle\": [\"<input type=\\\"checkbox\\\"\\n  role=\\\"switch\\\">\", \"Toggle(\\\"\\\", isOn: Binding(\\u2026))\", \"Switch(checked = on,\\n  onCheckedChange = { \\u2026 })\"], \"Select\": [\"<select>\\u2026</select>\", \"PyreonSelect  // menu Picker\", \"PyreonSelect  // Material 3\\n// ExposedDropdownMenuBox\"], \"Modal\": [\"<dialog> + showModal()\", \".sheet(isPresented: $open)\", \"Dialog(onDismissRequest = \\u2026)\"], \"Image\": [\"<img src=\\u2026 alt=\\u2026>\", \"AsyncImage(url: \\u2026)\", \"AsyncImage(model = \\u2026)\"], \"Scroll\": [\"<div style=\\\"overflow:auto\\\">\", \"ScrollView { \\u2026 }\", \"Column(Modifier\\n  .verticalScroll(\\u2026))\"], \"Tabs\": [\"<div role=\\\"tablist\\\">\\u2026\", \"PyreonTabs  // TabView\", \"PyreonTabs  // BottomNavigation,\\n// NavigationRail at 600dp+\"], \"Gesture\": [\"pointer events,\\ntouch-action:none\", \"PyreonGesture { \\u2026 }\\n// Drag/Magnify/Rotate\", \"PyreonGesture { \\u2026 }\"]},cur='Stack';function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;')}function r(){document.getElementById('pr-pick').innerHTML=Object.keys(P).map(function(k){return '<button type=\"button\" aria-pressed=\"'+(k===cur)+'\" data-k=\"'+k+'\">&lt;'+k+'&gt;</button>'}).join('');document.querySelectorAll('#pr-pick [data-k]').forEach(function(b){b.onclick=function(){cur=b.dataset.k;r()}});var o=P[cur];document.getElementById('pr-out').innerHTML=['web · DOM','iOS · SwiftUI','Android · Compose'].map(function(l,i){return '<div><span class=\"label\">'+l+'</span><code>'+esc(o[i])+'</code></div>'}).join('')}r();})();",
+  "spec": "Same picker as the reference, with mappings checked against the native compiler on main: Field on iOS is `TextField(\"\", text: Binding(…))`; Toggle on the web is `<input type=\"checkbox\" role=\"switch\">`; Modal on the web is a `<dialog>` opened with `showModal()` (not the `open` attribute, which is non-modal); Tabs emit the `PyreonTabs` runtime, a `TabView` on iOS and Material `BottomNavigation` below 600dp / `NavigationRail` from 600dp on Android. Gesture, Select and Tabs carry a small \"next release\" tag. Label the panel \"illustrative, abridged\"."
+ },
+ "features": {
+  "title": "Everything a cross-platform screen needs.",
+  "items": [
+   {
+    "name": "Layout:",
+    "text": "Stack, Inline, Layer, Scroll and Spacer become VStack, HStack, ZStack and ScrollView on iOS, Column, Row and Box on Android"
+   },
+   {
+    "name": "Content:",
+    "text": "Text, Heading, Image, Icon, Audio and Video; `Image` loads remote URLs with AsyncImage on both platforms"
+   },
+   {
+    "name": "Press:",
+    "text": "tap, long press and left or right swipes on any element, through each platform's own gesture recognisers on iOS and Android and with Enter and Space on the web"
+   },
+   {
+    "name": "Field:",
+    "text": "text, email, number, tel, url, search and password keyboards, plus `multiline` for a text area",
+    "status": "next release"
+   },
+   {
+    "name": "Dates and times:",
+    "text": "`<Field kind=\"date\" | \"time\" | \"datetime\">` with `min` and `max`: DatePicker on iOS, Material 3 pickers on Android, a wall-clock string everywhere",
+    "status": "next release"
+   },
+   {
+    "name": "Select:",
+    "text": "one choice from a list: `<select>`, a menu Picker, a Material 3 exposed dropdown",
+    "status": "next release"
+   },
+   {
+    "name": "Tabs and Split:",
+    "text": "tabs stay mounted when you switch away, and `createRouter({ tabs })` gives every tab its own back stack",
+    "status": "next release"
+   },
+   {
+    "name": "Gesture and Canvas:",
+    "text": "pan, pinch and rotate feeding `translateX`, `scale` and `rotate`; vector shapes with full SVG path data",
+    "status": "next release"
+   },
+   {
+    "name": "Transition and TransitionGroup:",
+    "text": "seven named presets, animated with CSS on the web, `.transition` on iOS and `AnimatedVisibility` on Android"
+   },
+   {
+    "name": "WebView:",
+    "text": "host a chart or editor in the native app, with `data` pushed in without a reload and `onMessage` back out"
+   }
+  ]
+ },
+ "api": {
+  "title": "Every primitive and its helpers.",
+  "groups": [
+   {
+    "name": "layout",
+    "items": [
+     "Stack",
+     "Inline",
+     "Layer",
+     "Scroll",
+     "Spacer"
+    ]
+   },
+   {
+    "name": "content",
+    "items": [
+     "Text",
+     "Heading",
+     "Image",
+     "Icon",
+     "Audio",
+     "Video"
+    ]
+   },
+   {
+    "name": "interaction",
+    "items": [
+     "Button",
+     "Press",
+     "Link"
+    ]
+   },
+   {
+    "name": "input",
+    "items": [
+     "Field",
+     "Toggle",
+     "Modal"
+    ]
+   },
+   {
+    "name": "gestures and drawing (next release)",
+    "items": [
+     "Gesture",
+     "Canvas",
+     "CanvasRect",
+     "CanvasCircle",
+     "CanvasLine",
+     "CanvasPath",
+     "CanvasText"
+    ]
+   },
+   {
+    "name": "choice and navigation (next release)",
+    "items": [
+     "Select",
+     "Tabs",
+     "Tab",
+     "Split"
+    ]
+   },
+   {
+    "name": "animation and web content",
+    "items": [
+     "Transition",
+     "TransitionGroup",
+     "WebView",
+     "connectWebHost"
+    ]
+   },
+   {
+    "name": "platform",
+    "items": [
+     "Web",
+     "NativeIOS",
+     "NativeAndroid",
+     "defineNativeModule",
+     "useNativeModule",
+     "hasNativeModule",
+     "init"
+    ]
+   }
+  ]
+ },
+ "limits": [
+  {
+   "title": "The compiler reads your source, not npm",
+   "text": "Native builds lower your components in a declarative subset of TypeScript. Code outside it almost always gets a named warning; DOM-bound libraries stay on the web or go in a `<WebView>`."
+  },
+  {
+   "title": "A fixed token scale",
+   "text": "Spacing, colour and radius come from one built-in scale with no responsive props. For breakpoints and theme-aware CSS on the web, use the Design System's elements directly."
+  },
+  {
+   "title": "Some props are web-only",
+   "text": "`justify` and `wrap` on a Stack have no SwiftUI equivalent, so iOS and Android ignore them and the compiler says so. Put a `<Spacer />` between children to push them apart."
+  },
+  {
+   "title": "Native is experimental",
+   "text": "The multiplatform guide keeps a gated matrix of what is device-proven. Check it before you plan a release around a primitive."
+  }
+ ],
+ "related": [
+  {
+   "href": "/products/native",
+   "category": "multiplatform",
+   "name": "Native",
+   "text": "The compiler that turns these into SwiftUI and Compose.",
+   "package": "Pyreon Native · PMTC"
+  },
+  {
+   "href": "/products/design",
+   "category": "ui system",
+   "name": "Design System",
+   "text": "Your own look on top: styled() and rocketstyle over a primitive.",
+   "package": "@pyreon/rocketstyle · styler · elements · coolgrid · kinetic"
+  },
+  {
+   "href": "/products/router",
+   "category": "core",
+   "name": "Router",
+   "text": "Back stacks and deep links on every target.",
+   "package": "@pyreon/router"
+  }
+ ],
+ "end": {
+  "title": "Write the screen once. Let the compiler learn Swift and Kotlin.",
+  "cta": "Read the primitives guide"
+ },
+ "benchmarks": null,
+ "glyphSvg": "<rect x=\"14\" y=\"14\" width=\"40\" height=\"40\" stroke=\"currentColor\" stroke-width=\"10\" fill=\"none\"/><path d=\"M66 14 H106 M66 34 H96\" stroke=\"currentColor\" stroke-width=\"10\"/><rect x=\"14\" y=\"70\" width=\"92\" height=\"36\" rx=\"18\" stroke=\"currentColor\" stroke-width=\"10\" fill=\"none\"/><circle cx=\"86\" cy=\"88\" r=\"10\" fill=\"url(#eg)\"/>",
+ "comingFrom": [
+  {
+   "lib": "React Native",
+   "title": "The names feel familiar. What ships is different.",
+   "before": "import { useState } from 'react'\nimport { View, TextInput, Switch, Pressable, Text } from 'react-native'\n\nexport function Profile() {\n  const [name, setName] = useState('')\n  const [publicProfile, setPublicProfile] = useState(true)\n  return (\n    <View style={{ gap: 12, padding: 16 }}>\n      <TextInput value={name} onChangeText={setName} placeholder=\"Name\" />\n      <Switch value={publicProfile} onValueChange={setPublicProfile} accessibilityLabel=\"Public profile\" />\n      <Pressable onPress={() => setName('')}>\n        <Text>Clear</Text>\n      </Pressable>\n    </View>\n  )\n}",
+   "after": "import { signal } from '@pyreon/reactivity'\nimport { Stack, Field, Toggle, Button } from '@pyreon/primitives'\n\nexport function Profile() {\n  const name = signal('')\n  const publicProfile = signal(true)\n  return (\n    <Stack gap=\"md\" padding={4}>\n      <Field value={name()} onChangeText={(t) => name.set(t)} placeholder=\"Name\" />\n      <Toggle value={publicProfile()} onChange={(v) => publicProfile.set(v)} accessibilityLabel=\"Public profile\" />\n      <Button variant=\"ghost\" onPress={() => name.set('')}>Clear</Button>\n    </Stack>\n  )\n}",
+   "note": "`onPress` and `onChangeText` carry over. React Native runs your JavaScript on the device; here the compiler emits SwiftUI and Compose source and the import is only a type anchor. The trade: only a declarative subset of TypeScript compiles, and compiled code cannot be updated over the air. The same file also renders as a web page."
+  }
+ ],
+ "recipes": [
+  {
+   "title": "A booking form with each platform's own pickers",
+   "status": "next release",
+   "text": "A date field bounded to one calendar year and a room picker with one option disabled. iOS gets a DatePicker and a menu Picker, Android gets Material 3 dialogs and an exposed dropdown, the web gets `<input type=\"date\">` and `<select>`. The value is the same `YYYY-MM-DD` string on all three.",
+   "code": "import { signal } from '@pyreon/reactivity'\nimport { Stack, Field, Select, Button, Text } from '@pyreon/primitives'\nimport type { SelectOption } from '@pyreon/primitives'\n\nconst rooms: SelectOption[] = [\n  { value: 'single', label: 'Single room' },\n  { value: 'double', label: 'Double room' },\n  { value: 'suite', label: 'Suite', disabled: true },\n]\n\nexport function Booking() {\n  const day = signal('')\n  const room = signal('')\n  return (\n    <Stack gap=\"md\" padding={4}>\n      <Field kind=\"date\" min=\"2026-01-01\" max=\"2026-12-31\" placeholder=\"Arrival\"\n        value={day()} onChangeText={(d) => day.set(d)} />\n      <Select value={room()} options={rooms} onChange={(v) => room.set(v)} placeholder=\"Pick a room\" />\n      <Button variant=\"ghost\" onPress={() => day.set('')}>Clear</Button>\n      <Text>{day() === '' || room() === '' ? 'Pick a day and a room' : `${room()} from ${day()}`}</Text>\n    </Stack>\n  )\n}"
+  },
+  {
+   "title": "A settings screen with a native confirm sheet",
+   "text": "A labelled switch pushed to the trailing edge, and a destructive action behind a confirmation. On the web the dialog is a modal `<dialog>` with focus trapping; on iOS it is a sheet you can swipe away; on Android a `Dialog`.",
+   "code": "import { signal } from '@pyreon/reactivity'\nimport { Stack, Inline, Toggle, Text, Button, Modal, Spacer } from '@pyreon/primitives'\n\nexport function Settings() {\n  const notify = signal(true)\n  const confirm = signal(false)\n  return (\n    <Stack gap=\"md\" padding={4}>\n      <Inline gap=\"sm\" align=\"center\">\n        <Text>Notifications</Text>\n        <Spacer />\n        <Toggle value={notify()} onChange={(v) => notify.set(v)} accessibilityLabel=\"Notifications\" />\n      </Inline>\n      <Button variant=\"danger\" onPress={() => confirm.set(true)}>Delete account</Button>\n      <Modal open={confirm()} onClose={() => confirm.set(false)}>\n        <Stack gap=\"md\" padding={4}>\n          <Text>Delete your account? This cannot be undone.</Text>\n          <Button variant=\"ghost\" onPress={() => confirm.set(false)}>Cancel</Button>\n        </Stack>\n      </Modal>\n    </Stack>\n  )\n}"
+  }
+ ],
+ "faq": [
+  {
+   "q": "Is this React Native?",
+   "a": "No. React Native runs your JavaScript on the device. Here the compiler reads your `.tsx` at build time and writes SwiftUI and Compose source; on native targets the `@pyreon/primitives` import is only there for TypeScript. On the web, the same file renders plain DOM."
+  },
+  {
+   "q": "Can I use my own theme?",
+   "a": "The primitives' own props use a fixed scale (`gap=\"md\"` is 12 everywhere) so every target agrees. For your own look, `styled(Stack)` and rocketstyle chains over a primitive also lower to native. Web-only apps with breakpoints and theme-aware CSS should use the Design System's elements instead."
+  },
+  {
+   "q": "What happens to code that cannot compile to native?",
+   "a": "The compiler almost always names it in a warning, for example `justify` or `wrap` on a Stack. Code that needs the DOM goes behind `<Web>` or inside a `<WebView>`."
+  },
+  {
+   "q": "Can I drop down to Swift or Kotlin?",
+   "a": "Yes, through `defineNativeModule` and `useNativeModule`, which call a Swift or Kotlin class you own. `<NativeIOS>` and `<NativeAndroid>` only choose which primitives render per platform; they do not take raw Swift."
+  },
+  {
+   "q": "Is it ready for my production app?",
+   "a": "The web side is pre-1.0, with the same stability rules as the rest of the framework. The native targets are experimental, and the multiplatform guide says so in its status line. The device-test matrix there is the source of truth for what is proven."
+  }
+ ],
+ "sources": [
+  {
+   "claim": "22 canonical primitives; compiler list CANONICAL_PRIMITIVES matches exports",
+   "path": "packages/native/compiler/src/canonical-primitives.ts; docs/src/content/docs/primitives.md \"What is in the package\"; packages/core/primitives/src/index.ts"
+  },
+  {
+   "claim": "Gesture, Canvas, Select, Tabs, Split, Field multiline and date kinds are after 0.53.0 (main only)",
+   "path": "git show @pyreon/primitives@0.53.0:packages/core/primitives/src/index.ts (17 canonical); git log since 2026-10-13: #4048, #4056, #4057, #4059, #4062, #4064, #4091"
+  },
+  {
+   "claim": "Token scale fixed: index 4 = 16, md = 12; not wired to styler/rocketstyle theme",
+   "path": "packages/core/primitives/src/web/tokens.ts (header comment, SPACE_BY_INDEX/SPACE_BY_NAME); primitives.md \"When to use @pyreon/elements instead\""
+  },
+  {
+   "claim": "Signup emits VStack(spacing: 12)…padding(16) and Column(spacedBy(12.dp))…padding(16.dp), TextField with email keyboard",
+   "path": ".scratch/core/fork-a/compile.ts on samples/Signup2.tsx (createCompiler with reactivity/core/primitives native plugins)"
+  },
+  {
+   "claim": "All primitive samples: transformJSX clean, tsc clean, Swift (stub typecheck) and Kotlin (stub) emits validate ok",
+   "path": ".scratch/core/fork-a/{compile.ts,vemit.ts,tsconfig.json}; samples/{Signup2,Booking,Settings,Profile}.tsx"
+  },
+  {
+   "claim": "Hand-written SwiftUI in the before block typechecks against the iOS SDK; Compose block passes the stub validator",
+   "path": "xcrun swiftc -typecheck .scratch/core/fork-a/hand/Signup.swift (iPhoneSimulator SDK); vk.ts on hand/Signup.kt"
+  },
+  {
+   "claim": "Toggle → Toggle/Switch; Modal → .sheet/Dialog, web <dialog> + showModal(); password → SecureField; Select → menu Picker / ExposedDropdownMenuBox",
+   "path": "docs/src/content/docs/primitives.md (Toggle, Modal, Field, Select sections); packages/core/primitives/src/web/Modal.tsx header"
+  },
+  {
+   "claim": "Tabs → PyreonTabs: TabView on iOS; BottomNavigation <600dp / NavigationRail ≥600dp on Android; tabs stay mounted; per-tab stacks",
+   "path": "primitives.md \"Tabs\"; emitted code from compile.ts on emit/All.tsx"
+  },
+  {
+   "claim": "accessibilityLabel / data-testid mapping per target",
+   "path": "primitives.md \"Accessibility, test ids and HTML attributes\""
+  },
+  {
+   "claim": "Press: long press 500 ms, swipe 40 px/pt/dp",
+   "path": "primitives.md \"Press\""
+  },
+  {
+   "claim": "justify and wrap ignored on native with a warning",
+   "path": "primitives.md \"Stack\" (Not on native)"
+  },
+  {
+   "claim": "styled(Prim) and rocketstyle chains over a primitive lower to native",
+   "path": "docs/src/content/docs/multiplatform.md:71, :182"
+  },
+  {
+   "claim": "Native experimental status; device-proven matrix",
+   "path": "docs/src/content/docs/multiplatform.md:7 (Status line)"
+  },
+  {
+   "claim": "React Native comparison: JS runtime on device vs compiled; OTA and subset trade-offs",
+   "path": "docs/src/content/docs/compare-app-frameworks.md:12, :42"
+  },
+  {
+   "claim": "Transition presets and native mapping",
+   "path": "primitives.md \"Transition\" (7 names: fade, scale, scaleIn, slideUp/Down/Left/Right)"
+  },
+  {
+   "claim": "WebView data push without reload, onMessage",
+   "path": "primitives.md \"WebView\""
+  }
+ ]
+}
