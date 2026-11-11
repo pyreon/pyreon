@@ -27,21 +27,23 @@ type TextCmd = Extract<DrawCmd, { kind: 'text' }>
 /** The upright x-axis labels: centred under their ticks. */
 const xLabels = (cmds: DrawCmd[]): TextCmd[] => cmds.filter((c): c is TextCmd => c.kind === 'text' && c.align === 'middle' && c.baseline === 'top')
 const span = (c: TextCmd) => ({ from: c.at.x - measure(c.text, c.size) / 2, to: c.at.x + measure(c.text, c.size) / 2 })
+/** The label gap the layout keeps between an end label and the canvas edge. */
+const GAP = 6
 
 describe('x value labels at the ends of the axis', () => {
-  it('stay on the canvas in the horizontal frame (the value axis runs along x)', () => {
+  it('keep a gap from the canvas edge in the horizontal frame (the value axis runs along x)', () => {
     const s = spec({ horizontal: true, yFormat: (v: number) => `${v.toFixed(1)} ms` })
     const labels = xLabels(renderChart(s, measure))
     expect(labels.length).toBeGreaterThan(2)
     const last = labels[labels.length - 1]!
     expect(last.text).toBe('300.0 ms')
     for (const l of labels) {
-      expect(span(l).from, l.text).toBeGreaterThanOrEqual(0)
-      expect(span(l).to, l.text).toBeLessThanOrEqual(s.width)
+      expect(span(l).from, l.text).toBeGreaterThanOrEqual(GAP - 0.001)
+      expect(span(l).to, l.text).toBeLessThanOrEqual(s.width - GAP + 0.001)
     }
   })
 
-  it('stay on the canvas on a numeric x axis with the y axis hidden', () => {
+  it('keep a gap from the canvas edge on a numeric x axis with the y axis hidden', () => {
     const s = spec({
       categories: [],
       showYAxis: false,
@@ -52,8 +54,8 @@ describe('x value labels at the ends of the axis', () => {
     const labels = xLabels(renderChart(s, measure))
     expect(labels.length).toBeGreaterThan(1)
     for (const l of labels) {
-      expect(span(l).from, l.text).toBeGreaterThanOrEqual(0)
-      expect(span(l).to, l.text).toBeLessThanOrEqual(s.width)
+      expect(span(l).from, l.text).toBeGreaterThanOrEqual(GAP - 0.001)
+      expect(span(l).to, l.text).toBeLessThanOrEqual(s.width - GAP + 0.001)
     }
   })
 

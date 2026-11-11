@@ -4885,11 +4885,13 @@ public func computeLayout(_ cfg: LayoutConfig, _ measure: (String, Double) -> Do
       let edgeTicks = cfg.horizontal == true ? makeTicks(cfg.yDomain, 0.0, provisionalW, yCount, cfg.yFormat) : cfg.xTime == true ? timeTicks(cfg.xDomain, 0.0, provisionalW, xCount, cfg.xFormat) : makeTicks(cfg.xDomain, 0.0, provisionalW, xCount, cfg.xFormat)
       for tick in edgeTicks {
         let half = Double(measure(tick.label, cfg.fontSize)) / 2.0
-        if half - tick.pos > edgeLeft {
-          edgeLeft = half - tick.pos
+        let overLeft = half - tick.pos + labelGap
+        let overRight = tick.pos + half - provisionalW + labelGap
+        if half > tick.pos && overLeft > edgeLeft {
+          edgeLeft = overLeft
         }
-        if tick.pos + half - provisionalW > edgeRight {
-          edgeRight = tick.pos + half - provisionalW
+        if tick.pos + half > provisionalW && overRight > edgeRight {
+          edgeRight = overRight
         }
       }
     }

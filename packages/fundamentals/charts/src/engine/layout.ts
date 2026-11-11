@@ -264,7 +264,8 @@ export function computeLayout(cfg: LayoutConfig, measure: MeasureText): PlotLayo
   // gutter (12px) and a left one sized for the y labels alone (0 with the y
   // axis hidden) do not hold a wide label ("300 ms", "$1.2M"), and the
   // canvas clipped it. The overhangs are measured on the provisional ticks
-  // and the gutters widened to hold them. Category ticks sit mid-band and a
+  // and the gutters widened to hold them, plus the label gap, so an end
+  // label never touches the canvas edge. Category ticks sit mid-band and a
   // slanted label ends at its tick, so neither overhangs.
   let edgeLeft = 0.0
   let edgeRight = 0.0
@@ -276,8 +277,10 @@ export function computeLayout(cfg: LayoutConfig, measure: MeasureText): PlotLayo
         : makeTicks(cfg.xDomain, 0.0, provisionalW, xCount, cfg.xFormat)
     for (const tick of edgeTicks) {
       const half = measure(tick.label, cfg.fontSize) / 2.0
-      if (half - tick.pos > edgeLeft) edgeLeft = half - tick.pos
-      if (tick.pos + half - provisionalW > edgeRight) edgeRight = tick.pos + half - provisionalW
+      const overLeft = half - tick.pos + labelGap
+      const overRight = tick.pos + half - provisionalW + labelGap
+      if (half > tick.pos && overLeft > edgeLeft) edgeLeft = overLeft
+      if (tick.pos + half > provisionalW && overRight > edgeRight) edgeRight = overRight
     }
   }
   const leftG = Math.max(left, edgeLeft)
