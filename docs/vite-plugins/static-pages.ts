@@ -1,9 +1,9 @@
 /**
- * static-pages — trims what a static marketing page carries for a client app
- * it never starts.
+ * static-pages — trims what a static page carries for a client app it never
+ * starts.
  *
- * Marketing pages render inside `SiteShell`, whose `<main>` carries
- * `data-site-static`; in the browser they hydrate only their islands
+ * Every page (marketing and docs) renders inside `SiteShell`, whose `<main>`
+ * carries `data-site-static`; in the browser it hydrates only its islands
  * (`src/site/render-mode.ts`). Zero's SSG still writes the head every page
  * gets as part of a hydrating app:
  *
@@ -14,7 +14,7 @@
  *   - `window.__PYREON_LOADER_DATA__`: the loader output (a product page's
  *     whole content JSON) for a hydration that never happens.
  *
- * Both are removed from static pages only; docs pages are untouched. Zero
+ * Both are removed from marked pages; an unmarked page is untouched. Zero
  * has no per-route islands-only mode that would skip them at the source
  * (pyreon/pyreon#4371); when it does, this plugin goes.
  *

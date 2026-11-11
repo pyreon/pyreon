@@ -22,6 +22,7 @@ import { ProofBand } from '../kit/proof'
 import { Eyebrow, Heading, Lede, renderInline } from '../kit/type'
 import { inlineText } from '../kit/inline'
 import { usePageHead } from '../head'
+import { OVERVIEWS } from '../../docs-ui/overviews'
 
 /**
  * One template renders every product page from `content/products/<id>.json`.
@@ -145,7 +146,8 @@ export function ProductPage(props: { data: ProductData }) {
   const click = useLinkClick()
   const Demo = DEMOS[d.demo.component]
   const extra = d.extraSections ?? EXTRA_SECTIONS[d.id] ?? EXTRA_SECTIONS_MORE[d.id] ?? []
-  const docsHref = `/docs/${d.id}`
+  // The product's docs overview (`_docs.json#overviews`); a product's docs page is not always `/docs/<id>`.
+  const docsHref = OVERVIEWS.find((o) => o.productId === d.id)?.docsHref ?? '/docs'
   // An unreleased product's install line is a comment (`# … next release`):
   // show it as a status note, never as a command to copy.
   const unreleased = d.hero.install.trimStart().startsWith('#')

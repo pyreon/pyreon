@@ -23,8 +23,14 @@ const DIST = resolve(__dirname, '../docs/dist')
  * Measured 2026-11-11 on feat/site-redesign-home: 43.4 KB (the foundation
  * shipped 129.3 KB on `/`). The budget is that plus ~2 KB headroom. Raise it
  * only with a measurement in the PR that does.
+ *
+ * Raised to 48.5 on feat/site-int-c: 47.0 KB measured. The docs became
+ * static pages too, so the islands registry in the entry lists their islands
+ * (search, drawer, actions, examples, …: loaders only), and the entry
+ * imports the static client directly instead of through one more chunk. The
+ * JavaScript `/` actually requests went down, 50.0 → 49.0 KB.
  */
-const SHELL_JS_BUDGET_KB = 45.5
+const SHELL_JS_BUDGET_KB = 48.5
 
 function htmlFiles(dir: string, out: string[] = []): string[] {
   for (const name of readdirSync(dir)) {
@@ -86,7 +92,8 @@ test.describe('build output', () => {
     const entry = /<script[^>]*type="module"[^>]*src="\/(assets\/[^"]+\.js)"/.exec(readFileSync(join(DIST, 'index.html'), 'utf8'))?.[1]
     expect(entry).toBeTruthy()
     const files = new Set<string>()
-    for (const start of [entry as string, chunk('static-client'), chunk('SiteNav'), chunk('command')]) for (const f of closure(start)) files.add(f)
+    // The static client (island hydration) is part of the entry's own graph.
+    for (const start of [entry as string, chunk('SiteNav'), chunk('command')]) for (const f of closure(start)) files.add(f)
     const kb = [...files].reduce((sum, f) => sum + gzipSync(readFileSync(join(DIST, f)), { level: 9 }).length, 0) / 1024
     console.log(`shell JS: ${kb.toFixed(1)} KB gzip in ${files.size} files`)
     expect(kb).toBeLessThanOrEqual(SHELL_JS_BUDGET_KB)
@@ -99,15 +106,17 @@ test.describe('build output', () => {
       const html = readFileSync(f, 'utf8')
       const preloads = [...html.matchAll(/<link[^>]*rel="modulepreload"[^>]*href="\/([^"]+)"/g)].map((m) => m[1])
       for (const p of preloads) expect(entryGraph.has(p as string), `${f}: preloads ${p}`).toBe(true)
-      expect(html, f).not.toMatch(/href="\/assets\/docs-[^"]+\.css"/)
-      expect(html, f).not.toContain('__PYREON_LOADER_DATA__')
+      // Docs pages are static too (docs/src/docs-ui/islands.ts); only they link the docs stylesheet.
+      if (!f.startsWith(join(DIST, 'docs'))) expect(html, f).not.toMatch(/href="\/assets\/docs-[^"]+\.css"/)
+      // (A script, not the docs pages that write about it in code samples.)
+      expect(html, f).not.toMatch(/<script\b[^>]*>\s*window\.__PYREON_LOADER_DATA__/)
     }
   })
 
-  test('docs pages still get the docs stylesheet and the router app', () => {
+  test('docs pages are static pages too, and link the docs stylesheet', () => {
     const html = readFileSync(join(DIST, 'docs/index.html'), 'utf8')
     expect(html).toMatch(/\/assets\/docs-[^"]+\.css/)
-    expect(html).not.toContain('data-site-static')
+    expect(html).toContain('data-site-static')
   })
 })
 

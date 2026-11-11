@@ -28,23 +28,21 @@ const Page = el
 const Main = el.config({ name: 'SiteMain' }).attrs({ tag: 'main', block: true, contentAlignX: 'block' }).theme(() => ({ flexGrow: 1, minWidth: 0 }))
 
 /**
- * The marketing shell: skip link, `<header>` (nav, mega menu, mobile sheet),
- * `<main id="site-main">`, `<footer>`. Every non-docs page renders in it —
- * through `routes/(site)/_layout.tsx`, and directly from `_404.tsx`.
- *
- * `app` is for the docs layout: the page hydrates as the router app, so
- * `<main>` must not carry the static-page marker (`render-mode.ts`).
+ * The site shell: skip link, `<header>` (nav, mega menu, mobile sheet),
+ * `<main id="site-main">`, `<footer>`. Every page renders in it — through
+ * `routes/(site)/_layout.tsx`, `routes/docs/_layout.tsx`, and directly from
+ * `_404.tsx` — and every page is static HTML with islands: `<main>` carries
+ * the static-page marker (`render-mode.ts`).
  */
-export function SiteShell(props: { children?: VNodeChild; app?: boolean | undefined }) {
-  // The islands' plain stylesheet (kit/site-css.ts): into this request's
-  // <style> on the server, into the live sheet when the docs app renders a
-  // marketing page in the browser. Idempotent by key.
+export function SiteShell(props: { children?: VNodeChild }) {
+  // The islands' plain stylesheet (kit/site-css.ts), into this request's
+  // <style>. Idempotent by key.
   sheet.injectRules([SITE_CSS], SITE_CSS_KEY)
   return (
     <Page>
       <SkipLink href="#site-main">Skip to content</SkipLink>
       <SiteHeader />
-      <Main id="site-main" tabIndex={-1} data-site-static={props.app ? undefined : ""}>
+      <Main id="site-main" tabIndex={-1} data-site-static="">
         {props.children}
       </Main>
       <SiteFooter />

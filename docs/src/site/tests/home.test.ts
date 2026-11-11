@@ -8,7 +8,7 @@ import { C } from '../kit/classes'
 import { pickLoopFiles } from '../kit/LoopPlayer'
 import { SITE_CSS } from '../kit/site-css'
 import { commandSteps, lastPhrase } from '../pages/home/HomePage'
-import { isStaticSitePage, STATIC_MARKER } from '../render-mode'
+import { STATIC_MARKER } from '../render-mode'
 
 const ROUTES = (sitemap as { sections: { pages: { route: string }[] }[] }).sections.flatMap((s) => s.pages.map((p) => p.route))
 
@@ -96,17 +96,6 @@ describe('static pages', () => {
   it('leaves a docs page alone', () => {
     const html = page('id="docs"')
     expect(trimStaticPage(html, new Set())).toBe(html)
-  })
-  it('the client recognises a marked page, except a docs 404 fallback', () => {
-    const doc = (marked: boolean, fallback: boolean, path: string) =>
-      ({
-        querySelector: (sel: string) => (sel.includes(STATIC_MARKER) ? (marked ? {} : null) : fallback ? {} : null),
-        location: { pathname: path },
-      }) as unknown as Document
-    expect(isStaticSitePage(doc(true, false, '/'))).toBe(true)
-    expect(isStaticSitePage(doc(false, false, '/docs/x'))).toBe(false)
-    expect(isStaticSitePage(doc(true, true, '/docs/new-page'))).toBe(false)
-    expect(isStaticSitePage(doc(true, true, '/nope'))).toBe(true)
   })
 })
 

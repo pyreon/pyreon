@@ -40,7 +40,7 @@ import { SITE_LINKS } from './src/site-links'
 // the SSG entry's createApp call.
 export default defineConfig({
   plugins: [
-    // tokens.css / docs.css / site-pages.css / blog.css → `@layer docs`, below
+    // tokens.css / site-pages.css / blog.css → `@layer docs`, below
     // the UI system's layers (see the plugin).
     legacyCssLayer(),
     // Product content JSON → Shiki-highlighted code at build time.

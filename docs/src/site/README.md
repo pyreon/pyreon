@@ -6,14 +6,16 @@ system on Zero.
 
 ## How a marketing page runs
 
-**Static HTML with islands.** A page in the `(site)` shell (and the 404) is
-server-rendered at build time and never hydrates as a whole. The browser
-entry (`src/entry-client.ts`) sees the `data-site-static` marker that
-`SiteShell` prints and loads `static-client.ts`, which hydrates only the
-`<pyreon-island>` elements on the page. Docs pages load the router app
-(`src/app-client.ts`) instead. `render-mode.ts` explains the contract; Zero
-has no per-route islands-only mode yet (#4371), so `vite-plugins/static-pages.ts`
-also removes the route preloads and loader data a static page does not need.
+**Static HTML with islands.** Every page — the `(site)` shell, the docs and
+the 404 — is server-rendered at build time and never hydrates as a whole. The
+browser entry (`src/entry-client.ts`) loads `static-client.ts`, which hydrates
+only the `<pyreon-island>` elements on the page. The docs follow the same
+model: their islands are listed in `docs-ui/islands.ts` (search, the drawer,
+page actions, code copy and scroll-spy, live examples, demo tabs).
+`render-mode.ts` explains the contract; Zero has no per-route islands-only
+mode yet (#4371), so `vite-plugins/static-pages.ts` removes the route
+preloads and loader data a static page (the `data-site-static` marker that
+`SiteShell` prints) does not need.
 
 What that means when you build a page:
 

@@ -1,6 +1,5 @@
 import { onMount, onUnmount } from '@pyreon/core'
-import { computed, effect, signal } from '@pyreon/reactivity'
-import { useRoute } from '@pyreon/router'
+import { computed, signal } from '@pyreon/reactivity'
 import { _toasts, toast, Toaster } from '@pyreon/toast'
 import { font, paper } from '../theme'
 import { el } from '../kit/bases'
@@ -88,16 +87,10 @@ export default function DemoToast() {
     style?.remove()
   }
   onUnmount(teardown)
-  // A client-side navigation removes the island's DOM but never unmounts its
-  // hydrated root (#4387) (@pyreon/server's island hydration drops hydrateRoot's
-  // cleanup), so onUnmount does not run and the Toaster, its toasts and the
-  // style above would follow the reader to the next page. Leaving the route
-  // tears the demo down instead.
-  const route = useRoute()
-  const startPath = route().path
-  effect(() => {
-    if (route().path !== startPath) teardown()
-  })
+  // Every page is static HTML (site/render-mode.ts): leaving it is a page
+  // load, so there is no client-side route change to tear down on, and no
+  // router in the island (useRoute() threw "No router installed" when the
+  // island hydrated).
 
   const fire = {
     success: () => toast.success('Saved'),
