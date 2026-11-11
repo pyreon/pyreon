@@ -1,0 +1,170 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`pyreon check report > --gha: one error annotation per finding 1`] = `
+"::error title=signal-write-as-call,file=src/Counter.tsx,line=4,col=3::\`count(5)\` reads the signal and ignores the argument; it does not write. — count.set(5)
+::error title=react%3Ause-state,file=src/Counter.tsx,line=9,col=7::useState is a React API. In Pyreon, use signal(). Read: n(), Write: n.set(x) — const n = signal(0)
+::error title=for-missing-by,file=apps/storefront/src/routes/account/settings/notifications/preferences/EmailDigestPanel.tsx,line=112,col=18::<For> without \`by\` recreates every row when the list is reordered, which loses focus, scroll position and any per-row state the rows hold. — <For each={digests} by={(d) => d.id}>"
+`;
+
+exports[`pyreon check report > a clean run and a --fix run 1`] = `
+"pyreon check · 7 files · git-changed files · --fix
+  ✓ applied 2 auto-fixes
+
+✓ no Pyreon anti-patterns in 7 files · 42 ms"
+`;
+
+exports[`pyreon check report > renders at 16 colours 1`] = `
+"␛[1mpyreon check␛[22m ␛[90m· 7 files · git-changed files␛[39m
+
+  ␛[31m✗␛[39m ␛[1msignal-write-as-call␛[22m ␛[90m·␛[39m \`count(5)\` reads the signal and ignores the argument; it does not write.
+     ␛[90m↳␛[39m ␛]8;;file:///repo/src/Counter.tsx#L4␛\\␛[4m␛[36msrc/Counter.tsx:4:3␛[39m␛[24m␛]8;;␛\\
+     ␛[90mfix:␛[39m count.set(5) ␛[90m(auto-fixable: run with --fix)␛[39m
+
+  ␛[31m✗␛[39m ␛[1mreact:use-state␛[22m ␛[90m·␛[39m useState is a React API. In Pyreon, use signal(). Read: n(), Write: n.set(x)
+     ␛[90m↳␛[39m ␛]8;;file:///repo/src/Counter.tsx#L9␛\\␛[4m␛[36msrc/Counter.tsx:9:7␛[39m␛[24m␛]8;;␛\\
+     ␛[90mfix:␛[39m const n = signal(0)
+
+  ␛[31m✗␛[39m ␛[1mfor-missing-by␛[22m ␛[90m·␛[39m <For> without \`by\` recreates every row when the list is reordered, which loses
+     focus, scroll position and any per-row state the rows hold.
+     ␛[90m↳␛[39m ␛]8;;file:///repo/apps/storefront/src/routes/account/settings/notifications/preferences/EmailDigestPanel.tsx#L112␛\\␛[4m␛[36mapps/storefront/src/routes/account/settings/notifications/preferences/EmailDigestPanel.tsx:112:18␛[39m␛[24m␛]8;;␛\\
+     ␛[90mfix:␛[39m <For each={digests} by={(d) => d.id}>
+
+␛[31m✗␛[39m 3 findings in 2 files ␛[90m· 1 auto-fixable with --fix · 7 files checked · 42 ms␛[39m"
+`;
+
+exports[`pyreon check report > renders at 256 dark 1`] = `
+"␛[1mpyreon check␛[22m ␛[38;5;103m· 7 files · git-changed files␛[39m
+
+  ␛[38;5;203m✗␛[39m ␛[1msignal-write-as-call␛[22m ␛[38;5;103m·␛[39m \`count(5)\` reads the signal and ignores the argument; it does not write.
+     ␛[38;5;103m↳␛[39m ␛]8;;file:///repo/src/Counter.tsx#L4␛\\␛[4m␛[38;5;45msrc/Counter.tsx:4:3␛[39m␛[24m␛]8;;␛\\
+     ␛[38;5;103mfix:␛[39m count.set(5) ␛[38;5;103m(auto-fixable: run with --fix)␛[39m
+
+  ␛[38;5;203m✗␛[39m ␛[1mreact:use-state␛[22m ␛[38;5;103m·␛[39m useState is a React API. In Pyreon, use signal(). Read: n(), Write: n.set(x)
+     ␛[38;5;103m↳␛[39m ␛]8;;file:///repo/src/Counter.tsx#L9␛\\␛[4m␛[38;5;45msrc/Counter.tsx:9:7␛[39m␛[24m␛]8;;␛\\
+     ␛[38;5;103mfix:␛[39m const n = signal(0)
+
+  ␛[38;5;203m✗␛[39m ␛[1mfor-missing-by␛[22m ␛[38;5;103m·␛[39m <For> without \`by\` recreates every row when the list is reordered, which loses
+     focus, scroll position and any per-row state the rows hold.
+     ␛[38;5;103m↳␛[39m ␛]8;;file:///repo/apps/storefront/src/routes/account/settings/notifications/preferences/EmailDigestPanel.tsx#L112␛\\␛[4m␛[38;5;45mapps/storefront/src/routes/account/settings/notifications/preferences/EmailDigestPanel.tsx:112:18␛[39m␛[24m␛]8;;␛\\
+     ␛[38;5;103mfix:␛[39m <For each={digests} by={(d) => d.id}>
+
+␛[38;5;203m✗␛[39m 3 findings in 2 files ␛[38;5;103m· 1 auto-fixable with --fix · 7 files checked · 42 ms␛[39m"
+`;
+
+exports[`pyreon check report > renders at 256 light 1`] = `
+"␛[1mpyreon check␛[22m ␛[38;5;59m· 7 files · git-changed files␛[39m
+
+  ␛[38;5;124m✗␛[39m ␛[1msignal-write-as-call␛[22m ␛[38;5;59m·␛[39m \`count(5)\` reads the signal and ignores the argument; it does not write.
+     ␛[38;5;59m↳␛[39m ␛]8;;file:///repo/src/Counter.tsx#L4␛\\␛[4m␛[38;5;24msrc/Counter.tsx:4:3␛[39m␛[24m␛]8;;␛\\
+     ␛[38;5;59mfix:␛[39m count.set(5) ␛[38;5;59m(auto-fixable: run with --fix)␛[39m
+
+  ␛[38;5;124m✗␛[39m ␛[1mreact:use-state␛[22m ␛[38;5;59m·␛[39m useState is a React API. In Pyreon, use signal(). Read: n(), Write: n.set(x)
+     ␛[38;5;59m↳␛[39m ␛]8;;file:///repo/src/Counter.tsx#L9␛\\␛[4m␛[38;5;24msrc/Counter.tsx:9:7␛[39m␛[24m␛]8;;␛\\
+     ␛[38;5;59mfix:␛[39m const n = signal(0)
+
+  ␛[38;5;124m✗␛[39m ␛[1mfor-missing-by␛[22m ␛[38;5;59m·␛[39m <For> without \`by\` recreates every row when the list is reordered, which loses
+     focus, scroll position and any per-row state the rows hold.
+     ␛[38;5;59m↳␛[39m ␛]8;;file:///repo/apps/storefront/src/routes/account/settings/notifications/preferences/EmailDigestPanel.tsx#L112␛\\␛[4m␛[38;5;24mapps/storefront/src/routes/account/settings/notifications/preferences/EmailDigestPanel.tsx:112:18␛[39m␛[24m␛]8;;␛\\
+     ␛[38;5;59mfix:␛[39m <For each={digests} by={(d) => d.id}>
+
+␛[38;5;124m✗␛[39m 3 findings in 2 files ␛[38;5;59m· 1 auto-fixable with --fix · 7 files checked · 42 ms␛[39m"
+`;
+
+exports[`pyreon check report > renders at ascii 1`] = `
+"pyreon check - 7 files - git-changed files
+
+  x signal-write-as-call - \`count(5)\` reads the signal and ignores the argument; it does not write.
+     -> src/Counter.tsx:4:3
+     fix: count.set(5) (auto-fixable: run with --fix)
+
+  x react:use-state - useState is a React API. In Pyreon, use signal(). Read: n(), Write: n.set(x)
+     -> src/Counter.tsx:9:7
+     fix: const n = signal(0)
+
+  x for-missing-by - <For> without \`by\` recreates every row when the list is reordered, which loses
+     focus, scroll position and any per-row state the rows hold.
+     -> apps/storefront/src/routes/account/settings/notifications/preferences/EmailDigestPanel.tsx:112:18
+     fix: <For each={digests} by={(d) => d.id}>
+
+x 3 findings in 2 files - 1 auto-fixable with --fix - 7 files checked - 42 ms"
+`;
+
+exports[`pyreon check report > renders at plain 1`] = `
+"pyreon check · 7 files · git-changed files
+
+  ✗ signal-write-as-call · \`count(5)\` reads the signal and ignores the argument; it does not write.
+     ↳ src/Counter.tsx:4:3
+     fix: count.set(5) (auto-fixable: run with --fix)
+
+  ✗ react:use-state · useState is a React API. In Pyreon, use signal(). Read: n(), Write: n.set(x)
+     ↳ src/Counter.tsx:9:7
+     fix: const n = signal(0)
+
+  ✗ for-missing-by · <For> without \`by\` recreates every row when the list is reordered, which loses
+     focus, scroll position and any per-row state the rows hold.
+     ↳ apps/storefront/src/routes/account/settings/notifications/preferences/EmailDigestPanel.tsx:112:18
+     fix: <For each={digests} by={(d) => d.id}>
+
+✗ 3 findings in 2 files · 1 auto-fixable with --fix · 7 files checked · 42 ms"
+`;
+
+exports[`pyreon check report > renders at truecolor dark 1`] = `
+"␛[1mpyreon check␛[22m ␛[38;2;138;134;150m· 7 files · git-changed files␛[39m
+
+  ␛[38;2;248;113;113m✗␛[39m ␛[1msignal-write-as-call␛[22m ␛[38;2;138;134;150m·␛[39m \`count(5)\` reads the signal and ignores the argument; it does not write.
+     ␛[38;2;138;134;150m↳␛[39m ␛]8;;file:///repo/src/Counter.tsx#L4␛\\␛[4m␛[38;2;34;211;238msrc/Counter.tsx:4:3␛[39m␛[24m␛]8;;␛\\
+     ␛[38;2;138;134;150mfix:␛[39m count.set(5) ␛[38;2;138;134;150m(auto-fixable: run with --fix)␛[39m
+
+  ␛[38;2;248;113;113m✗␛[39m ␛[1mreact:use-state␛[22m ␛[38;2;138;134;150m·␛[39m useState is a React API. In Pyreon, use signal(). Read: n(), Write: n.set(x)
+     ␛[38;2;138;134;150m↳␛[39m ␛]8;;file:///repo/src/Counter.tsx#L9␛\\␛[4m␛[38;2;34;211;238msrc/Counter.tsx:9:7␛[39m␛[24m␛]8;;␛\\
+     ␛[38;2;138;134;150mfix:␛[39m const n = signal(0)
+
+  ␛[38;2;248;113;113m✗␛[39m ␛[1mfor-missing-by␛[22m ␛[38;2;138;134;150m·␛[39m <For> without \`by\` recreates every row when the list is reordered, which loses
+     focus, scroll position and any per-row state the rows hold.
+     ␛[38;2;138;134;150m↳␛[39m ␛]8;;file:///repo/apps/storefront/src/routes/account/settings/notifications/preferences/EmailDigestPanel.tsx#L112␛\\␛[4m␛[38;2;34;211;238mapps/storefront/src/routes/account/settings/notifications/preferences/EmailDigestPanel.tsx:112:18␛[39m␛[24m␛]8;;␛\\
+     ␛[38;2;138;134;150mfix:␛[39m <For each={digests} by={(d) => d.id}>
+
+␛[38;2;248;113;113m✗␛[39m 3 findings in 2 files ␛[38;2;138;134;150m· 1 auto-fixable with --fix · 7 files checked · 42 ms␛[39m"
+`;
+
+exports[`pyreon check report > renders at truecolor light 1`] = `
+"␛[1mpyreon check␛[22m ␛[38;2;94;90;105m· 7 files · git-changed files␛[39m
+
+  ␛[38;2;185;28;28m✗␛[39m ␛[1msignal-write-as-call␛[22m ␛[38;2;94;90;105m·␛[39m \`count(5)\` reads the signal and ignores the argument; it does not write.
+     ␛[38;2;94;90;105m↳␛[39m ␛]8;;file:///repo/src/Counter.tsx#L4␛\\␛[4m␛[38;2;10;110;137msrc/Counter.tsx:4:3␛[39m␛[24m␛]8;;␛\\
+     ␛[38;2;94;90;105mfix:␛[39m count.set(5) ␛[38;2;94;90;105m(auto-fixable: run with --fix)␛[39m
+
+  ␛[38;2;185;28;28m✗␛[39m ␛[1mreact:use-state␛[22m ␛[38;2;94;90;105m·␛[39m useState is a React API. In Pyreon, use signal(). Read: n(), Write: n.set(x)
+     ␛[38;2;94;90;105m↳␛[39m ␛]8;;file:///repo/src/Counter.tsx#L9␛\\␛[4m␛[38;2;10;110;137msrc/Counter.tsx:9:7␛[39m␛[24m␛]8;;␛\\
+     ␛[38;2;94;90;105mfix:␛[39m const n = signal(0)
+
+  ␛[38;2;185;28;28m✗␛[39m ␛[1mfor-missing-by␛[22m ␛[38;2;94;90;105m·␛[39m <For> without \`by\` recreates every row when the list is reordered, which loses
+     focus, scroll position and any per-row state the rows hold.
+     ␛[38;2;94;90;105m↳␛[39m ␛]8;;file:///repo/apps/storefront/src/routes/account/settings/notifications/preferences/EmailDigestPanel.tsx#L112␛\\␛[4m␛[38;2;10;110;137mapps/storefront/src/routes/account/settings/notifications/preferences/EmailDigestPanel.tsx:112:18␛[39m␛[24m␛]8;;␛\\
+     ␛[38;2;94;90;105mfix:␛[39m <For each={digests} by={(d) => d.id}>
+
+␛[38;2;185;28;28m✗␛[39m 3 findings in 2 files ␛[38;2;94;90;105m· 1 auto-fixable with --fix · 7 files checked · 42 ms␛[39m"
+`;
+
+exports[`pyreon check report > wraps to a narrow window (58 columns) without cutting the path 1`] = `
+"pyreon check · 7 files · git-changed files
+
+  ✗ signal-write-as-call · \`count(5)\` reads the signal and
+     ignores the argument; it does not write.
+     ↳ src/Counter.tsx:4:3
+     fix: count.set(5) (auto-fixable: run with --fix)
+
+  ✗ react:use-state · useState is a React API. In Pyreon,
+     use signal(). Read: n(), Write: n.set(x)
+     ↳ src/Counter.tsx:9:7
+     fix: const n = signal(0)
+
+  ✗ for-missing-by · <For> without \`by\` recreates every
+     row when the list is reordered, which loses focus,
+     scroll position and any per-row state the rows hold.
+     ↳ apps/storefront/src/routes/account/settings/notifications/preferences/EmailDigestPanel.tsx:112:18
+     fix: <For each={digests} by={(d) => d.id}>
+
+✗ 3 findings in 2 files · 1 auto-fixable with --fix
+  7 files checked · 42 ms"
+`;

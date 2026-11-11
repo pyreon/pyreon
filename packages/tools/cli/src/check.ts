@@ -16,10 +16,26 @@
  * COMPILER-detector pass — the terminal-native twin of the MCP `validate` tool.
  * `--fix` applies the mechanically-safe auto-fixes (`migratePyreonCode` +
  * `migrateReactCode`) in place.
+ *
+ * Output: human text in the shared `@pyreon/ansi` theme (header, each
+ * finding as `✗ code · message` / `↳ file:line:col` / `fix:`, verdict
+ * last), `--json` for tools (byte-stable, locked) and
+ * `--gha` for GitHub annotations.
  */
 import { execFileSync } from 'node:child_process'
 import { readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { isAbsolute, join, relative, resolve } from 'node:path'
+import {
+  createTerm,
+  finding as findingLines,
+  formatElapsed,
+  ghaAnnotation,
+  header,
+  nothingTo,
+  plural,
+  type Term,
+  verdict,
+} from '@pyreon/ansi'
 
 export interface CheckOptions {
   /** Explicit file/dir args (may be empty → git-changed files). */
@@ -27,9 +43,11 @@ export interface CheckOptions {
   cwd: string
   json: boolean
   fix: boolean
+  /** GitHub Actions annotations instead of text (`--gha`). */
+  gha?: boolean | undefined
 }
 
-interface Finding {
+export interface Finding {
   file: string
   line: number
   column: number
@@ -43,16 +61,6 @@ interface Finding {
 const SKIP_DIR = /(?:^|\/)(?:node_modules|lib|dist|build|\.git|coverage)(?:\/|$)/
 const isSource = (f: string): boolean => /\.(?:tsx?|jsx?)$/.test(f) && !f.endsWith('.d.ts')
 
-const useColor = (): boolean => !!process.stdout.isTTY && !process.env.NO_COLOR
-// ESC computed so the SOURCE carries no raw C0 control byte (source-hygiene gate).
-const ESC = String.fromCharCode(27)
-const paint = (s: string, code: string): string => (useColor() ? `${ESC}[${code}m${s}${ESC}[0m` : s)
-const bold = (s: string) => paint(s, '1')
-const dim = (s: string) => paint(s, '2')
-const red = (s: string) => paint(s, '31')
-const green = (s: string) => paint(s, '32')
-const yellow = (s: string) => paint(s, '33')
-const cyan = (s: string) => paint(s, '36')
 
 /** Files changed vs HEAD + untracked, filtered to source. Empty if not a git repo. */
 function gitChangedFiles(cwd: string): string[] {
@@ -89,7 +97,10 @@ function expandPath(p: string, cwd: string): string[] {
   try {
     st = statSync(abs)
   } catch {
-    console.error(red(`  path not found: ${p}`))
+    const t = createTerm({ isTTY: Boolean(process.stderr.isTTY) })
+    console.error(
+      findingLines(t, { severity: 'error', source: 'pyreon check', message: `path not found: ${p}`, fix: 'pass an existing file or directory' }, { indent: 0, width: t.width }).join('\n'),
+    )
     return []
   }
   if (st.isFile()) return isSource(abs) ? [abs] : []
@@ -119,15 +130,14 @@ export async function check(opts: CheckOptions): Promise<number> {
   const { detectPyreonPatterns, hasPyreonPatterns, detectReactPatterns, hasReactPatterns, migratePyreonCode, migrateReactCode } =
     await import('@pyreon/compiler/analyze')
 
+  const started = performance.now()
   const { files, fromGit } = resolveTargets(opts)
 
   if (files.length === 0) {
     if (opts.json) {
       console.log(JSON.stringify({ findings: [], fileCount: 0, findingCount: 0, fixedCount: 0 }, null, 2))
-    } else if (fromGit) {
-      console.log(dim('  No changed .ts/.tsx files to check. Pass paths explicitly: `pyreon check src/`'))
-    } else {
-      console.log(dim('  No source files matched.'))
+    } else if (!opts.gha) {
+      console.log(renderCheckEmpty(createTerm(), fromGit))
     }
     return 0
   }
@@ -182,33 +192,109 @@ export async function check(opts: CheckOptions): Promise<number> {
     return findings.length > 0 ? 1 : 0
   }
 
-  if (opts.fix && fixedCount > 0) {
-    console.log(green(`  ✓ applied ${fixedCount} auto-fix${fixedCount === 1 ? '' : 'es'}`))
+  if (opts.gha) {
+    console.log(renderCheckGha(findings))
+    return findings.length > 0 ? 1 : 0
   }
 
-  if (findings.length === 0) {
-    console.log(green(`  ✓ no Pyreon anti-patterns in ${files.length} file${files.length === 1 ? '' : 's'}`))
-    return 0
-  }
-
-  let currentFile = ''
-  for (const f of findings) {
-    if (f.file !== currentFile) {
-      currentFile = f.file
-      console.log(`\n  ${bold(cyan(f.file))}`)
-    }
-    const loc = dim(`${f.line}:${f.column}`)
-    const tag = f.source === 'react' ? yellow(`[react:${f.code}]`) : yellow(`[${f.code}]`)
-    const fixHint = f.fixable ? green(' (auto-fixable — run with --fix)') : ''
-    console.log(`    ${loc}  ${tag}${fixHint}`)
-    console.log(`      ${f.message}`)
-    if (f.suggested) console.log(`      ${dim('→')} ${green(f.suggested)}`)
-  }
-
-  const fileWord = new Set(findings.map((f) => f.file)).size
   console.log(
-    `\n  ${red(`${findings.length} finding${findings.length === 1 ? '' : 's'}`)} in ${fileWord} file${fileWord === 1 ? '' : 's'}` +
-      (findings.some((f) => f.fixable) ? dim('  ·  some are auto-fixable with --fix') : ''),
+    renderCheckText(createTerm(), {
+      findings,
+      fileCount: files.length,
+      fixedCount,
+      fromGit,
+      fix: opts.fix,
+      elapsedMs: performance.now() - started,
+      cwd: opts.cwd,
+    }),
   )
-  return 1
+  return findings.length > 0 ? 1 : 0
 }
+
+/** What `renderCheckText` needs: the run's result, not its IO. */
+export interface CheckRun {
+  findings: readonly Finding[]
+  fileCount: number
+  fixedCount: number
+  fromGit: boolean
+  fix: boolean
+  elapsedMs: number
+  /** Resolves each relative path for its OSC 8 link. */
+  cwd: string
+}
+
+/** The empty run: nothing changed (git default) and nothing matched (paths) have different remedies. */
+export const renderCheckEmpty = (t: Term, fromGit: boolean): string =>
+  fromGit
+    ? nothingTo(t, 'No changed .ts/.tsx files to check', 'pass paths explicitly: pyreon check src/')
+    : nothingTo(t, 'No source files matched', 'pass a .ts/.tsx/.js/.jsx file or a directory')
+
+/**
+ * The human report: header, then each finding as `✗ code · message` /
+ * `↳ file:line:col` (an OSC 8 link) / `fix: …` (rule 4), sorted by file,
+ * line and column, then the verdict.
+ */
+export function renderCheckText(t: Term, run: CheckRun): string {
+  const scope = run.fromGit ? 'git-changed files' : 'paths'
+  const lines = [header(t, 'pyreon check', `${plural(run.fileCount, 'file')} ${t.sym('bullet')} ${scope}${run.fix ? ` ${t.sym('bullet')} --fix` : ''}`)]
+  if (run.fixedCount > 0) {
+    lines.push(`  ${t.ok(t.sym('ok'))} applied ${plural(run.fixedCount, 'auto-fix', 'auto-fixes')}`)
+  }
+  const elapsed = formatElapsed(run.elapsedMs)
+  if (run.findings.length === 0) {
+    lines.push('', verdict(t, 'ok', `no Pyreon anti-patterns in ${plural(run.fileCount, 'file')}`, [elapsed]))
+    return lines.join('\n')
+  }
+  for (const f of run.findings) {
+    lines.push('')
+    const fix = f.suggested
+      ? `${f.suggested}${f.fixable ? ` ${t.dim('(auto-fixable: run with --fix)')}` : ''}`
+      : f.fixable
+        ? 'run with --fix'
+        : undefined
+    lines.push(
+      ...findingLines(
+        t,
+        {
+          severity: 'error',
+          source: f.source === 'react' ? `react:${f.code}` : f.code,
+          message: f.message,
+          location: {
+            path: f.file,
+            abs: isAbsolute(f.file) ? f.file : resolve(run.cwd, f.file),
+            line: f.line,
+            column: f.column,
+          },
+          fix,
+        },
+        { indent: 2, width: t.width },
+      ),
+    )
+  }
+  const fileWord = new Set(run.findings.map((f) => f.file)).size
+  const fixable = run.findings.filter((f) => f.fixable).length
+  lines.push(
+    '',
+    verdict(t, 'err', `${plural(run.findings.length, 'finding')} in ${plural(fileWord, 'file')}`, [
+      fixable > 0 && `${fixable} auto-fixable with --fix`,
+      `${plural(run.fileCount, 'file')} checked`,
+      elapsed,
+    ]),
+  )
+  return lines.join('\n')
+}
+
+/** `--gha`: one `::error` annotation per finding, the fix after an em dash. */
+export const renderCheckGha = (findings: readonly Finding[]): string =>
+  findings
+    .map((f) =>
+      ghaAnnotation({
+        level: 'error',
+        title: f.source === 'react' ? `react:${f.code}` : f.code,
+        file: f.file,
+        line: f.line,
+        column: f.column,
+        message: f.suggested ? `${f.message} — ${f.suggested}` : f.message,
+      }),
+    )
+    .join('\n')

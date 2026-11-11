@@ -265,6 +265,13 @@ describe('layout helpers (plain)', () => {
       '    spa',
     ])
   })
+  it('verdict wraps whole meta parts onto indented lines when wider than the term', () => {
+    const narrow = createTerm({ level: 0, unicode: true, width: 40 })
+    expect(verdict(narrow, 'err', '3 findings in 2 files', ['1 auto-fixable with --fix', '7 files checked', '42 ms'])).toBe(
+      '✗ 3 findings in 2 files\n  1 auto-fixable with --fix\n  7 files checked · 42 ms',
+    )
+    expect(verdict(narrow, 'ok', 'done', ['1 s'])).toBe('✓ done · 1 s')
+  })
   it('interrupted and nothingTo carry a symbol and a word', () => {
     expect(interrupted(t, ['3 of 13 gates', '2.1 s'])).toBe('! interrupted · 3 of 13 gates · 2.1 s')
     expect(nothingTo(t, 'no changed files', 'pass paths: pyreon check src/')).toBe(

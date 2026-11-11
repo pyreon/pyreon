@@ -88,7 +88,31 @@ export const verdict = (
   metaParts: ReadonlyArray<string | false | undefined | null> = [],
 ): string => {
   const mark = status === null ? '' : `${t.paint(status, t.sym(status))} `
-  return `${mark}${text}${meta(t, metaParts)}`
+  const one = `${mark}${text}${meta(t, metaParts)}`
+  const width = t.width ?? WRAP_WIDTH
+  if (visibleWidth(one) <= width) return one
+  // Too wide (rule 6): keep the verdict on the first line and move whole
+  // meta parts, never split, onto indented continuation lines.
+  const kept = metaParts.filter((p): p is string => typeof p === 'string' && p !== '')
+  const b = t.sym('bullet')
+  const lines: string[] = []
+  let line = `${mark}${text}`
+  let lineWidth = visibleWidth(line)
+  let first = true
+  for (const part of kept) {
+    const w = visibleWidth(part) + 3
+    if (lineWidth + w <= width) {
+      line += ` ${t.dim(`${b} ${part}`)}`
+      lineWidth += w
+      continue
+    }
+    lines.push(line)
+    line = `  ${t.dim(part)}`
+    lineWidth = 2 + visibleWidth(part)
+    first = false
+  }
+  lines.push(line)
+  return first ? one : lines.join('\n')
 }
 
 export type Align = 'left' | 'right'

@@ -44,8 +44,10 @@ function printUsage(): void {
                                      Plain-Mode readiness report (per-file convertibility + declined-shape
                                      histogram); --write applies the classic → plain codemod in place.
                                      Test files are skipped unless --include-tests
-    check [paths] [--fix] [--json]   Fast Pyreon/React anti-pattern scan (compiler detectors) with
+    check [paths] [--fix] [--json|--gha]
+                                     Fast Pyreon/React anti-pattern scan (compiler detectors) with
                                      inline fixes. No paths → git-changed files. Exits non-zero on findings.
+                                     --gha prints GitHub Actions annotations
     add <pkg...> [--dry-run] [--json] Install @pyreon/* packages (PM auto-detected) + print how to wire each in
     new [name] [--native]            Scaffold a new Pyreon project (create-zero, or -multiplatform with --native)
     mcp [args]                       Launch the Pyreon MCP server (delegates to @pyreon/mcp; prefers project-local)
@@ -168,6 +170,7 @@ async function main(): Promise<void> {
       cwd: process.cwd(),
       json: args.includes('--json'),
       fix: args.includes('--fix'),
+      gha: args.includes('--gha'),
     })
     process.exit(exitCode)
   }
