@@ -25,6 +25,7 @@ import {
 } from '@pyreon/core'
 import {
   _noopDispose,
+  batch,
   effectScope,
   getContextOwner,
   renderEffect,
@@ -663,10 +664,31 @@ function mountComponent(
     let cancelled = false
     output
       .then((resolved) => {
-        if (cancelled || !placeholder.parentNode) return
+        // The placeholder's LIVE parent, not the one captured at setup: while
+        // another load keeps an enclosing `<Suspense>` pending, its content
+        // (placeholder included) sits in an off-screen fragment.
+        const liveParent = placeholder.parentNode
+        if (cancelled || liveParent === null) return
         try {
           if (resolved != null) {
-            resolvedCleanup = mountChild(resolved as VNodeChild, parent, placeholder)
+            // The resolved subtree mounts in a microtask, outside both the
+            // owner and the batch every other mount runs in, so re-enter both:
+            //  - the owner: this component's scope, so descendants'
+            //    `useContext()` reach the ancestors' providers AND anything
+            //    this component `provide()`d before its first await — the
+            //    owner the synchronous path gives `mountChild` (#4377);
+            //  - a batch: an effect-driven mount (`<Show>`, a route swap)
+            //    already runs inside the effect flush, so what it notifies
+            //    applies AFTER it finishes. Without one, a still-loading
+            //    `lazy()` in the subtree registers with the enclosing
+            //    `<Suspense>`, which moves its content off-screen
+            //    SYNCHRONOUSLY — taking `placeholder` out of `liveParent` halfway
+            //    through this mount (`insertBefore` NotFoundError, empty page).
+            batch(() => {
+              resolvedCleanup = runWithContextOwner(scope, () =>
+                mountChild(resolved as VNodeChild, liveParent, placeholder),
+              )
+            })
           }
         } catch (err) {
           const handled = propagateError(err, hooks) || dispatchToErrorBoundary(err)
@@ -685,12 +707,18 @@ function mountComponent(
 
     if (process.env.NODE_ENV !== 'production') _mountingStack!.pop()
 
+    // Restore the parent owner NOW, as the synchronous path does once its
+    // subtree is mounted: this component's siblings must not resolve context
+    // through its scope. (Restoring it in the unmount closure instead left the
+    // owner pointing here for the rest of the parent's mount, and clobbered
+    // whatever owner was current when the component later unmounted.)
+    setContextOwner(prevOwner)
+
     return () => {
       cancelled = true
       resolvedCleanup()
       if (placeholder.parentNode) placeholder.parentNode.removeChild(placeholder)
       scope.stop()
-      setContextOwner(prevOwner)
     }
   }
 
