@@ -1,5 +1,5 @@
 import type { Adapter, AdapterBuildOptions, AdapterRevalidateResult } from '../types'
-import { NODE_ADAPTER_OUTPUT } from './contract'
+import { NODE_ADAPTER_OUTPUT, ADAPTER_RESERVED_OUTPUTS } from './contract'
 import { SCHEDULER_RUNTIME, serializeJobs } from './cron'
 import { stageClientThenServer } from './stage'
 import { STATIC_MIME_TYPES } from './mime'
@@ -28,6 +28,7 @@ export interface NodeAdapterOptions {
 export function nodeAdapter(adapterOptions: NodeAdapterOptions = {}): Adapter {
   return {
     name: 'node',
+    reservedOutputs: ADAPTER_RESERVED_OUTPUTS.node,
     capabilities: { schedules: adapterOptions.scheduler === true },
     async build(options: AdapterBuildOptions) {
       if (options.kind === 'ssg') {
