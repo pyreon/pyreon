@@ -124,21 +124,26 @@ pyreon check src/              # scan a directory (recursive; skips node_modules
 pyreon check src/App.tsx        # scan specific files
 pyreon check --fix              # apply the mechanically-safe auto-fixes in place
 pyreon check --json             # machine-readable findings for tooling
+pyreon check --gha              # GitHub Actions annotations (inline on the PR diff)
 ```
 
 Example output:
 
 ```
-  src/Counter.tsx
-    4:2  [signal-write-as-call] (auto-fixable — run with --fix)
-      `count(value)` does NOT write the signal — use `count.set(value)` …
-      → count.set(5)
-    5:9  [for-missing-by]
-      <For each={...}> requires a `by` prop so the keyed reconciler can preserve identity …
-      → <For each={items} by={(item) => item.id}>
+pyreon check · 3 files · git-changed files
 
-  2 findings in 1 file  ·  some are auto-fixable with --fix
+  ✗ signal-write-as-call · `count(value)` does NOT write the signal — use `count.set(value)` …
+     ↳ src/Counter.tsx:4:2
+     fix: count.set(5) (auto-fixable: run with --fix)
+
+  ✗ for-missing-by · <For each={...}> requires a `by` prop so the keyed reconciler can preserve …
+     ↳ src/Counter.tsx:5:9
+     fix: <For each={items} by={(item) => item.id}>
+
+✗ 2 findings in 1 file · 1 auto-fixable with --fix · 3 files checked · 41 ms
 ```
+
+Each finding follows the shared terminal theme: symbol and code, the message, `↳ file:line:col` (a clickable link in terminals that support OSC 8), then `fix:`. An empty run prints `ℹ No changed .ts/.tsx files to check · …` rather than a success mark, and Ctrl-C ends the run with `! interrupted` and exit code 130.
 
 **How it differs from the neighbours:** `pyreon doctor` is the whole-project health audit (all gates + a 0-100 score, slower); `pyreon lint` runs the `@pyreon/lint` **rule set** (a different engine). `pyreon check` is the fast, file-scoped **compiler-detector** pass — the quickest way to answer "did I introduce a Pyreon anti-pattern in this file / my diff?" `--fix` applies `migratePyreonCode` + `migrateReactCode` (only the mechanically-safe fixes; anything else stays reported so it still gates).
 ## `pyreon add`
@@ -681,7 +686,7 @@ console.log(context.components.length, 'components')
 
 | Command | Description |
 | --- | --- |
-| `pyreon check [paths] [--fix] [--json]` | Fast, file-scoped Pyreon/React anti-pattern scan (compiler detectors) with inline fixes. No paths → git-changed files. Exits non-zero on findings. |
+| `pyreon check [paths] [--fix] [--json\|--gha]` | Fast, file-scoped Pyreon/React anti-pattern scan (compiler detectors) with inline fixes. No paths → git-changed files. Exits non-zero on findings. |
 | `pyreon plain [paths] [--write] [--json] [--include-tests]` | Plain-Mode readiness report + classic→plain codemod. No paths → the whole tree under cwd. |
 | `pyreon add <pkg...> [--dry-run] [--json]` | Install `@pyreon/*` packages (PM auto-detected) and print a tailored setup recipe for each. |
 | `pyreon new [name] [--native]` | Scaffold a new Pyreon project (delegates to `@pyreon/create-zero`, or `-multiplatform` with `--native`). |

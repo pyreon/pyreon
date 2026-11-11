@@ -8,7 +8,8 @@ export { runCli } from './cli'
 export { buildInitConfig, detectPreset, detectPyreonDeps, initConfig } from './init'
 export type { InitResult } from './init'
 export { lint, listRules } from './lint'
-export { formatCompact, formatJSON, formatText } from './reporter'
+export { formatCompact, formatGha, formatJSON, formatText } from './reporter'
+export type { TermChoice } from './reporter'
 // LSP
 export { startLspServer } from './lsp/index'
 // Rules
