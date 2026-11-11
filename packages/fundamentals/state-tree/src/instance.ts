@@ -2,11 +2,12 @@ import { batch, signal, type Signal } from '@pyreon/reactivity'
 import { formatIssues } from '@pyreon/validation'
 import type { NormalizedConfig } from './model'
 import { runAction } from './middleware'
+import { buildContainerValue, isContainerMarker } from './containers'
 import { onPatch, trackedSignal } from './patch'
 import { instanceMeta, isModelInstance } from './registry'
 import { buildReferenceField, isReferenceMarker } from './references'
-import { getSnapshot } from './snapshot'
-import { collectModelChildren, scanForChildren } from './tree'
+import { applySnapshot, getSnapshot } from './snapshot'
+import { attachChildren, collectHeldChildren, escapeSegment, type HeldChild } from './tree'
 import type { InstanceMeta, LifecycleHandlers, StateShape } from './types'
 import { MODEL_BRAND, RESERVED_SCHEMA_HELPER_KEYS } from './types'
 
@@ -66,7 +67,12 @@ function deepMerge(target: unknown, source: unknown): unknown {
       // would run the accessor and turn `value` into `out`'s PROTOTYPE, so a
       // schema parse then read smuggled optional fields through the chain.
       // Define it as an own key so the merged object keeps the input's shape.
-      Object.defineProperty(out, key, { value, enumerable: true, writable: true, configurable: true })
+      Object.defineProperty(out, key, {
+        value,
+        enumerable: true,
+        writable: true,
+        configurable: true,
+      })
     } else {
       out[key] = value
     }
@@ -101,6 +107,36 @@ function cloneResetBaseline(source: Record<string, unknown>): Record<string, unk
     }
   }
   return out
+}
+
+// ─── Undeclared model containers (dev warning) ───────────────────────────────
+
+// (model config → field keys already warned about). Keyed WEAKLY by the
+// definition's config, so an entry lives exactly as long as the definition;
+// at most one entry per state key. Dev-only (the call site is gated).
+const warnedUndeclared = new WeakMap<object, Set<string>>()
+
+/**
+ * A plain-mode field written as `todos: [] as Todo[]` holds model instances
+ * with no runtime element type: getSnapshot and onPatch work (indexed paths,
+ * snapshot values), but `create` / `applySnapshot` / `applyPatch` cannot turn a
+ * snapshot back into instances when the field is empty or grows. Say so once
+ * per field, and name the declaration that fixes it.
+ */
+function warnUndeclaredContainer(config: object, key: string, value: unknown): void {
+  let keys = warnedUndeclared.get(config)
+  if (keys?.has(key)) return
+  if (!keys) warnedUndeclared.set(config, (keys = new Set()))
+  keys.add(key)
+  const fn = Array.isArray(value) ? 'arrayOf' : 'mapOf'
+  if (process.env.NODE_ENV !== 'production') {
+    console.warn(
+      `[Pyreon] state-tree: field "${key}" holds model instances but is not declared as a ` +
+        `model container. Snapshots and patches of it cannot recreate those instances ` +
+        `(applySnapshot / applyPatch / create would write plain objects). Declare the field ` +
+        `with \`${key}: ${fn}(YourModel)\` instead of a plain ${Array.isArray(value) ? 'array' : 'object'} default.`,
+    )
+  }
 }
 
 // ─── createInstance ───────────────────────────────────────────────────────────
@@ -308,12 +344,12 @@ export function createInstance(
   }
   const wireChildPropagation = (
     value: unknown,
+    held: readonly HeldChild[],
     key: string,
-    path: string,
     ownsDirectChild: boolean,
   ): void => {
     const direct = isModelInstance(value)
-    const attached = direct ? [value as object] : collectModelChildren(value)
+    const attached = held.map((h) => h.node)
     // Dispose the PREVIOUS write's wiring for this key FIRST — regardless of the
     // new value's shape (the field may have gone from an array to null/scalar).
     const prev = childWiring.get(key)
@@ -335,21 +371,47 @@ export function createInstance(
     if (attached.length === 0) return
     const unsubs: Array<() => void> = []
     if (!direct || ownsDirectChild) {
-      for (const kid of attached) {
-        meta.children.add(kid)
-        // Disposal (above) removes this listener when the key is re-set, so a
-        // detached child can't emit — no stale-emit guard needed here.
+      for (const { node, segment } of held) {
+        meta.children.add(node)
+        // The prefix carries the element's index / key (`/todos/1`), so the
+        // patch addresses exactly one element and can be replayed. Disposal
+        // (above) removes this listener when the key is re-set — and every
+        // write re-collects, so a reorder re-addresses every child.
+        const prefix = `/${segment}`
         unsubs.push(
-          onPatch(kid, (patch) => meta.emitPatch({ ...patch, path: path + patch.path })),
+          onPatch(node, (patch) => meta.emitPatch({ ...patch, path: prefix + patch.path })),
         )
       }
     }
     childWiring.set(key, { unsubs, attached })
   }
 
+  // Parent pointers + upward propagation for whatever model children a field
+  // value holds, addressed by index / key. An undeclared container (plain
+  // array / object default) that holds instances gets a one-time dev warning.
+  const attachHeld = (
+    value: unknown,
+    key: string,
+    ownsDirectChild: boolean,
+    undeclared: boolean,
+  ): void => {
+    const held = collectHeldChildren(value, key)
+    attachChildren(held, instance)
+    wireChildPropagation(value, held, key, ownsDirectChild)
+    if (
+      process.env.NODE_ENV !== 'production' &&
+      undeclared &&
+      !isSchemaMode &&
+      held.length > 0 &&
+      !isModelInstance(value)
+    ) {
+      warnUndeclaredContainer(config, key, value)
+    }
+  }
+
   for (const [key, defaultValue] of Object.entries(allocationSource)) {
     meta.stateKeys.push(key)
-    const path = `/${key}`
+    const path = `/${escapeSegment(key)}`
 
     // For plain mode: caller's `initial[key]` overrides the default OR
     // feeds into nested model creation. For schema mode: the parsed
@@ -368,8 +430,16 @@ export function createInstance(
         instance,
         defaultValue.type,
         hasCallerOverride ? callerOverride : null,
-        () => {
-          meta.snapshotCache = undefined
+        // A changed id is a state change like any other: it emits a `replace`
+        // patch carrying the raw id (what the snapshot holds), so reference
+        // writes replay through applyPatch and reach onSnapshot. With no
+        // listener, only the cached snapshot is dropped.
+        (id) => {
+          if (meta.patchListeners.size > 0 || meta.snapshotListeners.size > 0) {
+            meta.emitPatch({ op: 'replace', path, value: id })
+          } else {
+            meta.snapshotCache = undefined
+          }
         },
       )
       instance[key] = accessor
@@ -380,8 +450,21 @@ export function createInstance(
 
     let rawSig: Signal<unknown>
     const ownsDirectChild = !isSchemaMode && isModelDef(defaultValue)
+    const containerMarker =
+      !isSchemaMode && isContainerMarker(defaultValue) ? defaultValue : undefined
 
-    if (ownsDirectChild) {
+    if (containerMarker) {
+      // `arrayOf(Model)` / `mapOf(Model)`: the caller's value may hold
+      // snapshots and/or instances; snapshots become `Model` instances.
+      const empty = containerMarker.kind === 'array' ? [] : {}
+      const value = hasCallerOverride
+        ? buildContainerValue(containerMarker, callerOverride, empty, applySnapshot, key)
+        : empty
+      // pyreon-lint-disable-next-line pyreon/no-signal-in-loop
+      rawSig = signal(value)
+      ;(meta.containerKeys ??= new Map()).set(key, containerMarker)
+      initialSnapshotForReset[key] = hasCallerOverride ? callerOverride : empty
+    } else if (ownsDirectChild) {
       // Plain-mode nested model — instantiate from caller's snapshot for
       // this key (or empty for defaults).
       const nestedInitial =
@@ -420,16 +503,14 @@ export function createInstance(
         // Always-on (fires on every real change, listener or not) — the reliable
         // self-invalidation for a leaf write when this instance has no listeners.
         meta.snapshotCache = undefined
-        scanForChildren(v, instance, key)
-        wireChildPropagation(v, key, path, ownsDirectChild)
+        attachHeld(v, key, ownsDirectChild, containerMarker === undefined)
       },
     )
     instance[key] = tracked
     // Initial-value scan (the rawSig value never went through tracked.set, so
     // afterSet didn't fire) — attaches field-nested children + any model
     // instances in an initial array/object, and wires their upward propagation.
-    scanForChildren(rawSig.peek(), instance, key)
-    wireChildPropagation(rawSig.peek(), key, path, ownsDirectChild)
+    attachHeld(rawSig.peek(), key, ownsDirectChild, containerMarker === undefined)
   }
 
   // ── 3. Schema-mode helpers ────────────────────────────────────────────────
@@ -492,9 +573,7 @@ export function createInstance(
       if (meta.alive) return true
       /* v8 ignore start -- dev-only warning; the production branch is tree-shaken and never taken under test */
       if (process.env.NODE_ENV !== 'production') {
-        console.warn(
-          `[Pyreon] state-tree: ${op}() called on a destroyed model instance — ignored.`,
-        )
+        console.warn(`[Pyreon] state-tree: ${op}() called on a destroyed model instance — ignored.`)
       }
       /* v8 ignore stop */
       return false
