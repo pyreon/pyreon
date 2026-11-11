@@ -207,14 +207,25 @@ fun pyreonWebViewTokenMatches(expected: String, given: String?): Boolean {
  * A `src` that names a BUNDLED asset: a relative path with no `..` / `.` /
  * empty segment, no scheme and no backslash (also after percent-decoding).
  * null when it would escape `file:///android_asset/`.
+ *
+ * The check runs on the string, but the WebView loads a URL, and the URL
+ * parser DELETES tab / CR / LF anywhere and TRIMS C0 controls and spaces at the
+ * end: `.\t./x` reaches it as `../x` (#52, reproduced on an API 33 emulator).
+ * So a name with a C0 control or DEL anywhere, or a space at either end, is
+ * refused too: the string checked is then the path the parser sees.
  */
 fun pyreonWebViewAssetPath(src: String): String? {
     if (src.isEmpty() || src.startsWith("/") || src.contains('\\') || src.contains(':')) return null
+    if (pyreonWebViewParserRewrites(src)) return null
     val decoded = try { java.net.URLDecoder.decode(src.replace("+", "%2B"), "UTF-8") } catch (_: Exception) { return null }
-    if (decoded.contains('\\') || decoded.contains(':')) return null
+    if (decoded.contains('\\') || decoded.contains(':') || pyreonWebViewParserRewrites(decoded)) return null
     if (decoded.split('/').any { it == ".." || it == "." || it.isEmpty() }) return null
     return src
 }
+
+/** Whether the URL parser would delete or trim part of [s] (see [pyreonWebViewAssetPath]). */
+private fun pyreonWebViewParserRewrites(s: String): Boolean =
+    s.any { it < ' ' || it == '\u007f' } || s.first() == ' ' || s.last() == ' '
 
 /** A `src` that names a remote page: `http(s)` with a host. */
 fun pyreonWebViewIsRemoteSrc(src: String): Boolean {

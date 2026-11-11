@@ -7,9 +7,15 @@
 //
 // Bisect site: `warnIntegerDecodeFields` in parse.ts (and the plain-url `recordDecode` calls in
 // the useFetch / useQuery recognizers that feed it).
+//
+// The same silent failure hides at EVERY native JSON decode, not just a fetch: a `useMutation<T>`
+// reply, a `useInfiniteQuery<Page>` page, a `useStream<T>` event and a typed `JSON.parse`. Each now
+// records its decode target, so each is named; a mutation's endpoint `response` schema now also
+// refines T's number fields, as a query's always did (the second block below).
 
 import { describe, expect, it } from 'vitest'
-import { transform } from './first-party-plugins'
+import { isKotlincAvailable, isSwiftcAvailable } from '../validate'
+import { transform, validateKotlin, validateSwiftWithStubs } from './first-party-plugins'
 
 const PLACES = `
 type Place = { name: string; km: number }
@@ -106,7 +112,8 @@ export function R() {
     for (const target of ['swift', 'kotlin'] as const) {
       const r = transform(src, { target })
       expect(integerWarnings(r.warnings)).toEqual([])
-      expect(r.code).toContain('var km: Int')
+      // The 64-bit integer on both targets: Swift `Int`, Kotlin `Long` (never the 32-bit `kotlin.Int`).
+      expect(r.code).toContain(target === 'swift' ? 'var km: Int' : 'var km: Long')
     }
   })
 
@@ -134,4 +141,173 @@ export function P() {
     expect(r.code).toContain('var km: Double')
     expect(integerWarnings(r.warnings)).toEqual([])
   })
+})
+
+describe('every native JSON decode site names an integer-default field, not only a fetch (#3956 item 1)', () => {
+  const HTTP = `
+import { createHttp } from '@pyreon/http'
+import { standardSchema } from '@pyreon/http/schema'
+import { openEventStream, openNdjsonStream, type SseEvent } from '@pyreon/http/stream'
+import { useMutation, useInfiniteQuery, useStream } from '@pyreon/query'
+import { s } from '@pyreon/validate'
+import { Stack, Text, Button } from '@pyreon/primitives'
+const api = createHttp({ baseUrl: 'https://api.example.com', schema: standardSchema })
+`
+  const SITES: Record<string, { src: string; struct: string; field: string }> = {
+    'useMutation<T>(ep.mutation())': {
+      struct: 'Reply',
+      field: 'km',
+      src: `${HTTP}
+interface Reply { name: string; km: number }
+const saveItem = api.endpoint('PUT /items/:id')
+export function C() {
+  const save = useMutation<Reply>(saveItem.mutation())
+  return <Stack><Button onPress={() => save.mutate({ params: { id: '1' }, json: {} })}>x</Button><Text>{save.data()?.name ?? ''}</Text></Stack>
+}`,
+    },
+    'useInfiniteQuery<Page>': {
+      struct: 'Page',
+      field: 'score',
+      src: `${HTTP}
+type Page = { cursor: string; score: number }
+export function C() {
+  const f = useInfiniteQuery<Page>(() => ({ queryKey: ['k'], queryFn: ({ pageParam }) => fetch(\`/x?c=\${pageParam}\`), initialPageParam: '0', getNextPageParam: (l) => l.cursor }))
+  return <Stack><Text>x</Text></Stack>
+}`,
+    },
+    'useStream<T> over NDJSON': {
+      struct: 'LogLine',
+      field: 'load',
+      src: `${HTTP}
+interface LogLine { message: string; load: number }
+const rows = api.endpoint('GET /export', { responseType: 'stream' })
+export function Feed() {
+  const st = useStream<LogLine>((ctx) => openNdjsonStream((c) => rows({ signal: c.signal, headers: c.headers }), { signal: ctx.signal, onStatus: ctx.onStatus }))
+  return <Stack><Text>{st.latest()?.message ?? ''}</Text></Stack>
+}`,
+    },
+    'useStream<SseEvent<T>>': {
+      struct: 'Tick',
+      field: 'price',
+      src: `${HTTP}
+interface Tick { sym: string; price: number }
+const tail = api.endpoint('GET /ticks', { responseType: 'stream' })
+export function Feed() {
+  const st = useStream<SseEvent<Tick>>((ctx) => openEventStream((c) => tail({ signal: c.signal, headers: c.headers }), { signal: ctx.signal, onStatus: ctx.onStatus }))
+  return <Stack><Text>{st.latest()?.data.sym ?? ''}</Text></Stack>
+}`,
+    },
+    'JSON.parse(s) as T[]': {
+      struct: 'Place',
+      field: 'km',
+      src: `type Place = { name: string; km: number }
+export function App() {
+  const count = (raw: string) => { try { const ps = JSON.parse(raw) as Place[]; return ps.length } catch { return 0 } }
+  return <Stack><Text>{String(count('[]'))}</Text></Stack>
+}`,
+    },
+    'const x: T = JSON.parse(s)': {
+      struct: 'Place',
+      field: 'km',
+      src: `type Place = { name: string; km: number }
+export function App() {
+  const first = (raw: string) => { try { const p: Place = JSON.parse(raw); return p.name } catch { return '' } }
+  return <Stack><Text>{first('{}')}</Text></Stack>
+}`,
+    },
+    'a helper annotated : T returning JSON.parse': {
+      struct: 'Place',
+      field: 'km',
+      src: `type Place = { name: string; km: number }
+function load(raw: string): Place { return JSON.parse(raw) }
+export function App() {
+  const first = (raw: string) => { try { return load(raw).name } catch { return '' } }
+  return <Stack><Text>{first('{}')}</Text></Stack>
+}`,
+    },
+  }
+
+  for (const [site, { src, struct, field }] of Object.entries(SITES)) {
+    for (const target of ['swift', 'kotlin'] as const) {
+      it(`${target}: ${site} names \`${struct}.${field}\``, () => {
+        const ws = integerWarnings(transform(src, { target }).warnings)
+        expect(ws).toHaveLength(1)
+        expect(ws[0]).toContain(`\`${struct}\``)
+        expect(ws[0]).toContain(`whose field \`${field}\` is \`number\``)
+        expect(ws[0]).toContain(`${field}: Double`)
+      })
+    }
+    it(`${site}: the documented \`type Double = number\` fix silences it and compiles on both targets`, () => {
+      const fixed = `type Double = number\n${src.replace(`${field}: number`, `${field}: Double`)}`
+      const swift = transform(fixed, { target: 'swift' })
+      const kotlin = transform(fixed, { target: 'kotlin' })
+      expect(integerWarnings(swift.warnings)).toEqual([])
+      expect(integerWarnings(kotlin.warnings)).toEqual([])
+      expect(swift.code).toContain(`var ${field}: Double`)
+      expect(kotlin.code).toContain(`var ${field}: Double`)
+      if (isSwiftcAvailable()) expect(validateSwiftWithStubs(swift.code).error ?? '').toBe('')
+      if (isKotlincAvailable()) expect(validateKotlin(kotlin.code).error ?? '').toBe('')
+    }, 180_000)
+  }
+
+  it('an untyped useMutation decodes nothing and names nothing', () => {
+    const src = SITES['useMutation<T>(ep.mutation())']!.src.replace('useMutation<Reply>(', 'useMutation(').replace(
+      "<Text>{save.data()?.name ?? ''}</Text>",
+      '<Text>x</Text>',
+    )
+    expect(integerWarnings(transform(src, { target: 'swift' }).warnings)).toEqual([])
+  })
+
+  it("a `data: 'text'` SSE stream decodes nothing and names nothing", () => {
+    const src = `${HTTP}
+interface Unused { load: number }
+const tail = api.endpoint('GET /ticks', { responseType: 'stream' })
+export function Feed() {
+  const st = useStream<SseEvent<string>>((ctx) => openEventStream((c) => tail({ signal: c.signal, headers: c.headers }), { signal: ctx.signal, onStatus: ctx.onStatus, data: 'text' }))
+  return <Stack><Text>{st.latest()?.data ?? ''}</Text></Stack>
+}`
+    expect(integerWarnings(transform(src, { target: 'swift' }).warnings)).toEqual([])
+  })
+
+  it('a struct decoded at two sites is named once', () => {
+    const src = `${HTTP}
+interface Reply { name: string; km: number }
+const saveItem = api.endpoint('PUT /items/:id')
+export function C() {
+  const save = useMutation<Reply>(saveItem.mutation())
+  const parsed = (raw: string) => { try { return (JSON.parse(raw) as Reply).name } catch { return '' } }
+  return <Stack><Button onPress={() => save.mutate({ params: { id: '1' }, json: {} })}>x</Button><Text>{parsed('{}')}</Text></Stack>
+}`
+    expect(integerWarnings(transform(src, { target: 'kotlin' }).warnings)).toHaveLength(1)
+  })
+})
+
+describe("a mutation's endpoint `response` schema types the reply's number fields, as a query's does", () => {
+  const MUTATION = `
+import { createHttp } from '@pyreon/http'
+import { standardSchema } from '@pyreon/http/schema'
+import { useMutation } from '@pyreon/query'
+import { s } from '@pyreon/validate'
+import { Stack, Text, Button } from '@pyreon/primitives'
+const api = createHttp({ baseUrl: 'https://api.example.com', schema: standardSchema })
+export const book_schema = s.object({ id: s.string(), price: s.number(), pages: s.number().int() })
+export type Book = { id: string; price: number; pages: number }
+export const putBook = api.endpoint('PUT /books/:bookId', { response: book_schema })
+export function C() {
+  const save = useMutation<Book>(putBook.mutation())
+  return <Stack><Button onPress={() => save.mutate({ params: { bookId: '1' }, json: {} })}>x</Button><Text>{save.data()?.id ?? ''}</Text></Stack>
+}`
+
+  it('`s.number()` is a Double and `.int()` stays an integer, with no warning, on both targets — and it compiles', () => {
+    const swift = transform(MUTATION, { target: 'swift' })
+    const kotlin = transform(MUTATION, { target: 'kotlin' })
+    const bookOf = (code: string) => code.slice(code.indexOf('Book'), code.indexOf('Book') + 160)
+    expect(bookOf(swift.code)).toContain('var price: Double')
+    expect(bookOf(swift.code)).toContain('var pages: Int')
+    expect(kotlin.code).toContain('data class Book(var id: String, var price: Double, var pages: Long)')
+    expect(integerWarnings(swift.warnings)).toEqual([])
+    expect(integerWarnings(kotlin.warnings)).toEqual([])
+    if (isSwiftcAvailable()) expect(validateSwiftWithStubs(swift.code).error ?? '').toBe('')
+    if (isKotlincAvailable()) expect(validateKotlin(kotlin.code).error ?? '').toBe('')
+  }, 180_000)
 })

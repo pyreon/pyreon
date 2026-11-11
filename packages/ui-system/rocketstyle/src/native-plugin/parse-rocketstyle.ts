@@ -274,6 +274,14 @@ function parseDimensionCall(
     if ((prop.type !== 'Property' && prop.type !== 'ObjectProperty') || prop.computed) continue
     const valueName = readKey((prop as { key?: AnyNode }).key)
     if (valueName === null) continue
+    // The value name becomes a Swift / Kotlin enum CASE (`case primary`,
+    // `case .primary:`), i.e. code — a quoted key can carry any text.
+    if (!TOKEN_SEGMENT.test(valueName)) {
+      warnings.push(
+        `[parse-rocketstyle] skipped ${componentName}.${dimName} value ${JSON.stringify(valueName)} — it becomes a Swift/Kotlin enum case, so it may only contain letters, digits and _`,
+      )
+      continue
+    }
     const valueBody = unwrapTSLayers((prop as { value?: AnyNode }).value)
     if (!valueBody || valueBody.type !== 'ObjectExpression') {
       warnings.push(
@@ -314,6 +322,14 @@ function parseValueProperties(
     if ((prop.type !== 'Property' && prop.type !== 'ObjectProperty') || prop.computed) continue
     const propName = readKey((prop as { key?: AnyNode }).key)
     if (propName === null) continue
+    // The property name becomes part of an accessor IDENTIFIER
+    // (`stateBackgroundColor`), so only name characters are accepted.
+    if (!/^[A-Za-z0-9_-]+$/.test(propName)) {
+      warnings.push(
+        `[parse-rocketstyle] skipped ${componentName}.${dimName}.${valueName} property ${JSON.stringify(propName)} — not a CSS property name`,
+      )
+      continue
+    }
     const propValue = unwrapTSLayers((prop as { value?: AnyNode }).value)
     if (!propValue) continue
 
@@ -377,6 +393,9 @@ function resolveValue(node: AnyNode, themeParamName: string | null): StyleValue 
  *   t.color.primary.base      → { group: 'color', entry: 'primary_base' }
  *   t.color.system.primary[500] → { group: 'color', entry: 'system_primary_500' }
  */
+/** The characters a token group / entry may hold — it becomes part of a Swift / Kotlin member path. */
+const TOKEN_SEGMENT = /^[A-Za-z0-9_]+$/
+
 function recogniseTokenRef(node: AnyNode, themeParamName: string): StyleValue | null {
   const chain: string[] = []
   let cur: AnyNode | undefined = node
@@ -405,6 +424,10 @@ function recogniseTokenRef(node: AnyNode, themeParamName: string): StyleValue | 
   // Entry = everything after the group, joined with underscore (matches
   // the ThemeIR flatten convention from parse-theme.ts).
   const entry = chain.slice(1).join('_')
+  // Both halves are spliced into CODE (`PyreonTokens.<Group>.<entry>`), and a
+  // computed key (`t.color['…']`) can carry any text — so anything that is not
+  // identifier characters is not a token reference here.
+  if (!TOKEN_SEGMENT.test(group) || !TOKEN_SEGMENT.test(entry)) return null
   return { kind: 'token', group, entry }
 }
 
