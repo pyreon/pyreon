@@ -1505,10 +1505,17 @@ Together these make a webview-hosted chart a first-class interactive
 member of the native app: live native data flows in, user events flow
 back out. `examples/native-analytics` is the canonical end-to-end proof
 (native data table + aggregation + an interactive WebView chart from ONE
-`.tsx`). **Web caveat:** both bridges are same-origin / `srcdoc` only — a
-cross-origin remote `src` can't be reached from the parent frame (the
-native targets reach remote content via `evaluateJavaScript` / the script
-handler).
+`.tsx`). **Origin scope:** both bridges belong to the page the app loaded.
+On the web they are same-origin / `srcdoc` only — a cross-origin remote
+`src` can't be reached from the parent frame. On iOS and Android they reach
+only the MAIN frame of the origin the host's own load landed on (after its
+server redirects): an iframe from another origin gets no `data` and its
+messages are dropped, the main frame cannot be moved to another origin
+afterwards (by script, form POST or a server redirect; a tapped link opens
+in the system browser), Android file access is off, and a bundled `src`
+cannot leave the app's asset directory. All of this runs on a simulator and
+an emulator in the device CI lanes (`PyreonWebViewScopeUITests`,
+`PyreonWebViewOriginScopeTest`), against two loopback origins.
 
 ### Sizing and browser chrome
 

@@ -23,9 +23,13 @@
 //   GET /pages   Cursor pages for the useInfiniteQuery proof: `?cursor=0|1|2`, two
 //                items each, `nextCursor` present on pages 0 and 1, absent on 2.
 //   GET /health  200 — the CI readiness poll.
+//   /webview/*   The <WebView> origin-scope proof (#4215), served on two
+//                origins (127.0.0.1 and localhost); see webview-scope-pages.ts.
 //
 // Stateless by design: the response depends only on the request's headers, so
-// XCUITest's `-test-iterations 3` and relaunches replay the same script.
+// XCUITest's `-test-iterations 3` and relaunches replay the same script. (The
+// one exception, /webview/offorigin's hit counter, is keyed by a per-launch
+// run id for the same reason.)
 //
 // Reachability: the iOS Simulator shares the host loopback; the Android job
 // runs `adb reverse tcp:8791 tcp:8791`, so the ONE literal
@@ -35,6 +39,7 @@
 // terminating chunk) is the whole point of /sse, and `res.socket.destroy()` is
 // the direct way to do it.
 import { createServer } from 'node:http'
+import { handleWebViewScope } from './webview-scope-pages'
 
 const port = Number(process.env.PYREON_STREAM_PORT ?? 8791)
 
@@ -51,6 +56,8 @@ const server = createServer((req, res) => {
     res.end()
     return
   }
+  // The <WebView> origin-scope proof's two-origin pages (webview-scope-pages.ts).
+  if (handleWebViewScope(req, res, path)) return
   if (path === '/health') {
     res.writeHead(200, { 'content-type': 'text/plain' })
     res.end('ok')
