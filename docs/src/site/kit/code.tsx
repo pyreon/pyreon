@@ -160,7 +160,9 @@ const DiffPane = el
 
 const DiffLine = el
   .config({ name: 'CodeDiffLine' })
-  .attrs({ tag: 'li', block: true })
+  // A row, not a column: Element stacks its children by default, which put
+  // the sign above the code.
+  .attrs({ tag: 'li', block: true, contentDirection: 'inline', contentAlignX: 'left', contentAlignY: 'top' })
   .theme((_t, m) => ({
     minWidth: 'max-content',
     paddingTop: { xs: 5, md: 6 },

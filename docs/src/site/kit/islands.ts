@@ -12,3 +12,6 @@ export const CopyButtonIsland = island(() => import('./command'), { name: 'CopyB
 
 /** The whole nav bar: menus, mobile sheet, theme toggle. Small; hydrates at idle. */
 export const SiteNavIsland = island(() => import('../shell/SiteNav'), { name: 'SiteNav', hydrate: 'idle' })
+
+/** The video of a `Loop`: loads near the viewport, follows theme and screen size. */
+export const LoopPlayerIsland = island(() => import('./LoopPlayer'), { name: 'LoopPlayer', hydrate: 'visible' })

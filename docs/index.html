@@ -3,7 +3,6 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#0F0F14" />
 
     <!-- Cascade-layer order, declared before any stylesheet: the hand-written
          CSS (vite-plugins/legacy-css-layer.ts) sits below @pyreon/styler's
@@ -47,12 +46,9 @@
          falls back to the Google CDN `<link>` (build-only self-host),
          so local dev keeps working with no extra wiring. -->
 
-    <!-- Brand favicon — rounded ink tile + ember disc. Leading slash
-         so Vite's index.html transform base-prefixes it to
-         `/<base>/favicon.svg`. Relative `./favicon.svg` would resolve
-         against the current page URL and 404 on deep routes like
-         `/pyreon/docs/X/` (→ tried to load `/docs/favicon.svg`). -->
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <!-- Favicons, the web app manifest and theme-color come from the root
+         layout's head defaults (src/routes/_layout.tsx), from the brand
+         icon set in public/brand. -->
 
     <!--pyreon-head-->
   </head>

@@ -214,6 +214,8 @@ export interface ProofItem {
   /** Record source (shown when there is no detail). */
   source?: string | undefined
   href?: string | undefined
+  /** A small chart of the same figures under the text (the asset set's proof charts). */
+  visual?: VNodeChild
 }
 
 /**
@@ -250,6 +252,7 @@ export function ProofBand(props: {
                 <CellMono>{i.condition}</CellMono>
               </Show>
               {i.href ? <TextLink href={i.href}>See the row →</TextLink> : null}
+              {i.visual ?? null}
             </Cell>
           )}
         </For>

@@ -110,6 +110,8 @@ export default defineConfig({
           .filter(([, target]) => target !== null)
           .map(([key]) => `/${key}`),
       },
+      // Everything is crawlable; the sitemap is the list above.
+      robots: { rules: [{ userAgent: '*', allow: ['/'] }], sitemap: 'https://pyreon.dev/sitemap.xml' },
     }),
     // Marketing pages hydrate only their islands: drop the route preloads
     // and loader data they would carry for a full app (see the plugin).

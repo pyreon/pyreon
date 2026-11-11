@@ -4,12 +4,16 @@ import { RouterView, useRoute } from '@pyreon/router'
 import { PyreonUI } from '@pyreon/ui-core'
 import { BLOG_FEED, BLOG_TITLE, SITE_ORIGIN } from '../blog/site'
 import { colorMode, useFollowSystemMode } from '../site/color-mode'
-import { siteTheme } from '../site/theme'
+import shareDefault from '../site/content/_share-default.json'
+import { color, siteTheme } from '../site/theme'
 
-const DEFAULT_TITLE = 'Pyreon — the signal-based UI framework'
+const DEFAULT_TITLE = 'Pyreon: the signal-based UI framework'
 const DEFAULT_DESCRIPTION =
-  'Signal-based UI framework — fine-grained reactivity, no virtual DOM, streaming SSR.'
-const DEFAULT_IMAGE_ALT = 'Pyreon — the signal-based UI framework. Signals in. Updates out.'
+  'A signal-based TypeScript framework: components run once and only the DOM node that changed updates. Full stack on the web, with iOS and Android from the same .tsx (experimental).'
+// The asset set's site-wide share card (scripts/sync-site-assets.ts writes
+// the record). Pages set their own through `usePageHead` (src/site/head.ts).
+const DEFAULT_IMAGE = `${SITE_ORIGIN}/media/${shareDefault.file}`
+const DEFAULT_IMAGE_ALT = shareDefault.alt
 
 /**
  * Root layout — every page renders through it:
@@ -43,18 +47,26 @@ export function layout() {
         { property: 'og:url', content: `${SITE_ORIGIN}${typeof path === 'string' ? path : '/'}` },
         { property: 'og:title', content: DEFAULT_TITLE },
         { property: 'og:description', content: DEFAULT_DESCRIPTION },
-        // Raster PNG: social cards reject SVG (see scripts/generate-og.mjs).
-        { property: 'og:image', content: `${SITE_ORIGIN}/og.png` },
-        { property: 'og:image:width', content: '1200' },
-        { property: 'og:image:height', content: '630' },
+        { property: 'og:site_name', content: 'Pyreon' },
+        { property: 'og:image', content: DEFAULT_IMAGE },
+        { property: 'og:image:width', content: String(shareDefault.width) },
+        { property: 'og:image:height', content: String(shareDefault.height) },
         { property: 'og:image:alt', content: DEFAULT_IMAGE_ALT },
         { name: 'twitter:card', content: 'summary_large_image' },
-        { name: 'twitter:image', content: `${SITE_ORIGIN}/og.png` },
+        { name: 'twitter:image', content: DEFAULT_IMAGE },
         { name: 'twitter:image:alt', content: DEFAULT_IMAGE_ALT },
+        // Browser chrome colour, per OS scheme (the page background tokens).
+        { name: 'theme-color', content: color.bg.dark, media: '(prefers-color-scheme: dark)' },
+        { name: 'theme-color', content: color.bg.light, media: '(prefers-color-scheme: light)' },
       ],
       // Feed autodiscovery on every page.
       link: [
         { rel: 'alternate', type: 'application/rss+xml', title: BLOG_TITLE, href: BLOG_FEED },
+        // The brand icon set (09-site/assets/brand, synced to public/brand).
+        { rel: 'icon', type: 'image/svg+xml', href: '/brand/favicon.svg' },
+        { rel: 'icon', type: 'image/png', sizes: '32x32', href: '/brand/favicon-32.png' },
+        { rel: 'apple-touch-icon', href: '/brand/apple-touch-icon.png' },
+        { rel: 'manifest', href: '/site.webmanifest' },
       ],
     }
   })
