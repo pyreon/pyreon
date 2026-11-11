@@ -14,6 +14,7 @@ import { lintFile } from '../runner'
  *   no validation at all.
  */
 const ROUTER = `import { useRouter } from '@pyreon/router'\nvoid useRouter\n`
+
 const href = (jsx: string) =>
   lintFile('/p/src/routes/_layout.tsx', `${ROUTER}export const L = () => ${jsx}\n`, allRules, {
     rules: { 'pyreon/no-href-navigation': 'warn' },

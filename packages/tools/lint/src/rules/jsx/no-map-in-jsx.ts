@@ -8,6 +8,7 @@ function unwrap(n: any): any {
   while (x && (x.type === 'ParenthesizedExpression' || x.type === 'TSAsExpression' || x.type === 'TSNonNullExpression')) {
     x = x.expression
   }
+
   return x
 }
 
@@ -17,6 +18,7 @@ function isJsxish(expr: any): boolean {
   if (n.type === 'JSXElement' || n.type === 'JSXFragment') return true
   if (n.type === 'ConditionalExpression') return isJsxish(n.consequent) || isJsxish(n.alternate)
   if (n.type === 'LogicalExpression') return isJsxish(n.left) || isJsxish(n.right)
+
   return false
 }
 
@@ -34,8 +36,10 @@ function callbackProducesJsx(callback: any): boolean {
     if (found) return false
     if (n !== fn.body && FUNCTION_TYPES.has(n.type)) return false
     if (n.type === 'ReturnStatement' && isJsxish(n.argument)) found = true
+
     return undefined
   })
+
   return found
 }
 

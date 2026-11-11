@@ -14,6 +14,7 @@ function isNonPageResource(href: string): boolean {
   const path = href.split(/[?#]/)[0] ?? ''
   if (path === '/api' || path.startsWith('/api/')) return true
   const last = path.slice(path.lastIndexOf('/') + 1)
+
   return /\.[a-z0-9]{1,5}$/i.test(last) && !/\.html?$/i.test(last)
 }
 
