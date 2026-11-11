@@ -8,7 +8,9 @@ import { C } from '../site/kit/classes'
  * the server HTML around it, attached on mount and removed on unmount —
  *
  *   - the copy buttons the markdown pipeline prints in every code block
- *     (`.code-block__copy`; without this island they would do nothing);
+ *     (`.code-block__copy`) and the end row's copy-link button
+ *     (`[data-copy-link]`, shown where the rail is hidden); without this
+ *     island they would do nothing;
  *   - the table of contents (`[data-blog-toc]`) marking the section being
  *     read with `aria-current="location"`.
  *
@@ -44,11 +46,13 @@ export default function PostTools(props: PostToolsProps) {
     if (!article) return undefined
     const timers = new Set<ReturnType<typeof setTimeout>>()
 
-    // Code blocks: copy the block's text, say so for two seconds.
+    // Code blocks copy the block's text, the end row's "Copy link" (below
+    // 992px, where the rail is hidden) the post's URL; each says so for two
+    // seconds.
     const onClick = (e: MouseEvent) => {
-      const target = e.target instanceof Element ? e.target.closest('.code-block__copy') : null
+      const target = e.target instanceof Element ? e.target.closest('.code-block__copy, [data-copy-link]') : null
       if (!(target instanceof HTMLButtonElement) || !navigator.clipboard) return
-      const code = target.closest('.code-block')?.querySelector('pre')?.textContent ?? ''
+      const code = target.hasAttribute('data-copy-link') ? props.url : (target.closest('.code-block')?.querySelector('pre')?.textContent ?? '')
       const label = target.dataset['label'] ?? target.textContent ?? ''
       target.dataset['label'] = label
       navigator.clipboard

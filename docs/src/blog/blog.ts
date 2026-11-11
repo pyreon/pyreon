@@ -24,6 +24,8 @@ export const blog = defineBlog({
   // Fixed locale + UTC (the module's default) so every build prints the same day.
   locale: BLOG_LOCALE,
   pageSize: 10,
+  // The tag filter on the index: the most-used tags only (every tag keeps its page).
+  indexTags: 8,
   authors: {
     vit: { name: 'Vít Bokisch', url: 'https://github.com/vitbokisch' },
   },

@@ -1,5 +1,8 @@
-import { el, tone, type ModeFn } from '../../site/kit/bases'
-import { font, radius, syntax, text, weight } from '../../site/theme'
+import { el, pair, tone, type ModeFn } from '../../site/kit/bases'
+import { breakpoints, font, gradient, radius, syntax, text, weight } from '../../site/theme'
+
+/** Width of a bench block's number column (fits `130 µs`, `17.2 KB`, `34.7×` at 34px). */
+const BENCH_NUMBER = '8.5rem'
 
 /**
  * Reading styles for a post body: the markdown pipeline's plain elements (p,
@@ -36,9 +39,27 @@ const css = (m: ModeFn): string => `
   & li > p { margin-bottom: 10px; }
   & li::marker { color: ${tone(m, 'accent')}; }
 
-  & blockquote { margin: 34px 0; padding: 4px 0 4px 22px; border-left: 3px solid ${tone(m, 'accent')}; color: ${tone(m, 'strong')}; font-size: clamp(21px, 2.4vw, 26px); line-height: 1.35; letter-spacing: -.015em; }
-  & blockquote p { margin: 0; }
-  & blockquote strong { font-weight: ${weight.medium}; color: inherit; }
+  & blockquote { margin: 30px 0; padding: 2px 0 2px 22px; border-left: 3px solid ${tone(m, 'line2')}; color: ${tone(m, 'mist')}; font-size: 16px; line-height: 1.65; }
+  & blockquote p { margin: 0 0 10px; }
+  & blockquote p:last-child { margin-bottom: 0; }
+  /* A pull quote: a blockquote that is one bold line (\`> **…**\`). Other quotes (notes, sources) stay at text size. */
+  & blockquote:has(> p:only-child > strong:only-child) { margin: 38px 0; border-left-color: ${tone(m, 'accent')}; color: ${tone(m, 'strong')}; font-size: clamp(24px, 3vw, 32px); line-height: 1.3; letter-spacing: -.02em; text-wrap: balance; }
+  & blockquote strong { font-weight: ${weight.medium}; color: ${tone(m, 'text')}; }
+  & blockquote:has(> p:only-child > strong:only-child) strong { color: inherit; }
+
+  /* \`::: bench\` (src/blog/bench.ts): one result per row, the bold number big in the ember gradient. */
+  & .blog-bench { margin: 28px 0 30px; border: 1px solid ${tone(m, 'line')}; border-radius: ${radius.pane}px; background: ${tone(m, 'card')}; overflow: hidden; }
+  & .blog-bench ul { list-style: none; margin: 0; padding: 0; }
+  & .blog-bench li { margin: 0; padding: 14px 20px 14px calc(${BENCH_NUMBER} + 36px); border-bottom: 1px solid ${tone(m, 'line')}; color: ${tone(m, 'text')}; font-size: 16px; line-height: 1.5; }
+  & .blog-bench li > p { margin: 0; }
+  & .blog-bench li > strong:first-child, & .blog-bench li > p:first-child > strong:first-child { display: inline-block; width: ${BENCH_NUMBER}; margin-left: calc(-${BENCH_NUMBER} - 16px); margin-right: 12px; vertical-align: baseline; font-size: 34px; line-height: 1.1; font-weight: ${weight.medium}; letter-spacing: -.04em; font-variant-numeric: tabular-nums; white-space: nowrap; background-image: ${pair(m, gradient.ember)}; -webkit-background-clip: text; background-clip: text; color: transparent; }
+  & .blog-bench > p:last-child { margin: 0; padding: 12px 20px; font-family: ${font.mono}; font-size: ${text.caption.size}px; line-height: 1.5; }
+  & .blog-bench > p:last-child a { color: ${tone(m, 'mist')}; text-decoration: none; }
+  & .blog-bench > p:last-child a:hover { color: ${tone(m, 'text')}; text-decoration: underline; text-decoration-color: ${tone(m, 'accent')}; }
+  @media (max-width: ${breakpoints.sm - 0.02}px) {
+    & .blog-bench li { padding-left: 20px; }
+    & .blog-bench li > strong:first-child, & .blog-bench li > p:first-child > strong:first-child { display: block; width: auto; margin: 0 0 2px; }
+  }
 
   & :not(pre) > code { font-family: ${font.mono}; font-size: .84em; padding: 2px 6px; border-radius: ${radius.small}px; background: ${tone(m, 'raised')}; color: ${tone(m, 'text')}; overflow-wrap: anywhere; }
 

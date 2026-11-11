@@ -72,7 +72,7 @@ ${navMedia.collapsed}{.${C.bar} .${C.iconLink},.${C.bar} .${C.desktopOnly}{displ
 ${navMedia.expanded}{.${C.bar} .${C.menuButton}{display:none}}
 .${C.modeDark},.${C.modeLight}{display:flex}
 :root[data-theme=light] .${C.modeDark},:root:not([data-theme=light]) .${C.modeLight}{display:none}
-.${C.pill}{display:inline-flex;align-items:center;gap:10px;height:38px;padding:0 18px;border-radius:${radius.pill}px;border:1px solid ${v('line2')};font-family:${font.sans};font-size:${text.ui.size}px;font-weight:${weight.medium};line-height:1;white-space:nowrap;text-decoration:none;color:${v('text')};transition:border-color ${motion.hover},background-color ${motion.hover},transform ${motion.hover}}
+.${C.pill}{display:inline-flex;align-items:center;gap:10px;height:38px;padding:0 18px;border-radius:${radius.pill}px;border:1px solid ${v('line2')};font-family:${font.sans};font-size:${text.ui.size}px;font-weight:${weight.medium};line-height:1;white-space:nowrap;text-decoration:none;color:${v('text')};background:transparent;cursor:pointer;transition:border-color ${motion.hover},background-color ${motion.hover},transform ${motion.hover}}
 .${C.pill}:hover{border-color:${v('lineHover')}}
 .${C.pill}:focus-visible{${focus}}
 .${C.pillSolid}{background:${v('solidBg')};border-color:${v('solidBg')};color:${v('solidText')}}
