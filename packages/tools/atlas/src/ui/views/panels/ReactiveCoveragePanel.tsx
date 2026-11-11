@@ -19,7 +19,7 @@
  */
 import { onUnmount, Show } from '@pyreon/core'
 import { computeReactiveCoverage, type ReactiveCoverageReport } from '@pyreon/reactivity/coverage'
-import { effect, getReactiveGraph, isReactiveDevtoolsActive, signal, untrack } from '@pyreon/reactivity'
+import { batch, effect, getReactiveGraph, isReactiveDevtoolsActive, signal, untrack } from '@pyreon/reactivity'
 import * as C from '../../components'
 import { createInsightSession, type InsightRow, insightSummary } from '../../graph-insights'
 import type { WorkbenchModel } from '../../model'
@@ -110,18 +110,20 @@ export const render: AddonPanelRender = (model) => {
     const scope = m.previewScope()
     const controls = m.sel()?.controls ?? []
     const members = componentNodes(graph, scope)
-    mounted.set(scope.mounts.length > 0)
-    rows.set(bindingRows(graph, scope, controls))
-    // Everything else the component created — derived values, plain
-    // effects, its own signals — scored the node-level way, for the reader
-    // who wants it. The live control values are the workbench's, not the
-    // component's, so they are left out.
-    others.set(
-      computeReactiveCoverage(
-        graph.nodes.filter((n) => members.has(n.id) && n.binding === undefined && !scope.props.has(n.id)),
-      ),
-    )
-    insights.set(shape.sample(members))
+    batch(() => {
+      mounted.set(scope.mounts.length > 0)
+      rows.set(bindingRows(graph, scope, controls))
+      // Everything else the component created — derived values, plain
+      // effects, its own signals — scored the node-level way, for the reader
+      // who wants it. The live control values are the workbench's, not the
+      // component's, so they are left out.
+      others.set(
+        computeReactiveCoverage(
+          graph.nodes.filter((n) => members.has(n.id) && n.binding === undefined && !scope.props.has(n.id)),
+        ),
+      )
+      insights.set(shape.sample(members))
+    })
     paint()
   }
 

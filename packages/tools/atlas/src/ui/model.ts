@@ -866,7 +866,7 @@ export function createModel(
           first = false
           return
         }
-        untrack(() => remountBump.set(remountBump.peek() + 1))
+        untrack(() => remountBump.update((n) => n + 1))
       }),
     )
     const id = _rdNodeId(watch)
