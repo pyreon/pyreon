@@ -26,9 +26,18 @@ name: Native Device Build
 #     emit regression is caught on the PR, not the next morning.
 #   - on a PR carrying the `native-device` label — the manual opt-in for
 #     changes OUTSIDE the native paths that a maintainer still wants
-#     device-proven (e.g. a compiler-adjacent refactor).
+#     device-proven (e.g. a compiler-adjacent refactor). The label is read
+#     on every push; adding it does NOT start a run by itself (see `on:`).
+#     To prove the current commit at once, dispatch this workflow on the
+#     PR branch: `gh workflow run native-device.yml --ref <branch>`. Its
+#     check runs land on the same head SHA and replace the skipped ones.
 #   - on `workflow_dispatch` (manual) and the nightly schedule (drift
 #     check against main) — both unconditional.
+#   - on a PR the classifier selected, only for apps whose native INPUT
+#     fingerprint moved between base and head (the `fingerprint` job).
+#   - in the merge queue (`merge_group`) both lanes report SKIPPED: the PR
+#     already ran them, and a 60-minute macOS lane at the head of the queue
+#     would hold every PR queued behind it. The nightly run re-proves main.
 #
 # ## Status + promotion protocol
 #
@@ -51,8 +60,24 @@ on:
     # filtered-out PR, so branch protection waits forever). Path scoping
     # lives in the `changes` job below (job-level skip = success).
     # `opened`/`reopened` are included so a FRESH native PR gets its
-    # device run without waiting for a push or a label.
-    types: [opened, reopened, synchronize, labeled]
+    # device run without waiting for a push.
+    #
+    # NO `labeled` — deliberately (2026-11-10). Every label event created a
+    # new run on the SAME SHA; with `cancel-in-progress` it cancelled the
+    # in-flight device build and, on a native PR, rebuilt it from scratch.
+    # The labels that actually arrive are `skip-changeset` and
+    # `skip-diagnose-catalog`, which mean nothing here. Measured
+    # 2026-11-09/10: 19 same-SHA reruns = 1,086 macOS + 565 Linux runner-min
+    # on a 5-macOS / 20-total org pool. Without `labeled` there is also no
+    # label-laundering path (a skipped latest run hiding a red one). The
+    # `native-device` label is still honoured on every push, and a dispatch
+    # proves the current commit immediately (see the header).
+    types: [opened, reopened, synchronize]
+  # Merge queue: the device lanes report skipped there (see the header), but
+  # the run must exist or the queue waits for both required contexts forever.
+  # A `merge_group` event fires only when a merge-queue rule is enabled on
+  # the target branch, so this trigger is inert until then.
+  merge_group:
   schedule:
     # 47 past 05 UTC — offset from native-validate.yml's 05:23 so the two
     # native workflows don't queue against each other.
@@ -78,6 +103,10 @@ jobs:
   # must never silently disable the gate).
   changes:
     name: Changes (decide native)
+    # Not in the merge queue: both lanes skip there unconditionally. Their
+    # own `if:` names the event too, so the skip never depends on how a
+    # skipped `needs` combines with the `failure()` arm.
+    if: github.event_name != 'merge_group'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
@@ -130,30 +159,121 @@ jobs:
             echo "native-device label → every lane"
           fi
 
+  # ── Native inputs fingerprint (narrow by what the lanes BUILD) ───────
+  # `changes` decides from PATHS and must over-approximate: a package with a
+  # `native-plugin` export drags its whole import closure (core, reactivity,
+  # router…) and `bun.lock` into the native surface. Measured 2026-11-09/10:
+  # 31 of 56 native-selected PRs got there ONLY that way and used ~74% of the
+  # device-lane minutes. This job builds what the lanes would build — every
+  # gated app's own `scripts/build.sh` emit, at the PR head and at its base —
+  # and hashes it together with the native runtime/router sources, co-located
+  # native sources, the shared native examples, this workflow, the scripts it
+  # names, and the native workspaces' lockfile closure
+  # (`scripts/native-inputs-fingerprint.ts` has the full input contract).
+  # Only apps whose fingerprint differs keep their lane.
+  #
+  # FAIL-CLOSED: if any step fails, times out or the base cannot be built,
+  # the outputs stay EMPTY and the lanes fall back to the `changes` selection.
+  # Only a computed `none` skips a lane. The `native-device` label and every
+  # non-PR event bypass this job. The nightly schedule on main always builds
+  # every app — the backstop for inputs outside the fingerprint (runner
+  # image, Xcode, Homebrew xcodegen, emulator images).
+  fingerprint:
+    name: Native inputs fingerprint
+    needs: changes
+    if: >-
+      github.event_name == 'pull_request' &&
+      needs.changes.result == 'success' &&
+      needs.changes.outputs.native == 'true' &&
+      !contains(github.event.pull_request.labels.*.name, 'native-device')
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    # A failure here only means "could not narrow": the lanes run. It must not
+    # turn the PR's run red for a check that is not a gate.
+    continue-on-error: true
+    permissions:
+      contents: read
+    outputs:
+      ios-apps: ${{ steps.compare.outputs.ios-apps }}
+      android-apps: ${{ steps.compare.outputs.android-apps }}
+    steps:
+      # The PR merge commit and its first parent, the base tip it was merged
+      # onto — the same pair `changes` diffs.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 2
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: .bun-version
+      - name: Restore source-hashed lib/ (read-only)
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            packages/*/*/lib
+            .bootstrap-cache.json
+          key: bootstrap-ubuntu-${{ hashFiles('packages/*/*/src/**', 'packages/*/*/package.json', 'packages/*/*/tsconfig.json', 'tsconfig.json', 'scripts/bootstrap.ts', 'bun.lock') }}
+          restore-keys: |
+            bootstrap-ubuntu-
+      - name: Fingerprint the PR (head)
+        run: |
+          set -euo pipefail
+          PYREON_BOOTSTRAP_SKIP=1 bun install --frozen-lockfile
+          bun scripts/bootstrap.ts
+          bun scripts/native-inputs-fingerprint.ts --emit > "$RUNNER_TEMP/head.json"
+      - name: Fingerprint the base
+        run: |
+          set -euo pipefail
+          BASE="$RUNNER_TEMP/base"
+          git worktree add --detach "$BASE" HEAD^1
+          (cd "$BASE" && PYREON_BOOTSTRAP_SKIP=1 bun install --frozen-lockfile)
+          # Seed the base with the head's built lib/ and its content-hash
+          # manifest: bootstrap.ts rebuilds exactly the packages whose source
+          # (or bun.lock) differs, so the base is built from base sources.
+          for lib in packages/*/*/lib; do
+            if [ -d "$BASE/$(dirname "$lib")" ]; then cp -a "$lib" "$BASE/$lib"; fi
+          done
+          cp .bootstrap-cache.json "$BASE/"
+          (cd "$BASE" && bun scripts/bootstrap.ts)
+          # The head's script fingerprints the base tree, so both sides use one
+          # definition; the script hashes each tree's OWN copy of itself and of
+          # this workflow, so editing either still selects every lane.
+          bun scripts/native-inputs-fingerprint.ts --root="$BASE" --emit > "$RUNNER_TEMP/base.json"
+      - name: Compare
+        id: compare
+        env:
+          IOS: ${{ needs.changes.outputs.ios-apps }}
+          ANDROID: ${{ needs.changes.outputs.android-apps }}
+        run: |
+          set -euo pipefail
+          bun scripts/native-inputs-fingerprint.ts --compare "$RUNNER_TEMP/base.json" "$RUNNER_TEMP/head.json" \
+            --ios="${IOS:-all}" --android="${ANDROID:-all}" >> "$GITHUB_OUTPUT"
+
   ios-build:
     # Runs when: non-PR event (nightly / dispatch) · the PR touches native
     # paths (`changes` job) · the PR carries the `native-device` label
     # (manual opt-in for path-external changes).
-    # The path arm (native==true) fires on EVERY
-    # PR action INCLUDING unrelated-label events — deliberately: a job-
-    # level skip reports SUCCESS to branch protection, so if an unrelated
-    # `labeled` event skipped the builds on a native-path PR, a RED device
-    # run could be LAUNDERED into a skipped-green latest check by adding
-    # any label. Re-running the (free, cancel-in-progress-deduped) matrix
-    # on a rare label addition is the safe side of that trade. The label
-    # arms below are for path-EXTERNAL changes only.
-    # The `(failure() && …)` arm is the fail-closed guard from ci.yml's
-    # anti-pattern entry: a crashed `changes` job must RUN the gate, not
-    # skip it (a skipped required check reports success).
-    needs: changes
+    # The workflow no longer triggers on `labeled`, so every PR run is a
+    # push/open/reopen of its head and the path arm decides; there is no
+    # label event that could replace a red run with a skipped one.
+    # Fail-closed arms: a `changes` job that did not succeed RUNS the gate (a
+    # skipped required check reports success). `fingerprint` narrows only by
+    # an explicit `none`: skipped, failed or timed out, its outputs are empty
+    # and the `changes` selection stands. `!cancelled()` rather than
+    # `success()`, because `fingerprint` is legitimately skipped on non-PR
+    # runs and non-native PRs, and a skipped `needs` makes `success()` false.
+    # The leading `merge_group` exclusion skips the lane in the merge queue
+    # (see the header); it reports `skipped`, which the queue accepts.
+    needs: [changes, fingerprint]
     if: >-
-      (success() && (
+      github.event_name != 'merge_group' && !cancelled() && (
         github.event_name != 'pull_request' ||
-        (needs.changes.outputs.native == 'true' && needs.changes.outputs.ios-apps != 'none') ||
-        (github.event.action == 'labeled' && github.event.label.name == 'native-device') ||
-        (github.event.action != 'labeled' && contains(github.event.pull_request.labels.*.name, 'native-device'))
-      )) ||
-      (failure() && needs.changes.result != 'success')
+        needs.changes.result != 'success' ||
+        contains(github.event.pull_request.labels.*.name, 'native-device') ||
+        (needs.changes.outputs.native == 'true' &&
+         needs.changes.outputs.ios-apps != 'none' &&
+         needs.fingerprint.outputs.ios-apps != 'none')
+      )
     name: iOS — xcodebuild (Simulator SDK)
     # ONE runner builds and UITests the example apps, sequentially — only the
     # apps the change can reach (`IOS_APPS`, from the `changes` job); every app
@@ -220,7 +340,7 @@ jobs:
     # Which apps this run tests (see the `changes` job). EMPTY → `all`,
     # so a decide that never produced a value cannot shrink the lanes.
     env:
-      IOS_APPS: ${{ needs.changes.outputs.ios-apps || 'all' }}
+      IOS_APPS: ${{ needs.fingerprint.outputs.ios-apps || needs.changes.outputs.ios-apps || 'all' }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -707,15 +827,16 @@ jobs:
 
   android-build:
     # Same gate as ios-build — see the comment there.
-    needs: changes
+    needs: [changes, fingerprint]
     if: >-
-      (success() && (
+      github.event_name != 'merge_group' && !cancelled() && (
         github.event_name != 'pull_request' ||
-        (needs.changes.outputs.native == 'true' && needs.changes.outputs.android-apps != 'none') ||
-        (github.event.action == 'labeled' && github.event.label.name == 'native-device') ||
-        (github.event.action != 'labeled' && contains(github.event.pull_request.labels.*.name, 'native-device'))
-      )) ||
-      (failure() && needs.changes.result != 'success')
+        needs.changes.result != 'success' ||
+        contains(github.event.pull_request.labels.*.name, 'native-device') ||
+        (needs.changes.outputs.native == 'true' &&
+         needs.changes.outputs.android-apps != 'none' &&
+         needs.fingerprint.outputs.android-apps != 'none')
+      )
     name: Android — gradlew assembleDebug
     runs-on: ubuntu-latest
     # 60, not 40: the fetch-arc run data showed 40 is AT the wire —
@@ -730,7 +851,7 @@ jobs:
     # Which apps this run tests (see the `changes` job). EMPTY → `all`,
     # so a decide that never produced a value cannot shrink the lanes.
     env:
-      ANDROID_APPS: ${{ needs.changes.outputs.android-apps || 'all' }}
+      ANDROID_APPS: ${{ needs.fingerprint.outputs.android-apps || needs.changes.outputs.android-apps || 'all' }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -1282,101 +1403,6 @@ jobs:
           retention-days: 14
           if-no-files-found: ignore
 
-  # ── Nightly-failure visibility (sticky issue) ──
-  #
-  # The device gate's NIGHTLY schedule has no human watching the Actions
-  # tab (the per-PR runs are now REQUIRED checks, but a nightly drift
-  # failure on main gates nothing) — the gate was red for 13 consecutive
-  # nights (2026-05-29 → 2026-06-10) before anyone noticed, because
-  # nothing surfaced the failures anywhere a maintainer looks. This job closes that visibility hole: a FAILED
-  # scheduled run creates (or comments on) ONE sticky issue titled
-  # below; a SUCCESSFUL scheduled run closes it. Label-gated PR runs
-  # are excluded — their failures are visible on the PR itself, and an
-  # author iterating on red device CI shouldn't spam the issue.
-  #
-  # Sticky-issue pattern (find-by-title + comment-in-place) mirrors
-  # perf.yml / leak-sweep.yml's sticky PR comments; `always()` (not
-  # bare `failure()`) is required so the job ALSO runs on success to
-  # auto-close the issue.
-  notify-nightly:
-    name: Nightly status → sticky issue
-    if: always() && github.event_name == 'schedule'
-    needs: [ios-build, android-build]
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    permissions:
-      issues: write
-    steps:
-      # `retries: 3` for transient GitHub API 5xx — but DELIBERATELY NOT
-      # wrapped in a swallow-all `catch` like the advisory PR-comment steps
-      # in bundle-size-diff / perf / leak-sweep. There, the comment REPORTS
-      # alongside a real gate, so a failed post must not turn the check red.
-      # Here the notification IS the deliverable: if the sticky issue can't
-      # be written, a red nightly would vanish silently — the catalogued
-      # dead-gate class. So this one still fails loudly after retries.
-      - name: Create / update / close the sticky failure issue
-        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
-        with:
-          retries: 3
-          script: |
-            const title = '[native-device] Nightly device build is RED'
-            // ANY non-success result is red: a job killed by `timeout-minutes`
-            // reports `cancelled`, not `failure`, so a chronically-timing-out
-            // nightly read as green here — and AUTO-CLOSED the sticky issue.
-            const results = ['${{ needs.ios-build.result }}', '${{ needs.android-build.result }}']
-            const failed = results.some((r) => r !== 'success')
-            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`
-            const { data: issues } = await github.rest.issues.listForRepo({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              state: 'open',
-              creator: 'github-actions[bot]',
-              per_page: 100,
-            })
-            const sticky = issues.find((i) => i.title === title)
-            if (failed) {
-              const line = [
-                `Nightly run failed: ${runUrl}`,
-                `- iOS (xcodebuild + XCUITest): **${{ needs.ios-build.result }}**`,
-                `- Android (gradle + Compose test): **${{ needs.android-build.result }}**`,
-              ].join('\n')
-              if (sticky) {
-                await github.rest.issues.createComment({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  issue_number: sticky.number,
-                  body: line,
-                })
-              } else {
-                await github.rest.issues.create({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  title,
-                  body: [
-                    'The nightly native-device build (real xcodebuild iOS Simulator +',
-                    'real gradle Android Emulator against the PMTC-emitted examples)',
-                    'is failing. This issue is managed by the workflow: it gets one',
-                    'comment per failed nightly and AUTO-CLOSES on the next green run.',
-                    '',
-                    'Streak gate: `bun scripts/check-native-device-streak.ts` needs 14',
-                    'consecutive green nightlies before native-device can be promoted',
-                    'to a required check — every red night resets that clock.',
-                    '',
-                    line,
-                  ].join('\n'),
-                })
-              }
-            } else if (sticky) {
-              await github.rest.issues.createComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: sticky.number,
-                body: `Nightly run is green again: ${runUrl} — auto-closing.`,
-              })
-              await github.rest.issues.update({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: sticky.number,
-                state: 'closed',
-              })
-            }
+  # The nightly sticky-issue notifier lives in native-device-nightly-status.yml
+  # (workflow_run): as a job here it put a "Nightly status → sticky issue" row,
+  # skipped or cancelled, on every pull request that ran this workflow.

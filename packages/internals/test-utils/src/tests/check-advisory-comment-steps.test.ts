@@ -105,7 +105,7 @@ describe('checkWorkflowText — notifier exemption', () => {
           script: |
             await github.rest.issues.create({ owner, repo, title, body })
 `
-    expect(checkWorkflowText('native-device.yml', notifier)).toEqual([])
+    expect(checkWorkflowText('native-device-nightly-status.yml', notifier)).toEqual([])
   })
 
   it('still flags a notifier with no retries at all', () => {
@@ -116,11 +116,11 @@ describe('checkWorkflowText — notifier exemption', () => {
           script: |
             await github.rest.issues.create({ owner, repo, title, body })
 `
-    expect(checkWorkflowText('native-device.yml', noRetries)[0]?.missing).toEqual(['retries'])
+    expect(checkWorkflowText('native-device-nightly-status.yml', noRetries)[0]?.missing).toEqual(['retries'])
   })
 
   it('the exemption list is explicit and minimal', () => {
-    expect([...NOTIFIER_WORKFLOWS]).toEqual(['native-device.yml', 'published-state.yml', 'zero-freshness.yml'])
+    expect([...NOTIFIER_WORKFLOWS]).toEqual(['native-device-nightly-status.yml', 'published-state.yml', 'zero-freshness.yml'])
   })
 })
 

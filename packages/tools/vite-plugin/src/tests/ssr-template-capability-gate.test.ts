@@ -36,7 +36,11 @@ import pyreonPlugin, { type PyreonPluginOptions } from '../index'
 type ConfigHook = (u: Record<string, unknown>, e: { command: string }) => unknown
 type Ctx = {
   warn: (m: string) => void
-  resolve: (id: string, importer?: string, o?: { skipSelf: boolean }) => Promise<{ id: string } | null>
+  resolve: (
+    id: string,
+    importer?: string,
+    o?: { skipSelf: boolean },
+  ) => Promise<{ id: string } | null>
 }
 type TransformHook = (
   this: Ctx,
@@ -96,9 +100,7 @@ describe('the SSR fast path is gated on the injected import RESOLVING', () => {
     // exposes a transitive dep to app source, so the injected bare import
     // is unresolvable and SSR dies at request time.
     const { code } = await ssrTransform({}, false)
-    expect(code ?? '', 'no import may be injected').not.toContain(
-      "from \"@pyreon/runtime-server\"",
-    )
+    expect(code ?? '', 'no import may be injected').not.toContain('from "@pyreon/runtime-server"')
   })
 
   it('warns in DEV when it degrades, so the loss is visible', async () => {
@@ -110,6 +112,21 @@ describe('the SSR fast path is gated on the injected import RESOLVING', () => {
     expect(msg, 'and it names what to install').toContain('@pyreon/runtime-server')
   })
 
+  it('warns in a production BUILD too — the slow fallback must not ship silently', async () => {
+    // `vite build` is where the h() fallback costs real request time, and
+    // the build log is the only place a deployer would see it.
+    const { warnings } = await ssrTransform({}, false, 'build')
+    const msg = warnings.join('\n')
+    expect(msg).toContain('[Pyreon] SSR compile-to-string fast path is OFF')
+    expect(msg, 'and it names the fix').toContain('@pyreon/runtime-server')
+    expect(msg, 'and the explicit opt-out').toContain('ssrTemplate: false')
+  })
+
+  it('stays silent when it resolves, or when the opt-out is explicit', async () => {
+    expect((await ssrTransform({}, true, 'build')).warnings).toEqual([])
+    expect((await ssrTransform({ ssrTemplate: false }, false, 'build')).warnings).toEqual([])
+  })
+
   it('an EXPLICIT true bypasses the probe — the caller owns resolution', async () => {
     // A gate that overrode an explicit opt-in would make the option a lie.
     const { code } = await ssrTransform({ ssrTemplate: true }, false)
@@ -118,7 +135,7 @@ describe('the SSR fast path is gated on the injected import RESOLVING', () => {
 
   it('an EXPLICIT false stays off even when it WOULD resolve', async () => {
     const { code } = await ssrTransform({ ssrTemplate: false }, true)
-    expect(code ?? '').not.toContain("from \"@pyreon/runtime-server\"")
+    expect(code ?? '').not.toContain('from "@pyreon/runtime-server"')
   })
 
   it('a CLIENT transform is unaffected by the gate', async () => {
@@ -235,6 +252,9 @@ describe('the delete sweep clears entries pointing AT the deleted file', () => {
     )
 
     const watch = plugin.watchChange as unknown as (i: string, e: { event: string }) => void
-    expect(() => watch.call(plugin, target, { event: 'delete' }), 'the sweep must not throw').not.toThrow()
+    expect(
+      () => watch.call(plugin, target, { event: 'delete' }),
+      'the sweep must not throw',
+    ).not.toThrow()
   })
 })

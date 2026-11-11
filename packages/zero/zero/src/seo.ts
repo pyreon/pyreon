@@ -1,6 +1,7 @@
 import { existsSync } from 'node:fs'
 import { readFile, rm, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
+import { escapeJsonForScript } from '@pyreon/core'
 import type { Middleware } from '@pyreon/server'
 import type { Plugin } from 'vite'
 import { generateRssFeed } from './seo-rss'
@@ -528,24 +529,6 @@ export type JsonLdType =
  *   })],
  * })
  */
-/**
- * Escape a JSON string for safe embedding inside an inline `<script>` body.
- * `JSON.stringify` does NOT escape `<`, so a value containing `</script>` (or
- * `<!--` / `<script`) breaks out of the element — a reflected/stored XSS when
- * the JSON-LD is built from user/CMS content (product names, review bodies,
- * article headlines — the normal JSON-LD case). Escaping `<` → `<` makes `</script`, `<!--` and `<script` all unformable; U+2028 / U+2029 are valid
- * in JSON strings but are literal line terminators inside a script (a
- * SyntaxError). Every escaped form parses back to the original under
- * `JSON.parse`, so the structured data is byte-identical — only its serialized
- * form is neutralized. Same recipe as `@pyreon/router`'s `stringifyLoaderData`.
- */
-function escapeJsonForScript(json: string): string {
-  return json
-    .replace(/</g, '\\u003C')
-    .replace(/\u2028/g, '\\u2028')
-    .replace(/\u2029/g, '\\u2029')
-}
-
 export function jsonLd(data: Record<string, unknown>): string {
   const ld = {
     '@context': 'https://schema.org',

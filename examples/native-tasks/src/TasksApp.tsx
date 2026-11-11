@@ -47,7 +47,7 @@
 // - **Store computeds/methods in the setup body** — store v1 lowers
 //   signals; derived state lives in component-level `computed` for now.
 
-import { QueryClient, QueryClientProvider, useMutation, useQuery, useStream } from '@pyreon/query'
+import { QueryClient, QueryClientProvider, useInfiniteQuery, useMutation, useQuery, useStream } from '@pyreon/query'
 import { model } from '@pyreon/state-tree'
 import { filter as filter_rx, map } from '@pyreon/rx'
 import { SizedMap } from '@pyreon/sized-map'
@@ -119,7 +119,7 @@ import type {
   ZoomWindow,
 } from '@pyreon/charts'
 import { useForm } from '@pyreon/form'
-import { fileFromUri, useFetch, useCrashReporter } from '@pyreon/hooks'
+import { fileFromUri, useFetch, useCrashReporter, useKeyboard, useLatest, useMediaQuery } from '@pyreon/hooks'
 import { defineStore } from '@pyreon/store'
 import { ColorModeProvider, For, Show, Suspense, ErrorBoundary, onMount, useColorMode } from '@pyreon/core'
 import {
@@ -152,6 +152,16 @@ type Quote = { id: number; text: string; author: string }
 interface StreamTick {
   n: number
   resumed: string
+}
+
+// scripts/stream-server.ts /pages: three pages of two items; the last has no `nextCursor`.
+interface FeedItem {
+  id: number
+  title: string
+}
+interface FeedPage {
+  items: FeedItem[]
+  nextCursor: string | undefined
 }
 
 // scripts/stream-server.ts: /sse drops the connection half-way through event 3
@@ -334,8 +344,10 @@ function TasksPage() {
           coordinates and silently does nothing. The page root cannot be a
           <Scroll>: the task list is a <For> (LazyColumn), which the compiler
           refuses to nest inside a verticalScroll Column (infinite-height
-          measure). Two columns of six/five keep every button on-screen on
-          both targets with no scrolling at all. */}
+          measure). Two columns of ten keep every button on-screen on both
+          targets with no scrolling at all; a column of eleven already
+          pushes `tasks-logout` past the fold, so add a new button to the
+          SHORTER column. */}
       <Inline gap={2}>
         <Stack gap={2}>
           <Button onPress={addTask} data-testid="new-task-add">
@@ -364,6 +376,9 @@ function TasksPage() {
           </Button>
           <Button onPress={() => navigate('/select')} data-testid="tasks-select">
             Select
+          </Button>
+          <Button onPress={() => navigate('/hooks')} data-testid="tasks-hooks">
+            Hooks
           </Button>
         </Stack>
         <Stack gap={2}>
@@ -792,6 +807,53 @@ function StreamsScreen() {
         Start rows
       </Button>
       <Button onPress={() => navigate('/tasks')} data-testid="streams-back">
+        Back to tasks
+      </Button>
+    </Stack>
+  )
+}
+
+// Four hooks that lower natively, each observable from the device:
+//  - useInfiniteQuery against the loopback server's /pages (three pages, the last without a cursor);
+//  - useLatest, a box whose write must NOT re-render (the text shows the value written one tap ago);
+//  - useMediaQuery('(prefers-color-scheme: dark)'), false on a default-light simulator/emulator;
+//  - useKeyboard('k'), bound to a hardware key (Android drives the press; the simulator cannot).
+function HooksScreen() {
+  const navigate = useNavigate()
+  const feed = useInfiniteQuery<FeedPage>(() => ({
+    queryKey: ['hooks-feed'],
+    queryFn: ({ pageParam }) => fetch(`http://127.0.0.1:8791/pages?cursor=${pageParam}`).then((r) => r.json()),
+    initialPageParam: '0',
+    getNextPageParam: (last) => last.nextCursor,
+  }))
+  const taps = signal(0)
+  const last = useLatest(0)
+  const dark = useMediaQuery('(prefers-color-scheme: dark)')
+  let keyHits = state(0)
+  useKeyboard('k', () => {
+    keyHits = keyHits + 1
+  })
+  return (
+    <Stack gap={3} padding={4} data-testid="hooks-page">
+      <Text data-testid="hooks-pages">{`${feed.data()?.pages.length ?? 0}`}</Text>
+      <Text data-testid="hooks-more">{`${feed.hasNextPage()}`}</Text>
+      <Button onPress={() => feed.fetchNextPage()} data-testid="hooks-fetch-more">
+        More
+      </Button>
+      <Text data-testid="hooks-taps">{() => `${taps()}`}</Text>
+      <Text data-testid="hooks-latest">{`${last.current}`}</Text>
+      <Button
+        onPress={() => {
+          last.current = taps()
+          taps.set(taps() + 1)
+        }}
+        data-testid="hooks-tap"
+      >
+        Tap
+      </Button>
+      <Text data-testid="hooks-dark">{dark() ? 'dark' : 'light'}</Text>
+      <Text data-testid="hooks-key">{String(keyHits)}</Text>
+      <Button onPress={() => navigate('/tasks')} data-testid="hooks-back">
         Back to tasks
       </Button>
     </Stack>
@@ -2268,6 +2330,11 @@ export function TasksApp() {
       {
         path: '/streams',
         component: StreamsScreen,
+        beforeEnter: () => useApp().store.isAuthed(),
+      },
+      {
+        path: '/hooks',
+        component: HooksScreen,
         beforeEnter: () => useApp().store.isAuthed(),
       },
       {

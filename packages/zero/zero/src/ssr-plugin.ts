@@ -53,7 +53,7 @@
  */
 
 import { existsSync } from 'node:fs'
-import { copyFile, rm } from 'node:fs/promises'
+import { readFile, rm, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import type { BuildOptions, Plugin } from 'vite'
 import { resolveAdapter } from './adapters'
@@ -145,6 +145,8 @@ export function ssrPlugin(userConfig: ZeroConfig = {}): Plugin {
   // option for the filtering rules. Same propagation pattern keeps SSR
   // and SSG modes consistent.
   let userPlugins: readonly Plugin[] = []
+  // The client build's `index.html`, read in `writeBundle` (see there).
+  let builtTemplate: string | undefined
   // Capture inner-build state once at plugin instantiation. The inner
   // build re-loads zero's plugin chain (same as SSG); without this gate
   // the inner plugin instance would re-enter its own closeBundle.
@@ -200,6 +202,26 @@ export function ssrPlugin(userConfig: ZeroConfig = {}): Plugin {
       assetsDir = resolved.build.assetsDir
       resolvedBase = resolved.base
       userPlugins = resolved.plugins as readonly Plugin[]
+    },
+
+    // Snapshot the production SSR template the moment the client build has
+    // written it. `closeBundle` is too late to read `dist/index.html`: in a
+    // hybrid build the SSG plugin's closeBundle runs first and writes the
+    // PRERENDERED `/` page to that same file, which has no
+    // `<!--pyreon-app-->` placeholder left — every adapter then staged that
+    // page as `template.html` and the server refused to boot. Every
+    // `writeBundle` runs before any `closeBundle`, so this read sees exactly
+    // what Vite emitted, whatever a later post-step writes to `dist/`.
+    async writeBundle(outputOptions) {
+      if (postStepSkipReason() !== null) return
+      try {
+        builtTemplate = await readFile(
+          join(outputOptions.dir ?? distDir, 'index.html'),
+          'utf-8',
+        )
+      } catch {
+        builtTemplate = undefined
+      }
     },
 
     async closeBundle() {
@@ -360,9 +382,12 @@ export function ssrPlugin(userConfig: ZeroConfig = {}): Plugin {
       // adapter.build so the staging copies it along. Non-fatal on failure
       // (the handler falls back to its defaults).
       try {
-        await copyFile(indexHtmlPath, join(ssrOutDir, 'template.html'))
+        // The `writeBundle` snapshot, never the file as it is now — see there.
+        const template = builtTemplate ?? (await readFile(indexHtmlPath, 'utf-8'))
+        builtTemplate = undefined
+        await writeFile(join(ssrOutDir, 'template.html'), template)
         if (edgeServerEntry !== undefined) {
-          await copyFile(indexHtmlPath, join(edgeOutDir, 'template.html'))
+          await writeFile(join(edgeOutDir, 'template.html'), template)
         }
       } catch (templateError) {
         // oxlint-disable-next-line no-console
