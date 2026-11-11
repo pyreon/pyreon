@@ -1,4 +1,5 @@
 import { _enterCleanupFrame, _exitCleanupFrame } from './effect'
+import { _rdSetOwnerReader } from './reactive-devtools'
 export class EffectScope {
   // A registered effect, or a BARE disposer function: render bindings register
   // their dispose function directly instead of wrapping it in `{ dispose }`
@@ -153,6 +154,10 @@ export function getCurrentScope(): EffectScope | null {
 export function setCurrentScope(scope: EffectScope | null): void {
   _sc.s = scope
 }
+
+// Dev only: the reactive devtools record which scope created each node (a
+// component's owned signals / computeds / effects) through this reader.
+if (process.env.NODE_ENV !== 'production') _rdSetOwnerReader(getCurrentScope)
 
 export function effectScope(): EffectScope {
   return new EffectScope()

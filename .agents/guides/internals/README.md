@@ -77,7 +77,9 @@ Live Program Inlay Hints (LPIH) is the runtime companion: fire and subscriber co
   - Health: `describeReactiveGraph` summary and insights (`orphan-signal`, `high-fanout`, `deep-chain`).
   - Activity: `getReactiveFires` plus the cause chain of the latest fire.
   - Inspect: a DOM→signal picker (`$p.pick()`). `_bindText` tags `textNode → _rdNodeId(source)` in a dev-only `WeakMap`; `nodesForElement(el)` (`@pyreon/runtime-dom`) reads it. Text bindings only.
+- Inspector reads, computed on request (#4446): `getComponentProps(id)` previews the live props object through `_rdPreview`, the graph's bounded preview, reading without tracking. `reactive.nodesForComponent(id)` reads `_rdScopeNodes(scope)`: `_rdRegister` records, per creating `EffectScope`, the ids of the nodes made while it was current, through a reader `scope.ts` installs in dev, since `reactive-devtools.ts` stays import-free. The registry keeps `id → { scope, props }` (`_devInspectable`, set right after `registerComponent`) and `unregisterComponent` deletes it, so nothing outlives the component. Locked by `devtools-inspect.test.tsx` (including a GC retention check), its `.browser` twin and `reactive-devtools-scope-nodes.test.ts`.
 - Tests: `binding-registry.test.ts`, `reactive-overlay.test.ts`, `e2e/reactive-overlay.spec.ts`.
+- Registration runs on BOTH walks. `hydrateComponent` takes its id and parent from `_devComponentIdentity` (`mount.ts`), which shares `mountComponent`'s owner-chain map, so a component mounted later under a hydrated one gets the right parent; `el` is the first element in the range the component claimed; its cleanup unregisters. Async components register on both paths. Locked by `hydrate-devtools-register.test.tsx` and its `.browser` twin.
 
 ### Dev error printer (`pyreon({ devErrorPrinter })`)
 

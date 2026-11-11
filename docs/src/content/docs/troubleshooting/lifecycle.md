@@ -346,3 +346,9 @@ Svelte-compat's `writable.set` called every subscriber with the CURRENT value; a
 Solid-compat's `mapArray` re-ran `mapFn` for the whole list, so per-item state and effects were rebuilt (and never disposed) on each change. Map by reference, reuse the kept items' results, give each mapping its own root and dispose it when the item leaves. Test: `solid-compat/src/tests/memo-setter-maparray-parity.test.ts`.
 
 ---
+
+### [FIXED, 2026-11] A binding that mounts content must expect its OWN mount to re-run it.
+
+A ref callback or a nested boundary that writes a signal the enclosing accessor read (kinetic's `appear` ref moves the stage that `<Show when={shouldMount}>` reads) re-runs that accessor's binding synchronously while its first mount is still on the stack. `mountAccessorChild` classified the value again and built a second `mountReactive`, and the polymorphic text core mounted the subtree again and then overwrote the nested run's cleanup, so the content appeared twice and one copy had no cleanup. **Rule: a dispatcher marks itself handed-off BEFORE building the machinery that mounts, and a mount that can be superseded checks a generation counter after it returns and discards its own result (as `mountReactive` already did).** Locked by `runtime-dom/src/tests/reentrant-accessor-mount.test.ts`.
+
+---

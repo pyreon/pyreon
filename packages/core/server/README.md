@@ -109,6 +109,8 @@ hydrateIslands({
 | `'interaction(<events>)'` | On first user interaction (default `focus` / `click` / `pointerenter` / `touchstart`); first click is **replayed** post-hydration |
 | `'never'` | Never hydrate — SSR-only zero-JS surface |
 
+An island's `<pyreon-island>` marker carries `data-island-state` (`awaiting-interaction` / `hydrating`) while it waits or hydrates, then `data-island-hydrated` once hydration has finished. A failed island carries `data-island-error` instead. Tests and devtools can wait for `[data-island-hydrated]`.
+
 ### Prefetch hints
 
 ```ts
