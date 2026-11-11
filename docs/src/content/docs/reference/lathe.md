@@ -61,7 +61,7 @@ See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multipla
 A full, end-to-end usage of the package:
 
 ```tsx
-$ npx lathe generate
+$ npx @pyreon/lathe generate
 lathe generate · 1 project
 
   ✓ Bookshelf  1.2.0 · openapi.yaml · 4 models · 4 operations · multiplatform · wrote 6 of 29 files

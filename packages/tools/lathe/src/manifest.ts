@@ -53,7 +53,7 @@ export default defineManifest({
     "Author control without editing the spec: `filters` (include/exclude matchers by tag — every tag, not only the first — path glob, operationId glob and method; models only the dropped operations used go with them, and a matcher that selects NOTHING is an error with a did-you-mean), `patches` (RFC 6902 add/replace/remove at an RFC 6901 pointer, applied before the spec is read so the fix survives `lathe pull`; a target that moved FAILS the run), `operations` (per operation: hook name or `false`, `responseValidation`, `pagination`), `naming` (operation/model/file/hook functions receiving Lathe's own choice as `default`, every result validated and collision-checked) and `format` (the project formatter, applied before write AND before `check` compares)",
     "Atlas scenarios generated from the spec — one per enum value on a response field, so a variant axis the API declares is one the workbench actually exercises, and it regenerates when the API changes instead of drifting",
   ],
-  longExample: `$ npx lathe generate
+  longExample: `$ npx @pyreon/lathe generate
 lathe generate · 1 project
 
   ✓ Bookshelf  1.2.0 · openapi.yaml · 4 models · 4 operations · multiplatform · wrote 6 of 29 files
