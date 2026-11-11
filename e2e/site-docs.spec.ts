@@ -31,9 +31,7 @@ async function trackRemovals(page: Page): Promise<void> {
           if (n.nodeType !== 1 || (n as Element).classList.contains('pyreon-example__loading')) continue
           // Inside a subtree already removed, or a live example's own client-rendered DOM.
           if (!target.isConnected || target.closest?.('.pyreon-example__surface')) continue
-          // A product demo island remounts on hydration (pyreon/pyreon#4434, also on /products/*).
           const island = (target.closest?.('pyreon-island') as HTMLElement | null)?.dataset.component ?? ''
-          if (/^Demo[A-Z]/.test(island)) continue
           w.__removed.push(`${island ? `[${island}] ` : ''}${target.className} > ${(n as Element).tagName}`)
         }
       }

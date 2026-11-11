@@ -1,6 +1,6 @@
 import '../ui-init'
 import type { VNodeChild } from '@pyreon/core'
-import { useContext } from '@pyreon/core'
+import { h, useContext } from '@pyreon/core'
 import { ThemeContext } from '@pyreon/styler'
 import { PyreonUI } from '@pyreon/ui-core'
 import { colorMode } from '../color-mode'
@@ -23,9 +23,10 @@ import { siteTheme } from '../theme'
 export function KitScope(props: { children?: VNodeChild }) {
   const theme = useContext(ThemeContext)()
   if (theme !== undefined && Object.keys(theme).length > 0) return props.children ?? null
-  return (
-    <PyreonUI theme={siteTheme} mode={() => colorMode()}>
-      {props.children}
-    </PyreonUI>
-  )
+  // `h()`, not JSX: the compiler turns `{props.children}` in a component's
+  // children into a reactive accessor, which renders behind hydration markers
+  // the server never wrote (there this component returns the children as
+  // they are), so the island's whole tree was rebuilt instead of adopted
+  // (#4443). Passed as a plain argument, the client tree has the server's shape.
+  return h(PyreonUI, { theme: siteTheme, mode: () => colorMode() }, props.children)
 }
