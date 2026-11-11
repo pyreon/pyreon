@@ -17,7 +17,7 @@
  */
 import type { ComponentFn, Ref, VNode } from '@pyreon/core'
 import { h } from '@pyreon/core'
-import { _rdLabelBinding, computed, isServer, renderEffect, runUntracked } from '@pyreon/reactivity'
+import { _rdNoteTarget, computed, isServer, renderEffect, runUntracked } from '@pyreon/reactivity'
 import { buildProps } from './forward'
 import { type Interpolation, normalizeCSS, resolve } from './resolve'
 import { isDynamic } from './shared'
@@ -565,12 +565,8 @@ const createStyledComponent = (
       let currentClassName = className
 
       const originalRef = finalProps.ref
-      let disposeClass: (() => void) | null = null
       const refWrapper = (node: Element | null) => {
         el = node
-        // The element is known only now: name it on the binding (see below).
-        if (process.env.NODE_ENV !== 'production' && node && disposeClass)
-          _rdLabelBinding(disposeClass, 'class', node, undefined, undefined)
         if (originalRef) {
           // A valid `RefProp` is only ever a function or a `{ current }`
           // object, so the final `else` (truthy ref that is neither) is
@@ -596,7 +592,16 @@ const createStyledComponent = (
         configurable: true,
       })
 
-      disposeClass = renderEffect(() => {
+      renderEffect(() => {
+        // Dev: name this the CLASS binding it is in the reactive graph. Its
+        // first run writes nothing (the ref has not attached yet; the initial
+        // class rides on the props), so no runtime setter reports it and it
+        // read as an anonymous effect — the binding that carries a rocketstyle
+        // component's variant / size / state. Only the first run's frame
+        // records; later runs pay one compare. Noted in the body rather than
+        // labelled through the returned disposer so production keeps no extra
+        // variable per instance.
+        if (process.env.NODE_ENV !== 'production') _rdNoteTarget(isDOM ? (finalTag as string) : el, 'class')
         const newClass = cssClass() // reads computed — O(1), just string
         if (el && newClass !== currentClassName) {
           if (currentClassName) el.classList.remove(currentClassName)
@@ -604,16 +609,6 @@ const createStyledComponent = (
           currentClassName = newClass
         }
       })
-      // Name it in the dev reactive graph as the CLASS binding it is. Its
-      // first run writes nothing (the ref has not attached yet, and the
-      // initial class rides on the props), so the runtime's setters never
-      // see it and it would read as an anonymous `effect` — the one binding
-      // that carries a rocketstyle component's variant / size / state, missing
-      // from every "which bindings updated" view. The element it writes is
-      // named when the ref attaches; `null` drops the creation site, which
-      // would point here rather than at the user's component.
-      if (process.env.NODE_ENV !== 'production')
-        _rdLabelBinding(disposeClass, 'class', isDOM ? (finalTag as string) : null, undefined, null)
     }
 
     return h(

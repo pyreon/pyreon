@@ -99,21 +99,18 @@ function sameItems(value: unknown[], snapshot: unknown[]): boolean {
 }
 
 /**
- * Dev: name a structural binding's graph node — or drop it when its first run
- * tracked nothing. Such a boundary (`() => <b>static</b>`, a `<For>` over a
- * plain array) can never re-run: no source will ever schedule it. Left in the
- * graph it read as a binding that "never fired", permanently, and Reactive
- * Coverage counted it in the denominator — the same dead-binding rule
- * `renderEffect` / `_bind` already follow by returning `_noopDispose`.
+ * Dev: did a structural boundary's FIRST run track nothing? Keyed by the
+ * boundary's own marker comment, which exists before its effect runs, so no
+ * production local is needed: the effect body records the answer on its first
+ * run (`has()` is false only then — the naming step below overwrites the entry
+ * with `false`, so re-runs never record again), and the code after `effect()`
+ * reads it. A boundary that tracked nothing (`() => <b>static</b>`, a `<For>`
+ * over a plain array) can never re-run, so its graph node is dropped instead of
+ * labelled — the dead-binding rule `renderEffect` / `_bind` follow by returning
+ * `_noopDispose`. Left in, it read as a binding that never fired, permanently,
+ * and Reactive Coverage counted it. A WeakMap: an entry dies with its marker.
  */
-function nameStructural(e: object, kind: 'child' | 'list', parent: Node, dead: boolean): void {
-  // Gated here too, not only at the call sites: the declaration survives a
-  // production bundle, and an ungated body would keep both imports with it.
-  if (process.env.NODE_ENV !== 'production') {
-    if (dead) _rdDropBinding(e)
-    else _rdLabelBinding(e, kind, parent, undefined, null)
-  }
-}
+const _structuralDead = /* @__PURE__ */ new WeakMap<Node, boolean>()
 
 /**
  * Mount a reactive node whose content changes over time.
@@ -157,7 +154,6 @@ export function mountReactive(
   // the skip below also compares the elements against this snapshot.
   let lastItems: unknown[] | null = null
 
-  let dead = false
   const e = effect(() => {
     const myGen = ++generation
     // Read the accessor FIRST: the identity check needs the value, and the
@@ -170,8 +166,8 @@ export function mountReactive(
       _releaseRun(first.run)
       first = undefined
     } else value = accessor()
-    // Dev: a first run that tracked nothing is a dead binding (see `nameStructural`).
-    if (process.env.NODE_ENV !== 'production' && myGen === 1) dead = _frameReads()?.length === 0
+    if (process.env.NODE_ENV !== 'production' && !_structuralDead.has(marker))
+      _structuralDead.set(marker, _frameReads()?.length === 0)
 
     // An accessor can re-run and produce the SAME value — `<Show when={() =>
     // sel() !== undefined}>` re-runs on every `sel` change while the verdict
@@ -271,7 +267,11 @@ export function mountReactive(
     }
   })
   // Dev: name this boundary's graph node; its creation site is this file.
-  if (process.env.NODE_ENV !== 'production') nameStructural(e, 'child', parent, dead)
+  if (process.env.NODE_ENV !== 'production') {
+    if (_structuralDead.get(marker) === true) _rdDropBinding(e)
+    else _rdLabelBinding(e, 'child', parent, undefined, null)
+    _structuralDead.set(marker, false)
+  }
 
   return () => {
     e.dispose()
@@ -536,8 +536,6 @@ export function mountKeyedList(
     unkeyedCleanups = cleanups
   }
 
-  let dead = false
-  let firstRun = true
   const e = effect(() => {
     let newList: VNode[]
     if (first !== undefined) {
@@ -546,10 +544,8 @@ export function mountKeyedList(
       _releaseRun(first.run)
       first = undefined
     } else newList = accessor()
-    if (process.env.NODE_ENV !== 'production') {
-      if (firstRun) dead = _frameReads()?.length === 0
-      firstRun = false
-    }
+    if (process.env.NODE_ENV !== 'production' && !_structuralDead.has(startMarker))
+      _structuralDead.set(startMarker, _frameReads()?.length === 0)
     const n = newList.length
     // Same untracking rationale as mountFor — see comment there. Child
     // mounts via mountVNode must not re-track on this effect's run.
@@ -623,7 +619,11 @@ export function mountKeyedList(
     })
   })
   // Dev: name this boundary's graph node; its creation site is this file.
-  if (process.env.NODE_ENV !== 'production') nameStructural(e, 'list', parent, dead)
+  if (process.env.NODE_ENV !== 'production') {
+    if (_structuralDead.get(startMarker) === true) _rdDropBinding(e)
+    else _rdLabelBinding(e, 'list', parent, undefined, null)
+    _structuralDead.set(startMarker, false)
+  }
 
   return () => {
     e.dispose()
@@ -1492,16 +1492,12 @@ export function mountFor<T>(
     currentKeys = newKeys
   }
 
-  let dead = false
-  let firstRun = true
   const e = effect(() => {
     const liveParent = startMarker.parentNode
     if (!liveParent) return
     const items = source()
-    if (process.env.NODE_ENV !== 'production') {
-      if (firstRun) dead = _frameReads()?.length === 0
-      firstRun = false
-    }
+    if (process.env.NODE_ENV !== 'production' && !_structuralDead.has(startMarker))
+      _structuralDead.set(startMarker, _frameReads()?.length === 0)
     const n = items.length
     // Child mounts must NOT re-track on this effect's run (mirrors
     // mountReactive). Otherwise any signal read during a child component's setup
@@ -1574,7 +1570,11 @@ export function mountFor<T>(
     })
   })
   // Dev: name this boundary's graph node; its creation site is this file.
-  if (process.env.NODE_ENV !== 'production') nameStructural(e, 'list', parent, dead)
+  if (process.env.NODE_ENV !== 'production') {
+    if (_structuralDead.get(startMarker) === true) _rdDropBinding(e)
+    else _rdLabelBinding(e, 'list', parent, undefined, null)
+    _structuralDead.set(startMarker, false)
+  }
 
   return () => {
     e.dispose()
