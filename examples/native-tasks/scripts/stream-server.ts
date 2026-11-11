@@ -20,6 +20,8 @@
 //                `name=filename|type|text` for a file, `name=value` for text —
 //                so the screen asserts the server could READ what was sent.
 //   PUT /echo    The raw-body twin of POST /echo.
+//   GET /pages   Cursor pages for the useInfiniteQuery proof: `?cursor=0|1|2`, two
+//                items each, `nextCursor` present on pages 0 and 1, absent on 2.
 //   GET /health  200 — the CI readiness poll.
 //
 // Stateless by design: the response depends only on the request's headers, so
@@ -98,6 +100,13 @@ const server = createServer((req, res) => {
       res.writeHead(200, { 'content-type': 'application/json' })
       res.end(JSON.stringify(reply))
     })
+    return
+  }
+  if (path === '/pages') {
+    const cursor = Number(new URL(req.url ?? '/', 'http://x').searchParams.get('cursor') ?? '0')
+    const items = [0, 1].map((i) => ({ id: cursor * 2 + i + 1, title: `p${cursor}-${i}` }))
+    res.writeHead(200, { 'content-type': 'application/json' })
+    res.end(JSON.stringify(cursor >= 2 ? { items } : { items, nextCursor: String(cursor + 1) }))
     return
   }
   if (path === '/ndjson') {

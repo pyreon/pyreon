@@ -2,7 +2,7 @@
 import { z } from 'zod'
 import * as v from 'valibot'
 import { type } from 'arktype'
-import { s, type Infer } from '../src/v1'
+import { s, type Infer } from '../src/index'
 
 type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends (<T>() => T extends B ? 1 : 2) ? true : false
 type Expect<T extends true> = T

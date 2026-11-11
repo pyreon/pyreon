@@ -27,6 +27,7 @@ vi.mock('../rocketstyle-collapse', async (importOriginal) => {
         rules: ['.pyr-stub-light{color:red}', '.pyr-stub-dark{color:blue}'],
         key: 'stub-key',
       })),
+      unavailable: vi.fn(() => null),
       dispose: vi.fn(async () => {}),
     })),
   }

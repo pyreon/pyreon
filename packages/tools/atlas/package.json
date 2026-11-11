@@ -92,6 +92,7 @@
     "@pyreon/permissions": "workspace:*",
     "@pyreon/reactivity": "workspace:*",
     "@pyreon/rocketstyle": "workspace:*",
+    "@pyreon/router": "workspace:*",
     "@pyreon/runtime-dom": "workspace:*",
     "@pyreon/styler": "workspace:*",
     "@pyreon/ui-core": "workspace:*",

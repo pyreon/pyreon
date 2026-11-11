@@ -464,7 +464,7 @@ export function _bind(fn: () => void): () => void {
   }
 
   // Auto-register with scope so template bindings are disposed during teardown
-  getCurrentScope()?.add({ dispose })
+  getCurrentScope()?.add(dispose)
 
   return dispose
 }
@@ -550,7 +550,7 @@ export function renderEffect(fn: () => void): () => void {
   }
 
   // Auto-register with scope so render effects are disposed during teardown
-  getCurrentScope()?.add({ dispose })
+  getCurrentScope()?.add(dispose)
 
   return dispose
 }

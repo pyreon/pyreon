@@ -25,7 +25,7 @@
  * one lib short" trap. Every raw Standard Schema consumer test must run the
  * full raw-library matrix (zod + valibot + arktype).
  */
-import { defineStore, resetStore } from '@pyreon/store'
+import { resetStore, defineSchemaStore } from '@pyreon/store'
 import { type } from 'arktype'
 import * as v from 'valibot'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -131,7 +131,7 @@ describe('@pyreon/store end-to-end — raw valibot schema (the corruption repro)
 
   it('invalid set() THROWS and state is unchanged (pre-fix: silent no-op wrote the raw invalid value)', () => {
     ids.push('valibot-raw-store-set')
-    const useUser = defineStore('valibot-raw-store-set', {
+    const useUser = defineSchemaStore('valibot-raw-store-set', {
       schema: valibotUser,
       initial: { name: 'Alice', age: 30 },
     })
@@ -154,7 +154,7 @@ describe('@pyreon/store end-to-end — raw valibot schema (the corruption repro)
 
   it('invalid patch() THROWS and state is unchanged', () => {
     ids.push('valibot-raw-store-patch')
-    const useUser = defineStore('valibot-raw-store-patch', {
+    const useUser = defineSchemaStore('valibot-raw-store-patch', {
       schema: valibotUser,
       initial: { name: 'Alice', age: 30 },
     })
@@ -177,7 +177,7 @@ describe('@pyreon/store end-to-end — raw valibot schema (the corruption repro)
     // has no synchronous `~standard.types.output`, so it doesn't match the
     // schema overload's inference.
     expect(() =>
-      defineStore(
+      defineSchemaStore(
         'valibot-raw-store-async',
         { schema: asyncSchema, initial: { name: 'x' } } as never,
       ),

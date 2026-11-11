@@ -17,7 +17,7 @@
  * real `@pyreon/store` end-to-end (a store declared with a raw ArkType schema
  * rejects an invalid write only after the fix).
  */
-import { defineStore, resetStore } from '@pyreon/store'
+import { resetStore, defineSchemaStore } from '@pyreon/store'
 import { type } from 'arktype'
 import { afterEach, describe, expect, it } from 'vitest'
 import {
@@ -142,7 +142,7 @@ describe('@pyreon/store end-to-end — raw ArkType schema (framework-wide proof)
     // Pass the raw ArkType schema DIRECTLY (no `arktypeSchema()` adapter) — the
     // store auto-detects it via `~standard` and infers `{ name; age }` from
     // `~standard.types.output`, exactly like the raw-zod Tier A.2 path.
-    const useUser = defineStore('ark-raw-store', {
+    const useUser = defineSchemaStore('ark-raw-store', {
       schema: arkUser,
       initial: { name: 'Alice', age: 30 },
     })

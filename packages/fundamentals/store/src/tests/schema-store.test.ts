@@ -24,11 +24,11 @@
 import {
   addStorePlugin,
   computed,
-  defineStore,
   resetAllStores,
   resetStore,
   type StoreApi,
   type StorePlugin,
+  defineSchemaStore,
 } from '@pyreon/store'
 import { arktypeSchema } from '@pyreon/validation/arktype'
 import { valibotSchema } from '@pyreon/validation/valibot'
@@ -53,7 +53,7 @@ describe('schema-driven defineStore — zod (TypedSchemaAdapter / Tier A.1)', ()
   )
 
   it('exposes per-field signals via store with correct values', () => {
-    const useUser = defineStore('zod-user-1', {
+    const useUser = defineSchemaStore('zod-user-1', {
       schema: UserSchema,
       initial: { name: 'Alice', age: 30 },
     })
@@ -63,7 +63,7 @@ describe('schema-driven defineStore — zod (TypedSchemaAdapter / Tier A.1)', ()
   })
 
   it('`set` validates and replaces atomically', () => {
-    const useUser = defineStore('zod-user-2', {
+    const useUser = defineSchemaStore('zod-user-2', {
       schema: UserSchema,
       initial: { name: 'Alice', age: 30 },
     })
@@ -74,7 +74,7 @@ describe('schema-driven defineStore — zod (TypedSchemaAdapter / Tier A.1)', ()
   })
 
   it('`set` with invalid input throws', () => {
-    const useUser = defineStore('zod-user-3', {
+    const useUser = defineSchemaStore('zod-user-3', {
       schema: UserSchema,
       initial: { name: 'Alice', age: 30 },
     })
@@ -85,7 +85,7 @@ describe('schema-driven defineStore — zod (TypedSchemaAdapter / Tier A.1)', ()
   })
 
   it('`patch` validates merged result and writes only changed', () => {
-    const useUser = defineStore('zod-user-4', {
+    const useUser = defineSchemaStore('zod-user-4', {
       schema: UserSchema,
       initial: { name: 'Alice', age: 30 },
     })
@@ -97,7 +97,7 @@ describe('schema-driven defineStore — zod (TypedSchemaAdapter / Tier A.1)', ()
   })
 
   it('`patch` with invalid merged result throws', () => {
-    const useUser = defineStore('zod-user-5', {
+    const useUser = defineSchemaStore('zod-user-5', {
       schema: UserSchema,
       initial: { name: 'Alice', age: 30 },
     })
@@ -106,7 +106,7 @@ describe('schema-driven defineStore — zod (TypedSchemaAdapter / Tier A.1)', ()
   })
 
   it('`reset` restores parsed initial', () => {
-    const useUser = defineStore('zod-user-6', {
+    const useUser = defineSchemaStore('zod-user-6', {
       schema: UserSchema,
       initial: { name: 'Alice', age: 30 },
     })
@@ -118,7 +118,7 @@ describe('schema-driven defineStore — zod (TypedSchemaAdapter / Tier A.1)', ()
   })
 
   it('setup adds actions / computeds alongside field signals', () => {
-    const useUser = defineStore('zod-user-7', {
+    const useUser = defineSchemaStore('zod-user-7', {
       schema: UserSchema,
       initial: { name: 'Alice', age: 30 },
       setup: ({ state }) => ({
@@ -135,7 +135,7 @@ describe('schema-driven defineStore — zod (TypedSchemaAdapter / Tier A.1)', ()
   })
 
   it('subscribe fires on set + patch (one notification per call)', () => {
-    const useUser = defineStore('zod-user-8', {
+    const useUser = defineSchemaStore('zod-user-8', {
       schema: UserSchema,
       initial: { name: 'Alice', age: 30 },
     })
@@ -152,7 +152,7 @@ describe('schema-driven defineStore — zod (TypedSchemaAdapter / Tier A.1)', ()
   })
 
   it('direct signal write bypasses validation (documented escape hatch)', () => {
-    const useUser = defineStore('zod-user-9', {
+    const useUser = defineSchemaStore('zod-user-9', {
       schema: UserSchema,
       initial: { name: 'Alice', age: 30 },
     })
@@ -164,7 +164,7 @@ describe('schema-driven defineStore — zod (TypedSchemaAdapter / Tier A.1)', ()
 
   it('throws at defineStore-time if initial is invalid', () => {
     expect(() =>
-      defineStore('zod-user-10', {
+      defineSchemaStore('zod-user-10', {
         schema: UserSchema,
         initial: { name: '', age: 30 },
       }),
@@ -173,7 +173,7 @@ describe('schema-driven defineStore — zod (TypedSchemaAdapter / Tier A.1)', ()
 
   it('onValidationError suppresses throw on set/patch', () => {
     const errors: { issues: unknown; op: string }[] = []
-    const useUser = defineStore('zod-user-11', {
+    const useUser = defineSchemaStore('zod-user-11', {
       schema: UserSchema,
       initial: { name: 'Alice', age: 30 },
       onValidationError: (issues, op) => {
@@ -195,7 +195,7 @@ describe('schema-driven defineStore — zod (TypedSchemaAdapter / Tier A.1)', ()
         age: z.number(),
       }),
     )
-    const useUser = defineStore('zod-default-1', {
+    const useUser = defineSchemaStore('zod-default-1', {
       schema: SchemaWithDefault,
       initial: { name: undefined as unknown as string, age: 30 },
     })
@@ -217,7 +217,7 @@ describe('schema-driven defineStore — valibot (TypedSchemaAdapter / Tier A.1)'
   )
 
   it('exposes per-field signals from valibot schema', () => {
-    const useUser = defineStore('valibot-user-1', {
+    const useUser = defineSchemaStore('valibot-user-1', {
       schema: UserSchema,
       initial: { name: 'Alice', age: 30 },
     })
@@ -227,7 +227,7 @@ describe('schema-driven defineStore — valibot (TypedSchemaAdapter / Tier A.1)'
   })
 
   it('`set` validates and replaces', () => {
-    const useUser = defineStore('valibot-user-2', {
+    const useUser = defineSchemaStore('valibot-user-2', {
       schema: UserSchema,
       initial: { name: 'Alice', age: 30 },
     })
@@ -237,7 +237,7 @@ describe('schema-driven defineStore — valibot (TypedSchemaAdapter / Tier A.1)'
   })
 
   it('`set` with invalid input throws', () => {
-    const useUser = defineStore('valibot-user-3', {
+    const useUser = defineSchemaStore('valibot-user-3', {
       schema: UserSchema,
       initial: { name: 'Alice', age: 30 },
     })
@@ -248,7 +248,7 @@ describe('schema-driven defineStore — valibot (TypedSchemaAdapter / Tier A.1)'
   it('async safeParseAsync passed by mistake throws at defineStore-time', () => {
     const AsyncSchema = valibotSchema<{ name: string }>(v.object({ name: v.string() }), v.safeParseAsync)
     expect(() =>
-      defineStore('valibot-user-4', {
+      defineSchemaStore('valibot-user-4', {
         schema: AsyncSchema,
         initial: { name: 'X' },
       }),
@@ -266,7 +266,7 @@ describe('schema-driven defineStore — arktype (TypedSchemaAdapter / Tier A.1)'
   const UserSchema = arktypeSchema<{ name: string; age: number }>(UserType as unknown as (data: unknown) => unknown)
 
   it('exposes per-field signals from arktype schema', () => {
-    const useUser = defineStore('ark-user-1', {
+    const useUser = defineSchemaStore('ark-user-1', {
       schema: UserSchema,
       initial: { name: 'Alice', age: 30 },
     })
@@ -276,7 +276,7 @@ describe('schema-driven defineStore — arktype (TypedSchemaAdapter / Tier A.1)'
   })
 
   it('`set` validates and replaces', () => {
-    const useUser = defineStore('ark-user-2', {
+    const useUser = defineSchemaStore('ark-user-2', {
       schema: UserSchema,
       initial: { name: 'Alice', age: 30 },
     })
@@ -286,7 +286,7 @@ describe('schema-driven defineStore — arktype (TypedSchemaAdapter / Tier A.1)'
   })
 
   it('`set` with invalid input throws', () => {
-    const useUser = defineStore('ark-user-3', {
+    const useUser = defineSchemaStore('ark-user-3', {
       schema: UserSchema,
       initial: { name: 'Alice', age: 30 },
     })
@@ -320,7 +320,7 @@ describe('schema-driven defineStore — user-authored adapter (Tier B)', () => {
   }
 
   it('works end-to-end with a user-authored adapter', () => {
-    const useUser = defineStore('user-adapter-1', {
+    const useUser = defineSchemaStore('user-adapter-1', {
       schema: customAdapter,
       initial: { name: 'Alice', age: 30 },
     })
@@ -348,7 +348,7 @@ describe('schema-driven defineStore — Standard Schema (Tier A.2)', () => {
     // Confirm the schema actually carries the ~standard property
     expect('~standard' in (RawZodSchema as object)).toBe(true)
 
-    const useUser = defineStore('std-user-1', {
+    const useUser = defineSchemaStore('std-user-1', {
       schema: RawZodSchema,
       initial: { name: 'Alice', age: 30 },
     })
@@ -364,7 +364,7 @@ describe('schema-driven defineStore — Standard Schema (Tier A.2)', () => {
   })
 
   it('Standard Schema path validates set/patch (typed)', () => {
-    const useUser = defineStore('std-user-2', {
+    const useUser = defineSchemaStore('std-user-2', {
       schema: RawZodSchema,
       initial: { name: 'Alice', age: 30 },
     })
@@ -392,7 +392,7 @@ describe('schema-driven defineStore — Standard Schema (Tier A.2)', () => {
   })
 
   it('auto-detects raw VALIBOT schema and REJECTS invalid writes (state unchanged)', () => {
-    const useUser = defineStore('std-valibot-1', {
+    const useUser = defineSchemaStore('std-valibot-1', {
       schema: RawValibotSchema,
       initial: { name: 'Alice', age: 30 },
     })
@@ -420,7 +420,7 @@ describe('schema-driven defineStore — collision handling', () => {
 
   it('throws when setup returns a key colliding with a schema field', () => {
     expect(() =>
-      defineStore('collision-1', {
+      defineSchemaStore('collision-1', {
         schema: UserSchema,
         initial: { name: 'A', age: 30 },
         setup: () => ({ name: 'oops' as unknown as never }),
@@ -435,7 +435,7 @@ describe('schema-driven defineStore — collision handling', () => {
       }) as unknown as z.ZodType<{ set: string }>,
     )
     expect(() =>
-      defineStore('reserved-1', {
+      defineSchemaStore('reserved-1', {
         schema: BadSchema,
         initial: { set: 'value' },
       }),
@@ -453,7 +453,7 @@ describe('schema-driven defineStore — plugin compatibility', () => {
     }
     addStorePlugin(plugin)
 
-    const useUser = defineStore('plugin-1', {
+    const useUser = defineSchemaStore('plugin-1', {
       schema: zodSchema(z.object({ name: z.string() })),
       initial: { name: 'X' },
     })
@@ -463,7 +463,7 @@ describe('schema-driven defineStore — plugin compatibility', () => {
   })
 
   it('subscribe + onAction work on schema stores', () => {
-    const useUser = defineStore('plugin-2', {
+    const useUser = defineSchemaStore('plugin-2', {
       schema: zodSchema(z.object({ count: z.number() })),
       initial: { count: 0 },
       setup: ({ state }) => ({
@@ -489,7 +489,7 @@ describe('schema-driven defineStore — plugin compatibility', () => {
 
 describe('schema-driven defineStore — singleton semantics', () => {
   it('returns the same StoreApi instance across multiple useStore() calls', () => {
-    const useUser = defineStore('singleton-1', {
+    const useUser = defineSchemaStore('singleton-1', {
       schema: zodSchema(z.object({ name: z.string() })),
       initial: { name: 'A' },
     })
@@ -522,7 +522,7 @@ describe('schema-driven defineStore — deepPatch', () => {
   }
 
   it('deep-merges nested plain objects (preserves untouched sibling keys)', () => {
-    const useS = defineStore('deepPatch-1', { schema: Schema, initial })
+    const useS = defineSchemaStore('deepPatch-1', { schema: Schema, initial })
     const s = useS() as ReturnType<typeof useS> & {
       store: { prefs: { (): typeof initial.prefs } }
     }
@@ -532,7 +532,7 @@ describe('schema-driven defineStore — deepPatch', () => {
   })
 
   it('REPLACES arrays (does not merge by index)', () => {
-    const useS = defineStore('deepPatch-2', { schema: Schema, initial })
+    const useS = defineSchemaStore('deepPatch-2', { schema: Schema, initial })
     const s = useS() as ReturnType<typeof useS> & {
       store: { items: { (): typeof initial.items } }
     }
@@ -541,7 +541,7 @@ describe('schema-driven defineStore — deepPatch', () => {
   })
 
   it('validates the merged result and throws on schema failure', () => {
-    const useS = defineStore('deepPatch-3', { schema: Schema, initial })
+    const useS = defineSchemaStore('deepPatch-3', { schema: Schema, initial })
     const s = useS()
     expect(() =>
       // `theme` enum doesn't allow 'midnight'
@@ -550,7 +550,7 @@ describe('schema-driven defineStore — deepPatch', () => {
   })
 
   it('writes only top-level keys passed (not the whole state)', () => {
-    const useS = defineStore('deepPatch-4', { schema: Schema, initial })
+    const useS = defineSchemaStore('deepPatch-4', { schema: Schema, initial })
     const s = useS()
     const events: { type: string; keys: string[] }[] = []
     s.subscribe((m) => {
@@ -573,7 +573,7 @@ describe('schema-driven defineStore — deepPatch', () => {
     // class instances out of the merge path. Without it, a future Date prop
     // would attempt to recurse into the Date's internal slots and corrupt it.
     const DateSchema = zodSchema(z.object({ when: z.date(), tag: z.string() }))
-    const useS = defineStore('deepPatch-5', {
+    const useS = defineSchemaStore('deepPatch-5', {
       schema: DateSchema,
       initial: { when: new Date('2020-01-01'), tag: 'a' },
     })
@@ -606,14 +606,14 @@ describe('schema-driven defineStore — update', () => {
   }
 
   it('transforms a primitive via callback', () => {
-    const useS = defineStore('update-1', { schema: Schema, initial })
+    const useS = defineSchemaStore('update-1', { schema: Schema, initial })
     const s = useS() as ReturnType<typeof useS> & { store: { count: { (): number } } }
     s.update('count', (n) => (n as number) + 1)
     expect(s.store.count()).toBe(1)
   })
 
   it('filters an array (covers "remove item")', () => {
-    const useS = defineStore('update-2', { schema: Schema, initial })
+    const useS = defineSchemaStore('update-2', { schema: Schema, initial })
     const s = useS() as ReturnType<typeof useS> & { store: { items: { (): typeof initial.items } } }
     s.update('items', (items) =>
       (items as typeof initial.items).filter((x) => x.id !== 1),
@@ -622,7 +622,7 @@ describe('schema-driven defineStore — update', () => {
   })
 
   it('appends to an array (covers "add item")', () => {
-    const useS = defineStore('update-3', { schema: Schema, initial })
+    const useS = defineSchemaStore('update-3', { schema: Schema, initial })
     const s = useS() as ReturnType<typeof useS> & { store: { items: { (): typeof initial.items } } }
     s.update('items', (items) => [
       ...(items as typeof initial.items),
@@ -638,7 +638,7 @@ describe('schema-driven defineStore — update', () => {
     // `prefs` into a new object that still has both keys but with one
     // overwritten — proves the transformer can return any shape the
     // schema accepts.
-    const useS = defineStore('update-4', { schema: Schema, initial })
+    const useS = defineSchemaStore('update-4', { schema: Schema, initial })
     const s = useS() as ReturnType<typeof useS> & {
       store: { prefs: { (): typeof initial.prefs } }
     }
@@ -650,7 +650,7 @@ describe('schema-driven defineStore — update', () => {
   })
 
   it('validates the transformed result and throws on schema failure', () => {
-    const useS = defineStore('update-5', { schema: Schema, initial })
+    const useS = defineSchemaStore('update-5', { schema: Schema, initial })
     const s = useS()
     // `count` is `z.number().nonnegative()` — negative violates the schema
     expect(() => s.update('count', () => -1)).toThrow(/Schema validation failed.*patch/)
@@ -658,7 +658,7 @@ describe('schema-driven defineStore — update', () => {
 
   it('onValidationError suppresses throw on update failure', () => {
     const errors: { op: string }[] = []
-    const useS = defineStore('update-6', {
+    const useS = defineSchemaStore('update-6', {
       schema: Schema,
       initial,
       onValidationError: (_issues, op) => {
@@ -694,7 +694,7 @@ describe('schema-driven defineStore — update', () => {
 // the cache).
 describe('schema-driven defineStore — resetStore (audit #3 regression)', () => {
   it('Spec A — resetStore(id) re-runs setup with fresh initial state (no stale wrapper)', () => {
-    const useUser = defineStore('reset-regression-1', {
+    const useUser = defineSchemaStore('reset-regression-1', {
       schema: zodSchema(z.object({ name: z.string(), age: z.number() })),
       initial: { name: 'Alice', age: 30 },
     })
@@ -718,7 +718,7 @@ describe('schema-driven defineStore — resetStore (audit #3 regression)', () =>
     // entirely. Multiple calls without an intervening resetStore must
     // return the SAME wrapper (matches the singleton-semantics contract
     // for the setup-fn pipeline).
-    const useUser = defineStore('reset-regression-2', {
+    const useUser = defineSchemaStore('reset-regression-2', {
       schema: zodSchema(z.object({ name: z.string() })),
       initial: { name: 'A' },
     })

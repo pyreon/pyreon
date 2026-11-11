@@ -32,6 +32,7 @@
  */
 import { createHash } from 'node:crypto'
 import { sep } from 'node:path'
+import { stringifyLoaderDataForScript } from '@pyreon/router'
 import type { RpcMethod } from '../dev/plugin'
 
 /**
@@ -121,23 +122,24 @@ export async function bakeRpc(options: BakeOptions): Promise<BakedRpc> {
  * imports could already have read the global. Installing it first makes the
  * ordering explicit rather than incidental.
  *
- * Serialized with `JSON.stringify` and then escaped for the HTML parser: the
- * payload contains COMPONENT SOURCE, so a component whose source contains the
- * literal `</script>` would otherwise close this tag and inject the rest of the
- * file as markup. The parser sees the escape; `JSON.parse` does not care.
+ * Serialized with `stringifyLoaderDataForScript` from `@pyreon/router` — the
+ * one funnel for every state payload Pyreon embeds as an EXECUTABLE script:
+ *
+ * - The payload carries COMPONENT SOURCE, so a component whose source contains
+ *   the literal `</script>` (or `<!--`) would otherwise close this tag and
+ *   inject the rest of the file as markup. The helper neutralizes the whole
+ *   `<` class plus U+2028 / U+2029.
+ * - The script evaluates a JS OBJECT LITERAL, where a `"__proto__":` key SETS
+ *   THE PROTOTYPE instead of creating the key. Component names and RPC answers
+ *   are user-shaped (a component, prop or story literally named `__proto__`),
+ *   so a bare `JSON.stringify` would drop that key on the page and let every
+ *   missing-key lookup on the map inherit the smuggled fields — while the
+ *   per-component `.json` files (read with `JSON.parse`) kept it. The helper
+ *   rewrites that key to the computed `["__proto__"]`, so the evaluated value
+ *   is deep-equal to `JSON.parse` of the JSON.
  */
 export function bakedRpcScript(baked: BakedRpc): string {
-  const json = JSON.stringify(baked)
-    // `</script` in any casing ends the block in an HTML parser.
-    .replaceAll('</', '<\\/')
-    // A lone `<!--` opens a comment in the legacy script grammar.
-    .replaceAll('<!--', '<\\!--')
-    // U+2028 / U+2029 are legal raw in JSON but were illegal raw in a JS
-    // string literal until ES2019 — still escaped, because this script is
-    // parsed by whatever engine a visitor brings. Written via `fromCharCode`
-    // so the characters are visible in review rather than invisible bytes.
-    .replaceAll(String.fromCharCode(0x2028), '\\u2028')
-    .replaceAll(String.fromCharCode(0x2029), '\\u2029')
+  const json = stringifyLoaderDataForScript(baked)
   return `<script>globalThis.__ATLAS_STATIC_RPC__ = ${json}</script>`
 }
 
