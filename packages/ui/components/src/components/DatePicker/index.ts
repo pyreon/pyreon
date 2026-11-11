@@ -1,15 +1,15 @@
-import { disabledState, el, focusRingTone } from '../../factory'
+import { disabledState, el, focusRingTone, tones } from '../../factory'
 
 const DatePicker = el
   .config({ name: 'DatePicker' })
   .attrs({ tag: 'div' })
-  .theme((t) => ({
+  .theme((t, m) => ({
     width: '100%',
-    backgroundColor: t.color.system.light.base,
-    color: t.color.system.dark[800],
+    backgroundColor: tones(t, m).surface,
+    color: tones(t, m).text,
     borderWidth: t.borderWidth.base,
     borderStyle: t.borderStyle.base,
-    borderColor: t.color.system.base[300],
+    borderColor: tones(t, m).border,
     borderRadius: t.borderRadius.base,
     fontSize: t.fontSize.small,
     lineHeight: t.lineHeight.base,
@@ -18,7 +18,7 @@ const DatePicker = el
     focus: { ...focusRingTone(t, 'primary'), borderColor: t.color.system.primary.base },
     disabled: { ...disabledState(), backgroundColor: t.color.system.base[50] },
     placeholder: {
-      color: t.color.system.base[400],
+      color: tones(t, m).placeholder,
     },
   }))
   .sizes((t) => ({

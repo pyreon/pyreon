@@ -167,7 +167,7 @@ Swap any layer's root element via `component`:
 
 ## Gotchas
 
-- **`Provider` is the unistyle provider** under the hood. If you already render `<PyreonUI>` (from `@pyreon/ui-core`) at your app root, it sets up unistyle context — you only need a fresh `<Provider>` if you want different breakpoints in a subtree.
+- **`Provider` is the unistyle provider** under the hood. If you already render `<PyreonUI>` (from `@pyreon/ui-core`) at your app root, it sets up unistyle context — you only need a fresh `<Provider>` if you want different breakpoints in a subtree. When the theme has no grid keys, coolgrid falls back to its defaults (12 columns, xs–xl breakpoints, and the default container widths when the theme has no breakpoints of its own).
 - **`size: 0` is meaningful** — it hides the column at that breakpoint by moving it off-screen (`position: fixed; left: -9999px` — not `display: none`), not "zero-width but still in flow".
 - **`gutter` is negative-margin on the Row** + matching padding on each Col. Setting `gutter` and `padding` independently is fine but be aware of the visual offset.
 - **`columns` MUST be set on a Container** if you want a non-default count. Setting it on a Row works for that Row only, but the visual cascade is harder to reason about — keep it at Container level.

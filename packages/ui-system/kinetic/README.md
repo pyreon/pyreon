@@ -195,7 +195,7 @@ const state = useTransitionState({ show: () => isOpen() })
 
 ## Accessibility
 
-Kinetic automatically detects `prefers-reduced-motion: reduce`. When enabled, animations are skipped instantly — callbacks still fire, but no visual animation occurs. No configuration needed.
+Kinetic automatically detects `prefers-reduced-motion: reduce`. When enabled, animations are skipped instantly — the element lands on the end state the animation would have reached (`enterTo` / `enterToStyle` after an enter, `leaveTo` / `leaveToStyle` after a leave, `height: auto` / `0px` for a collapse), and callbacks still fire. An initially-hidden scroll-reveal therefore still becomes visible. No configuration needed.
 
 ## SSR / SSG
 
@@ -215,13 +215,24 @@ const RevealSection = kinetic('section')
 </RevealSection>
 ```
 
+A `ref` on a kinetic component (callback or ref object) receives the rendered element in every mode, so it can feed an observer such as `useIntersection` from `@pyreon/hooks`:
+
+```tsx
+function Reveal(props) {
+  let node: HTMLElement | null = null
+  const entry = useIntersection(() => node, { threshold: 0.08 })
+  const show = computed(() => entry()?.isIntersecting === true)
+  return <RevealSection ref={(n) => { node = n }} show={() => show()}>{props.children}</RevealSection>
+}
+```
+
 **Trade-off**: for an initially-hidden Transition, `unmount: true` (the default) no longer triggers a true DOM removal after a later leave animation completes — the element stays in DOM with the leave-to class applied. **Initially-visible** Transitions keep the runtime-unmount semantic unchanged. If you need true unmount on a started-hidden element, drive mount/unmount yourself outside `<Transition>`.
 
 ## Gotchas
 
 - **Animations run on the GPU compositor thread** only when you animate `transform` / `opacity` / `filter`. Animating `width` / `height` / `top` / `left` falls back to the main thread and may jank.
 - **Stagger `interval` is per-CHILD**, not total duration. Five children at 75ms = 375ms total stagger window.
-- **Group mode requires keyed children.** Without `key=`, every render replaces every child and you get no animation. The compiler-suggested `<For each={items} by={i => i.id}>` is the idiomatic pattern.
+- **Group mode needs keyed children.** Without `key=`, a child is tracked by its position (dev warning), so a change animates the wrong row. Rows that stay keep their element, as `<For>` rows do: drive changing row content from signals.
 - **SSR initial-hidden Transitions break true-unmount semantics.** See SSR / SSG section above — opt out by driving mount/unmount yourself.
 - **Reduced-motion skips visuals but still fires callbacks.** Don't rely on the animation completing for state machine progression — use callbacks.
 

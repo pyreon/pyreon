@@ -2,7 +2,7 @@
 import type { ComponentFn, VNodeChild } from '@pyreon/core'
 import { h, splitProps } from '@pyreon/core'
 import { TagsInputBase, type TagsInputBaseProps, type TagsInputState } from '@pyreon/ui-primitives'
-import { el } from '../../factory'
+import { el, tones } from '../../factory'
 
 /**
  * ELEMENT-FIRST COMPOSITION (second conversion after the Rating pilot):
@@ -22,14 +22,14 @@ const TagsRoot = el
     contentAlignY: 'center',
     gap: 1,
   })
-  .theme((t) => ({
+  .theme((t, m) => ({
     flexWrap: 'wrap',
     padding: t.spacing.xxSmall,
     borderWidth: t.borderWidth.base,
     borderStyle: t.borderStyle.base,
-    borderColor: t.color.system.base[300],
+    borderColor: tones(t, m).border,
     borderRadius: t.borderRadius.base,
-    backgroundColor: t.color.system.light.base,
+    backgroundColor: tones(t, m).surface,
   }))
 
 /** One committed tag chip. */
@@ -42,14 +42,14 @@ const TagChip = el
     contentAlignY: 'center',
     gap: 1,
   })
-  .theme((t) => ({
+  .theme((t, m) => ({
     paddingTop: t.spacing.xxxSmall,
     paddingBottom: t.spacing.xxxSmall,
     paddingLeft: t.spacing.xxSmall,
     paddingRight: t.spacing.xxSmall,
     borderRadius: t.borderRadius.small,
     backgroundColor: t.color.system.base[100],
-    color: t.color.system.base[700],
+    color: tones(t, m).textMuted,
     fontSize: t.fontSize.xSmall,
   }))
 
@@ -57,10 +57,10 @@ const TagChip = el
 const TagRemove = el
   .config({ name: 'TagRemove' })
   .attrs({ tag: 'button' })
-  .theme((t) => ({
+  .theme((t, m) => ({
     borderWidth: 0,
     backgroundColor: 'transparent',
-    color: t.color.system.base[500],
+    color: tones(t, m).textMuted,
     cursor: 'pointer',
     fontSize: t.fontSize.xSmall,
     lineHeight: 1,
@@ -72,12 +72,12 @@ const TagRemove = el
 const TagField = el
   .config({ name: 'TagField' })
   .attrs({ tag: 'input', type: 'text' })
-  .theme((t) => ({
+  .theme((t, m) => ({
     borderWidth: 0,
     outline: 'none',
     backgroundColor: 'transparent',
     fontSize: t.fontSize.small,
-    color: t.color.system.dark[800],
+    color: tones(t, m).text,
     flexGrow: 1,
     minWidth: 80,
   }))

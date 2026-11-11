@@ -81,6 +81,8 @@ theme object
 
 Reads a theme object and outputs CSS for 170+ recognized properties — layout, spacing, typography, borders, backgrounds, transforms, special keys (`fullScreen`, `clearFix`, `extendCss`, `backgroundImage`, `animation`). Used internally by `makeItResponsive`; callable directly when you have a non-responsive theme.
 
+`backgroundImage` wraps only a bare path or URL in `url()` (`'/img/a.png'` → `url(/img/a.png)`). A value that is already a CSS image passes through verbatim: gradients (including `repeating-*` and `conic-gradient`), `url()`, `image-set()`, `cross-fade()`, `element()`, `var()` / `env()`, `none` and the CSS-wide keywords. In a comma-separated layer list each layer is handled on its own (`'linear-gradient(…), /img/a.png'` → `linear-gradient(…), url(/img/a.png)`).
+
 ```ts
 import { styles } from '@pyreon/unistyle'
 
@@ -162,7 +164,7 @@ Key behaviors:
 - **Var leaves flow through the whole pipeline untouched** — `value()`, `values()`, the edge/border-radius shorthands, `styles()`, and `makeItResponsive` all pass `var(`/`calc(` strings through verbatim (a tested contract, not an accident).
 - **Pure + cached** — no injection happens; pass `css` to your style sink. Results are WeakMap-cached by theme identity, so repeated calls return the same object.
 
-Gotchas: don't do JS arithmetic on a var leaf (`vars.spacing.small * 2` is `NaN` — use native `calc()`); don't use a var leaf for `backgroundImage` (CSS forbids `var()` inside `url(…)`); name collisions after kebab-case normalization (`xSmall` vs `x-small`) throw loudly.
+Gotchas: don't do JS arithmetic on a var leaf (`vars.spacing.small * 2` is `NaN` — use native `calc()`); a var leaf used for `backgroundImage` must hold a complete image (`url(/a.png)` or a gradient), not a bare path — `backgroundImage` passes `var()` through verbatim, and CSS cannot resolve a `var()` inside `url(…)`; name collisions after kebab-case normalization (`xSmall` vs `x-small`) throw loudly.
 
 ## Alignment helpers
 

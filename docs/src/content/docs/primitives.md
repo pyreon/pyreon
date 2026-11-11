@@ -1,6 +1,6 @@
 ---
 title: '@pyreon/primitives'
-description: 'The canonical multi-platform UI vocabulary — 21 primitives plus Transition, TransitionGroup, WebView and per-platform escape hatches, each compiled to DOM, SwiftUI and Compose from one source.'
+description: 'The canonical multi-platform UI vocabulary — 22 primitives plus Transition, TransitionGroup, WebView and per-platform escape hatches, each compiled to DOM, SwiftUI and Compose from one source.'
 ---
 
 # @pyreon/primitives

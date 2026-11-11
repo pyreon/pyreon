@@ -153,7 +153,7 @@ export function createFormActionMiddleware(opts: FormActionMiddlewareOptions): M
     const payload = await readActionPayload(ctx.req, opts.options.bodyLimit, enhanced)
     if (payload instanceof Response) return payload
 
-    const outcome: ActionOutcome = await runActionHandler(registered.handler, ctx.req, payload)
+    const outcome: ActionOutcome = await runActionHandler(registered.handler, ctx.req, payload, ctx)
 
     if (enhanced) {
       const body: EnhancedActionResponse =

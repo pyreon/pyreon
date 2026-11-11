@@ -754,7 +754,13 @@ export interface FlowInstance<TData = Record<string, unknown>> {
 
   // ── Layout ───────────────────────────────────────────────────────────────
 
-  /** Apply auto-layout */
+  /**
+   * Apply auto-layout. Resolves once the layout is applied and visible —
+   * after the last animation frame (immediately with `animate: false`, under
+   * reduced motion, or without animation frames, e.g. SSR). A later
+   * `layout()` or `dispose()` supersedes a running one: its promise resolves
+   * then, and its result is never applied over the newer layout.
+   */
   layout: (algorithm?: LayoutAlgorithm, options?: LayoutOptions) => Promise<void>
 
   // ── Batch ────────────────────────────────────────────────────────────────
@@ -1111,7 +1117,10 @@ export interface LayoutOptions {
    * this value.
    */
   edgeRouting?: 'orthogonal' | 'splines' | 'polyline'
-  /** Whether to animate the layout transition — default: true */
+  /**
+   * Whether to animate the layout transition — default: true. `false` applies
+   * the positions at once (and `layout()` resolves right after).
+   */
   animate?: boolean
   /** Animation duration in ms — default: 300 */
   animationDuration?: number

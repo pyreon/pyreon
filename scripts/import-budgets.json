@@ -1,7 +1,7 @@
 {
   "@pyreon/reactivity::signals": 4180,
   "@pyreon/runtime-dom::mount": 9185,
-  "@pyreon/runtime-dom::mount+hydrate": 17098,
+  "@pyreon/runtime-dom::mount+hydrate": 17500,
   "@pyreon/router::basic": 3866,
   "@pyreon/elements::portal": 2850,
   "@pyreon/elements::element": 4600,

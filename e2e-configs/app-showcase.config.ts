@@ -17,7 +17,7 @@ export default definePlaywrightConfig({
   projects: [
     {
       name: 'app-showcase',
-      testMatch: /\/app-showcase-(flow|flow-features|dnd|charts|virtual)\.spec\.ts$/,
+      testMatch: /\/app-showcase-(flow|flow-features|dnd|charts|virtual|shop)\.spec\.ts$/,
       port: 5181,
     },
   ],

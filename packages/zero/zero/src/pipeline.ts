@@ -13,9 +13,12 @@
  * the same instances the user's route modules register into.
  */
 import type { RouteRecord } from '@pyreon/router'
+import { resolveRoute } from '@pyreon/router'
 import type { Middleware, MiddlewareContext } from '@pyreon/server'
 import type { CreateActionMiddlewareOptions } from './actions'
-import { createActionMiddleware, resolveActionOptions } from './actions'
+import { _actionDeclaringRoute, _isKnownAction, createActionMiddleware, resolveActionOptions } from './actions'
+import { ACTION_QUERY_PARAM } from './form'
+import { ROUTE_GATE_TAG } from './route-gate'
 import { createFormActionMiddleware } from './form-actions-server'
 import type { ApiRouteEntry } from './api-routes'
 import { createApiMiddleware, matchApiRoute } from './api-routes'
@@ -89,7 +92,7 @@ export function createRequestPipeline(options: RequestPipelineOptions): RequestP
     ...(options.middleware ?? []),
   ]
   if (options.routeMiddleware?.length) {
-    middleware.push(createRouteMiddlewareDispatcher(options.routeMiddleware, config))
+    middleware.push(createRouteMiddlewareDispatcher(options.routeMiddleware, config, options.routes))
   }
   // Framework endpoints and API routes match base-less paths. Under `base`,
   // present them a base-stripped URL while leaving the Request untouched.
@@ -221,6 +224,16 @@ export function stripBase(pathname: string, config: ZeroConfig): string {
  *   neither (`/app/de/admin` is the `/admin` route).
  */
 export function routingPathname(url: URL, config: ZeroConfig): string {
+  return stripLocale(routeTargetPath(url, config), config)
+}
+
+/**
+ * The page path a request renders or reads, as the ROUTER sees it: `base`
+ * removed, the i18n locale prefix kept (locale-expanded route records carry
+ * it). Endpoints that serve a page's output map to that page (data, fragment,
+ * OG); anything else is its own pathname.
+ */
+export function routeTargetPath(url: URL, config: ZeroConfig): string {
   // Strip base before recognizing the data endpoint, otherwise a request to
   // `<base>/_pyreon/data` skips the target page's route middleware.
   let pathname = stripBase(url.pathname, config)
@@ -243,6 +256,10 @@ export function routingPathname(url: URL, config: ZeroConfig): string {
     const ogPage = pagePathFromOgEndpoint(pathname)
     if (ogPage !== null) pathname = ogPage
   }
+  return pathname
+}
+
+function stripLocale(pathname: string, config: ZeroConfig): string {
   const locales = config.i18n?.locales
   if (locales?.length) {
     const first = pathname.split('/')[1] ?? ''
@@ -252,31 +269,110 @@ export function routingPathname(url: URL, config: ZeroConfig): string {
   return pathname
 }
 
+const ACTION_ENDPOINT_PREFIX = '/_zero/actions/'
+
 /**
- * Create a middleware that dispatches per-route middleware based on URL pattern matching.
+ * The server-action id a request asks to run, or `null`: the JSON endpoint
+ * (`/_zero/actions/<id>`, any method — the endpoint itself answers 405) and a
+ * form post to a page (`POST <page>?_action=<id>`).
+ */
+function requestedActionId(ctx: MiddlewareContext, config: ZeroConfig): string | null {
+  const pathname = stripBase(ctx.url.pathname, config)
+  if (pathname.startsWith(ACTION_ENDPOINT_PREFIX)) return pathname.slice(ACTION_ENDPOINT_PREFIX.length)
+  if (ctx.req.method !== 'POST') return null
+  return ctx.url.searchParams.get(ACTION_QUERY_PARAM)
+}
+
+/**
+ * The per-route middleware gate. Runs, as the requester and before any
+ * endpoint or render:
+ *
+ * 1. every entry whose page pattern matches the request's routing path
+ *    (`routingPathname`: the page itself, or the page a data / OG / fragment
+ *    endpoint serves);
+ * 2. every layout entry tagged on a record of the chain the ROUTER resolves
+ *    for that path — so a URL that matches no page but renders a guarded
+ *    layout's not-found chain (`/admin/<unknown>` with `admin/_404.tsx`) runs
+ *    that layout's middleware before its loaders do;
+ * 3. for a server action, the gate of the page that DECLARES it (1 and 2 for
+ *    that page's pattern), whatever URL it was posted to. A known action no
+ *    page declares has no determinable gate: 403, never run ungated. An
+ *    unknown id falls through to the endpoint's own not-found answer.
+ *
+ * Each entry runs at most once per request. The first Response wins.
  */
 export function createRouteMiddlewareDispatcher(
   entries: RouteMiddlewareEntry[],
   config: ZeroConfig,
+  routes?: RouteRecord[],
 ): Middleware {
+  const tagged = entries.some((e) => e.gate !== undefined)
+  const gateTag = Symbol.for(ROUTE_GATE_TAG)
+
   return async (ctx: MiddlewareContext) => {
-    const pathname = routingPathname(ctx.url, config)
-    for (const entry of entries) {
-      const hit = entry.patterns
-        ? entry.patterns.some((p) => matchPattern(p, pathname))
-        : matchPattern(entry.pattern, pathname)
-      if (hit) {
-        // Endpoints that answer with a shared-cacheable response (the OG
-        // image) must not let a CDN replay what this request was allowed to
-        // see: they read this flag and answer `private` instead.
-        ctx.locals[ROUTE_MIDDLEWARE_RAN] = true
-        const mw = Array.isArray(entry.middleware) ? entry.middleware : [entry.middleware]
-        for (const fn of mw) {
-          const result = await fn(ctx)
-          if (result) return result
+    const ran = new Set<RouteMiddlewareEntry>()
+    const run = async (entry: RouteMiddlewareEntry): Promise<Response | undefined> => {
+      if (ran.has(entry)) return undefined
+      ran.add(entry)
+      // Endpoints that answer with a shared-cacheable response (the OG
+      // image) must not let a CDN replay what this request was allowed to
+      // see: they read this flag and answer `private` instead.
+      ctx.locals[ROUTE_MIDDLEWARE_RAN] = true
+      const mw = Array.isArray(entry.middleware) ? entry.middleware : [entry.middleware]
+      for (const fn of mw) {
+        const result = await fn(ctx)
+        if (result) return result
+      }
+      return undefined
+    }
+    // Gate as page `target` (router path, locale kept) / `pathname` (locale stripped).
+    const gate = async (target: string, pathname: string): Promise<Response | undefined> => {
+      for (const entry of entries) {
+        const hit = entry.patterns
+          ? entry.patterns.some((p) => matchPattern(p, pathname))
+          : matchPattern(entry.pattern, pathname)
+        if (hit) {
+          const res = await run(entry)
+          if (res) return res
         }
       }
+      if (!tagged || !routes) return undefined
+      // The records whose loaders will run, as the router resolves them.
+      const chain = resolveRoute(target, routes).matched
+      for (const record of chain) {
+        const id = (record as unknown as Record<symbol, unknown>)[gateTag]
+        if (typeof id !== 'string') continue
+        for (const entry of entries) {
+          if (entry.gate !== id) continue
+          const res = await run(entry)
+          if (res) return res
+        }
+      }
+      return undefined
     }
+
+    const target = routeTargetPath(ctx.url, config)
+    const own = await gate(target, stripLocale(target, config))
+    if (own) return own
+
+    const actionId = requestedActionId(ctx, config)
+    if (actionId !== null && actionId !== '' && _isKnownAction(actionId)) {
+      const declaring = _actionDeclaringRoute(actionId)
+      if (declaring === null) {
+        if (process.env.NODE_ENV !== 'production') {
+          console.error(
+            `[Pyreon] Server action ${actionId} refused (403): it is not declared in a page module, so the ` +
+              'route middleware that guards it cannot be determined. Define it in the page (or the page\'s ' +
+              '`.server.ts` sibling) whose middleware should gate it.',
+          )
+        }
+        return stripBase(ctx.url.pathname, config).startsWith(ACTION_ENDPOINT_PREFIX)
+          ? Response.json({ error: 'Forbidden' }, { status: 403 })
+          : new Response('Forbidden', { status: 403, headers: { 'Content-Type': 'text/plain; charset=utf-8' } })
+      }
+      return gate(declaring, declaring)
+    }
+    return undefined
   }
 }
 

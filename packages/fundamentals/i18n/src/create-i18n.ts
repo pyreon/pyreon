@@ -107,6 +107,9 @@ function buildKeyCandidates(
 const NESTING_RE = /\$t\(([^()]*)\)/g
 const MAX_NESTING_DEPTH = 4
 
+/** Per-instance bound on dev missing-key warnings (each is one Set entry). */
+const MISSING_WARN_CAP = 200
+
 /** Per-instance bound on the (locale, namespace, key) resolution cache. */
 const RESOLUTION_CACHE_CAP = 2000
 
@@ -708,10 +711,43 @@ export function createI18n(options: I18nOptions): I18nInstance {
     if (onMissingKey) {
       const custom = onMissingKey(currentLocale, key, entry.namespace)
       if (custom !== undefined) return custom!
+    } else if (process.env.NODE_ENV !== 'production') {
+      warnMissingKey(currentLocale, key, entry.namespace, entry.keyPath)
     }
 
     // Return the key itself as a visual fallback
     return key
+  }
+
+  // Dev-only: a missing key rendered the raw key with no signal at all, so a
+  // wrong key shape (`shop:title` for a key registered as `shop.title`) looked
+  // like a working app with odd text. Warn once per (locale, key). A key in a
+  // namespace that is not loaded YET is expected while a loader is in flight,
+  // so only warn when the namespace is present (or there is no loader at all).
+  // Bounded: at most MISSING_WARN_CAP distinct entries per instance.
+  const warnedMissing = new Set<string>()
+  function warnMissingKey(loc: string, key: string, namespace: string, keyPath: string): void {
+    const nsMap = store.get(loc)
+    if (loader && !nsMap?.has(namespace)) return
+    const id = `${loc}\0${key}`
+    if (warnedMissing.has(id) || warnedMissing.size >= MISSING_WARN_CAP) return
+    warnedMissing.add(id)
+    let hint = ''
+    if (namespace !== defaultNamespace && !nsMap?.has(namespace)) {
+      const fallbackDict = nsMap?.get(defaultNamespace)
+      const asDotted = `${namespace}.${keyPath}`
+      hint =
+        fallbackDict && resolveKey(fallbackDict, asDotted) !== undefined
+          ? ` "${key}" reads key "${keyPath}" in namespace "${namespace}", which has no messages; the default namespace has "${asDotted}" — did you mean t("${asDotted}")?`
+          : ` Namespace "${namespace}" has no messages for "${loc}" (register it with addMessages(locale, messages, "${namespace}") or a loader).`
+    }
+    /* v8 ignore next -- the caller is already dev-gated; this inner gate is for the dev-guard lint and the production branch is never taken under test */
+    if (process.env.NODE_ENV !== 'production') {
+      console.warn(
+        `[Pyreon] i18n: missing translation "${key}" for locale "${loc}" — rendering the key itself.${hint}` +
+          ' Pass onMissingKey to createI18n to handle missing keys yourself.',
+      )
+    }
   }
 
   // ── Public API ──────────────────────────────────────────────────────

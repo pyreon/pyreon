@@ -1000,6 +1000,13 @@ export interface RouteMiddlewareEntry {
    * runs once per request if ANY of them match. `pattern` is then the first.
    */
   patterns?: string[]
+  /**
+   * Generated for a `_layout` middleware: the id the routes module tags on
+   * that layout's RECORD. The request gate also runs this entry when the
+   * router's resolved chain contains the record — a URL under the layout
+   * that matches no page still renders the layout (its not-found chain).
+   */
+  gate?: string
   middleware: Middleware | Middleware[]
 }
 
@@ -1018,6 +1025,16 @@ export interface Adapter {
    * Omitted fields mean "not supported".
    */
   capabilities?: AdapterCapabilities
+  /**
+   * Top-level names this adapter's SSR build writes or stages under `outDir`
+   * (`client`, `index.js`, `publish`, `_worker.js`, …). In a hybrid build the
+   * SSG pass fails when a prerendered route's output would land under one of
+   * them (or under one zero writes itself, `HYBRID_BUILD_OUTPUTS`): the
+   * staging step would overwrite or drop that page, which then silently
+   * server-renders (#4259). A custom adapter that stages into `outDir` should
+   * list its names here.
+   */
+  reservedOutputs?: readonly string[]
   /**
    * Revalidate a prerendered path on the deploy platform's ISR layer
    * (PR I — build-time ISR). Called by user code (webhook handlers,

@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import type { ComponentFn } from '@pyreon/core'
 import type { RouteRecord } from '@pyreon/router'
-import type { Middleware } from '@pyreon/server'
+import type { Middleware, ServerErrorHandler } from '@pyreon/server'
 import { createHandler } from '@pyreon/server'
 import type { CreateActionMiddlewareOptions } from './actions'
 import { createActionRerenderMiddleware } from './form-actions-server'
@@ -74,6 +74,23 @@ export interface CreateServerOptions {
    * mounting the middleware manually elsewhere in the chain).
    */
   actions?: CreateActionMiddlewareOptions | false
+  /**
+   * Called with every unexpected server error: a throwing middleware or API
+   * route (`phase: 'middleware'`), a failed SSR render (`'render'` /
+   * `'stream'`), a server action handler that threw (`'action'`), and
+   * anything a middleware reports with `ctx.reportError`. Wire Sentry,
+   * OpenTelemetry or a log shipper here. Runs after the `[Pyreon] …`
+   * console line, never changes the response, and a throwing hook is
+   * caught. A function, so it lives here in the server entry, not in the
+   * serialized `zero({})` config.
+   *
+   * @example
+   * export default createServer({
+   *   routes, config,
+   *   onError: (error, { phase, request }) => Sentry.captureException(error, { tags: { phase }, extra: { url: request.url } }),
+   * })
+   */
+  onError?: ServerErrorHandler
   /**
    * Server-island fragment signing. Every marker the server renders is signed
    * (name + page + props + expiry); the fragment endpoint refuses anything
@@ -244,6 +261,7 @@ export function createServer(options: CreateServerOptions): (req: Request) => Pr
     ...(resolvedTemplate ? { template: resolvedTemplate } : {}),
     ...(resolvedClientEntry !== undefined ? { clientEntry: resolvedClientEntry } : {}),
     ...(config.base && config.base !== '/' ? { base: config.base } : {}),
+    ...(options.onError ? { onError: options.onError } : {}),
   })
 
   // A no-JS action post re-renders its page through a handler whose ONLY
@@ -262,6 +280,7 @@ export function createServer(options: CreateServerOptions): (req: Request) => Pr
         ...(resolvedTemplate ? { template: resolvedTemplate } : {}),
         ...(resolvedClientEntry !== undefined ? { clientEntry: resolvedClientEntry } : {}),
         ...(config.base && config.base !== '/' ? { base: config.base } : {}),
+        ...(options.onError ? { onError: options.onError } : {}),
       }),
       options.routes,
       config.routeOg,
@@ -292,6 +311,7 @@ export function createServer(options: CreateServerOptions): (req: Request) => Pr
           ...(resolvedTemplate ? { template: resolvedTemplate } : {}),
           ...(resolvedClientEntry !== undefined ? { clientEntry: resolvedClientEntry } : {}),
           ...(config.base && config.base !== '/' ? { base: config.base } : {}),
+          ...(options.onError ? { onError: options.onError } : {}),
         }),
       isEndpoint,
       gate,
