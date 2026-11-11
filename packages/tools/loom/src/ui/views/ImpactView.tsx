@@ -18,6 +18,17 @@ export function ImpactView(props: { model: ObservatoryModel }) {
       <C.Card variant="plain" data-testid="impact-card">
         {() => {
           const blast = m.blast()
+          if (!m.selId()) {
+            return (
+              <>
+                <C.CardTitle>Blast radius</C.CardTitle>
+                <C.CardText>
+                  Select a package — in the list, the graph or the ranking below — to see everything
+                  that rebuilds, retests or republishes if it changes.
+                </C.CardText>
+              </>
+            )
+          }
           return (
             <>
               <C.CardTitle>
@@ -73,6 +84,11 @@ export function ImpactView(props: { model: ObservatoryModel }) {
                   onClick={() => m.select(r.node.id)}
                 >
                   <span>{r.node.id}</span>
+                  {r.platforms.length ? (
+                    <small class="lm-plat" title={r.platforms.join('\n')}>
+                      {`+${r.platforms.length} platform`}
+                    </small>
+                  ) : null}
                 </button>
               </td>
               <td class="lm-col-opt">

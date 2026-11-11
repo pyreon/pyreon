@@ -179,11 +179,10 @@ describe('createModel init', () => {
     expect(m.selId()).toBe('@fix/util')
   })
 
-  it('ignores a selection that names no node (a stale shared link) and opens on the widest blast radius', () => {
+  it('ignores a selection that names no node (a stale shared link): the overview opens', () => {
     const m = createModel(report, 'graph', { selId: '@gone/pkg' })
-    const widest = Math.max(...Object.values(report.graph.reach))
-    expect(m.byId.get(m.selId())!.kind).toBe('internal')
-    expect(report.graph.reach[m.selId()]).toBe(widest)
+    expect(m.selId()).toBe('')
+    expect(m.sel()).toBeNull()
   })
 })
 

@@ -8,11 +8,15 @@
  */
 import { rmSync } from 'node:fs'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { buildReport } from '../core'
+import { analyzeGraph as analyze, buildReport } from '../core'
 import type { LoomReport } from '../core'
 import { BOOT_CSS } from '../dev/server'
+import type { WorkspacePackage } from '../core/types'
 import {
   blastRadius,
+  impactRows,
+  platformParents,
+  truncateEnd,
   buildNodes,
   createModel,
   depthGroups,
@@ -95,7 +99,9 @@ describe('blastRadius', () => {
     expect(m.reachOf('left-pad')).toBe(blastRadius(m.byId, 'left-pad').length)
   })
 
-  it('the model tracks the selection', () => {
+  it('the model tracks the selection, and nothing selected lights nothing', () => {
+    const none = createModel(report)
+    expect(none.blast()).toEqual([])
     const m = createModel(report)
     m.select('@fix/util')
     expect(m.blast()).toEqual(blastRadius(m.byId, '@fix/util'))
@@ -291,5 +297,91 @@ describe('breakpoints and the boot ground', () => {
     expect(BOOT_CSS).toContain(`background:${tokens(false).bg}`)
     expect(BOOT_CSS).toContain('html[data-lm-theme=light]')
     expect(BOOT_CSS).toContain('prefers-color-scheme: light')
+  })
+})
+
+describe('graph edges are the report edges', () => {
+  // Locks what the graph draws to the analysis: every box-to-box path is a
+  // `report.graph.edges` entry in the same direction, once, and every edge
+  // points to a deeper column (or sits inside a cycle).
+  it('the drawn internal deps of every node equal its report edges, without duplicates', () => {
+    const m = createModel(report)
+    const internal = new Set(m.internal.map((n) => n.id))
+    for (const n of m.internal) {
+      const drawn = n.deps.filter((d) => internal.has(d))
+      expect(new Set(drawn).size, `${n.id} duplicates`).toBe(drawn.length)
+      const fromReport = report.graph.edges.filter(([a]) => a === n.id).map(([, b]) => b)
+      expect([...drawn].sort(), n.id).toEqual([...fromReport].sort())
+      for (const d of drawn) {
+        const forward = report.graph.depths[d]! > report.graph.depths[n.id]!
+        expect(forward || (m.cycleNodes.has(n.id) && m.cycleNodes.has(d)), `${n.id} → ${d}`).toBe(true)
+      }
+    }
+  })
+})
+
+describe('platform packages', () => {
+  const withPlatforms = (): LoomReport => {
+    const pkg = (name: string, deps: WorkspacePackage['deps'] = []): WorkspacePackage => ({
+      name,
+      version: '1.0.0',
+      dir: name,
+      private: false,
+      deps,
+    })
+    const model = {
+      ...report.model,
+      packages: [
+        pkg('@x/app', [{ name: '@x/compiler', range: 'workspace:*', field: 'dependencies' }]),
+        pkg('@x/compiler', [
+          { name: '@x/compiler-darwin-arm64', range: 'workspace:^', field: 'optionalDependencies' },
+          { name: '@x/compiler-linux-x64-gnu', range: 'workspace:^', field: 'optionalDependencies' },
+          { name: '@x/util', range: 'workspace:*', field: 'optionalDependencies' },
+        ]),
+        pkg('@x/compiler-darwin-arm64'),
+        pkg('@x/compiler-linux-x64-gnu'),
+        pkg('@x/util', [{ name: '@x/leaf', range: 'workspace:*', field: 'dependencies' }]),
+        pkg('@x/leaf'),
+        pkg('@x/other', [{ name: '@x/leaf', range: 'workspace:*', field: 'optionalDependencies' }]),
+      ],
+    }
+    return { ...report, model, graph: analyze(model), issues: [], external: [] }
+  }
+
+  it('only-optional, single-parent, dependency-free packages are platform packages', () => {
+    const parents = platformParents(withPlatforms())
+    expect([...parents.entries()].sort()).toEqual([
+      ['@x/compiler-darwin-arm64', '@x/compiler'],
+      ['@x/compiler-linux-x64-gnu', '@x/compiler'],
+    ])
+    // util has a runtime dep of its own; leaf has two parents — neither qualifies.
+    expect(parents.has('@x/util')).toBe(false)
+    expect(parents.has('@x/leaf')).toBe(false)
+  })
+
+  it('the ranking folds them under their parent instead of repeating its reach', () => {
+    const r = withPlatforms()
+    const rows = impactRows({ report: r, nodes: buildNodes(r) })
+    const ids = rows.map((x) => x.node.id)
+    expect(ids).not.toContain('@x/compiler-darwin-arm64')
+    expect(rows.find((x) => x.node.id === '@x/compiler')!.platforms).toEqual([
+      '@x/compiler-darwin-arm64',
+      '@x/compiler-linux-x64-gnu',
+    ])
+    // Without the fold, each binary would outrank its own parent (reach + 1).
+    expect(r.graph.reach['@x/compiler-darwin-arm64']).toBe(r.graph.reach['@x/compiler']! + 1)
+  })
+
+  it('the fixture has none, so its ranking is every internal package', () => {
+    expect(platformParents(report).size).toBe(0)
+    expect(impactRows(createModel(report)).length).toBe(report.model.packages.length)
+  })
+})
+
+describe('truncateEnd', () => {
+  it('cuts at the end, keeping the readable start', () => {
+    expect(truncateEnd('compiler-darwin-arm64', 25)).toBe('compiler-darwin-arm64')
+    expect(truncateEnd('example-native-router-demo-web', 25)).toBe('example-native-router-de…')
+    expect(truncateEnd('example-native-router-demo-web', 25)).toHaveLength(25)
   })
 })

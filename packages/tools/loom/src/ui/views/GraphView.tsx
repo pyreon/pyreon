@@ -29,7 +29,7 @@ import {
   GRAPH_PAD_L,
   layoutGraph,
   shortName,
-  truncateMiddle,
+  truncateEnd,
   type ObservatoryModel,
 } from '../model'
 import { graphSelectionCss } from '../selection-css'
@@ -50,9 +50,14 @@ export function GraphView(props: { model: ObservatoryModel }) {
     let current: SVGGElement | null | undefined
     const sync = () => {
       current?.setAttribute('tabindex', '-1')
-      current = nodeEl(m.selId())
+      // Nothing selected (the overview): the tab stop is the first box and
+      // the canvas stays where it is — at its start, depth 0 on the left.
+      const id = m.selId()
+      current = nodeEl(id || (list[0]?.id ?? ''))
       current?.setAttribute('tabindex', '0')
-      requestAnimationFrame(() => current?.scrollIntoView({ block: 'nearest', inline: 'nearest' }))
+      if (id) {
+        requestAnimationFrame(() => current?.scrollIntoView({ block: 'nearest', inline: 'nearest' }))
+      }
     }
     sync()
     return m.selId.subscribe(sync)
@@ -102,9 +107,10 @@ export function GraphView(props: { model: ObservatoryModel }) {
   for (const n of list) {
     const P = layout.pos.get(n.id)!
     const i = index.get(n.id)!
-    // Long ids would bleed into the next column — truncate in the MIDDLE so
-    // prefix-sharing siblings stay distinct; the full id is the <title>.
-    const name = truncateMiddle(shortName(n.id), n.private ? 15 : 18)
+    // The box fits ~25 mono characters; a longer name is cut at the END (a
+    // middle cut like `compiler-…in-arm64` read as noise). The full id is the
+    // <title> tooltip and the accessible name.
+    const name = truncateEnd(shortName(n.id), n.private ? 21 : 25)
     const findings = n.errors + n.warnings + n.infos
     nodes.push(
       <g

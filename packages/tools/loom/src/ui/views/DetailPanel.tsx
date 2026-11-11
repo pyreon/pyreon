@@ -8,8 +8,9 @@
 import { cx, type VNodeChild } from '@pyreon/core'
 import * as C from '../chrome'
 import {
-  blastRadius,
+  impactRows,
   issuesFor,
+  scanSummary,
   pathTo,
   shortName,
   suppressSnippet,
@@ -56,8 +57,9 @@ export function DetailPanel(props: { model: ObservatoryModel }) {
     <C.Panel data-testid="loom-panel" aria-label="Package detail">
       {() => {
         const n = m.sel()
+        if (!n) return <Overview model={m} />
         const issues = issuesFor(m.report, n.id)
-        const blast = n.id === m.selId() ? m.blast() : blastRadius(m.byId, n.id)
+        const blast = m.blast()
         const internal = n.kind === 'internal'
         const ext = internal ? undefined : m.report.external.find((e) => e.name === n.id)
         const suppressible = issues.find((i) => i.severity !== 'info' && i.ignored === undefined)
@@ -66,6 +68,14 @@ export function DetailPanel(props: { model: ObservatoryModel }) {
         return (
           <>
             <C.PanelHead>
+              <button
+                type="button"
+                class="lm-back"
+                data-testid="panel-overview"
+                onClick={() => m.select('')}
+              >
+                ← workspace overview
+              </button>
               <C.PanelName data-testid="panel-name">{n.id}</C.PanelName>
               <div class="lm-tags">
                 {internal ? (
@@ -214,5 +224,115 @@ export function DetailPanel(props: { model: ObservatoryModel }) {
         )
       }}
     </C.Panel>
+  )
+}
+
+/**
+ * The rail with nothing selected: the workspace at a glance, in the package
+ * rail's own shapes — the numbers, the findings by severity, the five widest
+ * blast radii (platform packages ranked under their parent), and the gate.
+ */
+function Overview(props: { model: ObservatoryModel }) {
+  const m = props.model
+  const r = m.report
+  const summary = scanSummary(r)
+  const top = impactRows(m).slice(0, 5)
+  const widest = Math.max(1, top[0]?.reach ?? 0)
+  const name = r.model.root.name ?? 'workspace'
+  const sev = [
+    { key: 'error', label: 'errors', n: summary.errors },
+    { key: 'warning', label: 'warnings', n: summary.warnings },
+    { key: 'info', label: 'info', n: summary.infos },
+  ] as const
+  return (
+    <div data-testid="panel-overview-body">
+      <C.PanelHead>
+        <C.PanelName data-testid="overview-name">{name}</C.PanelName>
+        <div class="lm-tags">
+          <span class="lm-tag">workspace</span>
+          <span class="lm-tag">{`${r.stats.external} external deps`}</span>
+          <span
+            data-testid="overview-gate"
+            class={cx(['lm-tag', summary.exit ? 'lm-tag--danger' : 'lm-tag--ok'])}
+          >
+            {`exit ${summary.exit}`}
+          </span>
+        </div>
+      </C.PanelHead>
+      <C.Stats data-testid="overview-stats">
+        <C.Stat>
+          <C.StatLabel>packages</C.StatLabel>
+          <C.StatValue variant="plain">{String(r.stats.internal)}</C.StatValue>
+        </C.Stat>
+        <C.Stat>
+          <C.StatLabel>edges</C.StatLabel>
+          <C.StatValue variant="plain">{String(r.stats.edges)}</C.StatValue>
+        </C.Stat>
+        <C.Stat>
+          <C.StatLabel>depth</C.StatLabel>
+          <C.StatValue variant="accent">{String(r.stats.depth)}</C.StatValue>
+        </C.Stat>
+      </C.Stats>
+      <C.Section>
+        <C.SectionHead>
+          <span>findings</span>
+          <span>{String(r.issues.length)}</span>
+        </C.SectionHead>
+        <div class="lm-ov-rows">
+          {sev.map((x) => (
+            <div class="lm-ov-row" data-testid={`overview-${x.key}`}>
+              <span class={cx(['lm-sev', `lm-sev--${x.key}`])} aria-hidden="true" />
+              <span>{x.label}</span>
+              <b>{String(x.n)}</b>
+            </div>
+          ))}
+          <div class="lm-ov-row" data-testid="overview-cycles">
+            <span class={cx(['lm-sev', r.stats.cycles ? 'lm-sev--error' : 'lm-sev--ok'])} aria-hidden="true" />
+            <span>runtime cycles</span>
+            <b>{String(r.stats.cycles)}</b>
+          </div>
+        </div>
+      </C.Section>
+      <C.Section>
+        <C.SectionHead>
+          <span>widest blast radius</span>
+          <span>top 5</span>
+        </C.SectionHead>
+        <div data-testid="overview-top">
+          {top.map((row) => (
+            <button
+              type="button"
+              class="lm-pk lm-ov-top"
+              title={
+                row.platforms.length
+                  ? `${row.node.id} (and ${row.platforms.length} platform packages ranked under it)`
+                  : row.node.id
+              }
+              onClick={() => m.select(row.node.id)}
+            >
+              <span class="lm-pk-n">
+                {shortName(row.node.id)}
+                {row.platforms.length ? <small>{` +${row.platforms.length} platform`}</small> : null}
+              </span>
+              <span class="lm-bar lm-ov-bar" aria-hidden="true">
+                <i style={`width:${Math.round((row.reach / widest) * 100)}%`} />
+              </span>
+              <span class="lm-pk-d">{String(row.reach)}</span>
+            </button>
+          ))}
+        </div>
+      </C.Section>
+      <C.Section>
+        <C.SectionHead>
+          <span>gate</span>
+        </C.SectionHead>
+        <div class="lm-code">
+          <pre data-testid="overview-gate-code">
+            {`$ loom scan .${r.gate?.strict ? '   # strict: warnings gate too' : ''}\n→ exit ${summary.exit} · ${summary.errors} error${summary.errors === 1 ? '' : 's'}, ${summary.warnings} warning${summary.warnings === 1 ? '' : 's'}`}
+          </pre>
+        </div>
+        <C.Note>Select a package in the list or the graph for its detail.</C.Note>
+      </C.Section>
+    </div>
   )
 }

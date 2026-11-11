@@ -135,7 +135,9 @@ export function Observatory(props: {
       })
     revealRow() // a selection restored from the URL starts on screen too
     const offSel = m.selId.subscribe(() => {
-      history.replaceState(history.state, '', hashForSel(m.selId()))
+      const id = m.selId()
+      // No selection = no hash: the URL of the overview is the bare page.
+      history.replaceState(history.state, '', id ? hashForSel(id) : location.pathname + location.search)
       revealRow()
     })
     // Each view starts at its top-left — the canvas element is shared, so a
@@ -179,7 +181,9 @@ export function Observatory(props: {
         closeDrawers()
         return
       }
+      // Then the filter, then the selection (back to the workspace overview).
       if (m.query()) m.query.set('')
+      else if (m.selId()) m.select('')
       ;(document.activeElement as HTMLElement | null)?.blur()
       return
     }
@@ -206,7 +210,7 @@ export function Observatory(props: {
               // full-page navigation keeps what you were looking at.
               {
                 tag: 'a',
-                href: () => props.hrefFor!(v.id) + hashForSel(m.selId()),
+                href: () => props.hrefFor!(v.id) + (m.selId() ? hashForSel(m.selId()) : ''),
                 'aria-current': () => (m.view() === v.id ? 'page' : undefined),
               }
             : {

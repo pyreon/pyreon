@@ -69,6 +69,14 @@ body{background:var(--lm-bg);color:var(--lm-text);-webkit-font-smoothing:antiali
 .lm-pk[aria-current=true]{background:var(--lm-accentSoft);color:var(--lm-text);box-shadow:inset 2px 0 0 var(--lm-accent)}
 .lm-pk>span.lm-pk-n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .lm-pk-d{font-size:10.5px;color:var(--lm-faint);flex:none}
+.lm-back{font-family:${MONO};font-size:11px;color:var(--lm-faint);background:none;border:0;padding:0;margin:0 0 8px;cursor:pointer}
+.lm-back:hover{color:var(--lm-text)}
+.lm-ov-rows{display:grid;gap:2px}
+.lm-ov-row{display:flex;align-items:center;gap:8px;min-height:28px;font-family:${MONO};font-size:12px;color:var(--lm-muted)}
+.lm-ov-row>b{margin-left:auto;font-weight:500;color:var(--lm-text)}
+.lm-ov-top{gap:10px}
+.lm-ov-top small{color:var(--lm-faint);font-size:10.5px}
+.lm-ov-bar{flex:none;width:64px}
 .lm-pk-empty{padding:32px 12px;text-align:center;font-family:${MONO};font-size:12px;color:var(--lm-faint);line-height:1.5}
 
 /* ── chips (deps, blast radius) and findings ──────────────────────────── */
@@ -98,6 +106,7 @@ body{background:var(--lm-bg);color:var(--lm-text);-webkit-font-smoothing:antiali
 @media (max-width: 760px){.lm-code-head .lm-col-opt{display:none}}
 .lm-code pre{margin:0;padding:12px 14px;font-family:${MONO};font-size:11.5px;line-height:1.7;color:var(--lm-text);overflow-x:auto;white-space:pre}
 .lm-code .s{color:var(--lm-warn)}.lm-code .n{color:var(--lm-accent)}.lm-code .c{color:var(--lm-faint);font-style:italic}
+.lm-code+p{margin-top:10px}
 .lm-dl{font-family:${MONO};font-size:11px;color:var(--lm-accent);border:1px solid var(--lm-border);border-radius:4px;padding:3px 8px;background:transparent;cursor:pointer}
 .lm-dl:hover{border-color:var(--lm-accent)}
 
@@ -175,6 +184,7 @@ body{background:var(--lm-bg);color:var(--lm-text);-webkit-font-smoothing:antiali
 .lm-tname{display:flex;align-items:center;gap:8px;min-width:0;width:100%;border:0;background:transparent;padding:0;font:inherit;color:var(--lm-text);text-align:left;cursor:pointer}
 .lm-tname::after{content:'';position:absolute;inset:0}
 .lm-tname>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.lm-plat{flex:none;color:var(--lm-faint);font-size:10.5px}
 .lm-num{text-align:right}
 .lm-bar{display:block;height:6px;border-radius:3px;background:var(--lm-surface2);overflow:hidden}
 .lm-bar>i{display:block;height:100%;background:var(--lm-accent);border-radius:3px}

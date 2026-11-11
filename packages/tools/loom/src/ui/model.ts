@@ -60,6 +60,7 @@ export interface ObservatoryModel {
   searchOpen: Signal<boolean>
   /** Fulltext hits with the matched-field reason — id, version, kind, findings, deps. */
   searchHits: (q: string) => LoomSearchHit[]
+  /** The selected id; `''` = nothing selected (the rail shows the workspace overview). */
   selId: Signal<string>
   hoverId: Signal<string | null>
   showCycles: Signal<boolean>
@@ -81,7 +82,8 @@ export interface ObservatoryModel {
   /** Blast-radius size of any node: the report's `reach` for an internal
    * package, the same walk (memoised per node) for an external. */
   reachOf: (id: string) => number
-  sel: () => NodeVM
+  /** The selected node, or null for the workspace overview (no selection). */
+  sel: () => NodeVM | null
   /** Select a node and keep it selected across view jumps. */
   select: (id: string) => void
 }
@@ -205,18 +207,9 @@ export function createModel(
   const view = signal<ViewId>(initialView)
   const query = signal('')
   const searchOpen = signal(false)
-  // Opens on the package with the widest blast radius (the foundation most
-  // of the workspace rests on), unless the URL carried a selection.
-  const widest = nodes
-    .filter((n) => n.kind === 'internal')
-    .reduce<NodeVM | undefined>(
-      (best, n) =>
-        !best || (report.graph.reach[n.id] ?? 0) > (report.graph.reach[best.id] ?? 0) ? n : best,
-      undefined,
-    )
-  const selId = signal(
-    init.selId && byId.has(init.selId) ? init.selId : (widest?.id ?? nodes[0]?.id ?? ''),
-  )
+  // Opens with NOTHING selected — the rail shows the workspace overview and
+  // the graph sits at its start — unless the URL carried a selection.
+  const selId = signal(init.selId && byId.has(init.selId) ? init.selId : '')
   const hoverId = signal<string | null>(null)
   const showCycles = signal(true)
   const showDev = signal(false)
@@ -233,8 +226,8 @@ export function createModel(
     return q ? ordered.filter((n) => n.id.toLowerCase().includes(q)) : ordered
   })
 
-  const sel = computed(() => byId.get(selId()) ?? nodes[0]!)
-  const blast = computed(() => blastRadius(byId, selId()))
+  const sel = computed(() => byId.get(selId()) ?? null)
+  const blast = computed(() => (selId() ? blastRadius(byId, selId()) : []))
   // Bounded by the node universe (fixed for the model's lifetime): one entry
   // per external at most, dropped with the model.
   const extReach = new Map<string, number>()
@@ -377,9 +370,9 @@ export interface GraphLayout {
   depthKeys: number[]
 }
 
-export const GRAPH_BOX_W = 156
+export const GRAPH_BOX_W = 208
 export const GRAPH_BOX_H = 32
-export const GRAPH_COL_W = 204
+export const GRAPH_COL_W = 256
 export const GRAPH_ROW_H = 48
 export const GRAPH_PAD_T = 44
 export const GRAPH_PAD_L = 8
@@ -404,12 +397,70 @@ export function layoutGraph(shown: readonly NodeVM[]): GraphLayout {
   return { width, height, pos, depthKeys }
 }
 
-/** Impact ranking — blast radius over the whole graph, sorted by reach. */
-export function impactRows(model: ObservatoryModel): { node: NodeVM; reach: number }[] {
+/**
+ * Platform packages: an internal package that exists only as an
+ * `optionalDependencies` entry of exactly ONE other package and depends on
+ * nothing internal itself — the `@pyreon/compiler-<os>-<arch>` binaries. Each
+ * reaches exactly its parent plus the parent's reach, so a ranking that lists
+ * them repeats the parent's number once per platform. Returns id → parent.
+ */
+export function platformParents(report: LoomReport): Map<string, string> {
+  const internal = new Set(report.model.packages.map((p) => p.name))
+  const declaredBy = new Map<string, { user: string; field: string }[]>()
+  const hasInternalRuntimeDeps = new Set<string>()
+  for (const p of report.model.packages) {
+    for (const d of p.deps) {
+      if (!internal.has(d.name) || d.name === p.name) continue
+      if (d.field !== 'devDependencies') hasInternalRuntimeDeps.add(p.name)
+      const list = declaredBy.get(d.name) ?? []
+      list.push({ user: p.name, field: d.field })
+      declaredBy.set(d.name, list)
+    }
+  }
+  const out = new Map<string, string>()
+  for (const [id, decl] of declaredBy) {
+    if (hasInternalRuntimeDeps.has(id)) continue
+    const users = new Set(decl.map((x) => x.user))
+    if (users.size !== 1 || !decl.every((x) => x.field === 'optionalDependencies')) continue
+    out.set(id, decl[0]!.user)
+  }
+  return out
+}
+
+export interface ImpactRow {
+  node: NodeVM
+  reach: number
+  /** Platform packages ranked UNDER this one (see `platformParents`). */
+  platforms: string[]
+}
+
+/**
+ * Impact ranking — blast radius over the whole graph, sorted by reach, with
+ * platform packages folded under their parent instead of ranked on their own
+ * (their reach is the parent's plus one, by construction).
+ */
+export function impactRows(model: Pick<ObservatoryModel, 'nodes' | 'report'>): ImpactRow[] {
+  const parents = platformParents(model.report)
+  const under = new Map<string, string[]>()
+  for (const [id, parent] of parents) {
+    const list = under.get(parent) ?? []
+    list.push(id)
+    under.set(parent, list)
+  }
   return model.nodes
-    .filter((n) => n.kind === 'internal')
-    .map((n) => ({ node: n, reach: model.report.graph.reach[n.id] ?? 0 }))
+    .filter((n) => n.kind === 'internal' && !parents.has(n.id))
+    .map((n) => ({
+      node: n,
+      reach: model.report.graph.reach[n.id] ?? 0,
+      platforms: (under.get(n.id) ?? []).sort(),
+    }))
     .sort((a, b) => b.reach - a.reach || a.node.id.localeCompare(b.node.id))
+}
+
+/** Truncate at the END with an ellipsis (graph box labels; the full id is the
+ * tooltip and the accessible name). */
+export function truncateEnd(s: string, max: number): string {
+  return s.length <= max ? s : `${s.slice(0, max - 1)}…`
 }
 
 /** Strip the workspace scope prefix for display (`@pyreon/loom` → `loom`). */

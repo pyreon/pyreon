@@ -297,7 +297,8 @@ export const StatValue = txt
   .variants((t) => ({ plain: { color: t.text }, accent: { color: t.accent } }))
   .theme(() => ({ fontFamily: MONO, fontSize: '20px' }))
 export const Section = el
-  .attrs({ tag: 'section', block: true })
+  // rows + block: children (rows, chips, code) take the section's full width.
+  .attrs({ tag: 'section', block: true, contentDirection: 'rows', contentAlignX: 'block' })
   .theme((t) => ({
     padding: '14px 16px', flex: 'none',
     borderWidthBottom: '1px', borderStyleBottom: 'solid', borderColorBottom: t.border,
