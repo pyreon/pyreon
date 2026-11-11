@@ -181,7 +181,7 @@ Every push to a PR starts about 30 CI jobs, and the runner pool (20 concurrent, 
 - Fixes in one area (a package, a gate, a compat layer) that one session finds in one sitting go into ONE branch and one PR with a changeset per package, not one PR per fix. A reviewer reads one diff either way; CI runs once.
 - Combine open PRs by merging their branches into one (`git merge --no-ff`, then check each head is an ancestor) and close the originals. Keep the branches until the combined PR merges.
 - Keep a breaking change, a public API addition and a pure bug fix in separate PRs only when their budgets or review need differ; otherwise combine.
-- Do not push a branch only to merge `main` into it while it is green: the queue tests the merge result. Merge `main` only to fix a conflict or a failure that `main` caused.
+- Do not push a branch only to merge `main` into it while it is green: every push starts the whole matrix again and `strict` is off, so a green PR is mergeable as it is. Merge `main` only to fix a conflict or a failure that `main` caused.
 
 ## Restacking after a parent merges
 
