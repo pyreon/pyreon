@@ -1,6 +1,6 @@
 import { readdirSync } from 'node:fs'
 import { performance } from 'node:perf_hooks'
-import { createTerm, formatElapsed, plural } from '@pyreon/ansi'
+import { createTerm, finding, formatElapsed, plural } from '@pyreon/ansi'
 import * as p from './ui'
 import { type CliArgs, helpText, parseArgs } from './args'
 import { OWN_VERSION } from './own-version'
@@ -36,7 +36,10 @@ async function main() {
     args = parseArgs(process.argv.slice(2))
   } catch (err) {
     const t = createTerm({ isTTY: process.stderr.isTTY === true })
-    console.error(t.err(`${t.sym('err')} error: ${err instanceof Error ? err.message : String(err)}`))
+    const message = err instanceof Error ? err.message : String(err)
+    console.error(
+      finding(t, { severity: 'error', source: invokedAs, message, fix: `run ${invokedAs} --help for usage` }, { indent: 0, width: t.width }).join('\n'),
+    )
     process.exit(2)
   }
 
@@ -74,6 +77,16 @@ async function main() {
 }
 
 main().catch((err) => {
-  console.error(err)
+  // Ctrl-C at a prompt and a failed scaffold both land here; either way the
+  // last line says what happened (rule 1), with the stack dim beneath.
+  const t = createTerm({ isTTY: process.stderr.isTTY === true })
+  const message = err instanceof Error ? err.message : String(err)
+  const stack = err instanceof Error && err.stack ? err.stack.split('\n').filter((l) => /^\s+at /.test(l)) : []
+  console.error(
+    [
+      ...finding(t, { severity: 'error', source: 'create-zero', message: `scaffold failed: ${message}` }, { indent: 0, width: t.width }),
+      ...stack.map((l) => t.dim(`   ${l.trim()}`)),
+    ].join('\n'),
+  )
   process.exit(1)
 })
