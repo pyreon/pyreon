@@ -1,0 +1,203 @@
+{
+  "id": "react-native",
+  "route": "/compare/react-native",
+  "rival": "React Native and Expo",
+  "rivalMeasured": null,
+  "hook": {
+    "eyebrow": "Pyreon Native vs React Native",
+    "title": "One .tsx. A website, an iPhone app and an Android app.",
+    "lede": "Pyreon compiles your components to SwiftUI and Jetpack Compose views, so no JavaScript engine runs your UI on the device, and the same source server-renders on the web. The native targets are experimental; the web side is the mature part."
+  },
+  "proof": [
+    {
+      "stat": "22",
+      "label": "canonical primitives (`Stack`, `Text`, `Field`, `Select`, `Scroll`…) that compile to SwiftUI and Compose views and render DOM on the web",
+      "condition": "capability",
+      "source": "docs/src/content/docs/primitives.md line 34"
+    },
+    {
+      "stat": "No JS engine",
+      "label": "under your UI on the device: the generated app is SwiftUI or Compose code (a WebView appears only where you host one)",
+      "condition": "capability",
+      "source": "docs/src/content/docs/compare-app-frameworks.md (comparison table)"
+    },
+    {
+      "stat": "2",
+      "label": "required device lanes in CI: XCUITest on an iOS Simulator and Compose instrumented tests on an Android emulator",
+      "condition": "run when native paths change",
+      "source": ".github/workflows/native-device.yml; .agents/guides/ci/README.md"
+    }
+  ],
+  "table": {
+    "title": "Pyreon Native and React Native, line by line.",
+    "note": "Pyreon's native targets are experimental; React Native and Expo run production apps at scale. This table follows the repo's own comparison page and is honest about where Expo is ahead.",
+    "rows": [
+      {
+        "topic": "UI on the device",
+        "pyreon": "Generated SwiftUI and Compose: the platform's own widgets.",
+        "rival": "Platform widgets through React Native's renderer; Expo UI adds SwiftUI and Compose components.",
+        "verdict": "different",
+        "source": "docs/src/content/docs/compare-app-frameworks.md"
+      },
+      {
+        "topic": "Runtime under the UI",
+        "pyreon": "None: the app is a native binary.",
+        "rival": "The Hermes JavaScript engine.",
+        "verdict": "different",
+        "source": "docs/src/content/docs/compare-app-frameworks.md (we publish no speed or size number for this)"
+      },
+      {
+        "topic": "Web from the same source",
+        "pyreon": "First-class: SSR, SSG, ISR, islands, SPA.",
+        "rival": "react-native-web and Expo Router web; SSR is newer and still maturing.",
+        "verdict": "pyreon",
+        "source": "docs/src/content/docs/compare-app-frameworks.md"
+      },
+      {
+        "topic": "State model",
+        "pyreon": "Signals lower to `@State` / `@Observable` in SwiftUI and `mutableStateOf` in Compose.",
+        "rival": "React's re-render model.",
+        "verdict": "different",
+        "source": "00-brief/facts.md (native mappings); docs/src/content/docs/multiplatform.md"
+      },
+      {
+        "topic": "Code outside the native subset",
+        "pyreon": "A narrow, declarative subset compiles; the rest gets a named warning almost always.",
+        "rival": "Runs the whole language everywhere.",
+        "verdict": "rival",
+        "source": "docs/src/content/docs/multiplatform.md; docs/src/content/docs/compare-app-frameworks.md"
+      },
+      {
+        "topic": "Over-the-air updates",
+        "pyreon": "Not possible for native logic: it is compiled.",
+        "rival": "EAS Update ships JavaScript fixes between store reviews.",
+        "verdict": "rival",
+        "source": "docs/src/content/docs/compare-app-frameworks.md"
+      },
+      {
+        "topic": "Third-party native SDKs",
+        "pyreon": "First-party hooks for common cases plus a `useNativeModule` bridge you write.",
+        "rival": "The largest catalog (Expo SDK plus community).",
+        "verdict": "rival",
+        "source": "docs/src/content/docs/compare-app-frameworks.md"
+      },
+      {
+        "topic": "Hot reload on device",
+        "pyreon": "Web: yes. Native: a rebuild per change, about 3 s warm with `pyreon-native dev`.",
+        "rival": "Fast Refresh.",
+        "verdict": "rival",
+        "source": "docs/src/content/docs/compare-app-frameworks.md; docs/src/content/docs/native-dev-loop.md"
+      },
+      {
+        "topic": "Build and submit service",
+        "pyreon": "Local `xcodebuild` and `gradle`.",
+        "rival": "EAS Build, Submit and Workflows.",
+        "verdict": "rival",
+        "source": "docs/src/content/docs/compare-app-frameworks.md"
+      },
+      {
+        "topic": "Animation",
+        "pyreon": "Platform animation through `<Transition>`.",
+        "rival": "Reanimated and Skia.",
+        "verdict": "rival",
+        "source": "docs/src/content/docs/compare-app-frameworks.md"
+      },
+      {
+        "topic": "Maturity",
+        "pyreon": "Experimental.",
+        "rival": "Production.",
+        "verdict": "rival",
+        "source": "docs/src/content/docs/compare-app-frameworks.md"
+      }
+    ]
+  },
+  "code": {
+    "title": "The same todo screen, twice.",
+    "caption": "On the right, `<Stack>` becomes a `VStack` and a `Column`, `<Field>` a `TextField`, and `<Scroll>` around `<For>` a lazy list on both platforms. The same file renders DOM on the web.",
+    "rival": {
+      "label": "React Native",
+      "file": "Todos.tsx",
+      "code": "import { useState } from 'react'\nimport { Button, FlatList, Text, TextInput, View } from 'react-native'\n\ntype Todo = { id: number; text: string }\n\nexport function Todos() {\n  const [draft, setDraft] = useState('')\n  const [todos, setTodos] = useState<Todo[]>([])\n\n  const add = () => {\n    if (draft === '') return\n    setTodos([...todos, { id: todos.length + 1, text: draft }])\n    setDraft('')\n  }\n\n  return (\n    <View style={{ gap: 8, padding: 16 }}>\n      <TextInput value={draft} onChangeText={setDraft} onSubmitEditing={add} placeholder=\"New todo\" />\n      <Button title=\"Add\" onPress={add} />\n      <FlatList\n        data={todos}\n        keyExtractor={(t) => String(t.id)}\n        renderItem={({ item }) => <Text>{item.text}</Text>}\n      />\n    </View>\n  )\n}"
+    },
+    "pyreon": {
+      "label": "Pyreon (web, iOS, Android)",
+      "file": "Todos.tsx",
+      "code": "import { For } from '@pyreon/core'\nimport { Button, Field, Scroll, Stack, Text } from '@pyreon/primitives'\nimport { signal } from '@pyreon/reactivity'\n\ntype Todo = { id: number; text: string }\n\nexport function Todos() {\n  const draft = signal('')\n  const todos = signal<Todo[]>([])\n\n  const add = () => {\n    if (draft() === '') return\n    todos.set([...todos(), { id: todos().length + 1, text: draft() }])\n    draft.set('')\n  }\n\n  return (\n    <Stack gap=\"sm\" padding={4}>\n      <Field value={draft()} onChangeText={(t) => draft.set(t)} onSubmit={add} placeholder=\"New todo\" />\n      <Button onPress={add}>Add</Button>\n      <Scroll>\n        <For each={todos} by={(t) => t.id}>\n          {(t) => <Text>{t.text}</Text>}\n        </For>\n      </Scroll>\n    </Stack>\n  )\n}"
+    },
+    "checked": "Pyreon side: typechecked against the repo; lowered by the native compiler with the first-party plugins to SwiftUI (`VStack`, `TextField`, `ScrollView { LazyVStack }`) and Compose (`Column`, `TextField`, `LazyColumn`) with zero warnings; the Swift output passed the repo's SwiftUI typecheck. React Native side: written against the React Native core components; not compiled here."
+  },
+  "deletes": {
+    "title": "What you stop writing.",
+    "items": [
+      {
+        "what": "`useState` pairs, `useMemo`, `useCallback`, dependency arrays",
+        "instead": "Signals and `computed`; the screen component runs once."
+      },
+      {
+        "what": "`StyleSheet` pixel values",
+        "instead": "Theme tokens: `padding={4}`, `gap=\"sm\"`."
+      },
+      {
+        "what": "`keyExtractor` plus `renderItem`",
+        "instead": "`<For each by>` inside `<Scroll>`, which becomes a lazy list on iOS and Android."
+      }
+    ]
+  },
+  "pickTheOther": {
+    "title": "When to pick React Native or Expo",
+    "items": [
+      "You ship logic fixes over the air between store reviews: that is EAS Update, and compiled native code cannot do it.",
+      "You depend on many third-party native SDKs and have no time to write bridges.",
+      "Your app is graphics-heavy or animation-led (Reanimated, Skia).",
+      "You must ship a production store app next quarter: Pyreon's native targets are experimental."
+    ]
+  },
+  "migrate": {
+    "title": "Coming from React Native and Expo?",
+    "text": "There is no compat layer for React Native. The guide maps `View`, `Text`, `Pressable`, Expo Router and the `expo-*` modules to Pyreon, and lists what does not carry over.",
+    "href": "/docs/migrating-from-react-native",
+    "label": "Read the React Native guide"
+  },
+  "cta": {
+    "title": "One codebase, three platforms. Try it.",
+    "command": "npm create @pyreon/multiplatform@latest",
+    "secondary": {
+      "label": "The full comparison with Expo, Flutter, KMP and Capacitor",
+      "href": "/docs/compare-app-frameworks"
+    }
+  },
+  "sources": [
+    {
+      "claim": "Native targets experimental; web is the mature part",
+      "path": "docs/src/content/docs/compare-app-frameworks.md (Read this first); 00-brief/facts.md status labels"
+    },
+    {
+      "claim": "Comparison rows (UI, runtime, web, OTA, SDKs, hot reload ~3 s warm, EAS, animation, maturity)",
+      "path": "docs/src/content/docs/compare-app-frameworks.md (Comparison table, Where Pyreon is behind)"
+    },
+    {
+      "claim": "22 canonical primitives",
+      "path": "docs/src/content/docs/primitives.md line 34; packages/native/compiler/src/canonical-primitives.ts"
+    },
+    {
+      "claim": "Named warning 'almost always' outside the subset",
+      "path": "docs/src/content/docs/multiplatform.md; 00-brief/facts.md"
+    },
+    {
+      "claim": "Required native CI lanes (XCUITest, Compose instrumented tests)",
+      "path": ".github/workflows/native-device.yml; 00-brief/facts.md line 213"
+    },
+    {
+      "claim": "Signals → @State/@Observable and mutableStateOf",
+      "path": "00-brief/facts.md (native mappings); docs/src/content/docs/multiplatform.md"
+    },
+    {
+      "claim": "Tokens-first styling replaces StyleSheet pixel numbers; Scroll + For lowers to lazy lists",
+      "path": "docs/src/content/docs/migrating-from-react-native.md; docs/src/content/docs/primitives.md (Scroll)"
+    },
+    {
+      "claim": "Todos sample lowers to SwiftUI + Compose with zero warnings; Swift typecheck ok",
+      "path": "/tmp/wt-site-content/.scratch/site-compare/{Todos.tsx,native2.ts} (run 11 Nov 2026)"
+    }
+  ]
+}

@@ -1,0 +1,316 @@
+{
+  "id": "components-run-once",
+  "route": "/why/components-run-once",
+  "title": "Components run once",
+  "hook": {
+    "eyebrow": "Fine-grained reactivity",
+    "title": "Your component runs once. Ever.",
+    "lede": "Delete `useMemo`. Delete `useCallback`. Delete every dependency array. A Pyreon component runs when it mounts, and a signal change updates the one DOM node that shows it, so there is nothing left to memoise.",
+    "cta": {
+      "label": "Start building",
+      "command": "npm create @pyreon/zero@latest"
+    }
+  },
+  "sections": [
+    {
+      "kind": "proof",
+      "title": "Skipping the work shows up on the clock.",
+      "stats": [
+        {
+          "stat": "2.6×",
+          "label": "faster than React 19 at creating 10,000 rows (72.6 ms vs 192.0 ms)",
+          "condition": "final pass, two runs · Apple M3 Max · real Chromium · synthetic, author-run",
+          "source": "BENCHMARKS.md §1"
+        },
+        {
+          "stat": "2.4×",
+          "label": "faster than React 19 at toggling 1,000 todos in a TodoMVC-shaped app (4.60 ms vs 11.41 ms)",
+          "condition": "overnight run, one run · Apple M3 Max · synthetic, author-run",
+          "source": "BENCHMARKS.md §6"
+        },
+        {
+          "stat": "2.0–2.1×",
+          "label": "faster effect propagation than Preact Signals (1,407 vs 2,874 ns, V8)",
+          "condition": "final pass, two runs · Node (V8) · Apple M3 Max · synthetic, author-run",
+          "source": "BENCHMARKS.md §8"
+        }
+      ],
+      "note": "Also from the same record: clearing 1,000 todos runs 3–4× faster than React 19 (one run), and the reactivity core beats Preact Signals on batching (1.94–1.95×) and the computed diamond (1.30–1.31×) on V8, two runs. Reproduce any of it from /benchmarks."
+    },
+    {
+      "kind": "diff",
+      "title": "The code you delete.",
+      "before": {
+        "label": "React 19",
+        "code": "import { memo, useCallback, useMemo, useState } from 'react'\n\nconst Controls = memo(function Controls({ onAdd }: { onAdd: () => void }) {\n  return <button onClick={onAdd}>+1</button>\n})\n\nexport function Counter() {\n  const [count, setCount] = useState(0)\n  const [log, setLog] = useState<{ id: number; at: number }[]>([])\n  const doubled = useMemo(() => count * 2, [count])\n  const add = useCallback(() => {\n    setCount((c) => c + 1)\n    setLog((l) => [...l, { id: l.length, at: Date.now() }])\n  }, [])\n\n  return (\n    <div>\n      <Controls onAdd={add} />\n      <p>{count} × 2 = {doubled}</p>\n      {count > 9 && <p>Double digits.</p>}\n      <ul>\n        {log.map((e) => (\n          <li key={e.id}>{new Date(e.at).toLocaleTimeString()}</li>\n        ))}\n      </ul>\n    </div>\n  )\n}"
+      },
+      "after": {
+        "label": "Pyreon",
+        "code": "import { signal, computed } from '@pyreon/reactivity'\nimport { For, Show } from '@pyreon/core'\n\nfunction Controls(props: { onAdd: () => void }) {\n  return <button onClick={props.onAdd}>+1</button>\n}\n\nexport function Counter() {\n  const count = signal(0)\n  const log = signal<{ id: number; at: number }[]>([])\n  const doubled = computed(() => count() * 2)\n  const add = () => {\n    count.update((c) => c + 1)\n    log.update((l) => [...l, { id: l.length, at: Date.now() }])\n  }\n\n  return (\n    <div>\n      <Controls onAdd={add} />\n      <p>{count()} × 2 = {doubled()}</p>\n      <Show when={() => count() > 9}>\n        <p>Double digits.</p>\n      </Show>\n      <ul>\n        <For each={log} by={(e) => e.id}>\n          {(e) => <li>{new Date(e.at).toLocaleTimeString()}</li>}\n        </For>\n      </ul>\n    </div>\n  )\n}"
+      },
+      "caption": "Same counter, same derived value, same list. On the left, `memo`, `useMemo` and `useCallback` exist only to tell React what not to redo. On the right, `add` is a plain function created once, `computed` tracks its own dependencies, and `<For>` keys rows with `by`. No dependency array anywhere, because a signal records who read it."
+    },
+    {
+      "kind": "story",
+      "title": "Zero re-renders, by construction.",
+      "text": [
+        "In React the counter body runs on every click. It builds a new element tree and the reconciler diffs it against the old one to find a single changed character. That is why `useMemo`, `useCallback`, `memo` and dependency arrays exist: every value in the body is recreated on each render, so you have to say which ones are stable.",
+        "In Pyreon the body runs once, at mount. A handler defined in the body is created once. A `computed()` is created once and tracks what it reads. When `count` changes, `count` notifies the text node bound to it, and nothing else in the tree is visited.",
+        "You lose the afternoon you used to spend on \"why did this re-render?\". There is no second render to ask about."
+      ]
+    },
+    {
+      "kind": "code",
+      "title": "Ten lines in, one binding out.",
+      "text": "This is what `transformJSX` from `@pyreon/compiler` emits for a counter. The static markup becomes a cached template string. The only dynamic part is one line: `_bindText(count, __t2)` subscribes that text node straight to the signal. Clicking `+` writes one text node, and that is the whole update.",
+      "blocks": [
+        {
+          "label": "You write",
+          "lang": "tsx",
+          "code": "import { signal } from '@pyreon/reactivity'\n\nfunction Counter() {\n  const count = signal(0)\n  return (\n    <div>\n      <button onClick={() => count.update((n) => n - 1)}>-</button>\n      <span>{count()}</span>\n      <button onClick={() => count.update((n) => n + 1)}>+</button>\n    </div>\n  )\n}"
+        },
+        {
+          "label": "The compiler emits",
+          "lang": "js",
+          "code": "import { _tpl, _bindText } from \"@pyreon/runtime-dom\";\nimport { signal } from '@pyreon/reactivity'\n\nfunction Counter() {\n  const count = signal(0)\n  return _tpl(\"<div><button>-</button><span> </span><button>+</button></div>\", (__root) => {\n    const __e0 = __root.firstElementChild;\n    const __e1 = __e0.nextElementSibling;\n    const __t2 = __e1.firstChild;\n    const __e3 = __e1.nextElementSibling;\n    __e0.__ev_click = () => count.update((n) => n - 1);\n    const __d0 = _bindText(count, __t2);\n    __e3.__ev_click = () => count.update((n) => n + 1);\n    return __d0\n  })\n}"
+        }
+      ],
+      "caption": "Unedited compiler output apart from indentation and the parentheses around the returned template. Paste any component into `transformJSX` and read what comes back."
+    },
+    {
+      "kind": "compare-strip",
+      "title": "What replaces what.",
+      "items": [
+        {
+          "label": "state",
+          "before": "`const [n, setN] = useState(0)`",
+          "after": "`const n = signal(0)`"
+        },
+        {
+          "label": "derived value",
+          "before": "`useMemo(() => n * 2, [n])`",
+          "after": "`computed(() => n() * 2)`"
+        },
+        {
+          "label": "stable handler",
+          "before": "`useCallback(fn, [deps])`",
+          "after": "a plain function"
+        },
+        {
+          "label": "skip a child render",
+          "before": "`memo(Child)`",
+          "after": "nothing: children never re-render"
+        },
+        {
+          "label": "update",
+          "before": "`setN((n) => n + 1)`",
+          "after": "`n.update((v) => v + 1)`"
+        },
+        {
+          "label": "keyed list",
+          "before": "`items.map((i) => <li key={i.id}>…)`",
+          "after": "`<For each={items} by={(i) => i.id}>`"
+        },
+        {
+          "label": "conditional",
+          "before": "`{cond && <p/>}`",
+          "after": "`<Show when={() => cond()}>`"
+        }
+      ]
+    },
+    {
+      "kind": "steps",
+      "title": "Watch it happen in your own app.",
+      "items": [
+        {
+          "title": "Open the reactive overlay",
+          "text": "Press `Ctrl+Shift+R` in any dev build (or call `$p.reactivity()` in the console). It is built into `@pyreon/runtime-dom` and tree-shaken from production builds, so there is nothing to install."
+        },
+        {
+          "title": "Read the Health and Activity tabs",
+          "text": "Health lists orphan signals, high fan-out and deep chains. Activity shows the latest updates with the chain of writes that caused each one."
+        },
+        {
+          "title": "Press Pick, then click a value",
+          "text": "In the Inspect tab, press Pick (or call `$p.pick()`) and click text bound to a single signal or computed. The panel shows that signal and its change chain. Text built from several signals shows nothing, by design: the link is recorded exactly when the binding is made, never guessed."
+        }
+      ]
+    },
+    {
+      "kind": "list",
+      "title": "Live or static, decided before you run anything.",
+      "text": "The Reactivity Lens prints the compiler's own verdict next to every JSX expression in your editor, served by `pyreon-lint --lsp`.",
+      "items": [
+        {
+          "title": "`live`",
+          "text": "Reads a signal in a tracked position. It updates."
+        },
+        {
+          "title": "`live·prop`",
+          "text": "A reactive component prop, wired as a getter on `props`."
+        },
+        {
+          "title": "`live·attr`",
+          "text": "An attribute that re-evaluates when its signals change."
+        },
+        {
+          "title": "`static`",
+          "text": "Evaluated once. If you expected `live`, you just found the bug."
+        },
+        {
+          "title": "`hoisted`",
+          "text": "A provably static subtree lifted to module scope."
+        }
+      ]
+    },
+    {
+      "kind": "quote",
+      "text": "Signal reads inside reactive scopes re-evaluate when the signal changes. Signal reads outside reactive scopes evaluate once and become static.",
+      "attribution": "Pyreon docs",
+      "href": "/docs/reactivity-rules"
+    },
+    {
+      "kind": "list",
+      "title": "The rules, straight.",
+      "text": "Run-once has a small set of rules. They are what the compiler emits, and the lint rules and the Lens catch the common slips.",
+      "items": [
+        {
+          "title": "Destructuring props captures once",
+          "text": "`const { name } = props` copies the value at setup, so the text never changes. Read `props.name`, or use `splitProps(props, ['name'])`, whose pieces keep their getters."
+        },
+        {
+          "title": "A `const` derived from props stays live",
+          "text": "`const name = props.name ?? 'stranger'` is inlined at its JSX use site and re-reads `props.name`. A `let` is never inlined."
+        },
+        {
+          "title": "An early return runs once",
+          "text": "`if (loading()) return <Skeleton />` pins the component to whichever branch was true at mount. Use `<Show when={loading} fallback={…}>`, or return an accessor."
+        },
+        {
+          "title": "Write with `.set()`, not a call",
+          "text": "`count(5)` is a read that ignores its argument. `count.set(5)` and `count.update(fn)` write."
+        },
+        {
+          "title": "Prefer plain JavaScript? Opt in to Plain Mode",
+          "text": "Plain Mode is an opt-in compile-time dialect: `'use plain'` at the top of a file (or `pyreon({ plain: true })` app-wide) lets you write `let count = state(0); count++`. Destructured props stay live and early returns on a reactive condition become reactive. It compiles to the same signal code.",
+          "code": "'use plain'\nimport { state, derived } from '@pyreon/core/plain'\n\nlet count = state(0)\nconst double = derived(count * 2)\n\nexport function Counter({ label, step = 1 }: { label: string; step?: number }) {\n  return <button onClick={() => { count += step }}>{label}: {count} / {double}</button>\n}"
+        }
+      ]
+    },
+    {
+      "kind": "note",
+      "text": "We publish where we lose, so you can trust where we win: in the same record Solid mounts a deep 2,047-component tree 1.15–1.18× faster, creating a signal is about 5× slower than in Preact Signals, and the same keyed-table app is 17.2 KB gzip against Solid's 7.5 KB.",
+      "href": "/benchmarks"
+    },
+    {
+      "kind": "faq",
+      "title": "Questions a React developer asks.",
+      "items": [
+        {
+          "q": "Is this just Solid?",
+          "a": "Same run-once model, and we are happy to say so. The compiler does more of the wiring: a bare signal read binds the signal itself with no closure, signal reads in component props become getters, and a `const` derived from props is inlined so it stays reactive."
+        },
+        {
+          "q": "Can hooks be conditional?",
+          "a": "Yes. React identifies hooks by call order across renders. Pyreon has no second render, so a hook is an ordinary call made during setup. What you cannot do is call one after setup: inside a click handler, a `setTimeout` or after an `await`."
+        },
+        {
+          "q": "What about a list?",
+          "a": "`<For each={items} by={(i) => i.id}>`. The key prop is `by`, because JSX reserves `key`. Each row's bindings are separate, so toggling one todo touches one attribute on one `<li>`, and reordering moves existing nodes by key."
+        },
+        {
+          "q": "How do I know a value is live?",
+          "a": "Look at the Lens hint in your editor. It is the compiler's own `live` or `static` verdict for that expression, so it shows what the build will do. `pyreon check` catches the common slips, such as destructured props, before you commit."
+        }
+      ]
+    },
+    {
+      "kind": "links",
+      "title": "Go deeper.",
+      "items": [
+        {
+          "label": "Reactivity rules",
+          "href": "/docs/reactivity-rules",
+          "text": "Every edge case, one page."
+        },
+        {
+          "label": "Reactivity Lens",
+          "href": "/docs/reactivity-lens",
+          "text": "The live/static hints in your editor."
+        },
+        {
+          "label": "Devtools",
+          "href": "/docs/devtools",
+          "text": "The reactive overlay and the picker."
+        },
+        {
+          "label": "Plain Mode",
+          "href": "/docs/plain-mode",
+          "text": "The opt-in dialect, law by law."
+        },
+        {
+          "label": "Benchmarks",
+          "href": "/benchmarks",
+          "text": "Every number on this page, with its run."
+        }
+      ]
+    }
+  ],
+  "end": {
+    "title": "The best re-render is the one that never happens.",
+    "cta": {
+      "label": "Start building",
+      "command": "npm create @pyreon/zero@latest"
+    }
+  },
+  "share": {
+    "ogTitle": "Your component runs once. Ever.",
+    "ogSub": "Delete useMemo, useCallback and every dependency array. 2.6× faster than React at 10,000 rows (synthetic, author-run)."
+  },
+  "sources": [
+    {
+      "claim": "Create 10,000 rows: Pyreon 72.64 ms vs React 19 192.01 ms (2.64×), two runs",
+      "path": "BENCHMARKS.md §1 (record 2026-11-05)"
+    },
+    {
+      "claim": "TodoMVC toggle-1000 4.60 vs 11.41 ms (2.48×), clear-1000 3–4×, one run",
+      "path": "BENCHMARKS.md §6 real-bench"
+    },
+    {
+      "claim": "Reactivity V8: effect 2.04–2.13×, batch 1.94–1.95×, diamond 1.30–1.31× vs Preact; creation loss 4.8×",
+      "path": "BENCHMARKS.md §8"
+    },
+    {
+      "claim": "Deep tree Solid 1.15–1.18×; bundle 17.2 vs Solid 7.5 KB",
+      "path": "BENCHMARKS.md §2, §7, §13"
+    },
+    {
+      "claim": "Counter compiles to _tpl + _bindText(count, __t2)",
+      "path": "packages/core/compiler (transformJSX); post 05-blog/B01-components-run-once.md"
+    },
+    {
+      "claim": "Pyreon counter in the diff compiles and passes MCP validate with no findings",
+      "path": "packages/core/compiler/src/index.ts transformJSX; @pyreon/mcp validate (run 11 Nov)"
+    },
+    {
+      "claim": "Reactive overlay: Ctrl+Shift+R, Health/Activity/Inspect, Pick on single-signal text, tree-shaken from production",
+      "path": "packages/core/runtime-dom/src/devtools.ts; docs/src/content/docs/devtools.md"
+    },
+    {
+      "claim": "Lens hints live, live·prop, live·attr, static, hoisted via pyreon-lint --lsp",
+      "path": "docs/src/content/docs/reactivity-lens.md"
+    },
+    {
+      "claim": "Reactivity rule quote",
+      "path": "docs/src/content/docs/reactivity-rules.md line 14"
+    },
+    {
+      "claim": "Destructured props capture once; const-from-props inlined; let not; early returns run once; key prop is by",
+      "path": "AGENTS.md \"Components run once\"; docs/src/content/docs/reactivity-rules.md"
+    },
+    {
+      "claim": "Plain Mode opt-in via use plain / @pyreon/core/plain / pyreon({ plain: true }); example code",
+      "path": "docs/src/content/docs/plain-mode.md; packages/core/compiler/src/plain.ts"
+    }
+  ]
+}

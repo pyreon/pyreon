@@ -9,6 +9,8 @@ import lastUpdated from './vite-plugins/last-updated'
 import legacyCssLayer from './vite-plugins/legacy-css-layer'
 import openStats from './vite-plugins/open-stats'
 import productContent from './vite-plugins/product-content'
+import sitePagesContent from './vite-plugins/site-pages-content'
+import siteReleases from './vite-plugins/site-releases'
 import publishLlmsTxt from './vite-plugins/publish-llms-txt'
 import { SITE_LINKS } from './src/site-links'
 
@@ -41,6 +43,8 @@ export default defineConfig({
     legacyCssLayer(),
     // Product content JSON → Shiki-highlighted code at build time.
     productContent(),
+    // Story / compare / migrate / project content JSON → highlighted code at build time.
+    sitePagesContent(),
     // The custom pyreon-syntax Shiki themes mirror the brand handoff §3/§6.7
     // tokens (`--syn-*` in tokens.css). VitePress applied them via its
     // `markdown.theme: { light, dark }` config — same surface here, only
@@ -92,6 +96,9 @@ export default defineConfig({
     // virtual:pyreon-open-stats — GitHub / npm / repo numbers for /open,
     // fetched once per build; a failed source renders as "unavailable".
     openStats(),
+    // virtual:pyreon-site-releases — released versions (CHANGELOG.md) and the
+    // unreleased changesets on main, read once per build for /releases.
+    siteReleases(),
     // /llms.txt + /llms-full.txt — the repo-root files `bun run gen-docs`
     // generates from the package manifests (see the plugin).
     publishLlmsTxt(),

@@ -1,0 +1,1064 @@
+{
+  "assets": [
+    {
+      "file": "benchmarks/bundle.svg",
+      "kind": "svg",
+      "pages": [
+        "/benchmarks",
+        "/compare/react"
+      ],
+      "slot": "bundle",
+      "alt": "Gzipped bundle of the same keyed-table app: Vanilla 3.6 KB, Solid 7.5 KB, Preact 10.1 KB, Svelte 5 16.1 KB, Pyreon 17.2 KB, Vue 3 27.4 KB, Octane 43.1 KB, React 19 69.6 KB.",
+      "theme": "both",
+      "width": 960,
+      "height": 440
+    },
+    {
+      "file": "benchmarks/forms.svg",
+      "kind": "svg",
+      "pages": [
+        "/benchmarks",
+        "/products/form"
+      ],
+      "slot": "forms",
+      "alt": "12-field form, microseconds: mount 12 fields: Pyreon 210, Solid modular-forms 305, Formik 340, vee-validate 570, Felte 575, React Hook Form 640, TanStack Form 680; keystroke, validating: Pyreon 460, Solid modular-forms 570, React Hook Form 830, Felte 1150, Formik 1320, vee-validate 2260, TanStack Form 2380.",
+      "theme": "both",
+      "width": 960,
+      "height": 484
+    },
+    {
+      "file": "benchmarks/reactivity-jsc.svg",
+      "kind": "svg",
+      "pages": [
+        "/benchmarks",
+        "/products/reactivity"
+      ],
+      "slot": "reactivity",
+      "alt": "Reactivity core on JavaScriptCore · Bun 1.4, ns per op (Pyreon / Preact Signals / Solid): signal create + read + write 31 / 6 / 30, loss ≈5× vs Preact; computed diamond 5201 / 5556 / 15839, win 1.07–1.08× vs Preact; effect propagation 1573 / 4269 / 7417, win 2.5–2.7× vs Preact; batch 50 signals 456 / 1050 / 1829, win 2.30–2.34× vs Preact; deep chain 137424 / 119299 / 287720, loss 1.15–1.21× vs Preact; wide fan-out 1590 / 2202 / 3015, win 1.33–1.38× vs Preact.",
+      "theme": "both",
+      "width": 960,
+      "height": 786
+    },
+    {
+      "file": "benchmarks/reactivity-v8.svg",
+      "kind": "svg",
+      "pages": [
+        "/benchmarks",
+        "/products/reactivity"
+      ],
+      "slot": "reactivity",
+      "alt": "Reactivity core on V8 · Node 26, ns per op (Pyreon / Preact Signals / Solid): signal create + read + write 63 / 13 / 20, loss 4.8× vs Preact; computed diamond 4424 / 5761 / 38021, win 1.30–1.31× vs Preact; effect propagation 1407 / 2874 / 15910, win 2.04–2.13× vs Preact; batch 50 signals 456 / 888 / 4759, win 1.94–1.95× vs Preact; deep chain 107237 / 75639 / 677221, loss 1.42–1.43× vs Preact; wide fan-out 1651 / 1602 / 4886, loss 1.03–1.04× vs Preact.",
+      "theme": "both",
+      "width": 960,
+      "height": 786
+    },
+    {
+      "file": "benchmarks/row-board-append-1k-10k.svg",
+      "kind": "svg",
+      "pages": [
+        "/benchmarks"
+      ],
+      "slot": "row-board",
+      "alt": "Row board, append 1k → 10k: Vanilla 12 ms, Pyreon 13.06 ms, Octane 0.16 13.25 ms, Solid 13.71 ms, Solid 2.0 (RC) 14.54 ms, React 19 15.22 ms, Preact 16.35 ms, Svelte 5 19.25 ms, Vue 3.6 Vapor (RC) 62.2 ms, Vue 3 62.83 ms. Verdict: split, tie in run 1, 1.02× win in run 2 vs Octane, so not claimed as a win.",
+      "theme": "both",
+      "width": 960,
+      "height": 508
+    },
+    {
+      "file": "benchmarks/row-board-clear-rows.svg",
+      "kind": "svg",
+      "pages": [
+        "/benchmarks"
+      ],
+      "slot": "row-board",
+      "alt": "Row board, clear rows: Vanilla 0.09 ms, Pyreon 0.13 ms, Vue 3.6 Vapor (RC) 0.145 ms, Octane 0.16 0.15 ms, Vue 3 0.255 ms, Preact 0.26 ms, Svelte 5 0.335 ms, Solid 0.46 ms, Solid 2.0 (RC) 0.64 ms, React 19 0.92 ms. Verdict: win, win, 1.11–1.12× vs Vapor (both runs).",
+      "theme": "both",
+      "width": 960,
+      "height": 508
+    },
+    {
+      "file": "benchmarks/row-board-create-1-000-rows.svg",
+      "kind": "svg",
+      "pages": [
+        "/benchmarks"
+      ],
+      "slot": "row-board",
+      "alt": "Row board, create 1,000 rows: Vanilla 6.78 ms, Pyreon 7.26 ms, Vue 3 7.33 ms, Vue 3.6 Vapor (RC) 7.35 ms, Octane 0.16 7.47 ms, Solid 7.88 ms, Svelte 5 8.07 ms, Solid 2.0 (RC) 8.28 ms, React 19 9.04 ms, Preact 9.87 ms. Verdict: tie, tie with Vue 3 and Vapor in both runs, and with Octane in run 2.",
+      "theme": "both",
+      "width": 960,
+      "height": 508
+    },
+    {
+      "file": "benchmarks/row-board-create-10-000-rows.svg",
+      "kind": "svg",
+      "pages": [
+        "/benchmarks"
+      ],
+      "slot": "row-board",
+      "alt": "Row board, create 10,000 rows: Vanilla 67.56 ms, Pyreon 72.64 ms, Vue 3 73.99 ms, Octane 0.16 74.31 ms, Vue 3.6 Vapor (RC) 74.83 ms, Solid 78.75 ms, Solid 2.0 (RC) 82.99 ms, Svelte 5 87.51 ms, React 19 192.01 ms, Preact 278.03 ms. Verdict: split, tie in run 1, 1.02× win in run 2, so not claimed as a win · 2.6× faster than React 19, 3.8× than Preact (run 1 figures).",
+      "theme": "both",
+      "width": 960,
+      "height": 508
+    },
+    {
+      "file": "benchmarks/row-board-partial-update.svg",
+      "kind": "svg",
+      "pages": [
+        "/benchmarks"
+      ],
+      "slot": "row-board",
+      "alt": "Row board, partial update: Pyreon 0.705 ms, Vanilla 0.71 ms, Vue 3.6 Vapor (RC) 0.71 ms, Octane 0.16 0.735 ms, Svelte 5 0.81 ms, React 19 0.885 ms, Preact 0.92 ms, Vue 3 1.04 ms, Solid 2.0 (RC) 1.22 ms, Solid 1.27 ms. Verdict: tie, tie with Vapor and Octane (both runs).",
+      "theme": "both",
+      "width": 960,
+      "height": 508
+    },
+    {
+      "file": "benchmarks/row-board-remove-row.svg",
+      "kind": "svg",
+      "pages": [
+        "/benchmarks"
+      ],
+      "slot": "row-board",
+      "alt": "Row board, remove row: Pyreon 5.7 ms, Vanilla 5.73 ms, Octane 0.16 5.74 ms, Vue 3.6 Vapor (RC) 5.76 ms, Solid 5.76 ms, React 19 5.78 ms, Solid 2.0 (RC) 5.83 ms, Vue 3 5.89 ms, Preact 5.9 ms, Svelte 5 6.35 ms. Verdict: tie, tie with Octane, Vapor, Solid and React (both runs), and with Preact in run 1.",
+      "theme": "both",
+      "width": 960,
+      "height": 508
+    },
+    {
+      "file": "benchmarks/row-board-replace-all-rows.svg",
+      "kind": "svg",
+      "pages": [
+        "/benchmarks"
+      ],
+      "slot": "row-board",
+      "alt": "Row board, replace all rows: Vanilla 6.69 ms, Vue 3.6 Vapor (RC) 7.11 ms, Pyreon 7.13 ms, Octane 0.16 7.29 ms, Vue 3 7.38 ms, Solid 7.83 ms, Svelte 5 8.02 ms, Solid 2.0 (RC) 8.24 ms, React 19 8.89 ms, Preact 9.8 ms. Verdict: tie, tie with Vapor and Octane in both runs, and with Vue 3 in run 2.",
+      "theme": "both",
+      "width": 960,
+      "height": 508
+    },
+    {
+      "file": "benchmarks/row-board-select-row.svg",
+      "kind": "svg",
+      "pages": [
+        "/benchmarks"
+      ],
+      "slot": "row-board",
+      "alt": "Row board, select row: Vanilla 0.005 ms, Pyreon 0.01 ms, Vue 3.6 Vapor (RC) 0.025 ms, Octane 0.16 0.025 ms, Solid 0.03 ms, Solid 2.0 (RC) 0.06 ms, React 19 0.26 ms, Preact 0.28 ms, Svelte 5 0.325 ms, Vue 3 0.38 ms. Verdict: info, below clock resolution here; batch-timed, Pyreon is 1.86–2.04× faster than Octane (one run).",
+      "theme": "both",
+      "width": 960,
+      "height": 508
+    },
+    {
+      "file": "benchmarks/row-board-swap-rows.svg",
+      "kind": "svg",
+      "pages": [
+        "/benchmarks"
+      ],
+      "slot": "row-board",
+      "alt": "Row board, swap rows: Vue 3.6 Vapor (RC) 0.755 ms, Octane 0.16 0.765 ms, Vanilla 0.79 ms, Pyreon 0.805 ms, Solid 2.0 (RC) 0.925 ms, Solid 0.955 ms, Preact 0.995 ms, Vue 3 1.06 ms, Svelte 5 1.5 ms, React 19 6.06 ms. Verdict: tie, tie with Vapor, Octane and Solid (both runs).",
+      "theme": "both",
+      "width": 960,
+      "height": 508
+    },
+    {
+      "file": "benchmarks/scaling-partial-update.svg",
+      "kind": "svg",
+      "pages": [
+        "/benchmarks"
+      ],
+      "slot": "scaling",
+      "alt": "partial update time from 100 to 20,000 rows on a log scale for Pyreon, Octane and Solid (µs): Pyreon 60.1, 518, 3210, 6830, 15980; Octane 64.8, 578, 3370, 7320, 16930; Solid 62.5, 555, 3320, 7290, 16910.",
+      "theme": "both",
+      "width": 960,
+      "height": 420
+    },
+    {
+      "file": "benchmarks/scaling-select.svg",
+      "kind": "svg",
+      "pages": [
+        "/benchmarks"
+      ],
+      "slot": "scaling",
+      "alt": "select time from 100 to 20,000 rows on a log scale for Pyreon, Octane and Solid (µs): Pyreon 0.426, 0.442, 0.431, 0.439, 0.442; Octane 0.868, 0.9, 0.826, 0.832, 0.823; Solid 1.8, 7.5, 36.3, 60.8, 109.9.",
+      "theme": "both",
+      "width": 960,
+      "height": 420
+    },
+    {
+      "file": "benchmarks/scaling-swap.svg",
+      "kind": "svg",
+      "pages": [
+        "/benchmarks"
+      ],
+      "slot": "scaling",
+      "alt": "swap time from 100 to 20,000 rows on a log scale for Pyreon, Octane and Solid (µs): Pyreon 68.1, 480, 2220, 4670, 10720; Octane 61, 436, 2290, 5000, 11850; Solid 67.9, 497, 2540, 5250, 12310.",
+      "theme": "both",
+      "width": 960,
+      "height": 420
+    },
+    {
+      "file": "benchmarks/ssr.svg",
+      "kind": "svg",
+      "pages": [
+        "/benchmarks",
+        "/why/full-stack"
+      ],
+      "slot": "ssr",
+      "alt": "Compiled SSR, microseconds per render: 10 rows: Pyreon 1.8, Vue 3.03, Svelte 2.18, React 10.3; 100 rows: Pyreon 11.64, Vue 15.66, Svelte 18.08, React 76.52; 1,000 rows: Pyreon 109.9, Vue 124.9, Svelte 160.5, React 714.4. Pyreon fastest at every size, one run.",
+      "theme": "both",
+      "width": 960,
+      "height": 498
+    },
+    {
+      "file": "benchmarks/todomvc.svg",
+      "kind": "svg",
+      "pages": [
+        "/benchmarks",
+        "/compare/react"
+      ],
+      "slot": "todomvc",
+      "alt": "TodoMVC shape vs React 19: add 100 todos (varies by day) 765 µs vs 1.53 ms (1.14–1.99×); toggle 1,000 4.60 ms vs 11.41 ms (2.48×); clear 1,000 320 µs vs 1.00 ms (3.14×).",
+      "theme": "both",
+      "width": 960,
+      "height": 390
+    },
+    {
+      "file": "brand/clear-space-dark.png",
+      "kind": "image",
+      "pages": [
+        "/brand"
+      ],
+      "slot": "clear-space",
+      "alt": "The Pyreon mark with its 11-unit clear space and minimum sizes.",
+      "theme": "dark",
+      "pair": "brand/clear-space-light.png",
+      "width": 1520,
+      "height": 640,
+      "variantFiles": [
+        {
+          "file": "brand/clear-space-dark-640.webp",
+          "width": 640,
+          "height": 269,
+          "bytes": 11422,
+          "format": "webp"
+        },
+        {
+          "file": "brand/clear-space-dark-640.avif",
+          "width": 640,
+          "height": 269,
+          "bytes": 9392,
+          "format": "avif"
+        },
+        {
+          "file": "brand/clear-space-dark-1280.webp",
+          "width": 1280,
+          "height": 539,
+          "bytes": 23934,
+          "format": "webp"
+        },
+        {
+          "file": "brand/clear-space-dark-1280.avif",
+          "width": 1280,
+          "height": 539,
+          "bytes": 19790,
+          "format": "avif"
+        },
+        {
+          "file": "brand/clear-space-dark.webp",
+          "width": 1520,
+          "height": 640,
+          "bytes": 27768,
+          "format": "webp"
+        },
+        {
+          "file": "brand/clear-space-dark.avif",
+          "width": 1520,
+          "height": 640,
+          "bytes": 16044,
+          "format": "avif"
+        }
+      ]
+    },
+    {
+      "file": "brand/clear-space-light.png",
+      "kind": "image",
+      "pages": [
+        "/brand"
+      ],
+      "slot": "clear-space",
+      "alt": "The Pyreon mark with its 11-unit clear space and minimum sizes.",
+      "theme": "light",
+      "pair": "brand/clear-space-dark.png",
+      "width": 1520,
+      "height": 640,
+      "variantFiles": [
+        {
+          "file": "brand/clear-space-light-640.webp",
+          "width": 640,
+          "height": 269,
+          "bytes": 11844,
+          "format": "webp"
+        },
+        {
+          "file": "brand/clear-space-light-640.avif",
+          "width": 640,
+          "height": 269,
+          "bytes": 9727,
+          "format": "avif"
+        },
+        {
+          "file": "brand/clear-space-light-1280.webp",
+          "width": 1280,
+          "height": 539,
+          "bytes": 25274,
+          "format": "webp"
+        },
+        {
+          "file": "brand/clear-space-light-1280.avif",
+          "width": 1280,
+          "height": 539,
+          "bytes": 20560,
+          "format": "avif"
+        },
+        {
+          "file": "brand/clear-space-light.webp",
+          "width": 1520,
+          "height": 640,
+          "bytes": 29258,
+          "format": "webp"
+        },
+        {
+          "file": "brand/clear-space-light.avif",
+          "width": 1520,
+          "height": 640,
+          "bytes": 16588,
+          "format": "avif"
+        }
+      ]
+    },
+    {
+      "file": "brand/logo-pack.zip",
+      "kind": "data",
+      "pages": [
+        "/brand"
+      ],
+      "slot": "logo-pack-download",
+      "alt": "Pyreon logo pack: marks and lockups as SVG and PNG, dark, light and transparent.",
+      "theme": "both"
+    },
+    {
+      "file": "brand/swatches-dark.png",
+      "kind": "image",
+      "pages": [
+        "/brand"
+      ],
+      "slot": "swatches",
+      "alt": "Pyreon colour palette for the dark theme: ink, paper, ember and accent swatches with hex values, the ember gradient, and the semantic text tokens with their contrast ratios against the dark background.",
+      "theme": "dark",
+      "pair": "brand/swatches-light.png",
+      "width": 1600,
+      "height": 1040,
+      "variantFiles": [
+        {
+          "file": "brand/swatches-dark-640.webp",
+          "width": 640,
+          "height": 416,
+          "bytes": 16836,
+          "format": "webp"
+        },
+        {
+          "file": "brand/swatches-dark-640.avif",
+          "width": 640,
+          "height": 416,
+          "bytes": 13524,
+          "format": "avif"
+        },
+        {
+          "file": "brand/swatches-dark-1280.webp",
+          "width": 1280,
+          "height": 832,
+          "bytes": 44944,
+          "format": "webp"
+        },
+        {
+          "file": "brand/swatches-dark-1280.avif",
+          "width": 1280,
+          "height": 832,
+          "bytes": 34653,
+          "format": "avif"
+        },
+        {
+          "file": "brand/swatches-dark.webp",
+          "width": 1600,
+          "height": 1040,
+          "bytes": 58444,
+          "format": "webp"
+        },
+        {
+          "file": "brand/swatches-dark.avif",
+          "width": 1600,
+          "height": 1040,
+          "bytes": 33808,
+          "format": "avif"
+        }
+      ]
+    },
+    {
+      "file": "brand/swatches-light.png",
+      "kind": "image",
+      "pages": [
+        "/brand"
+      ],
+      "slot": "swatches",
+      "alt": "Pyreon colour palette for the light theme: ink, paper, ember and accent swatches with hex values, the ember gradient, and the semantic text tokens with their contrast ratios against the light background.",
+      "theme": "light",
+      "pair": "brand/swatches-dark.png",
+      "width": 1600,
+      "height": 1040,
+      "variantFiles": [
+        {
+          "file": "brand/swatches-light-640.webp",
+          "width": 640,
+          "height": 416,
+          "bytes": 15944,
+          "format": "webp"
+        },
+        {
+          "file": "brand/swatches-light-640.avif",
+          "width": 640,
+          "height": 416,
+          "bytes": 14186,
+          "format": "avif"
+        },
+        {
+          "file": "brand/swatches-light-1280.webp",
+          "width": 1280,
+          "height": 832,
+          "bytes": 43574,
+          "format": "webp"
+        },
+        {
+          "file": "brand/swatches-light-1280.avif",
+          "width": 1280,
+          "height": 832,
+          "bytes": 34370,
+          "format": "avif"
+        },
+        {
+          "file": "brand/swatches-light.webp",
+          "width": 1600,
+          "height": 1040,
+          "bytes": 57734,
+          "format": "webp"
+        },
+        {
+          "file": "brand/swatches-light.avif",
+          "width": 1600,
+          "height": 1040,
+          "bytes": 34698,
+          "format": "avif"
+        }
+      ]
+    },
+    {
+      "file": "brand/type-specimen-dark.png",
+      "kind": "image",
+      "pages": [
+        "/brand"
+      ],
+      "slot": "type-specimen",
+      "alt": "Pyreon type specimen, dark theme: the display-to-body scale in Space Grotesk with sizes, weights and tracking, Space Grotesk weights 400 to 700, JetBrains Mono weights 400 to 600, and a code sample in the brand syntax colours.",
+      "theme": "dark",
+      "pair": "brand/type-specimen-light.png",
+      "width": 1600,
+      "height": 1030,
+      "variantFiles": [
+        {
+          "file": "brand/type-specimen-dark-640.webp",
+          "width": 640,
+          "height": 412,
+          "bytes": 16508,
+          "format": "webp"
+        },
+        {
+          "file": "brand/type-specimen-dark-640.avif",
+          "width": 640,
+          "height": 412,
+          "bytes": 12563,
+          "format": "avif"
+        },
+        {
+          "file": "brand/type-specimen-dark-1280.webp",
+          "width": 1280,
+          "height": 824,
+          "bytes": 40138,
+          "format": "webp"
+        },
+        {
+          "file": "brand/type-specimen-dark-1280.avif",
+          "width": 1280,
+          "height": 824,
+          "bytes": 29552,
+          "format": "avif"
+        },
+        {
+          "file": "brand/type-specimen-dark.webp",
+          "width": 1600,
+          "height": 1030,
+          "bytes": 49806,
+          "format": "webp"
+        },
+        {
+          "file": "brand/type-specimen-dark.avif",
+          "width": 1600,
+          "height": 1030,
+          "bytes": 29020,
+          "format": "avif"
+        }
+      ]
+    },
+    {
+      "file": "brand/type-specimen-light.png",
+      "kind": "image",
+      "pages": [
+        "/brand"
+      ],
+      "slot": "type-specimen",
+      "alt": "Pyreon type specimen, light theme: the display-to-body scale in Space Grotesk with sizes, weights and tracking, Space Grotesk weights 400 to 700, JetBrains Mono weights 400 to 600, and a code sample in the brand syntax colours.",
+      "theme": "light",
+      "pair": "brand/type-specimen-dark.png",
+      "width": 1600,
+      "height": 1030,
+      "variantFiles": [
+        {
+          "file": "brand/type-specimen-light-640.webp",
+          "width": 640,
+          "height": 412,
+          "bytes": 16776,
+          "format": "webp"
+        },
+        {
+          "file": "brand/type-specimen-light-640.avif",
+          "width": 640,
+          "height": 412,
+          "bytes": 12940,
+          "format": "avif"
+        },
+        {
+          "file": "brand/type-specimen-light-1280.webp",
+          "width": 1280,
+          "height": 824,
+          "bytes": 40808,
+          "format": "webp"
+        },
+        {
+          "file": "brand/type-specimen-light-1280.avif",
+          "width": 1280,
+          "height": 824,
+          "bytes": 30041,
+          "format": "avif"
+        },
+        {
+          "file": "brand/type-specimen-light.webp",
+          "width": 1600,
+          "height": 1030,
+          "bytes": 51206,
+          "format": "webp"
+        },
+        {
+          "file": "brand/type-specimen-light.avif",
+          "width": 1600,
+          "height": 1030,
+          "bytes": 30349,
+          "format": "avif"
+        }
+      ]
+    },
+    {
+      "file": "compare/next.svg",
+      "kind": "svg",
+      "pages": [
+        "/compare/next"
+      ],
+      "slot": "diagram",
+      "alt": "Both frameworks pick a render mode per route with one export in the route file. SSR: Zero export const renderMode = 'ssr', Next.js export const dynamic = 'force-dynamic'. SSG: renderMode = 'ssg' against dynamic = 'force-static'. ISR: renderMode = 'isr' against revalidate = 60. Zero also has a per-route 'spa' mode, routeRules globs that set modes in one place, and mode: 'auto' (experimental), which infers each route's mode and prints the table at build.",
+      "theme": "both",
+      "width": 960,
+      "height": 440
+    },
+    {
+      "file": "compare/react-native.svg",
+      "kind": "animated-svg",
+      "pages": [
+        "/compare/react-native"
+      ],
+      "slot": "diagram",
+      "alt": "Two stacks. React Native: your JavaScript bundle runs on the phone in the Hermes JavaScript engine, and React Native's renderer drives the platform widgets. Pyreon: your .tsx is compiled on your machine by PMTC into SwiftUI and Jetpack Compose source, Xcode and Gradle build a native binary, and the phone runs SwiftUI and Compose views with no JavaScript engine under the UI. The Pyreon native targets are labelled experimental.",
+      "theme": "both",
+      "width": 960,
+      "height": 480
+    },
+    {
+      "file": "compare/react.svg",
+      "kind": "svg",
+      "pages": [
+        "/compare/react"
+      ],
+      "slot": "measured-chart",
+      "alt": "Pyreon vs React, the measured rows from the page's table: Bundle, same keyed-table app (gzip): Pyreon 17.2 KB, React 69.6 KB (Pyreon ahead); Create 10,000 rows: Pyreon 72.6 ms, React 192.0 ms (2.6× slower) (Pyreon ahead); Swap two rows in 1,000: Pyreon 805 µs, React 6.06 ms (Pyreon ahead); Remove a row: Pyreon 5.70 ms, React 5.78 ms; confidence intervals overlap in both runs (tie); Mount a deep tree (2,047 components): Pyreon 3.59 / 3.58 ms, React 3.71 / 3.66 ms; a tie in both runs (tie); TodoMVC shape: toggle 1,000 / clear 1,000: Pyreon 4.60 ms / 320 µs, React 11.41 ms / 1.00 ms (2.48× / 3.14×; add-100 varies 1.14–1.99× day to day) (Pyreon ahead); Server rendering, 10 / 100 / 1,000 rows: Pyreon 1.80 / 11.64 / 109.9 µs, React 10.30 / 76.52 / 714.4 µs (5.7–6.6× slower) (Pyreon ahead); Hydration: 1,000-row table / 320-component page: Pyreon 6.07 ms / 4.02 ms, React 6.52 ms / 4.15 ms; both adopt every server node (Pyreon ahead); Retained heap after the row suite: Pyreon 3.08 MB, React 3.50 MB (one value per run, same in both runs) (Pyreon ahead).",
+      "theme": "both",
+      "width": 960,
+      "height": 668
+    },
+    {
+      "file": "compare/solid.svg",
+      "kind": "svg",
+      "pages": [
+        "/compare/solid"
+      ],
+      "slot": "measured-chart",
+      "alt": "Pyreon vs Solid, the measured rows from the page's table: Clear 1,000 rows: Pyreon 130 µs, Solid 460 µs (Pyreon ahead); Create 10,000 rows: Pyreon 72.64 ms, Solid 78.75 ms (Pyreon ahead); 12-field form, four timed operations: Pyreon Fastest on all four (keystroke 60 µs), Solid Solid modular-forms: keystroke 100 µs (Pyreon ahead); Effect list: update 500: Pyreon 835 / 797 µs, Solid 870 / 880 µs; a tie in run 1, Pyreon 1.10× in run 2, so not claimed (tie); Mount a deep tree (2,047 components): Pyreon 3.59 / 3.58 ms, Solid 3.06 / 3.10 ms: Solid 1.15–1.18× faster in both runs (Solid ahead); Bundle, same keyed-table app (gzip): Pyreon 17.2 KB, Solid 7.5 KB: the smallest framework in the record (Solid ahead); Effect list: dispose 500: Pyreon 50 / 45 µs, Solid 45 / 40 µs: Solid 1.11–1.13× faster (one 5 µs clock quantum) (Solid ahead); Form memory: Pyreon 2.42 MB retained, Solid 2.33 MB retained (Solid modular-forms is lighter) (Solid ahead).",
+      "theme": "both",
+      "width": 960,
+      "height": 610
+    },
+    {
+      "file": "compare/svelte.svg",
+      "kind": "svg",
+      "pages": [
+        "/compare/svelte"
+      ],
+      "slot": "measured-chart",
+      "alt": "Pyreon vs Svelte, the measured rows from the page's table: Mount a deep tree (2,047 components): Pyreon 3.59 ms, Svelte 10.80 ms (Pyreon ahead); Compiled SSR, 10 / 100 / 1,000 rows: Pyreon 1.80 / 11.64 / 109.9 µs, Svelte 2.18 / 18.08 / 160.5 µs (Pyreon ahead); Create 10,000 rows: Pyreon 72.64 ms, Svelte 87.51 ms (Pyreon ahead); Swap two rows in 1,000: Pyreon 805 µs, Svelte 1.50 ms (Pyreon ahead); Memo wall: passthrough: Pyreon 450 / 451 µs, Svelte 487 / 487 µs (Svelte was the fastest rival); Pyreon 1.08× in both runs (Pyreon ahead); 12-field form, keystroke (blur mode): Pyreon 60 µs, Svelte 700 µs (Felte) (Pyreon ahead); dbmon tick (every value changes): Pyreon 1.71 / 1.70 ms, Svelte 1.75 / 1.71 ms: a three-way tie with Octane (tie); Bundle, same keyed-table app (gzip): Pyreon 17.2 KB, Svelte 16.1 KB: Svelte is 1.1 KB smaller (Svelte ahead).",
+      "theme": "both",
+      "width": 960,
+      "height": 610
+    },
+    {
+      "file": "compare/vue.svg",
+      "kind": "svg",
+      "pages": [
+        "/compare/vue"
+      ],
+      "slot": "measured-chart",
+      "alt": "Pyreon vs Vue, the measured rows from the page's table: Bundle, same keyed-table app (gzip): Pyreon 17.2 KB, Vue 27.4 KB (Pyreon ahead); Compiled SSR, 10 / 100 / 1,000 rows: Pyreon 1.80 / 11.64 / 109.9 µs, Vue 3.03 / 15.66 / 124.9 µs (Pyreon ahead); Memo wall: blocked update: Pyreon 11 / 11 µs, Vue 16 / 16 µs (Vue was the fastest rival) (Pyreon ahead); Hydration, 320-component page: Pyreon 4.02 ms, Vue 4.47 ms; both adopt all 2,206 server nodes (Pyreon ahead); Row board vs Vue 3: partial update / clear rows: Pyreon 705 µs / 130 µs, Vue 1.04 ms / 255 µs (Pyreon ahead); 12-field form, keystroke with validation: Pyreon 460 µs, Vue 2,260 µs (vee-validate) (Pyreon ahead); Hydration, 1,000-row keyed table: Pyreon 6.07 / 6.04 ms total; framework walk tied, Vue 6.02 / 5.99 ms: Vue has the faster median in both runs, 1.01× in run 2 (Vue ahead).",
+      "theme": "both",
+      "width": 960,
+      "height": 552
+    },
+    {
+      "file": "migrate/landing-steps.svg",
+      "kind": "animated-svg",
+      "pages": [
+        "/migrate",
+        "/"
+      ],
+      "slot": "steps",
+      "alt": "The five migration steps as a loop: install the compat layer, change two config files, keep shipping, convert one component at a time, switch the compiler on. Six components of an app flip one by one from React-style (the body re-runs) to Pyreon (runs once) while @pyreon/react-compat sits underneath; at the last step the compat layer is switched off and jsxImportSource becomes @pyreon/core.",
+      "theme": "both",
+      "width": 960,
+      "height": 400
+    },
+    {
+      "file": "migrate/preact.svg",
+      "kind": "svg",
+      "pages": [
+        "/migrate/preact"
+      ],
+      "slot": "before-after",
+      "alt": "Preact to Pyreon, before and after: the same Preact component (11 lines) and its Pyreon version (11 lines). 6 lines change; the changed lines are marked with a minus rail in the before code and a plus rail in the after code.",
+      "theme": "both",
+      "width": 960,
+      "height": 710
+    },
+    {
+      "file": "migrate/react.svg",
+      "kind": "svg",
+      "pages": [
+        "/migrate/react"
+      ],
+      "slot": "before-after",
+      "alt": "React to Pyreon, before and after: the same React component (11 lines) and its Pyreon version (11 lines). 6 lines change; the changed lines are marked with a minus rail in the before code and a plus rail in the after code.",
+      "theme": "both",
+      "width": 960,
+      "height": 710
+    },
+    {
+      "file": "migrate/solid.svg",
+      "kind": "svg",
+      "pages": [
+        "/migrate/solid"
+      ],
+      "slot": "before-after",
+      "alt": "Solid to Pyreon, before and after: the same Solid component (11 lines) and its Pyreon version (11 lines). 4 lines change; the changed lines are marked with a minus rail in the before code and a plus rail in the after code.",
+      "theme": "both",
+      "width": 960,
+      "height": 710
+    },
+    {
+      "file": "migrate/svelte.svg",
+      "kind": "svg",
+      "pages": [
+        "/migrate/svelte"
+      ],
+      "slot": "before-after",
+      "alt": "Svelte to Pyreon: the Svelte store module stays exactly as it is. The import from svelte/store resolves to @pyreon/svelte-compat, so 5 lines carry over unchanged.",
+      "theme": "both",
+      "width": 960,
+      "height": 287
+    },
+    {
+      "file": "migrate/vue.svg",
+      "kind": "svg",
+      "pages": [
+        "/migrate/vue"
+      ],
+      "slot": "before-after",
+      "alt": "Vue to Pyreon, before and after: the same Vue single-file component component (11 lines) and its TSX on @pyreon/vue-compat version (11 lines). 10 lines change; the changed lines are marked with a minus rail in the before code and a plus rail in the after code.",
+      "theme": "both",
+      "width": 960,
+      "height": 710
+    },
+    {
+      "file": "og/benchmarks.png",
+      "kind": "image",
+      "pages": [
+        "/benchmarks"
+      ],
+      "slot": "og",
+      "alt": "Pyreon benchmarks: 2.6× faster than React 19 creating 10,000 rows; 4× less JavaScript than React 19 for the same app; 6.5× faster server rendering than React 19 at 1,000 rows; 8.7× faster than ECharts 6 mounting a 100,000-point line chart. Synthetic, author-run.",
+      "theme": "dark",
+      "width": 1200,
+      "height": 630
+    },
+    {
+      "file": "og/brand.png",
+      "kind": "image",
+      "pages": [
+        "/brand"
+      ],
+      "slot": "og",
+      "alt": "Pyreon Brand: The Pyreon mark, colours and type, and the few rules that keep them meaning something.",
+      "theme": "dark",
+      "width": 1200,
+      "height": 630
+    },
+    {
+      "file": "og/community.png",
+      "kind": "image",
+      "pages": [
+        "/community"
+      ],
+      "slot": "og",
+      "alt": "Pyreon Community: Pyreon is built in the open under the MIT license.",
+      "theme": "dark",
+      "width": 1200,
+      "height": 630
+    },
+    {
+      "file": "og/compare/next.png",
+      "kind": "image",
+      "pages": [
+        "/compare/next"
+      ],
+      "slot": "og",
+      "alt": "Pyreon Zero vs Next.js: File routes, SSR, SSG and ISR. On components that run once.",
+      "theme": "dark",
+      "width": 1200,
+      "height": 630
+    },
+    {
+      "file": "og/compare/react-native.png",
+      "kind": "image",
+      "pages": [
+        "/compare/react-native"
+      ],
+      "slot": "og",
+      "alt": "Pyreon Native vs React Native: One .tsx. A website, an iPhone app and an Android app.",
+      "theme": "dark",
+      "width": 1200,
+      "height": 630
+    },
+    {
+      "file": "og/compare/react.png",
+      "kind": "image",
+      "pages": [
+        "/compare/react"
+      ],
+      "slot": "og",
+      "alt": "Pyreon vs React: React ships 4× more JavaScript for the same app. 4× less JavaScript: 17.2 KB against React's 69.6 KB for the same keyed-table app (gzip)",
+      "theme": "dark",
+      "width": 1200,
+      "height": 630
+    },
+    {
+      "file": "og/compare/solid.png",
+      "kind": "image",
+      "pages": [
+        "/compare/solid"
+      ],
+      "slot": "og",
+      "alt": "Pyreon vs Solid: Same signals as Solid. renderToString up to 4.7× faster. 4.68× faster renderToString on a card component: 8.95M against 1.91M renders a second, byte-identical HTML enforced",
+      "theme": "dark",
+      "width": 1200,
+      "height": 630
+    },
+    {
+      "file": "og/compare/svelte.png",
+      "kind": "image",
+      "pages": [
+        "/compare/svelte"
+      ],
+      "slot": "og",
+      "alt": "Pyreon vs Svelte: 2,047 components. Mounted 3× faster than Svelte 5. 3.0× faster to mount a 2,047-component tree: 3.59 ms against 10.80 ms",
+      "theme": "dark",
+      "width": 1200,
+      "height": 630
+    },
+    {
+      "file": "og/compare/vue.png",
+      "kind": "image",
+      "pages": [
+        "/compare/vue"
+      ],
+      "slot": "og",
+      "alt": "Pyreon vs Vue: Vue's reactivity without .value. In 1.6× less JavaScript. 1.6× less JavaScript: 17.2 KB against Vue's 27.4 KB for the same keyed-table app (gzip)",
+      "theme": "dark",
+      "width": 1200,
+      "height": 630
+    },
+    {
+      "file": "og/migrate.png",
+      "kind": "image",
+      "pages": [
+        "/migrate"
+      ],
+      "slot": "og",
+      "alt": "Migrate to Pyreon: Bring your React app. Keep shipping while you move.",
+      "theme": "dark",
+      "width": 1200,
+      "height": 630
+    },
+    {
+      "file": "og/migrate/preact.png",
+      "kind": "image",
+      "pages": [
+        "/migrate/preact"
+      ],
+      "slot": "og",
+      "alt": "Migrate from Preact with @pyreon/preact-compat: Preact code, hooks and signals included.",
+      "theme": "dark",
+      "width": 1200,
+      "height": 630
+    },
+    {
+      "file": "og/migrate/react.png",
+      "kind": "image",
+      "pages": [
+        "/migrate/react"
+      ],
+      "slot": "og",
+      "alt": "Migrate from React with @pyreon/react-compat: Your React code, on Pyreon's engine.",
+      "theme": "dark",
+      "width": 1200,
+      "height": 630
+    },
+    {
+      "file": "og/migrate/solid.png",
+      "kind": "image",
+      "pages": [
+        "/migrate/solid"
+      ],
+      "slot": "og",
+      "alt": "Migrate from Solid with @pyreon/solid-compat: Your Solid components run on day one.",
+      "theme": "dark",
+      "width": 1200,
+      "height": 630
+    },
+    {
+      "file": "og/migrate/svelte.png",
+      "kind": "image",
+      "pages": [
+        "/migrate/svelte"
+      ],
+      "slot": "og",
+      "alt": "Migrate from Svelte with @pyreon/svelte-compat: Keep your stores. Move components to TSX.",
+      "theme": "dark",
+      "width": 1200,
+      "height": 630
+    },
+    {
+      "file": "og/migrate/vue.png",
+      "kind": "image",
+      "pages": [
+        "/migrate/vue"
+      ],
+      "slot": "og",
+      "alt": "Migrate from Vue with @pyreon/vue-compat: Keep your composables. Port templates when you're ready.",
+      "theme": "dark",
+      "width": 1200,
+      "height": 630
+    },
+    {
+      "file": "og/releases.png",
+      "kind": "image",
+      "pages": [
+        "/releases"
+      ],
+      "slot": "og",
+      "alt": "Pyreon Releases: Every merged change that affects users carries a changeset.",
+      "theme": "dark",
+      "width": 1200,
+      "height": 630
+    },
+    {
+      "file": "og/status.png",
+      "kind": "image",
+      "pages": [
+        "/status"
+      ],
+      "slot": "og",
+      "alt": "Pyreon Status: Pyreon is pre-1.0.",
+      "theme": "dark",
+      "width": 1200,
+      "height": 630
+    },
+    {
+      "file": "og/why/ai-ready.png",
+      "kind": "image",
+      "pages": [
+        "/why/ai-ready"
+      ],
+      "slot": "og",
+      "alt": "Your AI writes a bug. Pyreon catches it. An MCP server with 24 tools, live/static hints in your editor, pyreon check and llms.txt. No network calls.",
+      "theme": "dark",
+      "width": 1200,
+      "height": 630
+    },
+    {
+      "file": "og/why/components-run-once.png",
+      "kind": "image",
+      "pages": [
+        "/why/components-run-once"
+      ],
+      "slot": "og",
+      "alt": "Your component runs once. Ever. Delete useMemo, useCallback and every dependency array. 2.6× faster than React at 10,000 rows (synthetic, author-run).",
+      "theme": "dark",
+      "width": 1200,
+      "height": 630
+    },
+    {
+      "file": "og/why/full-stack.png",
+      "kind": "image",
+      "pages": [
+        "/why/full-stack"
+      ],
+      "slot": "og",
+      "alt": "SSG, SSR, ISR or SPA. Per route, in one line. Pyreon Zero: per-route render modes, hydration that keeps what users typed, and SSR 6.5× faster than React 19 (one run).",
+      "theme": "dark",
+      "width": 1200,
+      "height": 630
+    },
+    {
+      "file": "og/why/one-codebase.png",
+      "kind": "image",
+      "pages": [
+        "/why/one-codebase"
+      ],
+      "slot": "og",
+      "alt": "One .tsx file. Three apps. A website, real SwiftUI and real Jetpack Compose from the same component. Experimental, device-tested in CI.",
+      "theme": "dark",
+      "width": 1200,
+      "height": 630
+    },
+    {
+      "file": "og/why/performance.png",
+      "kind": "image",
+      "pages": [
+        "/why/performance"
+      ],
+      "slot": "og",
+      "alt": "2.6× faster than React. Don't trust us. Run it. Ten frameworks, real Chromium, one command to reproduce. Synthetic, author-run, M3 Max.",
+      "theme": "dark",
+      "width": 1200,
+      "height": 630
+    },
+    {
+      "file": "why/ai-ready.svg",
+      "kind": "animated-svg",
+      "pages": [
+        "/why/ai-ready",
+        "/products/ai"
+      ],
+      "slot": "diagram",
+      "alt": "A loop of four steps. 1, the assistant writes a draft with two bugs that type-check: count(count() + 1) on line 9 and key={(i) => i.id} on a <For> on line 10. 2, the MCP validate tool returns two findings: signal-write-as-call on line 9 and for-with-key on line 10, both auto-fixable. 3, the fixes are applied: count.set(count() + 1) and by={(i) => i.id}. 4, pyreon check prints: no Pyreon anti-patterns in 1 file. Then the loop starts again with the next draft.",
+      "theme": "both",
+      "width": 960,
+      "height": 490
+    },
+    {
+      "file": "why/components-run-once.svg",
+      "kind": "animated-svg",
+      "pages": [
+        "/why/components-run-once"
+      ],
+      "slot": "diagram",
+      "alt": "Left, the Counter you write: const count = signal(0), a span showing {count()} and two buttons. Middle, transformJSX. Right, what the compiler emits: a cached template string and one binding, _bindText(count, __t2). Below, the runtime wiring: clicking + calls count.update, the count signal notifies the one text node bound to it, and the number changes from 3 to 4; clicking - takes it back. A counter beside it reads Counter() ran 1×, and it never changes.",
+      "theme": "both",
+      "width": 960,
+      "height": 500
+    },
+    {
+      "file": "why/full-stack.svg",
+      "kind": "animated-svg",
+      "pages": [
+        "/why/full-stack",
+        "/products/zero"
+      ],
+      "slot": "diagram",
+      "alt": "A precedence chain across the top: the page's own renderMode, the nearest _layout, routeRules, mode: 'auto' (experimental), then the app mode. Four routes resolve in turn. / falls through to the app mode and gets SSR. /about declares renderMode = 'ssg' on the page and gets SSG. /blog/** matches a routeRules glob and gets ISR. /admin/** matches routeRules and gets SPA.",
+      "theme": "both",
+      "width": 960,
+      "height": 480
+    },
+    {
+      "file": "why/hydration-adopts.svg",
+      "kind": "animated-svg",
+      "pages": [
+        "/why/full-stack",
+        "/why/components-run-once",
+        "/products/zero"
+      ],
+      "slot": "diagram",
+      "alt": "Three browser frames. 1, the server-rendered HTML arrives with an empty email input; the JavaScript has not loaded. 2, the user types ada@pyreon before the JavaScript lands. 3, hydration adopts the existing nodes instead of replacing them: the typed text, the focus and the caret are all still there. Below, a dashed ghost frame shows the alternative, a hydration that rebuilds the DOM, where the input comes back empty and focus is lost.",
+      "theme": "both",
+      "width": 960,
+      "height": 480
+    },
+    {
+      "file": "why/one-codebase.svg",
+      "kind": "animated-svg",
+      "pages": [
+        "/why/one-codebase",
+        "/products/native"
+      ],
+      "slot": "diagram",
+      "alt": "One src/App.tsx feeds three lanes. Web: Vite builds it against @pyreon/runtime-dom into the DOM, with SSR and hydration. iOS: pyreon-native emits SwiftUI .swift files that Xcode builds into the app. Android: pyreon-native emits Compose .kt files that Gradle builds into the app. The iOS and Android lanes are labelled experimental. A trace runs down each lane in turn. A note says CI runs XCUITest on a Simulator and Compose tests on an emulator.",
+      "theme": "both",
+      "width": 960,
+      "height": 500
+    },
+    {
+      "file": "why/performance.svg",
+      "kind": "svg",
+      "pages": [
+        "/why/performance"
+      ],
+      "slot": "diagram",
+      "alt": "Create 10,000 rows in real Chromium: Vanilla 67.56 ms, Pyreon 72.64 ms, Vue 3 73.99 ms, Octane 0.16 74.31 ms, Vue 3.6 Vapor (RC) 74.83 ms, Solid 78.75 ms, Solid 2.0 (RC) 82.99 ms, Svelte 5 87.51 ms, React 19 192.01 ms, Preact 278.03 ms. Pyreon is 2.6× faster than React 19 and level with the fastest frameworks.",
+      "theme": "both",
+      "width": 960,
+      "height": 508
+    }
+  ]
+}

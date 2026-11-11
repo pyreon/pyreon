@@ -1,0 +1,89 @@
+<svg xmlns="http://www.w3.org/2000/svg" class="pxa pw-compare-react-native" viewBox="0 0 960 480" width="960" height="480" role="img" aria-labelledby="pw-compare-react-native-t pw-compare-react-native-d" fill="none">
+<title id="pw-compare-react-native-t">What runs on the phone: React Native and Pyreon</title>
+<desc id="pw-compare-react-native-d">Two stacks. React Native: your JavaScript bundle runs on the phone in the Hermes JavaScript engine, and React Native's renderer drives the platform widgets. Pyreon: your .tsx is compiled on your machine by PMTC into SwiftUI and Jetpack Compose source, Xcode and Gradle build a native binary, and the phone runs SwiftUI and Compose views with no JavaScript engine under the UI. The Pyreon native targets are labelled experimental.</desc>
+<style>
+.pxa{--px-bg:#0A0A0E;--px-card:#111118;--px-raised:#181822;--px-line:#23232E;--px-line2:#2E2E3B;--px-text:#F4EFE6;--px-strong:#FFFCF5;--px-mist:#C9C4B8;--px-fog:#8A8696;--px-hint:#8A8696;--px-dim:#5C5867;--px-accent:#FF5E1A;--px-accent-text:#FF8A4C;--px-warm:#FFC83D;--px-plasma:#FF1F8C;--px-ok:#4ADE80;--px-warn:#FACC15;--px-err:#F87171;--px-link:#22D3EE;--px-violet:#A78BFA;--px-bar:#3A3846;--px-g1:#FF1F8C;--px-g2:#FF5E1A;--px-g3:#FFC83D;--px-glow:rgba(255,94,26,.16)}
+@media (prefers-color-scheme: light){.pxa{--px-bg:#FAF5EB;--px-card:#FFFFFF;--px-raised:#F4EFE6;--px-line:#E6DFD2;--px-line2:#D6CFC2;--px-text:#14141C;--px-strong:#0A0A0E;--px-mist:#45414F;--px-fog:#67637A;--px-hint:#8E8A9A;--px-dim:#B5AFA3;--px-accent:#E84A0F;--px-accent-text:#A8380A;--px-warm:#8A5A00;--px-plasma:#E40C70;--px-ok:#11692F;--px-warn:#8A5A00;--px-err:#B91C1C;--px-link:#0A6E89;--px-violet:#6D28D9;--px-bar:#D9D2C4;--px-g1:#D1106F;--px-g2:#C2410C;--px-g3:#9A6200;--px-glow:rgba(232,74,15,.10)}}
+[data-theme="dark"] .pxa,.pxa[data-theme="dark"]{--px-bg:#0A0A0E;--px-card:#111118;--px-raised:#181822;--px-line:#23232E;--px-line2:#2E2E3B;--px-text:#F4EFE6;--px-strong:#FFFCF5;--px-mist:#C9C4B8;--px-fog:#8A8696;--px-hint:#8A8696;--px-dim:#5C5867;--px-accent:#FF5E1A;--px-accent-text:#FF8A4C;--px-warm:#FFC83D;--px-plasma:#FF1F8C;--px-ok:#4ADE80;--px-warn:#FACC15;--px-err:#F87171;--px-link:#22D3EE;--px-violet:#A78BFA;--px-bar:#3A3846;--px-g1:#FF1F8C;--px-g2:#FF5E1A;--px-g3:#FFC83D;--px-glow:rgba(255,94,26,.16)}
+[data-theme="light"] .pxa,.pxa[data-theme="light"]{--px-bg:#FAF5EB;--px-card:#FFFFFF;--px-raised:#F4EFE6;--px-line:#E6DFD2;--px-line2:#D6CFC2;--px-text:#14141C;--px-strong:#0A0A0E;--px-mist:#45414F;--px-fog:#67637A;--px-hint:#8E8A9A;--px-dim:#B5AFA3;--px-accent:#E84A0F;--px-accent-text:#A8380A;--px-warm:#8A5A00;--px-plasma:#E40C70;--px-ok:#11692F;--px-warn:#8A5A00;--px-err:#B91C1C;--px-link:#0A6E89;--px-violet:#6D28D9;--px-bar:#D9D2C4;--px-g1:#D1106F;--px-g2:#C2410C;--px-g3:#9A6200;--px-glow:rgba(232,74,15,.10)}
+.pw-compare-react-native{font-family:'Space Grotesk',ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif}
+.pw-compare-react-native .m{font-family:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,monospace}
+.pw-compare-react-native .pw-compare-react-native-rm{opacity:0}
+@media (prefers-reduced-motion: reduce){.pw-compare-react-native *{animation:none!important;transition:none!important}.pw-compare-react-native .pw-compare-react-native-rm{opacity:1}.pw-compare-react-native .pw-compare-react-native-am{opacity:0}}
+
+.pw-compare-react-native .ln{stroke:var(--px-hint);stroke-width:1.5;fill:none}
+.pw-compare-react-native .dash{stroke:var(--px-hint);stroke-width:1.5;stroke-dasharray:3 5;fill:none}
+.pw-compare-react-native .bx{fill:var(--px-card);stroke:var(--px-bar);stroke-width:1.5}
+.pw-compare-react-native .bx2{fill:var(--px-raised);stroke:var(--px-bar);stroke-width:1.5}
+.pw-compare-react-native .lab{fill:var(--px-fog);font-size:14px;letter-spacing:.04em}
+.pw-compare-react-native .eb{fill:var(--px-fog);font-size:13px;letter-spacing:.16em}
+.pw-compare-react-native .val{fill:var(--px-text);font-size:20px;font-weight:500}
+.pw-compare-react-native .big{fill:var(--px-strong);font-size:24px;font-weight:600;letter-spacing:-.02em}
+.pw-compare-react-native .code{fill:var(--px-text);font-size:15px}
+.pw-compare-react-native .kw{fill:var(--px-accent-text)} .pw-compare-react-native .fn{fill:var(--px-link)} .pw-compare-react-native .str{fill:var(--px-warm)} .pw-compare-react-native .ty{fill:var(--px-violet)}
+.pw-compare-react-native .dim{fill:var(--px-fog)}
+.pw-compare-react-native .hint{fill:var(--px-hint);font-size:13px}
+.pw-compare-react-native .ember{stroke:url(#pw-compare-react-native-egu);stroke-width:2.5;stroke-linecap:round;stroke-dasharray:36 900;fill:none}
+.pw-compare-react-native .emberS{stroke:url(#pw-compare-react-native-egu);stroke-width:2.5;stroke-linecap:round;fill:none}
+.pw-compare-react-native .ring{fill:none;stroke:var(--px-accent);stroke-width:2}
+.pw-compare-react-native .ok{fill:var(--px-ok)} .pw-compare-react-native .warm{fill:var(--px-warm)} .pw-compare-react-native .hot{fill:var(--px-accent)} .pw-compare-react-native .errF{fill:var(--px-err)}
+.pw-compare-react-native .okT{fill:var(--px-ok)} .pw-compare-react-native .warmT{fill:var(--px-warm)} .pw-compare-react-native .hotT{fill:var(--px-accent-text)} .pw-compare-react-native .errT{fill:var(--px-err)}
+.pw-compare-react-native .okS{stroke:var(--px-ok)} .pw-compare-react-native .errS{stroke:var(--px-err)}
+.pw-compare-react-native .gfill{fill:url(#pw-compare-react-native-eg)}
+@media (prefers-reduced-motion: reduce){.pw-compare-react-native .ember{opacity:0}}
+
+.pw-compare-react-native .phone{fill:none;stroke:var(--px-fog);stroke-width:1.2;stroke-dasharray:5 5}
+.pw-compare-react-native .exp{fill:none;stroke:var(--px-warn);stroke-width:1.2}
+.pw-compare-react-native .expT{fill:var(--px-warn);font-size:11px;letter-spacing:.1em}
+.pw-compare-react-native .none{fill:none;stroke:var(--px-hint);stroke-width:1.2;stroke-dasharray:3 4}
+@keyframes pw-compare-react-native-a{0%{stroke-dashoffset:50;opacity:0}10.0000%{stroke-dashoffset:50;opacity:1}22.8571%{stroke-dashoffset:-330;opacity:1}22.8714%{stroke-dashoffset:50;opacity:0}100%{stroke-dashoffset:50;opacity:0}}
+@keyframes pw-compare-react-native-b{0%{stroke-dashoffset:50;opacity:0}55.7143%{stroke-dashoffset:50;opacity:1}68.5714%{stroke-dashoffset:-330;opacity:1}68.5857%{stroke-dashoffset:50;opacity:0}100%{stroke-dashoffset:50;opacity:0}}
+.pw-compare-react-native .ta{animation:pw-compare-react-native-a 7000ms linear infinite}
+.pw-compare-react-native .tb{animation:pw-compare-react-native-b 7000ms linear infinite}
+.pw-compare-react-native .ta,.pw-compare-react-native .tb{stroke-dasharray:50 900}
+</style>
+<defs><linearGradient id="pw-compare-react-native-eg" x1="0" y1="0" x2="1" y2="0"><stop offset="0" style="stop-color:var(--px-g1)"/><stop offset=".55" style="stop-color:var(--px-g2)"/><stop offset="1" style="stop-color:var(--px-g3)"/></linearGradient><linearGradient id="pw-compare-react-native-egu" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="960" y2="0"><stop offset="0" style="stop-color:var(--px-g1)"/><stop offset=".55" style="stop-color:var(--px-g2)"/><stop offset="1" style="stop-color:var(--px-g3)"/></linearGradient><linearGradient id="pw-compare-react-native-egv" x1="0" y1="1" x2="0" y2="0"><stop offset="0" style="stop-color:var(--px-g1)"/><stop offset=".55" style="stop-color:var(--px-g2)"/><stop offset="1" style="stop-color:var(--px-g3)"/></linearGradient><linearGradient id="pw-compare-react-native-egd" x1="0" y1="0" x2="1" y2="1"><stop offset="0" style="stop-color:var(--px-g1)"/><stop offset=".55" style="stop-color:var(--px-g2)"/><stop offset="1" style="stop-color:var(--px-g3)"/></linearGradient></defs>
+
+<text class="m eb" x="24" y="34">WHAT RUNS ON THE PHONE</text>
+<text class="m lab" x="24" y="72" style="fill:var(--px-text)">React Native</text>
+<text class="m lab" x="496" y="72" style="fill:var(--px-text)">Pyreon · PMTC</text>
+<rect class="exp" x="640" y="57" width="120" height="22" rx="11"/><text class="m expT" x="700" y="72" text-anchor="middle">EXPERIMENTAL</text>
+<!-- RN: everything on the phone -->
+<rect class="phone" x="24" y="92" width="440" height="330" rx="22"/>
+<text class="m hint" x="440" y="114" text-anchor="end">on the phone</text>
+<line class="ln" x1="40" y1="148" x2="40" y2="380"/>
+<line class="ember ta" x1="40" y1="148" x2="40" y2="380"/>
+<rect class="bx" x="56" y="124" width="392" height="54" rx="12"/>
+<text class="m lab" x="72" y="147" style="fill:var(--px-text);letter-spacing:0">your JavaScript bundle</text>
+<text class="m hint" x="72" y="167">shipped inside the app</text>
+<rect class="bx" x="56" y="194" width="392" height="54" rx="12"/>
+<text class="m lab" x="72" y="217" style="fill:var(--px-text);letter-spacing:0">Hermes JavaScript engine</text>
+<text class="m hint" x="72" y="237">runs your code on the device</text>
+<rect class="bx" x="56" y="264" width="392" height="54" rx="12"/>
+<text class="m lab" x="72" y="287" style="fill:var(--px-text);letter-spacing:0">React Native's renderer</text>
+<text class="m hint" x="72" y="307">drives the native views</text>
+<rect class="bx" x="56" y="334" width="392" height="54" rx="12"/>
+<text class="m lab" x="72" y="357" style="fill:var(--px-text);letter-spacing:0">platform widgets</text>
+<text class="m hint" x="72" y="377">UIKit / Android views</text>
+<!-- Pyreon: compile on your machine, run native -->
+<text class="m hint" x="512" y="114">on your machine</text>
+<line class="ln" x1="512" y1="148" x2="512" y2="380"/>
+<line class="ember tb" x1="512" y1="148" x2="512" y2="380"/>
+<line class="emberS pw-compare-react-native-rm" x1="512" y1="148" x2="512" y2="380"/>
+<rect class="bx" x="528" y="124" width="392" height="54" rx="12"/>
+<text class="m lab" x="544" y="147" style="fill:var(--px-text);letter-spacing:0">your .tsx</text>
+<text class="m hint" x="544" y="167">the same file as the website</text>
+<rect class="bx" x="528" y="194" width="392" height="54" rx="12"/>
+<text class="m lab" x="544" y="217" style="fill:var(--px-text);letter-spacing:0">PMTC → SwiftUI / Compose source</text>
+<text class="m hint" x="544" y="237">Xcode and Gradle build a native binary</text>
+<rect class="phone" x="496" y="256" width="440" height="166" rx="22"/>
+<text class="m hint" x="912" y="278" text-anchor="end">on the phone</text>
+<rect class="bx" x="528" y="288" width="392" height="54" rx="12"/>
+<text class="m lab" x="544" y="311" style="fill:var(--px-text);letter-spacing:0">native binary</text>
+<text class="m hint" x="544" y="331">no JavaScript engine under the UI</text>
+<rect class="bx" x="528" y="354" width="392" height="54" rx="12"/>
+<text class="m lab" x="544" y="377" style="fill:var(--px-text);letter-spacing:0">SwiftUI / Compose views</text>
+<text class="m hint" x="544" y="397">the platform's own widgets</text>
+<rect class="ring pw-compare-react-native-rm" x="524" y="350" width="400" height="62" rx="15"/>
+<text class="m hint" x="24" y="458">Over-the-air updates, Fast Refresh and a larger SDK catalog stay with React Native. The full table is on this page.</text>
+</svg>

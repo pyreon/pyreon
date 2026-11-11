@@ -34,6 +34,13 @@ declare module 'virtual:pyreon-open-stats' {
   export default stats
 }
 
+// Build-time release history for `/releases` (vite-plugins/site-releases.ts).
+declare module 'virtual:pyreon-site-releases' {
+  import type { ReleaseData } from './site/releases/parse'
+  const data: ReleaseData
+  export default data
+}
+
 declare module 'virtual:zero-content/collections'
 declare module 'virtual:zero-content/components'
 

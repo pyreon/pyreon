@@ -1,0 +1,152 @@
+{
+  "id": "community",
+  "route": "/community",
+  "title": "Community",
+  "lede": "Pyreon is built in the open under the MIT license. Here is where to talk, how to contribute, and where to watch it grow.",
+  "sections": [
+    {
+      "kind": "links",
+      "title": "Where to find us",
+      "items": [
+        {
+          "label": "Discord",
+          "href": "https://pyreon.dev/discord",
+          "text": "Questions, show-and-tell, and talking to the people who build it."
+        },
+        {
+          "label": "GitHub",
+          "href": "https://github.com/pyreon/pyreon",
+          "text": "The code, the issues and every pull request. A star helps other people find it."
+        },
+        {
+          "label": "Newsletter",
+          "href": "https://pyreon.dev/newsletter",
+          "text": "What shipped, what we measured, what is next. In your inbox."
+        },
+        {
+          "label": "Blog",
+          "href": "/blog",
+          "text": "Long-form posts on how Pyreon works. Full-content RSS at `/blog/rss.xml`."
+        },
+        {
+          "label": "Live stats",
+          "href": "https://pyreon.dev/open",
+          "text": "Stars, downloads, releases and contributors, refreshed daily."
+        }
+      ]
+    },
+    {
+      "kind": "steps",
+      "title": "Your first contribution",
+      "items": [
+        {
+          "title": "Get the repo running",
+          "text": "You need Bun and Node.js. `bun install` also builds every package.",
+          "code": "git clone https://github.com/pyreon/pyreon.git\ncd pyreon\nbun install\nbun run test"
+        },
+        {
+          "title": "Branch from main",
+          "text": "Fork the repo and create a feature branch from `main`. Keep commits focused: one logical change each, with an imperative message such as `fix(router): prevent open redirect via sanitizePath`."
+        },
+        {
+          "title": "Write the test",
+          "text": "Every change comes with test coverage. Run one package with `bun run --filter='@pyreon/<pkg>' test`."
+        },
+        {
+          "title": "Check it",
+          "text": "Run the linters and the typecheck before you push.",
+          "code": "bun run lint\nbun run typecheck"
+        },
+        {
+          "title": "Add a changeset",
+          "text": "If you touched a published package, describe the change for users. Pyreon is `0.x`: pick `minor` or `patch`, never `major`.",
+          "code": "bun changeset"
+        },
+        {
+          "title": "Open the pull request",
+          "text": "Say what changed and why. CI runs the rest."
+        }
+      ]
+    },
+    {
+      "kind": "links",
+      "title": "Pick something to work on",
+      "items": [
+        {
+          "label": "Good first issues",
+          "href": "https://github.com/pyreon/pyreon/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22",
+          "text": "Issues picked for newcomers. If the list is empty, tell us on Discord what you would like to work on."
+        },
+        {
+          "label": "Help wanted",
+          "href": "https://github.com/pyreon/pyreon/issues?q=is%3Aissue+is%3Aopen+label%3A%22help+wanted%22",
+          "text": "Issues where extra hands are welcome."
+        },
+        {
+          "label": "Contributing guide",
+          "href": "https://github.com/pyreon/pyreon/blob/main/CONTRIBUTING.md",
+          "text": "Setup, conventions, the memory-leak checklist and how releases work."
+        }
+      ]
+    },
+    {
+      "kind": "list",
+      "title": "Reporting a bug",
+      "items": [
+        {
+          "title": "Search first",
+          "text": "Someone may have hit it already."
+        },
+        {
+          "title": "Make it small",
+          "text": "A code snippet, a repo link or a failing test."
+        },
+        {
+          "title": "Say where",
+          "text": "Your Bun version, OS and, if relevant, browser."
+        }
+      ]
+    }
+  ],
+  "end": {
+    "title": "Come for the signals. Stay for the changelog.",
+    "cta": {
+      "label": "Join the Discord",
+      "href": "https://pyreon.dev/discord"
+    }
+  },
+  "sources": [
+    {
+      "claim": "Stable links /discord, /newsletter, /open (stats refreshed daily); never quote counts",
+      "path": "00-brief/facts.md \"Identity\""
+    },
+    {
+      "claim": "MIT license",
+      "path": "LICENSE; CONTRIBUTING.md \"License\""
+    },
+    {
+      "claim": "Blog and full-content RSS at /blog/rss.xml",
+      "path": "docs/src/routes/blog/; docs/README.md \"Blog\""
+    },
+    {
+      "claim": "Setup commands, fork and branch from main, tests, lint and typecheck, focused commits, commit message example",
+      "path": "CONTRIBUTING.md \"Getting Started\", \"Submitting Changes\", \"Commit Messages\""
+    },
+    {
+      "claim": "Per-package test command; bun install builds packages",
+      "path": "AGENTS.md \"Commands\""
+    },
+    {
+      "claim": "Changeset required; minor or patch only",
+      "path": "CONTRIBUTING.md \"Releases\""
+    },
+    {
+      "claim": "Bug report checklist",
+      "path": "CONTRIBUTING.md \"Reporting Bugs\""
+    },
+    {
+      "claim": "Labels \"good first issue\" and \"help wanted\" exist",
+      "path": "gh label list -R pyreon/pyreon (checked 11 Nov)"
+    }
+  ]
+}

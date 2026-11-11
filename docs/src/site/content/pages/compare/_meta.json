@@ -1,0 +1,12 @@
+{
+  "record": "BENCHMARKS.md, 2026-11-05 (copy: 00-brief/BENCHMARKS-2026-11-05.md)",
+  "caveat": "Synthetic, author-run, Apple M3 Max, real Chromium unless noted. Reproduce: pyreon.dev/docs/benchmarks",
+  "order": [
+    "react",
+    "next",
+    "solid",
+    "vue",
+    "svelte",
+    "react-native"
+  ]
+}
