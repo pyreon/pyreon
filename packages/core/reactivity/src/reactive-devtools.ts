@@ -28,6 +28,20 @@
 export type ReactiveNodeKind = 'signal' | 'derived' | 'effect'
 
 /**
+ * What a DOM binding drives. A binding is an `effect`-kind node (it re-runs on
+ * its sources like any effect, so coverage and "why did this update" treat it
+ * as one); this sub-kind says what it writes:
+ *
+ *   - `text`  — a text node's `data` (`_bindText`, a reactive text child)
+ *   - `attr`  — an attribute (`_setAttr`, h()-path attributes)
+ *   - `class` / `style` — the class attribute / inline style
+ *   - `prop`  — a DOM property (`value`, `checked`, `innerHTML`, …)
+ *   - `child` — a reactive child subtree (`<Show>`, an accessor child, a slot)
+ *   - `list`  — a keyed or unkeyed list (`<For>`, a reactive array child)
+ */
+export type ReactiveBindingKind = 'text' | 'attr' | 'class' | 'style' | 'prop' | 'child' | 'list'
+
+/**
  * Source location of a reactive node's creation, captured at registration time
  * from the user's call stack. Powers "Live Program Inlay Hints" — the editor
  * surfaces fire counts at the source line where the node was created.
@@ -65,6 +79,15 @@ export interface ReactiveNode {
    * consume this to merge live fire counts onto static spans.
    */
   loc?: SourceLocation
+  /**
+   * Set when this effect is a DOM binding: what it writes. Absent for a plain
+   * `effect()` / `renderEffect()` that never wrote to the DOM on its first run.
+   */
+  binding?: ReactiveBindingKind
+  /** Lower-case tag of the element the binding writes to (`'div'`), when known. */
+  target?: string
+  /** The attribute or property name an `attr` / `prop` binding writes, when known. */
+  key?: string
 }
 
 export interface ReactiveEdge {
@@ -148,12 +171,24 @@ export const LPIH_RATE_TAU_MS = 1000
 interface SubscriberHostLike {
   _s1: (() => void) | null
   _s: Set<() => void> | (() => void) | null
+  /**
+   * Direct-updater tiers (`signal.direct()` / `computed.direct()`), present on
+   * signals and computeds. Compiled `_bindText` / `_bindDirect` subscribe here,
+   * never in `_s1`/`_s`, so the graph walks both pairs.
+   */
+  _d1?: (() => void) | null
+  _d?: Set<() => void> | null
 }
 
 interface NodeRec {
   id: number
   kind: ReactiveNodeKind
-  name: string
+  /** Explicit label, or `undefined` to derive the name at read time. */
+  label: string | undefined
+  /** DOM-binding sub-kind (see `ReactiveBindingKind`). Primitive strings only. */
+  binding?: ReactiveBindingKind | undefined
+  target?: string | undefined
+  key?: string | undefined
   /** Weak handle to the read fn (signal/computed) — never pins the node. */
   ref: WeakRef<object>
   /** Weak handle to the subscriber-set host (signal read fn / computed host). */
@@ -455,7 +490,7 @@ export function _rdRegister(
   _byId.set(id, {
     id,
     kind,
-    name: label ?? `${kind === 'signal' ? 'signal' : kind}#${id}`,
+    label,
     ref: new WeakRef(node),
     hostRef: host ? new WeakRef(host) : null,
     fires: 0,
@@ -539,6 +574,288 @@ export function _rdRecordFire(node: object): void {
   _fireCount++
 }
 
+// ── DOM bindings ─────────────────────────────────────────────────────────
+//
+// Compiled templates update the DOM through three reactivity primitives, and
+// every binding helper in `@pyreon/runtime-dom` lowers to one of them:
+//
+//   - `renderEffect(fn)` — tracked, re-verifies its deps on each re-run
+//   - `_bind(fn)`        — tracked once, static deps (the compiler's default)
+//   - `source.direct(u)` — an updater in the source's `_d1`/`_d` slot, no
+//                          tracking at all (`_bindText` / `_bindDirect`)
+//
+// Each LIVE binding (one whose first run subscribed to something — a dead
+// binding can never re-run, so it is not a reactive edge) registers as an
+// `effect` node. Its mount run counts as fire 1 WITHOUT a ring-buffer entry
+// (mounting 10k rows must not flush the Activity timeline); every re-run
+// records a full fire. So `fires` reads the same for every effect-kind node:
+// 1 + the number of reactive re-runs, which is what coverage's `ran-once`
+// threshold assumes.
+//
+// What the binding WRITES is captured cheaply and formatted lazily:
+//   - The DOM setters (`_setAttr`, `_setClass`, …) call `_rdNoteTarget` in dev.
+//     It writes only while a binding's FIRST run is open (`_rdOpenBindingFrame`)
+//     and only the first target, so a re-run pays one integer compare.
+//   - Helpers whose kind the setters cannot see (a text node, a child subtree,
+//     a list) label their binding afterwards with `_rdLabelBinding`.
+// The record stores the tag and key as primitive strings — never the element —
+// so the registry cannot keep a detached DOM tree alive.
+
+/**
+ * The binding-label frame. `depth > 0` while some binding's first run is open;
+ * `kind === null` until the first DOM setter inside it reports a target. Nested
+ * first runs (a binding that mounts a subtree whose bindings run their own
+ * first runs) save the outer frame on `_bfSaved` and restore it on close —
+ * strictly LIFO, and every open is paired with a close in a `finally`.
+ */
+const _bf: {
+  depth: number
+  kind: ReactiveBindingKind | null
+  target: string | undefined
+  key: string | undefined
+} = { depth: 0, kind: null, target: undefined, key: undefined }
+const _bfSaved: (ReactiveBindingKind | string | undefined | null)[] = []
+// What the most recently CLOSED frame captured, consumed by the
+// `_rdRegisterBinding` call that immediately follows the close (the binding
+// primitives close in a `finally` and register on the next statement). Held
+// here rather than in a local so the primitives' production code carries no
+// extra variable — both sites fold away.
+let _bfLast: BindingTarget | null = null
+
+/** What a binding's first run wrote, as captured by the frame. */
+export interface BindingTarget {
+  kind: ReactiveBindingKind
+  target: string | undefined
+  key: string | undefined
+}
+
+function tagOf(el: { localName?: string; parentNode?: unknown } | null | undefined): string | undefined {
+  if (el == null) return undefined
+  // A Text node has no `localName`; report the element that holds it.
+  if (typeof el.localName === 'string') return el.localName
+  const p = el.parentNode as { localName?: string } | null | undefined
+  return typeof p?.localName === 'string' ? p.localName : undefined
+}
+
+/** @internal — open the label frame around a binding's first run. Dev only. */
+export function _rdOpenBindingFrame(): void {
+  // Dev-block guard on every helper `@pyreon/runtime-dom` imports: the package
+  // entry re-exports them, and an exported body would otherwise keep the
+  // registry machinery in a production bundle of that entry (see
+  // `getReactiveGraph`). All their call sites are dev-gated already.
+  if (process.env.NODE_ENV !== 'production') {
+    if (_bf.depth > 0) _bfSaved.push(_bf.kind, _bf.target, _bf.key)
+    _bf.depth++
+    _bf.kind = null
+    _bf.target = undefined
+    _bf.key = undefined
+  }
+}
+
+/**
+ * @internal — close the frame opened by `_rdOpenBindingFrame` and return what
+ * the first run wrote (`null` when it wrote nothing through a DOM setter).
+ */
+export function _rdCloseBindingFrame(): BindingTarget | null {
+  if (process.env.NODE_ENV !== 'production') {
+    const out: BindingTarget | null =
+      _bf.kind === null ? null : { kind: _bf.kind, target: _bf.target, key: _bf.key }
+    _bfLast = out
+    _bf.depth--
+    if (_bf.depth > 0) {
+      _bf.key = _bfSaved.pop() as string | undefined
+      _bf.target = _bfSaved.pop() as string | undefined
+      _bf.kind = _bfSaved.pop() as ReactiveBindingKind | null
+    } else {
+      _bf.kind = null
+      _bf.target = undefined
+      _bf.key = undefined
+    }
+    return out
+  }
+  return null
+}
+
+/**
+ * @internal — a DOM setter reports what it writes. Recorded only inside an
+ * open binding frame and only once per frame (the first write names the
+ * binding). Called from `@pyreon/runtime-dom` behind its dev gate.
+ */
+export function _rdNoteTarget(el: object | null, kind: ReactiveBindingKind, key?: string): void {
+  if (process.env.NODE_ENV !== 'production') {
+    if (_bf.depth === 0 || _bf.kind !== null) return
+    _bf.kind = kind
+    _bf.target = tagOf(el as { localName?: string } | null)
+    _bf.key = key
+  }
+}
+
+/**
+ * @internal — register a LIVE `renderEffect` / `_bind` after its first run.
+ * `run` is both the node and the subscriber identity. The mount run counts as
+ * fire 1 (counter only, see the section header).
+ */
+export function _rdRegisterBinding(
+  run: object,
+  loc: SourceLocation | DeferredLocation | undefined,
+  target: BindingTarget | null = _bfLast,
+): void {
+  _bfLast = null
+  const id = _rdRegister(run, 'effect', null, run, undefined, loc)
+  const rec = _byId.get(id as number) as NodeRec
+  rec.fires = 1
+  if (target !== null) {
+    rec.binding = target.kind
+    rec.target = target.target
+    rec.key = target.key
+  }
+}
+
+// Raw direct updater → its instrumented wrapper. Keyed by the updater so that
+// subscribing the SAME function twice (to one source or several) yields the
+// same wrapper, exactly as the raw function would be one entry in production:
+// `_d` is a Set, so a per-call wrapper would make a duplicate subscription run
+// twice in dev and once in prod. A WeakMap entry is an ephemeron — the
+// wrapper closing over its own key does not keep either alive.
+const _directWrap = /* @__PURE__ */ new WeakMap<object, () => void>()
+
+/**
+ * @internal — instrument a `direct()` updater. Returns the function to store
+ * in the source's `_d1`/`_d` slot: a wrapper that records each notification
+ * as a fire, registered once as an `effect` node. Called by `signal.direct` /
+ * `computed.direct` behind the dev gate; production stores the raw updater.
+ */
+export function _rdDirect(updater: () => void): () => void {
+  let w = _directWrap.get(updater)
+  if (w === undefined) {
+    const wrapped = (): void => {
+      _rdRecordFire(wrapped)
+      updater()
+    }
+    // A direct updater is subscribed after its binding already wrote the
+    // initial value, so subscription counts as the mount run (fire 1).
+    _rdRegisterBinding(wrapped, undefined, null)
+    _directWrap.set(updater, wrapped)
+    w = wrapped
+  }
+  return w
+}
+
+/**
+ * @internal — label a binding after the fact, for helpers whose kind the DOM
+ * setters cannot report (text nodes, child subtrees, lists). `handle` is what
+ * the helper holds: the disposer `renderEffect` / `_bind` returned, the
+ * `Effect` an `effect()` returned, or the raw updater it passed to
+ * `direct()`. A dead binding (`_noopDispose`) carries no id and is ignored.
+ *
+ * `kind === null` keeps whatever the first run's DOM setter reported and only
+ * applies `loc`. `el` is the element (or text node) written, or its tag.
+ *
+ * `loc`: `undefined` keeps the creation site captured at registration, `null`
+ * drops it (the binding was created inside the framework, so that site would
+ * point at runtime-dom, not at the user's code), and a number captures a new
+ * one that many frames above the CALLER of this function (`1` = the caller's
+ * caller — for `_bindText`, the compiled template that emitted it). The capture
+ * is the usual deferred one: an `Error` now, the `.stack` parse on first read.
+ */
+export function _rdLabelBinding(
+  handle: object,
+  kind: ReactiveBindingKind | null,
+  el: object | string | null,
+  key: string | undefined,
+  loc: number | null | undefined,
+): void {
+  if (process.env.NODE_ENV !== 'production') {
+    let id = (handle as { __pxRdId?: number }).__pxRdId
+    if (id === undefined) id = (_directWrap.get(handle) as { __pxRdId?: number } | undefined)?.__pxRdId
+    if (id === undefined) return
+    const rec = _byId.get(id)
+    if (rec === undefined) return
+    if (kind !== null) {
+      rec.binding = kind
+      rec.target = typeof el === 'string' ? el : tagOf(el as { localName?: string } | null)
+      rec.key = key
+    }
+    if (loc === undefined) return
+    const node = rec.ref.deref()
+    if (node !== undefined) _pendingLoc.delete(node)
+    if (loc === null) {
+      rec.loc = null
+      return
+    }
+    // +1 skips this function's own frame: `loc` counts from the helper that
+    // called us, so `1` is that helper's caller (the compiled template).
+    const d = _captureCallerLocation(loc + 1)
+    rec.loc = undefined
+    if (node !== undefined) _pendingLoc.set(node, { err: d.err, skip: d.skipFrames })
+  }
+}
+
+/**
+ * @internal — mirror `node`'s graph id onto the handle a binding helper
+ * returns (its disposer), so `_rdLabelBinding(handle, …)` can find the record.
+ * Never called with `_noopDispose`: only LIVE bindings register.
+ */
+export function _rdTagHandle(handle: object, node: object): void {
+  Object.defineProperty(handle, '__pxRdId', {
+    value: (node as { __pxRdId?: number }).__pxRdId,
+    enumerable: false,
+    configurable: true,
+  })
+}
+
+/**
+ * @internal — remove a binding's node outright, for a binding the runtime
+ * created and then discarded as an implementation detail (the accessor-child
+ * dispatcher that hands a structural value to `<For>`-grade machinery). Left
+ * registered it would read as a binding that ran once and never again —
+ * permanently, while a coverage session pins it.
+ */
+export function _rdDropBinding(handle: object): void {
+  if (process.env.NODE_ENV !== 'production') {
+    const id = (handle as { __pxRdId?: number }).__pxRdId
+    if (id === undefined) return
+    const rec = _byId.get(id)
+    if (rec === undefined) return
+    _byId.delete(id)
+    const node = rec.ref.deref()
+    if (node !== undefined) _retained.delete(node)
+  }
+}
+
+/** @internal — number of records the registry holds (live or awaiting the finalizer). Tests only. */
+export function _rdRegistrySize(): number {
+  if (process.env.NODE_ENV !== 'production') return _byId.size
+  return 0
+}
+
+const BINDING_VERB: Record<ReactiveBindingKind, string> = {
+  text: 'text',
+  attr: 'attr',
+  class: 'class',
+  style: 'style',
+  prop: 'prop',
+  child: 'child',
+  list: 'list',
+}
+
+/**
+ * Display name, derived at READ time so registration never formats a string:
+ * an explicit label (signals), else `aria-busy on <div>` / `text in <span>` /
+ * `child of <ul>` for a DOM binding, else the synthetic `kind#id`.
+ */
+function recName(rec: NodeRec): string {
+  if (rec.label !== undefined) return rec.label
+  const b = rec.binding
+  if (b !== undefined) {
+    const what = rec.key ?? BINDING_VERB[b]
+    if (rec.target === undefined) return `${what}#${rec.id}`
+    const prep = b === 'text' ? 'in' : b === 'child' || b === 'list' ? 'of' : 'on'
+    return `${what} ${prep} <${rec.target}>`
+  }
+  return `${rec.kind}#${rec.id}`
+}
+
 // ── Snapshot API (consumed by the devtools hook) ─────────────────────────
 
 function resolveSubId(sub: () => void): number | undefined {
@@ -581,7 +898,16 @@ export function getReactiveGraph(): ReactiveGraph {
       // Second tier: a function is the second inline subscriber, a Set the promoted store.
       const subs: Iterable<() => void> | null =
         tier2 === null ? null : typeof tier2 === 'function' ? [tier2] : tier2
-      const subCount = (s1 !== null ? 1 : 0) + (tier2 === null ? 0 : typeof tier2 === 'function' ? 1 : tier2.size)
+      // Direct updaters (`_bindText` / `_bindDirect`) live in their own pair of
+      // slots. Skipping them reported a signal shown only through compiled text
+      // as having no subscribers at all (an `orphan-signal` false positive).
+      const d1 = host?._d1 ?? null
+      const d = host?._d ?? null
+      const subCount =
+        (s1 !== null ? 1 : 0) +
+        (tier2 === null ? 0 : typeof tier2 === 'function' ? 1 : tier2.size) +
+        (d1 !== null ? 1 : 0) +
+        (d === null ? 0 : d.size)
       // `preview()` is total (its own try/catch returns '[unstringifiable]'),
       // and `_v` on our registered nodes is a plain property (signal) or a
       // getter that never throws (computed's getter routes errors through
@@ -593,22 +919,38 @@ export function getReactiveGraph(): ReactiveGraph {
       // `.stack` formatting cost is paid only for nodes the consumer
       // actually inspects.
       const resolvedLoc = _resolveLoc(rec)
-      nodes.push({
+      const out: ReactiveNode = {
         id: rec.id,
         kind: rec.kind,
-        name: rec.name,
+        name: recName(rec),
         value: valueStr,
         subscribers: subCount,
         fires: rec.fires,
         lastFire: rec.lastFire,
         ...(resolvedLoc ? { loc: resolvedLoc } : {}),
-      })
+      }
+      if (rec.binding !== undefined) {
+        out.binding = rec.binding
+        if (rec.target !== undefined) out.target = rec.target
+        if (rec.key !== undefined) out.key = rec.key
+      }
+      nodes.push(out)
       if (s1 !== null) {
         const to = resolveSubId(s1)
         if (to !== undefined) edges.push({ from: rec.id, to })
       }
       if (subs) {
         for (const cb of subs) {
+          const to = resolveSubId(cb)
+          if (to !== undefined) edges.push({ from: rec.id, to })
+        }
+      }
+      if (d1 !== null) {
+        const to = resolveSubId(d1)
+        if (to !== undefined) edges.push({ from: rec.id, to })
+      }
+      if (d !== null) {
+        for (const cb of d) {
           const to = resolveSubId(cb)
           if (to !== undefined) edges.push({ from: rec.id, to })
         }

@@ -1,6 +1,6 @@
 import { closeInlineBatch, enqueuePendingNotification, isBatching, openInlineBatch } from './batch'
 import { _notifyTraceListeners, isTracing } from './debug'
-import { _captureCallerLocation, _rdRecordFire, _rdRegister } from './reactive-devtools'
+import { _captureCallerLocation, _rdDirect, _rdRecordFire, _rdRegister } from './reactive-devtools'
 import { _recordSignalWrite } from './reactive-trace'
 import { addSubscriber, notifySubscribers, removeSubscriber, trackSubscriber } from './tracking'
 
@@ -401,6 +401,9 @@ export function _resumeSoleSubscriber<T>(
  * ever-mounted binding — an app-lifetime leak.
  */
 function _directFn(this: SignalFn<unknown>, updater: () => void): () => void {
+  // Dev: store an instrumented wrapper so the updater is a reactive-graph node
+  // whose notifications count as fires (see `_rdDirect`). Folds away in prod.
+  if (process.env.NODE_ENV !== 'production') updater = _rdDirect(updater)
   // Tier 1: empty signal → inline-slot the single subscriber.
   if (this._d1 === null && this._d === null) {
     this._d1 = updater

@@ -90,6 +90,7 @@ describe('reactive-devtools — public-API readers do not pin the machinery in p
       signals: 0,
       derived: 0,
       effects: 0,
+      bindings: 0,
       edges: 0,
     })
   })

@@ -10,7 +10,7 @@ import {
   propagateLazyDirty,
 } from './batch'
 import { _errorHandler } from './effect'
-import { _captureCallerLocation, _rdRecordFire, _rdRegister } from './reactive-devtools'
+import { _captureCallerLocation, _rdDirect, _rdRecordFire, _rdRegister } from './reactive-devtools'
 import { getCurrentScope } from './scope'
 import {
   removeSubscriber,
@@ -113,6 +113,8 @@ interface ComputedFn<T> {
  */
 const ComputedProto = {
   direct(this: ComputedFn<unknown>, updater: () => void): () => void {
+    // Dev: instrumented wrapper — see `_directFn` in signal.ts.
+    if (process.env.NODE_ENV !== 'production') updater = _rdDirect(updater)
     // Tier 1: empty → inline-slot the single subscriber (zero Set allocation).
     if (this._d1 === null && this._d === null) {
       this._d1 = updater

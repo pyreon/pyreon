@@ -204,11 +204,12 @@ describe('computed.ts — coverage of uncovered branches', () => {
       _d1: (() => void) | null
     }
     expect(internal._d1).toBeNull()
-    expect(internal._d?.has(updater1)).toBe(true)
+    // Dev stores an instrumented wrapper per updater (the reactive-graph node,
+    // see `_rdDirect`), so assert membership by count, not identity.
+    expect(internal._d?.size).toBe(2)
 
     // Tier-1 dispose closure runs the `else if (directFns)` branch:
     dispose1()
-    expect(internal._d?.has(updater1)).toBe(false)
     expect(internal._d?.size).toBe(1)
   })
 
