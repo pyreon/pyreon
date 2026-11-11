@@ -341,3 +341,100 @@ export interface MigrateLayer {
 }
 export interface MigrateGuide { id: 'angular' | 'react-native'; name: string; href: string; text: string; why: string }
 export interface MigrateSite { landing: MigrateLanding; layers: MigrateLayer[]; guides: MigrateGuide[] }
+
+// ---------------------------------------------------------------- blog, showcase, open, discord, newsletter (_channels.json)
+// Workstream b of the site integration. The pages that publish and gather: the blog's index,
+// tag and post pages (the posts themselves are docs/src/content/blog/*.md), the showcase,
+// the live stats page and the two stable links. `{name}` in a string is filled by the page.
+export interface ChannelHero { eyebrow: string; title: string; lede: string; actions: Cta[] }
+export interface ChannelMeta { title: string; description: string }   // <title> and meta description
+
+export interface BlogChannel {
+  route: '/blog'
+  meta: ChannelMeta                     // also the blog name (og:site_name, RSS) and its summary
+  hero: ChannelHero
+  tagsLabel: string                     // accessible name of the tag row
+  allTags: string                       // the "every post" chip
+  latest: string                        // label above the newest post on page 1
+  list: { title: string; text: string } // the rest of the posts
+  empty: { title: string; text: string }
+  tag: { eyebrow: string; title: string; lede: string }   // {tag}, {count}, {posts}
+  page: string                          // "Page {page} of {pages}"
+  newer: string
+  older: string
+  subscribe: { title: string; text: string; links: SiteLink[] }
+  post: {
+    back: string
+    toc: string
+    copyLink: string
+    share: string
+    more: string
+    previous: string
+    next: string
+    related: string
+  }
+}
+
+export interface ShowcaseExample {
+  dir: string                           // under examples/ in the repo
+  title: string
+  summary: string
+  highlights: string[]                  // @pyreon/<name>, each a dependency of the example (unit-tested)
+  run: string                           // one command from the repo root, after the setup command
+  open: string                          // where it serves
+  note?: string
+  liveDemo?: string                     // a static build served from pyreon.dev
+  alsoSource?: { label: string; dir: string }[]
+}
+export interface ShowcaseChannel {
+  route: '/showcase'
+  meta: ChannelMeta
+  hero: ChannelHero
+  setup: { title: string; text: string; command: string }
+  featured: {
+    label: string; title: string; text: string
+    example: ShowcaseExample
+    captures: { file: string; label: string }[]   // files in assets/manifest.json (slot showcase-card)
+  }
+  more: { label: string; title: string; text: string; items: ShowcaseExample[] }
+  submit: { label: string; title: string; text: string; cta: Cta }
+}
+
+export type OpenStatId =
+  | 'commits' | 'mergedPrs' | 'releases' | 'publishedPackages' | 'testFiles' | 'lintRules' | 'mcpTools' | 'docPages'
+  | 'stars' | 'forks' | 'contributors' | 'openIssues' | 'closedIssues'
+export interface OpenTile {
+  stat: OpenStatId
+  label: string
+  href?: string
+  hint?: string                         // {latestTag} {latestDate} {browserTestFiles} {lintCategories}
+}
+export interface OpenChannel {
+  route: '/open'
+  meta: ChannelMeta
+  hero: ChannelHero
+  updated: string                       // "Last updated" before the build time
+  unavailable: string                   // shown instead of a number that could not be fetched
+  work: { label: string; title: string; text: string; tiles: OpenTile[]; note: string; noteLink: SiteLink }
+  downloads: { label: string; title: string; text: string; monthly: string; chart: string; chartMissing: string }
+  community: { label: string; title: string; text: string; tiles: OpenTile[]; actions: Cta[] }
+  benchmarks: { label: string; title: string; text: string; links: { label: string; href: string; text: string }[] }
+}
+
+export interface StableLinkChannel {
+  route: '/discord' | '/newsletter'
+  destination: string                   // "the Pyreon Discord"
+  meta: ChannelMeta
+  hero: ChannelHero
+  feed?: { title: string; text: string; url: string; note: string }
+  sections: SiteSection[]
+  redirect: { title: string; text: string; cta: string }   // {destination}
+}
+
+export interface ChannelsFile {
+  blog: BlogChannel
+  showcase: ShowcaseChannel
+  open: OpenChannel
+  discord: StableLinkChannel
+  newsletter: StableLinkChannel
+}
