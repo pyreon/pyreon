@@ -105,7 +105,13 @@ const MIME_TYPES = ${JSON.stringify(STATIC_MIME_TYPES)}
 // behind a proxy you declare with TRUST_PROXY=1 — otherwise any client could
 // claim to be https.
 const TRUST_PROXY = process.env.TRUST_PROXY === "1" || process.env.TRUST_PROXY === "true"
+// \`ORIGIN\` (e.g. "https://example.com") fixes the origin for every request:
+// without it the client's \`Host\` header chooses it, and SSR code that
+// resolves against the request origin (a relative fetch, \`new URL(p, ctx.url)\`)
+// follows the client to any host it names.
+const FIXED_ORIGIN = __pyreonFixedOrigin(process.env.ORIGIN)
 function requestOrigin(req) {
+  if (FIXED_ORIGIN !== null) return FIXED_ORIGIN
   const forwarded = TRUST_PROXY ? String(req.headers["x-forwarded-proto"] ?? "").split(",")[0].trim() : ""
   const proto = forwarded || (req.socket.encrypted ? "https" : "http")
   return \`\${proto}://\${req.headers.host ?? "localhost"}\`

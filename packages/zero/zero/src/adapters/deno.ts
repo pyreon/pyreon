@@ -113,9 +113,29 @@ async function serveStatic(url) {
 
 const PORT = Number(Deno.env.get("PORT") || ${port})
 
+// \`ORIGIN\` (e.g. "https://example.com") fixes the request URL's origin:
+// without it Deno builds the URL from the client's \`Host\` header, and SSR
+// code that resolves against the request origin (a relative fetch,
+// \`new URL(p, ctx.url)\`) follows the client to any host it names.
+const FIXED_ORIGIN = __pyreonFixedOrigin(Deno.env.get("ORIGIN"))
+
 Deno.serve({ port: PORT }, async (request) => {
+  let url
+  try {
+    url = new URL(request.url)
+  } catch {
+    return new Response("Bad Request", { status: 400 })
+  }
+  if (FIXED_ORIGIN !== null) {
+    const fixed = __pyreonRequestUrl(url.pathname + url.search, FIXED_ORIGIN)
+    if (fixed === null) return new Response("Bad Request", { status: 400 })
+    if (fixed.href !== url.href) {
+      request = new Request(fixed.href, request)
+      url = fixed
+    }
+  }
   if (request.method === "GET" || request.method === "HEAD") {
-    const hit = await serveStatic(new URL(request.url))
+    const hit = await serveStatic(url)
     if (hit) return hit
   }
   try {
