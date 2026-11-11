@@ -47,7 +47,7 @@ See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multipla
 | [`migratePyreonCode`](#migratepyreoncode-function) | function | Pyreon→correct-Pyreon codemod (the parallel to `migrateReactCode`). |
 | [`hasReactPatterns`](#hasreactpatterns-function) | function | Fast regex pre-filter — returns whether `code` is worth a full `detectReactPatterns` AST walk. |
 | [`diagnoseError`](#diagnoseerror-function) | function | Maps a raw runtime/build error string to a structured `ErrorDiagnosis` (likely cause + actionable fix) for known Pyreon  |
-| [`detectPyreonPatterns`](#detectpyreonpatterns-function) | function | AST-based (TypeScript compiler API) detector for "using Pyreon wrong" mistakes — 16 codes today (`for-missing-by`, `for- |
+| [`detectPyreonPatterns`](#detectpyreonpatterns-function) | function | AST-based (TypeScript compiler API) detector for "using Pyreon wrong" mistakes — 21 codes today (`for-missing-by`, `for- |
 | [`hasPyreonPatterns`](#haspyreonpatterns-function) | function | Fast regex pre-filter for `detectPyreonPatterns` — deliberately loose (the AST walker is the precise gate); only has to  |
 | [`auditTestEnvironment`](#audittestenvironment-function) | function | Scans every `*.test.ts(x)` under `startDir` for the mock-vnode anti-pattern (constructing `{ type, props, children }` li |
 | [`formatTestAudit`](#formattestaudit-function) | function | Human-readable renderer for an `auditTestEnvironment` result; `options.minRisk` filters the floor (`high` \| `medium` \| ` |
@@ -399,7 +399,7 @@ if (d) console.log(d.cause, d.fix)
 detectPyreonPatterns(code: string, filename?: string): PyreonDiagnostic[]
 ```
 
-AST-based (TypeScript compiler API) detector for "using Pyreon wrong" mistakes — 16 codes today (`for-missing-by`, `for-with-key`, `props-destructured`, `props-destructured-body`, `process-dev-gate`, `empty-theme`, `raw-add-event-listener`, `raw-remove-event-listener`, `date-math-random-id`, `on-click-undefined`, `signal-write-as-call`, `static-return-null-conditional`, `static-early-return-conditional`, `as-unknown-as-vnodechild`, `island-never-with-registry-entry`, `query-options-as-function`). The detector arm behind the MCP `validate` tool and `pyreon doctor --check-pyreon-patterns`. Diagnostics report `fixable: true` ONLY for the 3 codes `migratePyreonCode` can auto-fix mechanically (`signal-write-as-call`, `for-with-key`, `as-unknown-as-vnodechild` — kept in sync via `AUTO_FIXABLE_PYREON_CODES`); every other code is `fixable: false`.
+AST-based (TypeScript compiler API) detector for "using Pyreon wrong" mistakes — 21 codes today (`for-missing-by`, `for-with-key`, `props-destructured`, `props-destructured-body`, `process-dev-gate`, `empty-theme`, `raw-add-event-listener`, `raw-remove-event-listener`, `date-math-random-id`, `on-click-undefined`, `signal-write-as-call`, `static-return-null-conditional`, `static-early-return-conditional`, `as-unknown-as-vnodechild`, `island-never-with-registry-entry`, `query-options-as-function`, `accessor-uncalled-in-template`, `accessor-uncalled-in-condition`, `charts-legacy-import`, `plain-mode`, `for-stale-item-field`). The detector arm behind the MCP `validate` tool and `pyreon doctor --check-pyreon-patterns`. Diagnostics report `fixable: true` ONLY for the 3 codes `migratePyreonCode` can auto-fix mechanically (`signal-write-as-call`, `for-with-key`, `as-unknown-as-vnodechild` — kept in sync via `AUTO_FIXABLE_PYREON_CODES`); every other code is `fixable: false`.
 
 **Example**
 

@@ -48,6 +48,9 @@ export function App() {
   const todos = signal<Todo[]>([])
   const draft = signal('')
   const remaining = computed(() => todos().filter((t) => !t.done).length)
+  // A keyed <For> row runs once per id on web, so read done live by id:
+  // the toggle replaces the todo object under the same id.
+  const isDone = (id: number) => todos().some((t) => t.id === id && t.done)
 
   return (
     <Stack gap="md" padding={4}>
@@ -61,7 +64,7 @@ export function App() {
       <For each={todos()} by={(t) => t.id}>
         {(t) => (
           <Inline gap="sm">
-            <Toggle value={t.done} onChange={(v) => todos.set(todos().map((x) => x.id === t.id ? { ...x, done: v } : x))} />
+            <Toggle value={isDone(t.id)} onChange={(v) => todos.set(todos().map((x) => x.id === t.id ? { ...x, done: v } : x))} />
             <Text>{t.title}</Text>
           </Inline>
         )}

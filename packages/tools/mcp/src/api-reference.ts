@@ -1766,7 +1766,7 @@ const diags = detectPyreonPatterns(
   "A.tsx",
 )
 console.log(diags[0]?.code) // "props-destructured-body"`,
-    notes: 'AST-based (TypeScript compiler API) detector for "using Pyreon wrong" mistakes — 16 codes today (`for-missing-by`, `for-with-key`, `props-destructured`, `props-destructured-body`, `process-dev-gate`, `empty-theme`, `raw-add-event-listener`, `raw-remove-event-listener`, `date-math-random-id`, `on-click-undefined`, `signal-write-as-call`, `static-return-null-conditional`, `static-early-return-conditional`, `as-unknown-as-vnodechild`, `island-never-with-registry-entry`, `query-options-as-function`). The detector arm behind the MCP `validate` tool and `pyreon doctor --check-pyreon-patterns`. Diagnostics report `fixable: true` ONLY for the 3 codes `migratePyreonCode` can auto-fix mechanically (`signal-write-as-call`, `for-with-key`, `as-unknown-as-vnodechild` — kept in sync via `AUTO_FIXABLE_PYREON_CODES`); every other code is `fixable: false`. See also: hasPyreonPatterns, detectReactPatterns, analyzeReactivity.',
+    notes: 'AST-based (TypeScript compiler API) detector for "using Pyreon wrong" mistakes — 21 codes today (`for-missing-by`, `for-with-key`, `props-destructured`, `props-destructured-body`, `process-dev-gate`, `empty-theme`, `raw-add-event-listener`, `raw-remove-event-listener`, `date-math-random-id`, `on-click-undefined`, `signal-write-as-call`, `static-return-null-conditional`, `static-early-return-conditional`, `as-unknown-as-vnodechild`, `island-never-with-registry-entry`, `query-options-as-function`, `accessor-uncalled-in-template`, `accessor-uncalled-in-condition`, `charts-legacy-import`, `plain-mode`, `for-stale-item-field`). The detector arm behind the MCP `validate` tool and `pyreon doctor --check-pyreon-patterns`. Diagnostics report `fixable: true` ONLY for the 3 codes `migratePyreonCode` can auto-fix mechanically (`signal-write-as-call`, `for-with-key`, `as-unknown-as-vnodechild` — kept in sync via `AUTO_FIXABLE_PYREON_CODES`); every other code is `fixable: false`. See also: hasPyreonPatterns, detectReactPatterns, analyzeReactivity.',
     mistakes: `- Reading \`fixable\` as sometimes-true — it is an enforced \`false\` invariant for every Pyreon code; wiring auto-fix UX off it applies nothing
 - Expecting it to flag \`const { x } = props.nested\` or an \`onMount\`-scoped destructure — \`props-destructured-body\` is deliberately scoped to the canonical \`= props\` body-scope shape for zero false positives`,
   },
@@ -7473,7 +7473,7 @@ lint({
     "pyreon/no-window-in-ssr": { exemptPaths: ["src/foundation/"] },
   },
 })`,
-    notes: '133 rules across 25 categories. Auto-loads `.pyreonlintrc.json`. Presets: `recommended`, `strict`, `app`, `lib`. Per-rule options via tuple form in config (`["error", { exemptPaths: [...] }]`) or `ruleOptionsOverrides`. `exemptPaths` is honoured CENTRALLY for every rule (the runner skips an exempt file before the rule runs), so it means the same thing everywhere rather than only in rules that opted in. Wrong-typed options surface on `result.configDiagnostics`, as does a `rules`/`groups`/`settings` key that names nothing — a mistyped rule id used to be silently ignored, which is indistinguishable from working. Uses `oxc-parser` with AST caching. See also: lintFile, lintAsync, getPreset, AstCache.',
+    notes: '134 rules across 25 categories. Auto-loads `.pyreonlintrc.json`. Presets: `recommended`, `strict`, `app`, `lib`. Per-rule options via tuple form in config (`["error", { exemptPaths: [...] }]`) or `ruleOptionsOverrides`. `exemptPaths` is honoured CENTRALLY for every rule (the runner skips an exempt file before the rule runs), so it means the same thing everywhere rather than only in rules that opted in. Wrong-typed options surface on `result.configDiagnostics`, as does a `rules`/`groups`/`settings` key that names nothing — a mistyped rule id used to be silently ignored, which is indistinguishable from working. Uses `oxc-parser` with AST caching. See also: lintFile, lintAsync, getPreset, AstCache.',
   },
 
   'lint/lintAsync': {
@@ -7507,7 +7507,7 @@ const result = lintFile("app.tsx", source, allRules, config, cache, configSink)`
 pyreon-lint --fix                       # auto-fix
 pyreon-lint --watch src/                # watch mode
 pyreon-lint --init                      # scaffold .pyreonlintrc.json for this project
-pyreon-lint --list                      # list all 133 rules
+pyreon-lint --list                      # list all 134 rules
 pyreon-lint --why-off no-window-in-ssr  # why a rule will (or will not) run here
 pyreon-lint --format json               # machine-readable
 pyreon-lint --rule-options 'pyreon/no-window-in-ssr={"exemptPaths":["src/foundation/"]}' src/`,
