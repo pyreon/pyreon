@@ -70,7 +70,7 @@ The `TData` generic flows through to `FlowNode<TData>` and `NodeComponentProps<T
 | Clipboard / history | `copySelected` / `paste(offset?)` / `pushHistory` / `undo` / `redo` |
 | Viewport | `zoomIn` / `zoomOut` / `zoomTo` / `panTo` / `focusNode` / `animateViewport` / `fitView(ids?, padding?)` |
 | Geometry | `getNodeDimensions(id)` — effective box: explicit → measured → 150×40 default |
-| Auto-layout | `layout(algorithm?, options?)` — Promise, built-in seven-mode engine (code-split), fed measured node sizes |
+| Auto-layout | `layout(algorithm?, options?)` — Promise that resolves once the (animated) layout is visible, built-in seven-mode engine (code-split), fed measured node sizes |
 | Graph queries | `getConnectedEdges` / `getIncomers` / `getOutgoers` / `isValidConnection` / `findNodes` / `searchNodes` |
 | Intersections | `getIntersectingNodes(nodeOrRect, partially?)` / `isNodeIntersecting(nodeOrRect, area, partially?)` / `getNodesBounds(ids?)` |
 | Listeners | `onConnect` / `onNodesChange` / `onNodeClick` / `onEdgeClick` / `onNodeDragStart` / `onNodeDragEnd` / `onNodeDoubleClick` / `onNodeContextMenu` / `onEdgeContextMenu` / `onPaneContextMenu` / `onNodeMouseEnter` / `onNodeMouseLeave` / `onEdgeMouseEnter` / `onEdgeMouseLeave` |

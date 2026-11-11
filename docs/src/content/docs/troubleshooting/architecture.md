@@ -60,7 +60,7 @@ A popstate/hashchange handler that only sets `currentPath` skips loaders (loader
 
 ### A wrapper that spreads consumer props, then sets its own handler
 
-`h('a', { ...rest, onClick: handleClick })` silently overwrites the consumer's `onClick`. Fixing one prop (`class`) and leaving the others is not a fix; the class is every prop the wrapper also sets. Destructure the consumer's handler and compose, user first; the internal handler bails on `e.defaultPrevented`, so a consumer `preventDefault()` suppresses navigation. A test that mocks the wrapper encodes what the author believes it does and can hide this. Reference: `packages/core/router/src/components.tsx` (`composedClick`/`composedMouseEnter`/`composedFocus`) + `tests/link-dx.test.ts`.
+`h('a', { ...rest, onClick: handleClick })` silently overwrites the consumer's `onClick`. Fixing one prop (`class`) and leaving the others is not a fix; the class is every prop the wrapper also sets. Destructure the consumer's handler and compose, user first; the internal handler bails on `e.defaultPrevented`, so a consumer `preventDefault()` suppresses navigation. A test that mocks the wrapper encodes what the author believes it does and can hide this. Reference: `packages/core/router/src/components.tsx` (`composedClick`/`composedMouseEnter`/`composedFocus`) + `tests/link-dx.test.ts`. `ref` is a member of the same class: `mergeProps(htmlProps, { ref: internalRef })` replaces the consumer's ref, so a callback ref is never called (kinetic's scroll-reveal `useIntersection(() => node)` never saw an element). Merge the consumer's ref into the internal one, read when the element attaches. Reference: `packages/ui-system/kinetic/src/utils.ts` (`consumerRef`) + `src/__tests__/consumer-ref.test.tsx`.
 
 ---
 

@@ -73,7 +73,7 @@ Same source. Three idiomatic outputs (web rendered live; iOS/Android emitted as 
 - `@pyreon/charts`: `<Chart>` and every chart family, as native canvases over the generated engine
 - the native `@pyreon/router` port (`useNavigate`/`useParams`/`useLoaderData`, nested routes, `beforeEnter`)
 - the **subset** of `@pyreon/hooks` with ports: `useFetch`, `useOnline`, `useAppState`, `useDocumentVisibility`, `useReducedMotion`, `useKeyboard`, `usePrevious`, `useUpdateEffect`, `useClipboard`, `useColorScheme`
-  - **`useFetch` needs its response type on iOS**: `useFetch<Resp>(url)`. Without the generic the Swift emit decodes into `Any`, which cannot conform to `Decodable`, so the iOS build fails — Android compiles either way. The compiler now warns rather than letting you find out at build time. **A `number` field in that type decodes as an integer** on both targets (Swift `Int`, Kotlin `Long`), so a fractional JSON value such as `1.2` fails the whole decode: `error` is set and `data` stays empty. Declare fractional fields with the cross-target alias, `type Double = number` and `km: Double`; the compiler reads the name `Double` (and `Int`) as the native type. The same alias is what makes an integer literal in a `Double` position (`const ZERO: Double = 0`, `half(geo.latitude ?? 0)`) emit as `0.0` rather than `0L`.
+  - **`useFetch` needs its response type on iOS**: `useFetch<Resp>(url)`. Without the generic the Swift emit decodes into `Any`, which cannot conform to `Decodable`, so the iOS build fails — Android compiles either way. The compiler now warns rather than letting you find out at build time. **A `number` field in that type decodes as an integer** on both targets (Swift `Int`, Kotlin `Long`), so a fractional JSON value such as `1.2` fails the whole decode: `error` is set and `data` stays empty. Declare fractional fields with the cross-target alias, `type Double = number` and `km: Double`; the compiler reads the name `Double` (and `Int`) as the native type. The compiler names every field still left at the integer default in every type a native JSON decode targets: a `useFetch` / `useQuery` response, a `useMutation<T>` reply, a `useInfiniteQuery<Page>` page, a `useStream<T>` event and a typed `JSON.parse`. When an endpoint declares `{ response: schema }`, the schema types those fields for a query and a mutation alike: `s.number()` becomes `Double`, `.int()` stays an integer. The same alias is what makes an integer literal in a `Double` position (`const ZERO: Double = 0`, `half(geo.latitude ?? 0)`) emit as `0.0` rather than `0L`.
   - **`useParams()` must be destructured**: `const { id } = useParams()` lowers per key. Binding the whole object (`const p = useParams(); p.id`) reads a property off a native dictionary/map and compiles on neither target.
 
 **❌ Web-only by design** (a hard DOM/canvas/vendor dependency the compiler has no path for — these will NOT be *native-rendered* as SwiftUI/Compose; PMTC can't compile CodeMirror/ProseMirror/etc. But several CAN be **hosted in a `<WebView>`** — see the bridge escape hatch right after this table):
@@ -552,8 +552,8 @@ Foundation rollout (A–E):
 
 | Phase | Scope | Status |
 |-------|-------|--------|
-| **A** | Architectural foundation: canonical primitives package + web runtimes | ✅ Done — **all 15** primitives have web DOM runtimes |
-| **B** | PMTC compiler emit for iOS + Android (extends `canonical-primitives.ts` table) | ✅ iOS (Swift) **15/15**; Android (Compose) emit completing via the P2.2 series |
+| **A** | Architectural foundation: canonical primitives package + web runtimes | ✅ Done — every canonical primitive has a web DOM runtime |
+| **B** | PMTC compiler emit for iOS + Android (extends `canonical-primitives.ts` table) | ✅ Done — every canonical primitive emits for iOS (Swift) and Android (Compose) |
 | **C** | `@pyreon/native-router-{swift,kotlin}` runtime adapters + routes emit (path + component) | ✅ Done |
 | **D** | Web target for PMTC + `examples/native-todomvc-web/` consuming the shared source | ✅ Done |
 | **E** | TodoMVC migration to canonical vocab — closes the cross-platform contract | ✅ Done |
@@ -1307,7 +1307,9 @@ so is a reviver (second argument). Unknown keys are ignored, as on the web. The
 one deliberate difference: the decode is STRICTER than the web — input whose
 shape does not match the type (a missing field, a string where a number
 belongs) throws natively, where `JSON.parse` would have returned it and failed
-later at the first read.
+later at the first read. A `number` field in the target type is an integer
+natively, so a fractional value throws too; the compiler names such fields (see
+`useFetch` above).
 
 **JSX**: the 22 canonical primitives, `<For each by>`, `<Show when>`,
 `<Suspense fallback>`, `<ErrorBoundary fallback>`, `<KeepAlive when>`,
@@ -1503,10 +1505,17 @@ Together these make a webview-hosted chart a first-class interactive
 member of the native app: live native data flows in, user events flow
 back out. `examples/native-analytics` is the canonical end-to-end proof
 (native data table + aggregation + an interactive WebView chart from ONE
-`.tsx`). **Web caveat:** both bridges are same-origin / `srcdoc` only — a
-cross-origin remote `src` can't be reached from the parent frame (the
-native targets reach remote content via `evaluateJavaScript` / the script
-handler).
+`.tsx`). **Origin scope:** both bridges belong to the page the app loaded.
+On the web they are same-origin / `srcdoc` only — a cross-origin remote
+`src` can't be reached from the parent frame. On iOS and Android they reach
+only the MAIN frame of the origin the host's own load landed on (after its
+server redirects): an iframe from another origin gets no `data` and its
+messages are dropped, the main frame cannot be moved to another origin
+afterwards (by script, form POST or a server redirect; a tapped link opens
+in the system browser), Android file access is off, and a bundled `src`
+cannot leave the app's asset directory. All of this runs on a simulator and
+an emulator in the device CI lanes (`PyreonWebViewScopeUITests`,
+`PyreonWebViewOriginScopeTest`), against two loopback origins.
 
 ### Sizing and browser chrome
 

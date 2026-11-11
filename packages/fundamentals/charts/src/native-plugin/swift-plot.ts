@@ -194,7 +194,7 @@ function emitSwiftPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, inde
     if (toolbox.dataView) host.hostState.declare('@State private var pyreonDataView: Bool = false')
   }
   if (area.on) {
-    host.hostState.declare(`@State private var pyreonAreaType: String = ${JSON.stringify(area.initial)}`)
+    host.hostState.declare(`@State private var pyreonAreaType: String = ${swiftStr(area.initial)}`)
     host.hostState.declare(`@State private var pyreonAreaKeep: Bool = ${area.keep}`)
     host.hostState.declare('@State private var pyreonAreas: [BrushArea] = []')
     host.hostState.declare('@State private var pyreonAreaLive: BrushArea? = nil')
@@ -517,7 +517,7 @@ function emitSwiftPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, inde
       toolbox.dataView ? 'pyreonDataView ? "dataView" : ""' : '""',
       ...(area.on ? ['pyreonAreaType == "rect" ? "brushRect" : pyreonAreaType == "polygon" ? "brushPolygon" : pyreonAreaType == "lineX" ? "brushLineX" : pyreonAreaType == "lineY" ? "brushLineY" : ""', 'pyreonAreaKeep ? "brushKeep" : ""'] : []),
     ]
-    lets.push(`let pyreonTools: [String] = [${toolbox.tools.map((t) => JSON.stringify(t)).join(', ')}]`)
+    lets.push(`let pyreonTools: [String] = [${toolbox.tools.map((t) => swiftStr(t)).join(', ')}]`)
     lets.push(`let pyreonToolbox: ToolboxLayout = renderToolbox(pyreonTools, PyreonChartRect(x: 0.0, y: 0.0, w: ${W}, h: ${H}), ToolboxOptions(fontSize: 11.0, color: ${themed ? 'pyreonTheme.label' : `${theme}.label`}, actives: [${actives.join(', ')}]))`)
     if (toolbox.dataZoom && !brushing) lets.push('let pyreonPlot: PyreonChartRect = layoutChart(pyreonSpec, pyreonChartMeasure).plot')
   }
@@ -633,7 +633,7 @@ function emitSwiftPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, inde
         toolbox.dataView ? 'pyreonDataView = false' : '',
         legend.toggling ? 'pyreonHidden = []' : '',
         brushing ? 'pyreonBrushStart = -1; pyreonBrushEnd = -1' : '',
-        area.on ? `pyreonAreaType = ${JSON.stringify(area.initial)}; pyreonAreaKeep = ${area.keep}; pyreonAreas = []${areaReport('[]')}` : '',
+        area.on ? `pyreonAreaType = ${swiftStr(area.initial)}; pyreonAreaKeep = ${area.keep}; pyreonAreas = []${areaReport('[]')}` : '',
       ].filter((x) => x !== '').join('; ') + ' }')
       if (toolbox.magic) {
         acts.push('if pyreonTool == "magicLine" { pyreonMagicKind = pyreonMagicKind == "line" ? "" : "line" }')
@@ -659,7 +659,7 @@ function emitSwiftPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, inde
         const cmdsNow = `${chrome.mirror(painted)}`
         acts.push(onSave?.kind === 'event'
           ? `if pyreonTool == "saveAsImage" { ${swiftChartSelectBody(onSave.handler, `pyreonChartDataUrl(${cmdsNow}, ${W}, ${H})`, indent)} }`
-          : `if pyreonTool == "saveAsImage" { pyreonShareChartImage(${cmdsNow}, ${W}, ${H}, ${JSON.stringify(host.staticAttr(e, 'title') ?? 'chart')}) }`)
+          : `if pyreonTool == "saveAsImage" { pyreonShareChartImage(${cmdsNow}, ${W}, ${H}, ${swiftStr(host.staticAttr(e, 'title') ?? 'chart')}) }`)
       }
       decls.push(`let pyreonTool: String = hitToolbox(pyreonTools, pyreonToolbox.boxes, ${cx}, ${cy}) ?? ""`)
       branches.push(`if pyreonTool != "" { ${acts.join('; ')} }`)

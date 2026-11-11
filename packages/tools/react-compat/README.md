@@ -39,7 +39,7 @@ createRoot(document.getElementById('app')!).render(<Counter />)
 | Subpath                                | Surface                                                                                       |
 | -------------------------------------- | --------------------------------------------------------------------------------------------- |
 | `@pyreon/react-compat`                 | Full React 19 surface — every hook listed above, plus `Fragment`, `h` / `createElement`, `createRef`, `cloneElement`, `Children`, `createContext` / `useContext`, `createPortal`, `forwardRef`, `memo`, `lazy`, `Suspense`, `ErrorBoundary`, `StrictMode`, `Profiler`, `Component`, `PureComponent`, `act`, `flushSync`, `startTransition`, `useDebugValue`, `isValidElement`, `version` |
-| `@pyreon/react-compat/dom`             | `createRoot(container)` — drop-in for `react-dom/client`                                       |
+| `@pyreon/react-compat/dom`             | Drop-in for `react-dom` and `react-dom/client`: `createRoot`, `hydrateRoot`, `createPortal`, `flushSync`, legacy `render` / `hydrate` / `unmountComponentAtNode`, resource hints; `findDOMNode` / `useFormStatus` / `requestFormReset` throw with the replacement |
 | `@pyreon/react-compat/jsx-runtime`     | JSX automatic runtime (`jsx`, `jsxs`, `Fragment`)                                              |
 | `@pyreon/react-compat/jsx-dev-runtime` | Dev variant — same runtime                                                                     |
 

@@ -21,7 +21,7 @@
 // at SSR/build time and emitting a single concrete .background(…))
 // is a separate concern, not in scope here.
 
-import type { StyleProperty, StyleValue } from '@pyreon/native-compiler/plugin-api'
+import { kotlinStr, swiftStr, type StyleProperty, type StyleValue } from '@pyreon/native-compiler/plugin-api'
 
 export interface RocketstyleIR {
   /** Component name — emitted as `<Name>Modifier` (Swift) / `<name>Modifier`
@@ -94,7 +94,7 @@ export function emitSwiftRocketstyleModifier(rs: RocketstyleIR): string {
 
   // Single ViewModifier struct holding all dimension values.
   lines.push(`struct ${rs.name}Modifier: ViewModifier, PyreonStylable {`)
-  lines.push(`  static let pyreonSource = ${JSON.stringify(rs.name)}`)
+  lines.push(`  static let pyreonSource = ${swiftStr(rs.name)}`)
   for (const dim of rs.dimensions) {
     const enumName = swiftDimEnumName(rs.name, dim.name)
     lines.push(`  let ${dim.name}: ${enumName}`)
@@ -321,7 +321,7 @@ function swiftPropertyType(propName: string): string {
 function swiftValue(v: StyleValue): string {
   switch (v.kind) {
     case 'string':
-      return JSON.stringify(v.value)
+      return swiftStr(v.value)
     case 'number':
       return String(v.value)
     case 'token': {
@@ -334,7 +334,7 @@ function swiftValue(v: StyleValue): string {
 function kotlinValue(v: StyleValue): string {
   switch (v.kind) {
     case 'string':
-      return JSON.stringify(v.value)
+      return kotlinStr(v.value)
     case 'number':
       return String(v.value)
     case 'token': {

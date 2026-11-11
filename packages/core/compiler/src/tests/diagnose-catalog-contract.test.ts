@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import { ERROR_PATTERNS, diagnoseError } from '../diagnose'
+import type { ErrorDiagnosis } from '../diagnose'
+
+const DIAGNOSIS_KEYS = new Set<string>([
+  'cause',
+  'fix',
+  'fixCode',
+  'related',
+] satisfies (keyof ErrorDiagnosis)[])
 
 /**
  * A contract over the WHOLE catalog, rather than over the entries someone
@@ -85,6 +93,11 @@ describe('ERROR_PATTERNS — catalog-wide contract', () => {
         broken.push(`${id} — empty cause`)
       if (typeof d.fix !== 'string' || d.fix.trim().length === 0)
         broken.push(`${id} — empty fix`)
+      // An arrow's returned object literal gets no excess-property check, so
+      // a key outside `ErrorDiagnosis` typechecks and is silently dropped —
+      // e.g. the tail of a `fixCode` string that closed a few lines early.
+      const unknown = Object.keys(d).filter((k) => !DIAGNOSIS_KEYS.has(k))
+      if (unknown.length > 0) broken.push(`${id} — keys outside ErrorDiagnosis: ${unknown.join(', ')}`)
     })
     expect(broken, `catalog entries that do not render:\n${broken.join('\n')}`).toEqual([])
   })

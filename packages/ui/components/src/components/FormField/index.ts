@@ -1,4 +1,4 @@
-import { el, txt } from '../../factory'
+import { el, tones, toneText, txt } from '../../factory'
 
 const FormField = el
   .config({ name: 'FormField' })
@@ -12,10 +12,10 @@ export default FormField
 export const FieldLabel = txt
   .config({ name: 'FieldLabel' })
   .attrs({ tag: 'label' })
-  .theme((t) => ({
+  .theme((t, m) => ({
     fontSize: t.fontSize.small,
     fontWeight: t.fontWeight.medium,
-    color: t.color.system.base[700],
+    color: tones(t, m).textMuted,
   }))
   .sizes((t) => ({
     small: { fontSize: t.fontSize.xSmall },
@@ -26,15 +26,16 @@ export const FieldLabel = txt
 export const FieldError = txt
   .config({ name: 'FieldError' })
   .attrs({ tag: 'span' })
-  .theme((t) => ({
+  .theme((t, m) => ({
     fontSize: t.fontSize.xSmall,
-    color: t.color.system.error.base,
+    // error.base (red-500) is 3.8:1 on white: use the legible status text tone.
+    color: toneText(t, m, 'error'),
   }))
 
 export const FieldDescription = txt
   .config({ name: 'FieldDescription' })
   .attrs({ tag: 'span' })
-  .theme((t) => ({
+  .theme((t, m) => ({
     fontSize: t.fontSize.xSmall,
-    color: t.color.system.base[500],
+    color: tones(t, m).textMuted,
   }))

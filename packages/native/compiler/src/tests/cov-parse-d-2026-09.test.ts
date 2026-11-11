@@ -484,7 +484,7 @@ describe('parse.ts — @pyreon/validate `s` schemas (wrapper-less, schemaFn = nu
     expect(w).toContain('schema field `d` .url(): a spread in the options cannot be read')
     expect(w).toContain('schema element .url(): the options argument is not an inline object')
     // The string-keyed `protocol` is honoured; `{}` falls back to the http rule.
-    expect(r.code).toContain('range(of: #"^https$"#')
+    expect(r.code).toContain('range(of: "^https$"')
     expect(r.code).toContain('throw PyreonSchemaError.constraintViolation(field: "c", rule: "url")')
   })
 })

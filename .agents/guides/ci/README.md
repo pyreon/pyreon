@@ -100,7 +100,7 @@ Branch protection pins 15 required contexts in two authorities that must stay id
 
 ## Merge queue
 
-Prepared, not enabled. The ruleset has no `merge_queue` rule, so `merge_group` events never fire (zero runs repository-wide, although `ci.yml` has carried the trigger since September). Every workflow that owns a required context carries `merge_group`:
+Tried 2026-11-11 and switched off again the same day (ruleset 19416270 has no `merge_queue` rule): with the org's 20-concurrent-job limit and about 120 queued runs, a group's own CI waited in the same line as the PR runs, the oldest group needed more than 5 hours, groups were rebuilt twice, and in 4 hours no PR merged, while the same green PRs merged immediately without the queue. Try it again only with more runner capacity. Prepared, not enabled: `merge_group` events never fire without the rule. Every workflow that owns a required context carries `merge_group`:
 
 | Context | Workflow / job | In a merge group |
 | --- | --- | --- |

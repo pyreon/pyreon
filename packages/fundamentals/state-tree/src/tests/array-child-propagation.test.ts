@@ -23,9 +23,9 @@ describe('state-tree — array/object child upward propagation', () => {
 
     list.todos()[0]!.toggle()
 
-    // The child's mutation reached the parent (path prefixed with the field key).
+    // The child's mutation reached the parent, addressed by the element index.
     expect(patches.length).toBeGreaterThan(0)
-    expect(patches[0]!.path).toBe('/todos/done')
+    expect(patches[0]!.path).toBe('/todos/0/done')
     expect(patches[0]!.value).toBe(true)
   })
 

@@ -8,7 +8,7 @@ import type {
   LifecycleHandlers,
   ModelInstance,
   ModelSelf,
-  Snapshot,
+  SnapshotIn,
   StateShape,
 } from './types'
 import { MODEL_BRAND } from './types'
@@ -303,7 +303,7 @@ export class ModelDefinition<
    * ```
    */
   create(
-    initial?: Partial<Snapshot<TState>>,
+    initial?: Partial<SnapshotIn<TState>>,
   ): ModelInstance<TState, TViews, TActions, HasSchema, TVolatile> {
     // Pass `this` so the instance's meta carries a back-reference to the
     // definition (powers `clone` / `getType`).

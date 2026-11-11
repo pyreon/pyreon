@@ -8,6 +8,7 @@ import { parseSync } from 'oxc-parser'
 import { join } from 'node:path'
 import type { FileRoute, RenderMode, RouteFileExports } from './types'
 import { jsStringLiteral } from './codegen-literal'
+import { ROUTE_GATE_TAG, routeGateId } from './route-gate'
 import { matchRouteRules } from './route-modes'
 
 // `filePathToUrlPath` + `ROUTE_EXTENSIONS` are the fs-route CONVENTION —
@@ -404,6 +405,7 @@ export function toPosixPath(p: string): string {
   return p.includes('\\') ? p.replace(/\\/g, '/') : p
 }
 
+
 export function parseFileRoutes(
   files: string[],
   defaultMode: RenderMode = 'ssr',
@@ -639,6 +641,9 @@ export function generateRouteModuleFromRoutes(
   const tree = buildRouteTree(routes)
   const imports: string[] = []
   let importCounter = 0
+  // Set when a layout record carries the route-gate tag: `clean()` below
+  // copies with `for…in`, which skips symbol keys, so it must copy the tag.
+  let gateTagged = false
   const useStaticOnly = options?.staticImports ?? false
   // Phase 5 — server loaders. SSR builds import the `.server.ts` sibling
   // and put the FUNCTION on the record; client builds emit only the
@@ -981,6 +986,10 @@ export function generateRouteModuleFromRoutes(
       `${indent}path: ${JSON.stringify(layout.urlPath)}`,
       `${indent}component: ${layoutComp}`,
     ]
+    if (exp.hasMiddleware) {
+      gateTagged = true
+      props.push(`${indent}[Symbol.for(${JSON.stringify(ROUTE_GATE_TAG)})]: ${JSON.stringify(routeGateId(layout.filePath))}`)
+    }
 
     if (layoutMod !== undefined) {
       if (exp.hasLoader) props.push(`${indent}loader: ${layoutMod}.loader`)
@@ -1047,6 +1056,9 @@ export function generateRouteModuleFromRoutes(
     `  return routes.map(r => {`,
     `    const c = {}`,
     `    for (const k in r) if (r[k] !== undefined) c[k] = r[k]`,
+    ...(gateTagged
+      ? [`    const g = r[Symbol.for(${JSON.stringify(ROUTE_GATE_TAG)})]`, `    if (g !== undefined) c[Symbol.for(${JSON.stringify(ROUTE_GATE_TAG)})] = g`]
+      : []),
     `    if (c.children) c.children = clean(c.children)`,
     `    return c`,
     `  })`,
@@ -1070,7 +1082,11 @@ export function generateRouteModuleFromRoutes(
  * static-import path fails Rolldown's missing-export check at build time —
  * skipping no-middleware files keeps both paths working.
  */
-export function generateMiddlewareModule(files: string[], routesDir: string): string {
+export function generateMiddlewareModule(
+  files: string[],
+  routesDir: string,
+  actionModules?: ReadonlyMap<string, string>,
+): string {
   routesDir = toPosixPath(routesDir)
   const routes = parseFileRoutes(files)
   const imports: string[] = []
@@ -1108,11 +1124,12 @@ export function generateMiddlewareModule(files: string[], routesDir: string): st
     const covered = pages
       .filter((p) => dir === '' || p.dirPath === dir || p.dirPath.startsWith(`${dir}/`))
       .map((p) => p.urlPath)
-    if (covered.length === 0) continue
+    // No page under it: the entry still gates the directory's not-found
+    // chain (by `gate`), with no page pattern to match.
     const name = `_mw${counter++}`
     imports.push(`import { middleware as ${name} } from ${jsStringLiteral(`${routesDir}/${layout.filePath}`)}`)
     layoutEntries.push(
-      `  { pattern: ${JSON.stringify(covered[0])}, patterns: ${JSON.stringify(covered)}, middleware: ${name} }`,
+      `  { pattern: ${JSON.stringify(covered[0] ?? layout.urlPath)}, patterns: ${JSON.stringify(covered)}, gate: ${JSON.stringify(routeGateId(layout.filePath))}, middleware: ${name} }`,
     )
   }
 
@@ -1139,9 +1156,32 @@ export function generateMiddlewareModule(files: string[], routesDir: string): st
     }
   }
 
+  // Server actions are gated as the page that DECLARES them (its layouts'
+  // and its own middleware), whichever URL they are posted to. Map each
+  // action id defined in a page file (or its `.server.*` sibling) to that
+  // page's URL pattern; an id missing from the map has no determinable
+  // route and the request gate refuses it.
+  const actionRoutes: string[] = []
+  if (actionModules && actionModules.size > 0) {
+    const stem = (f: string): string => f.replace(/\.[mc]?[jt]sx?$/, '')
+    const pageByStem = new Map(pages.map((p) => [stem(p.filePath), p.urlPath]))
+    const prefix = routesDir.endsWith('/') ? routesDir : `${routesDir}/`
+    for (const [id, file] of [...actionModules].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) {
+      const posix = toPosixPath(file)
+      if (!posix.startsWith(prefix)) continue
+      const rel = stem(posix.slice(prefix.length)).replace(/\.server$/, '')
+      const urlPath = pageByStem.get(rel)
+      if (urlPath !== undefined) actionRoutes.push(`  ${jsStringLiteral(id)}: ${JSON.stringify(urlPath)}`)
+    }
+  }
+  if (actionRoutes.length > 0) {
+    imports.push(`import { _registerActionRoutes } from "@pyreon/zero/actions"`)
+  }
+
   return [
     ...imports,
     '',
+    ...(actionRoutes.length > 0 ? [`_registerActionRoutes({\n${actionRoutes.join(',\n')}\n})`, ''] : []),
     `export const routeMiddleware = [`,
     [...layoutEntries, ...pageEntries].join(',\n'),
     `].filter(e => e.middleware)`,
