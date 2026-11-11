@@ -41,6 +41,13 @@ declare module 'virtual:pyreon-site-releases' {
   export default data
 }
 
+// Scheduled blog posts for the index's "Up next" (vite-plugins/blog.ts).
+declare module 'virtual:pyreon-blog-planned' {
+  import type { PlannedPost } from './blog/planned'
+  const planned: PlannedPost[]
+  export default planned
+}
+
 declare module 'virtual:zero-content/collections'
 declare module 'virtual:zero-content/components'
 

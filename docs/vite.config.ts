@@ -16,6 +16,7 @@ import sitePagesContent from './vite-plugins/site-pages-content'
 import siteReleases from './vite-plugins/site-releases'
 import publishLlmsTxt from './vite-plugins/publish-llms-txt'
 import staticPages from './vite-plugins/static-pages'
+import { blogBench, blogPlanned } from './vite-plugins/blog'
 import { SITE_LINKS } from './src/site-links'
 
 // Pyreon-native docs site, powered by @pyreon/zero + @pyreon/zero-content.
@@ -54,6 +55,11 @@ export default defineConfig({
     // tokens (`--syn-*` in tokens.css). VitePress applied them via its
     // `markdown.theme: { light, dark }` config — same surface here, only
     // wired through `@pyreon/zero-content`'s highlighter option.
+    // `::: bench` blocks in blog posts → raw HTML around their list, before
+    // content() compiles the post (src/blog/bench.ts).
+    blogBench({ moreLabel: blogCopy.bench.more }),
+    // virtual:pyreon-blog-planned — the scheduled posts "Up next" lists.
+    blogPlanned(),
     content({
       highlighter: {
         themes: { light: pyreonSyntaxLight, dark: pyreonSyntaxDark },
