@@ -5,7 +5,11 @@ description: Preact-compatible API layer with hooks and signals, running on Pyre
 
 `@pyreon/preact-compat` provides a Preact-compatible API surface -- `h`, `render`, `Component`, hooks, and Preact Signals -- all backed by Pyreon's fine-grained reactive engine. It mirrors Preact's module structure with three entry points: the core API, a `hooks` submodule, and a `signals` submodule.
 
-<PackageBadge name="@pyreon/preact-compat" href="/docs/preact-compat" status="stable" />
+<PackageBadge name="@pyreon/preact-compat" href="/docs/preact-compat" status="beta" />
+
+:::note
+The compat layer is at **near-full public-API parity** with Preact, not complete parity, and Pyreon is pre-1.0. Check the differences and unsupported APIs on this page before migrating a large app.
+:::
 
 ## Installation
 
@@ -608,14 +612,16 @@ Memoizes `fn` across re-renders, returning the same reference until a dep change
 ### `useRef`
 
 ```ts
-function useRef<T>(initial?: T): { current: T | null }
+function useRef<T>(initial: T): { current: T }
+function useRef<T>(initial: T | null): { current: T | null }
+function useRef<T = undefined>(): { current: T | undefined }
 ```
 
-Returns a `&#123; current &#125;` object. If `initial` is provided, `current` is set to it; otherwise it defaults to `null`.
+Returns a `&#123; current &#125;` object. If `initial` is provided, `current` is set to it; otherwise it starts at `undefined`, exactly like Preact.
 
 ```tsx
 // DOM ref
-const inputRef = useRef<HTMLInputElement>()
+const inputRef = useRef<HTMLInputElement>(null)
 // later: inputRef.current?.focus()
 
 // Mutable value store

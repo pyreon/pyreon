@@ -5,7 +5,7 @@ import { join, resolve } from 'node:path'
 // The delta the check inflates an off-gating measurement by. Imported rather
 // than re-typed as `0.011`: a hand-copied literal is a second source of truth
 // that silently stops matching the thing it describes.
-import { diagnoseMeasurement, GZIP_PLATFORM_DELTA } from '../../../../../scripts/check-bundle-budgets'
+import { diagnoseMeasurement } from '../../../../../scripts/check-bundle-budgets'
 
 /**
  * Subprocess regression test for `scripts/check-bundle-budgets.ts`
@@ -464,11 +464,11 @@ describe('scripts/check-bundle-budgets.ts failure surfacing', () => {
     expect(tiny!.current).toBeLessThan(200)
   })
 
-  describe('un-satisfiable budgets (headroom below the platform gzip variance)', () => {
-    // gzip output differs by ~1.1% between macOS and the ubuntu runner. A budget
-    // with less headroom than that is not strict, it is un-satisfiable: the same
-    // commit passes locally and fails CI, and re-running locally only reconfirms
-    // the wrong answer. Three PRs paid a CI round trip to this in one day.
+  describe('thin budgets (headroom below the minimum)', () => {
+    // A budget set within a few bytes of its measurement turns red on the next
+    // PR that adds a line to the package, so it is reported as a defect of the
+    // budget. The verdict reads only the measured bytes: the same bytes get the
+    // same verdict with or without `CI` set.
     //
     // The budgets FILE is the thing under test, so these drive the script's
     // `--budgets=` seam — the companion to `--packages-root=`.
@@ -498,25 +498,48 @@ describe('scripts/check-bundle-budgets.ts failure surfacing', () => {
 
       const thin = (json as JsonOutput).thinNew.find((t) => t.name === '@pyreon-test/good-fixture')
       expect(thin).toBeDefined()
-      // Headroom is measured against the WORST-CASE gating figure, not this
-      // machine's — that IS the platform-independence fix. `runCheck` spawns
-      // with a minimal env carrying no `CI`, so the subprocess is always the
-      // off-gating arm and inflates by the delta. A budget one byte above the
-      // LOCAL measurement therefore leaves `1 - measured * delta`, which is
-      // fractional by construction.
-      //
-      // The literal `toBe(1)` here was asserting the OLD definition of
-      // headroom. The INVARIANT it was protecting is untouched and still
-      // asserted below: one byte of nominal slack is not enough, so `required`
-      // exceeds it and the check fails. Only the arithmetic is restated.
-      expect(thin!.headroom).toBeCloseTo(1 - measured * GZIP_PLATFORM_DELTA, 6)
-      // …and the inflation is load-bearing, not decorative: without it the
-      // headroom would be exactly the byte the budget was set above.
-      expect(thin!.headroom).toBeLessThan(1)
+      // Headroom is the budget minus the measured bytes, nothing else: one
+      // byte of slack is one byte of headroom.
+      expect(thin!.headroom).toBe(1)
       // The remedy travels WITH the finding — the operator should not have to
       // work out what "enough headroom" is.
       expect(thin!.required).toBeGreaterThan(thin!.headroom)
       expect(status).toBe(1)
+    })
+
+    it('gives the same verdict with and without CI set (#4288)', () => {
+      // Until 2026-11 a run without `CI` inflated its measurement by a presumed
+      // 1.1% macOS/ubuntu delta, so `@pyreon/server` (6139 B on both machines,
+      // budget 6280) passed CI and failed every local validate-fast. A budget
+      // whose headroom sits between the minimum and the minimum + 1.1% is that
+      // band, and must pass in both environments. The package has to be a few
+      // KB for 1.1% to be more than a byte, so it is generated here.
+      testDir = setupFixturePackagesDir({})
+      const dir = join(testDir, 'sized-cat', 'sized-fixture')
+      mkdirSync(join(dir, 'lib'), { recursive: true })
+      writeFileSync(
+        join(dir, 'package.json'),
+        JSON.stringify({ name: '@pyreon-test/sized-fixture', version: '0.0.0-test', exports: { '.': { import: './lib/index.js' } } }),
+      )
+      // Deterministic, poorly compressible strings: ~10 KB gzipped.
+      let seed = 1
+      const rand = (): number => (seed = (seed * 1103515245 + 12345) % 2147483648)
+      const words = Array.from({ length: 1200 }, () => rand().toString(36) + rand().toString(36))
+      writeFileSync(
+        join(dir, 'lib', 'index.js'),
+        `const WORDS = ${JSON.stringify(words)}\nexport function pick(i) { return WORDS[i % WORDS.length] }\n`,
+      )
+      const first = runCheck(testDir).json as JsonOutput
+      const measured = first.missing.find((m) => m.name === '@pyreon-test/sized-fixture')!.current
+      expect(measured * 0.011, 'the old inflation must be worth more than a byte here').toBeGreaterThan(50)
+      // 2% of headroom: above the 1.5% minimum, below 1.5% + the old 1.1%.
+      const budgets = writeBudgets({ '@pyreon-test/sized-fixture': Math.ceil(measured * 1.02) })
+      const local = runCheck(testDir, {}, budgets)
+      const ci = runCheck(testDir, { CI: 'true' }, budgets)
+      expect((local.json as JsonOutput).thinNew, 'local verdict').toHaveLength(0)
+      expect((ci.json as JsonOutput).thinNew, 'CI verdict').toHaveLength(0)
+      expect(local.status).toBe(0)
+      expect(ci.status).toBe(0)
     })
 
     it('does NOT fail for a budget with real headroom', () => {

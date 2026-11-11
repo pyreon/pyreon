@@ -30,19 +30,11 @@ afterEach(() => {
 })
 
 describe('createEffect cleanup across re-runs', () => {
-  test('onCleanup inside createEffect runs at UNMOUNT, not per re-run', async () => {
-    // A DIVERGENCE from Solid, pinned rather than asserted as correct.
-    //
-    // In Solid, `onCleanup` registered inside `createEffect` runs before each
-    // re-run. Here it registers an UNMOUNT callback on the component instead,
-    // so it runs once, at teardown. Anything that must be undone per run — an
-    // event listener, a timer, a subscription — therefore accumulates for the
-    // life of the component.
-    //
-    // This is pinned, not fixed: `onCleanup` is shared between component-body
-    // and effect-body positions, and separating them changes semantics for
-    // every existing consumer. The value of the test is that the behaviour is
-    // now WRITTEN DOWN and a change to it is visible.
+  test('onCleanup inside createEffect runs before each re-run and at unmount (Solid parity)', async () => {
+    // In Solid, `onCleanup` registered inside `createEffect` belongs to that
+    // effect. It used to register a component UNMOUNT callback instead, so a
+    // per-run listener / timer / subscription accumulated for the life of the
+    // component.
     const runs: string[] = []
     let setN!: (v: number) => void
 
@@ -64,18 +56,11 @@ describe('createEffect cleanup across re-runs', () => {
     setN(2)
     await tick()
 
-    expect(runs, 'the effect re-runs on every change, with no cleanup between').toEqual([
-      'run:0',
-      'run:1',
-      'run:2',
-    ])
+    expect(runs).toEqual(['run:0', 'cleanup:0', 'run:1', 'cleanup:1', 'run:2'])
 
     unmount()
     await tick()
-    expect(
-      runs.filter((r) => r.startsWith('cleanup:')).length,
-      'every registered cleanup lands at unmount instead',
-    ).toBeGreaterThan(0)
+    expect(runs.at(-1)).toBe('cleanup:2')
   })
 
   test('the RETURN value is the accumulator, not a cleanup', async () => {

@@ -1,12 +1,22 @@
 /**
- * Scenario: **charts-libs — `@pyreon/charts` vs uPlot, Chart.js and Recharts**.
+ * Scenario: **charts-libs — `@pyreon/charts` vs uPlot, Chart.js, Recharts,
+ * visx, Observable Plot, lightweight-charts and a hand-written D3 chart**.
  *
- * Seven ops, same data for every library (a seeded random walk, x = index):
+ * Eight ops, same data for every library (a seeded random walk, x = index):
  *
  *  1–4. `mount line, N points` for N = 1k / 10k / 100k / 1M, 800 × 300.
  *  5–6. `update line, N points (every value)` for N = 10k / 100k — the whole
  *       y column replaced by another series of the same length.
- *  7.   `mount bars, 1,000 bars` — category axis, one bar per datum.
+ *  7.   `update line, 10,000 points (last value)` — a streaming-style edit:
+ *       only the LAST point changes. Each arm uses its documented way to do
+ *       that (lightweight-charts calls `series.update()`; every other arm
+ *       hands over a new array — Chart.js's in-place edit breaks under its
+ *       decimation plugin, see its target).
+ *  8.   `mount bars, 1,000 bars` — category axis, one bar per datum.
+ *
+ * Skipped rivals: ApexCharts 8 (its licence forbids "use in competing
+ * charting products", which @pyreon/charts is); Highcharts (commercial licence,
+ * free only for non-commercial use). ECharts has its own scenario (`charts`).
  *
  * ── THE TIMING WINDOW (identical for every arm) ─────────────────────────────
  *
@@ -58,16 +68,30 @@
  *  - uPlot 1.6.32: in/min/max/out per whole device pixel once
  *    `n ≥ 4 × plotWidth` (`linear()` path builder). DEFAULT ON, and it works
  *    off the value arrays without allocating per point.
- *  - Chart.js 4.5.1: `min-max` decimation plugin, first/min/max/last per whole
+ *  - Chart.js 4.6.1: `min-max` decimation plugin, first/min/max/last per whole
  *    pixel. OFF by default; requires `parsing: false` and a linear/time x
  *    axis. The RANKED Chart.js arm turns it on with the documented large-data
  *    configuration; the `(defaults)` arm is a diagnostic without it.
- *  - Recharts 3.10.1: none. Every point becomes a path segment.
+ *  - Recharts 3.10.1, visx 4, Observable Plot 0.6, D3 7: none. Every point
+ *    becomes an SVG path segment.
+ *  - lightweight-charts 5.2: per-bar drawing at its bar spacing; the arm sets
+ *    `minBarSpacing` low enough and calls `fitContent()` so the WHOLE series
+ *    is in view (its default shows only the most recent bars).
+ *
+ * ── DEFERRED-DRAW ARMS ──────────────────────────────────────────────────────
+ * lightweight-charts paints in its own requestAnimationFrame callback, never
+ * synchronously. Its window therefore closes in the first task after the
+ * first frame whose picture passes the gate (at most 3 extra frames). The
+ * clock is read BEFORE each intermediate gate and the gate's own time is
+ * subtracted, so only the library's frames — including the idle vsync wait
+ * its scheduling costs — are on the clock. This is "first painted frame" for
+ * it, the same definition as every other arm; it is disclosed because the
+ * vsync wait (up to ~16.7 ms) is scheduling, not work.
  *
  * ── FAIRNESS SWITCHES ───────────────────────────────────────────────────────
  *  - Animation off everywhere (Pyreon `animate`/`updateAnimation` false,
- *    Chart.js `animation: false`, Recharts `isAnimationActive={false}`; uPlot
- *    does not animate).
+ *    Chart.js `animation: false`, Recharts `isAnimationActive={false}`; uPlot,
+ *    visx, Plot, D3 and lightweight-charts do not animate by default).
  *  - No point symbols anywhere (uPlot `points.show: false`, Chart.js
  *    `pointRadius: 0`, Recharts `dot={false}`; Pyreon draws none by default).
  *  - uPlot legend off (it is a DOM table the others do not render); Chart.js
@@ -79,6 +103,10 @@
  *  - Input is each library's idiomatic shape, built OUTSIDE the window: row
  *    objects for Pyreon/Recharts, `{x, y}` for Chart.js, columns for uPlot.
  *  - DPR is the page's (1 in headless Chromium) on every arm.
+ *  - The SVG arms (Recharts, visx, Plot, D3) get a grid and both axes, as the
+ *    canvas arms draw by default. lightweight-charts draws its own grid, price
+ *    scale and time scale by default; its crosshair is left on (no pointer
+ *    moves in this bench, so it draws nothing).
  *
  * ── IN-RUN CONTROL ──────────────────────────────────────────────────────────
  * `Vanilla canvas (control)` strokes every point with raw 2D calls and no
@@ -109,6 +137,14 @@ import { createRoot } from 'react-dom/client'
 import { Bar, BarChart, CartesianGrid, Line, LineChart, XAxis, YAxis } from 'recharts'
 import uPlot from 'uplot'
 import 'uplot/dist/uPlot.min.css'
+import * as Plot from '@observablehq/plot'
+import { AxisBottom, AxisLeft } from '@visx/axis'
+import { GridColumns, GridRows } from '@visx/grid'
+import { Group } from '@visx/group'
+import { scaleBand, scaleLinear } from '@visx/scale'
+import { Bar as VBar, LinePath } from '@visx/shape'
+import * as d3 from 'd3'
+import { createChart, HistogramSeries, LineSeries, type IChartApi, type ISeriesApi, type UTCTimestamp } from 'lightweight-charts'
 import type { BenchResult, BenchSuite } from '../runner'
 
 Chart.register(LineController, LineElement, PointElement, LinearScale, CategoryScale, BarController, BarElement, Decimation)
@@ -120,6 +156,10 @@ export const CHARTS_LIBS_FRAMEWORKS = [
   'uPlot 1.6',
   'Chart.js 4 (min-max decimation)',
   'Recharts 3',
+  'visx 4',
+  'Observable Plot 0.6',
+  'D3 7 (hand-written)',
+  'lightweight-charts 5',
   'Chart.js 4 (defaults, no decimation)',
   'Pyreon (PlotChart, no a11y table)',
   'Vanilla canvas (control)',
@@ -187,6 +227,12 @@ const asCols = (ys: Float64Array): [number[], number[]] =>
 const asArr = (ys: Float64Array): number[] => cached(ys, 'arr', () => Array.from(ys))
 const asBarRows = (ys: Float64Array): BarRow[] =>
   cached(ys, 'bars', () => Array.from(ys, (v, i) => ({ label: String(i), v })))
+interface TV {
+  time: UTCTimestamp
+  value: number
+}
+const asTV = (ys: Float64Array): TV[] =>
+  cached(ys, 'tv', () => Array.from(ys, (value, i) => ({ time: i as UTCTimestamp, value })))
 
 /** Build the arm's own input shape OUTSIDE every window (an app holds its data). */
 function prebuild(fw: string, ys: Float64Array, kind: 'line' | 'bars'): void {
@@ -194,7 +240,10 @@ function prebuild(fw: string, ys: Float64Array, kind: 'line' | 'bars'): void {
   if (fw.startsWith('Pyreon')) void (kind === 'line' ? asRows(ys) : asBarRows(ys))
   else if (fw.startsWith('uPlot')) void asCols(ys)
   else if (fw.startsWith('Chart.js')) void (kind === 'line' ? asXY(ys) : asBarRows(ys))
-  else if (fw.startsWith('Recharts')) void (kind === 'line' ? asXY(ys) : asBarRows(ys))
+  else if (fw.startsWith('Recharts') || fw.startsWith('visx') || fw.startsWith('D3'))
+    void (kind === 'line' ? asXY(ys) : asBarRows(ys))
+  else if (fw.startsWith('Observable Plot')) void (kind === 'line' ? asArr(ys) : asBarRows(ys))
+  else if (fw.startsWith('lightweight-charts')) void asTV(ys)
 }
 
 // ─── Targets ────────────────────────────────────────────────────────────────
@@ -202,8 +251,12 @@ function prebuild(fw: string, ys: Float64Array, kind: 'line' | 'bars'): void {
 interface Target {
   mountLine(host: HTMLElement, ys: Float64Array): void
   updateLine(ys: Float64Array): void
+  /** Only the last value of `ys` differs from the mounted series. Defaults to `updateLine`. */
+  updateLast?(ys: Float64Array): void
   mountBars(host: HTMLElement, ys: Float64Array): void
   dispose(): void
+  /** Paints in its own rAF callback (see DEFERRED-DRAW ARMS in the header). */
+  drawsOnNextFrame?: boolean
 }
 
 /**
@@ -371,6 +424,11 @@ function chartjsTarget(decimate: boolean): Target {
       ds.data = asXY(ys)
       c.update('none')
     },
+    // No `updateLast`: Chart.js's in-place edit (mutate `dataset.data[i]`,
+    // https://www.chartjs.org/docs/latest/developers/updates.html) is unusable
+    // with the decimation plugin, which swaps `dataset.data` for its decimated
+    // copy — the mutation lands on that copy and `update()` throws. Replacing
+    // the array (the same page's other documented pattern) is used instead.
     mountBars(host, ys) {
       const rows = asBarRows(ys)
       c = new Chart(canvasIn(host), {
@@ -426,6 +484,252 @@ function rechartsTarget(): Target {
     dispose() {
       root?.unmount()
       root = null
+    },
+  }
+}
+
+/**
+ * visx 4 — React + d3-scale primitives, composed the way the visx gallery's
+ * line and bar examples do (https://airbnb.io/visx/lineradial is radial; the
+ * cartesian pattern is https://airbnb.io/visx/areas and https://airbnb.io/visx/bars):
+ * `scaleLinear`/`scaleBand` + `<LinePath>`/`<Bar>` + `<AxisLeft>`/`<AxisBottom>`
+ * + `<GridRows>`/`<GridColumns>`. An update is a re-render with new data.
+ */
+const M = { top: 10, right: 10, bottom: 30, left: 40 }
+const IW = W - M.left - M.right
+const IH = H - M.top - M.bottom
+function visxTarget(): Target {
+  let root: ReturnType<typeof createRoot> | null = null
+  const lineEl = (ys: Float64Array) => {
+    const data = asXY(ys)
+    let lo = Infinity
+    let hi = -Infinity
+    for (let i = 0; i < ys.length; i++) {
+      const v = ys[i]!
+      if (v < lo) lo = v
+      if (v > hi) hi = v
+    }
+    const x = scaleLinear<number>({ domain: [0, ys.length - 1], range: [0, IW] })
+    const y = scaleLinear<number>({ domain: [lo, hi], range: [IH, 0], nice: true })
+    return rh(
+      'svg',
+      { width: W, height: H },
+      rh(
+        Group,
+        { left: M.left, top: M.top },
+        rh(GridRows, { scale: y, width: IW, stroke: '#e0e0e0' }),
+        rh(GridColumns, { scale: x, height: IH, stroke: '#e0e0e0' }),
+        rh(LinePath<XY>, { className: 'bench-line', data, x: (d: XY) => x(d.x), y: (d: XY) => y(d.y), stroke: COLOR, strokeWidth: 1 }),
+        rh(AxisLeft, { scale: y }),
+        rh(AxisBottom, { scale: x, top: IH }),
+      ),
+    )
+  }
+  return {
+    mountLine(host, ys) {
+      const r = createRoot(host)
+      root = r
+      flushSync(() => r.render(lineEl(ys)))
+    },
+    updateLine(ys) {
+      const r = root
+      if (r) flushSync(() => r.render(lineEl(ys)))
+    },
+    mountBars(host, ys) {
+      const rows = asBarRows(ys)
+      let hi = 0
+      for (let i = 0; i < ys.length; i++) if (ys[i]! > hi) hi = ys[i]!
+      const x = scaleBand<string>({ domain: rows.map((r) => r.label), range: [0, IW], padding: 0.2 })
+      const y = scaleLinear<number>({ domain: [0, hi], range: [IH, 0], nice: true })
+      const r = createRoot(host)
+      root = r
+      flushSync(() =>
+        r.render(
+          rh(
+            'svg',
+            { width: W, height: H },
+            rh(
+              Group,
+              { left: M.left, top: M.top },
+              rh(GridRows, { scale: y, width: IW, stroke: '#e0e0e0' }),
+              ...rows.map((d) =>
+                rh(VBar, { key: d.label, className: 'bench-bar', x: x(d.label), y: y(d.v), width: x.bandwidth(), height: IH - y(d.v), fill: COLOR }),
+              ),
+              rh(AxisLeft, { scale: y }),
+              rh(AxisBottom, { scale: x, top: IH, numTicks: 10 }),
+            ),
+          ),
+        ),
+      )
+    },
+    dispose() {
+      root?.unmount()
+      root = null
+    },
+  }
+}
+
+/**
+ * Observable Plot 0.6 — `Plot.plot({ marks })` returns a detached SVG; the
+ * documented way to change data is to render a new plot and replace the old
+ * node (https://observablehq.com/plot/getting-started#plot-in-vanilla-html —
+ * "Plot does not support incremental updates"). Input is the number array
+ * itself: `Plot.lineY(numbers)` uses the index as x (https://observablehq.com/plot/marks/line).
+ * Bars: `Plot.barY` on an ordinal x (https://observablehq.com/plot/marks/bar),
+ * tick labels thinned to every 100th bar (the docs' `ticks` option), since
+ * Plot's band axis labels every band by default.
+ */
+function plotTarget(): Target {
+  let el: Element | null = null
+  let parent: HTMLElement | null = null
+  const lineSvg = (ys: Float64Array) =>
+    Plot.plot({ width: W, height: H, grid: true, marks: [Plot.lineY(asArr(ys), { stroke: COLOR, strokeWidth: 1 })] })
+  return {
+    mountLine(host, ys) {
+      parent = host
+      el = lineSvg(ys)
+      host.appendChild(el)
+    },
+    updateLine(ys) {
+      if (el === null) return
+      const next = lineSvg(ys)
+      el.replaceWith(next)
+      el = next
+    },
+    mountBars(host, ys) {
+      parent = host
+      const ticks = Array.from({ length: BARS / 100 }, (_, i) => String(i * 100))
+      el = Plot.plot({
+        width: W,
+        height: H,
+        y: { grid: true },
+        x: { ticks },
+        marks: [Plot.barY(asBarRows(ys), { x: 'label', y: 'v', fill: COLOR })],
+      })
+      host.appendChild(el)
+    },
+    dispose() {
+      el?.remove()
+      el = null
+      parent = null
+      void parent
+    },
+  }
+}
+
+/**
+ * D3 7, hand-written the way the D3 gallery's line and bar charts are
+ * (https://observablehq.com/@d3/line-chart/2, https://observablehq.com/@d3/bar-chart/2):
+ * `d3.create('svg')`, `scaleLinear`/`scaleBand`, `axisBottom`/`axisLeft`,
+ * one `<path d=line(data)>`; bars via `selectAll('rect').data(data).join('rect')`.
+ * An update re-sets the domains, re-calls the axes and re-sets `d`, the
+ * documented update pattern (https://d3js.org/d3-selection/joining).
+ */
+function d3Target(): Target {
+  let svg: d3.Selection<SVGSVGElement, undefined, null, undefined> | null = null
+  const x = d3.scaleLinear().range([M.left, W - M.right])
+  const y = d3.scaleLinear().range([H - M.bottom, M.top])
+  const line = d3.line<XY>((d) => x(d.x), (d) => y(d.y))
+  let gx: d3.Selection<SVGGElement, undefined, null, undefined> | null = null
+  let gy: d3.Selection<SVGGElement, undefined, null, undefined> | null = null
+  let path: d3.Selection<SVGPathElement, undefined, null, undefined> | null = null
+  const draw = (ys: Float64Array): void => {
+    const data = asXY(ys)
+    x.domain([0, ys.length - 1])
+    y.domain(d3.extent(ys) as [number, number]).nice()
+    gx!.call(d3.axisBottom(x).tickSizeInner(-(H - M.top - M.bottom)))
+    gy!.call(d3.axisLeft(y).tickSizeInner(-(W - M.left - M.right)))
+    gx!.selectAll('.tick line').attr('stroke', '#e0e0e0')
+    gy!.selectAll('.tick line').attr('stroke', '#e0e0e0')
+    path!.attr('d', line(data))
+  }
+  return {
+    mountLine(host, ys) {
+      svg = d3.create('svg').attr('width', W).attr('height', H)
+      gx = svg.append('g').attr('transform', `translate(0,${H - M.bottom})`)
+      gy = svg.append('g').attr('transform', `translate(${M.left},0)`)
+      path = svg.append('path').attr('class', 'bench-line').attr('fill', 'none').attr('stroke', COLOR).attr('stroke-width', 1)
+      draw(ys)
+      host.appendChild(svg.node()!)
+    },
+    updateLine(ys) {
+      if (svg !== null) draw(ys)
+    },
+    mountBars(host, ys) {
+      const rows = asBarRows(ys)
+      const bx = d3.scaleBand().domain(rows.map((r) => r.label)).range([M.left, W - M.right]).padding(0.2)
+      const by = d3.scaleLinear().domain([0, d3.max(ys) as number]).nice().range([H - M.bottom, M.top])
+      svg = d3.create('svg').attr('width', W).attr('height', H)
+      svg
+        .append('g')
+        .attr('transform', `translate(${M.left},0)`)
+        .call(d3.axisLeft(by).tickSizeInner(-(W - M.left - M.right)))
+        .call((g) => g.selectAll('.tick line').attr('stroke', '#e0e0e0'))
+      svg
+        .append('g')
+        .attr('fill', COLOR)
+        .selectAll('rect')
+        .data(rows)
+        .join('rect')
+        .attr('class', 'bench-bar')
+        .attr('x', (d) => bx(d.label)!)
+        .attr('y', (d) => by(d.v))
+        .attr('height', (d) => by(0) - by(d.v))
+        .attr('width', bx.bandwidth())
+      svg
+        .append('g')
+        .attr('transform', `translate(0,${H - M.bottom})`)
+        .call(d3.axisBottom(bx).tickValues(bx.domain().filter((_, i) => i % 100 === 0)))
+      host.appendChild(svg.node()!)
+    },
+    dispose() {
+      svg?.remove()
+      svg = gx = gy = path = null
+    },
+  }
+}
+
+/**
+ * lightweight-charts 5.2 — `createChart(host, options)` + `chart.addSeries(LineSeries)`
+ * + `series.setData(...)` (https://tradingview.github.io/lightweight-charts/docs);
+ * the last-point edit is `series.update(point)`, its documented streaming API
+ * (https://tradingview.github.io/lightweight-charts/tutorials/demos/realtime-updates).
+ * Its time axis needs a strictly increasing `time`; the index is used as a
+ * UTC timestamp. `fitContent()` + a low `minBarSpacing` put the whole series
+ * in view (by default it shows only the latest bars). Bars are its
+ * `HistogramSeries`. It paints on its own animation frame — see the header.
+ */
+function lwcTarget(): Target {
+  let chart: IChartApi | null = null
+  let series: ISeriesApi<'Line'> | null = null
+  const make = (host: HTMLElement): IChartApi =>
+    createChart(host, { width: W, height: H, timeScale: { minBarSpacing: 0.0001 }, handleScroll: false, handleScale: false })
+  return {
+    drawsOnNextFrame: true,
+    mountLine(host, ys) {
+      chart = make(host)
+      series = chart.addSeries(LineSeries, { color: COLOR, lineWidth: 1, priceLineVisible: false, lastValueVisible: false })
+      series.setData(asTV(ys))
+      chart.timeScale().fitContent()
+    },
+    updateLine(ys) {
+      series?.setData(asTV(ys))
+      chart?.timeScale().fitContent()
+    },
+    updateLast(ys) {
+      const i = ys.length - 1
+      series?.update({ time: i as UTCTimestamp, value: ys[i]! })
+    },
+    mountBars(host, ys) {
+      chart = make(host)
+      const s = chart.addSeries(HistogramSeries, { color: COLOR, priceLineVisible: false, lastValueVisible: false })
+      s.setData(asTV(ys))
+      chart.timeScale().fitContent()
+    },
+    dispose() {
+      chart?.remove()
+      chart = null
+      series = null
     },
   }
 }
@@ -503,6 +807,14 @@ function makeTarget(fw: string): Target {
       return chartjsTarget(false)
     case 'Recharts 3':
       return rechartsTarget()
+    case 'visx 4':
+      return visxTarget()
+    case 'Observable Plot 0.6':
+      return plotTarget()
+    case 'D3 7 (hand-written)':
+      return d3Target()
+    case 'lightweight-charts 5':
+      return lwcTarget()
     case 'Vanilla canvas (control)':
       return vanillaTarget()
     default:
@@ -519,18 +831,23 @@ interface Picture {
   print: number
 }
 
+/** The series' SVG elements, for the SVG arms (Recharts, visx, Plot, D3). */
+const SVG_BARS = '.recharts-bar-rectangle path, .recharts-bar-rectangle rect, rect.bench-bar, g[aria-label="bar"] rect'
+const SVG_LINE = '.recharts-line-curve, path.bench-line, g[aria-label="line"] path'
+
 function inspect(host: HTMLElement): Picture {
-  const svg = host.querySelector('svg.recharts-surface')
-  if (svg !== null) {
-    const bars = svg.querySelectorAll('.recharts-bar-rectangle path, .recharts-bar-rectangle rect').length
-    if (bars > 0) return { mass: bars, print: bars }
-    const d = svg.querySelector('.recharts-line-curve')?.getAttribute('d') ?? ''
+  const bars = host.querySelectorAll(SVG_BARS).length
+  if (bars > 0) return { mass: bars, print: bars }
+  const linePath = host.querySelector(SVG_LINE)
+  if (linePath !== null) {
+    const d = linePath.getAttribute('d') ?? ''
     let segs = 0
     let print = 0
+    // Every character is hashed: a last-point edit changes only the tail.
     for (let i = 0; i < d.length; i++) {
       const ch = d.charCodeAt(i)
       if (ch === 76 /* L */) segs++
-      if (i % 97 === 0) print = (print * 31 + ch) >>> 0
+      print = (print * 31 + ch) >>> 0
     }
     return { mass: segs, print: (print + d.length) >>> 0 }
   }
@@ -546,7 +863,8 @@ function inspect(host: HTMLElement): Picture {
       const b = data[p + 2]!
       // Antialiased strokes blend toward the background; accept the colour's family.
       if (Math.abs(r - TR) < 40 && Math.abs(g - TG) < 40 && Math.abs(b - TB) < 40) mass++
-      if ((p >> 2) % 53 === 0) print = (print * 31 + r * 3 + g * 5 + b * 7) >>> 0
+      // Every pixel is hashed: a last-point edit changes only a few columns.
+      print = (print * 31 + r * 3 + g * 5 + b * 7) >>> 0
     }
   }
   return { mass, print }
@@ -564,20 +882,36 @@ function forceGc(): void {
 }
 
 /** One sample: rAF → [op → rendering step → first task → canvas readback] → clock. */
-function frameSample(host: HTMLElement, op: () => void, check: (p: Picture) => void): Promise<number> {
+const MAX_EXTRA_FRAMES = 3
+
+function frameSample(host: HTMLElement, op: () => void, check: (p: Picture) => void, deferred = false): Promise<number> {
   return new Promise((resolve, reject) => {
     requestAnimationFrame(() => {
       const ch = new MessageChannel()
       let t0 = 0
+      let excluded = 0
+      let extra = 0
       ch.port1.onmessage = () => {
         try {
           for (const c of host.querySelectorAll('canvas')) c.getContext('2d')?.getImageData(0, 0, 1, 1)
-          const elapsed = performance.now() - t0
-          ch.port1.close()
+          const elapsed = performance.now() - t0 - excluded
           // Same task as the end read: nothing can draw between the clock and the gate.
-          check(inspect(host))
+          const g0 = performance.now()
+          try {
+            check(inspect(host))
+          } catch (err) {
+            // A deferred-draw arm gets more frames; the failed gate's own time
+            // is taken off the clock. Any other arm fails here.
+            if (!deferred || extra >= MAX_EXTRA_FRAMES) throw err
+            extra++
+            excluded += performance.now() - g0
+            requestAnimationFrame(() => ch.port2.postMessage(0))
+            return
+          }
+          ch.port1.close()
           resolve(elapsed)
         } catch (err) {
+          ch.port1.close()
           reject(err)
         }
       }
@@ -648,13 +982,14 @@ async function benchFrame(
   op: () => void,
   check: (p: Picture) => void,
   teardown: () => void,
+  deferred = false,
 ): Promise<void> {
   const one = async (): Promise<number> => {
     prepare()
     await settle()
     forceGc()
     await settle()
-    const t = await frameSample(host, op, check)
+    const t = await frameSample(host, op, check, deferred)
     teardown()
     await settle()
     return t
@@ -716,10 +1051,14 @@ function unmeasured(name: string, first: number): BenchResult {
 const LINE_SIZES = [1_000, 10_000, 100_000, 1_000_000] as const
 const UPDATE_SIZES = [10_000, 100_000] as const
 const BARS = 1_000
+const LAST_SIZE = 10_000
+
+/** Arms that draw SVG: mass = path segments / bar elements, not pixels. */
+const SVG_ARMS = new Set(['Recharts 3', 'visx 4', 'Observable Plot 0.6', 'D3 7 (hand-written)'])
 
 /** Minimum series "mass" a correct picture must carry. */
 function minMass(fw: string, n: number, kind: 'line' | 'bars'): number {
-  if (fw === 'Recharts 3') return kind === 'bars' ? BARS : Math.floor(n * 0.9)
+  if (SVG_ARMS.has(fw)) return kind === 'bars' ? BARS : Math.floor(n * 0.9)
   return kind === 'bars' ? 20_000 : 400
 }
 
@@ -731,6 +1070,7 @@ export async function runChartsLibs(fw: string, _container: HTMLElement): Promis
   const suite: BenchSuite = { framework: fw, container: host, results: [] }
   const fmt = (n: number): string => n.toLocaleString('en')
 
+  const deferred = makeTarget(fw).drawsOnNextFrame === true
   try {
     await assertRenderingStepPrecedesPostedTask()
     // ── mount line ──
@@ -753,6 +1093,7 @@ export async function runChartsLibs(fw: string, _container: HTMLElement): Promis
           t.dispose()
           host.replaceChildren()
         },
+        deferred,
       )
     }
 
@@ -765,6 +1106,7 @@ export async function runChartsLibs(fw: string, _container: HTMLElement): Promis
       const t = makeTarget(fw)
       t.mountLine(host, a)
       await settle()
+      if (deferred) await settle()
       let flip = false
       let before = 0
       await benchFrame(
@@ -781,6 +1123,42 @@ export async function runChartsLibs(fw: string, _container: HTMLElement): Promis
           if (p.mass < min) throw new Error(`[charts-libs] ${fw} update ${n}: series mass ${p.mass} < ${min}`)
         },
         () => {},
+        deferred,
+      )
+      t.dispose()
+      host.replaceChildren()
+      await settle()
+    }
+
+    // ── update line, last value only ──
+    {
+      const n = LAST_SIZE
+      const a = walk(n, n + 21)
+      const b = Float64Array.from(a)
+      b[n - 1] = a[n - 1]! + 25
+      prebuild(fw, a, 'line')
+      prebuild(fw, b, 'line')
+      const t = makeTarget(fw)
+      t.mountLine(host, a)
+      await settle()
+      if (deferred) await settle()
+      let flip = false
+      let before = 0
+      await benchFrame(
+        `update line, ${fmt(n)} points (last value)`,
+        suite,
+        () => {
+          before = inspect(host).print
+          flip = !flip
+        },
+        () => (t.updateLast ?? t.updateLine)(flip ? b : a),
+        (p) => {
+          if (p.print === before) throw new Error(`[charts-libs] ${fw} update-last ${n}: picture unchanged when the clock stopped`)
+          const min = minMass(fw, n, 'line')
+          if (p.mass < min) throw new Error(`[charts-libs] ${fw} update-last ${n}: series mass ${p.mass} < ${min}`)
+        },
+        () => {},
+        deferred,
       )
       t.dispose()
       host.replaceChildren()
@@ -807,6 +1185,7 @@ export async function runChartsLibs(fw: string, _container: HTMLElement): Promis
           t.dispose()
           host.replaceChildren()
         },
+        deferred,
       )
     }
   } finally {

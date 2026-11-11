@@ -54,7 +54,8 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "lint": "oxlint .",
-    "bench:react-query": "NODE_ENV=production bun bench/query-bench.ts"
+    "bench:react-query": "NODE_ENV=production bun bench/query-bench.ts",
+    "bench:rivals": "NODE_ENV=production bun bench/query-rivals.ts"
   },
   "peerDependencies": {
     "@pyreon/core": "workspace:^",
@@ -74,6 +75,7 @@
     "@tanstack/query-sync-storage-persister": "^5.105.0"
   },
   "devDependencies": {
+    "@apollo/client": "4.3.8",
     "@happy-dom/global-registrator": "21.0.4",
     "@pyreon/manifest": "workspace:*",
     "@pyreon/native-compiler": "workspace:*",
@@ -81,8 +83,11 @@
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
     "@tanstack/react-query": "5.105.0",
+    "graphql": "16.15.0",
     "react": "^19.3.1",
-    "react-dom": "^19.3.1"
+    "react-dom": "^19.3.1",
+    "rxjs": "^7.8.2",
+    "swr": "2.5.1"
   },
   "publishConfig": {
     "access": "public"
