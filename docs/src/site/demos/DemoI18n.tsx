@@ -170,7 +170,7 @@ export default function DemoI18n() {
         <Stack>
           <div>
             <PaperLabel id="i18n-demo-lang">Language</PaperLabel>
-            <ToggleRow role="group" aria-labelledby="i18n-demo-lang">
+            <ToggleRow aria-labelledby="i18n-demo-lang">
               <For each={LANGS} by={(l) => l.code}>
                 {(l) => (
                   <PaperToggle
@@ -200,7 +200,7 @@ export default function DemoI18n() {
               />
             </PaperField>
             <PaperHint id="i18n-demo-try">Try a count:</PaperHint>
-            <ToggleRow role="group" aria-labelledby="i18n-demo-try">
+            <ToggleRow aria-labelledby="i18n-demo-try">
               <For each={TRY} by={(v) => v}>
                 {(v) => (
                   <PaperToggle type="button" aria-pressed={() => (raw() === v ? 'true' : 'false')} onClick={() => raw.set(v)}>

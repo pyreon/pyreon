@@ -41,5 +41,6 @@ export const PaperToggle = el
     transition: `background-color ${motion.hover}, border-color ${motion.hover}`,
     hover: { borderColor: paper.mist },
     pressed: { backgroundColor: paper.text, borderColor: paper.text, color: paper.bg },
+    disabled: { opacity: 0.45, cursor: 'not-allowed' },
     extendCss: `&:focus-visible { outline: 2px solid ${paper.accent}; outline-offset: 2px; } @media (prefers-reduced-motion: reduce) { transition: none; }`,
   }))
