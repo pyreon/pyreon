@@ -3188,6 +3188,7 @@
         "@pyreon/unistyle": "workspace:^",
       },
       "devDependencies": {
+        "@pyreon/compiler": "workspace:^",
         "@pyreon/manifest": "workspace:*",
         "@pyreon/reactivity": "workspace:^",
         "@pyreon/runtime-dom": "workspace:^",
@@ -3197,6 +3198,7 @@
         "@pyreon/vitest-config": "workspace:*",
         "@vitest/browser-playwright": "^5.0.5",
         "@vitus-labs/tools-rolldown": "^2.8.0",
+        "esbuild": "^0.28.2",
       },
       "peerDependencies": {
         "@pyreon/core": "workspace:^",
