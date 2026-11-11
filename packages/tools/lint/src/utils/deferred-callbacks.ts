@@ -50,6 +50,7 @@ function unwrap(n: any): any {
   ) {
     x = x.expression
   }
+
   return x
 }
 
@@ -60,14 +61,17 @@ function eventSlotValue(node: any): any {
     if (!name || !(EVENT_PROP.test(name) || name === 'ref')) return null
     const v = node.value
     if (v?.type !== 'JSXExpressionContainer') return null
+
     return unwrap(v.expression)
   }
   if (node.type === 'Property' && !node.computed && node.kind === 'init') {
     const key = node.key
     const name = key?.type === 'Identifier' ? key.name : key?.type === 'Literal' ? String(key.value) : null
     if (!name || !EVENT_PROP.test(name)) return null
+
     return unwrap(node.value)
   }
+
   return null
 }
 
@@ -149,6 +153,7 @@ export function collectEventOnlyFunctions(program: any): WeakSet<object> {
           list.push({ inEventSlot: slotIdentifiers.has(node), enclosing: fns })
           references.set(node.name, list)
         }
+
         return
     }
 
@@ -185,5 +190,6 @@ export function collectEventOnlyFunctions(program: any): WeakSet<object> {
       }
     }
   }
+
   return eventOnly
 }
