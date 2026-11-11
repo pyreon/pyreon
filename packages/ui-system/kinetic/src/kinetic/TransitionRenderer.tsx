@@ -4,6 +4,7 @@ import { watch } from '@pyreon/reactivity'
 import type { CSSProperties, TransitionCallbacks } from '../types'
 import useAnimationEnd from '../useAnimationEnd'
 import { useReducedMotion } from '../useReducedMotion'
+import { applyReducedMotionEnd } from '../reduced-motion'
 import useTransitionState from '../useTransitionState'
 import { isDynamicProp, readCallbacks, readLive, resolveLive } from '../live-prop'
 import {
@@ -73,13 +74,18 @@ const applyReducedMotion = (
   stage: string,
   cbs: Partial<TransitionCallbacks>,
   complete: () => void,
+  // Lands the element on the END state (see `applyReducedMotionEnd`) between
+  // the two callbacks, so `onEnter` sees the start and `onAfterEnter` the end.
+  settle: () => void,
 ) => {
   if (stage === 'entering') {
     cbs.onEnter?.()
+    settle()
     cbs.onAfterEnter?.()
     complete()
   } else if (stage === 'leaving') {
     cbs.onLeave?.()
+    settle()
     cbs.onAfterLeave?.()
     complete()
   }
@@ -138,7 +144,9 @@ const TransitionRenderer = (props: TransitionRendererProps): VNode | null => {
       if (!el) return
 
       if (reducedMotion()) {
-        applyReducedMotion(currentStage, readCallbacks(props.callbacks), complete)
+        applyReducedMotion(currentStage, readCallbacks(props.callbacks), complete, () =>
+          applyReducedMotionEnd(el, currentStage, props.config),
+        )
         return
       }
 

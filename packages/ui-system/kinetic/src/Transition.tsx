@@ -12,6 +12,7 @@ import { isDynamicProp, readCallbacks, readLive, readLiveValue } from './live-pr
 import { showAccessorFrom } from './show-accessor'
 import useAnimationEnd from './useAnimationEnd'
 import { useReducedMotion } from './useReducedMotion'
+import { applyReducedMotionEnd } from './reduced-motion'
 import useTransitionState from './useTransitionState'
 import {
   addClasses,
@@ -99,13 +100,18 @@ const applyReducedMotion = (
     onAfterLeave?: (() => void) | undefined
   },
   complete: () => void,
+  // Lands the element on the END state (see `applyReducedMotionEnd`) between
+  // the two callbacks, so `onEnter` sees the start and `onAfterEnter` the end.
+  settle: () => void,
 ) => {
   if (stage === 'entering') {
     callbacks.onEnter?.()
+    settle()
     callbacks.onAfterEnter?.()
     complete()
   } else if (stage === 'leaving') {
     callbacks.onLeave?.()
+    settle()
     callbacks.onAfterLeave?.()
     complete()
   }
@@ -228,7 +234,11 @@ const Transition = (props: TransitionProps): VNode | null => {
       if (!el) return
 
       if (reducedMotion()) {
-        applyReducedMotion(currentStage, readCallbacks(props), complete)
+        applyReducedMotion(currentStage, readCallbacks(props), complete, () => {
+          // The baked hidden class, as on the animated enter — see `bakedHiddenClass`.
+          if (currentStage === 'entering') removeClasses(el, bakedHiddenClass)
+          applyReducedMotionEnd(el, currentStage, readTransitionConfig())
+        })
         return
       }
 

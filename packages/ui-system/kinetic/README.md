@@ -195,7 +195,7 @@ const state = useTransitionState({ show: () => isOpen() })
 
 ## Accessibility
 
-Kinetic automatically detects `prefers-reduced-motion: reduce`. When enabled, animations are skipped instantly — callbacks still fire, but no visual animation occurs. No configuration needed.
+Kinetic automatically detects `prefers-reduced-motion: reduce`. When enabled, animations are skipped instantly — the element lands on the end state the animation would have reached (`enterTo` / `enterToStyle` after an enter, `leaveTo` / `leaveToStyle` after a leave, `height: auto` / `0px` for a collapse), and callbacks still fire. An initially-hidden scroll-reveal therefore still becomes visible. No configuration needed.
 
 ## SSR / SSG
 
