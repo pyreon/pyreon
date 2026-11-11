@@ -8,6 +8,7 @@ import inlineCriticalCss from './vite-plugins/inline-critical-css'
 import lastUpdated from './vite-plugins/last-updated'
 import legacyCssLayer from './vite-plugins/legacy-css-layer'
 import openStats from './vite-plugins/open-stats'
+import docsHomeContent from './vite-plugins/docs-home-content'
 import productContent from './vite-plugins/product-content'
 import sitePagesContent from './vite-plugins/site-pages-content'
 import siteReleases from './vite-plugins/site-releases'
@@ -46,6 +47,8 @@ export default defineConfig({
     productContent(),
     // Story / compare / migrate / project content JSON → highlighted code at build time.
     sitePagesContent(),
+    // The docs home's code (`_docs-home.json`) → Shiki at build time.
+    docsHomeContent(),
     // The custom pyreon-syntax Shiki themes mirror the brand handoff §3/§6.7
     // tokens (`--syn-*` in tokens.css). VitePress applied them via its
     // `markdown.theme: { light, dark }` config — same surface here, only

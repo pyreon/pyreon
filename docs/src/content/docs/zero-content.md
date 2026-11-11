@@ -3,6 +3,10 @@ title: Zero Content
 description: Markdown-driven Pyreon sites. Compile-time .md → JSX, typed collections, MDX components, callouts, code-groups, Shiki, and inline live examples.
 ---
 
+<ProductPitch id="content" />
+
+<LiveDemo id="content" />
+
 `@pyreon/zero-content` is the content layer for `@pyreon/zero`. Author in `.md` / `.mdx` and get fully-typed content collections, MDX components, Shiki-highlighted code, callouts, tabbed code-groups, math + diagrams, search, and inline live examples — all compiled to real Pyreon JSX at build time. It powers this docs site.
 
 <PackageBadge name="@pyreon/zero-content" href="/docs/zero-content" />
@@ -30,7 +34,7 @@ Three files. No additional wiring.
 ```ts
 // vite.config.ts
 import pyreon from '@pyreon/vite-plugin'
-import zero from '@pyreon/zero'
+import zero from '@pyreon/zero/server'
 import content from '@pyreon/zero-content/plugin'
 
 export default {
@@ -118,7 +122,9 @@ const count = signal(0)
 ```
 ````
 
-The shared highlighter is initialized once per build (grammars + themes are expensive to load). The default language set covers `typescript`, `tsx`, `javascript`, `jsx`, `json`, `jsonc`, `bash`, `shell`, `html`, `css`, `scss`, `markdown`, `mdx`, `yaml`, `toml`, `diff`, and `text`. An unknown language falls back to `text` rather than throwing.
+The shared highlighter is initialized once per build (grammars + themes are expensive to load). The default language set covers `typescript`, `tsx`, `javascript`, `jsx`, `json`, `jsonc`, `bash`, `shell`, `html`, `css`, `scss`, `markdown`, `mdx`, `yaml`, `toml`, `diff`, `swift`, `kotlin`, `xml`, `svelte`, `vue`, `nginx`, `ini` and `dockerfile`, plus Shiki's aliases for them (`ts`, `js`, `sh`, `zsh`, `md`, `yml`, `kt`, …). `text`, `txt`, `plaintext` or no language render as plain text.
+
+A fence that names a language outside the loaded set still renders (as plain text), and the build prints one `[Pyreon] Code fence language "…" is not loaded` warning per language. Add the language to `highlighter.langs` (any grammar Shiki bundles works), or use `text` if Shiki has no grammar for it.
 
 #### Custom themes
 
@@ -127,7 +133,8 @@ The shared highlighter is initialized once per build (grammars + themes are expe
 content({
   highlighter: {
     themes: { light: pyreonLight, dark: pyreonDark },
-    langs: ['typescript', 'rust', 'python'],
+    // Added to the default set above, not a replacement for it.
+    langs: ['rust', 'python'],
   },
 })
 ```
@@ -668,3 +675,11 @@ The plugin surfaces non-fatal compile warnings via Vite (with a clickable, root-
 Full API in MCP `get_api('@pyreon/zero-content/<name>')` or the package README at [`packages/zero/zero-content/README.md`](https://github.com/pyreon/pyreon/blob/main/packages/zero/zero-content/README.md).
 
 See also: [Live Examples](./live-examples) for the full `<Example>` walkthrough.
+
+<BenchCallout id="content" />
+
+<ComingFrom id="content" />
+
+<InlineSell id="zero" />
+
+<CrossSell id="content" />

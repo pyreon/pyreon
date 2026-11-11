@@ -3,6 +3,10 @@ title: '@pyreon/mcp'
 description: Model Context Protocol server that gives AI coding assistants deep knowledge of Pyreon APIs, patterns, and project structure.
 ---
 
+<ProductPitch id="ai" />
+
+<LiveDemo id="ai" />
+
 `@pyreon/mcp` is a [Model Context Protocol](https://modelcontextprotocol.io/) server that gives AI coding assistants (Claude Code, Cursor, Windsurf, etc.) deep, accurate knowledge of Pyreon's APIs, patterns, and your project structure. Instead of guessing from a training cutoff, the assistant calls tools that read the *live* Pyreon source of truth — the manifest-generated API reference, the anti-pattern catalog, the pattern library, parsed changelogs, and structural scans of your actual project.
 
 <PackageBadge name="@pyreon/mcp" href="/docs/mcp" />
@@ -1316,3 +1320,11 @@ The server makes no network calls or long startup scans — it returns `initiali
 | `matchesProcessEntry(meta, moduleUrl, resolvedEntryUrl)` | Pure helper deciding "is this module the process entry?" across runtimes — Bun / Node ≥24.2 expose `import.meta.main` directly; older Node needs the URL-comparison fallback this function implements. Exported so the fallback path is unit-testable without an actual old Node runtime. |
 
 `API_REFERENCE`, `generateContext`, `ProjectContext`, `RouteInfo`, `ComponentInfo`, and `IslandInfo` are **internal** — used by the tool handlers inside `index.ts`, but not re-exported from the package, and there is no `@pyreon/mcp/<subpath>` export for them (`package.json` `exports` declares only `"."`; a deep-path import like `@pyreon/mcp/src/api-reference` fails to resolve — verified, not assumed). `API_REFERENCE` lives at `packages/tools/mcp/src/api-reference.ts` — inside this monorepo, reach it by a relative file path if you genuinely need the raw table, not a package-specifier import. `generateContext` / `ProjectContext` / `RouteInfo` / `ComponentInfo` / `IslandInfo` come from `@pyreon/compiler`'s project scanner — import them from `@pyreon/compiler` if you need the raw scan, not from `@pyreon/mcp`.
+
+<BenchCallout id="ai" />
+
+<ComingFrom id="ai" />
+
+<InlineSell id="tooling" />
+
+<CrossSell id="ai" />

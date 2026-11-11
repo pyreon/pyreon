@@ -3,6 +3,10 @@ title: Lathe
 description: OpenAPI in, typed Pyreon client out — schemas, endpoints, query hooks, mocks, fake-data factories, reference pages and Atlas scenarios, with a multiplatform mode that proves its own output lowers to Swift and Kotlin.
 ---
 
+<ProductPitch id="lathe" />
+
+<LiveDemo id="lathe" />
+
 `@pyreon/lathe` reads an OpenAPI 3.x document and emits a client for the Pyreon
 stack. Not a fetch wrapper — the whole surface: `@pyreon/validate` schemas,
 `@pyreon/http` endpoint declarations, `@pyreon/query` hooks, query keys derived
@@ -25,7 +29,7 @@ only for the `faker` plugin, `zod` only for `validator: 'zod'`.
 ## Getting started
 
 ```bash
-npx lathe init
+npx @pyreon/lathe init
 ```
 
 `lathe init` finds what the project generates from today — an orval,
@@ -1655,3 +1659,11 @@ generates the whole surface — schemas, client, hooks, keys, mocks, faker, Atla
 scenarios, reference pages and the two native modules — from a 4-operation spec,
 and serves the API it talks to as in-process dev middleware so the e2e boots one
 thing and still exercises real HTTP.
+
+<BenchCallout id="lathe" />
+
+<ComingFrom id="lathe" />
+
+<InlineSell id="query" />
+
+<CrossSell id="lathe" />

@@ -59,7 +59,7 @@ That's it — the LSP auto-discovers `<project-root>/.pyreon-lpih.json` by walki
 
 ### 3. Add the cache file to `.gitignore`
 
-```gitignore
+```text
 # Live Program Inlay Hints — runtime fire data (dev-mode only)
 .pyreon-lpih.json
 ```

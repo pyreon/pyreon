@@ -3,6 +3,10 @@ title: '@pyreon/router'
 description: Type-safe client-side router with nested routes, navigation guards, data loaders, and scroll restoration.
 ---
 
+<ProductPitch id="router" />
+
+<LiveDemo id="router" />
+
 `@pyreon/router` is Pyreon's type-safe client-side router. It supports nested routes, TypeScript param inference from path strings, navigation guards, data loaders, lazy loading with retries, scroll restoration, and both hash and history mode.
 
 <PackageBadge name="@pyreon/router" href="/docs/router" />
@@ -2571,17 +2575,17 @@ export async function handleRequest(req: Request): Promise<Response> {
 ```ts
 import { useTypedSearchParams } from '@pyreon/router'
 
-const params = useTypedSearchParams({
+const [params, setParams] = useTypedSearchParams({
   page: 'number',
   q: 'string',
   active: 'boolean',
 })
 
-params.page() // number (coerced from URL string)
-params.q() // string
-params.active() // boolean
+params().page // number (coerced from URL string)
+params().q // string
+params().active // boolean
 
-params.set({ page: 2, q: 'hello' }) // updates URL
+setParams({ page: 2, q: 'hello' }) // updates URL
 ```
 
 The type map supports `'string'`, `'number'`, and `'boolean'`. Values are coerced automatically from URL search param strings.
@@ -2803,7 +2807,7 @@ router.push({ name: 'user', params: { id: '42' } })
 
 <APICard name="useSearchParams" type="hook" signature={"useSearchParams<T>(defaults?: T): [get: () => T, set: (updates: Partial<T>) => Promise<NavigationResult>]"} description="Reactive read/write access to URL query parameters with optional defaults." />
 
-<APICard name="useTypedSearchParams" type="hook" signature={"useTypedSearchParams<T>(schema: T): TypedSearchParams<T>"} description="Type-safe search params with automatic coercion from URL strings." />
+<APICard name="useTypedSearchParams" type="hook" signature={"useTypedSearchParams<T>(schema: T): [get: () => InferSearchParams<T>, set: (updates) => Promise<NavigationResult>]"} description="Type-safe search params with automatic coercion from URL strings." />
 
 <APICard name="useValidatedSearch" type="hook" signature={"useValidatedSearch<T>(): () => T"} description="Reactive accessor for the route's validateSearch result, with structural sharing." />
 
@@ -2868,3 +2872,11 @@ router.push({ name: 'user', params: { id: '42' } })
 <APICard name="RouterViewProps" type="type" signature="interface RouterViewProps" description="Props for the RouterView component." />
 
 <APICard name="RouterLinkProps" type="type" signature="interface RouterLinkProps" description="Props for the RouterLink component." />
+
+<BenchCallout id="router" />
+
+<ComingFrom id="router" />
+
+<InlineSell id="zero" />
+
+<CrossSell id="router" />

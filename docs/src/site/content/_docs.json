@@ -1,0 +1,3577 @@
+{
+ "generatedFrom": {
+  "repo": "/tmp/wt-site-content",
+  "commit": "e314cc619",
+  "date": "2026-11-11"
+ },
+ "current": {
+  "pageCount": 221,
+  "pages": [
+   {
+    "path": "a11y.md",
+    "title": "Accessibility primitives (a11y)",
+    "href": "/docs/a11y"
+   },
+   {
+    "path": "accessibility.md",
+    "title": "Accessibility",
+    "href": "/docs/accessibility"
+   },
+   {
+    "path": "architecture-and-prior-art.md",
+    "title": "Architecture & prior art",
+    "href": "/docs/architecture-and-prior-art"
+   },
+   {
+    "path": "atlas.md",
+    "title": "Atlas",
+    "href": "/docs/atlas"
+   },
+   {
+    "path": "attrs.md",
+    "title": "Attrs",
+    "href": "/docs/attrs"
+   },
+   {
+    "path": "auth.md",
+    "title": "Auth",
+    "href": "/docs/auth"
+   },
+   {
+    "path": "benchmarks.md",
+    "title": "Benchmarks",
+    "href": "/docs/benchmarks"
+   },
+   {
+    "path": "build-an-app.md",
+    "title": "Build a Real App in 30 Minutes",
+    "href": "/docs/build-an-app"
+   },
+   {
+    "path": "charts-gallery.md",
+    "title": "Chart Gallery",
+    "href": "/docs/charts-gallery"
+   },
+   {
+    "path": "charts.md",
+    "title": "Charts",
+    "href": "/docs/charts"
+   },
+   {
+    "path": "cli.md",
+    "title": "@pyreon/cli",
+    "href": "/docs/cli"
+   },
+   {
+    "path": "code.md",
+    "title": "Code Editor",
+    "href": "/docs/code"
+   },
+   {
+    "path": "compare-app-frameworks.md",
+    "title": "Pyreon vs Expo, React Native, Flutter, KMP and Capacitor",
+    "href": "/docs/compare-app-frameworks"
+   },
+   {
+    "path": "compiler.md",
+    "title": "@pyreon/compiler",
+    "href": "/docs/compiler"
+   },
+   {
+    "path": "connector-document.md",
+    "title": "Connector Document",
+    "href": "/docs/connector-document"
+   },
+   {
+    "path": "coolgrid.md",
+    "title": "Coolgrid",
+    "href": "/docs/coolgrid"
+   },
+   {
+    "path": "core.md",
+    "title": "@pyreon/core",
+    "href": "/docs/core"
+   },
+   {
+    "path": "create-multiplatform.md",
+    "title": "@pyreon/create-multiplatform",
+    "href": "/docs/create-multiplatform"
+   },
+   {
+    "path": "create-zero.md",
+    "title": "@pyreon/create-zero",
+    "href": "/docs/create-zero"
+   },
+   {
+    "path": "devtools.md",
+    "title": "@pyreon/devtools",
+    "href": "/docs/devtools"
+   },
+   {
+    "path": "dnd.md",
+    "title": "Drag & Drop",
+    "href": "/docs/dnd"
+   },
+   {
+    "path": "document-primitives.md",
+    "title": "Document Primitives",
+    "href": "/docs/document-primitives"
+   },
+   {
+    "path": "document.md",
+    "title": "Document",
+    "href": "/docs/document"
+   },
+   {
+    "path": "elements.md",
+    "title": "Elements",
+    "href": "/docs/elements"
+   },
+   {
+    "path": "examples.md",
+    "title": "Examples",
+    "href": "/docs/examples"
+   },
+   {
+    "path": "feature.md",
+    "title": "Feature",
+    "href": "/docs/feature"
+   },
+   {
+    "path": "flow.md",
+    "title": "Flow",
+    "href": "/docs/flow"
+   },
+   {
+    "path": "form.md",
+    "title": "Form",
+    "href": "/docs/form"
+   },
+   {
+    "path": "getting-started.md",
+    "title": "Getting Started",
+    "href": "/docs/getting-started"
+   },
+   {
+    "path": "guides/animations.md",
+    "title": "Animations & Transitions",
+    "href": "/docs/guides/animations"
+   },
+   {
+    "path": "guides/data-fetching.md",
+    "title": "Data Fetching & Caching",
+    "href": "/docs/guides/data-fetching"
+   },
+   {
+    "path": "guides/deployment.md",
+    "title": "Deploying a Pyreon App",
+    "href": "/docs/guides/deployment"
+   },
+   {
+    "path": "guides/forms.md",
+    "title": "Forms & Validation",
+    "href": "/docs/guides/forms"
+   },
+   {
+    "path": "guides/islands.md",
+    "title": "Islands & Partial Hydration",
+    "href": "/docs/guides/islands"
+   },
+   {
+    "path": "guides/performance.md",
+    "title": "Performance",
+    "href": "/docs/guides/performance"
+   },
+   {
+    "path": "guides/reactivity-in-depth.md",
+    "title": "Reactivity in Depth",
+    "href": "/docs/guides/reactivity-in-depth"
+   },
+   {
+    "path": "guides/routing.md",
+    "title": "Client-Side Routing",
+    "href": "/docs/guides/routing"
+   },
+   {
+    "path": "guides/ssr-ssg-isr.md",
+    "title": "SSR, SSG & ISR",
+    "href": "/docs/guides/ssr-ssg-isr"
+   },
+   {
+    "path": "guides/state-management.md",
+    "title": "Global State Management",
+    "href": "/docs/guides/state-management"
+   },
+   {
+    "path": "guides/styling-theming.md",
+    "title": "Styling & Theming",
+    "href": "/docs/guides/styling-theming"
+   },
+   {
+    "path": "guides/testing.md",
+    "title": "Testing Pyreon Apps",
+    "href": "/docs/guides/testing"
+   },
+   {
+    "path": "guides/ui-localization.md",
+    "title": "Localizing the UI System",
+    "href": "/docs/guides/ui-localization"
+   },
+   {
+    "path": "head.md",
+    "title": "@pyreon/head",
+    "href": "/docs/head"
+   },
+   {
+    "path": "hooks.md",
+    "title": "Hooks",
+    "href": "/docs/hooks"
+   },
+   {
+    "path": "hotkeys.md",
+    "title": "Hotkeys",
+    "href": "/docs/hotkeys"
+   },
+   {
+    "path": "http.md",
+    "title": "HTTP",
+    "href": "/docs/http"
+   },
+   {
+    "path": "i18n.md",
+    "title": "i18n",
+    "href": "/docs/i18n"
+   },
+   {
+    "path": "images-and-fonts.md",
+    "title": "Images & Fonts",
+    "href": "/docs/images-and-fonts"
+   },
+   {
+    "path": "index.md",
+    "title": "Pyreon",
+    "href": "/docs"
+   },
+   {
+    "path": "island-architecture.md",
+    "title": "Island Architecture",
+    "href": "/docs/island-architecture"
+   },
+   {
+    "path": "kinetic-presets.md",
+    "title": "Kinetic Presets",
+    "href": "/docs/kinetic-presets"
+   },
+   {
+    "path": "kinetic.md",
+    "title": "Kinetic",
+    "href": "/docs/kinetic"
+   },
+   {
+    "path": "lathe-from-hey-api.md",
+    "title": "Lathe — coming from hey-api",
+    "href": "/docs/lathe-from-hey-api"
+   },
+   {
+    "path": "lathe-from-kubb.md",
+    "title": "Lathe — coming from kubb",
+    "href": "/docs/lathe-from-kubb"
+   },
+   {
+    "path": "lathe-from-openapi-fetch.md",
+    "title": "Lathe — coming from openapi-fetch",
+    "href": "/docs/lathe-from-openapi-fetch"
+   },
+   {
+    "path": "lathe-from-orval.md",
+    "title": "Lathe — coming from orval",
+    "href": "/docs/lathe-from-orval"
+   },
+   {
+    "path": "lathe.md",
+    "title": "Lathe",
+    "href": "/docs/lathe"
+   },
+   {
+    "path": "lint.md",
+    "title": "@pyreon/lint",
+    "href": "/docs/lint"
+   },
+   {
+    "path": "live-examples.md",
+    "title": "Live Examples",
+    "href": "/docs/live-examples"
+   },
+   {
+    "path": "loom.md",
+    "title": "Loom",
+    "href": "/docs/loom"
+   },
+   {
+    "path": "lpih.md",
+    "title": "Live Program Inlay Hints (LPIH)",
+    "href": "/docs/lpih"
+   },
+   {
+    "path": "machine.md",
+    "title": "Machine",
+    "href": "/docs/machine"
+   },
+   {
+    "path": "mcp.md",
+    "title": "@pyreon/mcp",
+    "href": "/docs/mcp"
+   },
+   {
+    "path": "meta.md",
+    "title": "@pyreon/meta",
+    "href": "/docs/meta"
+   },
+   {
+    "path": "migrating-from-angular.md",
+    "title": "Coming from Angular",
+    "href": "/docs/migrating-from-angular"
+   },
+   {
+    "path": "migrating-from-react-native.md",
+    "title": "Coming from React Native & Expo",
+    "href": "/docs/migrating-from-react-native"
+   },
+   {
+    "path": "migrating-from-react.md",
+    "title": "Coming from React",
+    "href": "/docs/migrating-from-react"
+   },
+   {
+    "path": "migrating-from-solid.md",
+    "title": "Coming from Solid",
+    "href": "/docs/migrating-from-solid"
+   },
+   {
+    "path": "migrating-from-svelte.md",
+    "title": "Coming from Svelte",
+    "href": "/docs/migrating-from-svelte"
+   },
+   {
+    "path": "migrating-from-vue.md",
+    "title": "Coming from Vue",
+    "href": "/docs/migrating-from-vue"
+   },
+   {
+    "path": "multiplatform-libraries.md",
+    "title": "Multi-Platform Libraries — package-owned native plugins",
+    "href": "/docs/multiplatform-libraries"
+   },
+   {
+    "path": "multiplatform.md",
+    "title": "Multi-Platform Pyreon",
+    "href": "/docs/multiplatform"
+   },
+   {
+    "path": "native-compat.md",
+    "title": "Native marker contract",
+    "href": "/docs/native-compat"
+   },
+   {
+    "path": "native-dev-loop.md",
+    "title": "Native Dev Loop",
+    "href": "/docs/native-dev-loop"
+   },
+   {
+    "path": "native-e2e-testing.md",
+    "title": "Native E2E Testing with Maestro",
+    "href": "/docs/native-e2e-testing"
+   },
+   {
+    "path": "native-packages.md",
+    "title": "Native Packages",
+    "href": "/docs/native-packages"
+   },
+   {
+    "path": "package-catalog.md",
+    "title": "Package catalog",
+    "href": "/docs/package-catalog"
+   },
+   {
+    "path": "patterns/controllable-state.md",
+    "title": "Controlled / uncontrolled components",
+    "href": "/docs/patterns/controllable-state"
+   },
+   {
+    "path": "patterns/data-fetching.md",
+    "title": "Data fetching — useQuery + useMutation",
+    "href": "/docs/patterns/data-fetching"
+   },
+   {
+    "path": "patterns/dev-warnings.md",
+    "title": "Dev-mode warnings",
+    "href": "/docs/patterns/dev-warnings"
+   },
+   {
+    "path": "patterns/dynamic-fields.md",
+    "title": "Dynamic form arrays — useFieldArray",
+    "href": "/docs/patterns/dynamic-fields"
+   },
+   {
+    "path": "patterns/event-listeners.md",
+    "title": "Event listeners",
+    "href": "/docs/patterns/event-listeners"
+   },
+   {
+    "path": "patterns/form-fields.md",
+    "title": "Form fields",
+    "href": "/docs/patterns/form-fields"
+   },
+   {
+    "path": "patterns/imperative-toasts.md",
+    "title": "Imperative notifications — toasts",
+    "href": "/docs/patterns/imperative-toasts"
+   },
+   {
+    "path": "patterns/islands.md",
+    "title": "Island architecture",
+    "href": "/docs/patterns/islands"
+   },
+   {
+    "path": "patterns/keyed-lists.md",
+    "title": "Keyed list rendering",
+    "href": "/docs/patterns/keyed-lists"
+   },
+   {
+    "path": "patterns/multiplatform.md",
+    "title": "Multiplatform app (one source → web + iOS + Android)",
+    "href": "/docs/patterns/multiplatform"
+   },
+   {
+    "path": "patterns/reactive-context.md",
+    "title": "Reactive context",
+    "href": "/docs/patterns/reactive-context"
+   },
+   {
+    "path": "patterns/reactive-spread.md",
+    "title": "Reactive prop forwarding via JSX spread",
+    "href": "/docs/patterns/reactive-spread"
+   },
+   {
+    "path": "patterns/routing-setup.md",
+    "title": "Router setup",
+    "href": "/docs/patterns/routing-setup"
+   },
+   {
+    "path": "patterns/signal-writes.md",
+    "title": "Signal reads and writes",
+    "href": "/docs/patterns/signal-writes"
+   },
+   {
+    "path": "patterns/ssr-safe-hooks.md",
+    "title": "SSR-safe hooks",
+    "href": "/docs/patterns/ssr-safe-hooks"
+   },
+   {
+    "path": "patterns/state-management.md",
+    "title": "State management — stores vs signals vs models",
+    "href": "/docs/patterns/state-management"
+   },
+   {
+    "path": "patterns/styler-theming.md",
+    "title": "Styling and theming — styled + PyreonUI",
+    "href": "/docs/patterns/styler-theming"
+   },
+   {
+    "path": "permissions.md",
+    "title": "Permissions",
+    "href": "/docs/permissions"
+   },
+   {
+    "path": "plain-mode.md",
+    "title": "Plain Mode",
+    "href": "/docs/plain-mode"
+   },
+   {
+    "path": "pmtc-per-target-setup.md",
+    "title": "PMTC Per-Target Setup",
+    "href": "/docs/pmtc-per-target-setup"
+   },
+   {
+    "path": "pmtc-supported-typescript.md",
+    "title": "PMTC Supported TypeScript Surface",
+    "href": "/docs/pmtc-supported-typescript"
+   },
+   {
+    "path": "preact-compat.md",
+    "title": "@pyreon/preact-compat",
+    "href": "/docs/preact-compat"
+   },
+   {
+    "path": "primitives.md",
+    "title": "@pyreon/primitives",
+    "href": "/docs/primitives"
+   },
+   {
+    "path": "query.md",
+    "title": "Query",
+    "href": "/docs/query"
+   },
+   {
+    "path": "quickstart.md",
+    "title": "Quickstart",
+    "href": "/docs/quickstart"
+   },
+   {
+    "path": "react-compat.md",
+    "title": "@pyreon/react-compat",
+    "href": "/docs/react-compat"
+   },
+   {
+    "path": "reactivity-lens.md",
+    "title": "Reactivity Lens",
+    "href": "/docs/reactivity-lens"
+   },
+   {
+    "path": "reactivity-rules.md",
+    "title": "Reactivity Rules",
+    "href": "/docs/reactivity-rules"
+   },
+   {
+    "path": "reactivity.md",
+    "title": "@pyreon/reactivity",
+    "href": "/docs/reactivity"
+   },
+   {
+    "path": "recipes.md",
+    "title": "Recipes",
+    "href": "/docs/recipes"
+   },
+   {
+    "path": "reference/a11y.md",
+    "title": "Accessibility Primitives — API Reference",
+    "href": "/docs/reference/a11y"
+   },
+   {
+    "path": "reference/atlas.md",
+    "title": "Component Workbench — API Reference",
+    "href": "/docs/reference/atlas"
+   },
+   {
+    "path": "reference/attrs.md",
+    "title": "Chainable HOC Factory — API Reference",
+    "href": "/docs/reference/attrs"
+   },
+   {
+    "path": "reference/auth.md",
+    "title": "Authentication — API Reference",
+    "href": "/docs/reference/auth"
+   },
+   {
+    "path": "reference/charts.md",
+    "title": "Charts on web, iOS and Android — API Reference",
+    "href": "/docs/reference/charts"
+   },
+   {
+    "path": "reference/code.md",
+    "title": "Code Editor — API Reference",
+    "href": "/docs/reference/code"
+   },
+   {
+    "path": "reference/compiler.md",
+    "title": "JSX Reactive Transform — API Reference",
+    "href": "/docs/reference/compiler"
+   },
+   {
+    "path": "reference/config.md",
+    "title": "Ecosystem Config — API Reference",
+    "href": "/docs/reference/config"
+   },
+   {
+    "path": "reference/connector-document.md",
+    "title": "UI ↔ Document Bridge — API Reference",
+    "href": "/docs/reference/connector-document"
+   },
+   {
+    "path": "reference/coolgrid.md",
+    "title": "Responsive Grid — API Reference",
+    "href": "/docs/reference/coolgrid"
+   },
+   {
+    "path": "reference/core.md",
+    "title": "Complete API — API Reference",
+    "href": "/docs/reference/core"
+   },
+   {
+    "path": "reference/dnd.md",
+    "title": "Drag & Drop — API Reference",
+    "href": "/docs/reference/dnd"
+   },
+   {
+    "path": "reference/document-primitives.md",
+    "title": "Document Primitives — API Reference",
+    "href": "/docs/reference/document-primitives"
+   },
+   {
+    "path": "reference/document.md",
+    "title": "Universal Document Rendering — API Reference",
+    "href": "/docs/reference/document"
+   },
+   {
+    "path": "reference/elements.md",
+    "title": "Base Primitives — API Reference",
+    "href": "/docs/reference/elements"
+   },
+   {
+    "path": "reference/feature.md",
+    "title": "Schema-Driven CRUD — API Reference",
+    "href": "/docs/reference/feature"
+   },
+   {
+    "path": "reference/flow.md",
+    "title": "Flow Diagrams — API Reference",
+    "href": "/docs/reference/flow"
+   },
+   {
+    "path": "reference/form.md",
+    "title": "Form Management — API Reference",
+    "href": "/docs/reference/form"
+   },
+   {
+    "path": "reference/head.md",
+    "title": "Head Management — API Reference",
+    "href": "/docs/reference/head"
+   },
+   {
+    "path": "reference/hooks.md",
+    "title": "Signal-Based Hooks — API Reference",
+    "href": "/docs/reference/hooks"
+   },
+   {
+    "path": "reference/hotkeys.md",
+    "title": "Keyboard Shortcuts — API Reference",
+    "href": "/docs/reference/hotkeys"
+   },
+   {
+    "path": "reference/http.md",
+    "title": "HTTP Client — API Reference",
+    "href": "/docs/reference/http"
+   },
+   {
+    "path": "reference/i18n.md",
+    "title": "Internationalization — API Reference",
+    "href": "/docs/reference/i18n"
+   },
+   {
+    "path": "reference/kinetic-presets.md",
+    "title": "Animation Presets — API Reference",
+    "href": "/docs/reference/kinetic-presets"
+   },
+   {
+    "path": "reference/kinetic.md",
+    "title": "CSS-Transition Animations — API Reference",
+    "href": "/docs/reference/kinetic"
+   },
+   {
+    "path": "reference/lathe.md",
+    "title": "Spec-to-Client Generator — API Reference",
+    "href": "/docs/reference/lathe"
+   },
+   {
+    "path": "reference/lint.md",
+    "title": "Pyreon-specific Linter — API Reference",
+    "href": "/docs/reference/lint"
+   },
+   {
+    "path": "reference/loom.md",
+    "title": "Dependency Observatory — API Reference",
+    "href": "/docs/reference/loom"
+   },
+   {
+    "path": "reference/machine.md",
+    "title": "State Machines — API Reference",
+    "href": "/docs/reference/machine"
+   },
+   {
+    "path": "reference/mcp.md",
+    "title": "MCP Server — API Reference",
+    "href": "/docs/reference/mcp"
+   },
+   {
+    "path": "reference/permissions.md",
+    "title": "Permissions — API Reference",
+    "href": "/docs/reference/permissions"
+   },
+   {
+    "path": "reference/primitives.md",
+    "title": "Canonical Multiplatform Primitives — API Reference",
+    "href": "/docs/reference/primitives"
+   },
+   {
+    "path": "reference/query.md",
+    "title": "TanStack Query Adapter — API Reference",
+    "href": "/docs/reference/query"
+   },
+   {
+    "path": "reference/reactivity.md",
+    "title": "Complete API — API Reference",
+    "href": "/docs/reference/reactivity"
+   },
+   {
+    "path": "reference/rich-text.md",
+    "title": "Rich Text Editor — API Reference",
+    "href": "/docs/reference/rich-text"
+   },
+   {
+    "path": "reference/rocketstyle.md",
+    "title": "Multi-Dimensional Styling — API Reference",
+    "href": "/docs/reference/rocketstyle"
+   },
+   {
+    "path": "reference/router.md",
+    "title": "Router — API Reference",
+    "href": "/docs/reference/router"
+   },
+   {
+    "path": "reference/runtime-dom.md",
+    "title": "DOM Renderer — API Reference",
+    "href": "/docs/reference/runtime-dom"
+   },
+   {
+    "path": "reference/runtime-server.md",
+    "title": "SSR Renderer — API Reference",
+    "href": "/docs/reference/runtime-server"
+   },
+   {
+    "path": "reference/rx.md",
+    "title": "Reactive Transforms — API Reference",
+    "href": "/docs/reference/rx"
+   },
+   {
+    "path": "reference/server.md",
+    "title": "SSR / SSG / Islands — API Reference",
+    "href": "/docs/reference/server"
+   },
+   {
+    "path": "reference/sized-map.md",
+    "title": "Sized Map — API Reference",
+    "href": "/docs/reference/sized-map"
+   },
+   {
+    "path": "reference/state-tree.md",
+    "title": "State Tree — API Reference",
+    "href": "/docs/reference/state-tree"
+   },
+   {
+    "path": "reference/storage.md",
+    "title": "Reactive Storage — API Reference",
+    "href": "/docs/reference/storage"
+   },
+   {
+    "path": "reference/store.md",
+    "title": "State Management — API Reference",
+    "href": "/docs/reference/store"
+   },
+   {
+    "path": "reference/styler.md",
+    "title": "CSS-in-JS — API Reference",
+    "href": "/docs/reference/styler"
+   },
+   {
+    "path": "reference/sync.md",
+    "title": "Local-First Sync — API Reference",
+    "href": "/docs/reference/sync"
+   },
+   {
+    "path": "reference/table.md",
+    "title": "TanStack Table Adapter — API Reference",
+    "href": "/docs/reference/table"
+   },
+   {
+    "path": "reference/testing.md",
+    "title": "Testing — API Reference",
+    "href": "/docs/reference/testing"
+   },
+   {
+    "path": "reference/toast.md",
+    "title": "Toast Notifications — API Reference",
+    "href": "/docs/reference/toast"
+   },
+   {
+    "path": "reference/ui-core.md",
+    "title": "UI Provider + Config — API Reference",
+    "href": "/docs/reference/ui-core"
+   },
+   {
+    "path": "reference/unistyle.md",
+    "title": "Responsive CSS Utilities — API Reference",
+    "href": "/docs/reference/unistyle"
+   },
+   {
+    "path": "reference/url-state.md",
+    "title": "URL State — API Reference",
+    "href": "/docs/reference/url-state"
+   },
+   {
+    "path": "reference/validate.md",
+    "title": "Pyreon validator + Standard Schema DX — API Reference",
+    "href": "/docs/reference/validate"
+   },
+   {
+    "path": "reference/validation.md",
+    "title": "Universal Validation Gate — API Reference",
+    "href": "/docs/reference/validation"
+   },
+   {
+    "path": "reference/virtual.md",
+    "title": "TanStack Virtual Adapter — API Reference",
+    "href": "/docs/reference/virtual"
+   },
+   {
+    "path": "reference/zero-content.md",
+    "title": "Zero Content — markdown-driven Pyreon sites — API Reference",
+    "href": "/docs/reference/zero-content"
+   },
+   {
+    "path": "reference/zero.md",
+    "title": "Zero — Full-Stack Meta-Framework — API Reference",
+    "href": "/docs/reference/zero"
+   },
+   {
+    "path": "rich-text.md",
+    "title": "Rich Text",
+    "href": "/docs/rich-text"
+   },
+   {
+    "path": "rocketstyle.md",
+    "title": "Rocketstyle",
+    "href": "/docs/rocketstyle"
+   },
+   {
+    "path": "router.md",
+    "title": "@pyreon/router",
+    "href": "/docs/router"
+   },
+   {
+    "path": "runtime-dom.md",
+    "title": "@pyreon/runtime-dom",
+    "href": "/docs/runtime-dom"
+   },
+   {
+    "path": "runtime-server.md",
+    "title": "@pyreon/runtime-server",
+    "href": "/docs/runtime-server"
+   },
+   {
+    "path": "rx.md",
+    "title": "Rx",
+    "href": "/docs/rx"
+   },
+   {
+    "path": "server.md",
+    "title": "@pyreon/server",
+    "href": "/docs/server"
+   },
+   {
+    "path": "sized-map.md",
+    "title": "@pyreon/sized-map",
+    "href": "/docs/sized-map"
+   },
+   {
+    "path": "solid-compat.md",
+    "title": "@pyreon/solid-compat",
+    "href": "/docs/solid-compat"
+   },
+   {
+    "path": "ssg.md",
+    "title": "Static Site Generation",
+    "href": "/docs/ssg"
+   },
+   {
+    "path": "ssr.md",
+    "title": "Server-Side Rendering & ISR",
+    "href": "/docs/ssr"
+   },
+   {
+    "path": "stability-and-direction.md",
+    "title": "Stability, Versioning & Direction",
+    "href": "/docs/stability-and-direction"
+   },
+   {
+    "path": "state-tree.md",
+    "title": "State Tree",
+    "href": "/docs/state-tree"
+   },
+   {
+    "path": "storage.md",
+    "title": "Storage",
+    "href": "/docs/storage"
+   },
+   {
+    "path": "store.md",
+    "title": "Store",
+    "href": "/docs/store"
+   },
+   {
+    "path": "storybook.md",
+    "title": "Storybook",
+    "href": "/docs/storybook"
+   },
+   {
+    "path": "styler.md",
+    "title": "Styler",
+    "href": "/docs/styler"
+   },
+   {
+    "path": "svelte-compat.md",
+    "title": "@pyreon/svelte-compat",
+    "href": "/docs/svelte-compat"
+   },
+   {
+    "path": "sync.md",
+    "title": "Sync",
+    "href": "/docs/sync"
+   },
+   {
+    "path": "table.md",
+    "title": "Table",
+    "href": "/docs/table"
+   },
+   {
+    "path": "toast.md",
+    "title": "Toast",
+    "href": "/docs/toast"
+   },
+   {
+    "path": "troubleshooting.md",
+    "title": "Troubleshooting",
+    "href": "/docs/troubleshooting"
+   },
+   {
+    "path": "troubleshooting/architecture.md",
+    "title": "Architecture Mistakes",
+    "href": "/docs/troubleshooting/architecture"
+   },
+   {
+    "path": "troubleshooting/best-practices.md",
+    "title": "Best-Practice Mistakes (opt-in `@pyreon/lint` rules)",
+    "href": "/docs/troubleshooting/best-practices"
+   },
+   {
+    "path": "troubleshooting/build.md",
+    "title": "Build Pipeline Mistakes",
+    "href": "/docs/troubleshooting/build"
+   },
+   {
+    "path": "troubleshooting/bundling.md",
+    "title": "Bundling Mistakes",
+    "href": "/docs/troubleshooting/bundling"
+   },
+   {
+    "path": "troubleshooting/ci.md",
+    "title": "CI / Build Gate Mistakes",
+    "href": "/docs/troubleshooting/ci"
+   },
+   {
+    "path": "troubleshooting/context.md",
+    "title": "Context & Provider Mistakes",
+    "href": "/docs/troubleshooting/context"
+   },
+   {
+    "path": "troubleshooting/documentation.md",
+    "title": "Documentation Mistakes",
+    "href": "/docs/troubleshooting/documentation"
+   },
+   {
+    "path": "troubleshooting/islands.md",
+    "title": "Islands Mistakes",
+    "href": "/docs/troubleshooting/islands"
+   },
+   {
+    "path": "troubleshooting/jsx.md",
+    "title": "JSX Mistakes",
+    "href": "/docs/troubleshooting/jsx"
+   },
+   {
+    "path": "troubleshooting/library-api.md",
+    "title": "Library API-Shape Mistakes",
+    "href": "/docs/troubleshooting/library-api"
+   },
+   {
+    "path": "troubleshooting/lifecycle.md",
+    "title": "Lifecycle & Cleanup Mistakes",
+    "href": "/docs/troubleshooting/lifecycle"
+   },
+   {
+    "path": "troubleshooting/reactivity.md",
+    "title": "Reactivity Mistakes",
+    "href": "/docs/troubleshooting/reactivity"
+   },
+   {
+    "path": "troubleshooting/ssg.md",
+    "title": "SSG / e2e Test-Server Mistakes",
+    "href": "/docs/troubleshooting/ssg"
+   },
+   {
+    "path": "troubleshooting/ssr.md",
+    "title": "SSR-rendering Mistakes",
+    "href": "/docs/troubleshooting/ssr"
+   },
+   {
+    "path": "troubleshooting/testing.md",
+    "title": "Testing Mistakes",
+    "href": "/docs/troubleshooting/testing"
+   },
+   {
+    "path": "tutorial/01-signals.md",
+    "title": "1. Signals",
+    "href": "/docs/tutorial/01-signals"
+   },
+   {
+    "path": "tutorial/02-derived.md",
+    "title": "2. Derived values",
+    "href": "/docs/tutorial/02-derived"
+   },
+   {
+    "path": "tutorial/03-effects.md",
+    "title": "3. Side effects",
+    "href": "/docs/tutorial/03-effects"
+   },
+   {
+    "path": "tutorial/04-components.md",
+    "title": "4. Components run once",
+    "href": "/docs/tutorial/04-components"
+   },
+   {
+    "path": "tutorial/05-lists-and-conditionals.md",
+    "title": "5. Lists & conditionals",
+    "href": "/docs/tutorial/05-lists-and-conditionals"
+   },
+   {
+    "path": "tutorial/06-build-something.md",
+    "title": "6. Build something real",
+    "href": "/docs/tutorial/06-build-something"
+   },
+   {
+    "path": "typescript.md",
+    "title": "@pyreon/typescript",
+    "href": "/docs/typescript"
+   },
+   {
+    "path": "ui-core.md",
+    "title": "UI Core",
+    "href": "/docs/ui-core"
+   },
+   {
+    "path": "unistyle.md",
+    "title": "Unistyle",
+    "href": "/docs/unistyle"
+   },
+   {
+    "path": "url-state.md",
+    "title": "URL State",
+    "href": "/docs/url-state"
+   },
+   {
+    "path": "validate.md",
+    "title": "Validate — validator + Standard Schema DX",
+    "href": "/docs/validate"
+   },
+   {
+    "path": "validation.md",
+    "title": "Validation",
+    "href": "/docs/validation"
+   },
+   {
+    "path": "virtual.md",
+    "title": "Virtual",
+    "href": "/docs/virtual"
+   },
+   {
+    "path": "vite-plugin.md",
+    "title": "@pyreon/vite-plugin",
+    "href": "/docs/vite-plugin"
+   },
+   {
+    "path": "vue-compat.md",
+    "title": "@pyreon/vue-compat",
+    "href": "/docs/vue-compat"
+   },
+   {
+    "path": "why-pyreon.md",
+    "title": "Why Pyreon",
+    "href": "/docs/why-pyreon"
+   },
+   {
+    "path": "zero-cli.md",
+    "title": "@pyreon/zero-cli",
+    "href": "/docs/zero-cli"
+   },
+   {
+    "path": "zero-content.md",
+    "title": "Zero Content",
+    "href": "/docs/zero-content"
+   },
+   {
+    "path": "zero.md",
+    "title": "Zero",
+    "href": "/docs/zero"
+   }
+  ],
+  "sidebar": {
+   "definedIn": "docs/src/sidebar-config.ts",
+   "note": "SIDEBAR: SidebarGroup[] with { text, collapsed?, tier?, items: { text, slug }[] }. Tiers: Learn, Guides, Migrate, Reference; it spreads REFERENCE_GROUPS from docs/src/reference-nav.generated.ts (docs/scripts/gen-reference.ts, from each manifest) and TROUBLESHOOTING_GROUPS from docs/src/troubleshooting-nav.generated.ts (docs/scripts/gen-troubleshooting.ts, from anti-patterns.md). Routes: docs/src/routes/docs/[...slug].tsx serves every file under docs/src/content/docs at /docs/ plus the file path without its .md extension; index.md is /docs. Every one of the 221 pages is in the current sidebar.",
+   "groups": [
+    {
+     "text": "Get Started",
+     "tier": "Learn",
+     "collapsed": false,
+     "slugs": [
+      "",
+      "package-catalog",
+      "why-pyreon",
+      "compare-app-frameworks",
+      "stability-and-direction",
+      "quickstart",
+      "getting-started",
+      "build-an-app",
+      "examples",
+      "recipes",
+      "reactivity-rules",
+      "plain-mode",
+      "architecture-and-prior-art",
+      "benchmarks"
+     ],
+     "source": "docs/src/sidebar-config.ts"
+    },
+    {
+     "text": "Tutorial",
+     "tier": null,
+     "collapsed": false,
+     "slugs": [
+      "tutorial/01-signals",
+      "tutorial/02-derived",
+      "tutorial/03-effects",
+      "tutorial/04-components",
+      "tutorial/05-lists-and-conditionals",
+      "tutorial/06-build-something"
+     ],
+     "source": "docs/src/sidebar-config.ts"
+    },
+    {
+     "text": "Guides",
+     "tier": "Guides",
+     "collapsed": false,
+     "slugs": [
+      "patterns/signal-writes",
+      "patterns/keyed-lists",
+      "patterns/reactive-context",
+      "patterns/reactive-spread",
+      "patterns/dev-warnings",
+      "patterns/state-management",
+      "patterns/controllable-state",
+      "patterns/form-fields",
+      "patterns/dynamic-fields",
+      "patterns/routing-setup",
+      "patterns/data-fetching",
+      "patterns/styler-theming",
+      "patterns/ssr-safe-hooks",
+      "patterns/islands",
+      "patterns/event-listeners",
+      "patterns/imperative-toasts",
+      "patterns/multiplatform",
+      "accessibility"
+     ],
+     "source": "docs/src/sidebar-config.ts"
+    },
+    {
+     "text": "In-Depth Guides",
+     "tier": null,
+     "collapsed": false,
+     "slugs": [
+      "guides/reactivity-in-depth",
+      "guides/data-fetching",
+      "guides/routing",
+      "guides/forms",
+      "guides/state-management",
+      "guides/styling-theming",
+      "guides/animations",
+      "guides/ui-localization",
+      "guides/ssr-ssg-isr",
+      "guides/islands",
+      "guides/performance",
+      "guides/testing",
+      "guides/deployment"
+     ],
+     "source": "docs/src/sidebar-config.ts"
+    },
+    {
+     "text": "Migrating to Pyreon",
+     "tier": "Migrate",
+     "collapsed": false,
+     "slugs": [
+      "migrating-from-react",
+      "migrating-from-solid",
+      "migrating-from-vue",
+      "migrating-from-svelte",
+      "migrating-from-angular",
+      "migrating-from-react-native"
+     ],
+     "source": "docs/src/sidebar-config.ts"
+    },
+    {
+     "text": "Migrating an API client",
+     "tier": "Migrate",
+     "collapsed": false,
+     "slugs": [
+      "lathe-from-orval",
+      "lathe-from-hey-api",
+      "lathe-from-kubb",
+      "lathe-from-openapi-fetch"
+     ],
+     "source": "docs/src/sidebar-config.ts"
+    },
+    {
+     "text": "Core Framework",
+     "tier": "Reference",
+     "collapsed": false,
+     "slugs": [
+      "reactivity",
+      "core",
+      "compiler",
+      "runtime-dom",
+      "runtime-server",
+      "router",
+      "head",
+      "server",
+      "island-architecture",
+      "vite-plugin",
+      "typescript",
+      "cli",
+      "lint",
+      "mcp",
+      "atlas",
+      "loom",
+      "lathe"
+     ],
+     "source": "docs/src/sidebar-config.ts"
+    },
+    {
+     "text": "Meta-Framework (Zero)",
+     "tier": null,
+     "collapsed": false,
+     "slugs": [
+      "zero",
+      "ssr",
+      "ssg",
+      "images-and-fonts",
+      "create-zero",
+      "zero-cli",
+      "zero-content",
+      "live-examples",
+      "meta",
+      "storybook"
+     ],
+     "source": "docs/src/sidebar-config.ts"
+    },
+    {
+     "text": "State & Data",
+     "tier": null,
+     "collapsed": false,
+     "slugs": [
+      "store",
+      "state-tree",
+      "form",
+      "validation",
+      "validate",
+      "i18n",
+      "http",
+      "query",
+      "table",
+      "virtual",
+      "machine",
+      "storage",
+      "sync",
+      "permissions",
+      "auth",
+      "hotkeys",
+      "toast",
+      "rx",
+      "url-state",
+      "dnd"
+     ],
+     "source": "docs/src/sidebar-config.ts"
+    },
+    {
+     "text": "UI System",
+     "tier": null,
+     "collapsed": false,
+     "slugs": [
+      "ui-core",
+      "styler",
+      "unistyle",
+      "hooks",
+      "elements",
+      "attrs",
+      "rocketstyle",
+      "coolgrid",
+      "kinetic",
+      "kinetic-presets",
+      "connector-document",
+      "document-primitives"
+     ],
+     "source": "docs/src/sidebar-config.ts"
+    },
+    {
+     "text": "Ecosystem",
+     "tier": null,
+     "collapsed": false,
+     "slugs": [
+      "document",
+      "charts",
+      "charts-gallery",
+      "code",
+      "rich-text",
+      "flow",
+      "feature",
+      "a11y"
+     ],
+     "source": "docs/src/sidebar-config.ts"
+    },
+    {
+     "text": "Compatibility Layers",
+     "tier": null,
+     "collapsed": true,
+     "slugs": [
+      "native-compat",
+      "react-compat",
+      "preact-compat",
+      "solid-compat",
+      "svelte-compat",
+      "vue-compat"
+     ],
+     "source": "docs/src/sidebar-config.ts"
+    },
+    {
+     "text": "Developer Tools",
+     "tier": null,
+     "collapsed": true,
+     "slugs": [
+      "devtools",
+      "reactivity-lens",
+      "lpih",
+      "sized-map"
+     ],
+     "source": "docs/src/sidebar-config.ts"
+    },
+    {
+     "text": "Multi-Platform (experimental)",
+     "tier": null,
+     "collapsed": true,
+     "slugs": [
+      "multiplatform",
+      "native-packages",
+      "multiplatform-libraries",
+      "pmtc-supported-typescript",
+      "pmtc-per-target-setup",
+      "create-multiplatform",
+      "native-dev-loop",
+      "native-e2e-testing",
+      "primitives"
+     ],
+     "source": "docs/src/sidebar-config.ts"
+    },
+    {
+     "text": "API Reference — Core & Data",
+     "tier": "API Reference",
+     "collapsed": true,
+     "slugs": [
+      "reference/atlas",
+      "reference/attrs",
+      "reference/auth",
+      "reference/compiler",
+      "reference/config",
+      "reference/core",
+      "reference/document",
+      "reference/feature",
+      "reference/form",
+      "reference/hooks",
+      "reference/hotkeys",
+      "reference/http",
+      "reference/i18n",
+      "reference/kinetic-presets",
+      "reference/lathe",
+      "reference/loom",
+      "reference/machine",
+      "reference/permissions",
+      "reference/query",
+      "reference/reactivity",
+      "reference/rx",
+      "reference/sized-map",
+      "reference/state-tree",
+      "reference/storage",
+      "reference/store",
+      "reference/sync",
+      "reference/table",
+      "reference/url-state",
+      "reference/validate",
+      "reference/validation",
+      "reference/virtual"
+     ],
+     "source": "docs/src/reference-nav.generated.ts"
+    },
+    {
+     "text": "API Reference — UI & Browser",
+     "tier": null,
+     "collapsed": true,
+     "slugs": [
+      "reference/a11y",
+      "reference/charts",
+      "reference/code",
+      "reference/connector-document",
+      "reference/coolgrid",
+      "reference/dnd",
+      "reference/document-primitives",
+      "reference/elements",
+      "reference/flow",
+      "reference/head",
+      "reference/kinetic",
+      "reference/primitives",
+      "reference/rich-text",
+      "reference/rocketstyle",
+      "reference/router",
+      "reference/runtime-dom",
+      "reference/styler",
+      "reference/testing",
+      "reference/toast",
+      "reference/ui-core",
+      "reference/unistyle"
+     ],
+     "source": "docs/src/reference-nav.generated.ts"
+    },
+    {
+     "text": "API Reference — Server & Tooling",
+     "tier": null,
+     "collapsed": true,
+     "slugs": [
+      "reference/lint",
+      "reference/mcp",
+      "reference/runtime-server",
+      "reference/server",
+      "reference/zero",
+      "reference/zero-content"
+     ],
+     "source": "docs/src/reference-nav.generated.ts"
+    },
+    {
+     "text": "Troubleshooting",
+     "tier": "Troubleshooting",
+     "collapsed": true,
+     "slugs": [
+      "troubleshooting",
+      "troubleshooting/reactivity",
+      "troubleshooting/jsx",
+      "troubleshooting/context",
+      "troubleshooting/architecture",
+      "troubleshooting/islands",
+      "troubleshooting/ssr",
+      "troubleshooting/ssg",
+      "troubleshooting/bundling",
+      "troubleshooting/testing",
+      "troubleshooting/lifecycle",
+      "troubleshooting/build",
+      "troubleshooting/ci",
+      "troubleshooting/best-practices",
+      "troubleshooting/library-api",
+      "troubleshooting/documentation"
+     ],
+     "source": "docs/src/troubleshooting-nav.generated.ts"
+    }
+   ]
+  }
+ },
+ "sidebar": [
+  {
+   "group": "Get started",
+   "items": [
+    {
+     "title": "Overview",
+     "href": "/docs"
+    },
+    {
+     "title": "Quickstart",
+     "href": "/docs/quickstart"
+    },
+    {
+     "title": "Add Pyreon to an existing project",
+     "href": "/docs/getting-started"
+    },
+    {
+     "title": "Build an app in 30 minutes",
+     "href": "/docs/build-an-app"
+    },
+    {
+     "title": "Tutorial",
+     "href": "/docs/tutorial/01-signals",
+     "children": [
+      {
+       "title": "1. Signals",
+       "href": "/docs/tutorial/01-signals"
+      },
+      {
+       "title": "2. Derived values",
+       "href": "/docs/tutorial/02-derived"
+      },
+      {
+       "title": "3. Side effects",
+       "href": "/docs/tutorial/03-effects"
+      },
+      {
+       "title": "4. Components run once",
+       "href": "/docs/tutorial/04-components"
+      },
+      {
+       "title": "5. Lists and conditionals",
+       "href": "/docs/tutorial/05-lists-and-conditionals"
+      },
+      {
+       "title": "6. Build something real",
+       "href": "/docs/tutorial/06-build-something"
+      }
+     ]
+    },
+    {
+     "title": "Examples gallery",
+     "href": "/docs/examples"
+    },
+    {
+     "title": "Recipes",
+     "href": "/docs/recipes"
+    },
+    {
+     "title": "Why Pyreon",
+     "href": "/docs/why-pyreon"
+    },
+    {
+     "title": "Pyreon vs other app frameworks",
+     "href": "/docs/compare-app-frameworks"
+    },
+    {
+     "title": "Stability and direction",
+     "href": "/docs/stability-and-direction"
+    },
+    {
+     "title": "Benchmarks",
+     "href": "/docs/benchmarks"
+    }
+   ]
+  },
+  {
+   "group": "Build",
+   "items": [
+    {
+     "title": "Zero",
+     "href": "/docs/zero",
+     "productId": "zero",
+     "badge": {
+      "kind": "proof",
+      "text": "SSR 6.5×",
+      "source": "00-brief/BENCHMARKS-2026-11-05.md §5 compiled SSR (bench:ssr): 109.9 vs React 19 714.4 µs/render at 1,000 rows, overnight run, one run"
+     },
+     "children": [
+      {
+       "title": "Server rendering and ISR",
+       "href": "/docs/ssr"
+      },
+      {
+       "title": "Static site generation",
+       "href": "/docs/ssg"
+      },
+      {
+       "title": "Islands",
+       "href": "/docs/island-architecture"
+      },
+      {
+       "title": "Head tags",
+       "href": "/docs/head"
+      },
+      {
+       "title": "Server",
+       "href": "/docs/server"
+      },
+      {
+       "title": "Images and fonts",
+       "href": "/docs/images-and-fonts"
+      },
+      {
+       "title": "Create Zero",
+       "href": "/docs/create-zero"
+      },
+      {
+       "title": "Zero CLI",
+       "href": "/docs/zero-cli"
+      }
+     ]
+    },
+    {
+     "title": "Native",
+     "href": "/docs/multiplatform",
+     "productId": "native",
+     "badge": {
+      "kind": "preview",
+      "text": "experimental",
+      "source": "docs/src/content/docs/multiplatform.md (status line: \"experimental, demo-quality, not production-ready\"); stability-and-direction.md table (\"Experimental\")"
+     },
+     "children": [
+      {
+       "title": "Create a multiplatform app",
+       "href": "/docs/create-multiplatform",
+       "badge": {
+        "kind": "preview",
+        "text": "experimental",
+        "source": "docs/src/content/docs/create-multiplatform.md (:::warning{title=\"Experimental\"})"
+       }
+      },
+      {
+       "title": "Supported TypeScript",
+       "href": "/docs/pmtc-supported-typescript"
+      },
+      {
+       "title": "Per-target setup",
+       "href": "/docs/pmtc-per-target-setup"
+      },
+      {
+       "title": "Native dev loop",
+       "href": "/docs/native-dev-loop"
+      },
+      {
+       "title": "Native packages",
+       "href": "/docs/native-packages"
+      },
+      {
+       "title": "Library status and authoring",
+       "href": "/docs/multiplatform-libraries"
+      },
+      {
+       "title": "E2E testing with Maestro",
+       "href": "/docs/native-e2e-testing"
+      }
+     ]
+    },
+    {
+     "title": "Content",
+     "href": "/docs/zero-content",
+     "productId": "content",
+     "children": [
+      {
+       "title": "Live examples",
+       "href": "/docs/live-examples"
+      }
+     ]
+    },
+    {
+     "title": "Primitives",
+     "href": "/docs/primitives",
+     "productId": "primitives",
+     "badge": {
+      "kind": "preview",
+      "text": "experimental",
+      "source": "docs/src/content/docs/stability-and-direction.md (\"Native targets (iOS / Android via PMTC): Experimental\"); multiplatform.md"
+     }
+    },
+    {
+     "title": "Design System",
+     "href": "/docs/guides/styling-theming",
+     "productId": "design",
+     "children": [
+      {
+       "title": "UI Core (PyreonUI)",
+       "href": "/docs/ui-core"
+      },
+      {
+       "title": "Styler",
+       "href": "/docs/styler"
+      },
+      {
+       "title": "Unistyle",
+       "href": "/docs/unistyle"
+      },
+      {
+       "title": "Rocketstyle",
+       "href": "/docs/rocketstyle"
+      },
+      {
+       "title": "Attrs",
+       "href": "/docs/attrs"
+      },
+      {
+       "title": "Elements",
+       "href": "/docs/elements"
+      },
+      {
+       "title": "Coolgrid",
+       "href": "/docs/coolgrid"
+      }
+     ]
+    },
+    {
+     "title": "Auth",
+     "href": "/docs/auth",
+     "productId": "auth",
+     "badge": {
+      "kind": "new",
+      "text": "next release",
+      "source": "00-brief/facts.md \"Version\" (@pyreon/auth is in release PR #3888, not on npm); `npm view @pyreon/auth` returned 404 on 2026-11-11"
+     }
+    },
+    {
+     "title": "Reactivity",
+     "href": "/docs/reactivity",
+     "productId": "reactivity",
+     "badge": {
+      "kind": "proof",
+      "text": "2× effects",
+      "source": "00-brief/BENCHMARKS-2026-11-05.md §8 V8: effect propagation 2.04–2.13× vs Preact Signals, two runs"
+     },
+     "children": [
+      {
+       "title": "Reactivity rules",
+       "href": "/docs/reactivity-rules"
+      },
+      {
+       "title": "Plain Mode",
+       "href": "/docs/plain-mode"
+      }
+     ]
+    },
+    {
+     "title": "Router",
+     "href": "/docs/router",
+     "productId": "router"
+    },
+    {
+     "title": "Hooks",
+     "href": "/docs/hooks",
+     "productId": "hooks"
+    },
+    {
+     "title": "Motion",
+     "href": "/docs/kinetic",
+     "productId": "kinetic",
+     "children": [
+      {
+       "title": "Presets",
+       "href": "/docs/kinetic-presets"
+      }
+     ]
+    },
+    {
+     "title": "Accessibility",
+     "href": "/docs/a11y",
+     "productId": "a11y"
+    }
+   ]
+  },
+  {
+   "group": "Data and state",
+   "items": [
+    {
+     "title": "Forms",
+     "href": "/docs/form",
+     "productId": "form",
+     "badge": {
+      "kind": "proof",
+      "text": "fastest",
+      "source": "00-brief/BENCHMARKS-2026-11-05.md §6 form-bench: fastest on all 4 timed ops vs 6 form libraries, overnight run, one run"
+     }
+    },
+    {
+     "title": "Validation",
+     "href": "/docs/validate",
+     "productId": "validation",
+     "badge": {
+      "kind": "proof",
+      "text": "12/12",
+      "source": "00-brief/BENCHMARKS-2026-11-05.md §9 validate megamorphic: fastest on all 12 cells vs zod / valibot / arktype, final pass, one run"
+     },
+     "children": [
+      {
+       "title": "Zod, Valibot and ArkType adapters",
+       "href": "/docs/validation"
+      }
+     ]
+    },
+    {
+     "title": "Query",
+     "href": "/docs/query",
+     "productId": "query"
+    },
+    {
+     "title": "HTTP",
+     "href": "/docs/http",
+     "productId": "http"
+    },
+    {
+     "title": "Store",
+     "href": "/docs/store",
+     "productId": "store"
+    },
+    {
+     "title": "State Tree",
+     "href": "/docs/state-tree",
+     "productId": "statetree",
+     "badge": {
+      "kind": "proof",
+      "text": "9.5×",
+      "source": "00-brief/BENCHMARKS-2026-11-05.md §10 state-tree vs MobX-State-Tree 9.0.0: action 9.5×, overnight run, one run, bun"
+     }
+    },
+    {
+     "title": "State Machines",
+     "href": "/docs/machine",
+     "productId": "machine",
+     "badge": {
+      "kind": "proof",
+      "text": "34.7×",
+      "source": "00-brief/BENCHMARKS-2026-11-05.md §10 machine vs XState: send 34.7×, overnight run, one run, bun"
+     }
+    },
+    {
+     "title": "Storage",
+     "href": "/docs/storage",
+     "productId": "storage"
+    },
+    {
+     "title": "Sync",
+     "href": "/docs/sync",
+     "productId": "sync"
+    },
+    {
+     "title": "Feature",
+     "href": "/docs/feature",
+     "productId": "feature"
+    },
+    {
+     "title": "Permissions",
+     "href": "/docs/permissions",
+     "productId": "permissions"
+    },
+    {
+     "title": "URL State",
+     "href": "/docs/url-state",
+     "productId": "urlstate"
+    },
+    {
+     "title": "i18n",
+     "href": "/docs/i18n",
+     "productId": "i18n",
+     "badge": {
+      "kind": "proof",
+      "text": "12×",
+      "source": "00-brief/BENCHMARKS-2026-11-05.md §10 i18n vs i18next 26.5.11: t 12.0×, overnight run, one run, bun"
+     }
+    }
+   ]
+  },
+  {
+   "group": "Visual and content",
+   "items": [
+    {
+     "title": "Charts",
+     "href": "/docs/charts",
+     "productId": "charts",
+     "badge": {
+      "kind": "proof",
+      "text": "8.7×",
+      "source": "00-brief/BENCHMARKS-2026-11-05.md §2 charts vs ECharts 6: mount 100,000 points 4.36 vs 37.95 ms (8.70×), final pass, one run"
+     },
+     "children": [
+      {
+       "title": "Chart gallery",
+       "href": "/docs/charts-gallery"
+      }
+     ]
+    },
+    {
+     "title": "Table",
+     "href": "/docs/table",
+     "productId": "table"
+    },
+    {
+     "title": "Virtual",
+     "href": "/docs/virtual",
+     "productId": "virtual",
+     "badge": {
+      "kind": "proof",
+      "text": "4/4",
+      "source": "00-brief/BENCHMARKS-2026-11-05.md §2 virtual vs @tanstack/react-virtual: wins all four ops, real Chromium, final pass, one run"
+     }
+    },
+    {
+     "title": "Rich text editor",
+     "href": "/docs/rich-text",
+     "productId": "editor"
+    },
+    {
+     "title": "Code editor",
+     "href": "/docs/code",
+     "productId": "editor"
+    },
+    {
+     "title": "Flow",
+     "href": "/docs/flow",
+     "productId": "flow",
+     "badge": {
+      "kind": "proof",
+      "text": "6/6",
+      "source": "00-brief/BENCHMARKS-2026-11-05.md §2 flow vs React Flow 12: wins all six ops, 1.17–210×, one run. Headline uses 6/6, not 210×: the record says the drag/pan ratios are mostly React Flow re-rendering node wrappers"
+     }
+    },
+    {
+     "title": "Documents",
+     "href": "/docs/document",
+     "productId": "document",
+     "children": [
+      {
+       "title": "Document primitives",
+       "href": "/docs/document-primitives"
+      },
+      {
+       "title": "Connector Document",
+       "href": "/docs/connector-document"
+      }
+     ]
+    },
+    {
+     "title": "Hotkeys",
+     "href": "/docs/hotkeys",
+     "productId": "hotkeys"
+    },
+    {
+     "title": "Drag and Drop",
+     "href": "/docs/dnd",
+     "productId": "dnd"
+    },
+    {
+     "title": "Toast",
+     "href": "/docs/toast",
+     "productId": "toast"
+    },
+    {
+     "title": "RX",
+     "href": "/docs/rx",
+     "productId": "rx"
+    }
+   ]
+  },
+  {
+   "group": "Developer tools",
+   "items": [
+    {
+     "title": "Tooling: CLI and doctor",
+     "href": "/docs/cli",
+     "productId": "tooling",
+     "children": [
+      {
+       "title": "Lint",
+       "href": "/docs/lint"
+      },
+      {
+       "title": "Reactivity Lens",
+       "href": "/docs/reactivity-lens"
+      },
+      {
+       "title": "Live Program Inlay Hints",
+       "href": "/docs/lpih"
+      },
+      {
+       "title": "Devtools",
+       "href": "/docs/devtools"
+      },
+      {
+       "title": "Storybook",
+       "href": "/docs/storybook"
+      }
+     ]
+    },
+    {
+     "title": "AI and MCP",
+     "href": "/docs/mcp",
+     "productId": "ai"
+    },
+    {
+     "title": "Atlas",
+     "href": "/docs/atlas",
+     "productId": "atlas"
+    },
+    {
+     "title": "Lathe",
+     "href": "/docs/lathe",
+     "productId": "lathe"
+    },
+    {
+     "title": "Loom",
+     "href": "/docs/loom",
+     "productId": "loom"
+    },
+    {
+     "title": "Migrate: compat layers",
+     "href": "/docs/react-compat",
+     "productId": "migrate",
+     "children": [
+      {
+       "title": "React compat",
+       "href": "/docs/react-compat"
+      },
+      {
+       "title": "Preact compat",
+       "href": "/docs/preact-compat"
+      },
+      {
+       "title": "Vue compat",
+       "href": "/docs/vue-compat"
+      },
+      {
+       "title": "Solid compat",
+       "href": "/docs/solid-compat"
+      },
+      {
+       "title": "Svelte compat",
+       "href": "/docs/svelte-compat"
+      },
+      {
+       "title": "Native marker contract",
+       "href": "/docs/native-compat"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "group": "Guides",
+   "items": [
+    {
+     "title": "Reactivity in depth",
+     "href": "/docs/guides/reactivity-in-depth"
+    },
+    {
+     "title": "Signal reads and writes",
+     "href": "/docs/patterns/signal-writes"
+    },
+    {
+     "title": "Keyed list rendering",
+     "href": "/docs/patterns/keyed-lists"
+    },
+    {
+     "title": "Reactive context",
+     "href": "/docs/patterns/reactive-context"
+    },
+    {
+     "title": "Reactive prop forwarding",
+     "href": "/docs/patterns/reactive-spread"
+    },
+    {
+     "title": "Controlled and uncontrolled",
+     "href": "/docs/patterns/controllable-state"
+    },
+    {
+     "title": "Dev-mode warnings",
+     "href": "/docs/patterns/dev-warnings"
+    },
+    {
+     "title": "Choosing SSR, SSG or ISR",
+     "href": "/docs/guides/ssr-ssg-isr",
+     "badge": {
+      "kind": "preview",
+      "text": "auto: experimental",
+      "source": "docs/src/content/docs/zero.md and guides/ssr-ssg-isr.md (`mode: 'auto'` is labelled EXPERIMENTAL)"
+     }
+    },
+    {
+     "title": "Islands and partial hydration",
+     "href": "/docs/guides/islands"
+    },
+    {
+     "title": "Island patterns",
+     "href": "/docs/patterns/islands"
+    },
+    {
+     "title": "SSR-safe hooks",
+     "href": "/docs/patterns/ssr-safe-hooks"
+    },
+    {
+     "title": "Client-side routing",
+     "href": "/docs/guides/routing"
+    },
+    {
+     "title": "Router setup",
+     "href": "/docs/patterns/routing-setup"
+    },
+    {
+     "title": "Data fetching and caching",
+     "href": "/docs/guides/data-fetching"
+    },
+    {
+     "title": "useQuery and useMutation",
+     "href": "/docs/patterns/data-fetching"
+    },
+    {
+     "title": "Forms and validation",
+     "href": "/docs/guides/forms"
+    },
+    {
+     "title": "Form fields",
+     "href": "/docs/patterns/form-fields"
+    },
+    {
+     "title": "Dynamic form arrays",
+     "href": "/docs/patterns/dynamic-fields"
+    },
+    {
+     "title": "Global state management",
+     "href": "/docs/guides/state-management"
+    },
+    {
+     "title": "Stores vs signals vs models",
+     "href": "/docs/patterns/state-management"
+    },
+    {
+     "title": "Styling and theming with styled + PyreonUI",
+     "href": "/docs/patterns/styler-theming"
+    },
+    {
+     "title": "Animations and transitions",
+     "href": "/docs/guides/animations"
+    },
+    {
+     "title": "Localizing the UI system",
+     "href": "/docs/guides/ui-localization"
+    },
+    {
+     "title": "Accessibility in Pyreon",
+     "href": "/docs/accessibility"
+    },
+    {
+     "title": "Event listeners",
+     "href": "/docs/patterns/event-listeners"
+    },
+    {
+     "title": "Imperative toasts",
+     "href": "/docs/patterns/imperative-toasts"
+    },
+    {
+     "title": "One source, web + iOS + Android",
+     "href": "/docs/patterns/multiplatform"
+    },
+    {
+     "title": "Performance",
+     "href": "/docs/guides/performance"
+    },
+    {
+     "title": "Testing Pyreon apps",
+     "href": "/docs/guides/testing"
+    },
+    {
+     "title": "Deploying a Pyreon app",
+     "href": "/docs/guides/deployment"
+    }
+   ]
+  },
+  {
+   "group": "Migrate",
+   "items": [
+    {
+     "title": "Coming from React",
+     "href": "/docs/migrating-from-react",
+     "productId": "migrate"
+    },
+    {
+     "title": "Coming from React Native and Expo",
+     "href": "/docs/migrating-from-react-native",
+     "productId": "native"
+    },
+    {
+     "title": "Coming from Vue",
+     "href": "/docs/migrating-from-vue",
+     "productId": "migrate"
+    },
+    {
+     "title": "Coming from Solid",
+     "href": "/docs/migrating-from-solid",
+     "productId": "migrate"
+    },
+    {
+     "title": "Coming from Svelte",
+     "href": "/docs/migrating-from-svelte",
+     "productId": "migrate"
+    },
+    {
+     "title": "Coming from Angular",
+     "href": "/docs/migrating-from-angular"
+    },
+    {
+     "title": "Lathe from orval",
+     "href": "/docs/lathe-from-orval",
+     "productId": "lathe"
+    },
+    {
+     "title": "Lathe from hey-api",
+     "href": "/docs/lathe-from-hey-api",
+     "productId": "lathe"
+    },
+    {
+     "title": "Lathe from kubb",
+     "href": "/docs/lathe-from-kubb",
+     "productId": "lathe"
+    },
+    {
+     "title": "Lathe from openapi-fetch",
+     "href": "/docs/lathe-from-openapi-fetch",
+     "productId": "lathe"
+    }
+   ]
+  },
+  {
+   "group": "Reference",
+   "items": [
+    {
+     "title": "Package catalog",
+     "href": "/docs/package-catalog"
+    },
+    {
+     "title": "Architecture and prior art",
+     "href": "/docs/architecture-and-prior-art"
+    },
+    {
+     "title": "Core packages",
+     "href": "/docs/core",
+     "children": [
+      {
+       "title": "Core",
+       "href": "/docs/core"
+      },
+      {
+       "title": "Compiler",
+       "href": "/docs/compiler"
+      },
+      {
+       "title": "Runtime DOM",
+       "href": "/docs/runtime-dom"
+      },
+      {
+       "title": "Runtime Server",
+       "href": "/docs/runtime-server"
+      },
+      {
+       "title": "Vite plugin",
+       "href": "/docs/vite-plugin"
+      },
+      {
+       "title": "TypeScript",
+       "href": "/docs/typescript"
+      },
+      {
+       "title": "Sized Map",
+       "href": "/docs/sized-map"
+      },
+      {
+       "title": "Meta (barrel package)",
+       "href": "/docs/meta"
+      }
+     ]
+    },
+    {
+     "title": "API reference",
+     "href": "/docs/reference/core",
+     "children": [
+      {
+       "title": "Accessibility Primitives",
+       "href": "/docs/reference/a11y"
+      },
+      {
+       "title": "Component Workbench",
+       "href": "/docs/reference/atlas"
+      },
+      {
+       "title": "Chainable HOC Factory",
+       "href": "/docs/reference/attrs"
+      },
+      {
+       "title": "Authentication",
+       "href": "/docs/reference/auth"
+      },
+      {
+       "title": "Charts on web, iOS and Android",
+       "href": "/docs/reference/charts"
+      },
+      {
+       "title": "Code Editor",
+       "href": "/docs/reference/code"
+      },
+      {
+       "title": "JSX Reactive Transform",
+       "href": "/docs/reference/compiler"
+      },
+      {
+       "title": "Ecosystem Config",
+       "href": "/docs/reference/config"
+      },
+      {
+       "title": "UI ↔ Document Bridge",
+       "href": "/docs/reference/connector-document"
+      },
+      {
+       "title": "Responsive Grid",
+       "href": "/docs/reference/coolgrid"
+      },
+      {
+       "title": "Complete API",
+       "href": "/docs/reference/core"
+      },
+      {
+       "title": "Drag & Drop",
+       "href": "/docs/reference/dnd"
+      },
+      {
+       "title": "Document Primitives",
+       "href": "/docs/reference/document-primitives"
+      },
+      {
+       "title": "Universal Document Rendering",
+       "href": "/docs/reference/document"
+      },
+      {
+       "title": "Base Primitives",
+       "href": "/docs/reference/elements"
+      },
+      {
+       "title": "Schema-Driven CRUD",
+       "href": "/docs/reference/feature"
+      },
+      {
+       "title": "Flow Diagrams",
+       "href": "/docs/reference/flow"
+      },
+      {
+       "title": "Form Management",
+       "href": "/docs/reference/form"
+      },
+      {
+       "title": "Head Management",
+       "href": "/docs/reference/head"
+      },
+      {
+       "title": "Signal-Based Hooks",
+       "href": "/docs/reference/hooks"
+      },
+      {
+       "title": "Keyboard Shortcuts",
+       "href": "/docs/reference/hotkeys"
+      },
+      {
+       "title": "HTTP Client",
+       "href": "/docs/reference/http"
+      },
+      {
+       "title": "Internationalization",
+       "href": "/docs/reference/i18n"
+      },
+      {
+       "title": "Animation Presets",
+       "href": "/docs/reference/kinetic-presets"
+      },
+      {
+       "title": "CSS-Transition Animations",
+       "href": "/docs/reference/kinetic"
+      },
+      {
+       "title": "Spec-to-Client Generator",
+       "href": "/docs/reference/lathe"
+      },
+      {
+       "title": "Pyreon-specific Linter",
+       "href": "/docs/reference/lint"
+      },
+      {
+       "title": "Dependency Observatory",
+       "href": "/docs/reference/loom"
+      },
+      {
+       "title": "State Machines",
+       "href": "/docs/reference/machine"
+      },
+      {
+       "title": "MCP Server",
+       "href": "/docs/reference/mcp"
+      },
+      {
+       "title": "Permissions",
+       "href": "/docs/reference/permissions"
+      },
+      {
+       "title": "Canonical Multiplatform Primitives",
+       "href": "/docs/reference/primitives"
+      },
+      {
+       "title": "TanStack Query Adapter",
+       "href": "/docs/reference/query"
+      },
+      {
+       "title": "Complete API",
+       "href": "/docs/reference/reactivity"
+      },
+      {
+       "title": "Rich Text Editor",
+       "href": "/docs/reference/rich-text"
+      },
+      {
+       "title": "Multi-Dimensional Styling",
+       "href": "/docs/reference/rocketstyle"
+      },
+      {
+       "title": "Router",
+       "href": "/docs/reference/router"
+      },
+      {
+       "title": "DOM Renderer",
+       "href": "/docs/reference/runtime-dom"
+      },
+      {
+       "title": "SSR Renderer",
+       "href": "/docs/reference/runtime-server"
+      },
+      {
+       "title": "Reactive Transforms",
+       "href": "/docs/reference/rx"
+      },
+      {
+       "title": "SSR / SSG / Islands",
+       "href": "/docs/reference/server"
+      },
+      {
+       "title": "Sized Map",
+       "href": "/docs/reference/sized-map"
+      },
+      {
+       "title": "State Tree",
+       "href": "/docs/reference/state-tree"
+      },
+      {
+       "title": "Reactive Storage",
+       "href": "/docs/reference/storage"
+      },
+      {
+       "title": "State Management",
+       "href": "/docs/reference/store"
+      },
+      {
+       "title": "CSS-in-JS",
+       "href": "/docs/reference/styler"
+      },
+      {
+       "title": "Local-First Sync",
+       "href": "/docs/reference/sync"
+      },
+      {
+       "title": "TanStack Table Adapter",
+       "href": "/docs/reference/table"
+      },
+      {
+       "title": "Testing",
+       "href": "/docs/reference/testing"
+      },
+      {
+       "title": "Toast Notifications",
+       "href": "/docs/reference/toast"
+      },
+      {
+       "title": "UI Provider + Config",
+       "href": "/docs/reference/ui-core"
+      },
+      {
+       "title": "Responsive CSS Utilities",
+       "href": "/docs/reference/unistyle"
+      },
+      {
+       "title": "URL State",
+       "href": "/docs/reference/url-state"
+      },
+      {
+       "title": "Pyreon validator + Standard Schema DX",
+       "href": "/docs/reference/validate"
+      },
+      {
+       "title": "Universal Validation Gate",
+       "href": "/docs/reference/validation"
+      },
+      {
+       "title": "TanStack Virtual Adapter",
+       "href": "/docs/reference/virtual"
+      },
+      {
+       "title": "Zero Content — markdown-driven Pyreon sites",
+       "href": "/docs/reference/zero-content"
+      },
+      {
+       "title": "Zero — Full-Stack Meta-Framework",
+       "href": "/docs/reference/zero"
+      }
+     ]
+    },
+    {
+     "title": "Troubleshooting",
+     "href": "/docs/troubleshooting",
+     "children": [
+      {
+       "title": "Architecture Mistakes",
+       "href": "/docs/troubleshooting/architecture"
+      },
+      {
+       "title": "Best-Practice Mistakes (opt-in `@pyreon/lint` rules)",
+       "href": "/docs/troubleshooting/best-practices"
+      },
+      {
+       "title": "Build Pipeline Mistakes",
+       "href": "/docs/troubleshooting/build"
+      },
+      {
+       "title": "Bundling Mistakes",
+       "href": "/docs/troubleshooting/bundling"
+      },
+      {
+       "title": "CI / Build Gate Mistakes",
+       "href": "/docs/troubleshooting/ci"
+      },
+      {
+       "title": "Context & Provider Mistakes",
+       "href": "/docs/troubleshooting/context"
+      },
+      {
+       "title": "Documentation Mistakes",
+       "href": "/docs/troubleshooting/documentation"
+      },
+      {
+       "title": "Islands Mistakes",
+       "href": "/docs/troubleshooting/islands"
+      },
+      {
+       "title": "JSX Mistakes",
+       "href": "/docs/troubleshooting/jsx"
+      },
+      {
+       "title": "Library API-Shape Mistakes",
+       "href": "/docs/troubleshooting/library-api"
+      },
+      {
+       "title": "Lifecycle & Cleanup Mistakes",
+       "href": "/docs/troubleshooting/lifecycle"
+      },
+      {
+       "title": "Reactivity Mistakes",
+       "href": "/docs/troubleshooting/reactivity"
+      },
+      {
+       "title": "SSG / e2e Test-Server Mistakes",
+       "href": "/docs/troubleshooting/ssg"
+      },
+      {
+       "title": "SSR-rendering Mistakes",
+       "href": "/docs/troubleshooting/ssr"
+      },
+      {
+       "title": "Testing Mistakes",
+       "href": "/docs/troubleshooting/testing"
+      }
+     ]
+    }
+   ]
+  }
+ ],
+ "flags": {
+  "noGroup": [
+   {
+    "path": "index.md",
+    "title": "Pyreon",
+    "placedIn": "Get started",
+    "note": "Docs home; becomes the selling docs home (_docs-home.json)."
+   },
+   {
+    "path": "why-pyreon.md",
+    "title": "Why Pyreon",
+    "placedIn": "Get started",
+    "note": "Positioning page, no product."
+   },
+   {
+    "path": "compare-app-frameworks.md",
+    "title": "Pyreon vs Expo, React Native, Flutter, KMP and Capacitor",
+    "placedIn": "Get started",
+    "note": "Native comparison (Expo, React Native, Flutter, KMP, Capacitor); could also sit under Native."
+   },
+   {
+    "path": "stability-and-direction.md",
+    "title": "Stability, Versioning & Direction",
+    "placedIn": "Get started",
+    "note": "Status policy; source of the \"Experimental\" label."
+   },
+   {
+    "path": "benchmarks.md",
+    "title": "Benchmarks",
+    "placedIn": "Get started",
+    "note": "Duplicates the marketing /benchmarks page; keep one canonical and link the other."
+   },
+   {
+    "path": "examples.md",
+    "title": "Examples",
+    "placedIn": "Get started",
+    "note": "Gallery across all products."
+   },
+   {
+    "path": "recipes.md",
+    "title": "Recipes",
+    "placedIn": "Get started",
+    "note": "Cross-product recipes."
+   },
+   {
+    "path": "package-catalog.md",
+    "title": "Package catalog",
+    "placedIn": "Reference",
+    "note": "Package index; overlaps the /products index."
+   },
+   {
+    "path": "architecture-and-prior-art.md",
+    "title": "Architecture & prior art",
+    "placedIn": "Reference",
+    "note": "Background reading."
+   },
+   {
+    "path": "core.md",
+    "title": "@pyreon/core",
+    "placedIn": "Reference › Core packages",
+    "note": "Packages underneath every product (no product of their own)."
+   },
+   {
+    "path": "compiler.md",
+    "title": "@pyreon/compiler",
+    "placedIn": "Reference › Core packages",
+    "note": "As above."
+   },
+   {
+    "path": "runtime-dom.md",
+    "title": "@pyreon/runtime-dom",
+    "placedIn": "Reference › Core packages",
+    "note": "As above."
+   },
+   {
+    "path": "runtime-server.md",
+    "title": "@pyreon/runtime-server",
+    "placedIn": "Reference › Core packages",
+    "note": "As above."
+   },
+   {
+    "path": "vite-plugin.md",
+    "title": "@pyreon/vite-plugin",
+    "placedIn": "Reference › Core packages",
+    "note": "As above."
+   },
+   {
+    "path": "typescript.md",
+    "title": "@pyreon/typescript",
+    "placedIn": "Reference › Core packages",
+    "note": "As above."
+   },
+   {
+    "path": "sized-map.md",
+    "title": "@pyreon/sized-map",
+    "placedIn": "Reference › Core packages",
+    "note": "Internal bounded cache, published but not a product."
+   },
+   {
+    "path": "meta.md",
+    "title": "@pyreon/meta",
+    "placedIn": "Reference › Core packages",
+    "note": "Barrel package re-exporting the fundamentals."
+   },
+   {
+    "path": "storybook.md",
+    "title": "Storybook",
+    "placedIn": "Developer tools › Tooling",
+    "note": "Not in the Tooling product package list; nearest home. PackageBadge says status=\"beta\"."
+   },
+   {
+    "path": "native-compat.md",
+    "title": "Native marker contract",
+    "placedIn": "Developer tools › Migrate",
+    "note": "Contract for library authors (nativeCompat()), not a migration guide."
+   },
+   {
+    "path": "migrating-from-angular.md",
+    "title": "Coming from Angular",
+    "placedIn": "Migrate",
+    "note": "No Angular compat layer exists, so no productId."
+   }
+  ],
+  "duplicates": [
+   {
+    "pages": [
+     "a11y.md",
+     "accessibility.md"
+    ],
+    "verdict": "overlap, not a duplicate",
+    "note": "a11y.md documents the @pyreon/a11y package (announce, LiveRegion, VisuallyHidden, SkipLink, createA11yId, route announcements). accessibility.md is the framework-wide map (form ARIA wiring, focus traps, reduced motion, ARIA serialization, primitives). Keep a11y.md as the product overview and retitle accessibility.md \"Accessibility in Pyreon\" under Guides; cross-link both."
+   },
+   {
+    "pages": [
+     "quickstart.md",
+     "getting-started.md"
+    ],
+    "verdict": "overlap",
+    "note": "quickstart.md scaffolds with npm create; getting-started.md installs into an existing Vite project. Retitle getting-started.md \"Add Pyreon to an existing project\" so the two read as different paths."
+   },
+   {
+    "pages": [
+     "island-architecture.md",
+     "patterns/islands.md",
+     "guides/islands.md"
+    ],
+    "verdict": "three pages, one topic",
+    "note": "Reference (441 lines), pattern (224) and how-to guide (70). Merge the pattern page into the guide; keep island-architecture.md as the reference under Zero."
+   },
+   {
+    "pages": [
+     "guides/data-fetching.md",
+     "patterns/data-fetching.md"
+    ],
+    "verdict": "duplicate",
+    "note": "Both teach useQuery + useMutation. Merge into the guide."
+   },
+   {
+    "pages": [
+     "guides/state-management.md",
+     "patterns/state-management.md"
+    ],
+    "verdict": "duplicate",
+    "note": "Both compare store, state-tree and signals. Merge."
+   },
+   {
+    "pages": [
+     "guides/styling-theming.md",
+     "patterns/styler-theming.md"
+    ],
+    "verdict": "duplicate",
+    "note": "Both cover styled + PyreonUI theming. Merge; the guide is also the stand-in Design System overview."
+   },
+   {
+    "pages": [
+     "guides/forms.md",
+     "patterns/form-fields.md",
+     "patterns/dynamic-fields.md"
+    ],
+    "verdict": "overlap",
+    "note": "The guide covers fields and arrays; the two pattern pages repeat parts of it. Fold them in as sections."
+   },
+   {
+    "pages": [
+     "guides/routing.md",
+     "patterns/routing-setup.md"
+    ],
+    "verdict": "overlap",
+    "note": "Router setup is a subset of the routing guide."
+   },
+   {
+    "pages": [
+     "ssr.md",
+     "ssg.md",
+     "guides/ssr-ssg-isr.md"
+    ],
+    "verdict": "overlap, by design",
+    "note": "ssr.md and ssg.md are references; the guide helps choose a mode. Keep, cross-link."
+   },
+   {
+    "pages": [
+     "validation.md",
+     "validate.md"
+    ],
+    "verdict": "naming clash, not a duplicate",
+    "note": "The Validation product is @pyreon/validate (validate.md, titled \"Validate\"), while the page titled \"Validation\" documents @pyreon/validation, the Zod / Valibot / ArkType adapter gate. Readers following \"Validation\" land on the wrong package. Retitle validation.md \"Validation adapters\"."
+   },
+   {
+    "pages": [
+     "benchmarks.md"
+    ],
+    "verdict": "duplicate across sites",
+    "note": "Same record as the marketing /benchmarks page; one should be canonical."
+   },
+   {
+    "pages": [
+     "reactivity-lens.md",
+     "lpih.md"
+    ],
+    "verdict": "distinct",
+    "note": "Reactivity Lens shows static live/static hints; LPIH shows runtime counts. Similar names, different features: worth one sentence on each page pointing at the other."
+   }
+  ],
+  "gaps": [
+   {
+    "productId": "design",
+    "note": "No Design System overview page. Eleven package pages exist (ui-core, styler, unistyle, rocketstyle, attrs, elements, coolgrid, kinetic, kinetic-presets, document-primitives, connector-document); the sidebar points the product at guides/styling-theming.md until an overview lands."
+   },
+   {
+    "productId": "editor",
+    "note": "No single Editors overview: the product spans rich-text.md (@pyreon/rich-text) and code.md (@pyreon/code). The sidebar lists both; an overview that introduces the pair is missing."
+   },
+   {
+    "productId": "tooling",
+    "note": "No Tooling overview: the product spans cli.md (doctor, check), lint.md, devtools.md, reactivity-lens.md and lpih.md. @pyreon/testing has no guide page at all, only the generated reference/testing.md."
+   },
+   {
+    "productId": "migrate",
+    "note": "No Migrate overview: the product spans the five compat pages (react-compat.md, preact-compat.md, vue-compat.md, solid-compat.md, svelte-compat.md) and the migrating-from-*.md guides. migrating-from-react.md is the closest entry point."
+   },
+   {
+    "productId": "ai",
+    "note": "mcp.md is titled \"@pyreon/mcp\" and is the API page; it serves as the overview, but there is no AI-workflow overview tying MCP, Reactivity Lens, `pyreon check` and llms.txt together."
+   },
+   {
+    "productId": null,
+    "package": "@pyreon/config",
+    "note": "Only the generated reference/config.md; no guide page."
+   },
+   {
+    "productId": null,
+    "package": "@pyreon/testing",
+    "note": "Only the generated reference/testing.md; guides/testing.md covers testing apps but not the package API in prose."
+   },
+   {
+    "productId": "auth",
+    "note": "auth.md exists and reads as installable (npm install @pyreon/auth), but the package is not on npm yet: the page needs a next-release callout until it publishes."
+   }
+  ],
+  "statusLabelConflicts": [
+   {
+    "path": "react-compat.md, preact-compat.md, vue-compat.md, solid-compat.md, svelte-compat.md",
+    "note": "PackageBadge status=\"stable\". The pack rules forbid calling anything \"stable\"; facts.md says compat is \"near-full public-API parity\". The new sidebar shows no badge for them."
+   },
+   {
+    "path": "zero.md, devtools.md, storybook.md",
+    "note": "PackageBadge status=\"beta\". Not one of the sidebar badge kinds; not shown."
+   }
+  ]
+ },
+ "overviews": [
+  {
+   "productId": "zero",
+   "name": "Zero",
+   "docsPage": "zero.md",
+   "docsHref": "/docs/zero",
+   "pitch": "content/zero.json#hero",
+   "demo": "content/zero.json#demo",
+   "bench": "content/zero.json#benchmarks",
+   "benchNote": "Compiled SSR (§5), renderToString (§5) and hydration (§4) rows are framework-level; Zero serves them. The full-stack stacks-bench has no published result.",
+   "comingFrom": {
+    "lib": "Next.js App Router",
+    "ref": "content/zero.json#comingFrom[1]"
+   },
+   "crossSell": [
+    "content",
+    "router",
+    "query"
+   ]
+  },
+  {
+   "productId": "content",
+   "name": "Content",
+   "docsPage": "zero-content.md",
+   "docsHref": "/docs/zero-content",
+   "pitch": "content/content.json#hero",
+   "demo": "content/content.json#demo",
+   "bench": null,
+   "comingFrom": null,
+   "crossSell": [
+    "zero",
+    "document",
+    "i18n"
+   ]
+  },
+  {
+   "productId": "native",
+   "name": "Native",
+   "docsPage": "multiplatform.md",
+   "docsHref": "/docs/multiplatform",
+   "pitch": "content/native.json#hero",
+   "demo": "content/native.json#demo",
+   "bench": null,
+   "comingFrom": {
+    "lib": "React Native / Expo",
+    "ref": "content/native.json#comingFrom[0]"
+   },
+   "crossSell": [
+    "primitives",
+    "zero",
+    "auth"
+   ]
+  },
+  {
+   "productId": "primitives",
+   "name": "Primitives",
+   "docsPage": "primitives.md",
+   "docsHref": "/docs/primitives",
+   "pitch": "content/primitives.json#hero",
+   "demo": "content/primitives.json#demo",
+   "bench": null,
+   "comingFrom": {
+    "lib": "React Native",
+    "ref": "content/primitives.json#comingFrom[0]"
+   },
+   "crossSell": [
+    "native",
+    "design",
+    "kinetic"
+   ]
+  },
+  {
+   "productId": "design",
+   "name": "Design System",
+   "docsPage": null,
+   "docsHref": "/docs/guides/styling-theming",
+   "gapNote": "No Design System overview page. Eleven package pages exist (ui-core, styler, unistyle, rocketstyle, attrs, elements, coolgrid, kinetic, kinetic-presets, document-primitives, connector-document); the sidebar points the product at guides/styling-theming.md until an overview lands.",
+   "closestPage": "guides/styling-theming.md",
+   "pitch": "content/design.json#hero",
+   "demo": "content/design.json#demo",
+   "bench": "content/design.json#benchmarks",
+   "comingFrom": {
+    "lib": "styled-components",
+    "ref": "content/design.json#comingFrom[0]"
+   },
+   "crossSell": [
+    "kinetic",
+    "primitives",
+    "atlas"
+   ]
+  },
+  {
+   "productId": "kinetic",
+   "name": "Motion",
+   "docsPage": "kinetic.md",
+   "docsHref": "/docs/kinetic",
+   "pitch": "content/kinetic.json#hero",
+   "demo": "content/kinetic.json#demo",
+   "bench": null,
+   "benchNote": "kinetic vs Motion is in the record (§10) as PROVISIONAL, not a published claim.",
+   "comingFrom": {
+    "lib": "Motion (AnimatePresence)",
+    "ref": "content/kinetic.json#comingFrom[0]"
+   },
+   "crossSell": [
+    "design",
+    "a11y",
+    "primitives"
+   ]
+  },
+  {
+   "productId": "router",
+   "name": "Router",
+   "docsPage": "router.md",
+   "docsHref": "/docs/router",
+   "pitch": "content/router.json#hero",
+   "demo": "content/router.json#demo",
+   "bench": "content/router.json#benchmarks",
+   "comingFrom": {
+    "lib": "React Router",
+    "ref": "content/router.json#comingFrom[0]"
+   },
+   "crossSell": [
+    "zero",
+    "urlstate",
+    "query"
+   ]
+  },
+  {
+   "productId": "reactivity",
+   "name": "Reactivity",
+   "docsPage": "reactivity.md",
+   "docsHref": "/docs/reactivity",
+   "pitch": "content/reactivity.json#hero",
+   "demo": "content/reactivity.json#demo",
+   "bench": "content/reactivity.json#benchmarks",
+   "comingFrom": {
+    "lib": "React useState",
+    "ref": "content/reactivity.json#comingFrom[0]"
+   },
+   "crossSell": [
+    "store",
+    "rx",
+    "tooling"
+   ]
+  },
+  {
+   "productId": "form",
+   "name": "Forms",
+   "docsPage": "form.md",
+   "docsHref": "/docs/form",
+   "pitch": "content/form.json#hero",
+   "demo": "content/form.json#demo",
+   "bench": "content/form.json#benchmarks",
+   "comingFrom": {
+    "lib": "React Hook Form",
+    "ref": "content/form.json#comingFrom[0]"
+   },
+   "crossSell": [
+    "validation",
+    "toast",
+    "feature"
+   ]
+  },
+  {
+   "productId": "validation",
+   "name": "Validation",
+   "docsPage": "validate.md",
+   "docsHref": "/docs/validate",
+   "pitch": "content/validation.json#hero",
+   "demo": "content/validation.json#demo",
+   "bench": "content/validation.json#benchmarks",
+   "comingFrom": {
+    "lib": "Zod",
+    "ref": "content/validation.json#comingFrom[0]"
+   },
+   "crossSell": [
+    "form",
+    "feature",
+    "http"
+   ]
+  },
+  {
+   "productId": "auth",
+   "name": "Auth",
+   "docsPage": "auth.md",
+   "docsHref": "/docs/auth",
+   "pitch": "content/auth.json#hero",
+   "demo": "content/auth.json#demo",
+   "bench": null,
+   "comingFrom": {
+    "lib": "Auth.js (next-auth)",
+    "ref": "content/auth.json#comingFrom[0]"
+   },
+   "crossSell": [
+    "permissions",
+    "zero",
+    "native"
+   ]
+  },
+  {
+   "productId": "query",
+   "name": "Query",
+   "docsPage": "query.md",
+   "docsHref": "/docs/query",
+   "pitch": "content/query.json#hero",
+   "demo": "content/query.json#demo",
+   "bench": "content/query.json#benchmarks",
+   "benchNote": "Only a happy-dom row exists (§10): counts are meaningful, absolute times are not.",
+   "comingFrom": {
+    "lib": "TanStack Query (React)",
+    "ref": "content/query.json#comingFrom[0]"
+   },
+   "crossSell": [
+    "http",
+    "lathe",
+    "feature"
+   ]
+  },
+  {
+   "productId": "http",
+   "name": "HTTP",
+   "docsPage": "http.md",
+   "docsHref": "/docs/http",
+   "pitch": "content/http.json#hero",
+   "demo": "content/http.json#demo",
+   "bench": null,
+   "benchNote": "The record has a ky / ofetch / redaxios / axios head-to-head (§10), but http figures predate a harness fix (PR #4142) and may not be quoted until the next record.",
+   "comingFrom": {
+    "lib": "axios",
+    "ref": "content/http.json#comingFrom[0]"
+   },
+   "crossSell": [
+    "query",
+    "lathe",
+    "validation"
+   ]
+  },
+  {
+   "productId": "store",
+   "name": "Store",
+   "docsPage": "store.md",
+   "docsHref": "/docs/store",
+   "pitch": "content/store.json#hero",
+   "demo": "content/store.json#demo",
+   "bench": null,
+   "benchNote": "The record has a Zustand / Jotai head-to-head (§10), but store figures predate a harness fix (PR #4142) and may not be quoted until the next record.",
+   "comingFrom": {
+    "lib": "Zustand",
+    "ref": "content/store.json#comingFrom[0]"
+   },
+   "crossSell": [
+    "statetree",
+    "storage",
+    "reactivity"
+   ]
+  },
+  {
+   "productId": "statetree",
+   "name": "State Tree",
+   "docsPage": "state-tree.md",
+   "docsHref": "/docs/state-tree",
+   "pitch": "content/statetree.json#hero",
+   "demo": "content/statetree.json#demo",
+   "bench": "content/statetree.json#benchmarks",
+   "comingFrom": {
+    "lib": "MobX-State-Tree",
+    "ref": "content/statetree.json#comingFrom[0]"
+   },
+   "crossSell": [
+    "store",
+    "sync",
+    "machine"
+   ]
+  },
+  {
+   "productId": "machine",
+   "name": "State Machines",
+   "docsPage": "machine.md",
+   "docsHref": "/docs/machine",
+   "pitch": "content/machine.json#hero",
+   "demo": "content/machine.json#demo",
+   "bench": "content/machine.json#benchmarks",
+   "comingFrom": {
+    "lib": "XState",
+    "ref": "content/machine.json#comingFrom[0]"
+   },
+   "crossSell": [
+    "form",
+    "statetree",
+    "store"
+   ]
+  },
+  {
+   "productId": "sync",
+   "name": "Sync",
+   "docsPage": "sync.md",
+   "docsHref": "/docs/sync",
+   "pitch": "content/sync.json#hero",
+   "demo": "content/sync.json#demo",
+   "bench": null,
+   "benchNote": "Pyreon-only throughput (§11), no head-to-head.",
+   "comingFrom": {
+    "lib": "Yjs + React",
+    "ref": "content/sync.json#comingFrom[0]"
+   },
+   "crossSell": [
+    "storage",
+    "editor",
+    "statetree"
+   ]
+  },
+  {
+   "productId": "storage",
+   "name": "Storage",
+   "docsPage": "storage.md",
+   "docsHref": "/docs/storage",
+   "pitch": "content/storage.json#hero",
+   "demo": "content/storage.json#demo",
+   "bench": "content/storage.json#benchmarks",
+   "comingFrom": {
+    "lib": "Zustand persist",
+    "ref": "content/storage.json#comingFrom[0]"
+   },
+   "crossSell": [
+    "store",
+    "sync",
+    "urlstate"
+   ]
+  },
+  {
+   "productId": "feature",
+   "name": "Feature",
+   "docsPage": "feature.md",
+   "docsHref": "/docs/feature",
+   "pitch": "content/feature.json#hero",
+   "demo": "content/feature.json#demo",
+   "bench": null,
+   "comingFrom": null,
+   "crossSell": [
+    "form",
+    "table",
+    "query"
+   ]
+  },
+  {
+   "productId": "i18n",
+   "name": "i18n",
+   "docsPage": "i18n.md",
+   "docsHref": "/docs/i18n",
+   "pitch": "content/i18n.json#hero",
+   "demo": "content/i18n.json#demo",
+   "bench": "content/i18n.json#benchmarks",
+   "comingFrom": {
+    "lib": "i18next",
+    "ref": "content/i18n.json#comingFrom[0]"
+   },
+   "crossSell": [
+    "validation",
+    "content",
+    "a11y"
+   ]
+  },
+  {
+   "productId": "permissions",
+   "name": "Permissions",
+   "docsPage": "permissions.md",
+   "docsHref": "/docs/permissions",
+   "pitch": "content/permissions.json#hero",
+   "demo": "content/permissions.json#demo",
+   "bench": "content/permissions.json#benchmarks",
+   "comingFrom": {
+    "lib": "CASL",
+    "ref": "content/permissions.json#comingFrom[0]"
+   },
+   "crossSell": [
+    "auth",
+    "router",
+    "feature"
+   ]
+  },
+  {
+   "productId": "urlstate",
+   "name": "URL State",
+   "docsPage": "url-state.md",
+   "docsHref": "/docs/url-state",
+   "pitch": "content/urlstate.json#hero",
+   "demo": "content/urlstate.json#demo",
+   "bench": "content/urlstate.json#benchmarks",
+   "comingFrom": {
+    "lib": "nuqs",
+    "ref": "content/urlstate.json#comingFrom[0]"
+   },
+   "crossSell": [
+    "router",
+    "table",
+    "storage"
+   ]
+  },
+  {
+   "productId": "hooks",
+   "name": "Hooks",
+   "docsPage": "hooks.md",
+   "docsHref": "/docs/hooks",
+   "pitch": "content/hooks.json#hero",
+   "demo": "content/hooks.json#demo",
+   "bench": "content/hooks.json#benchmarks",
+   "benchNote": "Small head-to-head (§10): counter 1.27× / 1.47× vs Solid / Preact counters, overnight run.",
+   "comingFrom": {
+    "lib": "react-use",
+    "ref": "content/hooks.json#comingFrom[0]"
+   },
+   "crossSell": [
+    "reactivity",
+    "hotkeys",
+    "storage"
+   ]
+  },
+  {
+   "productId": "hotkeys",
+   "name": "Hotkeys",
+   "docsPage": "hotkeys.md",
+   "docsHref": "/docs/hotkeys",
+   "pitch": "content/hotkeys.json#hero",
+   "demo": "content/hotkeys.json#demo",
+   "bench": "content/hotkeys.json#benchmarks",
+   "comingFrom": {
+    "lib": "hotkeys-js",
+    "ref": "content/hotkeys.json#comingFrom[1]"
+   },
+   "crossSell": [
+    "a11y",
+    "dnd",
+    "hooks"
+   ]
+  },
+  {
+   "productId": "rx",
+   "name": "RX",
+   "docsPage": "rx.md",
+   "docsHref": "/docs/rx",
+   "pitch": "content/rx.json#hero",
+   "demo": "content/rx.json#demo",
+   "bench": "content/rx.json#benchmarks",
+   "benchNote": "The rx rows (§10) print medians without CIs: the `pipe` node count is exact, the timings give no verdict.",
+   "comingFrom": {
+    "lib": "RxJS",
+    "ref": "content/rx.json#comingFrom[0]"
+   },
+   "crossSell": [
+    "reactivity",
+    "table",
+    "charts"
+   ]
+  },
+  {
+   "productId": "a11y",
+   "name": "Accessibility",
+   "docsPage": "a11y.md",
+   "docsHref": "/docs/a11y",
+   "gapNote": "accessibility.md is the framework-wide accessibility map; a11y.md is this package. Keep both (see flags).",
+   "pitch": "content/a11y.json#hero",
+   "demo": "content/a11y.json#demo",
+   "bench": null,
+   "comingFrom": null,
+   "crossSell": [
+    "form",
+    "toast",
+    "dnd"
+   ]
+  },
+  {
+   "productId": "dnd",
+   "name": "Drag and Drop",
+   "docsPage": "dnd.md",
+   "docsHref": "/docs/dnd",
+   "pitch": "content/dnd.json#hero",
+   "demo": "content/dnd.json#demo",
+   "bench": "content/dnd.json#benchmarks",
+   "benchNote": "Only a happy-dom row exists (§10): counts are meaningful, absolute times are not.",
+   "comingFrom": {
+    "lib": "react-beautiful-dnd",
+    "ref": "content/dnd.json#comingFrom[0]"
+   },
+   "crossSell": [
+    "flow",
+    "table",
+    "a11y"
+   ]
+  },
+  {
+   "productId": "toast",
+   "name": "Toast",
+   "docsPage": "toast.md",
+   "docsHref": "/docs/toast",
+   "pitch": "content/toast.json#hero",
+   "demo": "content/toast.json#demo",
+   "bench": "content/toast.json#benchmarks",
+   "comingFrom": {
+    "lib": "react-hot-toast",
+    "ref": "content/toast.json#comingFrom[1]"
+   },
+   "crossSell": [
+    "form",
+    "a11y",
+    "kinetic"
+   ]
+  },
+  {
+   "productId": "table",
+   "name": "Table",
+   "docsPage": "table.md",
+   "docsHref": "/docs/table",
+   "pitch": "content/table.json#hero",
+   "demo": "content/table.json#demo",
+   "bench": "content/table.json#benchmarks",
+   "comingFrom": {
+    "lib": "TanStack Table (React)",
+    "ref": "content/table.json#comingFrom[0]"
+   },
+   "crossSell": [
+    "virtual",
+    "feature",
+    "urlstate"
+   ]
+  },
+  {
+   "productId": "virtual",
+   "name": "Virtual",
+   "docsPage": "virtual.md",
+   "docsHref": "/docs/virtual",
+   "pitch": "content/virtual.json#hero",
+   "demo": "content/virtual.json#demo",
+   "bench": "content/virtual.json#benchmarks",
+   "comingFrom": {
+    "lib": "TanStack Virtual (React)",
+    "ref": "content/virtual.json#comingFrom[0]"
+   },
+   "crossSell": [
+    "table",
+    "rx",
+    "charts"
+   ]
+  },
+  {
+   "productId": "charts",
+   "name": "Charts",
+   "docsPage": "charts.md",
+   "docsHref": "/docs/charts",
+   "pitch": "content/charts.json#hero",
+   "demo": "content/charts.json#demo",
+   "bench": "content/charts.json#benchmarks",
+   "comingFrom": {
+    "lib": "ECharts",
+    "ref": "content/charts.json#comingFrom[0]"
+   },
+   "crossSell": [
+    "table",
+    "document",
+    "native"
+   ]
+  },
+  {
+   "productId": "editor",
+   "name": "Editors",
+   "docsPage": null,
+   "docsHref": "/docs/rich-text",
+   "gapNote": "No single Editors overview: the product spans rich-text.md (@pyreon/rich-text) and code.md (@pyreon/code). The sidebar lists both; an overview that introduces the pair is missing.",
+   "closestPage": "rich-text.md",
+   "pitch": "content/editor.json#hero",
+   "demo": "content/editor.json#demo",
+   "bench": "content/editor.json#benchmarks",
+   "benchNote": "Only a bundle row exists (§7): @pyreon/code 131.0 KB vs @uiw/react-codemirror 126.4 KB, 4% larger. A loss: the section headline must not lead with it.",
+   "comingFrom": {
+    "lib": "@tiptap/react",
+    "ref": "content/editor.json#comingFrom[1]"
+   },
+   "crossSell": [
+    "sync",
+    "document",
+    "form"
+   ]
+  },
+  {
+   "productId": "flow",
+   "name": "Flow",
+   "docsPage": "flow.md",
+   "docsHref": "/docs/flow",
+   "pitch": "content/flow.json#hero",
+   "demo": "content/flow.json#demo",
+   "bench": "content/flow.json#benchmarks",
+   "comingFrom": {
+    "lib": "React Flow",
+    "ref": "content/flow.json#comingFrom[0]"
+   },
+   "crossSell": [
+    "dnd",
+    "charts",
+    "machine"
+   ]
+  },
+  {
+   "productId": "document",
+   "name": "Documents",
+   "docsPage": "document.md",
+   "docsHref": "/docs/document",
+   "pitch": "content/document.json#hero",
+   "demo": "content/document.json#demo",
+   "bench": null,
+   "benchNote": "Pyreon-only throughput (§11), no head-to-head.",
+   "comingFrom": null,
+   "crossSell": [
+    "charts",
+    "content",
+    "table"
+   ]
+  },
+  {
+   "productId": "atlas",
+   "name": "Atlas",
+   "docsPage": "atlas.md",
+   "docsHref": "/docs/atlas",
+   "pitch": "content/atlas.json#hero",
+   "demo": "content/atlas.json#demo",
+   "bench": null,
+   "comingFrom": {
+    "lib": "Storybook",
+    "ref": "content/atlas.json#comingFrom[0]"
+   },
+   "crossSell": [
+    "design",
+    "ai",
+    "tooling"
+   ]
+  },
+  {
+   "productId": "lathe",
+   "name": "Lathe",
+   "docsPage": "lathe.md",
+   "docsHref": "/docs/lathe",
+   "pitch": "content/lathe.json#hero",
+   "demo": "content/lathe.json#demo",
+   "bench": null,
+   "comingFrom": {
+    "lib": "orval",
+    "ref": "content/lathe.json#comingFrom[0]"
+   },
+   "crossSell": [
+    "query",
+    "http",
+    "atlas"
+   ]
+  },
+  {
+   "productId": "loom",
+   "name": "Loom",
+   "docsPage": "loom.md",
+   "docsHref": "/docs/loom",
+   "pitch": "content/loom.json#hero",
+   "demo": "content/loom.json#demo",
+   "bench": null,
+   "benchNote": "Pyreon-only figure (§11, 374 ms warm scan), no head-to-head.",
+   "comingFrom": null,
+   "crossSell": [
+    "tooling",
+    "atlas",
+    "lathe"
+   ]
+  },
+  {
+   "productId": "tooling",
+   "name": "Tooling",
+   "docsPage": null,
+   "docsHref": "/docs/cli",
+   "gapNote": "No Tooling overview: the product spans cli.md (doctor, check), lint.md, devtools.md, reactivity-lens.md and lpih.md. @pyreon/testing has no guide page at all, only the generated reference/testing.md.",
+   "closestPage": "cli.md",
+   "pitch": "content/tooling.json#hero",
+   "demo": "content/tooling.json#demo",
+   "bench": null,
+   "comingFrom": null,
+   "crossSell": [
+    "ai",
+    "atlas",
+    "loom"
+   ]
+  },
+  {
+   "productId": "ai",
+   "name": "AI and MCP",
+   "docsPage": "mcp.md",
+   "docsHref": "/docs/mcp",
+   "pitch": "content/ai.json#hero",
+   "demo": "content/ai.json#demo",
+   "bench": null,
+   "comingFrom": null,
+   "crossSell": [
+    "tooling",
+    "atlas",
+    "migrate"
+   ]
+  },
+  {
+   "productId": "migrate",
+   "name": "Migrate",
+   "docsPage": null,
+   "docsHref": "/docs/migrating-from-react",
+   "gapNote": "No Migrate overview: the product spans the five compat pages (react-compat.md, preact-compat.md, vue-compat.md, solid-compat.md, svelte-compat.md) and the migrating-from-*.md guides. migrating-from-react.md is the closest entry point.",
+   "closestPage": "migrating-from-react.md",
+   "pitch": "content/migrate.json#hero",
+   "demo": "content/migrate.json#demo",
+   "bench": null,
+   "comingFrom": {
+    "lib": "React",
+    "ref": "content/migrate.json#comingFrom[0]"
+   },
+   "crossSell": [
+    "ai",
+    "zero",
+    "reactivity"
+   ]
+  }
+ ]
+}

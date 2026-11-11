@@ -1943,14 +1943,25 @@ function hydrateComponent(
           // Hydrate the resolved subtree against the SSR DOM range.
           // `anchor = endMarker` bounds the sibling walk; hydrateChild
           // returns when it has consumed the range or hit the end marker.
-          const [childCleanup] = hydrateChild(
-            resolved as VNodeChild,
-            rangeStart,
-            parent,
-            endMarker,
-            `${path}:async`,
-          )
-          resolvedCleanup = childCleanup
+          //
+          // The microtask runs outside the synchronous walk, so re-enter the
+          // walk's ambient state exactly as `hydrateDeferredLazy` does:
+          //  - the owner: this component's scope, so the subtree's
+          //    `useContext()` sees the ancestors' providers and what this
+          //    component provided before its first await (#4377);
+          //  - the hydrating flag: without it a `<Suspense>` in the subtree
+          //    renders its fallback over the server content of a still-loading
+          //    lazy child (and later remounts it), and a compiled `_tpl` builds
+          //    eagerly instead of adopting at its cursor.
+          const prev = setHydrating(true)
+          try {
+            const [childCleanup] = runWithContextOwner(scope, () =>
+              hydrateChild(resolved as VNodeChild, rangeStart, parent, endMarker, `${path}:async`),
+            )
+            resolvedCleanup = childCleanup
+          } finally {
+            setHydrating(prev)
+          }
         } catch (err) {
           const handled = dispatchToErrorBoundary(err)
           if (!handled && process.env.NODE_ENV !== 'production') {

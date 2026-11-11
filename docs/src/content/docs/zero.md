@@ -3,6 +3,10 @@ title: Zero
 description: Full-stack meta-framework for Pyreon applications.
 ---
 
+<ProductPitch id="zero" />
+
+<LiveDemo id="zero" />
+
 `@pyreon/zero` is a batteries-included meta-framework for Pyreon, similar to Next.js for React or Nuxt for Vue. It provides file-system routing, SSR/SSG/ISR/SPA rendering modes, optimized components, a theme system, SEO utilities, font/image optimization, and production deployment adapters — everything you need to ship a full-stack Pyreon application.
 
 <PackageBadge name="@pyreon/zero" href="/docs/zero" status="beta" />
@@ -327,7 +331,7 @@ Add the generated file to `.gitignore` — it's build output. `RouteParams<'/pos
 typed as `{ id: string }`. Off by default (no surprise file writes); until codegen runs,
 `href` stays `string`, so existing code never breaks.
 
-```gitignore title=".gitignore"
+```text title=".gitignore"
 src/pyreon-routes.d.ts
 ```
 
@@ -1110,10 +1114,15 @@ export const action = defineAction(
 
 export default function NewPost() {
   const sub = useSubmission(action)
+  // result() is the handler's return value OR an ActionInputError; narrow on `fields`.
+  const titleErrors = () => {
+    const r = sub.result()
+    return r && 'fields' in r ? (r.fields.title?.join(', ') ?? '') : ''
+  }
   return (
     <Form action={action}>
       <input name="title" />
-      <p>{() => sub.result()?.fields?.title?.join(', ') ?? ''}</p>
+      <p>{titleErrors}</p>
       <input name="views" />
       <button>Create</button>
     </Form>
@@ -1991,3 +2000,11 @@ There are no `@pyreon/zero/adapter-*` or `@pyreon/zero/isr` subpaths. Adapters a
 - **[SSG reference](/docs/ssg)** — static generation, dynamic routes, redirects, i18n, build-time ISR, adapters, error handling.
 - **[Router](/docs/router)** — the routing primitives Zero is built on.
 - **[Create Zero](/docs/create-zero)** — project scaffolding.
+
+<BenchCallout id="zero" />
+
+<ComingFrom id="zero" />
+
+<InlineSell id="content" />
+
+<CrossSell id="zero" />

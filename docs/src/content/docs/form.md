@@ -3,6 +3,10 @@ title: Form
 description: Signal-based form state management with validation, field arrays, and input binding.
 ---
 
+<ProductPitch id="form" />
+
+<LiveDemo id="form" />
+
 `@pyreon/form` provides reactive form handling built on `@pyreon/reactivity` signals. Each field's value, error, touched, and dirty state is a fine-grained signal, so only the parts of your UI that depend on a specific field re-render when it changes. Supports per-field and schema-level validation, async validators, debouncing, cross-field validation, dynamic field arrays, and input binding.
 
 <PackageBadge name="@pyreon/form" href="/docs/form" />
@@ -1778,3 +1782,11 @@ function useFormContext<TValues>(): FormState<TValues>
 <APICard name="FormProps / SubmitProps" type="type" signature="FormProps, SubmitProps" description="Props of the <Form> and <Submit> components." />
 <APICard name="FieldDefinition / InferFieldValues / UseFormFieldsOptions" type="type" signature="FieldDefinition, InferFieldValues<TDefs>, UseFormFieldsOptions<TDefs>" description="Types for the field-definition form of useForm." />
 <APICard name="FieldNames / FieldValue / FormValues / NestValues" type="type" signature="FieldNames, FieldValue, FormValues, NestValues" description="Helper types for field names, per-field values, and nested value shapes." />
+
+<BenchCallout id="form" />
+
+<ComingFrom id="form" />
+
+<InlineSell id="validation" />
+
+<CrossSell id="form" />

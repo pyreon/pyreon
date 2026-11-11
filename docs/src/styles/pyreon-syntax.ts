@@ -1,12 +1,12 @@
+import { syntax } from '../site/theme'
+
 /**
  * `pyreon` syntax themes — TS/JSX, dark + light.
  *
- * Hex values mirror the `--syn-*` semantic tokens in ./tokens.css
- * (verbatim from the brand handoff §3 / §6.7). The light palette is the
- * AA-verified set from the handoff. Shiki resolves colours at build time
- * so it cannot read CSS vars — VitePress applies the correct one per
- * `.dark` class via the `{ light, dark }` config. Keep these two
- * palettes in lockstep with tokens.css if the handoff revises them.
+ * The colours come from `site/theme.ts` (`syntax`), the only place a hex
+ * lives. Shiki resolves colours at build time, so it cannot read CSS
+ * variables: it emits both themes per token and the page's `data-theme`
+ * picks one.
  */
 // Inline the shape we use rather than importing `shiki` as a type-only
 // dep. Shiki is a transitive dep of @pyreon/zero-content (via the
@@ -43,33 +43,26 @@ interface Palette {
   variable: string
 }
 
-// tokens.css → semantic `--syn-*` · DARK
-const DARK: Palette = {
-  bg: '#0A0A0E',
-  fg: '#E6E0D2',
-  comment: '#807C8B', // 4.9:1 on #0A0A0E — WCAG AA (mirrors --syn-comment; was #5C5867 @ 2.86:1)
-  punct: '#8A8696',
-  keyword: '#FF5E1A', // ember-core
-  string: '#FFC83D', // ember-warm
-  number: '#FF1F8C', // ember-plasma
-  fn: '#22D3EE', // cyan
-  type: '#A78BFA', // soft violet
-  variable: '#F4EFE6',
-}
+// The site's ONE syntax theme (visual-alignment.md A9), from `site/theme.ts`:
+// keyword ember, string warm, number plasma, fn cyan, type violet, comment and
+// punctuation fog. The light set is the AA-checked one for code on the paper
+// well (every token ≥ 4.5:1 on #F4EFE6 and #FFFFFF). Product pages
+// (vite-plugins/product-content.ts) and the docs share these two themes.
+const fromSyntax = (s: (typeof syntax)['dark' | 'light']): Palette => ({
+  bg: s.bg,
+  fg: s.fg,
+  comment: s.com,
+  punct: s.punct,
+  keyword: s.kw,
+  string: s.str,
+  number: s.num,
+  fn: s.fn,
+  type: s.type,
+  variable: s.fg,
+})
 
-// tokens.css → semantic `--syn-*` · LIGHT (AA-verified on paper-3)
-const LIGHT: Palette = {
-  bg: '#FAF5EB',
-  fg: '#14141C',
-  comment: '#71707C',
-  punct: '#6E6A78',
-  keyword: '#B43A0E',
-  string: '#855507',
-  number: '#A41859',
-  fn: '#0A6E89',
-  type: '#5226C7',
-  variable: '#14141C',
-}
+const DARK: Palette = fromSyntax(syntax.dark)
+const LIGHT: Palette = fromSyntax(syntax.light)
 
 function makeTheme(p: Palette, type: 'dark' | 'light'): ThemeRegistrationRaw {
   return {

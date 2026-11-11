@@ -31,8 +31,11 @@ const Main = el.config({ name: 'SiteMain' }).attrs({ tag: 'main', block: true, c
  * The marketing shell: skip link, `<header>` (nav, mega menu, mobile sheet),
  * `<main id="site-main">`, `<footer>`. Every non-docs page renders in it —
  * through `routes/(site)/_layout.tsx`, and directly from `_404.tsx`.
+ *
+ * `app` is for the docs layout: the page hydrates as the router app, so
+ * `<main>` must not carry the static-page marker (`render-mode.ts`).
  */
-export function SiteShell(props: { children?: VNodeChild }) {
+export function SiteShell(props: { children?: VNodeChild; app?: boolean | undefined }) {
   // The islands' plain stylesheet (kit/site-css.ts): into this request's
   // <style> on the server, into the live sheet when the docs app renders a
   // marketing page in the browser. Idempotent by key.
@@ -41,7 +44,7 @@ export function SiteShell(props: { children?: VNodeChild }) {
     <Page>
       <SkipLink href="#site-main">Skip to content</SkipLink>
       <SiteHeader />
-      <Main id="site-main" tabIndex={-1} data-site-static="">
+      <Main id="site-main" tabIndex={-1} data-site-static={props.app ? undefined : ""}>
         {props.children}
       </Main>
       <SiteFooter />

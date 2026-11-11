@@ -3,6 +3,10 @@ title: Hooks
 description: Collection of reactive hooks for DOM interactions, media queries, focus management, and more.
 ---
 
+<ProductPitch id="hooks" />
+
+<LiveDemo id="hooks" />
+
 `@pyreon/hooks` provides a comprehensive set of reactive hooks built on Pyreon's signal-based reactivity system. Each hook returns reactive signals that automatically update your UI when values change. All hooks that attach DOM listeners use `onMount`/`onUnmount` for proper lifecycle management, so they must be called inside a Pyreon component.
 
 <PackageBadge name="@pyreon/hooks" href="/docs/hooks" />
@@ -2419,3 +2423,11 @@ On the web, forward reports to a vendor (Sentry, your own endpoint) with `setCra
 | `Size`            | `&#123; width: number; height: number &#125;`                                                       |
 | `WindowSize`      | `&#123; width: number; height: number &#125;`                                                       |
 | `BreakpointMap`   | `Record<string, number>`                                                                            |
+
+<BenchCallout id="hooks" />
+
+<ComingFrom id="hooks" />
+
+<InlineSell id="reactivity" />
+
+<CrossSell id="hooks" />

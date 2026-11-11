@@ -1,3 +1,4 @@
+import { When } from '../docs-ui/when'
 interface Prop {
   name: string
   type: string
@@ -17,7 +18,9 @@ export function PropTable(props: PropTableProps) {
   if (items.length === 0) return null
   return (
     <div class="prop-table">
-      {props.title ? <div class="prop-table-title">{props.title}</div> : null}
+      <When on={props.title}>
+        <div class="prop-table-title">{props.title}</div>
+      </When>
       <table>
         <thead>
           <tr>
@@ -32,13 +35,20 @@ export function PropTable(props: PropTableProps) {
             <tr>
               <td>
                 <code>{p.name}</code>
-                {p.required ? <span class="required">*</span> : null}
+                <When on={p.required}>
+                  <span class="required">*</span>
+                </When>
               </td>
               <td>
                 <code class="type">{p.type}</code>
               </td>
               <td>
-                {p.default ? <code>{p.default}</code> : <span class="dash">—</span>}
+                <When on={p.default}>
+                  <code>{p.default}</code>
+                </When>
+                <When on={!p.default}>
+                  <span class="dash">—</span>
+                </When>
               </td>
               <td>{p.description}</td>
             </tr>
