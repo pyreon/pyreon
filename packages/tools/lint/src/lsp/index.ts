@@ -34,26 +34,83 @@ import type {
   firesToCreationSiteFindings as FiresToHintsFn,
   ReactivityFinding,
 } from '@pyreon/compiler/analyze'
-import { existsSync } from 'node:fs'
+import { existsSync, statSync } from 'node:fs'
 import nodePath from 'node:path'
+import { SizedMap } from '@pyreon/sized-map'
 import { AstCache } from '../cache'
-import { getPreset } from '../config/presets'
+import { locateConfig } from '../config/loader'
+import { resolveLintConfig } from '../lint'
 import { allRules } from '../rules/index'
-import { _resetConfigDiagnosticsCache, lintFile } from '../runner'
-import type { Diagnostic, LintConfig } from '../types'
+import { _resetConfigDiagnosticsCache, fixEdits, lintFile, selectFixEdits } from '../runner'
+import type { Diagnostic, Fix, LintConfig } from '../types'
+import { LineIndex } from '../utils/source'
 
 const cache = new AstCache()
-let config: LintConfig = getPreset('recommended')
+
+/** Set by `_reloadConfig` — wins over the per-document config lookup. */
+let configOverride: LintConfig | undefined
 
 /**
- * Reload the LSP's lint config. Resets the runner's per-process
- * validation cache so newly-configured options are re-validated against
- * rule schemas on the next lint pass — needed when the user edits
- * `.pyreonlintrc.json` mid-session. Future hookup point for an LSP
- * `workspace/didChangeConfiguration` notification.
+ * Per-directory resolved config. The editor lints a document with the config
+ * that governs ITS directory — the same nearest-`.pyreonlintrc.json` rule the
+ * CLI uses — instead of a fixed preset: a server that ignored the project
+ * config could neither show `readable` findings nor fix them on save.
+ *
+ * Bounded (LRU, one entry per directory with an open document) and validated
+ * against the config file's mtime on every use, so an edit to
+ * `.pyreonlintrc.json` takes effect on the next keystroke.
  */
-export function _reloadConfig(next: LintConfig): void {
-  config = next
+const configByDir = new SizedMap<
+  string,
+  { path: string | null; mtimeMs: number; config: LintConfig }
+>({ maxEntries: 64, lru: true })
+
+function mtimeOf(path: string): number {
+  try {
+    return statSync(path).mtimeMs
+  } catch {
+    return -1
+  }
+}
+
+/** @internal — exported for tests. The config the server lints `filePath` with. */
+export function _configFor(filePath: string): LintConfig {
+  if (configOverride) return configOverride
+  const dir = nodePath.dirname(filePath)
+  const hit = configByDir.get(dir)
+  if (hit && (hit.path === null || mtimeOf(hit.path) === hit.mtimeMs)) return hit.config
+  let located: ReturnType<typeof locateConfig> = null
+  try {
+    located = locateConfig(dir)
+  } catch {
+    located = null
+  }
+  let config: LintConfig
+  try {
+    config = resolveLintConfig(located?.config ?? null)
+  } catch {
+    // An invalid preset name: lint with the default rather than not at all.
+    config = resolveLintConfig(null)
+  }
+  if (hit) _resetConfigDiagnosticsCache()
+  configByDir.set(dir, {
+    path: located?.path ?? null,
+    mtimeMs: located ? mtimeOf(located.path) : 0,
+    config,
+  })
+  return config
+}
+
+/**
+ * Pin the LSP's lint config, bypassing the per-document lookup (tests, and a
+ * future `workspace/didChangeConfiguration` hookup). Resets the runner's
+ * per-process validation cache so newly-configured options are re-validated
+ * against rule schemas on the next lint pass. Pass `undefined` to go back to
+ * reading each document's `.pyreonlintrc.json`.
+ */
+export function _reloadConfig(next: LintConfig | undefined): void {
+  configOverride = next
+  configByDir.clear()
   _resetConfigDiagnosticsCache()
   cache.clear()
 }
@@ -87,17 +144,50 @@ interface LspInlayHint {
   paddingLeft?: boolean
 }
 
-function toLspDiagnostics(diagnostics: Diagnostic[]): LspDiagnostic[] {
-  return diagnostics.map((d) => ({
-    range: {
-      start: { line: d.loc.line - 1, character: d.loc.column - 1 },
-      end: { line: d.loc.line - 1, character: d.loc.column - 1 + (d.span.end - d.span.start) },
-    },
+interface LspPosition {
+  line: number
+  character: number
+}
+
+interface LspRange {
+  start: LspPosition
+  end: LspPosition
+}
+
+/**
+ * Offset → LSP position (0-based line, 0-based UTF-16 character — which is
+ * exactly a JS string index within the line).
+ *
+ * The previous conversion took `loc.column - 1` as if the column were 1-based;
+ * `LineIndex` columns are 0-based, so every diagnostic started one character
+ * early (at `-1` for a finding in column 0), and the end was computed as
+ * "start + span length" on the START line, which is wrong for any span that
+ * crosses a line. Code actions need exact ranges, so both are derived from
+ * offsets now.
+ */
+function toPosition(index: LineIndex, offset: number): LspPosition {
+  const loc = index.locate(offset)
+  return { line: loc.line - 1, character: loc.column }
+}
+
+function toRange(index: LineIndex, start: number, end: number): LspRange {
+  return { start: toPosition(index, start), end: toPosition(index, end) }
+}
+
+function toLspDiagnostic(d: Diagnostic, index: LineIndex): LspDiagnostic {
+  return {
+    range: toRange(index, d.span.start, d.span.end),
     severity: d.severity === 'error' ? 1 : d.severity === 'warn' ? 2 : 3,
     source: 'pyreon-lint',
     message: d.message,
     code: d.ruleId,
-  }))
+  }
+}
+
+/** @internal — exported for tests. */
+export function _toLspDiagnostics(diagnostics: Diagnostic[], text: string): LspDiagnostic[] {
+  const index = new LineIndex(text)
+  return diagnostics.map((d) => toLspDiagnostic(d, index))
 }
 
 // ─── Reactivity Lens surface ───────────────────────────────────────────────
@@ -538,8 +628,8 @@ async function lintDocument(uri: string, text: string): Promise<LspDiagnostic[]>
   const filePath = _uriToFilePath(uri)
   let lintDiags: LspDiagnostic[] = []
   try {
-    const result = lintFile(filePath, text, allRules, config, cache)
-    lintDiags = toLspDiagnostics(result.diagnostics)
+    const result = lintFile(filePath, text, allRules, _configFor(filePath), cache)
+    lintDiags = _toLspDiagnostics(result.diagnostics, text)
   } catch {
     // Parse errors, unsupported file types — no lint diagnostics. The
     // Reactivity-Lens layer is computed independently below (it has its
@@ -573,6 +663,100 @@ function debounceLint(uri: string, text: string): void {
   )
 }
 
+// ─── Code actions ──────────────────────────────────────────────────────────
+
+/** The kind VS Code's `editor.codeActionsOnSave` asks for: `{ "source.fixAll.pyreon": "explicit" }`. */
+export const FIX_ALL_KIND = 'source.fixAll.pyreon'
+
+interface LspTextEdit {
+  range: LspRange
+  newText: string
+}
+
+interface LspCodeAction {
+  title: string
+  kind: string
+  diagnostics?: LspDiagnostic[]
+  isPreferred?: boolean
+  edit: { changes: Record<string, LspTextEdit[]> }
+}
+
+/** LSP kinds are hierarchical: a request for `source.fixAll` matches `source.fixAll.pyreon`. */
+function kindRequested(kind: string, only: readonly string[] | undefined): boolean {
+  if (!only || only.length === 0) return true
+  return only.some((o) => kind === o || kind.startsWith(`${o}.`))
+}
+
+function toTextEdits(edits: readonly Fix[], index: LineIndex): LspTextEdit[] {
+  return edits.map((e) => ({ range: toRange(index, e.span.start, e.span.end), newText: e.replacement }))
+}
+
+/**
+ * Code actions for a document: one `quickfix` per fixable finding in the
+ * requested range, a "fix all of this rule" action when a rule has several,
+ * and a `source.fixAll.pyreon` action that applies every non-overlapping fix
+ * in the document — the action `codeActionsOnSave` runs.
+ *
+ * Pure (given the document text); the JSON-RPC handler is a thin wrapper.
+ *
+ * @internal — exported for tests.
+ */
+export function _computeCodeActions(
+  uri: string,
+  text: string,
+  range: LspRange | undefined,
+  only: readonly string[] | undefined,
+): LspCodeAction[] {
+  const filePath = _uriToFilePath(uri)
+  let diagnostics: Diagnostic[]
+  try {
+    diagnostics = lintFile(filePath, text, allRules, _configFor(filePath), cache).diagnostics
+  } catch {
+    return []
+  }
+  const fixable = diagnostics.filter((d) => d.fix)
+  if (fixable.length === 0) return []
+  const index = new LineIndex(text)
+  const actions: LspCodeAction[] = []
+
+  if (kindRequested('quickfix', only)) {
+    const byRule = new Map<string, Diagnostic[]>()
+    for (const d of fixable) byRule.set(d.ruleId, [...(byRule.get(d.ruleId) ?? []), d])
+
+    for (const d of fixable) {
+      const lsp = toLspDiagnostic(d, index)
+      if (range && (lsp.range.end.line < range.start.line || lsp.range.start.line > range.end.line)) {
+        continue
+      }
+      actions.push({
+        title: `Fix: ${d.message.split('. ')[0]?.replace(/\.$/, '') ?? d.ruleId} (${d.ruleId})`,
+        kind: 'quickfix',
+        diagnostics: [lsp],
+        isPreferred: true,
+        edit: { changes: { [uri]: toTextEdits(fixEdits(d.fix!), index) } },
+      })
+      const sameRule = byRule.get(d.ruleId) ?? []
+      if (sameRule.length > 1) {
+        actions.push({
+          title: `Fix all ${d.ruleId} problems in this file`,
+          kind: 'quickfix',
+          edit: { changes: { [uri]: toTextEdits(selectFixEdits(sameRule), index) } },
+        })
+        byRule.set(d.ruleId, []) // offer the rule-wide action once
+      }
+    }
+  }
+
+  if (kindRequested(FIX_ALL_KIND, only)) {
+    actions.push({
+      title: 'Fix all auto-fixable Pyreon lint problems',
+      kind: FIX_ALL_KIND,
+      edit: { changes: { [uri]: toTextEdits(selectFixEdits(diagnostics), index) } },
+    })
+  }
+  return actions
+}
+
 // ─── Message handling ──────────────────────────────────────────────────────
 
 const openDocuments = new Map<string, string>()
@@ -595,6 +779,7 @@ export function _handleMessage(
           textDocumentSync: 1, // Full sync
           diagnosticProvider: { interFileDependencies: false, workspaceDiagnostics: false },
           inlayHintProvider: true,
+          codeActionProvider: { codeActionKinds: ['quickfix', FIX_ALL_KIND] },
         },
         serverInfo: { name: 'pyreon-lint', version: '0.11.5' },
       },
@@ -664,6 +849,14 @@ export function _handleMessage(
     })
   }
 
+  if (msg.method === 'textDocument/codeAction') {
+    const uri: string = msg.params.textDocument.uri
+    const text = openDocuments.get(uri)
+    if (text == null) return { jsonrpc: '2.0', id: msg.id, result: [] }
+    const actions = _computeCodeActions(uri, text, msg.params.range, msg.params.context?.only)
+    return { jsonrpc: '2.0', id: msg.id, result: actions }
+  }
+
   if (msg.method === 'textDocument/didClose') {
     const uri = msg.params.textDocument.uri
     openDocuments.delete(uri)
@@ -695,6 +888,7 @@ export function _handleMessage(
 export function _resetOpenDocuments(): void {
   openDocuments.clear()
   _projectRootCache.clear()
+  configByDir.clear()
 }
 
 // ─── JSON-RPC transport (stdin/stdout) ─────────────────────────────────────
