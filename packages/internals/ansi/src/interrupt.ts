@@ -9,6 +9,11 @@ export interface InterruptOptions {
   write?: ((text: string) => void) | undefined
   /** Exit instead of only printing. Default true. */
   exit?: boolean | undefined
+  /**
+   * Exit code. Default 130 (stopped before it finished). A watch mode,
+   * where Ctrl-C is the normal way to end, passes 0.
+   */
+  code?: number | undefined
 }
 
 /**
@@ -21,7 +26,7 @@ export function onInterrupt(render: () => string, opts: InterruptOptions = {}): 
   const handler = (): void => {
     process.off('SIGINT', handler)
     write(`\n${render()}\n`)
-    if (opts.exit ?? true) process.exit(130)
+    if (opts.exit ?? true) process.exit(opts.code ?? 130)
   }
   process.on('SIGINT', handler)
   return () => {

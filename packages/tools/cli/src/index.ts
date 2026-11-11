@@ -32,6 +32,17 @@ import type { DoctorOptions } from './doctor'
 // ran by default was rejected by `--only`/`--skip`.)
 const VALID_GATES: GateName[] = [...FAST_GATES, ...SLOW_GATES]
 
+/**
+ * A usage error on stderr in the shared theme: `✗ pyreon · problem`, then
+ * `fix:`. Loaded lazily so `pyreon --version` stays a bare import.
+ */
+async function usageError(message: string, fix: string): Promise<never> {
+  const { createTerm, finding } = await import('@pyreon/ansi')
+  const t = createTerm({ isTTY: Boolean(process.stderr.isTTY) })
+  console.error(finding(t, { severity: 'error', source: 'pyreon', message, fix }, { indent: 0, width: t.width }).join('\n'))
+  process.exit(1)
+}
+
 const args = process.argv.slice(2)
 const command = args[0]
 
@@ -99,15 +110,29 @@ function printUsage(): void {
 `)
 }
 
-const parseGateList = (raw: string | undefined): GateName[] | undefined => {
+/**
+ * Run a long command with the shared Ctrl-C contract: on SIGINT print
+ * `! interrupted · <command> · <elapsed>` to stderr and exit 130.
+ */
+async function interruptible<T>(name: string, run: () => Promise<T>): Promise<T> {
+  const { createTerm, formatElapsed, interrupted, onInterrupt } = await import('@pyreon/ansi')
+  const started = performance.now()
+  const dispose = onInterrupt(() =>
+    interrupted(createTerm({ isTTY: Boolean(process.stderr.isTTY) }), [name, formatElapsed(performance.now() - started)]),
+  )
+  try {
+    return await run()
+  } finally {
+    dispose()
+  }
+}
+
+const parseGateList = async (raw: string | undefined): Promise<GateName[] | undefined> => {
   if (!raw) return undefined
   const names = raw.split(',').map((s) => s.trim()).filter(Boolean)
   const invalid = names.filter((n) => !VALID_GATES.includes(n as GateName))
   if (invalid.length > 0) {
-    console.error(
-      `Unknown gate(s): ${invalid.join(', ')}. Valid: ${VALID_GATES.join(', ')}`,
-    )
-    process.exit(1)
+    return usageError(`Unknown gate(s): ${invalid.join(', ')}.`, `use one of ${VALID_GATES.join(', ')}`)
   }
   return names as GateName[]
 }
@@ -118,18 +143,16 @@ const getFlagValue = (flag: string): string | undefined => {
   return args[idx + 1]
 }
 
-const parseFormat = (raw: string | undefined): DoctorOptions['format'] => {
+const parseFormat = async (raw: string | undefined): Promise<DoctorOptions['format']> => {
   if (!raw) return undefined
   if (raw === 'text' || raw === 'json' || raw === 'gha') return raw
-  console.error(`--format must be text|json|gha, got '${raw}'`)
-  process.exit(1)
+  return usageError(`--format must be text|json|gha, got '${raw}'`, 'pass --format text, --format json or --format gha')
 }
 
-const parseMinRisk = (raw: string | undefined): DoctorOptions['auditMinRisk'] => {
+const parseMinRisk = async (raw: string | undefined): Promise<DoctorOptions['auditMinRisk']> => {
   if (!raw) return undefined
   if (raw === 'high' || raw === 'medium' || raw === 'low') return raw
-  console.error(`--audit-min-risk must be high|medium|low, got '${raw}'`)
-  process.exit(1)
+  return usageError(`--audit-min-risk must be high|medium|low, got '${raw}'`, 'pass --audit-min-risk high, medium or low')
 }
 
 async function main(): Promise<void> {
@@ -165,26 +188,26 @@ async function main(): Promise<void> {
   if (command === 'check') {
     const { check } = await import('./check')
     const paths = args.slice(1).filter((a) => !a.startsWith('-'))
-    const exitCode = await check({
+    const exitCode = await interruptible('pyreon check', () => check({
       paths,
       cwd: process.cwd(),
       json: args.includes('--json'),
       fix: args.includes('--fix'),
       gha: args.includes('--gha'),
-    })
+    }))
     process.exit(exitCode)
   }
 
   if (command === 'plain') {
     const { plain } = await import('./plain')
     const paths = args.slice(1).filter((a) => !a.startsWith('-'))
-    const exitCode = await plain({
+    const exitCode = await interruptible('pyreon plain', () => plain({
       paths,
       cwd: process.cwd(),
       json: args.includes('--json'),
       write: args.includes('--write'),
       includeTests: args.includes('--include-tests'),
-    })
+    }))
     process.exit(exitCode)
   }
 
@@ -277,7 +300,7 @@ async function main(): Promise<void> {
     const { doctor } = await import('./doctor')
     const format = args.includes('--gha')
       ? ('gha' as const)
-      : parseFormat(getFlagValue('--format'))
+      : await parseFormat(getFlagValue('--format'))
 
     const options: DoctorOptions = {
       fix: args.includes('--fix'),
@@ -286,20 +309,20 @@ async function main(): Promise<void> {
       cwd: process.cwd(),
       format,
       full: args.includes('--full'),
-      only: parseGateList(getFlagValue('--only')),
-      skip: parseGateList(getFlagValue('--skip')),
+      only: await parseGateList(getFlagValue('--only')),
+      skip: await parseGateList(getFlagValue('--skip')),
       roots: getFlagValue('--roots')
         ?.split(',')
         .map((s) => s.trim())
         .filter(Boolean),
       auditTests: args.includes('--audit-tests'),
-      auditMinRisk: parseMinRisk(getFlagValue('--audit-min-risk')),
+      auditMinRisk: await parseMinRisk(getFlagValue('--audit-min-risk')),
       checkIslands: args.includes('--check-islands'),
       checkSsg: args.includes('--check-ssg'),
       checkContent: args.includes('--check-content'),
       checkNative: args.includes('--check-native'),
     }
-    const exitCode = await doctor(options)
+    const exitCode = await interruptible('pyreon doctor', () => doctor(options))
     if (options.ci && exitCode > 0) {
       process.exit(1)
     }
@@ -314,9 +337,8 @@ async function main(): Promise<void> {
     return
   }
 
-  console.error(`Unknown command: ${command}`)
   printUsage()
-  process.exit(1)
+  await usageError(`Unknown command: ${command}`, 'run pyreon --help for the list of commands')
 }
 
 main().catch((err) => {

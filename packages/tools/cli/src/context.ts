@@ -7,6 +7,7 @@
 
 import * as fs from 'node:fs'
 import * as path from 'node:path'
+import { createTerm, plural, verdict } from '@pyreon/ansi'
 import { type ProjectContext, generateContext as scanProject } from '@pyreon/compiler/audits'
 
 export type { ComponentInfo, IslandInfo, ProjectContext, RouteInfo } from '@pyreon/compiler/audits'
@@ -32,8 +33,13 @@ export async function generateContext(options: ContextOptions): Promise<ProjectC
   ensureGitignore(options.cwd)
 
   const relOut = path.relative(options.cwd, outFile)
+  const t = createTerm()
   console.log(
-    `  ✓ Generated ${relOut} (${context.components.length} components, ${context.routes.length} routes, ${context.islands.length} islands)`,
+    verdict(t, 'ok', `Generated ${t.underline(relOut)}`, [
+      plural(context.components.length, 'component'),
+      plural(context.routes.length, 'route'),
+      plural(context.islands.length, 'island'),
+    ]),
   )
 
   return context
