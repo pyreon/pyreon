@@ -1,14 +1,14 @@
-import { disabledState, el, focusRingTone } from '../../factory'
+import { disabledState, el, focusRingTone, tones } from '../../factory'
 import { SelectBase } from '@pyreon/ui-primitives'
 
 const Select = el.config({ name: 'Select', component: SelectBase })
-  .theme((t) => ({
+  .theme((t, m) => ({
     width: '100%',
-    backgroundColor: t.color.system.light.base,
-    color: t.color.system.dark[800],
+    backgroundColor: tones(t, m).surface,
+    color: tones(t, m).text,
     borderWidth: t.borderWidth.base,
     borderStyle: t.borderStyle.base,
-    borderColor: t.color.system.base[300],
+    borderColor: tones(t, m).border,
     borderRadius: t.borderRadius.base,
     fontSize: t.fontSize.small,
     lineHeight: t.lineHeight.base,

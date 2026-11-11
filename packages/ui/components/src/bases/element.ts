@@ -21,6 +21,7 @@ export const el = rs({ name: 'Base', component: Element }).styles(
         focus: focusStyles,
         active: activeStyles,
         disabled: disabledStyles,
+        placeholder: placeholderStyles,
         ...restStyles
       } = $rocketstyle
 
@@ -29,9 +30,20 @@ export const el = rs({ name: 'Base', component: Element }).styles(
       const focusTheme = makeItResponsive({ theme: focusStyles, styles, css })
       const activeTheme = makeItResponsive({ theme: activeStyles, styles, css })
       const disabledTheme = makeItResponsive({ theme: disabledStyles, styles, css })
+      // A component's `placeholder: {...}` theme key styles `::placeholder`.
+      // Without this branch the key reached unistyle as an unknown property and
+      // was dropped, so every field showed the browser's default placeholder.
+      const placeholderTheme = makeItResponsive({ theme: placeholderStyles as typeof hoverStyles, styles, css })
 
       return css`
         ${baseTheme};
+
+        ${placeholderStyles &&
+        css`
+          &::placeholder {
+            ${placeholderTheme};
+          }
+        `};
 
         ${!disabled &&
         isDynamic &&

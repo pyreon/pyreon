@@ -86,7 +86,7 @@ describe("zero dev runs the production request pipeline", { timeout: DEV_SERVER_
 			observe: state,
 			headers: { accept: "text/html" },
 		});
-		const id = actionId("src/actions.ts", "echo");
+		const id = actionId("src/routes/index.ts", "echo");
 		const res = await devFetch(`${baseUrl}/_zero/actions/${id}`, "action call", {
 			observe: state,
 			method: "POST",
@@ -114,7 +114,7 @@ describe("zero dev runs the production request pipeline", { timeout: DEV_SERVER_
 			observe: state,
 			headers: { accept: "text/html" },
 		});
-		const id = actionId("src/actions.ts", "echo");
+		const id = actionId("src/routes/index.ts", "echo");
 		const port = Number(new URL(baseUrl).port);
 		const body = JSON.stringify({ msg: "hi" });
 		const raw = (target: string) =>
@@ -139,6 +139,56 @@ describe("zero dev runs the production request pipeline", { timeout: DEV_SERVER_
 			const res = await raw(target);
 			expect(res).not.toContain("echoed");
 			expect(res.split("\r\n")[0]).not.toContain(" 200 ");
+		}
+	});
+
+	// An action is gated as the page that DECLARES it — on its own endpoint
+	// and when posted to another page through ?_action=.
+	it("an action declared on a guarded page runs only after that page's middleware", async () => {
+		const id = actionId("src/routes/secret.ts", "reveal");
+		const call = (headers: Record<string, string>) =>
+			devFetch(`${baseUrl}/_zero/actions/${id}`, "gated action call", {
+				observe: state,
+				method: "POST",
+				headers: { "content-type": "application/json", ...headers },
+				body: "{}",
+			});
+		const denied = await call({});
+		expect(denied.status).toBe(401);
+		expect(await denied.text()).not.toContain("SECRET-ACTION-RAN");
+		const ok = await call({ "x-auth": "ok" });
+		expect(ok.status).toBe(200);
+		expect(await ok.text()).toContain("SECRET-ACTION-RAN");
+		const viaPublicPage = await devFetch(`${baseUrl}/?_action=${id}`, "gated action via a public page", {
+			observe: state,
+			method: "POST",
+			headers: { "content-type": "application/x-www-form-urlencoded", "x-zero-action": "1" },
+			body: "a=1",
+		});
+		expect(viaPublicPage.status).toBe(401);
+		expect(await viaPublicPage.text()).not.toContain("SECRET-ACTION-RAN");
+	});
+
+	it("an action no page declares is refused, not run ungated", async () => {
+		const res = await devFetch(`${baseUrl}/_zero/actions/${actionId("src/actions.ts", "shared")}`, "shared action", {
+			observe: state,
+			method: "POST",
+			headers: { "content-type": "application/json", "x-auth": "ok" },
+			body: "{}",
+		});
+		expect(res.status).toBe(403);
+		expect(await res.text()).not.toContain("SHARED-RAN");
+	});
+
+	it("a not-found page under a guarded folder runs the folder middleware", async () => {
+		for (const url of [`${baseUrl}/vault/nope`, `${baseUrl}/_pyreon/data?path=/vault/nope`]) {
+			const denied = await devFetch(url, "guarded not-found, no auth", { observe: state, headers: { accept: "text/html" } });
+			expect(denied.status).toBe(401);
+			const ok = await devFetch(url, "guarded not-found, authed", {
+				observe: state,
+				headers: { accept: "text/html", "x-auth": "ok" },
+			});
+			expect(ok.status).not.toBe(401);
 		}
 	});
 

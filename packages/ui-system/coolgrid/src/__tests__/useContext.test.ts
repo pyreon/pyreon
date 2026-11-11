@@ -89,4 +89,20 @@ describe('getGridContext', () => {
     const result = getGridContext({}, { grid: { container: { xs: '100%' } } })
     expect(result.containerWidth).toEqual({ xs: '100%' })
   })
+
+  // #4314: a theme without grid keys falls back to coolgrid's defaults
+  it('defaults columns to 12 and the container to the default widths', async () => {
+    const { getGridContext } = await import('../useContext')
+    const { defaultContainerWidths } = await import('../theme')
+    const result = getGridContext({}, {})
+    expect(result.columns).toBe(12)
+    expect(result.containerWidth).toEqual(defaultContainerWidths)
+  })
+
+  it('keeps the container unset when the theme has its own breakpoints', async () => {
+    const { getGridContext } = await import('../useContext')
+    const result = getGridContext({}, { breakpoints: { phone: 0, tablet: 600 } })
+    expect(result.columns).toBe(12)
+    expect(result.containerWidth).toBeUndefined()
+  })
 })

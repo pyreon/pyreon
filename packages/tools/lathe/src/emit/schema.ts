@@ -9,7 +9,7 @@
 
 import { deferredTargets, modelDependencies, modelIndex, stronglyConnected, topoSortModels } from '../core/graph'
 import type { IrBigIntType, IrDocument, IrField, IrLiteral, IrNumberType, IrStringType, IrType } from '../core/ir'
-import { propKey, typeIdent } from '../core/naming'
+import { isWindowsDeviceName, propKey, typeIdent } from '../core/naming'
 import { collectRefNames, usesBigInt } from '../core/walk'
 import { dialectOf, type ValidatorName } from './validator'
 import { fieldDoc, modelDoc } from './jsdoc'
@@ -651,7 +651,7 @@ export function schemaModules(doc: IrDocument): { modules: SchemaModule[]; modul
   for (const g of groups) {
     let base = g.base
     // Windows reserves these device names regardless of extension.
-    if (/^(con|prn|aux|nul|com\d|lpt\d)$/i.test(base)) base = `${base}_`
+    if (isWindowsDeviceName(base)) base = `${base}_`
     let name = base
     for (let i = 2; used.has(name.toLowerCase()); i++) name = `${base}_${i}`
     used.add(name.toLowerCase())

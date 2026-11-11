@@ -2,7 +2,8 @@ import type { VNode } from '@pyreon/core'
 import { h } from '@pyreon/core'
 import { readLive, resolveLive } from '../live-prop'
 import type { CSSProperties, TransitionCallbacks } from '../types'
-import { cloneVNode, resolveChildren } from '../utils'
+import { childProps, flattenChildren } from '../child-shape'
+import { cloneVNode } from '../utils'
 import TransitionItem from './TransitionItem'
 import type { KineticConfig } from './types'
 
@@ -20,11 +21,8 @@ type StaggerRendererProps = {
   reverseLeave?: boolean | undefined
   /** A LIVE HOLDER — read each entry through `readLive` at the point of call. */
   callbacks: Partial<TransitionCallbacks>
-  children: VNode[]
+  children: VNode[] | (() => unknown)
 }
-
-const isVNode = (child: unknown): child is VNode =>
-  child != null && typeof child === 'object' && 'type' in (child as object)
 
 /**
  * Renders children with staggered enter/exit animation.
@@ -51,9 +49,12 @@ const StaggerRenderer = ({
   const effectiveInterval = interval ?? config.interval ?? 50
   const effectiveReverseLeave = reverseLeave ?? config.reverseLeave ?? false
 
-  // Unwrap compiler-emitted accessor wrap — see `resolveChildren` jsdoc.
-  const resolved = resolveChildren(children)
-  const childArray = (Array.isArray(resolved) ? resolved : [resolved]).filter(isVNode)
+  // Every animatable child, whatever its shape: unwrapped accessors (nested —
+  // the compiler wraps the forwarded `children` again), flattened arrays and
+  // fragments, and compiled static markup (`<li>Install</li>` is a pre-built
+  // `_tpl` item, not a VNode). Filtering on `'type' in child` dropped that last
+  // shape, so a stagger over literal children rendered an empty container.
+  const childArray = flattenChildren(children)
   const count = childArray.length
 
   const staggeredChildren = childArray.map((child, index) => {
@@ -67,7 +68,7 @@ const StaggerRenderer = ({
 
     return (
       <TransitionItem
-        key={(child as VNode & { key?: string | number }).key ?? index}
+        key={(child as { key?: string | number | null }).key ?? index}
         show={show}
         appear={effectiveAppear}
         timeout={() => effectiveTimeout() + maxDelay}
@@ -93,9 +94,9 @@ const StaggerRenderer = ({
             : undefined
         }
       >
-        {cloneVNode(child, {
+        {cloneVNode(child as VNode, {
           style: {
-            ...((child.props as Record<string, unknown>)?.style as CSSProperties | undefined),
+            ...(childProps(child).style as CSSProperties | undefined),
             '--stagger-index': index,
             '--stagger-interval': `${effectiveInterval}ms`,
             // Stable delay sources — survive the `transition` shorthand reset

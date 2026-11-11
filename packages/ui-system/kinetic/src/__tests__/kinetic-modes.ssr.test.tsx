@@ -43,8 +43,9 @@
  * path; this file covers the `kinetic(tag).<mode>` factory paths.
  */
 
+import type { VNode } from '@pyreon/core'
 import { h } from '@pyreon/core'
-import { renderToString } from '@pyreon/runtime-server'
+import { _ssr, renderToString } from '@pyreon/runtime-server'
 import { describe, expect, it } from 'vitest'
 import kinetic from '../kinetic'
 
@@ -210,5 +211,34 @@ describe('kinetic(tag).collapse() — SSR / initially-hidden (CollapseRenderer)'
     expect(html).toContain('expanded content')
     // height: 'auto' is the entered-state hint
     expect(html).toContain('height: auto')
+  })
+})
+
+// The compiler lowers literal markup to `_ssr([...])` raw HTML on the server
+// (and to a pre-built `_tpl` item on the client). Neither is a VNode, and the
+// stagger renderers filtered children on `'type' in child`, so a stagger over
+// literal children prerendered an EMPTY container; a group dropped every
+// child without a key (`_ssr` carries none). Both now render them.
+// What the compiler emits for a literal `<li>…</li>` on the server; typed as a
+// child here because `_ssr`'s own return type is not a `VNodeChild`.
+const raw = (html: string) => _ssr([html]) as unknown as VNode
+
+describe('kinetic stagger / group — compiled raw-HTML children on the server', () => {
+  it('stagger renders compiled children', async () => {
+    const List = kinetic('ol').enter({ opacity: 0 }).stagger()
+    const html = await renderToString(
+      h(List, { show: () => true }, raw('<li>Install</li>'), raw('<li>Ship it</li>')),
+    )
+    expect(html).toContain('<li>Install</li>')
+    expect(html).toContain('<li>Ship it</li>')
+  })
+
+  it('group renders compiled children', async () => {
+    const List = kinetic('ul').enter({ opacity: 0 }).group()
+    const html = await renderToString(
+      h(List, null, () => [raw('<li>a</li>'), raw('<li>b</li>')]),
+    )
+    expect(html).toContain('<li>a</li>')
+    expect(html).toContain('<li>b</li>')
   })
 })

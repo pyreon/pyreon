@@ -694,6 +694,8 @@ repository root), or the one named by `--config`. Every key:
 | `patches` | — | RFC 6902 `add` / `replace` / `remove` corrections applied to the spec first |
 | `naming` | — | `operation` / `model` / `file` / `hook` rename functions |
 | `format` | — | `(code, path) => string \| Promise<string>`, run before write and before `check` |
+| `refRoot` | the spec's directory | the directory every local `$ref` target must lie in — see [Multi-file specs](#what-the-reader-represents) |
+| `refOrigins` | — (own origin only) | other origins a REMOTE document's `$ref` may reach (`lathe pull`, `remoteRefs: 'fetch'`); `'*'` = any public origin |
 
 See [Customizing the output](#customizing-the-output) and [Your own plugins](#your-own-plugins).
 
@@ -1031,7 +1033,15 @@ lathe pull https://api.example.com/openapi.json            # to the configured i
 lathe pull https://api.example.com/openapi.json spec.json  # to a path, no config needed
 lathe pull                                                 # every project with a `source`
 lathe pull --token "$TOKEN" --header "X-Team: core"        # a spec behind auth
+lathe pull https://api.example.com/openapi.json --ref-origin https://schemas.example.com  # parts on another origin
 ```
+
+A referenced document is fetched only from the referencing document's own
+origin — and every redirect is checked by the same rule — unless
+`--ref-origin` (repeatable) or `refOrigins` in the config names another;
+`'*'` allows any public origin but still refuses a loopback, private or
+link-local address. A downloaded spec therefore cannot make lathe request an
+internal service and write the response into the spec.
 
 `$LATHE_TOKEN` is used when `--token` is absent. Nothing is written unless the
 response is an OpenAPI 3.x or Swagger 2.0 document. `ETag` / `Last-Modified` are
@@ -1099,7 +1109,7 @@ The input layer resolves a spec's semantics once, so no emitter rediscovers them
 - **Names** — models, operation ids, path placeholders and tag files that normalize to one identifier are disambiguated deterministically; nothing is dropped.
 - **Swagger 2.0** — converted to 3.0 first (`definitions`, body / `formData` parameters, `produces` / `consumes`, `securityDefinitions`, `host` + `basePath` + `schemes`, per-operation `schemes` as per-operation servers, `x-nullable`, `collectionFormat` — a query/form `tsv` as a tab-joined `tabDelimited` value); what 3.0 cannot spell is a `swagger2-lossy` note.
 - **`$ref`'d path items and examples** — followed. A `trace` operation is reported, since `fetch` refuses the method. A JSON spec's duplicate keys are reported (`duplicate-key`); YAML refuses them. Kubernetes' spec generates output that typechecks.
-- **Multi-file specs** — a `$ref` into another file (JSON or YAML) is resolved against the spec's own path and bundled: schemas become named models (stable names, cycles across files closed), everything else is inlined. `generate` stays offline by default; `remoteRefs: 'fetch'` (credentials per origin via `remoteHeaders`, ETag-cached, a failed fetch fails the run) or `lathe pull` bundles remote parts. DigitalOcean's 2,954-file source gives the same models and operations as Redocly's bundle.
+- **Multi-file specs** — a `$ref` into another file (JSON or YAML) is resolved against the spec's own path and bundled: schemas become named models (stable names, cycles across files closed), everything else is inlined. `generate` stays offline by default; `remoteRefs: 'fetch'` (credentials per origin via `remoteHeaders`, ETag-cached, a failed fetch fails the run) or `lathe pull` bundles remote parts. DigitalOcean's 2,954-file source gives the same models and operations as Redocly's bundle. A spec is input, so its references are fenced: a local `$ref` must stay inside the spec's own directory (real paths, so a symlink out is refused too; `refRoot` widens it on purpose), a remote document may reference only its own origin (redirects included; `refOrigins` / `--ref-origin` adds others), and bundling stops with an error past a node budget instead of expanding a `$ref` fan-out exponentially.
 - **Error responses** — each operation's `4xx` / `5xx` / `4XX` / `default` JSON bodies are its endpoint's `errors`. A rejection's `body` is validated and `matched` names the key it passed, so `err.matched === '404'` narrows `err.body`; hooks carry `EndpointError<typeof op>` as their error type.
 - **Webhooks and callbacks** — `webhooks.ts`: a schema per payload (`webhookSchemas`), `WebhookHandler<name>` typed from it, `validateWebhook`, a framework-agnostic `webhookHandler(handlers, { verify, event, bodyLimit })` (`Request` → `Response`, a zero API route as-is: bound body → verify → parse by media type → method → validate → dispatch), and `callbackUrl(name, ctx)` evaluating a callback's OpenAPI runtime expression. Bodies above 1 MiB return `413` before verification or dispatch; set `bodyLimit` for larger legitimate payloads. The limit covers streamed bytes and `Content-Length`. No endpoint or hook — the API sends these.
 
