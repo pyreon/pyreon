@@ -1,4 +1,4 @@
-import { Show } from '@pyreon/core'
+import { h, Show } from '@pyreon/core'
 import { DocsGlyph as Glyph } from './glyph'
 import { useLinkClick } from '../site/kit/link'
 import { groupId, isActive, normalizeDocsPath, SIDEBAR, type DocsSidebarItem, type SidebarBadge } from './nav'
@@ -28,17 +28,19 @@ export function SearchButton(props: { onOpen: () => void; id?: string | undefine
 function ItemLink(props: { item: DocsSidebarItem; path: () => string; sub?: boolean; onNavigate?: (() => void) | undefined }) {
   const click = useLinkClick()
   const href = normalizeDocsPath(props.item.href)
-  return (
-    <a
-      href={href}
-      class={props.sub ? 'dx-side__link dx-side__link--sub' : 'dx-side__link'}
-      aria-current={() => (normalizeDocsPath(props.path()) === href ? 'page' : undefined)}
-      onClick={click(href, () => props.onNavigate?.())}
-    >
-      {props.item.productId ? <Glyph id={props.item.productId} size={16} /> : null}
-      <span class="dx-side__text">{props.item.title}</span>
-      {props.item.badge ? <Badge badge={props.item.badge} /> : null}
-    </a>
+  // h(), not JSX: the glyph and the badge are conditional children, which a
+  // compiled template re-creates on hydration instead of adopting (#4385).
+  return h(
+    'a',
+    {
+      href,
+      class: props.sub ? 'dx-side__link dx-side__link--sub' : 'dx-side__link',
+      'aria-current': () => (normalizeDocsPath(props.path()) === href ? 'page' : undefined),
+      onClick: click(href, () => props.onNavigate?.()),
+    },
+    props.item.productId ? h(Glyph, { id: props.item.productId, size: 16 }) : null,
+    h('span', { class: 'dx-side__text' }, props.item.title),
+    props.item.badge ? h(Badge, { badge: props.item.badge }) : null,
   )
 }
 
@@ -66,22 +68,27 @@ export function DocsSidebar(props: {
               {group.group}
             </p>
             <ul class="dx-sg__list" aria-labelledby={id}>
-              {group.items.map((item) => (
-                <li>
-                  <ItemLink item={item} path={props.path} onNavigate={props.onNavigate} />
-                  {item.children ? (
-                    <Show when={() => isActive(item, props.path())}>
-                      <ul class="dx-sub">
-                        {item.children.map((child) => (
-                          <li>
-                            <ItemLink item={child} path={props.path} sub onNavigate={props.onNavigate} />
-                          </li>
-                        ))}
-                      </ul>
-                    </Show>
-                  ) : null}
-                </li>
-              ))}
+              {group.items.map((item) =>
+                // h(): the sub-list is a conditional child (#4385, see ItemLink).
+                h(
+                  'li',
+                  null,
+                  h(ItemLink, { item, path: props.path, onNavigate: props.onNavigate }),
+                  item.children
+                    ? h(
+                        Show,
+                        { when: () => isActive(item, props.path()) },
+                        h(
+                          'ul',
+                          { class: 'dx-sub' },
+                          ...item.children.map((child) =>
+                            h('li', null, h(ItemLink, { item: child, path: props.path, sub: true, onNavigate: props.onNavigate })),
+                          ),
+                        ),
+                      )
+                    : null,
+                ),
+              )}
             </ul>
           </div>
         )

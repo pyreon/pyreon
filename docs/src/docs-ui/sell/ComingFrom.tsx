@@ -1,7 +1,7 @@
 import { Show } from '@pyreon/core'
 import { useDocsData } from '../data'
 import { CodeCard } from '../../site/kit/code'
-import { renderInline } from '../../site/kit/type'
+import { Inline } from '../inline'
 import { comingFromOf, SLOT_IDS } from './slots'
 
 /**
@@ -20,13 +20,13 @@ export default function ComingFrom(props: { id: string; lib?: string }) {
   return (
     <section class="dx-slot" aria-labelledby={SLOT_IDS.comingFrom}>
       <h2 id={SLOT_IDS.comingFrom}>Coming from {c.lib}?</h2>
-      <p class="dx-cf__title">{renderInline(c.title)}</p>
+      <p class="dx-cf__title"><Inline text={c.title} /></p>
       <div class="dx-cf">
         <CodeCard label={c.lib} code={c.before} html={c.beforeHtml} rail="del" />
         <CodeCard label={p.package} code={c.after} html={c.afterHtml} state="hot" rail="ins" />
       </div>
       <Show when={() => !!c.note}>
-        <p class="dx-cf__note">{renderInline(c.note ?? '')}</p>
+        <p class="dx-cf__note"><Inline text={c.note ?? ''} /></p>
       </Show>
     </section>
   )

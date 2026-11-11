@@ -2,7 +2,7 @@ import { useDocsData } from '../data'
 import { DocsGlyph as Glyph } from '../glyph'
 import { InstallCommand } from '../../site/kit/controls'
 import { useLinkClick } from '../../site/kit/link'
-import { renderInline } from '../../site/kit/type'
+import { Inline } from '../inline'
 
 /**
  * `<ProductPitch id="form" />` — the pitch strip that opens a product
@@ -28,8 +28,8 @@ export default function ProductPitch(props: { id: string }) {
         </span>
       </div>
       <h1>{p.name}</h1>
-      <p class="dx-pitch__hook">{renderInline(p.hero.title)}</p>
-      <p class="dx-pitch__lede">{renderInline(p.hero.lede)}</p>
+      <p class="dx-pitch__hook"><Inline text={p.hero.title} /></p>
+      <p class="dx-pitch__lede"><Inline text={p.hero.lede} /></p>
       <div class="dx-pitch__ctas">
         <InstallCommand command={p.hero.install} />
         <a class="dx-pitch__link" href={p.route} onClick={click(p.route)}>
@@ -40,7 +40,7 @@ export default function ProductPitch(props: { id: string }) {
         {p.hero.facts.slice(0, 3).map((f) => (
           <div>
             <dt>{f.key}</dt>
-            <dd>{renderInline(f.value)}</dd>
+            <dd><Inline text={f.value} /></dd>
           </div>
         ))}
       </dl>

@@ -2,7 +2,7 @@ import { products } from '../../site/content/_products.json'
 import type { ProductSummary } from '../data'
 import { DocsGlyph as Glyph } from '../glyph'
 import { useLinkClick } from '../../site/kit/link'
-import { renderInline } from '../../site/kit/type'
+import { Inline } from '../inline'
 
 const SUMMARIES = products as ProductSummary[]
 
@@ -23,7 +23,7 @@ export default function InlineSell(props: { id: string }) {
       </span>
       <div>
         <b>{s.name}</b>
-        <p>{renderInline(s.pitch)}</p>
+        <p><Inline text={s.pitch} /></p>
       </div>
       <a class="dx-pitch__link" href={s.href} onClick={click(s.href)} aria-label={`Open ${s.name}`}>
         Open →

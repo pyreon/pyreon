@@ -3,8 +3,10 @@ import homeJson from '../../site/content/_docs-home.json'
 import type { DocsHome as DocsHomeData } from '../../site/content/types-site'
 import { DocsGlyph as Glyph } from '../glyph'
 import { useLinkClick } from '../../site/kit/link'
-import { renderInline } from '../../site/kit/type'
+import { Inline } from '../inline'
 import { Command } from '../command'
+import { CodeFigure } from '../code-figure'
+import { When } from '../when'
 
 /** The build adds Shiki output next to each code string (vite-plugins/docs-home-content.ts). */
 type HomeData = DocsHomeData & {
@@ -25,29 +27,6 @@ export const HOME_HEADINGS = [
 
 const RunOnceCounter = island(() => import('./RunOnceCounter'), { name: 'RunOnceCounter', hydrate: 'visible', prefetch: 'idle' })
 
-function Code(props: { label: string; lang: string; source: string; html?: string | undefined }) {
-  return (
-    <figure class="dx-code">
-      <figcaption class="dx-code__head">
-        <span>{props.label}</span>
-        <span class="dx-code__sp" />
-        <span>{props.lang}</span>
-      </figcaption>
-      {props.html ? (
-        // Build-time Shiki output of repo-owned content (vite-plugins/docs-home-content.ts).
-        // A focusable region: the code scrolls sideways on its own, so the keyboard must reach it.
-        <section class="dx-code__body dx-shiki" tabIndex={0} aria-label={props.label} dangerouslySetInnerHTML={{ __html: props.html }} />
-      ) : (
-        <section class="dx-code__body" tabIndex={0} aria-label={props.label}>
-          <pre>
-            <code>{props.source}</code>
-          </pre>
-        </section>
-      )}
-    </figure>
-  )
-}
-
 /**
  * `/docs` — the docs home (`_docs-home.json`): the experimental-native
  * banner, the four "start here" paths with their exact create command, the
@@ -62,7 +41,7 @@ export function DocsHome() {
     <div class="dx-home">
       <aside class="dx-banner" aria-label="Status">
         <span class="dx-bdg dx-bdg--preview">{d.banner.label}</span>
-        <p>{renderInline(d.banner.text)}</p>
+        <p><Inline text={d.banner.text} /></p>
         <a href={d.banner.link.href} onClick={click(d.banner.link.href)}>
           {d.banner.link.label} →
         </a>
@@ -73,7 +52,7 @@ export function DocsHome() {
           {d.hero.eyebrow} · {d.counts.docPages} pages
         </p>
         <h1 class="dx-home__title">{d.hero.title}</h1>
-        <p class="dx-home__lede">{renderInline(d.hero.lede)}</p>
+        <p class="dx-home__lede"><Inline text={d.hero.lede} /></p>
       </header>
 
       <section aria-labelledby="start-here">
@@ -93,15 +72,15 @@ export function DocsHome() {
                   {p.title}
                 </a>
               </h3>
-              {p.status ? <span class="dx-bdg dx-bdg--preview dx-path__status">{p.status}</span> : null}
-              <p class="dx-path__text">{renderInline(p.text)}</p>
+              <When on={p.status}>
+                <span class="dx-bdg dx-bdg--preview dx-path__status">{p.status}</span>
+              </When>
+              <p class="dx-path__text"><Inline text={p.text} /></p>
               <Command command={p.command} />
-              {p.alt ? (
-                <>
-                  <p class="dx-path__alt">{p.alt.label}</p>
-                  <Command command={p.alt.command} />
-                </>
-              ) : null}
+              <When on={p.alt}>
+                <p class="dx-path__alt">{p.alt?.label}</p>
+                <Command command={p.alt?.command ?? ''} />
+              </When>
             </div>
           ))}
         </div>
@@ -109,7 +88,7 @@ export function DocsHome() {
 
       <section aria-labelledby="products" class="dx-home__sec">
         <h2 id="products">{d.tiles.title}</h2>
-        <p class="dx-home__text">{renderInline(d.tiles.text)}</p>
+        <p class="dx-home__text"><Inline text={d.tiles.text} /></p>
         <ul class="dx-tiles">
           {d.tiles.items.map((t) => (
             <li>
@@ -120,7 +99,7 @@ export function DocsHome() {
                 <span class="dx-tilecard__body">
                   <b>{t.name}</b>
                   <span class="dx-tilecard__proof">
-                    <strong>{t.proof.stat}</strong> {renderInline(t.proof.label)}
+                    <strong>{t.proof.stat}</strong> <Inline text={t.proof.label} />
                   </span>
                   <span class="dx-tilecard__cond">{t.proof.condition}</span>
                 </span>
@@ -135,21 +114,21 @@ export function DocsHome() {
 
       <section aria-labelledby="why-fast" class="dx-home__sec">
         <h2 id="why-fast">{d.whyFast.title}</h2>
-        <p class="dx-home__text">{renderInline(d.whyFast.text)}</p>
+        <p class="dx-home__text"><Inline text={d.whyFast.text} /></p>
         <div class="dx-why">
-          <Code label={d.whyFast.code.file} lang={d.whyFast.code.lang} source={d.whyFast.code.source} html={d.whyFast.code.html} />
+          <CodeFigure label={d.whyFast.code.file} lang={d.whyFast.code.lang} source={d.whyFast.code.source} html={d.whyFast.code.html} />
           <div class="dx-why__live">
             <p class="dx-live">
               <i aria-hidden="true" />
               live · @pyreon/reactivity
             </p>
             <RunOnceCounter />
-            <p class="dx-why__note">{renderInline(d.whyFast.live.note)}</p>
+            <p class="dx-why__note"><Inline text={d.whyFast.live.note} /></p>
           </div>
         </div>
         <details class="dx-why__compiled">
           <summary>{d.whyFast.compiled.label}</summary>
-          <Code label={d.whyFast.compiled.label} lang={d.whyFast.compiled.lang} source={d.whyFast.compiled.source} html={d.whyFast.compiled.html} />
+          <CodeFigure label={d.whyFast.compiled.label} lang={d.whyFast.compiled.lang} source={d.whyFast.compiled.source} html={d.whyFast.compiled.html} />
         </details>
         <a class="dx-more" href={d.whyFast.link.href} onClick={click(d.whyFast.link.href)}>
           {d.whyFast.link.label} →
@@ -159,13 +138,13 @@ export function DocsHome() {
           {d.proofStrip.items.map((p) => (
             <li>
               <span class="dx-proof__stat">{p.stat}</span>
-              <span class="dx-proof__label">{renderInline(p.label)}</span>
+              <span class="dx-proof__label"><Inline text={p.label} /></span>
               <span class="dx-proof__cond">{p.condition}</span>
             </li>
           ))}
         </ul>
         <p class="dx-caveat">
-          {d.proofStrip.footer}{' '}
+          <span>{d.proofStrip.footer}</span>{' '}
           <a href={d.proofStrip.link.href} onClick={click(d.proofStrip.link.href)}>
             {d.proofStrip.link.label} →
           </a>
@@ -174,16 +153,16 @@ export function DocsHome() {
 
       <section aria-labelledby="whats-new" class="dx-home__sec">
         <h2 id="whats-new">{d.whatsNew.title}</h2>
-        <p class="dx-home__text">{renderInline(d.whatsNew.text)}</p>
+        <p class="dx-home__text"><Inline text={d.whatsNew.text} /></p>
         <ul class="dx-new">
           {d.whatsNew.items.map((n) => (
             <li class="dx-new__item">
               <span class="dx-new__area">{n.area}</span>
               <div>
                 <a class="dx-new__title" href={n.href} onClick={click(n.href)}>
-                  {renderInline(n.title)}
+                  <Inline text={n.title} />
                 </a>
-                <p>{renderInline(n.text)}</p>
+                <p><Inline text={n.text} /></p>
               </div>
               <span class={n.kind === 'breaking' ? 'dx-bdg dx-bdg--preview' : 'dx-bdg dx-bdg--new'}>
                 {n.kind === 'breaking' ? 'breaking · next release' : n.status}
@@ -192,7 +171,7 @@ export function DocsHome() {
           ))}
         </ul>
         <p class="dx-caveat">
-          {d.whatsNew.footer}{' '}
+          <span>{d.whatsNew.footer}</span>{' '}
           <a href={d.whatsNew.link.href} onClick={click(d.whatsNew.link.href)}>
             {d.whatsNew.link.label} →
           </a>

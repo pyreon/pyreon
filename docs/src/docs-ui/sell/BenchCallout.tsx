@@ -1,6 +1,7 @@
 import { For } from '@pyreon/core'
 import { useDocsData } from '../data'
 import { benchHeadline } from './headline'
+import { When } from '../when'
 import { SLOT_IDS } from './slots'
 import { VerdictChip } from '../../site/kit/bench'
 import { useLinkClick } from '../../site/kit/link'
@@ -25,11 +26,11 @@ export default function BenchCallout(props: { id: string }) {
       <h2 id={SLOT_IDS.bench}>Benchmarks</h2>
       <div class="dx-bench">
       <div class="dx-bench__head">
-        {big ? (
+        <When on={big}>
           <span class="dx-bench__big" aria-hidden="true">
             {big}
           </span>
-        ) : null}
+        </When>
         <div>
           <b>{b.h}</b>
           <p>{b.p}</p>
@@ -41,11 +42,9 @@ export default function BenchCallout(props: { id: string }) {
             <li class="dx-bench__row">
               <span class="dx-bench__op">{r.op}</span>
               <span class="dx-bench__vals">
-                {r.pyreon != null && r.rival != null && r.unit !== 'x' ? (
-                  <>
-                    <b>{formatMeasure(r.pyreon, r.unit)}</b> vs {formatMeasure(r.rival, r.unit)}
-                  </>
-                ) : null}
+                <When on={r.pyreon != null && r.rival != null && r.unit !== 'x'}>
+                  <b>{formatMeasure(r.pyreon ?? 0, r.unit)}</b> vs {formatMeasure(r.rival ?? 0, r.unit)}
+                </When>
               </span>
               <span class="dx-bench__lab">{r.label}</span>
               <VerdictChip verdict={r.verdict} />
@@ -54,7 +53,7 @@ export default function BenchCallout(props: { id: string }) {
         </For>
       </ul>
       <p class="dx-caveat">
-        {`${b.rival} · ${RECORD_LINE} · ${b.run} · author-run, synthetic · `}
+        <span>{`${b.rival} · ${RECORD_LINE} · ${b.run} · author-run, synthetic · `}</span>
         <a href="/benchmarks" onClick={click('/benchmarks')}>
           Every result, including where we lose →
         </a>

@@ -1,8 +1,10 @@
 import { signal } from '@pyreon/reactivity'
 import { useDocsData } from '../data'
 import { SLOT_IDS } from './slots'
+import { CodeFigure } from '../code-figure'
+import { When } from '../when'
 import { DEMOS } from '../../site/demos/registry'
-import { renderInline } from '../../site/kit/type'
+import { Inline } from '../inline'
 
 /**
  * `<LiveDemo id="form" />` — the product's live demo inside its docs, with
@@ -62,29 +64,13 @@ export default function LiveDemo(props: { id: string }) {
         <div class="dx-demo__panel dx-demo__preview" role="tabpanel" id={`${base}-preview`} aria-labelledby={`${base}-tab-preview`} hidden={() => tab() !== 'preview'}>
           <Demo />
         </div>
-        {sample ? (
+        <When on={sample}>
           <div class="dx-demo__panel" role="tabpanel" id={`${base}-code`} aria-labelledby={`${base}-tab-code`} hidden={() => tab() !== 'code'}>
-            <figure class="dx-code">
-              <figcaption class="dx-code__head">
-                <span>{sample.label}</span>
-                <span class="dx-code__sp" />
-                <span>tsx</span>
-              </figcaption>
-              {sample.html ? (
-                // Build-time Shiki output of repo-owned content (vite-plugins/product-content.ts).
-                <section class="dx-code__body dx-shiki" tabIndex={0} aria-label={sample.label} dangerouslySetInnerHTML={{ __html: sample.html }} />
-              ) : (
-                <section class="dx-code__body" tabIndex={0} aria-label={sample.label}>
-                  <pre>
-                    <code>{sample.code}</code>
-                  </pre>
-                </section>
-              )}
-            </figure>
+            <CodeFigure label={sample?.label ?? ''} lang="tsx" source={sample?.code ?? ''} html={sample?.html} />
           </div>
-        ) : null}
+        </When>
       </div>
-      <p class="dx-demo__cap">{renderInline(p.demo.text)}</p>
+      <p class="dx-demo__cap"><Inline text={p.demo.text} /></p>
     </section>
   )
 }

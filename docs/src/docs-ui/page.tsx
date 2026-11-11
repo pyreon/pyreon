@@ -1,5 +1,5 @@
 import type { VNodeChild } from '@pyreon/core'
-import { onMount, Show } from '@pyreon/core'
+import { h, onMount } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 import { DocsGlyph as Glyph } from './glyph'
 import { Badge } from './sidebar'
@@ -12,31 +12,19 @@ import { InlineToc, RailToc, tocEntries, useScrollSpy, type TocHeading } from '.
 export function Breadcrumbs(props: { path: string; title: string }) {
   const click = useLinkClick()
   const t = trailOf(props.path)
-  return (
-    <nav class="dx-crumbs" aria-label="Breadcrumb">
-      <ol>
-        <li>
-          <a href="/docs" onClick={click('/docs')}>
-            Docs
-          </a>
-        </li>
-        {t && t.item.href !== '/docs' ? (
-          <li>
-            <span>{t.group.group}</span>
-          </li>
-        ) : null}
-        {t?.parent ? (
-          <li>
-            <a href={t.parent.href} onClick={click(t.parent.href)}>
-              {t.parent.title}
-            </a>
-          </li>
-        ) : null}
-        <li>
-          <span aria-current="page">{t?.item.title ?? props.title}</span>
-        </li>
-      </ol>
-    </nav>
+  const link = (href: string, text: string) => h('li', null, h('a', { href, onClick: click(href) }, text))
+  // h(): the middle crumbs are conditional children (#4385).
+  return h(
+    'nav',
+    { class: 'dx-crumbs', 'aria-label': 'Breadcrumb' },
+    h(
+      'ol',
+      null,
+      link('/docs', 'Docs'),
+      t && t.item.href !== '/docs' ? h('li', null, h('span', null, t.group.group)) : null,
+      t?.parent ? link(t.parent.href, t.parent.title) : null,
+      h('li', null, h('span', { 'aria-current': 'page' }, t?.item.title ?? props.title)),
+    ),
   )
 }
 
@@ -44,35 +32,34 @@ export function Breadcrumbs(props: { path: string; title: string }) {
 export function RailCard(props: { product: RailProduct }) {
   const click = useLinkClick()
   const p = props.product
-  return (
-    <a class="dx-rcard" href={p.href} onClick={click(p.href)}>
-      <span class="dx-tile">
-        <Glyph id={p.id} size={22} />
-      </span>
-      <b>{p.name}</b>
-      <span class="dx-rcard__cond">
-        {p.package} · {p.category}
-      </span>
-      {p.badge ? <Badge badge={p.badge} /> : null}
-      <em>Explore {p.name} →</em>
-    </a>
+  // h(): the badge is a conditional child (#4385).
+  return h(
+    'a',
+    { class: 'dx-rcard', href: p.href, onClick: click(p.href) },
+    h('span', { class: 'dx-tile' }, h(Glyph, { id: p.id, size: 22 })),
+    h('b', null, p.name),
+    h('span', { class: 'dx-rcard__cond' }, `${p.package} · ${p.category}`),
+    p.badge ? h(Badge, { badge: p.badge }) : null,
+    h('em', null, `Explore ${p.name} →`),
   )
 }
 
 function PrevNext(props: { path: string }) {
   const click = useLinkClick()
   const { prev, next } = prevNextOf(props.path)
-  const card = (l: PageLink, dir: 'prev' | 'next') => (
-    <a class={`dx-pn__link dx-pn__link--${dir}`} href={l.href} onClick={click(l.href)} rel={dir}>
-      <small>{dir === 'prev' ? 'Previous' : 'Next'}</small>
-      {dir === 'prev' ? `← ${l.title}` : `${l.title} →`}
-    </a>
-  )
-  return (
-    <nav class="dx-pn" aria-label="Previous and next page">
-      {prev ? card(prev, 'prev') : <span />}
-      {next ? card(next, 'next') : <span />}
-    </nav>
+  const card = (l: PageLink, dir: 'prev' | 'next') =>
+    h(
+      'a',
+      { class: `dx-pn__link dx-pn__link--${dir}`, href: l.href, onClick: click(l.href), rel: dir },
+      h('small', null, dir === 'prev' ? 'Previous' : 'Next'),
+      dir === 'prev' ? `← ${l.title}` : `${l.title} →`,
+    )
+  // h(): either card may be absent (#4385).
+  return h(
+    'nav',
+    { class: 'dx-pn', 'aria-label': 'Previous and next page' },
+    prev ? card(prev, 'prev') : h('span', null),
+    next ? card(next, 'next') : h('span', null),
   )
 }
 
@@ -116,30 +103,19 @@ function Helpful(props: { title: string; url: string }) {
 function Rail(props: { entries: readonly TocHeading[]; active: () => string | undefined; slug: string | undefined }) {
   const data = useDocsData()
   const click = useLinkClick()
-  return (
-    <aside class="dx-rail" aria-label="On this page and related">
-      <RailToc entries={props.entries} active={props.active} />
-      {data.rail ? <RailCard product={data.rail} /> : null}
-      <ul class="dx-rlinks">
-        {props.slug !== undefined ? (
-          <li>
-            <a href={editUrlOf(props.slug)} rel="noopener noreferrer">
-              Edit this page
-            </a>
-          </li>
-        ) : null}
-        <li>
-          <a href="/docs/mcp" onClick={click('/docs/mcp')}>
-            Ask your AI assistant (MCP)
-          </a>
-        </li>
-        <li>
-          <a href="/benchmarks" onClick={click('/benchmarks')}>
-            Benchmarks
-          </a>
-        </li>
-      </ul>
-    </aside>
+  // h(): the card and the edit link are conditional children (#4385).
+  return h(
+    'aside',
+    { class: 'dx-rail', 'aria-label': 'On this page and related' },
+    h(RailToc, { entries: props.entries, active: props.active }),
+    data.rail ? h(RailCard, { product: data.rail }) : null,
+    h(
+      'ul',
+      { class: 'dx-rlinks' },
+      props.slug !== undefined ? h('li', null, h('a', { href: editUrlOf(props.slug), rel: 'noopener noreferrer' }, 'Edit this page')) : null,
+      h('li', null, h('a', { href: '/docs/mcp', onClick: click('/docs/mcp') }, 'Ask your AI assistant (MCP)')),
+      h('li', null, h('a', { href: '/benchmarks', onClick: click('/benchmarks') }, 'Benchmarks')),
+    ),
   )
 }
 
@@ -172,7 +148,9 @@ export function DocsPage(props: {
   // text stays the heading's accessible name.
   onMount(() => {
     for (const h of prose?.querySelectorAll<HTMLElement>('h2[id], h3[id]') ?? []) {
-      if (h.querySelector('.dx-anchor')) continue
+      // Skip the selling slots' headings: a slot may still be hydrating (it
+      // loads on demand), and an extra child would make it re-render.
+      if (h.querySelector('.dx-anchor') || h.closest('.dx-slot')) continue
       const a = document.createElement('a')
       a.className = 'dx-anchor'
       a.href = `#${h.id}`
@@ -181,32 +159,34 @@ export function DocsPage(props: {
       h.append(a)
     }
   })
-  return (
-    <div class="dx-page">
-      <div class="dx-article">
-        <Breadcrumbs path={props.path} title={props.title} />
-        <PageActions title={props.title} url={url} slug={props.slug} />
-        {props.ownTitle ? null : (
-          <header class="dx-head">
-            <h1 class="dx-title">{props.title}</h1>
-            {props.description ? <p class="dx-desc">{props.description}</p> : null}
-          </header>
-        )}
-        <InlineToc entries={entries} active={active} />
-        <div
-          class="dx-prose"
-          id="dx-article"
-          tabIndex={-1}
-          ref={(el: HTMLElement | null) => {
+  // h() throughout: the generic title is a conditional child (#4385).
+  return h(
+    'div',
+    { class: 'dx-page' },
+    h(
+      'div',
+      { class: 'dx-article' },
+      h(Breadcrumbs, { path: props.path, title: props.title }),
+      h(PageActions, { title: props.title, url, slug: props.slug }),
+      props.ownTitle
+        ? null
+        : h('header', { class: 'dx-head' }, h('h1', { class: 'dx-title' }, props.title), props.description ? h('p', { class: 'dx-desc' }, props.description) : null),
+      h(InlineToc, { entries, active }),
+      h(
+        'div',
+        {
+          class: 'dx-prose',
+          id: 'dx-article',
+          tabIndex: -1,
+          ref: (el: HTMLElement | null) => {
             prose = el
-          }}
-        >
-          {props.children}
-        </div>
-        <Helpful title={props.title} url={url} />
-        <PrevNext path={props.path} />
-      </div>
-      <Rail entries={entries} active={active} slug={props.slug} />
-    </div>
+          },
+        },
+        props.children,
+      ),
+      h(Helpful, { title: props.title, url }),
+      h(PrevNext, { path: props.path }),
+    ),
+    h(Rail, { entries, active, slug: props.slug }),
   )
 }

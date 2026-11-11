@@ -2,8 +2,9 @@ import { products } from '../../site/content/_products.json'
 import { useDocsData, type ProductSummary } from '../data'
 import { DocsGlyph as Glyph } from '../glyph'
 import { useLinkClick } from '../../site/kit/link'
-import { renderInline } from '../../site/kit/type'
+import { Inline } from '../inline'
 import { SLOT_IDS } from './slots'
+import { When } from '../when'
 
 const SUMMARIES = products as ProductSummary[]
 
@@ -44,10 +45,12 @@ export default function CrossSell(props: { id?: string; ids?: string | string[] 
         <li>
           <a href={c.href} onClick={click(c.href)}>
             <b>
-              {c.id ? <Glyph id={c.id} size={16} /> : null}
+              <When on={c.id}>
+                <Glyph id={c.id ?? ''} size={16} />
+              </When>
               {c.name}
             </b>
-            <span>{renderInline(c.text)}</span>
+            <span><Inline text={c.text} /></span>
           </a>
         </li>
       ))}

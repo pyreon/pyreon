@@ -1,3 +1,4 @@
+import { When } from '../docs-ui/when'
 import { onMount } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 
@@ -51,7 +52,9 @@ export function Playground(props: PlaygroundProps) {
 
   return (
     <div class={`playground playground--${layout}`}>
-      {props.title ? <div class="playground__title">{props.title}</div> : null}
+      <When on={props.title}>
+        <div class="playground__title">{props.title}</div>
+      </When>
       <div class="playground__body">
         <div class="playground__editor">
           <textarea

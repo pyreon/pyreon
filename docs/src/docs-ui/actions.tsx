@@ -1,4 +1,4 @@
-import { onUnmount, Show } from '@pyreon/core'
+import { h, onUnmount, Show } from '@pyreon/core'
 import { useClickOutside, useEventListener } from '@pyreon/hooks'
 import { signal } from '@pyreon/reactivity'
 import { sourcePathOf } from './nav'
@@ -138,20 +138,13 @@ export function PageActions(props: { title: string; url: string; slug?: string |
     })
     flash((await copyText(text)) ? 'Markdown copied' : 'Could not copy')
   }
-  return (
-    <div class="dx-actions">
-      {slug !== undefined ? (
-        <>
-          <a class="dx-action" href={editUrlOf(slug)} rel="noopener noreferrer">
-            Edit this page
-          </a>
-          <button type="button" class="dx-action" onClick={copyMarkdown}>
-            Copy as Markdown
-          </button>
-        </>
-      ) : null}
-      <AskAi title={props.title} url={props.url} raw={slug !== undefined ? rawUrlOf(slug) : undefined} />
-      <output class="dx-actions__status">{() => msg()}</output>
-    </div>
+  // h(): the source actions are conditional children (#4385).
+  return h(
+    'div',
+    { class: 'dx-actions' },
+    slug !== undefined ? h('a', { class: 'dx-action', href: editUrlOf(slug), rel: 'noopener noreferrer' }, 'Edit this page') : null,
+    slug !== undefined ? h('button', { type: 'button', class: 'dx-action', onClick: copyMarkdown }, 'Copy as Markdown') : null,
+    h(AskAi, { title: props.title, url: props.url, raw: slug !== undefined ? rawUrlOf(slug) : undefined }),
+    h('output', { class: 'dx-actions__status' }, () => msg()),
   )
 }
