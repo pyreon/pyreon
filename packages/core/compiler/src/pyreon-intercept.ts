@@ -291,7 +291,7 @@ function detectForKeying(ctx: DetectContext, node: ts.JsxOpeningLikeElement): vo
       ctx,
       node,
       'for-missing-by',
-      '<For each={...}> requires a `by` prop so the keyed reconciler can preserve item identity across reorders. Without `by`, every update remounts the full list.',
+      '<For each={...}> requires a `by` prop: it keys the rows, and a <For> without one throws when it mounts.',
       getNodeText(ctx, node),
       '<For each={items} by={(item) => item.id}>',
       false,

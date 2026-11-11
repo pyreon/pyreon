@@ -5475,7 +5475,7 @@ fn check_for_warnings(el: &JSXElement, ctx: &mut Ctx) {
         };
         ctx.warn(
             span,
-            "<For> without a \"by\" prop will use index-based diffing, which is slower and may cause bugs with stateful children. Add by={(item) => item.id} for efficient keyed reconciliation.".to_string(),
+            "<For> without a \"by\" prop throws when it mounts: \"by\" is required to key the rows. Add by={(item) => item.id} (or by={(item) => item} for unique strings or numbers).".to_string(),
             "missing-key-on-for",
         );
     }

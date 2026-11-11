@@ -499,3 +499,15 @@ describe('diagnoseError — JSON script body given the script-code escape', () =
     )
   })
 })
+
+describe('diagnoseError — <For> without by', () => {
+  it.each([
+    '[Pyreon] <For> requires a `by` prop: a function returning a stable, unique key for each item (got no `by`).',
+    '[Pyreon] <For> requires a `by` prop',
+    '<For> without a "by" prop throws when it mounts: "by" is required to key the rows.',
+  ])('%s → names the by prop', (message) => {
+    const result = diagnoseError(message)
+    expect(result?.fix).toContain('by={(item) => item.id}')
+    expect(result?.cause).toContain('`key`')
+  })
+})

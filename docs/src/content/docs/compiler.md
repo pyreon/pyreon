@@ -603,7 +603,7 @@ The compiler emits warnings for common mistakes. Warnings are returned in the `w
 
 ### `missing-key-on-for`
 
-Emitted when a `<For>` component is used without a `by` prop:
+Emitted when a `<For>` component is used without a `by` prop. `by` is required: such a `<For>` throws a `` [Pyreon] <For> requires a `by` prop `` error when it mounts.
 
 ```tsx
 // Triggers warning:

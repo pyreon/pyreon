@@ -112,7 +112,7 @@ This file is also the source of the MCP `get_anti_patterns` tool and the docs si
 ## JSX Mistakes
 
 - **`key` on `<For>`** `[detector: for-with-key]`: Use `by`, not `key` — JSX reserves `key` for VNode reconciliation.
-- **Missing `by` on `<For>`** `[detector: for-missing-by]`: `<For each={...}>` without `by` defeats keyed reconciliation, so every update remounts the whole list. Always supply `by={item => item.id}`.
+- **Missing `by` on `<For>`** `[detector: for-missing-by]`: `by` is required: `<For each={...}>` without it throws a `` [Pyreon] <For> requires a `by` prop `` error when it mounts (client and server). Always supply `by={item => item.id}` (`by={item => item}` for unique primitives).
 - **`.map()` in JSX**: Use `<For>` for reactive list rendering, not `.map()`.
 - **A VNode-returning call as a bare `{…}` child of a DOM element**: `<div>{tab('all')}</div>` where `tab` returns JSX now mounts correctly on every path, so prefer the element form `<Tab f="all" />` for clarity (PascalCase does not change how a bare call is classified).
   - In-file JSX-returning helpers are tracked (`jsxFnVars`/`isJsxHelperCall` in `compiler/src/jsx.ts` + `native/src/lib.rs`) and emit `_mountSlot(() => (cell(x)), …)` (also for the accessor form `{() => cell(x)}`); array-literal and `.map()` consts take `_mountSlot` too.

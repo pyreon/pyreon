@@ -115,7 +115,7 @@ A module-level `Map` keyed by a user key (`defineStore('cart')`, `useCookie('ses
 
 ### A user string passed as a `String.prototype.replace` replacement
 
-`$&`, `` $` ``, `$'` and `$$` in the replacement are patterns, even when the search is a literal string, so a title like `Sale $' today` pulled the template's tail into `&lt;title&gt;`, and rendered HTML spliced into a template re-inserted the placeholder. Pass data through a function replacer: `s.replace(re, () =&gt; value)`. Funnels: `packages/core/head/src/title.ts` (`applyTitleTemplate`, shared by SSR and client), `server/src/html.ts&#58;processTemplate`, `zero/src/not-found.ts`. Sweep: `grep -rnE '\.replace(All)?\([^,]+, *[a-zA-Z_`]'` over runtime code.
+`$&`, `` $` ``, `$'` and `$$` in the replacement are patterns, even when the search is a literal string, so a title like `Sale $' today` pulled the template's tail into `<title>`, and rendered HTML spliced into a template re-inserted the placeholder. Pass data through a function replacer: `s.replace(re, () => value)`. Funnels: `packages/core/head/src/title.ts` (`applyTitleTemplate`, shared by SSR and client), `server/src/html.ts:processTemplate`, `zero/src/not-found.ts`. Sweep: `grep -rnE '\.replace(All)?\([^,]+, *[a-zA-Z_`]'` over runtime code.
 
 ---
 
