@@ -1,5 +1,5 @@
 import { NumberInputBase } from '@pyreon/ui-primitives'
-import { disabledState, el, focusRingTone } from '../../factory'
+import { disabledState, el, focusRingTone, tones } from '../../factory'
 
 /**
  * NumberInput — a WAI-ARIA spinbutton that delegates ALL behavior + a11y to
@@ -36,14 +36,14 @@ import { disabledState, el, focusRingTone } from '../../factory'
  */
 const NumberInput = el
   .config({ name: 'NumberInput', component: NumberInputBase })
-  .theme((t) => ({
+  .theme((t, m) => ({
     display: 'block',
     width: '100%',
-    backgroundColor: t.color.system.light.base,
-    color: t.color.system.dark[800],
+    backgroundColor: tones(t, m).surface,
+    color: tones(t, m).text,
     borderWidth: t.borderWidth.base,
     borderStyle: t.borderStyle.base,
-    borderColor: t.color.system.base[300],
+    borderColor: tones(t, m).border,
     borderRadius: t.borderRadius.base,
     fontSize: t.fontSize.small,
     lineHeight: t.lineHeight.base,
@@ -52,7 +52,7 @@ const NumberInput = el
     focus: { ...focusRingTone(t, 'primary'), borderColor: t.color.system.primary.base },
     disabled: { ...disabledState(), backgroundColor: t.color.system.base[50] },
     placeholder: {
-      color: t.color.system.base[400],
+      color: tones(t, m).placeholder,
     },
   }))
   .sizes((t) => ({

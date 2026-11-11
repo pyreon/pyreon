@@ -985,8 +985,8 @@ function nativeTs(
     const inner = nativeTs(type.items, models, depth + 1);
     return /[|&]/.test(inner) ? `(${inner})[]` : `${inner}[]`;
   }
-  // PMTC has no bigint: an int64 is the platform integer on native.
-  return tsType(bigintAsNumber(type), 0, true);
+  // PMTC has no bigint: an int64 is the platform integer on native. `native` spells a number `Int` / `Double`.
+  return tsType(bigintAsNumber(type), 0, true, true);
 }
 
 /**
@@ -1281,6 +1281,8 @@ export function emitNativeModules(
     const f = new SourceFile(path);
     f.import("@pyreon/http", "createHttp");
     f.import("@pyreon/http/schema", "standardSchema");
+    // The cross-target number aliases the native types are written in (see `tsType`), declared when used.
+    f.aliasIfUsed("Int", "number").aliasIfUsed("Double", "number");
     // The validator binding only when something in this module names it. A
     // tag whose operations are all streams declares no schema, and an unused
     // `s` import is not harmless here: PMTC warns on it by name ("has NO

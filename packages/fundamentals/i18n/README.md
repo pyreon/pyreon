@@ -248,7 +248,7 @@ Over a messages object typed as `TranslationDictionary` (index signature) the he
 
 - **`t()` reads `locale` reactively** — call it inside effects / computeds / JSX accessors so re-evaluation happens on locale change. Reading once at setup captures the initial value.
 - **Concurrent `loadNamespace` calls dedupe** — calling `loadNamespace('auth')` twice in parallel returns the same in-flight promise.
-- **Missing keys return the key string itself** as a visual fallback (`'auth:missing.key'`). Override via `onMissingKey`.
+- **Missing keys return the key string itself** as a visual fallback (`'auth:missing.key'`), and in development warn once per (locale, key) — with a "did you mean `shop.title`?" hint when a `ns:key` names a namespace that is not registered but the default namespace has the dotted key. A namespace a `loader` has not loaded yet does not warn. Override via `onMissingKey` (which also silences the warning).
 - **Default namespace is `'common'`** — keys without a `namespace:` prefix look up in `common`.
 - **`addMessages` deep-merges** — it does not replace the entire namespace.
 - **`/core` entry only depends on `@pyreon/reactivity`** — picking the right entry per consumer keeps backend bundles JSX-free.

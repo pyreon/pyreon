@@ -781,7 +781,7 @@ function main(): void {
 
     case 'skip-missing-base-catalog':
       console.log(
-        `[check-diagnose-catalog] Could not read \`${CATALOG_FILE}\` from origin/${BASE_REF} — skipping (likely a first-time-add of the catalog file).`,
+        `[check-diagnose-catalog] Could not read \`${CATALOG_FILE}\` at the merge-base with ${baseRev} — skipping (likely a first-time-add of the catalog file).`,
       )
       process.exit(0)
       break

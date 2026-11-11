@@ -578,6 +578,14 @@ const checks: ClaimCheck[] = [
     name: 'canonical primitive count',
     codeId: 'canonical-primitive-count',
     actual: countCanonicalPrimitives,
+    // Every count of the canonical primitives in these files, however it is
+    // phrased. The anchors used to be whole phrases ("the N canonical
+    // primitives"), so a count worded any other way went unchecked: the
+    // primitives page's frontmatter said "21 primitives plus Transition…" and
+    // multiplatform.md "all N canonical primitives" while the gate passed, and
+    // the frontmatter was still 21 after `<Select>` made it 22. A file whose
+    // OTHER numbers precede "primitives" (the web count, "18 primitives" of
+    // `@pyreon/document`) keeps the `canonical` qualifier.
     claims: [
       {
         file: 'packages/core/primitives/README.md',
@@ -585,7 +593,8 @@ const checks: ClaimCheck[] = [
       },
       {
         file: 'packages/core/primitives/README.md',
-        pattern: /the \*\*(\d+)\*\* canonical UI primitives/,
+        pattern: /\b(\d+)\*{0,2} canonical (?:UI )?primitives/,
+        all: true,
       },
       {
         file: 'packages/core/primitives/src/manifest.ts',
@@ -593,27 +602,38 @@ const checks: ClaimCheck[] = [
         all: true,
       },
       {
+        file: 'packages/core/primitives/src/index.ts',
+        pattern: /\b(\d+) canonical primitives/,
+        all: true,
+      },
+      {
         file: 'README.md',
-        pattern: /(\d+) canonical multi-platform primitives/,
+        pattern: /\b(\d+) canonical (?:multi-platform )?primitives/,
+        all: true,
       },
       {
         file: 'docs/src/content/docs/primitives.md',
-        pattern: /(\d+) canonical primitives/,
+        pattern: /\b(\d+) (?:canonical )?primitives\b/,
         all: true,
       },
       {
         file: 'docs/src/content/docs/multiplatform.md',
-        pattern: /the (\d+) canonical primitives/,
+        pattern: /\b(\d+)\*{0,2} (?:canonical )?primitives\b/,
         all: true,
       },
       {
         file: 'docs/src/content/docs/patterns/multiplatform.md',
-        pattern: /the (\d+) canonical primitives/,
+        pattern: /\b(\d+) (?:canonical )?primitives\b/,
         all: true,
       },
       {
         file: 'docs/src/content/docs/multiplatform-libraries.md',
-        pattern: /(\d+) canonical (?:UI )?primitives/,
+        pattern: /\b(\d+) canonical (?:UI )?primitives/,
+        all: true,
+      },
+      {
+        file: '.agents/guides/multiplatform/README.md',
+        pattern: /\b(\d+) canonical primitives/,
         all: true,
       },
     ],

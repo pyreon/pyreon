@@ -172,12 +172,18 @@ const fr = {
 export const shopI18n = createI18n({
   locale: 'en',
   fallbackLocale: 'en',
-  messages: {
-    en,
-    de,
-    fr,
-  },
 })
+
+// The components look keys up as `namespace:key` (`shop:title`,
+// `category:tech`, `product:tshirt-classic.title`), so each top-level group is
+// registered as its own NAMESPACE. Passing the dictionaries as `messages`
+// put them in the default namespace, where those keys are `shop.title` etc.,
+// and every `ns:key` lookup rendered the raw key.
+for (const [code, dict] of Object.entries({ en, de, fr })) {
+  for (const [namespace, messages] of Object.entries(dict)) {
+    shopI18n.addMessages(code, messages, namespace)
+  }
+}
 
 /** All locales the user can switch between. */
 export const LOCALES: Array<{ code: Locale; label: string; flag: string }> = [

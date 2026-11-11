@@ -180,7 +180,21 @@ export function assignNames(raws: readonly string[], derive: (raw: string) => st
  * layer makes tags unique under this function before any emitter sees them.
  */
 export function tagFile(tag: string): string {
-  return tag.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'default'
+  const stem = tag.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'default'
+  // `con-api`, still a fixed point of this function (`tagFile(stem) === stem`).
+  return isWindowsDeviceName(stem) ? `${stem}-api` : stem
+}
+
+/**
+ * Whether `stem` is a name Windows reserves for a DEVICE, whatever the
+ * extension: `con.ts`, `nul.md` and `com1.ts` cannot be created, and opening
+ * one reads or writes the device instead. Every emitted file whose name comes
+ * from the spec (a tag's endpoints, queries and docs page, a model's schema
+ * module) passes through this, so a spec with a `con` tag or a `Nul` model
+ * does not produce a tree that cannot be checked out on Windows.
+ */
+export function isWindowsDeviceName(stem: string): boolean {
+  return /^(?:con|prn|aux|nul|com[0-9¹²³]|lpt[0-9¹²³]|conin\$|conout\$)$/i.test(stem)
 }
 
 /**

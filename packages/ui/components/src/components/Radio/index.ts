@@ -1,13 +1,14 @@
-import { disabledState, el, focusRing } from '../../factory'
+import { choiceBoxStyles, choiceBoxTheme, disabledState, el, focusRing, tones } from '../../factory'
 import { RadioBase, RadioGroupBase } from '@pyreon/ui-primitives'
 
 const Radio = el.config({ name: 'Radio', component: RadioBase })
-  .theme((t) => ({
+  .theme((t, m) => ({
+    ...choiceBoxTheme(t, m),
     display: 'inline-flex',
     alignItems: 'center',
     gap: t.spacing.xxSmall,
     cursor: 'pointer',
-    color: t.color.system.base[700],
+    color: tones(t, m).text,
     fontSize: t.fontSize.small,
     transition: t.transition.fast,
     focus: { ...focusRing(t), borderRadius: t.borderRadius.pill },
@@ -18,6 +19,7 @@ const Radio = el.config({ name: 'Radio', component: RadioBase })
     medium: { fontSize: t.fontSize.small, gap: t.spacing.xxSmall },
     large: { fontSize: t.fontSize.base, gap: t.spacing.xSmall },
   }))
+  .styles(choiceBoxStyles('circle') as never)
 
 export default Radio
 
@@ -39,18 +41,18 @@ export const RadioGroup = el.config({ name: 'RadioGroup', component: RadioGroupB
 
 export const RadioIndicator = el
   .config({ name: 'RadioIndicator' })
-  .attrs({ tag: 'span' })
-  .theme((t) => ({
+  .attrs({ tag: 'span', 'data-choice-indicator': '' } as never)
+  .theme((t, m) => ({
     width: '18px',
     height: '18px',
     borderWidth: 2,
     borderStyle: 'solid',
-    borderColor: t.color.system.base[300],
+    borderColor: tones(t, m).border,
     borderRadius: t.borderRadius.pill,
     display: 'inline-flex',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: t.color.system.light.base,
+    backgroundColor: tones(t, m).surface,
     transition: t.transition.fast,
     flexShrink: 0,
   }))

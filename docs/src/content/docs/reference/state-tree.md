@@ -29,10 +29,11 @@ See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multipla
 - onSnapshot(instance, cb) — microtask-coalesced snapshot subscription; onAction(instance, cb) — observe action calls
 - getParent / getRoot / getPath / isRoot / hasParent — tree traversal (parent tracked for field AND array/map children)
 - identifier() / reference(Type) / resolveIdentifier — normalized references that resolve by id to the live node
+- arrayOf(Model) / mapOf(Model) — first-class array / map children: indexed paths, snapshot patch values, replay recreates the instances
 - Schema mode validates + STRICTLY TYPES state from a schema passed directly — @pyreon/validate, raw zod / valibot / arktype, any Standard Schema (no adapter wrapper)
 - Nested model composition for tree-shaped state
 - getSnapshot / applySnapshot — typed recursive serialization
-- onPatch / applyPatch — JSON patch record and replay
+- onPatch / applyPatch — JSON patch record and replay; round-trips for every field kind (nested models, arrayOf / mapOf children, references)
 - addMiddleware — action interception chain (sync + async)
 - .create(initial) for instances, .asHook(id) for singleton hooks
 - Devtools subpath export with WeakRef-based registry
@@ -110,6 +111,7 @@ shared.add('Persisted item')
 | [`onSnapshot`](#onsnapshot-function) | function | Subscribe to snapshot changes. |
 | [`onAction`](#onaction-function) | function | Observe every action call on an instance (logging, analytics, devtools). |
 | [`getParent`](#getparent-function) | function | Tree-traversal helpers. |
+| [`arrayOf`](#arrayof-function) | function | Declare a plain-mode state field as an ARRAY (`arrayOf`) or string-keyed MAP (`mapOf`) of `Model` instances. |
 | [`identifier`](#identifier-function) | function | Declare a state field as a model's IDENTIFIER — the field a `reference()` resolves against. |
 | [`reference`](#reference-function) | function | Declare a state field as a normalized REFERENCE to another model by its identifier. |
 | [`resolveIdentifier`](#resolveidentifier-function) | function | Find the model instance of `Type` whose identifier equals `id`, searching `root`'s subtree (depth-first, cycle-safe; rea |
@@ -285,7 +287,7 @@ const snap = getSnapshot(counter) // { count: 10 }
 (instance: ModelInstance, snapshot: Partial<Snapshot>) => void
 ```
 
-Apply a (possibly PARTIAL) snapshot to a model instance — updates only the keys PRESENT in the snapshot, leaving absent keys unchanged (a merge, not a clear). Nested field-models, arrays-of-instances (`todos: Todo[]`), and object-of-instances (`byId: { [k]: Model }`) reconcile IN PLACE: existing instances are updated from the matching elements, never replaced by plain snapshot objects, and array length changes beyond the current↔snapshot overlap are NOT reconciled (use the array's own mutation methods to add/remove). Schema mode routes through the validated `patch` helper, so an invalid snapshot is REJECTED. Emits `replace` patches.
+Apply a (possibly PARTIAL) snapshot to a model instance — updates only the keys PRESENT in the snapshot, leaving absent keys unchanged (a merge, not a clear). Nested field-models reconcile IN PLACE. An `arrayOf(Model)` / `mapOf(Model)` field reconciles by index / key: existing instances are updated in place, extra snapshot elements are CREATED as `Model` instances, missing ones are dropped — so a snapshot fully restores the list. An undeclared container (`todos: [] as Todo[]`) whose elements all share one model infers that model from them; an empty or mixed one cannot create elements (declare it with `arrayOf`). A `reference` field restores its id. Schema mode routes through the validated `patch` helper, so an invalid snapshot is REJECTED. Emits `replace` patches.
 
 **Example**
 
@@ -297,7 +299,7 @@ applySnapshot(app, { title: 'New' })      // merge — profile is left unchanged
 **Common mistakes**
 
 - Expecting a partial snapshot to CLEAR unmentioned fields — it merges: keys absent from the snapshot keep their current value. Pass a full snapshot to replace everything.
-- Expecting a longer array snapshot to grow the list — arrays-of-instances reconcile only up to the overlap (`min(current, snapshot)`); extra snapshot elements are NOT added (there is no element type to recreate them). Use the array's own add/remove action, then apply.
+- Holding model instances in a plain `[] as Todo[]` field and restoring a snapshot into an EMPTY instance — with no element type the elements stay plain objects (a dev warning names the field). Declare it `todos: arrayOf(Todo)` so `applySnapshot` / `applyPatch` / `create` recreate the instances.
 - Applying an invalid snapshot in schema mode expecting a silent write — it routes through the validated `patch` and THROWS on a schema violation (the schema is the source of truth).
 
 **See also:** `getSnapshot` · `model`
@@ -310,7 +312,7 @@ applySnapshot(app, { title: 'New' })      // merge — profile is left unchanged
 (instance: ModelInstance, listener: PatchListener) => () => void
 ```
 
-Subscribe to JSON patches emitted by state mutations on a model instance. Each patch is a `replace` op carrying the JSON-pointer path (`/count`, `/profile/name` for nested) and the new value — Pyreon state is one signal per field, so a field holding an array/object emits a whole-value `replace`, not granular add/remove ops. Returns an unsubscribe function. Pairs with `applyPatch` for undo/redo and state synchronization.
+Subscribe to JSON patches emitted by state mutations on a model instance. Each patch is a `replace` op carrying the JSON-pointer path (`/count`, `/profile/name` for nested, `/todos/1/done` for an element of an array / map field) and the new value as plain JSON — a model value, or a container holding models, is emitted as its SNAPSHOT, never as live instances; a `reference` write emits the stored id — Pyreon state is one signal per field, so a field holding an array/object emits a whole-value `replace`, not granular add/remove ops. Returns an unsubscribe function. Pairs with `applyPatch` for undo/redo and state synchronization.
 
 **Example**
 
@@ -330,7 +332,7 @@ const dispose = onPatch(counter, (patch) => {
 (instance: ModelInstance, patch: Patch | Patch[]) => void
 ```
 
-Apply one or more JSON patches to a model instance. Accepts a single patch or an array for batch replay. REPLACE-ONLY: every patch must be `{ op: "replace" }` — any other op (`add`/`remove`/`move`/…) THROWS `unsupported op`. This mirrors what `onPatch` emits (Pyreon is one signal per field, so a field holding an array/object emits a whole-value `replace`, never granular add/remove), so an `onPatch`→`applyPatch` undo/redo round-trip is closed; a hand-authored standard JSON-Patch with add/remove is not.
+Apply one or more JSON patches to a model instance. Accepts a single patch or an array for batch replay. REPLACE-ONLY: every patch must be `{ op: "replace" }` — any other op (`add`/`remove`/`move`/…) THROWS `unsupported op`. This mirrors what `onPatch` emits (Pyreon is one signal per field, so a field holding an array/object emits a whole-value `replace`, never granular add/remove), so an `onPatch`→`applyPatch` undo/redo or sync round-trip is closed; a hand-authored standard JSON-Patch with add/remove is not. Paths walk through model fields and into array / map elements (`/todos/1/done`, RFC 6901 `~0`/`~1` escapes). A value is restored exactly as `applySnapshot` restores it: a snapshot into a model field reconciles into the live instance, an `arrayOf` / `mapOf` field recreates its elements, a `reference` field stores the id.
 
 **Example**
 
@@ -341,7 +343,8 @@ applyPatch(counter, { op: 'replace', path: '/count', value: 0 })
 **Common mistakes**
 
 - Passing an `add` / `remove` / `move` patch (e.g. imported from a standard JSON-Patch diff) — `applyPatch` throws `unsupported op "<op>"`; it accepts ONLY `replace`. Feed it the `replace` ops `onPatch` emits, or convert your diff to whole-value replaces.
-- Expecting a granular array patch (`/todos/0`, add-at-index) — Pyreon emits a whole-value `replace` of the field (`/todos`); apply the whole array value, not an element op.
+- Expecting an add-at-index array patch — adding or removing elements emits a whole-value `replace` of the field (`/todos`) carrying the element snapshots; only a write INSIDE an element addresses it (`/todos/1/done`).
+- Replaying patches of an undeclared `[] as Todo[]` field into an empty instance — the first `/todos` replace writes plain objects, and the next `/todos/0/…` patch throws. Declare the field with `arrayOf(Todo)`.
 
 **See also:** `onPatch` · `model`
 
@@ -548,7 +551,7 @@ const unsub = onAction(store, (call) => analytics.track(call.name, call.args))
 <T>(node) => T | undefined; also getRoot / getPath / isRoot / hasParent
 ```
 
-Tree-traversal helpers. A model instance gets a tree PARENT when it is written into another model's state — as a field value, an ARRAY element, or a plain-object value (parent tracking runs on the initial value AND every subsequent write, so array-held children — the headline `todos: Todo[]` shape — are tracked, not just field-nested ones). `getParent(node)` → the instance `node` is attached under (or `undefined` for a root); `getRoot(node)` → walks to the top; `getPath(node)` → JSON-pointer path from the root built from each ancestor's parent-key (e.g. `"/todos"`, `""` for a root); `isRoot(node)` / `hasParent(node)` → booleans. All throw on a non-model-instance.
+Tree-traversal helpers. A model instance gets a tree PARENT when it is written into another model's state — as a field value, an ARRAY element, or a plain-object value (parent tracking runs on the initial value AND every subsequent write, so array-held children — the headline `todos: Todo[]` shape — are tracked, not just field-nested ones). `getParent(node)` → the instance `node` is attached under (or `undefined` for a root); `getRoot(node)` → walks to the top; `getPath(node)` → JSON-pointer path from the root, including the element index / key for array and map children (e.g. `"/todos/0"`, `"/byId/u1"`, `""` for a root) — the same path the node's patches carry; `isRoot(node)` / `hasParent(node)` → booleans. All throw on a non-model-instance.
 
 **Example**
 
@@ -558,17 +561,44 @@ list.add('write tests')               // pushes a Todo into the array
 const todo = list.todos()[0]
 getParent(todo)   // → list   (array children get a parent, not just field-nested)
 getRoot(todo)     // → list
-getPath(todo)     // "/todos"
+getPath(todo)     // "/todos/0"
 isRoot(list)      // true
 ```
 
 **Common mistakes**
 
 - Expecting a parent for a child removed from an array — parent tracking sets the parent on write; a detached node keeps its last parent until GC (v1). getParent reflects the last attachment, not live membership
-- Expecting array INDICES in `getPath` — v1 paths carry the field key (`/todos`), not the element index (`/todos/0`)
 - Auto-attachment is one container level deep — a model nested inside an array inside an array is not auto-parented; use field or single-array nesting
 
 **See also:** `model` · `getSnapshot`
+
+---
+
+### `arrayOf` `function`
+
+```ts
+arrayOf(Model) => ModelArray<Model>; mapOf(Model) => ModelMap<Model>
+```
+
+Declare a plain-mode state field as an ARRAY (`arrayOf`) or string-keyed MAP (`mapOf`) of `Model` instances. The field is an ordinary signal holding `Model[]` / `Record<string, Model>` (initially empty); declaring the element model is what makes the children first-class: `create()` turns element snapshots into instances (live instances are kept), `getSnapshot` serializes them, `onPatch` addresses a child write by index / key (`/todos/1/done`) and carries snapshots, and `applySnapshot` / `applyPatch` reconcile by index / key — updating existing instances in place, creating extra elements, dropping missing ones — so patches and snapshots round-trip, including into a fresh instance in another process. `getPath(child)` includes the index / key. A plain `[] as Todo[]` default still works for reading and gets indexed paths, but cannot recreate elements from data, and dev-warns once per field.
+
+**Example**
+
+```tsx
+const Todo = model({ state: { title: '', done: false } })
+const TodoList = model({ state: { todos: arrayOf(Todo), byId: mapOf(Todo) } })
+const list = TodoList.create({ todos: [{ title: 'a', done: false }] }) // a Todo instance
+getPath(list.todos()[0]!)                 // "/todos/0"
+onPatch(list, (p) => send(p))             // { op: 'replace', path: '/todos/0/done', value: true }
+applyPatch(TodoList.create(), received)   // replays, recreating Todo instances
+```
+
+**Common mistakes**
+
+- Passing an instance (`arrayOf(Todo.create())`) — pass the model DEFINITION; it throws otherwise
+- Expecting `self.todos.set([{ title }])` to convert snapshots — direct signal writes store what you give them; push `Todo.create({ title })`. Only `create` / `applySnapshot` / `applyPatch` convert snapshots
+
+**See also:** `applySnapshot` · `applyPatch` · `onPatch` · `getParent` · `model`
 
 ---
 
@@ -613,6 +643,7 @@ post.author.id()   // 'u-42'
 **Common mistakes**
 
 - Reading `reference` resolution OUTSIDE the tree — the field resolves via `getRoot(node)`, so the referencing node and the target must share a root; an unrooted node resolves to `undefined`
+- Expecting a `reference` write to be invisible to `onPatch` — it emits a `replace` patch carrying the new id (and fires `onSnapshot`), so it replays like any other field
 - Expecting a `reference` field to deep-serialize its target — a reference serializes as the target's ID (so it round-trips), NOT as the node; the target serializes under its OWN owner in the tree. (Array-held OWNED instances — the `todos: Todo[]` shape — DO deep-serialize in `getSnapshot`; a reference is an id by design.)
 - Referencing a model with no `identifier()` — `reference()`/`resolveIdentifier` throw without a declared identifier on the target type
 

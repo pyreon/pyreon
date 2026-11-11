@@ -231,7 +231,7 @@ These config-level diagnostics surface on `LintResult.configDiagnostics` (and on
 
 Create `.pyreonlintignore` (same format as `.gitignore`):
 
-```gitignore
+```text
 # Ignore generated code
 src/generated/
 **/*.gen.ts

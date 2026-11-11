@@ -40,15 +40,19 @@ export interface FormProps<TValues extends Record<string, unknown>> extends Prop
  * </Form>
  * ```
  */
-const Form: ComponentFn<FormProps<Record<string, unknown>>> = (props) => {
+// Generic over TValues (like `FormProvider`), NOT `ComponentFn<FormProps<
+// Record<string, unknown>>>`: `FieldState<T>.setValue` is contravariant in T,
+// so a fixed `Record<string, unknown>` prop type rejects every typed form
+// under `strict` (#4309). Locked by `tests/form-component.types.test.tsx`.
+function Form<TValues extends Record<string, unknown>>(props: FormProps<TValues>): VNodeChild {
   // Sync disabled/readOnly props to form signals
   const syncDisabled = () => {
     const v = props.disabled
-    props.of.disabled.set(typeof v === 'function' ? v() : v ?? false)
+    props.of.disabled.set(typeof v === 'function' ? v() : (v ?? false))
   }
   const syncReadOnly = () => {
     const v = props.readOnly
-    props.of.readOnly.set(typeof v === 'function' ? v() : v ?? false)
+    props.of.readOnly.set(typeof v === 'function' ? v() : (v ?? false))
   }
 
   // If accessor, track reactively

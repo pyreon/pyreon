@@ -74,6 +74,40 @@ export function isHiddenStaticPath(pathname: string): boolean {
 }
 
 /**
+ * The deployment's public origin from the `ORIGIN` environment variable
+ * (`https://example.com`), or `null` when it is unset or empty.
+ *
+ * Without it a self-hosted runner takes the origin from the `Host` header,
+ * which any client chooses. Everything server-side that resolves against the
+ * request origin then follows the client: a relative `fetch('/api/x')` during
+ * SSR (`@pyreon/http`'s `runWithRequest`), a loader that builds
+ * `new URL('/api', ctx.url)`, the server-action CSRF baseline. `Host:
+ * 127.0.0.1:6379` turned such a fetch into a request to an internal service,
+ * rendered back to the caller (and, under ISR, cached for everyone). With
+ * `ORIGIN` set, the `Host` header (and `X-Forwarded-Proto`) no longer
+ * contribute to the request URL at all.
+ *
+ * A value that is not an absolute http(s) URL throws at startup: a typo
+ * must not silently fall back to trusting `Host`.
+ */
+export function fixedOriginFromEnv(value: string | undefined): string | null {
+  const v = value === undefined ? '' : value.trim()
+  if (v === '') return null
+  let url: URL | null = null
+  try {
+    url = new URL(v)
+  } catch {
+    url = null
+  }
+  if (url === null || (url.protocol !== 'http:' && url.protocol !== 'https:') || url.origin === 'null') {
+    throw new Error(
+      `[Pyreon] ORIGIN must be an absolute http(s) URL such as "https://example.com", got ${JSON.stringify(value)}. Fix or unset it.`,
+    )
+  }
+  return url.origin
+}
+
+/**
  * Plain-JavaScript copies of {@link requestUrlFromTarget} and
  * {@link isHiddenStaticPath} for the emitted runners (they are generated
  * source, not bundled). Kept equivalent by a differential test that
@@ -113,5 +147,22 @@ function __pyreonIsHiddenPath(pathname) {
     if (s.charCodeAt(0) === 46 && !(i === 1 && s === ".well-known")) return true
   }
   return false
+}
+
+function __pyreonFixedOrigin(value) {
+  const v = value === undefined || value === null ? "" : String(value).trim()
+  if (v === "") return null
+  let url = null
+  try {
+    url = new URL(v)
+  } catch {
+    url = null
+  }
+  if (url === null || (url.protocol !== "http:" && url.protocol !== "https:") || url.origin === "null") {
+    throw new Error(
+      "[Pyreon] ORIGIN must be an absolute http(s) URL such as \\"https://example.com\\", got " + JSON.stringify(value) + ". Fix or unset it.",
+    )
+  }
+  return url.origin
 }
 `

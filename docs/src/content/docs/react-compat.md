@@ -980,7 +980,15 @@ Also exported, with React semantics: `cloneElement`, `isValidElement`, `useSyncE
 
 ### `@pyreon/react-compat/dom`
 
-Provides `createRoot` and `render` for mounting your app, matching the `react-dom/client` API.
+The target of both `react-dom` and `react-dom/client` in compat mode, so it carries React 19's public surface of both:
+
+| Export | Behaviour |
+| --- | --- |
+| `createRoot`, `hydrateRoot` | Mount, or take over server-rendered markup; `root.render(next)` replaces the tree, `root.unmount()` removes it. |
+| `createPortal`, `flushSync`, `unstable_batchedUpdates`, `version` | Same as the main entry (`unstable_batchedUpdates` is `batch`). |
+| `render`, `hydrate`, `unmountComponentAtNode` | React 17's legacy root API; rendering into the same container again replaces the tree. |
+| `preconnect`, `prefetchDNS`, `preload`, `preloadModule`, `preinit`, `preinitModule` | Insert one deduplicated `<link>` / `<script>` into `<head>`; no-ops without a document. |
+| `findDOMNode`, `useFormStatus`, `requestFormReset` | Not provided: they throw a `[Pyreon]` error naming the replacement (a ref; `useActionState`'s `isPending`; `form.reset()`). |
 
 #### `createRoot`
 
