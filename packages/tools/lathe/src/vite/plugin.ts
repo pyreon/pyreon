@@ -13,7 +13,7 @@
  * the one artifact people need to inspect the one they cannot open.
  */
 
-import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path'
 import type { LatheSection } from '../core/config'
 import { resolveProjects } from '../core/config'
@@ -133,6 +133,8 @@ export async function runPass(
     const result = await generateAsync(source, project, {
       location: input,
       readDocument: (id) => readFileSync(id, 'utf8'),
+      refRoot: project.refRoot === undefined ? undefined : abs(project.refRoot),
+      realpath: realpathSync,
       remoteDocuments: remote?.get(input),
     })
     for (const d of result.documents) {
@@ -295,6 +297,11 @@ export function lathe(options: LathePluginOptions = {}): LathePluginHost {
           (id) => readFileSync(id, 'utf8'),
           project.remoteHeaders,
           cacheDir,
+          {
+            refRoot: project.refRoot === undefined ? undefined : resolve(root, project.refRoot),
+            realpath: realpathSync,
+            refOrigins: project.refOrigins,
+          },
         ),
       )
     }

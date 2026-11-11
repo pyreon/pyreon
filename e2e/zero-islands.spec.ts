@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import { waitForHydration } from './hydration-barrier'
 
 // Islands in @pyreon/zero — self-hydrating, end-to-end. The /island-demo route
 // declares an island via `import { island } from '@pyreon/zero'` (no
@@ -63,6 +64,60 @@ test.describe('islands in @pyreon/zero (self-hydrating)', () => {
     await probe.click()
     await probe.click()
     expect(await read()).toBe(before + 3)
+  })
+
+  test('page hydration ADOPTS the server-rendered island (no replace, interior kept until its trigger)', async ({
+    page,
+  }) => {
+    // The island is async on the server (wrapped in `<!--$pas-->…<!--$pae-->`)
+    // and sync on the client (the bare `<pyreon-island>` marker). The page's
+    // hydration must adopt the server marker inside that range — it used to
+    // hydrate against the `$pas` comment, mismatch, and replace the island with
+    // an empty client marker, blanking the demo until it scrolled into view.
+    // Capture the server nodes before the deferred client entry runs, and
+    // record every `<pyreon-island>` removed afterwards.
+    await page.addInitScript(() => {
+      const w = window as unknown as Record<string, unknown>
+      const removed: string[] = []
+      w.__removedIslands = removed
+      new MutationObserver((records) => {
+        for (const r of records) {
+          for (const n of Array.from(r.removedNodes)) {
+            if (n instanceof Element && (n.matches('pyreon-island') || n.querySelector('pyreon-island')))
+              removed.push(n.outerHTML.slice(0, 80))
+          }
+        }
+      }).observe(document, { childList: true, subtree: true })
+      document.addEventListener('readystatechange', () => {
+        if (document.readyState === 'interactive') {
+          w.__serverIsland = document.querySelector('pyreon-island[data-component="IslandProbe"]')
+          w.__serverProbe = document.querySelector('[data-testid="island-probe"]')
+        }
+      })
+    })
+    // Trailing slash: `vite preview` serves the PRERENDERED
+    // `dist/island-demo/index.html` only for `/island-demo/`; `/island-demo`
+    // falls back to the root shell, where the route is client-MOUNTED and no
+    // server island exists to adopt.
+    await page.goto('/island-demo/')
+    await waitForHydration(page)
+
+    const state = await page.evaluate(() => {
+      const w = window as unknown as Record<string, unknown>
+      return {
+        hadServerIsland: w.__serverIsland != null,
+        sameIsland:
+          document.querySelector('pyreon-island[data-component="IslandProbe"]') === w.__serverIsland,
+        // Not scrolled into view yet, so the island has not hydrated: its
+        // server-rendered interior must still be the same node.
+        sameProbe: document.querySelector('[data-testid="island-probe"]') === w.__serverProbe,
+        removed: w.__removedIslands as string[],
+      }
+    })
+    expect(state.hadServerIsland).toBe(true)
+    expect(state.removed).toEqual([])
+    expect(state.sameIsland).toBe(true)
+    expect(state.sameProbe).toBe(true)
   })
 
   test('hydration produces no console / page errors', async ({ page }) => {

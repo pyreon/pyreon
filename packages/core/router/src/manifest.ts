@@ -248,14 +248,15 @@ const isExactAdmin = useIsActive("/admin", true)  // exact only
       signature:
         'useTypedSearchParams<T extends SearchParamSchema>(schema: T): [get: () => InferSearchParams<T>, set: (updates: Partial<InferSearchParams<T>>) => Promise<NavigationResult>]',
       summary:
-        'Type-safe search params with auto-coercion from URL strings. Schema keys define parameter names, values define types (`"string"`, `"number"`, `"boolean"`). Returns a `[get, set]` TUPLE (like `useSearchParams`): `get()` reads the coerced values reactively; `set()` merges updates and navigates via `router.replace` (resolving with the navigation\'s `NavigationResult`). Missing numbers coerce to `0`, booleans accept `"true"`/`"1"`.',
+        'Type-safe search params with auto-coercion from URL strings. Schema keys define parameter names, values define types (`"string"`, `"number"`, `"boolean"`). Returns a `[get, set]` TUPLE (like `useSearchParams`): `get()` reads the coerced values reactively; `set()` changes only the params it is given (every other query param and the hash are kept; an `undefined` value removes the key) and navigates via `router.replace` (resolving with the navigation\'s `NavigationResult`). An absent or non-numeric number reads `undefined` (default it with `?? 1`), an absent string `""`, an absent boolean `false`; booleans accept `"true"`/`"1"`.',
       example: `const [params, setParams] = useTypedSearchParams({ page: "number", q: "string", active: "boolean" })
-params().page    // number (auto-coerced)
-params().q       // string
-setParams({ page: 2 })  // updates URL via router.replace`,
+params().page ?? 1  // number | undefined (auto-coerced; undefined when absent)
+params().q          // string
+setParams({ page: 2 })  // ?page=2 — other params kept, via router.replace`,
       mistakes: [
         'Destructuring an object (`params.page()`) — the hook returns a TUPLE: `const [params, setParams] = useTypedSearchParams(...)`, read via `params().page`',
         'Expecting `set()` to bypass navigation — it navigates via `router.replace`, so guards/blockers apply (check the resolved `NavigationResult` if you need to know it committed)',
+        'Reading a `number` param without a default — it is `undefined` when absent from the URL, not `0`: `params().page ?? 1`',
       ],
       seeAlso: ['useSearchParams', 'useRoute'],
     },
@@ -396,9 +397,9 @@ setSearch({ page: "2" })`,
     {
       name: 'useBlocker',
       kind: 'hook',
-      signature: 'useBlocker(fn: BlockerFn): Blocker',
+      signature: 'useBlocker(fn: BlockerFn, options?: BlockerOptions): Blocker',
       summary:
-        'Block navigations while a condition holds. `fn(to, from)` is called before EVERY navigation — including browser Back/Forward, which route through the full pipeline — and returning `true` (or resolving to `true`; async blockers are supported, e.g. `confirm()` dialogs) cancels it. A cancelled browser traversal restores the URL/history position. Returns `{ remove() }` to unregister (auto-removed on component unmount). Also installs a shared ref-counted `beforeunload` handler so tab-close shows the browser confirmation while any blocker is active.',
+        'Block navigations while a condition holds. `fn(to, from)` is called before EVERY navigation — including browser Back/Forward, which route through the full pipeline — and returning `true` (or resolving to `true`; async blockers are supported, e.g. `confirm()` dialogs) cancels it. A cancelled browser traversal restores the URL/history position. Returns `{ remove() }` to unregister (auto-removed on component unmount). Closing or reloading the tab shows the browser\'s "Leave site?" prompt only when a blocker says to block: the shared `beforeunload` handler calls each blocker synchronously with the current route as `to` and `from` (a blocker returning a Promise counts as blocking, since the browser cannot wait). `options.beforeUnload` overrides that: `true` / `false` always / never prompt, or a function such as `() => form.isDirty()` (use it for an async blocker).',
       example: `const blocker = useBlocker((to, from) => {
   return form.isDirty() && !confirm('Discard unsaved changes?')
 })
@@ -408,6 +409,7 @@ blocker.remove()`,
         "Expecting `proceed()` / `reset()` methods (React Router shape) — Pyreon's blocker is a predicate: return `true` to block, `false` to allow; `remove()` unregisters it",
         'Returning `false` to block — inverted: `true` means BLOCK (it answers "should this navigation be blocked?")',
         'Assuming the Back button bypasses blockers — browser traversals run the same pipeline; a blocked Back restores the URL',
+        'An async blocker without `beforeUnload` — the tab-close prompt cannot await it, so it always prompts; pass `{ beforeUnload: () => isDirty() }`',
       ],
       seeAlso: ['useRouter', 'onBeforeRouteLeave'],
     },

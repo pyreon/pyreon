@@ -1,6 +1,7 @@
 import { config } from '@pyreon/ui-core'
 import type { MakeItResponsiveStyles } from '@pyreon/unistyle'
-import { ALIGN_CONTENT_MAP_X, extendCss, makeItResponsive, value } from '@pyreon/unistyle'
+import { ALIGN_CONTENT_MAP_X, extendCss, value } from '@pyreon/unistyle'
+import { makeGridResponsive } from '../defaults'
 import type { CssOutput, StyledTypes } from '../types'
 import { isCssVarValue, isNumber } from '../utils'
 
@@ -80,7 +81,7 @@ export default styled(component, { layer: 'elements' })`
   align-self: stretch;
   flex-direction: row;
 
-  ${makeItResponsive({
+  ${makeGridResponsive({
     key: '$coolgrid',
     styles,
     css,

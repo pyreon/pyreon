@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { mountInBrowser } from '@pyreon/test-utils/browser'
 import { jsx } from './jsx-runtime'
 import { useState } from './index'
+import { createPortal, hydrateRoot } from './dom'
 
 /**
  * Real-browser smoke test for `@pyreon/react-compat`.
@@ -30,5 +31,31 @@ describe('@pyreon/react-compat — browser smoke', () => {
     expect(greeting.textContent).toBe('hello, Pyreon')
     unmount()
     expect(document.getElementById('greeting')).toBeNull()
+  })
+})
+
+describe('react-dom entry in real Chromium', () => {
+  it('hydrateRoot takes over server markup; createPortal renders elsewhere', async () => {
+    const target = document.body.appendChild(document.createElement('div'))
+    function Counter() {
+      const [n, setN] = useState(0)
+      return jsx('div', {
+        children: [
+          jsx('button', { onClick: () => setN(n + 1), children: `count ${n}` }),
+          createPortal(jsx('b', { children: 'portaled' }), target),
+        ],
+      })
+    }
+    const el = document.body.appendChild(document.createElement('div'))
+    el.innerHTML = '<div><button>count 0</button></div>'
+    const root = hydrateRoot(el, jsx(Counter, {}))
+    expect(el.querySelectorAll('button')).toHaveLength(1)
+    el.querySelector('button')!.click()
+    await new Promise((r) => setTimeout(r, 20))
+    expect(el.querySelector('button')!.textContent).toBe('count 1')
+    expect(target.textContent).toBe('portaled')
+    root.unmount()
+    el.remove()
+    target.remove()
   })
 })

@@ -1,5 +1,5 @@
 import { RadioBase, RadioGroupBase } from '@pyreon/ui-primitives'
-import { el } from '../../factory'
+import { el, tones } from '../../factory'
 
 /**
  * SegmentedControl — a single-select control, which IS the WAI-ARIA radiogroup
@@ -53,24 +53,24 @@ export default SegmentedControl
  */
 export const SegmentedControlItem = el
   .config({ name: 'SegmentedControlItem', component: RadioBase })
-  .theme((t) => ({
+  .theme((t, m) => ({
     cursor: 'pointer',
     fontWeight: t.fontWeight.medium,
     fontSize: t.fontSize.small,
     transition: t.transition.fast,
     borderRadius: t.borderRadius.small,
-    color: t.color.system.base[600],
+    color: tones(t, m).textMuted,
     backgroundColor: 'transparent',
     borderWidth: 0,
     outline: 'none',
     hover: {
-      color: t.color.system.dark[800],
+      color: tones(t, m).text,
     },
   }))
-  .states((t) => ({
+  .states((t, m) => ({
     active: {
-      backgroundColor: t.color.system.light.base,
-      color: t.color.system.dark[800],
+      backgroundColor: tones(t, m).surface,
+      color: tones(t, m).text,
       boxShadow: t.shadows.small,
     },
   }))

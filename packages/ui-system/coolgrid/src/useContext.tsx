@@ -2,13 +2,16 @@ import { useContext } from '@pyreon/core'
 import { get, pick } from '@pyreon/ui-core'
 import { context } from '@pyreon/unistyle'
 import { CONTEXT_KEYS } from './constants'
+import { DEFAULT_COLUMNS, defaultContainerWidthsFor } from './defaults'
 import type { Context, Obj, ValueType } from './types'
 
 /**
- * Resolves grid columns and container width using a three-layer fallback:
+ * Resolves grid columns and container width using a four-layer fallback:
  * 1. Explicit component props (e.g. `columns={6}`)
  * 2. `theme.grid.columns` / `theme.grid.container`
  * 3. `theme.coolgrid.columns` / `theme.coolgrid.container`
+ * 4. coolgrid's defaults — 12 columns, and the default container widths
+ *    when the theme has no breakpoints of its own (#4314)
  */
 type GetGridContext = (
   props: Obj,
@@ -26,16 +29,18 @@ export const getGridContext: GetGridContext = (props = {}, theme = {}) => ({
   // saved; fires once per Container/Row/Col render.
   columns: ((props as Obj).columns ||
     get(theme, 'grid.columns') ||
-    get(theme, 'coolgrid.columns')) as ValueType,
+    get(theme, 'coolgrid.columns') ||
+    DEFAULT_COLUMNS) as ValueType,
   containerWidth: ((props as Obj).width ||
     get(theme, 'grid.container') ||
-    get(theme, 'coolgrid.container')) as Record<string, number>,
+    get(theme, 'coolgrid.container') ||
+    defaultContainerWidthsFor(theme)) as Record<string, number>,
 })
 
 /**
  * Hook that reads the unistyle theme context and merges it with the
  * component's own props to produce the final grid configuration.
- * Applies the three-layer resolution (props -> grid.* -> coolgrid.*).
+ * Applies the layered resolution (props -> grid.* -> coolgrid.* -> defaults).
  */
 type UseGridContext = (props: Obj) => Context
 const useGridContext: UseGridContext = (props) => {

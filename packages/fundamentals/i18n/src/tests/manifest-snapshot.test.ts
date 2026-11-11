@@ -111,7 +111,7 @@ describe('gen-docs — i18n snapshot', () => {
     const record = renderApiReferenceEntries(manifest)
     expect(Object.keys(record).length).toBe(15)
     expect(record['i18n/createI18n']!.notes).toContain('reactive')
-    expect(record['i18n/createI18n']!.mistakes?.split('\n').length).toBe(6)
+    expect(record['i18n/createI18n']!.mistakes?.split('\n').length).toBe(7)
     // The two previously-undocumented public exports are now covered.
     expect(record['i18n/resolvePluralCategory']!.signature).toContain('count: number')
     expect(record['i18n/parseRichText']!.notes).toContain('Trans')

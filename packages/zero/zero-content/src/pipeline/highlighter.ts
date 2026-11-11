@@ -1,4 +1,4 @@
-import { createHighlighter, type Highlighter } from 'shiki'
+import { createHighlighter, type Highlighter, isPlainLang, isSpecialLang } from 'shiki'
 
 // ─── Shiki integration ────────────────────────────────────────────────────
 //
@@ -11,8 +11,12 @@ import { createHighlighter, type Highlighter } from 'shiki'
 // Custom Pyreon-branded themes can land as a follow-up; the highlighter
 // accepts arbitrary theme objects via the `themes` option.
 //
-// Languages: a curated set covering the docs site's needs. Users can
-// extend via the plugin config (PR 3+) without forking this file.
+// Languages: a curated default set (`DEFAULT_HIGHLIGHT_LANGS`) that the
+// user's `highlighter.langs` EXTENDS — a user list never replaces the
+// defaults, so adding `'rust'` cannot silently drop `tsx`. A fence that
+// names a language outside the loaded set renders as plain text and is
+// reported to the caller (`onUnknownLang`) so the build can warn instead
+// of shipping uncoloured code without a word (#4257).
 
 /**
  * Themes accepted by Shiki — either a string name (one of the bundled
@@ -30,10 +34,20 @@ export type ShikiTheme = string | Record<string, unknown>
 
 export interface HighlighterOptions {
   themes?: { light: ShikiTheme; dark: ShikiTheme }
+  /**
+   * Extra Shiki languages (bundled grammar ids or aliases) to load ON TOP
+   * of `DEFAULT_HIGHLIGHT_LANGS`.
+   */
   langs?: string[]
 }
 
-const DEFAULT_LANGS = [
+/**
+ * Languages the shared highlighter always loads. `highlighter.langs` in
+ * the content plugin options adds to this list. Shiki aliases of these
+ * (`ts`, `js`, `sh`, `zsh`, `md`, `yml`, `kt`, …) resolve automatically;
+ * `text` / `txt` / `plaintext` / an empty fence are plain text.
+ */
+export const DEFAULT_HIGHLIGHT_LANGS: readonly string[] = [
   'typescript',
   'tsx',
   'javascript',
@@ -50,7 +64,14 @@ const DEFAULT_LANGS = [
   'yaml',
   'toml',
   'diff',
-  'text',
+  'swift',
+  'kotlin',
+  'xml',
+  'svelte',
+  'vue',
+  'nginx',
+  'ini',
+  'dockerfile',
 ]
 
 const DEFAULT_THEMES = { light: 'github-light', dark: 'github-dark' }
@@ -118,7 +139,7 @@ export function getHighlighter(opts: HighlighterOptions = {}): Promise<Highlight
   }
   _cacheKey = key
   const themes = opts.themes ?? DEFAULT_THEMES
-  const langs = opts.langs ?? DEFAULT_LANGS
+  const langs = [...new Set([...DEFAULT_HIGHLIGHT_LANGS, ...(opts.langs ?? [])])]
   _initPromise = createHighlighter({
     // Cast through `never[]` because Shiki's overloaded signature wants
     // a tuple of bundled-theme names OR `ThemeInput` objects; our union
@@ -166,17 +187,25 @@ export function _resetHighlighterForTesting(): void {
  * a `<pre>...</pre>` string with both light + dark themes baked into
  * inline styles + CSS variables (the standard Shiki dual-theme output).
  *
- * Language fallback: unknown languages render as `text` (Shiki throws
- * otherwise). Empty / undefined lang → `text`.
+ * Language fallback: a language that is not loaded renders as `text`
+ * (Shiki throws otherwise) and is passed to `onUnknownLang` so the caller
+ * can warn. Plain-text names (`text`, `txt`, `plaintext`, empty or
+ * undefined) render as `text` without being reported.
  */
 export async function highlightCode(
   code: string,
   lang: string | undefined,
   opts: HighlighterOptions = {},
+  onUnknownLang?: (lang: string) => void,
 ): Promise<string> {
   const themes = opts.themes ?? DEFAULT_THEMES
   const h = await getHighlighter(opts)
-  const effectiveLang = lang && h.getLoadedLanguages().includes(lang as never) ? lang : 'text'
+  let effectiveLang = 'text'
+  if (lang && !isPlainLang(lang)) {
+    const id = lang.toLowerCase()
+    if (isSpecialLang(id) || h.getLoadedLanguages().includes(id as never)) effectiveLang = id
+    else onUnknownLang?.(lang)
+  }
   return h.codeToHtml(code, {
     lang: effectiveLang,
     // codeToHtml references themes by NAME from the set registered in
@@ -184,4 +213,12 @@ export async function highlightCode(
     // custom theme objects extract the .name property.
     themes: { light: themeName(themes.light), dark: themeName(themes.dark) },
   })
+}
+
+/**
+ * Build-time warning for a code fence whose language is not loaded.
+ * Emitted once per language per build by the content plugin.
+ */
+export function unknownLangWarning(lang: string): string {
+  return `[Pyreon] Code fence language "${lang}" is not loaded by the @pyreon/zero-content highlighter, so the block renders as plain text. If Shiki bundles a grammar for it, add it to \`highlighter.langs\` in the content() plugin options (e.g. \`content({ highlighter: { langs: ['${lang}'] } })\`); otherwise use \`text\` as the fence language.`
 }

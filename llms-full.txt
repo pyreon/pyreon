@@ -310,7 +310,8 @@ console.log(diags[0]?.code) // "react-use-state"
 
 import { migrateReactCode } from "@pyreon/compiler/analyze"
 
-const { code, changes } = migrateReactCode(reactSource, "C.tsx")
+const { code, changes, manual } = migrateReactCode(reactSource, "C.tsx")
+// manual: [{ line, column, message, suggested }] — e.g. a state read at setup level
 
 import { migratePyreonCode } from "@pyreon/compiler/analyze"
 
@@ -3781,7 +3782,7 @@ const Reveal = kinetic('section').preset(slideUp)
 >
 > **Reduced motion**: `prefers-reduced-motion: reduce` is detected automatically — enter/leave skip the visual transition and jump to the final state, but lifecycle callbacks still fire so dependent logic stays correct. No configuration.
 >
-> **Children are snapshotted**: Transition/collapse/stagger renderers read children once at render time (animation state is built per item) — they do not observe later child-list changes. The compiler may wrap `{children}` in a deferred accessor; kinetic unwraps it internally (`resolveChildren`). For lists that change at runtime, use group mode with accessor children: `{() => items().map((t) => <li key={t.id}>...</li>)}`.
+> **Children are snapshotted**: Transition/collapse/stagger renderers read children once at render time (animation state is built per item) — they do not observe later child-list changes. The compiler may wrap `{children}` in a deferred accessor (around a group's own accessor: an accessor returning an accessor) and lowers literal markup like `<li>Install</li>` to a pre-built element; kinetic unwraps every accessor level and animates pre-built elements as well as VNodes. For lists that change at runtime, use group mode with accessor children: `{() => items().map((t) => <li key={t.id}>...</li>)}`. Group rows that stay keep their element (as `<For>` rows do) — drive changing row content from signals.
 >
 > **Reactive HTML attrs forward**: Non-kinetic props (`class`, `style`, `id`, event handlers) are forwarded to the rendered tag with reactivity preserved — the prop split uses descriptor-copying `splitProps`/`mergeProps`, so signal-driven attrs like `class={sig()}` keep updating (a plain `{...props}` value-copy would freeze them).
 >

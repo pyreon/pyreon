@@ -23,10 +23,8 @@ vi.mock('../useReducedMotion', () => ({
 }))
 
 import Transition from '../Transition'
-import TransitionGroup from '../TransitionGroup'
 import Collapse from '../Collapse'
 import TransitionItem from '../kinetic/TransitionItem'
-import GroupRenderer from '../kinetic/GroupRenderer'
 import StaggerRenderer from '../kinetic/StaggerRenderer'
 import TransitionRenderer from '../kinetic/TransitionRenderer'
 import CollapseRenderer from '../kinetic/CollapseRenderer'
@@ -328,103 +326,6 @@ const unwrap = (val: any): any => {
   while (typeof r === 'function') r = r()
   return r
 }
-
-describe('GroupRenderer — accessor children + leaving diff + non-initial appear', () => {
-  it('accepts a reactive accessor () => VNode[] and detects a removed child', () => {
-    const items = signal<VNode[]>([makeKeyed('a', 'A'), makeKeyed('b', 'B')])
-    const vnode = GroupRenderer({
-      config: groupConfig(),
-      htmlProps: {},
-      callbacks: {},
-      children: () => items(),
-    })
-    // First render: both present.
-    let result = unwrap(vnode)
-    expect(result.children).toHaveLength(2)
-
-    // Remove 'b' → it becomes a leaving child (still rendered during leave).
-    items.set([makeKeyed('a', 'A')])
-    result = unwrap(vnode)
-    // Both the surviving 'a' AND the leaving 'b' are kept.
-    expect(result.children.length).toBeGreaterThanOrEqual(2)
-  })
-
-  it('a newly-added child is non-initial → appear=true (isInitial ? appear : true else arm)', () => {
-    const items = signal<VNode[]>([makeKeyed('a', 'A')])
-    const vnode = GroupRenderer({
-      config: groupConfig(),
-      htmlProps: {},
-      callbacks: {},
-      children: () => items(),
-    })
-    unwrap(vnode)
-    // Add a NOT-initial key.
-    items.set([makeKeyed('a', 'A'), makeKeyed('c', 'C')])
-    const result = unwrap(vnode)
-    expect(result.children.length).toBe(2)
-  })
-
-  it('skips non-VNode entries in getKeyedChildren (isVNode false arm)', () => {
-    const dirty = [makeKeyed('a', 'A'), 'not-a-vnode' as unknown as VNode, null as unknown as VNode]
-    const vnode = GroupRenderer({
-      config: groupConfig(),
-      htmlProps: {},
-      callbacks: {},
-      children: dirty,
-    })
-    const result = unwrap(vnode)
-    // Only the keyed VNode survives.
-    expect(result.children.length).toBe(1)
-  })
-})
-
-/** Flatten a Fragment accessor result to its Transition-entry children. */
-const fragEntries = (val: any): VNode[] => {
-  const result = unwrap(val)
-  const kids = Array.isArray(result.children) ? result.children : [result.children]
-  return kids.flat().filter((c: unknown) => c && typeof c === 'object')
-}
-
-describe('TransitionGroup — accessor + leaving onAfterLeave + non-VNode skip', () => {
-  it('detects leaving + non-initial children and drives onAfterLeave → handleAfterLeave → forceUpdate', () => {
-    const items = signal<VNode[]>([makeKeyed('a', 'A'), makeKeyed('b', 'B')])
-    const accessor = TransitionGroup({ children: () => items() } as unknown as any) as any
-    let entries = fragEntries(accessor)
-    expect(entries.length).toBe(2)
-    // Each entry carries the `show={() => isShowing}` accessor (@124) — call
-    // it to cover that FN, and `onAfterLeave={() => handleAfterLeave(key)}`.
-    for (const e of entries) {
-      expect(typeof (e.props as any).show).toBe('function')
-      ;(e.props as any).show()
-    }
-
-    // Drop 'b' (leaving) AND add non-initial 'c' (isInitial ? appear : true
-    // else arm).
-    items.set([makeKeyed('a', 'A'), makeKeyed('c', 'C')])
-    entries = fragEntries(accessor)
-    // current a,c + leaving b = 3 entries
-    expect(entries.length).toBeGreaterThanOrEqual(3)
-
-    // Invoke the LEAVING child's onAfterLeave → handleAfterLeave (@71) →
-    // forceUpdate.update (@74) — the leave-complete bookkeeping.
-    const leaving = entries.find((e) => (e.props as any).key === 'b')
-    expect(leaving).toBeTruthy()
-    ;(leaving!.props as any).onAfterLeave()
-    // forceUpdate bumped → a re-render drops the leaving child.
-    const after = fragEntries(accessor)
-    expect(after.length).toBe(2)
-  })
-
-  it('ignores a non-VNode array entry (getKeyedChildren isVNode false arm)', () => {
-    // A string / null entry fails isVNode → skipped entirely.
-    const dirty = [makeKeyed('a', 'A'), 'not-a-vnode', null] as unknown as VNode[]
-    const accessor = TransitionGroup({ children: dirty } as unknown as any) as any
-    const entries = fragEntries(accessor)
-    expect(entries.length).toBe(1)
-  })
-})
-
-// ─── StaggerRenderer — single non-array child ────────────────────────────
 
 describe('StaggerRenderer — single non-array child', () => {
   it('wraps a single VNode child (Array.isArray false → [resolved])', () => {

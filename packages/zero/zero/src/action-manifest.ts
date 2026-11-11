@@ -77,10 +77,15 @@ export function isActionSourceFile(file: string): boolean {
  * "is this file in the manifest?" answer). Empty `code` when the app
  * defines no actions.
  */
-export function generateActionManifest(root: string): { code: string; files: Set<string> } {
+export function generateActionManifest(root: string): {
+  code: string
+  files: Set<string>
+  /** Action id → absolute path of its defining module (for the route gate map). */
+  modules: Map<string, string>
+} {
   const modules = scanActionModules(root)
   const files = new Set(modules.values())
-  if (modules.size === 0) return { code: '', files }
+  if (modules.size === 0) return { code: '', files, modules }
   const entries = [...modules]
     .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
     .map(([id, file]) => `  ${jsStringLiteral(id)}: () => import(${jsStringLiteral(file)})`)
@@ -90,5 +95,5 @@ export function generateActionManifest(root: string): { code: string; files: Set
     entries.join(',\n'),
     `})`,
   ].join('\n')
-  return { code, files }
+  return { code, files, modules }
 }

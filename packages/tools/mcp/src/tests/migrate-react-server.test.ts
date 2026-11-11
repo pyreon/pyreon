@@ -49,27 +49,54 @@ describe('MCP server — migrate_react tool', () => {
     }
   })
 
-  it('surfaces non-fixable diagnostics under "Remaining issues"', async () => {
+  it('converts the reported useState counter into a counter that updates (#4287)', async () => {
     const { client, close } = await newClient()
     try {
-      // `useReducer` is detected but NOT auto-fixable — the migrator
-      // can't synthesize the reducer's `signal().update()` shape from
-      // arbitrary user reducer logic. The handler must surface it
-      // under "Remaining issues (manual fix needed)" rather than
-      // silently dropping it. (Other unfixable codes: `dot-value-signal`,
-      // `array-map-jsx`.)
+      const text = await callTool(client, 'migrate_react', {
+        code: `import { useState } from 'react'
+
+export function Counter() {
+  const [count, setCount] = useState(0)
+  return <button title={\`n \${count}\`} onClick={() => setCount(count + 1)}>Count: {count}</button>
+}
+`,
+      })
+      expect(text).toContain('const count = signal(0)')
+      expect(text).toContain('onClick={() => count.set(count() + 1)}')
+      expect(text).toContain('Count: {count()}')
+      expect(text).toContain('`n ${count()}`')
+      const migrated = text.slice(text.indexOf('```tsx'), text.lastIndexOf('```'))
+      expect(migrated).not.toContain('setCount')
+      expect(text).not.toContain('Remaining issues')
+    } finally {
+      await close()
+    }
+  })
+
+  it('lists what it could not convert under "Remaining issues", and keeps that code', async () => {
+    const { client, close } = await newClient()
+    try {
+      // A read of state at setup level ran on every React render but runs
+      // once in Pyreon; `useId` has no automatic conversion. Neither may be
+      // silently "migrated".
       const text = await callTool(client, 'migrate_react', {
         code: `
-          import { useReducer } from 'react'
+          import { useId, useState } from 'react'
           const X = () => {
-            const [s, dispatch] = useReducer(reducer, 0)
-            return <div>{s}</div>
+            const [items, setItems] = useState([])
+            const id = useId()
+            if (items.length > 3) console.warn('many')
+            return <div id={id}>{items.length}</div>
           }
         `,
       })
       expect(text).toContain('## Migrated Code')
       expect(text).toContain('**Remaining issues (manual fix needed):**')
-      expect(text).toMatch(/Line \d+: useReducer/)
+      expect(text).toMatch(/Line 6: `useId` has no automatic Pyreon conversion/)
+      expect(text).toMatch(/Line 7: `items` is read once/)
+      expect(text).toContain("import { useId } from 'react'")
+      // The leftover React import is also what `validate` still reports.
+      expect(text).toMatch(/Line \d+ \[react-import\]/)
     } finally {
       await close()
     }

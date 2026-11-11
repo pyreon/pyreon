@@ -272,14 +272,29 @@ server.tool(
     filename: z.string().optional(),
   },
   async ({ code, filename }) => {
-    const result = migrateReactCode(code, filename ?? 'component.tsx')
+    const fname = filename ?? 'component.tsx'
+    const result = migrateReactCode(code, fname)
 
     const changeList = result.changes.map((c) => `- Line ${c.line}: ${c.description}`).join('\n')
 
-    const remainingIssues = result.diagnostics.filter((d) => !d.fixable)
+    // What still needs a hand: the patterns the migrator left unconverted
+    // (with its reason), plus whatever both `validate` detector sets still
+    // find in the OUTPUT. Every line number refers to the migrated code.
+    const manual = result.manual.map((n) => ({
+      line: n.line,
+      text: `- Line ${n.line}: ${n.message}\n  Suggested: \`${n.suggested}\``,
+    }))
+    const leftover = [
+      ...detectReactPatterns(result.code, fname),
+      ...detectPyreonPatterns(result.code, fname),
+    ].map((d) => ({
+      line: d.line,
+      text: `- Line ${d.line} [${d.code}]: ${d.message}\n  Suggested: \`${d.suggested}\``,
+    }))
+    const remaining = [...manual, ...leftover].sort((a, b) => a.line - b.line).map((r) => r.text)
     const manualText =
-      remainingIssues.length > 0
-        ? `\n\n**Remaining issues (manual fix needed):**\n${remainingIssues.map((d) => `- Line ${d.line}: ${d.message}\n  Suggested: \`${d.suggested}\``).join('\n')}`
+      remaining.length > 0
+        ? `\n\n**Remaining issues (manual fix needed):**\n${remaining.join('\n')}`
         : ''
 
     return textResult(
