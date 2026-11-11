@@ -6,6 +6,7 @@
 export type {
   ComponentRef,
   ControlKind,
+  ControlSource,
   PropControl,
   VariantAxis,
   ScenarioSource,

@@ -275,7 +275,7 @@ function toComponent(
 ): ComponentIntelligence {
   const shapes = membersToShapes(propsType ? collectMembers(propsType, lookup, lookupBase) : [])
   if (fn) readBodyDefaults(fn, shapes)
-  const controls = inferControls(shapes)
+  const controls = inferControls(shapes).map((c) => ({ ...c, source: 'prop-type' as const }))
   const axes: VariantAxis[] = shapes
     .filter((s) => typeof s.type === 'object')
     .map((s) => ({ name: s.name, values: (s.type as { union: readonly string[] }).union }))

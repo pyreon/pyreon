@@ -114,7 +114,7 @@ export interface RocketstyleDiscoveryOptions {
 
 /** Dimension values → a select control, so the workbench can drive it. */
 function toControl(name: string, values: readonly string[]): PropControl {
-  return { name, kind: 'select', options: values, reactive: false, required: false }
+  return { name, kind: 'select', options: values, reactive: false, required: false, source: 'dimension' }
 }
 
 /**
