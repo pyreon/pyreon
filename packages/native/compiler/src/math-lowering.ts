@@ -265,12 +265,12 @@ export function lowerMathCall(input: MathCallInput): MathLowering {
   // `derivedStateOf { Math.round(x * 100) }` then fed `pyreonNumString(Double)`
   // and kotlinc rejected it ("actual type is 'Long', but 'Double' was
   // expected"), and `Math.round(a) * 0.5` silently became Long arithmetic
-  // nowhere. `.toDouble()` keeps java's rounding rule, which IS JS's
-  // (`floor(x + 0.5)`, without the 0.49999999999999994 bug a hand-written
-  // `floor(x + 0.5)` has).
+  // nowhere. Nor was `Math.round(x).toDouble()` enough: through the Long, NaN became 0 and ±Infinity saturated, so
+  // `Math.round(0 / 0) + 1` was 1 on Android and NaN on iOS and the web (#4258). `pyreonRound` (both runtimes) is
+  // JS's rule, NaN / ±Infinity unchanged.
   if (!swift && member === 'round') {
     const arg = input.argIsFloat[0] === true ? a : dbl(target, a)
-    return { code: `Math.round(${arg}).toDouble()` }
+    return { code: `pyreonRound(${arg})` }
   }
   if (!swift && (member === 'floor' || member === 'ceil')) {
     if (input.argIsFloat[0] === true) return null

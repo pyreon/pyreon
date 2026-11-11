@@ -3,9 +3,10 @@
  * (`getBezierPath`, `computeLayout`, …), calls and member reads rooted at a flow binding,
  * and `MarkerType.*`. Moved verbatim from the compiler's Swift expression emitter.
  */
-import { type CallExprIR, type ExprIR, type MemberExprIR, substituteIdentifier, swiftIdent } from '@pyreon/native-compiler/plugin-api'
+import { type CallExprIR, type ExprIR, type MemberExprIR, substituteIdentifier, swiftIdent, swiftStr } from '@pyreon/native-compiler/plugin-api'
 import { FLOW_LAYOUT_OPTION_KEYS, FLOW_MARKER_LITERAL_SHAPE, HANDLED_FLOW_EDGE_FIELDS, HANDLED_FLOW_NODE_FIELDS, LOWERED_FLOW_CONFIG_PROPERTIES, LOWERED_FLOW_METHODS, LOWERED_FLOW_PROPERTY_READS, droppedFlowEdgePatchWarning, flowLayoutOptionsDroppedWarning, flowRectLiteralFields, flowSignalWriteWarning, unloweredFlowLiteralWarning, unloweredFlowMemberWarning, unsupportedFlowOptionsWarning } from './lowering'
 import { host } from './swift-facade'
+import { isFlowHandlePosition } from './collect'
 import { FLOW_PATH_HELPERS, FLOW_SET_CENTER_KEYS, isNilArg, resolveSwiftStaticFlowValue, swiftFlowConnectionLiteral, swiftFlowData, swiftFlowDurationOption, swiftFlowEdgeListLiteral, swiftFlowEdgeLiteral, swiftFlowExtentLiteral, swiftFlowGeometryLiteral, swiftFlowHandlesLiteral, swiftFlowLayoutOptions, swiftFlowMarkerLiteral, swiftFlowNodeExtentArgs, swiftFlowNodeListLiteral, swiftFlowNodeLiteral, swiftFlowPathHelper, swiftFlowPositionExpr, swiftFlowPositionLiteral, swiftFlowPositionsLiteral, swiftFlowReconnectLiteral, swiftFlowViewportLiteral, warnDroppedFlowFields } from './swift-literals'
 
 const SWIFT_FUNCTION_ARMS: Record<string, (e: CallExprIR, indent: number) => string | undefined> = {}
@@ -193,12 +194,12 @@ export function lowerSwiftFlowCall(e: CallExprIR, indent: number): string | unde
               if (item.kind !== 'object') return null
               const fields = new Map(item.fields.map((field) => [field.name, field.value]))
               const position = fields.get('position')
-              if (!fields.has('id') || !fields.has('type') || !fields.has('x') || !fields.has('y') || position?.kind !== 'literal' || typeof position.value !== 'string') return null
+              if (!fields.has('id') || !fields.has('type') || !fields.has('x') || !fields.has('y') || position?.kind !== 'literal' || !isFlowHandlePosition(position.value)) return null
               return `PyreonFlowMeasuredHandle(id: ${host.expr(fields.get('id')!, indent)}, type: ${host.expr(fields.get('type')!, indent)}, position: .${position.value}, x: ${host.expr(fields.get('x')!, indent)}, y: ${host.expr(fields.get('y')!, indent)})`
             })
             if (emitted.every((value) => value !== null)) return `${swiftIdent(flowName)}.updateNodeMeasurement(${baseArgs}, handles: [${emitted.join(', ')}])`
           }
-          host.warn(`createFlow binding \`${flowName}\`: \`_setNodeMeasurement\` handle geometry must be a literal array to lower natively.`)
+          host.warn(`createFlow binding \`${flowName}\`: \`_setNodeMeasurement\` handle geometry must be a literal array of \`{ id, type, x, y, position }\` objects, with \`position\` one of top, right, bottom or left, to lower natively.`)
         }
         // Nothing silent inside the boundary: every member that is not in the
         // v1 surface is NAMED here (it is still emitted as written — the native
@@ -553,7 +554,7 @@ if (
 /** `MarkerType.Arrow` / `MarkerType.ArrowClosed` → the marker-type string the runtime expects. */
 export function lowerSwiftMarkerType(e: MemberExprIR): string | undefined {
   if (e.object.kind === 'identifier' && e.object.name === 'MarkerType' && (e.property === 'Arrow' || e.property === 'ArrowClosed')) {
-          return JSON.stringify(e.property.toLowerCase())
+          return swiftStr(e.property.toLowerCase())
         }
   return undefined
 }

@@ -64,6 +64,15 @@ describe('stream operations reach native', () => {
     expect(r.reach.get('complete')).toEqual({ reach: 'web+native' })
   })
 
+  it('writes a native number in the cross-target alias the spec names, declared once', () => {
+    // `at` is an OpenAPI `integer`: `Int` says so, so the native decode keeps the integer and the compiler does not ask
+    // whether the JSON can carry a fraction. A spec `number` would be `Double`.
+    const rooms = mod('rooms.native.tsx')
+    expect(rooms).toMatch(/^type Int = number$/m)
+    expect(rooms).not.toMatch(/^type Double = number$/m)
+    expect(rooms).toMatch(/\bat: Int\b/)
+  })
+
   it('emits a stream component per such operation', () => {
     const rooms = mod('rooms.native.tsx')
     expect(rooms).toContain("export const roomEvents = api.endpoint('GET /rooms/:room/events', { responseType: 'stream' })")

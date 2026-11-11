@@ -3,7 +3,7 @@
  * literals and the path-helper calls, moved verbatim from the compiler's Kotlin emitter.
  */
 import { type ExprIR, isNumericLiteralOrNegation, kotlinStr } from '@pyreon/native-compiler/plugin-api'
-import { type StaticFlowHandle } from './collect'
+import { isFlowHandlePosition, type StaticFlowHandle } from './collect'
 import { host } from './kotlin-facade'
 import { HANDLED_FLOW_EDGE_FIELDS, HANDLED_FLOW_NODE_FIELDS, addEdgeDropWarnings, droppedFlowFieldsWarning } from './lowering'
 
@@ -33,14 +33,14 @@ export function kotlinFlowMarkerLiteral(expr: ExprIR): string | null {
 
 export function kotlinFlowHandlesLiteral(arg: ExprIR): string | null {
   if (arg.kind !== 'array') return null
-  const parsed: { id?: string; type: string; position: string }[] = []
+  const parsed: StaticFlowHandle[] = []
   for (const item of arg.elements) {
     if (item.kind !== 'object') return null
     const field = (name: string) => item.fields.find((f) => f.name === name)?.value
     const type = field('type'), position = field('position'), id = field('id')
     if (type?.kind !== 'literal' || typeof type.value !== 'string') return null
     const positionName = position?.kind === 'literal' && typeof position.value === 'string' ? position.value.toLowerCase() : position?.kind === 'member' ? position.property.toLowerCase() : undefined
-    if (!positionName || !['top', 'right', 'bottom', 'left'].includes(positionName) || (id && (id.kind !== 'literal' || typeof id.value !== 'string'))) return null
+    if (!isFlowHandlePosition(positionName) || (id && (id.kind !== 'literal' || typeof id.value !== 'string'))) return null
     parsed.push({ type: type.value, position: positionName, ...(id?.kind === 'literal' ? { id: id.value as string } : {}) })
   }
   return kotlinFlowParsedHandles(parsed)
@@ -49,7 +49,7 @@ export function kotlinFlowHandlesLiteral(arg: ExprIR): string | null {
 export function kotlinFlowDataValue(expr: ExprIR): string | null {
   if (expr.kind === 'literal') {
     if (expr.value === null) return 'PyreonFlowDataValue.NullValue'
-    if (typeof expr.value === 'string') return `PyreonFlowDataValue.StringValue(${JSON.stringify(expr.value)})`
+    if (typeof expr.value === 'string') return `PyreonFlowDataValue.StringValue(${kotlinStr(expr.value)})`
     if (typeof expr.value === 'number') return `PyreonFlowDataValue.NumberValue(${ktChartDouble(String(expr.value))})`
     if (typeof expr.value === 'boolean') return `PyreonFlowDataValue.BoolValue(${expr.value})`
     return null
@@ -69,7 +69,7 @@ export function kotlinFlowData(expr: ExprIR): string | null {
   if (expr.kind !== 'object' || (expr.spreads?.length ?? 0) > 0) return null
   const values = expr.fields.map((field) => {
     const value = kotlinFlowDataValue(field.value)
-    return value === null ? null : `${JSON.stringify(field.name)} to ${value}`
+    return value === null ? null : `${kotlinStr(field.name)} to ${value}`
   })
   return values.some((value) => value === null) ? null : `PyreonFlowData(mapOf(${values.join(', ')}))`
 }

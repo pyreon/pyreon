@@ -42,6 +42,12 @@ export interface ChartHostTarget {
   nan: string
   /** `[a, b]` / `listOf(a, b)`. */
   list: (items: readonly string[]) => string
+  /**
+   * A string LITERAL in the target's syntax — `swiftStr` / `kotlinStr`, the one
+   * quoting path. Never `JSON.stringify`: it leaves Kotlin's `$` live (a chart
+   * label `${…}` became Kotlin code) and spells controls Swift cannot read.
+   */
+  str: (s: string) => string
   /** `Name(f: v, …)` / `Name(f = v, …)`. */
   struct: (name: string, fields: readonly (readonly [string, string])[]) => string
   /** `PieOptions(innerRadius: <innerRatio>, showLabels: true, labelColor: "#ffffff", fontSize: 11.0)` — the web host's fixed pie options. */
@@ -305,7 +311,7 @@ export const calendarValuesAdapter: ChartHostAdapter = (attrs, t, warn, resolve)
       warn(`<CalendarChart values>: the value for "${f.name}" must be a number literal on native; emitting nothing.`)
       return 'unsupported'
     }
-    items.push(t.struct('CalendarValue', [['date', JSON.stringify(f.name)], ['value', chartDouble(n)]]))
+    items.push(t.struct('CalendarValue', [['date', t.str(f.name)], ['value', chartDouble(n)]]))
   }
   return t.list(items)
 }
@@ -315,7 +321,7 @@ const singleAxisSpecAdapter: ChartHostAdapter = (attrs, t, warn, resolve, emit) 
   if (axis?.kind !== 'object') return emit(attrs['axis']!)
   const fields: [string, string][] = []
   const type = litString(objectField(axis, 'type'))
-  fields.push(['type', type === undefined ? t.nil : JSON.stringify(type)])
+  fields.push(['type', type === undefined ? t.nil : t.str(type)])
   const categories = literalOf(objectField(axis, 'categories'), resolve)
   fields.push(['categories', categories?.kind === 'array' ? emit(categories) : t.nil])
   const domain = literalOf(objectField(axis, 'domain'), resolve)
@@ -329,7 +335,7 @@ const singleAxisSpecAdapter: ChartHostAdapter = (attrs, t, warn, resolve, emit) 
     fields.push(['domain', t.struct('Domain', [['min', chartDouble(min)], ['max', chartDouble(max)]])])
   } else fields.push(['domain', t.nil])
   const name = litString(objectField(axis, 'name'))
-  fields.push(['name', name === undefined ? t.nil : JSON.stringify(name)])
+  fields.push(['name', name === undefined ? t.nil : t.str(name)])
   return t.struct('SingleAxisSpec', fields)
 }
 
@@ -341,9 +347,9 @@ const parallelAxesAdapter: ChartHostAdapter = (attrs, t, warn, resolve, emit) =>
   for (const item of axes.elements) {
     if (item.kind !== 'object') return emit(attrs['axes']!)
     const name = litString(objectField(item, 'name')) ?? `Axis ${items.length + 1}`
-    const fields: [string, string][] = [['name', JSON.stringify(name)]]
+    const fields: [string, string][] = [['name', t.str(name)]]
     const type = litString(objectField(item, 'type'))
-    fields.push(['type', type === undefined ? t.nil : JSON.stringify(type)])
+    fields.push(['type', type === undefined ? t.nil : t.str(type)])
     const categories = literalOf(objectField(item, 'categories'), resolve)
     fields.push(['categories', categories?.kind === 'array' ? emit(categories) : t.nil])
     const domain = literalOf(objectField(item, 'domain'), resolve)
@@ -539,7 +545,7 @@ export const geoValuesAdapter: ChartHostAdapter = (attrs, t, warn, resolve, emit
       warn(`<MapChart values>: the value for "${f.name}" must be a number literal on native; emitting nothing.`)
       return 'unsupported'
     }
-    items.push(t.struct('GeoValue', [['region', JSON.stringify(f.name)], ['value', chartDouble(n)]]))
+    items.push(t.struct('GeoValue', [['region', t.str(f.name)], ['value', chartDouble(n)]]))
   }
   return t.list(items)
 }
@@ -686,7 +692,7 @@ export const CHART_HOSTS: Readonly<Record<string, ChartHostSpec>> = {
     render: (l, a) => `renderPolar(${l}, ${a.options})`,
     hit: (l, x, y) => `hitPolarIndex(${l}, ${x}, ${y})`,
     // The engine's DEFAULT_PALETTE is a private module constant in the generated Swift; the web default is inlined instead.
-    legend: (_l, a, t) => `polarLegend(${a.data[1]}, ${t.coalesce(optField(a, t, 'palette'), t.list(CHART_HOST_PALETTE.map((c) => JSON.stringify(c))))})`,
+    legend: (_l, a, t) => `polarLegend(${a.data[1]}, ${t.coalesce(optField(a, t, 'palette'), t.list(CHART_HOST_PALETTE.map(t.str)))})`,
     tooltip: (l, x, y, a) => `polarTip(${l}, ${a.data[1]}, ${x}, ${y})`,
   },
   CalendarChart: {
@@ -1390,11 +1396,14 @@ export const CHART_THEME_FIELDS: readonly { name: keyof typeof CHART_THEME_DEFAU
  * theme, or a field of the wrong shape, warns BY NAME and keeps its default;
  * both emitters share this so their warnings and fallbacks cannot drift.
  */
+/** What `chartThemeFields` needs from a target: its list syntax and its string quoter. */
+export type ChartThemeEmit = Pick<ChartHostTarget, 'list' | 'str'>
+
 export function chartThemeFields(
   v: ExprIR | undefined,
   tag: string,
   warn: (m: string) => void,
-  list: (items: readonly string[]) => string,
+  t: ChartThemeEmit,
   scope?: RawChartTheme,
   scheme?: (light: string, dark: string) => string,
 ): ChartThemeText {
@@ -1424,7 +1433,7 @@ export function chartThemeFields(
     const ground = (c: string): string => (c === '' ? '#ffffff' : c)
     const gl = ground(bgLight)
     const gd = ground(dark.background as string)
-    out.pageGround = runtime && gd !== gl && scheme !== undefined ? scheme(JSON.stringify(gl), JSON.stringify(gd)) : JSON.stringify(gl)
+    out.pageGround = runtime && gd !== gl && scheme !== undefined ? scheme(t.str(gl), t.str(gd)) : t.str(gl)
   }
   const palette = named === undefined ? chartThemePalette(v, tag, warn, base.palette as readonly string[]) : (named.palette as readonly string[])
   const paletteExplicit = named !== undefined || chartThemePaletteGiven(v)
@@ -1439,16 +1448,16 @@ export function chartThemeFields(
       const isPalette = f.name === 'palette'
       const lightList = isPalette ? palette : (d as readonly string[])
       const darkList = (isPalette ? dark.palette : dark[f.name]) as readonly string[]
-      const light = list(lightList.map((c) => JSON.stringify(c)))
+      const light = t.list(lightList.map(t.str))
       const pinned = isPalette && paletteExplicit
       out[f.name] =
         runtime && !pinned && darkList.join('\u0000') !== lightList.join('\u0000')
-          ? scheme(light, list(darkList.map((c) => JSON.stringify(c))))
+          ? scheme(light, t.list(darkList.map(t.str)))
           : light
     } else if (f.kind === 'number') out[f.name] = d as string
     else {
       const dv = dark[f.name] as string
-      out[f.name] = runtime && dv !== d ? scheme(JSON.stringify(d), JSON.stringify(dv)) : JSON.stringify(d)
+      out[f.name] = runtime && dv !== d ? scheme(t.str(d as string), t.str(dv)) : t.str(d as string)
     }
   }
   setGround()
@@ -1471,14 +1480,14 @@ export function chartThemeFields(
         warn(`<${tag} theme>: \`${f.name}\` must be an array of string literals on native; its default applies.`)
         continue
       }
-      out[spec.name] = list(items.map((c) => JSON.stringify(c)))
+      out[spec.name] = t.list(items.map(t.str))
       continue
     }
     if (f.value.kind !== 'literal' || typeof f.value.value !== spec.kind) {
       warn(`<${tag} theme>: \`${f.name}\` must be a ${spec.kind} literal on native; its default applies.`)
       continue
     }
-    out[spec.name] = spec.kind === 'number' ? chartDouble(f.value.value as number) : JSON.stringify(f.value.value)
+    out[spec.name] = spec.kind === 'number' ? chartDouble(f.value.value as number) : t.str(f.value.value as string)
     if (spec.name === 'background') bgLight = f.value.value as string
   }
   setGround()
@@ -1796,8 +1805,8 @@ export function chartChromeWarning(tag: string, prop: string): string {
   return `<${tag}>: \`${prop}\` is not lowered on native yet; the chart renders without it.`
 }
 /** The entrance duration — the theme's `enterMs` (a literal object or a named theme), else the default; the family hosts read nothing else off `theme`, so this never warns. */
-export function chartEnterMs(theme: ExprIR | undefined, tag: string, list: (items: readonly string[]) => string, scope?: RawChartTheme): string {
-  return chartThemeFields(theme, tag, () => {}, list, scope).enterMs
+export function chartEnterMs(theme: ExprIR | undefined, tag: string, t: ChartThemeEmit, scope?: RawChartTheme): string {
+  return chartThemeFields(theme, tag, () => {}, t, scope).enterMs
 }
 /** The resolved theme as emitted TEXT per field — what `chartThemeFields` returns. */
 /**
@@ -2070,7 +2079,7 @@ export function chartVisualMap(
   const raw = v.value
   const spec: VisualMapSpec = built || !Array.isArray(raw['range']) || !Array.isArray(raw['pieces']) ? visualMap(raw as unknown as VisualMapOptions) : (raw as unknown as VisualMapSpec)
   const s = visualStripOf(spec)
-  const str = (x: string): string => JSON.stringify(x)
+  const str = t.str
   const pieces = s.pieces.map((p) => t.struct('VisualPiece', [['label', str(p.label)], ['color', str(p.color)], ...(p.min !== undefined ? [['min', chartDouble(p.min)] as const] : []), ...(p.max !== undefined ? [['max', chartDouble(p.max)] as const] : [])]))
   const strip = t.struct('VisualStrip', [
     ['piecewise', String(s.piecewise)],

@@ -11,6 +11,8 @@
 // emitter alone is what matters — proves the structural mapping (theme
 // object → Swift struct + Kotlin object).
 
+import { kotlinStr, swiftStr } from './string-literals'
+
 export interface ThemeIR {
   /** Top-level groups in the theme (e.g. spacing, color, font). */
   groups: ThemeGroup[]
@@ -115,7 +117,7 @@ function swiftValueLiteral(v: ThemeValue): string {
     case 'number':
       return String(v.value)
     case 'string':
-      return JSON.stringify(v.value)
+      return swiftStr(v.value)
     case 'cgfloat':
       return String(v.value)
     case 'dp':
@@ -128,7 +130,7 @@ function kotlinValueLiteral(v: ThemeValue): string {
     case 'number':
       return String(v.value)
     case 'string':
-      return JSON.stringify(v.value)
+      return kotlinStr(v.value)
     case 'cgfloat':
       // Swift's CGFloat doesn't have a Kotlin equivalent in Compose;
       // emit as a plain Float-ish value. Compose's `dp` is the typical

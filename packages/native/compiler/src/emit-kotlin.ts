@@ -4,6 +4,7 @@
 // `var x by remember { mutableStateOf(initial) }`, computeds to
 // `derivedStateOf { ... }`, JSX elements to Composable function calls.
 
+import { isDoubleLiteralValue, wholeDoubleLiteral } from './number-literal'
 import { isModuleState, moduleStateClassName, moduleStateDecls, shadowingNames } from './module-state'
 import { GESTURE_EVENT_NAMES, GESTURE_EVENTS } from './gesture-events'
 import { effectReadCandidates, effectTriggerPaths, isComponentStateName } from './effect-deps'
@@ -3086,6 +3087,10 @@ export function kotlinType(t: TypeIR, ctx?: KotlinCtx, signalName?: string): str
       if (t.name === 'SseEvent' && t.args.length === 1) {
         return `PyreonSseEvent<${kotlinType(t.args[0]!, ctx, signalName)}>`
       }
+      // The cross-target `Int` (`type Int = number`) is PMTC's integer, which is `Long` on Kotlin for the reason the
+      // `number` case gives: Swift's `Int` is 64-bit. Spelled verbatim it was the 32-bit `kotlin.Int`, so the integer
+      // literals and `number` values PMTC emits as `Long` (`qty = 1L`, `row.qty + 1L`) failed to compile against it.
+      if (t.name === 'Int' && t.args.length === 0 && !_declaredStructs.some((st) => st.name === 'Int')) return KOTLIN_INT
       if (t.args.length === 0) return t.name
       return `${t.name}<${t.args.map((a) => kotlinType(a, ctx, signalName)).join(', ')}>`
     }
@@ -3568,11 +3573,12 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       // `x == 5L`, `fold(0L, …)`, an untyped `var total = 0L`); a position
       // that REQUIRES a 32-bit Int (a subscript, `take(n)`, a Compose param)
       // goes through `kotlinIntArg`, which drops it again.
-      if (
-        typeof e.value === 'number' &&
-        Number.isInteger(e.value) &&
-        Math.abs(e.value) <= Number.MAX_SAFE_INTEGER
-      ) {
+      // A whole literal past the 32-bit range is a Double everywhere it is typed (`number-literal.ts`): spell it as one,
+      // not as a `Long` the inferred Double type then disagrees with.
+      if (typeof e.value === 'number' && Number.isInteger(e.value) && isDoubleLiteralValue(e.value)) {
+        return wholeDoubleLiteral(e.value)
+      }
+      if (typeof e.value === 'number' && Number.isInteger(e.value)) {
         return `${e.value}L`
       }
       return String(e.value)
