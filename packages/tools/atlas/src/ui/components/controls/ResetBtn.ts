@@ -6,14 +6,15 @@ export const ResetBtn = el
   })
   .theme((t) => ({
     font: 'inherit',
-    fontSize: t.size.body,
+    fontSize: t.size.small,
     cursor: 'pointer',
-    width: '100%',
-    marginTop: '4px',
-    padding: '8px',
+    margin: '10px 12px',
+    height: '28px',
+    padding: '0 12px',
     borderRadius: t.radius.button,
-    border: `1px dashed ${t.border}`,
+    border: t.hairline,
     background: 'transparent',
     color: t.muted,
-    hover: { borderColor: t.accent, color: t.text },
+    hover: { borderColor: t.border2, color: t.text },
+    extendCss: 'align-self:flex-start;',
   }))

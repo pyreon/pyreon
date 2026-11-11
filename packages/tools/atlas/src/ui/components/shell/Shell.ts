@@ -1,5 +1,6 @@
 import { el } from '../../kit'
 
+/** The app frame: a 48px top bar over the body, filling the viewport. */
 export const Shell = el
   .attrs({
     tag: 'div',
@@ -13,8 +14,8 @@ export const Shell = el
     height: '100vh',
     overflow: 'hidden',
     fontFamily: t.font.sans,
-    fontSize: t.size.heading,
+    fontSize: t.size.text,
     background: t.bg,
     color: t.text,
-    extendCss: '-webkit-font-smoothing:antialiased;',
+    extendCss: 'height:100dvh;-webkit-font-smoothing:antialiased;',
   }))

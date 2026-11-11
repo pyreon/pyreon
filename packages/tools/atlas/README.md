@@ -434,7 +434,7 @@ mounted is what the project ships. Two consequences worth knowing:
 
   In the workbench the wrapper also receives the render's APPEARANCE as
   accessors — `mode` (`'light' | 'dark'`), `dark`, and `brand`
-  (`{ id, name, accent }`) — per render, so each Theme Lab tile is its own
+  (`{ id, name, accent }`) — per render, so each Lab tile is its own
   appearance. Forward `mode` or the dark workbench shows components in their
   light mode; read `brand` to make the Lab's brand tiles mean something (a
   wrapper that never reads it gets one tile per mode and a note saying so).
@@ -490,8 +490,8 @@ when a project's own components dominate rather than the framework.
 `<Workbench>` ships the addons a component workbench is actually judged on. In
 Storybook these are four separate packages you install and configure; here they
 are presets in [`src/ui/addons.ts`](./src/ui/addons.ts), rendered by the
-**Canvas** tab, and exported so a host can drive its own toolbar from the same
-data.
+**Addons** tab (zoom, grid and measure live in the **Canvas** tab), and exported
+so a host can drive its own toolbar from the same data.
 
 | Addon | Storybook equivalent | What it does |
 | --- | --- | --- |
@@ -534,6 +534,41 @@ That half needs no catalog cooperation. To translate as well, read `ctx.locale`
 Everything else is a rocketstyle dimension (`size` for viewport, `variant` for
 background, `state` for outline), so the addons add **zero inline styles** and
 resolve through the same class cache as the rest of the workbench.
+
+## The app shell, theme and `?embed`
+
+The workbench is the Pyreon app shell: a 48px top bar, the catalog column
+(220px, draggable), and a main column of scenario strip → canvas → the 13
+panels (Controls, Schema, Actions, A11y, Perf, Permissions, Query, Store,
+Update cause, Reactive coverage, Lens, Canvas, Addons), split by a draggable,
+keyboard-operable divider. Below 860px the catalog is a modal drawer.
+
+**Colours live in one file** — [`src/ui/theme.ts`](./src/ui/theme.ts):
+
+- `CHROME_PALETTES` — the chrome's dark and light palettes (the Pyreon design
+  system's ink / paper / ember values). `CHROME_TOKENS` hands components
+  `var(--atlas-*)` references, and `chromeThemeCss()` emits both palettes keyed
+  on `:root[data-theme]`, so a mode flip is one attribute write. Every text
+  role passes 4.5:1 on every surface in both modes — computed in
+  `tests/theme-contrast.test.ts`, and audited in the browser at five widths by
+  `e2e/atlas-shell.spec.ts`.
+- `tokens(brand, dark)` / `THEMES` — the PREVIEW brands (Ember, Aurora,
+  Forest, Contrast) a catalog built on Atlas's `el` / `txt` bases styles from.
+  The preview renders inside its own `<PyreonUI>` with these, so the chrome and
+  the component under test never restyle each other.
+- `PREVIEW_COLORS` — the fixed surfaces and debug overlays the preview tools
+  paint (forced light / dark backgrounds, the checker, Outline, the A11y
+  highlight).
+
+**The mode follows the shared Pyreon preference**: `localStorage['pyreon-theme']`
+(`'light' | 'dark'`), otherwise `prefers-color-scheme`. `themeBootScript()` is
+the inline `<head>` script that applies it before first paint — `atlas dev` and
+`atlas build` inline it; a host that mounts `<Workbench>` itself should too.
+The toggle writes the key; a `?dark=0|1` link overrides it for that view.
+
+**`?embed`** renders the bare app for an iframe: the theme toggle is hidden
+(the host passes `&dark=`), nothing is written to the host's storage, and the
+flag survives the workbench's own URL rewrites.
 
 ## Styling convention
 

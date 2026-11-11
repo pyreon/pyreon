@@ -25,8 +25,8 @@ export const Frame = el
     bare: { width: '100%', background: 'transparent', border: 'none', boxShadow: 'none', borderRadius: '0' },
     framed: {
       borderRadius: t.radius.stage,
-      boxShadow: '0 20px 50px -24px rgba(15,18,30,.35)',
-      border: t.hairline,
+      boxShadow: `0 20px 50px -24px ${t.shadow}`,
+      border: `1px dashed ${t.border2}`,
       background: t.surface,
     },
   }))

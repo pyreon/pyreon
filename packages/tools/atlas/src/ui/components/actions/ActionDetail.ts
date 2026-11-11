@@ -1,11 +1,9 @@
 import { txt } from '../../kit'
 
-export const ActionDetail = txt
-  .attrs({
-    tag: 'span',
-  })
-  .theme((t) => ({
-    fontSize: t.size.body,
-    flex: '1',
-    color: t.muted,
-  }))
+export const ActionDetail = txt.attrs({ tag: 'span' }).theme((t) => ({
+  fontFamily: t.font.mono,
+  fontSize: t.size.small,
+  color: t.muted,
+  overflowWrap: 'anywhere',
+  minWidth: '0',
+}))

@@ -1,7 +1,8 @@
-import { cx, txt } from '../../kit'
+import { txt } from '../../kit'
 
-export const BrandText = txt
-  .attrs({
-    tag: 'span',
-  })
-  .theme(() => cx("font-family:'Space Grotesk','Public Sans',sans-serif;font-weight:700;font-size:16px;letter-spacing:-.01em;"))
+export const BrandText = txt.attrs({ tag: 'span' }).theme((t) => ({
+  fontWeight: '600',
+  fontSize: t.size.text,
+  letterSpacing: '-.01em',
+  color: t.text,
+}))

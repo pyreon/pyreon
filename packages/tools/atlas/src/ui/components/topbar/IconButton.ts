@@ -1,5 +1,6 @@
 import { el } from '../../kit'
 
+/** A 32px square icon button (`.ib`). Draws an SVG child at 15px. */
 export const IconButton = el
   .attrs({
     tag: 'button',
@@ -9,12 +10,14 @@ export const IconButton = el
   .theme((t) => ({
     font: 'inherit',
     cursor: 'pointer',
+    flex: 'none',
     width: '32px',
     height: '32px',
-    borderRadius: t.radius.field,
-    fontSize: t.size.title,
+    padding: '0',
+    borderRadius: t.radius.button,
     border: t.hairline,
-    background: t.bg,
-    color: t.text,
-    hover: { borderColor: t.accent },
+    background: 'transparent',
+    color: t.muted,
+    hover: { color: t.text, borderColor: t.border2 },
+    extendCss: '& svg{width:15px;height:15px;display:block;}',
   }))

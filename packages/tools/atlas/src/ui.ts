@@ -62,7 +62,17 @@ export { el, rs, txt } from './ui/bases'
 export { cx, type InputEl, type T } from './ui/kit'
 export {
   type BrandTheme,
+  CHROME_PALETTES,
+  CHROME_TOKENS,
+  type ChromePalette,
+  type ChromeRole,
+  chromeThemeCss,
   hexToRgba,
+  PREVIEW_COLORS,
+  resolveThemeMode,
+  THEME_STORAGE_KEY,
+  themeBootScript,
+  type ThemeMode,
   THEMES,
   type ThemeTokens,
   tokens,

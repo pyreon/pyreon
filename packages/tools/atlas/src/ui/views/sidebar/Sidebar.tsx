@@ -1,25 +1,38 @@
 /**
- * Sidebar view — the filter-driven component TREE.
+ * Catalog view — the filter-driven component TREE.
  *
  * Group paths are `/`-separated (`Components/Forms`) and render as nested,
  * collapsible headers — the flat single-level list this replaces was unusable
  * past ~30 components. Ordering stays first-seen (a curatorial choice the
  * catalog already made); the filter drops branches that end up empty. A PART
- * (`partOf`) sits indented under its parent, and a long scenario list is
- * capped until asked for.
+ * (`partOf`) sits indented under its parent. Each row carries the component's
+ * verify verdict as a dot; its scenarios are the strip above the canvas.
+ *
+ * Semantics: a `nav` of buttons, folders as disclosure buttons
+ * (`aria-expanded`), the selection as `aria-current` — the disclosure
+ * navigation pattern. ↑↓ walk the visible rows from anywhere in the app.
  */
 import { onMount, Show, type VNodeChild } from '@pyreon/core'
-import { effect, signal } from '@pyreon/reactivity'
 import * as C from '../../components'
 import type { HierarchyNode } from '../../hierarchy'
 import { countUnder, nodeEntries, partCount } from '../../hierarchy'
 import type { WorkbenchComponent } from '../../catalog'
 import type { WorkbenchModel } from '../../model'
+import { componentVerdict, type ComponentVerdict } from '../../verdict'
 
-/** Scenarios shown under the selected component before "show all". */
-const SCENARIO_CAP = 8
+// The verdict reaches assistive tech as the row's DESCRIPTION (its title),
+// not its name — the name stays the component's, so "Chip" is still "Chip".
+const VERDICT_WORDS: Record<ComponentVerdict, string> = {
+  ok: 'Verified',
+  fail: 'A check failed',
+  unverified: 'Not verified',
+}
 
-export function Sidebar(props: { model: WorkbenchModel }) {
+export function Sidebar(props: {
+  model: WorkbenchModel
+  /** Called after a component is chosen — the drawer closes on it. */
+  onChoose?: () => void
+}) {
   const m = props.model
 
   // Every rendered row by id, so a selection made elsewhere (↑↓, the ⌘K
@@ -57,35 +70,33 @@ export function Sidebar(props: { model: WorkbenchModel }) {
     }
   })
 
-  // Choosing something in the compact DRAWER is navigation — close it so the
-  // canvas the choice was for is what the user sees next.
+  // Choosing a component in the compact DRAWER is navigation — the drawer
+  // closes (and hands focus back to its toggle) so the canvas the choice was
+  // for is what the user sees next.
   const choose = (apply: () => void) => {
     apply()
-    if (m.compact()) m.drawerOpen.set(false)
+    props.onChoose?.()
   }
 
-  // "Show all N" is per selection: selecting another component collapses the
-  // list again, so 60 scenarios never follow you across the tree.
-  const showAll = signal(false)
-  effect(() => {
-    void m.selId()
-    showAll.set(false)
-  })
-
-  const compBtn = (c: WorkbenchComponent, depth: number) => (
-    <C.CompBtn
-      data-testid={`component-${c.id}`}
-      ref={rowRef(c.id)}
-      state={() => (m.selId() === c.id ? 'active' : 'idle')}
-      aria-current={() => (m.selId() === c.id ? 'true' : undefined)}
-      onClick={() => choose(() => m.selId.set(c.id))}
-      {...(depth > 0 ? { 'data-depth': String(depth) } : {})}
-    >
-      <C.CompBar state={() => (m.selId() === c.id ? 'active' : 'idle')} />
-      <C.CompName>{c.title ?? c.name}</C.CompName>
-      {c.isNew ? <C.NewTag>NEW</C.NewTag> : null}
-    </C.CompBtn>
-  )
+  const compBtn = (c: WorkbenchComponent, depth: number) => {
+    const verdict = componentVerdict(c)
+    return (
+      <C.CompBtn
+        data-testid={`component-${c.id}`}
+        data-verdict={verdict}
+        title={VERDICT_WORDS[verdict]}
+        ref={rowRef(c.id)}
+        state={() => (m.selId() === c.id ? 'active' : 'idle')}
+        aria-current={() => (m.selId() === c.id ? 'true' : undefined)}
+        onClick={() => choose(() => m.selId.set(c.id))}
+        {...(depth > 0 ? { 'data-depth': String(depth) } : {})}
+      >
+        <C.CompDot variant={verdict} aria-hidden="true" />
+        <C.CompName>{c.title ?? c.name}</C.CompName>
+        {c.isNew ? <C.NewTag>NEW</C.NewTag> : null}
+      </C.CompBtn>
+    )
+  }
 
   // `owner` → the row is ALSO a folder header: the component button plus a
   // sibling toggle for the folder's parts.
@@ -108,54 +119,10 @@ export function Sidebar(props: { model: WorkbenchModel }) {
       ) : (
         compBtn(c, depth)
       )}
-      {/* The pipeline's derived scenarios, expanded under the SELECTED
-          component (expansion = selection, so 40 scenarios never flood the
-          list), capped until "show all". Each carries its three-state verdict
-          dot; clicking applies the scenario's args, so the canvas renders
-          exactly the state the verdict covered. */}
-      {() => {
-        if (m.selId() !== c.id || !c.scenarios || c.scenarios.length === 0) return null
-        const all = c.scenarios
-        const shown = showAll() || all.length <= SCENARIO_CAP ? all : all.slice(0, SCENARIO_CAP)
-        return [
-          ...shown.map((s) => (
-            <C.ScenRow>
-              {/* The scenario the canvas shows EXACTLY is marked — every dot
-                  is a verdict colour, so without this nothing said which of
-                  twelve green rows you were looking at. */}
-              <C.ScenBtn
-                data-testid={`scenario-${s.id}`}
-                state={() => (m.activeScenario() === s.id ? 'active' : 'idle')}
-                aria-current={() => (m.activeScenario() === s.id ? 'true' : undefined)}
-                onClick={() => choose(() => m.selectScenario(c.id, s.id))}
-              >
-                <C.ScenDot variant={s.verdict} data-verdict={s.verdict} />
-                <C.ScenName>{s.name}</C.ScenName>
-              </C.ScenBtn>
-              {s.play ? (
-                <C.ScenPlay
-                  data-testid={`play-${s.id}`}
-                  aria-label={`Play ${s.name}`}
-                  onClick={() => choose(() => void m.runPlay(c.id, s.id))}
-                >
-                  ▶
-                </C.ScenPlay>
-              ) : null}
-            </C.ScenRow>
-          )),
-          ...(shown.length < all.length
-            ? [
-                <C.ScenRow>
-                  <C.ScenBtn data-testid={`scenarios-more-${c.id}`} onClick={() => showAll.set(true)}>
-                    <C.ScenName>{`show all ${all.length}`}</C.ScenName>
-                  </C.ScenBtn>
-                </C.ScenRow>,
-              ]
-            : []),
-        ]
-      }}
     </>
   )
+
+  const verifiedCount = m.catalog.components.filter((c) => componentVerdict(c) === 'ok').length
 
   // A folder NAMED after a component (`Accordion/` next to `Accordion`) has
   // that component as its `owner`: the header row IS the component, so the
@@ -200,15 +167,20 @@ export function Sidebar(props: { model: WorkbenchModel }) {
     <C.Sidebar
       // Width is live drag geometry (measurement, not styling) — a hashed
       // class per pixel would grow the style cache without bound.
-      style={() => (m.compact() ? 'width:100%;height:100%;border-right:none' : `width:${m.sidebarW()}px`)}
-      aria-label="Components"
+      style={() => (m.compact() ? 'width:100%;border-right:none' : `width:${m.sidebarW()}px`)}
+      aria-label="Catalog"
+      data-testid="catalog"
     >
       <C.SideHead>
-        <C.SideLabel>Components</C.SideLabel>
-        {/* The MATCHED count while filtering — a pill still reading 108 over
-            an empty list contradicted the list. */}
-        <C.CountPill data-testid="sidebar-count" aria-live="polite">
+        <C.SideLabel>Catalog</C.SideLabel>
+        {/* The MATCHED count while filtering — a total over an empty list
+            contradicted the list. */}
+        <C.CountPill data-testid="sidebar-count" aria-live="polite" variant="plain">
           {() => (m.filter().trim() ? `${m.matchCount()} / ${m.total}` : String(m.total))}
+        </C.CountPill>
+        <C.Spacer />
+        <C.CountPill data-testid="verified-count" variant="ok">
+          {`${verifiedCount} verified`}
         </C.CountPill>
       </C.SideHead>
       <C.FilterWrap>
@@ -232,9 +204,6 @@ export function Sidebar(props: { model: WorkbenchModel }) {
           </C.Empty>
         </Show>
       </C.SideList>
-      {/* Real hints only — an earlier footer said "Tokens synced" next to a
-          green dot, a health claim nothing measured. */}
-      <C.SideFoot>↑↓ to browse · ⌘K to search</C.SideFoot>
     </C.Sidebar>
   )
 }

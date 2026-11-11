@@ -192,7 +192,7 @@ export async function startDevServer(options: DevServerOptions = {}): Promise<De
   // Explicit option wins over the config, which wins over the default — the
   // same precedence `atlas build --title` follows, so a project cannot end up
   // with one title in the dev workbench and another on its deployed site.
-  const title = options.title ?? configTitle ?? 'atlas'
+  const title = options.title ?? configTitle ?? 'Atlas'
   const html = devHtml(title)
 
   // Every `@pyreon/*` package any workspace package declares or links — see
