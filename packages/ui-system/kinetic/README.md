@@ -215,6 +215,17 @@ const RevealSection = kinetic('section')
 </RevealSection>
 ```
 
+A `ref` on a kinetic component (callback or ref object) receives the rendered element in every mode, so it can feed an observer such as `useIntersection` from `@pyreon/hooks`:
+
+```tsx
+function Reveal(props) {
+  let node: HTMLElement | null = null
+  const entry = useIntersection(() => node, { threshold: 0.08 })
+  const show = computed(() => entry()?.isIntersecting === true)
+  return <RevealSection ref={(n) => { node = n }} show={() => show()}>{props.children}</RevealSection>
+}
+```
+
 **Trade-off**: for an initially-hidden Transition, `unmount: true` (the default) no longer triggers a true DOM removal after a later leave animation completes — the element stays in DOM with the leave-to class applied. **Initially-visible** Transitions keep the runtime-unmount semantic unchanged. If you need true unmount on a started-hidden element, drive mount/unmount yourself outside `<Transition>`.
 
 ## Gotchas

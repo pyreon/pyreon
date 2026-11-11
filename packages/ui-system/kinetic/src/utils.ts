@@ -1,4 +1,5 @@
 import type { Ref, VNode } from '@pyreon/core'
+import { runUntracked } from '@pyreon/reactivity'
 import { SizedMap } from '@pyreon/sized-map'
 import type { CSSProperties } from './types'
 import { isNativeItem, isVNodeLike, wrapNativeItem } from './child-shape'
@@ -178,6 +179,34 @@ export const mergeRefs = <T>(...refs: (RefLike<T> | undefined)[]): ((node: T | n
         ;(ref as { current: unknown }).current = node
       }
     }
+  }
+}
+
+/**
+ * A callback ref that forwards the element to the CONSUMER's `ref` prop on
+ * `holder` — a callback ref or a ref object.
+ *
+ * Every renderer that puts its own `ref` on the element it renders
+ * (`mergeProps(htmlProps, { ref: internal })`) replaces the consumer's: the
+ * internal source wins last. Merging this into the internal ref is what keeps
+ * `<KineticDiv ref={...}>` working — without it the documented scroll-reveal
+ * pattern (`useIntersection(() => node)`) never sees an element.
+ *
+ * `holder.ref` is read when the element attaches, not at setup, and untracked:
+ * a compiler `_rp` getter stays live, and the read cannot subscribe whatever
+ * effect happens to be mounting the element. The detach goes to the ref that
+ * received the attach, so a ref that changed in between is not handed a
+ * `null` for an element it never saw.
+ */
+export const consumerRef = <T>(holder: Record<string, unknown>): RefCallback<T> => {
+  let attached: RefLike<T> | undefined
+  return (node: T | null) => {
+    const ref =
+      node === null ? attached : (runUntracked(() => holder.ref) as RefLike<T> | null | undefined)
+    attached = node === null ? undefined : (ref ?? undefined)
+    if (!ref) return
+    if (typeof ref === 'function') ref(node)
+    else (ref as { current: unknown }).current = node
   }
 }
 
