@@ -65,6 +65,10 @@ let _elementDepth = 0
 // Only allocated in dev — production mounts skip devtools entirely.
 let _mountingStack: string[] | undefined
 if (process.env.NODE_ENV !== 'production') _mountingStack = []
+// Component scope → its devtools id (dev only). A WeakMap, so an entry goes
+// with its scope; nothing to evict by hand.
+let _devScopeIds: WeakMap<EffectScope, string> | undefined
+if (process.env.NODE_ENV !== 'production') _devScopeIds = new WeakMap()
 
 /**
  * Mount a single child into `parent`, inserting before `anchor` (null = append).
@@ -579,7 +583,16 @@ function mountComponent(
   let devParentId: string | null | undefined
   if (process.env.NODE_ENV !== 'production') {
     compId = `${componentName}-${Math.random().toString(36).slice(2, 9)}`
-    devParentId = _mountingStack![_mountingStack!.length - 1] ?? null
+    // The parent is the nearest component up the OWNER chain. The mounting
+    // stack alone is empty when a reactive update mounts a component later
+    // (a <For> row added, a <Show> turning on, a route change), which made
+    // every such component a root in the devtools tree.
+    let ownerId: string | undefined
+    for (let o: EffectScope | null = prevOwner; o !== null && ownerId === undefined; o = o._parent) {
+      ownerId = _devScopeIds!.get(o)
+    }
+    devParentId = ownerId ?? _mountingStack![_mountingStack!.length - 1] ?? null
+    _devScopeIds!.set(scope, compId)
     _mountingStack!.push(compId)
   }
 
@@ -704,6 +717,11 @@ function mountComponent(
     parent.insertBefore(boundaryStart!, anchor)
     parent.insertBefore(boundaryEnd, anchor)
   }
+  // Dev-only: remember where this component's output starts, so devtools
+  // records the component's OWN first element rather than the parent's.
+  const devEnd = process.env.NODE_ENV !== 'production' ? (boundaryEnd ?? anchor) : null
+  const devBefore =
+    process.env.NODE_ENV !== 'production' ? (devEnd ? devEnd.previousSibling : parent.lastChild) : null
   try {
     subtreeCleanup = output != null ? mountChild(output, parent, boundaryEnd ?? anchor) : noop
     if (boundaryEnd !== null) {
@@ -737,7 +755,22 @@ function mountComponent(
 
   if (process.env.NODE_ENV !== 'production') {
     _mountingStack!.pop()
-    const firstEl = parent instanceof Element ? parent.firstElementChild : null
+    // The first element this component inserted: walk from just after
+    // `devBefore` to the end marker. `parent.firstElementChild` (the old
+    // read) is the FIRST SIBLING's element for every component but the
+    // first, so highlight, the picker and the devtools inspector all
+    // pointed at the wrong DOM.
+    let firstEl: Element | null = null
+    for (
+      let n = devBefore ? devBefore.nextSibling : parent.firstChild;
+      n !== null && n !== devEnd;
+      n = n.nextSibling
+    ) {
+      if (n.nodeType === 1) {
+        firstEl = n as Element
+        break
+      }
+    }
     registerComponent(compId!, componentName, firstEl, devParentId!)
   }
 

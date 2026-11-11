@@ -71,7 +71,9 @@ Live Program Inlay Hints (LPIH) is the runtime companion: fire and subscriber co
 
 ### Devtools
 
-- `installDevTools()` attaches `window.__PYREON_DEVTOOLS__`; `hydrateRoot` calls it too in dev. Components register post-order, so rebuild the tree from `parentId` (`childIds` is empty).
+- `installDevTools()` attaches `window.__PYREON_DEVTOOLS__`; `hydrateRoot` calls it too in dev, but the hydration walk registers no components. Components register post-order, so rebuild the tree from `parentId` (`childIds` is empty).
+- `mountComponent` takes `parentId` from the nearest component scope up the OWNER chain (`_devScopeIds`, a dev-only `WeakMap<EffectScope, id>`), falling back to the mounting stack, which is empty for anything a reactive update mounts later (a `<For>` row, a `<Show>` branch, a route). `el` is the component's own first element, found by walking from the node before its insertion point; `parent.firstElementChild` is the first sibling's. Locked by `devtools-component-el.test.ts`.
+- The extension (`packages/tools/devtools`) and anything else reading fire timestamps: `ts` / `lastFire` are the PAGE's `performance.now()`, coarsened to 100 µs without cross-origin isolation, so every fire of one cascade can share a timestamp. Order fires by their position in `getFires()`, not by `ts`; compute "ago" from a page-side `now`, never the reader's clock.
 - The reactive bridge (`reactive-devtools.ts`, `.reactive`) is always on in dev and removed in production.
 - **Reactive overlay** (`.reactive.showOverlay()`, `Ctrl+Shift+R`, `$p.reactivity()`), tabs:
   - Health: `describeReactiveGraph` summary and insights (`orphan-signal`, `high-fanout`, `deep-chain`).
