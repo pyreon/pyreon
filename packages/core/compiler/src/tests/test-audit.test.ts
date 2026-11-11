@@ -348,6 +348,26 @@ describe('auditTestEnvironment — synthetic fixtures', () => {
     expect(r.entries[0]!.mockVNodeLiteralCount).toBe(0)
   })
 
+  it('skips `{type,props,children}` member lists of an interface or type alias', () => {
+    f.writeTest(
+      'foo/src/tests/typed-walker.test.ts',
+      `
+        interface Walked {
+          type: string
+          props: Record<string, unknown>
+          children: (Walked | string)[]
+        }
+        type Walked2 = {
+          type: string
+          props: Record<string, unknown>
+          children: Walked2[]
+        }
+      `,
+    )
+    const r = auditTestEnvironment(f.root)
+    expect(r.entries[0]?.mockVNodeLiteralCount ?? 0).toBe(0)
+  })
+
   it('still flags `{type,props,children}` literals bound to a variable', () => {
     f.writeTest(
       'foo/src/tests/bound-literal.test.ts',
