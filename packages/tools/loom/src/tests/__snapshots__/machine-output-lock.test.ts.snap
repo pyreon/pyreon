@@ -426,6 +426,10 @@ exports[`loom scan --json is locked > --json --no-write: the report on stdout, t
       }
     }
   ],
+  "gate": {
+    "strict": false,
+    "exit": 1
+  },
   "stats": {
     "internal": 5,
     "external": 5,
@@ -787,6 +791,10 @@ exports[`loom scan --json is locked > --json --strict --no-imports > stdout 1`] 
       }
     }
   ],
+  "gate": {
+    "strict": false,
+    "exit": 1
+  },
   "stats": {
     "internal": 5,
     "external": 5,
