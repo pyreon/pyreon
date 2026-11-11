@@ -1,70 +1,55 @@
 import { describe, expect, it } from 'vitest'
-import { headroomIsSufficient, isThinHeadroom, requiredHeadroom } from '../../../../../scripts/check-bundle-budgets'
+import {
+  headroomIsSufficient,
+  isThinHeadroom,
+  requiredHeadroom,
+} from '../../../../../scripts/check-bundle-budgets'
 
-// The gate that catches platform-dependent BUDGETS had a platform-dependent
-// VERDICT of its own: both `budget - measured` and `measured * 1.5%` read the
-// LOCAL number, so macOS saw more headroom AND a smaller requirement than the
-// ubuntu runner that actually gates the PR.
-//
-// Tested as a pure predicate against the two figures one commit produces on the
-// two machines. An env-var toggle cannot check this — setting `CI=true` locally
-// only disables the inflation; it does not make gzip bigger.
+// The thin-headroom verdict reads only the measured bytes and the budget. It
+// used to inflate a non-CI measurement by a presumed 1.1% macOS/ubuntu delta,
+// which no longer exists (the same lib/ gives identical bytes on both, see
+// HEADROOM_FRACTION in the script), so it made laptops stricter than CI on the
+// same bytes: #4288.
 
-/** ~1.1%: `@pyreon/toast` measured 3018 B on macOS and 3068 B on ubuntu. */
-const asUbuntu = (macos: number): number => macos * 1.011
-
-describe('a budget gets the same verdict on both machines', () => {
-  it('the band that used to pass locally and fail in CI now fails locally too', () => {
-    // `@pyreon/cli`'s real figures when this was found: 16873 B measured on
-    // macOS against a 17296 B budget. Ubuntu measures ~17059, needs ~256 and
-    // has 237 — so CI fails while `validate-fast` passes, and re-running
-    // locally only reconfirms the wrong answer.
-    const macos = 16873
-    const budget = 17296
-    expect(budget - asUbuntu(macos)).toBeLessThan(requiredHeadroom(asUbuntu(macos)))
-    // The verdict a developer gets, and the one CI gets, now agree.
-    expect(headroomIsSufficient(macos, budget, false), 'local').toBe(false)
-    expect(headroomIsSufficient(asUbuntu(macos), budget, true), 'gating').toBe(false)
+describe('the headroom verdict depends only on the bytes', () => {
+  it('@pyreon/server on 2026-11-10: 6139 B against 6280 passes (it failed only off CI before)', () => {
+    // Measured 6139 B on macOS and on the ubuntu runner. 141 B of headroom
+    // against a 93 B minimum.
+    expect(requiredHeadroom(6139)).toBeCloseTo(92.085, 3)
+    expect(headroomIsSufficient(6139, 6280)).toBe(true)
+    expect(isThinHeadroom(6139, 6280)).toBe(false)
   })
 
-  it('and the raised budget passes on both', () => {
-    const macos = 16873
-    const budget = 17640
-    expect(headroomIsSufficient(macos, budget, false), 'local').toBe(true)
-    expect(headroomIsSufficient(asUbuntu(macos), budget, true), 'gating').toBe(true)
+  it('@pyreon/core on 2026-11-11: 7920 B against the old 7963 is thin on every machine', () => {
+    expect(isThinHeadroom(7920, 7963)).toBe(true)
+    expect(isThinHeadroom(7920, 8232)).toBe(false)
   })
 
-  it('agrees across the whole band, not just at the two edges', () => {
-    // The real assertion: for a range of budgets around the threshold, the
-    // local verdict and the gating verdict are the SAME verdict. A single pair
-    // could agree by luck.
-    const macos = 16873
-    let disagreements = 0
-    for (let budget = 17000; budget <= 17800; budget += 7) {
-      const local = headroomIsSufficient(macos, budget, false)
-      const gating = headroomIsSufficient(asUbuntu(macos), budget, true)
-      if (local !== gating) disagreements++
-    }
-    expect(disagreements, 'budgets where the two machines disagree').toBe(0)
+  it('the boundary is exactly measured + the minimum', () => {
+    const measured = 16873
+    const edge = measured + requiredHeadroom(measured)
+    expect(headroomIsSufficient(measured, Math.ceil(edge))).toBe(true)
+    expect(headroomIsSufficient(measured, Math.floor(edge) - 1)).toBe(false)
   })
 
-  it('a comfortable budget is unaffected — this is not a blanket tightening', () => {
-    expect(headroomIsSufficient(1000, 2000, false)).toBe(true)
-    expect(headroomIsSufficient(1000, 2000, true)).toBe(true)
+  it('small packages get the 64 B floor', () => {
+    expect(requiredHeadroom(1000)).toBe(64)
+    expect(headroomIsSufficient(1000, 1064)).toBe(true)
+    expect(headroomIsSufficient(1000, 1063)).toBe(false)
+  })
+
+  it('a comfortable budget is unaffected', () => {
+    expect(headroomIsSufficient(1000, 2000)).toBe(true)
   })
 })
 
-describe('the gate flags a budget the gating machine would EXCEED', () => {
-  it('a negative worst-case headroom is thin, not silently fine', () => {
-    // `@pyreon/http`'s real figures: 5935 B on macOS against a 6000 B budget.
-    // Inflated to the ubuntu figure that is ~6000.3 B — over budget in CI,
-    // under it locally. The loop's old `headroom >= 0 && …` guard reported
-    // exactly this band as nothing at all.
-    expect(isThinHeadroom(5935, 6000, false)).toBe(true)
-    expect(isThinHeadroom(5935, 6205, false)).toBe(false)
+describe('thin versus over budget', () => {
+  it('under budget without the minimum headroom is thin', () => {
+    expect(isThinHeadroom(5935, 6000)).toBe(true)
+    expect(isThinHeadroom(5935, 6205)).toBe(false)
   })
 
-  it('a budget already exceeded here is a violation, not thin', () => {
-    expect(isThinHeadroom(6100, 6000, false)).toBe(false)
+  it('a budget already exceeded is a violation, not thin', () => {
+    expect(isThinHeadroom(6100, 6000)).toBe(false)
   })
 })

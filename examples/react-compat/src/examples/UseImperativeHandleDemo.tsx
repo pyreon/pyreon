@@ -2,11 +2,11 @@ import { useImperativeHandle, useRef, useState } from 'react'
 import Demo from './Demo'
 
 export default function UseImperativeHandleDemo() {
-  const ref = useRef<{ focus: () => void }>()
+  const ref = useRef<{ focus: () => void }>(null)
   const [msg, setMsg] = useState('')
 
   function FancyInput(props: { inputRef: { current: { focus: () => void } | null } }) {
-    const realInput = useRef<HTMLInputElement>()
+    const realInput = useRef<HTMLInputElement>(null)
 
     useImperativeHandle(props.inputRef, () => ({
       focus: () => {
@@ -23,7 +23,7 @@ export default function UseImperativeHandleDemo() {
       title="Imperative Handle"
       apis="useImperativeHandle"
       code={`function FancyInput({ inputRef }) {
-  const realInput = useRef();
+  const realInput = useRef(null);
 
   useImperativeHandle(inputRef, () => ({
     focus: () => realInput.current?.focus(),
@@ -33,7 +33,7 @@ export default function UseImperativeHandleDemo() {
 }
 
 // Parent
-const ref = useRef();
+const ref = useRef(null);
 ref.current?.focus();`}
     >
       <FancyInput inputRef={ref} />
