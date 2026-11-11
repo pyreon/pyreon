@@ -11,12 +11,15 @@ import { h as coreH } from '@pyreon/core'
 import { renderToString } from '@pyreon/runtime-server'
 import { describe, expect, it } from 'vitest'
 import {
+  argReader,
   deriveContent,
   isContainer,
   isContentBlocks,
   materializeContent,
+  mergeArgs,
   PLACEHOLDER_IMAGE,
   seedArgs,
+  setArg,
 } from '../content'
 
 // The harness contract is the loosest possible `h` — the runtime's own, untyped.
@@ -160,5 +163,54 @@ describe('seedArgs', () => {
   it('is the identity without a seed', () => {
     const args = { a: 1 }
     expect(seedArgs(undefined, args)).toBe(args)
+  })
+})
+
+describe('live args survive the generated render (descriptor-preserving helpers)', () => {
+  // The workbench hands `render` an object of GETTERS so a control edit
+  // updates the mounted component in place. Any spread on the way to the
+  // component reads them once and pins it to those values.
+  const live = () => {
+    let label = 'a'
+    const args = {} as Record<string, unknown>
+    Object.defineProperty(args, 'label', { get: () => label, enumerable: true, configurable: true })
+    return { args, set: (v: string) => (label = v) }
+  }
+
+  it('mergeArgs keeps getters, later sources winning key by key', () => {
+    const { args, set } = live()
+    const merged = mergeArgs({ label: 'seed', children: 'x' }, { size: 'md' }, args)
+    expect(merged.label).toBe('a')
+    set('b')
+    expect(merged.label).toBe('b')
+    expect(merged.children).toBe('x')
+    expect(Object.keys(merged).sort()).toEqual(['children', 'label', 'size'])
+  })
+
+  it('setArg replaces a getter-only property instead of throwing', () => {
+    const { args } = live()
+    const merged = mergeArgs(args)
+    setArg(merged, 'label', 'fixed')
+    expect(merged.label).toBe('fixed')
+  })
+
+  it('argReader reads a getter when called, not when made', () => {
+    const { args, set } = live()
+    const read = argReader(args, 'label')
+    set('later')
+    expect(read()).toBe('later')
+    expect(argReader({ x: 1 }, 'x')()).toBe(1)
+    expect(argReader({}, 'missing')()).toBeUndefined()
+  })
+
+  it('materializeContent keeps every other prop a getter when it splits off children', () => {
+    const { args, set } = live()
+    Object.defineProperty(args, 'children', { value: 'Hi', enumerable: true, configurable: true })
+    const h = (type: unknown, props?: unknown, ...c: unknown[]) => ({ type, props, c })
+    const { props, children } = materializeContent(args, h)
+    expect(children).toEqual(['Hi'])
+    expect('children' in props).toBe(false)
+    set('z')
+    expect(props.label).toBe('z')
   })
 })
