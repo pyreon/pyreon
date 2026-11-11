@@ -36,3 +36,10 @@ export const Frame = el
     vTablet: { width: '768px', maxWidth: '100%' },
     vDesktop: { width: '1280px', maxWidth: '100%' },
   }))
+  // Fullscreen layout: the frame takes the stage's whole height, so the
+  // surface inside it can too.
+  .multiple(() => ({
+    centered: {},
+    padded: {},
+    fullscreen: { extendCss: 'flex:1 1 auto;align-self:stretch;' },
+  }))

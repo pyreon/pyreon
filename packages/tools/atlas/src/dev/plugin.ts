@@ -28,6 +28,7 @@ import { isAbsolute, resolve, sep } from 'node:path'
 import { ambiguousComponentMessage, type ComponentIntelligence, resolveComponent } from '../core'
 import { definingModule } from '../discover/defining-module'
 import { generateCatalogModule, type CatalogEntrySource } from './catalog-module'
+import { createControlHistory } from './control-history'
 import { lensMethod } from './lens'
 import { chromeThemeCss, themeBootScript } from '../ui/theme'
 
@@ -221,6 +222,9 @@ export function atlasDevPlugin(options: AtlasDevPluginOptions): VitePluginLike {
     projects: options.projects,
   }
   let watch: WatchTargets = options.watch ?? { dirs: [options.scanRoot], files: [] }
+  // Which controls a rescan brought in, and when — the Schema panel's
+  // "added N min ago". Seeded with the boot catalog, which carries no times.
+  const history = createControlHistory(entries.map((e) => e.component))
   const buildMethods = () => ({
     ...builtinMethods({ root: options.root, components: entries.map((e) => e.component) }),
     ...options.methods,
@@ -245,6 +249,7 @@ export function atlasDevPlugin(options: AtlasDevPluginOptions): VitePluginLike {
           ...(o.pages ? { pages: o.pages } : {}),
           ...(o.parts ? { parts: o.parts } : {}),
           ...(o.projects ? { projects: o.projects } : {}),
+          addedAt: history.addedAt,
         })
       }
       if (id === resolved(ENTRY_ID)) {
@@ -321,6 +326,10 @@ export function atlasDevPlugin(options: AtlasDevPluginOptions): VitePluginLike {
                 register(watch)
               }
             }
+            history.record(
+              entries.map((e) => e.component),
+              Date.now(),
+            )
             methods = buildMethods()
             const mod = server.moduleGraph?.getModuleById(resolved(CATALOG_ID))
             if (mod) server.moduleGraph?.invalidateModule(mod as never)

@@ -26,6 +26,17 @@ export type ControlKind =
   | 'reactive'
   | 'unknown'
 
+/**
+ * Where a derived control came from — the Schema panel's "source" column.
+ *
+ * - `prop-type` — read off the component's TypeScript props
+ * - `dimension` — a rocketstyle dimension (`state` / `size` / `variant` / …)
+ * - `content` — the content seed Atlas renders a component with
+ *   (`children`, `placeholder`, an overlay's `open`)
+ * - `spec` — declared through `defineComponent`'s terse spec
+ */
+export type ControlSource = 'prop-type' | 'dimension' | 'content' | 'spec'
+
 /** A single inferred arg control (the derived replacement for `argTypes`). */
 export interface PropControl {
   /** prop name */
@@ -40,6 +51,8 @@ export interface PropControl {
   reactive: boolean
   /** true when the prop has no default and is not optional */
   required: boolean
+  /** Which pass produced it. Absent on a control built by hand. */
+  source?: ControlSource
 }
 
 /**

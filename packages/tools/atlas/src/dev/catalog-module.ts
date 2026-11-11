@@ -15,6 +15,7 @@
  */
 import { catalogReplacer, componentKey, type ComponentIntelligence, type PropControl } from '../core'
 import { relative } from 'node:path'
+import type { WorkbenchControl } from '../ui/catalog'
 
 /** A component paired with the absolute path it is imported from. */
 export interface CatalogEntrySource {
@@ -91,20 +92,22 @@ export function toWorkbenchControl(
   control: PropControl,
   /** The component's content seed for this prop — the default when the prop declares none. */
   seeded?: unknown,
-): {
-  key: string
-  label: string
-  type: 'text' | 'enum' | 'bool' | 'number' | 'color'
-  options?: readonly string[]
-  default: unknown
-  /**
-   * Threaded to the docs table. Which props are REQUIRED, and what an enum
-   * ACCEPTS, are the two facts that decide whether a usage is correct — and
-   * they are exactly what `atlas check` validates against. A props table
-   * without them documents the shape but not the contract.
-   */
-  required?: boolean
-} {
+  /** When `atlas dev` first saw this control on a rescan (see `WorkbenchControl.addedAt`). */
+  addedAt?: number,
+): WorkbenchControl {
+  const meta = {
+    ...(control.source ? { source: control.source } : {}),
+    ...(addedAt ? { addedAt } : {}),
+  }
+  return { ...toControlShape(control, seeded), ...meta }
+}
+
+/**
+ * The editor shape for one control. Threaded to the docs table: which props
+ * are REQUIRED, and what an enum ACCEPTS, are the two facts that decide
+ * whether a usage is correct — exactly what `atlas check` validates against.
+ */
+function toControlShape(control: PropControl, seeded: unknown): WorkbenchControl {
   const label = control.name
     .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
     .replace(/^./, (c) => c.toUpperCase())
@@ -193,6 +196,12 @@ export interface GenerateOptions {
    * `Core/Forms`, not `Packages/Core/Src/Forms`.
    */
   projects?: readonly { name: string; dir: string }[]
+  /**
+   * When a control first appeared during this `atlas dev` session, by
+   * component key and control key — `undefined` for one present at boot.
+   * See `ControlHistory`.
+   */
+  addedAt?: (componentKey: string, controlKey: string) => number | undefined
 }
 
 /**
@@ -446,7 +455,9 @@ export function generateCatalogModule(
     const { component } = entry
     const controls = component.controls
       .filter(isEditableControl)
-      .map((c) => toWorkbenchControl(c, component.content?.[c.name]))
+      .map((c) =>
+        toWorkbenchControl(c, component.content?.[c.name], options.addedAt?.(componentKey(component), c.name)),
+      )
     // The discovered EVENT surface. `reactive` means only "function-valued";
     // it also includes render props such as `children`/`renderItem`. Fabricating
     // one of those changes component behaviour even when the user supplied no

@@ -46,7 +46,9 @@ Derives a verified, machine-readable component catalog from source. You write no
 - unistyle DROPS an unmapped theme key and wraps `backgroundImage` in `url()` — gradients and `font-variant-numeric` go in `extendCss`.
 - `atlas dev` re-derives the catalog when a scanned file changes (debounced; a failed rescan keeps the previous catalog). The canvas opens on `Default` with all its args; a link carries only edits.
 - `atlas build` bakes the node-answered panels (Docs source, Reactivity Lens) into each page, so a serverless deploy keeps real verdicts. An uncomputable answer bakes its reason.
-- `e2e/atlas-ui-components.spec.ts` builds the real ui-components library and checks every page.
+- Heavy panel bodies are lazy (`views/panels/lazy.tsx`): metadata in `registerBuiltinPanels.ts`, the body a chunk loaded on first open. The shell keeps a panel's node across tab switches by RE-MOUNTING it, so a lazily built body is memoised (`built ??=`) and a panel must not rely on a build-time `effect()` surviving a switch — drive imperative writes from refs and the code that changes the data (the coverage bar does).
+- Permissions: one card per role via `model.previewAs(roleId)` (a fresh recording `can()` per render); verdicts from `judgeRole` (`permission-sets.ts`). Schema: `schemaRows` over `WorkbenchControl.source` (set by each producer: `prop-type`, `dimension`, `content`, `spec`) and `addedAt` (`dev/control-history.ts`, bounded by the current catalog). Lens "Fix:": `lensFix` (`lens-client.ts`) over `ReactivityFinding.fix`. Layout: `?layout=`, a `multiple` dimension on Stage / Frame / PreviewSurface.
+- - `e2e/atlas-ui-components.spec.ts` builds the real ui-components library and checks every page.
 
 ### Config and monorepos
 

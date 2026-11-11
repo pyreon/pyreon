@@ -64,6 +64,13 @@ export interface ReactivityFinding {
   code?: PyreonDiagnosticCode | 'plain-mode'
   /** For `'footgun'` findings: whether a mechanical auto-fix is safe. */
   fixable?: boolean
+  /**
+   * For detector `'footgun'` findings: the detector's suggested rewrite
+   * (`PyreonDiagnostic.suggested`) — what to write instead. Absent for
+   * structural findings and for Plain-Mode warnings, which carry their fix in
+   * the message.
+   */
+  fix?: string
 }
 
 export interface AnalyzeReactivityResult {
@@ -162,6 +169,7 @@ export function analyzeReactivity(
       detail: d.message,
       code: d.code,
       fixable: d.fixable,
+      ...(d.suggested ? { fix: d.suggested } : {}),
     })
   }
 

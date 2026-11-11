@@ -26,3 +26,9 @@ export const Stage = el
     },
     plain: {},
   }))
+  // Fullscreen layout: the frame spans the stage edge to edge.
+  .multiple(() => ({
+    centered: {},
+    padded: {},
+    fullscreen: { padding: '0' },
+  }))

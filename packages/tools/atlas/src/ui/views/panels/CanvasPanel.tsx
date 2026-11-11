@@ -7,7 +7,7 @@
 /**
  * The two environment panels.
  *
- * - Canvas — the stage's own tools: zoom, the dotted grid, measure.
+ * - Canvas — the stage's own tools: zoom, the dotted grid, measure, layout.
  * - Addons — what the component renders UNDER: viewport, background, preview
  *   brand, outline, pseudo state, locale and pseudo-locale. Folds together
  *   what Storybook splits across addon-viewport / addon-backgrounds /
@@ -18,7 +18,7 @@
  * what the project configured.
  */
 import type { Signal } from '@pyreon/reactivity'
-import { PSEUDO_STATES } from '../../addons'
+import { CANVAS_LAYOUTS, PSEUDO_STATES } from '../../addons'
 import * as C from '../../components'
 import type { WorkbenchModel } from '../../model'
 import { ZOOM_PCT } from '../../model'
@@ -105,6 +105,14 @@ export const canvasPanel: AddonPanelDef = {
         )}
         {switchRow('grid', 'Grid', 'stage dots', m.grid, 'grid-toggle')}
         {switchRow('measure', 'Measure', 'hover to inspect', m.measure, 'measure-toggle')}
+        {choiceRow(
+          'layout',
+          'Layout',
+          'stage',
+          CANVAS_LAYOUTS.map((l) => ({ id: l.id, label: l.label, testid: `layout-${l.id}` })),
+          (id) => m.layout() === id,
+          (id) => m.layout.set(id as (typeof CANVAS_LAYOUTS)[number]['id']),
+        )}
       </>
     )
   },

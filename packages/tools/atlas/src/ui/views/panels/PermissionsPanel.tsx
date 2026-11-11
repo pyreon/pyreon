@@ -1,106 +1,162 @@
 /**
- * The Permissions panel — render the scenario as each role sees it.
+ * The Permissions panel — the scenario rendered as EVERY role sees it, side by
+ * side, each judged against the role's policy.
  *
  * Catches a security bug: an action that should be admin-only rendering for a
  * viewer. Normally that is found by logging in as the wrong user, i.e. late.
  *
- * The panel's real contribution over "swap the role and look" is the CONSULTED
- * list. A component that renders identically under every role has either asked
- * and been answered the same way, or never asked at all — and only the second
- * is a bug. Nothing but a recording `can()` can tell those apart.
+ * Two things make a card's verdict more than "look at the four renders":
+ *
+ * - each role renders under its OWN recording `can()`, so the card knows which
+ *   keys that render consulted and which the role was denied — a component
+ *   that never asked is reported as such, not as "safe";
+ * - every enabled action the render produced is checked against the policy
+ *   (the role's `verbs` / `grants` / `defaultGrant` — the shipped roles, or
+ *   `presets.roles` in atlas.config.ts), by the verb its label starts with.
+ *   See `judgeRole` for the exact rule.
+ *
+ * Clicking a role's chip renders the CANVAS under that role (the `?role=`
+ * link parameter), so the panels that read the render context agree with it.
  */
-import { Show } from '@pyreon/core'
+import { onUnmount, Show } from '@pyreon/core'
+import { signal } from '@pyreon/reactivity'
 import * as C from '../../components'
 import type { WorkbenchModel } from '../../model'
-import { registerAddonPanel } from '../../panels'
-import { isUnguarded } from '../../permission-sets'
+import type { AddonPanelRender } from '../../panels'
+import {
+  judgeRole,
+  type PermissionSet,
+  type RecordingPermissions,
+  renderedActions,
+  type RoleVerdict,
+} from '../../permission-sets'
+import { PreviewTheme } from '../canvas/PreviewTheme'
 
-export function registerPermissionsPanel(): void {
-  registerAddonPanel({
-    id: 'permissions',
-    title: 'Permissions',
-    hint: 'Render the scenario as each role sees it',
-    render: (model) => {
-      const m = model as WorkbenchModel
+interface CardResult {
+  verdict: RoleVerdict
+  consulted: string[]
+  denied: string[]
+}
 
-      // Read through the model's computed so both stay in step with the
-      // preview: the same instance the component rendered against is the one
-      // reporting which keys it consulted.
-      const consulted = () => m.permissions().consulted()
-      const denied = () => m.permissions().denied()
+const GLYPH: Record<RoleVerdict['state'], string> = { ok: '✓', violation: '✗', unguarded: '!' }
 
-      return (
-        <>
-          <C.CtrlRow>
-            <C.CtrlHead>
-              <C.CtrlLabel>Role</C.CtrlLabel>
-              <C.CtrlType>{() => (m.roles.find((r) => r.id === m.permissionSet()) ?? m.roles[0]!).hint}</C.CtrlType>
-            </C.CtrlHead>
-            <C.EnumWrap>
-              {m.roles.map((set) => (
-                <C.EnumBtn
-                  data-testid={`role-${set.id}`}
-                  state={() => (m.permissionSet() === set.id ? 'active' : 'idle')}
-                  onClick={() => m.permissionSet.set(set.id)}
-                >
-                  {set.label}
-                </C.EnumBtn>
-              ))}
-            </C.EnumWrap>
-          </C.CtrlRow>
+/**
+ * One role's card. The verdict is read AFTER the render settles: the consulted
+ * keys are filled by rendering, and the actions are read off the mounted DOM.
+ * A MutationObserver re-judges when the render changes (a control edit, a
+ * scenario), coalesced into one frame.
+ */
+function RoleCard(props: { model: WorkbenchModel; role: PermissionSet; overlay: () => boolean }) {
+  const m = props.model
+  const role = props.role
+  const result = signal<CardResult | null>(null)
+  let recording: RecordingPermissions | null = null
+  let host: HTMLElement | null = null
+  let observer: MutationObserver | null = null
+  let frame = 0
 
-          {/*
-            The finding with teeth. Rendering identically under every role is
-            only reassuring if the component ASKED; if it never called `can()`,
-            the roles prove nothing and a destructive action is unguarded.
-          */}
-          <Show when={() => isUnguarded(consulted())}>
-            <C.ActionsEmpty data-testid="perm-unguarded">
-              This component consulted NO permission keys. Switching roles proves
-              nothing about it — if it renders a destructive action, that action
-              is unguarded.
-            </C.ActionsEmpty>
-          </Show>
-
-          <Show when={() => !isUnguarded(consulted())}>
-            <>
-              <C.A11ySummary data-testid="perm-summary">
-                <C.A11yStat>
-                  <C.A11yDot state="ok" />
-                  {() => `${consulted().length - denied().length} granted`}
-                </C.A11yStat>
-                <C.A11yStat>
-                  <C.A11yDot state="danger" />
-                  {() => `${denied().length} denied`}
-                </C.A11yStat>
-                <C.A11yStat>
-                  <C.A11yDot state="ok" />
-                  {() => `${consulted().length} key(s) consulted`}
-                </C.A11yStat>
-              </C.A11ySummary>
-
-              {() =>
-                consulted().map((key) => {
-                  const isDenied = denied().includes(key)
-                  return (
-                    <C.A11yRow data-testid="perm-row">
-                      <C.A11yIcon state={isDenied ? 'danger' : 'ok'}>
-                        {isDenied ? '×' : '✓'}
-                      </C.A11yIcon>
-                      <C.A11yBody>
-                        <C.A11yTitle>{key}</C.A11yTitle>
-                        <C.A11yNote>
-                          {isDenied ? 'denied for this role' : 'granted for this role'}
-                        </C.A11yNote>
-                      </C.A11yBody>
-                    </C.A11yRow>
-                  )
-                })
-              }
-            </>
-          </Show>
-        </>
-      )
-    },
+  const judge = () => {
+    frame = 0
+    if (!host || !recording) return
+    const consulted = recording.consulted()
+    const denied = recording.denied()
+    result.set({ verdict: judgeRole(role, m.roles, consulted, denied, renderedActions(host)), consulted, denied })
+  }
+  const schedule = () => {
+    if (frame !== 0) return
+    frame = typeof requestAnimationFrame === 'function' ? requestAnimationFrame(judge) : (judge(), 0)
+  }
+  const miniRef = (el: HTMLElement | null) => {
+    observer?.disconnect()
+    observer = null
+    host = el
+    if (!el) return
+    // `inert`: a picture of the canvas, not a second place to tab through.
+    el.setAttribute('inert', '')
+    if (typeof MutationObserver !== 'undefined') {
+      observer = new MutationObserver(schedule)
+      observer.observe(el, { childList: true, subtree: true, attributes: true, characterData: true })
+    }
+    schedule()
+  }
+  onUnmount(() => {
+    observer?.disconnect()
+    if (frame !== 0 && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(frame)
   })
+
+  const state = () => (props.overlay() ? 'pending' : (result()?.verdict.state ?? 'pending'))
+  const active = () => m.permissionSet() === role.id
+
+  return (
+    <C.RoleCard data-testid={`role-card-${role.id}`} data-verdict={state} state={() => state() as never}>
+      <C.RoleToggle
+        data-testid={`role-${role.id}`}
+        aria-pressed={() => (active() ? 'true' : 'false')}
+        title={`Render the canvas as ${role.label.toLowerCase()}${role.hint ? ` — ${role.hint}` : ''}`}
+        state={() => (active() ? 'active' : 'idle')}
+        onClick={() => m.permissionSet.set(role.id)}
+      >
+        {role.label.toLowerCase()}
+      </C.RoleToggle>
+      <Show
+        when={() => !props.overlay()}
+        fallback={
+          <C.RoleVerdictLine state="pending">
+            Opens an overlay — rendered on the canvas only, so four copies do not stack over the
+            workbench. Pick this role to see it there.
+          </C.RoleVerdictLine>
+        }
+      >
+        <C.RoleMini data-testid={`role-mini-${role.id}`} ref={miniRef}>
+          <PreviewTheme model={m}>
+            {() => {
+              const out = m.previewAs(role.id)
+              recording = out.recording
+              schedule()
+              return out.node
+            }}
+          </PreviewTheme>
+        </C.RoleMini>
+        <C.RoleVerdictLine data-testid={`role-verdict-${role.id}`} state={() => state() as never}>
+          {() => {
+            const r = result()
+            return r ? `${GLYPH[r.verdict.state]} ${r.verdict.message}` : 'rendering…'
+          }}
+        </C.RoleVerdictLine>
+        {() => {
+          const r = result()
+          if (!r || r.consulted.length === 0) return null
+          const denied = new Set(r.denied)
+          return (
+            <C.A11yNote data-testid={`role-keys-${role.id}`}>
+              {r.consulted.map((k) => `${k} ${denied.has(k) ? '✗' : '✓'}`).join(' · ')}
+            </C.A11yNote>
+          )
+        }}
+      </Show>
+    </C.RoleCard>
+  )
+}
+
+/** The panel body — loaded on first open (see ./lazy). */
+export const render: AddonPanelRender = (model) => {
+  const m = model as WorkbenchModel
+  // An overlay seeded open (a modal, a drawer) portals out of its card;
+  // four of them would stack over the workbench.
+  const overlay = () => m.overlayOpen() || (m.vals() as { open?: unknown }).open === true
+  return (
+    <>
+      <C.Callout state="plain" data-testid="perm-lead">
+        The scenario rendered as each role sees it. An action a role's policy withholds,
+        rendered for that role anyway, is a security bug — flagged here instead of in
+        production. Roles and their policy come from <code>presets.roles</code> in
+        atlas.config.ts (or the shipped four).
+      </C.Callout>
+      <C.RoleGrid data-testid="role-grid">
+        {m.roles.map((role) => (
+          <RoleCard model={m} role={role} overlay={overlay} />
+        ))}
+      </C.RoleGrid>
+    </>
+  )
 }

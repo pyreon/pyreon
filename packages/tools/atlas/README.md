@@ -523,7 +523,7 @@ when a project's own components dominate rather than the framework.
 `<Workbench>` ships the addons a component workbench is actually judged on. In
 Storybook these are four separate packages you install and configure; here they
 are presets in [`src/ui/addons.ts`](./src/ui/addons.ts), rendered by the
-**Addons** tab (zoom, grid and measure live in the **Canvas** tab), and exported
+**Addons** tab (zoom, grid, measure and layout live in the **Canvas** tab), and exported
 so a host can drive its own toolbar from the same data.
 
 | Addon | Storybook equivalent | What it does |
@@ -533,6 +533,7 @@ so a host can drive its own toolbar from the same data.
 | **Pseudo state** | `addon-pseudo-states` | Forces `hover` / `focus` / `active` / `disabled` |
 | **Outline** | `addon-outline` | Outlines every box in the preview subtree (chrome untouched) |
 | **Locale** | `addon-toolbars` / RTL addons | Switches locale (`ctx.locale`) and flips the preview to `dir="rtl"` |
+| **Layout** (Canvas tab) | `parameters.layout` | `centered` / `padded` (top-left, 16px gutter) / `fullscreen` (no gutter, the whole stage); `?layout=` in the link |
 
 **The pseudo-state one is genuinely cheaper on this stack.**
 `@storybook/addon-pseudo-states` has to rewrite the emitted stylesheet — rename
@@ -565,7 +566,7 @@ That half needs no catalog cooperation. To translate as well, read `ctx.locale`
 (a BCP-47 tag) — e.g. feed it to `@pyreon/i18n`'s `createI18n({ locale })`.
 
 Everything else is a rocketstyle dimension (`size` for viewport, `variant` for
-background, `state` for outline), so the addons add **zero inline styles** and
+background, `state` for outline, `multiple` for layout), so the addons add **zero inline styles** and
 resolve through the same class cache as the rest of the workbench.
 
 ## The app shell, theme and `?embed`
@@ -575,6 +576,30 @@ The workbench is the Pyreon app shell: a 48px top bar, the catalog column
 panels (Controls, Schema, Actions, A11y, Perf, Permissions, Query, Store,
 Update cause, Reactive coverage, Lens, Canvas, Addons), split by a draggable,
 keyboard-operable divider. Below 860px the catalog is a modal drawer.
+Every panel except Controls, Actions, A11y, Canvas and Addons loads its body
+the first time its tab opens (`views/panels/lazy.tsx`); the tab strip and `?p=`
+links never wait for it.
+
+Four panels read data no other workbench has:
+
+- **Permissions** renders the scenario as every role sees it, side by side,
+  each under its own recording `can()`, and judges each render against the
+  role's policy (`presets.roles`, or the shipped four): an enabled action whose
+  label starts with a known verb (`Delete`, `Remove`, `Save`, `Edit`, …) is
+  flagged when the role's consulted key for that verb was denied, or — with no
+  `can()` behind it — when the policy withholds the verb from the role. A
+  component that consulted nothing is unguarded on every card.
+- **Schema** lists where every control came from (`schema`, `rocketstyle
+  dimension`, `prop type`, `content seed`, `defineComponent`, or the
+  hand-written `catalog`), and under `atlas dev` marks a prop that appeared on
+  a rescan as `new` / "added N min ago" (`WorkbenchControl.source` /
+  `addedAt`).
+- **Reactive coverage** shows the recording's share of updated reactive nodes
+  as a bar. It lists nodes, not named bindings: compiled template bindings do
+  not record which attribute or prop they drive.
+- **Lens** prints a **Fix:** line under a verdict worth acting on — a detector
+  footgun's own rewrite (`ReactivityFinding.fix` from `@pyreon/compiler`), or
+  how to read a baked-once value live.
 
 **Colours live in one file** — [`src/ui/theme.ts`](./src/ui/theme.ts):
 

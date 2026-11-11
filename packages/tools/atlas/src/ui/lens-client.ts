@@ -19,6 +19,8 @@ export interface LensFinding {
   column: number
   suspect: boolean
   code?: string
+  /** A detector footgun's suggested rewrite (the compiler's `suggested`). */
+  fix?: string
 }
 
 export interface LensLine {
@@ -228,4 +230,22 @@ export const KIND_LABEL: Record<string, string> = {
   'static-text': 'BAKED ONCE',
   'hoisted-static': 'hoisted',
   footgun: '!',
+}
+
+/**
+ * What to write instead, for a verdict worth acting on — the "Fix:" line
+ * under it.
+ *
+ * A footgun carries its detector's own suggested rewrite, verbatim. A
+ * `static-text` verdict has no detector behind it — the compiler simply saw
+ * no signal read in the expression — so its fix is the one rewrite that
+ * makes such an expression live: read the signal (or `props.x`) WHERE it is
+ * used. Every other kind is either live or deliberately static and gets none.
+ */
+export function lensFix(finding: LensFinding): string | undefined {
+  if (finding.kind === 'footgun') return finding.fix
+  if (finding.kind === 'static-text') {
+    return 'if this should update, read the signal where it is used: `{() => value()}` or `props.x`, not a value captured earlier in the component body.'
+  }
+  return undefined
 }

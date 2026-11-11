@@ -8,8 +8,8 @@ import { PermissionsProvider } from '@pyreon/permissions'
 import { batch, computed, effect, isClient, signal, type Computed, type Effect, type Signal } from '@pyreon/reactivity'
 import type { A11yReport } from './a11y'
 import { analyzeA11y } from './a11y'
-import type { AddonTabId, BackgroundPreset, LocalePreset, PseudoId, ViewportPreset } from './addons'
-import { BACKGROUNDS, LOCALES, VIEWPORTS, pseudoProps } from './addons'
+import type { AddonTabId, BackgroundPreset, CanvasLayout, LocalePreset, PseudoId, ViewportPreset } from './addons'
+import { BACKGROUNDS, LOCALES, VIEWPORTS, parseLayout, pseudoProps } from './addons'
 import { pseudoLocalizeValues } from './pseudo-locale'
 import {
   DEFAULT_PERMISSION_SETS,
@@ -126,6 +126,8 @@ export interface WorkbenchModel {
   outline: Signal<boolean>
   /** Measure addon — hovering the preview shows the hovered box's dimensions. */
   measure: Signal<boolean>
+  /** Canvas panel: how the preview sits on the stage (carried in the link). */
+  layout: Signal<CanvasLayout>
   /** The live preview surface element (null before mount) — the a11y probe target's parent. */
   previewElement: () => HTMLElement | null
   /** Active locale — threaded to `render` as `ctx.locale`, and drives `dir=`. */
@@ -250,6 +252,12 @@ export interface WorkbenchModel {
    * and brand for this one render — the Theme Lab's tiles.
    */
   preview: (appearance?: { dark?: boolean; brandId?: string }) => VNodeChildAtom | VNodeChildAtom[]
+  /**
+   * Render the selected component as ONE role sees it, under its own fresh
+   * recording instance — the Permissions panel's side-by-side cards. Read the
+   * recording after the node has mounted: the keys are filled by rendering.
+   */
+  previewAs: (roleId: string) => { node: VNodeChildAtom; recording: RecordingPermissions }
   /** `ref` for the search `<input>` — attach in the top bar so ⌘K can focus it. */
   searchRef: (el: HTMLInputElement | null) => void
   /** Focus the search input (⌘K) via the captured ref — no DOM query. */
@@ -395,6 +403,7 @@ export function createModel(
   )
   const outline = signal(false)
   const measure = signal(false)
+  const layout = signal<CanvasLayout>(parseLayout(initial.layout) ?? 'centered')
   const locale = signal<string>(
     locales.find((l) => l.id === initial.locale)?.id ?? locales[0]?.id ?? 'en',
   )
@@ -698,7 +707,7 @@ export function createModel(
   // `pseudo` is read INSIDE the accessor so the preview re-renders when the
   // forced state flips; a catalog spreads it onto its root (`{...ctx.pseudo}`)
   // to opt into pseudo-state forcing.
-  const makeRenderCtx = (appearance: Appearance) => ({
+  const makeRenderCtx = (appearance: Appearance, recording?: RecordingPermissions) => ({
     logAction,
     setValue: (key: string, v: unknown) => setValue(selId(), key, v),
     get pseudo() {
@@ -710,7 +719,7 @@ export function createModel(
     // A getter, so each render reads the CURRENT role rather than the one that
     // happened to be active when the context object was built.
     get can() {
-      return permissions().can
+      return (recording ?? permissions()).can
     },
     // A getter, so a component reading it re-renders when the state changes.
     get query() {
@@ -737,6 +746,20 @@ export function createModel(
       { value: permissions().can },
       entry.render(vals(), appearance ? makeRenderCtx(appearance) : renderCtx) as VNodeChildAtom,
     )
+  }
+
+  const previewAs = (roleId: string) => {
+    const role = roles.find((r) => r.id === roleId) ?? roles[0]!
+    const recording = recordingPermissions(role)
+    const entry = sel()
+    const node: VNodeChildAtom = entry
+      ? h(
+          PermissionsProvider,
+          { value: recording.can },
+          entry.render(vals(), makeRenderCtx({}, recording)) as VNodeChildAtom,
+        )
+      : null
+    return { node, recording }
   }
 
   // The a11y verdict is probed from the RENDERED preview, not asserted.
@@ -924,6 +947,7 @@ export function createModel(
         ...(pseudo() ? { pseudo: pseudo() as string } : {}),
         query: queryState(),
         role: permissionSet(),
+        layout: layout(),
       }
       // `dark` is written only when it differs from the shared preference:
       // the preference is the source of truth, a link records an override.
@@ -961,7 +985,7 @@ export function createModel(
   return {
     catalog, groups, total, title: opts.title ?? 'Atlas', subtitle: opts.subtitle ?? '',
     brandId, dark, selId, query, filter, zoomIdx, view, addon, actions,
-    viewport, background, pseudo, outline, measure, locale, pseudoLocale, permissionSet, permissions, queryState, queryResult,
+    viewport, background, pseudo, outline, measure, layout, locale, pseudoLocale, permissionSet, permissions, queryState, queryResult,
     previewElement: () => previewEl,
     overlayOpen,
     overlayHostRef,
@@ -969,7 +993,7 @@ export function createModel(
     wrapped: catalog.wrapped === true,
     viewports, backgrounds, locales, roles, viewportPreset, backgroundPreset, dir,
     brand, theme, sel, vals, visibleGroups, tree, browseIds, collapsed, isCollapsed, toggleGroup, noResults, matchCount, activeScenario, renderTick, a11y, previewEmpty,
-    setValue, selectScenario, runPlay, reset, logAction, clearActions, search, searchHits, preview, searchRef, focusSearch, previewRef,
+    setValue, selectScenario, runPlay, reset, logAction, clearActions, search, searchHits, preview, previewAs, searchRef, focusSearch, previewRef,
     searchOpen, sidebarW, panelFrac, grid, compact, drawerOpen, embed, toggleTheme, syncTheme,
   }
 }
