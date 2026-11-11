@@ -7,7 +7,7 @@
 // Pure string logic, zero deps — runs identically in the browser and Node.
 
 /**
- * URL-bearing attributes guarded against `javascript:` / `data:` injection.
+ * URL-bearing attributes guarded against `javascript:` / `vbscript:` / `data:` injection.
  * `xlink:href` is SVG's URL attribute — its qualified name is not `href`, so a
  * plain `href` check misses `<a xlink:href="javascript:…">` inside inline SVG
  * (clickable in every browser). The DOMParser sanitizer already guards it by
@@ -218,29 +218,37 @@ export function isElementEventHandlerAttr(el: Element, key: string): boolean {
 // oxlint-disable-next-line no-control-regex
 export const UNSAFE_ATTR_NAME_RE = /[\s/>="'<\u0000-\u001F\u007F]/
 
-/** Matches the `javascript:` / `data:` URI prefixes the guard rejects by default. */
-export const UNSAFE_URL_RE = /^\s*(?:javascript|data):/i
+/**
+ * Matches the `javascript:` / `vbscript:` / `data:` URI prefixes the guard
+ * rejects by default. `vbscript:` executes only in legacy engines (IE/Trident),
+ * but the scheme has no non-script meaning, so blocking it costs nothing — and
+ * the lint rule `pyreon/no-script-url` and `@pyreon/router`'s redirect guard
+ * already refuse it, so the RUNTIME guard was the one place that did not.
+ */
+export const UNSAFE_URL_RE = /^\s*(?:javascript|vbscript|data):/i
 
 /**
- * True iff `url` is a `javascript:` / `data:` URI (after optional leading
+ * True iff `url` is a `javascript:` / `vbscript:` / `data:` URI (after optional leading
  * whitespace) — i.e. `UNSAFE_URL_RE.test(url)`, but with a `charCodeAt(0)`
  * fast path that skips the regex for the overwhelmingly-common safe case.
  *
- * PROVABLY equivalent to the regex: a `^\s*(?:javascript|data):` match needs
- * the first non-whitespace char to be `j`/`J` (javascript) or `d`/`D` (data).
- * A first char in printable ASCII (33–126) is NOT whitespace, so `\s*` matches
- * nothing and the match must begin at index 0 — impossible unless that char is
- * `j`/`J`/`d`/`D`. So a printable-ASCII first char that isn't one of those is
- * DEFINITELY safe, no regex needed (`http…`→`h`, `/…`, `#…`, `mailto:`→`m`, …).
+ * PROVABLY equivalent to the regex: a `^\s*(?:javascript|vbscript|data):` match
+ * needs the first non-whitespace char to be `j`/`J` (javascript), `v`/`V`
+ * (vbscript) or `d`/`D` (data). A first char in printable ASCII (33–126) is NOT
+ * whitespace, so `\s*` matches nothing and the match must begin at index 0 —
+ * impossible unless that char is `j`/`J`/`v`/`V`/`d`/`D`. So a printable-ASCII
+ * first char that isn't one of those is DEFINITELY safe, no regex needed
+ * (`http…`→`h`, `/…`, `#…`, `mailto:`→`m`, …).
  *
  * Conservative on the margins (correctness > a few ns): anything ≤32 (ASCII
  * whitespace/controls — leading whitespace the regex can skip) OR ≥127 (may be
- * UNICODE whitespace like ` `, which `\s` matches) OR `j`/`J`/`d`/`D`
+ * UNICODE whitespace like ` `, which `\s` matches) OR `j`/`J`/`v`/`V`/`d`/`D`
  * falls through to the authoritative regex. `''` → `charCodeAt(0)` is `NaN`,
  * fails `> 32`, hits the regex → `false` (matches the regex). `(c | 32)`
- * lowercases an ASCII letter; within 33–126 only `j`/`J`→106 and `d`/`D`→100.
+ * lowercases an ASCII letter; within 33–126 only `j`/`J`→106, `v`/`V`→118 and
+ * `d`/`D`→100.
  *
- * SECURITY: `javascript:`, `JavaScript:`, `  javascript:`, `\tdata:`,
+ * SECURITY: `javascript:`, `JavaScript:`, `  javascript:`, `vbscript:`, `\tdata:`,
  * ` javascript:`, `data:text/html` all still reach — and are still
  * rejected by — the regex. Additive; the guard's behavior is unchanged.
  */
@@ -272,8 +280,9 @@ export function isUnsafeUrl(url: string): boolean {
   // The fast path stays sound under normalization: stripping only removes
   // chars <= 32, so if the FIRST char is printable ASCII and not j/J/d/D it is
   // still the first char afterwards, and the string still cannot be
-  // `javascript:`/`data:`. Normalizing costs nothing for the common case.
-  if (c > 32 && c < 127 && (c | 32) !== 106 && (c | 32) !== 100) return false
+  // `javascript:`/`vbscript:`/`data:`. Normalizing costs nothing for the
+  // common case.
+  if (c > 32 && c < 127 && (c | 32) !== 106 && (c | 32) !== 118 && (c | 32) !== 100) return false
   return UNSAFE_URL_RE.test(url) || UNSAFE_URL_RE.test(url.replace(URL_SCHEME_NOISE_RE, ''))
 }
 

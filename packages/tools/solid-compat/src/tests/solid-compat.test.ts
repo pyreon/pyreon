@@ -1196,7 +1196,7 @@ describe('@pyreon/solid-compat', () => {
   it('type exports are usable', () => {
     // These are compile-time checks — just verify they don't cause runtime errors
     const _accessor: Accessor<number> = () => 42
-    const _setter: Setter<number> = () => {}
+    const _setter: Setter<number> = () => 0
     const _signal: Signal<number> = [_accessor, _setter]
     const _component: Component<{ name: string }> = () => null
     const _parent: ParentComponent<{ title: string }> = () => null

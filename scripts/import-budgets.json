@@ -1,7 +1,7 @@
 {
   "@pyreon/reactivity::signals": 4020,
-  "@pyreon/runtime-dom::mount": 9100,
-  "@pyreon/runtime-dom::mount+hydrate": 16900,
+  "@pyreon/runtime-dom::mount": 9185,
+  "@pyreon/runtime-dom::mount+hydrate": 17098,
   "@pyreon/router::basic": 3866,
   "@pyreon/elements::portal": 2850,
   "@pyreon/elements::element": 4600,
@@ -17,5 +17,6 @@
   "@pyreon/charts::chart-pie": 26210,
   "@pyreon/zero::web-vitals": 1500,
   "@pyreon/store::defineStore": 2700,
+  "@pyreon/dnd::useDraggable": 1020,
   "@pyreon/validate::mini": 6400
 }

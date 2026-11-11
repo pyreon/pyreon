@@ -92,6 +92,7 @@ Default-on in dev. The Vite plugin injects `virtual:pyreon/dev-error-printer`, w
 - The `h()` input `checked` binding writes live checkedness after user interaction. Its initial value establishes `defaultChecked` once; later updates keep that form-reset default. An explicit `defaultChecked` prop owns the default regardless of prop order. ARIA/SVG remain attribute-based. Locked by `checked-prop.browser.test.tsx`.
 - Custom elements (hyphenated tags) receive props as properties, except `data-*`/`aria-*`, which are always attributes on every element.
 - `Transition`/`TransitionGroup` finish via a 5s safety timeout if no `transitionend` arrives. Subpath exports `@pyreon/runtime-dom/transition`, `/keep-alive` and `/sanitizer` keep a `mount`-only import small.
+- **An accessor child is called once at mount.** `mountAccessorChild` classifies the first value inside `_captureRun` (the inner-effect and `onCleanup` windows an `effect()` run opens) and, for a structural value, hands `{ value, reads, run }` (`FirstRun`) to `mountReactive` / `mountKeyedList`, whose first run mounts that value, replays the reads (`_replayReads`) and re-homes the captured work (`_releaseRun`). Locked by `accessor-single-run-at-mount.test.tsx`. The hydration walk keeps the same contract through `primeAccessor` (`hydrate.ts`): it samples once (`_sampleReads` inside `_captureRun`) to choose a path, and the adopting binding's first call receives that value, its reads and its captured work. Locked by `hydrate-accessor-single-run.test.tsx` (real compiler + SSR) and its `.browser` twin.
 - A 10k-row `<For>` allocates ~10k signals; virtualize with `@pyreon/virtual`.
 
 ## Islands (`island(loader, { name, hydrate, prefetch? })`)
@@ -169,6 +170,7 @@ Eligible trees lower to `_ssr(["<li>…", "</li>"], hole0, …)`. Holes resolve 
 - Opt-in in `@pyreon/compiler` (`ssrTemplate: true`), because the emit injects an `@pyreon/runtime-server` import and `_ssr` returns an `instanceof`-branded `RawHtml` the app's own renderer must recognise.
 - Auto in `@pyreon/vite-plugin`: enabled when `@pyreon/runtime-server` resolves from the app, else the `h()` path with a one-time dev warning. `true`/`false` force it.
 - Rows and `.map` items concatenate statics and hole temps inline instead of calling `_ssrItem`. Holes not provably `string` are guarded; a failed guard (async `_esc`, a `RawHtml` from `_ssrChildren`/`_ssrForKeyed`) falls back to `_ssrItem`. Declines entirely when a user param could be shadowed by the `_h<n>` temps.
+- A component child is a PRESERVED-source hole (`_ssrNode(<Comp …/>)`, walked in place), and so is an expression child that contains JSX the lowerings cannot turn into a string (`{items.map(i => <li><Link/></li>)}`) when `sliceExpr` returns its source verbatim: `_esc(`/`_escSole(` around the range, so the item's own root templates. Any call with a preserved hole, or with a generated hole that still builds JSX, is wrapped in `_ssrDeferred(() => …)` so components render at the h() path's position (context).
 
 ### Hydrating compiled templates
 

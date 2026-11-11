@@ -7,6 +7,12 @@ description: "Common library api-shape mistakes in Pyreon and how to fix them."
 
 > **Generated** from `.agents/rules/anti-patterns.md` (the same source as MCP `get_anti_patterns`). Each entry is a real mistake + its fix; where a detector code is listed, the linter / `pyreon doctor` / MCP `validate` catches it automatically.
 
+### A compat API that sorts its argument into the wrong shape
+
+Vue-compat `watch` treated any non-ref source as a getter, so `watch(reactive(obj), cb)` — Vue's most common form — called the proxy as a function, threw inside the effect, and never fired; `Array.isArray` also took a `reactive([])` for a list of sources. Classify by the real library's order (ref → function → reactive → array of sources) and warn on anything else. Test: `vue-compat/src/tests/watch-reactive-source.test.ts`.
+
+---
+
 ### Importing `@pyreon/charts` through a pre-0.52 entry point
 
 The main entry is now the engine (`<Chart>` with mark children, formerly `<Plot>` at `/plot`), and the ECharts wrapper is `<EChart>` at `/echarts`, with `/manual` and `/vite` under it. `<Chart options={…}>` from the root is the old wrapper and no longer type-checks.
@@ -179,6 +185,12 @@ A 27-package audit of `packages/fundamentals` (PRs #3642–#3653) found the same
 ### [FIXED, 2026-10] A cross-plugin fact a consumer can IGNORE is a silent drop — make it OPT-IN per caller, and have the source refuse a caller that did not opt in
 
 (the `@pyreon/http` client-middleware instance). `createHttp({ use: [...] })` was compile-time metadata only, so an endpoint call on a `use: [bearer(...)]` client lowered to a native request with NO `Authorization` header — the request source resolved URL, verb, headers and body and simply never read `use`. Adding a `middleware` field to `ResolvedRequest` would not have closed the class: `useFetch`, `useQuery` and `useStream` each build their own request, and any of them that did not know the new field would drop it just as silently. **Fix shape: the caller DECLARES it emits the field (`RequestOptions.middleware: true`), and the source REFUSES — warns by name, stays web — a caller that did not**, so `useStream` (which does not apply middleware) gets a named warning instead of a stream without auth. Same rule inside the array: an entry that cannot lower (`refresh`, `dedupe`, a custom function, a `backoff` callback) keeps the WHOLE client web rather than being dropped, because a request without one of its middleware is a different request. Parity with the web middleware is proven by execution (`native-http-middleware-parity.test.ts`: the web chain and both native runtimes, driven by the compiler's own emitted list, on 28 shared scenarios). Reference: `packages/fundamentals/http/src/native-plugin/{middleware,endpoint}.ts`, `PyreonHttpPipeline` in `PyreonHttp.{swift,kt}`.
+
+---
+
+### A readonly Proxy that traps only `set` and `deleteProperty`
+
+A Proxy forwards every internal method it does not trap to the target, so `Object.defineProperty`, `Object.setPrototypeOf` and `Object.preventExtensions` (and `Object.freeze`/`Object.seal`, built on them) mutate the source behind the "readonly" view, and `Object.getOwnPropertyDescriptor(ro, k).value` hands out the raw nested object. A readonly view traps all five write methods (`set`, `deleteProperty`, `defineProperty`, `setPrototypeOf`, `preventExtensions`) from one shared handler, and a deep one wraps nested values on BOTH read paths (`get` and `getOwnPropertyDescriptor`, except the invariant-pinned non-configurable non-writable case). Vue 3's own readonly traps only set/delete, so "match Vue" is not a defence. Reference: `vue-compat/src/index.ts:readonlyWriteTraps`; lock: `vue-compat/src/tests/readonly-write-traps.test.ts`.
 
 ---
 
