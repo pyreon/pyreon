@@ -2117,6 +2117,16 @@ function hydrateComponent(
     const range = hydrateSyncOutputInAsyncRange(output, domNode as Comment, parent, path)
     subtreeCleanup = range[0]
     nextDom = range[1]
+    // Registered with devtools like every other hydrated component (the markers
+    // stay in the DOM, so the range is still `[start, end)`).
+    if (process.env.NODE_ENV !== 'production') {
+      _devRegisterScope(
+        scope,
+        prevOwner,
+        componentName,
+        _devFirstElementIn(domNode.nextSibling, findMatchingAsyncEnd(domNode as Comment)),
+      )
+    }
   } else if (output != null) {
     // A `<Suspense>` delimits the range it hydrated so it can move it
     // off-screen when a descendant mounted LATER suspends it (see

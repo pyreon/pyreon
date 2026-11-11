@@ -40,4 +40,21 @@ describe('hydrating a component with no server node', () => {
     dispose()
     expect(named('Fresh')).toEqual([])
   })
+
+  it('registers a SYNC component hydrated over the range the server emitted for it as async', () => {
+    // The server awaited this component (async there), so its output sits
+    // between $pas / $pae markers; here it is sync. It must still show up in
+    // devtools with its own element, and unregister on dispose.
+    const host = document.createElement('div')
+    host.innerHTML = '<!--$pas--><section id="ranged">server</section><!--$pae-->'
+    document.body.appendChild(host)
+    hosts.push(host)
+    const Ranged: ComponentFn = () => h('section', { id: 'ranged' }, 'server')
+    const dispose = hydrateRoot(host, h(Ranged, null))
+    const el = host.querySelector('#ranged')
+    expect(el).not.toBeNull()
+    expect(named('Ranged').map((e) => e.el)).toEqual([el])
+    dispose()
+    expect(named('Ranged')).toEqual([])
+  })
 })
