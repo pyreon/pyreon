@@ -174,7 +174,7 @@ describe('end to end — a component whose props live in a sibling package', () 
     })
 
     expect(component?.controls.map((c) => c.name)).toEqual(['label', 'tone'])
-    expect(component?.axes).toEqual([{ name: 'tone', values: ['a', 'b'] }])
+    expect(component?.axes).toMatchObject([{ name: 'tone', values: ['a', 'b'] }])
   })
 
   it('leaves a third-party props type as an honest unknown', () => {

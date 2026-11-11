@@ -21,7 +21,7 @@ Derives a verified, machine-readable component catalog from source. You write no
 ### Scan and scenarios
 
 - Controls come from props; scenarios from variant axes, including rocketstyle dimensions. Distinct same-named components retain separate file identities in both discovery passes; runtime re-exports deduplicate only when both the export name and component value match. Static claims are file-qualified, so they cannot suppress a different chain sharing the name.
-- Variant scenarios fan one axis at a time (`Σ|axis|`). `matrix: 'full'` opts into the full `Π|axis|` product.
+- Variant scenarios fan one axis at a time (`Σ|axis|`). `matrix: 'full'` opts into the full `Π|axis|` product. `Default` uses the component's own default per axis (`props.x ?? 'v'`; unset when optional with none), never the union's first member.
 - Every component gets a `Default` scenario. An authored `Default` in `atlas.config.ts` is the base for every derived scenario, and its args stay live (render-prop children and `h()` trees reach the canvas intact).
 - Edge cases target a content prop.
 - Every scenario gets placeholder content derived from the rendered tag (`__rs_attrs` / `__rs_component`) or the base a chain renders through (e.g. `open: true` for `ModalBase`). One `materializeContent` applies it in the verify harness, the SSR-parity check and the workbench render; keep it single-sourced.

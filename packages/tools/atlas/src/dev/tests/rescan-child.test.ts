@@ -40,7 +40,7 @@ describe('scanInChild', () => {
     // Crossed as data: no function survives, the scenarios and verdicts do.
     expect('component' in badge).toBe(false)
     expect(badge.scenarios.length).toBeGreaterThan(0)
-    expect(badge.axes).toEqual([{ name: 'tone', values: ['a', 'b'] }])
+    expect(badge.axes).toMatchObject([{ name: 'tone', values: ['a', 'b'] }])
   }, 60_000)
 
   it('fails loudly with the child stderr when the scan cannot run', async () => {

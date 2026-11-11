@@ -49,6 +49,17 @@ export interface PropControl {
 export interface VariantAxis {
   name: string
   values: readonly string[]
+  /**
+   * The value the component uses when the prop is not passed, when the scan
+   * can read one (`props.size ?? 'md'`). The `Default` scenario uses it.
+   */
+  default?: string | undefined
+  /**
+   * `true` for an optional prop (`size?:`). With no known `default`, the
+   * `Default` scenario leaves such an axis UNSET, so the component applies
+   * its own default instead of the union's first member.
+   */
+  optional?: boolean | undefined
 }
 
 /**
