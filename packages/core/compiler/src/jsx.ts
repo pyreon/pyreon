@@ -28,11 +28,12 @@
  * Implementation: Rust native binary (napi-rs) when available, JS fallback via oxc-parser.
  */
 
-import MagicString from 'magic-string'
+import MagicString, { SourceMap } from 'magic-string'
 import { detectPlain, transformPlain, type PlainTransformResult } from './plain'
 import { parseSync } from 'oxc-parser'
 import { REACT_EVENT_REMAP } from './event-names'
 import { loadNativeBinding } from './load-native'
+import { composeMappings } from './source-map-compose'
 
 /**
  * V3 source map shape returned by the JS backend. Structurally exactly
@@ -85,12 +86,15 @@ type NativeTransformFn = (
   collapse?: NativeCollapseConfig,
   ssrTemplate?: boolean,
   templatizeComponentChildren?: boolean,
-) => TransformResult
+) => NativeTransformResult
+/** What the napi `transformJsx` returns: the JS result shape, except that the
+ * source map arrives as its bare `mappings` string (see `wrapNativeMap`). */
+type NativeTransformResult = Omit<TransformResult, 'map'> & { mapMappings?: string | null }
 type NativeTransformPlainFn = (
   code: string,
   filename: string,
   knownSignals: string[] | null,
-) => PlainTransformResult | null
+) => (Omit<PlainTransformResult, 'map'> & { mapMappings?: string | null }) | null
 const nativeBinding = loadNativeBinding(import.meta.url)
 const nativeTransformJsx: NativeTransformFn | null = nativeBinding
   ? (nativeBinding.transformJsx as NativeTransformFn)
@@ -165,8 +169,8 @@ export interface TransformResult {
   /**
    * Source map (V3) for the transform — present on the JS backend whenever a
    * transformation actually occurred. `undefined` when nothing changed (the
-   * emitted code is byte-identical to the input, so no remapping is needed)
-   * and on the native backend (a Rust-side map is a scoped follow-up). The
+   * emitted code is byte-identical to the input, so no remapping is needed).
+   * Both backends produce it, and their maps are identical. The
    * object is magic-string's `SourceMap`: it is a valid V3 map AND has
    * `.toString()` / `.toUrl()`, so Vite/Rollup consume it directly.
    */
@@ -1124,6 +1128,10 @@ export function transformJSX(
   // zero plain-mode awareness. The pre-pass strips its own markers, so it is
   // idempotent: `transformJSX_JS` runs it again defensively and no-ops.
   let plainWarnings: CompilerWarning[] | null = null
+  // The text the CALLER passed, and the pre-pass's map from it, so the
+  // returned map describes the caller's text even when the pre-pass rewrote it.
+  const callerCode = code
+  let plainMap: GeneratedSourceMap | undefined
   {
     // Native pre-pass when the binary ships it (byte-identical by contract —
     // locked by plain-native-equivalence.test.ts); `null` from the native fn
@@ -1141,7 +1149,16 @@ export function transformJSX(
     }
     if (!decided && nativeTransformPlain) {
       try {
-        plained = nativeTransformPlain(code, filename, options.knownSignals ?? null)
+        const native = nativeTransformPlain(code, filename, options.knownSignals ?? null)
+        if (native) {
+          const { mapMappings, ...rest } = native
+          plained = rest
+          if (typeof mapMappings === 'string') {
+            plained.map = buildSourceMap(mapMappings, code, filename) as unknown as SourceMap
+          }
+        } else {
+          plained = null
+        }
         decided = true
       } catch {
         decided = false
@@ -1153,14 +1170,11 @@ export function transformJSX(
     if (plained) {
       code = plained.code
       plainWarnings = plained.warnings
+      if (code !== callerCode) plainMap = plained.map as unknown as GeneratedSourceMap | undefined
     }
   }
-  const mergePlain = (result: TransformResult): TransformResult => {
-    if (plainWarnings && plainWarnings.length > 0) {
-      result.warnings = [...plainWarnings, ...result.warnings]
-    }
-    return result
-  }
+  const mergePlain = (result: TransformResult): TransformResult =>
+    withPrepass(result, plainWarnings, plainMap, callerCode, filename)
   // Try Rust native binary first (3.7-8.2x faster). The native backend now
   // implements ALL FOUR rocketstyle-collapse variants byte-identically (locked
   // by the cross-backend equivalence suite), so `collapseRocketstyle` is lowered
@@ -1175,7 +1189,7 @@ export function transformJSX(
   // unexpected AST shape), fall back gracefully instead of crashing the dev server.
   if (nativeTransformJsx) {
     try {
-      return mergePlain(nativeTransformJsx(
+      return mergePlain(wrapNativeMap(nativeTransformJsx(
         code,
         filename,
         options.ssr === true,
@@ -1184,12 +1198,78 @@ export function transformJSX(
         options.collapseRocketstyle ? toNativeCollapse(options.collapseRocketstyle) : undefined,
         options.ssrTemplate === true,
         options.templatizeComponentChildren === true,
-      ))
+      ), code, filename))
     } catch {
       // Native transform failed — fall through to JS implementation
     }
   }
   return mergePlain(transformJSX_JS(code, filename, options))
+}
+
+/**
+ * Lay a pre-pass (Plain Mode) under a JSX transform result: its warnings go
+ * first, and its map is composed under the JSX map so the result maps to the
+ * text the CALLER passed. Without the composition a plain module mapped to
+ * the REWRITTEN text (wrong columns wherever a read became a call), and one
+ * whose JSX pass changed nothing returned rewritten code with no map at all,
+ * which Vite reads as "nothing moved".
+ */
+function withPrepass(
+  result: TransformResult,
+  warnings: CompilerWarning[] | null,
+  map: GeneratedSourceMap | undefined,
+  callerCode: string,
+  filename: string,
+): TransformResult {
+  if (warnings && warnings.length > 0) result.warnings = [...warnings, ...result.warnings]
+  if (map) result.map = result.map ? composeSourceMaps(result.map, map, callerCode, filename) : map
+  return result
+}
+
+/**
+ * Turn the native result's bare `mappings` into the same map object the JS
+ * backend returns. The Rust side encodes `mappings` exactly as magic-string's
+ * `generateMap({ source: filename, includeContent: true, hires: 'boundary' })` does
+ * (`native/src/sourcemap.rs`); the remaining fields are built here the way
+ * magic-string builds them, as a real magic-string `SourceMap`, so the two
+ * backends' maps are equal field for field (locked by native-equivalence).
+ */
+function wrapNativeMap(
+  native: NativeTransformResult,
+  code: string,
+  filename: string,
+): TransformResult {
+  const { mapMappings, ...rest } = native
+  const result: TransformResult = rest
+  if (typeof mapMappings === 'string') result.map = buildSourceMap(mapMappings, code, filename)
+  return result
+}
+
+/** The map object magic-string's `generateMap({ source: filename,
+ * includeContent: true, hires: 'boundary' })` returns, around native `mappings`. */
+function buildSourceMap(mappings: string, code: string, filename: string): GeneratedSourceMap {
+  return new SourceMap({
+    // magic-string's `getRelativePath('', filename)`: the path with every
+    // separator normalised to `/`.
+    sources: [filename.replace(/\\/g, '/')],
+    sourcesContent: [code],
+    names: [],
+    mappings,
+  }) as unknown as GeneratedSourceMap
+}
+
+/**
+ * `outer` maps the JSX output to the pre-pass output, `inner` maps that to
+ * the caller's text; the result maps the JSX output straight to the caller's
+ * text, in the same `SourceMap` shape the single-step transform returns.
+ */
+function composeSourceMaps(
+  outer: GeneratedSourceMap,
+  inner: GeneratedSourceMap,
+  callerCode: string,
+  filename: string,
+): GeneratedSourceMap {
+  return buildSourceMap(composeMappings(outer.mappings, inner.mappings), callerCode, filename)
 }
 
 /** Lower the JS `collapseRocketstyle` config (`Set`/`Map`) to the napi
@@ -1216,14 +1296,18 @@ export function transformJSX_JS(
   options: TransformOptions = {},
 ): TransformResult {
   // Plain Mode pre-pass for DIRECT callers (the public `transformJSX` already
-  // ran it and stripped the markers, so this is a no-op on that path).
-  let jsPlainWarnings: CompilerWarning[] | null = null
-  {
-    const plained = transformPlain(code, filename, { knownSignals: options.knownSignals })
-    if (plained) {
-      code = plained.code
-      jsPlainWarnings = plained.warnings
-    }
+  // ran it and stripped the markers, so this is a no-op on that path). The
+  // rewritten module is compiled by a nested call, whose own pre-pass finds
+  // no marker left; its warnings and map are then laid over the pre-pass's.
+  const plained = transformPlain(code, filename, { knownSignals: options.knownSignals })
+  if (plained) {
+    return withPrepass(
+      transformJSX_JS(plained.code, filename, options),
+      plained.warnings,
+      plained.code === code ? undefined : (plained.map as unknown as GeneratedSourceMap | undefined),
+      code,
+      filename,
+    )
   }
   const ssr = options.ssr === true
   const ssrTemplate = ssr && options.ssrTemplate === true
@@ -1269,7 +1353,7 @@ export function transformJSX_JS(
     !argPositionNodes.has(node) &&
     !!parent &&
     (parent.type === 'JSXElement' || parent.type === 'JSXFragment')
-  const warnings: CompilerWarning[] = jsPlainWarnings ?? []
+  const warnings: CompilerWarning[] = []
 
   function warn(node: N, message: string, warnCode: CompilerWarning['code']): void {
     const { line, column } = locate(node.start as number)
@@ -4808,7 +4892,7 @@ export function transformJSX_JS(
   const map = s.generateMap({
     source: filename,
     includeContent: true,
-    hires: true,
+    hires: 'boundary',
   }) as unknown as GeneratedSourceMap
 
   return collectLens

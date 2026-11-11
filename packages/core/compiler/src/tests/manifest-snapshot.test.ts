@@ -26,6 +26,7 @@ describe('gen-docs — compiler snapshot', () => {
       'compiler/auditIslands',
       'compiler/auditSsg',
       'compiler/auditTestEnvironment',
+      'compiler/composeMappings',
       'compiler/deriveIslandName',
       'compiler/detectPyreonPatterns',
       'compiler/detectReactPatterns',

@@ -36,6 +36,9 @@ const REACTIVITY_SOURCE: &str = "@pyreon/reactivity";
 pub struct PlainResult {
     pub code: String,
     pub warnings: Vec<CompilerWarning>,
+    /// V3 `mappings` for the rewrite, identical to the JS pre-pass's
+    /// magic-string `generateMap({ hires: 'boundary' })`.
+    pub map_mappings: String,
 }
 
 /// Mirror of the JS `detectPlain` — pure substring checks (deliberately NOT
@@ -106,13 +109,18 @@ impl Magic {
             text: None,
         });
     }
-    fn build(mut self, src: &str) -> String {
+    /// The rewritten source plus its source-map `mappings`. Every piece of
+    /// output is either an untouched source range, an insertion (no
+    /// segment) or an overwrite/remove (a segment at the range's original
+    /// start), exactly as magic-string maps them.
+    fn build(mut self, src: &str) -> (String, String) {
         // At one position: Left inserts (call order), then Right inserts
         // (call order), then the chunk content (original or overwrite text).
         self.inserts
             .sort_by(|a, b| (a.pos, a.side, a.seq).cmp(&(b.pos, b.side, b.seq)));
         self.dels.sort_by_key(|d| d.start);
         let mut out = String::with_capacity(src.len() + 64);
+        let mut map = crate::sourcemap::MapBuilder::new(src, "");
         let mut cursor: usize = 0;
         let mut i = 0usize;
         for d in &self.dels {
@@ -123,14 +131,15 @@ impl Magic {
                     cursor = p;
                 }
                 out.push_str(&self.inserts[i].text);
+                map.insert(cursor, &self.inserts[i].text);
                 i += 1;
             }
             if (d.start as usize) >= cursor {
                 out.push_str(&src[cursor..d.start as usize]);
             }
-            if let Some(t) = &d.text {
-                out.push_str(t);
-            }
+            let text = d.text.as_deref().unwrap_or("");
+            out.push_str(text);
+            map.replace(d.start as usize, d.end as usize, text);
             cursor = d.end as usize;
             // transformPlain never inserts strictly INSIDE a removed range;
             // skip any that would land there (mirrors dropped content).
@@ -145,10 +154,11 @@ impl Magic {
                 cursor = p;
             }
             out.push_str(&self.inserts[i].text);
+            map.insert(cursor, &self.inserts[i].text);
             i += 1;
         }
         out.push_str(&src[cursor..]);
-        out
+        (out, map.finish())
     }
 }
 
@@ -2980,10 +2990,11 @@ pub fn transform_plain(
     }
 
     let warnings = std::mem::take(&mut p.warnings);
-    let out = p.ms.build(&code);
+    let (out, map_mappings) = p.ms.build(&code);
     Some(PlainResult {
         code: out,
         warnings,
+        map_mappings,
     })
 }
 

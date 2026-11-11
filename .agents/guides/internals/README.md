@@ -6,6 +6,8 @@ Plain Mode (the `'use plain'` dialect) has its own file: [plain-mode.md](./plain
 
 Two backends: a Rust native binary (napi-rs, 3.7–8.9× faster) and a JS fallback used per call when native throws. Any emit change lands in both in the same PR. `native-equivalence.test.ts` checks the curated JavaScript output with a parser and compares native bytes when the binary is installed; `fuzz-equivalence.test.ts` independently checks generated JavaScript in all compilation modes. JavaScript syntax, option and lens contracts run without the optional binary. Backend agreement alone cannot prove valid output.
 
+Both backends return the same V3 source map. The JS backend builds it with magic-string (`hires: 'boundary'`: a segment at every word start and every other character); the native backend encodes the identical `mappings` from its own edit list and preamble (`native/src/sourcemap.rs`, also used by the plain pre-pass), and `transformJSX` wraps them in a magic-string `SourceMap`. A Plain Mode pre-pass map is composed underneath, so the map always describes the caller's text. Any change to how edits or the preamble are assembled must keep the maps equal; the equivalence suites compare `mappings`.
+
 ### Template emission
 
 - `shouldWrap` wraps only a non-pure call, a props access or a signal reference. Known pure-static calls stay bare.

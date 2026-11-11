@@ -71,11 +71,13 @@
     "prepublishOnly": "bun run build"
   },
   "dependencies": {
+    "@jridgewell/sourcemap-codec": "^1.5.5",
     "magic-string": "^1.4.4",
     "oxc-parser": "^0.155.0",
     "typescript": ">=5.0.0 <7.0.0"
   },
   "devDependencies": {
+    "@jridgewell/trace-mapping": "^0.3.31",
     "@pyreon/core": "workspace:^",
     "@pyreon/manifest": "workspace:*",
     "@pyreon/reactivity": "workspace:^",
