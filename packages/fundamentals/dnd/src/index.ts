@@ -9,6 +9,7 @@ registerSingleton(__pkgName, __pkgVersion, import.meta.url)
 
 export type {
   DragData,
+  DragPreview,
   DragPreviewOptions,
   DropEdge,
   DropLocation,
@@ -23,6 +24,7 @@ export type {
 export type { UseDragMonitorOptions, UseDragMonitorResult } from './use-drag-monitor'
 export { useDragMonitor } from './use-drag-monitor'
 
+export { dragPreview } from './drag-preview'
 export { useDraggable } from './use-draggable'
 export { useDroppable } from './use-droppable'
 export type { FileRejectReason, UseFileDropOptions, UseFileDropResult } from './use-file-drop'

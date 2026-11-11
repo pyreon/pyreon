@@ -249,14 +249,11 @@ describe('store proxy traps when the path no longer resolves', () => {
 })
 
 describe('setStore ignores a call it cannot interpret', () => {
-  test('a single NON-function argument is a no-op, not a crash', () => {
-    // The dispatcher handles `setStore(draftFn)` and `setStore(...path, value)`
-    // and nothing else. A stray one-argument object call — the shape someone
-    // reaches for coming from Solid's own merge form — must leave the store
-    // alone rather than half-apply or throw.
+  test('a single object argument merges, and a polluting key in it is dropped', () => {
     const [store, setStore] = createStore<{ a: number }>({ a: 1 })
-    expect(() => (setStore as (v: unknown) => void)({ a: 99 })).not.toThrow()
-    expect(store.a, 'nothing may be applied').toBe(1)
+    ;(setStore as (v: unknown) => void)(JSON.parse('{"a":99,"__proto__":{"polluted":true}}'))
+    expect(store.a).toBe(99)
+    expect(({} as Record<string, unknown>).polluted).toBeUndefined()
   })
 })
 

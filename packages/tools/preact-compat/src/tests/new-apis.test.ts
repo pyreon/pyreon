@@ -789,7 +789,7 @@ describe('real-world patterns', () => {
   test('useRef with DOM element reference', () => {
     const runner = createHookRunner()
     const ref = runner.run(() => useRef<HTMLDivElement>())
-    expect(ref.current).toBeNull()
+    expect(ref.current).toBeUndefined()
 
     // Simulate setting ref
     const div = document.createElement('div')

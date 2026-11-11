@@ -39,6 +39,45 @@
  * Per-iteration `verify` asserts the EFFECT (node count, node transform, edge
  * path changed, selected class, viewport transform, empty host) so a library
  * that no-ops posts a failure, not a fast number.
+ *
+ * RIVAL ARMS (2026-11), each on its library's documented imperative API:
+ *  - **Svelte Flow 1** (`@xyflow/svelte`) — `FlowSvelte.svelte`: `$state.raw`
+ *    nodes/edges bound to `<SvelteFlow>`, `useSvelteFlow().updateNode` /
+ *    `setViewport`, array assignment for add/remove (Svelte Flow has no
+ *    `addNodes`). Nodes declare `handles` like the React Flow arm, so edges are
+ *    drawn without a measuring pass. Each write is followed by Svelte's
+ *    `flushSync()`.
+ *  - **Vue Flow 1** (`@vue-flow/core`) — `useVueFlow()`'s `updateNode`,
+ *    `addNodes`/`addEdges`, `removeNodes`, `setViewport`; each write awaits
+ *    `nextTick()` (so 60 drag frames are 60 renders). Vue Flow draws edges only
+ *    after a ResizeObserver has measured every node and handle (it has no
+ *    declared-handle path), so its MOUNT IS NOT TIMED — the timed window would
+ *    hold nodes without edges, the very mismatch #3887 removed from the React
+ *    Flow arm. Its other ops run on the measured, fully drawn graph; its `add`
+ *    gate counts nodes, and the 50 new edges are drawn after the window closes
+ *    (another measuring pass), so that row also times less than the others.
+ *  - **JointJS 4** (`@joint/core`, MPL-2.0) — `dia.Graph` + a synchronous
+ *    `dia.Paper` (`async: false`, its default), cells built with
+ *    `shapes.standard.Rectangle` / `Link`, the initial graph and additions
+ *    loaded between `paper.freeze()` / `unfreeze()` (the docs' batching
+ *    pattern), moves via `element.position()`, the viewport via
+ *    `paper.matrix()`. JointJS core has no selection model; the documented way
+ *    to show one is a highlighter, so `select` is
+ *    `highlighters.mask.add(view, 'body', 'selection')` and its gate checks
+ *    the highlighter's element is in the DOM. Nodes are SVG `<g>` elements,
+ *    not HTML.
+ *
+ * SKIPPED, with the reason:
+ *  - **Cytoscape.js** — canvas renderer; `cy.forceRender()` only requests the
+ *    next frame and every draw happens in its own `requestAnimationFrame`
+ *    loop. No op has a synchronous commit to time, and a frame wait inside the
+ *    window is barred by this suite's protocol; timing the model update alone
+ *    would exclude all of its drawing while every DOM arm pays its own.
+ *  - **Rete.js 2** — every editor op (`addNode`, `area.translate`) returns a
+ *    Promise and nodes are drawn by a render plugin that mounts one framework
+ *    root per node and commits through that framework's scheduler; there is
+ *    no synchronous commit boundary for the same reason.
+ *  - **AntV X6** — the brief allowed one of X6 / JointJS; JointJS was chosen.
  */
 import { h as ph } from '@pyreon/core'
 import { createFlow, Flow, flowStyles, type FlowEdge, type FlowInstance, type FlowNode } from '@pyreon/flow'
@@ -55,10 +94,16 @@ import {
 import { jsx as reactJsx } from 'react/jsx-runtime'
 import { flushSync as reactFlushSync } from 'react-dom'
 import * as ReactDOM from 'react-dom/client'
+import { dia, highlighters as jHighlighters, shapes as jShapes } from '@joint/core'
+import { VueFlow, useVueFlow } from '@vue-flow/core'
+import type { Edge as SvfEdge, Node as SvfNode } from '@xyflow/svelte'
+import { flushSync as svelteFlushSync, mount as svelteMount, unmount as svelteUnmount } from 'svelte'
+import { createApp, defineComponent, h as vueH, nextTick } from 'vue'
+import FlowSvelte from './FlowSvelte.svelte'
 import type { BenchSuite } from '../runner'
 import { bench } from '../runner'
 
-export const FLOW_FRAMEWORKS = ['Pyreon', 'React Flow 12'] as const
+export const FLOW_FRAMEWORKS = ['Pyreon', 'React Flow 12', 'Svelte Flow 1', 'Vue Flow 1', 'JointJS 4'] as const
 
 const COLS = 25
 const N = 500
@@ -99,22 +144,32 @@ async function waitFor(pred: () => boolean, frames = 60, label = 'condition'): P
   if (!pred()) throw new Error(`[flow] timed out waiting for ${label}`)
 }
 
+/** A write either commits synchronously or returns the promise of its commit (Vue: `nextTick`). */
+type Commit = void | Promise<void>
+
 interface FlowTarget {
   /** Mount the base graph. Returns the teardown. */
   mount(host: HTMLElement): () => void
   /** Resolves once the library is ready for imperative ops (React Flow: onInit). */
   ready(): Promise<void>
+  /** Commit after `mount`, inside the timed region (Vue: `nextTick`). */
+  settle?: () => Promise<void>
+  /**
+   * Edges are drawn only after a ResizeObserver measuring pass (Vue Flow). The
+   * mount op is then NOT timed: its window would hold nodes without edges.
+   */
+  edgesDeferred?: boolean
   nodeCount(host: HTMLElement): number
   edgeCount(host: HTMLElement): number
   nodeTransform(host: HTMLElement, id: string): string
   edgePath(host: HTMLElement): string
-  moveNode(id: string, x: number, y: number): void
-  select(id: string): void
+  moveNode(id: string, x: number, y: number): Commit
+  select(id: string): Commit
   isSelected(host: HTMLElement, id: string): boolean
-  clearSelection(): void
-  addGraph(g: { nodes: GraphNode[]; edges: GraphEdge[] }): void
-  removeGraph(g: { nodes: GraphNode[]; edges: GraphEdge[] }): void
-  setViewport(x: number, y: number, zoom: number): void
+  clearSelection(): Commit
+  addGraph(g: { nodes: GraphNode[]; edges: GraphEdge[] }): Commit
+  removeGraph(g: { nodes: GraphNode[]; edges: GraphEdge[] }): Commit
+  setViewport(x: number, y: number, zoom: number): Commit
   viewportTransform(host: HTMLElement): string
 }
 
@@ -259,6 +314,263 @@ function reactFlowTarget(base: { nodes: GraphNode[]; edges: GraphEdge[] }): Flow
   }
 }
 
+// ─── Svelte Flow 1 ──────────────────────────────────────────────────────────
+
+let svfCssInjected = false
+async function ensureSvfCss(): Promise<void> {
+  if (svfCssInjected) return
+  svfCssInjected = true
+  await import('@xyflow/svelte/dist/style.css')
+}
+
+interface SvfHandle {
+  updateNode: (id: string, update: Partial<SvfNode>) => void
+  setViewport: (v: { x: number; y: number; zoom: number }) => void
+  addGraph: (n: SvfNode[], e: SvfEdge[]) => void
+  removeGraph: (nodeIds: Set<string>, edgeIds: Set<string>) => void
+}
+
+function svelteFlowTarget(base: { nodes: GraphNode[]; edges: GraphEdge[] }): FlowTarget {
+  let api: SvfHandle | null = null
+  const toNode = (n: GraphNode): SvfNode => ({
+    id: n.id,
+    position: { x: n.x, y: n.y },
+    data: { label: n.label },
+    width: 150,
+    height: 40,
+    // Same declared-handle path as the React Flow arm (shared @xyflow/system):
+    // edges are drawn on the first render instead of after a measuring pass.
+    handles: [
+      { type: 'target', position: Position.Top, x: 72, y: -3, width: 6, height: 6 },
+      { type: 'source', position: Position.Bottom, x: 72, y: 37, width: 6, height: 6 },
+    ],
+  } as SvfNode)
+  const toEdge = (e: GraphEdge): SvfEdge => ({ id: e.id, source: e.source, target: e.target })
+  const write = (fn: () => void): void => {
+    fn()
+    svelteFlushSync()
+  }
+  return {
+    mount(host) {
+      api = null
+      const app = svelteMount(FlowSvelte, {
+        target: host,
+        props: {
+          initialNodes: base.nodes.map(toNode),
+          initialEdges: base.edges.map(toEdge),
+          onReady: (h: SvfHandle) => {
+            api = h
+          },
+        },
+      })
+      svelteFlushSync()
+      return () => {
+        void svelteUnmount(app)
+        api = null
+      }
+    },
+    ready: () => Promise.resolve(),
+    nodeCount: (host) => host.querySelectorAll('.svelte-flow__node').length,
+    edgeCount: (host) => host.querySelectorAll('.svelte-flow__edge').length,
+    nodeTransform: (host, id) =>
+      host.querySelector<HTMLElement>(`.svelte-flow__node[data-id="${id}"]`)?.style.transform ?? '',
+    edgePath: (host) => host.querySelector('.svelte-flow__edge path')?.getAttribute('d') ?? '',
+    moveNode: (id, x, y) => write(() => api!.updateNode(id, { position: { x, y } })),
+    select: (id) => write(() => api!.updateNode(id, { selected: true })),
+    isSelected: (host, id) =>
+      host.querySelector(`.svelte-flow__node[data-id="${id}"]`)?.classList.contains('selected') ?? false,
+    clearSelection: () => write(() => api!.updateNode(DRAG_ID, { selected: false })),
+    addGraph: (g) => write(() => api!.addGraph(g.nodes.map(toNode), g.edges.map(toEdge))),
+    removeGraph: (g) =>
+      write(() => api!.removeGraph(new Set(g.nodes.map((n) => n.id)), new Set(g.edges.map((e) => e.id)))),
+    setViewport: (x, y, zoom) => write(() => api!.setViewport({ x, y, zoom })),
+    viewportTransform: (host) =>
+      host.querySelector<HTMLElement>('.svelte-flow__viewport')?.style.transform ?? '',
+  }
+}
+
+// ─── Vue Flow 1 ─────────────────────────────────────────────────────────────
+
+let vfCssInjected = false
+async function ensureVfCss(): Promise<void> {
+  if (vfCssInjected) return
+  vfCssInjected = true
+  // Both sheets, as https://vueflow.dev/guide/theming.html prescribes.
+  await import('@vue-flow/core/dist/style.css')
+  await import('@vue-flow/core/dist/theme-default.css')
+}
+
+// https://vueflow.dev/guide/vue-flow/state.html — `useVueFlow(id)` actions
+// (`updateNode`, `addNodes`, `addEdges`, `removeNodes`, `setViewport`).
+// The root renders `<VueFlow>` with one `h()` call: there is no list in this
+// component for a compiled template to optimise; Vue Flow's own node and edge
+// renderers are its shipped compiled components.
+function vueFlowTarget(base: { nodes: GraphNode[]; edges: GraphEdge[] }): FlowTarget {
+  type VfApi = ReturnType<typeof useVueFlow>
+  let api: VfApi | null = null
+  const toNode = (n: GraphNode) => ({
+    id: n.id,
+    position: { x: n.x, y: n.y },
+    data: { label: n.label },
+    label: n.label,
+    width: 150,
+    height: 40,
+  })
+  const toEdge = (e: GraphEdge) => ({ id: e.id, source: e.source, target: e.target })
+  const write = async (fn: () => unknown): Promise<void> => {
+    await fn()
+    await nextTick()
+  }
+  return {
+    edgesDeferred: true,
+    mount(host) {
+      api = null
+      const App = defineComponent({
+        setup() {
+          api = useVueFlow('bench')
+          return () =>
+            vueH(VueFlow, {
+              id: 'bench',
+              nodes: base.nodes.map(toNode),
+              edges: base.edges.map(toEdge),
+              fitViewOnInit: false,
+            })
+        },
+      })
+      const app = createApp(App)
+      app.mount(host)
+      return () => {
+        app.unmount()
+        api = null
+      }
+    },
+    ready: () => Promise.resolve(),
+    settle: () => nextTick(),
+    nodeCount: (host) => host.querySelectorAll('.vue-flow__node').length,
+    edgeCount: (host) => host.querySelectorAll('.vue-flow__edge').length,
+    nodeTransform: (host, id) =>
+      host.querySelector<HTMLElement>(`.vue-flow__node[data-id="${id}"]`)?.style.transform ?? '',
+    edgePath: (host) => host.querySelector('.vue-flow__edge path')?.getAttribute('d') ?? '',
+    moveNode: (id, x, y) => write(() => api!.updateNode(id, { position: { x, y } })),
+    // Vue Flow's selection actions (`updateNode` does not take `selected`).
+    select: (id) => write(() => api!.addSelectedNodes([api!.findNode(id)!])),
+    isSelected: (host, id) =>
+      host.querySelector(`.vue-flow__node[data-id="${id}"]`)?.classList.contains('selected') ?? false,
+    clearSelection: () => write(() => api!.removeSelectedNodes([api!.findNode(DRAG_ID)!])),
+    addGraph: (g) =>
+      write(() => {
+        api!.addNodes(g.nodes.map(toNode))
+        api!.addEdges(g.edges.map(toEdge))
+      }),
+    removeGraph: (g) =>
+      write(() => {
+        api!.removeNodes(g.nodes.map((n) => n.id))
+      }),
+    setViewport: (x, y, zoom) => write(() => api!.setViewport({ x, y, zoom })),
+    viewportTransform: (host) =>
+      host.querySelector<HTMLElement>('.vue-flow__transformationpane')?.style.transform ?? '',
+  }
+}
+
+// ─── JointJS 4 ──────────────────────────────────────────────────────────────
+
+// https://docs.jointjs.com/learn/quickstart/ (Graph + Paper, standard shapes),
+// https://docs.jointjs.com/learn/features/performance (freeze/unfreeze batching),
+// https://docs.jointjs.com/learn/features/highlighters (selection highlight).
+function jointTarget(base: { nodes: GraphNode[]; edges: GraphEdge[] }): FlowTarget {
+  let graph: dia.Graph | null = null
+  let paper: dia.Paper | null = null
+  const toNode = (n: GraphNode) =>
+    new jShapes.standard.Rectangle({
+      id: n.id,
+      position: { x: n.x, y: n.y },
+      size: { width: 150, height: 40 },
+      attrs: { label: { text: n.label } },
+    })
+  // Bottom-centre → top-centre anchors: the same geometry as the other arms'
+  // source/target handles (https://docs.jointjs.com/learn/features/shapes/links/anchors).
+  const toEdge = (e: GraphEdge) =>
+    new jShapes.standard.Link({
+      id: e.id,
+      source: { id: e.source, anchor: { name: 'bottom' } },
+      target: { id: e.target, anchor: { name: 'top' } },
+    })
+  /** `translate(x,y)` / `matrix(a,b,c,d,e,f)` → numbers. */
+  const nums = (t: string | null | undefined): number[] =>
+    (t ?? '').replace(/^[a-z]+\(|\)$/g, '').split(/[\s,]+/).filter(Boolean).map(Number)
+  return {
+    mount(host) {
+      graph = new dia.Graph({}, { cellNamespace: jShapes })
+      // The paper owns (and on `remove()` detaches) its element, so it gets
+      // its own child of the host.
+      const el = document.createElement('div')
+      host.appendChild(el)
+      paper = new dia.Paper({
+        el,
+        model: graph,
+        width: 800,
+        height: 600,
+        async: false,
+        cellViewNamespace: jShapes,
+        defaultConnectionPoint: { name: 'anchor' },
+        interactive: true,
+      })
+      paper.freeze()
+      graph.resetCells([...base.nodes.map(toNode), ...base.edges.map(toEdge)])
+      paper.unfreeze()
+      const p = paper
+      const g = graph
+      return () => {
+        p.remove()
+        g.clear()
+        if (paper === p) {
+          paper = null
+          graph = null
+        }
+      }
+    },
+    ready: () => Promise.resolve(),
+    nodeCount: (host) => host.querySelectorAll('.joint-element').length,
+    edgeCount: (host) => host.querySelectorAll('.joint-link').length,
+    nodeTransform: (host, id) => {
+      const [x, y] = nums(host.querySelector(`.joint-element[model-id="${id}"]`)?.getAttribute('transform'))
+      return x === undefined ? '' : `translate(${x}px, ${y}px)`
+    },
+    edgePath: (host) => host.querySelector('.joint-link path[joint-selector="line"]')?.getAttribute('d') ?? '',
+    moveNode: (id, x, y) => {
+      ;(graph!.getCell(id) as dia.Element).position(x, y)
+    },
+    select: (id) => {
+      jHighlighters.mask.add(paper!.findViewByModel(id)!, 'body', 'selection')
+    },
+    isSelected: (_host, id) => {
+      const view = paper?.findViewByModel(id)
+      const hl = view ? jHighlighters.mask.get(view, 'selection') : null
+      return hl !== null && hl !== undefined && (hl as unknown as { el: Element }).el.isConnected
+    },
+    clearSelection: () => {
+      const view = paper?.findViewByModel(DRAG_ID)
+      if (view) jHighlighters.mask.remove(view, 'selection')
+    },
+    addGraph: (g) => {
+      paper!.freeze()
+      graph!.addCells([...g.nodes.map(toNode), ...g.edges.map(toEdge)])
+      paper!.unfreeze()
+    },
+    removeGraph: (g) => {
+      // Removing an element removes its links (JointJS default).
+      graph!.removeCells(g.nodes.map((n) => graph!.getCell(n.id)!).filter(Boolean))
+    },
+    setViewport: (x, y, zoom) => {
+      paper!.matrix({ a: zoom, b: 0, c: 0, d: zoom, e: x, f: y })
+    },
+    viewportTransform: (host) => {
+      const [a, , , , e, f] = nums(host.querySelector('.joint-layers')?.getAttribute('transform'))
+      return a === undefined ? '' : `translate(${e}px, ${f}px) scale(${a})`
+    },
+  }
+}
+
 // ─── Runner ─────────────────────────────────────────────────────────────────
 
 export async function runFlow(frameworkName: string, container: HTMLElement): Promise<BenchSuite> {
@@ -286,6 +598,20 @@ export async function runFlow(frameworkName: string, container: HTMLElement): Pr
       target = reactFlowTarget(base)
       break
     }
+    case 'Svelte Flow 1': {
+      await ensureSvfCss()
+      target = svelteFlowTarget(base)
+      break
+    }
+    case 'Vue Flow 1': {
+      await ensureVfCss()
+      target = vueFlowTarget(base)
+      break
+    }
+    case 'JointJS 4': {
+      target = jointTarget(base)
+      break
+    }
     default:
       throw new Error(`[flow] unknown framework: ${frameworkName}`)
   }
@@ -300,34 +626,48 @@ export async function runFlow(frameworkName: string, container: HTMLElement): Pr
     if (target.nodeCount(host) !== N) throw new Error(`[flow] expected ${N} nodes, got ${target.nodeCount(host)}`)
     await waitFor(() => target.edgeCount(host) === N - 1, 120, `${N - 1} edges`)
   }
+  /**
+   * The timed mount's gate: every edge must already be drawn when the timed
+   * window closes (no frame has run since). This is what fails an arm whose
+   * mount window holds nodes without edges.
+   */
+  const verifyMountedNow = () => {
+    if (target.nodeCount(host) !== N) throw new Error(`[flow] expected ${N} nodes, got ${target.nodeCount(host)}`)
+    if (target.edgeCount(host) !== N - 1)
+      throw new Error(`[flow] ${target.edgeCount(host)} of ${N - 1} edges drawn when the mount window closed`)
+  }
 
   // ── Op 1: mount ───────────────────────────────────────────────────────────
   let teardown: (() => void) | null = null
-  await bench(
-    `mount ${N} nodes + ${N - 1} edges`,
-    suite,
-    () => {
-      teardown = target.mount(host)
-    },
-    {
-      reset: () => {
-        if (teardown) {
-          teardown()
-          teardown = null
-        }
-        host.innerHTML = ''
+  if (!target.edgesDeferred) {
+    await bench(
+      `mount ${N} nodes + ${N - 1} edges`,
+      suite,
+      async () => {
+        teardown = target.mount(host)
+        if (target.settle) await target.settle()
       },
-      verify: verifyMounted,
-    },
-  )
-  if (teardown) {
-    ;(teardown as () => void)()
-    teardown = null
+      {
+        reset: () => {
+          if (teardown) {
+            teardown()
+            teardown = null
+          }
+          host.innerHTML = ''
+        },
+        verify: verifyMountedNow,
+      },
+    )
+    if (teardown) {
+      ;(teardown as () => void)()
+      teardown = null
+    }
+    host.innerHTML = ''
   }
-  host.innerHTML = ''
 
   // Steady-state graph for the update ops.
   teardown = target.mount(host)
+  if (target.settle) await target.settle()
   await target.ready()
   await verifyMounted()
 
@@ -338,15 +678,17 @@ export async function runFlow(frameworkName: string, container: HTMLElement): Pr
   await bench(
     `drag one node ×${DRAG_FRAMES} frames (edges follow)`,
     suite,
-    () => {
+    async () => {
       for (let f = 1; f <= DRAG_FRAMES; f++) {
         dragEnd = { x: dragBase.x + f * 2, y: dragBase.y + f }
-        target.moveNode(DRAG_ID, dragEnd.x, dragEnd.y)
+        // Awaited only when the write returns its commit, so synchronous arms take no extra microtask hop.
+        const c = target.moveNode(DRAG_ID, dragEnd.x, dragEnd.y)
+        if (c) await c
       }
     },
     {
-      reset: () => {
-        target.moveNode(DRAG_ID, dragBase.x, dragBase.y)
+      reset: async () => {
+        await target.moveNode(DRAG_ID, dragBase.x, dragBase.y)
         pathBefore = target.edgePath(host)
       },
       verify: () => {
@@ -365,14 +707,15 @@ export async function runFlow(frameworkName: string, container: HTMLElement): Pr
       },
     },
   )
-  target.moveNode(DRAG_ID, dragBase.x, dragBase.y)
+  await target.moveNode(DRAG_ID, dragBase.x, dragBase.y)
 
   // ── Op 3: select ──────────────────────────────────────────────────────────
   await bench(
     'select node',
     suite,
-    () => {
-      target.select(DRAG_ID)
+    async () => {
+      const c = target.select(DRAG_ID)
+      if (c) await c
     },
     {
       reset: () => target.clearSelection(),
@@ -381,18 +724,19 @@ export async function runFlow(frameworkName: string, container: HTMLElement): Pr
       },
     },
   )
-  target.clearSelection()
+  await target.clearSelection()
 
   // ── Op 4: add 50 nodes + 50 edges ─────────────────────────────────────────
   await bench(
     `add ${ADD} nodes + ${extra.edges.length} edges`,
     suite,
-    () => {
-      target.addGraph(extra)
+    async () => {
+      const c = target.addGraph(extra)
+      if (c) await c
     },
     {
-      reset: () => {
-        if (target.nodeCount(host) > N) target.removeGraph(extra)
+      reset: async () => {
+        if (target.nodeCount(host) > N) await target.removeGraph(extra)
       },
       verify: () => {
         if (target.nodeCount(host) !== N + ADD) {
@@ -401,17 +745,18 @@ export async function runFlow(frameworkName: string, container: HTMLElement): Pr
       },
     },
   )
-  if (target.nodeCount(host) > N) target.removeGraph(extra)
+  if (target.nodeCount(host) > N) await target.removeGraph(extra)
 
   // ── Op 5: pan + zoom × 60 ─────────────────────────────────────────────────
   let lastZoom = 1
   await bench(
     `pan+zoom ×${ZOOM_TICKS} ticks`,
     suite,
-    () => {
+    async () => {
       for (let t = 1; t <= ZOOM_TICKS; t++) {
         lastZoom = 1 + t * 0.01
-        target.setViewport(-t * 3, -t * 2, lastZoom)
+        const c = target.setViewport(-t * 3, -t * 2, lastZoom)
+        if (c) await c
       }
     },
     {
@@ -422,7 +767,7 @@ export async function runFlow(frameworkName: string, container: HTMLElement): Pr
       },
     },
   )
-  target.setViewport(0, 0, 1)
+  await target.setViewport(0, 0, 1)
 
   // ── Op 6: unmount ─────────────────────────────────────────────────────────
   await bench(
@@ -438,6 +783,7 @@ export async function runFlow(frameworkName: string, container: HTMLElement): Pr
       reset: async () => {
         host.innerHTML = ''
         teardown = target.mount(host)
+        if (target.settle) await target.settle()
         await target.ready()
         await verifyMounted()
       },

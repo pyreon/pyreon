@@ -557,7 +557,7 @@ describe('mergeProps edge cases', () => {
 describe('type exports compile correctly', () => {
   it('all Solid-compatible types are importable', () => {
     const _accessor: Accessor<string> = () => 'hello'
-    const _setter: Setter<string> = () => {}
+    const _setter: Setter<string> = () => ''
     const _signal: Signal<string> = [_accessor, _setter]
     const _component: Component<{ x: number }> = () => null
     const _parent: ParentComponent<{ x: number }> = () => null
