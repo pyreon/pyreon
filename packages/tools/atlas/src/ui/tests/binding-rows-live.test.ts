@@ -16,7 +16,8 @@ import { mount } from '@pyreon/runtime-dom'
 import { afterEach, describe, expect, it } from 'vitest'
 import type { WorkbenchCatalog } from '../catalog'
 import { createModel } from '../model'
-import { bindingRows, createCoverageSession } from '../reactive-coverage'
+import { bindingRows } from '../binding-rows'
+import { createCoverageSession } from '../reactive-coverage'
 
 /** A button that reads `label` and `loading` inside its bindings — reactively. */
 function Btn(props: Record<string, unknown>): VNodeChild {

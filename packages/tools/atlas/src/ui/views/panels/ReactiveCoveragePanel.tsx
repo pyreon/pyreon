@@ -30,6 +30,8 @@ import {
   bindingRows,
   bindingSummary,
   componentNodes,
+} from '../../binding-rows'
+import {
   type CoverageRow,
   coverageRows,
   createCoverageSession,

@@ -10,7 +10,7 @@
 import type { ReactiveGraph, ReactiveNode } from '@pyreon/reactivity'
 import { describe, expect, it } from 'vitest'
 import type { PreviewScope } from '../model'
-import { bindingRows, bindingSummary, componentNodes } from '../reactive-coverage'
+import { bindingRows, bindingSummary, componentNodes } from '../binding-rows'
 
 const node = (id: number, over: Partial<ReactiveNode> = {}): ReactiveNode => ({
   id,
