@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { getContainerWidth } from '../Container/utils'
+import { defaultContainerWidths } from '../theme'
 import { hasValue, hasWidth, isCssVarValue, isNumber, isVisible, omitCtxKeys } from '../utils'
 
 describe('isNumber', () => {
@@ -164,8 +165,8 @@ describe('getContainerWidth', () => {
     expect(result).toEqual({ md: 720 })
   })
 
-  it('returns undefined when nothing matches', () => {
+  it('falls back to the default widths when the theme has no breakpoints (#4314)', () => {
     const result = getContainerWidth({}, {})
-    expect(result).toBeFalsy()
+    expect(result).toEqual(defaultContainerWidths)
   })
 })
