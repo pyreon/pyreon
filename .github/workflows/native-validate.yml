@@ -297,8 +297,8 @@ jobs:
           [ -f "$TGZ" ] || curl -fsSL --retry 6 --retry-delay 10 --retry-all-errors --connect-timeout 30 \
             -o "$TGZ" "https://download.swift.org/swift-${SWIFT_RELEASE}-release/ubuntu2404/swift-${SWIFT_RELEASE}-RELEASE/swift-${SWIFT_RELEASE}-RELEASE-ubuntu24.04.tar.gz"
           echo "${SWIFT_SHA256}  ${TGZ}" | sha256sum -c -
-          sudo apt-get update -q
-          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-install-recommends \
+          sudo apt-get -o Acquire::Retries=5 update -q
+          sudo DEBIAN_FRONTEND=noninteractive apt-get -o Acquire::Retries=5 install -y -q --no-install-recommends \
             binutils git gnupg2 libc6-dev libcurl4-openssl-dev libedit2 libgcc-s1 \
             libpython3-dev libsqlite3-0 libstdc++-13-dev libxml2-dev libncurses-dev \
             libz3-dev pkg-config tzdata zlib1g-dev unzip
