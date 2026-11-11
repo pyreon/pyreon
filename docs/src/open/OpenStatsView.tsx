@@ -1,5 +1,4 @@
-import { Axis, Bar, Chart, Tooltip, compact } from '@pyreon/charts'
-import { RouterLink } from '@pyreon/router'
+import { island } from '@pyreon/zero'
 import {
   formatCount,
   formatDay,
@@ -45,10 +44,9 @@ function Tile(props: TileProps) {
   )
 }
 
-interface ChartRow {
-  label: string
-  downloads: number
-}
+// The chart is interactive (tooltip, keyboard), so on this static page it is
+// an island; the server still renders its first frame as SVG.
+const TrendChartIsland = island(() => import('./TrendChart'), { name: 'OpenTrendChart', hydrate: 'visible', prefetch: 'idle' })
 
 function DownloadTrend(props: { stats: OpenStats }) {
   const trend = props.stats.npm.trend
@@ -59,23 +57,9 @@ function DownloadTrend(props: { stats: OpenStats }) {
       </p>
     )
   }
-  const rows: ChartRow[] = trend.value.points.map((p) => ({
-    label: new Date(p.week).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' }),
-    downloads: p.downloads,
-  }))
   return (
     <figure class="open-chart">
-      <Chart<ChartRow>
-        data={rows}
-        x="label"
-        height={260}
-        animate={false}
-        title={`Weekly npm downloads, ${trend.value.label}`}
-      >
-        <Bar y="downloads" label="Downloads" />
-        <Axis y format={compact} />
-        <Tooltip />
-      </Chart>
+      <TrendChartIsland label={trend.value.label} points={trend.value.points} />
       <figcaption>
         Weekly downloads of {trend.value.label}, the package every Pyreon app installs, from npm's
         public download counts.
@@ -218,7 +202,7 @@ export function OpenStatsView(props: { stats: OpenStats }) {
             </a>
           </li>
           <li>
-            <RouterLink to="/docs/benchmarks">How the benchmarks are run</RouterLink>
+            <a href="/docs/benchmarks">How the benchmarks are run</a>
           </li>
         </ul>
       </section>
