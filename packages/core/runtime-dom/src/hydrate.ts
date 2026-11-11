@@ -1712,6 +1712,64 @@ function hydrateDeferredLazy(
   ]
 }
 
+/**
+ * Hydrate a component's SYNCHRONOUS client output against the
+ * `<!--$pas-->…<!--$pae-->` range the server emitted because the same component
+ * was ASYNC there (see the call site in `hydrateComponent`).
+ *
+ * The range is the extent: the walk starts at the first real node inside the
+ * start marker and is bounded by the matching end marker (`anchor`), whatever
+ * it leaves unclaimed inside the range is swept (as `sweepUnclaimed` does at a
+ * closing tag), and the parent's cursor continues after the end marker. The
+ * markers stay in the DOM while the component lives — a later walk over the
+ * same parent sees the same structure — and are removed with it.
+ *
+ * A client output of `null` claims nothing: the server range is left standing
+ * (the same "degrade, don't destroy" policy as `sweepUnclaimed`) but the
+ * parent's siblings still hydrate against their own nodes.
+ */
+function hydrateSyncOutputInAsyncRange(
+  output: VNodeChild,
+  start: Comment,
+  parent: Node,
+  path: string,
+): [Cleanup, ChildNode | null] {
+  const end = findMatchingAsyncEnd(start) as Comment
+  const first = firstReal(start.nextSibling)
+  const innerStart = first === end ? null : first
+  let childCleanup: Cleanup = noop
+  if (output != null) {
+    const [cleanup, next] = hydrateChild(output, innerStart, parent, end, path)
+    childCleanup = cleanup
+    // Range-bounded sweep: everything from the residual cursor up to the end
+    // marker is server DOM the client did not claim. Declined when nothing
+    // precedes the cursor inside the range — the client neither adopted nor
+    // mounted anything, i.e. hydration did not happen (`sweepUnclaimed`'s rule).
+    if (
+      next !== null &&
+      next !== end &&
+      next.parentNode === parent &&
+      firstReal(start.nextSibling) !== next
+    ) {
+      let n: ChildNode | null = next
+      while (n !== null && n !== end) {
+        const nx: ChildNode | null = n.nextSibling
+        n.remove()
+        n = nx
+      }
+    }
+  }
+  const after = end.nextSibling
+  return [
+    () => {
+      childCleanup()
+      start.remove()
+      end.remove()
+    },
+    after ? firstReal(after) : null,
+  ]
+}
+
 function hydrateComponent(
   vnode: VNode,
   domNode: ChildNode | null,
@@ -1884,6 +1942,19 @@ function hydrateComponent(
       if (startMarker?.parentNode) startMarker.parentNode.removeChild(startMarker)
       if (endMarker?.parentNode) endMarker.parentNode.removeChild(endMarker)
     }
+  } else if (isAsyncStartMarker(domNode) && findMatchingAsyncEnd(domNode as Comment) !== null) {
+    // SYNC output over an ASYNC server range. The component was async on the
+    // server (runtime-server wrapped its awaited output in `<!--$pas-->` /
+    // `<!--$pae-->`) and sync here — `island()` is the main case: its server
+    // path awaits the loader, its client path returns the bare
+    // `<pyreon-island>` marker. Hydrating against the `$pas` comment itself
+    // mismatches (`expected pyreon-island, got 8`) and mounts a fresh client
+    // node, throwing away the server-rendered subtree. The range is the
+    // component's extent, exactly as for the Promise path above: hydrate
+    // inside it, then continue the parent's walk after the end marker.
+    const range = hydrateSyncOutputInAsyncRange(output, domNode as Comment, parent, path)
+    subtreeCleanup = range[0]
+    nextDom = range[1]
   } else if (output != null) {
     // A `<Suspense>` delimits the range it hydrated so it can move it
     // off-screen when a descendant mounted LATER suspends it (see
