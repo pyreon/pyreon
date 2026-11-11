@@ -23,6 +23,7 @@
     "@pyreon/code": "workspace:*",
     "@pyreon/coolgrid": "workspace:*",
     "@pyreon/core": "workspace:*",
+    "@pyreon/dnd": "workspace:*",
     "@pyreon/document": "workspace:*",
     "@pyreon/elements": "workspace:*",
     "@pyreon/flow": "workspace:*",
