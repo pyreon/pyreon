@@ -397,7 +397,7 @@ Every rule belongs to one of ten **groups** — the axis the 25 categories don't
 
 | group | rules | what it is |
 | --- | --- | --- |
-| `pyreon` | 52 | Framework semantics — reactivity, JSX, lifecycle, SSR/SSG. Nothing outside Pyreon can know these. |
+| `pyreon` | 54 | Framework semantics — reactivity, JSX, lifecycle, SSR/SSG. Nothing outside Pyreon can know these. |
 | `isomorphic` | 6 | Runs on BOTH sides — the hydration contract for a file that renders on server and client. |
 | `backend` | 7 | Server-role files — handlers, loaders, adapters. |
 | `web-perf` | 7 | Client-role files — main thread, teardown, network. |
