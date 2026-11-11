@@ -79,6 +79,7 @@ export {
   prefetchLoaderData,
   serializeLoaderData,
   stringifyLoaderData,
+  stringifyLoaderDataForScript,
   useLoaderData,
 } from './loader'
 // Match utilities (useful for SSR route pre-fetching)

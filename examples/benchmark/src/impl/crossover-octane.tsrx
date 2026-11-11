@@ -111,7 +111,7 @@ export async function runCrossoverOctane(container: HTMLElement): Promise<BenchS
     selectReset()
     selectFn()
     container.getBoundingClientRect()
-  }, targetMs)
+  }, targetMs, 'select')
 
   await bench('select row (batch cycle)', suite, selectFn, {
     reset: selectReset,
@@ -153,7 +153,7 @@ export async function runCrossoverOctane(container: HTMLElement): Promise<BenchS
     partialReset()
     partialFn()
     container.getBoundingClientRect()
-  }, targetMs)
+  }, targetMs, 'partial')
 
   await bench('partial update (every 10th) (batch cycle)', suite, partialFn, {
     reset: partialReset,
@@ -191,7 +191,7 @@ export async function runCrossoverOctane(container: HTMLElement): Promise<BenchS
     swap()
     swap()
     container.getBoundingClientRect()
-  }, targetMs)
+  }, targetMs, 'swap')
   if (currentRows[lo]?.id !== canonicalIdAtLo) swap()
 
   await bench('swap rows (batch cycle)', suite, swap, {

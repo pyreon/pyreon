@@ -19,12 +19,21 @@ import { createActionMiddleware, resolveActionOptions } from './actions'
 import { createFormActionMiddleware } from './form-actions-server'
 import type { ApiRouteEntry } from './api-routes'
 import { createApiMiddleware, matchApiRoute } from './api-routes'
-import { createDataEndpointMiddleware } from './data-endpoint-middleware'
-import { createOgImageMiddleware } from './og-route'
-import { createServerIslandMiddleware } from './server-islands-middleware'
+import { createDataEndpointMiddleware, dataEndpointTargetPathname } from './data-endpoint-middleware'
+import { createOgImageMiddleware, ROUTE_MIDDLEWARE_RAN } from './og-route'
+import { pagePathFromOgEndpoint } from './og-route-shared'
+import { createServerIslandMiddleware, FRAGMENT_PREFIX, fragmentPage } from './server-islands-middleware'
+import type { ServerIslandSignatureOptions } from './server-island-token'
+import {
+  createIslandMintMiddleware,
+  createIslandSigner,
+  hasSharedIslandSecret,
+} from './server-island-token'
 import type { RouteMiddlewareEntry, ZeroConfig } from './types'
 
 export const DATA_ENDPOINT = '/_pyreon/data'
+
+export { ROUTE_MIDDLEWARE_RAN }
 
 export interface RequestPipelineOptions {
   routes: RouteRecord[]
@@ -44,6 +53,12 @@ export interface RequestPipelineOptions {
    * page (PRG) instead of re-rendering with the result.
    */
   renderActionPage?: (req: Request) => Promise<Response>
+  /**
+   * Server-island fragment signing (secret, signature lifetime). Defaults to
+   * the `PYREON_ISLAND_SECRET` environment variable, then a per-process
+   * random secret.
+   */
+  serverIslands?: ServerIslandSignatureOptions
 }
 
 export interface RequestPipeline {
@@ -65,7 +80,14 @@ export interface RequestPipeline {
  */
 export function createRequestPipeline(options: RequestPipelineOptions): RequestPipeline {
   const { config } = options
-  const middleware: Middleware[] = [...(config.middleware ?? []), ...(options.middleware ?? [])]
+  // Every request gets a mint for the page it may render, so server-island
+  // markers are signed; the fragment endpoint verifies with the same signer.
+  const islandSigner = createIslandSigner(options.serverIslands)
+  const middleware: Middleware[] = [
+    createIslandMintMiddleware(islandSigner, hasSharedIslandSecret(options.serverIslands)),
+    ...(config.middleware ?? []),
+    ...(options.middleware ?? []),
+  ]
   if (options.routeMiddleware?.length) {
     middleware.push(createRouteMiddlewareDispatcher(options.routeMiddleware, config))
   }
@@ -89,7 +111,7 @@ export function createRequestPipeline(options: RequestPipelineOptions): RequestP
   // module evaluation, which is LAZY in zero — gating on registry size at
   // construction would miss everything declared in a route file. Unused,
   // each costs one path-prefix check.
-  middleware.push(createServerIslandMiddleware(options.routes))
+  middleware.push(createServerIslandMiddleware(options.routes, islandSigner))
   middleware.push(createDataEndpointMiddleware(options.routes))
   // Route OG images for SSR/ISR routes (`GET /_zero/og/<path>.png`). `og`
   // exports live in the same lazily-loaded route modules, so it is mounted
@@ -188,7 +210,13 @@ export function stripBase(pathname: string, config: ZeroConfig): string {
  * - For the single-fetch data endpoint, the TARGET page's path: the endpoint
  *   runs that page's serverLoaders, so it must be gated by that page's
  *   middleware — otherwise `/_pyreon/data?path=/admin` handed out data the
- *   `/admin` middleware refuses, on every client-side navigation.
+ *   `/admin` middleware refuses, on every client-side navigation. The target
+ *   is read through `dataEndpointTarget`, the endpoint's own normaliser, so
+ *   the gated page and the served page cannot differ.
+ * - For the OG image endpoint (`/_zero/og/<page>.png`), `<page>`: it runs that
+ *   page's loaders with the caller's request.
+ * - For a server-island fragment, its signed `page` parameter (the page whose
+ *   render signed the marker), so the declaring page's middleware gates it.
  * - With `base` and i18n prefixes removed, because route patterns carry
  *   neither (`/app/de/admin` is the `/admin` route).
  */
@@ -197,10 +225,23 @@ export function routingPathname(url: URL, config: ZeroConfig): string {
   // `<base>/_pyreon/data` skips the target page's route middleware.
   let pathname = stripBase(url.pathname, config)
   if (pathname === DATA_ENDPOINT) {
-    const target = url.searchParams.get('path')
-    if (target && target.startsWith('/')) {
-      pathname = stripBase(new URL(target, 'http://pyreon.invalid').pathname, config)
-    }
+    // The endpoint's OWN normalisation — never a re-parse (`new URL(target)`
+    // read `//admin` as host `admin`, path `/`, while the router served
+    // `/admin`). An invalid target is refused by the endpoint with a 400.
+    const target = dataEndpointTargetPathname(url)
+    if (target !== null) pathname = stripBase(target, config)
+  } else if (pathname.startsWith(FRAGMENT_PREFIX)) {
+    // A server-island fragment is gated as the page that rendered (and
+    // signed) its marker. The endpoint verifies the signature over this SAME
+    // `page` value, so a caller cannot pick an ungated page: the gate would
+    // pass, and the signature would not verify (403).
+    const page = fragmentPage(url)
+    if (page !== null) pathname = stripBase(page, config)
+  } else {
+    // The OG endpoint runs the page's loaders with the caller's request and
+    // renders its data into an image, so it is gated as that page.
+    const ogPage = pagePathFromOgEndpoint(pathname)
+    if (ogPage !== null) pathname = ogPage
   }
   const locales = config.i18n?.locales
   if (locales?.length) {
@@ -225,6 +266,10 @@ export function createRouteMiddlewareDispatcher(
         ? entry.patterns.some((p) => matchPattern(p, pathname))
         : matchPattern(entry.pattern, pathname)
       if (hit) {
+        // Endpoints that answer with a shared-cacheable response (the OG
+        // image) must not let a CDN replay what this request was allowed to
+        // see: they read this flag and answer `private` instead.
+        ctx.locals[ROUTE_MIDDLEWARE_RAN] = true
         const mw = Array.isArray(entry.middleware) ? entry.middleware : [entry.middleware]
         for (const fn of mw) {
           const result = await fn(ctx)

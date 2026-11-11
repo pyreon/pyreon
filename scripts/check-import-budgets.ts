@@ -171,6 +171,24 @@ export const SCENARIOS: Scenario[] = [
     imports: ['css'],
   },
   {
+    // Locks the defineStore / defineSchemaStore split: a setup-only store must
+    // not carry schema mode or the `@pyreon/validation` bridge. Re-merging
+    // schema dispatch into `defineStore` puts both back.
+    id: '@pyreon/store::defineStore',
+    pkg: '@pyreon/store',
+    dir: 'fundamentals/store',
+    imports: ['defineStore'],
+  },
+  {
+    // Locks the import-chosen drag preview: a plain draggable must not carry
+    // pdnd's preview utilities (`setCustomNativeDragPreview` + offset presets),
+    // which `dragPreview()` brings in only when used.
+    id: '@pyreon/dnd::useDraggable',
+    pkg: '@pyreon/dnd',
+    dir: 'fundamentals/dnd',
+    imports: ['useDraggable'],
+  },
+  {
     // Locks the `mini` entry WITHOUT the runtime JIT (~3.5 KB gz): the JIT is
     // installed by the main entry or `enableJit()` from `@pyreon/validate/jit`,
     // never reached from `mini`. A static `./jit` import in `core/schema.ts`

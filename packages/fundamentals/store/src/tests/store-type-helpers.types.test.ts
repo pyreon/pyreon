@@ -10,7 +10,7 @@ import type { Signal } from '@pyreon/reactivity'
 import { zodSchema } from '@pyreon/validation/zod'
 import { z } from 'zod'
 import type { SchemaStoreApi, SignalsOf, StoreActions, StoreApi, StoreState } from '../index'
-import { computed, defineStore, signal } from '../index'
+import { computed, defineStore, signal, defineSchemaStore } from '../index'
 
 // ─── Composition store fixture ────────────────────────────────────────────────
 
@@ -60,7 +60,7 @@ describe('StoreActions — composition stores', () => {
 
 // ─── Schema store fixture ─────────────────────────────────────────────────────
 
-const useProfile = defineStore('types-test:profile', {
+const useProfile = defineSchemaStore('types-test:profile', {
   schema: zodSchema(z.object({ name: z.string(), age: z.number() })),
   initial: { name: 'Ada', age: 36 },
   setup: (ctx) => ({

@@ -6,8 +6,13 @@ import { ErrorBoundary, h } from '@pyreon/core'
 const NOT_FOUND = Symbol.for('pyreon.notFound')
 
 /**
- * Throw inside a route loader or component to trigger the nearest
- * NotFoundBoundary. Inspired by Next.js's `notFound()`.
+ * Signal "matched route, missing resource". Inspired by Next.js's `notFound()`.
+ *
+ * - From a route `loader` / `serverLoader`: the route enters the router's
+ *   not-found state — it renders the nearest `notFoundComponent` (`_404.tsx`)
+ *   inside its layouts, SSR answers HTTP 404, and the hydrating client and
+ *   client navigations resolve the same chain.
+ * - From a component while it renders: the nearest `NotFoundBoundary`.
  *
  * @example
  * ```ts

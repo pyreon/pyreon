@@ -105,6 +105,7 @@ const flushMicrotasks = () => new Promise<void>((resolve) => queueMicrotask(reso
 describe('useDraggable — custom native drag preview', () => {
   it('does NOT wire onGenerateDragPreview when preview is omitted', async () => {
     const { useDraggable } = await import('../use-draggable')
+    const { dragPreview } = await import('../drag-preview')
     const el = document.createElement('div')
     useDraggable({ element: () => el, data: { id: '1' } })
     await flushMicrotasks()
@@ -113,18 +114,19 @@ describe('useDraggable — custom native drag preview', () => {
 
   it('routes render through setCustomNativeDragPreview (no offset → browser default)', async () => {
     const { useDraggable } = await import('../use-draggable')
+    const { dragPreview } = await import('../drag-preview')
     const el = document.createElement('div')
     const rendered: HTMLElement[] = []
     const cleanup = vi.fn()
     useDraggable({
       element: () => el,
       data: { id: '1' },
-      preview: {
+      preview: dragPreview({
         render: (container) => {
           rendered.push(container)
           return cleanup
         },
-      },
+      }),
     })
     await flushMicrotasks()
     expect(typeof lastDraggableOpts.onGenerateDragPreview).toBe('function')
@@ -153,11 +155,12 @@ describe('useDraggable — custom native drag preview', () => {
     ['preserve-offset', 'preserve-offset'],
   ] as const)('offset preset %s resolves to the matching pdnd util', async (offset, preset) => {
     const { useDraggable } = await import('../use-draggable')
+    const { dragPreview } = await import('../drag-preview')
     const el = document.createElement('div')
     useDraggable({
       element: () => el,
       data: { id: '1' },
-      preview: { render: () => {}, offset },
+      preview: dragPreview({ render: () => {}, offset }),
     })
     await flushMicrotasks()
     lastDraggableOpts.onGenerateDragPreview({
