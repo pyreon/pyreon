@@ -171,6 +171,7 @@ export const SIDEBAR: SidebarGroup[] = [
       { text: 'TypeScript', slug: 'typescript' },
       { text: 'CLI', slug: 'cli' },
       { text: 'Lint', slug: 'lint' },
+      { text: 'Lint: readable preset', slug: 'lint-readable' },
       { text: 'MCP Server', slug: 'mcp' },
       { text: 'Atlas (component workbench)', slug: 'atlas' },
       { text: 'Loom (dependency observatory)', slug: 'loom' },

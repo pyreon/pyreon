@@ -7473,7 +7473,7 @@ lint({
     "pyreon/no-window-in-ssr": { exemptPaths: ["src/foundation/"] },
   },
 })`,
-    notes: '134 rules across 25 categories. Auto-loads `.pyreonlintrc.json`. Presets: `recommended`, `strict`, `app`, `lib`. Per-rule options via tuple form in config (`["error", { exemptPaths: [...] }]`) or `ruleOptionsOverrides`. `exemptPaths` is honoured CENTRALLY for every rule (the runner skips an exempt file before the rule runs), so it means the same thing everywhere rather than only in rules that opted in. Wrong-typed options surface on `result.configDiagnostics`, as does a `rules`/`groups`/`settings` key that names nothing — a mistyped rule id used to be silently ignored, which is indistinguishable from working. Uses `oxc-parser` with AST caching. See also: lintFile, lintAsync, getPreset, AstCache.',
+    notes: '140 rules across 26 categories. Auto-loads `.pyreonlintrc.json`. Presets: `recommended`, `strict`, `app`, `lib`, `best-practices`, composable with the `readable` / `readable-strict` layers (`preset: ["recommended", "readable"]`). Per-rule options via tuple form in config (`["error", { exemptPaths: [...] }]`) or `ruleOptionsOverrides`. `exemptPaths` is honoured CENTRALLY for every rule (the runner skips an exempt file before the rule runs), so it means the same thing everywhere rather than only in rules that opted in. Wrong-typed options surface on `result.configDiagnostics`, as does a `rules`/`groups`/`settings` key that names nothing — a mistyped rule id used to be silently ignored, which is indistinguishable from working. Uses `oxc-parser` with AST caching. See also: lintFile, lintAsync, getPreset, AstCache.',
   },
 
   'lint/lintAsync': {
@@ -7507,11 +7507,30 @@ const result = lintFile("app.tsx", source, allRules, config, cache, configSink)`
 pyreon-lint --fix                       # auto-fix
 pyreon-lint --watch src/                # watch mode
 pyreon-lint --init                      # scaffold .pyreonlintrc.json for this project
-pyreon-lint --list                      # list all 134 rules
+pyreon-lint --list                      # list all 140 rules
 pyreon-lint --why-off no-window-in-ssr  # why a rule will (or will not) run here
 pyreon-lint --format json               # machine-readable
 pyreon-lint --rule-options 'pyreon/no-window-in-ssr={"exemptPaths":["src/foundation/"]}' src/`,
     notes: `CLI entry. Config: \`.pyreonlintrc.json\` (reference \`schema/pyreonlintrc.schema.json\` for IDE autocomplete) or \`package.json\`'s \`'pyreonlint'\` field. Ignore: \`.pyreonlintignore\` + \`.gitignore\`. Watch: \`fs.watch\` recursive with 100ms debounce. \`--rule-options id='{json}'\` passes per-rule options on a single run. See also: lint.`,
+  },
+
+  'lint/readable': {
+    signature: 'preset: readable | readable-strict (layers — compose after a base preset)',
+    example: `// .pyreonlintrc.json
+{ "preset": ["recommended", "readable"] }
+
+// .oxlintrc.json
+{ "extends": ["./node_modules/@pyreon/lint/oxlint/readable.json"] }
+
+// oxfmt.config.ts
+export { readable as default } from '@pyreon/lint/oxfmt'
+
+// .vscode/settings.json — fix on save
+{ "editor.codeActionsOnSave": { "source.fixAll.pyreon": "explicit" } }`,
+    notes: `The readability layer. \`readable\` turns on, at \`warn\`: \`pyreon/padding-between-declarations\` (auto-fixable — a blank line between adjacent top-level statements or class members when either is multi-line; overload signatures and the import block are exempt), \`pyreon/padding-before-return\` (auto-fixable — before a \`return\` that follows a multi-line statement or 3+ statements; options \`minStatements\`, \`afterMultiline\`), \`pyreon/padding-between-component-sections\` (auto-fixable — a component reads setup → behaviour → render; handlers and effects share the behaviour section because \`effect()\` runs at creation, so forcing effects above handlers would invite a TDZ \`ReferenceError\`), \`pyreon/max-jsx-depth\` (\`max\` 6, names the subtree to extract) and \`pyreon/no-nested-ternary-branch\` (no ternary in another’s test or consequent; flat chains allowed up to \`maxOutcomes\` 4). \`readable-strict\` adds \`pyreon/padding-around-multiline-blocks\` (auto-fixable — a blank line around every multi-line \`if\`/\`for\`/\`try\`/\`switch\` inside a function) and tightens to depth 5 and 3 outcomes. Layers set only their own rules, so \`["strict", "readable"]\` keeps strict’s errors and adds readability warnings, never errors. The fixes only INSERT blank lines between statements, which oxfmt preserves, so \`--fix\` and the formatter never fight. Size limits and import order belong to the other tools: extend \`@pyreon/lint/oxlint/readable.json\` from \`.oxlintrc.json\`, and \`export { readable as default } from '@pyreon/lint/oxfmt'\` from \`oxfmt.config.ts\`. Generated files (\`@generated\` / \`do not edit\` in the first 3 lines) are skipped; a whole file opts out with \`// pyreon-lint-disable-file <rule> -- <reason>\` (the reason is required). See also: lint, cli.`,
+    mistakes: `- Putting \`readable\` FIRST in the list — a base preset after it resets every rule, readable ones included; layers go last
+- Expecting \`readable\` to enforce function length or complexity — those are oxlint’s rules, enabled by extending \`@pyreon/lint/oxlint/readable.json\`
+- A file-level disable without a reason — it is ignored and reported, because nobody could tell when it is safe to remove`,
   },
 
   'lint/no-process-dev-gate': {
