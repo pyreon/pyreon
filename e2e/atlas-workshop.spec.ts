@@ -444,7 +444,7 @@ test.describe('Reactivity panel — reactive coverage', () => {
     const summary = page.getByTestId('coverage-summary')
     await expect(summary).toHaveCount(1)
     // A binding count, real: the denominator is the component's bindings.
-    await expect(summary).toContainText(/\d+\/[1-9]\d* bindings fired/)
+    await expect(summary).toContainText(/\d+\/[1-9]\d* of this component's reactive bindings fired/)
     await expect(page.getByTestId('coverage-percent')).toHaveText(/^\d+%$/)
   })
 
@@ -461,7 +461,7 @@ test.describe('Reactivity panel — reactive coverage', () => {
     // `0/0` would mean the session recorded nothing while still showing a
     // percentage — the empty-scan false green, in a new place.
     const text = (await page.getByTestId('coverage-summary').textContent()) ?? ''
-    const match = /(\d+)\/(\d+) bindings fired/.exec(text)
+    const match = /(\d+)\/(\d+) of this component's reactive bindings fired/.exec(text)
     expect(match, `no binding count in: ${text}`).not.toBeNull()
     expect(Number(match![2]), 'the component must have bindings to measure').toBeGreaterThan(0)
   })

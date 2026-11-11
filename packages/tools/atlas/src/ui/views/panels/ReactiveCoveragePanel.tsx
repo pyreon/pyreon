@@ -171,6 +171,8 @@ export const render: AddonPanelRender = (model) => {
 
   return (
     <>
+      {/* No Record in a production build: there is nothing it could record. */}
+      <Show when={() => available}>
       <C.ActionsHead>
         <C.ActionsHint>
           {() =>
@@ -187,6 +189,7 @@ export const render: AddonPanelRender = (model) => {
           {() => (recording() ? 'Stop' : 'Record')}
         </C.ClearBtn>
       </C.ActionsHead>
+      </Show>
 
       {/*
         Not available ≠ nothing to report. A production workbench has no
@@ -243,48 +246,21 @@ export const render: AddonPanelRender = (model) => {
               <C.CovFill ref={fillRef} data-testid="coverage-fill" />
             </C.CovBar>
             <C.CovNum data-testid="coverage-percent">{() => `${summary().percent ?? 0}%`}</C.CovNum>
-            <C.CovCaption>
+            <C.CovCaption data-testid="coverage-summary">
               {() => {
                 const s = summary()
-                return `of this component's ${s.total} reactive binding${s.total === 1 ? '' : 's'} fired during this recording — a binding's first run is its mount, not an update.`
+                const open = [
+                  s.never > 0 ? `${s.never} never fired` : '',
+                  s.rebuilt > 0 ? `${s.rebuilt} rebuilt by a re-mount` : '',
+                ].filter(Boolean)
+                return (
+                  `${s.covered}/${s.total} of this component's reactive bindings fired during this recording` +
+                  (open.length > 0 ? ` (${open.join(', ')})` : '') +
+                  ` — a binding's first run is its mount, not an update.`
+                )
               }}
             </C.CovCaption>
           </C.CovHead>
-
-          <C.A11ySummary data-testid="coverage-summary">
-            <C.A11yStat>
-              <C.A11yDot state="ok" />
-              {() => `${summary().covered}/${summary().total} bindings fired`}
-            </C.A11yStat>
-            <C.A11yStat>
-              <C.A11yDot state="danger" />
-              {() => `${summary().never} never fired`}
-            </C.A11yStat>
-            <Show when={() => summary().rebuilt > 0}>
-              <C.A11yStat>
-                <C.A11yDot state="warn" />
-                {() => `${summary().rebuilt} rebuilt by a re-mount`}
-              </C.A11yStat>
-            </Show>
-          </C.A11ySummary>
-
-          {/* The finding with teeth, said in words: the first binding nothing exercised. */}
-          {() => {
-            const open = firstOpen()
-            if (!open) {
-              return (
-                <C.Callout state="plain" data-testid="coverage-all-fired">
-                  Every binding fired at least once in this recording.
-                </C.Callout>
-              )
-            }
-            return (
-              <C.Callout state="danger" data-testid="coverage-callout">
-                <b>{`${open.name} ${open.status === 'rebuilt' ? 'was only ever rebuilt' : 'never updated'}.`}</b>
-                {` Line coverage calls it covered: it rendered. ${open.hint}`}
-              </C.Callout>
-            )
-          }}
 
           <C.DataTable data-testid="coverage-bindings">
             <table aria-label="Reactive bindings of the selected component, those that never fired first">
@@ -317,7 +293,7 @@ export const render: AddonPanelRender = (model) => {
                         <td data-v="num" data-testid="binding-fires">
                           {String(row.fires)}
                         </td>
-                        <td>
+                        <td data-v="nowrap">
                           <C.Chip state={STATUS[row.status].state} data-testid="binding-status">
                             <span aria-hidden="true">{`${STATUS[row.status].glyph} `}</span>
                             {STATUS[row.status].word}
@@ -333,6 +309,24 @@ export const render: AddonPanelRender = (model) => {
               }
             </table>
           </C.DataTable>
+
+          {/* The finding with teeth, said in words: the first binding nothing exercised. */}
+          {() => {
+            const open = firstOpen()
+            if (!open) {
+              return (
+                <C.Callout state="plain" data-testid="coverage-all-fired">
+                  Every binding fired at least once in this recording.
+                </C.Callout>
+              )
+            }
+            return (
+              <C.Callout state="danger" data-testid="coverage-callout">
+                <b>{`${open.name} ${open.status === 'rebuilt' ? 'was only ever rebuilt' : 'never updated'}.`}</b>
+                {` Line coverage calls it covered: it rendered. ${open.hint}`}
+              </C.Callout>
+            )
+          }}
         </>
       </Show>
 

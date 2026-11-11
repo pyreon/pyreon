@@ -396,7 +396,7 @@ test.describe('every panel renders its real data', () => {
     await page.getByTestId('coverage-toggle').click()
     await page.locator('[data-testid="canvas-preview"] label').first().click()
     await page.getByTestId('coverage-toggle').click()
-    await expect(page.getByTestId('coverage-summary')).toContainText(/\d+\/[1-9]\d* bindings fired/)
+    await expect(page.getByTestId('coverage-summary')).toContainText(/\d+\/[1-9]\d* of this component's reactive bindings fired/)
   })
 
   test('Lens → answers or says why it cannot (no dev server RPC under plain Vite)', async ({ browser }) => {
@@ -538,7 +538,7 @@ test.describe('the #4440 parts', () => {
     const pct = Number.parseFloat((await page.getByTestId('coverage-percent').textContent()) ?? '')
     expect(Number.isFinite(pct)).toBe(true)
     // The same rows' denominator, stated in the caption and the stats.
-    await expect(page.getByTestId('coverage-head')).toContainText(/of this component's [1-9]\d* reactive bindings? fired/)
+    await expect(page.getByTestId('coverage-head')).toContainText(/\d+\/[1-9]\d* of this component's reactive bindings fired/)
     const rows = await page.getByTestId('binding-row').count()
     const covered = await page.locator('[data-testid="binding-row"][data-status="covered"]').count()
     expect(pct).toBe(Math.round((covered / rows) * 100))
