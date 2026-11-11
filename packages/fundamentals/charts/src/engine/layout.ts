@@ -259,13 +259,37 @@ export function computeLayout(cfg: LayoutConfig, measure: MeasureText): PlotLayo
     }
   }
 
+  // An upright VALUE label is centred on its tick, so the ones at the ends
+  // of the axis hang past the plot by up to half their width. The slim right
+  // gutter (12px) and a left one sized for the y labels alone (0 with the y
+  // axis hidden) do not hold a wide label ("300 ms", "$1.2M"), and the
+  // canvas clipped it. The overhangs are measured on the provisional ticks
+  // and the gutters widened to hold them. Category ticks sit mid-band and a
+  // slanted label ends at its tick, so neither overhangs.
+  let edgeLeft = 0.0
+  let edgeRight = 0.0
+  if (cfg.showXAxis && rotate === 0.0 && (cfg.horizontal === true || cfg.categories.length === 0)) {
+    const edgeTicks = cfg.horizontal === true
+      ? makeTicks(cfg.yDomain, 0.0, provisionalW, yCount, cfg.yFormat)
+      : cfg.xTime === true
+        ? timeTicks(cfg.xDomain, 0.0, provisionalW, xCount, cfg.xFormat)
+        : makeTicks(cfg.xDomain, 0.0, provisionalW, xCount, cfg.xFormat)
+    for (const tick of edgeTicks) {
+      const half = measure(tick.label, cfg.fontSize) / 2.0
+      if (half - tick.pos > edgeLeft) edgeLeft = half - tick.pos
+      if (tick.pos + half - provisionalW > edgeRight) edgeRight = tick.pos + half - provisionalW
+    }
+  }
+  const leftG = Math.max(left, edgeLeft)
+  const rightG = Math.max(right, edgeRight)
+
   const bottom = (cfg.showXAxis ? cfg.fontSize + labelGap + slantH + tickLen : 0.0) + xTitleH
-  const gutters: Gutters = { left, right, top: padTop, bottom }
+  const gutters: Gutters = { left: leftG, right: rightG, top: padTop, bottom }
 
   const plot: Rect = {
-    x: left,
+    x: leftG,
     y: padTop,
-    w: Math.max(0.0, cfg.width - left - right),
+    w: Math.max(0.0, cfg.width - leftG - rightG),
     h: Math.max(0.0, cfg.height - padTop - bottom),
   }
 
