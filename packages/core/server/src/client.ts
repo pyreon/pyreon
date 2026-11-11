@@ -308,7 +308,7 @@ export function schedulePrefetch(
     },
     { rootMargin: '200px' },
   )
-  observer.observe(el)
+  for (const target of visibilityTargets(el)) observer.observe(target)
   return () => {
     cancelled = true
     observer.disconnect()
@@ -707,6 +707,19 @@ async function hydrateIsland(
   }
 }
 
+/**
+ * What to observe for an island's `visible` trigger. An island element styled
+ * `display: contents` (a common choice: the wrapper then adds no box to the
+ * layout) generates no box, and an IntersectionObserver never reports a
+ * box-less target as intersecting, so the island never hydrated. Its element
+ * children carry the boxes; any of them entering the viewport counts.
+ */
+function visibilityTargets(el: HTMLElement): Element[] {
+  if (getComputedStyle(el).display !== 'contents') return [el]
+  const children = [...el.children]
+  return children.length > 0 ? children : [el]
+}
+
 function observeVisibility(el: HTMLElement, callback: () => void): (() => void) | null {
   /* v8 ignore next */
   if (isServer) return null
@@ -728,7 +741,7 @@ function observeVisibility(el: HTMLElement, callback: () => void): (() => void) 
     { rootMargin: '200px' },
   )
 
-  observer.observe(el)
+  for (const target of visibilityTargets(el)) observer.observe(target)
   return () => observer.disconnect()
 }
 
