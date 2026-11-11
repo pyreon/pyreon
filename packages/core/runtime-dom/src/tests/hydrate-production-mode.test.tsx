@@ -123,41 +123,7 @@ function snapshot(host: HTMLElement): Node[] {
   return out
 }
 
-const stripComments = (html: string) => html.replace(/<!--[^>]*-->/g, '')
-
-/** Render the SSR emit, then hydrate the CLIENT emit over it. */
-async function ssrThenHydrate(
-  source: string,
-  globals: Record<string, unknown> = {},
-): Promise<{
-  host: HTMLElement
-  before: Node[]
-  retained: () => number
-  dispose: () => void
-}> {
-  const html = await renderToString(h(build(source, globals, true) as never, null) as never)
-  const host = document.createElement('div')
-  host.innerHTML = html
-  document.body.appendChild(host)
-  const before = snapshot(host)
-  const dispose = hydrateRoot(host, h(build(source, globals, false) as never, null))
-  return {
-    host,
-    before,
-    retained: () => {
-      const after = new Set(snapshot(host))
-      return before.filter((n) => after.has(n)).length
-    },
-    dispose,
-  }
-}
-
 const hosts: HTMLElement[] = []
-const track = <T extends { host: HTMLElement }>(r: T): T => {
-  hosts.push(r.host)
-  return r
-}
-
 afterEach(() => {
   for (const h of hosts.splice(0)) h.remove()
 })

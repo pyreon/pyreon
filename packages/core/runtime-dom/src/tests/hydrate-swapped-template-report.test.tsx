@@ -9,7 +9,6 @@
 import { transformJSX } from '@pyreon/compiler'
 import { _fuse, _lc, For, Fragment, h } from '@pyreon/core'
 import { _bind, signal, renderEffect } from '@pyreon/reactivity'
-import { renderToString } from '@pyreon/runtime-server'
 import { transformSync } from 'esbuild'
 import { afterEach, describe, expect, it } from 'vitest'
 import {
@@ -111,49 +110,7 @@ function build(source: string, globals: Record<string, unknown>, ssr: boolean): 
   return fn(...DEP_VALUES, ...Object.values(globals)) as () => unknown
 }
 
-/** Every element + text node under `host`, document order. */
-function snapshot(host: HTMLElement): Node[] {
-  const out: Node[] = []
-  const walk = document.createTreeWalker(host, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT)
-  for (let n = walk.nextNode(); n; n = walk.nextNode()) out.push(n)
-  return out
-}
-
-const stripComments = (html: string) => html.replace(/<!--[^>]*-->/g, '')
-
-/** Render the SSR emit, then hydrate the CLIENT emit over it. */
-async function ssrThenHydrate(
-  source: string,
-  globals: Record<string, unknown> = {},
-): Promise<{
-  host: HTMLElement
-  before: Node[]
-  retained: () => number
-  dispose: () => void
-}> {
-  const html = await renderToString(h(build(source, globals, true) as never, null) as never)
-  const host = document.createElement('div')
-  host.innerHTML = html
-  document.body.appendChild(host)
-  const before = snapshot(host)
-  const dispose = hydrateRoot(host, h(build(source, globals, false) as never, null))
-  return {
-    host,
-    before,
-    retained: () => {
-      const after = new Set(snapshot(host))
-      return before.filter((n) => after.has(n)).length
-    },
-    dispose,
-  }
-}
-
 const hosts: HTMLElement[] = []
-const track = <T extends { host: HTMLElement }>(r: T): T => {
-  hosts.push(r.host)
-  return r
-}
-
 afterEach(() => {
   for (const h of hosts.splice(0)) h.remove()
 })
