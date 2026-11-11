@@ -2253,11 +2253,13 @@ fun computeLayout(cfg: LayoutConfig, measure: (String, Double) -> Double): PlotL
       val edgeTicks = if (cfg.horizontal == true) makeTicks(cfg.yDomain, 0.0, provisionalW, yCount, cfg.yFormat) else if (cfg.xTime == true) timeTicks(cfg.xDomain, 0.0, provisionalW, xCount, cfg.xFormat) else makeTicks(cfg.xDomain, 0.0, provisionalW, xCount, cfg.xFormat)
       for (tick in edgeTicks) {
         val half = (measure(tick.label, cfg.fontSize)).toDouble() / (2.0).toDouble()
-        if (half - tick.pos > edgeLeft) {
-          edgeLeft = half - tick.pos
+        val overLeft = half - tick.pos + labelGap
+        val overRight = tick.pos + half - provisionalW + labelGap
+        if (half > tick.pos && overLeft > edgeLeft) {
+          edgeLeft = overLeft
         }
-        if (tick.pos + half - provisionalW > edgeRight) {
-          edgeRight = tick.pos + half - provisionalW
+        if (tick.pos + half > provisionalW && overRight > edgeRight) {
+          edgeRight = overRight
         }
       }
     }
