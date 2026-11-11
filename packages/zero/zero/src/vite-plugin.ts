@@ -487,7 +487,7 @@ export function zeroPlugin(userInput: ZeroUserConfig = {}): Plugin[] {
 				const manifest = generated.code;
 				try {
 					const files = await scanRouteFiles(routesDir);
-					return `${manifest}\n${generateMiddlewareModule(files, routesDir)}`;
+					return `${manifest}\n${generateMiddlewareModule(files, routesDir, generated.modules)}`;
 				} catch (_err) {
 					return `${manifest}\nexport const routeMiddleware = []`;
 				}

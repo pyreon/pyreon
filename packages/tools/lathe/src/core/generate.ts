@@ -130,6 +130,7 @@ function* pipeline(
     ...options,
     patches: options.patches ?? config.patches,
     int64: options.int64 ?? config.int64,
+    refRoot: options.refRoot ?? config.refRoot,
   });
   const documents = loaded.documents;
   let doc = applyFilters(loaded.doc, config.filters);

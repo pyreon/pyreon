@@ -13,6 +13,7 @@ import {
   type AfterEachHook,
   type Blocker,
   type BlockerFn,
+  type BlockerOptions,
   type ComponentFn,
   type InitialNavigationOutcome,
   isLazy,
@@ -245,40 +246,89 @@ export function onBeforeRouteUpdate(guard: NavigationGuard): () => void {
 // Shared beforeunload handler — single listener for all active blockers.
 // Attached when the first blocker registers, detached when the last one is
 // removed. Avoids listener accumulation from multiple useBlocker() calls.
-let _beforeUnloadRefCount = 0
-const _beforeUnloadHandler = (e: BeforeUnloadEvent) => {
-  e.preventDefault()
+//
+// The handler ASKS each blocker (see `BlockerOptions.beforeUnload`) and prompts
+// only when one says to block: an unconditional `preventDefault()` showed
+// "Leave site?" on every tab close while ANY blocker was mounted, even one
+// that never blocks (#4358).
+//
+// Module-level registry, so its cleanup contract: an entry leaves on
+// `remove()` (idempotent: a Set delete, so a double remove cannot evict
+// another blocker's entry), on the owning component's unmount, and on the
+// router's `destroy()`. Locked by `blocker-beforeunload-refcount.test.ts`.
+type UnloadBlocker = {
+  fn: BlockerFn
+  router: RouterInstance
+  beforeUnload: BlockerOptions['beforeUnload']
+}
+const _unloadBlockers = new Set<UnloadBlocker>()
+
+function blocksUnload(entry: UnloadBlocker): boolean {
+  const opt = entry.beforeUnload
+  if (typeof opt === 'boolean') return opt
+  try {
+    if (typeof opt === 'function') return opt() === true
+    const current = entry.router.currentRoute()
+    const verdict: unknown = entry.fn(current, current)
+    if (verdict !== null && typeof verdict === 'object' && 'then' in verdict) {
+      // Cannot be awaited during unload: count it as blocking, and keep its
+      // eventual rejection from surfacing as unhandled.
+      ;(verdict as Promise<unknown>).then(undefined, () => undefined)
+      return true
+    }
+    return verdict === true
+  } catch {
+    // A throwing blocker keeps the old, safe behaviour: ask the user.
+    return true
+  }
 }
 
-function retainBeforeUnload(): void {
+const _beforeUnloadHandler = (e: BeforeUnloadEvent) => {
+  for (const entry of _unloadBlockers) {
+    if (blocksUnload(entry)) {
+      e.preventDefault()
+      // Legacy browsers show the prompt only when returnValue is set.
+      e.returnValue = ''
+      return
+    }
+  }
+}
+
+function addUnloadBlocker(entry: UnloadBlocker): void {
   if (!isClient) return
-  if (_beforeUnloadRefCount === 0) {
+  if (_unloadBlockers.size === 0) {
     window.addEventListener('beforeunload', _beforeUnloadHandler)
   }
-  _beforeUnloadRefCount++
+  _unloadBlockers.add(entry)
 }
 
-function releaseBeforeUnload(): void {
+function removeUnloadBlocker(entry: UnloadBlocker): void {
   if (!isClient) return
-  _beforeUnloadRefCount--
-  if (_beforeUnloadRefCount <= 0) {
-    _beforeUnloadRefCount = 0
+  if (!_unloadBlockers.delete(entry)) return
+  if (_unloadBlockers.size === 0) {
     window.removeEventListener('beforeunload', _beforeUnloadHandler)
   }
 }
 
-export function useBlocker(fn: BlockerFn): Blocker {
+function removeRouterUnloadBlockers(router: RouterInstance): void {
+  for (const entry of _unloadBlockers) {
+    if (entry.router === router) removeUnloadBlocker(entry)
+  }
+}
+
+export function useBlocker(fn: BlockerFn, options?: BlockerOptions): Blocker {
   const router = (useContext(RouterContext) ?? _activeRouter) as RouterInstance | null
   if (!router)
     throw new Error(
       '[Pyreon] No router installed. Wrap your app in <RouterProvider router={router}>.',
     )
   router._blockers.add(fn)
-  retainBeforeUnload()
+  const entry: UnloadBlocker = { fn, router, beforeUnload: options?.beforeUnload }
+  addUnloadBlocker(entry)
 
   const remove = () => {
     router._blockers.delete(fn)
-    releaseBeforeUnload()
+    removeUnloadBlocker(entry)
   }
 
   // Auto-remove when the component that called useBlocker unmounts
@@ -349,9 +399,26 @@ export type SearchParamSchema = {
   [key: string]: 'string' | 'number' | 'boolean'
 }
 
-/** Infer the typed result from a search param schema. */
+/**
+ * Infer the typed result from a search param schema. A `'number'` param is
+ * `undefined` when it is absent from the URL or not a number, so a missing
+ * `?page` is not mistaken for `?page=0`.
+ */
 type InferSearchParams<T extends SearchParamSchema> = {
-  [K in keyof T]: T[K] extends 'number' ? number : T[K] extends 'boolean' ? boolean : string
+  [K in keyof T]: T[K] extends 'number'
+    ? number | undefined
+    : T[K] extends 'boolean'
+      ? boolean
+      : string
+}
+
+/**
+ * The URL for the current route with `query` as its search string, keeping
+ * the hash. The two setters below change only the params they are given.
+ */
+function currentUrlWithQuery(router: RouterInstance, query: Record<string, string>): string {
+  const route = router.currentRoute()
+  return route.path + stringifyQuery(query) + (route.hash ? `#${route.hash}` : '')
 }
 
 /**
@@ -364,16 +431,8 @@ type InferSearchParams<T extends SearchParamSchema> = {
  * setParams({ page: "2" }) // updates URL
  * ```
  *
- * @example Typed with schema
- * ```ts
- * const [params, setParams] = useSearchParams({
- *   page: 'number',
- *   sort: 'string',
- *   desc: 'boolean',
- * })
- * params().page  // number (auto-coerced)
- * params().desc  // boolean
- * ```
+ * Values are strings. For coerced numbers and booleans use
+ * `useTypedSearchParams`.
  */
 export function useSearchParams<T extends Record<string, string>>(
   defaults?: T,
@@ -386,8 +445,7 @@ export function useSearchParams<T extends Record<string, string>>(
   }
   const set = (updates: Partial<T>): Promise<NavigationResult> => {
     const merged = { ...get(), ...updates }
-    const path = router.currentRoute().path + stringifyQuery(merged as Record<string, string>)
-    return router.replace(path)
+    return router.replace(currentUrlWithQuery(router, merged as Record<string, string>))
   }
   return [get, set]
 }
@@ -405,10 +463,15 @@ export function useSearchParams<T extends Record<string, string>>(
  *   sort: 'string',
  *   desc: 'boolean',
  * })
- * params().page  // number (coerced from "3" → 3)
+ * params().page  // number (coerced from "3" → 3); undefined when absent
  * params().desc  // boolean (coerced from "true" → true)
- * setParams({ page: 2 }) // updates URL with ?page=2
+ * setParams({ page: 2 }) // ?page=2, every other param (and the hash) kept
+ * setParams({ page: undefined }) // removes ?page
  * ```
+ *
+ * An absent or non-numeric `'number'` param reads `undefined` (default it with
+ * `params().page ?? 1`); an absent `'string'` reads `''` and an absent
+ * `'boolean'` reads `false`.
  */
 export function useTypedSearchParams<T extends SearchParamSchema>(
   schema: T,
@@ -423,21 +486,28 @@ export function useTypedSearchParams<T extends SearchParamSchema>(
     for (const [key, type] of Object.entries(schema)) {
       const raw = query[key]
       if (type === 'number') {
-        const n = raw !== undefined ? Number(raw) : 0
-        result[key] = Number.isNaN(n) ? 0 : n
+        // Absent, empty or not a number → undefined. It used to read 0, which
+        // a caller cannot tell from an explicit `?page=0`.
+        const n = raw === undefined || raw.trim() === '' ? Number.NaN : Number(raw)
+        result[key] = Number.isNaN(n) ? undefined : n
       } else if (type === 'boolean') result[key] = raw === 'true' || raw === '1'
       else result[key] = raw ?? ''
     }
     return result as InferSearchParams<T>
   }
   const set = (updates: Partial<InferSearchParams<T>>): Promise<NavigationResult> => {
-    const current = get()
-    const merged: Record<string, string> = {}
-    for (const [k, v] of Object.entries({ ...current, ...updates })) {
-      merged[k] = String(v)
+    // Start from the URL's OWN query, not from the schema's view of it: keys
+    // outside the schema (`utm_*`, another component's params) are kept, and
+    // schema keys the caller did not touch keep their exact text. It used to
+    // rebuild the query from the schema alone, dropping every other param and
+    // writing defaults (`q=`, `flag=false`) for absent ones. An `undefined`
+    // update removes the key.
+    const merged: Record<string, string> = { ...router.currentRoute().query }
+    for (const [k, v] of Object.entries(updates)) {
+      if (v === undefined) delete merged[k]
+      else merged[k] = String(v)
     }
-    const path = router.currentRoute().path + stringifyQuery(merged)
-    return router.replace(path)
+    return router.replace(currentUrlWithQuery(router, merged))
   }
   return [get, set]
 }
@@ -2145,7 +2215,7 @@ export function createRouter<TNames extends string = string>(
       guards.length = 0
       afterHooks.length = 0
       // Release beforeunload for any remaining blockers
-      for (let i = router._blockers.size; i > 0; i--) releaseBeforeUnload()
+      removeRouterUnloadBlockers(router)
       router._blockers.clear()
       componentCache.clear()
       router._loaderData.clear()

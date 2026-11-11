@@ -19,6 +19,8 @@ const fakeEditor = (
   ({
     view: { peek: () => view },
     html: () => view?.getHTML() ?? '',
+    // The html branch loads through `editor.setContent` (view or no view).
+    setContent: (v: string) => view?.commands.setContent(v),
     json: Object.assign(() => EMPTY, { set: () => {}, peek: () => EMPTY }),
   }) as unknown as RichTextEditor
 
@@ -317,12 +319,23 @@ describe('bindRichTextToSignal (json format)', () => {
 describe('bindRichTextToSignal (html format)', () => {
   it('mirrors the editor HTML into the external string signal', () => {
     const editor = createRichTextEditor({ content: '<p>hi</p>' })
-    const ext = signal('')
+    const ext = signal('<p>hi</p>')
     const binding = bindRichTextToSignal({ editor, signal: ext, format: 'html' })
-    // Pre-mount, editor.html() falls back to the configured string; the
-    // editor → external direction copies it. (view is null so the
-    // external → editor setContent branch is a safe no-op.)
     expect(ext()).toBe('<p>hi</p>')
+    // Pre-mount, an editor change flows out to the external signal.
+    editor.setContent('<p>yo</p>')
+    expect(ext()).toBe('<p>yo</p>')
+    binding.dispose()
+  })
+
+  it('at bind time the external value wins, as in JSON mode', () => {
+    // It used to be the other way round for html only, and only because the
+    // external → editor direction skipped while unmounted (#4360).
+    const editor = createRichTextEditor({ content: '<p>hi</p>' })
+    const ext = signal('<p>outside</p>')
+    const binding = bindRichTextToSignal({ editor, signal: ext, format: 'html' })
+    expect(ext()).toBe('<p>outside</p>')
+    expect(editor.text()).toBe('outside')
     binding.dispose()
   })
 
@@ -353,5 +366,35 @@ describe('bindRichTextToSignal (html format)', () => {
       bindRichTextToSignal({ editor, signal: ext, format: 'html', onError: (e) => errors.push(e) }),
     ).not.toThrow()
     expect(errors.some((e) => e.message === 'set fail')).toBe(true)
+  })
+})
+
+// bindRichTextToSignal({ format: 'html' }) bound BEFORE the editor mounts
+// (#4360): the outside→editor direction skipped while there was no view, and
+// the editor→outside direction then wrote the empty editor's HTML into the
+// signal, wiping it. The JSON format already worked. Bisect-verified: without
+// the fix `body()` reads '' (`expected '' to be '<p>Start writing…</p>'`).
+describe('bindRichTextToSignal html, bound before mount', () => {
+  it('keeps the outside value and seeds the editor with it', () => {
+    const body = signal('<p>Start writing…</p>')
+    const editor = createRichTextEditor()
+    const binding = bindRichTextToSignal({ editor, signal: body, format: 'html' })
+    expect(body()).toBe('<p>Start writing…</p>')
+    expect(editor.text()).toBe('Start writing…')
+    expect(editor.html()).toBe('<p>Start writing…</p>')
+    binding.dispose()
+    editor.dispose()
+  })
+
+  it('a later outside write still reaches the unmounted editor, and an editor write comes back', () => {
+    const body = signal('<p>a</p>')
+    const editor = createRichTextEditor()
+    const binding = bindRichTextToSignal({ editor, signal: body, format: 'html' })
+    body.set('<p>b</p>')
+    expect(editor.text()).toBe('b')
+    editor.setContent('<p>c</p>')
+    expect(body()).toBe('<p>c</p>')
+    binding.dispose()
+    editor.dispose()
   })
 })

@@ -98,6 +98,16 @@ describe('diagnoseError (browser-safe error catalog)', () => {
     expect(r!.fix).toContain('defineAsyncComponent')
   })
 
+  it('diagnoses the React migrator refusing two overlapping rewrites (#4287)', () => {
+    // The exact message `migrateReactCode` throws (react-intercept.ts, applyRange).
+    const r = diagnoseError(
+      'Error: [Pyreon] migrateReactCode: two rewrites overlap at offset 412. Please report this input at https://github.com/pyreon/pyreon/issues.',
+    )
+    expect(r?.cause).toContain('offset 412')
+    expect(r?.cause).toContain('nothing was changed')
+    expect(r?.fix).toContain('by hand')
+  })
+
   it('diagnoses a failed code-split chunk (the residual of deferred lazy hydration)', () => {
     // The messages Chromium, Firefox and Safari throw for a failed dynamic import.
     for (const msg of [

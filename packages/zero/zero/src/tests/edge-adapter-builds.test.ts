@@ -127,6 +127,42 @@ describe('denoAdapter build', () => {
     expect((await serveStatic(new URL('http://h/%E0%A4%A.js')))?.status).toBe(400)
   })
 
+  // Deno builds \`request.url\` from the client's \`Host\`; ORIGIN pins the
+  // origin the handler sees. Runs the emitted serve callback with a stub Deno.
+  it('ORIGIN fixes the request origin the handler sees', async () => {
+    const outDir = join(root, 'deno-origin')
+    await denoAdapter().build(ssr(outDir, { edgeServerEntry: join(edge, 'entry-server.js') }))
+    const runner = await readFile(join(outDir, DENO_ADAPTER_OUTPUT.runnerEntry), 'utf-8')
+    const boot = (origin: string | undefined) => {
+      let serve: ((r: Request) => Promise<Response>) | undefined
+      const Deno = {
+        env: { get: (k: string) => (k === 'ORIGIN' ? origin : undefined) },
+        readFile: async () => {
+          throw new Error('not found')
+        },
+        serve: (_o: unknown, cb: (r: Request) => Promise<Response>) => {
+          serve = cb
+        },
+      }
+      const handler = async (r: Request) => Response.json({ url: r.url, body: await r.text() })
+      new Function('Deno', 'handler', 'clientDir', runner.slice(runner.indexOf('const MIME_TYPES')))(
+        Deno,
+        handler,
+        new URL('file:///srv/client/'),
+      )
+      return serve!
+    }
+    const pinned = boot('https://site.example')
+    const res = await pinned(new Request('http://127.0.0.1:6379//evil.example/a?b=1', { method: 'POST', body: 'x' }))
+    expect(await res.json()).toEqual({ url: 'https://site.example//evil.example/a?b=1', body: 'x' })
+    const unpinned = boot(undefined)
+    expect(await (await unpinned(new Request('http://app.example/a'))).json()).toEqual({
+      url: 'http://app.example/a',
+      body: '',
+    })
+    expect(() => boot('site.example')).toThrow(/ORIGIN must be an absolute http\(s\) URL/)
+  })
+
   it('defaults to /assets/ and port 8000, and emits no cron block without schedules', async () => {
     const outDir = join(root, 'deno-default')
     await denoAdapter().build(ssr(outDir, { edgeServerEntry: join(edge, 'entry-server.js') }))

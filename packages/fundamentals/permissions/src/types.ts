@@ -5,8 +5,19 @@ import type { Computed } from '@pyreon/reactivity'
 /**
  * A permission predicate — receives optional context and returns a boolean.
  * Used for instance-level checks (e.g., "can update THIS post?").
+ *
+ * Declared through a METHOD signature so the context parameter is checked
+ * bivariantly (as DOM event handlers are): a predicate states the context it
+ * expects, `(post: Post) => post.authorId === me()`, and still fits a
+ * `PermissionMap`, whose values are `PermissionValue<unknown>`. A plain
+ * function type checked it contravariantly, so the documented typed predicate
+ * failed strict TypeScript (TS2322, #4362). The context is whatever the caller
+ * passes to `can(key, context)`, and nothing when it passes none: a predicate
+ * that reads it must handle `undefined` (a throw counts as denied).
  */
-export type PermissionPredicate<TContext = unknown> = (context?: TContext) => boolean
+export type PermissionPredicate<TContext = unknown> = {
+  bivarianceHack(context?: TContext): boolean
+}['bivarianceHack']
 
 /**
  * A permission value is either a static boolean or a predicate function.

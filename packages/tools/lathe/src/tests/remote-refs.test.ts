@@ -55,7 +55,7 @@ afterAll(async () => {
   await new Promise<void>((r) => server.close(() => r()))
 })
 
-function project(remoteRefs: string | undefined, part = 'models/pet.yaml'): string {
+function project(remoteRefs: string | undefined, part = 'models/pet.yaml', refOrigins = true): string {
   const dir = mkdtempSync(join(tmpdir(), 'lathe-remote-'))
   mkdirSync(join(dir, 'node_modules'))
   writeFileSync(
@@ -71,7 +71,7 @@ paths:
 `,
   )
   const cfg = remoteRefs
-    ? `remoteRefs: '${remoteRefs}', remoteHeaders: { 'http://127.0.0.1:${port}': { Authorization: 'Bearer t0k' } },`
+    ? `remoteRefs: '${remoteRefs}', remoteHeaders: { 'http://127.0.0.1:${port}': { Authorization: 'Bearer t0k' } },${refOrigins ? ` refOrigins: ['http://localhost:${port}'],` : ''}`
     : ''
   writeFileSync(join(dir, 'pyreon.config.ts'), `export default { lathe: { input: './openapi.yaml', output: './gen', plugins: ['schemas'], ${cfg} } }\n`)
   return dir
@@ -116,6 +116,20 @@ describe('remote $ref parts of a spec on disk', () => {
     expect((await quietly(() => main(['generate'], dir))).code).toBe(0)
     expect(seen.find((s) => s.url === '/models/pet.yaml')?.inm).toBe('"p1"')
     expect(readFileSync(join(dir, 'gen/schemas/Pet.ts'), 'utf8')).toContain('owner')
+    rmSync(dir, { recursive: true, force: true })
+  })
+
+  it('a remote part may not reference another origin unless `refOrigins` names it', async () => {
+    // The spec on disk names 127.0.0.1 itself (the author's choice); the part
+    // served there then names `localhost`, which nobody chose.
+    const dir = project('fetch', 'models/pet.yaml', false)
+    seen.length = 0
+    const r = await quietly(() => main(['generate'], dir))
+    expect(r.code).toBe(1)
+    expect(r.err).toContain(`leaves http://127.0.0.1:${port} for http://localhost:${port}`)
+    expect(r.err).toContain(`refOrigins: ['http://localhost:${port}']`)
+    expect(seen.filter((s) => s.host?.startsWith('localhost'))).toEqual([])
+    expect(existsSync(join(dir, 'gen'))).toBe(false)
     rmSync(dir, { recursive: true, force: true })
   })
 

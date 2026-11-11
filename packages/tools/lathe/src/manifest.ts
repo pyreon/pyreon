@@ -20,7 +20,7 @@ export default defineManifest({
     "Typed error responses: each operation's 4xx / 5xx / range / `default` JSON bodies become its endpoint's `errors`, and every hook types `error()` as `EndpointError<typeof op>` — `err.matched === '404'` narrows `err.body`, on every client",
     "Webhooks and callbacks are emitted in `webhooks.ts` — never as client operations — with a schema per payload, handler types, `validateWebhook`, a framework-agnostic `webhookHandler(handlers, { verify, event, bodyLimit })` (`Request` → `Response`, usable as a zero API route: enforce bodyLimit (default 1 MiB) on streamed bytes → verify over the raw bytes → parse by declared media type → method → validate → dispatch, answering 401/400/413/404/405/422/204), and `callbackUrl` evaluating a callback's OpenAPI runtime expression",
     "Refuses the wrong document before writing anything: a file that is not an OpenAPI or Swagger document, Swagger 1.x, or an unsupported OpenAPI major. Every project is generated before any is written, so a refused spec leaves every output tree untouched",
-    "A strict CLI: unknown flags, commands and values are errors with a did-you-mean (exit 2), `--dry-run` reports what would change, the config is found upward from the cwd with paths relative to the config FILE, errors go to stderr, colour respects TTY/`NO_COLOR`, and `--json` has ONE documented shape (`JsonReport`) for any project count. `lathe pull` supports `--token` / `--header`, conditional requests via ETag, and every project with a `source`",
+    "A strict CLI: unknown flags, commands and values are errors with a did-you-mean (exit 2), `--dry-run` reports what would change, the config is found upward from the cwd with paths relative to the config FILE, errors go to stderr, colour respects TTY/`NO_COLOR`, and `--json` has ONE documented shape (`JsonReport`) for any project count. `lathe pull` supports `--token` / `--header`, conditional requests via ETag, and every project with a `source`; a referenced document is fetched only from the referencing document's own origin (redirects re-checked) unless `--ref-origin` / `refOrigins` names another",
     "Orphaned output is pruned: each run writes `lathe-manifest.json`, and the next `generate` removes files it no longer produces while `check` reports them stale -- only manifest-listed paths are ever removed",
     "`target: 'multiplatform'` emits an additional self-contained module per tag — client, schemas, endpoints and calls sharing one top level — because PMTC resolves nothing across file boundaries; the web output is unchanged, so enabling it can never make the web build worse",
     "The multiplatform claim is MEASURED: `verifyNative` runs the real `@pyreon/native-compiler` on both targets and asserts the positive marker plus the absence of leaked web-only symbols. A `does NOT compile` warning is treated as broken, not advisory, and an absent compiler SKIPS loudly rather than passing",
@@ -88,9 +88,9 @@ lathe generate · 1 project
       name: "generate",
       kind: "function",
       signature:
-        "generate(specText: string, config: ResolvedConfig, options?: { sourceUrl?: string; location?: string; readDocument?: (id: string) => string }): GenerateResult",
+        "generate(specText: string, config: ResolvedConfig, options?: { sourceUrl?: string; location?: string; readDocument?: (id: string) => string; refRoot?: string; realpath?: (path: string) => string }): GenerateResult",
       summary:
-        "The whole pipeline, pure: spec text in, file CONTENTS out. Touches no filesystem, which is what makes the generator testable without a temp directory and lets `lathe check` diff before writing. Returns the IR document, generated files, every input document read, and a per-operation `reach` map explaining in spec terms which operations can run natively and why the others cannot. Pass `location` and `readDocument` to resolve and bundle cross-file `$ref`s.",
+        "The whole pipeline, pure: spec text in, file CONTENTS out. Touches no filesystem, which is what makes the generator testable without a temp directory and lets `lathe check` diff before writing. Returns the IR document, generated files, every input document read, and a per-operation `reach` map explaining in spec terms which operations can run natively and why the others cannot. Pass `location` and `readDocument` to resolve and bundle cross-file `$ref`s; a local `$ref` outside the spec's directory (or `refRoot`) throws instead of being read, and `realpath` makes that check see through symlinks.",
       example: `import { generate, resolveConfig } from '@pyreon/lathe'
 
 const config = resolveConfig({ input: './openapi.yaml', target: 'multiplatform' })
@@ -247,7 +247,7 @@ if (diff.breaking > 0) console.log(renderContractDiff(diff, 'markdown'))`,
       name: "loadOpenApi",
       kind: "function",
       signature:
-        "loadOpenApi(source: string, options?: { sourceUrl?: string; location?: string; readDocument?: (id: string) => string }): { doc: IrDocument; documents: string[] }",
+        "loadOpenApi(source: string, options?: { sourceUrl?: string; location?: string; readDocument?: (id: string) => string; refRoot?: string; realpath?: (path: string) => string }): { doc: IrDocument; documents: string[] }",
       summary:
         "Parses OpenAPI 3.x or Swagger 2.0 (JSON or YAML text) into the spec-agnostic IR. Every reduction the IR cannot represent is recorded in `doc.notes` with a stable code and a location. Deterministic: models and operations are sorted. Pass `sourceUrl` to resolve a relative server URL. With `location` and `readDocument`, cross-file `$ref`s are resolved and bundled; schemas are hoisted into named models and other values are inlined. Operations carry typed error bodies, while OpenAPI 3.1 webhooks and callbacks land in `doc.webhooks`.",
       example: `import { loadOpenApi } from '@pyreon/lathe'
@@ -257,6 +257,7 @@ console.log(doc.models.length, 'models', doc.operations.length, 'operations')
 for (const note of doc.notes) console.warn(note.code, note.at, note.message)`,
       mistakes: [
         "Calling it with only the text of a split spec. Without `location` and `readDocument`, relative cross-file references cannot be resolved. Remote references are never fetched here; `lathe pull` bundles them.",
+        "Keeping shared parts of a split spec in a SIBLING directory (`$ref: '../shared/x.yaml'`) without `refRoot`. A local `$ref` must stay inside the root spec's directory, so a spec cannot read an arbitrary file into the client; the run throws, naming the reference. Set `refRoot` to the common parent on purpose.",
         "Ignoring `doc.notes`. A spec with a remote `$ref` or a non-JSON media type still produces output — with those pieces typed `unknown`. The note is the only signal. Filter on `noteSeverity(note) === 'loss'` for the ones that change behaviour.",
         "Reading `op.body` as a type. It is `{ mediaType, encoding, type }` — `encoding` (`json` / `form` / `multipart` / `text` / `binary`) decides the call argument (`json:` / `form:` / `multipart:` / `body:`), and a form body carries its per-field `fieldEncoding`.",
         "Reading pointers in Swagger 2 notes against the original file. The document is up-converted first, so a pointer under `#/components/schemas` may have originated under `#/definitions`. Swagger 1.x is refused.",

@@ -78,7 +78,13 @@ export type { HydrationStrategy, IslandMeta, IslandOptions } from './island'
 export { island } from './island'
 
 // Middleware
-export type { Middleware, MiddlewareContext } from './middleware'
+export type {
+  Middleware,
+  MiddlewareContext,
+  ServerErrorHandler,
+  ServerErrorInfo,
+  ServerErrorPhase,
+} from './middleware'
 export { provideRequestLocals, useRequestLocals } from './middleware'
 // Shared string-mode page renderer (handler + zero SSG + zero dev SSR)
 export type {

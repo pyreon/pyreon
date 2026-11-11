@@ -1,5 +1,5 @@
 import { createRef } from '@pyreon/core'
-import { runUntracked, signal, watch } from '@pyreon/reactivity'
+import { computed, runUntracked, signal, watch } from '@pyreon/reactivity'
 import { showAccessorFrom } from './show-accessor'
 import type { TransitionStage, TransitionStateResult } from './types'
 
@@ -60,6 +60,8 @@ const useTransitionState: UseTransitionState = (options) => {
     { immediate: true },
   )
 
+  const shouldMount = computed(() => stage() !== 'hidden')
+
   const complete = () => {
     const current = stage()
     if (current === 'entering') stage.set('entered')
@@ -69,7 +71,11 @@ const useTransitionState: UseTransitionState = (options) => {
   return {
     stage,
     ref: refCallback,
-    shouldMount: () => stage() !== 'hidden',
+    // A computed, so it notifies only when the VERDICT changes. Renderers gate
+    // their `<Show>` on it, and `appear` moves the stage `entered` → `entering`
+    // from inside the element's own ref, while that `<Show>` is still mounting
+    // it: a plain accessor re-ran the `<Show>` there for an unchanged `true`.
+    shouldMount,
     complete,
   }
 }

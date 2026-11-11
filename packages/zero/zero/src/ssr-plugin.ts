@@ -60,6 +60,7 @@ import type { BuildOptions, Plugin } from 'vite'
 import { resolveAdapter } from './adapters'
 import { collectDeployTargets } from './adapters/deploy-scan'
 import { checkDeployCapabilities, EDGE_SERVER_SUBDIR, needsEdgeBundle } from './adapters/deploy-targets'
+import { SSR_SERVER_SUBDIR } from './adapters/contract'
 // Per-mode flag namespaces (shared module — single source of truth for
 // both plugins + `buildSsrBundle`; historically each plugin kept the
 // other's literal in sync BY COMMENT). The SSR plugin's recursive
@@ -110,7 +111,7 @@ const SSR_OUTPUT_FILENAME = 'entry-server.js'
  * Sibling of the client assets so deploy adapters can pick both up
  * from one tree.
  */
-const SSR_OUT_SUBDIR = 'server'
+const SSR_OUT_SUBDIR = SSR_SERVER_SUBDIR
 
 /**
  * Plugin that builds the production SSR/ISR bundle when

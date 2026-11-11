@@ -157,6 +157,9 @@ const Button = el
 - **CSS property naming follows unistyle convention** — `borderWidthTop`, NOT CSS-spec `borderTopWidth`. Property-first.
 - **Pseudo-states are objects** — `hover: {…}`, `focus: {…}`, `active: {…}`, `disabled: {…}` inside `.theme()` callbacks. The bases generate `:hover` / `:focus-visible` / `:active` / `:disabled` CSS.
 - **Sizes are touch-friendly** — menu items, dropdown options, and interactive list items use `t.spacing.small` (8px) vertical / `t.spacing.medium` (12px) horizontal at minimum.
+- **Form controls follow `<PyreonUI mode>`** — their neutral colours come from the mode-aware tones in `factory.ts` (`tones(t, m)`, `fieldSurface`, `toneText`), never straight from `t.color.system.light` / `dark` / `base`, which are light-only. In both modes a control's boundary is ≥ 3:1 and its text ≥ 4.5:1 against the page the mode implies (white, or the theme's `dark.base`); `form-controls-contrast.browser.test.tsx` measures every form control in real Chromium. `<PyreonUI>` does not paint the page: set the app background to match the mode.
+- **`Checkbox` / `Radio` / `Switch` draw their own box, dot and thumb.** Compose `CheckboxIndicator` / `RadioIndicator` / `SwitchThumb` only to replace them; the built-in one steps aside when one is present.
+- **`placeholder: {…}` in `.theme()` styles `::placeholder`** (the `el` base emits it).
 - **Semantic HTML via `.config({ component })`** — sets the outer rocketstyle element tag (e.g. `component: 'nav'` for nav containers). `tag` in `.attrs()` sets the Element's inner tag.
 
 ## Behaviour primitives

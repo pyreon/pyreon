@@ -1,3 +1,6 @@
 import { defineAction } from '@pyreon/zero/actions'
 
-export const echo = defineAction(async (ctx) => ({ echoed: (ctx.json as { msg: string }).msg }))
+// Defined OUTSIDE any page module: no route declares it, so with route
+// middleware in the app the request gate cannot tell which gate applies and
+// refuses it (403) instead of running it ungated.
+export const shared = defineAction(async () => ({ ran: 'SHARED-RAN' }))

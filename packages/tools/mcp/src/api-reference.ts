@@ -333,6 +333,20 @@ store.editor.someMethod()           // works — class methods see real receiver
 - Using markRaw on plain data objects to "skip" deep wrap — for that, use \`shallowReactive\`. markRaw is for class instances and externally-managed shapes`,
   },
 
+  'reactivity/snapshot': {
+    signature: '<T>(value: T) => T',
+    example: `import { createStore, snapshot } from '@pyreon/reactivity'
+
+const store = createStore({ user: { name: 'Ann' }, tags: ['a'] })
+const copy = snapshot(store)   // { user: { name: 'Ann' }, tags: ['a'] }, no proxies
+structuredClone(copy)          // works — structuredClone(store) throws on the Proxy
+store.user.name = 'Bob'        // copy.user.name is still 'Ann'`,
+    notes: `A plain, non-reactive deep copy of a store (or of any value holding stores) — for logging, \`JSON.stringify\`, \`structuredClone\`, \`postMessage\`, undo history or a form's initial values. Reads the raw targets, so it tracks nothing and creates no per-property signals. Copies plain objects and arrays at every depth and unwraps every store proxy it meets (including one assigned into another store); keeps class instances, \`Map\`, \`Set\`, \`Date\` and \`markRaw\` objects by reference, unwrapped. Shared references and cycles are preserved. The equivalent of Svelte \`$state.snapshot\`. See also: createStore, markRaw, reconcile.`,
+    mistakes: `- Calling \`structuredClone(store)\` or \`postMessage(store)\` directly — a Proxy cannot be cloned; pass \`snapshot(store)\`
+- Expecting class instances / \`Map\` / \`Set\` / \`Date\` inside the store to be copied — they are kept by reference; copy them yourself if the snapshot must not share them
+- Using \`snapshot\` to read inside an effect and expecting a re-run on change — it tracks nothing by design; read the store fields directly to subscribe`,
+  },
+
   'reactivity/untrack': {
     signature: '(fn: () => T) => T',
     example: `effect(() => {
@@ -1710,8 +1724,9 @@ console.log(diags[0]?.code) // "react-use-state"`,
     signature: 'migrateReactCode(code: string, filename?: string): MigrationResult',
     example: `import { migrateReactCode } from "@pyreon/compiler/analyze"
 
-const { code, changes } = migrateReactCode(reactSource, "C.tsx")`,
-    notes: 'One-shot React→Pyreon codemod — `useState`→`signal`, `useEffect`→`effect`/`onMount`, `className`→`class`, etc. Returns the rewritten code plus the list of applied `MigrationChange`s. Mechanical only: shapes it cannot safely rewrite are left as `detectReactPatterns` diagnostics for the human. See also: detectReactPatterns.',
+const { code, changes, manual } = migrateReactCode(reactSource, "C.tsx")
+// manual: [{ line, column, message, suggested }] — e.g. a state read at setup level`,
+    notes: 'One-shot React→Pyreon codemod whose output updates: `useState`→`signal` with every read rewritten to `x()` and every setter call to `x.set(v)` / `x.update(fn)`, `useReducer`→`signal` + a `dispatch`, `useEffect`→`effect`/`onMount`, `useMemo`→`computed` (reads called), `useCallback`/`memo`/`forwardRef` unwrapped (the ref arrives as `props.ref`), `useRef(null)`→`createRef()`, `useRef(v)`→`{ current: v }`, a body-level `const` derived from state → `computed`, a `return` that reads state outside JSX → an accessor, `className`/`htmlFor`/text-input `onChange`, `createRoot(el).render(app)`→`mount(app, el)`, `Fragment`→`<>`, router `Link`/`Outlet`. References are resolved lexically, so shadowing locals are left alone. Returns `{ code, diagnostics, changes, manual }`: `manual` lists every pattern it left in place (with its React import kept) or converted with a caveat, each with a reason and a suggestion. See also: detectReactPatterns.',
   },
 
   'compiler/migratePyreonCode': {
@@ -2003,12 +2018,13 @@ const isExactAdmin = useIsActive("/admin", true)  // exact only
   'router/useTypedSearchParams': {
     signature: 'useTypedSearchParams<T extends SearchParamSchema>(schema: T): [get: () => InferSearchParams<T>, set: (updates: Partial<InferSearchParams<T>>) => Promise<NavigationResult>]',
     example: `const [params, setParams] = useTypedSearchParams({ page: "number", q: "string", active: "boolean" })
-params().page    // number (auto-coerced)
-params().q       // string
-setParams({ page: 2 })  // updates URL via router.replace`,
-    notes: `Type-safe search params with auto-coercion from URL strings. Schema keys define parameter names, values define types (\`"string"\`, \`"number"\`, \`"boolean"\`). Returns a \`[get, set]\` TUPLE (like \`useSearchParams\`): \`get()\` reads the coerced values reactively; \`set()\` merges updates and navigates via \`router.replace\` (resolving with the navigation's \`NavigationResult\`). Missing numbers coerce to \`0\`, booleans accept \`"true"\`/\`"1"\`. See also: useSearchParams, useRoute.`,
+params().page ?? 1  // number | undefined (auto-coerced; undefined when absent)
+params().q          // string
+setParams({ page: 2 })  // ?page=2 — other params kept, via router.replace`,
+    notes: `Type-safe search params with auto-coercion from URL strings. Schema keys define parameter names, values define types (\`"string"\`, \`"number"\`, \`"boolean"\`). Returns a \`[get, set]\` TUPLE (like \`useSearchParams\`): \`get()\` reads the coerced values reactively; \`set()\` changes only the params it is given (every other query param and the hash are kept; an \`undefined\` value removes the key) and navigates via \`router.replace\` (resolving with the navigation's \`NavigationResult\`). An absent or non-numeric number reads \`undefined\` (default it with \`?? 1\`), an absent string \`""\`, an absent boolean \`false\`; booleans accept \`"true"\`/\`"1"\`. See also: useSearchParams, useRoute.`,
     mistakes: `- Destructuring an object (\`params.page()\`) — the hook returns a TUPLE: \`const [params, setParams] = useTypedSearchParams(...)\`, read via \`params().page\`
-- Expecting \`set()\` to bypass navigation — it navigates via \`router.replace\`, so guards/blockers apply (check the resolved \`NavigationResult\` if you need to know it committed)`,
+- Expecting \`set()\` to bypass navigation — it navigates via \`router.replace\`, so guards/blockers apply (check the resolved \`NavigationResult\` if you need to know it committed)
+- Reading a \`number\` param without a default — it is \`undefined\` when absent from the URL, not \`0\`: \`params().page ?? 1\``,
   },
 
   'router/useTransition': {
@@ -2117,16 +2133,17 @@ setSearch({ page: "2" })`,
   },
 
   'router/useBlocker': {
-    signature: 'useBlocker(fn: BlockerFn): Blocker',
+    signature: 'useBlocker(fn: BlockerFn, options?: BlockerOptions): Blocker',
     example: `const blocker = useBlocker((to, from) => {
   return form.isDirty() && !confirm('Discard unsaved changes?')
 })
 // later, e.g. after save:
 blocker.remove()`,
-    notes: 'Block navigations while a condition holds. `fn(to, from)` is called before EVERY navigation — including browser Back/Forward, which route through the full pipeline — and returning `true` (or resolving to `true`; async blockers are supported, e.g. `confirm()` dialogs) cancels it. A cancelled browser traversal restores the URL/history position. Returns `{ remove() }` to unregister (auto-removed on component unmount). Also installs a shared ref-counted `beforeunload` handler so tab-close shows the browser confirmation while any blocker is active. See also: useRouter, onBeforeRouteLeave.',
+    notes: `Block navigations while a condition holds. \`fn(to, from)\` is called before EVERY navigation — including browser Back/Forward, which route through the full pipeline — and returning \`true\` (or resolving to \`true\`; async blockers are supported, e.g. \`confirm()\` dialogs) cancels it. A cancelled browser traversal restores the URL/history position. Returns \`{ remove() }\` to unregister (auto-removed on component unmount). Closing or reloading the tab shows the browser's "Leave site?" prompt only when a blocker says to block: the shared \`beforeunload\` handler calls each blocker synchronously with the current route as \`to\` and \`from\` (a blocker returning a Promise counts as blocking, since the browser cannot wait). \`options.beforeUnload\` overrides that: \`true\` / \`false\` always / never prompt, or a function such as \`() => form.isDirty()\` (use it for an async blocker). See also: useRouter, onBeforeRouteLeave.`,
     mistakes: `- Expecting \`proceed()\` / \`reset()\` methods (React Router shape) — Pyreon's blocker is a predicate: return \`true\` to block, \`false\` to allow; \`remove()\` unregisters it
 - Returning \`false\` to block — inverted: \`true\` means BLOCK (it answers "should this navigation be blocked?")
-- Assuming the Back button bypasses blockers — browser traversals run the same pipeline; a blocked Back restores the URL`,
+- Assuming the Back button bypasses blockers — browser traversals run the same pipeline; a blocked Back restores the URL
+- An async blocker without \`beforeUnload\` — the tab-close prompt cannot await it, so it always prompts; pass \`{ beforeUnload: () => isDirty() }\``,
   },
 
   'router/onBeforeRouteLeave': {
@@ -2418,11 +2435,13 @@ export default createHandler({
   routes,
   clientEntry: "/src/entry-client.ts",
   mode: "stream",  // or "string"
+  onError: (error, { phase, request }) => Sentry.captureException(error, { tags: { phase } }),
 })`,
-    notes: 'Build a production SSR handler from your `App`, `routes`, and optional template / client entry / middleware. The template is precompiled once at handler-creation (split into 4 parts to skip three string scans per request); a missing `<!--pyreon-app-->` placeholder throws at creation time, not per request. Middleware runs before render with `ctx.locals` for cross-middleware data passing — return a `Response` to short-circuit the chain. `mode: "stream"` uses `renderToStream` so Suspense boundaries flush out-of-order; `mode: "string"` uses `renderToString` (default). See also: prerender, island, useRequestLocals.',
+    notes: 'Build a production SSR handler from your `App`, `routes`, and optional template / client entry / middleware. The template is precompiled once at handler-creation (split into 4 parts to skip three string scans per request); a missing `<!--pyreon-app-->` placeholder throws at creation time, not per request. Middleware runs before render with `ctx.locals` for cross-middleware data passing — return a `Response` to short-circuit the chain. `mode: "stream"` uses `renderToStream` so Suspense boundaries flush out-of-order; `mode: "string"` uses `renderToString` (default). `onError(error, { request, phase })` receives every unexpected server error (`phase`: `middleware` — including API routes —, `render`, `stream`, `action` from zero server actions, or `reported` via `ctx.reportError`) to forward to Sentry / OpenTelemetry; it runs after the console line, never changes the 500 response, and a throwing hook is caught. See also: prerender, island, useRequestLocals.',
     mistakes: `- Omitting \`<!--pyreon-app-->\` from the custom template — throws at handler-creation, not per request
 - Returning a \`Response\` from middleware and expecting downstream middleware to still run — the chain short-circuits on the first \`Response\`
 - Reading \`ctx.locals\` from inside the component without \`useRequestLocals()\` — the component tree only sees locals when bridged through that hook
+- Expecting \`onError\` to replace the response or to be awaited — it is a reporter: the client always gets the generic 500, and a returned promise is not awaited
 - Forgetting to escape user data inserted into a custom template — \`createHandler\` only escapes its own loader-data injection (\`</script>\` → \`<\\/script>\`); your template content is your responsibility`,
   },
 
@@ -5407,7 +5426,8 @@ can.set({ 'admin.*': true })  // replace all
 can.patch({ 'posts.delete': true })  // merge`,
     notes: 'Create a reactive permissions instance. Returns a callable object — `can(key, context?)` checks a permission reactively (reads as a signal in effects and JSX). Permissions can be booleans or predicate functions `(context?) => boolean`. Supports wildcard keys: `admin.*` (exactly one segment), `admin.**` (any depth below `admin`), `*` (everything); resolution is most-specific-first, so an exact or `**` deny overrides a broader subtree grant. The instance exposes `.not()`, `.all()`, `.any()` for multi-checks, `.assert()` to throw-on-deny, and `.set()` / `.patch()` / `.clear()` for runtime updates. See also: PermissionsProvider, usePermissions, can.assert.',
     mistakes: `- Reading \`can("key")\` outside a reactive scope and expecting updates — the check is a signal read, it only re-evaluates inside \`effect()\`, \`computed()\`, or JSX expression thunks
-- Using a static object instead of a predicate for context-dependent checks — \`'posts.update': true\` always passes, use \`(post) => post.authorId === userId()\` for ABAC
+- Using a static object instead of a predicate for context-dependent checks — \`'posts.update': true\` always passes, use \`(post: Post) => post.authorId === userId()\` for ABAC
+- Leaving a predicate's context parameter unannotated — \`(post) => post.authorId\` sees \`post: unknown\` and fails to typecheck; annotate it with the context type the predicate expects (\`(post: Post) => …\`), which any permission map accepts
 - Forgetting that \`admin.*\` only matches ONE segment — \`admin.users.list\` is NOT matched by \`admin.*\` (only \`admin.users\` is). Use \`admin.**\` to match any depth below \`admin\``,
   },
 
@@ -5864,6 +5884,7 @@ i18n.locale.set('fr')  // switch reactively`,
     mistakes: `- Reading \`t(key)\` outside a reactive scope and expecting updates on locale change — \`t()\` is a reactive signal read, wrap in JSX thunk or \`effect()\`
 - Using \`@pyreon/i18n\` on the backend — use \`@pyreon/i18n/core\` instead, it has zero JSX/core dependencies
 - Forgetting \`fallbackLocale\` — missing keys in the current locale return the key string instead of falling back to another language
+- Writing \`t("shop:title")\` for a key registered in the default namespace (\`messages: { en: { shop: { title } } }\` is \`shop.title\`) — \`ns:key\` reads namespace \`ns\`, which needs \`addMessages(locale, messages, "shop")\` or a loader. A missing key renders the key itself and, in development, warns once with a did-you-mean hint
 - Calling the plural suffix directly — \`t("items_one")\` bypasses selection. Call the BASE key with a \`count\`: \`t("items", { count: 3 })\`; the \`_one\`/\`_other\`/… suffix is chosen by the CLDR plural CATEGORY of \`count\` for the current locale.
 - Defining only \`_one\`/\`_other\` for every language — the plural category is locale-specific (\`Intl.PluralRules\`), not \`count === 1\`. Slavic locales need \`_few\`/\`_many\`, Arabic needs \`_zero\`/\`_two\`; a locale missing its required category falls through to \`_other\`. Provide the per-locale keys (or a custom \`pluralRules\`).
 - \`count\` is the RESERVED key that drives pluralization — passing the number under any other name (\`n\`, \`num\`, \`value\`) interpolates it but does NOT pluralize. Use \`{ count }\`.`,
@@ -6219,7 +6240,8 @@ await flow.layout('layered', { direction: 'RIGHT', nodeSpacing: 50, layerSpacing
 // force/stress/radial/box/rectpacking silently ignore them. nodeSpacing applies to all algorithms.
 const json = flow.toJSON(); flow.fromJSON(json)       // round-trip serialization`,
     notes: 'Create a reactive flow instance. Generic over node data shape — `createFlow<MyData>(...)` returns `FlowInstance<MyData>` so `node.data.kind` narrows correctly without an `[key: string]: unknown` index signature on consumer types. Defaults to `Record<string, unknown>` when no generic is supplied. The returned instance owns signal-native nodes / edges and exposes CRUD, selection, viewport (zoom / pan / fitView), and auto-layout from the built-in engine (pure, synchronous, deterministic — no chunk to fetch). Pan / zoom uses pointer events + CSS transforms — no D3. See also: useFlow, FlowInstance, Flow.',
-    mistakes: `- Calling \`pushHistory()\` before every mutation out of habit — mutations checkpoint themselves (\`autoHistory\`, default on) and a manual push right before one is deduped; set \`autoHistory: false\` only if you want the manual model back.
+    mistakes: `- Calling \`layout()\` without awaiting it and then reading positions or calling \`fitView()\` — the (default) animated layout is still running; \`await flow.layout()\` resolves once the final positions are applied, so \`await flow.layout(); flow.fitView()\` fits the laid-out graph. A later \`layout()\` or \`dispose()\` supersedes a running one (its promise resolves, its result is not applied)
+- Calling \`pushHistory()\` before every mutation out of habit — mutations checkpoint themselves (\`autoHistory\`, default on) and a manual push right before one is deduped; set \`autoHistory: false\` only if you want the manual model back.
 - Reading \`flow.nodes()\` inside an event handler to get a snapshot — that is a TRACKED read; use \`getNodes()\` / \`getEdges()\` / \`getViewport()\` for plain reads.
 - Computing a drop position from \`clientX - rect.left\` by hand — \`screenToFlowPosition\` already folds in the container rect, pan and zoom (and \`flowToScreenPosition\` is its inverse).
 - Passing \`isValidConnection\` as a prop on \`<Flow>\` (React Flow) — here it is a \`createFlow\` config key, alongside \`connectionRadius\`.
@@ -7611,11 +7633,12 @@ function Counter() {
   return <button onClick={() => setCount(count + 1)}>{count}</button>
 }
 \` })`,
-    notes: 'Convert React code to idiomatic Pyreon. Handles `useState` → `signal()`, `useEffect` → `effect()`, `className` → `class`, `onChange` → `onInput`, `useMemo` → `computed()`, React imports → Pyreon imports. Reports per-edit fixable diagnostics so callers can apply or review. See also: validate.',
+    notes: 'Convert React code to Pyreon that updates. `useState` → `signal()` with reads rewritten to `count()` and setter calls to `count.set(v)` / `count.update(fn)`; `useReducer` → `signal()` + `dispatch`; `useEffect` → `effect()` / `onMount()`; `useMemo` → `computed()`; `useCallback` / `memo` / `forwardRef` unwrapped; `useRef(null)` → `createRef()`, `useRef(v)` → `{ current: v }`; a body-level `const` derived from state → `computed()`; `className` → `class`; text-input `onChange` → `onInput`; React imports → Pyreon imports. Anything it cannot convert safely is left in place (React import kept) and listed under "Remaining issues" with the reason, together with whatever `validate` still finds in the output. See also: validate.',
     mistakes: `- Expecting the migration to handle every React feature — currently covers the most common hooks/JSX patterns. Class components, Concurrent React APIs, Suspense boundaries, and React-specific libs (react-router, redux) are NOT migrated automatically; the result will flag remaining issues but won't rewrite them.
 - Running \`migrate_react\` on a file that's already mostly Pyreon — it's idempotent against already-migrated code (nothing flagged → nothing changed), so the cost is just the parse pass; safe to re-run.
 - Forgetting that \`useEffect(() => fn, [deps])\` → \`effect(() => fn)\` changes semantics: Pyreon effects auto-track via signal reads, the explicit deps array is dropped. Verify your effects read the same signals the React deps array listed.
-- Trusting the migration to produce idiomatic Pyreon — the output is CORRECT but mechanical. Pair with \`get_pattern\` after migration to apply Pyreon-native shapes (e.g. \`<Show when={() => …}>\` instead of ternaries; \`<For>\` instead of \`.map()\`).`,
+- Applying the output without reading "Remaining issues" — that list is where the tool says what it did NOT convert (a state read at setup level, \`useId\`, \`Context.Provider\`, destructured props, \`.map()\` lists) and those lines still behave like React.
+- Trusting the migration to produce idiomatic Pyreon — the output updates but is mechanical. Pair with \`get_pattern\` after migration to apply Pyreon-native shapes (e.g. \`<Show when={() => …}>\` instead of ternaries; \`<For>\` instead of \`.map()\`).`,
   },
 
   'mcp/migrate_pyreon': {
@@ -8205,7 +8228,7 @@ themeToCssVars(theme, { units: { mySizes: 'rem' } })`,
     notes: 'Autogenerate CSS custom properties from a plain theme JSON. Returns `vars` (same-shape tree with every eligible leaf replaced by a `var(--px-…)` reference string — plain strings, so they flow through the entire unistyle value pipeline untouched), `css` (a ready-to-inject `:root { … }` block), and `registry` (`varName → emitted value` for consumers that cannot evaluate `var()`, e.g. document export). Units are baked at EMISSION using the same `value()` conversion the pipeline applies today: `spacing.small: 8` emits `--px-spacing-small: 0.5rem`, so themes stay authored in pixels. Conventional length keys (`spacing`/`fontSize`/`headingSize`/`elementSize`/`borderRadius` → rem, `borderWidth` → px) convert by default; everything else emits verbatim so unitless scales (`lineHeight`, `ratio`, `zIndex`) keep working in `calc()` multiplication. Pure + WeakMap-cached per theme identity — repeated calls return the SAME result object. See also: enrichTheme, value.',
     mistakes: `- Doing JS arithmetic on a var leaf (\`vars.spacing.small * 2\` → NaN) — compose with native CSS calc instead: \`\` \`calc(\${vars.spacing.small} * 2)\` \`\`
 - Expecting \`breakpoints\` / \`rootSize\` to be tokenized — they are excluded by design (\`@media\` queries cannot read \`var()\`); JS consumes them at build/render time
-- Using a var leaf for \`backgroundImage\` — CSS forbids \`var()\` inside \`url(…)\`; keep image URLs as raw values
+- Pointing a \`backgroundImage\` var leaf at a bare path — \`backgroundImage\` passes \`var()\` through verbatim (CSS cannot resolve \`var()\` inside \`url(…)\`), so the variable must hold a complete image such as \`url(/a.png)\` or a gradient
 - Forgetting to inject \`css\` — the function is pure; nothing lands on the page until the \`:root\` block reaches a style sink (\`<style>\` tag, \`sheet.injectRules\`, \`createGlobalStyle\`)
 - Re-creating the theme object per render — results are WeakMap-cached by theme IDENTITY; a fresh object every call re-walks the tree and defeats downstream identity-keyed caches
 - Assuming a custom top-level key converts to rem — only the conventional length keys convert by default; declare \`units: { myScale: "rem" }\` for custom scales`,
@@ -11742,10 +11765,10 @@ resolveModeVar('#ff0000', 'dark')              // '#ff0000' — passthrough`,
 
 // Swap the underlying element:
 <Container component="main">…</Container>`,
-    notes: 'Outermost grid boundary. Renders a centered flex column (`width: 100%`, auto horizontal margins) with a responsive `max-width` resolved from the `width` prop → `theme.grid.container` → `theme.coolgrid.container`, and provides the grid config (`columns`, `size`, `gap`, `padding`, `gutter`, `colCss`/`colComponent`, `rowCss`/`rowComponent`, `contentAlignX`) to descendant Row / Col via context. `ValueType` = `number | number[] | { [breakpoint]: number }` (responsive); `width` also accepts a function that receives the theme-resolved container-width record and returns the final `ContainerWidth`. `columns` defaults to the theme value (12 in the default theme). See also: Row, Col, Provider, theme.',
+    notes: 'Outermost grid boundary. Renders a centered flex column (`width: 100%`, auto horizontal margins) with a responsive `max-width` resolved from the `width` prop → `theme.grid.container` → `theme.coolgrid.container` → the coolgrid default widths (only when the theme has no breakpoints of its own), and provides the grid config (`columns`, `size`, `gap`, `padding`, `gutter`, `colCss`/`colComponent`, `rowCss`/`rowComponent`, `contentAlignX`) to descendant Row / Col via context. `ValueType` = `number | number[] | { [breakpoint]: number }` (responsive); `width` also accepts a function that receives the theme-resolved container-width record and returns the final `ContainerWidth`. `columns` defaults to the theme value, else 12. A theme with no `breakpoints` renders against the coolgrid default xs–xl breakpoints, so `<PyreonUI theme={appTheme}>` works without any grid keys. See also: Row, Col, Provider, theme.',
     mistakes: `- Setting a non-default \`columns\` on a Row instead of the Container — it works for that Row only, but the visual cascade gets hard to reason about; keep \`columns\` at Container level
 - Expecting \`gutter\` to be horizontal container padding — \`gutter\` feeds the Row's VERTICAL margins (\`spacingY = gutter − gap/2\`); the Container itself only sets a responsive max-width + auto horizontal centering
-- Rendering without a theme context — grid defaults (\`columns\`, container widths) resolve from \`theme.grid.*\` / \`theme.coolgrid.*\`, so mount \`<PyreonUI>\` (or coolgrid \`Provider\`) above the Container
+- Expecting a custom breakpoint scale to pick up the default container widths — they are keyed xs–xl, so a theme with its own \`breakpoints\` but no \`grid.container\` gets no max-width; add \`grid.container\` keyed by your breakpoint names
 - Using CSS keyword values for \`contentAlignX\` ('space-between') — the accepted keys are camelCase: 'spaceAround' / 'spaceBetween' / 'spaceEvenly' (plus 'center' / 'left' / 'right')`,
   },
 
@@ -11842,7 +11865,7 @@ const AnimatedList = kinetic('ul').preset(fade).group()          // keyed list
 
 // Group mode — keyed children via accessor, no show prop:
 <AnimatedList>{() => todos().map((t) => <li key={t.id}>{t.text}</li>)}</AnimatedList>`,
-    notes: `Create a renderable, chainable animated component in transition mode. Every chain method returns a NEW component (immutable) — define once at module scope and reuse. Style methods (\`.enter\`/\`.enterTo\`/\`.enterTransition\` + \`leave\` siblings) set inline-style phases; \`.enterClass\`/\`.leaveClass({ active, from, to })\` set class phases (Tailwind-friendly); \`.preset(p)\` spreads a \`Preset\`'s fields; \`.on(callbacks)\` attaches lifecycle callbacks; \`.config(opts)\` sets mode-scoped options. Mode switches: \`.collapse(opts?)\` (height 0 ↔ auto, measures \`scrollHeight\`), \`.stagger({ interval?, reverseLeave? })\` (sequenced children), \`.group()\` (keyed-list enter/exit, no \`show\` prop). Rendered props: \`show\` (not in group mode) — an accessor \`() => boolean\`, a boolean, or ABSENT (absent = always shown; use \`appear\` to animate the entrance). A compiled \`show={visible()}\` stays reactive because the compiler emits it as a live getter, and kinetic reads it per call rather than once at setup; \`appear\` (default false), \`timeout\` (default 5000ms), mode extras (\`unmount\` transition-only default true, \`transition\` collapse-only default "height 300ms ease", \`interval\` stagger-only default 50, \`reverseLeave\` stagger-only), the four callbacks, plus any HTML attr — forwarded to the rendered tag with reactivity preserved. See also: KineticComponent, presets, useTransitionState, @pyreon/kinetic-presets.`,
+    notes: `Create a renderable, chainable animated component in transition mode. Every chain method returns a NEW component (immutable) — define once at module scope and reuse. Style methods (\`.enter\`/\`.enterTo\`/\`.enterTransition\` + \`leave\` siblings) set inline-style phases; \`.enterClass\`/\`.leaveClass({ active, from, to })\` set class phases (Tailwind-friendly); \`.preset(p)\` spreads a \`Preset\`'s fields; \`.on(callbacks)\` attaches lifecycle callbacks; \`.config(opts)\` sets mode-scoped options. Mode switches: \`.collapse(opts?)\` (height 0 ↔ auto, measures \`scrollHeight\`), \`.stagger({ interval?, reverseLeave? })\` (sequenced children), \`.group()\` (keyed-list enter/exit, no \`show\` prop). Rendered props: \`show\` (not in group mode) — an accessor \`() => boolean\`, a boolean, or ABSENT (absent = always shown; use \`appear\` to animate the entrance). A compiled \`show={visible()}\` stays reactive because the compiler emits it as a live getter, and kinetic reads it per call rather than once at setup; \`appear\` (default false), \`timeout\` (default 5000ms), mode extras (\`unmount\` transition-only default true, \`transition\` collapse-only default "height 300ms ease", \`interval\` stagger-only default 50, \`reverseLeave\` stagger-only), the four callbacks, plus any HTML attr — forwarded to the rendered tag with reactivity preserved — and \`ref\` (a callback ref or a ref object), which receives the rendered element in every mode, alongside kinetic's own internal ref (the scroll-reveal pattern \`useIntersection(() => node)\` depends on it). See also: KineticComponent, presets, useTransitionState, @pyreon/kinetic-presets.`,
     mistakes: `- Expecting \`show={true}\` (a literal) or a value computed once at module scope to animate later — only a signal-derived value re-runs enter/leave; \`show={visible()}\`, \`show={visible}\` and \`show={() => visible()}\` are all live, a literal is not
 - Omitting \`show\` on a preset used as a plain entrance and expecting it to animate — absent \`show\` means always shown; add \`appear\` to run the enter animation on mount
 - Building \`kinetic('div').preset(...)\` inside a render body — chaining is immutable and re-creates the component on every call; define animated components once at module scope
@@ -12633,7 +12656,7 @@ report.issues.filter((i) => i.severity === 'error')`,
   // <gen-docs:api-reference:start @pyreon/lathe>
 
   'lathe/generate': {
-    signature: 'generate(specText: string, config: ResolvedConfig, options?: { sourceUrl?: string; location?: string; readDocument?: (id: string) => string }): GenerateResult',
+    signature: 'generate(specText: string, config: ResolvedConfig, options?: { sourceUrl?: string; location?: string; readDocument?: (id: string) => string; refRoot?: string; realpath?: (path: string) => string }): GenerateResult',
     example: `import { generate, resolveConfig } from '@pyreon/lathe'
 
 const config = resolveConfig({ input: './openapi.yaml', target: 'multiplatform' })
@@ -12642,7 +12665,7 @@ const { doc, files, reach } = generate(specText, config)
 for (const [id, r] of reach) {
   if (r.reach === 'web-only') console.warn(id, r.reason)
 }`,
-    notes: 'The whole pipeline, pure: spec text in, file CONTENTS out. Touches no filesystem, which is what makes the generator testable without a temp directory and lets `lathe check` diff before writing. Returns the IR document, generated files, every input document read, and a per-operation `reach` map explaining in spec terms which operations can run natively and why the others cannot. Pass `location` and `readDocument` to resolve and bundle cross-file `$ref`s.',
+    notes: `The whole pipeline, pure: spec text in, file CONTENTS out. Touches no filesystem, which is what makes the generator testable without a temp directory and lets \`lathe check\` diff before writing. Returns the IR document, generated files, every input document read, and a per-operation \`reach\` map explaining in spec terms which operations can run natively and why the others cannot. Pass \`location\` and \`readDocument\` to resolve and bundle cross-file \`$ref\`s; a local \`$ref\` outside the spec's directory (or \`refRoot\`) throws instead of being read, and \`realpath\` makes that check see through symlinks.`,
     mistakes: `- Passing a relative \`baseUrl\` (or omitting \`servers\` from the spec) and expecting native output — PMTC bakes the request URL at compile time, so a relative base makes EVERY operation web-only. The reach report names this, but only if you read it.
 - Assuming the \`.native.tsx\` modules replace the web output. They are ADDITIVE: the web files are byte-identical whether the target is \`web\` or \`multiplatform\`.
 - Editing generated files. Every file carries a DO-NOT-EDIT banner and is overwritten on the next run; change the spec or the emitter.
@@ -12757,7 +12780,7 @@ if (diff.breaking > 0) console.log(renderContractDiff(diff, 'markdown'))`,
   },
 
   'lathe/loadOpenApi': {
-    signature: 'loadOpenApi(source: string, options?: { sourceUrl?: string; location?: string; readDocument?: (id: string) => string }): { doc: IrDocument; documents: string[] }',
+    signature: 'loadOpenApi(source: string, options?: { sourceUrl?: string; location?: string; readDocument?: (id: string) => string; refRoot?: string; realpath?: (path: string) => string }): { doc: IrDocument; documents: string[] }',
     example: `import { loadOpenApi } from '@pyreon/lathe'
 
 const { doc } = loadOpenApi(await readFile('./openapi.yaml', 'utf8'))
@@ -12765,6 +12788,7 @@ console.log(doc.models.length, 'models', doc.operations.length, 'operations')
 for (const note of doc.notes) console.warn(note.code, note.at, note.message)`,
     notes: 'Parses OpenAPI 3.x or Swagger 2.0 (JSON or YAML text) into the spec-agnostic IR. Every reduction the IR cannot represent is recorded in `doc.notes` with a stable code and a location. Deterministic: models and operations are sorted. Pass `sourceUrl` to resolve a relative server URL. With `location` and `readDocument`, cross-file `$ref`s are resolved and bundled; schemas are hoisted into named models and other values are inlined. Operations carry typed error bodies, while OpenAPI 3.1 webhooks and callbacks land in `doc.webhooks`.',
     mistakes: `- Calling it with only the text of a split spec. Without \`location\` and \`readDocument\`, relative cross-file references cannot be resolved. Remote references are never fetched here; \`lathe pull\` bundles them.
+- Keeping shared parts of a split spec in a SIBLING directory (\`$ref: '../shared/x.yaml'\`) without \`refRoot\`. A local \`$ref\` must stay inside the root spec's directory, so a spec cannot read an arbitrary file into the client; the run throws, naming the reference. Set \`refRoot\` to the common parent on purpose.
 - Ignoring \`doc.notes\`. A spec with a remote \`$ref\` or a non-JSON media type still produces output — with those pieces typed \`unknown\`. The note is the only signal. Filter on \`noteSeverity(note) === 'loss'\` for the ones that change behaviour.
 - Reading \`op.body\` as a type. It is \`{ mediaType, encoding, type }\` — \`encoding\` (\`json\` / \`form\` / \`multipart\` / \`text\` / \`binary\`) decides the call argument (\`json:\` / \`form:\` / \`multipart:\` / \`body:\`), and a form body carries its per-field \`fieldEncoding\`.
 - Reading pointers in Swagger 2 notes against the original file. The document is up-converted first, so a pointer under \`#/components/schemas\` may have originated under \`#/definitions\`. Swagger 1.x is refused.

@@ -30,6 +30,7 @@ import { pathToFileURL } from 'node:url'
 import { withSilent } from '@pyreon/reactivity'
 import type { BuildOptions, Plugin } from 'vite'
 import { resolveAdapter } from './adapters'
+import { HYBRID_BUILD_OUTPUTS, SSG_RENDERER_SUBDIR, SSR_SERVER_SUBDIR, EDGE_SERVER_SUBDIR } from './adapters/contract'
 import {
   SSG_BUILD_FLAG,
   SSR_BUILD_FLAG,
@@ -753,6 +754,83 @@ function assertNoPathCollisions(paths: readonly string[]): void {
   }
 }
 
+/** A prerendered route whose output would land under a reserved top-level name. */
+export interface ReservedOutputCollision {
+  path: string
+  /** The file the route would write, relative to the output dir */
+  target: string
+  /** The reserved name it lands under */
+  name: string
+}
+
+/**
+ * Prerendered routes whose output would land under a top-level name the build
+ * or the adapter writes into the output dir (#4259). Format-aware: under
+ * `ssg.format: 'file'` the route `/server` writes `server.html`, which no
+ * output owns, so it is not a collision. Compared case-insensitively, because
+ * a case-insensitive file system (macOS, Windows) merges `Server/` and
+ * `server/`.
+ *
+ * @internal Exposed via `_internal.findReservedOutputCollisions` for unit tests.
+ */
+export function findReservedOutputCollisions(
+  distDir: string,
+  paths: readonly string[],
+  format: SsgFormat,
+  reserved: readonly string[],
+): ReservedOutputCollision[] {
+  const names = new Map(reserved.map((n) => [n.toLowerCase(), n]))
+  const out: ReservedOutputCollision[] = []
+  for (const path of paths) {
+    for (const file of selectSsgTargets(distDir, path, format)) {
+      const target = relative(distDir, file).split(sep).join('/')
+      const name = names.get((target.split('/')[0] as string).toLowerCase())
+      if (name !== undefined) out.push({ path, target, name })
+    }
+  }
+  return out
+}
+
+/** What each name zero reserves itself holds, for the error message. */
+const BUILD_OUTPUT_OWNERS: Record<string, string> = {
+  [SSR_SERVER_SUBDIR]: 'the SSR server bundle',
+  [EDGE_SERVER_SUBDIR]: 'the edge server bundle',
+  [SSG_RENDERER_SUBDIR]: 'the prerender renderer',
+  '.vite': "Vite's build manifest",
+}
+
+/**
+ * Fail the build when a prerendered route would be written under a reserved
+ * output name. Before this, the build listed the route in
+ * `_pyreon-ssg-paths.json` and printed `○ ssg`, then the SSR sub-build or the
+ * adapter's staging overwrote or dropped its HTML and the route silently
+ * server-rendered.
+ *
+ * @internal Exposed via `_internal.assertNoReservedOutputCollisions` for unit tests.
+ */
+function assertNoReservedOutputCollisions(
+  distDir: string,
+  paths: readonly string[],
+  format: SsgFormat,
+  hybrid: boolean,
+  adapter: { name: string; reservedOutputs?: readonly string[] | undefined },
+): void {
+  const own = hybrid ? HYBRID_BUILD_OUTPUTS : [SSG_RENDERER_SUBDIR, '.vite']
+  const adapterNames = hybrid ? (adapter.reservedOutputs ?? []) : []
+  const collisions = findReservedOutputCollisions(distDir, paths, format, [...own, ...adapterNames])
+  if (collisions.length === 0) return
+  const outDirName = distDir.split(sep).pop() ?? 'dist'
+  const lines = collisions.map((c) => {
+    const owner = BUILD_OUTPUT_OWNERS[c.name] ?? `the ${adapter.name} adapter's deploy output`
+    return `  - '${c.path}' → ${outDirName}/${c.target} is under "${c.name}" (${owner})`
+  })
+  throw new Error(
+    `[Pyreon] ${collisions.length} prerendered route(s) would be written where the build puts its own output:\n${lines.join('\n')}\n` +
+      `Each page's HTML would be overwritten or dropped while the route stayed listed as prerendered, so it would silently server-render. ` +
+      `Rename the route (for example '/${collisions[0]!.name.replace(/^\./, '')}-page'), or give it renderMode 'ssr' so the server renders it.`,
+  )
+}
+
 function formatPathCollisionError(duplicates: readonly string[]): string {
   const list = duplicates.map((p) => `  - ${p}`).join('\n')
   return `[Pyreon] SSG path collision — ${duplicates.length} URL(s) resolved by multiple routes:\n${list}\nThis happens when a static route + getStaticPaths return overlap, or two getStaticPaths enumerators produce the same URL. Inspect your routes tree and ensure each URL is produced by exactly one route.`
@@ -1423,7 +1501,7 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
       _resetMkdirCache()
 
       try {
-      const ssrOutDir = join(distDir, '.zero-ssg-server')
+      const ssrOutDir = join(distDir, SSG_RENDERER_SUBDIR)
       const indexHtmlPath = join(distDir, 'index.html')
 
       if (!existsSync(indexHtmlPath)) {
@@ -1655,6 +1733,22 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
           await rm(ssrOutDir, { recursive: true, force: true })
           return
         }
+      }
+
+      // #4259 — a prerendered page under a name the build or adapter owns
+      // (`/server`, `/client`, …) would be lost after this pass. Fail now,
+      // naming the route, instead of listing a page that will not exist.
+      try {
+        assertNoReservedOutputCollisions(
+          distDir,
+          [...renderablePaths, ...spaShellPaths],
+          config.ssg?.format ?? 'directory',
+          hybrid,
+          resolveAdapter(config),
+        )
+      } catch (collision) {
+        await rm(ssrOutDir, { recursive: true, force: true })
+        throw collision
       }
 
       let pages = 0
@@ -2410,6 +2504,8 @@ export function needsSpaFallbackShell(
 }
 
 export const _internal = {
+  findReservedOutputCollisions,
+  assertNoReservedOutputCollisions,
   resolvePaths,
   needsSpaFallbackShell,
   autoDetectStaticPaths,

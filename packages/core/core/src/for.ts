@@ -18,8 +18,11 @@ export interface ForProps<T> {
    * @example
    * <For each={items}>{r => <li>{r.label}</li>}</For>           // static
    * <For each={() => store.items()}>{r => <li>...</li>}</For>   // reactive
+   *
+   * `readonly` arrays are accepted in both forms (`as const` data, readonly
+   * props, JSON imported `as const`): For only reads the list, never mutates it.
    */
-  each: T[] | (() => T[])
+  each: readonly T[] | (() => readonly T[])
   /** Keying function — use `by` not `key` (JSX extracts `key` for VNode reconciliation). */
   by: (item: T) => string | number
   /**

@@ -329,7 +329,9 @@ function TodoList() {
 }
 ```
 
-Every child **must carry a unique `key`** — group mode keys its enter/exit diff on it. Children without a key are skipped.
+Every child **should carry a unique, stable `key`** — group mode keys its enter/exit diff on it. A child without a key is tracked by its position (with a dev warning), which animates the wrong row when the list changes; a duplicate key renders once.
+
+Rows that stay are kept, not rebuilt: a reorder moves them, and each keeps its own transition state. As with `<For>`, a row keeps the element from the render that introduced its key, so drive content that changes inside a row from signals (`{() => t.done() ? '✓' : ''}`), not by returning a new element for the same key.
 
 | Prop / option | Type | Default | Description |
 | --- | --- | --- | --- |
@@ -373,7 +375,7 @@ For a component that starts **hidden** at SSR/mount, `unmount: true` no longer t
 
 ## Reactive Children and the Compiler
 
-The Pyreon compiler may rewrite `<KineticList>{children}</KineticList>` so `children` arrives as a deferred accessor function rather than a plain `VNode[]`. kinetic handles this internally (via `resolveChildren`) — its renderers unwrap the accessor before iterating, so the documented APIs above work whether the compiler wraps children or not. kinetic deliberately **snapshots** children at render time for stagger and transition modes (animation state is built once per item); for a list that changes at runtime, use [group mode](#group-mode) with an accessor as shown above.
+The Pyreon compiler changes the shape children arrive in. It may forward `<KineticList>{children}</KineticList>` as a deferred accessor (which, around a group's own `() => items.map(…)`, is an accessor returning an accessor), and it lowers literal markup such as `<li>Install</li>` to a pre-built element rather than a VNode. kinetic's renderers unwrap every accessor level, flatten arrays and fragments, and animate pre-built elements as well as VNodes, so the documented APIs above work whatever the compiler emits. Transition, collapse and stagger modes **snapshot** their children at render time (animation state is built once per item); for a list that changes at runtime, use [group mode](#group-mode) with an accessor as shown above.
 
 ## Hooks
 

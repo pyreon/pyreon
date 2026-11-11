@@ -1,6 +1,6 @@
 import type { VNode } from '@pyreon/core'
-import { h } from '@pyreon/core'
-import { signal } from '@pyreon/reactivity'
+import { For, h } from '@pyreon/core'
+import { createGroupPresence, type PresenceEntry } from '../group-presence'
 import { readLive, resolveLive } from '../live-prop'
 import type { TransitionCallbacks } from '../types'
 import TransitionItem from './TransitionItem'
@@ -20,111 +20,50 @@ type GroupRendererProps = {
    * When passed as an accessor, GroupRenderer tracks changes and
    * animates entering/leaving children automatically.
    */
-  children: VNode[] | (() => VNode[])
-}
-
-type KeyedChild = { key: string | number; element: VNode }
-
-const isVNode = (child: unknown): child is VNode =>
-  child != null && typeof child === 'object' && 'type' in (child as object)
-
-const getKeyedChildren = (children: VNode[]): KeyedChild[] => {
-  const result: KeyedChild[] = []
-  for (const child of children) {
-    if (isVNode(child)) {
-      const key = (child as VNode & { key?: string | number }).key
-      if (key != null) {
-        result.push({ key, element: child })
-      }
-    }
-  }
-  return result
+  children: VNode[] | (() => unknown)
 }
 
 /**
  * Renders children with key-based enter/exit animation (no `show` prop).
- * Children that appear (new key) animate in. Children that disappear
- * (removed key) stay in DOM during leave animation, then unmount.
- * config.tag wraps all children as a container element.
+ * A new key's row animates in; a removed key's row stays in the DOM while it
+ * animates out, then unmounts. Rows that stay are kept, not rebuilt, so each
+ * keeps its own transition state; a reorder moves them. config.tag wraps all
+ * children as a container element.
  *
  * In Pyreon, components run once. Pass children as a reactive accessor
- * `() => VNode[]` for the group to detect changes and animate entries/exits.
+ * `() => VNode[]` (each child with a stable `key`) for the group to see
+ * changes. As with `<For>`, a row keeps the element from the render that
+ * introduced its key; drive changing row content from signals.
  */
-const GroupRenderer = ({
-  config,
-  htmlProps,
-  appear,
-  timeout,
-  callbacks,
-  children,
-}: GroupRendererProps): VNode | null => {
-  const effectiveAppear = appear ?? config.appear ?? false
+const GroupRenderer = (props: GroupRendererProps): VNode | null => {
+  const config = props.config
+  // Construction-time (a first-mount question), read once.
+  const effectiveAppear = props.appear ?? config.appear ?? false
   // Accessor: the deadline is re-armed per cycle, so it is resolved at use.
-  const effectiveTimeout = () => resolveLive(timeout) ?? config.timeout ?? 5000
+  const effectiveTimeout = () => resolveLive(props.timeout) ?? config.timeout ?? 5000
 
-  const prevMap = new Map<string | number, VNode>()
-  const leavingMap = new Map<string | number, VNode>()
-  const forceUpdate = signal(0)
+  // `props.children` is read through the getter on every change, so whatever
+  // wrapping the compiler added (an accessor returning the user's accessor) is
+  // unwrapped by the presence model's `flattenChildren`.
+  const { entries, leave } = createGroupPresence(() => props.children)
 
-  // Normalize children to an accessor
-  const getChildren = typeof children === 'function' ? (children as () => VNode[]) : () => children
-
-  // Track initial keys for appear animation logic
-  const initialKeyed = getKeyedChildren(getChildren())
-  const initialKeys = new Set(initialKeyed.map((c) => c.key))
-  for (const { key, element } of initialKeyed) {
-    prevMap.set(key, element)
+  const afterLeave = (entry: PresenceEntry) => {
+    leave(entry)
+    readLive<TransitionCallbacks['onAfterLeave']>(props.callbacks, 'onAfterLeave')?.()
   }
 
-  const handleAfterLeave = (key: string | number) => {
-    leavingMap.delete(key)
-    readLive<TransitionCallbacks['onAfterLeave']>(callbacks, 'onAfterLeave')?.()
-    forceUpdate.update((c) => c + 1)
-  }
-
-  // Reactive accessor — re-evaluates when children() or forceUpdate changes
-  return (() => {
-    forceUpdate()
-
-    const currentChildren = getChildren()
-    const currentKeyed = getKeyedChildren(currentChildren)
-    const currentMap = new Map<string | number, VNode>()
-    for (const { key, element } of currentKeyed) {
-      currentMap.set(key, element)
-    }
-
-    // Detect leaving children
-    for (const [key, child] of prevMap) {
-      if (!currentMap.has(key) && !leavingMap.has(key)) {
-        leavingMap.set(key, child)
-      }
-    }
-
-    // Cancel leave if child reappears
-    for (const key of currentMap.keys()) {
-      leavingMap.delete(key)
-    }
-
-    // Update prev for next diff
-    prevMap.clear()
-    for (const [key, element] of currentMap) {
-      prevMap.set(key, element)
-    }
-
-    // Merge current + leaving
-    const allEntries: KeyedChild[] = [...currentKeyed]
-    for (const [key, element] of leavingMap) {
-      allEntries.push({ key, element })
-    }
-
-    const groupedChildren = allEntries.map(({ key, element }) => {
-      const isInitial = initialKeys.has(key)
-      const isShowing = currentMap.has(key)
-
-      return (
+  // By reference — `{ ...htmlProps }` would value-copy and freeze any
+  // reactive HTML attr the kinetic split preserved as a getter.
+  return h(
+    config.tag,
+    props.htmlProps,
+    h(For as never, {
+      each: entries,
+      by: (entry: PresenceEntry) => entry.key,
+      children: (entry: PresenceEntry) => (
         <TransitionItem
-          show={() => isShowing}
-          appear={isInitial ? effectiveAppear : true}
+          show={() => entry.show()}
+          appear={entry.initial ? effectiveAppear : true}
           timeout={effectiveTimeout}
           enterStyle={config.enterStyle}
           enterToStyle={config.enterToStyle}
@@ -138,17 +77,13 @@ const GroupRenderer = ({
           leave={config.leave}
           leaveFrom={config.leaveFrom}
           leaveTo={config.leaveTo}
-          onAfterLeave={() => handleAfterLeave(key)}
+          onAfterLeave={() => afterLeave(entry)}
         >
-          {element}
+          {entry.element}
         </TransitionItem>
-      )
-    })
-
-    // By reference — `{ ...htmlProps }` would value-copy and freeze any
-    // reactive HTML attr the kinetic split preserved as a getter.
-    return h(config.tag, htmlProps, ...groupedChildren)
-  }) as unknown as VNode
+      ),
+    }),
+  )
 }
 
 export default GroupRenderer

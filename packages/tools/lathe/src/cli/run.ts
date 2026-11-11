@@ -14,6 +14,7 @@ import {
   type PluginName,
   type ResolvedConfig,
   type ValidatorName,
+  validRefOrigin,
 } from "../core/config";
 import { ALL_CLIENTS } from "../emit/client-runtime";
 import { ALL_VALIDATORS } from "../emit/validator";
@@ -83,6 +84,8 @@ export interface Argv {
   config?: string | undefined;
   /** `pull` only: extra request headers, `Name: value`. Repeatable. */
   headers: string[];
+  /** `pull` only: other origins a referenced document may come from. Repeatable. */
+  refOrigins: string[];
   /** `pull` only: sent as `Authorization: Bearer <token>`. */
   token?: string | undefined;
   strictNative: boolean;
@@ -154,6 +157,7 @@ const FLAGS: Readonly<Record<string, "bool" | "value">> = {
   "--plugins": "value",
   "--config": "value",
   "--header": "value",
+  "--ref-origin": "value",
   "--token": "value",
   "--format": "value",
   "--from": "value",
@@ -169,6 +173,7 @@ export function parseArgv(args: readonly string[]): Argv {
   const out: Argv = {
     command: "help",
     headers: [],
+    refOrigins: [],
     strictNative: false,
     failOnBreaking: false,
     json: false,
@@ -296,6 +301,13 @@ export function parseArgv(args: readonly string[]): Argv {
           out.headers.push(value as string);
         }
         break;
+      case "--ref-origin":
+        try {
+          out.refOrigins.push(validRefOrigin(value as string));
+        } catch (err) {
+          out.errors.push((err as Error).message.replace("[Pyreon] lathe: refOrigins entry", "`--ref-origin`"));
+        }
+        break;
       case "--token":
         out.token = value;
         break;
@@ -364,9 +376,9 @@ export function parseArgv(args: readonly string[]): Argv {
   }
   if (
     out.command !== "pull" &&
-    (out.headers.length > 0 || out.token !== undefined)
+    (out.headers.length > 0 || out.token !== undefined || out.refOrigins.length > 0)
   ) {
-    out.errors.push("`--header` and `--token` only apply to `lathe pull`.");
+    out.errors.push("`--header`, `--token` and `--ref-origin` only apply to `lathe pull`.");
   }
   if (out.format !== undefined && out.command !== "diff") {
     out.errors.push("`--format` only applies to `lathe diff`.");
@@ -421,6 +433,11 @@ function hint(input: string, candidates: readonly string[]): string {
 
 export interface Fs {
   read(path: string): string;
+  /**
+   * The real path of `path` (symlinks resolved), so the `refRoot` check
+   * compares real locations. Optional: without it that check is lexical.
+   */
+  realpath?(path: string): string;
   write(path: string, contents: string): void;
   exists(path: string): boolean;
   mkdirp(path: string): void;
@@ -516,6 +533,8 @@ Pull options
   --header "Name: value"         send a request header (repeatable)
   --token <token>                send \`Authorization: Bearer <token>\`
                                  (default: $LATHE_TOKEN when set)
+  --ref-origin <origin>          let referenced documents come from this origin
+                                 too (repeatable; \`*\` = any public origin)
 
 Paths in pyreon.config.* are relative to the config file; paths on the command
 line are relative to the working directory.
@@ -804,11 +823,16 @@ async function runChecked(
       const text = fs.read(config.input);
       const remoteDocuments =
         config.remoteRefs === 'fetch'
-          ? await fetchRemoteParts(text, config.input, (id) => fs.read(id), config.remoteHeaders, remoteCacheDir(fs))
+          ? await fetchRemoteParts(text, config.input, (id) => fs.read(id), config.remoteHeaders, remoteCacheDir(fs), {
+              refRoot: config.refRoot,
+              realpath: realpathOf(fs),
+              refOrigins: config.refOrigins,
+            })
           : undefined;
       const result = await generateAsync(text, config, {
         location: config.input,
         readDocument: (id) => fs.read(id),
+        realpath: realpathOf(fs),
         remoteDocuments,
       });
       // Formatted BEFORE the comparison below, so formatted output that was
@@ -1071,4 +1095,10 @@ function compareSurface(
 ): SurfaceChange[] {
   const path = fs.join(output, "api-surface.json");
   return diffCommittedSurface(fs.exists(path) ? fs.read(path) : undefined, now);
+}
+
+/** `fs.realpath`, bound -- or `undefined` for an fs without one. */
+function realpathOf(fs: Fs): ((path: string) => string) | undefined {
+  const { realpath } = fs;
+  return realpath ? (p) => realpath.call(fs, p) : undefined;
 }

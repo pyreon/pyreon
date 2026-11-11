@@ -105,6 +105,8 @@ Opt-in. With the flag off, output is identical to classic mode.
 - `:hover` styles are unconditional; only `cursor: pointer` depends on `onClick` / `href`.
 - CSS property names follow unistyle (`borderWidthTop`, not `borderTopWidth`).
 - Theme augmentation lives in `@pyreon/ui-theme` (`ThemeDefault extends Theme`, `StylesDefault extends ITheme`). Apps must not re-augment.
+- The theme's neutral palette (`color.system.light` / `dark` / `base`) is light-only. Form controls take neutrals from `tones(t, m)` / `fieldSurface` / `toneText` in `factory.ts` (mode-aware via rocketstyle's `m(light, dark)`); `form-controls-contrast.browser.test.tsx` measures boundary ≥ 3:1 and text ≥ 4.5:1 for every form control in both modes. `tone[700]` (70% alpha) is not text-safe; use `toneText`. Non-form components are still light-only (#4340).
+- `placeholder: {…}` in a `.theme()` is emitted as `::placeholder` by the `el` base; before that it was silently dropped.
 
 ### Accessibility
 

@@ -10,13 +10,19 @@
  * Slow tests (Shiki init pulls grammar files from disk) — keep the spec
  * count tight + reuse instances across asserts where possible.
  */
-import { afterAll, describe, expect, it } from 'vitest'
+import { afterAll, describe, expect, it, vi } from 'vitest'
 import { compileMarkdown } from '../pipeline/parse'
+import content from '../plugin'
 import {
   _resetHighlighterForTesting,
   getHighlighter,
   highlightCode,
 } from '../pipeline/highlighter'
+
+/** Distinct inline token colours in a Shiki HTML string. Plain-text output has one. */
+function tokenColours(html: string): Set<string> {
+  return new Set([...html.matchAll(/style="color:(#[0-9a-fA-F]{3,8})/g)].map((m) => m[1]!))
+}
 
 afterAll(() => {
   // Release the shared instance so test isolation between this file
@@ -112,6 +118,67 @@ describe('highlightCode', () => {
     // Shiki escapes the angle brackets in its output
     expect(html).not.toContain('<div>hello</div>')
     expect(html).toMatch(/&lt;|<span/)
+  })
+})
+
+// #4257 — Swift / Kotlin fences rendered as plain text because the default
+// language set did not load them, and the fallback to `text` was silent.
+describe('fence languages (#4257)', () => {
+  it.each([
+    ['swift', 'struct Counter: View {\n  @State var count: Int = 0\n  let name = "x"\n}'],
+    ['kotlin', 'fun main() {\n  val count: Int = 0\n  println("x $count")\n}'],
+    ['kt', 'fun main() {\n  val count: Int = 0\n  println("x $count")\n}'],
+  ])('%s is highlighted with coloured tokens and is not reported unknown', async (lang, code) => {
+    const onUnknown = vi.fn()
+    const html = await highlightCode(code, lang, {}, onUnknown)
+    expect(tokenColours(html).size).toBeGreaterThan(2)
+    expect(onUnknown).not.toHaveBeenCalled()
+  })
+
+  it('reports a language that is not loaded and still renders it as text', async () => {
+    const onUnknown = vi.fn()
+    const html = await highlightCode('src/generated/', 'gitignore', {}, onUnknown)
+    expect(onUnknown).toHaveBeenCalledWith('gitignore')
+    expect(html).toContain('<pre')
+    expect(html).toContain('src/generated/')
+  })
+
+  it.each(['text', 'txt', 'plaintext', '', undefined])(
+    'plain-text fence %j is not reported',
+    async (lang) => {
+      const onUnknown = vi.fn()
+      await highlightCode('plain', lang, {}, onUnknown)
+      expect(onUnknown).not.toHaveBeenCalled()
+    },
+  )
+
+  it('user `langs` extend the defaults instead of replacing them', async () => {
+    const onUnknown = vi.fn()
+    const opts = { langs: ['rust'] }
+    const rust = await highlightCode('fn main() { let x: i32 = 1; }', 'rust', opts, onUnknown)
+    const tsx = await highlightCode('export const x: number = f("s")', 'tsx', opts, onUnknown)
+    expect(onUnknown).not.toHaveBeenCalled()
+    expect(tokenColours(rust).size).toBeGreaterThan(2)
+    expect(tokenColours(tsx).size).toBeGreaterThan(2)
+  })
+
+  it('the content plugin warns once per unknown language per build, with a [Pyreon] fix hint', async () => {
+    const plugin = content({ compileJsx: false })
+    const transform = plugin.transform as (
+      code: string,
+      id: string,
+    ) => Promise<{ code: string; map: null } | null>
+    const warn = vi.fn()
+    const md = '```gitignore\ndist/\n```\n\n```text\nplain\n```\n\n```gitignore\nlib/\n```\n'
+    const a = await transform.call({ warn } as never, md, '/abs/hl-4257-a.md')
+    const b = await transform.call({ warn } as never, `${md}\nmore\n`, '/abs/hl-4257-b.md')
+    expect(a!.code).toContain('dist/')
+    expect(b!.code).toContain('lib/')
+    const langWarnings = warn.mock.calls.map((c) => String(c[0])).filter((w) => w.includes('fence language'))
+    expect(langWarnings).toHaveLength(1)
+    expect(langWarnings[0]).toMatch(/^\[Pyreon\] Code fence language "gitignore"/)
+    expect(langWarnings[0]).toContain('highlighter.langs')
+    expect(langWarnings[0]).toContain('hl-4257-a.md')
   })
 })
 

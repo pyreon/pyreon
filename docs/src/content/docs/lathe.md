@@ -183,6 +183,15 @@ before generation:
   are inlined.
 - An unreadable file or an inline self-inclusion is a note; `example` / `enum`
   / `default` values are data and never rewritten.
+- Every local file must lie inside the root spec's directory. A `$ref` that
+  resolves outside it — `../`, an absolute path, a `file://` URL, or a symlink
+  pointing out (real paths are compared) — fails the run before the file is
+  read, so a spec cannot pull a `.env` or a key into the generated client. Set
+  `refRoot` (relative to the config file) when a split spec really shares files
+  with a sibling directory.
+- Bundling has a node budget (a million nodes plus ten per input node). An
+  inlined target is copied at every use, so references that fan out per level
+  grow exponentially; past the budget the run stops with an error naming where.
 
 `generate` reads files, not the network, by default: a remote `$ref` is
 reported, and `lathe pull` (below) bundles it. `remoteRefs: 'fetch'` lets
@@ -1258,6 +1267,8 @@ Paths passed on the command line are relative to the working directory.
 | `int64` | `"number" \| "bigint"` | `'number'` | How an OpenAPI `format: int64` integer is generated. |
 | `remoteRefs` | `"fetch" \| "off"` | — | What `generate` does with a `$ref` into a REMOTE document (an http(s) URL) in a spec on disk. `off` (the default) keeps generation offline and deterministic: the ref is reported and typed `unknown` -- `lathe pull` a remote spec to bundle it instead. `fetch` downloads every remote part with the same rules as `lathe pull`: a per-document ETag cache under `node_modules/.cache/lathe`, credentials from `remoteHeaders` for their own origin only, and a failed fetch fails the run rather than silently typing that part `unknown`. |
 | `remoteHeaders` | `Record<string, Readonly<Record<string, string>>>` | — | Headers for `remoteRefs: 'fetch'`, keyed by ORIGIN: each set is sent only to documents on that origin, so a spec that references another host never receives your credential. |
+| `refRoot` | `string` | — | The directory every LOCAL document a `$ref` names must lie in. Defaults to the spec's own directory: a `$ref` that resolves outside it -- `../`, an absolute path, a `file://` URL, or a symlink pointing out -- fails the run instead of being read, so a spec cannot pull an arbitrary file (a `.env`, a key) into the generated client. Set it when a split spec really does share files with a sibling directory. Relative to the config file, like `input`. |
+| `refOrigins` | `string[]` | — | Other ORIGINS a REMOTE document's `$ref` may reach -- for `lathe pull` and `remoteRefs: 'fetch'`. By default a remote document may reference only documents on its own origin (redirects included), so a downloaded spec cannot make lathe request an internal service and write the response into the spec. `'*'` allows any public origin; a loopback, private or link-local address is still refused unless it is named here or the referencing document is served from one. |
 | `pagination` | `Record<string, PaginationConfig>` | — | How to page through operations, keyed by the GENERATED operation name (the `endpoints` export). Declared, never guessed — each entry emits a `use<Op>Infinite` hook and a `<op>InfiniteOptions` factory. Same shape as the `x-pyreon-pagination` spec extension, which a config entry overrides. |
 | `streams` | `Record<string, StreamConfig>` | — | Streaming responses, keyed by the GENERATED operation name. Each entry emits `<op>Stream` (an async iterator of validated events) and `use<Op>Stream` (signals). An operation whose 2xx response declares `text/event-stream` or an NDJSON media type gets both WITHOUT an entry; one here overrides what the spec says, or declares a stream the spec does not describe (an endpoint that streams when its body says `stream: true`). |
 | `operations` | `Record<string, LatheOperationSettings<PaginationConfig>>` | — | Per-operation settings, keyed by the generated endpoint name OR the spec's `operationId`. Each entry may rename the hook, turn it off, set the operation's own response validation, or declare its pagination (the same entry `pagination` takes — use one or the other for an operation). |
@@ -1490,6 +1501,15 @@ its body is cached beside the parts), and one bundled spec is
 written (JSON for a `.json` destination, YAML otherwise). `--header` /
 `--token` are sent to the spec's own origin only — never to another host a
 `$ref` names. If any referenced document cannot be fetched, nothing is written.
+
+A referenced document is fetched only from the referencing document's own
+origin, and every redirect is checked against the same rule. Name other
+origins with `--ref-origin <origin>` (repeatable) or `refOrigins` in the
+config, which `remoteRefs: 'fetch'` honours too. `'*'` allows any public
+origin and still refuses a loopback, private or link-local address unless the
+referencing document is served from one. Without this, a downloaded spec could
+make `lathe pull` request an internal service (a cloud metadata endpoint) and
+write the response into the spec.
 
 ## Losses and choices
 

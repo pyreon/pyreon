@@ -114,6 +114,32 @@ describe('rich-text editor in real browser', () => {
     unmount()
   })
 
+  // The list commands come from prosemirror-schema-list, which builds a
+  // Fragment from ITS copy of prosemirror-model. With two copies installed
+  // (the lockfile once nested 1.25.11 under schema-list/commands/state/…
+  // while @tiptap/pm used 1.25.12) every list toggle threw "Can not convert
+  // <> to a Fragment (looks like multiple versions of prosemirror-model were
+  // loaded)". Bold and headings never touched that path, so only lists broke.
+  it('list commands wrap and unwrap (one prosemirror-model instance)', async () => {
+    const editor = createRichTextEditor({ content: '<p>one</p>' })
+    const { unmount } = mountInBrowser(h(RichText, { instance: editor }))
+    await waitForView(editor)
+    await flush()
+
+    editor.chain()?.focus().setTextSelection(2).toggleBulletList().run()
+    await flush()
+    expect(editor.html()).toContain('<ul><li><p>one</p></li></ul>')
+    editor.chain()?.focus().toggleOrderedList().run()
+    await flush()
+    expect(editor.html()).toContain('<ol><li><p>one</p></li></ol>')
+    editor.chain()?.focus().toggleOrderedList().run()
+    await flush()
+    expect(editor.html()).not.toMatch(/<[ou]l>/)
+    expect(editor.html()).toContain('<p>one</p>')
+    editor.dispose()
+    unmount()
+  })
+
   it('isActive reflects marks at the selection (toolbar primitive)', async () => {
     const editor = createRichTextEditor({ content: '<p>plain</p>' })
     const { unmount } = mountInBrowser(h(RichText, { instance: editor }))
@@ -212,6 +238,31 @@ describe('rich-text editor in real browser', () => {
     editor.json.set(doc('from-editor'))
     await flush()
     expect(JSON.stringify(draft())).toContain('from-editor')
+
+    binding.dispose()
+    editor.dispose()
+    unmount()
+  })
+
+  it('html binding made BEFORE mount keeps the outside value and shows it once mounted (#4360)', async () => {
+    const body = signal('<p>Start writing…</p>')
+    const editor = createRichTextEditor()
+    const binding = bindRichTextToSignal({ editor, signal: body, format: 'html' })
+    expect(body()).toBe('<p>Start writing…</p>')
+
+    const { container, unmount } = mountInBrowser(h(RichText, { instance: editor }))
+    await waitForView(editor)
+    await flush()
+    expect(container.textContent).toContain('Start writing…')
+    expect(body()).toBe('<p>Start writing…</p>')
+
+    // Both directions stay live after mount.
+    body.set('<p>from outside</p>')
+    await flush()
+    expect(container.textContent).toContain('from outside')
+    editor.setContent('<p>from editor</p>')
+    await flush()
+    expect(body()).toBe('<p>from editor</p>')
 
     binding.dispose()
     editor.dispose()

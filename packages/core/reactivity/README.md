@@ -126,9 +126,12 @@ shallow.user = { name: 'b' } // notifies
 shallow.user.name = 'c' // does NOT notify (shallow)
 
 const raw = markRaw(thirdPartyClassInstance) // skip proxy
+
+const copy = snapshot(store) // plain deep copy: no proxies, tracks nothing
+structuredClone(copy) // works; structuredClone(store) throws on the Proxy
 ```
 
-`createStore` returns a deeply-reactive proxy. `shallowReactive` proxies only the top level. `markRaw` opts an object out of proxying — useful for class instances, DOM nodes, third-party objects. `reconcile(target, source)` patches an existing store to match `source` without remounting.
+`createStore` returns a deeply-reactive proxy. `shallowReactive` proxies only the top level. `markRaw` opts an object out of proxying — useful for class instances, DOM nodes, third-party objects. `reconcile(target, source)` patches an existing store to match `source` without remounting. `snapshot(value)` returns a plain deep copy (plain objects and arrays copied, store proxies unwrapped, class instances / `Map` / `Set` / `Date` / `markRaw` objects kept by reference, cycles preserved) for logging, `structuredClone`, `postMessage` or history.
 
 **Caveat:** `Map`, `Set`, `WeakMap`, `WeakSet`, `Date`, `RegExp`, `Promise`, `Error` are returned RAW. Mutating them does not notify; assign a new instance to trigger updates.
 

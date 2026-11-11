@@ -47,7 +47,7 @@ import { Provider, Container, Row, Col, theme } from '@pyreon/coolgrid'
 
 This creates a three-column layout that collapses to two columns at medium screens and one column on mobile.
 
-The grid resolves its defaults (column count, container widths, breakpoints) from the theme context. In an app that already renders `<PyreonUI>` (from `@pyreon/ui-core`) at the root, skip `Provider` — PyreonUI sets up the same context. Use a standalone `Provider` only when coolgrid is used without the rest of the UI system, or to scope different breakpoints to a subtree.
+The grid resolves its configuration (column count, container widths, breakpoints) from the theme context, falling back to coolgrid's own defaults — 12 columns, the xs–xl breakpoints and the Bootstrap-4 container widths of the `theme` export — for anything the theme does not define. In an app that already renders `<PyreonUI>` (from `@pyreon/ui-core`) at the root, skip `Provider` — PyreonUI sets up the same context, and an app theme without grid keys still gets the default grid. If the theme defines its own `breakpoints`, those are used, and the default container widths (keyed xs–xl) are not applied; set `grid.container` with your breakpoint names. Use a standalone `Provider` only when coolgrid is used without the rest of the UI system, or to scope different breakpoints to a subtree.
 
 <Example file="./examples/coolgrid/12-column-responsive-grid" title="12-column responsive grid" />
 
