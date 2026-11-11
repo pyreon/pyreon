@@ -242,7 +242,7 @@ bindRichTextToSignal({ editor, signal: html, format: 'html' })
 ```
 
 :::note[Loop prevention]
-Internal flags break the echo loop and a value compare short-circuits no-op writes. Use `bindRichTextToSignal` rather than hand-wiring `effect`s in both directions — that's the #1 source of feedback-loop bugs.
+When you bind, the signal's value is loaded into the editor, in both formats and whether or not the editor has mounted yet; from then on each side follows the other. Internal flags break the echo loop and a value compare short-circuits no-op writes. Use `bindRichTextToSignal` rather than hand-wiring `effect`s in both directions — that's the #1 source of feedback-loop bugs.
 :::
 
 ## Extensions
