@@ -100,7 +100,7 @@ Branch protection pins 15 required contexts in two authorities that must stay id
 
 ## Merge queue
 
-Prepared, not enabled. The ruleset has no `merge_queue` rule, so `merge_group` events never fire (zero runs repository-wide, although `ci.yml` has carried the trigger since September). Every workflow that owns a required context carries `merge_group`:
+Enabled 2026-11-11 (ruleset 19416270). Before that the ruleset had no `merge_queue` rule, so `merge_group` events never fired (zero runs repository-wide, although `ci.yml` had carried the trigger since September). Every workflow that owns a required context carries `merge_group`:
 
 | Context | Workflow / job | In a merge group |
 | --- | --- | --- |

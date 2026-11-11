@@ -174,6 +174,15 @@ When CI fails on a gate not listed here, add a row in the same PR.
 - A bench that cannot run is an UNMEASURED row and must fail the run, never an omitted row in a green artefact (`scripts/bench/run-all.ts` exits non-zero naming it). Under esbuild a JSON module imported `with { type: 'json' }` has only a default export, so package entries' named `name`/`version` import needs the `jsonNamedExports` plugin in `scripts/bench/bundle-size.ts`.
 - CI is queue-dominated (see `.agents/guides/ci/README.md`): a gate that takes seconds is a step, not a job. To diagnose: `gh api repos/pyreon/pyreon/actions/runs/<id>/jobs`, exclude `conclusion == "skipped"`, then `started_at − created_at` is queue and `completed_at − started_at` is work.
 
+## Fewer, larger PRs
+
+Every push to a PR starts about 30 CI jobs, and the runner pool (20 concurrent, 5 on macOS) is the throttle: on 2026-11-10 about 55 open PRs left more than 90 runs queued and every PR waited hours. Open fewer PRs:
+
+- Fixes in one area (a package, a gate, a compat layer) that one session finds in one sitting go into ONE branch and one PR with a changeset per package, not one PR per fix. A reviewer reads one diff either way; CI runs once.
+- Combine open PRs by merging their branches into one (`git merge --no-ff`, then check each head is an ancestor) and close the originals. Keep the branches until the combined PR merges.
+- Keep a breaking change, a public API addition and a pure bug fix in separate PRs only when their budgets or review need differ; otherwise combine.
+- Do not push a branch only to merge `main` into it while it is green: the queue tests the merge result. Merge `main` only to fix a conflict or a failure that `main` caused.
+
 ## Restacking after a parent merges
 
 Each of these traps reports success while destroying something.
