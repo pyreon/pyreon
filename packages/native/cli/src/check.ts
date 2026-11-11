@@ -292,8 +292,8 @@ function delay(ms: number): Promise<void> {
 }
 
 export interface WatchHandlers {
-  /** Called with the result of the initial check + every re-check. */
-  onResult: (result: CheckResult) => void
+  /** Called with the result of the initial check + every re-check, and how long that check took. */
+  onResult: (result: CheckResult, elapsedMs: number) => void
   /** Poll interval; default 400ms. */
   intervalMs?: number
   /** Stop the watch loop. */
@@ -318,7 +318,12 @@ export async function watchCheck(
   const intervalMs = handlers.intervalMs ?? 400
   const maxTicks = handlers.maxTicks ?? Infinity
   let prev = collectMtimes(resolveCheckInputs(options.source))
-  handlers.onResult(check(options))
+  const timed = (): void => {
+    const started = performance.now()
+    const result = check(options)
+    handlers.onResult(result, performance.now() - started)
+  }
+  timed()
   let ticks = 0
   while (!handlers.signal?.aborted && ticks < maxTicks) {
     await delay(intervalMs)
@@ -326,7 +331,7 @@ export async function watchCheck(
     const cur = collectMtimes(resolveCheckInputs(options.source))
     if (mtimesChanged(prev, cur)) {
       prev = cur
-      handlers.onResult(check(options))
+      timed()
     }
     ticks++
   }

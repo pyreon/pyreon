@@ -1430,9 +1430,22 @@ for (const w of warnings) console.warn(w)
 ```
 
 The shipped surface today is the `pyreon-native build` CLI, which
-aggregates warnings per file and prints them to stderr as
-`[pyreon-native] N warning(s):` after each build, plus `pyreon-native
-check --lsp` (a stdio LSP server; warnings are currently position-less —
+prints each warning to stderr with its target and file, and counts them
+in the build's last line (`pyreon-native check` reports the same
+warnings without writing any files):
+
+```text
+$ pyreon-native build --target=ios --source=src --out=generated
+pyreon-native build · ios · src → generated
+
+  ! warning · swift · <Text font="Brand">: no bundled font by that name — run the assets/fonts step
+     (Font.custom will fall back to the system font on-device).
+     ↳ src/FinanceApp.tsx
+
+✓ compiled 1 file → generated · 1 warning · 39 ms
+```
+
+There is also `pyreon-native check --lsp` (a stdio LSP server; warnings are currently position-less —
 threading spans through the compiler's warn sites is a follow-up). There
 is **no Vite-plugin surfacer yet** — that's an explicit Phase 6 DX
 follow-up. `@pyreon/native-compiler` publishes to npm with the rest of
@@ -1764,8 +1777,8 @@ engineering effort.
   surface from PRs #1235 / #1441). Pre-emit warnings about dropped
   `useLoaderData()` reads, dropped `<Suspense fallback>` props,
   etc. ARE shown — they're emitted at compile time, surfaced via
-  `transform()` `result.warnings` and the CLI's
-  `[pyreon-native] N warning(s)` stderr aggregation. The actual
+  `transform()` `result.warnings` and the CLI's per-warning
+  `! warning · <target> · <message>` lines on stderr. The actual
   runtime-state debugging is per-target (Xcode + Android Studio
   above).
 
