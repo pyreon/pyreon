@@ -1,4 +1,5 @@
 import { onUnmount } from '@pyreon/core'
+import { isServer } from '@pyreon/reactivity'
 
 export type UseTimeout = (
   callback: () => void,
@@ -21,6 +22,9 @@ export const useTimeout: UseTimeout = (callback, delay) => {
   }
 
   const reset = () => {
+    // Server render: never start the timer (it would run the callback after
+    // render and keep the process alive). `reset` stays callable and inert.
+    if (isServer) return
     clear()
     if (delay !== null) {
       timer = setTimeout(() => {
