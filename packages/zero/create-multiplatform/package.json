@@ -32,6 +32,7 @@
     "test": "vitest run"
   },
   "devDependencies": {
+    "@pyreon/ansi": "workspace:*",
     "@pyreon/lint": "workspace:*",
     "@pyreon/native-compiler": "workspace:*",
     "@pyreon/reactivity": "workspace:*",
