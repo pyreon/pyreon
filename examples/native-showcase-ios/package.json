@@ -1,0 +1,17 @@
+{
+  "name": "@pyreon/example-native-showcase-ios",
+  "version": "0.0.0",
+  "private": true,
+  "description": "PRIVATE / EXPERIMENTAL — iOS host for the Today showcase. Compiles ../native-showcase/src/TodayApp.tsx to SwiftUI. Generate the Xcode project with ./scripts/xcode-setup.sh.",
+  "license": "MIT",
+  "scripts": {
+    "build": "./scripts/build.sh",
+    "xcode": "./scripts/xcode-setup.sh",
+    "lint": "echo '[native-showcase-ios] no TS lint surface; skipping'",
+    "test": "echo '[native-showcase-ios] device test: xcodebuild test (see README)'",
+    "typecheck": "echo '[native-showcase-ios] no TS typecheck surface'"
+  },
+  "devDependencies": {
+    "@pyreon/native-cli": "workspace:*"
+  }
+}
