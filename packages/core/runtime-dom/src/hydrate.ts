@@ -1508,10 +1508,13 @@ function hydrateElement(
   const elPath =
     process.env.NODE_ENV !== 'production' ? `${path} > ${vnode.type as string}` : path
 
-  // Check if existing DOM node matches
+  // Check if existing DOM node matches. `localName`, never `tagName.toLowerCase()`:
+  // the HTML parser case-adjusts SVG names (`linearGradient`, `clipPath`,
+  // `foreignObject`, `feGaussianBlur`, …), so a lowercased SVG tag can never
+  // equal its vnode type. For HTML elements the two are identical (#4439).
   if (
     domNode?.nodeType === Node.ELEMENT_NODE &&
-    (domNode as Element).tagName.toLowerCase() === vnode.type
+    (domNode as Element).localName === vnode.type
   ) {
     const el = domNode as Element
 
@@ -1600,7 +1603,7 @@ function hydrateElement(
   // Mismatch — fall back to fresh mount.
   const actual =
     domNode?.nodeType === Node.ELEMENT_NODE
-      ? (domNode as Element).tagName.toLowerCase()
+      ? (domNode as Element).localName
       : (domNode?.nodeType ?? 'null')
   warnHydrationMismatch('tag', vnode.type, actual, elPath)
   // Mount AT THE CURSOR, not at the parent-level anchor — the same fix the
