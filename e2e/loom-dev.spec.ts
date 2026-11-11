@@ -12,7 +12,7 @@ test.beforeEach(async ({ page }) => {
 })
 
 test('the layered graph renders internal + external nodes with depth axes', async ({ page }) => {
-  await expect(page.getByTestId('view-title')).toHaveText('Dependency graph')
+  await expect(page.getByTestId('view-title')).toHaveText('Graph')
   expect(await page.locator('[data-testid^="gnode-"]').count()).toBeGreaterThan(100)
   await expect(page.locator('svg text', { hasText: 'ENTRY' })).toBeVisible()
 })
@@ -67,16 +67,22 @@ test('fulltext: a package name surfaces its dependents via the edge chips', asyn
   await expect(dialog.getByText('depends on · @pyreon/reactivity').first()).toBeVisible()
 })
 
-test('kind filter narrows to externals', async ({ page }) => {
-  await page.getByTestId('kind-external').click()
-  expect(await page.locator('[data-testid^="pkg-@pyreon/"]').count()).toBe(0)
+test('the list filter narrows the package list; Escape clears it', async ({ page }) => {
+  await page.getByTestId('pkg-filter').fill('vite')
   await expect(page.getByTestId('pkg-vite')).toBeVisible()
+  await expect(page.getByTestId('pkg-@pyreon/core')).toHaveCount(0)
+  await page.keyboard.press('Escape')
+  await expect(page.getByTestId('pkg-filter')).toHaveValue('')
+  await expect(page.getByTestId('pkg-@pyreon/core')).toHaveCount(1)
 })
 
-test('matrix view renders the internal adjacency block', async ({ page }) => {
+test('matrix view: version usage by default, the import DSM one chip away', async ({ page }) => {
   await page.getByTestId('view-matrix').click()
+  await expect(page.getByTestId('view-title')).toHaveText('Matrix')
   await expect(page.getByTestId('matrix-view')).toBeVisible()
-  await expect(page.getByTestId('view-title')).toHaveText('Adjacency matrix')
+  await page.getByTestId('matrix-imports').click()
+  await expect(page.getByTestId('matrix-grid')).toBeVisible()
+  await expect(page.getByTestId('matrix-imports')).toHaveAttribute('aria-pressed', 'true')
 })
 
 test('cycles view reports the acyclic truth for this repo', async ({ page }) => {
@@ -97,10 +103,10 @@ test('impact view ranks every package by reported reach with alphabetical ties',
   expect(expected.length).toBeGreaterThan(100)
 
   await page.getByTestId('view-impact').click()
-  const rows = page.getByTestId('impact-view').locator('button[data-testid^="impact-"]')
+  const rows = page.getByTestId('impact-view').locator('tr[data-testid^="impact-"]')
   await expect(rows).toHaveCount(expected.length)
   await expect(rows).toHaveText(
-    expected.map(({ name, reach }, index) => `${String(index + 1).padStart(2, '0')}${name}${reach} dependents`),
+    expected.map(({ name, reach }, index) => `${String(index + 1).padStart(2, '0')}${name}${reach}`),
   )
 })
 
@@ -126,16 +132,20 @@ test('keyboard ↑↓ walks the visible list', async ({ page }) => {
   await expect.poll(() => page.getByTestId('panel-name').textContent()).not.toBe(before)
 })
 
-test('health pill reflects the fabric state', async ({ page }) => {
-  // The repo currently carries real drift errors — the pill must say SOMETHING
-  // truthful (error count or cycle count or clean), never render empty.
-  await expect(page.getByTestId('loom-health')).not.toHaveText('')
+test('the scan summary states the report counts and the gate', async ({ page }) => {
+  const report = (await (await page.request.get('/@loom/report.json')).json()) as LoomReport
+  const summary = page.getByTestId('loom-health')
+  await expect(summary).toContainText(`${report.stats.errors} error`)
+  await expect(summary).toContainText(`${report.stats.warnings} warning`)
+  await expect(summary).toContainText(`${report.stats.infos} info`)
+  await expect(page.getByTestId('scan-exit')).toHaveText(`exit ${report.gate!.exit}`)
 })
 
 // ── interaction performance: selection/hover must not rebuild the views ──
 
 test('matrix: a selection change keeps every cell element (no rebuild) and moves the crosshair', async ({ page }) => {
   await page.getByTestId('view-matrix').click()
+  await page.getByTestId('matrix-imports').click()
   const grid = page.getByTestId('matrix-grid')
   await expect(grid).toBeVisible()
   // Only edge cells render — never the n² blank grid.
@@ -147,7 +157,10 @@ test('matrix: a selection change keeps every cell element (no rebuild) and moves
   })
   await page.getByTestId('pkg-@pyreon/core').click()
   await page.getByTestId('pkg-@pyreon/router').click()
-  await page.getByTestId('cycles-toggle').click()
+  await page.evaluate(() => {
+    const m = (window as unknown as { __LOOM_MODEL__: { showCycles: { set(v: boolean): void } } }).__LOOM_MODEL__
+    m.showCycles.set(false)
+  })
   const same = await page.evaluate(() => {
     const before = (window as unknown as { __cells: Element[] }).__cells
     const now = [...document.querySelectorAll('[data-testid="matrix-grid"] button')]

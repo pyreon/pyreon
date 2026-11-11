@@ -8,7 +8,7 @@ import { definePlaywrightConfig } from '@pyreon/playwright-config'
  */
 export default definePlaywrightConfig({
   testDir: '../e2e',
-  projects: [{ name: 'loom-dev', testMatch: /loom-dev\.spec\.ts$/, port: 5232 }],
+  projects: [{ name: 'loom-dev', testMatch: /loom-(dev|layout)\.spec\.ts$/, port: 5232 }],
   webServer: [
     {
       command: 'node packages/tools/loom/bin/loom.js dev . --port=5232',
