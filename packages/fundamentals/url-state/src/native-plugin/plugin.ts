@@ -174,6 +174,60 @@ function resolveDefault(defNode: AnyNode | undefined): ResolvedDefault | null {
   return null
 }
 
+/**
+ * What each `useUrlState` OPTION does natively. The native bindings read and
+ * write the router's query directly: every write replaces the current entry
+ * at once, a list uses the comma format, the codec is the one inferred from
+ * the default, and a write never removes the parameter. An option whose value
+ * matches that behaviour is fine; anything else is NOT lowered, and used to be
+ * dropped without a word, so iOS/Android could read a different value than
+ * the web (#4364). It is now reported by name; the binding still lowers.
+ *
+ * `clearOnDefault` only changes the URL text, never the value read (an absent
+ * parameter reads the default either way), so it is not reported.
+ */
+const NATIVE_OPTION: Record<string, { readonly matches?: (v: unknown) => boolean; readonly why: string }> = {
+  serialize: { why: 'the native binding encodes with the codec inferred from the default' },
+  deserialize: { why: 'the native binding decodes with the codec inferred from the default, so a URL value can read differently than on the web' },
+  debounce: { matches: (v) => v === 0, why: 'native writes reach the URL immediately' },
+  replace: { matches: (v) => v === true, why: 'native writes always replace the current entry (no history push)' },
+  arrayFormat: { matches: (v) => v === 'comma', why: "native lists use the comma format (`?tags=a,b`)" },
+  onChange: { why: 'native bindings have no external-change callback; read the binding in an effect instead' },
+  clearOnDefault: { matches: () => true, why: '' },
+}
+
+function reportIgnoredOptions(ctx: Parameters<CallRecognizer>[1], name: string, key: string, node: AnyNode | undefined): void {
+  if (node === undefined) return
+  const where = `const ${name} = useUrlState(${JSON.stringify(key)}, …, options)`
+  const obj = ctx.resolveStatic(node) as AnyNode | undefined
+  if (obj?.type !== 'ObjectExpression') {
+    ctx.report(
+      `${where}: the options are not an inline object, so they cannot be checked at build time and are NOT applied natively (serialize / deserialize / debounce / replace: false / arrayFormat: 'repeat' / onChange). Write them inline, or keep the call behind a \`<Web>\` escape hatch.`,
+    )
+    return
+  }
+  const ignored: string[] = []
+  for (const prop of (obj.properties as AnyNode[] | undefined) ?? []) {
+    if (prop?.type !== 'Property' || prop.computed === true) {
+      ignored.push('a spread or computed option')
+      continue
+    }
+    const optName =
+      prop.key?.type === 'Identifier' ? (prop.key.name as string) : prop.key?.type === 'Literal' ? String(prop.key.value) : undefined
+    if (optName === undefined) continue
+    const rule = NATIVE_OPTION[optName]
+    if (rule === undefined) continue
+    const value = prop.value?.type === 'Literal' ? prop.value.value : undefined
+    if (rule.matches && prop.value?.type === 'Literal' && rule.matches(value)) continue
+    ignored.push(`\`${optName}\` (${rule.why})`)
+  }
+  if (ignored.length > 0) {
+    ctx.report(
+      `${where}: ${ignored.join('; ')} — NOT applied on iOS/Android, so the native value or URL can differ from the web. Remove the option, or keep the call behind a \`<Web>\` escape hatch.`,
+    )
+  }
+}
+
 const recognizeUrlState: CallRecognizer = (_call, ctx) => {
   const name = ctx.declName
   const keyNode = ctx.args[0] as AnyNode | undefined
@@ -196,6 +250,7 @@ const recognizeUrlState: CallRecognizer = (_call, ctx) => {
     )
     return null
   }
+  reportIgnoredOptions(ctx, name, key, ctx.args[2] as AnyNode | undefined)
   return {
     type: DECL_TYPE,
     payload: {
