@@ -9,6 +9,7 @@
  * lower, after naming what is missing — the parser then continues as if the
  * plugin were absent.
  */
+import { type FlowHandlePosition, isFlowHandlePosition } from './collect'
 import type { AstNode, CallRecognizer, ExprIR, ExtPayload, ParseContext } from '@pyreon/native-compiler/plugin-api'
 import { HANDLED_FLOW_EDGE_FIELDS, HANDLED_FLOW_NODE_FIELDS, droppedFlowFieldsWarning } from './lowering'
 import { FLOW_STATE_TYPE } from './names'
@@ -73,18 +74,19 @@ export const recognizeFlow: CallRecognizer = (call, ctx) => {
     }
     return out
   }
-  const literalFlowPosition = (n: AnyNode | undefined): string | undefined => {
-    const direct = literalString(n)
-    if (direct && ['top', 'right', 'bottom', 'left'].includes(direct.toLowerCase())) return direct.toLowerCase()
+  const literalFlowPosition = (n: AnyNode | undefined): FlowHandlePosition | undefined => {
+    const direct = literalString(n)?.toLowerCase()
+    if (isFlowHandlePosition(direct)) return direct
     if (n?.type === 'StaticMemberExpression' || n?.type === 'MemberExpression') {
       const positionName = (n.property as AnyNode | undefined)?.name
-      if (typeof positionName === 'string' && ['top', 'right', 'bottom', 'left'].includes(positionName.toLowerCase())) return positionName.toLowerCase()
+      const lower = typeof positionName === 'string' ? positionName.toLowerCase() : undefined
+      if (isFlowHandlePosition(lower)) return lower
     }
     return undefined
   }
-  const literalHandles = (n: AnyNode | undefined): { id?: string; type: string; position: string; offset?: number }[] | undefined => {
+  const literalHandles = (n: AnyNode | undefined): { id?: string; type: string; position: FlowHandlePosition; offset?: number }[] | undefined => {
     if (!n || n.type !== 'ArrayExpression') return undefined
-    const out: { id?: string; type: string; position: string; offset?: number }[] = []
+    const out: { id?: string; type: string; position: FlowHandlePosition; offset?: number }[] = []
     for (const raw of (n.elements as AnyNode[] | undefined) ?? []) {
       const item = ctx.unwrap(raw)
       if (!item || item.type !== 'ObjectExpression') return undefined
@@ -149,8 +151,8 @@ export const recognizeFlow: CallRecognizer = (call, ctx) => {
     extentParent?: boolean
     expandParent?: boolean
     group?: boolean
-    sourceHandles?: { id?: string; type: string; position: string; offset?: number }[]
-    targetHandles?: { id?: string; type: string; position: string; offset?: number }[]
+    sourceHandles?: { id?: string; type: string; position: FlowHandlePosition; offset?: number }[]
+    targetHandles?: { id?: string; type: string; position: FlowHandlePosition; offset?: number }[]
   }[] = []
   const edgesOut: {
     id: string

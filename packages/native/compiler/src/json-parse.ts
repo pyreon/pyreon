@@ -49,6 +49,25 @@ export function typeJsonParseReturns(fns: readonly Extract<DeclIR, { kind: 'func
   }
 }
 
+/** The type every TYPED `JSON.parse` under `root` decodes into — decode targets, like a fetch's response type. */
+export function typedJsonParseTargets(root: unknown): TypeIR[] {
+  const out: TypeIR[] = []
+  const seen = new Set<object>()
+  const walk = (n: unknown): void => {
+    if (Array.isArray(n)) {
+      for (const x of n) walk(x)
+      return
+    }
+    if (n === null || typeof n !== 'object' || seen.has(n)) return
+    seen.add(n)
+    const node = n as { kind?: string; type?: unknown }
+    if (node.kind === 'json-parse' && node.type !== undefined) out.push(node.type as TypeIR)
+    for (const v of Object.values(n)) walk(v)
+  }
+  walk(root)
+  return out
+}
+
 /** The warning for a `JSON.parse` nothing named a type for. */
 const UNTYPED_JSON_PARSE_WARNING =
   '`JSON.parse(…)` has no type to decode into natively — on the web it returns `any`, but a Swift / Kotlin decode ' +

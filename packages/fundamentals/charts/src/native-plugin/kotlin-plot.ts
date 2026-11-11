@@ -178,7 +178,7 @@ function emitKotlinPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, ind
     if (toolbox.save) lets.push('val pyreonContext = LocalContext.current')
   }
   if (area.on) {
-    lets.push(`var pyreonAreaType by remember { mutableStateOf(${JSON.stringify(area.initial)}) }`)
+    lets.push(`var pyreonAreaType by remember { mutableStateOf(${kotlinStr(area.initial)}) }`)
     lets.push(`var pyreonAreaKeep by remember { mutableStateOf(${area.keep}) }`)
     lets.push('var pyreonAreas by remember { mutableStateOf(listOf<BrushArea>()) }')
     lets.push('var pyreonAreaLive by remember { mutableStateOf<BrushArea?>(null) }')
@@ -471,7 +471,7 @@ function emitKotlinPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, ind
       toolbox.dataView ? 'if (pyreonDataView) "dataView" else ""' : '""',
       ...(area.on ? ['if (pyreonAreaType == "rect") "brushRect" else if (pyreonAreaType == "polygon") "brushPolygon" else if (pyreonAreaType == "lineX") "brushLineX" else if (pyreonAreaType == "lineY") "brushLineY" else ""', 'if (pyreonAreaKeep) "brushKeep" else ""'] : []),
     ]
-    lets.push(`val pyreonTools: List<String> = listOf(${toolbox.tools.map((t) => JSON.stringify(t)).join(', ')})`)
+    lets.push(`val pyreonTools: List<String> = listOf(${toolbox.tools.map((t) => kotlinStr(t)).join(', ')})`)
     lets.push(`val pyreonToolbox: ToolboxLayout = renderToolbox(pyreonTools, PyreonChartRect(0.0, 0.0, ${W}, ${H}), ToolboxOptions(fontSize = 11.0, color = pyreonSpec.theme.label, actives = listOf(${actives.join(', ')})))`)
     if (toolbox.dataZoom && !brushing) lets.push('val pyreonPlot: PyreonChartRect = layoutChart(pyreonSpec, ::pyreonChartMeasure).plot')
   }
@@ -570,7 +570,7 @@ function emitKotlinPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, ind
         toolbox.dataView ? 'pyreonDataView = false' : '',
         legend.toggling ? 'pyreonHidden = listOf()' : '',
         brushing ? 'pyreonBrushStart = -1L; pyreonBrushEnd = -1L' : '',
-        area.on ? `pyreonAreaType = ${JSON.stringify(area.initial)}; pyreonAreaKeep = ${area.keep}; pyreonAreas = listOf()${areaReport('listOf()')}` : '',
+        area.on ? `pyreonAreaType = ${kotlinStr(area.initial)}; pyreonAreaKeep = ${area.keep}; pyreonAreas = listOf()${areaReport('listOf()')}` : '',
       ].filter((x) => x !== '')
       acts.push(`"restore" -> { ${reset.join('; ')} }`)
       if (toolbox.magic) {
@@ -596,7 +596,7 @@ function emitKotlinPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, ind
         const cmdsNow = 'pyreonPaintedNow'
         acts.push(onSave?.kind === 'event'
           ? `"saveAsImage" -> { ${kotlinChartSelectBody(onSave.handler, `pyreonChartDataUrl(${cmdsNow}, ${W}, ${H}, pyreonDensity)`, indent)} }`
-          : `"saveAsImage" -> { pyreonShareChartImage(pyreonContext, ${cmdsNow}, ${W}, ${H}, pyreonDensity, ${JSON.stringify(String(host.staticAttr(e, 'title') ?? 'chart'))}) }`)
+          : `"saveAsImage" -> { pyreonShareChartImage(pyreonContext, ${cmdsNow}, ${W}, ${H}, pyreonDensity, ${kotlinStr(String(host.staticAttr(e, 'title') ?? 'chart'))}) }`)
       }
       decls.push(`val pyreonTool: String = hitToolbox(pyreonTools, pyreonToolbox.boxes, ${tapX}, ${tapYExpr}) ?: ""`)
       branches.push(`if (pyreonTool != "") { when (pyreonTool) { ${acts.join('; ')}; else -> {} } }`)
