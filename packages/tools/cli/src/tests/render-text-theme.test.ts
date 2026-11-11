@@ -95,7 +95,7 @@ const withWorkspace = (): DoctorReport => ({
 })
 
 describe('doctor text in the shared theme', () => {
-  for (const level of [0, 1, 2] as const) {
+  for (const level of [0, 1, 2, 3] as const) {
     for (const theme of ['dark', 'light'] as const) {
       it(`level ${level} · ${theme}`, () => {
         const t = createTerm({ level, theme, unicode: true })

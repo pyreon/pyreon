@@ -35,13 +35,13 @@ import { noteSeverity, type IrNote } from '../core/ir'
 import type { FileVerdict, VerifyReport } from '../verify/lower'
 
 /** A colour choice as the CLI carries it: a flag (`--color` / `--no-color`) or a resolved level. */
-export type ColorChoice = boolean | 0 | 1 | 2 | undefined
+export type ColorChoice = boolean | 0 | 1 | 2 | 3 | undefined
 
 /** Rendering options shared by every report. Primitives only: no `@pyreon/ansi` type is public. */
 export interface TermChoice {
   /**
    * Colour: `false` / `0` plain (the default — the caller knows the
-   * destination), `true` / `1` sixteen colours, `2` truecolor.
+   * destination), `true` / `1` sixteen colours, `2` 256 colours, `3` truecolor.
    */
   color?: ColorChoice
   /** Terminal background. Detected (`PYREON_CLI_THEME`, `COLORFGBG`) when left out. */
@@ -50,7 +50,7 @@ export interface TermChoice {
   unicode?: boolean | undefined
 }
 
-const levelOf = (color: ColorChoice): 0 | 1 | 2 =>
+const levelOf = (color: ColorChoice): 0 | 1 | 2 | 3 =>
   color === true ? 1 : color === false || color === undefined ? 0 : color
 
 const termFor = (o: TermChoice): Term =>
@@ -71,17 +71,18 @@ export function shouldColor(
 /**
  * The colour level the bin renders at. No flag: detected from the
  * environment. `--no-color`: plain. `--color`: forced on, at truecolor when the
- * terminal advertises it (`FORCE_COLOR=3`, `COLORTERM=truecolor`) and sixteen
+ * terminal advertises it (`FORCE_COLOR=3`, `COLORTERM=truecolor`), 256 colours
+ * when it advertises those (`FORCE_COLOR=2`, a `*256color` TERM) and sixteen
  * colours otherwise — the flag overrides `NO_COLOR`, `TERM=dumb` and a pipe.
  */
 export function resolveColorLevel(
   flag: boolean | undefined,
   stream: { isTTY?: boolean | undefined },
   env: Readonly<Record<string, string | undefined>>,
-): 0 | 1 | 2 {
+): 0 | 1 | 2 | 3 {
   if (flag === false) return 0
   if (flag === undefined) return detectColorLevel(env, stream.isTTY === true)
-  const forced = { COLORTERM: env.COLORTERM, TERM: env.TERM === 'dumb' ? undefined : env.TERM, FORCE_COLOR: env.FORCE_COLOR === '3' ? '3' : '1' }
+  const forced = { COLORTERM: env.COLORTERM, TERM: env.TERM === 'dumb' ? undefined : env.TERM, FORCE_COLOR: env.FORCE_COLOR === '3' || env.FORCE_COLOR === '2' ? env.FORCE_COLOR : '1' }
   return detectColorLevel(forced, true)
 }
 

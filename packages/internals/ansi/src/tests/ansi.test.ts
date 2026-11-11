@@ -16,6 +16,9 @@ import {
   header,
   hexToRgb,
   formatLocation,
+  interrupted,
+  nothingTo,
+  detectWidth,
   meta,
   padEndVisible,
   padStartVisible,
@@ -37,13 +40,17 @@ const ESC = String.fromCharCode(27)
 const show = (s: string): string => s.split(ESC).join('␛')
 
 describe('detectColorLevel', () => {
-  it('is plain on a pipe, 16 colours on a TTY, truecolor when advertised', () => {
+  it('is plain on a pipe, 16 colours on a TTY, 256 or truecolor when advertised', () => {
     expect(detectColorLevel({}, false)).toBe(0)
     expect(detectColorLevel({}, true)).toBe(1)
-    expect(detectColorLevel({ COLORTERM: 'truecolor' }, true)).toBe(2)
-    expect(detectColorLevel({ COLORTERM: '24bit' }, true)).toBe(2)
-    expect(detectColorLevel({ TERM: 'xterm-direct' }, true)).toBe(2)
-    expect(detectColorLevel({ TERM: 'xterm-256color' }, true)).toBe(1)
+    expect(detectColorLevel({ TERM: 'xterm' }, true)).toBe(1)
+    expect(detectColorLevel({ COLORTERM: 'truecolor' }, true)).toBe(3)
+    expect(detectColorLevel({ COLORTERM: '24bit' }, true)).toBe(3)
+    expect(detectColorLevel({ TERM: 'xterm-direct' }, true)).toBe(3)
+    expect(detectColorLevel({ WT_SESSION: 'x' }, true)).toBe(3)
+    expect(detectColorLevel({ TERM: 'xterm-256color' }, true)).toBe(2)
+    expect(detectColorLevel({ TERM: 'tmux-256color' }, true)).toBe(2)
+    expect(detectColorLevel({ TERM: 'xterm-256color', COLORTERM: 'truecolor' }, true)).toBe(3)
   })
 
   it('NO_COLOR, TERM=dumb and FORCE_COLOR=0 turn colour off, even on a TTY', () => {
@@ -58,11 +65,32 @@ describe('detectColorLevel', () => {
     expect(detectColorLevel({ NO_COLOR: '' }, true)).toBe(1)
   })
 
-  it('FORCE_COLOR reaches a pipe; FORCE_COLOR=3 forces truecolor', () => {
+  it('FORCE_COLOR reaches a pipe and is a floor: 2 forces 256, 3 forces truecolor', () => {
     expect(detectColorLevel({ FORCE_COLOR: '1' }, false)).toBe(1)
-    expect(detectColorLevel({ FORCE_COLOR: '1', COLORTERM: 'truecolor' }, false)).toBe(2)
-    expect(detectColorLevel({ FORCE_COLOR: '3' }, false)).toBe(2)
+    expect(detectColorLevel({ FORCE_COLOR: 'true' }, false)).toBe(1)
+    expect(detectColorLevel({ FORCE_COLOR: '1', COLORTERM: 'truecolor' }, false)).toBe(3)
+    expect(detectColorLevel({ FORCE_COLOR: '2' }, false)).toBe(2)
+    expect(detectColorLevel({ FORCE_COLOR: '2' }, true)).toBe(2)
+    expect(detectColorLevel({ FORCE_COLOR: '2', COLORTERM: 'truecolor' }, true)).toBe(3)
+    expect(detectColorLevel({ FORCE_COLOR: '3' }, false)).toBe(3)
+    expect(detectColorLevel({ FORCE_COLOR: '3', TERM: 'xterm-256color' }, true)).toBe(3)
     expect(detectColorLevel({ FORCE_COLOR: '' }, false)).toBe(0)
+  })
+})
+
+describe('detectWidth', () => {
+  it('caps the window at 100 and uses 100 when the stream reports none', () => {
+    expect(detectWidth({}, undefined)).toBe(100)
+    expect(detectWidth({}, 180)).toBe(100)
+    expect(detectWidth({}, 72)).toBe(72)
+  })
+  it('never lays out narrower than 40', () => {
+    expect(detectWidth({}, 20)).toBe(40)
+    expect(detectWidth({}, 0)).toBe(100)
+  })
+  it('PYREON_CLI_WIDTH wins, and a bad value is ignored', () => {
+    expect(detectWidth({ PYREON_CLI_WIDTH: '50' }, 200)).toBe(50)
+    expect(detectWidth({ PYREON_CLI_WIDTH: 'wide' }, 72)).toBe(72)
   })
 })
 
@@ -132,22 +160,30 @@ describe('palette', () => {
 describe('createTerm', () => {
   it('detects from the given env when nothing is forced', () => {
     const t = createTerm({ env: { COLORTERM: 'truecolor', COLORFGBG: '0;15', LANG: 'C' }, isTTY: true, platform: 'linux' })
-    expect([t.level, t.theme, t.unicode, t.color]).toEqual([2, 'light', false, true])
+    expect([t.level, t.theme, t.unicode, t.color, t.width]).toEqual([3, 'light', false, true, 100])
+    const t256 = createTerm({ env: { TERM: 'xterm-256color', LANG: 'en_US.UTF-8' }, isTTY: true, columns: 58 })
+    expect([t256.level, t256.width]).toEqual([2, 58])
   })
   it('the default term never colours a non-TTY test run', () => {
     // vitest's stdout is not a TTY and the gates do not set FORCE_COLOR.
     if (!process.env.FORCE_COLOR) expect(term.level).toBe(0)
   })
-  it('emits truecolor per theme and the 16-colour code otherwise', () => {
-    const dark = createTerm({ level: 2, theme: 'dark', unicode: true })
-    const light = createTerm({ level: 2, theme: 'light', unicode: true })
+  it('emits truecolor per theme, the 256 index per theme, and the 16-colour code', () => {
+    const dark = createTerm({ level: 3, theme: 'dark', unicode: true })
+    const light = createTerm({ level: 3, theme: 'light', unicode: true })
+    const dark256 = createTerm({ level: 2, theme: 'dark', unicode: true })
+    const light256 = createTerm({ level: 2, theme: 'light', unicode: true })
     const c16 = createTerm({ level: 1, theme: 'light', unicode: true })
     expect(show(dark.err('x'))).toBe('␛[38;2;248;113;113mx␛[39m')
     expect(show(light.err('x'))).toBe('␛[38;2;185;28;28mx␛[39m')
+    expect(show(dark256.err('x'))).toBe('␛[38;5;203mx␛[39m')
+    expect(show(light256.err('x'))).toBe('␛[38;5;124mx␛[39m')
+    expect(show(dark256.ember('plasma', 'x'))).toBe('␛[38;5;198mx␛[39m')
     expect(show(c16.err('x'))).toBe('␛[31mx␛[39m')
     expect(show(c16.dim('x'))).toBe('␛[90mx␛[39m')
   })
   it('never wraps an empty string', () => {
+    expect(createTerm({ level: 3 }).ok('')).toBe('')
     expect(createTerm({ level: 2 }).ok('')).toBe('')
   })
   it('level 0 emits no escape at all, links included', () => {
@@ -159,7 +195,7 @@ describe('createTerm', () => {
 })
 
 describe('width helpers', () => {
-  const t = createTerm({ level: 2, unicode: true })
+  const t = createTerm({ level: 3, unicode: true })
   it('strip SGR and OSC 8', () => {
     const s = t.link(t.bold(t.info('src/a.ts')), fileUrl('/abs/src/a.ts', 3))
     expect(stripAnsi(s)).toBe('src/a.ts')
@@ -211,6 +247,30 @@ describe('layout helpers (plain)', () => {
         { align: ['left', 'right'] },
       ),
     ).toEqual(['  label    1  x', '  a      100'])
+  })
+  it('columns stack the whole table when a row does not fit, and never cut a cell', () => {
+    const path = 'packages/zero/zero/src/routes/blog/[slug]/index.tsx'
+    const rows = [
+      ['route', 'mode', 'js (gz)'],
+      [path, 'ssg', '18.4 kB'],
+      ['/', 'spa', ''],
+    ]
+    expect(columns(rows, { align: ['left', 'left', 'right'], width: 100 })[1]).toBe(`  ${path}  ssg   18.4 kB`)
+    expect(columns(rows, { align: ['left', 'left', 'right'], width: 50 })).toEqual([
+      '  route',
+      '    mode  js (gz)',
+      `  ${path}`,
+      '    ssg  18.4 kB',
+      '  /',
+      '    spa',
+    ])
+  })
+  it('interrupted and nothingTo carry a symbol and a word', () => {
+    expect(interrupted(t, ['3 of 13 gates', '2.1 s'])).toBe('! interrupted · 3 of 13 gates · 2.1 s')
+    expect(nothingTo(t, 'no changed files', 'pass paths: pyreon check src/')).toBe(
+      'ℹ no changed files · pass paths: pyreon check src/',
+    )
+    expect(nothingTo(createTerm({ level: 0, unicode: false }), 'nothing to check')).toBe('i nothing to check')
   })
   it('bar clamps', () => {
     expect(bar(t, 50, 100, 'ok', 4)).toBe('██░░')
@@ -301,7 +361,7 @@ const specimen = (level: ColorLevel, theme: ThemeName, unicode: boolean): string
 }
 
 describe('specimen snapshots', () => {
-  for (const level of [0, 1, 2] as const) {
+  for (const level of [0, 1, 2, 3] as const) {
     for (const theme of ['dark', 'light'] as const) {
       for (const unicode of [true, false]) {
         it(`level ${level} · ${theme} · ${unicode ? 'utf-8' : 'ascii'}`, () => {
@@ -314,7 +374,7 @@ describe('specimen snapshots', () => {
   it('level 0 output equals the stripped output of every coloured level', () => {
     for (const theme of ['dark', 'light'] as const) {
       const plain = specimen(0, theme, true)
-      for (const level of [1, 2] as const) {
+      for (const level of [1, 2, 3] as const) {
         expect(stripAnsi(specimen(level, theme, true).split('␛').join(ESC))).toBe(plain)
       }
     }

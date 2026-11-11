@@ -40,6 +40,32 @@ exports[`rendered report (snapshots) > colour level 1 (16 colours) 1`] = `
 `;
 
 exports[`rendered report (snapshots) > colour level 2, dark 1`] = `
+"␛[1mcreate-multiplatform␛[22m ␛[38;5;103m· <version>␛[39m
+
+  ␛[38;5;103mnext␛[39m    cd my-app && npm install && npm run dev
+  ␛[38;5;103mnative␛[39m  npm run build:ios (Xcode) · npm run build:android (Android SDK)
+
+␛[38;5;78m✓␛[39m scaffolded my-app → my-app/ ␛[38;5;103m· 30 files · 42 ms␛[39m
+=====
+␛[1mcreate-multiplatform␛[22m ␛[38;5;103m· <version>␛[39m
+␛[38;5;203m✗␛[39m ␛[38;5;203merror:␛[39m Project name "MyApp" must start with a lowercase letter. Native targets (Xcode + Gradle)
+  reject leading digits/special chars. Try "myapp" instead."
+`;
+
+exports[`rendered report (snapshots) > colour level 2, light 1`] = `
+"␛[1mcreate-multiplatform␛[22m ␛[38;5;59m· <version>␛[39m
+
+  ␛[38;5;59mnext␛[39m    cd my-app && npm install && npm run dev
+  ␛[38;5;59mnative␛[39m  npm run build:ios (Xcode) · npm run build:android (Android SDK)
+
+␛[38;5;22m✓␛[39m scaffolded my-app → my-app/ ␛[38;5;59m· 30 files · 42 ms␛[39m
+=====
+␛[1mcreate-multiplatform␛[22m ␛[38;5;59m· <version>␛[39m
+␛[38;5;124m✗␛[39m ␛[38;5;124merror:␛[39m Project name "MyApp" must start with a lowercase letter. Native targets (Xcode + Gradle)
+  reject leading digits/special chars. Try "myapp" instead."
+`;
+
+exports[`rendered report (snapshots) > colour level 3, dark 1`] = `
 "␛[1mcreate-multiplatform␛[22m ␛[38;2;138;134;150m· <version>␛[39m
 
   ␛[38;2;138;134;150mnext␛[39m    cd my-app && npm install && npm run dev
@@ -52,7 +78,7 @@ exports[`rendered report (snapshots) > colour level 2, dark 1`] = `
   reject leading digits/special chars. Try "myapp" instead."
 `;
 
-exports[`rendered report (snapshots) > colour level 2, light 1`] = `
+exports[`rendered report (snapshots) > colour level 3, light 1`] = `
 "␛[1mcreate-multiplatform␛[22m ␛[38;2;94;90;105m· <version>␛[39m
 
   ␛[38;2;94;90;105mnext␛[39m    cd my-app && npm install && npm run dev

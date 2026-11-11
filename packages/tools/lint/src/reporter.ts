@@ -29,10 +29,11 @@ export interface TextFormatOptions {
   fixApplied?: boolean | undefined
   /**
    * Render for a specific terminal instead of the process's stdout:
-   * colour level (0 plain, 1 sixteen colours, 2 truecolor), background and
+   * colour level (0 plain, 1 sixteen colours, 2 256 colours, 3 truecolor),
+   * background and
    * symbol set. Anything left out is detected.
    */
-  color?: 0 | 1 | 2 | undefined
+  color?: 0 | 1 | 2 | 3 | undefined
   theme?: 'dark' | 'light' | undefined
   unicode?: boolean | undefined
   width?: number | undefined

@@ -73,6 +73,34 @@ exports[`reporter — formatText shape (shared @pyreon/ansi theme) > level 1 · 
 exports[`reporter — formatText shape (shared @pyreon/ansi theme) > level 2 · dark 1`] = `
 "
 ␛]8;;file:///repo/src/routes/inbox.tsx␛\\␛[4msrc/routes/inbox.tsx␛[24m␛]8;;␛\\
+  ␛[38;5;103m42:7 ␛[39m  ␛[38;5;220mwarning␛[39m  <For> needs a \`by\` key so rows survive reorder  ␛[38;5;103mpyreon/no-missing-for-by␛[39m
+  ␛[38;5;103m58:12␛[39m  ␛[38;5;203merror  ␛[39m  signal(v) only reads. Write with draft.set(v)   ␛[38;5;103mpyreon/no-signal-call-write␛[39m
+
+␛]8;;file:///repo/src/components/Avatar.tsx␛\\␛[4msrc/components/Avatar.tsx␛[24m␛]8;;␛\\
+  ␛[38;5;103m9:5␛[39m  ␛[38;5;220mwarning␛[39m  <img> needs alt text  ␛[38;5;103mpyreon/require-img-alt␛[39m
+
+␛[38;5;203m✗␛[39m ␛[38;5;203m1 error␛[39m, ␛[38;5;220m2 warnings␛[39m
+  ␛[38;5;103m2 fixable with␛[39m --fix␛[38;5;103m · 3 files · 380 ms␛[39m
+"
+`;
+
+exports[`reporter — formatText shape (shared @pyreon/ansi theme) > level 2 · light 1`] = `
+"
+␛]8;;file:///repo/src/routes/inbox.tsx␛\\␛[4msrc/routes/inbox.tsx␛[24m␛]8;;␛\\
+  ␛[38;5;59m42:7 ␛[39m  ␛[38;5;94mwarning␛[39m  <For> needs a \`by\` key so rows survive reorder  ␛[38;5;59mpyreon/no-missing-for-by␛[39m
+  ␛[38;5;59m58:12␛[39m  ␛[38;5;124merror  ␛[39m  signal(v) only reads. Write with draft.set(v)   ␛[38;5;59mpyreon/no-signal-call-write␛[39m
+
+␛]8;;file:///repo/src/components/Avatar.tsx␛\\␛[4msrc/components/Avatar.tsx␛[24m␛]8;;␛\\
+  ␛[38;5;59m9:5␛[39m  ␛[38;5;94mwarning␛[39m  <img> needs alt text  ␛[38;5;59mpyreon/require-img-alt␛[39m
+
+␛[38;5;124m✗␛[39m ␛[38;5;124m1 error␛[39m, ␛[38;5;94m2 warnings␛[39m
+  ␛[38;5;59m2 fixable with␛[39m --fix␛[38;5;59m · 3 files · 380 ms␛[39m
+"
+`;
+
+exports[`reporter — formatText shape (shared @pyreon/ansi theme) > level 3 · dark 1`] = `
+"
+␛]8;;file:///repo/src/routes/inbox.tsx␛\\␛[4msrc/routes/inbox.tsx␛[24m␛]8;;␛\\
   ␛[38;2;138;134;150m42:7 ␛[39m  ␛[38;2;250;204;21mwarning␛[39m  <For> needs a \`by\` key so rows survive reorder  ␛[38;2;138;134;150mpyreon/no-missing-for-by␛[39m
   ␛[38;2;138;134;150m58:12␛[39m  ␛[38;2;248;113;113merror  ␛[39m  signal(v) only reads. Write with draft.set(v)   ␛[38;2;138;134;150mpyreon/no-signal-call-write␛[39m
 
@@ -84,7 +112,7 @@ exports[`reporter — formatText shape (shared @pyreon/ansi theme) > level 2 · 
 "
 `;
 
-exports[`reporter — formatText shape (shared @pyreon/ansi theme) > level 2 · light 1`] = `
+exports[`reporter — formatText shape (shared @pyreon/ansi theme) > level 3 · light 1`] = `
 "
 ␛]8;;file:///repo/src/routes/inbox.tsx␛\\␛[4msrc/routes/inbox.tsx␛[24m␛]8;;␛\\
   ␛[38;2;94;90;105m42:7 ␛[39m  ␛[38;2;138;90;0mwarning␛[39m  <For> needs a \`by\` key so rows survive reorder  ␛[38;2;94;90;105mpyreon/no-missing-for-by␛[39m

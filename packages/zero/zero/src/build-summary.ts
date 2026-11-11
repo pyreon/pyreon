@@ -36,8 +36,8 @@ import {
 // Colour level, palette and symbols come from `@pyreon/ansi`, the one theme
 // every Pyreon command shares.
 
-/** 0 = plain, 1 = 16 colours, 2 = truecolor (the `@pyreon/ansi` levels). */
-export type ColorLevel = 0 | 1 | 2
+/** 0 = plain, 1 = 16 colours, 2 = 256 colours, 3 = truecolor (the `@pyreon/ansi` levels). */
+export type ColorLevel = 0 | 1 | 2 | 3
 
 /** Palette role per render mode, shared by the route-mode table. `spa` stays plain. */
 const MODE_ROLE: Record<string, Role> = {

@@ -191,12 +191,12 @@ export async function writeScaffold(
 
 /**
  * Render for a specific terminal instead of detecting one: colour level
- * (0 plain, 1 sixteen colours, 2 truecolor), background, symbol set and
+ * (0 plain, 1 sixteen colours, 2 256 colours, 3 truecolor), background, symbol set and
  * wrap width. Anything left out is detected by `@pyreon/ansi` (`NO_COLOR`,
  * `FORCE_COLOR`, `TERM=dumb`, the stream's TTY, `PYREON_CLI_THEME`, locale).
  */
 export interface OutputStyle {
-  color?: 0 | 1 | 2 | undefined
+  color?: 0 | 1 | 2 | 3 | undefined
   theme?: 'dark' | 'light' | undefined
   unicode?: boolean | undefined
   width?: number | undefined

@@ -224,6 +224,8 @@ const VARIANTS: Array<[string, RenderOptions]> = [
   ['level 1 (16 colours)', { color: 1, theme: 'dark', unicode: true }],
   ['level 2 dark', { color: 2, theme: 'dark', unicode: true }],
   ['level 2 light', { color: 2, theme: 'light', unicode: true }],
+  ['level 3 dark', { color: 3, theme: 'dark', unicode: true }],
+  ['level 3 light', { color: 3, theme: 'light', unicode: true }],
   ['level 0 ASCII', { color: 0, theme: 'dark', unicode: false }],
 ]
 

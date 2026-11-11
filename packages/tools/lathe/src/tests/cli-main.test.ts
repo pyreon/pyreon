@@ -149,18 +149,21 @@ describe('colour follows the destination', () => {
     expect(shouldColor({ isTTY: true }, { FORCE_COLOR: '0' })).toBe(false)
   })
 
-  it('--color forces colour on (truecolor when advertised), --no-color forces it off', () => {
+  it('--color forces colour on (256 or truecolor when advertised), --no-color forces it off', () => {
     // The flags beat the environment: `--color` through a pipe, under NO_COLOR
     // or TERM=dumb is still colour, and `--no-color` on a TTY is plain.
     expect(resolveColorLevel(true, { isTTY: false }, {})).toBe(1)
     expect(resolveColorLevel(true, { isTTY: false }, { NO_COLOR: '1', TERM: 'dumb' })).toBe(1)
-    expect(resolveColorLevel(true, { isTTY: false }, { COLORTERM: 'truecolor' })).toBe(2)
-    expect(resolveColorLevel(true, { isTTY: false }, { FORCE_COLOR: '3' })).toBe(2)
+    expect(resolveColorLevel(true, { isTTY: false }, { COLORTERM: 'truecolor' })).toBe(3)
+    expect(resolveColorLevel(true, { isTTY: false }, { FORCE_COLOR: '3' })).toBe(3)
+    expect(resolveColorLevel(true, { isTTY: false }, { FORCE_COLOR: '2' })).toBe(2)
+    expect(resolveColorLevel(true, { isTTY: false }, { TERM: 'xterm-256color' })).toBe(2)
     expect(resolveColorLevel(false, { isTTY: true }, { FORCE_COLOR: '3' })).toBe(0)
     // No flag: the shared detection.
     expect(resolveColorLevel(undefined, { isTTY: true }, {})).toBe(1)
     expect(resolveColorLevel(undefined, { isTTY: true }, { NO_COLOR: '1' })).toBe(0)
-    expect(resolveColorLevel(undefined, { isTTY: false }, { FORCE_COLOR: '3' })).toBe(2)
+    expect(resolveColorLevel(undefined, { isTTY: false }, { FORCE_COLOR: '3' })).toBe(3)
+    expect(resolveColorLevel(undefined, { isTTY: true }, { TERM: 'xterm-256color' })).toBe(2)
   })
 
   it('--color reaches the report through a pipe', async () => {

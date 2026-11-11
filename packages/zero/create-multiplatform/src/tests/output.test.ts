@@ -25,6 +25,8 @@ const STYLES: Array<[string, OutputStyle]> = [
   ['colour level 1 (16 colours)', { color: 1, unicode: true }],
   ['colour level 2, dark', { color: 2, theme: 'dark', unicode: true }],
   ['colour level 2, light', { color: 2, theme: 'light', unicode: true }],
+  ['colour level 3, dark', { color: 3, theme: 'dark', unicode: true }],
+  ['colour level 3, light', { color: 3, theme: 'light', unicode: true }],
   ['ASCII', { color: 0, unicode: false }],
 ]
 
@@ -79,10 +81,13 @@ describe('colour detection (FORCE_COLOR / TERM=dumb / NO_COLOR are honoured)', (
     }
   })
 
-  it('FORCE_COLOR=3 colours a pipe in truecolor; FORCE_COLOR=1 in 16 colours', () => {
+  it('FORCE_COLOR=3 colours a pipe in truecolor; 2 in 256 colours; 1 in 16 colours', () => {
     process.env.FORCE_COLOR = '3'
     expect(formatSummary(SUMMARY)).toContain(`${ESC}[38;2;`)
+    process.env.FORCE_COLOR = '2'
+    expect(formatSummary(SUMMARY)).toContain(`${ESC}[38;5;`)
     process.env.FORCE_COLOR = '1'
+    process.env.TERM = 'xterm'
     expect(formatSummary(SUMMARY)).toContain(`${ESC}[32m`)
   })
 

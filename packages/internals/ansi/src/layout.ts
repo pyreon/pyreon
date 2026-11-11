@@ -100,6 +100,13 @@ export interface ColumnsOptions {
   gap?: number | undefined
   /** Leading spaces. Default 2. */
   indent?: number | undefined
+  /**
+   * The line width available. When any aligned row would be wider, the
+   * whole table stacks instead: each row's first cell on its own line and
+   * the remaining cells, unpadded, on the next line two spaces further in.
+   * Nothing is cut, so a long path survives a narrow terminal whole.
+   */
+  width?: number | undefined
 }
 
 /**
@@ -116,14 +123,38 @@ export const columns = (rows: ReadonlyArray<ReadonlyArray<string>>, opts: Column
       widths[i] = Math.max(widths[i] ?? 0, visibleWidth(cell))
     })
   }
-  return rows.map((row) => {
+  const aligned = rows.map((row) => {
     const cells = row.map((cell, i) => {
       const w = widths[i] ?? 0
       return opts.align?.[i] === 'right' ? padStartVisible(cell, w) : padEndVisible(cell, w)
     })
     return `${indent}${cells.join(gap)}`.trimEnd()
   })
+  const width = opts.width
+  if (width === undefined || aligned.every((l) => visibleWidth(l) <= width)) return aligned
+  const out: string[] = []
+  for (const row of rows) {
+    out.push(`${indent}${row[0] ?? ''}`.trimEnd())
+    const rest = row.slice(1).filter((c) => c !== '')
+    if (rest.length > 0) out.push(`${indent}  ${rest.join(gap)}`)
+  }
+  return out
 }
+
+/**
+ * The last line of a run the user stopped (Ctrl-C): `! interrupted · meta`.
+ * A warning, not an error: nothing failed, the run is incomplete. The meta
+ * says how far it got (`3 of 13 gates`, elapsed).
+ */
+export const interrupted = (t: Term, metaParts: ReadonlyArray<string | false | undefined | null> = []): string =>
+  verdict(t, 'warn', 'interrupted', metaParts)
+
+/**
+ * The last line of a run that had nothing to look at: `ℹ <what> · <hint>`.
+ * Info, not success: an empty scan proves nothing, so it never shows `✓`.
+ */
+export const nothingTo = (t: Term, what: string, hint?: string): string =>
+  verdict(t, 'info', what, hint ? [hint] : [])
 
 /**
  * A score bar: `value / max` of `width` cells filled in `role`, the rest

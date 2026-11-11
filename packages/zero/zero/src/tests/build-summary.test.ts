@@ -137,10 +137,18 @@ describe('formatBuildSummary', () => {
   })
 
   it('truecolor tier uses the shared palette, per theme', () => {
-    const dark = formatBuildSummary(stats, { color: 2, elapsedMs: 10 }).join('\n')
+    const dark = formatBuildSummary(stats, { color: 3, elapsedMs: 10 }).join('\n')
     expect(dark).toContain('\x1b[38;2;74;222;128m✓') // ok, dark
-    const light = formatBuildSummary(stats, { color: 2, theme: 'light', elapsedMs: 10 }).join('\n')
+    const light = formatBuildSummary(stats, { color: 3, theme: 'light', elapsedMs: 10 }).join('\n')
     expect(light).toContain('\x1b[38;2;21;112;58m✓') // ok, light
+  })
+
+  it('256-colour tier uses the nearest xterm index, per theme', () => {
+    const dark = formatBuildSummary(stats, { color: 2, elapsedMs: 10 }).join('\n')
+    expect(dark).toContain('\x1b[38;5;78m✓') // ok, dark
+    const light = formatBuildSummary(stats, { color: 2, theme: 'light', elapsedMs: 10 }).join('\n')
+    expect(light).toContain('\x1b[38;5;22m✓') // ok, light
+    expect(dark).not.toContain('\x1b[38;2;')
   })
 
   it('16-color tier uses basic ANSI only', () => {
@@ -166,7 +174,7 @@ describe('branding helpers', () => {
     const plain = formatRouteModeTable(entries, 'ssr')
     expect(plain.join('\n')).not.toContain('\x1b[')
     expect(plain[0]).toContain('[zero] Route modes (app: ssr)')
-    const colored = formatRouteModeTable(entries, 'ssr', 40, 2)
+    const colored = formatRouteModeTable(entries, 'ssr', 40, 3)
     expect(colored.join('\n')).toContain('\x1b[38;2;')
   })
 })
