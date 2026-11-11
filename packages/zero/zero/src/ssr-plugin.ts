@@ -52,6 +52,7 @@
  * cost only when they haven't authored one.
  */
 
+import { term } from '@pyreon/ansi'
 import { existsSync } from 'node:fs'
 import { readFile, rm, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
@@ -458,7 +459,7 @@ export function ssrPlugin(userConfig: ZeroConfig = {}): Plugin {
       try {
         const tableMode = config._autoMode ? ('auto' as const) : mode
         const modeEntries = await collectFileRouteModes(join(root, 'src', 'routes'), tableMode, config.routeRules)
-        for (const line of formatRouteModeTable(modeEntries, tableMode)) logInfo(line)
+        for (const line of formatRouteModeTable(modeEntries, tableMode, undefined, term.level)) logInfo(line)
       } catch {
         /* table is informational only */
       }

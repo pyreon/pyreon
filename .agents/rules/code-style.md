@@ -74,6 +74,13 @@ Before gating a rule or forcing a fix, read its findings. Several rules that loo
 - `ExtractProps<T>` extracts props from a ComponentFn or passes through
 - `HigherOrderComponent<HOP, P>` for typed HOC patterns
 
+## Terminal output (every Pyreon command)
+
+- Colour, symbols and layout come from `@pyreon/ansi` (`packages/internals/ansi`, private, inlined by each consumer's build). No package keeps its own ESC map, colour detection or glyph table. The six layout rules are `RULES` there; read its README before changing CLI output.
+- Renderers take a `Term` (or `color` / `theme` / `unicode` primitives) and return strings, so output is snapshot-testable at every colour level. `createTerm({ level: 0 })` output must equal the coloured output with escapes stripped.
+- `@pyreon/ansi` has no built declarations: a type from it in a PUBLISHED `.d.ts` breaks the dts build (`MISSING_EXPORT`). Public option types take primitives and build the `Term` internally.
+- `--json` / `--gha` / compact output is a contract: changing human text must leave it byte-identical (`machine-output-lock.test.ts` in cli and lint).
+
 ## UI Components (@pyreon/ui-components)
 
 - **Layout in `.attrs()`, CSS in `.theme()`.** Element layout props go in `.attrs()`; visual styles (colors, spacing, borders, shadows, type) go in `.theme()`. Element is a flex box already — never re-declare `display`/`flexDirection`/`alignItems`/`justifyContent` in a theme; it fights the wrapper CSS and never reaches the button/fieldset/legend flex-fix inner layer. The prop contract:

@@ -154,27 +154,49 @@ export default {
 
 ## Build Output
 
-Every production build ends with a branded summary of what it produced — after the SSG prerender, SSR bundle, and deploy-adapter staging have all finished:
+Every production build ends with a summary of what it produced, printed after the SSG prerender, SSR bundle and deploy-adapter staging have all finished. A real `zero build` of `examples/cpa-pw-blog` (with `NO_COLOR`), from the route-mode table to the last line:
 
+```text
+[zero] Route modes (app: ssg) — 4 ssg ○
+  ○ ssg  /
+  ○ ssg  /about
+  ○ ssg  /blog
+  ○ ssg  /blog/:slug
+
+  zero build · ssg · adapter: node
+
+  asset                                                                                         size     gzip
+  assets/index-CYPOMx4X.js                                                        entry     114.2 kB  38.3 kB
+  assets/posts-C_z9lkxs.js                                                        entry       6.1 kB   2.6 kB
+  assets/index-Gt2BXkg9.css                                                       entry       3.9 kB   1.2 kB
+  assets/routes-CrmxT0Tt.js                                                       entry       1.0 kB    594 B
+  assets/fonts/UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa25L7W0Q5n-wU.woff2                 other      85.3 kB        —
+  assets/fonts/UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa1ZL7W0Q5nw.woff2                   other      48.4 kB        —
+  assets/fonts/UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa2JL7W0Q5n-wU.woff2                 other      25.8 kB        —
+  assets/fonts/tDbY2o-flEEny0FZhsfKu5WU4zr3E_BX0PnT8RD8yKxTOlOVk6OThhvA.woff2     other      21.2 kB        —
+  assets/fonts/UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa1pL7W0Q5n-wU.woff2                 other      19.0 kB        —
+  assets/fonts/UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa0ZL7W0Q5n-wU.woff2                 other      18.7 kB        —
+  assets/fonts/UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa2ZL7W0Q5n-wU.woff2                 other      11.3 kB        —
+  assets/fonts/UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa2pL7W0Q5n-wU.woff2                 other      10.3 kB        —
+  assets/fonts/tDbY2o-flEEny0FZhsfKu5WU4zr3E_BX0PnT8RD8yKxTNFOVk6OThhvAWV8.woff2  other       7.4 kB        —
+  assets/fonts/tDbY2o-flEEny0FZhsfKu5WU4zr3E_BX0PnT8RD8yKxTPlOVk6OThhvAWV8.woff2  other       5.3 kB        —
+  assets/fonts/tDbY2o-flEEny0FZhsfKu5WU4zr3E_BX0PnT8RD8yKxTOVOVk6OThhvAWV8.woff2  other       4.3 kB        —
+  assets/fonts/tDbY2o-flEEny0FZhsfKu5WU4zr3E_BX0PnT8RD8yKxTNVOVk6OThhvAWV8.woff2  other       3.9 kB        —
+  assets/fonts/tDbY2o-flEEny0FZhsfKu5WU4zr3E_BX0PnT8RD8yKxTN1OVk6OThhvAWV8.woff2  other       1.2 kB        —
+  assets/_slug_-BjR9wZ5l.js                                                       js          1.2 kB    657 B
+  assets/blog-DeIUpAaF.js                                                         js           876 B    498 B
+  assets/about-BUwaruKX.js                                                        js           657 B    429 B
+  total js                                                                        6 files   124.0 kB  43.1 kB
+  total css                                                                       1 file      3.9 kB   1.2 kB
+  total other                                                                     13 files  262.2 kB
+
+  ✓ built in 555 ms · 20 assets · 8 prerendered pages (159.1 kB html)
 ```
-  ▲ pyreon zero production build
 
-  Client assets
-    entry  assets/index-CfGHbruy.js      92.0 kB │ gzip   31.3 kB
-    entry  assets/index-Gt2BXkg9.css      3.9 kB │ gzip    1.2 kB
-    js     assets/blog-K42cx7wd.js         852 B │ gzip     466 B
-    Σ      4 js 94.5 kB (gzip 32.8 kB)  ·  1 css 3.9 kB (gzip 1.2 kB)  ·  13 other 262.2 kB
-
-  Server bundle
-    file   server/entry-server.js        301.2 kB
-
-  ○ 9 prerendered pages (158.8 kB html)
-  ✓ Build complete in 463 ms
-```
-
-- **entry** marks the scripts/styles the built `index.html` loads directly — the initial payload; lazy route chunks list below it, sorted by gzip cost, with long tails collapsed to `+ N more`.
-- The per-route mode table (`○ ssg · λ ssr · ⟳ isr · ⚡ spa`) prints above the summary, colorized in the same palette.
-- Colors use the Pyreon ember ramp and degrade automatically: truecolor → 16-color ANSI → plain (`NO_COLOR`, non-TTY, and `TERM=dumb` are respected; `FORCE_COLOR` opts back in for CI log viewers).
+- The header names what ran, with the render mode and the deploy adapter. The last line is the verdict: `✓ built` (or `✗ built with N failed pages`), elapsed time, asset count, prerendered pages and, for SSR/ISR, the server bundle size.
+- **entry** marks the scripts/styles the built `index.html` loads directly (the initial payload); lazy chunks follow, sorted by gzip cost, with long tails collapsed to `+ N more`. Paths are printed whole, never truncated.
+- The per-route mode table (`○ ssg · λ ssr · ⟳ isr · ⚡ spa`) prints above the summary.
+- The look is the shared Pyreon CLI theme from `@pyreon/ansi` (the same as `pyreon doctor` and `pyreon-lint`): truecolor when `COLORTERM=truecolor`, 16 colours otherwise, plain when `NO_COLOR` is set, `TERM=dumb`, or output is not a TTY (`FORCE_COLOR=1` opts back in for CI log viewers, `FORCE_COLOR=3` forces truecolor). `PYREON_CLI_THEME=light` (or a light `COLORFGBG`) switches to the light-background palette.
 - The summary is informational only — it can never fail a build — and prints exactly once per top-level build (zero's recursive inner sub-builds stay silent).
 
 Opt out for minimal logs (log scrapers, size-diff tooling):

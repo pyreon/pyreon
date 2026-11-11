@@ -301,6 +301,7 @@ export async function runCli(argv: string[]): Promise<number | null> {
   }
 
   let result: Awaited<ReturnType<typeof lintAsync>>
+  const startedAt = performance.now()
   try {
     result = await lintAsync({
       paths: args.paths,
@@ -326,7 +327,10 @@ export async function runCli(argv: string[]): Promise<number | null> {
   } else if (args.format === 'compact') {
     console.log(formatCompact(result))
   } else {
-    const output = formatText(result)
+    const output = formatText(result, {
+      elapsedMs: performance.now() - startedAt,
+      fixApplied: args.fix,
+    })
     if (output) console.log(output)
   }
 
