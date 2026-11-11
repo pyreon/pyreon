@@ -1175,6 +1175,8 @@ The standalone form (`import { seoPlugin } from '@pyreon/zero/seo'` + a separate
 
 **`lastmod`.** Set `sitemap: { lastmod: 'build-time' }` to stamp every entry with the build date (`YYYY-MM-DD`), or pass an explicit ISO date. Per-entry `additionalPaths[].lastmod` always wins. `'build-time'` is the honest automated choice — file mtimes are unreliable in CI (a git checkout stamps checkout time on every file), so "when did this deploy happen" is the strongest truthful freshness signal.
 
+**`exclude`.** A string entry drops that path and everything under it on a segment boundary (`'/blog'` drops `/blog` and `/blog/post`, not `/blogroll`). To drop one page but keep its children, pass a RegExp: `exclude: [/^\/why$/]` drops `/why` and keeps `/why/<id>`. Both forms apply to file-scanned routes and to `additionalPaths`.
+
 `generateSitemap(paths, config)`, `generateRobots(config)`, and `jsonLd(data)` are also exported for manual use. `seoMiddleware(config)` serves sitemap/robots in development. In SSG mode, the sitemap can be driven by the actual prerendered path set including dynamic and per-locale variants — see [SSG → Sitemap](/docs/ssg#sitemap-from-resolved-paths).
 
 ## Font Optimization

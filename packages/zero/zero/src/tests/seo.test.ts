@@ -176,6 +176,50 @@ describe('generateSitemap', () => {
     expect(sitemap).not.toContain('admin')
   })
 
+  it('string exclude matches on a segment boundary (route scan)', () => {
+    const files = ['index.tsx', 'blog.tsx', 'blog/post.tsx', 'blogroll.tsx', 'blog-archive.tsx']
+    const sitemap = generateSitemap(files, { ...config, exclude: ['/blog'] })
+
+    expect(sitemap).toContain('<loc>https://example.com/blogroll</loc>')
+    expect(sitemap).toContain('<loc>https://example.com/blog-archive</loc>')
+    expect(sitemap).not.toContain('<loc>https://example.com/blog</loc>')
+    expect(sitemap).not.toContain('<loc>https://example.com/blog/post</loc>')
+  })
+
+  it('string exclude matches on a segment boundary (additionalPaths, trailing slash tolerant)', () => {
+    const sitemap = generateSitemap([], {
+      ...config,
+      additionalPaths: [{ path: '/blog' }, { path: '/blog/post' }, { path: '/blog/' }, { path: '/blogroll' }],
+      exclude: ['/blog'],
+    })
+
+    expect(sitemap).toContain('<loc>https://example.com/blogroll</loc>')
+    expect(sitemap).not.toContain('<loc>https://example.com/blog</loc>')
+    expect(sitemap).not.toContain('<loc>https://example.com/blog/post</loc>')
+    expect(sitemap).not.toContain('<loc>https://example.com/blog/</loc>')
+  })
+
+  it('RegExp exclude drops exactly the matched page and keeps its children (route scan)', () => {
+    const sitemap = generateSitemap(['index.tsx', 'why.tsx', 'why/one.tsx'], {
+      ...config,
+      exclude: [/^\/why$/],
+    })
+
+    expect(sitemap).not.toContain('<loc>https://example.com/why</loc>')
+    expect(sitemap).toContain('<loc>https://example.com/why/one</loc>')
+  })
+
+  it('RegExp exclude drops exactly the matched page and keeps its children (additionalPaths)', () => {
+    const sitemap = generateSitemap([], {
+      ...config,
+      additionalPaths: [{ path: '/why' }, { path: '/why/one' }],
+      exclude: [/^\/why$/],
+    })
+
+    expect(sitemap).not.toContain('<loc>https://example.com/why</loc>')
+    expect(sitemap).toContain('<loc>https://example.com/why/one</loc>')
+  })
+
   it('includes additional paths for dynamic routes', () => {
     const files = ['index.tsx']
     const sitemap = generateSitemap(files, {
