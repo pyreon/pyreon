@@ -7421,6 +7421,16 @@
       "bytes": 32282,
       "warnings": 1
     },
+    "example:native-showcase/TodayApp.tsx|swift": {
+      "sha": "3c25cdd0ece3fa49594ede9798a50eda795104122f5624d83dcb5c828d96cb13",
+      "bytes": 5511,
+      "warnings": 0
+    },
+    "example:native-showcase/TodayApp.tsx|kotlin": {
+      "sha": "d2acb51121ea96b1df160533ebf02696e02f61adbd2bcf968a4d7cfffd415add",
+      "bytes": 4805,
+      "warnings": 0
+    },
     "example:native-tasks/TasksApp.tsx|swift": {
       "sha": "013e8099986e2b5849d7ceb1bfb79d9066f4de7fae572edeaebe1cacde41f579",
       "bytes": 175679,
