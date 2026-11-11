@@ -1,4 +1,4 @@
-import { effect } from '@pyreon/reactivity'
+import { effect, runUntracked } from '@pyreon/reactivity'
 import type { JSONContent, RichTextEditor } from './types'
 
 /**
@@ -75,10 +75,15 @@ export function bindRichTextToSignal<T = JSONContent>(
     applyingFromSignal = true
     try {
       if (format === 'html') {
-        // pyreon-lint-disable-next-line pyreon/no-peek-in-tracked
-        const e = editor.view.peek()
-        if (e && (value as string) !== e.getHTML()) {
-          e.commands.setContent(value as string)
+        // Through `editor.setContent`, which works with or without a live view:
+        // before mount it records the HTML for the mount and updates the
+        // pre-mount document. This used to skip while no view existed, so the
+        // editor→signal direction below then wrote the EMPTY document's HTML
+        // over the outside value (#4360). Compared against `html()` (the same
+        // string the other direction emits), and loaded without an undo step,
+        // like the JSON branch's `json.set`.
+        if ((value as string) !== runUntracked(() => editor.html())) {
+          editor.setContent(value as string)
         }
       } else {
         // pyreon-lint-disable-next-line pyreon/no-peek-in-tracked
