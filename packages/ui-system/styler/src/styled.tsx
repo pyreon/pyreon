@@ -17,7 +17,7 @@
  */
 import type { ComponentFn, Ref, VNode } from '@pyreon/core'
 import { h } from '@pyreon/core'
-import { computed, isServer, renderEffect, runUntracked } from '@pyreon/reactivity'
+import { _rdNoteTarget, computed, isServer, renderEffect, runUntracked } from '@pyreon/reactivity'
 import { buildProps } from './forward'
 import { type Interpolation, normalizeCSS, resolve } from './resolve'
 import { isDynamic } from './shared'
@@ -593,6 +593,15 @@ const createStyledComponent = (
       })
 
       renderEffect(() => {
+        // Dev: name this the CLASS binding it is in the reactive graph. Its
+        // first run writes nothing (the ref has not attached yet; the initial
+        // class rides on the props), so no runtime setter reports it and it
+        // read as an anonymous effect — the binding that carries a rocketstyle
+        // component's variant / size / state. Only the first run's frame
+        // records; later runs pay one compare. Noted in the body rather than
+        // labelled through the returned disposer so production keeps no extra
+        // variable per instance.
+        if (process.env.NODE_ENV !== 'production') _rdNoteTarget(isDOM ? (finalTag as string) : el, 'class')
         const newClass = cssClass() // reads computed — O(1), just string
         if (el && newClass !== currentClassName) {
           if (currentClassName) el.classList.remove(currentClassName)

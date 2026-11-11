@@ -725,11 +725,11 @@ export function _rdCloseBindingFrame(): BindingTarget | null {
  * open binding frame and only once per frame (the first write names the
  * binding). Called from `@pyreon/runtime-dom` behind its dev gate.
  */
-export function _rdNoteTarget(el: object | null, kind: ReactiveBindingKind, key?: string): void {
+export function _rdNoteTarget(el: object | string | null, kind: ReactiveBindingKind, key?: string): void {
   if (process.env.NODE_ENV !== 'production') {
     if (_bf.depth === 0 || _bf.kind !== null) return
     _bf.kind = kind
-    _bf.target = tagOf(el as { localName?: string } | null)
+    _bf.target = typeof el === 'string' ? el : tagOf(el as { localName?: string } | null)
     _bf.key = key
   }
 }
