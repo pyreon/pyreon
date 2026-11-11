@@ -34,6 +34,7 @@ import {
   _releaseRun,
   _replayReads,
   _sampleReads,
+  type EffectScope,
   effectScope,
   getContextOwner,
   type RunCapture,
@@ -53,7 +54,15 @@ import {
   compiledParentPath,
   warnHydrationMismatch,
 } from './hydration-debug'
-import { bindPolymorphicText, componentProps, mountChild } from './mount'
+import {
+  _devFirstElementIn,
+  _devNameScope,
+  _devRegisterScope,
+  _devUnregisterScope,
+  bindPolymorphicText,
+  componentProps,
+  mountChild,
+} from './mount'
 import { buildRowPlan, replayRowPlan, tplAdoptVerify } from './hydration-plan'
 import type { RowPlan } from './hydration-plan'
 import { _setPendingForAdoption, mountKeyedList, mountReactive } from './nodes'
@@ -1813,6 +1822,47 @@ function hydrateDeferredLazy(
   ]
 }
 
+/**
+ * Dev only: `hydrateChild` for a component's output, then register the
+ * component with devtools (after its subtree, before its onMount — the order
+ * `mountComponent` uses). `el` is the first element of the range the component
+ * claimed, `[domNode, end)`, when the walk adopted server nodes; that path
+ * reads no `previousSibling` (a `<For>` of component rows would pay one per
+ * row; `hydrate-for-block-single-scan.test.tsx` pins zero). With no server
+ * node, the range starts after the node that preceded the insertion point.
+ * When the walk claimed nothing because a mismatch MOUNTED fresh content (the
+ * fresh nodes go right before the cursor, which stays the range end) or
+ * replaced the cursor, the node just before the end is the component's root
+ * when it is an element — exact for the common single-root component.
+ */
+function devHydrateRegistered(
+  scope: EffectScope,
+  owner: EffectScope | null,
+  name: string,
+  output: VNodeChild,
+  domNode: ChildNode | null,
+  parent: Node,
+  anchor: Node | null,
+  path: string,
+): [Cleanup, ChildNode | null] {
+  const before = domNode === null ? (anchor !== null ? anchor.previousSibling : parent.lastChild) : null
+  const result = hydrateChild(output, domNode, parent, anchor, path)
+  // The range ends at `next`; with no `next` it ends at `anchor` while that is
+  // a later sibling (a mount hole passes its cursor as both domNode and anchor).
+  const next = result[1]
+  const end = next ?? (anchor !== null && anchor !== domNode && anchor.parentNode === parent ? anchor : null)
+  let el: Element | null
+  if (domNode !== null && domNode !== next && domNode.parentNode === parent) el = _devFirstElementIn(domNode, end)
+  else if (domNode === null) {
+    el = _devFirstElementIn(before !== null && before.parentNode === parent ? before.nextSibling : parent.firstChild, end)
+  } else {
+    const last = end !== null ? end.previousSibling : parent.lastChild
+    el = last !== null && last.nodeType === 1 ? (last as Element) : null
+  }
+  _devRegisterScope(scope, owner, name, el)
+  return result
+}
+
 function hydrateComponent(
   vnode: VNode,
   domNode: ChildNode | null,
@@ -1843,6 +1893,12 @@ function hydrateComponent(
 
   // Function.name is always a string per spec; || handles empty string, avoids uncoverable ?? branch
   const componentName = ((vnode.type as ComponentFn).name || 'Anonymous') as string
+  // Devtools identity (dev only), BEFORE setup + children so a child resolves
+  // this component as its parent through the owner chain — the same map
+  // `mountComponent` uses, so a component mounted under this one later does too.
+  // Every devtools step below is a dev-gated statement or ternary with no
+  // local, so production output is byte-identical to a build without them.
+  if (process.env.NODE_ENV !== 'production') _devNameScope(scope, componentName)
   // Same builder as mountComponent — children merged by descriptor copy, then
   // `_rp` thunks become getters — so a forwarded getter prop stays live here too.
   const mergedProps = componentProps(vnode)
@@ -1963,6 +2019,10 @@ function hydrateComponent(
         }
       })
 
+    if (process.env.NODE_ENV !== 'production') {
+      _devRegisterScope(scope, prevOwner, componentName, _devFirstElementIn(rangeStart, endMarker))
+    }
+
     subtreeCleanup = () => {
       cancelled = true
       resolvedCleanup()
@@ -1980,7 +2040,10 @@ function hydrateComponent(
     const suspenseAttach = suspenseAttachOf(vnode.type)
     const boundaryStart = suspenseAttach !== undefined ? document.createComment('suspense') : null
     if (boundaryStart !== null) parent.insertBefore(boundaryStart, domNode ?? anchor)
-    const [childCleanup, next] = hydrateChild(output, domNode, parent, anchor, path)
+    const [childCleanup, next] =
+      process.env.NODE_ENV !== 'production'
+        ? devHydrateRegistered(scope, prevOwner, componentName, output, domNode, parent, anchor, path)
+        : hydrateChild(output, domNode, parent, anchor, path)
     subtreeCleanup = childCleanup
     nextDom = next
     if (boundaryStart !== null) {
@@ -2010,6 +2073,11 @@ function hydrateComponent(
     }
   }
 
+  // A component that rendered nothing registers too, as `mountComponent` does.
+  if (process.env.NODE_ENV !== 'production' && output == null) {
+    _devRegisterScope(scope, prevOwner, componentName, null)
+  }
+
   // Fire onMount hooks; effects created inside are tracked by the scope via runInScope
   if (hooks.mount) {
     for (const fn of hooks.mount) {
@@ -2029,6 +2097,7 @@ function hydrateComponent(
   setContextOwner(prevOwner)
 
   const cleanup: Cleanup = () => {
+    if (process.env.NODE_ENV !== 'production') _devUnregisterScope(scope)
     scope.stop()
     subtreeCleanup()
     if (hooks.unmount) for (const fn of hooks.unmount) fn()

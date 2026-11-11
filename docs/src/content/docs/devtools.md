@@ -54,7 +54,7 @@ The extension reads everything through a global hook the framework attaches in t
 
 ### The `window.__PYREON_DEVTOOLS__` hook
 
-`@pyreon/runtime-dom` auto-installs the hook on the first browser `mount()` (idempotent, SSR-safe — a no-op when there is no `window`). It exposes the component-tree surface:
+`@pyreon/runtime-dom` auto-installs the hook on the first browser `mount()` or `hydrateRoot()` (idempotent, SSR-safe — a no-op when there is no `window`). Components are registered on both paths, so SSR, SSG, island and Zero apps show the same tree as a client-rendered app; each entry is removed when its component unmounts. It exposes the component-tree surface:
 
 | Member | Description |
 | --- | --- |
