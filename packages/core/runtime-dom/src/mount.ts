@@ -39,7 +39,7 @@ import {
   type RunCapture,
 } from '@pyreon/reactivity'
 import { setupDelegation } from './delegate'
-import { registerComponent, unregisterComponent } from './devtools'
+import { _devInspectable, registerComponent, unregisterComponent } from './devtools'
 import { _takePendingForAdoption, detachNode, mountFor, mountKeyedList, mountReactive } from './nodes'
 import { applyProps, applySelectValueProp } from './props'
 import { suspenseAttachOf } from './suspense-boundary'
@@ -739,6 +739,7 @@ function mountComponent(
     _mountingStack!.pop()
     const firstEl = parent instanceof Element ? parent.firstElementChild : null
     registerComponent(compId!, componentName, firstEl, devParentId!)
+    _devInspectable(compId!, scope, mergedProps)
   }
 
   // Fire onMount hooks inline — effects created inside are tracked by the scope.
