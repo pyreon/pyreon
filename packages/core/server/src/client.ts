@@ -521,6 +521,8 @@ function scheduleInteractionHydration(
   // index walk relative to `el`. After hydration we re-query the live tree.
   let captured: CapturedInteraction | null = null
   // Stamp a "scheduled" marker for tests / devtools introspection.
+  // `data-island-state` is removed once hydration finishes; `data-island-hydrated`
+  // (set in hydrateIsland) marks the island as live.
   el.setAttribute('data-island-state', 'awaiting-interaction')
 
   const startHydration = () => {
@@ -699,6 +701,9 @@ async function hydrateIsland(
     const idPrefix = el.getAttribute('data-id-prefix')
     const tree = idPrefix === null ? h(Comp, props) : h(_IslandIds, { prefix: idPrefix }, h(Comp, props))
     runWithContextOwner(owner ?? null, () => hydrateRoot(el, tree))
+    // Stamp the "live" marker only after hydrateRoot returns, so tests and
+    // devtools can wait for it (a static page never sets data-pyreon-hydrated).
+    el.setAttribute('data-island-hydrated', '')
     if (process.env.NODE_ENV !== 'production') _count('island.hydrated')
   } catch (err) {
     console.error(`Failed to hydrate island "${name}"`, err)
