@@ -501,7 +501,7 @@
         }
       ]
     },
-    "a11y": "role=dialog, aria-modal, focus moves to the first link, Escape closes and returns focus to the button, body scroll locked."
+    "a11y": "A disclosure (WAI-ARIA APG disclosure navigation), not role=dialog: the menu button in the bar has aria-expanded and aria-controls and stays the close control, visible above the sheet (an aria-modal dialog would hide it from screen readers). While open, the page behind is inert, Tab stays in the header (bar and sheet), focus moves to the first link, body scroll is locked, Escape closes it and returns focus to the button, and widening past the breakpoint closes it."
   },
   "footer": {
     "tagline": "Your component runs once. Web today; iOS and Android from the same .tsx (experimental). MIT licensed.",
