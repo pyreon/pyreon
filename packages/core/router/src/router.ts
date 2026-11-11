@@ -12,6 +12,7 @@ import {
   type AfterEachHook,
   type Blocker,
   type BlockerFn,
+  type BlockerOptions,
   type ComponentFn,
   type InitialNavigationOutcome,
   isLazy,
@@ -244,40 +245,89 @@ export function onBeforeRouteUpdate(guard: NavigationGuard): () => void {
 // Shared beforeunload handler — single listener for all active blockers.
 // Attached when the first blocker registers, detached when the last one is
 // removed. Avoids listener accumulation from multiple useBlocker() calls.
-let _beforeUnloadRefCount = 0
-const _beforeUnloadHandler = (e: BeforeUnloadEvent) => {
-  e.preventDefault()
+//
+// The handler ASKS each blocker (see `BlockerOptions.beforeUnload`) and prompts
+// only when one says to block: an unconditional `preventDefault()` showed
+// "Leave site?" on every tab close while ANY blocker was mounted, even one
+// that never blocks (#4358).
+//
+// Module-level registry, so its cleanup contract: an entry leaves on
+// `remove()` (idempotent: a Set delete, so a double remove cannot evict
+// another blocker's entry), on the owning component's unmount, and on the
+// router's `destroy()`. Locked by `blocker-beforeunload-refcount.test.ts`.
+type UnloadBlocker = {
+  fn: BlockerFn
+  router: RouterInstance
+  beforeUnload: BlockerOptions['beforeUnload']
+}
+const _unloadBlockers = new Set<UnloadBlocker>()
+
+function blocksUnload(entry: UnloadBlocker): boolean {
+  const opt = entry.beforeUnload
+  if (typeof opt === 'boolean') return opt
+  try {
+    if (typeof opt === 'function') return opt() === true
+    const current = entry.router.currentRoute()
+    const verdict: unknown = entry.fn(current, current)
+    if (verdict !== null && typeof verdict === 'object' && 'then' in verdict) {
+      // Cannot be awaited during unload: count it as blocking, and keep its
+      // eventual rejection from surfacing as unhandled.
+      ;(verdict as Promise<unknown>).then(undefined, () => undefined)
+      return true
+    }
+    return verdict === true
+  } catch {
+    // A throwing blocker keeps the old, safe behaviour: ask the user.
+    return true
+  }
 }
 
-function retainBeforeUnload(): void {
+const _beforeUnloadHandler = (e: BeforeUnloadEvent) => {
+  for (const entry of _unloadBlockers) {
+    if (blocksUnload(entry)) {
+      e.preventDefault()
+      // Legacy browsers show the prompt only when returnValue is set.
+      e.returnValue = ''
+      return
+    }
+  }
+}
+
+function addUnloadBlocker(entry: UnloadBlocker): void {
   if (!isClient) return
-  if (_beforeUnloadRefCount === 0) {
+  if (_unloadBlockers.size === 0) {
     window.addEventListener('beforeunload', _beforeUnloadHandler)
   }
-  _beforeUnloadRefCount++
+  _unloadBlockers.add(entry)
 }
 
-function releaseBeforeUnload(): void {
+function removeUnloadBlocker(entry: UnloadBlocker): void {
   if (!isClient) return
-  _beforeUnloadRefCount--
-  if (_beforeUnloadRefCount <= 0) {
-    _beforeUnloadRefCount = 0
+  if (!_unloadBlockers.delete(entry)) return
+  if (_unloadBlockers.size === 0) {
     window.removeEventListener('beforeunload', _beforeUnloadHandler)
   }
 }
 
-export function useBlocker(fn: BlockerFn): Blocker {
+function removeRouterUnloadBlockers(router: RouterInstance): void {
+  for (const entry of _unloadBlockers) {
+    if (entry.router === router) removeUnloadBlocker(entry)
+  }
+}
+
+export function useBlocker(fn: BlockerFn, options?: BlockerOptions): Blocker {
   const router = (useContext(RouterContext) ?? _activeRouter) as RouterInstance | null
   if (!router)
     throw new Error(
       '[Pyreon] No router installed. Wrap your app in <RouterProvider router={router}>.',
     )
   router._blockers.add(fn)
-  retainBeforeUnload()
+  const entry: UnloadBlocker = { fn, router, beforeUnload: options?.beforeUnload }
+  addUnloadBlocker(entry)
 
   const remove = () => {
     router._blockers.delete(fn)
-    releaseBeforeUnload()
+    removeUnloadBlocker(entry)
   }
 
   // Auto-remove when the component that called useBlocker unmounts
@@ -2158,7 +2208,7 @@ export function createRouter<TNames extends string = string>(
       guards.length = 0
       afterHooks.length = 0
       // Release beforeunload for any remaining blockers
-      for (let i = router._blockers.size; i > 0; i--) releaseBeforeUnload()
+      removeRouterUnloadBlockers(router)
       router._blockers.clear()
       componentCache.clear()
       router._loaderData.clear()

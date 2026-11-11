@@ -1201,12 +1201,19 @@ Matching is segment-aware: `/admin` matches `/admin/users` (prefix) when `exact`
 Register a navigation blocker to prevent the user from leaving a page:
 
 ```ts
-function useBlocker(fn: BlockerFn): { remove(): void }
+function useBlocker(fn: BlockerFn, options?: BlockerOptions): { remove(): void }
 
 type BlockerFn = (to: ResolvedRoute, from: ResolvedRoute) => boolean | Promise<boolean>
+
+interface BlockerOptions {
+  // Tab close / reload prompt. Default: ask `fn` (see below).
+  beforeUnload?: boolean | (() => boolean)
+}
 ```
 
-Return `true` (or resolve to `true`) to block navigation. The blocker also installs a `beforeunload` handler to catch tab closures.
+Return `true` (or resolve to `true`) to block navigation.
+
+The blocker also covers closing or reloading the tab: the browser shows its "Leave site?" prompt only when a blocker says to block. On that event the blocker is called synchronously with the current route as both `to` and `from`. The browser cannot wait for a Promise, so a blocker that returns one counts as blocking; give such a blocker `beforeUnload: () => isDirty()`. `beforeUnload: false` never prompts and `beforeUnload: true` always prompts while the blocker is active.
 
 ```tsx
 import { useBlocker } from '@pyreon/router'
@@ -2816,7 +2823,7 @@ router.push({ name: 'user', params: { id: '42' } })
 
 <APICard name="useMiddlewareData" type="hook" signature={"useMiddlewareData(): () => Record<string, unknown>"} description="Reactive accessor for data set by the route's middleware chain." />
 
-<APICard name="useBlocker" type="hook" signature="useBlocker(fn: BlockerFn): { remove(): void }" description="Register a navigation blocker. Returns true to block, false to allow. Also handles beforeunload." />
+<APICard name="useBlocker" type="hook" signature="useBlocker(fn: BlockerFn, options?: BlockerOptions): { remove(): void }" description="Register a navigation blocker. Returns true to block, false to allow. Tab close / reload prompts only when a blocker blocks (options.beforeUnload overrides)." />
 
 <APICard name="onBeforeRouteLeave" type="hook" signature={"onBeforeRouteLeave(guard: NavigationGuard): () => void"} description="In-component guard called before navigating away from the current route." />
 

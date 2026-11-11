@@ -397,9 +397,9 @@ setSearch({ page: "2" })`,
     {
       name: 'useBlocker',
       kind: 'hook',
-      signature: 'useBlocker(fn: BlockerFn): Blocker',
+      signature: 'useBlocker(fn: BlockerFn, options?: BlockerOptions): Blocker',
       summary:
-        'Block navigations while a condition holds. `fn(to, from)` is called before EVERY navigation — including browser Back/Forward, which route through the full pipeline — and returning `true` (or resolving to `true`; async blockers are supported, e.g. `confirm()` dialogs) cancels it. A cancelled browser traversal restores the URL/history position. Returns `{ remove() }` to unregister (auto-removed on component unmount). Also installs a shared ref-counted `beforeunload` handler so tab-close shows the browser confirmation while any blocker is active.',
+        'Block navigations while a condition holds. `fn(to, from)` is called before EVERY navigation — including browser Back/Forward, which route through the full pipeline — and returning `true` (or resolving to `true`; async blockers are supported, e.g. `confirm()` dialogs) cancels it. A cancelled browser traversal restores the URL/history position. Returns `{ remove() }` to unregister (auto-removed on component unmount). Closing or reloading the tab shows the browser\'s "Leave site?" prompt only when a blocker says to block: the shared `beforeunload` handler calls each blocker synchronously with the current route as `to` and `from` (a blocker returning a Promise counts as blocking, since the browser cannot wait). `options.beforeUnload` overrides that: `true` / `false` always / never prompt, or a function such as `() => form.isDirty()` (use it for an async blocker).',
       example: `const blocker = useBlocker((to, from) => {
   return form.isDirty() && !confirm('Discard unsaved changes?')
 })
@@ -409,6 +409,7 @@ blocker.remove()`,
         "Expecting `proceed()` / `reset()` methods (React Router shape) — Pyreon's blocker is a predicate: return `true` to block, `false` to allow; `remove()` unregisters it",
         'Returning `false` to block — inverted: `true` means BLOCK (it answers "should this navigation be blocked?")',
         'Assuming the Back button bypasses blockers — browser traversals run the same pipeline; a blocked Back restores the URL',
+        'An async blocker without `beforeUnload` — the tab-close prompt cannot await it, so it always prompts; pass `{ beforeUnload: () => isDirty() }`',
       ],
       seeAlso: ['useRouter', 'onBeforeRouteLeave'],
     },
