@@ -443,9 +443,9 @@ test.describe('Reactivity panel — reactive coverage', () => {
 
     const summary = page.getByTestId('coverage-summary')
     await expect(summary).toHaveCount(1)
-    // A percentage and a node count, both real.
-    await expect(summary).toContainText(/% covered/)
-    await expect(summary).toContainText(/\d+\/\d+ nodes/)
+    // A binding count, real: the denominator is the component's bindings.
+    await expect(summary).toContainText(/\d+\/[1-9]\d* bindings fired/)
+    await expect(page.getByTestId('coverage-percent')).toHaveText(/^\d+%$/)
   })
 
   test('a recorded session measures something — the denominator is not zero', async ({ browser }) => {
@@ -458,12 +458,12 @@ test.describe('Reactivity panel — reactive coverage', () => {
     await page.getByTestId('addon-tab-reactivity').click()
     await page.getByTestId('coverage-toggle').click()
 
-    // `0/0 nodes` would mean the session recorded nothing while still showing a
+    // `0/0` would mean the session recorded nothing while still showing a
     // percentage — the empty-scan false green, in a new place.
     const text = (await page.getByTestId('coverage-summary').textContent()) ?? ''
-    const match = /(\d+)\/(\d+) nodes/.exec(text)
-    expect(match, `no node count in: ${text}`).not.toBeNull()
-    expect(Number(match![2]), 'the graph must have nodes to measure').toBeGreaterThan(0)
+    const match = /(\d+)\/(\d+) bindings fired/.exec(text)
+    expect(match, `no binding count in: ${text}`).not.toBeNull()
+    expect(Number(match![2]), 'the component must have bindings to measure').toBeGreaterThan(0)
   })
 })
 

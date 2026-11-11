@@ -396,7 +396,7 @@ test.describe('every panel renders its real data', () => {
     await page.getByTestId('coverage-toggle').click()
     await page.locator('[data-testid="canvas-preview"] label').first().click()
     await page.getByTestId('coverage-toggle').click()
-    await expect(page.getByTestId('coverage-summary')).toContainText(/\/\d+ nodes/)
+    await expect(page.getByTestId('coverage-summary')).toContainText(/\d+\/[1-9]\d* bindings fired/)
   })
 
   test('Lens → answers or says why it cannot (no dev server RPC under plain Vite)', async ({ browser }) => {
@@ -537,11 +537,12 @@ test.describe('the #4440 parts', () => {
     await page.getByTestId('coverage-toggle').click()
     const pct = Number.parseFloat((await page.getByTestId('coverage-percent').textContent()) ?? '')
     expect(Number.isFinite(pct)).toBe(true)
-    // The same report's denominator, stated in the caption and the stats.
-    await expect(page.getByTestId('coverage-head')).toContainText(/of the [1-9]\d* reactive nodes/)
-    // The fill's width IS that percentage of the track (0 is a real answer:
-    // the workbench remounts a component per control edit, so its effects
-    // often only ran at mount — the bar must say so, not round it up).
+    // The same rows' denominator, stated in the caption and the stats.
+    await expect(page.getByTestId('coverage-head')).toContainText(/of this component's [1-9]\d* reactive bindings? fired/)
+    const rows = await page.getByTestId('binding-row').count()
+    const covered = await page.locator('[data-testid="binding-row"][data-status="covered"]').count()
+    expect(pct).toBe(Math.round((covered / rows) * 100))
+    // The fill's width IS that percentage of the track.
     await expect
       .poll(() => page.getByTestId('coverage-fill').evaluate((el) => (el as HTMLElement).style.width))
       .toBe(`${pct}%`)
@@ -588,6 +589,101 @@ test.describe('the #4440 parts', () => {
             await ctx.close()
           }
         }
+      }
+    })
+  }
+})
+
+/**
+ * Reactive coverage → named bindings (#4440). The rows are the component's
+ * real DOM bindings, read from the dev reactive graph; a control edit updates
+ * the mounted component IN PLACE (it used to re-mount it, so every binding
+ * only ever ran at mount and the panel read 0%).
+ */
+test.describe('Reactive coverage → named bindings', () => {
+  const row = (page: Page, name: string) =>
+    page.getByTestId('binding-row').filter({ has: page.getByTestId('binding-name').getByText(name, { exact: true }) })
+
+  test('a binding is listed uncovered, then covered once the control that drives it changes', async ({ browser }) => {
+    const { page } = await open(browser, { path: '/?c=button&p=reactivity' })
+    await page.getByTestId('coverage-toggle').click()
+
+    const text = row(page, 'text ← label')
+    await expect(text).toHaveAttribute('data-status', 'never')
+    await expect(text.getByTestId('binding-fires')).toHaveText('0')
+    await expect(text.getByTestId('binding-status')).toHaveText(/○\s*never fired/)
+    await expect(text.getByTestId('binding-hint')).toHaveText('Change “Label” in Controls to exercise it.')
+    // The class binding names the controls it reads (through the styler).
+    await expect(row(page, 'class ← variant, size, mode, theme')).toHaveCount(1)
+
+    // Mark the rendered element: an in-place update keeps it, a re-mount would not.
+    await page.locator('[data-testid="canvas-preview"] button').evaluate((el) => {
+      ;(el as HTMLElement & { __probe?: number }).__probe = 1
+    })
+    await page.getByTestId('addon-tab-controls').click()
+    await page.locator('#addon-panel-controls input[placeholder]').first().fill('Saved')
+    await expect(page.locator('[data-testid="canvas-preview"] button')).toHaveText('Saved')
+    expect(
+      await page
+        .locator('[data-testid="canvas-preview"] button')
+        .evaluate((el) => (el as HTMLElement & { __probe?: number }).__probe),
+    ).toBe(1)
+    await page.getByTestId('addon-tab-reactivity').click()
+
+    await expect(text).toHaveAttribute('data-status', 'covered')
+    await expect(text.getByTestId('binding-fires')).toHaveText('1')
+    await expect(text.getByTestId('binding-status')).toHaveText(/✓\s*covered/)
+    await expect(text.getByTestId('binding-hint')).toHaveCount(0)
+    // Uncovered rows lead: the first row is not the one that just fired.
+    await expect(page.getByTestId('binding-row').first()).toHaveAttribute('data-status', 'never')
+  })
+
+  test('the list follows interaction with the preview while recording', async ({ browser }) => {
+    // Toggle's render reads `on` itself, so a click re-mounts the preview —
+    // but its own `on` bindings are notified first, so they really fired.
+    const { page } = await open(browser, { path: '/?c=toggle&p=reactivity' })
+    await page.getByTestId('coverage-toggle').click()
+    const track = row(page, 'class ← on, mode, theme').first()
+    await expect(track).toHaveAttribute('data-status', 'never')
+    await page.locator('[data-testid="canvas-preview"] label span').first().click()
+    await expect(track).toHaveAttribute('data-status', 'covered')
+    await expect(track).toContainText('2 mounts')
+  })
+
+  test('keyboard: Record / Stop and the node disclosure are operable without a pointer', async ({ browser }) => {
+    const { page } = await open(browser, { path: '/?c=button&p=reactivity' })
+    const toggle = page.getByTestId('coverage-toggle')
+    await toggle.focus()
+    await page.keyboard.press('Enter')
+    await expect(toggle).toHaveAttribute('aria-pressed', 'true')
+    await expect(page.getByTestId('binding-row').first()).toBeVisible()
+    const summary = page.locator('[data-testid="coverage-others"] summary')
+    await summary.focus()
+    await page.keyboard.press('Enter')
+    await expect(page.locator('[data-testid="coverage-others"] details')).toHaveAttribute('open', '')
+    await toggle.focus()
+    await page.keyboard.press('Space')
+    await expect(toggle).toHaveAttribute('aria-pressed', 'false')
+    // Stopped: the reading stays on screen, frozen.
+    await expect(page.getByTestId('binding-row').first()).toBeVisible()
+  })
+
+  for (const theme of ['dark', 'light'] as const) {
+    test(`${theme}: the bindings table — no horizontal overflow and AA chrome text at every width`, async ({
+      browser,
+    }) => {
+      test.setTimeout(120_000)
+      for (const width of WIDTHS) {
+        const { page, ctx } = await open(browser, { theme, width, path: '/?c=button&p=reactivity' })
+        await page.getByTestId('coverage-toggle').click()
+        await expect(page.getByTestId('binding-row').first()).toBeVisible()
+        const where = `${theme} @${width} reactive coverage`
+        const overflow = await page.evaluate(
+          () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+        )
+        expect(overflow, `${where}: horizontal overflow`).toBeLessThanOrEqual(0)
+        expect(await contrastFailures(page), where).toEqual([])
+        await ctx.close()
       }
     })
   }
