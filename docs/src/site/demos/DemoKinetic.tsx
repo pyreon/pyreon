@@ -15,10 +15,10 @@ import { Eyebrow } from '../kit/type'
  * Motion demo (`kinetic.json` → demo): nine real presets from
  * `@pyreon/kinetic-presets` (named imports, so the page ships nine of the
  * 122). The box is `kinetic('div').preset(p)` driven by a `show` signal; the
- * list is `kinetic('ul').preset(p).stagger({ interval: 90 })`. Chains are
- * immutable, so every component is defined once here at module scope.
- * Picking a preset remounts both with `appear`, which replays the enter;
- * Toggle flips `show`, which runs the leave. Under `prefers-reduced-motion`
+ * panel is `kinetic('div').collapse()`. Chains are immutable, so every
+ * component is defined once here at module scope. Picking a preset remounts
+ * the box, which replays the enter; Toggle flips `show`, which runs the
+ * leave; the panel collapses to 0 and back to auto. Under `prefers-reduced-motion`
  * kinetic skips the visuals by itself (the state still changes).
  */
 const PRESETS = { fade, fadeUp, scaleIn, slideRight, flipX, blurIn, zoomOut, rotateIn, bounceInUp } as const
@@ -26,12 +26,10 @@ type PresetName = keyof typeof PRESETS
 const NAMES = Object.keys(PRESETS) as PresetName[]
 
 const BOXES = Object.fromEntries(NAMES.map((n) => [n, kinetic('div').preset(PRESETS[n])])) as Record<PresetName, ReturnType<typeof kinetic<'div'>>>
-const LISTS = Object.fromEntries(NAMES.map((n) => [n, kinetic('ul').preset(PRESETS[n]).stagger({ interval: 90 })])) as Record<
-  PresetName,
-  ReturnType<ReturnType<typeof kinetic<'ul'>>['stagger']>
->
+// Collapse mode: height 0 ↔ auto. (Stagger is left out until #4359 / #4380 are fixed, as the content says.)
+const Panel = kinetic('div').collapse()
 
-const ITEMS: readonly [string, string, string, string] = ['Invoice #1042 paid', 'New comment on Launch plan', 'Ada joined the team', 'Weekly report ready']
+const PANEL_LINES = ['Invoice #1042 paid', 'New comment on Launch plan', 'Ada joined the team', 'Weekly report ready'] as const
 
 const BoxStage = el
   .config({ name: 'KineticStage' })
@@ -43,10 +41,10 @@ const boxCss = `
   background: ${paper.accent}; color: ${paper.accentText}; font: 600 17px ${font.system};
 `
 const listCss = `
-  list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; min-height: 196px; width: 100%;
+  list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; width: 100%;
   & > li { padding: 11px 14px; border-radius: 10px; border: 1px solid ${paper.line}; background: ${paper.field}; color: ${paper.text}; font: 14px ${font.system}; }
 `
-const ListLook = el.config({ name: 'KineticListLook' }).attrs({ block: true }).theme(() => ({ extendCss: `& > ul { ${listCss} }` }))
+const ListLook = el.config({ name: 'KineticListLook' }).attrs({ block: true }).theme(() => ({ extendCss: `& ul { ${listCss} }` }))
 
 const State = txt
   .config({ name: 'KineticState' })
@@ -71,8 +69,7 @@ function Entering(props: { render: (visible: () => boolean) => VNode }) {
 export default function DemoKinetic() {
   const preset = signal<PresetName>('fadeUp')
   const shown = signal(true)
-  // Bumped to remount the list (Replay stagger) without changing the preset.
-  const run = signal(0)
+  const open = signal(true)
 
   const pick = (p: PresetName) => {
     shown.set(true)
@@ -80,7 +77,7 @@ export default function DemoKinetic() {
   }
 
   const code = () =>
-    `const Box = kinetic('div').preset(${preset()})\n<Box show={() => shown()}>Hello</Box>  // shown: ${shown()}\n\nconst List = kinetic('ul')\n  .preset(${preset()})\n  .stagger({ interval: 90 })`
+    `const Box = kinetic('div').preset(${preset()})\n<Box show={() => shown()}>Hello</Box>  // shown: ${shown()}\n\nconst Panel = kinetic('div').collapse()\n<Panel show={() => open()}>…</Panel>  // open: ${open()}`
 
   return (
     <DemoGrid>
@@ -92,7 +89,7 @@ export default function DemoKinetic() {
             <Pill variant="solid" onClick={() => shown.update((v) => !v)}>
               Toggle
             </Pill>
-            <Pill onClick={() => run.update((n) => n + 1)}>Replay stagger</Pill>
+            <Pill onClick={() => open.update((v) => !v)}>{() => (open() ? 'Collapse the panel' : 'Expand the panel')}</Pill>
           </ButtonRow>
           <CodeBlock code={code()} label="The chain for the selected preset" />
           <CardNote>Picking a preset replays its enter; Toggle runs the leave. With reduced motion on, kinetic skips the animation and only the state changes.</CardNote>
@@ -107,16 +104,13 @@ export default function DemoKinetic() {
         </BoxStage>
         <State aria-live="polite">{() => `show: ${shown()}`}</State>
         <ListLook>
-          <For each={() => [`${preset()}:${run()}`]} by={(k) => k}>
-            {() => (
-              <Entering
-                render={(visible) =>
-                  // h() children, not JSX: stagger drops compiled-JSX children (#4380).
-                  h(LISTS[preset.peek()], { show: () => visible() }, ...ITEMS.map((t) => h('li', null, t)))
-                }
-              />
-            )}
-          </For>
+          <Panel show={() => open()}>
+            <ul>
+              <For each={PANEL_LINES} by={(t) => t}>
+                {(t) => <li>{t}</li>}
+              </For>
+            </ul>
+          </Panel>
         </ListLook>
       </DemoSurface>
     </DemoGrid>

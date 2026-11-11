@@ -6,7 +6,7 @@
  "category": "ui system · animation",
  "hero": {
   "title": "A presence animation is one line. The compositor runs it.",
-  "lede": "`kinetic('div').preset(fadeUp)` gives you a component that animates in and out: fades, slides, height collapses, and staggered lists that arrive in order. It runs on CSS transitions with no JavaScript animation loop, and handles reduced motion and server rendering for you.",
+  "lede": "`kinetic('div').preset(fadeUp)` gives you a component that animates in and out: fades, slides, zooms and height collapses. It runs on CSS transitions with no JavaScript animation loop, and renders on the server with its hidden state inlined.",
   "install": "bun add @pyreon/kinetic @pyreon/kinetic-presets",
   "ctaShort": "Install",
   "facts": [
@@ -40,8 +40,8 @@
     "text": "Kinetic applies the start and end styles (or classes) across a double `requestAnimationFrame` and waits for `transitionend`. Animate `transform`, `opacity` and `filter` and the work stays on the compositor thread."
    },
    {
-    "title": "Lists that arrive in order",
-    "text": "`.stagger({ interval: 75 })` sequences children, sets `--stagger-index` on each and can leave last-in, first-out with `reverseLeave`."
+    "title": "Height: auto, animated",
+    "text": "`.collapse()` animates between 0 and the content's measured height, then sets `height: auto` so the content stays responsive. The content stays in the DOM, so find-in-page and screen readers still reach it."
    },
    {
     "title": "Safe for every user and every crawler",
@@ -65,13 +65,13 @@
  "extraSectionsHtml": null,
  "demo": {
   "title": "Pick a preset, toggle it.",
-  "text": "A few of the 122 presets on one box, and a list in stagger mode. Toggle runs the leave animation; pick a preset to replay the enter.",
+  "text": "A few of the 122 presets on one box, and a collapse panel. Toggle runs the leave animation; pick a preset to replay the enter.",
   "component": "DemoKinetic",
   "reference": "pkg-kinetic.html#demo",
   "referenceHtml": "<div class=\"p-demo\">\n  <div class=\"card\"><div class=\"in\">\n    <span class=\"label\">preset</span>\n    <div class=\"kn-pre\" id=\"kn-pre\"></div>\n    <div style=\"display:flex;gap:10px;margin-top:6px\"><button class=\"pill solid\" type=\"button\" id=\"kn-t\">Toggle</button><button class=\"pill\" type=\"button\" id=\"kn-s\">Replay stagger</button></div>\n    <pre id=\"kn-code\" style=\"margin:6px 0 0;padding:14px;border:1px solid var(--line);border-radius:10px;background:var(--well);font-size:12px\"></pre>\n  </div></div>\n  <div class=\"ui\" style=\"display:grid;grid-template-rows:auto 1fr;gap:18px;min-height:380px;overflow:hidden\">\n    <div style=\"height:150px;display:grid;place-items:center;perspective:600px\"><div id=\"kn-box\" class=\"kn-box\">Hello</div></div>\n    <ul id=\"kn-list\" class=\"kn-list\"></ul>\n  </div>\n</div>",
   "referenceCss": ".kn-pre{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}.kn-pre button{height:38px;border-radius:10px;border:1px solid var(--line);background:transparent;color:var(--mist);font-family:var(--mono);font-size:12px;cursor:pointer}.kn-pre button[aria-pressed=\"true\"]{border-color:rgba(255,94,26,.55);background:rgba(255,94,26,.08);color:var(--ivory)}\n.kn-box{width:180px;height:110px;border-radius:16px;background:linear-gradient(135deg,#C2410C,#E40C70);color:#fff;display:grid;place-items:center;font-weight:650;font-size:20px;transition:all .45s cubic-bezier(.2,.8,.2,1)}\n.kn-list{list-style:none;margin:0;padding:0;display:grid;gap:8px}.kn-list li{padding:10px 14px;border-radius:10px;background:#fff;box-shadow:0 0 0 1px #E6DFD2;font-size:14px;transition:all .4s cubic-bezier(.2,.8,.2,1)}\n@media (prefers-reduced-motion: reduce){.kn-box,.kn-list li{transition:none}}",
   "referenceJs": "(function(){var P={fade:'opacity:0',fadeUp:'opacity:0;transform:translateY(24px)',scaleIn:'opacity:0;transform:scale(.7)',slideRight:'opacity:0;transform:translateX(-80px)',flipX:'opacity:0;transform:rotateX(90deg)',blurIn:'opacity:0;filter:blur(12px)',zoomOut:'opacity:0;transform:scale(1.4)',rotateIn:'opacity:0;transform:rotate(-25deg) scale(.8)',bounceUp:'opacity:0;transform:translateY(60px)'},cur='fadeUp',shown=true,$=function(i){return document.getElementById(i)};\nfunction apply(el,hidden){el.setAttribute('style',hidden?P[cur]:'');if(cur==='bounceUp')el.style.transitionTimingFunction='cubic-bezier(.34,1.56,.64,1)'}\nfunction r(){$('kn-pre').innerHTML=Object.keys(P).map(function(k){return '<button type=\"button\" aria-pressed=\"'+(k===cur)+'\" data-k=\"'+k+'\">'+k+'</button>'}).join('');document.querySelectorAll('[data-k]').forEach(function(b){b.onclick=function(){cur=b.dataset.k;r();replay()}});$('kn-code').innerHTML='<span class=\"k\">const</span> Box = <span class=\"f\">kinetic</span>(<span class=\"s\">\\'div\\'</span>).<span class=\"f\">preset</span>('+cur+')\\n<span class=\"p\">&lt;</span><span class=\"t\">Box</span> show={'+shown+'}<span class=\"p\">&gt;</span>Hello<span class=\"p\">&lt;/</span><span class=\"t\">Box</span><span class=\"p\">&gt;</span>'}\nfunction replay(){var b=$('kn-box');apply(b,true);requestAnimationFrame(function(){requestAnimationFrame(function(){apply(b,!shown)})});stagger()}\nfunction stagger(){var items=['Invoice #1042 paid','New comment on Launch plan','Ada joined the team','Weekly report ready'];$('kn-list').innerHTML=items.map(function(t){return '<li>'+t+'</li>'}).join('');var lis=$('kn-list').children;[].forEach.call(lis,function(li){apply(li,true)});[].forEach.call(lis,function(li,i){setTimeout(function(){apply(li,false)},80+i*90)})}\n$('kn-t').onclick=function(){shown=!shown;apply($('kn-box'),!shown);r()};$('kn-s').onclick=stagger;r();replay();})();",
-  "spec": "Same behaviour as the prototype, built with the real package: the box is `kinetic('div').preset(<choice>)` driven by a `show` signal, the list is `kinetic('ul').preset(<choice>).stagger({ interval: 90 })`. The preset buttons are real exports: fade, fadeUp, scaleIn, slideRight, flipX, blurIn, zoomOut, rotateIn and bounceInUp (the prototype's `bounceUp` is not a preset name). The code panel shows the chain for the selected preset."
+  "spec": "Same behaviour as the prototype, built with the real package: the box is `kinetic('div').preset(<choice>)` driven by a `show` signal, the panel is `kinetic('div').collapse()` (stagger mode is left out until #4359 is fixed). The preset buttons are real exports: fade, fadeUp, scaleIn, slideRight, flipX, blurIn, zoomOut, rotateIn and bounceInUp (the prototype's `bounceUp` is not a preset name). The code panel shows the chain for the selected preset."
  },
  "features": {
   "title": "The whole motion toolkit.",
@@ -105,8 +105,8 @@
     "text": "compose, withDuration, withEasing, withDelay and reverse, so you tune a preset without forking it"
    },
    {
-    "name": "Stagger custom properties:",
-    "text": "`--stagger-index` and `--stagger-interval` on every child for your own CSS timing"
+    "name": "Safety timeout:",
+    "text": "a transition whose `transitionend` never fires completes after `timeout` (5 s by default), so a leave never strands an element"
    },
    {
     "name": "SSR-safe:",
@@ -205,8 +205,8 @@
    "text": "Named imports tree-shake to what you use. The `presets` map pins all 122 (about 2.2 KB gzip, author-measured), and a misspelled `presets[name]` animates nothing without an error."
   },
   {
-   "title": "Stagger is for lists that stay",
-   "text": "Stagger reads its children once at render. Group mode, for lists that change at runtime, does not yet animate removals (#4359); until it does, animate the list container rather than its rows."
+   "title": "Animate single elements for now",
+   "text": "Stagger and group modes do not render compiled lists correctly yet (#4359): a stagger list renders no children and a group list never unmounts removed rows. Use transition and collapse mode until the fix lands."
   },
   {
    "title": "Reduced motion and reveals",
@@ -262,10 +262,10 @@
  "comingFrom": [
   {
    "lib": "Motion (AnimatePresence)",
-   "title": "Animated add and remove for a keyed list.",
-   "before": "import { AnimatePresence, motion } from 'motion/react'\n\ntype Todo = { id: number; text: string }\n\nexport function TodoList({ todos }: { todos: Todo[] }) {\n  return (\n    <ul>\n      <AnimatePresence>\n        {todos.map((t) => (\n          <motion.li\n            key={t.id}\n            initial={{ opacity: 0, x: 16 }}\n            animate={{ opacity: 1, x: 0 }}\n            exit={{ opacity: 0, x: 16 }}\n          >\n            {t.text}\n          </motion.li>\n        ))}\n      </AnimatePresence>\n    </ul>\n  )\n}",
-   "after": "import type { Signal } from '@pyreon/reactivity'\nimport { kinetic } from '@pyreon/kinetic'\nimport { fadeLeft } from '@pyreon/kinetic-presets'\n\ntype Todo = { id: number; text: string }\n\nconst AnimatedList = kinetic('ul').preset(fadeLeft).group()\n\nexport function TodoList(props: { todos: Signal<Todo[]> }) {\n  return (\n    <AnimatedList>\n      {() => props.todos().map((t) => <li key={t.id}>{t.text}</li>)}\n    </AnimatedList>\n  )\n}",
-   "note": "Group mode diffs children by `key`. Pass an accessor (`{() => …}`) so the list re-evaluates when the data changes; a plain snapshot would never animate a later addition."
+   "title": "Enter and exit for one element.",
+   "note": "A transition-mode component unmounts its child after the leave animation by default, which is what `AnimatePresence` exists for. Pass `unmount={false}` to keep it in the DOM, hidden.",
+   "before": "import { AnimatePresence, motion } from 'motion/react'\n\nexport function Notice({ saved }: { saved: boolean }) {\n  return (\n    <AnimatePresence>\n      {saved && (\n        <motion.div\n          key=\"saved\"\n          initial={{ opacity: 0, x: 16 }}\n          animate={{ opacity: 1, x: 0 }}\n          exit={{ opacity: 0, x: 16 }}\n        >\n          Saved\n        </motion.div>\n      )}\n    </AnimatePresence>\n  )\n}",
+   "after": "import { kinetic } from '@pyreon/kinetic'\nimport { fadeLeft } from '@pyreon/kinetic-presets'\n\nconst SlideIn = kinetic('div').preset(fadeLeft)\n\nexport function Notice(props: { saved: () => boolean }) {\n  return <SlideIn show={props.saved}>Saved</SlideIn>\n}"
   }
  ],
  "recipes": [
@@ -275,9 +275,9 @@
    "code": "import { signal } from '@pyreon/reactivity'\nimport { kinetic } from '@pyreon/kinetic'\n\nconst Collapse = kinetic('div').collapse({ transition: 'height 250ms ease-out' })\n\nexport function Faq(props: { q: string; a: string }) {\n  const open = signal(false)\n  return (\n    <section>\n      <button aria-expanded={open()} onClick={() => open.update((v) => !v)}>\n        {props.q}\n      </button>\n      <Collapse show={open()}>\n        <p>{props.a}</p>\n      </Collapse>\n    </section>\n  )\n}"
   },
   {
-   "title": "A checklist that arrives in order",
-   "text": "Stagger mode with `fadeUp`: each step starts 80 ms after the one before, and on hide the steps leave last-in, first-out. Readers who ask for less motion get the plain list.",
-   "code": "import { Show } from '@pyreon/core'\nimport { signal } from '@pyreon/reactivity'\nimport { useReducedMotion } from '@pyreon/hooks'\nimport { kinetic } from '@pyreon/kinetic'\nimport { fadeUp } from '@pyreon/kinetic-presets'\n\nconst StepList = kinetic('ol').preset(fadeUp).stagger({ interval: 80, reverseLeave: true })\n\nexport function Steps() {\n  const show = signal(true)\n  const reduced = useReducedMotion()\n  return (\n    <div>\n      <button onClick={() => show.update((v) => !v)}>{() => (show() ? 'Hide steps' : 'Show steps')}</button>\n      <Show\n        when={reduced}\n        fallback={\n          <StepList show={() => show()}>\n            <li>Install</li>\n            <li>Write a component</li>\n            <li>Ship it</li>\n          </StepList>\n        }\n      >\n        <Show when={show}>\n          <ol>\n            <li>Install</li>\n            <li>Write a component</li>\n            <li>Ship it</li>\n          </ol>\n        </Show>\n      </Show>\n    </div>\n  )\n}"
+   "title": "A \"Saved\" notice that comes and goes",
+   "text": "Transition mode with a faster `fadeLeft`: the notice slides in on save, leaves two seconds later and unmounts after its leave animation. Readers who ask for less motion get a plain notice.",
+   "code": "import { Show } from '@pyreon/core'\nimport { signal } from '@pyreon/reactivity'\nimport { useReducedMotion } from '@pyreon/hooks'\nimport { kinetic } from '@pyreon/kinetic'\nimport { fadeLeft, withDuration } from '@pyreon/kinetic-presets'\n\nconst SlideIn = kinetic('div').preset(withDuration(fadeLeft, 250, 180))\n\nexport function SaveButton() {\n  const saved = signal(false)\n  const reduced = useReducedMotion()\n  let timer: ReturnType<typeof setTimeout> | undefined\n  const save = () => {\n    saved.set(true)\n    clearTimeout(timer)\n    timer = setTimeout(() => saved.set(false), 2000)\n  }\n  return (\n    <div>\n      <button onClick={save}>Save</button>\n      <Show when={() => !reduced()}>\n        <SlideIn show={() => saved()}>Saved</SlideIn>\n      </Show>\n      <Show when={() => reduced() && saved()}>\n        <div>Saved</div>\n      </Show>\n    </div>\n  )\n}"
   },
   {
    "title": "A scroll reveal that search engines still read",

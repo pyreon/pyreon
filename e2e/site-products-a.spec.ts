@@ -169,6 +169,9 @@ test.describe('demos, by pointer and keyboard', () => {
     await demo.getByRole('button', { name: 'blurIn', exact: true }).focus()
     await page.keyboard.press('Enter')
     await expect(demo).toContainText('.preset(blurIn)')
+    await demo.getByRole('button', { name: 'Collapse the panel' }).click()
+    await expect(demo).toContainText('open: false')
+    await expect(demo.getByRole('button', { name: 'Expand the panel' })).toBeVisible()
   })
 
   test('router: links, loader, guard, Back runs the guard again', async ({ page }) => {
