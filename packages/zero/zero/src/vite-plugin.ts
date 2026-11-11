@@ -4,7 +4,8 @@ import { isAbsolute, join, relative, sep } from 'node:path'
 import { generateActionManifest, isActionSourceFile, mayDefineActions } from './action-manifest'
 import { transformServerActions } from './actions-transform'
 import { innerBuildActiveInProcess, innerBuildFlagSet } from './build-flags'
-import { collectBuildStats, detectColorLevel, formatBuildSummary } from './build-summary'
+import { term } from '@pyreon/ansi'
+import { collectBuildStats, formatBuildSummary } from './build-summary'
 import { Readable } from 'node:stream'
 import type { ConfigEnv, Plugin, ViteDevServer } from 'vite'
 import type { IncomingMessage, ServerResponse } from 'node:http'
@@ -1114,7 +1115,14 @@ export function zeroPlugin(userInput: ZeroUserConfig = {}): Plugin[] {
 	// appended LAST so its closeBundle runs after every zero post-step
 	// (SSG prerender, SSR bundle, adapter staging) and reads the FINISHED
 	// dist tree. Informational only; never fails the build.
-	if (userConfig.buildSummary !== false) plugins.push(buildSummaryPlugin());
+	if (userConfig.buildSummary !== false) {
+		const adapter = config.adapter;
+		plugins.push(
+			buildSummaryPlugin(
+				`${config.mode} · adapter: ${typeof adapter === "string" ? adapter : adapter.name}`,
+			),
+		);
+	}
 
 	return plugins;
 }
@@ -1134,7 +1142,7 @@ export function zeroPlugin(userInput: ZeroUserConfig = {}): Plugin[] {
  * previously-registered closeBundle first; being appended last + `order:
  * 'post'` puts it at the very end of the build.
  */
-function buildSummaryPlugin(): Plugin {
+function buildSummaryPlugin(context: string): Plugin {
 	let root = process.cwd();
 	let outDir = "dist";
 	let assetsDir = "assets";
@@ -1178,7 +1186,10 @@ function buildSummaryPlugin(): Plugin {
 					const dist = isAbsolute(outDir) ? outDir : join(root, outDir);
 					const stats = collectBuildStats(dist, assetsDir);
 					const lines = formatBuildSummary(stats, {
-						color: detectColorLevel(),
+						color: term.level,
+						theme: term.theme,
+						unicode: term.unicode,
+						context,
 						elapsedMs: performance.now() - startedAt,
 					});
 					for (const line of lines) logInfo(line);

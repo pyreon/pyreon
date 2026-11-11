@@ -79,23 +79,21 @@ describe('assets are ordered so the top of the list is the useful part', () => {
   })
 })
 
-describe('long filenames are truncated from the LEFT', () => {
-  it('keeps the tail, which is the part that identifies the file', () => {
-    // A hashed asset path is `assets/…/name-a1b2c3.js`; truncating from
-    // the right would leave every row reading `assets/chunks/very-long…`
-    // and identify nothing.
+describe('long filenames are never truncated', () => {
+  it('prints the whole path, so it can be copied and opened', () => {
+    // The shared CLI rule: wrap, never truncate a path. A truncated path
+    // (from either end) cannot be pasted into an editor.
     const long = `assets/deeply/nested/path/that/goes/on/${'x'.repeat(40)}/bundle-a1b2c3.js`
     const out = render(stats({ clientAssets: [asset(long, 1000, 500)] }))
 
-    expect(out, 'the identifying tail survives').toContain('bundle-a1b2c3.js')
-    expect(out, 'and it is marked as truncated').toContain('…')
+    expect(out).toContain(long)
+    expect(out).not.toContain('…')
   })
 
-  it('leaves a short filename untouched', () => {
-    // The control: a truncator that always fired would mangle every row.
-    const out = render(stats({ clientAssets: [asset('app.js', 1000, 500)] }))
-    expect(out).toContain('app.js')
-    expect(out.split('\n').find((l) => l.includes('app.js'))).not.toContain('…')
+  it('keeps the size columns aligned past a long path', () => {
+    const out = render(stats({ clientAssets: [asset(`a/${'y'.repeat(70)}.js`, 1000, 500), asset('b.js', 2000, 900)] }))
+    const rows = out.split('\n').filter((l) => l.includes('.js'))
+    expect(rows[0]!.length).toBe(rows[1]!.length)
   })
 })
 

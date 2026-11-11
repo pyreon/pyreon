@@ -18,9 +18,12 @@
  */
 import { readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { bold, colorEnabled, cyan, gray, green } from '@pyreon/ansi'
+import { term } from '@pyreon/ansi'
 import { type CodemodResult, runCodemods, selectCodemods } from './codemods'
 import { detectSkew, scanInstalledPyreon } from './info'
+
+const { bold, gray, info: cyan, ok: green } = term
+const colorEnabled = term.color
 
 export interface UpgradeChange {
   name: string

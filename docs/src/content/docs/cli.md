@@ -66,27 +66,50 @@ pyreon doctor
 ```text
   pyreon doctor · project health audit
 
-  Score:  92/100   Grade: A
+  Score:  95/100   Grade: A
+  Scope:  1 package root(s) from single package (.)
+  Scanned: react-patterns 1 · pyreon-patterns 1 · lint 3 · islands-audit 0 · ssg-audit 0 ·
+           content-audit 0 · audit-tests 1 · check-dedup 0
 
-  Per category:
-
-  correctness    █████████░░░ 87  · 1E 1W
-  performance    ████████████ 100 · clean
+  correctness    ██████████░░  84 · 1E 2W
+  performance    skipped
   architecture   ████████████ 100 · clean
   testing        ████████████ 100 · clean
-  documentation  ████████████ 100 · clean
+  documentation  skipped
   best-practices clean (advisory — not graded)
 
-  Top findings (2 of 2):
+  ! 1 gate(s) matched no files — their categories were NOT measured:
+     distribution — no published packages found under packages/<category>/<pkg> — this gate audits
+       the Pyreon framework repo layout
 
-  ✗ useState imported from React. Use signal() from @pyreon/reactivity.  react-patterns/no-usestate
-     src/App.tsx:1:9
-     fix: import { signal } from "@pyreon/reactivity"
+  Top findings (3 of 3):
 
-  ! className → class (HTML standard attribute).  react-patterns/className
-     src/App.tsx:3:18
+  ✗ lint/pyreon/no-classname · Use `class` instead of `className` — Pyreon uses standard HTML
+     attributes.
+     ↳ src/App.tsx:3:30
 
-  1 error · 1 warning · 13 gates · 1.4s
+  ! react-patterns/class-name-prop · 'className' is a React JSX attribute. Use 'class' in Pyreon
+     (standard HTML).
+     ↳ src/App.tsx:3:30
+     fix: class="app"
+
+  ! react-patterns/react-import · Import from 'react' is a React package. Use Pyreon equivalent.
+     ↳ src/App.tsx:1:0
+     fix: import { ... } from "@pyreon/core"
+
+  Skipped:
+    doc-claims          doc-claim audit targets the Pyreon monorepo (scripts/check-doc-claims.ts not
+                        present here)
+    dependency-fabric   @pyreon/loom is not installed in this project — install it (`pyreon add
+                        @pyreon/loom`) to include dependency health in the score, or run `pyreon
+                        loom scan .` directly. Not scored rather than assumed healthy.
+    native-audit        no @pyreon/primitives importers found (not a multiplatform project)
+    audit-leak-classes  leak-class audit targets the Pyreon monorepo (scripts/audit-leak-classes.ts
+                        not present here)
+    audit-types         enable with --full
+    bundle-budgets      enable with --full
+
+  1 error, 2 warnings · 8 gates · 17 ms
 ```
 
 By default `pyreon doctor` runs the **13 fast gates** (~2-5s on a warm cache). The 2 slow gates are opt-in via `--full`.
@@ -358,12 +381,12 @@ Without `--ci`, `pyreon doctor` is **informational** — it prints the report an
 
 The human-readable renderer (`--format=text`, the default) prints, in order:
 
-1. **Banner** — `pyreon doctor · project health audit` + `Score: N/100   Grade: X`.
-2. **Per-category bars** — a 12-cell bar per category, colored by grade, with an `E`/`W`/`i` breakdown (`1E 2W 3i`) or `clean`. The advisory `best-practices` row is labeled `advisory — excluded from grade & --ci` so it's never mistaken for a grade-affecting bucket. A category with no contributing gate shows `skipped`.
-3. **Top findings** — up to 10 findings, each with a severity glyph (`✗` error, `!` warning, `ℹ` info), the bolded message, the `<gate>/<rule>` code, a clickable file location, related locations (`↳`), and a `fix:` hint. A `…and N more` line points to `--json` for the full list.
-4. **Footer** — skipped gates with reasons, total counts, gate count, and elapsed wall-clock.
+1. **Banner** — `pyreon doctor · project health audit`, `Score: N/100   Grade: X`, the scan scope and the per-gate scan counts.
+2. **Per-category bars** — a 12-cell bar per category, colored by grade, the score right-aligned, then an `E`/`W`/`i` breakdown (`1E 2W 3i`) or `clean`. The advisory `best-practices` row is labeled `advisory — excluded from grade and --ci` so it's never mistaken for a grade-affecting bucket. A category with no contributing gate shows `skipped`.
+3. **Top findings** — up to 10 findings, each as `<glyph> <gate>/<rule> · <message>` (`✗` error, `!` warning, `ℹ` info), then `↳ path:line:col` (and `↳` for each related location), then `fix:` when the gate knows the change. Lines wrap at 100 columns; paths are never truncated. A `…and N more` line points to `--json` for the full list.
+4. **Footer** — skipped gates with reasons, then the verdict: total counts, gates run, elapsed.
 
-Colors degrade gracefully via `@pyreon/ansi` (respects `NO_COLOR` / `FORCE_COLOR` / TTY detection), and file paths are OSC-8 hyperlinks in terminals that support them (iTerm2, WezTerm, kitty, VS Code).
+The look is the shared Pyreon CLI theme from `@pyreon/ansi`, the same one `pyreon-lint` and the `zero build` summary use: truecolor when the terminal advertises it (`COLORTERM=truecolor`), 16 colours otherwise, plain when `NO_COLOR` is set, `TERM=dumb`, or output is piped (`FORCE_COLOR=1` opts back in, `FORCE_COLOR=3` forces truecolor). Light terminals get their own palette via `COLORFGBG` or `PYREON_CLI_THEME=light`; symbols fall back to ASCII (`v x ! i ->`) when the locale is not UTF-8. File paths are OSC 8 hyperlinks in terminals that support them (iTerm2, WezTerm, kitty, VS Code).
 
 #### JSON (`--json` / `--format=json`)
 
