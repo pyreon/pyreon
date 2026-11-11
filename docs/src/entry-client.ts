@@ -1,6 +1,4 @@
-import '@pyreon/zero-content/blog.css'
 import './styles/tokens.css'
-import './styles/site-pages.css'
 import { isStaticSitePage } from './site/render-mode'
 
 /**
