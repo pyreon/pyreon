@@ -1,5 +1,8 @@
 import type { ComponentFn } from '@pyreon/core'
-import { island } from '@pyreon/zero'
+import { DEMOS_APP } from './registry.app'
+import { DEMOS_CORE } from './registry.core'
+import { DEMOS_DATA } from './registry.data'
+import { DEMOS_TOOLS } from './registry.tools'
 
 /**
  * Live demos for product pages, keyed by the content file's `demo.component`.
@@ -11,15 +14,13 @@ import { island } from '@pyreon/zero'
  * sells (the brief's rule).
  *
  * Adding a product: write `Demo<Name>.tsx` (default export) and add one line
- * here. A content file whose demo has no entry renders the section without a
+ * to the registry file of its product group (registry.core.ts, registry.data.ts,
+ * registry.app.ts or registry.tools.ts), so groups can be built in parallel. A content file whose demo has no entry renders the section without a
  * demo, and the build test lists which ids are still missing one.
  */
-const DemoForm = island(() => import('./DemoForm'), { name: 'DemoForm', hydrate: 'visible', prefetch: 'idle' })
-const DemoReactivity = island(() => import('./DemoReactivity'), { name: 'DemoReactivity', hydrate: 'visible', prefetch: 'idle' })
-const DemoA11y = island(() => import('./DemoA11y'), { name: 'DemoA11y', hydrate: 'visible', prefetch: 'idle' })
-
 export const DEMOS: Readonly<Record<string, ComponentFn>> = {
-  DemoForm,
-  DemoReactivity,
-  DemoA11y,
+  ...DEMOS_CORE,
+  ...DEMOS_DATA,
+  ...DEMOS_APP,
+  ...DEMOS_TOOLS,
 }
