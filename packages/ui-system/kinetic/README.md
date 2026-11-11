@@ -221,7 +221,7 @@ const RevealSection = kinetic('section')
 
 - **Animations run on the GPU compositor thread** only when you animate `transform` / `opacity` / `filter`. Animating `width` / `height` / `top` / `left` falls back to the main thread and may jank.
 - **Stagger `interval` is per-CHILD**, not total duration. Five children at 75ms = 375ms total stagger window.
-- **Group mode requires keyed children.** Without `key=`, every render replaces every child and you get no animation. The compiler-suggested `<For each={items} by={i => i.id}>` is the idiomatic pattern.
+- **Group mode needs keyed children.** Without `key=`, a child is tracked by its position (dev warning), so a change animates the wrong row. Rows that stay keep their element, as `<For>` rows do: drive changing row content from signals.
 - **SSR initial-hidden Transitions break true-unmount semantics.** See SSR / SSG section above — opt out by driving mount/unmount yourself.
 - **Reduced-motion skips visuals but still fires callbacks.** Don't rely on the animation completing for state machine progression — use callbacks.
 
