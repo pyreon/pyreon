@@ -368,6 +368,10 @@ import { transformDeferInline } from "@pyreon/compiler"
 
 const { code, changed } = transformDeferInline(src, "page.tsx")
 
+import { composeMappings } from "@pyreon/compiler"
+
+const mappings = composeMappings(jsxMap.mappings, prepassMap.mappings)
+
 import { generateContext } from "@pyreon/compiler/audits"
 
 const ctx = generateContext(process.cwd())

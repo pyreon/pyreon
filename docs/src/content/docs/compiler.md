@@ -43,10 +43,9 @@ Each pass is applied during a single AST walk. The compiler has a **dual-backend
 
 ### Source maps
 
-The transform shifts line counts (a one-line JSX element can expand into a multi-line `_tpl(...)` factory), so a source map is required for stack traces and debugger breakpoints in Pyreon components to resolve to the right source line. The **JS backend** applies its edits through [`magic-string`](https://github.com/Rich-Harris/magic-string) and returns a correct **V3 source map** alongside byte-identical code; `@pyreon/vite-plugin` forwards it to Vite. Caveats, stated honestly:
+The transform shifts line counts (a one-line JSX element can expand into a multi-line `_tpl(...)` factory, and imports and hoisted statics land on top), so a source map is required for stack traces and debugger breakpoints in Pyreon components to resolve to the right source line and column. **Both backends** return the same **V3 source map** (`hires: 'boundary'`: a segment at every word start and every other character, so any token an engine reports maps exactly): the JS backend applies its edits through [`magic-string`](https://github.com/Rich-Harris/magic-string), and the native (Rust) backend encodes the identical `mappings` from the same edits. The cross-backend equivalence and fuzz suites compare the maps as well as the code.
 
-- The **native (Rust) backend** does not emit a source map yet — a scoped follow-up. When the native binary is active (the default in production builds), the map is absent and frames fall back to the transformed positions until that lands.
-- In dev mode, the small extra HMR / signal-name injections the Vite plugin applies _after_ the compiler are not re-mapped — a minor residual offset, still far better than no map.
+A Plain Mode module's pre-pass map is composed underneath, so the result always maps to the text you passed in. `transformDeferInline` returns a map too (it removes import lines). `@pyreon/vite-plugin` composes these with its own passes and hands Vite one map.
 
 A no-op compile (nothing to transform) returns no map, since the emitted code is byte-identical to the input and needs no remapping.
 
@@ -697,7 +696,7 @@ interface TransformResult {
   usesTemplates?: boolean
   /** Compiler warnings for common mistakes */
   warnings: CompilerWarning[]
-  /** V3 source map — JS backend only, and only when the code changed */
+  /** V3 source map (both backends, identical) — only when the code changed */
   map?: GeneratedSourceMap
   /** Reactivity-lens spans — only when `options.reactivityLens` is true */
   reactivityLens?: ReactivitySpan[]

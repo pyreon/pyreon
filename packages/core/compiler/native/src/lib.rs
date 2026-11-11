@@ -5,6 +5,7 @@
 use napi_derive::napi;
 
 mod plain;
+mod sourcemap;
 use oxc_allocator::Allocator;
 use oxc_ast::ast::*;
 use oxc_ast_visit::Visit;
@@ -83,6 +84,11 @@ pub struct TransformResult {
     pub uses_templates: Option<bool>,
     pub warnings: Vec<CompilerWarning>,
     pub reactivity_lens: Option<Vec<ReactivitySpan>>,
+    /// V3 `mappings` for the transform, byte-identical to the JS backend's
+    /// magic-string `generateMap({ hires: 'boundary' })`. `None` exactly when the JS
+    /// backend returns no map (nothing was transformed). The JS wrapper builds
+    /// the full map object around it (`sources`, `sourcesContent`, …).
+    pub map_mappings: Option<String>,
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -1000,6 +1006,7 @@ impl<'a> Ctx<'a> {
                 } else {
                     None
                 },
+                map_mappings: None,
             };
         }
 
@@ -1014,6 +1021,10 @@ impl<'a> Ctx<'a> {
         }
         parts.push(&self.source[last_pos..]);
         let mut result = parts.join("");
+        // Everything below only PREPENDS (hoists, then imports, then the
+        // collapse prologue), so the final preamble is the prefix of `result`
+        // in front of these `body_len` bytes.
+        let body_len = result.len();
 
         if !self.hoists.is_empty() {
             let preamble: String = self
@@ -1202,8 +1213,24 @@ impl<'a> Ctx<'a> {
             result = self.collapse_preamble() + &result;
         }
 
+        let edits: Vec<sourcemap::Edit> = self
+            .replacements
+            .iter()
+            .map(|r| sourcemap::Edit {
+                start: r.start as usize,
+                end: r.end as usize,
+                text: &r.text,
+            })
+            .collect();
+        let map_mappings = Some(sourcemap::boundary_mappings(
+            self.source,
+            &result[..result.len() - body_len],
+            &edits,
+        ));
+
         TransformResult {
             code: result,
+            map_mappings,
             uses_templates: if self.needs_tpl_import {
                 Some(true)
             } else {
@@ -4581,6 +4608,15 @@ fn slice_span(span: Span, ctx: &Ctx) -> String {
 
 // ─── Main entry ──────────────────────────────────────────────────────────────
 
+/// Compose two source-map `mappings` strings (`outer` C → B over `inner`
+/// B → A). The native twin of `composeMappings` in
+/// `src/source-map-compose.ts`; `None` on malformed input, and the JS side
+/// then falls back to its own implementation.
+#[napi(catch_unwind)]
+pub fn compose_mappings(outer: String, inner: String) -> Option<String> {
+    sourcemap::compose(&outer, &inner)
+}
+
 // `catch_unwind`: the JS side documents that a native PANIC falls back to
 // the JS backend instead of crashing the dev server — without this attribute
 // napi-rs does NOT catch unwinds, so a panic aborted the Vite process. (A
@@ -4622,6 +4658,7 @@ pub fn transform_jsx(
             uses_templates: None,
             warnings: vec![],
             reactivity_lens: None,
+            map_mappings: None,
         };
     }
 
