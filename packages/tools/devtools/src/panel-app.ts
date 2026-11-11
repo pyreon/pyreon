@@ -252,6 +252,17 @@ export function createPanelApp(
   let recordTimer: ReturnType<typeof setInterval> | null = null
   let noResponseTimer: ReturnType<typeof setTimeout> | null = null
 
+  // Every listener the panel adds goes through `on()`, tied to one
+  // AbortController that `dispose()` aborts: one cleanup for all of them.
+  const listeners = new AbortController()
+  function on<K extends keyof HTMLElementEventMap>(
+    target: EventTarget,
+    type: K,
+    fn: (e: HTMLElementEventMap[K]) => void,
+  ): void {
+    target.addEventListener(type, fn as EventListener, { signal: listeners.signal })
+  }
+
   const send = (msg: PanelMessage): void => {
     if (connected) transport.send(msg)
   }
@@ -280,12 +291,12 @@ export function createPanelApp(
       t.label,
       ct,
     )
-    b.addEventListener('click', () => setTab(t.id))
+    on(b, 'click', () => setTab(t.id))
     tabButtons.set(t.id, b)
     tabCounts.set(t.id, ct)
     tablist.append(b)
   }
-  tablist.addEventListener('keydown', (e) => {
+  on(tablist, 'keydown', (e) => {
     const order = TABS.map((t) => t.id)
     const i = order.indexOf(activeTab)
     let next: TabId | null = null
@@ -311,7 +322,7 @@ export function createPanelApp(
     },
     icon(ICON_PICK),
   )
-  pickBtn.addEventListener('click', () => {
+  on(pickBtn, 'click', () => {
     pickerOn = !pickerOn
     pickBtn.setAttribute('aria-pressed', String(pickerOn))
     send({ type: 'toggle-overlay', enabled: pickerOn })
@@ -382,25 +393,31 @@ export function createPanelApp(
         'data-id': id,
       })
       row.style.paddingLeft = `${10 + r.depth * 14}px`
+      row.dataset.index = String(i)
       const tw = el('span', { class: 'tw', 'aria-hidden': 'true' }, r.childCount > 0 ? (r.expanded ? '▾' : '▸') : '')
-      tw.addEventListener('click', (e) => {
-        e.stopPropagation()
-        toggle(id)
-      })
       row.append(tw, el('span', { class: `tg${r.match ? ' hit' : ''}`, text: r.entry.name }))
       if (r.childCount > 0 && !r.expanded) {
         row.append(el('span', { class: 'meta', text: plural(r.childCount, 'child', 'children') }))
       } else if (hot.has(id)) {
         row.append(el('span', { class: 'meta', text: 'just mounted' }))
       }
-      row.addEventListener('click', () => {
-        activeRow = i
-        select(id)
-        treeScroller.focus({ preventScroll: true })
-      })
       return row
     },
   )
+  // One delegated listener for every (virtualised, re-created) row.
+  on(treeScroller, 'click', (e) => {
+    const target = e.target as Element
+    const row = target.closest<HTMLElement>('.trow')
+    const r = row ? treeRows[Number(row.dataset.index)] : undefined
+    if (!row || !r) return
+    if (target.closest('.tw') && r.childCount > 0) {
+      toggle(r.entry.id)
+      return
+    }
+    activeRow = Number(row.dataset.index)
+    select(r.entry.id)
+    treeScroller.focus({ preventScroll: true })
+  })
 
   function rebuildTree(): void {
     treeRows = flattenTree(index, expanded, treeFilter)
@@ -463,14 +480,14 @@ export function createPanelApp(
     renderInspector()
   }
 
-  treeFilterInput.addEventListener('input', () => {
+  on(treeFilterInput, 'input', () => {
     treeFilter = treeFilterInput.value
     activeRow = 0
     treeScroller.scrollTop = 0
     rebuildTree()
   })
 
-  treeScroller.addEventListener('keydown', (e) => {
+  on(treeScroller, 'keydown', (e) => {
     if (treeRows.length === 0) return
     const r = treeRows[activeRow]
     let next = activeRow
@@ -601,7 +618,7 @@ export function createPanelApp(
   // ── Graph view ──────────────────────────────────────────────────────
   const scopeBtns = (['selected', 'everything'] as const).map((s) => {
     const b = el('button', { type: 'button', 'aria-pressed': String(s === graphScope) }, s === 'selected' ? 'Selected' : 'Everything')
-    b.addEventListener('click', () => {
+    on(b, 'click', () => {
       graphScope = s
       for (const [i, x] of scopeBtns.entries()) x.setAttribute('aria-pressed', String((i === 0 ? 'selected' : 'everything') === s))
       renderGraph()
@@ -774,14 +791,18 @@ export function createPanelApp(
         el('span', { role: 'gridcell', class: 'num', text: String(n.fires) }),
         el('span', { role: 'gridcell', class: 'lw dim', text: formatAgo(n.lastFire, pageNow) }),
       )
-      row.addEventListener('click', () => {
-        sigActive = i
-        selectNode(n.id)
-        sigScroller.focus({ preventScroll: true })
-      })
+      row.dataset.index = String(i)
       return row
     },
   )
+  on(sigScroller, 'click', (e) => {
+    const row = (e.target as Element).closest<HTMLElement>('.sig-row')
+    const n = row ? sigRows[Number(row.dataset.index)] : undefined
+    if (!row || !n) return
+    sigActive = Number(row.dataset.index)
+    selectNode(n.id)
+    sigScroller.focus({ preventScroll: true })
+  })
   sigGrid.setAttribute('aria-rowcount', '1')
 
   function selectNode(id: number): void {
@@ -789,7 +810,7 @@ export function createPanelApp(
     sigList.refresh()
   }
 
-  sigScroller.addEventListener('keydown', (e) => {
+  on(sigScroller, 'keydown', (e) => {
     if (sigRows.length === 0) return
     let next = sigActive
     if (e.key === 'ArrowDown') next = Math.min(sigRows.length - 1, sigActive + 1)
@@ -808,7 +829,7 @@ export function createPanelApp(
     sigList.reveal(next)
   })
 
-  sigFilterInput.addEventListener('input', () => {
+  on(sigFilterInput, 'input', () => {
     signalFilter = sigFilterInput.value
     sigActive = 0
     sigScroller.scrollTop = 0
@@ -890,14 +911,14 @@ export function createPanelApp(
     el('div', { class: 'prof' }, profSum, profNote, profBars),
   )
 
-  function setRecording(on: boolean): void {
-    recording = on
-    recBtn.setAttribute('aria-pressed', String(on))
-    recBtn.setAttribute('aria-label', on ? 'Stop recording' : 'Record')
-    recBtn.title = on ? 'Stop recording' : 'Record'
+  function setRecording(active: boolean): void {
+    recording = active
+    recBtn.setAttribute('aria-pressed', String(active))
+    recBtn.setAttribute('aria-label', active ? 'Stop recording' : 'Record')
+    recBtn.title = active ? 'Stop recording' : 'Record'
     if (recordTimer !== null) clearInterval(recordTimer)
     recordTimer = null
-    if (on) {
+    if (active) {
       recorder = createRecorder()
       recordBaselinePending = true
       send({ type: 'reactive-poll', graph: false })
@@ -905,8 +926,8 @@ export function createPanelApp(
     }
     renderProfiler()
   }
-  recBtn.addEventListener('click', () => setRecording(!recording))
-  profClearBtn.addEventListener('click', () => {
+  on(recBtn, 'click', () => setRecording(!recording))
+  on(profClearBtn, 'click', () => {
     recorder = createRecorder()
     if (recording) recordBaselinePending = true
     renderProfiler()
@@ -972,12 +993,12 @@ export function createPanelApp(
     el('div', { class: 'con-scroll' }, logHost),
     el('div', { class: 'eval-row' }, el('span', { class: 'acc', 'aria-hidden': 'true', text: '›' }), evalInput),
   )
-  conClearBtn.addEventListener('click', () => {
+  on(conClearBtn, 'click', () => {
     logLines = []
     send({ type: 'console-clear' })
     renderConsole()
   })
-  evalInput.addEventListener('keydown', (e) => {
+  on(evalInput, 'keydown', (e) => {
     if (e.key !== 'Enter') return
     const expr = evalInput.value.trim()
     if (!expr) return
@@ -1269,6 +1290,7 @@ export function createPanelApp(
       if (noResponseTimer !== null) clearTimeout(noResponseTimer)
       if (hotTimer !== null) clearTimeout(hotTimer)
       hot.clear()
+      listeners.abort()
       treeList.dispose()
       sigList.dispose()
       root.replaceChildren()
