@@ -109,6 +109,8 @@ Read with `editor.json()` (reactive), write with `editor.json.set(next)`. Do **n
 <RichText instance={editor} class="prose" style="min-height: 12rem" />
 ```
 
+The editor ships no colours: its text inherits from the page, as ProseMirror's does. If you give `<RichText>` its own background, give it a text colour too (`style="background: #1e1e1e; color: #d4d4d4; caret-color: #d4d4d4"`), or the text keeps the page's colour on your background.
+
 :::note[Lifecycle is user-owned]
 Like `@pyreon/code`, the editor instance is **yours** — `<RichText>` does not auto-dispose it, so the same instance can be re-mounted. Call `editor.dispose()` in `onCleanup` when it won't be reused:
 
