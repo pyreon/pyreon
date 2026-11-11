@@ -91,7 +91,7 @@ useEffect(() => {
 
 ## Drop-in compat mode
 
-`@pyreon/vite-plugin` can alias every `preact` / `preact/hooks` / `@preact/signals` import to this package — no code changes:
+`@pyreon/vite-plugin` can alias every `preact` / `preact/hooks` / `preact/compat` / `@preact/signals` import to this package — no code changes:
 
 ```ts
 // vite.config.ts
