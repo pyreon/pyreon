@@ -4,6 +4,7 @@ import { compile as compileVueTemplate } from '@vue/compiler-dom'
 import { octane } from '@octanejs/vite-plugin'
 import { svelte } from '@sveltejs/vite-plugin-svelte'
 import pyreon from '@pyreon/vite-plugin'
+import { rivalsPlugin } from './vite-rivals'
 import { defineConfig, type Plugin } from 'vite'
 import { DBMON_VUE_TEMPLATE } from './src/impl/dbmon-vue-template'
 import {
@@ -267,6 +268,7 @@ export default defineConfig({
     vueTemplatesPlugin(),
     vueVaporPlugin(),
     solid2Plugin(),
+    rivalsPlugin(),
     pyreon(),
     // Octane — the compiled-React framework (`.tsrx`). `requireDirective: true`
     // is LOAD-BEARING, not a preference: with the default `false`, Octane's

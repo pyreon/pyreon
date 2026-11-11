@@ -1,7 +1,7 @@
 {
   "name": "@pyreon/store",
   "version": "0.53.0",
-  "description": "Global state management for Pyreon \u2014 Pinia-inspired composition stores",
+  "description": "Global state management for Pyreon — Pinia-inspired composition stores",
   "license": "MIT",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/fundamentals/store#readme",
   "bugs": {
@@ -65,17 +65,23 @@
     "@happy-dom/global-registrator": "21.0.4",
     "@pyreon/core": "workspace:*",
     "@pyreon/manifest": "workspace:*",
+    "@pyreon/native-compiler": "workspace:*",
     "@pyreon/runtime-server": "workspace:*",
     "@pyreon/test-utils": "workspace:*",
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
+    "@reduxjs/toolkit": "^2.14.0",
     "arktype": "^2.2.9",
     "bun-types": "^1.4.4",
     "jotai": "^3.0.1",
+    "mobx": "^7.1.1",
+    "nanostores": "1.5.5",
+    "pinia": "4.1.0",
     "valibot": "^1.5.0",
+    "valtio": "^2.3.2",
+    "vue": "^3.5.44",
     "zod": "^4.6.7",
-    "zustand": "^5.0.16",
-    "@pyreon/native-compiler": "workspace:*"
+    "zustand": "^5.0.16"
   },
   "publishConfig": {
     "access": "public"
