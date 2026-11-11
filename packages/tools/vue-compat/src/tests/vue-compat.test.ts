@@ -607,7 +607,11 @@ describe('@pyreon/vue-compat', () => {
 
   // ─── lifecycle (with Pyreon fallback) ──────────────────────────────────
 
-  it('onMounted/onUnmounted lifecycle hooks work with defineComponent', () => {
+  // `h(Comp)` builds the component through the compat wrapper, exactly like
+  // JSX, so lifecycle callbacks run on the wrapper's schedule: after the
+  // render, on a microtask (they ran synchronously only because `h` used to
+  // skip the wrapper, which also left the component unable to re-render).
+  it('onMounted/onUnmounted lifecycle hooks work with defineComponent', async () => {
     const mounted: string[] = []
     const unmounted: string[] = []
 
@@ -626,6 +630,7 @@ describe('@pyreon/vue-compat', () => {
 
     const el = container()
     const unmount = mount(h(Comp, null), el)
+    await Promise.resolve()
 
     expect(mounted).toEqual(['mounted'])
     expect(unmounted).toEqual([])
@@ -634,7 +639,7 @@ describe('@pyreon/vue-compat', () => {
     expect(unmounted).toEqual(['unmounted'])
   })
 
-  it('onBeforeMount works (maps to onMount)', () => {
+  it('onBeforeMount works (maps to onMount)', async () => {
     const calls: string[] = []
 
     const Comp = defineComponent({
@@ -648,6 +653,7 @@ describe('@pyreon/vue-compat', () => {
 
     const el = container()
     const unmount = mount(h(Comp, null), el)
+    await Promise.resolve()
     expect(calls).toEqual(['beforeMount'])
     unmount()
   })

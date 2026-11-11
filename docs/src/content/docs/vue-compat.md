@@ -1445,7 +1445,7 @@ setup() {
 function h(type: string | ComponentFn, props: Props | null, ...children: VNodeChild[]): VNode
 ```
 
-Re-export of Pyreon's `h()` and `Fragment` for manual render function usage.
+Builds a VNode for manual render functions (variadic children, Pyreon-style). A component passed to `h()` gets the same compat wrapper as a JSX-written one, so it re-renders when its reactive state changes. `Fragment` is exported alongside.
 
 **HTML elements:**
 
