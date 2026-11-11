@@ -38,8 +38,20 @@ export type ReactiveNodeKind = 'signal' | 'derived' | 'effect'
  *   - `prop`  — a DOM property (`value`, `checked`, `innerHTML`, …)
  *   - `child` — a reactive child subtree (`<Show>`, an accessor child, a slot)
  *   - `list`  — a keyed or unkeyed list (`<For>`, a reactive array child)
+ *   - `dom`   — a binding whose write the runtime cannot see: a compiled
+ *     updater that assigns the DOM directly (`el.checked = v`,
+ *     `t.data = v.toFixed(2)`) instead of calling a setter. It is a binding;
+ *     only what it writes is unknown, so it has no `target` / `key`.
  */
-export type ReactiveBindingKind = 'text' | 'attr' | 'class' | 'style' | 'prop' | 'child' | 'list'
+export type ReactiveBindingKind =
+  | 'text'
+  | 'attr'
+  | 'class'
+  | 'style'
+  | 'prop'
+  | 'child'
+  | 'list'
+  | 'dom'
 
 /**
  * Source location of a reactive node's creation, captured at registration time
@@ -195,6 +207,20 @@ interface NodeRec {
   hostRef: WeakRef<SubscriberHostLike> | null
   fires: number
   lastFire: number | null
+  /**
+   * Graph id of an upstream node this one is notified by OUTSIDE the
+   * subscriber slots (a `createSelector` `.subscribe()` updater is called by the
+   * selector's source effect). Emitted as an extra edge.
+   */
+  upstream?: number | undefined
+  /**
+   * Cascade stamp of the most recent fire (see `ReactiveFire.cascade`), or -1.
+   * Kept on the record so `getUpdateCause` can tell which nodes took part in
+   * a cascade even after the bounded fire buffer has evicted their entries —
+   * one write to a signal shown in 600 rows records 600 binding fires, more
+   * than the buffer holds.
+   */
+  cascade: number
   /**
    * Resolved source location. Populated either by `__sourceLocation`
    * passed in by `@pyreon/vite-plugin` at build time (free) OR by a
@@ -495,6 +521,7 @@ export function _rdRegister(
     hostRef: host ? new WeakRef(host) : null,
     fires: 0,
     lastFire: null,
+    cascade: -1,
     loc: isDeferred ? undefined : (loc as SourceLocation | undefined),
   })
   if (isDeferred) {
@@ -568,6 +595,7 @@ export function _rdRecordFire(node: object): void {
     // per write — downstream fires stamp with the LATEST write, which is the
     // most-recent cause and still walks to a root. See ReactiveFire.cascade.)
     if (rec.kind === 'signal') _cascadeSeq++
+    rec.cascade = _cascadeSeq
   }
   if (_fireBuf === null) _fireBuf = new Array<ReactiveFire>(FIRE_CAP)
   _fireBuf[_fireCount % FIRE_CAP] = { id, ts, cascade: _cascadeSeq }
@@ -664,9 +692,16 @@ export function _rdOpenBindingFrame(): void {
  */
 export function _rdCloseBindingFrame(): BindingTarget | null {
   if (process.env.NODE_ENV !== 'production') {
+    if (_bf.depth === 0) {
+      // A close without a matching open. Going negative would make every later
+      // frame look closed (`depth === 0` checks) and silently stop labelling.
+      console.warn('[Pyreon] internal: reactive-devtools binding frame closed without an open; ignored.')
+      return null
+    }
     const out: BindingTarget | null =
       _bf.kind === null ? null : { kind: _bf.kind, target: _bf.target, key: _bf.key }
     _bfLast = out
+    _lastDirect = null
     _bf.depth--
     if (_bf.depth > 0) {
       _bf.key = _bfSaved.pop() as string | undefined
@@ -707,16 +742,19 @@ export function _rdNoteTarget(el: object | null, kind: ReactiveBindingKind, key?
 export function _rdRegisterBinding(
   run: object,
   loc: SourceLocation | DeferredLocation | undefined,
-  target: BindingTarget | null = _bfLast,
+  dflt?: ReactiveBindingKind,
 ): void {
-  _bfLast = null
-  const id = _rdRegister(run, 'effect', null, run, undefined, loc)
-  const rec = _byId.get(id as number) as NodeRec
-  rec.fires = 1
-  if (target !== null) {
-    rec.binding = target.kind
-    rec.target = target.target
-    rec.key = target.key
+  if (process.env.NODE_ENV !== 'production') {
+    const target = _bfLast
+    _bfLast = null
+    const id = _rdRegister(run, 'effect', null, run, undefined, loc)
+    const rec = _byId.get(id as number) as NodeRec
+    rec.fires = 1
+    if (target !== null) {
+      rec.binding = target.kind
+      rec.target = target.target
+      rec.key = target.key
+    } else if (dflt !== undefined) rec.binding = dflt
   }
 }
 
@@ -741,10 +779,102 @@ export function _rdDirect(updater: () => void): () => void {
       _rdRecordFire(wrapped)
       updater()
     }
-    // A direct updater is subscribed after its binding already wrote the
-    // initial value, so subscription counts as the mount run (fire 1).
-    _rdRegisterBinding(wrapped, undefined, null)
+    // fires = 0: `direct()` itself runs nothing. A binding helper that wrote
+    // the initial value (`_bindText`, `_bindDirect`) counts that mount run when
+    // it labels the node; a plain `direct()` subscriber (`@pyreon/table`) has
+    // no mount run to claim.
+    _rdRegister(wrapped, 'effect', null, wrapped, undefined, undefined)
     _directWrap.set(updater, wrapped)
+    w = wrapped
+  }
+  _lastDirect = w
+  return w
+}
+
+// The wrapper the most recent `direct()` call stored. `_bindDirect` reads it on
+// the line after its `source.direct(…)` call (`_rdLabelDirect`) instead of
+// holding the updater in a local, which would change its production shape.
+// Cleared whenever a label frame closes, so a `direct()` implementation that
+// is not Pyreon's (no wrapper) can never inherit an earlier call's node.
+let _lastDirect: object | null = null
+
+/**
+ * @internal — label the node of the `direct()` subscription `_bindDirect` just
+ * made: kind from the label frame that closed around its initial write (or
+ * `dom` when no setter reported one), fire 1 for that initial write, the
+ * location `loc` frames above the caller, and the returned disposer tagged so
+ * a caller (the rocketstyle collapse) can relabel it.
+ */
+export function _rdLabelDirect(
+  dispose: object,
+  loc: number | null,
+  kind?: ReactiveBindingKind,
+  el?: object | null,
+): void {
+  if (process.env.NODE_ENV !== 'production') {
+    const w = _lastDirect
+    // An explicit kind means the caller did not open a frame, so `_bfLast` is
+    // some earlier binding's and must not be read.
+    const target = kind === undefined ? _bfLast : null
+    _lastDirect = null
+    _bfLast = null
+    if (w === null) return
+    _rdTagHandle(dispose, w)
+    _rdLabelBinding(
+      dispose,
+      kind ?? target?.kind ?? 'dom',
+      kind !== undefined ? (el ?? null) : (target?.target ?? null),
+      kind !== undefined ? undefined : target?.key,
+      loc === null ? null : loc + 1,
+      true,
+    )
+  }
+}
+
+// Raw selector updater → its instrumented wrapper (same ephemeron rationale
+// as `_directWrap`: one wrapper per function keeps production Set semantics).
+const _selectorWrap = /* @__PURE__ */ new WeakMap<object, (m: boolean) => void>()
+
+/**
+ * @internal — instrument a `createSelector(...).subscribe(key, updater)`
+ * updater. That channel bypasses every subscriber slot (the selector's source
+ * effect calls the updater directly), so the node records its upstream
+ * explicitly. The first call is the mount run: it runs inside a label frame
+ * (`_setClass` inside a compiled row names it) and counts as fire 1; later
+ * calls are fires. Called by `createSelector` behind the dev gate.
+ */
+export function _rdSelectorUpdater(
+  updater: (m: boolean) => void,
+  upstream: object,
+): (m: boolean) => void {
+  let w = _selectorWrap.get(updater)
+  if (w === undefined) {
+    let mounted = false
+    const wrapped = (m: boolean): void => {
+      if (mounted) {
+        _rdRecordFire(wrapped)
+        updater(m)
+        return
+      }
+      mounted = true
+      _rdOpenBindingFrame()
+      try {
+        updater(m)
+      } finally {
+        const t = _rdCloseBindingFrame()
+        const rec = _byId.get((wrapped as { __pxRdId?: number }).__pxRdId as number)
+        if (rec !== undefined) {
+          rec.fires = 1
+          rec.binding = t?.kind ?? 'dom'
+          rec.target = t?.target
+          rec.key = t?.key
+        }
+      }
+    }
+    _rdRegister(wrapped, 'effect', null, wrapped, undefined, undefined)
+    const rec = _byId.get((wrapped as { __pxRdId?: number }).__pxRdId as number)
+    if (rec !== undefined) rec.upstream = (upstream as { __pxRdId?: number }).__pxRdId
+    _selectorWrap.set(updater, wrapped)
     w = wrapped
   }
   return w
@@ -757,8 +887,9 @@ export function _rdDirect(updater: () => void): () => void {
  * `Effect` an `effect()` returned, or the raw updater it passed to
  * `direct()`. A dead binding (`_noopDispose`) carries no id and is ignored.
  *
- * `kind === null` keeps whatever the first run's DOM setter reported and only
- * applies `loc`. `el` is the element (or text node) written, or its tag.
+ * `kind === null` keeps whatever the first run's DOM setter reported (`dom`
+ * when none did) and only applies `loc`. `mounted` counts the helper's own
+ * initial write as fire 1 for a `direct()` node, which starts at 0. `el` is the element (or text node) written, or its tag.
  *
  * `loc`: `undefined` keeps the creation site captured at registration, `null`
  * drops it (the binding was created inside the framework, so that site would
@@ -773,6 +904,7 @@ export function _rdLabelBinding(
   el: object | string | null,
   key: string | undefined,
   loc: number | null | undefined,
+  mounted = false,
 ): void {
   if (process.env.NODE_ENV !== 'production') {
     let id = (handle as { __pxRdId?: number }).__pxRdId
@@ -780,10 +912,16 @@ export function _rdLabelBinding(
     if (id === undefined) return
     const rec = _byId.get(id)
     if (rec === undefined) return
+    // The helper wrote the initial value itself (a `direct()` subscription
+    // only records later notifications), so that mount run is fire 1.
+    if (mounted && rec.fires === 0) rec.fires = 1
     if (kind !== null) {
       rec.binding = kind
       rec.target = typeof el === 'string' ? el : tagOf(el as { localName?: string } | null)
       rec.key = key
+    } else if (rec.binding === undefined) {
+      // Labelling marks it a DOM binding even when no setter named the write.
+      rec.binding = 'dom'
     }
     if (loc === undefined) return
     const node = rec.ref.deref()
@@ -839,6 +977,7 @@ export function _rdRegistrySize(): number {
 }
 
 const BINDING_VERB: Record<ReactiveBindingKind, string> = {
+  dom: 'dom',
   text: 'text',
   attr: 'attr',
   class: 'class',
@@ -953,6 +1092,11 @@ export function getReactiveGraph(): ReactiveGraph {
           const to = resolveSubId(cb)
           if (to !== undefined) edges.push({ from: rec.id, to })
         }
+      }
+      // An explicitly recorded upstream (a selector `.subscribe()` updater).
+      if (rec.upstream !== undefined) {
+        const up = _byId.get(rec.upstream)
+        if (up !== undefined && up.ref.deref() !== undefined) edges.push({ from: rec.upstream, to: rec.id })
       }
       if (d1 !== null) {
         const to = resolveSubId(d1)
@@ -1124,21 +1268,20 @@ export function getUpdateCause(nodeId: number): UpdateCause | null {
   // Prod early-return — see getReactiveGraph (no fires recorded → always null).
   if (process.env.NODE_ENV === 'production') return null
   if (!_active) return null
+  const targetRec = _byId.get(nodeId)
+  // Never fired (a binding's mount run is counted, not stamped).
+  if (targetRec === undefined || targetRec.lastFire === null) return null
   const graph = getReactiveGraph()
-  const fires = getReactiveFires()
-  if (fires.length === 0) return null
 
   const nodeById = new Map(graph.nodes.map((n) => [n.id, n]))
   if (!nodeById.has(nodeId)) return null
 
-  // The causal STRUCTURE is the dependency graph; the fire timeline only tells us
-  // WHICH nodes participated in this cascade. We can't use timeline order alone,
+  // The causal STRUCTURE is the dependency graph; the cascade stamps only tell
+  // us WHICH nodes took part in this cascade. We can't use timeline order,
   // because a LAZY computed recomputes DURING its subscriber's read — so an
-  // effect's fire precedes the fire of the dependency that caused it. Instead we
-  // walk the graph from the target through its dependencies, following only the
-  // deps that fired in the SAME synchronous cascade (clustered by timestamp — a
-  // whole cascade runs within one JS tick, ~sub-ms; separate interactions are
-  // frames apart).
+  // effect's fire precedes the fire of the dependency that caused it. Instead
+  // we walk the graph from the target through its dependencies, following only
+  // the deps that fired in the SAME synchronous cascade.
   //
   // Dependencies of `id`: the nodes it READS — edges point dep → subscriber, so
   // `id`'s deps are the `from` of edges whose `to` is `id`.
@@ -1147,32 +1290,30 @@ export function getUpdateCause(nodeId: number): UpdateCause | null {
     for (const e of graph.edges) if (e.to === id) out.push(e.from)
     return out
   }
-  const lastFireOf = (id: number): ReactiveFire | null => {
-    let best: ReactiveFire | null = null
-    for (const f of fires) if (f.id === id && (best === null || f.ts > best.ts)) best = f
-    return best
-  }
   const toLink = (id: number, ts: number): CauseLink => {
     const n = nodeById.get(id)!
     return { id, kind: n.kind, name: n.name, ...(n.loc ? { loc: n.loc } : {}), ts }
   }
 
-  const targetFire = lastFireOf(nodeId)
-  if (targetFire === null) return null // never fired
-  const targetTs = targetFire.ts
+  const targetTs = targetRec.lastFire
+  const cascade = targetRec.cascade
 
   // "Same synchronous cascade" is decided by the CASCADE STAMP, not by
-  // wall-clock proximity. The previous 16ms cluster window assumed a cascade
-  // completes within an animation frame — true on an idle machine, FALSE under
-  // load: a GC pause / preempted CI runner stretched one `set → recompute →
-  // effect` cascade past 16ms, the root signal's fire fell out of the window,
-  // and the reconstructed chain silently TRUNCATED (the reactive-cause
-  // main-branch flake, 2026-08-04). The stamp is assigned at fire time — a
-  // signal fire opens a cascade, downstream fires inherit it — so membership
-  // is exact regardless of how long the cascade took.
+  // wall-clock proximity (a 16ms window truncated chains under load — the
+  // reactive-cause main-branch flake, 2026-08-04). Membership comes from two
+  // sources, unioned:
+  //   - each record's own stamp of its LATEST fire — survives the bounded fire
+  //     buffer evicting the entry (600 row bindings re-running in one cascade
+  //     used to push the root signal's fire out, and the answer came back null
+  //     or, for a late row, a confident empty chain);
+  //   - the buffer's entries for this cascade — still needed for a node that
+  //     fired here AND again in a later cascade (its record stamp moved on).
   const firedInCluster = new Map<number, number>() // id → latest fire ts in cascade
-  for (const f of fires) {
-    if (f.cascade === targetFire.cascade) {
+  for (const rec of _byId.values()) {
+    if (rec.cascade === cascade && rec.lastFire !== null) firedInCluster.set(rec.id, rec.lastFire)
+  }
+  for (const f of getReactiveFires()) {
+    if (f.cascade === cascade) {
       const prev = firedInCluster.get(f.id)
       if (prev === undefined || f.ts > prev) firedInCluster.set(f.id, f.ts)
     }
@@ -1192,7 +1333,11 @@ export function getUpdateCause(nodeId: number): UpdateCause | null {
       }
     }
     if (causeId === null) {
-      rootReached = true
+      // A node with no dependencies (a signal, or an effect reading nothing) is
+      // a root. A node WITH dependencies none of which is known to have fired
+      // in this cascade is not: the cause is unknown (it fired in a cascade
+      // whose stamps have all moved on), so say so rather than claim a root.
+      rootReached = depsOf(currentId).length === 0
       break
     }
     chain.push(toLink(causeId, firedInCluster.get(causeId)!))

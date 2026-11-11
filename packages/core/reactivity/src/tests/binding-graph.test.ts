@@ -9,7 +9,7 @@
  * never-ran / absent and `describeReactiveGraph` called a signal shown only
  * through compiled text an orphan.
  */
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { computed } from '../computed'
 import {
   computeReactiveCoverage,
@@ -79,8 +79,11 @@ describe('binding primitives in the reactive graph', () => {
     const g = getReactiveGraph()
     const node = fresh(before)[0]!
     expect(node.kind).toBe('effect')
-    // subscribe = mount run (1) + two notifications
-    expect(node.fires).toBe(3)
+    // A raw direct() subscription ran nothing at subscribe time (unlike
+    // `_bindText` / `_bindDirect`, which write the initial value and claim it),
+    // so only the two notifications count — and it is not a DOM binding.
+    expect(node.fires).toBe(2)
+    expect(node.binding).toBeUndefined()
     expect(g.edges).toContainEqual({ from: sid, to: node.id })
     expect(g.nodes.find((n) => n.id === sid)!.subscribers).toBe(1)
     dispose()
@@ -160,7 +163,20 @@ describe('binding primitives in the reactive graph', () => {
     expect(_rdCloseBindingFrame()).toBeNull()
   })
 
-  it('_rdLabelBinding labels by disposer or by raw direct updater, and can drop a framework loc', () => {
+  it('an unmatched close is ignored (with a dev warning) and labelling keeps working', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      expect(_rdCloseBindingFrame()).toBeNull()
+      expect(warn).toHaveBeenCalledTimes(1)
+      _rdOpenBindingFrame()
+      _rdNoteTarget({ localName: 'a' }, 'attr', 'href')
+      expect(_rdCloseBindingFrame()).toEqual({ kind: 'attr', target: 'a', key: 'href' })
+    } finally {
+      warn.mockRestore()
+    }
+  })
+
+    it('_rdLabelBinding labels by disposer or by raw direct updater, and can drop a framework loc', () => {
     activateReactiveDevtools()
     const s = signal(0)
     const before = new Set(getReactiveGraph().nodes.map((n) => n.id))
@@ -200,9 +216,11 @@ describe('coverage and describe see DOM bindings', () => {
     })
     const u = () => {}
     s.direct(u)
+    // `_bind` mounted (ran once); the raw direct() subscriber never ran.
     const before = takeReactiveCoverage().entries.filter((e) => e.kind === 'effect')
-    expect(before.map((e) => e.reason)).toEqual(['ran-once', 'ran-once'])
+    expect(before.map((e) => e.reason)).toEqual(['ran-once', 'never-ran'])
     s.set(1)
+    s.set(2)
     const after = takeReactiveCoverage().entries.filter((e) => e.kind === 'effect')
     expect(after.map((e) => e.reason)).toEqual(['covered', 'covered'])
   })

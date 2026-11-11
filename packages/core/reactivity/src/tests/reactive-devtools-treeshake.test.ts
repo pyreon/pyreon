@@ -34,7 +34,7 @@ async function bundle(entry: string, env: 'production' | 'development') {
 }
 
 describe('reactive-devtools — prod tree-shake', () => {
-  for (const entry of ['signal.ts', 'computed.ts', 'effect.ts']) {
+  for (const entry of ['signal.ts', 'computed.ts', 'effect.ts', 'createSelector.ts']) {
     it(`${entry}: instrumentation is fully eliminated in production`, async () => {
       const prod = await bundle(entry, 'production')
       expect(prod).not.toMatch(MARKERS)

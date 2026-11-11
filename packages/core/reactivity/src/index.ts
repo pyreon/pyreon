@@ -39,6 +39,7 @@ export {
   _rdCloseBindingFrame,
   _rdDropBinding,
   _rdLabelBinding,
+  _rdLabelDirect,
   _rdNodeId,
   _rdNoteTarget,
   _rdOpenBindingFrame,

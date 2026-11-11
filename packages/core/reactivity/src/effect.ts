@@ -515,9 +515,11 @@ export function _bind(fn: () => void): () => void {
   if (deps.length === 0) return _noopDispose
 
   // Dev: a LIVE binding is a reactive-graph node. skipFrames=1 skips `_bind`,
-  // so the location is the compiled template that emitted the call.
+  // so the location is the compiled template that emitted the call. `_bind` is
+  // only ever compiler-emitted for a DOM write, so it is a binding even when
+  // its updater assigns the DOM without a setter (`dom`).
   if (process.env.NODE_ENV !== 'production')
-    _rdRegisterBinding(run, _captureCallerLocation(1))
+    _rdRegisterBinding(run, _captureCallerLocation(1), 'dom')
 
   const dispose = () => {
     if (disposed) return
@@ -602,14 +604,14 @@ export function renderEffect(fn: () => void): () => void {
   // run, once its deps are known. Registering before the run (as this did)
   // left every dead binding in the graph as a never-fired node, and coverage
   // reported each as "created but never executed".
-  if (process.env.NODE_ENV !== 'production') {
-    _rdOpenBindingFrame()
-    try {
-      run()
-    } finally {
-      _rdCloseBindingFrame()
-    }
-  } else run()
+  // One body for both builds: in production the dev calls fold away and the
+  // empty `finally` with them, leaving the bare `run()`.
+  if (process.env.NODE_ENV !== 'production') _rdOpenBindingFrame()
+  try {
+    run()
+  } finally {
+    if (process.env.NODE_ENV !== 'production') _rdCloseBindingFrame()
+  }
 
   // Dead binding (see `_noopDispose`): no dependency was
   // tracked on the first run, so no signal can ever schedule `run` again.
