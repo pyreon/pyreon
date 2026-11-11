@@ -40,11 +40,30 @@ import { bundle, collectDocumentsAsync, referencedDocuments, type ReadOutcome } 
 import { openApiVersionProblem } from '../input/openapi'
 import { parseSpecText } from '../input/yaml'
 
-// Built rather than written literally, matching `report.ts`: a raw ESC byte in
-// source is invisible in diffs and review, and trivially lost to a formatter.
-const ESC = String.fromCharCode(27)
-const DIM = ESC + '[2m'
-const RESET = ESC + '[0m'
+import { createTerm, finding, type Term } from '@pyreon/ansi'
+
+/**
+ * A pull failure on stderr in the shared theme: `✗ lathe pull · <problem>`,
+ * any further lines of the message kept as they are underneath (they carry
+ * the per-document reasons), then `fix:` when there is one.
+ */
+function fail(message: string, fix?: string): 1 {
+  const t = createTerm({ isTTY: Boolean(process.stderr.isTTY) })
+  const [first = '', ...rest] = message.replace(/\n$/, '').split('\n')
+  const lines = finding(
+    t,
+    { severity: 'error', source: 'lathe pull', message: first.replace(/^\[Pyreon\] lathe: /, ''), fix },
+    { indent: 0, width: t.width },
+  )
+  // Detail lines go between the headline and `fix:`.
+  const fixAt = fix ? lines.length - 1 : lines.length
+  lines.splice(fixAt, 0, ...rest.map((l) => `   ${l.replace(/^ {2}/, '')}`))
+  process.stderr.write(`${lines.join('\n')}\n`)
+  return 1
+}
+
+const termOf = (color: PullOptions['color']): Term =>
+  createTerm({ level: color === true ? 1 : color === false || color === undefined ? 0 : color })
 
 /**
  * Largest spec accepted, in bytes.
@@ -115,8 +134,8 @@ export interface PullOptions {
    * them to stderr so stdout stays one JSON document.
    */
   out?: ((text: string) => void) | undefined
-  /** Colour the output. */
-  color?: boolean | undefined
+  /** Colour the output: `true` sixteen colours, or a level (0 plain … 3 truecolor). */
+  color?: boolean | 0 | 1 | 2 | 3 | undefined
   /**
    * Other origins a referenced document may be fetched from -- see
    * `LatheSection.refOrigins`. By default a document's `$ref`s (and their
@@ -153,7 +172,7 @@ const sha256 = (text: string): string => createHash('sha256').update(text).diges
 
 /** Fetch `url` and write it to `dest`. Returns a process exit code. */
 export async function pullSpec(url: string, dest: string, opts: PullOptions = {}): Promise<number> {
-  const dim = (s: string): string => (opts.color ? `${DIM}${s}${RESET}` : s)
+  const t = termOf(opts.color)
   const write = opts.out ?? ((text: string): void => void process.stdout.write(text))
   const cacheFile = opts.cacheDir ? join(opts.cacheDir, 'pull-cache.json') : undefined
   const cache = readCache(cacheFile)
@@ -188,43 +207,35 @@ export async function pullSpec(url: string, dest: string, opts: PullOptions = {}
     })
   } catch (err) {
     const timedOut = err instanceof Error && err.name === 'TimeoutError'
-    process.stderr.write(
+    return fail(
       timedOut
-        ? `[Pyreon] lathe: ${url} did not respond within ${PULL_TIMEOUT_MS / 1000}s\n`
-        : `[Pyreon] lathe: could not reach ${url}\n  ${err instanceof Error ? err.message : String(err)}\n`,
+        ? `${url} did not respond within ${PULL_TIMEOUT_MS / 1000}s`
+        : `could not reach ${url}\n  ${err instanceof Error ? err.message : String(err)}`,
+      'check the URL and your network, then run lathe pull again',
     )
-    return 1
   }
   if (res.status === 304 && rootCachedBody === undefined) {
-    write(`  spec unchanged  ${dest}  ${dim('304 Not Modified')}\n`)
+    write(`  ${t.ok(t.sym('ok'))} spec unchanged  ${t.underline(dest)} ${t.dim(`${t.sym('bullet')} 304 Not Modified`)}\n`)
     return 0
   }
   if (!res.ok && res.status !== 304) {
     const auth = res.status === 401 || res.status === 403
-    process.stderr.write(
-      `[Pyreon] lathe: ${url} responded ${res.status} ${res.statusText}\n` +
-        (auth
-          ? '  The spec is behind auth. Pass `--token <token>` (or set LATHE_TOKEN), or `--header "Name: value"`.\n'
-          : ''),
+    return fail(
+      `${url} responded ${res.status} ${res.statusText}`,
+      auth ? 'the spec is behind auth: pass `--token <token>` (or set LATHE_TOKEN), or `--header "Name: value"`' : undefined,
     )
-    return 1
   }
   const body = res.status === 304 ? rootCachedBody : await readCapped(res)
   if (body === undefined) {
-    process.stderr.write(
-      `[Pyreon] lathe: ${url} returned more than ${MAX_BYTES / 1024 / 1024} MB, so nothing was written.\n`,
-    )
-    return 1
+    return fail(`${url} returned more than ${MAX_BYTES / 1024 / 1024} MB, so nothing was written.`)
   }
   let parsed: unknown
   try {
     parsed = parseSpecText(body)
   } catch (err) {
-    process.stderr.write(
-      `[Pyreon] lathe: ${url} did not return a parseable spec, so nothing was written.\n` +
-        `  ${err instanceof Error ? err.message : String(err)}\n`,
+    return fail(
+      `${url} did not return a parseable spec, so nothing was written.\n  ${err instanceof Error ? err.message : String(err)}`,
     )
-    return 1
   }
   // "It parsed as YAML" is a much weaker statement than it sounds: an HTML
   // error page fails, but a plain-text one, a JSON error envelope, or somebody's
@@ -234,8 +245,7 @@ export async function pullSpec(url: string, dest: string, opts: PullOptions = {}
   // into an empty client.
   const problem = openApiVersionProblem(parsed)
   if (problem) {
-    process.stderr.write(`${problem.replace('[Pyreon] lathe: ', `[Pyreon] lathe: ${url}: `)}\n  Nothing was written.\n`)
-    return 1
+    return fail(`${problem.replace('[Pyreon] lathe: ', `${url}: `)}\n  Nothing was written.`)
   }
 
   // A spec split across files: fetch every document it references -- with the
@@ -255,12 +265,10 @@ export async function pullSpec(url: string, dest: string, opts: PullOptions = {}
     const docs = await collectDocumentsAsync(parsed, url, read)
     const failed = [...docs].filter((entry): entry is [string, { error: string }] => 'error' in entry[1])
     if (failed.length > 0) {
-      process.stderr.write(
-        `[Pyreon] lathe: ${url} references ${failed.length} document(s) that could not be fetched, so nothing was written:\n` +
-          failed.map(([id, o]) => `  ${id}: ${o.error}`).join('\n') +
-          '\n',
+      return fail(
+        `${url} references ${failed.length} document(s) that could not be fetched, so nothing was written:\n` +
+          failed.map(([id, o]) => `  ${id}: ${o.error}`).join('\n'),
       )
-      return 1
     }
     const bundled = bundle(url, docs)
     written = /\.json$/i.test(dest) ? `${JSON.stringify(bundled.doc, null, 2)}\n` : stringify(bundled.doc, { lineWidth: 0 })
@@ -286,15 +294,19 @@ export async function pullSpec(url: string, dest: string, opts: PullOptions = {}
     else if (etag || lastModified) cache[dest] = { url, sha256: sha256(body), etag, lastModified }
     writeCache(cacheFile, cache)
   }
-  const bundledNote = bundledCount > 0 ? `, bundled from ${bundledCount} documents` : ''
+  const bundledNote = bundledCount > 0 ? `bundled from ${bundledCount} documents` : ''
+  const b = t.sym('bullet')
   if (previous === written) {
-    write(`  spec unchanged  ${dest}${dim(bundledNote)}\n`)
+    write(`  ${t.ok(t.sym('ok'))} spec unchanged  ${t.underline(dest)}${bundledNote ? ` ${t.dim(`${b} ${bundledNote}`)}` : ''}\n`)
     return 0
   }
+  const advice = relativeServerAdvice(parsed, url)
   write(
-    `  ${previous === undefined ? 'fetched' : 'updated'}  ${dest}  ${dim(`${written.length} bytes${bundledNote}`)}\n` +
-      '  Review the diff, then run `lathe generate`.\n' +
-      relativeServerAdvice(parsed, url),
+    `  ${t.ok(t.sym('ok'))} ${previous === undefined ? 'fetched' : 'updated'}  ${t.underline(dest)} ${t.dim(
+      `${b} ${written.length} bytes${bundledNote ? ` ${b} ${bundledNote}` : ''}`,
+    )}\n` +
+      (advice ? `    ${t.info(t.sym('info'))} ${advice.trim().replace(/\n\s+/g, ' ')}\n` : '') +
+      `    ${t.dim('next:')} review the diff, then run lathe generate\n`,
   )
   return 0
 }
