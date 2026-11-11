@@ -19,7 +19,7 @@ Turn it on with one line in `.pyreonlintrc.json`:
 - `pyreon/padding-before-return` (auto-fixable): a blank line before a `return` that follows a multi-line statement or three or more statements.
 - `pyreon/padding-between-component-sections` (auto-fixable): a component reads setup → behaviour → render, with a blank line between sections. Handlers and effects share one section, because `effect()` runs when it is created.
 - `pyreon/padding-around-multiline-blocks` (auto-fixable, `readable-strict`): a blank line around multi-line `if` / `for` / `try` / `switch` blocks inside a function.
-- `pyreon/max-jsx-depth`: a component's JSX nests at most 6 deep (5 in strict), and the message names the subtree to extract.
+- `pyreon/max-jsx-depth`: a component's JSX nests at most 6 deep (5 in strict), and the message names the subtree to extract. Fragments and control-flow components (`<For>`, `<Show>`, …) add no depth.
 - `pyreon/no-nested-ternary-branch`: no ternary inside another ternary's branch; flat chains are fine up to 4 outcomes (3 in strict).
 
 The fixes only insert blank lines between statements, which oxfmt keeps, so `--fix` and the formatter never fight. Two matching presets ship for the other tools: `@pyreon/lint/oxlint/readable.json` (function length, complexity, depth, parameters and file length, for `.oxlintrc.json` to extend) and `@pyreon/lint/oxfmt` (formatting with sorted imports, for `oxfmt.config.ts`).
@@ -30,6 +30,7 @@ Also in `@pyreon/lint`:
 - `pyreon-lint` without `--preset` now uses the config file's preset. It used to apply `recommended` and ignore the file's choice. `--preset` takes a comma list.
 - `--watch` now reads `.pyreonlintrc.json`.
 - Suppression comments accept a reason: `// pyreon-lint-disable-next-line <rule> -- <why>`. A whole file opts out with `// pyreon-lint-disable-file <rule> -- <why>`. The reason is required there, and a directive without one is ignored and reported.
-- The VS Code extension starts the `pyreon-lint` bin; it used to start a module that exits immediately.
+- The language server frames messages by bytes. A document containing any non-ASCII character used to be cut short and dropped.
+- The VS Code extension starts the `pyreon-lint` bin (it used to start a module that exits immediately) and declares its `vscode-languageclient` dependency.
 
-New `create-zero` projects with lint on, and every new `create-multiplatform` project, ship the readable setup: the preset plus block padding, `.oxlintrc.json`, `oxfmt.config.ts`, the `oxlint` and `oxfmt` dev dependencies, and `lint` / `format` / `fix` scripts.
+New `create-zero` projects with lint on, and every new `create-multiplatform` project, ship the readable setup: the preset plus block padding, `.oxlintrc.json`, `oxfmt.config.ts`, the `oxlint` and `oxfmt` dev dependencies, `lint` / `format` / `fix` scripts, and `.vscode/` settings that format and fix on save. A fresh create-zero project of every template lints with zero findings, and its first `bun run format` changes nothing: the templates use `<For>` lists, validate their API body, and are formatted with the shipped preset.
