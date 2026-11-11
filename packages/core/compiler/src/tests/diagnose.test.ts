@@ -509,3 +509,23 @@ describe('diagnoseError — JSON script body given the script-code escape', () =
     )
   })
 })
+
+describe('diagnoseError — keyed <For> row keeps the first value of a replaced item (#4468)', () => {
+  it.each([
+    'my <For> row does not update after toggling a todo',
+    'the todo row label never updates on web, only the count moves (works on iOS)',
+    'keyed list row keeps the old value after setTodos',
+    'list item keeps the first done value on web after an update',
+  ])('diagnoses %s', (message) => {
+    const result = diagnoseError(message)
+    expect(result?.cause).toContain('ONCE per key')
+    expect(result?.fix).toContain('isDone(t.id)')
+    expect(result?.fix).toContain('for-stale-item-field')
+    expect(result?.fixCode).toContain('isDone')
+  })
+
+  it('does not fire on unrelated list or loop reports', () => {
+    expect(diagnoseError('for loop counter does not reset')?.cause ?? '').not.toContain('ONCE per key')
+    expect(diagnoseError('virtual list scroll position jumps')?.cause ?? '').not.toContain('ONCE per key')
+  })
+})
