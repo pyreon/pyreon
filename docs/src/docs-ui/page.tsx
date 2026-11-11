@@ -140,23 +140,23 @@ export function DocsPage(props: {
 }) {
   const slots = useDocsData().slots
   const entries = tocEntries([...slots.before, ...props.headings, ...slots.after])
-  const active = useScrollSpy(() => entries.map((h) => h.slug))
+  const active = useScrollSpy(() => entries.map((e) => e.slug))
   const url = `${SITE_ORIGIN}${props.path}`
   let prose: HTMLElement | null = null
   // Heading anchors: a "#" link after each h2/h3 that has an id. Added once the
   // page is mounted (the compiled Markdown emits bare headings); the heading
   // text stays the heading's accessible name.
   onMount(() => {
-    for (const h of prose?.querySelectorAll<HTMLElement>('h2[id], h3[id]') ?? []) {
+    for (const heading of prose?.querySelectorAll<HTMLElement>('h2[id], h3[id]') ?? []) {
       // Skip the selling slots' headings: a slot may still be hydrating (it
       // loads on demand), and an extra child would make it re-render.
-      if (h.querySelector('.dx-anchor') || h.closest('.dx-slot')) continue
+      if (heading.querySelector('.dx-anchor') || heading.closest('.dx-slot')) continue
       const a = document.createElement('a')
       a.className = 'dx-anchor'
-      a.href = `#${h.id}`
-      a.setAttribute('aria-label', `Link to this section: ${h.textContent ?? ''}`)
+      a.href = `#${heading.id}`
+      a.setAttribute('aria-label', `Link to this section: ${heading.textContent ?? ''}`)
       a.textContent = '#'
-      h.append(a)
+      heading.append(a)
     }
   })
   // h() throughout: the generic title is a conditional child (#4385).
