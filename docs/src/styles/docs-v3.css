@@ -259,8 +259,8 @@
 .dx-desc { margin: 12px 0 0; font-size: 17px; line-height: 1.55; color: var(--dx-mist); max-width: 68ch; }
 /* One h1 per page: the body's own (a product pitch, or a Markdown `# Title` first in the page) replaces the generic one. */
 .dx-page:has(.dx-prose .dx-pitch) .dx-head,
-.dx-page:has(.dx-prose > h1:first-child) .dx-head { display: none; }
-.dx-page:has(.dx-prose > h1:first-child) .dx-prose > h1:first-child { margin-top: 26px; }
+.dx-page:has(.dx-prose > .content > h1:first-child) .dx-head { display: none; }
+.dx-prose > .content > h1:first-child { margin-top: 26px; }
 
 /* ── TOC ───────────────────────────────────────────────────────────────── */
 .dx-toc-inline { display: none; }
@@ -326,7 +326,7 @@
 
 /* ── prose ─────────────────────────────────────────────────────────────── */
 .dx-prose { font-size: 16px; line-height: 1.65; color: var(--dx-text); overflow-wrap: break-word; }
-.dx-prose > :where(:first-child) { margin-top: 26px; }
+.dx-prose > .content > :where(:first-child) { margin-top: 26px; }
 .dx-prose :where(h1) { margin: 26px 0 16px; font-size: clamp(32px, 4vw, 44px); font-weight: 600; line-height: 1.05; letter-spacing: -.04em; color: var(--dx-strong); }
 .dx-prose :where(h2) { margin: 52px 0 14px; font-size: 28px; font-weight: 500; line-height: 1.2; letter-spacing: -.03em; color: var(--dx-strong); scroll-margin-top: 90px; }
 .dx-prose :where(h3) { margin: 36px 0 10px; font-size: 20px; font-weight: 500; line-height: 1.3; letter-spacing: -.02em; color: var(--dx-strong); scroll-margin-top: 90px; }
@@ -583,6 +583,13 @@
 .dx .api-card-header { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .dx .api-badge { font-family: var(--dx-mono); font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; padding: 1px 7px; border: 1px solid var(--dx-line2); border-radius: var(--dx-r-pill); color: var(--dx-fog); background: transparent; }
 .dx .api-badge--empty { display: none; }
+.dx .api-badge--fn { color: var(--dx-link); }
+.dx .api-badge--component { color: var(--dx-ok); }
+.dx .api-badge--hook { color: var(--dx-s-type); }
+.dx .api-badge--type { color: var(--dx-warn); }
+.dx .api-badge--constant { color: var(--dx-accent-text); }
+.dx .api-badge--property { color: var(--dx-mist); }
+.dx .api-badge--context { color: var(--dx-err); }
 .dx .api-name { padding: 0; border: 0; background: none; font-family: var(--dx-mono); font-size: 14.5px; font-weight: 500; color: var(--dx-strong); }
 .dx .api-signature { margin-top: 8px; font-size: 13px; color: var(--dx-mist); overflow-x: auto; }
 .dx .api-signature code { padding: 0; border: 0; background: none; color: var(--dx-s-fn); white-space: pre; }

@@ -7,7 +7,7 @@ description: The AI-native component workbench — derives, verifies, and serves
 
 <LiveDemo id="atlas" />
 
-`@pyreon/atlas` is a component workbench that inverts Storybook's model: **you don't author stories — Atlas derives them.** Your components and their TypeScript types are the source of truth. Atlas infers controls from prop types, generates scenarios from variant axes (rocketstyle dimensions included), verifies every scenario with a five-check pipeline, and writes the result as a machine-readable catalog that both humans (the workbench) and AI assistants (the agent guide) consume.
+`@pyreon/atlas` is a component workbench that inverts Storybook's model: **you don't author stories — Atlas derives them.** Your components and their TypeScript types are the source of truth. Atlas infers controls from prop types, generates scenarios from variant axes (rocketstyle dimensions included), verifies every scenario with a six-check pipeline, and writes the result as a machine-readable catalog that both humans (the workbench) and AI assistants (the agent guide) consume.
 
 <PackageBadge name="@pyreon/atlas" href="/docs/atlas" />
 
@@ -352,7 +352,7 @@ The scan runs `play` **instead of** the automatic click-walk; a throw fails the 
 | | Storybook | Atlas |
 |---|---|---|
 | Stories | authored by hand (CSF) | **derived** from types + variant axes; authoring is opt-in enrichment |
-| Verification | separate addons/test-runner | five-check verdict built into the scan, three honest states |
+| Verification | separate addons/test-runner | six-check verdict built into the scan, three honest states |
 | AI surface | none (catalog is your source) | `atlas-catalog.json` + agent guide, first-class |
 | Compat | — | Storybook stays a supported *bridge* (`@pyreon/storybook` renderer); Atlas never requires migrating stories |
 

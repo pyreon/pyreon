@@ -34,7 +34,7 @@ Three files. No additional wiring.
 ```ts
 // vite.config.ts
 import pyreon from '@pyreon/vite-plugin'
-import zero from '@pyreon/zero'
+import zero from '@pyreon/zero/server'
 import content from '@pyreon/zero-content/plugin'
 
 export default {

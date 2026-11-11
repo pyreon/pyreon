@@ -137,7 +137,7 @@ The panel has three tabs:
 
 #### Health
 
-The graph-wiring readout: a summary header (`N signals · M derived · K effects · E edges`) followed by the insights that only the graph can surface — the same ones [`describeReactiveGraph`](/reactivity#describe-a-reactive-graph) computes:
+The graph-wiring readout: a summary header (`N signals · M derived · K effects · E edges`) followed by the insights that only the graph can surface — the same ones [`describeReactiveGraph`](/docs/reactivity#describe-a-reactive-graph) computes:
 
 - **`orphan-signal`** — nothing depends on this signal: dead reactivity or an unused signal.
 - **`high-fanout`** — changing this signal re-runs many effects; a hot hub worth auditing.
@@ -145,7 +145,7 @@ The graph-wiring readout: a summary header (`N signals · M derived · K effects
 
 #### Activity — "why did X update?"
 
-The runtime **causal** view, powered by [`getReactiveFires`](/reactivity) + [`getUpdateCause` / `formatUpdateCause`](/reactivity). Interact with the app, switch to **Activity**, and the panel shows the recent reactive fires (newest first) plus the causal chain that explains the *most recent* one:
+The runtime **causal** view, powered by [`getReactiveFires`](/docs/reactivity) + [`getUpdateCause` / `formatUpdateCause`](/docs/reactivity). Interact with the app, switch to **Activity**, and the panel shows the recent reactive fires (newest first) plus the causal chain that explains the *most recent* one:
 
 ```text
 Recent updates (newest first):
@@ -176,4 +176,4 @@ The correlation is **exact, not a heuristic**: it's captured at bind time in `_b
 
 Scope: text bindings only — the dominant "I see a wrong value" case. Attribute / class / style bindings and multi-signal text expressions aren't correlated (their owner element isn't in scope at bind time). Returns `[]` in production (nothing is tagged).
 
-Opening the panel **auto-activates** graph/fire tracking, so it works even if the app never called `reactive.activate()`. It's build-only in effect: the whole devtools module (overlay included) is tree-shaken from production by the `process.env.NODE_ENV !== 'production'` gate, so there is nothing to ship or disable. Use the `⟳` button to re-read after interacting with the app. This is the runtime complement to the component-inspect overlay (`Ctrl+Shift+P`, hover-to-inspect DOM) and the [Reactivity Lens](/reactivity-lens) editor hints (compiler-side static analysis).
+Opening the panel **auto-activates** graph/fire tracking, so it works even if the app never called `reactive.activate()`. It's build-only in effect: the whole devtools module (overlay included) is tree-shaken from production by the `process.env.NODE_ENV !== 'production'` gate, so there is nothing to ship or disable. Use the `⟳` button to re-read after interacting with the app. This is the runtime complement to the component-inspect overlay (`Ctrl+Shift+P`, hover-to-inspect DOM) and the [Reactivity Lens](/docs/reactivity-lens) editor hints (compiler-side static analysis).

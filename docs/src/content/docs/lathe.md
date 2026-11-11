@@ -29,7 +29,7 @@ only for the `faker` plugin, `zod` only for `validator: 'zod'`.
 ## Getting started
 
 ```bash
-npx lathe init
+npx @pyreon/lathe init
 ```
 
 `lathe init` finds what the project generates from today — an orval,

@@ -37,7 +37,7 @@ It reads the same declarations an install tool reads — root `workspaces` globs
 | --- | --- | --- |
 | `version-drift` | error / warning / info | one external dep declared with different ranges. Cross-major = error; same-major = warning; root-overridden = info. **Peer ranges are contracts, not pins** (excluded from the grouping), and a range that's a strict superset of the rest (`>=5 <7` ⊇ `^6.0.3`) reads as policy → info |
 | `internal-range` | error | a workspace member referenced by a bare semver (a registry install waiting to happen) or a `workspace:` pin whose major no longer exists |
-| `cycle` | error | a **runtime** import loop between workspace packages — dev edges are deliberately excluded, because monorepos legitimately share test utilities both ways |
+| `cycle` | error | a loop in the **declared runtime dependencies** (`dependencies`, `peerDependencies`) between workspace packages, read from each `package.json` — dev edges are deliberately excluded, because monorepos legitimately share test utilities both ways |
 | `phantom-dep` | error (published) / warning (private) | shipping source imports a package the manifest never declares — hoisting luck that explodes under isolated stores |
 | `prod-import-of-dev-dep` | warning (published) / info (private) | shipping source leans on a devDependency consumers won't have |
 | `peer-mismatch` | warning | an internal peer range disagreeing with the workspace copy by a major |

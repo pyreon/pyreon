@@ -591,14 +591,15 @@ batch(() => {
 // Now the outermost batch ends -- effects run once with final values
 ```
 
-### Batch with Return Values
+### Reading values inside a batch
 
-Batch returns the result of the callback:
+`batch()` returns nothing (`batch(fn: () => void): void`). A write is visible to reads inside the batch straight away; only effects wait for it to end. Capture what you need in the callback:
 
 ```ts
-const result = batch(() => {
+let latest = 0
+batch(() => {
   count.set(10)
-  return count.peek() // 10
+  latest = count.peek() // 10
 })
 ```
 

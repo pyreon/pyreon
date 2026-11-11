@@ -1114,10 +1114,15 @@ export const action = defineAction(
 
 export default function NewPost() {
   const sub = useSubmission(action)
+  // result() is the handler's return value OR an ActionInputError; narrow on `fields`.
+  const titleErrors = () => {
+    const r = sub.result()
+    return r && 'fields' in r ? (r.fields.title?.join(', ') ?? '') : ''
+  }
   return (
     <Form action={action}>
       <input name="title" />
-      <p>{() => sub.result()?.fields?.title?.join(', ') ?? ''}</p>
+      <p>{titleErrors}</p>
       <input name="views" />
       <button>Create</button>
     </Form>
