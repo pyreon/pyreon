@@ -604,14 +604,15 @@ export function renderEffect(fn: () => void): () => void {
   // run, once its deps are known. Registering before the run (as this did)
   // left every dead binding in the graph as a never-fired node, and coverage
   // reported each as "created but never executed".
-  // One body for both builds: in production the dev calls fold away and the
-  // empty `finally` with them, leaving the bare `run()`.
+  // One body for both builds: the dev calls fold away, leaving the bare
+  // `run()`. No try/finally: Bun's minifier keeps an emptied `finally {}`, so
+  // the production output would change. If the first run throws (the error
+  // propagates out of the mount anyway) the dev frame stays open; that is
+  // harmless — every later frame saves and restores around it, and only setter
+  // writes made outside any binding could land in it, which nothing reads.
   if (process.env.NODE_ENV !== 'production') _rdOpenBindingFrame()
-  try {
-    run()
-  } finally {
-    if (process.env.NODE_ENV !== 'production') _rdCloseBindingFrame()
-  }
+  run()
+  if (process.env.NODE_ENV !== 'production') _rdCloseBindingFrame()
 
   // Dead binding (see `_noopDispose`): no dependency was
   // tracked on the first run, so no signal can ever schedule `run` again.

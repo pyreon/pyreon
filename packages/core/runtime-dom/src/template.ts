@@ -516,14 +516,12 @@ export function _bindDirect(
     // updater's DOM setter (`(v) => _setAttr(el, "aria-busy", v)`) names the
     // binding, then the node `direct()` registered is labelled (`dom` when no
     // setter reported a write) and its disposer tagged. One body for both
-    // builds: in production the dev calls and the empty `finally` fold away
-    // and `dispose` collapses into the return.
+    // builds: in production the dev calls fold away and `dispose` collapses
+    // into the return. No try/finally — Bun keeps an emptied `finally {}`; see
+    // `renderEffect` for why a frame left open by a throw is harmless.
     if (process.env.NODE_ENV !== 'production') _rdOpenBindingFrame()
-    try {
-      updater(source._v)
-    } finally {
-      if (process.env.NODE_ENV !== 'production') _rdCloseBindingFrame()
-    }
+    updater(source._v)
+    if (process.env.NODE_ENV !== 'production') _rdCloseBindingFrame()
     const dispose = source.direct(() => updater(source._v))
     if (process.env.NODE_ENV !== 'production') _rdLabelDirect(dispose, 1)
     return dispose
