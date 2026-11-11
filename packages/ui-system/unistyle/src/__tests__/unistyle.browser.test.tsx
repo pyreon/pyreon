@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { enrichTheme } from '../enrichTheme'
 import Provider from '../context'
 import { makeItResponsive } from '../responsive'
+import unistyles from '../styles/styles/index'
 import { stripUnit, value } from '../units'
 
 // Real-Chromium smoke for @pyreon/unistyle.
@@ -156,6 +157,42 @@ describe('@pyreon/unistyle in real browser', () => {
     // xs (always-on) should apply 8px; sm (99999) does not apply.
     expect(getComputedStyle(el).padding).toBe('8px')
     unmount()
+  })
+
+  // #4324: `backgroundImage` used to wrap every value in `url()`, so an
+  // <image> value became `url(linear-gradient(…))`, which Chromium rejects
+  // (computed `none`). Real styles() pipeline + real styler sheet.
+  it('styles() backgroundImage: gradients and var() compute; bare paths get url()', () => {
+    const theme = enrichTheme({ rootSize: 16, breakpoints: { xs: 0 } })
+    const responsive = makeItResponsive({ key: '$bg', styles: unistyles, css })
+    const Box = styled('div')<{ $bg: any; theme?: typeof theme }>`
+      ${(p) => responsive(p as any)};
+    `
+    const varStyle = document.createElement('style')
+    varStyle.textContent = ':root { --bg-test: radial-gradient(red, blue); }'
+    document.head.appendChild(varStyle)
+
+    const { container, unmount } = mountInBrowser(
+      h(
+        Provider,
+        { theme },
+        h(Box, { id: 'g', $bg: { backgroundImage: 'linear-gradient(95deg, #FF1F8C, #FF5E1A)' } }),
+        h(Box, { id: 'v', $bg: { backgroundImage: 'var(--bg-test)' } }),
+        h(Box, {
+          id: 'l',
+          $bg: { backgroundImage: 'linear-gradient(red, blue), /img/hero.png' },
+        }),
+      ),
+    )
+    const computed = (id: string) =>
+      getComputedStyle(container.querySelector<HTMLElement>(`#${id}`)!).backgroundImage
+    expect(computed('g')).toBe('linear-gradient(95deg, rgb(255, 31, 140), rgb(255, 94, 26))')
+    expect(computed('v')).toBe('radial-gradient(rgb(255, 0, 0), rgb(0, 0, 255))')
+    expect(computed('l')).toMatch(
+      /^linear-gradient\(rgb\(255, 0, 0\), rgb\(0, 0, 255\)\), url\(".*\/img\/hero\.png"\)$/,
+    )
+    unmount()
+    varStyle.remove()
   })
 
   it('value() and stripUnit() behave identically in the browser', () => {
