@@ -7,7 +7,8 @@ name: Required Check Autoheal
 # a human notices the BLOCKED state and re-runs it by hand). That is what
 # happened to `Native Device Build` on #3492: `iOS — xcodebuild (Simulator
 # SDK)` (a required check) was actively mid-build when the WHOLE RUN was
-# cancelled from outside — its unrelated `notify-nightly` sibling job, gated
+# cancelled from outside — its unrelated nightly-notifier sibling job (since moved
+# to native-device-nightly-status.yml), gated
 # `if: always() && github.event_name == 'schedule'` and normally SKIPPED on
 # a pull_request run, was marked `cancelled` at the identical second, which
 # only happens when a run-level cancel hits every job at once. Nothing in
@@ -123,7 +124,7 @@ jobs:
             })
             // The RERUN above is the deliverable; this comment is advisory context
             // for it. A GitHub API 5xx here must never turn the heal job itself red —
-            // that IS the dead-gate class `notify-nightly` documents two jobs over.
+            // that IS the dead-gate class native-device-nightly-status.yml documents.
             for (const pr of prs) {
               try {
                 await github.rest.issues.createComment({
