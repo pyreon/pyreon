@@ -515,6 +515,16 @@ Resolution is leaf-first along the matched chain: a page's own declaration beats
 | `'isr'` | — | Routed through the shared SWR cache handler (`config.isr`, default `revalidate: 60`) |
 | `'ssr'` | — | Under an `'isr'` app mode this is the per-route **cache bypass** |
 
+**Reserved route names.** In a server app the build and the deploy adapter write their own output next to the prerendered pages. A prerendered route may not land under one of those names, because the server build or the adapter's staging would drop its HTML. These names are `server`, `server-edge`, `.zero-ssg-server` and `.vite`, plus the adapter's own:
+
+- `client`, `index.js` and `package.json` for node;
+- `client` and `index.ts` for bun;
+- `client` and `main.js` for deno;
+- `publish`, `netlify` and `netlify.toml` for netlify;
+- `_server`, `_worker.js` and `_routes.json` for cloudflare.
+
+The build fails with an error naming each such route. Rename the route, or render it with `renderMode: 'ssr'`. Under `ssg.format: 'file'`, `/server` writes `server.html`, which does not collide. Vercel stages outside `dist/` and reserves nothing.
+
 **Inside a static app (`mode: 'ssg'`):** `'spa'` routes emit the CSR shell instead of prerendered HTML; declaring `'ssr'` or `'isr'` is a **build error** (a static deploy has no server — the error names each offending route and the fix). Vercel/Netlify serve prerendered files static-first by platform convention; for subpath (`base`) deploys on Cloudflare the `_routes.json` excludes are root-relative — verify them when combining `base` with hybrid.
 
 When no route declares a divergent mode, the pipeline is byte-identical to the app-level mode — existing apps are unaffected.

@@ -1,5 +1,5 @@
 import type { Adapter, AdapterBuildOptions, AdapterRevalidateResult } from '../types'
-import { DENO_ADAPTER_OUTPUT } from './contract'
+import { DENO_ADAPTER_OUTPUT, ADAPTER_RESERVED_OUTPUTS } from './contract'
 import { EDGE_INIT_FILE, renderEdgeInit } from './edge-wrapper'
 import { stageClientThenServer } from './stage'
 import { STATIC_MIME_TYPES } from './mime'
@@ -36,6 +36,7 @@ import { validateBuildInputs } from './validate'
 export function denoAdapter(): Adapter {
   return {
     name: 'deno',
+    reservedOutputs: ADAPTER_RESERVED_OUTPUTS.deno,
     capabilities: { edgeOnly: true, edgeRoutes: true, schedules: true },
     async build(options: AdapterBuildOptions) {
       if (options.kind === 'ssg') {
