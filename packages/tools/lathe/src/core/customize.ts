@@ -16,7 +16,7 @@
 import { byTag, isMutation } from '../emit/client'
 import type { HttpMethod, IrDocument, IrOperation, IrParam, IrValidateMode } from './ir'
 import { closest } from './suggest'
-import { hookOf, modelIdent, operationIdent, tagFile, typeIdent } from './naming'
+import { hookOf, isWindowsDeviceName, modelIdent, operationIdent, tagFile, typeIdent } from './naming'
 import { renameRefs } from './walk'
 
 /** What `naming.operation` is told about one operation. */
@@ -180,9 +180,9 @@ export function applyNaming(doc: IrDocument, naming: LatheNaming | undefined): I
     for (const [group, ops] of byTag(out)) {
       const def = tagFile(group)
       const next = callNaming('file', fn, { default: def, group }, `group \`${group}\``)
-      if (typeof next !== 'string' || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(next)) {
+      if (typeof next !== 'string' || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(next) || isWindowsDeviceName(next)) {
         throw new Error(
-          `[Pyreon] lathe: \`naming.file\` returned \`${String(next)}\` for group \`${group}\` — a file stem must be lowercase kebab-case (\`[a-z0-9-]\`), e.g. \`${tagFile(String(next))}\`.`,
+          `[Pyreon] lathe: \`naming.file\` returned \`${String(next)}\` for group \`${group}\` — a file stem must be lowercase kebab-case (\`[a-z0-9-]\`) and not a Windows device name (\`con\`, \`nul\`, \`com1\`, …), e.g. \`${tagFile(String(next))}\`.`,
         )
       }
       stems.set(group, next)

@@ -12,6 +12,7 @@ import {
   mkdirSync,
   readdirSync,
   readFileSync,
+  realpathSync,
   rmSync,
   watch,
   writeFileSync,
@@ -29,6 +30,7 @@ import { parseArgv, run, type Argv, type Fs } from "./run";
 
 const realFs: Fs = {
   read: (p) => readFileSync(p, "utf8"),
+  realpath: (p) => realpathSync(p),
   write: (p, c) => writeFileSync(p, c, "utf8"),
   exists: (p) => existsSync(p),
   mkdirp: (p) => mkdirSync(p, { recursive: true }),
@@ -129,6 +131,7 @@ export async function main(
   const scoped: Fs = {
     ...realFs,
     read: (p) => realFs.read(abs(p)),
+    realpath: (p) => realpathSync(abs(p)),
     write: (p, c) => realFs.write(abs(p), c),
     exists: (p) => realFs.exists(abs(p)),
     mkdirp: (p) => realFs.mkdirp(abs(p)),
@@ -259,7 +262,12 @@ async function pull(
   const cacheDir = existsSync(join(cwd, "node_modules"))
     ? join(cwd, "node_modules", ".cache", "lathe")
     : undefined;
-  const opts = { headers, cacheDir, color: argv.color ?? false };
+  const opts = {
+    headers,
+    cacheDir,
+    color: argv.color ?? false,
+    refOrigins: [...argv.refOrigins, ...(section?.refOrigins ?? [])],
+  };
 
   const targets = pullTargets(section);
   const url = argv.input;
@@ -376,6 +384,7 @@ async function init(
   const scoped: Fs = {
     ...realFs,
     read: (p) => realFs.read(abs(p)),
+    realpath: (p) => realpathSync(abs(p)),
     write: (p, c) => realFs.write(abs(p), c),
     exists: (p) => realFs.exists(abs(p)),
     mkdirp: (p) => realFs.mkdirp(abs(p)),
