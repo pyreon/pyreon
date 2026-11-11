@@ -3111,6 +3111,7 @@
       "devDependencies": {
         "@pyreon/manifest": "workspace:*",
         "@pyreon/native-compiler": "workspace:*",
+        "@pyreon/runtime-dom": "workspace:^",
         "@pyreon/styler": "workspace:^",
         "@pyreon/test-utils": "workspace:^",
         "@pyreon/tsconfig": "workspace:*",
