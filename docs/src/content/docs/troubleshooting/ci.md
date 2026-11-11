@@ -156,7 +156,7 @@ A skipped required check reports success, so an empty decide output must not ski
 
 ### A required workflow cannot use a trigger-level `paths:` filter or skip on `labeled`
 
-A filtered-out PR creates no check run and branch protection waits on "Expected" forever, so path scoping must be a job-level skip from an always-running decide job. Once `labeled` is a trigger type, each label creates a new run on the same SHA and protection reads the latest; the path-detect arm must run on every action including `labeled`, or adding any label launders a red run into a skipped green one. Reference: `.github/workflows/native-device.yml`.
+A filtered-out PR creates no check run and branch protection waits on "Expected" forever, so path scoping must be a job-level skip from an always-running decide job. Do not trigger an expensive required workflow on `labeled` unless a label is one of its inputs: each label creates a new run on the same SHA, cancels the in-flight one and protection reads the latest (`native-device.yml` dropped `labeled` after 19 same-SHA device rebuilds in two days; its opt-in label is read on the next push, or a `workflow_dispatch` proves the commit at once). Where `labeled` is a trigger, the path-detect arm must run on every action including `labeled`, or adding any label launders a red run into a skipped green one. Every required workflow also needs a `merge_group` trigger and a concurrency key that is unique per queue ref (`github.event.pull_request.number || github.ref`); a job the queue need not repeat names `merge_group` in its own `if:` rather than relying on a skipped `needs` dependency, which a later `always()`/`failure()` arm would bypass. Reference: `.github/workflows/native-device.yml`, `pr-gates.yml`.
 
 ---
 
