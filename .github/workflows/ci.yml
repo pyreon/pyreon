@@ -150,10 +150,18 @@ jobs:
       typecheck-has: ${{ steps.matrices.outputs.typecheck-has }}
       test-matrix: ${{ steps.matrices.outputs.test }}
       test-has: ${{ steps.matrices.outputs.test-has }}
-      e2e-matrix: ${{ steps.e2e.outputs.matrix }}
-      e2e-has: ${{ steps.e2e.outputs.has }}
-      scaffold-has: ${{ steps.scaffold.outputs.has }}
-      scaffold-matrix: ${{ steps.scaffold.outputs.matrix }}
+      # Light PR CI (see .agents/guides/ci/README.md, "Light PR CI"): `pr-light`
+      # is 'true' ONLY for a pull_request run while the repository variable
+      # PR_CI_MODE is exactly 'light'. Anything else (unset, other value, a
+      # failed step, push, merge_group) leaves it unset and the run is the
+      # full matrix. e2e and scaffold are reported as UNSELECTED (has=false,
+      # matrix=[]) so the Test aggregator accepts their absence; the other
+      # heavy jobs below test `pr-light` in their own `if:`.
+      pr-light: ${{ steps.mode.outputs.light }}
+      e2e-matrix: ${{ steps.mode.outputs.light == 'true' && '[]' || steps.e2e.outputs.matrix }}
+      e2e-has: ${{ steps.mode.outputs.light == 'true' && 'false' || steps.e2e.outputs.has }}
+      scaffold-has: ${{ steps.mode.outputs.light == 'true' && 'false' || steps.scaffold.outputs.has }}
+      scaffold-matrix: ${{ steps.mode.outputs.light == 'true' && '[]' || steps.scaffold.outputs.matrix }}
       bootstrap-exit-codes: ${{ steps.bexit.outputs.run }}
       browser-engines: ${{ steps.engines.outputs.list }}
       browser-engines-has: ${{ steps.engines.outputs.has }}
@@ -164,6 +172,17 @@ jobs:
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version-file: .bun-version
+      - name: Resolve PR CI mode
+        id: mode
+        env:
+          PR_CI_MODE: ${{ vars.PR_CI_MODE }}
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ] && [ "$PR_CI_MODE" = "light" ]; then
+            echo "light=true" >> "$GITHUB_OUTPUT"
+            echo "PR_CI_MODE=light: heavy jobs are skipped on this PR and run in the merge queue and on main."
+          else
+            echo "light=false" >> "$GITHUB_OUTPUT"
+          fi
       # ── 1. install ──────────────────────────────────────────────────────
       # bun's global package-tarball store. When the lockfile-keyed
       # node_modules restore misses (new bun.lock hash, fresh runner),
@@ -1378,7 +1397,7 @@ jobs:
   build:
     name: Build
     needs: [install, fast-gates]
-    if: ${{ needs.install.result == 'success' && needs.fast-gates.result == 'success' && needs.install.outputs.code == 'true' }}
+    if: ${{ needs.install.result == 'success' && needs.fast-gates.result == 'success' && needs.install.outputs.code == 'true' && needs.install.outputs.pr-light != 'true' }}
     runs-on: ubuntu-latest
     # Derived from the measured steps (2026-09-01): examples build 70s +
     # verify-modes 90s + budgets 55s + distribution 25s + bin-liveness 30s +
@@ -1585,7 +1604,7 @@ jobs:
     # docs-only PR (`code == false`). Install/Fast Gates failures are surfaced
     # by required checks without starting this browser runner.
     needs: [install, fast-gates]
-    if: ${{ needs.install.result == 'success' && needs.fast-gates.result == 'success' && needs.install.outputs.code == 'true' }}
+    if: ${{ needs.install.result == 'success' && needs.fast-gates.result == 'success' && needs.install.outputs.code == 'true' && needs.install.outputs.pr-light != 'true' }}
     runs-on: ubuntu-latest
     # Composed outage bound: Chromium setup <= 10m, engine setup <= 16m
     # (including repair/download retries and SIGKILL grace), ~3m tests +
@@ -1676,7 +1695,7 @@ jobs:
   release-build:
     name: Release Build
     needs: [install, fast-gates]
-    if: ${{ needs.install.result == 'success' && needs.fast-gates.result == 'success' && needs.install.outputs.code == 'true' }}
+    if: ${{ needs.install.result == 'success' && needs.fast-gates.result == 'success' && needs.install.outputs.code == 'true' && needs.install.outputs.pr-light != 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:

@@ -133,6 +133,51 @@ gh api -X PUT repos/pyreon/pyreon/rulesets/19416270 --input rs-queue.json
 - Changesets: the Version PR and `auto/docs-regen` go through the queue like any PR (`gh pr merge --auto --squash` enqueues). The queue's fast-forward of `main` is a normal push, so `release.yml`, `docs.yml`, `docs-freshness-guard.yml` and main CI trigger as before.
 - Roll back: `gh api repos/pyreon/pyreon/rulesets/19416270 | jq '{name, target, enforcement, conditions, bypass_actors, rules: [.rules[] | select(.type != "merge_queue")]}' > rs-noqueue.json`, then the same PUT with that file. Queued PRs leave the queue; `merge_group` triggers go dormant again. The UI path is Settings → Rules → Rulesets → main branch protection → "Require merge queue".
 
+### Light PR CI
+
+Inert until the repository variable `PR_CI_MODE` is `light`. Unset, or any other value, is exactly the behaviour above. Purpose: a PR runs about 8 jobs instead of about 30, and the full matrix runs once per merge group and on `main`, so the full verification applies to the merge RESULT (two individually green PRs can break `main` together because protection is non-strict) and costs one run per group, not one per PR.
+
+The switch is `vars.PR_CI_MODE == 'light'` AND `github.event_name == 'pull_request'`. `ci.yml` resolves it once in `Install` (step `Resolve PR CI mode`, output `pr-light`); `native-validate.yml` reads the variable inline. A resolver failure leaves `pr-light` unset, which means the full run (fail-closed).
+
+| Job | Normal | Light, on a PR | Light, in the queue / on `main` | Why |
+| --- | --- | --- | --- | --- |
+| `Install`, `Fast Gates`, `Test` (aggregator) | runs | runs | runs | cheap, and everything else hangs off them |
+| `typecheck (…)`, `test (…)` cells | affected-filtered | same | full | already affected-filtered on a PR; the unit tests are the main PR signal |
+| `bootstrap-exit-codes` | only when `bootstrap.ts` changed | same | same | rare and about 8 min at most |
+| `Changeset`, `Diagnose Catalog` | runs | runs | skipped | functions of the PR diff and labels; a group cannot decide them |
+| `Analyze (javascript-typescript)`, `CodeQL` | runs | runs | runs | about 4 min; security feedback stays on the PR |
+| `Validate emitted Swift (real-SDK typecheck, macOS)`, `iOS — xcodebuild`, `Android — gradlew` | selected by paths | same | SKIPPED | the PR is their ONLY coverage (the queue skips them), so light mode must not skip them |
+| `e2e (…)` | affected suites | skipped | full | HEAVY, runs in the queue |
+| `Scaffold Smoke (…)` | when selected | skipped | full | HEAVY, runs in the queue |
+| `Build` (verify-modes, budgets, coverage floor, rust equivalence) | code PRs | skipped | full | HEAVY, runs in the queue |
+| `Test (browser)` | code PRs | skipped | full | HEAVY (timeout 35 min), runs in the queue |
+| `Release Build` | code PRs | skipped | full | HEAVY, runs in the queue |
+| `Validate emitted Swift + Kotlin` (Linux) | when the native selectors fire | skipped | when the group's diff selects it | HEAVY (about 18 jobs when selected), runs in the queue |
+
+How `e2e` and `Scaffold Smoke` skip: `Install` reports them as unselected (`e2e-has` / `scaffold-has` = `false`, matrices `[]`), the same path a docs-only PR takes, so `scripts/ci-aggregate.ts` accepts their absence and `Test` stays a real verdict. `Build`, `Test (browser)` and `Release Build` carry `needs.install.outputs.pr-light != 'true'` in their `if:`. Concurrency keys and `cancel-in-progress` are unchanged.
+
+A skipped job reports `skipped`, and a skipped required check counts as passing (GitHub, "Troubleshooting required status checks": a job skipped by a conditional reports Success; a workflow skipped by a trigger filter stays Pending, which is why the required workflows keep unfiltered triggers and skip per job). This guide already relies on the same behaviour for `Changeset` and the device lanes in the queue. NOT verified on this repository in light mode: the first light PR is the proof; see the checklist.
+
+Rules the static gate (`scripts/check-light-pr-ci.ts`, in `validate-fast`) enforces: every workflow that owns a required context has `merge_group`; a job that uses the light condition has `merge_group` and `push` coverage and does not exclude `merge_group` in its own `if:`; a job the queue skips (the table's SKIPPED rows and their `changes` / `fingerprint` helpers) never uses it; a direct `PR_CI_MODE` read is bounded to `pull_request`.
+
+Flip (maintainer). The queue MUST be on first: in light mode a PR's heavy results come only from the queue, so without it a PR would merge with `Build`, `Test (browser)`, `Release Build` and the e2e suites never having run.
+
+```bash
+# 1. queue on: the ruleset command under "Enable" above
+# 2. then:
+gh variable set PR_CI_MODE --body light
+```
+
+Roll back (seconds, no code change): `gh variable delete PR_CI_MODE`, then remove the `merge_queue` rule (see "Roll back" above). PRs pick the variable up on their next push or re-run; an already-finished run keeps its result.
+
+First-run checklist, on the first PR after the variable is set:
+
+- `Install` log shows `PR_CI_MODE=light`; the PR shows about 8 jobs and all 15 required contexts are present (green or skipped), none `Expected`.
+- `Test` is green with `e2e` and `Scaffold Smoke` absent (it reports unselected, not failed).
+- Queue it: the group runs the full matrix and all 15 contexts report on the `gh-readonly-queue/main/…` head. Watch queue wait: a full group is 65-85 runner-minutes; if it starves again (see the 2026-11-11 history above) roll back.
+- A PR that breaks only a heavy job merges to the queue and fails there, removing itself with a comment: expect the failure feedback to arrive later than before.
+- Known residual risks: the device lanes and macOS typecheck still run per PR (5 macOS slots); the queue skips them; `Coverage` stays main-only.
+
 ## Caches
 
 - Downstream `node_modules` restores use the exact lockfile key only. A broad prefix downloads a tree the clean-install fallback must immediately discard to avoid stale peer resolution. The bun tarball cache still uses a prefix safely. The setup action exposes whether it already restored tarballs so scaffold jobs do not download the same store twice.
