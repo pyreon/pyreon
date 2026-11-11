@@ -2429,6 +2429,17 @@ zero({ mode: 'ssg', ssg: { workers: 1 } })`,
       related: 'Router guards run on the initial navigation (Vue Router model)',
     }),
   },
+  {
+    // core `For()` throws this at mount; the compiler's `for-without-by`
+    // warning ("<For> without a \"by\" prop throws when it mounts") says the same.
+    pattern: /<For> requires a `by` prop|<For> without a "by" prop throws when it mounts/,
+    diagnose: () => ({
+      cause:
+        '<For> keys its rows with the `by` function, and one was not given (or it is not a function). `key` does not stand in for it: JSX keeps `key` for the element itself, so <For> never sees it.',
+      fix: 'Add `by`, a function returning a stable, unique key per item: `by={(item) => item.id}`. For a list of unique strings or numbers use `by={(item) => item}`.',
+      fixCode: '<For each={items} by={(item) => item.id}>{(item) => <li>{item.name}</li>}</For>',
+    }),
+  },
 ]
 
 /** Diagnose an error message and return structured fix information */
