@@ -516,20 +516,28 @@ export function _fuse(...parts: unknown[]): string | unknown[] {
  *
  * Emitted by the compiler — not generally meant for hand-written code.
  */
+function hasOwnGetter(source: object): boolean {
+  const names = Object.getOwnPropertyNames(source)
+  for (let i = 0; i < names.length; i++) {
+    if (Object.getOwnPropertyDescriptor(source, names[i]!)!.get !== undefined) return true
+  }
+  // String keys only — exactly the set the previous `for…in` over the
+  // descriptor map visited. A symbol-keyed getter was never a trigger.
+  return false
+}
+
 export function _wrapSpread(
   source: Record<string, unknown> | null | undefined,
 ): Record<string, unknown> | null | undefined {
   if (!source || typeof source !== 'object') return source
-  const descriptors = Object.getOwnPropertyDescriptors(source)
-  let hasGetter = false
-  for (const k in descriptors) {
-    if (descriptors[k]!.get) {
-      hasGetter = true
-      break
-    }
-  }
-  if (!hasGetter) return source
+  // Getter scan one descriptor at a time: the dominant input is a getter-free
+  // literal (often `{}` from `{...(cond ? { x } : {})}`), and building the
+  // whole `getOwnPropertyDescriptors` map just to find nothing measured ~88 ns
+  // per call against ~32 ns for this loop (Node 26). The map is built only
+  // once a getter is known to exist.
+  if (!hasOwnGetter(source)) return source
 
+  const descriptors = Object.getOwnPropertyDescriptors(source)
   const result: Record<string, unknown> = {}
   // Reflect.ownKeys covers symbol keys too — REACTIVE_PROP brands and
   // other framework symbols must round-trip through the wrap.
