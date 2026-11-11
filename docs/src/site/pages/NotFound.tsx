@@ -1,13 +1,14 @@
 import { For } from '@pyreon/core'
 import { sheet } from '@pyreon/styler'
-import projectJson from '../content/_project.json'
+// Named import: only `notFound` is bundled, not the rest of _project.json.
+import { notFound } from '../content/_project.json'
 import type { NotFoundPage } from '../content/types-site'
 import { C } from '../kit/classes'
 import { SITE_CSS, SITE_CSS_KEY } from '../kit/site-css'
 import art from '../media/illustrations/404.svg?raw'
 import { resolveHref } from '../nav'
 
-export const NF = (projectJson as unknown as { notFound: NotFoundPage }).notFound
+export const NF = notFound as unknown as NotFoundPage
 
 /**
  * The 404 (`_project.json` → `notFound`, visual-alignment.md §B `404`): the

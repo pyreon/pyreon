@@ -293,7 +293,7 @@ export function KitGallery() {
             <Loop media={HERO_MEDIA} />
             <AutoGrid cols={2} gap={16}>
               <AnimatedSvg file="illustrations/404.svg" markup={notFoundArt} />
-              <Lede size="small">{renderInline(`\`shareImage('/')\` → \`${shareImage('/').url}\` (${shareImage('/').width}×${shareImage('/').height})`)}</Lede>
+              <Lede size="small" style="overflow-wrap:anywhere;min-width:0">{renderInline(`\`shareImage('/')\` → \`${shareImage('/').url}\` (${shareImage('/').width}×${shareImage('/').height})`)}</Lede>
             </AutoGrid>
           </Specimen>
 

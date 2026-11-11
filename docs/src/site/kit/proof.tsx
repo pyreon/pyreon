@@ -143,7 +143,7 @@ const Cell = el
     paddingRight: { xs: 22, md: 44 },
     borderTop: '1px solid',
     borderColor: tone(m, 'line'),
-    extendCss: `@media (min-width: ${breakpoints.md}px) { border-top: 0; & + & { border-left: 1px solid ${tone(m, 'line')}; } }`,
+    extendCss: `@media (min-width: ${breakpoints.lg}px) { border-top: 0; & + & { border-left: 1px solid ${tone(m, 'line')}; } }`,
   }))
 
 /** A huge gradient numeral (700, -.06em, .86). Light mode uses the AA-safe stops. [A4] */
@@ -232,7 +232,8 @@ export function ProofBand(props: {
   id?: string | undefined
 }) {
   const items = props.items.slice(0, 3)
-  const cols = `grid-template-columns: minmax(0, 1fr); @media (min-width: ${breakpoints.md}px) { grid-template-columns: repeat(${items.length}, minmax(0, 1fr)); }`
+  // One column until 992px: a long numeral ("1.94–1.95×") does not fit a third of a tablet.
+  const cols = `grid-template-columns: minmax(0, 1fr); @media (min-width: ${breakpoints.lg}px) { grid-template-columns: repeat(${items.length}, minmax(0, 1fr)); }`
   return (
     <Band id={props.id} aria-label={props.title ? undefined : 'In numbers'}>
       <Show when={() => !!props.title}>

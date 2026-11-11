@@ -237,7 +237,9 @@ export function CodeDiff(props: { rows: readonly DiffRow[]; caption?: string | u
   const [lead, payoff] = splitPayoff(props.caption ?? '')
   const rows = props.rows.map((r, i) => ({ r, i }))
   return (
-    <div>
+    // min-width 0: the rows are max-content wide, and in a flex or grid parent
+    // this box would otherwise grow to them instead of letting the pane scroll.
+    <div style="min-width:0;max-width:100%">
       <DiffPane tabIndex={0} aria-label={props.label ?? 'Code diff: removed and added lines'}>
         <For each={rows} by={(x) => x.i}>
           {({ r }) => (
