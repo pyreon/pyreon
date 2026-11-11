@@ -5,6 +5,7 @@ import { island } from '@pyreon/zero'
 const DemoForm = island(() => import('./DemoForm'), { name: 'DemoForm', hydrate: 'visible', prefetch: 'idle' })
 const DemoQuery = island(() => import('./DemoQuery'), { name: 'DemoQuery', hydrate: 'visible', prefetch: 'idle' })
 const DemoValidation = island(() => import('./DemoValidation'), { name: 'DemoValidation', hydrate: 'visible', prefetch: 'idle' })
+const DemoAuth = island(() => import('./DemoAuth'), { name: 'DemoAuth', hydrate: 'visible', prefetch: 'idle' })
 const DemoHttp = island(() => import('./DemoHttp'), { name: 'DemoHttp', hydrate: 'visible', prefetch: 'idle' })
 const DemoStore = island(() => import('./DemoStore'), { name: 'DemoStore', hydrate: 'visible', prefetch: 'idle' })
 const DemoStatetree = island(() => import('./DemoStatetree'), { name: 'DemoStatetree', hydrate: 'visible', prefetch: 'idle' })
@@ -16,6 +17,7 @@ export const DEMOS_DATA: Readonly<Record<string, ComponentFn>> = {
   DemoForm,
   DemoQuery,
   DemoValidation,
+  DemoAuth,
   DemoHttp,
   DemoStore,
   DemoStatetree,
