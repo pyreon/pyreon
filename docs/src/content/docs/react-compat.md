@@ -758,6 +758,15 @@ function TodoList(props: { todos: Todo[]; onAdd: (text: string) => Promise<void>
 }
 ```
 
+#### `useEffectEvent`, `Activity`, `ViewTransition`, `cache`
+
+React 19.x's newer exports are available:
+
+- `useEffectEvent(fn)` returns a stable function that always calls the latest `fn`, so an effect can call it without listing it in its deps.
+- `<Activity mode="visible" | "hidden">` keeps its children mounted and hides them when `hidden`. It renders a wrapper element (`display: contents` while visible). Unlike React, a hidden tree's effects keep running.
+- `<ViewTransition>` renders its children without React's View Transitions animation.
+- `cache(fn)` returns `fn` unchanged, which is what React's `cache` does outside Server Components.
+
 ### Portals
 
 #### `createPortal`
