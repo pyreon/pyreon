@@ -177,7 +177,7 @@ describe('toRaw / toRef / toRefs', () => {
 // ─── watch — single + array + immediate + deep ──────────────────────────────
 
 describe('watch — source variations', () => {
-  it('watch on a single ref fires on change (not on initial)', () => {
+  it('watch on a single ref fires on change (not on initial)', async () => {
     const a = ref(0)
     let lastNew: number | undefined
     let lastOld: number | undefined
@@ -187,6 +187,7 @@ describe('watch — source variations', () => {
     })
 
     a.value = 5
+    await Promise.resolve()
     expect(lastNew).toBe(5)
     expect(lastOld).toBe(0)
   })
@@ -204,7 +205,7 @@ describe('watch — source variations', () => {
     expect(lastNew).toBe(7)
   })
 
-  it('watch with a getter function fires on dependency change', () => {
+  it('watch with a getter function fires on dependency change', async () => {
     const a = ref(0)
     const b = ref(10)
     let seen: number | undefined
@@ -215,10 +216,11 @@ describe('watch — source variations', () => {
       },
     )
     a.value = 5
+    await Promise.resolve()
     expect(seen).toBe(15)
   })
 
-  it('watch on array of sources fires when any changes', () => {
+  it('watch on array of sources fires when any changes', async () => {
     const a = ref(1)
     const b = ref(2)
     let seen: [number, number] | undefined
@@ -226,6 +228,7 @@ describe('watch — source variations', () => {
       seen = [na, nb]
     })
     a.value = 9
+    await Promise.resolve()
     expect(seen).toEqual([9, 2])
   })
 })
@@ -233,7 +236,7 @@ describe('watch — source variations', () => {
 // ─── effectScope ────────────────────────────────────────────────────────────
 
 describe('effectScope', () => {
-  it('effectScope contains effects + disposes them via stop()', () => {
+  it('effectScope contains effects + disposes them via stop()', async () => {
     const scope = effectScope()
     let runs = 0
     scope.run(() => {
@@ -243,6 +246,7 @@ describe('effectScope', () => {
       })
       a.value = 1
     })
+    await Promise.resolve()
     expect(runs).toBe(1)
     scope.stop()
   })

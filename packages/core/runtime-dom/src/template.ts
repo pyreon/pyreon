@@ -120,19 +120,22 @@ export function _setChild(node: Element, value: unknown): void {
   // param, a function-valued prop — and `textContent = fn` rendered the
   // closure's SOURCE (#4086). Mount it reactively instead; the binding's effect
   // registers with the active EffectScope, so it is disposed with its owner.
-  if (typeof value === 'function') {
-    // ADOPTED element (hydration): the server already rendered the accessor's
-    // value as this element's whole child list — SSR elides the range markers
-    // for a sole accessor child — so hand it to the marker-less slot hydrator
-    // rather than appending a second copy beside the server's text.
+  //
+  // ADOPTED element (hydration, `!_freshBind`): the server already rendered the
+  // value as this element's whole child list (SSR elides the range markers for
+  // a sole accessor child), and `mountChild` would append a second copy beside
+  // it. That holds for a VNode / VNode-array exactly as for an accessor
+  // (#4370). It bites whenever the adopt verifier admits the element — most
+  // visibly a `<For>` row's plan replay, which checks rows 2..N only at the
+  // spots row 1 recorded, so a row whose cell holds a VNode is adopted on the
+  // strength of a row whose cell held a string. Both kinds go to the
+  // marker-less slot hydrator, which walks the value against the server's
+  // child list and adopts it.
+  if (typeof value === 'function' || _isMountableTextValue(value)) {
     if (!_freshBind && _slotHydrator !== null) {
       _slotHydrator(value as never, node, null)
       return
     }
-    mountChild(value as VNodeChild, node, null)
-    return
-  }
-  if (_isMountableTextValue(value)) {
     mountChild(value as VNodeChild, node, null)
   } else {
     // Sole-text fast path: when the element already holds exactly one text

@@ -1,5 +1,6 @@
 /**
- * @pyreon/store vs Zustand vs Jotai — objective head-to-head.
+ * @pyreon/store vs Zustand, Jotai, Valtio, nanostores, MobX, Redux Toolkit
+ * and Pinia — objective head-to-head.
  *
  * Run: `bun run bench:stores` (sets NODE_ENV=production).
  *
@@ -9,7 +10,14 @@
  *    module load — it only covers per-call gates for direct invocation; the
  *    shell env + explicit child env are the load-bearing parts).
  *  - Idiomatic per library — Pyreon `defineStore(id, () => ({signals, actions}))`,
- *    Zustand `createStore((set) => ({...}))`, Jotai `atom()` + `createStore()`.
+ *    Zustand `createStore((set) => ({...}))`, Jotai `atom()` + `createStore()`,
+ *    Valtio `proxy()` (sync `subscribe`), nanostores `map()` (`setKey`/`set`/
+ *    `listen`), MobX `makeAutoObservable` (`observe`, an action per write),
+ *    RTK `createSlice` + `configureStore`, Pinia options `defineStore` (`$patch`,
+ *    `$subscribe({ flush: 'sync' })`). Every listener is SYNCHRONOUS so the
+ *    notify work lands inside the timed loop for every arm. Valtio and MobX
+ *    `observe` notify once PER FIELD on a two-field patch (no batching in those
+ *    idioms) — their own design, disclosed rather than wrapped.
  *  - CORRECTNESS GATE asserts all three produce identical results before timing.
  *  - PER-(OP × IMPL) PROCESS ISOLATION — each (op, library) cell runs in its
  *    own fresh `bun` child. This isolates ops from each other AND libraries
@@ -60,6 +68,11 @@ process.env.NODE_ENV = 'production'
 import { signal } from '@pyreon/reactivity'
 import { atom, createStore as createJotai } from 'jotai/vanilla'
 import { createStore as createZustand } from 'zustand/vanilla'
+import { proxy as valtioProxy, subscribe as valtioSubscribe } from 'valtio/vanilla'
+import { map as nanoMap } from 'nanostores'
+import { makeAutoObservable, observe as mobxObserve } from 'mobx'
+import { configureStore, createSlice } from '@reduxjs/toolkit'
+import { createPinia, defineStore as definePinia, setActivePinia } from 'pinia'
 import { defineStore, resetAllStores } from '../src/index'
 import { cpus as benchCpus, loadavg as benchLoadavg } from 'node:os'
 
@@ -149,7 +162,7 @@ function bootstrapCI(samples: number[], resamples = 2_000): [number, number] {
 const overlaps = (a: [number, number], b: [number, number]) => a[0] <= b[1] && b[0] <= a[1]
 
 let sink = 0
-const IMPLS = ['pyreon', 'zustand', 'jotai'] as const
+const IMPLS = ['pyreon', 'zustand', 'jotai', 'valtio', 'nanostores', 'mobx', 'rtk', 'pinia'] as const
 type ImplName = (typeof IMPLS)[number]
 type Impl = Record<ImplName, () => void>
 
@@ -181,6 +194,81 @@ function makeJotai() {
   return { countAtom, labelAtom, store }
 }
 
+// ── the wider rival set, each in its own idiom ──────────────────────────────
+// Valtio: a mutable proxy; `subscribe(s, cb, true)` is its SYNC notify mode
+// (the default batches to a microtask, which would move the notify work out
+// of the timed loop — every other arm notifies synchronously).
+function makeValtio() {
+  const state = valtioProxy({ count: 0, label: 'x' })
+  return { state, inc: () => void state.count++ }
+}
+// nanostores: a `map` store; `setKey` per field, `set` for a whole patch,
+// `listen` for change notification (sync).
+function makeNano() {
+  const $s = nanoMap({ count: 0, label: 'x' })
+  return { $s, inc: () => $s.setKey('count', $s.get().count + 1) }
+}
+// MobX: an auto-observable object with an action; `observe` is the
+// per-object sync change listener; a multi-field write is one `runInAction`.
+function makeMobx() {
+  return makeAutoObservable({
+    count: 0,
+    label: 'x',
+    inc() {
+      this.count++
+    },
+    patch(count: number, label: string) {
+      this.count = count
+      this.label = label
+    },
+  })
+}
+// Redux Toolkit: createSlice + configureStore (production NODE_ENV, so the
+// dev-only immutability/serializability middleware is off, as in an app build).
+const rtkSlice = createSlice({
+  name: 's',
+  initialState: { count: 0, label: 'x' },
+  reducers: {
+    inc: (st) => {
+      st.count++
+    },
+    patch: (st, a: { payload: { count: number; label: string } }) => {
+      st.count = a.payload.count
+      st.label = a.payload.label
+    },
+  },
+})
+function makeRtk() {
+  return configureStore({ reducer: rtkSlice.reducer })
+}
+// Pinia (options store) — needs an active pinia; ids register like Pyreon's.
+setActivePinia(createPinia())
+function makePinia(id: string = `bench-${pyrId++}`) {
+  return definePinia(id, {
+    state: () => ({ count: 0, label: 'x' }),
+    actions: {
+      inc() {
+        this.count++
+      },
+    },
+  })()
+}
+
+/** Attach ONE synchronous change listener per rival store, each in its idiom. */
+function subscribeRivals(
+  v: ReturnType<typeof makeValtio>,
+  n: ReturnType<typeof makeNano>,
+  m: ReturnType<typeof makeMobx>,
+  r: ReturnType<typeof makeRtk>,
+  pi: ReturnType<typeof makePinia>,
+): void {
+  valtioSubscribe(v.state, () => void sink++, true)
+  n.$s.listen(() => void sink++)
+  mobxObserve(m, () => void sink++)
+  r.subscribe(() => void sink++)
+  pi.$subscribe(() => void sink++, { flush: 'sync' })
+}
+
 // `setup` sizes its pre-built id pool from these (see the op).
 const SETUP_ITERS = 2_000
 const SETUP_WARMUP = MEASURE_WARMUP
@@ -198,11 +286,15 @@ interface OpSpec {
 
 const OPS: Record<string, OpSpec> = {
   setup: {
-    note: 'Pyreon allocs 2 signals + registers in a global registry (SSR/devtools); Zustand/Jotai are bare closures. Registry reset between runs and store ids pre-built (both untimed).',
+    note: 'Pyreon and Pinia register each store by id (registry reset between runs, ids pre-built — both untimed); the others are bare objects/closures.',
     // 2k stores per run keeps within-run registry retention in a real-app
     // regime instead of a 220k-entry Map (a pure harness artifact).
     iters: SETUP_ITERS,
-    between: () => resetAllStores(),
+    // Pyreon's and Pinia's id registries are both reset between runs (untimed).
+    between: () => {
+      resetAllStores()
+      setActivePinia(createPinia())
+    },
     make: () => {
       // Every id the child will need (warmup + runs × iters, per
       // measureSamples' defaults), built here — outside every timed window —
@@ -222,6 +314,21 @@ const OPS: Record<string, OpSpec> = {
           const j = makeJotai()
           sink += j.store.get(j.countAtom)
         },
+        valtio: () => {
+          sink += makeValtio().state.count
+        },
+        nanostores: () => {
+          sink += makeNano().$s.get().count
+        },
+        mobx: () => {
+          sink += makeMobx().count
+        },
+        rtk: () => {
+          sink += makeRtk().getState().count
+        },
+        pinia: () => {
+          sink += makePinia(ids[next++] as string).count
+        },
       }
     },
   },
@@ -231,6 +338,11 @@ const OPS: Record<string, OpSpec> = {
       const p = makePyreon()
       const z = makeZustand()
       const j = makeJotai()
+      const v = makeValtio()
+      const n = makeNano()
+      const m = makeMobx()
+      const r = makeRtk()
+      const pi = makePinia()
       return {
         pyreon: () => {
           sink += p.store.count()
@@ -241,6 +353,21 @@ const OPS: Record<string, OpSpec> = {
         jotai: () => {
           sink += j.store.get(j.countAtom)
         },
+        valtio: () => {
+          sink += v.state.count
+        },
+        nanostores: () => {
+          sink += n.$s.get().count
+        },
+        mobx: () => {
+          sink += m.count
+        },
+        rtk: () => {
+          sink += r.getState().count
+        },
+        pinia: () => {
+          sink += pi.count
+        },
       }
     },
   },
@@ -249,6 +376,11 @@ const OPS: Record<string, OpSpec> = {
       const p = makePyreon()
       const z = makeZustand()
       const j = makeJotai()
+      const v = makeValtio()
+      const n = makeNano()
+      const m = makeMobx()
+      const r = makeRtk()
+      const pi = makePinia()
       return {
         pyreon: () => {
           p.store.inc()
@@ -262,6 +394,26 @@ const OPS: Record<string, OpSpec> = {
           j.store.set(j.countAtom, (c) => c + 1)
           sink += j.store.get(j.countAtom)
         },
+        valtio: () => {
+          v.inc()
+          sink += v.state.count
+        },
+        nanostores: () => {
+          n.inc()
+          sink += n.$s.get().count
+        },
+        mobx: () => {
+          m.inc()
+          sink += m.count
+        },
+        rtk: () => {
+          r.dispatch(rtkSlice.actions.inc())
+          sink += r.getState().count
+        },
+        pinia: () => {
+          pi.inc()
+          sink += pi.count
+        },
       }
     },
   },
@@ -270,6 +422,11 @@ const OPS: Record<string, OpSpec> = {
       const p = makePyreon()
       const z = makeZustand()
       const j = makeJotai()
+      const v = makeValtio()
+      const n = makeNano()
+      const m = makeMobx()
+      const r = makeRtk()
+      const pi = makePinia()
       p.subscribe(() => {
         sink++
       })
@@ -279,10 +436,16 @@ const OPS: Record<string, OpSpec> = {
       j.store.sub(j.countAtom, () => {
         sink++
       })
+      subscribeRivals(v, n, m, r, pi)
       return {
         pyreon: () => p.store.inc(),
         zustand: () => z.getState().inc(),
         jotai: () => j.store.set(j.countAtom, (c) => c + 1),
+        valtio: () => v.inc(),
+        nanostores: () => n.inc(),
+        mobx: () => m.inc(),
+        rtk: () => void r.dispatch(rtkSlice.actions.inc()),
+        pinia: () => pi.inc(),
       }
     },
   },
@@ -292,6 +455,11 @@ const OPS: Record<string, OpSpec> = {
       const p = makePyreon()
       const z = makeZustand()
       const j = makeJotai()
+      const v = makeValtio()
+      const n = makeNano()
+      const m = makeMobx()
+      const r = makeRtk()
+      const pi = makePinia()
       let i = 0
       return {
         pyreon: () => {
@@ -306,6 +474,27 @@ const OPS: Record<string, OpSpec> = {
           i++
           j.store.set(j.countAtom, i)
           j.store.set(j.labelAtom, 'y')
+        },
+        valtio: () => {
+          i++
+          v.state.count = i
+          v.state.label = 'y'
+        },
+        nanostores: () => {
+          i++
+          n.$s.set({ count: i, label: 'y' })
+        },
+        mobx: () => {
+          i++
+          m.patch(i, 'y')
+        },
+        rtk: () => {
+          i++
+          r.dispatch(rtkSlice.actions.patch({ count: i, label: 'y' }))
+        },
+        pinia: () => {
+          i++
+          pi.$patch({ count: i, label: 'y' })
         },
       }
     },
@@ -316,6 +505,11 @@ const OPS: Record<string, OpSpec> = {
       const p = makePyreon()
       const z = makeZustand()
       const j = makeJotai()
+      const v = makeValtio()
+      const n = makeNano()
+      const m = makeMobx()
+      const r = makeRtk()
+      const pi = makePinia()
       p.subscribe(() => {
         sink++
       })
@@ -325,6 +519,7 @@ const OPS: Record<string, OpSpec> = {
       j.store.sub(j.countAtom, () => {
         sink++
       })
+      subscribeRivals(v, n, m, r, pi)
       let i = 0
       return {
         pyreon: () => {
@@ -339,6 +534,27 @@ const OPS: Record<string, OpSpec> = {
           i++
           j.store.set(j.countAtom, i)
           j.store.set(j.labelAtom, 'y')
+        },
+        valtio: () => {
+          i++
+          v.state.count = i
+          v.state.label = 'y'
+        },
+        nanostores: () => {
+          i++
+          n.$s.set({ count: i, label: 'y' })
+        },
+        mobx: () => {
+          i++
+          m.patch(i, 'y')
+        },
+        rtk: () => {
+          i++
+          r.dispatch(rtkSlice.actions.patch({ count: i, label: 'y' }))
+        },
+        pinia: () => {
+          i++
+          pi.$patch({ count: i, label: 'y' })
         },
       }
     },
@@ -391,9 +607,42 @@ function assert(cond: boolean, msg: string): void {
   p.patch({ count: 5, label: 'y' })
   z.setState({ count: 5, label: 'y' })
   assert(p.store.count() === 5 && z.getState().count === 5, 'patch')
+  // The wider rival set: read 0 → dispatch → 1, a sync listener fires, and a
+  // two-field patch lands both fields.
+  const v = makeValtio()
+  const n = makeNano()
+  const m = makeMobx()
+  const r = makeRtk()
+  const pi = makePinia()
+  const reads = () => [v.state.count, n.$s.get().count, m.count, r.getState().count, pi.count]
+  assert(reads().every((x) => x === 0), `rivals read 0 (${reads()})`)
+  v.inc()
+  n.inc()
+  m.inc()
+  r.dispatch(rtkSlice.actions.inc())
+  pi.inc()
+  assert(reads().every((x) => x === 1), `rivals dispatch → 1 (${reads()})`)
+  const before = sink
+  subscribeRivals(v, n, m, r, pi)
+  v.inc()
+  n.inc()
+  m.inc()
+  r.dispatch(rtkSlice.actions.inc())
+  pi.inc()
+  assert(sink - before >= 5, `every rival listener fired synchronously (${sink - before} of 5)`)
+  v.state.count = 5
+  v.state.label = 'y'
+  n.$s.set({ count: 5, label: 'y' })
+  m.patch(5, 'y')
+  r.dispatch(rtkSlice.actions.patch({ count: 5, label: 'y' }))
+  pi.$patch({ count: 5, label: 'y' })
+  const labels = [v.state.label, n.$s.get().label, m.label, r.getState().label, pi.label]
+  assert(reads().every((x) => x === 5) && labels.every((x) => x === 'y'), `rivals patch (${reads()} ${labels})`)
   resetAllStores()
-  console.log('✓ correctness gate passed — all three libraries agree\n')
+  console.log(`✓ correctness gate passed — all ${IMPLS.length} libraries agree\n`)
 }
+// `BENCH_GATE_ONLY=1` checks correctness without timing (usable on a loaded machine).
+if (process.env.BENCH_GATE_ONLY) process.exit(0)
 
 interface Cell {
   med: number
@@ -435,26 +684,25 @@ for (const op of OP_ORDER) {
 
 console.log(benchRuntimeBanner())
 console.log(
-  `=== @pyreon/store vs Zustand vs Jotai (${process.platform}/${process.arch}, NODE_ENV=production, per-(op×impl) isolated processes, median ns/op [CI95], 🤝 = CI-overlap tie) ===\n`,
+  `=== @pyreon/store vs ${IMPLS.slice(1).join(' / ')} (${process.platform}/${process.arch}, NODE_ENV=production, per-(op×impl) isolated processes, median ns/op, 🤝 = CI95 overlap with Pyreon) ===\n`,
 )
 const pad = (s: string, n: number) => s.padEnd(n)
 const padL = (s: string, n: number) => s.padStart(n)
-console.log(
-  `${pad('op', 32)} ${padL('pyreon', 8)} ${padL('zustand', 9)} ${padL('jotai', 8)} ${padL('vs zustand', 15)} ${padL('vs jotai', 14)}   note`,
-)
-console.log('─'.repeat(130))
+console.log(`${pad('op', 32)} ${IMPLS.map((i) => padL(i, 15)).join('')}`)
+console.log('─'.repeat(32 + 15 * IMPLS.length + 1))
 for (const r of rows) {
   const p = r.cells.pyreon
-  const verdict = (c: Cell) => {
+  // Each rival cell: its median and its ratio to Pyreon (>1 ⇒ Pyreon faster),
+  // marked 🤝 when its CI95 overlaps Pyreon's.
+  const cell = (name: ImplName) => {
+    const c = r.cells[name]
+    if (name === 'pyreon') return padL(c.med.toFixed(0), 15)
     const ratio = c.med / p.med
-    const tie = overlaps(p.ci, c.ci)
-    const base = ratio >= 1 ? `${ratio.toFixed(1)}x faster` : `${(1 / ratio).toFixed(1)}x SLOWER`
-    return tie ? `🤝 ${base}` : base
+    return padL(`${c.med.toFixed(0)} ${overlaps(p.ci, c.ci) ? '🤝' : ''}${ratio.toFixed(2)}x`, 15)
   }
-  console.log(
-    `${pad(r.op, 32)} ${padL(p.med.toFixed(0), 8)} ${padL(r.cells.zustand.med.toFixed(0), 9)} ${padL(r.cells.jotai.med.toFixed(0), 8)} ${padL(verdict(r.cells.zustand), 15)} ${padL(verdict(r.cells.jotai), 14)}   ${r.note ?? ''}`,
-  )
+  console.log(`${pad(r.op, 32)} ${IMPLS.map(cell).join('')}`)
+  if (r.note) console.log(`  └ ${r.note}`)
 }
 console.log(
-  `\n(ratios = competitor ÷ Pyreon; >1 ⇒ Pyreon faster; 🤝 = CI95 overlap with Pyreon (treat as tied). Pooled median of 41 small runs × ${CELL_REPEATS} fresh processes per (op × impl); no forced GC — see measureSamples doc. ns machine-dependent — the ratio is the portable signal.)`,
+  `\n(ratio = competitor ÷ Pyreon; >1 ⇒ Pyreon faster; 🤝 = CI95 overlap with Pyreon (treat as tied). Pooled median of 41 small runs × ${CELL_REPEATS} fresh processes per (op × impl); no forced GC — see measureSamples doc. ns machine-dependent — the ratio is the portable signal.)`,
 )

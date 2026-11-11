@@ -5,7 +5,11 @@ description: React-compatible hook API that runs on Pyreon's fine-grained reacti
 
 `@pyreon/react-compat` lets you write familiar React-style code -- hooks, `createRoot`, `lazy`, `memo`, portals -- while running on Pyreon's signal-based reactive engine under the hood. It is designed as a migration path: swap your imports and keep your component code. It runs the **value + re-render model** -- `useState` returns the value directly (not a getter), the component body re-runs on state change, hooks are positional, and `useEffect` / `useMemo` / `useCallback` honor their deps arrays -- so most React code behaves identically, including hooks-rules ordering and stale-closure semantics.
 
-<PackageBadge name="@pyreon/react-compat" href="/docs/react-compat" status="stable" />
+<PackageBadge name="@pyreon/react-compat" href="/docs/react-compat" status="beta" />
+
+:::note
+The compat layer is at **near-full public-API parity** with React, not complete parity, and Pyreon is pre-1.0. Check the differences and unsupported APIs on this page before migrating a large app.
+:::
 
 ## Installation
 
@@ -428,7 +432,7 @@ function memo<P>(
 ): (props: P) => VNodeChild
 ```
 
-Wraps a component to skip re-render when its props are shallowly equal -- exactly like React. Each `<MemoComp />` usage gets its own per-instance props/result cache. Pass a custom `areEqual` to override the default shallow comparison.
+Wraps a component to skip re-render when its props are shallowly equal -- exactly like React. As in React, a render the component triggers itself (its own `useState` / `useReducer` update, a context it reads, `useSyncExternalStore`) is never skipped. Each `<MemoComp />` usage gets its own per-instance props/result cache. Pass a custom `areEqual` to override the default shallow comparison.
 
 ```tsx
 const MyComponent = memo((props: { name: string }) => <div>{props.name}</div>)
@@ -439,10 +443,12 @@ const MyComponent = memo((props: { name: string }) => <div>{props.name}</div>)
 #### `useRef`
 
 ```ts
-function useRef<T>(initial?: T): { current: T | null }
+function useRef<T>(initial: T): { current: T }
+function useRef<T>(initial: T | null): { current: T | null }
+function useRef<T = undefined>(): { current: T | undefined }
 ```
 
-Returns a mutable `&#123; current &#125;` object, identical in shape to React's ref.
+Returns a mutable `&#123; current &#125;` object, identical in shape to React's ref. Like React, `useRef()` with no argument starts at `undefined`; use `useRef<HTMLInputElement>(null)` for a DOM ref.
 
 ```tsx
 const inputRef = useRef<HTMLInputElement>()

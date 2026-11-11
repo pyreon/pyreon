@@ -119,6 +119,16 @@ updates:
       - 'ci'
     commit-message:
       prefix: 'chore(ci)'
+    ignore:
+      # setup-swift v3 (the `v3` tag points at v3.0.0-beta.1 here) fails the
+      # "Validate emitted Swift + Kotlin" job (native-validate.yml) on its
+      # GPG check of the Swiftly download:
+      #   gpg: Can't check signature: No public key
+      # (Dependabot group PR #4179, 2026-11-09). v2.4.0 is the newest
+      # stable release and works. Remove this entry once a stable v3
+      # release passes that job.
+      - dependency-name: 'swift-actions/setup-swift'
+        update-types: ['version-update:semver-major']
     groups:
       # Ungrouped, every action gets its own PR — the 2026-08-17 and 08-24 runs
       # each opened three separate codeql-action bumps for the same SHA.
