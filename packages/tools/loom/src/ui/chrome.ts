@@ -64,7 +64,7 @@ export const BrandMark = el
   }))
 export const BrandGlyph = txt
   .attrs({ tag: 'span' })
-  .theme(() => ({ fontFamily: MONO, fontSize: '13px', fontWeight: '700', color: '#0f0f14' }))
+  .theme((t) => ({ fontFamily: MONO, fontSize: '13px', fontWeight: '700', color: t.accentText }))
 export const BrandName = txt
   .attrs({ tag: 'span' })
   .theme(() => ({ fontFamily: DISPLAY, fontWeight: '700', fontSize: '16px', extendCss: 'letter-spacing:-.01em;' }))
@@ -170,7 +170,7 @@ export const KindBtn = el
   .attrs({ tag: 'button', contentAlignX: 'center' })
   .states((t) => ({
     idle: { borderColor: t.border, color: t.muted, background: 'transparent' },
-    active: { borderColor: t.accent, color: '#0f0f14', background: t.accent },
+    active: { borderColor: t.accent, color: t.accentText, background: t.accent },
   }))
   .theme(() => ({
     fontSize: '11.5px', fontWeight: '600', flex: '1', padding: '8px 4px', borderRadius: '8px',
@@ -544,7 +544,9 @@ export const Footer = el
     background: t.surface, fontFamily: MONO, fontSize: '10.5px', color: t.faint,
     extendCss: 'white-space:nowrap;overflow-x:auto;scrollbar-width:none;&::-webkit-scrollbar{display:none;}',
   }))
-export const FootSep = txt.attrs({ tag: 'span' }).theme((t) => ({ color: t.border }))
+// The faint ink, not the hairline colour: a separator is still a glyph, and
+// the border tone measured 1.2:1.
+export const FootSep = txt.attrs({ tag: 'span' }).theme((t) => ({ color: t.faint }))
 export const FootDanger = txt
   .attrs({ tag: 'span' })
   .variants((t) => ({ danger: { color: t.danger }, ok: { color: t.ok }, warn: { color: t.warn } }))

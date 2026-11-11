@@ -92,7 +92,7 @@ OpenAPI 3.x in; `@pyreon/validate` schemas, `@pyreon/http` endpoints, `@pyreon/q
 ## `@pyreon/loom` — dependency observatory
 
 - `loom scan [dir]` reads the workspace like an install tool (npm/bun/yarn/pnpm globs, including `packages/*/*`) and reports the fabric as data. Writes `loom-report.json` next to the root manifest; exits non-zero on error-severity findings. Flags: `--strict`, `--no-imports`, `--no-write`, `--json` (report only on stdout).
-- `loom dev [dir]` (`--port=`) serves the observatory UI, built on the public Pyreon UI stack.
+- `loom dev [dir]` (`--port=`) serves the observatory UI, built on the public Pyreon UI stack. Theme = the shared `pyreon-theme` key (legacy `loom:theme` read as a fallback), else the OS, dark by default; `THEME_BOOT` (dev server) and `app/index.html` apply it before first paint and must stay identical. Palette in `src/ui/theme.ts`, contrast computed in `tests/theme.test.ts`.
 - `loom build [dir]` prerenders it to a static site (`--out=`, default `loom-dist`; `--base=`). `vite`, `@pyreon/vite-plugin` and `@pyreon/zero` are optional peers; `scan` needs none.
 - Report: internal graph (depths, runtime cycles only, blast radius), external version usage, and 8 detector codes: `version-drift`, `internal-range`, `cycle`, `phantom-dep`, `phantom-type-dep`, `prod-import-of-dev-dep`, `peer-mismatch`, `unused-dep` (info).
 - Type-aware: type-only imports/exports and `.d.ts` files are tracked apart from runtime imports; tsconfig `paths` aliases are never packages. The import scan strips comments and template literals.
