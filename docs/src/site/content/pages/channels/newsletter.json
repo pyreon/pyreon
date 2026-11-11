@@ -26,7 +26,34 @@
     "url": "https://pyreon.dev/blog/rss.xml",
     "note": "Prefer GitHub? Watch pyreon/pyreon and choose Custom → Releases to get a notification for each release."
   },
-  "sections": [],
+  "sections": [
+    {
+      "kind": "links",
+      "title": "Other ways to follow along",
+      "items": [
+        {
+          "label": "Releases on GitHub",
+          "href": "https://github.com/pyreon/pyreon/releases",
+          "text": "Watch the repository and pick Releases to hear about each one."
+        },
+        {
+          "label": "Discord",
+          "href": "/discord",
+          "text": "Questions, show-and-tell, and talking to the people who build it."
+        },
+        {
+          "label": "Open stats",
+          "href": "/open",
+          "text": "The project in live numbers, refreshed daily."
+        },
+        {
+          "label": "Community",
+          "href": "/community",
+          "text": "How to contribute, good first issues and where to report a bug."
+        }
+      ]
+    }
+  ],
   "redirect": {
     "title": "Taking you to {destination}.",
     "text": "If nothing happens in a second, use the link below.",

@@ -182,5 +182,11 @@
       "label": "Submit your project",
       "href": "https://github.com/pyreon/pyreon/issues/new?title=Showcase%3A+"
     }
+  },
+  "labels": {
+    "source": "Source on GitHub",
+    "liveDemo": "Open the live demo",
+    "open": "Then open {url}",
+    "packages": "Pyreon packages it uses"
   }
 }

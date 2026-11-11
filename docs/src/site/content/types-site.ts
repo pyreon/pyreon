@@ -356,9 +356,11 @@ export interface BlogChannel {
   tagsLabel: string                     // accessible name of the tag row
   allTags: string                       // the "every post" chip
   latest: string                        // label above the newest post on page 1
+  readPost: string                      // the link line of the featured post
   list: { title: string; text: string } // the rest of the posts
   empty: { title: string; text: string }
-  tag: { eyebrow: string; title: string; lede: string }   // {tag}, {count}, {posts}
+  tag: { eyebrow: string; title: string; lede: string; posts: [one: string, many: string] }   // {tag}, {count}, {posts}
+  pager: string                         // accessible name of the pager
   page: string                          // "Page {page} of {pages}"
   newer: string
   older: string
@@ -367,6 +369,8 @@ export interface BlogChannel {
     back: string
     toc: string
     copyLink: string
+    copied: string                      // a copy button after it copied
+    byline: string                      // "By {author}"
     share: string
     more: string
     previous: string
@@ -398,6 +402,7 @@ export interface ShowcaseChannel {
   }
   more: { label: string; title: string; text: string; items: ShowcaseExample[] }
   submit: { label: string; title: string; text: string; cta: Cta }
+  labels: { source: string; liveDemo: string; open: string /* {url} */; packages: string }
 }
 
 export type OpenStatId =
