@@ -21,7 +21,10 @@ import { formatTimestamp, type OpenStats } from './stats'
  */
 
 // The chart is interactive, so on this static page it is an island.
-const TrendChartIsland = island(() => import('./TrendChart'), { name: 'OpenTrendChart', hydrate: 'visible', prefetch: 'idle' })
+// No idle prefetch: the chart pulls in @pyreon/charts (~80 KB gzip), which a
+// visitor who never scrolls to it should not download (the product pages
+// treat heavy demo packages the same way).
+const TrendChartIsland = island(() => import('./TrendChart'), { name: 'OpenTrendChart', hydrate: 'visible' })
 
 const Hero = el.config({ name: 'OpenHero' }).attrs({ block: true, contentAlignX: 'block', gap: 22 }).theme(() => ({ maxWidth: 860 }))
 const Row = el.config({ name: 'OpenRow' }).attrs({ block: true, contentDirection: 'inline', contentAlignY: 'center', gap: 10 }).theme(() => ({ flexWrap: 'wrap' }))

@@ -113,6 +113,57 @@ test.describe('build output', () => {
     }
   })
 
+  /**
+   * JavaScript each page TYPE requests on load, without scrolling (gzip -9 of
+   * every script the browser fetched, idle prefetches included), measured
+   * 2026-11-11 on the integrated feat/site-redesign at 1440×900, plus ~2 KB.
+   * The shell alone is 47.3 KB; a type above it says what it adds. Raise a
+   * budget only with a measurement in the PR that does.
+   */
+  const SHELL = 49.5
+  const PAGE_TYPE_BUDGETS_KB: Record<string, number> = {
+    '/': 51.5, // the home: the counter and loop islands
+    '/products': SHELL,
+    '/products/form': 89, // a light demo, prefetched at idle (the styling runtime ~25 KB + @pyreon/form)
+    '/products/charts': SHELL, // a heavy demo package loads only near the demo
+    '/benchmarks': SHELL, // the live charts load only near them
+    '/why/components-run-once': 83, // the run-once counter, prefetched at idle
+    '/compare/react': SHELL,
+    '/migrate': SHELL,
+    '/migrate/react': SHELL,
+    '/status': SHELL,
+    '/releases': SHELL,
+    '/community': SHELL,
+    '/brand': SHELL,
+    '/brand/kit': 84.5, // the gallery's live examples
+    '/blog': SHELL,
+    '/blog/components-run-once': 50.5, // a post: its copy-link and code-copy island
+    '/blog/tags/signals': SHELL,
+    '/showcase': SHELL,
+    '/open': SHELL, // the download chart loads only near it
+    '/discord': SHELL,
+    '/newsletter': SHELL,
+    '/404.html': SHELL,
+    '/docs': 53,
+    '/docs/form': 98, // an overview page with its product demo
+    '/docs/reference/core': 52.5,
+  }
+  for (const [route, budget] of Object.entries(PAGE_TYPE_BUDGETS_KB)) {
+    test(`${route} requests at most ${budget} KB of JavaScript on load`, async ({ page }) => {
+      await page.setViewportSize({ width: 1440, height: 900 })
+      const scripts: string[] = []
+      page.on('request', (r) => {
+        if (r.resourceType() === 'script') scripts.push(new URL(r.url()).pathname)
+      })
+      await page.goto(route)
+      await page.waitForLoadState('networkidle')
+      await page.waitForTimeout(1500)
+      const kb = scripts.reduce((sum, u) => sum + gzipSync(readFileSync(join(DIST, u.slice(1))), { level: 9 }).length, 0) / 1024
+      console.log(`${route}: ${kb.toFixed(1)} KB gzip in ${scripts.length} scripts`)
+      expect(kb, `${route}: ${kb.toFixed(1)} KB`).toBeLessThanOrEqual(budget)
+    })
+  }
+
   test('docs pages are static pages too, and link the docs stylesheet', () => {
     const html = readFileSync(join(DIST, 'docs/index.html'), 'utf8')
     expect(html).toMatch(/\/assets\/docs-[^"]+\.css/)
