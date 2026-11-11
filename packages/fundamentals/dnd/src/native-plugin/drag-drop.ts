@@ -293,14 +293,14 @@ const draggableDecl: DeclEmitter = {
     swift(decl, ctx) {
       const { fields, disabled } = draggableOf(decl)
       const name = ctx.ident(decl.name)
-      const data = fields.length === 0 ? '[:]' : `[${fields.map((f) => `"${f.name}": PyreonDragValue(${ctx.expr(f.value, 10)})`).join(', ')}]`
+      const data = fields.length === 0 ? '[:]' : `[${fields.map((f) => `${ctx.stringLiteral(f.name)}: PyreonDragValue(${ctx.expr(f.value, 10)})`).join(', ')}]`
       const off = disabled === null ? '' : `, disabled: { ${ctx.expr(disabled, 10)} }`
       return [`.onAppear {`, `  ${name}.bind(data: { ${data} }${off})`, `}`]
     },
     kotlin(decl, ctx) {
       const { fields, disabled } = draggableOf(decl)
       const name = ctx.ident(decl.name)
-      const data = fields.length === 0 ? 'emptyMap()' : `mapOf(${fields.map((f) => `"${f.name}" to ${ctx.expr(f.value, 2)}`).join(', ')})`
+      const data = fields.length === 0 ? 'emptyMap()' : `mapOf(${fields.map((f) => `${ctx.stringLiteral(f.name)} to ${ctx.expr(f.value, 2)}`).join(', ')})`
       const off = disabled === null ? '' : `, { ${ctx.expr(disabled, 2)} }`
       return [`${name}.bind({ ${data} }${off})`]
     },
