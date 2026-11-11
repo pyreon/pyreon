@@ -143,7 +143,7 @@ const Cell = el
     paddingRight: { xs: 22, md: 44 },
     borderTop: '1px solid',
     borderColor: tone(m, 'line'),
-    extendCss: `@media (min-width: ${breakpoints.md}px) { border-top: 0; & + & { border-left: 1px solid ${tone(m, 'line')}; } }`,
+    extendCss: `@media (min-width: ${breakpoints.lg}px) { border-top: 0; & + & { border-left: 1px solid ${tone(m, 'line')}; } }`,
   }))
 
 /** A huge gradient numeral (700, -.06em, .86). Light mode uses the AA-safe stops. [A4] */
@@ -214,6 +214,8 @@ export interface ProofItem {
   /** Record source (shown when there is no detail). */
   source?: string | undefined
   href?: string | undefined
+  /** A small chart of the same figures under the text (the asset set's proof charts). */
+  visual?: VNodeChild
 }
 
 /**
@@ -230,7 +232,8 @@ export function ProofBand(props: {
   id?: string | undefined
 }) {
   const items = props.items.slice(0, 3)
-  const cols = `grid-template-columns: minmax(0, 1fr); @media (min-width: ${breakpoints.md}px) { grid-template-columns: repeat(${items.length}, minmax(0, 1fr)); }`
+  // One column until 992px: a long numeral ("1.94–1.95×") does not fit a third of a tablet.
+  const cols = `grid-template-columns: minmax(0, 1fr); @media (min-width: ${breakpoints.lg}px) { grid-template-columns: repeat(${items.length}, minmax(0, 1fr)); }`
   return (
     <Band id={props.id} aria-label={props.title ? undefined : 'In numbers'}>
       <Show when={() => !!props.title}>
@@ -250,6 +253,7 @@ export function ProofBand(props: {
                 <CellMono>{i.condition}</CellMono>
               </Show>
               {i.href ? <TextLink href={i.href}>See the row →</TextLink> : null}
+              {i.visual ?? null}
             </Cell>
           )}
         </For>
@@ -388,10 +392,12 @@ export function HookHero(props: {
   install?: string | undefined
   ctas?: readonly { label: string; href: string }[] | undefined
   status?: readonly StatusItem[] | undefined
+  /** Fragment target (`#hero`). */
+  id?: string | undefined
   children?: VNodeChild
 }) {
   return (
-    <HookSection>
+    <HookSection id={props.id}>
       <Wrap>
         <Show when={() => !!props.eyebrow}>
           <Eyebrow>{props.eyebrow}</Eyebrow>

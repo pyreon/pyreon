@@ -10,6 +10,7 @@ import legacyCssLayer from './vite-plugins/legacy-css-layer'
 import openStats from './vite-plugins/open-stats'
 import productContent from './vite-plugins/product-content'
 import publishLlmsTxt from './vite-plugins/publish-llms-txt'
+import staticPages from './vite-plugins/static-pages'
 import { SITE_LINKS } from './src/site-links'
 
 // Pyreon-native docs site, powered by @pyreon/zero + @pyreon/zero-content.
@@ -109,11 +110,32 @@ export default defineConfig({
           .filter(([, target]) => target !== null)
           .map(([key]) => `/${key}`),
       },
+      // Everything is crawlable; the sitemap is the list above.
+      robots: { rules: [{ userAgent: '*', allow: ['/'] }], sitemap: 'https://pyreon.dev/sitemap.xml' },
     }),
+    // Marketing pages hydrate only their islands: drop the route preloads
+    // and loader data they would carry for a full app (see the plugin).
+    staticPages(),
     // Must come AFTER zero() so its closeBundle runs on the final SSG
     // HTML — folds the render-blocking app stylesheet into each page's
     // <head> to clear the last critical-path request before first paint.
     inlineCriticalCss(),
   ],
+  build: {
+    rolldownOptions: {
+      output: {
+        codeSplitting: {
+          groups: [
+            // `@pyreon/server/client` re-exports `island()`, and rolldown
+            // otherwise co-locates island.ts with the first route that
+            // declares an island (/products/[id]), so the static pages'
+            // island hydrator imported that whole route chunk. One group for
+            // the islands runtime keeps it standalone.
+            { name: 'islands-runtime', test: /[\\/]core[\\/]server[\\/](?:src|lib)[\\/]/ },
+          ],
+        },
+      },
+    },
+  },
   server: { port: 5191 },
 })

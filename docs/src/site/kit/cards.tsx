@@ -1,8 +1,8 @@
 import type { VNodeChild } from '@pyreon/core'
 import { PyreonUI } from '@pyreon/ui-core'
-import { glyphHref } from '../nav'
 import { font, gradient, motion, paper, radius, text } from '../theme'
 import { el, focusRing, tone, txt, type LinkAttrs } from './bases'
+import { Glyph } from './glyph'
 import { useLinkClick } from './link'
 import { Eyebrow, Lede } from './type'
 
@@ -79,31 +79,7 @@ export function GlowCard(props: {
   )
 }
 
-/**
- * Product glyph. Either `id` (from the shared sprite, `public/brand/glyphs.svg`)
- * or `svg` (inner markup for a 120×120 viewBox from content JSON; `url(#eg)`
- * needs `<EmberGradientDefs />` once on the page). Decorative: aria-hidden.
- */
-export function Glyph(props: { id?: string | undefined; svg?: string | undefined; size: number }) {
-  if (props.svg !== undefined) {
-    // Repo-owned build-time content (content/products/*.json), never user input.
-    return (
-      <svg
-        width={props.size}
-        height={props.size}
-        viewBox="0 0 120 120"
-        aria-hidden="true"
-       
-        dangerouslySetInnerHTML={{ __html: props.svg }}
-      />
-    )
-  }
-  return (
-    <svg width={props.size} height={props.size} viewBox="0 0 120 120" aria-hidden="true">
-      <use href={glyphHref(props.id ?? 'pyreon')} />
-    </svg>
-  )
-}
+export { Glyph }
 
 /** `<linearGradient id="eg">` for inline glyphs. Render once per page. */
 export function EmberGradientDefs() {

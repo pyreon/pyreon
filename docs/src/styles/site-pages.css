@@ -214,6 +214,11 @@
   border-radius: var(--radius-lg);
   background: var(--bg-elevated);
 }
+/* Before the chart island draws, its server canvas has no width (the HTML
+   default is 300px), which is wider than a 320px phone's column. */
+.open-chart canvas {
+  max-width: 100%;
+}
 .open-chart figcaption {
   margin-top: 0.5rem;
   font-size: 0.85rem;

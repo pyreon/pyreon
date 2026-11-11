@@ -1,0 +1,65 @@
+<svg xmlns="http://www.w3.org/2000/svg" class="pxa ph-once" viewBox="0 0 960 470" width="960" height="470" role="img" aria-labelledby="ph-once-t ph-once-d" fill="none">
+<title id="ph-once-t">Re-render versus components that run once</title>
+<desc id="ph-once-d">Two copies of the same component tree (App with Nav, Counter and Footer; Counter with Label, a button and Hint). On each click, the re-render model runs Counter, Label and Hint again and diffs the result to find one changed text node. In Pyreon nothing runs again: the one text node inside the button is written directly, shown by a brief ember pulse.</desc>
+<style>
+.pxa{--px-bg:#0A0A0E;--px-card:#111118;--px-raised:#181822;--px-line:#23232E;--px-line2:#2E2E3B;--px-text:#F4EFE6;--px-strong:#FFFCF5;--px-mist:#C9C4B8;--px-fog:#8A8696;--px-hint:#8A8696;--px-dim:#5C5867;--px-accent:#FF5E1A;--px-accent-text:#FF8A4C;--px-warm:#FFC83D;--px-plasma:#FF1F8C;--px-ok:#4ADE80;--px-warn:#FACC15;--px-err:#F87171;--px-link:#22D3EE;--px-violet:#A78BFA;--px-bar:#3A3846;--px-g1:#FF1F8C;--px-g2:#FF5E1A;--px-g3:#FFC83D;--px-glow:rgba(255,94,26,.16)}
+@media (prefers-color-scheme: light){.pxa{--px-bg:#FAF5EB;--px-card:#FFFFFF;--px-raised:#F4EFE6;--px-line:#E6DFD2;--px-line2:#D6CFC2;--px-text:#14141C;--px-strong:#0A0A0E;--px-mist:#45414F;--px-fog:#67637A;--px-hint:#8E8A9A;--px-dim:#B5AFA3;--px-accent:#E84A0F;--px-accent-text:#A8380A;--px-warm:#8A5A00;--px-plasma:#E40C70;--px-ok:#11692F;--px-warn:#8A5A00;--px-err:#B91C1C;--px-link:#0A6E89;--px-violet:#6D28D9;--px-bar:#D9D2C4;--px-g1:#D1106F;--px-g2:#C2410C;--px-g3:#9A6200;--px-glow:rgba(232,74,15,.10)}}
+[data-theme="dark"] .pxa,.pxa[data-theme="dark"]{--px-bg:#0A0A0E;--px-card:#111118;--px-raised:#181822;--px-line:#23232E;--px-line2:#2E2E3B;--px-text:#F4EFE6;--px-strong:#FFFCF5;--px-mist:#C9C4B8;--px-fog:#8A8696;--px-hint:#8A8696;--px-dim:#5C5867;--px-accent:#FF5E1A;--px-accent-text:#FF8A4C;--px-warm:#FFC83D;--px-plasma:#FF1F8C;--px-ok:#4ADE80;--px-warn:#FACC15;--px-err:#F87171;--px-link:#22D3EE;--px-violet:#A78BFA;--px-bar:#3A3846;--px-g1:#FF1F8C;--px-g2:#FF5E1A;--px-g3:#FFC83D;--px-glow:rgba(255,94,26,.16)}
+[data-theme="light"] .pxa,.pxa[data-theme="light"]{--px-bg:#FAF5EB;--px-card:#FFFFFF;--px-raised:#F4EFE6;--px-line:#E6DFD2;--px-line2:#D6CFC2;--px-text:#14141C;--px-strong:#0A0A0E;--px-mist:#45414F;--px-fog:#67637A;--px-hint:#8E8A9A;--px-dim:#B5AFA3;--px-accent:#E84A0F;--px-accent-text:#A8380A;--px-warm:#8A5A00;--px-plasma:#E40C70;--px-ok:#11692F;--px-warn:#8A5A00;--px-err:#B91C1C;--px-link:#0A6E89;--px-violet:#6D28D9;--px-bar:#D9D2C4;--px-g1:#D1106F;--px-g2:#C2410C;--px-g3:#9A6200;--px-glow:rgba(232,74,15,.10)}
+.ph-once{font-family:'Space Grotesk',ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif}
+.ph-once .m{font-family:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,monospace}
+.ph-once .ph-once-rm{opacity:0}
+@media (prefers-reduced-motion: reduce){.ph-once *{animation:none!important;transition:none!important}.ph-once .ph-once-rm{opacity:1}.ph-once .ph-once-am{opacity:0}}
+
+.ph-once .pane{fill:none;stroke:var(--px-line2);stroke-width:1.5}
+.ph-once .ln{stroke:var(--px-hint);stroke-width:1.4;opacity:.7}
+.ph-once .bx{fill:var(--px-card);stroke:var(--px-bar);stroke-width:1.5}
+.ph-once .lab{fill:var(--px-mist);font-size:15px}
+.ph-once .eb{fill:var(--px-fog);font-size:13px;letter-spacing:.16em}
+.ph-once .ttl{fill:var(--px-strong);font-size:22px;font-weight:600;letter-spacing:-.015em}
+.ph-once .stat{fill:var(--px-mist);font-size:14px}
+.ph-once .statk{fill:var(--px-strong);font-weight:600}
+.ph-once .txt{fill:var(--px-strong);font-size:26px;font-weight:600}
+.ph-once .rerun{fill:var(--px-mist);opacity:0}
+.ph-once .click{fill:none;stroke:var(--px-link);stroke-width:2;opacity:0}
+.ph-once .hotbx{fill:none;stroke:var(--px-accent);stroke-width:2.5;opacity:0}
+.ph-once .uline{stroke:var(--px-accent);stroke-width:3}
+@keyframes ph-once-rerun{0%{opacity:0}14.6875%{opacity:0}17.3125%{opacity:.42}21.2500%{opacity:0}39.6875%{opacity:0}42.3125%{opacity:.42}46.2500%{opacity:0}64.6875%{opacity:0}67.3125%{opacity:.42}71.2500%{opacity:0}89.6875%{opacity:0}92.3125%{opacity:.42}96.2500%{opacity:0}100%{opacity:0}}
+@keyframes ph-once-click{0%{opacity:0}12.1875%{opacity:0}13.4375%{opacity:1}15.3125%{opacity:0}37.1875%{opacity:0}38.4375%{opacity:1}40.3125%{opacity:0}62.1875%{opacity:0}63.4375%{opacity:1}65.3125%{opacity:0}87.1875%{opacity:0}88.4375%{opacity:1}90.3125%{opacity:0}100%{opacity:0}}
+@keyframes ph-once-hot{0%{opacity:0}14.3750%{opacity:0}15.6250%{opacity:1}17.5000%{opacity:0}39.3750%{opacity:0}40.6250%{opacity:1}42.5000%{opacity:0}64.3750%{opacity:0}65.6250%{opacity:1}67.5000%{opacity:0}89.3750%{opacity:0}90.6250%{opacity:1}92.5000%{opacity:0}100%{opacity:0}}
+@keyframes ph-once-v0{0.0000%{opacity:1;animation-timing-function:step-end}14.0625%{opacity:0;animation-timing-function:step-end}100.0000%{opacity:0;animation-timing-function:step-end}}
+@keyframes ph-once-v1{0.0000%{opacity:0;animation-timing-function:step-end}14.0625%{opacity:1;animation-timing-function:step-end}39.0625%{opacity:0;animation-timing-function:step-end}100.0000%{opacity:0;animation-timing-function:step-end}}
+@keyframes ph-once-v2{0.0000%{opacity:0;animation-timing-function:step-end}39.0625%{opacity:1;animation-timing-function:step-end}64.0625%{opacity:0;animation-timing-function:step-end}100.0000%{opacity:0;animation-timing-function:step-end}}
+@keyframes ph-once-v3{0.0000%{opacity:0;animation-timing-function:step-end}64.0625%{opacity:1;animation-timing-function:step-end}89.0625%{opacity:0;animation-timing-function:step-end}100.0000%{opacity:0;animation-timing-function:step-end}}
+@keyframes ph-once-v4{0.0000%{opacity:0;animation-timing-function:step-end}89.0625%{opacity:1;animation-timing-function:step-end}100.0000%{opacity:0;animation-timing-function:step-end}}
+.ph-once .rerun{animation:ph-once-rerun 6400ms linear infinite} .ph-once .click{animation:ph-once-click 6400ms linear infinite} .ph-once .hotbx{animation:ph-once-hot 6400ms linear infinite}
+.ph-once .v0{animation:ph-once-v0 6400ms linear infinite}.ph-once .v1{animation:ph-once-v1 6400ms linear infinite}.ph-once .v2{animation:ph-once-v2 6400ms linear infinite}.ph-once .v3{animation:ph-once-v3 6400ms linear infinite}.ph-once .v4{animation:ph-once-v4 6400ms linear infinite}
+@media (prefers-reduced-motion: reduce){.ph-once .v0{opacity:0}.ph-once .v1{opacity:1}.ph-once .v2{opacity:0}.ph-once .v3{opacity:0}.ph-once .v4{opacity:0}}
+</style>
+<defs><linearGradient id="ph-once-eg" x1="0" y1="0" x2="1" y2="0"><stop offset="0" style="stop-color:var(--px-g1)"/><stop offset=".55" style="stop-color:var(--px-g2)"/><stop offset="1" style="stop-color:var(--px-g3)"/></linearGradient><linearGradient id="ph-once-egu" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="960" y2="0"><stop offset="0" style="stop-color:var(--px-g1)"/><stop offset=".55" style="stop-color:var(--px-g2)"/><stop offset="1" style="stop-color:var(--px-g3)"/></linearGradient><linearGradient id="ph-once-egv" x1="0" y1="1" x2="0" y2="0"><stop offset="0" style="stop-color:var(--px-g1)"/><stop offset=".55" style="stop-color:var(--px-g2)"/><stop offset="1" style="stop-color:var(--px-g3)"/></linearGradient><linearGradient id="ph-once-egd" x1="0" y1="0" x2="1" y2="1"><stop offset="0" style="stop-color:var(--px-g1)"/><stop offset=".55" style="stop-color:var(--px-g2)"/><stop offset="1" style="stop-color:var(--px-g3)"/></linearGradient></defs>
+
+<rect class="pane" x="1" y="1" width="462" height="468" rx="22"/>
+<rect class="pane" x="497" y="1" width="462" height="468" rx="22"/>
+<text class="m eb" x="28" y="40">RE-RENDER MODEL</text>
+<text class="m eb" x="524" y="40">PYREON</text>
+<line class="ln" x1="232" y1="111" x2="86" y2="153"/><line class="ln" x1="232" y1="111" x2="232" y2="153"/><line class="ln" x1="232" y1="111" x2="378" y2="153"/><line class="ln" x1="232" y1="191" x2="118" y2="237"/><line class="ln" x1="232" y1="191" x2="232" y2="237"/><line class="ln" x1="232" y1="191" x2="346" y2="237"/>
+<line class="ln" x1="232" y1="275" x2="232" y2="316"/>
+<rect class="bx" x="176" y="73" width="112" height="38" rx="10"/><text class="m lab" x="232" y="97" text-anchor="middle">App</text><rect class="bx" x="30" y="153" width="112" height="38" rx="10"/><text class="m lab" x="86" y="177" text-anchor="middle">Nav</text><rect class="bx" x="176" y="153" width="112" height="38" rx="10"/><rect class="rerun" x="176" y="153" width="112" height="38" rx="10"/><text class="m lab" x="232" y="177" text-anchor="middle">Counter</text><rect class="bx" x="322" y="153" width="112" height="38" rx="10"/><text class="m lab" x="378" y="177" text-anchor="middle">Footer</text><rect class="bx" x="62" y="237" width="112" height="38" rx="10"/><rect class="rerun" x="62" y="237" width="112" height="38" rx="10"/><text class="m lab" x="118" y="261" text-anchor="middle">Label</text><rect class="bx" x="176" y="237" width="112" height="38" rx="10"/><text class="m lab" x="232" y="261" text-anchor="middle">&lt;button&gt;</text><rect class="bx" x="290" y="237" width="112" height="38" rx="10"/><rect class="rerun" x="290" y="237" width="112" height="38" rx="10"/><text class="m lab" x="346" y="261" text-anchor="middle">Hint</text>
+<rect class="bx" x="198" y="316" width="68" height="48" rx="10"/>
+<text class="txt v0" x="232" y="350" text-anchor="middle" opacity="0">0</text><text class="txt v1" x="232" y="350" text-anchor="middle">1</text><text class="txt v2" x="232" y="350" text-anchor="middle" opacity="0">2</text><text class="txt v3" x="232" y="350" text-anchor="middle" opacity="0">3</text><text class="txt v4" x="232" y="350" text-anchor="middle" opacity="0">0</text>
+<text class="m eb" x="278" y="345">text node</text>
+
+<circle class="click" cx="272" cy="264" r="12"/>
+<line class="ln" x1="728" y1="111" x2="582" y2="153"/><line class="ln" x1="728" y1="111" x2="728" y2="153"/><line class="ln" x1="728" y1="111" x2="874" y2="153"/><line class="ln" x1="728" y1="191" x2="614" y2="237"/><line class="ln" x1="728" y1="191" x2="728" y2="237"/><line class="ln" x1="728" y1="191" x2="842" y2="237"/>
+<line class="ln" x1="728" y1="275" x2="728" y2="316"/>
+<rect class="bx" x="672" y="73" width="112" height="38" rx="10"/><text class="m lab" x="728" y="97" text-anchor="middle">App</text><rect class="bx" x="526" y="153" width="112" height="38" rx="10"/><text class="m lab" x="582" y="177" text-anchor="middle">Nav</text><rect class="bx" x="672" y="153" width="112" height="38" rx="10"/><text class="m lab" x="728" y="177" text-anchor="middle">Counter</text><rect class="bx" x="818" y="153" width="112" height="38" rx="10"/><text class="m lab" x="874" y="177" text-anchor="middle">Footer</text><rect class="bx" x="558" y="237" width="112" height="38" rx="10"/><text class="m lab" x="614" y="261" text-anchor="middle">Label</text><rect class="bx" x="672" y="237" width="112" height="38" rx="10"/><text class="m lab" x="728" y="261" text-anchor="middle">&lt;button&gt;</text><rect class="bx" x="786" y="237" width="112" height="38" rx="10"/><text class="m lab" x="842" y="261" text-anchor="middle">Hint</text>
+<rect class="bx" x="694" y="316" width="68" height="48" rx="10"/>
+<text class="txt v0" x="728" y="350" text-anchor="middle" opacity="0">0</text><text class="txt v1" x="728" y="350" text-anchor="middle">1</text><text class="txt v2" x="728" y="350" text-anchor="middle" opacity="0">2</text><text class="txt v3" x="728" y="350" text-anchor="middle" opacity="0">3</text><text class="txt v4" x="728" y="350" text-anchor="middle" opacity="0">0</text>
+<text class="m eb" x="774" y="345">text node</text>
+<rect class="hotbx" x="690" y="312" width="76" height="56" rx="12"/><line class="uline ph-once-rm" x1="708" y1="357" x2="748" y2="357"/>
+<circle class="click" cx="768" cy="264" r="12"/>
+<text class="m stat" x="28" y="404"><tspan class="statk">3</tspan> components run again per click</text>
+<text class="m stat" x="28" y="430">then a diff finds <tspan class="statk">1</tspan> text change</text>
+<text class="m stat" x="524" y="404"><tspan class="statk">0</tspan> components run again</text>
+<text class="m stat" x="524" y="430"><tspan class="statk">1</tspan> text node written, nothing diffed</text>
+</svg>

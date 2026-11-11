@@ -1,0 +1,1827 @@
+{
+ "note": "Written by docs/scripts/sync-site-assets.ts from 09-site/assets/manifest.json. Do not edit.",
+ "assets": [
+  {
+   "file": "benchmarks/forms.svg",
+   "kind": "svg",
+   "pages": [
+    "/benchmarks",
+    "/products/form"
+   ],
+   "slot": "forms",
+   "alt": "12-field form, microseconds: mount 12 fields: Pyreon 210, Solid modular-forms 305, Formik 340, vee-validate 570, Felte 575, React Hook Form 640, TanStack Form 680; keystroke, validating: Pyreon 460, Solid modular-forms 570, React Hook Form 830, Felte 1150, Formik 1320, vee-validate 2260, TanStack Form 2380.",
+   "theme": "both",
+   "poster": {
+    "dark": "benchmarks/forms.poster-dark.png",
+    "light": "benchmarks/forms.poster-light.png"
+   },
+   "width": 960,
+   "height": 484
+  },
+  {
+   "file": "benchmarks/reactivity-jsc.svg",
+   "kind": "svg",
+   "pages": [
+    "/benchmarks",
+    "/products/reactivity"
+   ],
+   "slot": "reactivity",
+   "alt": "Reactivity core on JavaScriptCore · Bun 1.4, ns per op (Pyreon / Preact Signals / Solid): signal create + read + write 31 / 6 / 30, loss ≈5× vs Preact; computed diamond 5201 / 5556 / 15839, win 1.07–1.08× vs Preact; effect propagation 1573 / 4269 / 7417, win 2.5–2.7× vs Preact; batch 50 signals 456 / 1050 / 1829, win 2.30–2.34× vs Preact; deep chain 137424 / 119299 / 287720, loss 1.15–1.21× vs Preact; wide fan-out 1590 / 2202 / 3015, win 1.33–1.38× vs Preact.",
+   "theme": "both",
+   "poster": {
+    "dark": "benchmarks/reactivity-jsc.poster-dark.png",
+    "light": "benchmarks/reactivity-jsc.poster-light.png"
+   },
+   "width": 960,
+   "height": 786
+  },
+  {
+   "file": "benchmarks/reactivity-v8.svg",
+   "kind": "svg",
+   "pages": [
+    "/benchmarks",
+    "/products/reactivity"
+   ],
+   "slot": "reactivity",
+   "alt": "Reactivity core on V8 · Node 26, ns per op (Pyreon / Preact Signals / Solid): signal create + read + write 63 / 13 / 20, loss 4.8× vs Preact; computed diamond 4424 / 5761 / 38021, win 1.30–1.31× vs Preact; effect propagation 1407 / 2874 / 15910, win 2.04–2.13× vs Preact; batch 50 signals 456 / 888 / 4759, win 1.94–1.95× vs Preact; deep chain 107237 / 75639 / 677221, loss 1.42–1.43× vs Preact; wide fan-out 1651 / 1602 / 4886, loss 1.03–1.04× vs Preact.",
+   "theme": "both",
+   "poster": {
+    "dark": "benchmarks/reactivity-v8.poster-dark.png",
+    "light": "benchmarks/reactivity-v8.poster-light.png"
+   },
+   "width": 960,
+   "height": 786
+  },
+  {
+   "file": "brand/apple-touch-icon.png",
+   "kind": "icon",
+   "pages": [
+    "/*"
+   ],
+   "slot": "apple-touch-icon",
+   "alt": "",
+   "theme": "both",
+   "width": 180,
+   "height": 180
+  },
+  {
+   "file": "brand/favicon-32.png",
+   "kind": "icon",
+   "pages": [
+    "/*"
+   ],
+   "slot": "favicon",
+   "alt": "",
+   "theme": "both",
+   "width": 32,
+   "height": 32
+  },
+  {
+   "file": "brand/favicon.svg",
+   "kind": "icon",
+   "pages": [
+    "/*"
+   ],
+   "slot": "favicon",
+   "alt": "",
+   "theme": "both",
+   "width": 120,
+   "height": 120
+  },
+  {
+   "file": "brand/icon-192.png",
+   "kind": "icon",
+   "pages": [
+    "/*"
+   ],
+   "slot": "pwa-icon",
+   "alt": "",
+   "theme": "both",
+   "width": 192,
+   "height": 192
+  },
+  {
+   "file": "brand/icon-512.png",
+   "kind": "icon",
+   "pages": [
+    "/*"
+   ],
+   "slot": "pwa-icon",
+   "alt": "",
+   "theme": "both",
+   "width": 512,
+   "height": 512
+  },
+  {
+   "file": "brand/icon-maskable-512.png",
+   "kind": "icon",
+   "pages": [
+    "/*"
+   ],
+   "slot": "pwa-icon-maskable",
+   "alt": "",
+   "theme": "both",
+   "width": 512,
+   "height": 512
+  },
+  {
+   "file": "home/card-charts.svg",
+   "kind": "svg",
+   "pages": [
+    "/"
+   ],
+   "slot": "product-card",
+   "alt": "A bar chart of monthly revenue with a dashed target line, the latest bar highlighted, as drawn by a <Chart> with <Bar> and <Line> children.",
+   "theme": "both",
+   "width": 560,
+   "height": 220
+  },
+  {
+   "file": "home/card-design.svg",
+   "kind": "svg",
+   "pages": [
+    "/"
+   ],
+   "slot": "product-card",
+   "alt": "Three buttons from one rocketstyle definition: primary in size md, danger as an outline, and a small one; every combination of state, size, variant and mode comes from the same definition.",
+   "theme": "both",
+   "width": 560,
+   "height": 220
+  },
+  {
+   "file": "home/card-flow.svg",
+   "kind": "svg",
+   "pages": [
+    "/"
+   ],
+   "slot": "product-card",
+   "alt": "A node graph: Webhook connects to Enrich and Archive, and Enrich connects to CRM. The edge from Webhook to Enrich is highlighted.",
+   "theme": "both",
+   "width": 560,
+   "height": 220
+  },
+  {
+   "file": "home/card-form.svg",
+   "kind": "svg",
+   "pages": [
+    "/"
+   ],
+   "slot": "product-card",
+   "alt": "A small form: the Email field holds ada@example.com and shows the inline error \"Already registered\" from an async validator; the password field below is untouched.",
+   "theme": "both",
+   "width": 560,
+   "height": 220
+  },
+  {
+   "file": "home/card-native.svg",
+   "kind": "svg",
+   "pages": [
+    "/"
+   ],
+   "slot": "product-card",
+   "alt": "One src/App.tsx compiles to ios/…/App.swift (SwiftUI) and android/…/App.kt (Jetpack Compose); the UI on the device is SwiftUI and Compose views, no JavaScript engine renders it. Experimental.",
+   "theme": "both",
+   "width": 560,
+   "height": 220
+  },
+  {
+   "file": "home/card-query.svg",
+   "kind": "svg",
+   "pages": [
+    "/"
+   ],
+   "slot": "product-card",
+   "alt": "Code: const user = useQuery(() => ({ queryKey: ['user', props.userId], queryFn: () => fetchUser(props.userId) })). The key reads a prop, so a new userId refetches.",
+   "theme": "both",
+   "width": 560,
+   "height": 220
+  },
+  {
+   "file": "home/card-tooling.svg",
+   "kind": "svg",
+   "pages": [
+    "/"
+   ],
+   "slot": "product-card",
+   "alt": "Three terminal lines: pyreon lint flags a destructured-props error (pyreon/no-props-destructure), pyreon check prints each fix for git-changed files, and pyreon doctor runs 15 gates and gives a 0–100 score.",
+   "theme": "both",
+   "width": 560,
+   "height": 220
+  },
+  {
+   "file": "home/card-validation.svg",
+   "kind": "svg",
+   "pages": [
+    "/"
+   ],
+   "slot": "product-card",
+   "alt": "Code: s.string().email().serverCheck('email-unique'). Cheap checks run in the browser; the server check is recorded as pending and runs on the server.",
+   "theme": "both",
+   "width": 560,
+   "height": 220
+  },
+  {
+   "file": "home/card-zero.svg",
+   "kind": "svg",
+   "pages": [
+    "/"
+   ],
+   "slot": "product-card",
+   "alt": "A route table: index.tsx is SSG, blog/[slug].tsx is ISR, account.tsx is SSR and (app)/dashboard.tsx is SPA. Every page picks its own rendering.",
+   "theme": "both",
+   "width": 560,
+   "height": 220
+  },
+  {
+   "file": "home/hero-trace.svg",
+   "kind": "animated-svg",
+   "pages": [
+    "/"
+   ],
+   "slot": "hero",
+   "alt": "A signal trace runs into the Pyreon mark and on to three targets: web, iOS (SwiftUI, experimental) and Android (Compose, experimental).",
+   "theme": "both",
+   "poster": {
+    "dark": "home/hero-trace.poster-dark.png",
+    "light": "home/hero-trace.poster-light.png"
+   },
+   "posterVariants": {
+    "dark": [
+     {
+      "file": "home/hero-trace.poster-dark-640.webp",
+      "width": 640,
+      "height": 280,
+      "bytes": 7504,
+      "format": "webp"
+     },
+     {
+      "file": "home/hero-trace.poster-dark-640.avif",
+      "width": 640,
+      "height": 280,
+      "bytes": 6215,
+      "format": "avif"
+     },
+     {
+      "file": "home/hero-trace.poster-dark-960.webp",
+      "width": 960,
+      "height": 420,
+      "bytes": 12422,
+      "format": "webp"
+     },
+     {
+      "file": "home/hero-trace.poster-dark-960.avif",
+      "width": 960,
+      "height": 420,
+      "bytes": 9017,
+      "format": "avif"
+     },
+     {
+      "file": "home/hero-trace.poster-dark.webp",
+      "width": 1920,
+      "height": 840,
+      "bytes": 27488,
+      "format": "webp"
+     },
+     {
+      "file": "home/hero-trace.poster-dark.avif",
+      "width": 1920,
+      "height": 840,
+      "bytes": 15560,
+      "format": "avif"
+     }
+    ],
+    "light": [
+     {
+      "file": "home/hero-trace.poster-light-640.webp",
+      "width": 640,
+      "height": 280,
+      "bytes": 7740,
+      "format": "webp"
+     },
+     {
+      "file": "home/hero-trace.poster-light-640.avif",
+      "width": 640,
+      "height": 280,
+      "bytes": 6260,
+      "format": "avif"
+     },
+     {
+      "file": "home/hero-trace.poster-light-960.webp",
+      "width": 960,
+      "height": 420,
+      "bytes": 13268,
+      "format": "webp"
+     },
+     {
+      "file": "home/hero-trace.poster-light-960.avif",
+      "width": 960,
+      "height": 420,
+      "bytes": 9916,
+      "format": "avif"
+     },
+     {
+      "file": "home/hero-trace.poster-light.webp",
+      "width": 1920,
+      "height": 840,
+      "bytes": 28798,
+      "format": "webp"
+     },
+     {
+      "file": "home/hero-trace.poster-light.avif",
+      "width": 1920,
+      "height": 840,
+      "bytes": 15547,
+      "format": "avif"
+     }
+    ]
+   },
+   "width": 960,
+   "height": 420,
+   "motion": {
+    "loop": false,
+    "ms": 1000,
+    "reduced": "end frame, no motion"
+   }
+  },
+  {
+   "file": "home/proof-bundle.svg",
+   "kind": "svg",
+   "pages": [
+    "/"
+   ],
+   "slot": "proof-band",
+   "alt": "4× less JavaScript than React 19 for the same app. Pyreon: 17.2 KB; React 19: 69.6 KB. same app, gzip -9, synthetic, author-run, Apple M3 Max, record of 2026-11-05.",
+   "theme": "both",
+   "poster": {
+    "dark": "home/proof-bundle.poster-dark.png",
+    "light": "home/proof-bundle.poster-light.png"
+   },
+   "width": 420,
+   "height": 144
+  },
+  {
+   "file": "home/proof-charts.svg",
+   "kind": "svg",
+   "pages": [
+    "/"
+   ],
+   "slot": "benchmark-strip",
+   "alt": "8.7× faster charts than ECharts 6. Pyreon: 4.36 ms; ECharts 6: 37.95 ms. one run, synthetic, author-run, Apple M3 Max, record of 2026-11-05.",
+   "theme": "both",
+   "poster": {
+    "dark": "home/proof-charts.poster-dark.png",
+    "light": "home/proof-charts.poster-light.png"
+   },
+   "width": 420,
+   "height": 144
+  },
+  {
+   "file": "home/proof-flow.svg",
+   "kind": "svg",
+   "pages": [
+    "/"
+   ],
+   "slot": "benchmark-strip",
+   "alt": "6/6 operations won against React Flow 12. pan + zoom ×60: 210×; drag a node ×60: 7.25×; select node: 5.39×; unmount: 3.87×; add 50 nodes: 1.19×; mount 500: 1.17×. one run, synthetic, author-run, Apple M3 Max, record of 2026-11-05.",
+   "theme": "both",
+   "poster": {
+    "dark": "home/proof-flow.poster-dark.png",
+    "light": "home/proof-flow.poster-light.png"
+   },
+   "width": 420,
+   "height": 244
+  },
+  {
+   "file": "home/proof-forms.svg",
+   "kind": "svg",
+   "pages": [
+    "/"
+   ],
+   "slot": "benchmark-strip",
+   "alt": "4/4 form operations won against six libraries. reset form: 9×; mount 12 fields: 3.05×; keystroke, blur: 2.42×; keystroke, validate: 1.8×. one run, synthetic, author-run, Apple M3 Max, record of 2026-11-05.",
+   "theme": "both",
+   "poster": {
+    "dark": "home/proof-forms.poster-dark.png",
+    "light": "home/proof-forms.poster-light.png"
+   },
+   "width": 420,
+   "height": 184
+  },
+  {
+   "file": "home/proof-i18n.svg",
+   "kind": "svg",
+   "pages": [
+    "/"
+   ],
+   "slot": "benchmark-strip",
+   "alt": "12× faster t() than i18next. t(): 12×; interpolation: 5.1×; plural: 3.6×; number: 3.1×; date: 2.7×. one run, bun, synthetic, author-run, Apple M3 Max, record of 2026-11-05.",
+   "theme": "both",
+   "poster": {
+    "dark": "home/proof-i18n.poster-dark.png",
+    "light": "home/proof-i18n.poster-light.png"
+   },
+   "width": 420,
+   "height": 214
+  },
+  {
+   "file": "home/proof-render-to-string.svg",
+   "kind": "svg",
+   "pages": [
+    "/"
+   ],
+   "slot": "benchmark-strip",
+   "alt": "4.7× faster renderToString than Solid. card: 4.68×; layout: 1.74×; list-1000: 1.72×; list-50: 1.64×. one run, synthetic, author-run, Apple M3 Max, record of 2026-11-05.",
+   "theme": "both",
+   "poster": {
+    "dark": "home/proof-render-to-string.poster-dark.png",
+    "light": "home/proof-render-to-string.poster-light.png"
+   },
+   "width": 420,
+   "height": 184
+  },
+  {
+   "file": "home/proof-rows-10k.svg",
+   "kind": "svg",
+   "pages": [
+    "/"
+   ],
+   "slot": "proof-band",
+   "alt": "2.6× faster than React 19 creating 10,000 rows. Pyreon: 72.6 ms; React 19: 192.0 ms. real Chromium, row board, synthetic, author-run, Apple M3 Max, record of 2026-11-05.",
+   "theme": "both",
+   "poster": {
+    "dark": "home/proof-rows-10k.poster-dark.png",
+    "light": "home/proof-rows-10k.poster-light.png"
+   },
+   "width": 420,
+   "height": 144
+  },
+  {
+   "file": "home/proof-ssr.svg",
+   "kind": "svg",
+   "pages": [
+    "/"
+   ],
+   "slot": "proof-band",
+   "alt": "6.5× faster server rendering than React 19. Pyreon: 109.9 µs; React 19: 714.4 µs. compiled SSR, one run, synthetic, author-run, Apple M3 Max, record of 2026-11-05.",
+   "theme": "both",
+   "poster": {
+    "dark": "home/proof-ssr.poster-dark.png",
+    "light": "home/proof-ssr.poster-light.png"
+   },
+   "width": 420,
+   "height": 144
+  },
+  {
+   "file": "home/runs-once-tree.svg",
+   "kind": "animated-svg",
+   "pages": [
+    "/",
+    "/why/components-run-once",
+    "/docs"
+   ],
+   "slot": "performance",
+   "alt": "Side by side on each click: in the re-render model Counter, Label and Hint run again and are diffed; in Pyreon only the one text node in the button is written.",
+   "theme": "both",
+   "poster": {
+    "dark": "home/runs-once-tree.poster-dark.png",
+    "light": "home/runs-once-tree.poster-light.png"
+   },
+   "posterVariants": {
+    "dark": [
+     {
+      "file": "home/runs-once-tree.poster-dark-640.webp",
+      "width": 640,
+      "height": 313,
+      "bytes": 10936,
+      "format": "webp"
+     },
+     {
+      "file": "home/runs-once-tree.poster-dark-640.avif",
+      "width": 640,
+      "height": 313,
+      "bytes": 9318,
+      "format": "avif"
+     },
+     {
+      "file": "home/runs-once-tree.poster-dark-960.webp",
+      "width": 960,
+      "height": 470,
+      "bytes": 17778,
+      "format": "webp"
+     },
+     {
+      "file": "home/runs-once-tree.poster-dark-960.avif",
+      "width": 960,
+      "height": 470,
+      "bytes": 13654,
+      "format": "avif"
+     },
+     {
+      "file": "home/runs-once-tree.poster-dark.webp",
+      "width": 1920,
+      "height": 940,
+      "bytes": 38786,
+      "format": "webp"
+     },
+     {
+      "file": "home/runs-once-tree.poster-dark.avif",
+      "width": 1920,
+      "height": 940,
+      "bytes": 23291,
+      "format": "avif"
+     }
+    ],
+    "light": [
+     {
+      "file": "home/runs-once-tree.poster-light-640.webp",
+      "width": 640,
+      "height": 313,
+      "bytes": 11046,
+      "format": "webp"
+     },
+     {
+      "file": "home/runs-once-tree.poster-light-640.avif",
+      "width": 640,
+      "height": 313,
+      "bytes": 8939,
+      "format": "avif"
+     },
+     {
+      "file": "home/runs-once-tree.poster-light-960.webp",
+      "width": 960,
+      "height": 470,
+      "bytes": 18004,
+      "format": "webp"
+     },
+     {
+      "file": "home/runs-once-tree.poster-light-960.avif",
+      "width": 960,
+      "height": 470,
+      "bytes": 12941,
+      "format": "avif"
+     },
+     {
+      "file": "home/runs-once-tree.poster-light.webp",
+      "width": 1920,
+      "height": 940,
+      "bytes": 39150,
+      "format": "webp"
+     },
+     {
+      "file": "home/runs-once-tree.poster-light.avif",
+      "width": 1920,
+      "height": 940,
+      "bytes": 23116,
+      "format": "avif"
+     }
+    ]
+   },
+   "width": 960,
+   "height": 470,
+   "motion": {
+    "loop": true,
+    "ms": 6400,
+    "reduced": "static frame showing value 1 with the ember underline under the written text node"
+   }
+  },
+  {
+   "file": "home/who-content.svg",
+   "kind": "svg",
+   "pages": [
+    "/"
+   ],
+   "slot": "who-card",
+   "alt": "Schematic: Markdown posts flow into a typed collection and out to pages; each route carries its own render mode chip, SSG, ISR or SSR, and the collection also feeds an RSS feed.",
+   "theme": "both",
+   "width": 560,
+   "height": 220
+  },
+  {
+   "file": "home/who-phone.svg",
+   "kind": "svg",
+   "pages": [
+    "/"
+   ],
+   "slot": "who-card",
+   "alt": "Schematic: one .tsx file feeds three targets: a browser window labelled web, and two phones labelled SwiftUI and Jetpack Compose. Native targets are marked experimental.",
+   "theme": "both",
+   "width": 560,
+   "height": 220
+  },
+  {
+   "file": "home/who-react.svg",
+   "kind": "svg",
+   "pages": [
+    "/"
+   ],
+   "slot": "who-card",
+   "alt": "Schematic: React components running on @pyreon/react-compat; two have already been converted to Pyreon components that run once, one is converting, and an MCP server gives the assistant the real API.",
+   "theme": "both",
+   "width": 560,
+   "height": 220
+  },
+  {
+   "file": "home/who-saas.svg",
+   "kind": "svg",
+   "pages": [
+    "/"
+   ],
+   "slot": "who-card",
+   "alt": "Schematic: a form, a table and a bar chart in one dashboard, all reading from one query; one table cell and one bar light up as the data changes.",
+   "theme": "both",
+   "width": 560,
+   "height": 220
+  },
+  {
+   "file": "illustrations/404.svg",
+   "kind": "animated-svg",
+   "pages": [
+    "/404"
+   ],
+   "slot": "not-found",
+   "alt": "A graph path from a source node breaks in the middle; where the target should be there is an ember dashed ring with a question mark.",
+   "theme": "both",
+   "poster": {
+    "dark": "illustrations/404.poster-dark.png",
+    "light": "illustrations/404.poster-light.png"
+   },
+   "posterVariants": {
+    "dark": [
+     {
+      "file": "illustrations/404.poster-dark-640.webp",
+      "width": 640,
+      "height": 411,
+      "bytes": 4848,
+      "format": "webp"
+     },
+     {
+      "file": "illustrations/404.poster-dark-640.avif",
+      "width": 640,
+      "height": 411,
+      "bytes": 4441,
+      "format": "avif"
+     },
+     {
+      "file": "illustrations/404.poster-dark.webp",
+      "width": 1120,
+      "height": 720,
+      "bytes": 9252,
+      "format": "webp"
+     },
+     {
+      "file": "illustrations/404.poster-dark.avif",
+      "width": 1120,
+      "height": 720,
+      "bytes": 6939,
+      "format": "avif"
+     }
+    ],
+    "light": [
+     {
+      "file": "illustrations/404.poster-light-640.webp",
+      "width": 640,
+      "height": 411,
+      "bytes": 5182,
+      "format": "webp"
+     },
+     {
+      "file": "illustrations/404.poster-light-640.avif",
+      "width": 640,
+      "height": 411,
+      "bytes": 4660,
+      "format": "avif"
+     },
+     {
+      "file": "illustrations/404.poster-light.webp",
+      "width": 1120,
+      "height": 720,
+      "bytes": 9706,
+      "format": "webp"
+     },
+     {
+      "file": "illustrations/404.poster-light.avif",
+      "width": 1120,
+      "height": 720,
+      "bytes": 7132,
+      "format": "avif"
+     }
+    ]
+   },
+   "width": 560,
+   "height": 360,
+   "motion": {
+    "loop": false,
+    "ms": 520,
+    "reduced": "static ember dashed ring around the missing node"
+   },
+   "caption": {
+    "title": "404 · SIGNAL NOT FOUND",
+    "body": "The path you asked for has no readers.",
+    "cta": "check: spelling · links · the sidebar"
+   }
+  },
+  {
+   "file": "migrate/landing-steps.svg",
+   "kind": "animated-svg",
+   "pages": [
+    "/migrate",
+    "/"
+   ],
+   "slot": "steps",
+   "alt": "The five migration steps as a loop: install the compat layer, change two config files, keep shipping, convert one component at a time, switch the compiler on. Six components of an app flip one by one from React-style (the body re-runs) to Pyreon (runs once) while @pyreon/react-compat sits underneath; at the last step the compat layer is switched off and jsxImportSource becomes @pyreon/core.",
+   "theme": "both",
+   "poster": {
+    "dark": "migrate/landing-steps.poster-dark.png",
+    "light": "migrate/landing-steps.poster-light.png"
+   },
+   "posterVariants": {
+    "dark": [
+     {
+      "file": "migrate/landing-steps.poster-dark-640.webp",
+      "width": 640,
+      "height": 267,
+      "bytes": 12898,
+      "format": "webp"
+     },
+     {
+      "file": "migrate/landing-steps.poster-dark-640.avif",
+      "width": 640,
+      "height": 267,
+      "bytes": 10729,
+      "format": "avif"
+     },
+     {
+      "file": "migrate/landing-steps.poster-dark-960.webp",
+      "width": 960,
+      "height": 400,
+      "bytes": 21542,
+      "format": "webp"
+     },
+     {
+      "file": "migrate/landing-steps.poster-dark-960.avif",
+      "width": 960,
+      "height": 400,
+      "bytes": 17453,
+      "format": "avif"
+     },
+     {
+      "file": "migrate/landing-steps.poster-dark.webp",
+      "width": 1920,
+      "height": 800,
+      "bytes": 49050,
+      "format": "webp"
+     },
+     {
+      "file": "migrate/landing-steps.poster-dark.avif",
+      "width": 1920,
+      "height": 800,
+      "bytes": 29838,
+      "format": "avif"
+     }
+    ],
+    "light": [
+     {
+      "file": "migrate/landing-steps.poster-light-640.webp",
+      "width": 640,
+      "height": 267,
+      "bytes": 13002,
+      "format": "webp"
+     },
+     {
+      "file": "migrate/landing-steps.poster-light-640.avif",
+      "width": 640,
+      "height": 267,
+      "bytes": 10321,
+      "format": "avif"
+     },
+     {
+      "file": "migrate/landing-steps.poster-light-960.webp",
+      "width": 960,
+      "height": 400,
+      "bytes": 22346,
+      "format": "webp"
+     },
+     {
+      "file": "migrate/landing-steps.poster-light-960.avif",
+      "width": 960,
+      "height": 400,
+      "bytes": 17214,
+      "format": "avif"
+     },
+     {
+      "file": "migrate/landing-steps.poster-light.webp",
+      "width": 1920,
+      "height": 800,
+      "bytes": 51552,
+      "format": "webp"
+     },
+     {
+      "file": "migrate/landing-steps.poster-light.avif",
+      "width": 1920,
+      "height": 800,
+      "bytes": 31008,
+      "format": "avif"
+     }
+    ]
+   },
+   "width": 960,
+   "height": 400,
+   "motion": {
+    "loop": true,
+    "ms": 12000,
+    "reduced": "end state: every component converted, compat off, ember underline under step 5"
+   }
+  },
+  {
+   "file": "og/404.png",
+   "kind": "image",
+   "pages": [
+    "/404"
+   ],
+   "slot": "og",
+   "alt": "Pyreon 404: signal not found. The path you asked for has no readers.",
+   "theme": "dark",
+   "width": 1200,
+   "height": 630
+  },
+  {
+   "file": "og/blog.png",
+   "kind": "image",
+   "pages": [
+    "/blog"
+   ],
+   "slot": "og",
+   "alt": "The Pyreon blog: the stories behind the numbers.",
+   "theme": "dark",
+   "width": 1200,
+   "height": 630
+  },
+  {
+   "file": "og/default.png",
+   "kind": "image",
+   "pages": [
+    "*"
+   ],
+   "slot": "og",
+   "alt": "Pyreon: write it once in TypeScript, ship it fine-grained to the web, iOS and Android (experimental).",
+   "theme": "dark",
+   "width": 1200,
+   "height": 630
+  },
+  {
+   "file": "og/home.png",
+   "kind": "image",
+   "pages": [
+    "/"
+   ],
+   "slot": "og",
+   "alt": "Pyreon: Your component runs once. Ever. A quarter of React's JavaScript. 2.6× faster at 10,000 rows.",
+   "theme": "dark",
+   "width": 1200,
+   "height": 630
+  },
+  {
+   "file": "og/open.png",
+   "kind": "image",
+   "pages": [
+    "/open"
+   ],
+   "slot": "og",
+   "alt": "Pyreon live stats.",
+   "theme": "dark",
+   "width": 1200,
+   "height": 630
+  },
+  {
+   "file": "og/products.png",
+   "kind": "image",
+   "pages": [
+    "/products"
+   ],
+   "slot": "og",
+   "alt": "40 products. One reactive core. The glyphs of all 40 Pyreon products.",
+   "theme": "dark",
+   "width": 1200,
+   "height": 630
+  },
+  {
+   "file": "og/products/a11y.png",
+   "kind": "image",
+   "pages": [
+    "/products/a11y"
+   ],
+   "slot": "og",
+   "alt": "Accessibility (@pyreon/a11y): One line, and screen readers hear “Saved”.",
+   "theme": "dark",
+   "width": 1200,
+   "height": 630
+  },
+  {
+   "file": "og/products/form.png",
+   "kind": "image",
+   "pages": [
+    "/products/form"
+   ],
+   "slot": "og",
+   "alt": "Forms: Type in one field. The other eleven never notice. 210 µs to mount a 12-field form. React Hook Form: 640 µs. TanStack Form: 680 µs.",
+   "theme": "dark",
+   "width": 1200,
+   "height": 630
+  },
+  {
+   "file": "og/products/reactivity.png",
+   "kind": "image",
+   "pages": [
+    "/products/reactivity"
+   ],
+   "slot": "og",
+   "alt": "Reactivity: Delete useMemo, useCallback and every dependency array. 2.1× faster effect propagation than Preact Signals (1,407 vs 2,874 ns, 100 effects)",
+   "theme": "dark",
+   "width": 1200,
+   "height": 630
+  },
+  {
+   "file": "og/showcase.png",
+   "kind": "image",
+   "pages": [
+    "/showcase"
+   ],
+   "slot": "og",
+   "alt": "Pyreon showcase: projects built with Pyreon.",
+   "theme": "dark",
+   "width": 1200,
+   "height": 630
+  },
+  {
+   "file": "products/a11y/hero.svg",
+   "kind": "animated-svg",
+   "pages": [
+    "/products/a11y"
+   ],
+   "slot": "hero-visual",
+   "alt": "Schematic: clicking Save calls announce('Settings saved'). The message passes through a polite live region that sighted users never see, and the screen reader speaks “Settings saved”. Later, navigating to /billing is announced as “Billing” by the router integration.",
+   "theme": "both",
+   "poster": {
+    "dark": "products/a11y/hero.poster-dark.png",
+    "light": "products/a11y/hero.poster-light.png"
+   },
+   "posterVariants": {
+    "dark": [
+     {
+      "file": "products/a11y/hero.poster-dark-640.webp",
+      "width": 640,
+      "height": 400,
+      "bytes": 13576,
+      "format": "webp"
+     },
+     {
+      "file": "products/a11y/hero.poster-dark-640.avif",
+      "width": 640,
+      "height": 400,
+      "bytes": 11622,
+      "format": "avif"
+     },
+     {
+      "file": "products/a11y/hero.poster-dark.webp",
+      "width": 1280,
+      "height": 800,
+      "bytes": 28596,
+      "format": "webp"
+     },
+     {
+      "file": "products/a11y/hero.poster-dark.avif",
+      "width": 1280,
+      "height": 800,
+      "bytes": 19378,
+      "format": "avif"
+     }
+    ],
+    "light": [
+     {
+      "file": "products/a11y/hero.poster-light-640.webp",
+      "width": 640,
+      "height": 400,
+      "bytes": 14716,
+      "format": "webp"
+     },
+     {
+      "file": "products/a11y/hero.poster-light-640.avif",
+      "width": 640,
+      "height": 400,
+      "bytes": 11753,
+      "format": "avif"
+     },
+     {
+      "file": "products/a11y/hero.poster-light.webp",
+      "width": 1280,
+      "height": 800,
+      "bytes": 30996,
+      "format": "webp"
+     },
+     {
+      "file": "products/a11y/hero.poster-light.avif",
+      "width": 1280,
+      "height": 800,
+      "bytes": 20387,
+      "format": "avif"
+     }
+    ]
+   },
+   "width": 640,
+   "height": 400,
+   "motion": {
+    "loop": true,
+    "ms": 9000,
+    "reduced": "static end state with the ember ring on the part that changed"
+   }
+  },
+  {
+   "file": "products/form/hero.svg",
+   "kind": "animated-svg",
+   "pages": [
+    "/products/form"
+   ],
+   "slot": "hero-visual",
+   "alt": "A twelve-field form. Letters are typed into the email field one keystroke at a time; each keystroke pulses only the email input and its message, which reads \"invalid\" until the address is complete and then shows a check mark. The other eleven fields stay still and a counter reads 0 updates for them.",
+   "theme": "both",
+   "poster": {
+    "dark": "products/form/hero.poster-dark.png",
+    "light": "products/form/hero.poster-light.png"
+   },
+   "posterVariants": {
+    "dark": [
+     {
+      "file": "products/form/hero.poster-dark-640.webp",
+      "width": 640,
+      "height": 400,
+      "bytes": 11066,
+      "format": "webp"
+     },
+     {
+      "file": "products/form/hero.poster-dark-640.avif",
+      "width": 640,
+      "height": 400,
+      "bytes": 7683,
+      "format": "avif"
+     },
+     {
+      "file": "products/form/hero.poster-dark.webp",
+      "width": 1280,
+      "height": 800,
+      "bytes": 23506,
+      "format": "webp"
+     },
+     {
+      "file": "products/form/hero.poster-dark.avif",
+      "width": 1280,
+      "height": 800,
+      "bytes": 14376,
+      "format": "avif"
+     }
+    ],
+    "light": [
+     {
+      "file": "products/form/hero.poster-light-640.webp",
+      "width": 640,
+      "height": 400,
+      "bytes": 11936,
+      "format": "webp"
+     },
+     {
+      "file": "products/form/hero.poster-light-640.avif",
+      "width": 640,
+      "height": 400,
+      "bytes": 7937,
+      "format": "avif"
+     },
+     {
+      "file": "products/form/hero.poster-light.webp",
+      "width": 1280,
+      "height": 800,
+      "bytes": 25862,
+      "format": "webp"
+     },
+     {
+      "file": "products/form/hero.poster-light.avif",
+      "width": 1280,
+      "height": 800,
+      "bytes": 14796,
+      "format": "avif"
+     }
+    ]
+   },
+   "width": 640,
+   "height": 400,
+   "motion": {
+    "loop": true,
+    "ms": 8000,
+    "reduced": "static end state with the ember ring on the part that changed"
+   }
+  },
+  {
+   "file": "products/reactivity/hero.svg",
+   "kind": "animated-svg",
+   "pages": [
+    "/products/reactivity"
+   ],
+   "slot": "hero-visual",
+   "alt": "Schematic signal graph: count.set(2) travels from the count signal to the computed double and on to the two places that read it, a Badge text node and a document.title effect. A separate theme signal and the class it feeds stay grey: they do not depend on count, so they never run.",
+   "theme": "both",
+   "poster": {
+    "dark": "products/reactivity/hero.poster-dark.png",
+    "light": "products/reactivity/hero.poster-light.png"
+   },
+   "posterVariants": {
+    "dark": [
+     {
+      "file": "products/reactivity/hero.poster-dark-640.webp",
+      "width": 640,
+      "height": 400,
+      "bytes": 10536,
+      "format": "webp"
+     },
+     {
+      "file": "products/reactivity/hero.poster-dark-640.avif",
+      "width": 640,
+      "height": 400,
+      "bytes": 9689,
+      "format": "avif"
+     },
+     {
+      "file": "products/reactivity/hero.poster-dark.webp",
+      "width": 1280,
+      "height": 800,
+      "bytes": 22166,
+      "format": "webp"
+     },
+     {
+      "file": "products/reactivity/hero.poster-dark.avif",
+      "width": 1280,
+      "height": 800,
+      "bytes": 14221,
+      "format": "avif"
+     }
+    ],
+    "light": [
+     {
+      "file": "products/reactivity/hero.poster-light-640.webp",
+      "width": 640,
+      "height": 400,
+      "bytes": 11098,
+      "format": "webp"
+     },
+     {
+      "file": "products/reactivity/hero.poster-light-640.avif",
+      "width": 640,
+      "height": 400,
+      "bytes": 9949,
+      "format": "avif"
+     },
+     {
+      "file": "products/reactivity/hero.poster-light.webp",
+      "width": 1280,
+      "height": 800,
+      "bytes": 23870,
+      "format": "webp"
+     },
+     {
+      "file": "products/reactivity/hero.poster-light.avif",
+      "width": 1280,
+      "height": 800,
+      "bytes": 14711,
+      "format": "avif"
+     }
+    ]
+   },
+   "width": 640,
+   "height": 400,
+   "motion": {
+    "loop": true,
+    "ms": 7000,
+    "reduced": "static end state with the ember ring on the part that changed"
+   }
+  },
+  {
+   "file": "showcase/app-chat.png",
+   "kind": "image",
+   "pages": [
+    "/showcase"
+   ],
+   "slot": "showcase-card",
+   "alt": "Example team chat: a channel list on a dark sidebar, a message thread with avatars and timestamps, and a connected status badge.",
+   "theme": "light",
+   "variantFiles": [
+    {
+     "file": "showcase/app-chat-640.webp",
+     "width": 640,
+     "height": 400,
+     "bytes": 13524,
+     "format": "webp"
+    },
+    {
+     "file": "showcase/app-chat-640.avif",
+     "width": 640,
+     "height": 400,
+     "bytes": 9688,
+     "format": "avif"
+    },
+    {
+     "file": "showcase/app-chat-1280.webp",
+     "width": 1280,
+     "height": 800,
+     "bytes": 38192,
+     "format": "webp"
+    },
+    {
+     "file": "showcase/app-chat-1280.avif",
+     "width": 1280,
+     "height": 800,
+     "bytes": 25718,
+     "format": "avif"
+    },
+    {
+     "file": "showcase/app-chat.webp",
+     "width": 2560,
+     "height": 1600,
+     "bytes": 94370,
+     "format": "webp"
+    },
+    {
+     "file": "showcase/app-chat.avif",
+     "width": 2560,
+     "height": 1600,
+     "bytes": 47767,
+     "format": "avif"
+    }
+   ],
+   "width": 2560,
+   "height": 1600
+  },
+  {
+   "file": "showcase/app-dashboard.png",
+   "kind": "image",
+   "pages": [
+    "/showcase"
+   ],
+   "slot": "showcase-card",
+   "alt": "Example admin dashboard: four KPI cards, an area chart of revenue over 14 days and a bar chart of revenue by category, built with Pyreon query, charts and coolgrid.",
+   "theme": "light",
+   "variantFiles": [
+    {
+     "file": "showcase/app-dashboard-640.webp",
+     "width": 640,
+     "height": 400,
+     "bytes": 13836,
+     "format": "webp"
+    },
+    {
+     "file": "showcase/app-dashboard-640.avif",
+     "width": 640,
+     "height": 400,
+     "bytes": 11176,
+     "format": "avif"
+    },
+    {
+     "file": "showcase/app-dashboard-1280.webp",
+     "width": 1280,
+     "height": 800,
+     "bytes": 35084,
+     "format": "webp"
+    },
+    {
+     "file": "showcase/app-dashboard-1280.avif",
+     "width": 1280,
+     "height": 800,
+     "bytes": 26940,
+     "format": "avif"
+    },
+    {
+     "file": "showcase/app-dashboard.webp",
+     "width": 2560,
+     "height": 1600,
+     "bytes": 81764,
+     "format": "webp"
+    },
+    {
+     "file": "showcase/app-dashboard.avif",
+     "width": 2560,
+     "height": 1600,
+     "bytes": 52018,
+     "format": "avif"
+    }
+   ],
+   "width": 2560,
+   "height": 1600
+  },
+  {
+   "file": "showcase/app-invoice.png",
+   "kind": "image",
+   "pages": [
+    "/showcase"
+   ],
+   "slot": "showcase-card",
+   "alt": "Example invoice builder: a form for invoice details and parties on the left and a live invoice preview on the right, with export to HTML, Markdown, PDF and DOCX.",
+   "theme": "light",
+   "variantFiles": [
+    {
+     "file": "showcase/app-invoice-640.webp",
+     "width": 640,
+     "height": 400,
+     "bytes": 14956,
+     "format": "webp"
+    },
+    {
+     "file": "showcase/app-invoice-640.avif",
+     "width": 640,
+     "height": 400,
+     "bytes": 13046,
+     "format": "avif"
+    },
+    {
+     "file": "showcase/app-invoice-1280.webp",
+     "width": 1280,
+     "height": 800,
+     "bytes": 42854,
+     "format": "webp"
+    },
+    {
+     "file": "showcase/app-invoice-1280.avif",
+     "width": 1280,
+     "height": 800,
+     "bytes": 31768,
+     "format": "avif"
+    },
+    {
+     "file": "showcase/app-invoice.webp",
+     "width": 2560,
+     "height": 1600,
+     "bytes": 99704,
+     "format": "webp"
+    },
+    {
+     "file": "showcase/app-invoice.avif",
+     "width": 2560,
+     "height": 1600,
+     "bytes": 61966,
+     "format": "avif"
+    }
+   ],
+   "width": 2560,
+   "height": 1600
+  },
+  {
+   "file": "showcase/app-kanban.png",
+   "kind": "image",
+   "pages": [
+    "/showcase"
+   ],
+   "slot": "showcase-card",
+   "alt": "Example kanban board with To do, In progress and Done columns of cards with tags and assignees, undo and redo, and an admin/viewer role switch.",
+   "theme": "light",
+   "variantFiles": [
+    {
+     "file": "showcase/app-kanban-640.webp",
+     "width": 640,
+     "height": 400,
+     "bytes": 15460,
+     "format": "webp"
+    },
+    {
+     "file": "showcase/app-kanban-640.avif",
+     "width": 640,
+     "height": 400,
+     "bytes": 13053,
+     "format": "avif"
+    },
+    {
+     "file": "showcase/app-kanban-1280.webp",
+     "width": 1280,
+     "height": 800,
+     "bytes": 44668,
+     "format": "webp"
+    },
+    {
+     "file": "showcase/app-kanban-1280.avif",
+     "width": 1280,
+     "height": 800,
+     "bytes": 34322,
+     "format": "avif"
+    },
+    {
+     "file": "showcase/app-kanban.webp",
+     "width": 2560,
+     "height": 1600,
+     "bytes": 105808,
+     "format": "webp"
+    },
+    {
+     "file": "showcase/app-kanban.avif",
+     "width": 2560,
+     "height": 1600,
+     "bytes": 66811,
+     "format": "avif"
+    }
+   ],
+   "width": 2560,
+   "height": 1600
+  },
+  {
+   "file": "showcase/app-todos.png",
+   "kind": "image",
+   "pages": [
+    "/showcase"
+   ],
+   "slot": "showcase-card",
+   "alt": "Example todo app with projects, priority and tag chips, an active/done filter that lives in the URL, and keyboard shortcuts listed in the sidebar.",
+   "theme": "light",
+   "variantFiles": [
+    {
+     "file": "showcase/app-todos-640.webp",
+     "width": 640,
+     "height": 400,
+     "bytes": 10444,
+     "format": "webp"
+    },
+    {
+     "file": "showcase/app-todos-640.avif",
+     "width": 640,
+     "height": 400,
+     "bytes": 9331,
+     "format": "avif"
+    },
+    {
+     "file": "showcase/app-todos-1280.webp",
+     "width": 1280,
+     "height": 800,
+     "bytes": 31026,
+     "format": "webp"
+    },
+    {
+     "file": "showcase/app-todos-1280.avif",
+     "width": 1280,
+     "height": 800,
+     "bytes": 23755,
+     "format": "avif"
+    },
+    {
+     "file": "showcase/app-todos.webp",
+     "width": 2560,
+     "height": 1600,
+     "bytes": 74438,
+     "format": "webp"
+    },
+    {
+     "file": "showcase/app-todos.avif",
+     "width": 2560,
+     "height": 1600,
+     "bytes": 46831,
+     "format": "avif"
+    }
+   ],
+   "width": 2560,
+   "height": 1600
+  },
+  {
+   "file": "site.webmanifest",
+   "kind": "data",
+   "pages": [
+    "/*"
+   ],
+   "slot": "web-manifest",
+   "alt": "",
+   "theme": "both"
+  },
+  {
+   "file": "video/three-targets-dark.mp4",
+   "kind": "video",
+   "pages": [
+    "/",
+    "/products/native",
+    "/why/one-codebase",
+    "/compare/react-native"
+   ],
+   "slot": "three-targets",
+   "alt": "The same small todo app, Today, built from one source file (examples/native-showcase/src/TodayApp.tsx) and running at once in Chromium (web, server-rendered and hydrated), an iOS Simulator (generated SwiftUI) and an Android emulator (generated Jetpack Compose), each screen shown from its status bar down to just below the list: three todos, typing \"Pick up oat milk\" and adding it, checking it off, removing it. Real screen captures with real input; waits shortened, typing sped up on the phones.",
+   "theme": "dark",
+   "pair": "video/three-targets-light.mp4",
+   "poster": "video/three-targets-dark.poster.png",
+   "width": 1200,
+   "height": 518,
+   "motion": {
+    "loop": true,
+    "ms": 12400,
+    "reduced": "show the poster (the list on all three) and do not autoplay"
+   },
+   "size": "large"
+  },
+  {
+   "file": "video/three-targets-dark.poster.png",
+   "kind": "poster",
+   "pages": [
+    "/",
+    "/products/native"
+   ],
+   "slot": "three-targets",
+   "alt": "The same small todo app, Today, built from one source file (examples/native-showcase/src/TodayApp.tsx) and running at once in Chromium (web, server-rendered and hydrated), an iOS Simulator (generated SwiftUI) and an Android emulator (generated Jetpack Compose), each screen shown from its status bar down to just below the list: three todos, typing \"Pick up oat milk\" and adding it, checking it off, removing it. Real screen captures with real input; waits shortened, typing sped up on the phones.",
+   "theme": "dark",
+   "pair": "video/three-targets-light.poster.png",
+   "variantFiles": [
+    {
+     "file": "video/three-targets-dark.poster-640.webp",
+     "width": 640,
+     "height": 276,
+     "bytes": 8482,
+     "format": "webp"
+    },
+    {
+     "file": "video/three-targets-dark.poster-640.avif",
+     "width": 640,
+     "height": 276,
+     "bytes": 7311,
+     "format": "avif"
+    },
+    {
+     "file": "video/three-targets-dark.poster.webp",
+     "width": 1200,
+     "height": 518,
+     "bytes": 19992,
+     "format": "webp"
+    },
+    {
+     "file": "video/three-targets-dark.poster.avif",
+     "width": 1200,
+     "height": 518,
+     "bytes": 16664,
+     "format": "avif"
+    }
+   ],
+   "width": 1200,
+   "height": 518
+  },
+  {
+   "file": "video/three-targets-dark.webm",
+   "kind": "video",
+   "pages": [
+    "/",
+    "/products/native",
+    "/why/one-codebase",
+    "/compare/react-native"
+   ],
+   "slot": "three-targets",
+   "alt": "The same small todo app, Today, built from one source file (examples/native-showcase/src/TodayApp.tsx) and running at once in Chromium (web, server-rendered and hydrated), an iOS Simulator (generated SwiftUI) and an Android emulator (generated Jetpack Compose), each screen shown from its status bar down to just below the list: three todos, typing \"Pick up oat milk\" and adding it, checking it off, removing it. Real screen captures with real input; waits shortened, typing sped up on the phones.",
+   "theme": "dark",
+   "pair": "video/three-targets-light.webm",
+   "poster": "video/three-targets-dark.poster.png",
+   "width": 1200,
+   "height": 518,
+   "motion": {
+    "loop": true,
+    "ms": 12400,
+    "reduced": "show the poster (the list on all three) and do not autoplay"
+   },
+   "size": "large"
+  },
+  {
+   "file": "video/three-targets-light.mp4",
+   "kind": "video",
+   "pages": [
+    "/",
+    "/products/native",
+    "/why/one-codebase",
+    "/compare/react-native"
+   ],
+   "slot": "three-targets",
+   "alt": "The same small todo app, Today, built from one source file (examples/native-showcase/src/TodayApp.tsx) and running at once in Chromium (web, server-rendered and hydrated), an iOS Simulator (generated SwiftUI) and an Android emulator (generated Jetpack Compose), each screen shown from its status bar down to just below the list: three todos, typing \"Pick up oat milk\" and adding it, checking it off, removing it. Real screen captures with real input; waits shortened, typing sped up on the phones.",
+   "theme": "light",
+   "pair": "video/three-targets-dark.mp4",
+   "poster": "video/three-targets-light.poster.png",
+   "width": 1200,
+   "height": 518,
+   "motion": {
+    "loop": true,
+    "ms": 12400,
+    "reduced": "show the poster (the list on all three) and do not autoplay"
+   },
+   "size": "large"
+  },
+  {
+   "file": "video/three-targets-light.poster.png",
+   "kind": "poster",
+   "pages": [
+    "/",
+    "/products/native"
+   ],
+   "slot": "three-targets",
+   "alt": "The same small todo app, Today, built from one source file (examples/native-showcase/src/TodayApp.tsx) and running at once in Chromium (web, server-rendered and hydrated), an iOS Simulator (generated SwiftUI) and an Android emulator (generated Jetpack Compose), each screen shown from its status bar down to just below the list: three todos, typing \"Pick up oat milk\" and adding it, checking it off, removing it. Real screen captures with real input; waits shortened, typing sped up on the phones.",
+   "theme": "light",
+   "pair": "video/three-targets-dark.poster.png",
+   "variantFiles": [
+    {
+     "file": "video/three-targets-light.poster-640.webp",
+     "width": 640,
+     "height": 276,
+     "bytes": 8322,
+     "format": "webp"
+    },
+    {
+     "file": "video/three-targets-light.poster-640.avif",
+     "width": 640,
+     "height": 276,
+     "bytes": 7337,
+     "format": "avif"
+    },
+    {
+     "file": "video/three-targets-light.poster.webp",
+     "width": 1200,
+     "height": 518,
+     "bytes": 19696,
+     "format": "webp"
+    },
+    {
+     "file": "video/three-targets-light.poster.avif",
+     "width": 1200,
+     "height": 518,
+     "bytes": 16415,
+     "format": "avif"
+    }
+   ],
+   "width": 1200,
+   "height": 518
+  },
+  {
+   "file": "video/three-targets-light.webm",
+   "kind": "video",
+   "pages": [
+    "/",
+    "/products/native",
+    "/why/one-codebase",
+    "/compare/react-native"
+   ],
+   "slot": "three-targets",
+   "alt": "The same small todo app, Today, built from one source file (examples/native-showcase/src/TodayApp.tsx) and running at once in Chromium (web, server-rendered and hydrated), an iOS Simulator (generated SwiftUI) and an Android emulator (generated Jetpack Compose), each screen shown from its status bar down to just below the list: three todos, typing \"Pick up oat milk\" and adding it, checking it off, removing it. Real screen captures with real input; waits shortened, typing sped up on the phones.",
+   "theme": "light",
+   "pair": "video/three-targets-dark.webm",
+   "poster": "video/three-targets-light.poster.png",
+   "width": 1200,
+   "height": 518,
+   "motion": {
+    "loop": true,
+    "ms": 12400,
+    "reduced": "show the poster (the list on all three) and do not autoplay"
+   },
+   "size": "large"
+  },
+  {
+   "file": "video/three-targets-sm-dark.mp4",
+   "kind": "video",
+   "pages": [
+    "/",
+    "/products/native",
+    "/why/one-codebase",
+    "/compare/react-native"
+   ],
+   "slot": "three-targets",
+   "alt": "The same small todo app, Today, built from one source file (examples/native-showcase/src/TodayApp.tsx) and running at once in Chromium (web, server-rendered and hydrated), an iOS Simulator (generated SwiftUI) and an Android emulator (generated Jetpack Compose), each screen shown from its status bar down to just below the list: three todos, typing \"Pick up oat milk\" and adding it, checking it off, removing it. Real screen captures with real input; waits shortened, typing sped up on the phones.",
+   "theme": "dark",
+   "pair": "video/three-targets-sm-light.mp4",
+   "poster": "video/three-targets-sm-dark.poster.png",
+   "width": 720,
+   "height": 310,
+   "motion": {
+    "loop": true,
+    "ms": 12400,
+    "reduced": "show the poster (the list on all three) and do not autoplay"
+   },
+   "size": "phone"
+  },
+  {
+   "file": "video/three-targets-sm-dark.poster.png",
+   "kind": "poster",
+   "pages": [
+    "/",
+    "/products/native"
+   ],
+   "slot": "three-targets",
+   "alt": "The same small todo app, Today, built from one source file (examples/native-showcase/src/TodayApp.tsx) and running at once in Chromium (web, server-rendered and hydrated), an iOS Simulator (generated SwiftUI) and an Android emulator (generated Jetpack Compose), each screen shown from its status bar down to just below the list: three todos, typing \"Pick up oat milk\" and adding it, checking it off, removing it. Real screen captures with real input; waits shortened, typing sped up on the phones.",
+   "theme": "dark",
+   "pair": "video/three-targets-sm-light.poster.png",
+   "variantFiles": [
+    {
+     "file": "video/three-targets-sm-dark.poster.webp",
+     "width": 720,
+     "height": 310,
+     "bytes": 9998,
+     "format": "webp"
+    },
+    {
+     "file": "video/three-targets-sm-dark.poster.avif",
+     "width": 720,
+     "height": 310,
+     "bytes": 8595,
+     "format": "avif"
+    }
+   ],
+   "width": 720,
+   "height": 310
+  },
+  {
+   "file": "video/three-targets-sm-dark.webm",
+   "kind": "video",
+   "pages": [
+    "/",
+    "/products/native",
+    "/why/one-codebase",
+    "/compare/react-native"
+   ],
+   "slot": "three-targets",
+   "alt": "The same small todo app, Today, built from one source file (examples/native-showcase/src/TodayApp.tsx) and running at once in Chromium (web, server-rendered and hydrated), an iOS Simulator (generated SwiftUI) and an Android emulator (generated Jetpack Compose), each screen shown from its status bar down to just below the list: three todos, typing \"Pick up oat milk\" and adding it, checking it off, removing it. Real screen captures with real input; waits shortened, typing sped up on the phones.",
+   "theme": "dark",
+   "pair": "video/three-targets-sm-light.webm",
+   "poster": "video/three-targets-sm-dark.poster.png",
+   "width": 720,
+   "height": 310,
+   "motion": {
+    "loop": true,
+    "ms": 12400,
+    "reduced": "show the poster (the list on all three) and do not autoplay"
+   },
+   "size": "phone"
+  },
+  {
+   "file": "video/three-targets-sm-light.mp4",
+   "kind": "video",
+   "pages": [
+    "/",
+    "/products/native",
+    "/why/one-codebase",
+    "/compare/react-native"
+   ],
+   "slot": "three-targets",
+   "alt": "The same small todo app, Today, built from one source file (examples/native-showcase/src/TodayApp.tsx) and running at once in Chromium (web, server-rendered and hydrated), an iOS Simulator (generated SwiftUI) and an Android emulator (generated Jetpack Compose), each screen shown from its status bar down to just below the list: three todos, typing \"Pick up oat milk\" and adding it, checking it off, removing it. Real screen captures with real input; waits shortened, typing sped up on the phones.",
+   "theme": "light",
+   "pair": "video/three-targets-sm-dark.mp4",
+   "poster": "video/three-targets-sm-light.poster.png",
+   "width": 720,
+   "height": 310,
+   "motion": {
+    "loop": true,
+    "ms": 12400,
+    "reduced": "show the poster (the list on all three) and do not autoplay"
+   },
+   "size": "phone"
+  },
+  {
+   "file": "video/three-targets-sm-light.poster.png",
+   "kind": "poster",
+   "pages": [
+    "/",
+    "/products/native"
+   ],
+   "slot": "three-targets",
+   "alt": "The same small todo app, Today, built from one source file (examples/native-showcase/src/TodayApp.tsx) and running at once in Chromium (web, server-rendered and hydrated), an iOS Simulator (generated SwiftUI) and an Android emulator (generated Jetpack Compose), each screen shown from its status bar down to just below the list: three todos, typing \"Pick up oat milk\" and adding it, checking it off, removing it. Real screen captures with real input; waits shortened, typing sped up on the phones.",
+   "theme": "light",
+   "pair": "video/three-targets-sm-dark.poster.png",
+   "variantFiles": [
+    {
+     "file": "video/three-targets-sm-light.poster.webp",
+     "width": 720,
+     "height": 310,
+     "bytes": 9838,
+     "format": "webp"
+    },
+    {
+     "file": "video/three-targets-sm-light.poster.avif",
+     "width": 720,
+     "height": 310,
+     "bytes": 8335,
+     "format": "avif"
+    }
+   ],
+   "width": 720,
+   "height": 310
+  },
+  {
+   "file": "video/three-targets-sm-light.webm",
+   "kind": "video",
+   "pages": [
+    "/",
+    "/products/native",
+    "/why/one-codebase",
+    "/compare/react-native"
+   ],
+   "slot": "three-targets",
+   "alt": "The same small todo app, Today, built from one source file (examples/native-showcase/src/TodayApp.tsx) and running at once in Chromium (web, server-rendered and hydrated), an iOS Simulator (generated SwiftUI) and an Android emulator (generated Jetpack Compose), each screen shown from its status bar down to just below the list: three todos, typing \"Pick up oat milk\" and adding it, checking it off, removing it. Real screen captures with real input; waits shortened, typing sped up on the phones.",
+   "theme": "light",
+   "pair": "video/three-targets-sm-dark.webm",
+   "poster": "video/three-targets-sm-light.poster.png",
+   "width": 720,
+   "height": 310,
+   "motion": {
+    "loop": true,
+    "ms": 12400,
+    "reduced": "show the poster (the list on all three) and do not autoplay"
+   },
+   "size": "phone"
+  }
+ ]
+}

@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" class="pxa ph-who-saas" viewBox="0 0 560 220" width="560" height="220" role="img" aria-labelledby="ph-who-saas-t ph-who-saas-d" fill="none">
+<title id="ph-who-saas-t">SaaS and dashboards</title>
+<desc id="ph-who-saas-d">Schematic: a form, a table and a bar chart in one dashboard, all reading from one query; one table cell and one bar light up as the data changes.</desc>
+<style>
+.pxa{--px-bg:#0A0A0E;--px-card:#111118;--px-raised:#181822;--px-line:#23232E;--px-line2:#2E2E3B;--px-text:#F4EFE6;--px-strong:#FFFCF5;--px-mist:#C9C4B8;--px-fog:#8A8696;--px-hint:#8A8696;--px-dim:#5C5867;--px-accent:#FF5E1A;--px-accent-text:#FF8A4C;--px-warm:#FFC83D;--px-plasma:#FF1F8C;--px-ok:#4ADE80;--px-warn:#FACC15;--px-err:#F87171;--px-link:#22D3EE;--px-violet:#A78BFA;--px-bar:#3A3846;--px-g1:#FF1F8C;--px-g2:#FF5E1A;--px-g3:#FFC83D;--px-glow:rgba(255,94,26,.16)}
+@media (prefers-color-scheme: light){.pxa{--px-bg:#FAF5EB;--px-card:#FFFFFF;--px-raised:#F4EFE6;--px-line:#E6DFD2;--px-line2:#D6CFC2;--px-text:#14141C;--px-strong:#0A0A0E;--px-mist:#45414F;--px-fog:#67637A;--px-hint:#8E8A9A;--px-dim:#B5AFA3;--px-accent:#E84A0F;--px-accent-text:#A8380A;--px-warm:#8A5A00;--px-plasma:#E40C70;--px-ok:#11692F;--px-warn:#8A5A00;--px-err:#B91C1C;--px-link:#0A6E89;--px-violet:#6D28D9;--px-bar:#D9D2C4;--px-g1:#D1106F;--px-g2:#C2410C;--px-g3:#9A6200;--px-glow:rgba(232,74,15,.10)}}
+[data-theme="dark"] .pxa,.pxa[data-theme="dark"]{--px-bg:#0A0A0E;--px-card:#111118;--px-raised:#181822;--px-line:#23232E;--px-line2:#2E2E3B;--px-text:#F4EFE6;--px-strong:#FFFCF5;--px-mist:#C9C4B8;--px-fog:#8A8696;--px-hint:#8A8696;--px-dim:#5C5867;--px-accent:#FF5E1A;--px-accent-text:#FF8A4C;--px-warm:#FFC83D;--px-plasma:#FF1F8C;--px-ok:#4ADE80;--px-warn:#FACC15;--px-err:#F87171;--px-link:#22D3EE;--px-violet:#A78BFA;--px-bar:#3A3846;--px-g1:#FF1F8C;--px-g2:#FF5E1A;--px-g3:#FFC83D;--px-glow:rgba(255,94,26,.16)}
+[data-theme="light"] .pxa,.pxa[data-theme="light"]{--px-bg:#FAF5EB;--px-card:#FFFFFF;--px-raised:#F4EFE6;--px-line:#E6DFD2;--px-line2:#D6CFC2;--px-text:#14141C;--px-strong:#0A0A0E;--px-mist:#45414F;--px-fog:#67637A;--px-hint:#8E8A9A;--px-dim:#B5AFA3;--px-accent:#E84A0F;--px-accent-text:#A8380A;--px-warm:#8A5A00;--px-plasma:#E40C70;--px-ok:#11692F;--px-warn:#8A5A00;--px-err:#B91C1C;--px-link:#0A6E89;--px-violet:#6D28D9;--px-bar:#D9D2C4;--px-g1:#D1106F;--px-g2:#C2410C;--px-g3:#9A6200;--px-glow:rgba(232,74,15,.10)}
+.ph-who-saas{font-family:'Space Grotesk',ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif}
+.ph-who-saas .m{font-family:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,monospace}
+.ph-who-saas .ph-who-saas-rm{opacity:0}
+@media (prefers-reduced-motion: reduce){.ph-who-saas *{animation:none!important;transition:none!important}.ph-who-saas .ph-who-saas-rm{opacity:1}.ph-who-saas .ph-who-saas-am{opacity:0}}
+
+.ph-who-saas .ln{stroke:var(--px-hint);stroke-width:1.5}
+.ph-who-saas .dash{stroke:var(--px-hint);stroke-width:1.5;stroke-dasharray:4 6}
+.ph-who-saas .bx{fill:var(--px-card);stroke:var(--px-bar);stroke-width:1.5}
+.ph-who-saas .bx2{fill:var(--px-raised);stroke:var(--px-bar);stroke-width:1.5}
+.ph-who-saas .act{fill:none;stroke:var(--px-text);stroke-width:2}
+.ph-who-saas .lab{fill:var(--px-fog);font-size:14px;letter-spacing:.02em}
+.ph-who-saas .eb{fill:var(--px-fog);font-size:13px;letter-spacing:.16em}
+.ph-who-saas .val{fill:var(--px-text);font-size:20px;font-weight:500}
+.ph-who-saas .big{fill:var(--px-strong);font-size:30px;font-weight:600;letter-spacing:-.02em}
+.ph-who-saas .txt{fill:var(--px-text);font-size:16px}
+.ph-who-saas .mt{fill:var(--px-mist);font-size:14px}
+.ph-who-saas .hint{fill:var(--px-fog);font-size:13px}
+.ph-who-saas .ember{stroke:url(#ph-who-saas-eg);stroke-width:2.5;stroke-linecap:round;stroke-dasharray:36 2000;fill:none}
+.ph-who-saas .emS{stroke:url(#ph-who-saas-eg);stroke-width:2.5;fill:none}
+.ph-who-saas .ring{fill:none;stroke:var(--px-accent);stroke-width:2}
+.ph-who-saas .ok{fill:var(--px-ok)} .ph-who-saas .warm{fill:var(--px-warm)} .ph-who-saas .hot{fill:var(--px-accent)} .ph-who-saas .err{fill:var(--px-err)}
+.ph-who-saas .okT{fill:var(--px-ok)} .ph-who-saas .warmT{fill:var(--px-warm)} .ph-who-saas .hotT{fill:var(--px-accent-text)} .ph-who-saas .errT{fill:var(--px-err)} .ph-who-saas .linkT{fill:var(--px-link)}
+.ph-who-saas .focus{fill:none;stroke:var(--px-link);stroke-width:2;stroke-dasharray:3 3}
+.pxa{--sx-kw:#FF5E1A;--sx-str:#FFC83D;--sx-num:#FF1F8C;--sx-fn:#22D3EE;--sx-type:#A78BFA;--sx-com:#8A8696;--sx-fg:#E6E0D2;--sx-pane:#111118;--sx-pane-line:#2E2E3B;--sx-del-bar:#FF1F8C;--sx-del-bg:rgba(255,31,140,.12);--sx-del-text:#F7B9D6;--sx-ins-bar:#22D3EE;--sx-ins-bg:rgba(34,211,238,.09);--sx-ins-text:#E9FBFF}
+@media (prefers-color-scheme: light){.pxa{--sx-kw:#C2410C;--sx-str:#8A5A00;--sx-num:#BE185D;--sx-fn:#0E7490;--sx-type:#6D28D9;--sx-com:#6B6776;--sx-fg:#14141C;--sx-pane:#F4EFE6;--sx-pane-line:#E6DFD2;--sx-del-bar:#D1106F;--sx-del-bg:rgba(209,16,111,.07);--sx-del-text:#8E0B4C;--sx-ins-bar:#0A6E89;--sx-ins-bg:rgba(10,110,137,.08);--sx-ins-text:#0B4F63}}
+[data-theme="dark"] .pxa,.pxa[data-theme="dark"]{--sx-kw:#FF5E1A;--sx-str:#FFC83D;--sx-num:#FF1F8C;--sx-fn:#22D3EE;--sx-type:#A78BFA;--sx-com:#8A8696;--sx-fg:#E6E0D2;--sx-pane:#111118;--sx-pane-line:#2E2E3B;--sx-del-bar:#FF1F8C;--sx-del-bg:rgba(255,31,140,.12);--sx-del-text:#F7B9D6;--sx-ins-bar:#22D3EE;--sx-ins-bg:rgba(34,211,238,.09);--sx-ins-text:#E9FBFF}
+[data-theme="light"] .pxa,.pxa[data-theme="light"]{--sx-kw:#C2410C;--sx-str:#8A5A00;--sx-num:#BE185D;--sx-fn:#0E7490;--sx-type:#6D28D9;--sx-com:#6B6776;--sx-fg:#14141C;--sx-pane:#F4EFE6;--sx-pane-line:#E6DFD2;--sx-del-bar:#D1106F;--sx-del-bg:rgba(209,16,111,.07);--sx-del-text:#8E0B4C;--sx-ins-bar:#0A6E89;--sx-ins-bg:rgba(10,110,137,.08);--sx-ins-text:#0B4F63}
+.ph-who-saas .cd{font-family:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,monospace;fill:var(--sx-fg);white-space:pre;font-variant-ligatures:none}
+.ph-who-saas .cd .k{fill:var(--sx-kw)} .ph-who-saas .cd .s{fill:var(--sx-str)} .ph-who-saas .cd .n{fill:var(--sx-num)}
+.ph-who-saas .cd .f{fill:var(--sx-fn)} .ph-who-saas .cd .t{fill:var(--sx-type)} .ph-who-saas .cd .c{fill:var(--sx-com)} .ph-who-saas .cd .u{fill:var(--sx-com)}
+.ph-who-saas .pane{fill:var(--sx-pane);stroke:var(--sx-pane-line);stroke-width:1}
+.ph-who-saas .delbg{fill:var(--sx-del-bg)} .ph-who-saas .delbar{fill:var(--sx-del-bar)} .ph-who-saas .insbg{fill:var(--sx-ins-bg)} .ph-who-saas .insbar{fill:var(--sx-ins-bar)}
+.ph-who-saas .sgn-d{fill:var(--sx-del-bar)} .ph-who-saas .sgn-i{fill:var(--sx-ins-bar)}.ph-who-saas .warnT{fill:var(--px-warn)}
+</style>
+<defs><linearGradient id="ph-who-saas-eg" x1="0" y1="0" x2="1" y2="0"><stop offset="0" style="stop-color:var(--px-g1)"/><stop offset=".55" style="stop-color:var(--px-g2)"/><stop offset="1" style="stop-color:var(--px-g3)"/></linearGradient><linearGradient id="ph-who-saas-egu" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="560" y2="0"><stop offset="0" style="stop-color:var(--px-g1)"/><stop offset=".55" style="stop-color:var(--px-g2)"/><stop offset="1" style="stop-color:var(--px-g3)"/></linearGradient><linearGradient id="ph-who-saas-egv" x1="0" y1="1" x2="0" y2="0"><stop offset="0" style="stop-color:var(--px-g1)"/><stop offset=".55" style="stop-color:var(--px-g2)"/><stop offset="1" style="stop-color:var(--px-g3)"/></linearGradient><linearGradient id="ph-who-saas-egd" x1="0" y1="0" x2="1" y2="1"><stop offset="0" style="stop-color:var(--px-g1)"/><stop offset=".55" style="stop-color:var(--px-g2)"/><stop offset="1" style="stop-color:var(--px-g3)"/></linearGradient></defs>
+
+<rect class="bx" x="16" y="16" width="168" height="140" rx="12"/><text class="m lab" x="30" y="40">form</text>
+<rect class="bx2" x="30" y="54" width="140" height="26" rx="7"/><rect class="bx2" x="30" y="90" width="140" height="26" rx="7"/><rect class="bx2" x="30" y="124" width="64" height="22" rx="7"/>
+<rect class="bx" x="196" y="16" width="168" height="140" rx="12"/><text class="m lab" x="210" y="40">table</text>
+<line class="ln" x1="196" y1="58" x2="364" y2="58" style="stroke:var(--px-line2)"/><rect x="210" y="66" width="60" height="6" rx="3" style="fill:var(--px-bar)"/><rect x="296" y="66" width="48" height="6" rx="3" style="fill:var(--px-bar)"/><line class="ln" x1="196" y1="82" x2="364" y2="82" style="stroke:var(--px-line2)"/><rect x="210" y="90" width="60" height="6" rx="3" style="fill:var(--px-bar)"/><rect x="296" y="90" width="48" height="6" rx="3" style="fill:var(--px-bar)"/><line class="ln" x1="196" y1="106" x2="364" y2="106" style="stroke:var(--px-line2)"/><rect x="210" y="114" width="60" height="6" rx="3" style="fill:var(--px-bar)"/><rect x="296" y="114" width="48" height="6" rx="3" style="fill:var(--px-bar)"/><line class="ln" x1="196" y1="130" x2="364" y2="130" style="stroke:var(--px-line2)"/><rect x="210" y="138" width="60" height="6" rx="3" style="fill:var(--px-bar)"/><rect x="296" y="138" width="48" height="6" rx="3" style="fill:var(--px-bar)"/>
+<rect x="290" y="109" width="64" height="18" rx="4" style="fill:var(--px-glow);stroke:var(--px-accent);stroke-width:1.5"/>
+<rect class="bx" x="376" y="16" width="168" height="140" rx="12"/><text class="m lab" x="390" y="40">chart</text>
+<rect x="396" y="102" width="18" height="38" rx="3" style="fill:var(--px-bar)"/><rect x="424" y="88" width="18" height="52" rx="3" style="fill:var(--px-bar)"/><rect x="452" y="94" width="18" height="46" rx="3" style="fill:var(--px-bar)"/><rect x="480" y="74" width="18" height="66" rx="3" style="fill:var(--px-bar)"/><rect x="508" y="66" width="18" height="74" rx="3" style="fill:url(#ph-who-saas-egv)"/>
+<rect class="bx" x="170" y="176" width="220" height="30" rx="15"/><text class="m mt" x="280" y="196" text-anchor="middle" style="font-size:12px">one query, one version</text>
+<path class="ln" d="M100 156 C 100 176, 140 190, 170 190 M460 156 C 460 176, 420 190, 390 190 M280 156 L280 176"/>
+</svg>

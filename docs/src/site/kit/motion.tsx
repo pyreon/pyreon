@@ -1,37 +1,34 @@
 import type { VNodeChild } from '@pyreon/core'
-import { useIntersection } from '@pyreon/hooks'
-import { kinetic } from '@pyreon/kinetic'
-import { computed } from '@pyreon/reactivity'
+import { keyframes } from '@pyreon/styler'
 import { motion } from '../theme'
+import { el } from './bases'
 
-const ease = `${motion.reveal.duration}ms ${motion.reveal.easing}`
+const fadeUp = keyframes`
+  from { opacity: 0; transform: translateY(${motion.reveal.distance}px); }
+  to { opacity: 1; transform: none; }
+`
 
-const RevealBox = kinetic('div')
-  .enter({ opacity: 0, transform: `translateY(${motion.reveal.distance}px)` })
-  .enterTo({ opacity: 1, transform: 'none' })
-  .enterTransition(`opacity ${ease}, transform ${ease}`)
+const reveal = `
+  @media (prefers-reduced-motion: no-preference) {
+    @supports (animation-timeline: view()) {
+      animation: ${fadeUp} linear both;
+      animation-timeline: view();
+      animation-range: entry 0% entry 35%;
+    }
+  }
+`
+
+const RevealBox = el.config({ name: 'Reveal' }).attrs({ block: true, contentAlignX: 'block' }).theme(() => ({ extendCss: reveal }))
 
 /**
- * `.rv` → `.rv.on` — fades a section up the first time it scrolls into view.
- * kinetic keeps the content in the prerendered HTML (hidden-state classes
- * inlined on the server) and skips the motion under
- * `prefers-reduced-motion`. Only opacity and transform animate, never layout.
+ * `.rv` — a section fades up as it scrolls into view. [A12]
+ *
+ * Pure CSS (a scroll-driven animation), so it costs no JavaScript and works on
+ * static pages: content above the fold is already past the animation's range
+ * and renders in place, nothing is ever hidden while waiting for a script, and
+ * browsers without `animation-timeline` (or with reduced motion) show the
+ * section as is. Only opacity and transform animate, never layout.
  */
 export function Reveal(props: { children?: VNodeChild }) {
-  let node: HTMLElement | null = null
-  const entry = useIntersection(() => node, { threshold: 0.08, rootMargin: '0px 0px -40px 0px' })
-  // Latches: once seen, stays shown (scrolling back up does not hide it).
-  let seen = false
-  const show = computed(() => {
-    if (seen) return true
-    seen = entry()?.isIntersecting === true
-    return seen
-  })
-  return (
-    <RevealBox ref={(n: HTMLElement | null) => {
-            node = n
-          }} show={() => show()}>
-      {props.children}
-    </RevealBox>
-  )
+  return <RevealBox>{props.children}</RevealBox>
 }

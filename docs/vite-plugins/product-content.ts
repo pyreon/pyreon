@@ -21,6 +21,8 @@ import { pyreonSyntaxDark, pyreonSyntaxLight } from '../src/styles/pyreon-syntax
  * The output is the content set's own JSON, so it is trusted markup.
  */
 const PRODUCT_JSON = /\/src\/site\/content\/products\/(?!_)[a-z0-9-]+\.json$/
+/** The homepage content: the hero's source file, the counter and the AI example. */
+const HOME_JSON = /\/src\/site\/content\/_home\.json$/
 
 let highlighter: Promise<Highlighter> | null = null
 function getHighlighter(): Promise<Highlighter> {
@@ -65,20 +67,33 @@ export async function highlightProduct(data: Json): Promise<Json> {
   return data
 }
 
+/**
+ * Adds `codeHtml` to the homepage's code fields (`hero.visual.code`,
+ * `once.counter.code`, `ai.example.code`). Exported for tests.
+ */
+export async function highlightHome(data: Json): Promise<Json> {
+  for (const s of (data.sections ?? []) as Json[]) {
+    const holder = (s.kind === 'hero' ? s.visual : s.kind === 'once' ? s.counter : s.kind === 'ai' ? s.example : null) as Json | null | undefined
+    if (holder && typeof holder.code === 'string') holder.codeHtml = await highlight(holder.code)
+  }
+  return data
+}
+
 export default function productContent(): Plugin {
   return {
     name: 'pyreon-docs-product-content',
     enforce: 'pre',
     async transform(code, id) {
       const path = id.split('?')[0] ?? id
-      if (!PRODUCT_JSON.test(path)) return null
+      const isHome = HOME_JSON.test(path)
+      if (!PRODUCT_JSON.test(path) && !isHome) return null
       let data: Json
       try {
         data = JSON.parse(code) as Json
       } catch (err) {
         throw new Error(`[Pyreon] product content ${path} is not valid JSON: ${(err as Error).message}`)
       }
-      return { code: JSON.stringify(await highlightProduct(data)), map: null }
+      return { code: JSON.stringify(isHome ? await highlightHome(data) : await highlightProduct(data)), map: null }
     },
   }
 }

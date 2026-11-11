@@ -26,8 +26,11 @@ export default function legacyCssLayer(): Plugin {
     name: 'pyreon-docs-legacy-css-layer',
     enforce: 'pre',
     transform(code, id) {
-      const path = id.split('?')[0] ?? id
+      const [path = id, query = ''] = id.split('?')
       if (!LAYERED.some((re) => re.test(path))) return null
+      // `docs.css?url` (the docs layout's link) is the JS module that exports
+      // the asset URL; the stylesheet itself comes through here again as CSS.
+      if (/(?:^|&)url\b/.test(query)) return null
       if (/^\s*@(?:import|charset)\b/m.test(code)) {
         throw new Error(
           `[Pyreon] legacy-css-layer: ${path} has an @import/@charset, which cannot sit inside @layer. Inline it or import it separately.`,

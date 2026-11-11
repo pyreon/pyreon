@@ -73,6 +73,22 @@ export function useFollowSystemMode(): void {
   })
 }
 
+/**
+ * The same as `useFollowSystemMode`, outside a component: static marketing
+ * pages (no root layout runs in the browser) call it from
+ * `static-client.ts`. Returns the cleanup.
+ */
+export function followSystemMode(): () => void {
+  if (!isClient || typeof matchMedia !== 'function') return () => {}
+  const query = matchMedia('(prefers-color-scheme: light)')
+  const onChange = (e: MediaQueryListEvent) => {
+    if (readStored() !== null) return
+    applyMode(e.matches ? 'light' : 'dark')
+  }
+  query.addEventListener('change', onChange)
+  return () => query.removeEventListener('change', onChange)
+}
+
 function applyMode(next: ColorMode): void {
   colorMode.set(next)
   if (!isClient) return

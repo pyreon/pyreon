@@ -1,7 +1,6 @@
-import { PyreonLanding } from '../../components/PyreonLanding'
+import { HomePage } from '../../site/pages/home/HomePage'
 
-// Home page — renders the full PyreonLanding (ported from the
-// VitePress docs/.vitepress/theme/components/PyreonLanding.vue).
-export default function HomePage() {
-  return <PyreonLanding />
+/** `/` — the homepage, from `content/_home.json` (src/site/pages/home). */
+export default function HomeRoute() {
+  return <HomePage />
 }
