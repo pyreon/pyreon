@@ -1760,7 +1760,9 @@ The most interesting bucket is **`ran-once`** — an effect or computed that mou
 
 ### DOM bindings
 
-Every live DOM binding is an `effect` node, so coverage measures the updates users actually see. That covers the compiled template's bindings (`_bindText`, `_bindDirect`, `_bind`, `renderEffect`, `bindPolymorphicText`), the `h()` path's reactive props and children, and the `<For>` / `<Show>` boundaries. A binding is `ran-once` after mount and `covered` once one of its sources changes. Each entry carries `binding` (what it writes: `text`, `attr`, `class`, `style`, `prop`, `child` or `list`), `target` (the element's tag) and `key` (the attribute or property) where known, so the uncovered list reads `aria-busy on <div>` or `text in <span>`. `report.bindings` totals them; it is a subset of `byKind.effect`.
+Every live DOM binding is an `effect` node, so coverage measures the updates users actually see. That covers the compiled template's bindings (`_bindText`, `_bindDirect`, `_bind`, `renderEffect`, `bindPolymorphicText`), the `h()` path's reactive props and children, and the `<For>` / `<Show>` boundaries. A binding is `ran-once` after mount and `covered` once one of its sources changes. Each entry carries `binding` (what it writes: `text`, `attr`, `class`, `style`, `prop`, `child`, `list`, or `dom` for a compiled updater that assigns the DOM directly, such as `disabled={busy()}`), `target` (the element's tag) and `key` (the attribute or property) where known, so the uncovered list reads `aria-busy on <div>` or `text in <span>`. `report.bindings` totals them; it is a subset of `byKind.effect`.
+
+Per-row bindings made through `createSelector(...).subscribe` (the `<For>` + selector class shape) are included too. A plain `signal.direct()` subscriber that is not a DOM binding (for example `@pyreon/table`'s) is an effect with no mount run, so it reads `never-ran` until it is notified once.
 
 A **dead** binding, one whose first run read no signal (`<Field label="Name" />`), can never re-run. It is not a reactive edge and is not counted.
 
