@@ -125,8 +125,9 @@ export default defineConfig({
           ...Object.entries(SITE_LINKS)
             .filter(([, target]) => target !== null)
             .map(([key]) => `/${key}`),
-          '/why',
-          '/compare',
+          // Exactly these two: their pages (/why/<id>, /compare/<id>) stay listed.
+          /^\/why$/,
+          /^\/compare$/,
         ],
       },
       // Everything is crawlable; the sitemap is the list above.

@@ -1,7 +1,7 @@
 import { expect, type Locator, type Page, test } from '@playwright/test'
 import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { waitForHydration } from './hydration-barrier'
+import { waitForIslands } from './site-islands'
 
 /**
  * pyreon.dev product pages for the core/platform and data/state groups,
@@ -38,7 +38,7 @@ function collectErrors(page: Page): string[] {
 /** Scroll the demo in and wait for its island to hydrate (it hydrates when visible). */
 async function openDemo(page: Page, id: string): Promise<Locator> {
   await page.goto(`/products/${id}`)
-  await waitForHydration(page)
+  await waitForIslands(page)
   const demo = page.locator('#demo')
   await demo.scrollIntoViewIfNeeded()
   await expect(demo.locator('pyreon-island')).toHaveCount(1)
@@ -55,7 +55,7 @@ test.describe('build output', () => {
       expect(existsSync(file)).toBe(true)
       const html = readFileSync(file, 'utf8')
       expect(html).toContain(`<link rel="canonical" href="https://pyreon.dev/products/${id}"`)
-      expect(html).toContain(`content="https://pyreon.dev/assets/og/products/${id}.png"`)
+      expect(html).toContain(`content="https://pyreon.dev/media/og/products/${id}.png"`)
       expect(html).toContain('name="twitter:card" content="summary_large_image"')
       // The hero visual: an inline SVG with its own title, or the theme pictures / loop poster.
       expect(html).toMatch(/<figure[^>]*>[\s\S]*?(<svg[^>]*role="img"|<picture)/)
@@ -70,7 +70,7 @@ test.describe('hydration', () => {
       await trackRemovals(page)
       const errors = collectErrors(page)
       await page.goto(`/products/${id}`)
-      await waitForHydration(page)
+      await waitForIslands(page)
       await page.waitForTimeout(300)
       expect(await page.evaluate(() => (window as unknown as { __removed: number }).__removed)).toBe(0)
       await page.locator('#demo').scrollIntoViewIfNeeded()
@@ -86,7 +86,7 @@ test.describe('no horizontal page scroll', () => {
       await page.setViewportSize({ width, height: 900 })
       for (const id of IDS) {
         await page.goto(`/products/${id}`)
-        await waitForHydration(page)
+        await waitForIslands(page)
         await page.locator('#demo').scrollIntoViewIfNeeded()
         await page.waitForTimeout(500)
         const r = await page.evaluate(() => {
@@ -310,7 +310,7 @@ test.describe('demos, by pointer and keyboard', () => {
     await demo.getByPlaceholder('Type something, then reload').fill('hello')
     expect(await page.evaluate(() => localStorage.getItem('pyreon-demo-theme'))).toBe('"dark"')
     await page.reload()
-    await waitForHydration(page)
+    await waitForIslands(page)
     const again = page.locator('#demo')
     await again.scrollIntoViewIfNeeded()
     await expect(again.getByPlaceholder('Type something, then reload')).toHaveValue('hello')
@@ -338,7 +338,7 @@ test.describe('contrast on the product pages', () => {
       const all: string[] = []
       for (const id of IDS) {
         await page.goto(`/products/${id}`)
-        await waitForHydration(page)
+        await waitForIslands(page)
         await page.locator('#demo').scrollIntoViewIfNeeded()
         await page.waitForTimeout(800)
         const failures = await page.evaluate(() => {

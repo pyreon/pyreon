@@ -9,6 +9,7 @@ import { font, radius, text } from '../theme'
 import { el, tone, txt } from '../kit/bases'
 import { GlowCard } from '../kit/cards'
 import { Pill } from '../kit/controls'
+import { KitScope } from '../kit/scope'
 
 /**
  * The package's own stylesheet (hover, selection, focus rings, reduced
@@ -280,34 +281,36 @@ export default function DemoFlow() {
   }
 
   return (
-    <GlowCard padding="flush">
-      <FlowStyles />
-      <Bar>
-        <Pill variant="solid" onClick={() => void autoLayout()}>
-          Auto-layout
-        </Pill>
-        <Pill onClick={scramble}>Scramble</Pill>
-        <Counter aria-live="polite">
-          node re-runs since mount: <CounterValue>{() => String(reRuns())}</CounterValue>
-        </Counter>
-      </Bar>
-      <Canvas>
-        <div ref={(el: HTMLElement | null) => (canvasEl = el)} style="position: absolute; inset: 0">
-          <Flow
-            instance={flow}
-            nodeTypes={NODE_TYPES}
-            colorMode="light"
-            ariaLabel="Lead-routing workflow: seven steps, six connections"
-          >
-            <Background variant="dots" gap={20} />
-            <Controls />
-          </Flow>
-        </div>
-      </Canvas>
-      <Hint>
-        Drag a node, or Tab to one and use the arrow keys (Shift for bigger steps). Drag the empty
-        canvas to pan; the buttons in the corner zoom and fit.
-      </Hint>
-    </GlowCard>
+    <KitScope>
+      <GlowCard padding="flush">
+        <FlowStyles />
+        <Bar>
+          <Pill variant="solid" onClick={() => void autoLayout()}>
+            Auto-layout
+          </Pill>
+          <Pill onClick={scramble}>Scramble</Pill>
+          <Counter aria-live="polite">
+            node re-runs since mount: <CounterValue>{() => String(reRuns())}</CounterValue>
+          </Counter>
+        </Bar>
+        <Canvas>
+          <div ref={(el: HTMLElement | null) => (canvasEl = el)} style="position: absolute; inset: 0">
+            <Flow
+              instance={flow}
+              nodeTypes={NODE_TYPES}
+              colorMode="light"
+              ariaLabel="Lead-routing workflow: seven steps, six connections"
+            >
+              <Background variant="dots" gap={20} />
+              <Controls />
+            </Flow>
+          </div>
+        </Canvas>
+        <Hint>
+          Drag a node, or Tab to one and use the arrow keys (Shift for bigger steps). Drag the empty
+          canvas to pan; the buttons in the corner zoom and fit.
+        </Hint>
+      </GlowCard>
+    </KitScope>
   )
 }

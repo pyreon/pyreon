@@ -1,6 +1,6 @@
 import { expect, type Page, test } from '@playwright/test'
 import { readFileSync } from 'node:fs'
-import { waitForHydration } from './hydration-barrier'
+import { waitForIslands } from './site-islands'
 
 /**
  * Interaction for the four visual demos (charts, flow, editor, document) in
@@ -34,7 +34,7 @@ const HYDRATED: Record<string, (page: Page) => Promise<void>> = {
 
 async function openDemo(page: Page, id: string, ready: string): Promise<void> {
   await page.goto(`/products/${id}`)
-  await waitForHydration(page)
+  await waitForIslands(page)
   await page.locator('#demo').scrollIntoViewIfNeeded()
   await page.locator(`#demo ${ready}`).first().waitFor({ state: 'visible' })
   await HYDRATED[id]?.(page)

@@ -19,7 +19,9 @@ export default definePlaywrightConfig({
   testDir: '../e2e',
   timeout: 60_000,
   projects: [
-    { name: 'docs', testMatch: /docs\.spec\.ts$/, port: 5191 },
+    { name: 'docs', testMatch: /\/docs\.spec\.ts$/, port: 5191 },
+    // The docs pages as static HTML with islands (crawl, islands, budgets, readability).
+    { name: 'site-docs', testMatch: /site-docs\.spec\.ts$/, port: 5191 },
     // The marketing shell (nav, menus, mobile sheet, theme, widths, contrast).
     { name: 'site-shell', testMatch: /site-shell\.spec\.ts$/, port: 5191 },
     // The homepage and the static-page architecture (JS budget, sitemap, 404).

@@ -8,6 +8,7 @@ import { AutoGrid } from '../kit/layout'
 import { Code, Eyebrow, Heading } from '../kit/type'
 import { CHECK_AFTER, CHECK_BEFORE, type Framework, MIGRATIONS } from './_capture-migrate'
 import { lines, Replay, type ReplayLine } from './_replay-b'
+import { KitScope } from '../kit/scope'
 
 const FRAMEWORKS: readonly Framework[] = ['React', 'Preact', 'Vue', 'Solid', 'Svelte']
 
@@ -49,45 +50,47 @@ export default function DemoMigrate() {
   const fw = signal<Framework>('React')
 
   return (
-    <Stack>
-      <Picker>
-        <Eyebrow>from</Eyebrow>
-        <Segmented options={FRAMEWORKS} value={() => fw()} onChange={(v) => fw.set(v)} label="Framework you are coming from" />
-      </Picker>
-      {() => {
-        const m = MIGRATIONS[fw()]
-        return (
-          <AutoGrid cols={3} gap={12}>
-            <GlowCard padding="compact">
-              <Eyebrow>step 1 · today · illustrative diff</Eyebrow>
-              <Heading size="step" tag="h3">
-                Swap the import
-              </Heading>
-              <CodeDiff
-                rows={[
-                  ['-', m.from],
-                  ['+', m.to],
-                ]}
-                label={`Illustrative diff: ${m.from} becomes ${m.to}`}
-              />
-              <Note>
-                {m.note} Package: <Code>{m.pkg}</Code>.
-              </Note>
-            </GlowCard>
-            <CodeCard label="step 2 · before · illustrative" caption={`Your ${fw()} code.`} code={m.before} rail="del" />
-            <CodeCard label="step 2 · after · native Pyreon" caption="The same thing in Pyreon." code={m.after} state="hot" rail="ins" />
-          </AutoGrid>
-        )
-      }}
-      <Replay
-        lines={() => CHECK}
-        label="pyreon check output on the React example"
-        title="React example · step 2 before → after"
-        command="pyreon check"
-        source="captured 2026-11-11 with the worktree CLI on the React pair (pick React above to see the files)"
-        autoplay
-        delay={160}
-      />
-    </Stack>
+    <KitScope>
+      <Stack>
+        <Picker>
+          <Eyebrow>from</Eyebrow>
+          <Segmented options={FRAMEWORKS} value={() => fw()} onChange={(v) => fw.set(v)} label="Framework you are coming from" />
+        </Picker>
+        {() => {
+          const m = MIGRATIONS[fw()]
+          return (
+            <AutoGrid cols={3} gap={12}>
+              <GlowCard padding="compact">
+                <Eyebrow>step 1 · today · illustrative diff</Eyebrow>
+                <Heading size="step" tag="h3">
+                  Swap the import
+                </Heading>
+                <CodeDiff
+                  rows={[
+                    ['-', m.from],
+                    ['+', m.to],
+                  ]}
+                  label={`Illustrative diff: ${m.from} becomes ${m.to}`}
+                />
+                <Note>
+                  {m.note} Package: <Code>{m.pkg}</Code>.
+                </Note>
+              </GlowCard>
+              <CodeCard label="step 2 · before · illustrative" caption={`Your ${fw()} code.`} code={m.before} rail="del" />
+              <CodeCard label="step 2 · after · native Pyreon" caption="The same thing in Pyreon." code={m.after} state="hot" rail="ins" />
+            </AutoGrid>
+          )
+        }}
+        <Replay
+          lines={() => CHECK}
+          label="pyreon check output on the React example"
+          title="React example · step 2 before → after"
+          command="pyreon check"
+          source="captured 2026-11-11 with the worktree CLI on the React pair (pick React above to see the files)"
+          autoplay
+          delay={160}
+        />
+      </Stack>
+    </KitScope>
   )
 }

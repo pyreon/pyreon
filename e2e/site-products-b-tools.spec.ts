@@ -1,7 +1,7 @@
 import { expect, type Locator, type Page, test } from '@playwright/test'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { waitForHydration } from './hydration-barrier'
+import { waitForIslands } from './site-islands'
 
 /**
  * Interaction for the six tool demos (ai, atlas, lathe, loom, tooling,
@@ -18,7 +18,7 @@ const demo = (page: Page) => page.locator('#demo')
 
 async function open(page: Page, id: string): Promise<void> {
   await page.goto(`/products/${id}`)
-  await waitForHydration(page)
+  await waitForIslands(page)
   await demo(page).scrollIntoViewIfNeeded()
 }
 
@@ -74,7 +74,7 @@ test.describe('atlas', () => {
     const urls: string[] = []
     page.on('request', (r) => urls.push(r.url()))
     await page.goto('/products/atlas')
-    await waitForHydration(page)
+    await waitForIslands(page)
     await page.waitForTimeout(1500)
     expect(urls.filter((u) => u.includes('/demos/atlas/'))).toEqual([])
     await demo(page).scrollIntoViewIfNeeded()

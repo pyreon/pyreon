@@ -6,6 +6,7 @@ import { GlowCard } from '../kit/cards'
 import { CodeBlock } from '../kit/code'
 import { SimulatedNote } from '../kit/demo-parts'
 import { Eyebrow, Heading } from '../kit/type'
+import { KitScope } from '../kit/scope'
 
 /**
  * Zero demo (`zero.json` → demo): a sample `src/routes` folder; pick a file
@@ -187,53 +188,55 @@ export default function DemoZero() {
   const current = () => ROUTES[selected()] as RouteFile
 
   return (
-    <GlowCard>
-      <Layout>
-        <div>
-          <Eyebrow>src/routes</Eyebrow>
-          <Tree aria-label="Route files">
-            <For each={ROUTES.map((r, i) => ({ r, i }))} by={(x) => x.r.file}>
-              {(x) => (
-                <li>
-                  <FileButton type="button" aria-pressed={() => (selected() === x.i ? 'true' : 'false')} onClick={() => selected.set(x.i)}>
-                    <span>{x.r.file}</span>
-                    <ModeChip state={x.r.mode}>{x.r.mode}</ModeChip>
-                  </FileButton>
-                </li>
-              )}
-            </For>
-          </Tree>
-          <Dim>_layout.tsx · _404.tsx · _error.tsx · _loading.tsx</Dim>
-        </div>
-        <Detail aria-live="polite">
-          <Row>
-            {() => <ModeChip state={current().mode}>{current().mode}</ModeChip>}
-            <span>{() => current().url}</span>
-          </Row>
-          <Heading tag="h3" size="card">
-            {() => current().title}
-          </Heading>
-          <Body>{() => current().what}</Body>
-          <Props>
-            <div>
-              <Eyebrow tag="dt">renders</Eyebrow>
-              <dd>{() => current().renders}</dd>
-            </div>
-            <div>
-              <Eyebrow tag="dt">cached</Eyebrow>
-              <dd>{() => current().cached}</dd>
-            </div>
-            <div>
-              <Eyebrow tag="dt">javascript</Eyebrow>
-              <dd>{() => current().js}</dd>
-            </div>
-          </Props>
-          <Well>
-            <CodeBlock code={current().code} label={`${current().file}: the export that picks the mode`} />
-          </Well>
-          <SimulatedNote>Illustration of what zero build decides per route. Nothing renders on a server here.</SimulatedNote>
-        </Detail>
-      </Layout>
-    </GlowCard>
+    <KitScope>
+      <GlowCard>
+        <Layout>
+          <div>
+            <Eyebrow>src/routes</Eyebrow>
+            <Tree aria-label="Route files">
+              <For each={ROUTES.map((r, i) => ({ r, i }))} by={(x) => x.r.file}>
+                {(x) => (
+                  <li>
+                    <FileButton type="button" aria-pressed={() => (selected() === x.i ? 'true' : 'false')} onClick={() => selected.set(x.i)}>
+                      <span>{x.r.file}</span>
+                      <ModeChip state={x.r.mode}>{x.r.mode}</ModeChip>
+                    </FileButton>
+                  </li>
+                )}
+              </For>
+            </Tree>
+            <Dim>_layout.tsx · _404.tsx · _error.tsx · _loading.tsx</Dim>
+          </div>
+          <Detail aria-live="polite">
+            <Row>
+              {() => <ModeChip state={current().mode}>{current().mode}</ModeChip>}
+              <span>{() => current().url}</span>
+            </Row>
+            <Heading tag="h3" size="card">
+              {() => current().title}
+            </Heading>
+            <Body>{() => current().what}</Body>
+            <Props>
+              <div>
+                <Eyebrow tag="dt">renders</Eyebrow>
+                <dd>{() => current().renders}</dd>
+              </div>
+              <div>
+                <Eyebrow tag="dt">cached</Eyebrow>
+                <dd>{() => current().cached}</dd>
+              </div>
+              <div>
+                <Eyebrow tag="dt">javascript</Eyebrow>
+                <dd>{() => current().js}</dd>
+              </div>
+            </Props>
+            <Well>
+              <CodeBlock code={current().code} label={`${current().file}: the export that picks the mode`} />
+            </Well>
+            <SimulatedNote>Illustration of what zero build decides per route. Nothing renders on a server here.</SimulatedNote>
+          </Detail>
+        </Layout>
+      </GlowCard>
+    </KitScope>
   )
 }

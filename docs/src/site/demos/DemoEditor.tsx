@@ -11,6 +11,7 @@ import { el, type ButtonAttrs, tone, txt } from '../kit/bases'
 import { DemoSurface, GlowCard } from '../kit/cards'
 import { DemoGrid, DemoPanel, Meters, PaperButton, PaperHint } from '../kit/demo'
 import { Code, Eyebrow } from '../kit/type'
+import { KitScope } from '../kit/scope'
 
 const t = (s: string, bold?: boolean): JSONContent => (bold ? { type: 'text', text: s, marks: [{ type: 'bold' }] } : { type: 'text', text: s })
 const p = (...content: JSONContent[]): JSONContent => ({ type: 'paragraph', content })
@@ -167,61 +168,63 @@ export default function DemoEditor() {
   }
 
   return (
-    <Stack>
-      <DemoGrid>
-        <DemoSurface>
-          <Toolbar aria-label="Formatting">
-            <Tool label="Bold" pressed={() => editor.isActive('bold')} onRun={() => editor.chain()?.focus().toggleBold().run()}>
-              <b>B</b>
-            </Tool>
-            <Tool label="Italic" pressed={() => editor.isActive('italic')} onRun={() => editor.chain()?.focus().toggleItalic().run()}>
-              <i>I</i>
-            </Tool>
-            <Tool label="Bulleted list" pressed={() => editor.isActive('bulletList')} onRun={() => editor.chain()?.focus().toggleBulletList().run()}>
-              • list
-            </Tool>
-            <Tool label="Undo" disabled={() => !editor.canUndo()} onRun={() => editor.chain()?.focus().undo().run()}>
-              undo
-            </Tool>
-          </Toolbar>
-          <Page>
-            <RichText instance={editor} />
-          </Page>
-          <div>
-            <PaperButton type="button" onClick={loadOutside}>
-              Load from outside
-            </PaperButton>
-          </div>
-          <PaperHint aria-live="polite">{() => status()}</PaperHint>
-        </DemoSurface>
-        <DemoPanel note="Counts come from the document JSON, so they are right before the editor engine has even loaded, and a cursor move re-runs none of them.">
-          <Meters
-            label="The editor's signals"
-            // A zero-width space after "editor." lets a long name wrap on a phone.
-            items={[
-              { label: 'editor.\u200bwordCount()', value: () => editor.wordCount() },
-              { label: 'editor.\u200bcharacterCount()', value: () => editor.characterCount() },
-              { label: 'editor.\u200bisEmpty()', value: () => String(editor.isEmpty()) },
-              { label: "editor.\u200bisActive('bold')", value: () => String(editor.isActive('bold')) },
-            ]}
-          />
-        </DemoPanel>
-      </DemoGrid>
-      <GlowCard padding="flush">
-        <CodeHead>
-          <Eyebrow>@pyreon/code · read only</Eyebrow>
-          <Caption>
-            <Code>editor.json()</Code>, the document the bound signal carries, live in a CodeMirror editor whose value is a
-            signal too.
-          </Caption>
-        </CodeHead>
-        <CodeBox>
-          {/* "system" follows the page: the site's theme toggle writes color-scheme on <html>. */}
-          <ColorModeProvider mode="system">
-            <CodeEditor instance={source} />
-          </ColorModeProvider>
-        </CodeBox>
-      </GlowCard>
-    </Stack>
+    <KitScope>
+      <Stack>
+        <DemoGrid>
+          <DemoSurface>
+            <Toolbar aria-label="Formatting">
+              <Tool label="Bold" pressed={() => editor.isActive('bold')} onRun={() => editor.chain()?.focus().toggleBold().run()}>
+                <b>B</b>
+              </Tool>
+              <Tool label="Italic" pressed={() => editor.isActive('italic')} onRun={() => editor.chain()?.focus().toggleItalic().run()}>
+                <i>I</i>
+              </Tool>
+              <Tool label="Bulleted list" pressed={() => editor.isActive('bulletList')} onRun={() => editor.chain()?.focus().toggleBulletList().run()}>
+                • list
+              </Tool>
+              <Tool label="Undo" disabled={() => !editor.canUndo()} onRun={() => editor.chain()?.focus().undo().run()}>
+                undo
+              </Tool>
+            </Toolbar>
+            <Page>
+              <RichText instance={editor} />
+            </Page>
+            <div>
+              <PaperButton type="button" onClick={loadOutside}>
+                Load from outside
+              </PaperButton>
+            </div>
+            <PaperHint aria-live="polite">{() => status()}</PaperHint>
+          </DemoSurface>
+          <DemoPanel note="Counts come from the document JSON, so they are right before the editor engine has even loaded, and a cursor move re-runs none of them.">
+            <Meters
+              label="The editor's signals"
+              // A zero-width space after "editor." lets a long name wrap on a phone.
+              items={[
+                { label: 'editor.\u200bwordCount()', value: () => editor.wordCount() },
+                { label: 'editor.\u200bcharacterCount()', value: () => editor.characterCount() },
+                { label: 'editor.\u200bisEmpty()', value: () => String(editor.isEmpty()) },
+                { label: "editor.\u200bisActive('bold')", value: () => String(editor.isActive('bold')) },
+              ]}
+            />
+          </DemoPanel>
+        </DemoGrid>
+        <GlowCard padding="flush">
+          <CodeHead>
+            <Eyebrow>@pyreon/code · read only</Eyebrow>
+            <Caption>
+              <Code>editor.json()</Code>, the document the bound signal carries, live in a CodeMirror editor whose value is a
+              signal too.
+            </Caption>
+          </CodeHead>
+          <CodeBox>
+            {/* "system" follows the page: the site's theme toggle writes color-scheme on <html>. */}
+            <ColorModeProvider mode="system">
+              <CodeEditor instance={source} />
+            </ColorModeProvider>
+          </CodeBox>
+        </GlowCard>
+      </Stack>
+    </KitScope>
   )
 }

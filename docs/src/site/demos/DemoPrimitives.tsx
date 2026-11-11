@@ -11,6 +11,7 @@ import { CodeBlock } from '../kit/code'
 import { CardSegmented, PaperText, SimulatedNote } from '../kit/demo-parts'
 import { Eyebrow, StatusBadge } from '../kit/type'
 import { ThemedPicture } from './_asset'
+import { KitScope } from '../kit/scope'
 
 /**
  * Primitives demo (`primitives.json` → demo): pick a primitive; the web
@@ -171,55 +172,57 @@ function LiveWeb(props: { name: Name }) {
 export default function DemoPrimitives() {
   const current = signal<Name>('Toggle')
   return (
-    <div>
-      <GlowCard>
-        <Head>
-          <Eyebrow>primitive</Eyebrow>
-          <CardSegmented label="Primitive" options={NAMES} value={() => current()} onChange={(v) => current.set(v)} />
-        </Head>
-        <Columns>
-          <GlowCard padding="flush">
-            <ColHead>
-              <Eyebrow>web · DOM, live</Eyebrow>
-            </ColHead>
-            <CodeBlock code={OUT[current()][0]} label="Web output" />
-            <DemoSurface aria-label="The web primitive, live">
-              {() => {
-                const n = current()
-                return <LiveWeb name={n} />
-              }}
-            </DemoSurface>
-          </GlowCard>
-          <GlowCard padding="flush" state="hot">
-            <ColHead>
-              <Eyebrow state="accent">iOS · SwiftUI</Eyebrow>
-            </ColHead>
-            <CodeBlock code={OUT[current()][1]} label="iOS output" />
-          </GlowCard>
-          <GlowCard padding="flush" state="hot">
-            <ColHead>
-              <Eyebrow state="accent">Android · Compose</Eyebrow>
-            </ColHead>
-            <CodeBlock code={OUT[current()][2]} label="Android output" />
-          </GlowCard>
-        </Columns>
-        <Footer>
-          {() => (NEXT_RELEASE.has(current()) ? <StatusBadge>next release</StatusBadge> : null)}
-          <SimulatedNote>Illustrative, abridged: the iOS and Android columns are not compiled live in this page. The web column is the real component.</SimulatedNote>
-        </Footer>
-      </GlowCard>
-      <Stills aria-label="One app, Today, on all three targets">
-        <For each={STILLS} by={(s) => s.key}>
-          {(s) => (
-            <li>
-              <StillFrame>
-                <ThemedPicture data={stills[s.key] as ThemedPictureData} sizes="(min-width: 800px) 200px, 30vw" />
-                <Caption>{s.label}</Caption>
-              </StillFrame>
-            </li>
-          )}
-        </For>
-      </Stills>
-    </div>
+    <KitScope>
+      <div>
+        <GlowCard>
+          <Head>
+            <Eyebrow>primitive</Eyebrow>
+            <CardSegmented label="Primitive" options={NAMES} value={() => current()} onChange={(v) => current.set(v)} />
+          </Head>
+          <Columns>
+            <GlowCard padding="flush">
+              <ColHead>
+                <Eyebrow>web · DOM, live</Eyebrow>
+              </ColHead>
+              <CodeBlock code={OUT[current()][0]} label="Web output" />
+              <DemoSurface aria-label="The web primitive, live">
+                {() => {
+                  const n = current()
+                  return <LiveWeb name={n} />
+                }}
+              </DemoSurface>
+            </GlowCard>
+            <GlowCard padding="flush" state="hot">
+              <ColHead>
+                <Eyebrow state="accent">iOS · SwiftUI</Eyebrow>
+              </ColHead>
+              <CodeBlock code={OUT[current()][1]} label="iOS output" />
+            </GlowCard>
+            <GlowCard padding="flush" state="hot">
+              <ColHead>
+                <Eyebrow state="accent">Android · Compose</Eyebrow>
+              </ColHead>
+              <CodeBlock code={OUT[current()][2]} label="Android output" />
+            </GlowCard>
+          </Columns>
+          <Footer>
+            {() => (NEXT_RELEASE.has(current()) ? <StatusBadge>next release</StatusBadge> : null)}
+            <SimulatedNote>Illustrative, abridged: the iOS and Android columns are not compiled live in this page. The web column is the real component.</SimulatedNote>
+          </Footer>
+        </GlowCard>
+        <Stills aria-label="One app, Today, on all three targets">
+          <For each={STILLS} by={(s) => s.key}>
+            {(s) => (
+              <li>
+                <StillFrame>
+                  <ThemedPicture data={stills[s.key] as ThemedPictureData} sizes="(min-width: 800px) 200px, 30vw" />
+                  <Caption>{s.label}</Caption>
+                </StillFrame>
+              </li>
+            )}
+          </For>
+        </Stills>
+      </div>
+    </KitScope>
   )
 }

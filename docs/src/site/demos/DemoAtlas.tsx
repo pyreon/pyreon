@@ -4,6 +4,7 @@ import { font, radius, text } from '../theme'
 import { el, focusRing, type LinkAttrs, tone, txt } from '../kit/bases'
 import { colorMode } from '../color-mode'
 import { Code, Eyebrow } from '../kit/type'
+import { KitScope } from '../kit/scope'
 
 /**
  * Atlas demo (`atlas.json` → demo): the REAL workbench. `atlas build` compiles
@@ -130,50 +131,52 @@ export default function DemoAtlas() {
   onUnmount(() => sync.dispose())
 
   return (
-    <Card>
-      <Head>
-        <Steps>
-          <ol>
-          <li>
-            In the sidebar (☰ on a phone), <b>Button</b> lists its scenarios. Select <b>Empty</b>: its dot is red.
-          </li>
-          <li>
-            Open the <b>A11y</b> tab: “Accessible name: interactive element with no name”. <b>Run axe</b> audits the live preview.
-          </li>
-          <li>
-            Back in <b>Controls</b>, give it a label and the check passes.
-          </li>
-          </ol>
-        </Steps>
-        <OpenLink href={SRC} target="_blank" rel="noopener">
-          open full screen ↗
-        </OpenLink>
-      </Head>
-      <Stage>
-        <Show
-          when={() => ready()}
-          fallback={
-            <Waiting>
-              The Atlas workbench loads here. <Code>open full screen</Code> works without it.
-            </Waiting>
-          }
-        >
-          {() => (
-            <iframe
-              ref={(n: HTMLIFrameElement | null) => {
-                frame = n
-              }}
-              src={`${SRC}?c=button&dark=${firstDark ? '1' : '0'}`}
-              title="Atlas workbench: the atlas-workshop sample library"
-              loading="lazy"
-            />
-          )}
-        </Show>
-      </Stage>
-      <Foot>
-        <Eyebrow tag="span">real workbench</Eyebrow> · built by <Code>atlas build</Code> from examples/atlas-workshop; scenario verdicts from{' '}
-        <Code>atlas scan</Code>
-      </Foot>
-    </Card>
+    <KitScope>
+      <Card>
+        <Head>
+          <Steps>
+            <ol>
+            <li>
+              In the sidebar (☰ on a phone), <b>Button</b> lists its scenarios. Select <b>Empty</b>: its dot is red.
+            </li>
+            <li>
+              Open the <b>A11y</b> tab: “Accessible name: interactive element with no name”. <b>Run axe</b> audits the live preview.
+            </li>
+            <li>
+              Back in <b>Controls</b>, give it a label and the check passes.
+            </li>
+            </ol>
+          </Steps>
+          <OpenLink href={SRC} target="_blank" rel="noopener">
+            open full screen ↗
+          </OpenLink>
+        </Head>
+        <Stage>
+          <Show
+            when={() => ready()}
+            fallback={
+              <Waiting>
+                The Atlas workbench loads here. <Code>open full screen</Code> works without it.
+              </Waiting>
+            }
+          >
+            {() => (
+              <iframe
+                ref={(n: HTMLIFrameElement | null) => {
+                  frame = n
+                }}
+                src={`${SRC}?c=button&dark=${firstDark ? '1' : '0'}`}
+                title="Atlas workbench: the atlas-workshop sample library"
+                loading="lazy"
+              />
+            )}
+          </Show>
+        </Stage>
+        <Foot>
+          <Eyebrow tag="span">real workbench</Eyebrow> · built by <Code>atlas build</Code> from examples/atlas-workshop; scenario verdicts from{' '}
+          <Code>atlas scan</Code>
+        </Foot>
+      </Card>
+    </KitScope>
   )
 }

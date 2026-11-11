@@ -6,6 +6,7 @@ import { GlowCard } from '../kit/cards'
 import { Segmented } from '../kit/controls'
 import { Eyebrow, StatusDot } from '../kit/type'
 import { LOOM_CAPTURED, LOOM_REPORT } from './_capture-loom'
+import { KitScope } from '../kit/scope'
 
 /**
  * Loom demo (`loom.json` → demo): the observatory's four reading views over
@@ -211,165 +212,167 @@ export default function DemoLoom() {
     )
 
   return (
-    <GlowCard padding="compact">
-      <Bar>
-        <Segmented options={VIEWS} value={() => view()} onChange={(v) => view.set(v)} label="Observatory view" />
-        <Stats>
-          {R.stats.internal} packages · {R.stats.edges} edges · {R.stats.cycles} cycle · {R.stats.errors} errors · {R.stats.warnings} warnings ·{' '}
-          {R.stats.infos} info
-        </Stats>
-      </Bar>
+    <KitScope>
+      <GlowCard padding="compact">
+        <Bar>
+          <Segmented options={VIEWS} value={() => view()} onChange={(v) => view.set(v)} label="Observatory view" />
+          <Stats>
+            {R.stats.internal} packages · {R.stats.edges} edges · {R.stats.cycles} cycle · {R.stats.errors} errors · {R.stats.warnings} warnings ·{' '}
+            {R.stats.infos} info
+          </Stats>
+        </Bar>
 
-      <Show when={() => view() === 'packages'}>
-        <Split>
-          <List aria-label="Workspace packages">
-            <For each={NAMES} by={(n) => n}>
-              {(n) => (
-                <li>
-                  <PkgButton type="button" aria-pressed={() => (sel() === n ? 'true' : 'false')} onClick={() => sel.set(n)}>
-                    <StatusDot state={worst(n)} />
-                    {short(n)}
-                  </PkgButton>
-                </li>
-              )}
-            </For>
-          </List>
-          <Pane>
-            {() => {
-              const n = sel()
-              const p = pkg()
-              const findings = findingsOf(n)
-              return (
-                <>
-                  <div>
-                    <Name>{n}</Name>
-                    <Line>
-                      {p?.version ?? ''}
-                      {p?.private ? ' · private' : ''}
-                      {inCycle.has(n) ? ' · in a runtime cycle' : ''}
-                    </Line>
-                  </div>
-                  <div>
-                    <Eyebrow>needed by</Eyebrow>
-                    {chips(usersOf(n))}
-                    <Line>
-                      {`${R.graph.reach[n] ?? 0} package${R.graph.reach[n] === 1 ? '' : 's'} depend on it, directly or through others.`}
-                    </Line>
-                  </div>
-                  <div>
-                    <Eyebrow>depends on</Eyebrow>
-                    {chips(depsOf(n))}
-                  </div>
-                  <div>
-                    <Eyebrow>{`findings · ${findings.length}`}</Eyebrow>
-                    <ul style="margin:6px 0 0;padding:0">
-                      {findings.length === 0 ? <Finding>none</Finding> : null}
-                      {findings.map((f) => (
-                        <Finding>
-                          <Sev state={f.severity as Severity}>{f.severity}</Sev>
-                          <b>{f.code}</b> {f.message}
-                        </Finding>
-                      ))}
-                    </ul>
-                  </div>
-                </>
-              )
-            }}
-          </Pane>
-        </Split>
-      </Show>
-
-      <Show when={() => view() === 'matrix'}>
-        <Scroll tabIndex={0} aria-label="Dependency matrix">
-          <table>
-            <caption>Row depends on column at runtime. ● an edge, ↻ an edge inside a cycle.</caption>
-            <thead>
-              <tr>
-                <th scope="col">package</th>
-                {NAMES.map((c) => (
-                  <th scope="col">
-                    <span>{short(c)}</span>
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {NAMES.map((r) => {
-                const deps = new Set(depsOf(r))
-                return (
-                  <tr>
-                    <th scope="row">{short(r)}</th>
-                    {NAMES.map((c) =>
-                      deps.has(c) ? (
-                        <td data-e={cycleEdge(r, c) ? 'cycle' : 'dep'} aria-label={`${short(r)} depends on ${short(c)}`}>
-                          {cycleEdge(r, c) ? '↻' : '●'}
-                        </td>
-                      ) : (
-                        <td />
-                      ),
-                    )}
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </Scroll>
-      </Show>
-
-      <Show when={() => view() === 'cycles'}>
-        <Pane>
-          {R.graph.cycles.map((c) => (
-            <div>
-              <Eyebrow>runtime cycle</Eyebrow>
-              <Chips>
-                {[...c, c[0] ?? ''].map((n, i) => (
-                  <>
-                    {i > 0 ? <Line tag="span">→</Line> : null}
-                    <ChipButton
-                      type="button"
-                      onClick={() => {
-                        sel.set(n)
-                        view.set('packages')
-                      }}
-                      aria-label={`Open ${n}`}
-                    >
+        <Show when={() => view() === 'packages'}>
+          <Split>
+            <List aria-label="Workspace packages">
+              <For each={NAMES} by={(n) => n}>
+                {(n) => (
+                  <li>
+                    <PkgButton type="button" aria-pressed={() => (sel() === n ? 'true' : 'false')} onClick={() => sel.set(n)}>
+                      <StatusDot state={worst(n)} />
                       {short(n)}
-                    </ChipButton>
+                    </PkgButton>
+                  </li>
+                )}
+              </For>
+            </List>
+            <Pane>
+              {() => {
+                const n = sel()
+                const p = pkg()
+                const findings = findingsOf(n)
+                return (
+                  <>
+                    <div>
+                      <Name>{n}</Name>
+                      <Line>
+                        {p?.version ?? ''}
+                        {p?.private ? ' · private' : ''}
+                        {inCycle.has(n) ? ' · in a runtime cycle' : ''}
+                      </Line>
+                    </div>
+                    <div>
+                      <Eyebrow>needed by</Eyebrow>
+                      {chips(usersOf(n))}
+                      <Line>
+                        {`${R.graph.reach[n] ?? 0} package${R.graph.reach[n] === 1 ? '' : 's'} depend on it, directly or through others.`}
+                      </Line>
+                    </div>
+                    <div>
+                      <Eyebrow>depends on</Eyebrow>
+                      {chips(depsOf(n))}
+                    </div>
+                    <div>
+                      <Eyebrow>{`findings · ${findings.length}`}</Eyebrow>
+                      <ul style="margin:6px 0 0;padding:0">
+                        {findings.length === 0 ? <Finding>none</Finding> : null}
+                        {findings.map((f) => (
+                          <Finding>
+                            <Sev state={f.severity as Severity}>{f.severity}</Sev>
+                            <b>{f.code}</b> {f.message}
+                          </Finding>
+                        ))}
+                      </ul>
+                    </div>
                   </>
-                ))}
-              </Chips>
-              {R.issues
-                .filter((i) => i.code === 'cycle' && c.includes(i.pkg))
-                .map((i) => (
-                  <Line>{i.message}</Line>
-                ))}
-            </div>
-          ))}
-        </Pane>
-      </Show>
+                )
+              }}
+            </Pane>
+          </Split>
+        </Show>
 
-      <Show when={() => view() === 'impact'}>
-        <Pane>
-          <Eyebrow>blast radius · packages that depend on each one</Eyebrow>
-          <ImpactList>
-            <ul>
-              {IMPACT.map((n) => (
-                <li>
-                  <span>{short(n)}</span>
-                  <i aria-hidden="true">
-                    <s style={`width:${((R.graph.reach[n] ?? 0) / MAX_REACH) * 100}%`} />
-                  </i>
-                  <b>{String(R.graph.reach[n] ?? 0)}</b>
-                </li>
-              ))}
-            </ul>
-          </ImpactList>
-        </Pane>
-      </Show>
+        <Show when={() => view() === 'matrix'}>
+          <Scroll tabIndex={0} aria-label="Dependency matrix">
+            <table>
+              <caption>Row depends on column at runtime. ● an edge, ↻ an edge inside a cycle.</caption>
+              <thead>
+                <tr>
+                  <th scope="col">package</th>
+                  {NAMES.map((c) => (
+                    <th scope="col">
+                      <span>{short(c)}</span>
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {NAMES.map((r) => {
+                  const deps = new Set(depsOf(r))
+                  return (
+                    <tr>
+                      <th scope="row">{short(r)}</th>
+                      {NAMES.map((c) =>
+                        deps.has(c) ? (
+                          <td data-e={cycleEdge(r, c) ? 'cycle' : 'dep'} aria-label={`${short(r)} depends on ${short(c)}`}>
+                            {cycleEdge(r, c) ? '↻' : '●'}
+                          </td>
+                        ) : (
+                          <td />
+                        ),
+                      )}
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </Scroll>
+        </Show>
 
-      <Foot>
-        real output · the <b>loom scan</b> report of a sample workspace (its files are in docs/scripts/capture-loom-demo.ts), captured {LOOM_CAPTURED}
-      </Foot>
-    </GlowCard>
+        <Show when={() => view() === 'cycles'}>
+          <Pane>
+            {R.graph.cycles.map((c) => (
+              <div>
+                <Eyebrow>runtime cycle</Eyebrow>
+                <Chips>
+                  {[...c, c[0] ?? ''].map((n, i) => (
+                    <>
+                      {i > 0 ? <Line tag="span">→</Line> : null}
+                      <ChipButton
+                        type="button"
+                        onClick={() => {
+                          sel.set(n)
+                          view.set('packages')
+                        }}
+                        aria-label={`Open ${n}`}
+                      >
+                        {short(n)}
+                      </ChipButton>
+                    </>
+                  ))}
+                </Chips>
+                {R.issues
+                  .filter((i) => i.code === 'cycle' && c.includes(i.pkg))
+                  .map((i) => (
+                    <Line>{i.message}</Line>
+                  ))}
+              </div>
+            ))}
+          </Pane>
+        </Show>
+
+        <Show when={() => view() === 'impact'}>
+          <Pane>
+            <Eyebrow>blast radius · packages that depend on each one</Eyebrow>
+            <ImpactList>
+              <ul>
+                {IMPACT.map((n) => (
+                  <li>
+                    <span>{short(n)}</span>
+                    <i aria-hidden="true">
+                      <s style={`width:${((R.graph.reach[n] ?? 0) / MAX_REACH) * 100}%`} />
+                    </i>
+                    <b>{String(R.graph.reach[n] ?? 0)}</b>
+                  </li>
+                ))}
+              </ul>
+            </ImpactList>
+          </Pane>
+        </Show>
+
+        <Foot>
+          real output · the <b>loom scan</b> report of a sample workspace (its files are in docs/scripts/capture-loom-demo.ts), captured {LOOM_CAPTURED}
+        </Foot>
+      </GlowCard>
+    </KitScope>
   )
 }

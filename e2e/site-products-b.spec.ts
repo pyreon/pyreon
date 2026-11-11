@@ -1,7 +1,7 @@
 import { expect, type Page, test } from '@playwright/test'
 import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { waitForHydration } from './hydration-barrier'
+import { waitForIslands } from './site-islands'
 
 /**
  * The app-building-blocks and visual-and-tools product pages (twenty), against
@@ -59,11 +59,12 @@ test.describe('build output', () => {
       expect(existsSync(file)).toBe(true)
       const html = readFileSync(file, 'utf8')
       expect(html).toContain(`<link rel="canonical" href="https://pyreon.dev/products/${id}"`)
-      expect(html).toMatch(new RegExp(`property="og:image" content="https://pyreon.dev/assets/og/products/${id}.png"`))
+      expect(html).toMatch(new RegExp(`property="og:image" content="https://pyreon.dev/media/og/products/${id}.png"`))
       expect(html).toContain('name="twitter:card" content="summary_large_image"')
-      expect(html).toMatch(new RegExp(`/assets/products/${id}/hero[.-]`))
+      // The hero visual: an inline SVG with its own title, or the capture pictures.
+      expect(html).toMatch(/<figure[^>]*>[\s\S]*?(<svg[^>]*role="img"|<picture)/)
       expect(html).toMatch(/<pyreon-island[^>]*data-component="Demo/)
-      expect(existsSync(resolve(dist, `assets/og/products/${id}.png`))).toBe(true)
+      expect(existsSync(resolve(dist, `media/og/products/${id}.png`))).toBe(true)
     })
   }
   test('the sitemap lists every page', () => {
@@ -83,7 +84,7 @@ test.describe('hydration and the demo island', () => {
         if (r.resourceType() === 'script') scripts.push(r.url())
       })
       await page.goto(`/products/${id}`)
-      await waitForHydration(page)
+      await waitForIslands(page)
       await page.waitForTimeout(300)
       expect(await page.evaluate(() => (window as unknown as { __removed: number }).__removed)).toBe(0)
       const heavy = HEAVY[id]
@@ -104,7 +105,7 @@ test.describe('hydration and the demo island', () => {
     })
     for (const route of ['/', '/products', '/products/form', '/products/i18n', '/products/ai']) {
       await page.goto(route)
-      await waitForHydration(page)
+      await waitForIslands(page)
       await page.evaluate(async () => {
         for (let y = 0; y < document.body.scrollHeight; y += 700) {
           window.scrollTo(0, y)
@@ -125,7 +126,7 @@ test.describe('no horizontal page scroll', () => {
       await page.setViewportSize({ width, height: 900 })
       for (const id of IDS) {
         await page.goto(`/products/${id}`)
-        await waitForHydration(page)
+        await waitForIslands(page)
         await page.locator('#demo').scrollIntoViewIfNeeded()
         await page.waitForTimeout(600)
         const over = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
@@ -144,7 +145,7 @@ test.describe('contrast in the hero and the demo', () => {
       const failures: string[] = []
       for (const id of IDS) {
         await page.goto(`/products/${id}`)
-        await waitForHydration(page)
+        await waitForIslands(page)
         await page.locator('#demo').scrollIntoViewIfNeeded()
         await page.waitForTimeout(1500)
         const bad = await page.evaluate(() => {

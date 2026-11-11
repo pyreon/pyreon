@@ -9,6 +9,7 @@ import { el, type ButtonAttrs, focusRing, tone, txt } from '../kit/bases'
 import { GlowCard } from '../kit/cards'
 import { Segmented } from '../kit/controls'
 import { Eyebrow } from '../kit/type'
+import { KitScope } from '../kit/scope'
 
 type Quarter = 'Q3' | 'Q4'
 type Tab = 'html' | 'md' | 'csv' | 'slack' | 'email' | 'json'
@@ -261,46 +262,48 @@ export default function DemoDocument() {
   }
 
   return (
-    <GlowCard padding="flush">
-      <Head>
-        <TabStrip>
-          <Segmented label="Output format" options={TABS} value={() => tab()} onChange={(v) => tab.set(v)} />
-        </TabStrip>
-        <Segmented label="Quarter" options={QUARTERS} value={() => quarter()} onChange={(v) => quarter.set(v)} />
-      </Head>
-      <Body>
-        <Output>
-          <Show
-            when={() => tab() === 'html'}
-            fallback={
-              <Source tabIndex={0} aria-label={() => `render(report, '${LABEL[tab()]}') output`}>
-                {() => output()}
-              </Source>
-            }
-          >
-            <Frame>
-              <iframe sandbox="" title="render(report, 'html') output" ref={showHtml} />
-            </Frame>
-          </Show>
-        </Output>
-        <Side>
-          <Eyebrow>all 20 formats</Eyebrow>
-          <Chips aria-label="Formats @pyreon/document renders">
-            <For each={ALL_FORMATS} by={(f) => f}>
-              {(f) => <Chip state={f === tab() ? 'on' : 'idle'}>{f}</Chip>}
-            </For>
-          </Chips>
-          <Small>Binary formats load their library on first use: this button fetches pdfmake, renders the same tree and saves it.</Small>
-          {/* No .docx button yet: render(node, 'docx') calls Packer.toBuffer, which throws
-              "nodebuffer is not supported by this platform" in a browser (#4389). */}
-          <Downloads>
-            <DownloadButton type="button" onClick={() => void savePdf()}>
-              Download .pdf
-            </DownloadButton>
-          </Downloads>
-          <Small aria-live="polite">{() => status()}</Small>
-        </Side>
-      </Body>
-    </GlowCard>
+    <KitScope>
+      <GlowCard padding="flush">
+        <Head>
+          <TabStrip>
+            <Segmented label="Output format" options={TABS} value={() => tab()} onChange={(v) => tab.set(v)} />
+          </TabStrip>
+          <Segmented label="Quarter" options={QUARTERS} value={() => quarter()} onChange={(v) => quarter.set(v)} />
+        </Head>
+        <Body>
+          <Output>
+            <Show
+              when={() => tab() === 'html'}
+              fallback={
+                <Source tabIndex={0} aria-label={() => `render(report, '${LABEL[tab()]}') output`}>
+                  {() => output()}
+                </Source>
+              }
+            >
+              <Frame>
+                <iframe sandbox="" title="render(report, 'html') output" ref={showHtml} />
+              </Frame>
+            </Show>
+          </Output>
+          <Side>
+            <Eyebrow>all 20 formats</Eyebrow>
+            <Chips aria-label="Formats @pyreon/document renders">
+              <For each={ALL_FORMATS} by={(f) => f}>
+                {(f) => <Chip state={f === tab() ? 'on' : 'idle'}>{f}</Chip>}
+              </For>
+            </Chips>
+            <Small>Binary formats load their library on first use: this button fetches pdfmake, renders the same tree and saves it.</Small>
+            {/* No .docx button yet: render(node, 'docx') calls Packer.toBuffer, which throws
+                "nodebuffer is not supported by this platform" in a browser (#4389). */}
+            <Downloads>
+              <DownloadButton type="button" onClick={() => void savePdf()}>
+                Download .pdf
+              </DownloadButton>
+            </Downloads>
+            <Small aria-live="polite">{() => status()}</Small>
+          </Side>
+        </Body>
+      </GlowCard>
+    </KitScope>
   )
 }

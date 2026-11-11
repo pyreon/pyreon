@@ -1,5 +1,5 @@
 import { expect, type Locator, type Page, test } from '@playwright/test'
-import { waitForHydration } from './hydration-barrier'
+import { waitForIslands } from './site-islands'
 
 /**
  * Per-demo interaction on five app product pages (table, virtual, dnd, toast,
@@ -24,7 +24,7 @@ function collectErrors(page: Page): string[] {
 
 async function openDemo(page: Page, id: string): Promise<Locator> {
   await page.goto(`/products/${id}`)
-  await waitForHydration(page)
+  await waitForIslands(page)
   const demo = page.locator('#demo')
   await demo.locator('pyreon-island').scrollIntoViewIfNeeded()
   return demo

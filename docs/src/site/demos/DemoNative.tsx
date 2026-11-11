@@ -10,6 +10,7 @@ import { Segmented } from '../kit/controls'
 import { SimulatedNote } from '../kit/demo-parts'
 import { Eyebrow } from '../kit/type'
 import { ThemedPicture } from './_asset'
+import { KitScope } from '../kit/scope'
 
 /**
  * Native demo (`native.json` → demo). A SIMULATION, labelled on screen: the
@@ -105,40 +106,42 @@ const STILLS: readonly { key: 'today-web' | 'today-ios' | 'today-android'; label
 export default function DemoNative() {
   const source = signal<Source>('Stack')
   return (
-    <div>
-      <GlowCard>
-        <Controls>
-          <Eyebrow>source</Eyebrow>
-          <Segmented label="Primitive" options={SOURCES} value={() => source()} onChange={(v) => source.set(v)} />
-        </Controls>
-        <Panels>
-          <For each={PANELS.map((p, i) => ({ ...p, i }))} by={(p) => p.label}>
-            {(p) => (
-              <GlowCard padding="flush" state={p.hot ? 'hot' : 'default'}>
-                <PanelHead>
-                  <Eyebrow state={p.hot ? 'accent' : 'default'}>{p.label}</Eyebrow>
-                </PanelHead>
-                <CodeBlock code={OUT[source()][p.i] ?? ''} label={p.label} />
-              </GlowCard>
+    <KitScope>
+      <div>
+        <GlowCard>
+          <Controls>
+            <Eyebrow>source</Eyebrow>
+            <Segmented label="Primitive" options={SOURCES} value={() => source()} onChange={(v) => source.set(v)} />
+          </Controls>
+          <Panels>
+            <For each={PANELS.map((p, i) => ({ ...p, i }))} by={(p) => p.label}>
+              {(p) => (
+                <GlowCard padding="flush" state={p.hot ? 'hot' : 'default'}>
+                  <PanelHead>
+                    <Eyebrow state={p.hot ? 'accent' : 'default'}>{p.label}</Eyebrow>
+                  </PanelHead>
+                  <CodeBlock code={OUT[source()][p.i] ?? ''} label={p.label} />
+                </GlowCard>
+              )}
+            </For>
+          </Panels>
+          <Footer>
+            <SimulatedNote>Simulated: abridged output shown for illustration, not compiled live in this page. The real emit adds tokens, accessibility and modifiers.</SimulatedNote>
+          </Footer>
+        </GlowCard>
+        <Stills aria-label="One app, Today, built from one TSX file">
+          <For each={STILLS} by={(s) => s.key}>
+            {(s) => (
+              <li>
+                <StillFrame>
+                  <ThemedPicture data={stills[s.key] as ThemedPictureData} sizes="(min-width: 800px) 240px, 30vw" />
+                  <Caption>{s.label}</Caption>
+                </StillFrame>
+              </li>
             )}
           </For>
-        </Panels>
-        <Footer>
-          <SimulatedNote>Simulated: abridged output shown for illustration, not compiled live in this page. The real emit adds tokens, accessibility and modifiers.</SimulatedNote>
-        </Footer>
-      </GlowCard>
-      <Stills aria-label="One app, Today, built from one TSX file">
-        <For each={STILLS} by={(s) => s.key}>
-          {(s) => (
-            <li>
-              <StillFrame>
-                <ThemedPicture data={stills[s.key] as ThemedPictureData} sizes="(min-width: 800px) 240px, 30vw" />
-                <Caption>{s.label}</Caption>
-              </StillFrame>
-            </li>
-          )}
-        </For>
-      </Stills>
-    </div>
+        </Stills>
+      </div>
+    </KitScope>
   )
 }

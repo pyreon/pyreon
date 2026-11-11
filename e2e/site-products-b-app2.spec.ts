@@ -1,5 +1,5 @@
 import { expect, type Locator, type Page, test } from '@playwright/test'
-import { waitForHydration } from './hydration-barrier'
+import { waitForIslands } from './site-islands'
 
 /**
  * Per-demo interaction for five app product pages (i18n, permissions,
@@ -48,7 +48,7 @@ const listeners = (page: Page, type: string) =>
 /** Open a product page and wait until its demo island is hydrated and operable. */
 async function openDemo(page: Page, id: string, ready: (demo: Locator) => Locator): Promise<Locator> {
   await page.goto(`/products/${id}`)
-  await waitForHydration(page)
+  await waitForIslands(page)
   const demo = page.locator('#demo')
   await demo.locator('pyreon-island').scrollIntoViewIfNeeded()
   await expect(ready(demo)).toBeVisible()
@@ -163,7 +163,7 @@ test.describe('urlstate demo', () => {
     expect(await page.evaluate(() => JSON.stringify(history.state))).toBe(routerStamp)
 
     await page.reload()
-    await waitForHydration(page)
+    await waitForIslands(page)
     await demo.locator('pyreon-island').scrollIntoViewIfNeeded()
     await expect(demo.getByRole('searchbox', { name: 'Search' })).toHaveValue('lamp')
     await expect(demo.getByLabel('In stock')).toBeChecked()
@@ -179,7 +179,7 @@ test.describe('urlstate demo', () => {
   test('leaving by a site link leaves no shop- params and no listeners behind', async ({ page }) => {
     await trackWindowListeners(page)
     await page.goto('/products/urlstate')
-    await waitForHydration(page)
+    await waitForIslands(page)
     const baseline = await listeners(page, 'popstate')
     const demo = page.locator('#demo')
     await demo.locator('pyreon-island').scrollIntoViewIfNeeded()
@@ -305,7 +305,7 @@ test.describe('feature demo', () => {
   test('leaving the page stops the query client listeners', async ({ page }) => {
     await trackWindowListeners(page)
     await page.goto('/products/feature')
-    await waitForHydration(page)
+    await waitForIslands(page)
     const baseline = await listeners(page, 'visibilitychange')
     const demo = page.locator('#demo')
     await demo.locator('pyreon-island').scrollIntoViewIfNeeded()
