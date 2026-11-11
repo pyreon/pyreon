@@ -110,6 +110,8 @@ const WEIGHTS: Record<BatchProfile, Record<string, number>> = {
     'loom-dev': 47,
     lathe: 8,
     'https-dev': 2,
+    // Not yet measured in CI: one Vite dev server, 5 specs, ~4s locally.
+    'zero-dev-overlay': 4,
     cpa: 44,
     'native-tasks-web': 19,
     'native-todomvc-web': 8,

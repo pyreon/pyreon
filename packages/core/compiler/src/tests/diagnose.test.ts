@@ -38,6 +38,19 @@ describe('diagnoseError (browser-safe error catalog)', () => {
     expect(result?.cause).toContain('#3815')
     expect(result?.fix).toContain('@pyreon/compiler')
   })
+  it('answers a browser global read on the server with onMount / isServer, ahead of the generic `X is not defined` entry', () => {
+    for (const name of ['window', 'document', 'localStorage', 'navigator']) {
+      // V8's exact text for the SSR read (`ReferenceError: window is not defined`).
+      const result = diagnoseError(`ReferenceError: ${name} is not defined`)
+      expect(result?.cause, name).toContain(`\`${name}\` exists only in the browser`)
+      expect(result?.fix, name).toContain('onMount')
+      expect(result?.fix, name).toContain('isServer')
+    }
+    // Not a browser global: still the compiler scope-leak entry.
+    expect(diagnoseError('ReferenceError: rowLabel is not defined')?.fix).toContain('@pyreon/compiler')
+    // A substring of a longer identifier is not the global.
+    expect(diagnoseError('ReferenceError: mywindow is not defined')?.cause ?? '').not.toContain('exists only in the browser')
+  })
   it('diagnoses a known error pattern (cause + fix)', () => {
     const result = diagnoseError('count is not a function')
     expect(result).not.toBeNull()

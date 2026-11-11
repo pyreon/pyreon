@@ -219,8 +219,14 @@ describe("SSR integration", { timeout: DEV_SERVER_TEST_TIMEOUT_MS }, () => {
 		});
 		expect(res.status).toBe(500);
 		const html = await res.text();
-		expect(html).toContain("SSR Error");
+		// The render phase and the matched route, from the dev SSR pipeline.
+		expect(html).toContain('<span class="pz-chip">Server render failed</span>');
+		expect(html).toContain("/broken · SSR");
 		expect(html).toContain("Intentional SSR error for testing");
+		// The first app frame, source-mapped, with its code frame read from disk.
+		expect(html).toContain("src/routes/broken.tsx:");
+		expect(html).toContain("throw new Error(&#39;Intentional SSR error for testing&#39;)");
+		expect(html).toContain('role="alertdialog"');
 	});
 
 	it("renders route HTML server-side (not just the SPA shell)", async () => {
@@ -295,7 +301,7 @@ describe("error overlay middleware", () => {
 			"Error: Component render failed\n    at render (src/App.tsx:15:3)";
 		const html = renderErrorOverlay(error);
 		expect(html).toContain("Component render failed");
-		expect(html).toContain("SSR Error");
+		expect(html).toContain("Server error");
 		expect(html).toContain("Pyreon Zero");
 		expect(html).toContain("src/App.tsx:15:3");
 	});
@@ -305,8 +311,8 @@ describe("error overlay middleware", () => {
 		const html = renderErrorOverlay(error);
 		expect(html).toMatch(/^<!DOCTYPE html>/);
 		expect(html).toContain("</html>");
-		expect(html).toContain("SSR Error");
-		expect(html).toContain("only shown in development");
+		expect(html).toContain("Server error");
+		expect(html).toContain("(dev)");
 		expect(html).toContain("SSR crash");
 	});
 
@@ -349,7 +355,7 @@ describe("error overlay middleware", () => {
 
 		expect(mockRes.statusCode).toBe(500);
 		expect(headers["Content-Type"]).toBe("text/html; charset=utf-8");
-		expect(responseBody).toContain("SSR Error");
+		expect(responseBody).toContain("Server error");
 		expect(responseBody).toContain("Intentional SSR error for testing");
 		expect(responseBody).toContain("broken.tsx:2:3");
 	});

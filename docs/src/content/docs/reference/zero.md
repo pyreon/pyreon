@@ -20,6 +20,7 @@ See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multipla
 ## Features
 
 - mode: ssg / ssr / isr / spa — single config field
+- Dev error overlay — SSR, loader and middleware errors (server 500 page) and hydration mismatches (over the page): route + phase, source-mapped file link + Open in editor, code frame, diagnose-catalog fix when one matches, dimmed library frames, plain-text copy for an AI assistant; dev server only
 - i18n route duplication (prefix / prefix-except-default strategies)
 - getStaticPaths per route — dynamic-route × locale compounds at SSG
 - Per-route revalidate — wires platform ISR via Adapter.revalidate
