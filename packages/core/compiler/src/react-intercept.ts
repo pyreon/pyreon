@@ -76,6 +76,12 @@ export interface MigrationResult {
   diagnostics: ReactDiagnostic[]
   /** Description of changes applied */
   changes: MigrationChange[]
+  /**
+   * Patterns left unconverted (or converted with a caveat), each with the
+   * reason and what to write instead. An empty list means every React pattern
+   * the migrator recognised was rewritten into Pyreon that updates.
+   */
+  manual: MigrationNote[]
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -139,33 +145,6 @@ const IMPORT_REWRITES: Record<string, string | null> = {
   'react-dom/server': '@pyreon/runtime-server',
   'react-router': '@pyreon/router',
   'react-router-dom': '@pyreon/router',
-}
-
-/** React specifiers that map to specific Pyreon imports */
-const SPECIFIER_REWRITES: Record<string, { name: string; from: string }> = {
-  useState: { name: 'signal', from: '@pyreon/reactivity' },
-  useEffect: { name: 'effect', from: '@pyreon/reactivity' },
-  useLayoutEffect: { name: 'effect', from: '@pyreon/reactivity' },
-  useMemo: { name: 'computed', from: '@pyreon/reactivity' },
-  useReducer: { name: 'signal', from: '@pyreon/reactivity' },
-  useRef: { name: 'signal', from: '@pyreon/reactivity' },
-  createContext: { name: 'createContext', from: '@pyreon/core' },
-  useContext: { name: 'useContext', from: '@pyreon/core' },
-  Fragment: { name: 'Fragment', from: '@pyreon/core' },
-  Suspense: { name: 'Suspense', from: '@pyreon/core' },
-  lazy: { name: 'lazy', from: '@pyreon/core' },
-  memo: { name: '', from: '' }, // removed, not needed
-  forwardRef: { name: '', from: '' }, // removed, not needed
-  createRoot: { name: 'mount', from: '@pyreon/runtime-dom' },
-  hydrateRoot: { name: 'hydrateRoot', from: '@pyreon/runtime-dom' },
-  // React Router
-  useNavigate: { name: 'useRouter', from: '@pyreon/router' },
-  useParams: { name: 'useRoute', from: '@pyreon/router' },
-  useLocation: { name: 'useRoute', from: '@pyreon/router' },
-  Link: { name: 'RouterLink', from: '@pyreon/router' },
-  NavLink: { name: 'RouterLink', from: '@pyreon/router' },
-  Outlet: { name: 'RouterView', from: '@pyreon/router' },
-  useSearchParams: { name: 'useSearchParams', from: '@pyreon/router' },
 }
 
 /** JSX attribute rewrites (React → standard HTML) */
@@ -430,9 +409,9 @@ function detectUseRef(ctx: DetectContext, node: ts.CallExpression): void {
       ctx,
       node,
       'use-ref-box',
-      'useRef for mutable values. In Pyreon, use signal() — it works the same way but is reactive.',
+      'useRef for a mutable value. In Pyreon, a plain { current } object is the same non-reactive box (use signal() only if the UI should update when it changes).',
       detectGetNodeText(ctx, node),
-      `signal(${initText})`,
+      `{ current: ${initText} }`,
       true,
     )
   }
@@ -446,7 +425,7 @@ function detectUseReducer(ctx: DetectContext, node: ts.CallExpression): void {
     'useReducer is a React API. In Pyreon, use signal() with update() for reducer patterns.',
     detectGetNodeText(ctx, node),
     'const state = signal(initialState)\nconst dispatch = (action) => state.update(s => reducer(s, action))',
-    false,
+    true,
   )
 }
 
@@ -499,22 +478,6 @@ function detectForwardRef(ctx: DetectContext, node: ts.CallExpression): void {
   }
 }
 
-function detectJsxAttributes(ctx: DetectContext, node: ts.JsxAttribute): void {
-  const attrName = (node.name as ts.Identifier).text
-
-  if (attrName in JSX_ATTR_REWRITES) {
-    const htmlAttr = JSX_ATTR_REWRITES[attrName] as string
-    detectDiag(
-      ctx,
-      node,
-      attrName === 'className' ? 'class-name-prop' : 'html-for-prop',
-      `'${attrName}' is a React JSX attribute. Use '${htmlAttr}' in Pyreon (standard HTML).`,
-      detectGetNodeText(ctx, node),
-      detectGetNodeText(ctx, node).replace(attrName, htmlAttr),
-      true,
-    )
-  }
-
 /**
  * Is this `<input>` a TEXT-like control, i.e. one where `change` fires on blur?
  *
@@ -562,6 +525,22 @@ function isTextLikeInput(jsxElement: ts.Node): boolean {
   }
   return true
 }
+
+function detectJsxAttributes(ctx: DetectContext, node: ts.JsxAttribute): void {
+  const attrName = (node.name as ts.Identifier).text
+
+  if (attrName in JSX_ATTR_REWRITES) {
+    const htmlAttr = JSX_ATTR_REWRITES[attrName] as string
+    detectDiag(
+      ctx,
+      node,
+      attrName === 'className' ? 'class-name-prop' : 'html-for-prop',
+      `'${attrName}' is a React JSX attribute. Use '${htmlAttr}' in Pyreon (standard HTML).`,
+      detectGetNodeText(ctx, node),
+      detectGetNodeText(ctx, node).replace(attrName, htmlAttr),
+      true,
+    )
+  }
 
   if (attrName === 'onChange') {
     const jsxElement = findParentJsxElement(node)
@@ -621,9 +600,71 @@ function detectDotValueSignal(ctx: DetectContext, node: ts.PropertyAccessExpress
   }
 }
 
+/**
+ * Whether an inline `.map` callback renders JSX: an arrow / function whose
+ * result (expression body, or any `return` in its own body) is JSX, possibly
+ * behind parentheses, `as`, `!`, a conditional or `&&` / `||` / `??`.
+ * `undefined` when the callback is not inline (`items.map(renderRow)`), so
+ * the caller decides what an unknown callback means.
+ */
+function mapCallbackRendersJsx(callback: ts.Expression | undefined): boolean | undefined {
+  if (!callback || (!ts.isArrowFunction(callback) && !ts.isFunctionExpression(callback))) {
+    return undefined
+  }
+  const isJsx = (e: ts.Expression): boolean => {
+    let cur: ts.Expression = e
+    while (
+      ts.isParenthesizedExpression(cur) ||
+      ts.isAsExpression(cur) ||
+      ts.isNonNullExpression(cur) ||
+      ts.isSatisfiesExpression(cur)
+    ) {
+      cur = cur.expression
+    }
+    if (ts.isJsxElement(cur) || ts.isJsxSelfClosingElement(cur) || ts.isJsxFragment(cur)) return true
+    if (ts.isConditionalExpression(cur)) return isJsx(cur.whenTrue) || isJsx(cur.whenFalse)
+    if (ts.isBinaryExpression(cur)) {
+      const op = cur.operatorToken.kind
+      if (
+        op === ts.SyntaxKind.AmpersandAmpersandToken ||
+        op === ts.SyntaxKind.BarBarToken ||
+        op === ts.SyntaxKind.QuestionQuestionToken
+      ) {
+        return isJsx(cur.left) || isJsx(cur.right)
+      }
+    }
+    return false
+  }
+  const body = callback.body
+  if (!ts.isBlock(body)) return isJsx(body)
+  let found = false
+  const visit = (n: ts.Node): void => {
+    if (found) return
+    // A nested function's `return` belongs to that function, not the callback.
+    if (ts.isFunctionLike(n)) return
+    if (ts.isReturnStatement(n) && n.expression && isJsx(n.expression)) {
+      found = true
+      return
+    }
+    ts.forEachChild(n, visit)
+  }
+  ts.forEachChild(body, visit)
+  return found
+}
+
 function detectArrayMapJsx(ctx: DetectContext, node: ts.CallExpression): void {
   const parent = node.parent
-  if (ts.isJsxExpression(parent)) {
+  // Only a `.map()` RENDERED as children is the React list habit:
+  // `<ul>{items.map((i) => <li/>)}</ul>`. An attribute value that maps data
+  // (`rows={lines.map((l) => [l.item, l.qty])}`) and a callback that returns
+  // no JSX are ordinary array code and were false positives (#4363). A
+  // callback that is not inline (`items.map(renderRow)`) is still reported in
+  // child position: it is rendered either way.
+  if (
+    ts.isJsxExpression(parent) &&
+    (ts.isJsxElement(parent.parent) || ts.isJsxFragment(parent.parent)) &&
+    mapCallbackRendersJsx(node.arguments[0]) !== false
+  ) {
     const arrayExpr = detectGetNodeText(
       ctx,
       (node.expression as ts.PropertyAccessExpression).expression,
@@ -721,371 +762,1390 @@ export function detectReactPatterns(code: string, filename = 'input.tsx'): React
 // ═══════════════════════════════════════════════════════════════════════════════
 // Migration (detection + auto-fix)
 // ═══════════════════════════════════════════════════════════════════════════════
+//
+// The migrator rewrites React into Pyreon that UPDATES. Renaming the hooks is the
+// easy half; the other half is every place the React code relied on the
+// component body re-running:
+//
+//   - a `useState` value becomes a signal, so every READ becomes `count()` and
+//     every setter call becomes `count.set(v)` / `count.update(fn)`;
+//   - a `useMemo` value becomes a `computed`, read the same way;
+//   - a body-level `const` derived from state becomes a `computed` (the body runs
+//     once, so a plain `const` would freeze at its first value);
+//   - a component whose RETURN reads state outside JSX returns an accessor.
+//
+// Every reference is resolved lexically, so a parameter or local that shadows a
+// state name is left alone. Anything the migrator cannot convert safely stays in
+// place, keeps its React import, and is listed in `manual` with the reason.
+// Edits are non-overlapping spans; a structural edit (deleting a deps array,
+// unwrapping `memo(...)`) swallows the edits inside the span it removes.
 
-type Replacement = { start: number; end: number; text: string }
+type Edit = { start: number; end: number; text: string; seq: number; swallow: boolean }
 
-interface MigrateContext {
-  sf: ts.SourceFile
-  code: string
-  replacements: Replacement[]
-  changes: MigrationChange[]
-  pyreonImports: Map<string, Set<string>>
-  importsToRemove: Set<ts.ImportDeclaration>
-  specifierRewrites: Map<ts.ImportSpecifier, { name: string; from: string }>
+/** Marks a note's position while edits are applied; never present in the output. */
+const NOTE_MARK = '\u0000'
+
+/** A pattern the migrator left unconverted (or converted with a caveat). */
+export interface MigrationNote {
+  /** 1-based line in the MIGRATED code */
+  line: number
+  /** 0-based column in the MIGRATED code */
+  column: number
+  /** What was not converted, and why */
+  message: string
+  /** What to write instead */
+  suggested: string
 }
 
-function migrateAddImport(ctx: MigrateContext, source: string, specifier: string): void {
-  if (!source || !specifier) return
-  let specs = ctx.pyreonImports.get(source)
-  if (!specs) {
-    specs = new Set()
-    ctx.pyreonImports.set(source, specs)
+/** How a React (or React DOM / React Router) export converts. */
+type HookRole =
+  | 'state'
+  | 'reducer'
+  | 'effect'
+  | 'memo'
+  | 'callback'
+  | 'ref'
+  | 'memoWrapper'
+  | 'forwardRef'
+  | 'createRoot'
+
+type SpecifierPlan =
+  | { kind: 'structural'; role: HookRole }
+  | { kind: 'same'; from: string }
+  | { kind: 'rename'; name: string; from: string }
+
+const REACT_SPECIFIERS: Record<string, SpecifierPlan> = {
+  // Rewritten at their call sites, by role.
+  useState: { kind: 'structural', role: 'state' },
+  useReducer: { kind: 'structural', role: 'reducer' },
+  useEffect: { kind: 'structural', role: 'effect' },
+  useLayoutEffect: { kind: 'structural', role: 'effect' },
+  useMemo: { kind: 'structural', role: 'memo' },
+  useCallback: { kind: 'structural', role: 'callback' },
+  useRef: { kind: 'structural', role: 'ref' },
+  memo: { kind: 'structural', role: 'memoWrapper' },
+  forwardRef: { kind: 'structural', role: 'forwardRef' },
+  createRoot: { kind: 'structural', role: 'createRoot' },
+  // Same name, same contract.
+  createContext: { kind: 'same', from: '@pyreon/core' },
+  useContext: { kind: 'same', from: '@pyreon/core' },
+  Fragment: { kind: 'same', from: '@pyreon/core' },
+  Suspense: { kind: 'same', from: '@pyreon/core' },
+  lazy: { kind: 'same', from: '@pyreon/core' },
+  hydrateRoot: { kind: 'same', from: '@pyreon/runtime-dom' },
+  useNavigate: { kind: 'same', from: '@pyreon/router' },
+  useParams: { kind: 'same', from: '@pyreon/router' },
+  // Renamed.
+  Link: { kind: 'rename', name: 'RouterLink', from: '@pyreon/router' },
+  NavLink: { kind: 'rename', name: 'RouterLink', from: '@pyreon/router' },
+  Outlet: { kind: 'rename', name: 'RouterView', from: '@pyreon/router' },
+}
+
+/** Why a React export without a plan is left alone. */
+const UNSUPPORTED_REASONS: Record<string, string> = {
+  useSearchParams:
+    "Pyreon's useSearchParams() returns [get accessor, set(updates)] rather than React Router's [URLSearchParams, setter]",
+  useLocation: 'Pyreon has no useLocation(); read the current route from useRoute()()',
+}
+
+/** The conversion role of a React export, if it is rewritten at its call sites. */
+function roleOf(name: string): HookRole | undefined {
+  const plan = REACT_SPECIFIERS[name]
+  return plan?.kind === 'structural' ? plan.role : undefined
+}
+
+type BindingKind =
+  | { kind: 'signal' } // read → x()
+  | { kind: 'setter'; signal: string } // setX(v) → x.set(v)
+  | { kind: 'replace'; text: string } // forwardRef's ref param → props.ref
+
+interface ReactImportBinding {
+  /** The import, or undefined for a snippet's un-imported global (`useState(0)` with no import) */
+  decl: ts.ImportDeclaration | undefined
+  /** The import-clause node that declares the local name */
+  node: ts.ImportSpecifier | ts.ImportClause | ts.NamespaceImport | undefined
+  local: string
+  /** React's own export name (e.g. useState), or '*' for a default/namespace import */
+  canonical: string
+  typeOnly: boolean
+  /** Reference identifiers that the migrator rewrote or consumed */
+  converted: Set<ts.Node>
+}
+
+class ReactMigrator {
+  readonly sf: ts.SourceFile
+  readonly code: string
+  readonly edits: Edit[] = []
+  readonly changes: MigrationChange[] = []
+  /** Notes, positioned in the INPUT until `run()` maps them onto the output */
+  readonly manual: MigrationNote[] = []
+  private readonly noteOffsets: number[] = []
+  private seq = 0
+  /** Pyreon imports the output needs: module → names (value imports) */
+  private readonly needed = new Map<string, Set<string>>()
+  private readonly neededTypes = new Map<string, Set<string>>()
+  private readonly reactImports = new Map<ts.Node, ReactImportBinding>()
+  /** Un-imported React names in a snippet, by name */
+  private readonly globals = new Map<string, ReactImportBinding>()
+  /** Declaration identifier → how references to it are rewritten */
+  private readonly bindings = new Map<ts.Identifier, BindingKind>()
+  /** Every identifier node that is a value reference, with its resolved declaration */
+  private refs: Array<{ id: ts.Identifier; decl: ts.Identifier | undefined }> = []
+  /** Type-position references (`React.FC`, `ReactNode`) — they keep their React import */
+  private typeRefs: Array<{ id: ts.Identifier; decl: ts.Identifier | undefined }> = []
+  private readonly scopeCache = new Map<ts.Node, ts.Identifier[]>()
+  /** Functions that call a converted state hook (component bodies or custom hooks) */
+  private readonly hookFunctions = new Set<ts.FunctionLikeDeclaration>()
+  /** Return statements that become `return () => (…)` */
+  private readonly accessorReturns = new Set<ts.ReturnStatement>()
+  /** Body-level consts that become `computed(() => …)` */
+  private readonly derivedConsts = new Set<ts.VariableDeclaration>()
+  /** Bindings whose value is a DOM ref (`createRef()`) */
+  private readonly domRefs = new Set<ts.Identifier>()
+
+  constructor(sf: ts.SourceFile, code: string) {
+    this.sf = sf
+    this.code = code
   }
-  specs.add(specifier)
-}
 
-function migrateReplace(ctx: MigrateContext, node: ts.Node, text: string): void {
-  ctx.replacements.push({ start: node.getStart(ctx.sf), end: node.getEnd(), text })
-}
+  // ── small helpers ────────────────────────────────────────────────────────────
 
-function migrateGetNodeText(ctx: MigrateContext, node: ts.Node): string {
-  return ctx.code.slice(node.getStart(ctx.sf), node.getEnd())
-}
+  private text(node: ts.Node): string {
+    return this.code.slice(node.getStart(this.sf), node.getEnd())
+  }
 
-function migrateGetLine(ctx: MigrateContext, node: ts.Node): number {
-  return ctx.sf.getLineAndCharacterOfPosition(node.getStart(ctx.sf)).line + 1
-}
+  private pos(node: ts.Node): { line: number; column: number } {
+    const lc = this.sf.getLineAndCharacterOfPosition(node.getStart(this.sf))
+    return { line: lc.line + 1, column: lc.character }
+  }
 
-function migrateImportDeclaration(ctx: MigrateContext, node: ts.ImportDeclaration): void {
-  if (!node.moduleSpecifier) return
-  const source = (node.moduleSpecifier as ts.StringLiteral).text
-  if (!(source in IMPORT_REWRITES)) return
+  private edit(start: number, end: number, text: string, swallow = false): void {
+    this.edits.push({ start, end, text, seq: this.seq++, swallow })
+  }
 
-  if (node.importClause?.namedBindings && ts.isNamedImports(node.importClause.namedBindings)) {
-    for (const spec of node.importClause.namedBindings.elements) {
-      const name = spec.name.text
-      const rewrite = SPECIFIER_REWRITES[name]
-      if (rewrite) {
-        if (rewrite.name) {
-          migrateAddImport(ctx, rewrite.from, rewrite.name)
+  private replaceNode(node: ts.Node, text: string, swallow = false): void {
+    this.edit(node.getStart(this.sf), node.getEnd(), text, swallow)
+  }
+
+  private change(
+    node: ts.Node,
+    description: string,
+    type: MigrationChange['type'] = 'replace',
+  ): void {
+    this.changes.push({ type, line: this.pos(node).line, description })
+  }
+
+  private note(node: ts.Node, message: string, suggested: string): void {
+    this.manual.push({ ...this.pos(node), message, suggested })
+    this.noteOffsets.push(node.getStart(this.sf))
+  }
+
+  private need(module: string, name: string, typeOnly = false): void {
+    const map = typeOnly ? this.neededTypes : this.needed
+    let set = map.get(module)
+    if (!set) {
+      set = new Set()
+      map.set(module, set)
+    }
+    set.add(name)
+  }
+
+  /** Source text of `node` with the edits already registered inside it applied. */
+  private rendered(node: ts.Node): string {
+    return this.applyRange(node.getStart(this.sf), node.getEnd())
+  }
+
+  // ── lexical scope resolution ─────────────────────────────────────────────────
+
+  private static bindingNames(name: ts.BindingName, out: ts.Identifier[]): void {
+    if (ts.isIdentifier(name)) {
+      out.push(name)
+      return
+    }
+    for (const el of name.elements) {
+      if (!ts.isOmittedExpression(el)) ReactMigrator.bindingNames(el.name, out)
+    }
+  }
+
+  /** Identifiers a scope node declares directly. */
+  private declarationsOf(scope: ts.Node): ts.Identifier[] {
+    const cached = this.scopeCache.get(scope)
+    if (cached) return cached
+    const out: ts.Identifier[] = []
+    if (ts.isFunctionLike(scope)) {
+      for (const p of scope.parameters) ReactMigrator.bindingNames(p.name, out)
+      if ((ts.isFunctionExpression(scope) || ts.isClassExpression(scope)) && scope.name) {
+        out.push(scope.name)
+      }
+    }
+    const statements =
+      ts.isSourceFile(scope) || ts.isBlock(scope) || ts.isModuleBlock(scope)
+        ? scope.statements
+        : ts.isCaseClause(scope) || ts.isDefaultClause(scope)
+          ? scope.statements
+          : undefined
+    if (statements) {
+      for (const s of statements) {
+        if (ts.isVariableStatement(s)) {
+          for (const d of s.declarationList.declarations) ReactMigrator.bindingNames(d.name, out)
+        } else if (
+          (ts.isFunctionDeclaration(s) || ts.isClassDeclaration(s) || ts.isEnumDeclaration(s)) &&
+          s.name
+        ) {
+          out.push(s.name)
+        } else if (ts.isImportDeclaration(s) && s.importClause) {
+          const clause = s.importClause
+          if (clause.name) out.push(clause.name)
+          const nb = clause.namedBindings
+          if (nb && ts.isNamespaceImport(nb)) out.push(nb.name)
+          if (nb && ts.isNamedImports(nb)) for (const el of nb.elements) out.push(el.name)
         }
-        ctx.specifierRewrites.set(spec, rewrite)
       }
     }
-  }
-  ctx.importsToRemove.add(node)
-}
-
-function migrateUseState(ctx: MigrateContext, node: ts.CallExpression): void {
-  const parent = node.parent
-  if (
-    ts.isVariableDeclaration(parent) &&
-    parent.name &&
-    ts.isArrayBindingPattern(parent.name) &&
-    parent.name.elements.length >= 1
-  ) {
-    const firstEl = parent.name.elements[0]
-    const valueName =
-      firstEl && ts.isBindingElement(firstEl) ? (firstEl.name as ts.Identifier).text : 'value'
-    const initArg = node.arguments[0] ? migrateGetNodeText(ctx, node.arguments[0]) : 'undefined'
-
-    const declStart = parent.getStart(ctx.sf)
-    const declEnd = parent.getEnd()
-    ctx.replacements.push({
-      start: declStart,
-      end: declEnd,
-      text: `${valueName} = signal(${initArg})`,
-    })
-    migrateAddImport(ctx, '@pyreon/reactivity', 'signal')
-    ctx.changes.push({
-      type: 'replace',
-      line: migrateGetLine(ctx, node),
-      description: `useState → signal: ${valueName}`,
-    })
-  }
-}
-
-function migrateUseEffect(ctx: MigrateContext, node: ts.CallExpression): void {
-  const depsArg = node.arguments[1]
-  const callbackArg = node.arguments[0]
-  const hookName = (node.expression as ts.Identifier).text
-
-  if (
-    depsArg &&
-    ts.isArrayLiteralExpression(depsArg) &&
-    depsArg.elements.length === 0 &&
-    callbackArg
-  ) {
-    const callbackText = migrateGetNodeText(ctx, callbackArg)
-    migrateReplace(ctx, node, `onMount(${callbackText})`)
-    migrateAddImport(ctx, '@pyreon/core', 'onMount')
-    ctx.changes.push({
-      type: 'replace',
-      line: migrateGetLine(ctx, node),
-      description: `${hookName}(fn, []) → onMount(fn)`,
-    })
-  } else if (callbackArg) {
-    const callbackText = migrateGetNodeText(ctx, callbackArg)
-    migrateReplace(ctx, node, `effect(${callbackText})`)
-    migrateAddImport(ctx, '@pyreon/reactivity', 'effect')
-    ctx.changes.push({
-      type: 'replace',
-      line: migrateGetLine(ctx, node),
-      description: `${hookName} → effect (auto-tracks deps)`,
-    })
-  }
-}
-
-function migrateUseMemo(ctx: MigrateContext, node: ts.CallExpression): void {
-  const computeFn = node.arguments[0]
-  if (computeFn) {
-    migrateReplace(ctx, node, `computed(${migrateGetNodeText(ctx, computeFn)})`)
-    migrateAddImport(ctx, '@pyreon/reactivity', 'computed')
-    ctx.changes.push({
-      type: 'replace',
-      line: migrateGetLine(ctx, node),
-      description: 'useMemo → computed (auto-tracks deps)',
-    })
-  }
-}
-
-function migrateUseCallback(ctx: MigrateContext, node: ts.CallExpression): void {
-  const callbackFn = node.arguments[0]
-  if (callbackFn) {
-    migrateReplace(ctx, node, migrateGetNodeText(ctx, callbackFn))
-    ctx.changes.push({
-      type: 'replace',
-      line: migrateGetLine(ctx, node),
-      description: 'useCallback → plain function (not needed in Pyreon)',
-    })
-  }
-}
-
-function migrateUseRef(ctx: MigrateContext, node: ts.CallExpression): void {
-  const arg = node.arguments[0]
-  const isNullInit =
-    arg &&
-    (arg.kind === ts.SyntaxKind.NullKeyword || (ts.isIdentifier(arg) && arg.text === 'undefined'))
-
-  if (isNullInit || !arg) {
-    migrateReplace(ctx, node, 'createRef()')
-    migrateAddImport(ctx, '@pyreon/core', 'createRef')
-    ctx.changes.push({
-      type: 'replace',
-      line: migrateGetLine(ctx, node),
-      description: 'useRef(null) → createRef()',
-    })
-  } else {
-    migrateReplace(ctx, node, `signal(${migrateGetNodeText(ctx, arg)})`)
-    migrateAddImport(ctx, '@pyreon/reactivity', 'signal')
-    ctx.changes.push({
-      type: 'replace',
-      line: migrateGetLine(ctx, node),
-      description: 'useRef(value) → signal(value)',
-    })
-  }
-}
-
-function migrateMemoWrapper(ctx: MigrateContext, node: ts.CallExpression): void {
-  const callee = node.expression
-  const isMemo =
-    (ts.isIdentifier(callee) && callee.text === 'memo') || isCallToReactDot(callee, 'memo')
-
-  if (isMemo && node.arguments[0]) {
-    migrateReplace(ctx, node, migrateGetNodeText(ctx, node.arguments[0]))
-    ctx.changes.push({
-      type: 'remove',
-      line: migrateGetLine(ctx, node),
-      description: 'Removed memo() wrapper (not needed in Pyreon)',
-    })
-  }
-}
-
-function migrateForwardRef(ctx: MigrateContext, node: ts.CallExpression): void {
-  const callee = node.expression
-  const isForwardRef =
-    (ts.isIdentifier(callee) && callee.text === 'forwardRef') ||
-    isCallToReactDot(callee, 'forwardRef')
-
-  if (isForwardRef && node.arguments[0]) {
-    migrateReplace(ctx, node, migrateGetNodeText(ctx, node.arguments[0]))
-    ctx.changes.push({
-      type: 'remove',
-      line: migrateGetLine(ctx, node),
-      description: 'Removed forwardRef wrapper (pass ref as normal prop in Pyreon)',
-    })
-  }
-}
-
-function migrateJsxAttributes(ctx: MigrateContext, node: ts.JsxAttribute): void {
-  const attrName = (node.name as ts.Identifier).text
-
-  if (attrName in JSX_ATTR_REWRITES) {
-    const htmlAttr = JSX_ATTR_REWRITES[attrName] as string
-    ctx.replacements.push({
-      start: node.name.getStart(ctx.sf),
-      end: node.name.getEnd(),
-      text: htmlAttr,
-    })
-    ctx.changes.push({
-      type: 'replace',
-      line: migrateGetLine(ctx, node),
-      description: `${attrName} → ${htmlAttr}`,
-    })
+    if (
+      (ts.isForStatement(scope) || ts.isForInStatement(scope) || ts.isForOfStatement(scope)) &&
+      scope.initializer &&
+      ts.isVariableDeclarationList(scope.initializer)
+    ) {
+      for (const d of scope.initializer.declarations) ReactMigrator.bindingNames(d.name, out)
+    }
+    if (ts.isCatchClause(scope) && scope.variableDeclaration) {
+      ReactMigrator.bindingNames(scope.variableDeclaration.name, out)
+    }
+    this.scopeCache.set(scope, out)
+    return out
   }
 
-  if (attrName === 'onChange') {
-    const jsxElement = findParentJsxElement(node)
-    if (jsxElement) {
-      const tagName = getJsxTagName(jsxElement)
-      if (tagName === 'input' || tagName === 'textarea' || tagName === 'select') {
-        ctx.replacements.push({
-          start: node.name.getStart(ctx.sf),
-          end: node.name.getEnd(),
-          text: 'onInput',
-        })
-        ctx.changes.push({
-          type: 'replace',
-          line: migrateGetLine(ctx, node),
-          description: `onChange on <${tagName}> → onInput (native DOM events)`,
+  /** The declaration identifier `id` refers to, or undefined (a global). */
+  private resolve(id: ts.Identifier): ts.Identifier | undefined {
+    let node: ts.Node | undefined = id.parent
+    while (node) {
+      for (const d of this.declarationsOf(node)) if (d.text === id.text) return d
+      node = node.parent
+    }
+    return undefined
+  }
+
+  /** True when `id` is a VALUE reference (not a property name, declaration, type, label…). */
+  private static isValueReference(id: ts.Identifier): boolean {
+    const p = id.parent
+    if (ts.isPropertyAccessExpression(p) && p.name === id) return false
+    if (ts.isQualifiedName(p)) return false
+    if (
+      (ts.isPropertyAssignment(p) ||
+        ts.isMethodDeclaration(p) ||
+        ts.isPropertyDeclaration(p) ||
+        ts.isPropertySignature(p) ||
+        ts.isMethodSignature(p) ||
+        ts.isGetAccessorDeclaration(p) ||
+        ts.isSetAccessorDeclaration(p) ||
+        ts.isEnumMember(p)) &&
+      p.name === id
+    ) {
+      return false
+    }
+    if (ts.isJsxAttribute(p)) return false
+    if (ts.isBindingElement(p) && (p.propertyName === id || p.name === id)) return false
+    if (
+      (ts.isVariableDeclaration(p) ||
+        ts.isParameter(p) ||
+        ts.isFunctionDeclaration(p) ||
+        ts.isFunctionExpression(p) ||
+        ts.isClassDeclaration(p) ||
+        ts.isClassExpression(p) ||
+        ts.isEnumDeclaration(p) ||
+        ts.isInterfaceDeclaration(p) ||
+        ts.isTypeAliasDeclaration(p) ||
+        ts.isTypeParameterDeclaration(p)) &&
+      p.name === id
+    ) {
+      return false
+    }
+    if (ts.isImportSpecifier(p) || ts.isExportSpecifier(p) || ts.isImportClause(p)) return false
+    if (ts.isNamespaceImport(p)) return false
+    if (ts.isLabeledStatement(p) || ts.isBreakOrContinueStatement(p)) return false
+    if (
+      (ts.isJsxOpeningElement(p) || ts.isJsxSelfClosingElement(p) || ts.isJsxClosingElement(p)) &&
+      p.tagName === id &&
+      /^[a-z]/.test(id.text)
+    ) {
+      return false // intrinsic element
+    }
+    // Anything inside a type annotation is a type reference.
+    for (let a: ts.Node | undefined = p; a; a = a.parent) {
+      if (ts.isTypeNode(a) && !ts.isExpressionWithTypeArguments(a)) return false
+      if (ts.isStatement(a) || ts.isSourceFile(a)) break
+    }
+    return true
+  }
+
+  /** `X` in `X`, `X<T>` or `X.Y` as a type. */
+  private static isTypeReference(id: ts.Identifier): boolean {
+    const p = id.parent
+    if (ts.isTypeReferenceNode(p) && p.typeName === id) return true
+    if (ts.isQualifiedName(p) && p.left === id) return true
+    if (ts.isTypeQueryNode(p) && p.exprName === id) return true
+    return false
+  }
+
+  private collectReferences(): void {
+    const visit = (node: ts.Node): void => {
+      if (ts.isIdentifier(node)) {
+        if (ReactMigrator.isValueReference(node)) {
+          this.refs.push({ id: node, decl: this.resolve(node) })
+        } else if (ReactMigrator.isTypeReference(node)) {
+          const decl = this.resolve(node)
+          if (decl && this.reactImports.has(decl)) this.typeRefs.push({ id: node, decl })
+        }
+      }
+      ts.forEachChild(node, visit)
+    }
+    visit(this.sf)
+  }
+
+  private referencesTo(decl: ts.Identifier): ts.Identifier[] {
+    return this.refs.filter((r) => r.decl === decl).map((r) => r.id)
+  }
+
+  // ── React imports ────────────────────────────────────────────────────────────
+
+  private collectReactImports(): void {
+    for (const stmt of this.sf.statements) {
+      if (!ts.isImportDeclaration(stmt) || !ts.isStringLiteral(stmt.moduleSpecifier)) continue
+      if (!(stmt.moduleSpecifier.text in IMPORT_REWRITES)) continue
+      const clause = stmt.importClause
+      if (!clause) continue // side-effect import: removed below
+      const typeOnlyDecl = clause.isTypeOnly
+      const add = (
+        node: ReactImportBinding['node'],
+        nameNode: ts.Identifier,
+        canonical: string,
+        typeOnly: boolean,
+      ): void => {
+        this.reactImports.set(nameNode, {
+          decl: stmt,
+          node,
+          local: nameNode.text,
+          canonical,
+          typeOnly,
+          converted: new Set(),
         })
       }
-    }
-  }
-
-  if (attrName === 'dangerouslySetInnerHTML') {
-    migrateDangerouslySetInnerHTML(ctx, node)
-  }
-}
-
-function migrateDangerouslySetInnerHTML(ctx: MigrateContext, node: ts.JsxAttribute): void {
-  if (!node.initializer || !ts.isJsxExpression(node.initializer) || !node.initializer.expression) {
-    return
-  }
-  const expr = node.initializer.expression
-  if (!ts.isObjectLiteralExpression(expr)) return
-
-  const htmlProp = expr.properties.find(
-    (p) => ts.isPropertyAssignment(p) && ts.isIdentifier(p.name) && p.name.text === '__html',
-  ) as ts.PropertyAssignment | undefined
-
-  if (htmlProp) {
-    const valueText = migrateGetNodeText(ctx, htmlProp.initializer)
-    migrateReplace(ctx, node, `innerHTML={${valueText}}`)
-    ctx.changes.push({
-      type: 'replace',
-      line: migrateGetLine(ctx, node),
-      description: 'dangerouslySetInnerHTML → innerHTML',
-    })
-  }
-}
-
-function applyReplacements(code: string, ctx: MigrateContext): string {
-  // Remove React import declarations
-  for (const imp of ctx.importsToRemove) {
-    ctx.replacements.push({ start: imp.getStart(ctx.sf), end: imp.getEnd(), text: '' })
-    ctx.changes.push({
-      type: 'remove',
-      line: ctx.sf.getLineAndCharacterOfPosition(imp.getStart(ctx.sf)).line + 1,
-      description: 'Removed React import',
-    })
-  }
-
-  // Sort descending for dedup (outermost replacements win over inner overlapping ones)
-  ctx.replacements.sort((a, b) => b.start - a.start)
-
-  // Deduplicate overlapping replacements (keep the outermost / first added)
-  const applied = new Set<string>()
-  const deduped: Replacement[] = []
-  for (const r of ctx.replacements) {
-    const key = `${r.start}:${r.end}`
-    let overlaps = false
-    for (const d of deduped) {
-      if (r.start < d.end && r.end > d.start) {
-        overlaps = true
-        break
+      if (clause.name) add(clause, clause.name, '*', typeOnlyDecl)
+      const nb = clause.namedBindings
+      if (nb && ts.isNamespaceImport(nb)) add(nb, nb.name, '*', typeOnlyDecl)
+      if (nb && ts.isNamedImports(nb)) {
+        for (const el of nb.elements) {
+          add(el, el.name, (el.propertyName ?? el.name).text, typeOnlyDecl || el.isTypeOnly)
+        }
       }
     }
-    if (!overlaps && !applied.has(key)) {
-      applied.add(key)
-      deduped.push(r)
+  }
+
+  /**
+   * The React export an expression names — useState for useState or
+   * `React.useState` — with the identifier nodes that make up the reference.
+   */
+  private reactName(
+    expr: ts.Expression,
+  ): { name: string; binding: ReactImportBinding; refNode: ts.Identifier } | undefined {
+    if (ts.isIdentifier(expr)) {
+      const b = this.reactBindingOf(expr)
+      if (b && b.canonical !== '*') return { name: b.canonical, binding: b, refNode: expr }
+      return undefined
+    }
+    if (ts.isPropertyAccessExpression(expr) && ts.isIdentifier(expr.expression)) {
+      const b = this.reactBindingOf(expr.expression)
+      if (b && b.canonical === '*')
+        return { name: expr.name.text, binding: b, refNode: expr.expression }
+    }
+    return undefined
+  }
+
+  /**
+   * The React import an identifier refers to. A snippet pasted without its
+   * imports (`const [n, setN] = useState(0)`) is common input for an AI tool,
+   * so an UNDECLARED identifier named like a React export (or `React`) counts too.
+   */
+  private reactBindingOf(id: ts.Identifier): ReactImportBinding | undefined {
+    const decl = this.resolve(id)
+    if (decl) return this.reactImports.get(decl)
+    const name = id.text
+    if (name !== 'React' && !(name in REACT_SPECIFIERS)) return undefined
+    let b = this.globals.get(name)
+    if (!b) {
+      b = {
+        decl: undefined,
+        node: undefined,
+        local: name,
+        canonical: name === 'React' ? '*' : name,
+        typeOnly: false,
+        converted: new Set(),
+      }
+      this.globals.set(name, b)
+    }
+    return b
+  }
+
+  /** Replace a React callee/tag reference (useState or React.useState) with `text`. */
+  private replaceReactRef(expr: ts.Expression, text: string): void {
+    this.markConverted(expr)
+    this.replaceNode(expr, text)
+  }
+
+  /** Record that a React callee (a hook, possibly React.-qualified) was consumed by a conversion. */
+  private markConverted(expr: ts.Expression): void {
+    const r = this.reactName(expr)!
+    r.binding.converted.add(r.refNode)
+  }
+
+  // ── analysis: which bindings become signals ─────────────────────────────────
+
+  private enclosingFunction(node: ts.Node): ts.FunctionLikeDeclaration | undefined {
+    for (let a = node.parent; a; a = a.parent) {
+      if (
+        ts.isFunctionDeclaration(a) ||
+        ts.isFunctionExpression(a) ||
+        ts.isArrowFunction(a) ||
+        ts.isMethodDeclaration(a)
+      ) {
+        return a
+      }
+    }
+    return undefined
+  }
+
+  private collectBindings(): void {
+    const visit = (node: ts.Node): void => {
+      if (ts.isCallExpression(node)) {
+        const r = this.reactName(node.expression)
+        const role = r && roleOf(r.name)
+        if (role === 'state' || role === 'reducer') this.analyzeStateHook(node, role)
+        if (role === 'memo') this.analyzeMemo(node)
+        if (role === 'ref') this.analyzeRef(node)
+        if (role === 'forwardRef') this.analyzeForwardRef(node)
+      }
+      ts.forEachChild(node, visit)
+    }
+    visit(this.sf)
+  }
+
+  /** `const [a, setA] = useState(…)` / `const [s, dispatch] = useReducer(…)`. */
+  private stateDeclaration(
+    call: ts.CallExpression,
+  ):
+    | { decl: ts.VariableDeclaration; name: string; value?: ts.Identifier; second?: ts.Identifier }
+    | undefined {
+    const decl = call.parent
+    if (!ts.isVariableDeclaration(decl) || decl.initializer !== call) return undefined
+    if (!ts.isArrayBindingPattern(decl.name) || decl.name.elements.length > 2) return undefined
+    const [first, second] = decl.name.elements
+    const ident = (el: ts.ArrayBindingElement | undefined): ts.Identifier | undefined | null => {
+      if (!el || ts.isOmittedExpression(el)) return undefined
+      if (el.dotDotDotToken || el.initializer || !ts.isIdentifier(el.name)) return null
+      return el.name
+    }
+    const value = ident(first)
+    const setter = ident(second)
+    if (value === null || setter === null || (!value && !setter)) return undefined
+    // `const [, setCount] = useState(0)` still needs a signal to write to.
+    let name = value?.text
+    if (!name) {
+      const base = setter!.text.replace(/^set(?=[A-Z])/, '')
+      name = base.charAt(0).toLowerCase() + base.slice(1)
+      if (name === setter!.text || new RegExp(`\\b${name}\\b`).test(this.code))
+        name = `${name}State`
+    }
+    return { decl, name, ...(value ? { value } : {}), ...(setter ? { second: setter } : {}) }
+  }
+
+  private analyzeStateHook(call: ts.CallExpression, role: 'state' | 'reducer'): void {
+    const shape = this.stateDeclaration(call)
+    if (!shape) return // reported as manual in `convertStateHook`
+    if (shape.value) this.bindings.set(shape.value, { kind: 'signal' })
+    if (shape.second && role === 'state') {
+      this.bindings.set(shape.second, { kind: 'setter', signal: shape.name })
+    }
+    // A module-level hook (a pasted snippet) has no body that re-runs.
+    const fn = this.enclosingFunction(call)
+    if (fn) this.hookFunctions.add(fn)
+  }
+
+  private analyzeMemo(call: ts.CallExpression): void {
+    const decl = call.parent
+    const fn = this.enclosingFunction(call)
+    if (ts.isVariableDeclaration(decl) && decl.initializer === call && ts.isIdentifier(decl.name)) {
+      this.bindings.set(decl.name, { kind: 'signal' })
+      if (fn) this.hookFunctions.add(fn)
     }
   }
 
-  // Re-sort ascending for string builder — O(n) single join
-  deduped.sort((a, b) => a.start - b.start)
-  const parts: string[] = []
-  let lastPos = 0
-  for (const r of deduped) {
-    parts.push(code.slice(lastPos, r.start))
-    parts.push(r.text)
-    lastPos = r.end
+  private analyzeRef(call: ts.CallExpression): void {
+    const decl = call.parent
+    if (isEmptyRefInit(call) && ts.isVariableDeclaration(decl) && ts.isIdentifier(decl.name)) {
+      this.domRefs.add(decl.name)
+    }
   }
-  parts.push(code.slice(lastPos))
-  return parts.join('')
+
+  private analyzeForwardRef(call: ts.CallExpression): void {
+    const fn = call.arguments[0]
+    if (!fn || !(ts.isArrowFunction(fn) || ts.isFunctionExpression(fn))) return
+    const [props, ref] = fn.parameters
+    if (
+      fn.parameters.length === 2 &&
+      props &&
+      ref &&
+      ts.isIdentifier(props.name) &&
+      ts.isIdentifier(ref.name)
+    ) {
+      this.bindings.set(ref.name, { kind: 'replace', text: `${props.name.text}.ref` })
+    }
+  }
+
+  /**
+   * Reads of a signal at SETUP level (not inside a nested function, not inside
+   * JSX — the compiler wraps those) ran on every render in React but run once
+   * in Pyreon. A body-level `const` becomes a `computed`; the component's
+   * `return` becomes an accessor; anything else is reported.
+   */
+  private analyzeSetupReads(): void {
+    for (let changed = true; changed;) {
+      changed = false
+      for (const ref of this.refs) {
+        const kind = ref.decl ? this.bindings.get(ref.decl) : undefined
+        if (!kind || kind.kind !== 'signal') continue
+        const site = this.setupSite(ref.id)
+        if (!site) continue
+        if (site.kind === 'derived' && !this.derivedConsts.has(site.decl)) {
+          this.derivedConsts.add(site.decl)
+          this.bindings.set(site.decl.name as ts.Identifier, { kind: 'signal' })
+          changed = true
+        } else if (site.kind === 'return') {
+          this.accessorReturns.add(site.stmt)
+        }
+      }
+    }
+    const reported = new Set<ts.Node>()
+    for (const ref of this.refs) {
+      const kind = ref.decl ? this.bindings.get(ref.decl) : undefined
+      if (!kind || kind.kind !== 'signal') continue
+      const site = this.setupSite(ref.id)
+      if (!site || site.kind !== 'manual' || reported.has(site.stmt)) continue
+      reported.add(site.stmt)
+      this.note(
+        site.stmt,
+        `\`${ref.id.text}\` is read once, when the component is set up. React re-ran this on every render; Pyreon does not, so this line will not see later changes.`,
+        site.hook
+          ? `return the signal itself (\`${ref.id.text}\`) and call it where the value is used`
+          : `move the read into JSX, a computed(() => …), or wrap the branch in <Show when={() => …}>`,
+      )
+    }
+  }
+
+  private setupSite(
+    id: ts.Identifier,
+  ):
+    | { kind: 'derived'; decl: ts.VariableDeclaration }
+    | { kind: 'return'; stmt: ts.ReturnStatement }
+    | { kind: 'manual'; stmt: ts.Node; hook: boolean }
+    | undefined {
+    let stmt: ts.Statement | undefined
+    for (let a: ts.Node = id; a.parent; a = a.parent) {
+      const p = a.parent
+      if (ts.isFunctionLike(p) || ts.isClassLike(p)) {
+        // Reached the function that owns this statement.
+        // A hook binding is declared by a statement, so its function has a
+        // block body and `stmt` is that body's direct child.
+        if (!stmt || !this.hookFunctions.has(p as ts.FunctionLikeDeclaration)) return undefined
+        return this.classifySetupStatement(stmt, id, isHookName(p))
+      }
+      if (ts.isJsxElement(p) || ts.isJsxSelfClosingElement(p) || ts.isJsxFragment(p))
+        return undefined
+      if (ts.isCallExpression(p) && this.isOnceArgument(p, a)) return undefined
+      if (ts.isStatement(a)) stmt = a
+    }
+    return undefined
+  }
+
+  /** `useState(init)` / `useRef(init)` / `useReducer(r, init)` read their argument once by design. */
+  private isOnceArgument(call: ts.CallExpression, arg: ts.Node): boolean {
+    const r = this.reactName(call.expression)
+    const role = r && roleOf(r.name)
+    if (role === 'state' || role === 'ref' || role === 'reducer') {
+      return call.arguments.some((a) => a === arg)
+    }
+    // A deps array is deleted by the conversion.
+    if (role === 'effect' || role === 'memo' || role === 'callback') {
+      return call.arguments[1] === arg
+    }
+    return false
+  }
+
+  private classifySetupStatement(
+    stmt: ts.Statement,
+    id: ts.Identifier,
+    hook: boolean,
+  ):
+    | { kind: 'derived'; decl: ts.VariableDeclaration }
+    | { kind: 'return'; stmt: ts.ReturnStatement }
+    | { kind: 'manual'; stmt: ts.Node; hook: boolean } {
+    if (ts.isVariableStatement(stmt) && (stmt.declarationList.flags & ts.NodeFlags.Const) !== 0) {
+      const decl = stmt.declarationList.declarations.find(
+        (d) => d.initializer && d.initializer.pos <= id.pos && id.end <= d.initializer.end,
+      )
+      if (decl && ts.isIdentifier(decl.name) && decl.initializer) {
+        const r = ts.isCallExpression(decl.initializer)
+          ? this.reactName(decl.initializer.expression)
+          : undefined
+        // A hook result (`useMemo(…)` etc.) is converted on its own.
+        if (!r) return { kind: 'derived', decl }
+      }
+    }
+    if (ts.isReturnStatement(stmt) && stmt.expression && !hook) return { kind: 'return', stmt }
+    return { kind: 'manual', stmt, hook }
+  }
+
+  // ── edits: references ────────────────────────────────────────────────────────
+
+  private rewriteReferences(): void {
+    for (const { id, decl } of this.refs) {
+      const kind = decl ? this.bindings.get(decl) : undefined
+      if (!kind) continue
+      if (kind.kind === 'signal') this.rewriteSignalRead(id)
+      else if (kind.kind === 'setter') this.rewriteSetter(id, kind.signal)
+      else this.replaceNode(id, kind.text)
+    }
+  }
+
+  private rewriteSignalRead(id: ts.Identifier): void {
+    const p = id.parent
+    if (ts.isShorthandPropertyAssignment(p) && p.name === id) {
+      this.replaceNode(id, `${id.text}: ${id.text}()`)
+      return
+    }
+    this.replaceNode(id, `${id.text}()`)
+  }
+
+  private rewriteSetter(id: ts.Identifier, signal: string): void {
+    const p = id.parent
+    if (ts.isCallExpression(p) && p.expression === id) {
+      const arg = p.arguments[0]
+      const isUpdater = arg && (ts.isArrowFunction(arg) || ts.isFunctionExpression(arg))
+      this.replaceNode(id, `${signal}.${isUpdater ? 'update' : 'set'}`)
+      return
+    }
+    // Passed as a value (e.g. a callback prop): keep React's contract, which
+    // accepts a value or an updater function.
+    const text = `((next) => (typeof next === 'function' ? ${signal}.update(next) : ${signal}.set(next)))`
+    if (ts.isShorthandPropertyAssignment(p) && p.name === id) {
+      this.replaceNode(id, `${id.text}: ${text}`)
+    } else {
+      this.replaceNode(id, text)
+    }
+  }
+
+  // ── edits: structural ────────────────────────────────────────────────────────
+
+  private convertCalls(): void {
+    const visit = (node: ts.Node): void => {
+      ts.forEachChild(node, visit) // inner first, so `rendered()` sees inner edits
+      if (!ts.isCallExpression(node)) return
+      const r = this.reactName(node.expression)
+      if (r) {
+        switch (roleOf(r.name)) {
+          case 'state':
+          case 'reducer':
+            this.convertStateHook(node, r.name)
+            break
+          case 'effect':
+            this.convertEffect(node, r.name)
+            break
+          case 'memo':
+            this.convertMemo(node)
+            break
+          case 'callback':
+            this.convertCallback(node)
+            break
+          case 'ref':
+            this.convertRef(node)
+            break
+          case 'memoWrapper':
+            this.convertMemoWrapper(node)
+            break
+          case 'forwardRef':
+            this.convertForwardRef(node)
+            break
+        }
+        return
+      }
+      // createRoot(el).render(node) → mount(node, el)
+      const callee = node.expression
+      if (
+        ts.isPropertyAccessExpression(callee) &&
+        callee.name.text === 'render' &&
+        ts.isCallExpression(callee.expression)
+      ) {
+        const inner = callee.expression
+        const ir = this.reactName(inner.expression)
+        const container = inner.arguments[0]
+        const root = node.arguments[0]
+        if (ir?.name === 'createRoot' && container && root) {
+          ir.binding.converted.add(ir.refNode)
+          this.replaceNode(node, `mount(${this.rendered(root)}, ${this.rendered(container)})`, true)
+          this.need('@pyreon/runtime-dom', 'mount')
+          this.change(node, 'createRoot(el).render(app) → mount(app, el)')
+        }
+      }
+    }
+    visit(this.sf)
+  }
+
+  private convertStateHook(call: ts.CallExpression, hook: string): void {
+    const shape = this.stateDeclaration(call)
+    if (!shape) {
+      this.note(
+        call,
+        `${hook}() is only converted in the \`const [value, setValue] = ${hook}(…)\` shape inside a function.`,
+        roleOf(hook) === 'state'
+          ? 'const value = signal(initial) — read value(), write value.set(v)'
+          : 'const state = signal(initial)',
+      )
+      return
+    }
+    const value = shape.name
+    this.need('@pyreon/reactivity', 'signal')
+    if (roleOf(hook) === 'state') {
+      this.edit(shape.decl.name.getStart(this.sf), shape.decl.name.getEnd(), value)
+      this.replaceReactRef(call.expression, 'signal')
+      const init = call.arguments[0]
+      if (!init) {
+        this.edit(call.arguments.pos, call.arguments.end, 'undefined')
+        if (call.typeArguments?.[0]) {
+          const t = call.typeArguments[0]
+          this.replaceNode(t, `${this.text(t)} | undefined`)
+        }
+      } else if (
+        (ts.isArrowFunction(init) || ts.isFunctionExpression(init)) &&
+        init.parameters.length === 0
+      ) {
+        // Lazy initializer: React calls it once; a signal would store the function.
+        if (ts.isArrowFunction(init) && !ts.isBlock(init.body)) {
+          this.replaceNode(init, this.rendered(init.body), true)
+        } else {
+          this.replaceNode(init, `(${this.rendered(init)})()`, true)
+        }
+      }
+      this.change(
+        call,
+        `useState → signal: ${value}${shape.second ? ` (reads → ${value}(), ${shape.second.text}(v) → ${value}.set(v))` : ''}`,
+      )
+      return
+    }
+    // useReducer(reducer, initialArg, init?)
+    const [reducer, initialArg, initFn] = call.arguments
+    if (!reducer || !initialArg) {
+      this.note(
+        call,
+        'useReducer() needs a reducer and an initial state to convert.',
+        'const state = signal(initial)',
+      )
+      return
+    }
+    const initCallee =
+      initFn && (ts.isIdentifier(initFn) ? this.rendered(initFn) : `(${this.rendered(initFn)})`)
+    const init = initCallee
+      ? `${initCallee}(${this.rendered(initialArg)})`
+      : this.rendered(initialArg)
+    let reducerName = this.rendered(reducer)
+    let prelude = ''
+    if (!ts.isIdentifier(reducer)) {
+      reducerName = `${value}Reducer`
+      prelude = `${reducerName} = ${this.rendered(reducer)}, `
+    }
+    const dispatch = shape.second
+      ? `, ${shape.second.text} = (action: Parameters<typeof ${reducerName}>[1]) => ${value}.update((state) => ${reducerName}(state, action))`
+      : ''
+    this.replaceNode(shape.decl, `${prelude}${value} = signal(${init})${dispatch}`, true)
+    this.markConverted(call.expression)
+    this.change(
+      call,
+      `useReducer → signal: ${value}${shape.second ? ` + ${shape.second.text}(action)` : ''}`,
+    )
+  }
+
+  private deleteTrailingArgs(call: ts.CallExpression, keep: ts.Expression): void {
+    const last = call.arguments[call.arguments.length - 1]
+    if (last && last !== keep) this.edit(keep.getEnd(), last.getEnd(), '', true)
+  }
+
+  private convertEffect(call: ts.CallExpression, hook: string): void {
+    const [cb, deps] = call.arguments
+    if (!cb) return
+    const once = deps && ts.isArrayLiteralExpression(deps) && deps.elements.length === 0
+    if (once) {
+      this.replaceReactRef(call.expression, 'onMount')
+      this.need('@pyreon/core', 'onMount')
+      this.deleteTrailingArgs(call, cb)
+      this.change(call, `${hook}(fn, []) → onMount(fn)`)
+      return
+    }
+    // React runs an effect AFTER the DOM is attached. A Pyreon `effect` runs at
+    // setup, before mount — fine unless it touches a DOM ref, which would still
+    // be null. Those start in onMount.
+    const readsDomRef = this.refs.some(
+      (r) => r.decl && this.domRefs.has(r.decl) && r.id.pos >= cb.pos && r.id.end <= cb.end,
+    )
+    this.need('@pyreon/reactivity', 'effect')
+    if (readsDomRef) {
+      const handle = this.freshName('stopEffect')
+      const indent = this.indentOf(call)
+      this.replaceReactRef(call.expression, `onMount(() => {\n${indent}  const ${handle} = effect`)
+      this.edit(
+        call.getEnd(),
+        call.getEnd(),
+        `\n${indent}  return () => ${handle}.dispose()\n${indent}})`,
+      )
+      this.need('@pyreon/core', 'onMount')
+    } else {
+      this.replaceReactRef(call.expression, 'effect')
+    }
+    this.deleteTrailingArgs(call, cb)
+    this.change(call, `${hook} → effect (dependencies tracked from the signals it reads)`)
+    if (deps && ts.isArrayLiteralExpression(deps)) this.checkDeps(call, cb, deps, hook)
+  }
+
+  /** A Pyreon effect tracks every signal it reads; flag reads React's deps array did not list. */
+  private checkDeps(
+    call: ts.CallExpression,
+    cb: ts.Expression,
+    deps: ts.ArrayLiteralExpression,
+    hook: string,
+  ): void {
+    const listed = new Set(deps.elements.filter(ts.isIdentifier).map((e) => e.text))
+    const extra = new Set<string>()
+    for (const r of this.refs) {
+      if (!r.decl || r.id.pos < cb.pos || r.id.end > cb.end) continue
+      if (this.bindings.get(r.decl)?.kind === 'signal' && !listed.has(r.id.text))
+        extra.add(r.id.text)
+    }
+    if (extra.size === 0) return
+    const names = [...extra].join(', ')
+    this.note(
+      call,
+      `This ${hook} now also re-runs when ${names} change${extra.size === 1 ? 's' : ''} — its deps array did not list ${extra.size === 1 ? 'it' : 'them'}. Pyreon effects track every signal they read.`,
+      `read ${[...extra].map((n) => `${n}.peek()`).join(' / ')} instead if the effect must not re-run on ${names}`,
+    )
+  }
+
+  private convertMemo(call: ts.CallExpression): void {
+    const fn = call.arguments[0]
+    if (!fn) return
+    this.replaceReactRef(call.expression, 'computed')
+    this.need('@pyreon/reactivity', 'computed')
+    this.deleteTrailingArgs(call, fn)
+    const decl = call.parent
+    if (!(ts.isVariableDeclaration(decl) && ts.isIdentifier(decl.name))) {
+      this.note(
+        call,
+        'This useMemo() result is not bound to a const, so its reads could not be rewritten.',
+        'const value = computed(() => …) — read value()',
+      )
+    }
+    this.change(call, 'useMemo → computed (dependencies tracked from the signals it reads)')
+  }
+
+  private convertCallback(call: ts.CallExpression): void {
+    const fn = call.arguments[0]
+    if (!fn) return
+    this.markConverted(call.expression)
+    this.edit(call.getStart(this.sf), fn.getStart(this.sf), '', true)
+    this.edit(fn.getEnd(), call.getEnd(), '', true)
+    this.change(call, 'useCallback → plain function (components run once)')
+  }
+
+  private convertRef(call: ts.CallExpression): void {
+    const arg = call.arguments[0]
+    if (isEmptyRefInit(call)) {
+      this.replaceReactRef(call.expression, 'createRef')
+      this.need('@pyreon/core', 'createRef')
+      if (arg) this.edit(call.arguments.pos, call.arguments.end, '', true)
+      this.change(call, 'useRef(null) → createRef()')
+      return
+    }
+    if (!arg) return
+    // A mutable box. React's useRef never triggers a re-render, and neither
+    // does a plain object — a signal would break every `.current` access.
+    this.markConverted(call.expression)
+    const t = call.typeArguments?.[0]
+    this.edit(
+      call.getStart(this.sf),
+      arg.getStart(this.sf),
+      t ? '({ current: ' : '{ current: ',
+      true,
+    )
+    this.edit(arg.getEnd(), call.getEnd(), t ? ` } as { current: ${this.text(t)} })` : ' }', true)
+    this.change(call, 'useRef(value) → { current: value } (a plain mutable box, as in React)')
+  }
+
+  private convertMemoWrapper(call: ts.CallExpression): void {
+    const inner = call.arguments[0]
+    if (!inner) return
+    this.markConverted(call.expression)
+    this.edit(call.getStart(this.sf), inner.getStart(this.sf), '', true)
+    this.edit(inner.getEnd(), call.getEnd(), '', true)
+    this.change(call, 'Removed memo() wrapper (components run once)', 'remove')
+  }
+
+  private convertForwardRef(call: ts.CallExpression): void {
+    const fn = call.arguments[0]
+    if (!fn || !(ts.isArrowFunction(fn) || ts.isFunctionExpression(fn))) {
+      this.note(
+        call,
+        'forwardRef() is only unwrapped around an inline (props, ref) => … function.',
+        'const Comp = (props) => <input ref={props.ref} />',
+      )
+      return
+    }
+    const [props, ref] = fn.parameters
+    if (fn.parameters.length === 2 && props && ref && !ts.isIdentifier(props.name)) {
+      this.note(
+        call,
+        'forwardRef() with destructured props is not unwrapped: the ref must be read as props.ref.',
+        'const Comp = (props) => <input ref={props.ref} />',
+      )
+      return
+    }
+    this.markConverted(call.expression)
+    this.edit(call.getStart(this.sf), fn.getStart(this.sf), '', true)
+    this.edit(fn.getEnd(), call.getEnd(), '', true)
+    if (props && ref) {
+      // `(props, ref)` → `(props: P & { ref?: Ref<T> })`; reads of `ref` → `props.ref`.
+      const [refType, propsType] = call.typeArguments ?? []
+      const refInner = refType
+        ? this.text(refType)
+        : ref.type && ts.isTypeReferenceNode(ref.type) && ref.type.typeArguments?.[0]
+          ? this.text(ref.type.typeArguments[0])
+          : undefined
+      const refProp = refInner ? `{ ref?: Ref<${refInner}> }` : undefined
+      if (refProp) this.need('@pyreon/core', 'Ref', true)
+      if (props.type) {
+        if (refProp) this.edit(props.type.getEnd(), ref.getEnd(), ` & ${refProp}`, true)
+        else this.edit(props.getEnd(), ref.getEnd(), '', true)
+      } else {
+        const typeText = propsType
+          ? `${this.text(propsType)}${refProp ? ` & ${refProp}` : ''}`
+          : refProp
+        this.edit(props.name.getEnd(), ref.getEnd(), typeText ? `: ${typeText}` : '', true)
+      }
+    }
+    this.change(call, 'Removed forwardRef wrapper (the ref arrives as props.ref)', 'remove')
+  }
+
+  /** Leading whitespace of the line `node` starts on. */
+  private indentOf(node: ts.Node): string {
+    const start = node.getStart(this.sf)
+    const lineStart = this.code.lastIndexOf('\n', start - 1) + 1
+    return /^[ \t]*/.exec(this.code.slice(lineStart, start))![0]
+  }
+
+  private freshName(base: string): string {
+    let name = base
+    for (let i = 2; this.code.includes(name); i++) name = `${base}${i}`
+    return name
+  }
+
+  // ── edits: setup-level reads ─────────────────────────────────────────────────
+
+  private convertSetupReads(): void {
+    for (const decl of this.derivedConsts) {
+      const init = decl.initializer!
+      // An object literal needs parens to stay an expression body.
+      const paren = ts.isObjectLiteralExpression(skipParens(init))
+      this.edit(
+        init.getStart(this.sf),
+        init.getStart(this.sf),
+        paren ? 'computed(() => (' : 'computed(() => ',
+      )
+      this.edit(init.getEnd(), init.getEnd(), paren ? '))' : ')')
+      this.need('@pyreon/reactivity', 'computed')
+      this.change(
+        decl,
+        `${(decl.name as ts.Identifier).text}: derived from state → computed (the body runs once)`,
+      )
+    }
+    for (const stmt of this.accessorReturns) {
+      const expr = stmt.expression!
+      this.edit(expr.getStart(this.sf), expr.getStart(this.sf), '() => (')
+      this.edit(expr.getEnd(), expr.getEnd(), ')')
+      this.change(stmt, 'return reads state outside JSX → return an accessor (the body runs once)')
+    }
+  }
+
+  // ── edits: JSX attributes and plain React references ─────────────────────────
+
+  private convertJsxAndReferences(): void {
+    const visit = (node: ts.Node): void => {
+      if (ts.isJsxAttribute(node) && ts.isIdentifier(node.name)) this.convertJsxAttribute(node)
+      if (
+        ts.isPropertyAccessExpression(node) &&
+        node.name.text === 'Provider' &&
+        !ts.isJsxClosingElement(node.parent)
+      ) {
+        const r = this.reactNameOfContext(node.expression)
+        if (r) {
+          this.note(
+            node,
+            'Pyreon contexts have no .Provider component.',
+            `provide(${this.text(node.expression)}, value) in the providing component's setup`,
+          )
+        }
+      }
+      ts.forEachChild(node, visit)
+    }
+    visit(this.sf)
+
+    // Plain (non-structural) React references: same-name and renamed exports.
+    for (const { id } of this.refs) {
+      const b = this.reactBindingOf(id)
+      if (!b || b.typeOnly) continue
+      let name = b.canonical
+      let refNode: ts.Node = id
+      if (name === '*') {
+        const p = id.parent
+        if (!(ts.isPropertyAccessExpression(p) && p.expression === id)) continue
+        name = p.name.text
+        refNode = p
+      }
+      const plan = REACT_SPECIFIERS[name]
+      if (!plan || plan.kind === 'structural') continue
+      if (name === 'Fragment' && this.convertFragmentTag(refNode)) {
+        b.converted.add(id)
+        continue
+      }
+      if (plan.kind === 'same') {
+        this.need(plan.from, name)
+        if (refNode !== id) this.replaceNode(refNode, name)
+      } else {
+        this.need(plan.from, plan.name)
+        this.replaceNode(refNode, plan.name)
+        if (name === 'NavLink' && ts.isJsxOpeningLikeElement(id.parent)) {
+          this.note(
+            id.parent,
+            'NavLink → RouterLink: RouterLink sets an active class itself; a className/style FUNCTION prop is not supported.',
+            '<RouterLink to="…" activeClass="active">',
+          )
+        }
+      }
+      b.converted.add(id)
+    }
+  }
+
+  /**
+   * `<Fragment>…</Fragment>` → `<>…</>`. Pyreon's Fragment is a symbol for
+   * `h()`, not a JSX component. Returns false for a non-tag use or a keyed
+   * Fragment (left in place and reported).
+   */
+  private convertFragmentTag(ref: ts.Node): boolean {
+    const el = ref.parent
+    if (
+      !(ts.isJsxOpeningElement(el) || ts.isJsxSelfClosingElement(el) || ts.isJsxClosingElement(el))
+    ) {
+      return false
+    }
+    if (el.tagName !== ref) return false
+    if (ts.isJsxClosingElement(el)) {
+      const opening = (el.parent as ts.JsxElement).openingElement
+      if (opening.attributes.properties.length > 0) return false
+      this.replaceNode(el, '</>')
+      return true
+    }
+    if (el.attributes.properties.length > 0) {
+      this.note(
+        el,
+        'A <Fragment> with props (e.g. key) has no Pyreon JSX equivalent; <> takes no props.',
+        'drop the key (For keys rows with by={…}) and use <>…</>',
+      )
+      return false
+    }
+    this.replaceNode(el, ts.isJsxSelfClosingElement(el) ? '<></>' : '<>')
+    if (ts.isJsxOpeningElement(el)) this.change(el, '<Fragment> → <>')
+    return true
+  }
+
+  /** `X` in `X.Provider` when X was created by React's createContext. */
+  private reactNameOfContext(expr: ts.Expression): boolean {
+    if (!ts.isIdentifier(expr)) return false
+    const decl = this.resolve(expr)
+    const v = decl?.parent
+    if (!v || !ts.isVariableDeclaration(v) || !v.initializer || !ts.isCallExpression(v.initializer))
+      return false
+    return this.reactName(v.initializer.expression)?.name === 'createContext'
+  }
+
+  private convertJsxAttribute(node: ts.JsxAttribute): void {
+    const attrName = (node.name as ts.Identifier).text
+    if (attrName in JSX_ATTR_REWRITES) {
+      const htmlAttr = JSX_ATTR_REWRITES[attrName] as string
+      this.replaceNode(node.name, htmlAttr)
+      this.change(node, `${attrName} → ${htmlAttr}`)
+    }
+    if (attrName === 'onChange') {
+      const el = findParentJsxElement(node)
+      const tag = el ? getJsxTagName(el) : ''
+      // Same rule as the detector: only where `change` fires on blur.
+      if (el && (tag === 'textarea' || (tag === 'input' && isTextLikeInput(el)))) {
+        this.replaceNode(node.name, 'onInput')
+        this.change(
+          node,
+          `onChange on <${tag}> → onInput (fires per keystroke, as React's onChange did)`,
+        )
+      }
+    }
+    // `dangerouslySetInnerHTML` is left as is: Pyreon supports it with React's
+    // raw semantics, while `innerHTML` is the SANITIZED path and throws in SSR.
+  }
+
+  // ── imports ──────────────────────────────────────────────────────────────────
+
+  private rewriteImports(): void {
+    const byDecl = new Map<ts.ImportDeclaration, ReactImportBinding[]>()
+    for (const b of this.reactImports.values()) {
+      if (!b.decl) continue
+      const list = byDecl.get(b.decl) ?? []
+      list.push(b)
+      byDecl.set(b.decl, list)
+    }
+    // A snippet's un-imported React names that stayed unconverted.
+    for (const b of this.globals.values()) {
+      const first = this.refs.find(
+        (r) => !r.decl && r.id.text === b.local && !b.converted.has(r.id),
+      )?.id
+      if (!first || this.manual.some((n) => n.line === this.pos(first).line)) continue
+      const name =
+        b.canonical === '*' && ts.isPropertyAccessExpression(first.parent)
+          ? this.text(first.parent)
+          : b.local
+      this.note(
+        first,
+        UNSUPPORTED_REASONS[name] ?? `This use of \`${name}\` could not be converted.`,
+        'rewrite it by hand; the MCP get_api tool documents the Pyreon API',
+      )
+    }
+    const kept = new Set<ReactImportBinding>()
+    for (const [decl, b] of this.reactImports) {
+      const open = [
+        ...this.referencesTo(decl as ts.Identifier).filter((id) => !b.converted.has(id)),
+        ...this.typeRefs.filter((r) => r.decl === decl).map((r) => r.id),
+      ].sort((x, y) => x.pos - y.pos)
+      if (open.length === 0) continue
+      kept.add(b)
+      const first = open[0]!
+      if (this.manual.some((n) => n.line === this.pos(first).line)) continue
+      const typeUse = b.typeOnly || this.typeRefs.some((r) => r.id === first)
+      const name =
+        b.canonical !== '*'
+          ? b.canonical
+          : ts.isQualifiedName(first.parent) || ts.isPropertyAccessExpression(first.parent)
+            ? this.text(first.parent)
+            : b.local
+      const reason = typeUse
+        ? `\`${name}\` is a React type; there is no automatic Pyreon equivalent.`
+        : (UNSUPPORTED_REASONS[name] ??
+          (REACT_SPECIFIERS[name]
+            ? `This use of \`${name}\` could not be converted.`
+            : `\`${name}\` has no automatic Pyreon conversion.`))
+      this.note(
+        first,
+        `${reason} Its React import is kept so the remaining work stays visible.`,
+        'rewrite it by hand; the MCP get_api tool documents the Pyreon API',
+      )
+    }
+    // Side-effect imports and declarations with nothing left.
+    for (const stmt of this.sf.statements) {
+      if (!ts.isImportDeclaration(stmt) || !ts.isStringLiteral(stmt.moduleSpecifier)) continue
+      if (!(stmt.moduleSpecifier.text in IMPORT_REWRITES)) continue
+      const bindings = byDecl.get(stmt) ?? []
+      const keep = bindings.filter((b) => kept.has(b))
+      if (keep.length === bindings.length && bindings.length > 0) continue
+      const start = stmt.getStart(this.sf)
+      if (keep.length === 0) {
+        this.edit(start, stmt.getEnd(), '', true)
+        this.change(stmt, `Removed import from '${stmt.moduleSpecifier.text}'`, 'remove')
+        continue
+      }
+      const clause = stmt.importClause!
+      const def = keep.find((b) => b.node === clause)
+      const ns = keep.find((b) => b.node !== undefined && ts.isNamespaceImport(b.node))
+      const named = keep.flatMap((b) =>
+        b.node && ts.isImportSpecifier(b.node) ? [this.text(b.node)] : [],
+      )
+      const parts = [
+        def ? def.local : '',
+        ns ? `* as ${ns.local}` : '',
+        named.length ? `{ ${named.join(', ')} }` : '',
+      ]
+        .filter(Boolean)
+        .join(', ')
+      const typeKw = clause.isTypeOnly ? 'type ' : ''
+      this.edit(
+        start,
+        stmt.getEnd(),
+        `import ${typeKw}${parts} from ${this.text(stmt.moduleSpecifier)}`,
+        true,
+      )
+    }
+
+    // Add the Pyreon imports, reusing names a file already imports.
+    const existing = new Map<string, Set<string>>()
+    for (const stmt of this.sf.statements) {
+      if (!ts.isImportDeclaration(stmt) || !ts.isStringLiteral(stmt.moduleSpecifier)) continue
+      const nb = stmt.importClause?.namedBindings
+      if (!nb || !ts.isNamedImports(nb)) continue
+      const set = existing.get(stmt.moduleSpecifier.text) ?? new Set()
+      for (const el of nb.elements) set.add(el.name.text)
+      existing.set(stmt.moduleSpecifier.text, set)
+    }
+    const lines: string[] = []
+    const modules = new Set([...this.needed.keys(), ...this.neededTypes.keys()])
+    for (const mod of [...modules].sort()) {
+      const have = existing.get(mod) ?? new Set()
+      const values = [...(this.needed.get(mod) ?? [])].filter((n) => !have.has(n)).sort()
+      const types = [...(this.neededTypes.get(mod) ?? [])]
+        .filter((n) => !have.has(n) && !values.includes(n))
+        .sort()
+      const specs = [...values, ...types.map((t) => `type ${t}`)]
+      if (specs.length > 0) lines.push(`import { ${specs.join(', ')} } from "${mod}"`)
+    }
+    if (lines.length === 0) return
+    const imports = this.sf.statements.filter(ts.isImportDeclaration)
+    const lastImport = imports[imports.length - 1]
+    if (lastImport) {
+      this.edit(lastImport.getEnd(), lastImport.getEnd(), `\n${lines.join('\n')}`)
+    } else {
+      // After any directive prologue ('use client').
+      let at = 0
+      for (const s of this.sf.statements) {
+        if (ts.isExpressionStatement(s) && ts.isStringLiteral(s.expression)) at = s.getEnd()
+        else break
+      }
+      this.edit(at, at, at === 0 ? `${lines.join('\n')}\n\n` : `\n${lines.join('\n')}\n`)
+    }
+  }
+
+  // ── apply ────────────────────────────────────────────────────────────────────
+
+  private apply(): string {
+    return this.applyRange(0, this.code.length)
+  }
+
+  /** `code[from, to)` with every registered edit inside it applied. */
+  private applyRange(from: number, to: number): string {
+    const inRange = this.edits.filter((e) => e.start >= from && e.end <= to)
+    const swallowers = inRange.filter((e) => e.swallow && e.end > e.start)
+    const swallowed = (e: Edit): boolean =>
+      swallowers.some((s) => {
+        if (s === e) return false
+        if (e.end === e.start) return s.start < e.start && e.start < s.end
+        if (!(s.start <= e.start && e.end <= s.end)) return false
+        // Identical spans: the later structural edit was built from the earlier one.
+        return s.start !== e.start || s.end !== e.end || s.seq > e.seq
+      })
+    const live = inRange
+      .filter((e) => !swallowed(e))
+      .sort(
+        (a, b) =>
+          a.start - b.start ||
+          Number(a.end !== a.start) - Number(b.end !== b.start) ||
+          a.seq - b.seq,
+      )
+    let out = ''
+    let last = from
+    for (const e of live) {
+      if (e.start < last) {
+        throw new Error(
+          `[Pyreon] migrateReactCode: two rewrites overlap at offset ${e.start}. Please report this input at https://github.com/pyreon/pyreon/issues.`,
+        )
+      }
+      out += this.code.slice(last, e.start) + e.text
+      last = e.end
+    }
+    return out + this.code.slice(last, to)
+  }
+
+  /**
+   * Mark each note's position in the output with a sentinel. The caller
+   * resolves the sentinels (after its own whitespace clean-up) to the line and
+   * column the user sees in the MIGRATED code, then strips them.
+   */
+  private markNotes(): void {
+    this.noteOffsets.forEach((offset, i) =>
+      this.edit(offset, offset, `${NOTE_MARK}${i}${NOTE_MARK}`),
+    )
+  }
+
+  run(): string {
+    this.collectReactImports()
+    this.collectReferences()
+    this.collectBindings()
+    this.analyzeSetupReads()
+    this.rewriteReferences()
+    this.convertCalls()
+    this.convertSetupReads()
+    this.convertJsxAndReferences()
+    this.rewriteImports()
+    this.markNotes()
+    return this.apply()
+  }
 }
 
-function insertPyreonImports(code: string, pyreonImports: Map<string, Set<string>>): string {
-  if (pyreonImports.size === 0) return code
-
-  const importLines: string[] = []
-  const sorted = [...pyreonImports.entries()].sort(([a], [b]) => a.localeCompare(b))
-  for (const [source, specs] of sorted) {
-    const specList = [...specs].sort().join(', ')
-    importLines.push(`import { ${specList} } from "${source}"`)
-  }
-  const importBlock = importLines.join('\n')
-
-  const lastImportEnd = findLastImportEnd(code)
-  if (lastImportEnd > 0) {
-    return `${code.slice(0, lastImportEnd)}\n${importBlock}${code.slice(lastImportEnd)}`
-  }
-  return `${importBlock}\n\n${code}`
+function skipParens(e: ts.Expression): ts.Expression {
+  return ts.isParenthesizedExpression(e) ? skipParens(e.expression) : e
 }
 
-function migrateVisitNode(ctx: MigrateContext, node: ts.Node): void {
-  if (ts.isImportDeclaration(node)) migrateImportDeclaration(ctx, node)
-  if (isCallToHook(node, 'useState')) migrateUseState(ctx, node)
-  if (isCallToEffectHook(node)) migrateUseEffect(ctx, node)
-  if (isCallToHook(node, 'useMemo')) migrateUseMemo(ctx, node)
-  if (isCallToHook(node, 'useCallback')) migrateUseCallback(ctx, node)
-  if (isCallToHook(node, 'useRef')) migrateUseRef(ctx, node)
-  if (ts.isCallExpression(node)) migrateMemoWrapper(ctx, node)
-  if (ts.isCallExpression(node)) migrateForwardRef(ctx, node)
-  if (ts.isJsxAttribute(node) && ts.isIdentifier(node.name)) migrateJsxAttributes(ctx, node)
+function isHookName(fn: ts.Node): boolean {
+  const name =
+    (ts.isFunctionDeclaration(fn) || ts.isFunctionExpression(fn)) && fn.name
+      ? fn.name.text
+      : ts.isVariableDeclaration(fn.parent) && ts.isIdentifier(fn.parent.name)
+        ? fn.parent.name.text
+        : ''
+  return /^use[A-Z0-9]/.test(name)
 }
 
-function migrateVisit(ctx: MigrateContext, node: ts.Node): void {
-  ts.forEachChild(node, (child) => {
-    migrateVisitNode(ctx, child)
-    migrateVisit(ctx, child)
-  })
+function isEmptyRefInit(call: ts.CallExpression): boolean {
+  const arg = call.arguments[0]
+  return (
+    !arg ||
+    arg.kind === ts.SyntaxKind.NullKeyword ||
+    (ts.isIdentifier(arg) && arg.text === 'undefined')
+  )
 }
 
 export function migrateReactCode(code: string, filename = 'input.tsx'): MigrationResult {
   assertClassicTs()
   const sf = ts.createSourceFile(filename, code, ts.ScriptTarget.ESNext, true, ts.ScriptKind.TSX)
   const diagnostics = detectReactPatterns(code, filename)
-
-  const ctx: MigrateContext = {
-    sf,
-    code,
-    replacements: [],
-    changes: [],
-    pyreonImports: new Map(),
-    importsToRemove: new Set(),
-    specifierRewrites: new Map(),
+  const migrator = new ReactMigrator(sf, code)
+  let out = migrator.run()
+  // A removed first-line import must not leave the file starting with a blank line.
+  if (!code.startsWith('\n')) out = out.replace(/^\n+/, '')
+  out = out.replace(/\n{3,}/g, '\n\n')
+  // Resolve note sentinels to positions in the migrated code, then drop them.
+  const markRe = new RegExp(`${NOTE_MARK}(\\d+)${NOTE_MARK}`, 'g')
+  let clean = ''
+  let last = 0
+  for (let m = markRe.exec(out); m; m = markRe.exec(out)) {
+    clean += out.slice(last, m.index)
+    last = m.index + m[0].length
+    const lineStart = clean.lastIndexOf('\n') + 1
+    const note = migrator.manual[Number(m[1])]!
+    note.line = clean.split('\n').length
+    note.column = clean.length - lineStart
   }
-
-  migrateVisit(ctx, sf)
-
-  let result = applyReplacements(code, ctx)
-  result = insertPyreonImports(result, ctx.pyreonImports)
-
-  // Clean up empty lines from removed imports
-  result = result.replace(/\n{3,}/g, '\n\n')
-
-  return { code: result, diagnostics, changes: ctx.changes }
+  clean += out.slice(last)
+  migrator.changes.sort((a, b) => a.line - b.line)
+  migrator.manual.sort((a, b) => a.line - b.line || a.column - b.column)
+  return { code: clean, diagnostics, changes: migrator.changes, manual: migrator.manual }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1118,18 +2178,6 @@ function getJsxTagName(node: ts.JsxOpeningElement | ts.JsxSelfClosingElement): s
     return tagName.text
   }
   return ''
-}
-
-function findLastImportEnd(code: string): number {
-  const importRe = /^import\s.+$/gm
-  let lastEnd = 0
-  let match: RegExpExecArray | null
-  while (true) {
-    match = importRe.exec(code)
-    if (!match) break
-    lastEnd = match.index + match[0].length
-  }
-  return lastEnd
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

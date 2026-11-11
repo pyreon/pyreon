@@ -98,7 +98,8 @@ can.set({ 'admin.*': true })  // replace all
 can.patch({ 'posts.delete': true })  // merge`,
       mistakes: [
         'Reading `can("key")` outside a reactive scope and expecting updates — the check is a signal read, it only re-evaluates inside `effect()`, `computed()`, or JSX expression thunks',
-        'Using a static object instead of a predicate for context-dependent checks — `\'posts.update\': true` always passes, use `(post) => post.authorId === userId()` for ABAC',
+        'Using a static object instead of a predicate for context-dependent checks — `\'posts.update\': true` always passes, use `(post: Post) => post.authorId === userId()` for ABAC',
+        'Leaving a predicate\'s context parameter unannotated — `(post) => post.authorId` sees `post: unknown` and fails to typecheck; annotate it with the context type the predicate expects (`(post: Post) => …`), which any permission map accepts',
         'Forgetting that `admin.*` only matches ONE segment — `admin.users.list` is NOT matched by `admin.*` (only `admin.users` is). Use `admin.**` to match any depth below `admin`',
       ],
       seeAlso: ['PermissionsProvider', 'usePermissions', 'can.assert'],

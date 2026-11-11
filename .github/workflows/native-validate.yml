@@ -92,6 +92,8 @@ env:
   # Pinned tool versions for reproducibility. Bump deliberately;
   # the nightly drift run catches issues from upstream changes.
   SWIFT_VERSION: '6.0'
+  # Exact release the Linux job downloads (SWIFT_VERSION stays the 6.0 line for cache keys).
+  SWIFT_RELEASE: '6.0.3'
   KOTLIN_VERSION: '2.0.21'
 
 jobs:
@@ -185,11 +187,10 @@ jobs:
     # must fire on every PR the dependency graph says can change the emit, not
     # just on native-surface paths. The macOS job below uses the same rule.
     if: (success() && (needs.decide.outputs.run == 'true' || needs.decide.outputs.graph == 'true')) || (failure() && needs.decide.result != 'success')
-    # PINNED, not `ubuntu-latest`: GitHub moved `ubuntu-latest` to Ubuntu 26.04, which
-    # swift-actions/setup-swift (v2.4.0, the newest stable release) rejects with
-    # `Version "26.04" of Ubuntu is not supported` — Swift never installs and this
-    # job fails on any PR that lands on a new-image runner, whatever it changes.
-    # Unpin once a stable setup-swift release supports 26.04.
+    # PINNED, not `ubuntu-latest`: GitHub moved `ubuntu-latest` to Ubuntu 26.04, and
+    # the Swift tarball below is the ubuntu24.04 build (swift.org has no 26.04 build
+    # we pin), so the job fails on a new-image runner, whatever the PR changes.
+    # Unpin once a Swift release ships for 26.04 and the URL/sha256 are bumped.
     runs-on: ubuntu-24.04
     # Derived, not guessed (the ws-relay backstop rule). RE-DERIVED 2026-07-29
     # with the SAME formula, because the suite outgrew the previous budget —
@@ -269,16 +270,54 @@ jobs:
         with:
           bun-version-file: .bun-version
 
-      - name: Setup Swift toolchain
-        # `swift-actions/setup-swift` is the canonical community action
-        # for installing swiftc on Linux runners (the Swift project
-        # ships official Linux toolchains). Pinned via the env var so
-        # bumping is a one-line change.
-        # SHA-pinned per PinnedDependenciesID supply-chain hardening.
-        # swift-actions/setup-swift@v2
-        uses: swift-actions/setup-swift@7ca6abe6b3b0e8b5421b88be48feee39cbf52c6a # v2.4.0
+      - name: Cache the pinned Swift toolchain tarball
+        # Immutable, sha256-pinned tarball: caching it removes a live dependency on
+        # download.swift.org on every run (same shape as the kotlinc cache below).
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          swift-version: ${{ env.SWIFT_VERSION }}
+          path: ~/.cache/pyreon-dl/swift-${{ env.SWIFT_RELEASE }}-RELEASE-ubuntu24.04.tar.gz
+          key: dl-swift-${{ env.SWIFT_RELEASE }}-ubuntu24.04-x86_64
+
+      - name: Install Swift toolchain (pinned release + sha256)
+        # Replaces `swift-actions/setup-swift`, which runs
+        # `gpg --keyserver hkp://keyserver.ubuntu.com --refresh-keys Swift` and has
+        # no input to skip it: when that keyserver is down ("gpg: keyserver refresh
+        # failed: No keyserver available") the required job fails on every PR
+        # (#4270). The official tarball is immutable, so a sha256 pin gives the
+        # integrity the keyserver check was for, with no keyserver dependency.
+        # Bump SWIFT_SHA256 with SWIFT_RELEASE (hash of the x86_64 tarball; the
+        # detached `.sig` next to it verifies against swift.org/keys/all-keys.asc).
+        # ubuntu-24.04 runners are x86_64.
+        env:
+          SWIFT_SHA256: '33e923609f6d89ee455af0a017ae4941ce16878c4940882cbf6a1656de294e8b'
+        run: |
+          set -euo pipefail
+          TGZ="$HOME/.cache/pyreon-dl/swift-${SWIFT_RELEASE}-RELEASE-ubuntu24.04.tar.gz"
+          mkdir -p "$(dirname "$TGZ")"
+          [ -f "$TGZ" ] || curl -fsSL --retry 6 --retry-delay 10 --retry-all-errors --connect-timeout 30 \
+            -o "$TGZ" "https://download.swift.org/swift-${SWIFT_RELEASE}-release/ubuntu2404/swift-${SWIFT_RELEASE}-RELEASE/swift-${SWIFT_RELEASE}-RELEASE-ubuntu24.04.tar.gz"
+          echo "${SWIFT_SHA256}  ${TGZ}" | sha256sum -c -
+          # Install only what the runner image lacks, with short timeouts: the Ubuntu
+          # mirrors (azure/archive/security) were unreachable during the 2026-11-11
+          # outage and a plain `apt-get update` hung ~9 min. Best-effort on purpose:
+          # `Verify swiftc availability` below is the gate, and fails loudly on a
+          # genuinely missing shared library.
+          APT_OPTS="-o Acquire::Retries=3 -o Acquire::http::Timeout=15 -o Acquire::https::Timeout=15"
+          MISSING=""
+          for p in binutils git gnupg2 libc6-dev libcurl4-openssl-dev libedit2 libgcc-s1 \
+            libpython3-dev libsqlite3-0 libstdc++-13-dev libxml2-dev libncurses-dev \
+            libz3-dev pkg-config tzdata zlib1g-dev unzip; do
+            dpkg -s "$p" >/dev/null 2>&1 || MISSING="$MISSING $p"
+          done
+          if [ -n "$MISSING" ]; then
+            echo "Installing missing packages:$MISSING"
+            { sudo apt-get $APT_OPTS update -q &&
+              sudo DEBIAN_FRONTEND=noninteractive apt-get $APT_OPTS install -y -q --no-install-recommends $MISSING; } ||
+              echo "::warning::apt install of$MISSING failed; relying on the swiftc verify step"
+          fi
+          mkdir -p "$HOME/swift-dist"
+          tar -xzf "$TGZ" -C "$HOME/swift-dist" --strip-components=1
+          echo "$HOME/swift-dist/usr/bin" >> "$GITHUB_PATH"
 
       - name: Verify swiftc availability
         run: swiftc --version

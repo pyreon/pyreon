@@ -91,6 +91,6 @@ describe('gen-docs — permissions snapshot', () => {
     expect(keys).toContain('permissions/usePermissions')
     expect(keys.length).toBe(4)
     expect(record['permissions/createPermissions']!.notes).toContain('wildcard')
-    expect(record['permissions/createPermissions']!.mistakes?.split('\n').length).toBe(3)
+    expect(record['permissions/createPermissions']!.mistakes?.split('\n').length).toBe(4)
   })
 })

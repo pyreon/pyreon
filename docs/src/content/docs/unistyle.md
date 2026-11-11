@@ -382,7 +382,7 @@ const width = `calc(${vars.spacing.small} * ${vars.ratio.medium})`
 
 - `breakpoints` and `rootSize` — `@media` queries cannot read `var()`; JS consumes them at render time (override the exclusion list via `exclude`).
 - Arrays, functions, booleans, `null`/`undefined`, empty strings, non-finite numbers — kept raw.
-- Values destined for `backgroundImage` — CSS forbids `var()` inside `url(…)`.
+- Nothing is special-cased for `backgroundImage`, but CSS cannot resolve `var()` inside `url(…)`. `backgroundImage` passes a `var()` through verbatim, so a var used there must hold a complete image (`url(/a.png)` or a gradient), not a bare path.
 
 ### Enabling the ui-system mode
 

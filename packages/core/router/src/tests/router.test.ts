@@ -4455,32 +4455,31 @@ describe('useTypedSearchParams', () => {
     router.destroy()
   })
 
-  it('defaults number to 0 when missing from URL', () => {
+  it('reads a number missing from the URL as undefined (not 0, which ?page=0 means)', () => {
     const router = createRouter({ routes: tspRoutes, url: '/search' })
     const ctr = document.createElement('div')
-    let result: { page: number } | undefined
+    let result: { page: number | undefined } | undefined
     const TestComp = () => {
       const [params] = useTypedSearchParams({ page: 'number' })
-      result = params() as { page: number }
+      result = params()
       return null
     }
     mount(h(RouterProvider, { router }, h(TestComp, {})), ctr)
-    expect(result!.page).toBe(0)
+    expect(result!.page).toBeUndefined()
     router.destroy()
   })
 
-  it('guards NaN: non-numeric string coerces to 0 instead of NaN', () => {
+  it('guards NaN: a non-numeric string reads undefined instead of NaN', () => {
     const router = createRouter({ routes: tspRoutes, url: '/search?page=abc' })
     const ctr = document.createElement('div')
-    let result: { page: number } | undefined
+    let result: { page: number | undefined } | undefined
     const TestComp = () => {
       const [params] = useTypedSearchParams({ page: 'number' })
-      result = params() as { page: number }
+      result = params()
       return null
     }
     mount(h(RouterProvider, { router }, h(TestComp, {})), ctr)
-    expect(result!.page).toBe(0) // not NaN
-    expect(Number.isNaN(result!.page)).toBe(false)
+    expect(result!.page).toBeUndefined() // not NaN
     router.destroy()
   })
 
