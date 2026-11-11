@@ -35,8 +35,30 @@ The extension starts `pyreon-lint --lsp` as a child process, communicating via
 stdin/stdout JSON-RPC (Language Server Protocol). Diagnostics appear inline as
 you type (150ms debounce).
 
-## 56 rules
+## Fix on save
 
-Covers: reactivity (9), JSX (11), lifecycle (4), performance (4), SSR (3),
-architecture (5), store (3), form (3), styling (4), hooks (3), accessibility (3),
-router (4).
+The server offers a quick fix for every auto-fixable finding and a
+`source.fixAll.pyreon` action that applies them all. To run it on save, add to
+`.vscode/settings.json`:
+
+```json
+{
+  "editor.codeActionsOnSave": {
+    "source.fixAll.pyreon": "explicit"
+  }
+}
+```
+
+With the `readable` preset (`"preset": ["recommended", "readable"]` in
+`.pyreonlintrc.json`) this inserts the blank lines between declarations,
+before a `return` and between component sections as you save. Pair it with
+oxfmt as the formatter (`"editor.formatOnSave": true`); the two never fight,
+because the lint fixes only add blank lines between statements, which the
+formatter keeps.
+
+The server reads the nearest `.pyreonlintrc.json` for each file, and picks up
+edits to it without a restart.
+
+## Rules
+
+Run `pyreon-lint --list` for the live list, grouped, with severities.
