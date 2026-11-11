@@ -420,8 +420,8 @@ describe('dead structural boundaries are not bindings', () => {
     const b = document.createElement('div')
     mount(h('ul', null, () => [h('li', { key: 1 }, 'a'), h('li', { key: 2 }, 'b')]), a)
     mount(
-      h('ol', null, h(For as never, { each: [{ id: 1 }], by: (r: { id: number }) => r.id }, (r: { id: number }) =>
-        h('li', null, String(r.id)),
+      h('ol', null, h(For as never, { each: [{ id: 1 }], by: (r: { id: number }) => r.id }, ((r: { id: number }) =>
+        h('li', null, String(r.id))) as never,
       )),
       b,
     )

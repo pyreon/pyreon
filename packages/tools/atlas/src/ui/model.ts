@@ -842,7 +842,12 @@ export function createModel(
   // reactive prop would, instead of throwing it away. Only a key the catalog's
   // `render` reads while rendering re-mounts it (through `remountOn`). The
   // Theme Lab's tiles keep plain values — they are snapshots, not the subject.
+  // Re-mount trigger for the preview alone. A restart that also re-mounts the
+  // theme provider does NOT bump it: the provider's re-mount already builds
+  // the preview afresh, and bumping both re-ran the old preview accessor too —
+  // a second, stray mount that counted every binding twice.
   const mountEpoch = signal(0)
+  let restarts = 0
   // Re-mount when the SET of keys changes: the props object has one getter
   // per key, and a key that did not exist when it was built has no getter.
   const keySet = computed(() => Object.keys(vals()).join('\u0000'), { equals: (a, b) => a === b })
@@ -901,7 +906,8 @@ export function createModel(
         entry.render(vals(), makeRenderCtx(appearance)) as VNodeChildAtom,
       )
     }
-    const args = liveFor(entry.id, mountEpoch())
+    void mountEpoch()
+    const args = liveFor(entry.id, restarts)
     void keySet()
     let start: number | undefined
     const keys = Object.keys(untrack(vals))
@@ -946,10 +952,9 @@ export function createModel(
   const themeEpoch = signal(0)
   const restartPreview = (options?: { theme?: boolean }) => {
     scope = emptyScope(scope.component)
-    batch(() => {
-      mountEpoch.set(mountEpoch.peek() + 1)
-      if (options?.theme !== false) themeEpoch.set(themeEpoch.peek() + 1)
-    })
+    restarts += 1
+    if (options?.theme === false) mountEpoch.update((n) => n + 1)
+    else themeEpoch.update((n) => n + 1)
   }
   let themeCells: {
     epoch: number

@@ -42,6 +42,16 @@ const catalog = (render?: WorkbenchCatalog['components'][number]['render']): Wor
   ],
 })
 
+/**
+ * The canvas's shape: the theme provider's accessor (it reads
+ * `previewTheme()`, as `PreviewTheme` does) around the preview's own.
+ */
+const host = (m: ReturnType<typeof createModel>) =>
+  h('div', null, () => {
+    m.previewTheme()
+    return h('section', null, () => m.preview())
+  })
+
 let stop: (() => void) | null = null
 afterEach(() => {
   stop?.()
@@ -57,7 +67,7 @@ function setup(cat: WorkbenchCatalog) {
   const el = document.createElement('div')
   document.body.appendChild(el)
   const dispose = mount(
-    h('div', null, () => m.preview()),
+    host(m),
     el,
   )
   stop = () => {
@@ -163,7 +173,7 @@ describe('restartPreview', () => {
     const el = document.createElement('div')
     document.body.appendChild(el)
     const dispose = mount(
-      h('div', null, () => m.preview()),
+      host(m),
       el,
     )
     const session = createCoverageSession()
@@ -178,6 +188,8 @@ describe('restartPreview', () => {
     const button = el.querySelector('button')
     m.restartPreview()
     expect(el.querySelector('button')).not.toBe(button)
+    // ONE mount per restart: a stray second one counted every binding twice.
+    expect(m.previewScope().mounts).toHaveLength(1)
     expect(
       rows()
         .map((r) => r.name)
@@ -245,7 +257,7 @@ describe('a production build', () => {
       const el = document.createElement('div')
       document.body.appendChild(el)
       stop = mount(
-        h('div', null, () => m.preview()),
+        host(m),
         el,
       )
       const button = el.querySelector('button')!
