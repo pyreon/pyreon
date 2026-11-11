@@ -37,15 +37,15 @@ export type StreamSource<T> = (ctx: StreamSourceContext) => AsyncIterable<T> | u
 
 export interface UseStreamOptions<T> {
   /** Whether the stream runs. Default: true. */
-  enabled?: boolean | (() => boolean)
+  enabled?: boolean | (() => boolean) | undefined
   /**
    * How many events `events()` keeps — the oldest are dropped. Default 1000.
    * A stream can run for hours, and an unbounded buffer is a memory leak
    * with a delay; pass `Infinity` only for a stream you know ends.
    */
-  maxEvents?: number
+  maxEvents?: number | undefined
   /** Called for every event — write it into the query cache, append to a log, … */
-  onEvent?: (event: T, queryClient: QueryClient) => void
+  onEvent?: ((event: T, queryClient: QueryClient) => void) | undefined
 }
 
 export interface UseStreamResult<T> {
@@ -123,7 +123,8 @@ export function useStream<T>(
         if (!live()) return
         batch(() => {
           const prev = events.peek()
-          const next = prev.length >= max ? [...prev.slice(prev.length - max + 1), event] : [...prev, event]
+          const next =
+            prev.length >= max ? [...prev.slice(prev.length - max + 1), event] : [...prev, event]
           events.set(max <= 0 ? [] : next)
           latest.set(event)
           if (status.peek() !== 'open') status.set('open')
