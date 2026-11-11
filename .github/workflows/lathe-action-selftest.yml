@@ -26,10 +26,24 @@ name: Lathe Action Self-Test
 # Advisory, not a required check.
 
 on:
-  # Path scoping is a JOB-level decide, not a trigger `paths:` filter: a
-  # filtered-out PR creates no check run at all, which deadlocks a required
-  # check if this is ever promoted.
+  # Path scoping is a TRIGGER-level `paths:` filter (2026-11-10). This check
+  # is ADVISORY, so the required-check deadlock a trigger filter causes (no
+  # check run → "Expected" forever) cannot happen; if it is ever promoted to
+  # a required check, move the filter back to an always-running decide job
+  # first. The decide job it replaces ran on every PR push only to answer
+  # "no" — measured 2026-11-10: 153 decide jobs vs 37 real runs, each waiting
+  # a median 27 minutes for one of the org's 20 runner slots. Same paths as
+  # the old decide. GitHub evaluates at most the first 300 changed files of a
+  # PR; a larger PR can miss this advisory run (accepted for an advisory).
   pull_request:
+    paths:
+      - 'packages/tools/lathe/**'
+      - 'packages/tools/config/**'
+      - 'packages/core/reactivity/**'
+      - 'examples/lathe-bookshelf/**'
+      - 'docs/src/content/docs/lathe.md'
+      - '.github/workflows/lathe-action-selftest.yml'
+      - '.bun-version'
   workflow_dispatch:
 
 permissions:
@@ -40,41 +54,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  changes:
-    name: Lathe Action (decide)
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    outputs:
-      run: ${{ steps.decide.outputs.run }}
-    steps:
-      # The PR merge commit and its first parent, the base tip.
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 2
-      - id: decide
-        env:
-          EVENT: ${{ github.event_name }}
-        run: |
-          if [ "$EVENT" != pull_request ]; then
-            echo "run=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          # Fail-CLOSED: a diff that cannot be computed runs the self-test.
-          if ! files=$(git diff --name-only HEAD^1 HEAD); then
-            echo "::warning::could not compute the changed files; running the self-test"
-            echo "run=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          if printf '%s\n' "$files" | grep -qE '^(packages/tools/lathe/|packages/tools/config/|packages/core/reactivity/|examples/lathe-bookshelf/|docs/src/content/docs/lathe\.md$|\.github/workflows/lathe-action-selftest\.yml$|\.bun-version$)'; then
-            echo "run=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "run=false" >> "$GITHUB_OUTPUT"
-          fi
-
   contract:
     name: Lathe Action Self-Test
-    needs: changes
-    if: needs.changes.outputs.run == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:

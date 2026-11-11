@@ -33,6 +33,13 @@ name: Native Compiler Validation
 #   - `schedule` — nightly drift check against main. Catches a fixture
 #     that started failing because a fresh swift / kotlinc release
 #     changed parser strictness. Always runs.
+#   - `merge_group` — the merge queue. `decide` classifies the GROUP's diff
+#     (`merge_group.base_sha` → head) with the same two rules as a PR, so
+#     the Linux `validate` job re-checks the merged result exactly when a
+#     PR run would have run it. The macOS real-SDK job reports SKIPPED in
+#     the queue: the PR already ran it, and a macOS slot wait (p90 144 min
+#     on 2026-11-10) at the head of the queue would hold every PR behind
+#     it. Inert until a merge-queue rule is enabled on main.
 #
 # REQUIRED check in branch protection ("Validate emitted Swift +
 # Kotlin") — which is exactly why the gating lives in a decide JOB,
@@ -60,6 +67,7 @@ on:
   # PRs inherit main's"; this trigger is what finally makes that TRUE.
   push:
     branches: [main]
+  merge_group:
   workflow_dispatch:
   schedule:
     # 05:23 UTC — offset from existing nightly workflows so runners
@@ -114,9 +122,25 @@ jobs:
         id: diff
         env:
           GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+          MG_BASE: ${{ github.event.merge_group.base_sha }}
         run: |
           set -euo pipefail
-          if [ "${{ github.event_name }}" != "pull_request" ]; then
+          FILES=$(mktemp)
+          if [ "$EVENT" = "merge_group" ]; then
+            # The group's own diff against the commit it was built on. Any
+            # failure here (fetch, diff, empty list) runs both rules
+            # fail-closed: an empty list makes the classifier say run.
+            if git fetch --no-tags --quiet --depth=1 origin "$MG_BASE" \
+              && git diff --name-only "$MG_BASE" HEAD > "$FILES"; then
+              # The classifier proves a changed manifest was web-only by
+              # reading it at merge-base(origin/main, HEAD); point that at the
+              # group's base. A shallow history it cannot walk fails closed.
+              git update-ref refs/remotes/origin/main "$MG_BASE"
+            else
+              : > "$FILES"
+            fi
+          elif [ "$EVENT" != "pull_request" ]; then
             echo "run=true" >> "$GITHUB_OUTPUT"
             echo "graph=true" >> "$GITHUB_OUTPUT"
             echo "non-PR event — always validate"
@@ -128,8 +152,9 @@ jobs:
           # and EVERY package.json as native surface — measured 2026-09-07 at ~2h of
           # runner time (50 min macOS swiftc + 50 min iOS + 30 min Android) per
           # affected PR, on 6 of the last 40 PRs.
-          FILES=$(mktemp)
-          gh api "repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/files" --paginate --jq '.[].filename' > "$FILES"
+          if [ "$EVENT" = "pull_request" ]; then
+            gh api "repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/files" --paginate --jq '.[].filename' > "$FILES"
+          fi
           bun scripts/native-surface-touched.ts --self=.github/workflows/native-validate.yml < "$FILES"
           # `graph` — the DEPENDENCY-GRAPH half. `@pyreon/native-compiler` has
           # RUNTIME deps on `@pyreon/charts` and `@pyreon/compiler` (the chart
@@ -599,7 +624,9 @@ jobs:
     # to key on `run` alone, and the local pre-push hook's reverse-dependency
     # closure was then the only thing that ran those blocks for a graph-only
     # PR. The hook is direct-only now, so CI owns that coverage.
-    if: (success() && (needs.decide.outputs.run == 'true' || needs.decide.outputs.graph == 'true')) || (failure() && needs.decide.result != 'success')
+    # Skipped in the merge queue (see the header): the PR ran it, and a macOS
+    # slot wait at the head of the queue would hold every group behind it.
+    if: github.event_name != 'merge_group' && ((success() && (needs.decide.outputs.run == 'true' || needs.decide.outputs.graph == 'true')) || (failure() && needs.decide.result != 'success'))
     # macOS runners ship the REAL SwiftUI SDK, which the Linux swift toolchain
     # the `validate` job above uses does NOT — so `isSwiftUIAvailable()` is
     # true here and the ~58 `it.skipIf(!isSwiftUIAvailable())` real-SDK

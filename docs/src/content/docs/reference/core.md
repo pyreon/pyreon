@@ -161,6 +161,7 @@ const Card = () => {
 | [`Defer`](#defer-component) | component | Client-side lazy-load a chunk on ONE of three triggers (exactly one is provided): `when={accessor}` loads once the acces |
 | [`registerErrorHandler / reportError`](#registererrorhandler-reporterror-function) | function | `registerErrorHandler` is the telemetry hook for Sentry/Datadog/custom error reporting — called whenever a component thr |
 | [`isClient / isServer`](#isclient-isserver-constant) | constant | Re-exported from `@pyreon/reactivity` for convenience — `isServer = typeof document === 'undefined'`, `isClient` its inv |
+| [`escapeJsonForScript`](#escapejsonforscript-function) | function | Neutralise JSON TEXT for the body of an inline `<script>`: every `<` becomes `\u003C` (so `</script`, `<!--` and `&lt;scrip |
 | [`defineComponent`](#definecomponent-function) | function | An identity wrapper — returns `fn` unchanged. |
 | [`ExtractProps`](#extractprops-type) | type | Extracts the props type from a `ComponentFn`. |
 | [`HigherOrderComponent`](#higherordercomponent-type) | type | Typed HOC pattern where `HOP` is the props the HOC adds and `P` is the wrapped component's own props. |
@@ -1152,6 +1153,30 @@ if (isClient) {
 - Using `isClient` to gate DOM access inside a component body when `onMount`/`effect` would do — those never run during SSR at all, which is simpler and doesn't need the guard
 
 **See also:** `onMount`
+
+---
+
+### `escapeJsonForScript` `function`
+
+```ts
+(json: string) => string
+```
+
+Neutralise JSON TEXT for the body of an inline `<script>`: every `<` becomes `\u003C` (so `</script`, `<!--` and `<script` cannot form) and U+2028/U+2029 are escaped. Every escape is a valid JSON escape, so the block still `JSON.parse`s to an identical value — unlike the `<\/` / `<\!--` rewrite, where `\!` is not a JSON escape. The one recipe `@pyreon/head` uses for JSON data blocks (JSON-LD, speculation rules, import maps) and `@pyreon/zero`'s `jsonLd()` uses. For a JSON block or response only: an executable `window.X=…` assignment also needs the `__proto__`-key handling of `@pyreon/router`'s loader-data serializer, and script CODE must not take it (`\u003C` outside a string breaks `<` operators).
+
+**Example**
+
+```tsx
+import { escapeJsonForScript } from '@pyreon/core'
+
+const tag = `<script type="application/ld+json">${escapeJsonForScript(JSON.stringify(data))}</script>`
+```
+
+**Common mistakes**
+
+- Interpolating a bare `JSON.stringify` into a `<script>` — a string value containing `</script>` or `<!--<script>` breaks out of the element
+- Escaping with `<\/` and `<\!--` inside a JSON block — `\!` is not a JSON escape, so the block no longer parses and its data is dropped
+- Passing JavaScript SOURCE instead of JSON text — `\u003C` outside a string literal is a syntax error
 
 ---
 

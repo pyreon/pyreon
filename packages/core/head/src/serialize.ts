@@ -4,9 +4,10 @@
 // `data-pyreon-head="<key>"`, the attribute `dom.ts` seeds from on the first
 // sync, so a hydrating client patches the server's tags instead of appending a
 // second copy of each.
-import { isEventHandlerAttr } from '@pyreon/core'
+import { escapeJsonForScript, isEventHandlerAttr } from '@pyreon/core'
 import { isHeadAttrSafe } from './attr-guard'
 import { HEAD_ATTR, type HeadTag } from './context'
+import { applyTitleTemplate } from './title'
 
 const VOID_TAGS = new Set(['meta', 'link', 'base'])
 
@@ -45,13 +46,7 @@ function serializeTag(
   nonce?: string,
 ): string {
   if (tag.tag === 'title') {
-    const raw = tag.children || ''
-    const title = titleTemplate
-      ? typeof titleTemplate === 'function'
-        ? titleTemplate(raw)
-        : titleTemplate.replace(/%s/g, raw)
-      : raw
-    return `<title>${esc(title)}</title>`
+    return `<title>${esc(applyTitleTemplate(tag.children || '', titleTemplate))}</title>`
   }
   // Direct concat loop over own props — avoids the `Object.entries(props)`
   // pairs-array + per-tag `.map()` closure + intermediate strings-array + join
@@ -83,11 +78,33 @@ function serializeTag(
   if (typeof tag.key === 'string' && tag.key !== '') open += ` ${HEAD_ATTR}="${esc(tag.key)}"`
   if (VOID_TAGS.has(tag.tag)) return `${open} />`
   const content = tag.children || ''
-  // Escape sequences that could break out of script/style/noscript blocks:
-  // 1. Closing tags like </script> — use Unicode escape in the slash
-  // 2. HTML comment openers <!-- that could confuse parsers
+  // A JSON data block (JSON-LD, speculation rules, import map, any `+json` /
+  // `/json` type) is read back with `JSON.parse`, so it takes the JSON recipe:
+  // every `<` becomes `\u003C`, a valid JSON escape. The generic rewrite below
+  // produced `<\!--`, and `\!` is not a JSON escape — a JSON-LD block whose
+  // data contained `<!--` became unparseable and its structured data was
+  // silently dropped.
+  if (tag.tag === 'script' && isJsonScriptType(props?.type)) {
+    return `${open}>${escapeJsonForScript(content)}</${tag.tag}>`
+  }
+  // Script code, CSS and noscript markup: break the closing-tag and
+  // comment-opener sequences without changing what the body means (`\/` and
+  // `\!` are identity escapes inside JS strings and CSS).
   const body = content.replace(/<\/(script|style|noscript)/gi, '<\\/$1').replace(/<!--/g, '<\\!--')
   return `${open}>${body}</${tag.tag}>`
+}
+
+/**
+ * Is this `<script type>` a JSON data block? `importmap` and
+ * `speculationrules` are JSON-bodied; otherwise any MIME type whose subtype is
+ * `json` or ends in `+json` (`application/ld+json`, `application/json`),
+ * ignoring case and parameters.
+ */
+function isJsonScriptType(type: string | undefined): boolean {
+  if (!type) return false
+  const semi = type.indexOf(';')
+  const t = (semi === -1 ? type : type.slice(0, semi)).trim().toLowerCase()
+  return t === 'importmap' || t === 'speculationrules' || t.endsWith('/json') || t.endsWith('+json')
 }
 
 /** The characters `esc` rewrites. */

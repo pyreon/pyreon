@@ -323,6 +323,25 @@ try { load() } catch (err) { return <p>{err.message}</p> }`,
     }),
   },
   {
+    // `JSON.parse` of an inline JSON `<script>` body (JSON-LD, import map,
+    // speculation rules, a `type="application/json"` state block) that was
+    // given the script-CODE escape `<\!--` / `<\/`. `\!` is an identity escape
+    // in JS but not a JSON escape, so the block stops parsing: the browser
+    // drops an import map / speculation rules with a console error, crawlers
+    // drop the structured data, and an app reading its own state block throws
+    // this. Pyreon's head serializer shipped that rewrite for JSON types
+    // before `escapeJsonForScript`. Engine wordings: V8, Firefox, JavaScriptCore.
+    pattern:
+      /Bad escaped character in JSON|JSON\.parse: bad escaped character|JSON Parse error: Invalid escape character/i,
+    diagnose: () => ({
+      cause:
+        'JSON text contains a backslash escape JSON does not define. When the text is the body of an inline `<script>` (JSON-LD, `importmap`, `speculationrules`, `type="application/json"`), the usual source is the script-CODE escape: `</script` → `<\\/script` is harmless, but `<!--` → `<\\!--` produces `\\!`, which is an identity escape in JavaScript and INVALID in JSON. The whole block then fails to parse — browsers ignore an import map or speculation rules with a console error, search engines silently drop the structured data, and code that reads the block back with `JSON.parse` throws. The Pyreon head serializer applied that rewrite to JSON-typed scripts in earlier versions whenever the data contained `<!--`.',
+      fix: "Escape JSON by what reads it back: every `<` as `\\u003C` (plus U+2028/U+2029), which is a valid JSON escape and still prevents `</script>` and `<!--<script` from forming. Use `escapeJsonForScript` from `@pyreon/core` for any hand-built JSON `<script>` body, and upgrade Pyreon so `useHead({ script: [{ type: 'application/ld+json', children }] })` and `jsonLd()` take that path. If the JSON did not come from a `<script>` body, look for a hand-written backslash before a character other than `\" \\ / b f n r t u`.",
+      fixCode:
+        "import { escapeJsonForScript } from '@pyreon/core'\n\n// breaks JSON.parse when data contains '<!--' (\\! is not a JSON escape)\n// const body = JSON.stringify(data).replace(/<\\//g, '<\\\\/').replace(/<!--/g, '<\\\\!--')\n\nconst body = escapeJsonForScript(JSON.stringify(data)) // every '<' → '\\u003C'\nconst tag = `<script type=\"application/ld+json\">${body}</script>`",
+    }),
+  },
+  {
     // The residual footgun left by narrowing the native audit's
     // `native-unsupported-decl` rule. That rule used to flag EVERY top-level
     // `interface`, on the false premise that PMTC drops them silently — it
