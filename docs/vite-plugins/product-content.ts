@@ -45,6 +45,24 @@ export async function highlight(code: string, lang = 'tsx'): Promise<string> {
 
 type Json = Record<string, unknown>
 
+/**
+ * Fields of a product file that no page renders: the canvas prototype the
+ * demo was built from (`demo.reference*`, the bulk of each file), the
+ * reference HTML of extra sections (rebuilt as typed data in
+ * `content/extra-sections*.ts`) and the verifier's claim sources. Dropped
+ * at build, so no chunk, loader or SSR pass carries them; tests read the
+ * files from disk. Exported for tests.
+ */
+export const REFERENCE_ONLY = ['extraSectionsHtml', 'sources'] as const
+export const DEMO_REFERENCE_ONLY = ['reference', 'referenceHtml', 'referenceCss', 'referenceJs'] as const
+
+export function stripReferenceOnly(data: Json): Json {
+  for (const k of REFERENCE_ONLY) delete data[k]
+  const demo = data.demo as Json | undefined
+  if (demo) for (const k of DEMO_REFERENCE_ONLY) delete demo[k]
+  return data
+}
+
 /** Adds the `…Html` siblings to a parsed product file. Exported for tests. */
 export async function highlightProduct(data: Json): Promise<Json> {
   const diff = data.difference as { before?: Json; after?: Json } | null | undefined
@@ -93,7 +111,7 @@ export default function productContent(): Plugin {
       } catch (err) {
         throw new Error(`[Pyreon] product content ${path} is not valid JSON: ${(err as Error).message}`)
       }
-      return { code: JSON.stringify(isHome ? await highlightHome(data) : await highlightProduct(data)), map: null }
+      return { code: JSON.stringify(isHome ? await highlightHome(data) : await highlightProduct(stripReferenceOnly(data))), map: null }
     },
   }
 }

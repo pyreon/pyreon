@@ -71,7 +71,11 @@ export type ExtraSection =
     }
   | ExtraSectionMore
 
-export type ProductData = Omit<ProductPage, 'difference' | 'comingFrom' | 'recipes'> & {
+/** Dropped at build by `vite-plugins/product-content.ts` (`stripReferenceOnly`): nothing renders them. */
+type ReferenceOnly = 'extraSectionsHtml' | 'sources'
+
+export type ProductData = Omit<ProductPage, 'difference' | 'comingFrom' | 'recipes' | 'demo' | ReferenceOnly> & {
+  demo: Omit<ProductPage['demo'], 'reference' | 'referenceHtml' | 'referenceCss' | 'referenceJs'>
   difference: null | { title: string; before: HighlightedCode; after: HighlightedCode }
   comingFrom?: { lib: string; title: string; before: string; after: string; note?: string; beforeHtml?: string; afterHtml?: string }[]
   recipes?: { title: string; text: string; code: string; codeHtml?: string; status?: string }[]
