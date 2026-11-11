@@ -33,6 +33,26 @@ for (const name of ['_docs.json', '_docs-home.json']) {
   process.stdout.write(`  content/${name} → src/site/content/${name}\n`)
 }
 
+// The two parts of _docs.json the app reads, as their own files: the bundler
+// cannot split one JSON module between chunks, so the sidebar (on every docs
+// page) and the overview slots (loaded on demand) must not share a file with
+// each other or with the audit lists. `docs-content.test.ts` keeps them equal
+// to _docs.json.
+const docs = JSON.parse(readFileSync(join(app, '_docs.json'), 'utf8')) as {
+  sidebar: unknown
+  overviews: { productId: string; docsPage: string | null; docsHref: string; crossSell: string[] }[]
+}
+writeFileSync(join(app, '_docs-sidebar.json'), `${JSON.stringify(docs.sidebar)}\n`)
+writeFileSync(join(app, '_docs-overviews.json'), `${JSON.stringify(docs.overviews)}\n`)
+// What every page needs from the overviews, small: which pages are a product's
+// overview, and each product's first cross-sell (the right rail's card).
+const index = {
+  overviewPages: Object.fromEntries(docs.overviews.filter((o) => o.docsPage !== null).map((o) => [o.docsHref, o.productId])),
+  rail: Object.fromEntries(docs.overviews.filter((o) => o.crossSell[0]).map((o) => [o.productId, o.crossSell[0]])),
+}
+writeFileSync(join(app, '_docs-index.json'), `${JSON.stringify(index)}\n`)
+process.stdout.write('  _docs.json → _docs-sidebar.json, _docs-overviews.json, _docs-index.json\n')
+
 interface ManifestAsset { file: string; slot?: string; pages?: string[]; alt?: string }
 const manifest = JSON.parse(readFileSync(join(from, 'assets/manifest.json'), 'utf8')) as { assets: ManifestAsset[] }
 const publicDir = resolve(import.meta.dir, '../public/assets')

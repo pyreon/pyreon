@@ -1,11 +1,11 @@
 import type { VNodeChild } from '@pyreon/core'
 import { onMount, Show } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
-import { Glyph } from '../site/kit/cards'
+import { DocsGlyph as Glyph } from './glyph'
+import { Badge } from './sidebar'
 import { useLinkClick } from '../site/kit/link'
-import { renderInline } from '../site/kit/type'
 import { editUrlOf, PageActions, SITE_ORIGIN } from './actions'
-import { useDocsData, type ProductSummary } from './data'
+import { useDocsData, type RailProduct } from './data'
 import { prevNextOf, trailOf, type PageLink } from './nav'
 import { InlineToc, RailToc, tocEntries, useScrollSpy, type TocHeading } from './toc'
 
@@ -40,8 +40,8 @@ export function Breadcrumbs(props: { path: string; title: string }) {
   )
 }
 
-/** The rail's ONE product card: the most relevant other product, with its proof line when it has one. */
-export function RailCard(props: { product: ProductSummary }) {
+/** The rail's ONE product card: the most relevant other product, with its proof badge (and the badge's source) when it has one. */
+export function RailCard(props: { product: RailProduct }) {
   const click = useLinkClick()
   const p = props.product
   return (
@@ -49,14 +49,11 @@ export function RailCard(props: { product: ProductSummary }) {
       <span class="dx-tile">
         <Glyph id={p.id} size={22} />
       </span>
-      <Show when={() => p.status !== undefined}>
-        <span class="dx-bdg dx-bdg--preview">{p.status}</span>
-      </Show>
       <b>{p.name}</b>
-      <span class="dx-rcard__text">{p.proof ? `${p.proof.stat} ${p.proof.label}` : renderInline(p.pitch)}</span>
-      <Show when={() => p.proof !== undefined}>
-        <span class="dx-rcard__cond">{p.proof?.condition}</span>
-      </Show>
+      <span class="dx-rcard__cond">
+        {p.package} · {p.category}
+      </span>
+      {p.badge ? <Badge badge={p.badge} /> : null}
       <em>Explore {p.name} →</em>
     </a>
   )

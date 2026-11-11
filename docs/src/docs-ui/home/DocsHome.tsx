@@ -1,7 +1,7 @@
 import { island } from '@pyreon/zero'
 import homeJson from '../../site/content/_docs-home.json'
 import type { DocsHome as DocsHomeData } from '../../site/content/types-site'
-import { Glyph } from '../../site/kit/cards'
+import { DocsGlyph as Glyph } from '../glyph'
 import { useLinkClick } from '../../site/kit/link'
 import { renderInline } from '../../site/kit/type'
 import { Command } from '../command'

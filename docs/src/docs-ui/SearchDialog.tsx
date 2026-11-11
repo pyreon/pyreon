@@ -2,7 +2,7 @@ import { For, onMount, onUnmount, Show } from '@pyreon/core'
 import { computed, effect, signal } from '@pyreon/reactivity'
 import { useRouter } from '@pyreon/router'
 import { useSearch } from '@pyreon/zero-content'
-import { Glyph } from '../site/kit/cards'
+import { DocsGlyph as Glyph } from './glyph'
 import { normalizeDocsPath, SIDEBAR, trailOf } from './nav'
 
 /**
@@ -96,13 +96,19 @@ export default function SearchDialog(props: { open: () => boolean; onClose: () =
   // the dialog exists (it only mounts on first open).
   onMount(() => {
     state.open.set(true)
+    let opener: HTMLElement | null = null
     const sync = effect(() => {
       if (!dialog) return
       if (props.open() && !dialog.open) {
+        opener = document.activeElement as HTMLElement | null
         dialog.showModal()
         input?.focus({ preventScroll: true })
         input?.select()
-      } else if (!props.open() && dialog.open) dialog.close()
+      } else if (!props.open() && dialog.open) {
+        dialog.close()
+        // Back to whatever opened it (a navigation away moves focus itself).
+        if (opener?.isConnected) opener.focus()
+      }
     })
     return () => sync.dispose()
   })
@@ -126,6 +132,11 @@ export default function SearchDialog(props: { open: () => boolean; onClose: () =
     } else if (e.key === 'Enter') {
       e.preventDefault()
       go(flat()[activeIndex.peek()])
+    } else if (e.key === 'Escape') {
+      // One Escape closes, even with text in the field (a search input would
+      // otherwise spend the first Escape clearing itself).
+      e.preventDefault()
+      props.onClose()
     }
   }
 

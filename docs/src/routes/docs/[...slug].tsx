@@ -1,7 +1,7 @@
 import type { ComponentFn, VNodeChild } from '@pyreon/core'
 import { h, provide, Suspense } from '@pyreon/core'
 import { useHead, type UseHeadInput } from '@pyreon/head'
-import { signal } from '@pyreon/reactivity'
+import { isServer, signal } from '@pyreon/reactivity'
 import { useParams } from '@pyreon/router'
 import { getEntry } from '@pyreon/zero-content'
 import type { GetStaticPaths } from '@pyreon/zero/server'
@@ -49,7 +49,13 @@ const Body = (async (props: { slug: string }) => {
   const headInput = signal<UseHeadInput>({})
   useHead(() => headInput())
   const path = `/docs/${props.slug}`
-  const [entry, cards, pageData] = await Promise.all([getEntry('docs', props.slug), loadShareCards(), loadPageData(path)])
+  // Share cards only matter in the prerendered HTML (crawlers read it), so the
+  // client never downloads the map.
+  const [entry, cards, pageData] = await Promise.all([
+    getEntry('docs', props.slug),
+    isServer ? loadShareCards() : Promise.resolve(undefined),
+    loadPageData(path),
+  ])
   if (!entry || props.slug === 'index') return h(PyreonNotFound, null)
   const data = entry.data as { title: string; description?: string }
   const input = docsHead({ path, title: data.title, description: data.description }, cards)

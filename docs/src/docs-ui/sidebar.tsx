@@ -1,5 +1,5 @@
 import { Show } from '@pyreon/core'
-import { Glyph } from '../site/kit/cards'
+import { DocsGlyph as Glyph } from './glyph'
 import { useLinkClick } from '../site/kit/link'
 import { groupId, isActive, normalizeDocsPath, SIDEBAR, type DocsSidebarItem, type SidebarBadge } from './nav'
 

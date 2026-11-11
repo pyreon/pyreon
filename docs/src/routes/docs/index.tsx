@@ -16,8 +16,10 @@ interface HomeLoaderData {
 const BANNER_PRODUCT = trailOf(HOME.banner.link.href)?.productId
 
 export async function loader(): Promise<HomeLoaderData> {
-  const [page, cards] = await Promise.all([loadPageData('/docs', BANNER_PRODUCT), loadShareCards()])
-  return { page, cards }
+  const [page, all] = await Promise.all([loadPageData('/docs', BANNER_PRODUCT), loadShareCards()])
+  // Only the home's own card travels with the loader data into the page.
+  const home = all.pages['/docs']
+  return { page, cards: { pages: home ? { '/docs': home } : {}, groups: {} } }
 }
 
 /** `/docs` — the docs home (`_docs-home.json`), in the same reading frame as every page. */

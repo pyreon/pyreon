@@ -1,7 +1,7 @@
-// Named imports: Vite's JSON plugin emits one export per top-level key, so the
-// bundle carries `sidebar` and `overviews` only — not the file's audit lists
-// (`current`, `flags`), which are three quarters of its bytes.
-import { overviews as overviewsJson, sidebar as sidebarJson } from '../site/content/_docs.json'
+// `_docs.json#sidebar` on its own (scripts/sync-docs-content.ts writes it):
+// every docs page carries the sidebar, and only the sidebar.
+import indexJson from '../site/content/_docs-index.json'
+import sidebarJson from '../site/content/_docs-sidebar.json'
 import type { DocsNav, DocsSidebarItem, SidebarBadge } from '../site/content/types-site'
 
 /**
@@ -19,7 +19,6 @@ export type Overview = DocsNav['overviews'][number]
 export type { DocsSidebarItem, SidebarBadge }
 
 export const SIDEBAR: readonly SidebarGroup[] = sidebarJson as SidebarGroup[]
-export const OVERVIEWS: readonly Overview[] = overviewsJson as Overview[]
 
 /** `/docs/x/` and `/docs/x#h` → `/docs/x`; `/docs/index` is the docs home. */
 export function normalizeDocsPath(path: string): string {
@@ -89,17 +88,14 @@ export function isActive(item: DocsSidebarItem, path: string): boolean {
   return (item.children ?? []).some((c) => normalizeDocsPath(c.href) === p)
 }
 
-/** The product overview a page documents: the page itself, or the product its parent item stands for. */
-export function overviewOf(productId: string | undefined): Overview | undefined {
-  return productId === undefined ? undefined : OVERVIEWS.find((o) => o.productId === productId)
-}
+const INDEX = indexJson as { overviewPages: Record<string, string>; rail: Record<string, string> }
 
-/** The overview whose docs page is `path`, if `path` is an overview page. */
-export function overviewAt(path: string): Overview | undefined {
-  const p = normalizeDocsPath(path)
-  // A product without its own overview page (`docsPage: null`) points at a
-  // guide that is not about it alone: no selling slots there.
-  return OVERVIEWS.find((o) => o.docsPage !== null && normalizeDocsPath(o.docsHref) === p)
+/**
+ * The product whose overview page `path` is (a product without its own
+ * overview page has none: its slots never render on a shared guide).
+ */
+export function overviewProductAt(path: string): string | undefined {
+  return INDEX.overviewPages[normalizeDocsPath(path)]
 }
 
 /**
@@ -108,8 +104,8 @@ export function overviewAt(path: string): Overview | undefined {
  * outside every product gets none (the rail stays reading tools only).
  */
 export function railProductOf(path: string): string | undefined {
-  const overview = overviewOf(trailOf(path)?.productId)
-  return overview?.crossSell[0]
+  const id = trailOf(path)?.productId
+  return id === undefined ? undefined : INDEX.rail[id]
 }
 
 /** Stable id for a sidebar group heading (`Data and state` → `data-and-state`). */

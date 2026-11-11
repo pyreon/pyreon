@@ -114,49 +114,17 @@ th {
 
 /* ── Layout shell ───────────────────────────────────────────────────── */
 
-.docs-shell {
-  display: flex;
-  flex-direction: column;
-  min-height: 100vh;
-}
 
-.docs-header {
-  position: sticky;
-  top: 0;
-  z-index: 50;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  height: 56px;
-  padding: 0 1.25rem;
-  background: color-mix(in srgb, var(--bg) 92%, transparent);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  border-bottom: 1px solid var(--hairline);
-}
-.docs-logo {
-  font-family: var(--font-mono);
-  font-weight: 700;
-  font-size: 1.05rem;
-  color: var(--text);
-  text-decoration: none;
-}
-.docs-logo:hover { color: var(--link); text-decoration: none; }
 
-.docs-nav {
-  display: flex;
-  gap: 1.25rem;
-  align-items: center;
-}
-.docs-nav a {
-  color: var(--text-muted);
-  font-size: 0.9rem;
-}
-.docs-nav a:hover { color: var(--link); text-decoration: none; }
 
-.docs-main {
-  flex: 1;
-}
+
+
+
+
+
+
+
+
 
 /* ── Docs page grid: see the .docs-page rule in the 1:1 PARITY OVERHAUL
    block at the END of this file (subsection E). Sidebar lives in
@@ -183,8 +151,7 @@ th {
   font-size: 0.9rem;
 }
 
-.pyreon-sidebar__title,
-.docs-sidebar__title {
+.pyreon-sidebar__title{
   font-weight: 700;
   font-size: 0.95rem;
   margin: 0 0 0.5rem;
@@ -196,19 +163,8 @@ th {
 /* Diátaxis tier header — printed once above the first group of each tier
    (Learn / Guides / Migrate / Reference) so the nav reads as a learning
    journey, not a flat package index. */
-.pyreon-sidebar__tier {
-  margin: 1.5rem 0 0.5rem;
-  padding-bottom: 0.35rem;
-  border-bottom: 1px solid var(--border, rgba(127, 127, 127, 0.18));
-  font-size: 0.7rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
-  color: var(--text-muted, #888);
-}
-.pyreon-sidebar__tier:first-child {
-  margin-top: 0;
-}
+
+
 .pyreon-sidebar__group-title {
   font-weight: 600;
   font-size: 0.85rem;
@@ -217,18 +173,15 @@ th {
   color: var(--text-muted);
   margin: 0 0 0.4rem;
 }
-.pyreon-sidebar__list,
-.docs-sidebar__list {
+.pyreon-sidebar__list{
   list-style: none;
   margin: 0;
   padding: 0;
 }
-.pyreon-sidebar__item,
-.docs-sidebar__item {
+.pyreon-sidebar__item{
   margin: 0;
 }
-.pyreon-sidebar__link,
-.docs-sidebar__link {
+.pyreon-sidebar__link{
   display: block;
   padding: 0.3rem 0.6rem;
   margin: 1px 0;
@@ -238,17 +191,12 @@ th {
   text-decoration: none;
   line-height: 1.4;
 }
-.pyreon-sidebar__link:hover,
-.docs-sidebar__link:hover {
+.pyreon-sidebar__link:hover{
   background: var(--bg-well);
   color: var(--text);
   text-decoration: none;
 }
-.docs-sidebar__link--active {
-  background: var(--link-bg);
-  color: var(--link);
-  font-weight: 500;
-}
+
 /* `.pyreon-sidebar__link--active` is styled FURTHER DOWN at line
    ~2398 with the canonical ember-bar treatment (vertical ember tick
    on the left, no background tint). Defining it here was a duplicate
@@ -259,8 +207,7 @@ th {
 
 /* ── TOC ────────────────────────────────────────────────────────────── */
 
-.pyreon-toc,
-.docs-toc {
+.pyreon-toc{
   position: sticky;
   top: 72px;
   max-height: calc(100vh - 88px);
@@ -269,34 +216,23 @@ th {
   padding-left: 0.75rem;
   border-left: 1px solid var(--hairline);
 }
-.pyreon-toc__label,
-.docs-toc__label {
-  font-weight: 600;
-  font-size: 0.8rem;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--text-muted);
-  margin: 0 0 0.5rem;
-}
-.pyreon-toc__list,
-.docs-toc__list {
+
+.pyreon-toc__list{
   list-style: none;
   margin: 0;
   padding: 0;
 }
 .pyreon-toc__nav { padding: 0; margin: 0; }
-.pyreon-toc__item,
-.docs-toc__item {
+.pyreon-toc__item{
   margin: 0;
 }
-.pyreon-toc__item--l2 { padding-left: 0; }
-.pyreon-toc__item--l3 { padding-left: 1rem; }
-.pyreon-toc__item--l4 { padding-left: 2rem; }
-.docs-toc__item--l2 { padding-left: 0; }
-.docs-toc__item--l3 { padding-left: 1rem; }
 
-.pyreon-toc__link,
-.docs-toc__item a {
+
+
+
+
+
+.pyreon-toc__link{
   display: block;
   padding: 0.3rem 0.5rem 0.3rem 0.85rem;
   color: var(--text-muted);
@@ -313,8 +249,7 @@ th {
     color 0.22s cubic-bezier(0.4, 0, 0.2, 1),
     border-left-color 0.22s cubic-bezier(0.4, 0, 0.2, 1);
 }
-.pyreon-toc__link:hover,
-.docs-toc__item a:hover {
+.pyreon-toc__link:hover{
   color: var(--text);
   text-decoration: none;
 }
@@ -339,7 +274,6 @@ th {
 @media (prefers-reduced-motion: reduce) {
   .pyreon-toc { animation: none; }
   .pyreon-toc__link,
-  .docs-toc__item a,
   .pyreon-toc__link--active {
     transition: none;
     transform: none;
@@ -353,38 +287,11 @@ html { scroll-behavior: smooth; }
 
 /* ── Landing hero ──────────────────────────────────────────────────── */
 
-.docs-hero {
-  text-align: center;
-  padding: 5rem 1.5rem;
-  max-width: 800px;
-  margin: 0 auto;
-}
-.docs-hero h1 {
-  font-size: 3rem;
-  letter-spacing: -0.02em;
-  background: var(--ember-grad, linear-gradient(90deg, var(--ember), var(--ember-warm)));
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-  color: transparent;
-  margin-bottom: 1rem;
-}
-.docs-hero p {
-  font-size: 1.15rem;
-  color: var(--text-muted);
-  margin: 0 0 2rem;
-}
-.docs-cta {
-  display: inline-block;
-  padding: 0.75rem 1.5rem;
-  background: var(--link);
-  color: var(--ink-0);
-  border-radius: 8px;
-  font-weight: 600;
-  text-decoration: none;
-  transition: filter 80ms;
-}
-.docs-cta:hover { text-decoration: none; filter: brightness(1.05); }
+
+
+
+
+
 
 .docs-404 {
   text-align: center;
@@ -563,12 +470,8 @@ html { scroll-behavior: smooth; }
   gap: 1px;
   background: var(--hairline);
 }
-.playground--split .playground__body {
-  grid-template-columns: 1fr 1fr;
-}
-.playground--stacked .playground__body {
-  grid-template-rows: auto auto;
-}
+
+
 .playground__editor,
 .playground__preview {
   background: var(--bg);
@@ -617,30 +520,12 @@ html { scroll-behavior: smooth; }
   background: var(--link-bg);
 }
 
-@media (max-width: 768px) {
-  .playground--split .playground__body {
-    grid-template-columns: 1fr;
-    grid-template-rows: auto auto;
-  }
-}
+
 
 /* ── Edit + last-updated meta footer ───────────────────────────────── */
 
-.docs-meta {
-  margin-top: 3rem;
-  padding-top: 1.5rem;
-  border-top: 1px solid var(--hairline);
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  font-size: 0.85rem;
-  color: var(--text-muted);
-  flex-wrap: wrap;
-  gap: 0.5rem;
-}
-.docs-meta a {
-  color: var(--link);
-}
+
+
 
 /* ─────────────────────────────────────────────────────────────────── */
 /* PyreonLanding — ported from docs/.vitepress/theme/components/      */
@@ -705,9 +590,7 @@ html { scroll-behavior: smooth; }
   align-items: center;
   padding: 72px 0 80px;
 }
-.px-hero-mark {
-  margin-bottom: 26px;
-}
+
 .px-h1 {
   font-family: var(--font-sans);
   font-weight: 600;
@@ -837,9 +720,7 @@ html { scroll-behavior: smooth; }
 .c-cm {
   color: var(--syn-comment);
 }
-.c-fg {
-  color: var(--syn-fg);
-}
+
 .c-kw {
   color: var(--syn-keyword);
 }
@@ -907,8 +788,7 @@ html { scroll-behavior: smooth; }
   color: var(--text-dim);
   line-height: 1.6;
 }
-.px-bench-foot a,
-.px-footer-meta a {
+.px-bench-foot a{
   color: var(--link);
   /* Inline links inside running text must be distinguishable by more
      than color (WCAG 1.4.1). These footnote links sit in muted body
@@ -1096,55 +976,16 @@ html { scroll-behavior: smooth; }
 }
 
 /* Footer */
-.px-footer {
-  padding: 64px 0 24px;
-  border-top: 1px solid var(--border);
-}
-.px-footer-grid {
-  display: grid;
-  grid-template-columns: 1.2fr repeat(4, 1fr);
-  gap: 32px;
-  margin-bottom: 44px;
-}
-.px-footer-brand p {
-  font-family: var(--font-sans);
-  font-size: 13.5px;
-  color: var(--text-muted);
-  line-height: 1.55;
-  max-width: 260px;
-  margin: 14px 0 0;
-}
-.px-footer-col .px-mono-label {
-  display: block;
-  margin-bottom: 12px;
-}
-.px-footer-item {
-  display: block;
-  font-family: var(--font-sans);
-  font-size: 13px;
-  color: var(--text-muted);
-  padding: 4px 0;
-}
+
+
+
+
+
 /* Footer items are real links now — keep the muted column look,
    brighten (not underline-shift) on hover. */
-a.px-footer-item:hover {
-  color: var(--text);
-  text-decoration: none;
-}
-.px-footer-bar {
-  border-top: 1px solid var(--border);
-  padding-top: 20px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  font-family: var(--font-mono);
-  font-size: 11px;
-  color: var(--text-dim);
-}
-.px-footer-meta {
-  display: flex;
-  gap: 18px;
-}
+
+
+
 
 @media (max-width: 920px) {
   .px-hero,
@@ -1160,17 +1001,14 @@ a.px-footer-item:hover {
   .px-grid-3 {
     grid-template-columns: repeat(2, 1fr);
   }
-  .px-footer-grid {
-    grid-template-columns: 1fr 1fr;
-  }
+  
 }
 @media (max-width: 560px) {
   .px-landing {
     padding: 0 20px 32px;
   }
   .px-grid-4,
-  .px-grid-3,
-  .px-footer-grid {
+  .px-grid-3{
     grid-template-columns: 1fr;
   }
   .px-mode {
@@ -2190,73 +2028,13 @@ a.px-footer-item:hover {
 }
 
 /* ── (B) Layout shell — grid with header + aside + main ──────────── */
-.docs-shell {
-  display: grid;
-  grid-template-rows: 56px 1fr;
-  /* Single column by DEFAULT — the 280px sidebar column exists only when
-     the page actually renders an aside (`:has(.docs-aside)` below, the
-     same discriminator the header rules use). Pre-fix the column was
-     unconditional, so sidebar-less pages (the landing page) had their
-     content pushed 280px right by an EMPTY first column while the
-     full-width header centered its inner container at the viewport —
-     header and hero visibly misaligned. Measured: `.px-landing` left=280
-     vs header-inner left=100 at 1440w; post-fix both at 100. */
-  grid-template-columns: minmax(0, 1fr);
-  min-height: 100vh;
-}
-.docs-shell:has(.docs-aside) {
-  grid-template-columns: 280px minmax(0, 1fr);
-}
+
+
 
 /* ── (C) Header (top chrome) — replaces .docs-logo / .docs-nav block ── */
-.docs-header {
-  grid-row: 1;
-  grid-column: 1 / -1;
-  position: sticky;
-  top: 0;
-  z-index: 50;
-  height: 56px;
-  padding: 0;
-  background: color-mix(in srgb, var(--bg) 92%, transparent);
-  -webkit-backdrop-filter: saturate(140%) blur(12px);
-  backdrop-filter: saturate(140%) blur(12px);
-  border-bottom: 1px solid var(--hairline);
-}
-.docs-header__inner {
-  /* 3-zone layout: brand left, nav CENTER, controls right.
-     CSS grid with three columns — outer columns size to their content,
-     the center column flexes. The center child gets `justify-self: center`
-     so the nav cluster sits in the visual middle of the viewport
-     regardless of the brand/controls widths.
 
-     `width: 100%` is load-bearing: the parent `.docs-header` is
-     `display: flex` (set earlier in the cascade). Without `width: 100%`
-     the inner grid collapses to its content width (~466px) as a flex
-     item, the `1fr` column then has no space to flex into and also
-     collapses to content, and the whole header sits as a small cluster
-     in the middle of the viewport. Verified live: brand was at
-     left=426 instead of left=20.
 
-     Container alignment: `max-width: 1240px` + `padding: 0 40px`
-     matches `.px-landing` exactly, so the brand mark on the header
-     aligns vertically with the hero H1 on the landing page. Mobile
-     drops to `padding: 0 20px` to mirror `.px-landing`'s `@media
-     (max-width: 560px)` breakpoint. */
-  display: grid;
-  grid-template-columns: auto 1fr auto;
-  align-items: center;
-  gap: 1.25rem;
-  width: 100%;
-  height: 100%;
-  max-width: 1240px;
-  margin: 0 auto;
-  padding: 0 40px;
-}
-@media (max-width: 560px) {
-  .docs-header__inner {
-    padding: 0 20px;
-  }
-}
+
 
 /* On docs pages — the shell has a 280px sidebar column. The header
    should align with the docs-shell grid so the brand sits ABOVE the
@@ -2265,199 +2043,46 @@ a.px-footer-item:hover {
    uses :has(.docs-aside) so only docs pages (where the sidebar is
    rendered) get the column-aligned header; the landing keeps its
    centered-container layout. */
-.docs-shell:has(.docs-aside) .docs-header__inner {
-  max-width: none;
-  padding: 0;
-  grid-template-columns: 280px 1fr auto;
-}
-.docs-shell:has(.docs-aside) .docs-header__inner > .docs-brand {
-  /* Brand zone left-padding matches `.docs-aside`'s `padding-left:
-     1.25rem`, so the logo aligns vertically with the sidebar's nav
-     items below it. */
-  padding-left: 1.25rem;
-}
-.docs-shell:has(.docs-aside) .docs-header__inner > .docs-header__controls {
-  padding-right: 1.25rem;
-}
+
+
+
 @media (max-width: 920px) {
   /* Mobile: sidebar becomes a drawer (off-canvas), so the docs-shell
      grid collapses to 1-column. The header reverts to the standard
      centered-container layout — no sidebar column to align with. */
-  .docs-shell:has(.docs-aside) .docs-header__inner {
-    max-width: 1240px;
-    padding: 0 40px;
-    grid-template-columns: auto 1fr auto;
-  }
-  .docs-shell:has(.docs-aside) .docs-header__inner > .docs-brand,
-  .docs-shell:has(.docs-aside) .docs-header__inner > .docs-header__controls {
-    padding-left: 0;
-    padding-right: 0;
-  }
-}
-@media (max-width: 560px) {
-  .docs-shell:has(.docs-aside) .docs-header__inner {
-    padding: 0 20px;
-  }
+  
+  
 }
 
-.docs-brand {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.55rem;
-  color: var(--text);
-  text-decoration: none;
-}
-.docs-brand:hover { color: var(--text); }
-.docs-brand__mark {
-  width: 28px;
-  height: 28px;
-  display: block;
-}
-[data-theme='dark'] .docs-brand__mark--light { display: none; }
-[data-theme='light'] .docs-brand__mark--dark { display: none; }
-.docs-brand__wordmark {
-  font-family: var(--font-sans);
-  font-weight: 600;
-  letter-spacing: -0.01em;
-  font-size: 1.05rem;
-}
-.docs-header__nav {
-  /* Now lives INSIDE the right-side controls cluster (logo left,
-     search center, controls right). Acts as an inline group of
-     primary links sitting before the theme toggle / GitHub icon. */
-  display: flex;
-  gap: 1rem;
-  align-items: center;
-}
-.docs-header__search-wrap {
-  /* Center column of the grid. Constrains the search trigger's max
-     width so it doesn't stretch edge-to-edge on wide viewports —
-     prominent but not overwhelming. */
-  display: flex;
-  justify-content: center;
-  width: 100%;
-  max-width: 480px;
-  justify-self: center;
-}
-.docs-header__link {
-  color: var(--text-muted);
-  font-size: 0.9rem;
-  text-decoration: none;
-  transition: color 0.18s ease;
-}
-.docs-header__link:hover { color: var(--text); }
-.docs-header__controls {
-  /* Right column of the grid — no `margin-left: auto` needed since
-     the grid template already pushes this to the end track. */
-  display: flex;
-  gap: 0.5rem;
-  align-items: center;
-}
-.docs-header__search-btn {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  padding: 0.5rem 0.75rem;
-  border-radius: 8px;
-  background: var(--bg-well);
-  border: 1px solid var(--hairline);
-  color: var(--text-muted);
-  font: inherit;
-  cursor: pointer;
-  transition: border-color 0.18s ease, color 0.18s ease, background 0.18s ease;
-  /* Fill the center column so the search trigger reads as the primary
-     header action — matches Algolia DocSearch / VitePress wide-search UX. */
-  width: 100%;
-  text-align: left;
-}
-.docs-header__search-btn:hover {
-  border-color: var(--ember-ring);
-  color: var(--text);
-  background: var(--bg);
-}
-.docs-header__search-label {
-  font-size: 0.875rem;
-  flex: 1;
-}
-.docs-header__search-kbd {
-  font-family: var(--font-mono);
-  font-size: 0.7rem;
-  padding: 2px 5px;
-  border-radius: 3px;
-  background: var(--bg);
-  border: 1px solid var(--hairline);
-  color: var(--text-dim);
-}
-.docs-header__icon-link,
-.docs-theme-toggle {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  border-radius: 6px;
-  background: transparent;
-  border: 1px solid transparent;
-  color: var(--text-muted);
-  text-decoration: none;
-  cursor: pointer;
-  transition: background 0.18s ease, color 0.18s ease;
-}
-.docs-header__icon-link:hover,
-.docs-theme-toggle:hover {
-  background: var(--bg-well);
-  color: var(--text);
-}
-.docs-header__hamburger {
-  display: none;
-  flex-direction: column;
-  justify-content: center;
-  gap: 4px;
-  width: 32px;
-  height: 32px;
-  padding: 6px;
-  border-radius: 6px;
-  background: transparent;
-  border: 1px solid transparent;
-  cursor: pointer;
-}
-.docs-header__hamburger span {
-  height: 2px;
-  background: var(--text-muted);
-  border-radius: 1px;
-  transition: transform 0.18s ease;
-}
-.docs-header__hamburger[aria-expanded='true'] span:nth-child(1) {
-  transform: translateY(6px) rotate(45deg);
-}
-.docs-header__hamburger[aria-expanded='true'] span:nth-child(2) { opacity: 0; }
-.docs-header__hamburger[aria-expanded='true'] span:nth-child(3) {
-  transform: translateY(-6px) rotate(-45deg);
-}
-.docs-header__hamburger:hover { background: var(--bg-well); }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 /* ── (D) Aside (sidebar container) ─────────────────────────────── */
-.docs-aside {
-  grid-row: 2;
-  grid-column: 1;
-  position: sticky;
-  top: 56px;
-  align-self: start;
-  height: calc(100vh - 56px);
-  overflow-y: auto;
-  padding: 1.5rem 0 1.5rem 1.25rem;
-  border-right: 1px solid var(--hairline);
-}
-.docs-main {
-  grid-row: 2;
-  /* Last column either way: column 2 next to an aside, column 1 (the only
-     column) on sidebar-less pages — `-1` tracks the shell's column count. */
-  grid-column: -2 / -1;
-  min-width: 0;
-}
-.docs-drawer-backdrop,
-.docs-mobile-drawer,
-.docs-mobile-nav { display: none; }
+
+
+
 
 /* Sidebar group title now a button — restore handoff treatment.
    Mono UPPERCASE 11px letter-spacing 0.12em color text-dim. */
@@ -2480,49 +2105,17 @@ a.px-footer-item:hover {
   transition: color 0.18s ease;
 }
 .pyreon-sidebar__group-title:hover { color: var(--text-muted); }
-.pyreon-sidebar__chevron {
-  flex-shrink: 0;
-  transform: rotate(0deg);
-  transition: transform 0.18s ease;
-  color: var(--text-dim);
-}
-.pyreon-sidebar__chevron--collapsed { transform: rotate(-90deg); }
+
+
 
 /* Sidebar group collapse — smooth height + fade.
    CSS grid `1fr ↔ 0fr` is animatable in modern browsers; the inner
    wrapper has `min-height: 0; overflow: hidden` so the ul collapses
    to zero height without clipping mid-row. */
-.pyreon-sidebar__collapse {
-  display: grid;
-  grid-template-rows: 1fr;
-  opacity: 1;
-  visibility: visible;
-  transition:
-    grid-template-rows 240ms cubic-bezier(0.4, 0, 0.2, 1),
-    opacity 200ms ease-out,
-    visibility 0s;
-}
-.pyreon-sidebar__collapse[data-collapsed='true'] {
-  grid-template-rows: 0fr;
-  opacity: 0;
-  /* `visibility: hidden` (delayed until the collapse finishes so it
-     doesn't snap) takes the still-mounted links OUT of the tab order +
-     a11y tree — `grid-rows: 0fr` + `overflow: hidden` only clip them
-     visually, leaving them focusable, which is the `aria-hidden-focus`
-     axe violation when the group is also aria-hidden. */
-  visibility: hidden;
-  transition:
-    grid-template-rows 240ms cubic-bezier(0.4, 0, 0.2, 1),
-    opacity 200ms ease-out,
-    visibility 0s linear 240ms;
-}
-.pyreon-sidebar__collapse > .pyreon-sidebar__list {
-  min-height: 0;
-  overflow: hidden;
-}
-@media (prefers-reduced-motion: reduce) {
-  .pyreon-sidebar__collapse { transition: none; }
-}
+
+
+
+
 /* Stagger fade-in for sidebar links on first render — quiet polish.
    Each item delays by its sibling index using CSS `animation-delay`
    set via `--i` custom property (set inline by the renderer) when
@@ -2616,9 +2209,7 @@ a.px-footer-item:hover {
    wasn't there. Without this, the TOC stacked BELOW the content
    inside a single grid cell, instead of sitting in the second
    240px column. */
-.docs-route {
-  display: contents;
-}
+
 @media (max-width: 1100px) {
   .docs-page {
     grid-template-columns: minmax(0, 1fr);
@@ -2637,8 +2228,7 @@ a.px-footer-item:hover {
      order). `position: static` overrides the desktop sticky right-
      rail behavior — sticky doesn't make sense in single-column
      mobile flow. `border-left: 0` drops the desktop hairline. */
-  .docs-page .pyreon-toc,
-  .docs-page .docs-toc {
+  .docs-page .pyreon-toc{
     display: block;
     order: -1;
     position: static;
@@ -2652,38 +2242,15 @@ a.px-footer-item:hover {
   /* `<details>`-style collapsible without requiring a `<details>`
      element: the label is the trigger, the list is the content.
      Use a max-height transition for animation. */
-  .docs-page .pyreon-toc__label,
-  .docs-page .docs-toc__label {
-    cursor: pointer;
-    padding: 0.5rem 0;
-    margin: 0;
-    user-select: none;
-    /* Show the disclosure arrow */
-  }
-  .docs-page .pyreon-toc__label::before,
-  .docs-page .docs-toc__label::before {
-    content: '▸';
-    display: inline-block;
-    margin-right: 0.4rem;
-    transition: transform 0.18s ease;
-  }
-  .docs-page .pyreon-toc.is-open .pyreon-toc__label::before,
-  .docs-page .docs-toc.is-open .docs-toc__label::before {
-    transform: rotate(90deg);
-  }
-  .docs-page .pyreon-toc__list,
-  .docs-page .docs-toc__list {
+  
+  
+  
+  .docs-page .pyreon-toc__list{
     max-height: 0;
     overflow: hidden;
     transition: max-height 0.28s ease;
   }
-  .docs-page .pyreon-toc.is-open .pyreon-toc__list,
-  .docs-page .docs-toc.is-open .docs-toc__list {
-    max-height: 60vh;
-    overflow-y: auto;
-    padding-top: 0.4rem;
-    padding-bottom: 0.5rem;
-  }
+  
 }
 
 /* ── (F) Mobile drawer (768px and below) ───────────────────────── */
@@ -2691,92 +2258,32 @@ a.px-footer-item:hover {
   /* `:has(.docs-aside)` variant included so this 1-column collapse
      OUTRANKS the desktop `.docs-shell:has(.docs-aside)` 2-column rule
      (specificity 0,2,0) — the sidebar is an off-canvas drawer here. */
-  .docs-shell,
-  .docs-shell:has(.docs-aside) {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  .docs-header__nav { display: none; }
+  
+  
   /* Collapse the search trigger to an icon on small viewports so the
      three-zone grid still fits. The wrap stays so the column track
      keeps its place — the trigger just shrinks. */
-  .docs-header__search-wrap { max-width: none; }
-  .docs-header__search-btn { width: auto; padding: 0.5rem 0.6rem; }
-  .docs-header__search-label { display: none; }
-  .docs-header__search-kbd { display: none; }
-  .docs-header__hamburger { display: inline-flex; }
-  .docs-header__icon-link,
-  .docs-theme-toggle,
-  .docs-header__hamburger,
-  .docs-header__search-btn {
-    min-width: 40px;
-    min-height: 40px;
-  }
-  .docs-mobile-drawer { display: block; padding: 1rem 1.25rem; overflow-y: auto; }
-  .docs-mobile-nav {
-    display: flex;
-    flex-direction: column;
-    border-bottom: 1px solid var(--hairline);
-    margin-bottom: 1rem;
-    padding-bottom: 0.5rem;
-  }
-  .docs-mobile-nav .docs-header__link {
-    display: flex;
-    align-items: center;
-    min-height: 44px;
-  }
-  .docs-aside,
-  .docs-mobile-drawer {
-    position: fixed;
-    top: 56px;
-    left: 0;
-    width: min(320px, 88vw);
-    height: calc(100vh - 56px);
-    height: calc(100dvh - 56px);
-    background: var(--bg);
-    border-right: 1px solid var(--hairline);
-    transform: translateX(-100%);
-    visibility: hidden;
-    transition:
-      transform 0.22s ease,
-      visibility 0s linear 0.22s;
-    z-index: 40;
-  }
-  .docs-aside--drawer-open {
-    transform: translateX(0);
-    visibility: visible;
-    transition-delay: 0s;
-  }
-  .docs-drawer-backdrop {
-    position: fixed;
-    inset: 56px 0 0 0;
-    background: color-mix(in srgb, var(--bg) 60%, transparent);
-    z-index: 35;
-    display: none;
-  }
-  .docs-shell--drawer-open .docs-drawer-backdrop { display: block; }
-  html.docs-drawer-scroll-locked,
-  html.docs-drawer-scroll-locked body { overflow: hidden; }
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .docs-aside,
-  .docs-mobile-drawer,
-  .docs-header__hamburger span { transition: none; }
-}
 
-@media (max-width: 420px) {
-  .docs-header__inner,
-  .docs-shell:has(.docs-aside) .docs-header__inner {
-    gap: 0.35rem;
-    padding-inline: 12px;
-  }
-  .docs-header__controls { gap: 0.15rem; }
-  .docs-header__icon-link { display: none; }
-}
 
-@media (max-width: 350px) {
-  .docs-brand__wordmark { display: none; }
-}
+
+
+
 
 /* ── (G) Search overlay (Cmd+K) ──────────────────────────────── */
 /* DO NOT set `contain: layout` on .pyreon-search. The CSS containment
@@ -3623,8 +3130,8 @@ a.px-footer-item:hover {
  * `none` to opt out). Naming them descriptively makes the DevTools
  * Animations panel readable.
  */
-.docs-header { view-transition-name: docs-header; }
-.docs-aside { view-transition-name: docs-aside; }
+
+
 
 /* Even with view-transition-names assigned, the browser still adds a
  * `cross-fade` animation on them by default. Override to NONE so the
@@ -3641,7 +3148,7 @@ a.px-footer-item:hover {
  * that genuinely changes between pages and reads as a polished
  * page-change cue. Define an explicit name so the rule is matchable
  * if a future PR wants to swap the timing function or duration. */
-.docs-main { view-transition-name: docs-main; }
+
 
 /* ── Blog (/blog, /blog/page/<n>, /blog/tags/<tag>, /blog/<slug>) ──────
    `@pyreon/zero-content/blog` renders the pages; its stylesheet

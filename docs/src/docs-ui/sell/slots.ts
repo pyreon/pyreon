@@ -1,6 +1,6 @@
 import type { ProductData } from '../../site/content/model'
 import { DEMOS } from '../../site/demos/registry'
-import { OVERVIEWS } from '../nav'
+import { OVERVIEWS } from '../overviews'
 import type { TocHeading } from '../toc'
 
 /**
