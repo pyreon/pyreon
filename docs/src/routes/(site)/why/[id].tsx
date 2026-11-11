@@ -13,7 +13,7 @@ export async function loader({ params }: LoaderContext): Promise<WhyView> {
   if (!page) notFound()
   const p = page as WhyView['page']
   const [svgs, meta] = await Promise.all([loadSvgs(whyDiagramFiles(p.id)), loadWhyMeta()])
-  return { page: p, svgs, order: meta.order }
+  return { page: p, svgs, order: meta.order, template: meta.template }
 }
 
 export default function WhyRoute() {

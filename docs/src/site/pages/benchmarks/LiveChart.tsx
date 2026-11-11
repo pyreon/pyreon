@@ -1,7 +1,7 @@
 import type { ComponentFn, VNode } from '@pyreon/core'
 import { onMount } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
-import type { BenchmarksPage } from '../../content/types-site'
+import type { BenchmarksPage, BenchmarksTemplate } from '../../content/types-site'
 
 /**
  * The chart island on `/benchmarks` (a zero island, `hydrate: 'visible'`).
@@ -23,8 +23,9 @@ export type LiveChartProps =
       rowBoard: BenchmarksPage['rowBoard']
       rowVerdicts: BenchmarksPage['rowVerdicts']
       initial: string
+      copy: BenchmarksTemplate['rows']['live']
     }
-  | { kind: 'scaling'; fallbackId: string; scaling: BenchmarksPage['scaling'] }
+  | { kind: 'scaling'; fallbackId: string; scaling: BenchmarksPage['scaling']; copy: BenchmarksTemplate['scaling']['live'] }
 
 export function wantsReducedData(): boolean {
   if (typeof window === 'undefined') return true
@@ -48,10 +49,10 @@ export default function LiveChart(props: LiveChartProps) {
       // props (pyreon/pyreon#4368).
       if (props.kind === 'rows') {
         const RowBoard = m.RowBoardChart as ComponentFn<Omit<Extract<LiveChartProps, { kind: 'rows' }>, 'kind' | 'fallbackId'>>
-        view.set(<RowBoard frameworks={props.frameworks} rowBoard={props.rowBoard} rowVerdicts={props.rowVerdicts} initial={props.initial} />)
+        view.set(<RowBoard frameworks={props.frameworks} rowBoard={props.rowBoard} rowVerdicts={props.rowVerdicts} initial={props.initial} copy={props.copy} />)
       } else {
         const Scaling = m.ScalingChart
-        view.set(<Scaling scaling={props.scaling} />)
+        view.set(<Scaling scaling={props.scaling} copy={props.copy} />)
       }
     })
     return () => {

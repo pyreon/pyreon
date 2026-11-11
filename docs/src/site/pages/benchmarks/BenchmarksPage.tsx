@@ -1,9 +1,7 @@
 import { For, Show } from '@pyreon/core'
-import { signal } from '@pyreon/reactivity'
-import { BENCH_HEADS as H } from '../../content/benchmarks-heads'
-import type { BenchmarksPage as Data } from '../../content/types-site'
+import { fill } from '../../content/fill'
+import type { BenchJumpId, BenchmarksPage as Data } from '../../content/types-site'
 import { el, focusRing, tone, txt, type LinkAttrs } from '../../kit/bases'
-import { VerdictChip } from '../../kit/bench'
 import { LimitNote, NumberedCards } from '../../kit/blocks'
 import { GlowCard } from '../../kit/cards'
 import { CodeCard } from '../../kit/code'
@@ -13,35 +11,25 @@ import { Reveal } from '../../kit/motion'
 import { CaveatLine, Numeral } from '../../kit/proof'
 import { Diagram, InlineTextLink } from '../../kit/story'
 import { DataTable, TableDisclosure, TableNote } from '../../kit/table'
-import { ToggleChips } from '../../kit/toggles'
-import { inlineText } from '../../kit/inline'
 import { Eyebrow, Heading, Lede, renderInline } from '../../kit/type'
 import { font, gradient, radius, text, weight } from '../../theme'
 import { usePageHead } from '../../head'
-import { LiveRowBoard, LiveScaling } from './islands'
-import {
-  formatMs,
-  formatUs,
-  matchesFilter,
-  prNumbers,
-  sortedRowBoard,
-  sortSummaries,
-  tally,
-  type ProductBenchSummary,
-  type ProductFilter,
-} from './model'
+import { BenchProducts, BenchReactivity, LiveRowBoard, LiveScaling } from './islands'
+import { formatMs, formatUs, prNumbers, sortedRowBoard, type ProductBenchSummary } from './model'
+import { VerdictNote } from './parts'
 
 /**
  * `/benchmarks` — every dataset in `content/pages/benchmarks.json`, in the
  * order of the design's build brief: hero stats, method, row board, scenarios,
  * scaling, SSR, real-app shapes, bundle, reactivity, every product, every
- * result (the losses), withdrawn claims, the harness bugs, reproduce.
+ * loss, withdrawn claims, the harness bugs, reproduce. Every heading, label,
+ * caption and note is the content's `template`; the code prints none.
  *
  * Static by default: every chart is first an SVG from the asset set (the
  * no-JS / reduced-data fallback) with its table as the text alternative. The
- * row board and the scaling chart are LIVE `@pyreon/charts` islands on top
- * (`islands.ts`); the reactivity switcher and the product filter are plain
- * signals in the page.
+ * row board and the scaling chart are LIVE `@pyreon/charts` islands on top;
+ * the reactivity engine switcher and the product filter are islands that
+ * render their default selection on the server (`islands.ts`).
  */
 
 /** The SVGs this page inlines (loaded by the route loader). */
@@ -54,29 +42,31 @@ export const BENCH_SVGS = {
   bundle: 'benchmarks/bundle.svg',
 } as const
 
-/** The row-board operation the static fallback shows, so the live chart opens on the same one. */
-const ROWS_INITIAL = 'create 10,000 rows'
-
 export interface BenchmarksView {
   data: Data
   products: ProductBenchSummary[]
   svgs: Record<string, string>
 }
 
-const JUMPS: readonly [string, string][] = [
-  ['method', 'Method'],
-  ['rows', 'Row board'],
-  ['scenarios', 'Scenarios'],
-  ['scaling', 'Scaling'],
-  ['ssr', 'SSR'],
-  ['apps', 'Real apps'],
-  ['bundle', 'Bundle'],
-  ['reactivity', 'Reactivity'],
-  ['products', 'Every product'],
-  ['losses', 'Every result'],
-  ['withdrawn', 'Withdrawn'],
-  ['harness', 'Harness bugs'],
-  ['reproduce', 'Reproduce'],
+/**
+ * The section ids, in page order: the jump links and the anchors other pages
+ * use (`/benchmarks#row-board` from the home page, `#every-product` from the
+ * nav). Their labels are `template.jumps`.
+ */
+export const BENCH_SECTIONS: readonly BenchJumpId[] = [
+  'method',
+  'row-board',
+  'scenarios',
+  'scaling',
+  'ssr',
+  'apps',
+  'bundle',
+  'reactivity',
+  'every-product',
+  'losses',
+  'withdrawn',
+  'harness',
+  'reproduce',
 ]
 
 const JumpList = el
@@ -152,20 +142,10 @@ const ChartBox = el
       & [data-svg] svg { min-width: 560px; }`,
   }))
 
-const ProductCard = el
-  .config({ name: 'BenchProductCard' })
-  .attrs({ block: true, gap: 8 })
-  .theme(() => ({ minWidth: 0 }))
-
 const Mono = txt
   .config({ name: 'BenchMono' })
   .attrs({ tag: 'span' })
   .theme((_t, m) => ({ display: 'block', fontFamily: font.mono, fontSize: text.mono.size, lineHeight: 1.55, color: tone(m, 'fog') }))
-
-const Tally = txt
-  .config({ name: 'BenchTally' })
-  .attrs({ tag: 'span' })
-  .theme((_t, m) => ({ display: 'block', fontFamily: font.mono, fontSize: text.mono.size, color: tone(m, 'accentText') }))
 
 const WithdrawnRow = el
   .config({ name: 'BenchWithdrawn' })
@@ -212,15 +192,6 @@ const RuleLine = el
   .attrs({ block: true, 'aria-hidden': 'true' })
   .theme((_t, m) => ({ height: 1, marginTop: 40, backgroundImage: m(gradient.rule.light, gradient.rule.dark) as unknown as string }))
 
-/** A verdict chip and its label as one element, so a table cell holds a single node. */
-function VerdictNote(props: { verdict: string; label: string }) {
-  return (
-    <span>
-      <VerdictChip verdict={props.verdict} /> {props.label}
-    </span>
-  )
-}
-
 const prHref = (n: number) => `https://github.com/pyreon/pyreon/pull/${n}`
 
 function ChartWithFallback(props: { svg: string | undefined; id: string; label: string; live?: unknown; children?: unknown }) {
@@ -239,41 +210,27 @@ function ChartWithFallback(props: { svg: string | undefined; id: string; label: 
 
 export function BenchmarksPage(props: { view: BenchmarksView }) {
   const d = props.view.data
+  const T = d.template
   const svgs = props.view.svgs
-  const products = sortSummaries(props.view.products)
+  const products = props.view.products
+  const recordDate = d.record.replace(/^BENCHMARKS\.md\s*/, '')
 
-  usePageHead({
-    path: '/benchmarks',
-    title: 'Benchmarks: every result, losses included · Pyreon',
-    description: `${H.hero.lede.split('. ')[0]}. ${d.caveat}`,
-  })
-
-  // Reactivity: which engine the table shows.
-  const engines = Object.keys(d.reactivity)
-  const engine = signal(engines[0] ?? '')
-  // Every product: which cards are listed.
-  const filter = signal<ProductFilter>('all')
-  const counts: Record<ProductFilter, number> = {
-    all: products.length,
-    win: products.filter((p) => matchesFilter(p, 'win')).length,
-    loss: products.filter((p) => matchesFilter(p, 'loss')).length,
-    info: products.filter((p) => matchesFilter(p, 'info')).length,
-  }
-  const visible = () => products.filter((p) => matchesFilter(p, filter()))
+  usePageHead({ path: '/benchmarks', title: T.meta.title, description: T.meta.description })
 
   const runNote = (line: string) => <TableNote>{`${line} · ${d.caveat}`}</TableNote>
+  const initial = T.rows.initial
 
   return (
     <>
       {/* hero */}
       <Section size="hero">
         <Wrap>
-          <Eyebrow>{`${H.hero.eyebrow} · record of ${d.record.replace(/^BENCHMARKS\.md\s*/, '')} · ${d.competitors.length} competitor libraries`}</Eyebrow>
+          <Eyebrow>{fill(T.hero.eyebrow, { date: recordDate, count: d.competitors.length })}</Eyebrow>
           <Heading tag="h1" size="hero">
-            {H.hero.title}
+            {T.hero.title}
           </Heading>
-          <Lede size="hero">{H.hero.lede}</Lede>
-          <HeroStats aria-label="Headline results">
+          <Lede size="hero">{T.hero.lede}</Lede>
+          <HeroStats aria-label={T.hero.statsLabel}>
             <For each={d.heroStats} by={(s) => s.stat + s.label}>
               {(s) => (
                 <HeroStat>
@@ -286,12 +243,12 @@ export function BenchmarksPage(props: { view: BenchmarksView }) {
             </For>
           </HeroStats>
           <RuleLine />
-          <nav aria-label="On this page">
+          <nav aria-label={T.hero.jumpsLabel}>
             <JumpList>
-              <For each={JUMPS} by={(j) => j[0]}>
-                {(j) => (
+              <For each={BENCH_SECTIONS} by={(id) => id}>
+                {(id) => (
                   <li>
-                    <JumpLink href={`#${j[0]}`}>{j[1]}</JumpLink>
+                    <JumpLink href={`#${id}`}>{T.jumps[id]}</JumpLink>
                   </li>
                 )}
               </For>
@@ -303,29 +260,39 @@ export function BenchmarksPage(props: { view: BenchmarksView }) {
       {/* method */}
       <Section size="tight" id="method">
         <Wrap>
-          <SectionHead label={H.method.label} title={H.method.title} text={H.method.text} />
+          <SectionHead label={T.method.label} title={T.method.title} text={T.method.text} />
           <NumberedCards items={d.method.map(([title, body]) => ({ title, text: body }))} />
           <TableNote>
-            {d.krausest} The suites and how to run them are documented in the{' '}
-            <InlineTextLink href="/docs/benchmarks">benchmarks guide</InlineTextLink>.
+            {d.krausest} {T.method.guide.text} <InlineTextLink href={T.method.guide.link.href}>{T.method.guide.link.label}</InlineTextLink>.
           </TableNote>
         </Wrap>
       </Section>
 
       {/* row board */}
       <Reveal>
-        <Section size="tight" id="rows">
+        <Section size="tight" id="row-board">
           <Wrap>
-            <SectionHead label={H.rows.label} title={H.rows.title} text={H.rows.text} />
+            <SectionHead label={T.rows.label} title={T.rows.title} text={T.rows.text} />
             <ChartWithFallback
               svg={svgs[BENCH_SVGS.rows]}
-              id="rows-fallback" label="Row board chart"
-              live={<LiveRowBoard kind="rows" fallbackId="rows-fallback" frameworks={d.frameworks} rowBoard={d.rowBoard} rowVerdicts={d.rowVerdicts} initial={ROWS_INITIAL} />}
+              id="rows-fallback"
+              label={T.rows.chart}
+              live={
+                <LiveRowBoard
+                  kind="rows"
+                  fallbackId="rows-fallback"
+                  frameworks={d.frameworks}
+                  rowBoard={d.rowBoard}
+                  rowVerdicts={d.rowVerdicts}
+                  initial={initial}
+                  copy={T.rows.live}
+                />
+              }
             >
-              <TableDisclosure summary="Every operation and framework, as a table">
+              <TableDisclosure summary={T.rows.table}>
                 <DataTable
-                  caption={`Row board, run 1, milliseconds (lower is better). Verdicts cover both runs.`}
-                  columns={['Operation', ...d.frameworks, 'Verdict']}
+                  caption={T.rows.caption}
+                  columns={[T.rows.columns.op, ...d.frameworks, T.rows.columns.verdict]}
                   rows={Object.entries(d.rowBoard).map(([op, values]) => ({
                     key: op,
                     cells: [
@@ -336,13 +303,16 @@ export function BenchmarksPage(props: { view: BenchmarksView }) {
                   }))}
                 />
               </TableDisclosure>
-              {runNote('Run 1 medians; real Chromium; the full board ranks each operation fastest first')}
+              {runNote(T.rows.run)}
             </ChartWithFallback>
-            <Show when={() => !!d.rowBoard[ROWS_INITIAL]}>
+            <Show when={() => !!d.rowBoard[initial]}>
               <TableNote>
-                {`${ROWS_INITIAL}, fastest first: ${sortedRowBoard(d.frameworks, d.rowBoard[ROWS_INITIAL] ?? [])
-                  .map((b) => `${b.name} ${formatMs(b.ms)}`)
-                  .join(' · ')}`}
+                {fill(T.rows.fastestFirst, {
+                  op: initial,
+                  list: sortedRowBoard(d.frameworks, d.rowBoard[initial] ?? [])
+                    .map((b) => `${b.name} ${formatMs(b.ms)}`)
+                    .join(' · '),
+                })}
               </TableNote>
             </Show>
           </Wrap>
@@ -353,9 +323,9 @@ export function BenchmarksPage(props: { view: BenchmarksView }) {
       <Reveal>
         <Section size="tight" id="scenarios">
           <Wrap>
-            <SectionHead label={H.scenarios.label} title={H.scenarios.title} text={H.scenarios.text} />
+            <SectionHead label={T.scenarios.label} title={T.scenarios.title} text={T.scenarios.text} />
             <DataTable
-              columns={['Scenario', 'Pyreon', 'Fastest rival', 'Verdict']}
+              columns={[T.scenarios.columns.op, T.scenarios.columns.pyreon, T.scenarios.columns.rival, T.scenarios.columns.verdict]}
               rows={d.scenarios.map((s) => ({
                 key: s.op,
                 cells: [
@@ -366,7 +336,7 @@ export function BenchmarksPage(props: { view: BenchmarksView }) {
                 ],
               }))}
             />
-            {runNote('Two runs each unless marked')}
+            {runNote(T.scenarios.run)}
           </Wrap>
         </Section>
       </Reveal>
@@ -375,14 +345,19 @@ export function BenchmarksPage(props: { view: BenchmarksView }) {
       <Reveal>
         <Section size="tight" id="scaling">
           <Wrap>
-            <SectionHead label={H.scaling.label} title={H.scaling.title} text={H.scaling.text} />
-            <ChartWithFallback svg={svgs[BENCH_SVGS.scaling]} id="scaling-fallback" label="Scaling chart" live={<LiveScaling kind="scaling" fallbackId="scaling-fallback" scaling={d.scaling} />}>
-              <TableDisclosure summary="Every size, as a table">
+            <SectionHead label={T.scaling.label} title={T.scaling.title} text={T.scaling.text} />
+            <ChartWithFallback
+              svg={svgs[BENCH_SVGS.scaling]}
+              id="scaling-fallback"
+              label={T.scaling.chart}
+              live={<LiveScaling kind="scaling" fallbackId="scaling-fallback" scaling={d.scaling} copy={T.scaling.live} />}
+            >
+              <TableDisclosure summary={T.scaling.table}>
                 <For each={(['select', 'partial update', 'swap'] as const).filter((k) => k in d.scaling)} by={(k) => k}>
                   {(k) => (
                     <DataTable
-                      caption={`${k}: µs per operation, one run`}
-                      columns={['Framework', ...d.scaling.sizes.map((s) => `${s} rows`)]}
+                      caption={fill(T.scaling.caption, { op: k })}
+                      columns={[T.scaling.columns.framework, ...d.scaling.sizes.map((size) => fill(T.scaling.columns.size, { size }))]}
                       rows={Object.entries(d.scaling[k]).map(([fw, values]) => ({
                         key: fw,
                         cells: [{ content: fw }, ...values.map((v) => ({ content: formatUs(v), num: true, hot: fw === 'Pyreon' }))],
@@ -391,7 +366,7 @@ export function BenchmarksPage(props: { view: BenchmarksView }) {
                   )}
                 </For>
               </TableDisclosure>
-              {runNote('Batch-timed, one run')}
+              {runNote(T.scaling.run)}
             </ChartWithFallback>
           </Wrap>
         </Section>
@@ -401,12 +376,12 @@ export function BenchmarksPage(props: { view: BenchmarksView }) {
       <Reveal>
         <Section size="tight" id="ssr">
           <Wrap>
-            <SectionHead label={H.ssr.label} title={H.ssr.title} text={H.ssr.text} />
-            <ChartWithFallback svg={svgs[BENCH_SVGS.ssr]} id="ssr-chart" label="Server rendering chart">
-              <TableDisclosure summary="As a table">
+            <SectionHead label={T.ssr.label} title={T.ssr.title} text={T.ssr.text} />
+            <ChartWithFallback svg={svgs[BENCH_SVGS.ssr]} id="ssr-chart" label={T.ssr.chart}>
+              <TableDisclosure summary={T.ssr.table}>
                 <DataTable
-                  caption="Compiled SSR, µs per render (lower is better), one run"
-                  columns={['Rows', 'Pyreon', 'Vue 3', 'Svelte 5', 'React 19']}
+                  caption={T.ssr.caption}
+                  columns={[T.ssr.columns.rows, T.ssr.columns.pyreon, T.ssr.columns.vue, T.ssr.columns.svelte, T.ssr.columns.react]}
                   rows={d.ssr.map((r) => ({
                     key: r.rows,
                     cells: [
@@ -419,7 +394,7 @@ export function BenchmarksPage(props: { view: BenchmarksView }) {
                   }))}
                 />
               </TableDisclosure>
-              {runNote('Overnight run, one run')}
+              {runNote(T.ssr.run)}
             </ChartWithFallback>
           </Wrap>
         </Section>
@@ -429,25 +404,29 @@ export function BenchmarksPage(props: { view: BenchmarksView }) {
       <Reveal>
         <Section size="tight" id="apps">
           <Wrap>
-            <SectionHead label={H.apps.label} title={H.apps.title} text={H.apps.text} />
+            <SectionHead label={T.apps.label} title={T.apps.title} text={T.apps.text} />
             <Stack>
-              <ChartWithFallback svg={svgs[BENCH_SVGS.forms]} id="forms-chart" label="Forms chart">
-                <TableDisclosure summary="Forms, as a table">
+              <ChartWithFallback svg={svgs[BENCH_SVGS.forms]} id="forms-chart" label={T.apps.forms.chart}>
+                <TableDisclosure summary={T.apps.forms.table}>
                   <DataTable
-                    caption="12-field form, µs (lower is better), one run"
-                    columns={['Operation', 'Pyreon', 'Rivals, fastest first']}
+                    caption={T.apps.forms.caption}
+                    columns={[T.apps.forms.columns.op, T.apps.forms.columns.pyreon, T.apps.forms.columns.rivals]}
                     rows={d.forms.map(([op, us, rivals]) => ({
                       key: op,
-                      cells: [{ content: op }, { content: `${us} µs`, num: true, hot: true }, { content: rivals.map(([n, v]) => `${n} ${v} µs`).join(' · ') }],
+                      cells: [
+                        { content: op },
+                        { content: `${us} µs`, num: true, hot: true },
+                        { content: rivals.map(([n, v]) => `${n} ${v} µs`).join(' · ') },
+                      ],
                     }))}
                   />
                 </TableDisclosure>
               </ChartWithFallback>
-              <ChartWithFallback svg={svgs[BENCH_SVGS.todomvc]} id="todomvc-chart" label="TodoMVC chart">
-                <TableDisclosure summary="TodoMVC, as a table">
+              <ChartWithFallback svg={svgs[BENCH_SVGS.todomvc]} id="todomvc-chart" label={T.apps.todomvc.chart}>
+                <TableDisclosure summary={T.apps.todomvc.table}>
                   <DataTable
-                    caption="TodoMVC shape vs React 19, one run"
-                    columns={['Operation', 'Pyreon', 'React 19', 'Ratio']}
+                    caption={T.apps.todomvc.caption}
+                    columns={[T.apps.todomvc.columns.op, T.apps.todomvc.columns.pyreon, T.apps.todomvc.columns.react, T.apps.todomvc.columns.ratio]}
                     rows={d.todomvc.map(([op, p, r, ratio]) => ({
                       key: op,
                       cells: [{ content: op }, { content: p, num: true, hot: true }, { content: r, num: true }, { content: ratio, num: true }],
@@ -456,7 +435,7 @@ export function BenchmarksPage(props: { view: BenchmarksView }) {
                 </TableDisclosure>
               </ChartWithFallback>
             </Stack>
-            {runNote('One run each')}
+            {runNote(T.apps.run)}
           </Wrap>
         </Section>
       </Reveal>
@@ -465,16 +444,16 @@ export function BenchmarksPage(props: { view: BenchmarksView }) {
       <Reveal>
         <Section size="tight" id="bundle">
           <Wrap>
-            <SectionHead label={H.bundle.label} title={H.bundle.title} text={H.bundle.text} />
-            <ChartWithFallback svg={svgs[BENCH_SVGS.bundle]} id="bundle-chart" label="Bundle size chart">
-              <TableDisclosure summary="As a table">
+            <SectionHead label={T.bundle.label} title={T.bundle.title} text={T.bundle.text} />
+            <ChartWithFallback svg={svgs[BENCH_SVGS.bundle]} id="bundle-chart" label={T.bundle.chart}>
+              <TableDisclosure summary={T.bundle.table}>
                 <DataTable
-                  caption="Same keyed-table app, KB gzip -9 (smaller is better)"
-                  columns={['Framework', 'KB gzip']}
+                  caption={T.bundle.caption}
+                  columns={[T.bundle.columns.framework, T.bundle.columns.kb]}
                   rows={d.bundle.map(([name, kb]) => ({ key: name, cells: [{ content: name }, { content: `${kb} KB`, num: true, hot: name === 'Pyreon' }] }))}
                 />
               </TableDisclosure>
-              {runNote('Sizes are deterministic')}
+              {runNote(T.bundle.run)}
             </ChartWithFallback>
           </Wrap>
         </Section>
@@ -484,83 +463,28 @@ export function BenchmarksPage(props: { view: BenchmarksView }) {
       <Reveal>
         <Section size="tight" id="reactivity">
           <Wrap>
-            <SectionHead label={H.reactivity.label} title={H.reactivity.title} text={H.reactivity.text} />
+            <SectionHead label={T.reactivity.label} title={T.reactivity.title} text={T.reactivity.text} />
             <Stack>
-              <ToggleChips label="Engine" options={engines.map((e) => ({ value: e, label: e }))} value={() => engine()} onChange={(v) => engine.set(v)} />
-              <div aria-live="polite">
-                {() => {
-                  const e = engine()
-                  return (
-                    <DataTable
-                      caption={`${e}: ns per op (lower is better), two runs`}
-                      columns={['Test', 'Pyreon', 'Preact Signals', 'Solid', 'Verdict vs Preact']}
-                      rows={(d.reactivity[e] ?? []).map(([test, p, preact, solid, v, margin]) => ({
-                        key: `${e}:${test}`,
-                        cells: [
-                          { content: test },
-                          { content: p.toLocaleString('en'), num: true, hot: true },
-                          { content: preact.toLocaleString('en'), num: true },
-                          { content: solid.toLocaleString('en'), num: true },
-                          { content: <VerdictNote verdict={v} label={margin} /> },
-                        ],
-                      }))}
-                    />
-                  )
-                }}
-              </div>
-              {runNote('Two runs per engine')}
+              <BenchReactivity reactivity={d.reactivity} copy={T.reactivity} />
+              {runNote(T.reactivity.run)}
             </Stack>
           </Wrap>
         </Section>
       </Reveal>
 
       {/* every product */}
-      <Section size="tight" id="products">
+      <Section size="tight" id="every-product">
         <Wrap>
-          <SectionHead label={H.products.label} title={H.products.title} text={H.products.text} />
-          <Stack>
-            <ToggleChips<ProductFilter>
-              kind="filter"
-              label="Filter products"
-              options={[
-                { value: 'all', label: 'all', count: counts.all },
-                { value: 'win', label: 'has wins', count: counts.win },
-                { value: 'loss', label: 'has losses', count: counts.loss },
-                { value: 'info', label: 'throughput only', count: counts.info },
-              ]}
-              value={() => filter()}
-              onChange={(v) => filter.set(v)}
-            />
-            <p aria-live="polite">
-              <Mono>{() => `${visible().length} of ${products.length} products`}</Mono>
-            </p>
-            <AutoGrid min={260} gap={12} tag="ul">
-              <For each={() => visible()} by={(p) => p.id}>
-                {(p) => (
-                  <li>
-                    <GlowCard href={p.href} padding="compact" aria-label={`${p.name}: ${inlineText(p.headline)} ${tally(p.counts)}. Open its benchmarks.`}>
-                      <ProductCard>
-                        <Eyebrow state="accent">{p.name}</Eyebrow>
-                        <Heading tag="h3" size="step">
-                          {renderInline(p.headline)}
-                        </Heading>
-                        <Mono>{renderInline(p.rival)}</Mono>
-                        <Tally>{tally(p.counts)}</Tally>
-                      </ProductCard>
-                    </GlowCard>
-                  </li>
-                )}
-              </For>
-            </AutoGrid>
-          </Stack>
+          <SectionHead label={T.products.label} title={T.products.title} text={T.products.text} />
+          <BenchProducts products={products} copy={T.products} />
         </Wrap>
       </Section>
 
-      {/* every result: the losses */}
+      {/* every loss */}
       <Reveal>
         <Section size="tight" id="losses">
           <Wrap>
-            <SectionHead label="where we lose" title={d.lossesSection.title} text={d.lossesSection.intro} />
+            <SectionHead label={T.losses.label} title={d.lossesSection.title} text={d.lossesSection.intro} />
             <AutoGrid min={300} gap={12}>
               <For each={d.losses} by={(l) => l[0]}>
                 {(l) => <LimitNote title={l[0]} text={l[1]} />}
@@ -574,13 +498,13 @@ export function BenchmarksPage(props: { view: BenchmarksView }) {
       <Reveal>
         <Section size="tight" id="withdrawn">
           <Wrap>
-            <SectionHead label={H.withdrawn.label} title={H.withdrawn.title} text={H.withdrawn.text} />
+            <SectionHead label={T.withdrawn.label} title={T.withdrawn.title} text={T.withdrawn.text} />
             <WithdrawnList>
               <For each={d.withdrawn} by={(w) => w[0]}>
                 {(w) => (
                   <WithdrawnRow>
                     <div>
-                      <WithdrawnTag>withdrawn</WithdrawnTag>
+                      <WithdrawnTag>{T.withdrawn.tag}</WithdrawnTag>
                       <Struck>{w[0]}</Struck>
                     </div>
                     <Lede size="small">{renderInline(w[1])}</Lede>
@@ -596,7 +520,7 @@ export function BenchmarksPage(props: { view: BenchmarksView }) {
       <Reveal>
         <Section size="tight" id="harness">
           <Wrap>
-            <SectionHead label={`${d.harnessBugs.count} harness bugs`} title={d.harnessBugs.title} text={d.harnessBugs.intro} />
+            <SectionHead label={fill(T.harness.label, { count: d.harnessBugs.count })} title={d.harnessBugs.title} text={d.harnessBugs.intro} />
             <AutoGrid min={300} gap={12} tag="ol">
               <For each={d.harnessBugs.items} by={(b) => b.title}>
                 {(b) => (
@@ -610,7 +534,7 @@ export function BenchmarksPage(props: { view: BenchmarksView }) {
                         <For each={prNumbers(b.pr)} by={(n) => n}>
                           {(n) => (
                             <>
-                              <InlineTextLink href={prHref(n)}>{`PR #${n}`}</InlineTextLink>{' '}
+                              <InlineTextLink href={prHref(n)}>{fill(T.harness.pr, { n })}</InlineTextLink>{' '}
                             </>
                           )}
                         </For>
@@ -627,13 +551,13 @@ export function BenchmarksPage(props: { view: BenchmarksView }) {
       {/* reproduce */}
       <Section size="tight" id="reproduce">
         <Wrap>
-          <SectionHead label="reproduce" title={d.reproduce.title} text={d.reproduce.intro} />
+          <SectionHead label={T.reproduce.label} title={d.reproduce.title} text={d.reproduce.intro} />
           <Stack>
             <AutoGrid cols={2} gap={16}>
-              <CodeCard label="The row board, on your machine" code={d.reproduce.command} state="hot" />
-              <CodeCard label="Every suite" caption={d.reproduce.note} code={d.reproduce.allSuites} />
+              <CodeCard label={T.reproduce.command} code={d.reproduce.command} state="hot" />
+              <CodeCard label={T.reproduce.allSuites} caption={d.reproduce.note} code={d.reproduce.allSuites} />
             </AutoGrid>
-            <Eyebrow>{`Competitors, installed and verified (${d.competitors.length})`}</Eyebrow>
+            <Eyebrow>{fill(T.reproduce.competitors, { count: d.competitors.length })}</Eyebrow>
             <ChipList>
               <For each={d.competitors} by={(c) => c}>
                 {(c) => (
@@ -643,10 +567,10 @@ export function BenchmarksPage(props: { view: BenchmarksView }) {
                 )}
               </For>
             </ChipList>
-            <CaveatLine text={d.caveat} link={{ label: 'How to run every suite →', href: '/docs/benchmarks' }} />
+            <CaveatLine text={d.caveat} link={T.reproduce.more} />
             <div>
-              <Pill href="/docs/benchmarks" variant="solid" size="lg">
-                Read the benchmarks guide
+              <Pill href={T.reproduce.guide.href} variant="solid" size="lg">
+                {T.reproduce.guide.label}
               </Pill>
             </div>
           </Stack>

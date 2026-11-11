@@ -770,7 +770,7 @@
   ],
   "caveat": "Synthetic, author-run, Apple M3 Max, record of 2026-11-05. Reproduce: pyreon.dev/docs/benchmarks",
   "lossesSection": {
-    "title": "Every result, on the table.",
+    "title": "Every loss, in one list.",
     "intro": "Wins lead this page. Everything else is here too: every loss from §13 of the record, in one list. We publish where we lose, so you can trust where we win."
   },
   "harnessBugs": {
@@ -827,5 +827,230 @@
     "allSuites": "cd examples/benchmark\nbun bench-fair.ts --repeat 5 --wait-quiet 4\nbun bench-scenarios.ts --scenario <dbmon|tree|effects|memo> --repeat 5 --wait-quiet 4\nbun bench-scenarios.ts --scenario <flow|table|virtual|charts|charts-libs> --repeat 3 --wait-quiet 4\nbun bench-hydration.ts --repeat 5 --wait-quiet 4 && bun bench-apppage.ts --repeat 3 --wait-quiet 4\nbun bench-crossover.ts --repeat 3\nbun bench-bundle.ts\nbun bench-ssr.ts --wait-quiet 4 && bun bench-charts-bundle.ts\ncd ../.. && bun scripts/bench/core/reactivity.ts && bun scripts/bench/core/reactivity.ts --runtime node\nbun scripts/bench/core/router.ts && bun scripts/bench/core/validate.ts\n\n# any fundamentals package\ncd packages/fundamentals/<pkg> && NODE_ENV=production bun bench/<file>.ts",
     "note": "--wait-quiet 4 waits until the machine's one-minute load is 4 or less before measuring (up to five minutes, then it runs and warns that the run is suspect)."
   },
-  "krausest": "A keyed implementation is staged for krausest/js-framework-benchmark (contrib/krausest/pyreon-keyed/), the independent venue. Not yet submitted."
+  "krausest": "A keyed implementation is staged for krausest/js-framework-benchmark (contrib/krausest/pyreon-keyed/), the independent venue. Not yet submitted.",
+  "template": {
+    "meta": {
+      "title": "Benchmarks: every result, on the table · Pyreon",
+      "description": "Pyreon's benchmark record: real Chromium, production builds, medians with 95% confidence intervals and a correctness check before anything is timed. Every win, tie and loss."
+    },
+    "hero": {
+      "eyebrow": "Benchmarks · record of {date} · {count} competitor libraries",
+      "title": "Every result, on the table.",
+      "lede": "Real Chromium, production builds, medians with 95% confidence intervals and a correctness check before anything is timed. The row board and the core scenarios run twice, and a win has to win both runs. Record of 2026-11-05, with Vue's Vapor mode and the Solid 2.0 release candidate on the board beside their stable versions. Every number on every Pyreon page comes from here.",
+      "statsLabel": "Headline results",
+      "jumpsLabel": "On this page"
+    },
+    "jumps": {
+      "method": "Method",
+      "row-board": "Row board",
+      "scenarios": "Scenarios",
+      "scaling": "Scaling",
+      "ssr": "SSR",
+      "apps": "Real apps",
+      "bundle": "Bundle",
+      "reactivity": "Reactivity",
+      "every-product": "Every product",
+      "losses": "Every loss",
+      "withdrawn": "Withdrawn",
+      "harness": "Harness bugs",
+      "reproduce": "Reproduce"
+    },
+    "method": {
+      "label": "method",
+      "title": "How we measure.",
+      "text": "Synthetic benchmarks can't predict your app. They can be run honestly. Apple M3 Max, Chromium 156, Node 26 (V8) and Bun 1.4 (JavaScriptCore).",
+      "guide": {
+        "text": "The suites and how to run them are documented in the",
+        "link": {
+          "label": "benchmarks guide",
+          "href": "/docs/benchmarks"
+        }
+      }
+    },
+    "rows": {
+      "label": "dom · 10 frameworks · real chromium",
+      "title": "The row board: level with the fastest, 2.6× ahead of React.",
+      "text": "The classic keyed-table benchmark against nine other implementations, including hand-written vanilla JS. Pick an operation. Run 1 shown; verdicts cover both runs.",
+      "chart": "Row board chart",
+      "table": "Every operation and framework, as a table",
+      "caption": "Row board, run 1, milliseconds (lower is better). Verdicts cover both runs.",
+      "columns": {
+        "op": "Operation",
+        "verdict": "Verdict"
+      },
+      "run": "Run 1 medians; real Chromium; the full board ranks each operation fastest first",
+      "initial": "create 10,000 rows",
+      "fastestFirst": "{op}, fastest first: {list}",
+      "live": {
+        "control": "Operation",
+        "title": "Row board, {op}: milliseconds, lower is better",
+        "pyreon": "Pyreon",
+        "others": "Other frameworks"
+      }
+    },
+    "scenarios": {
+      "label": "scenarios · real chromium",
+      "title": "Real component shapes, not just rows.",
+      "text": "Deep trees, context fan-out, effect lists, memo walls and hydration. Two runs each unless marked.",
+      "columns": {
+        "op": "Scenario",
+        "pyreon": "Pyreon",
+        "rival": "Fastest rival",
+        "verdict": "Verdict"
+      },
+      "run": "Two runs each unless marked"
+    },
+    "scaling": {
+      "label": "scaling · 100 → 20,000 rows",
+      "title": "Select stays flat. Everyone else's doesn't.",
+      "text": "The same operations at five sizes, batch-timed. Solid's select grows with the row count; Pyreon's is O(1) and twice as fast as Octane's. One run.",
+      "chart": "Scaling chart",
+      "table": "Every size, as a table",
+      "caption": "{op}: µs per operation, one run",
+      "columns": {
+        "framework": "Framework",
+        "size": "{size} rows"
+      },
+      "run": "Batch-timed, one run",
+      "live": {
+        "control": "Operation",
+        "title": "{op}: µs per operation by row count, log scale",
+        "note": "{op} · log scale · µs per op · one run"
+      }
+    },
+    "ssr": {
+      "label": "server rendering",
+      "title": "The fastest server render we measured, at every size.",
+      "text": "Compiled SSR, idiomatic per framework, µs per render (overnight run).",
+      "chart": "Server rendering chart",
+      "table": "As a table",
+      "caption": "Compiled SSR, µs per render (lower is better), one run",
+      "columns": {
+        "rows": "Rows",
+        "pyreon": "Pyreon",
+        "vue": "Vue 3",
+        "svelte": "Svelte 5",
+        "react": "React 19"
+      },
+      "run": "Overnight run, one run"
+    },
+    "apps": {
+      "label": "real-app shapes",
+      "title": "Forms and to-do lists, the apps people actually build.",
+      "text": "A 12-field form against six form libraries, and TodoMVC against React 19. One run each.",
+      "forms": {
+        "chart": "Forms chart",
+        "table": "Forms, as a table",
+        "caption": "12-field form, µs (lower is better), one run",
+        "columns": {
+          "op": "Operation",
+          "pyreon": "Pyreon",
+          "rivals": "Rivals, fastest first"
+        }
+      },
+      "todomvc": {
+        "chart": "TodoMVC chart",
+        "table": "TodoMVC, as a table",
+        "caption": "TodoMVC shape vs React 19, one run",
+        "columns": {
+          "op": "Operation",
+          "pyreon": "Pyreon",
+          "react": "React 19",
+          "ratio": "Ratio"
+        }
+      },
+      "run": "One run each"
+    },
+    "bundle": {
+      "label": "bundle size · same app · gzip -9",
+      "title": "Bigger than Solid. Smaller than Vue and React.",
+      "text": "The same keyed-table app built with each framework. This is a loss and we're not hiding it: Solid, Preact and Svelte ship less.",
+      "chart": "Bundle size chart",
+      "table": "As a table",
+      "caption": "Same keyed-table app, KB gzip -9 (smaller is better)",
+      "columns": {
+        "framework": "Framework",
+        "kb": "KB gzip"
+      },
+      "run": "Sizes are deterministic"
+    },
+    "reactivity": {
+      "label": "reactivity core · ns/op",
+      "title": "Signals, measured on two engines.",
+      "text": "Pyreon vs Preact Signals and Solid. Two runs per engine. Pyreon wins propagation and batching, loses creation and deep unobserved chains.",
+      "control": "Engine",
+      "caption": "{engine}: ns per op (lower is better), two runs",
+      "columns": {
+        "test": "Test",
+        "pyreon": "Pyreon",
+        "preact": "Preact Signals",
+        "solid": "Solid",
+        "verdict": "Verdict vs Preact"
+      },
+      "run": "Two runs per engine"
+    },
+    "products": {
+      "label": "every product",
+      "title": "Head-to-head, product by product.",
+      "text": "Each card links to the benchmark section on that product's page.",
+      "control": "Filter products",
+      "filters": {
+        "all": "all",
+        "win": "has wins",
+        "loss": "has losses",
+        "info": "throughput only"
+      },
+      "shown": "{shown} of {total} products",
+      "card": "{name}: {headline} {tally}. Open its benchmarks.",
+      "tally": {
+        "win": [
+          "win",
+          "wins"
+        ],
+        "tie": [
+          "tie",
+          "ties"
+        ],
+        "split": [
+          "split",
+          "splits"
+        ],
+        "loss": [
+          "loss",
+          "losses"
+        ],
+        "info": [
+          "measurement",
+          "measurements"
+        ]
+      }
+    },
+    "losses": {
+      "label": "where we lose"
+    },
+    "withdrawn": {
+      "label": "withdrawn claims",
+      "title": "We retract our own numbers.",
+      "text": "When a harness bug turns up or a result doesn't reproduce, the claim comes down, including claims in our favour.",
+      "tag": "withdrawn"
+    },
+    "harness": {
+      "label": "{count} harness bugs",
+      "pr": "PR #{n}"
+    },
+    "reproduce": {
+      "label": "reproduce",
+      "command": "The row board, on your machine",
+      "allSuites": "Every suite",
+      "competitors": "Competitors, installed and verified ({count})",
+      "more": {
+        "label": "How to run every suite →",
+        "href": "/docs/benchmarks"
+      },
+      "guide": {
+        "label": "Read the benchmarks guide",
+        "href": "/docs/benchmarks"
+      }
+    }
+  }
 }
