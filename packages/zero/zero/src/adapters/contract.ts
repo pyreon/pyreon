@@ -39,6 +39,27 @@
  */
 export const EDGE_SERVER_SUBDIR = 'server-edge'
 
+/** Subdir (under `outDir`) where the SSR plugin writes the Node server bundle. */
+export const SSR_SERVER_SUBDIR = 'server'
+
+/** Subdir (under `outDir`) the SSG pass builds its prerender renderer into (removed afterwards). */
+export const SSG_RENDERER_SUBDIR = '.zero-ssg-server'
+
+/**
+ * Top-level names under `outDir` that a HYBRID build (app mode `ssr` / `isr`
+ * with prerendered routes) writes itself, whatever the adapter. A prerendered
+ * route whose output lands under one of them is lost: the SSR sub-build
+ * empties `server/`, staging leaves the server dirs out of the client copy.
+ * The SSG pass refuses such a route (#4259); each adapter adds its own names
+ * through `Adapter.reservedOutputs`. `.vite` holds Vite's build manifest.
+ */
+export const HYBRID_BUILD_OUTPUTS: readonly string[] = Object.freeze([
+  SSR_SERVER_SUBDIR,
+  EDGE_SERVER_SUBDIR,
+  SSG_RENDERER_SUBDIR,
+  '.vite',
+])
+
 /** node adapter (`nodeAdapter`) — standalone `node:http` runner. */
 export const NODE_ADAPTER_OUTPUT = Object.freeze({
   /** Emitted runner: `node dist/index.js`. */
@@ -139,4 +160,29 @@ export const VERCEL_ADAPTER_OUTPUT = Object.freeze({
   /** Routes declaring `runtime = 'nodejs'` under `vercelAdapter({ runtime: 'edge' })`. */
   nodeFunctionName: 'ssr-node',
 })
+
+/** The first segment of a relative output path (`netlify/functions` → `netlify`). */
+const top = (segment: string): string => segment.split('/')[0] as string
+
+/**
+ * The top-level names each built-in adapter's SSR build stages under
+ * `outDir` (its `Adapter.reservedOutputs`). Derived from the constants above,
+ * so a renamed output dir cannot leave a stale reservation behind.
+ */
+export const ADAPTER_RESERVED_OUTPUTS = Object.freeze({
+  node: [NODE_ADAPTER_OUTPUT.clientDir, NODE_ADAPTER_OUTPUT.serverDir, NODE_ADAPTER_OUTPUT.runnerEntry, 'package.json'],
+  bun: [BUN_ADAPTER_OUTPUT.clientDir, BUN_ADAPTER_OUTPUT.serverDir, BUN_ADAPTER_OUTPUT.runnerEntry],
+  deno: [DENO_ADAPTER_OUTPUT.clientDir, DENO_ADAPTER_OUTPUT.serverDir, DENO_ADAPTER_OUTPUT.runnerEntry],
+  netlify: [
+    NETLIFY_ADAPTER_OUTPUT.publishDir,
+    top(NETLIFY_ADAPTER_OUTPUT.functionsDir),
+    top(NETLIFY_ADAPTER_OUTPUT.edgeFunctionsDir),
+    'netlify.toml',
+  ],
+  cloudflare: [
+    CLOUDFLARE_ADAPTER_OUTPUT.serverDir,
+    CLOUDFLARE_ADAPTER_OUTPUT.workerFile,
+    CLOUDFLARE_ADAPTER_OUTPUT.routesFile,
+  ],
+} satisfies Record<string, readonly string[]>)
 

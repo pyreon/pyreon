@@ -476,19 +476,30 @@ export abstract class Schema<T> {
    *   key: 'common.required',
    *   code: 'too_small',
    * })
+   * s.string().refine(s => s !== 'admin') // message: 'Invalid value'
    * ```
+   *
+   * `opts` (and its `message`) are optional; the default message is
+   * `'Invalid value'`, as for `s.custom()`. Normalised HERE, once: every
+   * consumer of the op (sync and async parse, the JIT) reads `opts.message`,
+   * and a missing `opts` made a synchronous `.parse()` THROW instead of
+   * returning an issue, while `parseAsync` caught it (#4361).
    */
   refine(
     fn: (value: T) => boolean | Promise<boolean>,
-    opts: {
-      message: string
+    opts?: {
+      message?: string | undefined
       code?: string
       key?: string
       params?: Record<string, unknown>
       fallback?: string
     },
   ): this {
-    return this._cloneWith({ kind: 'refine', fn: fn as (v: unknown) => boolean | Promise<boolean>, opts })
+    return this._cloneWith({
+      kind: 'refine',
+      fn: fn as (v: unknown) => boolean | Promise<boolean>,
+      opts: { ...opts, message: opts?.message ?? 'Invalid value' },
+    })
   }
 
   /**

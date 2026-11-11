@@ -7,9 +7,9 @@
  * `lathe pull`'s (`documentFetcher`): a per-document ETag cache, credentials
  * scoped to their origin, and no local file reachable from remote content.
  */
-import { collectDocumentsAsync, isRemote, type ReadOutcome } from '../input/bundle'
+import { collectDocumentsAsync, isRemote, type ReadOutcome, type RefContainment } from '../input/bundle'
 import { parseSpecText } from '../input/yaml'
-import { documentCache, documentFetcher } from './pull'
+import { documentCache, documentFetcher, refOriginPolicy } from './pull'
 
 /**
  * Every remote document the spec at `location` reaches -- through its local
@@ -23,6 +23,8 @@ export async function fetchRemoteParts(
   readLocal: (id: string) => string,
   remoteHeaders: Readonly<Record<string, Readonly<Record<string, string>>>> | undefined,
   cacheDir: string | undefined,
+  /** Where local parts may live, and which other origins remote parts may reach. */
+  scope: RefContainment & { refOrigins?: readonly string[] | undefined } = {},
 ): Promise<Map<string, ReadOutcome>> {
   const byOrigin = new Map<string, Readonly<Record<string, string>>>()
   for (const [origin, headers] of Object.entries(remoteHeaders ?? {})) {
@@ -36,11 +38,11 @@ export async function fetchRemoteParts(
   const fetchRemote = documentFetcher(store.cache, store.cacheFile, (id) => {
     const headers = byOrigin.get(new URL(id).origin)
     return headers ? { ...headers } : undefined
-  })
+  }, refOriginPolicy(scope.refOrigins))
   const remote = new Map<string, ReadOutcome>()
-  await collectDocumentsAsync(parseSpecText(specText), location, async (id) => {
+  await collectDocumentsAsync(parseSpecText(specText), location, async (id, from) => {
     if (isRemote(id)) {
-      const outcome = await fetchRemote(id)
+      const outcome = await fetchRemote(id, from)
       remote.set(id, outcome)
       return outcome
     }
@@ -50,7 +52,7 @@ export async function fetchRemoteParts(
       // A missing LOCAL part is the loader's to report, as without `fetch`.
       return { error: err instanceof Error ? err.message : String(err) }
     }
-  })
+  }, { refRoot: scope.refRoot, realpath: scope.realpath })
   store.save()
   const failed = [...remote].filter((e): e is [string, { error: string }] => 'error' in e[1])
   if (failed.length > 0) {

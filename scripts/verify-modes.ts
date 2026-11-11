@@ -783,7 +783,7 @@ const MATRIX: Cell[] = [
       // copy and silently returned if it was absent). `assertClientClean`
       // refuses a missing or JS-less directory rather than passing.
       // Sentinels: the `.server.ts` loader and a server ACTION handler
-      // (`src/features/probe-action.ts`, imported by a client route, so the
+      // (declared in the client route `src/routes/action-probe.ts`, so the
       // handler-stripping transform is what keeps it out). Plus: no `node:*`
       // import in any client chunk.
       assertSomeFileInDirContains(join(dist, 'server'), 'ACTION_HANDLER_SENTINEL_z3k8')

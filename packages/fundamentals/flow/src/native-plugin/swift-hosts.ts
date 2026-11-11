@@ -24,7 +24,7 @@ export function emitSwiftFlowHost(e: Extract<ExprIR, { kind: 'jsx-element' }>): 
     host.warn('<Flow nodeTypes={…}> must be a literal { type: Component } map to lower natively; the native default node renderer is used.')
   }
   for (const entry of nodeTypes ?? []) {
-    if (host.flowFile().invalidHandles.has(entry.component)) host.warn(`<Flow nodeTypes> component \`${entry.component}\`: <Handle> requires literal \`type\` and \`position\` props for native extraction; the dynamic handle was not attached to the node.`)
+    if (host.flowFile().invalidHandles.has(entry.component)) host.warn(`<Flow nodeTypes> component \`${entry.component}\`: <Handle> requires a literal \`type\` and a literal \`position\` (top, right, bottom or left, or \`Position.<Side>\`) for native extraction; the handle was not attached to the node.`)
     if (host.flowFile().invalidResizers.has(entry.component)) host.warn(`<Flow nodeTypes> component \`${entry.component}\`: <NodeResizer> size and edge-handle options must be literals for native extraction; dynamic values use native defaults.`)
     if (host.flowFile().foreignResizers.has(entry.component)) host.warn(NODE_RESIZER_FOREIGN_NODE_WARNING(entry.component))
     if (host.flowFile().invalidToolbars.has(entry.component)) host.warn(`<Flow nodeTypes> component \`${entry.component}\`: <NodeToolbar> requires literal position, align, offset, and showOnSelect props on native; unsupported values use native defaults.`)
@@ -78,37 +78,37 @@ export function emitSwiftFlowHost(e: Extract<ExprIR, { kind: 'jsx-element' }>): 
   const colorModeArg = colorModeAttr?.kind === 'attr' && colorModeAttr.value !== undefined ? `, colorMode: ${host.expr(colorModeAttr.value, 0)}` : ''
   const handleCases = nodeTypes?.flatMap(({ type, component }) => {
     const handles = host.flowFile().handles.get(component) ?? []
-    return handles.length > 0 ? [`case ${JSON.stringify(type)}: return ${swiftFlowParsedHandles(handles)}`] : []
+    return handles.length > 0 ? [`case ${swiftStr(type)}: return ${swiftFlowParsedHandles(handles)}`] : []
   }) ?? []
   const nodeHandlesArg = handleCases.length > 0
     ? `, nodeHandles: { pyreonNode in\n    switch pyreonNode.type {\n    ${handleCases.join('\n    ')}\n    default: return []\n    }\n  }`
     : ''
   const resizerCases = nodeTypes?.flatMap(({ type, component }) => {
     const config = host.flowFile().resizers.get(component)
-    return config ? [`case ${JSON.stringify(type)}: return PyreonFlowNodeResizerConfig(minWidth: ${config.minWidth}, minHeight: ${config.minHeight}, handleSize: ${config.handleSize}, showEdgeHandles: ${config.showEdgeHandles})`] : []
+    return config ? [`case ${swiftStr(type)}: return PyreonFlowNodeResizerConfig(minWidth: ${config.minWidth}, minHeight: ${config.minHeight}, handleSize: ${config.handleSize}, showEdgeHandles: ${config.showEdgeHandles})`] : []
   }) ?? []
   const nodeResizerArg = resizerCases.length > 0
     ? `, nodeResizer: { pyreonNode in\n    switch pyreonNode.type {\n    ${resizerCases.join('\n    ')}\n    default: return nil\n    }\n  }`
     : ''
   const toolbarCases = nodeTypes?.flatMap(({ type, component }) => {
     const configs = host.flowFile().toolbars.get(component)
-    return configs?.length ? [`case ${JSON.stringify(type)}: return [${configs.map((config) => `PyreonFlowNodeToolbarConfig(position: ${JSON.stringify(config.position)}, align: ${JSON.stringify(config.align)}, offset: ${config.offset}, showOnSelect: ${config.showOnSelect}${config.selectedOverride === undefined ? '' : `, selectedOverride: ${config.selectedOverride}`}${config.nodeIdOverride === undefined ? '' : `, nodeIdOverride: ${JSON.stringify(config.nodeIdOverride)}`})`).join(', ')}]`] : []
+    return configs?.length ? [`case ${swiftStr(type)}: return [${configs.map((config) => `PyreonFlowNodeToolbarConfig(position: ${swiftStr(config.position)}, align: ${swiftStr(config.align)}, offset: ${config.offset}, showOnSelect: ${config.showOnSelect}${config.selectedOverride === undefined ? '' : `, selectedOverride: ${config.selectedOverride}`}${config.nodeIdOverride === undefined ? '' : `, nodeIdOverride: ${swiftStr(config.nodeIdOverride)}`})`).join(', ')}]`] : []
   }) ?? []
   const nodeToolbarConfigArg = toolbarCases.length > 0
     ? `, nodeToolbarConfigs: { pyreonNode in\n    switch pyreonNode.type {\n    ${toolbarCases.join('\n    ')}\n    default: return []\n    }\n  }`
     : ''
   const toolbarContentCases = nodeTypes?.flatMap(({ type, component }) => {
     const configs = host.flowFile().toolbars.get(component)
-    return configs?.length ? [`case ${JSON.stringify(type)}:\n      switch pyreonToolbarIndex {\n${configs.map((config, index) => `      case ${index}: return AnyView(${swiftIdent(config.contentComponent)}(id: pyreonNode.id, data: { pyreonNode.data }, selected: { pyreonSelected }, dragging: { pyreonDragging }))`).join('\n')}\n      default: return nil\n      }`] : []
+    return configs?.length ? [`case ${swiftStr(type)}:\n      switch pyreonToolbarIndex {\n${configs.map((config, index) => `      case ${index}: return AnyView(${swiftIdent(config.contentComponent)}(id: pyreonNode.id, data: { pyreonNode.data }, selected: { pyreonSelected }, dragging: { pyreonDragging }))`).join('\n')}\n      default: return nil\n      }`] : []
   }) ?? []
   const nodeToolbarArg = toolbarContentCases.length > 0
     ? `, nodeToolbar: { pyreonNode, pyreonToolbarIndex, pyreonSelected, pyreonDragging in\n    switch pyreonNode.type {\n    ${toolbarContentCases.join('\n    ')}\n    default: return nil\n    }\n  }`
     : ''
   const customEdgeTypesArg = edgeTypes && edgeTypes.length > 0
-    ? `, customEdgeTypes: Set([${edgeTypes.map(({ type }) => JSON.stringify(type)).join(', ')}])`
+    ? `, customEdgeTypes: Set([${edgeTypes.map(({ type }) => swiftStr(type)).join(', ')}])`
     : ''
   const customEdgeArg = edgeTypes && edgeTypes.length > 0
-    ? `, customEdge: { pyreonEdge in\n    switch pyreonEdge.edge.type {\n    ${edgeTypes.map(({ type, component }) => `case ${JSON.stringify(type)}: return AnyView(${swiftIdent(component)}(edge: pyreonEdge.edge, sourceX: { pyreonEdge.sourceX }, sourceY: { pyreonEdge.sourceY }, targetX: { pyreonEdge.targetX }, targetY: { pyreonEdge.targetY }, sourcePosition: { pyreonEdge.sourcePosition }, targetPosition: { pyreonEdge.targetPosition }, selected: { pyreonEdge.selected }, labelX: { pyreonEdge.labelX }, labelY: { pyreonEdge.labelY }))`).join('\n    ')}\n    default: return nil\n    }\n  }`
+    ? `, customEdge: { pyreonEdge in\n    switch pyreonEdge.edge.type {\n    ${edgeTypes.map(({ type, component }) => `case ${swiftStr(type)}: return AnyView(${swiftIdent(component)}(edge: pyreonEdge.edge, sourceX: { pyreonEdge.sourceX }, sourceY: { pyreonEdge.sourceY }, targetX: { pyreonEdge.targetX }, targetY: { pyreonEdge.targetY }, sourcePosition: { pyreonEdge.sourcePosition }, targetPosition: { pyreonEdge.targetPosition }, selected: { pyreonEdge.selected }, labelX: { pyreonEdge.labelX }, labelY: { pyreonEdge.labelY }))`).join('\n    ')}\n    default: return nil\n    }\n  }`
     : ''
   const customConnectionLineArg = connectionLine
     ? `, customConnectionLineEnabled: true, customConnectionLine: { pyreonLine in AnyView(${swiftIdent(connectionLine)}(sourceX: { pyreonLine.sourceX }, sourceY: { pyreonLine.sourceY }, targetX: { pyreonLine.targetX }, targetY: { pyreonLine.targetY }, sourcePosition: { pyreonLine.sourcePosition }, path: { pyreonLine.path })) }`
@@ -182,7 +182,7 @@ export function emitSwiftFlowCustomPath(e: Extract<ExprIR, { kind: 'jsx-element'
   }
   const paint = resolveFlowPathPaint(e)
   for (const w of paint.warnings) host.warn(w)
-  const color = (v: FlowPathPaintValue) => v.kind === 'none' ? 'nil' : v.kind === 'literal' ? JSON.stringify(v.value) : host.expr(v.expr, indent)
+  const color = (v: FlowPathPaintValue) => v.kind === 'none' ? 'nil' : v.kind === 'literal' ? swiftStr(v.value) : host.expr(v.expr, indent)
   const width = paint.width.kind === 'literal' ? String(paint.width.value) : `Double(${host.expr(paint.width.expr, indent)})`
   return `PyreonFlowCustomEdgePath(result: ${resultCode}, color: ${color(paint.stroke)}, width: ${width}, fill: ${color(paint.fill)})`
 }
@@ -191,7 +191,7 @@ export function emitSwiftFlowSvg(e: Extract<ExprIR, { kind: 'jsx-element' }>, in
   const plan = planFlowSvg(e)
   for (const w of plan.warnings) host.warnOnce(w)
   const num = (n: FlowSvgNumber) => n.kind === 'literal' ? String(n.value) : `Double(${host.expr(n.expr, indent)})`
-  const color = (v: FlowPathPaintValue) => v.kind === 'none' ? 'nil' : v.kind === 'literal' ? JSON.stringify(v.value) : host.expr(v.expr, indent)
+  const color = (v: FlowPathPaintValue) => v.kind === 'none' ? 'nil' : v.kind === 'literal' ? swiftStr(v.value) : host.expr(v.expr, indent)
   const pad = ' '.repeat(indent + 2)
   const shapes = plan.shapes.map((s) =>
     `${pad}PyreonFlowSvgShape(result: PyreonFlowPathResult(svgPath: ${host.expr(s.d, indent + 2)}), stroke: ${color(s.paint.stroke)}, strokeWidth: ${s.paint.width.kind === 'literal' ? String(s.paint.width.value) : `Double(${host.expr(s.paint.width.expr, indent)})`}, fill: ${color(s.paint.fill)})`,
@@ -211,7 +211,7 @@ export function emitSwiftFlowBaseEdge(e: Extract<ExprIR, { kind: 'jsx-element' }
   for (const w of plan.warnings) host.warnOnce(w)
   if (!plan.path) return 'EmptyView()'
   const stroke = plan.paint.stroke
-  const color = stroke.kind === 'none' ? '"#00000000"' : stroke.kind === 'literal' ? (stroke.value === PALETTE_STROKE ? 'nil' : JSON.stringify(stroke.value)) : host.expr(stroke.expr, indent)
+  const color = stroke.kind === 'none' ? '"#00000000"' : stroke.kind === 'literal' ? (stroke.value === PALETTE_STROKE ? 'nil' : swiftStr(stroke.value)) : host.expr(stroke.expr, indent)
   const width = plan.paint.width.kind === 'literal' ? String(plan.paint.width.value) : `Double(${host.expr(plan.paint.width.expr, indent)})`
   const path = `PyreonFlowBaseEdgePath(result: PyreonFlowPathResult(svgPath: ${host.expr(plan.path, indent)}), color: ${color}, width: ${width})`
   if (!plan.label) return path
@@ -329,7 +329,7 @@ export function emitSwiftFlowWebView(e: Extract<ExprIR, { kind: 'jsx-element' }>
       }
     }
   }
-  const html = explicitHtml === undefined ? JSON.stringify(generatedHtml) : host.expr(explicitHtml, 0)
+  const html = explicitHtml === undefined ? swiftStr(generatedHtml) : host.expr(explicitHtml, 0)
   const graphJson = graph === undefined ? '"{\\"nodes\\":[],\\"edges\\":[]}"' : host.webView.dataArg(graph)
   const commands = host.webView.dynamicAttr(e, 'commands')
   const data = commands === undefined

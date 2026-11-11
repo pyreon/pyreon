@@ -5,10 +5,12 @@ import { readCallbacks, readLive, resolveLive } from '../live-prop'
 import type { ClassTransitionProps, StyleTransitionProps, TransitionCallbacks } from '../types'
 import useAnimationEnd from '../useAnimationEnd'
 import { useReducedMotion } from '../useReducedMotion'
+import { applyReducedMotionEnd } from '../reduced-motion'
 import useTransitionState from '../useTransitionState'
 import {
   addClasses,
   cloneVNode,
+  consumerRef,
   mergeRefs,
   mergeStyles,
   nextFrame,
@@ -71,13 +73,18 @@ const applyReducedMotion = (
   stage: string,
   callbacks: Partial<TransitionCallbacks>,
   complete: () => void,
+  // Lands the element on the END state (see `applyReducedMotionEnd`) between
+  // the two callbacks, so `onEnter` sees the start and `onAfterEnter` the end.
+  settle: () => void,
 ) => {
   if (stage === 'entering') {
     callbacks.onEnter?.()
+    settle()
     callbacks.onAfterEnter?.()
     complete()
   } else if (stage === 'leaving') {
     callbacks.onLeave?.()
+    settle()
     callbacks.onAfterLeave?.()
     complete()
   }
@@ -113,12 +120,12 @@ const TransitionItem = (props: TransitionItemProps): VNode | null => {
   })
 
   const elementRef = createRef<HTMLElement>()
+  // The child's own `ref` (callback or object) is forwarded: `cloneVNode` below
+  // sets `ref: mergedRef` over the child's props, which would otherwise drop it.
   const mergedRef = mergeRefs(
     elementRef,
     stateRef,
-    (child?.props as Record<string, unknown>)?.ref as
-      | ((el: HTMLElement | null) => void)
-      | undefined,
+    consumerRef<HTMLElement>((child?.props ?? {}) as Record<string, unknown>),
   )
 
   // The four callbacks are read at the POINT OF CALL (`readCallbacks(props)` /
@@ -171,7 +178,9 @@ const TransitionItem = (props: TransitionItemProps): VNode | null => {
       if (!el) return
 
       if (reducedMotion()) {
-        applyReducedMotion(currentStage, readCallbacks(props), complete)
+        applyReducedMotion(currentStage, readCallbacks(props), complete, () =>
+          applyReducedMotionEnd(el, currentStage, transitionConfig),
+        )
         return
       }
 

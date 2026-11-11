@@ -12,10 +12,12 @@ import { isDynamicProp, readCallbacks, readLive, readLiveValue } from './live-pr
 import { showAccessorFrom } from './show-accessor'
 import useAnimationEnd from './useAnimationEnd'
 import { useReducedMotion } from './useReducedMotion'
+import { applyReducedMotionEnd } from './reduced-motion'
 import useTransitionState from './useTransitionState'
 import {
   addClasses,
   cloneVNode,
+  consumerRef,
   mergeRefs,
   mergeStyles,
   nextFrame,
@@ -98,13 +100,18 @@ const applyReducedMotion = (
     onAfterLeave?: (() => void) | undefined
   },
   complete: () => void,
+  // Lands the element on the END state (see `applyReducedMotionEnd`) between
+  // the two callbacks, so `onEnter` sees the start and `onAfterEnter` the end.
+  settle: () => void,
 ) => {
   if (stage === 'entering') {
     callbacks.onEnter?.()
+    settle()
     callbacks.onAfterEnter?.()
     complete()
   } else if (stage === 'leaving') {
     callbacks.onLeave?.()
+    settle()
     callbacks.onAfterLeave?.()
     complete()
   }
@@ -146,11 +153,9 @@ const Transition = (props: TransitionProps): VNode | null => {
   const child = resolveChildren(props.children) as VNode
   const elementRef = createRef<HTMLElement>()
   const childProps = (child?.props ?? {}) as Record<string, unknown>
-  const mergedRef = mergeRefs(
-    elementRef,
-    stateRef,
-    childProps.ref as ((el: HTMLElement | null) => void) | undefined,
-  )
+  // The child's own `ref` (callback or object) is forwarded: `cloneVNode` below
+  // sets `ref: mergedRef` over the child's props, which would otherwise drop it.
+  const mergedRef = mergeRefs(elementRef, stateRef, consumerRef<HTMLElement>(childProps))
 
   // Numeric timing -> the CSS shorthand the web renderer applies. An explicit
   // `enterTransition` / `leaveTransition` still wins, so this only fills a gap
@@ -229,7 +234,11 @@ const Transition = (props: TransitionProps): VNode | null => {
       if (!el) return
 
       if (reducedMotion()) {
-        applyReducedMotion(currentStage, readCallbacks(props), complete)
+        applyReducedMotion(currentStage, readCallbacks(props), complete, () => {
+          // The baked hidden class, as on the animated enter — see `bakedHiddenClass`.
+          if (currentStage === 'entering') removeClasses(el, bakedHiddenClass)
+          applyReducedMotionEnd(el, currentStage, readTransitionConfig())
+        })
         return
       }
 

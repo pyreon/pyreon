@@ -1,5 +1,6 @@
 import type { Signal } from '@pyreon/reactivity'
 import type { InferSchema } from '@pyreon/validation'
+import type { ContainerMarker, ElementDefOf } from './containers'
 import type { ReferenceField } from './references'
 
 // ─── Model brand ──────────────────────────────────────────────────────────────
@@ -188,15 +189,44 @@ type ExtractModelState<T> = T extends {
 
 /**
  * Snapshot type: plain JS values (no signals, no model instances).
- * Nested model fields recursively produce their own typed snapshot; a
- * `reference()` field serializes as its identifier (`string | number`).
+ * Nested model fields recursively produce their own typed snapshot; an
+ * `arrayOf(Model)` / `mapOf(Model)` field an array / record of `Model`
+ * snapshots; a `reference()` field serializes as its identifier
+ * (`string | number`).
  */
 export type Snapshot<TState extends StateShape> = {
   [K in keyof TState]: TState[K] extends ReferenceField<unknown>
     ? string | number
     : TState[K] extends { readonly __pyreonMod: true }
       ? Snapshot<ExtractModelState<TState[K]>>
-      : TState[K]
+      : [ElementDefOf<TState[K]>] extends [never]
+        ? TState[K]
+        : TState[K] extends readonly unknown[]
+          ? Snapshot<ExtractModelState<ElementDefOf<TState[K]>>>[]
+          : Record<string, Snapshot<ExtractModelState<ElementDefOf<TState[K]>>>>
+}
+
+/** The instance type an `arrayOf` / `mapOf` field holds. */
+type ElementInstanceOf<T> = T extends readonly (infer I)[]
+  ? I
+  : T extends Record<string, infer I>
+    ? I
+    : never
+
+/**
+ * What `.create(initial)` accepts per field: the field's {@link Snapshot}, except
+ * that an `arrayOf(Model)` / `mapOf(Model)` element may also be a live `Model`
+ * instance (kept as-is; snapshots are turned into instances).
+ */
+export type SnapshotIn<TState extends StateShape> = {
+  [K in keyof TState]: [ElementDefOf<TState[K]>] extends [never]
+    ? Snapshot<TState>[K]
+    : TState[K] extends readonly unknown[]
+      ? Array<Snapshot<ExtractModelState<ElementDefOf<TState[K]>>> | ElementInstanceOf<TState[K]>>
+      : Record<
+          string,
+          Snapshot<ExtractModelState<ElementDefOf<TState[K]>>> | ElementInstanceOf<TState[K]>
+        >
 }
 
 // ─── Patch ────────────────────────────────────────────────────────────────────
@@ -313,6 +343,12 @@ export interface InstanceMeta {
    * reference points at a node it does not own).
    */
   referenceKeys?: Map<string, Signal<unknown>>
+  /**
+   * `arrayOf(Model)` / `mapOf(Model)` fields → their marker (element model +
+   * kind). `create` / `applySnapshot` / `applyPatch` use it to turn element
+   * snapshots back into instances.
+   */
+  containerKeys?: Map<string, ContainerMarker>
   /**
    * Back-reference to the `ModelDefinition` that produced this instance —
    * powers `clone(instance)` (= `def.create(getSnapshot(instance))`) and

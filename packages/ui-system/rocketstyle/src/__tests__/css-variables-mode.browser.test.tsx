@@ -185,3 +185,29 @@ describe('rocketstyle under cssVariables — measured mode flip', () => {
   })
 })
 
+// #4324: under cssVariables every mode(a, b) value becomes `var(--px-m-…)`.
+// backgroundImage used to wrap it as `url(var(…))` — invalid, computed `none` —
+// so a mode-aware gradient could not render in either mode.
+describe('rocketstyle under cssVariables — mode-aware backgroundImage', () => {
+  it('a mode(a, b) gradient renders and flips with the mode', () => {
+    init({ cssVariables: true })
+    const mode = signal<'light' | 'dark'>('light')
+    const Hero = (rocketstyle()({ name: 'VarGradient', component: Base }) as any).theme(
+      (_t: any, m: any) => ({
+        backgroundImage: m('linear-gradient(red, blue)', 'linear-gradient(green, yellow)'),
+      }),
+    )
+    const { container, unmount } = mountInBrowser(
+      h(PyreonUI as any, { theme, mode: () => mode() }, h(Hero, { id: 'vg' })),
+    )
+    const el = container.querySelector<HTMLElement>('#vg')!
+    expect(getComputedStyle(el).backgroundImage).toBe(
+      'linear-gradient(rgb(255, 0, 0), rgb(0, 0, 255))',
+    )
+    mode.set('dark')
+    expect(getComputedStyle(el).backgroundImage).toBe(
+      'linear-gradient(rgb(0, 128, 0), rgb(255, 255, 0))',
+    )
+    unmount()
+  })
+})

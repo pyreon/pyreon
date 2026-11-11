@@ -23,6 +23,8 @@ const shallowProxyCache = new WeakMap<object, object>()
 
 const IS_STORE = Symbol('pyreon.store')
 const IS_RAW = Symbol('pyreon.raw')
+// Read through a store proxy, returns its raw target (see `snapshot`).
+const RAW_TARGET = Symbol('pyreon.rawTarget')
 
 /**
  * Mark an object as RAW — `createStore` and `shallowReactive` will return it
@@ -152,7 +154,9 @@ function wrap(raw: object, shallow: boolean): object {
     get(target, key) {
       // Pass through the identity marker and non-string/number keys (symbols, etc.)
       if (key === IS_STORE) return true
-      if (typeof key === 'symbol') return (target as Record<symbol, unknown>)[key]
+      if (typeof key === 'symbol') {
+        return key === RAW_TARGET ? target : (target as Record<symbol, unknown>)[key]
+      }
 
       // Array length — tracked via dedicated signal for push/pop/splice reactivity
       if (isArray && key === 'length') return lengthSig?.()
@@ -272,4 +276,53 @@ function wrap(raw: object, shallow: boolean): object {
 
   cache.set(raw, proxy)
   return proxy
+}
+
+/**
+ * A plain, non-reactive deep copy of a store (or of any value holding stores),
+ * for logging, `JSON.stringify`, `structuredClone`, `postMessage`, history
+ * entries or a form's initial values.
+ *
+ * - Reads the stores' raw targets, so it tracks nothing (calling it inside an
+ *   effect does not subscribe) and creates no per-property signals.
+ * - Copies plain objects and arrays at every depth, unwrapping any store proxy
+ *   it meets, including one assigned into another store.
+ * - Keeps every other object by reference, unwrapped: class instances, `Map`,
+ *   `Set`, `Date`, and `markRaw()` objects.
+ * - Preserves shared references and cycles, like `structuredClone`.
+ * - Drops an own `__proto__` key, as the store's `set` trap does.
+ *
+ * @example
+ * const store = createStore({ user: { name: 'Ann' }, tags: ['a'] })
+ * const copy = snapshot(store)   // { user: { name: 'Ann' }, tags: ['a'] }
+ * isStore(copy)                  // false
+ * structuredClone(copy)          // works; structuredClone(store) throws
+ */
+export function snapshot<T>(value: T): T {
+  return copyPlain(value, new Map()) as T
+}
+
+function copyPlain(value: unknown, seen: Map<object, unknown>): unknown {
+  if (value === null || typeof value !== 'object') return value
+  const raw = ((value as Record<symbol, unknown>)[RAW_TARGET] as object | undefined) ?? value
+  const isArray = Array.isArray(raw)
+  const proto = Object.getPrototypeOf(raw)
+  if ((!isArray && proto !== Object.prototype && proto !== null) || isMarkedRaw(raw)) return raw
+  const done = seen.get(raw)
+  if (done !== undefined) return done
+  if (isArray) {
+    const out: unknown[] = []
+    seen.set(raw, out)
+    for (let i = 0; i < raw.length; i++) out.push(copyPlain(raw[i], seen))
+    return out
+  }
+  const out: Record<string, unknown> = proto === null ? Object.create(null) : {}
+  seen.set(raw, out)
+  for (const key of Object.keys(raw)) {
+    // An own `__proto__` key (JSON.parse output) is dropped, as the store's
+    // `set` trap and `reconcile` drop it: assigning it would set the copy's
+    // prototype instead of a property.
+    if (key !== '__proto__') out[key] = copyPlain((raw as Record<string, unknown>)[key], seen)
+  }
+  return out
 }

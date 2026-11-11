@@ -288,6 +288,36 @@ export interface LatheSection {
    */
   remoteHeaders?: Readonly<Record<string, Readonly<Record<string, string>>>>
   /**
+   * The directory every LOCAL document a `$ref` names must lie in. Defaults
+   * to the spec's own directory: a `$ref` that resolves outside it -- `../`,
+   * an absolute path, a `file://` URL, or a symlink pointing out -- fails the
+   * run instead of being read, so a spec cannot pull an arbitrary file (a
+   * `.env`, a key) into the generated client. Set it when a split spec
+   * really does share files with a sibling directory. Relative to the config
+   * file, like `input`.
+   *
+   * @example
+   * ```ts
+   * export default { lathe: { input: './api/openapi.yaml', refRoot: '.' } }
+   * ```
+   */
+  refRoot?: string
+  /**
+   * Other ORIGINS a REMOTE document's `$ref` may reach -- for `lathe pull` and
+   * `remoteRefs: 'fetch'`. By default a remote document may reference only
+   * documents on its own origin (redirects included), so a downloaded spec
+   * cannot make lathe request an internal service and write the response
+   * into the spec. `'*'` allows any public origin; a loopback, private or
+   * link-local address is still refused unless it is named here or the
+   * referencing document is served from one.
+   *
+   * @example
+   * ```ts
+   * refOrigins: ['https://schemas.vendor.test']
+   * ```
+   */
+  refOrigins?: readonly string[]
+  /**
    * How to page through operations, keyed by the GENERATED operation name
    * (the `endpoints` export). Declared, never guessed — each entry emits a
    * `use<Op>Infinite` hook and a `<op>InfiniteOptions` factory. Same shape as
@@ -477,6 +507,8 @@ export interface ResolvedConfig {
   format?: LatheFormatter | undefined
   remoteRefs: 'off' | 'fetch'
   remoteHeaders?: Readonly<Record<string, Readonly<Record<string, string>>>> | undefined
+  refRoot?: string | undefined
+  refOrigins?: readonly string[] | undefined
 }
 
 /**
@@ -609,6 +641,8 @@ export function resolveConfig(
   if (remoteRefs !== 'off' && remoteRefs !== 'fetch') {
     throw new Error(`[Pyreon] lathe: unknown remoteRefs \`${String(remoteRefs)}\`. Known: off, fetch.`)
   }
+  const refOrigins = section?.refOrigins
+  if (refOrigins !== undefined) for (const o of refOrigins) validRefOrigin(o)
   const target = section?.target ?? "web";
   // Validated like the others: a config typo (`target: 'native'`) used to be
   // treated as `web` by every `=== 'multiplatform'` check downstream, so the
@@ -653,5 +687,26 @@ export function resolveConfig(
     format: section?.format,
     remoteRefs,
     remoteHeaders: section?.remoteHeaders,
+    refRoot: section?.refRoot,
+    refOrigins,
   }
+}
+
+/**
+ * A `refOrigins` entry, normalized: `'*'`, or an `http(s)://host[:port]`
+ * origin. Anything else -- a path, a bare host -- is refused, since a typo
+ * would otherwise silently allow nothing.
+ */
+export function validRefOrigin(entry: string): string {
+  if (entry === '*') return entry
+  let url: URL | undefined
+  try {
+    url = new URL(entry)
+  } catch {
+    url = undefined
+  }
+  if (!url || !/^https?:$/.test(url.protocol) || url.origin !== entry.replace(/\/$/, '')) {
+    throw new Error(`[Pyreon] lathe: refOrigins entry \`${entry}\` is not an origin. Use \`https://host[:port]\`, or \`*\` for any public origin.`)
+  }
+  return url.origin
 }

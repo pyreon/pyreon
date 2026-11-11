@@ -4,6 +4,8 @@
 // starter fixtures use are recognised. Anything outside that set is
 // either passed through as unknown or surfaces a warning.
 
+import { isDoubleLiteralValue } from './number-literal'
+import { desugarGlobalTimers } from './global-timers-desugar'
 import { lowerDateNode } from './date-lowering'
 import { refineParamFloatsFromCallSites } from './call-site-param-floats'
 import { applyDestructureAbsence, applyDestructureAbsenceToLets } from './destructure-absence'
@@ -34,7 +36,7 @@ import {
 } from './registry-lookup'
 import { createImportReferenceQuery } from './import-reference'
 import { childStatementLists, rewriteCaughtMessage } from './throw-lowering'
-import { typeJsonParse, typeJsonParseReturns, unwrapJsonParse, warnUntypedJsonParse } from './json-parse'
+import { typeJsonParse, typeJsonParseReturns, typedJsonParseTargets, unwrapJsonParse, warnUntypedJsonParse } from './json-parse'
 import type { UnloweredModule } from './unlowered-modules'
 import {
   isJson,
@@ -378,6 +380,8 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
   // TS `enum`s reduce to shapes the recognizers already lower (a string-literal union / `number`, members to their
   // literals) — see ts-enum-desugar.ts. Before any extractor reads the AST, like the hook bindings below.
   ctx.warnings.push(...desugarTsEnums(ast.program as AnyNode))
+  // `window.setTimeout(…)` / `globalThis.setInterval(…)` are the bare timers (global-timers-desugar.ts).
+  desugarGlobalTimers(ast.program as AnyNode)
   ctx.warnings.push(
     ...canonicalizeHookBindings(
       ast.program as AnyNode,
@@ -607,9 +611,6 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
     refine({ structs, items: moduleItems, decodes: ctx.responseDecodes })
   }
 
-  // With every Int→Double refinement above settled, name the decode-type fields that are STILL the integer default.
-  warnIntegerDecodeFields(structs, ctx.responseDecodes, ctx.warnings)
-
   // Same evidence as the pass above, for the shape that has no StructIR to
   // attach it to: an inline object generic (`signal<{ price: number }[]>([{
   // price: 2.5 }])`) is synthesised into a struct by the EMITTERS, so the
@@ -669,6 +670,14 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
   lowerRouterGuards(components, ctx.helperFns, ctx.warnings, buildInferenceCtx([], structs, [], undefined, undefined, moduleConsts))
   typeJsonParseReturns([...ctx.helperFns, ...components.flatMap((c) => c.decls.filter((d) => d.kind === 'function'))])
   warnUntypedJsonParse([ctx.helperFns, components], ctx.warnings)
+  // With every named-struct Int→Double refinement settled and every `JSON.parse` typed (a helper's return type is read
+  // just above), name the decode-type fields that are STILL the integer default. A typed `JSON.parse` is a decode like a
+  // fetch's, with no response schema to refine it.
+  warnIntegerDecodeFields(
+    structs,
+    [...ctx.responseDecodes, ...typedJsonParseTargets([ctx.helperFns, components, moduleDecls]).map((type) => ({ type, response: undefined }))],
+    ctx.warnings,
+  )
   refineHelperReturns(ctx.helperFns, structs, ctx.warnings, moduleConsts)
   for (const helper of ctx.helperFns) helperReturnSeed.set(helper.name, helper.returnType)
 
@@ -1471,7 +1480,8 @@ function inferTypeFromInitial(initial: ExprIR): TypeIR {
     if (typeof initial.value === 'number') {
       // A non-integer literal (`12.5`) is fractional → Double; an
       // integer literal stays Int (PMTC's ergonomic default).
-      return Number.isInteger(initial.value) ? { kind: 'number' } : { kind: 'number', float: true }
+      // A whole literal outside the 32-bit range is a Double too (`number-literal.ts`), as every other typing pass reads it.
+      return isDoubleLiteralValue(initial.value) ? { kind: 'number', float: true } : { kind: 'number' }
     }
     if (typeof initial.value === 'string') return { kind: 'string' }
     if (typeof initial.value === 'boolean') return { kind: 'boolean' }
@@ -1654,10 +1664,11 @@ function collectObjectLiterals(e: ExprIR): Extract<ExprIR, { kind: 'object' }>[]
 const isIdShapedField = (name: string): boolean => name === 'id' || /(?:[a-z0-9]Id|ID|_id)$/.test(name)
 
 /**
- * Issue #3956 item 1: a struct a native fetch DECODES INTO whose `number` field is still the integer
- * default (Swift `Int` / Kotlin `Long`) after every refinement. TS `number` carries no int/float
- * distinction, so a fractional JSON value (`1.2`) fails the WHOLE decode and `data` stays empty on
- * iOS and Android — silently, while the web accepts the same payload. Defaulting to Double instead
+ * Issue #3956 item 1: a struct a native JSON decode TARGETS — a fetch, query, mutation, infinite-query
+ * page or stream event (each recorded through `recordDecode`), or a typed `JSON.parse` — whose `number`
+ * field is still the integer default (Swift `Int` / Kotlin `Long`) after every refinement. TS `number`
+ * carries no int/float distinction, so a fractional JSON value (`1.2`) fails the WHOLE decode on iOS and
+ * Android (a request's `data` stays empty, a `JSON.parse` throws) while the web accepts the payload. Defaulting to Double instead
  * would break every id-shaped field and change all existing output, so this only WARNS, once per
  * struct, naming the fields and the `type Double = number` fix.
  *
@@ -1711,7 +1722,7 @@ function warnIntegerDecodeFields(
     const named = fields.map((f) => `\`${f}\``).join(', ')
     const fixes = fields.map((f) => `\`${f}: Double\``).join(', ')
     warnings.push(
-      `A native fetch decodes its response into \`${s.name}\`, whose ${fields.length === 1 ? 'field' : 'fields'} ${named} ${fields.length === 1 ? 'is' : 'are'} \`number\` and lowers to an INTEGER (Swift \`Int\` / Kotlin \`Long\`) — TS \`number\` carries no int/float distinction. If the JSON can carry a fractional value (\`1.2\`), the WHOLE response fails to decode and \`data\` stays empty on iOS and Android, silently. Declare \`type Double = number\` and type it ${fixes}. If it is always a whole number, declare \`type Int = number\` and type it \`Int\` to say so (an \`id\` / \`…Id\` field is never flagged).`,
+      `A native JSON decode (a fetch, query, mutation, stream or \`JSON.parse\`) targets \`${s.name}\`, whose ${fields.length === 1 ? 'field' : 'fields'} ${named} ${fields.length === 1 ? 'is' : 'are'} \`number\` and lowers to an INTEGER (Swift \`Int\` / Kotlin \`Long\`) — TS \`number\` carries no int/float distinction. If the JSON can carry a fractional value (\`1.2\`), the WHOLE decode fails on iOS and Android — a request's \`data\` stays empty, silently; a \`JSON.parse\` throws. Declare \`type Double = number\` and type it ${fixes}. If it is always a whole number, declare \`type Int = number\` and type it \`Int\` to say so (an \`id\` / \`…Id\` field is never flagged).`,
     )
   }
 }
@@ -1954,7 +1965,7 @@ function isFractionalLiteral(e: ExprIR): boolean {
   return (
     e.kind === 'literal' &&
     typeof e.value === 'number' &&
-    (!Number.isInteger(e.value) || Math.abs(e.value) > 2147483647)
+    isDoubleLiteralValue(e.value)
   )
 }
 
@@ -4065,6 +4076,9 @@ function moduleParseContextFor(ctx: ParseCtx, owner: string): ModuleParseContext
       has: (requestName) => parseContextFor('', { arguments: [] }, ctx).requests.has(requestName),
       resolve: (requestName, arg, options) =>
         parseContextFor('', { arguments: [] }, ctx).requests.resolve(requestName, arg, options),
+    },
+    recordDecode: (type, response) => {
+      ctx.responseDecodes.push({ type, response })
     },
   }
 }

@@ -163,6 +163,9 @@ export function recognizeInfiniteQuery(_call: CallSite, ctx: ParseContext): ExtD
   if (initialParam === undefined) return decline('needs initialPageParam (TanStack v5 requires it).')
   if (next === undefined) return decline('needs getNextPageParam.')
 
+  // Each page decodes into `pageType` from a plain fetch (no response schema): record it so an integer-default number
+  // field a fractional payload would fail to decode is named (#3956).
+  ctx.recordDecode(pageType, undefined)
   const body: InfiniteQueryPayload = {
     pageType,
     queryKey,
