@@ -17,7 +17,7 @@ Use `by`, not `key` — JSX reserves `key` for VNode reconciliation.
 
 ### Missing `by` on `<For>`
 
-`by` is required: `<For each={...}>` without it throws a `[Pyreon] <For> requires a \`by\` prop` error when it mounts (client and server). Always supply `by={item => item.id}` (`by={item => item}` for unique primitives).
+`by` is required: `<For each={...}>` without it throws a `` [Pyreon] <For> requires a `by` prop `` error when it mounts (client and server). Always supply `by={item => item.id}` (`by={item => item}` for unique primitives).
 
 **Detected by:** `for-missing-by` — surfaced by `@pyreon/lint` / `pyreon doctor` / MCP `validate`.
 
