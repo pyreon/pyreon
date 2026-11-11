@@ -50,6 +50,7 @@ import {
   createSelector as pyreonCreateSelector,
   effect as pyreonEffect,
   onCleanup as pyreonOnCleanup,
+  onScopeDispose,
   signal as pyreonSignal,
   runUntracked,
   setCurrentScope,
@@ -66,7 +67,7 @@ const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number)
 export type Accessor<T> = () => T
 
 /** Solid-compatible setter type */
-export type Setter<T> = (v: T | ((prev: T) => T)) => void
+export type Setter<T> = (v: T | ((prev: T) => T)) => T
 
 /** Solid-compatible signal tuple type */
 export type Signal<T> = [Accessor<T>, Setter<T>]
@@ -89,7 +90,7 @@ export type VoidComponent<P = object> = Component<P>
 // ─── createSignal ────────────────────────────────────────────────────────────
 
 export type SignalGetter<T> = () => T
-export type SignalSetter<T> = (v: T | ((prev: T) => T)) => void
+export type SignalSetter<T> = (v: T | ((prev: T) => T)) => T
 
 export interface CreateSignalOptions<T> {
   equals?: false | ((prev: T, next: T) => boolean)
@@ -134,6 +135,7 @@ export function createSignal<T>(
           const next = typeof v === 'function' ? (v as (prev: T) => T)(prev) : v
           s.set({ v: next }) // new object always passes Object.is
           scheduleRerender()
+          return next
         }
       } else {
         const s = pyreonSignal<T>(initialValue)
@@ -141,9 +143,10 @@ export function createSignal<T>(
         setter = (v) => {
           const prev = s.peek()
           const next = typeof v === 'function' ? (v as (prev: T) => T)(prev) : v
-          if (shouldSkipUpdate(prev, next, options)) return
+          if (shouldSkipUpdate(prev, next, options)) return next
           s.set(next)
           scheduleRerender()
+          return next
         }
       }
 
@@ -161,6 +164,7 @@ export function createSignal<T>(
       const prev = s.peek().v
       const next = typeof v === 'function' ? (v as (prev: T) => T)(prev) : v
       s.set({ v: next })
+      return next
     }
     return [getter, setter]
   }
@@ -170,8 +174,9 @@ export function createSignal<T>(
   const setter: SignalSetter<T> = (v) => {
     const prev = s.peek()
     const next = typeof v === 'function' ? (v as (prev: T) => T)(prev) : v
-    if (shouldSkipUpdate(prev, next, options)) return
+    if (shouldSkipUpdate(prev, next, options)) return next
     s.set(next)
+    return next
   }
   return [getter, setter]
 }
@@ -195,6 +200,13 @@ function shouldSkipUpdate<T>(prev: T, next: T, options?: CreateSignalOptions<T>)
  * A re-entrance guard prevents infinite loops from signal writes inside
  * the effect.
  */
+/**
+ * > 0 while a `createEffect` body runs. Solid's `onCleanup` registers on the
+ * CURRENT owner, which inside an effect is that effect: the cleanup runs before
+ * each re-run and on disposal, not at component unmount.
+ */
+let _effectDepth = 0
+
 export function createEffect<T>(fn: ((prev?: T) => T) | (() => void), initialValue?: T): void {
   const ctx = getCurrentCtx()
   if (ctx) {
@@ -206,10 +218,12 @@ export function createEffect<T>(fn: ((prev?: T) => T) | (() => void), initialVal
     const e = pyreonEffect(() => {
       if (running) return
       running = true
+      _effectDepth++
       try {
         const result = (fn as (prev?: T) => T)(prevValue)
         if (result !== undefined) prevValue = result
       } finally {
+        _effectDepth--
         running = false
       }
     })
@@ -222,8 +236,13 @@ export function createEffect<T>(fn: ((prev?: T) => T) | (() => void), initialVal
   // Outside component
   let prevValue: T | undefined = initialValue
   pyreonEffect(() => {
-    const result = (fn as (prev?: T) => T)(prevValue)
-    if (result !== undefined) prevValue = result
+    _effectDepth++
+    try {
+      const result = (fn as (prev?: T) => T)(prevValue)
+      if (result !== undefined) prevValue = result
+    } finally {
+      _effectDepth--
+    }
   })
 }
 
@@ -263,6 +282,13 @@ export function createMemo<T>(fn: ((prev?: T) => T) | (() => T), initialValue?: 
         prevValue = result
         return result
       })
+      // Eager, as in Solid: computed now and on every change, not on first
+      // read — `fn` sees each intermediate `prev`, and side effects in it run
+      // when the dependency changes.
+      const keepHot = pyreonEffect(() => {
+        c()
+      })
+      ctx.unmountCallbacks.push(() => keepHot.dispose())
       ctx.hooks[idx] = c
     }
     const c = ctx.hooks[idx] as ReturnType<typeof pyreonComputed<T>>
@@ -275,6 +301,11 @@ export function createMemo<T>(fn: ((prev?: T) => T) | (() => T), initialValue?: 
     const result = (fn as (prev?: T) => T)(prevValue)
     prevValue = result
     return result
+  })
+  // Eager (see above). The effect belongs to the current scope (`createRoot`),
+  // which disposes it.
+  pyreonEffect(() => {
+    c()
   })
   return () => c()
 }
@@ -373,9 +404,17 @@ export function onMount(fn: () => CleanupFn | void | undefined): void {
 }
 
 /**
- * Solid-compatible `onCleanup` — registers a callback to run when the component unmounts.
+ * Solid-compatible `onCleanup` — registers `fn` on the current owner, as Solid
+ * does: inside a `createEffect` it runs before the effect re-runs and when it
+ * is disposed; in a component it runs on unmount; inside `createRoot` it runs
+ * when the root is disposed. (It used to always mean "component unmount", so an
+ * effect's cleanup never ran between runs, and a root's never ran at all.)
  */
 export function onCleanup(fn: () => void): void {
+  if (_effectDepth > 0) {
+    pyreonOnCleanup(fn)
+    return
+  }
   const ctx = getCurrentCtx()
   if (ctx) {
     const idx = getHookIndex()
@@ -386,7 +425,11 @@ export function onCleanup(fn: () => void): void {
     return
   }
 
-  // Outside component
+  // Outside a compat component: a `createRoot` (or any active scope) owns it.
+  if (getCurrentScope()) {
+    onScopeDispose(fn)
+    return
+  }
   pyreonOnUnmount(fn)
 }
 
@@ -916,6 +959,27 @@ const STORE_SIGNAL_SWEEP_THRESHOLD = 256
  */
 export const _STORE_SIGNAL_CACHE = Symbol.for('pyreon/solid-compat:store-signal-cache')
 
+/**
+ * Brand for store updaters that return the COMPLETE next value (`produce`,
+ * `reconcile`): `setStore` replaces with their result instead of merging it.
+ */
+const REPLACING_UPDATER: unique symbol = Symbol('pyreon.solid-compat.replacingUpdater')
+
+function markReplacing<F extends (...args: never[]) => unknown>(fn: F): F {
+  ;(fn as unknown as Record<symbol, boolean>)[REPLACING_UPDATER] = true
+  return fn
+}
+
+function isReplacingUpdater(value: unknown): boolean {
+  return typeof value === 'function' && (value as unknown as Record<symbol, boolean>)[REPLACING_UPDATER] === true
+}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false
+  const proto = Object.getPrototypeOf(value)
+  return proto === Object.prototype || proto === null
+}
+
 export function createStore<T extends object>(
   initialValue: T,
 ): [T, SetStoreFunction<T>] {
@@ -1099,16 +1163,54 @@ export function createStore<T extends object>(
     }
   }
 
+  /**
+   * Write `value` (or `value(prev)`) at `target[key]` with Solid's rule: a plain
+   * object written over a plain object is SHALLOW-MERGED into it
+   * (`setStore('user', { name })` keeps the user's other fields); anything else
+   * replaces. `produce` / `reconcile` return the complete next value, so they
+   * always replace. This used to replace unconditionally, silently dropping the
+   * fields the update did not name.
+   */
+  function assignAt(target: Record<string | number, unknown>, key: string | number, value: unknown): void {
+    const prev = target[key]
+    const next = typeof value === 'function' ? (value as (prev: unknown) => unknown)(prev) : value
+    if (
+      !isReplacingUpdater(value) &&
+      next !== prev &&
+      isPlainRecord(prev) &&
+      isPlainRecord(next)
+    ) {
+      safeAssign(prev, next)
+      return
+    }
+    // `Object.defineProperty` instead of `target[key] = next` so the write
+    // bypasses the prototype chain entirely — even if a setter has been
+    // installed on `Object.prototype` for `key`, an OWN data property is
+    // installed without invoking it (CodeQL `js/prototype-polluting-assignment`;
+    // callers already refuse `__proto__` / `constructor` / `prototype` keys).
+    Object.defineProperty(target, key, {
+      value: next,
+      writable: true,
+      enumerable: true,
+      configurable: true,
+    })
+  }
+
   function applyAtPath(obj: unknown, path: unknown[], value: unknown): void {
     if (path.length === 0) {
       // Apply value to obj itself (top-level update). `safeAssign`
       // instead of `Object.assign` filters `__proto__`-keyed payloads.
-      if (typeof value === 'function') {
-        const result = (value as (prev: unknown) => unknown)(obj)
-        safeAssign(obj as object, result)
-      } else {
-        safeAssign(obj as object, value)
+      const result = typeof value === 'function' ? (value as (prev: unknown) => unknown)(obj) : value
+      // `undefined` / the draft itself: the function mutated the draft in place.
+      if (result === undefined || result === obj) return
+      if (isReplacingUpdater(value) && result !== null && typeof result === 'object') {
+        // produce / reconcile hand back the COMPLETE next state: drop keys it no
+        // longer has, so a `delete` inside `produce` is not undone by a merge.
+        for (const k of Object.keys(obj as object)) {
+          if (!Object.hasOwn(result, k)) delete (obj as Record<string, unknown>)[k]
+        }
       }
+      safeAssign(obj as object, result)
       return
     }
 
@@ -1120,7 +1222,7 @@ export function createStore<T extends object>(
         for (let i = 0; i < obj.length; i++) {
           if ((head as (item: unknown, index: number) => boolean)(obj[i], i)) {
             if (rest.length === 0) {
-              obj[i] = typeof value === 'function' ? (value as (prev: unknown) => unknown)(obj[i]) : value
+              assignAt(obj as unknown as Record<number, unknown>, i, value)
             } else {
               applyAtPath(obj[i], rest, value)
             }
@@ -1142,34 +1244,7 @@ export function createStore<T extends object>(
     if (key === '__proto__' || key === 'constructor' || key === 'prototype') return
 
     if (rest.length === 0) {
-      // Last path segment — set the value.
-      //
-      // `Object.defineProperty` instead of `obj[key] = value` so the
-      // write bypasses the prototype chain entirely — even if a
-      // setter has been installed on `Object.prototype` for `key`,
-      // we install an OWN data property on `obj` without invoking it.
-      // This closes CodeQL `js/prototype-polluting-assignment`
-      // (alert #22 stayed open after the first fix because CodeQL's
-      // taint-tracking didn't recognise the guard pattern alone —
-      // the bracket-write itself was the flagged sink, and the
-      // analyser conservatively flags any bracket-write into a
-      // user-typed object). `defineProperty` with a data descriptor
-      // is the documented safe replacement; combined with the
-      // explicit `===` guard above, the write is double-safe.
-      // Semantics are identical to `obj[key] = value` for a plain
-      // data property; the only difference is that setter chains on
-      // the prototype are NOT triggered.
-      const target = obj as Record<string | number, unknown>
-      const nextValue =
-        typeof value === 'function'
-          ? (value as (prev: unknown) => unknown)(target[key])
-          : value
-      Object.defineProperty(target, key, {
-        value: nextValue,
-        writable: true,
-        enumerable: true,
-        configurable: true,
-      })
+      assignAt(obj as Record<string | number, unknown>, key, value)
     } else {
       // Recurse into nested object
       applyAtPath((obj as Record<string | number, unknown>)[key], rest, value)
@@ -1177,10 +1252,15 @@ export function createStore<T extends object>(
   }
 
   const setStore: SetStoreFunction<T> = (...args: unknown[]) => {
-    if (args.length === 1 && typeof args[0] === 'function') {
-      // Function form: setStore(state => { state.x = 1 })
+    if (args.length === 1) {
+      // Whole-state forms, as in Solid: `setStore({ x: 1 })` merges,
+      // `setStore(s => ({ ...s, x: 1 }))` merges what the function returns,
+      // `setStore(produce(...))` / `setStore(reconcile(...))` replace, and the
+      // compat-only `setStore(s => { s.x = 1 })` keeps its draft mutation.
+      // Only the mutate-in-place function form used to work: an object was a
+      // no-op and a returned value was discarded.
       const draft = deepClone(raw)
-      ;(args[0] as (state: T) => void)(draft)
+      applyAtPath(draft, [], args[0])
       updateRaw(draft)
     } else if (args.length >= 2) {
       // Path form with support for numeric indices and filter predicates
@@ -1200,7 +1280,7 @@ export function createStore<T extends object>(
  * Used with setStore: `setStore(reconcile(newData))`
  */
 export function reconcile<T extends object>(value: T): (state: T) => T {
-  return () => value
+  return markReplacing(() => value)
 }
 
 /**
@@ -1216,11 +1296,11 @@ export function unwrap<T>(value: T): T {
  * Returns a function that clones the state, applies mutations, and returns the result.
  */
 export function produce<T extends object>(fn: (state: T) => void): (state: T) => T {
-  return (state: T) => {
+  return markReplacing((state: T) => {
     const draft = deepClone(state)
     fn(draft)
     return draft
-  }
+  })
 }
 
 // ─── startTransition / useTransition ────────────────────────────────────────
@@ -1302,9 +1382,74 @@ export function mapArray<T, U>(
   list: () => readonly T[],
   mapFn: (item: T, index: () => number) => U,
 ): () => U[] {
+  // Solid semantics: an item is mapped ONCE, by reference, and its result is
+  // reused for as long as the item stays in the list (only its index signal
+  // moves). Each mapping runs in its own root, disposed when the item leaves —
+  // so effects and cleanups created by `mapFn` live exactly as long as the
+  // item. It used to re-run `mapFn` for every item on every change.
+  let items: T[] = []
+  let mapped: U[] = []
+  let disposers: (() => void)[] = []
+  let indexes: ReturnType<typeof pyreonSignal<number>>[] = []
+
+  const disposeAll = () => {
+    for (const d of disposers) d()
+    items = []
+    mapped = []
+    disposers = []
+    indexes = []
+  }
+  const ctx = getCurrentCtx()
+  if (ctx) {
+    const idx = getHookIndex()
+    if (idx >= ctx.hooks.length) {
+      ctx.hooks[idx] = true
+      ctx.unmountCallbacks.push(disposeAll)
+    }
+  } else if (getCurrentScope()) {
+    onScopeDispose(disposeAll)
+  }
+
   return createMemo(() => {
-    const items = list()
-    return items.map((item, i) => mapFn(item, () => i))
+    const next = list()
+    return runUntracked(() => {
+      // Old positions per item (a queue, so duplicates pair up in order).
+      const pool = new Map<T, number[]>()
+      for (let i = 0; i < items.length; i++) {
+        const q = pool.get(items[i] as T)
+        if (q) q.push(i)
+        else pool.set(items[i] as T, [i])
+      }
+      const used = new Array<boolean>(items.length).fill(false)
+      const nextMapped: U[] = []
+      const nextDisposers: (() => void)[] = []
+      const nextIndexes: ReturnType<typeof pyreonSignal<number>>[] = []
+      for (let j = 0; j < next.length; j++) {
+        const item = next[j] as T
+        const old = pool.get(item)?.shift()
+        if (old !== undefined) {
+          used[old] = true
+          const index = indexes[old] as ReturnType<typeof pyreonSignal<number>>
+          index.set(j)
+          nextMapped[j] = mapped[old] as U
+          nextDisposers[j] = disposers[old] as () => void
+          nextIndexes[j] = index
+        } else {
+          const index = pyreonSignal(j)
+          nextIndexes[j] = index
+          nextMapped[j] = createRoot((dispose) => {
+            nextDisposers[j] = dispose
+            return mapFn(item, () => index())
+          })
+        }
+      }
+      for (let i = 0; i < used.length; i++) if (!used[i]) (disposers[i] as () => void)()
+      items = next.slice()
+      mapped = nextMapped
+      disposers = nextDisposers
+      indexes = nextIndexes
+      return nextMapped
+    })
   })
 }
 

@@ -197,3 +197,52 @@ describe('jsx — slow path (getter-shaped reactive props)', () => {
     expect(v.children).toEqual(['a', 'b', 'c'])
   })
 })
+
+// The single-pass copy only takes shapes it can prove equal the rest-destructure
+// (`{ children, ...rest }`). Every other own-key shape must come out exactly as
+// the destructure / descriptor copy produced it.
+describe('jsx — single-pass copy declines what it cannot prove', () => {
+  it('copies an own enumerable SYMBOL key (rest-spread semantics)', () => {
+    const sym = Symbol('s')
+    const v = jsx('div', { [sym]: 1, class: 'a', children: 'x' } as never)
+    expect((v.props as Record<symbol, unknown>)[sym]).toBe(1)
+    expect((v.props as any).class).toBe('a')
+    expect(v.children).toEqual(['x'])
+  })
+
+  it('drops an own NON-enumerable data key, as the destructure did', () => {
+    const props: Record<string, unknown> = { class: 'a', children: 'x' }
+    Object.defineProperty(props, 'hidden', { value: 1, enumerable: false })
+    const v = jsx('div', props as never)
+    expect('hidden' in (v.props as object)).toBe(false)
+    expect((v.props as any).class).toBe('a')
+  })
+
+  it('keeps an own `__proto__` key as DATA, never as the prototype', () => {
+    const props = JSON.parse('{"__proto__": {"polluted": true}, "children": "x"}')
+    const v = jsx('div', props)
+    expect(Object.getPrototypeOf(v.props)).toBe(Object.prototype)
+    expect((v.props as any).polluted).toBeUndefined()
+    expect(Object.getOwnPropertyDescriptor(v.props, '__proto__')?.value).toEqual({ polluted: true })
+  })
+
+  it('reads a SETTER-only accessor as undefined, as the destructure did', () => {
+    const props: Record<string, unknown> = { children: 'x' }
+    Object.defineProperty(props, 'w', { set() {}, enumerable: true, configurable: true })
+    const v = jsx('div', props as never)
+    expect(Object.hasOwn(v.props as object, 'w')).toBe(true)
+    expect((v.props as any).w).toBeUndefined()
+  })
+
+  it('preserves key order (integer keys first, then insertion order)', () => {
+    const v = jsx('div', { b: 1, 2: 'two', a: 2, 1: 'one', children: 'x' } as never)
+    expect(Object.keys(v.props)).toEqual(['1', '2', 'b', 'a'])
+  })
+
+  it('does not alias the caller object on the copying path', () => {
+    const props = { class: 'a', children: 'x' }
+    const v = jsx('div', props)
+    expect(v.props).not.toBe(props)
+    expect('children' in (v.props as object)).toBe(false)
+  })
+})

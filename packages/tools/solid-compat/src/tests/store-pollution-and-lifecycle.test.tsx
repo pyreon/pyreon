@@ -137,13 +137,10 @@ describe('the two setStore forms, and the one that does nothing', () => {
     expect(state.count).toBe(6)
   })
 
-  it('a single NON-function argument is a documented no-op', () => {
-    // `setStore({ a: 2 })` is Solid's merge form and this shim does not
-    // implement it — it falls through both branches. Pinned so the
-    // behaviour is a recorded decision rather than an accident, and so a
-    // future implementation has to update this spec deliberately.
-    const [state, setState] = createStore({ a: 1 } as Record<string, unknown>)
-    expect(() => setState({ a: 2 } as never)).not.toThrow()
-    expect(state.a, 'unchanged — the object form is not supported').toBe(1)
+  it('a single object argument merges into the root (Solid merge form)', () => {
+    const [state, setState] = createStore({ a: 1, b: 1 } as Record<string, unknown>)
+    setState({ a: 2 } as never)
+    expect(state.a).toBe(2)
+    expect(state.b).toBe(1)
   })
 })
