@@ -129,7 +129,7 @@ const Cells = el
   .config({ name: 'ProofBandCells' })
   .attrs({ tag: 'ul', block: true })
   // Columns come from the per-instance `css` (cell count); a theme value
-  // would win over it (the theme sits in a higher cascade layer).
+  // would win over it (the theme sits in a higher cascade layer, #4354).
   .theme(() => ({ listStyle: 'none', margin: 0, padding: 0, display: 'grid' }))
 
 const Cell = el

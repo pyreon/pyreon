@@ -60,7 +60,7 @@ test.describe('hydration', () => {
   }
   // Pages whose content predates the redesign: no errors. (The old landing
   // re-creates its last section on hydration and the blog index its header
-  // while no post is published; both are tracked outside this spec.)
+  // while no post is published (#4353); both are tracked outside this spec.)
   for (const route of ['/', '/blog', '/showcase', '/open', '/discord', '/newsletter']) {
     test(`${route} hydrates with no errors`, async ({ page }) => {
       const errors = collectErrors(page)

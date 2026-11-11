@@ -119,7 +119,8 @@ export function SiteHeader() {
 
   const openSheet = () => {
     sheetOpen.set(true)
-    // The sheet un-hides in this same flush; move focus once it can take it.
+    // The sheet un-hides in this same flush; move focus once it can take it
+    // (useFocusTrap's initialFocus fires too early for this, #4355).
     requestAnimationFrame(() => document.querySelector<HTMLElement>(`#${SHEET_ID} a`)?.focus())
   }
   useClickOutside(() => navEl, () => closeMenu())
