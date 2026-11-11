@@ -67,12 +67,12 @@ export function countRoutes(pages: readonly RouteSummaryInput[], apiCount: numbe
  */
 export function formatRouteSummary(counts: RouteCounts, color: BannerColor = true): string {
   const t = termOf(color)
-  const b = t.dim(t.sym('bullet'))
+  const sep = t.dim(t.sym('bullet'))
   const parts = Object.entries(counts.modes)
     .sort(([a, na], [b, nb]) => nb - na || a.localeCompare(b))
     .map(([mode, n]) => `${paintMode(t, mode, mode)} ${t.bold(String(n))}`)
   if (counts.api > 0) parts.push(`API ${t.bold(String(counts.api))}`)
-  const body = parts.length > 0 ? parts.join(` ${b} `) : t.dim('none')
+  const body = parts.length > 0 ? parts.join(` ${sep} `) : t.dim('none')
   return `  ${t.dim('Routes')}  ${body} ${t.dim(`${t.sym('bullet')} zero dev --routes to list`)}`
 }
 
