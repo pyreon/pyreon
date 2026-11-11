@@ -98,3 +98,12 @@ describe('typed extra sections match the content files', () => {
     for (const str of strings) expect(text, `${id}: "${str}" is no longer in extraSectionsHtml`).toContain(norm(str))
   })
 })
+
+describe('comingFromTitle', () => {
+  it('names each library once and joins the list the way a person writes it', async () => {
+    const { comingFromTitle } = await import('../kit/recipe')
+    expect(comingFromTitle(['React Flow', 'React Flow', 'React Flow'])).toBe('Coming from React Flow?')
+    expect(comingFromTitle(['i18next', 'react-intl'])).toBe('Coming from i18next or react-intl?')
+    expect(comingFromTitle(['ECharts', 'Chart.js', 'Recharts'])).toBe('Coming from ECharts, Chart.js or Recharts?')
+  })
+})

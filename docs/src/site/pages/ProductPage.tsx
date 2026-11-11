@@ -12,7 +12,8 @@ import { BenchmarkTable } from '../kit/bench'
 import { FactList, FeatureList, Faq, LimitNote, NumberedCards, StatRow, StepCards, ApiGroups } from '../kit/blocks'
 import { EmberGradientDefs, GlowCard, PackageCard, ProductTag } from '../kit/cards'
 import { ExtraMoreBody, isExtraMore } from '../kit/extra'
-import { BeforeAfter, CodeCard, ComingFrom } from '../kit/code'
+import { comingFromTitle, RecipeCard } from '../kit/recipe'
+import { BeforeAfter, ComingFrom } from '../kit/code'
 import { InstallCommand, Pill } from '../kit/controls'
 import { useLinkClick } from '../kit/link'
 import { AutoGrid, Section, SectionHead, Wrap } from '../kit/layout'
@@ -228,9 +229,9 @@ export function ProductPage(props: { data: ProductData }) {
         <Reveal>
           <Section size="tight">
             <Wrap>
-              <SectionHead label="coming from" title={`Coming from ${(d.comingFrom ?? []).map((c) => c.lib).join(' or ')}?`} />
+              <SectionHead label="coming from" title={comingFromTitle((d.comingFrom ?? []).map((c) => c.lib))} />
               <Stack>
-                <For each={d.comingFrom ?? []} by={(c) => c.lib}>
+                <For each={d.comingFrom ?? []} by={(c) => c.title}>
                   {(c) => (
                     <Stack>
                       <Heading tag="h3" size="card">
@@ -285,12 +286,7 @@ export function ProductPage(props: { data: ProductData }) {
               <Stack>
                 <For each={d.recipes ?? []} by={(r) => r.title}>
                   {(r) => (
-                    <CodeCard
-                      label={r.status ? `${r.title} · ${r.status}` : r.title}
-                      caption={r.text}
-                      code={r.code}
-                      html={r.codeHtml}
-                    />
+                    <RecipeCard title={r.title} text={r.text} code={r.code} codeHtml={r.codeHtml} status={r.status} />
                   )}
                 </For>
               </Stack>
