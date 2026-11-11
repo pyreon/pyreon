@@ -372,8 +372,8 @@ async function runPluginWebHosts(parsed: ParsedArgs, appDir: string): Promise<nu
 async function runDev(parsed: ParsedArgs, appDir: string): Promise<number> {
   const target = parsed.rawTarget
   if (target !== 'ios' && target !== 'android') {
-    usageError('dev --target must be ios | android')
     printUsage()
+    usageError('dev --target must be ios | android')
     return 1
   }
   const sourceDir = resolve(parsed.source ?? join(appDir, 'src'))
@@ -486,13 +486,13 @@ export function main(argv: string[], compiler?: Pick<NativeCompiler, 'transform'
   // is the single command that mirrors "write once, ship every target".
   if (parsed.rawTarget === 'all') {
     if (!parsed.source) {
-      usageError('--source is required')
       printUsage()
+      usageError('--source is required')
       return 1
     }
     if (!parsed.out) {
-      usageError('--out is required')
       printUsage()
+      usageError('--out is required')
       return 1
     }
     const o = outFor()
@@ -512,18 +512,18 @@ export function main(argv: string[], compiler?: Pick<NativeCompiler, 'transform'
   }
 
   if (!parsed.target) {
-    usageError('--target is required (ios | android | all)')
     printUsage()
+    usageError('--target is required (ios | android | all)')
     return 1
   }
   if (!parsed.source) {
-    usageError('--source is required')
     printUsage()
+    usageError('--source is required')
     return 1
   }
   if (!parsed.out) {
-    usageError('--out is required')
     printUsage()
+    usageError('--out is required')
     return 1
   }
 
@@ -609,13 +609,13 @@ function runAssets(parsed: ParsedArgs): number {
     : parsed.rawTarget === 'web' ? 'web'
     : undefined
   if (!target) {
-    usageError('assets --target must be ios | android | web')
     printUsage()
+    usageError('assets --target must be ios | android | web')
     return 1
   }
   if (!parsed.source || !parsed.out) {
-    usageError('assets requires --source and --out')
     printUsage()
+    usageError('assets requires --source and --out')
     return 1
   }
   const o = outFor()
@@ -647,13 +647,13 @@ function runStageWeb(parsed: ParsedArgs): number {
   const target: WebBundleTarget | undefined =
     parsed.rawTarget === 'ios' ? 'ios' : parsed.rawTarget === 'android' ? 'android' : undefined
   if (!target) {
-    usageError('stage-web --target must be ios | android')
     printUsage()
+    usageError('stage-web --target must be ios | android')
     return 1
   }
   if (!parsed.source || !parsed.out) {
-    usageError('stage-web requires --source and --out')
     printUsage()
+    usageError('stage-web requires --source and --out')
     return 1
   }
   const o = outFor()
@@ -790,8 +790,8 @@ function runCheck(parsed: ParsedArgs): number {
     return 0
   }
   if (!parsed.source) {
-    usageError('check requires --source (a .tsx file or a directory)')
     printUsage()
+    usageError('check requires --source (a .tsx file or a directory)')
     return 1
   }
   // `--target` narrows to one platform; default checks BOTH (the DX

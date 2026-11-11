@@ -21,6 +21,8 @@ describe('pyreon-native usage errors', () => {
     expect(code).toBe(1)
     expect(text).toContain('✗ pyreon-native · --source is required\n   fix: run pyreon-native --help for usage')
     expect(text).not.toContain(String.fromCharCode(27))
+    // Rule 1: the problem is the last thing printed, after the usage.
+    expect(text.trimEnd().endsWith('✗ pyreon-native · --source is required\n   fix: run pyreon-native --help for usage')).toBe(true)
   })
 
   it('an unknown check target names the choices in fix:', () => {

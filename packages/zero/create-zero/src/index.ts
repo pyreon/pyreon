@@ -36,7 +36,8 @@ async function main() {
     args = parseArgs(process.argv.slice(2))
   } catch (err) {
     const t = createTerm({ isTTY: process.stderr.isTTY === true })
-    const message = err instanceof Error ? err.message : String(err)
+    // The parser's own "Run with --help" tail becomes the fix: line.
+    const message = (err instanceof Error ? err.message : String(err)).replace(/\s*Run with --help for usage\.?$/, '')
     console.error(
       finding(t, { severity: 'error', source: invokedAs, message, fix: `run ${invokedAs} --help for usage` }, { indent: 0, width: t.width }).join('\n'),
     )
