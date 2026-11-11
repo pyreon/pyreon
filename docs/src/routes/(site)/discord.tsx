@@ -1,6 +1,6 @@
 import { RouterLink } from '@pyreon/router'
-import { StableLinkPage } from '../components/StableLinkPage'
-import { resolveSiteLink } from '../site-links'
+import { StableLinkPage } from '../../components/StableLinkPage'
+import { resolveSiteLink } from '../../site-links'
 
 const ISSUES = 'https://github.com/pyreon/pyreon/issues'
 

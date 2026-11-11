@@ -1,7 +1,7 @@
 import { For } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 import { RouterLink } from '@pyreon/router'
-import { usePageHead } from '../components/site-head'
+import { usePageHead } from '../../components/site-head'
 import {
   REPO_URL,
   SHOWCASE,
@@ -9,7 +9,7 @@ import {
   type ShowcaseTheme,
   sourceUrl,
   THEMES,
-} from '../showcase/examples'
+} from '../../showcase/examples'
 
 const SETUP = [`git clone ${REPO_URL}.git`, 'cd pyreon', 'bun install']
 

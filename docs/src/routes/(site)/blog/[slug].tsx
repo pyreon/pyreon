@@ -1,4 +1,4 @@
-import { blog } from '../../blog/blog'
+import { blog } from '../../../blog/blog'
 
 /**
  * `/blog/<slug>` — one page per PUBLISHED post. Drafts and posts dated

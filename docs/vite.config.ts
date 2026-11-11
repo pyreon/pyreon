@@ -6,7 +6,9 @@ import { defineConfig } from 'vite'
 import { pyreonSyntaxDark, pyreonSyntaxLight } from './src/styles/pyreon-syntax'
 import inlineCriticalCss from './vite-plugins/inline-critical-css'
 import lastUpdated from './vite-plugins/last-updated'
+import legacyCssLayer from './vite-plugins/legacy-css-layer'
 import openStats from './vite-plugins/open-stats'
+import productContent from './vite-plugins/product-content'
 import publishLlmsTxt from './vite-plugins/publish-llms-txt'
 import { SITE_LINKS } from './src/site-links'
 
@@ -34,6 +36,11 @@ import { SITE_LINKS } from './src/site-links'
 // the SSG entry's createApp call.
 export default defineConfig({
   plugins: [
+    // tokens.css / docs.css / site-pages.css / blog.css → `@layer docs`, below
+    // the UI system's layers (see the plugin).
+    legacyCssLayer(),
+    // Product content JSON → Shiki-highlighted code at build time.
+    productContent(),
     // The custom pyreon-syntax Shiki themes mirror the brand handoff §3/§6.7
     // tokens (`--syn-*` in tokens.css). VitePress applied them via its
     // `markdown.theme: { light, dark }` config — same surface here, only

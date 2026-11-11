@@ -1,7 +1,7 @@
 import { RouterLink } from '@pyreon/router'
-import { SITE_ORIGIN } from '../blog/site'
-import { StableLinkPage } from '../components/StableLinkPage'
-import { resolveSiteLink } from '../site-links'
+import { SITE_ORIGIN } from '../../blog/site'
+import { StableLinkPage } from '../../components/StableLinkPage'
+import { resolveSiteLink } from '../../site-links'
 
 const FEED = `${SITE_ORIGIN}/blog/rss.xml`
 

@@ -1,6 +1,6 @@
 import stats from 'virtual:pyreon-open-stats'
-import { usePageHead } from '../components/site-head'
-import { OpenStatsView } from '../open/OpenStatsView'
+import { usePageHead } from '../../components/site-head'
+import { OpenStatsView } from '../../open/OpenStatsView'
 
 // The chart's first frame is serialized to SVG in the prerendered HTML when
 // the server has imported `@pyreon/charts/svg`; the browser never needs that

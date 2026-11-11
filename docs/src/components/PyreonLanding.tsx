@@ -148,54 +148,6 @@ const RENDER_MODES = [
   { tag: 'ISLANDS', d: 'Not a mode: island() per component, in any mode. Hydrates independently.' },
 ]
 
-// Internal items carry `to` (RouterLink — base-aware + SPA nav);
-// external items carry `href` (plain anchor).
-interface FooterItem {
-  label: string
-  to?: string
-  href?: string
-}
-const FOOTER: { h: string; items: FooterItem[] }[] = [
-  {
-    h: 'Docs',
-    items: [
-      { label: 'Getting started', to: '/docs/getting-started' },
-      { label: 'Reactivity', to: '/docs/reactivity' },
-      { label: 'Zero · full-stack', to: '/docs/zero' },
-      { label: 'AI · MCP + llms.txt', to: '/docs/mcp' },
-    ],
-  },
-  {
-    h: 'Packages',
-    items: [
-      { label: '@pyreon/reactivity', to: '/docs/reactivity' },
-      { label: '@pyreon/router', to: '/docs/router' },
-      { label: '@pyreon/query', to: '/docs/query' },
-      { label: `All ${PACKAGE_COUNT} packages`, to: '/docs/package-catalog' },
-    ],
-  },
-  {
-    h: 'Tools',
-    items: [
-      { label: 'pyreon CLI', to: '/docs/cli' },
-      { label: 'pyreon doctor', to: '/docs/cli' },
-      { label: 'Devtools', to: '/docs/devtools' },
-      { label: 'Lint', to: '/docs/lint' },
-    ],
-  },
-  {
-    h: 'Project',
-    items: [
-      { label: 'GitHub', href: 'https://github.com/pyreon/pyreon' },
-      { label: 'Changelog', href: 'https://github.com/pyreon/pyreon/releases' },
-      { label: 'Benchmarks', href: 'https://github.com/pyreon/pyreon/blob/main/BENCHMARKS.md' },
-      { label: 'Showcase', to: '/showcase' },
-      { label: 'Open stats', to: '/open' },
-      { label: 'Community', to: '/discord' },
-      { label: 'Newsletter', to: '/newsletter' },
-    ],
-  },
-]
 
 export function PyreonLanding() {
   // Hero live counter — auto-ticks; only the digit node re-renders.
@@ -579,41 +531,7 @@ export function PyreonLanding() {
         </div>
       </section>
 
-      {/* ── 8 · FOOTER ─────────────────────────────────────────── */}
-      <footer class="px-footer">
-        <div class="px-footer-grid">
-          <div class="px-footer-brand">
-            <PyreonHeroMark noMotion />
-            <p>
-              The signal-based UI framework — fine-grained reactivity,
-              full-stack, AI-native.
-            </p>
-          </div>
-          {FOOTER.map((c) => (
-            <div class="px-footer-col">
-              <div class="px-mono-label">{c.h}</div>
-              {c.items.map((it) =>
-                it.to ? (
-                  <RouterLink to={it.to} class="px-footer-item">
-                    {it.label}
-                  </RouterLink>
-                ) : (
-                  <a class="px-footer-item" href={it.href}>
-                    {it.label}
-                  </a>
-                ),
-              )}
-            </div>
-          ))}
-        </div>
-        <div class="px-footer-bar">
-          <span>© 2026 Pyreon · MIT · forged in prague · eu</span>
-          <span class="px-footer-meta">
-            <a href="https://github.com/pyreon/pyreon">github ↗</a>
-            <span class="px-ok">● ci passing</span>
-          </span>
-        </div>
-      </footer>
+      {/* The site footer comes from the marketing shell (src/site/shell). */}
     </div>
   )
 }

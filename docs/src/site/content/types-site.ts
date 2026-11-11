@@ -1,0 +1,343 @@
+/**
+ * Shapes of the site-level content files in ./content/_*.json (product pages use ./types.ts).
+ * Inline markup in strings follows types.ts: `code` and {dot:ok|warn|#hex} only, rendered with
+ * renderInline(); never innerHTML. Code fields hold source text and are escaped by the renderer.
+ * `source`/`sources` fields are not rendered: they say where each claim is backed.
+ */
+
+// ---------------------------------------------------------------- shared
+export type Verdict = 'win' | 'tie' | 'loss' | 'split' | 'info'
+export interface SiteLink { label: string; href: string }
+/** A big number with its run condition ("one run", "two runs", "bun") and its record line. */
+export interface SiteProof { stat: string; label: string; condition: string; source: string }
+export interface Source { claim: string; path: string }
+export type SourceRef = Source
+export type ItemStatus = 'next release'                                  // on main, not on npm yet
+export interface Cta { label: string; href?: string; command?: string }   // command → <InstallCommand>
+export interface CodeSide { label: string; file: string; code: string }
+export interface CtaBlock { title: string; command: string; secondary: { label: string; href: string } }
+
+// ---------------------------------------------------------------- _home.json
+/** Section order is the array order. `kind` picks the component (see visual-alignment.md §C). */
+export type HomeSection =
+  | { kind: 'hero'; id: string; variant: 'hook' | 'default'; eyebrow: string; title: string; emberWord: string
+      lede: string; install: string; ctas: SiteLink[]
+      status: { dot: 'ok' | 'warn'; text: string; href?: string }[]
+      alternatives: { title: string; emberWord: string; useWhen: string }[]
+      visual: { kind: 'three-targets'; file: string; fileNote: string; code: string; items: string[]
+        targets: { label: string; caption: string }[]; note: string } }
+  | { kind: 'proof-band'; id: string; title: string
+      items: (SiteProof & { detail: string })[]; caveat: string; link: SiteLink }          // ≤ 3 items
+  | { kind: 'once'; id: string; eyebrow: string; title: string; lede: string
+      counter: { code: string; metrics: { label: string; value: string; live: boolean }[]; spec: string }
+      bench: { op: string; rival: string; result: string; verdict: Verdict }[]; caveat: string; link: SiteLink }
+  | { kind: 'diff'; id: string; eyebrow: string; title: string; lede: string
+      rows: ['-' | '+' | ' ', string][]; caption: string; link: SiteLink }
+  | { kind: 'strip'; id: string; eyebrow: string; title: string; lede: string
+      items: { stat: string; label: string; rival: string; condition: string; href: string }[]
+      caveat: string; link: SiteLink }
+  | { kind: 'compare'; id: string; eyebrow: string; title: string; lede: string; columns: string[]
+      rows: { topic: string; cells: string[]; pyreonBehind?: boolean }[]   // cells[0] = Pyreon
+      note: string; links: SiteLink[]; source: string }
+  | { kind: 'platforms'; id: string; eyebrow: string; title: string; lede: string
+      mappings: { pyreon: string; ios: string; android: string }[]; points: string[]; install: string
+      status: { dot: 'warn'; text: string; href: string }; link: SiteLink }
+  | { kind: 'ai'; id: string; eyebrow: string; title: string; lede: string
+      items: { name: string; text: string }[]; example: { code: string; finding: string }
+      install: string; link: SiteLink }
+  | { kind: 'audiences'; id: string; eyebrow: string; title: string; lede: string
+      items: { title: string; text: string; tags: string[] }[] }                     // tags = product ids
+  | { kind: 'products'; id: string; eyebrow: string; title: string; lede: string
+      featured: { id: string; width: 'full' | 'half' | 'third' }[]; pitchesFrom: string; link: SiteLink }
+  | { kind: 'migrate'; id: string; eyebrow: string; title: string; lede: string
+      layers: { name: string; package: string; href: string }[]; install: string; link: SiteLink }
+  | { kind: 'status'; id: string; eyebrow: string; title: string; lede: string
+      columns: { dot: 'ok' | 'warn'; label: string; title: string; items: string[] }[]; link: SiteLink }
+  | { kind: 'evidence'; id: string; eyebrow: string; title: string; lede: string; command: string
+      items: { title: string; text: string }[]; link: SiteLink }
+  | { kind: 'cta'; id: string; title: string; lede: string; install: string; secondary: SiteLink
+      native: { label: string; command: string }; community: SiteLink[] }
+
+export interface HomePage {
+  id: 'home'; route: '/'; reference: string
+  meta: { title: string; description: string
+    share: { template: 'home'; title: string; sub: string; caveat: string } }
+  sections: HomeSection[]
+  /** New destinations and where they sit (nav / footer), with their state on main. */
+  destinations: { href: string; state: 'live' | 'open PR' | 'redirect pending'; nav: 'main' | 'icon' | 'none'
+    footer: string; note: string }[]
+  sources: Source[]
+}
+
+// ---------------------------------------------------------------- _nav.json
+export interface NavMenuItem { label: string; href: string; sub?: string }
+export interface MegaItem { id: string; name: string; href: string; sub: string; badge?: 'experimental' | 'next release' }
+export interface SiteNav {
+  brand: { href: '/'; label: string; logo: string }
+  main: (
+    | { label: string; kind: 'mega'; panel: 'products' }
+    | { label: string; kind: 'menu'; items: NavMenuItem[]; footerOfMenu: { label: string; items: SiteLink[] }[] }
+    | { label: string; href: string; showWhen?: string }
+  )[]
+  actions: { kind: 'github' | 'discord' | 'theme' | 'primary'; label?: string; href?: string; ariaLabel?: string
+    command?: string; showWhen?: string }[]
+  megaMenu: { id: 'products'; columns: { id: string; title: string; items: MegaItem[] }[]; footer: SiteLink[] }
+  contextual: { note: string; primaryByTemplate: Record<string, { label: string; href?: string; copies?: string }> }
+  mobile: { breakpoint: number; button: { open: string; close: string }
+    sheet: { big: (SiteLink & { showWhen?: string })[]; sections: { title: string; items: string }[]
+      install: string; footer: SiteLink[] }
+    a11y: string }
+  footer: { tagline: string; install: string
+    columns: { title: string; links: (SiteLink & { showWhen?: string })[] }[]
+    bottom: { left: string; right: string } }
+}
+
+// ---------------------------------------------------------------- _sitemap.json
+export type TemplateId = 'home' | 'product' | 'products-index' | 'story' | 'compare' | 'migrate' | 'benchmarks'
+  | 'showcase' | 'blog-index' | 'blog-post' | 'docs' | 'plain' | '404' | 'redirect'
+export interface SitemapPage {
+  route: string; title: string
+  purpose: string                       // one line
+  audience: string                      // 'developer' | 'tech lead' | both
+  primaryCta: string
+  content: string | null                // the file (and path) that feeds it
+  template: TemplateId
+  reference: string | null              // canvas page, or null = no canvas design
+  decision: 'keep' | 'merge' | 'drop'
+  reason?: string
+  state: 'live' | 'redesign' | 'new' | 'open PR' | 'redirect pending'
+  status?: ItemStatus
+  note?: string
+}
+export interface Sitemap {
+  version: string; note: string
+  sections: { section: string; nav?: string; decisionNote?: string; pages: SitemapPage[] }[]
+  decisions: { route: string; decision: 'drop' | 'merge' | string; reason: string }[]
+}
+
+// ---------------------------------------------------------------- _benchmarks.json
+export interface BenchmarksPage {
+  record: string
+  frameworks: string[]
+  rowBoard: Record<string, number[]>    // ms, same order as frameworks, run 1
+  rowVerdicts: Record<string, [Verdict, string]>
+  scenarios: { op: string; pyreon: string; rival: string; verdict: Verdict; label: string }[]
+  scaling: {
+    sizes: string[]
+    select: Record<string, number[]>    // µs per op
+    'partial update': Record<string, number[]>
+    swap: Record<string, number[]>
+  }
+  ssr: { rows: string; pyreon: number; vue: number; svelte: number; react: number }[]   // µs per render
+  bundle: [name: string, kb: number][]
+  reactivity: Record<string, [test: string, pyreon: number, preact: number, solid: number, verdict: Verdict, margin: string][]>
+  forms: [op: string, pyreonUs: number, rivals: [name: string, us: number][]][]
+  todomvc: [op: string, pyreon: string, react: string, ratio: string][]
+  losses: [title: string, text: string][]
+  withdrawn: [claim: string, reason: string][]
+  competitors: string[]
+  method: [title: string, text: string][]
+  heroStats: SiteProof[]
+  caveat: string
+  lossesSection: { title: string; intro: string }
+  harnessBugs: { count: number; title: string; intro: string; items: { title: string; text: string; pr: string }[] }
+  reproduce: { title: string; intro: string; command: string; allSuites: string; note: string }   // allSuites holds <pkg>-style params: escape
+  krausest: string
+}
+
+// ---------------------------------------------------------------- _products.json
+export type ProductGroupId = 'build' | 'foundations' | 'data' | 'visual' | 'tools'
+export interface ProductsIndexPage {
+  hero: { eyebrow: string; title: string; lede: string }
+  groupingNote: string
+  groups: { id: ProductGroupId; title: string; text: string; productIds: string[] }[]
+  products: {
+    id: string; name: string; package: string
+    group: ProductGroupId
+    href: string                        // '/products/<id>'
+    pitch: string                       // inline `code` markup only
+    proof?: SiteProof
+    status?: 'experimental' | 'next release'
+  }[]
+  underneath: { text: string; link: SiteLink }
+  proofFooter: string
+  proofFooterLink: SiteLink
+  end: { title: string; text: string
+    primary: { label: string; command: string }; secondary: { label: string; command: string }; tertiary: SiteLink }
+}
+
+// ---------------------------------------------------------------- _docs.json
+export interface SidebarBadge { kind: 'preview' | 'new' | 'proof'; text: string; source: string }
+export interface DocsSidebarItem {
+  title: string
+  href: string                          // '/docs' or '/docs/<path without .md>'
+  productId?: string
+  badge?: SidebarBadge
+  children?: DocsSidebarItem[]
+}
+export interface DocsNav {
+  generatedFrom: { repo: string; commit: string; date: string }
+  current: {
+    pageCount: number
+    pages: { path: string; title: string; href: string }[]
+    sidebar: { definedIn: string; note: string
+      groups: { text: string; tier: string | null; collapsed: boolean; slugs: string[]; source: string }[] }
+  }
+  sidebar: { group: 'Get started' | 'Build' | 'Data and state' | 'Visual and content' | 'Developer tools' | 'Guides' | 'Migrate' | 'Reference'
+    items: DocsSidebarItem[] }[]
+  flags: {
+    noGroup: { path: string; title: string; placedIn: string; note: string }[]
+    duplicates: { pages: string[]; verdict: string; note: string }[]
+    gaps: { productId: string | null; package?: string; note: string }[]
+    statusLabelConflicts: { path: string; note: string }[]
+  }
+  overviews: {
+    productId: string; name: string
+    docsPage: string | null             // path relative to docs/src/content/docs
+    docsHref: string
+    gapNote?: string
+    closestPage?: string
+    pitch: string                       // 'content/<id>.json#hero'
+    demo: string                        // 'content/<id>.json#demo'
+    bench: string | null                // 'content/<id>.json#benchmarks'
+    benchNote?: string
+    comingFrom: { lib: string; ref: string } | null
+    crossSell: string[]
+  }[]
+}
+
+// ---------------------------------------------------------------- _docs-home.json
+export interface DocsHome {
+  meta: { title: string; description: string }
+  banner: { kind: 'preview'; label: string; text: string; link: SiteLink; source: string }
+  hero: { eyebrow: string; title: string; lede: string }
+  startHere: {
+    id: 'web' | 'apps' | 'react' | 'one'
+    title: string; text: string; command: string
+    alt?: { label: string; command: string }
+    href: string; productIds: string[]
+    status?: 'experimental'
+    source: string
+  }[]
+  tiles: { title: string; text: string; items: { productId: string; name: string; href: string; proof: SiteProof }[]; link: SiteLink }
+  whyFast: {
+    title: string; text: string
+    code: { file: string; lang: 'tsx'; source: string }
+    compiled: { label: string; lang: 'js'; source: string }
+    live: { component: string; note: string }
+    link: SiteLink
+    source: string
+  }
+  proofStrip: { items: SiteProof[]; footer: string; link: SiteLink }
+  whatsNew: {
+    title: string; text: string
+    items: { area: string; title: string; text: string; href: string; status: 'next release'; kind?: 'breaking'; source: string }[]
+    footer: string
+    link: SiteLink
+  }
+  counts: { docPages: string; note: string }
+  next: SiteLink
+}
+
+// ---------------------------------------------------------------- _why.json / _project.json
+export type SiteSection =
+  | { kind: 'proof'; title: string; note?: string; stats: SiteProof[] }  // up to 3
+  | { kind: 'diff'; title: string; caption: string
+      before: { label: string; code: string }; after: { label: string; code: string } }
+  | { kind: 'code'; title: string; text?: string; caption?: string
+      blocks: { label: string; lang: string; code: string }[] }        // 1–3 tabs or side by side
+  | { kind: 'story'; title: string; text: string[] }                   // paragraphs
+  | { kind: 'steps'; title: string; items: { title: string; text: string; code?: string }[] }
+  | { kind: 'list'; title: string; text?: string
+      items: { title: string; text: string; code?: string; status?: ItemStatus }[] }
+  | { kind: 'quote'; text: string; attribution: string; href?: string } // 'Pyreon docs' | 'Pyreon benchmark record'
+  | { kind: 'compare-strip'; title: string; items: { label: string; before: string; after: string }[] }
+  | { kind: 'faq'; title: string; items: { q: string; a: string }[] }
+  | { kind: 'links'; title: string; items: { label: string; href: string; text: string }[] }
+  | { kind: 'note'; text: string; href?: string }                      // small fine-print line
+  | { kind: 'table'; title: string; columns: string[]; rows: string[][] }
+  | { kind: 'logos'; title: string; text: string
+      items: { file: string; href: string; use: string; background: string }[] }
+  | { kind: 'palette'; title: string; text: string
+      swatches: { name: string; hex: string; role: string }[]
+      gradient: { name: string; css: string; role: string } }
+  | { kind: 'type'; title: string; faces: { name: string; weights: number[]; role: string; href: string }[] }
+  | { kind: 'dodont'; title: string; items: { do: string; dont: string; why: string }[] }
+
+export interface WhyPage {
+  id: 'components-run-once' | 'one-codebase' | 'ai-ready' | 'performance' | 'full-stack'
+  route: string                         // '/why/<id>'
+  title: string
+  hook: { eyebrow: string; title: string; lede: string; cta: Cta }
+  sections: SiteSection[]
+  end: { title: string; cta: Cta }
+  share: { ogTitle: string; ogSub: string }
+  sources: Source[]
+}
+export interface WhyFile { pages: WhyPage[] }
+
+export interface ProjectPage {
+  id: 'status' | 'releases' | 'community' | 'brand'
+  route: string
+  title: string
+  lede: string
+  sections: SiteSection[]
+  end: { title: string; cta: Cta }
+  sources: Source[]
+}
+export interface NotFoundPage {
+  id: 'not-found'; route: '/404'; code: string; title: string; text: string; lede: string
+  snippet: string                       // one line of code, rendered mono
+  links: { label: string; href: string; text: string }[]
+  sources: Source[]
+}
+export interface ProjectFile { status: ProjectPage; releases: ProjectPage; community: ProjectPage; brand: ProjectPage; notFound: NotFoundPage }
+
+// ---------------------------------------------------------------- _compare.json
+export type CompareVerdict = 'pyreon' | 'rival' | 'tie' | 'different'
+export interface ComparePage {
+  id: 'react' | 'next' | 'solid' | 'vue' | 'svelte' | 'react-native'
+  route: string                         // '/compare/<id>'
+  rival: string
+  rivalMeasured: string | null          // versions in the record; null = no head-to-head
+  hook: { eyebrow: string; title: string; lede: string }
+  proof: SiteProof[]                    // ≤ 3
+  table: { title: string; note: string
+    rows: { topic: string; pyreon: string; rival: string; verdict: CompareVerdict; source: string }[] }
+  code: { title: string; caption: string; rival: CodeSide; pyreon: CodeSide; checked: string }
+  deletes: null | { title: string; items: { what: string; instead: string }[] }
+  pickTheOther: { title: string; items: string[] }   // rendered low on the page, plain
+  migrate: { title: string; text: string; href: string; label: string }
+  cta: CtaBlock
+  sources: SourceRef[]
+}
+export interface CompareSite { record: string; caveat: string; order: ComparePage['id'][]; pages: ComparePage[] }
+
+// ---------------------------------------------------------------- _migrate.json
+export interface MigrateLanding {
+  id: 'migrate'; route: '/migrate'; productHref: string
+  hook: { eyebrow: string; title: string; lede: string }
+  steps: { n: number; title: string; text: string; file: string | null; code: string | null }[]
+  tools: { title: string; items: { name: string; package: string; what: string; how: string; limits: string }[] }
+  layersTitle: string
+  guidesTitle: string
+  cta: CtaBlock
+  sources: SourceRef[]
+}
+export interface MigrateLayer {
+  id: 'react' | 'vue' | 'solid' | 'preact' | 'svelte'
+  route: string                         // '/migrate/<id>'
+  name: string
+  package: string
+  hook: { title: string; lede: string }
+  covers: string[]
+  doesNotCover: string[]
+  install: string
+  config: { file: string; code: string; note: string }[]
+  scaffold: string | null               // null for svelte (create-zero has no svelte option)
+  ports: { title: string; before: CodeSide; after: CodeSide; note: string }[]   // 1–2
+  docs: SiteLink[]
+  sources: SourceRef[]
+}
+export interface MigrateGuide { id: 'angular' | 'react-native'; name: string; href: string; text: string; why: string }
+export interface MigrateSite { landing: MigrateLanding; layers: MigrateLayer[]; guides: MigrateGuide[] }

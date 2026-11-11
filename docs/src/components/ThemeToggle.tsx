@@ -1,41 +1,25 @@
 import { onMount } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
+import { colorMode, toggleColorMode } from '../site/color-mode'
 
 /**
- * Theme toggle — sun/moon icon button. Persists to localStorage under
- * the key `vitepress-theme-appearance` (matches VitePress's storage key
- * so users with a stored preference from the legacy site see no flicker
- * after the cut-over). Sets `data-theme` on `<html>`; tokens.css reads
- * `:root` (dark) by default and `[data-theme="light"]` for the light
- * palette.
+ * Docs header theme toggle — sun/moon icon button over the site-wide
+ * colour-mode store (`src/site/color-mode.ts`), the same one the marketing
+ * shell's toggle and the root `<PyreonUI>` use, so a choice made on either
+ * side carries over. The pre-paint script in index.html has already set
+ * `data-theme` before this mounts.
  *
- * The initial value is read from the in-DOM `data-theme` attribute that
- * the FOUC pre-paint script in index.html set BEFORE this component
- * mounted — so the visual state matches what the user sees, even when
- * the localStorage value is missing or stale.
+ * The icon renders the dark variant on the server AND during hydration
+ * (`mounted` is false until `onMount`), then follows the store, so the
+ * hydrated DOM always matches the prerendered HTML.
  */
-const STORAGE_KEY = 'vitepress-theme-appearance'
-
 export function ThemeToggle() {
-  const isDark = signal(true)
-
+  const mounted = signal(false)
   onMount(() => {
-    if (typeof document === 'undefined') return
-    isDark.set(document.documentElement.dataset.theme !== 'light')
+    mounted.set(true)
   })
-
-  const toggle = () => {
-    const next = isDark() ? 'light' : 'dark'
-    isDark.set(!isDark())
-    if (typeof document !== 'undefined') {
-      document.documentElement.dataset.theme = next
-    }
-    try {
-      localStorage.setItem(STORAGE_KEY, next)
-    } catch {
-      // Storage unavailable — ignore (e.g. private mode quota).
-    }
-  }
+  const isDark = () => !mounted() || colorMode() === 'dark'
+  const toggle = () => toggleColorMode()
 
   return (
     <button
