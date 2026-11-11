@@ -24,7 +24,7 @@ import { pathToFileURL } from 'node:url'
 import { discoverPlugins } from './discover-plugins'
 import { buildPluginWebHosts, materializeBuiltWebHosts, type WebHostTarget } from './web-hosts'
 import { nearestPackageDir } from './native-sources'
-import { plural } from '@pyreon/ansi'
+import { createTerm, finding, plural } from '@pyreon/ansi'
 import { explainReport, pluginsReport } from './plugin-commands'
 import {
   buildAllVerdict,
@@ -163,6 +163,16 @@ function parseArgs(argv: string[]): ParsedArgs {
     else if (key === 'interval') out.interval = Number(value)
   }
   return out
+}
+
+/**
+ * A usage error on stderr in the shared theme: `✗ pyreon-native · problem`,
+ * then `fix:` (default: where the usage lives). The caller still prints the
+ * usage and sets the exit code.
+ */
+function usageError(message: string, fix = 'run pyreon-native --help for usage'): void {
+  const t = createTerm({ isTTY: Boolean(process.stderr.isTTY) })
+  console.error(finding(t, { severity: 'error', source: 'pyreon-native', message, fix }, { indent: 0, width: t.width }).join('\n'))
 }
 
 // `--help` is a SUCCESSFUL request for help: it belongs on stdout with exit 0.
@@ -307,7 +317,7 @@ export async function mainWithPlugins(argv: string[]): Promise<number> {
     !parsed.lsp
   if (!parsed.plugins?.length && !discovering) return main(argv)
   if (parsed.plugins?.length && !['build', 'check'].includes(parsed.command)) {
-    console.error('error: --plugin is supported by build and check only')
+    usageError('--plugin is supported by build and check only')
     return 1
   }
   try {
@@ -362,14 +372,14 @@ async function runPluginWebHosts(parsed: ParsedArgs, appDir: string): Promise<nu
 async function runDev(parsed: ParsedArgs, appDir: string): Promise<number> {
   const target = parsed.rawTarget
   if (target !== 'ios' && target !== 'android') {
-    console.error('error: dev --target must be ios | android')
+    usageError('dev --target must be ios | android')
     printUsage()
     return 1
   }
   const sourceDir = resolve(parsed.source ?? join(appDir, 'src'))
   const sourceProblem = sourceDirError(sourceDir)
   if (sourceProblem) {
-    console.error(`error: ${sourceProblem}`)
+    usageError(`${sourceProblem}`)
     return 1
   }
   const platform =
@@ -377,7 +387,7 @@ async function runDev(parsed: ParsedArgs, appDir: string): Promise<number> {
       ? createIosPlatform(appDir, spawnRunner, parsed.device)
       : createAndroidPlatform(appDir, spawnRunner, parsed.device)
   if ('error' in platform) {
-    console.error(`error: ${platform.error}`)
+    usageError(`${platform.error}`)
     return 1
   }
   try {
@@ -418,7 +428,7 @@ function printReport(report: { lines: string[]; exitCode: number }): number {
 
 async function runExplain(parsed: ParsedArgs, appDir: string) {
   if (!parsed.file) {
-    console.error('error: explain requires a file (pyreon-native explain <file.tsx>)')
+    usageError('explain requires a file (pyreon-native explain <file.tsx>)')
     return { lines: [], exitCode: 1 }
   }
   const file = resolve(parsed.file)
@@ -446,7 +456,7 @@ export function main(argv: string[], compiler?: Pick<NativeCompiler, 'transform'
   const parsed = parseArgs(argv)
   parsed.compiler = compiler
   if (parsed.plugins?.length && !compiler) {
-    console.error('error: use mainWithPlugins() to load --plugin modules')
+    usageError('use mainWithPlugins() to load --plugin modules')
     return 1
   }
   if (parsed.command === 'assets') {
@@ -462,7 +472,7 @@ export function main(argv: string[], compiler?: Pick<NativeCompiler, 'transform'
     return runWire(parsed)
   }
   if (parsed.command === 'plugins' || parsed.command === 'explain') {
-    console.error(`error: ${parsed.command} needs plugin loading — call mainWithPlugins()`)
+    usageError(`${parsed.command} needs plugin loading — call mainWithPlugins()`)
     return 1
   }
   if (parsed.command !== 'build') {
@@ -476,12 +486,12 @@ export function main(argv: string[], compiler?: Pick<NativeCompiler, 'transform'
   // is the single command that mirrors "write once, ship every target".
   if (parsed.rawTarget === 'all') {
     if (!parsed.source) {
-      console.error('error: --source is required')
+      usageError('--source is required')
       printUsage()
       return 1
     }
     if (!parsed.out) {
-      console.error('error: --out is required')
+      usageError('--out is required')
       printUsage()
       return 1
     }
@@ -502,17 +512,17 @@ export function main(argv: string[], compiler?: Pick<NativeCompiler, 'transform'
   }
 
   if (!parsed.target) {
-    console.error('error: --target is required (ios | android | all)')
+    usageError('--target is required (ios | android | all)')
     printUsage()
     return 1
   }
   if (!parsed.source) {
-    console.error('error: --source is required')
+    usageError('--source is required')
     printUsage()
     return 1
   }
   if (!parsed.out) {
-    console.error('error: --out is required')
+    usageError('--out is required')
     printUsage()
     return 1
   }
@@ -599,12 +609,12 @@ function runAssets(parsed: ParsedArgs): number {
     : parsed.rawTarget === 'web' ? 'web'
     : undefined
   if (!target) {
-    console.error('error: assets --target must be ios | android | web')
+    usageError('assets --target must be ios | android | web')
     printUsage()
     return 1
   }
   if (!parsed.source || !parsed.out) {
-    console.error('error: assets requires --source and --out')
+    usageError('assets requires --source and --out')
     printUsage()
     return 1
   }
@@ -637,12 +647,12 @@ function runStageWeb(parsed: ParsedArgs): number {
   const target: WebBundleTarget | undefined =
     parsed.rawTarget === 'ios' ? 'ios' : parsed.rawTarget === 'android' ? 'android' : undefined
   if (!target) {
-    console.error('error: stage-web --target must be ios | android')
+    usageError('stage-web --target must be ios | android')
     printUsage()
     return 1
   }
   if (!parsed.source || !parsed.out) {
-    console.error('error: stage-web requires --source and --out')
+    usageError('stage-web requires --source and --out')
     printUsage()
     return 1
   }
@@ -696,7 +706,7 @@ function runWire(parsed: ParsedArgs): number {
   const started = performance.now()
   const appDir = resolve(parsed.app ?? process.cwd())
   if (!existsSync(join(appDir, 'package.json'))) {
-    console.error(`error: no package.json in ${appDir} (pass --app=<dir>)`)
+    usageError(`no package.json in ${appDir} (pass --app=<dir>)`)
     return 1
   }
   const o = outFor()
@@ -768,7 +778,7 @@ function reportCheck(
 
 function runCheck(parsed: ParsedArgs): number {
   if (parsed.rawTarget !== undefined && !parsed.target && parsed.rawTarget !== 'all') {
-    console.error(`[Pyreon] Unknown check target "${parsed.rawTarget}". Choose ios, android, swift, kotlin, or all.`)
+    usageError(`Unknown check target "${parsed.rawTarget}".`, 'choose --target=ios, android, swift, kotlin, or all')
     return 1
   }
   // `--lsp` runs a stdio LSP server (editor diagnostics). It reads
@@ -780,7 +790,7 @@ function runCheck(parsed: ParsedArgs): number {
     return 0
   }
   if (!parsed.source) {
-    console.error('error: check requires --source (a .tsx file or a directory)')
+    usageError('check requires --source (a .tsx file or a directory)')
     printUsage()
     return 1
   }

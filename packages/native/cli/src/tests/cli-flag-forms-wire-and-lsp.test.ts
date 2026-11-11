@@ -103,7 +103,7 @@ describe('build report', () => {
     const src = srcDir({ 'C.tsx': WARNS })
     expect(main(['build', `--target=android`, `--source=${src}`, `--out=${outDir()}`])).toBe(0)
     expect(warns.join('\n')).toContain('! warning · kotlin · ')
-    expect(logs.at(-1), 'and the verdict counts it').toMatch(/^✓ compiled 1 file → .* · 1 warning · /)
+    expect(logs.at(-1), 'and the verdict counts it').toMatch(/^✓ compiled 1 file → \S+(?: · |\n {2})1 warning · /) // a long path wraps the meta (rule 6)
     expect(warns.join('\n')).toContain('C.tsx')
   })
 
