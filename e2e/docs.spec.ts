@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test'
 import { readdirSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { waitForHydration } from './hydration-barrier'
+import { waitForNav } from './site-islands'
 import { SITE_LINKS } from '../docs/src/site-links'
 
 // Discover the runnable files independently of the gallery generator. A new
@@ -156,7 +157,7 @@ test.describe('docs rendering', () => {
     expect(external).toEqual([])
   })
 
-  test('homepage and catalog represent every public framework package', async ({ page }) => {
+  test('the package catalog lists every public framework package', async ({ page }) => {
     const root = resolve(__dirname, '..')
     const groups: { category: string; names: string[] }[] = []
     for (const category of readdirSync(resolve(root, 'packages'))) {
@@ -169,16 +170,10 @@ test.describe('docs rendering', () => {
       if (names.length) groups.push({ category, names })
     }
     const total = groups.reduce((count, group) => count + group.names.length, 0)
-    await page.goto('/')
+    // (The old landing's ecosystem panel is gone; the catalog is the list.)
+    expect(total).toBeGreaterThan(0)
+    await page.goto('/docs/package-catalog')
     await waitForHydration(page)
-    await expect(page.locator('.px-eco-total')).toContainText(`${total} packages`)
-    await expect(page.locator('.px-eco-total')).toContainText(`${groups.length} categories`)
-    for (const group of groups) {
-      const card = page.locator('.px-panel').filter({ has: page.locator('.px-eco-cat', { hasText: new RegExp(`^${group.category}$`) }) })
-      await expect(card.locator('.px-mono-label')).toHaveText(String(group.names.length))
-    }
-    await page.getByRole('link', { name: `All ${total} packages`, exact: true }).click()
-    await expect(page).toHaveURL(/\/docs\/package-catalog/)
     for (const group of groups) {
       for (const name of group.names) {
         await expect(page.locator('.docs-content table').getByRole('link', { name, exact: true })).toBeVisible()
@@ -210,9 +205,9 @@ test.describe('docs rendering', () => {
   })
 
   for (const width of [320, 375, 768]) {
-    test(`mobile primary navigation works from the homepage at ${width}px`, async ({ page }) => {
+    test(`mobile primary navigation works from a docs page at ${width}px`, async ({ page }) => {
       await page.setViewportSize({ width, height: 812 })
-      await page.goto('/')
+      await page.goto('/docs/getting-started')
       await waitForHydration(page)
       const hamburger = page.locator('.docs-header__hamburger')
       const drawer = page.locator('#docs-navigation-drawer')
@@ -266,7 +261,7 @@ test.describe('docs rendering', () => {
 
   test('mobile primary navigation is available on the 404 page', async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 812 })
-    await page.goto('/missing-mobile-navigation-page')
+    await page.goto('/docs/missing-mobile-navigation-page')
     await waitForHydration(page)
     await expect(page.locator('.docs-header__hamburger')).toBeVisible()
     await page.locator('.docs-header__hamburger').click()
@@ -276,9 +271,9 @@ test.describe('docs rendering', () => {
     await expect(page).toHaveURL(/\/docs\/getting-started\/?$/)
   })
 
-  test('desktop homepage keeps a full-width layout and visible primary links', async ({ page }) => {
+  test('desktop docs page keeps a full-width layout and visible primary links', async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 })
-    await page.goto('/')
+    await page.goto('/docs/getting-started')
     await waitForHydration(page)
     await expect(page.locator('.docs-header__hamburger')).toBeHidden()
     await expect(page.locator('.docs-header__nav').getByRole('link', { name: 'Docs', exact: true })).toBeVisible()
@@ -287,25 +282,6 @@ test.describe('docs rendering', () => {
     const main = await page.locator('.docs-main').boundingBox()
     expect(main?.x).toBe(0)
     expect(main?.width).toBe(1440)
-  })
-
-  test('landing page renders the PyreonLanding component (real signal counter)', async ({
-    page,
-  }) => {
-    await page.goto('/')
-    // PR #1399 renamed `.pyreon-landing` → `.px-landing` to restore the
-    // 1240px max-width container; the e2e selector was missed during
-    // that refactor. Both classes accepted defensively.
-    await expect(page.locator('.px-landing, .pyreon-landing')).toBeVisible()
-    await expect(page.locator('.px-hero h1')).toContainText(
-      /Reactivity that knows/,
-    )
-    // The hero counter advertises a live signal; the digit element is
-    // populated by reactivity, not static markup.
-    const digit = page.locator('.px-digit')
-    await expect(digit).toBeVisible()
-    const firstValue = await digit.textContent()
-    expect(firstValue?.trim()).toMatch(/^\d+$/)
   })
 
   test('sidebar navigation between Core Framework pages works', async ({
@@ -472,10 +448,8 @@ test.describe('docs rendering', () => {
     // URLs render the SAME branded 404 as fs-router's top-level
     // `_404.tsx`. Wait for the Suspense-resolved 404 to mount.
     await page.waitForLoadState('networkidle')
-    await expect(page.locator('.px-nf')).toBeVisible({ timeout: 15_000 })
-    await expect(page.locator('.px-nf-h1')).toContainText(
-      /This path has no readers/,
-    )
+    await expect(page.locator('.s-nf')).toBeVisible({ timeout: 15_000 })
+    await expect(page.locator('.s-nf h1')).toContainText(/signal not found/)
   })
 
   test('router.md renders APICard call sites (custom-component parity)', async ({
@@ -495,7 +469,7 @@ test.describe('docs rendering', () => {
   test('header chrome renders: brand logo, search button, theme toggle, GitHub link', async ({
     page,
   }) => {
-    await page.goto('/')
+    await page.goto('/docs/getting-started')
     // SVG brand mark (one for light, one for dark — only one visible at a time)
     await expect(page.locator('.docs-brand__mark').first()).toBeVisible()
     await expect(page.locator('.docs-brand__wordmark')).toHaveText('pyreon')
@@ -515,7 +489,7 @@ test.describe('docs rendering', () => {
   test('theme toggle flips data-theme on <html> and persists to localStorage', async ({
     page,
   }) => {
-    await page.goto('/')
+    await page.goto('/docs/getting-started')
     // Wait for FOUC script to set the initial theme.
     const initial = await page.locator('html').getAttribute('data-theme')
     expect(initial).toBe('dark')
@@ -1013,7 +987,8 @@ test.describe('site pages: /open, /showcase, /discord, /newsletter', () => {
       const errors: string[] = []
       page.on('pageerror', (error) => errors.push(error.message))
       await page.goto(p.path)
-      await waitForHydration(page)
+      // A static marketing page: its islands hydrate, the app never starts.
+      await waitForNav(page)
       await expect(page.locator('h1')).toHaveText(p.heading)
       expect(errors).toEqual([])
     })
@@ -1021,7 +996,7 @@ test.describe('site pages: /open, /showcase, /discord, /newsletter', () => {
 
   test('/open shows a number or says it is unavailable, never a blank', async ({ page }) => {
     await page.goto('/open')
-    await waitForHydration(page)
+    await waitForNav(page)
     const values = await page.locator('.open-tile__value').allTextContents()
     expect(values.length).toBeGreaterThanOrEqual(15)
     for (const v of values) expect(v.trim()).toMatch(/^(v?[\d.,]+|unavailable right now)$/)
@@ -1030,7 +1005,8 @@ test.describe('site pages: /open, /showcase, /discord, /newsletter', () => {
 
   test('/showcase filters by theme', async ({ page }) => {
     await page.goto('/showcase')
-    await waitForHydration(page)
+    // The filter is an island on a static page (docs/src/showcase/ShowcaseGallery.tsx).
+    await page.locator('.showcase-filters[data-hydrated]').waitFor({ state: 'attached' })
     const groups = page.locator('.showcase-group')
     const total = await groups.count()
     expect(total).toBeGreaterThan(1)

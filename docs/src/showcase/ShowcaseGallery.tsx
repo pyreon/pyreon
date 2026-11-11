@@ -1,4 +1,4 @@
-import { For } from '@pyreon/core'
+import { For, onMount } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 import { REPO_URL, SHOWCASE, type ShowcaseExample, type ShowcaseTheme, sourceUrl, THEMES } from './examples'
 
@@ -75,9 +75,20 @@ function ExampleCard(props: { example: ShowcaseExample }) {
 export default function ShowcaseGallery() {
   const active = signal<ShowcaseTheme | 'all'>('all')
   const themes = THEMES.filter((t) => SHOWCASE.some((ex) => ex.theme === t.id))
+  let filters: HTMLElement | null = null
+  // Marks the buttons as live (the server HTML shows them before).
+  onMount(() => {
+    filters?.setAttribute('data-hydrated', '')
+    return undefined
+  })
   return (
     <>
-      <fieldset class="showcase-filters">
+      <fieldset
+        class="showcase-filters"
+        ref={(el: HTMLElement | null) => {
+          filters = el
+        }}
+      >
         <legend class="site-visually-hidden">Filter by theme</legend>
         <button
           type="button"
