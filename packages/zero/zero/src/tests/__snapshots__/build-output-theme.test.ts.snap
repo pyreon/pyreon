@@ -1,0 +1,145 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`perf advisor report > renders at 16 colours 1`] = `
+"␛[1mperf advisor␛[22m ␛[90m· 2 routes · advisory␛[39m
+
+  ␛[33m!␛[39m ␛[1mroute-js-budget␛[22m ␛[90m·␛[39m This route loads 212.4 KB of JavaScript (gzip 71.0 KB), over the 150 KB budget
+     for a first visit.
+     ␛[90m↳␛[39m ␛[4m␛[36msrc/routes/dashboard/[team]/analytics/index.tsx␛[39m␛[24m
+     ␛[90mfix:␛[39m lazy-load the chart library with import() inside the panel that renders it
+
+  ␛[36mℹ␛[39m ␛[1mcontent-visibility-without-intrinsic-size␛[22m ␛[90m·␛[39m \`content-visibility: auto\` without
+     \`contain-intrinsic-size\` makes the scrollbar jump.
+     ␛[90m↳␛[39m ␛[4m␛[36msrc/routes/blog/index.tsx␛[39m␛[24m
+     ␛[90mfix:␛[39m add contain-intrinsic-size: auto 600px next to it
+
+␛[33m!␛[39m 2 findings across 2 routes ␛[90m· advisory, does not fail the build␛[39m"
+`;
+
+exports[`perf advisor report > renders at 256 dark 1`] = `
+"␛[1mperf advisor␛[22m ␛[38;5;103m· 2 routes · advisory␛[39m
+
+  ␛[38;5;220m!␛[39m ␛[1mroute-js-budget␛[22m ␛[38;5;103m·␛[39m This route loads 212.4 KB of JavaScript (gzip 71.0 KB), over the 150 KB budget
+     for a first visit.
+     ␛[38;5;103m↳␛[39m ␛[4m␛[38;5;45msrc/routes/dashboard/[team]/analytics/index.tsx␛[39m␛[24m
+     ␛[38;5;103mfix:␛[39m lazy-load the chart library with import() inside the panel that renders it
+
+  ␛[38;5;45mℹ␛[39m ␛[1mcontent-visibility-without-intrinsic-size␛[22m ␛[38;5;103m·␛[39m \`content-visibility: auto\` without
+     \`contain-intrinsic-size\` makes the scrollbar jump.
+     ␛[38;5;103m↳␛[39m ␛[4m␛[38;5;45msrc/routes/blog/index.tsx␛[39m␛[24m
+     ␛[38;5;103mfix:␛[39m add contain-intrinsic-size: auto 600px next to it
+
+␛[38;5;220m!␛[39m 2 findings across 2 routes ␛[38;5;103m· advisory, does not fail the build␛[39m"
+`;
+
+exports[`perf advisor report > renders at 256 light 1`] = `
+"␛[1mperf advisor␛[22m ␛[38;5;59m· 2 routes · advisory␛[39m
+
+  ␛[38;5;94m!␛[39m ␛[1mroute-js-budget␛[22m ␛[38;5;59m·␛[39m This route loads 212.4 KB of JavaScript (gzip 71.0 KB), over the 150 KB budget
+     for a first visit.
+     ␛[38;5;59m↳␛[39m ␛[4m␛[38;5;24msrc/routes/dashboard/[team]/analytics/index.tsx␛[39m␛[24m
+     ␛[38;5;59mfix:␛[39m lazy-load the chart library with import() inside the panel that renders it
+
+  ␛[38;5;24mℹ␛[39m ␛[1mcontent-visibility-without-intrinsic-size␛[22m ␛[38;5;59m·␛[39m \`content-visibility: auto\` without
+     \`contain-intrinsic-size\` makes the scrollbar jump.
+     ␛[38;5;59m↳␛[39m ␛[4m␛[38;5;24msrc/routes/blog/index.tsx␛[39m␛[24m
+     ␛[38;5;59mfix:␛[39m add contain-intrinsic-size: auto 600px next to it
+
+␛[38;5;94m!␛[39m 2 findings across 2 routes ␛[38;5;59m· advisory, does not fail the build␛[39m"
+`;
+
+exports[`perf advisor report > renders at ascii 1`] = `
+"perf advisor - 2 routes - advisory
+
+  ! route-js-budget - This route loads 212.4 KB of JavaScript (gzip 71.0 KB), over the 150 KB budget
+     for a first visit.
+     -> src/routes/dashboard/[team]/analytics/index.tsx
+     fix: lazy-load the chart library with import() inside the panel that renders it
+
+  i content-visibility-without-intrinsic-size - \`content-visibility: auto\` without
+     \`contain-intrinsic-size\` makes the scrollbar jump.
+     -> src/routes/blog/index.tsx
+     fix: add contain-intrinsic-size: auto 600px next to it
+
+! 2 findings across 2 routes - advisory, does not fail the build"
+`;
+
+exports[`perf advisor report > renders at plain 1`] = `
+"perf advisor · 2 routes · advisory
+
+  ! route-js-budget · This route loads 212.4 KB of JavaScript (gzip 71.0 KB), over the 150 KB budget
+     for a first visit.
+     ↳ src/routes/dashboard/[team]/analytics/index.tsx
+     fix: lazy-load the chart library with import() inside the panel that renders it
+
+  ℹ content-visibility-without-intrinsic-size · \`content-visibility: auto\` without
+     \`contain-intrinsic-size\` makes the scrollbar jump.
+     ↳ src/routes/blog/index.tsx
+     fix: add contain-intrinsic-size: auto 600px next to it
+
+! 2 findings across 2 routes · advisory, does not fail the build"
+`;
+
+exports[`perf advisor report > renders at truecolor dark 1`] = `
+"␛[1mperf advisor␛[22m ␛[38;2;138;134;150m· 2 routes · advisory␛[39m
+
+  ␛[38;2;250;204;21m!␛[39m ␛[1mroute-js-budget␛[22m ␛[38;2;138;134;150m·␛[39m This route loads 212.4 KB of JavaScript (gzip 71.0 KB), over the 150 KB budget
+     for a first visit.
+     ␛[38;2;138;134;150m↳␛[39m ␛[4m␛[38;2;34;211;238msrc/routes/dashboard/[team]/analytics/index.tsx␛[39m␛[24m
+     ␛[38;2;138;134;150mfix:␛[39m lazy-load the chart library with import() inside the panel that renders it
+
+  ␛[38;2;34;211;238mℹ␛[39m ␛[1mcontent-visibility-without-intrinsic-size␛[22m ␛[38;2;138;134;150m·␛[39m \`content-visibility: auto\` without
+     \`contain-intrinsic-size\` makes the scrollbar jump.
+     ␛[38;2;138;134;150m↳␛[39m ␛[4m␛[38;2;34;211;238msrc/routes/blog/index.tsx␛[39m␛[24m
+     ␛[38;2;138;134;150mfix:␛[39m add contain-intrinsic-size: auto 600px next to it
+
+␛[38;2;250;204;21m!␛[39m 2 findings across 2 routes ␛[38;2;138;134;150m· advisory, does not fail the build␛[39m"
+`;
+
+exports[`perf advisor report > renders at truecolor light 1`] = `
+"␛[1mperf advisor␛[22m ␛[38;2;94;90;105m· 2 routes · advisory␛[39m
+
+  ␛[38;2;138;90;0m!␛[39m ␛[1mroute-js-budget␛[22m ␛[38;2;94;90;105m·␛[39m This route loads 212.4 KB of JavaScript (gzip 71.0 KB), over the 150 KB budget
+     for a first visit.
+     ␛[38;2;94;90;105m↳␛[39m ␛[4m␛[38;2;10;110;137msrc/routes/dashboard/[team]/analytics/index.tsx␛[39m␛[24m
+     ␛[38;2;94;90;105mfix:␛[39m lazy-load the chart library with import() inside the panel that renders it
+
+  ␛[38;2;10;110;137mℹ␛[39m ␛[1mcontent-visibility-without-intrinsic-size␛[22m ␛[38;2;94;90;105m·␛[39m \`content-visibility: auto\` without
+     \`contain-intrinsic-size\` makes the scrollbar jump.
+     ␛[38;2;94;90;105m↳␛[39m ␛[4m␛[38;2;10;110;137msrc/routes/blog/index.tsx␛[39m␛[24m
+     ␛[38;2;94;90;105mfix:␛[39m add contain-intrinsic-size: auto 600px next to it
+
+␛[38;2;138;90;0m!␛[39m 2 findings across 2 routes ␛[38;2;94;90;105m· advisory, does not fail the build␛[39m"
+`;
+
+exports[`route-mode table > renders at level 0 1`] = `
+"Route modes · app: ssr · 1 ssg ○ · 1 ssr λ · 1 isr ⟳ · 1 spa ⚡
+  ○ ssg  /
+  λ ssr  /account
+  ⚡ spa  /app/*  (declared)
+  ⟳ isr  /blog/:slug  (declared)"
+`;
+
+exports[`route-mode table > renders at level 1 1`] = `
+"␛[1mRoute modes␛[22m ␛[90m· app: ssr ·␛[39m ␛[36m1 ssg ○␛[39m · ␛[31m1 ssr λ␛[39m · ␛[33m1 isr ⟳␛[39m · 1 spa ⚡
+  ␛[36m○ ssg␛[39m  /
+  ␛[31mλ ssr␛[39m  /account
+  ⚡ spa  /app/*  ␛[90m(declared)␛[39m
+  ␛[33m⟳ isr␛[39m  /blog/:slug  ␛[90m(declared)␛[39m"
+`;
+
+exports[`route-mode table > renders at level 2 1`] = `
+"␛[1mRoute modes␛[22m ␛[38;5;103m· app: ssr ·␛[39m ␛[38;5;45m1 ssg ○␛[39m · ␛[38;5;202m1 ssr λ␛[39m · ␛[38;5;220m1 isr ⟳␛[39m · 1 spa ⚡
+  ␛[38;5;45m○ ssg␛[39m  /
+  ␛[38;5;202mλ ssr␛[39m  /account
+  ⚡ spa  /app/*  ␛[38;5;103m(declared)␛[39m
+  ␛[38;5;220m⟳ isr␛[39m  /blog/:slug  ␛[38;5;103m(declared)␛[39m"
+`;
+
+exports[`route-mode table > renders at level 3 1`] = `
+"␛[1mRoute modes␛[22m ␛[38;2;138;134;150m· app: ssr ·␛[39m ␛[38;2;34;211;238m1 ssg ○␛[39m · ␛[38;2;255;94;26m1 ssr λ␛[39m · ␛[38;2;250;204;21m1 isr ⟳␛[39m · 1 spa ⚡
+  ␛[38;2;34;211;238m○ ssg␛[39m  /
+  ␛[38;2;255;94;26mλ ssr␛[39m  /account
+  ⚡ spa  /app/*  ␛[38;2;138;134;150m(declared)␛[39m
+  ␛[38;2;250;204;21m⟳ isr␛[39m  /blog/:slug  ␛[38;2;138;134;150m(declared)␛[39m"
+`;

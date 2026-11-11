@@ -173,7 +173,7 @@ describe('branding helpers', () => {
     ]
     const plain = formatRouteModeTable(entries, 'ssr')
     expect(plain.join('\n')).not.toContain('\x1b[')
-    expect(plain[0]).toContain('[zero] Route modes (app: ssr)')
+    expect(plain[0]).toContain('Route modes · app: ssr ·')
     const colored = formatRouteModeTable(entries, 'ssr', 40, 3)
     expect(colored.join('\n')).toContain('\x1b[38;2;')
   })
