@@ -1177,40 +1177,46 @@ export function resolveRoute(rawPath: string, routes: RouteRecord[]): ResolvedRo
   // for the bare root `'/'` and for `''` — both fail `cc < 128` and jump:
   // correct, since a root route would have hit the staticMap above, and the
   // general lane resolves both to the same wildcard/not-found tail.
+  //
+  // A path that does not start with `/` takes the same miss tail: no route
+  // matches it. Every lane below assumes the leading `/` (the fast lane slices
+  // the first segment from index 1), so without this `xabout` resolved to
+  // `/about` with its first character dropped.
   const mask = index.firstCharMask
-  if (mask) {
-    const cc = cleanPath.charCodeAt(1)
-    if (cc !== 37 && cc !== 47 && !(cc < 128 && mask[cc] === 1)) {
-      const w = index.wildcards[0]
-      if (w) {
-        return {
-          path: cleanPath,
-          params: EMPTY_PARAMS,
-          query,
-          hash,
-          matched: w.matchedChain,
-          meta: w.meta,
-          search: w.validateFn ? applyValidateFn(w.validateFn, query) : EMPTY_SEARCH,
-        }
+  const cc = cleanPath.charCodeAt(1)
+  if (
+    cleanPath.charCodeAt(0) !== 47 ||
+    (mask && cc !== 37 && cc !== 47 && !(cc < 128 && mask[cc] === 1))
+  ) {
+    const w = index.wildcards[0]
+    if (w) {
+      return {
+        path: cleanPath,
+        params: EMPTY_PARAMS,
+        query,
+        hash,
+        matched: w.matchedChain,
+        meta: w.meta,
+        search: w.validateFn ? applyValidateFn(w.validateFn, query) : EMPTY_SEARCH,
       }
-      // Same not-found tail as the full pipeline (notFoundComponent walk →
-      // bare empty match) — the mask only skips MATCHING work, never
-      // changes what a non-match resolves to.
-      const nfb = findNotFoundFallback(routes, cleanPath, index.notFoundTrie)
-      if (nfb) {
-        return {
-          path: cleanPath,
-          params: {},
-          query,
-          hash,
-          matched: nfb,
-          meta: mergeMeta(nfb),
-          search: {},
-          isNotFound: true,
-        }
-      }
-      return { path: cleanPath, params: {}, query, hash, matched: [], meta: {}, search: {} }
     }
+    // Same not-found tail as the full pipeline (notFoundComponent walk →
+    // bare empty match) — the mask only skips MATCHING work, never
+    // changes what a non-match resolves to.
+    const nfb = findNotFoundFallback(routes, cleanPath, index.notFoundTrie)
+    if (nfb) {
+      return {
+        path: cleanPath,
+        params: {},
+        query,
+        hash,
+        matched: nfb,
+        meta: mergeMeta(nfb),
+        search: {},
+        isNotFound: true,
+      }
+    }
+    return { path: cleanPath, params: {}, query, hash, matched: [], meta: {}, search: {} }
   }
 
   // Split path for segment-based matching

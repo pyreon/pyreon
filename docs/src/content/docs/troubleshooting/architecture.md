@@ -26,6 +26,12 @@ Theme `display:'flex'`/`flexDirection`/`alignItems` on a rocketstyle(Element) co
 
 ---
 
+### A bulk descriptor copy or excluded-key rest-destructure on a per-element path
+
+`Object.getOwnPropertyDescriptors(props)` (one descriptor object per key plus the container) followed by `const { children, ...rest } = props` measured ~390 ns per `jsx()` call on Node 26, and was 57% of a zero SSR request rendering a 100-row list. Where a value copy is exact for the common shape, scan `Object.getOwnPropertyNames` with one `Object.getOwnPropertyDescriptor` per key, copy in the same pass, and hand any shape you cannot prove (getter, setter, non-enumerable, symbol key, own `__proto__`) to the general descriptor copy. Reference: `packages/core/core/src/jsx-runtime.ts` (`jsx` / `jsxSlow`) and `_wrapSpread`'s `hasOwnGetter` in `props.ts`; equivalence tests in `core/src/tests/jsx-runtime.test.ts`.
+
+---
+
 ### Breaking a package cycle with a registration seam
 
 Ui-core owns the `PyreonTheme` type and a slot (`theme-engine.ts`: `setThemeEngine`/`getThemeEngine`); `@pyreon/unistyle` registers its engine at module load. Same shape as `setStyleExtraction`/`setSnapshotCapture`/`_setDefaultChromeLayout`. Rules for any such seam:
