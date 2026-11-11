@@ -68,7 +68,7 @@ DevTools panel: panel.ts → panel-app.ts           (createPanelApp)
 
 ### Panel performance
 
-Measured by `panel.browser.test.tsx` with 10,000 signals, 200 computeds and 200 effects (Apple M-series, headless Chromium; numbers vary by machine): about 5 ms of page time per graph poll (graph walk plus `JSON.stringify`) and about 5 ms of panel time (parse plus render), on a 1.6 MB snapshot. The graph is polled every second on the Graph, Signals, Effects and Profiler tabs and every 5 s elsewhere. The tree and the signals table are virtualised (the table keeps about 25 rows in the DOM at 10,000 signals); the graph, effect lanes, profiler list and console are capped and say so.
+Measured by `panel.browser.test.tsx` with 10,000 signals, 200 computeds and 200 effects (three runs, Apple Silicon, headless Chromium; machine-dependent, not asserted): 9-11 ms of page time per graph poll (graph walk plus `JSON.stringify`; 18 ms for the first poll, which resolves every source location once) and 6-15 ms of panel time (parse plus render), on a 1.7 MB snapshot. Drawing the Everything graph takes about 3 ms. The graph is polled every second on the Graph, Signals, Effects and Profiler tabs and every 5 s elsewhere. The tree and the signals table are virtualised (the table keeps about 25 rows in the DOM at 10,000 signals); the graph, effect lanes, profiler list and console are capped and say so.
 
 The panel never holds page objects: every message crosses the extension boundary as serialised data, and the page hook keeps only a 200-line console ring (FIFO) and the current 100 ms batch of ids.
 
