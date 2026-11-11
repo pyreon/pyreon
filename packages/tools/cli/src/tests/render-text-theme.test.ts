@@ -86,6 +86,7 @@ const show = (s: string): string => s.split(ESC).join('␛')
 const withWorkspace = (): DoctorReport => ({
   ...fixture(),
   workspace: {
+    repoRoot: '/repo',
     source: 'workspaces',
     globs: ['apps/*', 'packages/*'],
     packageCount: 3,

@@ -16,7 +16,7 @@
 import { execFileSync, spawnSync } from 'node:child_process'
 import { cpSync, existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { rm } from 'node:fs/promises'
-import { join, resolve } from 'node:path'
+import { join, relative, resolve, sep } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { build } from 'vite'
 import { afterAll, beforeEach, describe, expect, it } from 'vitest'
@@ -37,7 +37,16 @@ const FIXTURE = resolve(import.meta.dirname, 'fixture-runtime')
 // root, so a shared root lets one suite's cleanup delete another's entry
 // (UNRESOLVED_ENTRY __pyreon-zero-ssr-entry.js in the full package run).
 const PLAIN_FIXTURE = resolve(import.meta.dirname, '.tmp-fixture-runtime-plain')
-cpSync(resolve(import.meta.dirname, 'fixture-build'), PLAIN_FIXTURE, { recursive: true })
+const SHARED_FIXTURE = resolve(import.meta.dirname, 'fixture-build')
+// Source only: build-post-step builds inside fixture-build/ concurrently, so
+// its dist/ and temp `__pyreon-zero-*` entries can vanish mid-copy.
+cpSync(SHARED_FIXTURE, PLAIN_FIXTURE, {
+  recursive: true,
+  filter: (src) => {
+    const top = relative(SHARED_FIXTURE, src).split(sep)[0] ?? ''
+    return top !== 'dist' && !top.startsWith('__pyreon-zero-')
+  },
+})
 const DIST = join(FIXTURE, 'dist')
 const VERCEL = join(FIXTURE, ...VERCEL_ADAPTER_OUTPUT.outputDir.split('/'))
 
