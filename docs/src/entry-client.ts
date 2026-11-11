@@ -5,6 +5,7 @@ import 'virtual:zero-content/collections'
 import '@pyreon/zero-content/blog.css'
 import './styles/tokens.css'
 import './styles/docs.css'
+import './styles/docs-v3.css'
 import './styles/site-pages.css'
 
 // Register the consumer's example files for `<Example file="./..." />`.
