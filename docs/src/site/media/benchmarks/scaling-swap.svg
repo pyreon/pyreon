@@ -25,7 +25,7 @@
 
 .bc-sc-swap .chip rect{fill:none;stroke-width:1.2}
 .bc-sc-swap .chip text{font-size:11px;letter-spacing:.12em;font-weight:600}
-.bc-sc-swap .chip-win rect{fill:url(#bc-sc-swap-eg);stroke:none} .bc-sc-swap .chip-win text{fill:#0A0A0E}
+.bc-sc-swap .chip-win rect{fill:#FF5E1A;stroke:none} .bc-sc-swap .chip-win text{fill:#0A0A0E}
 .bc-sc-swap .chip-tie rect{stroke:var(--px-link)} .bc-sc-swap .chip-tie text{fill:var(--px-link)}
 .bc-sc-swap .chip-split rect{stroke:var(--px-mist)} .bc-sc-swap .chip-split text{fill:var(--px-mist)}
 .bc-sc-swap .chip-loss rect{stroke:var(--px-err)} .bc-sc-swap .chip-loss text{fill:var(--px-err)}

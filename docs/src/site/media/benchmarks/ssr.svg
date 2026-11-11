@@ -25,7 +25,7 @@
 
 .bc-ssr .chip rect{fill:none;stroke-width:1.2}
 .bc-ssr .chip text{font-size:11px;letter-spacing:.12em;font-weight:600}
-.bc-ssr .chip-win rect{fill:url(#bc-ssr-eg);stroke:none} .bc-ssr .chip-win text{fill:#0A0A0E}
+.bc-ssr .chip-win rect{fill:#FF5E1A;stroke:none} .bc-ssr .chip-win text{fill:#0A0A0E}
 .bc-ssr .chip-tie rect{stroke:var(--px-link)} .bc-ssr .chip-tie text{fill:var(--px-link)}
 .bc-ssr .chip-split rect{stroke:var(--px-mist)} .bc-ssr .chip-split text{fill:var(--px-mist)}
 .bc-ssr .chip-loss rect{stroke:var(--px-err)} .bc-ssr .chip-loss text{fill:var(--px-err)}

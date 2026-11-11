@@ -25,7 +25,7 @@
 
 .bc-why-perf .chip rect{fill:none;stroke-width:1.2}
 .bc-why-perf .chip text{font-size:11px;letter-spacing:.12em;font-weight:600}
-.bc-why-perf .chip-win rect{fill:url(#bc-why-perf-eg);stroke:none} .bc-why-perf .chip-win text{fill:#0A0A0E}
+.bc-why-perf .chip-win rect{fill:#FF5E1A;stroke:none} .bc-why-perf .chip-win text{fill:#0A0A0E}
 .bc-why-perf .chip-tie rect{stroke:var(--px-link)} .bc-why-perf .chip-tie text{fill:var(--px-link)}
 .bc-why-perf .chip-split rect{stroke:var(--px-mist)} .bc-why-perf .chip-split text{fill:var(--px-mist)}
 .bc-why-perf .chip-loss rect{stroke:var(--px-err)} .bc-why-perf .chip-loss text{fill:var(--px-err)}

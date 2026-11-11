@@ -14,7 +14,7 @@
     },
     "/docs/auth": {
       "image": "/media/og/docs/auth.png",
-      "alt": "Auth documentation: OIDC sign-in on web, iOS and Android from one call, with S256 PKCE, state, nonce and the issuer check on by default, plus signed sessions, TOTP and passkeys."
+      "alt": "Auth documentation: OIDC sign-in on the web, and on iOS and Android (experimental), from one call, with S256 PKCE, state, nonce and the issuer check on by default, plus signed sessions, TOTP and passkeys."
     },
     "/docs/benchmarks": {
       "image": "/media/og/docs/benchmarks.png",
@@ -22,11 +22,11 @@
     },
     "/docs/charts": {
       "image": "/media/og/docs/charts.png",
-      "alt": "Charts documentation: Charts written as JSX marks (<Line>, <Bar>, <Area>) on Pyreon's own engine, with an accessible data table built in and the same source on iOS and Android."
+      "alt": "Charts documentation: Charts written as JSX marks (<Line>, <Bar>, <Area>) on Pyreon's own engine, with an accessible data table built in and the same source on iOS and Android (experimental)."
     },
     "/docs/cli": {
       "image": "/media/og/docs/cli.png",
-      "alt": "Tooling documentation: pyreon doctor runs 15 gates and scores your project 0–100 with the fixes inline, next to 133 lint rules, pyreon check, a test kit and devtools for the reactive graph."
+      "alt": "Tooling documentation: pyreon doctor runs up to ten gates over your app and scores it 0–100 with the fixes inline, next to 133 lint rules, pyreon check, a test kit and devtools for the reactive graph."
     },
     "/docs/dnd": {
       "image": "/media/og/docs/dnd.png",
@@ -42,7 +42,7 @@
     },
     "/docs/flow": {
       "image": "/media/og/docs/flow.png",
-      "alt": "Flow documentation: Node editors where each node mounts once and a drag touches one node, with auto-layout from its own engine: no elkjs, no D3."
+      "alt": "Flow documentation: Node editors where each node mounts once and a drag touches one node, with auto-layout from its own engine: no dagre, no elkjs."
     },
     "/docs/form": {
       "image": "/media/og/docs/form.png",
@@ -54,7 +54,7 @@
     },
     "/docs/hooks": {
       "image": "/media/og/docs/hooks.png",
-      "alt": "Hooks documentation: 65 signal-based hooks for the browser and the phone, from useClickOutside and useMediaQuery to useCamera and useBiometrics."
+      "alt": "Hooks documentation: 65 signal-based hooks, 45 of them also on iOS and Android (experimental), from useClickOutside and useMediaQuery to useCamera and useBiometrics."
     },
     "/docs/hotkeys": {
       "image": "/media/og/docs/hotkeys.png",
@@ -70,7 +70,7 @@
     },
     "/docs/kinetic": {
       "image": "/media/og/docs/kinetic.png",
-      "alt": "Motion documentation: Enter, leave, collapse and stagger from one kinetic(tag) factory, 120+ presets, reduced motion detected for you, and SSR output crawlers can read."
+      "alt": "Motion documentation: Enter, leave and height collapse from one kinetic(tag) factory, 122 presets, and SSR output crawlers can read."
     },
     "/docs/lathe": {
       "image": "/media/og/docs/lathe.png",
@@ -102,7 +102,7 @@
     },
     "/docs/primitives": {
       "image": "/media/og/docs/primitives.png",
-      "alt": "Primitives documentation: 22 components, from <Stack> and <Field> to <Select> and <Modal>, that render DOM on the web and real SwiftUI and Jetpack Compose views on phones (native: experimental)."
+      "alt": "Primitives documentation: Components from <Stack> and <Field> to <Toggle> and <Modal> (22 in the next release) that render DOM on the web and real SwiftUI and Jetpack Compose views on phones (native: experimental)."
     },
     "/docs/query": {
       "image": "/media/og/docs/query.png",
@@ -122,7 +122,7 @@
     },
     "/docs/rx": {
       "image": "/media/og/docs/rx.png",
-      "alt": "RX documentation: 42 functions (filter, sortBy, groupBy, pipe, debounce…) that take signals and return signals."
+      "alt": "RX documentation: 43 functions (filter, sortBy, groupBy, pipe, debounce…) that take signals and return signals."
     },
     "/docs/state-tree": {
       "image": "/media/og/docs/state-tree.png",
@@ -162,7 +162,7 @@
     },
     "/docs/zero": {
       "image": "/media/og/docs/zero.png",
-      "alt": "Zero documentation: Every route picks its own rendering: SSG, SSR, ISR or SPA, plus islands, server actions and adapters for Node, Bun, Vercel, Netlify, Cloudflare and static hosts."
+      "alt": "Zero documentation: Every route picks its own rendering: SSG, SSR, ISR or SPA, plus islands, server actions and adapters for Node, Bun, Deno, Vercel, Netlify, Cloudflare and static hosts."
     },
     "/docs/zero-content": {
       "image": "/media/og/docs/zero-content.png",

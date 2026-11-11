@@ -25,7 +25,7 @@
 
 .bc-rb-partial-update .chip rect{fill:none;stroke-width:1.2}
 .bc-rb-partial-update .chip text{font-size:11px;letter-spacing:.12em;font-weight:600}
-.bc-rb-partial-update .chip-win rect{fill:url(#bc-rb-partial-update-eg);stroke:none} .bc-rb-partial-update .chip-win text{fill:#0A0A0E}
+.bc-rb-partial-update .chip-win rect{fill:#FF5E1A;stroke:none} .bc-rb-partial-update .chip-win text{fill:#0A0A0E}
 .bc-rb-partial-update .chip-tie rect{stroke:var(--px-link)} .bc-rb-partial-update .chip-tie text{fill:var(--px-link)}
 .bc-rb-partial-update .chip-split rect{stroke:var(--px-mist)} .bc-rb-partial-update .chip-split text{fill:var(--px-mist)}
 .bc-rb-partial-update .chip-loss rect{stroke:var(--px-err)} .bc-rb-partial-update .chip-loss text{fill:var(--px-err)}

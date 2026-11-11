@@ -322,42 +322,42 @@
      "file": "brand/clear-space-dark-640.webp",
      "width": 640,
      "height": 269,
-     "bytes": 11422,
+     "bytes": 11596,
      "format": "webp"
     },
     {
      "file": "brand/clear-space-dark-640.avif",
      "width": 640,
      "height": 269,
-     "bytes": 9392,
+     "bytes": 9667,
      "format": "avif"
     },
     {
      "file": "brand/clear-space-dark-1280.webp",
      "width": 1280,
      "height": 539,
-     "bytes": 23934,
+     "bytes": 24836,
      "format": "webp"
     },
     {
      "file": "brand/clear-space-dark-1280.avif",
      "width": 1280,
      "height": 539,
-     "bytes": 19790,
+     "bytes": 20371,
      "format": "avif"
     },
     {
      "file": "brand/clear-space-dark.webp",
      "width": 1520,
      "height": 640,
-     "bytes": 27768,
+     "bytes": 28438,
      "format": "webp"
     },
     {
      "file": "brand/clear-space-dark.avif",
      "width": 1520,
      "height": 640,
-     "bytes": 16044,
+     "bytes": 15931,
      "format": "avif"
     }
    ],
@@ -379,7 +379,7 @@
      "file": "brand/clear-space-light-640.webp",
      "width": 640,
      "height": 269,
-     "bytes": 11844,
+     "bytes": 11498,
      "format": "webp"
     },
     {
@@ -393,28 +393,28 @@
      "file": "brand/clear-space-light-1280.webp",
      "width": 1280,
      "height": 539,
-     "bytes": 25274,
+     "bytes": 25050,
      "format": "webp"
     },
     {
      "file": "brand/clear-space-light-1280.avif",
      "width": 1280,
      "height": 539,
-     "bytes": 20560,
+     "bytes": 20574,
      "format": "avif"
     },
     {
      "file": "brand/clear-space-light.webp",
      "width": 1520,
      "height": 640,
-     "bytes": 29258,
+     "bytes": 29214,
      "format": "webp"
     },
     {
      "file": "brand/clear-space-light.avif",
      "width": 1520,
      "height": 640,
-     "bytes": 16588,
+     "bytes": 16330,
      "format": "avif"
     }
    ],
@@ -1058,42 +1058,42 @@
      "file": "brand/swatches-dark-640.webp",
      "width": 640,
      "height": 416,
-     "bytes": 16836,
+     "bytes": 16966,
      "format": "webp"
     },
     {
      "file": "brand/swatches-dark-640.avif",
      "width": 640,
      "height": 416,
-     "bytes": 13524,
+     "bytes": 13785,
      "format": "avif"
     },
     {
      "file": "brand/swatches-dark-1280.webp",
      "width": 1280,
      "height": 832,
-     "bytes": 44944,
+     "bytes": 44582,
      "format": "webp"
     },
     {
      "file": "brand/swatches-dark-1280.avif",
      "width": 1280,
      "height": 832,
-     "bytes": 34653,
+     "bytes": 35411,
      "format": "avif"
     },
     {
      "file": "brand/swatches-dark.webp",
      "width": 1600,
      "height": 1040,
-     "bytes": 58444,
+     "bytes": 60426,
      "format": "webp"
     },
     {
      "file": "brand/swatches-dark.avif",
      "width": 1600,
      "height": 1040,
-     "bytes": 33808,
+     "bytes": 33289,
      "format": "avif"
     }
    ],
@@ -1115,42 +1115,42 @@
      "file": "brand/swatches-light-640.webp",
      "width": 640,
      "height": 416,
-     "bytes": 15944,
+     "bytes": 16040,
      "format": "webp"
     },
     {
      "file": "brand/swatches-light-640.avif",
      "width": 640,
      "height": 416,
-     "bytes": 14186,
+     "bytes": 13971,
      "format": "avif"
     },
     {
      "file": "brand/swatches-light-1280.webp",
      "width": 1280,
      "height": 832,
-     "bytes": 43574,
+     "bytes": 42858,
      "format": "webp"
     },
     {
      "file": "brand/swatches-light-1280.avif",
      "width": 1280,
      "height": 832,
-     "bytes": 34370,
+     "bytes": 35145,
      "format": "avif"
     },
     {
      "file": "brand/swatches-light.webp",
      "width": 1600,
      "height": 1040,
-     "bytes": 57734,
+     "bytes": 58688,
      "format": "webp"
     },
     {
      "file": "brand/swatches-light.avif",
      "width": 1600,
      "height": 1040,
-     "bytes": 34698,
+     "bytes": 34472,
      "format": "avif"
     }
    ],
@@ -1172,42 +1172,42 @@
      "file": "brand/type-specimen-dark-640.webp",
      "width": 640,
      "height": 412,
-     "bytes": 16508,
+     "bytes": 16514,
      "format": "webp"
     },
     {
      "file": "brand/type-specimen-dark-640.avif",
      "width": 640,
      "height": 412,
-     "bytes": 12563,
+     "bytes": 13262,
      "format": "avif"
     },
     {
      "file": "brand/type-specimen-dark-1280.webp",
      "width": 1280,
      "height": 824,
-     "bytes": 40138,
+     "bytes": 40408,
      "format": "webp"
     },
     {
      "file": "brand/type-specimen-dark-1280.avif",
      "width": 1280,
      "height": 824,
-     "bytes": 29552,
+     "bytes": 30551,
      "format": "avif"
     },
     {
      "file": "brand/type-specimen-dark.webp",
      "width": 1600,
      "height": 1030,
-     "bytes": 49806,
+     "bytes": 51984,
      "format": "webp"
     },
     {
      "file": "brand/type-specimen-dark.avif",
      "width": 1600,
      "height": 1030,
-     "bytes": 29020,
+     "bytes": 29273,
      "format": "avif"
     }
    ],
@@ -1229,42 +1229,42 @@
      "file": "brand/type-specimen-light-640.webp",
      "width": 640,
      "height": 412,
-     "bytes": 16776,
+     "bytes": 16608,
      "format": "webp"
     },
     {
      "file": "brand/type-specimen-light-640.avif",
      "width": 640,
      "height": 412,
-     "bytes": 12940,
+     "bytes": 13603,
      "format": "avif"
     },
     {
      "file": "brand/type-specimen-light-1280.webp",
      "width": 1280,
      "height": 824,
-     "bytes": 40808,
+     "bytes": 40564,
      "format": "webp"
     },
     {
      "file": "brand/type-specimen-light-1280.avif",
      "width": 1280,
      "height": 824,
-     "bytes": 30041,
+     "bytes": 30975,
      "format": "avif"
     },
     {
      "file": "brand/type-specimen-light.webp",
      "width": 1600,
      "height": 1030,
-     "bytes": 51206,
+     "bytes": 53036,
      "format": "webp"
     },
     {
      "file": "brand/type-specimen-light.avif",
      "width": 1600,
      "height": 1030,
-     "bytes": 30349,
+     "bytes": 30617,
      "format": "avif"
     }
    ],
@@ -1290,42 +1290,42 @@
       "file": "compare/next.poster-dark-640.webp",
       "width": 640,
       "height": 293,
-      "bytes": 17318,
+      "bytes": 17208,
       "format": "webp"
      },
      {
       "file": "compare/next.poster-dark-640.avif",
       "width": 640,
       "height": 293,
-      "bytes": 13292,
+      "bytes": 12854,
       "format": "avif"
      },
      {
       "file": "compare/next.poster-dark-1280.webp",
       "width": 1280,
       "height": 587,
-      "bytes": 39770,
+      "bytes": 39316,
       "format": "webp"
      },
      {
       "file": "compare/next.poster-dark-1280.avif",
       "width": 1280,
       "height": 587,
-      "bytes": 30118,
+      "bytes": 29886,
       "format": "avif"
      },
      {
       "file": "compare/next.poster-dark.webp",
       "width": 1920,
       "height": 880,
-      "bytes": 63292,
+      "bytes": 62882,
       "format": "webp"
      },
      {
       "file": "compare/next.poster-dark.avif",
       "width": 1920,
       "height": 880,
-      "bytes": 27290,
+      "bytes": 26403,
       "format": "avif"
      }
     ],
@@ -1334,42 +1334,42 @@
       "file": "compare/next.poster-light-640.webp",
       "width": 640,
       "height": 293,
-      "bytes": 16466,
+      "bytes": 16356,
       "format": "webp"
      },
      {
       "file": "compare/next.poster-light-640.avif",
       "width": 640,
       "height": 293,
-      "bytes": 12430,
+      "bytes": 12289,
       "format": "avif"
      },
      {
       "file": "compare/next.poster-light-1280.webp",
       "width": 1280,
       "height": 587,
-      "bytes": 39012,
+      "bytes": 38662,
       "format": "webp"
      },
      {
       "file": "compare/next.poster-light-1280.avif",
       "width": 1280,
       "height": 587,
-      "bytes": 29418,
+      "bytes": 28811,
       "format": "avif"
      },
      {
       "file": "compare/next.poster-light.webp",
       "width": 1920,
       "height": 880,
-      "bytes": 61222,
+      "bytes": 61286,
       "format": "webp"
      },
      {
       "file": "compare/next.poster-light.avif",
       "width": 1920,
       "height": 880,
-      "bytes": 27896,
+      "bytes": 26847,
       "format": "avif"
      }
     ]
@@ -1396,42 +1396,42 @@
       "file": "compare/react-native.poster-dark-640.webp",
       "width": 640,
       "height": 320,
-      "bytes": 19874,
+      "bytes": 19734,
       "format": "webp"
      },
      {
       "file": "compare/react-native.poster-dark-640.avif",
       "width": 640,
       "height": 320,
-      "bytes": 13883,
+      "bytes": 14072,
       "format": "avif"
      },
      {
       "file": "compare/react-native.poster-dark-1280.webp",
       "width": 1280,
       "height": 640,
-      "bytes": 42910,
+      "bytes": 43038,
       "format": "webp"
      },
      {
       "file": "compare/react-native.poster-dark-1280.avif",
       "width": 1280,
       "height": 640,
-      "bytes": 33186,
+      "bytes": 32682,
       "format": "avif"
      },
      {
       "file": "compare/react-native.poster-dark.webp",
       "width": 1920,
       "height": 960,
-      "bytes": 69638,
+      "bytes": 69770,
       "format": "webp"
      },
      {
       "file": "compare/react-native.poster-dark.avif",
       "width": 1920,
       "height": 960,
-      "bytes": 37861,
+      "bytes": 37495,
       "format": "avif"
      }
     ],
@@ -1440,42 +1440,42 @@
       "file": "compare/react-native.poster-light-640.webp",
       "width": 640,
       "height": 320,
-      "bytes": 19334,
+      "bytes": 19330,
       "format": "webp"
      },
      {
       "file": "compare/react-native.poster-light-640.avif",
       "width": 640,
       "height": 320,
-      "bytes": 12970,
+      "bytes": 12869,
       "format": "avif"
      },
      {
       "file": "compare/react-native.poster-light-1280.webp",
       "width": 1280,
       "height": 640,
-      "bytes": 42216,
+      "bytes": 42680,
       "format": "webp"
      },
      {
       "file": "compare/react-native.poster-light-1280.avif",
       "width": 1280,
       "height": 640,
-      "bytes": 32422,
+      "bytes": 32069,
       "format": "avif"
      },
      {
       "file": "compare/react-native.poster-light.webp",
       "width": 1920,
       "height": 960,
-      "bytes": 71462,
+      "bytes": 69812,
       "format": "webp"
      },
      {
       "file": "compare/react-native.poster-light.avif",
       "width": 1920,
       "height": 960,
-      "bytes": 38446,
+      "bytes": 37949,
       "format": "avif"
      }
     ]
@@ -1495,7 +1495,7 @@
     "/compare/react"
    ],
    "slot": "measured-chart",
-   "alt": "Pyreon vs React, the measured rows from the page's table: Bundle, same keyed-table app (gzip): Pyreon 17.2 KB, React 69.6 KB (Pyreon ahead); Create 10,000 rows: Pyreon 72.6 ms, React 192.0 ms (2.6× slower) (Pyreon ahead); Swap two rows in 1,000: Pyreon 805 µs, React 6.06 ms (Pyreon ahead); Remove a row: Pyreon 5.70 ms, React 5.78 ms; confidence intervals overlap in both runs (tie); Mount a deep tree (2,047 components): Pyreon 3.59 / 3.58 ms, React 3.71 / 3.66 ms; a tie in both runs (tie); TodoMVC shape: toggle 1,000 / clear 1,000: Pyreon 4.60 ms / 320 µs, React 11.41 ms / 1.00 ms (2.48× / 3.14×; add-100 varies 1.14–1.99× day to day) (Pyreon ahead); Server rendering, 10 / 100 / 1,000 rows: Pyreon 1.80 / 11.64 / 109.9 µs, React 10.30 / 76.52 / 714.4 µs (5.7–6.6× slower) (Pyreon ahead); Hydration: 1,000-row table / 320-component page: Pyreon 6.07 ms / 4.02 ms, React 6.52 ms / 4.15 ms; both adopt every server node (Pyreon ahead); Retained heap after the row suite: Pyreon 3.08 MB, React 3.50 MB (one value per run, same in both runs) (Pyreon ahead).",
+   "alt": "Pyreon vs React, the measured rows from the page's table: Bundle, same keyed-table app (gzip): Pyreon 17.2 KB, React 69.6 KB (Pyreon ahead); Create 10,000 rows: Pyreon 72.6 ms, React 192.0 ms (2.6× slower) (Pyreon ahead); Swap two rows in 1,000: Pyreon 805 µs, React 6.06 ms (Pyreon ahead); Remove a row: Pyreon 5.70 ms, React 5.78 ms; confidence intervals overlap in both runs (tie); Mount a deep tree (2,047 components): Pyreon 3.59 / 3.58 ms, React 3.71 / 3.66 ms; a tie in both runs (tie); TodoMVC shape: toggle 1,000 / clear 1,000: Pyreon 4.60 ms / 320 µs, React 11.41 ms / 1.00 ms (2.48× / 3.14×; add-100 varies 1.14–1.99× day to day; one run) (Pyreon ahead); Server rendering, 10 / 100 / 1,000 rows: Pyreon 1.80 / 11.64 / 109.9 µs, React 10.30 / 76.52 / 714.4 µs (5.7–6.6× slower, one run) (Pyreon ahead); Hydration: 1,000-row table / 320-component page: Pyreon 6.07 ms / 4.02 ms, React 6.52 ms / 4.15 ms; both adopt every server node (page: one run) (Pyreon ahead); Retained heap after the row suite: Pyreon 3.08 MB, React 3.50 MB (one value per run, same in both runs) (Pyreon ahead).",
    "theme": "both",
    "poster": {
     "dark": "compare/react.poster-dark.png",
@@ -1511,7 +1511,7 @@
     "/compare/solid"
    ],
    "slot": "measured-chart",
-   "alt": "Pyreon vs Solid, the measured rows from the page's table: Clear 1,000 rows: Pyreon 130 µs, Solid 460 µs (Pyreon ahead); Create 10,000 rows: Pyreon 72.64 ms, Solid 78.75 ms (Pyreon ahead); 12-field form, four timed operations: Pyreon Fastest on all four (keystroke 60 µs), Solid Solid modular-forms: keystroke 100 µs (Pyreon ahead); Effect list: update 500: Pyreon 835 / 797 µs, Solid 870 / 880 µs; a tie in run 1, Pyreon 1.10× in run 2, so not claimed (tie); Mount a deep tree (2,047 components): Pyreon 3.59 / 3.58 ms, Solid 3.06 / 3.10 ms: Solid 1.15–1.18× faster in both runs (Solid ahead); Bundle, same keyed-table app (gzip): Pyreon 17.2 KB, Solid 7.5 KB: the smallest framework in the record (Solid ahead); Effect list: dispose 500: Pyreon 50 / 45 µs, Solid 45 / 40 µs: Solid 1.11–1.13× faster (one 5 µs clock quantum) (Solid ahead); Form memory: Pyreon 2.42 MB retained, Solid 2.33 MB retained (Solid modular-forms is lighter) (Solid ahead).",
+   "alt": "Pyreon vs Solid, the measured rows from the page's table: Clear 1,000 rows: Pyreon 130 µs, Solid 460 µs (Pyreon ahead); Create 10,000 rows: Pyreon 72.64 ms, Solid 78.75 ms (Pyreon ahead); 12-field form, four timed operations: Pyreon Fastest on all four (keystroke 60 µs), Solid Solid modular-forms: keystroke 100 µs (one run) (Pyreon ahead); Effect list: update 500: Pyreon 835 / 797 µs, Solid 870 / 880 µs; a tie in run 1, Pyreon 1.10× in run 2, so not claimed (tie); Mount a deep tree (2,047 components): Pyreon 3.59 / 3.58 ms, Solid 3.06 / 3.10 ms: Solid 1.15–1.18× faster in both runs (Solid ahead); Bundle, same keyed-table app (gzip): Pyreon 17.2 KB, Solid 7.5 KB: the smallest framework in the record (Solid ahead); Effect list: dispose 500: Pyreon 50 / 45 µs, Solid 45 / 40 µs: Solid 1.11–1.13× faster (one 5 µs clock quantum) (Solid ahead); Form memory: Pyreon 2.42 MB retained, Solid 2.33 MB retained (Solid modular-forms is lighter) (Solid ahead).",
    "theme": "both",
    "poster": {
     "dark": "compare/solid.poster-dark.png",
@@ -1527,7 +1527,7 @@
     "/compare/svelte"
    ],
    "slot": "measured-chart",
-   "alt": "Pyreon vs Svelte, the measured rows from the page's table: Mount a deep tree (2,047 components): Pyreon 3.59 ms, Svelte 10.80 ms (Pyreon ahead); Compiled SSR, 10 / 100 / 1,000 rows: Pyreon 1.80 / 11.64 / 109.9 µs, Svelte 2.18 / 18.08 / 160.5 µs (Pyreon ahead); Create 10,000 rows: Pyreon 72.64 ms, Svelte 87.51 ms (Pyreon ahead); Swap two rows in 1,000: Pyreon 805 µs, Svelte 1.50 ms (Pyreon ahead); Memo wall: passthrough: Pyreon 450 / 451 µs, Svelte 487 / 487 µs (Svelte was the fastest rival); Pyreon 1.08× in both runs (Pyreon ahead); 12-field form, keystroke (blur mode): Pyreon 60 µs, Svelte 700 µs (Felte) (Pyreon ahead); dbmon tick (every value changes): Pyreon 1.71 / 1.70 ms, Svelte 1.75 / 1.71 ms: a three-way tie with Octane (tie); Bundle, same keyed-table app (gzip): Pyreon 17.2 KB, Svelte 16.1 KB: Svelte is 1.1 KB smaller (Svelte ahead).",
+   "alt": "Pyreon vs Svelte, the measured rows from the page's table: Mount a deep tree (2,047 components): Pyreon 3.59 ms, Svelte 10.80 ms (Pyreon ahead); Compiled SSR, 10 / 100 / 1,000 rows: Pyreon 1.80 / 11.64 / 109.9 µs, Svelte 2.18 / 18.08 / 160.5 µs (one run) (Pyreon ahead); Create 10,000 rows: Pyreon 72.64 ms, Svelte 87.51 ms (Pyreon ahead); Swap two rows in 1,000: Pyreon 805 µs, Svelte 1.50 ms (Pyreon ahead); Memo wall: passthrough: Pyreon 450 / 451 µs, Svelte 487 / 487 µs (Svelte was the fastest rival); Pyreon 1.08× in both runs (Pyreon ahead); 12-field form, keystroke (blur mode): Pyreon 60 µs, Svelte 700 µs (Felte, one run) (Pyreon ahead); dbmon tick (every value changes): Pyreon 1.71 / 1.70 ms, Svelte 1.75 / 1.71 ms: a three-way tie with Octane (tie); Bundle, same keyed-table app (gzip): Pyreon 17.2 KB, Svelte 16.1 KB: Svelte is 1.1 KB smaller (Svelte ahead).",
    "theme": "both",
    "poster": {
     "dark": "compare/svelte.poster-dark.png",
@@ -1543,7 +1543,7 @@
     "/compare/vue"
    ],
    "slot": "measured-chart",
-   "alt": "Pyreon vs Vue, the measured rows from the page's table: Bundle, same keyed-table app (gzip): Pyreon 17.2 KB, Vue 27.4 KB (Pyreon ahead); Compiled SSR, 10 / 100 / 1,000 rows: Pyreon 1.80 / 11.64 / 109.9 µs, Vue 3.03 / 15.66 / 124.9 µs (Pyreon ahead); Memo wall: blocked update: Pyreon 11 / 11 µs, Vue 16 / 16 µs (Vue was the fastest rival) (Pyreon ahead); Hydration, 320-component page: Pyreon 4.02 ms, Vue 4.47 ms; both adopt all 2,206 server nodes (Pyreon ahead); Row board vs Vue 3: partial update / clear rows: Pyreon 705 µs / 130 µs, Vue 1.04 ms / 255 µs (Pyreon ahead); 12-field form, keystroke with validation: Pyreon 460 µs, Vue 2,260 µs (vee-validate) (Pyreon ahead); Hydration, 1,000-row keyed table: Pyreon 6.07 / 6.04 ms total; framework walk tied, Vue 6.02 / 5.99 ms: Vue has the faster median in both runs, 1.01× in run 2 (Vue ahead).",
+   "alt": "Pyreon vs Vue, the measured rows from the page's table: Bundle, same keyed-table app (gzip): Pyreon 17.2 KB, Vue 27.4 KB (Pyreon ahead); Compiled SSR, 10 / 100 / 1,000 rows: Pyreon 1.80 / 11.64 / 109.9 µs, Vue 3.03 / 15.66 / 124.9 µs (one run) (Pyreon ahead); Memo wall: blocked update: Pyreon 11 / 11 µs, Vue 16 / 16 µs (Vue was the fastest rival) (Pyreon ahead); Hydration, 320-component page: Pyreon 4.02 ms, Vue 4.47 ms; both adopt all 2,206 server nodes (one run) (Pyreon ahead); Row board vs Vue 3: partial update / clear rows: Pyreon 705 µs / 130 µs, Vue 1.04 ms / 255 µs (Pyreon ahead); 12-field form, keystroke with validation: Pyreon 460 µs, Vue 2,260 µs (vee-validate, one run) (Pyreon ahead); Hydration, 1,000-row keyed table: Pyreon 6.07 / 6.04 ms total; framework walk tied, Vue 6.02 / 5.99 ms: Vue has the faster median in both runs, 1.01× in run 2 (Vue ahead).",
    "theme": "both",
    "poster": {
     "dark": "compare/vue.poster-dark.png",
@@ -1991,42 +1991,42 @@
       "file": "home/hero-trace.poster-dark-640.webp",
       "width": 640,
       "height": 280,
-      "bytes": 7504,
+      "bytes": 7400,
       "format": "webp"
      },
      {
       "file": "home/hero-trace.poster-dark-640.avif",
       "width": 640,
       "height": 280,
-      "bytes": 6215,
+      "bytes": 6143,
       "format": "avif"
      },
      {
       "file": "home/hero-trace.poster-dark-960.webp",
       "width": 960,
       "height": 420,
-      "bytes": 12422,
+      "bytes": 12372,
       "format": "webp"
      },
      {
       "file": "home/hero-trace.poster-dark-960.avif",
       "width": 960,
       "height": 420,
-      "bytes": 9017,
+      "bytes": 9077,
       "format": "avif"
      },
      {
       "file": "home/hero-trace.poster-dark.webp",
       "width": 1920,
       "height": 840,
-      "bytes": 27488,
+      "bytes": 27362,
       "format": "webp"
      },
      {
       "file": "home/hero-trace.poster-dark.avif",
       "width": 1920,
       "height": 840,
-      "bytes": 15560,
+      "bytes": 15461,
       "format": "avif"
      }
     ],
@@ -2035,42 +2035,42 @@
       "file": "home/hero-trace.poster-light-640.webp",
       "width": 640,
       "height": 280,
-      "bytes": 7740,
+      "bytes": 7654,
       "format": "webp"
      },
      {
       "file": "home/hero-trace.poster-light-640.avif",
       "width": 640,
       "height": 280,
-      "bytes": 6260,
+      "bytes": 6166,
       "format": "avif"
      },
      {
       "file": "home/hero-trace.poster-light-960.webp",
       "width": 960,
       "height": 420,
-      "bytes": 13268,
+      "bytes": 13146,
       "format": "webp"
      },
      {
       "file": "home/hero-trace.poster-light-960.avif",
       "width": 960,
       "height": 420,
-      "bytes": 9916,
+      "bytes": 9873,
       "format": "avif"
      },
      {
       "file": "home/hero-trace.poster-light.webp",
       "width": 1920,
       "height": 840,
-      "bytes": 28798,
+      "bytes": 28630,
       "format": "webp"
      },
      {
       "file": "home/hero-trace.poster-light.avif",
       "width": 1920,
       "height": 840,
-      "bytes": 15547,
+      "bytes": 15462,
       "format": "avif"
      }
     ]
@@ -2122,7 +2122,7 @@
     "/"
    ],
    "slot": "benchmark-strip",
-   "alt": "6/6 operations won against React Flow 12. pan + zoom ×60: 210×; drag a node ×60: 7.25×; select node: 5.39×; unmount: 3.87×; add 50 nodes: 1.19×; mount 500: 1.17×. one run, synthetic, author-run, Apple M3 Max, record of 2026-11-05.",
+   "alt": "6/6 operations won against React Flow 12. drag one node ×60: 7.25×; select node: 5.39×; unmount: 3.87×; add 50 nodes: 1.19×; mount: 1.17×; pan + zoom ×60: 210×. one run, synthetic, author-run, Apple M3 Max, record of 2026-11-05.",
    "theme": "both",
    "poster": {
     "dark": "home/proof-flow.poster-dark.png",
@@ -2232,42 +2232,42 @@
       "file": "home/runs-once-tree.poster-dark-640.webp",
       "width": 640,
       "height": 313,
-      "bytes": 10936,
+      "bytes": 10994,
       "format": "webp"
      },
      {
       "file": "home/runs-once-tree.poster-dark-640.avif",
       "width": 640,
       "height": 313,
-      "bytes": 9318,
+      "bytes": 9240,
       "format": "avif"
      },
      {
       "file": "home/runs-once-tree.poster-dark-960.webp",
       "width": 960,
       "height": 470,
-      "bytes": 17778,
+      "bytes": 17730,
       "format": "webp"
      },
      {
       "file": "home/runs-once-tree.poster-dark-960.avif",
       "width": 960,
       "height": 470,
-      "bytes": 13654,
+      "bytes": 13406,
       "format": "avif"
      },
      {
       "file": "home/runs-once-tree.poster-dark.webp",
       "width": 1920,
       "height": 940,
-      "bytes": 38786,
+      "bytes": 38498,
       "format": "webp"
      },
      {
       "file": "home/runs-once-tree.poster-dark.avif",
       "width": 1920,
       "height": 940,
-      "bytes": 23291,
+      "bytes": 22198,
       "format": "avif"
      }
     ],
@@ -2276,42 +2276,42 @@
       "file": "home/runs-once-tree.poster-light-640.webp",
       "width": 640,
       "height": 313,
-      "bytes": 11046,
+      "bytes": 11006,
       "format": "webp"
      },
      {
       "file": "home/runs-once-tree.poster-light-640.avif",
       "width": 640,
       "height": 313,
-      "bytes": 8939,
+      "bytes": 8905,
       "format": "avif"
      },
      {
       "file": "home/runs-once-tree.poster-light-960.webp",
       "width": 960,
       "height": 470,
-      "bytes": 18004,
+      "bytes": 17984,
       "format": "webp"
      },
      {
       "file": "home/runs-once-tree.poster-light-960.avif",
       "width": 960,
       "height": 470,
-      "bytes": 12941,
+      "bytes": 12884,
       "format": "avif"
      },
      {
       "file": "home/runs-once-tree.poster-light.webp",
       "width": 1920,
       "height": 940,
-      "bytes": 39150,
+      "bytes": 37780,
       "format": "webp"
      },
      {
       "file": "home/runs-once-tree.poster-light.avif",
       "width": 1920,
       "height": 940,
-      "bytes": 23116,
+      "bytes": 22049,
       "format": "avif"
      }
     ]
@@ -2391,28 +2391,28 @@
       "file": "illustrations/404.poster-dark-640.webp",
       "width": 640,
       "height": 411,
-      "bytes": 4848,
+      "bytes": 4844,
       "format": "webp"
      },
      {
       "file": "illustrations/404.poster-dark-640.avif",
       "width": 640,
       "height": 411,
-      "bytes": 4441,
+      "bytes": 4410,
       "format": "avif"
      },
      {
       "file": "illustrations/404.poster-dark.webp",
       "width": 1120,
       "height": 720,
-      "bytes": 9252,
+      "bytes": 9178,
       "format": "webp"
      },
      {
       "file": "illustrations/404.poster-dark.avif",
       "width": 1120,
       "height": 720,
-      "bytes": 6939,
+      "bytes": 6967,
       "format": "avif"
      }
     ],
@@ -2421,28 +2421,28 @@
       "file": "illustrations/404.poster-light-640.webp",
       "width": 640,
       "height": 411,
-      "bytes": 5182,
+      "bytes": 5074,
       "format": "webp"
      },
      {
       "file": "illustrations/404.poster-light-640.avif",
       "width": 640,
       "height": 411,
-      "bytes": 4660,
+      "bytes": 4580,
       "format": "avif"
      },
      {
       "file": "illustrations/404.poster-light.webp",
       "width": 1120,
       "height": 720,
-      "bytes": 9706,
+      "bytes": 9630,
       "format": "webp"
      },
      {
       "file": "illustrations/404.poster-light.avif",
       "width": 1120,
       "height": 720,
-      "bytes": 7132,
+      "bytes": 7092,
       "format": "avif"
      }
     ]
@@ -2479,28 +2479,28 @@
       "file": "illustrations/blocked.poster-dark-640.webp",
       "width": 640,
       "height": 411,
-      "bytes": 6224,
+      "bytes": 6256,
       "format": "webp"
      },
      {
       "file": "illustrations/blocked.poster-dark-640.avif",
       "width": 640,
       "height": 411,
-      "bytes": 5659,
+      "bytes": 5729,
       "format": "avif"
      },
      {
       "file": "illustrations/blocked.poster-dark.webp",
       "width": 1120,
       "height": 720,
-      "bytes": 11340,
+      "bytes": 11326,
       "format": "webp"
      },
      {
       "file": "illustrations/blocked.poster-dark.avif",
       "width": 1120,
       "height": 720,
-      "bytes": 6443,
+      "bytes": 6357,
       "format": "avif"
      }
     ],
@@ -2509,28 +2509,28 @@
       "file": "illustrations/blocked.poster-light-640.webp",
       "width": 640,
       "height": 411,
-      "bytes": 6610,
+      "bytes": 6526,
       "format": "webp"
      },
      {
       "file": "illustrations/blocked.poster-light-640.avif",
       "width": 640,
       "height": 411,
-      "bytes": 5888,
+      "bytes": 5821,
       "format": "avif"
      },
      {
       "file": "illustrations/blocked.poster-light.webp",
       "width": 1120,
       "height": 720,
-      "bytes": 12012,
+      "bytes": 11784,
       "format": "webp"
      },
      {
       "file": "illustrations/blocked.poster-light.avif",
       "width": 1120,
       "height": 720,
-      "bytes": 6652,
+      "bytes": 6487,
       "format": "avif"
      }
     ]
@@ -2562,28 +2562,28 @@
       "file": "illustrations/clean.poster-dark-640.webp",
       "width": 640,
       "height": 411,
-      "bytes": 7530,
+      "bytes": 7526,
       "format": "webp"
      },
      {
       "file": "illustrations/clean.poster-dark-640.avif",
       "width": 640,
       "height": 411,
-      "bytes": 5944,
+      "bytes": 5903,
       "format": "avif"
      },
      {
       "file": "illustrations/clean.poster-dark.webp",
       "width": 1120,
       "height": 720,
-      "bytes": 14716,
+      "bytes": 14408,
       "format": "webp"
      },
      {
       "file": "illustrations/clean.poster-dark.avif",
       "width": 1120,
       "height": 720,
-      "bytes": 8676,
+      "bytes": 8547,
       "format": "avif"
      }
     ],
@@ -2592,28 +2592,28 @@
       "file": "illustrations/clean.poster-light-640.webp",
       "width": 640,
       "height": 411,
-      "bytes": 7682,
+      "bytes": 7690,
       "format": "webp"
      },
      {
       "file": "illustrations/clean.poster-light-640.avif",
       "width": 640,
       "height": 411,
-      "bytes": 5996,
+      "bytes": 5975,
       "format": "avif"
      },
      {
       "file": "illustrations/clean.poster-light.webp",
       "width": 1120,
       "height": 720,
-      "bytes": 14814,
+      "bytes": 14658,
       "format": "webp"
      },
      {
       "file": "illustrations/clean.poster-light.avif",
       "width": 1120,
       "height": 720,
-      "bytes": 8618,
+      "bytes": 8522,
       "format": "avif"
      }
     ]
@@ -2645,28 +2645,28 @@
       "file": "illustrations/cycle.poster-dark-640.webp",
       "width": 640,
       "height": 411,
-      "bytes": 6714,
+      "bytes": 6638,
       "format": "webp"
      },
      {
       "file": "illustrations/cycle.poster-dark-640.avif",
       "width": 640,
       "height": 411,
-      "bytes": 5986,
+      "bytes": 5982,
       "format": "avif"
      },
      {
       "file": "illustrations/cycle.poster-dark.webp",
       "width": 1120,
       "height": 720,
-      "bytes": 12432,
+      "bytes": 12336,
       "format": "webp"
      },
      {
       "file": "illustrations/cycle.poster-dark.avif",
       "width": 1120,
       "height": 720,
-      "bytes": 6775,
+      "bytes": 6781,
       "format": "avif"
      }
     ],
@@ -2675,28 +2675,28 @@
       "file": "illustrations/cycle.poster-light-640.webp",
       "width": 640,
       "height": 411,
-      "bytes": 7002,
+      "bytes": 6962,
       "format": "webp"
      },
      {
       "file": "illustrations/cycle.poster-light-640.avif",
       "width": 640,
       "height": 411,
-      "bytes": 6050,
+      "bytes": 6020,
       "format": "avif"
      },
      {
       "file": "illustrations/cycle.poster-light.webp",
       "width": 1120,
       "height": 720,
-      "bytes": 12786,
+      "bytes": 12706,
       "format": "webp"
      },
      {
       "file": "illustrations/cycle.poster-light.avif",
       "width": 1120,
       "height": 720,
-      "bytes": 7082,
+      "bytes": 7005,
       "format": "avif"
      }
     ]
@@ -2728,28 +2728,28 @@
       "file": "illustrations/empty.poster-dark-640.webp",
       "width": 640,
       "height": 411,
-      "bytes": 4004,
+      "bytes": 4096,
       "format": "webp"
      },
      {
       "file": "illustrations/empty.poster-dark-640.avif",
       "width": 640,
       "height": 411,
-      "bytes": 4197,
+      "bytes": 4340,
       "format": "avif"
      },
      {
       "file": "illustrations/empty.poster-dark.webp",
       "width": 1120,
       "height": 720,
-      "bytes": 6976,
+      "bytes": 7312,
       "format": "webp"
      },
      {
       "file": "illustrations/empty.poster-dark.avif",
       "width": 1120,
       "height": 720,
-      "bytes": 6529,
+      "bytes": 6783,
       "format": "avif"
      }
     ],
@@ -2758,28 +2758,28 @@
       "file": "illustrations/empty.poster-light-640.webp",
       "width": 640,
       "height": 411,
-      "bytes": 4488,
+      "bytes": 4446,
       "format": "webp"
      },
      {
       "file": "illustrations/empty.poster-light-640.avif",
       "width": 640,
       "height": 411,
-      "bytes": 4514,
+      "bytes": 4467,
       "format": "avif"
      },
      {
       "file": "illustrations/empty.poster-light.webp",
       "width": 1120,
       "height": 720,
-      "bytes": 7886,
+      "bytes": 8000,
       "format": "webp"
      },
      {
       "file": "illustrations/empty.poster-light.avif",
       "width": 1120,
       "height": 720,
-      "bytes": 6874,
+      "bytes": 6917,
       "format": "avif"
      }
     ]
@@ -2811,28 +2811,28 @@
       "file": "illustrations/loading.poster-dark-640.webp",
       "width": 640,
       "height": 411,
-      "bytes": 6954,
+      "bytes": 7062,
       "format": "webp"
      },
      {
       "file": "illustrations/loading.poster-dark-640.avif",
       "width": 640,
       "height": 411,
-      "bytes": 6408,
+      "bytes": 6505,
       "format": "avif"
      },
      {
       "file": "illustrations/loading.poster-dark.webp",
       "width": 1120,
       "height": 720,
-      "bytes": 12714,
+      "bytes": 12818,
       "format": "webp"
      },
      {
       "file": "illustrations/loading.poster-dark.avif",
       "width": 1120,
       "height": 720,
-      "bytes": 7503,
+      "bytes": 7511,
       "format": "avif"
      }
     ],
@@ -2841,28 +2841,28 @@
       "file": "illustrations/loading.poster-light-640.webp",
       "width": 640,
       "height": 411,
-      "bytes": 7540,
+      "bytes": 7538,
       "format": "webp"
      },
      {
       "file": "illustrations/loading.poster-light-640.avif",
       "width": 640,
       "height": 411,
-      "bytes": 6719,
+      "bytes": 6650,
       "format": "avif"
      },
      {
       "file": "illustrations/loading.poster-light.webp",
       "width": 1120,
       "height": 720,
-      "bytes": 13690,
+      "bytes": 13626,
       "format": "webp"
      },
      {
       "file": "illustrations/loading.poster-light.avif",
       "width": 1120,
       "height": 720,
-      "bytes": 7777,
+      "bytes": 7657,
       "format": "avif"
      }
     ]
@@ -2900,42 +2900,42 @@
       "file": "migrate/landing-steps.poster-dark-640.webp",
       "width": 640,
       "height": 267,
-      "bytes": 12898,
+      "bytes": 12754,
       "format": "webp"
      },
      {
       "file": "migrate/landing-steps.poster-dark-640.avif",
       "width": 640,
       "height": 267,
-      "bytes": 10729,
+      "bytes": 10590,
       "format": "avif"
      },
      {
       "file": "migrate/landing-steps.poster-dark-960.webp",
       "width": 960,
       "height": 400,
-      "bytes": 21542,
+      "bytes": 21644,
       "format": "webp"
      },
      {
       "file": "migrate/landing-steps.poster-dark-960.avif",
       "width": 960,
       "height": 400,
-      "bytes": 17453,
+      "bytes": 17194,
       "format": "avif"
      },
      {
       "file": "migrate/landing-steps.poster-dark.webp",
       "width": 1920,
       "height": 800,
-      "bytes": 49050,
+      "bytes": 48766,
       "format": "webp"
      },
      {
       "file": "migrate/landing-steps.poster-dark.avif",
       "width": 1920,
       "height": 800,
-      "bytes": 29838,
+      "bytes": 29256,
       "format": "avif"
      }
     ],
@@ -2944,42 +2944,42 @@
       "file": "migrate/landing-steps.poster-light-640.webp",
       "width": 640,
       "height": 267,
-      "bytes": 13002,
+      "bytes": 12836,
       "format": "webp"
      },
      {
       "file": "migrate/landing-steps.poster-light-640.avif",
       "width": 640,
       "height": 267,
-      "bytes": 10321,
+      "bytes": 10102,
       "format": "avif"
      },
      {
       "file": "migrate/landing-steps.poster-light-960.webp",
       "width": 960,
       "height": 400,
-      "bytes": 22346,
+      "bytes": 22228,
       "format": "webp"
      },
      {
       "file": "migrate/landing-steps.poster-light-960.avif",
       "width": 960,
       "height": 400,
-      "bytes": 17214,
+      "bytes": 16972,
       "format": "avif"
      },
      {
       "file": "migrate/landing-steps.poster-light.webp",
       "width": 1920,
       "height": 800,
-      "bytes": 51552,
+      "bytes": 51344,
       "format": "webp"
      },
      {
       "file": "migrate/landing-steps.poster-light.avif",
       "width": 1920,
       "height": 800,
-      "bytes": 31008,
+      "bytes": 30462,
       "format": "avif"
      }
     ]
@@ -3011,42 +3011,42 @@
       "file": "migrate/preact.poster-dark-640.webp",
       "width": 640,
       "height": 473,
-      "bytes": 20188,
+      "bytes": 19936,
       "format": "webp"
      },
      {
       "file": "migrate/preact.poster-dark-640.avif",
       "width": 640,
       "height": 473,
-      "bytes": 14497,
+      "bytes": 14621,
       "format": "avif"
      },
      {
       "file": "migrate/preact.poster-dark-960.webp",
       "width": 960,
       "height": 710,
-      "bytes": 34920,
+      "bytes": 34634,
       "format": "webp"
      },
      {
       "file": "migrate/preact.poster-dark-960.avif",
       "width": 960,
       "height": 710,
-      "bytes": 20665,
+      "bytes": 20280,
       "format": "avif"
      },
      {
       "file": "migrate/preact.poster-dark.webp",
       "width": 1920,
       "height": 1420,
-      "bytes": 81992,
+      "bytes": 81358,
       "format": "webp"
      },
      {
       "file": "migrate/preact.poster-dark.avif",
       "width": 1920,
       "height": 1420,
-      "bytes": 37868,
+      "bytes": 37239,
       "format": "avif"
      }
     ],
@@ -3055,42 +3055,42 @@
       "file": "migrate/preact.poster-light-640.webp",
       "width": 640,
       "height": 473,
-      "bytes": 19420,
+      "bytes": 19380,
       "format": "webp"
      },
      {
       "file": "migrate/preact.poster-light-640.avif",
       "width": 640,
       "height": 473,
-      "bytes": 14632,
+      "bytes": 14528,
       "format": "avif"
      },
      {
       "file": "migrate/preact.poster-light-960.webp",
       "width": 960,
       "height": 710,
-      "bytes": 34622,
+      "bytes": 34324,
       "format": "webp"
      },
      {
       "file": "migrate/preact.poster-light-960.avif",
       "width": 960,
       "height": 710,
-      "bytes": 21163,
+      "bytes": 20210,
       "format": "avif"
      },
      {
       "file": "migrate/preact.poster-light.webp",
       "width": 1920,
       "height": 1420,
-      "bytes": 77738,
+      "bytes": 78064,
       "format": "webp"
      },
      {
       "file": "migrate/preact.poster-light.avif",
       "width": 1920,
       "height": 1420,
-      "bytes": 38169,
+      "bytes": 37366,
       "format": "avif"
      }
     ]
@@ -3117,42 +3117,42 @@
       "file": "migrate/react.poster-dark-640.webp",
       "width": 640,
       "height": 473,
-      "bytes": 19866,
+      "bytes": 19742,
       "format": "webp"
      },
      {
       "file": "migrate/react.poster-dark-640.avif",
       "width": 640,
       "height": 473,
-      "bytes": 14312,
+      "bytes": 14697,
       "format": "avif"
      },
      {
       "file": "migrate/react.poster-dark-960.webp",
       "width": 960,
       "height": 710,
-      "bytes": 34756,
+      "bytes": 34834,
       "format": "webp"
      },
      {
       "file": "migrate/react.poster-dark-960.avif",
       "width": 960,
       "height": 710,
-      "bytes": 21124,
+      "bytes": 20656,
       "format": "avif"
      },
      {
       "file": "migrate/react.poster-dark.webp",
       "width": 1920,
       "height": 1420,
-      "bytes": 80060,
+      "bytes": 80382,
       "format": "webp"
      },
      {
       "file": "migrate/react.poster-dark.avif",
       "width": 1920,
       "height": 1420,
-      "bytes": 37435,
+      "bytes": 36704,
       "format": "avif"
      }
     ],
@@ -3161,42 +3161,42 @@
       "file": "migrate/react.poster-light-640.webp",
       "width": 640,
       "height": 473,
-      "bytes": 19288,
+      "bytes": 19216,
       "format": "webp"
      },
      {
       "file": "migrate/react.poster-light-640.avif",
       "width": 640,
       "height": 473,
-      "bytes": 14638,
+      "bytes": 14461,
       "format": "avif"
      },
      {
       "file": "migrate/react.poster-light-960.webp",
       "width": 960,
       "height": 710,
-      "bytes": 33982,
+      "bytes": 34116,
       "format": "webp"
      },
      {
       "file": "migrate/react.poster-light-960.avif",
       "width": 960,
       "height": 710,
-      "bytes": 21220,
+      "bytes": 20958,
       "format": "avif"
      },
      {
       "file": "migrate/react.poster-light.webp",
       "width": 1920,
       "height": 1420,
-      "bytes": 76968,
+      "bytes": 77564,
       "format": "webp"
      },
      {
       "file": "migrate/react.poster-light.avif",
       "width": 1920,
       "height": 1420,
-      "bytes": 37684,
+      "bytes": 36875,
       "format": "avif"
      }
     ]
@@ -3223,42 +3223,42 @@
       "file": "migrate/solid.poster-dark-640.webp",
       "width": 640,
       "height": 473,
-      "bytes": 21194,
+      "bytes": 21182,
       "format": "webp"
      },
      {
       "file": "migrate/solid.poster-dark-640.avif",
       "width": 640,
       "height": 473,
-      "bytes": 15373,
+      "bytes": 14696,
       "format": "avif"
      },
      {
       "file": "migrate/solid.poster-dark-960.webp",
       "width": 960,
       "height": 710,
-      "bytes": 36630,
+      "bytes": 37040,
       "format": "webp"
      },
      {
       "file": "migrate/solid.poster-dark-960.avif",
       "width": 960,
       "height": 710,
-      "bytes": 20324,
+      "bytes": 19698,
       "format": "avif"
      },
      {
       "file": "migrate/solid.poster-dark.webp",
       "width": 1920,
       "height": 1420,
-      "bytes": 86086,
+      "bytes": 86052,
       "format": "webp"
      },
      {
       "file": "migrate/solid.poster-dark.avif",
       "width": 1920,
       "height": 1420,
-      "bytes": 41438,
+      "bytes": 40616,
       "format": "avif"
      }
     ],
@@ -3267,42 +3267,42 @@
       "file": "migrate/solid.poster-light-640.webp",
       "width": 640,
       "height": 473,
-      "bytes": 20560,
+      "bytes": 20680,
       "format": "webp"
      },
      {
       "file": "migrate/solid.poster-light-640.avif",
       "width": 640,
       "height": 473,
-      "bytes": 14722,
+      "bytes": 14836,
       "format": "avif"
      },
      {
       "file": "migrate/solid.poster-light-960.webp",
       "width": 960,
       "height": 710,
-      "bytes": 36010,
+      "bytes": 36214,
       "format": "webp"
      },
      {
       "file": "migrate/solid.poster-light-960.avif",
       "width": 960,
       "height": 710,
-      "bytes": 20685,
+      "bytes": 19546,
       "format": "avif"
      },
      {
       "file": "migrate/solid.poster-light.webp",
       "width": 1920,
       "height": 1420,
-      "bytes": 82722,
+      "bytes": 83028,
       "format": "webp"
      },
      {
       "file": "migrate/solid.poster-light.avif",
       "width": 1920,
       "height": 1420,
-      "bytes": 42123,
+      "bytes": 40897,
       "format": "avif"
      }
     ]
@@ -3329,42 +3329,42 @@
       "file": "migrate/svelte.poster-dark-640.webp",
       "width": 640,
       "height": 191,
-      "bytes": 10870,
+      "bytes": 11118,
       "format": "webp"
      },
      {
       "file": "migrate/svelte.poster-dark-640.avif",
       "width": 640,
       "height": 191,
-      "bytes": 8555,
+      "bytes": 8626,
       "format": "avif"
      },
      {
       "file": "migrate/svelte.poster-dark-960.webp",
       "width": 960,
       "height": 287,
-      "bytes": 17898,
+      "bytes": 18100,
       "format": "webp"
      },
      {
       "file": "migrate/svelte.poster-dark-960.avif",
       "width": 960,
       "height": 287,
-      "bytes": 13772,
+      "bytes": 13951,
       "format": "avif"
      },
      {
       "file": "migrate/svelte.poster-dark.webp",
       "width": 1920,
       "height": 574,
-      "bytes": 39986,
+      "bytes": 40868,
       "format": "webp"
      },
      {
       "file": "migrate/svelte.poster-dark.avif",
       "width": 1920,
       "height": 574,
-      "bytes": 23937,
+      "bytes": 23957,
       "format": "avif"
      }
     ],
@@ -3373,42 +3373,42 @@
       "file": "migrate/svelte.poster-light-640.webp",
       "width": 640,
       "height": 191,
-      "bytes": 10800,
+      "bytes": 11180,
       "format": "webp"
      },
      {
       "file": "migrate/svelte.poster-light-640.avif",
       "width": 640,
       "height": 191,
-      "bytes": 8708,
+      "bytes": 8770,
       "format": "avif"
      },
      {
       "file": "migrate/svelte.poster-light-960.webp",
       "width": 960,
       "height": 287,
-      "bytes": 18248,
+      "bytes": 18552,
       "format": "webp"
      },
      {
       "file": "migrate/svelte.poster-light-960.avif",
       "width": 960,
       "height": 287,
-      "bytes": 14364,
+      "bytes": 14447,
       "format": "avif"
      },
      {
       "file": "migrate/svelte.poster-light.webp",
       "width": 1920,
       "height": 574,
-      "bytes": 41574,
+      "bytes": 42358,
       "format": "webp"
      },
      {
       "file": "migrate/svelte.poster-light.avif",
       "width": 1920,
       "height": 574,
-      "bytes": 24937,
+      "bytes": 25213,
       "format": "avif"
      }
     ]
@@ -3435,42 +3435,42 @@
       "file": "migrate/vue.poster-dark-640.webp",
       "width": 640,
       "height": 473,
-      "bytes": 21554,
+      "bytes": 21456,
       "format": "webp"
      },
      {
       "file": "migrate/vue.poster-dark-640.avif",
       "width": 640,
       "height": 473,
-      "bytes": 16470,
+      "bytes": 16248,
       "format": "avif"
      },
      {
       "file": "migrate/vue.poster-dark-960.webp",
       "width": 960,
       "height": 710,
-      "bytes": 37326,
+      "bytes": 36958,
       "format": "webp"
      },
      {
       "file": "migrate/vue.poster-dark-960.avif",
       "width": 960,
       "height": 710,
-      "bytes": 24531,
+      "bytes": 24155,
       "format": "avif"
      },
      {
       "file": "migrate/vue.poster-dark.webp",
       "width": 1920,
       "height": 1420,
-      "bytes": 86786,
+      "bytes": 87080,
       "format": "webp"
      },
      {
       "file": "migrate/vue.poster-dark.avif",
       "width": 1920,
       "height": 1420,
-      "bytes": 40918,
+      "bytes": 40967,
       "format": "avif"
      }
     ],
@@ -3479,42 +3479,42 @@
       "file": "migrate/vue.poster-light-640.webp",
       "width": 640,
       "height": 473,
-      "bytes": 20944,
+      "bytes": 20748,
       "format": "webp"
      },
      {
       "file": "migrate/vue.poster-light-640.avif",
       "width": 640,
       "height": 473,
-      "bytes": 16164,
+      "bytes": 16021,
       "format": "avif"
      },
      {
       "file": "migrate/vue.poster-light-960.webp",
       "width": 960,
       "height": 710,
-      "bytes": 36694,
+      "bytes": 36658,
       "format": "webp"
      },
      {
       "file": "migrate/vue.poster-light-960.avif",
       "width": 960,
       "height": 710,
-      "bytes": 24663,
+      "bytes": 24548,
       "format": "avif"
      },
      {
       "file": "migrate/vue.poster-light.webp",
       "width": 1920,
       "height": 1420,
-      "bytes": 84134,
+      "bytes": 84178,
       "format": "webp"
      },
      {
       "file": "migrate/vue.poster-light.avif",
       "width": 1920,
       "height": 1420,
-      "bytes": 41253,
+      "bytes": 41007,
       "format": "avif"
      }
     ]
@@ -3709,7 +3709,7 @@
     "/docs/auth"
    ],
    "slot": "og",
-   "alt": "Auth documentation: OIDC sign-in on web, iOS and Android from one call, with S256 PKCE, state, nonce and the issuer check on by default, plus signed sessions, TOTP and passkeys.",
+   "alt": "Auth documentation: OIDC sign-in on the web, and on iOS and Android (experimental), from one call, with S256 PKCE, state, nonce and the issuer check on by default, plus signed sessions, TOTP and passkeys.",
    "theme": "dark",
    "width": 1200,
    "height": 630
@@ -3733,7 +3733,7 @@
     "/docs/charts"
    ],
    "slot": "og",
-   "alt": "Charts documentation: Charts written as JSX marks (<Line>, <Bar>, <Area>) on Pyreon's own engine, with an accessible data table built in and the same source on iOS and Android.",
+   "alt": "Charts documentation: Charts written as JSX marks (<Line>, <Bar>, <Area>) on Pyreon's own engine, with an accessible data table built in and the same source on iOS and Android (experimental).",
    "theme": "dark",
    "width": 1200,
    "height": 630
@@ -3745,7 +3745,7 @@
     "/docs/cli"
    ],
    "slot": "og",
-   "alt": "Tooling documentation: pyreon doctor runs 15 gates and scores your project 0–100 with the fixes inline, next to 133 lint rules, pyreon check, a test kit and devtools for the reactive graph.",
+   "alt": "Tooling documentation: pyreon doctor runs up to ten gates over your app and scores it 0–100 with the fixes inline, next to 133 lint rules, pyreon check, a test kit and devtools for the reactive graph.",
    "theme": "dark",
    "width": 1200,
    "height": 630
@@ -3793,7 +3793,7 @@
     "/docs/flow"
    ],
    "slot": "og",
-   "alt": "Flow documentation: Node editors where each node mounts once and a drag touches one node, with auto-layout from its own engine: no elkjs, no D3.",
+   "alt": "Flow documentation: Node editors where each node mounts once and a drag touches one node, with auto-layout from its own engine: no dagre, no elkjs.",
    "theme": "dark",
    "width": 1200,
    "height": 630
@@ -3925,7 +3925,7 @@
     "/docs/hooks"
    ],
    "slot": "og",
-   "alt": "Hooks documentation: 65 signal-based hooks for the browser and the phone, from useClickOutside and useMediaQuery to useCamera and useBiometrics.",
+   "alt": "Hooks documentation: 65 signal-based hooks, 45 of them also on iOS and Android (experimental), from useClickOutside and useMediaQuery to useCamera and useBiometrics.",
    "theme": "dark",
    "width": 1200,
    "height": 630
@@ -3973,7 +3973,7 @@
     "/docs/kinetic"
    ],
    "slot": "og",
-   "alt": "Motion documentation: Enter, leave, collapse and stagger from one kinetic(tag) factory, 120+ presets, reduced motion detected for you, and SSR output crawlers can read.",
+   "alt": "Motion documentation: Enter, leave and height collapse from one kinetic(tag) factory, 122 presets, and SSR output crawlers can read.",
    "theme": "dark",
    "width": 1200,
    "height": 630
@@ -4069,7 +4069,7 @@
     "/docs/primitives"
    ],
    "slot": "og",
-   "alt": "Primitives documentation: 22 components, from <Stack> and <Field> to <Select> and <Modal>, that render DOM on the web and real SwiftUI and Jetpack Compose views on phones (native: experimental).",
+   "alt": "Primitives documentation: Components from <Stack> and <Field> to <Toggle> and <Modal> (22 in the next release) that render DOM on the web and real SwiftUI and Jetpack Compose views on phones (native: experimental).",
    "theme": "dark",
    "width": 1200,
    "height": 630
@@ -4129,7 +4129,7 @@
     "/docs/rx"
    ],
    "slot": "og",
-   "alt": "RX documentation: 42 functions (filter, sortBy, groupBy, pipe, debounce…) that take signals and return signals.",
+   "alt": "RX documentation: 43 functions (filter, sortBy, groupBy, pipe, debounce…) that take signals and return signals.",
    "theme": "dark",
    "width": 1200,
    "height": 630
@@ -4261,7 +4261,7 @@
     "/docs/zero"
    ],
    "slot": "og",
-   "alt": "Zero documentation: Every route picks its own rendering: SSG, SSR, ISR or SPA, plus islands, server actions and adapters for Node, Bun, Vercel, Netlify, Cloudflare and static hosts.",
+   "alt": "Zero documentation: Every route picks its own rendering: SSG, SSR, ISR or SPA, plus islands, server actions and adapters for Node, Bun, Deno, Vercel, Netlify, Cloudflare and static hosts.",
    "theme": "dark",
    "width": 1200,
    "height": 630
@@ -4982,28 +4982,28 @@
       "file": "products/a11y/hero.poster-dark-640.webp",
       "width": 640,
       "height": 400,
-      "bytes": 13576,
+      "bytes": 13496,
       "format": "webp"
      },
      {
       "file": "products/a11y/hero.poster-dark-640.avif",
       "width": 640,
       "height": 400,
-      "bytes": 11622,
+      "bytes": 11668,
       "format": "avif"
      },
      {
       "file": "products/a11y/hero.poster-dark.webp",
       "width": 1280,
       "height": 800,
-      "bytes": 28596,
+      "bytes": 28190,
       "format": "webp"
      },
      {
       "file": "products/a11y/hero.poster-dark.avif",
       "width": 1280,
       "height": 800,
-      "bytes": 19378,
+      "bytes": 19103,
       "format": "avif"
      }
     ],
@@ -5012,28 +5012,28 @@
       "file": "products/a11y/hero.poster-light-640.webp",
       "width": 640,
       "height": 400,
-      "bytes": 14716,
+      "bytes": 14566,
       "format": "webp"
      },
      {
       "file": "products/a11y/hero.poster-light-640.avif",
       "width": 640,
       "height": 400,
-      "bytes": 11753,
+      "bytes": 11497,
       "format": "avif"
      },
      {
       "file": "products/a11y/hero.poster-light.webp",
       "width": 1280,
       "height": 800,
-      "bytes": 30996,
+      "bytes": 30682,
       "format": "webp"
      },
      {
       "file": "products/a11y/hero.poster-light.avif",
       "width": 1280,
       "height": 800,
-      "bytes": 20387,
+      "bytes": 20159,
       "format": "avif"
      }
     ]
@@ -5065,28 +5065,28 @@
       "file": "products/ai/hero.poster-dark-640.webp",
       "width": 640,
       "height": 336,
-      "bytes": 18278,
+      "bytes": 18636,
       "format": "webp"
      },
      {
       "file": "products/ai/hero.poster-dark-640.avif",
       "width": 640,
       "height": 336,
-      "bytes": 12903,
+      "bytes": 12850,
       "format": "avif"
      },
      {
       "file": "products/ai/hero.poster-dark.webp",
       "width": 1280,
       "height": 672,
-      "bytes": 40652,
+      "bytes": 40498,
       "format": "webp"
      },
      {
       "file": "products/ai/hero.poster-dark.avif",
       "width": 1280,
       "height": 672,
-      "bytes": 24807,
+      "bytes": 24465,
       "format": "avif"
      }
     ],
@@ -5095,28 +5095,28 @@
       "file": "products/ai/hero.poster-light-640.webp",
       "width": 640,
       "height": 336,
-      "bytes": 18862,
+      "bytes": 18804,
       "format": "webp"
      },
      {
       "file": "products/ai/hero.poster-light-640.avif",
       "width": 640,
       "height": 336,
-      "bytes": 12347,
+      "bytes": 12111,
       "format": "avif"
      },
      {
       "file": "products/ai/hero.poster-light.webp",
       "width": 1280,
       "height": 672,
-      "bytes": 41590,
+      "bytes": 41504,
       "format": "webp"
      },
      {
       "file": "products/ai/hero.poster-light.avif",
       "width": 1280,
       "height": 672,
-      "bytes": 26036,
+      "bytes": 25865,
       "format": "avif"
      }
     ]
@@ -5290,28 +5290,28 @@
       "file": "products/auth/hero.poster-dark-640.webp",
       "width": 640,
       "height": 400,
-      "bytes": 17836,
+      "bytes": 17788,
       "format": "webp"
      },
      {
       "file": "products/auth/hero.poster-dark-640.avif",
       "width": 640,
       "height": 400,
-      "bytes": 12620,
+      "bytes": 12361,
       "format": "avif"
      },
      {
       "file": "products/auth/hero.poster-dark.webp",
       "width": 1280,
       "height": 800,
-      "bytes": 36136,
+      "bytes": 36404,
       "format": "webp"
      },
      {
       "file": "products/auth/hero.poster-dark.avif",
       "width": 1280,
       "height": 800,
-      "bytes": 21577,
+      "bytes": 21942,
       "format": "avif"
      }
     ],
@@ -5320,28 +5320,28 @@
       "file": "products/auth/hero.poster-light-640.webp",
       "width": 640,
       "height": 400,
-      "bytes": 18110,
+      "bytes": 17950,
       "format": "webp"
      },
      {
       "file": "products/auth/hero.poster-light-640.avif",
       "width": 640,
       "height": 400,
-      "bytes": 12209,
+      "bytes": 11904,
       "format": "avif"
      },
      {
       "file": "products/auth/hero.poster-light.webp",
       "width": 1280,
       "height": 800,
-      "bytes": 38134,
+      "bytes": 37902,
       "format": "webp"
      },
      {
       "file": "products/auth/hero.poster-light.avif",
       "width": 1280,
       "height": 800,
-      "bytes": 22037,
+      "bytes": 22133,
       "format": "avif"
      }
     ]
@@ -5515,28 +5515,28 @@
       "file": "products/content/hero.poster-dark-640.webp",
       "width": 640,
       "height": 400,
-      "bytes": 19116,
+      "bytes": 18876,
       "format": "webp"
      },
      {
       "file": "products/content/hero.poster-dark-640.avif",
       "width": 640,
       "height": 400,
-      "bytes": 13819,
+      "bytes": 13173,
       "format": "avif"
      },
      {
       "file": "products/content/hero.poster-dark.webp",
       "width": 1280,
       "height": 800,
-      "bytes": 39228,
+      "bytes": 39252,
       "format": "webp"
      },
      {
       "file": "products/content/hero.poster-dark.avif",
       "width": 1280,
       "height": 800,
-      "bytes": 22591,
+      "bytes": 21867,
       "format": "avif"
      }
     ],
@@ -5545,28 +5545,28 @@
       "file": "products/content/hero.poster-light-640.webp",
       "width": 640,
       "height": 400,
-      "bytes": 19152,
+      "bytes": 19036,
       "format": "webp"
      },
      {
       "file": "products/content/hero.poster-light-640.avif",
       "width": 640,
       "height": 400,
-      "bytes": 13255,
+      "bytes": 12898,
       "format": "avif"
      },
      {
       "file": "products/content/hero.poster-light.webp",
       "width": 1280,
       "height": 800,
-      "bytes": 39464,
+      "bytes": 39880,
       "format": "webp"
      },
      {
       "file": "products/content/hero.poster-light.avif",
       "width": 1280,
       "height": 800,
-      "bytes": 23351,
+      "bytes": 22344,
       "format": "avif"
      }
     ]
@@ -5740,28 +5740,28 @@
       "file": "products/dnd/hero.poster-dark-640.webp",
       "width": 640,
       "height": 400,
-      "bytes": 17206,
+      "bytes": 17144,
       "format": "webp"
      },
      {
       "file": "products/dnd/hero.poster-dark-640.avif",
       "width": 640,
       "height": 400,
-      "bytes": 13155,
+      "bytes": 13048,
       "format": "avif"
      },
      {
       "file": "products/dnd/hero.poster-dark.webp",
       "width": 1280,
       "height": 800,
-      "bytes": 37382,
+      "bytes": 37568,
       "format": "webp"
      },
      {
       "file": "products/dnd/hero.poster-dark.avif",
       "width": 1280,
       "height": 800,
-      "bytes": 21642,
+      "bytes": 21260,
       "format": "avif"
      }
     ],
@@ -5770,28 +5770,28 @@
       "file": "products/dnd/hero.poster-light-640.webp",
       "width": 640,
       "height": 400,
-      "bytes": 17928,
+      "bytes": 17894,
       "format": "webp"
      },
      {
       "file": "products/dnd/hero.poster-light-640.avif",
       "width": 640,
       "height": 400,
-      "bytes": 13349,
+      "bytes": 13133,
       "format": "avif"
      },
      {
       "file": "products/dnd/hero.poster-light.webp",
       "width": 1280,
       "height": 800,
-      "bytes": 38500,
+      "bytes": 38510,
       "format": "webp"
      },
      {
       "file": "products/dnd/hero.poster-light.avif",
       "width": 1280,
       "height": 800,
-      "bytes": 22455,
+      "bytes": 22127,
       "format": "avif"
      }
     ]
@@ -5823,28 +5823,28 @@
       "file": "products/document/hero.poster-dark-640.webp",
       "width": 640,
       "height": 400,
-      "bytes": 14996,
+      "bytes": 14724,
       "format": "webp"
      },
      {
       "file": "products/document/hero.poster-dark-640.avif",
       "width": 640,
       "height": 400,
-      "bytes": 11191,
+      "bytes": 10843,
       "format": "avif"
      },
      {
       "file": "products/document/hero.poster-dark.webp",
       "width": 1280,
       "height": 800,
-      "bytes": 32312,
+      "bytes": 32026,
       "format": "webp"
      },
      {
       "file": "products/document/hero.poster-dark.avif",
       "width": 1280,
       "height": 800,
-      "bytes": 20024,
+      "bytes": 19184,
       "format": "avif"
      }
     ],
@@ -5853,28 +5853,28 @@
       "file": "products/document/hero.poster-light-640.webp",
       "width": 640,
       "height": 400,
-      "bytes": 15988,
+      "bytes": 15756,
       "format": "webp"
      },
      {
       "file": "products/document/hero.poster-light-640.avif",
       "width": 640,
       "height": 400,
-      "bytes": 10984,
+      "bytes": 10558,
       "format": "avif"
      },
      {
       "file": "products/document/hero.poster-light.webp",
       "width": 1280,
       "height": 800,
-      "bytes": 34644,
+      "bytes": 34404,
       "format": "webp"
      },
      {
       "file": "products/document/hero.poster-light.avif",
       "width": 1280,
       "height": 800,
-      "bytes": 20666,
+      "bytes": 19769,
       "format": "avif"
      }
     ]
@@ -6048,28 +6048,28 @@
       "file": "products/feature/hero.poster-dark-640.webp",
       "width": 640,
       "height": 400,
-      "bytes": 17856,
+      "bytes": 17722,
       "format": "webp"
      },
      {
       "file": "products/feature/hero.poster-dark-640.avif",
       "width": 640,
       "height": 400,
-      "bytes": 13085,
+      "bytes": 13019,
       "format": "avif"
      },
      {
       "file": "products/feature/hero.poster-dark.webp",
       "width": 1280,
       "height": 800,
-      "bytes": 37878,
+      "bytes": 37776,
       "format": "webp"
      },
      {
       "file": "products/feature/hero.poster-dark.avif",
       "width": 1280,
       "height": 800,
-      "bytes": 23126,
+      "bytes": 22716,
       "format": "avif"
      }
     ],
@@ -6078,28 +6078,28 @@
       "file": "products/feature/hero.poster-light-640.webp",
       "width": 640,
       "height": 400,
-      "bytes": 18306,
+      "bytes": 18228,
       "format": "webp"
      },
      {
       "file": "products/feature/hero.poster-light-640.avif",
       "width": 640,
       "height": 400,
-      "bytes": 12715,
+      "bytes": 12613,
       "format": "avif"
      },
      {
       "file": "products/feature/hero.poster-light.webp",
       "width": 1280,
       "height": 800,
-      "bytes": 39456,
+      "bytes": 39516,
       "format": "webp"
      },
      {
       "file": "products/feature/hero.poster-light.avif",
       "width": 1280,
       "height": 800,
-      "bytes": 23759,
+      "bytes": 23413,
       "format": "avif"
      }
     ]
@@ -6273,28 +6273,28 @@
       "file": "products/form/hero.poster-dark-640.webp",
       "width": 640,
       "height": 400,
-      "bytes": 11066,
+      "bytes": 11038,
       "format": "webp"
      },
      {
       "file": "products/form/hero.poster-dark-640.avif",
       "width": 640,
       "height": 400,
-      "bytes": 7683,
+      "bytes": 7596,
       "format": "avif"
      },
      {
       "file": "products/form/hero.poster-dark.webp",
       "width": 1280,
       "height": 800,
-      "bytes": 23506,
+      "bytes": 23046,
       "format": "webp"
      },
      {
       "file": "products/form/hero.poster-dark.avif",
       "width": 1280,
       "height": 800,
-      "bytes": 14376,
+      "bytes": 14362,
       "format": "avif"
      }
     ],
@@ -6303,28 +6303,28 @@
       "file": "products/form/hero.poster-light-640.webp",
       "width": 640,
       "height": 400,
-      "bytes": 11936,
+      "bytes": 11728,
       "format": "webp"
      },
      {
       "file": "products/form/hero.poster-light-640.avif",
       "width": 640,
       "height": 400,
-      "bytes": 7937,
+      "bytes": 7870,
       "format": "avif"
      },
      {
       "file": "products/form/hero.poster-light.webp",
       "width": 1280,
       "height": 800,
-      "bytes": 25862,
+      "bytes": 24934,
       "format": "webp"
      },
      {
       "file": "products/form/hero.poster-light.avif",
       "width": 1280,
       "height": 800,
-      "bytes": 14796,
+      "bytes": 14842,
       "format": "avif"
      }
     ]
@@ -6356,28 +6356,28 @@
       "file": "products/hooks/hero.poster-dark-640.webp",
       "width": 640,
       "height": 400,
-      "bytes": 17160,
+      "bytes": 16878,
       "format": "webp"
      },
      {
       "file": "products/hooks/hero.poster-dark-640.avif",
       "width": 640,
       "height": 400,
-      "bytes": 12035,
+      "bytes": 11835,
       "format": "avif"
      },
      {
       "file": "products/hooks/hero.poster-dark.webp",
       "width": 1280,
       "height": 800,
-      "bytes": 34122,
+      "bytes": 33922,
       "format": "webp"
      },
      {
       "file": "products/hooks/hero.poster-dark.avif",
       "width": 1280,
       "height": 800,
-      "bytes": 19743,
+      "bytes": 19233,
       "format": "avif"
      }
     ],
@@ -6386,28 +6386,28 @@
       "file": "products/hooks/hero.poster-light-640.webp",
       "width": 640,
       "height": 400,
-      "bytes": 17792,
+      "bytes": 17578,
       "format": "webp"
      },
      {
       "file": "products/hooks/hero.poster-light-640.avif",
       "width": 640,
       "height": 400,
-      "bytes": 12297,
+      "bytes": 11956,
       "format": "avif"
      },
      {
       "file": "products/hooks/hero.poster-light.webp",
       "width": 1280,
       "height": 800,
-      "bytes": 36832,
+      "bytes": 35676,
       "format": "webp"
      },
      {
       "file": "products/hooks/hero.poster-light.avif",
       "width": 1280,
       "height": 800,
-      "bytes": 20495,
+      "bytes": 19727,
       "format": "avif"
      }
     ]
@@ -6439,28 +6439,28 @@
       "file": "products/hotkeys/hero.poster-dark-640.webp",
       "width": 640,
       "height": 400,
-      "bytes": 15314,
+      "bytes": 15122,
       "format": "webp"
      },
      {
       "file": "products/hotkeys/hero.poster-dark-640.avif",
       "width": 640,
       "height": 400,
-      "bytes": 12608,
+      "bytes": 12413,
       "format": "avif"
      },
      {
       "file": "products/hotkeys/hero.poster-dark.webp",
       "width": 1280,
       "height": 800,
-      "bytes": 31956,
+      "bytes": 31372,
       "format": "webp"
      },
      {
       "file": "products/hotkeys/hero.poster-dark.avif",
       "width": 1280,
       "height": 800,
-      "bytes": 20987,
+      "bytes": 20846,
       "format": "avif"
      }
     ],
@@ -6469,28 +6469,28 @@
       "file": "products/hotkeys/hero.poster-light-640.webp",
       "width": 640,
       "height": 400,
-      "bytes": 16248,
+      "bytes": 15942,
       "format": "webp"
      },
      {
       "file": "products/hotkeys/hero.poster-light-640.avif",
       "width": 640,
       "height": 400,
-      "bytes": 12675,
+      "bytes": 12085,
       "format": "avif"
      },
      {
       "file": "products/hotkeys/hero.poster-light.webp",
       "width": 1280,
       "height": 800,
-      "bytes": 34828,
+      "bytes": 34324,
       "format": "webp"
      },
      {
       "file": "products/hotkeys/hero.poster-light.avif",
       "width": 1280,
       "height": 800,
-      "bytes": 22194,
+      "bytes": 21822,
       "format": "avif"
      }
     ]
@@ -6522,28 +6522,28 @@
       "file": "products/http/hero.poster-dark-640.webp",
       "width": 640,
       "height": 400,
-      "bytes": 13502,
+      "bytes": 13634,
       "format": "webp"
      },
      {
       "file": "products/http/hero.poster-dark-640.avif",
       "width": 640,
       "height": 400,
-      "bytes": 10821,
+      "bytes": 10633,
       "format": "avif"
      },
      {
       "file": "products/http/hero.poster-dark.webp",
       "width": 1280,
       "height": 800,
-      "bytes": 28814,
+      "bytes": 28764,
       "format": "webp"
      },
      {
       "file": "products/http/hero.poster-dark.avif",
       "width": 1280,
       "height": 800,
-      "bytes": 18822,
+      "bytes": 18627,
       "format": "avif"
      }
     ],
@@ -6552,28 +6552,28 @@
       "file": "products/http/hero.poster-light-640.webp",
       "width": 640,
       "height": 400,
-      "bytes": 14106,
+      "bytes": 13936,
       "format": "webp"
      },
      {
       "file": "products/http/hero.poster-light-640.avif",
       "width": 640,
       "height": 400,
-      "bytes": 10572,
+      "bytes": 10617,
       "format": "avif"
      },
      {
       "file": "products/http/hero.poster-light.webp",
       "width": 1280,
       "height": 800,
-      "bytes": 30940,
+      "bytes": 30954,
       "format": "webp"
      },
      {
       "file": "products/http/hero.poster-light.avif",
       "width": 1280,
       "height": 800,
-      "bytes": 19362,
+      "bytes": 19204,
       "format": "avif"
      }
     ]
@@ -6605,28 +6605,28 @@
       "file": "products/i18n/hero.poster-dark-640.webp",
       "width": 640,
       "height": 400,
-      "bytes": 12374,
+      "bytes": 12098,
       "format": "webp"
      },
      {
       "file": "products/i18n/hero.poster-dark-640.avif",
       "width": 640,
       "height": 400,
-      "bytes": 9807,
+      "bytes": 9855,
       "format": "avif"
      },
      {
       "file": "products/i18n/hero.poster-dark.webp",
       "width": 1280,
       "height": 800,
-      "bytes": 24792,
+      "bytes": 24690,
       "format": "webp"
      },
      {
       "file": "products/i18n/hero.poster-dark.avif",
       "width": 1280,
       "height": 800,
-      "bytes": 16606,
+      "bytes": 16574,
       "format": "avif"
      }
     ],
@@ -6635,28 +6635,28 @@
       "file": "products/i18n/hero.poster-light-640.webp",
       "width": 640,
       "height": 400,
-      "bytes": 13348,
+      "bytes": 12914,
       "format": "webp"
      },
      {
       "file": "products/i18n/hero.poster-light-640.avif",
       "width": 640,
       "height": 400,
-      "bytes": 9833,
+      "bytes": 9869,
       "format": "avif"
      },
      {
       "file": "products/i18n/hero.poster-light.webp",
       "width": 1280,
       "height": 800,
-      "bytes": 27160,
+      "bytes": 26874,
       "format": "webp"
      },
      {
       "file": "products/i18n/hero.poster-light.avif",
       "width": 1280,
       "height": 800,
-      "bytes": 17544,
+      "bytes": 17616,
       "format": "avif"
      }
     ]
@@ -6688,28 +6688,28 @@
       "file": "products/kinetic/hero.poster-dark-640.webp",
       "width": 640,
       "height": 400,
-      "bytes": 16292,
+      "bytes": 16228,
       "format": "webp"
      },
      {
       "file": "products/kinetic/hero.poster-dark-640.avif",
       "width": 640,
       "height": 400,
-      "bytes": 11533,
+      "bytes": 11029,
       "format": "avif"
      },
      {
       "file": "products/kinetic/hero.poster-dark.webp",
       "width": 1280,
       "height": 800,
-      "bytes": 33088,
+      "bytes": 32906,
       "format": "webp"
      },
      {
       "file": "products/kinetic/hero.poster-dark.avif",
       "width": 1280,
       "height": 800,
-      "bytes": 18993,
+      "bytes": 17796,
       "format": "avif"
      }
     ],
@@ -6718,28 +6718,28 @@
       "file": "products/kinetic/hero.poster-light-640.webp",
       "width": 640,
       "height": 400,
-      "bytes": 16136,
+      "bytes": 16004,
       "format": "webp"
      },
      {
       "file": "products/kinetic/hero.poster-light-640.avif",
       "width": 640,
       "height": 400,
-      "bytes": 11076,
+      "bytes": 10429,
       "format": "avif"
      },
      {
       "file": "products/kinetic/hero.poster-light.webp",
       "width": 1280,
       "height": 800,
-      "bytes": 33434,
+      "bytes": 33986,
       "format": "webp"
      },
      {
       "file": "products/kinetic/hero.poster-light.avif",
       "width": 1280,
       "height": 800,
-      "bytes": 19257,
+      "bytes": 18358,
       "format": "avif"
      }
     ]
@@ -6771,28 +6771,28 @@
       "file": "products/lathe/hero.poster-dark-640.webp",
       "width": 640,
       "height": 420,
-      "bytes": 22584,
+      "bytes": 22458,
       "format": "webp"
      },
      {
       "file": "products/lathe/hero.poster-dark-640.avif",
       "width": 640,
       "height": 420,
-      "bytes": 15386,
+      "bytes": 15321,
       "format": "avif"
      },
      {
       "file": "products/lathe/hero.poster-dark.webp",
       "width": 1280,
       "height": 840,
-      "bytes": 50894,
+      "bytes": 50934,
       "format": "webp"
      },
      {
       "file": "products/lathe/hero.poster-dark.avif",
       "width": 1280,
       "height": 840,
-      "bytes": 25447,
+      "bytes": 25375,
       "format": "avif"
      }
     ],
@@ -6801,28 +6801,28 @@
       "file": "products/lathe/hero.poster-light-640.webp",
       "width": 640,
       "height": 420,
-      "bytes": 22018,
+      "bytes": 22052,
       "format": "webp"
      },
      {
       "file": "products/lathe/hero.poster-light-640.avif",
       "width": 640,
       "height": 420,
-      "bytes": 14355,
+      "bytes": 14461,
       "format": "avif"
      },
      {
       "file": "products/lathe/hero.poster-light.webp",
       "width": 1280,
       "height": 840,
-      "bytes": 50592,
+      "bytes": 50828,
       "format": "webp"
      },
      {
       "file": "products/lathe/hero.poster-light.avif",
       "width": 1280,
       "height": 840,
-      "bytes": 25982,
+      "bytes": 26020,
       "format": "avif"
      }
     ]
@@ -6996,28 +6996,28 @@
       "file": "products/machine/hero.poster-dark-640.webp",
       "width": 640,
       "height": 400,
-      "bytes": 12120,
+      "bytes": 12310,
       "format": "webp"
      },
      {
       "file": "products/machine/hero.poster-dark-640.avif",
       "width": 640,
       "height": 400,
-      "bytes": 11082,
+      "bytes": 11112,
       "format": "avif"
      },
      {
       "file": "products/machine/hero.poster-dark.webp",
       "width": 1280,
       "height": 800,
-      "bytes": 25572,
+      "bytes": 25316,
       "format": "webp"
      },
      {
       "file": "products/machine/hero.poster-dark.avif",
       "width": 1280,
       "height": 800,
-      "bytes": 17969,
+      "bytes": 17731,
       "format": "avif"
      }
     ],
@@ -7026,28 +7026,28 @@
       "file": "products/machine/hero.poster-light-640.webp",
       "width": 640,
       "height": 400,
-      "bytes": 12994,
+      "bytes": 13176,
       "format": "webp"
      },
      {
       "file": "products/machine/hero.poster-light-640.avif",
       "width": 640,
       "height": 400,
-      "bytes": 10311,
+      "bytes": 10368,
       "format": "avif"
      },
      {
       "file": "products/machine/hero.poster-light.webp",
       "width": 1280,
       "height": 800,
-      "bytes": 27538,
+      "bytes": 27308,
       "format": "webp"
      },
      {
       "file": "products/machine/hero.poster-light.avif",
       "width": 1280,
       "height": 800,
-      "bytes": 18507,
+      "bytes": 18205,
       "format": "avif"
      }
     ]
@@ -7079,28 +7079,28 @@
       "file": "products/migrate/hero.poster-dark-640.webp",
       "width": 640,
       "height": 400,
-      "bytes": 28356,
+      "bytes": 28014,
       "format": "webp"
      },
      {
       "file": "products/migrate/hero.poster-dark-640.avif",
       "width": 640,
       "height": 400,
-      "bytes": 18905,
+      "bytes": 16648,
       "format": "avif"
      },
      {
       "file": "products/migrate/hero.poster-dark.webp",
       "width": 1280,
       "height": 800,
-      "bytes": 61670,
+      "bytes": 61790,
       "format": "webp"
      },
      {
       "file": "products/migrate/hero.poster-dark.avif",
       "width": 1280,
       "height": 800,
-      "bytes": 32986,
+      "bytes": 27941,
       "format": "avif"
      }
     ],
@@ -7109,28 +7109,28 @@
       "file": "products/migrate/hero.poster-light-640.webp",
       "width": 640,
       "height": 400,
-      "bytes": 27992,
+      "bytes": 28232,
       "format": "webp"
      },
      {
       "file": "products/migrate/hero.poster-light-640.avif",
       "width": 640,
       "height": 400,
-      "bytes": 19031,
+      "bytes": 16845,
       "format": "avif"
      },
      {
       "file": "products/migrate/hero.poster-light.webp",
       "width": 1280,
       "height": 800,
-      "bytes": 60902,
+      "bytes": 60330,
       "format": "webp"
      },
      {
       "file": "products/migrate/hero.poster-light.avif",
       "width": 1280,
       "height": 800,
-      "bytes": 33355,
+      "bytes": 28208,
       "format": "avif"
      }
     ]
@@ -7162,28 +7162,28 @@
       "file": "products/native/pipeline.poster-dark-640.webp",
       "width": 640,
       "height": 400,
-      "bytes": 19368,
+      "bytes": 19178,
       "format": "webp"
      },
      {
       "file": "products/native/pipeline.poster-dark-640.avif",
       "width": 640,
       "height": 400,
-      "bytes": 14986,
+      "bytes": 14755,
       "format": "avif"
      },
      {
       "file": "products/native/pipeline.poster-dark.webp",
       "width": 1280,
       "height": 800,
-      "bytes": 39658,
+      "bytes": 39274,
       "format": "webp"
      },
      {
       "file": "products/native/pipeline.poster-dark.avif",
       "width": 1280,
       "height": 800,
-      "bytes": 25014,
+      "bytes": 24103,
       "format": "avif"
      }
     ],
@@ -7192,28 +7192,28 @@
       "file": "products/native/pipeline.poster-light-640.webp",
       "width": 640,
       "height": 400,
-      "bytes": 19202,
+      "bytes": 18990,
       "format": "webp"
      },
      {
       "file": "products/native/pipeline.poster-light-640.avif",
       "width": 640,
       "height": 400,
-      "bytes": 14727,
+      "bytes": 14289,
       "format": "avif"
      },
      {
       "file": "products/native/pipeline.poster-light.webp",
       "width": 1280,
       "height": 800,
-      "bytes": 40608,
+      "bytes": 40108,
       "format": "webp"
      },
      {
       "file": "products/native/pipeline.poster-light.avif",
       "width": 1280,
       "height": 800,
-      "bytes": 25975,
+      "bytes": 25144,
       "format": "avif"
      }
     ]
@@ -7599,28 +7599,28 @@
       "file": "products/permissions/hero.poster-dark-640.webp",
       "width": 640,
       "height": 400,
-      "bytes": 11698,
+      "bytes": 11956,
       "format": "webp"
      },
      {
       "file": "products/permissions/hero.poster-dark-640.avif",
       "width": 640,
       "height": 400,
-      "bytes": 10278,
+      "bytes": 10201,
       "format": "avif"
      },
      {
       "file": "products/permissions/hero.poster-dark.webp",
       "width": 1280,
       "height": 800,
-      "bytes": 24578,
+      "bytes": 24494,
       "format": "webp"
      },
      {
       "file": "products/permissions/hero.poster-dark.avif",
       "width": 1280,
       "height": 800,
-      "bytes": 16614,
+      "bytes": 16519,
       "format": "avif"
      }
     ],
@@ -7629,28 +7629,28 @@
       "file": "products/permissions/hero.poster-light-640.webp",
       "width": 640,
       "height": 400,
-      "bytes": 12326,
+      "bytes": 12304,
       "format": "webp"
      },
      {
       "file": "products/permissions/hero.poster-light-640.avif",
       "width": 640,
       "height": 400,
-      "bytes": 10320,
+      "bytes": 10129,
       "format": "avif"
      },
      {
       "file": "products/permissions/hero.poster-light.webp",
       "width": 1280,
       "height": 800,
-      "bytes": 26362,
+      "bytes": 26466,
       "format": "webp"
      },
      {
       "file": "products/permissions/hero.poster-light.avif",
       "width": 1280,
       "height": 800,
-      "bytes": 17265,
+      "bytes": 17131,
       "format": "avif"
      }
     ]
@@ -7682,28 +7682,28 @@
       "file": "products/primitives/hero.poster-dark-640.webp",
       "width": 640,
       "height": 400,
-      "bytes": 18780,
+      "bytes": 18690,
       "format": "webp"
      },
      {
       "file": "products/primitives/hero.poster-dark-640.avif",
       "width": 640,
       "height": 400,
-      "bytes": 13642,
+      "bytes": 13257,
       "format": "avif"
      },
      {
       "file": "products/primitives/hero.poster-dark.webp",
       "width": 1280,
       "height": 800,
-      "bytes": 40918,
+      "bytes": 41068,
       "format": "webp"
      },
      {
       "file": "products/primitives/hero.poster-dark.avif",
       "width": 1280,
       "height": 800,
-      "bytes": 24998,
+      "bytes": 24314,
       "format": "avif"
      }
     ],
@@ -7712,28 +7712,28 @@
       "file": "products/primitives/hero.poster-light-640.webp",
       "width": 640,
       "height": 400,
-      "bytes": 18944,
+      "bytes": 18806,
       "format": "webp"
      },
      {
       "file": "products/primitives/hero.poster-light-640.avif",
       "width": 640,
       "height": 400,
-      "bytes": 12878,
+      "bytes": 12358,
       "format": "avif"
      },
      {
       "file": "products/primitives/hero.poster-light.webp",
       "width": 1280,
       "height": 800,
-      "bytes": 41794,
+      "bytes": 42006,
       "format": "webp"
      },
      {
       "file": "products/primitives/hero.poster-light.avif",
       "width": 1280,
       "height": 800,
-      "bytes": 25364,
+      "bytes": 24387,
       "format": "avif"
      }
     ]
@@ -7765,28 +7765,28 @@
       "file": "products/query/hero.poster-dark-640.webp",
       "width": 640,
       "height": 400,
-      "bytes": 11330,
+      "bytes": 11100,
       "format": "webp"
      },
      {
       "file": "products/query/hero.poster-dark-640.avif",
       "width": 640,
       "height": 400,
-      "bytes": 10213,
+      "bytes": 10179,
       "format": "avif"
      },
      {
       "file": "products/query/hero.poster-dark.webp",
       "width": 1280,
       "height": 800,
-      "bytes": 23382,
+      "bytes": 23302,
       "format": "webp"
      },
      {
       "file": "products/query/hero.poster-dark.avif",
       "width": 1280,
       "height": 800,
-      "bytes": 15800,
+      "bytes": 15828,
       "format": "avif"
      }
     ],
@@ -7795,28 +7795,28 @@
       "file": "products/query/hero.poster-light-640.webp",
       "width": 640,
       "height": 400,
-      "bytes": 11554,
+      "bytes": 11466,
       "format": "webp"
      },
      {
       "file": "products/query/hero.poster-light-640.avif",
       "width": 640,
       "height": 400,
-      "bytes": 8699,
+      "bytes": 8808,
       "format": "avif"
      },
      {
       "file": "products/query/hero.poster-light.webp",
       "width": 1280,
       "height": 800,
-      "bytes": 24390,
+      "bytes": 24340,
       "format": "webp"
      },
      {
       "file": "products/query/hero.poster-light.avif",
       "width": 1280,
       "height": 800,
-      "bytes": 16119,
+      "bytes": 16092,
       "format": "avif"
      }
     ]
@@ -7848,28 +7848,28 @@
       "file": "products/reactivity/hero.poster-dark-640.webp",
       "width": 640,
       "height": 400,
-      "bytes": 10536,
+      "bytes": 10366,
       "format": "webp"
      },
      {
       "file": "products/reactivity/hero.poster-dark-640.avif",
       "width": 640,
       "height": 400,
-      "bytes": 9689,
+      "bytes": 9615,
       "format": "avif"
      },
      {
       "file": "products/reactivity/hero.poster-dark.webp",
       "width": 1280,
       "height": 800,
-      "bytes": 22166,
+      "bytes": 22212,
       "format": "webp"
      },
      {
       "file": "products/reactivity/hero.poster-dark.avif",
       "width": 1280,
       "height": 800,
-      "bytes": 14221,
+      "bytes": 13822,
       "format": "avif"
      }
     ],
@@ -7878,28 +7878,28 @@
       "file": "products/reactivity/hero.poster-light-640.webp",
       "width": 640,
       "height": 400,
-      "bytes": 11098,
+      "bytes": 10850,
       "format": "webp"
      },
      {
       "file": "products/reactivity/hero.poster-light-640.avif",
       "width": 640,
       "height": 400,
-      "bytes": 9949,
+      "bytes": 9931,
       "format": "avif"
      },
      {
       "file": "products/reactivity/hero.poster-light.webp",
       "width": 1280,
       "height": 800,
-      "bytes": 23870,
+      "bytes": 23748,
       "format": "webp"
      },
      {
       "file": "products/reactivity/hero.poster-light.avif",
       "width": 1280,
       "height": 800,
-      "bytes": 14711,
+      "bytes": 14398,
       "format": "avif"
      }
     ]
@@ -7931,28 +7931,28 @@
       "file": "products/router/hero.poster-dark-640.webp",
       "width": 640,
       "height": 400,
-      "bytes": 16560,
+      "bytes": 16392,
       "format": "webp"
      },
      {
       "file": "products/router/hero.poster-dark-640.avif",
       "width": 640,
       "height": 400,
-      "bytes": 12619,
+      "bytes": 12388,
       "format": "avif"
      },
      {
       "file": "products/router/hero.poster-dark.webp",
       "width": 1280,
       "height": 800,
-      "bytes": 35036,
+      "bytes": 34728,
       "format": "webp"
      },
      {
       "file": "products/router/hero.poster-dark.avif",
       "width": 1280,
       "height": 800,
-      "bytes": 22168,
+      "bytes": 22408,
       "format": "avif"
      }
     ],
@@ -7961,28 +7961,28 @@
       "file": "products/router/hero.poster-light-640.webp",
       "width": 640,
       "height": 400,
-      "bytes": 16456,
+      "bytes": 16290,
       "format": "webp"
      },
      {
       "file": "products/router/hero.poster-light-640.avif",
       "width": 640,
       "height": 400,
-      "bytes": 12179,
+      "bytes": 11811,
       "format": "avif"
      },
      {
       "file": "products/router/hero.poster-light.webp",
       "width": 1280,
       "height": 800,
-      "bytes": 35552,
+      "bytes": 35254,
       "format": "webp"
      },
      {
       "file": "products/router/hero.poster-light.avif",
       "width": 1280,
       "height": 800,
-      "bytes": 22438,
+      "bytes": 22820,
       "format": "avif"
      }
     ]
@@ -8014,28 +8014,28 @@
       "file": "products/rx/hero.poster-dark-640.webp",
       "width": 640,
       "height": 400,
-      "bytes": 16654,
+      "bytes": 16292,
       "format": "webp"
      },
      {
       "file": "products/rx/hero.poster-dark-640.avif",
       "width": 640,
       "height": 400,
-      "bytes": 13607,
+      "bytes": 13473,
       "format": "avif"
      },
      {
       "file": "products/rx/hero.poster-dark.webp",
       "width": 1280,
       "height": 800,
-      "bytes": 35534,
+      "bytes": 35640,
       "format": "webp"
      },
      {
       "file": "products/rx/hero.poster-dark.avif",
       "width": 1280,
       "height": 800,
-      "bytes": 22740,
+      "bytes": 23060,
       "format": "avif"
      }
     ],
@@ -8044,28 +8044,28 @@
       "file": "products/rx/hero.poster-light-640.webp",
       "width": 640,
       "height": 400,
-      "bytes": 17360,
+      "bytes": 17300,
       "format": "webp"
      },
      {
       "file": "products/rx/hero.poster-light-640.avif",
       "width": 640,
       "height": 400,
-      "bytes": 13466,
+      "bytes": 13413,
       "format": "avif"
      },
      {
       "file": "products/rx/hero.poster-light.webp",
       "width": 1280,
       "height": 800,
-      "bytes": 37742,
+      "bytes": 37762,
       "format": "webp"
      },
      {
       "file": "products/rx/hero.poster-light.avif",
       "width": 1280,
       "height": 800,
-      "bytes": 23670,
+      "bytes": 23972,
       "format": "avif"
      }
     ]
@@ -8097,28 +8097,28 @@
       "file": "products/statetree/hero.poster-dark-640.webp",
       "width": 640,
       "height": 400,
-      "bytes": 16382,
+      "bytes": 16036,
       "format": "webp"
      },
      {
       "file": "products/statetree/hero.poster-dark-640.avif",
       "width": 640,
       "height": 400,
-      "bytes": 12072,
+      "bytes": 11446,
       "format": "avif"
      },
      {
       "file": "products/statetree/hero.poster-dark.webp",
       "width": 1280,
       "height": 800,
-      "bytes": 34242,
+      "bytes": 34632,
       "format": "webp"
      },
      {
       "file": "products/statetree/hero.poster-dark.avif",
       "width": 1280,
       "height": 800,
-      "bytes": 20242,
+      "bytes": 19378,
       "format": "avif"
      }
     ],
@@ -8127,28 +8127,28 @@
       "file": "products/statetree/hero.poster-light-640.webp",
       "width": 640,
       "height": 400,
-      "bytes": 16200,
+      "bytes": 16164,
       "format": "webp"
      },
      {
       "file": "products/statetree/hero.poster-light-640.avif",
       "width": 640,
       "height": 400,
-      "bytes": 11827,
+      "bytes": 11452,
       "format": "avif"
      },
      {
       "file": "products/statetree/hero.poster-light.webp",
       "width": 1280,
       "height": 800,
-      "bytes": 34886,
+      "bytes": 34828,
       "format": "webp"
      },
      {
       "file": "products/statetree/hero.poster-light.avif",
       "width": 1280,
       "height": 800,
-      "bytes": 20793,
+      "bytes": 19930,
       "format": "avif"
      }
     ]
@@ -8180,28 +8180,28 @@
       "file": "products/storage/hero.poster-dark-640.webp",
       "width": 640,
       "height": 400,
-      "bytes": 12360,
+      "bytes": 11950,
       "format": "webp"
      },
      {
       "file": "products/storage/hero.poster-dark-640.avif",
       "width": 640,
       "height": 400,
-      "bytes": 10589,
+      "bytes": 10462,
       "format": "avif"
      },
      {
       "file": "products/storage/hero.poster-dark.webp",
       "width": 1280,
       "height": 800,
-      "bytes": 24758,
+      "bytes": 24632,
       "format": "webp"
      },
      {
       "file": "products/storage/hero.poster-dark.avif",
       "width": 1280,
       "height": 800,
-      "bytes": 18100,
+      "bytes": 17868,
       "format": "avif"
      }
     ],
@@ -8210,28 +8210,28 @@
       "file": "products/storage/hero.poster-light-640.webp",
       "width": 640,
       "height": 400,
-      "bytes": 13394,
+      "bytes": 13050,
       "format": "webp"
      },
      {
       "file": "products/storage/hero.poster-light-640.avif",
       "width": 640,
       "height": 400,
-      "bytes": 10614,
+      "bytes": 10672,
       "format": "avif"
      },
      {
       "file": "products/storage/hero.poster-light.webp",
       "width": 1280,
       "height": 800,
-      "bytes": 27628,
+      "bytes": 27508,
       "format": "webp"
      },
      {
       "file": "products/storage/hero.poster-light.avif",
       "width": 1280,
       "height": 800,
-      "bytes": 18896,
+      "bytes": 18810,
       "format": "avif"
      }
     ]
@@ -8263,28 +8263,28 @@
       "file": "products/store/hero.poster-dark-640.webp",
       "width": 640,
       "height": 400,
-      "bytes": 20022,
+      "bytes": 19886,
       "format": "webp"
      },
      {
       "file": "products/store/hero.poster-dark-640.avif",
       "width": 640,
       "height": 400,
-      "bytes": 13502,
+      "bytes": 12664,
       "format": "avif"
      },
      {
       "file": "products/store/hero.poster-dark.webp",
       "width": 1280,
       "height": 800,
-      "bytes": 44468,
+      "bytes": 43774,
       "format": "webp"
      },
      {
       "file": "products/store/hero.poster-dark.avif",
       "width": 1280,
       "height": 800,
-      "bytes": 23717,
+      "bytes": 23242,
       "format": "avif"
      }
     ],
@@ -8293,28 +8293,28 @@
       "file": "products/store/hero.poster-light-640.webp",
       "width": 640,
       "height": 400,
-      "bytes": 19614,
+      "bytes": 19474,
       "format": "webp"
      },
      {
       "file": "products/store/hero.poster-light-640.avif",
       "width": 640,
       "height": 400,
-      "bytes": 12784,
+      "bytes": 12133,
       "format": "avif"
      },
      {
       "file": "products/store/hero.poster-light.webp",
       "width": 1280,
       "height": 800,
-      "bytes": 43568,
+      "bytes": 42778,
       "format": "webp"
      },
      {
       "file": "products/store/hero.poster-light.avif",
       "width": 1280,
       "height": 800,
-      "bytes": 23674,
+      "bytes": 22587,
       "format": "avif"
      }
     ]
@@ -8346,28 +8346,28 @@
       "file": "products/sync/hero.poster-dark-640.webp",
       "width": 640,
       "height": 400,
-      "bytes": 11156,
+      "bytes": 11114,
       "format": "webp"
      },
      {
       "file": "products/sync/hero.poster-dark-640.avif",
       "width": 640,
       "height": 400,
-      "bytes": 9249,
+      "bytes": 8971,
       "format": "avif"
      },
      {
       "file": "products/sync/hero.poster-dark.webp",
       "width": 1280,
       "height": 800,
-      "bytes": 23576,
+      "bytes": 23242,
       "format": "webp"
      },
      {
       "file": "products/sync/hero.poster-dark.avif",
       "width": 1280,
       "height": 800,
-      "bytes": 15962,
+      "bytes": 15562,
       "format": "avif"
      }
     ],
@@ -8376,28 +8376,28 @@
       "file": "products/sync/hero.poster-light-640.webp",
       "width": 640,
       "height": 400,
-      "bytes": 11852,
+      "bytes": 11774,
       "format": "webp"
      },
      {
       "file": "products/sync/hero.poster-light-640.avif",
       "width": 640,
       "height": 400,
-      "bytes": 9423,
+      "bytes": 9152,
       "format": "avif"
      },
      {
       "file": "products/sync/hero.poster-light.webp",
       "width": 1280,
       "height": 800,
-      "bytes": 25006,
+      "bytes": 24900,
       "format": "webp"
      },
      {
       "file": "products/sync/hero.poster-light.avif",
       "width": 1280,
       "height": 800,
-      "bytes": 16678,
+      "bytes": 16007,
       "format": "avif"
      }
     ]
@@ -8571,28 +8571,28 @@
       "file": "products/toast/hero.poster-dark-640.webp",
       "width": 640,
       "height": 400,
-      "bytes": 17062,
+      "bytes": 16992,
       "format": "webp"
      },
      {
       "file": "products/toast/hero.poster-dark-640.avif",
       "width": 640,
       "height": 400,
-      "bytes": 11018,
+      "bytes": 11113,
       "format": "avif"
      },
      {
       "file": "products/toast/hero.poster-dark.webp",
       "width": 1280,
       "height": 800,
-      "bytes": 33334,
+      "bytes": 33572,
       "format": "webp"
      },
      {
       "file": "products/toast/hero.poster-dark.avif",
       "width": 1280,
       "height": 800,
-      "bytes": 20925,
+      "bytes": 20148,
       "format": "avif"
      }
     ],
@@ -8601,28 +8601,28 @@
       "file": "products/toast/hero.poster-light-640.webp",
       "width": 640,
       "height": 400,
-      "bytes": 17692,
+      "bytes": 17768,
       "format": "webp"
      },
      {
       "file": "products/toast/hero.poster-light-640.avif",
       "width": 640,
       "height": 400,
-      "bytes": 11012,
+      "bytes": 11017,
       "format": "avif"
      },
      {
       "file": "products/toast/hero.poster-light.webp",
       "width": 1280,
       "height": 800,
-      "bytes": 35966,
+      "bytes": 35888,
       "format": "webp"
      },
      {
       "file": "products/toast/hero.poster-light.avif",
       "width": 1280,
       "height": 800,
-      "bytes": 21754,
+      "bytes": 21084,
       "format": "avif"
      }
     ]
@@ -8796,28 +8796,28 @@
       "file": "products/urlstate/hero.poster-dark-640.webp",
       "width": 640,
       "height": 400,
-      "bytes": 12020,
+      "bytes": 11576,
       "format": "webp"
      },
      {
       "file": "products/urlstate/hero.poster-dark-640.avif",
       "width": 640,
       "height": 400,
-      "bytes": 10623,
+      "bytes": 10518,
       "format": "avif"
      },
      {
       "file": "products/urlstate/hero.poster-dark.webp",
       "width": 1280,
       "height": 800,
-      "bytes": 25004,
+      "bytes": 25278,
       "format": "webp"
      },
      {
       "file": "products/urlstate/hero.poster-dark.avif",
       "width": 1280,
       "height": 800,
-      "bytes": 17300,
+      "bytes": 17182,
       "format": "avif"
      }
     ],
@@ -8826,28 +8826,28 @@
       "file": "products/urlstate/hero.poster-light-640.webp",
       "width": 640,
       "height": 400,
-      "bytes": 13132,
+      "bytes": 12784,
       "format": "webp"
      },
      {
       "file": "products/urlstate/hero.poster-light-640.avif",
       "width": 640,
       "height": 400,
-      "bytes": 10676,
+      "bytes": 10644,
       "format": "avif"
      },
      {
       "file": "products/urlstate/hero.poster-light.webp",
       "width": 1280,
       "height": 800,
-      "bytes": 28048,
+      "bytes": 27896,
       "format": "webp"
      },
      {
       "file": "products/urlstate/hero.poster-light.avif",
       "width": 1280,
       "height": 800,
-      "bytes": 18574,
+      "bytes": 18492,
       "format": "avif"
      }
     ]
@@ -8879,28 +8879,28 @@
       "file": "products/validation/hero.poster-dark-640.webp",
       "width": 640,
       "height": 400,
-      "bytes": 20806,
+      "bytes": 20758,
       "format": "webp"
      },
      {
       "file": "products/validation/hero.poster-dark-640.avif",
       "width": 640,
       "height": 400,
-      "bytes": 14663,
+      "bytes": 13514,
       "format": "avif"
      },
      {
       "file": "products/validation/hero.poster-dark.webp",
       "width": 1280,
       "height": 800,
-      "bytes": 45950,
+      "bytes": 45890,
       "format": "webp"
      },
      {
       "file": "products/validation/hero.poster-dark.avif",
       "width": 1280,
       "height": 800,
-      "bytes": 24667,
+      "bytes": 22841,
       "format": "avif"
      }
     ],
@@ -8909,28 +8909,28 @@
       "file": "products/validation/hero.poster-light-640.webp",
       "width": 640,
       "height": 400,
-      "bytes": 19758,
+      "bytes": 19602,
       "format": "webp"
      },
      {
       "file": "products/validation/hero.poster-light-640.avif",
       "width": 640,
       "height": 400,
-      "bytes": 13517,
+      "bytes": 12594,
       "format": "avif"
      },
      {
       "file": "products/validation/hero.poster-light.webp",
       "width": 1280,
       "height": 800,
-      "bytes": 43918,
+      "bytes": 44390,
       "format": "webp"
      },
      {
       "file": "products/validation/hero.poster-light.avif",
       "width": 1280,
       "height": 800,
-      "bytes": 24707,
+      "bytes": 22920,
       "format": "avif"
      }
     ]
@@ -8962,28 +8962,28 @@
       "file": "products/virtual/hero.poster-dark-640.webp",
       "width": 640,
       "height": 400,
-      "bytes": 13944,
+      "bytes": 13734,
       "format": "webp"
      },
      {
       "file": "products/virtual/hero.poster-dark-640.avif",
       "width": 640,
       "height": 400,
-      "bytes": 9366,
+      "bytes": 9128,
       "format": "avif"
      },
      {
       "file": "products/virtual/hero.poster-dark.webp",
       "width": 1280,
       "height": 800,
-      "bytes": 29494,
+      "bytes": 28834,
       "format": "webp"
      },
      {
       "file": "products/virtual/hero.poster-dark.avif",
       "width": 1280,
       "height": 800,
-      "bytes": 16783,
+      "bytes": 16457,
       "format": "avif"
      }
     ],
@@ -8992,28 +8992,28 @@
       "file": "products/virtual/hero.poster-light-640.webp",
       "width": 640,
       "height": 400,
-      "bytes": 14888,
+      "bytes": 14834,
       "format": "webp"
      },
      {
       "file": "products/virtual/hero.poster-light-640.avif",
       "width": 640,
       "height": 400,
-      "bytes": 9694,
+      "bytes": 9285,
       "format": "avif"
      },
      {
       "file": "products/virtual/hero.poster-light.webp",
       "width": 1280,
       "height": 800,
-      "bytes": 31144,
+      "bytes": 31564,
       "format": "webp"
      },
      {
       "file": "products/virtual/hero.poster-light.avif",
       "width": 1280,
       "height": 800,
-      "bytes": 17702,
+      "bytes": 17443,
       "format": "avif"
      }
     ]
@@ -9045,28 +9045,28 @@
       "file": "products/zero/hero.poster-dark-640.webp",
       "width": 640,
       "height": 400,
-      "bytes": 15440,
+      "bytes": 15666,
       "format": "webp"
      },
      {
       "file": "products/zero/hero.poster-dark-640.avif",
       "width": 640,
       "height": 400,
-      "bytes": 11442,
+      "bytes": 11412,
       "format": "avif"
      },
      {
       "file": "products/zero/hero.poster-dark.webp",
       "width": 1280,
       "height": 800,
-      "bytes": 34978,
+      "bytes": 34718,
       "format": "webp"
      },
      {
       "file": "products/zero/hero.poster-dark.avif",
       "width": 1280,
       "height": 800,
-      "bytes": 19393,
+      "bytes": 19402,
       "format": "avif"
      }
     ],
@@ -9075,28 +9075,28 @@
       "file": "products/zero/hero.poster-light-640.webp",
       "width": 640,
       "height": 400,
-      "bytes": 15400,
+      "bytes": 15482,
       "format": "webp"
      },
      {
       "file": "products/zero/hero.poster-light-640.avif",
       "width": 640,
       "height": 400,
-      "bytes": 11038,
+      "bytes": 10763,
       "format": "avif"
      },
      {
       "file": "products/zero/hero.poster-light.webp",
       "width": 1280,
       "height": 800,
-      "bytes": 34736,
+      "bytes": 34732,
       "format": "webp"
      },
      {
       "file": "products/zero/hero.poster-light.avif",
       "width": 1280,
       "height": 800,
-      "bytes": 19988,
+      "bytes": 20082,
       "format": "avif"
      }
     ]
@@ -9751,42 +9751,42 @@
       "file": "why/ai-ready.poster-dark-640.webp",
       "width": 640,
       "height": 327,
-      "bytes": 15984,
+      "bytes": 15830,
       "format": "webp"
      },
      {
       "file": "why/ai-ready.poster-dark-640.avif",
       "width": 640,
       "height": 327,
-      "bytes": 12358,
+      "bytes": 12475,
       "format": "avif"
      },
      {
       "file": "why/ai-ready.poster-dark-1280.webp",
       "width": 1280,
       "height": 653,
-      "bytes": 37720,
+      "bytes": 37168,
       "format": "webp"
      },
      {
       "file": "why/ai-ready.poster-dark-1280.avif",
       "width": 1280,
       "height": 653,
-      "bytes": 29517,
+      "bytes": 29197,
       "format": "avif"
      },
      {
       "file": "why/ai-ready.poster-dark.webp",
       "width": 1920,
       "height": 980,
-      "bytes": 56966,
+      "bytes": 57276,
       "format": "webp"
      },
      {
       "file": "why/ai-ready.poster-dark.avif",
       "width": 1920,
       "height": 980,
-      "bytes": 34787,
+      "bytes": 33900,
       "format": "avif"
      }
     ],
@@ -9795,42 +9795,42 @@
       "file": "why/ai-ready.poster-light-640.webp",
       "width": 640,
       "height": 327,
-      "bytes": 16174,
+      "bytes": 15836,
       "format": "webp"
      },
      {
       "file": "why/ai-ready.poster-light-640.avif",
       "width": 640,
       "height": 327,
-      "bytes": 11411,
+      "bytes": 11212,
       "format": "avif"
      },
      {
       "file": "why/ai-ready.poster-light-1280.webp",
       "width": 1280,
       "height": 653,
-      "bytes": 37108,
+      "bytes": 36842,
       "format": "webp"
      },
      {
       "file": "why/ai-ready.poster-light-1280.avif",
       "width": 1280,
       "height": 653,
-      "bytes": 28420,
+      "bytes": 28442,
       "format": "avif"
      },
      {
       "file": "why/ai-ready.poster-light.webp",
       "width": 1920,
       "height": 980,
-      "bytes": 57546,
+      "bytes": 57744,
       "format": "webp"
      },
      {
       "file": "why/ai-ready.poster-light.avif",
       "width": 1920,
       "height": 980,
-      "bytes": 34713,
+      "bytes": 33844,
       "format": "avif"
      }
     ]
@@ -9862,42 +9862,42 @@
       "file": "why/components-run-once.poster-dark-640.webp",
       "width": 640,
       "height": 333,
-      "bytes": 18016,
+      "bytes": 18098,
       "format": "webp"
      },
      {
       "file": "why/components-run-once.poster-dark-640.avif",
       "width": 640,
       "height": 333,
-      "bytes": 14303,
+      "bytes": 14089,
       "format": "avif"
      },
      {
       "file": "why/components-run-once.poster-dark-1280.webp",
       "width": 1280,
       "height": 667,
-      "bytes": 41958,
+      "bytes": 42270,
       "format": "webp"
      },
      {
       "file": "why/components-run-once.poster-dark-1280.avif",
       "width": 1280,
       "height": 667,
-      "bytes": 32200,
+      "bytes": 32247,
       "format": "avif"
      },
      {
       "file": "why/components-run-once.poster-dark.webp",
       "width": 1920,
       "height": 1000,
-      "bytes": 66022,
+      "bytes": 66110,
       "format": "webp"
      },
      {
       "file": "why/components-run-once.poster-dark.avif",
       "width": 1920,
       "height": 1000,
-      "bytes": 37689,
+      "bytes": 35843,
       "format": "avif"
      }
     ],
@@ -9906,42 +9906,42 @@
       "file": "why/components-run-once.poster-light-640.webp",
       "width": 640,
       "height": 333,
-      "bytes": 17560,
+      "bytes": 17538,
       "format": "webp"
      },
      {
       "file": "why/components-run-once.poster-light-640.avif",
       "width": 640,
       "height": 333,
-      "bytes": 13771,
+      "bytes": 13599,
       "format": "avif"
      },
      {
       "file": "why/components-run-once.poster-light-1280.webp",
       "width": 1280,
       "height": 667,
-      "bytes": 42668,
+      "bytes": 42854,
       "format": "webp"
      },
      {
       "file": "why/components-run-once.poster-light-1280.avif",
       "width": 1280,
       "height": 667,
-      "bytes": 31881,
+      "bytes": 31911,
       "format": "avif"
      },
      {
       "file": "why/components-run-once.poster-light.webp",
       "width": 1920,
       "height": 1000,
-      "bytes": 66842,
+      "bytes": 66930,
       "format": "webp"
      },
      {
       "file": "why/components-run-once.poster-light.avif",
       "width": 1920,
       "height": 1000,
-      "bytes": 38779,
+      "bytes": 37228,
       "format": "avif"
      }
     ]
@@ -9974,42 +9974,42 @@
       "file": "why/full-stack.poster-dark-640.webp",
       "width": 640,
       "height": 320,
-      "bytes": 11130,
+      "bytes": 11180,
       "format": "webp"
      },
      {
       "file": "why/full-stack.poster-dark-640.avif",
       "width": 640,
       "height": 320,
-      "bytes": 8899,
+      "bytes": 8772,
       "format": "avif"
      },
      {
       "file": "why/full-stack.poster-dark-1280.webp",
       "width": 1280,
       "height": 640,
-      "bytes": 25524,
+      "bytes": 25362,
       "format": "webp"
      },
      {
       "file": "why/full-stack.poster-dark-1280.avif",
       "width": 1280,
       "height": 640,
-      "bytes": 19043,
+      "bytes": 18952,
       "format": "avif"
      },
      {
       "file": "why/full-stack.poster-dark.webp",
       "width": 1920,
       "height": 960,
-      "bytes": 40126,
+      "bytes": 39640,
       "format": "webp"
      },
      {
       "file": "why/full-stack.poster-dark.avif",
       "width": 1920,
       "height": 960,
-      "bytes": 23693,
+      "bytes": 23304,
       "format": "avif"
      }
     ],
@@ -10018,42 +10018,42 @@
       "file": "why/full-stack.poster-light-640.webp",
       "width": 640,
       "height": 320,
-      "bytes": 10938,
+      "bytes": 10912,
       "format": "webp"
      },
      {
       "file": "why/full-stack.poster-light-640.avif",
       "width": 640,
       "height": 320,
-      "bytes": 8578,
+      "bytes": 8457,
       "format": "avif"
      },
      {
       "file": "why/full-stack.poster-light-1280.webp",
       "width": 1280,
       "height": 640,
-      "bytes": 26024,
+      "bytes": 26008,
       "format": "webp"
      },
      {
       "file": "why/full-stack.poster-light-1280.avif",
       "width": 1280,
       "height": 640,
-      "bytes": 18931,
+      "bytes": 18618,
       "format": "avif"
      },
      {
       "file": "why/full-stack.poster-light.webp",
       "width": 1920,
       "height": 960,
-      "bytes": 41198,
+      "bytes": 40484,
       "format": "webp"
      },
      {
       "file": "why/full-stack.poster-light.avif",
       "width": 1920,
       "height": 960,
-      "bytes": 24059,
+      "bytes": 23718,
       "format": "avif"
      }
     ]
@@ -10087,42 +10087,42 @@
       "file": "why/hydration-adopts.poster-dark-640.webp",
       "width": 640,
       "height": 320,
-      "bytes": 16586,
+      "bytes": 16248,
       "format": "webp"
      },
      {
       "file": "why/hydration-adopts.poster-dark-640.avif",
       "width": 640,
       "height": 320,
-      "bytes": 13012,
+      "bytes": 12728,
       "format": "avif"
      },
      {
       "file": "why/hydration-adopts.poster-dark-1280.webp",
       "width": 1280,
       "height": 640,
-      "bytes": 37892,
+      "bytes": 37256,
       "format": "webp"
      },
      {
       "file": "why/hydration-adopts.poster-dark-1280.avif",
       "width": 1280,
       "height": 640,
-      "bytes": 29627,
+      "bytes": 29619,
       "format": "avif"
      },
      {
       "file": "why/hydration-adopts.poster-dark.webp",
       "width": 1920,
       "height": 960,
-      "bytes": 56872,
+      "bytes": 55536,
       "format": "webp"
      },
      {
       "file": "why/hydration-adopts.poster-dark.avif",
       "width": 1920,
       "height": 960,
-      "bytes": 35192,
+      "bytes": 34646,
       "format": "avif"
      }
     ],
@@ -10131,42 +10131,42 @@
       "file": "why/hydration-adopts.poster-light-640.webp",
       "width": 640,
       "height": 320,
-      "bytes": 16432,
+      "bytes": 16134,
       "format": "webp"
      },
      {
       "file": "why/hydration-adopts.poster-light-640.avif",
       "width": 640,
       "height": 320,
-      "bytes": 12272,
+      "bytes": 12264,
       "format": "avif"
      },
      {
       "file": "why/hydration-adopts.poster-light-1280.webp",
       "width": 1280,
       "height": 640,
-      "bytes": 38678,
+      "bytes": 38588,
       "format": "webp"
      },
      {
       "file": "why/hydration-adopts.poster-light-1280.avif",
       "width": 1280,
       "height": 640,
-      "bytes": 29210,
+      "bytes": 29408,
       "format": "avif"
      },
      {
       "file": "why/hydration-adopts.poster-light.webp",
       "width": 1920,
       "height": 960,
-      "bytes": 59222,
+      "bytes": 58246,
       "format": "webp"
      },
      {
       "file": "why/hydration-adopts.poster-light.avif",
       "width": 1920,
       "height": 960,
-      "bytes": 35981,
+      "bytes": 35526,
       "format": "avif"
      }
     ]
@@ -10199,42 +10199,42 @@
       "file": "why/one-codebase.poster-dark-640.webp",
       "width": 640,
       "height": 333,
-      "bytes": 12780,
+      "bytes": 12672,
       "format": "webp"
      },
      {
       "file": "why/one-codebase.poster-dark-640.avif",
       "width": 640,
       "height": 333,
-      "bytes": 10673,
+      "bytes": 10561,
       "format": "avif"
      },
      {
       "file": "why/one-codebase.poster-dark-1280.webp",
       "width": 1280,
       "height": 667,
-      "bytes": 31036,
+      "bytes": 30658,
       "format": "webp"
      },
      {
       "file": "why/one-codebase.poster-dark-1280.avif",
       "width": 1280,
       "height": 667,
-      "bytes": 25213,
+      "bytes": 25023,
       "format": "avif"
      },
      {
       "file": "why/one-codebase.poster-dark.webp",
       "width": 1920,
       "height": 1000,
-      "bytes": 50016,
+      "bytes": 49266,
       "format": "webp"
      },
      {
       "file": "why/one-codebase.poster-dark.avif",
       "width": 1920,
       "height": 1000,
-      "bytes": 28507,
+      "bytes": 28027,
       "format": "avif"
      }
     ],
@@ -10243,42 +10243,42 @@
       "file": "why/one-codebase.poster-light-640.webp",
       "width": 640,
       "height": 333,
-      "bytes": 12386,
+      "bytes": 12300,
       "format": "webp"
      },
      {
       "file": "why/one-codebase.poster-light-640.avif",
       "width": 640,
       "height": 333,
-      "bytes": 9903,
+      "bytes": 9880,
       "format": "avif"
      },
      {
       "file": "why/one-codebase.poster-light-1280.webp",
       "width": 1280,
       "height": 667,
-      "bytes": 30580,
+      "bytes": 30310,
       "format": "webp"
      },
      {
       "file": "why/one-codebase.poster-light-1280.avif",
       "width": 1280,
       "height": 667,
-      "bytes": 23952,
+      "bytes": 23699,
       "format": "avif"
      },
      {
       "file": "why/one-codebase.poster-light.webp",
       "width": 1920,
       "height": 1000,
-      "bytes": 48808,
+      "bytes": 47918,
       "format": "webp"
      },
      {
       "file": "why/one-codebase.poster-light.avif",
       "width": 1920,
       "height": 1000,
-      "bytes": 28761,
+      "bytes": 28298,
       "format": "avif"
      }
     ]

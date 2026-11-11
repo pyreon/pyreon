@@ -25,7 +25,7 @@
 
 .bc-todo .chip rect{fill:none;stroke-width:1.2}
 .bc-todo .chip text{font-size:11px;letter-spacing:.12em;font-weight:600}
-.bc-todo .chip-win rect{fill:url(#bc-todo-eg);stroke:none} .bc-todo .chip-win text{fill:#0A0A0E}
+.bc-todo .chip-win rect{fill:#FF5E1A;stroke:none} .bc-todo .chip-win text{fill:#0A0A0E}
 .bc-todo .chip-tie rect{stroke:var(--px-link)} .bc-todo .chip-tie text{fill:var(--px-link)}
 .bc-todo .chip-split rect{stroke:var(--px-mist)} .bc-todo .chip-split text{fill:var(--px-mist)}
 .bc-todo .chip-loss rect{stroke:var(--px-err)} .bc-todo .chip-loss text{fill:var(--px-err)}
