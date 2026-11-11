@@ -111,7 +111,9 @@ let context: Awaited<ReturnType<typeof chromium.launchPersistentContext>> | null
 
 try {
   context = await chromium.launchPersistentContext(userDataDir, {
-    headless: false,
+    // Extensions load in Chromium's new headless mode; HEADED=1 shows the window.
+    headless: process.env.HEADED !== '1',
+    channel: 'chromium',
     args: [
       `--disable-extensions-except=${DIST}`,
       `--load-extension=${DIST}`,
@@ -364,19 +366,95 @@ const screenshotPath = join(__dirname, '..', 'verification-screenshots', 'app-wi
 await page.screenshot({ path: screenshotPath, fullPage: false })
 pass(`Saved ${screenshotPath}`)
 
-// ── 7. Render panel.html standalone + screenshot each visible state ───────
-console.log('\n7. Render panel.html standalone + screenshot panel states')
+// ── 7. The real panel, attached to the app tab: every tab × theme × width ─
+// Playwright cannot open the DevTools window, so the built panel.html is
+// opened as an extension page with `?tabId=`: the same panel code, the same
+// background relay and content script, the same page hook, against the same
+// running app. Screenshots go to SHOTS_DIR.
+console.log('\n7. Real panel against the app: every tab, dark + light, wide + narrow')
 
-const panelHtmlPath = `file://${join(DIST, 'panel.html')}`
-await page.goto(panelHtmlPath, { waitUntil: 'domcontentloaded' })
-// Panel runs in DevTools context with chrome.runtime.connect available; in
-// a plain file:// load it falls back to its "not connected" state. We
-// screenshot what we get — proves the static HTML + CSS render correctly.
-await page.waitForTimeout(500)
+const shotsDir = process.env.SHOTS_DIR ?? join(__dirname, '..', 'verification-screenshots')
+const worker = context.serviceWorkers()[0] ?? (await context.waitForEvent('serviceworker'))
+const extId = new URL(worker.url()).host
+// The extension has no "tabs" permission, so it cannot read tab URLs: bring
+// the app tab to the front and take the active one.
+await page.goto(APP_URL, { waitUntil: 'domcontentloaded' })
+await page.bringToFront()
+await page.waitForTimeout(1500)
+const appTabId = await worker.evaluate(async () => {
+  const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true })
+  return tab?.id ?? null
+})
 
-const panelEmptyShot = join(__dirname, '..', 'verification-screenshots', 'panel-standalone.png')
-await page.screenshot({ path: panelEmptyShot, fullPage: true })
-pass(`Saved ${panelEmptyShot}`)
+// Real activity in the app while the panel watches: type into the first
+// text inputs and press the first buttons.
+const poke = async (): Promise<void> => {
+  const inputs = await page.$$('input[type="text"], input:not([type])')
+  for (const [i, input] of inputs.slice(0, 3).entries()) {
+    await input.fill(`devtools ${i} ${Date.now() % 1000}`).catch(() => {})
+  }
+  for (const b of (await page.$$('button')).slice(0, 2)) await b.click({ timeout: 500 }).catch(() => {})
+}
+
+if (appTabId === null) {
+  fail(`could not find the tab for ${APP_URL}`)
+} else {
+  pass(`extension ${extId}, app tab ${appTabId}`)
+  const panelErrors: string[] = []
+  for (const theme of ['dark', 'light'] as const) {
+    for (const width of [1240, 700]) {
+      const panel = await context.newPage()
+      panel.on('pageerror', (e) => panelErrors.push(e.message))
+      await panel.setViewportSize({ width, height: 720 })
+      await panel.goto(`chrome-extension://${extId}/panel.html?tabId=${appTabId}&theme=${theme}`)
+      try {
+        await panel.waitForSelector('.trow', { timeout: 10_000 })
+      } catch {
+        fail(`${theme} ${width}px: the panel never showed the component tree`)
+        await panel.close()
+        continue
+      }
+      // Select the first component whose inspector explains an update.
+      await poke()
+      // Rows are virtualised and re-rendered, so address them by index.
+      const rowCount = Math.min(40, await panel.locator('.trow').count())
+      for (let i = 0; i < rowCount; i++) {
+        await panel.locator('.trow').nth(i).click({ timeout: 2000 }).catch(() => {})
+        await panel.waitForTimeout(300)
+        if (await panel.$('.why .ar')) break
+      }
+      for (const tab of ['components', 'graph', 'signals', 'effects', 'profiler', 'console']) {
+        await panel.click(`#pd-tab-${tab}`)
+        if (tab === 'effects') await poke()
+        if (tab === 'profiler') {
+          await panel.click('#pd-view-profiler [aria-label="Record"]')
+          await panel.waitForTimeout(400)
+          await poke()
+          await panel.waitForTimeout(1200)
+        }
+        if (tab === 'console') {
+          await panel.fill('input.eval', '$p.stats()')
+          await panel.press('input.eval', 'Enter')
+        }
+        await panel.waitForTimeout(900)
+        await panel.screenshot({ path: join(shotsDir, `${tab}-${theme}-${width}.png`) })
+        if (tab === 'profiler') {
+          await panel.click('#pd-view-profiler [aria-label="Stop recording"]').catch(() => {})
+        }
+      }
+      const state = await panel.evaluate(() => ({
+        status: document.querySelector('.app-status')?.textContent ?? '',
+        hOverflow: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+      }))
+      info(`  ${theme} ${width}px: ${state.status}`)
+      if (state.hOverflow) fail(`${theme} ${width}px: the panel scrolls horizontally`)
+      else pass(`${theme} ${width}px: 6 tabs captured, no horizontal scroll`)
+      await panel.close()
+    }
+  }
+  if (panelErrors.length > 0) fail(`panel page errors: ${panelErrors.join(' | ')}`)
+  else pass(`no panel page errors; screenshots in ${shotsDir}`)
+}
 
 await context.close()
 
