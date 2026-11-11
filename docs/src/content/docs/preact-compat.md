@@ -159,7 +159,7 @@ console.log(count.value) // same API
 function h(type: string | ComponentFn, props: Props | null, ...children: VNodeChild[]): VNode
 ```
 
-Preact's hyperscript function. Maps directly to Pyreon's `h()`. `createElement` is an alias.
+Preact's hyperscript function. `createElement` is an alias. A component passed to it gets the same compat wrapper as a JSX-written one, so hooks work in a tree built with `h()`.
 
 ```tsx
 import { h, createElement } from '@pyreon/preact-compat'

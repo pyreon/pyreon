@@ -13,7 +13,10 @@
  */
 
 export type { Props, VNode, VNodeChild } from '@pyreon/core'
-export { Fragment, h as createElement, h, createRef } from '@pyreon/core'
+export { Fragment, createRef } from '@pyreon/core'
+// `createElement` / `h` route through the compat JSX runtime so a component
+// gets the hook wrapper (core's `h` skipped it: hooks threw outside render).
+export { createElement, createElement as h } from './jsx-runtime'
 
 import type { ComponentFn, Context, LazyComponent, VNode, VNodeChild } from '@pyreon/core'
 import {
