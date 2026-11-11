@@ -3,7 +3,7 @@ import { transform as esbuildTransform } from 'esbuild'
 import type { Plugin, ResolvedConfig, ViteDevServer } from 'vite'
 import { withSilent } from '@pyreon/reactivity'
 import { compileMarkdown } from './pipeline/parse'
-import type { HighlighterOptions } from './pipeline/highlighter'
+import { type HighlighterOptions, unknownLangWarning } from './pipeline/highlighter'
 import {
   renderPerComponentVirtual,
   renderVirtualModule,
@@ -142,7 +142,12 @@ export interface ContentPluginOptions {
   highlight?: boolean
   /**
    * Shiki configuration (themes + languages). Passed through to the
-   * shared highlighter instance. See `highlighter.ts` for defaults.
+   * shared highlighter instance. `langs` EXTENDS the default language
+   * set (`DEFAULT_HIGHLIGHT_LANGS`: typescript, tsx, javascript, jsx,
+   * json, jsonc, bash, shell, html, css, scss, markdown, mdx, yaml, toml,
+   * diff, swift, kotlin, xml, svelte, vue, nginx, ini, dockerfile — plus
+   * their Shiki aliases). A fence naming a language that is not loaded
+   * renders as plain text with a build warning.
    */
   highlighter?: HighlighterOptions
   /**
@@ -678,6 +683,10 @@ export default function content(options: ContentPluginOptions = {}): Plugin {
   // `searchEntries`. Read at closeBundle for publish filtering and RSS
   // bodies. Cleared per build alongside `searchEntries`.
   const entryMeta: Map<string, Map<string, EntryMeta>> = new Map()
+  // Fence languages already warned about as not loaded. Bounded by the
+  // number of DISTINCT fence-language names in the site's markdown;
+  // lives as long as the plugin instance (one build or dev server).
+  const warnedUnknownLangs = new Set<string>()
   const stashEntryMeta = (collection: string, slug: string, meta: EntryMeta): void => {
     let m = entryMeta.get(collection)
     if (!m) {
@@ -1156,6 +1165,15 @@ export {}
         // `:::tip` without `:::` ate the rest of the file.
         for (const w of result.warnings) {
           this.warn(`${w} (${reportPath(id)})`)
+        }
+        // A fence language the highlighter has not loaded renders as
+        // plain text. Warn once per language for this plugin instance
+        // (one per build / dev server) rather than once per fence, so
+        // a site with 50 `gitignore` fences prints one line (#4257).
+        for (const lang of result.unknownLangs) {
+          if (warnedUnknownLangs.has(lang)) continue
+          warnedUnknownLangs.add(lang)
+          this.warn(`${unknownLangWarning(lang)} (first seen in ${reportPath(id)})`)
         }
 
         // Validate component references against built-ins + scan +
