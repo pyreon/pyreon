@@ -548,6 +548,7 @@ export async function runActionHandler(
   handler: ActionHandler,
   req: Request,
   payload: ActionPayload,
+  ctx?: Pick<MiddlewareContext, 'reportError'>,
 ): Promise<ActionOutcome> {
   try {
     const result = await handler({ request: req, formData: payload.formData, json: payload.json, headers: req.headers })
@@ -559,6 +560,9 @@ export async function runActionHandler(
     const info = getRedirectInfo(err)
     if (info) return { kind: 'redirect', status: info.status, to: info.url }
     console.error('[Pyreon Action] handler failed:', err)
+    // The server's `onError` hook (createServer / createHandler) — the error
+    // is caught here, so the handler's own catch never sees it.
+    ctx?.reportError?.(err, 'action')
     const isProduction = process.env.NODE_ENV === 'production'
     return { kind: 'error', message: isProduction || !(err instanceof Error) ? 'Internal server error' : err.message }
   }
@@ -620,7 +624,7 @@ export function createActionMiddleware(
     const payload = await readActionPayload(ctx.req, resolved.bodyLimit)
     if (payload instanceof Response) return payload
 
-    const outcome = await runActionHandler(action.handler, ctx.req, payload)
+    const outcome = await runActionHandler(action.handler, ctx.req, payload, ctx)
     if (outcome.kind === 'error') return Response.json({ error: outcome.message }, { status: 500 })
     if (outcome.kind === 'redirect') {
       // A fetch() would silently FOLLOW a 3xx and hand the caller the target
