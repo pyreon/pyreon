@@ -30,7 +30,7 @@ describe('writable — safeNotEqual NaN semantics (Svelte store contract)', () =
 })
 
 describe('render context — layout effect cleanup runs before re-execution', () => {
-  it('a stable layout-effect entry has its previous cleanup invoked on rerun', () => {
+  it('a stable layout-effect entry has its previous cleanup invoked on rerun', async () => {
     const el = document.createElement('div')
     const runs: string[] = []
     // Stable entry shared across renders — the cleanup written by run N
@@ -53,10 +53,12 @@ describe('render context — layout effect cleanup runs before re-execution', ()
       return jsx('div', { children: 'x' })
     }
     const dispose = pyreonMount(jsx(Comp, {}), el)
-    // The compat accessor executes the component more than once during
-    // mount, so the stable entry re-registers and its prior cleanup must
-    // fire before each re-execution.
+    // The component runs ONCE at mount; force a genuine re-render so the
+    // stable entry re-registers and its prior cleanup must fire first.
     expect(ctx).not.toBeNull()
+    expect(runs).toEqual(['run'])
+    ;(ctx as unknown as RenderContext).scheduleRerender()
+    await new Promise((r) => setTimeout(r, 0))
     expect(runs[0]).toBe('run')
     expect(entry.cleanup).toBeTypeOf('function')
     expect(runs).toContain('cleanup')

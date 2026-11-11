@@ -32,5 +32,9 @@
   },
   "dependencies": {
     "express": "4.22.0"
+  },
+  "overrides": {
+    "sharp": "^0.35.5",
+    "qs": "^6.16.1"
   }
 }
