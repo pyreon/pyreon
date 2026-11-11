@@ -5,6 +5,7 @@ import { readLive, resolveLive } from '../live-prop'
 import type { CSSProperties, TransitionCallbacks, TransitionStage } from '../types'
 import useAnimationEnd from '../useAnimationEnd'
 import { useReducedMotion } from '../useReducedMotion'
+import { consumerRef, mergeRefs } from '../utils'
 import type { KineticConfig } from './types'
 
 type CollapseRendererProps = {
@@ -234,9 +235,15 @@ const CollapseRenderer = ({
   // seeds wrapperStyle is intentional: collapse OWNS the style prop
   // (height/overflow are animation-driven), so a static merge of the
   // user's initial style with the collapse overrides is correct here.
+  //
+  // The internal ref winning would drop the consumer's own `ref`, so it is
+  // merged in — `wrapperRef` stays an OBJECT for `useAnimationEnd`.
   return h(
     config.tag,
-    mergeProps(htmlProps, { ref: wrapperRef, style: wrapperStyle }),
+    mergeProps(htmlProps, {
+      ref: mergeRefs<HTMLElement>(wrapperRef, consumerRef<HTMLElement>(htmlProps)),
+      style: wrapperStyle,
+    }),
     innerContent,
   )
 }

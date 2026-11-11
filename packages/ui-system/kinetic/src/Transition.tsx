@@ -16,6 +16,7 @@ import useTransitionState from './useTransitionState'
 import {
   addClasses,
   cloneVNode,
+  consumerRef,
   mergeRefs,
   mergeStyles,
   nextFrame,
@@ -146,11 +147,9 @@ const Transition = (props: TransitionProps): VNode | null => {
   const child = resolveChildren(props.children) as VNode
   const elementRef = createRef<HTMLElement>()
   const childProps = (child?.props ?? {}) as Record<string, unknown>
-  const mergedRef = mergeRefs(
-    elementRef,
-    stateRef,
-    childProps.ref as ((el: HTMLElement | null) => void) | undefined,
-  )
+  // The child's own `ref` (callback or object) is forwarded: `cloneVNode` below
+  // sets `ref: mergedRef` over the child's props, which would otherwise drop it.
+  const mergedRef = mergeRefs(elementRef, stateRef, consumerRef<HTMLElement>(childProps))
 
   // Numeric timing -> the CSS shorthand the web renderer applies. An explicit
   // `enterTransition` / `leaveTransition` still wins, so this only fills a gap

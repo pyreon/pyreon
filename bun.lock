@@ -3199,6 +3199,7 @@
         "@pyreon/sized-map": "workspace:*",
       },
       "devDependencies": {
+        "@pyreon/hooks": "workspace:^",
         "@pyreon/manifest": "workspace:*",
         "@pyreon/native-compiler": "workspace:*",
         "@pyreon/runtime-server": "workspace:^",

@@ -9,6 +9,7 @@ import useTransitionState from '../useTransitionState'
 import {
   addClasses,
   cloneVNode,
+  consumerRef,
   mergeRefs,
   mergeStyles,
   nextFrame,
@@ -113,12 +114,12 @@ const TransitionItem = (props: TransitionItemProps): VNode | null => {
   })
 
   const elementRef = createRef<HTMLElement>()
+  // The child's own `ref` (callback or object) is forwarded: `cloneVNode` below
+  // sets `ref: mergedRef` over the child's props, which would otherwise drop it.
   const mergedRef = mergeRefs(
     elementRef,
     stateRef,
-    (child?.props as Record<string, unknown>)?.ref as
-      | ((el: HTMLElement | null) => void)
-      | undefined,
+    consumerRef<HTMLElement>((child?.props ?? {}) as Record<string, unknown>),
   )
 
   // The four callbacks are read at the POINT OF CALL (`readCallbacks(props)` /
