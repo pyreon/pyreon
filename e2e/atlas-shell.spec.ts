@@ -613,8 +613,12 @@ test.describe('Reactive coverage → named bindings', () => {
     await expect(text.getByTestId('binding-fires')).toHaveText('0')
     await expect(text.getByTestId('binding-status')).toHaveText(/○\s*never fired/)
     await expect(text.getByTestId('binding-hint')).toHaveText('Change “Label” in Controls to exercise it.')
-    // The class binding names the controls it reads (through the styler).
-    await expect(row(page, 'class ← variant, size, mode, theme')).toHaveCount(1)
+    // The class binding names the controls it reads (through the styler) and
+    // the element it writes — a rocketstyle component's tag is a component,
+    // so the element is named when its ref attaches.
+    const cls = row(page, 'class ← variant, size, mode, theme')
+    await expect(cls).toHaveCount(1)
+    await expect(cls.getByTestId('binding-element')).toHaveText('<button>')
 
     // Mark the rendered element: an in-place update keeps it, a re-mount would not.
     await page.locator('[data-testid="canvas-preview"] button').evaluate((el) => {

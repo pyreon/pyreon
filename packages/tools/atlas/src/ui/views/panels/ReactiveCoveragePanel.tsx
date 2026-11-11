@@ -288,7 +288,11 @@ export const render: AddonPanelRender = (model) => {
                       >
                         <td data-v="key">
                           <span data-testid="binding-name">{row.name}</span>
-                          {row.element ? <C.Chip state="plain">{row.element}</C.Chip> : null}
+                          {row.element ? (
+                            <C.Chip state="plain" data-testid="binding-element">
+                              {row.element}
+                            </C.Chip>
+                          ) : null}
                           {row.hint ? <small data-testid="binding-hint">{row.hint}</small> : null}
                         </td>
                         <td>{row.kindLabel}</td>
