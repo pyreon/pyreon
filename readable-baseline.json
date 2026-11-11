@@ -1,6 +1,6 @@
 {
   "description": "Readable ratchet — `readable` style findings per (file, rule) may only DECREASE, and a file not listed here must have none. Checked by `bun scripts/check-pyreon-lint-ratchet.ts` (validate-fast + CI). Fix new findings with `bunx pyreon-lint --fix <file>` (the spacing rules are autofixable), then tighten with `bun scripts/check-readable-ratchet.ts --update`. Never raise a count to absorb a finding.",
-  "total": 11149,
+  "total": 11147,
   "files": {
     "packages/core/compiler/src/charts-migration.ts": {"pyreon/padding-before-return":2},
     "packages/core/compiler/src/content-audit.ts": {"pyreon/padding-before-return":13},
@@ -1788,7 +1788,7 @@
     "packages/tools/atlas/src/ui/url-state.ts": {"pyreon/padding-before-return":6},
     "packages/tools/atlas/src/ui/views/docs/CodeBlock.tsx": {"pyreon/padding-before-return":1,"pyreon/padding-between-declarations":1},
     "packages/tools/atlas/src/ui/views/docs/DocsView.tsx": {"pyreon/padding-before-return":3,"pyreon/padding-between-component-sections":1},
-    "packages/tools/atlas/src/ui/views/lab/LabView.tsx": {"pyreon/max-jsx-depth":1,"pyreon/padding-before-return":2},
+    "packages/tools/atlas/src/ui/views/lab/LabView.tsx": {"pyreon/padding-before-return":2},
     "packages/tools/atlas/src/ui/views/panels/A11yPanel.tsx": {"pyreon/padding-before-return":2},
     "packages/tools/atlas/src/ui/views/panels/AddonPanel.tsx": {"pyreon/padding-before-return":1},
     "packages/tools/atlas/src/ui/views/panels/ControlsPanel.tsx": {"pyreon/no-nested-ternary-branch":1,"pyreon/padding-before-return":2},
@@ -1796,7 +1796,6 @@
     "packages/tools/atlas/src/ui/views/panels/SchemaPanel.tsx": {"pyreon/padding-before-return":1},
     "packages/tools/atlas/src/ui/views/search/SearchDialog.tsx": {"pyreon/padding-before-return":2,"pyreon/padding-between-component-sections":2},
     "packages/tools/atlas/src/ui/views/sidebar/Sidebar.tsx": {"pyreon/padding-before-return":1,"pyreon/padding-between-component-sections":1},
-    "packages/tools/atlas/src/ui/views/topbar/TopBar.tsx": {"pyreon/max-jsx-depth":1},
     "packages/tools/atlas/src/verify-browser/pixel-diff.ts": {"pyreon/padding-before-return":5},
     "packages/tools/atlas/src/verify-browser/png.ts": {"pyreon/padding-before-return":8},
     "packages/tools/atlas/src/verify-browser/runner.ts": {"pyreon/padding-before-return":8},
