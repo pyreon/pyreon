@@ -132,8 +132,11 @@ describe('main / run against a real directory', () => {
     expect(await run(['demo', '--dir', dir], { color: 0, unicode: true })).toBe(0)
     const lines = out.join('\n').split('\n')
     expect(lines[0]).toBe(`create-multiplatform · ${OWN_VERSION}`)
-    expect(lines.at(-1)?.startsWith(`✓ scaffolded demo → ${dir}/ · `)).toBe(true)
-    expect(lines.at(-1)).toMatch(/ · \d+ files · (\d+ ms|\d+\.\d s)$/)
+    // The verdict is last; a long temp path wraps its meta onto an indented
+    // line (rule 6), so read it from its first line to the end.
+    const verdictText = lines.slice(lines.findIndex((l) => l.startsWith('✓ scaffolded'))).join('\n')
+    expect(verdictText.startsWith(`✓ scaffolded demo → ${dir}/`)).toBe(true)
+    expect(verdictText).toMatch(/(?: · |\n {2})\d+ files(?: · |\n {2})(\d+ ms|\d+\.\d s)$/)
     expect(err).toEqual([])
   })
 
