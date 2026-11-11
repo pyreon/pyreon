@@ -7,7 +7,7 @@ import { SkipLink } from './parts'
 
 const Page = el
   .config({ name: 'SitePage' })
-  .attrs({ block: true })
+  .attrs({ block: true, contentAlignX: 'block' })
   .theme((_t, m) => ({
     minHeight: '100vh',
     backgroundColor: tone(m, 'bg'),
@@ -20,7 +20,10 @@ const Page = el
     `,
   }))
 
-const Main = el.config({ name: 'SiteMain' }).attrs({ tag: 'main', block: true }).theme(() => ({ flexGrow: 1, minWidth: 0 }))
+// contentAlignX 'block' stretches the route outlet to the column: without it
+// a column flexbox sizes its child to fit-content, and one long line of
+// content (a heading, a code sample) made the whole page wider than the phone.
+const Main = el.config({ name: 'SiteMain' }).attrs({ tag: 'main', block: true, contentAlignX: 'block' }).theme(() => ({ flexGrow: 1, minWidth: 0 }))
 
 /**
  * The marketing shell: skip link, `<header>` (nav, mega menu, mobile sheet),

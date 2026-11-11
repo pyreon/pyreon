@@ -13,7 +13,7 @@ const Chip = txt
     display: 'inline-block',
     fontFamily: font.mono,
     fontSize: 10.5,
-    letterSpacing: '.14em',
+    letterSpacing: '.12em',
     textTransform: 'uppercase',
     lineHeight: 1.4,
     paddingTop: 4,

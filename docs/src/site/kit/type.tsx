@@ -149,7 +149,7 @@ export function renderInline(source: string): VNodeChild[] {
       case 'dotColor':
         return <StatusDot style={`background-color:${tok.color}`} />
       case 'small':
-        return <FactNote>{tok.value}</FactNote>
+        return <FactNote>{renderInline(tok.value)}</FactNote>
       default:
         return tok.value
     }
@@ -167,4 +167,27 @@ export const VisuallyHidden = txt
     overflow: 'hidden',
     whiteSpace: 'nowrap',
     extendCss: 'clip: rect(0 0 0 0); clip-path: inset(50%); margin: -1px; padding: 0; border: 0;',
+  }))
+
+/** "next release" / "experimental" marker on an item (outline, warn colour). */
+export const StatusBadge = txt
+  .config({ name: 'StatusBadge' })
+  .attrs({ tag: 'span' })
+  .theme((_t, m) => ({
+    display: 'inline-block',
+    marginLeft: 8,
+    paddingLeft: 7,
+    paddingRight: 7,
+    paddingTop: 1,
+    paddingBottom: 1,
+    borderRadius: 9999,
+    border: '1px solid',
+    borderColor: tone(m, 'warn'),
+    color: tone(m, 'warn'),
+    fontFamily: font.mono,
+    fontSize: 10,
+    letterSpacing: '.1em',
+    textTransform: 'uppercase',
+    verticalAlign: '2px',
+    whiteSpace: 'nowrap',
   }))

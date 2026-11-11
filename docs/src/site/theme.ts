@@ -117,6 +117,11 @@ export const color = {
   /** Active item in a switcher strip. */
   currentBorder: t('rgba(255,94,26,.55)', 'rgba(168,56,10,.55)'),
   currentFill: t('rgba(255,94,26,.08)', 'rgba(232,74,15,.06)'),
+  /** The hot install command (hero, closing CTA): ember ring + glow. [C6] */
+  hotRing: t('rgba(255,94,26,.45)', 'rgba(232,74,15,.55)'),
+  hotGlow: t('0 0 0 1px rgba(255,94,26,.18), 0 10px 40px -10px rgba(255,94,26,.45)', '0 0 0 1px rgba(232,74,15,.18), 0 10px 30px -12px rgba(232,74,15,.35)'),
+  /** Proof band fill (70% card). */
+  proofFill: t('rgba(17,17,24,.7)', 'rgba(255,255,255,.7)'),
   /** Scanline texture line (punch surfaces only). [A6b] */
   scanline: t('#23232E', '#E6DFD2'),
 } as const satisfies Record<string, Tone>
@@ -322,8 +327,16 @@ export const motion = {
   hover: '.2s ease',
   bars: '.6s cubic-bezier(.2,.7,.2,1)',
   panel: '.18s ease',
+  /** The hook word's underline sweep, once on load. [A12] */
+  sweep: { duration: 600, delay: 150, easing: 'cubic-bezier(.2,.7,.2,1)' },
   /** Signal pulse, only where a value changes. */
-  pulse: { duration: 200, easing: 'cubic-bezier(.2,.7,.3,1)' },
+  pulse: {
+    duration: 200,
+    easing: 'cubic-bezier(.2,.7,.3,1)',
+    ring: 'rgba(255,94,26,.55)',
+    edge: 'rgba(255,94,26,.7)',
+    fade: 'rgba(255,94,26,0)',
+  },
 } as const
 
 // ─── Z layers ─────────────────────────────────────────────────────────────

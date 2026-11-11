@@ -36,6 +36,7 @@ copy(join(from, 'types.ts'), join(app, 'types.ts'))
 copy(join(from, 'types-site.ts'), join(app, 'types-site.ts'))
 copy(join(from, 'content/_index.json'), join(products, '_index.json'))
 copy(join(from, 'content/_nav.json'), join(app, '_nav.json'))
+copy(join(from, 'content/_products.json'), join(app, '_products.json'))
 
 const wanted = ids.length > 0 ? ids : readdirSync(products).filter((f) => !f.startsWith('_') && f.endsWith('.json')).map((f) => f.slice(0, -5))
 for (const id of wanted) copy(join(from, `content/${id}.json`), join(products, `${id}.json`))

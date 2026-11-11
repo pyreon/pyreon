@@ -24,7 +24,7 @@
    },
    {
     "key": "native",
-    "value": "{dot:ok}signal, computed, effect and batch lower to iOS and Android"
+    "value": "{dot:ok}signal, computed, effect and batch lower to iOS and Android<small>Native targets are experimental.</small>"
    }
   ]
  },
@@ -126,7 +126,6 @@
     "items": [
      "signal",
      "computed",
-     "linked",
      "effect",
      "renderEffect",
      "batch",
@@ -168,6 +167,12 @@
      "getReactiveGraph",
      "describeReactiveGraph",
      "setErrorHandler"
+    ]
+   },
+   {
+    "name": "next release",
+    "items": [
+     "linked"
     ]
    }
   ]
@@ -221,7 +226,7 @@
   "rival": "vs Preact Signals and Solid · V8 (Node 26), Pyreon bundled · plus the 10-framework row board",
   "run": "final pass, two runs",
   "h": "Fastest where an update spends its time: propagation.",
-  "p": "Pyreon wins the work a real update runs through: effect propagation, batching and the computed diamond. It loses raw signal creation, deep unobserved chains and wide fan-out by 3%, and those rows stay in the table.",
+  "p": "Pyreon wins the work a real update runs through: effect propagation, batching and the computed diamond. It loses raw signal creation (4.8×), deep unobserved chains (1.42×) and wide fan-out (3–4%), and those rows stay in the table.",
   "rows": [
    {
     "op": "effect propagation (100)",
@@ -272,15 +277,15 @@
     "label": "Preact 4.8× ahead"
    },
    {
-    "op": "10,000-row table: create",
+    "op": "create 10,000 rows (vs React 19)",
     "pyreon": 72.64,
     "rival": 192.01,
     "unit": "ms",
-    "verdict": "win",
-    "label": "2.6× vs React 19 (vs the fastest rivals: a tie in one run, 1.02× in the other)"
+    "verdict": "split",
+    "label": "2.6× vs React 19; vs the fastest rivals a split: tie in one run, 1.02× in the other"
    },
    {
-    "op": "10,000-row table: clear",
+    "op": "clear 1,000 rows",
     "pyreon": 0.13,
     "rival": 0.145,
     "unit": "ms",
@@ -351,7 +356,7 @@
  "faq": [
   {
    "q": "Can I use it without the rest of Pyreon?",
-   "a": "Yes. It has no dependencies and no DOM code: `bun add @pyreon/reactivity` and use it in Node, Bun, a worker or a CLI. Every other Pyreon package builds on it."
+   "a": "Yes. It has no dependencies and no DOM code: `bun add @pyreon/reactivity` and use it in Node, Bun, a worker or a CLI. Pyreon's components, router, forms, queries and stores all build on it."
   },
   {
    "q": "Are effects synchronous?",
@@ -367,7 +372,7 @@
   },
   {
    "q": "Does it work in the iOS and Android builds?",
-   "a": "`signal`, `computed`, `effect` and `batch` compile to SwiftUI and Compose state through PMTC. `linked()` has no native lowering yet, and the compiler warns when it meets one."
+   "a": "Yes, on the experimental native targets: `signal` and `computed` compile to SwiftUI and Compose state through PMTC, `effect` re-runs when what it read changes, and `batch` lowers too. `linked()`, coming in the next release, has no native lowering yet, and the compiler warns by name when it meets one."
   }
  ],
  "sources": [

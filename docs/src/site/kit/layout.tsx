@@ -26,7 +26,7 @@ export function Wrap(props: { children?: VNodeChild }) {
  */
 export const Section = el
   .config({ name: 'Section' })
-  .attrs({ tag: 'section', block: true })
+  .attrs({ tag: 'section', block: true, contentAlignX: 'block' })
   .theme(() => ({
     position: 'relative',
     paddingTop: { xs: section.padYMobile, md: section.padY },

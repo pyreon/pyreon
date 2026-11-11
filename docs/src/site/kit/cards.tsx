@@ -8,7 +8,7 @@ import { Eyebrow, Lede } from './type'
 
 const CardFrame = el
   .config({ name: 'GlowCard' })
-  .attrs<LinkAttrs>({ block: true })
+  .attrs<LinkAttrs>({ block: true, contentAlignX: 'block', contentAlignY: 'block' })
   .theme((_t, m) => ({
     position: 'relative',
     height: '100%',
@@ -29,7 +29,10 @@ const CardFrame = el
 
 const CardInner = el
   .config({ name: 'GlowCardSurface' })
-  .attrs({ block: true, gap: 12 })
+  // Children stretch to the card's width and stack from the top (Element's
+  // defaults are left / centre, which shrink-wraps code blocks and centres
+  // short cards in an equal-height row).
+  .attrs({ block: true, gap: 12, contentAlignX: 'block', contentAlignY: 'top' })
   .theme((_t, m) => ({
     height: '100%',
     minWidth: 0,
@@ -172,7 +175,7 @@ export function PackageCard(props: { pkg: string; role: string; text: string; st
 
 const PaperBox = el
   .config({ name: 'DemoSurface' })
-  .attrs({ block: true, gap: 12 })
+  .attrs({ block: true, gap: 12, contentAlignX: 'block', contentAlignY: 'top' })
   .theme(() => ({
     minWidth: 0,
     backgroundColor: paper.bg,

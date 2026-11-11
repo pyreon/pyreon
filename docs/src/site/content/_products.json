@@ -1,0 +1,557 @@
+{
+ "hero": {
+  "eyebrow": "all products",
+  "title": "40 products. One reactive core.",
+  "lede": "Forms, charts, routing, auth, i18n, a native compiler and the tools that check all of it, built together on the same signals and released as one version. Use one in the app you have, or build the whole thing on them."
+ },
+ "groupingNote": "Follows products.html with two fixes: HTTP moves from Foundations to Data and state (it is the transport under Query, and the mega menu already files it there), and Content moves from Visual and content to Build apps (it is Zero's content layer and cannot run without Zero). RX stays in Data and state, as on products.html.",
+ "groups": [
+  {
+   "id": "build",
+   "title": "Build apps",
+   "text": "The framework, the native compiler and the pieces every app starts from.",
+   "productIds": [
+    "native",
+    "zero",
+    "content",
+    "primitives",
+    "design",
+    "auth"
+   ]
+  },
+  {
+   "id": "foundations",
+   "title": "Foundations",
+   "text": "Small, sharp packages you reach for on day one.",
+   "productIds": [
+    "reactivity",
+    "router",
+    "hooks",
+    "kinetic",
+    "a11y",
+    "dnd",
+    "toast"
+   ]
+  },
+  {
+   "id": "data",
+   "title": "Data and state",
+   "text": "Forms, server data, shared state and the rules around them. All signals.",
+   "productIds": [
+    "form",
+    "validation",
+    "query",
+    "http",
+    "store",
+    "statetree",
+    "machine",
+    "storage",
+    "sync",
+    "feature",
+    "permissions",
+    "urlstate",
+    "i18n",
+    "rx"
+   ]
+  },
+  {
+   "id": "visual",
+   "title": "Visual and content",
+   "text": "Charts, grids, editors and diagrams that stay fast when the data gets big.",
+   "productIds": [
+    "charts",
+    "table",
+    "virtual",
+    "editor",
+    "flow",
+    "document",
+    "hotkeys"
+   ]
+  },
+  {
+   "id": "tools",
+   "title": "Developer tools",
+   "text": "The tools that check your code, your components, your API and your monorepo.",
+   "productIds": [
+    "tooling",
+    "ai",
+    "atlas",
+    "lathe",
+    "loom",
+    "migrate"
+   ]
+  }
+ ],
+ "products": [
+  {
+   "id": "native",
+   "name": "Native",
+   "package": "Pyreon Native · PMTC",
+   "group": "build",
+   "href": "/products/native",
+   "pitch": "Compile one `.tsx` into a real SwiftUI app and a real Jetpack Compose app, tested on an iOS Simulator and an Android emulator in CI. Experimental, and labelled that way.",
+   "status": "experimental"
+  },
+  {
+   "id": "zero",
+   "name": "Zero",
+   "package": "@pyreon/zero",
+   "group": "build",
+   "href": "/products/zero",
+   "pitch": "Every route picks its own rendering: SSG, SSR, ISR or SPA, plus islands, server actions and adapters for Node, Bun, Vercel, Netlify, Cloudflare and static hosts.",
+   "proof": {
+    "stat": "6.5×",
+    "label": "faster server rendering than React 19 at 1,000 rows (compiled SSR, 109.9 vs 714.4 µs)",
+    "condition": "one run, overnight pass, M3 Max, synthetic, author-run",
+    "source": "00-brief/BENCHMARKS-2026-11-05.md §5"
+   }
+  },
+  {
+   "id": "content",
+   "name": "Content",
+   "package": "@pyreon/zero-content",
+   "group": "build",
+   "href": "/products/content",
+   "pitch": "Markdown and MDX compiled to real Pyreon JSX at build time, with Astro-style typed collections checked by your own Zod, Valibot or ArkType schema."
+  },
+  {
+   "id": "primitives",
+   "name": "Primitives",
+   "package": "@pyreon/primitives",
+   "group": "build",
+   "href": "/products/primitives",
+   "pitch": "22 components, from `<Stack>` and `<Field>` to `<Select>` and `<Modal>`, that render DOM on the web and real SwiftUI and Jetpack Compose views on phones (native: experimental)."
+  },
+  {
+   "id": "design",
+   "name": "Design System",
+   "package": "@pyreon/rocketstyle · styler · elements · coolgrid · kinetic",
+   "group": "build",
+   "href": "/products/design",
+   "pitch": "Eleven packages: `styled()` CSS-in-JS, components styled by state × size × variant × dark mode, a responsive grid and transitions, all cached and SSR-safe.",
+   "proof": {
+    "stat": "4 of 4",
+    "label": "ops won by the styler against Emotion, goober and styled-components (cold insert, warm dedup, dynamic resolve, SSR collect)",
+    "condition": "one run, overnight pass",
+    "source": "00-brief/BENCHMARKS-2026-11-05.md §9 Styler"
+   }
+  },
+  {
+   "id": "auth",
+   "name": "Auth",
+   "package": "@pyreon/auth",
+   "group": "build",
+   "href": "/products/auth",
+   "pitch": "OIDC sign-in on web, iOS and Android from one call, with S256 PKCE, `state`, `nonce` and the issuer check on by default, plus signed sessions, TOTP and passkeys.",
+   "status": "next release"
+  },
+  {
+   "id": "reactivity",
+   "name": "Reactivity",
+   "package": "@pyreon/reactivity",
+   "group": "foundations",
+   "href": "/products/reactivity",
+   "pitch": "`signal`, `computed`, `effect`, `batch`: the core every Pyreon package runs on, and it works on its own.",
+   "proof": {
+    "stat": "2.0–2.1×",
+    "label": "faster effect propagation than Preact Signals",
+    "condition": "V8, two runs, final pass",
+    "source": "00-brief/BENCHMARKS-2026-11-05.md §8"
+   }
+  },
+  {
+   "id": "router",
+   "name": "Router",
+   "package": "@pyreon/router",
+   "group": "foundations",
+   "href": "/products/router",
+   "pitch": "Params typed from the path string (`/user/:id` gives `{ id: string }`), with loaders, guards, middleware, typed search params and View Transitions."
+  },
+  {
+   "id": "hooks",
+   "name": "Hooks",
+   "package": "@pyreon/hooks",
+   "group": "foundations",
+   "href": "/products/hooks",
+   "pitch": "65 signal-based hooks for the browser and the phone, from `useClickOutside` and `useMediaQuery` to `useCamera` and `useBiometrics`."
+  },
+  {
+   "id": "kinetic",
+   "name": "Motion",
+   "package": "@pyreon/kinetic + kinetic-presets",
+   "group": "foundations",
+   "href": "/products/kinetic",
+   "pitch": "Enter, leave, collapse and stagger from one `kinetic(tag)` factory, 120+ presets, reduced motion detected for you, and SSR output crawlers can read."
+  },
+  {
+   "id": "a11y",
+   "name": "Accessibility",
+   "package": "@pyreon/a11y",
+   "group": "foundations",
+   "href": "/products/a11y",
+   "pitch": "`announce('Saved')` reaches screen readers with no provider and no setup; `<LiveRegion>`, `<VisuallyHidden>` and SSR-safe ids cover the rest."
+  },
+  {
+   "id": "dnd",
+   "name": "Drag and Drop",
+   "package": "@pyreon/dnd",
+   "group": "foundations",
+   "href": "/products/dnd",
+   "pitch": "Drag and drop on Atlassian's pragmatic-drag-and-drop engine: sortable lists with keyboard reordering, file drop, and every drag state as a signal."
+  },
+  {
+   "id": "toast",
+   "name": "Toast",
+   "package": "@pyreon/toast",
+   "group": "foundations",
+   "href": "/products/toast",
+   "pitch": "`toast('Saved')` from anywhere, no provider; `toast.promise()` for async work, and the timer pauses on hover, on focus and in a hidden tab.",
+   "proof": {
+    "stat": "2.5–3.8×",
+    "label": "faster headless toast operations than react-hot-toast and sonner",
+    "condition": "one run, overnight pass, bun",
+    "source": "00-brief/BENCHMARKS-2026-11-05.md §10 toast"
+   }
+  },
+  {
+   "id": "form",
+   "name": "Forms",
+   "package": "@pyreon/form",
+   "group": "data",
+   "href": "/products/form",
+   "pitch": "Every field is its own signal, so typing in one field never touches the other eleven. Pass a Zod, Valibot or ArkType schema raw, no adapter.",
+   "proof": {
+    "stat": "3×",
+    "label": "faster mount than React Hook Form (12 fields, 210 vs 640 µs); fastest of 7 libraries on all 4 timed ops",
+    "condition": "one run, overnight pass, real Chromium",
+    "source": "00-brief/BENCHMARKS-2026-11-05.md §6 form-bench"
+   }
+  },
+  {
+   "id": "validation",
+   "name": "Validation",
+   "package": "@pyreon/validate",
+   "group": "data",
+   "href": "/products/validation",
+   "pitch": "A chainable validator (`s.string().email()`) that speaks Standard Schema, with field metadata, reactive parse and translated errors built in.",
+   "proof": {
+    "stat": "12 of 12",
+    "label": "cells won against zod, valibot and arktype on a multi-schema workload",
+    "condition": "one run, final pass",
+    "source": "00-brief/BENCHMARKS-2026-11-05.md §9 Validate"
+   }
+  },
+  {
+   "id": "query",
+   "name": "Query",
+   "package": "@pyreon/query",
+   "group": "data",
+   "href": "/products/query",
+   "pitch": "TanStack Query on signals: `data`, `error` and `isFetching` are separate signals, and WebSocket and SSE hooks share the same cache.",
+   "proof": {
+    "stat": "1 vs 8",
+    "label": "derivations per data change, against react-query on the same TanStack core",
+    "condition": "happy-dom count, one run, overnight pass",
+    "source": "00-brief/BENCHMARKS-2026-11-05.md §10 query"
+   }
+  },
+  {
+   "id": "http",
+   "name": "HTTP",
+   "package": "@pyreon/http",
+   "group": "data",
+   "href": "/products/http",
+   "pitch": "The request layer under Query: onion middleware, typed errors, cancellation and optional schema validation, on a zero-dependency core."
+  },
+  {
+   "id": "store",
+   "name": "Store",
+   "package": "@pyreon/store",
+   "group": "data",
+   "href": "/products/store",
+   "pitch": "Global state is a setup function that returns signals and functions. Actions, patches, subscriptions and per-request SSR isolation come with it."
+  },
+  {
+   "id": "statetree",
+   "name": "State Tree",
+   "package": "@pyreon/state-tree",
+   "group": "data",
+   "href": "/products/statetree",
+   "pitch": "MobX-State-Tree-style models on signals: typed snapshots, JSON-patch record and replay, middleware, and per-request isolation on the server.",
+   "proof": {
+    "stat": "9.5×",
+    "label": "faster actions than MobX-State-Tree",
+    "condition": "one run, overnight pass, bun",
+    "source": "00-brief/BENCHMARKS-2026-11-05.md §10 state-tree"
+   }
+  },
+  {
+   "id": "machine",
+   "name": "State Machines",
+   "package": "@pyreon/machine",
+   "group": "data",
+   "href": "/products/machine",
+   "pitch": "A state machine that is a signal: it holds only the states you list and moves only by named events, with typed guards.",
+   "proof": {
+    "stat": "34.7×",
+    "label": "faster `send` than XState",
+    "condition": "one run, overnight pass, bun",
+    "source": "00-brief/BENCHMARKS-2026-11-05.md §10 machine"
+   }
+  },
+  {
+   "id": "storage",
+   "name": "Storage",
+   "package": "@pyreon/storage",
+   "group": "data",
+   "href": "/products/storage",
+   "pitch": "Signals that persist: localStorage synced across tabs, sessionStorage, cookies the server can read, and IndexedDB, all behind one API.",
+   "proof": {
+    "stat": "10–30×",
+    "label": "faster writes than Jotai atomWithStorage and Zustand persist (10.1–29.7×)",
+    "condition": "one run, overnight pass, bun",
+    "source": "00-brief/BENCHMARKS-2026-11-05.md §10 storage"
+   }
+  },
+  {
+   "id": "sync",
+   "name": "Sync",
+   "package": "@pyreon/sync",
+   "group": "data",
+   "href": "/products/sync",
+   "pitch": "Local-first sync where a synced value is a normal signal, so a remote edit is one DOM update. Yjs underneath, IndexedDB offline, a WebSocket relay with per-room auth."
+  },
+  {
+   "id": "feature",
+   "name": "Feature",
+   "package": "@pyreon/feature",
+   "group": "data",
+   "href": "/products/feature",
+   "pitch": "Hand `defineFeature` a schema and an API path. Get list, detail, search, create, update and delete, plus the form, the table and the store."
+  },
+  {
+   "id": "permissions",
+   "name": "Permissions",
+   "package": "@pyreon/permissions",
+   "group": "data",
+   "href": "/products/permissions",
+   "pitch": "`can('posts.edit')` is a reactive check, so the UI follows when roles change. RBAC, ABAC, feature flags and plan tiers, with `posts.*` wildcards.",
+   "proof": {
+    "stat": "1.3–1.9×",
+    "label": "faster than CASL on a fair resolver race",
+    "condition": "one run, overnight pass, bun",
+    "source": "00-brief/BENCHMARKS-2026-11-05.md §10 permissions"
+   }
+  },
+  {
+   "id": "urlstate",
+   "name": "URL State",
+   "package": "@pyreon/url-state",
+   "group": "data",
+   "href": "/products/urlstate",
+   "pitch": "`useUrlState('page', 1)` is a signal synced to the query string, with type coercion and `replaceState`, so filters survive a refresh and a pasted link.",
+   "proof": {
+    "stat": "2.1×",
+    "label": "faster array parsing than nuqs",
+    "condition": "one run, overnight pass, bun",
+    "source": "00-brief/BENCHMARKS-2026-11-05.md §10 url-state"
+   }
+  },
+  {
+   "id": "i18n",
+   "name": "i18n",
+   "package": "@pyreon/i18n",
+   "group": "data",
+   "href": "/products/i18n",
+   "pitch": "Translations with Intl-correct plurals, number, date and relative-time formatting, and namespaces that load when a page needs them.",
+   "proof": {
+    "stat": "12×",
+    "label": "faster `t()` than i18next",
+    "condition": "one run, overnight pass, bun",
+    "source": "00-brief/BENCHMARKS-2026-11-05.md §10 i18n"
+   }
+  },
+  {
+   "id": "rx",
+   "name": "RX",
+   "package": "@pyreon/rx",
+   "group": "data",
+   "href": "/products/rx",
+   "pitch": "42 functions (`filter`, `sortBy`, `groupBy`, `pipe`, `debounce`…) that take signals and return signals.",
+   "proof": {
+    "stat": "N → 1",
+    "label": "a `pipe()` of N stages runs as one reactive node (exact count)",
+    "condition": "final pass, node count, not a timing",
+    "source": "00-brief/BENCHMARKS-2026-11-05.md §10 rx"
+   }
+  },
+  {
+   "id": "charts",
+   "name": "Charts",
+   "package": "@pyreon/charts",
+   "group": "visual",
+   "href": "/products/charts",
+   "pitch": "Charts written as JSX marks (`<Line>`, `<Bar>`, `<Area>`) on Pyreon's own engine, with an accessible data table built in and the same source on iOS and Android.",
+   "proof": {
+    "stat": "8.7×",
+    "label": "faster than ECharts 6 mounting a 100,000-point line chart (4.36 vs 37.95 ms)",
+    "condition": "one run, final pass, real Chromium",
+    "source": "00-brief/BENCHMARKS-2026-11-05.md §2 charts"
+   }
+  },
+  {
+   "id": "table",
+   "name": "Table",
+   "package": "@pyreon/table",
+   "group": "visual",
+   "href": "/products/table",
+   "pitch": "TanStack Table's headless core with signal-driven state and reactive options, rendered by Pyreon's fine-grained DOM.",
+   "proof": {
+    "stat": "1.11–1.18×",
+    "label": "faster than @tanstack/react-table (memoized rows) replacing 1,000 rows",
+    "condition": "two runs, final pass, real Chromium",
+    "source": "00-brief/BENCHMARKS-2026-11-05.md §2 table"
+   }
+  },
+  {
+   "id": "virtual",
+   "name": "Virtual",
+   "package": "@pyreon/virtual",
+   "group": "visual",
+   "href": "/products/virtual",
+   "pitch": "TanStack Virtual for element or window scrolling: a 10,000-row list with only the visible rows in the DOM.",
+   "proof": {
+    "stat": "4 of 4",
+    "label": "ops won against @tanstack/react-virtual (mount, scroll, jump, unmount)",
+    "condition": "one run, final pass, real Chromium",
+    "source": "00-brief/BENCHMARKS-2026-11-05.md §2 virtual"
+   }
+  },
+  {
+   "id": "editor",
+   "name": "Editors",
+   "package": "@pyreon/rich-text · @pyreon/code",
+   "group": "visual",
+   "href": "/products/editor",
+   "pitch": "Rich text on TipTap and code on CodeMirror 6, where the document is a signal. Lazy-loaded languages, a minimap and a diff editor included."
+  },
+  {
+   "id": "flow",
+   "name": "Flow",
+   "package": "@pyreon/flow",
+   "group": "visual",
+   "href": "/products/flow",
+   "pitch": "Node editors where each node mounts once and a drag touches one node, with auto-layout from its own engine: no elkjs, no D3.",
+   "proof": {
+    "stat": "6/6",
+    "label": "operations won against React Flow 12 (500 nodes): mount, drag, select, add, pan and zoom, unmount",
+    "condition": "one run, real Chromium, synthetic, author-run",
+    "source": "00-brief/BENCHMARKS-2026-11-05.md §2 flow vs React Flow 12: wins all six ops, 1.17–210×, one run. Headline uses 6/6, not 210×: the record says the drag/pan ratios are mostly React Flow re-rendering node wrappers"
+   }
+  },
+  {
+   "id": "document",
+   "name": "Documents",
+   "package": "@pyreon/document",
+   "group": "visual",
+   "href": "/products/document",
+   "pitch": "One template, 20 output formats: PDF, DOCX, XLSX, PPTX, email, Markdown, Slack, Teams, Notion and more. Heavy renderers load only when used."
+  },
+  {
+   "id": "hotkeys",
+   "name": "Hotkeys",
+   "package": "@pyreon/hotkeys",
+   "group": "visual",
+   "href": "/products/hotkeys",
+   "pitch": "Scoped keyboard shortcuts with modifier keys and conflict detection, unregistered when their component unmounts.",
+   "proof": {
+    "stat": "1.7–7.5×",
+    "label": "faster dispatch than tinykeys, hotkeys-js and mousetrap",
+    "condition": "one run, overnight pass, bun",
+    "source": "00-brief/BENCHMARKS-2026-11-05.md §10 hotkeys"
+   }
+  },
+  {
+   "id": "tooling",
+   "name": "Tooling",
+   "package": "@pyreon/cli · lint · devtools · mcp · testing",
+   "group": "tools",
+   "href": "/products/tooling",
+   "pitch": "`pyreon doctor` runs 15 gates and scores your project 0–100 with the fixes inline, next to 133 lint rules, `pyreon check`, a test kit and devtools for the reactive graph."
+  },
+  {
+   "id": "ai",
+   "name": "AI and MCP",
+   "package": "@pyreon/mcp",
+   "group": "tools",
+   "href": "/products/ai",
+   "pitch": "An MCP server with 24 tools: your assistant looks up the real API, validates its code against Pyreon's misuse detectors and explains reactivity. No network calls."
+  },
+  {
+   "id": "atlas",
+   "name": "Atlas",
+   "package": "@pyreon/atlas",
+   "group": "tools",
+   "href": "/products/atlas",
+   "pitch": "A component catalog derived from your components and types: controls from props, scenarios from variants, and a six-check verdict per scenario (a11y, interaction, leak, SSR parity, reactivity, snapshot)."
+  },
+  {
+   "id": "lathe",
+   "name": "Lathe",
+   "package": "@pyreon/lathe",
+   "group": "tools",
+   "href": "/products/lathe",
+   "pitch": "OpenAPI in, typed Pyreon client out: schemas, endpoints, query hooks, mocks and docs. `lathe check` fails CI when the generated code drifts from the spec."
+  },
+  {
+   "id": "loom",
+   "name": "Loom",
+   "package": "@pyreon/loom",
+   "group": "tools",
+   "href": "/products/loom",
+   "pitch": "Your workspace's dependency graph as data: version drift, runtime cycles, phantom deps and blast radius, with a non-zero exit for CI.",
+   "proof": {
+    "stat": "374 ms",
+    "label": "to scan the Pyreon monorepo, warm (98.3% of it import scanning)",
+    "condition": "one run, overnight pass, Pyreon-only figure",
+    "source": "00-brief/BENCHMARKS-2026-11-05.md §11 loom"
+   }
+  },
+  {
+   "id": "migrate",
+   "name": "Migrate",
+   "package": "Pyreon Compat",
+   "group": "tools",
+   "href": "/products/migrate",
+   "pitch": "Compat layers for React, Preact, Vue, Solid and Svelte with near-full public-API parity: change the imports, keep shipping, port screens when it pays."
+  }
+ ],
+ "underneath": {
+  "text": "Underneath sit the compiler, both runtimes, the server, head management and the rest of the 77 published packages. Each one is covered on the product page that uses it.",
+  "link": {
+   "label": "Browse the package catalog",
+   "href": "/docs/package-catalog"
+  }
+ },
+ "proofFooter": "Proof numbers: benchmark record of 5 Nov 2026, Apple M3 Max, synthetic and author-run. Every loss is published too.",
+ "proofFooterLink": {
+  "label": "See every result",
+  "href": "/benchmarks"
+ },
+ "end": {
+  "title": "Start with one. The other 39 will wait.",
+  "text": "Scaffold a Zero app with forms, query and the store wired in, or add a single package to the app you already have.",
+  "primary": {
+   "label": "Start a web app",
+   "command": "npm create @pyreon/zero@latest"
+  },
+  "secondary": {
+   "label": "Want the phone apps too? (experimental)",
+   "command": "npm create @pyreon/multiplatform@latest"
+  },
+  "tertiary": {
+   "label": "Don't trust us. Run the benchmarks.",
+   "href": "/benchmarks"
+  }
+ }
+}

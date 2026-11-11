@@ -1,5 +1,5 @@
 import { For, Show } from '@pyreon/core'
-import { diff, font, radius, syntax, text, weight } from '../theme'
+import { diff, font, gradient, radius, syntax, text, weight } from '../theme'
 import { el, focusRing, pair, tone, txt } from './bases'
 import { GlowCard } from './cards'
 import { AutoGrid } from './layout'
@@ -36,7 +36,7 @@ const Caption = txt
   }))
 
 const shikiCss = `
-  & pre { margin: 0; padding: 0; background: transparent !important; overflow: visible; font: inherit; }
+  & pre { margin: 0; padding: 0; border: 0; border-radius: 0; background: transparent !important; overflow: visible; font: inherit; }
   & pre code { font: inherit; background: none; padding: 0; border: 0; }
   & span { color: var(--shiki-light); font-style: var(--shiki-light-font-style, inherit); }
   [data-theme='dark'] & span { color: var(--shiki-dark); font-style: var(--shiki-dark-font-style, inherit); }
@@ -80,23 +80,40 @@ export function CodeBlock(props: { code: string; html?: string | undefined; labe
   )
 }
 
-/** `.lx-code` — a code card: label, optional caption, highlighted code. state: default | hot. */
+const Rail = el
+  .config({ name: 'CodeRail' })
+  .attrs({ block: true, contentAlignX: 'block', contentAlignY: 'top' })
+  .theme(() => ({ minWidth: 0 }))
+  .states((_t, m) => ({
+    none: {},
+    del: { boxShadow: `inset 4px 0 0 ${pair(m, diff.delBar)}` },
+    ins: { boxShadow: `inset 4px 0 0 ${pair(m, diff.insBar)}` },
+  }))
+
+/**
+ * `.lx-code` — a code card: label, optional caption, highlighted code.
+ * state: default | hot. rail: a 4px plasma (del) or cyan (ins) edge, for
+ * before/after pairs (C2 at page scale).
+ */
 export function CodeCard(props: {
   label: string
   caption?: string | undefined
   code: string
   html?: string | undefined
   state?: 'default' | 'hot' | undefined
+  rail?: 'none' | 'del' | 'ins' | undefined
 }) {
   return (
     <GlowCard state={props.state} padding="flush">
-      <CodeHead>
-        <Eyebrow state={props.state === 'hot' ? 'accent' : 'default'}>{props.label}</Eyebrow>
-        <Show when={() => !!props.caption}>
-          <Caption>{renderInline(props.caption ?? '')}</Caption>
-        </Show>
-      </CodeHead>
-      <CodeBlock code={props.code} html={props.html} label={props.label} />
+      <Rail state={props.rail ?? 'none'}>
+        <CodeHead>
+          <Eyebrow state={props.state === 'hot' ? 'accent' : 'default'}>{props.label}</Eyebrow>
+          <Show when={() => !!props.caption}>
+            <Caption>{renderInline(props.caption ?? '')}</Caption>
+          </Show>
+        </CodeHead>
+        <CodeBlock code={props.code} html={props.html} label={props.label} />
+      </Rail>
     </GlowCard>
   )
 }
@@ -108,84 +125,88 @@ export function BeforeAfter(props: {
 }) {
   return (
     <AutoGrid cols={2} gap={16}>
-      <CodeCard label={props.before.label} caption={props.before.caption} code={props.before.code} html={props.before.codeHtml} />
-      <CodeCard label={props.after.label} caption={props.after.caption} code={props.after.code} html={props.after.codeHtml} state="hot" />
+      <CodeCard label={props.before.label} caption={props.before.caption} code={props.before.code} html={props.before.codeHtml} rail="del" />
+      <CodeCard label={props.after.label} caption={props.after.caption} code={props.after.code} html={props.after.codeHtml} state="hot" rail="ins" />
     </AutoGrid>
   )
 }
 
-// ─── CodeDiff ────────────────────────────────────────────────────────────
+// ─── CodeDiff (C2) ────────────────────────────────────────────────────────
 
 export type DiffRow = readonly ['-' | '+' | ' ', string]
 
-const DiffBox = el
+const DiffPane = el
   .config({ name: 'CodeDiff' })
-  .attrs({ block: true })
+  .attrs({ tag: 'ul', block: true })
   .theme((_t, m) => ({
+    listStyle: 'none',
+    margin: 0,
     minWidth: 0,
+    paddingTop: 12,
+    paddingBottom: 12,
+    paddingLeft: 0,
+    paddingRight: 0,
+    overflowX: 'auto',
     borderRadius: radius.pane,
     border: '1px solid',
     borderColor: tone(m, 'line'),
-    backgroundColor: tone(m, 'well'),
-    overflow: 'hidden',
-  }))
-
-const DiffLines = el
-  .config({ name: 'CodeDiffLines' })
-  .attrs({ tag: 'ul', block: true })
-  .theme(() => ({
-    listStyle: 'none',
-    margin: 0,
-    paddingLeft: 0,
-    paddingRight: 0,
-    paddingTop: 14,
-    paddingBottom: 14,
-    overflowX: 'auto',
+    backgroundColor: m(syntax.light.bg, syntax.dark.bg),
     fontFamily: font.mono,
-    fontSize: text.code.size,
-    lineHeight: text.code.lineHeight,
+    fontSize: { xs: 12, md: 14 },
+    lineHeight: 1.55,
+    focus: focusRing(m),
+    extendCss: 'font-variant-ligatures: none;',
   }))
 
 const DiffLine = el
   .config({ name: 'CodeDiffLine' })
   .attrs({ tag: 'li', block: true })
   .theme((_t, m) => ({
-    display: 'grid',
-    gridTemplateColumns: '28px max-content',
     minWidth: 'max-content',
-    paddingRight: 20,
+    paddingTop: { xs: 5, md: 6 },
+    paddingBottom: { xs: 5, md: 6 },
+    paddingLeft: { xs: 14, md: 22 },
+    paddingRight: { xs: 14, md: 22 },
     whiteSpace: 'pre',
-    borderLeft: '3px solid transparent',
+    borderLeft: '4px solid transparent',
     color: m(syntax.light.fg, syntax.dark.fg),
   }))
   .states((_t, m) => ({
     same: {},
-    del: { backgroundColor: pair(m, diff.delBg), borderLeftColor: pair(m, diff.delBar), color: pair(m, diff.delText), textDecoration: 'line-through', extendCss: 'text-decoration-thickness: 1px;' },
+    del: { backgroundColor: pair(m, diff.delBg), borderLeftColor: pair(m, diff.delBar), color: pair(m, diff.delText) },
     ins: { backgroundColor: pair(m, diff.insBg), borderLeftColor: pair(m, diff.insBar), color: pair(m, diff.insText) },
   }))
 
 const DiffSign = txt
   .config({ name: 'CodeDiffSign' })
   .attrs({ tag: 'span' })
-  .theme(() => ({ textAlign: 'center', userSelect: 'none', fontWeight: weight.medium }))
+  .theme(() => ({ display: 'inline-block', width: '2ch', userSelect: 'none' }))
 
-const DiffFoot = el
-  .config({ name: 'CodeDiffFoot' })
-  .attrs({ block: true, contentDirection: 'inline', contentAlignX: 'spaceBetween', gap: 12 })
+const DiffCaption = txt
+  .config({ name: 'CodeDiffCaption' })
+  .attrs({ tag: 'p' })
   .theme((_t, m) => ({
-    flexWrap: 'wrap',
-    paddingTop: 12,
-    paddingBottom: 12,
-    paddingLeft: 20,
-    paddingRight: 20,
-    borderTop: '1px solid',
-    borderColor: tone(m, 'line'),
-    fontFamily: font.mono,
-    fontSize: text.caveat.size,
-    color: tone(m, 'fog'),
+    margin: 0,
+    marginTop: 24,
+    fontFamily: font.sans,
+    fontSize: 'clamp(20px, 1.9vw, 26px)',
+    lineHeight: 1.25,
+    letterSpacing: '-.02em',
+    fontWeight: weight.bold,
+    color: tone(m, 'strong'),
   }))
 
-/** Count of removed and added lines, for the caption. */
+const Payoff = txt
+  .config({ name: 'CodeDiffPayoff' })
+  .attrs({ tag: 'span' })
+  .theme((_t, m) => ({
+    backgroundImage: pair(m, gradient.ember),
+    backgroundClip: 'text',
+    color: 'transparent',
+    extendCss: '-webkit-background-clip: text; -webkit-box-decoration-break: clone; box-decoration-break: clone;',
+  }))
+
+/** Count of removed and added lines. */
 export function diffStats(rows: readonly DiffRow[]): { removed: number; added: number } {
   let removed = 0
   let added = 0
@@ -196,33 +217,43 @@ export function diffStats(rows: readonly DiffRow[]): { removed: number; added: n
   return { removed, added }
 }
 
+/** The caption's last sentence is the payoff, set in the display gradient. */
+export function splitPayoff(caption: string): [string, string] {
+  const t = caption.trim()
+  const i = t.lastIndexOf('. ', t.length - 2)
+  if (i < 0) return ['', t]
+  return [t.slice(0, i + 2), t.slice(i + 2)]
+}
+
 /**
- * "The code you delete" — removed lines struck through on plasma, added lines
- * on cyan, from the marketing cards (G-once-code-diff). Removed/added is
- * carried by the sign column and a screen-reader prefix, never colour alone.
+ * "The code you delete" (C2): rows with a 4px rail, a real `−`/`+` sign and
+ * a screen-reader prefix (so it never reads by colour alone), then the
+ * caption with its payoff in the display gradient. The pane scrolls inside
+ * itself on phones; there is no copy button (it is not runnable on its own).
  */
-export function CodeDiff(props: { rows: readonly DiffRow[]; label?: string | undefined; caption?: string | undefined }) {
-  const stats = diffStats(props.rows)
+export function CodeDiff(props: { rows: readonly DiffRow[]; caption?: string | undefined; label?: string | undefined }) {
+  const [lead, payoff] = splitPayoff(props.caption ?? '')
+  const rows = props.rows.map((r, i) => ({ r, i }))
   return (
-    <DiffBox>
-      <DiffLines aria-label={props.label ?? 'Code diff'} tabIndex={0}>
-        <For each={props.rows.map((r, i) => ({ r, i }))} by={(x) => x.i}>
+    <div>
+      <DiffPane tabIndex={0} aria-label={props.label ?? 'Code diff: removed and added lines'}>
+        <For each={rows} by={(x) => x.i}>
           {({ r }) => (
             <DiffLine state={r[0] === '-' ? 'del' : r[0] === '+' ? 'ins' : 'same'}>
-              <DiffSign aria-hidden="true">{r[0] === ' ' ? '' : r[0] === '-' ? '−' : '+'}</DiffSign>
-              <span>
-                {r[0] === '-' ? <VisuallyHidden>removed: </VisuallyHidden> : r[0] === '+' ? <VisuallyHidden>added: </VisuallyHidden> : null}
-                {r[1]}
-              </span>
+              <DiffSign aria-hidden="true">{r[0] === '-' ? '−' : r[0] === '+' ? '+' : ' '}</DiffSign>
+              {r[0] === '-' ? <VisuallyHidden>removed: </VisuallyHidden> : r[0] === '+' ? <VisuallyHidden>added: </VisuallyHidden> : null}
+              {r[1]}
             </DiffLine>
           )}
         </For>
-      </DiffLines>
-      <DiffFoot>
-        <span>{props.caption ?? ''}</span>
-        <span>{`−${stats.removed} +${stats.added}`}</span>
-      </DiffFoot>
-    </DiffBox>
+      </DiffPane>
+      <Show when={() => !!props.caption}>
+        <DiffCaption>
+          {lead}
+          <Payoff>{payoff}</Payoff>
+        </DiffCaption>
+      </Show>
+    </div>
   )
 }
 
@@ -239,8 +270,8 @@ export function ComingFrom(props: {
 }) {
   return (
     <AutoGrid cols={2} gap={16}>
-      <CodeCard label={props.lib} code={props.before} html={props.beforeHtml} />
-      <CodeCard label="Pyreon" caption={props.note} code={props.after} html={props.afterHtml} state="hot" />
+      <CodeCard label={props.lib} code={props.before} html={props.beforeHtml} rail="del" />
+      <CodeCard label="Pyreon" caption={props.note} code={props.after} html={props.afterHtml} state="hot" rail="ins" />
     </AutoGrid>
   )
 }

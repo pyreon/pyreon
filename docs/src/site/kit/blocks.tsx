@@ -3,7 +3,7 @@ import { clampSize, display, font, gradient, radius, text, weight } from '../the
 import { el, pair, tone, txt } from './bases'
 import { GlowCard } from './cards'
 import { AutoGrid } from './layout'
-import { Eyebrow, Heading, Lede, renderInline } from './type'
+import { Eyebrow, Heading, Lede, renderInline, StatusBadge } from './type'
 
 // ─── FactList ─────────────────────────────────────────────────────────────
 
@@ -41,7 +41,8 @@ const FactKey = el
 const FactValue = el
   .config({ name: 'FactValue' })
   .attrs({ tag: 'dd' })
-  .theme((_t, m) => ({ margin: 0, color: tone(m, 'text'), fontFamily: font.sans, minWidth: 0, overflowWrap: 'break-word' }))
+  // display: block — a <dd> holding inline runs (code, dots, <small>) must not lay them out as flex items.
+  .theme((_t, m) => ({ display: 'block', margin: 0, color: tone(m, 'text'), fontFamily: font.sans, minWidth: 0, overflowWrap: 'break-word' }))
 
 /** `.p-facts` — key/value rows (a `<dl>`). Values use the inline grammar. */
 export function FactList(props: { facts: readonly { key: string; value: string }[] }) {
@@ -64,7 +65,7 @@ export function FactList(props: { facts: readonly { key: string; value: string }
 const CardBody = el.config({ name: 'NumberedCardBody' }).attrs({ block: true, gap: 12 }).theme(() => ({ minHeight: 156 }))
 
 /** `.p-why` — numbered cards, auto-fit (min 250px); the first is `hot`. */
-export function NumberedCards(props: { items: readonly { title: string; text: string }[] }) {
+export function NumberedCards(props: { items: readonly { title: string; text: string; status?: string | undefined }[] }) {
   const items = props.items.map((it, i) => ({ ...it, i }))
   return (
     <AutoGrid min={250} tag="ol">
@@ -78,6 +79,7 @@ export function NumberedCards(props: { items: readonly { title: string; text: st
                 </Eyebrow>
                 <Heading tag="h3" size="card">
                   {it.title}
+                  {it.status ? <StatusBadge>{it.status}</StatusBadge> : null}
                 </Heading>
                 <Lede size="card">{renderInline(it.text)}</Lede>
               </CardBody>
@@ -155,7 +157,7 @@ const FeatureName = txt
   .theme((_t, m) => ({ color: tone(m, 'text'), fontWeight: weight.regular }))
 
 /** `.p-feat` — two-column "+" list. */
-export function FeatureList(props: { items: readonly { name: string; text: string }[] }) {
+export function FeatureList(props: { items: readonly { name: string; text: string; status?: string | undefined }[] }) {
   return (
     <FeatureBox>
       <For each={props.items} by={(f) => f.name}>
@@ -164,6 +166,7 @@ export function FeatureList(props: { items: readonly { name: string; text: strin
             <FeaturePlus>+</FeaturePlus>
             <span>
               <FeatureName>{renderInline(f.name)}</FeatureName>
+              {f.status ? <StatusBadge>{f.status}</StatusBadge> : null}
               {f.text ? ' ' : ''}
               {renderInline(f.text)}
             </span>

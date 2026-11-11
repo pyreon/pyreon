@@ -101,6 +101,14 @@ const CmdBox = el
     fontSize: { xs: 12, sm: text.ui.size },
     color: tone(m, 'text'),
   }))
+  .variants((_t, m) => ({
+    default: {},
+    /** Hero and closing CTA only: the video end card's ember ring + glow. [A12] */
+    hot: {
+      borderColor: tone(m, 'hotRing'),
+      boxShadow: tone(m, 'hotGlow'),
+    },
+  }))
 
 const CmdText = txt
   .config({ name: 'InstallCommandText' })
@@ -122,7 +130,7 @@ const CmdText = txt
 const CmdPrompt = txt
   .config({ name: 'InstallCommandPrompt' })
   .attrs({ tag: 'span', 'aria-hidden': 'true' })
-  .theme((_t, m) => ({ color: tone(m, 'accent'), marginRight: 8 }))
+  .theme((_t, m) => ({ color: tone(m, 'prompt'), marginRight: 8 }))
 
 const CmdButton = el
   .config({ name: 'InstallCommandCopy' })
@@ -144,10 +152,10 @@ const CmdButton = el
   }))
 
 /** `.cmd` — a shell command with a copy button (`useClipboard`). */
-export function InstallCommand(props: { command: string }) {
+export function InstallCommand(props: { command: string; variant?: 'default' | 'hot' | undefined }) {
   const { copy, copied } = useClipboard()
   return (
-    <CmdBox>
+    <CmdBox variant={props.variant ?? 'default'}>
       <CmdText title={props.command}>
         <CmdPrompt>$</CmdPrompt>
         {props.command}

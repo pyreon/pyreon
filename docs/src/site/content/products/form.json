@@ -342,7 +342,7 @@
   },
   {
    "q": "Does it work with server-rendered pages?",
-   "a": "Yes. `focusFirstError()` and the id wiring are SSR-safe, and the form state is plain signals that start from `initialValues` on both sides."
+   "a": "Yes. The form state is plain signals that start from `initialValues` on both sides, and `focusFirstError()` is a no-op on the server. Input ids come from `createUniqueId()`, which matches between server HTML and the hydrated page from the next release on."
   },
   {
    "q": "Can I watch one value without re-running on every field?",
