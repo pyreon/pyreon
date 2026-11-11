@@ -862,7 +862,7 @@ export function _takePendingForAdoption(): ForAdoption | null {
 }
 
 export function mountFor<T>(
-  source: () => T[],
+  source: () => readonly T[],
   getKey: (item: T) => string | number,
   renderItem: (item: T) => import('@pyreon/core').VNode | import('@pyreon/core').NativeItem,
   parent: Node,
@@ -1034,7 +1034,7 @@ export function mountFor<T>(
    *  - When the For itself is still inside an outer row's not-yet-attached
    *    subtree, `liveParent` is that subtree and the two shapes cost the same.
    */
-  const handleFreshRender = (items: T[], n: number, liveParent: Node) => {
+  const handleFreshRender = (items: readonly T[], n: number, liveParent: Node) => {
     const keys = new Array<string | number>(n)
     // Duplicate detection reuses `cache` instead of a second `Set`. `cache` is
     // provably EMPTY here (this path only runs when `currentKeys.length === 0`,
@@ -1056,7 +1056,7 @@ export function mountFor<T>(
     currentKeys = keys
   }
 
-  const collectNewKeys = (items: T[], n: number): (string | number)[] => {
+  const collectNewKeys = (items: readonly T[], n: number): (string | number)[] => {
     const newKeys = new Array<string | number>(n)
     for (let i = 0; i < n; i++) {
       newKeys[i] = getKey(items[i] as T)
@@ -1073,7 +1073,7 @@ export function mountFor<T>(
   }
 
   const handleReplaceAll = (
-    items: T[],
+    items: readonly T[],
     n: number,
     newKeys: (string | number)[],
     liveParent: Node,
@@ -1232,7 +1232,7 @@ export function mountFor<T>(
    * `tryContiguousRemoval`.
    */
   const tryContiguousInsertion = (
-    items: T[],
+    items: readonly T[],
     n: number,
     newKeys: (string | number)[],
     liveParent: Node,
@@ -1282,7 +1282,7 @@ export function mountFor<T>(
   }
 
   const mountNewForEntries = (
-    items: T[],
+    items: readonly T[],
     n: number,
     newKeys: (string | number)[],
     liveParent: Node,
@@ -1375,7 +1375,7 @@ export function mountFor<T>(
   }
 
   const handleIncrementalUpdate = (
-    items: T[],
+    items: readonly T[],
     n: number,
     newKeys: (string | number)[],
     liveParent: Node,
