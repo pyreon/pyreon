@@ -5,7 +5,11 @@ description: SolidJS-compatible reactive API that runs on Pyreon's reactive engi
 
 `@pyreon/solid-compat` provides a SolidJS-compatible API -- `createSignal`, `createEffect`, `createMemo`, control flow components, and more -- all running on Pyreon's reactive engine. The API names map closely to Solid's, but the **update model is coarser**: a Solid `createSignal` setter bumps an internal version signal that re-runs the whole component body (inside `runUntracked`), rather than updating only the exact DOM node Solid's compiler would. Output and lifecycle stay correct (child instances are preserved, effects and cleanups fire as expected) -- but reactivity is per-component re-run, not Solid's fine-grained per-node. Some SolidJS APIs are also not implemented -- see [Not supported](#not-supported).
 
-<PackageBadge name="@pyreon/solid-compat" href="/docs/solid-compat" status="stable" />
+<PackageBadge name="@pyreon/solid-compat" href="/docs/solid-compat" status="beta" />
+
+:::note
+The compat layer is at **near-full public-API parity** with Solid, not complete parity, and Pyreon is pre-1.0. Check the differences and unsupported APIs on this page before migrating a large app.
+:::
 
 ## Installation
 

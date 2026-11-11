@@ -5,7 +5,11 @@ description: Vue 3 Composition API that runs on Pyreon's fine-grained reactive e
 
 `@pyreon/vue-compat` provides a Vue 3 Composition API-compatible layer -- `ref`, `computed`, `reactive`, `watch`, lifecycle hooks, `defineComponent`, and more -- all running on Pyreon's signal-based reactive engine. If you know the Vue 3 Composition API, you can write Pyreon components with familiar patterns.
 
-<PackageBadge name="@pyreon/vue-compat" href="/docs/vue-compat" status="stable" />
+<PackageBadge name="@pyreon/vue-compat" href="/docs/vue-compat" status="beta" />
+
+:::note
+The compat layer is at **near-full public-API parity** with Vue, not complete parity, and Pyreon is pre-1.0. Check the differences and unsupported APIs on this page before migrating a large app.
+:::
 
 ## Installation
 
