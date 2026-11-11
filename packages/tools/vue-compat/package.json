@@ -29,9 +29,9 @@
       "types": "./lib/types/jsx-runtime.d.ts"
     },
     "./jsx-dev-runtime": {
-      "bun": "./src/jsx-runtime.ts",
-      "import": "./lib/jsx-runtime.js",
-      "types": "./lib/types/jsx-runtime.d.ts"
+      "bun": "./src/jsx-dev-runtime.ts",
+      "import": "./lib/jsx-dev-runtime.js",
+      "types": "./lib/types/jsx-dev-runtime.d.ts"
     }
   },
   "files": [
