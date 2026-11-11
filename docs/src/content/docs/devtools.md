@@ -147,7 +147,7 @@ The panel has three tabs:
 
 #### Health
 
-The graph-wiring readout: a summary header (`N signals · M derived · K effects · E edges`) followed by the insights that only the graph can surface — the same ones [`describeReactiveGraph`](/docs/reactivity#describe-a-reactive-graph) computes:
+The graph-wiring readout: a summary header (`N signals · M derived · K effects · B DOM bindings · E edges`) followed by the insights that only the graph can surface — the same ones [`describeReactiveGraph`](/docs/reactivity#describe-a-reactive-graph) computes:
 
 - **`orphan-signal`** — nothing depends on this signal: dead reactivity or an unused signal.
 - **`high-fanout`** — changing this signal re-runs many effects; a hot hub worth auditing.

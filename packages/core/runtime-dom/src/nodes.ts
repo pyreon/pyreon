@@ -19,7 +19,7 @@ export interface FirstRun<T> {
 }
 
 import type { EffectScope, RunCapture, SubscriberHost } from '@pyreon/reactivity'
-import { _releaseRun, _replayReads, effect, effectScope, getContextOwner, getCurrentScope, runUntracked, runWithContextOwner, setCurrentScope } from '@pyreon/reactivity'
+import { _rdLabelBinding, _releaseRun, _replayReads, effect, effectScope, getContextOwner, getCurrentScope, runUntracked, runWithContextOwner, setCurrentScope } from '@pyreon/reactivity'
 
 
 /**
@@ -250,6 +250,8 @@ export function mountReactive(
       }
     }
   })
+  // Dev: name this boundary's graph node; its creation site is this file.
+  if (process.env.NODE_ENV !== 'production') _rdLabelBinding(e, 'child', parent, undefined, null)
 
   return () => {
     e.dispose()
@@ -594,6 +596,8 @@ export function mountKeyedList(
       currentKeyOrder = newKeyOrder
     })
   })
+  // Dev: name this boundary's graph node; its creation site is this file.
+  if (process.env.NODE_ENV !== 'production') _rdLabelBinding(e, 'list', parent, undefined, null)
 
   return () => {
     e.dispose()
@@ -1537,6 +1541,8 @@ export function mountFor<T>(
       handleIncrementalUpdate(items, n, newKeys, liveParent)
     })
   })
+  // Dev: name this boundary's graph node; its creation site is this file.
+  if (process.env.NODE_ENV !== 'production') _rdLabelBinding(e, 'list', parent, undefined, null)
 
   return () => {
     e.dispose()

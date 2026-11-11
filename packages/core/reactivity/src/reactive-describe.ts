@@ -15,6 +15,7 @@
 
 import {
   getReactiveGraph,
+  type ReactiveBindingKind,
   type ReactiveGraph,
   type ReactiveNodeKind,
   type SourceLocation,
@@ -35,17 +36,27 @@ export interface NodeDescription {
   id: number
   kind: ReactiveNodeKind
   name: string
+  /** Set when the node is a DOM binding (see `ReactiveNode.binding`). */
+  binding?: ReactiveBindingKind
   loc?: SourceLocation
   behavior: string
 }
 
 export interface GraphDescription {
-  summary: { signals: number; derived: number; effects: number; edges: number }
+  /**
+   * Node counts. `effects` counts effects that are NOT DOM bindings;
+   * `bindings` counts the DOM bindings (`_bind`, `renderEffect` and `direct()`
+   * updaters a template or the runtime created to write the DOM).
+   */
+  summary: { signals: number; derived: number; effects: number; bindings: number; edges: number }
   nodes: NodeDescription[]
   insights: GraphInsight[]
 }
 
-/** Fan-out (reached effects) at/above which a signal is called "hot". */
+/**
+ * Fan-out (reached effects) at/above which a signal is called "hot". DOM
+ * bindings do not count: a theme signal shown in forty places is not a smell.
+ */
 const HOT_FANOUT = 8
 /** Dependency-chain depth at/above which a node is flagged "deep". */
 const DEEP_CHAIN = 5
@@ -70,7 +81,7 @@ export function describeReactiveGraph(graph: ReactiveGraph = getReactiveGraph())
   // empty. The static gate lets the minifier drop the graph-walk body.
   if (process.env.NODE_ENV === 'production') {
     return {
-      summary: { signals: 0, derived: 0, effects: 0, edges: 0 },
+      summary: { signals: 0, derived: 0, effects: 0, bindings: 0, edges: 0 },
       nodes: [],
       insights: [],
     }
@@ -91,10 +102,11 @@ export function describeReactiveGraph(graph: ReactiveGraph = getReactiveGraph())
     pushInto(up, e.to, e.from)
   }
 
-  // Downstream closure from a node → the derived + effect ids it can reach.
-  const closure = (id: number): { derived: number[]; effects: number[] } => {
+  // Downstream closure from a node → the derived, effect and DOM-binding ids it can reach.
+  const closure = (id: number): { derived: number[]; effects: number[]; bindings: number[] } => {
     const derived: number[] = []
     const effects: number[] = []
+    const bindings: number[] = []
     const seen = new Set<number>([id])
     const stack = [...(down.get(id) ?? [])]
     while (stack.length > 0) {
@@ -103,10 +115,10 @@ export function describeReactiveGraph(graph: ReactiveGraph = getReactiveGraph())
       seen.add(cur)
       const n = nodeById.get(cur)
       if (n?.kind === 'derived') derived.push(cur)
-      else if (n?.kind === 'effect') effects.push(cur)
+      else if (n?.kind === 'effect') (n.binding !== undefined ? bindings : effects).push(cur)
       for (const nxt of down.get(cur) ?? []) if (!seen.has(nxt)) stack.push(nxt)
     }
-    return { derived, effects }
+    return { derived, effects, bindings }
   }
 
   // Longest upstream depth (dependency-chain length ending at this node).
@@ -124,17 +136,18 @@ export function describeReactiveGraph(graph: ReactiveGraph = getReactiveGraph())
 
   const nodeDescs: NodeDescription[] = []
   const insights: GraphInsight[] = []
-  const counts = { signals: 0, derived: 0, effects: 0 }
+  const counts = { signals: 0, derived: 0, effects: 0, bindings: 0 }
 
   for (const n of nodes) {
     if (n.kind === 'signal') counts.signals++
     else if (n.kind === 'derived') counts.derived++
+    else if (n.binding !== undefined) counts.bindings++
     else counts.effects++
 
     let behavior: string
     if (n.kind === 'signal') {
-      const { derived, effects } = closure(n.id)
-      if (derived.length === 0 && effects.length === 0) {
+      const { derived, effects, bindings } = closure(n.id)
+      if (derived.length === 0 && effects.length === 0 && bindings.length === 0) {
         behavior = 'nothing reacts to it (no dependents)'
         insights.push({
           kind: 'orphan-signal',
@@ -146,7 +159,8 @@ export function describeReactiveGraph(graph: ReactiveGraph = getReactiveGraph())
         const parts: string[] = []
         if (derived.length > 0) parts.push(`re-derives ${pluralize(derived.length, 'value')}`)
         if (effects.length > 0) parts.push(`runs ${pluralize(effects.length, 'effect')}`)
-        behavior = `changing it ${parts.join(' and ')}`
+        if (bindings.length > 0) parts.push(`updates ${pluralize(bindings.length, 'DOM binding')}`)
+        behavior = `changing it ${parts.length > 2 ? `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}` : parts.join(' and ')}`
         if (effects.length >= HOT_FANOUT) {
           insights.push({
             kind: 'high-fanout',
@@ -161,7 +175,7 @@ export function describeReactiveGraph(graph: ReactiveGraph = getReactiveGraph())
       const depNames = (up.get(n.id) ?? [])
         .map((d) => nodeById.get(d)?.name)
         .filter((x): x is string => !!x)
-      const verb = n.kind === 'derived' ? 'recomputes' : 'runs'
+      const verb = n.kind === 'derived' ? 'recomputes' : n.binding !== undefined ? 'updates' : 'runs'
       behavior =
         depNames.length > 0
           ? `${verb} when ${namesOrCount(depNames)} change${depNames.length === 1 ? 's' : ''}`
@@ -181,6 +195,7 @@ export function describeReactiveGraph(graph: ReactiveGraph = getReactiveGraph())
       id: n.id,
       kind: n.kind,
       name: n.name,
+      ...(n.binding !== undefined ? { binding: n.binding } : {}),
       ...(n.loc ? { loc: n.loc } : {}),
       behavior,
     })
@@ -191,6 +206,7 @@ export function describeReactiveGraph(graph: ReactiveGraph = getReactiveGraph())
       signals: counts.signals,
       derived: counts.derived,
       effects: counts.effects,
+      bindings: counts.bindings,
       edges: edges.length,
     },
     nodes: nodeDescs,
@@ -209,12 +225,13 @@ export function formatGraphDescription(desc: GraphDescription): string {
     `Reactive graph — ${pluralize(summary.signals, 'signal')} · ${pluralize(
       summary.derived,
       'derived',
-    )} · ${pluralize(summary.effects, 'effect')} · ${pluralize(summary.edges, 'edge')}`,
+    )} · ${pluralize(summary.effects, 'effect')}${
+      summary.bindings > 0 ? ` · ${pluralize(summary.bindings, 'DOM binding')}` : ''
+    } · ${pluralize(summary.edges, 'edge')}`,
   ]
 
-  const byKind = (k: ReactiveNodeKind) => desc.nodes.filter((n) => n.kind === k)
-  const section = (label: string, k: ReactiveNodeKind) => {
-    const ns = byKind(k)
+  const section = (label: string, k: ReactiveNodeKind, bindings = false) => {
+    const ns = desc.nodes.filter((n) => n.kind === k && (n.binding !== undefined) === bindings)
     if (ns.length === 0) return
     lines.push('', `${label}:`)
     for (const n of ns) lines.push(`  ${n.name.padEnd(14)} ${n.behavior}${locText(n.loc)}`)
@@ -222,6 +239,7 @@ export function formatGraphDescription(desc: GraphDescription): string {
   section('Signals', 'signal')
   section('Derived', 'derived')
   section('Effects', 'effect')
+  section('DOM bindings', 'effect', true)
 
   if (desc.insights.length > 0) {
     lines.push('', `Insights (${desc.insights.length}):`)

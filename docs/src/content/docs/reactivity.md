@@ -1763,9 +1763,17 @@ A "fire" is a value-changing signal write, a computed recompute, or an effect ru
 
 The most interesting bucket is **`ran-once`** — an effect or computed that mounted but whose reactive re-run was never triggered by any test. That's a reactive behaviour your suite never exercised, and a line-coverage tool would happily report the surrounding code as 100%.
 
+### DOM bindings
+
+Every live DOM binding is an `effect` node, so coverage measures the updates users actually see. That covers the compiled template's bindings (`_bindText`, `_bindDirect`, `_bind`, `renderEffect`, `bindPolymorphicText`), the `h()` path's reactive props and children, and the `<For>` / `<Show>` boundaries. A binding is `ran-once` after mount and `covered` once one of its sources changes. Each entry carries `binding` (what it writes: `text`, `attr`, `class`, `style`, `prop`, `child`, `list`, or `dom` for a compiled updater that assigns the DOM directly, such as `disabled={busy()}`), `target` (the element's tag) and `key` (the attribute or property) where known, so the uncovered list reads `aria-busy on <div>` or `text in <span>`. `report.bindings` totals them; it is a subset of `byKind.effect`.
+
+Per-row bindings made through `createSelector(...).subscribe` (the `<For>` + selector class shape) are included too. A plain `signal.direct()` subscriber that is not a DOM binding (for example `@pyreon/table`'s) is an effect with no mount run, so it reads `never-ran` until it is notified once.
+
+A **dead** binding, one whose first run read no signal (`<Field label="Name" />`), can never re-run. It is not a reactive edge and is not counted.
+
 ### The report
 
-`takeReactiveCoverage()` returns a `ReactiveCoverageReport` — the machine-readable unit of record (`{ total, covered, uncovered, percent, byKind, entries, uncoveredEntries }`). Each entry carries `{ id, kind, name, fires, subscribers, covered, reason, loc }`. `computeReactiveCoverage(nodes)` is the pure function behind it (feed it `getReactiveGraph().nodes` from any snapshot), and `classifyReactiveNode(node)` is the single-node classifier.
+`takeReactiveCoverage()` returns a `ReactiveCoverageReport` — the machine-readable unit of record (`{ total, covered, uncovered, percent, byKind, bindings, entries, uncoveredEntries }`). Each entry carries `{ id, kind, name, fires, subscribers, covered, reason, loc }`, plus `binding` / `target` / `key` for a DOM binding. `computeReactiveCoverage(nodes)` is the pure function behind it (feed it `getReactiveGraph().nodes` from any snapshot), and `classifyReactiveNode(node)` is the single-node classifier.
 
 ### Notes
 
@@ -1802,10 +1810,10 @@ Insights (1):
   ⚠ orphan-signal nothing depends on `shippingFlat` — dead reactivity or an unused signal
 ```
 
-`describeReactiveGraph(graph?)` returns a `GraphDescription` — `{ summary, nodes, insights }`. Each `nodes[]` entry carries an English `behavior` one-liner (a signal describes its downstream fan-out; a computed/effect describes what it reacts to). The **insights** surface behavioral smells:
+`describeReactiveGraph(graph?)` returns a `GraphDescription` — `{ summary, nodes, insights }`. Each `nodes[]` entry carries an English `behavior` one-liner (a signal describes its downstream fan-out, such as "changing it runs 1 effect and updates 3 DOM bindings"; a computed/effect describes what it reacts to). `summary` counts `signals`, `derived`, `effects` and `bindings` (DOM bindings, which `effects` excludes). The **insights** surface behavioral smells:
 
 - **`orphan-signal`** — a signal nothing depends on (dead reactivity, or an unused signal).
-- **`high-fanout`** — changing one signal re-runs a large number of effects (a hot signal worth auditing).
+- **`high-fanout`** — changing one signal re-runs a large number of effects (a hot signal worth auditing). DOM bindings do not count toward it: a theme signal shown in forty places is not a smell.
 - **`deep-chain`** — a node at the end of a long dependency chain.
 
 Pure over the graph snapshot; dev/test only (the registry is tree-shaken in production, so an unactivated graph yields an empty summary). Pairs with `getUpdateCause` — `describe` explains the whole graph's behaviour, `getUpdateCause` explains one specific update.
