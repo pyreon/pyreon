@@ -110,6 +110,11 @@ export interface LoomIssue {
   message: string
   /** Structured evidence (ranges per user, cycle path, importing files, …). */
   details?: Record<string, unknown>
+  /**
+   * Set when a `loom.ignore` entry matched: the entry's reason. The finding is
+   * downgraded to info and kept, so the report shows what was waved through.
+   */
+  ignored?: string
 }
 
 /** Graph analysis output — depths, cycles, reach. Pure over the model. */
@@ -132,6 +137,12 @@ export interface LoomReport {
   external: ExternalUsage[]
   graph: GraphAnalysis
   issues: LoomIssue[]
+  /**
+   * What `loom scan` (without `--strict` on the command line) exits with for
+   * this report: 1 on any error, or on any warning when the resolved settings
+   * say `strict`. Optional so a report written by an older loom still reads.
+   */
+  gate?: { strict: boolean; exit: 0 | 1 }
   stats: {
     internal: number
     external: number
