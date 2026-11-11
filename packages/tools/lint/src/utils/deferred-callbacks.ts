@@ -75,6 +75,65 @@ function eventSlotValue(node: any): any {
   return null
 }
 
+/** `const x = …` / `function x() {}`: the bound identifier and its function (or null). */
+function declaredBinding(node: any): { id: any; fn: any | null } | null {
+  if (node.type === 'VariableDeclarator' && node.id?.type === 'Identifier') {
+    const init = unwrap(node.init)
+
+    return { id: node.id, fn: isFunctionNode(init) ? init : null }
+  }
+  if (node.type === 'FunctionDeclaration' && node.id?.type === 'Identifier') {
+    return { id: node.id, fn: node }
+  }
+
+  return null
+}
+
+const KEYED = new Set(['Property', 'MethodDefinition', 'PropertyDefinition'])
+
+/** An identifier that names a member or key, not a variable (`a.b`, `{ b: 1 }`). */
+function nonReferenceKey(node: any): any {
+  if (node.computed) return null
+  if (node.type === 'MemberExpression') return node.property ?? null
+  if (KEYED.has(node.type)) return node.key ?? null
+
+  return null
+}
+
+/**
+ * Names an `export` makes visible to other modules. An exported function can
+ * be called from another module, during SSR for all this file can tell, so it
+ * is never event-only.
+ */
+function exportedNames(node: any): string[] {
+  if (node.type !== 'ExportNamedDeclaration' && node.type !== 'ExportDefaultDeclaration') return []
+  const names: string[] = []
+  const d = node.declaration
+  if (d?.type === 'FunctionDeclaration' && d.id) names.push(d.id.name)
+  if (d?.type === 'Identifier') names.push(d.name)
+  if (d?.type === 'VariableDeclaration') {
+    for (const v of d.declarations ?? []) if (v.id?.type === 'Identifier') names.push(v.id.name)
+  }
+  for (const sp of node.specifiers ?? []) if (sp.local?.type === 'Identifier') names.push(sp.local.name)
+
+  return names
+}
+
+/** Child nodes in source order, by oxc's own visitor keys. */
+function childNodes(node: any): any[] {
+  const out: any[] = []
+  for (const key of visitorKeys[node.type] ?? []) {
+    const child = node[key]
+    if (Array.isArray(child)) {
+      for (const c of child) if (c && typeof c.type === 'string') out.push(c)
+    } else if (child && typeof child.type === 'string') {
+      out.push(child)
+    }
+  }
+
+  return out
+}
+
 interface Reference {
   /** The identifier itself sits directly in an event slot. */
   inEventSlot: boolean
@@ -104,67 +163,30 @@ export function collectEventOnlyFunctions(program: any): WeakSet<object> {
     if (!node || typeof node.type !== 'string') return
 
     const slot = eventSlotValue(node)
-    if (slot) {
-      if (isFunctionNode(slot)) eventOnly.add(slot)
-      else if (slot.type === 'Identifier') slotIdentifiers.add(slot)
+    if (slot && isFunctionNode(slot)) eventOnly.add(slot)
+    else if (slot?.type === 'Identifier') slotIdentifiers.add(slot)
+
+    if (node.type === 'Identifier') {
+      if (!notReferences.has(node)) {
+        const list = references.get(node.name) ?? []
+        list.push({ inEventSlot: slotIdentifiers.has(node), enclosing: fns })
+        references.set(node.name, list)
+      }
+
+      return
     }
 
-    switch (node.type) {
-      case 'VariableDeclarator': {
-        if (node.id?.type === 'Identifier') {
-          notReferences.add(node.id)
-          const init = unwrap(node.init)
-          bind(node.id.name, isFunctionNode(init) ? init : null)
-        }
-        break
-      }
-      case 'FunctionDeclaration':
-        if (node.id?.type === 'Identifier') {
-          notReferences.add(node.id)
-          bind(node.id.name, node)
-        }
-        break
-      case 'ExportNamedDeclaration':
-      case 'ExportDefaultDeclaration': {
-        // An exported function can be called from another module, during SSR
-        // for all this file can tell — never event-only.
-        const d = node.declaration
-        if (d?.type === 'FunctionDeclaration' && d.id) exported.add(d.id.name)
-        if (d?.type === 'VariableDeclaration') {
-          for (const v of d.declarations ?? []) if (v.id?.type === 'Identifier') exported.add(v.id.name)
-        }
-        for (const sp of node.specifiers ?? []) if (sp.local?.type === 'Identifier') exported.add(sp.local.name)
-        if (node.type === 'ExportDefaultDeclaration' && node.declaration?.type === 'Identifier') {
-          exported.add(node.declaration.name)
-        }
-        break
-      }
-      case 'MemberExpression':
-        if (!node.computed && node.property) notReferences.add(node.property)
-        break
-      case 'Property':
-      case 'MethodDefinition':
-      case 'PropertyDefinition':
-        if (!node.computed && node.key) notReferences.add(node.key)
-        break
-      case 'Identifier':
-        if (!notReferences.has(node)) {
-          const list = references.get(node.name) ?? []
-          list.push({ inEventSlot: slotIdentifiers.has(node), enclosing: fns })
-          references.set(node.name, list)
-        }
-
-        return
+    const binding = declaredBinding(node)
+    if (binding) {
+      notReferences.add(binding.id)
+      bind(binding.id.name, binding.fn)
     }
+    const key = nonReferenceKey(node)
+    if (key) notReferences.add(key)
+    for (const name of exportedNames(node)) exported.add(name)
 
     const nextFns = isFunctionNode(node) ? [...fns, node] : fns
-    const keys = visitorKeys[node.type]
-    if (!keys) return
-    for (const key of keys) {
-      const child = node[key]
-      if (Array.isArray(child)) for (const c of child) walk(c, nextFns)
-      else if (child && typeof child.type === 'string') walk(child, nextFns)
-    }
+    for (const child of childNodes(node)) walk(child, nextFns)
   }
   walk(program, [])
   for (const name of exported) bindings.set(name, null)
