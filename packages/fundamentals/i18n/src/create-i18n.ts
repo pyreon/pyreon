@@ -712,7 +712,7 @@ export function createI18n(options: I18nOptions): I18nInstance {
       const custom = onMissingKey(currentLocale, key, entry.namespace)
       if (custom !== undefined) return custom!
     } else if (process.env.NODE_ENV !== 'production') {
-      warnMissingKey(currentLocale, key, namespace, keyPath)
+      warnMissingKey(currentLocale, key, entry.namespace, entry.keyPath)
     }
 
     // Return the key itself as a visual fallback
