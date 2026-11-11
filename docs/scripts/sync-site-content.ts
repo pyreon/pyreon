@@ -29,7 +29,7 @@ const products = join(app, 'products')
 const copy = (src: string, dest: string) => {
   if (!existsSync(src)) throw new Error(`[Pyreon] ${src} does not exist. Is ${from} the 09-site folder?`)
   copyFileSync(src, dest)
-  console.log(`  ${src.replace(`${from}/`, '')} → ${dest.replace(`${resolve(import.meta.dir, '..')}/`, '')}`)
+  process.stdout.write(`  ${src.replace(`${from}/`, '')} → ${dest.replace(`${resolve(import.meta.dir, '..')}/`, '')}\n`)
 }
 
 copy(join(from, 'types.ts'), join(app, 'types.ts'))
@@ -40,4 +40,4 @@ copy(join(from, 'content/_products.json'), join(app, '_products.json'))
 
 const wanted = ids.length > 0 ? ids : readdirSync(products).filter((f) => !f.startsWith('_') && f.endsWith('.json')).map((f) => f.slice(0, -5))
 for (const id of wanted) copy(join(from, `content/${id}.json`), join(products, `${id}.json`))
-console.log(`Synced ${wanted.length} product file(s) at ${new Date().toISOString()}.`)
+process.stdout.write(`Synced ${wanted.length} product file(s) at ${new Date().toISOString()}.\n`)

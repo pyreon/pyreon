@@ -162,12 +162,16 @@ const PkgName = txt
   .attrs({ tag: 'span' })
   .theme((_t, m) => ({ fontFamily: font.mono, fontSize: 11.5, color: tone(m, 'accentText'), overflowWrap: 'anywhere' }))
 
-/** `.p-inside` — package (ember mono) · role (eyebrow) · one line. */
-export function PackageCard(props: { pkg: string; role: string; text: string; state?: 'default' | 'hot' | undefined }) {
+/**
+ * `.p-inside` — package (ember mono) · its role (eyebrow) · one line. The
+ * handoff kit called the second prop `role`; it is `kind` here so it never
+ * reads as an ARIA role.
+ */
+export function PackageCard(props: { pkg: string; kind: string; text: string; state?: 'default' | 'hot' | undefined }) {
   return (
     <GlowCard padding="compact" state={props.state}>
       <PkgName>{props.pkg}</PkgName>
-      <Eyebrow>{props.role}</Eyebrow>
+      <Eyebrow>{props.kind}</Eyebrow>
       <Lede size="small">{props.text}</Lede>
     </GlowCard>
   )

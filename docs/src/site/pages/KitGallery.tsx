@@ -183,7 +183,7 @@ export function KitGallery() {
                 </Heading>
                 <Lede size="card">The whole card is one link.</Lede>
               </GlowCard>
-              <PackageCard pkg="@pyreon/runtime-dom" role="browser" text="Fine-grained DOM updates and hydration." />
+              <PackageCard pkg="@pyreon/runtime-dom" kind="browser" text="Fine-grained DOM updates and hydration." />
             </AutoGrid>
             <Row>
               <ProductTag glyph={FORM.glyphSvg} name={FORM.package} category={FORM.category} />

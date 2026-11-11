@@ -104,7 +104,7 @@ function Extra(props: { section: ExtraSection }) {
           {s.kind === 'packages' ? (
             <AutoGrid min={s.cols ? undefined : 250} cols={s.cols} gap={12}>
               <For each={s.items} by={(i) => i.pkg}>
-                {(i) => <PackageCard pkg={i.pkg} role={i.role} text={i.text} />}
+                {(i) => <PackageCard pkg={i.pkg} kind={i.role} text={i.text} />}
               </For>
             </AutoGrid>
           ) : s.kind === 'steps' ? (
