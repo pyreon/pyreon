@@ -12505,12 +12505,78 @@ const section = sectionFrom(loadedModule, 'loom') // default OR named export`,
   'loom/loom scan': {
     signature: 'loom scan [dir] [--strict] [--json] [--no-imports] [--no-write]',
     example: `$ loom scan .
-loom: 5 workspace package(s), 6 external dep(s), 4 internal edge(s), depth 2, 1 cycle(s).
+loom scan · . · 5 packages
 
-ERROR · 3
-  ✗ cycle [@fix/auth] — Runtime dependency cycle: @fix/auth → @fix/data → @fix/auth
-  ✗ version-drift [left-pad] — declared with 2 different ranges (^1.0.0 · ^2.0.0) — the majors differ
-  ✗ phantom-dep [undeclared-pkg] — \\\`@fix/app\\\` imports \\\`undeclared-pkg\\\` in shipping source but never declares it`,
+  workspace packages  5
+  external deps       5
+  internal edges      5
+  depth               4
+  runtime cycles      1
+
+  ℹ 8 info
+  ℹ unused-dep · \`@fix/app\` declares \`left-pad\` as a dependency but no source file imports it —
+     lexical evidence only (bins/plugins/CSS load without an import statement); verify before
+     removing
+     ↳ packages/app/package.json
+  ℹ unused-dep · \`@fix/app\` declares \`chalk\` as a dependency but no source file imports it — lexical
+     evidence only (bins/plugins/CSS load without an import statement); verify before removing
+     ↳ packages/app/package.json
+  ℹ unused-dep · \`@fix/app\` declares \`pinned-pkg\` as a dependency but no source file imports it —
+     lexical evidence only (bins/plugins/CSS load without an import statement); verify before
+     removing
+     ↳ packages/app/package.json
+  ℹ unused-dep · \`@fix/util\` declares \`left-pad\` as a dependency but no source file imports it —
+     lexical evidence only (bins/plugins/CSS load without an import statement); verify before
+     removing
+     ↳ packages/util/package.json
+  ℹ unused-dep · \`@fix/util\` declares \`chalk\` as a dependency but no source file imports it —
+     lexical evidence only (bins/plugins/CSS load without an import statement); verify before
+     removing
+     ↳ packages/util/package.json
+  ℹ unused-dep · \`@fix/util\` declares \`never-imported\` as a dependency but no source file imports it
+     — lexical evidence only (bins/plugins/CSS load without an import statement); verify before
+     removing
+     ↳ packages/util/package.json
+  ℹ unused-dep · \`@fix/util\` declares \`pinned-pkg\` as a dependency but no source file imports it —
+     lexical evidence only (bins/plugins/CSS load without an import statement); verify before
+     removing
+     ↳ packages/util/package.json
+  ℹ version-drift · \`pinned-pkg\` is declared with 2 different ranges (^2.0.0 · ^3.0.0) — a root
+     override pins it to 3.0.0, so installs agree, but the declarations still lie
+     ↳ packages/app/package.json (^2.0.0)
+     ↳ packages/util/package.json (^3.0.0)
+
+  ! 3 warnings
+  ! peer-mismatch · \`@fix/plugin\` peer-requires \`@fix/util\` at \`^9.0.0\` but the workspace ships
+     1.0.0 — the peer contract and the local reality disagree by a major
+     ↳ packages/plugin/package.json
+  ! prod-import-of-dev-dep · \`@fix/app\` imports \`dev-only-pkg\` in shipping source but declares it
+     only in devDependencies — consumers won't have it installed
+     ↳ packages/app/src/index.ts
+  ! version-drift · \`chalk\` is declared with 2 different ranges (^5.0.0 · ^5.2.0)
+     ↳ packages/app/package.json (^5.0.0)
+     ↳ packages/util/package.json (^5.2.0)
+
+  ✗ 5 errors
+  ✗ cycle · Runtime dependency cycle: @fix/auth → @fix/data → @fix/auth — imports resolve back to
+     their origin, which blocks layering and can break module initialisation order
+     ↳ packages/auth/package.json
+  ✗ internal-range · \`@fix/app\` declares workspace member \`@fix/util\` as \`1.0.0\` (not \`workspace:\`)
+     — a version slip silently installs the REGISTRY copy instead of linking the workspace
+     ↳ packages/app/package.json
+  ✗ internal-range · \`@fix/plugin\` declares workspace member \`@fix/util\` as \`^9.0.0\` (not
+     \`workspace:\`) — a version slip silently installs the REGISTRY copy instead of linking the
+     workspace
+     ↳ packages/plugin/package.json
+  ✗ phantom-dep · \`@fix/app\` imports \`undeclared-pkg\` in shipping source but never declares it —
+     resolvable only through hoisting luck
+     ↳ packages/app/src/index.ts
+  ✗ version-drift · \`left-pad\` is declared with 2 different ranges (^1.0.0 · ^2.0.0) — the majors
+     differ, so packages are building against different APIs
+     ↳ packages/app/package.json (^1.0.0)
+     ↳ packages/util/package.json (^2.0.0)
+
+✗ 5 errors, 3 warnings, 8 info · 5 packages · 3 ms`,
     notes: 'Read the workspace, analyze the dependency fabric, and report. Discovery reads the same declarations an install tool reads; analysis splits edges by semantics (runtime vs dev); seven detectors emit findings with stable codes, honest severities (error gates, warning advises, info knows its own limits), and structured evidence (which files import the phantom, which packages declare which range). Writes `loom-report.json` next to the root manifest and EXITS NON-ZERO on error-severity findings — the CI contract. `--strict` reds on warnings too; `--no-imports` skips the lexical detectors (phantom/dev-dep/unused); `--json` prints the full report to stdout and ONLY that (the write notice moves to stderr), so `loom scan . --json > report.json` is a valid JSON file. See also: loom dev.',
     mistakes: `- Treating a dev-edge "cycle" as a bug — loom deliberately excludes devDependencies from cycle detection; monorepos legitimately share test utilities both ways, and a detector that cries wolf is a dead gate
 - Reading \`unused-dep\` as a removal order — it is INFO with lexical evidence only; bins, plugin autoloads, and CSS imports load without an import statement
@@ -12724,18 +12790,41 @@ if (worstVerdict(report) !== 'lowers') process.exitCode = 1`,
 
   'atlas/atlas scan': {
     signature: 'atlas scan [dir] [--no-mount] [--check]',
-    example: `$ atlas scan .
-atlas: discovered 10 component(s), 44 scenario(s) — 42 verified, 2 failing, 0 unverified.
-  checks: a11y 18/20 ✗ · interaction 43/43 · ssrParity 43/43 · leak 43/43
-  not run: reactivityCoverage, snapshot — browser-only — run \`atlas verify-browser\`
-  → atlas-catalog.json
-  → atlas-agent-guide.md
-atlas: 2 failing scenario(s):
-  ✗ button--empty
-      a11y: missing accessible name: "label" is empty`,
+    example: `$ atlas scan . --no-mount --no-write
+atlas scan · . · static (--no-mount)
+
+  components   6
+  scenarios   22  2 failing · 12 verified · 8 unverified
+  checks      a11y 12/14 ✗
+  not run     interaction, ssrParity, leak — mounting is disabled for this run (\`--no-mount\`) — the
+              scan stayed static
+              reactivityCoverage, snapshot — browser-only — run \`atlas verify-browser\` to measure
+              this (a Node scan cannot)
+
+  ! 3 file(s) export something PascalCase that produced no component:
+    3× a chained/member call — rocketstyle chains are found by the runtime pass (needs \`theme\` in
+      your config); other member-call wrappers are not unwrapped
+      · src/components/Chip.tsx — Chip
+      · src/components/Stack.tsx — Stack
+      · src/demo-catalog.tsx — DemoButton, DemoBadge, IconDot
+    Not necessarily wrong — a provider, a schema or a const belongs here too.
+    But a component you expected in the catalog would show up in this list.
+
+  ✗ 2 failing scenarios
+  ✗ button--empty  Button
+     ✗ a11y [missing-accessible-name] · missing accessible name: "label" is empty
+        ↳ src/components/index.tsx
+        fix: Give "label" a non-empty value, or an aria-label if the text is genuinely decorative.
+  ✗ badge--empty  Badge
+     ✗ a11y [missing-accessible-name] · missing accessible name: "label" is empty
+        ↳ src/components/index.tsx
+        fix: Give "label" a non-empty value, or an aria-label if the text is genuinely decorative.
+  Run atlas verify <Component> to re-check one component on its own.
+
+✗ 2 failing scenarios · 12 verified · 8 unverified · 6 components · 137 ms`,
     notes: 'Discover components (static TS scan + rocketstyle runtime detection), derive controls and variant scenarios, MOUNT each scenario (real module load through a Vite-powered loader) and run the node half of the verify pipeline — a11y (static), interaction (mount + play/click-walk), a REAL leak check (reactive-graph accumulation across repeated mounts, past GC), and SSR-PARITY (`renderToString` + hydrate, asserting the runtime reported no mismatch AND the hydrated DOM equals a fresh client mount — two oracles because SSR and hydrate can agree on the same wrong DOM). Parity skips with a reason when `@pyreon/runtime-server` is absent, and is blind to `typeof window` branching because both renders share one process. Writes `atlas-catalog.json` (every component, control, scenario, and verdict) and `atlas-agent-guide.md` (the AI-consumable summary). Exits non-zero when any scenario FAILS — wiring the scan into CI gates the catalog. `--no-mount` keeps the scan purely static (no project code executes). `--check` turns the scan into a RATCHET: it compares against the COMMITTED `atlas-catalog.json` instead of rewriting it (a ratchet that overwrites its own baseline compares a run to itself and can never report a regression again) and exits non-zero on a REGRESSION. A check that STOPPED RUNNING counts as one — that is the case absolute counts cannot catch, because losing coverage makes the numbers improve: delete a wrapper and every mount-dependent check drops to skip, so `2 failing` becomes `0 failing` and a broken catalog reads as fixed. A missing or unreadable baseline is exit 0 with a note, never a failure — making the first `--check` run red for everybody is how a ratchet gets disabled on day one. See also: atlas verify, atlas verify-browser, createAtlas.',
     mistakes: `- Treating "verified" as a default — a scenario is verified only when a check actually RAN and passed; \`checked: 0\` renders as unverified, never smoothed into a pass
-- Reading \`N verified\` as "everything was checked" — it is a scenario count, not a check count. The \`checks:\` line is the one that says which of the six ran, and a package without \`@pyreon/runtime-server\` resolvable reports 1090/1090 verified having run only two of them
+- Reading \`N verified\` as "everything was checked" — it is a scenario count, not a check count. The \`checks\` row is the one that says which of the six ran, and a package without \`@pyreon/runtime-server\` resolvable reports 1090/1090 verified having run only two of them
 - Running the scan without the project theme in \`atlas.config.ts\` for rocketstyle components — dimension axes resolve empty and the variant scenarios collapse to defaults
 - Expecting the leak check under plain \`node\` — it needs a GC hook (\`bun\`, or \`node --expose-gc\`); without one it reports skip, not pass
 - Expecting reactivityCoverage/snapshot verdicts from the scan — those are browser-only claims; run \`atlas verify-browser\` to earn them
@@ -12758,16 +12847,23 @@ Input: 1 problem(s):
 
   'atlas/atlas verify': {
     signature: 'atlas verify [Component] [--cwd <dir>] [--json] [--check]',
-    example: `$ atlas verify Button
-atlas verify Button: 1 component(s), 15 scenario(s)
-  checks: a11y 14/15 ✗ · interaction 15/15 · ssrParity 15/15 · leak 15/15
-  not run: reactivityCoverage, snapshot — browser-only — run \`atlas verify-browser\`
+    example: `$ atlas verify Button --no-mount
+atlas verify Button · 1 component · 9 scenarios · static (--no-mount)
 
-✗ button--empty
-    a11y [missing-accessible-name]: missing accessible name: "label" is empty
-      → Give "label" a non-empty value, or an aria-label if the text is decorative.
+  scenarios  9  1 failing · 8 verified · 0 unverified
+  checks     a11y 8/9 ✗
+  not run    interaction, ssrParity, leak — mounting is disabled for this run (\`--no-mount\`) — the
+             scan stayed static
+             reactivityCoverage, snapshot — browser-only — run \`atlas verify-browser\` to measure
+             this (a Node scan cannot)
 
-1 failing · 14 verified · 0 unverified`,
+  ✗ 1 failing scenario
+  ✗ button--empty  Button
+     ✗ a11y [missing-accessible-name] · missing accessible name: "label" is empty
+        ↳ src/components/index.tsx
+        fix: Give "label" a non-empty value, or an aria-label if the text is genuinely decorative.
+
+✗ 1 failing scenario · 8 verified · 0 unverified · 141 ms`,
     notes: 'Re-check ONE component and report WHICH check failed and why — the write → verify → fix loop, for a person or an agent iterating on a single component. Discovery still walks the whole project (a component’s file is not known until it does), but decoration and verification — mounting, exercising, hydrating and GC-probing every scenario — run only for the match, so this is a question about one component rather than a whole-catalog scan with the answer filtered out at the end. Measured on `@pyreon/ui-components` (108 components, 1090 scenarios): 1.35s for a full scan against 0.90s scoped to one component’s 60 scenarios; the verify work drops ~18× but discovery dominates the residual, so treat this as a focus tool first and a speed tool second. Prints a per-check tally, the checks that did NOT run and why, and every failing scenario UNCAPPED with its findings. `--json` emits the same report as data for an agent to branch on. Never writes `atlas-catalog.json`: a scoped run holds one component, and writing that would replace the whole catalog. Exits non-zero on any failing check, on a name that matched nothing, and on a run where nothing could be verified at all. See also: atlas scan, atlas verify-browser, VerifyFinding.',
     mistakes: `- Reading exit 0 as "checked and clean" without the \`checks:\` line — a run where nothing could be examined exits NON-zero for exactly this reason, but a run where only two of six checks were available exits 0 and the tally is what says so
 - Expecting a scoped run to refresh \`atlas-catalog.json\` — it deliberately never writes; a one-component catalog would replace the real one and silently break the agent guide, the MCP tools and \`atlas check\` for every other component until the next full scan

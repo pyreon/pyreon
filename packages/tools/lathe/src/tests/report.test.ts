@@ -49,6 +49,8 @@ const render = (extra: Partial<Parameters<typeof renderReport>[2]> = {}): string
       wrote: 0,
       plugins: CONFIG.plugins,
       requestedPlugins: CONFIG.requestedPlugins,
+      // Pinned: the symbols are asserted, and the locale must not decide them.
+      unicode: true,
       ...extra,
     }),
   )
@@ -62,26 +64,27 @@ describe('the file list says what happened to each file', () => {
       changed: new Set([first, second]),
       created: new Set([first]),
     })
-    expect(out).toContain(`+ ./gen/${first}`)
-    expect(out).toContain(`~ ./gen/${second}`)
+    expect(out).toMatch(new RegExp(`\\+ new\\s+\\./gen/${first}`))
+    expect(out).toMatch(new RegExp(`~ updated\\s+\\./gen/${second}`))
+    // Unchanged files are a count, not a list: the list answers "what moved?".
     const third = RESULT.files[2]?.path as string
-    expect(out).toContain(`· ./gen/${third}`)
+    expect(out).not.toContain(`./gen/${third}`)
   })
 
   it('names the denominator, so a count cannot contradict the list', () => {
     const out = render({ wrote: 2, changed: new Set([RESULT.files[0]?.path as string]) })
-    expect(out).toContain(`2 of ${RESULT.files.length} file(s) written`)
+    expect(out).toContain(`2 of ${RESULT.files.length} files written`)
   })
 
   it('says so when nothing moved', () => {
-    expect(render({ wrote: 0, changed: new Set() })).toContain('everything already current')
+    expect(render({ wrote: 0, changed: new Set() })).toContain('already current')
   })
 
   it('falls back to the plain count when the caller tracked nothing', () => {
     // `changed` is optional; without it the report cannot claim per-file
     // status, so it does not — rather than guessing "created" for everything.
     const out = render({ wrote: 3 })
-    expect(out).toContain('3 file(s) written')
+    expect(out).toContain('wrote 3 files')
     expect(out).not.toContain(' of ')
   })
 })
@@ -104,8 +107,8 @@ describe('the contract section', () => {
     const out = render({ changes: [breaking, additive] })
     expect(out).toContain('1 breaking')
     expect(out).toContain('1 additive')
-    expect(out).toContain('[field-removed] Book.pages')
-    expect(out).toContain('[field-added] Book.isbn')
+    expect(out).toMatch(/− breaking\s+field-removed\s+Book\.pages\s+was integer/)
+    expect(out).toMatch(/\+ additive\s+field-added\s+Book\.isbn\s+string/)
   })
 
   it('says explicitly when nothing breaking is present', () => {
@@ -132,7 +135,7 @@ describe('the header', () => {
     const out = render()
     expect(out).toContain('Shelf')
     expect(out).toContain('2.1.0')
-    expect(out).toContain(`${RESULT.doc.operations.length} operations`)
+    expect(out).toMatch(new RegExp(`${RESULT.doc.operations.length} operations?`))
   })
 
   it('names a project when one is configured, so a multi-project run reads as a list', () => {
@@ -199,7 +202,7 @@ components:
 
   it('reports the reach as a fraction and NAMES what stays web', () => {
     const out = renderNative({ ran: false, files: [] })
-    expect(out).toMatch(/native reach\s+\d+\/\d+ operations/)
+    expect(out).toMatch(/native reach\s+\d+ of \d+ operations/)
     expect(out).toContain('createBook')
     // ...with the reason, so the reader can act rather than just be informed.
     expect(out).toContain('mutations')

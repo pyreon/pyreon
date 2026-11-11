@@ -17,14 +17,30 @@ Or with zero setup: `pyreon loom <cmd>` delegates to the project-local install.
 
 ## `loom scan` — the fabric as findings
 
-```bash
-pyreon loom scan .
-# loom: 142 workspace package(s), 147 external dep(s), 681 internal edge(s), depth 8, 0 cycle(s).
-#
-# WARNING · 8
-#   ▲ version-drift [happy-dom] — `happy-dom` is declared with 2 different ranges (^20.11.1 · ^20.0.0)
-#   …
-#   → loom-report.json
+```text
+$ pyreon loom scan . --no-write
+loom scan · . · 148 packages
+
+  workspace packages  148
+  external deps       227
+  internal edges      858
+  depth                11
+  runtime cycles        0
+
+  ℹ 305 info
+  ℹ phantom-dep · `@pyreon/example-react-compat` imports `react-dom` in shipping source but never
+     declares it — resolvable only through hoisting luck (ignored: `@pyreon/vite-plugin` with
+     compat:'react' ALIASES react-dom (and react-dom/client) to @pyreon/react-compat/dom. Installing
+     the real react-dom would defeat the example, whose entire point is that React-shaped code runs
+     with no React present.)
+     ↳ examples/react-compat/src/main.tsx
+  ℹ phantom-type-dep · `@pyreon/create-zero` imports `@pyreon/server` type-only but never declares
+     it — erased at runtime, so consumers are unaffected, but typecheck resolves it through hoisting
+     luck; declare it in devDependencies
+     ↳ packages/zero/create-zero/templates/app/src/routes/(admin)/dashboard.tsx
+  …
+
+✓ no errors or warnings · 305 info · 148 packages · 392 ms
 ```
 
 It reads the same declarations an install tool reads — root `workspaces` globs (npm/bun/yarn array + object forms, `packages/*/*`-style nesting, negations) plus `pnpm-workspace.yaml` — and analyzes:

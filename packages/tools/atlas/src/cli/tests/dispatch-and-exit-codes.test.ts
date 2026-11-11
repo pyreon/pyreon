@@ -162,7 +162,7 @@ describe('atlas scan', () => {
     project()
     await run('scan', dir)
     expect(outText()).toMatch(/\d+ verified/)
-    expect(outText(), 'and name what did not run').toContain('not run:')
+    expect(outText(), 'and name what did not run').toMatch(/not run\s+\S/)
     expect(outText(), 'each with a reason').toMatch(/browser-only|no plugin claimed|no GC hook/)
   })
 

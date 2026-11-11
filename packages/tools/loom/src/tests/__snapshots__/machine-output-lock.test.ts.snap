@@ -1,0 +1,802 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`loom scan --json is locked > --json (writing): the write notice goes to stderr > stderr 1`] = `
+"  → <root>/loom-report.json
+loom: 5 error(s)
+"
+`;
+
+exports[`loom scan --json is locked > --json --no-write: the report on stdout, the red count on stderr > stderr 1`] = `
+"loom: 5 error(s)
+"
+`;
+
+exports[`loom scan --json is locked > --json --no-write: the report on stdout, the red count on stderr > stdout 1`] = `
+"{
+  "model": {
+    "root": {
+      "name": "fixture-root",
+      "dir": "<root>",
+      "overrides": {
+        "pinned-pkg": "3.0.0"
+      },
+      "workspaceGlobs": [
+        "packages/*"
+      ],
+      "ignores": [],
+      "devPaths": []
+    },
+    "packages": [
+      {
+        "name": "@fix/app",
+        "version": "1.0.0",
+        "dir": "packages/app",
+        "private": false,
+        "deps": [
+          {
+            "name": "@fix/util",
+            "range": "1.0.0",
+            "field": "dependencies"
+          },
+          {
+            "name": "@fix/auth",
+            "range": "workspace:*",
+            "field": "dependencies"
+          },
+          {
+            "name": "left-pad",
+            "range": "^1.0.0",
+            "field": "dependencies"
+          },
+          {
+            "name": "chalk",
+            "range": "^5.0.0",
+            "field": "dependencies"
+          },
+          {
+            "name": "pinned-pkg",
+            "range": "^2.0.0",
+            "field": "dependencies"
+          },
+          {
+            "name": "dev-only-pkg",
+            "range": "^1.0.0",
+            "field": "devDependencies"
+          }
+        ]
+      },
+      {
+        "name": "@fix/auth",
+        "version": "1.0.0",
+        "dir": "packages/auth",
+        "private": false,
+        "deps": [
+          {
+            "name": "@fix/data",
+            "range": "workspace:*",
+            "field": "dependencies"
+          }
+        ]
+      },
+      {
+        "name": "@fix/data",
+        "version": "1.0.0",
+        "dir": "packages/data",
+        "private": false,
+        "deps": [
+          {
+            "name": "@fix/auth",
+            "range": "workspace:*",
+            "field": "dependencies"
+          }
+        ]
+      },
+      {
+        "name": "@fix/plugin",
+        "version": "1.0.0",
+        "dir": "packages/plugin",
+        "private": false,
+        "deps": [
+          {
+            "name": "@fix/util",
+            "range": "^9.0.0",
+            "field": "peerDependencies"
+          }
+        ]
+      },
+      {
+        "name": "@fix/util",
+        "version": "1.0.0",
+        "dir": "packages/util",
+        "private": false,
+        "deps": [
+          {
+            "name": "left-pad",
+            "range": "^2.0.0",
+            "field": "dependencies"
+          },
+          {
+            "name": "chalk",
+            "range": "^5.2.0",
+            "field": "dependencies"
+          },
+          {
+            "name": "never-imported",
+            "range": "^1.0.0",
+            "field": "dependencies"
+          },
+          {
+            "name": "pinned-pkg",
+            "range": "^3.0.0",
+            "field": "dependencies"
+          }
+        ]
+      }
+    ]
+  },
+  "external": [
+    {
+      "name": "chalk",
+      "ranges": {
+        "^5.0.0": [
+          {
+            "user": "@fix/app",
+            "field": "dependencies"
+          }
+        ],
+        "^5.2.0": [
+          {
+            "user": "@fix/util",
+            "field": "dependencies"
+          }
+        ]
+      }
+    },
+    {
+      "name": "dev-only-pkg",
+      "ranges": {
+        "^1.0.0": [
+          {
+            "user": "@fix/app",
+            "field": "devDependencies"
+          }
+        ]
+      }
+    },
+    {
+      "name": "left-pad",
+      "ranges": {
+        "^1.0.0": [
+          {
+            "user": "@fix/app",
+            "field": "dependencies"
+          }
+        ],
+        "^2.0.0": [
+          {
+            "user": "@fix/util",
+            "field": "dependencies"
+          }
+        ]
+      }
+    },
+    {
+      "name": "never-imported",
+      "ranges": {
+        "^1.0.0": [
+          {
+            "user": "@fix/util",
+            "field": "dependencies"
+          }
+        ]
+      }
+    },
+    {
+      "name": "pinned-pkg",
+      "ranges": {
+        "^2.0.0": [
+          {
+            "user": "@fix/app",
+            "field": "dependencies"
+          }
+        ],
+        "^3.0.0": [
+          {
+            "user": "@fix/util",
+            "field": "dependencies"
+          }
+        ]
+      }
+    }
+  ],
+  "graph": {
+    "depths": {
+      "@fix/app": 0,
+      "@fix/plugin": 0,
+      "@fix/util": 1,
+      "@fix/auth": 3,
+      "@fix/data": 4
+    },
+    "cycles": [
+      [
+        "@fix/auth",
+        "@fix/data"
+      ]
+    ],
+    "reach": {
+      "@fix/app": 0,
+      "@fix/auth": 2,
+      "@fix/data": 2,
+      "@fix/plugin": 0,
+      "@fix/util": 2
+    },
+    "edges": [
+      [
+        "@fix/app",
+        "@fix/util"
+      ],
+      [
+        "@fix/app",
+        "@fix/auth"
+      ],
+      [
+        "@fix/auth",
+        "@fix/data"
+      ],
+      [
+        "@fix/data",
+        "@fix/auth"
+      ],
+      [
+        "@fix/plugin",
+        "@fix/util"
+      ]
+    ],
+    "devEdges": []
+  },
+  "issues": [
+    {
+      "code": "cycle",
+      "severity": "error",
+      "pkg": "@fix/auth",
+      "message": "Runtime dependency cycle: @fix/auth → @fix/data → @fix/auth — imports resolve back to their origin, which blocks layering and can break module initialisation order",
+      "details": {
+        "path": [
+          "@fix/auth",
+          "@fix/data"
+        ]
+      }
+    },
+    {
+      "code": "internal-range",
+      "severity": "error",
+      "pkg": "@fix/app",
+      "dep": "@fix/util",
+      "message": "\`@fix/app\` declares workspace member \`@fix/util\` as \`1.0.0\` (not \`workspace:\`) — a version slip silently installs the REGISTRY copy instead of linking the workspace",
+      "details": {
+        "declared": "1.0.0",
+        "actual": "1.0.0"
+      }
+    },
+    {
+      "code": "internal-range",
+      "severity": "error",
+      "pkg": "@fix/plugin",
+      "dep": "@fix/util",
+      "message": "\`@fix/plugin\` declares workspace member \`@fix/util\` as \`^9.0.0\` (not \`workspace:\`) — a version slip silently installs the REGISTRY copy instead of linking the workspace",
+      "details": {
+        "declared": "^9.0.0",
+        "actual": "1.0.0"
+      }
+    },
+    {
+      "code": "phantom-dep",
+      "severity": "error",
+      "pkg": "@fix/app",
+      "dep": "undeclared-pkg",
+      "message": "\`@fix/app\` imports \`undeclared-pkg\` in shipping source but never declares it — resolvable only through hoisting luck",
+      "details": {
+        "files": [
+          "src/index.ts"
+        ]
+      }
+    },
+    {
+      "code": "version-drift",
+      "severity": "error",
+      "pkg": "ROOT",
+      "dep": "left-pad",
+      "message": "\`left-pad\` is declared with 2 different ranges (^1.0.0 · ^2.0.0) — the majors differ, so packages are building against different APIs",
+      "details": {
+        "ranges": {
+          "^1.0.0": [
+            "@fix/app"
+          ],
+          "^2.0.0": [
+            "@fix/util"
+          ]
+        }
+      }
+    },
+    {
+      "code": "peer-mismatch",
+      "severity": "warning",
+      "pkg": "@fix/plugin",
+      "dep": "@fix/util",
+      "message": "\`@fix/plugin\` peer-requires \`@fix/util\` at \`^9.0.0\` but the workspace ships 1.0.0 — the peer contract and the local reality disagree by a major",
+      "details": {
+        "declared": "^9.0.0",
+        "actual": "1.0.0"
+      }
+    },
+    {
+      "code": "prod-import-of-dev-dep",
+      "severity": "warning",
+      "pkg": "@fix/app",
+      "dep": "dev-only-pkg",
+      "message": "\`@fix/app\` imports \`dev-only-pkg\` in shipping source but declares it only in devDependencies — consumers won't have it installed",
+      "details": {
+        "files": [
+          "src/index.ts"
+        ]
+      }
+    },
+    {
+      "code": "version-drift",
+      "severity": "warning",
+      "pkg": "ROOT",
+      "dep": "chalk",
+      "message": "\`chalk\` is declared with 2 different ranges (^5.0.0 · ^5.2.0)",
+      "details": {
+        "ranges": {
+          "^5.0.0": [
+            "@fix/app"
+          ],
+          "^5.2.0": [
+            "@fix/util"
+          ]
+        }
+      }
+    },
+    {
+      "code": "unused-dep",
+      "severity": "info",
+      "pkg": "@fix/app",
+      "dep": "left-pad",
+      "message": "\`@fix/app\` declares \`left-pad\` as a dependency but no source file imports it — lexical evidence only (bins/plugins/CSS load without an import statement); verify before removing"
+    },
+    {
+      "code": "unused-dep",
+      "severity": "info",
+      "pkg": "@fix/app",
+      "dep": "chalk",
+      "message": "\`@fix/app\` declares \`chalk\` as a dependency but no source file imports it — lexical evidence only (bins/plugins/CSS load without an import statement); verify before removing"
+    },
+    {
+      "code": "unused-dep",
+      "severity": "info",
+      "pkg": "@fix/app",
+      "dep": "pinned-pkg",
+      "message": "\`@fix/app\` declares \`pinned-pkg\` as a dependency but no source file imports it — lexical evidence only (bins/plugins/CSS load without an import statement); verify before removing"
+    },
+    {
+      "code": "unused-dep",
+      "severity": "info",
+      "pkg": "@fix/util",
+      "dep": "left-pad",
+      "message": "\`@fix/util\` declares \`left-pad\` as a dependency but no source file imports it — lexical evidence only (bins/plugins/CSS load without an import statement); verify before removing"
+    },
+    {
+      "code": "unused-dep",
+      "severity": "info",
+      "pkg": "@fix/util",
+      "dep": "chalk",
+      "message": "\`@fix/util\` declares \`chalk\` as a dependency but no source file imports it — lexical evidence only (bins/plugins/CSS load without an import statement); verify before removing"
+    },
+    {
+      "code": "unused-dep",
+      "severity": "info",
+      "pkg": "@fix/util",
+      "dep": "never-imported",
+      "message": "\`@fix/util\` declares \`never-imported\` as a dependency but no source file imports it — lexical evidence only (bins/plugins/CSS load without an import statement); verify before removing"
+    },
+    {
+      "code": "unused-dep",
+      "severity": "info",
+      "pkg": "@fix/util",
+      "dep": "pinned-pkg",
+      "message": "\`@fix/util\` declares \`pinned-pkg\` as a dependency but no source file imports it — lexical evidence only (bins/plugins/CSS load without an import statement); verify before removing"
+    },
+    {
+      "code": "version-drift",
+      "severity": "info",
+      "pkg": "ROOT",
+      "dep": "pinned-pkg",
+      "message": "\`pinned-pkg\` is declared with 2 different ranges (^2.0.0 · ^3.0.0) — a root override pins it to 3.0.0, so installs agree, but the declarations still lie",
+      "details": {
+        "ranges": {
+          "^2.0.0": [
+            "@fix/app"
+          ],
+          "^3.0.0": [
+            "@fix/util"
+          ]
+        },
+        "override": "3.0.0"
+      }
+    }
+  ],
+  "stats": {
+    "internal": 5,
+    "external": 5,
+    "edges": 5,
+    "depth": 4,
+    "cycles": 1,
+    "errors": 5,
+    "warnings": 3,
+    "infos": 8
+  }
+}
+"
+`;
+
+exports[`loom scan --json is locked > --json --strict --no-imports > stderr 1`] = `
+"loom: 4 error(s) + 2 warning(s) (strict)
+"
+`;
+
+exports[`loom scan --json is locked > --json --strict --no-imports > stdout 1`] = `
+"{
+  "model": {
+    "root": {
+      "name": "fixture-root",
+      "dir": "<root>",
+      "overrides": {
+        "pinned-pkg": "3.0.0"
+      },
+      "workspaceGlobs": [
+        "packages/*"
+      ],
+      "ignores": [],
+      "devPaths": []
+    },
+    "packages": [
+      {
+        "name": "@fix/app",
+        "version": "1.0.0",
+        "dir": "packages/app",
+        "private": false,
+        "deps": [
+          {
+            "name": "@fix/util",
+            "range": "1.0.0",
+            "field": "dependencies"
+          },
+          {
+            "name": "@fix/auth",
+            "range": "workspace:*",
+            "field": "dependencies"
+          },
+          {
+            "name": "left-pad",
+            "range": "^1.0.0",
+            "field": "dependencies"
+          },
+          {
+            "name": "chalk",
+            "range": "^5.0.0",
+            "field": "dependencies"
+          },
+          {
+            "name": "pinned-pkg",
+            "range": "^2.0.0",
+            "field": "dependencies"
+          },
+          {
+            "name": "dev-only-pkg",
+            "range": "^1.0.0",
+            "field": "devDependencies"
+          }
+        ]
+      },
+      {
+        "name": "@fix/auth",
+        "version": "1.0.0",
+        "dir": "packages/auth",
+        "private": false,
+        "deps": [
+          {
+            "name": "@fix/data",
+            "range": "workspace:*",
+            "field": "dependencies"
+          }
+        ]
+      },
+      {
+        "name": "@fix/data",
+        "version": "1.0.0",
+        "dir": "packages/data",
+        "private": false,
+        "deps": [
+          {
+            "name": "@fix/auth",
+            "range": "workspace:*",
+            "field": "dependencies"
+          }
+        ]
+      },
+      {
+        "name": "@fix/plugin",
+        "version": "1.0.0",
+        "dir": "packages/plugin",
+        "private": false,
+        "deps": [
+          {
+            "name": "@fix/util",
+            "range": "^9.0.0",
+            "field": "peerDependencies"
+          }
+        ]
+      },
+      {
+        "name": "@fix/util",
+        "version": "1.0.0",
+        "dir": "packages/util",
+        "private": false,
+        "deps": [
+          {
+            "name": "left-pad",
+            "range": "^2.0.0",
+            "field": "dependencies"
+          },
+          {
+            "name": "chalk",
+            "range": "^5.2.0",
+            "field": "dependencies"
+          },
+          {
+            "name": "never-imported",
+            "range": "^1.0.0",
+            "field": "dependencies"
+          },
+          {
+            "name": "pinned-pkg",
+            "range": "^3.0.0",
+            "field": "dependencies"
+          }
+        ]
+      }
+    ]
+  },
+  "external": [
+    {
+      "name": "chalk",
+      "ranges": {
+        "^5.0.0": [
+          {
+            "user": "@fix/app",
+            "field": "dependencies"
+          }
+        ],
+        "^5.2.0": [
+          {
+            "user": "@fix/util",
+            "field": "dependencies"
+          }
+        ]
+      }
+    },
+    {
+      "name": "dev-only-pkg",
+      "ranges": {
+        "^1.0.0": [
+          {
+            "user": "@fix/app",
+            "field": "devDependencies"
+          }
+        ]
+      }
+    },
+    {
+      "name": "left-pad",
+      "ranges": {
+        "^1.0.0": [
+          {
+            "user": "@fix/app",
+            "field": "dependencies"
+          }
+        ],
+        "^2.0.0": [
+          {
+            "user": "@fix/util",
+            "field": "dependencies"
+          }
+        ]
+      }
+    },
+    {
+      "name": "never-imported",
+      "ranges": {
+        "^1.0.0": [
+          {
+            "user": "@fix/util",
+            "field": "dependencies"
+          }
+        ]
+      }
+    },
+    {
+      "name": "pinned-pkg",
+      "ranges": {
+        "^2.0.0": [
+          {
+            "user": "@fix/app",
+            "field": "dependencies"
+          }
+        ],
+        "^3.0.0": [
+          {
+            "user": "@fix/util",
+            "field": "dependencies"
+          }
+        ]
+      }
+    }
+  ],
+  "graph": {
+    "depths": {
+      "@fix/app": 0,
+      "@fix/plugin": 0,
+      "@fix/util": 1,
+      "@fix/auth": 3,
+      "@fix/data": 4
+    },
+    "cycles": [
+      [
+        "@fix/auth",
+        "@fix/data"
+      ]
+    ],
+    "reach": {
+      "@fix/app": 0,
+      "@fix/auth": 2,
+      "@fix/data": 2,
+      "@fix/plugin": 0,
+      "@fix/util": 2
+    },
+    "edges": [
+      [
+        "@fix/app",
+        "@fix/util"
+      ],
+      [
+        "@fix/app",
+        "@fix/auth"
+      ],
+      [
+        "@fix/auth",
+        "@fix/data"
+      ],
+      [
+        "@fix/data",
+        "@fix/auth"
+      ],
+      [
+        "@fix/plugin",
+        "@fix/util"
+      ]
+    ],
+    "devEdges": []
+  },
+  "issues": [
+    {
+      "code": "cycle",
+      "severity": "error",
+      "pkg": "@fix/auth",
+      "message": "Runtime dependency cycle: @fix/auth → @fix/data → @fix/auth — imports resolve back to their origin, which blocks layering and can break module initialisation order",
+      "details": {
+        "path": [
+          "@fix/auth",
+          "@fix/data"
+        ]
+      }
+    },
+    {
+      "code": "internal-range",
+      "severity": "error",
+      "pkg": "@fix/app",
+      "dep": "@fix/util",
+      "message": "\`@fix/app\` declares workspace member \`@fix/util\` as \`1.0.0\` (not \`workspace:\`) — a version slip silently installs the REGISTRY copy instead of linking the workspace",
+      "details": {
+        "declared": "1.0.0",
+        "actual": "1.0.0"
+      }
+    },
+    {
+      "code": "internal-range",
+      "severity": "error",
+      "pkg": "@fix/plugin",
+      "dep": "@fix/util",
+      "message": "\`@fix/plugin\` declares workspace member \`@fix/util\` as \`^9.0.0\` (not \`workspace:\`) — a version slip silently installs the REGISTRY copy instead of linking the workspace",
+      "details": {
+        "declared": "^9.0.0",
+        "actual": "1.0.0"
+      }
+    },
+    {
+      "code": "version-drift",
+      "severity": "error",
+      "pkg": "ROOT",
+      "dep": "left-pad",
+      "message": "\`left-pad\` is declared with 2 different ranges (^1.0.0 · ^2.0.0) — the majors differ, so packages are building against different APIs",
+      "details": {
+        "ranges": {
+          "^1.0.0": [
+            "@fix/app"
+          ],
+          "^2.0.0": [
+            "@fix/util"
+          ]
+        }
+      }
+    },
+    {
+      "code": "peer-mismatch",
+      "severity": "warning",
+      "pkg": "@fix/plugin",
+      "dep": "@fix/util",
+      "message": "\`@fix/plugin\` peer-requires \`@fix/util\` at \`^9.0.0\` but the workspace ships 1.0.0 — the peer contract and the local reality disagree by a major",
+      "details": {
+        "declared": "^9.0.0",
+        "actual": "1.0.0"
+      }
+    },
+    {
+      "code": "version-drift",
+      "severity": "warning",
+      "pkg": "ROOT",
+      "dep": "chalk",
+      "message": "\`chalk\` is declared with 2 different ranges (^5.0.0 · ^5.2.0)",
+      "details": {
+        "ranges": {
+          "^5.0.0": [
+            "@fix/app"
+          ],
+          "^5.2.0": [
+            "@fix/util"
+          ]
+        }
+      }
+    },
+    {
+      "code": "version-drift",
+      "severity": "info",
+      "pkg": "ROOT",
+      "dep": "pinned-pkg",
+      "message": "\`pinned-pkg\` is declared with 2 different ranges (^2.0.0 · ^3.0.0) — a root override pins it to 3.0.0, so installs agree, but the declarations still lie",
+      "details": {
+        "ranges": {
+          "^2.0.0": [
+            "@fix/app"
+          ],
+          "^3.0.0": [
+            "@fix/util"
+          ]
+        },
+        "override": "3.0.0"
+      }
+    }
+  ],
+  "stats": {
+    "internal": 5,
+    "external": 5,
+    "edges": 5,
+    "depth": 4,
+    "cycles": 1,
+    "errors": 4,
+    "warnings": 2,
+    "infos": 1
+  }
+}
+"
+`;

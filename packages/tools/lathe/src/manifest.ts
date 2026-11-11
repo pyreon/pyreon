@@ -53,26 +53,36 @@ export default defineManifest({
     "Author control without editing the spec: `filters` (include/exclude matchers by tag — every tag, not only the first — path glob, operationId glob and method; models only the dropped operations used go with them, and a matcher that selects NOTHING is an error with a did-you-mean), `patches` (RFC 6902 add/replace/remove at an RFC 6901 pointer, applied before the spec is read so the fix survives `lathe pull`; a target that moved FAILS the run), `operations` (per operation: hook name or `false`, `responseValidation`, `pagination`), `naming` (operation/model/file/hook functions receiving Lathe's own choice as `default`, every result validated and collision-checked) and `format` (the project formatter, applied before write AND before `check` compares)",
     "Atlas scenarios generated from the spec — one per enum value on a response field, so a variant axis the API declares is one the workbench actually exercises, and it regenerates when the API changes instead of drifting",
   ],
-  longExample: `$ npx lathe generate ./openapi.yaml --target multiplatform
+  longExample: `$ npx lathe generate
+lathe generate · 1 project
 
-lathe / Bookshelf 1.2.0
-  4 models  4 operations  target=multiplatform
+  ✓ Bookshelf  1.2.0 · openapi.yaml · 4 models · 4 operations · multiplatform · wrote 6 of 29 files
+    plugins        schemas, client, queries, mocks, faker, atlas, docs (+components, required by
+                   them)
+    files          6 of 29 files written
+      ~ updated  src/gen/schemas/Book.ts
+      ~ updated  src/gen/faker.ts
+      ~ updated  src/gen/components.tsx
+      ~ updated  src/gen/books.native.tsx
+      ~ updated  src/gen/docs/models.md
+      ~ updated  src/gen/api-surface.json
+    contract       1 breaking · 1 additive
+      − breaking  field-removed  Book.pages  was integer (optional)
+      + additive  field-added    Book.dueAt  date-time (optional)
+    native reach   3 of 4 operations · 1 web-only
+      ! web-only  1 operation: createBook
+        \`POST\` lowers through mutations, which PMTC does not yet recognise; GET operations on this
+        client DO reach native.
+    native verify  4 of 4 files lower
+      ✓ lowers    authors.native.tsx    swift   compiled
+      ✓ lowers    authors.native.tsx    kotlin  compiled
+      ✓ lowers    books.native.tsx      swift   compiled
+      ✓ lowers    books.native.tsx      kotlin  compiled
+      ✓ compiled  all modules together  swift
+      ✓ compiled  all modules together  kotlin
+      markers  PyreonQuery< PyreonZodSchema_ PyreonSchemaError
 
-  + src/gen/schemas/Book.ts
-  + src/gen/schemas.ts
-  + src/gen/client.ts
-  + src/gen/endpoints/books.ts
-  + src/gen/queries/books.ts
-  + src/gen/books.native.tsx
-
-  5 file(s) written
-
-  native reach  3/4 operations
-    web-only 1 op(s): createBook
-      POST lowers through mutations, which PMTC does not yet recognise.
-
-  lowers books.native.tsx swift   [PyreonQuery< PyreonZodSchema_]
-  lowers books.native.tsx kotlin  [PyreonQuery< PyreonZodSchema_]`,
+! wrote 6 of 29 files · 1 breaking change · 69 ms`,
   api: [
     {
       name: "generate",

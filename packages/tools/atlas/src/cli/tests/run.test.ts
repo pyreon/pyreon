@@ -79,7 +79,7 @@ describe('runCli', () => {
     const dir = fixture('cli', { 'Card.tsx': `export function Card(props: { title?: string }) { return 1 }` })
     try {
       expect(await runCli(['scan', dir])).toBe(0)
-      expect(stdout).toContain('discovered 1 component')
+      expect(stdout).toMatch(/components\s+1\n/)
       expect(stdout).toContain('atlas-catalog.json')
     } finally {
       rmSync(dir, { recursive: true, force: true })
@@ -102,8 +102,8 @@ describe('runCli', () => {
       // JSON to learn which of six checks had failed.
       // The CHECK, its stable CODE, and the fix — the code is what a consumer
       // greps for or branches on, and the fix travels with the finding.
-      expect(stderr).toContain('a11y [missing-accessible-name]:')
-      expect(stderr).toContain('→ Give "title" a non-empty value')
+      expect(stderr).toContain('a11y [missing-accessible-name] · ')
+      expect(stderr).toContain('fix: Give "title" a non-empty value')
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }
@@ -114,8 +114,8 @@ describe('runCli', () => {
     const dir = fixture('cli', { 'Card.tsx': `export function Card(props: { title: string }) { return 1 }` })
     try {
       await runCli(['scan', dir])
-      expect(stdout).toContain('checks:')
-      expect(stdout).toMatch(/a11y \d+\/\d+ ✗/)
+      expect(stdout).toMatch(/checks\s+a11y/)
+      expect(stdout).toMatch(/a11y \d+\/\d+ (✗|x)/)
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }
@@ -127,7 +127,7 @@ describe('runCli', () => {
     const dir = fixture('cli', { 'Card.tsx': `export function Card(props: { title?: string }) { return 1 }` })
     try {
       await runCli(['scan', dir])
-      expect(stdout).toContain('not run:')
+      expect(stdout).toMatch(/not run\s+\S/)
       expect(stdout).toContain('verify-browser')
     } finally {
       rmSync(dir, { recursive: true, force: true })
@@ -143,7 +143,7 @@ describe('runCli', () => {
     })
     try {
       expect(await runCli(['verify', 'Button', '--cwd', dir])).toBe(0)
-      expect(stdout).toContain('1 component(s)')
+      expect(stdout).toContain('1 component ·')
       expect(stdout).not.toContain('Card')
     } finally {
       rmSync(dir, { recursive: true, force: true })
@@ -222,8 +222,8 @@ describe('runCli', () => {
       expect(await runCli(['verify', 'Card', '--cwd', dir])).toBe(1)
       // The CHECK, its stable CODE, and the fix — the code is what a consumer
       // greps for or branches on, and the fix travels with the finding.
-      expect(stderr).toContain('a11y [missing-accessible-name]:')
-      expect(stderr).toContain('→ Give "title" a non-empty value')
+      expect(stderr).toContain('a11y [missing-accessible-name] · ')
+      expect(stderr).toContain('fix: Give "title" a non-empty value')
       expect(stdout).toContain('1 failing')
     } finally {
       rmSync(dir, { recursive: true, force: true })
@@ -237,7 +237,7 @@ describe('runCli', () => {
     })
     try {
       expect(await runCli(['verify', '--cwd', dir])).toBe(0)
-      expect(stdout).toContain('2 component(s)')
+      expect(stdout).toContain('2 components ·')
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }
@@ -291,7 +291,8 @@ describe('runCli', () => {
       expect(stdout).toContain('0 failing')
       expect(stdout).toContain('REGRESSED')
       expect(stdout).toContain('stopped running')
-      expect(stdout).toContain('the failure did not go away, the check did')
+      // Wrapped at 100 columns, so read with the line breaks folded.
+      expect(stdout.replace(/\s+/g, ' ')).toContain('the failure did not go away, the check did')
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }

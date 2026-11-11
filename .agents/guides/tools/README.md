@@ -31,8 +31,8 @@ Derives a verified, machine-readable component catalog from source. You write no
 ### Verification
 
 - Six checks per scenario, listed once in `CHECK_KEYS` (`atlas/src/core/types.ts`): `a11y`, `interaction`, `reactivityCoverage`, `leak`, `snapshot`, `ssrParity`. Iterate that list; never hand-write a copy.
-- The report names which check failed: `checks: a11y 18/20 ✗ · interaction 43/43 · …` plus `not run:` lines with reasons.
-- `N verified` counts scenarios, not checks. A scenario that ran two of six checks still counts as verified, so read the `not run:` lines.
+- The report names which check failed: a `checks` row (`a11y 18/20 ✗ · interaction 43/43 · …`, from `formatCheckTally`) plus `not run` rows with reasons (`formatNotRun`). The human output uses the shared `@pyreon/ansi` look (header first, verdict last); `--json` is the machine surface and is snapshot-locked (`src/cli/tests/machine-output-lock.test.ts`).
+- `N verified` counts scenarios, not checks. A scenario that ran two of six checks still counts as verified, so read the `not run` rows.
 - Findings are `{ code, message, fix? }` (catalog v2); `code` is stable. MCP refuses a v1 catalog.
 - `atlas verify <Component>` verifies only the match and never writes the catalog. An unmatched name or a run that verified nothing exits non-zero.
 - `--check` (on `scan` and `verify`) ratchets against the committed catalog: non-zero on regression, never rewrites the baseline, missing baseline = exit 0. A check that stopped running counts as a regression — losing coverage makes the counts improve.

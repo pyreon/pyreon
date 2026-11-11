@@ -3084,26 +3084,36 @@ export default defineConfig({
 Lathe reads an OpenAPI 3.x document and emits a client for the Pyreon stack: `@pyreon/validate` schemas, `@pyreon/http` endpoint declarations, `@pyreon/query` hooks, deterministic mock fixtures, and `@pyreon/atlas` scenarios derived from the spec's own enums and examples. YAML is read as YAML 1.2 core through the `yaml` package, configured strictly: anchors and merge keys resolve, while duplicate keys, multi-document streams, custom tags and non-JSON values are REFUSED with a line number rather than producing a document the author did not write. What separates it from a conventional generator is `target: 'multiplatform'`: the native compiler (PMTC) lowers only a SUBSET of TypeScript and has no module graph, so it recognises a client, a schema and a call only when they share ONE file's top level. Hand-written code drifts out of that constantly; generated code need not, so Lathe emits a self-contained module per tag — a layout no human would maintain and exactly the one the compiler wants — then runs the real compiler over its own output and checks for the POSITIVE marker (`PyreonQuery<`, `PyreonZodSchema_`), because zero warnings is not evidence of lowering.
 
 ```typescript
-$ npx lathe generate ./openapi.yaml --target multiplatform
+$ npx lathe generate
+lathe generate · 1 project
 
-lathe / Bookshelf 1.2.0
-  4 models  4 operations  target=multiplatform
+  ✓ Bookshelf  1.2.0 · openapi.yaml · 4 models · 4 operations · multiplatform · wrote 6 of 29 files
+    plugins        schemas, client, queries, mocks, faker, atlas, docs (+components, required by
+                   them)
+    files          6 of 29 files written
+      ~ updated  src/gen/schemas/Book.ts
+      ~ updated  src/gen/faker.ts
+      ~ updated  src/gen/components.tsx
+      ~ updated  src/gen/books.native.tsx
+      ~ updated  src/gen/docs/models.md
+      ~ updated  src/gen/api-surface.json
+    contract       1 breaking · 1 additive
+      − breaking  field-removed  Book.pages  was integer (optional)
+      + additive  field-added    Book.dueAt  date-time (optional)
+    native reach   3 of 4 operations · 1 web-only
+      ! web-only  1 operation: createBook
+        `POST` lowers through mutations, which PMTC does not yet recognise; GET operations on this
+        client DO reach native.
+    native verify  4 of 4 files lower
+      ✓ lowers    authors.native.tsx    swift   compiled
+      ✓ lowers    authors.native.tsx    kotlin  compiled
+      ✓ lowers    books.native.tsx      swift   compiled
+      ✓ lowers    books.native.tsx      kotlin  compiled
+      ✓ compiled  all modules together  swift
+      ✓ compiled  all modules together  kotlin
+      markers  PyreonQuery< PyreonZodSchema_ PyreonSchemaError
 
-  + src/gen/schemas/Book.ts
-  + src/gen/schemas.ts
-  + src/gen/client.ts
-  + src/gen/endpoints/books.ts
-  + src/gen/queries/books.ts
-  + src/gen/books.native.tsx
-
-  5 file(s) written
-
-  native reach  3/4 operations
-    web-only 1 op(s): createBook
-      POST lowers through mutations, which PMTC does not yet recognise.
-
-  lowers books.native.tsx swift   [PyreonQuery< PyreonZodSchema_]
-  lowers books.native.tsx kotlin  [PyreonQuery< PyreonZodSchema_]
+! wrote 6 of 29 files · 1 breaking change · 69 ms
 ```
 
 ## @pyreon/loom — Dependency Observatory
@@ -3111,16 +3121,29 @@ lathe / Bookshelf 1.2.0
 Loom reads a workspace the way an install tool does — root workspace globs (npm/bun/yarn array + object forms, `packages/*/*`-style nesting, negations, pnpm-workspace.yaml) and every member manifest — and turns the dependency fabric into DATA: the internal graph (longest-path depths, RUNTIME cycles with dev edges deliberately excluded, transitive blast radius), the external version-usage map (every dep → every declared range → who declares it), and a detector-driven issue list with honest severities. `loom scan` writes `loom-report.json` and exits non-zero on error findings, so wiring it into CI gates the fabric; `loom dev` serves the five-view observatory UI over the same report. Loom reads DECLARED truth only — no lockfile parsing, no registry calls (outdated/duplicate-install analysis are documented future layers).
 
 ```typescript
-$ loom scan .
-loom: 142 workspace package(s), 147 external dep(s), 681 internal edge(s), depth 8, 0 cycle(s).
+$ loom scan . --no-write
+loom scan · . · 148 packages
 
-WARNING · 8
-  ▲ version-drift [happy-dom] — \`happy-dom\` is declared with 2 different ranges (^20.11.1 · ^20.0.0)
-  ▲ version-drift [esbuild] — \`esbuild\` is declared with 2 different ranges (^0.25.0 · ^0.24.2)
+  workspace packages  148
+  external deps       227
+  internal edges      858
+  depth                11
+  runtime cycles        0
 
-INFO · 12
-  · unused-dep [tslib] — \`@pyreon/charts\` declares \`tslib\` as a dependency but no source file imports it — lexical evidence only
-  → loom-report.json
+  ℹ 305 info
+  ℹ phantom-dep · `@pyreon/example-react-compat` imports `react-dom` in shipping source but never
+     declares it — resolvable only through hoisting luck (ignored: `@pyreon/vite-plugin` with
+     compat:'react' ALIASES react-dom (and react-dom/client) to @pyreon/react-compat/dom. Installing
+     the real react-dom would defeat the example, whose entire point is that React-shaped code runs
+     with no React present.)
+     ↳ examples/react-compat/src/main.tsx
+  ℹ phantom-type-dep · `@pyreon/create-zero` imports `@pyreon/server` type-only but never declares
+     it — erased at runtime, so consumers are unaffected, but typecheck resolves it through hoisting
+     luck; declare it in devDependencies
+     ↳ packages/zero/create-zero/templates/app/src/routes/(admin)/dashboard.tsx
+  …
+
+✓ no errors or warnings · 305 info · 148 packages · 392 ms
 
 $ loom scan . --strict     # warnings gate too (red exit)
 $ loom scan . --json       # the full report as machine-readable JSON
