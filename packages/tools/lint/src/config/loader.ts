@@ -23,6 +23,14 @@ const CONFIG_FILENAMES = ['.pyreonlintrc.json', '.pyreonlintrc', 'pyreonlint.con
  * ```
  */
 export function loadConfig(cwd: string): LintConfigFile | null {
+  return locateConfig(cwd)?.config ?? null
+}
+
+/**
+ * Like {@link loadConfig}, but also says WHICH file the config came from — the
+ * LSP needs the path to notice when the user edits it mid-session.
+ */
+export function locateConfig(cwd: string): { path: string; config: LintConfigFile } | null {
   let dir = resolve(cwd)
 
   // Walk from `cwd` toward the filesystem root and return the NEAREST config.
@@ -42,12 +50,15 @@ export function loadConfig(cwd: string): LintConfigFile | null {
   return null
 }
 
-function searchDirectory(dir: string): LintConfigFile | null {
+function searchDirectory(dir: string): { path: string; config: LintConfigFile } | null {
   for (const filename of CONFIG_FILENAMES) {
-    const content = tryReadJson(join(dir, filename))
-    if (content !== null) return content
+    const path = join(dir, filename)
+    const content = tryReadJson(path)
+    if (content !== null) return { path, config: content }
   }
-  return extractPkgConfig(join(dir, 'package.json'))
+  const pkgPath = join(dir, 'package.json')
+  const fromPkg = extractPkgConfig(pkgPath)
+  return fromPkg === null ? null : { path: pkgPath, config: fromPkg }
 }
 
 function extractPkgConfig(pkgPath: string): LintConfigFile | null {

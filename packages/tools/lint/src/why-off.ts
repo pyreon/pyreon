@@ -111,7 +111,14 @@ export function explainRuleState(
 
   // WHY it is off in a preset — reported even when the user has already
   // enabled it, because these explain the default rather than the current state.
-  if (rule.meta.optIn) {
+  if (rule.meta.optIn && rule.meta.category === 'style') {
+    reasons.push({
+      code: 'opt-in',
+      detail:
+        'This is a readability (`style`) rule. Every base preset forces it off; only the `readable` layers turn it on.',
+      fix: 'Add the readable layer: `"preset": ["recommended", "readable"]`, or enable this rule by id.',
+    })
+  } else if (rule.meta.optIn) {
     reasons.push({
       code: 'opt-in',
       detail:

@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 import { resolve } from 'node:path'
 import { loadConfig, loadConfigFromPath } from './config/loader'
-import { getPreset } from './config/presets'
+import { isPresetName } from './config/presets'
 import { initConfig } from './init'
-import { listRules } from './lint'
+import { listRules, resolveLintConfig } from './lint'
 import { lintAsync } from './parallel'
 import { startLspServer } from './lsp/index'
 import { formatCompact, formatJSON, formatText } from './reporter'
@@ -20,7 +20,9 @@ function printUsage() {
   pyreon-lint [options] [path...]
 
   Options:
-    --preset <name>    Preset: recommended (default), strict, app, lib, best-practices
+    --preset <names>   Preset, or a comma list composed left to right (overrides the config file):
+                       recommended (default), strict, app, lib, best-practices,
+                       readable, readable-strict — e.g. --preset recommended,readable
     --fix              Auto-fix fixable issues
     --format <fmt>     Output: text (default), json, compact
     --quiet            Only show errors
@@ -46,6 +48,7 @@ const GROUP_BLURB: Record<RuleGroup, string> = {
   internal: 'encodes the Pyreon repo itself — never on in a shipped preset',
   js: 'language-level shapes oxlint cannot express on its own',
   backend: 'server-role files — handlers, loaders, adapters',
+  style: 'how code reads — blank lines, sections, JSX depth (the `readable` presets)',
   isomorphic: 'runs on BOTH sides — the hydration contract',
   'web-perf': 'client-role files — main thread, teardown, network',
   portable: 'must survive iOS + Android through PMTC',
@@ -60,6 +63,7 @@ const GROUP_ORDER: RuleGroup[] = [
   'a11y',
   'pkg',
   'js',
+  'style',
   'internal',
 ]
 
@@ -85,7 +89,8 @@ function printList() {
 }
 
 interface CliArgs {
-  preset: PresetName
+  /** `undefined` = use the config file's preset (or `recommended`). */
+  preset: PresetName[] | undefined
   fix: boolean
   format: 'text' | 'json' | 'compact'
   quiet: boolean
@@ -120,7 +125,7 @@ const BOOLEAN_FLAGS: Record<string, keyof CliArgs> = {
 
 function parseArgs(argv: string[]): CliArgs {
   const result: CliArgs = {
-    preset: 'recommended',
+    preset: undefined,
     fix: false,
     format: 'text',
     quiet: false,
@@ -157,7 +162,7 @@ function parseArgs(argv: string[]): CliArgs {
 /** Returns number of extra args consumed (0 or 1). */
 function parseValueFlag(arg: string, nextArg: string | undefined, result: CliArgs): number {
   if (arg === '--preset') {
-    result.preset = (nextArg ?? 'recommended') as PresetName
+    result.preset = parsePresetList(nextArg)
     return 1
   }
   if (arg === '--format') {
@@ -188,6 +193,23 @@ function parseValueFlag(arg: string, nextArg: string | undefined, result: CliArg
     result.paths.push(arg)
   }
   return 0
+}
+
+/**
+ * `--preset recommended,readable` → `['recommended', 'readable']`. An unknown
+ * name is reported and dropped rather than crashing the run.
+ */
+export function parsePresetList(val: string | undefined): PresetName[] | undefined {
+  if (!val) return undefined
+  const names: PresetName[] = []
+  for (const raw of val.split(',')) {
+    const name = raw.trim()
+    if (!name) continue
+    if (isPresetName(name)) names.push(name)
+    // oxlint-disable-next-line no-console
+    else console.error(`[pyreon-lint] --preset: unknown preset "${name}" ignored`)
+  }
+  return names.length > 0 ? names : undefined
 }
 
 function parseRuleOverride(val: string | undefined, overrides: Record<string, Severity>): void {
@@ -263,9 +285,11 @@ export async function runCli(argv: string[]): Promise<number | null> {
     const fileConfig = args.configPath
       ? loadConfigFromPath(args.configPath)
       : loadConfig(resolve('.'))
-    const config = getPreset(args.preset ?? fileConfig?.preset ?? 'recommended')
-    for (const [id, entry] of Object.entries(fileConfig?.rules ?? {})) config.rules[id] = entry
-    for (const [id, sev] of Object.entries(args.ruleOverrides)) config.rules[id] = sev
+    const config = resolveLintConfig(fileConfig, {
+      preset: args.preset,
+      ruleOverrides: args.ruleOverrides,
+      ruleOptionsOverrides: args.ruleOptionsOverrides,
+    })
     const state = explainRuleState(args.whyOff, {
       config,
       // A dependency gate is only meaningful relative to a file, so use the
