@@ -21,6 +21,8 @@ export default definePlaywrightConfig({
     { name: 'docs', testMatch: /docs\.spec\.ts$/, port: 5191 },
     // The marketing shell (nav, menus, mobile sheet, theme, widths, contrast).
     { name: 'site-shell', testMatch: /site-shell\.spec\.ts$/, port: 5191 },
+    // The homepage and the static-page architecture (JS budget, sitemap, 404).
+    { name: 'site-home', testMatch: /site-home\.spec\.ts$/, port: 5191 },
   ],
   webServer: [
     {

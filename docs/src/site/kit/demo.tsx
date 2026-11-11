@@ -106,8 +106,9 @@ function Meter(props: MeterItem) {
 export function Meters(props: { items: readonly MeterItem[]; label: string }) {
   return (
     <MeterList aria-label={props.label}>
-      <For each={props.items} by={(i) => String(i.label)}>
-        {(i) => <Meter label={i.label} value={i.value} />}
+      {/* Keyed by position: a label may be JSX, whose String() is "[object Object]" for every row. */}
+      <For each={props.items.map((item, i) => ({ item, i }))} by={(x) => x.i}>
+        {(x) => <Meter label={x.item.label} value={x.item.value} />}
       </For>
     </MeterList>
   )

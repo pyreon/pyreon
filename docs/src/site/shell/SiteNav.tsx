@@ -1,4 +1,4 @@
-import { For, onUnmount, Show } from '@pyreon/core'
+import { For, onMount, onUnmount, Show } from '@pyreon/core'
 import { useClickOutside, useEventListener, useFocusTrap, useMediaQuery, useScrollLock } from '@pyreon/hooks'
 import { isServer, signal, watch } from '@pyreon/reactivity'
 import { colorMode, toggleColorMode } from '../color-mode'
@@ -327,6 +327,13 @@ export default function SiteNav(props: { path: string }) {
   // Crossing the 960px collapse closes whichever navigation is going away.
   const expanded = useMediaQuery(navMedia.expanded.replace('@media ', ''))
   watch(expanded, (wide) => (wide ? closeSheet() : closeMenu()))
+
+  // Tests and tools wait for this: the server HTML is visible before the
+  // island hydrates, but its buttons only work after.
+  onMount(() => {
+    headerEl?.querySelector(`.${C.bar}`)?.setAttribute('data-hydrated', '')
+    return undefined
+  })
 
   const afterLink = () => {
     closeMenu()

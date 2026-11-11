@@ -33,8 +33,8 @@ const reset = 'margin:0;padding:0;border:0;background:none;font:inherit;color:in
 export const SITE_CSS_KEY = 'pyreon-site-islands-v1'
 
 export const SITE_CSS = `@layer site{
-:root,:root[data-theme=dark]{${vars('dark')}}
-:root[data-theme=light]{${vars('light')}}
+:root,[data-theme=dark]{${vars('dark')}}
+[data-theme=light]{${vars('light')}}
 pyreon-island{display:contents}
 *,*::before,*::after{box-sizing:border-box}
 body{margin:0}
@@ -151,7 +151,7 @@ ${navMedia.expanded}{.${C.sheet}{display:none}}
 .${C.pulseB}{animation:s-pulse-b ${pulse.duration}ms ${pulse.easing}}
 @media (prefers-reduced-motion:reduce){.${C.pulseA},.${C.pulseB}{animation:none;text-decoration:underline 2px ${pulse.edge};text-underline-offset:6px}}
 @keyframes s-nf-pulse{0%{filter:drop-shadow(0 0 0 ${pulse.ring})}40%{filter:drop-shadow(0 0 18px ${pulse.ring})}100%{filter:drop-shadow(0 0 0 ${pulse.fade})}}
-.${C.nf}{max-width:${layout.maxWidth}px;margin:0 auto;padding:128px ${layout.gutter.xs}px 96px;font-family:${font.sans};color:${v('text')}}
+.${C.nf}{width:100%;max-width:${layout.maxWidth}px;margin:0 auto;padding:128px ${layout.gutter.xs}px 96px;font-family:${font.sans};color:${v('text')}}
 @media (min-width:768px){.${C.nf}{padding:176px ${layout.gutter.md}px 120px}}
 .${C.nfCode}{display:block;margin:0;font-size:clamp(96px,22vw,220px);font-weight:${weight.bold};line-height:.86;letter-spacing:-.06em;background:var(--c-ember);-webkit-background-clip:text;background-clip:text;color:transparent;animation:s-nf-pulse 600ms ${pulse.easing} 200ms both}
 @media (prefers-reduced-motion:reduce){.${C.nfCode}{animation:none}}

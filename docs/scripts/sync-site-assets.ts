@@ -1,7 +1,7 @@
 /**
  * Copy the marketing site's visual assets into the app.
  *
- *   bun scripts/sync-site-assets.ts <path-to-09-site> [route ...] [--all] [--prune]
+ *   bun scripts/sync-site-assets.ts <path-to-09-site> [route | product-id ...] [--all] [--prune]
  *
  * Source: `09-site/assets/` and its `manifest.json` (every asset with the
  * pages that use it, alt text, theme, posters and width variants).
@@ -29,8 +29,10 @@
  * the repository grows with the pages that use the files. `--prune` removes
  * synced files no current route references.
  *
- * It also writes `src/site/content/_assets.json`: the manifest records of the
- * copied assets (the kit's `assets.ts` reads it at build time).
+ * It also writes `src/site/content/_assets.json` (the manifest records of the
+ * copied assets, read by the kit's `assets.ts`), `_share-default.json`, and
+ * `content/visuals/<id>.json` for each product page in the routes (the
+ * products slice's shape: hero visual, share image, SVGs, stills).
  */
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, join, relative, resolve } from 'node:path'
@@ -72,7 +74,8 @@ if (!source) {
 }
 const all = args.includes('--all')
 const prune = args.includes('--prune')
-const extraRoutes = positional.slice(1)
+// A bare word is a product id (the products slice's usage): `/products/<id>`.
+const extraRoutes = positional.slice(1).map((a) => (a.startsWith('/') ? a : `/products/${a}`))
 
 const from = join(resolve(source), 'assets')
 const app = resolve(import.meta.dir, '..')
@@ -190,6 +193,118 @@ writeFileSync(
   `${JSON.stringify({ file: fallbackShare.file, width: fallbackShare.width, height: fallbackShare.height, alt: fallbackShare.alt }, null, 1)}\n`,
 )
 
+// ─── Product visuals (`content/visuals/<id>.json`) ─────────────────────────
+//
+// Per product page: the hero visual (an inline animated SVG, a dark/light
+// capture pair, or the three-targets loop), the share image, further SVGs
+// and platform stills, with the manifest's alt text, sizes and variants.
+// Same shape as the products slice's first version of this script (read by
+// `src/site/content/visuals.ts`), so pages built on it keep working; the
+// URLs point at `/media/`, where this script puts the files. (Not
+// `/assets/`: that is Vite's hashed output directory, which hosts cache as
+// immutable, so a re-synced image under it would stay stale.)
+
+const byFile = new Map(manifest.assets.map((a) => [a.file, a]))
+const urlOf = (file: string): string => {
+  const dest = destination(file)
+  if (!existsSync(dest)) {
+    mkdirSync(dirname(dest), { recursive: true })
+    copyFileSync(join(from, file), dest)
+    written.add(dest)
+  }
+  return dest.startsWith(PUBLIC) ? dest.slice(PUBLIC.length) : file
+}
+function pictureSource(a: AssetRecord) {
+  const v = a.variantFiles ?? []
+  if (v.length === 0) throw new Error(`[Pyreon] ${a.file} has no width variants in the manifest.`)
+  const set = (format: string) =>
+    v.filter((x) => x.format === format).sort((x, y) => x.width - y.width).map((x) => `${urlOf(x.file)} ${x.width}w`).join(', ')
+  const webp = v.filter((x) => x.format === 'webp').sort((x, y) => x.width - y.width)
+  const fallback = webp[Math.min(1, webp.length - 1)] as Variant
+  return { avif: set('avif'), webp: set('webp'), src: urlOf(fallback.file), width: a.width ?? fallback.width, height: a.height ?? fallback.height }
+}
+const svgOf = (a: AssetRecord): string => readFileSync(join(from, a.file), 'utf8').trim()
+function themedPair(a: AssetRecord) {
+  const dark = a.theme === 'light' && a.pair ? (byFile.get(a.pair) as AssetRecord) : a
+  const light = a.theme === 'light' ? a : byFile.get(a.pair ?? '')
+  if (!light) throw new Error(`[Pyreon] ${a.file} has no light pair.`)
+  return { alt: a.alt, width: dark.width ?? 0, height: dark.height ?? 0, dark: pictureSource(dark), light: pictureSource(light) }
+}
+function posterSet(png: string) {
+  const base = png.replace(/\.png$/, '')
+  const found = [`${base}-640.avif`, `${base}.avif`, `${base}-640.webp`, `${base}.webp`].filter((f) => existsSync(join(from, f)))
+  const webp = found.filter((f) => f.endsWith('.webp'))
+  return { avif: found.filter((f) => f.endsWith('.avif')).map(urlOf), webp: webp.map(urlOf), src: urlOf(webp[webp.length - 1] ?? png) }
+}
+function loopFor(route: string) {
+  const videos = manifest.assets.filter((a) => a.slot === 'three-targets' && a.kind === 'video' && a.pages.includes(route))
+  if (videos.length === 0) return undefined
+  const pick = (size: string, theme: string, ext: string) => {
+    const v = videos.find((x) => x.size === size && x.theme === theme && x.file.endsWith(ext))
+    if (!v) throw new Error(`[Pyreon] no ${size} ${theme} ${ext} three-targets video.`)
+    return v
+  }
+  const side = (theme: 'dark' | 'light') => {
+    const large = pick('large', theme, '.webm')
+    const small = pick('phone', theme, '.webm')
+    return {
+      large: { webm: urlOf(large.file), mp4: urlOf(pick('large', theme, '.mp4').file), poster: posterSet(String(large.poster)) },
+      small: { webm: urlOf(small.file), mp4: urlOf(pick('phone', theme, '.mp4').file), poster: posterSet(String(small.poster)) },
+    }
+  }
+  const large = pick('large', 'dark', '.webm')
+  const small = pick('phone', 'dark', '.webm')
+  return {
+    kind: 'loop' as const,
+    alt: (videos[0] as AssetRecord).alt,
+    width: large.width ?? 0,
+    height: large.height ?? 0,
+    smallWidth: small.width ?? 0,
+    smallHeight: small.height ?? 0,
+    labels: ['Web · server-rendered HTML, hydrated', 'iOS · generated SwiftUI', 'Android · generated Compose, experimental'],
+    dark: side('dark'),
+    light: side('light'),
+  }
+}
+
+const visualsDir = join(app, 'src/site/content/visuals')
+const productIds = routes.flatMap((r) => (/^\/products\/[a-z0-9-]+$/.test(r) ? [r.slice('/products/'.length)] : []))
+let visualCount = 0
+for (const id of productIds) {
+  const route = `/products/${id}`
+  const onPage = manifest.assets.filter((a) => a.pages.includes(route))
+  const heroAsset = onPage.find((a) => a.slot === 'hero-visual' && (a.theme !== 'light' || !a.pair))
+  const loop = loopFor(route)
+  if (!loop && !heroAsset) continue
+  const hero = loop
+    ? loop
+    : heroAsset!.kind === 'animated-svg' || heroAsset!.file.endsWith('.svg')
+      ? { kind: 'svg', alt: heroAsset!.alt, width: heroAsset!.width ?? 640, height: heroAsset!.height ?? 400, svg: svgOf(heroAsset!) }
+      : { kind: 'pair', ...themedPair(heroAsset!) }
+  const svgs: Record<string, { alt: string; svg: string }> = {}
+  for (const a of onPage) {
+    if (a.file.endsWith('.svg') && a.slot !== 'hero-visual' && a.file.startsWith(`products/${id}/`)) {
+      svgs[a.file.slice(a.file.lastIndexOf('/') + 1, -'.svg'.length)] = { alt: a.alt, svg: svgOf(a) }
+    }
+  }
+  if (loop && heroAsset && heroAsset.file.endsWith('.svg')) svgs.hero = { alt: heroAsset.alt, svg: svgOf(heroAsset) }
+  const stills: Record<string, unknown> = {}
+  for (const a of onPage) {
+    if (a.slot === 'platform-still' && a.theme === 'dark') stills[a.file.slice(a.file.lastIndexOf('/') + 1).replace(/-dark\.png$/, '')] = themedPair(a)
+  }
+  const og = onPage.find((a) => a.slot === 'og')
+  const out = {
+    id,
+    og: og ? { src: urlOf(og.file), width: og.width ?? 1200, height: og.height ?? 630, alt: og.alt } : null,
+    hero,
+    ...(Object.keys(svgs).length ? { svgs } : {}),
+    ...(Object.keys(stills).length ? { stills } : {}),
+  }
+  mkdirSync(visualsDir, { recursive: true })
+  writeFileSync(join(visualsDir, `${id}.json`), `${JSON.stringify(out, null, 1)}\n`)
+  visualCount++
+}
+
 // ─── Prune ─────────────────────────────────────────────────────────────────
 
 let pruned = 0
@@ -211,5 +326,5 @@ if (prune) {
 
 process.stdout.write(
   `Synced ${written.size} file(s), ${(bytes / 1e6).toFixed(2)} MB, for ${all ? 'every route' : `${routes.length} route(s)`}` +
-    `${prune ? `; pruned ${pruned}` : ''}. Manifest: ${relative(app, join(app, 'src/site/content/_assets.json'))}.\n`,
+    `${prune ? `; pruned ${pruned}` : ''}; ${visualCount} product visuals file(s). Manifest: ${relative(app, join(app, 'src/site/content/_assets.json'))}.\n`,
 )

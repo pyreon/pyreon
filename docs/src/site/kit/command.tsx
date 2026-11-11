@@ -1,4 +1,4 @@
-import type { VNodeChild } from '@pyreon/core'
+import { onMount, type VNodeChild } from '@pyreon/core'
 import { useClipboard } from '@pyreon/hooks'
 import { C } from './classes'
 
@@ -10,10 +10,19 @@ import { C } from './classes'
  */
 export function CopyButton(props: { text: string }) {
   const { copy, copied } = useClipboard()
+  let button: HTMLElement | null = null
+  // Marks the handler as attached (the server HTML shows the button before).
+  onMount(() => {
+    button?.setAttribute('data-hydrated', '')
+    return undefined
+  })
   return (
     <button
       type="button"
       class={C.copy}
+      ref={(el: HTMLElement | null) => {
+        button = el
+      }}
       aria-label={() => (copied() ? `Copied: ${props.text}` : `Copy ${props.text}`)}
       onClick={() => void copy(props.text)}
     >

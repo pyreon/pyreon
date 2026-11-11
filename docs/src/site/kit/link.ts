@@ -1,4 +1,5 @@
-import { useRouter } from '@pyreon/router'
+import { useContext } from '@pyreon/core'
+import { RouterContext } from '@pyreon/router'
 
 // The href tests live in a router-free module so islands can use them
 // without pulling in the router.
@@ -14,11 +15,12 @@ export { isExternalHref, isFileHref, isRouterHref } from './href'
  * Call in component setup; returns a click-handler factory.
  */
 export function useLinkClick(): (href: string, after?: () => void) => (e: MouseEvent) => void {
-  const router = useRouter()
+  // No router inside an island on a static page: links load normally there.
+  const router = useContext(RouterContext)
   return (href, after) => (e) => {
     after?.()
     if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return
-    if (!isRouterHref(href)) return
+    if (router === null || !isRouterHref(href)) return
     e.preventDefault()
     void router.push(href)
   }

@@ -1,7 +1,11 @@
 import type { VNodeChild } from '@pyreon/core'
 import { For } from '@pyreon/core'
 import { useHead } from '@pyreon/head'
-import { signal } from '@pyreon/reactivity'
+import { island } from '@pyreon/zero'
+import { HOME, type HomeHero } from '../content/home'
+import { shareImage } from '../kit/assets'
+import { AnimatedSvg, Loop, Picture, Poster } from '../kit/media'
+import notFoundArt from '../media/illustrations/404.svg?raw'
 import { PyreonUI } from '@pyreon/ui-core'
 import type { ProductData } from '../content/model'
 import form from '../content/products/form.json'
@@ -9,15 +13,18 @@ import reactivity from '../content/products/reactivity.json'
 import { el, tone, txt } from '../kit/bases'
 import { BenchmarkTable, CompareBars, VerdictChip } from '../kit/bench'
 import { ApiGroups, Faq, FactList, FeatureList, LimitNote, NumberedCards, StatRow, StepCards } from '../kit/blocks'
-import { DemoSurface, EmberGradientDefs, GlowCard, Glyph, PackageCard, ProductTag } from '../kit/cards'
+import { EmberGradientDefs, GlowCard, Glyph, PackageCard, ProductTag } from '../kit/cards'
 import { BeforeAfter, CodeCard, CodeDiff } from '../kit/code'
-import { Chip, InstallCommand, Pill, Segmented } from '../kit/controls'
-import { Meters, PaperButton, PaperHint } from '../kit/demo'
+import { Chip, InstallCommand, Pill } from '../kit/controls'
 import { AutoGrid, Rule, Section, SectionHead, Wrap } from '../kit/layout'
 import { Reveal } from '../kit/motion'
 import { CaveatLine, EndCTA, HookHero, ProofBand, QuoteBlock } from '../kit/proof'
 import { Code, Eyebrow, Heading, Lede, renderInline, StatusBadge, StatusDot } from '../kit/type'
 import { color, font, type ColorKey } from '../theme'
+
+// The gallery's interactive specimens: one island (the page is static).
+const KitLiveIsland = island(() => import('./KitGalleryLive'), { name: 'KitGalleryLive', hydrate: 'visible', prefetch: 'idle' })
+const HERO_MEDIA = (HOME.sections.find((s) => s.kind === 'hero') as HomeHero).visual.media
 
 const FORM = form as unknown as ProductData
 const REACTIVITY = reactivity as unknown as ProductData
@@ -91,8 +98,6 @@ function Scope(props: { mode: 'dark' | 'light' }) {
 
 export function KitGallery() {
   useHead({ title: 'Brand and kit · Pyreon', meta: [{ name: 'description', content: 'Every building block of pyreon.dev, in both themes.' }] })
-  const seg = signal<'web' | 'ios' | 'android'>('web')
-  const count = signal(0)
   return (
     <>
       <EmberGradientDefs />
@@ -146,7 +151,6 @@ export function KitGallery() {
               <Pill href="/docs" variant="solid" size="lg">
                 Solid lg
               </Pill>
-              <Pill onClick={() => count.set(count.peek() + 1)}>{() => `Button · ${count()}`}</Pill>
             </Row>
             <Row>
               <InstallCommand command="bun add @pyreon/form" />
@@ -157,7 +161,6 @@ export function KitGallery() {
               <Chip>useField</Chip>
               <Chip>FormProvider</Chip>
             </Row>
-            <Segmented label="Target" options={['web', 'ios', 'android'] as const} value={() => seg()} onChange={(v) => seg.set(v)} />
           </Specimen>
 
           <Specimen name="GlowCard · PackageCard · ProductTag · Glyph">
@@ -278,23 +281,19 @@ export function KitGallery() {
             <Faq items={(FORM.faq ?? []).slice(0, 2)} />
           </Specimen>
 
-          <Specimen name="DemoSurface · Meters (paper surface keeps its palette in both themes)">
+          <Specimen name="Pill (button) · Segmented · DemoSurface · Meters: live, one island (KitScope)">
+            <KitLiveIsland />
+          </Specimen>
+
+          <Specimen name="Picture · Poster · Loop · AnimatedSvg · shareImage (the asset set, kit/media.tsx)">
             <AutoGrid cols={2} gap={16}>
-              <DemoSurface aria-label="Paper surface sample">
-                <PaperButton type="button" variant="primary" onClick={() => count.set(count.peek() + 1)}>
-                  Increment
-                </PaperButton>
-                <PaperHint>{() => `Clicked ${count()} times.`}</PaperHint>
-              </DemoSurface>
-              <GlowCard padding="compact">
-                <Meters
-                  label="Sample meters"
-                  items={[
-                    { label: 'count', value: () => count() },
-                    { label: 'segment', value: () => seg() },
-                  ]}
-                />
-              </GlowCard>
+              <Picture file="showcase/app-dashboard.png" sizes="(min-width: 960px) 600px, 100vw" />
+              <Poster file="home/runs-once-tree.svg" sizes="(min-width: 960px) 600px, 100vw" />
+            </AutoGrid>
+            <Loop media={HERO_MEDIA} />
+            <AutoGrid cols={2} gap={16}>
+              <AnimatedSvg file="illustrations/404.svg" markup={notFoundArt} />
+              <Lede size="small">{renderInline(`\`shareImage('/')\` → \`${shareImage('/').url}\` (${shareImage('/').width}×${shareImage('/').height})`)}</Lede>
             </AutoGrid>
           </Specimen>
 

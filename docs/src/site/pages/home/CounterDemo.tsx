@@ -54,6 +54,7 @@ export default function CounterDemo(props: { metrics: CounterMetric[] }) {
   }
 
   onMount(() => {
+    output?.closest(`.${C.counter}`)?.setAttribute('data-hydrated', '')
     if (output === null) return undefined
     observer = new MutationObserver((records) => {
       writes.update((n) => n + records.length)

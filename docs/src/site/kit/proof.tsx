@@ -391,10 +391,12 @@ export function HookHero(props: {
   install?: string | undefined
   ctas?: readonly { label: string; href: string }[] | undefined
   status?: readonly StatusItem[] | undefined
+  /** Fragment target (`#hero`). */
+  id?: string | undefined
   children?: VNodeChild
 }) {
   return (
-    <HookSection>
+    <HookSection id={props.id}>
       <Wrap>
         <Show when={() => !!props.eyebrow}>
           <Eyebrow>{props.eyebrow}</Eyebrow>

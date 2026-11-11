@@ -107,6 +107,7 @@ function Hero(props: { s: HomeHero }) {
   const v = s.visual
   return (
     <HookHero
+      id={s.id}
       eyebrow={s.eyebrow}
       title={s.title}
       emberWord={s.emberWord}
