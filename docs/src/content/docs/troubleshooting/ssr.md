@@ -153,6 +153,7 @@ The path returns `text/html`, so every hover logs a strict-MIME error and wastes
   - A text node mounted into a live parent through a reactive boundary must return a real remover; `noop` is valid only under `_elementDepth > 0`.
   - A reactive text binding is polymorphic (`bindPolymorphicText`); it may later yield a VNode.
   - Adding markers changes raw SSR strings; make string assertions marker-tolerant.
+  - A static setter on an adopted element (`!_freshBind`) must hydrate, never `mountChild`: `_setChild` routes accessors AND VNode/VNode-array values to the marker-less slot hydrator. `<For>` plan replay admits rows 2..N at row 1's spots only, so a cell that held a string in row 1 can hold a VNode in row 2 (#4370). Test: `setchild-vnode-hydration.test.tsx`.
 
 ---
 
