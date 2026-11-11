@@ -36,6 +36,19 @@ final class PyreonNumberTests: XCTestCase {
         XCTAssertEqual(pyreonInt(-9_223_372_036_854_775_808.0), Int.min)
     }
 
+    // pyreonRound is JavaScript's Math.round; the Android emit calls the same function (#4258).
+    func testRoundIsJavaScripts() {
+        XCTAssertEqual(pyreonRound(2.5), 3)
+        XCTAssertEqual(pyreonRound(-2.5), -2)
+        XCTAssertEqual(pyreonRound(0.49999999999999994), 0)
+        XCTAssertEqual(pyreonRound(4_503_599_627_370_497.0), 4_503_599_627_370_497.0)
+        XCTAssertEqual(pyreonRound(1e300), 1e300)
+        XCTAssertEqual(pyreonRound(-0.4).sign, .minus)
+        XCTAssertTrue(pyreonRound(Double.nan).isNaN)
+        XCTAssertEqual(pyreonRound(Double.infinity), Double.infinity)
+        XCTAssertEqual(pyreonInt(pyreonRound(Double.nan) + 1), 0)
+    }
+
     func testChartCategoriesAndDates() {
         XCTAssertEqual(pyreonChartString(2024), "2024")
         XCTAssertEqual(pyreonChartString(2024.0), "2024")

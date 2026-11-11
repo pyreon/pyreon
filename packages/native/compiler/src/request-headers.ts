@@ -96,6 +96,26 @@ interface RequestEmitCtx {
   warn(message: string): void
 }
 
+/**
+ * The HTTP methods the native runtimes model (`PyreonHttpMethod` in runtime-swift and runtime-kotlin) — a CLOSED set.
+ * The method is written as an enum CASE (`.post` / `PyreonHttpMethod.POST`), i.e. into code, so a value outside this
+ * set is never spliced: it is refused with a warning and the request goes out as the GET a non-literal method already
+ * falls back to.
+ */
+export const NATIVE_HTTP_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'] as const
+export type NativeHttpMethod = (typeof NATIVE_HTTP_METHODS)[number]
+
+/** `method` upper-cased when it is one of {@link NATIVE_HTTP_METHODS}; anything else warns (naming `where`) and is GET. */
+export function nativeHttpMethod(method: string | undefined, ctx: Pick<RequestEmitCtx, 'warn'>, where: string): NativeHttpMethod {
+  if (method === undefined) return 'GET'
+  const upper = method.toUpperCase()
+  if ((NATIVE_HTTP_METHODS as readonly string[]).includes(upper)) return upper as NativeHttpMethod
+  ctx.warn(
+    `[Pyreon] ${where} method ${JSON.stringify(method)} is not one the native HTTP runtime supports (${NATIVE_HTTP_METHODS.join(', ')}) — the request is sent as a GET on iOS and Android. Use one of those methods, or keep this request web-only.`,
+  )
+  return 'GET'
+}
+
 /** The marker calls `@pyreon/http`'s resolver wraps a streamed body in (`ResolvedRequest.upload`). */
 const MULTIPART_MARKER = '__pyreonMultipart'
 const RAW_BODY_MARKER = '__pyreonRawBody'
@@ -193,7 +213,7 @@ function sendableBodyExpr(expr: ExprIR | undefined, ctx: RequestEmitCtx, where: 
 export function swiftHttpRequestArgs(p: HttpRequestParts, ctx: RequestEmitCtx, where: string): string {
   const upload = resolveUpload(p, ctx, where)
   p = withDefaultContentType({ ...p, ...upload.text, bodyExpr: sendableBodyExpr(upload.text?.bodyExpr ?? p.bodyExpr, ctx, where) })
-  const parts = [`method: .${(p.method ?? 'GET').toLowerCase()}`, `url: ${p.url}`]
+  const parts = [`method: .${nativeHttpMethod(p.method, ctx, where).toLowerCase()}`, `url: ${p.url}`]
   const pairs = [
     ...Object.entries(p.headers ?? {}).map(([k, v]) => `${ctx.stringLiteral(k)}: ${ctx.stringLiteral(v)}`),
     ...sendableHeaderExprs(p.headerExprs, ctx, where).map(([k, e]) => `${ctx.stringLiteral(k)}: ${ctx.expr(e, 0)}`),
@@ -210,7 +230,7 @@ export function swiftHttpRequestArgs(p: HttpRequestParts, ctx: RequestEmitCtx, w
 export function kotlinHttpRequestArgs(p: HttpRequestParts, ctx: RequestEmitCtx, where: string): string {
   const upload = resolveUpload(p, ctx, where)
   p = withDefaultContentType({ ...p, ...upload.text, bodyExpr: sendableBodyExpr(upload.text?.bodyExpr ?? p.bodyExpr, ctx, where) })
-  const parts = [`method = PyreonHttpMethod.${(p.method ?? 'GET').toUpperCase()}`, `url = ${p.url}`]
+  const parts = [`method = PyreonHttpMethod.${nativeHttpMethod(p.method, ctx, where)}`, `url = ${p.url}`]
   const pairs = [
     ...Object.entries(p.headers ?? {}).map(([k, v]) => `${ctx.stringLiteral(k)} to ${ctx.stringLiteral(v)}`),
     ...sendableHeaderExprs(p.headerExprs, ctx, where).map(([k, e]) => `${ctx.stringLiteral(k)} to ${ctx.expr(e, 0)}`),

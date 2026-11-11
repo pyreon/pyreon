@@ -172,7 +172,7 @@ describe('emit-kotlin.ts — flow member lowering table', () => {
   it('_setNodeMeasurement with non-literal / malformed handle geometry is NAMED', () => {
     for (const handles of ['hs', '[7]', "[{ id: 'h', type: 'source', position: Position.Right, x: 1, y: 2 }]"]) {
       expect(warns(FLOW([`flow._setNodeMeasurement('1', 10, 20, ${handles})`], ', Position'))).toContain(
-        '`_setNodeMeasurement` handle geometry must be a literal array to lower natively',
+        '`_setNodeMeasurement` handle geometry must be a literal array of',
       )
     }
   })

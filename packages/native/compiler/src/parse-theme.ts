@@ -106,6 +106,10 @@ export function parseTheme(source: string, filename = 'theme.ts'): ParseThemeRes
     if ((prop.type !== 'Property' && prop.type !== 'ObjectProperty') || prop.computed) continue
     const keyName = readKey(prop.key)
     if (keyName === null) continue
+    if (!TOKEN_NAME.test(keyName)) {
+      warnings.push(tokenNameWarning(keyName))
+      continue
+    }
     const value = prop.value
     if (isScalarLiteral(value)) {
       // Top-level scalar — promote to globals group.
@@ -219,15 +223,25 @@ function unwrapTSLayers(node: AnyNode | undefined): AnyNode | undefined {
   return cur
 }
 
+/**
+ * A token group / entry name is emitted as a Swift / Kotlin IDENTIFIER
+ * (`public static let <name>`, `val <name>`), so only identifier characters
+ * are allowed — a quoted key (`'a-b'`, or any text at all) is skipped with a
+ * warning, never spliced into code.
+ */
+const TOKEN_NAME = /^[A-Za-z0-9_]+$/
+const tokenNameWarning = (name: string): string =>
+  `[parse-theme] skipped key ${JSON.stringify(name)} — a token name becomes a Swift/Kotlin identifier, so it may only contain letters, digits and _`
+
 function readKey(keyNode: unknown): string | null {
   const k = keyNode as AnyNode | undefined
   if (!k) return null
   if (k.type === 'Identifier') return (k as { name?: string }).name ?? null
   if (k.type === 'Literal') {
     const v = (k as { value?: unknown }).value
-    // String key: `'data-test': 1` → 'data-test'. Numeric key:
-    // `900: '#EEE'` (canonical color subgroup convention) → '900'.
-    // Both stringify to a usable property name in the emit.
+    // String key: `'data-test': 1` → 'data-test' (then refused by
+    // TOKEN_NAME). Numeric key: `900: '#EEE'` (canonical color subgroup
+    // convention) → '900'.
     if (typeof v === 'string') return v
     if (typeof v === 'number') return String(v)
   }
@@ -292,6 +306,10 @@ function collectGroupEntries(
     if ((prop.type !== 'Property' && prop.type !== 'ObjectProperty') || prop.computed) continue
     const keyName = readKey((prop as { key?: AnyNode }).key)
     if (keyName === null) continue
+    if (!TOKEN_NAME.test(keyName)) {
+      warnings.push(tokenNameWarning(keyName))
+      continue
+    }
     const value = (prop as { value?: AnyNode }).value
     if (!value) continue
     const entryName = prefix ? `${prefix}_${keyName}` : keyName

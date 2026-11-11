@@ -8,6 +8,7 @@
 // Type inference is deliberately naive — numeric assumption for
 // computed properties. Phase 1 grows a real inference pass.
 
+import { isDoubleLiteralValue, wholeDoubleLiteral } from './number-literal'
 import { isModuleState, moduleStateClassName, moduleStateDecls, shadowingNames } from './module-state'
 import { GESTURE_EVENT_NAMES, GESTURE_EVENTS } from './gesture-events'
 import { CANVAS_SHAPES, isCanvasShape, shapeColorLiteral } from './canvas-shapes'
@@ -4544,6 +4545,10 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       if (typeof e.value === 'number' && e.float === true && Number.isInteger(e.value)) {
         return `${e.value}.0`
       }
+      // A whole literal past the 32-bit range is a Double everywhere it is typed (`number-literal.ts`): spell it as one.
+      if (typeof e.value === 'number' && Number.isInteger(e.value) && isDoubleLiteralValue(e.value)) {
+        return wholeDoubleLiteral(e.value)
+      }
       return String(e.value)
     case 'identifier': {
       const constant = lowerPluginIdentifier(e.name, 'swift', () => swiftEmitContext(0))
@@ -4830,11 +4835,10 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
           // which breaks ties toward POSITIVE infinity. They disagree on every
           // negative half — executed on real toolchains over
           // [-0.5, -1.5, 2.5, -2.5]: JS/Kotlin `0 -1 3 -2`, `.rounded()`
-          // `-1 -2 3 -3`. Kotlin keeps `java.lang.Math.round` (widened to Double in math-lowering — it returns Long): it is
-          // SPECIFIED as `floor(x + 0.5)`, so it already matches JS (correct,
-          // if by a coincidence of Java's own choice of rule).
+          // `-1 -2 3 -3`. Nor is `(x + 0.5).rounded(.down)`: `0.49999999999999994 + 0.5` rounds to 1.0 first. Both targets
+          // call the runtime's `pyreonRound`, which is JS's rule and lets NaN / ±Infinity through (#4258).
           case 'round':
-            if (args.length === 1) return `((Double(${args[0]!})) + 0.5).rounded(.down)`
+            if (args.length === 1) return `pyreonRound(Double(${args[0]!}))`
             break
           // floor/ceil/trunc return DOUBLE — JS Math.floor returns a
           // NUMBER, and the old `Int(floor(...))` wrap poisoned every

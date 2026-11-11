@@ -17,6 +17,7 @@ export const KOTLIN_CHART_TARGET: ChartHostTarget = {
   nil: 'null',
   nan: 'Double.NaN',
   list: (items) => `listOf(${items.join(', ')})`,
+  str: kotlinStr,
   struct: (name, fields) => `${name}(${fields.map(([k, v]) => `${k} = ${v}`).join(', ')})`,
   coalesce: (a, b) => `(${a} ?: ${b})`,
   withProgress: (options, struct, progress) => (options === 'null' ? `${struct}(progress = ${progress})` : `(${options}).copy(progress = ${progress})`),
@@ -41,7 +42,7 @@ export function kotlinChartAnimating(e: Extract<ExprIR, { kind: 'jsx-element' }>
 /** The host composable inside `PyreonChartEntrance`, which hands the tween's progress down as `pyreonEntrance` (mirror of the Swift emitter). */
 export function kotlinChartEntrance(e: Extract<ExprIR, { kind: 'jsx-element' }>, tag: string, indent: number, inner: (indent: number) => string): string {
   if (!kotlinChartAnimating(e, tag)) return inner(indent)
-  const ms = chartEnterMs(chartAttrExprKotlin(e, 'theme'), tag, KOTLIN_CHART_TARGET.list, host.colorScope())
+  const ms = chartEnterMs(chartAttrExprKotlin(e, 'theme'), tag, KOTLIN_CHART_TARGET, host.colorScope())
   const pad = ' '.repeat(indent + 2)
   return `PyreonChartEntrance(${ms}) { pyreonEntrance ->\n${pad}${inner(indent + 2)}\n${' '.repeat(indent)}}`
 }
@@ -82,7 +83,7 @@ export function kotlinChartCanvas(e: Extract<ExprIR, { kind: 'jsx-element' }>, c
   const size = 'maxWidth.value.toDouble(), maxHeight.value.toDouble()'
   const action = onSave?.kind === 'event'
     ? kotlinChartSelectBody(onSave.handler, `pyreonChartDataUrl(${cmds}, ${size}, pyreonSaveDensity)`, indent)
-    : `pyreonShareChartImage(pyreonSaveContext, ${cmds}, ${size}, pyreonSaveDensity, ${JSON.stringify(String(host.staticAttr(e, 'title') ?? 'chart'))})`
+    : `pyreonShareChartImage(pyreonSaveContext, ${cmds}, ${size}, pyreonSaveDensity, ${kotlinStr(String(host.staticAttr(e, 'title') ?? 'chart'))})`
   // The draw list is read ONCE in composition: it can call composables (the theme's dark check), which the click lambda cannot.
   return `BoxWithConstraints(modifier = ${modifier}) { val pyreonSaveContext = LocalContext.current; val pyreonSaveDensity = LocalDensity.current.density; val pyreonSaveCmds = ${cmds}; PyreonChartCanvas(${inner.join(', ').replace(`cmds = ${cmds}`, 'cmds = pyreonSaveCmds')}); Text("⤓", modifier = Modifier.align(Alignment.TopEnd).padding(4.dp).testTag("pyreon-save-image").clickable { ${action.split(cmds).join('pyreonSaveCmds')} }) }`
 }
@@ -179,7 +180,7 @@ export function kotlinMarkOptionArgs(opts: ExprIR | undefined, tag: string, seri
     const spacing = values.get('spacing')
     const width = values.get('width')
     if (kind?.kind !== 'literal' || typeof kind.value !== 'string' || color?.kind !== 'literal' || typeof color.value !== 'string' || spacing?.kind !== 'literal' || typeof spacing.value !== 'number' || width?.kind !== 'literal' || typeof width.value !== 'number') return false
-    args.push(`pattern = PyreonChartPattern(kind = ${JSON.stringify(kind.value)}, color = ${JSON.stringify(color.value)}, spacing = ${chartDouble(spacing.value)}, width = ${chartDouble(width.value)}${patternExtras(values, ' = ')})`)
+    args.push(`pattern = PyreonChartPattern(kind = ${kotlinStr(kind.value)}, color = ${kotlinStr(color.value)}, spacing = ${chartDouble(spacing.value)}, width = ${chartDouble(width.value)}${patternExtras(values, ' = ')})`)
     return true
   }
   // `gradient` sits right before `pattern` in Series field order: literal
@@ -201,11 +202,11 @@ export function kotlinMarkOptionArgs(opts: ExprIR | undefined, tag: string, seri
       const offset = sv.get('offset')
       const color = sv.get('color')
       if (offset?.kind !== 'literal' || typeof offset.value !== 'number' || color?.kind !== 'literal' || typeof color.value !== 'string') return false
-      stopArgs.push(`PyreonChartGradientStop(offset = ${chartDouble(offset.value)}, color = ${JSON.stringify(color.value)})`)
+      stopArgs.push(`PyreonChartGradientStop(offset = ${chartDouble(offset.value)}, color = ${kotlinStr(color.value)})`)
     }
     if (direction !== undefined && (direction.kind !== 'literal' || typeof direction.value !== 'string')) return false
     if (shape !== undefined && (shape.kind !== 'literal' || typeof shape.value !== 'string')) return false
-    args.push(`gradient = SeriesGradient(stops = listOf(${stopArgs.join(', ')})${direction === undefined ? '' : `, direction = ${JSON.stringify(direction.value)}`}${shape === undefined ? '' : `, shape = ${JSON.stringify(shape.value)}`})`)
+    args.push(`gradient = SeriesGradient(stops = listOf(${stopArgs.join(', ')})${direction === undefined ? '' : `, direction = ${kotlinStr(direction.value)}`}${shape === undefined ? '' : `, shape = ${kotlinStr(shape.value)}`})`)
     return true
   }
   let patternPushed = false
@@ -416,7 +417,7 @@ export function kotlinChartTheme(e: Extract<ExprIR, { kind: 'jsx-element' }>, ta
 
 /** Mirror of the Swift emitter: the theme per field as emitted text, read once per host. */
 export function kotlinChartThemeFields(e: Extract<ExprIR, { kind: 'jsx-element' }>, tag: string): ChartThemeText {
-  return chartThemeFields(chartAttrExprKotlin(e, 'theme'), tag, (w) => host.warn(w), (items) => `listOf(${items.join(', ')})`, host.colorScope(), kotlinChartScheme)
+  return chartThemeFields(chartAttrExprKotlin(e, 'theme'), tag, (w) => host.warn(w), KOTLIN_CHART_TARGET, host.colorScope(), kotlinChartScheme)
 }
 
 /** The runtime colour-scheme switch: Compose's `isSystemInDarkTheme()` (a composable read; every host's theme literal sits in composable scope). */
@@ -601,13 +602,13 @@ function patternExtras(values: Map<string, ExprIR>, sep: string): string {
   const angle = values.get('angle')
   if (angle?.kind === 'literal' && typeof angle.value === 'number') out.push(`, angle${sep}${chartDouble(angle.value)}`)
   const symbol = values.get('symbol')
-  if (symbol?.kind === 'literal' && typeof symbol.value === 'string') out.push(`, symbol${sep}${JSON.stringify(symbol.value)}`)
+  if (symbol?.kind === 'literal' && typeof symbol.value === 'string') out.push(`, symbol${sep}${kotlinStr(symbol.value)}`)
   const spacingY = values.get('spacingY')
   if (spacingY?.kind === 'literal' && typeof spacingY.value === 'number') out.push(`, spacingY${sep}${chartDouble(spacingY.value)}`)
   const image = values.get('image')
-  if (image?.kind === 'literal' && typeof image.value === 'string') out.push(`, image${sep}${JSON.stringify(image.value)}`)
+  if (image?.kind === 'literal' && typeof image.value === 'string') out.push(`, image${sep}${kotlinStr(image.value)}`)
   const repeat = values.get('repeat')
-  if (repeat?.kind === 'literal' && typeof repeat.value === 'string') out.push(`, repeat${sep}${JSON.stringify(repeat.value)}`)
+  if (repeat?.kind === 'literal' && typeof repeat.value === 'string') out.push(`, repeat${sep}${kotlinStr(repeat.value)}`)
   const shape = values.get('shape')
   if (shape?.kind === 'array') {
     const pts: string[] = []

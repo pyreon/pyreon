@@ -71,7 +71,11 @@ enum PyreonWebViewTests {
         for ok in ["chart.html", "webhost/bridge.html", "a/b/c.html"] {
             check(pyreonWebViewAssetName(ok) == ok, "\(ok) is a bundled name")
         }
-        for bad in ["../secret.plist", "a/../../x", "a/%2e%2e/x", "/etc/hosts", "a\\..\\x", "file:///etc/hosts", "", "a//b", "./x"] {
+        check(pyreonWebViewAssetName("my chart.html") == "my chart.html", "an inner space is an ordinary bundled name")
+        // #52: characters a URL parser deletes or trims (tab/CR/LF, trailing
+        // controls and spaces) are refused, the same rule as the Android host.
+        for bad in ["../secret.plist", "a/../../x", "a/%2e%2e/x", "/etc/hosts", "a\\..\\x", "file:///etc/hosts", "", "a//b", "./x",
+                    ".\t./x", ".\r./x", ".\n./x", "\t../x", "x/..\u{0001}", "x/.. ", "..%09/x", "a\u{007F}b"] {
             check(pyreonWebViewAssetName(bad) == nil, "\(bad) is refused as a bundled name")
         }
         check(pyreonWebViewRemoteURL("https://a.test/x") != nil, "https src loads")

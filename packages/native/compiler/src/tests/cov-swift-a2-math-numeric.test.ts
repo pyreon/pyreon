@@ -60,7 +60,7 @@ describe('Math.* — the lowering table, one arm per entry', () => {
   const j = computed(() => Math.pow(n(), 2))`)
     // `Math.round` is floor(x + 0.5) — NOT `.rounded()`, whose default rule
     // disagrees with JS on every negative half.
-    expect(body(code, 'a')).toBe('((Double(n)) + 0.5).rounded(.down)')
+    expect(body(code, 'a')).toBe('pyreonRound(Double(n))')
     // Double-domain Foundation free functions: the arg is coerced, the
     // result stays Double (an `Int(…)` wrap poisons downstream mixed math).
     expect(body(code, 'b2')).toBe('floor(Double(d))')

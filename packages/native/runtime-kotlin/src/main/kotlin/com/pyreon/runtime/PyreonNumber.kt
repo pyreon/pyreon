@@ -35,6 +35,20 @@ fun pyreonNumberString(value: Number): String {
 // 0 and `Number(" 12 ")` is 12, `Number("0x1f")` is 31. Each function below is that algorithm — the mirror of the
 // Swift runtime's — so a value parsed from user input is the same number on every target.
 
+/**
+ * JavaScript's `Math.round`: the nearest integer, a tie rounding toward +Infinity (`-2.5` is `-2`), and NaN,
+ * ±Infinity and every value already whole (|x| >= 2^52) returned unchanged. `java.lang.Math.round` returns a
+ * `Long`, so it turned NaN into `0` and saturated at `Long.MAX_VALUE`: `Math.round(0 / 0) + 1` was `1` on Android
+ * and NaN on iOS and the web. The iOS emit calls the same function.
+ */
+fun pyreonRound(x: Double): Double {
+    if (!x.isFinite() || kotlin.math.abs(x) >= 4_503_599_627_370_496.0) return x
+    val f = kotlin.math.floor(x)
+    val r = if (x - f >= 0.5) f + 1.0 else f
+    // `Math.round(-0.4)` is -0, as on the web.
+    return if (r == 0.0 && x < 0) -0.0 else r
+}
+
 private fun pyreonIsJsSpace(c: Char): Boolean = c.isWhitespace() || c == '﻿'
 
 private fun pyreonDigit(c: Char, radix: Int): Int? {

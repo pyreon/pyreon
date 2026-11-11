@@ -29,7 +29,7 @@ function cyclicChainError(fn: string, node: object): Error {
     `[Pyreon] state-tree ${fn}: cyclic parent chain — walked ${MAX_TREE_DEPTH} ancestors ` +
       `from ${where}${keys} without reaching a root. A model instance's parent chain must be ` +
       'acyclic. This happens when two instances are written into each other ' +
-      '(`a.child.set(b)` then `b.child.set(a)`), which makes each the other\'s parent. ' +
+      "(`a.child.set(b)` then `b.child.set(a)`), which makes each the other's parent. " +
       'Detach one side before reading the tree.',
   )
 }
@@ -43,10 +43,9 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return proto === null || proto === Object.prototype
 }
 
-/** Attach `child` under `parent` at `key` (no-op if `child` isn't a model instance). */
-function setParent(child: unknown, parent: object, key: string): void {
-  if (!isModelInstance(child)) return
-  const meta = instanceMeta.get(child as object)
+/** Attach the model instance `child` under `parent` at path segment `key`. */
+function setParent(child: object, parent: object, key: string): void {
+  const meta = instanceMeta.get(child)
   /* v8 ignore next — isModelInstance already proved meta exists */
   if (!meta) return
   meta.parent = parent
@@ -54,54 +53,78 @@ function setParent(child: unknown, parent: object, key: string): void {
 }
 
 /**
- * Scan a value written into `parent[key]` and attach any model instance(s) it
- * carries as children of `parent`. Covers the three shapes a node can hold a
- * child in: a direct field value, an ARRAY element (the headline composition
- * pattern), and a plain-object value. One container level deep — a model nested
- * inside an array inside an array is not auto-attached (rare; use field/array
- * nesting). Called for each state field's INITIAL value at creation AND on every
- * subsequent tracked-signal write, so array children (`self.todos.set([...])`)
- * get a parent the same way field-nested children do.
+ * Escape one JSON-pointer path segment (RFC 6901): `~` → `~0`, `/` → `~1`.
+ * Every segment the tree emits (state keys, array indices, map keys) goes
+ * through this, and `applyPatch` reverses it with {@link unescapeSegment}.
  *
- * @internal — used by `createInstance`.
+ * @internal
  */
-export function scanForChildren(value: unknown, parent: object, key: string): void {
-  if (isModelInstance(value)) {
-    setParent(value, parent, key)
-    return
-  }
-  if (Array.isArray(value)) {
-    for (const el of value) setParent(el, parent, key)
-    return
-  }
-  if (isPlainObject(value)) {
-    for (const v of Object.values(value)) setParent(v, parent, key)
-  }
+export function escapeSegment(segment: string): string {
+  return segment.includes('~') || segment.includes('/')
+    ? segment.replace(/~/g, '~0').replace(/\//g, '~1')
+    : segment
+}
+
+/** Reverse of {@link escapeSegment}. @internal */
+export function unescapeSegment(segment: string): string {
+  return segment.includes('~') ? segment.replace(/~1/g, '/').replace(/~0/g, '~') : segment
 }
 
 /**
- * Collect the model instances a value carries as children (one container level
- * deep — the same shapes `scanForChildren` attaches). Used by `createInstance`
- * to wire upward patch/snapshot PROPAGATION for array/object-held children, so a
- * mutation inside `self.todos()[0]` reaches the parent's `onPatch`/`onSnapshot`
- * (and `destroy(parent)` tears them down) — matching field-nested children.
+ * A model child a field holds, with the path segment(s) that address it under
+ * the owner: `profile` for a direct field value, `todos/1` for an array element,
+ * `byId/x` for a plain-object value (each part JSON-pointer escaped).
+ *
+ * @internal
+ */
+export interface HeldChild {
+  node: object
+  segment: string
+}
+
+/**
+ * Collect the model instances a field value carries as children — a direct
+ * field value, an ARRAY element (the headline composition pattern), or a
+ * plain-object value — each with the path segment that addresses it. One
+ * container level deep: a model nested inside an array inside an array is not
+ * auto-attached (rare; use field/array nesting).
+ *
+ * The segment carries the element's INDEX / KEY, so `getPath` and the patches a
+ * child emits name the exact element (`/todos/1/done`, not `/todos/done`): a
+ * patch without the index cannot be replayed. The owner re-collects on every
+ * write to the field, so a reorder re-addresses every child.
  *
  * @internal — used by `createInstance`.
  */
-export function collectModelChildren(value: unknown): object[] {
-  // Only array / plain-object CONTAINERS — the caller (`wireContainerChildPropagation`)
-  // pre-filters a direct model-instance value (that's the field-nested path).
+export function collectHeldChildren(value: unknown, key: string): HeldChild[] {
+  const base = escapeSegment(key)
+  if (isModelInstance(value)) return [{ node: value as object, segment: base }]
+  const out: HeldChild[] = []
   if (Array.isArray(value)) {
-    const out: object[] = []
-    for (const el of value) if (isModelInstance(el)) out.push(el as object)
-    return out
+    for (let i = 0; i < value.length; i++) {
+      const el = value[i]
+      if (isModelInstance(el)) out.push({ node: el as object, segment: `${base}/${i}` })
+    }
+  } else if (isPlainObject(value)) {
+    for (const k of Object.keys(value)) {
+      const v = value[k]
+      if (isModelInstance(v))
+        out.push({ node: v as object, segment: `${base}/${escapeSegment(k)}` })
+    }
   }
-  if (isPlainObject(value)) {
-    const out: object[] = []
-    for (const v of Object.values(value)) if (isModelInstance(v)) out.push(v as object)
-    return out
-  }
-  return []
+  return out
+}
+
+/**
+ * Attach every held child under `parent` (parent pointer + addressing
+ * segment), so getParent / getRoot / getPath work for array and map children,
+ * not just field-nested ones. Called for each state field's INITIAL value at
+ * creation AND on every subsequent tracked-signal write.
+ *
+ * @internal — used by `createInstance`.
+ */
+export function attachChildren(children: readonly HeldChild[], parent: object): void {
+  for (const { node, segment } of children) setParent(node, parent, segment)
 }
 
 // ─── Public tree helpers ─────────────────────────────────────────────────────
@@ -162,12 +185,13 @@ export function getRoot<T extends object = object>(node: object): T {
 }
 
 /**
- * The JSON-pointer-style path from the root to `node`, built from each ancestor's
- * `parentKey` — e.g. `"/profile/address"`. A root node returns `""`. Array
- * children carry their field key (the array's key), not an index, in v1.
+ * The JSON-pointer path from the root to `node`, built from each ancestor's
+ * address under its parent — e.g. `"/profile/address"`. A root node returns
+ * `""`. Array and map children include their index / key (`"/todos/1"`,
+ * `"/byId/u1"`), the same path their patches carry.
  *
  * @example
- * getPath(child) // "/todos"
+ * getPath(list.todos()[1]) // "/todos/1"
  */
 export function getPath(node: object): string {
   // Collected leaf-to-root then reversed, rather than `unshift`ed. Same result,

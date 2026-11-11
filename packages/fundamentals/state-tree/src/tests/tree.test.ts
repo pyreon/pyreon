@@ -59,7 +59,7 @@ describe('tree helpers — array children (the headline composition shape)', () 
     // The B3 fix: array children get a parent, not just field-nested ones.
     expect(getParent(todo)).toBe(list)
     expect(getRoot(todo)).toBe(list)
-    expect(getPath(todo)).toBe('/todos')
+    expect(getPath(todo)).toBe('/todos/0') // the element index is part of the path
     expect(isRoot(todo)).toBe(false)
   })
 

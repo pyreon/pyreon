@@ -3,7 +3,7 @@
  * literals and the path-helper calls, moved verbatim from the compiler's Swift emitter.
  */
 import { type ExprIR, isNumericLiteralOrNegation, swiftStr } from '@pyreon/native-compiler/plugin-api'
-import { type StaticFlowHandle } from './collect'
+import { isFlowHandlePosition, type StaticFlowHandle } from './collect'
 import { HANDLED_FLOW_EDGE_FIELDS, HANDLED_FLOW_NODE_FIELDS, SWIFT_FLOW_STATE_INIT_LABELS, addEdgeDropWarnings, droppedFlowFieldsWarning } from './lowering'
 import { host } from './swift-facade'
 
@@ -39,14 +39,14 @@ export function swiftFlowMarkerLiteral(expr: ExprIR): string | null {
 
 export function swiftFlowHandlesLiteral(arg: ExprIR): string | null {
   if (arg.kind !== 'array') return null
-  const parsed: { id?: string; type: string; position: string }[] = []
+  const parsed: StaticFlowHandle[] = []
   for (const item of arg.elements) {
     if (item.kind !== 'object') return null
     const field = (name: string) => item.fields.find((f) => f.name === name)?.value
     const type = field('type'), position = field('position'), id = field('id')
     if (type?.kind !== 'literal' || typeof type.value !== 'string') return null
     const positionName = position?.kind === 'literal' && typeof position.value === 'string' ? position.value.toLowerCase() : position?.kind === 'member' ? position.property.toLowerCase() : undefined
-    if (!positionName || !['top', 'right', 'bottom', 'left'].includes(positionName) || (id && (id.kind !== 'literal' || typeof id.value !== 'string'))) return null
+    if (!isFlowHandlePosition(positionName) || (id && (id.kind !== 'literal' || typeof id.value !== 'string'))) return null
     parsed.push({ type: type.value, position: positionName, ...(id?.kind === 'literal' ? { id: id.value as string } : {}) })
   }
   return swiftFlowParsedHandles(parsed)
@@ -55,7 +55,7 @@ export function swiftFlowHandlesLiteral(arg: ExprIR): string | null {
 export function swiftFlowDataValue(expr: ExprIR): string | null {
   if (expr.kind === 'literal') {
     if (expr.value === null) return '.null'
-    if (typeof expr.value === 'string') return `.string(${JSON.stringify(expr.value)})`
+    if (typeof expr.value === 'string') return `.string(${swiftStr(expr.value)})`
     if (typeof expr.value === 'number') return `.number(${expr.value})`
     if (typeof expr.value === 'boolean') return `.bool(${expr.value})`
     return null
@@ -67,7 +67,7 @@ export function swiftFlowDataValue(expr: ExprIR): string | null {
   if (expr.kind === 'object' && (expr.spreads?.length ?? 0) === 0) {
     const values = expr.fields.map((field) => {
       const value = swiftFlowDataValue(field.value)
-      return value === null ? null : `${JSON.stringify(field.name)}: ${value}`
+      return value === null ? null : `${swiftStr(field.name)}: ${value}`
     })
     return values.some((value) => value === null) ? null : `.object(PyreonFlowData([${values.join(', ')}]))`
   }
@@ -78,7 +78,7 @@ export function swiftFlowData(expr: ExprIR): string | null {
   if (expr.kind !== 'object' || (expr.spreads?.length ?? 0) > 0) return null
   const values = expr.fields.map((field) => {
     const value = swiftFlowDataValue(field.value)
-    return value === null ? null : `${JSON.stringify(field.name)}: ${value}`
+    return value === null ? null : `${swiftStr(field.name)}: ${value}`
   })
   return values.some((value) => value === null) ? null : `PyreonFlowData([${values.join(', ')}])`
 }

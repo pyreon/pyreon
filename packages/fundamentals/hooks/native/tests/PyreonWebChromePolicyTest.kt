@@ -155,7 +155,11 @@ private fun originScope() {
     for (ok in listOf("chart.html", "webhost/bridge.html", "a/b/c.html")) {
         expect(pyreonWebViewAssetPath(ok) == ok, "$ok is a bundled asset")
     }
-    for (bad in listOf("../secret.xml", "a/../../x", "a/%2e%2e/x", "/etc/hosts", "a\\..\\x", "file:///etc/hosts", "", "a//b", "./x")) {
+    expect(pyreonWebViewAssetPath("my chart.html") == "my chart.html", "an inner space is an ordinary asset name")
+    // #52: the URL parser deletes tab/CR/LF and trims trailing controls/spaces,
+    // so each of these reaches the WebView as a `..` segment.
+    for (bad in listOf("../secret.xml", "a/../../x", "a/%2e%2e/x", "/etc/hosts", "a\\..\\x", "file:///etc/hosts", "", "a//b", "./x",
+        ".\t./x", ".\r./x", ".\n./x", "\t../x", "x/..\u0001", "x/.. ", "..%09/x", "a\u007fb")) {
         expect(pyreonWebViewAssetPath(bad) == null, "$bad is refused as an asset")
     }
     expect(pyreonWebViewIsRemoteSrc("https://a.test/x"), "https src loads")
