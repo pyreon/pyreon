@@ -201,7 +201,24 @@ defineBlog({
 })
 ```
 
-When your posts end with their own closing, set `cta: false` so the page has one ending, not two — this site does that and keeps the share links, the RSS link and the newsletter slot. `postEnd: false` renders none of it, and `postFooter` adds any component of your own after it. To change a page more deeply, write the route yourself from the queries and components:
+When your posts end with their own closing, set `cta: false` so the page has one ending, not two — this site does that and keeps the share links, the RSS link and the newsletter slot. `postEnd: false` renders none of it, and `postFooter` adds any component of your own after it.
+
+To render a page type in your own design system, pass `views`. Each view receives the page's computed data as props, and the blog still decides what exists (published posts only, the not-found view for anything else), writes the head tags and lists the static paths. pyreon.dev renders all three page types this way:
+
+```tsx
+defineBlog({
+  // …
+  views: {
+    // BlogListView: posts (this page), page, pageCount, total, href(n), tags (most used), tag (tag pages)
+    index: (v) => <SiteBlogIndex view={v} />,
+    tag: (v) => <SiteBlogIndex view={v} />,
+    // BlogPostView: post, Content, headings (levels 2 and 3), previous, next, related, url, status
+    post: (v) => <SitePost view={v} />,
+  },
+})
+```
+
+To change a page more deeply still, write the route yourself from the queries and components:
 
 | Export | Use |
 | --- | --- |
@@ -236,3 +253,4 @@ When your posts end with their own closing, set `cta: false` so the page has one
 | `postEnd` | share + feed | after each post: `cta`, `share`, `feed`, `newsletter` (each optional), or `false` |
 | `postFooter` | — | a component rendered after `postEnd` |
 | `notFound` | built-in | component for an unknown post, tag or page |
+| `views` | built-in markup | `{ index?, tag?, post? }`: components that render a page type from its data (`BlogListView`, `BlogPostView`) |

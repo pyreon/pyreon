@@ -181,7 +181,22 @@ export default blog.IndexPage
 // src/routes/blog/tags/[tag]/page/[page].tsx → getStaticPaths = blog.tagPagePaths, default blog.TagPage
 ```
 
-Optional default styles: `import '@pyreon/zero-content/blog.css'` before your own stylesheet (one-class specificity; colours from `--pyreon-blog-*` variables, falling back to the surrounding text colour). The RSS feed stays in the plugin's `seo.rss` option. Full guide: [pyreon.dev/docs/blog](https://pyreon.dev/docs/blog).
+Optional default styles: `import '@pyreon/zero-content/blog.css'` before your own stylesheet (one-class specificity; colours from `--pyreon-blog-*` variables, falling back to the surrounding text colour). The RSS feed stays in the plugin's `seo.rss` option.
+
+To render a page type with your own design system instead, pass `views`. Each view gets the page's computed data as props; the blog still decides what exists (published posts only, not-found pages) and writes the head tags:
+
+```tsx
+defineBlog({
+  // …
+  views: {
+    index: (v) => <MyIndex posts={v.posts} page={v.page} pageCount={v.pageCount} href={v.href} tags={v.tags} />,
+    tag: (v) => <MyTagPage tag={v.tag} posts={v.posts} />,
+    post: (v) => <MyPost post={v.post} body={<v.Content />} toc={v.headings} next={v.next} previous={v.previous} />,
+  },
+})
+```
+
+Full guide: [pyreon.dev/docs/blog](https://pyreon.dev/docs/blog).
 
 ## Conventions
 
