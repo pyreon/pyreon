@@ -1,5 +1,5 @@
 import { signal } from "@pyreon/reactivity"
-import { onMount } from "@pyreon/core"
+import { cx, For, onMount } from "@pyreon/core"
 import { useHead } from "@pyreon/head"
 import { Link } from "@pyreon/zero/link"
 import { type Invoice, invoiceTotal, listInvoices } from "../../../lib/db"
@@ -35,8 +35,8 @@ export default function Invoices() {
           </tr>
         </thead>
         <tbody>
-          {() =>
-            invoices().map((inv) => (
+          <For each={invoices} by={(inv) => inv.id}>
+            {(inv) => (
               <tr>
                 <td>
                   <Link href={`/app/invoices/${inv.id}`}>{inv.number}</Link>
@@ -44,7 +44,7 @@ export default function Invoices() {
                 <td>{inv.customer.name}</td>
                 <td>${formatMoney(invoiceTotal(inv))}</td>
                 <td>
-                  <span class={`pill ${inv.status}`}>{inv.status}</span>
+                  <span class={cx(["pill", inv.status])}>{inv.status}</span>
                 </td>
                 <td>{formatDate(inv.issuedAt)}</td>
                 <td>
@@ -53,8 +53,8 @@ export default function Invoices() {
                   </Link>
                 </td>
               </tr>
-            ))
-          }
+            )}
+          </For>
         </tbody>
       </table>
     </>

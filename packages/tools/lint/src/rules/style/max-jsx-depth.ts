@@ -8,7 +8,9 @@ import { childrenOf, isComponentDefinition, onComponents } from '../../utils/com
  *
  * Elements inside render callbacks (`<For>{(row) => <li>…</li>}</For>`) and
  * JSX passed as a prop (`fallback={<Spinner />}`) count, because they nest on
- * the screen. A nested component DEFINITION does not: its JSX is its own.
+ * the screen. Fragments and control-flow components (`<For>`, `<Show>`,
+ * `<Switch>`, …) do not: they render no element. A nested component
+ * DEFINITION does not either: its JSX is its own.
  *
  * Why 6: in this repo the per-component depth is p50 3, p90 5, p99 7.
  * oxlint's `react/jsx-max-depth` reports once per element (28 reports for 7
@@ -17,6 +19,19 @@ import { childrenOf, isComponentDefinition, onComponents } from '../../utils/com
  */
 
 const DEFAULT_MAX = 6
+
+/**
+ * Control-flow components and fragments render no element of their own, so
+ * they add no depth: `<ul><For …>{(r) => <li/>}</For></ul>` is two deep, the
+ * same as the `.map()` it replaces. Counting them would make the rule push
+ * people away from `<For>` / `<Show>`, the idioms Pyreon recommends.
+ */
+const TRANSPARENT = new Set(['For', 'Show', 'Switch', 'Match', 'Index', 'Keyed', 'Suspense', 'ErrorBoundary'])
+
+function isTransparent(el: any): boolean {
+  const name = el.openingElement?.name
+  return name?.type === 'JSXIdentifier' && TRANSPARENT.has(name.name)
+}
 
 function describeElement(el: any, source: string): string {
   if (el.type === 'JSXFragment') return '<>'
@@ -58,7 +73,7 @@ export const maxJsxDepth: Rule = {
       const path: any[] = []
       const visit = (node: any): void => {
         if (node !== fn && isComponentDefinition(node)) return
-        const isJsx = node.type === 'JSXElement' || node.type === 'JSXFragment'
+        const isJsx = node.type === 'JSXElement' && !isTransparent(node)
         if (isJsx) {
           path.push(node)
           if (path.length > deepest.length) deepest = [...path]
@@ -74,9 +89,7 @@ export const maxJsxDepth: Rule = {
       // k and gives the new component depth (depth - k + 1). The shallowest k
       // that keeps the new component within the limit names the biggest,
       // most self-contained piece.
-      let k = Math.min(Math.max(2, depth - max + 1), depth)
-      // A fragment has no name to point at; name the first element under it.
-      while (k < depth && deepest[k - 1].type === 'JSXFragment') k++
+      const k = Math.min(Math.max(2, depth - max + 1), depth)
       const root = deepest[k - 1]
       const leaf = deepest[depth - 1]
       const anchor = leaf.type === 'JSXElement' ? leaf.openingElement : leaf.openingFragment ?? leaf

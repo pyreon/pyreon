@@ -1,3 +1,4 @@
+import { For } from "@pyreon/core"
 import { useHead } from "@pyreon/head"
 import { Link } from "@pyreon/zero/link"
 import { posts } from "../../lib/posts"
@@ -19,24 +20,28 @@ export default function BlogIndex() {
       <p>{posts.length} posts in total.</p>
 
       <ul class="post-list">
-        {posts.map((post) => (
-          <li>
-            <h2 class="post-title">
-              <Link href={`/blog/${post.slug}`} prefetch="hover">
-                {post.title}
-              </Link>
-            </h2>
-            <div class="post-meta">{post.date}</div>
-            <p class="post-summary">{post.description}</p>
-            {post.tags && post.tags.length > 0 ? (
-              <div class="tags">
-                {post.tags.map((t) => (
-                  <span class="tag">#{t}</span>
-                ))}
-              </div>
-            ) : null}
-          </li>
-        ))}
+        <For each={posts} by={(post) => post.slug}>
+          {(post) => (
+            <li>
+              <h2 class="post-title">
+                <Link href={`/blog/${post.slug}`} prefetch="hover">
+                  {post.title}
+                </Link>
+              </h2>
+              <div class="post-meta">{post.date}</div>
+              <p class="post-summary">{post.description}</p>
+              {post.tags && post.tags.length > 0 ? (
+                <div class="tags">
+                  <For each={post.tags} by={(t) => t}>
+                    {(t) => (
+                      <span class="tag">#{t}</span>
+                    )}
+                  </For>
+                </div>
+              ) : null}
+            </li>
+          )}
+        </For>
       </ul>
     </>
   )

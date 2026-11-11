@@ -1,5 +1,5 @@
 import { signal } from "@pyreon/reactivity"
-import { onMount } from "@pyreon/core"
+import { For, onMount } from "@pyreon/core"
 import { useHead } from "@pyreon/head"
 import { listUsers, type User } from "../../lib/db"
 import { formatDate } from '../../lib/format'
@@ -32,8 +32,8 @@ export default function Users() {
           </tr>
         </thead>
         <tbody>
-          {() =>
-            users().map((u) => (
+          <For each={users} by={(u) => u.id}>
+            {(u) => (
               <tr>
                 <td>{u.name}</td>
                 <td>{u.email}</td>
@@ -42,8 +42,8 @@ export default function Users() {
                 </td>
                 <td>{formatDate(u.createdAt)}</td>
               </tr>
-            ))
-          }
+            )}
+          </For>
         </tbody>
       </table>
     </>

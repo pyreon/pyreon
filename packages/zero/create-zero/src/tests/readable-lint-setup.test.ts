@@ -14,7 +14,7 @@
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { allRules, getPreset, groupOf, lint } from '@pyreon/lint'
+import { getPreset, lint } from '@pyreon/lint'
 import { afterAll, describe, expect, it } from 'vitest'
 import { generatePackageJson, OXFMT_RANGE, OXLINT_RANGE } from '../generators/package-json'
 import { scaffold } from '../scaffold'
@@ -52,7 +52,6 @@ async function scaffolded(overrides: Partial<ProjectConfig>): Promise<string> {
   return dir
 }
 
-const STYLE = new Set(allRules.filter((r) => groupOf(r.meta) === 'style').map((r) => r.meta.id))
 const LINT_PKG = join(import.meta.dirname, '..', '..', '..', '..', 'tools', 'lint')
 
 describe('the scaffolded readable setup', () => {
@@ -108,22 +107,36 @@ describe('the scaffolded readable setup', () => {
   })
 })
 
-describe('every template is clean under the readable preset', () => {
+describe('a fresh project lints with ZERO findings — base rules and readable', () => {
+  // What `bun run lint` (pyreon-lint half) reports on a new project: the whole
+  // project root, with the scaffolded config. Every template, with all and no
+  // features, with and without the integrations, and every adapter overlay.
   const ALL = Object.keys(FEATURES) as ProjectConfig['features']
+  const variants: Array<[string, Partial<ProjectConfig>]> = []
   for (const template of ['app', 'blog', 'dashboard', 'monorepo'] as const) {
-    for (const [label, features] of [['all features', ALL], ['no features', []]] as const) {
-      it(`${template}, ${label}, both integrations`, async () => {
-        const dir = await scaffolded({ template, features: [...features], integrations: ['supabase', 'email'] })
-        const root = template === 'monorepo' ? join(dir, 'apps', 'web') : dir
-        const paths = template === 'monorepo' ? [join(dir, 'apps'), join(dir, 'packages')] : [join(root, 'src')]
-        const result = lint({ paths, config: join(root, '.pyreonlintrc.json') })
-        const style = result.files.flatMap((f) =>
-          f.diagnostics.filter((d) => STYLE.has(d.ruleId)).map((d) => `${f.filePath.slice(dir.length)}:${d.loc.line} ${d.ruleId}`),
-        )
-        expect(style).toEqual([])
-        // The run really linted something, with the readable rules on.
-        expect(result.files.length).toBeGreaterThan(3)
-      })
+    for (const [fl, features] of [['all features', ALL], ['no features', []]] as const) {
+      for (const [il, integrations] of [['both integrations', ['supabase', 'email']], ['no integrations', []]] as const) {
+        variants.push([`${template}, ${fl}, ${il}`, { template, features: [...features], integrations: [...integrations] }])
+      }
     }
+  }
+  for (const adapter of ['vercel', 'cloudflare', 'netlify', 'node', 'bun', 'static'] as const) {
+    variants.push([`app, all features, ${adapter} adapter`, { template: 'app', features: [...ALL], adapter }])
+  }
+
+  for (const [label, overrides] of variants) {
+    it(label, async () => {
+      const dir = await scaffolded(overrides)
+      const root = overrides.template === 'monorepo' ? join(dir, 'apps', 'web') : dir
+      const result = lint({ paths: [dir], config: join(root, '.pyreonlintrc.json') })
+      const findings = result.files.flatMap((f) =>
+        f.diagnostics.map((d) => `${f.filePath.slice(dir.length)}:${d.loc.line} ${d.ruleId}`),
+      )
+      expect(findings).toEqual([])
+      expect(result.configDiagnostics).toEqual([])
+      // The run really linted the project, with the readable rules on.
+      expect(result.files.length).toBeGreaterThan(3)
+      expect(getPreset(['recommended', 'readable']).rules['pyreon/padding-before-return']).toBe('warn')
+    })
   }
 })

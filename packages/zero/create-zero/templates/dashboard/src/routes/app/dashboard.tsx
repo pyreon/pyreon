@@ -1,5 +1,5 @@
 import { computed, signal } from "@pyreon/reactivity"
-import { onMount } from "@pyreon/core"
+import { cx, For, onMount } from "@pyreon/core"
 import { useHead } from "@pyreon/head"
 import { type Invoice, invoiceTotal, listInvoices, listUsers, type User } from "../../lib/db"
 import { formatMoney } from '../../lib/format'
@@ -72,20 +72,18 @@ export default function Dashboard() {
           </tr>
         </thead>
         <tbody>
-          {() =>
-            invoices()
-              .slice(0, 5)
-              .map((inv) => (
-                <tr>
-                  <td>{inv.number}</td>
-                  <td>{inv.customer.name}</td>
-                  <td>${formatMoney(invoiceTotal(inv))}</td>
-                  <td>
-                    <span class={`pill ${inv.status}`}>{inv.status}</span>
-                  </td>
-                </tr>
-              ))
-          }
+          <For each={() => invoices().slice(0, 5)} by={(inv) => inv.id}>
+            {(inv) => (
+              <tr>
+                <td>{inv.number}</td>
+                <td>{inv.customer.name}</td>
+                <td>${formatMoney(invoiceTotal(inv))}</td>
+                <td>
+                  <span class={cx(["pill", inv.status])}>{inv.status}</span>
+                </td>
+              </tr>
+            )}
+          </For>
         </tbody>
       </table>
     </>

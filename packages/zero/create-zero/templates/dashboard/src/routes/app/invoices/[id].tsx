@@ -1,5 +1,5 @@
 import { signal } from "@pyreon/reactivity"
-import { onMount } from "@pyreon/core"
+import { cx, For, onMount } from "@pyreon/core"
 import { useHead } from "@pyreon/head"
 import { useRoute } from "@pyreon/router"
 import type { GetStaticPaths } from "@pyreon/zero/server"
@@ -15,7 +15,6 @@ import {
   DocDivider,
   extractDocNode,
 } from "@pyreon/document-primitives"
-import { render } from "@pyreon/document"
 import { type Invoice, type InvoiceItem, invoiceById, invoiceTotal } from "../../../lib/db"
 import { formatDate, formatMoney } from '../../../lib/format'
 
@@ -108,9 +107,10 @@ export default function InvoiceDetail() {
   async function exportPdf() {
     const found = inv()
     if (!found) return
+    // Loaded on click: the renderer is only needed when someone exports.
+    const { render } = await import("@pyreon/document")
     const node = extractDocNode(InvoiceTemplate(found))
     const result = await render(node, "pdf")
-    if (typeof window === "undefined") return
     const blob = result instanceof Blob ? result : new Blob([result as BlobPart], { type: "application/pdf" })
     const url = URL.createObjectURL(blob)
     const a = document.createElement("a")
@@ -159,7 +159,7 @@ export default function InvoiceDetail() {
       <>
         <div class="app-page-header">
           <h1>{found.number}</h1>
-          <span class={`pill ${found.status}`}>{found.status}</span>
+          <span class={cx(["pill", found.status])}>{found.status}</span>
         </div>
 
         <div class="invoice-detail">
@@ -209,14 +209,16 @@ function InvoiceLines(props: { items: InvoiceItem[] }) {
         </tr>
       </thead>
       <tbody>
-        {props.items.map((it) => (
-          <tr>
-            <td>{it.description}</td>
-            <td>{it.qty}</td>
-            <td>${formatMoney(it.unitPrice)}</td>
-            <td>${formatMoney(it.qty * it.unitPrice)}</td>
-          </tr>
-        ))}
+        <For each={props.items} by={(it) => it.description}>
+          {(it) => (
+            <tr>
+              <td>{it.description}</td>
+              <td>{it.qty}</td>
+              <td>${formatMoney(it.unitPrice)}</td>
+              <td>${formatMoney(it.qty * it.unitPrice)}</td>
+            </tr>
+          )}
+        </For>
       </tbody>
     </table>
   )

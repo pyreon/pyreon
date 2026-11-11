@@ -195,7 +195,7 @@ function total(xs: number[]) {
 
 ### `pyreon/max-jsx-depth`
 
-A component's JSX nests at most 6 elements deep (`max`; 5 in strict). It reports once per component, at the deepest element, and names the subtree to extract. JSX in render callbacks (`<For>{(row) => <li>…</li>}</For>`) and in props (`fallback={<Spinner />}`) counts; a nested component definition does not.
+A component's JSX nests at most 6 elements deep (`max`; 5 in strict). It reports once per component, at the deepest element, and names the subtree to extract. JSX in render callbacks (`<For>{(row) => <li>…</li>}</For>`) and in props (`fallback={<Spinner />}`) counts. Fragments and control-flow components (`<For>`, `<Show>`, `<Switch>`, `<Match>`) render no element, so they add no depth: replacing a `.map()` with `<For>` never makes a component deeper. A nested component definition does not count either.
 
 ```tsx
 // "JSX is nested 7 deep (max 6). Extract the `<table>` subtree into its own component."

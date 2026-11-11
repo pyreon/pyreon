@@ -1,3 +1,4 @@
+import { For } from "@pyreon/core"
 import { useHead } from "@pyreon/head"
 import { useLoaderData } from "@pyreon/router"
 import type { LoaderContext } from "@pyreon/zero"
@@ -103,9 +104,11 @@ export default function PostDetail() {
       </div>
 
       <div class="post-body">
-        {post.body.split("\n\n").map((paragraph) => (
-          <p style="margin-bottom: var(--space-lg);">{paragraph}</p>
-        ))}
+        <For each={post.body.split("\n\n")} by={(p) => p}>
+          {(paragraph) => (
+            <p style="margin-bottom: var(--space-lg);">{paragraph}</p>
+          )}
+        </For>
       </div>
     </article>
   )

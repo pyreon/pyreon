@@ -14,10 +14,19 @@ export const meta = {
  * In a real app, you'd check a session cookie, JWT token, or auth state.
  * Returning a string redirects to that path.
  */
+/** The demo's fake session flag. A real app checks a session cookie or token. */
+const DEMO_AUTH_KEY = "zero-demo-auth"
+
+/** Log out of the demo: clear the flag and leave the protected route. */
+function signOutDemo() {
+  localStorage.removeItem(DEMO_AUTH_KEY)
+  window.location.href = "/about"
+}
+
 export function guard() {
   // Simulate auth check — in a real app, check session/token
   // `isClient` guards the browser-only read: the guard also runs during SSR.
-  const isAuthenticated = isClient && localStorage.getItem("zero-demo-auth") === "true"
+  const isAuthenticated = isClient && localStorage.getItem(DEMO_AUTH_KEY) === "true"
 
   if (!isAuthenticated) {
     return "/about" // Redirect unauthenticated users
@@ -105,12 +114,7 @@ export default function Dashboard() {
         <button
           type="button"
           class="btn btn-secondary"
-          onClick={() => {
-            // Click handlers only run in the browser; the guard states it.
-            if (!isClient) return
-            localStorage.removeItem("zero-demo-auth")
-            window.location.href = "/about"
-          }}
+          onClick={signOutDemo}
         >
           Log out (clear demo auth)
         </button>

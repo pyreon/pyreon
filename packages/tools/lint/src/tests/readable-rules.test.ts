@@ -410,7 +410,7 @@ describe('pyreon/max-jsx-depth', () => {
     const viaFor = lines(
       "import { For } from '@pyreon/core'",
       'export function List(props: { rows: string[] }) {',
-      `  return <ul><For each={props.rows}>{(r) => <li>${deep(4)}</li>}</For></ul>`,
+      `  return <ul><For each={props.rows}>{(r) => <li>${deep(5)}</li>}</For></ul>`,
       '}',
     )
     expect(lint(viaFor, R)).toHaveLength(1)
@@ -423,9 +423,22 @@ describe('pyreon/max-jsx-depth', () => {
     expect(lint(nested, R)).toEqual([])
   })
 
+  it('fragments and control-flow components add no depth', () => {
+    // <For> replaces a .map() without making the tree one level deeper.
+    const viaFor = lines(
+      "import { For, Show } from '@pyreon/core'",
+      'export function T(props: { rows: string[] }) {',
+      `  return <table><tbody><For each={props.rows} by={(r) => r}>{(r) => <tr><td><b>{r}</b></td></tr>}</For></tbody></table>`,
+      '}',
+    )
+    expect(lint(viaFor, only('pyreon/max-jsx-depth', { max: 5 }))).toEqual([])
+    const viaShow = lines('export const A = () => (', `  <><Show when={true}>${deep(6)}</Show></>`, ')')
+    expect(lint(viaShow, R)).toEqual([])
+  })
+
   it('names an element, not a fragment', () => {
-    // depth 7: the suggested level-2 root is the fragment, so it names <nav>.
-    const src = lines('export const A = () => (', `  <main><><nav>${deep(4)}</nav></></main>`, ')')
+    // depth 7 (the fragment adds none): the suggested level-2 root is <nav>.
+    const src = lines('export const A = () => (', `  <main><><nav>${deep(5)}</nav></></main>`, ')')
     expect(lint(src, R)[0]?.message).toContain('`<nav>`')
   })
 })

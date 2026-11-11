@@ -1,3 +1,4 @@
+import { For } from "@pyreon/core"
 import { useHead } from "@pyreon/head"
 import { Link } from "@pyreon/zero/link"
 
@@ -5,6 +6,19 @@ export const meta = {
   title: "About — Pyreon Zero",
   description: "Learn about the Pyreon Zero meta-framework.",
 }
+
+/** What a Zero app is built from — one row per piece. */
+const STACK: [name: string, description: string][] = [
+  ["Pyreon", "Signal-based UI framework with JSX"],
+  ["Vite", "Lightning-fast dev server and optimized builds"],
+  ["File Router", "Drop a file, get a route — layouts, guards, loaders"],
+  ["SSR / SSG / ISR", "Every rendering strategy, per-route overrides"],
+  ["<Image>", "Lazy loading, responsive srcset, blur-up placeholders"],
+  ["<Link>", "Prefetch on hover or viewport entry for instant nav"],
+  ["Font Plugin", "Google Fonts optimization, preconnect, font-display:swap"],
+  ["Cache MW", "Immutable hashed assets, stale-while-revalidate pages"],
+  ["SEO Tools", "Sitemap, robots.txt, JSON-LD structured data"],
+]
 
 export default function About() {
   useHead({
@@ -64,27 +78,19 @@ export default function About() {
           The Stack
         </h2>
         <div style="display: grid; gap: var(--space-sm);">
-          {[
-            ["Pyreon", "Signal-based UI framework with JSX"],
-            ["Vite", "Lightning-fast dev server and optimized builds"],
-            ["File Router", "Drop a file, get a route — layouts, guards, loaders"],
-            ["SSR / SSG / ISR", "Every rendering strategy, per-route overrides"],
-            ["<Image>", "Lazy loading, responsive srcset, blur-up placeholders"],
-            ["<Link>", "Prefetch on hover or viewport entry for instant nav"],
-            ["Font Plugin", "Google Fonts optimization, preconnect, font-display:swap"],
-            ["Cache MW", "Immutable hashed assets, stale-while-revalidate pages"],
-            ["SEO Tools", "Sitemap, robots.txt, JSON-LD structured data"],
-          ].map(([name, desc]) => (
-            <div
-              class="card"
-              style="display: flex; align-items: center; gap: var(--space-md); padding: var(--space-md) var(--space-lg);"
-            >
-              <code style="min-width: 130px; font-weight: 600; color: var(--c-accent);">
-                {name}
-              </code>
-              <span style="color: var(--c-text-secondary); font-size: 0.9rem;">{desc}</span>
-            </div>
-          ))}
+          <For each={STACK} by={([name]) => name}>
+            {([name, desc]) => (
+              <div
+                class="card"
+                style="display: flex; align-items: center; gap: var(--space-md); padding: var(--space-md) var(--space-lg);"
+              >
+                <code style="min-width: 130px; font-weight: 600; color: var(--c-accent);">
+                  {name}
+                </code>
+                <span style="color: var(--c-text-secondary); font-size: 0.9rem;">{desc}</span>
+              </div>
+            )}
+          </For>
         </div>
       </section>
 
