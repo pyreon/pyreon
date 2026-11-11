@@ -21,10 +21,10 @@ Run all of these, collect every failure, then triage. Do not stop at the first r
 2. typecheck of the directly changed packages
 3. tests of the directly changed packages
 
-Take the selection from `bun scripts/pre-push-plan.ts plan --cache-dir=<dir> --state=<file>`
-(the hook's own planner; it prints what it runs and skips). It is direct-only by design: CI runs
-the full reverse-dependency closure as required checks. A root-file change widens typecheck to the
-workspace, never tests.
+Take the selection from `bun scripts/pre-push.ts --cache-dir="$(git rev-parse --git-common-dir)" --plan-only`
+(the hook's own plan; it prints each check and its command, and what it skips as already passed).
+It never goes beyond the directly changed packages: CI runs the reverse-dependency closure and
+the workspace typecheck as required checks.
 
 ## Quick triage
 
@@ -39,7 +39,7 @@ workspace, never tests.
 | Release Readiness | `bun run check-release-readiness` |
 | Manifest Depth | restore the eroded entries/mistakes |
 | Lint Ratchet | fix the finding or scope it with a rationale. Never raise a baseline |
-| Diagnose Catalog | add an `ERROR_PATTERNS` entry in `packages/core/compiler/src/diagnose.ts` (the count must grow; rewording fails). Keep `createSourceFile` / `SyntaxKind` / `createLanguageService` out of string literals |
+| Diagnose Catalog | the log names each new or edited message that no pattern matches: add an `ERROR_PATTERNS` entry in `packages/core/compiler/src/diagnose.ts` that matches it (an edited message counts as new). Keep `createSourceFile` / `SyntaxKind` / `createLanguageService` out of string literals |
 | Export Entries | rename the file or the `exports` key — the build derives entries from the key |
 | tsconfig presets | add the `@pyreon/tsconfig` devDep and extend a preset |
 | `TS2307` on a workspace subpath | a `bun.lock` reset dropped a dep edge; `git diff <parent-branch> -- bun.lock` must be empty |
