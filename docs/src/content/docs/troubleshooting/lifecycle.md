@@ -322,3 +322,9 @@ Scenarios derived from props and dimension axes mounted `h(Button, { state, size
 Static discovery preserved same-named components in different files, but runtime rocketstyle discovery still used a name-only set and static claims excluded that name across the whole package. Distinct contracts silently vanished. Static claims must use `name@source`; runtime re-exports deduplicate only when both the export name and component value match. Track file-qualified claims across the whole scan so a barrel encountered before its defining file is still excluded, and preserve the legacy name-wide skip for explicit callers. The maps are owned by one scan, with constant-time identity lookups and no persistent cache. Reference: `atlas/src/discover/{discover,rocketstyle}.ts`; regression: `discover/tests/rocketstyle-identity.test.ts` (real rocketstyle chains).
 
 ---
+
+### [FIXED, 2026-11] A binding that mounts content must expect its OWN mount to re-run it.
+
+A ref callback or a nested boundary that writes a signal the enclosing accessor read (kinetic's `appear` ref moves the stage that `<Show when={shouldMount}>` reads) re-runs that accessor's binding synchronously while its first mount is still on the stack. `mountAccessorChild` classified the value again and built a second `mountReactive`, and the polymorphic text core mounted the subtree again and then overwrote the nested run's cleanup, so the content appeared twice and one copy had no cleanup. **Rule: a dispatcher marks itself handed-off BEFORE building the machinery that mounts, and a mount that can be superseded checks a generation counter after it returns and discards its own result (as `mountReactive` already did).** Locked by `runtime-dom/src/tests/reentrant-accessor-mount.test.ts`.
+
+---
