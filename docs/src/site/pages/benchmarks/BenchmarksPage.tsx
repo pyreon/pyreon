@@ -14,6 +14,7 @@ import { CaveatLine, Numeral } from '../../kit/proof'
 import { Diagram } from '../../kit/story'
 import { DataTable, TableDisclosure, TableNote } from '../../kit/table'
 import { ToggleChips } from '../../kit/toggles'
+import { inlineText } from '../../kit/inline'
 import { Eyebrow, Heading, Lede, renderInline } from '../../kit/type'
 import { font, gradient, radius, text, weight } from '../../theme'
 import { useSitePageHead } from '../assets'
@@ -133,11 +134,11 @@ const StatCondition = txt
   .attrs({ tag: 'span' })
   .theme((_t, m) => ({ display: 'block', fontFamily: font.mono, fontSize: text.caveat.size, lineHeight: 1.55, color: tone(m, 'fog') }))
 
-const Stack = el.config({ name: 'BenchStack' }).attrs({ block: true, gap: 20 }).theme(() => ({ minWidth: 0 }))
+const Stack = el.config({ name: 'BenchStack' }).attrs({ block: true, contentAlignX: 'block', gap: 20 }).theme(() => ({ minWidth: 0 }))
 
 const ChartBox = el
   .config({ name: 'BenchChartBox' })
-  .attrs({ block: true, gap: 16 })
+  .attrs({ block: true, contentAlignX: 'block', gap: 16 })
   .theme((_t, m) => ({
     minWidth: 0,
     padding: { xs: 16, md: 26 },
@@ -145,7 +146,10 @@ const ChartBox = el
     border: '1px solid',
     borderColor: tone(m, 'line'),
     backgroundColor: tone(m, 'well'),
-    extendCss: '& [data-svg] { border: 0 !important; background: transparent !important; }',
+    // A static chart is drawn for 960px; below 560px it scrolls inside its box
+    // instead of shrinking past legibility (the table below is the text alternative).
+    extendCss: `& [data-svg] { border: 0 !important; background: transparent !important; overflow-x: auto !important; }
+      & [data-svg] svg { min-width: 560px; }`,
   }))
 
 const ProductCard = el
@@ -208,7 +212,7 @@ const RuleLine = el
   .attrs({ block: true, 'aria-hidden': 'true' })
   .theme((_t, m) => ({ height: 1, marginTop: 40, backgroundImage: m(gradient.rule.light, gradient.rule.dark) as unknown as string }))
 
-/** A verdict chip and its label, as ONE element (a fragment here duplicated on hydration: see DataTable). */
+/** A verdict chip and its label as one element, so a table cell holds a single node. */
 function VerdictNote(props: { verdict: string; label: string }) {
   return (
     <span>
@@ -219,13 +223,13 @@ function VerdictNote(props: { verdict: string; label: string }) {
 
 const prHref = (n: number) => `https://github.com/pyreon/pyreon/pull/${n}`
 
-function ChartWithFallback(props: { svg: string | undefined; id: string; live?: unknown; children?: unknown }) {
+function ChartWithFallback(props: { svg: string | undefined; id: string; label: string; live?: unknown; children?: unknown }) {
   return (
     <ChartBox>
       {props.live as never}
       {props.svg ? (
         <div id={props.id}>
-          <Diagram svg={props.svg} />
+          <Diagram svg={props.svg} scrollLabel={props.label} />
         </div>
       ) : null}
       {props.children as never}
@@ -315,7 +319,7 @@ export function BenchmarksPage(props: { view: BenchmarksView }) {
             <SectionHead label={H.rows.label} title={H.rows.title} text={H.rows.text} />
             <ChartWithFallback
               svg={svgs[BENCH_SVGS.rows]}
-              id="rows-fallback"
+              id="rows-fallback" label="Row board chart"
               live={<LiveRowBoard kind="rows" fallbackId="rows-fallback" frameworks={d.frameworks} rowBoard={d.rowBoard} rowVerdicts={d.rowVerdicts} initial={ROWS_INITIAL} />}
             >
               <TableDisclosure summary="Every operation and framework, as a table">
@@ -372,7 +376,7 @@ export function BenchmarksPage(props: { view: BenchmarksView }) {
         <Section size="tight" id="scaling">
           <Wrap>
             <SectionHead label={H.scaling.label} title={H.scaling.title} text={H.scaling.text} />
-            <ChartWithFallback svg={svgs[BENCH_SVGS.scaling]} id="scaling-fallback" live={<LiveScaling kind="scaling" fallbackId="scaling-fallback" scaling={d.scaling} />}>
+            <ChartWithFallback svg={svgs[BENCH_SVGS.scaling]} id="scaling-fallback" label="Scaling chart" live={<LiveScaling kind="scaling" fallbackId="scaling-fallback" scaling={d.scaling} />}>
               <TableDisclosure summary="Every size, as a table">
                 <For each={(['select', 'partial update', 'swap'] as const).filter((k) => k in d.scaling)} by={(k) => k}>
                   {(k) => (
@@ -398,7 +402,7 @@ export function BenchmarksPage(props: { view: BenchmarksView }) {
         <Section size="tight" id="ssr">
           <Wrap>
             <SectionHead label={H.ssr.label} title={H.ssr.title} text={H.ssr.text} />
-            <ChartWithFallback svg={svgs[BENCH_SVGS.ssr]} id="ssr-chart">
+            <ChartWithFallback svg={svgs[BENCH_SVGS.ssr]} id="ssr-chart" label="Server rendering chart">
               <TableDisclosure summary="As a table">
                 <DataTable
                   caption="Compiled SSR, µs per render (lower is better), one run"
@@ -426,8 +430,8 @@ export function BenchmarksPage(props: { view: BenchmarksView }) {
         <Section size="tight" id="apps">
           <Wrap>
             <SectionHead label={H.apps.label} title={H.apps.title} text={H.apps.text} />
-            <AutoGrid cols={2} gap={16}>
-              <ChartWithFallback svg={svgs[BENCH_SVGS.forms]} id="forms-chart">
+            <Stack>
+              <ChartWithFallback svg={svgs[BENCH_SVGS.forms]} id="forms-chart" label="Forms chart">
                 <TableDisclosure summary="Forms, as a table">
                   <DataTable
                     caption="12-field form, µs (lower is better), one run"
@@ -439,7 +443,7 @@ export function BenchmarksPage(props: { view: BenchmarksView }) {
                   />
                 </TableDisclosure>
               </ChartWithFallback>
-              <ChartWithFallback svg={svgs[BENCH_SVGS.todomvc]} id="todomvc-chart">
+              <ChartWithFallback svg={svgs[BENCH_SVGS.todomvc]} id="todomvc-chart" label="TodoMVC chart">
                 <TableDisclosure summary="TodoMVC, as a table">
                   <DataTable
                     caption="TodoMVC shape vs React 19, one run"
@@ -451,7 +455,7 @@ export function BenchmarksPage(props: { view: BenchmarksView }) {
                   />
                 </TableDisclosure>
               </ChartWithFallback>
-            </AutoGrid>
+            </Stack>
             {runNote('One run each')}
           </Wrap>
         </Section>
@@ -462,7 +466,7 @@ export function BenchmarksPage(props: { view: BenchmarksView }) {
         <Section size="tight" id="bundle">
           <Wrap>
             <SectionHead label={H.bundle.label} title={H.bundle.title} text={H.bundle.text} />
-            <ChartWithFallback svg={svgs[BENCH_SVGS.bundle]} id="bundle-chart">
+            <ChartWithFallback svg={svgs[BENCH_SVGS.bundle]} id="bundle-chart" label="Bundle size chart">
               <TableDisclosure summary="As a table">
                 <DataTable
                   caption="Same keyed-table app, KB gzip -9 (smaller is better)"
@@ -534,13 +538,13 @@ export function BenchmarksPage(props: { view: BenchmarksView }) {
               <For each={() => visible()} by={(p) => p.id}>
                 {(p) => (
                   <li>
-                    <GlowCard href={p.href} padding="compact" aria-label={`${p.name}: ${p.headline} ${tally(p.counts)}. Open its benchmarks.`}>
+                    <GlowCard href={p.href} padding="compact" aria-label={`${p.name}: ${inlineText(p.headline)} ${tally(p.counts)}. Open its benchmarks.`}>
                       <ProductCard>
                         <Eyebrow state="accent">{p.name}</Eyebrow>
                         <Heading tag="h3" size="step">
-                          {p.headline}
+                          {renderInline(p.headline)}
                         </Heading>
-                        <Mono>{p.rival}</Mono>
+                        <Mono>{renderInline(p.rival)}</Mono>
                         <Tally>{tally(p.counts)}</Tally>
                       </ProductCard>
                     </GlowCard>

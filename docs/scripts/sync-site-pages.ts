@@ -52,6 +52,7 @@ const pagesById = (family: string, pages: Json[]) => {
 
 const why = read('_why.json')
 pagesById('why', why.pages as Json[])
+write('why/_meta.json', { order: (why.pages as Json[]).map((p) => ({ id: p.id, title: p.title })) })
 
 const compare = read('_compare.json')
 pagesById('compare', compare.pages as Json[])
@@ -61,6 +62,7 @@ const migrate = read('_migrate.json')
 pagesById('migrate', migrate.layers as Json[])
 write('migrate/_landing.json', migrate.landing)
 write('migrate/_guides.json', migrate.guides)
+write('migrate/_meta.json', { productHref: (migrate.landing as Json).productHref, order: (migrate.layers as Json[]).map((p) => ({ id: p.id, name: p.name, package: p.package })) })
 
 const project = read('_project.json')
 reset('project')

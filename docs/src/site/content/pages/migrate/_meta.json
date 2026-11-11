@@ -1,0 +1,30 @@
+{
+  "productHref": "/products/migrate",
+  "order": [
+    {
+      "id": "react",
+      "name": "React",
+      "package": "@pyreon/react-compat"
+    },
+    {
+      "id": "vue",
+      "name": "Vue",
+      "package": "@pyreon/vue-compat"
+    },
+    {
+      "id": "solid",
+      "name": "Solid",
+      "package": "@pyreon/solid-compat"
+    },
+    {
+      "id": "preact",
+      "name": "Preact",
+      "package": "@pyreon/preact-compat"
+    },
+    {
+      "id": "svelte",
+      "name": "Svelte",
+      "package": "@pyreon/svelte-compat"
+    }
+  ]
+}

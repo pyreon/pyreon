@@ -12,12 +12,14 @@ import { el, focusRing, tone, type ButtonAttrs } from './bases'
  *
  * Every option is a real `<button>`: Tab reaches it, Enter/Space presses it;
  * Left/Right (and Home/End) also move along the group and press, the way a
- * segmented control behaves. The group is a labelled `<fieldset>`.
+ * segmented control behaves. The group is a labelled `role="group"` div: `<Element tag="fieldset">`
+ * lays its children out in an inner wrapper, where the row cannot wrap (a
+ * fieldset cannot be a flex container in every engine), so chips overflowed at 320px.
  */
 const Row = el
   .config({ name: 'ToggleChips' })
-  .attrs({ tag: 'fieldset', block: true, contentDirection: 'inline', contentAlignY: 'center', gap: 8 })
-  .theme(() => ({ flexWrap: 'wrap', minWidth: 0, margin: 0, padding: 0, border: 'none' }))
+  .attrs({ block: true, contentDirection: 'inline', contentAlignY: 'center', gap: 8 })
+  .theme(() => ({ flexWrap: 'wrap', minWidth: 0 }))
 
 const Chip = el
   .config({ name: 'ToggleChip' })
@@ -34,6 +36,7 @@ const Chip = el
     fontFamily: font.mono,
     fontSize: text.mono.size,
     lineHeight: 1.3,
+    whiteSpace: 'nowrap',
     textAlign: 'left',
     transition: `color ${motion.hover}, border-color ${motion.hover}, background-color ${motion.hover}`,
     hover: { color: tone(m, 'text'), borderColor: tone(m, 'lineHover') },
@@ -81,7 +84,8 @@ export function ToggleChips<T extends string>(props: {
     ;(group?.children[next] as HTMLElement | undefined)?.focus()
   }
   return (
-    <Row aria-label={props.label} data-kind={props.kind ?? 'switch'}>
+    // oxlint-disable-next-line jsx-a11y/prefer-tag-over-role -- see the doc comment: a fieldset cannot wrap here.
+    <Row role="group" aria-label={props.label} data-kind={props.kind ?? 'switch'}>
       <For each={props.options.map((o, i) => ({ o, i }))} by={(x) => x.o.value}>
         {(x) => (
           <Chip

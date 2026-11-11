@@ -54,7 +54,7 @@ function Themed(props: { theme: { dark: Partial<ChartTheme>; light: Partial<Char
   )
 }
 
-const Stack = el.config({ name: 'BenchChartStack' }).attrs({ block: true, gap: 16 }).theme(() => ({ minWidth: 0 }))
+const Stack = el.config({ name: 'BenchChartStack' }).attrs({ block: true, contentAlignX: 'block', gap: 16 }).theme(() => ({ minWidth: 0 }))
 
 const Note = el
   .config({ name: 'BenchChartNote' })

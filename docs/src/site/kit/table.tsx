@@ -13,7 +13,7 @@ import { el, tone, txt } from './bases'
  */
 const Frame = el
   .config({ name: 'DataTable' })
-  .attrs({ block: true })
+  .attrs({ block: true, contentAlignX: 'block' })
   .theme((_t, m) => ({
     minWidth: 0,
     borderRadius: radius.bench,
@@ -35,7 +35,10 @@ const Table = el
     fontSize: text.small.size,
     lineHeight: 1.5,
     color: tone(m, 'mist'),
+    // Element lays itself out as flex; a table must stay a table (and is
+    // re-blocked into cards below 768px).
     extendCss: `
+      display: table;
       & caption { text-align: left; padding: 16px 22px; font-family: ${font.mono}; font-size: ${text.caveat.size}px;
         letter-spacing: ${text.caveat.tracking}; color: ${tone(m, 'fog')}; border-bottom: 1px solid ${tone(m, 'line')}; }
       & thead th { text-align: left; font-family: ${font.mono}; font-size: ${text.eyebrowTight.size}px; font-weight: ${weight.medium};
@@ -48,6 +51,7 @@ const Table = el
       & td[data-num] { font-family: ${font.mono}; font-size: ${text.mono.size}px; white-space: nowrap; }
       & td[data-hot] { color: ${tone(m, 'text')}; }
       ${below} {
+        display: block;
         & thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); }
         & tbody, & tr, & tbody th, & tbody td { display: block; }
         & tr { padding: 14px 18px; border-bottom: 1px solid ${tone(m, 'line')}; }

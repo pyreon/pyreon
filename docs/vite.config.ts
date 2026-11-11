@@ -112,9 +112,15 @@ export default defineConfig({
         trailingSlash: 'never',
         // A stable link that forwards (/discord, /newsletter once switched on)
         // is a redirect, not a page worth indexing.
-        exclude: Object.entries(SITE_LINKS)
-          .filter(([, target]) => target !== null)
-          .map(([key]) => `/${key}`),
+        // /why and /compare are redirects to their first page (sitemap
+        // decision "merge"), not pages.
+        exclude: [
+          ...Object.entries(SITE_LINKS)
+            .filter(([, target]) => target !== null)
+            .map(([key]) => `/${key}`),
+          '/why',
+          '/compare',
+        ],
       },
     }),
     // Must come AFTER zero() so its closeBundle runs on the final SSG

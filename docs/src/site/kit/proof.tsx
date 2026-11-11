@@ -469,6 +469,11 @@ const QuoteText = txt
   .attrs({ tag: 'blockquote' })
   .theme((_t, m) => ({
     margin: 0,
+    // The legacy docs stylesheet (`docs.css`, layer `docs`) styles every bare
+    // <blockquote> with a bar, a fill and padding; the quote block has its own look.
+    padding: 0,
+    border: 'none',
+    backgroundColor: 'transparent',
     fontFamily: font.sans,
     lineHeight: display.quote.lineHeight,
     letterSpacing: display.quote.tracking,

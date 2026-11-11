@@ -18,7 +18,7 @@ import { Eyebrow, Heading, Lede, renderInline, StatusBadge } from './type'
 
 const ProseBox = el
   .config({ name: 'Prose' })
-  .attrs({ block: true, gap: 18 })
+  .attrs({ block: true, contentAlignX: 'block', gap: 18 })
   .theme(() => ({ maxWidth: 720 }))
 
 const Para = txt
@@ -47,7 +47,7 @@ export function Prose(props: { paragraphs: readonly string[] }) {
 
 const Figure = el
   .config({ name: 'Diagram' })
-  .attrs({ tag: 'figure', block: true, gap: 12 })
+  .attrs({ tag: 'figure', block: true, contentAlignX: 'block', gap: 12 })
   .theme((_t, m) => ({
     margin: 0,
     minWidth: 0,
@@ -75,10 +75,22 @@ const FigCaption = txt
  * motion. `svg` is repo-owned build-time content (09-site/assets), never
  * user input.
  */
-export function Diagram(props: { svg: string; caption?: string | undefined; id?: string | undefined }) {
+export function Diagram(props: {
+  svg: string
+  caption?: string | undefined
+  id?: string | undefined
+  /** The box may scroll sideways (a wide chart on a phone): make it reachable by keyboard. */
+  scrollLabel?: string | undefined
+}) {
   return (
     <Figure id={props.id}>
-      <div data-svg="" dangerouslySetInnerHTML={{ __html: props.svg }} />
+      <div
+        data-svg=""
+        tabIndex={props.scrollLabel ? 0 : undefined}
+        role={props.scrollLabel ? 'region' : undefined}
+        aria-label={props.scrollLabel}
+        dangerouslySetInnerHTML={{ __html: props.svg }}
+      />
       <Show when={() => !!props.caption}>
         <FigCaption>{props.caption}</FigCaption>
       </Show>
@@ -151,7 +163,7 @@ const StepNum = txt
     justifyContent: 'center',
   }))
 
-const StepBody = el.config({ name: 'StepListBody' }).attrs({ block: true, gap: 8 }).theme(() => ({ minWidth: 0 }))
+const StepBody = el.config({ name: 'StepListBody' }).attrs({ block: true, contentAlignX: 'block', gap: 8 }).theme(() => ({ minWidth: 0 }))
 
 const StepCode = el
   .config({ name: 'StepListCode' })
@@ -243,21 +255,29 @@ const StripAfter = txt
   .attrs({ tag: 'span' })
   .theme((_t, m) => ({ color: tone(m, 'text'), minWidth: 0 }))
 
-/** What replaces what: label · before → after, one row each. */
-export function CompareStrip(props: { items: readonly { label: string; before: string; after: string }[]; beforeName?: string | undefined }) {
+/**
+ * What replaces what: label · before → after, one row each. The arrow is
+ * decorative; screen readers hear `beforeName` / `afterName` prefixes when
+ * the strip has them ("Stop writing: … Instead: …"), else the two values in order.
+ */
+export function CompareStrip(props: {
+  items: readonly { label: string; before: string; after: string }[]
+  beforeName?: string | undefined
+  afterName?: string | undefined
+}) {
   return (
     <StripList>
       <For each={props.items} by={(i) => i.label}>
         {(i) => (
           <StripRow>
-            <Eyebrow>{i.label}</Eyebrow>
+            <Eyebrow>{renderInline(i.label)}</Eyebrow>
             <span>
-              <VisuallyBefore name={props.beforeName} />
+              {props.beforeName ? <SrOnly>{`${props.beforeName}: `}</SrOnly> : null}
               {renderInline(i.before)}
             </span>
             <StripArrow>→</StripArrow>
             <StripAfter>
-              <VisuallyAfter />
+              {props.afterName ? <SrOnly>{`${props.afterName}: `}</SrOnly> : null}
               {renderInline(i.after)}
             </StripAfter>
           </StripRow>
@@ -278,8 +298,6 @@ const SrOnly = txt
     whiteSpace: 'nowrap',
     extendCss: 'clip: rect(0 0 0 0); clip-path: inset(50%); margin: -1px;',
   }))
-const VisuallyBefore = (props: { name?: string | undefined }) => <SrOnly>{`${props.name ?? 'Before'}: `}</SrOnly>
-const VisuallyAfter = () => <SrOnly>Pyreon: </SrOnly>
 
 // ─── Link cards ───────────────────────────────────────────────────────────
 

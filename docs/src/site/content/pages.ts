@@ -57,6 +57,17 @@ export type CompareMeta = Omit<CompareSite, 'pages'>
 export const loadCompareMeta = async (): Promise<CompareMeta> =>
   (await import('./pages/compare/_meta.json')).default as CompareMeta
 
+export interface WhyMeta {
+  order: { id: string; title: string }[]
+}
+export const loadWhyMeta = async (): Promise<WhyMeta> => (await import('./pages/why/_meta.json')).default as WhyMeta
+
+export interface MigrateMeta {
+  productHref: string
+  order: { id: string; name: string; package: string }[]
+}
+export const loadMigrateMeta = async (): Promise<MigrateMeta> => (await import('./pages/migrate/_meta.json')).default as MigrateMeta
+
 export const loadMigrateLanding = async (): Promise<MigrateLanding> =>
   (await import('./pages/migrate/_landing.json')).default as MigrateLanding
 

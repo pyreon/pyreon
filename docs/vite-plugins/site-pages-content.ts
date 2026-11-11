@@ -15,7 +15,7 @@ import { pyreonSyntaxDark, pyreonSyntaxLight } from '../src/styles/pyreon-syntax
  * The original strings stay, for copy buttons and tests. The input is the
  * content set's own JSON, so the output is trusted markup.
  */
-const PAGE_JSON = /\/src\/site\/content\/pages\/(?:why|compare|migrate|project)\/[a-z0-9-]+\.json$/
+const PAGE_JSON = /\/src\/site\/content\/pages\/(?:why|compare|migrate|project)\/_?[a-z0-9-]+\.json$/
 
 const LANGS = ['tsx', 'typescript', 'javascript', 'bash', 'json', 'vue', 'svelte', 'swift', 'kotlin'] as const
 type Lang = (typeof LANGS)[number] | 'text'
