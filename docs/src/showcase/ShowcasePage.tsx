@@ -48,7 +48,7 @@ const Shots = el
 
 const Shot = el
   .config({ name: 'ShowcaseShot' })
-  .attrs({ tag: 'figure', block: true })
+  .attrs({ tag: 'figure', block: true, contentAlignX: 'block' })
   .theme((_t, m) => ({
     margin: 0,
     borderRadius: radius.card,

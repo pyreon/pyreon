@@ -35,7 +35,7 @@ const FeaturedText = el.config({ name: 'BlogFeaturedText' }).attrs({ block: true
 
 const CoverFrame = el
   .config({ name: 'BlogCover' })
-  .attrs({ block: true })
+  .attrs({ block: true, contentAlignX: 'block' })
   .theme((_t, m) => ({
     borderRadius: radius.pane,
     overflow: 'hidden',

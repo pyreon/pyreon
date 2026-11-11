@@ -57,7 +57,7 @@ const Hint = txt
 
 const Figure = el
   .config({ name: 'OpenChart' })
-  .attrs({ tag: 'figure', block: true, gap: 12 })
+  .attrs({ tag: 'figure', block: true, contentAlignX: 'block', gap: 12 })
   .theme((_t, m) => ({
     margin: 0,
     marginTop: 8,
@@ -67,6 +67,9 @@ const Figure = el
     borderColor: tone(m, 'line'),
     backgroundColor: tone(m, 'card'),
     minWidth: 0,
+    overflow: 'hidden',
+    // The chart island sizes itself to its box: let the box shrink with the page.
+    extendCss: '& > * { min-width: 0; max-width: 100%; } & canvas, & svg { max-width: 100%; }',
   }))
 
 const Caption = txt

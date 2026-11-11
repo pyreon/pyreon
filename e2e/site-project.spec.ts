@@ -117,8 +117,24 @@ test.describe('no horizontal page scroll', () => {
       for (const route of ROUTES) {
         await page.goto(route)
         await scrollThrough(page)
-        const scroll = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
-        expect(scroll, `${route} at ${width}px`).toBeLessThanOrEqual(0)
+        const r = await page.evaluate(() => {
+          const cw = document.documentElement.clientWidth
+          const main = document.querySelector('#site-main') as HTMLElement
+          // Content wider than the page outside its own scroll container (code blocks scroll on their own).
+          const offenders = [...main.querySelectorAll<HTMLElement>('*')].filter((e) => {
+            const box = e.getBoundingClientRect()
+            if (box.width === 0 || box.right <= cw + 1) return false
+            for (let n: HTMLElement | null = e; n && n !== main; n = n.parentElement) {
+              const cs = getComputedStyle(n)
+              if (cs.position === 'absolute' || cs.position === 'fixed') return false
+              if (n !== e && /auto|scroll|hidden|clip/.test(cs.overflowX) && n.getBoundingClientRect().right <= cw + 1) return false
+            }
+            return true
+          })
+          return { scroll: document.documentElement.scrollWidth - cw, offenders: offenders.slice(0, 3).map((e) => `${e.tagName}.${e.className}`) }
+        })
+        expect(r.scroll, `${route} at ${width}px`).toBeLessThanOrEqual(0)
+        expect(r.offenders, `${route} at ${width}px: content wider than the page`).toEqual([])
       }
     })
   }
@@ -165,7 +181,7 @@ test.describe('a blog post', () => {
   test('the body keeps a readable measure and type size', async ({ page }) => {
     await page.goto(POST)
     const m = await page.evaluate(() => {
-      const p = document.querySelector('[data-blog-body] > p') as HTMLElement
+      const p = document.querySelector('[data-blog-body] p') as HTMLElement
       const cs = getComputedStyle(p)
       const probe = document.createElement('span')
       probe.textContent = 'abcdefghijklmnopqrstuvwxyz'.repeat(4)
