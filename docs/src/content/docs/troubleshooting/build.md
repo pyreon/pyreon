@@ -245,6 +245,12 @@ The template `attrSetter` (`compiler/src/jsx.ts`, mirrored by `native/src/lib.rs
 
 ---
 
+### Matching a DOM element to a tag with `tagName.toLowerCase()`.
+
+The HTML parser case-adjusts SVG element names (`linearGradient`, `clipPath`, `foreignObject`, `textPath`, `feGaussianBlur` and the rest of the spec's list), so a lowercased SVG tag never equals the vnode type that produced it, and every such element was reported as a hydration mismatch and re-mounted. Compare `el.localName === tag`: it is the lowercase name for HTML elements and the case-preserved name for SVG and MathML. Compare two DOM elements by `tagName` on both sides. Applies to `hydrateElement` and the row-plan replay (`hydration-plan.ts`). Locks: `runtime-dom/src/tests/hydrate-svg-camelcase.browser.test.tsx` (all 37 adjusted names, the h() path, compiled `_tpl`, `<For>` row replay), `hydrate-svg-camelcase.test.tsx` (real compiler and SSR).
+
+---
+
 ### A per-file gate cannot see cross-file collisions; add a cheap separate check.
 
 `@pyreon/native-runtime-kotlin` verifies each file alone against stubs (`verify-kotlin.ts --service=X`), but examples compile `runtime-kotlin` and `router-kotlin` as one Gradle module, where duplicate top-level names fail with `Redeclaration:`. `packages/native/runtime-kotlin/scripts/check-duplicate-declarations.ts` scans every top-level `package::name` across both source roots. It runs unconditionally (outside the `kotlinc` guard and the CI-skip branch), keys functions on name + parameter list so overloads pass, and fails on an empty scan or missing root. A whole-source-set compile is not used because the per-module stubs deliberately disagree. Lock: `packages/internals/test-utils/src/tests/check-duplicate-declarations.test.ts`. Second instance, in the EMITTER: PMTC wrote `PyreonSchemaError` / `PyreonParseResult` into every schema-bearing file, so two such files passed every per-file gate and failed together in one target. Shared emitted types belong in the runtime, declared once (`private` is no escape — the emitted public `parse`/`safeParse` signatures name them). `validateSwiftFilesWithStubs` / `validateKotlinFiles` compile several emitted files as one module; lock: `packages/native/compiler/src/tests/multi-module-compile.test.ts`.
