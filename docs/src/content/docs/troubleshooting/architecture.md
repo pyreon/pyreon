@@ -412,6 +412,12 @@ Tree-shaking runs before the minifier removes unreachable code, so module-level 
 
 ---
 
+### A dev-only helper FUNCTION keeps its external imports in the production bundle
+
+`if (process.env.NODE_ENV !== 'production') return devTwin(...)` drops `devTwin` as dead code, but esbuild still emits the `import { _rdLabelBinding } from "@pyreon/reactivity"` its body referenced, so the shipped module names the devtools helpers (and a package-entry measurement counts them). Inline the dev code in the `if` block instead. The same applies to an exported dev helper of a package entry: wrap its body in the dev block (see the entry above), or the entry keeps the machinery it references. Reference: `_bindDirect` in `packages/core/runtime-dom/src/template.ts`; test `reactive-graph-treeshake.test.ts` (asserts the helper names are absent from each production module and present in development).
+
+---
+
 ### A call in a class field initializer defeats `/* @__PURE__ */` on a module-level singleton
 
 `export const sheet = /* @__PURE__ */ new StyleSheet(...)` shakes away only while the class's field initializers are provably pure. Object literals and `new Map()`/`new Set()` qualify; an arbitrary call (`= freshSSRState()`) does not, and every minimal import retains the whole class. `@pyreon/styler` inlines the object in the field and calls `freshSSRState()` only from methods (`packages/ui-system/styler/src/sheet.ts`). Measure bundle size with the bun version pinned in `.bun-version`; a newer global bun may shake better and hide the regression. A large local-vs-CI gap is a tool difference, not gzip variance. Install the pinned bun side by side (`BUN_INSTALL=<scratch> curl -fsSL https://bun.sh/install | bash -s bun-v<pinned>`). Find out why a minimal import grew before relocking a budget.
