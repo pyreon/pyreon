@@ -273,7 +273,7 @@ export function generateSitemap(
     const byPath = new Map<string, SitemapEntry>()
     for (const e of [
       ...paths.map((p) => ({ path: p, changefreq, priority })),
-      ...(config.additionalPaths ?? []).filter((e) => !isExcluded(e.path, exclude)),
+      ...(config.additionalPaths ?? []).filter((extra) => !isExcluded(extra.path, exclude)),
     ]) {
       const key = e.path.length > 1 && e.path.endsWith('/') ? e.path.slice(0, -1) : e.path
       if (!byPath.has(key)) byPath.set(key, e)
