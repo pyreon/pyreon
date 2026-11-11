@@ -3,12 +3,20 @@ import {
   CATALOG_MARKER,
   countCatalogEntries,
   evaluateGate,
+  extractCatalogPatterns,
+  extractMessages,
+  isCatalogued,
   isSensitiveSourceFile,
+  newMessages,
   sensitivePackagesTouched,
   touchesSensitivePaths,
   type GateInputs,
   type GateResult,
 } from '../../../../../scripts/check-diagnose-catalog'
+import { readFileSync } from 'node:fs'
+import { join, resolve } from 'node:path'
+
+const ROOT = resolve(import.meta.dirname, '../../../../..')
 
 /**
  * Tests for the diagnose-catalog gate (`scripts/check-diagnose-catalog.ts`).
@@ -419,6 +427,230 @@ ${CATALOG_MARKER}
   })
 })
 
+// ─── Message extraction ────────────────────────────────────────────────────
+
+describe('extractMessages', () => {
+  const texts = (src: string) => extractMessages(src, 'packages/core/core/src/x.ts').map((m) => m.text)
+
+  it('finds a [Pyreon] literal anywhere, joining + pieces and collapsing whitespace', () => {
+    const src = `const m = '[Pyreon] A function was coerced ' +\n    "to its source string."\n`
+    expect(texts(src)).toEqual(['[Pyreon] A function was coerced to its source string.'])
+  })
+
+  it('finds error constructors, console.warn/error and warn helpers, with interpolations as ${}', () => {
+    const src = [
+      'throw new TypeError(`bad ${name.toUpperCase()} value`)',
+      'console.error("render failed", err)',
+      'warnOutsideSetup(`onMount called outside ${where}`)',
+      'logger.warn(\'deprecated\')',
+      'const e = { message: `missing ${key}` }',
+      'throw `raw ${x}`',
+    ].join('\n')
+    expect(texts(src)).toEqual([
+      'bad ${} value',
+      'render failed',
+      'onMount called outside ${}',
+      'deprecated',
+      'missing ${}',
+      'raw ${}',
+    ])
+  })
+
+  it('ignores ordinary strings, comments, regex literals and type literals', () => {
+    const src = [
+      "// throw new Error('[Pyreon] in a comment')",
+      "/* console.warn('[Pyreon] block comment') */",
+      "const re = /throw new Error\\('x'\\)/g",
+      "type Kind = 'a' | 'b'",
+      "el.setAttribute('data-x', 'y')",
+      'const half = total / 2 / count',
+    ].join('\n')
+    expect(texts(src)).toEqual([])
+  })
+
+  it('reports the line a message starts on', () => {
+    const src = "a()\n\nconsole.warn(\n  '[Pyreon] x'\n)\n"
+    expect(extractMessages(src, 'f.ts')).toEqual([{ text: '[Pyreon] x', file: 'f.ts', line: 4 }])
+  })
+})
+
+describe('extractCatalogPatterns / isCatalogued', () => {
+  const catalog = `
+${CATALOG_MARKER}
+  {
+    pattern: /Duplicate key "(.+)" in <For> list/,
+    diagnose: () => ({ cause: 'x', fixCode: '/not-a-pattern/' }),
+  },
+  {
+    pattern:
+      /No router installed/i,
+    diagnose: () => ({}),
+  },
+]
+const after = /outside the array/
+`
+  it('rebuilds every pattern: regex inside ERROR_PATTERNS and nothing else', () => {
+    expect(extractCatalogPatterns(catalog).map(String)).toEqual([
+      '/Duplicate key "(.+)" in <For> list/',
+      '/No router installed/i',
+    ])
+  })
+
+  it('matches a message with stand-ins for its interpolations', () => {
+    const patterns = extractCatalogPatterns(catalog)
+    expect(isCatalogued('[Pyreon] Duplicate key "${}" in <For> list. Keys must be unique.', patterns)).toBe(true)
+    expect(isCatalogued('[Pyreon] Something new happened', patterns)).toBe(false)
+  })
+
+  it('reads the real catalog', () => {
+    const real = readFileSync(join(ROOT, CATALOG_FILE), 'utf8')
+    expect(extractCatalogPatterns(real).length).toBe(countCatalogEntries(real))
+  })
+})
+
+// ─── Real diff fixtures ────────────────────────────────────────────────────
+//
+// Excerpts of real commits, before (base) and after (head).
+
+/** #4198 (perf, runtime-dom/src/template.ts): a fast path, no message touched. */
+const PERF_BASE = `
+export function _bindProp(props: object, key: string, node: Text, parent: Node): () => void {
+  const d = Object.getOwnPropertyDescriptor(props, key)
+  const g = d !== undefined ? (d.get as (() => unknown) | undefined) : undefined
+  if (g !== undefined && typeof g.direct === 'function') return _bindText(g, node)
+  if (typeof v === 'function') {
+    flagged.__pyreonWarnedCoercion = true
+    console.warn(
+      '[Pyreon] A function was coerced to its source string in a text position. ' +
+        "If you cast an accessor with 'as never', remove the cast — the compiler treats " +
+        'the cast expression as static. Accessor-typed JSX attributes accept the function form directly.',
+    )
+    return
+  }
+}
+`
+const PERF_HEAD = `
+export function _bindProp(props: object, key: string, node: Text, parent: Node): () => void {
+  const d = Object.getOwnPropertyDescriptor(props, key)
+  if (d !== undefined && d.get === undefined && d.set === undefined) {
+    // An own DATA property: a props object's data properties are fixed at
+    // creation (reactive props are getters), so this binding can never update.
+    const v = d.value as unknown
+    if (v === null || (typeof v !== 'object' && typeof v !== 'function')) {
+      const next = v == null || v === false ? '' : String(v as string | number | boolean)
+      if (node.data !== next) node.data = next
+      return _noopDispose
+    }
+  }
+  const g = d !== undefined ? (d.get as (() => unknown) | undefined) : undefined
+  if (g !== undefined && typeof g.direct === 'function') return _bindText(g, node)
+  if (typeof v === 'function') {
+    flagged.__pyreonWarnedCoercion = true
+    console.warn(
+      '[Pyreon] A function was coerced to its source string in a text position. ' +
+        "If you cast an accessor with 'as never', remove the cast — the compiler treats " +
+        'the cast expression as static. Accessor-typed JSX attributes accept the function form directly.',
+    )
+    return
+  }
+}
+`
+
+/** #4108 (fix, router/src/router.ts): two new dev warnings. */
+const ROUTER_BASE = `
+  function useRouter(): Router {
+    const router = useContext(RouterContext)
+    if (!router)
+      throw new Error(
+        '[Pyreon] No router installed. Wrap your app in <RouterProvider router={router}>.',
+      )
+    return router
+  }
+`
+const ROUTER_HEAD = `${ROUTER_BASE}
+  /** Server: a throw defers to the client. Client: a throw cancels. */
+  function initialThrow(what: string, err: unknown): InitialNavigationOutcome | null {
+    if (process.env.NODE_ENV !== 'production') {
+      // oxlint-disable-next-line no-console
+      console.warn(
+        isClient
+          ? \`[Pyreon Router] \${what} threw on the initial navigation — navigation cancelled:\`
+          : \`[Pyreon Router] \${what} threw during SSR on the initial navigation — rendering, and deferring the decision to the client's initial navigation. Guard browser-only reads with \\\`isServer\\\` from @pyreon/reactivity to decide explicitly:\`,
+        err,
+      )
+    }
+    return isClient ? { kind: 'cancel' } : null
+  }
+`
+/** The entry #4108 added with those warnings. */
+const ROUTER_ENTRY = `
+  {
+    pattern: /(Navigation guard|Route middleware) threw (during SSR )?on the initial navigation/,
+    diagnose: (m) => ({ cause: 'guard threw', fix: 'decide per environment' }),
+  },`
+
+/** The same #4198 warning, moved into a helper and re-wrapped as one template literal. */
+const MOVED_HEAD = `
+function warnCoercedFunction(): void {
+  console.warn(\`[Pyreon] A function was coerced to its source string in a text position. If you cast an accessor with 'as never', remove the cast — the compiler treats the cast expression as static. Accessor-typed JSX attributes accept the function form directly.\`)
+}
+export function _bindProp(props: object, key: string, node: Text, parent: Node): () => void {
+  if (typeof v === 'function') {
+    flagged.__pyreonWarnedCoercion = true
+    warnCoercedFunction()
+    return
+  }
+}
+`
+
+describe('newMessages (real diffs)', () => {
+  const TEMPLATE = 'packages/core/runtime-dom/src/template.ts'
+  const ROUTER = 'packages/core/router/src/router.ts'
+
+  it('a perf-only diff (#4198) adds no message', () => {
+    expect(newMessages([{ path: TEMPLATE, base: PERF_BASE, head: PERF_HEAD }])).toEqual([])
+  })
+
+  it('a moved and re-wrapped message is not new', () => {
+    expect(newMessages([{ path: TEMPLATE, base: PERF_BASE, head: MOVED_HEAD }])).toEqual([])
+  })
+
+  it('a message moved to ANOTHER changed file is not new', () => {
+    const helper = 'packages/core/runtime-dom/src/warnings.ts'
+    expect(
+      newMessages([
+        { path: TEMPLATE, base: PERF_BASE, head: PERF_HEAD.replace(/console\.warn\([\s\S]*?\n    \)/, 'warnCoercion()') },
+        { path: helper, base: null, head: MOVED_HEAD },
+      ]),
+    ).toEqual([])
+  })
+
+  it('the warnings #4108 added are new, with their file and line', () => {
+    const added = newMessages([{ path: ROUTER, base: ROUTER_BASE, head: ROUTER_HEAD }])
+    expect(added.map((m) => m.text)).toEqual([
+      '[Pyreon Router] ${} threw on the initial navigation — navigation cancelled:',
+      "[Pyreon Router] ${} threw during SSR on the initial navigation — rendering, and deferring the decision to the client's initial navigation. Guard browser-only reads with `isServer` from @pyreon/reactivity to decide explicitly:",
+    ])
+    expect(added.every((m) => m.file === ROUTER && m.line > 9)).toBe(true)
+  })
+
+  it('an edited message is new', () => {
+    const edited = PERF_HEAD.replace('in a text position', 'in a text slot')
+    expect(newMessages([{ path: TEMPLATE, base: PERF_BASE, head: edited }])).toHaveLength(1)
+  })
+
+  it('ignores the catalog file, tests and non-sensitive packages', () => {
+    const add = (path: string) => ({ path, base: '', head: "throw new Error('[Pyreon] new')" })
+    expect(
+      newMessages([
+        add(CATALOG_FILE),
+        add('packages/core/router/src/tests/router.test.ts'),
+        add('packages/fundamentals/store/src/store.ts'),
+      ]),
+    ).toEqual([])
+  })
+})
+
 // ─── evaluateGate ───────────────────────────────────────────────────────────
 
 describe('evaluateGate', () => {
@@ -427,127 +659,97 @@ describe('evaluateGate', () => {
   const baseSource = `
 ${CATALOG_MARKER}
   {
-    pattern: /a/,
+    pattern: /^catalog-entry-a$/,
     diagnose: () => ({}),
   },
   {
-    pattern: /b/,
+    pattern: /^catalog-entry-b$/,
     diagnose: () => ({}),
   },
 ]
 `
-  const headSourceSameCount = `
-${CATALOG_MARKER}
-  {
-    pattern: /a/,
-    diagnose: () => ({}),
-  },
-  {
-    pattern: /b/,
-    diagnose: () => ({}),
-  },
-]
-`
-  const headSourceOneMore = `
-${CATALOG_MARKER}
-  {
-    pattern: /a/,
-    diagnose: () => ({}),
-  },
-  {
-    pattern: /b/,
-    diagnose: () => ({}),
-  },
-  {
-    pattern: /c/,
-    diagnose: () => ({}),
-  },
-]
-`
+  const headSourceOneMore = baseSource.replace(']\n', `${ROUTER_ENTRY}\n]\n`)
+  const ROUTER = 'packages/core/router/src/router.ts'
 
   const ok = (over: Partial<GateInputs> = {}): GateInputs => ({
-    files: ['packages/core/router/src/router.ts'],
+    files: [ROUTER],
+    sources: [{ path: ROUTER, base: ROUTER_BASE, head: ROUTER_HEAD }],
     hasSkipLabel: false,
     headRef: 'feature/x',
     baseSource,
-    headSource: headSourceSameCount,
+    headSource: baseSource,
     ...over,
   })
 
   it('skips when no sensitive files are touched (the #1166 deps-bump shape)', () => {
-    const res: GateResult = evaluateGate(
-      ok({ files: ['packages/core/router/package.json'] }),
-    )
+    const res: GateResult = evaluateGate(ok({ files: ['packages/core/router/package.json'] }))
     expect(res).toEqual({ kind: 'skip-no-sensitive-files' })
+  })
+
+  it('a perf-only diff (#4198) makes no demand — no label needed', () => {
+    const TEMPLATE = 'packages/core/runtime-dom/src/template.ts'
+    const res = evaluateGate(
+      ok({ files: [TEMPLATE], sources: [{ path: TEMPLATE, base: PERF_BASE, head: PERF_HEAD }] }),
+    )
+    expect(res).toEqual({ kind: 'skip-no-message-change', touched: ['packages/core/runtime-dom/'] })
+  })
+
+  it('a moved or re-wrapped message makes no demand', () => {
+    const TEMPLATE = 'packages/core/runtime-dom/src/template.ts'
+    const res = evaluateGate(
+      ok({ files: [TEMPLATE], sources: [{ path: TEMPLATE, base: PERF_BASE, head: MOVED_HEAD }] }),
+    )
+    expect(res.kind).toBe('skip-no-message-change')
+  })
+
+  it('fails when new messages (#4108) arrive without a catalog entry, naming each one', () => {
+    const res = evaluateGate(ok())
+    expect(res.kind).toBe('fail-uncatalogued')
+    if (res.kind !== 'fail-uncatalogued') return
+    expect(res.uncovered.map((m) => m.file)).toEqual([ROUTER, ROUTER])
+    expect(res.uncovered[0]!.text).toContain('threw on the initial navigation')
+  })
+
+  it('passes when the catalog grew with the messages (#4108 as merged)', () => {
+    const res = evaluateGate(ok({ headSource: headSourceOneMore }))
+    expect(res).toEqual({ kind: 'ok', baseCount: 2, headCount: 3, messages: 2 })
+  })
+
+  it('passes without growth when an existing entry already matches every new message', () => {
+    const covering = baseSource.replace('/^catalog-entry-a$/', '/threw (during SSR )?on the initial navigation/')
+    const res = evaluateGate(ok({ baseSource: covering, headSource: covering }))
+    expect(res).toEqual({ kind: 'ok-covered', messages: 2 })
   })
 
   it('skips on release-PR branch prefix `changeset-release/`', () => {
     const res = evaluateGate(ok({ headRef: 'changeset-release/main' }))
-    expect(res).toEqual({
-      kind: 'skip-release-pr',
-      headRef: 'changeset-release/main',
-    })
+    expect(res).toEqual({ kind: 'skip-release-pr', headRef: 'changeset-release/main' })
   })
 
-  it('skips when the label is present', () => {
-    const res = evaluateGate(ok({ hasSkipLabel: true }))
-    expect(res).toEqual({ kind: 'skip-label' })
+  it('the label still bypasses a real demand', () => {
+    expect(evaluateGate(ok({ hasSkipLabel: true }))).toEqual({ kind: 'skip-label' })
   })
 
   it('skips when baseSource is missing (first-time catalog-add edge case)', () => {
-    const res = evaluateGate(ok({ baseSource: null }))
-    expect(res).toEqual({ kind: 'skip-missing-base-catalog' })
+    expect(evaluateGate(ok({ baseSource: null }))).toEqual({ kind: 'skip-missing-base-catalog' })
   })
 
   it('fails when headSource is missing — catalog file was deleted at HEAD', () => {
-    const res = evaluateGate(ok({ headSource: null }))
-    expect(res).toEqual({ kind: 'fail-missing-head-catalog' })
+    expect(evaluateGate(ok({ headSource: null }))).toEqual({ kind: 'fail-missing-head-catalog' })
   })
 
   it('fails on parse error if catalog shape changed', () => {
-    const res = evaluateGate(
-      ok({ baseSource: 'no marker here', headSource: 'no marker here' }),
-    )
+    const res = evaluateGate(ok({ baseSource: 'no marker here', headSource: 'no marker here' }))
     expect(res).toEqual({ kind: 'fail-parse', baseCount: -1, headCount: -1 })
   })
 
-  it('passes when catalog grew by 1', () => {
-    const res = evaluateGate(ok({ headSource: headSourceOneMore }))
-    expect(res).toEqual({ kind: 'ok', baseCount: 2, headCount: 3 })
-  })
-
-  it('fails when sensitive source changed but catalog did not grow', () => {
-    const res = evaluateGate(ok())
-    expect(res).toEqual({
-      kind: 'fail-no-growth',
-      baseCount: 2,
-      headCount: 2,
-      touched: ['packages/core/router/'],
-    })
-  })
-
-  it('label takes priority over a fail-no-growth — the label bypass works post-source-change', () => {
-    const res = evaluateGate(ok({ hasSkipLabel: true }))
-    expect(res.kind).toBe('skip-label')
-  })
-
   it('release-PR auto-skip takes priority over the label (label not needed on release PRs)', () => {
-    const res = evaluateGate(
-      ok({ headRef: 'changeset-release/main', hasSkipLabel: false }),
-    )
+    const res = evaluateGate(ok({ headRef: 'changeset-release/main', hasSkipLabel: false }))
     expect(res.kind).toBe('skip-release-pr')
   })
 
   it('the no-sensitive-files skip wins even when the label is also set (label is unnecessary)', () => {
-    // Order of evaluation: no-sensitive-files first; the label decision
-    // never runs. Documents the precedence so future refactors don't
-    // accidentally invert it.
-    const res = evaluateGate(
-      ok({
-        files: ['packages/core/router/CHANGELOG.md'],
-        hasSkipLabel: true,
-      }),
-    )
+    const res = evaluateGate(ok({ files: ['packages/core/router/CHANGELOG.md'], hasSkipLabel: true }))
     expect(res.kind).toBe('skip-no-sensitive-files')
   })
 })

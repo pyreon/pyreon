@@ -16,9 +16,11 @@
  * built inline from src (`configFile: false`), so the code under test is
  * the current source.
  */
-import { existsSync, readFileSync } from 'node:fs'
+import { spawnSync } from 'node:child_process'
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { rm } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { build } from 'vite'
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { zeroPlugin, type ZeroUserConfig } from '../../vite-plugin'
@@ -61,6 +63,45 @@ function ssgManifest(): string[] {
   return (JSON.parse(readFileSync(file, 'utf-8')) as { paths: string[] }).paths
 }
 
+/**
+ * The staged production SSR template must be the CLIENT SHELL. A hybrid
+ * build that prerenders `/` writes that page to `dist/index.html` before the
+ * SSR post-step runs; the post-step used to copy the file as it was then, so
+ * `template.html` became the rendered home page (no `<!--pyreon-app-->`) and
+ * the server threw at boot: `[Pyreon] Template must contain <!--pyreon-app-->
+ * placeholder`. Booting the built handler and rendering an SSR route is the
+ * end-to-end form of that check.
+ */
+async function expectServerBootsWithShellTemplate(): Promise<void> {
+  const template = readFileSync(join(DIST, 'server', 'template.html'), 'utf-8')
+  expect(template).toContain('<!--pyreon-app-->')
+  expect(template).not.toContain('AUTO_INFERRED_SSG_HOME')
+
+  // The built entry runs in its own Node process, as it does in production
+  // (importing it here would load a second copy of the runtime). Before the
+  // fix, importing it threw the placeholder error and the process exited 1.
+  const script = join(DIST, 'boot-probe.mjs')
+  writeFileSync(
+    script,
+    `const { default: handler } = await import(${JSON.stringify(
+      pathToFileURL(join(DIST, 'server', 'entry-server.js')).href,
+    )})
+const res = await handler(new Request('http://localhost/posts'))
+process.stdout.write(JSON.stringify({ status: res.status, body: await res.text() }))
+`,
+  )
+  const run = spawnSync(process.execPath.includes('bun') ? 'node' : process.execPath, [script], {
+    cwd: FIXTURE,
+    env: { ...process.env, NODE_ENV: 'production' },
+    encoding: 'utf-8',
+  })
+  expect(run.stderr).not.toContain('Template must contain')
+  expect(run.status).toBe(0)
+  const result = JSON.parse(run.stdout) as { status: number; body: string }
+  expect(result.status).toBe(200)
+  expect(result.body).toContain('AUTO_INFERRED_SSR_POSTS')
+}
+
 beforeEach(async () => {
   await rm(DIST, { recursive: true, force: true })
   // The mode table and the "mode: 'auto' → 'ssr'" banner are noise here.
@@ -95,6 +136,17 @@ describe('hybrid prerender follows the resolved per-route mode', () => {
 
     // The runtime serves static-first from this manifest.
     expect(ssgManifest().sort()).toEqual(['/', '/blog/hello', '/ruled'])
+
+    // The prerendered `/` did not become the server's template.
+    await expectServerBootsWithShellTemplate()
+  }, 180_000)
+
+  it("mode 'ssr': a prerendered '/' leaves the server template as the client shell", async () => {
+    await buildFixture({ mode: 'ssr', routeRules: { '/': { renderMode: 'ssg' } } })
+
+    expect(prerendered('/')).toContain('AUTO_INFERRED_SSG_HOME')
+    expect(ssgManifest()).toEqual(['/'])
+    await expectServerBootsWithShellTemplate()
   }, 180_000)
 
   it("mode 'ssr': a routeRules 'ssg' entry prerenders with no renderMode export anywhere", async () => {
