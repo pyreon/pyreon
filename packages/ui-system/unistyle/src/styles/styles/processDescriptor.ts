@@ -3,6 +3,7 @@ import type { BorderRadius } from '../shorthands/borderRadius'
 import type { Edge } from '../shorthands/edge'
 import type { PropertyDescriptor } from './propertyMap'
 import type { InnerTheme } from './types'
+import backgroundImageValue from './backgroundImage'
 
 type Css = (strings: TemplateStringsArray, ...values: any[]) => any
 type Calc = (...params: any[]) => ReturnType<Values>
@@ -20,7 +21,7 @@ const toCssDecl = (css: string, v: unknown) => (v == null ? '' : `${css}: ${v};`
  * - `convert_fallback` — picks first non-null from multiple theme keys, then converts
  * - `edge`    — delegates to the edge shorthand (margin, padding, inset, border-*)
  * - `border_radius` — delegates to the border-radius shorthand
- * - `special` — one-off logic (fullScreen, backgroundImage url wrapping, animation combo, etc.)
+ * - `special` — one-off logic (fullScreen, backgroundImage url wrapping of bare paths,animation combo, etc.)
  *
  * IMPORTANT: special cases MUST return `css` tagged-template results,
  * NOT plain strings. The caller (styles/index.ts) embeds these in another
@@ -49,7 +50,7 @@ const processSpecial = (
       /* v8 ignore next — defensive empty-prop guard */
       if (!t.backgroundImage) return ''
       return css`
-        background-image: url(${t.backgroundImage});
+        background-image: ${backgroundImageValue(t.backgroundImage)};
       `
 
     case 'animation': {
