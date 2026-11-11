@@ -18,7 +18,7 @@ Here is the whole pipeline: the commands, what lands where, how the mocks stay v
 ```bash
 pyreon add @pyreon/lathe
 # or: bun add -d @pyreon/lathe
-npx lathe init
+npx @pyreon/lathe init
 ```
 
 `lathe init` finds what your project generates from today: an orval, `@hey-api/openapi-ts` or kubb config, an `openapi-typescript` script, or a bare `openapi.yaml`/`openapi.json`. Then it:

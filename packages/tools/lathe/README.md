@@ -6,7 +6,7 @@ document; emits `@pyreon/validate` schemas, `@pyreon/http` endpoints,
 
 ```bash
 bun add -d @pyreon/lathe        # or: pyreon add @pyreon/lathe
-npx lathe init                  # set up pyreon.config.ts, scripts, first generate
+npx @pyreon/lathe init                  # set up pyreon.config.ts, scripts, first generate
 ```
 
 `lathe init` detects what the project generates from today — an orval,

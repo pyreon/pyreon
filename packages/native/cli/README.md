@@ -2,7 +2,7 @@
 
 > **EXPERIMENTAL.** The `pyreon-native` binary — build orchestration for the Pyreon Multi-Target Compiler (PMTC). Wraps [`@pyreon/native-compiler`](../compiler/README.md) to walk a source directory, drive the compiler for one or both native targets, and wire the result into an Xcode/Gradle project. Published to npm — see [Native Packages](https://pyreon.dev/docs/native-packages) for where this fits among the other five packages behind PMTC.
 
-You don't usually invoke this directly either — `@pyreon/create-multiplatform` scaffolds pre-build scripts that call it for you (`npx pyreon-native wire --ios-out=…` / `--android-out=…` on every build, `npx pyreon-native build --target=…` where the scaffold needs a one-shot emit). It's documented here, and in full on [Native Packages](https://pyreon.dev/docs/native-packages), for when you're debugging the pipeline or scripting it yourself.
+You don't usually invoke this directly either — `@pyreon/create-multiplatform` scaffolds pre-build scripts that call it for you through the app's installed `@pyreon/native-cli` (`npx pyreon-native wire --ios-out=…` / `--android-out=…` on every build, `npx pyreon-native build --target=…` where the scaffold needs a one-shot emit). It's documented here, and in full on [Native Packages](https://pyreon.dev/docs/native-packages), for when you're debugging the pipeline or scripting it yourself.
 
 ## Commands
 
@@ -116,7 +116,7 @@ console.log(`compiled ${result.filesCompiled} files`)
 
 ## Build / test locally
 
-Pure TypeScript. `bun run test` runs the CLI's own suite, including a real-Vite-build test asserting the shipped `bin/pyreon-native.js` runs under both Node and Bun (the CLI is invoked as `npx pyreon-native …`, i.e. under Node, from a scaffolded app's build scripts — a bin that only ran under Bun would silently do nothing there).
+Pure TypeScript. `bun run test` runs the CLI's own suite, including a real-Vite-build test asserting the shipped `bin/pyreon-native.js` runs under both Node and Bun (the CLI is invoked as `npx pyreon-native …`, the bin of the app's installed `@pyreon/native-cli`, i.e. under Node, from a scaffolded app's build scripts — a bin that only ran under Bun would silently do nothing there).
 
 ## What to read next
 

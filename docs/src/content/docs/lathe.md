@@ -25,7 +25,7 @@ only for the `faker` plugin, `zod` only for `validator: 'zod'`.
 ## Getting started
 
 ```bash
-npx lathe init
+npx @pyreon/lathe init
 ```
 
 `lathe init` finds what the project generates from today — an orval,
@@ -1409,7 +1409,7 @@ jobs:
           BASE_REF: ${{ github.base_ref }}
         run: |
           set +e
-          bunx lathe diff "origin/${BASE_REF}:openapi.yaml" openapi.yaml \
+          bunx @pyreon/lathe diff "origin/${BASE_REF}:openapi.yaml" openapi.yaml \
             --format markdown --fail-on-breaking > contract.md
           echo "code=$?" >> "$GITHUB_OUTPUT"
       - name: Summary

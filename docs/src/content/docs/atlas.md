@@ -337,8 +337,8 @@ The scan runs `play` **instead of** the automatic click-walk; a throw fails the 
 ## CI wiring
 
 ```yaml
-- run: bunx atlas scan .              # red exit on failing scenarios
-- run: bunx atlas verify-browser .    # red exit on visual diffs
+- run: bunx @pyreon/atlas scan .              # red exit on failing scenarios
+- run: bunx @pyreon/atlas verify-browser .    # red exit on visual diffs
 ```
 
 `scan` under `bun` gets the leak check for free (GC hook present). `verify-browser` needs Playwright Chromium in the environment; snapshot baselines should be created per-runner (first run) rather than committed across platforms.

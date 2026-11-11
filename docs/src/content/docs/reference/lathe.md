@@ -63,7 +63,7 @@ See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multipla
 A full, end-to-end usage of the package:
 
 ```tsx
-$ npx lathe generate ./openapi.yaml --target multiplatform
+$ npx @pyreon/lathe generate ./openapi.yaml --target multiplatform
 
 lathe / Bookshelf 1.2.0
   4 models  4 operations  target=multiplatform

@@ -16,7 +16,7 @@ openapi-fetch blocks are illustrative.
 ## 1. Run `lathe init`
 
 ```bash
-npx lathe init
+npx @pyreon/lathe init
 ```
 
 `lathe init` finds the `openapi-typescript <spec> -o <file>` script in

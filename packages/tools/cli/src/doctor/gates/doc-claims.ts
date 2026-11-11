@@ -18,7 +18,7 @@
  */
 
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
-import { join } from 'node:path'
+import { join, relative } from 'node:path'
 import type { Finding, GateResult } from '../types'
 
 interface ClaimSpec {
@@ -628,6 +628,102 @@ const checks: ClaimCheck[] = [
   },
 ]
 
+// ─── Unscoped package-runner commands ───────────────────────────────────────
+
+/**
+ * Every bin a PUBLISHED `@pyreon/*` package ships, with the package. Read from
+ * the package.json files, so a new CLI is covered the day it ships.
+ */
+export function pyreonBins(repoRoot: string): Map<string, string> {
+  const bins = new Map<string, string>()
+  const packagesDir = join(repoRoot, 'packages')
+  if (!existsSync(packagesDir)) return bins
+  for (const group of readdirSync(packagesDir)) {
+    const groupDir = join(packagesDir, group)
+    if (!statSync(groupDir).isDirectory()) continue
+    for (const pkg of readdirSync(groupDir)) {
+      const manifestPath = join(groupDir, pkg, 'package.json')
+      if (!existsSync(manifestPath)) continue
+      let manifest: { name?: string; private?: boolean; bin?: string | Record<string, string> }
+      try {
+        manifest = JSON.parse(readFileSync(manifestPath, 'utf8'))
+      } catch {
+        continue
+      }
+      if (manifest.private === true || !manifest.name?.startsWith('@pyreon/') || !manifest.bin) continue
+      const names =
+        typeof manifest.bin === 'string' ? [manifest.name.slice('@pyreon/'.length)] : Object.keys(manifest.bin)
+      for (const name of names) bins.set(name, manifest.name)
+    }
+  }
+  return bins
+}
+
+/** The pages a reader copies commands from: the docs site's content and every README. */
+function commandDocFiles(repoRoot: string): string[] {
+  const out: string[] = []
+  const walk = (dir: string, accept: (file: string) => boolean): void => {
+    if (!existsSync(dir)) return
+    for (const entry of readdirSync(dir)) {
+      if (entry === 'node_modules' || entry === 'lib' || entry.startsWith('.')) continue
+      const full = join(dir, entry)
+      if (statSync(full).isDirectory()) walk(full, accept)
+      else if (accept(entry)) out.push(full)
+    }
+  }
+  walk(join(repoRoot, 'docs', 'src', 'content'), (f) => /\.mdx?$/.test(f))
+  walk(join(repoRoot, 'packages'), (f) => f === 'README.md')
+  if (existsSync(join(repoRoot, 'README.md'))) out.push(join(repoRoot, 'README.md'))
+  return out
+}
+
+/**
+ * A docs page that tells the reader to run `npx atlas …` / `bunx lathe …` with
+ * the UNSCOPED name of one of our binaries. Without a local install, the
+ * package runner fetches the npm package of that name, which for `atlas`,
+ * `lathe`, `loom`, `zero` and others is someone else's project (`npx lathe
+ * init` ran a solid modeller). The scoped form (`npx @pyreon/lathe init`)
+ * runs our CLI whether or not it is installed.
+ */
+export function findUnscopedRunnerCommands(repoRoot: string): Finding[] {
+  const bins = pyreonBins(repoRoot)
+  if (bins.size === 0) return []
+  const names = [...bins.keys()].sort((a, b) => b.length - a.length).map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+  const re = new RegExp(
+    String.raw`\b(npx|bunx|pnpx|pnpm dlx|yarn dlx)\s+(?:(?:-y|--yes)\s+)?(${names.join('|')})(?=$|[\s` + '`' + String.raw`'")\]])`,
+    'gm',
+  )
+  const findings: Finding[] = []
+  for (const filePath of commandDocFiles(repoRoot)) {
+    const content = readFileSync(filePath, 'utf8')
+    const relPath = relative(repoRoot, filePath)
+    for (const m of content.matchAll(re)) {
+      const runner = m[1] ?? 'npx'
+      const bin = m[2] ?? ''
+      const pkg = bins.get(bin) ?? `@pyreon/${bin}`
+      // A line that also names the package (`… use \`bunx @pyreon/mcp\`; an
+      // unscoped \`npx pyreon-mcp\` resolves another package`) is contrasting
+      // the two on purpose, or saying the bin comes from the installed
+      // package. Only a bare instruction is reported.
+      const lineStart = content.lastIndexOf('\n', m.index) + 1
+      const lineEnd = content.indexOf('\n', m.index)
+      const lineText = content.slice(lineStart, lineEnd === -1 ? undefined : lineEnd)
+      if (lineText.includes(pkg)) continue
+      const line = content.slice(0, m.index).split('\n').length
+      findings.push({
+        category: 'documentation',
+        severity: 'error',
+        code: 'doc-claims/unscoped-runner-command',
+        gate: 'doc-claims',
+        message: `${relPath}:${line}: \`${runner} ${bin}\` runs the npm package named "${bin}", not ${pkg}, when it is not installed locally.`,
+        location: { path: filePath, relPath },
+        fix: `Write \`${runner} ${pkg}\` (the package's ${bin} binary).`,
+      })
+    }
+  }
+  return findings
+}
+
 export interface DocClaimsGateOptions {
   /** Repository root directory */
   cwd: string
@@ -800,6 +896,8 @@ export const runDocClaimsGate = async (
       }
     }
   }
+
+  findings.push(...findUnscopedRunnerCommands(opts.cwd))
 
   return {
     gate: 'doc-claims',

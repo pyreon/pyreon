@@ -122,8 +122,8 @@ A `pyreon.config.*` that exists but fails to load is a **named error**, never a 
 ## CI wiring
 
 ```yaml
-- run: bunx loom scan .           # red exit on error findings
-- run: bunx loom scan . --strict  # warnings gate too
+- run: bunx @pyreon/loom scan .           # red exit on error findings
+- run: bunx @pyreon/loom scan . --strict  # warnings gate too
 ```
 
 The machine surface is `loom-report.json` — stable issue codes, structured evidence per finding, and the full model (packages, edges, depths, reach) for your own tooling.
