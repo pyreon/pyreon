@@ -72,7 +72,9 @@ export const maxJsxDepth: Rule = {
       // k and gives the new component depth (depth - k + 1). The shallowest k
       // that keeps the new component within the limit names the biggest,
       // most self-contained piece.
-      const k = Math.min(Math.max(2, depth - max + 1), depth)
+      let k = Math.min(Math.max(2, depth - max + 1), depth)
+      // A fragment has no name to point at; name the first element under it.
+      while (k < depth && deepest[k - 1].type === 'JSXFragment') k++
       const root = deepest[k - 1]
       const leaf = deepest[depth - 1]
       const anchor = leaf.type === 'JSXElement' ? leaf.openingElement : leaf.openingFragment ?? leaf
