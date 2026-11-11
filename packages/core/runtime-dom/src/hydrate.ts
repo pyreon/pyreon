@@ -2124,7 +2124,7 @@ function hydrateComponent(
         scope,
         prevOwner,
         componentName,
-        _devFirstElementIn(domNode.nextSibling, findMatchingAsyncEnd(domNode as Comment)),
+        _devFirstElementIn((domNode as Comment).nextSibling, findMatchingAsyncEnd(domNode as Comment)),
       )
     }
   } else if (output != null) {
