@@ -139,6 +139,28 @@ function App() {
   return (<Stack><Text>{r()}</Text><Button onPress={a}>A</Button><Button onPress={b}>B</Button><Button onPress={c}>C</Button></Stack>)
 }`
 
+// A catch written WITHOUT a binding, whose body writes signals named like the binding each target would introduce:
+// Swift binds a bare \`catch\`'s error to an implicit \`error\`, and Kotlin's catch needs a name the compiler picks
+// (\`pyreonCaught\`). Either one shadowed the signal, so the assignment hit the immutable error value instead.
+const anonymousCatch = `${head}
+function risky(raw: string): number {
+  if (raw === '') throw new Error('required')
+  return 1
+}
+function App() {
+  const error = signal('')
+  const pyreonCaught = signal('')
+  const run = () => {
+    try {
+      risky('')
+    } catch {
+      error.set('failed')
+      pyreonCaught.set('yes')
+    }
+  }
+  return (<Stack><Text>{error()}</Text><Text>{pyreonCaught()}</Text><Button onPress={run}>Go</Button></Stack>)
+}`
+
 const emit = (src: string, target: 'swift' | 'kotlin') => transform(src, { target })
 const code = (src: string, target: 'swift' | 'kotlin') => emit(src, target).code
 const warnings = (src: string, target: 'swift' | 'kotlin') => emit(src, target).warnings.join('\n')
@@ -180,7 +202,7 @@ describe('throw + try/catch/finally — emit shape', () => {
     const swift = code(src, 'swift')
     expect(swift).toContain('func safeAge(_ raw: String) -> Double')
     expect(swift).not.toContain('safeAge(_ raw: String) throws')
-    expect(swift).toMatch(/\} catch \{\s*return 0/)
+    expect(swift).toMatch(/\} catch _ \{\s*return 0/)
     expect(code(src, 'kotlin')).toContain('catch (pyreonCaught: Exception)')
   })
 
@@ -265,8 +287,21 @@ function App() { return (<Stack><Text>{String(f(1))}</Text></Stack>) }`
   })
 })
 
+describe('a catch without a binding does not shadow user identifiers', () => {
+  it('Swift binds nothing (`catch _`), so `error` is still the signal', () => {
+    const swift = code(anonymousCatch, 'swift')
+    expect(swift).toContain('} catch _ {')
+    expect(swift).toContain('error = "failed"')
+  })
+  it('Kotlin names the error after every identifier the catch body uses', () => {
+    const kotlin = code(anonymousCatch, 'kotlin')
+    expect(kotlin).toContain('catch (pyreonCaught2: Exception)')
+    expect(kotlin).toContain('pyreonCaught = "yes"')
+  })
+})
+
 describe('try/throw survives the real toolchains', () => {
-  const sources = { validation, strictCatch, caughtInside, rethrow, guarded, uncaught, asyncHandler }
+  const sources = { validation, strictCatch, caughtInside, rethrow, guarded, uncaught, asyncHandler, anonymousCatch }
   for (const [name, src] of Object.entries(sources)) {
     it.skipIf(!isSwiftcAvailable())(`Swift: ${name} type-checks against the stub`, () => {
       const r = validateSwiftWithStubs(code(src, 'swift'))
