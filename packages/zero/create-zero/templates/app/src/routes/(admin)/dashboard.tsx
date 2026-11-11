@@ -22,6 +22,7 @@ export function guard() {
   if (!isAuthenticated) {
     return "/about" // Redirect unauthenticated users
   }
+
   return true // Allow navigation
 }
 

@@ -17,6 +17,7 @@ export async function postCredentials(
     })
     if (res.ok) return null
     const body = (await res.json().catch(() => ({}))) as { error?: string }
+
     return body.error ?? "Request failed"
   } catch {
     return "Network error — please try again"

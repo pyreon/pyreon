@@ -58,11 +58,13 @@ describe('scaffold — output file-set snapshots', () => {
         [
           ".gitignore",
           ".mcp.json",
+          ".oxlintrc.json",
           ".pyreonlintrc.json",
           "CLAUDE.md",
           "README.md",
           "env.d.ts",
           "index.html",
+          "oxfmt.config.ts",
           "package.json",
           "public/favicon.svg",
           "src/entry-client.ts",

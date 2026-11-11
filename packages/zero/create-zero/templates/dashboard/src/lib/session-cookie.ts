@@ -40,6 +40,7 @@ export function readSessionId(request: Request): string | undefined {
   const cookie = request.headers.get("cookie") ?? ""
   const raw = new RegExp(`(?:^|;\\s*)${SESSION_COOKIE}=([^;]+)`).exec(cookie)?.[1]
   if (!raw) return undefined
+
   try {
     return decodeURIComponent(raw)
   } catch {

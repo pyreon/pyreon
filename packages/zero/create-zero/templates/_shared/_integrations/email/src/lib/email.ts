@@ -29,5 +29,6 @@ export async function sendEmail<TProps extends Props>(opts: {
   })
 
   if (error) return { error: error.message }
+
   return { id: data?.id ?? 'unknown' }
 }

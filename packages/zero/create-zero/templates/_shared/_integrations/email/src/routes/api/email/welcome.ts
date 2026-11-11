@@ -4,6 +4,7 @@ import WelcomeEmail from '../../../emails/welcome'
 export async function GET(request: Request) {
   const url = new URL(request.url)
   const to = url.searchParams.get('to')
+
   if (!to) {
     return new Response(JSON.stringify({ error: 'Missing ?to=' }), {
       status: 400,

@@ -122,6 +122,7 @@ import { Stack, Text, Button } from '@pyreon/primitives'
 
 export function App() {
   const count = signal(0)
+
   return (
     <Stack gap="md" align="center">
       <Text data-testid="count">{count}</Text>
@@ -191,7 +192,11 @@ android/keystore.properties
           dev: 'vite',
           build: 'vite build',
           preview: 'vite preview',
-          lint: 'pyreon-lint .',
+          lint: 'oxlint && pyreon-lint .',
+          format: 'oxfmt',
+          // Formatter first, then the lint fixes: they only ADD blank lines
+          // between statements, which the formatter keeps, so one pass is stable.
+          fix: 'oxfmt && oxlint --fix && pyreon-lint --fix .',
           'build:ios': 'bash scripts/build-ios.sh',
           'build:android': 'bash scripts/build-android.sh',
           // Release lane: self-signed keystore (credential-free — Play App
@@ -222,6 +227,11 @@ android/keystore.properties
           '@pyreon/native-runtime-kotlin': PYREON_DEP_RANGE,
           '@pyreon/native-router-kotlin': PYREON_DEP_RANGE,
           '@pyreon/lint': PYREON_DEP_RANGE,
+          // The readable setup's other two halves: oxlint (size limits, via
+          // `.oxlintrc.json` extending `@pyreon/lint/oxlint/readable.json`)
+          // and oxfmt (formatting, via `oxfmt.config.ts`).
+          oxlint: '^1.89.0',
+          oxfmt: '^0.74.0',
           typescript: '^6.0.0',
           vite: '^8.0.0',
         },
@@ -253,8 +263,12 @@ android/keystore.properties
     `${JSON.stringify(
       {
         $schema: 'node_modules/@pyreon/lint/schema/pyreonlintrc.schema.json',
-        preset: 'recommended',
+        // `readable` adds the blank-line, component-section, JSX-depth and
+        // ternary rules; block padding is the strict tier's spacing rule, on
+        // here because new code pays nothing for it.
+        preset: ['recommended', 'readable'],
         groups: { portable: 'warn' },
+        rules: { 'pyreon/padding-around-multiline-blocks': 'warn' },
         // Shared, not per-rule: FIVE portable rules need to know which files
         // must lower, and listing them one by one makes this config a
         // hand-maintained subset of the rule registry — a sixth portable rule
@@ -264,6 +278,26 @@ android/keystore.properties
       null,
       2,
     )}\n`,
+  )
+  add(
+    '.oxlintrc.json',
+    `${JSON.stringify(
+      {
+        $schema: './node_modules/oxlint/configuration_schema.json',
+        extends: ['./node_modules/@pyreon/lint/oxlint/readable.json'],
+        ignorePatterns: ['dist', 'ios', 'android'],
+      },
+      null,
+      2,
+    )}\n`,
+  )
+  add(
+    'oxfmt.config.ts',
+    `// Formatting: Pyreon's house style, sorted imports, one JSX attribute per line
+// when a tag wraps. Blank lines between statements are @pyreon/lint's job
+// (\`bun run fix\`); the formatter keeps them.
+export { readableStrict as default } from '@pyreon/lint/oxfmt'
+`,
   )
   add(
     'index.html',
@@ -1116,7 +1150,7 @@ A Pyreon multi-platform project: **one source (\`src/App.tsx\`) renders on web, 
 - \`bun run build:ios\` / \`bun run build:android\` — compile \`src\` to Swift / Kotlin and build the native project.
 - \`npx pyreon-native dev --target=ios\` (or \`android\`) — watch \`src\`, rebuild, reinstall and relaunch on the running simulator/emulator. A rebuild loop, not hot reload.
 - \`bun run e2e:ios\` / \`bun run e2e:android\` — build and launch on the device, then run the Maestro flows in \`.maestro/\`. Give elements a \`data-testid\` and select them with \`id:\`.
-- \`bun run lint\` — Pyreon lint rules.
+- \`bun run lint\` — oxlint and the Pyreon lint rules, with the \`readable\` preset. \`bun run fix\` formats and applies every autofix (blank lines between declarations, before a return, between component sections).
 
 ## Rules that matter
 

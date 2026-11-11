@@ -36,5 +36,6 @@ export async function POST(ctx: ApiContext) {
   }
 
   POSTS.push(post)
+
   return Response.json(post, { status: 201 })
 }

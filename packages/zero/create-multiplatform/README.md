@@ -45,7 +45,10 @@ my-app/
   index.html  vite.config.ts  tsconfig.json   # web
   .pyreonlintrc.json           # the "portable" lint rule group is enabled + scoped
                                # to src/App.tsx — the rules that flag a shared-source
-                               # construct PMTC can't lower to iOS/Android
+                               # construct PMTC can't lower to iOS/Android; plus the
+                               # readable preset (blank lines, sections, JSX depth)
+  .oxlintrc.json               # extends @pyreon/lint/oxlint/readable.json (size limits)
+  oxfmt.config.ts              # re-exports the @pyreon/lint/oxfmt formatter preset
   ios/project.yml  ios/Sources/{App,ContentView}.swift  ios/Info.plist
   android/{settings,build}.gradle.kts  android/app/...   MainActivity.kt
   scripts/build-ios.sh  scripts/build-android.sh  scripts/ensure-release-keystore.sh
@@ -65,7 +68,9 @@ to compile the same source to SwiftUI / Compose.
 | `dev` | `vite` | Web dev server |
 | `build` | `vite build` | Web production build |
 | `preview` | `vite preview` | Preview the web build |
-| `lint` | `pyreon-lint .` | Lint (`@pyreon/lint`, incl. the `portable` rule group) |
+| `lint` | `oxlint && pyreon-lint .` | Lint (oxlint size limits + `@pyreon/lint`, incl. the `portable` rule group and the `readable` preset) |
+| `format` | `oxfmt` | Format (`oxfmt.config.ts` re-exports `@pyreon/lint/oxfmt`) |
+| `fix` | `oxfmt && oxlint --fix && pyreon-lint --fix .` | Format, then apply every autofix |
 | `build:ios` | `bash scripts/build-ios.sh` | Compile `src/App.tsx` → Swift, wire native sources, open/build in Xcode |
 | `build:android` | `bash scripts/build-android.sh` | Compile `src/App.tsx` → Kotlin, wire Gradle source sets, build with Gradle |
 | `release:keystore` | `bash scripts/ensure-release-keystore.sh` | Generate a self-signed Android release keystore if one doesn't already exist (credential-free — Play App Signing re-signs uploads) |

@@ -142,7 +142,7 @@ Migrating from another framework? Pick `--compat react | vue | solid | preact` a
 | `--ai` | CSV: `mcp,claude,cursor,copilot,agents` |
 | `--compat` | `none` / `react` / `vue` / `solid` / `preact` |
 | `--packages` (alias `--package-strategy`) | `meta` / `individual` |
-| `--lint` / `--no-lint` | toggle `@pyreon/lint` |
+| `--lint` / `--no-lint` | toggle the lint setup: `@pyreon/lint` with the `readable` preset, oxlint (`.oxlintrc.json`) and oxfmt (`oxfmt.config.ts`), plus `lint` / `format` / `fix` scripts |
 | `--typed-routes` / `--no-typed-routes` | toggle typed routes (`<Link href>` autocomplete + typo rejection; default on) |
 | `--yes` | skip prompts, accept defaults (requires a positional project name) |
 | `--install` / `--no-install` | accepted no-ops — the scaffolder never installs; it prints the install command as a next step |

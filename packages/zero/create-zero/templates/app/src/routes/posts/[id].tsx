@@ -73,6 +73,7 @@ export async function loader(ctx: LoaderContext) {
   await new Promise((r) => setTimeout(r, 50))
   const post = POSTS[ctx.params.id]
   if (!post) throw new Error("Post not found")
+
   return { post }
 }
 

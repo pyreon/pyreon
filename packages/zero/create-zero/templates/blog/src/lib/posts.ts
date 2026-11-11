@@ -32,6 +32,7 @@ export const posts: Post[] = Object.entries(modules)
       .split("/")
       .pop()!
       .replace(/\.tsx$/, "")
+
     return { ...mod.meta, slug, Component: mod.default }
   })
   .sort((a, b) => (a.date < b.date ? 1 : -1))

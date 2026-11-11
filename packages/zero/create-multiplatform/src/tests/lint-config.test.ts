@@ -83,12 +83,15 @@ const SOURCES = {
 const portableIds = new Set(
   allRules.filter((r) => groupOf(r.meta) === 'portable').map((r) => r.meta.id),
 )
+const styleIds = new Set(allRules.filter((r) => groupOf(r.meta) === 'style').map((r) => r.meta.id))
 
 describe('the scaffolded lint config', () => {
   it('is emitted at the project root and parses', () => {
     expect(() => JSON.parse(findConfig())).not.toThrow()
     const parsed = JSON.parse(findConfig()) as Record<string, unknown>
-    expect(parsed.preset).toBe('recommended')
+    // The readable layer on top of recommended: new projects start with the
+    // blank-line, component-section, JSX-depth and ternary rules on.
+    expect(parsed.preset).toEqual(['recommended', 'readable'])
   })
 
   it('pairs the config with a runnable `lint` script', () => {
@@ -134,19 +137,66 @@ describe('the scaffolded lint config', () => {
     }
   })
 
-  it('changes NOTHING outside the portable tier', () => {
+  it('changes NOTHING outside the portable tier and the readable style rules', () => {
     // A group key that quietly widened the set would make every scaffolded
-    // native app disagree with every other Pyreon project about severity.
+    // native app disagree with every other Pyreon project about severity. The
+    // `style` group is the one deliberate addition (the readable layer).
     const scaffolded = project(findConfig(), SOURCES)
     const bare = project(JSON.stringify({ preset: 'recommended' }), SOURCES)
     try {
       const key = (d: { ruleId: string; message: string }) => `${d.ruleId}:${d.message}`
-      const a = run(scaffolded).filter((d) => !portableIds.has(d.ruleId)).map(key).sort()
+      const a = run(scaffolded)
+        .filter((d) => !portableIds.has(d.ruleId) && !styleIds.has(d.ruleId))
+        .map(key)
+        .sort()
       const b = run(bare).filter((d) => !portableIds.has(d.ruleId)).map(key).sort()
       expect(a).toEqual(b)
     } finally {
       rmSync(scaffolded, { recursive: true, force: true })
       rmSync(bare, { recursive: true, force: true })
+    }
+  })
+})
+
+describe('the scaffolded readable setup', () => {
+  const files = buildScaffold(OPTS)
+  const file = (path: string) => files.find((f) => f.path === path)?.content ?? ''
+
+  it('ships the oxlint and oxfmt halves next to the lint config', () => {
+    expect(JSON.parse(file('.oxlintrc.json')).extends).toEqual([
+      './node_modules/@pyreon/lint/oxlint/readable.json',
+    ])
+    expect(file('oxfmt.config.ts')).toContain("export { readableStrict as default } from '@pyreon/lint/oxfmt'")
+    const pkg = JSON.parse(file('package.json')) as {
+      scripts: Record<string, string>
+      devDependencies: Record<string, string>
+    }
+    expect(pkg.scripts.lint).toBe('oxlint && pyreon-lint .')
+    expect(pkg.scripts.fix).toBe('oxfmt && oxlint --fix && pyreon-lint --fix .')
+    expect(pkg.devDependencies.oxlint).toBeDefined()
+    expect(pkg.devDependencies.oxfmt).toBeDefined()
+  })
+
+  it('turns on block padding, so new code gets spacing between its parts', () => {
+    const rc = JSON.parse(findConfig()) as { rules?: Record<string, string> }
+    expect(rc.rules?.['pyreon/padding-around-multiline-blocks']).toBe('warn')
+  })
+
+  it('every scaffolded source file is clean under the readable rules', () => {
+    // Write the WHOLE scaffold (its own config included) and lint it as a
+    // user's first `bun run lint` would.
+    const sources = Object.fromEntries(
+      files.filter((f) => /\.(ts|tsx)$/.test(f.path)).map((f) => [f.path, f.content]),
+    )
+    expect(Object.keys(sources)).toContain('src/App.tsx')
+    const dir = project(findConfig(), sources)
+    try {
+      const style = run(dir)
+        .filter((d) => styleIds.has(d.ruleId))
+        .map((d) => `${d.ruleId}: ${d.message}`)
+      expect(style).toEqual([])
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
     }
   })
 })

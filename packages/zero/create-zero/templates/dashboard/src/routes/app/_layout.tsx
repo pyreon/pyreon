@@ -28,6 +28,7 @@ export function layout() {
         void router.push("/login")
         return
       }
+
       session.set(info)
     })
   })

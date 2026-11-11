@@ -28,7 +28,9 @@ bun run dev          # → http://localhost:3000
 | `bun run preview` | Serve the production build locally |
 | `bun run doctor` | Audit the project (lint + types + perf budgets) |
 | `bun run doctor:fix` | Auto-fix what's safe |
-| `bun run lint` | Run `@pyreon/lint` (Pyreon-specific rules) |
+| `bun run lint` | Run oxlint and `@pyreon/lint` with the `readable` preset |
+| `bun run format` | Format with oxfmt (`oxfmt.config.ts`) |
+| `bun run fix` | Format, then apply every lint autofix (blank lines, imports) |
 
 ## Deploying
 

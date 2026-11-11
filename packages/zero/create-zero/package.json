@@ -35,6 +35,7 @@
   },
   "devDependencies": {
     "@pyreon/compiler": "workspace:*",
+    "@pyreon/lint": "workspace:*",
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
     "@pyreon/zero": "workspace:*"

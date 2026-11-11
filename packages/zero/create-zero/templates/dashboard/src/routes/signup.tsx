@@ -25,6 +25,7 @@ export default function Signup() {
     // sets the HttpOnly session cookie.
     const message = await postCredentials("/api/signup", email(), password())
     submitting.set(false)
+
     if (message) {
       error.set(message)
       return

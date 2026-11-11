@@ -29,6 +29,7 @@ export default function ErrorPage(props: ErrorPageProps = {}) {
     // pyreon-lint-ignore pyreon/dev-guard-warnings
     console.error("[Pyreon] route error boundary caught:", props.error)
   }
+
   const err = props.error
   const message =
     err instanceof Error ? err.message : err !== undefined ? String(err) : null

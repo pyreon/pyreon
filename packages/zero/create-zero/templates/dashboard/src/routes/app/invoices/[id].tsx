@@ -16,7 +16,7 @@ import {
   extractDocNode,
 } from "@pyreon/document-primitives"
 import { render } from "@pyreon/document"
-import { type Invoice, invoiceById, invoiceTotal } from "../../../lib/db"
+import { type Invoice, type InvoiceItem, invoiceById, invoiceTotal } from "../../../lib/db"
 import { formatDate, formatMoney } from '../../../lib/format'
 
 export const meta = { title: "Invoice" }
@@ -144,6 +144,7 @@ export default function InvoiceDetail() {
     }
 
     const found = inv()
+
     if (!found) {
       return (
         <>
@@ -171,26 +172,7 @@ export default function InvoiceDetail() {
             <p>{found.customer.name}</p>
             <p>{found.customer.email}</p>
             <p>{found.customer.address}</p>
-            <table>
-              <thead>
-                <tr>
-                  <th>Description</th>
-                  <th>Qty</th>
-                  <th>Unit price</th>
-                  <th>Line total</th>
-                </tr>
-              </thead>
-              <tbody>
-                {found.items.map((it) => (
-                  <tr>
-                    <td>{it.description}</td>
-                    <td>{it.qty}</td>
-                    <td>${formatMoney(it.unitPrice)}</td>
-                    <td>${formatMoney(it.qty * it.unitPrice)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <InvoiceLines items={found.items} />
             <div class="total">Total: ${formatMoney(invoiceTotal(found))}</div>
           </div>
 
@@ -212,4 +194,30 @@ export default function InvoiceDetail() {
       </>
     )
   }
+}
+
+/** The line-item table, its own component so the page's JSX stays shallow. */
+function InvoiceLines(props: { items: InvoiceItem[] }) {
+  return (
+    <table>
+      <thead>
+        <tr>
+          <th>Description</th>
+          <th>Qty</th>
+          <th>Unit price</th>
+          <th>Line total</th>
+        </tr>
+      </thead>
+      <tbody>
+        {props.items.map((it) => (
+          <tr>
+            <td>{it.description}</td>
+            <td>{it.qty}</td>
+            <td>${formatMoney(it.unitPrice)}</td>
+            <td>${formatMoney(it.qty * it.unitPrice)}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  )
 }

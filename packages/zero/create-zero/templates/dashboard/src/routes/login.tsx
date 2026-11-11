@@ -32,6 +32,7 @@ export default function Login() {
     // overlay, which swaps `lib/auth.ts` underneath the endpoint.
     const message = await postCredentials("/api/signin", email(), password())
     submitting.set(false)
+
     if (message) {
       error.set(message)
       return
