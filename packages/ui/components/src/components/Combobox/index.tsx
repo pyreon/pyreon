@@ -6,7 +6,7 @@ import {
   type ComboboxBaseProps,
   type ComboboxState,
 } from '@pyreon/ui-primitives'
-import { disabledState, el, focusRingTone } from '../../factory'
+import { disabledState, el, focusRingTone, type ModeFn, tones } from '../../factory'
 import type { Theme } from '@pyreon/ui-theme'
 
 /**
@@ -25,13 +25,13 @@ import type { Theme } from '@pyreon/ui-theme'
 
 /** Shared input theme — used by the styled escape-hatch chain AND the
  *  built-in input atom, so the two paths can never drift. */
-const inputTheme = (t: Theme) => ({
+const inputTheme = (t: Theme, m: ModeFn) => ({
   width: '100%',
-  backgroundColor: t.color.system.light.base,
-  color: t.color.system.dark[800],
+  backgroundColor: tones(t, m).surface,
+  color: tones(t, m).text,
   borderWidth: t.borderWidth.base,
   borderStyle: t.borderStyle.base,
-  borderColor: t.color.system.base[300],
+  borderColor: tones(t, m).border,
   borderRadius: t.borderRadius.base,
   fontSize: t.fontSize.small,
   lineHeight: t.lineHeight.base,
@@ -40,7 +40,7 @@ const inputTheme = (t: Theme) => ({
   focus: { ...focusRingTone(t, 'primary'), borderColor: t.color.system.primary.base },
   disabled: { ...disabledState(), backgroundColor: t.color.system.base[50] },
   placeholder: {
-    color: t.color.system.base[400],
+    color: tones(t, m).placeholder,
   },
 })
 
@@ -121,7 +121,7 @@ const ComboboxListbox = el
     contentAlignX: 'left',
     contentAlignY: 'top',
   })
-  .theme((t) => ({
+  .theme((t, m) => ({
     position: 'absolute',
     top: '100%',
     left: 0,
@@ -129,10 +129,10 @@ const ComboboxListbox = el
     marginTop: t.spacing.xxSmall,
     paddingTop: t.spacing.xxSmall,
     paddingBottom: t.spacing.xxSmall,
-    backgroundColor: t.color.system.light.base,
+    backgroundColor: tones(t, m).surface,
     borderWidth: t.borderWidth.base,
     borderStyle: t.borderStyle.base,
-    borderColor: t.color.system.base[200],
+    borderColor: tones(t, m).border,
     borderRadius: t.borderRadius.base,
     boxShadow: t.shadows.medium,
     maxHeight: 240,
@@ -156,10 +156,10 @@ const ComboboxOption = el
     contentAlignY: 'center',
     block: true,
   })
-  .theme((t) => ({
+  .theme((t, m) => ({
     cursor: 'pointer',
     fontSize: t.fontSize.small,
-    color: t.color.system.dark[800],
+    color: tones(t, m).text,
     paddingTop: t.spacing.xxSmall,
     paddingBottom: t.spacing.xxSmall,
     paddingLeft: t.spacing.small,
