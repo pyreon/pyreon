@@ -5,6 +5,7 @@
 // either passed through as unknown or surfaces a warning.
 
 import { isDoubleLiteralValue } from './number-literal'
+import { desugarGlobalTimers } from './global-timers-desugar'
 import { lowerDateNode } from './date-lowering'
 import { refineParamFloatsFromCallSites } from './call-site-param-floats'
 import { applyDestructureAbsence, applyDestructureAbsenceToLets } from './destructure-absence'
@@ -379,6 +380,8 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
   // TS `enum`s reduce to shapes the recognizers already lower (a string-literal union / `number`, members to their
   // literals) — see ts-enum-desugar.ts. Before any extractor reads the AST, like the hook bindings below.
   ctx.warnings.push(...desugarTsEnums(ast.program as AnyNode))
+  // `window.setTimeout(…)` / `globalThis.setInterval(…)` are the bare timers (global-timers-desugar.ts).
+  desugarGlobalTimers(ast.program as AnyNode)
   ctx.warnings.push(
     ...canonicalizeHookBindings(
       ast.program as AnyNode,
