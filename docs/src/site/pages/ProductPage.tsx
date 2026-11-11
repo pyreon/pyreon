@@ -3,12 +3,14 @@ import { useHead } from '@pyreon/head'
 import { EXTRA_SECTIONS } from '../content/extra-sections'
 import type { ExtraSection, ProductData } from '../content/model'
 import { DEMOS } from '../demos/registry'
+import { HeroVisualFigure, InlineSvg } from '../demos/_asset'
 import { PRODUCTS, productHref } from '../nav'
 import { gradient } from '../theme'
 import { el, pair, tone } from '../kit/bases'
 import { BenchmarkTable } from '../kit/bench'
 import { FactList, FeatureList, Faq, LimitNote, NumberedCards, StatRow, StepCards, ApiGroups } from '../kit/blocks'
-import { EmberGradientDefs, GlowCard, PackageCard, ProductTag } from '../kit/cards'
+import { EmberGradientDefs, GlowCard, ProductTag } from '../kit/cards'
+import { ExtraCallout, ExtraPackageCard, NextReleaseNote } from '../kit/extras'
 import { BeforeAfter, CodeCard, ComingFrom } from '../kit/code'
 import { InstallCommand, Pill } from '../kit/controls'
 import { useLinkClick } from '../kit/link'
@@ -94,8 +96,20 @@ const SwitchLink = el
     extendCss: `&[aria-current='page'] { color: ${tone(m, 'text')}; border-color: ${tone(m, 'currentBorder')}; background: ${tone(m, 'currentFill')}; }`,
   }))
 
-function Extra(props: { section: ExtraSection }) {
+function Extra(props: { section: ExtraSection; svgs?: Record<string, { alt: string; svg: string }> | undefined }) {
   const s = props.section
+  if (s.kind === 'callout') {
+    return (
+      <Reveal>
+        <Section size="tight">
+          <Wrap>
+            <ExtraCallout section={s} />
+          </Wrap>
+        </Section>
+      </Reveal>
+    )
+  }
+  const diagram = s.kind === 'steps' && s.visual ? props.svgs?.[s.visual] : undefined
   return (
     <Reveal>
       <Section size="tight">
@@ -104,11 +118,14 @@ function Extra(props: { section: ExtraSection }) {
           {s.kind === 'packages' ? (
             <AutoGrid min={s.cols ? undefined : 250} cols={s.cols} gap={12}>
               <For each={s.items} by={(i) => i.pkg}>
-                {(i) => <PackageCard pkg={i.pkg} kind={i.role} text={i.text} />}
+                {(i) => <ExtraPackageCard item={i} />}
               </For>
             </AutoGrid>
           ) : s.kind === 'steps' ? (
-            <StepCards items={s.items} />
+            <Stack>
+              <StepCards items={s.items} />
+              {diagram ? <InlineSvg svg={diagram.svg} /> : null}
+            </Stack>
           ) : (
             <StatRow stats={s.stats} />
           )}
@@ -124,6 +141,11 @@ export function ProductPage(props: { data: ProductData }) {
   const Demo = DEMOS[d.demo.component]
   const extra = d.extraSections ?? EXTRA_SECTIONS[d.id] ?? []
   const docsHref = `/docs/${d.id}`
+  // An unreleased product's install line is a comment (`# … next release`):
+  // show it as a status note, never as a command to copy.
+  const unreleased = d.hero.install.trimStart().startsWith('#')
+  const url = `https://pyreon.dev${d.route}`
+  const og = d.visuals?.og
 
   useHead({
     title: `${d.name} — ${inlineText(d.hero.title)} · Pyreon`,
@@ -131,7 +153,23 @@ export function ProductPage(props: { data: ProductData }) {
       { name: 'description', content: inlineText(d.hero.lede) },
       { property: 'og:title', content: `${d.name} · Pyreon` },
       { property: 'og:description', content: inlineText(d.hero.lede) },
+      { property: 'og:type', content: 'website' },
+      { property: 'og:url', content: url },
+      ...(og
+        ? [
+            { property: 'og:image', content: `https://pyreon.dev${og.src}` },
+            { property: 'og:image:width', content: String(og.width) },
+            { property: 'og:image:height', content: String(og.height) },
+            { property: 'og:image:alt', content: og.alt },
+            { name: 'twitter:image', content: `https://pyreon.dev${og.src}` },
+            { name: 'twitter:image:alt', content: og.alt },
+          ]
+        : []),
+      { name: 'twitter:card', content: 'summary_large_image' },
+      { name: 'twitter:title', content: `${d.name} · Pyreon` },
+      { name: 'twitter:description', content: inlineText(d.hero.lede) },
     ],
+    link: [{ rel: 'canonical', href: url }],
   })
 
   return (
@@ -150,7 +188,7 @@ export function ProductPage(props: { data: ProductData }) {
               </Heading>
               <Lede size="hero">{renderInline(d.hero.lede)}</Lede>
               <Ctas id="install">
-                <InstallCommand command={d.hero.install} variant="hot" />
+                {unreleased ? <NextReleaseNote text={d.hero.install} /> : <InstallCommand command={d.hero.install} variant="hot" />}
                 <Pill size="lg" href={docsHref}>
                   Documentation
                 </Pill>
@@ -158,6 +196,7 @@ export function ProductPage(props: { data: ProductData }) {
             </div>
             <FactList facts={d.hero.facts} />
           </HeroGrid>
+          {d.visuals ? <HeroVisualFigure visual={d.visuals.hero} /> : null}
         </Wrap>
       </Section>
 
@@ -198,7 +237,7 @@ export function ProductPage(props: { data: ProductData }) {
 
       {/* 5 · extra sections (typed) */}
       <For each={extra} by={(s) => s.title}>
-        {(s) => <Extra section={s} />}
+        {(s) => <Extra section={s} svgs={d.visuals?.svgs} />}
       </For>
 
       {/* 6 · coming from */}
@@ -348,7 +387,7 @@ export function ProductPage(props: { data: ProductData }) {
               {d.end.title}
             </Heading>
             <CenteredCtas>
-              <InstallCommand command={d.hero.install} variant="hot" />
+              {unreleased ? <NextReleaseNote text={d.hero.install} /> : <InstallCommand command={d.hero.install} variant="hot" />}
               <Pill variant="solid" size="lg" href={docsHref}>
                 {d.end.cta}
               </Pill>

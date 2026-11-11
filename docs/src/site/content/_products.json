@@ -98,7 +98,7 @@
    "package": "@pyreon/zero",
    "group": "build",
    "href": "/products/zero",
-   "pitch": "Every route picks its own rendering: SSG, SSR, ISR or SPA, plus islands, server actions and adapters for Node, Bun, Vercel, Netlify, Cloudflare and static hosts.",
+   "pitch": "Every route picks its own rendering: SSG, SSR, ISR or SPA, plus islands, server actions and adapters for Node, Bun, Deno, Vercel, Netlify, Cloudflare and static hosts.",
    "proof": {
     "stat": "6.5×",
     "label": "faster server rendering than React 19 at 1,000 rows (compiled SSR, 109.9 vs 714.4 µs)",
@@ -120,7 +120,7 @@
    "package": "@pyreon/primitives",
    "group": "build",
    "href": "/products/primitives",
-   "pitch": "22 components, from `<Stack>` and `<Field>` to `<Select>` and `<Modal>`, that render DOM on the web and real SwiftUI and Jetpack Compose views on phones (native: experimental)."
+   "pitch": "Components from `<Stack>` and `<Field>` to `<Toggle>` and `<Modal>` (22 in the next release) that render DOM on the web and real SwiftUI and Jetpack Compose views on phones (native: experimental)."
   },
   {
    "id": "design",
@@ -131,8 +131,8 @@
    "pitch": "Eleven packages: `styled()` CSS-in-JS, components styled by state × size × variant × dark mode, a responsive grid and transitions, all cached and SSR-safe.",
    "proof": {
     "stat": "4 of 4",
-    "label": "ops won by the styler against Emotion, goober and styled-components (cold insert, warm dedup, dynamic resolve, SSR collect)",
-    "condition": "one run, overnight pass",
+    "label": "timed operations where the styler beat both Emotion and goober (cold insert, warm dedup, dynamic resolve, SSR collect)",
+    "condition": "one run, overnight pass, bun",
     "source": "00-brief/BENCHMARKS-2026-11-05.md §9 Styler"
    }
   },
@@ -142,7 +142,7 @@
    "package": "@pyreon/auth",
    "group": "build",
    "href": "/products/auth",
-   "pitch": "OIDC sign-in on web, iOS and Android from one call, with S256 PKCE, `state`, `nonce` and the issuer check on by default, plus signed sessions, TOTP and passkeys.",
+   "pitch": "OIDC sign-in on the web, and on iOS and Android (experimental), from one call, with S256 PKCE, `state`, `nonce` and the issuer check on by default, plus signed sessions, TOTP and passkeys.",
    "status": "next release"
   },
   {
@@ -173,7 +173,7 @@
    "package": "@pyreon/hooks",
    "group": "foundations",
    "href": "/products/hooks",
-   "pitch": "65 signal-based hooks for the browser and the phone, from `useClickOutside` and `useMediaQuery` to `useCamera` and `useBiometrics`."
+   "pitch": "65 signal-based hooks, 45 of them also on iOS and Android (experimental), from `useClickOutside` and `useMediaQuery` to `useCamera` and `useBiometrics`."
   },
   {
    "id": "kinetic",
@@ -181,7 +181,7 @@
    "package": "@pyreon/kinetic + kinetic-presets",
    "group": "foundations",
    "href": "/products/kinetic",
-   "pitch": "Enter, leave, collapse and stagger from one `kinetic(tag)` factory, 120+ presets, reduced motion detected for you, and SSR output crawlers can read."
+   "pitch": "Enter, leave, collapse and stagger from one `kinetic(tag)` factory, 122 presets, reduced motion detected for you, and SSR output crawlers can read."
   },
   {
    "id": "a11y",
@@ -208,7 +208,7 @@
    "pitch": "`toast('Saved')` from anywhere, no provider; `toast.promise()` for async work, and the timer pauses on hover, on focus and in a hidden tab.",
    "proof": {
     "stat": "2.5–3.8×",
-    "label": "faster headless toast operations than react-hot-toast and sonner",
+    "label": "faster headless toast operations than react-hot-toast",
     "condition": "one run, overnight pass, bun",
     "source": "00-brief/BENCHMARKS-2026-11-05.md §10 toast"
    }
@@ -377,7 +377,7 @@
    "package": "@pyreon/rx",
    "group": "data",
    "href": "/products/rx",
-   "pitch": "42 functions (`filter`, `sortBy`, `groupBy`, `pipe`, `debounce`…) that take signals and return signals.",
+   "pitch": "43 functions (`filter`, `sortBy`, `groupBy`, `pipe`, `debounce`…) that take signals and return signals.",
    "proof": {
     "stat": "N → 1",
     "label": "a `pipe()` of N stages runs as one reactive node (exact count)",
@@ -391,7 +391,7 @@
    "package": "@pyreon/charts",
    "group": "visual",
    "href": "/products/charts",
-   "pitch": "Charts written as JSX marks (`<Line>`, `<Bar>`, `<Area>`) on Pyreon's own engine, with an accessible data table built in and the same source on iOS and Android.",
+   "pitch": "Charts written as JSX marks (`<Line>`, `<Bar>`, `<Area>`) on Pyreon's own engine, with an accessible data table built in and the same source on iOS and Android (experimental).",
    "proof": {
     "stat": "8.7×",
     "label": "faster than ECharts 6 mounting a 100,000-point line chart (4.36 vs 37.95 ms)",
@@ -441,7 +441,7 @@
    "package": "@pyreon/flow",
    "group": "visual",
    "href": "/products/flow",
-   "pitch": "Node editors where each node mounts once and a drag touches one node, with auto-layout from its own engine: no elkjs, no D3.",
+   "pitch": "Node editors where each node mounts once and a drag touches one node, with auto-layout from its own engine: no dagre, no elkjs.",
    "proof": {
     "stat": "6/6",
     "label": "operations won against React Flow 12 (500 nodes): mount, drag, select, add, pan and zoom, unmount",
@@ -477,7 +477,7 @@
    "package": "@pyreon/cli · lint · devtools · mcp · testing",
    "group": "tools",
    "href": "/products/tooling",
-   "pitch": "`pyreon doctor` runs 15 gates and scores your project 0–100 with the fixes inline, next to 133 lint rules, `pyreon check`, a test kit and devtools for the reactive graph."
+   "pitch": "`pyreon doctor` runs up to ten gates over your app and scores it 0–100 with the fixes inline, next to 133 lint rules, `pyreon check`, a test kit and devtools for the reactive graph."
   },
   {
    "id": "ai",

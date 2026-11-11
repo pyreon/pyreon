@@ -1,0 +1,364 @@
+{
+ "id": "kinetic",
+ "route": "/products/kinetic",
+ "name": "Motion",
+ "package": "@pyreon/kinetic + kinetic-presets",
+ "category": "ui system · animation",
+ "hero": {
+  "title": "A presence animation is one line. The compositor runs it.",
+  "lede": "`kinetic('div').preset(fadeUp)` gives you a component that animates in and out: fades, slides, height collapses, and staggered lists that arrive in order. It runs on CSS transitions with no JavaScript animation loop, and handles reduced motion and server rendering for you.",
+  "install": "bun add @pyreon/kinetic @pyreon/kinetic-presets",
+  "ctaShort": "Install",
+  "facts": [
+   {
+    "key": "presets",
+    "value": "122 in kinetic-presets<small>Six of them also ship in kinetic itself.</small>"
+   },
+   {
+    "key": "modes",
+    "value": "transition · collapse · stagger · group"
+   },
+   {
+    "key": "engine",
+    "value": "CSS transitions, no per-frame JavaScript<small>Waits for transitionend, with a 5 s safety timeout.</small>"
+   },
+   {
+    "key": "accessibility",
+    "value": "prefers-reduced-motion respected<small>Gate a reveal on `useReducedMotion()` until #4336 lands.</small>"
+   }
+  ]
+ },
+ "why": {
+  "title": "Motion that is cheap to run and easy to write.",
+  "items": [
+   {
+    "title": "One factory, immutable chains",
+    "text": "`kinetic('div').preset(fadeUp)` is a component and a builder in one value. Every chain call returns a new component, so you define `FadeUp` once at module scope and fork variants from it."
+   },
+   {
+    "title": "The browser does the animating",
+    "text": "Kinetic applies the start and end styles (or classes) across a double `requestAnimationFrame` and waits for `transitionend`. Animate `transform`, `opacity` and `filter` and the work stays on the compositor thread."
+   },
+   {
+    "title": "Lists that arrive in order",
+    "text": "`.stagger({ interval: 75 })` sequences children, sets `--stagger-index` on each and can leave last-in, first-out with `reverseLeave`."
+   },
+   {
+    "title": "Safe for every user and every crawler",
+    "text": "On the server, initially hidden content is emitted with its hidden style inlined, so scroll-reveal sections are in the HTML. For readers who ask for less motion, render the plain element instead of the reveal, as the recipe below does."
+   }
+  ]
+ },
+ "difference": {
+  "title": "The same panel, with less ceremony.",
+  "before": {
+   "label": "React + Motion",
+   "caption": "A presence boundary, a conditional, a key and four animation props for one panel.",
+   "code": "import { useState } from 'react'\nimport { AnimatePresence, motion } from 'motion/react'\n\nexport function Panel() {\n  const [open, setOpen] = useState(false)\n  return (\n    <div>\n      <button onClick={() => setOpen((v) => !v)}>Toggle</button>\n      <AnimatePresence>\n        {open && (\n          <motion.div\n            key=\"panel\"\n            initial={{ opacity: 0, y: 16 }}\n            animate={{ opacity: 1, y: 0 }}\n            exit={{ opacity: 0, y: 16 }}\n            transition={{ duration: 0.3 }}\n          >\n            <p>Hello</p>\n          </motion.div>\n        )}\n      </AnimatePresence>\n    </div>\n  )\n}"
+  },
+  "after": {
+   "label": "Pyreon + kinetic",
+   "caption": "Define the animated box once. `show` takes the signal read; leave runs before it hides.",
+   "code": "import { signal } from '@pyreon/reactivity'\nimport { kinetic } from '@pyreon/kinetic'\nimport { fadeUp } from '@pyreon/kinetic-presets'\n\nconst FadeUp = kinetic('div').preset(fadeUp)\n\nexport function Panel() {\n  const open = signal(false)\n  return (\n    <div>\n      <button onClick={() => open.update((v) => !v)}>Toggle</button>\n      <FadeUp show={open()} onAfterLeave={() => console.log('gone')}>\n        <p>Hello</p>\n      </FadeUp>\n    </div>\n  )\n}"
+  }
+ },
+ "extraSectionsHtml": null,
+ "demo": {
+  "title": "Pick a preset, toggle it.",
+  "text": "A few of the 122 presets on one box, and a list in stagger mode. Toggle runs the leave animation; pick a preset to replay the enter.",
+  "component": "DemoKinetic",
+  "reference": "pkg-kinetic.html#demo",
+  "referenceHtml": "<div class=\"p-demo\">\n  <div class=\"card\"><div class=\"in\">\n    <span class=\"label\">preset</span>\n    <div class=\"kn-pre\" id=\"kn-pre\"></div>\n    <div style=\"display:flex;gap:10px;margin-top:6px\"><button class=\"pill solid\" type=\"button\" id=\"kn-t\">Toggle</button><button class=\"pill\" type=\"button\" id=\"kn-s\">Replay stagger</button></div>\n    <pre id=\"kn-code\" style=\"margin:6px 0 0;padding:14px;border:1px solid var(--line);border-radius:10px;background:var(--well);font-size:12px\"></pre>\n  </div></div>\n  <div class=\"ui\" style=\"display:grid;grid-template-rows:auto 1fr;gap:18px;min-height:380px;overflow:hidden\">\n    <div style=\"height:150px;display:grid;place-items:center;perspective:600px\"><div id=\"kn-box\" class=\"kn-box\">Hello</div></div>\n    <ul id=\"kn-list\" class=\"kn-list\"></ul>\n  </div>\n</div>",
+  "referenceCss": ".kn-pre{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}.kn-pre button{height:38px;border-radius:10px;border:1px solid var(--line);background:transparent;color:var(--mist);font-family:var(--mono);font-size:12px;cursor:pointer}.kn-pre button[aria-pressed=\"true\"]{border-color:rgba(255,94,26,.55);background:rgba(255,94,26,.08);color:var(--ivory)}\n.kn-box{width:180px;height:110px;border-radius:16px;background:linear-gradient(135deg,#C2410C,#E40C70);color:#fff;display:grid;place-items:center;font-weight:650;font-size:20px;transition:all .45s cubic-bezier(.2,.8,.2,1)}\n.kn-list{list-style:none;margin:0;padding:0;display:grid;gap:8px}.kn-list li{padding:10px 14px;border-radius:10px;background:#fff;box-shadow:0 0 0 1px #E6DFD2;font-size:14px;transition:all .4s cubic-bezier(.2,.8,.2,1)}\n@media (prefers-reduced-motion: reduce){.kn-box,.kn-list li{transition:none}}",
+  "referenceJs": "(function(){var P={fade:'opacity:0',fadeUp:'opacity:0;transform:translateY(24px)',scaleIn:'opacity:0;transform:scale(.7)',slideRight:'opacity:0;transform:translateX(-80px)',flipX:'opacity:0;transform:rotateX(90deg)',blurIn:'opacity:0;filter:blur(12px)',zoomOut:'opacity:0;transform:scale(1.4)',rotateIn:'opacity:0;transform:rotate(-25deg) scale(.8)',bounceUp:'opacity:0;transform:translateY(60px)'},cur='fadeUp',shown=true,$=function(i){return document.getElementById(i)};\nfunction apply(el,hidden){el.setAttribute('style',hidden?P[cur]:'');if(cur==='bounceUp')el.style.transitionTimingFunction='cubic-bezier(.34,1.56,.64,1)'}\nfunction r(){$('kn-pre').innerHTML=Object.keys(P).map(function(k){return '<button type=\"button\" aria-pressed=\"'+(k===cur)+'\" data-k=\"'+k+'\">'+k+'</button>'}).join('');document.querySelectorAll('[data-k]').forEach(function(b){b.onclick=function(){cur=b.dataset.k;r();replay()}});$('kn-code').innerHTML='<span class=\"k\">const</span> Box = <span class=\"f\">kinetic</span>(<span class=\"s\">\\'div\\'</span>).<span class=\"f\">preset</span>('+cur+')\\n<span class=\"p\">&lt;</span><span class=\"t\">Box</span> show={'+shown+'}<span class=\"p\">&gt;</span>Hello<span class=\"p\">&lt;/</span><span class=\"t\">Box</span><span class=\"p\">&gt;</span>'}\nfunction replay(){var b=$('kn-box');apply(b,true);requestAnimationFrame(function(){requestAnimationFrame(function(){apply(b,!shown)})});stagger()}\nfunction stagger(){var items=['Invoice #1042 paid','New comment on Launch plan','Ada joined the team','Weekly report ready'];$('kn-list').innerHTML=items.map(function(t){return '<li>'+t+'</li>'}).join('');var lis=$('kn-list').children;[].forEach.call(lis,function(li){apply(li,true)});[].forEach.call(lis,function(li,i){setTimeout(function(){apply(li,false)},80+i*90)})}\n$('kn-t').onclick=function(){shown=!shown;apply($('kn-box'),!shown);r()};$('kn-s').onclick=stagger;r();replay();})();",
+  "spec": "Same behaviour as the prototype, built with the real package: the box is `kinetic('div').preset(<choice>)` driven by a `show` signal, the list is `kinetic('ul').preset(<choice>).stagger({ interval: 90 })`. The preset buttons are real exports: fade, fadeUp, scaleIn, slideRight, flipX, blurIn, zoomOut, rotateIn and bounceInUp (the prototype's `bounceUp` is not a preset name). The code panel shows the chain for the selected preset."
+ },
+ "features": {
+  "title": "The whole motion toolkit.",
+  "items": [
+   {
+    "name": "kinetic(tag)",
+    "text": "a component and an immutable builder in one value"
+   },
+   {
+    "name": "Four modes:",
+    "text": "transition, collapse (height 0 ↔ auto), stagger and group"
+   },
+   {
+    "name": "Style or class config:",
+    "text": "`.enter()` / `.enterTo()` objects, or `.enterClass({ active, from, to })` for Tailwind"
+   },
+   {
+    "name": "Lifecycle callbacks:",
+    "text": "onEnter, onAfterEnter, onLeave and onAfterLeave, as props or through `.on()`"
+   },
+   {
+    "name": "122 presets:",
+    "text": "fades, slides, zooms, flips, blur, clip-path reveals, perspective, swing and more"
+   },
+   {
+    "name": "5 factories:",
+    "text": "createFade, createSlide, createScale, createRotate and createBlur with direction, distance, duration and easing"
+   },
+   {
+    "name": "5 utilities:",
+    "text": "compose, withDuration, withEasing, withDelay and reverse, so you tune a preset without forking it"
+   },
+   {
+    "name": "Stagger custom properties:",
+    "text": "`--stagger-index` and `--stagger-interval` on every child for your own CSS timing"
+   },
+   {
+    "name": "SSR-safe:",
+    "text": "initially hidden content is rendered with its hidden state, not dropped"
+   },
+   {
+    "name": "Native:",
+    "text": "a kinetic box with a fade, scale or slide preset compiles to the primitives' Transition on iOS and Android; other presets warn by name"
+   }
+  ]
+ },
+ "api": {
+  "title": "Factory, presets, helpers.",
+  "groups": [
+   {
+    "name": "kinetic",
+    "items": [
+     "kinetic",
+     "kinetic.preset",
+     "kinetic.enter",
+     "kinetic.enterTo",
+     "kinetic.enterTransition",
+     "kinetic.leave",
+     "kinetic.leaveTo",
+     "kinetic.leaveTransition",
+     "kinetic.enterClass",
+     "kinetic.leaveClass",
+     "kinetic.collapse",
+     "kinetic.stagger",
+     "kinetic.group",
+     "kinetic.on",
+     "kinetic.config"
+    ]
+   },
+   {
+    "name": "hooks",
+    "items": [
+     "useTransitionState",
+     "useAnimationEnd"
+    ]
+   },
+   {
+    "name": "built-in presets",
+    "items": [
+     "presets",
+     "fade",
+     "scaleIn",
+     "slideUp",
+     "slideDown",
+     "slideLeft",
+     "slideRight"
+    ]
+   },
+   {
+    "name": "kinetic-presets",
+    "items": [
+     "presets",
+     "fadeUp",
+     "blurInUp",
+     "bounceIn",
+     "zoomIn",
+     "flipX",
+     "clipCircle",
+     "swingInTop",
+     "springIn"
+    ]
+   },
+   {
+    "name": "factories and utilities",
+    "items": [
+     "createFade",
+     "createSlide",
+     "createScale",
+     "createRotate",
+     "createBlur",
+     "compose",
+     "withDuration",
+     "withEasing",
+     "withDelay",
+     "reverse"
+    ]
+   }
+  ]
+ },
+ "limits": [
+  {
+   "title": "Presence, not physics",
+   "text": "Kinetic animates elements entering and leaving. For drag-driven springs or scroll-linked timelines, pair it with a physics library; the bouncy presets use cubic-bezier curves."
+  },
+  {
+   "title": "Animate transform, opacity and filter",
+   "text": "Width, height, top and left run on the main thread. For height, use collapse mode."
+  },
+  {
+   "title": "Import presets by name",
+   "text": "Named imports tree-shake to what you use. The `presets` map pins all 122 (about 2.2 KB gzip, author-measured), and a misspelled `presets[name]` animates nothing without an error."
+  },
+  {
+   "title": "Stagger is for lists that stay",
+   "text": "Stagger reads its children once at render. Group mode, for lists that change at runtime, does not yet animate removals (#4359); until it does, animate the list container rather than its rows."
+  },
+  {
+   "title": "Reduced motion and reveals",
+   "text": "An initially hidden box that later shows stays hidden under reduced motion (#4336). Until the fix lands, gate reveals on `useReducedMotion()` and render the plain element for those readers."
+  }
+ ],
+ "related": [
+  {
+   "href": "/products/design",
+   "category": "ui system",
+   "name": "Design System",
+   "text": "Animate the components your theme styles.",
+   "package": "@pyreon/rocketstyle · styler · elements · coolgrid · kinetic"
+  },
+  {
+   "href": "/products/primitives",
+   "category": "core",
+   "name": "Primitives",
+   "text": "`<Transition>` for animation on web, iOS and Android.",
+   "package": "@pyreon/primitives"
+  },
+  {
+   "href": "/products/hooks",
+   "category": "fundamentals",
+   "name": "Hooks",
+   "text": "`useReducedMotion` and friends for your own motion logic.",
+   "package": "@pyreon/hooks"
+  }
+ ],
+ "end": {
+  "title": "Everything that appears can arrive. Everything that leaves can go quietly.",
+  "cta": "Read the motion guide"
+ },
+ "benchmarks": null,
+ "glyphSvg": "<circle cx=\"34\" cy=\"60\" r=\"10\" stroke=\"currentColor\" stroke-width=\"8\" fill=\"none\" opacity=\".45\"/><circle cx=\"60\" cy=\"60\" r=\"13\" stroke=\"currentColor\" stroke-width=\"9\" fill=\"none\" opacity=\".75\"/><circle cx=\"90\" cy=\"60\" r=\"18\" fill=\"url(#eg)\"/>",
+ "proof": [
+  {
+   "stat": "122",
+   "label": "presets, each a named export you can tree-shake",
+   "source": "packages/ui-system/kinetic-presets/src/presets.ts (presets map: 122 keys, counted)"
+  },
+  {
+   "stat": "~200 B",
+   "label": "gzip for one imported preset (fadeUp: 286 B minified, 202 B gzip, author-measured)",
+   "source": "bun build of `import { fadeUp }` from kinetic-presets lib, minify + gzip -9; guarded by src/__tests__/tree-shake.test.ts"
+  },
+  {
+   "stat": "4",
+   "label": "modes from one factory: transition, collapse, stagger, group",
+   "source": "packages/ui-system/kinetic/src/manifest.ts; docs/src/content/docs/kinetic.md \"The Four Modes\""
+  }
+ ],
+ "comingFrom": [
+  {
+   "lib": "Motion (AnimatePresence)",
+   "title": "Animated add and remove for a keyed list.",
+   "before": "import { AnimatePresence, motion } from 'motion/react'\n\ntype Todo = { id: number; text: string }\n\nexport function TodoList({ todos }: { todos: Todo[] }) {\n  return (\n    <ul>\n      <AnimatePresence>\n        {todos.map((t) => (\n          <motion.li\n            key={t.id}\n            initial={{ opacity: 0, x: 16 }}\n            animate={{ opacity: 1, x: 0 }}\n            exit={{ opacity: 0, x: 16 }}\n          >\n            {t.text}\n          </motion.li>\n        ))}\n      </AnimatePresence>\n    </ul>\n  )\n}",
+   "after": "import type { Signal } from '@pyreon/reactivity'\nimport { kinetic } from '@pyreon/kinetic'\nimport { fadeLeft } from '@pyreon/kinetic-presets'\n\ntype Todo = { id: number; text: string }\n\nconst AnimatedList = kinetic('ul').preset(fadeLeft).group()\n\nexport function TodoList(props: { todos: Signal<Todo[]> }) {\n  return (\n    <AnimatedList>\n      {() => props.todos().map((t) => <li key={t.id}>{t.text}</li>)}\n    </AnimatedList>\n  )\n}",
+   "note": "Group mode diffs children by `key`. Pass an accessor (`{() => …}`) so the list re-evaluates when the data changes; a plain snapshot would never animate a later addition."
+  }
+ ],
+ "recipes": [
+  {
+   "title": "An FAQ accordion",
+   "text": "Collapse mode animates height between 0 and the measured content height, which a plain CSS transition to `auto` still cannot do in every browser.",
+   "code": "import { signal } from '@pyreon/reactivity'\nimport { kinetic } from '@pyreon/kinetic'\n\nconst Collapse = kinetic('div').collapse({ transition: 'height 250ms ease-out' })\n\nexport function Faq(props: { q: string; a: string }) {\n  const open = signal(false)\n  return (\n    <section>\n      <button aria-expanded={open()} onClick={() => open.update((v) => !v)}>\n        {props.q}\n      </button>\n      <Collapse show={open()}>\n        <p>{props.a}</p>\n      </Collapse>\n    </section>\n  )\n}"
+  },
+  {
+   "title": "A checklist that arrives in order",
+   "text": "Stagger mode with `fadeUp`: each step starts 80 ms after the one before, and on hide the steps leave last-in, first-out. Readers who ask for less motion get the plain list.",
+   "code": "import { Show } from '@pyreon/core'\nimport { signal } from '@pyreon/reactivity'\nimport { useReducedMotion } from '@pyreon/hooks'\nimport { kinetic } from '@pyreon/kinetic'\nimport { fadeUp } from '@pyreon/kinetic-presets'\n\nconst StepList = kinetic('ol').preset(fadeUp).stagger({ interval: 80, reverseLeave: true })\n\nexport function Steps() {\n  const show = signal(true)\n  const reduced = useReducedMotion()\n  return (\n    <div>\n      <button onClick={() => show.update((v) => !v)}>{() => (show() ? 'Hide steps' : 'Show steps')}</button>\n      <Show\n        when={reduced}\n        fallback={\n          <StepList show={() => show()}>\n            <li>Install</li>\n            <li>Write a component</li>\n            <li>Ship it</li>\n          </StepList>\n        }\n      >\n        <Show when={show}>\n          <ol>\n            <li>Install</li>\n            <li>Write a component</li>\n            <li>Ship it</li>\n          </ol>\n        </Show>\n      </Show>\n    </div>\n  )\n}"
+  },
+  {
+   "title": "A scroll reveal that search engines still read",
+   "text": "An IntersectionObserver flips one signal. On the server the section renders with its hidden style inlined, so the heading is in the HTML. Readers who ask for less motion get the plain section.",
+   "code": "import { Show, onMount } from '@pyreon/core'\nimport { signal } from '@pyreon/reactivity'\nimport { useReducedMotion } from '@pyreon/hooks'\nimport { kinetic } from '@pyreon/kinetic'\nimport { blurInUp } from '@pyreon/kinetic-presets'\n\nconst Reveal = kinetic('section').preset(blurInUp)\n\nexport function Feature(props: { title: string }) {\n  const seen = signal(false)\n  const reduced = useReducedMotion()\n  let el: HTMLElement | null = null\n  onMount(() => {\n    const io = new IntersectionObserver(([entry]) => {\n      if (entry?.isIntersecting) seen.set(true)\n    })\n    if (el) io.observe(el)\n    return () => io.disconnect()\n  })\n  return (\n    <div ref={(node) => { el = node }}>\n      <Show\n        when={reduced}\n        fallback={\n          <Reveal show={seen()}>\n            <h2>{props.title}</h2>\n          </Reveal>\n        }\n      >\n        <section>\n          <h2>{props.title}</h2>\n        </section>\n      </Show>\n    </div>\n  )\n}"
+  }
+ ],
+ "faq": [
+  {
+   "q": "Why CSS transitions instead of a JavaScript animation engine?",
+   "a": "Because the browser already interpolates `transform`, `opacity` and `filter` off the main thread. Kinetic only decides when each phase starts and ends, so a busy main thread does not stutter the animation."
+  },
+  {
+   "q": "Does it work with Tailwind?",
+   "a": "Yes. `.enterClass({ active, from, to })` and `.leaveClass()` take utility classes, and a preset can carry class fields instead of style objects."
+  },
+  {
+   "q": "What happens with prefers-reduced-motion?",
+   "a": "Visuals are skipped and the element goes straight to its end state. `onEnter` → `onAfterEnter` and `onLeave` → `onAfterLeave` still fire, so logic that waits for an animation keeps working."
+  },
+  {
+   "q": "Does it run on iOS and Android?",
+   "a": "Partly, and experimentally. A kinetic box with a fade, scale or slide preset compiles to the same native transition as `<Transition>` from `@pyreon/primitives`; presets with no native analogue warn by name. `<Transition>` is the portable spelling."
+  },
+  {
+   "q": "Is it faster than Motion?",
+   "a": "We ran kinetic against Motion and do not publish the result yet: in that run kinetic measured faster than our own hand-written CSS baseline, which the same work cannot do. Until the harness explains that, there is no claim. Don't trust us; that is the point."
+  }
+ ],
+ "sources": [
+  {
+   "claim": "122 presets; the 6 built-ins in @pyreon/kinetic (fade, scaleIn, slideUp/Down/Left/Right) are also in the 122, so the total is 122 not 128",
+   "path": "packages/ui-system/kinetic-presets/src/presets.ts (presets map, 122 keys); packages/ui-system/kinetic/src/presets.ts; counted by .scratch/core/fork-b/count.ts"
+  },
+  {
+   "claim": "One named preset ~300 B: measured 286 B minified / 202 B gzip; whole map 15.5 KB min / 2.2 KB gzip",
+   "path": "bun build of kinetic-presets/lib with --minify, gzip -9 (.scratch/core/fork-b); packages/ui-system/kinetic-presets/src/__tests__/tree-shake.test.ts"
+  },
+  {
+   "claim": "Double rAF, transitionend/animationend, safety timeout default 5000 ms",
+   "path": "packages/ui-system/kinetic/src/manifest.ts description; src/kinetic/TransitionRenderer.tsx line ~105"
+  },
+  {
+   "claim": "Reduced motion skips visuals, callbacks still fire",
+   "path": "packages/ui-system/kinetic/src/kinetic/TransitionRenderer.tsx (applyReducedMotion); manifest mistakes list"
+  },
+  {
+   "claim": "SSR emits initially hidden children with hidden class/style inlined",
+   "path": "packages/ui-system/kinetic/src/__tests__/Transition.ssr.test.tsx, kinetic-modes.ssr.test.tsx"
+  },
+  {
+   "claim": "Group mode needs keyed children and an accessor; stagger snapshots children once",
+   "path": "packages/ui-system/kinetic/src/manifest.ts kinetic.mistakes"
+  },
+  {
+   "claim": "--stagger-index / --stagger-interval custom properties",
+   "path": "packages/ui-system/kinetic/src/manifest.ts features"
+  },
+  {
+   "claim": "Native: kinetic(tag).preset with fade/scale/slide lowers via the Transition path; others decline by name (landed before 0.53.0, #3854/#3865)",
+   "path": "packages/ui-system/kinetic/src/manifest.ts and kinetic-presets/src/manifest.ts nativeFrontend; packages/ui-system/kinetic/src/native-plugin/plugin.ts"
+  },
+  {
+   "claim": "Kinetic vs Motion is provisional and withheld (kinetic below the CSS baseline)",
+   "path": "00-brief/BENCHMARKS-2026-11-05.md §10 Animation note, §14"
+  },
+  {
+   "claim": "Misspelled presets[name] silently applies nothing",
+   "path": "packages/ui-system/kinetic-presets/src/manifest.ts presets.mistakes"
+  },
+  {
+   "claim": "Factory options (direction, distance, duration, leaveDuration, easing)",
+   "path": "docs/src/content/docs/kinetic-presets.md \"createSlide\""
+  },
+  {
+   "claim": "fadeUp / fadeLeft move 16px; default enter 300ms ease-out, leave 200ms ease-in",
+   "path": "packages/ui-system/kinetic-presets/src/presets.ts lines 38-49; manifest presets summary"
+  },
+  {
+   "claim": "Samples compile (transformJSX), typecheck (tsc) and run in happy-dom: group adds a row and moves a removed row to its leave style; panel goes opacity 0 → 1 with a 300ms transition; collapse starts at height 0",
+   "path": ".scratch/core/fork-b/{kinetic-after,kinetic-recipe-*,kinetic-from-motion}.tsx; out/run-kinetic.ts"
+  }
+ ]
+}

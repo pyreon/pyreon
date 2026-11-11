@@ -1,0 +1,356 @@
+{
+ "id": "http",
+ "route": "/products/http",
+ "name": "HTTP",
+ "package": "@pyreon/http",
+ "category": "fundamentals · requests",
+ "hero": {
+  "title": "Your API sent { id: 7 }. Your client called it a User.",
+  "lede": "`@pyreon/http` is a `fetch` client that checks what comes back against your schema, times out by default, encodes path params for you and keeps errors typed. Retries, auth and mocks are plain middleware, and the core has zero dependencies.",
+  "install": "bun add @pyreon/http",
+  "ctaShort": "Install",
+  "facts": [
+   {
+    "key": "core",
+    "value": "zero dependencies<small>Middleware, schemas, streams and SSR live in their own entries.</small>"
+   },
+   {
+    "key": "timeout",
+    "value": "on, 30 s<small>`fetch` has none; a hung server never settles the promise.</small>"
+   },
+   {
+    "key": "validation",
+    "value": "any Standard Schema<small>Zod, Valibot, ArkType, `s`, or a plain `(raw) => T`.</small>"
+   },
+   {
+    "key": "native",
+    "value": "{dot:warn}endpoints on iOS and Android<small>Experimental; `useFetch` / `useQuery` over an endpoint lower to native networking.</small>"
+   }
+  ]
+ },
+ "why": {
+  "title": "Requests that behave in production.",
+  "items": [
+   {
+    "title": "Responses are checked, not cast",
+    "text": "Declare `response: User` once and every call is validated. A payload that drifts throws `ResponseValidationError` at the boundary instead of crashing a component three screens later. Set `validate: 'warn'` to log and degrade instead."
+   },
+   {
+    "title": "Middleware, not interceptors",
+    "text": "`(request, next) => response`. Retry calls `next()` in a loop, refresh re-issues after a 401, a mock returns without calling `next`. No `__isRetry` flags, no `eject()` handles, order is the `use` array."
+   },
+   {
+    "title": "One declaration, three uses",
+    "text": "`api.endpoint('GET /users/:id', { response: User })` is a typed function, a `.query()` for `useQuery` with its cache key, and a `.mutation()`. `params` is required exactly when the path has placeholders."
+   },
+   {
+    "title": "Safe on a busy server",
+    "text": "Clients are immutable (`extend()` derives), and `runWithRequest` keeps each SSR render's request in `AsyncLocalStorage`, so one user's cookie can't reach another user's render. `forwardHeaders` needs an allowlist and stops at your origin."
+   }
+  ]
+ },
+ "difference": {
+  "title": "Everything the bare `fetch` call quietly skips.",
+  "before": {
+   "label": "fetch, by hand",
+   "caption": "A timer for the timeout, string-built URLs, a status check, and a cast that believes anything.",
+   "code": "type User = { id: string; name: string }\n\nconst ctrl = new AbortController()\nconst timer = setTimeout(() => ctrl.abort(), 10_000)\ntry {\n  const res = await fetch(`https://api.example.com/users/${id}`, { // id = '../admin'?\n    headers: { Authorization: `Bearer ${token}` },\n    signal: ctrl.signal,\n  })\n  if (!res.ok) throw new Error(`HTTP ${res.status}`) // which errors do we retry?\n  const user = (await res.json()) as User // trust me\n  console.log(user.name)\n} finally {\n  clearTimeout(timer)\n}"
+  },
+  "after": {
+   "label": "with @pyreon/http",
+   "caption": "Timeout on, params encoded, retry and auth as middleware, the body validated.",
+   "code": "import { createHttp } from '@pyreon/http'\nimport { bearer, retry } from '@pyreon/http/middleware'\nimport { standardSchema } from '@pyreon/http/schema'\nimport { z } from 'zod'\n\nconst User = z.object({ id: z.string(), name: z.string() })\n\nconst api = createHttp({\n  baseUrl: 'https://api.example.com', // 30 s timeout is already on\n  use: [bearer(getToken), retry({ limit: 2 })],\n  schema: standardSchema,\n})\n\nconst getUser = api.endpoint('GET /users/:id', { response: User })\nconst user = await getUser({ params: { id } }) // encoded, typed and validated"
+  }
+ },
+ "extraSectionsHtml": null,
+ "demo": {
+  "title": "Send a request through the middleware.",
+  "text": "Send a request through real middleware into a mock server. Make the server fail and watch `retry()` back off; make it hang and the default timeout end it with a `TimeoutError`; make it return the wrong shape and see `ResponseValidationError` before your UI does.",
+  "component": "DemoHttp",
+  "reference": "pkg-http.html#demo",
+  "referenceHtml": "<div class=\"p-demo\">\n  <div class=\"card\"><div class=\"in\">\n    <div class=\"ds-ctl\"><span class=\"label\">server</span><div class=\"seg\" id=\"ht-s\"><button type=\"button\" aria-pressed=\"true\">ok</button><button type=\"button\">fails once</button><button type=\"button\">500 always</button><button type=\"button\">hangs</button></div></div>\n    <button class=\"pill solid\" type=\"button\" id=\"ht-go\">api.get('users/1')</button>\n    <pre style=\"margin:0;padding:14px;border:1px solid var(--line);border-radius:10px;background:var(--well);font-size:12px;line-height:1.7\">use: [<span class=\"f\">bearer</span>(…), <span class=\"f\">retry</span>({ limit: <span class=\"n\">2</span> })]\ntimeout: <span class=\"n\">10_000</span>  <span class=\"c\">// default, shortened here</span></pre>\n  </div></div>\n  <div class=\"card\"><div class=\"in\"><span class=\"label\">request log</span><div class=\"logbox\" id=\"ht-log\"></div></div></div>\n</div>",
+  "referenceCss": ".ds-ctl{display:grid;grid-template-columns:60px 1fr;align-items:center;gap:10px}.seg{display:flex;gap:2px;padding:3px;border:1px solid var(--line);border-radius:999px;width:fit-content;flex-wrap:wrap}.seg button{height:30px;padding:0 12px;border:0;border-radius:999px;background:transparent;color:var(--fog);font-family:var(--mono);font-size:12px;cursor:pointer}.seg button[aria-pressed=\"true\"]{background:var(--line);color:var(--ivory)}\n.logbox{font-family:var(--mono);font-size:12px;line-height:1.85;color:var(--mist);min-height:220px}.logbox div{border-bottom:1px solid var(--line);padding:3px 0}.logbox .ok{color:var(--ok)}.logbox .er{color:var(--err)}.logbox .dm{color:var(--fog)}",
+  "referenceJs": "(function(){var mode='ok',busy=false,$=function(i){return document.getElementById(i)};document.querySelectorAll('#ht-s button').forEach(function(b){b.onclick=function(){document.querySelectorAll('#ht-s button').forEach(function(x){x.setAttribute('aria-pressed',x===b)});mode=b.textContent}});\nfunction log(t,c){var d=document.createElement('div');d.className=c||'';d.textContent=t;$('ht-log').appendChild(d)}\n$('ht-go').onclick=function(){if(busy)return;busy=true;$('ht-log').innerHTML='';log('→ GET /api/users/1','dm');log('  bearer: Authorization header added','dm');var attempt=0;(function tryOnce(){attempt++;log('  attempt '+attempt+'…');setTimeout(function(){if(mode==='hangs'){log('✕ TimeoutError after 10 s (default timeout)','er');busy=false;return}var fail=mode==='500 always'||(mode==='fails once'&&attempt===1);if(fail){log('  ← 500 Internal Server Error','er');if(attempt<=2){log('  retry: waiting '+(attempt*200)+' ms','dm');setTimeout(tryOnce,attempt*200)}else{log('✕ RequestError 500 after 3 attempts','er');busy=false}}else{log('← 200 OK · validated by UserSchema','ok');log('  { id: 1, name: \"Ada\" }','dm');busy=false}},mode==='hangs'?1200:450)})()};})();",
+  "spec": "DemoHttp uses the real `createHttp` with `retry({ limit: 2 })` and `@pyreon/http/mock` as the transport, so no network is used. Server modes: ok; fail once with 503 (retry succeeds on attempt 2); always 503 (`ServerError` after 3 attempts); hang (the demo lowers `timeout` to 3 s so the `TimeoutError` arrives quickly, and says so); wrong shape (`{ id: 7 }` → `ResponseValidationError`). Each attempt is logged with its delay."
+ },
+ "features": {
+  "title": "The whole request layer.",
+  "items": [
+   {
+    "name": "`createHttp` + `extend()`",
+    "text": "immutable clients; `extend` adds headers and middleware and leaves the parent alone."
+   },
+   {
+    "name": "Shipped middleware",
+    "text": "`retry` (equal-jitter backoff, `Retry-After`), `bearer`, `refresh`, `dedupe`, `logger`, `forwardHeaders`."
+   },
+   {
+    "name": "Three validation tiers",
+    "text": "`.json<User>()` cast, `.json(isUser)` guard, `.json(UserSchema)` with any Standard Schema."
+   },
+   {
+    "name": "Typed errors",
+    "text": "`HttpError` → `ClientError` / `ServerError`, plus `TimeoutError`, `NetworkError`, `ParseError`, `ResponseValidationError`; `AbortError` kept apart."
+   },
+   {
+    "name": "Error bodies by status",
+    "text": "`errors: { 404: NotFound, '5XX': Outage }` validates and types the failure body."
+   },
+   {
+    "name": "Every body encoding",
+    "text": "`json`, `form` (OpenAPI styles incl. `deepObject`), `multipart`, raw `body`, `cookies`."
+   },
+   {
+    "name": "Lossless JSON",
+    "text": "`@pyreon/http/json` keeps 64-bit ids past 2^53 intact."
+   },
+   {
+    "name": "Streams",
+    "text": "`openEventStream` (SSE with resume and backoff) and `openNdjsonStream`, over POST, with auth and mocks."
+   },
+   {
+    "name": "Mocks without MSW",
+    "text": "`createMock` is middleware; unmatched requests fall through to the real transport."
+   },
+   {
+    "name": "Native middleware",
+    "text": "`bearer`, `retry` and `logger` in a literal `use` array lower to iOS and Android with web semantics. Experimental.",
+    "status": "next release"
+   }
+  ]
+ },
+ "api": {
+  "title": "A small core and opt-in entries.",
+  "groups": [
+   {
+    "name": "client",
+    "items": [
+     "createHttp",
+     "defineEndpoint",
+     "compose",
+     "createFetchTransport",
+     "fetchTransport"
+    ]
+   },
+   {
+    "name": "errors",
+    "items": [
+     "RequestError",
+     "HttpError",
+     "ClientError",
+     "ServerError",
+     "TimeoutError",
+     "AbortError",
+     "NetworkError",
+     "ParseError",
+     "ResponseValidationError",
+     "isAbortError"
+    ]
+   },
+   {
+    "name": "URLs and bodies",
+    "items": [
+     "buildUrl",
+     "applyPathParams",
+     "buildQuery",
+     "encodeForm",
+     "encodeMultipart",
+     "encodeCookies"
+    ]
+   },
+   {
+    "name": "@pyreon/http/middleware",
+    "items": [
+     "retry",
+     "bearer",
+     "refresh",
+     "dedupe",
+     "logger",
+     "forwardHeaders"
+    ]
+   },
+   {
+    "name": "entries: /schema, /mock, /server, /stream, /json, /query",
+    "items": [
+     "standardSchema",
+     "createMock",
+     "runWithRequest",
+     "openEventStream",
+     "openNdjsonStream",
+     "losslessJson",
+     "toQueryOptions"
+    ]
+   },
+   {
+    "name": "next release",
+    "items": [
+     "encodePathParam"
+    ]
+   }
+  ]
+ },
+ "limits": [
+  {
+   "title": "No cache, on purpose",
+   "text": "Caching, dedup and retries-by-default belong to `@pyreon/query`, which calls this client. Retry here is opt-in so the two don't multiply."
+  },
+  {
+   "title": "Use `params`, never a template string",
+   "text": "Building the path with a template string skips encoding, so an id of `../admin` reaches `/admin`. Write `api.get('/users/:id', { params: { id } })`; the `pyreon/no-unencoded-path-interpolation` lint rule flags the other form."
+  },
+  {
+   "title": "Bearer tokens stay on your origin",
+   "text": "`bearer` and `forwardHeaders` only attach to requests on `baseUrl`'s origin unless you pass `{ crossOrigin: true }`."
+  },
+  {
+   "title": "`.mutation()` and strict optional types",
+   "text": "Today `useMutation(endpoint.mutation({ invalidates }))` fails to typecheck with `exactOptionalPropertyTypes` (on in Pyreon's preset). Pass `{ mutationFn, invalidates: [endpoint.key.prefix] }` instead, as in the recipe below."
+  }
+ ],
+ "related": [
+  {
+   "href": "/products/query",
+   "category": "fundamentals",
+   "name": "Query",
+   "text": "Caching on top of these requests.",
+   "package": "@pyreon/query"
+  },
+  {
+   "href": "/products/lathe",
+   "category": "tools",
+   "name": "Lathe",
+   "text": "Generates typed endpoints for this client.",
+   "package": "@pyreon/lathe"
+  },
+  {
+   "href": "/products/auth",
+   "category": "fundamentals",
+   "name": "Auth",
+   "text": "`bearer` plus `refresh` keep an OIDC session's token current. Auth lands in the next release.",
+   "package": "@pyreon/auth"
+  }
+ ],
+ "end": {
+  "title": "Trust the network a little less. Your types a little more.",
+  "cta": "Read the HTTP guide"
+ },
+ "benchmarks": null,
+ "glyphSvg": "<path d=\"M14 44 H96 M80 28 L96 44 L80 60\" stroke=\"currentColor\" stroke-width=\"10\" fill=\"none\"/><path d=\"M106 80 H24 M40 64 L24 80 L40 96\" stroke=\"currentColor\" stroke-width=\"10\" fill=\"none\"/><circle cx=\"18\" cy=\"44\" r=\"10\" fill=\"url(#eg)\"/>",
+ "proof": [
+  {
+   "stat": "0",
+   "label": "runtime dependencies in the core. Each extra (middleware, schema, mock, SSR, streams) is a separate entry.",
+   "source": "packages/fundamentals/http/package.json (no dependencies); docs/src/content/docs/http.md 'Everything is optional'"
+  },
+  {
+   "stat": "30 s",
+   "label": "default timeout on every request; retry stays off so Query's 3 retries don't become 16 requests.",
+   "source": "docs/src/content/docs/http.md 'Defaults, and why'"
+  },
+  {
+   "stat": "28",
+   "label": "shared scenarios that the web middleware and the iOS and Android runtimes must answer identically (next release, experimental).",
+   "source": ".changeset/http-native-client-middleware.md (unreleased)"
+  }
+ ],
+ "comingFrom": [
+  {
+   "lib": "axios",
+   "title": "Interceptors become middleware; the cast becomes a check.",
+   "before": "import axios from 'axios'\ntype User = { id: string; name: string }\n\nconst api = axios.create({ baseURL: 'https://api.example.com', timeout: 10_000 })\napi.interceptors.request.use((config) => {\n  config.headers.Authorization = `Bearer ${getToken()}`\n  return config\n})\n// retry: a third-party package, or a response interceptor with a flag on config\n\nconst { data: user } = await api.get<User>(`/users/${encodeURIComponent(id)}`) // a cast, not a check",
+   "after": "import { createHttp } from '@pyreon/http'\nimport { bearer, retry } from '@pyreon/http/middleware'\nimport { standardSchema } from '@pyreon/http/schema'\nimport { z } from 'zod'\n\nconst User = z.object({ id: z.string(), name: z.string() })\n\nconst api = createHttp({\n  baseUrl: 'https://api.example.com', // 30 s timeout is already on\n  use: [bearer(getToken), retry({ limit: 2 })],\n  schema: standardSchema,\n})\n\nconst getUser = api.endpoint('GET /users/:id', { response: User })\nconst user = await getUser({ params: { id } }) // encoded, typed and validated",
+   "note": "axios has no retry by default, so a 503 throws, and a `{ id: 7 }` body comes back typed as a `User`. The Pyreon client retries the 503 and throws `ResponseValidationError` on the bad body."
+  },
+  {
+   "lib": "ky",
+   "title": "Same fetch-first idea, plus endpoints and schemas.",
+   "before": "import ky from 'ky'\ntype User = { id: string; name: string }\n\nconst api = ky.create({\n  baseUrl: 'https://api.example.com',\n  retry: 2,\n  hooks: {\n    beforeRequest: [({ request }) => request.headers.set('Authorization', `Bearer ${getToken()}`)],\n  },\n})\n\nconst user = await api.get(`users/${encodeURIComponent(id)}`).json<User>() // a cast, not a check",
+   "after": "import { createHttp } from '@pyreon/http'\nimport { bearer, retry } from '@pyreon/http/middleware'\nimport { standardSchema } from '@pyreon/http/schema'\nimport { z } from 'zod'\n\nconst User = z.object({ id: z.string(), name: z.string() })\n\nconst api = createHttp({\n  baseUrl: 'https://api.example.com', // 30 s timeout is already on\n  use: [bearer(getToken), retry({ limit: 2 })],\n  schema: standardSchema,\n})\n\nconst getUser = api.endpoint('GET /users/:id', { response: User })\nconst user = await getUser({ params: { id } }) // encoded, typed and validated",
+   "note": "ky already retries and times out by default. What you gain: `params` encoding from the path, a declared response schema, typed error bodies, and one endpoint that also feeds `useQuery`."
+  },
+  {
+   "lib": "ofetch",
+   "title": "Keep the defaults you like, add a schema.",
+   "before": "import { ofetch } from 'ofetch'\ntype User = { id: string; name: string }\n\nconst api = ofetch.create({\n  baseURL: 'https://api.example.com',\n  retry: 2,\n  timeout: 10_000,\n  onRequest({ options }) {\n    options.headers.set('Authorization', `Bearer ${getToken()}`)\n  },\n})\n\nconst user = await api<User>(`/users/${encodeURIComponent(id)}`) // a cast, not a check",
+   "after": "import { createHttp } from '@pyreon/http'\nimport { bearer, retry } from '@pyreon/http/middleware'\nimport { standardSchema } from '@pyreon/http/schema'\nimport { z } from 'zod'\n\nconst User = z.object({ id: z.string(), name: z.string() })\n\nconst api = createHttp({\n  baseUrl: 'https://api.example.com', // 30 s timeout is already on\n  use: [bearer(getToken), retry({ limit: 2 })],\n  schema: standardSchema,\n})\n\nconst getUser = api.endpoint('GET /users/:id', { response: User })\nconst user = await getUser({ params: { id } }) // encoded, typed and validated",
+   "note": "ofetch's `onRequest` hook becomes `bearer()`. The response is validated instead of cast, and an abort stays an `AbortError`, separate from real failures."
+  }
+ ],
+ "recipes": [
+  {
+   "title": "Tests with no network and no MSW",
+   "text": "A mock is middleware, so it can't leak between test files, and unmatched routes fall through.",
+   "code": "import { createHttp } from '@pyreon/http'\nimport { createMock } from '@pyreon/http/mock'\n\n// no MSW, no patched globalThis.fetch: the mock is just middleware\nconst mock = createMock([\n  { path: '/users/1', json: { id: '1', name: 'Ada' } },\n  { method: 'POST', path: '/users', status: 201, json: { id: '2', name: 'Grace' } },\n])\nconst api = createHttp({ baseUrl: 'https://api.test', use: [mock.middleware] })\n\nconst ada = await api.get('/users/:id', { params: { id: '1' } }).json<{ name: string }>()\nawait api.post('/users', { json: { name: 'Grace' } })\n\nconsole.log(ada.name, mock.calls.length) // 'Ada' 2"
+  },
+  {
+   "title": "Stream an LLM reply over POST",
+   "text": "`EventSource` can't POST, send auth or be mocked. `openEventStream` can, and `break` closes the connection.",
+   "code": "import { createHttp } from '@pyreon/http'\nimport { createMock } from '@pyreon/http/mock'\nimport { openEventStream } from '@pyreon/http/stream'\n\nconst sse = 'event: token\\ndata: {\"text\":\"Hel\"}\\n\\nevent: token\\ndata: {\"text\":\"lo\"}\\n\\nevent: done\\ndata: {}\\n\\n'\nconst mock = createMock([\n  { method: 'POST', path: '/chat', accept: 'text/event-stream', headers: { 'content-type': 'text/event-stream' }, body: sse },\n])\n\nconst api = createHttp({ baseUrl: 'https://api.test', use: [mock.middleware] })\n\n// a POST with a JSON body, middleware (this mock, or your auth) and headers: none of which EventSource can do\nconst chat = api.endpoint('POST /chat', { responseType: 'stream' })\nconst stream = openEventStream(\n  (ctx) => chat({ json: { prompt: 'Say hello' }, signal: ctx.signal, headers: ctx.headers }),\n  { reconnect: false },\n)\n\nlet reply = ''\nfor await (const ev of stream) {\n  if (ev.type === 'done') break\n  reply += (ev.data as { text: string }).text\n}\nconsole.log(reply) // 'Hello'"
+  },
+  {
+   "title": "A todo list where URL, key and type can't drift",
+   "text": "Endpoints feed `useQuery` directly, and a mutation invalidates every query of the list endpoint.",
+   "code": "import { createHttp } from '@pyreon/http'\nimport { standardSchema } from '@pyreon/http/schema'\nimport { For } from '@pyreon/core'\nimport { useMutation, useQuery } from '@pyreon/query'\nimport { s } from '@pyreon/validate'\n\nconst Todo = s.object({ id: s.number(), title: s.string() })\nconst api = createHttp({ baseUrl: 'https://app.example.com/api', schema: standardSchema })\n\nconst listTodos = api.endpoint('GET /todos', { response: s.array(Todo) })\nconst addTodo = api.endpoint('POST /todos', { response: Todo })\n\nfunction Todos() {\n  const todos = useQuery(() => listTodos.query()) // key, fn and type from one line\n  const add = useMutation({\n    mutationFn: (title: string) => addTodo({ json: { title } }),\n    invalidates: [listTodos.key.prefix], // every listTodos query refetches\n  })\n\n  return (\n    <>\n      <button onClick={() => add.mutate('Ship it')}>Add</button>\n      <ul>\n        <For each={() => todos.data() ?? []} by={(t) => t.id}>\n          {(t) => <li>{t.title}</li>}\n        </For>\n      </ul>\n    </>\n  )\n}"
+  }
+ ],
+ "faq": [
+  {
+   "q": "How fast is it?",
+   "a": "The record has a head-to-head with ofetch, ky, redaxios and axios, but its harness changed after that run (a new 'library defaults' row, PR #4142), so we are not quoting it here until the next measured run. The `bench/` file is in the repo."
+  },
+  {
+   "q": "Why is retry off?",
+   "a": "Because `@pyreon/query` already retries three times, so a failing query makes four attempts. A client that also retried three times would send four requests per attempt: sixteen in all. Add `retry()` where you call the client directly."
+  },
+  {
+   "q": "Does it run on the server?",
+   "a": "Yes, on Node, Bun and edge runtimes with `fetch`. `@pyreon/http/server` is the only entry that touches `node:async_hooks`, so it never lands in a browser bundle."
+  },
+  {
+   "q": "What about iOS and Android?",
+   "a": "The imperative client is web and server. Same-file endpoints called through `useFetch` or `useQuery` lower to the native networking runtime, and `bearer`, `retry` and `logger` middleware cross too (next release). Native is experimental."
+  }
+ ],
+ "sources": [
+  {
+   "claim": "Run against a local Bun server: axios threw on 503 and returned {id:7}; ky/ofetch retried 503 and returned {id:7}; Pyreon retried and threw ResponseValidationError",
+   "path": "scratch run-http.ts (axios 1.20.0, ky 2.2.0, ofetch 1.5.1)"
+  },
+  {
+   "claim": "Zero dependencies; validation optional peer",
+   "path": "packages/fundamentals/http/package.json"
+  },
+  {
+   "claim": "Defaults: timeout 30s on, retry off, dedupe off, throw on non-2xx",
+   "path": "docs/src/content/docs/http.md 'Defaults, and why'"
+  },
+  {
+   "claim": "Error hierarchy and typed errors by status",
+   "path": "docs/src/content/docs/http.md 'Errors'; packages/fundamentals/http/src/errors.ts"
+  },
+  {
+   "claim": "runWithRequest via AsyncLocalStorage; forwardHeaders allowlist + origin boundary",
+   "path": "docs/src/content/docs/http.md 'SSR'"
+  },
+  {
+   "claim": "Native middleware lowering, 28 shared scenarios (unreleased)",
+   "path": ".changeset/http-native-client-middleware.md; docs/src/content/docs/http.md 'Multiplatform'"
+  },
+  {
+   "claim": "retry backoff is equal jitter",
+   "path": ".changeset/http-retry-equal-jitter-label.md"
+  },
+  {
+   "claim": "useMutation(endpoint.mutation({invalidates})) fails tsc under exactOptionalPropertyTypes",
+   "path": "packages/fundamentals/http/src/endpoint.ts L322-325 vs packages/fundamentals/query/src/use-mutation.ts L84; reproduced in scratch tsc; filed as pyreon/pyreon#4310"
+  },
+  {
+   "claim": "Draft fixes: benchmark table removed (http figures not quotable after PR #4142); 'native {dot:var(--ok)}' → experimental; '17 exports' replaced; 'endpoint()' standalone does not exist (it is api.endpoint / defineEndpoint)",
+   "path": "00-brief/BENCHMARKS-2026-11-05.md §10 harness note; packages/fundamentals/http/src/index.ts"
+  },
+  {
+   "claim": "Mock, stream and endpoint+query recipes run",
+   "path": "scratch ts/http-recipe-mock.ts ('Ada 2'), ts/http-recipe-stream.ts ('Hello'), run-todos.tsx (list 1 → 2 after add, gets 2)"
+  }
+ ]
+}
