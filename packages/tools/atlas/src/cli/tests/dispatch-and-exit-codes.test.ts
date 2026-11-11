@@ -94,6 +94,8 @@ describe('the top-level dispatch', () => {
     // signal — `atlas scna` would otherwise pass silently forever.
     expect(await run('scna')).toBe(1)
     expect(errText()).toContain('unknown command')
+    // The shared failure shape (rule 4): symbol · source · problem, then fix:.
+    expect(errText()).toMatch(/^✗ atlas · unknown command ".*"\.\n {3}fix: run `atlas --help` for the list of commands\n$/)
     expect(errText(), 'and say where to look').toContain('--help')
   })
 
