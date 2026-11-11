@@ -29,6 +29,7 @@
  *   - loom-scan             (dependency-fabric errors: phantom deps, runtime cycles, drift)
  *   - check-advisory-comment-steps (advisory PR-comment step that can turn a check red)
  *   - check-leak-ratchet    (a leak-class finding grew above its committed baseline)
+ *   - check-counter-catalog (a dev counter emitted with no COUNTERS.md row, or a stale row)
  *   - check-zero-feature-coverage (a documented zero feature has no real-build test)
  *   - check-breaking-changeset-codemod (a zero minor changeset lacks an `Upgrade:` line)
  *   - check-lint-ratchet    (oxlint warn-finding count grew above baseline)
@@ -43,7 +44,7 @@
  *                            manifest edits leave the docs-site reference,
  *                            troubleshooting and examples pages stale)
  *
- * 51 gates, ~4-15s warm on an unloaded machine. The point is: catch ALL the
+ * 59 gates, ~4-15s warm on an unloaded machine. The point is: catch ALL the
  * cheap-to-detect failures locally with ONE command before pushing.
  *
  * That number is worth keeping honest, because it is what decides whether
@@ -105,6 +106,11 @@ const GATES: Gate[] = [
   // App-side line count across the reference apps — the framework's "write
   // less code" claim, ratcheted so it cannot quietly drift the wrong way.
   { name: 'check-app-loc', cmd: 'bun scripts/check-app-loc.ts' },
+  // Every dev counter emitted in any package's src has a COUNTERS.md row and
+  // every row an emitter. perf-harness's drift test enforces the same, but
+  // only runs when perf-harness is in a PR's test closure; #4236 added a
+  // counter that passed its own CI and turned main red.
+  { name: 'check-counter-catalog', cmd: 'bun scripts/check-counter-catalog.ts' },
   // IP: every workspace carries the root LICENSE byte-for-byte and declares
   // "license": "MIT". A published package without either ships with no stated
   // terms; an example without either is code people copy with none.
