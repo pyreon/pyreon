@@ -1017,6 +1017,7 @@ export default defineConfig({
     alias: {
       preact: '@pyreon/preact-compat',
       'preact/hooks': '@pyreon/preact-compat/hooks',
+      'preact/compat': '@pyreon/preact-compat/compat',
       '@preact/signals': '@pyreon/preact-compat/signals',
     },
   },
@@ -1025,7 +1026,7 @@ export default defineConfig({
 
 **Known limitations with aliasing:**
 
-- Libraries that use `preact/compat` (the React-compatibility layer for Preact) may need additional configuration
+- `preact/compat` maps to `@pyreon/preact-compat/compat` (the main entry plus the hooks, `memo` and `forwardRef`); `pyreon({ compat: 'preact' })` aliases it for you. Its React-only extras (`Children`, `StrictMode`, `createRoot` from `preact/compat/client`) are not provided, and in compat mode an import of any unaliased `preact/*` subpath prints a warning.
 - Libraries that access `options._diff`, `options._commit`, or other internal hooks will not receive notifications
 - Libraries that use `__H` (internal hooks state) or other underscore-prefixed internals will not work
 
