@@ -161,7 +161,7 @@ By default the whole element is draggable. Pass `handle: () => handleEl` to rest
 | `disabled`    | `boolean \| (() => boolean)` | no       | Disable dragging. A getter is re-evaluated on each drag attempt.     |
 | `onDragStart` | `() => void`                 | no       | Fired when the drag begins.                                          |
 | `onDragEnd`   | `() => void`                 | no       | Fired when the drag ends — on **either** a successful drop or cancel. |
-| `preview`     | `DragPreviewOptions`         | no       | Custom native drag preview: `{ render(container) }` draws into a container (return a cleanup), plus an offset preset. |
+| `preview`     | `DragPreview`                | no       | Custom native drag preview, built with `dragPreview({ render(container), offset? })` from `@pyreon/dnd`: `render` draws into a container (return a cleanup), plus an offset preset. A separate import, so draggables without one ship none of its code. |
 
 ### `useDraggable` result
 

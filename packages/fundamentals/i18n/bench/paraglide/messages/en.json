@@ -1,0 +1,44 @@
+{
+  "$schema": "https://inlang.com/schema/inlang-message-format",
+  "greeting": "Hello there, friend",
+  "hello": "Hello {name}, welcome back",
+  "items": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural"
+      ],
+      "selectors": [
+        "countPlural"
+      ],
+      "match": {
+        "countPlural=one": "{count} item in your cart",
+        "countPlural=other": "{count} items in your cart"
+      }
+    }
+  ],
+  "price": [
+    {
+      "declarations": [
+        "input val",
+        "local valFmt = val: number"
+      ],
+      "selectors": [],
+      "match": {
+        "": "Total: {valFmt}"
+      }
+    }
+  ],
+  "when": [
+    {
+      "declarations": [
+        "input val",
+        "local valFmt = val: datetime dateStyle=medium"
+      ],
+      "selectors": [],
+      "match": {
+        "": "Updated {valFmt}"
+      }
+    }
+  ]
+}
