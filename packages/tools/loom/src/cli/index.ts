@@ -16,6 +16,7 @@ import {
 } from '../core/config'
 import type { LoomReport } from '../core/types'
 import { type FlagSpec, type ParsedArgs, parseArgs } from './args'
+import { createTerm, finding, header, plural, verdict } from '@pyreon/ansi'
 import { renderScanText } from './render'
 import type { LoomSettings } from '../core/config'
 
@@ -80,6 +81,18 @@ function message(error: unknown): string {
   return String((error as Error)?.message ?? error)
 }
 
+/**
+ * A problem on stderr in the shared theme (rule 4): `✗ loom · problem`,
+ * further lines of the message underneath, then `fix:` when there is one.
+ */
+function problem(source: string, text: string, fix?: string): void {
+  const t = createTerm({ isTTY: Boolean(process.stderr.isTTY) })
+  const [first = '', ...rest] = text.replace(/^loom( \w+)?: /, '').split('\n')
+  const lines = finding(t, { severity: 'error', source, message: first, fix }, { indent: 0, width: t.width })
+  lines.splice(fix ? lines.length - 1 : lines.length, 0, ...rest.map((l) => `   ${l.replace(/^ {2}/, '')}`))
+  err(`${lines.join('\n')}\n`)
+}
+
 /** Resolve config and scan. Config is read HERE so `buildReport` stays pure. */
 async function scan(dir: string, args: ParsedArgs): Promise<{ report: LoomReport; settings: LoomSettings }> {
   const shared = await loadSharedLoomConfig(dir)
@@ -133,13 +146,13 @@ export async function runCli(argv: readonly string[]): Promise<number> {
     return 0
   }
   if (cmd !== 'scan' && cmd !== 'dev' && cmd !== 'build') {
-    err(`loom: unknown command "${cmd}". Try \`loom --help\`.\n`)
+    problem('loom', `unknown command "${cmd}".`, 'run loom --help for the list of commands')
     return 1
   }
 
   const parsed = parseArgs(rest, SPECS[cmd])
   if (!parsed.ok) {
-    err(`loom ${cmd}: ${parsed.error} Try \`loom --help\`.\n`)
+    problem(`loom ${cmd}`, parsed.error, 'run loom --help for usage')
     return 1
   }
   const args = parsed.args
@@ -156,7 +169,7 @@ export async function runCli(argv: readonly string[]): Promise<number> {
     try {
       ;({ report, settings } = await scan(dir, args))
     } catch (error) {
-      err(`${message(error)}\n`)
+      problem('loom scan', message(error))
       return 1
     }
     const json = args.flags.has('--json')
@@ -194,7 +207,7 @@ export async function runCli(argv: readonly string[]): Promise<number> {
     try {
       ;({ report } = await scan(dir, args))
     } catch (error) {
-      err(`${message(error)}\n`)
+      problem(`loom ${cmd}`, message(error))
       return 1
     }
     // The default sits next to the scanned workspace, like loom-report.json.
@@ -204,10 +217,11 @@ export async function runCli(argv: readonly string[]): Promise<number> {
     try {
       const { buildStaticSite } = await import('../build/static-site')
       const outDir = await buildStaticSite({ report, outDir: outOpt, ...(base ? { base } : {}) })
-      out(`loom: ${report.stats.internal} package(s) → ${outDir}\n`)
+      const t = createTerm()
+      out(`${verdict(t, 'ok', `built the observatory ${t.sym('arrow')} ${outDir}`, [plural(report.stats.internal, 'package')])}\n`)
       return 0
     } catch (error) {
-      err(`${message(error)}\n`)
+      problem(`loom ${cmd}`, message(error))
       return 1
     }
   }
@@ -218,7 +232,7 @@ export async function runCli(argv: readonly string[]): Promise<number> {
   if (portArg !== undefined) {
     port = Number(portArg)
     if (!Number.isInteger(port) || port < 1 || port > 65535) {
-      err(`loom dev: --port must be a whole number from 1 to 65535 (got "${portArg}").\n`)
+      problem('loom dev', `--port must be a whole number from 1 to 65535 (got "${portArg}").`)
       return 1
     }
   }
@@ -229,7 +243,7 @@ export async function runCli(argv: readonly string[]): Promise<number> {
     // settings, so the UI reports exactly what `loom scan` reports.
     ;({ settings } = await scan(dir, args))
   } catch (error) {
-    err(`${message(error)}\n`)
+    problem(`loom ${cmd}`, message(error))
     return 1
   }
   const { startDevServer } = await import('../dev/server')
@@ -240,11 +254,12 @@ export async function runCli(argv: readonly string[]): Promise<number> {
       settings,
       ...(port !== undefined ? { port } : {}),
     })
-    out(`loom dev: ${handle.packages} package(s) → ${handle.url}\n`)
+    const t = createTerm()
+    out(`${header(t, 'loom dev', plural(handle.packages, 'package'))}\n  ${t.dim('local')}  ${t.info(handle.url)}\n`)
     await new Promise<void>(() => {})
     return 0
   } catch (error) {
-    err(`${message(error)}\n`)
+    problem(`loom ${cmd}`, message(error))
     return 1
   }
 }
