@@ -670,7 +670,14 @@ function mountComponent(
         if (cancelled || !placeholder.parentNode) return
         try {
           if (resolved != null) {
-            resolvedCleanup = mountChild(resolved as VNodeChild, parent, placeholder)
+            // The resolved subtree mounts in a microtask, where no owner is
+            // set. Re-enter this component's scope so its descendants'
+            // `useContext()` reaches the ancestors' providers AND anything
+            // this component `provide()`d before its first await — the
+            // owner the synchronous path gives `mountChild` (#4377).
+            resolvedCleanup = runWithContextOwner(scope, () =>
+              mountChild(resolved as VNodeChild, parent, placeholder),
+            )
           }
         } catch (err) {
           const handled = propagateError(err, hooks) || dispatchToErrorBoundary(err)
@@ -689,12 +696,18 @@ function mountComponent(
 
     if (process.env.NODE_ENV !== 'production') _mountingStack!.pop()
 
+    // Restore the parent owner NOW, as the synchronous path does once its
+    // subtree is mounted: this component's siblings must not resolve context
+    // through its scope. (Restoring it in the unmount closure instead left the
+    // owner pointing here for the rest of the parent's mount, and clobbered
+    // whatever owner was current when the component later unmounted.)
+    setContextOwner(prevOwner)
+
     return () => {
       cancelled = true
       resolvedCleanup()
       if (placeholder.parentNode) placeholder.parentNode.removeChild(placeholder)
       scope.stop()
-      setContextOwner(prevOwner)
     }
   }
 
