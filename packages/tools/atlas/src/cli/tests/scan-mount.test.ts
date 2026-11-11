@@ -49,9 +49,9 @@ describe('atlas scan mounts the example', () => {
     // catalog JSON to learn which of the six checks had failed.
     expect(run.stderr).toContain('button--empty')
     expect(run.stderr).toContain('badge--empty')
-    expect(run.stderr).toContain('a11y [missing-accessible-name]: missing accessible name')
+    expect(run.stderr).toContain('a11y [missing-accessible-name] · missing accessible name')
     // And the tally answers "which check?" from the summary alone.
-    expect(run.stdout).toMatch(/checks:.*a11y \d+\/\d+ ✗/)
+    expect(run.stdout).toMatch(/checks\s+.*a11y \d+\/\d+ (✗|x)/)
 
     // The exact counts, not just "nothing unverified".
     //
@@ -90,7 +90,7 @@ describe('atlas scan mounts the example', () => {
     // CONTENT control; the variant axes fan one value at a time rather than
     // crossing (53 → 44 on this fixture, 1,230 → 494 on ui-components).
     expect(run.stdout).toMatch(
-      /11 component\(s\), 44 scenario\(s\) — 42 verified, 2 failing, 0 unverified/,
+      /components\s+11\n\s+scenarios\s+44\s+2 failing · 42 verified · 0 unverified/,
     )
     // 320s: the spawn's own descriptive killer is timeout: 300_000 above;
     // the vitest backstop must EXCEED the composed inner budget (the ws-relay

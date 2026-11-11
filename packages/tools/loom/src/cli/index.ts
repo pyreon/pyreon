@@ -14,8 +14,9 @@ import {
   readManifestLoomSection,
   validateLoomSection,
 } from '../core/config'
-import type { LoomIssue, LoomReport } from '../core/types'
+import type { LoomReport } from '../core/types'
 import { type FlagSpec, type ParsedArgs, parseArgs } from './args'
+import { renderScanText } from './render'
 import type { LoomSettings } from '../core/config'
 
 const HELP = `
@@ -73,13 +74,6 @@ function out(text: string): void {
 }
 function err(text: string): void {
   process.stderr.write(text)
-}
-
-const GLYPH = { error: '✗', warning: '▲', info: '·' } as const
-
-function renderIssue(issue: LoomIssue): string {
-  const dep = issue.dep ? ` [${issue.dep}]` : ''
-  return `  ${GLYPH[issue.severity]} ${issue.code}${dep} — ${issue.message}`
 }
 
 function message(error: unknown): string {
@@ -156,6 +150,7 @@ export async function runCli(argv: readonly string[]): Promise<number> {
   const dir = args.positionals[0] ?? '.'
 
   if (cmd === 'scan') {
+    const started = performance.now()
     let report: LoomReport
     let settings: LoomSettings
     try {
@@ -165,51 +160,33 @@ export async function runCli(argv: readonly string[]): Promise<number> {
       return 1
     }
     const json = args.flags.has('--json')
+    const strict = args.flags.has('--strict') || settings.strict === true
+    const red = report.stats.errors > 0 || (strict && report.stats.warnings > 0)
+    const reportPath = args.flags.has('--no-write') ? undefined : join(dir, 'loom-report.json')
+    if (reportPath) writeFileSync(reportPath, JSON.stringify(report, null, 2))
 
     if (json) {
-      out(JSON.stringify(report, null, 2) + '\n')
-    } else {
-      const s = report.stats
-      out(
-        `loom: ${s.internal} workspace package(s), ${s.external} external dep(s), ` +
-          `${s.edges} internal edge(s), depth ${s.depth}, ${s.cycles} cycle(s).\n`,
-      )
-      const bySeverity = (sev: LoomIssue['severity']) => report.issues.filter((i) => i.severity === sev)
-      for (const sev of ['error', 'warning', 'info'] as const) {
-        const list = bySeverity(sev)
-        if (!list.length) continue
-        out(`\n${sev.toUpperCase()} · ${list.length}\n`)
-        for (const issue of list) out(renderIssue(issue) + '\n')
-      }
-      if (report.issues.length === 0) out('loom: fabric clean — no findings.\n')
-    }
-
-    if (!args.flags.has('--no-write')) {
-      const reportPath = join(dir, 'loom-report.json')
-      writeFileSync(reportPath, JSON.stringify(report, null, 2))
       // Under `--json`, stdout is a MACHINE channel and may carry nothing but
       // the document — `loom scan . --json > report.json` is the documented
       // machine surface, and a trailing "→ path" line makes that file
       // unparseable by every JSON reader. Narration goes to stderr there, so
       // the notice is still visible in a terminal (both streams land there)
-      // while a redirect gets exactly the report. In human mode the narration
-      // IS the requested output, so it stays on stdout.
-      const notice = `  → ${reportPath}\n`
-      if (json) err(notice)
-      else out(notice)
+      // while a redirect gets exactly the report.
+      out(JSON.stringify(report, null, 2) + '\n')
+      if (reportPath) err(`  → ${reportPath}\n`)
+      if (red) {
+        err(
+          `loom: ${report.stats.errors} error(s)` +
+            (strict ? ` + ${report.stats.warnings} warning(s) (strict)` : '') +
+            '\n',
+        )
+      }
+    } else {
+      // In human mode the narration IS the requested output: one report on
+      // stdout, its last line the verdict.
+      out(renderScanText(report, { dir, strict, reportPath, elapsedMs: performance.now() - started }))
     }
-
-    const strict = args.flags.has('--strict') || settings.strict === true
-    const red = report.stats.errors > 0 || (strict && report.stats.warnings > 0)
-    if (red) {
-      err(
-        `loom: ${report.stats.errors} error(s)` +
-          (strict ? ` + ${report.stats.warnings} warning(s) (strict)` : '') +
-          '\n',
-      )
-      return 1
-    }
-    return 0
+    return red ? 1 : 0
   }
 
   if (cmd === 'build') {

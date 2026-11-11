@@ -24,7 +24,7 @@ import { findConfigFile, loadConfig, type LoadedConfig } from "./config-file";
 import { renderInitReport, runInit, type InitFs } from "./init/init";
 import { importFromCwd } from "./plugin-modules";
 import { pullSpec } from "./pull";
-import { shouldColor } from "./report";
+import { resolveColorLevel } from "./report";
 import { parseArgv, run, type Argv, type Fs } from "./run";
 
 const realFs: Fs = {
@@ -48,8 +48,11 @@ export async function main(
   cwd: string,
 ): Promise<number> {
   const argv = parseArgv(argvRaw);
-  if (argv.color === undefined)
-    argv.color = !argv.json && shouldColor(process.stdout, process.env);
+  // The flag (or its absence) becomes a level here, the one place that can
+  // see the terminal: `--color` forces colour on, `--no-color` off, and with
+  // neither the shared detection decides. `--json` is never coloured.
+  const flag = argv.color === undefined ? undefined : Boolean(argv.color);
+  argv.color = argv.json && flag === undefined ? 0 : resolveColorLevel(flag, process.stdout, process.env);
   const emit = (r: {
     code: number;
     stdout: string;
@@ -259,7 +262,7 @@ async function pull(
   const cacheDir = existsSync(join(cwd, "node_modules"))
     ? join(cwd, "node_modules", ".cache", "lathe")
     : undefined;
-  const opts = { headers, cacheDir, color: argv.color ?? false };
+  const opts = { headers, cacheDir, color: Boolean(argv.color) };
 
   const targets = pullTargets(section);
   const url = argv.input;
@@ -418,7 +421,7 @@ async function init(
         for (const t of pullTargets(section)) {
           if (t.source && !existsSync(abs(t.input))) {
             const code = await pullSpec(t.source, abs(t.input), {
-              color: argv.color ?? false,
+              color: Boolean(argv.color),
               out: log,
             });
             if (code !== 0) return { code, stdout: "", stderr: "" };
@@ -426,9 +429,10 @@ async function init(
         }
         const gen = parseArgv([
           "generate",
-          ...(argv.color ? ["--color"] : ["--no-color"]),
           ...(argv.json ? ["--json"] : []),
         ]);
+        // The level this run already resolved, truecolor included.
+        gen.color = argv.color;
         return run(gen, section, scoped);
       },
     },

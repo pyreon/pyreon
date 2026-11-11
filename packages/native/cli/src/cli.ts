@@ -11,7 +11,7 @@
 //   2 — build error (compiler threw on a source file)
 
 import { build } from './build'
-import { check, watchCheck, type CheckFinding, type CheckResult } from './check'
+import { check, watchCheck, type CheckResult } from './check'
 import { materializeAssets, type AssetTarget } from './assets'
 import { stageWebBundle, webBundleOutSubdir, type WebBundleTarget } from './web-bundle'
 import { startLspServer } from './lsp'
@@ -24,7 +24,28 @@ import { pathToFileURL } from 'node:url'
 import { discoverPlugins } from './discover-plugins'
 import { buildPluginWebHosts, materializeBuiltWebHosts, type WebHostTarget } from './web-hosts'
 import { nearestPackageDir } from './native-sources'
+import { plural } from '@pyreon/ansi'
 import { explainReport, pluginsReport } from './plugin-commands'
+import {
+  buildAllVerdict,
+  buildHeader,
+  buildTargetLines,
+  type BuildTargetResult,
+  checkHeader,
+  checkReport,
+  commandHeader,
+  displayPath,
+  emit,
+  failure,
+  flowContext,
+  okVerdict,
+  outFor,
+  platformOf,
+  warningLine,
+  wireBroken,
+  wireHeader,
+  wireReport,
+} from './render'
 import {
   createAndroidPlatform,
   createIosPlatform,
@@ -303,7 +324,7 @@ export async function mainWithPlugins(argv: string[]): Promise<number> {
       createCompiler({ plugins, discovered: discovered.map((d) => d.plugin) }),
     )
   } catch (error) {
-    console.error(`[pyreon-native] plugin setup failed: ${error instanceof Error ? error.message : String(error)}`)
+    emit(failure(outFor(), 'plugin setup', error instanceof Error ? error.message : String(error)))
     return 2
   }
 }
@@ -318,14 +339,22 @@ async function runPluginWebHosts(parsed: ParsedArgs, appDir: string): Promise<nu
   const target = parsed.rawTarget as WebHostTarget
   const activation = resolve(parsed.appSource ?? join(appDir, 'src'))
   if (!existsSync(activation)) return 0
+  const o = outFor()
+  const started = performance.now()
   try {
     const files = await buildPluginWebHosts(appDir, activation)
     if (files.length === 0) return 0
     const result = materializeBuiltWebHosts(files, target, parsed.out!)
-    console.log(`[pyreon-native] built ${result.hosts} web-host page(s) from package plugins → ${parsed.out}`)
+    emit([
+      okVerdict(
+        o,
+        `built ${plural(result.hosts, 'web-host page')} from package plugins ${o.t.sym('arrow')} ${displayPath(parsed.out!, o.cwd)}`,
+        performance.now() - started,
+      ),
+    ])
     return 0
   } catch (error) {
-    console.error(`[pyreon-native] web-host build failed: ${error instanceof Error ? error.message : String(error)}`)
+    emit(failure(o, 'web-host build', error instanceof Error ? error.message : String(error), performance.now() - started))
     return 2
   }
 }
@@ -377,7 +406,7 @@ async function runDev(parsed: ParsedArgs, appDir: string): Promise<number> {
     // --once is a gate: a failed cycle must fail the command.
     return parsed.once === true && (summary.failures > 0 || summary.builds === 0) ? 2 : 0
   } catch (error) {
-    console.error(`[pyreon-native] dev failed: ${error instanceof Error ? error.message : String(error)}`)
+    emit(failure(outFor(), 'dev', error instanceof Error ? error.message : String(error)))
     return 2
   }
 }
@@ -456,17 +485,20 @@ export function main(argv: string[], compiler?: Pick<NativeCompiler, 'transform'
       printUsage()
       return 1
     }
-    let worst = 0
+    const o = outFor()
+    const started = performance.now()
+    emit(buildHeader(o, { platforms: 'ios + android', source: parsed.source, out: parsed.out }))
+    const results: BuildTargetResult[] = []
     for (const t of ['swift', 'kotlin'] as const) {
-      const sub = t === 'swift' ? 'ios' : 'android'
-      const outDir = join(parsed.out, sub)
-      console.log(`[pyreon-native] building ${sub} → ${outDir}`)
-      const code = executeBuild(parsed, t, outDir)
+      const outDir = join(parsed.out, platformOf(t))
       // Keep building the other target even if one fails (surface BOTH
-      // sets of errors in one run); return the worst exit code.
-      if (code !== 0) worst = code
+      // sets of errors in one run); the exit code is the worst of the two.
+      const result = executeBuild(parsed, t, outDir)
+      results.push(result)
+      emit(buildTargetLines(o, result, true))
     }
-    return worst
+    emit(buildAllVerdict(o, results, performance.now() - started))
+    return results.some((r) => r.error !== undefined) ? 2 : 0
   }
 
   if (!parsed.target) {
@@ -485,16 +517,21 @@ export function main(argv: string[], compiler?: Pick<NativeCompiler, 'transform'
     return 1
   }
 
-  return executeBuild(parsed, parsed.target, parsed.out)
+  const o = outFor()
+  emit(buildHeader(o, { platforms: platformOf(parsed.target), source: parsed.source, out: parsed.out }))
+  const result = executeBuild(parsed, parsed.target, parsed.out)
+  emit(buildTargetLines(o, result, false))
+  return result.error === undefined ? 0 : 2
 }
 
 /**
  * Transpile `parsed.source` to one native target, writing into `outDir`.
  * Extracted so the single-target path and the `--target=all` multi-target
- * loop share one build + reporting + error-handling contract. Returns the
- * process exit code (0 ok, 2 on a thrown build error).
+ * loop share one build + error-handling contract. Returns what happened,
+ * timed; a thrown build error is returned as `error` (exit 2).
  */
-function executeBuild(parsed: ParsedArgs, target: TargetLanguage, outDir: string): number {
+function executeBuild(parsed: ParsedArgs, target: TargetLanguage, outDir: string): BuildTargetResult {
+  const started = performance.now()
   try {
     // Build the canonical→PostScript font map from --fonts (the shared
     // assets dir). Only iOS uses it (Font.custom needs the PostScript
@@ -512,24 +549,24 @@ function executeBuild(parsed: ParsedArgs, target: TargetLanguage, outDir: string
       ...(parsed.kotlinPackage ? { kotlinPackage: parsed.kotlinPackage } : {}),
       ...(fonts ? { fonts } : {}),
     })
-    console.log(`[pyreon-native] compiled ${result.filesCompiled} file(s) → ${outDir}`)
-    if (result.skippedWebEntries.length > 0) {
-      console.log(
-        `[pyreon-native] skipped ${result.skippedWebEntries.length} web-only entry file(s) (import @pyreon/runtime-dom|runtime-server):`,
-      )
-      for (const f of result.skippedWebEntries) console.log(`  ${f}`)
+    return {
+      target,
+      outDir,
+      filesCompiled: result.filesCompiled,
+      warnings: result.warnings,
+      skippedWebEntries: result.skippedWebEntries,
+      elapsedMs: performance.now() - started,
     }
-    if (result.warnings.length > 0) {
-      console.warn(`[pyreon-native] ${result.warnings.length} warning(s):`)
-      for (const w of result.warnings) {
-        console.warn(`  ${w.file}: ${w.warning}`)
-      }
-    }
-    return 0
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err)
-    console.error(`[pyreon-native] build failed: ${message}`)
-    return 2
+    return {
+      target,
+      outDir,
+      filesCompiled: 0,
+      warnings: [],
+      skippedWebEntries: [],
+      elapsedMs: performance.now() - started,
+      error: err instanceof Error ? err.message : String(err),
+    }
   }
 }
 
@@ -571,15 +608,21 @@ function runAssets(parsed: ParsedArgs): number {
     printUsage()
     return 1
   }
+  const o = outFor()
+  const started = performance.now()
+  emit(commandHeader(o, 'assets', flowContext(o, target, parsed.source, parsed.out)))
   try {
     const result = materializeAssets(parsed.source, target as AssetTarget, parsed.out)
-    console.log(
-      `[pyreon-native] materialized ${result.assets} asset(s) (${result.files} file(s)) → ${parsed.out}`,
-    )
+    emit([
+      okVerdict(
+        o,
+        `materialized ${plural(result.assets, 'asset')} (${plural(result.files, 'file')}) ${o.t.sym('arrow')} ${displayPath(parsed.out, o.cwd)}`,
+        performance.now() - started,
+      ),
+    ])
     return 0
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err)
-    console.error(`[pyreon-native] assets failed: ${message}`)
+    emit(failure(o, 'assets', err instanceof Error ? err.message : String(err), performance.now() - started))
     return 2
   }
 }
@@ -603,20 +646,31 @@ function runStageWeb(parsed: ParsedArgs): number {
     printUsage()
     return 1
   }
+  const o = outFor()
+  const started = performance.now()
+  emit(commandHeader(o, 'stage-web', flowContext(o, target, parsed.source, parsed.out)))
   try {
     const result = stageWebBundle(parsed.source, target, parsed.out)
-    console.log(
-      `[pyreon-native] staged ${result.files} web-bundle file(s) → ${join(parsed.out, webBundleOutSubdir(target))}`,
-    )
     for (const dir of result.skippedDirs) {
-      console.warn(
-        `[pyreon-native] stage-web: skipped nested directory '${dir}' (flat-only v1 — the runtime resolves 'src' by bare name; nested support is a follow-up)`,
+      emit(
+        warningLine(
+          o,
+          `skipped nested directory '${dir}' (flat-only v1 — the runtime resolves 'src' by bare name; nested support is a follow-up)`,
+        ),
       )
     }
+    if (result.skippedDirs.length > 0) emit([{ to: 'log', text: '' }])
+    emit([
+      okVerdict(
+        o,
+        `staged ${plural(result.files, 'web-bundle file')} ${o.t.sym('arrow')} ${displayPath(join(parsed.out, webBundleOutSubdir(target)), o.cwd)}`,
+        performance.now() - started,
+        result.skippedDirs.length > 0 ? [plural(result.skippedDirs.length, 'warning')] : [],
+      ),
+    ])
     return 0
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err)
-    console.error(`[pyreon-native] stage-web failed: ${message}`)
+    emit(failure(o, 'stage-web', err instanceof Error ? err.message : String(err), performance.now() - started))
     return 2
   }
 }
@@ -639,85 +693,54 @@ function runStageWeb(parsed: ParsedArgs): number {
  * A DECLARED-but-missing native dir is a real misconfiguration → exit 2.
  */
 function runWire(parsed: ParsedArgs): number {
+  const started = performance.now()
   const appDir = resolve(parsed.app ?? process.cwd())
   if (!existsSync(join(appDir, 'package.json'))) {
     console.error(`error: no package.json in ${appDir} (pass --app=<dir>)`)
     return 1
   }
+  const o = outFor()
+  if (!parsed.json) emit(wireHeader(o, appDir))
   const wiring = wireApp(appDir)
 
+  let androidOut: string | undefined
   if (parsed.androidOut) {
-    const outFile = resolve(appDir, parsed.androidOut)
-    mkdirSync(dirname(outFile), { recursive: true })
-    writeFileSync(outFile, renderAndroidSrcDirsFile(wiring))
-    if (!parsed.json) {
-      console.log(
-        `[pyreon-native] wrote ${wiring.androidSrcDirs.length} Android srcDir(s) → ${outFile}`,
-      )
-    }
+    androidOut = resolve(appDir, parsed.androidOut)
+    mkdirSync(dirname(androidOut), { recursive: true })
+    writeFileSync(androidOut, renderAndroidSrcDirsFile(wiring))
   }
 
+  let ios: { dir: string; staged: number; linked: number } | undefined
   if (parsed.iosOut) {
-    const iosDir = resolve(appDir, parsed.iosOut)
-    const { staged, linked } = stageIosWiring(wiring, iosDir)
-    if (!parsed.json) {
-      console.log(
-        `[pyreon-native] ${iosDir}: staged ${staged} co-located Swift file(s), ` +
-          `linked ${linked} SwiftPM package(s)`,
-      )
-    }
+    const dir = resolve(appDir, parsed.iosOut)
+    ios = { dir, ...stageIosWiring(wiring, dir) }
   }
 
   if (parsed.json) {
     console.log(JSON.stringify(wiring, null, 2))
-  } else if (!parsed.androidOut && !parsed.iosOut) {
-    console.log(`[pyreon-native] resolved native sources for ${appDir}:`)
-    console.log(`  Android srcDirs (${wiring.androidSrcDirs.length}):`)
-    for (const d of wiring.androidSrcDirs) console.log(`    ${d}`)
-    console.log(`  iOS SwiftPM packages (${wiring.iosSpmPackages.length}):`)
-    for (const p of wiring.iosSpmPackages) console.log(`    ${p.module} → ${p.path}`)
-    if (wiring.iosTargetSources.length > 0) {
-      console.log(`  iOS co-located target sources:`)
-      for (const t of wiring.iosTargetSources) {
-        console.log(`    [${t.module}] ${t.dirs.join(', ')}`)
-      }
-    }
-  }
-
-  if (wiring.brokenDeclarations.length > 0) {
-    console.error(
-      `[pyreon-native] ${wiring.brokenDeclarations.length} broken native declaration(s) — a package declared native sources whose dir is missing:`,
+    // The machine surface is stdout; a broken declaration still reaches a person on stderr.
+    emit(wireBroken(o, wiring))
+  } else {
+    emit(
+      wireReport(o, {
+        appDir,
+        ...wiring,
+        androidOut,
+        ios,
+        list: !parsed.androidOut && !parsed.iosOut,
+        elapsedMs: performance.now() - started,
+      }),
     )
-    for (const b of wiring.brokenDeclarations) {
-      console.error(`  ${b.package} (${b.target}): ${b.dir}`)
-    }
-    return 2
   }
-  return 0
+  return wiring.brokenDeclarations.length > 0 ? 2 : 0
 }
 
-/** Print one check finding with a severity glyph + file:target prefix. */
-function printFinding(f: CheckFinding): void {
-  const glyph =
-    f.kind === 'error' || f.kind === 'typecheck-error'
-      ? '✗'
-      : f.kind === 'typecheck-skipped'
-        ? 'ℹ'
-        : '!'
-  // Show the precise source position when the message carried one
-  // (transform / type-check errors) — `file:line:col` is the editor-
-  // clickable form; warnings have no position and print the bare file.
-  const loc = f.position ? `${f.file}:${f.position.line}:${f.position.column}` : f.file
-  const line = `  ${glyph} ${loc} [${f.target}] ${f.message}`
-  if (f.kind === 'error' || f.kind === 'typecheck-error') console.error(line)
-  else console.warn(line)
-}
-
-/** Render a check result — JSON (machine) or text (human). */
+/** Render a check result — JSON (machine, byte-locked) or text (human). */
 function reportCheck(
   result: CheckResult,
   targets: TargetLanguage[],
   parsed: ParsedArgs,
+  elapsedMs: number,
 ): void {
   if (parsed.json) {
     console.log(
@@ -732,18 +755,15 @@ function reportCheck(
     )
     return
   }
-  for (const f of result.findings) printFinding(f)
-  const skipped = result.findings.filter((f) => f.kind === 'typecheck-skipped').length
-  console.log(
-    `[pyreon-native] checked ${result.filesChecked} file(s) [${targets.join(', ')}] — ` +
-      `${result.errorCount} error(s), ${result.warningCount} warning(s)` +
-      (parsed.typecheck ? `, ${skipped} type-check skipped` : ''),
+  emit(
+    checkReport(outFor(), result, {
+      source: parsed.source!,
+      targets,
+      typecheck: parsed.typecheck,
+      watching: parsed.watch,
+      elapsedMs,
+    }),
   )
-  if (result.skippedWebEntries.length > 0) {
-    console.log(
-      `[pyreon-native] skipped ${result.skippedWebEntries.length} web-only entry file(s)`,
-    )
-  }
 }
 
 function runCheck(parsed: ParsedArgs): number {
@@ -774,21 +794,21 @@ function runCheck(parsed: ParsedArgs): number {
     ...(parsed.typecheck ? { typecheck: true } : {}),
   }
   try {
+    if (!parsed.json) {
+      emit(checkHeader(outFor(), { source: parsed.source, targets, typecheck: parsed.typecheck, watching: parsed.watch }))
+    }
     if (parsed.watch) {
       // Long-running: re-check on every source change until Ctrl-C.
       // Returns 0 — the watcher's job is feedback, not a pass/fail gate.
-      if (!parsed.json) {
-        console.log('[pyreon-native] watching for changes (Ctrl-C to stop)…')
-      }
-      void watchCheck(checkOpts, { onResult: (r) => reportCheck(r, targets, parsed) })
+      void watchCheck(checkOpts, { onResult: (r, ms) => reportCheck(r, targets, parsed, ms) })
       return 0
     }
+    const started = performance.now()
     const result = check(checkOpts)
-    reportCheck(result, targets, parsed)
+    reportCheck(result, targets, parsed, performance.now() - started)
     return result.errorCount > 0 ? 2 : 0
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err)
-    console.error(`[pyreon-native] check failed: ${message}`)
+    emit(failure(outFor(), 'check', err instanceof Error ? err.message : String(err)))
     return 2
   }
 }

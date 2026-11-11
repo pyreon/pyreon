@@ -27,6 +27,8 @@ import { join, relative, sep } from 'node:path'
 import type { NativeCompiler, TargetLanguage } from '@pyreon/native-compiler'
 import { build } from './build'
 import { collectMtimes, mtimesChanged } from './check'
+import { formatElapsed, plural } from '@pyreon/ansi'
+import { devHeader, devVerdict, devWarnings, displayPath, outFor, stepDetail, stepRow, type StepStatus } from './render'
 
 // ── process runner ──────────────────────────────────────────────────────────
 
@@ -406,6 +408,10 @@ export interface DevLoopOptions {
   signal?: AbortSignal
   /** Test-only: stop after N poll iterations. */
   maxTicks?: number
+  /** Terminal for the log (0 plain, 1 sixteen colours, 2 truecolor); detected from stdout when left out. */
+  color?: 0 | 1 | 2 | undefined
+  theme?: 'dark' | 'light' | undefined
+  unicode?: boolean | undefined
 }
 
 export interface DevLoopSummary {
@@ -416,82 +422,113 @@ export interface DevLoopSummary {
 }
 
 const wait = (ms: number) => new Promise<void>((done) => setTimeout(done, ms))
-const seconds = (ms: number) => `${(ms / 1000).toFixed(1)}s`
+
+/** Files added, removed or touched between two mtime maps, sorted. */
+export function changedFiles(prev: Record<string, number>, cur: Record<string, number>): string[] {
+  const out = new Set<string>()
+  for (const [file, mtime] of Object.entries(cur)) if (prev[file] !== mtime) out.add(file)
+  for (const file of Object.keys(prev)) if (!(file in cur)) out.add(file)
+  return [...out].sort()
+}
 
 export async function runDevLoop(options: DevLoopOptions): Promise<DevLoopSummary> {
   const log = options.log ?? ((line: string) => console.log(line))
   const { platform, run, appDir } = options
+  const o = outFor({ color: options.color, theme: options.theme, unicode: options.unicode, cwd: appDir })
+  const { t } = o
   const summary: DevLoopSummary = { cycles: 0, builds: 0, skipped: 0, failures: 0 }
   let lastDigest: string | null = null
 
+  const prepareLabel = `run ${platform.prepareScript}`
+  const labelWidth = Math.max(...['compile shared source', 'device', prepareLabel, 'build + install', 'launch'].map((l) => l.length))
+  const row = (label: string, status: StepStatus, elapsedMs?: number, note?: string) =>
+    stepRow(t, { label, status, elapsedMs, note }, labelWidth)
+  const since = (from: number) => performance.now() - from
+
   const cycle = async (changes: ChangeSet, first: boolean): Promise<void> => {
     summary.cycles++
-    const started = Date.now()
+    const started = performance.now()
+    // A failed step: its row, the tool's output under it, and the cycle's verdict, as ONE block.
+    const fail = (label: string, detail: string, stepStarted?: number) => {
+      summary.failures++
+      log(
+        [
+          row(label, 'err', stepStarted === undefined ? undefined : since(stepStarted)),
+          ...stepDetail(t, detail, o.width),
+          '',
+          devVerdict(t, 'err', `failed after ${formatElapsed(since(started))}`, options.once ? [] : ['the next save retries']),
+        ].join('\n'),
+      )
+    }
     let outcome: CompileOutcome
     try {
       outcome = compileForDigest(options.sourceDir, options.target, options.compiler)
     } catch (error) {
-      summary.failures++
-      log(`✗ compile failed — fix the error and save again\n  ${error instanceof Error ? error.message : String(error)}`)
+      fail('compile shared source', `compile failed — fix the error and save again\n${error instanceof Error ? error.message : String(error)}`, started)
       return
     }
-    const compileMs = Date.now() - started
-    if (outcome.warnings.length > 0) {
-      log(`! ${outcome.warnings.length} compiler warning(s) — these constructs will not run on the device:`)
-      for (const w of outcome.warnings) log(`  ${w.file}: ${w.warning}`)
-    }
-    log(`✓ compiled ${outcome.fileCount} file(s) in ${compileMs}ms`)
+    if (outcome.warnings.length > 0) log(devWarnings(o, options.target, outcome.warnings).join('\n'))
+    log(row('compile shared source', 'ok', since(started), plural(outcome.fileCount, 'file')))
 
     const needsPrepare = first || changes.resources
     const needsNative = needsPrepare || changes.native || outcome.digest !== lastDigest
     if (!needsNative) {
       summary.skipped++
-      log('· emitted code is unchanged — native build skipped')
+      log(
+        [
+          row('build + install', 'skip'),
+          '',
+          devVerdict(t, 'ok', `up to date in ${formatElapsed(since(started))}`, ['emitted code is unchanged, native build skipped']),
+        ].join('\n'),
+      )
       return
     }
 
+    const deviceStarted = performance.now()
     const device = await platform.ensureDevice()
     if ('error' in device) {
-      summary.failures++
-      log(`✗ ${device.error}`)
+      fail('device', device.error, deviceStarted)
       return
     }
+    log(row('device', 'ok', since(deviceStarted), device.id))
 
     if (needsPrepare) {
+      const prepStarted = performance.now()
       const script = await run('bash', [platform.prepareScript], { cwd: appDir })
       if (script.code !== 0) {
-        summary.failures++
-        log(`✗ ${platform.prepareScript} failed (exit ${script.code})\n${tail(script.output, 40)}`)
+        fail(prepareLabel, `${platform.prepareScript} failed (exit ${script.code})\n${tail(script.output, 40)}`, prepStarted)
         return
       }
+      log(row(prepareLabel, 'ok', since(prepStarted)))
     }
 
-    const buildStarted = Date.now()
+    const buildStarted = performance.now()
     const built = await platform.buildAndInstall(device.id, needsPrepare)
     if (!built.ok) {
-      summary.failures++
-      log(`✗ ${built.detail}`)
+      fail('build + install', built.detail, buildStarted)
       return
     }
+    log(row('build + install', 'ok', since(buildStarted)))
+    const launchStarted = performance.now()
     const launched = await platform.launch(device.id)
     if (!launched.ok) {
-      summary.failures++
-      log(`✗ ${launched.detail}`)
+      fail('launch', launched.detail, launchStarted)
       return
     }
+    log(row('launch', 'ok', since(launchStarted)))
     // Only remember the digest once the app is really running it: a failed native
     // build must retry on the next save instead of being skipped as "unchanged".
     lastDigest = outcome.digest
     summary.builds++
-    log(`✓ built, installed and launched in ${seconds(Date.now() - buildStarted)} (total ${seconds(Date.now() - started)})`)
+    log(['', devVerdict(t, 'ok', `ready in ${formatElapsed(since(started))}`, ['app relaunched', 'in-memory state reset'])].join('\n'))
   }
 
-  log(`pyreon-native dev — ${platform.label}`)
+  log(`${devHeader(t, platform.label)}\n`)
   let prev = takeSnapshot(appDir, options.sourceDir)
   await cycle({ src: true, native: true, resources: true }, true)
   if (options.once) return summary
 
-  log('watching for changes (Ctrl+C to stop)')
+  log(t.dim('\n  watching for changes (Ctrl+C to stop)'))
   const intervalMs = options.intervalMs ?? 500
   const maxTicks = options.maxTicks ?? Infinity
   let ticks = 0
@@ -502,9 +539,15 @@ export async function runDevLoop(options: DevLoopOptions): Promise<DevLoopSummar
     const cur = takeSnapshot(appDir, options.sourceDir)
     const changes = classifyChange(prev, cur)
     if (!changes.src && !changes.native && !changes.resources) continue
+    const files = [
+      ...changedFiles(prev.src, cur.src),
+      ...changedFiles(prev.native, cur.native),
+      ...changedFiles(prev.resources, cur.resources),
+    ].map((f) => displayPath(f, appDir))
     // Snapshot BEFORE the cycle: a save that lands mid-build differs from `prev`
     // on the next tick and triggers another cycle, so edits are never lost.
     prev = cur
+    log(t.dim(`\n  ${files.join(', ')} ${t.sym('arrow')} rebuilding…`))
     await cycle(changes, false)
   }
   return summary

@@ -1,5 +1,9 @@
+import { readdirSync } from 'node:fs'
+import { performance } from 'node:perf_hooks'
+import { createTerm, formatElapsed, plural } from '@pyreon/ansi'
 import * as p from './ui'
 import { type CliArgs, helpText, parseArgs } from './args'
+import { OWN_VERSION } from './own-version'
 import { detectPackageManager, nextSteps } from './package-manager'
 import { runPrompts } from './prompts'
 import { scaffold } from './scaffold'
@@ -19,6 +23,11 @@ function detectInvocation(): 'create-pyreon-app' | 'create-zero' {
   return argv1.includes('create-pyreon-app') ? 'create-pyreon-app' : 'create-zero'
 }
 
+/** Files (not directories) under `dir`, recursively. */
+function countFiles(dir: string): number {
+  return readdirSync(dir, { recursive: true, withFileTypes: true }).filter((e) => e.isFile()).length
+}
+
 async function main() {
   const invokedAs = detectInvocation()
 
@@ -26,7 +35,8 @@ async function main() {
   try {
     args = parseArgs(process.argv.slice(2))
   } catch (err) {
-    console.error(err instanceof Error ? err.message : err)
+    const t = createTerm({ isTTY: process.stderr.isTTY === true })
+    console.error(t.err(`${t.sym('err')} error: ${err instanceof Error ? err.message : String(err)}`))
     process.exit(2)
   }
 
@@ -35,22 +45,32 @@ async function main() {
     process.exit(0)
   }
 
-  p.intro(invokedAs === 'create-pyreon-app' ? 'Create a new Pyreon project' : 'Pyreon Zero')
+  // Rule 1: the first line names what ran — the alias typed, and its version.
+  p.intro(invokedAs, OWN_VERSION)
 
   const config = await runPrompts(args)
 
   const s = p.spinner()
   s.start('Scaffolding project...')
 
+  // Only the scaffold itself is timed: the prompts before it wait on a person.
+  const started = performance.now()
   await scaffold(config)
+  const elapsed = performance.now() - started
 
-  s.stop('Project created!')
+  s.stop('Project scaffolded')
 
   // Next steps
   const pm = detectPackageManager(process.env.npm_config_user_agent)
   p.note(nextSteps(config.name, pm, config.template).join('\n'), 'Next steps')
 
-  p.outro('Happy building!')
+  // The verdict: what was created, how many files are in it, how long it took.
+  // `runPrompts` refuses an existing directory, so every file counted here
+  // was written by this run.
+  p.outro(`created ${config.name}`, {
+    status: 'ok',
+    meta: [plural(countFiles(config.targetDir), 'file'), formatElapsed(elapsed)],
+  })
 }
 
 main().catch((err) => {

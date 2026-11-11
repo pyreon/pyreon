@@ -34,6 +34,8 @@ beforeEach(() => {
   srcDir = mkdtempSync(join(tmpdir(), 'pyreon-cli-src-'))
   logs = []
   errs = []
+  // Plain text: the assertions read words, not escape codes (CI may set FORCE_COLOR).
+  vi.stubEnv('NO_COLOR', '1')
   vi.spyOn(console, 'log').mockImplementation((...a: unknown[]) => logs.push(a.join(' ')))
   vi.spyOn(console, 'warn').mockImplementation(() => {})
   vi.spyOn(console, 'error').mockImplementation((...a: unknown[]) => errs.push(a.join(' ')))
@@ -42,6 +44,7 @@ beforeEach(() => {
 afterEach(() => {
   for (const d of [assetsDir, out, srcDir]) rmSync(d, { recursive: true, force: true })
   vi.restoreAllMocks()
+  vi.unstubAllEnvs()
 })
 
 const putAsset = (name: string): void => writeFileSync(join(assetsDir, name), 'png-bytes')
@@ -106,7 +109,7 @@ describe('value-less flags do not swallow the next argument', () => {
     writeFileSync(join(srcDir, 'App.tsx'), CLEAN, 'utf8')
     main(['check', '--typecheck', '--source', srcDir, '--target', 'ios'])
     expect(errs.join('\n'), 'the source must have been seen').not.toContain('requires --source')
-    expect(logs.join('\n'), 'and the run reached the summary').toContain('checked 1 file(s)')
+    expect(logs.join('\n'), 'and the run reached the summary').toContain('1 file checked')
   })
 
   it('--typecheck adds the type-check tally to the summary', () => {

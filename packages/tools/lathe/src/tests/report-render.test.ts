@@ -61,15 +61,15 @@ const OPTS: {
 }
 
 const render = (r: GenerateResult, v: VerifyReport, o: Partial<typeof OPTS> = {}): string =>
-  strip(renderReport(r, v, { ...OPTS, ...o }))
+  // Unicode pinned: the symbols are asserted, and the locale must not decide them.
+  strip(renderReport(r, v, { ...OPTS, unicode: true, ...o }))
 
 const RAN: VerifyReport = { ran: true, files: [] }
 
 describe('never present a SKIPPED check as a passing one', () => {
   it('says SKIPPED, and says why', () => {
-    const out = render(result(), { ran: false, reason: 'no toolchain', files: [] })
-    expect(out).toContain('verify SKIPPED')
-    expect(out).toContain('no toolchain')
+    const out = render(result(), { ran: false, reason: 'no toolchain', files: [] }, { target: 'multiplatform' })
+    expect(out).toMatch(/native verify\s+! skipped · no toolchain/)
   })
 
   it('does not claim anything lowered when nothing was verified', () => {
@@ -84,7 +84,7 @@ describe('never present a PARTIAL generation as a complete one', () => {
       ran: true,
       files: [{ path: 'a.swift', target: 'swift', verdict: 'broken', warnings: [], markers: [], leaked: [], declarations: [] }],
     })
-    expect(out).toContain('BROKEN')
+    expect(out).toMatch(/✗ broken\s+a\.swift/)
   })
 
   it('prints a BROKEN verdict\'s warnings IN FULL — they are the diagnosis', () => {
@@ -150,7 +150,9 @@ describe('spec notes — a reported loss, never a silent one', () => {
     // Reported once, but the COUNT still reflects both — a deduped list that
     // also hides the count would under-report the loss.
     expect(out.match(/same/g) ?? []).toHaveLength(1)
-    expect(out).toContain('(2)')
+    expect(out).toContain('2 notes')
+    expect(out).toContain('2 lost')
+    expect(out).toContain('(+1 more like it)')
   })
 
   it('caps the list but SAYS how many it withheld', () => {
@@ -178,7 +180,7 @@ describe('spec notes — a reported loss, never a silent one', () => {
     const loss = { code: 'unsupported-parameter', at: '#/p', message: 'header dropped' } as IrNote
     const out = render(result({ doc: doc([...Array.from({ length: 16 }, (_, i) => choice(i)), loss]) }), RAN)
     expect(out).toContain('1 lost')
-    expect(out).toContain('16 choice(s)')
+    expect(out).toContain('16 choices')
     expect(out).toContain('header dropped')
     expect(out).toContain('multiple-content-types x16')
     // No individual choice message is listed.
@@ -220,7 +222,7 @@ describe('native reach — only under the multiplatform target', () => {
       { target: 'multiplatform' },
     )
     expect(out).toContain('native reach')
-    expect(out).toContain('1/2 operations')
+    expect(out).toContain('1 of 2 operations')
   })
 
   it('GROUPS web-only operations by reason', () => {
@@ -238,8 +240,8 @@ describe('native reach — only under the multiplatform target', () => {
       { target: 'multiplatform' },
     )
     expect(out.match(/same reason/g) ?? []).toHaveLength(1)
-    expect(out).toContain('2 op(s)')
-    expect(out).toContain('1 op(s)')
+    expect(out).toContain('2 operations: a, b')
+    expect(out).toContain('1 operation: c')
   })
 
   it('previews at most three ids and SAYS how many more', () => {
@@ -309,10 +311,9 @@ describe('native verdict detail (audit G1/G2)', () => {
       ],
     })
     expect(out).toContain('does not compile')
-    expect(out).toContain("error invalid redeclaration of 'Pet'")
-    expect(out).toContain('partial a.native.tsx kotlin')
-    expect(out).toContain('compiled')
-    expect(out).toContain('partial Pet')
-    expect(out).toContain('(not compiled)')
+    expect(out).toContain("✗ error invalid redeclaration of 'Pet'")
+    expect(out).toMatch(/! partial\s+a\.native\.tsx\s+kotlin\s+compiled/)
+    expect(out).toContain('! partial Pet — field `tags` — dropping.')
+    expect(out).toMatch(/✓ lowers\s+b\.native\.tsx\s+swift\s+not compiled/)
   })
 })

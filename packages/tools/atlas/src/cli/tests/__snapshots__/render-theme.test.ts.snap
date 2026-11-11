@@ -1,0 +1,171 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`atlas scan, themed > 16 colours 1`] = `
+"␛[1matlas scan␛[22m ␛[90m· . · static (--no-mount)␛[39m
+
+  ␛[90mcomponents␛[39m   6
+  ␛[90mscenarios␛[39m   22  ␛[31m2 failing␛[39m␛[90m · ␛[39m12 verified␛[90m · ␛[39m8 unverified
+  ␛[90mchecks␛[39m      ␛[31ma11y 12/14 ✗␛[39m
+  ␛[90mnot run␛[39m     interaction, ssrParity, leak — mounting is disabled for this run (\`--no-mount\`) — the
+              scan stayed static
+              reactivityCoverage, snapshot — browser-only — run \`atlas verify-browser\` to measure
+              this (a Node scan cannot)
+  ␛[90mwrote␛[39m       ␛[36matlas-catalog.json␛[39m
+              ␛[36matlas-agent-guide.md␛[39m
+
+  ␛[33m!␛[39m ␛[1m1 file(s) export something PascalCase that produced no component:␛[22m
+    1× a chained/member call — rocketstyle chains are found by the runtime pass (needs \`theme\` in
+      your config); other member-call wrappers are not unwrapped
+      · src/components/Chip.tsx — Chip
+
+  ␛[31m✗␛[39m ␛[1matlas --check:␛[22m ␛[31mREGRESSED — 1 check(s) started failing, 2 check(s) stopped running␛[39m
+    ␛[31m✗␛[39m button--empty — now failing: a11y
+    ␛[31m✗␛[39m badge--default — no longer checked: interaction, leak (coverage lost — the failure did not go
+      away, the check did)
+    ␛[32m+␛[39m 1 new scenario(s)
+
+  ␛[31m␛[1m✗ 2 failing scenarios␛[22m␛[39m
+  ␛[31m✗␛[39m ␛[1mbutton--empty␛[22m  ␛[90mButton␛[39m
+     ␛[31m✗␛[39m ␛[1ma11y [missing-accessible-name]␛[22m ␛[90m·␛[39m missing accessible name: "label" is empty
+        ␛[90m↳␛[39m ␛[4m␛[36msrc/components/Button.tsx␛[39m␛[24m
+        ␛[90mfix:␛[39m Give "label" a non-empty value, or an aria-label if the text is genuinely decorative.
+  ␛[90m… and 1 more failing scenario(s) — see the catalog JSON␛[39m
+
+␛[31m✗␛[39m 2 failing scenarios␛[90m · 12 verified␛[39m␛[90m · 8 unverified␛[39m␛[90m · 6 components␛[39m␛[90m · 146 ms␛[39m"
+`;
+
+exports[`atlas scan, themed > ascii 1`] = `
+"atlas scan - . - static (--no-mount)
+
+  components   6
+  scenarios   22  2 failing - 12 verified - 8 unverified
+  checks      a11y 12/14 x
+  not run     interaction, ssrParity, leak — mounting is disabled for this run (\`--no-mount\`) — the
+              scan stayed static
+              reactivityCoverage, snapshot — browser-only — run \`atlas verify-browser\` to measure
+              this (a Node scan cannot)
+  wrote       atlas-catalog.json
+              atlas-agent-guide.md
+
+  ! 1 file(s) export something PascalCase that produced no component:
+    1× a chained/member call — rocketstyle chains are found by the runtime pass (needs \`theme\` in
+      your config); other member-call wrappers are not unwrapped
+      · src/components/Chip.tsx — Chip
+
+  x atlas --check: REGRESSED — 1 check(s) started failing, 2 check(s) stopped running
+    x button--empty — now failing: a11y
+    x badge--default — no longer checked: interaction, leak (coverage lost — the failure did not go
+      away, the check did)
+    + 1 new scenario(s)
+
+  x 2 failing scenarios
+  x button--empty  Button
+     x a11y [missing-accessible-name] - missing accessible name: "label" is empty
+        -> src/components/Button.tsx
+        fix: Give "label" a non-empty value, or an aria-label if the text is genuinely decorative.
+  … and 1 more failing scenario(s) — see the catalog JSON
+
+x 2 failing scenarios - 12 verified - 8 unverified - 6 components - 146 ms"
+`;
+
+exports[`atlas scan, themed > plain 1`] = `
+"atlas scan · . · static (--no-mount)
+
+  components   6
+  scenarios   22  2 failing · 12 verified · 8 unverified
+  checks      a11y 12/14 ✗
+  not run     interaction, ssrParity, leak — mounting is disabled for this run (\`--no-mount\`) — the
+              scan stayed static
+              reactivityCoverage, snapshot — browser-only — run \`atlas verify-browser\` to measure
+              this (a Node scan cannot)
+  wrote       atlas-catalog.json
+              atlas-agent-guide.md
+
+  ! 1 file(s) export something PascalCase that produced no component:
+    1× a chained/member call — rocketstyle chains are found by the runtime pass (needs \`theme\` in
+      your config); other member-call wrappers are not unwrapped
+      · src/components/Chip.tsx — Chip
+
+  ✗ atlas --check: REGRESSED — 1 check(s) started failing, 2 check(s) stopped running
+    ✗ button--empty — now failing: a11y
+    ✗ badge--default — no longer checked: interaction, leak (coverage lost — the failure did not go
+      away, the check did)
+    + 1 new scenario(s)
+
+  ✗ 2 failing scenarios
+  ✗ button--empty  Button
+     ✗ a11y [missing-accessible-name] · missing accessible name: "label" is empty
+        ↳ src/components/Button.tsx
+        fix: Give "label" a non-empty value, or an aria-label if the text is genuinely decorative.
+  … and 1 more failing scenario(s) — see the catalog JSON
+
+✗ 2 failing scenarios · 12 verified · 8 unverified · 6 components · 146 ms"
+`;
+
+exports[`atlas scan, themed > truecolor dark 1`] = `
+"␛[1matlas scan␛[22m ␛[38;2;138;134;150m· . · static (--no-mount)␛[39m
+
+  ␛[38;2;138;134;150mcomponents␛[39m   6
+  ␛[38;2;138;134;150mscenarios␛[39m   22  ␛[38;2;248;113;113m2 failing␛[39m␛[38;2;138;134;150m · ␛[39m12 verified␛[38;2;138;134;150m · ␛[39m8 unverified
+  ␛[38;2;138;134;150mchecks␛[39m      ␛[38;2;248;113;113ma11y 12/14 ✗␛[39m
+  ␛[38;2;138;134;150mnot run␛[39m     interaction, ssrParity, leak — mounting is disabled for this run (\`--no-mount\`) — the
+              scan stayed static
+              reactivityCoverage, snapshot — browser-only — run \`atlas verify-browser\` to measure
+              this (a Node scan cannot)
+  ␛[38;2;138;134;150mwrote␛[39m       ␛[38;2;34;211;238matlas-catalog.json␛[39m
+              ␛[38;2;34;211;238matlas-agent-guide.md␛[39m
+
+  ␛[38;2;250;204;21m!␛[39m ␛[1m1 file(s) export something PascalCase that produced no component:␛[22m
+    1× a chained/member call — rocketstyle chains are found by the runtime pass (needs \`theme\` in
+      your config); other member-call wrappers are not unwrapped
+      · src/components/Chip.tsx — Chip
+
+  ␛[38;2;248;113;113m✗␛[39m ␛[1matlas --check:␛[22m ␛[38;2;248;113;113mREGRESSED — 1 check(s) started failing, 2 check(s) stopped running␛[39m
+    ␛[38;2;248;113;113m✗␛[39m button--empty — now failing: a11y
+    ␛[38;2;248;113;113m✗␛[39m badge--default — no longer checked: interaction, leak (coverage lost — the failure did not go
+      away, the check did)
+    ␛[38;2;74;222;128m+␛[39m 1 new scenario(s)
+
+  ␛[38;2;248;113;113m␛[1m✗ 2 failing scenarios␛[22m␛[39m
+  ␛[38;2;248;113;113m✗␛[39m ␛[1mbutton--empty␛[22m  ␛[38;2;138;134;150mButton␛[39m
+     ␛[38;2;248;113;113m✗␛[39m ␛[1ma11y [missing-accessible-name]␛[22m ␛[38;2;138;134;150m·␛[39m missing accessible name: "label" is empty
+        ␛[38;2;138;134;150m↳␛[39m ␛[4m␛[38;2;34;211;238msrc/components/Button.tsx␛[39m␛[24m
+        ␛[38;2;138;134;150mfix:␛[39m Give "label" a non-empty value, or an aria-label if the text is genuinely decorative.
+  ␛[38;2;138;134;150m… and 1 more failing scenario(s) — see the catalog JSON␛[39m
+
+␛[38;2;248;113;113m✗␛[39m 2 failing scenarios␛[38;2;138;134;150m · 12 verified␛[39m␛[38;2;138;134;150m · 8 unverified␛[39m␛[38;2;138;134;150m · 6 components␛[39m␛[38;2;138;134;150m · 146 ms␛[39m"
+`;
+
+exports[`atlas scan, themed > truecolor light 1`] = `
+"␛[1matlas scan␛[22m ␛[38;2;94;90;105m· . · static (--no-mount)␛[39m
+
+  ␛[38;2;94;90;105mcomponents␛[39m   6
+  ␛[38;2;94;90;105mscenarios␛[39m   22  ␛[38;2;185;28;28m2 failing␛[39m␛[38;2;94;90;105m · ␛[39m12 verified␛[38;2;94;90;105m · ␛[39m8 unverified
+  ␛[38;2;94;90;105mchecks␛[39m      ␛[38;2;185;28;28ma11y 12/14 ✗␛[39m
+  ␛[38;2;94;90;105mnot run␛[39m     interaction, ssrParity, leak — mounting is disabled for this run (\`--no-mount\`) — the
+              scan stayed static
+              reactivityCoverage, snapshot — browser-only — run \`atlas verify-browser\` to measure
+              this (a Node scan cannot)
+  ␛[38;2;94;90;105mwrote␛[39m       ␛[38;2;10;110;137matlas-catalog.json␛[39m
+              ␛[38;2;10;110;137matlas-agent-guide.md␛[39m
+
+  ␛[38;2;138;90;0m!␛[39m ␛[1m1 file(s) export something PascalCase that produced no component:␛[22m
+    1× a chained/member call — rocketstyle chains are found by the runtime pass (needs \`theme\` in
+      your config); other member-call wrappers are not unwrapped
+      · src/components/Chip.tsx — Chip
+
+  ␛[38;2;185;28;28m✗␛[39m ␛[1matlas --check:␛[22m ␛[38;2;185;28;28mREGRESSED — 1 check(s) started failing, 2 check(s) stopped running␛[39m
+    ␛[38;2;185;28;28m✗␛[39m button--empty — now failing: a11y
+    ␛[38;2;185;28;28m✗␛[39m badge--default — no longer checked: interaction, leak (coverage lost — the failure did not go
+      away, the check did)
+    ␛[38;2;21;112;58m+␛[39m 1 new scenario(s)
+
+  ␛[38;2;185;28;28m␛[1m✗ 2 failing scenarios␛[22m␛[39m
+  ␛[38;2;185;28;28m✗␛[39m ␛[1mbutton--empty␛[22m  ␛[38;2;94;90;105mButton␛[39m
+     ␛[38;2;185;28;28m✗␛[39m ␛[1ma11y [missing-accessible-name]␛[22m ␛[38;2;94;90;105m·␛[39m missing accessible name: "label" is empty
+        ␛[38;2;94;90;105m↳␛[39m ␛[4m␛[38;2;10;110;137msrc/components/Button.tsx␛[39m␛[24m
+        ␛[38;2;94;90;105mfix:␛[39m Give "label" a non-empty value, or an aria-label if the text is genuinely decorative.
+  ␛[38;2;94;90;105m… and 1 more failing scenario(s) — see the catalog JSON␛[39m
+
+␛[38;2;185;28;28m✗␛[39m 2 failing scenarios␛[38;2;94;90;105m · 12 verified␛[39m␛[38;2;94;90;105m · 8 unverified␛[39m␛[38;2;94;90;105m · 6 components␛[39m␛[38;2;94;90;105m · 146 ms␛[39m"
+`;
