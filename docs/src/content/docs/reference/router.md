@@ -372,21 +372,22 @@ const isExactAdmin = useIsActive("/admin", true)  // exact only
 useTypedSearchParams<T extends SearchParamSchema>(schema: T): [get: () => InferSearchParams<T>, set: (updates: Partial<InferSearchParams<T>>) => Promise<NavigationResult>]
 ```
 
-Type-safe search params with auto-coercion from URL strings. Schema keys define parameter names, values define types (`"string"`, `"number"`, `"boolean"`). Returns a `[get, set]` TUPLE (like `useSearchParams`): `get()` reads the coerced values reactively; `set()` merges updates and navigates via `router.replace` (resolving with the navigation's `NavigationResult`). Missing numbers coerce to `0`, booleans accept `"true"`/`"1"`.
+Type-safe search params with auto-coercion from URL strings. Schema keys define parameter names, values define types (`"string"`, `"number"`, `"boolean"`). Returns a `[get, set]` TUPLE (like `useSearchParams`): `get()` reads the coerced values reactively; `set()` changes only the params it is given (every other query param and the hash are kept; an `undefined` value removes the key) and navigates via `router.replace` (resolving with the navigation's `NavigationResult`). An absent or non-numeric number reads `undefined` (default it with `?? 1`), an absent string `""`, an absent boolean `false`; booleans accept `"true"`/`"1"`.
 
 **Example**
 
 ```tsx
 const [params, setParams] = useTypedSearchParams({ page: "number", q: "string", active: "boolean" })
-params().page    // number (auto-coerced)
-params().q       // string
-setParams({ page: 2 })  // updates URL via router.replace
+params().page ?? 1  // number | undefined (auto-coerced; undefined when absent)
+params().q          // string
+setParams({ page: 2 })  // ?page=2 — other params kept, via router.replace
 ```
 
 **Common mistakes**
 
 - Destructuring an object (`params.page()`) — the hook returns a TUPLE: `const [params, setParams] = useTypedSearchParams(...)`, read via `params().page`
 - Expecting `set()` to bypass navigation — it navigates via `router.replace`, so guards/blockers apply (check the resolved `NavigationResult` if you need to know it committed)
+- Reading a `number` param without a default — it is `undefined` when absent from the URL, not `0`: `params().page ?? 1`
 
 **See also:** `useSearchParams` · `useRoute`
 

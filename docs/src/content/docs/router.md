@@ -2571,20 +2571,23 @@ export async function handleRequest(req: Request): Promise<Response> {
 ```ts
 import { useTypedSearchParams } from '@pyreon/router'
 
-const params = useTypedSearchParams({
+const [params, setParams] = useTypedSearchParams({
   page: 'number',
   q: 'string',
   active: 'boolean',
 })
 
-params.page() // number (coerced from URL string)
-params.q() // string
-params.active() // boolean
+params().page ?? 1 // number | undefined (coerced from the URL string)
+params().q // string
+params().active // boolean
 
-params.set({ page: 2, q: 'hello' }) // updates URL
+setParams({ page: 2, q: 'hello' }) // updates the URL
+setParams({ page: undefined }) // removes ?page
 ```
 
-The type map supports `'string'`, `'number'`, and `'boolean'`. Values are coerced automatically from URL search param strings.
+The hook returns a `[get, set]` tuple. The type map supports `'string'`, `'number'`, and `'boolean'`, and values are coerced from the URL's strings. A `'number'` param that is absent (or not a number) reads `undefined`, so `?page=0` and no `page` stay distinguishable; an absent `'string'` reads `''` and an absent `'boolean'` reads `false`.
+
+`set` changes only the params you pass. Every other query param (including ones outside the schema, such as `utm_source`) and the hash are kept, and an `undefined` value removes its key. It navigates with `router.replace`, so guards and blockers apply.
 
 ## Route Transitions
 
@@ -2803,7 +2806,7 @@ router.push({ name: 'user', params: { id: '42' } })
 
 <APICard name="useSearchParams" type="hook" signature={"useSearchParams<T>(defaults?: T): [get: () => T, set: (updates: Partial<T>) => Promise<NavigationResult>]"} description="Reactive read/write access to URL query parameters with optional defaults." />
 
-<APICard name="useTypedSearchParams" type="hook" signature={"useTypedSearchParams<T>(schema: T): TypedSearchParams<T>"} description="Type-safe search params with automatic coercion from URL strings." />
+<APICard name="useTypedSearchParams" type="hook" signature={"useTypedSearchParams<T>(schema: T): [get: () => InferSearchParams<T>, set: (updates: Partial<InferSearchParams<T>>) => Promise<NavigationResult>]"} description="Type-safe search params with automatic coercion from URL strings; set() keeps every other param." />
 
 <APICard name="useValidatedSearch" type="hook" signature={"useValidatedSearch<T>(): () => T"} description="Reactive accessor for the route's validateSearch result, with structural sharing." />
 
