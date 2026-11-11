@@ -12,24 +12,38 @@ export const fence = (lang: string, body: string): string =>
   '```' + lang + '\n' + String(body).trimEnd() + '\n```'
 
 /**
- * Escape `<` `>` `{` `}` and bare `:name` in markdown FLOW text, leaving
- * inline `` `code` `` spans untouched. `: ` and `://` are not escaped (no
- * letter follows), so prose colons and URLs survive.
+ * An inline code span as CommonMark defines it: a run of N backticks, then
+ * content, then a run of exactly N backticks. A double-backtick span is how a
+ * message that itself contains backticks is quoted
+ * (`` `` [Pyreon] <For> requires a `by` prop `` ``). A single-backtick-only
+ * scanner treats the inner backticks as span boundaries, so it escapes the
+ * span's own text and leaves the text after it raw.
  */
-export const escFlow = (s: string): string =>
-  String(s ?? '')
-    .split(/(`[^`]*`)/g)
-    .map((seg, i) =>
-      i % 2 === 1
-        ? seg
-        : seg
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-            .replace(/\{/g, '&#123;')
-            .replace(/\}/g, '&#125;')
-            .replace(/:(?=[A-Za-z])/g, '&#58;'),
-    )
-    .join('')
+const CODE_SPAN = /(?<!`)(`+)(?!`)[\s\S]*?[^`]\1(?!`)/g
+
+const escText = (s: string): string =>
+  s
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/\{/g, '&#123;')
+    .replace(/\}/g, '&#125;')
+    .replace(/:(?=[A-Za-z])/g, '&#58;')
+
+/**
+ * Escape `<` `>` `{` `}` and bare `:name` in markdown FLOW text, leaving
+ * inline code spans (any backtick-run length) untouched. `: ` and `://` are
+ * not escaped (no letter follows), so prose colons and URLs survive.
+ */
+export const escFlow = (s: string): string => {
+  const str = String(s ?? '')
+  let out = ''
+  let last = 0
+  for (const m of str.matchAll(CODE_SPAN)) {
+    out += escText(str.slice(last, m.index)) + m[0]
+    last = m.index + m[0].length
+  }
+  return out + escText(str.slice(last))
+}
 
 /** YAML-safe double-quoted scalar (values may contain `:`, `@`, `"`). */
 export const yaml = (s: string): string =>
