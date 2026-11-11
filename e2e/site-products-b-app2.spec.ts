@@ -1,5 +1,5 @@
 import { expect, type Locator, type Page, test } from '@playwright/test'
-import { waitForIslands } from './site-islands'
+import { hydrateIsland, waitForNav } from './site-islands'
 
 /**
  * Per-demo interaction for five app product pages (i18n, permissions,
@@ -48,9 +48,10 @@ const listeners = (page: Page, type: string) =>
 /** Open a product page and wait until its demo island is hydrated and operable. */
 async function openDemo(page: Page, id: string, ready: (demo: Locator) => Locator): Promise<Locator> {
   await page.goto(`/products/${id}`)
-  await waitForIslands(page)
+  await waitForNav(page)
   const demo = page.locator('#demo')
   await demo.locator('pyreon-island').scrollIntoViewIfNeeded()
+  await hydrateIsland(page, '#demo pyreon-island')
   await expect(ready(demo)).toBeVisible()
   // The island hydrates on visibility: wait until a control reacts.
   await page.waitForLoadState('networkidle')
@@ -163,8 +164,9 @@ test.describe('urlstate demo', () => {
     expect(await page.evaluate(() => JSON.stringify(history.state))).toBe(routerStamp)
 
     await page.reload()
-    await waitForIslands(page)
+    await waitForNav(page)
     await demo.locator('pyreon-island').scrollIntoViewIfNeeded()
+    await hydrateIsland(page, '#demo pyreon-island')
     await expect(demo.getByRole('searchbox', { name: 'Search' })).toHaveValue('lamp')
     await expect(demo.getByLabel('In stock')).toBeChecked()
     await expect(demo.getByRole('button', { name: 'name', exact: true })).toHaveAttribute('aria-pressed', 'true')
@@ -179,10 +181,11 @@ test.describe('urlstate demo', () => {
   test('leaving by a site link leaves no shop- params and no listeners behind', async ({ page }) => {
     await trackWindowListeners(page)
     await page.goto('/products/urlstate')
-    await waitForIslands(page)
+    await waitForNav(page)
     const baseline = await listeners(page, 'popstate')
     const demo = page.locator('#demo')
     await demo.locator('pyreon-island').scrollIntoViewIfNeeded()
+    await hydrateIsland(page, '#demo pyreon-island')
     await expect(demo.getByRole('searchbox', { name: 'Search' })).toBeVisible()
     await expect.poll(() => listeners(page, 'popstate')).toBeGreaterThan(baseline)
 
@@ -305,10 +308,11 @@ test.describe('feature demo', () => {
   test('leaving the page stops the query client listeners', async ({ page }) => {
     await trackWindowListeners(page)
     await page.goto('/products/feature')
-    await waitForIslands(page)
+    await waitForNav(page)
     const baseline = await listeners(page, 'visibilitychange')
     const demo = page.locator('#demo')
     await demo.locator('pyreon-island').scrollIntoViewIfNeeded()
+    await hydrateIsland(page, '#demo pyreon-island')
     await expect(demo.locator('tbody td:first-child')).toHaveText(['Launch checklist', 'Q4 roadmap'])
     expect(await listeners(page, 'visibilitychange')).toBeGreaterThan(baseline)
     await navigateBySiteLink(page, '/products/i18n')

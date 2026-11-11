@@ -172,8 +172,8 @@ const Page = el
     fontSize: 15,
     lineHeight: 1.6,
     extendCss: `
-      & h1 { margin: 0 0 8px; font-size: 26px; line-height: 1.2; }
-      & h2 { margin: 18px 0 6px; font-size: 18px; }
+      & h3 { margin: 0 0 8px; font-size: 26px; line-height: 1.2; }
+      & h4 { margin: 18px 0 6px; font-size: 18px; }
       & p { margin: 0 0 10px; color: ${paper.mist}; }
       & .callout { display: block; margin: 10px 0; padding: 10px 14px; border-left: 3px solid ${paper.accent}; border-radius: 6px; background: ${paper.field}; color: ${paper.text}; }
       & .callout__title { display: inline-flex; gap: 6px; font-weight: 600; margin-right: 6px; }
@@ -271,10 +271,12 @@ export default function DemoContent() {
                 by={(x) => x.key}
               >
                 {(x) =>
+                  // The preview sits under this section's h2: its page title is
+                  // an h3 here (one h1 per page), styled as the page's title.
                   x.b.kind === 'h1' ? (
-                    <h1>{inline(x.b.text)}</h1>
+                    <h3>{inline(x.b.text)}</h3>
                   ) : x.b.kind === 'h2' ? (
-                    <h2>{inline(x.b.text)}</h2>
+                    <h4>{inline(x.b.text)}</h4>
                   ) : x.b.kind === 'callout' ? (
                     <Callout type={x.b.type}>{inline(x.b.text)}</Callout>
                   ) : (

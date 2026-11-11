@@ -1,7 +1,7 @@
 import { expect, type Locator, type Page, test } from '@playwright/test'
 import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { waitForIslands } from './site-islands'
+import { replacedIslandRoots, trackIslandRoots, waitForIslands } from './site-islands'
 
 /**
  * pyreon.dev product pages for the core/platform and data/state groups,
@@ -12,19 +12,6 @@ import { waitForIslands } from './site-islands'
  */
 const IDS = ['zero', 'content', 'native', 'primitives', 'design', 'kinetic', 'router', 'hooks', 'validation', 'auth', 'query', 'http', 'store', 'statetree', 'machine', 'sync', 'storage']
 const WIDTHS = [320, 390, 768, 1024, 1440]
-
-async function trackRemovals(page: Page): Promise<void> {
-  await page.addInitScript(() => {
-    const w = window as unknown as { __removed: number }
-    w.__removed = 0
-    new MutationObserver((list) => {
-      for (const m of list) {
-        if ((m.target as Element).closest?.('head')) continue
-        for (const n of m.removedNodes) if (n.nodeType === 1) w.__removed++
-      }
-    }).observe(document, { childList: true, subtree: true })
-  })
-}
 
 function collectErrors(page: Page): string[] {
   const errors: string[] = []
@@ -67,12 +54,13 @@ test.describe('build output', () => {
 test.describe('hydration', () => {
   for (const id of IDS) {
     test(`/products/${id} hydrates in place and its demo hydrates with no errors`, async ({ page }) => {
-      await trackRemovals(page)
+      await trackIslandRoots(page)
       const errors = collectErrors(page)
       await page.goto(`/products/${id}`)
       await waitForIslands(page)
       await page.waitForTimeout(300)
-      expect(await page.evaluate(() => (window as unknown as { __removed: number }).__removed)).toBe(0)
+      // Every island (the demo included) adopted its server HTML: its root elements are the ones the server sent.
+      expect(await replacedIslandRoots(page)).toEqual([])
       await page.locator('#demo').scrollIntoViewIfNeeded()
       await page.waitForTimeout(1500)
       expect(errors).toEqual([])

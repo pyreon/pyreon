@@ -1,6 +1,6 @@
 import { expect, type Page, test } from '@playwright/test'
 import { readFileSync } from 'node:fs'
-import { waitForIslands } from './site-islands'
+import { hydrateIsland, waitForNav } from './site-islands'
 
 /**
  * Interaction for the four visual demos (charts, flow, editor, document) in
@@ -34,8 +34,9 @@ const HYDRATED: Record<string, (page: Page) => Promise<void>> = {
 
 async function openDemo(page: Page, id: string, ready: string): Promise<void> {
   await page.goto(`/products/${id}`)
-  await waitForIslands(page)
+  await waitForNav(page)
   await page.locator('#demo').scrollIntoViewIfNeeded()
+  await hydrateIsland(page, '#demo pyreon-island')
   await page.locator(`#demo ${ready}`).first().waitFor({ state: 'visible' })
   await HYDRATED[id]?.(page)
 }
@@ -44,9 +45,7 @@ test.describe('charts', () => {
   test('keyboard: Tab into the canvas and the arrow keys move the spoken datum', async ({ page }) => {
     await openDemo(page, 'charts', 'canvas[role="img"]')
     const canvas = page.locator('#demo canvas[role="img"]')
-    // `.last()`: after hydration the chart host holds two live regions (see the
-    // `test.fail` below); the client writes into the second.
-    const live = page.locator('#demo canvas[role="img"] ~ [role="status"]').last()
+    const live = page.locator('#demo canvas[role="img"] ~ [role="status"]')
     // Reach it by keyboard: focus the last mark switch, then Tab to the canvas.
     await page.getByRole('button', { name: 'users', exact: true }).focus()
     await page.keyboard.press('Enter')
@@ -60,11 +59,9 @@ test.describe('charts', () => {
     await expect(live).toContainText('1.9k')
   })
 
-  // KNOWN BUG, reported with this spec: hydrating the server-rendered chart
-  // appends a second tooltip, live region and data table after the server's
-  // own, so assistive tech finds an empty, stale status region first. This
-  // test passes while the bug exists (#4400); when it is fixed, drop `test.fail`.
-  test.fail('the hydrated chart keeps one live region and one data table', async ({ page }) => {
+  // #4400: hydrating the server-rendered chart used to append a second
+  // tooltip, live region and data table after the server's own.
+  test('the hydrated chart keeps one live region and one data table', async ({ page }) => {
     await openDemo(page, 'charts', 'canvas[role="img"]')
     await expect(page.locator('#demo canvas[role="img"] ~ [role="status"]')).toHaveCount(1)
     await expect(page.locator('#demo canvas[role="img"] ~ * table')).toHaveCount(1)

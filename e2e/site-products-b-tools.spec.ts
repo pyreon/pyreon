@@ -1,7 +1,7 @@
 import { expect, type Locator, type Page, test } from '@playwright/test'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { waitForIslands } from './site-islands'
+import { hydrateIsland, waitForNav } from './site-islands'
 
 /**
  * Interaction for the six tool demos (ai, atlas, lathe, loom, tooling,
@@ -18,8 +18,9 @@ const demo = (page: Page) => page.locator('#demo')
 
 async function open(page: Page, id: string): Promise<void> {
   await page.goto(`/products/${id}`)
-  await waitForIslands(page)
+  await waitForNav(page)
   await demo(page).scrollIntoViewIfNeeded()
+  await hydrateIsland(page, '#demo pyreon-island')
 }
 
 /**
@@ -74,7 +75,7 @@ test.describe('atlas', () => {
     const urls: string[] = []
     page.on('request', (r) => urls.push(r.url()))
     await page.goto('/products/atlas')
-    await waitForIslands(page)
+    await waitForNav(page)
     await page.waitForTimeout(1500)
     expect(urls.filter((u) => u.includes('/demos/atlas/'))).toEqual([])
     await demo(page).scrollIntoViewIfNeeded()

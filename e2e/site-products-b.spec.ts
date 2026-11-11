@@ -1,7 +1,7 @@
 import { expect, type Page, test } from '@playwright/test'
 import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { waitForIslands } from './site-islands'
+import { hydrateIsland, replacedIslandRoots, trackIslandRoots, waitForIslands, waitForNav } from './site-islands'
 
 /**
  * The app-building-blocks and visual-and-tools product pages (twenty), against
@@ -78,19 +78,23 @@ test.describe('hydration and the demo island', () => {
   for (const id of IDS) {
     test(`/products/${id}: adopts the server DOM, hydrates its demo on scroll, no errors`, async ({ page }) => {
       await trackRemovals(page)
+      await trackIslandRoots(page)
       const errors = collectErrors(page)
       const scripts: string[] = []
       page.on('request', (r) => {
         if (r.resourceType() === 'script') scripts.push(r.url())
       })
       await page.goto(`/products/${id}`)
-      await waitForIslands(page)
+      await waitForNav(page)
       await page.waitForTimeout(300)
+      // Before the demo is near, only the shell's islands have run: nothing of the page was replaced.
       expect(await page.evaluate(() => (window as unknown as { __removed: number }).__removed)).toBe(0)
       const heavy = HEAVY[id]
       if (heavy) expect(scripts.filter((u) => heavy.test(u)), 'heavy package before the demo is near').toEqual([])
       const island = page.locator('#demo pyreon-island')
-      await island.scrollIntoViewIfNeeded()
+      await hydrateIsland(page, '#demo pyreon-island')
+      // The demo adopted its server HTML: its root elements are the ones the server sent.
+      expect(await replacedIslandRoots(page)).toEqual([])
       await expect(island.locator('button, input, [tabindex="0"], select, iframe, canvas').first()).toBeVisible()
       await page.waitForLoadState('networkidle')
       if (heavy) expect(scripts.some((u) => heavy.test(u)), 'heavy package loads with its demo').toBe(true)

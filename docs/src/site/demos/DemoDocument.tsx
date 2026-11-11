@@ -238,7 +238,10 @@ export default function DemoDocument() {
     stopFrame = watch(
       () => output(),
       (html) => {
-        el.srcdoc = html
+        // The frame is sandboxed without allow-scripts, so a <script> in the
+        // output never runs; Chromium still logs "Blocked script execution" for
+        // each one. Drop them: the frame shows the same document, quietly.
+        el.srcdoc = html.replace(/<script\b[\s\S]*?<\/script>/gi, '')
       },
       { immediate: true },
     )

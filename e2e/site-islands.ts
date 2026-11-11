@@ -33,12 +33,48 @@ export async function waitForIslands(page: Page): Promise<void> {
     window.scrollTo(0, 0)
   })
   await page.waitForFunction(() =>
-    [...document.querySelectorAll('pyreon-island')].every(
-      (el) =>
-        el.getAttribute('data-hydrate') === 'interaction' ||
-        el.getAttribute('data-hydrate') === 'never' ||
-        el.hasAttribute('data-island-hydrated') ||
-        el.hasAttribute('data-island-error'),
-    ),
+    [...document.querySelectorAll('pyreon-island')].every((el) => {
+      const how = el.getAttribute('data-hydrate')
+      if (how === 'interaction' || how === 'never') return true
+      if (el.hasAttribute('data-island-hydrated') || el.hasAttribute('data-island-error')) return true
+      // A `visible` island whose content has no box at this width (a hidden
+      // variant) never becomes visible, by design.
+      const boxes = [el, ...el.children].map((n) => n.getBoundingClientRect())
+      return how === 'visible' && boxes.every((r) => r.width === 0 || r.height === 0)
+    }),
   )
+}
+
+/**
+ * Record every island's server-rendered root elements as the page parses,
+ * so `replacedIslandRoots` can tell adoption from a remount: an island that
+ * adopts keeps the very elements the server sent (their content may then
+ * change: a chart draws, a list renders); one that remounts swaps them for
+ * new ones. Call before `page.goto`.
+ */
+export async function trackIslandRoots(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    const w = window as unknown as { __islandRoots: [Element, Element[]][] }
+    w.__islandRoots = []
+    document.addEventListener('DOMContentLoaded', () => {
+      for (const el of document.querySelectorAll('pyreon-island')) w.__islandRoots.push([el, [...el.children]])
+    })
+  })
+}
+
+/** Islands (by `data-component`) that are live but no longer hold their server root elements. */
+export async function replacedIslandRoots(page: Page): Promise<string[]> {
+  return page.evaluate(() => {
+    const w = window as unknown as { __islandRoots: [Element, Element[]][] }
+    return w.__islandRoots
+      .filter(([el, roots]) => el.hasAttribute('data-island-hydrated') && roots.some((r) => r.parentNode !== el))
+      .map(([el]) => el.getAttribute('data-component') ?? '?')
+  })
+}
+
+/** Scroll an island into view and wait until it is live. */
+export async function hydrateIsland(page: Page, selector: string): Promise<void> {
+  const island = page.locator(selector).first()
+  await island.scrollIntoViewIfNeeded()
+  await page.locator(`${selector}[data-island-hydrated], ${selector}[data-island-error]`).first().waitFor({ state: 'attached' })
 }

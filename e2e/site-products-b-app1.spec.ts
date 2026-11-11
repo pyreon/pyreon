@@ -1,5 +1,5 @@
 import { expect, type Locator, type Page, test } from '@playwright/test'
-import { waitForIslands } from './site-islands'
+import { hydrateIsland, waitForNav } from './site-islands'
 
 /**
  * Per-demo interaction on five app product pages (table, virtual, dnd, toast,
@@ -24,9 +24,10 @@ function collectErrors(page: Page): string[] {
 
 async function openDemo(page: Page, id: string): Promise<Locator> {
   await page.goto(`/products/${id}`)
-  await waitForIslands(page)
+  await waitForNav(page)
   const demo = page.locator('#demo')
   await demo.locator('pyreon-island').scrollIntoViewIfNeeded()
+  await hydrateIsland(page, '#demo pyreon-island')
   return demo
 }
 
@@ -162,7 +163,7 @@ test.describe('virtual demo', () => {
     const demo = await ready(page)
     await demo.locator('.vt-box').hover()
     await page.mouse.wheel(0, 4000)
-    await expect.poll(() => firstVisible(demo)).toMatch(/#1000(9\d|[1-9]\d\d)/)
+    await expect.poll(() => firstVisible(demo)).toMatch(/#100(09\d|[1-9]\d\d)/) // order #100090–#100999: scrolled roughly 90–999 rows
     await demo.getByRole('button', { name: 'scrollToIndex(50000)' }).click()
     await expect.poll(() => firstVisible(demo)).toMatch(/#1499\d\d/)
     expect(await demo.locator('li.vt-row').count()).toBeLessThan(40)

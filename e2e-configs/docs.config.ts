@@ -34,6 +34,8 @@ export default definePlaywrightConfig({
     { name: 'site-products-b', testMatch: /\/site-products-b[^/]*\.spec\.ts$/, port: 5191 },
     // The blog, showcase, open stats and stable-link pages (posts, islands, widths, contrast).
     { name: 'site-project', testMatch: /site-project\.spec\.ts$/, port: 5191 },
+    // Every internal href and #fragment in the built output resolves (reads dist, no browser).
+    { name: 'site-links', testMatch: /site-links\.spec\.ts$/, port: 5191 },
   ],
   webServer: [
     {
