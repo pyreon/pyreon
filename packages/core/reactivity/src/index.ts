@@ -40,6 +40,7 @@ export {
   _rdDropBinding,
   _rdLabelBinding,
   _rdLabelDirect,
+  _rdLabelSubscribers,
   _rdNodeId,
   _rdNoteTarget,
   _rdOpenBindingFrame,
