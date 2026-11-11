@@ -120,23 +120,25 @@ test('keyboard: the view switch, the graph tab stop, and ↑↓ through the list
   await expect(page.getByTestId('impact-view')).toBeVisible()
   await page.getByTestId('view-graph').focus()
   await page.keyboard.press('Enter')
-  // The graph has ONE tab stop — the selected box — and it is a real one
-  // (a lowercase `tabindex` attribute; Chromium ignores `tabIndex` on SVG).
+  // The graph has ONE tab stop and it is a real one (a lowercase `tabindex`
+  // attribute; Chromium ignores `tabIndex` on SVG, pyreon/pyreon#4466).
+  // Nothing is selected on open, so it is the first box.
   const stops = page.locator('[data-testid^="gnode-"][tabindex="0"]')
   await expect(stops).toHaveCount(1)
-  const sel = await page.getByTestId('panel-name').textContent()
-  await expect(stops).toHaveAttribute('data-testid', `gnode-${sel}`)
+  const first = (await stops.getAttribute('data-testid'))!.slice('gnode-'.length)
   await stops.focus()
-  expect(await page.evaluate(() => document.activeElement?.getAttribute('data-testid'))).toBe(`gnode-${sel}`)
+  expect(await page.evaluate(() => document.activeElement?.getAttribute('data-testid'))).toBe(`gnode-${first}`)
+  // Enter on the focused box selects it; the rail switches to its detail.
+  await page.keyboard.press('Enter')
+  await expect(page.getByTestId('panel-name')).toHaveText(first)
   // ↓ moves the selection, and the tab stop follows it.
   await page.keyboard.press('ArrowDown')
-  await expect(page.getByTestId('panel-name')).not.toHaveText(sel!)
+  await expect(page.getByTestId('panel-name')).not.toHaveText(first)
   const next = await page.getByTestId('panel-name').textContent()
   await expect(stops).toHaveAttribute('data-testid', `gnode-${next}`)
-  // Enter on a focused box selects it.
-  await page.locator(`[data-testid="gnode-${sel}"]`).evaluate((el) => (el as SVGGElement).focus())
-  await page.keyboard.press('Enter')
-  await expect(page.getByTestId('panel-name')).toHaveText(sel!)
+  // Escape returns to the workspace overview.
+  await page.keyboard.press('Escape')
+  await expect(page.getByTestId('panel-overview-body')).toBeVisible()
   // ↑↓ also work from the filter field, over the filtered list.
   await page.getByTestId('pkg-filter').fill('router')
   await page.keyboard.press('ArrowDown')
@@ -206,4 +208,43 @@ test('manifest: the report excerpt is this scan, and the download is the full re
   const { readFileSync } = await import('node:fs')
   const saved = JSON.parse(readFileSync(path, 'utf8')) as LoomReport
   expect(saved.stats).toEqual(r.stats)
+})
+
+test('first view: nothing selected, the graph at its start, the workspace overview in the rail', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await open(page)
+  const r = await report(page)
+  await expect(page).not.toHaveURL(/#/)
+  await expect(page.getByTestId('panel-name')).toHaveCount(0)
+  await expect(page.locator('.lm-pk[aria-current="true"]')).toHaveCount(0)
+  expect(await page.getByTestId('loom-canvas').evaluate((el) => el.scrollLeft)).toBe(0)
+  // The overview is the report.
+  await expect(page.getByTestId('overview-name')).toHaveText(r.model.root.name!)
+  await expect(page.getByTestId('overview-stats')).toContainText(String(r.stats.internal))
+  await expect(page.getByTestId('overview-stats')).toContainText(String(r.stats.edges))
+  await expect(page.getByTestId('overview-error')).toContainText(String(r.stats.errors))
+  await expect(page.getByTestId('overview-info')).toContainText(String(r.stats.infos))
+  await expect(page.getByTestId('overview-cycles')).toContainText(String(r.stats.cycles))
+  await expect(page.getByTestId('overview-gate')).toHaveText(`exit ${r.gate!.exit}`)
+  // Top 5 by blast radius, platform binaries ranked under their parent.
+  const top = page.getByTestId('overview-top').locator('button')
+  await expect(top).toHaveCount(5)
+  expect((await top.allTextContents()).join(' ')).not.toMatch(/compiler-(darwin|linux|win32)/)
+  // A row is a way in: it selects the package.
+  const firstTitle = (await top.first().getAttribute('title'))!.split(' ')[0]!
+  await top.first().click()
+  await expect(page.getByTestId('panel-name')).toHaveText(firstTitle)
+  await page.getByTestId('panel-overview').click()
+  await expect(page.getByTestId('panel-overview-body')).toBeVisible()
+})
+
+test('graph box labels: cut at the end, the full id in the tooltip and the accessible name', async ({ page }) => {
+  await open(page)
+  const box = page.getByTestId('gnode-@pyreon/compiler-darwin-arm64')
+  await expect(box.locator('.lm-glabel')).toHaveText('compiler-darwin-arm64')
+  await expect(box.locator('title')).toHaveText('@pyreon/compiler-darwin-arm64')
+  await expect(box).toHaveAttribute('aria-label', /^@pyreon\/compiler-darwin-arm64,/)
+  // The longest names: the readable start survives, never a middle cut.
+  const labels = await page.locator('.lm-glabel').allTextContents()
+  expect(labels.filter((l) => l.includes('…')).every((l) => l.endsWith('…'))).toBe(true)
 })

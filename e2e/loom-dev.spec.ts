@@ -97,7 +97,25 @@ test('impact view ranks every package by reported reach with alphabetical ties',
   const report = (await response.json()) as LoomReport
   // The real workspace changes as packages add runtime/optional peers. Its
   // report, rather than a fixed package name, defines the current ranking.
+  // Platform packages (only an optionalDependency of one parent, no internal
+  // deps of their own) rank UNDER their parent, not beside it.
+  const declared = new Map<string, { user: string; field: string }[]>()
+  const hasDeps = new Set<string>()
+  const names = new Set(report.model.packages.map((p) => p.name))
+  for (const p of report.model.packages)
+    for (const d of p.deps) {
+      if (!names.has(d.name) || d.name === p.name) continue
+      if (d.field !== 'devDependencies') hasDeps.add(p.name)
+      declared.set(d.name, [...(declared.get(d.name) ?? []), { user: p.name, field: d.field }])
+    }
+  const platform = new Map<string, string>()
+  for (const [id, decl] of declared)
+    if (!hasDeps.has(id) && new Set(decl.map((x) => x.user)).size === 1 && decl.every((x) => x.field === 'optionalDependencies'))
+      platform.set(id, decl[0]!.user)
+  expect(platform.size).toBeGreaterThan(0)
+  const under = (name: string) => [...platform.values()].filter((p) => p === name).length
   const expected = report.model.packages
+    .filter(({ name }) => !platform.has(name))
     .map(({ name }) => ({ name, reach: report.graph.reach[name] ?? 0 }))
     .sort((a, b) => b.reach - a.reach || a.name.localeCompare(b.name))
   expect(expected.length).toBeGreaterThan(100)
@@ -106,7 +124,10 @@ test('impact view ranks every package by reported reach with alphabetical ties',
   const rows = page.getByTestId('impact-view').locator('tr[data-testid^="impact-"]')
   await expect(rows).toHaveCount(expected.length)
   await expect(rows).toHaveText(
-    expected.map(({ name, reach }, index) => `${String(index + 1).padStart(2, '0')}${name}${reach}`),
+    expected.map(
+      ({ name, reach }, index) =>
+        `${String(index + 1).padStart(2, '0')}${name}${under(name) ? `+${under(name)} platform` : ''}${reach}`,
+    ),
   )
 })
 
