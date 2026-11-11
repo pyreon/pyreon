@@ -78,6 +78,7 @@ Live Program Inlay Hints (LPIH) is the runtime companion: fire and subscriber co
   - Activity: `getReactiveFires` plus the cause chain of the latest fire.
   - Inspect: a DOM→signal picker (`$p.pick()`). `_bindText` tags `textNode → _rdNodeId(source)` in a dev-only `WeakMap`; `nodesForElement(el)` (`@pyreon/runtime-dom`) reads it. Text bindings only.
 - Tests: `binding-registry.test.ts`, `reactive-overlay.test.ts`, `e2e/reactive-overlay.spec.ts`.
+- Registration runs on BOTH walks. `hydrateComponent` takes its id and parent from `_devComponentIdentity` (`mount.ts`), which shares `mountComponent`'s owner-chain map, so a component mounted later under a hydrated one gets the right parent; `el` is the first element in the range the component claimed; its cleanup unregisters. Async components register on both paths. Locked by `hydrate-devtools-register.test.tsx` and its `.browser` twin.
 
 ### Dev error printer (`pyreon({ devErrorPrinter })`)
 

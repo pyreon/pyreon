@@ -65,6 +65,10 @@ let _elementDepth = 0
 // Only allocated in dev — production mounts skip devtools entirely.
 let _mountingStack: string[] | undefined
 if (process.env.NODE_ENV !== 'production') _mountingStack = []
+// Component scope → its devtools id (dev only). A WeakMap, so an entry goes
+// with its scope; nothing to evict by hand.
+let _devScopeIds: WeakMap<EffectScope, string> | undefined
+if (process.env.NODE_ENV !== 'production') _devScopeIds = new WeakMap()
 
 /**
  * Mount a single child into `parent`, inserting before `anchor` (null = append).
@@ -579,7 +583,16 @@ function mountComponent(
   let devParentId: string | null | undefined
   if (process.env.NODE_ENV !== 'production') {
     compId = `${componentName}-${Math.random().toString(36).slice(2, 9)}`
-    devParentId = _mountingStack![_mountingStack!.length - 1] ?? null
+    // The parent is the nearest component up the OWNER chain. The mounting
+    // stack alone is empty when a reactive update mounts a component later
+    // (a <For> row added, a <Show> turning on, a route change), which made
+    // every such component a root in the devtools tree.
+    let ownerId: string | undefined
+    for (let o: EffectScope | null = prevOwner; o !== null && ownerId === undefined; o = o._parent) {
+      ownerId = _devScopeIds!.get(o)
+    }
+    devParentId = ownerId ?? _mountingStack![_mountingStack!.length - 1] ?? null
+    _devScopeIds!.set(scope, compId)
     _mountingStack!.push(compId)
   }
 
@@ -683,9 +696,15 @@ function mountComponent(
         }
       })
 
-    if (process.env.NODE_ENV !== 'production') _mountingStack!.pop()
+    if (process.env.NODE_ENV !== 'production') {
+      _mountingStack!.pop()
+      // Registered like a sync component (the hydration walk registers async
+      // components too). No element yet: its output mounts when the promise settles.
+      registerComponent(compId!, componentName, null, devParentId!)
+    }
 
     return () => {
+      if (process.env.NODE_ENV !== 'production') unregisterComponent(compId!)
       cancelled = true
       resolvedCleanup()
       if (placeholder.parentNode) placeholder.parentNode.removeChild(placeholder)
@@ -803,6 +822,54 @@ function leanUnmount(scope: EffectScope, subtreeCleanup: Cleanup, compId: string
     scope.stop()
     subtreeCleanup()
   }
+}
+
+/**
+ * @internal Dev only — devtools bookkeeping for a component the HYDRATION walk
+ * runs (`hydrateComponent`). It shares `_devScopeIds` with `mountComponent`, so
+ * a hydrated component's parent, and the parent of a component mounted under a
+ * hydrated one later (a `<Show>` turning on, a `<For>` row, a route change),
+ * resolve through the one owner-chain map. Every caller sits behind
+ * `process.env.NODE_ENV !== 'production'`, so production drops these with it.
+ *
+ * `_devNameScope` runs BEFORE the component's setup and children (a child
+ * looks its parent up by scope); `_devRegisterScope` after its subtree;
+ * `_devUnregisterScope` from its cleanup. The registry entry is the only
+ * retained state, and `_devUnregisterScope` removes it.
+ */
+export function _devNameScope(scope: EffectScope, name: string): void {
+  _devScopeIds!.set(scope, `${name}-${Math.random().toString(36).slice(2, 9)}`)
+}
+
+/** @internal Dev only — see {@link _devNameScope}. */
+export function _devRegisterScope(
+  scope: EffectScope,
+  owner: EffectScope | null,
+  name: string,
+  el: Element | null,
+): void {
+  let parentId: string | undefined
+  for (let o: EffectScope | null = owner; o !== null && parentId === undefined; o = o._parent) {
+    parentId = _devScopeIds!.get(o)
+  }
+  registerComponent(_devScopeIds!.get(scope)!, name, el, parentId ?? null)
+}
+
+/** @internal Dev only — see {@link _devNameScope}. */
+export function _devUnregisterScope(scope: EffectScope): void {
+  const id = _devScopeIds!.get(scope)
+  if (id !== undefined) unregisterComponent(id)
+}
+
+/**
+ * @internal Dev only — the first element in `[from, end)`, the DOM range a
+ * component claimed. `null` when the component rendered no element.
+ */
+export function _devFirstElementIn(from: Node | null, end: Node | null): Element | null {
+  for (let n = from; n !== null && n !== end; n = n.nextSibling) {
+    if (n.nodeType === 1) return n as Element
+  }
+  return null
 }
 
 // ─── Children ────────────────────────────────────────────────────────────────
