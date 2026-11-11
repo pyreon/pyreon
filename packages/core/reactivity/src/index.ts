@@ -111,7 +111,7 @@ export {
   signal,
 } from './signal'
 export { type WrapSignalOptions, wrapSignal } from './wrap-signal'
-export { createStore, isStore, markRaw, shallowReactive } from './store'
+export { createStore, isStore, markRaw, shallowReactive, snapshot } from './store'
 export { _captureRun, _releaseRun, type RunCapture } from './effect'
 export {
   _frameReads,

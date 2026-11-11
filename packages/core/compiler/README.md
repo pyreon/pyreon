@@ -116,8 +116,9 @@ import { detectReactPatterns, migrateReactCode, diagnoseError } from '@pyreon/co
 const diagnostics = detectReactPatterns(reactSource, 'App.tsx')
 // diagnostics: ReactDiagnostic[] with codes like 'use-state', 'use-effect', 'class-name'
 
-const { code, changes } = migrateReactCode(reactSource, 'App.tsx')
-// One-shot codemod: useState → signal, useEffect → effect, className → class, etc.
+const { code, changes, manual } = migrateReactCode(reactSource, 'App.tsx')
+// One-shot codemod: useState → signal (reads → count(), setCount(v) → count.set(v)),
+// useEffect → effect, className → class, etc. `manual` lists what it left unconverted.
 
 const err = new Error('useState is not defined')
 diagnoseError(err, source) // ErrorDiagnosis — points users at the migration step

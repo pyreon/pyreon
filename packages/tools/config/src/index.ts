@@ -183,6 +183,10 @@ export interface LatheSection {
   remoteRefs?: 'off' | 'fetch'
   /** Headers for `remoteRefs: 'fetch'`, keyed by origin — each set goes to that origin only. */
   remoteHeaders?: Readonly<Record<string, Readonly<Record<string, string>>>>
+  /** The directory every local `$ref` target must lie in (default: the spec's own directory). */
+  refRoot?: string
+  /** Other origins a remote document's `$ref` may reach (default: its own origin only; `'*'` = any public origin). */
+  refOrigins?: readonly string[]
 }
 
 /** One entry of {@link LatheSection.projects}. */

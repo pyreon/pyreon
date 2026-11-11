@@ -44,7 +44,7 @@ import {
   DEFAULT_TEMPLATE,
   processCompiledTemplate,
 } from './html'
-import type { Middleware, MiddlewareContext } from './middleware'
+import type { Middleware, MiddlewareContext, ServerErrorHandler, ServerErrorPhase } from './middleware'
 import { provideRequestLocals } from './middleware'
 
 
@@ -122,6 +122,25 @@ export interface HandlerOptions {
    * createHandler({ App, routes, base: '/app/' })
    */
   base?: string
+  /**
+   * Called with every unexpected server error this handler catches — a
+   * throwing middleware or API route (`'middleware'`), a failed SSR render
+   * (`'render'`), a failed streamed render (`'stream'`) — and with any error a
+   * middleware reports through `ctx.reportError` (zero's server actions report
+   * `'action'`). The hook to wire Sentry, OpenTelemetry or a log shipper.
+   *
+   * Runs IN ADDITION to the `[Pyreon] …` console line, after it. Redirects
+   * are not errors and never reach it. The client still gets the generic 500
+   * body. A throwing or rejecting hook is caught and logged; it never changes
+   * the response.
+   *
+   * @example
+   * createHandler({
+   *   App, routes,
+   *   onError: (error, { phase, request }) => Sentry.captureException(error, { tags: { phase }, extra: { url: request.url } }),
+   * })
+   */
+  onError?: ServerErrorHandler
 }
 
 /** `base` as `/app` (leading slash, no trailing slashes), or `''` for root. */
@@ -163,6 +182,33 @@ function logServerError(what: string, path: string, err: unknown): void {
   console.error(`[Pyreon] ${what}${path ? ` for ${path}` : ''}:`, err)
 }
 
+/**
+ * Hand an error to the user's `onError` hook. The hook must never turn one
+ * failed request into a second failure (or an unhandled rejection that exits
+ * a Node server), so a throw or a rejection is caught and logged. Not awaited
+ * on the response path: a slow error shipper must not delay the 500.
+ */
+function callOnError(
+  onError: ServerErrorHandler | undefined,
+  err: unknown,
+  request: Request,
+  phase: ServerErrorPhase,
+): void {
+  if (!onError) return
+  const report = (hookErr: unknown): void => {
+    // oxlint-disable-next-line no-console
+    console.error('[Pyreon] The onError hook itself failed:', hookErr)
+  }
+  try {
+    const result = onError(err, { request, phase })
+    if (result && typeof (result as Promise<void>).then === 'function') {
+      ;(result as Promise<void>).then(undefined, report)
+    }
+  } catch (hookErr) {
+    report(hookErr)
+  }
+}
+
 export function createHandler(options: HandlerOptions): (req: Request) => Promise<Response> {
   const {
     App,
@@ -173,6 +219,7 @@ export function createHandler(options: HandlerOptions): (req: Request) => Promis
     mode = 'string',
     collectStyles,
     suspenseTimeoutMs,
+    onError,
   } = options
   const base = normalizeHandlerBase(options.base)
 
@@ -195,6 +242,8 @@ export function createHandler(options: HandlerOptions): (req: Request) => Promis
       headers: new Headers({ 'Content-Type': 'text/html; charset=utf-8' }),
       locals: {},
     }
+    // Only when a hook is configured: no per-request closure otherwise.
+    if (onError) ctx.reportError = (err, phase) => callOnError(onError, err, req, phase)
     // The client's socket address, when the runtime adapter supplied one
     // (see `REMOTE_ADDRESS`). A header would be spoofable; this can only be
     // set by code holding the Request before the handler sees it.
@@ -211,6 +260,7 @@ export function createHandler(options: HandlerOptions): (req: Request) => Promis
       }
     } catch (err) {
       logServerError('Middleware failed', path, err)
+      callOnError(onError, err, req, 'middleware')
       return new Response('Internal Server Error', {
         status: 500,
         headers: { 'Content-Type': 'text/plain' },
@@ -287,6 +337,7 @@ export function createHandler(options: HandlerOptions): (req: Request) => Promis
             streamStatus,
             method === 'HEAD',
             typeof ctx.locals.cspNonce === 'string' ? ctx.locals.cspNonce : undefined,
+            onError ? (err: unknown) => callOnError(onError, err, req, 'stream') : undefined,
           )
         } catch (err) {
           const info = getRedirectInfo(err)
@@ -297,6 +348,7 @@ export function createHandler(options: HandlerOptions): (req: Request) => Promis
             })
           }
           logServerError('SSR render failed', path, err)
+          callOnError(onError, err, req, 'render')
           return new Response('Internal Server Error', {
             status: 500,
             headers: { 'Content-Type': 'text/plain' },
@@ -352,6 +404,7 @@ export function createHandler(options: HandlerOptions): (req: Request) => Promis
       return new Response(fullHtml, { status: result.status, headers: ctx.headers })
     } catch (err) {
       logServerError('SSR render failed', path, err)
+      callOnError(onError, err, req, 'render')
       return new Response('Internal Server Error', {
         status: 500,
         headers: { 'Content-Type': 'text/plain' },
@@ -387,6 +440,8 @@ async function renderStreamResponse(
   isHead: boolean = false,
   // Per-request CSP nonce (`ctx.locals.cspNonce`), for every inline tag.
   nonce?: string,
+  // The handler's `onError`, bound to this request.
+  reportStreamError?: (err: unknown) => void,
 ): Promise<Response> {
   const loaderData = serializeLoaderData(router as never)
   const scripts = buildScriptsFast(clientEntryTag, loaderData, nonce)
@@ -437,6 +492,7 @@ async function renderStreamResponse(
         // hard to exercise from tests without mocking `reader.read()`.
         /* v8 ignore start */
         logServerError('Stream render failed', '', err)
+        reportStreamError?.(err)
         push(`<script>console.error("[pyreon/server] Stream render failed")</script>`)
         push(shellTail)
         /* v8 ignore stop */

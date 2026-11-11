@@ -237,7 +237,7 @@ themeToCssVars(theme, { units: { mySizes: 'rem' } })`,
       mistakes: [
         'Doing JS arithmetic on a var leaf (`vars.spacing.small * 2` → NaN) — compose with native CSS calc instead: `` `calc(${vars.spacing.small} * 2)` ``',
         'Expecting `breakpoints` / `rootSize` to be tokenized — they are excluded by design (`@media` queries cannot read `var()`); JS consumes them at build/render time',
-        'Using a var leaf for `backgroundImage` — CSS forbids `var()` inside `url(…)`; keep image URLs as raw values',
+        'Pointing a `backgroundImage` var leaf at a bare path — `backgroundImage` passes `var()` through verbatim (CSS cannot resolve `var()` inside `url(…)`), so the variable must hold a complete image such as `url(/a.png)` or a gradient',
         'Forgetting to inject `css` — the function is pure; nothing lands on the page until the `:root` block reaches a style sink (`<style>` tag, `sheet.injectRules`, `createGlobalStyle`)',
         'Re-creating the theme object per render — results are WeakMap-cached by theme IDENTITY; a fresh object every call re-walks the tree and defeats downstream identity-keyed caches',
         'Assuming a custom top-level key converts to rem — only the conventional length keys convert by default; declare `units: { myScale: "rem" }` for custom scales',

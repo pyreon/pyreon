@@ -4,9 +4,17 @@ import { watch } from '@pyreon/reactivity'
 import type { CSSProperties, TransitionCallbacks } from '../types'
 import useAnimationEnd from '../useAnimationEnd'
 import { useReducedMotion } from '../useReducedMotion'
+import { applyReducedMotionEnd } from '../reduced-motion'
 import useTransitionState from '../useTransitionState'
 import { isDynamicProp, readCallbacks, readLive, resolveLive } from '../live-prop'
-import { addClasses, mergeRefs, nextFrame, removeClasses, setTransition } from '../utils'
+import {
+  addClasses,
+  consumerRef,
+  mergeRefs,
+  nextFrame,
+  removeClasses,
+  setTransition,
+} from '../utils'
 import type { KineticConfig } from './types'
 
 type TransitionRendererProps = {
@@ -66,13 +74,18 @@ const applyReducedMotion = (
   stage: string,
   cbs: Partial<TransitionCallbacks>,
   complete: () => void,
+  // Lands the element on the END state (see `applyReducedMotionEnd`) between
+  // the two callbacks, so `onEnter` sees the start and `onAfterEnter` the end.
+  settle: () => void,
 ) => {
   if (stage === 'entering') {
     cbs.onEnter?.()
+    settle()
     cbs.onAfterEnter?.()
     complete()
   } else if (stage === 'leaving') {
     cbs.onLeave?.()
+    settle()
     cbs.onAfterLeave?.()
     complete()
   }
@@ -95,7 +108,9 @@ const TransitionRenderer = (props: TransitionRendererProps): VNode | null => {
   })
 
   const elementRef = createRef<HTMLElement>()
-  const mergedRef = mergeRefs(elementRef, stateRef)
+  // The consumer's own `ref` rides along: every `h()` below puts `mergedRef`
+  // LAST over `props.htmlProps`, which would otherwise drop it.
+  const mergedRef = mergeRefs(elementRef, stateRef, consumerRef<HTMLElement>(props.htmlProps))
 
   // Accessors, not values: resolved at each point of USE so a prop that
   // arrived as a compiler `_rp` getter is re-read rather than frozen. The
@@ -129,7 +144,9 @@ const TransitionRenderer = (props: TransitionRendererProps): VNode | null => {
       if (!el) return
 
       if (reducedMotion()) {
-        applyReducedMotion(currentStage, readCallbacks(props.callbacks), complete)
+        applyReducedMotion(currentStage, readCallbacks(props.callbacks), complete, () =>
+          applyReducedMotionEnd(el, currentStage, props.config),
+        )
         return
       }
 

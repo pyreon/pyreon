@@ -220,8 +220,23 @@ export type RouteMiddleware = (
 export type BlockerFn = (to: ResolvedRoute, from: ResolvedRoute) => boolean | Promise<boolean>
 
 export interface Blocker {
-  /** Unregister this blocker so future navigations proceed freely. */
+  /** Unregister this blocker so future navigations proceed freely. Idempotent. */
   remove(): void
+}
+
+export interface BlockerOptions {
+  /**
+   * Whether closing or reloading the tab shows the browser's "Leave site?"
+   * prompt. The browser asks synchronously and cannot wait for a Promise.
+   *
+   * - omitted (default): the blocker itself is asked, called synchronously
+   *   with the current route as both `to` and `from`; the prompt shows only
+   *   when it returns `true`. A blocker that returns a Promise counts as
+   *   blocking (the answer cannot be awaited) — pass this option for one.
+   * - `true` / `false`: always / never prompt while the blocker is active.
+   * - a function: prompt when it returns `true` (e.g. `() => form.isDirty()`).
+   */
+  beforeUnload?: boolean | (() => boolean) | undefined
 }
 
 // ─── Route loaders ────────────────────────────────────────────────────────────

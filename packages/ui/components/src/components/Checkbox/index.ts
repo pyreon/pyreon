@@ -1,13 +1,14 @@
-import { disabledState, el, focusRing } from '../../factory'
+import { choiceBoxStyles, choiceBoxTheme, disabledState, el, focusRing, tones } from '../../factory'
 import { CheckboxBase } from '@pyreon/ui-primitives'
 
 const Checkbox = el.config({ name: 'Checkbox', component: CheckboxBase })
-  .theme((t) => ({
+  .theme((t, m) => ({
+    ...choiceBoxTheme(t, m),
     display: 'inline-flex',
     alignItems: 'center',
     gap: t.spacing.xxSmall,
     cursor: 'pointer',
-    color: t.color.system.base[700],
+    color: tones(t, m).text,
     fontSize: t.fontSize.small,
     transition: t.transition.fast,
     focus: { ...focusRing(t), borderRadius: t.borderRadius.small },
@@ -18,23 +19,24 @@ const Checkbox = el.config({ name: 'Checkbox', component: CheckboxBase })
     medium: { fontSize: t.fontSize.small, gap: t.spacing.xxSmall },
     large: { fontSize: t.fontSize.base, gap: t.spacing.xSmall },
   }))
+  .styles(choiceBoxStyles('square') as never)
 
 export default Checkbox
 
 export const CheckboxIndicator = el
   .config({ name: 'CheckboxIndicator' })
-  .attrs({ tag: 'span' })
-  .theme((t) => ({
+  .attrs({ tag: 'span', 'data-choice-indicator': '' } as never)
+  .theme((t, m) => ({
     width: '18px',
     height: '18px',
     borderWidth: 2,
     borderStyle: 'solid',
-    borderColor: t.color.system.base[300],
+    borderColor: tones(t, m).border,
     borderRadius: t.borderRadius.small,
     display: 'inline-flex',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: t.color.system.light.base,
+    backgroundColor: tones(t, m).surface,
     color: t.color.system.light.base,
     fontSize: '12px',
     transition: t.transition.fast,
