@@ -11,7 +11,11 @@ and lifecycle code by swapping the import path; no rewrite. Components
 are plain functions returning JSX that run on Pyreon via a shared compat
 JSX runtime, re-rendering when a store they subscribe to changes.
 
-<PackageBadge name="@pyreon/svelte-compat" href="/docs/svelte-compat" status="stable" />
+<PackageBadge name="@pyreon/svelte-compat" href="/docs/svelte-compat" status="beta" />
+
+:::note
+The compat layer is at **near-full public-API parity** with Svelte, not complete parity, and Pyreon is pre-1.0. Check the differences and unsupported APIs on this page before migrating a large app.
+:::
 
 ## Scope
 

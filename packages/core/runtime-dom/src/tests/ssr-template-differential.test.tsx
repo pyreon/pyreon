@@ -1118,6 +1118,55 @@ const Node = <Prov>{row()}</Prov>`
     expect(html).not.toContain('DEFAULT')
   })
 
+  // JSX inside an EXPRESSION hole renders when `_esc`/`_escSole` evaluates the
+  // hole. Without deferral a module-level template rendered its components
+  // before any provider ran. BISECT: on the pre-fix emit each of these three
+  // rendered `DEFAULT`.
+  it.each([
+    ['a .map of components', `const xs = [1, 2]
+const frag = <ul>{xs.map((x) => <Consumer />)}</ul>
+const Node = <Prov>{frag}</Prov>`, () => h('ul', null, h(Consumer as never, null), h(Consumer as never, null))],
+    ['a component ternary arm', `const c = true
+const frag = <div class="p">{c ? <Consumer /> : null}</div>
+const Node = <Prov>{frag}</Prov>`, () => h('div', { class: 'p' }, h(Consumer as never, null))],
+    ['a component arm next to a lowered DOM arm', `const c = false
+const frag = <div class="p">{c ? <b>x</b> : <Consumer />}</div>
+const Node = <Prov>{frag}</Prov>`, () => h('div', { class: 'p' }, h(Consumer as never, null))],
+  ])('MODULE-CONST position — %s inside an expression hole', async (_n, src, inner) => {
+    const Prov = (p: { children?: unknown }) => {
+      provide(Theme, 'PROVIDED')
+      return h('main', null, p.children as never)
+    }
+    const html = await renderSrc(src, { Consumer, Prov })
+    expect(html).toContain('PROVIDED')
+    expect(html).not.toContain('DEFAULT')
+    const oracle = await renderToString(h(Prov as never, null, inner()) as never)
+    expect(html).toBe(oracle)
+  })
+
+  it('a .map item holding a component templates byte-identically to the h() path', async () => {
+    // The stacks-bench list shape: the `<li>`/`<span>` become `_ssr` per item,
+    // `<Link>` an `_ssrNode` hole. Escaped text proves the item holes escape.
+    const src = `const items = [{ id: 1, name: 'a<b' }, { id: 2, name: 'c&d' }]
+const Node = <Prov><ul id="items">{items.map((item) => <li><Link href={'/i/' + item.id}>{item.name}</Link>{' '}<span class="price">{item.name}</span></li>)}</ul></Prov>`
+    expect(transformJSX_JS(src, 'case.tsx', { ssr: true, ssrTemplate: true }).code).toContain('_ssr(["<li>"')
+    const Link = (p: { href: string; children?: unknown }) =>
+      h('a', { href: p.href, title: useContext(Theme) }, p.children as never)
+    const Prov = (p: { children?: unknown }) => {
+      provide(Theme, 'PROVIDED')
+      return h('main', null, p.children as never)
+    }
+    const html = await renderSrc(src, { Link, Prov })
+    const items = [{ id: 1, name: 'a<b' }, { id: 2, name: 'c&d' }]
+    const oracle = await renderToString(
+      h(Prov as never, null, h('ul', { id: 'items' }, items.map((item) =>
+        h('li', null, h(Link as never, { href: `/i/${item.id}` }, item.name), ' ', h('span', { class: 'price' }, item.name)),
+      ))) as never,
+    )
+    expect(html).toBe(oracle)
+    expect(html).toContain('title="PROVIDED"')
+  })
+
   it('a provider FRAME does not leak out of the deferred subtree', async () => {
     // Two sibling templated subtrees; the first provides, the second must NOT
     // see it. `renderComponent` owns the trimming — deferring must not move it.
