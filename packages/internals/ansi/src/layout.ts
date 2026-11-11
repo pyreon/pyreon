@@ -121,7 +121,7 @@ export const columns = (rows: ReadonlyArray<ReadonlyArray<string>>, opts: Column
       const w = widths[i] ?? 0
       return opts.align?.[i] === 'right' ? padStartVisible(cell, w) : padEndVisible(cell, w)
     })
-    return `${indent}${cells.join(gap)}`.replace(/\s+$/, '')
+    return `${indent}${cells.join(gap)}`.trimEnd()
   })
 }
 
