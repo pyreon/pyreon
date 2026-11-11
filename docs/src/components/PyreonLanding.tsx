@@ -189,7 +189,10 @@ const FOOTER: { h: string; items: FooterItem[] }[] = [
       { label: 'GitHub', href: 'https://github.com/pyreon/pyreon' },
       { label: 'Changelog', href: 'https://github.com/pyreon/pyreon/releases' },
       { label: 'Benchmarks', href: 'https://github.com/pyreon/pyreon/blob/main/BENCHMARKS.md' },
-      { label: 'RFCs', href: 'https://github.com/pyreon/pyreon/discussions' },
+      { label: 'Showcase', to: '/showcase' },
+      { label: 'Open stats', to: '/open' },
+      { label: 'Community', to: '/discord' },
+      { label: 'Newsletter', to: '/newsletter' },
     ],
   },
 ]

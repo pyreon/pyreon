@@ -117,6 +117,51 @@ To preview a scheduled post locally, build with
 dev`, where drafts and scheduled posts still render (the index lists only
 published ones).
 
+## Site pages: /open, /showcase, /discord, /newsletter
+
+Four standalone pages that posts link to, so their addresses must never move.
+
+- **`/open`** (`src/routes/open.tsx`, `src/open/`): live project numbers. They
+  are fetched once per build by `vite-plugins/open-stats.ts` (GitHub repo,
+  search and release APIs; npm download ranges for `@pyreon/core`,
+  `@pyreon/zero` and `@pyreon/create-zero`) and baked into the page, so the
+  daily deploy is what refreshes them. Repository counts come from
+  `countRepo` in the doc-claims gate, the same counters that fail CI when a
+  number in the docs drifts. A source that is down, slow or rate-limited
+  renders as "unavailable right now" and never fails the build. CI passes
+  `GITHUB_TOKEN`; locally it works without one.
+  `PYREON_OPEN_STATS_OFFLINE=1 bun run build` skips the network.
+- **`/showcase`** (`src/routes/showcase.tsx`, `src/showcase/examples.ts`):
+  the examples gallery. Screenshots are in `public/showcase/` (WebP, 960x600
+  desktop, 360x640 phone). The deploy also builds `examples/collab-board` and
+  `examples/react-compat` into `/showcase/<name>/` as live demos (see
+  `.github/workflows/docs.yml`).
+- **`/discord`** and **`/newsletter`**: stable links driven by
+  `src/site-links.ts`.
+
+### Switching on /discord or /newsletter
+
+Set the target in `src/site-links.ts`, one line each, and merge:
+
+```ts
+export const SITE_LINKS = {
+  discord: 'https://discord.gg/<invite>',
+  newsletter: 'https://<newsletter sign-up page>',
+} satisfies Record<string, string | null>
+```
+
+The next deploy turns that page into a redirect that works on a static host:
+a `<meta http-equiv="refresh">`, a canonical link to the target, `noindex`,
+a visible "Continue" link, and the page leaves the sitemap. The target must be
+an absolute `https://` URL (anything else fails the build), and it is used
+exactly as written: a query string a visitor arrives with is not forwarded.
+While a target is `null`, `/discord` points people to GitHub issues and
+`/newsletter` to the blog's RSS feed.
+
+The site's own unit tests (`bun run test` in `docs/`) cover the stats
+fetchers, including every failure path, the link config and the showcase data;
+`e2e/docs.spec.ts` checks the four pages in the built site.
+
 ## Deploy
 
 GitHub Actions workflow `.github/workflows/docs.yml` builds the site with

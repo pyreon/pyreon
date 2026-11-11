@@ -1,8 +1,8 @@
 {
-  "total": 4216,
+  "total": 4173,
   "apps": {
     "hn-clone": {
-      "code": 2391,
+      "code": 2346,
       "files": 29
     },
     "kanban": {
@@ -14,7 +14,7 @@
       "files": 10
     },
     "collab-board": {
-      "code": 699,
+      "code": 701,
       "files": 14
     }
   }

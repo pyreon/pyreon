@@ -84,6 +84,8 @@ export default function DashboardPageRoute() {
               </Col>
               <Col size={6}>
                 <CategoryChart />
+              </Col>
+              <Col size={12}>
                 <OrdersPlotChart />
               </Col>
             </Row>
