@@ -35,6 +35,35 @@ describe('renderWithHead — SSR', () => {
     expect(head).toContain('property="og:title"')
   })
 
+  test('keeps repeated meta properties and per-media variants instead of collapsing them', async () => {
+    function Layout() {
+      useHead({ meta: [{ property: 'og:title', content: 'Site' }] })
+      return h(Post, null)
+    }
+    function Post() {
+      useHead({
+        meta: [
+          { property: 'og:title', content: 'Post' },
+          { property: 'article:tag', content: 'signals' },
+          { property: 'article:tag', content: 'compiler' },
+          { property: 'article:tag', content: 'ssr' },
+          { name: 'theme-color', media: '(prefers-color-scheme: light)', content: '#fff' },
+          { name: 'theme-color', media: '(prefers-color-scheme: dark)', content: '#000' },
+        ],
+      })
+      return h('div', null)
+    }
+    const { head } = await renderWithHead(h(Layout, null))
+    for (const tag of ['signals', 'compiler', 'ssr']) {
+      expect(head).toContain(`property="article:tag" content="${tag}"`)
+    }
+    expect(head).toContain('content="#fff"')
+    expect(head).toContain('content="#000"')
+    // A later entry still replaces an earlier one's tag with the same key.
+    expect(head).toContain('content="Post"')
+    expect(head).not.toContain('content="Site"')
+  })
+
   test('extracts <link> tags from useHead', async () => {
     function Page() {
       useHead({ link: [{ rel: 'canonical', href: 'https://example.com/page' }] })

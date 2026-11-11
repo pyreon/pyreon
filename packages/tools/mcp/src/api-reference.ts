@@ -10570,7 +10570,7 @@ const posts = await getCollection('blog')
 for (const post of posts) {
   console.log(post.data.title, post.slug)
 }`,
-    notes: `Runtime query — returns every entry in a collection. Data shape inferred from the collection's zod schema via the generated \`.pyreon/content-types.d.ts\`. Each entry exposes a \`render()\` lazy loader to get the page component. See also: getEntry, getEntries.`,
+    notes: `Runtime query — returns every entry in a collection. \`data\` is the collection schema's PARSED output (defaults applied, values typed as the schema outputs them — a \`Date\` stays a \`Date\`), matching the generated \`.pyreon/content-types.d.ts\`. Entries come from the collection's metadata chunk (frontmatter, headings, \`wordCount\`, \`excerpt\` — no bodies); \`render()\` loads the entry's page component on demand, so a listing never pulls in bodies. See also: getEntry, getEntries.`,
     mistakes: `- Calling \`getCollection\` in a component body without \`await\`. It returns a Promise. Wrap in an async setup function, use a loader, or await it during SSG render.
 - Prefixing the collection to \`entry.slug\` twice — \`slug\` is collection-relative (\`'hello'\` for \`src/content/blog/hello.md\`), the same key \`getEntry\` takes
 - Passing a string that isn't a defined collection. TypeScript catches this once \`.pyreon/content-types.d.ts\` is generated; without it, you'd get a runtime error.`,
@@ -10859,6 +10859,36 @@ search.query.set('signal')
     notes: `\`useSearch\` is the headless search state — build a custom search UI on top of it. \`<Search />\` wraps it with default styling + keyboard shortcuts (⌘K-style open). Both load a MiniSearch index lazily via \`loadSearchIndex\` (a module-level cache, reference-counted across mounts so it is not re-fetched per component instance) and debounce the query (\`debounceMs\`, default 150ms) before searching. \`status\` exists specifically to avoid a "No results" flash: \`'idle'\` (query empty or below \`minQueryLength\`), \`'searching'\` (in flight), \`'ready'\` (a search COMPLETED for the current query — only then is an empty \`results\` a genuine "no matches"). \`minQueryLength\` defaults to 2 (single letters hit too broad a result set on docs-sized corpora).`,
     mistakes: `- Gating the empty state on \`results().length === 0\` alone — during the debounce/index-load window results are momentarily empty for a query that WILL match; gate on \`status() === 'ready'\` too, as shown above
 - Building a search index yourself instead of calling \`loadSearchIndex\` — the module-level cache is what keeps the ~200 KB index from being fetched/parsed once per mounted search UI`,
+  },
+
+  'zero-content/blogCollection / defineBlog (@pyreon/zero-content/blog)': {
+    signature: `blogCollection(options?: { path?: string; unpublished?: 'omit' | 'runtime' }): CollectionDefinition · defineBlog(config: BlogConfig): Blog`,
+    example: `// content.config.ts
+import { defineConfig } from '@pyreon/zero-content'
+import { blogCollection } from '@pyreon/zero-content/blog'
+export default defineConfig({ collections: { blog: blogCollection() } })
+
+// src/blog.ts
+import 'virtual:zero-content/collections'
+import { defineBlog } from '@pyreon/zero-content/blog'
+export const blog = defineBlog({
+  siteUrl: 'https://example.com',
+  title: 'Example blog',
+  description: 'Notes from the team.',
+  feedPath: '/blog/rss.xml',
+})
+
+// src/routes/blog/index.tsx          export default blog.IndexPage
+// src/routes/blog/page/[page].tsx    export const getStaticPaths = blog.pagePaths; export default blog.IndexPage
+// src/routes/blog/[slug].tsx         export const getStaticPaths = blog.postPaths; export default blog.PostPage
+// src/routes/blog/tags/[tag]/index.tsx        export const getStaticPaths = blog.tagPaths;     export default blog.TagPage
+// src/routes/blog/tags/[tag]/page/[page].tsx  export const getStaticPaths = blog.tagPagePaths; export default blog.TagPage`,
+    notes: `A production blog on a content collection. \`blogCollection()\` is a \`pages\` collection with a dependency-free Standard Schema for post frontmatter (title, description, date, updated?, slug?, tags?, cover?, coverAlt?, author?, canonical?, draft? — unknown fields are a build error), \`date\` as the publish date, and \`unpublished: 'omit'\` by default. \`defineBlog({ siteUrl, title, description, … })\` returns the queries (\`getPosts()\` — published, newest first; \`getPost\`, \`getTags\` with counts), four route components (\`IndexPage\` for \`/blog\` and \`/blog/page/[page]\`, \`PostPage\`, \`TagPage\` for \`/blog/tags/[tag]\` and \`/blog/tags/[tag]/page/[page]\`, paginated like the index) and their \`getStaticPaths\` (\`pagePaths\`, \`postPaths\`, \`tagPaths\`, \`tagPagePaths\`). Listings read the collection's metadata chunk, so no listing loads a post body. Every listing, count, page count, previous/next and related list derives from the published posts only, and \`PostPage\` renders an unpublished entry only in development (with a Draft/Scheduled notice), whatever the \`unpublished\` mode bundled. Each page sets its head through \`blogPostHead\`/\`blogListHead\`: title, description, canonical, Open Graph + \`article:*\`, Twitter card, JSON-LD \`BlogPosting\` (post), \`Blog\` (index) or \`CollectionPage\` (tag). After every post \`postEnd\` renders a call-to-action box (\`cta\`, off unless given — turn it off when posts carry their own closing), share links (\`share\`, on), a feed link (\`feed\`, on with \`feedPath\`) and a newsletter form (\`newsletter\`, renders nothing while its action is empty). Components (\`PostList\`, \`PostCard\`, \`PostHeader\`, \`PostMeta\`, \`TagList\`, \`Pagination\`, \`PostNav\`, \`RelatedPosts\`, \`PostEnd\`, \`CallToAction\`, \`ShareLinks\`, \`NewsletterForm\`) are exported for custom pages; the optional stylesheet \`@pyreon/zero-content/blog.css\` has one-class specificity and takes its colours from the host via \`--pyreon-blog-*\` variables. RSS stays in the content plugin's \`seo.rss\`. See also: defineCollection, getCollection.`,
+    mistakes: `- Forgetting \`import 'virtual:zero-content/collections'\` in the file that calls \`defineBlog\` — the SSG render and \`getStaticPaths\` read the collection registry it populates; without it \`getPosts()\` throws \`No content collection registry available\`
+- Expecting \`/blog/page/1\` to exist — page 1 is \`/blog\`; \`pagePaths\` lists pages 2..n and the index route treats \`1\` as not found (no duplicate URL)
+- A frontmatter \`slug\` that differs from the file name — the URL comes from the file; \`postPaths\` fails the build naming both
+- Importing \`@pyreon/zero-content/blog.css\` AFTER the site stylesheet — it has one-class specificity, so it must come first for the site's class rules to win
+- Treating \`entry.data.date\` as a string — the schema outputs \`BlogPostData\` (dates as \`Date\`, \`tags\`/\`author\` as lists, \`draft\` boolean) and that parsed output is what ships`,
   },
 
   'zero-content/generateSitemap / generateRssFeed / generateLlmsTxt': {

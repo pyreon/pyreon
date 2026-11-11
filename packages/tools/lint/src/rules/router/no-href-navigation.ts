@@ -4,6 +4,27 @@ import { extractImportInfo } from '../../utils/imports'
 
 const EXTERNAL_PREFIXES = ['http://', 'https://', 'mailto:', 'tel:']
 
+/**
+ * An anchor that says it is NOT an in-app navigation: it opens elsewhere
+ * (`target`), saves a file (`download`), or names a resource / an outside
+ * page through `rel` (`alternate` — a feed or other representation of the
+ * page; `external`). `<RouterLink>` would be wrong for each: the router
+ * would try to match `/blog/rss.xml` as a route. Dynamic hrefs make the
+ * href itself unreadable, so these explicit signals are what the rule can
+ * trust.
+ */
+const NON_ROUTE_RELS = ['alternate', 'external']
+
+function declaresNonRoute(node: any): boolean {
+  if (getJSXAttribute(node, 'target') || getJSXAttribute(node, 'download')) return true
+  const rel = getJSXAttribute(node, 'rel')?.value
+  if (rel?.type === 'Literal' && typeof rel.value === 'string') {
+    const tokens = rel.value.toLowerCase().split(/\s+/)
+    return NON_ROUTE_RELS.some((t) => tokens.includes(t))
+  }
+  return false
+}
+
 export const noHrefNavigation: Rule = {
   meta: {
     id: 'pyreon/no-href-navigation',
@@ -34,6 +55,7 @@ export const noHrefNavigation: Rule = {
 
         const hrefAttr = getJSXAttribute(node, 'href')
         if (!hrefAttr) return
+        if (declaresNonRoute(node)) return
 
         // Get the href value
         const value = hrefAttr.value

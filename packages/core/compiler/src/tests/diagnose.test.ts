@@ -85,6 +85,16 @@ describe('diagnoseError (browser-safe error catalog)', () => {
     expect(r!.fix).toContain('defineAsyncComponent')
   })
 
+  it('diagnoses the content audit orphaned-md-file finding, naming the pre-0.54 collection misread', () => {
+    // The finding's message as `auditContent` builds it.
+    const r = diagnoseError(
+      "Markdown file `src/content/blog/hello.md` lives under `src/content/` but is not under any declared collection's `path`. The runtime ignores it.",
+    )
+    expect(r?.cause).toContain('blogCollection()')
+    expect(r?.fix).toContain('pyreon upgrade')
+    expect(diagnoseError('content audit: orphaned-md-file in src/content/x.md')?.cause).toContain('no declared collection')
+  })
+
   it('diagnoses a failed code-split chunk (the residual of deferred lazy hydration)', () => {
     // The messages Chromium, Firefox and Safari throw for a failed dynamic import.
     for (const msg of [

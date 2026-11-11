@@ -961,17 +961,17 @@ impl<'a> P<'a> {
             Some(b) => FnBody::Block(b),
             None => FnBody::None,
         };
-        self.walk_function_core(&f.params, body, f.generator, component_name);
+        self.walk_function_core(&f.params, body, f.generator, f.r#async, component_name);
     }
 
     fn walk_arrow(&mut self, f: &ArrowFunctionExpression<'a>) {
         match &f.body {
             ArrowFunctionBody::FunctionBody(b) => {
-                self.walk_function_core(&f.params, FnBody::Block(b), false, None)
+                self.walk_function_core(&f.params, FnBody::Block(b), false, f.r#async, None)
             }
             other => match other.as_expression() {
-                Some(e) => self.walk_function_core(&f.params, FnBody::Expr(e), false, None),
-                None => self.walk_function_core(&f.params, FnBody::None, false, None),
+                Some(e) => self.walk_function_core(&f.params, FnBody::Expr(e), false, f.r#async, None),
+                None => self.walk_function_core(&f.params, FnBody::None, false, f.r#async, None),
             },
         }
     }
@@ -981,6 +981,7 @@ impl<'a> P<'a> {
         params: &FormalParameters<'a>,
         body: FnBody<'_, 'a>,
         generator: bool,
+        is_async: bool,
         component_name: Option<&str>,
     ) {
         let is_component = (component_name.is_some_and(is_pascal_case)
@@ -1114,8 +1115,10 @@ impl<'a> P<'a> {
                     self.walk_stmt(stmt);
                 }
                 // Tail detection runs AFTER the walk so component-BODY state
-                // is in scope when the `if` tests are classified.
-                let wrap_from = if is_component {
+                // is in scope when the `if` tests are classified. Never for an
+                // ASYNC component (mirrors plain.ts): its body runs once, and a
+                // tail containing `await` cannot move into a plain closure.
+                let wrap_from = if is_component && !is_async {
                     self.find_reactive_tail(b)
                 } else {
                     None

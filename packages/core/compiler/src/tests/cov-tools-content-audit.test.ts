@@ -218,11 +218,13 @@ describe('content-audit — parseContentConfig shape handling', () => {
     expect(decls.map((d) => d.name).sort()).toEqual(['docs', 'my-docs'])
   })
 
-  it('declines a collection initializer that is neither defineCollection() nor an object', () => {
+  it('a collection held in a variable gets the default directory (it is still a collection)', () => {
     const decls = parse(`export default defineConfig({
   collections: { docs: sharedDocs, blog: { type: 'pages', path: 'b' } },
 })`)
-    expect(decls.map((d) => d.name)).toEqual(['blog'])
+    expect(decls.map((d) => d.name)).toEqual(['docs', 'blog'])
+    expect(decls[0]?.type).toBe('unknown')
+    expect(decls[0]?.contentDir.endsWith(join('src', 'content', 'docs'))).toBe(true)
   })
 
   it('skips a spread inside a collection body and still reads path/type', () => {

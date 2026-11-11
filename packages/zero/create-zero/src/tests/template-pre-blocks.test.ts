@@ -118,7 +118,8 @@ describe('every multi-line <pre> sample in every template renders on more than o
   )
 
   it('finds the template samples', () => {
-    expect(cases.length).toBeGreaterThanOrEqual(7)
+    // 5 since the blog template moved its posts to markdown (no TSX <pre>).
+    expect(cases.length).toBeGreaterThanOrEqual(5)
   })
 
   it.each(cases)('%s', (_name, block) => {

@@ -3643,102 +3643,78 @@ a.px-footer-item:hover {
  * if a future PR wants to swap the timing function or duration. */
 .docs-main { view-transition-name: docs-main; }
 
-/* ── Blog (/blog, /blog/<slug>) ─────────────────────────────────────
+/* ── Blog (/blog, /blog/page/<n>, /blog/tags/<tag>, /blog/<slug>) ──────
+   `@pyreon/zero-content/blog` renders the pages; its stylesheet
+   (imported in entry-client.ts) has zero specificity, so these rules only
+   map the site tokens onto its variables and add the site's own look.
    Sidebar-less like the landing page; the post body reuses the docs
-   `.docs-content.vp-doc` typography so code, tables and callouts look
-   exactly like the docs. */
-.blog-index,
-.blog-post {
-  max-width: 760px;
-  margin: 0 auto;
+   `.docs-content.vp-doc` typography (see `bodyClass` in src/blog/blog.ts). */
+.pyreon-blog,
+.pyreon-blog-post {
+  --pyreon-blog-width: 760px;
+  --pyreon-blog-muted: var(--text-muted);
+  --pyreon-blog-border: var(--hairline);
+  --pyreon-blog-surface: var(--bg-elevated);
+  --pyreon-blog-accent: var(--ember-ring);
+  --pyreon-blog-radius: var(--radius-lg);
+  --pyreon-blog-meta-font: var(--font-mono);
   padding: 2.5rem 1.5rem 4rem;
 }
-/* `defineContentRoute` wraps the post in `.docs-page`, whose grid reserves
-   a right-hand TOC column. A post has no TOC: collapse to one column. */
-.docs-page:has(> .blog-post),
-.docs-page:has(.blog-post) {
-  display: block;
-  max-width: none;
-  padding: 0;
-}
-.blog-index__header h1 {
+.pyreon-blog__title {
   margin: 0 0 0.5rem;
   font-size: 2.5rem;
   font-weight: 600;
   letter-spacing: -0.035em;
+  color: var(--text-strong);
 }
-.blog-index__header p {
-  margin: 0.25rem 0;
-  color: var(--text-muted);
-  line-height: 1.6;
+.pyreon-blog--tag .pyreon-blog__title {
+  font-size: 2rem;
 }
-.blog-index__feed a,
-.blog-post__footer a,
-.blog-post__back {
+.pyreon-blog__feed a,
+.pyreon-blog__back,
+.pyreon-blog-post__back,
+.pyreon-blog-pagination a,
+.pyreon-blog-related__link,
+.pyreon-blog-end__feed a,
+.pyreon-blog-cta__link,
+.pyreon-blog-share__link {
   color: var(--link);
   font-weight: 500;
   text-decoration: none;
 }
-.blog-index__feed a:hover,
-.blog-post__footer a:hover,
-.blog-post__back:hover {
+.pyreon-blog__feed a:hover,
+.pyreon-blog__back:hover,
+.pyreon-blog-post__back:hover,
+.pyreon-blog-pagination a:hover,
+.pyreon-blog-related__link:hover,
+.pyreon-blog-end__feed a:hover,
+.pyreon-blog-cta__link:hover,
+.pyreon-blog-share__link:hover {
   text-decoration: underline;
 }
-.blog-index__list {
-  list-style: none;
-  margin: 2rem 0 0;
-  padding: 0;
-  display: grid;
-  gap: 1.5rem;
+.pyreon-blog-card {
+  border-color: var(--hairline);
 }
-.blog-card__link {
-  display: block;
-  overflow: hidden;
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-lg);
-  background: var(--bg-elevated);
-  color: inherit;
-  text-decoration: none;
-  transition: border-color 0.15s ease;
-}
-.blog-card__link:hover,
-.blog-card__link:focus-visible {
-  border-color: var(--ember-ring);
-}
-.blog-card__cover,
-.blog-post__cover {
-  display: block;
-  width: 100%;
-  height: auto;
+.pyreon-blog-card__cover,
+.pyreon-blog-post__cover {
   aspect-ratio: 1600 / 840;
   background: var(--bg-well);
 }
-.blog-card__text {
-  padding: 1rem 1.25rem 1.25rem;
-}
-.blog-card__date,
-.blog-post__meta {
-  font-family: var(--font-mono);
-  font-size: 0.8rem;
-  color: var(--text-muted);
-}
-.blog-card__title {
-  margin: 0.35rem 0 0.4rem;
+.pyreon-blog-card__title {
   font-size: 1.35rem;
   font-weight: 600;
   letter-spacing: -0.02em;
-  line-height: 1.25;
   color: var(--text-strong);
 }
-.blog-card__description {
-  margin: 0;
+.pyreon-blog-tag {
+  color: var(--text-hint);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+}
+.pyreon-blog-tag:hover {
   color: var(--text-muted);
-  line-height: 1.55;
 }
-.blog-post__header {
-  margin-bottom: 1.5rem;
-}
-.blog-post__title {
+.pyreon-blog-post__title {
   margin: 1rem 0 0.75rem;
   font-size: 2.4rem;
   font-weight: 600;
@@ -3746,39 +3722,44 @@ a.px-footer-item:hover {
   line-height: 1.1;
   color: var(--text-strong);
 }
-.blog-post__meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.75rem;
-  margin: 0;
+.pyreon-blog-meta .pyreon-blog-byline a {
+  color: var(--text-muted);
+  text-decoration: underline;
+  text-decoration-color: var(--hairline);
+  text-underline-offset: 3px;
 }
-.blog-post__tags {
-  display: inline-flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
+.pyreon-blog-related__heading {
+  color: var(--text-strong);
+  font-weight: 600;
 }
-.blog-tag {
-  color: var(--text-hint);
+.pyreon-blog-postnav__title {
+  color: var(--text-strong);
+  font-weight: 500;
 }
-.blog-post__cover {
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--hairline);
-  margin-bottom: 2rem;
+/* End of every post — share links, RSS, newsletter. (Each post carries its
+   own "Start building" closing, so `postEnd.cta` is off; `.pyreon-blog-cta`
+   styling below is for sites that turn it on.) */
+.pyreon-blog-cta {
+  border-color: var(--ember-ring);
+  background: var(--ember-bg);
 }
-.blog-post__footer {
-  display: flex;
-  justify-content: space-between;
-  margin-top: 3rem;
-  padding-top: 1.5rem;
-  border-top: 1px solid var(--hairline);
+.pyreon-blog-cta__heading {
+  color: var(--text-strong);
+}
+.pyreon-blog-share {
+  font-size: 0.9rem;
+}
+.pyreon-blog-newsletter__submit {
+  border-color: var(--ember);
+  color: var(--text-strong);
 }
 @media (max-width: 768px) {
-  .blog-index,
-  .blog-post {
+  .pyreon-blog,
+  .pyreon-blog-post {
     padding: 1.5rem 1rem 3rem;
   }
-  .blog-index__header h1,
-  .blog-post__title {
+  .pyreon-blog__title,
+  .pyreon-blog-post__title {
     font-size: 1.9rem;
   }
 }

@@ -6,7 +6,7 @@ import { Search } from '@pyreon/zero-content'
 import { Header } from '../components/Header'
 import { PrimaryNavigation } from '../components/PrimaryNavigation'
 import { Sidebar } from '../components/Sidebar'
-import { BLOG_TITLE, SITE_ORIGIN } from '../blog/posts'
+import { BLOG_FEED, BLOG_TITLE, SITE_ORIGIN } from '../blog/site'
 
 const DEFAULT_TITLE = 'Pyreon — the signal-based UI framework'
 const DEFAULT_DESCRIPTION =
@@ -61,7 +61,7 @@ export function layout() {
       ],
       // Feed autodiscovery on every page.
       link: [
-        { rel: 'alternate', type: 'application/rss+xml', title: BLOG_TITLE, href: '/blog/rss.xml' },
+        { rel: 'alternate', type: 'application/rss+xml', title: BLOG_TITLE, href: BLOG_FEED },
       ],
     }
   })

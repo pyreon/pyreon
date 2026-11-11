@@ -455,7 +455,11 @@ for (const doc of docs) {
 }
 ```
 
-Each entry exposes `{ slug, data, render(), headings }`. `slug` is relative to the collection's directory (`src/content/blog/hello.md` → `'hello'`): it is the key `getEntry` takes and the `[slug]` route param, so `` `/blog/${entry.slug}` `` is the entry's URL. `render()` is async because content modules are lazy-loaded (Vite splits them into per-route chunks).
+Each entry exposes `{ slug, data, render(), headings, wordCount, excerpt }`. `slug` is relative to the collection's directory (`src/content/blog/hello.md` → `'hello'`): it is the key `getEntry` takes and the `[slug]` route param, so `` `/blog/${entry.slug}` `` is the entry's URL. `wordCount` and `excerpt` (the first paragraph as plain text) are computed when the file compiles.
+
+**What `getCollection` loads.** One small metadata chunk per collection — every entry's frontmatter, slug, headings, word count and excerpt, and no bodies. `render()` loads the entry's own page chunk on demand. A listing page therefore never downloads the articles it lists.
+
+**`data` is the schema's output.** The frontmatter that ships is what your schema *returns* — defaults applied, coercions and transforms done, a `Date` kept as a `Date` — so the runtime value is exactly the type in `CollectionSchemas`. (Before 0.54 the raw YAML shipped: schema defaults were missing at runtime and every date was an ISO string. If your code parsed those strings, read the schema's type instead; with a zod schema, `z.coerce.date()` now gives you a `Date`.) A schema must output plain data: strings, numbers, booleans, `null`, `Date`, arrays and plain objects.
 
 ### `getCollection` options
 

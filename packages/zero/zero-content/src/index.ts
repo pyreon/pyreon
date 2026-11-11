@@ -158,6 +158,7 @@ export {
   getCollection,
   getEntries,
   getEntry,
+  isEntryPublished,
 } from './runtime'
 export type {
   CollectionRegistry,

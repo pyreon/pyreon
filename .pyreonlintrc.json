@@ -36,7 +36,8 @@
       {
         "exemptPaths": [
           "packages/zero/zero/src/image.tsx",
-          "packages/zero/zero/src/icon.tsx"
+          "packages/zero/zero/src/icon.tsx",
+          "packages/zero/zero-content/src/blog/components.tsx"
         ]
       }
     ],
@@ -404,7 +405,8 @@
       {
         "exemptPaths": [
           "packages/zero/zero/src/image.tsx",
-          "packages/zero/zero/src/icon.tsx"
+          "packages/zero/zero/src/icon.tsx",
+          "packages/zero/zero-content/src/blog/components.tsx"
         ]
       }
     ],

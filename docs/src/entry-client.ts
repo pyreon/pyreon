@@ -2,6 +2,7 @@ import { routes } from 'virtual:zero/routes'
 import { startClient } from '@pyreon/zero/client'
 import { registerExamples } from '@pyreon/zero-content'
 import 'virtual:zero-content/collections'
+import '@pyreon/zero-content/blog.css'
 import './styles/tokens.css'
 import './styles/docs.css'
 

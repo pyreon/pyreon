@@ -13,7 +13,9 @@
     "directory": "packages/zero/zero-content"
   },
   "type": "module",
-  "sideEffects": false,
+  "sideEffects": [
+    "**/*.css"
+  ],
   "main": "./lib/index.js",
   "module": "./lib/index.js",
   "types": "./lib/types/index.d.ts",
@@ -32,10 +34,17 @@
       "bun": "./src/schema.ts",
       "import": "./lib/schema.js",
       "types": "./lib/types/schema.d.ts"
-    }
+    },
+    "./blog": {
+      "bun": "./src/blog.ts",
+      "import": "./lib/blog.js",
+      "types": "./lib/types/blog.d.ts"
+    },
+    "./blog.css": "./styles/blog.css"
   },
   "files": [
     "lib",
+    "styles",
     "!lib/analysis",
     "src",
     "!src/tests",

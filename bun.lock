@@ -564,6 +564,7 @@
         "@pyreon/runtime-server": "workspace:^",
         "@pyreon/server": "workspace:^",
         "@pyreon/zero": "workspace:^",
+        "@pyreon/zero-content": "workspace:^",
       },
       "devDependencies": {
         "@pyreon/lint": "workspace:^",

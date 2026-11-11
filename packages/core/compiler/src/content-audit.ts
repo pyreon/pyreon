@@ -260,11 +260,15 @@ export function parseContentConfig(filePath: string): CollectionDecl[] {
       if (key !== 'collections') continue
       if (!ts.isObjectLiteralExpression(prop.initializer)) continue
       for (const sub of prop.initializer.properties) {
+        // `{ notes }` — a collection held in a same-named variable.
+        if (ts.isShorthandPropertyAssignment(sub)) {
+          collections.push(defaultCollection(sub, sub.name.text))
+          continue
+        }
         if (!ts.isPropertyAssignment(sub)) continue
         const collectionName = readPropName(sub.name)
         if (!collectionName) continue
-        const decl = readCollectionInitializer(sub.initializer, collectionName)
-        if (decl) collections.push(decl)
+        collections.push(readCollectionInitializer(sub.initializer, collectionName))
       }
     }
   }
@@ -272,28 +276,41 @@ export function parseContentConfig(filePath: string): CollectionDecl[] {
   function readCollectionInitializer(
     init: ts.Expression,
     collectionName: string,
-  ): CollectionDecl | null {
-    // defineCollection({ ... })
-    if (
-      ts.isCallExpression(init) &&
-      ts.isIdentifier(init.expression) &&
-      init.expression.text === 'defineCollection' &&
-      init.arguments[0] &&
-      ts.isObjectLiteralExpression(init.arguments[0])
-    ) {
-      return readCollectionBody(init.arguments[0], collectionName)
-    }
+  ): CollectionDecl {
     // Bare object literal (less common but still valid)
     if (ts.isObjectLiteralExpression(init)) {
       return readCollectionBody(init, collectionName)
     }
-    return null
+    // `defineCollection({ ... })`, a preset such as `blogCollection({ path })`
+    // from `@pyreon/zero-content/blog`, or an app's own factory: read a
+    // literal `path` / `type` from an object-literal first argument when
+    // there is one. Any other value (a call with no options, a variable
+    // holding a collection) still IS a collection — it gets the runtime's
+    // default directory, `src/content/<name>`. Returning nothing here made
+    // every post of a `blogCollection()` collection read as orphaned.
+    if (ts.isCallExpression(init)) {
+      const first = init.arguments[0]
+      if (first && ts.isObjectLiteralExpression(first)) {
+        return readCollectionBody(first, collectionName)
+      }
+    }
+    return defaultCollection(init, collectionName)
+  }
+
+  function defaultCollection(node: ts.Node, collectionName: string): CollectionDecl {
+    const lc = sf.getLineAndCharacterOfPosition(node.getStart(sf))
+    return {
+      name: collectionName,
+      type: 'unknown',
+      contentDir: resolve(configDir, 'src', 'content', collectionName),
+      declaredAt: locFrom(filePath, lc.line, lc.character),
+    }
   }
 
   function readCollectionBody(
     obj: ts.ObjectLiteralExpression,
     collectionName: string,
-  ): CollectionDecl | null {
+  ): CollectionDecl {
     let pathValue: string | undefined
     let typeValue: 'pages' | 'data' | undefined
     for (const prop of obj.properties) {
