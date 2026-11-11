@@ -1,6 +1,6 @@
 {
   "description": "Readable ratchet — `readable` style findings per (file, rule) may only DECREASE, and a file not listed here must have none. Checked by `bun scripts/check-pyreon-lint-ratchet.ts` (validate-fast + CI). Fix new findings with `bunx pyreon-lint --fix <file>` (the spacing rules are autofixable), then tighten with `bun scripts/check-readable-ratchet.ts --update`. Never raise a count to absorb a finding.",
-  "total": 11143,
+  "total": 11149,
   "files": {
     "packages/core/compiler/src/charts-migration.ts": {"pyreon/padding-before-return":2},
     "packages/core/compiler/src/content-audit.ts": {"pyreon/padding-before-return":13},
@@ -1823,7 +1823,7 @@
     "packages/tools/cli/src/doctor/gates/check-dedup.ts": {"pyreon/padding-before-return":4},
     "packages/tools/cli/src/doctor/gates/dependency-fabric.ts": {"pyreon/padding-before-return":4},
     "packages/tools/cli/src/doctor/gates/distribution.ts": {"pyreon/padding-before-return":5},
-    "packages/tools/cli/src/doctor/gates/doc-claims.ts": {"pyreon/padding-before-return":10,"pyreon/padding-between-declarations":1},
+    "packages/tools/cli/src/doctor/gates/doc-claims.ts": {"pyreon/padding-before-return":14,"pyreon/padding-between-declarations":1},
     "packages/tools/cli/src/doctor/gates/lint.ts": {"pyreon/padding-before-return":2},
     "packages/tools/cli/src/doctor/gates/native-audit.ts": {"pyreon/padding-before-return":1},
     "packages/tools/cli/src/doctor/gates/pyreon-patterns.ts": {"pyreon/padding-before-return":1},
@@ -1843,6 +1843,7 @@
     "packages/tools/cli/src/tests/check.test.ts": {"pyreon/padding-before-return":1,"pyreon/padding-between-declarations":3},
     "packages/tools/cli/src/tests/dependency-fabric-gate.test.ts": {"pyreon/padding-before-return":1},
     "packages/tools/cli/src/tests/doc-claims-gate.test.ts": {"pyreon/padding-before-return":19,"pyreon/padding-between-declarations":1},
+    "packages/tools/cli/src/tests/doc-claims-unscoped-runner.test.ts": {"pyreon/padding-between-declarations":2},
     "packages/tools/cli/src/tests/doctor-exit-and-add-recipes.test.ts": {"pyreon/padding-before-return":1,"pyreon/padding-between-declarations":2},
     "packages/tools/cli/src/tests/doctor-help.test.ts": {"pyreon/padding-between-declarations":2},
     "packages/tools/cli/src/tests/doctor-scan-surface.test.ts": {"pyreon/padding-before-return":3,"pyreon/padding-between-declarations":1},

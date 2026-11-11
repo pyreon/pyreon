@@ -27,8 +27,10 @@
  * Usage:
  *   bun scripts/check-readable-ratchet.ts            # gate
  *   bun scripts/check-readable-ratchet.ts --update   # rewrite the baseline (refuses to raise it)
- *   bun scripts/check-readable-ratchet.ts --update --accept-moves
- *                                                    # after renaming/moving files only
+ *   bun scripts/check-readable-ratchet.ts --update --allow-raise
+ *        # only for (a) renamed or moved files, whose findings reappear under
+ *        # a new path, and (b) after merging main into the PR that FIRST adds
+ *        # this gate, to absorb code that landed before the gate existed
  */
 import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -203,17 +205,18 @@ export function checkReadable(parsed: unknown, path: string = READABLE_BASELINE_
 
 /**
  * `--update`: rewrite the baseline from the current report. Refuses to RAISE
- * any count unless `acceptMoves` is set (for renamed or moved files, whose
- * findings reappear under a new path). Returns `true` when it wrote the file.
+ * any count unless `allowRaise` is set — for renamed or moved files, whose
+ * findings reappear under a new path, and for absorbing code that landed on
+ * main before this gate existed. Returns `true` when it wrote the file.
  */
 export function updateReadable(
   parsed: unknown,
-  opts: { acceptMoves?: boolean; path?: string } = {},
+  opts: { allowRaise?: boolean; path?: string } = {},
 ): boolean {
   const path = opts.path ?? READABLE_BASELINE_PATH
   const current = countReadableFindings(parsed)
   const existing = readReadableBaseline(path)
-  if (existing && !opts.acceptMoves) {
+  if (existing && !opts.allowRaise) {
     const { regressions } = compareReadable(current, existing.files)
     if (regressions.length > 0) {
       console.error(
@@ -222,7 +225,7 @@ export function updateReadable(
       for (const r of regressions.slice(0, 20)) {
         console.error(`    ${r.file}  ${r.rule}: ${r.baseline} → ${r.current}`)
       }
-      console.error('Only after renaming or moving files: re-run with --accept-moves.')
+      console.error('Only after renaming or moving files: re-run with --allow-raise. Never to absorb a new finding.')
 
       return false
     }
@@ -241,7 +244,7 @@ async function main(): Promise<void> {
   const { runPyreonLintJson } = await import('./check-pyreon-lint-ratchet')
   const parsed = runPyreonLintJson()
   if (args.includes('--update')) {
-    process.exit(updateReadable(parsed, { acceptMoves: args.includes('--accept-moves') }) ? 0 : 1)
+    process.exit(updateReadable(parsed, { allowRaise: args.includes('--allow-raise') }) ? 0 : 1)
   }
   process.exit(checkReadable(parsed) ? 0 : 1)
 }

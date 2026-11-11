@@ -103,7 +103,7 @@ describe('the baseline file', () => {
     expect(JSON.parse(text)).toEqual(b)
   })
 
-  it('--update refuses to RAISE a count, and --accept-moves allows it', () => {
+  it('--update refuses to RAISE a count, and --allow-raise allows it', () => {
     dir = mkdtempSync(join(tmpdir(), 'readable-ratchet-'))
     const path = join(dir, 'readable-baseline.json')
     expect(updateReadable({ findings: [finding(RET, 'a.ts')] }, { path })).toBe(true)
@@ -113,7 +113,7 @@ describe('the baseline file', () => {
     expect(updateReadable(grown, { path })).toBe(false)
     expect(readFileSync(path, 'utf8')).toBe(seeded)
 
-    expect(updateReadable(grown, { path, acceptMoves: true })).toBe(true)
+    expect(updateReadable(grown, { path, allowRaise: true })).toBe(true)
     expect(JSON.parse(readFileSync(path, 'utf8')).total).toBe(2)
   })
 
