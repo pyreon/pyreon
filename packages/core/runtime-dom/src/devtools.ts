@@ -309,7 +309,8 @@ function reactiveHealthBody(): string {
   const s = desc.summary
   const header =
     `${s.signals} signal${s.signals === 1 ? '' : 's'} · ` +
-    `${s.derived} derived · ${s.effects} effect${s.effects === 1 ? '' : 's'} · ${s.edges} edges`
+    `${s.derived} derived · ${s.effects} effect${s.effects === 1 ? '' : 's'} · ` +
+    `${s.bindings} DOM binding${s.bindings === 1 ? '' : 's'} · ${s.edges} edges`
   if (desc.insights.length === 0) {
     return `${header}\n\nNo health issues detected — no orphan signals, no runaway fan-out, no deep chains.`
   }

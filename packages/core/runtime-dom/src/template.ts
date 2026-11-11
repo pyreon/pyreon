@@ -1,5 +1,13 @@
 import type { NativeItem, VNodeChild } from '@pyreon/core'
-import { _noopDispose, _rdNodeId, getContextOwner, renderEffect } from '@pyreon/reactivity'
+import {
+  _noopDispose,
+  _rdCloseBindingFrame,
+  _rdLabelBinding,
+  _rdNodeId,
+  _rdOpenBindingFrame,
+  getContextOwner,
+  renderEffect,
+} from '@pyreon/reactivity'
 import { _tagTextBinding } from './binding-registry'
 import { bindPolymorphicText, createPolyTextCore, mountChild, mountChildAsUnit, SVG_TAGS, type PolyTextCore } from './mount'
 import { _bindEvent } from './props'
@@ -394,6 +402,9 @@ export function _bindText(
             if (disposer !== null) disposer()
             const core = createPolyTextCore(node, parent, ownerAtSetup)
             core.apply(v as VNodeChild)
+            // (Dev: this updater is a graph node via `direct()`, left unlabelled —
+            // labelling it would need a named const here, i.e. a production
+            // shape change, for a path that runs once per upgrade.)
             const unsub = source.direct!(() => core.apply(source._v as VNodeChild))
             disposer = () => {
               unsub()
@@ -419,7 +430,14 @@ export function _bindText(
     }
     // Upgraded during the initial call → the core updater is already
     // subscribed; otherwise wire the text updater now.
-    if (disposer === null) disposer = source.direct(textUpdate)
+    if (disposer === null) {
+      disposer = source.direct(textUpdate)
+      // Dev: name the graph node `direct()` registered for this updater, at
+      // the compiled template that emitted the call (skipFrames=1 skips
+      // `_bindText`).
+      if (process.env.NODE_ENV !== 'production')
+        _rdLabelBinding(textUpdate, 'text', node, undefined, 1)
+    }
     return () => disposer!()
   }
   // Fallback: bare callable. Use the compiler-provided receiver/caller when
@@ -453,6 +471,8 @@ export function _bindText(
       written = next
     }
   })
+  if (process.env.NODE_ENV !== 'production')
+    _rdLabelBinding(disposeEffect, 'text', node, undefined, 1)
   // Dead binding that stayed text: no re-run can happen and no subtree exists.
   if (disposeEffect === _noopDispose && core === null) return _noopDispose
   return () => {
@@ -493,6 +513,27 @@ export function _bindDirect(
   if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('runtime.bindDirect')
   // Fast path: source has .direct() (signal or computed)
   if (source.direct) {
+    // Dev: the same binding, instrumented. The initial write runs inside a
+    // binding-label frame so the compiled updater's DOM setter
+    // (`(v) => _setAttr(el, "aria-busy", v)`) names the binding, and the
+    // updater handed to `direct()` is held so its graph node can be labelled.
+    // Inlined (not a helper) so the whole block folds away in production and
+    // the two lines below stay byte-identical — a dev-only helper function
+    // kept its imports alive in the production bundle.
+    if (process.env.NODE_ENV !== 'production') {
+      _rdOpenBindingFrame()
+      let target: ReturnType<typeof _rdCloseBindingFrame> = null
+      try {
+        updater(source._v)
+      } finally {
+        target = _rdCloseBindingFrame()
+      }
+      const u = () => updater(source._v)
+      const dispose = source.direct(u)
+      if (target !== null) _rdLabelBinding(u, target.kind, target.target ?? null, target.key, 1)
+      else _rdLabelBinding(u, null, null, undefined, 1)
+      return dispose
+    }
     updater(source._v)
     return source.direct(() => updater(source._v))
   }
@@ -500,7 +541,12 @@ export function _bindDirect(
   // is one (preserves `this` for member-expression sources); otherwise call
   // source directly.
   const fn = resolveSlowCaller(source, caller, receiver)
-  return renderEffect(() => updater(fn()))
+  const dispose = renderEffect(() => updater(fn()))
+  // Dev: keep the label the updater's DOM setter reported; point the location
+  // at the compiled template rather than at this helper.
+  if (process.env.NODE_ENV !== 'production')
+    _rdLabelBinding(dispose, null, null, undefined, 1)
+  return dispose
 }
 
 // ─── Compiler-facing template API ─────────────────────────────────────────────
@@ -1167,6 +1213,7 @@ export function _rsCollapse(
     const disposeClass = _bindDirect(isDark as unknown as { _v?: unknown }, (v) => {
       el.className = v ? darkClass : lightClass
     })
+    if (process.env.NODE_ENV !== 'production') _rdLabelBinding(disposeClass, 'class', el, undefined, null)
     const disposeChildren = bind ? bind(el) : null
     if (!disposeChildren) return disposeClass
     return () => {
@@ -1207,6 +1254,7 @@ export function _rsCollapseH(
     const disposeClass = _bindDirect(isDark as unknown as { _v?: unknown }, (v) => {
       el.className = v ? darkClass : lightClass
     })
+    if (process.env.NODE_ENV !== 'production') _rdLabelBinding(disposeClass, 'class', el, undefined, null)
     // Inline-first-disposer slot (mirrors the signal `_d1`->`_d` idiom): the
     // dominant collapsed shape is a single handler, so hold the first disposer
     // inline and promote to an array only on a 2nd. `Object.keys` (not `for...in`)
@@ -1299,6 +1347,7 @@ export function _rsCollapseDyn(
       const idx = (valueIndex() << 1) | (isDark() ? 1 : 0)
       el.className = classes[idx] ?? ''
     })
+    if (process.env.NODE_ENV !== 'production') _rdLabelBinding(disposeClass, 'class', el, undefined, null)
     const disposeChildren = bind ? bind(el) : null
     if (!disposeChildren) return disposeClass
     return () => {
@@ -1376,6 +1425,7 @@ export function _rsCollapseDynH(
       const idx = (valueIndex() << 1) | (isDark() ? 1 : 0)
       el.className = classes[idx] ?? ''
     })
+    if (process.env.NODE_ENV !== 'production') _rdLabelBinding(disposeClass, 'class', el, undefined, null)
     // Handler attachment — identical to `_rsCollapseH`: routes through the
     // canonical `_bindEvent` so delegation / batching / name normalization behave
     // byte-identically to the 5-layer mount. `Object.keys` (not `for...in`) so
