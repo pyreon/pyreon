@@ -34,7 +34,11 @@ type ValueType = ScalarType | ListType
 
 interface UrlStatePayload {
   readonly key: string
-  /** Target syntax, not a value: quoted for a string, bare for a number or boolean. Empty for a list (see `elements`). */
+  /**
+   * The value as plain TEXT: a string's characters (quoted at emit by the target's own quoter — never here, where the
+   * target is unknown and `JSON.stringify` would leave Kotlin's `$` live), or a number / boolean's source text. Empty
+   * for a list (see `elements`).
+   */
   readonly defaultValue: string
   readonly valueType: ValueType
   /** A list default's elements, as plain text: a string's characters, or a number / boolean's source text. */
@@ -149,7 +153,7 @@ function resolveListDefault(arr: AnyNode): ResolvedDefault | null {
 }
 
 function resolveDefault(defNode: AnyNode | undefined): ResolvedDefault | null {
-  if (defNode === undefined) return { defaultValue: '""', valueType: 'string' }
+  if (defNode === undefined) return { defaultValue: '', valueType: 'string' }
   if (defNode.type === 'ArrayExpression') return resolveListDefault(defNode)
   // `useUrlState('offset', -1)` parses as a unary wrapping the literal.
   let node = defNode
@@ -163,7 +167,7 @@ function resolveDefault(defNode: AnyNode | undefined): ResolvedDefault | null {
   }
   if (node.type !== 'Literal') return null
   const v = node.value
-  if (typeof v === 'string') return { defaultValue: JSON.stringify(v), valueType: 'string' }
+  if (typeof v === 'string') return { defaultValue: v, valueType: 'string' }
   if (typeof v === 'boolean') return { defaultValue: String(v), valueType: 'boolean' }
   if (typeof v === 'number') {
     if (!Number.isFinite(v)) return null
@@ -213,6 +217,11 @@ function listLiteral(valueType: ValueType, text: string, quote: (s: string) => s
   return valueType === 'doubles' ? doubleLiteral(text) : text
 }
 
+/** A scalar default as target syntax: a string is quoted by the target's own escaper, a number / boolean is its source text. */
+function scalarLiteral(valueType: ValueType, text: string, quote: (s: string) => string): string {
+  return valueType === 'string' ? quote(text) : text
+}
+
 /** A number's source text as a Double literal both targets accept (`2` -> `2.0`; Kotlin will not widen an Int literal inside `listOf`). */
 const doubleLiteral = (text: string): string => (/[.eE]/.test(text) ? text : `${text}.0`)
 
@@ -227,15 +236,14 @@ const urlStateDecl: DeclEmitter = {
   usesRouter: true,
   swift(decl, ctx) {
     const { key, defaultValue, valueType, elements } = urlStateOf(decl)
-    // `defaultValue` arrives as target syntax, so it is interpolated, not re-stringified.
     const helper = HELPER[valueType]
-    const initial = elements === undefined ? defaultValue : `[${elements.map((e) => listLiteral(valueType, e, swiftStr)).join(', ')}]`
+    const initial = elements === undefined ? scalarLiteral(valueType, defaultValue, swiftStr) : `[${elements.map((e) => listLiteral(valueType, e, swiftStr)).join(', ')}]`
     return `private var ${ctx.ident(decl.name)}: ${helper} { ${helper}(router: pyreonRouter, key: ${swiftStr(key)}, defaultValue: ${initial}) }`
   },
   kotlin(decl, ctx) {
     const { key, defaultValue, valueType, elements } = urlStateOf(decl)
     const initial =
-      elements === undefined ? defaultValue : `listOf(${elements.map((e) => listLiteral(valueType, e, ctx.stringLiteral)).join(', ')})`
+      elements === undefined ? scalarLiteral(valueType, defaultValue, ctx.stringLiteral) : `listOf(${elements.map((e) => listLiteral(valueType, e, ctx.stringLiteral)).join(', ')})`
     // The router comes from `LocalPyreonRouter.current`, NOT a `useRouter()` call: router-kotlin ships useNavigate /
     // useParams / useLoaderData and no useRouter at all. The emit once called one and the STUB declared it, so every
     // stub-level check passed while a real `gradle assembleDebug` failed — a superset stub masking a real emit bug.

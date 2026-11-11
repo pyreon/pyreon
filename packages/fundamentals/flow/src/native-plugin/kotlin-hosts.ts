@@ -44,7 +44,7 @@ export function emitKotlinFlowHost(e: Extract<ExprIR, { kind: 'jsx-element' }>):
     host.warn('<Flow nodeTypes={…}> must be a literal { type: Component } map to lower natively; the native default node renderer is used.')
   }
   for (const entry of nodeTypes ?? []) {
-    if (host.flowFile().invalidHandles.has(entry.component)) host.warn(`<Flow nodeTypes> component \`${entry.component}\`: <Handle> requires literal \`type\` and \`position\` props for native extraction; the dynamic handle was not attached to the node.`)
+    if (host.flowFile().invalidHandles.has(entry.component)) host.warn(`<Flow nodeTypes> component \`${entry.component}\`: <Handle> requires a literal \`type\` and a literal \`position\` (top, right, bottom or left, or \`Position.<Side>\`) for native extraction; the handle was not attached to the node.`)
     if (host.flowFile().invalidResizers.has(entry.component)) host.warn(`<Flow nodeTypes> component \`${entry.component}\`: <NodeResizer> size and edge-handle options must be literals for native extraction; dynamic values use native defaults.`)
     if (host.flowFile().foreignResizers.has(entry.component)) host.warn(NODE_RESIZER_FOREIGN_NODE_WARNING(entry.component))
     if (host.flowFile().invalidToolbars.has(entry.component)) host.warn(`<Flow nodeTypes> component \`${entry.component}\`: <NodeToolbar> requires literal position, align, offset, and showOnSelect props on native; unsupported values use native defaults.`)
@@ -98,37 +98,37 @@ export function emitKotlinFlowHost(e: Extract<ExprIR, { kind: 'jsx-element' }>):
   const colorModeArg = colorModeAttr?.kind === 'attr' && colorModeAttr.value !== undefined ? `, colorMode = ${host.expr(colorModeAttr.value, 0)}` : ''
   const handleCases = nodeTypes?.flatMap(({ type, component }) => {
     const handles = host.flowFile().handles.get(component) ?? []
-    return handles.length > 0 ? [`${JSON.stringify(type)} -> ${kotlinFlowParsedHandles(handles)}`] : []
+    return handles.length > 0 ? [`${kotlinStr(type)} -> ${kotlinFlowParsedHandles(handles)}`] : []
   }) ?? []
   const nodeHandlesArg = handleCases.length > 0
     ? `, nodeHandles = { pyreonNode ->\n    when (pyreonNode.type) {\n      ${handleCases.join('\n      ')}\n      else -> emptyList()\n    }\n  }`
     : ''
   const resizerCases = nodeTypes?.flatMap(({ type, component }) => {
     const config = host.flowFile().resizers.get(component)
-    return config ? [`${JSON.stringify(type)} -> PyreonFlowNodeResizerConfig(minWidth = ${ktChartDouble(String(config.minWidth))}, minHeight = ${ktChartDouble(String(config.minHeight))}, handleSize = ${ktChartDouble(String(config.handleSize))}, showEdgeHandles = ${config.showEdgeHandles})`] : []
+    return config ? [`${kotlinStr(type)} -> PyreonFlowNodeResizerConfig(minWidth = ${ktChartDouble(String(config.minWidth))}, minHeight = ${ktChartDouble(String(config.minHeight))}, handleSize = ${ktChartDouble(String(config.handleSize))}, showEdgeHandles = ${config.showEdgeHandles})`] : []
   }) ?? []
   const nodeResizerArg = resizerCases.length > 0
     ? `, nodeResizer = { pyreonNode ->\n    when (pyreonNode.type) {\n      ${resizerCases.join('\n      ')}\n      else -> null\n    }\n  }`
     : ''
   const toolbarCases = nodeTypes?.flatMap(({ type, component }) => {
     const configs = host.flowFile().toolbars.get(component)
-    return configs?.length ? [`${JSON.stringify(type)} -> listOf(${configs.map((config) => `PyreonFlowNodeToolbarConfig(position = ${JSON.stringify(config.position)}, align = ${JSON.stringify(config.align)}, offset = ${ktChartDouble(String(config.offset))}, showOnSelect = ${config.showOnSelect}${config.selectedOverride === undefined ? '' : `, selectedOverride = ${config.selectedOverride}`}${config.nodeIdOverride === undefined ? '' : `, nodeIdOverride = ${JSON.stringify(config.nodeIdOverride)}`})`).join(', ')})`] : []
+    return configs?.length ? [`${kotlinStr(type)} -> listOf(${configs.map((config) => `PyreonFlowNodeToolbarConfig(position = ${kotlinStr(config.position)}, align = ${kotlinStr(config.align)}, offset = ${ktChartDouble(String(config.offset))}, showOnSelect = ${config.showOnSelect}${config.selectedOverride === undefined ? '' : `, selectedOverride = ${config.selectedOverride}`}${config.nodeIdOverride === undefined ? '' : `, nodeIdOverride = ${kotlinStr(config.nodeIdOverride)}`})`).join(', ')})`] : []
   }) ?? []
   const nodeToolbarConfigArg = toolbarCases.length > 0
     ? `, nodeToolbarConfigs = { pyreonNode ->\n    when (pyreonNode.type) {\n      ${toolbarCases.join('\n      ')}\n      else -> emptyList()\n    }\n  }`
     : ''
   const toolbarContentCases = nodeTypes?.flatMap(({ type, component }) => {
     const configs = host.flowFile().toolbars.get(component)
-    return configs?.length ? [`${JSON.stringify(type)} -> when (pyreonToolbarIndex) {\n${configs.map((config, index) => `        ${index} -> ${kotlinIdent(config.contentComponent)}(id = pyreonNode.id, data = { pyreonNode.data }, selected = { pyreonSelected }, dragging = { pyreonDragging })`).join('\n')}\n        else -> Unit\n      }`] : []
+    return configs?.length ? [`${kotlinStr(type)} -> when (pyreonToolbarIndex) {\n${configs.map((config, index) => `        ${index} -> ${kotlinIdent(config.contentComponent)}(id = pyreonNode.id, data = { pyreonNode.data }, selected = { pyreonSelected }, dragging = { pyreonDragging })`).join('\n')}\n        else -> Unit\n      }`] : []
   }) ?? []
   const nodeToolbarArg = toolbarContentCases.length > 0
     ? `, nodeToolbar = { pyreonNode, pyreonToolbarIndex, pyreonSelected, pyreonDragging ->\n    when (pyreonNode.type) {\n      ${toolbarContentCases.join('\n      ')}\n      else -> Unit\n    }\n  }`
     : ''
   const customEdgeTypesArg = edgeTypes && edgeTypes.length > 0
-    ? `, customEdgeTypes = setOf(${edgeTypes.map(({ type }) => JSON.stringify(type)).join(', ')})`
+    ? `, customEdgeTypes = setOf(${edgeTypes.map(({ type }) => kotlinStr(type)).join(', ')})`
     : ''
   const customEdgeArg = edgeTypes && edgeTypes.length > 0
-    ? `, customEdge = { pyreonEdge ->\n    when (pyreonEdge.edge.type) {\n      ${edgeTypes.map(({ type, component }) => `${JSON.stringify(type)} -> ${kotlinIdent(component)}(edge = pyreonEdge.edge, sourceX = { pyreonEdge.sourceX }, sourceY = { pyreonEdge.sourceY }, targetX = { pyreonEdge.targetX }, targetY = { pyreonEdge.targetY }, sourcePosition = { pyreonEdge.sourcePosition }, targetPosition = { pyreonEdge.targetPosition }, selected = { pyreonEdge.selected }, labelX = { pyreonEdge.labelX }, labelY = { pyreonEdge.labelY })`).join('\n      ')}\n      else -> Unit\n    }\n  }`
+    ? `, customEdge = { pyreonEdge ->\n    when (pyreonEdge.edge.type) {\n      ${edgeTypes.map(({ type, component }) => `${kotlinStr(type)} -> ${kotlinIdent(component)}(edge = pyreonEdge.edge, sourceX = { pyreonEdge.sourceX }, sourceY = { pyreonEdge.sourceY }, targetX = { pyreonEdge.targetX }, targetY = { pyreonEdge.targetY }, sourcePosition = { pyreonEdge.sourcePosition }, targetPosition = { pyreonEdge.targetPosition }, selected = { pyreonEdge.selected }, labelX = { pyreonEdge.labelX }, labelY = { pyreonEdge.labelY })`).join('\n      ')}\n      else -> Unit\n    }\n  }`
     : ''
   const customConnectionLineArg = connectionLine
     ? `, customConnectionLineEnabled = true, customConnectionLine = { pyreonLine -> ${kotlinIdent(connectionLine)}(sourceX = { pyreonLine.sourceX }, sourceY = { pyreonLine.sourceY }, targetX = { pyreonLine.targetX }, targetY = { pyreonLine.targetY }, sourcePosition = { pyreonLine.sourcePosition }, path = { pyreonLine.path }) }`
@@ -202,7 +202,7 @@ export function emitKotlinFlowCustomPath(e: Extract<ExprIR, { kind: 'jsx-element
   }
   const paint = resolveFlowPathPaint(e)
   for (const w of paint.warnings) host.warn(w)
-  const color = (v: FlowPathPaintValue) => v.kind === 'none' ? 'null' : v.kind === 'literal' ? JSON.stringify(v.value) : host.expr(v.expr, indent)
+  const color = (v: FlowPathPaintValue) => v.kind === 'none' ? 'null' : v.kind === 'literal' ? kotlinStr(v.value) : host.expr(v.expr, indent)
   const width = paint.width.kind === 'literal' ? ktChartDouble(String(paint.width.value)) : `(${host.expr(paint.width.expr, indent)}).toDouble()`
   return `PyreonFlowCustomEdgePath(result = ${resultCode}, color = ${color(paint.stroke)}, width = ${width}, fill = ${color(paint.fill)})`
 }
@@ -211,7 +211,7 @@ export function emitKotlinFlowSvg(e: Extract<ExprIR, { kind: 'jsx-element' }>, i
   const plan = planFlowSvg(e)
   for (const w of plan.warnings) host.warnOnce(w)
   const num = (n: FlowSvgNumber) => n.kind === 'literal' ? ktChartDouble(String(n.value)) : `(${host.expr(n.expr, indent)}).toDouble()`
-  const color = (v: FlowPathPaintValue) => v.kind === 'none' ? 'null' : v.kind === 'literal' ? JSON.stringify(v.value) : host.expr(v.expr, indent)
+  const color = (v: FlowPathPaintValue) => v.kind === 'none' ? 'null' : v.kind === 'literal' ? kotlinStr(v.value) : host.expr(v.expr, indent)
   const pad = ' '.repeat(indent + 2)
   const shapes = plan.shapes.map((s) =>
     `${pad}PyreonFlowSvgShape(result = pyreonFlowPathResultFromSvg(${host.expr(s.d, indent + 2)}), stroke = ${color(s.paint.stroke)}, strokeWidth = ${s.paint.width.kind === 'literal' ? ktChartDouble(String(s.paint.width.value)) : `(${host.expr(s.paint.width.expr, indent)}).toDouble()`}, fill = ${color(s.paint.fill)})`,
@@ -231,7 +231,7 @@ export function emitKotlinFlowBaseEdge(e: Extract<ExprIR, { kind: 'jsx-element' 
   for (const w of plan.warnings) host.warnOnce(w)
   if (!plan.path) return 'Box {}'
   const stroke = plan.paint.stroke
-  const color = stroke.kind === 'none' ? '"#00000000"' : stroke.kind === 'literal' ? (stroke.value === PALETTE_STROKE ? 'null' : JSON.stringify(stroke.value)) : host.expr(stroke.expr, indent)
+  const color = stroke.kind === 'none' ? '"#00000000"' : stroke.kind === 'literal' ? (stroke.value === PALETTE_STROKE ? 'null' : kotlinStr(stroke.value)) : host.expr(stroke.expr, indent)
   const width = plan.paint.width.kind === 'literal' ? ktChartDouble(String(plan.paint.width.value)) : `(${host.expr(plan.paint.width.expr, indent)}).toDouble()`
   const path = `PyreonFlowBaseEdgePath(result = pyreonFlowPathResultFromSvg(${host.expr(plan.path, indent)}), color = ${color}, width = ${width})`
   if (!plan.label) return path
@@ -346,7 +346,7 @@ export function emitKotlinFlowWebView(e: Extract<ExprIR, { kind: 'jsx-element' }
       }
     }
   }
-  const html = explicitHtml === undefined ? JSON.stringify(generatedHtml) : host.expr(explicitHtml, 0)
+  const html = explicitHtml === undefined ? kotlinStr(generatedHtml) : host.expr(explicitHtml, 0)
   const graphJson = graph === undefined ? '"{\\"nodes\\":[],\\"edges\\":[]}"' : host.webView.dataArg(graph)
   const commands = host.webView.dynamicAttr(e, 'commands')
   const data = commands === undefined

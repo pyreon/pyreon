@@ -803,7 +803,7 @@ fun plain(v: Double): String {
     if (mag >= 1000000000000000.0 || mag < 0.0001) {
       return exponential(v)
     }
-    val r = Math.round(v).toDouble()
+    val r = pyreonRound(v)
     if (Math.abs(v - r) < 0.000001) {
       return "${pyreonNumberString(r)}"
     }
@@ -812,20 +812,20 @@ fun plain(v: Double): String {
       places = Math.ceil(-Math.log10((mag).toDouble())) + 2.0
     }
     val mul = Math.pow((10.0).toDouble(), (places).toDouble())
-    return "${pyreonNumberString((Math.round(v * mul).toDouble()).toDouble() / (mul).toDouble())}"
+    return "${pyreonNumberString((pyreonRound(v * mul)).toDouble() / (mul).toDouble())}"
   }
 
 fun exponential(v: Double): String {
     val mag = Math.abs(v)
     var e = Math.floor(Math.log10((mag).toDouble()))
-    var m = (Math.round(((mag).toDouble() / (Math.pow((10.0).toDouble(), (e).toDouble())).toDouble()) * 1000.0).toDouble()).toDouble() / (1000.0).toDouble()
+    var m = (pyreonRound(((mag).toDouble() / (Math.pow((10.0).toDouble(), (e).toDouble())).toDouble()) * 1000.0)).toDouble() / (1000.0).toDouble()
     if (m >= 10.0) {
       m = (m).toDouble() / (10.0).toDouble()
       e = e + 1.0
     }
     val sign = if (v < 0.0) "-" else ""
-    val mant = if (Math.abs(m - Math.round(m).toDouble()) < 1e-7) "${pyreonNumberString(Math.round(m).toDouble())}" else "${pyreonNumberString(m)}"
-    return "${sign}${mant}e${pyreonNumberString(Math.round(e).toDouble())}"
+    val mant = if (Math.abs(m - pyreonRound(m)) < 1e-7) "${pyreonNumberString(pyreonRound(m))}" else "${pyreonNumberString(m)}"
+    return "${sign}${mant}e${pyreonNumberString(pyreonRound(e))}"
   }
 
 fun groupThousands(v: Double): String {
@@ -869,17 +869,17 @@ fun compact(v: Double): String {
   }
 
 fun trim(v: Double): String {
-    val r = (Math.round(v * 10.0).toDouble()).toDouble() / (10.0).toDouble()
-    return if (((r) % 1.0 == 0.0)) "${pyreonNumberString(Math.round(r).toDouble())}" else "${pyreonNumberString(r)}"
+    val r = (pyreonRound(v * 10.0)).toDouble() / (10.0).toDouble()
+    return if (((r) % 1.0 == 0.0)) "${pyreonNumberString(pyreonRound(r))}" else "${pyreonNumberString(r)}"
   }
 
 fun fixed(places: Long): (Double) -> String {
     val p = Math.max(0L, Math.min(10L, places))
     val mul = Math.pow((10.0).toDouble(), (p).toDouble())
     return fun(v: Double): String {
-      val r = (Math.round(v * mul).toDouble()).toDouble() / (mul).toDouble()
+      val r = (pyreonRound(v * mul)).toDouble() / (mul).toDouble()
       if (p == 0L) {
-        return "${pyreonNumberString(Math.round(r).toDouble())}"
+        return "${pyreonNumberString(pyreonRound(r))}"
       }
       val s = "${pyreonNumberString(r)}"
       val dot = s.indexOf(".").toLong()
@@ -902,7 +902,7 @@ fun percent(places: Long = 0L): (Double) -> String {
   }
 
 fun padded(v: Double, width: Long): String {
-    val s = "${pyreonNumberString(Math.round(v).toDouble())}"
+    val s = "${pyreonNumberString(pyreonRound(v))}"
     return if (s.length.toLong() >= width) s else "${"0".repeat((width - s.length.toLong()).toInt())}${s}"
   }
 
@@ -924,7 +924,7 @@ fun formatDate(ms: Double, pattern: String): String {
     val hour = Math.floor((inDay).toDouble() / (3600000.0).toDouble())
     val minute = Math.floor(((inDay - hour * 3600000.0)).toDouble() / (60000.0).toDouble())
     val second = Math.floor(((inDay - hour * 3600000.0 - minute * 60000.0)).toDouble() / (1000.0).toDouble())
-    val name = MONTH_NAMES[(Math.round(month).toDouble() - 1L).toInt()]
+    val name = MONTH_NAMES[(pyreonRound(month) - 1L).toInt()]
     var out = ""
     var i = 0L
     while (i < pattern.length.toLong()) {
@@ -1525,7 +1525,7 @@ fun renderPie(slices: List<Slice>, box: PyreonChartRect, opts: PieOptions): List
           continue
         }
         val at = pointOnCircle(center, ((radius + inner)).toDouble() / (2.0).toDouble(), a.mid)
-        out.add(PyreonDrawCmd(kind = "text", fill = opts.labelColor, text = "${pyreonNumberString(Math.round(a.fraction * 100.0).toDouble())}%", at = at, size = opts.fontSize, align = "middle", baseline = "middle"))
+        out.add(PyreonDrawCmd(kind = "text", fill = opts.labelColor, text = "${pyreonNumberString(pyreonRound(a.fraction * 100.0))}%", at = at, size = opts.fontSize, align = "middle", baseline = "middle"))
       }
     }
     return out
@@ -4628,7 +4628,7 @@ fun rampColor(stops: List<String>, t: Double): String {
     if (n == 1L || t <= 0.0) {
       val s0 = stops[0]
       val o0 = heatHashOffset(s0)
-      return "rgb(${pyreonNumberString(Math.round(heatChannel(s0, o0)).toDouble())}, ${pyreonNumberString(Math.round(heatChannel(s0, o0 + 2L)).toDouble())}, ${pyreonNumberString(Math.round(heatChannel(s0, o0 + 4L)).toDouble())})"
+      return "rgb(${pyreonNumberString(pyreonRound(heatChannel(s0, o0)))}, ${pyreonNumberString(pyreonRound(heatChannel(s0, o0 + 2L)))}, ${pyreonNumberString(pyreonRound(heatChannel(s0, o0 + 4L)))})"
     }
     val clamped = if (t >= 1.0) 1.0 else t
     var spanF = 0.0
@@ -4655,7 +4655,7 @@ fun rampColor(stops: List<String>, t: Double): String {
     val r = heatChannel(a, oa) + (heatChannel(b, ob) - heatChannel(a, oa)) * frac
     val g = heatChannel(a, oa + 2L) + (heatChannel(b, ob + 2L) - heatChannel(a, oa + 2L)) * frac
     val bl = heatChannel(a, oa + 4L) + (heatChannel(b, ob + 4L) - heatChannel(a, oa + 4L)) * frac
-    return "rgb(${pyreonNumberString(Math.round(r).toDouble())}, ${pyreonNumberString(Math.round(g).toDouble())}, ${pyreonNumberString(Math.round(bl).toDouble())})"
+    return "rgb(${pyreonNumberString(pyreonRound(r))}, ${pyreonNumberString(pyreonRound(g))}, ${pyreonNumberString(pyreonRound(bl))})"
   }
 
 fun visualOutside(v: Double, inRange: Domain?, outBands: List<Double>?): Boolean {
@@ -5341,9 +5341,9 @@ fun tintHex(hex: String, t: Double): String {
     if (hex.length.toLong() < 7L) {
       return hex
     }
-    val r = Math.round(hexPair(hex, 1L) + (255.0 - hexPair(hex, 1L)) * t).toDouble()
-    val g = Math.round(hexPair(hex, 3L) + (255.0 - hexPair(hex, 3L)) * t).toDouble()
-    val b = Math.round(hexPair(hex, 5L) + (255.0 - hexPair(hex, 5L)) * t).toDouble()
+    val r = pyreonRound(hexPair(hex, 1L) + (255.0 - hexPair(hex, 1L)) * t)
+    val g = pyreonRound(hexPair(hex, 3L) + (255.0 - hexPair(hex, 3L)) * t)
+    val b = pyreonRound(hexPair(hex, 5L) + (255.0 - hexPair(hex, 5L)) * t)
     return "rgb(${pyreonNumberString(r)}, ${pyreonNumberString(g)}, ${pyreonNumberString(b)})"
   }
 
@@ -6325,7 +6325,7 @@ fun polarTicks(lo: Double, hi: Double): List<Double> {
     }
     var guard = 0L
     while (v <= hi + 1e-9 && guard < 1000L) {
-      out.add((Math.round(v * 1000000.0).toDouble()).toDouble() / (1000000.0).toDouble())
+      out.add((pyreonRound(v * 1000000.0)).toDouble() / (1000000.0).toDouble())
       v = v + step
       guard = guard + 1L
     }
@@ -6704,7 +6704,7 @@ fun sankeyRgba(hex: String, alpha: Double): String {
     val r = hexDigit(hex[(1L).toInt()].code.toDouble()) * 16.0 + hexDigit(hex[(2L).toInt()].code.toDouble())
     val g = hexDigit(hex[(3L).toInt()].code.toDouble()) * 16.0 + hexDigit(hex[(4L).toInt()].code.toDouble())
     val b = hexDigit(hex[(5L).toInt()].code.toDouble()) * 16.0 + hexDigit(hex[(6L).toInt()].code.toDouble())
-    return "rgba(${pyreonNumberString(Math.round(r).toDouble())}, ${pyreonNumberString(Math.round(g).toDouble())}, ${pyreonNumberString(Math.round(b).toDouble())}, ${alpha})"
+    return "rgba(${pyreonNumberString(pyreonRound(r))}, ${pyreonNumberString(pyreonRound(g))}, ${pyreonNumberString(pyreonRound(b))}, ${alpha})"
   }
 
 fun sankeyIndexOf(nodes: List<SankeyNode>, name: String): Long {
@@ -7447,7 +7447,7 @@ fun formatIsoDays(days: Double): String {
     val mp = if (c.month < 10.0) "0" else ""
     val dp = if (c.day < 10.0) "0" else ""
     val yp = if (c.year < 1000.0) (if (c.year < 100.0) (if (c.year < 10.0) "000" else "00") else "0") else ""
-    return "${yp}${pyreonNumberString(Math.round(c.year).toDouble())}-${mp}${pyreonNumberString(Math.round(c.month).toDouble())}-${dp}${pyreonNumberString(Math.round(c.day).toDouble())}"
+    return "${yp}${pyreonNumberString(pyreonRound(c.year))}-${mp}${pyreonNumberString(pyreonRound(c.month))}-${dp}${pyreonNumberString(pyreonRound(c.day))}"
   }
 
 fun layoutCalendar(start: String, end: String, box: PyreonChartRect, options: CalendarOptions? = null): CalendarLayout {
@@ -8187,8 +8187,8 @@ fun ganttTicks(lo: Double, hi: Double, unit: String): List<GanttTick> {
       if (t >= lo) {
         val c = civilFromDays(t)
         val q = Math.floor(((c.month - 1.0)).toDouble() / (3.0).toDouble()) + 1.0
-        val year = "${pyreonNumberString(Math.round((c.year).toDouble()).toDouble())}"
-        val label = if (unit == "day" || unit == "week") "${pyreonNumberString(Math.round((c.day).toDouble()).toDouble())} ${ganttMonthName(c.month)}" else if (unit == "month") (if (sameYear) ganttMonthName(c.month) else "${ganttMonthName(c.month)} ${year}") else if (unit == "quarter") "Q${pyreonNumberString(Math.round((q).toDouble()).toDouble())} ${year}" else year
+        val year = "${pyreonNumberString(pyreonRound((c.year).toDouble()))}"
+        val label = if (unit == "day" || unit == "week") "${pyreonNumberString(pyreonRound((c.day).toDouble()))} ${ganttMonthName(c.month)}" else if (unit == "month") (if (sameYear) ganttMonthName(c.month) else "${ganttMonthName(c.month)} ${year}") else if (unit == "quarter") "Q${pyreonNumberString(pyreonRound((q).toDouble()))} ${year}" else year
         out.add(GanttTick(at = t, x = 0.0, label = label))
       }
       t = ganttNextTick(t, unit)
@@ -8683,7 +8683,7 @@ fun niceTicks(lo: Double, hi: Double, count: Long): List<Double> {
     val out: MutableList<Double> = mutableListOf()
     var v = Math.ceil((lo).toDouble() / (step).toDouble()) * step
     while (v <= hi + 1e-9) {
-      out.add((Math.round(v * 1000000.0).toDouble()).toDouble() / (1000000.0).toDouble())
+      out.add((pyreonRound(v * 1000000.0)).toDouble() / (1000000.0).toDouble())
       v = v + step
     }
     return out

@@ -42,7 +42,7 @@ describe('.regex() reaches the emit instead of vanishing', () => {
     const out = transform(APP, { target: 'swift' }).code
     // Partial match is what `RegExp.test()` does on the web; an anchored
     // pattern still anchors.
-    expect(out).toContain('slugVal.range(of: #"^[a-z0-9-]+$"#, options: [.regularExpression])')
+    expect(out).toContain('slugVal.range(of: "^[a-z0-9-]+$", options: [.regularExpression])')
     expect(out).toContain('rule: "regex"')
   })
 

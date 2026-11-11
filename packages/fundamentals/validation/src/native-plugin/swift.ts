@@ -6,6 +6,9 @@ import { localBase, swiftCodingKeysLines, swiftIdent, swiftStr } from '@pyreon/n
 import type { ZodFieldConstraints, ZodFieldType, ZodSchemaDefnIR } from './ir'
 import { HTTP_URL_PATTERN, URI_PATTERN } from './url-rule'
 
+/** zod's `.email()` rule, case-insensitive (see the options at the use site). */
+const EMAIL_PATTERN = String.raw`^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$`
+
 /**
  * Gap 4 follow-up — `@pyreon/validation` Zod-schema v1 emit (Swift).
  * Produces a Codable struct + module-scope const, plus the runtime
@@ -94,7 +97,7 @@ function emitSwiftScalarConstraints(
     }
     if (c.email) {
       lines.push(
-        `${ind}if ${targetName}.range(of: #"^[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}$"#, options: [.regularExpression, .caseInsensitive]) == nil {`,
+        `${ind}if ${targetName}.range(of: ${swiftStr(EMAIL_PATTERN)}, options: [.regularExpression, .caseInsensitive]) == nil {`,
       )
       lines.push(
         `${innerInd}throw PyreonSchemaError.constraintViolation(field: ${swiftStr(fieldName)}, rule: "email${ruleSuffix}")`,
@@ -113,14 +116,14 @@ function emitSwiftScalarConstraints(
       } else if (rule.kind === 'http') {
         // `@pyreon/validate`'s default: http(s) with a host, exactly.
         lines.push(
-          `${ind}if ${targetName}.range(of: #"${HTTP_URL_PATTERN}"#, options: [.regularExpression]) == nil {`,
+          `${ind}if ${targetName}.range(of: ${swiftStr(HTTP_URL_PATTERN)}, options: [.regularExpression]) == nil {`,
         )
       } else {
         // `.url({ protocol })`: an absolute URI, then the scheme (the text
         // before the first colon) partially matched, as `RegExp.test()` is.
         const opts = rule.ignoreCase ? '[.regularExpression, .caseInsensitive]' : '[.regularExpression]'
         lines.push(
-          `${ind}if ${targetName}.range(of: #"${URI_PATTERN}"#, options: [.regularExpression]) == nil || String(${targetName}.prefix(while: { $0 != ":" })).range(of: #"${rule.source}"#, options: ${opts}) == nil {`,
+          `${ind}if ${targetName}.range(of: ${swiftStr(URI_PATTERN)}, options: [.regularExpression]) == nil || String(${targetName}.prefix(while: { $0 != ":" })).range(of: ${swiftStr(rule.source)}, options: ${opts}) == nil {`,
         )
       }
       lines.push(
@@ -130,12 +133,14 @@ function emitSwiftScalarConstraints(
     }
     if (c.regex) {
       // Partial match, which is what `RegExp.test()` does on the web — an
-      // anchored pattern still anchors. Raw string so backslashes survive.
+      // anchored pattern still anchors. `swiftStr` escapes it as an ordinary string: a
+      // raw `#"…"#` literal still interpolates `\#(…)`, so a pattern from an
+      // untrusted spec could splice Swift into the emitted file.
       const opts = c.regex.ignoreCase
         ? '[.regularExpression, .caseInsensitive]'
         : '[.regularExpression]'
       lines.push(
-        `${ind}if ${targetName}.range(of: #"${c.regex.source}"#, options: ${opts}) == nil {`,
+        `${ind}if ${targetName}.range(of: ${swiftStr(c.regex.source)}, options: ${opts}) == nil {`,
       )
       lines.push(
         `${innerInd}throw PyreonSchemaError.constraintViolation(field: ${swiftStr(fieldName)}, rule: "regex${ruleSuffix}")`,

@@ -87,12 +87,16 @@ export function tsType(
       return files && type.format === 'binary' ? 'Blob' : 'string'
     case 'enum':
       return enumTs(type.values, widenEnums, native)
+    // Native: the cross-target aliases the native compiler reads as native types. `number` carries no int/float
+    // distinction, so a decoded `number` field would otherwise be an integer natively and a fractional value would fail
+    // the whole decode. The spec says which it is: `integer` → `Int` (64-bit on both targets), `number` → `Double`.
+    // The native module declares both aliases (`type Int = number`), so the web reads them as plain `number`.
     case 'number':
-      return 'number'
+      return native ? (type.integer ? 'Int' : 'Double') : 'number'
     // Native decodes into typed structs and PMTC has no bigint: the native
     // schema keeps `number().int()` (see `schemaExpr`), so its type must too.
     case 'bigint':
-      return native ? 'number' : 'bigint'
+      return native ? 'Int' : 'bigint'
     case 'boolean':
       return 'boolean'
     case 'null':
