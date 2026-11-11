@@ -499,7 +499,16 @@ function BadgeNode(props: NodeComponentProps<GridNodeData>) {
 // one the canvas measures 0 tall and `onlyRenderVisibleElements` falls back to
 // rendering every node. `styled` carries the height to the web as CSS and to
 // iOS and Android as a frame modifier, with no `<Flow style>` native warning.
+//
+// The task flow shows a real graph (custom node, custom edge, MiniMap), which
+// the device suites measure by geometry, so it gets room for all of it. The
+// 400-node scale screen is kept SHORT on purpose: the culled count is bounded
+// by the frame (the 200px culling margin dominates), and the web e2e and both
+// device lanes hold it to at most 40 mounted nodes.
 const FlowFrame = styled(Stack)`
+  height: 360px;
+`
+const FlowScaleFrame = styled(Stack)`
   height: 160px;
 `
 
@@ -727,11 +736,11 @@ function FlowScaleScreen() {
           Back
         </Button>
       </Inline>
-      <FlowFrame>
+      <FlowScaleFrame>
       <Flow instance={flow} nodeTypes={{ grid: GridNode }} ariaLabel="Scale flow">
         <Background variant="dots" />
       </Flow>
-      </FlowFrame>
+      </FlowScaleFrame>
     </Stack>
   )
 }
