@@ -180,6 +180,15 @@ export const SCENARIOS: Scenario[] = [
     imports: ['defineStore'],
   },
   {
+    // Locks the import-chosen drag preview: a plain draggable must not carry
+    // pdnd's preview utilities (`setCustomNativeDragPreview` + offset presets),
+    // which `dragPreview()` brings in only when used.
+    id: '@pyreon/dnd::useDraggable',
+    pkg: '@pyreon/dnd',
+    dir: 'fundamentals/dnd',
+    imports: ['useDraggable'],
+  },
+  {
     // Locks the `mini` entry WITHOUT the runtime JIT (~3.5 KB gz): the JIT is
     // installed by the main entry or `enableJit()` from `@pyreon/validate/jit`,
     // never reached from `mini`. A static `./jit` import in `core/schema.ts`
