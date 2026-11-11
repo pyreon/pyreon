@@ -4879,9 +4879,25 @@ public func computeLayout(_ cfg: LayoutConfig, _ measure: (String, Double) -> Do
         }
       }
     }
+    var edgeLeft = 0.0
+    var edgeRight = 0.0
+    if cfg.showXAxis && rotate == 0.0 && (cfg.horizontal == true || cfg.categories.count == 0) {
+      let edgeTicks = cfg.horizontal == true ? makeTicks(cfg.yDomain, 0.0, provisionalW, yCount, cfg.yFormat) : cfg.xTime == true ? timeTicks(cfg.xDomain, 0.0, provisionalW, xCount, cfg.xFormat) : makeTicks(cfg.xDomain, 0.0, provisionalW, xCount, cfg.xFormat)
+      for tick in edgeTicks {
+        let half = Double(measure(tick.label, cfg.fontSize)) / 2.0
+        if half - tick.pos > edgeLeft {
+          edgeLeft = half - tick.pos
+        }
+        if tick.pos + half - provisionalW > edgeRight {
+          edgeRight = tick.pos + half - provisionalW
+        }
+      }
+    }
+    let leftG = max(left, edgeLeft)
+    let rightG = max(right, edgeRight)
     let bottom = (cfg.showXAxis ? cfg.fontSize + labelGap + slantH + tickLen : 0.0) + xTitleH
-    let gutters = Gutters(left: left, right: right, top: padTop, bottom: bottom)
-    let plot = PyreonChartRect(x: left, y: padTop, w: max(0.0, cfg.width - left - right), h: max(0.0, cfg.height - padTop - bottom))
+    let gutters = Gutters(left: leftG, right: rightG, top: padTop, bottom: bottom)
+    let plot = PyreonChartRect(x: leftG, y: padTop, w: max(0.0, cfg.width - leftG - rightG), h: max(0.0, cfg.height - padTop - bottom))
     if cfg.horizontal == true {
       let yTicks = cfg.showYAxis ? bandTicksY(cfg.categories, plot) : []
       let xTicks = cfg.showXAxis ? makeTicks(cfg.yDomain, plot.x, plot.x + plot.w, yCount, cfg.yFormat) : []
