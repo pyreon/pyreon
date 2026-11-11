@@ -196,8 +196,9 @@ describe('runDocClaimsGate', () => {
     // manifest's breakdown summed to 43 under a "42"), the table feature
     // count (+2; the guide said 16 of 17) and the document-primitives format
     // count (+1; "14+ formats" against 20).
-    // plus the detector-code sites in the compiler manifest and README (#4304) from the compiler batch
-    expect(result.meta.scanned).toBe(55)
+    // 58 with the detector-code sites in the compiler manifest and README (#4304: the Pyreon count there had rotted to 16
+    // against a real 20, and the React count (19) is now quoted and gated too)
+    expect(result.meta.scanned).toBe(58)
     // The real repo must be drift-free — this gate runs in CI; if a
     // count claim drifts, EVERY PR's doctor run fails until it's fixed.
     const errs = result.findings.filter((f) => f.severity === 'error')
