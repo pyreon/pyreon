@@ -101,7 +101,7 @@ export function RowBoardChart(props: {
         >
           <Bar<RowDatum> y="pyreon" stack label="Pyreon" />
           <Bar<RowDatum> y="others" stack label="Other frameworks" />
-          <Axis y format={(v: number) => formatMs(v)} />
+          <Axis y format={(v: number) => (v >= 10 ? `${Math.round(v)} ms` : formatMs(v))} />
           <Tooltip />
         </Chart>
         <Note>

@@ -39,6 +39,8 @@ const Table = el
     // re-blocked into cards below 768px).
     extendCss: `
       display: table;
+      /* The legacy docs stylesheet styles bare th/td (fill, borders); this table has its own. */
+      & th, & td { background: transparent; border: 0; }
       & caption { text-align: left; padding: 16px 22px; font-family: ${font.mono}; font-size: ${text.caveat.size}px;
         letter-spacing: ${text.caveat.tracking}; color: ${tone(m, 'fog')}; border-bottom: 1px solid ${tone(m, 'line')}; }
       & thead th { text-align: left; font-family: ${font.mono}; font-size: ${text.eyebrowTight.size}px; font-weight: ${weight.medium};
