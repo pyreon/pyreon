@@ -181,7 +181,7 @@
    "package": "@pyreon/kinetic + kinetic-presets",
    "group": "foundations",
    "href": "/products/kinetic",
-   "pitch": "Enter, leave, collapse and stagger from one `kinetic(tag)` factory, 122 presets, reduced motion detected for you, and SSR output crawlers can read."
+   "pitch": "Enter, leave and height collapse from one `kinetic(tag)` factory, 122 presets, and SSR output crawlers can read."
   },
   {
    "id": "a11y",

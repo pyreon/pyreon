@@ -45,7 +45,7 @@
   "items": [
    {
     "title": "Rules that read signals re-check by themselves",
-    "text": "`'posts.update': (post) => post.authorId === me().id`. Switch accounts with `me.set(…)` and every `can('posts.update', post)` on screen re-evaluates. Nothing to rebuild, no `ability.update(rules)`."
+    "text": "`'posts.update': (post) => (post as Post).authorId === me().id`. Switch accounts with `me.set(…)` and every `can('posts.update', post)` on screen re-evaluates. Nothing to rebuild, no `ability.update(rules)`."
    },
    {
     "title": "One shape for every model",
@@ -80,7 +80,7 @@
    "title": "Action and subject become one dotted key.",
    "before": "// @casl/react (reads the ability from <AbilityProvider>)\n<Can I=\"update\" this={subject('Post', post)}>\n  <button>Edit</button>\n</Can>\n\n// in a loader or server action\nForbiddenError.from(ability).throwUnlessCan('delete', 'Post')\n// throws 'Cannot execute \"delete\" on \"Post\"'",
    "after": "<Show when={() => can('posts.update', post)}>\n  <button>Edit</button>\n</Show>\n\ncan.assert('posts.delete')\n// throws \"[Pyreon] permission denied: 'posts.delete'\"",
-   "note": "The models differ: CASL matches (action, subject) pairs with MongoDB-style conditions; Pyreon checks dotted string keys, and a condition is a plain function. Conditions you wrote as `{ authorId: user.id }` become `(post) => post.authorId === me().id`."
+   "note": "The models differ: CASL matches (action, subject) pairs with MongoDB-style conditions; Pyreon checks dotted string keys, and a condition is a plain function. Conditions you wrote as `{ authorId: user.id }` become `(post) => (post as Post).authorId === me().id`."
   }
  ],
  "extraSectionsHtml": null,
