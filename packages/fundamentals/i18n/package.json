@@ -54,7 +54,8 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "lint": "oxlint .",
-    "bench:i18next": "NODE_ENV=production bun bench/i18n-bench.ts"
+    "bench:i18next": "NODE_ENV=production bun bench/i18n-bench.ts",
+    "bench:rivals": "NODE_ENV=production bun bench/i18n-rivals.ts"
   },
   "peerDependencies": {
     "@pyreon/core": "workspace:^",
@@ -67,13 +68,19 @@
     }
   },
   "devDependencies": {
+    "@formatjs/icu-messageformat-parser": "3.5.23",
+    "@formatjs/intl": "6.1.5",
     "@happy-dom/global-registrator": "21.0.4",
+    "@lingui/core": "6.12.0",
+    "@lingui/message-utils": "6.12.0",
     "@pyreon/manifest": "workspace:*",
     "@pyreon/native-compiler": "workspace:*",
     "@pyreon/runtime-dom": "workspace:^",
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
-    "i18next": "^26.5.11"
+    "i18next": "^26.5.11",
+    "vue": "^3.5.44",
+    "vue-i18n": "11.4.18"
   },
   "publishConfig": {
     "access": "public"

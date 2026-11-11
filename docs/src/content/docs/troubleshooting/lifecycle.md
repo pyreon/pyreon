@@ -73,6 +73,12 @@ A cleanup's job depends on whether anything else will remove the node, not on wh
 
 ---
 
+### A compat `onCleanup` bound to one owner kind
+
+Solid-compat's `onCleanup` always meant "component unmount", so a cleanup registered inside `createEffect` never ran between runs (per-run listeners, timers and sockets piled up) and one inside `createRoot` never ran. Resolve the owner at call time like the real library: running effect (`pyreonOnCleanup`, tracked by an effect-depth counter) → compat component (unmount) → active scope (`onScopeDispose`). Test: `solid-compat/src/tests/on-cleanup-owner.test.ts`.
+
+---
+
 ### An effect wrapper storing its per-run cleanup in a closure
 
 `watch(source, cb)` used to park a returned cleanup in a local `let`, so it ran only on the next re-run or an explicit `stop()` — never when the owning scope disposed the effect, which is how components use `watch`. Kinetic's `useAnimationEnd` then left a 5s timer and `transitionend`/`animationend` listeners pinning an unmounted subtree. Any wrapper whose callback may return a cleanup must hand it to the effect: `watch` calls `onCleanup(result)` inside the effect body, so it runs before each re-run, on `dispose()`, and untracked. Reference: `packages/core/reactivity/src/watch.ts`; `tests/watch.test.ts` ("per-run cleanup runs when the OWNING scope disposes").
@@ -320,6 +326,24 @@ Scenarios derived from props and dimension axes mounted `h(Button, { state, size
 ### Catalog identity keyed only by an export name (`@pyreon/atlas`)
 
 Static discovery preserved same-named components in different files, but runtime rocketstyle discovery still used a name-only set and static claims excluded that name across the whole package. Distinct contracts silently vanished. Static claims must use `name@source`; runtime re-exports deduplicate only when both the export name and component value match. Track file-qualified claims across the whole scan so a barrel encountered before its defining file is still excluded, and preserve the legacy name-wide skip for explicit callers. The maps are owned by one scan, with constant-time identity lookups and no persistent cache. Reference: `atlas/src/discover/{discover,rocketstyle}.ts`; regression: `discover/tests/rocketstyle-identity.test.ts` (real rocketstyle chains).
+
+---
+
+### A compat store write that replaces where the real library merges
+
+Solid-compat's `setStore('user', { name })` replaced `user` (Solid shallow-merges, so the other fields vanished), and the one-argument object / returned-value / root `produce` forms were silent no-ops. One writer (`assignAt`) applies Solid's rule at every path end: plain object over plain object merges; `produce` / `reconcile` are branded to replace. Test: `solid-compat/src/tests/set-store-solid-parity.test.ts`.
+
+---
+
+### Notifying subscribers in a loop that a re-entrant write can interleave
+
+Svelte-compat's `writable.set` called every subscriber with the CURRENT value; a `set` from inside a subscriber ran its own loop, then the outer loop resumed with the newer value, so later subscribers saw `0, 2, 2` instead of `0, 1, 2`. Queue (subscriber, value) pairs and drain only from the outermost write, emptying the queue in `finally` (Svelte's `subscriber_queue`). Test: `svelte-compat/src/tests/store-reentrant-set.test.ts`.
+
+---
+
+### A keyed mapping helper that re-maps every item on every change
+
+Solid-compat's `mapArray` re-ran `mapFn` for the whole list, so per-item state and effects were rebuilt (and never disposed) on each change. Map by reference, reuse the kept items' results, give each mapping its own root and dispose it when the item leaves. Test: `solid-compat/src/tests/memo-setter-maparray-parity.test.ts`.
 
 ---
 
