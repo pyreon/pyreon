@@ -1,3 +1,4 @@
+import type { Input } from '@atlaskit/pragmatic-drag-and-drop/types'
 /** Data attached to a draggable item. */
 export type DragData = Record<string, unknown>
 
@@ -39,6 +40,15 @@ export interface DragPreviewOptions {
   offset?: 'pointer-outside' | 'center' | 'preserve-offset'
 }
 
+/** A custom native drag preview, built by `dragPreview(options)`. */
+export interface DragPreview {
+  readonly onGenerateDragPreview: (args: {
+    nativeSetDragImage: ((image: Element, x: number, y: number) => void) | null
+    source: { element: HTMLElement }
+    location: { initial: { input: Input } }
+  }) => void
+}
+
 export interface UseDraggableOptions<T extends DragData = DragData> {
   /**
    * Element getter for the draggable element. Optional — attach the result's
@@ -59,11 +69,11 @@ export interface UseDraggableOptions<T extends DragData = DragData> {
   /** Called when drag ends (drop or cancel). */
   onDragEnd?: () => void
   /**
-   * Custom native drag preview. When set, the browser's default snapshot
-   * preview is replaced by whatever `preview.render` draws into the
-   * provided container. See {@link DragPreviewOptions}.
+   * Custom native drag preview, built with `dragPreview({ render, offset })`.
+   * The browser's default snapshot preview is replaced by whatever `render`
+   * draws into the provided container. See {@link DragPreviewOptions}.
    */
-  preview?: DragPreviewOptions
+  preview?: DragPreview
 }
 
 export interface UseDraggableResult {

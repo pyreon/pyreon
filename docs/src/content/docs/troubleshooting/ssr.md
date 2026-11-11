@@ -153,6 +153,7 @@ The path returns `text/html`, so every hover logs a strict-MIME error and wastes
   - A text node mounted into a live parent through a reactive boundary must return a real remover; `noop` is valid only under `_elementDepth > 0`.
   - A reactive text binding is polymorphic (`bindPolymorphicText`); it may later yield a VNode.
   - Adding markers changes raw SSR strings; make string assertions marker-tolerant.
+  - A static setter on an adopted element (`!_freshBind`) must hydrate, never `mountChild`: `_setChild` routes accessors AND VNode/VNode-array values to the marker-less slot hydrator. `<For>` plan replay admits rows 2..N at row 1's spots only, so a cell that held a string in row 1 can hold a VNode in row 2 (#4370). Test: `setchild-vnode-hydration.test.tsx`.
 
 ---
 
@@ -253,6 +254,12 @@ Setting `input.value`/`textarea.value` as a property never creates the content a
   - SSR: drop the attribute and mark the matching `<option selected>` (String()-coerced first match; option text fallback). The select frame reaches options via `AsyncLocalStorage`.
   - `value == null`/boolean emits nothing. Known gaps: a spread `value` on the template path still applies before children (broken only with dynamic options); array values on `multiple` are unsupported on both sides.
   - happy-dom models select semantics correctly here. Tests: `runtime-dom/src/tests/select-value.test.tsx` (+ `.browser.test.tsx`), `compiler/src/tests/select-value-emit.test.ts`, native-equivalence "select value binding (PZ-09)", `runtime-server/src/tests/select-value-ssr.test.ts`.
+
+---
+
+### [FIXED, 2026-11] A string-template hole that BUILDS JSX renders it when the hole is evaluated, not where h() would.
+
+`ssrTemplate` kept an expression child it could not lower (`{xs.map(x => <Row/>)}`, `{c ? <Comp/> : null}`) as generated text inside `_esc(...)`/`_escSole(...)`. An `_ssr(...)` argument evaluates at the call site, so a module-level `const frag = <ul>{xs.map(x => <Row/>)}</ul>` rendered `Row` before any provider ran (context defaults; the client then hydrates against different markup), and the walker never saw that JSX, so a `.map` item holding a component (`<li><Link/></li>`) went through `jsx()`/`h()` per element. Rule: an expression hole that contains JSX is either PRESERVED (`_esc(`/`_escSole(` around the untouched range, re-walked so its own roots template — only when `sliceExpr` returns the source verbatim) or, when it must stay generated, makes the whole call `_ssrDeferred`. Code: `compiler/src/jsx.ts:ssrSerializeExprChild` (+ `native/src/lib.rs`). Tests: `runtime-dom/src/tests/ssr-template-differential.test.tsx` (MODULE-CONST expression-hole cases), `compiler/src/tests/ssr-lowering-bails.test.ts`, parity in `native-equivalence.test.ts`.
 
 ---
 

@@ -54,6 +54,14 @@ The `*-compat` JSX runtimes wrap user components in `wrapCompatComponent`, so a 
 
 ---
 
+### A compat bail-out that compares the live props object with itself
+
+The `*-compat` wrapper hands the SAME props object to every render of an instance, so `memo` comparing `prevProps` (that object) with `props` was always equal and returned the cached result on the component's own `useState` update — the update was silently dropped. React skips only a parent-driven render with shallow-equal props.
+  - Compare a `{ ...props }` snapshot, and never skip a render with `ctx._selfUpdate` set (the wrapper sets it when the render came from the instance's own version bump). On a bail-out call `skipRemainingHooks()` so the dev hook-order check stays quiet.
+  - Test: `{react,preact}-compat/src/tests/memo-and-ref-parity.test.ts`.
+
+---
+
 ### Context-reading hooks after an `await` in an async component
 
 `useHead`, `useContext`, `onMount` and friends must run in the synchronous part of setup. On the client, code after the first `await` has no current component, so `useHead` finds no head context and silently does nothing — `renderToString` keeps the context across the await, so SSR output looks right and only the hydrated/client-navigated page is wrong.

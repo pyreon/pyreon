@@ -41,6 +41,9 @@ describe('isUnsafeUrl normalizes the way the URL parser does', () => {
     ['leading whitespace', '   javascript:alert(1)'],
     ['mixed case + TAB', `JaVa${TAB}ScRiPt:alert(1)`],
     ['data:, embedded', `da${TAB}ta:text/html;base64,PHNjcmlwdD4=`],
+    ['vbscript:', 'vbscript:msgbox(1)'],
+    ['vbscript:, mixed case + embedded LF', `VB${LF}Script:msgbox(1)`],
+    ['vbscript:, leading C0', `${SOH}vbscript:msgbox(1)`],
   ]
   for (const [label, url] of live) {
     it(`blocks ${label}`, () => {

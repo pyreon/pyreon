@@ -189,7 +189,7 @@ useDraggable({
 
 ## Custom drag previews, edges, handles
 
-- `useDraggable({ preview: { render(container) { /* draw */ }, offset: 'center' } })` — replace the browser's default drag snapshot (pdnd's `setCustomNativeDragPreview`; offsets: `'pointer-outside' | 'center' | 'preserve-offset'`).
+- `useDraggable({ preview: dragPreview({ render(container) { /* draw */ }, offset: 'center' }) })` — replace the browser's default drag snapshot (pdnd's `setCustomNativeDragPreview`; offsets: `'pointer-outside' | 'center' | 'preserve-offset'`).
 - `useDroppable({ edges: ['top', 'bottom'], sticky: true })` — closest-edge detection on plain drop zones via the returned `overEdge()` accessor; `sticky` keeps the target held across gaps.
 - `useSortable().itemHandleRef(key)` — scope drag initiation to a grip element inside the row; rows without a handle stay fully draggable.
 
