@@ -75,7 +75,7 @@ Since Pyreon and Solid share the same reactive paradigm, the API is nearly ident
 | `on()`                      | Explicit dependency helper               | Supported -- returns a function for use inside `createEffect` |
 | `mergeProps` / `splitProps` | Preserves reactive getters               | Same behavior -- preserves property descriptors               |
 | Control flow                | `<Show>`, `<For>`, `<Switch>`, `<Match>` | Re-exported from `@pyreon/core` -- same API                   |
-| `createStore` / `produce`   | From `solid-js/store`                    | Use `@pyreon/reactivity`'s `createStore` and `reconcile`      |
+| `createStore` / `produce`   | From `solid-js/store`                    | **Provided** by `@pyreon/solid-compat`: `createStore`, `produce`, `reconcile`, `unwrap` with Solid's `[state, setState]` path setter |
 | Transitions                 | `useTransition`, `startTransition`       | No-op stubs -- run synchronously, `isPending` is always `false` (see [Transitions](#transitions)) |
 | `createResource`            | Built-in async primitive                 | Provided -- `loading` / `error` / `latest` / `state` (see [createResource state](#createresource-state)) |
 
@@ -206,8 +206,8 @@ function WebSocketComponent(props: { url: () => string }) {
       setMessages((prev) => [...prev, e.data])
     }
 
-    // In Solid, onCleanup is used inside createEffect
-    // In Pyreon, use onCleanup (which maps to onUnmount)
+    // Closes the previous socket before the effect re-runs for a new URL,
+    // and the last one on unmount -- exactly as in Solid
     onCleanup(() => ws.close())
   })
 
@@ -243,7 +243,7 @@ Alias for `createEffect`. This is Solid's deprecated legacy API, kept for compat
 function createMemo<T>(fn: () => T): () => T
 ```
 
-Creates a computed derived value. Returns a getter function. The computation is lazy and cached -- it only re-evaluates when its tracked dependencies change.
+Creates a computed derived value. Returns a getter function. As in Solid it is eager: it runs once when created and again whenever a tracked dependency changes (reads in between return the cached value). With the `(prev) => next` form, `prev` is the value of the previous run.
 
 ```tsx
 const [count, setCount] = createSignal(3)
@@ -596,7 +596,7 @@ function WindowSize() {
 function onCleanup(fn: () => void): void
 ```
 
-Registers a cleanup function that runs when the component is unmounted. Maps to Pyreon's `onUnmount`.
+Registers a cleanup on the current owner, as in Solid: inside `createEffect` it runs before each re-run and when the effect is disposed; in a component body it runs on unmount; inside `createRoot` it runs when the root is disposed.
 
 ```tsx
 const Timer = () => {
@@ -1478,41 +1478,35 @@ function SearchBox() {
 }
 ```
 
-## Migration from solid-js/store
+## Stores (`solid-js/store`)
 
-If you use Solid's store primitives (`createStore`, `produce`, `reconcile`), migrate to Pyreon's equivalents:
+`@pyreon/solid-compat` ships Solid's store API, so store code only needs its import changed:
 
 ```tsx
-// Before (solid-js/store)
-import { createStore, produce } from 'solid-js/store'
+// Before
+import { createStore, produce, reconcile } from 'solid-js/store'
+// After
+import { createStore, produce, reconcile } from '@pyreon/solid-compat'
 
-const [state, setState] = createStore({ count: 0, items: [] })
+const [state, setState] = createStore({ count: 0, user: { name: 'a', age: 1 }, items: [] as { id: number }[] })
 setState('count', (prev) => prev + 1)
+setState('user', 'name', 'b')
 setState(
-  produce((s) => {
-    s.items.push({ id: 1, text: 'hello' })
+  'items',
+  produce((items) => {
+    items.push({ id: 1 })
   }),
 )
-
-// After (Pyreon)
-import { createStore } from '@pyreon/reactivity'
-
-const state = createStore({ count: 0, items: [] })
-state.count++
-state.items.push({ id: 1, text: 'hello' })
+setState('items', reconcile([{ id: 2 }]))
 ```
 
-Key differences:
-
-- Pyreon's `createStore` returns a single proxy object (not a `[state, setState]` tuple)
-- Mutations are direct JavaScript (no path-based setter, no `produce`)
-- `reconcile` is a separate function: `reconcile(newData, state)`
+Path setters support keys, array indexes and filter functions. `unwrap(state)` returns a plain deep copy. If you would rather mutate directly, `@pyreon/reactivity`'s `createStore` returns a single mutable proxy (`state.count++`) instead of a tuple.
 
 ## Migration Checklist
 
 1. Replace `solid-js` imports with `@pyreon/solid-compat`.
 2. The signal API (`createSignal`, `createEffect`, `createMemo`) is identical -- no code changes needed.
-3. Replace `solid-js/store` imports with `@pyreon/reactivity`'s `createStore` and `reconcile`. Update store mutation patterns from path-based to direct mutation.
+3. Replace `solid-js/store` imports with `@pyreon/solid-compat` (same `createStore` / `produce` / `reconcile` API).
 4. Verify any `createRenderEffect` usage -- it behaves identically to `createEffect` in Pyreon.
 5. Control flow components (`Show`, `For`, `Switch`, `Match`, `Suspense`, `ErrorBoundary`) work the same way.
 6. `useTransition` / `startTransition` are no-op stubs (run synchronously, `isPending` always `false`) -- don't rely on concurrent-mode behavior.

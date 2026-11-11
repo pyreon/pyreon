@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import Demo from './Demo'
 
 export default function UseRefDemo() {
-  const inputRef = useRef<HTMLInputElement>()
+  const inputRef = useRef<HTMLInputElement>(null)
   const renderCount = useRef(0)
   const [value, setValue] = useState('')
 
@@ -14,7 +14,7 @@ export default function UseRefDemo() {
     <Demo
       title="Refs"
       apis="useRef"
-      code={`const inputRef = useRef<HTMLInputElement>();
+      code={`const inputRef = useRef<HTMLInputElement>(null);
 const renderCount = useRef(0);
 
 // Focus the input

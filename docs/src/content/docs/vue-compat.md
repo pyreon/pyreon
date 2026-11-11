@@ -79,7 +79,7 @@ createApp(Counter).mount('#app')
 | Behavior                   | Vue 3                                    | @pyreon/vue-compat                                            |
 | -------------------------- | ---------------------------------------- | ------------------------------------------------------------- |
 | Reactive engine            | Vue's Proxy-based reactivity             | Pyreon's signal-based reactivity                              |
-| `deep` option in `watch()` | Controls deep observation                | **Ignored** -- Pyreon tracks dependencies automatically       |
+| `deep` option in `watch()` | Controls deep observation                | **Supported** -- `deep: true` tracks every nested property of a `reactive()` value the source returns; `watch(reactiveObj, cb)` is deep, as in Vue. A `ref()` holding a plain object stays shallow |
 | `computed` setter          | Supported via getter/setter object       | **Supported** -- `computed({ get, set })` is writable; the getter-only form is readonly (throws on write, like Vue) |
 | `shallowRef`               | Separate shallow implementation          | Identical to `ref()` -- Pyreon signals are inherently shallow |
 | `shallowReactive`          | Separate shallow implementation          | Same as `reactive()` in practice                              |
@@ -336,6 +336,12 @@ function reactive<T extends object>(obj: T): T
 ```
 
 Creates a deeply reactive proxy backed by Pyreon's `createStore()`. Each property is backed by its own signal, so mutations trigger only the affected subscribers.
+
+As in Vue:
+
+- A ref stored in a property reads as its value and is written through on assignment (`reactive({ count })` → `state.count` is a number; `state.count = 5` sets `count.value`). Array elements keep their refs.
+- `reactive(raw)` returns the same proxy every time for the same object, and `reactive(proxy)` returns `proxy`.
+- `Map` and `Set` (top level or nested) are reactive: `get`, `has`, `size` and iteration are tracked, and `set` / `add` / `delete` / `clear` notify when they change something. Tracking is per collection, not per key, so reading `map.get('a')` also re-runs on `map.set('b', …)`.
 
 ```tsx
 const state = reactive({ count: 0, user: { name: 'Alice' } })
@@ -610,7 +616,8 @@ function watch<T>(
 
 interface WatchOptions {
   immediate?: boolean // Fire cb immediately with current value
-  deep?: boolean // Ignored in Pyreon
+  deep?: boolean // Track nested properties of the (reactive) value the source returns
+  flush?: 'pre' | 'post' | 'sync' // 'pre' (default) batches one tick's changes into one call; 'sync' fires per change
 }
 ```
 
@@ -651,6 +658,8 @@ state.user.name = 'Bob' // logs: "Name changed: Alice -> Bob"
 
 When `immediate: true`, the callback fires synchronously with the current value before any changes occur. The `oldValue` is `undefined` on the first call.
 
+**Flush timing.** As in Vue, the callback runs after the current tick, once, however many times the source changed: `c.value = 1; c.value = 2; c.value = 3` calls it once with `(3, 0)`, and a value that ends where it started calls nothing. Pass `flush: 'sync'` to be called on every change. A write the callback makes to its own source does not call it again.
+
 ```tsx
 const count = ref(5)
 
@@ -680,21 +689,22 @@ watch(total, (newTotal) => {
 items.value = [1, 2, 3, 4] // logs: "Total is now: 10"
 ```
 
-**The `deep` option:**
+**Watching a `reactive()` object and the `deep` option:**
 
-The `deep` option is accepted for API compatibility but **ignored** in Pyreon. Pyreon tracks the exact signals read inside the getter automatically. You do not need `deep: true` to watch nested properties -- just reference them in the getter:
+As in Vue, passing a `reactive()` object as the source watches it deeply: the callback fires on any nested mutation and receives the same proxy as the new and old value. `deep: true` does the same for whatever a ref or getter returns. A getter that reads one nested field needs neither:
 
 ```tsx
-const state = reactive({ nested: { count: 0 } })
+const state = reactive({ nested: { count: 0 }, tags: ['a'] })
 
-// Vue 3 needed deep: true for this. Pyreon does not.
-watch(
-  () => state.nested.count,
-  (newVal) => console.log(newVal),
-)
+watch(state, () => console.log('something changed')) // deep
+watch(() => state.nested, (n) => console.log(n.count), { deep: true })
+watch(() => state.nested.count, (n) => console.log(n)) // precise, no deep needed
 
-state.nested.count = 5 // callback fires automatically
+state.nested.count = 5 // all three fire
+state.tags.push('b') // only the first fires
 ```
+
+`deep` follows `reactive()` data only: a `ref()` holding a plain object does not track its inner properties (see `ref` above).
 
 **Stopping a watcher:**
 
