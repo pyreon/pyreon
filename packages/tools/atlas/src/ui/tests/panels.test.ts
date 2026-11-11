@@ -34,13 +34,39 @@ afterEach(() => {
 })
 
 describe('built-ins', () => {
-  it('registers the ADDON_TABS entries FIRST, in order', () => {
-    // Not exact equality: `reactivity` ships with Atlas but registers THROUGH
-    // the seam rather than being a built-in, which is the point — it is the
-    // proof that a non-built-in panel can join the strip. The built-ins must
-    // still lead, and in their declared order.
-    const ids = getAddonPanels().map((p) => p.id)
-    expect(ids.slice(0, ADDON_TABS.length)).toEqual(ADDON_TABS.map((t) => t.id))
+  it('registers all thirteen panels in the design order', () => {
+    // Registration order IS tab order: authoring, then the checks, then the
+    // three that read the signal graph and the compiler, then the environment.
+    expect(getAddonPanels().map((p) => p.id)).toEqual([
+      'controls',
+      'schema',
+      'actions',
+      'a11y',
+      'perf',
+      'permissions',
+      'data',
+      'store',
+      'why',
+      'reactivity',
+      'lens',
+      'canvas',
+      'addons',
+    ])
+    expect(getAddonPanels().map((p) => p.title)).toEqual([
+      'Controls',
+      'Schema',
+      'Actions',
+      'A11y',
+      'Perf',
+      'Permissions',
+      'Query',
+      'Store',
+      'Update cause',
+      'Reactive coverage',
+      'Lens',
+      'Canvas',
+      'Addons',
+    ])
   })
 
   it('includes the Reactivity panel, registered through the seam', () => {

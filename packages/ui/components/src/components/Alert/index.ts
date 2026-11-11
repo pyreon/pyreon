@@ -1,4 +1,4 @@
-import { el } from '../../factory'
+import { el, tintText } from '../../factory'
 
 /**
  * Alert banner. A11y: a live region whose politeness follows the `state`
@@ -40,13 +40,13 @@ const Alert = el
       block: true,
     }
   })
-  .theme((t) => ({
+  .theme((t, m) => ({
     padding: t.spacing.small,
     borderRadius: t.borderRadius.base,
     fontSize: t.fontSize.small,
     lineHeight: t.lineHeight.base,
     backgroundColor: t.color.system.info[100],
-    color: t.color.system.info[800],
+    color: tintText(t, m, 'info'),
     borderWidthLeft: '4px',
     borderStyleLeft: 'solid',
     borderColorLeft: t.color.system.info.base,
@@ -54,25 +54,25 @@ const Alert = el
     borderStyle: 'solid',
     borderColor: 'transparent',
   }))
-  .states((t) => ({
+  .states((t, m) => ({
     info: {
       backgroundColor: t.color.system.info[100],
-      color: t.color.system.info[800],
+      color: tintText(t, m, 'info'),
       borderColorLeft: t.color.system.info.base,
     },
     success: {
       backgroundColor: t.color.system.success[100],
-      color: t.color.system.success[800],
+      color: tintText(t, m, 'success'),
       borderColorLeft: t.color.system.success.base,
     },
     warning: {
       backgroundColor: t.color.system.warning[100],
-      color: t.color.system.warning[800],
+      color: tintText(t, m, 'warning'),
       borderColorLeft: t.color.system.warning.base,
     },
     error: {
       backgroundColor: t.color.system.error[100],
-      color: t.color.system.error[800],
+      color: tintText(t, m, 'error'),
       borderColorLeft: t.color.system.error.base,
     },
   }))
@@ -80,7 +80,7 @@ const Alert = el
     subtle: {},
     solid: {
       backgroundColor: t.color.system.info.base,
-      color: t.color.system.light.base,
+      color: t.color.system.info.contrast,
       borderWidthLeft: '0',
     },
     outline: {

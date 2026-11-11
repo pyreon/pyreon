@@ -101,6 +101,7 @@
     "typescript": ">=5.0.0 <7.0.0"
   },
   "devDependencies": {
+    "@pyreon/ansi": "workspace:*",
     "@pyreon/compiler": "workspace:*",
     "@pyreon/manifest": "workspace:*",
     "@pyreon/query": "workspace:*",

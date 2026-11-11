@@ -1,0 +1,109 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`LSP diagnostics payload > diagnosticsForDocument for a broken and a warning buffer 1`] = `"{"broken":[{"range":{"start":{"line":0,"character":41},"end":{"line":0,"character":42}},"severity":1,"source":"pyreon-native","message":"[swift] <root>/Doc.tsx:1:42: Unexpected token","code":"error"},{"range":{"start":{"line":0,"character":41},"end":{"line":0,"character":42}},"severity":1,"source":"pyreon-native","message":"[kotlin] <root>/Doc.tsx:1:42: Unexpected token","code":"error"}],"warns":[{"range":{"start":{"line":0,"character":0},"end":{"line":0,"character":1}},"severity":2,"source":"pyreon-native","message":"[swift] first looks like a GENERIC helper function — PMTC now emits non-generic top-level helper functions natively (Swift \`func\` / Kotlin \`fun\`), but generic type parameters aren't representable in the native IR yet, so \`first\` was skipped rather than mis-emitted with unresolved \`<T>\` types. Drop the generic, or inline the logic into the component that uses it.","code":"warning"},{"range":{"start":{"line":0,"character":0},"end":{"line":0,"character":1}},"severity":2,"source":"pyreon-native","message":"[kotlin] first looks like a GENERIC helper function — PMTC now emits non-generic top-level helper functions natively (Swift \`func\` / Kotlin \`fun\`), but generic type parameters aren't representable in the native IR yet, so \`first\` was skipped rather than mis-emitted with unresolved \`<T>\` types. Drop the generic, or inline the logic into the component that uses it.","code":"warning"}],"web":[]}"`;
+
+exports[`LSP diagnostics payload > findingsToDiagnostics over real check findings 1`] = `
+"[
+  {
+    "range": {
+      "start": {
+        "line": 0,
+        "character": 41
+      },
+      "end": {
+        "line": 0,
+        "character": 42
+      }
+    },
+    "severity": 1,
+    "source": "pyreon-native",
+    "message": "[swift] <root>/src/Broken.tsx:1:42: Unexpected token",
+    "code": "error"
+  },
+  {
+    "range": {
+      "start": {
+        "line": 0,
+        "character": 41
+      },
+      "end": {
+        "line": 0,
+        "character": 42
+      }
+    },
+    "severity": 1,
+    "source": "pyreon-native",
+    "message": "[kotlin] <root>/src/Broken.tsx:1:42: Unexpected token",
+    "code": "error"
+  },
+  {
+    "range": {
+      "start": {
+        "line": 0,
+        "character": 0
+      },
+      "end": {
+        "line": 0,
+        "character": 1
+      }
+    },
+    "severity": 2,
+    "source": "pyreon-native",
+    "message": "[swift] first looks like a GENERIC helper function — PMTC now emits non-generic top-level helper functions natively (Swift \`func\` / Kotlin \`fun\`), but generic type parameters aren't representable in the native IR yet, so \`first\` was skipped rather than mis-emitted with unresolved \`<T>\` types. Drop the generic, or inline the logic into the component that uses it.",
+    "code": "warning"
+  },
+  {
+    "range": {
+      "start": {
+        "line": 0,
+        "character": 0
+      },
+      "end": {
+        "line": 0,
+        "character": 1
+      }
+    },
+    "severity": 2,
+    "source": "pyreon-native",
+    "message": "[kotlin] first looks like a GENERIC helper function — PMTC now emits non-generic top-level helper functions natively (Swift \`func\` / Kotlin \`fun\`), but generic type parameters aren't representable in the native IR yet, so \`first\` was skipped rather than mis-emitted with unresolved \`<T>\` types. Drop the generic, or inline the logic into the component that uses it.",
+    "code": "warning"
+  }
+]"
+`;
+
+exports[`check --json > both targets: one line, byte-identical 1`] = `"{"filesChecked":3,"targets":["swift","kotlin"],"errorCount":2,"warningCount":2,"findings":[{"file":"<root>/src/Broken.tsx","target":"swift","kind":"error","message":"<root>/src/Broken.tsx:1:42: Unexpected token","position":{"line":1,"column":42}},{"file":"<root>/src/Broken.tsx","target":"kotlin","kind":"error","message":"<root>/src/Broken.tsx:1:42: Unexpected token","position":{"line":1,"column":42}},{"file":"<root>/src/Warns.tsx","target":"swift","kind":"warning","message":"first looks like a GENERIC helper function — PMTC now emits non-generic top-level helper functions natively (Swift \`func\` / Kotlin \`fun\`), but generic type parameters aren't representable in the native IR yet, so \`first\` was skipped rather than mis-emitted with unresolved \`<T>\` types. Drop the generic, or inline the logic into the component that uses it."},{"file":"<root>/src/Warns.tsx","target":"kotlin","kind":"warning","message":"first looks like a GENERIC helper function — PMTC now emits non-generic top-level helper functions natively (Swift \`func\` / Kotlin \`fun\`), but generic type parameters aren't representable in the native IR yet, so \`first\` was skipped rather than mis-emitted with unresolved \`<T>\` types. Drop the generic, or inline the logic into the component that uses it."}],"skippedWebEntries":["<root>/src/entry.tsx"]}"`;
+
+exports[`check --json > one target, warnings only 1`] = `"{"filesChecked":1,"targets":["kotlin"],"errorCount":0,"warningCount":1,"findings":[{"file":"<root>/w/Warns.tsx","target":"kotlin","kind":"warning","message":"first looks like a GENERIC helper function — PMTC now emits non-generic top-level helper functions natively (Swift \`func\` / Kotlin \`fun\`), but generic type parameters aren't representable in the native IR yet, so \`first\` was skipped rather than mis-emitted with unresolved \`<T>\` types. Drop the generic, or inline the logic into the component that uses it."}],"skippedWebEntries":[]}"`;
+
+exports[`wire --json > --android-out writes the same srcDirs file 1`] = `
+"# Generated by \`pyreon-native wire\` — resolved Pyreon native Kotlin
+# source roots (base runtime/router + co-located feature packages).
+# Hoisting/pnpm-safe absolute paths. Do not edit by hand.
+<root>/app/node_modules/@pyreon/native-runtime-kotlin/src/main/kotlin
+<root>/app/node_modules/feat/native/kotlin
+"
+`;
+
+exports[`wire --json > prints the wiring JSON byte-identical 1`] = `
+"{
+  "androidSrcDirs": [
+    "<root>/app/node_modules/@pyreon/native-runtime-kotlin/src/main/kotlin",
+    "<root>/app/node_modules/feat/native/kotlin"
+  ],
+  "iosSpmPackages": [
+    {
+      "module": "PyreonRuntime",
+      "path": "<root>/app/node_modules/@pyreon/native-runtime-swift"
+    }
+  ],
+  "iosTargetSources": [
+    {
+      "module": "Feat",
+      "dirs": [
+        "<root>/app/node_modules/feat/native/swift"
+      ]
+    }
+  ],
+  "brokenDeclarations": []
+}"
+`;

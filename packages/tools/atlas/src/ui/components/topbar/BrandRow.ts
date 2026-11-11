@@ -5,8 +5,10 @@ export const BrandRow = el
     tag: 'div',
     contentDirection: 'inline',
     contentAlignY: 'center',
-    gap: 12,
+    gap: 9,
   })
   .theme(() => ({
-    minWidth: '192px',
+    flex: 'none',
+    minWidth: '0',
+    whiteSpace: 'nowrap',
   }))

@@ -11,7 +11,7 @@ import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, existsSync } from 
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { findConfigFile, loadConfig, main, rebase } from '../cli/main'
-import { shouldColor } from '../cli/report'
+import { resolveColorLevel, shouldColor } from '../cli/report'
 import pkg from '../../package.json' with { type: 'json' }
 
 const SPEC = `openapi: 3.0.3
@@ -133,7 +133,7 @@ describe('the bin surface', () => {
     const root = repo()
     const r = await capture(() => main(['generate', '--dry-run'], root))
     expect(r.code).toBe(0)
-    expect(r.out).toContain('DRY RUN')
+    expect(r.out).toContain('dry run')
     expect(existsSync(join(root, 'src', 'gen'))).toBe(false)
     expect(readFileSync(join(root, 'api', 'openapi.yaml'), 'utf8')).toBe(SPEC)
   })
@@ -147,6 +147,26 @@ describe('colour follows the destination', () => {
     expect(shouldColor({ isTTY: true }, { TERM: 'dumb' })).toBe(false)
     expect(shouldColor({ isTTY: false }, { FORCE_COLOR: '1' })).toBe(true)
     expect(shouldColor({ isTTY: true }, { FORCE_COLOR: '0' })).toBe(false)
+  })
+
+  it('--color forces colour on (truecolor when advertised), --no-color forces it off', () => {
+    // The flags beat the environment: `--color` through a pipe, under NO_COLOR
+    // or TERM=dumb is still colour, and `--no-color` on a TTY is plain.
+    expect(resolveColorLevel(true, { isTTY: false }, {})).toBe(1)
+    expect(resolveColorLevel(true, { isTTY: false }, { NO_COLOR: '1', TERM: 'dumb' })).toBe(1)
+    expect(resolveColorLevel(true, { isTTY: false }, { COLORTERM: 'truecolor' })).toBe(2)
+    expect(resolveColorLevel(true, { isTTY: false }, { FORCE_COLOR: '3' })).toBe(2)
+    expect(resolveColorLevel(false, { isTTY: true }, { FORCE_COLOR: '3' })).toBe(0)
+    // No flag: the shared detection.
+    expect(resolveColorLevel(undefined, { isTTY: true }, {})).toBe(1)
+    expect(resolveColorLevel(undefined, { isTTY: true }, { NO_COLOR: '1' })).toBe(0)
+    expect(resolveColorLevel(undefined, { isTTY: false }, { FORCE_COLOR: '3' })).toBe(2)
+  })
+
+  it('--color reaches the report through a pipe', async () => {
+    const root = repo()
+    const r = await capture(() => main(['generate', '--color'], root))
+    expect(r.out).toContain(String.fromCharCode(27))
   })
 
   it('a piped run carries no escape codes', async () => {

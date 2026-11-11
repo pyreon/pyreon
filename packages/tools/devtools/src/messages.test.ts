@@ -121,7 +121,12 @@ describe('message type guards', () => {
 
 describe('message factories', () => {
   it('createPageWire wraps a hook message', () => {
-    const payload = { type: 'pyreon-detected' as const, version: '1.0.0' }
+    const payload = {
+      type: 'pyreon-detected' as const,
+      version: '1.0.0',
+      host: 'localhost:5173',
+      reactive: true,
+    }
     const wire = createPageWire(payload)
 
     expect(wire.source).toBe('pyreon-devtools-page')

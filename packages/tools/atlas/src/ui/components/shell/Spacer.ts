@@ -6,4 +6,5 @@ export const Spacer = el
   })
   .theme(() => ({
     flex: '1',
+    minWidth: '8px',
   }))

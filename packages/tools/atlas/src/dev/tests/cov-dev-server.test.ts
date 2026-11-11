@@ -198,7 +198,7 @@ describe('the title, and what the config contributes', () => {
     }
   }, 120_000)
 
-  it('lets an explicit title win over the config, and falls back to `atlas` with neither', async () => {
+  it('lets an explicit title win over the config, and falls back to `Atlas` with neither', async () => {
     const withConfig = fixture({ config: "export const title = 'From The Config'\n" })
     const port = await freePort()
     let handle: DevServerHandle | undefined
@@ -216,7 +216,7 @@ describe('the title, and what the config contributes', () => {
     try {
       plain = await startDevServer({ cwd: bare, port: port2 })
       const html = await (await fetch(`http://localhost:${port2}/`)).text()
-      expect(html).toContain('<title>atlas</title>')
+      expect(html).toContain('<title>Atlas</title>')
     } finally {
       await plain?.close()
     }
@@ -240,7 +240,7 @@ describe('what the defaults are', () => {
       expect(port).toBeGreaterThanOrEqual(5210)
       expect(handle.components).toBe(1)
       const html = await (await fetch(handle.url)).text()
-      expect(html).toContain('<title>atlas</title>')
+      expect(html).toContain('<title>Atlas</title>')
     } finally {
       await handle?.close()
       process.chdir(before)

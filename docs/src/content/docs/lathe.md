@@ -1381,13 +1381,17 @@ lathe diff old/api-surface.json src/gen/api-surface.json --format markdown
 ```
 
 ```text
-API contract: 2 breaking, 1 additive
-  BREAKING  field-now-optional  RoomEvent.at — required → optional
-             affects roomEvents, roomEventsStream, useRoomEventsStream (rooms)
-  BREAKING  operation-removed  tailLog — `GET /log` no longer exists
-             affects tailLog, tailLogStream, useTailLogStream (rows)
-  additive  field-added  ChatChunk.role — string (optional)
-             affects createChat, createChatStream, useCreateChat, useCreateChatStream (chat)
+$ lathe diff openapi.before.yaml openapi.yaml
+lathe diff · openapi.before.yaml → openapi.yaml
+
+  − breaking  field-removed  Book.pages  was integer (optional)
+      affects createBook, useCreateBook (books); getBook, useGetBook (books); listBooks,
+              useListBooks (books)
+  + additive  field-added    Book.dueAt  date-time (optional)
+      affects createBook, useCreateBook (books); getBook, useGetBook (books); listBooks,
+              useListBooks (books)
+
+! 1 breaking, 1 additive · 19 ms
 ```
 
 Severities are from the **client's** point of view (a response field turning

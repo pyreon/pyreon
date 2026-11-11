@@ -8,4 +8,5 @@ export const A11yBody = el
   })
   .theme(() => ({
     flex: '1',
+    minWidth: '0',
   }))

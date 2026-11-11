@@ -11,7 +11,7 @@
     />
     <!-- Remembered theme → <html> before first paint. Mirrors THEME_BOOT in src/dev/server.ts. -->
     <script>
-      try{var t=localStorage.getItem('loom:theme');if(t==='dark'||t==='light')document.documentElement.setAttribute('data-lm-theme',t)}catch(e){}
+      try{var t=localStorage.getItem('pyreon-theme');if(t!=='dark'&&t!=='light')t=localStorage.getItem('loom:theme');if(t==='dark'||t==='light')document.documentElement.setAttribute('data-lm-theme',t)}catch(e){}
     </script>
     <!--pyreon-head-->
   </head>

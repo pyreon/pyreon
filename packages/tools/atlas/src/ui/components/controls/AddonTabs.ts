@@ -14,7 +14,8 @@ export const AddonTabs = el
     // written by the view from the scroll position) and the active tab is
     // scrolled into view.
     flex: 'none',
-    padding: '8px',
+    height: '38px',
+    padding: '0 8px',
     borderBottom: t.hairline,
     extendCss:
       'flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;scrollbar-width:none;scroll-padding:0 24px;' +

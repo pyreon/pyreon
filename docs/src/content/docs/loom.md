@@ -21,14 +21,30 @@ Or with zero setup: `pyreon loom <cmd>` delegates to the project-local install.
 
 ## `loom scan` — the fabric as findings
 
-```bash
-pyreon loom scan .
-# loom: 148 workspace package(s), 227 external dep(s), 858 internal edge(s), depth 11, 0 cycle(s).
-#
-# WARNING · 8
-#   ▲ version-drift [happy-dom] — `happy-dom` is declared with 2 different ranges (^20.11.1 · ^20.0.0)
-#   …
-#   → loom-report.json
+```text
+$ pyreon loom scan . --no-write
+loom scan · . · 148 packages
+
+  workspace packages  148
+  external deps       227
+  internal edges      858
+  depth                11
+  runtime cycles        0
+
+  ℹ 305 info
+  ℹ phantom-dep · `@pyreon/example-react-compat` imports `react-dom` in shipping source but never
+     declares it — resolvable only through hoisting luck (ignored: `@pyreon/vite-plugin` with
+     compat:'react' ALIASES react-dom (and react-dom/client) to @pyreon/react-compat/dom. Installing
+     the real react-dom would defeat the example, whose entire point is that React-shaped code runs
+     with no React present.)
+     ↳ examples/react-compat/src/main.tsx
+  ℹ phantom-type-dep · `@pyreon/create-zero` imports `@pyreon/server` type-only but never declares
+     it — erased at runtime, so consumers are unaffected, but typecheck resolves it through hoisting
+     luck; declare it in devDependencies
+     ↳ packages/zero/create-zero/templates/app/src/routes/(admin)/dashboard.tsx
+  …
+
+✓ no errors or warnings · 305 info · 148 packages · 392 ms
 ```
 
 It reads the same declarations an install tool reads — root `workspaces` globs (npm/bun/yarn array + object forms, `packages/*/*`-style nesting, negations) plus `pnpm-workspace.yaml` — and analyzes:
@@ -62,7 +78,7 @@ Five views over the same report:
 - **Impact** — blast radius, counted not guessed: transitive dependents per package, ranked.
 - **Manifest** — every node as a data row with per-package finding counts and a status badge.
 
-Plus a detail panel per package (metrics, depends-on / required-by, findings, resolution path from the nearest entry point), ⌘K search, kind filters, ↑↓ navigation, and dark/light theming. The report endpoint re-scans per request — edit a manifest, reload, see fresh truth.
+Plus a detail panel per package (metrics, depends-on / required-by, findings, resolution path from the nearest entry point), ⌘K search, kind filters, ↑↓ navigation, and dark/light theming. The theme is the shared Pyreon preference — `localStorage['pyreon-theme']` (`'light' | 'dark'`), otherwise `prefers-color-scheme` — so choosing light on the docs site, in Atlas or in Loom applies to all three, live across tabs. Loom's own key from before (`loom:theme`) is still read as a fallback. The report endpoint re-scans per request — edit a manifest, reload, see fresh truth.
 
 Vite + `@pyreon/vite-plugin` are **optional peers**: `loom scan` runs without them; `loom dev` names the install when missing. The dev server reports with the same settings `loom scan` resolves (config file + `package.json` key), and keeps its own dependency cache in `node_modules/.cache/loom-vite`, so it never invalidates your app's Vite cache.
 

@@ -1,28 +1,29 @@
 import { el } from '../../kit'
 
+/** One option in a `.seg2` group — pressed = raised surface + inset hairline. */
 export const EnumBtn = el
   .attrs({
     tag: 'button',
   })
   .theme((t) => ({
     font: 'inherit',
-    fontSize: t.size.body,
+    fontSize: t.size.small,
     cursor: 'pointer',
-    padding: '8px 12px',
-    borderRadius: t.radius.item,
-    transition: `border-color ${t.motion.fast},color ${t.motion.fast}`,
-    border: t.hairline,
-    color: t.muted,
+    height: '26px',
+    padding: '0 10px',
+    border: 'none',
+    borderRadius: t.radius.button,
+    whiteSpace: 'nowrap',
+    transition: `color ${t.motion.fast},background ${t.motion.fast}`,
+    color: t.faint,
     background: 'transparent',
-    hover: { borderColor: t.accent, color: t.text },
+    hover: { color: t.text },
   }))
-  .states(
-    (t) => ({
-      active: {
-        borderColor: t.accent,
-        color: t.text,
-        backgroundColor: t.accentSoft,
-      },
-      idle: {},
-    }),
-  )
+  .states((t) => ({
+    active: {
+      color: t.text,
+      backgroundColor: t.surface2,
+      boxShadow: `inset 0 0 0 1px ${t.border}`,
+    },
+    idle: {},
+  }))

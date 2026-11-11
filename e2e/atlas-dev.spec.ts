@@ -16,6 +16,12 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { expect, test } from '@playwright/test'
 
+// The workbench follows the shared theme preference, and with nothing stored
+// that is the OS's. The fixture project's components were authored against
+// the dark default (its Badge does not pass contrast on the light preview
+// surface), so pin the scheme rather than inherit headless Chromium's light.
+test.use({ colorScheme: 'dark' })
+
 test.describe('atlas dev', () => {
   test('serves the workbench with a catalog derived from real components', async ({ page }) => {
     const errors: string[] = []
@@ -57,7 +63,7 @@ test.describe('atlas dev', () => {
     // change the PAINTED style — the same CSS a real pointer hover applies.
     await page.goto('/')
     await page.getByRole('button', { name: 'Chip', exact: true }).click()
-    await page.getByTestId('addon-tab-canvas').click()
+    await page.getByTestId('addon-tab-addons').click()
 
     const chip = page.getByTestId('canvas-preview').locator('span').first()
     const opacity = () => chip.evaluate((el) => getComputedStyle(el).opacity)
@@ -106,19 +112,18 @@ test.describe('atlas dev', () => {
     // preset.
     await page.setViewportSize({ width: 1800, height: 950 })
     await page.goto('/')
-    await page.getByTestId('addon-tab-canvas').click()
+    await page.getByTestId('addon-tab-addons').click()
     await page.getByTestId('viewport-kiosk').click()
     const frame = page.getByTestId('canvas-frame')
     await expect.poll(() => frame.evaluate((el) => getComputedStyle(el).width)).toBe('900px')
     expect(await frame.evaluate((el) => el.getAttribute('style'))).toBeNull()
   })
 
-  test('derived scenarios appear in the sidebar WITH their verify verdicts', async ({ page }) => {
+  test('derived scenarios appear in the scenario strip WITH their verify verdicts', async ({ page }) => {
     // The pipeline's core output — the variant matrix, the edge cases, and
-    // their pass/fail labels — was previously invisible in the workbench: the
-    // sidebar listed components only. Selecting a component expands its
-    // scenarios; each carries the SAME three-state verdict `atlas scan`
-    // publishes.
+    // their pass/fail labels. Selecting a component fills the strip above the
+    // canvas with its scenarios; each carries the SAME three-state verdict
+    // `atlas scan` publishes, and the catalog row folds them into one dot.
     await page.goto('/')
     await page.getByRole('button', { name: 'Chip', exact: true }).click()
     // The all-defaults cell of the variant fan is named `Default` — the state
@@ -132,6 +137,7 @@ test.describe('atlas dev', () => {
     await page.getByRole('button', { name: 'Button', exact: true }).click()
     const empty = page.getByTestId('scenario-button--empty')
     await expect(empty.locator('[data-verdict]')).toHaveAttribute('data-verdict', 'fail')
+    await expect(page.getByTestId('component-button')).toHaveAttribute('data-verdict', 'fail')
 
     // Clicking a scenario applies its pinned args — the canvas renders exactly
     // the state the verdict covered (here: the empty label).
@@ -304,8 +310,8 @@ test.describe('atlas dev', () => {
     const at100 = await label.textContent()
     // Zoom to 125% and hover again: the box grows on screen, the number does
     // not — it is the component's layout size, not the scaled rect.
-    await page.getByText('+', { exact: true }).first().click()
-    await expect(page.getByTestId('zoom-label')).toHaveText('125%')
+    await page.getByTestId('zoom-125').click()
+    await expect(page.getByTestId('zoom-125')).toHaveAttribute('aria-pressed', 'true')
     // The zoom `size` prop drives a CSS-TRANSITIONED `transform: scale(...)`
     // on the preview surface (`PreviewSurface.ts`'s `transition: transform
     // <t.motion.base> ease`). The label above flips synchronously (a signal
@@ -529,7 +535,7 @@ test.describe('URL state', () => {
     // `kiosk` is a preset from the project's atlas.config.ts — the shipped
     // `tablet` id no longer exists here, which is itself the point: the link
     // vocabulary follows the project's presets.
-    await page.goto('/?c=badge&viewport=kiosk&p=canvas')
+    await page.goto('/?c=badge&viewport=kiosk&p=addons')
     await expect(page.getByTestId('canvas-name')).toContainText('Badge')
     // The link named a viewport; it must be applied, not merely stored.
     await expect(page.getByTestId('viewport-kiosk')).toHaveAttribute('data-rocketstyle', /.+/)

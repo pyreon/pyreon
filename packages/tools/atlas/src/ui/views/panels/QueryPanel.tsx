@@ -15,7 +15,7 @@ import { EXPECTED, QUERY_STATES, queryStateById } from '../../query-states'
 export function registerQueryPanel(): void {
   registerAddonPanel({
     id: 'data',
-    title: 'Data',
+    title: 'Query',
     hint: 'Loading / success / error / refetching, without a network',
     render: (model) => {
       const m = model as WorkbenchModel

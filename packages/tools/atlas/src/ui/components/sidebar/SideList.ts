@@ -8,6 +8,7 @@ export const SideList = el
   })
   .theme(() => ({
     flex: '1',
+    minHeight: '0',
     overflowY: 'auto',
-    padding: '0 8px 16px',
+    padding: '4px 0 16px',
   }))

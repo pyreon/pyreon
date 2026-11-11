@@ -1,17 +1,10 @@
-/** Top bar — brand, segmented tabs, search, and the top-right controls. */
+/** Top bar — brand, view tabs, search trigger, theme toggle. */
 export { TopBar } from './TopBar'
 export { BrandRow } from './BrandRow'
 export { BrandMark } from './BrandMark'
-export { BrandGlyph } from './BrandGlyph'
 export { BrandText } from './BrandText'
 export { BrandSub } from './BrandSub'
 export { Segment } from './Segment'
 export { SegBtn } from './SegBtn'
-export { SearchWrap } from './SearchWrap'
-export { SearchInner } from './SearchInner'
-export { SearchIcon } from './SearchIcon'
-export { SearchInput } from './SearchInput'
 export { Kbd } from './Kbd'
-export { RightRow } from './RightRow'
 export { IconButton } from './IconButton'
-export { Avatar } from './Avatar'

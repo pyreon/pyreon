@@ -21,6 +21,7 @@
  * SPA index).
  */
 
+import { term } from '@pyreon/ansi'
 import { existsSync } from 'node:fs'
 import { recordSsgOutcome } from './ssg-outcome'
 import { mkdir, readFile, rm, rmdir, writeFile } from 'node:fs/promises'
@@ -2455,7 +2456,7 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
         try {
           const tableMode = config._autoMode ? ('auto' as const) : config.mode
           const modeEntries = await collectFileRouteModes(routesDir, tableMode, config.routeRules)
-          for (const line of formatRouteModeTable(modeEntries, tableMode)) logInfo(line)
+          for (const line of formatRouteModeTable(modeEntries, tableMode, undefined, term.level)) logInfo(line)
         } catch {
           /* table is informational only */
         }

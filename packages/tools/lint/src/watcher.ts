@@ -1,5 +1,6 @@
 import { readFileSync, watch } from 'node:fs'
 import { resolve } from 'node:path'
+import { header, term } from '@pyreon/ansi'
 import { AstCache } from './cache'
 import { createIgnoreFilter } from './config/ignore'
 import { getPreset } from './config/presets'
@@ -43,7 +44,7 @@ export function watchAndLint(options: LintOptions & { format: string }): void {
   const pending = new Map<string, ReturnType<typeof setTimeout>>()
 
   // oxlint-disable-next-line no-console
-  console.log(`\x1b[2m[pyreon-lint] Watching for changes...\x1b[0m\n`)
+  console.log(`${header(term, 'pyreon-lint', `watching ${options.paths.join(', ')}`)}\n`)
 
   for (const p of options.paths) {
     const dir = resolve(p)
@@ -123,7 +124,8 @@ function relintFile(filePath: string, config: LintConfig, cache: AstCache, forma
     else if (d.severity === 'info') result.totalInfos++
   }
 
-  // Clear screen and print
-  process.stdout.write('\x1b[2J\x1b[H')
+  // Clear screen and print. Never send the clear sequence to a pipe or a
+  // colourless terminal: it is an escape code like any other.
+  if (term.color) process.stdout.write('\x1b[2J\x1b[H')
   console.log(formatOutput(result, format))
 }

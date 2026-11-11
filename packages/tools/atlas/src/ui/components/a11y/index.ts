@@ -1,5 +1,7 @@
 /** A11y addon — an accessibility report (pass/warn/violation rows). */
 export { A11ySummary } from './A11ySummary'
+export { StatNum } from './StatNum'
+export { StatLabel } from './StatLabel'
 export { A11yStat } from './A11yStat'
 export { A11yDot } from './A11yDot'
 export { A11yRow } from './A11yRow'

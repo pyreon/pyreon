@@ -18,7 +18,7 @@ import { isUnguarded } from '../../permission-sets'
 export function registerPermissionsPanel(): void {
   registerAddonPanel({
     id: 'permissions',
-    title: 'Roles',
+    title: 'Permissions',
     hint: 'Render the scenario as each role sees it',
     render: (model) => {
       const m = model as WorkbenchModel

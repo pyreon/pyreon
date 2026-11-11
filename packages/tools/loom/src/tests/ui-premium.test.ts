@@ -26,6 +26,7 @@ import {
   readPrefs,
   resolveDark,
   selFromHash,
+  storedTheme,
   THEME_KEY,
   writeThemePref,
 } from '../ui/prefs'
@@ -171,11 +172,27 @@ describe('createModel init', () => {
 })
 
 describe('prefs', () => {
-  it('resolveDark: a remembered choice wins over the OS', () => {
-    expect(resolveDark('light', true)).toBe(false)
-    expect(resolveDark('dark', false)).toBe(true)
-    expect(resolveDark(null, true)).toBe(true)
-    expect(resolveDark('garbage', false)).toBe(false)
+  it('resolveDark: a remembered choice wins over the OS; dark unless the OS asks for light', () => {
+    // second argument: does the OS prefer LIGHT
+    expect(resolveDark('light', false)).toBe(false)
+    expect(resolveDark('dark', true)).toBe(true)
+    expect(resolveDark(null, true)).toBe(false)
+    expect(resolveDark(null, false)).toBe(true)
+    expect(resolveDark('garbage', false)).toBe(true)
+  })
+
+  it('reads the SHARED pyreon-theme key, falling back to the legacy loom:theme', () => {
+    const env = (store: Record<string, string>) => ({
+      hash: '',
+      matches: () => false,
+      storage: { getItem: (k: string) => store[k] ?? null, setItem: () => {} },
+    })
+    expect(THEME_KEY).toBe('pyreon-theme')
+    expect(prefsFrom(env({ 'pyreon-theme': 'light' })).dark).toBe(false)
+    expect(prefsFrom(env({ 'loom:theme': 'light' })).dark).toBe(false)
+    // The shared key wins over the legacy one.
+    expect(prefsFrom(env({ 'pyreon-theme': 'dark', 'loom:theme': 'light' })).dark).toBe(true)
+    expect(storedTheme(env({}).storage)).toBeNull()
   })
 
   it('selection hash round-trips, readable for scoped names', () => {
@@ -210,9 +227,10 @@ describe('prefs', () => {
   })
 
   it('prefsFrom: remembered theme, drawers closed on mobile, selection from the hash', () => {
-    const env = (mobile: boolean, osDark: boolean, hash: string, stored: string | null) => ({
+    // `osLight`: does the OS prefer LIGHT (the shared rule asks that).
+    const env = (mobile: boolean, osLight: boolean, hash: string, stored: string | null) => ({
       hash,
-      matches: (q: string) => (q.includes('max-width') ? mobile : osDark),
+      matches: (q: string) => (q.includes('max-width') ? mobile : osLight),
       storage: { getItem: () => stored, setItem: () => {} },
     })
     expect(prefsFrom(env(true, true, '#pkg=@fix/util', 'light'))).toEqual({
@@ -221,7 +239,7 @@ describe('prefs', () => {
       panelOpen: false,
       selId: '@fix/util',
     })
-    expect(prefsFrom(env(false, true, '', null))).toEqual({
+    expect(prefsFrom(env(false, false, '', null))).toEqual({
       dark: true,
       navOpen: true,
       panelOpen: true,
@@ -237,7 +255,8 @@ describe('prefs', () => {
         setItem: () => {},
       },
     }
-    expect(prefsFrom(blocked)).toEqual({ dark: false, navOpen: true, panelOpen: true })
+    // …which here does not ask for light, so the shared default: dark.
+    expect(prefsFrom(blocked)).toEqual({ dark: true, navOpen: true, panelOpen: true })
   })
 })
 
@@ -252,7 +271,10 @@ describe('global stylesheet', () => {
       for (const key of Object.keys(tokens(dark))) expect(GLOBAL_CSS).toContain(`--lm-${key}:`)
       expect(GLOBAL_CSS).toContain(cssVars(tokens(dark)))
     }
-    expect(GLOBAL_CSS).toContain('prefers-color-scheme: dark')
+    // Dark by default, light only when the OS asks and nothing chose dark —
+    // the shared rule.
+    expect(GLOBAL_CSS).toContain(`:root{${cssVars(tokens(true))}`)
+    expect(GLOBAL_CSS).toContain('@media (prefers-color-scheme: light){:root:not([data-lm-theme=dark])')
   })
 
   it('never re-declares a property rocketstyle owns on anchors (unlayered beats layered)', () => {

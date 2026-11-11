@@ -1,15 +1,16 @@
 import { el } from '../../kit'
 
+/** The catalog column (`.at-side`): a nav landmark on the raised surface. */
 export const Sidebar = el
   .attrs({
-    tag: 'aside',
+    tag: 'nav',
     contentDirection: 'rows',
     contentAlignX: 'block',
   })
   .theme((t) => ({
-    width: '264px',
     flex: 'none',
     minHeight: '0',
-    borderRight: t.hairline,
+    height: '100%',
     background: t.surface,
+    borderRight: t.hairline,
   }))

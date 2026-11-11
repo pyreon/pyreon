@@ -29,6 +29,7 @@ import { ambiguousComponentMessage, type ComponentIntelligence, resolveComponent
 import { definingModule } from '../discover/defining-module'
 import { generateCatalogModule, type CatalogEntrySource } from './catalog-module'
 import { lensMethod } from './lens'
+import { chromeThemeCss, themeBootScript } from '../ui/theme'
 
 export const CATALOG_ID = 'virtual:atlas/catalog'
 export const ENTRY_ID = 'virtual:atlas/entry'
@@ -425,9 +426,10 @@ function escapeHtml(text: string): string {
 /**
  * The web-font `<head>` lines, shared by `atlas dev` and `atlas build`.
  *
- * - WEIGHTS are exactly the ones the chrome uses (Space Grotesk 600/700 for
- *   titles, Public Sans 400-700 for UI text, JetBrains Mono 400/600 for data):
- *   the previous request asked for eleven faces, four of which nothing drew.
+ * - WEIGHTS are exactly the ones in use: Space Grotesk 400/500/600 (the
+ *   chrome's UI text, per the Pyreon design system) and JetBrains Mono
+ *   400/500 (data), plus Public Sans 400-700 for the PREVIEW brand tokens a
+ *   catalog built on Atlas's own bases renders with.
  * - The stylesheet is loaded NON-BLOCKING (`media="print"`, swapped to `all`
  *   on load, with a `<noscript>` fallback). As a plain `rel="stylesheet"` it
  *   held first paint on a cross-origin round trip; `display=swap` only governs
@@ -435,7 +437,7 @@ function escapeHtml(text: string): string {
  *   theme render the shell until the faces arrive.
  */
 export const FONT_CSS_URL =
-  'https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@600;700&family=Public+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap'
+  'https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&family=Public+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap'
 
 export function fontLinks(): string[] {
   return [
@@ -443,6 +445,20 @@ export function fontLinks(): string[] {
     '    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />',
     `    <link rel="stylesheet" href="${FONT_CSS_URL}" media="print" onload="this.media='all'" />`,
     `    <noscript><link rel="stylesheet" href="${FONT_CSS_URL}" /></noscript>`,
+  ]
+}
+
+/**
+ * The theme lines for the `<head>`, shared by `atlas dev` and `atlas build`:
+ * the inline script that applies the shared `pyreon-theme` preference to the
+ * root BEFORE first paint, and the chrome palette as CSS custom properties —
+ * so the very first frame is already in the right mode, before any module
+ * has loaded.
+ */
+export function themeHeadLines(): string[] {
+  return [
+    `    <script>${themeBootScript()}</script>`,
+    `    <style>${chromeThemeCss()}</style>`,
   ]
 }
 
@@ -464,6 +480,7 @@ export function devHtml(title = 'atlas'): string {
     // The workbench's typography depends on these three families; without
     // them every `font: inherit` fell back to the BROWSER default (Times) —
     // the single biggest "unstyled" impression the workbench could give.
+    ...themeHeadLines(),
     ...fontLinks(),
     `    ${routesFlagScript()}`,
     '  </head>',

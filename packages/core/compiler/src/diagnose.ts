@@ -699,6 +699,21 @@ const s = useStore(props.id)`,
     }),
   },
   {
+    // The most common SSR failure: component or loader code reads a
+    // browser-only global while it runs on the server. Must sit BEFORE the
+    // generic `(\w+) is not defined` entry below, which explains a compiler
+    // scope leak and would otherwise answer "update @pyreon/compiler" for a
+    // plain `window is not defined`.
+    pattern:
+      /\b(window|document|localStorage|sessionStorage|navigator|location|matchMedia|requestAnimationFrame|getComputedStyle|HTMLElement|IntersectionObserver|ResizeObserver) is not defined\b/,
+    diagnose: (m) => ({
+      cause: `\`${m[1]}\` exists only in the browser, and this code ran on the server (an SSR render, an SSG prerender or a loader), where there is no \`${m[1]}\`.`,
+      fix: `Read \`${m[1]}\` inside \`onMount\`, which runs only in the browser after hydration, or guard the read with \`isServer\` from \`@pyreon/reactivity\` and render the same markup on both sides so hydration still matches. A loader gets the request as \`ctx.request\` (URL, headers, cookies) instead of browser globals.`,
+      fixCode: `const width = signal(0)
+onMount(() => width.set(window.innerWidth))`,
+    }),
+  },
+  {
     // A scope leak under the compile-to-string SSR path: a prop-derived
     // `const` whose initializer contained JSX used to be inlined by splicing
     // the ORIGINAL source, so sibling `.map()` callbacks could carry each

@@ -1,5 +1,6 @@
 import { el } from '../../kit'
 
+/** One headline cell — a dot and a line of text, or a `StatNum` over a `StatLabel`. */
 export const A11yStat = el
   .attrs({
     tag: 'div',
@@ -8,6 +9,9 @@ export const A11yStat = el
     gap: 8,
   })
   .theme((t) => ({
-    fontSize: t.size.text,
+    flexWrap: 'wrap',
+    minWidth: '0',
+    padding: '12px',
+    fontSize: t.size.body,
     color: t.text,
   }))

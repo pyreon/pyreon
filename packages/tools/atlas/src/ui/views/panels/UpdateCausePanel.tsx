@@ -34,7 +34,7 @@ const ICON: Record<CauseStep['kind'], string> = {
 export function registerUpdateCausePanel(): void {
   registerAddonPanel({
     id: 'why',
-    title: 'Why?',
+    title: 'Update cause',
     hint: 'The exact signal → computed → effect chain behind an update',
     render: (model) => {
       const m = model as WorkbenchModel

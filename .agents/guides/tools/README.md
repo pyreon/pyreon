@@ -31,8 +31,8 @@ Derives a verified, machine-readable component catalog from source. You write no
 ### Verification
 
 - Six checks per scenario, listed once in `CHECK_KEYS` (`atlas/src/core/types.ts`): `a11y`, `interaction`, `reactivityCoverage`, `leak`, `snapshot`, `ssrParity`. Iterate that list; never hand-write a copy.
-- The report names which check failed: `checks: a11y 18/20 ✗ · interaction 43/43 · …` plus `not run:` lines with reasons.
-- `N verified` counts scenarios, not checks. A scenario that ran two of six checks still counts as verified, so read the `not run:` lines.
+- The report names which check failed: a `checks` row (`a11y 18/20 ✗ · interaction 43/43 · …`, from `formatCheckTally`) plus `not run` rows with reasons (`formatNotRun`). The human output uses the shared `@pyreon/ansi` look (header first, verdict last); `--json` is the machine surface and is snapshot-locked (`src/cli/tests/machine-output-lock.test.ts`).
+- `N verified` counts scenarios, not checks. A scenario that ran two of six checks still counts as verified, so read the `not run` rows.
 - Findings are `{ code, message, fix? }` (catalog v2); `code` is stable. MCP refuses a v1 catalog.
 - `atlas verify <Component>` verifies only the match and never writes the catalog. An unmatched name or a run that verified nothing exits non-zero.
 - `--check` (on `scan` and `verify`) ratchets against the committed catalog: non-zero on regression, never rewrites the baseline, missing baseline = exit 0. A check that stopped running counts as a regression — losing coverage makes the counts improve.
@@ -40,6 +40,10 @@ Derives a verified, machine-readable component catalog from source. You write no
 
 ### Workbench and static build
 
+- The app shell (`src/ui/Workbench.tsx`): top bar → catalog | scenario strip → canvas → panels. Panel tab order IS registration order (`views/panels/registerBuiltinPanels.ts`); ids are stable (`p=why`, `p=data`, `p=reactivity` in links) even where titles read "Update cause", "Query", "Reactive coverage". Below 860px (`COMPACT_QUERY` in `model.ts`) the catalog is a modal drawer.
+- Colours live ONLY in `src/ui/theme.ts`: `CHROME_PALETTES` (chrome, dark + light, emitted as `--atlas-*` custom properties keyed on `:root[data-theme]`), `tokens(brand, dark)` (preview brands, rendered inside the preview's own `<PyreonUI>`), `PREVIEW_COLORS` (preview tools). A component never carries a raw hex. Text roles pass 4.5:1 in both modes — `tests/theme-contrast.test.ts` computes it, `e2e/atlas-shell.spec.ts` audits the rendered page at 320/390/768/1024/1440.
+- The mode is the shared `pyreon-theme` preference (else the OS), applied before first paint by `themeBootScript()` in the dev/build shells. `?dark=` in a link overrides it and is written to the URL only when it differs from the preference. `?embed` = guest mode: no theme toggle, no storage writes, the flag survives URL rewrites.
+- unistyle DROPS an unmapped theme key and wraps `backgroundImage` in `url()` — gradients and `font-variant-numeric` go in `extendCss`.
 - `atlas dev` re-derives the catalog when a scanned file changes (debounced; a failed rescan keeps the previous catalog). The canvas opens on `Default` with all its args; a link carries only edits.
 - `atlas build` bakes the node-answered panels (Docs source, Reactivity Lens) into each page, so a serverless deploy keeps real verdicts. An uncomputable answer bakes its reason.
 - `e2e/atlas-ui-components.spec.ts` builds the real ui-components library and checks every page.
@@ -89,7 +93,7 @@ OpenAPI 3.x in; `@pyreon/validate` schemas, `@pyreon/http` endpoints, `@pyreon/q
 ## `@pyreon/loom` — dependency observatory
 
 - `loom scan [dir]` reads the workspace like an install tool (npm/bun/yarn/pnpm globs, including `packages/*/*`) and reports the fabric as data. Writes `loom-report.json` next to the root manifest; exits non-zero on error-severity findings. Flags: `--strict`, `--no-imports`, `--no-write`, `--json` (report only on stdout).
-- `loom dev [dir]` (`--port=`) serves the observatory UI, built on the public Pyreon UI stack.
+- `loom dev [dir]` (`--port=`) serves the observatory UI, built on the public Pyreon UI stack. Theme = the shared `pyreon-theme` key (legacy `loom:theme` read as a fallback), else the OS, dark by default; `THEME_BOOT` (dev server) and `app/index.html` apply it before first paint and must stay identical. Palette in `src/ui/theme.ts`, contrast computed in `tests/theme.test.ts`.
 - `loom build [dir]` prerenders it to a static site (`--out=`, default `loom-dist`; `--base=`). `vite`, `@pyreon/vite-plugin` and `@pyreon/zero` are optional peers; `scan` needs none.
 - Report: internal graph (depths, runtime cycles only, blast radius), external version usage, and 8 detector codes: `version-drift`, `internal-range`, `cycle`, `phantom-dep`, `phantom-type-dep`, `prod-import-of-dev-dep`, `peer-mismatch`, `unused-dep` (info).
 - Type-aware: type-only imports/exports and `.d.ts` files are tracked apart from runtime imports; tsconfig `paths` aliases are never packages. The import scan strips comments and template literals.

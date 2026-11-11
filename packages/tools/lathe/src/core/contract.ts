@@ -175,6 +175,11 @@ function affectsLine(c: ContractChange, code: (s: string) => string): string {
   return `${shown.join('; ')}${more}`
 }
 
+/** The operations and generated symbols a change reaches, as plain text (empty when none). */
+export function affectsText(c: ContractChange): string {
+  return affectsLine(c, (s) => s)
+}
+
 /** Markdown-table-safe cell. Backslash first, or the escape itself is reopened. */
 function cell(s: string): string {
   return s.replace(/\\/g, '\\\\').replace(/\|/g, '\\|').replace(/\r\n|\r|\n|\u2028|\u2029/g, ' ')

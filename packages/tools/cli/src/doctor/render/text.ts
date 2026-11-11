@@ -1,258 +1,206 @@
 /**
- * Human-readable renderer for `DoctorReport`.
+ * Human-readable renderer for `DoctorReport`, in the shared Pyreon CLI
+ * theme (`@pyreon/ansi`):
+ *   1. Header (`pyreon doctor · project health audit`), score + grade,
+ *      scan scope and per-gate scan counts
+ *   2. Per-category score bars, label column padded, scores right-aligned
+ *   3. Top-N findings: `✗ code · message`, `↳ path:line:col`, `fix:`
+ *   4. Skipped gates, then the verdict: counts · gates · elapsed
  *
- * Output shape (after react.doctor.com):
- *   1. Big score banner with letter grade + label
- *   2. Per-category bar chart (filled cells = score)
- *   3. Top-N findings with severity icon, code, location, message, fix
- *   4. Footer: skipped gates, totals, elapsed, run hints
- *
- * Colors degrade gracefully — see `@pyreon/ansi:colorEnabled`.
+ * `--json` and `--gha` live in their own renderers and never go through
+ * this file.
  */
 
 import {
-  bold,
-  cyan,
-  dim,
-  fileUrl,
-  gray,
-  green,
-  hyperlink,
-  red,
-  yellow,
+  bar,
+  finding as findingLines,
+  formatCounts,
+  formatElapsed,
+  header,
+  meta,
+  plural,
+  type Role,
+  type Term,
+  term as defaultTerm,
+  wrap,
 } from '@pyreon/ansi'
-import type {
-  CategoryScore,
-  DoctorReport,
-  Finding,
-  Grade,
-  Severity,
-} from '../types'
 import { isAdvisoryCategory } from '../score'
+import type { CategoryScore, DoctorReport, Finding, Grade } from '../types'
 
 const BAR_WIDTH = 12
-const FILLED = '█'
-const EMPTY = '░'
 
-// Brand status glyphs (handoff §6.5): `✗` ember-core (error),
-// `!` ember-warm (warning). `ℹ` cyan kept for info — the brand's `✓`
-// is for passing checks, which the findings list never renders (it
-// only lists problems), so `✓` would be misleading here.
-const SEV_ICON: Record<Severity, string> = {
-  error: '✗',
-  warning: '!',
-  info: 'ℹ',
+const roleForGrade = (g: Grade): Role => {
+  if (g === 'A') return 'ok'
+  if (g === 'B' || g === 'C') return 'warn'
+  return 'err'
 }
 
-const colorForGrade = (g: Grade): ((s: string) => string) => {
-  if (g === 'A') return green
-  if (g === 'B' || g === 'C') return yellow
-  return red
-}
+/** `1E 2W 3i`, each in its severity colour; the letters carry the meaning without it. */
+const breakdown = (t: Term, c: CategoryScore): string =>
+  [
+    c.errors > 0 ? t.err(`${c.errors}E`) : '',
+    c.warnings > 0 ? t.warn(`${c.warnings}W`) : '',
+    c.infos > 0 ? t.info(`${c.infos}i`) : '',
+  ]
+    .filter(Boolean)
+    .join(' ')
 
-const colorForSeverity = (s: Severity): ((str: string) => string) => {
-  if (s === 'error') return red
-  if (s === 'warning') return yellow
-  return cyan
-}
-
-const renderBar = (score: number, color: (s: string) => string): string => {
-  const filled = Math.round((score / 100) * BAR_WIDTH)
-  const empty = BAR_WIDTH - filled
-  return color(FILLED.repeat(filled)) + gray(EMPTY.repeat(empty))
-}
-
-const padRight = (s: string, n: number): string =>
-  s.length >= n ? s : s + ' '.repeat(n - s.length)
-
-const renderCategory = (c: CategoryScore): string => {
+const renderCategory = (t: Term, c: CategoryScore, labelWidth: number): string => {
+  const label = c.category.padEnd(labelWidth)
   const advisory = isAdvisoryCategory(c.category)
   if (!c.included && !advisory) {
-    return `  ${dim(padRight(c.category, 14))} ${gray('skipped')}`
+    return `  ${t.dim(label)} ${t.gray('skipped')}`
   }
   if (advisory) {
-    // Scored for visibility but NOT folded into the grade. Show the
-    // breakdown so the user sees opt-in best-practice findings, clearly
-    // labeled so they're never mistaken for a grade-affecting bug class.
+    // Scored for visibility but NOT folded into the grade, and labelled so
+    // it is never mistaken for a grade-affecting bug class.
     const total = c.errors + c.warnings + c.infos
     if (total === 0) {
-      return `  ${padRight(c.category, 14)} ${gray('clean')} ${dim('(advisory — not graded)')}`
+      return `  ${label} ${t.gray('clean')} ${t.dim('(advisory — not graded)')}`
     }
-    const b = [
-      c.errors > 0 ? red(`${c.errors}E`) : '',
-      c.warnings > 0 ? yellow(`${c.warnings}W`) : '',
-      c.infos > 0 ? cyan(`${c.infos}i`) : '',
-    ]
-      .filter(Boolean)
-      .join(' ')
-    return `  ${padRight(c.category, 14)} ${b} ${dim('· advisory — opt-in best practices, excluded from grade & --ci')}`
+    return `  ${label} ${breakdown(t, c)} ${t.dim('(advisory — opt-in best practices, excluded from grade and --ci)')}`
   }
-  const color = colorForGrade(c.grade)
-  const bar = renderBar(c.score, color)
-  const score = color(padRight(String(c.score), 3))
-  const breakdown =
-    c.errors + c.warnings + c.infos === 0
-      ? gray('clean')
-      : [
-          c.errors > 0 ? red(`${c.errors}E`) : '',
-          c.warnings > 0 ? yellow(`${c.warnings}W`) : '',
-          c.infos > 0 ? cyan(`${c.infos}i`) : '',
-        ]
-          .filter(Boolean)
-          .join(' ')
-  return `  ${padRight(c.category, 14)} ${bar} ${score} ${dim('·')} ${breakdown}`
+  const role = roleForGrade(c.grade)
+  const score = t.paint(role, String(c.score).padStart(3))
+  const counts = c.errors + c.warnings + c.infos === 0 ? t.gray('clean') : breakdown(t, c)
+  return `  ${label} ${bar(t, c.score, 100, role, BAR_WIDTH)} ${score} ${t.dim(t.sym('bullet'))} ${counts}`
 }
 
-const renderBanner = (report: DoctorReport): string => {
-  const gColor = colorForGrade(report.grade)
-  const score = gColor(bold(String(report.score)))
-  const grade = gColor(bold(report.grade))
+const scopeSource = (source: NonNullable<DoctorReport['workspace']>['source']): string => {
+  if (source === 'flag') return '--roots'
+  if (source === 'pnpm-workspace') return 'pnpm-workspace.yaml'
+  if (source === 'workspaces') return 'workspaces'
+  return 'single package'
+}
+
+const renderBanner = (t: Term, report: DoctorReport): string[] => {
+  const role = roleForGrade(report.grade)
   const lines = [
     '',
-    `  ${bold('pyreon doctor')} ${dim('· project health audit')}`,
+    `  ${header(t, 'pyreon doctor', 'project health audit')}`,
     '',
     // A run in which NOTHING was measured must not show the degenerate
-    // 100/A — that number is exactly the false green this fix closes.
+    // 100/A: that number is exactly the false green this guards against.
     report.measured
-      ? `  Score:  ${score}/100   Grade: ${grade}`
-      : `  Score:  ${yellow(bold('—'))}   ${yellow('nothing was measured (every gate skipped or matched no files)')}`,
+      ? `  Score:  ${t.paint(role, t.bold(String(report.score)))}/100   Grade: ${t.paint(role, t.bold(report.grade))}`
+      : `  Score:  ${t.warn(t.bold('—'))}   ${t.warn(`${t.sym('warn')} nothing was measured (every gate skipped or matched no files)`)}`,
   ]
-  // WHAT was scanned, not just the verdict — a wrong scan scope must be
-  // visible at a glance (upstream false-green report: gates silently
-  // scanned 0 files in multi-root workspaces while scoring 100).
+  // WHAT was scanned, not just the verdict: a wrong scan scope must be
+  // visible at a glance.
   if (report.workspace) {
     const ws = report.workspace
-    const from =
-      ws.source === 'flag'
-        ? '--roots'
-        : ws.source === 'pnpm-workspace'
-          ? 'pnpm-workspace.yaml'
-          : ws.source === 'workspaces'
-            ? 'workspaces'
-            : 'single package'
-    const excluded =
-      ws.excluded.length > 0 ? ` · excluded: ${ws.excluded.join(', ')}` : ''
+    const excluded = ws.excluded.length > 0 ? ` · excluded: ${ws.excluded.join(', ')}` : ''
+    const count = `${ws.packageCount} package root(s)`
+    const from = `from ${scopeSource(ws.source)} (${ws.globs.join(', ')})${excluded}`
+    // Wrap the plain text, then style per line so no escape pair spans a break.
+    const [first = '', ...rest] = wrap(`${count} ${from}`, 100, 100 - 10, '          ')
     lines.push(
-      `  ${dim('Scope:')}  ${ws.packageCount} package root(s) ${dim(`from ${from} (${ws.globs.join(', ')})${excluded}`)}`,
+      `  ${t.dim('Scope:')}  ${count}${first.length > count.length ? ` ${t.dim(first.slice(count.length + 1))}` : ''}`,
+      ...rest.map((l) => t.dim(l)),
     )
   }
   const scanned = report.gates
     .filter((g) => !g.meta.skipped && g.meta.scanned !== undefined)
     .map((g) => `${g.gate} ${g.meta.scanned}`)
   if (scanned.length > 0) {
-    lines.push(`  ${dim(`Scanned: ${scanned.join(' · ')}`)}`)
+    // Non-breaking space inside each item so a line breaks only after a `·`.
+    const NBSP = ' '
+    const items = scanned.map(
+      (s, i) => `${s.replace(/ /g, NBSP)}${i < scanned.length - 1 ? `${NBSP}${t.sym('bullet')}` : ''}`,
+    )
+    const [first = '', ...rest] = wrap(items.join(' '), 100, 100 - 11, ' '.repeat(9)).map((l) =>
+      l.replaceAll(NBSP, ' '),
+    )
+    lines.push(`  ${t.dim(`Scanned: ${first}`)}`, ...rest.map((l) => `  ${t.dim(l)}`))
   }
   lines.push('')
-  return lines.join('\n')
+  return lines
 }
 
 /**
- * Empty-scan skips get their OWN prominent block (not just the dim
- * footer): a gate that matched no files measured nothing, and hiding
- * that is exactly the false-green failure mode this fix closes.
+ * Empty-scan skips get their OWN prominent block (not just the dim footer):
+ * a gate that matched no files measured nothing, and hiding that is exactly
+ * the false-green failure mode this guards against.
  */
-const renderEmptyScans = (report: DoctorReport): string => {
+const renderEmptyScans = (t: Term, report: DoctorReport): string[] => {
   const empty = report.gates.filter((g) => g.meta.emptyScan)
-  if (empty.length === 0) return ''
+  if (empty.length === 0) return []
   const lines = [
-    `  ${yellow('!')} ${bold(`${empty.length} gate(s) matched no files — their categories were NOT measured:`)}`,
+    `  ${t.warn(t.sym('warn'))} ${t.bold(`${empty.length} gate(s) matched no files — their categories were NOT measured:`)}`,
   ]
   for (const g of empty) {
-    lines.push(`     ${yellow(g.gate)} ${dim(`— ${g.meta.skipReason ?? 'matched no files'}`)}`)
+    const reason = `— ${g.meta.skipReason ?? 'matched no files'}`
+    const [first = '', ...rest] = wrap(reason, 100, 100 - 6 - g.gate.length, '       ')
+    lines.push(`     ${t.warn(g.gate)} ${t.dim(first)}`, ...rest.map((l) => t.dim(l)))
   }
   lines.push('')
-  return lines.join('\n')
+  return lines
 }
 
-const renderFinding = (f: Finding): string => {
-  const icon = colorForSeverity(f.severity)(SEV_ICON[f.severity])
-  const code = dim(f.code)
-  const header = `  ${icon} ${bold(f.message)}  ${code}`
+const renderFinding = (t: Term, f: Finding): string[] =>
+  findingLines(t, {
+    severity: f.severity,
+    source: f.code,
+    message: f.message,
+    location: f.location
+      ? {
+          path: f.location.relPath || f.location.path,
+          abs: f.location.path,
+          line: f.location.line,
+          column: f.location.column,
+        }
+      : undefined,
+    related: f.relatedLocations?.map((rl) => ({
+      path: rl.relPath || rl.path,
+      abs: rl.path,
+      line: rl.line,
+      label: rl.label,
+    })),
+    fix: f.fix,
+  })
 
-  const lines = [header]
-
-  if (f.location) {
-    const relPath = f.location.relPath || f.location.path
-    const lineCol = f.location.line
-      ? `:${f.location.line}${f.location.column !== undefined ? `:${f.location.column}` : ''}`
-      : ''
-    const visible = `${relPath}${lineCol}`
-    const linked = hyperlink(
-      cyan(visible),
-      fileUrl(f.location.path, f.location.line, f.location.column),
-    )
-    lines.push(`     ${linked}`)
-  }
-
-  if (f.relatedLocations && f.relatedLocations.length > 0) {
-    for (const rl of f.relatedLocations) {
-      const relPath = rl.relPath || rl.path
-      const lineCol = rl.line ? `:${rl.line}` : ''
-      const label = rl.label ? ` ${dim(`(${rl.label})`)}` : ''
-      lines.push(`     ${dim('↳')} ${cyan(relPath + lineCol)}${label}`)
-    }
-  }
-
-  if (f.fix) {
-    lines.push(`     ${dim('fix:')} ${f.fix}`)
-  }
-
-  return lines.join('\n')
-}
-
-const renderFindings = (report: DoctorReport, topN: number): string => {
+const renderFindings = (t: Term, report: DoctorReport, topN: number): string[] => {
   if (report.findings.length === 0) {
     // Zero findings only means "healthy" when something was scanned.
     if (!report.measured) {
-      return `  ${yellow('!')} No gate measured anything — zero findings is NOT evidence of health.\n`
+      return [`  ${t.warn(t.sym('warn'))} No gate measured anything — zero findings is NOT evidence of health.`, '']
     }
-    return `  ${green('✓')} No findings. Your project is healthy.\n`
+    return [`  ${t.ok(t.sym('ok'))} No findings. Your project is healthy.`, '']
   }
 
   const shown = report.findings.slice(0, topN)
   const remaining = report.findings.length - shown.length
 
-  const lines = [bold(`  Top findings (${shown.length} of ${report.findings.length}):`), '']
+  const lines = [t.bold(`  Top findings (${shown.length} of ${report.findings.length}):`), '']
   for (const f of shown) {
-    lines.push(renderFinding(f))
-    lines.push('')
+    lines.push(...renderFinding(t, f), '')
   }
-
   if (remaining > 0) {
-    lines.push(
-      dim(
-        `  …and ${remaining} more. Run with ${bold('--json')} for the full list.`,
-      ),
-    )
-    lines.push('')
+    lines.push(`  ${t.dim(`…and ${remaining} more. Run with`)} --json ${t.dim('for the full list.')}`, '')
   }
-
-  return lines.join('\n')
+  return lines
 }
 
-const renderSkipped = (report: DoctorReport): string => {
+const renderSkipped = (t: Term, report: DoctorReport): string[] => {
   // Empty-scan skips already rendered in their own prominent block.
   const skipped = report.gates.filter((g) => g.meta.skipped && !g.meta.emptyScan)
-  if (skipped.length === 0) return ''
-  const names = skipped
-    .map((g) => `${g.gate}${g.meta.skipReason ? ` (${g.meta.skipReason})` : ''}`)
-    .join(', ')
-  return `  ${dim('Skipped:')} ${names}\n`
+  if (skipped.length === 0) return []
+  const lines = [`  ${t.dim('Skipped:')}`]
+  const width = Math.max(...skipped.map((g) => g.gate.length))
+  for (const g of skipped) {
+    const reason = g.meta.skipReason ?? ''
+    const indent = ' '.repeat(4 + width + 2)
+    const [first = '', ...rest] = wrap(reason, 100, 100 - indent.length, indent)
+    lines.push(`    ${g.gate.padEnd(width)}  ${t.dim(first)}`.trimEnd(), ...rest.map((l) => t.dim(l)))
+  }
+  lines.push('')
+  return lines
 }
 
-const renderFooter = (report: DoctorReport): string => {
-  const { errors, warnings, infos } = report.totals
-  const counts = [
-    errors > 0 ? red(`${errors} error${errors === 1 ? '' : 's'}`) : '',
-    warnings > 0 ? yellow(`${warnings} warning${warnings === 1 ? '' : 's'}`) : '',
-    infos > 0 ? cyan(`${infos} info`) : '',
-  ]
-    .filter(Boolean)
-    .join(`${dim(' · ')}`)
-
-  const totalSummary = counts || green('no findings')
-  const elapsed = `${(report.elapsedMs / 1000).toFixed(1)}s`
-  return `  ${totalSummary} ${dim(`· ${report.gates.filter((g) => !g.meta.skipped).length} gates · ${elapsed}`)}\n`
+const renderVerdict = (t: Term, report: DoctorReport): string => {
+  const counts = formatCounts(t, report.totals) || t.ok('no findings')
+  const ran = report.gates.filter((g) => !g.meta.skipped).length
+  return `  ${counts}${meta(t, [plural(ran, 'gate'), formatElapsed(report.elapsedMs)])}`
 }
 
 export interface TextRenderOptions {
@@ -260,23 +208,22 @@ export interface TextRenderOptions {
   cwd?: string | undefined
   /** Max findings to show in human output. Default 10. */
   topN?: number | undefined
+  /** The terminal to render for. Default: the process's stdout. */
+  term?: Term | undefined
 }
 
-export const renderText = (
-  report: DoctorReport,
-  opts: TextRenderOptions = {},
-): string => {
+export const renderText = (report: DoctorReport, opts: TextRenderOptions = {}): string => {
+  const t = opts.term ?? defaultTerm
   const topN = opts.topN ?? 10
-  const sections = [
-    renderBanner(report),
-    bold('  Per category:'),
+  const labelWidth = Math.max(...report.categories.map((c) => c.category.length))
+  return [
+    ...renderBanner(t, report),
+    ...report.categories.map((c) => renderCategory(t, c, labelWidth)),
     '',
-    ...report.categories.map(renderCategory),
+    ...renderEmptyScans(t, report),
+    ...renderFindings(t, report, topN),
+    ...renderSkipped(t, report),
+    renderVerdict(t, report),
     '',
-    renderEmptyScans(report),
-    renderFindings(report, topN),
-    renderSkipped(report),
-    renderFooter(report),
-  ]
-  return sections.join('\n')
+  ].join('\n')
 }

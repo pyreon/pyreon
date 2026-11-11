@@ -100,6 +100,8 @@ describe('writing a path URL', () => {
   it('keeps the REST of the state in the query beside the path', () => {
     routed()
     at('/atlas/button/')
+    // `dark` reaches the URL only as an override of the shared preference.
+    localStorage.setItem('pyreon-theme', 'dark')
     const m = createModel(CATALOG, {})
     m.dark.set(false)
     expect(location.pathname).toBe('/atlas/button/')

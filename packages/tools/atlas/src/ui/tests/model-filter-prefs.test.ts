@@ -58,17 +58,25 @@ describe('browseIds', () => {
 })
 
 describe('chrome preferences survive a reload', () => {
-  it('writes brand, appearance, widths and open flags, and reads them back', () => {
+  it('writes brand and the region sizes, and reads them back', () => {
     const m = createModel(CATALOG, {})
     m.brandId.set('slate')
-    m.dark.set(false)
     m.sidebarW.set(300)
-    m.panelOpen.set(false)
+    m.panelFrac.set(0.42)
     const again = createModel(CATALOG, {})
     expect(again.brandId()).toBe('slate')
-    expect(again.dark()).toBe(false)
     expect(again.sidebarW()).toBe(300)
-    expect(again.panelOpen()).toBe(false)
+    expect(again.panelFrac()).toBe(0.42)
+  })
+
+  it('keeps the mode in the SHARED preference, not in its own prefs', () => {
+    localStorage.setItem('pyreon-theme', 'dark')
+    const m = createModel(CATALOG, {})
+    expect(m.dark()).toBe(true)
+    m.toggleTheme()
+    expect(localStorage.getItem('pyreon-theme')).toBe('light')
+    expect(JSON.parse(localStorage.getItem('atlas:prefs') ?? '{}')).not.toHaveProperty('dark')
+    expect(createModel(CATALOG, {}).dark()).toBe(false)
   })
 
   it('lets a link win over the stored preference for what it names', () => {

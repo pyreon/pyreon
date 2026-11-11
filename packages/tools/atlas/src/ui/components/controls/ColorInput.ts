@@ -1,17 +1,18 @@
-/** Native color picker beside its hex readout. */
-import { el, type InputEl } from '../../kit'
+import type { InputEl } from '../../kit'
+import { el } from '../../kit'
 
+/** Native color picker beside its hex readout. */
 export const ColorInput = el
   .attrs({
     tag: 'input',
     type: 'color',
   })
   .theme((t) => ({
-    width: '32px',
-    height: '32px',
-    padding: '0',
+    width: '28px',
+    height: '28px',
+    padding: '2px',
     border: t.hairline,
-    borderRadius: t.radius.item,
+    borderRadius: t.radius.field,
     background: t.bg,
     cursor: 'pointer',
   })) as unknown as InputEl

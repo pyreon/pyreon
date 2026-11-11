@@ -14,6 +14,20 @@
 import { existsSync, readdirSync } from 'node:fs'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
+import { performance } from 'node:perf_hooks'
+import {
+  columns,
+  createTerm,
+  formatElapsed,
+  header,
+  plural,
+  type Term,
+  verdict,
+  visibleWidth,
+  wrap,
+  WRAP_WIDTH,
+} from '@pyreon/ansi'
+import { OWN_VERSION } from './own-version'
 import { buildScaffold, validateScheme } from './scaffold'
 
 export interface CliArgs {
@@ -175,7 +189,72 @@ export async function writeScaffold(
   return files.map((f) => f.path)
 }
 
-export async function main(argv: string[]): Promise<void> {
+/**
+ * Render for a specific terminal instead of detecting one: colour level
+ * (0 plain, 1 sixteen colours, 2 truecolor), background, symbol set and
+ * wrap width. Anything left out is detected by `@pyreon/ansi` (`NO_COLOR`,
+ * `FORCE_COLOR`, `TERM=dumb`, the stream's TTY, `PYREON_CLI_THEME`, locale).
+ */
+export interface OutputStyle {
+  color?: 0 | 1 | 2 | undefined
+  theme?: 'dark' | 'light' | undefined
+  unicode?: boolean | undefined
+  width?: number | undefined
+}
+
+const termFor = (style: OutputStyle | undefined, isTTY: boolean): Term =>
+  createTerm({ level: style?.color, theme: style?.theme, unicode: style?.unicode, isTTY })
+
+/** Rule 1 first line: `create-multiplatform · 0.53.0`. */
+const headline = (t: Term): string => header(t, 'create-multiplatform', OWN_VERSION)
+
+export interface ScaffoldSummary {
+  name: string
+  dir: string
+  /** Files written. */
+  files: number
+  /** Wall time of validation + writing. */
+  elapsedMs: number
+}
+
+/**
+ * The success report: the header, the commands to run next, and the verdict
+ * line with the file count and elapsed time.
+ */
+export function formatSummary(s: ScaffoldSummary, style?: OutputStyle): string {
+  const t = termFor(style, process.stdout.isTTY === true)
+  const b = t.sym('bullet')
+  const steps = columns([
+    [t.dim('next'), `cd ${s.dir} && npm install && npm run dev`],
+    [t.dim('native'), `npm run build:ios (Xcode) ${b} npm run build:android (Android SDK)`],
+  ])
+  return [
+    headline(t),
+    '',
+    ...steps,
+    '',
+    verdict(t, 'ok', `scaffolded ${s.name} ${t.sym('arrow')} ${s.dir}/`, [
+      plural(s.files, 'file'),
+      formatElapsed(s.elapsedMs),
+    ]),
+  ].join('\n')
+}
+
+/**
+ * The failure report: the header, then `✗ error: <message>` wrapped at the
+ * width (100 by default) with a hanging indent. The message itself is the
+ * thrown one, unchanged, and never split inside a word or path.
+ */
+export function formatError(err: unknown, style?: OutputStyle): string {
+  const t = termFor(style, process.stderr.isTTY === true)
+  const width = style?.width ?? WRAP_WIDTH
+  const message = err instanceof Error ? err.message : String(err)
+  const prefix = `${t.err(t.sym('err'))} ${t.err('error:')} `
+  const lines = wrap(message, width, width - visibleWidth(prefix), '  ')
+  return [headline(t), `${prefix}${lines[0] ?? ''}`, ...lines.slice(1)].join('\n')
+}
+
+export async function main(argv: string[], style?: OutputStyle): Promise<void> {
   // `--help` is a SUCCESSFUL request for help: stdout, exit 0. Previously it
   // fell through to parseArgs, which saw no project name and THREW — so
   // `npx create-multiplatform --help` printed the usage line to STDERR and
@@ -188,6 +267,7 @@ export async function main(argv: string[]): Promise<void> {
     console.log(USAGE)
     return
   }
+  const started = performance.now()
   const { name, dir, scheme } = parseArgs(argv)
   // Phase D4: validate BEFORE writing — fail fast with actionable
   // error rather than producing a broken scaffold.
@@ -204,8 +284,24 @@ export async function main(argv: string[]): Promise<void> {
   // stack went public; native builds need only the local platform SDKs.
   // eslint-disable-next-line no-console
   console.log(
-    `[create-multiplatform] scaffolded "${name}" → ${dir}/ (${written.length} files)\n` +
-      `  next: cd ${dir} && npm install && npm run dev\n` +
-      '  native: npm run build:ios (Xcode) · npm run build:android (Android SDK)',
+    formatSummary(
+      { name, dir, files: written.length, elapsedMs: performance.now() - started },
+      style,
+    ),
   )
+}
+
+/**
+ * The bin entry: run `main`, print any failure as `formatError` on stderr,
+ * and return the exit code (0 success, 1 failure).
+ */
+export async function run(argv: string[], style?: OutputStyle): Promise<number> {
+  try {
+    await main(argv, style)
+    return 0
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error(formatError(err, style))
+    return 1
+  }
 }

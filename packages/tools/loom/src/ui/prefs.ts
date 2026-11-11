@@ -12,7 +12,13 @@
 import { isServer } from '@pyreon/reactivity'
 import type { ModelInit } from './model'
 
-export const THEME_KEY = 'loom:theme'
+/**
+ * The SHARED Pyreon theme preference — pyreon.dev, the docs, Atlas and Loom
+ * all read and write it, so choosing light in one is light in all of them.
+ */
+export const THEME_KEY = 'pyreon-theme'
+/** Loom's own key before it joined the shared one — still read as a fallback. */
+export const LEGACY_THEME_KEY = 'loom:theme'
 /** The layout breakpoint below which the sidebar + detail panel become drawers. */
 export const MOBILE_QUERY = '(max-width: 760px)'
 
@@ -21,11 +27,21 @@ interface StorageLike {
   setItem(key: string, value: string): void
 }
 
-/** A remembered explicit choice wins; otherwise follow the OS. */
-export function resolveDark(stored: string | null, prefersDark: boolean): boolean {
+/**
+ * The shared rule: a remembered explicit choice wins; otherwise light only
+ * when the OS asks for light — dark is the default, as on pyreon.dev.
+ */
+export function resolveDark(stored: string | null, prefersLight: boolean): boolean {
   if (stored === 'dark') return true
   if (stored === 'light') return false
-  return prefersDark
+  return !prefersLight
+}
+
+/** The stored choice: the shared key, else Loom's legacy one. */
+export function storedTheme(storage: StorageLike | undefined): string | null {
+  const shared = safeGet(storage, THEME_KEY)
+  if (shared === 'dark' || shared === 'light') return shared
+  return safeGet(storage, LEGACY_THEME_KEY)
 }
 
 /** `#pkg=@pyreon/core` → `@pyreon/core`. Anything else → undefined. */
@@ -86,7 +102,7 @@ export function prefsFrom(env: PrefsEnv): ModelInit {
   const mobile = env.matches(MOBILE_QUERY)
   const sel = selFromHash(env.hash)
   return {
-    dark: resolveDark(safeGet(env.storage, THEME_KEY), env.matches('(prefers-color-scheme: dark)')),
+    dark: resolveDark(storedTheme(env.storage), env.matches('(prefers-color-scheme: light)')),
     navOpen: !mobile,
     panelOpen: !mobile,
     ...(sel ? { selId: sel } : {}),

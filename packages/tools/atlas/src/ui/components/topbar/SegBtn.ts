@@ -1,44 +1,48 @@
 import { el } from '../../kit'
 
+/**
+ * A tab (`.app-tabs button`): fog text, ivory when selected on the raised
+ * surface with an inset hairline.
+ */
 export const SegBtn = el
   .attrs({
     tag: 'button',
+    contentDirection: 'inline',
+    contentAlignY: 'center',
+    gap: 6,
   })
   .theme((t) => ({
     font: 'inherit',
-    fontSize: t.size.input,
-    fontWeight: '600',
+    fontSize: t.size.body,
     cursor: 'pointer',
     border: 'none',
     flex: 'none',
     whiteSpace: 'nowrap',
-    padding: '8px 16px',
+    height: '30px',
+    padding: '0 11px',
     borderRadius: t.radius.button,
-    transition: `all ${t.motion.base}`,
-    color: t.muted,
+    transition: `color ${t.motion.base},background ${t.motion.base}`,
+    color: t.faint,
     background: 'transparent',
+    hover: { color: t.text },
   }))
-  .states(
-    (t) => ({
-      active: {
-        color: t.text,
-        backgroundColor: t.bg,
-        boxShadow: '0 1px 3px rgba(15,18,30,.12)',
-      },
-      idle: {},
-    }),
-  )
-  // `inapplicable` — an addon tab with nothing for the selected component:
-  // present, focusable, visibly secondary.
-  .variants(() => ({
-    inapplicable: { opacity: '0.45' },
-    applicable: {},
+  .states((t) => ({
+    active: {
+      color: t.text,
+      backgroundColor: t.surface2,
+      boxShadow: `inset 0 0 0 1px ${t.border}`,
+    },
+    idle: {},
   }))
-  // `small` — the addon tab strip and the compact top bar, where the full
-  // size cannot fit a single row.
-  .sizes(
-    (t) => ({
-      small: { padding: '6px 10px', fontSize: t.size.body },
-      normal: {},
-    }),
-  )
+  // A panel tab that APPLIES to the selected component reads in the mid ink;
+  // one with nothing for it stays in the faint ink — present, focusable,
+  // visibly secondary, and still 4.5:1 (no opacity).
+  .variants((t) => ({
+    applicable: { color: t.muted },
+    inapplicable: {},
+  }))
+  // `small` — the panel tab strip, 28px rows.
+  .sizes((t) => ({
+    small: { height: '28px', fontSize: t.size.small },
+    normal: {},
+  }))

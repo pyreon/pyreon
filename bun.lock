@@ -2651,6 +2651,7 @@
         "@pyreon/native-compiler": "workspace:*",
       },
       "devDependencies": {
+        "@pyreon/ansi": "workspace:*",
         "@pyreon/tsconfig": "workspace:*",
         "@pyreon/vitest-config": "workspace:*",
         "vitest": "^5.0.5",
@@ -2713,6 +2714,7 @@
         "typescript": ">=5.0.0 <7.0.0",
       },
       "devDependencies": {
+        "@pyreon/ansi": "workspace:*",
         "@pyreon/compiler": "workspace:*",
         "@pyreon/manifest": "workspace:*",
         "@pyreon/query": "workspace:*",
@@ -2784,8 +2786,10 @@
         "@pyreon/reactivity": "workspace:*",
         "@pyreon/runtime-dom": "workspace:*",
         "@pyreon/tsconfig": "workspace:*",
+        "@pyreon/vite-plugin": "workspace:*",
         "@pyreon/vitest-config": "workspace:*",
         "@types/chrome": "^0.3.6",
+        "@vitest/browser-playwright": "^5.0.5",
         "playwright": "^1.64.1",
       },
     },
@@ -2802,6 +2806,7 @@
       },
       "devDependencies": {
         "@faker-js/faker": "^10.1.0",
+        "@pyreon/ansi": "workspace:*",
         "@pyreon/core": "workspace:*",
         "@pyreon/http": "workspace:*",
         "@pyreon/manifest": "workspace:*",
@@ -2875,6 +2880,7 @@
         "@pyreon/unistyle": "workspace:*",
       },
       "devDependencies": {
+        "@pyreon/ansi": "workspace:*",
         "@pyreon/head": "workspace:*",
         "@pyreon/manifest": "workspace:*",
         "@pyreon/router": "workspace:*",
@@ -3453,7 +3459,11 @@
         "@pyreon/unistyle": "workspace:^",
       },
       "devDependencies": {
+        "@pyreon/charts": "workspace:^",
+        "@pyreon/document": "workspace:^",
+        "@pyreon/flow": "workspace:^",
         "@pyreon/test-utils": "workspace:^",
+        "@pyreon/toast": "workspace:^",
         "@pyreon/tsconfig": "workspace:*",
         "@pyreon/typescript": "workspace:^",
         "@pyreon/vitest-config": "workspace:*",
@@ -3485,6 +3495,7 @@
         "create-multiplatform": "./bin/create-multiplatform.js",
       },
       "devDependencies": {
+        "@pyreon/ansi": "workspace:*",
         "@pyreon/lint": "workspace:*",
         "@pyreon/native-compiler": "workspace:*",
         "@pyreon/reactivity": "workspace:*",
@@ -3500,6 +3511,7 @@
         "create-zero": "./bin/create-zero.js",
       },
       "devDependencies": {
+        "@pyreon/ansi": "workspace:*",
         "@pyreon/compiler": "workspace:*",
         "@pyreon/tsconfig": "workspace:*",
         "@pyreon/vitest-config": "workspace:*",
@@ -3570,6 +3582,7 @@
         "vite": "^8.3.5",
       },
       "devDependencies": {
+        "@pyreon/ansi": "workspace:*",
         "@pyreon/manifest": "workspace:*",
         "@pyreon/test-utils": "workspace:^",
         "@pyreon/tsconfig": "workspace:*",

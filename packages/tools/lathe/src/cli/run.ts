@@ -52,7 +52,7 @@ import {
 } from "../core/contract";
 import { SOURCE_TOOLS } from "./init/init";
 import type { SourceTool } from "./init/migrate";
-import { renderReport } from "./report";
+import { renderDiffText, renderRun } from "./report";
 import { pluginsFromModule } from "./plugin-exports";
 import type { LathePlugin } from "../core/plugin";
 import { fetchRemoteParts } from './remote-refs'
@@ -103,10 +103,12 @@ export interface Argv {
   /** `init` only: write the config but do not run the first generate. */
   noGenerate: boolean;
   /**
-   * Colour the terminal report. `undefined` means "decide from the
-   * environment", which only the bin can do; the pure run defaults to plain.
+   * Colour the terminal report: the `--color` / `--no-color` flag, or the
+   * level the bin resolved (0 plain, 1 sixteen colours, 2 truecolor).
+   * `undefined` means "decide from the environment", which only the bin can
+   * do; the pure run defaults to plain.
    */
-  color?: boolean | undefined;
+  color?: boolean | 0 | 1 | 2 | undefined;
   /**
    * Everything the parser refused: an unknown flag, a missing or invalid
    * value, an unknown command. A non-empty list means the run does NOTHING.
@@ -679,6 +681,7 @@ function runDiff(
   fs: Fs,
   fail: (message: string, code?: number) => RunResult,
 ): RunResult {
+  const started = performance.now();
   let before: ContractSide;
   let after: ContractSide;
   try {
@@ -714,6 +717,20 @@ function runDiff(
       stdout: `${renderContractDiff(diff, "github")}${markdown}`,
       stderr: "",
       summary: markdown,
+    };
+  }
+  // The human report is themed; `--format text` names it explicitly.
+  if (format === "text") {
+    return {
+      code,
+      stdout: renderDiffText(diff, {
+        before: argv.input as string,
+        after: argv.compare as string,
+        failOnBreaking: argv.failOnBreaking,
+        color: argv.color,
+        elapsedMs: performance.now() - started,
+      }),
+      stderr: "",
     };
   }
   return { code, stdout: renderContractDiff(diff, format), stderr: "" };
@@ -757,6 +774,7 @@ async function runChecked(
   fail: (message: string, code?: number) => RunResult,
   plugins: Array<PluginName | LathePlugin> | undefined,
 ): Promise<RunResult> {
+  const started = performance.now();
   const merged: LatheSection = {
     ...section,
     ...(argv.input ? { input: argv.input } : {}),
@@ -905,9 +923,11 @@ async function runChecked(
     // `generate` removes them. Only paths the manifest lists are candidates,
     // so a hand-written file in the output directory is never touched.
     const removed: string[] = [];
+    const orphaned: string[] = [];
     for (const orphan of orphans) {
       if (!writes) {
         stale.push(`${orphan} (orphaned: no longer generated)`);
+        orphaned.push(orphan);
         continue;
       }
       fs.remove(fs.join(config.output, orphan));
@@ -923,10 +943,11 @@ async function runChecked(
       created,
       changes,
       removed,
+      orphaned,
     });
   }
 
-  return report(runs, argv);
+  return report(runs, argv, performance.now() - started);
 }
 
 interface RunOutcome {
@@ -943,9 +964,11 @@ interface RunOutcome {
   changes: SurfaceChange[];
   /** Previously-generated files this run removed because it no longer emits them. */
   removed: string[];
+  /** `check` / `--dry-run`: previously-generated files a write would remove. */
+  orphaned: string[];
 }
 
-function report(runs: RunOutcome[], argv: Argv): RunResult {
+function report(runs: RunOutcome[], argv: Argv, elapsedMs: number): RunResult {
   const worst = (a: number, b: number): number => Math.max(a, b);
   const code = runs
     .map(({ config, verify, stale, changes }) =>
@@ -995,44 +1018,36 @@ function report(runs: RunOutcome[], argv: Argv): RunResult {
     return { code, stdout: `${JSON.stringify(doc, null, 2)}\n`, stderr: '', documents: documentsOf(runs) }
   }
 
-  let stdout = "";
-  for (const {
-    config,
-    result,
-    verify,
-    wrote,
-    stale,
-    changed,
-    created,
-    changes,
-    removed,
-  } of runs) {
-    stdout += renderReport(result, verify, {
-      target: config.target,
-      output: config.output,
-      wrote,
-      changed,
-      created,
-      changes,
-      removed,
-      name: config.name,
-      plugins: config.plugins,
-      requestedPlugins: config.requestedPlugins,
-      color: argv.color ?? false,
-    });
-    if (argv.command === "check" && stale.length > 0) {
-      stdout += `\n  STALE: ${stale.length} generated file(s) differ from the spec:\n${stale
-        .map((s) => `    ${s}`)
-        .join("\n")}\n\n  Fix: run \`lathe generate\` and commit the result.\n`;
-    }
-    if (argv.dryRun && stale.length > 0) {
-      stdout += `\n  DRY RUN: \`lathe generate\` would change ${stale.length} path(s):\n${stale
-        .map((s) => `    ${s}`)
-        .join("\n")}\n`;
-    } else if (argv.dryRun) {
-      stdout += "\n  DRY RUN: nothing would change.\n";
-    }
-  }
+  const stdout = renderRun(
+    runs.map(({ config, result, verify, wrote, stale, changed, created, changes, removed, orphaned }) => ({
+      result,
+      verify,
+      stale,
+      options: {
+        target: config.target,
+        output: config.output,
+        input: config.input,
+        wrote,
+        changed,
+        created,
+        changes,
+        removed,
+        orphaned,
+        name: config.name,
+        plugins: config.plugins,
+        requestedPlugins: config.requestedPlugins,
+      },
+    })),
+    {
+      command: argv.command === "check" ? "check" : "generate",
+      dryRun: argv.dryRun,
+      code,
+      failOnBreaking: argv.failOnBreaking,
+      strictNative: (i) => (runs[i] as RunOutcome).config.strictNative,
+      color: argv.color,
+      elapsedMs,
+    },
+  );
   return { code, stdout, stderr: '', documents: documentsOf(runs) }
 }
 

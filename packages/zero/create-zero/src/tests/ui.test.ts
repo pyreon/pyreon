@@ -25,11 +25,10 @@ import {
   outro,
   select,
   setPromptIo,
-  spinner,
-  supportsUnicode,
-  symbolSet,
-  text,
   type PromptInput,
+  type PromptStyle,
+  spinner,
+  text,
 } from '../ui'
 
 class FakeInput extends EventEmitter implements PromptInput {
@@ -74,13 +73,32 @@ let restore: (() => void) | undefined
 let out: string[] = []
 afterEach(() => restore?.())
 
-function setup(tty: boolean, columns?: number) {
+function setup(tty: boolean, columns?: number, style?: PromptStyle) {
+  restore?.()
   const input = new FakeInput(tty)
   out = []
-  restore = setPromptIo({ input, output: { isTTY: tty, columns, write: (s: string) => out.push(s) } })
+  restore = setPromptIo({ input, output: { isTTY: tty, columns, write: (s: string) => out.push(s) }, style })
   return input
 }
 const printed = () => out.join('')
+
+/** Run `fn` with env vars set (undefined = unset), then restore them. */
+function withEnv(vars: Record<string, string | undefined>, fn: () => void): void {
+  const prev: Record<string, string | undefined> = {}
+  for (const [k, v] of Object.entries(vars)) {
+    prev[k] = process.env[k]
+    if (v === undefined) delete process.env[k]
+    else process.env[k] = v
+  }
+  try {
+    fn()
+  } finally {
+    for (const [k, v] of Object.entries(prev)) {
+      if (v === undefined) delete process.env[k]
+      else process.env[k] = v
+    }
+  }
+}
 const tick = () => new Promise((r) => setTimeout(r, 0))
 
 // Keys are sent after the prompt has attached its listener.
@@ -191,7 +209,7 @@ describe('TTY prompts', () => {
     const input = setup(true)
     const p = select({ message: 'Pick', options: OPTS, initialValue: 'zzz' })
     await tick()
-    expect(printed()).toContain('(first)')
+    expect(printed()).toContain('— first')
     input.send('\r')
     expect(await p).toBe('a')
   })
@@ -271,13 +289,27 @@ describe('TTY prompts', () => {
   })
 
   it('redraws in place: each frame clears exactly the lines the previous one used', async () => {
-    const input = setup(true, 20)
+    const input = setup(true, 20, { unicode: true })
     const p = select({ message: 'Pick', options: [{ value: 1, label: 'x'.repeat(30) }, { value: 2, label: 'y' }] })
     await tick()
     input.send(DOWN, '\r')
     await p
-    // First frame: header + 2 rows (the first wraps to 2 lines at 20 cols) + footer = 5.
-    expect(printed()).toContain(`${ESC}[5A`)
+    // First frame at 20 cols: header (1) + first row, 35 wide (2) + second row (1)
+    // + the 39-wide key-hint footer (2) = 6.
+    expect(printed()).toContain(`${ESC}[6A`)
+  })
+})
+
+describe('redraw on a terminal that reports 0 columns', () => {
+  it('treats 0 columns as unknown (80) instead of one character per line', async () => {
+    const input = setup(true, 0, { unicode: true })
+    const p = select({ message: 'Pick', options: [{ value: 1, label: 'one' }, { value: 2, label: 'two' }] })
+    await tick()
+    input.send(DOWN, '\r')
+    await p
+    // header + 2 rows + footer = 4 lines; with 0 taken literally it was ~60.
+    expect(printed()).toContain(`${ESC}[4A`)
+    expect(printed()).not.toMatch(new RegExp(`${ESC}\\[\\d{2,}A`))
   })
 })
 
@@ -386,53 +418,111 @@ describe('non-TTY prompts (one line per answer)', () => {
   })
 })
 
-describe('glyphs', () => {
-  it('fall back to ASCII on a legacy Windows console only', () => {
-    expect(supportsUnicode('darwin', {})).toBe(true)
-    expect(supportsUnicode('linux', {})).toBe(true)
-    expect(supportsUnicode('win32', {})).toBe(false)
-    expect(supportsUnicode('win32', { WT_SESSION: '1' })).toBe(true)
-    expect(supportsUnicode('win32', { TERM_PROGRAM: 'vscode' })).toBe(true)
-    const ascii = symbolSet(false)
-    expect([ascii.bar, ascii.active, ascii.boxOn, ...ascii.spinner].join('')).toMatch(/^[\x20-\x7e]+$/)
-    expect(symbolSet(true).bar).toBe('│')
+describe('glyphs (Unicode decided by @pyreon/ansi)', () => {
+  it('draws the Unicode frame, or the ASCII fallback when the theme says so', () => {
+    setup(false, 80, { color: 0, unicode: true })
+    intro('create-zero', '1.0.0')
+    note('x', 'Next steps')
+    expect(printed()).toContain('┌  create-zero · 1.0.0')
+    expect(printed()).toContain('│  x')
+
+    setup(false, 80, { color: 0, unicode: false })
+    intro('create-zero', '1.0.0')
+    note('x', 'Next steps')
+    cancel('Cancelled.')
+    expect(printed()).toMatch(/^[\x20-\x7e\n]+$/)
+  })
+
+  it('PYREON_CLI_SYMBOLS=ascii switches to ASCII through detection', () => {
+    const prev = process.env.PYREON_CLI_SYMBOLS
+    try {
+      process.env.PYREON_CLI_SYMBOLS = 'ascii'
+      setup(false)
+      intro('create-zero')
+      expect(printed()).toBe('+  create-zero\n')
+    } finally {
+      if (prev === undefined) delete process.env.PYREON_CLI_SYMBOLS
+      else process.env.PYREON_CLI_SYMBOLS = prev
+    }
   })
 })
 
 describe('messages and spinner', () => {
   it('intro / outro / cancel / note print their text', () => {
-    setup(false)
-    intro('Pyreon Zero')
+    setup(false, 80, { color: 0, unicode: true })
+    intro('create-zero', '0.53.0')
     note('cd app\nbun install', 'Next steps')
     cancel('Cancelled.')
-    outro('Happy building!')
-    const s = printed()
-    for (const part of ['Pyreon Zero', 'Next steps', 'cd app', 'bun install', 'Cancelled.', 'Happy building!']) {
-      expect(s).toContain(part)
-    }
+    outro('created app', { status: 'ok', meta: ['3 files', '12 ms'] })
+    outro('plain')
+    expect(printed()).toBe(
+      [
+        '┌  create-zero · 0.53.0',
+        '│',
+        'ℹ  Next steps',
+        '│  cd app',
+        '│  bun install',
+        '└  ✗ Cancelled.',
+        '',
+        '│',
+        '└  ✓ created app · 3 files · 12 ms',
+        '',
+        '│',
+        '└  plain',
+        '',
+        '',
+      ].join('\n'),
+    )
   })
 
   it('colours only on a TTY, and never with NO_COLOR', () => {
-    const prev = process.env.NO_COLOR
-    try {
-      delete process.env.NO_COLOR
+    withEnv({ NO_COLOR: undefined, FORCE_COLOR: undefined, TERM: 'xterm-256color' }, () => {
       setup(true)
       intro('x')
       expect(printed()).toContain(`${ESC}[`)
-
-      process.env.NO_COLOR = '1'
-      setup(true)
-      intro('x')
-      expect(printed()).not.toContain(`${ESC}[`)
-
-      delete process.env.NO_COLOR
       setup(false)
       intro('x')
       expect(printed()).not.toContain(`${ESC}[`)
-    } finally {
-      if (prev === undefined) delete process.env.NO_COLOR
-      else process.env.NO_COLOR = prev
-    }
+    })
+    withEnv({ NO_COLOR: '1', FORCE_COLOR: undefined, TERM: 'xterm-256color' }, () => {
+      setup(true)
+      intro('x')
+      expect(printed()).not.toContain(`${ESC}[`)
+    })
+  })
+
+  it('honours FORCE_COLOR and TERM=dumb (the old check ignored both)', () => {
+    // FORCE_COLOR colours a pipe — truecolor at 3.
+    withEnv({ NO_COLOR: undefined, FORCE_COLOR: '3', TERM: 'xterm-256color' }, () => {
+      setup(false)
+      intro('x')
+      expect(printed()).toContain(`${ESC}[38;2;`)
+    })
+    withEnv({ NO_COLOR: undefined, FORCE_COLOR: '1', TERM: 'xterm-256color', COLORTERM: undefined }, () => {
+      setup(false)
+      intro('x')
+      expect(printed()).toContain(`${ESC}[31m`)
+    })
+    // FORCE_COLOR=0 and TERM=dumb turn colour off even on a TTY.
+    withEnv({ NO_COLOR: undefined, FORCE_COLOR: '0', TERM: 'xterm-256color' }, () => {
+      setup(true)
+      intro('x')
+      expect(printed()).not.toContain(`${ESC}[`)
+    })
+    withEnv({ NO_COLOR: undefined, FORCE_COLOR: undefined, TERM: 'dumb' }, () => {
+      setup(true)
+      intro('x')
+      expect(printed()).not.toContain(`${ESC}[`)
+    })
+  })
+
+  it('PYREON_CLI_THEME=light picks the light palette', () => {
+    withEnv({ NO_COLOR: undefined, FORCE_COLOR: '3', PYREON_CLI_THEME: 'light' }, () => {
+      setup(false)
+      intro('x')
+      // accent on light: #B43A0E
+      expect(printed()).toContain(`${ESC}[38;2;180;58;14m`)
+    })
   })
 
   it('non-TTY spinner prints start and stop lines, no animation', () => {
@@ -458,5 +548,86 @@ describe('messages and spinner', () => {
     expect(frames.length).toBeGreaterThan(1)
     expect(printed()).toContain('Done')
     expect(printed().endsWith(`${ESC}[?25h`)).toBe(true)
+  })
+})
+
+// ─── The rendered look, frozen ──────────────────────────────────────────────
+//
+// One specimen of every frame the scaffolder draws — intro, each prompt kind
+// while active and once answered, a refused submit, the spinner, the note,
+// cancel and the verdict — at each colour level, on both backgrounds, and in
+// ASCII. Escapes are made visible (ESC → ␛) so a palette or glyph change shows
+// up as a readable diff.
+
+const visible = (s: string): string => s.replaceAll(ESC, '␛')
+
+async function specimen(style: PromptStyle): Promise<string> {
+  const chunks: string[] = []
+  let input = setup(true, 100, style)
+  intro('create-zero', '0.53.0')
+  const name = text({
+    message: 'Project name',
+    placeholder: 'my-zero-app',
+    validate: (v) => (v ? undefined : 'Project name is required'),
+  })
+  await tick()
+  input.send('\r', 'my-app', '\r')
+  await name
+  const template = select({
+    message: 'Template',
+    options: [
+      { value: 'minimal', label: 'Minimal', hint: 'no features, SPA, static deploy' },
+      { value: 'standard', label: 'Standard', hint: 'store + query + forms' },
+    ],
+  })
+  await tick()
+  input.send(DOWN, '\r')
+  await template
+  const features = groupMultiselect({
+    message: 'Features',
+    options: { State: [{ value: 'store', label: 'store', hint: 'signals store' }], Data: [{ value: 'query', label: 'query' }] },
+    initialValues: ['query'],
+  })
+  await tick()
+  input.send(' ', '\r')
+  await features
+  await drive(input, confirm({ message: 'Lint config?' }), LEFT, '\r')
+  chunks.push(printed())
+
+  input = setup(true, 100, style)
+  await drive(input, text({ message: 'Cancelled prompt' }), 'abc', ESC)
+  chunks.push(printed())
+
+  setup(false, 100, style)
+  const s = spinner()
+  s.start('Scaffolding project...')
+  s.stop('Project scaffolded')
+  note('cd my-app\nbun install\nbun run dev', 'Next steps')
+  outro('created my-app', { status: 'ok', meta: ['42 files', '180 ms'] })
+  cancel('Cancelled.')
+  chunks.push(printed())
+  return visible(chunks.join('\n=====\n'))
+}
+
+describe('rendered frames (snapshots)', () => {
+  const cases: Array<[string, PromptStyle]> = [
+    ['colour level 0 (NO_COLOR)', { color: 0, unicode: true }],
+    ['colour level 1 (16 colours)', { color: 1, unicode: true }],
+    ['colour level 2, dark', { color: 2, theme: 'dark', unicode: true }],
+    ['colour level 2, light', { color: 2, theme: 'light', unicode: true }],
+    ['ASCII', { color: 0, unicode: false }],
+  ]
+  for (const [label, style] of cases) {
+    it(label, async () => {
+      expect(await specimen(style)).toMatchSnapshot()
+    })
+  }
+
+  it('level 0 output carries every state as a symbol and a word', async () => {
+    const plain = await specimen({ color: 0, unicode: true })
+    expect(plain).not.toMatch(/␛\[[0-9;]*m/) // no SGR at all; only cursor control remains
+    for (const part of ['◆  Template', '◇  Template', '✗  Cancelled prompt', '! Project name is required', '✓ created my-app', '✗ Cancelled.']) {
+      expect(plain).toContain(part)
+    }
   })
 })
