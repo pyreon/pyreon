@@ -1565,6 +1565,7 @@
         "@pyreon/tsconfig": "workspace:*",
         "@pyreon/vitest-config": "workspace:*",
         "@vitest/browser-playwright": "^5.0.5",
+        "parse5": "^7.3.0",
       },
       "peerDependencies": {
         "@pyreon/core": "workspace:^",

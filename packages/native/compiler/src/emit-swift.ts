@@ -3948,7 +3948,10 @@ function emitSwiftTry(s: Extract<StatementIR, { kind: 'try' }>, indent: number):
   )
   let core: string
   if (caught) {
-    const binder = s.catchParam !== undefined ? ` let ${swiftIdent(s.catchParam)}` : ''
+    // A source `catch { … }` with no binding becomes `catch _`, never a bare `catch`: Swift binds a bare catch's error
+    // to an implicit `error`, which shadowed any user identifier named `error` in the body (a signal assigned there
+    // failed `swiftc` with "cannot assign to value: 'error' is immutable"). `_` binds nothing.
+    const binder = s.catchParam !== undefined ? ` let ${swiftIdent(s.catchParam)}` : ' _'
     const catchLines = emitSwiftStmtLines(s.catchBody!, inner + 2).join('\n')
     core = `${ipad}do {\n${bodyLines}\n${ipad}} catch${binder} {\n${catchLines}\n${ipad}}`
   } else {
