@@ -61,12 +61,16 @@ const KNOWN_DETECTOR_CODES = new Set([
 describe('patterns content — structural shape', () => {
   const registry = loadPatternRegistry(REPO_ROOT)
 
-  it.each(registry.patterns.map((p) => [p.name, p.path]))(
-    '%s has exactly one top-level # heading',
-    (_name, path) => {
-      const body = readFileSync(path, 'utf8')
-      const h1Count = body.split('\n').filter((l) => l.startsWith('# ')).length
-      expect(h1Count).toBe(1)
+  // The docs site renders the title from the frontmatter, so the file may have
+  // no `# ` heading; the LOADED pattern (what `get_pattern` serves) must start
+  // its body with exactly one, carrying that title.
+  it.each(registry.patterns.map((p) => [p.name, p.path, p.title, p.body]))(
+    '%s serves exactly one top-level # heading, carrying the frontmatter title',
+    (_name, path, title, loaded) => {
+      const h1s = (loaded as string).split('\n').filter((l) => l.startsWith('# '))
+      expect(h1s).toHaveLength(1)
+      expect(readFileSync(path as string, 'utf8')).toMatch(/^title:\s*\S/m)
+      expect(h1s[0]).toContain(title as string)
     },
   )
 
