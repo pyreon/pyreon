@@ -1,7 +1,7 @@
 {
  "id": "content",
  "og": {
-  "src": "/assets/og/products/content.png",
+  "src": "/media/og/products/content.png",
   "width": 1200,
   "height": 630,
   "alt": "Content (@pyreon/zero-content): A typo in your frontmatter fails the build. Not your readers."

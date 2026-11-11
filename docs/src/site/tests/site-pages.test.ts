@@ -1,6 +1,7 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { shareImage } from '../kit/assets'
 import { langOf } from '../../../vite-plugins/site-pages-content'
 import { BENCH_SVGS } from '../pages/benchmarks/BenchmarksPage'
 import {
@@ -26,7 +27,7 @@ import {
 } from '../releases/parse'
 
 const pages = resolve(__dirname, '../content/pages')
-const assets = resolve(__dirname, '../assets')
+const assets = resolve(__dirname, '../media')
 const json = (rel: string) => JSON.parse(readFileSync(resolve(pages, rel), 'utf8'))
 const filesIn = (dir: string) => readdirSync(resolve(pages, dir)).filter((f) => f.endsWith('.json') && !f.startsWith('_'))
 
@@ -90,9 +91,8 @@ describe('page content in the app', () => {
   })
 
   it('every page has a share image', () => {
-    const og = JSON.parse(readFileSync(resolve(assets, 'og.json'), 'utf8')) as Record<string, unknown>
     for (const r of routes.filter((p) => /^\/(why|compare|migrate)\/|^\/(benchmarks|status|releases|community|brand|migrate)$/.test(p.route))) {
-      expect(og[r.route], r.route).toBeDefined()
+      expect(shareImage(r.route).url, r.route).not.toMatch(/og\/default\.png$/)
     }
   })
 })

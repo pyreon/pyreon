@@ -1,7 +1,7 @@
 {
  "id": "zero",
  "og": {
-  "src": "/assets/og/products/zero.png",
+  "src": "/media/og/products/zero.png",
   "width": 1200,
   "height": 630,
   "alt": "Zero: Stop choosing between a static site and a server app. 6.5× faster compiled server rendering than React 19 at 1,000 rows (109.9 vs 714.4 µs a render)"

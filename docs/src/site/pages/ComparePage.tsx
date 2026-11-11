@@ -14,7 +14,7 @@ import { CaveatLine, EndCTA, HookHero, ProofBand, TextLink } from '../kit/proof'
 import { CompareStrip, Diagram, InlineText } from '../kit/story'
 import { Eyebrow, Heading, Lede, renderInline } from '../kit/type'
 import { font, text } from '../theme'
-import { useSitePageHead } from './assets'
+import { usePageHead } from '../head'
 import { emberWordOf } from './ember'
 import { RivalSwitcher } from './RivalSwitcher'
 
@@ -56,7 +56,7 @@ export function ComparePage(props: { view: CompareView }) {
   const title = inlineText(d.hook.title)
   const measured = d.rivalMeasured !== null
 
-  useSitePageHead({
+  usePageHead({
     path: d.route,
     title: `Pyreon vs ${d.rival}: ${title} · Pyreon`,
     description: inlineText(d.hook.lede),

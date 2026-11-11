@@ -1,7 +1,7 @@
 {
  "id": "store",
  "og": {
-  "src": "/assets/og/products/store.png",
+  "src": "/media/og/products/store.png",
   "width": 1200,
   "height": 630,
   "alt": "Store (@pyreon/store): Global state with no selectors to write."

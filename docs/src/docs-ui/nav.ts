@@ -1,4 +1,4 @@
-// `_docs.json#sidebar` on its own (scripts/sync-docs-content.ts writes it):
+// `_docs.json#sidebar` on its own (scripts/sync-site-content.ts writes it):
 // every docs page carries the sidebar, and only the sidebar.
 import indexJson from '../site/content/_docs-index.json'
 import sidebarJson from '../site/content/_docs-sidebar.json'
@@ -6,7 +6,7 @@ import type { DocsNav, DocsSidebarItem, SidebarBadge } from '../site/content/typ
 
 /**
  * The docs navigation, from the content set's `_docs.json` (synced by
- * `scripts/sync-docs-content.ts`, never edited here): the sidebar groups
+ * `scripts/sync-site-content.ts`, never edited here): the sidebar groups
  * (Get started · Build · Data and state · Visual and content · Developer
  * tools · Guides · Migrate · Reference), each page once, product items with
  * their glyph and a sourced badge, and the per-product overview slots.

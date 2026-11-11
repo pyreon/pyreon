@@ -1,7 +1,7 @@
 {
  "id": "validation",
  "og": {
-  "src": "/assets/og/products/validation.png",
+  "src": "/media/og/products/validation.png",
   "width": 1200,
   "height": 630,
   "alt": "Validation: Write it like Zod. It won all 12 cells of our workload bench. 12 / 12 cells won on a multi-schema workload against Zod, Valibot and ArkType."

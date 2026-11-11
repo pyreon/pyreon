@@ -17,7 +17,7 @@ import { ToggleChips } from '../../kit/toggles'
 import { inlineText } from '../../kit/inline'
 import { Eyebrow, Heading, Lede, renderInline } from '../../kit/type'
 import { font, gradient, radius, text, weight } from '../../theme'
-import { useSitePageHead } from '../assets'
+import { usePageHead } from '../../head'
 import { LiveRowBoard, LiveScaling } from './islands'
 import {
   formatMs,
@@ -242,7 +242,7 @@ export function BenchmarksPage(props: { view: BenchmarksView }) {
   const svgs = props.view.svgs
   const products = sortSummaries(props.view.products)
 
-  useSitePageHead({
+  usePageHead({
     path: '/benchmarks',
     title: 'Benchmarks: every result, losses included · Pyreon',
     description: `${H.hero.lede.split('. ')[0]}. ${d.caveat}`,

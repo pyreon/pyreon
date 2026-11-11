@@ -1,6 +1,6 @@
 import { onMount } from '@pyreon/core'
 import type { VNodeChild } from '@pyreon/core'
-import { usePageHead } from './site-head'
+import { usePageHead } from '../site/head'
 
 export interface StableLinkPageProps {
   /** Root-relative path of this page, e.g. `/discord`. */

@@ -1,7 +1,7 @@
 {
  "id": "sync",
  "og": {
-  "src": "/assets/og/products/sync.png",
+  "src": "/media/og/products/sync.png",
   "width": 1200,
   "height": 630,
   "alt": "Sync: Same signal. Now it's multiplayer, and it works offline. 59 ns to take in an inbound WebSocket frame on the transport's fast path."

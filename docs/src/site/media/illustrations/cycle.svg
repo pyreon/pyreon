@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" class="pxa pil-cycle" viewBox="0 0 560 360" width="560" height="360" role="img" aria-labelledby="pil-cycle-t pil-cycle-d" fill="none">
+<title id="pil-cycle-t">Error: effect loop</title>
+<desc id="pil-cycle-d">Three nodes a, b and c in a triangle; the edge from c back to a is ember with an arrow and a warning mark in the middle.</desc>
+<style>
+.pxa{--px-bg:#0A0A0E;--px-card:#111118;--px-raised:#181822;--px-line:#23232E;--px-line2:#2E2E3B;--px-text:#F4EFE6;--px-strong:#FFFCF5;--px-mist:#C9C4B8;--px-fog:#8A8696;--px-hint:#6E6A7A;--px-accent:#FF5E1A;--px-accent-text:#FF8A4C;--px-warm:#FFC83D;--px-plasma:#FF1F8C;--px-ok:#4ADE80;--px-warn:#FACC15;--px-err:#F87171;--px-link:#22D3EE;--px-violet:#A78BFA;--px-bar:#3A3846;--px-g1:#FF1F8C;--px-g2:#FF5E1A;--px-g3:#FFC83D;--px-glow:rgba(255,94,26,.16)}
+@media (prefers-color-scheme: light){.pxa{--px-bg:#FAF5EB;--px-card:#FFFFFF;--px-raised:#F4EFE6;--px-line:#E6DFD2;--px-line2:#D6CFC2;--px-text:#14141C;--px-strong:#0A0A0E;--px-mist:#45414F;--px-fog:#67637A;--px-hint:#8E8A9A;--px-accent:#E84A0F;--px-accent-text:#A8380A;--px-warm:#8A5A00;--px-plasma:#E40C70;--px-ok:#11692F;--px-warn:#8A5A00;--px-err:#B91C1C;--px-link:#0A6E89;--px-violet:#6D28D9;--px-bar:#D9D2C4;--px-g1:#E40C70;--px-g2:#E84A0F;--px-g3:#E0A510;--px-glow:rgba(232,74,15,.10)}}
+[data-theme="dark"] .pxa,.pxa[data-theme="dark"]{--px-bg:#0A0A0E;--px-card:#111118;--px-raised:#181822;--px-line:#23232E;--px-line2:#2E2E3B;--px-text:#F4EFE6;--px-strong:#FFFCF5;--px-mist:#C9C4B8;--px-fog:#8A8696;--px-hint:#6E6A7A;--px-accent:#FF5E1A;--px-accent-text:#FF8A4C;--px-warm:#FFC83D;--px-plasma:#FF1F8C;--px-ok:#4ADE80;--px-warn:#FACC15;--px-err:#F87171;--px-link:#22D3EE;--px-violet:#A78BFA;--px-bar:#3A3846;--px-g1:#FF1F8C;--px-g2:#FF5E1A;--px-g3:#FFC83D;--px-glow:rgba(255,94,26,.16)}
+[data-theme="light"] .pxa,.pxa[data-theme="light"]{--px-bg:#FAF5EB;--px-card:#FFFFFF;--px-raised:#F4EFE6;--px-line:#E6DFD2;--px-line2:#D6CFC2;--px-text:#14141C;--px-strong:#0A0A0E;--px-mist:#45414F;--px-fog:#67637A;--px-hint:#8E8A9A;--px-accent:#E84A0F;--px-accent-text:#A8380A;--px-warm:#8A5A00;--px-plasma:#E40C70;--px-ok:#11692F;--px-warn:#8A5A00;--px-err:#B91C1C;--px-link:#0A6E89;--px-violet:#6D28D9;--px-bar:#D9D2C4;--px-g1:#E40C70;--px-g2:#E84A0F;--px-g3:#E0A510;--px-glow:rgba(232,74,15,.10)}
+.pil-cycle{font-family:'Space Grotesk',ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif}
+.pil-cycle .m{font-family:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,monospace}
+.pil-cycle .pil-cycle-rm{opacity:0}
+@media (prefers-reduced-motion: reduce){.pil-cycle *{animation:none!important;transition:none!important}.pil-cycle .pil-cycle-rm{opacity:1}.pil-cycle .pil-cycle-am{opacity:0}}
+
+.pil-cycle .s1{stroke:var(--px-mist);stroke-width:1.5}.pil-cycle .s2{stroke:var(--px-fog);stroke-width:1.5}.pil-cycle .s3{stroke:var(--px-hint);stroke-width:1.5}
+.pil-cycle .e{stroke:var(--px-accent);stroke-width:1.5}.pil-cycle .ef{fill:var(--px-accent)}.pil-cycle .et{fill:var(--px-accent-text)}
+.pil-cycle .f1{fill:var(--px-mist)}.pil-cycle .fc{fill:var(--px-card)}.pil-cycle .fb{fill:var(--px-bg)}
+.pil-cycle .l2{fill:var(--px-fog);font-size:9px}.pil-cycle .l3{fill:var(--px-hint);font-size:9px}.pil-cycle .lt{fill:var(--px-text);font-size:10px}
+.pil-cycle .ttl{fill:var(--px-fog);font-size:15px;letter-spacing:.14em}
+.pil-cycle .rule{stroke:var(--px-line2);stroke-width:1}
+</style>
+<defs><linearGradient id="pil-cycle-eg" x1="0" y1="0" x2="1" y2="0"><stop offset="0" style="stop-color:var(--px-g1)"/><stop offset=".55" style="stop-color:var(--px-g2)"/><stop offset="1" style="stop-color:var(--px-g3)"/></linearGradient><linearGradient id="pil-cycle-egv" x1="0" y1="1" x2="0" y2="0"><stop offset="0" style="stop-color:var(--px-g1)"/><stop offset=".55" style="stop-color:var(--px-g2)"/><stop offset="1" style="stop-color:var(--px-g3)"/></linearGradient><linearGradient id="pil-cycle-egd" x1="0" y1="0" x2="1" y2="1"><stop offset="0" style="stop-color:var(--px-g1)"/><stop offset=".55" style="stop-color:var(--px-g2)"/><stop offset="1" style="stop-color:var(--px-g3)"/></linearGradient></defs>
+<g transform="scale(2)">
+<line class="s1" x1="80" y1="118" x2="140" y2="38"/><line class="s1" x1="140" y1="38" x2="200" y2="118"/>
+<line class="e" x1="200" y1="118" x2="80" y2="118" stroke-width="2"/>
+<path class="ef" d="M128,118 L138,114 L138,122 Z"/>
+<circle class="s1 fb" cx="80" cy="118" r="7"/><text class="m lt" x="80" y="106" text-anchor="middle">a</text><circle class="s1 fb" cx="140" cy="38" r="7"/><text class="m lt" x="140" y="26" text-anchor="middle">b</text><circle class="s1 fb" cx="200" cy="118" r="7"/><text class="m lt" x="200" y="106" text-anchor="middle">c</text>
+<g transform="translate(140 88)"><circle r="11" class="e" style="fill:var(--px-glow)"/><text class="m et" y="4" text-anchor="middle" font-size="12" font-weight="600">!</text></g>
+<text class="m l2" x="140" y="146" text-anchor="middle">effect: a → b → c → a</text></g>
+<line class="rule" x1="40" y1="322" x2="520" y2="322"/>
+<text class="m ttl" x="40" y="347">ERROR · EFFECT LOOP</text>
+</svg>

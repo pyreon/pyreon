@@ -10,11 +10,20 @@
  * live outside the copied files (`src/site/content/model.ts`,
  * `src/site/content/extra-sections.ts`), so a sync is a plain overwrite.
  *
+ * The story, compare, migrate, benchmarks and project families
+ * (`content/_why.json`, `_compare.json`, `_migrate.json`, `_project.json`,
+ * `_benchmarks.json`) are split into ONE JSON FILE PER PAGE under
+ * `src/site/content/pages/<family>/`, so a page's chunk carries that page
+ * only. The split is mechanical: nothing is edited, and the fields shared by
+ * a family go into `<family>/_meta.json`.
+ *
+ * Assets are synced separately: `scripts/sync-site-assets.ts`.
+ *
  * Wiring a new product: run this with its id, add its demo to
  * `src/site/demos/registry.ts`. The route, the products index, the nav and
  * the build pick it up from the JSON.
  */
-import { copyFileSync, existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 
 const [source, ...ids] = process.argv.slice(2)
@@ -64,3 +73,86 @@ copy(join(from, 'content/_sitemap.json'), join(app, '_sitemap.json'))
 const wanted = ids.length > 0 ? ids : readdirSync(products).filter((f) => !f.startsWith('_') && f.endsWith('.json')).map((f) => f.slice(0, -5))
 for (const id of wanted) copy(join(from, `content/${id}.json`), join(products, `${id}.json`))
 process.stdout.write(`Synced ${wanted.length} product file(s) at ${new Date().toISOString()}.\n`)
+
+// ─── Page families → one file per page ─────────────────────────────────────
+
+const out = join(app, 'pages')
+type Json = Record<string, unknown>
+const read = (file: string): Json => {
+  const path = join(from, 'content', file)
+  if (!existsSync(path)) throw new Error(`[Pyreon] ${path} does not exist. Is ${from} the 09-site folder?`)
+  return JSON.parse(readFileSync(path, 'utf8')) as Json
+}
+
+let written = 0
+const write = (rel: string, data: unknown) => {
+  const path = join(out, rel)
+  mkdirSync(resolve(path, '..'), { recursive: true })
+  writeFileSync(path, `${JSON.stringify(data, null, 2)}\n`)
+  written++
+}
+
+/** Start a family folder empty, so a page dropped from the content set disappears from the app. */
+const reset = (family: string) => {
+  const dir = join(out, family)
+  if (existsSync(dir)) for (const f of readdirSync(dir)) if (f.endsWith('.json')) rmSync(join(dir, f))
+}
+
+const pagesById = (family: string, pages: Json[]) => {
+  reset(family)
+  for (const page of pages) write(`${family}/${String(page.id)}.json`, page)
+}
+
+const why = read('_why.json')
+pagesById('why', why.pages as Json[])
+write('why/_meta.json', { order: (why.pages as Json[]).map((p) => ({ id: p.id, title: p.title })) })
+
+const compare = read('_compare.json')
+pagesById('compare', compare.pages as Json[])
+write('compare/_meta.json', { record: compare.record, caveat: compare.caveat, order: compare.order })
+
+const migrate = read('_migrate.json')
+pagesById('migrate', migrate.layers as Json[])
+write('migrate/_landing.json', migrate.landing)
+write('migrate/_guides.json', migrate.guides)
+write('migrate/_meta.json', { productHref: (migrate.landing as Json).productHref, order: (migrate.layers as Json[]).map((p) => ({ id: p.id, name: p.name, package: p.package })) })
+
+const project = read('_project.json')
+reset('project')
+for (const id of ['status', 'releases', 'community', 'brand']) write(`project/${id}.json`, project[id])
+
+write('benchmarks.json', read('_benchmarks.json'))
+write('_sitemap.json', read('_sitemap.json'))
+
+process.stdout.write(`Synced ${written} page file(s) under src/site/content/pages/.\n`)
+
+
+// ─── The docs: sidebar, overview slots, the /docs home ────────────────────
+
+for (const name of ['_docs.json', '_docs-home.json']) {
+  const src = join(from, 'content', name)
+  if (!existsSync(src)) throw new Error(`[Pyreon] ${src} does not exist. Is ${from} the 09-site folder?`)
+  copyFileSync(src, join(app, name))
+  process.stdout.write(`  content/${name} → src/site/content/${name}\n`)
+}
+
+// The two parts of _docs.json the app reads, as their own files: the bundler
+// cannot split one JSON module between chunks, so the sidebar (on every docs
+// page) and the overview slots (loaded on demand) must not share a file with
+// each other or with the audit lists. `docs-content.test.ts` keeps them equal
+// to _docs.json.
+const docs = JSON.parse(readFileSync(join(app, '_docs.json'), 'utf8')) as {
+  sidebar: unknown
+  overviews: { productId: string; docsPage: string | null; docsHref: string; crossSell: string[] }[]
+}
+writeFileSync(join(app, '_docs-sidebar.json'), `${JSON.stringify(docs.sidebar)}\n`)
+writeFileSync(join(app, '_docs-overviews.json'), `${JSON.stringify(docs.overviews)}\n`)
+// What every page needs from the overviews, small: which pages are a product's
+// overview, and each product's first cross-sell (the right rail's card).
+const index = {
+  overviewPages: Object.fromEntries(docs.overviews.filter((o) => o.docsPage !== null).map((o) => [o.docsHref, o.productId])),
+  rail: Object.fromEntries(docs.overviews.filter((o) => o.crossSell[0]).map((o) => [o.productId, o.crossSell[0]])),
+}
+writeFileSync(join(app, '_docs-index.json'), `${JSON.stringify(index)}\n`)
+process.stdout.write('  _docs.json → _docs-sidebar.json, _docs-overviews.json, _docs-index.json\n')
+

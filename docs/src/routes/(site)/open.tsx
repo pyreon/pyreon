@@ -1,5 +1,5 @@
 import stats from 'virtual:pyreon-open-stats'
-import { usePageHead } from '../../components/site-head'
+import { usePageHead } from '../../site/head'
 import { OpenStatsView } from '../../open/OpenStatsView'
 
 // The chart's first frame is serialized to SVG in the prerendered HTML when

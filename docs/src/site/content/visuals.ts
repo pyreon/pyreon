@@ -1,3 +1,5 @@
+import type { LoopMedia } from '../kit/media'
+
 /**
  * A product page's visuals, from `visuals/<id>.json` (written by
  * `scripts/sync-site-assets.ts` from the asset set's manifest: alt text,
@@ -26,26 +28,12 @@ export interface ThemedPicture {
   light: PictureSource
 }
 
-export interface LoopSide {
-  webm: string
-  mp4: string
-  poster: { avif: string[]; webp: string[]; src: string }
-}
-
 export type HeroVisual =
   | { kind: 'svg'; alt: string; width: number; height: number; svg: string }
-  | ({ kind: 'pair' } & ThemedPicture)
-  | {
-      kind: 'loop'
-      alt: string
-      width: number
-      height: number
-      smallWidth: number
-      smallHeight: number
-      labels: string[]
-      dark: { large: LoopSide; small: LoopSide }
-      light: { large: LoopSide; small: LoopSide }
-    }
+  /** A raster capture (a theme pair renders both; `kit/media.tsx` `Picture`). */
+  | { kind: 'picture'; file: string; alt: string }
+  /** The three-targets loop (`kit/media.tsx` `Loop`), with a caption per pane. */
+  | { kind: 'loop'; labels: string[]; media: LoopMedia }
 
 export interface ProductVisuals {
   id: string

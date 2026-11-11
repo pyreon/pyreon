@@ -1,7 +1,7 @@
 {
  "id": "hooks",
  "og": {
-  "src": "/assets/og/products/hooks.png",
+  "src": "/media/og/products/hooks.png",
   "width": 1200,
   "height": 630,
   "alt": "Hooks (@pyreon/hooks): 65 hooks. Zero cleanup code to write."

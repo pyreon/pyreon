@@ -5,7 +5,7 @@ import { ProjectPageView, type ProjectView } from '../../site/pages/ProjectPage'
 /** `/community` — the "plain" project page (`content/pages/project/community.json`). */
 export async function loader(): Promise<ProjectView> {
   const page = await loadProject('community')
-  if (!page) throw new Error('[Pyreon] content/pages/project/community.json is missing: run scripts/sync-site-pages.ts.')
+  if (!page) throw new Error('[Pyreon] content/pages/project/community.json is missing: run scripts/sync-site-content.ts.')
   return { page }
 }
 

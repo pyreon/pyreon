@@ -1,5 +1,5 @@
 import { island } from '@pyreon/zero'
-import { usePageHead } from '../../components/site-head'
+import { usePageHead } from '../../site/head'
 
 // `/showcase` is a static page: the filter and the groups it filters are one island.
 const ShowcaseGalleryIsland = island(() => import('../../showcase/ShowcaseGallery'), { name: 'ShowcaseGallery', hydrate: 'idle' })

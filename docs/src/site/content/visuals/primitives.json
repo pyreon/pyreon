@@ -1,7 +1,7 @@
 {
  "id": "primitives",
  "og": {
-  "src": "/assets/og/products/primitives.png",
+  "src": "/media/og/products/primitives.png",
   "width": 1200,
   "height": 630,
   "alt": "Primitives (@pyreon/primitives): One Toggle. The real iOS switch and the real Android switch."
@@ -19,16 +19,16 @@
    "width": 1080,
    "height": 2400,
    "dark": {
-    "avif": "/assets/products/native/today-android-dark-480.avif 480w, /assets/products/native/today-android-dark-720.avif 720w, /assets/products/native/today-android-dark.avif 1080w",
-    "webp": "/assets/products/native/today-android-dark-480.webp 480w, /assets/products/native/today-android-dark-720.webp 720w, /assets/products/native/today-android-dark.webp 1080w",
-    "src": "/assets/products/native/today-android-dark-720.webp",
+    "avif": "/media/products/native/today-android-dark-480.avif 480w, /media/products/native/today-android-dark-720.avif 720w, /media/products/native/today-android-dark.avif 1080w",
+    "webp": "/media/products/native/today-android-dark-480.webp 480w, /media/products/native/today-android-dark-720.webp 720w, /media/products/native/today-android-dark.webp 1080w",
+    "src": "/media/products/native/today-android-dark-720.webp",
     "width": 1080,
     "height": 2400
    },
    "light": {
-    "avif": "/assets/products/native/today-android-light-480.avif 480w, /assets/products/native/today-android-light-720.avif 720w, /assets/products/native/today-android-light.avif 1080w",
-    "webp": "/assets/products/native/today-android-light-480.webp 480w, /assets/products/native/today-android-light-720.webp 720w, /assets/products/native/today-android-light.webp 1080w",
-    "src": "/assets/products/native/today-android-light-720.webp",
+    "avif": "/media/products/native/today-android-light-480.avif 480w, /media/products/native/today-android-light-720.avif 720w, /media/products/native/today-android-light.avif 1080w",
+    "webp": "/media/products/native/today-android-light-480.webp 480w, /media/products/native/today-android-light-720.webp 720w, /media/products/native/today-android-light.webp 1080w",
+    "src": "/media/products/native/today-android-light-720.webp",
     "width": 1080,
     "height": 2400
    }
@@ -38,16 +38,16 @@
    "width": 1206,
    "height": 2622,
    "dark": {
-    "avif": "/assets/products/native/today-ios-dark-480.avif 480w, /assets/products/native/today-ios-dark-720.avif 720w, /assets/products/native/today-ios-dark.avif 1206w",
-    "webp": "/assets/products/native/today-ios-dark-480.webp 480w, /assets/products/native/today-ios-dark-720.webp 720w, /assets/products/native/today-ios-dark.webp 1206w",
-    "src": "/assets/products/native/today-ios-dark-720.webp",
+    "avif": "/media/products/native/today-ios-dark-480.avif 480w, /media/products/native/today-ios-dark-720.avif 720w, /media/products/native/today-ios-dark.avif 1206w",
+    "webp": "/media/products/native/today-ios-dark-480.webp 480w, /media/products/native/today-ios-dark-720.webp 720w, /media/products/native/today-ios-dark.webp 1206w",
+    "src": "/media/products/native/today-ios-dark-720.webp",
     "width": 1206,
     "height": 2622
    },
    "light": {
-    "avif": "/assets/products/native/today-ios-light-480.avif 480w, /assets/products/native/today-ios-light-720.avif 720w, /assets/products/native/today-ios-light.avif 1206w",
-    "webp": "/assets/products/native/today-ios-light-480.webp 480w, /assets/products/native/today-ios-light-720.webp 720w, /assets/products/native/today-ios-light.webp 1206w",
-    "src": "/assets/products/native/today-ios-light-720.webp",
+    "avif": "/media/products/native/today-ios-light-480.avif 480w, /media/products/native/today-ios-light-720.avif 720w, /media/products/native/today-ios-light.avif 1206w",
+    "webp": "/media/products/native/today-ios-light-480.webp 480w, /media/products/native/today-ios-light-720.webp 720w, /media/products/native/today-ios-light.webp 1206w",
+    "src": "/media/products/native/today-ios-light-720.webp",
     "width": 1206,
     "height": 2622
    }
@@ -57,16 +57,16 @@
    "width": 1179,
    "height": 2556,
    "dark": {
-    "avif": "/assets/products/native/today-web-dark-480.avif 480w, /assets/products/native/today-web-dark-720.avif 720w, /assets/products/native/today-web-dark.avif 1179w",
-    "webp": "/assets/products/native/today-web-dark-480.webp 480w, /assets/products/native/today-web-dark-720.webp 720w, /assets/products/native/today-web-dark.webp 1179w",
-    "src": "/assets/products/native/today-web-dark-720.webp",
+    "avif": "/media/products/native/today-web-dark-480.avif 480w, /media/products/native/today-web-dark-720.avif 720w, /media/products/native/today-web-dark.avif 1179w",
+    "webp": "/media/products/native/today-web-dark-480.webp 480w, /media/products/native/today-web-dark-720.webp 720w, /media/products/native/today-web-dark.webp 1179w",
+    "src": "/media/products/native/today-web-dark-720.webp",
     "width": 1179,
     "height": 2556
    },
    "light": {
-    "avif": "/assets/products/native/today-web-light-480.avif 480w, /assets/products/native/today-web-light-720.avif 720w, /assets/products/native/today-web-light.avif 1179w",
-    "webp": "/assets/products/native/today-web-light-480.webp 480w, /assets/products/native/today-web-light-720.webp 720w, /assets/products/native/today-web-light.webp 1179w",
-    "src": "/assets/products/native/today-web-light-720.webp",
+    "avif": "/media/products/native/today-web-light-480.avif 480w, /media/products/native/today-web-light-720.avif 720w, /media/products/native/today-web-light.avif 1179w",
+    "webp": "/media/products/native/today-web-light-480.webp 480w, /media/products/native/today-web-light-720.webp 720w, /media/products/native/today-web-light.webp 1179w",
+    "src": "/media/products/native/today-web-light-720.webp",
     "width": 1179,
     "height": 2556
    }

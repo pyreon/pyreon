@@ -6,7 +6,7 @@ const dir = join(import.meta.dirname, '../../site/content')
 const read = (f: string) => JSON.parse(readFileSync(join(dir, f), 'utf8')) as unknown
 
 describe('docs content files', () => {
-  it('the split sidebar and overview files equal _docs.json (re-run scripts/sync-docs-content.ts)', () => {
+  it('the split sidebar and overview files equal _docs.json (re-run scripts/sync-site-content.ts)', () => {
     const docs = read('_docs.json') as { sidebar: unknown; overviews: unknown }
     expect(read('_docs-sidebar.json')).toEqual(docs.sidebar)
     expect(read('_docs-overviews.json')).toEqual(docs.overviews)

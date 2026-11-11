@@ -1,29 +1,14 @@
 {
  "id": "design",
  "og": {
-  "src": "/assets/og/products/design.png",
+  "src": "/media/og/products/design.png",
   "width": 1200,
   "height": 630,
   "alt": "Design System: Write every variant once. Get every combination, dark mode included. 6.3× faster than Emotion at serving a style it has already seen (warm dedup)"
  },
  "hero": {
-  "kind": "pair",
-  "alt": "Real @pyreon/ui-components rendered twice from the same definitions, once in light mode and once in dark: buttons by state and variant (primary, outline, subtle, danger, success) and by size, status badges, chips, a progress bar, and success and warning alerts.",
-  "width": 2480,
-  "height": 1026,
-  "dark": {
-   "avif": "/assets/products/design/hero-dark-640.avif 640w, /assets/products/design/hero-dark-1280.avif 1280w, /assets/products/design/hero-dark-1920.avif 1920w, /assets/products/design/hero-dark.avif 2480w",
-   "webp": "/assets/products/design/hero-dark-640.webp 640w, /assets/products/design/hero-dark-1280.webp 1280w, /assets/products/design/hero-dark-1920.webp 1920w, /assets/products/design/hero-dark.webp 2480w",
-   "src": "/assets/products/design/hero-dark-1280.webp",
-   "width": 2480,
-   "height": 1026
-  },
-  "light": {
-   "avif": "/assets/products/design/hero-light-640.avif 640w, /assets/products/design/hero-light-1280.avif 1280w, /assets/products/design/hero-light-1920.avif 1920w, /assets/products/design/hero-light.avif 2480w",
-   "webp": "/assets/products/design/hero-light-640.webp 640w, /assets/products/design/hero-light-1280.webp 1280w, /assets/products/design/hero-light-1920.webp 1920w, /assets/products/design/hero-light.webp 2480w",
-   "src": "/assets/products/design/hero-light-1280.webp",
-   "width": 2480,
-   "height": 1026
-  }
+  "kind": "picture",
+  "file": "products/design/hero-dark.png",
+  "alt": "Real @pyreon/ui-components rendered twice from the same definitions, once in light mode and once in dark: buttons by state and variant (primary, outline, subtle, danger, success) and by size, status badges, chips, a progress bar, and success and warning alerts."
  }
 }

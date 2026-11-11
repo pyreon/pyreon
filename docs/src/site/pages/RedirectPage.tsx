@@ -3,7 +3,7 @@ import { useRouter } from '@pyreon/router'
 import { Pill } from '../kit/controls'
 import { Section, Wrap } from '../kit/layout'
 import { Heading, Lede } from '../kit/type'
-import { usePageHead } from '../../components/site-head'
+import { usePageHead } from '../../site/head'
 import { SITE_ORIGIN } from '../../blog/site'
 
 /**

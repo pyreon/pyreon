@@ -13,7 +13,7 @@ import { EndCTA, HookHero } from '../kit/proof'
 import { Diagram, InlineText, LinkCards, StepList } from '../kit/story'
 import { Eyebrow, Heading, Lede, renderInline, StatusDot } from '../kit/type'
 import { font, text, weight } from '../theme'
-import { useSitePageHead } from './assets'
+import { usePageHead } from '../head'
 import { emberWordOf } from './ember'
 import { RivalSwitcher } from './RivalSwitcher'
 
@@ -79,7 +79,7 @@ export interface MigrateLandingView {
 export function MigrateLandingPage(props: { view: MigrateLandingView }) {
   const d = props.view.landing
   const title = inlineText(d.hook.title)
-  useSitePageHead({ path: d.route, title: `${title} · Pyreon`, description: inlineText(d.hook.lede) })
+  usePageHead({ path: d.route, title: `${title} · Pyreon`, description: inlineText(d.hook.lede) })
 
   return (
     <>
@@ -178,7 +178,7 @@ export interface MigrateLayerView {
 export function MigrateLayerPage(props: { view: MigrateLayerView }) {
   const d = props.view.layer
   const title = inlineText(d.hook.title)
-  useSitePageHead({ path: d.route, title: `Migrate from ${d.name}: ${title} · Pyreon`, description: inlineText(d.hook.lede) })
+  usePageHead({ path: d.route, title: `Migrate from ${d.name}: ${title} · Pyreon`, description: inlineText(d.hook.lede) })
 
   return (
     <>

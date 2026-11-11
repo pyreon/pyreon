@@ -1,82 +1,40 @@
 {
  "id": "native",
  "og": {
-  "src": "/assets/og/products/native.png",
+  "src": "/media/og/products/native.png",
   "width": 1200,
   "height": 630,
   "alt": "Native (Pyreon Native · PMTC): Build the website. Get the iPhone and Android apps."
  },
  "hero": {
   "kind": "loop",
-  "alt": "The same small todo app, Today, built from one source file (examples/native-showcase/src/TodayApp.tsx) and running at once in Chromium (web, server-rendered and hydrated), an iOS Simulator (generated SwiftUI) and an Android emulator (generated Jetpack Compose), each screen shown from its status bar down to just below the list: three todos, typing \"Pick up oat milk\" and adding it, checking it off, removing it. Real screen captures with real input; waits shortened, typing sped up on the phones.",
-  "width": 1200,
-  "height": 518,
-  "smallWidth": 720,
-  "smallHeight": 310,
   "labels": [
    "Web · server-rendered HTML, hydrated",
    "iOS · generated SwiftUI",
    "Android · generated Compose, experimental"
   ],
-  "dark": {
-   "large": {
-    "webm": "/assets/video/three-targets-dark.webm",
-    "mp4": "/assets/video/three-targets-dark.mp4",
-    "poster": {
-     "avif": [
-      "/assets/video/three-targets-dark.poster-640.avif",
-      "/assets/video/three-targets-dark.poster.avif"
-     ],
-     "webp": [
-      "/assets/video/three-targets-dark.poster-640.webp",
-      "/assets/video/three-targets-dark.poster.webp"
-     ],
-     "src": "/assets/video/three-targets-dark.poster.webp"
+  "media": {
+   "dark": {
+    "webm": "video/three-targets-dark.webm",
+    "mp4": "video/three-targets-dark.mp4",
+    "poster": "video/three-targets-dark.poster.png",
+    "small": {
+     "webm": "video/three-targets-sm-dark.webm",
+     "mp4": "video/three-targets-sm-dark.mp4"
     }
    },
-   "small": {
-    "webm": "/assets/video/three-targets-sm-dark.webm",
-    "mp4": "/assets/video/three-targets-sm-dark.mp4",
-    "poster": {
-     "avif": [
-      "/assets/video/three-targets-sm-dark.poster.avif"
-     ],
-     "webp": [
-      "/assets/video/three-targets-sm-dark.poster.webp"
-     ],
-     "src": "/assets/video/three-targets-sm-dark.poster.webp"
-    }
-   }
-  },
-  "light": {
-   "large": {
-    "webm": "/assets/video/three-targets-light.webm",
-    "mp4": "/assets/video/three-targets-light.mp4",
-    "poster": {
-     "avif": [
-      "/assets/video/three-targets-light.poster-640.avif",
-      "/assets/video/three-targets-light.poster.avif"
-     ],
-     "webp": [
-      "/assets/video/three-targets-light.poster-640.webp",
-      "/assets/video/three-targets-light.poster.webp"
-     ],
-     "src": "/assets/video/three-targets-light.poster.webp"
+   "light": {
+    "webm": "video/three-targets-light.webm",
+    "mp4": "video/three-targets-light.mp4",
+    "poster": "video/three-targets-light.poster.png",
+    "small": {
+     "webm": "video/three-targets-sm-light.webm",
+     "mp4": "video/three-targets-sm-light.mp4"
     }
    },
-   "small": {
-    "webm": "/assets/video/three-targets-sm-light.webm",
-    "mp4": "/assets/video/three-targets-sm-light.mp4",
-    "poster": {
-     "avif": [
-      "/assets/video/three-targets-sm-light.poster.avif"
-     ],
-     "webp": [
-      "/assets/video/three-targets-sm-light.poster.webp"
-     ],
-     "src": "/assets/video/three-targets-sm-light.poster.webp"
-    }
-   }
+   "width": 1200,
+   "height": 518,
+   "alt": "The same small todo app, Today, built from one source file (examples/native-showcase/src/TodayApp.tsx) and running at once in Chromium (web, server-rendered and hydrated), an iOS Simulator (generated SwiftUI) and an Android emulator (generated Jetpack Compose), each screen shown from its status bar down to just below the list: three todos, typing \"Pick up oat milk\" and adding it, checking it off, removing it. Real screen captures with real input; waits shortened, typing sped up on the phones."
   }
  },
  "svgs": {
@@ -91,16 +49,16 @@
    "width": 1080,
    "height": 2400,
    "dark": {
-    "avif": "/assets/products/native/today-android-dark-480.avif 480w, /assets/products/native/today-android-dark-720.avif 720w, /assets/products/native/today-android-dark.avif 1080w",
-    "webp": "/assets/products/native/today-android-dark-480.webp 480w, /assets/products/native/today-android-dark-720.webp 720w, /assets/products/native/today-android-dark.webp 1080w",
-    "src": "/assets/products/native/today-android-dark-720.webp",
+    "avif": "/media/products/native/today-android-dark-480.avif 480w, /media/products/native/today-android-dark-720.avif 720w, /media/products/native/today-android-dark.avif 1080w",
+    "webp": "/media/products/native/today-android-dark-480.webp 480w, /media/products/native/today-android-dark-720.webp 720w, /media/products/native/today-android-dark.webp 1080w",
+    "src": "/media/products/native/today-android-dark-720.webp",
     "width": 1080,
     "height": 2400
    },
    "light": {
-    "avif": "/assets/products/native/today-android-light-480.avif 480w, /assets/products/native/today-android-light-720.avif 720w, /assets/products/native/today-android-light.avif 1080w",
-    "webp": "/assets/products/native/today-android-light-480.webp 480w, /assets/products/native/today-android-light-720.webp 720w, /assets/products/native/today-android-light.webp 1080w",
-    "src": "/assets/products/native/today-android-light-720.webp",
+    "avif": "/media/products/native/today-android-light-480.avif 480w, /media/products/native/today-android-light-720.avif 720w, /media/products/native/today-android-light.avif 1080w",
+    "webp": "/media/products/native/today-android-light-480.webp 480w, /media/products/native/today-android-light-720.webp 720w, /media/products/native/today-android-light.webp 1080w",
+    "src": "/media/products/native/today-android-light-720.webp",
     "width": 1080,
     "height": 2400
    }
@@ -110,16 +68,16 @@
    "width": 1206,
    "height": 2622,
    "dark": {
-    "avif": "/assets/products/native/today-ios-dark-480.avif 480w, /assets/products/native/today-ios-dark-720.avif 720w, /assets/products/native/today-ios-dark.avif 1206w",
-    "webp": "/assets/products/native/today-ios-dark-480.webp 480w, /assets/products/native/today-ios-dark-720.webp 720w, /assets/products/native/today-ios-dark.webp 1206w",
-    "src": "/assets/products/native/today-ios-dark-720.webp",
+    "avif": "/media/products/native/today-ios-dark-480.avif 480w, /media/products/native/today-ios-dark-720.avif 720w, /media/products/native/today-ios-dark.avif 1206w",
+    "webp": "/media/products/native/today-ios-dark-480.webp 480w, /media/products/native/today-ios-dark-720.webp 720w, /media/products/native/today-ios-dark.webp 1206w",
+    "src": "/media/products/native/today-ios-dark-720.webp",
     "width": 1206,
     "height": 2622
    },
    "light": {
-    "avif": "/assets/products/native/today-ios-light-480.avif 480w, /assets/products/native/today-ios-light-720.avif 720w, /assets/products/native/today-ios-light.avif 1206w",
-    "webp": "/assets/products/native/today-ios-light-480.webp 480w, /assets/products/native/today-ios-light-720.webp 720w, /assets/products/native/today-ios-light.webp 1206w",
-    "src": "/assets/products/native/today-ios-light-720.webp",
+    "avif": "/media/products/native/today-ios-light-480.avif 480w, /media/products/native/today-ios-light-720.avif 720w, /media/products/native/today-ios-light.avif 1206w",
+    "webp": "/media/products/native/today-ios-light-480.webp 480w, /media/products/native/today-ios-light-720.webp 720w, /media/products/native/today-ios-light.webp 1206w",
+    "src": "/media/products/native/today-ios-light-720.webp",
     "width": 1206,
     "height": 2622
    }
@@ -129,16 +87,16 @@
    "width": 1179,
    "height": 2556,
    "dark": {
-    "avif": "/assets/products/native/today-web-dark-480.avif 480w, /assets/products/native/today-web-dark-720.avif 720w, /assets/products/native/today-web-dark.avif 1179w",
-    "webp": "/assets/products/native/today-web-dark-480.webp 480w, /assets/products/native/today-web-dark-720.webp 720w, /assets/products/native/today-web-dark.webp 1179w",
-    "src": "/assets/products/native/today-web-dark-720.webp",
+    "avif": "/media/products/native/today-web-dark-480.avif 480w, /media/products/native/today-web-dark-720.avif 720w, /media/products/native/today-web-dark.avif 1179w",
+    "webp": "/media/products/native/today-web-dark-480.webp 480w, /media/products/native/today-web-dark-720.webp 720w, /media/products/native/today-web-dark.webp 1179w",
+    "src": "/media/products/native/today-web-dark-720.webp",
     "width": 1179,
     "height": 2556
    },
    "light": {
-    "avif": "/assets/products/native/today-web-light-480.avif 480w, /assets/products/native/today-web-light-720.avif 720w, /assets/products/native/today-web-light.avif 1179w",
-    "webp": "/assets/products/native/today-web-light-480.webp 480w, /assets/products/native/today-web-light-720.webp 720w, /assets/products/native/today-web-light.webp 1179w",
-    "src": "/assets/products/native/today-web-light-720.webp",
+    "avif": "/media/products/native/today-web-light-480.avif 480w, /media/products/native/today-web-light-720.avif 720w, /media/products/native/today-web-light.avif 1179w",
+    "webp": "/media/products/native/today-web-light-480.webp 480w, /media/products/native/today-web-light-720.webp 720w, /media/products/native/today-web-light.webp 1179w",
+    "src": "/media/products/native/today-web-light-720.webp",
     "width": 1179,
     "height": 2556
    }

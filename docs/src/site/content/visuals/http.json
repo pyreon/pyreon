@@ -1,7 +1,7 @@
 {
  "id": "http",
  "og": {
-  "src": "/assets/og/products/http.png",
+  "src": "/media/og/products/http.png",
   "width": 1200,
   "height": 630,
   "alt": "HTTP (@pyreon/http): Your API sent { id: 7 }. Your client called it a User."

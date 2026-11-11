@@ -1,13 +1,14 @@
-import { island } from '@pyreon/zero'
+import { For } from '@pyreon/core'
 import type { HeroVisual, PictureSource, ThemedPicture as ThemedPictureData } from '../content/visuals'
-import { radius } from '../theme'
-import { el, tone } from '../kit/bases'
+import { font, radius, text } from '../theme'
+import { el, tone, txt } from '../kit/bases'
+import { Loop, Picture } from '../kit/media'
 
 /**
- * Asset helpers for the products-a slice: an inline animated SVG, a capture
- * that exists once per theme, and the three-targets loop. The home slice is
- * building the kit's shared `Picture` / `Loop` / `AnimatedSvg`; when they
- * land, this file is the one place to switch over.
+ * The product page's hero visual (inline animated SVG, a capture through the
+ * kit's `Picture`, or the three-targets `Loop`), and `ThemedPicture` for the
+ * demo islands, which receive resolved picture data as props (an island never
+ * imports the asset manifest).
  *
  * - SVGs from the asset set are inlined (their colours are CSS variables that
  *   follow `<html data-theme>`), as trusted static markup from the synced
@@ -69,8 +70,23 @@ export function ThemedPicture(props: { data: ThemedPictureData; sizes: string; l
   )
 }
 
-/** The three-targets loop: poster in the HTML, the video attached on the client (not under reduced motion). */
-export const HeroLoop = island(() => import('./HeroLoop'), { name: 'HeroLoop', hydrate: 'visible' })
+const Labels = el
+  .config({ name: 'LoopLabels' })
+  .attrs({ tag: 'ol', block: true })
+  .theme(() => ({
+    display: 'grid',
+    gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+    gap: 8,
+    listStyle: 'none',
+    margin: 0,
+    marginTop: 10,
+    padding: 0,
+  }))
+
+const Label = txt
+  .config({ name: 'LoopLabel' })
+  .attrs({ tag: 'li' })
+  .theme((_t, m) => ({ fontFamily: font.mono, fontSize: text.mono.size - 1, lineHeight: 1.4, color: tone(m, 'fog'), textAlign: 'center' }))
 
 const Frame = el
   .config({ name: 'ProductHeroVisual' })
@@ -98,10 +114,17 @@ export function HeroVisualFigure(props: { visual: HeroVisual }) {
     <Frame>
       {v.kind === 'svg' ? (
         <InlineSvg svg={v.svg} />
-      ) : v.kind === 'pair' ? (
-        <ThemedPicture data={v} sizes="(min-width: 1100px) 1012px, calc(100vw - 60px)" lazy={false} />
+      ) : v.kind === 'picture' ? (
+        <Picture file={v.file} alt={v.alt} eager sizes="(min-width: 1100px) 840px, calc(100vw - 60px)" />
       ) : (
-        <HeroLoop loop={v} />
+        <>
+          <Loop media={v.media} sizes="(min-width: 1100px) 840px, calc(100vw - 60px)" />
+          <Labels>
+            <For each={v.labels} by={(l) => l}>
+              {(l) => <Label>{l}</Label>}
+            </For>
+          </Labels>
+        </>
       )}
     </Frame>
   )

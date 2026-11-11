@@ -1,7 +1,7 @@
 {
  "id": "statetree",
  "og": {
-  "src": "/assets/og/products/statetree.png",
+  "src": "/media/og/products/statetree.png",
   "width": 1200,
   "height": 630,
   "alt": "State Tree: The MobX-State-Tree model, with 9.5× faster actions. 9.5× faster action calls than MobX-State-Tree 9."

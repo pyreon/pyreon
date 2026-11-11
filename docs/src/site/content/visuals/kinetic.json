@@ -1,7 +1,7 @@
 {
  "id": "kinetic",
  "og": {
-  "src": "/assets/og/products/kinetic.png",
+  "src": "/media/og/products/kinetic.png",
   "width": 1200,
   "height": 630,
   "alt": "Motion (@pyreon/kinetic + kinetic-presets): A presence animation is one line. The compositor runs it."

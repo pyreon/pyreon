@@ -1,7 +1,7 @@
 {
  "id": "router",
  "og": {
-  "src": "/assets/og/products/router.png",
+  "src": "/media/og/products/router.png",
   "width": 1200,
   "height": 630,
   "alt": "Router: Every navigation runs your guards. The Back button too. 885× faster route matching than React Router, and up to 3,763× (8 routers, 1,344-cell correctness gate before timing)"

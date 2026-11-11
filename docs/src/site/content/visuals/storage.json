@@ -1,7 +1,7 @@
 {
  "id": "storage",
  "og": {
-  "src": "/assets/og/products/storage.png",
+  "src": "/media/og/products/storage.png",
   "width": 1200,
   "height": 630,
   "alt": "Storage: A signal that remembers. In every tab, after every reload. 29.7× faster persisted writes at best (10.1× at worst) than Jotai atomWithStorage and Zustand persist."

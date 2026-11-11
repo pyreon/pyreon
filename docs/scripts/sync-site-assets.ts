@@ -100,8 +100,14 @@ function appRoutes(): string[] {
     }
   }
   walk(join(app, 'src/routes/(site)'), '')
+  // The docs: every page under /docs (share images per page and per sidebar group).
+  if (existsSync(join(app, 'src/routes/docs'))) routes.add('/docs/*')
   const products = join(app, 'src/site/content/products')
   for (const f of readdirSync(products)) if (f.endsWith('.json') && !f.startsWith('_')) routes.add(`/products/${f.slice(0, -5)}`)
+  // Dynamic routes (`/why/[id]`, `/compare/[id]`, …) are not files: the
+  // content set's sitemap lists every page the site will have.
+  const sitemap = JSON.parse(readFileSync(join(app, 'src/site/content/_sitemap.json'), 'utf8')) as { sections: { pages: { route: string }[] }[] }
+  for (const section of sitemap.sections) for (const page of section.pages) routes.add(page.route)
   for (const r of extraRoutes) routes.add(r)
   return [...routes]
 }
@@ -193,6 +199,28 @@ writeFileSync(
   `${JSON.stringify({ file: fallbackShare.file, width: fallbackShare.width, height: fallbackShare.height, alt: fallbackShare.alt }, null, 1)}\n`,
 )
 
+// ─── Docs share images (`content/_docs-og.json`) ──────────────────────────
+//
+// The docs app hydrates in the browser, so its head must not import the whole
+// `_assets.json`: route → image and alt, small. A manifest `pages` entry is a
+// route or a description of the pages a group card stands in for:
+// '/docs/** (pages in the sidebar group "Build" without their own card)'.
+
+{
+  const og: { pages: Record<string, { image: string; alt: string }>; groups: Record<string, { image: string; alt: string }> } = { pages: {}, groups: {} }
+  for (const a of wanted) {
+    if (a.slot !== 'og' || !(a.file === 'og/docs.png' || a.file.startsWith('og/docs/'))) continue
+    const card = { image: `/media/${a.file}`, alt: a.alt }
+    for (const page of a.pages) {
+      const group = /sidebar group "([^"]+)"/.exec(page)?.[1]
+      if (group) og.groups[group] = card
+      else if (page.startsWith('/docs')) og.pages[page] = card
+    }
+  }
+  const sortKeys = <T,>(o: Record<string, T>) => Object.fromEntries(Object.entries(o).sort(([x], [y]) => x.localeCompare(y)))
+  writeFileSync(join(app, 'src/site/content/_docs-og.json'), `${JSON.stringify({ pages: sortKeys(og.pages), groups: sortKeys(og.groups) }, null, 2)}\n`)
+}
+
 // ─── Product visuals (`content/visuals/<id>.json`) ─────────────────────────
 //
 // Per product page: the hero visual (an inline animated SVG, a dark/light
@@ -230,12 +258,6 @@ function themedPair(a: AssetRecord) {
   if (!light) throw new Error(`[Pyreon] ${a.file} has no light pair.`)
   return { alt: a.alt, width: dark.width ?? 0, height: dark.height ?? 0, dark: pictureSource(dark), light: pictureSource(light) }
 }
-function posterSet(png: string) {
-  const base = png.replace(/\.png$/, '')
-  const found = [`${base}-640.avif`, `${base}.avif`, `${base}-640.webp`, `${base}.webp`].filter((f) => existsSync(join(from, f)))
-  const webp = found.filter((f) => f.endsWith('.webp'))
-  return { avif: found.filter((f) => f.endsWith('.avif')).map(urlOf), webp: webp.map(urlOf), src: urlOf(webp[webp.length - 1] ?? png) }
-}
 function loopFor(route: string) {
   const videos = manifest.assets.filter((a) => a.slot === 'three-targets' && a.kind === 'video' && a.pages.includes(route))
   if (videos.length === 0) return undefined
@@ -244,26 +266,22 @@ function loopFor(route: string) {
     if (!v) throw new Error(`[Pyreon] no ${size} ${theme} ${ext} three-targets video.`)
     return v
   }
+  // The shape of a content `media` block (`kit/media.tsx` `LoopMedia`): manifest
+  // file names, resolved to URLs by the kit's `Loop`.
   const side = (theme: 'dark' | 'light') => {
     const large = pick('large', theme, '.webm')
-    const small = pick('phone', theme, '.webm')
     return {
-      large: { webm: urlOf(large.file), mp4: urlOf(pick('large', theme, '.mp4').file), poster: posterSet(String(large.poster)) },
-      small: { webm: urlOf(small.file), mp4: urlOf(pick('phone', theme, '.mp4').file), poster: posterSet(String(small.poster)) },
+      webm: large.file,
+      mp4: pick('large', theme, '.mp4').file,
+      poster: String(large.poster),
+      small: { webm: pick('phone', theme, '.webm').file, mp4: pick('phone', theme, '.mp4').file },
     }
   }
   const large = pick('large', 'dark', '.webm')
-  const small = pick('phone', 'dark', '.webm')
   return {
     kind: 'loop' as const,
-    alt: (videos[0] as AssetRecord).alt,
-    width: large.width ?? 0,
-    height: large.height ?? 0,
-    smallWidth: small.width ?? 0,
-    smallHeight: small.height ?? 0,
     labels: ['Web · server-rendered HTML, hydrated', 'iOS · generated SwiftUI', 'Android · generated Compose, experimental'],
-    dark: side('dark'),
-    light: side('light'),
+    media: { dark: side('dark'), light: side('light'), width: large.width ?? 0, height: large.height ?? 0, alt: (videos[0] as AssetRecord).alt },
   }
 }
 
@@ -280,7 +298,7 @@ for (const id of productIds) {
     ? loop
     : heroAsset!.kind === 'animated-svg' || heroAsset!.file.endsWith('.svg')
       ? { kind: 'svg', alt: heroAsset!.alt, width: heroAsset!.width ?? 640, height: heroAsset!.height ?? 400, svg: svgOf(heroAsset!) }
-      : { kind: 'pair', ...themedPair(heroAsset!) }
+      : { kind: 'picture', file: heroAsset!.file, alt: heroAsset!.alt }
   const svgs: Record<string, { alt: string; svg: string }> = {}
   for (const a of onPage) {
     if (a.file.endsWith('.svg') && a.slot !== 'hero-visual' && a.file.startsWith(`products/${id}/`)) {

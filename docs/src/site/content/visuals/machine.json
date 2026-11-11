@@ -1,7 +1,7 @@
 {
  "id": "machine",
  "og": {
-  "src": "/assets/og/products/machine.png",
+  "src": "/media/og/products/machine.png",
   "width": 1200,
   "height": 630,
   "alt": "State Machines: The spinner and the error, on screen together? Not any more. 34.7× faster send than XState 5."

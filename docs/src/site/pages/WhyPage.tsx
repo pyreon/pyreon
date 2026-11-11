@@ -4,7 +4,7 @@ import { inlineText } from '../kit/inline'
 import { Section, SectionHead, Wrap } from '../kit/layout'
 import { EndCTA, HookHero } from '../kit/proof'
 import { Diagram } from '../kit/story'
-import { useSitePageHead } from './assets'
+import { usePageHead } from '../head'
 import { emberWordOf } from './ember'
 import { RivalSwitcher } from './RivalSwitcher'
 import { SiteSections, type SectionFigure } from './SiteSections'
@@ -87,7 +87,7 @@ export function WhyPage(props: { view: WhyView }) {
   const d = props.view.page
   const title = inlineText(d.hook.title)
 
-  useSitePageHead({ path: d.route, title: `${d.share.ogTitle} · Pyreon`, description: inlineText(d.hook.lede) })
+  usePageHead({ path: d.route, title: `${d.share.ogTitle} · Pyreon`, description: inlineText(d.hook.lede) })
 
   return (
     <>

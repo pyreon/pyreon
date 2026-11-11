@@ -1,0 +1,14 @@
+{
+ "id": "charts",
+ "og": {
+  "src": "/media/og/products/charts.png",
+  "width": 1200,
+  "height": 630,
+  "alt": "Charts: A quarter of ECharts' weight. Up to 8.7× faster. 8.7× faster than ECharts 6 to mount a 100,000-point line (4.36 vs 37.95 ms)."
+ },
+ "hero": {
+  "kind": "picture",
+  "file": "products/charts/hero-dark.png",
+  "alt": "Four real @pyreon/charts renders: an area chart of revenue over 14 days, a bar chart of revenue by category, a two-series line chart of revenue and profit by month, and a donut chart of device share."
+ }
+}

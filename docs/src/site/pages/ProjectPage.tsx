@@ -10,7 +10,9 @@ import { AutoGrid, Section, SectionHead, Wrap } from '../kit/layout'
 import { CaveatLine } from '../kit/proof'
 import { Eyebrow, Heading, Lede, renderInline, StatusBadge } from '../kit/type'
 import { font, radius, text, weight } from '../theme'
-import { assetUrl, useSitePageHead, type ImageAsset } from './assets'
+import { mediaUrl } from '../kit/assets'
+import { Picture } from '../kit/media'
+import { usePageHead } from '../head'
 import { SiteSections, type SectionFigure } from './SiteSections'
 
 /**
@@ -24,13 +26,13 @@ import { SiteSections, type SectionFigure } from './SiteSections'
 export interface ProjectView {
   page: Data
   releases?: ReleaseData | undefined
-  images?: Record<string, ImageAsset> | undefined
 }
 
-/** Files the brand page shows or offers (copied by scripts/sync-site-pages.ts). */
+/** Files the brand page shows or offers (copied by scripts/sync-site-content.ts). */
 export const BRAND_IMAGES = {
-  clearSpace: ['brand/clear-space-dark.png', 'brand/clear-space-light.png'],
-  typeSpecimen: ['brand/type-specimen-dark.png', 'brand/type-specimen-light.png'],
+  // A theme pair: `Picture` renders both, CSS shows the one for the theme.
+  clearSpace: 'brand/clear-space-dark.png',
+  typeSpecimen: 'brand/type-specimen-dark.png',
   swatches: ['brand/swatches-dark.png', 'brand/swatches-light.png'],
 } as const
 export const BRAND_PACK = 'brand/logo-pack.zip'
@@ -67,18 +69,15 @@ const Chips = el
   .attrs({ tag: 'ul', block: true, contentDirection: 'inline', gap: 6 })
   .theme(() => ({ flexWrap: 'wrap', listStyle: 'none', margin: 0, padding: 0 }))
 
-const Pic = el
-  .config({ name: 'ThemedPicture' })
-  .attrs({ tag: 'picture', block: true })
+const Figure = el
+  .config({ name: 'BrandFigure' })
+  .attrs({ block: true })
   .theme((_t, m) => ({
     borderRadius: radius.card,
     overflow: 'hidden',
     border: '1px solid',
     borderColor: tone(m, 'line'),
-    extendCss: `
-      & img { display: block; width: 100%; height: auto; }
-      [data-theme='light'] &[data-for-theme='dark'], [data-theme='dark'] &[data-for-theme='light'] { display: none; }
-    `,
+    extendCss: '& img { display: block; width: 100%; height: auto; }',
   }))
 
 const Stack = el.config({ name: 'ProjectStack' }).attrs({ block: true, contentAlignX: 'block', gap: 20 })
@@ -89,34 +88,6 @@ const EndRow = el
   .theme(() => ({ flexWrap: 'wrap', textAlign: 'center' }))
 
 const DownloadRow = el.config({ name: 'BrandDownloads' }).attrs({ block: true, contentDirection: 'inline', contentAlignY: 'center', gap: 12 }).theme(() => ({ flexWrap: 'wrap' }))
-
-/** A raster image from the asset set: AVIF/WebP width variants, explicit size, lazy. */
-function Picture(props: { img: ImageAsset; theme?: 'dark' | 'light' | undefined }) {
-  const byFormat = (f: string) =>
-    props.img.variantFiles
-      .filter((v) => v.format === f)
-      .map((v) => `${assetUrl(v.file)} ${v.width}w`)
-      .join(', ')
-  return (
-    <Pic data-for-theme={props.theme}>
-      <source type="image/avif" srcSet={byFormat('avif')} sizes="(min-width: 1240px) 1160px, 100vw" />
-      <source type="image/webp" srcSet={byFormat('webp')} sizes="(min-width: 1240px) 1160px, 100vw" />
-      <img src={assetUrl(props.img.file)} alt={props.img.alt} width={props.img.width} height={props.img.height} loading="lazy" decoding="async" />
-    </Pic>
-  )
-}
-
-/** Dark and light variants of one image; CSS shows the one matching the site theme. */
-function ThemedPair(props: { images: Record<string, ImageAsset>; files: readonly [string, string] }) {
-  const dark = props.images[props.files[0]]
-  const light = props.images[props.files[1]]
-  return (
-    <>
-      {dark ? <Picture img={dark} theme="dark" /> : null}
-      {light ? <Picture img={light} theme="light" /> : null}
-    </>
-  )
-}
 
 function Releases(props: { data: ReleaseData }) {
   const d = props.data
@@ -176,7 +147,7 @@ function Releases(props: { data: ReleaseData }) {
   )
 }
 
-function BrandExtras(props: { images: Record<string, ImageAsset> }) {
+function BrandExtras() {
   return (
     <Stack>
       <SectionHead label="downloads" title="The files." />
@@ -184,28 +155,32 @@ function BrandExtras(props: { images: Record<string, ImageAsset> }) {
         <Pill href={`/${BRAND_PACK}`} variant="solid">
           Download the logo pack (.zip)
         </Pill>
-        <Pill href={assetUrl(BRAND_IMAGES.swatches[0])}>Swatches, dark (.png)</Pill>
-        <Pill href={assetUrl(BRAND_IMAGES.swatches[1])}>Swatches, light (.png)</Pill>
+        <Pill href={mediaUrl(BRAND_IMAGES.swatches[0])}>Swatches, dark (.png)</Pill>
+        <Pill href={mediaUrl(BRAND_IMAGES.swatches[1])}>Swatches, light (.png)</Pill>
         <Pill href="/brand/kit">The component kit →</Pill>
       </DownloadRow>
       <Mono>SVG and PNG marks and lockups, dark, light and transparent.</Mono>
-      <ThemedPair images={props.images} files={BRAND_IMAGES.clearSpace} />
-      <ThemedPair images={props.images} files={BRAND_IMAGES.typeSpecimen} />
+      <Figure>
+        <Picture file={BRAND_IMAGES.clearSpace} sizes="(min-width: 1240px) 1160px, 100vw" />
+      </Figure>
+      <Figure>
+        <Picture file={BRAND_IMAGES.typeSpecimen} sizes="(min-width: 1240px) 1160px, 100vw" />
+      </Figure>
     </Stack>
   )
 }
 
 export function ProjectPageView(props: { view: ProjectView }) {
   const d = props.view.page
-  useSitePageHead({ path: d.route, title: `${d.title} · Pyreon`, description: inlineText(d.lede) })
+  usePageHead({ path: d.route, title: `${d.title} · Pyreon`, description: inlineText(d.lede) })
 
   const figures: SectionFigure[] = []
   if (d.id === 'releases' && props.view.releases) {
     figures.push({ at: 0, place: 'after', node: <Releases data={props.view.releases} /> })
   }
-  if (d.id === 'brand' && props.view.images) {
+  if (d.id === 'brand') {
     const at = d.sections.findIndex((s) => s.kind === 'logos')
-    figures.push({ at: at < 0 ? 0 : at, place: 'after', node: <BrandExtras images={props.view.images} /> })
+    figures.push({ at: at < 0 ? 0 : at, place: 'after', node: <BrandExtras /> })
   }
 
   const cta = d.end.cta

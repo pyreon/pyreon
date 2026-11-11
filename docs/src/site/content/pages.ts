@@ -15,7 +15,7 @@ import type {
  *
  * `types-site.ts` is the content set's own schema (a verbatim copy). The
  * JSON under `pages/` is that content split one file per page by
- * `scripts/sync-site-pages.ts`, so each page loads only its own chunk
+ * `scripts/sync-site-content.ts`, so each page loads only its own chunk
  * (`import.meta.glob`, lazy) the way product pages do. The build plugin
  * `vite-plugins/site-pages-content.ts` has added a `codeHtml` sibling (Shiki,
  * both themes) to every object with a `code` string; read it with `htmlOf`.

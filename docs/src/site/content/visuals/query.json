@@ -1,7 +1,7 @@
 {
  "id": "query",
  "og": {
-  "src": "/assets/og/products/query.png",
+  "src": "/media/og/products/query.png",
   "width": 1200,
   "height": 630,
   "alt": "Query: TanStack Query, minus the re-render. 1 vs 8 field derivations when a component reading every field sees new data, against @tanstack/react-query."
