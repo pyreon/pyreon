@@ -631,6 +631,7 @@ interface CompilerWarning {
     | 'circular-prop-derived'
     | 'duplicate-jsx-attr'
     | 'plain-mode'
+    | 'signal-method-reference'
 }
 ```
 
@@ -642,6 +643,7 @@ Currently-emitted codes:
 | `circular-prop-derived` | A prop-derived `const` chain that references itself (`const a = b + props.x; const b = a + 1`). The cyclic identifier keeps its captured value instead of being reactively inlined — restructure the chain or read `props.*` directly. |
 | `duplicate-jsx-attr`    | The same JSX attribute name written twice on one element (`<div id="a" id="b" />`). The later one wins (matches JS object-literal semantics), the earlier one is flagged as ignored. |
 | `plain-mode`            | Emitted by the [Plain Mode](/docs/plain-mode) pre-pass for a declined/unconvertible shape — prefixed with `[plain]` in the message. |
+| `signal-method-reference` | A signal's own method passed by reference as an attribute value (`ref={panel.set}`, `onInput={value.set}`). Signal methods read `this`, so the detached reference throws when called (dev builds name it: `[Pyreon] signal.set() was called without its signal`). Pass an arrow: `ref={(el) => panel.set(el)}`. The compiler leaves such a member as written; any other member of a signal (`user.name`) still reads the value (`user().name`). |
 
 `signal-call-in-jsx` and `signal-in-static-prop` are declared in the type but are not currently emitted by either backend — reserved for future diagnostics. Don't build tooling that assumes they fire today.
 
@@ -720,6 +722,7 @@ interface CompilerWarning {
     | 'circular-prop-derived'
     | 'duplicate-jsx-attr'
     | 'plain-mode'
+    | 'signal-method-reference'
 }
 ```
 
