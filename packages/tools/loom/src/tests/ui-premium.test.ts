@@ -19,7 +19,7 @@ import type { LoomReport } from '../core'
 import { FONTS_HREF, THEME_BOOT } from '../dev/server'
 import { sheet } from '@pyreon/styler'
 import { ensureGlobalStyles, GLOBAL_CSS } from '../ui/global-css'
-import { buildNodes, createModel, truncateMiddle } from '../ui/model'
+import { blastRadius, buildNodes, createModel, truncateMiddle } from '../ui/model'
 import {
   hashForSel,
   prefsFrom,
@@ -66,10 +66,11 @@ describe('matrixIds', () => {
     expect(matrixIds(m)).toEqual(before)
   })
 
-  it('an external-only filter leaves nothing to draw', () => {
+  it('the package-list filter does not narrow it', () => {
     const m = createModel(report)
-    m.kind.set('external')
-    expect(matrixIds(m)).toEqual([])
+    const before = matrixIds(m)
+    m.query.set('left-pad')
+    expect(matrixIds(m)).toEqual(before)
   })
 })
 
@@ -91,14 +92,28 @@ describe('matrixSelectionCss', () => {
 describe('graphSelectionCss', () => {
   const index = (m: ReturnType<typeof createModel>) => new Map(m.nodes.map((n, i) => [n.id, i]))
 
-  it('selection alone: ring + label + the selected node’s edges, no dimming', () => {
+  it('selection alone: the box is filled, no dimming', () => {
     const m = createModel(report)
     const idx = index(m)
-    const css = graphSelectionCss(m, idx, '@fix/app', null)
+    const css = graphSelectionCss(m, idx, '@fix/app', null, [])
     const i = idx.get('@fix/app')!
-    expect(css).toContain(`.lm-n${i} .lm-gring{display:inline}`)
-    expect(css).toContain(`.lm-ef${i},.lm-g .lm-et${i}{`)
-    expect(css).not.toContain('opacity:.4')
+    expect(css).toContain(`.lm-g .lm-n${i} .lm-gbox{fill:var(--lm-selFill)`)
+    expect(css).not.toContain('opacity:.35')
+  })
+
+  it('lights the blast radius and exactly the edges inside it', () => {
+    const m = createModel(report)
+    const idx = index(m)
+    // util's blast radius: app imports it (plugin only PEERS it — a peer is a
+    // runtime field, so plugin counts too).
+    const blast = blastRadius(m.byId, '@fix/util')
+    const css = graphSelectionCss(m, idx, '@fix/util', null, blast)
+    for (const id of blast) expect(css).toContain(`.lm-g .lm-n${idx.get(id)} .lm-gbox`)
+    const u = idx.get('@fix/util')!
+    const a = idx.get('@fix/app')!
+    expect(css).toContain(`.lm-g .lm-ef${a}.lm-et${u}`)
+    // app → auth leaves the lit set (auth is not in util's blast radius).
+    expect(css).not.toContain(`.lm-ef${a}.lm-et${idx.get('@fix/auth')}`)
   })
 
   it('hover dims everything, then relights the hovered node and its neighbours', () => {
@@ -106,18 +121,17 @@ describe('graphSelectionCss', () => {
     const idx = index(m)
     const util = m.byId.get('@fix/util')!
     const css = graphSelectionCss(m, idx, '@fix/app', '@fix/util')
-    expect(css).toContain('.lm-g .lm-gnode{opacity:.4}')
+    expect(css).toContain('.lm-g .lm-gnode{opacity:.35}')
     for (const id of ['@fix/util', ...util.dependents]) {
       expect(css).toContain(`.lm-g .lm-n${idx.get(id)}`)
     }
-    // Edges light from the HOVERED node, not the selection, while hovering.
     const h = idx.get('@fix/util')!
     expect(css).toContain(`.lm-ef${h},.lm-g .lm-et${h}{`)
   })
 
   it('an unknown selection/hover produces an empty sheet rather than a broken one', () => {
     const m = createModel(report)
-    expect(graphSelectionCss(m, new Map(), 'nope', 'also-nope')).toBe('')
+    expect(graphSelectionCss(m, new Map(), 'nope', 'also-nope', ['x'])).toBe('')
   })
 })
 
@@ -165,9 +179,10 @@ describe('createModel init', () => {
     expect(m.selId()).toBe('@fix/util')
   })
 
-  it('ignores a selection that names no node (a stale shared link)', () => {
+  it('ignores a selection that names no node (a stale shared link): the overview opens', () => {
     const m = createModel(report, 'graph', { selId: '@gone/pkg' })
-    expect(m.selId()).toBe(m.nodes[0]!.id)
+    expect(m.selId()).toBe('')
+    expect(m.sel()).toBeNull()
   })
 })
 
@@ -273,12 +288,12 @@ describe('global stylesheet', () => {
     }
     // Dark by default, light only when the OS asks and nothing chose dark —
     // the shared rule.
-    expect(GLOBAL_CSS).toContain(`:root{${cssVars(tokens(true))}`)
+    expect(GLOBAL_CSS).toContain(`:root,[data-lm-theme=dark]{${cssVars(tokens(true))}`)
     expect(GLOBAL_CSS).toContain('@media (prefers-color-scheme: light){:root:not([data-lm-theme=dark])')
   })
 
   it('never re-declares a property rocketstyle owns on anchors (unlayered beats layered)', () => {
-    // `a{color:inherit}` here would override every NavTab state colour.
+    // `a{color:inherit}` here would override every ViewBtn state colour.
     expect(GLOBAL_CSS).not.toMatch(/\ba\{[^}]*color/)
   })
 

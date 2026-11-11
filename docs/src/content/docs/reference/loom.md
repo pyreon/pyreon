@@ -27,7 +27,7 @@ See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multipla
 - tsconfig `paths` aware: `~/*`, `@app/*` and other internal aliases are read from the package + root tsconfig (JSONC, one `extends` hop) so they never scan as phantom packages
 - Lexical import scan that strips comments + template-literal contents and validates specifier grammar — recipe catalogs carrying whole import lines as strings never false-positive
 - Red exit contract: `loom scan` fails CI on error findings (`--strict` includes warnings); `loom-report.json` is the machine surface with stable codes + per-finding evidence
-- The observatory (`loom dev`): layered graph, adjacency matrix, cycle cards, blast-radius ranking, manifest table + detail panel, ⌘K, keyboard nav, dark/light following the shared `pyreon-theme` preference — on the public Pyreon UI stack; vite + @pyreon/vite-plugin optional peers
+- The observatory (`loom dev`): the Pyreon tool-app layout — package list by depth, layered graph with blast-radius highlighting, external version matrix (plus the import DSM), cycle cards, impact ranking, manifest + report download, detail rail, scan status bar, ⌘K, keyboard nav, dark/light following the shared `pyreon-theme` preference — on the public Pyreon UI stack; vite + @pyreon/vite-plugin optional peers
 
 ## Complete example
 
@@ -68,7 +68,7 @@ $ loom dev . --port=5230   # the observatory UI over the same report
 | Symbol | Kind | Summary |
 | --- | --- | --- |
 | [`loom scan`](#loom-scan-function) | function | Read the workspace, analyze the dependency fabric, and report. |
-| [`loom dev`](#loom-dev-function) | function | The observatory: five views over the scan report — the layered dependency graph (columns by resolution depth, cycle edge |
+| [`loom dev`](#loom-dev-function) | function | The observatory: a tool-app layout over the scan report — a top bar (workspace name, view switch, error / warning / info |
 | [`loom build`](#loom-build-function) | function | Prerenders the observatory to a STANDALONE STATIC SITE — one prerendered page per view (graph / matrix / cycles / impact |
 | [`buildReport`](#buildreport-function) | function | The programmatic engine behind the CLI — scan the workspace, analyze the graph, run every detector, fold the stats. |
 
@@ -178,7 +178,7 @@ loom scan · . · 5 packages
 loom dev [dir] [--port=5230]
 ```
 
-The observatory: five views over the scan report — the layered dependency graph (columns by resolution depth, cycle edges dashed + animated, hover dims unrelated nodes), the internal adjacency matrix (keyboard-reachable cells), cycle cards with break-the-loop advice, blast-radius ranking (transitive dependents, counted not guessed), and the manifest table — plus a detail panel per package (metrics, depends-on / required-by, findings, resolution path), ⌘K search, kind filters, and dark/light theming. The report endpoint re-scans per request, so a manifest edit + reload shows fresh truth. Vite + @pyreon/vite-plugin are OPTIONAL peers: `loom scan` works without them; `loom dev` names the install when missing.
+The observatory: a tool-app layout over the scan report — a top bar (workspace name, view switch, error / warning / info counts and the exit code `loom scan` would return), the package list grouped by resolution depth with a severity glyph and blast-radius count per row, five views, a detail rail and a scan status bar (counts plus the `loom.ignore` suppressions in force). The views: the layered graph of internal packages (one column per depth; selecting a package lights its blast radius and the edges a change travels; cycle edges dashed red; dev edges an opt-in layer), the matrix (external VERSION usage — rows are dependencies, columns the packages declaring them, cross-major drift red, same-major amber, phantom imports and unused declarations marked; or the internal import DSM), cycle cards, impact (the selection's blast radius plus every package ranked by reach), and the manifest (an excerpt of this scan's `loom-report.json` with a download of the full report, and every node as a table row). With nothing selected (the first view) the rail is a workspace overview — counts, findings by severity, the five widest blast radii with platform packages ranked under their parent, and the gate. For a package the rail shows deps / dependents / blast, findings, depends-on, blast radius, resolution path and the `loom.ignore` entry that would suppress the first finding. ⌘K search, ↑↓ through the list, one keyboard tab stop in the graph, dark/light following the shared `pyreon-theme` preference. Below 860 px the list is a drawer, below 760 px the rail too. The report endpoint re-scans per request, so a manifest edit + reload shows fresh truth; a failed rescan renders its reason with a reload. Vite + @pyreon/vite-plugin are OPTIONAL peers: `loom scan` works without them; `loom dev` names the install when missing.
 
 **Example**
 
@@ -235,6 +235,8 @@ import { buildReport } from '@pyreon/loom'
 
 const report = buildReport('.')
 report.stats            // { internal, external, edges, depth, cycles, errors, warnings, infos }
+report.gate             // { strict, exit } — what `loom scan` exits with
+report.issues.filter((i) => i.ignored)  // findings a loom.ignore entry waved through, with the reason
 report.graph.cycles     // string[][] — each runtime loop in order
 report.issues.filter((i) => i.severity === 'error')
 ```

@@ -11,11 +11,11 @@
  */
 import type { NodeVM, ObservatoryModel } from './model'
 
-/** The ordered internal ids a matrix shows — deepest first, then name. Pure. */
-export function matrixIds(m: ObservatoryModel): string[] {
-  return m
-    .shown()
-    .filter((n) => n.kind === 'internal')
+/** The ordered internal ids the import matrix shows — deepest first, then
+ * name. Over every internal package (the package-list filter does not narrow
+ * it), so nothing but the workspace itself changes the set. Pure. */
+export function matrixIds(m: Pick<ObservatoryModel, 'internal'>): string[] {
+  return [...m.internal]
     .sort((a, b) => b.depth - a.depth || a.id.localeCompare(b.id))
     .map((n) => n.id)
 }
@@ -37,46 +37,67 @@ export function matrixSelectionCss(ids: readonly string[], sel: string): string 
 }
 
 /**
- * The hover/selection stylesheet — pure, so the "only this string changes"
- * contract is testable without a DOM. `index` maps node id → its class index.
+ * The graph's selection + hover stylesheet — pure, so the "only this string
+ * changes" contract is testable without a DOM. `index` maps node id → its
+ * class index; `blast` is the selection's transitive dependents.
+ *
+ *  - selection: the node is filled with the accent, its blast radius is
+ *    outlined, and every edge INSIDE {selection ∪ blast} turns accent — the
+ *    path a change travels.
+ *  - hover: everything dims, then the hovered node and its direct neighbours
+ *    relight (the old reading, kept for exploring a dense column).
  */
 export function graphSelectionCss(
   m: Pick<ObservatoryModel, 'byId'>,
   index: ReadonlyMap<string, number>,
   sel: string,
   hov: string | null,
+  blast: readonly string[] = [],
 ): string {
   const si = index.get(sel)
   const hi = hov == null ? undefined : index.get(hov)
-  const li = hi ?? si
   let out = ''
   if (si !== undefined) {
     const n = `.lm-g .lm-n${si}`
-    out +=
-      `${n} .lm-gring{display:inline}${n} .lm-gdot{transform:scale(1.3)}` +
-      `${n} .lm-glabel{fill:var(--lm-text);font-weight:600}${n} .lm-gsub{display:inline}`
+    out += `${n} .lm-gbox{fill:var(--lm-selFill);stroke:var(--lm-accent);stroke-width:1.6}${n} .lm-glabel{fill:var(--lm-text)}`
+    const lit = new Set<string>([sel])
+    const hot: number[] = []
+    for (const id of blast) {
+      const i = index.get(id)
+      if (i === undefined) continue
+      lit.add(id)
+      hot.push(i)
+    }
+    if (hot.length) {
+      const sels = hot.map((i) => `.lm-g .lm-n${i}`)
+      out +=
+        `${sels.map((s) => `${s} .lm-gbox`).join(',')}{stroke:var(--lm-accent);stroke-opacity:.55}` +
+        `${sels.map((s) => `${s} .lm-glabel`).join(',')}{fill:var(--lm-text)}`
+    }
+    const edges: string[] = []
+    for (const id of lit) {
+      const from = index.get(id)!
+      for (const dep of m.byId.get(id)?.deps ?? []) {
+        const to = index.get(dep)
+        if (to !== undefined && lit.has(dep)) edges.push(`.lm-g .lm-ef${from}.lm-et${to}`)
+      }
+    }
+    if (edges.length) out += `${edges.join(',')}{stroke:var(--lm-accent);opacity:.9;stroke-width:1.6}`
   }
   if (hi !== undefined) {
     const node = m.byId.get(hov!)
     const related = new Set<number>([hi])
-    for (const d of node?.deps ?? []) {
-      const i = index.get(d)
-      if (i !== undefined) related.add(i)
-    }
-    for (const d of node?.dependents ?? []) {
+    for (const d of [...(node?.deps ?? []), ...(node?.dependents ?? [])]) {
       const i = index.get(d)
       if (i !== undefined) related.add(i)
     }
     const sels = [...related].map((i) => `.lm-g .lm-n${i}`)
     out +=
-      '.lm-g .lm-gnode{opacity:.4}.lm-g .lm-gedge{opacity:.05}' +
+      '.lm-g .lm-gnode{opacity:.35}.lm-g .lm-gedge{opacity:.05}' +
       `${sels.join(',')}{opacity:1}` +
-      `${sels.map((s) => `${s} .lm-gsub`).join(',')}{display:inline}`
+      `.lm-g .lm-ef${hi},.lm-g .lm-et${hi}{stroke:var(--lm-accent);opacity:.8;stroke-width:1.4}` +
+      '.lm-g[data-cyc=on] .lm-gedge.lm-ce{opacity:.9}'
   }
-  if (li !== undefined) {
-    out += `.lm-g .lm-ef${li},.lm-g .lm-et${li}{stroke:var(--lm-accent);opacity:${hi !== undefined ? '.65' : '.6'};stroke-width:1.4}`
-  }
-  if (hi !== undefined) out += '.lm-g[data-cyc=on] .lm-gedge.lm-ce{opacity:.9}'
   return out
 }
 
@@ -87,4 +108,31 @@ export function findingsLabel(n: Pick<NodeVM, 'errors' | 'warnings' | 'infos'>):
   if (n.warnings) parts.push(`${n.warnings} warn`)
   if (n.infos) parts.push(`${n.infos} info`)
   return parts.length ? parts.join(' · ') : '—'
+}
+
+/**
+ * The version matrix's selection sheet: a selected PACKAGE lights its column
+ * (header + band), a selected EXTERNAL lights its row. Pure, like the others:
+ * the cells are built once per row set, a selection rewrites this string.
+ */
+export function versionSelectionCss(
+  cols: readonly string[],
+  rows: readonly string[],
+  sel: string,
+): string {
+  const c = cols.indexOf(sel)
+  if (c >= 0) {
+    return (
+      `.lm-vm .lm-vc${c}>button{color:var(--lm-accent);font-weight:600}` +
+      `.lm-vm .lm-vm-bandc{display:block;grid-column:${c + 2};grid-row:2/-1}`
+    )
+  }
+  const r = rows.indexOf(sel)
+  if (r >= 0) {
+    return (
+      `.lm-vm .lm-vr${r}>button{color:var(--lm-accent);font-weight:600}` +
+      `.lm-vm .lm-vm-bandr{display:block;grid-row:${r + 2};grid-column:2/-1}`
+    )
+  }
+  return ''
 }

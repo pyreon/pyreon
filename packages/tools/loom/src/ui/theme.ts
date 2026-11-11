@@ -7,6 +7,8 @@
  */
 export interface LoomTokens {
   bg: string
+  /** The canvas ground under the graph / matrix / articles (the design's `--bg-deep`). */
+  deep: string
   surface: string
   surface2: string
   text: string
@@ -17,6 +19,8 @@ export interface LoomTokens {
   /** Text ON an accent fill: ink on the bright ember, white on the paper one. */
   accentText: string
   accentSoft: string
+  /** An OPAQUE accent tint for selected graph boxes (edges must not show through). */
+  selFill: string
   /** External-package hue (the design's steel blue). */
   ext: string
   edge: string
@@ -37,6 +41,18 @@ export interface LoomTokens {
   warn: string
   warnSoft: string
   warnRing: string
+}
+
+/** `a` laid over `b` at `alpha`, as an opaque hex — for fills that must hide what is under them. */
+export function mixHex(a: string, b: string, alpha: number): string {
+  const rgb = (hex: string) => {
+    const h = hex.replace('#', '')
+    return [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16))
+  }
+  const [x, y] = [rgb(a), rgb(b)]
+  return `#${x
+    .map((v, i) => Math.round(v * alpha + y[i]! * (1 - alpha)).toString(16).padStart(2, '0'))
+    .join('')}`
 }
 
 export function hexToRgba(hex: string, a: number): string {
@@ -64,6 +80,7 @@ export function tokens(dark: boolean): LoomTokens {
   if (dark) {
     return {
       bg: '#0A0A0E',
+      deep: '#06060A',
       surface: '#111118',
       surface2: '#181822',
       text: '#F4EFE6',
@@ -73,6 +90,7 @@ export function tokens(dark: boolean): LoomTokens {
       accent: ACCENT,
       accentText: '#0A0A0E',
       accentSoft: hexToRgba(ACCENT, 0.12),
+      selFill: mixHex(ACCENT, '#111118', 0.14),
       ext: '#22D3EE',
       edge: '#3A3846',
       edgeAlpha: '0.14',
@@ -91,6 +109,7 @@ export function tokens(dark: boolean): LoomTokens {
   }
   return {
     bg: '#FAF5EB',
+    deep: '#F3EDE1',
     surface: '#FFFFFF',
     surface2: '#F4EFE6',
     text: '#14141C',
@@ -101,6 +120,7 @@ export function tokens(dark: boolean): LoomTokens {
     accent: ACCENT_ON_PAPER,
     accentText: '#FFFFFF',
     accentSoft: 'rgba(232,74,15,.08)',
+    selFill: mixHex('#E84A0F', '#FFFFFF', 0.1),
     ext: '#0A6E89',
     edge: '#B9B2A6',
     edgeAlpha: '0.3',

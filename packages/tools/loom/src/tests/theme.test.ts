@@ -10,7 +10,7 @@
  * loses that one declaration in exactly one mode.
  */
 import { describe, expect, it } from 'vitest'
-import { ACCENT, ACCENT_ON_PAPER, hexToRgba, tokens, type LoomTokens } from '../ui/theme'
+import { ACCENT, ACCENT_ON_PAPER, hexToRgba, mixHex, tokens, type LoomTokens } from '../ui/theme'
 
 describe('hexToRgba', () => {
   it('converts a 6-char hex', () => {
@@ -29,6 +29,14 @@ describe('hexToRgba', () => {
 
   it('carries the alpha through verbatim, including 0', () => {
     expect(hexToRgba('#000000', 0)).toBe('rgba(0,0,0,0)')
+  })
+})
+
+describe('mixHex', () => {
+  it('lays one colour over another as an opaque hex', () => {
+    expect(mixHex('#ffffff', '#000000', 0.5)).toBe('#808080')
+    expect(mixHex('#ff0000', '#0000ff', 1)).toBe('#ff0000')
+    expect(mixHex('#ff0000', '#0000ff', 0)).toBe('#0000ff')
   })
 })
 
@@ -108,10 +116,11 @@ describe('both themes pass 4.5:1 for text', () => {
   for (const dark of [true, false]) {
     const t = tokens(dark)
     const grounds: [string, Rgba][] = []
-    for (const s of ['bg', 'surface', 'surface2'] as const) {
+    for (const s of ['bg', 'deep', 'surface', 'surface2'] as const) {
       const base = parse(t[s])
       grounds.push([s, base], [`accentSoft on ${s}`, over(parse(t.accentSoft), base)])
     }
+    grounds.push(['selFill', parse(t.selFill)])
     for (const role of TEXT) {
       it(`${dark ? 'dark' : 'light'}: ${role} on every ground`, () => {
         for (const [name, bg] of grounds) {
@@ -123,7 +132,7 @@ describe('both themes pass 4.5:1 for text', () => {
     it(`${dark ? 'dark' : 'light'}: each status colour on its own tinted badge`, () => {
       for (const k of ['ok', 'warn', 'danger'] as const) {
         const soft = t[`${k}Soft` as const]
-        for (const s of ['bg', 'surface', 'surface2'] as const) {
+        for (const s of ['bg', 'deep', 'surface', 'surface2'] as const) {
           const r = ratio(parse(t[k]), over(parse(soft), parse(t[s])))
           expect(r, `${k} on ${k}Soft over ${s} = ${r.toFixed(2)}`).toBeGreaterThanOrEqual(4.5)
         }

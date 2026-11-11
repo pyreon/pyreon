@@ -70,15 +70,17 @@ pyreon loom dev .            # http://localhost:5230, or the next free port
 pyreon loom dev . --port 4000  # exactly this port, or fail
 ```
 
-Five views over the same report:
+Five views over the same report, in the Pyreon tool-app layout: a top bar (workspace, view switch, error / warning / info counts and the exit code `loom scan` would return), the package list grouped by resolution depth (a severity glyph and the blast-radius count on every row; the filter field narrows it), the active view, a detail rail, and a status bar with the scan counts and the `loom.ignore` suppressions in force.
 
-- **Graph** — layered by resolution depth (ENTRY → DEPTH *n*), curved edges, cycle edges dashed red and animated, hover dims unrelated nodes.
-- **Matrix** — the internal adjacency block; rows depend on columns, cycle back-edges in red, every cell keyboard-reachable.
-- **Cycles** — each runtime loop as a card: the import chain as clickable chips, severity by length, break-the-loop advice.
-- **Impact** — blast radius, counted not guessed: transitive dependents per package, ranked.
-- **Manifest** — every node as a data row with per-package finding counts and a status badge.
+- **Graph** — internal packages in one column per resolution depth (ENTRY → DEPTH *n*). Selecting a package fills it and lights its blast radius: every transitive dependent and the edges a change travels along. Cycle edges dashed red; dev edges are an opt-in dotted layer; hover dims everything but a package's direct neighbours.
+- **Matrix** — external version usage: rows are external dependencies, columns the packages declaring them, cells the declared range. On a drifting dependency the declarations that disagree with the usual range are coloured — red across majors, amber within one; phantom imports and unused declarations are marked in place. "drift only" (on by default when there is drift) narrows the rows to the `version-drift` findings. The **imports** chip switches to the internal adjacency matrix: rows depend on columns, foundations first, so a mark above the diagonal is a back-edge.
+- **Cycles** — each runtime loop as a card: the ring of packages (clickable) and how to open it; an acyclic workspace says what was checked.
+- **Impact** — the selected package's blast radius, then every package ranked by reach.
+- **Manifest** — an excerpt of this scan's `loom-report.json` (counts, the gate, the first findings) with a download of the full report, and every node as a table row with its findings and status.
 
-Plus a detail panel per package (metrics, depends-on / required-by, findings, resolution path from the nearest entry point), ⌘K search, kind filters, ↑↓ navigation, and dark/light theming. The theme is the shared Pyreon preference — `localStorage['pyreon-theme']` (`'light' | 'dark'`), otherwise `prefers-color-scheme` — so choosing light on the docs site, in Atlas or in Loom applies to all three, live across tabs. Loom's own key from before (`loom:theme`) is still read as a fallback. The report endpoint re-scans per request — edit a manifest, reload, see fresh truth.
+The detail rail shows deps · dependents · blast, the findings, what the package depends on, its blast radius, the resolution path from the nearest entry point, and the `loom.ignore` entry that would suppress its first finding (an external dependency shows its declared ranges and who declares each). With nothing selected (how it opens) the rail shows the workspace overview: counts, findings by severity, cycles, the five widest blast radii and the gate. Platform packages (only an optionalDependency of one parent, e.g. `@pyreon/compiler-<os>-<arch>`) are ranked under their parent, not beside it. ⌘K searches packages, findings, versions and edges; ↑↓ walks the list (also from the filter field); the graph has one tab stop, the selected box, and Enter selects. Below 860 px the list becomes a drawer, below 760 px the rail too (Escape closes them).
+
+The theme is the shared Pyreon preference — `localStorage['pyreon-theme']` (`'light' | 'dark'`), otherwise `prefers-color-scheme` — so choosing light on the docs site, in Atlas or in Loom applies to all three, live across tabs. Loom's own key from before (`loom:theme`) is still read as a fallback. The report endpoint re-scans per request — edit a manifest, reload, see fresh truth; while it scans the page says so, and a rescan that fails (a manifest mid-edit) shows the reason with a reload button.
 
 Vite + `@pyreon/vite-plugin` are **optional peers**: `loom scan` runs without them; `loom dev` names the install when missing. The dev server reports with the same settings `loom scan` resolves (config file + `package.json` key), and keeps its own dependency cache in `node_modules/.cache/loom-vite`, so it never invalidates your app's Vite cache.
 
