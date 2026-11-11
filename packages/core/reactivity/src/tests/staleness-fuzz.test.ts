@@ -28,9 +28,6 @@ interface Node {
   get: () => number
   formula: Formula | null // null = signal
   set?: (v: number) => void
-  evals: number
-  lastReads: Array<[number, number]> | null
-  wastedLast: boolean
 }
 
 function makeFormula(rand: () => number, i: number): Formula {
@@ -71,26 +68,12 @@ function runSeed(seed: number): void {
         get: s,
         formula: null,
         set: (v) => s.set(v),
-        evals: 0,
-        lastReads: null,
-        wastedLast: false,
       })
       continue
     }
     const formula = makeFormula(rand, i)
-    const node: Node = { get: () => 0, formula, evals: 0, lastReads: null, wastedLast: false }
-    const fn = () => {
-      node.evals++
-      const reads: Array<[number, number]> = []
-      const prev = node.lastReads
-      const v = formula((j) => {
-        const x = nodes[j]!.get()
-        reads.push([j, x])
-        return x
-      })
-      node.lastReads = reads
-      return v
-    }
+    const node: Node = { get: () => 0, formula }
+    const fn = () => formula((j) => nodes[j]!.get())
     node.get = rand() < 0.25 ? computed(fn, { equals: (x, y) => x === y }) : computed(fn)
     nodes.push(node)
   }
