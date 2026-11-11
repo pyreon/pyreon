@@ -1,0 +1,105 @@
+{
+  "id": "vue",
+  "route": "/migrate/vue",
+  "name": "Vue",
+  "package": "@pyreon/vue-compat",
+  "hook": {
+    "title": "Keep your composables. Port templates when you're ready.",
+    "lede": "`@pyreon/vue-compat` runs the Composition API on Pyreon's engine: `ref`, `reactive`, `computed`, `watch`, the lifecycle hooks, `provide`/`inject`, `createApp`. It is a runtime layer, so components are TSX functions: `.vue` files are ported to TSX, and the composables they import keep running unchanged."
+  },
+  "covers": [
+    "Refs: `ref`, `shallowRef`, `triggerRef`, `isRef`, `unref`, `toValue`, `toRef`, `toRefs`.",
+    "`computed` (getter and writable `{ get, set }` forms); `reactive`, `shallowReactive`, `readonly`, `shallowReadonly`, `toRaw`, `markRaw`, `isReactive`, `isReadonly`, `isProxy`.",
+    "`watch` (single source, getter or array) and `watchEffect`.",
+    "Lifecycle: `onMounted`, `onUnmounted`, `onUpdated`, `onBeforeMount`, `onBeforeUnmount`, `onErrorCaptured`, `onRenderTracked`, `onRenderTriggered`; `nextTick`.",
+    "`provide` / `inject`, `effectScope`, `getCurrentScope`, `onScopeDispose`.",
+    "`defineComponent`, `defineAsyncComponent` (loading and error components, delay, timeout), `createApp(component, props)`.",
+    "Built-ins: `Teleport`, `KeepAlive`, `Transition`."
+  ],
+  "doesNotCover": [
+    "The `.vue` single-file component compiler, and with it `<script setup>`.",
+    "Template directives (`v-if`, `v-for`, `v-model`): use the JSX equivalents.",
+    "The Options API (`data`, `methods`, a `computed` block, `created`, `beforeDestroy`…).",
+    "Lifecycle hooks fire once per instance; `onUpdated`'s render-driven re-fires become per-subscription effects."
+  ],
+  "install": "npm install @pyreon/vue-compat @pyreon/core @pyreon/reactivity @pyreon/runtime-dom\nnpm install -D @pyreon/vite-plugin",
+  "config": [
+    {
+      "file": "vite.config.ts",
+      "code": "// vite.config.ts\nimport { defineConfig } from 'vite'\nimport pyreon from '@pyreon/vite-plugin'\n\nexport default defineConfig({\n  plugins: [pyreon({ compat: 'vue' })],\n})",
+      "note": "Aliases `vue` and its JSX runtime to the compat package."
+    },
+    {
+      "file": "tsconfig.json",
+      "code": "// tsconfig.json\n{\n  \"compilerOptions\": {\n    \"jsx\": \"react-jsx\",\n    \"jsxImportSource\": \"@pyreon/vue-compat\"\n  }\n}",
+      "note": "Types and the JSX runtime come from the compat package."
+    }
+  ],
+  "scaffold": "npm create @pyreon/zero@latest my-app -- --compat vue",
+  "ports": [
+    {
+      "title": "Step 1: the template becomes TSX, the logic stays",
+      "before": {
+        "label": "Vue single-file component",
+        "file": "Counter.vue",
+        "code": "<script setup lang=\"ts\">\nimport { computed, ref } from 'vue'\n\nconst props = defineProps<{ step: number }>()\nconst count = ref(0)\nconst doubled = computed(() => count.value * 2)\n</script>\n\n<template>\n  <button class=\"counter\" @click=\"count += props.step\">{{ count }} / {{ doubled }}</button>\n</template>"
+      },
+      "after": {
+        "label": "TSX on @pyreon/vue-compat",
+        "file": "Counter.tsx",
+        "code": "import { computed, ref } from 'vue' // resolves to @pyreon/vue-compat\n\nexport function Counter(props: { step: number }) {\n  const count = ref(0)\n  const doubled = computed(() => count.value * 2)\n  return (\n    <button class=\"counter\" onClick={() => (count.value += props.step)}>\n      {count.value} / {doubled.value}\n    </button>\n  )\n}"
+      },
+      "note": "`ref`, `computed` and `.value` are untouched; only the markup moved. Render it from a parent's JSX (`<Counter step={2} />`) so the compat runtime re-renders it."
+    },
+    {
+      "title": "Step 2: refs become signals",
+      "before": {
+        "label": "TSX on @pyreon/vue-compat",
+        "file": "Counter.tsx",
+        "code": "import { computed, ref } from 'vue' // resolves to @pyreon/vue-compat\n\nexport function Counter(props: { step: number }) {\n  const count = ref(0)\n  const doubled = computed(() => count.value * 2)\n  return (\n    <button class=\"counter\" onClick={() => (count.value += props.step)}>\n      {count.value} / {doubled.value}\n    </button>\n  )\n}"
+      },
+      "after": {
+        "label": "Pyreon",
+        "file": "Counter.tsx",
+        "code": "import { computed, signal } from '@pyreon/reactivity'\n\nexport function Counter(props: { step: number }) {\n  const count = signal(0)\n  const doubled = computed(() => count() * 2)\n  return (\n    <button class=\"counter\" onClick={() => count.update((c) => c + props.step)}>\n      {count()} / {doubled()}\n    </button>\n  )\n}"
+      },
+      "note": "The Pyreon side is the final form, after `compat` is switched off."
+    }
+  ],
+  "docs": [
+    {
+      "label": "@pyreon/vue-compat reference",
+      "href": "/docs/vue-compat"
+    },
+    {
+      "label": "Coming from Vue",
+      "href": "/docs/migrating-from-vue"
+    }
+  ],
+  "sources": [
+    {
+      "claim": "API surface, scope (no SFC compiler, no script setup, no Options API, no directives), gotchas",
+      "path": "packages/tools/vue-compat/README.md"
+    },
+    {
+      "claim": "Exports",
+      "path": "packages/tools/vue-compat/src/index.ts"
+    },
+    {
+      "claim": "vue alias in compat mode",
+      "path": "packages/tools/vite-plugin/src/index.ts lines 128–142 (compat option) and 430–462 (alias map)"
+    },
+    {
+      "claim": "Step 1 TSX counter updates on click when rendered through JSX",
+      "path": "/tmp/wt-site-content/.scratch/site-compare/{VueCounter.tsx,mount-vue.ts}"
+    },
+    {
+      "claim": "Vue SFC before-sample compiles with @vue/compiler-sfc 3.5.44",
+      "path": "/tmp/wt-site-content/.scratch/site-compare/rivals/Counter.vue"
+    },
+    {
+      "claim": "Covered by unit, browser and Playwright e2e tests",
+      "path": "packages/tools/vue-compat/src/tests/; e2e/vue-compat.spec.ts; e2e/cpa-app-vue-compat.spec.ts"
+    }
+  ]
+}

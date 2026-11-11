@@ -1,0 +1,310 @@
+{
+ "id": "a11y",
+ "route": "/products/a11y",
+ "name": "Accessibility",
+ "package": "@pyreon/a11y",
+ "category": "fundamentals · accessibility",
+ "hero": {
+  "title": "One line, and screen readers hear “Saved”.",
+  "emberWord": "“Saved”",
+  "lede": "`announce('Saved')` speaks to screen-reader users from anywhere in your app, with no provider and nothing to mount. Add a signal-driven live region, a skip link, visually hidden labels and ARIA ids: the pieces single-page apps usually leave out.",
+  "install": "bun add @pyreon/a11y",
+  "ctaShort": "Install",
+  "facts": [
+   {
+    "key": "setup",
+    "value": "none<small>The live regions create themselves on the first call.</small>"
+   },
+   {
+    "key": "server",
+    "value": "SSR-safe<small>announce() is a no-op on the server; components render plain markup.</small>"
+   },
+   {
+    "key": "route changes",
+    "value": "announced by default<small>Built into the root `<RouterView>`; customise with `<RouteAnnouncer>`.</small>"
+   },
+   {
+    "key": "dependencies",
+    "value": "none<small>Only Pyreon itself. The router integration is a separate entry.</small>"
+   }
+  ]
+ },
+ "why": {
+  "title": "The accessibility gaps SPAs leave open, closed.",
+  "items": [
+   {
+    "title": "Say what just happened",
+    "text": "\"Saved\", \"3 results\", \"Connection lost\". `announce()` writes into a polite or assertive live region it created on first use. Two messages in the same moment are joined, not overwritten, and saying \"Saved\" twice is heard twice."
+   },
+   {
+    "title": "Status that announces itself",
+    "text": "`<LiveRegion>{() => status()}</LiveRegion>` speaks every change of a signal. No effect, no call. It renders on the server, so the region exists before the first update after hydration."
+   },
+   {
+    "title": "Navigation you can hear",
+    "text": "In a single-page app the page never reloads, so a screen reader stays silent. The root `<RouterView>` announces each new page by default; `<RouteAnnouncer>` lets you choose the wording."
+   },
+   {
+    "title": "The same call on the phone",
+    "text": "Compiled for iOS (native targets are experimental), `announce()` becomes a VoiceOver announcement; on Android the compiler hosts polite and assertive live regions for TalkBack. Politeness carries over on both (iOS 17 and later).",
+    "status": "next release"
+   }
+  ]
+ },
+ "difference": {
+  "title": "Accessible feedback without the plumbing.",
+  "before": {
+   "label": "by hand",
+   "caption": "A live region you mount, clear and refill on a timer, or a repeat goes unheard.",
+   "code": "<div aria-live=\"polite\" class=\"sr-only\" id=\"status\"></div>\n\nfunction save() {\n  // …\n  const el = document.getElementById('status')!\n  el.textContent = ''\n  setTimeout(() => {\n    el.textContent = 'Settings saved'\n  }, 100)\n}"
+  },
+  "after": {
+   "label": "with @pyreon/a11y",
+   "caption": "One call, from any handler. The regions, the clearing and the repeat handling are done for you.",
+   "code": "import { announce } from '@pyreon/a11y'\n\nannounce('Settings saved')\nannounce('Connection lost', { politeness: 'assertive' })\nannounce('Copied', { clearAfter: 1000 })"
+  }
+ },
+ "extraSectionsHtml": null,
+ "demo": {
+  "title": "Hear what a screen reader hears.",
+  "text": "Use the app on the left. The panel on the right shows what announce() sends to screen readers: the text sighted users never see. Tab into the box and the skip link appears first.",
+  "component": "DemoA11y",
+  "reference": "pkg-a11y.html#demo",
+  "referenceHtml": "<div class=\"p-demo\">\n  <div class=\"ui\">\n    <a href=\"#a11y-main\" class=\"a11y-skip\">Skip to content</a>\n    <div style=\"display:flex;gap:8px;flex-wrap:wrap\" id=\"a11y-main\"><button class=\"go\" type=\"button\" data-say=\"Settings saved\">Save</button><button class=\"sec\" type=\"button\" data-say=\"Copied to clipboard\">Copy link</button><button class=\"sec\" type=\"button\" data-say=\"3 results for &quot;pyreon&quot;\">Search</button><button class=\"sec\" type=\"button\" data-say=\"Connection lost. Retrying.\" data-p=\"assertive\">Go offline</button></div>\n    <div class=\"hint\" style=\"margin-top:14px\">Tab into this box: a skip link appears first.</div>\n    <label style=\"display:flex;gap:8px;align-items:center;margin-top:10px;font-weight:500\"><input type=\"checkbox\" id=\"a11y-vh\" style=\"width:16px;height:16px;accent-color:#C2410C\"> Show visually hidden text</label>\n    <div style=\"margin-top:10px;font-size:14px\">Price: <b>$129</b> <span id=\"a11y-hidden\" class=\"vh\">including VAT, billed yearly</span></div>\n  </div>\n  <div class=\"card\"><div class=\"in\"><span class=\"label\">screen reader output</span><div class=\"logbox\" id=\"a11y-log\" aria-hidden=\"true\"></div></div></div>\n</div>",
+  "referenceCss": ".logbox{font-family:var(--mono);font-size:12.5px;line-height:1.85;color:var(--mist);min-height:220px}.logbox div{border-bottom:1px solid var(--line);padding:5px 0}.logbox b{font-weight:400;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;margin-right:8px}.logbox .po{color:var(--link)}.logbox .as{color:var(--err)}\n.a11y-skip{position:absolute;left:-9999px}.a11y-skip:focus{position:static;display:inline-block;margin-bottom:12px;padding:8px 12px;background:#14141C;color:#fff;border-radius:6px}.vh{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}.vh.show{position:static;width:auto;height:auto;clip:auto;background:#FEF3C7;padding:1px 6px;border-radius:4px;font-size:13px}",
+  "referenceJs": "(function(){var log=document.getElementById('a11y-log');function say(t,p){var d=document.createElement('div');d.innerHTML='<b class=\"'+(p==='assertive'?'as':'po')+'\">'+(p||'polite')+'</b>'+t.replace(/</g,'&lt;');log.prepend(d)}document.querySelectorAll('[data-say]').forEach(function(b){b.onclick=function(){say(b.dataset.say,b.dataset.p)}});document.getElementById('a11y-vh').onchange=function(){document.getElementById('a11y-hidden').classList.toggle('show',this.checked)};say('Navigated to Settings — Acme','polite');})();"
+ },
+ "features": {
+  "title": "Small primitives, big difference.",
+  "items": [
+   {
+    "name": "announce()",
+    "text": "polite by default, assertive for errors and urgent changes"
+   },
+   {
+    "name": "Queued, not lost:",
+    "text": "messages announced together are joined into one, never overwritten"
+   },
+   {
+    "name": "Repeats re-announced:",
+    "text": "the region is cleared before each write, so \"Saved\" twice is heard twice"
+   },
+   {
+    "name": "clearAfter",
+    "text": "empties the region so stale text is not read again later"
+   },
+   {
+    "name": "`<LiveRegion>`",
+    "text": "driven by a signal, with `visible` for status text everyone should see"
+   },
+   {
+    "name": "`<VisuallyHidden>`",
+    "text": "labels and headings for assistive tech, kept in the accessibility tree"
+   },
+   {
+    "name": "`<SkipLink>`",
+    "text": "moves scroll and keyboard focus past the navigation (WCAG 2.4.1)"
+   },
+   {
+    "name": "createA11yId",
+    "text": "unique ids for `aria-labelledby`, `aria-describedby` and `for`"
+   },
+   {
+    "name": "`<RouteAnnouncer>` and `useRouteAnnouncer`",
+    "text": "custom route-change wording, with a dev warning if two announcers run at once"
+   },
+   {
+    "name": "Router-free main entry",
+    "text": "`@pyreon/a11y/router` is a separate import, so announce() never pulls in the router"
+   }
+  ]
+ },
+ "api": {
+  "title": "8 exports for your app, two entry points.",
+  "groups": [
+   {
+    "name": "announcements",
+    "items": [
+     "announce",
+     "clearAnnouncements",
+     "LiveRegion"
+    ]
+   },
+   {
+    "name": "components",
+    "items": [
+     "VisuallyHidden",
+     "SkipLink"
+    ]
+   },
+   {
+    "name": "ids",
+    "items": [
+     "createA11yId"
+    ]
+   },
+   {
+    "name": "@pyreon/a11y/router",
+    "items": [
+     "RouteAnnouncer",
+     "useRouteAnnouncer"
+    ]
+   }
+  ]
+ },
+ "limits": [
+  {
+   "title": "Keep assertive for what is urgent",
+   "text": "An assertive message cuts off whatever the user was hearing. Use it for errors and lost connections; leave status updates polite."
+  },
+  {
+   "title": "Announcements happen in the browser",
+   "text": "`announce()` does nothing during SSR, by design. Call it from handlers and effects, not while rendering."
+  },
+  {
+   "title": "One route announcer at a time",
+   "text": "`<RouterView>` already announces navigation. If you add `<RouteAnnouncer>`, switch the built-in one off; a dev warning tells you when both are running."
+  },
+  {
+   "title": "clearAfter stays on the web",
+   "text": "In native builds `announce()` keeps its politeness, but `clearAfter` is ignored on iOS and Android."
+  }
+ ],
+ "related": [
+  {
+   "href": "/products/router",
+   "category": "core",
+   "name": "Router",
+   "text": "Route changes announced by default.",
+   "package": "@pyreon/router"
+  },
+  {
+   "href": "/products/form",
+   "category": "fundamentals",
+   "name": "Forms",
+   "text": "Labels, errors and aria-describedby wired for you.",
+   "package": "@pyreon/form"
+  },
+  {
+   "href": "/products/atlas",
+   "category": "tools",
+   "name": "Atlas",
+   "text": "axe-core checks on every component scenario.",
+   "package": "@pyreon/atlas"
+  },
+  {
+   "href": "/products/kinetic",
+   "category": "ui system",
+   "name": "Motion",
+   "text": "Animations that respect reduced motion.",
+   "package": "@pyreon/kinetic + kinetic-presets"
+  }
+ ],
+ "end": {
+  "title": "Your app already looks good. Now let it say so.",
+  "cta": "Read the accessibility guide"
+ },
+ "benchmarks": null,
+ "glyphSvg": "<circle cx=\"60\" cy=\"24\" r=\"12\" fill=\"url(#eg)\"/><path d=\"M22 46 H98 M60 46 V78 M60 78 L40 108 M60 78 L80 108\" stroke=\"currentColor\" stroke-width=\"10\" fill=\"none\" stroke-linecap=\"round\"/>",
+ "recipes": [
+  {
+   "title": "Search results a screen reader can count",
+   "text": "A visible result count that is also announced every time it changes. `<LiveRegion>` tracks the computed, so there is no announce call to remember.",
+   "code": "import { computed, signal } from '@pyreon/reactivity'\nimport { For } from '@pyreon/core'\nimport { LiveRegion, VisuallyHidden } from '@pyreon/a11y'\n\nconst ALL = ['Signals', 'Router', 'Hooks', 'Forms', 'Charts']\n\nexport function Search() {\n  const query = signal('')\n  const results = computed(() => ALL.filter((x) => x.toLowerCase().includes(query().toLowerCase())))\n\n  return (\n    <div>\n      <label>\n        <VisuallyHidden>Search packages</VisuallyHidden>\n        <input type=\"search\" onInput={(e) => query.set(e.currentTarget.value)} />\n      </label>\n      <LiveRegion visible>{() => `${results().length} results`}</LiveRegion>\n      <ul>\n        <For each={results} by={(r) => r}>\n          {(r) => <li>{r}</li>}\n        </For>\n      </ul>\n    </div>\n  )\n}"
+  },
+  {
+   "title": "A field that explains itself",
+   "text": "The hint is linked to the input with a generated id, the input flags itself invalid, and the outcome is spoken: assertive for the error, polite for success.",
+   "code": "import { signal } from '@pyreon/reactivity'\nimport { announce, createA11yId } from '@pyreon/a11y'\n\nexport function PasswordField() {\n  const hintId = createA11yId('hint')\n  const value = signal('')\n  const invalid = signal(false)\n\n  const submit = (e: SubmitEvent) => {\n    e.preventDefault()\n    const bad = value().length < 8\n    invalid.set(bad)\n    announce(bad ? 'Password needs at least 8 characters' : 'Account created', {\n      politeness: bad ? 'assertive' : 'polite',\n    })\n  }\n\n  return (\n    <form onSubmit={submit}>\n      <label for=\"pw\">Password</label>\n      <input\n        id=\"pw\"\n        type=\"password\"\n        aria-describedby={hintId}\n        aria-invalid={() => invalid()}\n        onInput={(e) => value.set(e.currentTarget.value)}\n      />\n      <p id={hintId}>At least 8 characters.</p>\n      <button type=\"submit\">Create account</button>\n    </form>\n  )\n}"
+  },
+  {
+   "title": "Your own words for every page",
+   "text": "A skip link first in the tab order, and route changes announced as \"Billing page\". Turn the router's built-in announcer off when you use your own, or every page is announced twice.",
+   "code": "import { createRouter, RouterProvider, RouterView } from '@pyreon/router'\nimport { RouteAnnouncer } from '@pyreon/a11y/router'\nimport { SkipLink } from '@pyreon/a11y'\n\nconst Home = () => <h1>Home</h1>\nconst Billing = () => <h1>Billing</h1>\n\nconst router = createRouter({\n  routes: [\n    { path: '/', component: Home, meta: { title: 'Home' } },\n    { path: '/billing', component: Billing, meta: { title: 'Billing' } },\n  ],\n})\n\nexport function App() {\n  return (\n    <RouterProvider router={router}>\n      <SkipLink href=\"#main\">Skip to content</SkipLink>\n      <RouteAnnouncer format={(to) => `${to.meta.title ?? to.path} page`} />\n      <main id=\"main\">\n        <RouterView announceRouteChanges={false} />\n      </main>\n    </RouterProvider>\n  )\n}"
+  }
+ ],
+ "faq": [
+  {
+   "q": "Do I need to mount a provider or an announcer component?",
+   "a": "No. The first `announce()` call creates two visually hidden live regions on `document.body`, one polite (`role=\"status\"`) and one assertive (`role=\"alert\"`), and reuses them for the life of the page."
+  },
+  {
+   "q": "Why does a message arrive about 100 ms after the call?",
+   "a": "Screen readers often ignore a live region that is created and filled in the same moment, and rapid writes overwrite each other. The short wait lets the region exist first and lets messages sent together be joined into one announcement."
+  },
+  {
+   "q": "`announce()` or `<LiveRegion>`?",
+   "a": "`announce()` for one-off events with no place in the layout, like \"Copied\". `<LiveRegion>` when the status already lives somewhere on the page, like a result count or a \"Saving…\" line."
+  },
+  {
+   "q": "Do I need `<RouteAnnouncer>` with the Pyreon router?",
+   "a": "Usually not: the root `<RouterView>` announces route changes on its own. Use `<RouteAnnouncer>` for custom wording or politeness, and pass `announceRouteChanges={false}` to `<RouterView>` when you do."
+  },
+  {
+   "q": "Does this replace an accessibility audit?",
+   "a": "No. These are building blocks. For checks, Atlas runs axe-core on each generated component scenario, and `@pyreon/lint` has opt-in rules such as `pyreon/require-img-alt` and `pyreon/no-positive-tabindex`."
+  }
+ ],
+ "sources": [
+  {
+   "claim": "announce() lazily creates polite (role=status) and assertive (role=alert) regions, aria-atomic, on document.body; no provider",
+   "path": "packages/fundamentals/a11y/src/announce.ts ensureRegion"
+  },
+  {
+   "claim": "~100 ms delay; messages within the window are joined; region cleared first so identical repeats re-announce",
+   "path": "packages/fundamentals/a11y/src/announce.ts ANNOUNCE_DELAY_MS; verified by running in happy-dom (.scratch/core/fork-c/run-a11y.ts: \"Item added Cart total $12\", repeat cleared then rewritten)"
+  },
+  {
+   "claim": "clearAfter empties the region",
+   "path": "announce.ts; run-a11y.ts output \"Copied\" then \"\""
+  },
+  {
+   "claim": "SSR no-op",
+   "path": "announce.ts isServer guard; src/tests/announce-ssr.test.ts"
+  },
+  {
+   "claim": "LiveRegion props politeness/atomic/role/visible; renders on server",
+   "path": "packages/fundamentals/a11y/src/manifest.ts LiveRegion; docs/src/content/docs/a11y.md LiveRegion section"
+  },
+  {
+   "claim": "SkipLink moves scroll and focus, adds tabindex -1 to target, WCAG 2.4.1",
+   "path": "docs/src/content/docs/a11y.md SkipLink; src/tests/skip-link.browser.test.tsx"
+  },
+  {
+   "claim": "RouterView announces route changes by default; announceRouteChanges={false} opts out",
+   "path": "packages/core/router/src/components.tsx lines 62, 127-128; packages/core/router/src/announcer.ts"
+  },
+  {
+   "claim": "dev warning when RouteAnnouncer and RouterView both announce",
+   "path": "packages/fundamentals/a11y/src/router.ts warnIfRouterAlsoAnnounces"
+  },
+  {
+   "claim": "router integration is a separate subpath; router is an optional peer",
+   "path": "packages/fundamentals/a11y/package.json exports \"./router\", peerDependenciesMeta"
+  },
+  {
+   "claim": "no dependencies (peers only)",
+   "path": "packages/fundamentals/a11y/package.json (no dependencies field)"
+  },
+  {
+   "claim": "8 runtime exports across two entries",
+   "path": "packages/fundamentals/a11y/src/index.ts (6) + src/router.ts (2)"
+  },
+  {
+   "claim": "native announce: VoiceOver on iOS, TalkBack live regions on Android, politeness kept, clearAfter ignored; main only",
+   "path": "docs/src/content/docs/a11y.md \"On iOS and Android\"; commit c2d00e2e5 (#4034, 28 Oct, after the last release)"
+  },
+  {
+   "claim": "Atlas runs axe-core per scenario",
+   "path": "packages/tools/atlas/src/manifest.ts features (verify-browser)"
+  },
+  {
+   "claim": "opt-in a11y lint rules",
+   "path": "docs/src/content/docs/accessibility.md \"Linting for the rest\""
+  },
+  {
+   "claim": "samples typecheck and compile",
+   "path": ".scratch/core/fork-c/samples a_*.ts(x) (tsc + transformJSX, 0 errors/warnings)"
+  }
+ ]
+}

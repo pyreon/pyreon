@@ -4,8 +4,6 @@ summary: 'Use island() to ship per-island JS to a static page. Pick the hydrate 
 seeAlso: [routing-setup, ssr-safe-hooks]
 ---
 
-# Island architecture
-
 ## When to use islands
 
 Islands are the right shape when **most of the page is static content** but a few regions need interactivity. Marketing sites, blog posts, docs pages, content-heavy product pages. The rest of the page stays as zero-JS server-rendered HTML; only declared islands ship a client bundle.

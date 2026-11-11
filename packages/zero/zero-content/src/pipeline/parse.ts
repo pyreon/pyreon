@@ -6,6 +6,8 @@ import remarkParse from 'remark-parse'
 import { unified, type Processor } from 'unified'
 import type { Root } from 'mdast'
 import { emitJsx, type EmitOptions } from './emit-jsx'
+import { countWords, excerptOf } from './word-count'
+import { toJsExpression } from './serialize'
 import { parseFrontmatter } from './frontmatter'
 import { remarkCallout } from './remark-plugins/callout'
 import { remarkCodeGroup } from './remark-plugins/codegroup'
@@ -150,6 +152,10 @@ export interface CompileResult {
   headings: Heading[]
   /** Derived slug from the file path. */
   slug: string
+  /** Words in the body (prose + code), for reading-time labels. */
+  wordCount: number
+  /** The first paragraph as plain text (≤ 200 characters), for listings. */
+  excerpt: string
   /**
    * Component names referenced in the markdown via JSX. Useful for
    * downstream validation, dependency tracking, HMR invalidation.
@@ -224,6 +230,13 @@ export interface CompileOptions {
    * (PR-F audit H7).
    */
   resolveLocalImage?: (src: string) => string | null
+  /**
+   * Turn the parsed YAML into the frontmatter the module ships — the Vite
+   * plugin validates it against the collection's schema here and returns
+   * the schema's OUTPUT (defaults applied, dates as the schema types
+   * them), or throws with the formatted issues. Default: ship as parsed.
+   */
+  frontmatter?: (raw: Record<string, unknown>) => Promise<Record<string, unknown>> | Record<string, unknown>
 }
 
 /**
@@ -241,7 +254,7 @@ export async function compileMarkdown(
   //    as JS values). See ./frontmatter.ts for the exact split rules.
   const parsed = parseFrontmatter(source)
   const body = parsed.content
-  const frontmatter = parsed.data
+  const frontmatter = options.frontmatter ? await options.frontmatter(parsed.data) : parsed.data
 
   // 2. Build the unified pipeline. Order matters:
   //      parse → frontmatter → gfm → directive → callout → codegroup → (mdx)
@@ -331,12 +344,16 @@ export async function compileMarkdown(
   //    passes; pick whatever comes after `/content/` (the documented
   //    convention) or fall back to the filename stem.
   const slug = deriveSlug(id)
+  const wordCount = countWords(tree)
+  const excerpt = excerptOf(tree)
 
   // 6. Wrap into a complete TSX module. The module exports:
   //      - `default` — the page component
   //      - `frontmatter` — parsed YAML, typed by zod at PR 4
   //      - `headings` — for the TOC
   //      - `slug` — for the catch-all route
+  //      - `wordCount` — for reading-time labels
+  //      - `excerpt` — the first paragraph, for listings
   //
   //    Hoisted ESM (per-`.md` imports + exports) lands at the top of
   //    the module. A single `import { Name1, Name2 } from componentsModule`
@@ -348,6 +365,8 @@ export async function compileMarkdown(
     frontmatter,
     headings,
     slug,
+    wordCount,
+    excerpt,
     hoistedEsm,
     componentRefs: componentRefList,
     componentsModule:
@@ -359,6 +378,8 @@ export async function compileMarkdown(
     frontmatter,
     headings,
     slug,
+    wordCount,
+    excerpt,
     componentRefs: componentRefList,
     hoistedEsm: [...hoistedEsm],
     warnings: compileWarnings,
@@ -414,11 +435,14 @@ function renderTsxModule(opts: {
   frontmatter: Record<string, unknown>
   headings: Heading[]
   slug: string
+  wordCount: number
+  excerpt: string
   hoistedEsm: string[]
   componentRefs: string[]
   componentsModule: string
 }): string {
-  const fm = JSON.stringify(opts.frontmatter, null, 2)
+  // A JS expression, not JSON: a schema may output `Date`s.
+  const fm = toJsExpression(opts.frontmatter)
   const hd = JSON.stringify(opts.headings, null, 2)
   const sg = JSON.stringify(opts.slug)
 
@@ -468,6 +492,8 @@ function renderTsxModule(opts: {
 ${autoImportLine}${hoistedSection}export const frontmatter = ${fm}
 export const headings = ${hd}
 export const slug = ${sg}
+export const wordCount = ${opts.wordCount}
+export const excerpt = ${JSON.stringify(opts.excerpt)}
 
 export default function ContentPage() {
   return (

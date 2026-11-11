@@ -3,6 +3,10 @@ title: Toast
 description: Signal-driven toast notifications for Pyreon — imperative API, preset variants, promise pattern, auto-dismiss, pause on hover and focus
 ---
 
+<ProductPitch id="toast" />
+
+<LiveDemo id="toast" />
+
 `@pyreon/toast` provides imperative toast notifications. Call `toast()` from anywhere in your app — event handlers, effects, async functions, even non-component modules — with no provider or context to set up. Mount a single `<Toaster />` at your app root and it renders the active stack via a Portal, with CSS transitions, auto-dismiss timers, pause-on-hover-and-focus, and type-aware accessibility built in. Toasts are backed by a module-level signal, so creating one is a plain function call and updating one patches only the affected DOM node.
 
 <PackageBadge name="@pyreon/toast" href="/docs/toast" />
@@ -461,3 +465,11 @@ See [Toaster props](#toaster-props) for the full `ToasterProps` table.
 | `ToastPosition` | `'top-left' \| 'top-center' \| 'top-right' \| 'bottom-left' \| 'bottom-center' \| 'bottom-right'`. |
 | `Toast` | The full toast record stored internally (id, message, type, state, timers, …). |
 | `ToastState` | Lifecycle phase: `'entering' \| 'visible' \| 'exiting'`. |
+
+<BenchCallout id="toast" />
+
+<ComingFrom id="toast" />
+
+<InlineSell id="form" />
+
+<CrossSell id="toast" />

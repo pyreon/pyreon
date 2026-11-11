@@ -1,9 +1,7 @@
 ---
-title: "Head Management — API Reference"
+title: "@pyreon/head — API Reference"
 description: "Reactive `<head>` tag management — useHead(), HeadProvider, renderWithHead() for SSR"
 ---
-
-# @pyreon/head — API Reference
 
 > **Generated** from `head`'s `src/manifest.ts` — the same source that powers `llms.txt` and MCP `get_api`. Do not edit this page by hand; edit the manifest. For the conceptual guide, see [head](/docs/head).
 

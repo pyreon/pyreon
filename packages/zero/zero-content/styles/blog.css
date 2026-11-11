@@ -1,0 +1,359 @@
+/*
+ * @pyreon/zero-content/blog.css — optional default styles for the blog
+ * components. Every selector has the specificity of ONE class: higher than
+ * a site's element-level base styles and resets (`* { margin: 0 }`,
+ * `ul { padding-left: 2rem }`), so the components keep their layout, and
+ * no higher than a single class, so any class rule of the site that comes
+ * later wins. Import it BEFORE your own stylesheet. Colours come from the
+ * surrounding text (currentColor) unless the site sets the variables below:
+ *
+ *   --pyreon-blog-width    max width of the blog column      (46rem)
+ *   --pyreon-blog-muted    secondary text                    (currentColor at 62%)
+ *   --pyreon-blog-border   hairlines and card borders        (currentColor at 14%)
+ *   --pyreon-blog-surface  card background                   (transparent)
+ *   --pyreon-blog-accent   links, hover borders, buttons     (currentColor)
+ *   --pyreon-blog-radius   card and cover corner radius      (0.75rem)
+ *   --pyreon-blog-meta-font  font of dates and counts        (inherit)
+ */
+
+/* Each component root defines the private tokens, so a component used on
+   its own (a <PostList> on a home page) is styled the same. */
+.pyreon-blog,
+.pyreon-blog-post,
+.pyreon-blog-list,
+.pyreon-blog-card,
+.pyreon-blog-tags,
+.pyreon-blog-meta,
+.pyreon-blog-pagination,
+.pyreon-blog-postnav,
+.pyreon-blog-related,
+.pyreon-blog-share,
+.pyreon-blog-cta,
+.pyreon-blog-newsletter,
+.pyreon-blog-status {
+  --_muted: var(--pyreon-blog-muted, color-mix(in srgb, currentColor 62%, transparent));
+  --_border: var(--pyreon-blog-border, color-mix(in srgb, currentColor 14%, transparent));
+  --_accent: var(--pyreon-blog-accent, currentColor);
+  --_radius: var(--pyreon-blog-radius, 0.75rem);
+}
+
+.pyreon-blog,
+.pyreon-blog-post {
+  box-sizing: border-box;
+  max-width: var(--pyreon-blog-width, 46rem);
+  margin: 0 auto;
+  padding: 2.5rem 1.25rem 4rem;
+}
+
+.pyreon-blog__title,
+.pyreon-blog-post__title {
+  margin: 0 0 0.5rem;
+  line-height: 1.15;
+  text-wrap: balance;
+}
+.pyreon-blog__description {
+  margin: 0.25rem 0;
+  color: var(--_muted);
+  line-height: 1.6;
+}
+.pyreon-blog__feed,
+.pyreon-blog__back,
+.pyreon-blog-post__back {
+  display: inline-block;
+  margin: 0.5rem 0;
+}
+
+/* Meta line: byline · date · reading time */
+.pyreon-blog-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.5rem;
+  margin: 0;
+  font-family: var(--pyreon-blog-meta-font, inherit);
+  font-size: 0.85rem;
+  color: var(--_muted);
+}
+.pyreon-blog-meta > :where(:not(:first-child))::before {
+  content: '·';
+  margin-inline-end: 0.5rem;
+}
+.pyreon-blog-byline__author:where(:not(:first-child))::before {
+  content: ', ';
+}
+
+/* Tags */
+.pyreon-blog-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0.75rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+.pyreon-blog-tag {
+  display: inline-flex;
+  gap: 0.35rem;
+  align-items: baseline;
+  padding: 0.15rem 0.6rem;
+  border: 1px solid var(--_border);
+  border-radius: 999px;
+  font-size: 0.8rem;
+  color: var(--_muted);
+  text-decoration: none;
+}
+.pyreon-blog-tag:where(:hover, :focus-visible) {
+  border-color: var(--_accent);
+  color: inherit;
+}
+.pyreon-blog-tag__count {
+  font-family: var(--pyreon-blog-meta-font, inherit);
+  font-size: 0.75em;
+}
+
+/* Post list + cards */
+.pyreon-blog-list {
+  display: grid;
+  gap: 1.5rem;
+  margin: 2rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+.pyreon-blog-card {
+  overflow: hidden;
+  border: 1px solid var(--_border);
+  border-radius: var(--_radius);
+  background: var(--pyreon-blog-surface, transparent);
+  transition: border-color 0.15s ease;
+}
+.pyreon-blog-card:where(:hover, :focus-within) {
+  border-color: var(--_accent);
+}
+.pyreon-blog-card__link {
+  display: block;
+  color: inherit;
+  text-decoration: none;
+}
+.pyreon-blog-card__cover,
+.pyreon-blog-post__cover {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.pyreon-blog-card__text {
+  padding: 1rem 1.25rem 0;
+}
+.pyreon-blog-card__title {
+  margin: 0.35rem 0;
+  font-size: 1.3rem;
+  line-height: 1.25;
+}
+.pyreon-blog-card__description {
+  margin: 0;
+  color: var(--_muted);
+  line-height: 1.55;
+}
+.pyreon-blog-card__tags {
+  margin: 0;
+  padding: 0.75rem 1.25rem 1.25rem;
+}
+.pyreon-blog-empty {
+  color: var(--_muted);
+}
+
+/* Pagination */
+.pyreon-blog-pagination {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1.5rem;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 2.5rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--_border);
+}
+.pyreon-blog-pagination__status {
+  color: var(--_muted);
+  font-size: 0.9rem;
+}
+.pyreon-blog-pagination__older {
+  margin-left: auto;
+}
+
+/* Post page */
+.pyreon-blog-post__header {
+  margin-bottom: 1.5rem;
+}
+.pyreon-blog-post__cover {
+  margin: 0 0 2rem;
+  border: 1px solid var(--_border);
+  border-radius: var(--_radius);
+}
+.pyreon-blog-post__body {
+  line-height: 1.7;
+}
+/* A wide markdown table scrolls inside the column instead of widening the page. */
+.pyreon-blog-post__body :where(table) {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+}
+.pyreon-blog-status {
+  margin: 0.5rem 0;
+  padding: 0.5rem 0.75rem;
+  border: 1px dashed var(--_border);
+  border-radius: 0.5rem;
+  font-size: 0.85rem;
+}
+.pyreon-blog-post__footer {
+  display: grid;
+  gap: 2rem;
+  margin-top: 3rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--_border);
+}
+
+/* Related posts */
+.pyreon-blog-related__heading {
+  margin: 0 0 0.75rem;
+  font-size: 1.1rem;
+}
+.pyreon-blog-related__list {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.pyreon-blog-related__item {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.75rem;
+  justify-content: space-between;
+}
+.pyreon-blog-related__date {
+  color: var(--_muted);
+  font-family: var(--pyreon-blog-meta-font, inherit);
+  font-size: 0.85rem;
+}
+
+/* Previous / next */
+.pyreon-blog-postnav {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: 1rem;
+}
+.pyreon-blog-postnav__link {
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--_border);
+  border-radius: var(--_radius);
+  color: inherit;
+  text-decoration: none;
+}
+.pyreon-blog-postnav__link:where(:hover, :focus-visible) {
+  border-color: var(--_accent);
+}
+.pyreon-blog-postnav__link--next {
+  grid-column: -2;
+  text-align: right;
+}
+.pyreon-blog-postnav__label {
+  color: var(--_muted);
+  font-size: 0.8rem;
+}
+
+/* End of a post: call to action, share links, feed, newsletter */
+.pyreon-blog-end {
+  display: grid;
+  gap: 1.25rem;
+}
+.pyreon-blog-end__feed {
+  margin: 0;
+}
+.pyreon-blog-cta {
+  padding: 1.25rem;
+  border: 1px solid var(--_accent);
+  border-radius: var(--_radius);
+}
+.pyreon-blog-cta__heading {
+  margin: 0 0 0.25rem;
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+.pyreon-blog-cta__text {
+  margin: 0 0 0.75rem;
+  color: var(--_muted);
+}
+.pyreon-blog-cta__command {
+  margin: 0 0 0.75rem;
+  padding: 0.6rem 0.9rem;
+  overflow-x: auto;
+  border: 1px solid var(--_border);
+  border-radius: 0.5rem;
+  font-family: var(--pyreon-blog-meta-font, ui-monospace, monospace);
+}
+.pyreon-blog-cta__links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.5rem;
+  margin: 0;
+}
+
+/* Share links */
+.pyreon-blog-share {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  align-items: baseline;
+  margin: 0;
+}
+.pyreon-blog-share__label {
+  color: var(--_muted);
+}
+
+/* Newsletter */
+.pyreon-blog-newsletter {
+  padding: 1.25rem;
+  border: 1px solid var(--_border);
+  border-radius: var(--_radius);
+}
+.pyreon-blog-newsletter__heading {
+  margin: 0 0 0.25rem;
+  font-weight: 600;
+}
+.pyreon-blog-newsletter__description {
+  margin: 0 0 0.75rem;
+  color: var(--_muted);
+}
+.pyreon-blog-newsletter__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.pyreon-blog-newsletter__email {
+  flex: 1 1 14rem;
+  min-width: 0;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--_border);
+  border-radius: 0.5rem;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+}
+.pyreon-blog-newsletter__submit {
+  padding: 0.5rem 1rem;
+  border: 1px solid var(--_accent);
+  border-radius: 0.5rem;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+@media (max-width: 640px) {
+  .pyreon-blog,
+  .pyreon-blog-post {
+    padding: 1.5rem 1rem 3rem;
+  }
+}

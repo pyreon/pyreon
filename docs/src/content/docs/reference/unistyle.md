@@ -1,9 +1,7 @@
 ---
-title: "Responsive CSS Utilities — API Reference"
+title: "@pyreon/unistyle — API Reference"
 description: "Responsive breakpoints, CSS property mappings, unit utilities, theme enrichment"
 ---
-
-# @pyreon/unistyle — API Reference
 
 > **Generated** from `unistyle`'s `src/manifest.ts` — the same source that powers `llms.txt` and MCP `get_api`. Do not edit this page by hand; edit the manifest. For the conceptual guide, see [unistyle](/docs/unistyle).
 

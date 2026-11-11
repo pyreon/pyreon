@@ -1,0 +1,14 @@
+{
+ "id": "flow",
+ "og": {
+  "src": "/media/og/products/flow.png",
+  "width": 1200,
+  "height": 630,
+  "alt": "Flow: Drag one node. Nothing else re-renders. 7.25× faster than React Flow 12 to drag a node through 60 moves in a 500-node graph (4.42 vs 32.05 ms)."
+ },
+ "hero": {
+  "kind": "picture",
+  "file": "products/flow/hero-dark.png",
+  "alt": "The Flow Editor from the Pyreon example app: a four-node workflow (Webhook trigger, Errors only filter, Enrich transform, PagerDuty notify) on a dotted canvas with zoom controls and a minimap, next to the same graph as editable JSON."
+ }
+}

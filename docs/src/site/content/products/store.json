@@ -1,0 +1,320 @@
+{
+ "id": "store",
+ "route": "/products/store",
+ "name": "Store",
+ "package": "@pyreon/store",
+ "category": "fundamentals · state",
+ "hero": {
+  "title": "Global state with no selectors to write.",
+  "emberWord": "no selectors",
+  "lede": "A store is a setup function: signals for state, computeds for derived values, plain functions for actions. Components read what they need and only that text updates, so there are no selectors, no equality functions and no provider. Patching, subscriptions, action hooks, reset and per-request SSR isolation are built in.",
+  "install": "bun add @pyreon/store",
+  "ctaShort": "Install",
+  "facts": [
+   {
+    "key": "model",
+    "value": "setup function, singleton per id<small>Signals become state, functions become actions.</small>"
+   },
+   {
+    "key": "selectors",
+    "value": "none needed<small>Reading `store.total()` subscribes that one node.</small>"
+   },
+   {
+    "key": "server",
+    "value": "per-request isolation<small>Automatic in Pyreon's SSR renderer, via `AsyncLocalStorage`.</small>"
+   },
+   {
+    "key": "native",
+    "value": "{dot:warn}iOS and Android, experimental<small>`defineStore` compiles to an observable singleton.</small>"
+   }
+  ]
+ },
+ "why": {
+  "title": "Shared state without a second framework.",
+  "items": [
+   {
+    "title": "No selectors, no re-render",
+    "text": "In Zustand each component picks a slice with a selector and re-renders when it changes. Here a component reads `store.total()` and the compiler binds that read to one text node. Nothing re-renders, so there is nothing to memoise."
+   },
+   {
+    "title": "Actions you can watch",
+    "text": "`onAction` sees every action call with its name and arguments, and `after` / `onError` hooks around it: logging, analytics and undo without wrapping each action."
+   },
+   {
+    "title": "Safe on a busy server",
+    "text": "Stores are singletons by id in the browser. On the server, Pyreon's renderer gives each request its own registry through `AsyncLocalStorage`, with nothing to wire, and `dehydrateStores` / `hydrateStores` carry the state to the client."
+   },
+   {
+    "title": "Persistence is one line",
+    "text": "Return `useStorage('cart', [])` from setup and that field is persisted and synced across tabs. Fields you don't wrap stay in memory. No `persist` middleware, no `partialize`."
+   }
+  ]
+ },
+ "difference": {
+  "title": "Same cart. One fewer concept per line.",
+  "before": {
+   "label": "Zustand 5 + React",
+   "caption": "A typed state shape, `set` callbacks that spread, and a selector in every component that reads it.",
+   "code": "import { create } from 'zustand'\ntype Item = { id: string; price: number }\n\ntype Cart = { items: Item[]; add: (item: Item) => void; clear: () => void }\n\nconst useCart = create<Cart>()((set) => ({\n  items: [],\n  add: (item) => set((s) => ({ items: [...s.items, item] })),\n  clear: () => set({ items: [] }),\n}))\n\nfunction CartTotal() {\n  // a selector per value; this component re-renders when the result changes\n  const total = useCart((s) => s.items.reduce((n, i) => n + i.price, 0))\n  return <span>{total}</span>\n}"
+  },
+  "after": {
+   "label": "with @pyreon/store",
+   "caption": "Signals, a computed and functions. The total is computed once and shared.",
+   "code": "import { computed, defineStore, signal } from '@pyreon/store'\ntype Item = { id: string; price: number }\n\nconst useCart = defineStore('cart', () => {\n  const items = signal<Item[]>([])\n  const total = computed(() => items().reduce((n, i) => n + i.price, 0))\n  const add = (item: Item) => items.update((xs) => [...xs, item])\n  const clear = () => items.set([])\n  return { items, total, add, clear }\n})\n\nfunction CartTotal() {\n  const { store } = useCart()\n  return <span>{store.total()}</span> // only this text node updates\n}"
+  }
+ },
+ "extraSectionsHtml": null,
+ "demo": {
+  "title": "Call actions and watch the log.",
+  "text": "A cart store. Add and remove items and watch the log: every action passes through `onAction` with its arguments, and every change reaches `subscribe` as one mutation. Hit undo to replay the previous snapshot.",
+  "component": "DemoStore",
+  "reference": "pkg-store.html#demo",
+  "referenceHtml": "<div class=\"p-demo\">\n  <div class=\"ui\">\n    <label>Products</label>\n    <div style=\"display:grid;gap:8px\" id=\"st-prod\"></div>\n    <div style=\"display:flex;justify-content:space-between;align-items:center;margin-top:16px;padding-top:14px;border-top:1px solid #E6DFD2\"><span>Total <b id=\"st-total\">$0</b> · <span id=\"st-n\">0</span> items</span><span style=\"display:flex;gap:6px\"><button class=\"sec\" type=\"button\" id=\"st-clear\">clear()</button><button class=\"sec\" type=\"button\" id=\"st-reset\">reset()</button></span></div>\n  </div>\n  <div class=\"card\"><div class=\"in\"><span class=\"label\">onAction log</span><div id=\"st-log\" class=\"st-log\" aria-live=\"polite\"></div></div></div>\n</div>",
+  "referenceCss": ".st-log{font-family:var(--mono);font-size:12px;line-height:1.9;color:var(--mist);min-height:220px}.st-log div{border-bottom:1px solid var(--line);padding:4px 0}.st-log b{color:var(--accent);font-weight:400}",
+  "referenceJs": "(function(){var P=[['Keyboard',129],['Monitor',349],['Cable',12]],items=[],$=function(i){return document.getElementById(i)};function log(n,a){var d=document.createElement('div');var t0=performance.now();d.innerHTML='<b>'+n+'</b>('+a+') · '+(Math.random()*.4+.05).toFixed(2)+' ms';$('st-log').prepend(d);while($('st-log').children.length>9)$('st-log').lastChild.remove()}\nfunction r(){var t=items.reduce(function(s,i){return s+i[1]},0);$('st-total').textContent='$'+t;$('st-n').textContent=items.length}\n$('st-prod').innerHTML=P.map(function(p,i){return '<div style=\"display:flex;justify-content:space-between;align-items:center\"><span>'+p[0]+' · $'+p[1]+'</span><button class=\"sec\" type=\"button\" data-i=\"'+i+'\">add()</button></div>'}).join('');\ndocument.querySelectorAll('[data-i]').forEach(function(b){b.onclick=function(){var p=P[+b.dataset.i];items.push(p);log('add','{ name: \"'+p[0]+'\" }');r()}});\n$('st-clear').onclick=function(){items=[];log('clear','');r()};$('st-reset').onclick=function(){items=[];$('st-log').innerHTML='<div>store reset to initial state</div>';r()};r();})();",
+  "spec": "DemoStore uses the real `defineStore` cart from the reference, with an `onAction` log (name and arguments of each call) and a `subscribe` log (one line per mutation, with its `type` and changed keys). New: an Undo button that keeps the `mutation.state` snapshots in an array and `patch`es the previous one back, as in the undo recipe."
+ },
+ "features": {
+  "title": "Everything a shared store needs.",
+  "items": [
+   {
+    "name": "`defineStore(id, setup)`",
+    "text": "composition stores; setup runs once, in a scope the store owns, so its effects outlive the first component."
+   },
+   {
+    "name": "`patch()`",
+    "text": "an object or a function; one mutation notification however many fields change."
+   },
+   {
+    "name": "`subscribe((mutation) => …)`",
+    "text": "events per field, plus a `state` snapshot built only if you read it.",
+    "status": "next release"
+   },
+   {
+    "name": "`onAction()`",
+    "text": "name, args, `after` and `onError` for every action."
+   },
+   {
+    "name": "`reset()` and `dispose()`",
+    "text": "back to setup values, or tear down every computed and effect the store created."
+   },
+   {
+    "name": "`defineSchemaStore`",
+    "text": "`set`, `patch`, `deepPatch` and `update` validated by Zod, Valibot, ArkType or `s`, with types inferred from the schema.",
+    "status": "next release"
+   },
+   {
+    "name": "Plugins",
+    "text": "`addStorePlugin` runs for every store, and may return a cleanup for `dispose()`."
+   },
+   {
+    "name": "SSR",
+    "text": "a registry per request out of the box (swap it with `setStoreRegistryProvider`), `dehydrateStores` / `hydrateStores` across the wire."
+   },
+   {
+    "name": "Store families",
+    "text": "derive the id from a parameter (`'doc:' + id`) for one store per document."
+   },
+   {
+    "name": "Re-exports",
+    "text": "`signal`, `computed`, `effect`, `batch` from the same import."
+   }
+  ]
+ },
+ "api": {
+  "title": "A handful of functions and the store handle.",
+  "groups": [
+   {
+    "name": "define",
+    "items": [
+     "defineStore",
+     "addStorePlugin"
+    ]
+   },
+   {
+    "name": "next release",
+    "items": [
+     "defineSchemaStore"
+    ]
+   },
+   {
+    "name": "on every store",
+    "items": [
+     "store",
+     "state",
+     "patch",
+     "subscribe",
+     "onAction",
+     "reset",
+     "dispose"
+    ]
+   },
+   {
+    "name": "lifecycle and SSR",
+    "items": [
+     "resetStore",
+     "resetAllStores",
+     "setStoreRegistryProvider",
+     "dehydrateStores",
+     "hydrateStores"
+    ]
+   },
+   {
+    "name": "reactivity re-exports",
+    "items": [
+     "signal",
+     "computed",
+     "effect",
+     "batch"
+    ]
+   },
+   {
+    "name": "types",
+    "items": [
+     "StoreApi",
+     "SchemaStoreApi",
+     "StoreState",
+     "StoreActions",
+     "MutationInfo"
+    ]
+   }
+  ]
+ },
+ "limits": [
+  {
+   "title": "Subscribers take one argument now",
+   "text": "`subscribe((mutation) => …)` reads the snapshot from `mutation.state`. The older `(mutation, state)` form is gone on `main`; TypeScript flags it."
+  },
+  {
+   "title": "Schema stores have their own function",
+   "text": "On `main`, `defineStore(id, { schema })` became `defineSchemaStore(id, { schema, initial })`, so a plain store doesn't carry the validation code. Development builds name the new function if you pass a schema to the old one."
+  },
+  {
+   "title": "Don't spread the store handle",
+   "text": "`{ ...api }` no longer includes `state`. Read `api.state`, or destructure the methods you need (`const { store, patch } = useCart()`)."
+  },
+  {
+   "title": "Outside a render, stores are per process",
+   "text": "Each server render gets its own store registry automatically. Code that runs outside a render, like a startup script or a job, uses the process-wide registry; `setStoreRegistryProvider` swaps in your own."
+  }
+ ],
+ "related": [
+  {
+   "href": "/products/sync",
+   "category": "fundamentals",
+   "name": "Sync",
+   "text": "Make a store collaborative and offline-first.",
+   "package": "@pyreon/sync"
+  },
+  {
+   "href": "/products/validation",
+   "category": "fundamentals",
+   "name": "Validation",
+   "text": "Validate store state with a schema.",
+   "package": "@pyreon/validate"
+  },
+  {
+   "href": "/products/query",
+   "category": "fundamentals",
+   "name": "Query",
+   "text": "Keep server data in the query cache instead.",
+   "package": "@pyreon/query"
+  }
+ ],
+ "end": {
+  "title": "State management, minus the management.",
+  "cta": "Read the store guide"
+ },
+ "benchmarks": null,
+ "glyphSvg": "<path d=\"M16 40 L60 18 L104 40 V88 L60 106 L16 88 Z\" stroke=\"currentColor\" stroke-width=\"10\" fill=\"none\" stroke-linejoin=\"round\"/><circle cx=\"60\" cy=\"62\" r=\"16\" fill=\"url(#eg)\"/>",
+ "comingFrom": [
+  {
+   "lib": "Zustand",
+   "title": "Keep the hook-shaped store, drop the selectors.",
+   "before": "import { create } from 'zustand'\ntype Item = { id: string; price: number }\n\ntype Cart = { items: Item[]; add: (item: Item) => void; clear: () => void }\n\nconst useCart = create<Cart>()((set) => ({\n  items: [],\n  add: (item) => set((s) => ({ items: [...s.items, item] })),\n  clear: () => set({ items: [] }),\n}))\n\nfunction CartTotal() {\n  // a selector per value; this component re-renders when the result changes\n  const total = useCart((s) => s.items.reduce((n, i) => n + i.price, 0))\n  return <span>{total}</span>\n}",
+   "after": "import { computed, defineStore, signal } from '@pyreon/store'\ntype Item = { id: string; price: number }\n\nconst useCart = defineStore('cart', () => {\n  const items = signal<Item[]>([])\n  const total = computed(() => items().reduce((n, i) => n + i.price, 0))\n  const add = (item: Item) => items.update((xs) => [...xs, item])\n  const clear = () => items.set([])\n  return { items, total, add, clear }\n})\n\nfunction CartTotal() {\n  const { store } = useCart()\n  return <span>{store.total()}</span> // only this text node updates\n}",
+   "note": "`set((s) => …)` becomes a signal update, derived values become `computed`, and a component reads fields directly. `patch`, `subscribe`, `reset` replace `setState`, `subscribe` and the reset pattern; persistence is `useStorage` instead of the `persist` middleware."
+  },
+  {
+   "lib": "Jotai",
+   "title": "Atoms are signals. You may not need a store at all.",
+   "before": "import { atom, useAtomValue, useSetAtom } from 'jotai'\ntype Item = { id: string; price: number }\n\nconst itemsAtom = atom<Item[]>([])\nconst totalAtom = atom((get) => get(itemsAtom).reduce((n, i) => n + i.price, 0))\nconst addAtom = atom(null, (get, set, item: Item) => set(itemsAtom, [...get(itemsAtom), item]))\n\nfunction CartTotal() {\n  const total = useAtomValue(totalAtom)\n  return <span>{total}</span>\n}\n\nfunction AddButton({ item }: { item: Item }) {\n  const add = useSetAtom(addAtom)\n  return <button onClick={() => add(item)}>Add</button>\n}",
+   "after": "import { computed, signal } from '@pyreon/reactivity'\ntype Item = { id: string; price: number }\n\n// atoms are just signals; derived atoms are computeds\nconst items = signal<Item[]>([])\nconst total = computed(() => items().reduce((n, i) => n + i.price, 0))\nconst add = (item: Item) => items.update((xs) => [...xs, item])\n\nfunction CartTotal() {\n  return <span>{total()}</span>\n}\n\nfunction AddButton(props: { item: Item }) {\n  return <button onClick={() => add(props.item)}>Add</button>\n}",
+   "note": "A primitive atom is a `signal`, a derived atom is a `computed`, a write atom is a function. Module-level signals work across components with no provider. Reach for `defineStore` when you want `reset`, `subscribe`, `onAction` or SSR isolation."
+  }
+ ],
+ "recipes": [
+  {
+   "title": "Undo and an action log",
+   "text": "`subscribe` records snapshots, `onAction` logs each call with its arguments. Undo is a `patch` with the previous snapshot.",
+   "code": "import { defineStore, signal } from '@pyreon/store'\n\nconst useDoc = defineStore('doc', () => {\n  const title = signal('Untitled')\n  const body = signal('')\n  const rename = (t: string) => title.set(t)\n  return { title, body, rename }\n})\n\nconst doc = useDoc()\nconst history: Record<string, unknown>[] = []\n\n// one argument: the mutation. Its state snapshot is built only if you read it.\ndoc.subscribe((mutation) => {\n  history.push(mutation.state)\n})\n// every action, with its arguments and result: for logging, analytics, undo\ndoc.onAction(({ name, args, after }) => {\n  after(() => console.log(`${name}(${JSON.stringify(args)})`))\n})\n\ndoc.store.rename('Launch plan') // logs: rename([\"Launch plan\"])\ndoc.patch({ body: 'Ship on Monday' })\n\nconst undo = () => {\n  history.pop()\n  doc.patch(history.at(-1) ?? { title: 'Untitled', body: '' })\n  history.pop() // drop the snapshot the undo itself produced\n}\nundo()\nconsole.log(doc.store.title(), JSON.stringify(doc.store.body())) // 'Launch plan' ''",
+   "status": "next release"
+  },
+  {
+   "title": "Settings that can't hold an invalid value",
+   "text": "A schema store validates every object `patch` and types the fields from the schema.",
+   "code": "import { defineSchemaStore } from '@pyreon/store'\nimport { z } from 'zod'\n\nconst useSettings = defineSchemaStore('settings', {\n  schema: z.object({\n    theme: z.enum(['light', 'dark', 'system']),\n    fontSize: z.number().int().min(10).max(32),\n  }),\n  initial: { theme: 'system', fontSize: 14 },\n})\n\nconst settings = useSettings()\nsettings.patch({ fontSize: 18 }) // validated, typed from the schema\n\ntry {\n  settings.patch({ fontSize: 99 }) // rejected: the store keeps 18\n} catch (e) {\n  console.log((e as Error).message)\n}\nconsole.log(settings.store.fontSize()) // 18",
+   "status": "next release"
+  }
+ ],
+ "faq": [
+  {
+   "q": "Is it faster than Zustand?",
+   "a": "The record has a head-to-head with Zustand and Jotai, but its harness changed after that run (store ids were built inside the timed loop, PR #4142), so we don't quote it until the next measured run. The bench is `packages/fundamentals/store/bench/`."
+  },
+  {
+   "q": "Do I need a provider?",
+   "a": "No. A store is created the first time its hook is called and shared after that. On the server, every render gets its own stores automatically."
+  },
+  {
+   "q": "What changed on `main`?",
+   "a": "Two breaking changes, as 0.x minors: subscribers receive one `mutation` argument with a lazy `state`, and schema stores moved to `defineSchemaStore`. Both make plain stores cheaper: a plain store no longer ships the schema code, and a subscriber that never reads `state` never pays for a snapshot."
+  },
+  {
+   "q": "Can a store hold async work?",
+   "a": "Yes: an action can be `async`. For server data with caching and refetching, use `@pyreon/query` and keep only client state here."
+  }
+ ],
+ "sources": [
+  {
+   "claim": "subscribe receives one argument with lazy mutation.state (breaking, unreleased)",
+   "path": ".changeset/store-lazy-mutation-state.md; packages/fundamentals/store/src/index.ts MutationInfo; docs/src/content/docs/store.md 'subscribe'"
+  },
+  {
+   "claim": "defineSchemaStore split from defineStore; one-store app 4.16 → 2.81 KB gz",
+   "path": ".changeset/store-define-schema-store.md"
+  },
+  {
+   "claim": "{ ...api } no longer contains state",
+   "path": ".changeset/store-shared-api.md"
+  },
+  {
+   "claim": "setup runs in store-owned effectScope; dispose stops it",
+   "path": ".agents/guides/fundamentals/references/store.md"
+  },
+  {
+   "claim": "Persistence via useStorage returned from setup; no persist middleware",
+   "path": "docs/src/content/docs/store.md 'Persistence'"
+  },
+  {
+   "claim": "SSR isolation with setStoreRegistryProvider + AsyncLocalStorage",
+   "path": "docs/src/content/docs/store.md 'SSR with Concurrent Requests'"
+  },
+  {
+   "claim": "Native tier: defineStore → @Observable singleton / mutableStateOf object",
+   "path": "packages/fundamentals/store/src/manifest.ts"
+  },
+  {
+   "claim": "Samples run: undo recipe prints 'Launch plan \"\"'; schema store rejects fontSize 99 and keeps 18; CartTotal renders 12 / 5",
+   "path": "scratch ts/store-recipe-*.ts, run-store.tsx; rival code typechecked against zustand 5.1.0 and jotai 3.0.2"
+  },
+  {
+   "claim": "Draft fixes: benchmark table removed (store figures not quotable after PR #4142); version fact removed; native marked experimental; 'Schema mode' now defineSchemaStore",
+   "path": "BENCHMARKS.md §10 harness note"
+  },
+  {
+   "claim": "Docs inconsistency: store.md 'Schema-driven Stores' intro still says defineStore accepts a schema config",
+   "path": "docs/src/content/docs/store.md L489"
+  }
+ ]
+}

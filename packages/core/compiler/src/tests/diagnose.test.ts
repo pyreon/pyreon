@@ -85,6 +85,16 @@ describe('diagnoseError (browser-safe error catalog)', () => {
     expect(r!.fix).toContain('defineAsyncComponent')
   })
 
+  it('diagnoses the content audit orphaned-md-file finding, naming the pre-0.54 collection misread', () => {
+    // The finding's message as `auditContent` builds it.
+    const r = diagnoseError(
+      "Markdown file `src/content/blog/hello.md` lives under `src/content/` but is not under any declared collection's `path`. The runtime ignores it.",
+    )
+    expect(r?.cause).toContain('blogCollection()')
+    expect(r?.fix).toContain('pyreon upgrade')
+    expect(diagnoseError('content audit: orphaned-md-file in src/content/x.md')?.cause).toContain('no declared collection')
+  })
+
   it('diagnoses a compat jsx-runtime shipped without jsxDEV, and runtime-dom/transition without TransitionGroup (#4283)', () => {
     // The exact browser message from the issue (Vite dev on the published 0.53.0 packages).
     const dev = diagnoseError(

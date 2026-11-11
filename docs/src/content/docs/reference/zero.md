@@ -1,9 +1,7 @@
 ---
-title: "Zero — Full-Stack Meta-Framework — API Reference"
+title: "@pyreon/zero — API Reference"
 description: "Full-stack meta-framework: fs-routing, SSR/SSG/ISR/SPA, API routes, server actions, adapters, i18n"
 ---
-
-# @pyreon/zero — API Reference
 
 > **Generated** from `zero`'s `src/manifest.ts` — the same source that powers `llms.txt` and MCP `get_api`. Do not edit this page by hand; edit the manifest. For the conceptual guide, see [zero](/docs/zero).
 

@@ -1,9 +1,7 @@
 ---
-title: "Toast Notifications — API Reference"
+title: "@pyreon/toast — API Reference"
 description: "Toast notifications — toast(), toast.success/error/warning/info/loading, Toaster component, a11y"
 ---
-
-# @pyreon/toast — API Reference
 
 > **Generated** from `toast`'s `src/manifest.ts` — the same source that powers `llms.txt` and MCP `get_api`. Do not edit this page by hand; edit the manifest. For the conceptual guide, see [toast](/docs/toast).
 

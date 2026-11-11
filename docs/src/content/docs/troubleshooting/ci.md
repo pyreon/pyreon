@@ -3,8 +3,6 @@ title: "CI / Build Gate Mistakes"
 description: "Common ci / build gate mistakes in Pyreon and how to fix them."
 ---
 
-# CI / Build Gate Mistakes
-
 > **Generated** from `.agents/rules/anti-patterns.md` (the same source as MCP `get_anti_patterns`). Each entry is a real mistake + its fix; where a detector code is listed, the linter / `pyreon doctor` / MCP `validate` catches it automatically.
 
 ### A green retry report hides which spec flaked

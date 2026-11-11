@@ -1,0 +1,96 @@
+<svg xmlns="http://www.w3.org/2000/svg" class="pxa pm-steps" viewBox="0 0 960 400" width="960" height="400" role="img" aria-labelledby="pm-steps-t pm-steps-d" fill="none">
+<title id="pm-steps-t">Migrating from React, step by step</title>
+<desc id="pm-steps-d">The five migration steps as a loop: install the compat layer, change two config files, keep shipping, convert one component at a time, switch the compiler on. Six components of an app flip one by one from React-style (the body re-runs) to Pyreon (runs once) while @pyreon/react-compat sits underneath; at the last step the compat layer is switched off and jsxImportSource becomes @pyreon/core.</desc>
+<style>
+.pxa{--px-bg:#0A0A0E;--px-card:#111118;--px-raised:#181822;--px-line:#23232E;--px-line2:#2E2E3B;--px-text:#F4EFE6;--px-strong:#FFFCF5;--px-mist:#C9C4B8;--px-fog:#8A8696;--px-hint:#8A8696;--px-dim:#5C5867;--px-accent:#FF5E1A;--px-accent-text:#FF8A4C;--px-warm:#FFC83D;--px-plasma:#FF1F8C;--px-ok:#4ADE80;--px-warn:#FACC15;--px-err:#F87171;--px-link:#22D3EE;--px-violet:#A78BFA;--px-bar:#3A3846;--px-g1:#FF1F8C;--px-g2:#FF5E1A;--px-g3:#FFC83D;--px-glow:rgba(255,94,26,.16)}
+@media (prefers-color-scheme: light){.pxa{--px-bg:#FAF5EB;--px-card:#FFFFFF;--px-raised:#F4EFE6;--px-line:#E6DFD2;--px-line2:#D6CFC2;--px-text:#14141C;--px-strong:#0A0A0E;--px-mist:#45414F;--px-fog:#67637A;--px-hint:#8E8A9A;--px-dim:#B5AFA3;--px-accent:#E84A0F;--px-accent-text:#A8380A;--px-warm:#8A5A00;--px-plasma:#E40C70;--px-ok:#11692F;--px-warn:#8A5A00;--px-err:#B91C1C;--px-link:#0A6E89;--px-violet:#6D28D9;--px-bar:#D9D2C4;--px-g1:#D1106F;--px-g2:#C2410C;--px-g3:#9A6200;--px-glow:rgba(232,74,15,.10)}}
+[data-theme="dark"] .pxa,.pxa[data-theme="dark"]{--px-bg:#0A0A0E;--px-card:#111118;--px-raised:#181822;--px-line:#23232E;--px-line2:#2E2E3B;--px-text:#F4EFE6;--px-strong:#FFFCF5;--px-mist:#C9C4B8;--px-fog:#8A8696;--px-hint:#8A8696;--px-dim:#5C5867;--px-accent:#FF5E1A;--px-accent-text:#FF8A4C;--px-warm:#FFC83D;--px-plasma:#FF1F8C;--px-ok:#4ADE80;--px-warn:#FACC15;--px-err:#F87171;--px-link:#22D3EE;--px-violet:#A78BFA;--px-bar:#3A3846;--px-g1:#FF1F8C;--px-g2:#FF5E1A;--px-g3:#FFC83D;--px-glow:rgba(255,94,26,.16)}
+[data-theme="light"] .pxa,.pxa[data-theme="light"]{--px-bg:#FAF5EB;--px-card:#FFFFFF;--px-raised:#F4EFE6;--px-line:#E6DFD2;--px-line2:#D6CFC2;--px-text:#14141C;--px-strong:#0A0A0E;--px-mist:#45414F;--px-fog:#67637A;--px-hint:#8E8A9A;--px-dim:#B5AFA3;--px-accent:#E84A0F;--px-accent-text:#A8380A;--px-warm:#8A5A00;--px-plasma:#E40C70;--px-ok:#11692F;--px-warn:#8A5A00;--px-err:#B91C1C;--px-link:#0A6E89;--px-violet:#6D28D9;--px-bar:#D9D2C4;--px-g1:#D1106F;--px-g2:#C2410C;--px-g3:#9A6200;--px-glow:rgba(232,74,15,.10)}
+.pm-steps{font-family:'Space Grotesk',ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif}
+.pm-steps .m{font-family:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,monospace}
+.pm-steps .pm-steps-rm{opacity:0}
+@media (prefers-reduced-motion: reduce){.pm-steps *{animation:none!important;transition:none!important}.pm-steps .pm-steps-rm{opacity:1}.pm-steps .pm-steps-am{opacity:0}}
+
+.pm-steps .ln{stroke:var(--px-hint);stroke-width:1.5}
+.pm-steps .dash{stroke:var(--px-hint);stroke-width:1.5;stroke-dasharray:4 6}
+.pm-steps .bx{fill:var(--px-card);stroke:var(--px-bar);stroke-width:1.5}
+.pm-steps .bx2{fill:var(--px-raised);stroke:var(--px-bar);stroke-width:1.5}
+.pm-steps .act{fill:none;stroke:var(--px-text);stroke-width:2}
+.pm-steps .lab{fill:var(--px-fog);font-size:14px;letter-spacing:.02em}
+.pm-steps .eb{fill:var(--px-fog);font-size:13px;letter-spacing:.16em}
+.pm-steps .val{fill:var(--px-text);font-size:20px;font-weight:500}
+.pm-steps .big{fill:var(--px-strong);font-size:30px;font-weight:600;letter-spacing:-.02em}
+.pm-steps .txt{fill:var(--px-text);font-size:16px}
+.pm-steps .mt{fill:var(--px-mist);font-size:14px}
+.pm-steps .hint{fill:var(--px-fog);font-size:13px}
+.pm-steps .ember{stroke:url(#pm-steps-eg);stroke-width:2.5;stroke-linecap:round;stroke-dasharray:36 2000;fill:none}
+.pm-steps .emS{stroke:url(#pm-steps-eg);stroke-width:2.5;fill:none}
+.pm-steps .ring{fill:none;stroke:var(--px-accent);stroke-width:2}
+.pm-steps .ok{fill:var(--px-ok)} .pm-steps .warm{fill:var(--px-warm)} .pm-steps .hot{fill:var(--px-accent)} .pm-steps .err{fill:var(--px-err)}
+.pm-steps .okT{fill:var(--px-ok)} .pm-steps .warmT{fill:var(--px-warm)} .pm-steps .hotT{fill:var(--px-accent-text)} .pm-steps .errT{fill:var(--px-err)} .pm-steps .linkT{fill:var(--px-link)}
+.pm-steps .focus{fill:none;stroke:var(--px-link);stroke-width:2;stroke-dasharray:3 3}
+@keyframes pm-steps-k0{0.0000%{opacity:1;animation-timing-function:step-end}11.6667%{opacity:0;animation-timing-function:step-end}100.0000%{opacity:0;animation-timing-function:step-end}}
+@keyframes pm-steps-k1{0.0000%{opacity:0;animation-timing-function:step-end}11.6667%{opacity:1;animation-timing-function:step-end}23.3333%{opacity:0;animation-timing-function:step-end}100.0000%{opacity:0;animation-timing-function:step-end}}
+@keyframes pm-steps-k2{0.0000%{opacity:0;animation-timing-function:step-end}23.3333%{opacity:1;animation-timing-function:step-end}33.3333%{opacity:0;animation-timing-function:step-end}100.0000%{opacity:0;animation-timing-function:step-end}}
+@keyframes pm-steps-k3{0.0000%{opacity:0;animation-timing-function:step-end}33.3333%{opacity:1;animation-timing-function:step-end}73.3333%{opacity:0;animation-timing-function:step-end}100.0000%{opacity:0;animation-timing-function:step-end}}
+@keyframes pm-steps-k4{0.0000%{opacity:0;animation-timing-function:step-end}73.3333%{opacity:1;animation-timing-function:step-end}100.0000%{opacity:0;animation-timing-function:step-end}}
+@keyframes pm-steps-k5{0.0000%{opacity:1;animation-timing-function:step-end}35.8333%{opacity:0;animation-timing-function:step-end}100.0000%{opacity:0;animation-timing-function:step-end}}
+@keyframes pm-steps-k6{0.0000%{opacity:0;animation-timing-function:step-end}35.8333%{opacity:1;animation-timing-function:step-end}100.0000%{opacity:0;animation-timing-function:step-end}}
+@keyframes pm-steps-k7{0%{opacity:0}35.8333%{opacity:0}36.5000%{opacity:1}37.5000%{opacity:0}100%{opacity:0}}
+@keyframes pm-steps-k8{0.0000%{opacity:1;animation-timing-function:step-end}42.0833%{opacity:0;animation-timing-function:step-end}100.0000%{opacity:0;animation-timing-function:step-end}}
+@keyframes pm-steps-k9{0.0000%{opacity:0;animation-timing-function:step-end}42.0833%{opacity:1;animation-timing-function:step-end}100.0000%{opacity:0;animation-timing-function:step-end}}
+@keyframes pm-steps-k10{0%{opacity:0}42.0833%{opacity:0}42.7500%{opacity:1}43.7500%{opacity:0}100%{opacity:0}}
+@keyframes pm-steps-k11{0.0000%{opacity:1;animation-timing-function:step-end}48.3333%{opacity:0;animation-timing-function:step-end}100.0000%{opacity:0;animation-timing-function:step-end}}
+@keyframes pm-steps-k12{0.0000%{opacity:0;animation-timing-function:step-end}48.3333%{opacity:1;animation-timing-function:step-end}100.0000%{opacity:0;animation-timing-function:step-end}}
+@keyframes pm-steps-k13{0%{opacity:0}48.3333%{opacity:0}49.0000%{opacity:1}50.0000%{opacity:0}100%{opacity:0}}
+@keyframes pm-steps-k14{0.0000%{opacity:1;animation-timing-function:step-end}54.5833%{opacity:0;animation-timing-function:step-end}100.0000%{opacity:0;animation-timing-function:step-end}}
+@keyframes pm-steps-k15{0.0000%{opacity:0;animation-timing-function:step-end}54.5833%{opacity:1;animation-timing-function:step-end}100.0000%{opacity:0;animation-timing-function:step-end}}
+@keyframes pm-steps-k16{0%{opacity:0}54.5833%{opacity:0}55.2500%{opacity:1}56.2500%{opacity:0}100%{opacity:0}}
+@keyframes pm-steps-k17{0.0000%{opacity:1;animation-timing-function:step-end}60.8333%{opacity:0;animation-timing-function:step-end}100.0000%{opacity:0;animation-timing-function:step-end}}
+@keyframes pm-steps-k18{0.0000%{opacity:0;animation-timing-function:step-end}60.8333%{opacity:1;animation-timing-function:step-end}100.0000%{opacity:0;animation-timing-function:step-end}}
+@keyframes pm-steps-k19{0%{opacity:0}60.8333%{opacity:0}61.5000%{opacity:1}62.5000%{opacity:0}100%{opacity:0}}
+@keyframes pm-steps-k20{0.0000%{opacity:1;animation-timing-function:step-end}67.0833%{opacity:0;animation-timing-function:step-end}100.0000%{opacity:0;animation-timing-function:step-end}}
+@keyframes pm-steps-k21{0.0000%{opacity:0;animation-timing-function:step-end}67.0833%{opacity:1;animation-timing-function:step-end}100.0000%{opacity:0;animation-timing-function:step-end}}
+@keyframes pm-steps-k22{0%{opacity:0}67.0833%{opacity:0}67.7500%{opacity:1}68.7500%{opacity:0}100%{opacity:0}}
+@keyframes pm-steps-k23{0.0000%{opacity:1;animation-timing-function:step-end}73.3333%{opacity:0;animation-timing-function:step-end}100.0000%{opacity:0;animation-timing-function:step-end}}
+@keyframes pm-steps-k24{0.0000%{opacity:0;animation-timing-function:step-end}73.3333%{opacity:1;animation-timing-function:step-end}100.0000%{opacity:0;animation-timing-function:step-end}}
+@keyframes pm-steps-k25{0%{opacity:0}73.3333%{opacity:0}74.0000%{opacity:1}75.0000%{opacity:0}100%{opacity:0}}
+.pm-steps .k0{animation:pm-steps-k0 12000ms linear infinite}
+.pm-steps .k1{animation:pm-steps-k1 12000ms linear infinite}
+.pm-steps .k2{animation:pm-steps-k2 12000ms linear infinite}
+.pm-steps .k3{animation:pm-steps-k3 12000ms linear infinite}
+.pm-steps .k4{animation:pm-steps-k4 12000ms linear infinite}
+.pm-steps .k5{animation:pm-steps-k5 12000ms linear infinite}
+.pm-steps .k6{animation:pm-steps-k6 12000ms linear infinite}
+.pm-steps .k7{animation:pm-steps-k7 12000ms linear infinite}
+.pm-steps .k8{animation:pm-steps-k8 12000ms linear infinite}
+.pm-steps .k9{animation:pm-steps-k9 12000ms linear infinite}
+.pm-steps .k10{animation:pm-steps-k10 12000ms linear infinite}
+.pm-steps .k11{animation:pm-steps-k11 12000ms linear infinite}
+.pm-steps .k12{animation:pm-steps-k12 12000ms linear infinite}
+.pm-steps .k13{animation:pm-steps-k13 12000ms linear infinite}
+.pm-steps .k14{animation:pm-steps-k14 12000ms linear infinite}
+.pm-steps .k15{animation:pm-steps-k15 12000ms linear infinite}
+.pm-steps .k16{animation:pm-steps-k16 12000ms linear infinite}
+.pm-steps .k17{animation:pm-steps-k17 12000ms linear infinite}
+.pm-steps .k18{animation:pm-steps-k18 12000ms linear infinite}
+.pm-steps .k19{animation:pm-steps-k19 12000ms linear infinite}
+.pm-steps .k20{animation:pm-steps-k20 12000ms linear infinite}
+.pm-steps .k21{animation:pm-steps-k21 12000ms linear infinite}
+.pm-steps .k22{animation:pm-steps-k22 12000ms linear infinite}
+.pm-steps .k23{animation:pm-steps-k23 12000ms linear infinite}
+.pm-steps .k24{animation:pm-steps-k24 12000ms linear infinite}
+.pm-steps .k25{animation:pm-steps-k25 12000ms linear infinite}
+@media (prefers-reduced-motion: reduce){.pm-steps .k0{opacity:0}.pm-steps .k1{opacity:0}.pm-steps .k2{opacity:0}.pm-steps .k3{opacity:0}.pm-steps .k4{opacity:1}.pm-steps .k5{opacity:0}.pm-steps .k6{opacity:1}.pm-steps .k7{opacity:0}.pm-steps .k8{opacity:0}.pm-steps .k9{opacity:1}.pm-steps .k10{opacity:0}.pm-steps .k11{opacity:0}.pm-steps .k12{opacity:1}.pm-steps .k13{opacity:0}.pm-steps .k14{opacity:0}.pm-steps .k15{opacity:1}.pm-steps .k16{opacity:0}.pm-steps .k17{opacity:0}.pm-steps .k18{opacity:1}.pm-steps .k19{opacity:0}.pm-steps .k20{opacity:0}.pm-steps .k21{opacity:1}.pm-steps .k22{opacity:0}.pm-steps .k23{opacity:0}.pm-steps .k24{opacity:1}.pm-steps .k25{opacity:0}}
+</style>
+<defs><linearGradient id="pm-steps-eg" x1="0" y1="0" x2="1" y2="0"><stop offset="0" style="stop-color:var(--px-g1)"/><stop offset=".55" style="stop-color:var(--px-g2)"/><stop offset="1" style="stop-color:var(--px-g3)"/></linearGradient><linearGradient id="pm-steps-egu" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="960" y2="0"><stop offset="0" style="stop-color:var(--px-g1)"/><stop offset=".55" style="stop-color:var(--px-g2)"/><stop offset="1" style="stop-color:var(--px-g3)"/></linearGradient><linearGradient id="pm-steps-egv" x1="0" y1="1" x2="0" y2="0"><stop offset="0" style="stop-color:var(--px-g1)"/><stop offset=".55" style="stop-color:var(--px-g2)"/><stop offset="1" style="stop-color:var(--px-g3)"/></linearGradient><linearGradient id="pm-steps-egd" x1="0" y1="0" x2="1" y2="1"><stop offset="0" style="stop-color:var(--px-g1)"/><stop offset=".55" style="stop-color:var(--px-g2)"/><stop offset="1" style="stop-color:var(--px-g3)"/></linearGradient></defs>
+
+<text class="m eb" x="24" y="34">MIGRATE · KEEP SHIPPING WHILE YOU MOVE</text>
+<rect class="bx2" x="24" y="56" width="172" height="40" rx="20"/><g class="k0"><rect class="act" x="24" y="56" width="172" height="40" rx="20"/></g><text class="m hotT m" x="44" y="81" style="font-size:14px">1</text><text class="txt" x="64" y="81" style="font-size:15px">install</text><rect class="bx2" x="208" y="56" width="172" height="40" rx="20"/><g class="k1"><rect class="act" x="208" y="56" width="172" height="40" rx="20"/></g><text class="m hotT m" x="228" y="81" style="font-size:14px">2</text><text class="txt" x="248" y="81" style="font-size:15px">two configs</text><rect class="bx2" x="392" y="56" width="172" height="40" rx="20"/><g class="k2"><rect class="act" x="392" y="56" width="172" height="40" rx="20"/></g><text class="m hotT m" x="412" y="81" style="font-size:14px">3</text><text class="txt" x="432" y="81" style="font-size:15px">keep shipping</text><rect class="bx2" x="576" y="56" width="172" height="40" rx="20"/><g class="k3"><rect class="act" x="576" y="56" width="172" height="40" rx="20"/></g><text class="m hotT m" x="596" y="81" style="font-size:14px">4</text><text class="txt" x="616" y="81" style="font-size:15px">convert</text><rect class="bx2" x="760" y="56" width="172" height="40" rx="20"/><g class="k4"><rect class="act" x="760" y="56" width="172" height="40" rx="20"/></g><text class="m hotT m" x="780" y="81" style="font-size:14px">5</text><text class="txt" x="800" y="81" style="font-size:15px">compiler on</text><rect class="pm-steps-rm" x="780" y="100" width="132" height="2.5" style="fill:url(#pm-steps-eg)"/>
+<rect class="bx" x="24" y="120" width="912" height="236" rx="18"/>
+<rect class="bx" x="56" y="140" width="272" height="60" rx="12"/><text class="m txt" x="74" y="166" style="font-size:15px">&lt;Header /&gt;</text><g class="k5"><text class="m hint" x="74" y="187">React-style · body re-runs</text></g><g class="k6"><text class="m okT m" x="74" y="187" style="font-size:13px">Pyreon · runs once</text></g><rect class="ring k7" x="52" y="136" width="280" height="68" rx="15"/><rect class="bx" x="344" y="140" width="272" height="60" rx="12"/><text class="m txt" x="362" y="166" style="font-size:15px">&lt;Search /&gt;</text><g class="k8"><text class="m hint" x="362" y="187">React-style · body re-runs</text></g><g class="k9"><text class="m okT m" x="362" y="187" style="font-size:13px">Pyreon · runs once</text></g><rect class="ring k10" x="340" y="136" width="280" height="68" rx="15"/><rect class="bx" x="632" y="140" width="272" height="60" rx="12"/><text class="m txt" x="650" y="166" style="font-size:15px">&lt;Cart /&gt;</text><g class="k11"><text class="m hint" x="650" y="187">React-style · body re-runs</text></g><g class="k12"><text class="m okT m" x="650" y="187" style="font-size:13px">Pyreon · runs once</text></g><rect class="ring k13" x="628" y="136" width="280" height="68" rx="15"/><rect class="bx" x="56" y="216" width="272" height="60" rx="12"/><text class="m txt" x="74" y="242" style="font-size:15px">&lt;Likes /&gt;</text><g class="k14"><text class="m hint" x="74" y="263">React-style · body re-runs</text></g><g class="k15"><text class="m okT m" x="74" y="263" style="font-size:13px">Pyreon · runs once</text></g><rect class="ring k16" x="52" y="212" width="280" height="68" rx="15"/><rect class="bx" x="344" y="216" width="272" height="60" rx="12"/><text class="m txt" x="362" y="242" style="font-size:15px">&lt;Profile /&gt;</text><g class="k17"><text class="m hint" x="362" y="263">React-style · body re-runs</text></g><g class="k18"><text class="m okT m" x="362" y="263" style="font-size:13px">Pyreon · runs once</text></g><rect class="ring k19" x="340" y="212" width="280" height="68" rx="15"/><rect class="bx" x="632" y="216" width="272" height="60" rx="12"/><text class="m txt" x="650" y="242" style="font-size:15px">&lt;Footer /&gt;</text><g class="k20"><text class="m hint" x="650" y="263">React-style · body re-runs</text></g><g class="k21"><text class="m okT m" x="650" y="263" style="font-size:13px">Pyreon · runs once</text></g><rect class="ring k22" x="628" y="212" width="280" height="68" rx="15"/>
+<g class="k23"><rect class="bx2" x="56" y="300" width="848" height="40" rx="10"/><text class="m mt" x="76" y="325">@pyreon/react-compat · pyreon({ compat: 'react' })</text><text class="m okT m" x="884" y="325" text-anchor="end" style="font-size:14px">on</text></g>
+<g class="k24"><rect class="dash" x="56" y="300" width="848" height="40" rx="10"/><text class="m hint" x="76" y="325">compat off · jsxImportSource: '@pyreon/core'</text><text class="m hint" x="884" y="325" text-anchor="end">off</text></g>
+<rect class="ring k25" x="52" y="296" width="856" height="48" rx="13"/>
+<text class="m hint" x="24" y="388">convert with the codemod, wrap converted components in nativeCompat() until step 5</text>
+</svg>

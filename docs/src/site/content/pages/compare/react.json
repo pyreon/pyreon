@@ -1,0 +1,248 @@
+{
+  "id": "react",
+  "route": "/compare/react",
+  "rival": "React",
+  "rivalMeasured": "react / react-dom 19.3.1",
+  "hook": {
+    "eyebrow": "Pyreon vs React",
+    "title": "React ships 4× more JavaScript for the same app.",
+    "lede": "Keep JSX, function components and TypeScript. Lose the re-render: a Pyreon component runs once, and a signal updates only the DOM node that reads it, so there is nothing to memoise and no dependency array to get wrong."
+  },
+  "proof": [
+    {
+      "stat": "4×",
+      "label": "less JavaScript: 17.2 KB against React's 69.6 KB for the same keyed-table app (gzip)",
+      "condition": "final pass, sizes are deterministic",
+      "source": "00-brief/BENCHMARKS-2026-11-05.md §7, line 285"
+    },
+    {
+      "stat": "2.6×",
+      "label": "faster to create 10,000 rows: 72.6 ms against 192.0 ms",
+      "condition": "real Chromium, run 1 table of a two-run record; synthetic, author-run",
+      "source": "00-brief/BENCHMARKS-2026-11-05.md §1, line 90"
+    },
+    {
+      "stat": "6.5×",
+      "label": "faster server rendering at 1,000 rows: 109.9 µs against 714.4 µs per render",
+      "condition": "compiled SSR, one run (overnight)",
+      "source": "00-brief/BENCHMARKS-2026-11-05.md §5, line 243"
+    }
+  ],
+  "table": {
+    "title": "Pyreon and React, line by line.",
+    "note": "Numbers from the 5 Nov 2026 record against React 19.3.1. Where React is ahead, the row says so. Synthetic, author-run, Apple M3 Max, real Chromium unless noted. Reproduce: pyreon.dev/docs/benchmarks",
+    "rows": [
+      {
+        "topic": "Bundle, same keyed-table app (gzip)",
+        "pyreon": "17.2 KB",
+        "rival": "69.6 KB",
+        "verdict": "pyreon",
+        "source": "00-brief/BENCHMARKS-2026-11-05.md §7, line 285"
+      },
+      {
+        "topic": "Create 10,000 rows",
+        "pyreon": "72.6 ms",
+        "rival": "192.0 ms (2.6× slower)",
+        "verdict": "pyreon",
+        "source": "00-brief/BENCHMARKS-2026-11-05.md §1, line 90 (run 1)"
+      },
+      {
+        "topic": "Swap two rows in 1,000",
+        "pyreon": "805 µs",
+        "rival": "6.06 ms",
+        "verdict": "pyreon",
+        "source": "00-brief/BENCHMARKS-2026-11-05.md §1, line 87 (run 1)"
+      },
+      {
+        "topic": "Remove a row",
+        "pyreon": "5.70 ms",
+        "rival": "5.78 ms; confidence intervals overlap in both runs",
+        "verdict": "tie",
+        "source": "00-brief/BENCHMARKS-2026-11-05.md §1, lines 88 and 101"
+      },
+      {
+        "topic": "Mount a deep tree (2,047 components)",
+        "pyreon": "3.59 / 3.58 ms",
+        "rival": "3.71 / 3.66 ms; a tie in both runs",
+        "verdict": "tie",
+        "source": "00-brief/BENCHMARKS-2026-11-05.md §2, line 119"
+      },
+      {
+        "topic": "TodoMVC shape: toggle 1,000 / clear 1,000",
+        "pyreon": "4.60 ms / 320 µs",
+        "rival": "11.41 ms / 1.00 ms (2.48× / 3.14×; add-100 varies 1.14–1.99× day to day; one run)",
+        "verdict": "pyreon",
+        "source": "00-brief/BENCHMARKS-2026-11-05.md §6, lines 264–268 (one run)"
+      },
+      {
+        "topic": "Server rendering, 10 / 100 / 1,000 rows",
+        "pyreon": "1.80 / 11.64 / 109.9 µs",
+        "rival": "10.30 / 76.52 / 714.4 µs (5.7–6.6× slower, one run)",
+        "verdict": "pyreon",
+        "source": "00-brief/BENCHMARKS-2026-11-05.md §5, lines 241–243 (one run)"
+      },
+      {
+        "topic": "Hydration: 1,000-row table / 320-component page",
+        "pyreon": "6.07 ms / 4.02 ms",
+        "rival": "6.52 ms / 4.15 ms; both adopt every server node (page: one run)",
+        "verdict": "pyreon",
+        "source": "00-brief/BENCHMARKS-2026-11-05.md §4, lines 224–231 (page: one run)"
+      },
+      {
+        "topic": "Retained heap after the row suite",
+        "pyreon": "3.08 MB",
+        "rival": "3.50 MB (one value per run, same in both runs)",
+        "verdict": "pyreon",
+        "source": "00-brief/BENCHMARKS-2026-11-05.md §1, line 108"
+      },
+      {
+        "topic": "Update model",
+        "pyreon": "The component body runs once; a signal change re-runs only the bindings that read it.",
+        "rival": "The component function re-runs on every state change; `useMemo`, `useCallback` and `memo` limit the cost.",
+        "verdict": "different",
+        "source": "docs/src/content/docs/migrating-from-react.md (\"The one shift\")"
+      },
+      {
+        "topic": "Concurrent rendering",
+        "pyreon": "No concurrent scheduler: updates are synchronous and touch only the changed nodes.",
+        "rival": "Transitions and deferred values let React interrupt and prioritise rendering.",
+        "verdict": "rival",
+        "source": "packages/tools/react-compat/README.md (\"Concurrent mode\" row)"
+      },
+      {
+        "topic": "Library ecosystem",
+        "pyreon": "77 first-party packages (router, forms, query, charts, flow, table, i18n…); React libraries that use only public hooks can run through `@pyreon/react-compat`.",
+        "rival": "A far larger third-party catalog: component kits, React Flow, react-aria and thousands more, all running as-is.",
+        "verdict": "rival",
+        "source": "AGENTS.md (77 packages); packages/tools/react-compat/README.md (third-party section)"
+      },
+      {
+        "topic": "Production track record",
+        "pyreon": "Pre-1.0. No adoption claims.",
+        "rival": "Over a decade in production and the largest hiring pool in front-end.",
+        "verdict": "rival",
+        "source": "00-brief/facts.md (status labels, things not to claim)"
+      },
+      {
+        "topic": "Mobile from the same code",
+        "pyreon": "The same `.tsx` compiles to SwiftUI and Jetpack Compose with PMTC (experimental).",
+        "rival": "React Native shares the language and the model; it is production-grade.",
+        "verdict": "different",
+        "source": "docs/src/content/docs/compare-app-frameworks.md"
+      }
+    ]
+  },
+  "code": {
+    "title": "The same search box, twice.",
+    "caption": "Both filter a list as you type. The React version re-runs the whole function on every keystroke and memoises to stay fast. The Pyreon version runs once; the input, the count and the list each update on their own.",
+    "rival": {
+      "label": "React 19",
+      "file": "Search.tsx",
+      "code": "import { useMemo, useState } from 'react'\n\ntype Item = { id: number; name: string }\n\nexport function Search({ items }: { items: Item[] }) {\n  const [query, setQuery] = useState('')\n  const visible = useMemo(\n    () => items.filter((i) => i.name.toLowerCase().includes(query.toLowerCase())),\n    [items, query],\n  )\n\n  return (\n    <div>\n      <input value={query} onChange={(e) => setQuery(e.target.value)} />\n      <p>{visible.length} matches</p>\n      <ul>\n        {visible.map((i) => (\n          <li key={i.id}>{i.name}</li>\n        ))}\n      </ul>\n    </div>\n  )\n}"
+    },
+    "pyreon": {
+      "label": "Pyreon",
+      "file": "Search.tsx",
+      "code": "import { For } from '@pyreon/core'\nimport { computed, signal } from '@pyreon/reactivity'\n\ntype Item = { id: number; name: string }\n\nexport function Search(props: { items: Item[] }) {\n  const query = signal('')\n  const visible = computed(() =>\n    props.items.filter((i) => i.name.toLowerCase().includes(query().toLowerCase())),\n  )\n\n  return (\n    <div>\n      <input value={query()} onInput={(e) => query.set(e.currentTarget.value)} />\n      <p>{visible().length} matches</p>\n      <ul>\n        <For each={visible} by={(i) => i.id}>\n          {(i) => <li>{i.name}</li>}\n        </For>\n      </ul>\n    </div>\n  )\n}"
+    },
+    "checked": "React side: typechecked with `@types/react` 19.3 under `tsc --strict`. Pyreon side: typechecked against the repo's `tsconfig` (0 errors), compiled with the real JSX compiler (`transformJSX`) and mounted in happy-dom; typing into the input filters the list."
+  },
+  "deletes": {
+    "title": "What you stop writing.",
+    "items": [
+      {
+        "what": "`useMemo(fn, deps)`",
+        "instead": "`computed(fn)`: it tracks what it reads, so there is no dependency list."
+      },
+      {
+        "what": "`useCallback`",
+        "instead": "A plain function. The component runs once, so the closure is created once."
+      },
+      {
+        "what": "`React.memo`",
+        "instead": "Nothing. A parent update never re-runs a child component."
+      },
+      {
+        "what": "Dependency arrays",
+        "instead": "None, anywhere. `effect` and `computed` subscribe to the signals they read."
+      }
+    ]
+  },
+  "pickTheOther": {
+    "title": "When to pick React",
+    "items": [
+      "Your app leans on React-only libraries (a component kit, React Flow, react-aria) and swapping them is not on the plan.",
+      "You need concurrent rendering: transitions that interrupt work, deferred values.",
+      "Hiring and a long production record weigh more for you than bundle size or update cost.",
+      "You share code with a React Native app that ships today."
+    ]
+  },
+  "migrate": {
+    "title": "Bring your React app with you.",
+    "text": "Point `react` at `@pyreon/react-compat`, keep shipping, and convert one component at a time.",
+    "href": "/migrate/react",
+    "label": "Migrate from React"
+  },
+  "cta": {
+    "title": "Write it once. Watch it run once.",
+    "command": "npm create @pyreon/zero@latest",
+    "secondary": {
+      "label": "Every result, including where we lose",
+      "href": "/docs/benchmarks"
+    }
+  },
+  "sources": [
+    {
+      "claim": "Bundle 17.2 KB vs React 69.6 KB, same keyed-table app, gzip -9",
+      "path": "00-brief/BENCHMARKS-2026-11-05.md §7, line 285"
+    },
+    {
+      "claim": "Create 10,000 rows 72.64 vs 192.01 ms; swap 805 µs vs 6.06 ms; remove 5.70 vs 5.78 ms (run 1 table)",
+      "path": "00-brief/BENCHMARKS-2026-11-05.md §1, lines 83–91"
+    },
+    {
+      "claim": "Remove row is a tie including React",
+      "path": "00-brief/BENCHMARKS-2026-11-05.md §1, line 101"
+    },
+    {
+      "claim": "Deep-tree mount: React ties Pyreon in both runs",
+      "path": "00-brief/BENCHMARKS-2026-11-05.md §2, line 119; §13, line 457"
+    },
+    {
+      "claim": "TodoMVC toggle 2.48×, clear 3.14×, add-100 quoted as 1.14–1.99×",
+      "path": "00-brief/BENCHMARKS-2026-11-05.md §6, lines 264–268"
+    },
+    {
+      "claim": "Compiled SSR 1.80/11.64/109.9 vs React 10.30/76.52/714.4 µs, one run",
+      "path": "00-brief/BENCHMARKS-2026-11-05.md §5, lines 241–243"
+    },
+    {
+      "claim": "Hydration 1,000 rows React 6.52/6.53 vs Pyreon 6.07/6.04 ms; app page 4.02 vs 4.15 ms, one run",
+      "path": "00-brief/BENCHMARKS-2026-11-05.md §4, lines 224–231"
+    },
+    {
+      "claim": "Retained heap Pyreon 3.08 MB vs React 3.50 MB, identical in both runs",
+      "path": "00-brief/BENCHMARKS-2026-11-05.md §1, line 108"
+    },
+    {
+      "claim": "useMemo→computed, useCallback→delete, no dependency arrays",
+      "path": "docs/src/content/docs/migrating-from-react.md (hook-by-hook map)"
+    },
+    {
+      "claim": "Pyreon has no concurrent mode; transitions are synchronous",
+      "path": "packages/tools/react-compat/README.md (Key differences)"
+    },
+    {
+      "claim": "Libraries using React internals (zustand/react useStore, @xyflow/react, heavier react-aria hooks) do not run on react-compat",
+      "path": "packages/tools/react-compat/README.md (Third-party React hook library compatibility)"
+    },
+    {
+      "claim": "Pyreon Search sample typechecks, compiles and filters in happy-dom",
+      "path": "/tmp/wt-site-content/.scratch/site-compare/{tc/Search.tsx,mount-search.ts} (run 11 Nov 2026)"
+    },
+    {
+      "claim": "React Search sample typechecks under tsc --strict with @types/react 19.3.0",
+      "path": "/tmp/wt-site-content/.scratch/site-compare/rivals/SearchReact.tsx"
+    }
+  ]
+}

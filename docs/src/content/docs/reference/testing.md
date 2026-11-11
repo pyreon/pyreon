@@ -1,9 +1,7 @@
 ---
-title: "Testing — API Reference"
+title: "@pyreon/testing — API Reference"
 description: "Testing-Library-compatible test kit for Pyreon — render/cleanup/renderHook + the full @testing-library/dom surface + reactive-graph matchers"
 ---
-
-# @pyreon/testing — API Reference
 
 > **Generated** from `testing`'s `src/manifest.ts` — the same source that powers `llms.txt` and MCP `get_api`. Do not edit this page by hand; edit the manifest. For the conceptual guide, see [testing](/docs/guides/testing).
 

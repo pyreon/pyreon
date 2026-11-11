@@ -3,8 +3,6 @@ title: "Lifecycle & Cleanup Mistakes"
 description: "Common lifecycle & cleanup mistakes in Pyreon and how to fix them."
 ---
 
-# Lifecycle & Cleanup Mistakes
-
 > **Generated** from `.agents/rules/anti-patterns.md` (the same source as MCP `get_anti_patterns`). Each entry is a real mistake + its fix; where a detector code is listed, the linter / `pyreon doctor` / MCP `validate` catches it automatically.
 
 ### Lowering a web input whose value can be EMPTY onto a native control that cannot be — the "no value" state has to be designed, not inherited

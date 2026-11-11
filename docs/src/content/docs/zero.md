@@ -3,6 +3,10 @@ title: Zero
 description: Full-stack meta-framework for Pyreon applications.
 ---
 
+<ProductPitch id="zero" />
+
+<LiveDemo id="zero" />
+
 `@pyreon/zero` is a batteries-included meta-framework for Pyreon, similar to Next.js for React or Nuxt for Vue. It provides file-system routing, SSR/SSG/ISR/SPA rendering modes, optimized components, a theme system, SEO utilities, font/image optimization, and production deployment adapters — everything you need to ship a full-stack Pyreon application.
 
 <PackageBadge name="@pyreon/zero" href="/docs/zero" status="beta" />
@@ -1120,6 +1124,11 @@ export const action = defineAction(
 
 export default function NewPost() {
   const sub = useSubmission(action)
+  // result() is the handler's return value OR an ActionInputError; narrow on `fields`.
+  const titleErrors = () => {
+    const r = sub.result()
+    return r && 'fields' in r ? (r.fields.title?.join(', ') ?? '') : ''
+  }
   return (
     <Form action={action}>
       <input name="title" />
@@ -1181,6 +1190,8 @@ export default {
 The standalone form (`import { seoPlugin } from '@pyreon/zero/seo'` + a separate `seoPlugin({...})` plugin entry) keeps working — `zero({ seo })` is the same config object, auto-wired.
 
 **`lastmod`.** Set `sitemap: { lastmod: 'build-time' }` to stamp every entry with the build date (`YYYY-MM-DD`), or pass an explicit ISO date. Per-entry `additionalPaths[].lastmod` always wins. `'build-time'` is the honest automated choice — file mtimes are unreliable in CI (a git checkout stamps checkout time on every file), so "when did this deploy happen" is the strongest truthful freshness signal.
+
+**`exclude`.** A string entry drops that path and everything under it on a segment boundary (`'/blog'` drops `/blog` and `/blog/post`, not `/blogroll`). To drop one page but keep its children, pass a RegExp: `exclude: [/^\/why$/]` drops `/why` and keeps `/why/<id>`. Both forms apply to file-scanned routes and to `additionalPaths`.
 
 `generateSitemap(paths, config)`, `generateRobots(config)`, and `jsonLd(data)` are also exported for manual use. `seoMiddleware(config)` serves sitemap/robots in development. In SSG mode, the sitemap can be driven by the actual prerendered path set including dynamic and per-locale variants — see [SSG → Sitemap](/docs/ssg#sitemap-from-resolved-paths).
 
@@ -2010,3 +2021,11 @@ There are no `@pyreon/zero/adapter-*` or `@pyreon/zero/isr` subpaths. Adapters a
 - **[SSG reference](/docs/ssg)** — static generation, dynamic routes, redirects, i18n, build-time ISR, adapters, error handling.
 - **[Router](/docs/router)** — the routing primitives Zero is built on.
 - **[Create Zero](/docs/create-zero)** — project scaffolding.
+
+<BenchCallout id="zero" />
+
+<ComingFrom id="zero" />
+
+<InlineSell id="content" />
+
+<CrossSell id="zero" />

@@ -3,8 +3,6 @@ title: "Islands & Partial Hydration"
 description: "How to ship mostly-static HTML and hydrate only the interactive parts with Pyreon islands — strategies, prefetch, and the zero-config zero integration."
 ---
 
-# Islands & Partial Hydration
-
 An island is a component that renders to static HTML on the server and hydrates **independently** on the client, on a strategy you choose. The rest of the page ships zero JS. This is how you keep a content-heavy page fast while still having interactive widgets.
 
 ## When to use it

@@ -1,0 +1,369 @@
+{
+ "id": "toast",
+ "route": "/products/toast",
+ "name": "Toast",
+ "package": "@pyreon/toast",
+ "category": "fundamentals · feedback",
+ "hero": {
+  "title": "`toast('Saved')`. From a store, a loader, anywhere.",
+  "emberWord": "anywhere",
+  "lede": "Mount one `<Toaster />`, then call `toast()` from components, stores, route loaders or a plain `fetch` wrapper. No provider, no hook, no context. Promise toasts, actions, a countdown that waits while the user reads, and the right screen-reader role for each type come with it.",
+  "install": "bun add @pyreon/toast",
+  "ctaShort": "Install",
+  "facts": [
+   {
+    "key": "setup",
+    "value": "one `<Toaster />`<small>Then `toast()` from any module.</small>"
+   },
+   {
+    "key": "vs react-hot-toast",
+    "value": "cold create 3.3× faster<small>2.5× vs sonner. One run, bun/JavaScriptCore.</small>"
+   },
+   {
+    "key": "screen readers",
+    "value": "`role=\"alert\"` for errors<small>`role=\"status\"` for info and success.</small>"
+   },
+   {
+    "key": "iOS and Android",
+    "value": "{dot:warn} `toast()` + `<Toaster>`<small>Experimental. A native overlay in the next release; promise, update and JSX content stay web.</small>"
+   }
+  ]
+ },
+ "proof": [
+  {
+   "stat": "3.3×",
+   "label": "faster cold toast creation than react-hot-toast (2.5× vs sonner)",
+   "source": "BENCHMARKS.md §10, toast row · overnight run, one run, bun/JavaScriptCore"
+  },
+  {
+   "stat": "2.5–3.8×",
+   "label": "faster headless store operations than react-hot-toast",
+   "source": "BENCHMARKS.md §10, toast row · one run"
+  },
+  {
+   "stat": "3",
+   "label": "independent pauses: hover, keyboard focus, hidden tab",
+   "source": "packages/fundamentals/toast/src/toast.ts pause sources; .agents/guides/fundamentals/references/toast.md"
+  }
+ ],
+ "why": {
+  "title": "The toast system you keep rebuilding, finished.",
+  "items": [
+   {
+    "title": "Call it where the error happens",
+    "text": "A store action, a route loader or an HTTP interceptor can call `toast.error('Card declined')` directly. Error handling stays next to the error, not threaded through a hook."
+   },
+   {
+    "title": "Loading to done in one call",
+    "text": "`toast.promise(upload(), { loading: 'Uploading…', success: (n) => `Uploaded ${n} files`, error: 'Upload failed' })` swaps the same toast in place and returns your promise."
+   },
+   {
+    "title": "A countdown that waits for the reader",
+    "text": "Hovering, tabbing into a toast, or switching tabs each hold the timer. The holds are tracked separately, so releasing one does not restart the clock while another still holds it."
+   },
+   {
+    "title": "Announced with the right urgency",
+    "text": "Errors and warnings use `role=\"alert\"`, info and success `role=\"status\"`, each with `aria-atomic`. The container sets no `aria-live`, so nothing is read twice."
+   }
+  ]
+ },
+ "difference": {
+  "title": "You wrote this provider. It never paused on hover.",
+  "before": {
+   "label": "React, by hand",
+   "caption": "A context, an array in state, a timer per toast. No pause, no screen-reader role, and no way to call it from outside a component.",
+   "code": "const ToastContext = createContext<(msg: string) => void>(() => {})\n\nexport function ToastProvider({ children }: { children: ReactNode }) {\n  const [toasts, setToasts] = useState<{ id: number; msg: string }[]>([])\n  const show = useCallback((msg: string) => {\n    const id = Date.now()\n    setToasts((t) => [...t, { id, msg }])\n    setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 4000)\n  }, [])\n  return (\n    <ToastContext.Provider value={show}>\n      {children}\n      <div className=\"toasts\">\n        {toasts.map((t) => <div key={t.id}>{t.msg}</div>)}\n      </div>\n    </ToastContext.Provider>\n  )\n}"
+  },
+  "after": {
+   "label": "with @pyreon/toast",
+   "caption": "Mount once. Call from anywhere. Pausing, roles, animation and cleanup are done.",
+   "code": "import { toast, Toaster } from '@pyreon/toast'\n\nconst App = () => (\n  <>\n    <Toaster position=\"top-right\" />\n    <Routes />\n  </>\n)\n\n// in a store, a loader, a fetch wrapper:\ntoast.success('Saved')"
+  }
+ },
+ "comingFrom": [
+  {
+   "lib": "sonner",
+   "title": "The calls you know, no React.",
+   "before": "import { Toaster, toast } from 'sonner'\n\ntoast.promise(save(), {\n  loading: 'Saving…',\n  success: 'Saved',\n  error: 'Could not save',\n})\ntoast.error('Card declined', {\n  description: 'Try another card',\n  action: { label: 'Retry', onClick: () => retry() },\n})\n\n// once, at the root of the app\n<Toaster position=\"top-right\" />",
+   "after": "import { Toaster, toast } from '@pyreon/toast'\n\ntoast.promise(save(), {\n  loading: 'Saving…',\n  success: 'Saved',\n  error: 'Could not save',\n})\ntoast.error('Card declined', {\n  description: 'Try another card',\n  action: { label: 'Retry', onClick: () => retry() },\n})\n\n// once, at the root of the app\n<Toaster position=\"top-right\" />",
+   "note": "Same shapes for `promise`, `description` and `action`. sonner's collapsed stack and swipe-to-dismiss are not here; toasts list up to `max` (5 by default)."
+  },
+  {
+   "lib": "react-hot-toast",
+   "title": "`loading`, then the same id.",
+   "before": "import toast from 'react-hot-toast'\n\nconst id = toast.loading('Uploading…')\n// later\ntoast.success('Uploaded', { id })",
+   "after": "import { toast } from '@pyreon/toast'\n\nconst id = toast.loading('Uploading…')\n// later\ntoast.update(id, { type: 'success', message: 'Uploaded', duration: 4000 })",
+   "note": "The same split as react-hot-toast: `toast.dismiss(id)` plays the leave animation, `toast.remove(id)` removes at once."
+  }
+ ],
+ "extraSectionsHtml": null,
+ "demo": {
+  "title": "Make some toast.",
+  "text": "Hover the stack to pause every countdown. The demo's Toaster has `max={3}`: fire more and the newest three stay on screen while older ones wait behind them, coming back when a newer one leaves, unless their own countdown has run out first.",
+  "component": "DemoToast",
+  "reference": "pkg-toast.html#demo",
+  "referenceHtml": "<div class=\"p-demo\">\n  <div class=\"card\"><div class=\"in\"><div class=\"tt-btns\">\n    <button class=\"pill\" type=\"button\" data-t=\"success\">toast.success('Saved')</button>\n    <button class=\"pill\" type=\"button\" data-t=\"error\">toast.error('Failed', { action })</button>\n    <button class=\"pill\" type=\"button\" data-t=\"promise\">toast.promise(save())</button>\n    <button class=\"pill\" type=\"button\" data-t=\"info\">toast('New version available')</button>\n    <button class=\"pill\" type=\"button\" data-t=\"dismiss\">toast.dismiss()</button>\n  </div><pre style=\"margin:16px 0 0;font-size:12px;line-height:1.7;color:var(--fog)\">&lt;Toaster position=\"top-right\" max={3} /&gt;</pre></div></div>\n  <div class=\"tt-stage\"><div class=\"tt-stack\" id=\"tt\" aria-label=\"Notifications\"></div><span class=\"tt-q\" id=\"tt-q\"></span></div>\n</div>",
+  "referenceCss": ".tt-btns{display:flex;flex-wrap:wrap;gap:8px}.tt-btns .pill{font-family:var(--mono);font-size:12px}.tt-stage{position:relative;min-height:300px;border:1px dashed var(--line-2);border-radius:16px;padding:16px;background:radial-gradient(120% 90% at 100% 0%,rgba(255,94,26,.07),transparent 60%)}.tt-stack{display:grid;gap:8px;justify-items:end}.tt{width:min(320px,100%);display:grid;grid-template-columns:22px 1fr auto;gap:10px;align-items:center;padding:12px 14px;border-radius:12px;background:#FFFCF5;color:#14141C;font-size:14px;box-shadow:0 18px 40px -20px rgba(0,0,0,.7);animation:ttin .25s ease-out;position:relative;overflow:hidden}.tt.out{animation:ttout .2s ease-in forwards}.tt i{font-style:normal;font-weight:700}.tt.success i{color:#15803D}.tt.error i{color:#B91C1C}.tt.info i{color:#0A6E89}.tt.loading i{color:#C2410C}.tt button{border:0;background:#14141C;color:#fff;border-radius:7px;height:26px;padding:0 10px;font:inherit;font-size:12px;cursor:pointer}.tt .bar{position:absolute;left:0;bottom:0;height:2px;background:#C2410C}.tt-q{position:absolute;left:16px;bottom:12px;font-family:var(--mono);font-size:11.5px;color:var(--fog)}\n@keyframes ttin{from{opacity:0;transform:translateY(-8px) scale(.98)}}@keyframes ttout{to{opacity:0;transform:translateX(16px)}}@media (prefers-reduced-motion:reduce){.tt,.tt.out{animation:none}}",
+  "referenceJs": "(function(){var S=document.getElementById('tt'),Q=document.getElementById('tt-q'),live=[],queue=[],MAX=3,paused=false,id=0;\nvar IC={success:'✓',error:'!',info:'i',loading:'…',warning:'!'};\nfunction el(t){var d=document.createElement('div');d.className='tt '+t.type;d.setAttribute('role',t.type==='error'?'alert':'status');d.innerHTML='<i></i><span></span>';d.children[0].textContent=IC[t.type];d.children[1].textContent=t.msg;if(t.action){var b=document.createElement('button');b.type='button';b.textContent=t.action;b.onclick=function(){dismiss(t);toast('success','Retried')};d.appendChild(b)}else d.appendChild(document.createElement('span'));var bar=document.createElement('div');bar.className='bar';d.appendChild(bar);t.bar=bar;t.el=d;return d}\nfunction toast(type,msg,o){o=o||{};var t={id:++id,type:type,msg:msg,action:o.action,left:o.dur===0?Infinity:(o.dur||4000)};if(live.length>=MAX){queue.push(t)}else show(t);qs();return t}\nfunction show(t){live.push(t);S.prepend(el(t));t.total=t.left}\nfunction dismiss(t){var i=live.indexOf(t);if(i<0)return;live.splice(i,1);t.el.classList.add('out');setTimeout(function(){t.el.remove()},200);if(queue.length)show(queue.shift());qs()}\nfunction qs(){Q.textContent=queue.length?queue.length+' queued':''}\nS.onmouseenter=function(){paused=true};S.onmouseleave=function(){paused=false};\nsetInterval(function(){if(paused||document.hidden)return;live.slice().forEach(function(t){if(t.left===Infinity)return;t.left-=100;t.bar.style.width=Math.max(0,100*t.left/t.total)+'%';if(t.left<=0)dismiss(t)})},100);\nfunction upd(t,type,msg){t.type=type;t.msg=msg;t.left=t.total=4000;t.el.className='tt '+type;t.el.children[0].textContent=IC[type];t.el.children[1].textContent=msg}\ndocument.querySelectorAll('[data-t]').forEach(function(b){b.onclick=function(){var k=b.dataset.t;if(k==='success')toast('success','Saved');else if(k==='error')toast('error','Connection failed',{action:'Retry'});else if(k==='info')toast('info','New version available');else if(k==='dismiss'){queue=[];live.slice().forEach(dismiss)}else{var t=toast('loading','Saving draft…',{dur:0});setTimeout(function(){if(t.el)upd(t,'success','Saved revision #42')},1600)}}});})();",
+  "spec": "Toaster position top-right, max 3, duration 4000. Buttons fire success, error (with a Retry action), info, a loading toast that `toast.update`s to success after 1.5 s, and `toast.promise` over a 1.5 s promise. Toasts beyond max are not rendered but keep their own timers; when a visible toast is dismissed, the newest hidden one becomes visible. Hovering or focusing the stack pauses all countdowns, hidden toasts included. The built-in Toaster draws no progress bar, so the demo shows none."
+ },
+ "features": {
+  "title": "Everything a toast needs, nothing to wire.",
+  "items": [
+   {
+    "name": "`toast(message, options)`",
+    "text": "Returns an id you can update or dismiss later."
+   },
+   {
+    "name": "Presets",
+    "text": "`toast.success`, `.error`, `.warning`, `.info`, and `.loading`, which stays until you update it."
+   },
+   {
+    "name": "`toast.promise`",
+    "text": "Loading, then success or error with the result or the error in the message; returns your promise."
+   },
+   {
+    "name": "`toast.update(id, …)`",
+    "text": "Change message, type or duration in place, without a new toast."
+   },
+   {
+    "name": "Actions",
+    "text": "`{ label: 'Undo', onClick: ({ dismiss }) => … }` with the toast's own dismiss."
+   },
+   {
+    "name": "Rich content",
+    "text": "JSX in `message`, `description` and `icon`."
+   },
+   {
+    "name": "Soft and hard removal",
+    "text": "`dismiss` animates out (200 ms) and fires `onDismiss` once; `remove` is instant."
+   },
+   {
+    "name": "Three pause holds",
+    "text": "Hover, keyboard focus and a hidden tab, with the remaining time kept."
+   },
+   {
+    "name": "`<Toaster>` props",
+    "text": "`position` (top or bottom; left, center or right), `max`, `gap`, `offset`, `duration`."
+   },
+   {
+    "name": "Reduced motion",
+    "text": "Transitions switch off under `prefers-reduced-motion: reduce`."
+   }
+  ]
+ },
+ "recipes": [
+  {
+   "title": "Toast every failed request in one place",
+   "text": "An interceptor in your HTTP layer, no component involved.",
+   "code": "import { toast } from '@pyreon/toast'\n\nexport async function api<T>(path: string): Promise<T> {\n  const res = await fetch(path)\n  if (!res.ok) {\n    toast.error(`Request failed (${res.status})`, {\n      description: path,\n      // a retry that fails toasts again; it does not hand data back to the first caller\n      action: { label: 'Retry', onClick: ({ dismiss }) => { dismiss(); api(path).catch(() => {}) } },\n    })\n    throw new Error(`[app] ${path} → ${res.status}`)\n  }\n  return res.json() as Promise<T>\n}"
+  },
+  {
+   "title": "Undo instead of \"Are you sure?\"",
+   "text": "Delete at once, offer Undo for five seconds, and commit only if nobody clicked it.",
+   "code": "function removeTask(task: Task) {\n  tasks.update((ts) => ts.filter((t) => t.id !== task.id))\n  let undone = false\n  toast('Task deleted', {\n    duration: 5000,\n    action: {\n      label: 'Undo',\n      onClick: ({ dismiss }) => {\n        undone = true\n        tasks.update((ts) => [...ts, task])\n        dismiss()\n      },\n    },\n    onDismiss: () => { if (!undone) void deleteOnServer(task.id) },\n  })\n}"
+  }
+ ],
+ "api": {
+  "title": "One function, one component.",
+  "groups": [
+   {
+    "name": "call",
+    "items": [
+     "toast",
+     "toast.success",
+     "toast.error",
+     "toast.warning",
+     "toast.info",
+     "toast.loading",
+     "toast.promise",
+     "toast.update",
+     "toast.dismiss",
+     "toast.remove"
+    ]
+   },
+   {
+    "name": "render",
+    "items": [
+     "Toaster"
+    ]
+   },
+   {
+    "name": "types",
+    "items": [
+     "Toast",
+     "ToastOptions",
+     "ToastAction",
+     "ToastActionContext",
+     "ToasterProps",
+     "ToastPosition",
+     "ToastPromiseOptions",
+     "ToastState",
+     "ToastType"
+    ]
+   }
+  ]
+ },
+ "limits": [
+  {
+   "title": "Beyond `max`, older toasts wait unseen",
+   "text": "The newest `max` toasts (5 by default) are on screen. Older ones keep their own countdown and come back when a newer one leaves, if they have not timed out. Raise `max` or use a dialog for messages that must be read."
+  },
+  {
+   "title": "One position per Toaster",
+   "text": "`position` is a Toaster prop, so every toast shares it. There is no per-toast position, collapsed stack or swipe-to-dismiss."
+  },
+  {
+   "title": "Mount the Toaster on the client",
+   "text": "`toast()` on the server is a no-op with a dev warning: a request has no screen to show it on."
+  },
+  {
+   "title": "Native gets the core",
+   "text": "iOS and Android lower `toast()` and `<Toaster>` with literal options. The native overlay, with description, action and `onDismiss`, lands in the next release. `toast.promise`, `toast.update`, a JSX description and icons stay web and warn by name; the hover pause is web-only. Native targets are experimental."
+  }
+ ],
+ "faq": [
+  {
+   "q": "Do I need a provider?",
+   "a": "No. The store is a module-level signal. `<Toaster />` renders it through a portal, and `toast()` works from any module once the Toaster is mounted."
+  },
+  {
+   "q": "Where do the speed numbers come from?",
+   "a": "The toast row of the record: store operations against react-hot-toast 2.5–3.8×, cold creation 3.3× vs react-hot-toast and 2.5× vs sonner, one run under bun. The record also lists a 21–31× DOM-commit figure, measured under happy-dom, so we do not lead with it."
+  },
+  {
+   "q": "Is it accessible?",
+   "a": "Each toast has the live-region role for its urgency and `aria-atomic`; the stack is a labelled region; keyboard focus pauses the countdown; dismiss and action buttons are real buttons."
+  },
+  {
+   "q": "Can a toast stay until the work finishes?",
+   "a": "Yes: `toast.loading('Saving…')` has no timeout. `toast.update(id, { type: 'success', message: 'Saved', duration: 4000 })` turns it into a normal toast, or let `toast.promise` do both."
+  }
+ ],
+ "related": [
+  {
+   "href": "/products/a11y",
+   "category": "fundamentals",
+   "name": "Accessibility",
+   "text": "Announce things that are not toasts.",
+   "package": "@pyreon/a11y"
+  },
+  {
+   "href": "/products/query",
+   "category": "fundamentals",
+   "name": "Query",
+   "text": "Toast on mutation success or failure.",
+   "package": "@pyreon/query"
+  },
+  {
+   "href": "/products/kinetic",
+   "category": "ui system",
+   "name": "Motion",
+   "text": "Custom enter and leave animations.",
+   "package": "@pyreon/kinetic + kinetic-presets"
+  }
+ ],
+ "end": {
+  "title": "Saved. (That was a toast.)",
+  "cta": "Read the toast guide"
+ },
+ "benchmarks": {
+  "rival": "vs react-hot-toast 2.6 and sonner 2.0 · bun/JavaScriptCore",
+  "run": "overnight run, one run",
+  "h": "From a cold start, toasts go in 3.3× faster than react-hot-toast.",
+  "p": "Store operations run without a DOM, so they compare the libraries' own work. sonner only removes a dismissed toast after its mounted Toaster animates, so it sits out the headless rows; its Toaster does not render under happy-dom, so it sits out the commit row. It is measured on cold creation. The commit row is happy-dom, a JavaScript DOM: read it as relative.",
+  "rows": [
+   {
+    "op": "cold create vs react-hot-toast",
+    "pyreon": null,
+    "rival": null,
+    "unit": "x",
+    "verdict": "win",
+    "label": "3.3×"
+   },
+   {
+    "op": "cold create vs sonner",
+    "pyreon": null,
+    "rival": null,
+    "unit": "x",
+    "verdict": "win",
+    "label": "2.5×"
+   },
+   {
+    "op": "headless store ops vs react-hot-toast",
+    "pyreon": null,
+    "rival": null,
+    "unit": "x",
+    "verdict": "win",
+    "label": "2.5–3.8×"
+   },
+   {
+    "op": "DOM commit vs react-hot-toast (happy-dom)",
+    "pyreon": null,
+    "rival": null,
+    "unit": "x",
+    "verdict": "win",
+    "label": "21–31×, happy-dom only"
+   }
+  ]
+ },
+ "glyphSvg": "<rect x=\"12\" y=\"18\" width=\"96\" height=\"32\" rx=\"9\" stroke=\"currentColor\" stroke-width=\"10\" fill=\"none\"/><rect x=\"24\" y=\"66\" width=\"84\" height=\"36\" rx=\"9\" fill=\"url(#eg)\"/>",
+ "sources": [
+  {
+   "claim": "toast row: headless 2.5–3.8×; cold create 3.3× / 2.5×; happy-dom commit 21–31×; sonner excluded from commit rows",
+   "path": "00-brief/BENCHMARKS-2026-11-05.md §10 toast row"
+  },
+  {
+   "claim": "Headless rows vs react-hot-toast only; sonner excluded because dismissal needs a mounted Toaster animation; sonner measured on create",
+   "path": "packages/fundamentals/toast/bench/toast-bench.ts header"
+  },
+  {
+   "claim": "max default 5; Toaster renders the newest max (visibleIds = slice(-max))",
+   "path": "packages/fundamentals/toast/src/toaster.tsx l.82, l.204"
+  },
+  {
+   "claim": "Hidden toasts keep their own timers (all five expired after 600 ms headless)",
+   "path": ".scratch/app/toast.ts \"after 600ms []\""
+  },
+  {
+   "claim": "toast.loading has duration 0 (no timeout); toast.update changes type/message in place",
+   "path": "packages/fundamentals/toast/src/toast.ts l.398-401; .scratch/app/toast.ts"
+  },
+  {
+   "claim": "toast.promise swaps the same toast and returns the promise; success can be a function of the data",
+   "path": "packages/fundamentals/toast/src/toast.ts l.438-456; .scratch/app/toast.ts \"Uploaded 3 files\""
+  },
+  {
+   "claim": "dismiss → state exiting, onDismiss fires once, removed after 200 ms leave",
+   "path": "packages/fundamentals/toast/src/toast.ts; .scratch/app/toast.ts; .agents/guides/fundamentals/references/toast.md"
+  },
+  {
+   "claim": "Three independent pause holds (hover, focus, hidden tab)",
+   "path": "packages/fundamentals/toast/src/toast.ts l.12-29, _pauseAll; toaster.tsx visibilitychange"
+  },
+  {
+   "claim": "role alert for error/warning, status for info/success, aria-atomic, container without aria-live",
+   "path": "packages/fundamentals/toast/src/manifest.ts description; src/toaster.tsx comment l.206-215"
+  },
+  {
+   "claim": "prefers-reduced-motion handled in styles",
+   "path": "packages/fundamentals/toast/src/styles.ts l.103"
+  },
+  {
+   "claim": "ToastType is info|success|warning|error (loading is a preset, not a type)",
+   "path": "packages/fundamentals/toast/src/types.ts l.13"
+  },
+  {
+   "claim": "Native: toast() + Toaster lower to PyreonToast with literal position/max/gap/offset/duration, description, action, onDismiss, dismiss; promise/update/JSX/icon/pause stay web",
+   "path": "packages/fundamentals/toast/src/manifest.ts multiplatform"
+  },
+  {
+   "claim": "Rival code typechecks (sonner 2.0.8, react-hot-toast 2.6.1, React 19 types)",
+   "path": ".scratch/app/rival/toast.tsx (tsc exit 0)"
+  },
+  {
+   "claim": "Draft \"Toasts beyond max wait in a queue and slide in when space frees up\" was wrong: hidden toasts keep counting down",
+   "path": "packages/fundamentals/toast/src/toaster.tsx l.204; .scratch/app/toast.ts"
+  }
+ ]
+}

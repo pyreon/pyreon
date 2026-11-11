@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" class="pxa pp-charts" viewBox="0 0 420 144" width="420" height="144" role="img" aria-labelledby="pp-charts-t pp-charts-d" fill="none">
+<title id="pp-charts-t">8.7× faster charts than ECharts 6</title>
+<desc id="pp-charts-d">8.7× faster charts than ECharts 6. Pyreon: 4.36 ms; ECharts 6: 37.95 ms. one run, synthetic, author-run, Apple M3 Max, record of 2026-11-05.</desc>
+<style>
+.pxa{--px-bg:#0A0A0E;--px-card:#111118;--px-raised:#181822;--px-line:#23232E;--px-line2:#2E2E3B;--px-text:#F4EFE6;--px-strong:#FFFCF5;--px-mist:#C9C4B8;--px-fog:#8A8696;--px-hint:#8A8696;--px-dim:#5C5867;--px-accent:#FF5E1A;--px-accent-text:#FF8A4C;--px-warm:#FFC83D;--px-plasma:#FF1F8C;--px-ok:#4ADE80;--px-warn:#FACC15;--px-err:#F87171;--px-link:#22D3EE;--px-violet:#A78BFA;--px-bar:#3A3846;--px-g1:#FF1F8C;--px-g2:#FF5E1A;--px-g3:#FFC83D;--px-glow:rgba(255,94,26,.16)}
+@media (prefers-color-scheme: light){.pxa{--px-bg:#FAF5EB;--px-card:#FFFFFF;--px-raised:#F4EFE6;--px-line:#E6DFD2;--px-line2:#D6CFC2;--px-text:#14141C;--px-strong:#0A0A0E;--px-mist:#45414F;--px-fog:#67637A;--px-hint:#8E8A9A;--px-dim:#B5AFA3;--px-accent:#E84A0F;--px-accent-text:#A8380A;--px-warm:#8A5A00;--px-plasma:#E40C70;--px-ok:#11692F;--px-warn:#8A5A00;--px-err:#B91C1C;--px-link:#0A6E89;--px-violet:#6D28D9;--px-bar:#D9D2C4;--px-g1:#D1106F;--px-g2:#C2410C;--px-g3:#9A6200;--px-glow:rgba(232,74,15,.10)}}
+[data-theme="dark"] .pxa,.pxa[data-theme="dark"]{--px-bg:#0A0A0E;--px-card:#111118;--px-raised:#181822;--px-line:#23232E;--px-line2:#2E2E3B;--px-text:#F4EFE6;--px-strong:#FFFCF5;--px-mist:#C9C4B8;--px-fog:#8A8696;--px-hint:#8A8696;--px-dim:#5C5867;--px-accent:#FF5E1A;--px-accent-text:#FF8A4C;--px-warm:#FFC83D;--px-plasma:#FF1F8C;--px-ok:#4ADE80;--px-warn:#FACC15;--px-err:#F87171;--px-link:#22D3EE;--px-violet:#A78BFA;--px-bar:#3A3846;--px-g1:#FF1F8C;--px-g2:#FF5E1A;--px-g3:#FFC83D;--px-glow:rgba(255,94,26,.16)}
+[data-theme="light"] .pxa,.pxa[data-theme="light"]{--px-bg:#FAF5EB;--px-card:#FFFFFF;--px-raised:#F4EFE6;--px-line:#E6DFD2;--px-line2:#D6CFC2;--px-text:#14141C;--px-strong:#0A0A0E;--px-mist:#45414F;--px-fog:#67637A;--px-hint:#8E8A9A;--px-dim:#B5AFA3;--px-accent:#E84A0F;--px-accent-text:#A8380A;--px-warm:#8A5A00;--px-plasma:#E40C70;--px-ok:#11692F;--px-warn:#8A5A00;--px-err:#B91C1C;--px-link:#0A6E89;--px-violet:#6D28D9;--px-bar:#D9D2C4;--px-g1:#D1106F;--px-g2:#C2410C;--px-g3:#9A6200;--px-glow:rgba(232,74,15,.10)}
+.pp-charts{font-family:'Space Grotesk',ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif}
+.pp-charts .m{font-family:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,monospace}
+.pp-charts .pp-charts-rm{opacity:0}
+@media (prefers-reduced-motion: reduce){.pp-charts *{animation:none!important;transition:none!important}.pp-charts .pp-charts-rm{opacity:1}.pp-charts .pp-charts-am{opacity:0}}
+
+.pp-charts .lab{fill:var(--px-mist);font-size:13px}
+.pp-charts .labP{fill:var(--px-strong);font-weight:600}
+.pp-charts .val{fill:var(--px-mist);font-size:13px}
+.pp-charts .valP{fill:var(--px-strong);font-weight:600}
+.pp-charts .bar{fill:var(--px-bar)}
+.pp-charts .eb{fill:var(--px-fog);font-size:11.5px;letter-spacing:.12em}
+.pp-charts .cav{fill:var(--px-fog);font-size:11.5px}
+.pp-charts .tick{stroke:var(--px-hint);stroke-width:1;stroke-dasharray:2 3}
+</style>
+<defs><linearGradient id="pp-charts-eg" x1="0" y1="0" x2="1" y2="0"><stop offset="0" style="stop-color:var(--px-g1)"/><stop offset=".55" style="stop-color:var(--px-g2)"/><stop offset="1" style="stop-color:var(--px-g3)"/></linearGradient><linearGradient id="pp-charts-egu" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="420" y2="0"><stop offset="0" style="stop-color:var(--px-g1)"/><stop offset=".55" style="stop-color:var(--px-g2)"/><stop offset="1" style="stop-color:var(--px-g3)"/></linearGradient><linearGradient id="pp-charts-egv" x1="0" y1="1" x2="0" y2="0"><stop offset="0" style="stop-color:var(--px-g1)"/><stop offset=".55" style="stop-color:var(--px-g2)"/><stop offset="1" style="stop-color:var(--px-g3)"/></linearGradient><linearGradient id="pp-charts-egd" x1="0" y1="0" x2="1" y2="1"><stop offset="0" style="stop-color:var(--px-g1)"/><stop offset=".55" style="stop-color:var(--px-g2)"/><stop offset="1" style="stop-color:var(--px-g3)"/></linearGradient></defs>
+<text class="m eb" x="0" y="14">LOWER IS BETTER · ms</text><text class="m lab labP" x="0" y="50">Pyreon</text><rect x="96" y="34" width="28.3" height="22" rx="4" fill="url(#pp-charts-egu)"/><text class="m val valP" x="132.2624505928854" y="50">4.36 ms</text><text class="m lab" x="0" y="90">ECharts 6</text><rect x="96" y="74" width="246.0" height="22" rx="4" class="bar"/><text class="m val" x="350" y="90">37.95 ms</text><text class="m cav" x="0" y="138">one run · M3 Max · record of 2026-11-05</text>
+</svg>

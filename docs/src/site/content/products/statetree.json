@@ -1,0 +1,354 @@
+{
+ "id": "statetree",
+ "route": "/products/statetree",
+ "name": "State Tree",
+ "package": "@pyreon/state-tree",
+ "category": "fundamentals · structured state",
+ "hero": {
+  "title": "The MobX-State-Tree model, with 9.5× faster actions.",
+  "emberWord": "9.5×",
+  "lede": "Models with views and actions, JSON snapshots, patches you can record and replay, middleware, references by id. The ideas MobX-State-Tree made popular, built on signals instead of observables, and measured against MST 9 op for op.",
+  "install": "bun add @pyreon/state-tree",
+  "ctaShort": "Install",
+  "facts": [
+   {
+    "key": "vs MobX-State-Tree 9",
+    "value": "faster on all 5 published ops<small>2.2× to 9.5×, bun, one run.</small>"
+   },
+   {
+    "key": "tracks",
+    "value": "snapshots · patches · actions"
+   },
+   {
+    "key": "schemas",
+    "value": "Zod, Valibot, ArkType, `s`<small>Schema mode validates every `set`, `patch` and `update`.</small>"
+   },
+   {
+    "key": "native",
+    "value": "{dot:warn}iOS and Android, experimental<small>`model()` compiles to a native singleton.</small>"
+   }
+  ]
+ },
+ "why": {
+  "title": "For state that has real structure.",
+  "items": [
+   {
+    "title": "History you don't have to build",
+    "text": "`onSnapshot` hands you plain JSON after each burst of changes (coalesced per microtask), and `applySnapshot` puts it back. Undo, time travel and persistence are an array and two calls."
+   },
+   {
+    "title": "Patches out, patches in",
+    "text": "Every write emits a JSON patch with a path like `/profile/name`, nested models included. Send them to a server, log them, or replay them with `applyPatch`."
+   },
+   {
+    "title": "Middleware that can say no",
+    "text": "`addMiddleware(node, (call, next) => …)` sees every action with its name and arguments. Don't call `next` and the action never runs: read-only modes, permission checks, audit logs."
+   },
+   {
+    "title": "Signals underneath",
+    "text": "Every state field is a `Signal`, every view is read like one. Components bind to `todo.done()` directly, with no `observer()` wrapper and no proxy."
+   }
+  ]
+ },
+ "difference": {
+  "title": "Same model, minus the observable machinery.",
+  "before": {
+   "label": "MobX-State-Tree 9",
+   "caption": "`types.*` declarations, getters for views, mutation through `self` inside actions.",
+   "code": "import { getSnapshot, onPatch, types } from 'mobx-state-tree'\n\nconst Todo = types\n  .model('Todo', { id: types.identifier, title: types.string, done: false })\n  .actions((self) => ({\n    toggle() {\n      self.done = !self.done\n    },\n  }))\n\nconst TodoList = types\n  .model('TodoList', { todos: types.array(Todo) })\n  .views((self) => ({\n    get left() {\n      return self.todos.filter((t) => !t.done).length\n    },\n  }))\n  .actions((self) => ({\n    add(title: string) {\n      self.todos.push({ id: String(self.todos.length + 1), title })\n    },\n  }))\n\nconst list = TodoList.create({ todos: [] })\nonPatch(list, (patch) => console.log(patch))\nlist.add('Write docs')\nlist.todos[0]!.toggle() // { op: 'replace', path: '/todos/0/done', value: true }\nconsole.log(list.left, getSnapshot(list))"
+  },
+  "after": {
+   "label": "with @pyreon/state-tree",
+   "caption": "Plain initial values, views as functions, signals in the actions.",
+   "code": "import { getSnapshot, model, onPatch } from '@pyreon/state-tree'\n\ntype Todo = { id: string; title: string; done: boolean }\n\nconst TodoList = model({ state: { todos: [] as Todo[] } })\n  .views((self) => ({\n    left: () => self.todos().filter((t) => !t.done).length,\n  }))\n  .actions((self) => ({\n    add: (title: string) =>\n      self.todos.update((xs) => [...xs, { id: String(xs.length + 1), title, done: false }]),\n    toggle: (id: string) =>\n      self.todos.update((xs) => xs.map((t) => (t.id === id ? { ...t, done: !t.done } : t))),\n  }))\n\nconst list = TodoList.create()\nonPatch(list, (patch) => console.log(patch))\nlist.add('Write docs')\nlist.toggle('1') // { op: 'replace', path: '/todos', value: [{ id: '1', …, done: true }] }\nconsole.log(list.left(), getSnapshot(list))"
+  }
+ },
+ "extraSectionsHtml": null,
+ "demo": {
+  "title": "Toggle todos, then undo.",
+  "text": "Toggle and add todos. Each change prints its JSON patch, and undo restores the previous snapshot with `applySnapshot`.",
+  "component": "DemoStatetree",
+  "reference": "pkg-statetree.html#demo",
+  "referenceHtml": "<div class=\"p-demo\">\n  <div class=\"ui\"><div style=\"display:flex;justify-content:space-between;align-items:center;margin-bottom:12px\"><b>Todos</b><span style=\"font-size:13px;color:#5E5A69\"><span id=\"sx-left\">0</span> left</span></div><ul id=\"sx-list\" style=\"list-style:none;padding:0;margin:0 0 14px\"></ul><div style=\"display:flex;gap:8px\"><button class=\"sec\" type=\"button\" id=\"sx-add\">add()</button><button class=\"sec\" type=\"button\" id=\"sx-undo\">undo</button></div></div>\n  <div class=\"card\"><div class=\"in\"><span class=\"label\">onPatch</span><div class=\"logbox\" id=\"sx-log\"></div><span class=\"label\" style=\"margin-top:8px\">getSnapshot</span><pre id=\"sx-snap\" style=\"margin:0;font-size:11.5px;line-height:1.6;color:var(--s-fg);max-height:160px;overflow:auto\"></pre></div></div>\n</div>",
+  "referenceCss": ".ds-ctl{display:grid;grid-template-columns:80px 1fr;align-items:center;gap:10px}.seg{display:flex;gap:2px;padding:3px;border:1px solid var(--line);border-radius:999px;width:fit-content;flex-wrap:wrap}.seg button{height:30px;padding:0 14px;border:0;border-radius:999px;background:transparent;color:var(--fog);font-family:var(--mono);font-size:12px;cursor:pointer}.seg button[aria-pressed=\"true\"]{background:var(--line);color:var(--ivory)}\n.logbox{font-family:var(--mono);font-size:12px;line-height:1.85;color:var(--mist);min-height:120px;max-height:240px;overflow:auto}.logbox div{border-bottom:1px solid var(--line);padding:3px 0}.logbox b{color:var(--accent);font-weight:400}#sx-list li{display:flex;gap:10px;align-items:center;padding:9px 0;border-bottom:1px solid #EDE6D6;font-size:14px}#sx-list input{width:18px;height:18px;accent-color:#C2410C}",
+  "referenceJs": "(function(){var st={todos:[{title:'Write the spec',done:true},{title:'Ship the demo',done:false}]},hist=[],names=['Record a video','Answer issues','Benchmark run','Update docs'],$=function(i){return document.getElementById(i)};\nfunction log(t){var d=document.createElement('div');d.innerHTML=t;$('sx-log').prepend(d)}\nfunction r(){$('sx-list').innerHTML=st.todos.map(function(t,i){return '<li><input type=\"checkbox\" aria-label=\"'+t.title+'\" data-i=\"'+i+'\"'+(t.done?' checked':'')+'><span style=\"'+(t.done?'text-decoration:line-through;color:#6B6776':'')+'\">'+t.title+'</span></li>'}).join('');$('sx-left').textContent=st.todos.filter(function(t){return!t.done}).length;$('sx-snap').textContent=JSON.stringify(st,null,2);document.querySelectorAll('#sx-list input').forEach(function(c){c.onchange=function(){hist.push(JSON.stringify(st));var i=+c.dataset.i;st.todos[i].done=c.checked;log('<b>replace</b> /todos/'+i+'/done → '+c.checked);r()}})}\n$('sx-add').onclick=function(){hist.push(JSON.stringify(st));var t={title:names[st.todos.length%names.length],done:false};st.todos.push(t);log('<b>add</b> /todos/'+(st.todos.length-1)+' → {\"title\":\"'+t.title+'\"}');r()};\n$('sx-undo').onclick=function(){if(!hist.length)return;st=JSON.parse(hist.pop());log('<b>applySnapshot</b> (undo)');r()};r();})();",
+  "spec": "DemoStateTree uses the real `model()` with todos held as a plain-object array on the list model (`toggle(id)`, `add(title)` actions on the parent), not model instances inside the array, so every printed patch is replayable. Show each `onPatch` object as JSON; undo uses `onSnapshot` history and `applySnapshot`."
+ },
+ "features": {
+  "title": "The model toolkit.",
+  "items": [
+   {
+    "name": "`model({ state })`",
+    "text": "then `.views()`, `.actions()`, `.volatile()`, `.lifecycle()`; finish with `.create()` or a singleton `.asHook(id)`."
+   },
+   {
+    "name": "Schema mode",
+    "text": "`model({ schema })` with `s`, Zod, Valibot or ArkType; `set`, `patch`, `deepPatch`, `update` validate before writing."
+   },
+   {
+    "name": "Async actions",
+    "text": "an action can `await`; it is still one action to middleware."
+   },
+   {
+    "name": "Volatile state",
+    "text": "reactive, but left out of snapshots and patches."
+   },
+   {
+    "name": "Snapshots",
+    "text": "`getSnapshot`, `applySnapshot` (schema mode re-validates), `onSnapshot`."
+   },
+   {
+    "name": "Patches",
+    "text": "`onPatch` and `applyPatch`, single or batched."
+   },
+   {
+    "name": "Middleware",
+    "text": "`addMiddleware` can block or wrap; `onAction` only observes."
+   },
+   {
+    "name": "Tree navigation",
+    "text": "`getParent`, `getRoot`, `getPath`, `hasParent`, `isRoot`."
+   },
+   {
+    "name": "References",
+    "text": "`identifier()` and `reference(Type)` store an id and resolve to the live node; snapshots keep the id."
+   },
+   {
+    "name": "Lifecycle",
+    "text": "`afterCreate`, `beforeDestroy`, `destroy`, `isAlive`, `clone`, `getType`."
+   }
+  ]
+ },
+ "api": {
+  "title": "Models, and the functions that watch them.",
+  "groups": [
+   {
+    "name": "models",
+    "items": [
+     "model",
+     "clone",
+     "destroy",
+     "isAlive",
+     "getType",
+     "resetHook",
+     "resetAllHooks"
+    ]
+   },
+   {
+    "name": "snapshots and patches",
+    "items": [
+     "getSnapshot",
+     "applySnapshot",
+     "onSnapshot",
+     "onPatch",
+     "applyPatch"
+    ]
+   },
+   {
+    "name": "middleware",
+    "items": [
+     "addMiddleware",
+     "onAction"
+    ]
+   },
+   {
+    "name": "tree and references",
+    "items": [
+     "getParent",
+     "getRoot",
+     "getPath",
+     "hasParent",
+     "isRoot",
+     "identifier",
+     "reference",
+     "resolveIdentifier"
+    ]
+   },
+   {
+    "name": "types",
+    "items": [
+     "ModelInstance",
+     "Snapshot",
+     "Patch",
+     "ActionCall",
+     "MiddlewareFn"
+    ]
+   }
+  ]
+ },
+ "limits": [
+  {
+   "title": "Patches are per field",
+   "text": "A write replaces a field, so changing one item in an array emits one `replace` of the whole array at `/todos`. MobX-State-Tree emits `/todos/0/done`. Snapshots and undo are unaffected."
+  },
+  {
+   "title": "Keep collections as plain data",
+   "text": "Hold arrays of plain objects and put the actions on the parent, as the docs' todo example does. A model instance stored inside an array field doesn't yet produce replayable patches; nested models as named fields do."
+  },
+  {
+   "title": "Schema mode is flat",
+   "text": "Nested models compose in plain mode. A schema-mode model validates its own fields."
+  },
+  {
+   "title": "More structure than a store",
+   "text": "For a few shared values `@pyreon/store` is less ceremony. Reach for state-tree when you want snapshots, patches or middleware."
+  }
+ ],
+ "related": [
+  {
+   "href": "/products/store",
+   "category": "fundamentals",
+   "name": "Store",
+   "text": "Simpler shared state when you don't need history.",
+   "package": "@pyreon/store"
+  },
+  {
+   "href": "/products/sync",
+   "category": "fundamentals",
+   "name": "Sync",
+   "text": "Share state live between devices.",
+   "package": "@pyreon/sync"
+  },
+  {
+   "href": "/products/validation",
+   "category": "fundamentals",
+   "name": "Validation",
+   "text": "Type and validate model state with a schema.",
+   "package": "@pyreon/validate"
+  }
+ ],
+ "end": {
+  "title": "Model it once. Undo comes with it.",
+  "cta": "Read the state-tree guide"
+ },
+ "benchmarks": {
+  "rival": "vs MobX-State-Tree 9.0.0 · bun / JavaScriptCore, one process per op",
+  "run": "overnight run, one run",
+  "h": "Faster than MobX-State-Tree on all five published ops: 2.2× to 9.5×.",
+  "p": "Models, snapshots and patches, op for op against the library that defined the idea. No op in this row was a tie or a loss.",
+  "rows": [
+   {
+    "op": "action",
+    "pyreon": null,
+    "rival": null,
+    "unit": "x",
+    "verdict": "win",
+    "label": "9.5×"
+   },
+   {
+    "op": "observer",
+    "pyreon": null,
+    "rival": null,
+    "unit": "x",
+    "verdict": "win",
+    "label": "8.3×"
+   },
+   {
+    "op": "applyPatch",
+    "pyreon": null,
+    "rival": null,
+    "unit": "x",
+    "verdict": "win",
+    "label": "7.5×"
+   },
+   {
+    "op": "applySnapshot (schema)",
+    "pyreon": null,
+    "rival": null,
+    "unit": "x",
+    "verdict": "win",
+    "label": "6.8×"
+   },
+   {
+    "op": "create (schema)",
+    "pyreon": null,
+    "rival": null,
+    "unit": "x",
+    "verdict": "win",
+    "label": "2.2×"
+   }
+  ]
+ },
+ "glyphSvg": "<path d=\"M60 22 V50 M60 50 L28 82 M60 50 L92 82\" stroke=\"currentColor\" stroke-width=\"10\" fill=\"none\"/><circle cx=\"28\" cy=\"92\" r=\"12\" stroke=\"currentColor\" stroke-width=\"9\" fill=\"none\"/><circle cx=\"92\" cy=\"92\" r=\"12\" stroke=\"currentColor\" stroke-width=\"9\" fill=\"none\"/><circle cx=\"60\" cy=\"22\" r=\"14\" fill=\"url(#eg)\"/>",
+ "proof": [
+  {
+   "stat": "9.5×",
+   "label": "faster action calls than MobX-State-Tree 9.",
+   "source": "BENCHMARKS.md §10 state-tree row, overnight run 2026-11-05, bun/JavaScriptCore, one run"
+  },
+  {
+   "stat": "8.3×",
+   "label": "faster observer notification.",
+   "source": "BENCHMARKS.md §10 state-tree row, one run"
+  },
+  {
+   "stat": "7.5×",
+   "label": "faster `applyPatch`; `applySnapshot` with a schema 6.8×.",
+   "source": "BENCHMARKS.md §10 state-tree row, one run"
+  }
+ ],
+ "comingFrom": [
+  {
+   "lib": "MobX-State-Tree",
+   "title": "Same concepts, different plumbing.",
+   "before": "import { getSnapshot, onPatch, types } from 'mobx-state-tree'\n\nconst Todo = types\n  .model('Todo', { id: types.identifier, title: types.string, done: false })\n  .actions((self) => ({\n    toggle() {\n      self.done = !self.done\n    },\n  }))\n\nconst TodoList = types\n  .model('TodoList', { todos: types.array(Todo) })\n  .views((self) => ({\n    get left() {\n      return self.todos.filter((t) => !t.done).length\n    },\n  }))\n  .actions((self) => ({\n    add(title: string) {\n      self.todos.push({ id: String(self.todos.length + 1), title })\n    },\n  }))\n\nconst list = TodoList.create({ todos: [] })\nonPatch(list, (patch) => console.log(patch))\nlist.add('Write docs')\nlist.todos[0]!.toggle() // { op: 'replace', path: '/todos/0/done', value: true }\nconsole.log(list.left, getSnapshot(list))",
+   "after": "import { getSnapshot, model, onPatch } from '@pyreon/state-tree'\n\ntype Todo = { id: string; title: string; done: boolean }\n\nconst TodoList = model({ state: { todos: [] as Todo[] } })\n  .views((self) => ({\n    left: () => self.todos().filter((t) => !t.done).length,\n  }))\n  .actions((self) => ({\n    add: (title: string) =>\n      self.todos.update((xs) => [...xs, { id: String(xs.length + 1), title, done: false }]),\n    toggle: (id: string) =>\n      self.todos.update((xs) => xs.map((t) => (t.id === id ? { ...t, done: !t.done } : t))),\n  }))\n\nconst list = TodoList.create()\nonPatch(list, (patch) => console.log(patch))\nlist.add('Write docs')\nlist.toggle('1') // { op: 'replace', path: '/todos', value: [{ id: '1', …, done: true }] }\nconsole.log(list.left(), getSnapshot(list))",
+   "note": "Views become functions, `self.done = …` becomes `self.done.set(…)`, `types.*` becomes initial values or a schema. Both runs print the same final snapshot. The patch differs: MST reports `/todos/0/done`, Pyreon replaces `/todos`."
+  }
+ ],
+ "recipes": [
+  {
+   "title": "Undo, and a read-only switch",
+   "text": "Snapshots go into an array; undo applies the previous one. One middleware blocks every action while `readOnly` is on.",
+   "code": "import { addMiddleware, applySnapshot, getSnapshot, model, onSnapshot } from '@pyreon/state-tree'\n\nconst Editor = model({ state: { text: '', fontSize: 14, readOnly: false } })\n  .actions((self) => ({\n    type: (t: string) => self.text.update((s) => s + t),\n    zoom: (by: number) => self.fontSize.update((n) => n + by),\n  }))\n\nconst doc = Editor.create()\nconst past = [getSnapshot(doc)]\n\n// one snapshot per burst of changes (onSnapshot is microtask-coalesced)\nonSnapshot(doc, (snap) => past.push(snap))\n\n// middleware sees every action and can block it\naddMiddleware(doc, (call, next) => (doc.readOnly() ? undefined : next(call)))\n\ndoc.type('Hello')\nawait Promise.resolve()\ndoc.zoom(2)\nawait Promise.resolve()\n\nconst undo = () => {\n  if (past.length < 2) return\n  past.pop() // the current state\n  // the restored state is pushed back by onSnapshot on the next microtask\n  applySnapshot(doc, past.pop()!)\n}\nundo()\nawait Promise.resolve()\nconsole.log(doc.text(), doc.fontSize()) // 'Hello' 14"
+  }
+ ],
+ "faq": [
+  {
+   "q": "How was it measured against MST?",
+   "a": "One process per op and library, under bun, in one overnight run that we wrote and judged. Every op in the row is a win, but run it before you rely on it: `packages/fundamentals/state-tree/bench/`."
+  },
+  {
+   "q": "Do I need `observer()` around components?",
+   "a": "No. Pyreon components run once and bind each signal read to the DOM node that shows it, so reading `doc.text()` in JSX is all it takes."
+  },
+  {
+   "q": "Can I send patches to a server?",
+   "a": "Yes: `onPatch` gives `{ op, path, value }` objects as plain JSON, and `applyPatch` applies them on the other side. Only `replace` operations exist."
+  }
+ ],
+ "sources": [
+  {
+   "claim": "vs MST 9: create (schema) 2.2×, action 9.5×, applySnapshot (schema) 6.8×, applyPatch 7.5×, observer 8.3×; no losses",
+   "path": "BENCHMARKS.md §10 state-tree row (overnight)"
+  },
+  {
+   "claim": "MST emits /todos/0/done; Pyreon emits replace /todos (whole array)",
+   "path": "scratch ts/st-mst.ts and ts/st-pyreon.ts output (mobx-state-tree 9.0.1)"
+  },
+  {
+   "claim": "Model instance inside an array field: patch path lacks index (/todos/done), value serializes as {}, applyPatch throws 'is not a nested model instance'",
+   "path": "scratch st1.ts, st2.ts; filed as an issue; filed as pyreon/pyreon#4311"
+  },
+  {
+   "claim": "Nested model field patches have prefixed paths (/profile/name)",
+   "path": "scratch st1.ts; docs/src/content/docs/state-tree.md 'Nested Model Patches'"
+  },
+  {
+   "claim": "onSnapshot microtask-coalesced; middleware can block",
+   "path": ".agents/guides/fundamentals/references/state-tree.md; docs state-tree.md 'Blocking Actions'; scratch ts/st-undo.ts printed 'Hello 14'"
+  },
+  {
+   "claim": "Schema mode flat; nested models plain mode only",
+   "path": ".agents/guides/fundamentals/references/state-tree.md"
+  },
+  {
+   "claim": "Native: model() lowers to PyreonModel singletons",
+   "path": "packages/fundamentals/state-tree/src/manifest.ts; docs state-tree.md 'Multiplatform'"
+  },
+  {
+   "claim": "Draft fixes: difference code used model({ state, actions }) and state { todos: [Todo] }, neither of which is the API; 'per-request isolation for SSR' fact unsupported; version fact removed; '21 exports' and 'volatile' as an export corrected",
+   "path": "packages/fundamentals/state-tree/src/index.ts, docs state-tree.md Quick Start"
+  }
+ ]
+}

@@ -1,0 +1,438 @@
+{
+ "id": "flow",
+ "route": "/products/flow",
+ "name": "Flow",
+ "package": "@pyreon/flow",
+ "category": "fundamentals · diagrams",
+ "hero": {
+  "title": "Drag one node. Nothing else re-renders.",
+  "emberWord": "Nothing",
+  "lede": "Node editors and diagrams on signals: nodes, edges, handles, pan and zoom, a minimap and seven layout algorithms, all built in. Each custom node mounts once and updates in place, and it beat React Flow 12 on all six operations we timed.",
+  "install": "bun add @pyreon/flow",
+  "ctaShort": "Install",
+  "facts": [
+   {
+    "key": "vs React Flow 12",
+    "value": "6 of 6 operations won<small>500 nodes, 499 edges, one run</small>"
+   },
+   {
+    "key": "drag a node ×60",
+    "value": "7.25× faster<small>4.42 vs 32.05 ms</small>"
+   },
+   {
+    "key": "auto-layout",
+    "value": "7 algorithms built in<small>no dagre, no elkjs, code-split</small>"
+   },
+   {
+    "key": "iOS and Android",
+    "value": "native SwiftUI and Compose host<small>experimental</small>"
+   }
+  ]
+ },
+ "proof": [
+  {
+   "stat": "7.25×",
+   "label": "faster than React Flow 12 to drag a node through 60 moves in a 500-node graph (4.42 vs 32.05 ms).",
+   "source": "BENCHMARKS.md §2, Flow vs React Flow 12, final pass, one run, real Chromium, M3 Max"
+  },
+  {
+   "stat": "5.39×",
+   "label": "faster to select a node (188 µs vs 1.01 ms).",
+   "source": "BENCHMARKS.md §2, Flow vs React Flow 12, one run"
+  },
+  {
+   "stat": "0",
+   "label": "extra runs of a custom node component when it is dragged, selected or given new data.",
+   "source": "packages/fundamentals/flow/src/tests/node-reactivity.test.ts (\"custom node factory runs exactly once across …\")"
+  }
+ ],
+ "why": {
+  "title": "For workflow builders, pipelines and whiteboards.",
+  "items": [
+   {
+    "title": "Every node mounts once",
+    "text": "A custom node gets accessors (`data()`, `selected()`, `dragging()`), not values. Dragging one node runs zero updates on the nodes and edges it does not touch, and the tests count them."
+   },
+   {
+    "title": "Layout in the box",
+    "text": "`flow.layout()` runs layered, force, stress, tree, radial, box or rect-packing layouts on each node's measured size. No dagre, no elkjs; the engine loads on first use."
+   },
+   {
+    "title": "Connections without plumbing",
+    "text": "Drop a handle on a handle and the edge exists. `isValidConnection` vetoes, `connectionRadius` snaps a near miss, and edges attach to the measured handle dots."
+   },
+   {
+    "title": "Editor chores, done",
+    "text": "Undo and redo (50 steps by default), copy and paste, sub-flows, keyboard access, and `toJSON` / `fromJSON` that treats loaded data as untrusted."
+   }
+  ]
+ },
+ "difference": {
+  "title": "The state hooks go. The change handlers go.",
+  "before": {
+   "label": "React + React Flow 12",
+   "caption": "Two state hooks, two change handlers and a memoised connect callback, all to let the user drag and connect.",
+   "code": "import { useCallback } from 'react'\nimport { Background, Controls, MiniMap, ReactFlow, addEdge, useEdgesState, useNodesState } from '@xyflow/react'\nimport type { Connection } from '@xyflow/react'\nimport '@xyflow/react/dist/style.css'\n\nconst initialNodes = [\n  { id: '1', position: { x: 0, y: 0 }, data: { label: 'Start' } },\n  { id: '2', position: { x: 200, y: 100 }, data: { label: 'End' } },\n]\nconst initialEdges = [{ id: 'e1-2', source: '1', target: '2' }]\n\nexport function Diagram() {\n  const [nodes, , onNodesChange] = useNodesState(initialNodes)\n  const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges)\n  const onConnect = useCallback((c: Connection) => setEdges((eds) => addEdge(c, eds)), [setEdges])\n\n  return (\n    <div style={{ height: 400 }}>\n      <ReactFlow\n        nodes={nodes}\n        edges={edges}\n        onNodesChange={onNodesChange}\n        onEdgesChange={onEdgesChange}\n        onConnect={onConnect}\n        fitView\n      >\n        <Background />\n        <Controls />\n        <MiniMap />\n      </ReactFlow>\n    </div>\n  )\n}"
+  },
+  "after": {
+   "label": "with @pyreon/flow",
+   "caption": "The instance owns its nodes and edges as signals. Dragging, selecting and connecting update it directly.",
+   "code": "import { Background, Controls, Flow, MiniMap, createFlow } from '@pyreon/flow'\n\nconst flow = createFlow({\n  nodes: [\n    { id: '1', position: { x: 0, y: 0 }, data: { label: 'Start' } },\n    { id: '2', position: { x: 200, y: 100 }, data: { label: 'End' } },\n  ],\n  edges: [{ source: '1', target: '2' }],\n  fitView: true,\n})\n\n// Dropping a connection adds the edge. Dragging moves the node. Nothing to wire.\nexport const Diagram = () => (\n  <div style=\"height: 400px\">\n    <Flow instance={flow}>\n      <Background />\n      <Controls />\n      <MiniMap />\n    </Flow>\n  </div>\n)"
+  }
+ },
+ "extraSectionsHtml": null,
+ "demo": {
+  "title": "Drag the nodes. Then auto-layout.",
+  "text": "Drag any node and the edges follow. \"Auto-layout\" runs the built-in layered engine on the measured node sizes. The counter shows how many times a node component has re-run since mount.",
+  "component": "DemoFlow",
+  "reference": "pkg-flow.html#demo",
+  "referenceHtml": "<div class=\"card\"><div class=\"in\" style=\"padding:0\">\n  <div style=\"display:flex;gap:10px;padding:14px 18px;border-bottom:1px solid var(--line);align-items:center\"><button class=\"pill\" type=\"button\" id=\"fl-l\">Auto-layout</button><button class=\"pill\" type=\"button\" id=\"fl-s\">Scramble</button><span class=\"mono\" style=\"margin-left:auto;font-size:12px;color:var(--fog)\">nodes re-mounted while dragging: <b style=\"color:var(--accent);font-weight:400\">0</b></span></div>\n  <svg id=\"fl\" viewBox=\"0 0 900 420\" style=\"width:100%;height:auto;display:block;touch-action:none;background-image:radial-gradient(#23232E 1px,transparent 1px);background-size:20px 20px;border-radius:0 0 21px 21px\" role=\"img\" aria-label=\"Flow diagram demo\"></svg>\n</div></div>",
+  "referenceCss": "",
+  "referenceJs": "(function(){var N=[{id:'a',l:'Webhook'},{id:'b',l:'Validate'},{id:'c',l:'Enrich'},{id:'d',l:'Score lead'},{id:'e',l:'CRM'},{id:'f',l:'Slack alert'},{id:'g',l:'Archive'}],E=[['a','b'],['b','c'],['b','g'],['c','d'],['d','e'],['d','f']],svg=document.getElementById('fl'),W=130,H=44;\nfunction scr(){N.forEach(function(n){n.x=40+Math.random()*700;n.y=30+Math.random()*330})}\nfunction lay(){var dep={};N.forEach(function(n){dep[n.id]=0});for(var k=0;k<6;k++)E.forEach(function(e){dep[e[1]]=Math.max(dep[e[1]],dep[e[0]]+1)});var cols={};N.forEach(function(n){(cols[dep[n.id]]=cols[dep[n.id]]||[]).push(n)});Object.keys(cols).forEach(function(c){cols[c].forEach(function(n,i){n.tx=40+c*175;n.ty=210-(cols[c].length-1)*45+i*90-H/2})});var t0=performance.now();var from=N.map(function(n){return[n.x,n.y]});(function step(){var p=Math.min(1,(performance.now()-t0)/500),e=1-Math.pow(1-p,3);N.forEach(function(n,i){n.x=from[i][0]+(n.tx-from[i][0])*e;n.y=from[i][1]+(n.ty-from[i][1])*e});draw();if(p<1)requestAnimationFrame(step)})()}\nfunction g(id){return N.filter(function(n){return n.id===id})[0]}\nfunction build(){svg.innerHTML='<g id=\"fl-e\"></g>'+N.map(function(n){return '<g class=\"fn\" data-id=\"'+n.id+'\" style=\"cursor:grab\"><rect width=\"'+W+'\" height=\"'+H+'\" rx=\"10\" style=\"fill:var(--obs-3)\" stroke=\"#2E2E3B\"/><circle cx=\"0\" cy=\"'+H/2+'\" r=\"4\" style=\"fill:var(--fog)\"/><circle cx=\"'+W+'\" cy=\"'+H/2+'\" r=\"4\" fill=\"#FF5E1A\"/><text x=\"'+W/2+'\" y=\"'+(H/2+5)+'\" text-anchor=\"middle\" font-size=\"13\" style=\"fill:var(--ivory)\" font-family=\"system-ui\">'+n.l+'</text></g>'}).join('');svg.querySelectorAll('.fn').forEach(function(el){el.addEventListener('pointerdown',function(ev){var n=g(el.dataset.id),pt=svg.createSVGPoint();el.setPointerCapture(ev.pointerId);function loc(e){pt.x=e.clientX;pt.y=e.clientY;return pt.matrixTransform(svg.getScreenCTM().inverse())}var s=loc(ev),ox=n.x,oy=n.y;el.querySelector('rect').setAttribute('stroke','#FF5E1A');function mv(e){var p=loc(e);n.x=ox+p.x-s.x;n.y=oy+p.y-s.y;draw()}function up(){el.removeEventListener('pointermove',mv);el.removeEventListener('pointerup',up);el.querySelector('rect').setAttribute('stroke','#2E2E3B')}el.addEventListener('pointermove',mv);el.addEventListener('pointerup',up)})})}\nfunction draw(){N.forEach(function(n){svg.querySelector('[data-id=\"'+n.id+'\"]').setAttribute('transform','translate('+n.x+','+n.y+')')});document.getElementById('fl-e').innerHTML=E.map(function(e){var a=g(e[0]),b=g(e[1]),x1=a.x+W,y1=a.y+H/2,x2=b.x,y2=b.y+H/2,dx=Math.max(40,Math.abs(x2-x1)/2);return '<path d=\"M'+x1+','+y1+' C'+(x1+dx)+','+y1+' '+(x2-dx)+','+y2+' '+x2+','+y2+'\" fill=\"none\" stroke=\"#FF5E1A\" stroke-opacity=\".7\" stroke-width=\"2\"/>'}).join('')}\nscr();build();draw();setTimeout(lay,300);document.getElementById('fl-l').onclick=lay;document.getElementById('fl-s').onclick=function(){scr();draw()};})();",
+  "spec": "Build with a real @pyreon/flow instance (useFlow) and <Flow> with a custom node type for the seven workflow nodes (Webhook, Validate, Enrich, Score lead, CRM, Slack alert, Archive) and the six edges from the reference. \"Auto-layout\" calls flow.layout('layered', { direction: 'RIGHT' }) (animated, 300 ms by default); \"Scramble\" writes random positions through updateNodePosition. The counter is real: increment a module-level count inside the custom node component body and show it, so it reads 0 re-runs after mount however much the visitor drags, selects or lays out. Keep <Background variant=\"dots\"> and add <Controls /> so pan and zoom are one click away."
+ },
+ "features": {
+  "title": "Everything a node editor needs.",
+  "items": [
+   {
+    "name": "`createFlow` and `useFlow`,",
+    "text": "generic over your node data; `useFlow` disposes with the component."
+   },
+   {
+    "name": "Custom node and edge renderers",
+    "text": "that read reactive accessors, so they mount once and patch in place."
+   },
+   {
+    "name": "Five path builders:",
+    "text": "bezier, smoothstep, step, straight and waypoint routes, with markers, labels and per-edge `pathOptions`."
+   },
+   {
+    "name": "Seven layouts:",
+    "text": "layered, force, stress, tree, radial, box and rect packing, animated and fed by measured node sizes."
+   },
+   {
+    "name": "Handles that measure themselves:",
+    "text": "edges attach to each dot's rendered centre; handle-less nodes get floating endpoints."
+   },
+   {
+    "name": "Canvas chrome:",
+    "text": "`Background`, `Controls`, `MiniMap`, `Panel`, `NodeResizer`, `NodeToolbar` and `EdgeLabelRenderer`."
+   },
+   {
+    "name": "History and clipboard:",
+    "text": "`undo`, `redo`, `copySelected`, `paste`, plus `toJSON` / `fromJSON` for saving."
+   },
+   {
+    "name": "Layout helpers:",
+    "text": "sub-flows, `zIndex` with raise on select, snap to grid and to other nodes, auto-pan at the edge."
+   },
+   {
+    "name": "Culling for big graphs:",
+    "text": "`onlyRenderVisibleElements` mounts only what is in view."
+   },
+   {
+    "name": "Theming:",
+    "text": "25 `--pyreon-flow-*` CSS variables and `colorMode` light, dark or system."
+   }
+  ]
+ },
+ "api": {
+  "title": "38 exports, plus a WebView entry.",
+  "groups": [
+   {
+    "name": "core",
+    "items": [
+     "createFlow",
+     "useFlow",
+     "computeLayout",
+     "flowStyles"
+    ]
+   },
+   {
+    "name": "components",
+    "items": [
+     "Flow",
+     "Background",
+     "Controls",
+     "MiniMap",
+     "Panel",
+     "Handle",
+     "NodeResizer",
+     "NodeToolbar",
+     "EdgeLabelRenderer",
+     "BaseEdge",
+     "EdgeText",
+     "ViewportPortal",
+     "FlowLayersContext"
+    ]
+   },
+   {
+    "name": "edge paths",
+    "items": [
+     "getBezierPath",
+     "getSmoothStepPath",
+     "getStepPath",
+     "getStraightPath",
+     "getWaypointPath",
+     "getEdgePath",
+     "getSmartHandlePositions",
+     "getFloatingEndpoints",
+     "getNodeIntersection",
+     "getHandlePosition",
+     "resolveHandleAnchor",
+     "getEffectiveDimensions"
+    ]
+   },
+   {
+    "name": "markers and constants",
+    "items": [
+     "resolveMarker",
+     "resolveEdgeMarkers",
+     "collectEdgeMarkers",
+     "markerId",
+     "DEFAULT_MARKER_END",
+     "MarkerType",
+     "Position",
+     "DEFAULT_NODE_WIDTH",
+     "DEFAULT_NODE_HEIGHT"
+    ]
+   },
+   {
+    "name": "@pyreon/flow/webview",
+    "items": [
+     "FlowWebView",
+     "buildFlowHostHtml"
+    ]
+   }
+  ]
+ },
+ "limits": [
+  {
+   "title": "Read node props as accessors",
+   "text": "Write `props.data().label`, not `props.data.label`. `data`, `selected` and `dragging` are accessors: call them where you render, and updates reach the node."
+  },
+  {
+   "title": "Culling is opt-in",
+   "text": "Every node mounts by default. For a large graph, set `onlyRenderVisibleElements: true` and only what is in view stays in the DOM."
+  },
+  {
+   "title": "Layout options depend on the algorithm",
+   "text": "`direction` applies to layered and tree; `layerSpacing` and `edgeRouting` to layered only. The others ignore them, with a dev warning."
+  },
+  {
+   "title": "iOS and Android are experimental",
+   "text": "The native host draws SwiftUI and Compose views. Renderers styled with a `class` or `style`, `<ViewportPortal>` and `flowStyles` stay on the web; `<FlowWebView>` hosts the browser renderer when you need it."
+  }
+ ],
+ "related": [
+  {
+   "href": "/products/sync",
+   "category": "fundamentals",
+   "name": "Sync",
+   "text": "Several people editing one diagram.",
+   "package": "@pyreon/sync"
+  },
+  {
+   "href": "/products/dnd",
+   "category": "fundamentals",
+   "name": "Drag and Drop",
+   "text": "Drag items from a palette onto the canvas.",
+   "package": "@pyreon/dnd"
+  },
+  {
+   "href": "/products/machine",
+   "category": "fundamentals",
+   "name": "State Machines",
+   "text": "Run the workflow your users just drew.",
+   "package": "@pyreon/machine"
+  }
+ ],
+ "end": {
+  "title": "Your users draw the graph. You skip the re-renders.",
+  "cta": "Read the flow guide"
+ },
+ "benchmarks": {
+  "rival": "vs React Flow 12 · 500 nodes, 499 edges, real Chromium, M3 Max",
+  "run": "final pass, one run",
+  "h": "Faster than React Flow 12 on all six operations.",
+  "p": "Dragging a node is 7.25× faster because only that node and its edges update. Read the 210× pan-and-zoom row with care: on a viewport change Pyreon writes one CSS transform, while React Flow re-renders its node wrappers on every store write, so the gap measures that design difference more than raw speed. Neither arm synthesizes pointer events; both drive their public API and check the DOM on every iteration.",
+  "rows": [
+   {
+    "op": "drag one node ×60",
+    "pyreon": 4.42,
+    "rival": 32.05,
+    "unit": "ms",
+    "verdict": "win",
+    "label": "7.25×"
+   },
+   {
+    "op": "select node",
+    "pyreon": 0.188,
+    "rival": 1.01,
+    "unit": "ms",
+    "verdict": "win",
+    "label": "5.39×"
+   },
+   {
+    "op": "unmount",
+    "pyreon": 2.12,
+    "rival": 8.19,
+    "unit": "ms",
+    "verdict": "win",
+    "label": "3.87×"
+   },
+   {
+    "op": "add 50 nodes + 50 edges",
+    "pyreon": 4.15,
+    "rival": 4.93,
+    "unit": "ms",
+    "verdict": "win",
+    "label": "1.19×"
+   },
+   {
+    "op": "mount",
+    "pyreon": 17.19,
+    "rival": 20.12,
+    "unit": "ms",
+    "verdict": "win",
+    "label": "1.17×"
+   },
+   {
+    "op": "pan + zoom ×60",
+    "pyreon": 0.097,
+    "rival": 20.48,
+    "unit": "ms",
+    "verdict": "win",
+    "label": "210× (one transform vs node-wrapper re-renders)"
+   }
+  ]
+ },
+ "glyphSvg": "<rect x=\"10\" y=\"16\" width=\"36\" height=\"28\" stroke=\"currentColor\" stroke-width=\"9\" fill=\"none\"/><rect x=\"74\" y=\"76\" width=\"36\" height=\"28\" stroke=\"currentColor\" stroke-width=\"9\" fill=\"none\"/><path d=\"M46 30 H60 V90 H74\" stroke=\"currentColor\" stroke-width=\"9\" fill=\"none\"/><circle cx=\"92\" cy=\"30\" r=\"14\" fill=\"url(#eg)\"/>",
+ "comingFrom": [
+  {
+   "lib": "React Flow",
+   "title": "Drag, connect, minimap: no handlers to write.",
+   "before": "import { useCallback } from 'react'\nimport { Background, Controls, MiniMap, ReactFlow, addEdge, useEdgesState, useNodesState } from '@xyflow/react'\nimport type { Connection } from '@xyflow/react'\nimport '@xyflow/react/dist/style.css'\n\nconst initialNodes = [\n  { id: '1', position: { x: 0, y: 0 }, data: { label: 'Start' } },\n  { id: '2', position: { x: 200, y: 100 }, data: { label: 'End' } },\n]\nconst initialEdges = [{ id: 'e1-2', source: '1', target: '2' }]\n\nexport function Diagram() {\n  const [nodes, , onNodesChange] = useNodesState(initialNodes)\n  const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges)\n  const onConnect = useCallback((c: Connection) => setEdges((eds) => addEdge(c, eds)), [setEdges])\n\n  return (\n    <div style={{ height: 400 }}>\n      <ReactFlow\n        nodes={nodes}\n        edges={edges}\n        onNodesChange={onNodesChange}\n        onEdgesChange={onEdgesChange}\n        onConnect={onConnect}\n        fitView\n      >\n        <Background />\n        <Controls />\n        <MiniMap />\n      </ReactFlow>\n    </div>\n  )\n}",
+   "after": "import { Background, Controls, Flow, MiniMap, createFlow } from '@pyreon/flow'\n\nconst flow = createFlow({\n  nodes: [\n    { id: '1', position: { x: 0, y: 0 }, data: { label: 'Start' } },\n    { id: '2', position: { x: 200, y: 100 }, data: { label: 'End' } },\n  ],\n  edges: [{ source: '1', target: '2' }],\n  fitView: true,\n})\n\n// Dropping a connection adds the edge. Dragging moves the node. Nothing to wire.\nexport const Diagram = () => (\n  <div style=\"height: 400px\">\n    <Flow instance={flow}>\n      <Background />\n      <Controls />\n      <MiniMap />\n    </Flow>\n  </div>\n)",
+   "note": "The component names are the ones you know (`Background`, `Controls`, `MiniMap`, `Handle`, `NodeResizer`). The difference is ownership: the flow instance holds nodes and edges as signals, so a drop on a handle adds the edge and fires `onConnect` for you to observe, not to implement."
+  },
+  {
+   "lib": "React Flow",
+   "title": "Custom nodes without memo.",
+   "before": "import { memo } from 'react'\nimport { Handle, Position, ReactFlow, useNodesState, useReactFlow } from '@xyflow/react'\nimport type { Node, NodeProps } from '@xyflow/react'\n\ntype TaskNode = Node<{ label: string; status: 'todo' | 'done' }, 'task'>\n\n// React Flow's docs recommend memo for custom nodes.\nconst TaskNodeView = memo(({ data, selected }: NodeProps<TaskNode>) => (\n  <div className={selected ? 'task selected' : 'task'}>\n    <Handle type=\"target\" position={Position.Left} />\n    {data.label}\n    {data.status === 'done' ? ' (done)' : ''}\n    <Handle type=\"source\" position={Position.Right} />\n  </div>\n))\n\n// Defined outside the component, or React Flow warns and remounts every node.\nconst nodeTypes = { task: TaskNodeView }\n\nfunction FinishButton() {\n  const { updateNodeData } = useReactFlow<TaskNode>()\n  return <button onClick={() => updateNodeData('t1', { status: 'done' })}>Mark done</button>\n}\n\nexport function Board() {\n  const [nodes, , onNodesChange] = useNodesState<TaskNode>([\n    { id: 't1', type: 'task', position: { x: 0, y: 0 }, data: { label: 'Write spec', status: 'todo' } },\n  ])\n  return (\n    <ReactFlow nodes={nodes} onNodesChange={onNodesChange} nodeTypes={nodeTypes}>\n      <FinishButton />\n    </ReactFlow>\n  )\n}",
+   "after": "import { Flow, Handle, Position, useFlow } from '@pyreon/flow'\nimport type { NodeComponentProps } from '@pyreon/flow'\n\ntype Task = { label: string; status: 'todo' | 'done' }\n\n// Runs once per node. The accessors keep it current on drag, select and updateNode.\nconst TaskNode = (props: NodeComponentProps<Task>) => (\n  <div class={() => (props.selected() ? 'task selected' : 'task')}>\n    <Handle type=\"target\" position={Position.Left} />\n    {() => props.data().label}\n    {() => (props.data().status === 'done' ? ' (done)' : '')}\n    <Handle type=\"source\" position={Position.Right} />\n  </div>\n)\n\nexport const Board = () => {\n  const flow = useFlow<Task>({\n    nodes: [{ id: 't1', type: 'task', position: { x: 0, y: 0 }, data: { label: 'Write spec', status: 'todo' } }],\n  })\n  const finish = () => flow.updateNode('t1', { data: { label: 'Write spec', status: 'done' } })\n  return (\n    <>\n      <button onClick={finish}>Mark done</button>\n      <Flow instance={flow} nodeTypes={{ task: TaskNode }} />\n    </>\n  )\n}",
+   "note": "A Pyreon node renderer runs once per node for the life of the graph. It reads `props.data()` and `props.selected()` where it renders them, so `updateNode` patches the text in place. No `memo`, and the `nodeTypes` map can live anywhere."
+  },
+  {
+   "lib": "React Flow",
+   "title": "Auto-layout without a second library.",
+   "before": "import dagre from '@dagrejs/dagre'\nimport { ReactFlow, useEdgesState, useNodesState } from '@xyflow/react'\nimport type { Edge, Node } from '@xyflow/react'\n\n// React Flow has no layout engine: the docs point you at dagre, elkjs or d3-hierarchy.\nfunction layoutWithDagre(nodes: Node[], edges: Edge[]): Node[] {\n  const g = new dagre.graphlib.Graph().setDefaultEdgeLabel(() => ({}))\n  g.setGraph({ rankdir: 'LR', nodesep: 40, ranksep: 80 })\n  for (const n of nodes) g.setNode(n.id, { width: n.measured?.width ?? 150, height: n.measured?.height ?? 40 })\n  for (const e of edges) g.setEdge(e.source, e.target)\n  dagre.layout(g)\n  return nodes.map((n) => {\n    const p = g.node(n.id)\n    // dagre returns centres; React Flow positions are top-left corners.\n    return { ...n, position: { x: p.x - p.width / 2, y: p.y - p.height / 2 } }\n  })\n}\n\nexport function Pipeline(props: { nodes: Node[]; edges: Edge[] }) {\n  const [nodes, setNodes, onNodesChange] = useNodesState(props.nodes)\n  const [edges, , onEdgesChange] = useEdgesState(props.edges)\n  return (\n    <>\n      <button onClick={() => setNodes(layoutWithDagre(nodes, edges))}>Tidy up</button>\n      <ReactFlow nodes={nodes} edges={edges} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} />\n    </>\n  )\n}",
+   "after": "import { Flow, useFlow } from '@pyreon/flow'\nimport type { FlowEdge, FlowNode } from '@pyreon/flow'\n\nexport const Pipeline = (props: { nodes: FlowNode[]; edges: FlowEdge[] }) => {\n  const flow = useFlow({ nodes: props.nodes, edges: props.edges })\n  // Uses each node's measured size. The engine is built in and code-split.\n  const tidy = () => flow.layout('layered', { direction: 'RIGHT', nodeSpacing: 40, layerSpacing: 80 })\n  return (\n    <>\n      <button onClick={() => void tidy()}>Tidy up</button>\n      <Flow instance={flow} />\n    </>\n  )\n}",
+   "note": "React Flow leaves layout to dagre, elkjs or d3-hierarchy, and you convert between their coordinates and yours. `flow.layout()` reads the measured node sizes itself, animates the move, and loads its engine on the first call."
+  }
+ ],
+ "recipes": [
+  {
+   "title": "A diagram that saves itself",
+   "text": "Persist to `localStorage`, restore on load, and put undo and redo in a corner panel. `fromJSON` drops duplicate ids and dangling edges with a warning instead of crashing.",
+   "code": "import { Background, Controls, Flow, Panel, useFlow } from '@pyreon/flow'\n\nconst KEY = 'my-diagram'\n\nexport const SavedDiagram = () => {\n  // history off while restoring, so the first Undo cannot wipe the saved diagram\n  const flow = useFlow({ nodes: [{ id: 'a', position: { x: 0, y: 0 }, data: { label: 'Idea' } }], autoHistory: false })\n  const saved = localStorage.getItem(KEY)\n  // fromJSON treats input as untrusted: duplicate ids and dangling edges are dropped with a warning.\n  if (saved) flow.fromJSON(JSON.parse(saved))\n  flow.config.autoHistory = true\n\n  const save = () => localStorage.setItem(KEY, JSON.stringify(flow.toJSON()))\n  return (\n    <Flow instance={flow}>\n      <Background />\n      <Controls />\n      <Panel position=\"top-right\">\n        <button onClick={save}>Save</button>\n        <button onClick={() => flow.undo()}>Undo</button>\n        <button onClick={() => flow.redo()}>Redo</button>\n      </Panel>\n    </Flow>\n  )\n}"
+  },
+  {
+   "title": "A workflow builder with rules",
+   "text": "Refuse self-loops and connections into a trigger, default every edge to an animated smoothstep, and cull off-screen nodes for big workflows.",
+   "code": "import { Flow, MiniMap, createFlow } from '@pyreon/flow'\nimport type { Connection, FlowEdge, FlowInstance, FlowNode } from '@pyreon/flow'\n\ntype Step = { label: string; kind: 'trigger' | 'action' }\n\nexport function createWorkflow(nodes: FlowNode<Step>[], edges: FlowEdge[]) {\n  const flow: FlowInstance<Step> = createFlow<Step>({\n    nodes,\n    edges,\n    // A step cannot feed itself, and nothing may connect INTO a trigger.\n    isValidConnection: (c: Connection) => c.source !== c.target && flow.nodeMap().get(c.target)?.data.kind !== 'trigger',\n    defaultEdgeOptions: { type: 'smoothstep', animated: true },\n    onlyRenderVisibleElements: true,\n  })\n  flow.onConnect((c) => console.log('connected', c.source, '->', c.target))\n  return flow\n}\n\nexport const Workflow = (props: { flow: FlowInstance<Step> }) => (\n  <Flow instance={props.flow} ariaLabel=\"Workflow\">\n    <MiniMap />\n  </Flow>\n)"
+  }
+ ],
+ "faq": [
+  {
+   "q": "Why is pan and zoom 210× faster?",
+   "a": "Because the two libraries do different work. On a viewport change Pyreon updates one CSS transform on the viewport element and creates no new elements (a test counts them). React Flow re-renders its node wrappers on every store write. Read it as a design difference (the record says the same of most of the drag gap), and look at select (5.39×) and unmount (3.87×) for a closer race."
+  },
+  {
+   "q": "Is this React Flow ported to Pyreon?",
+   "a": "No. The vocabulary is close on purpose (`Handle`, `MiniMap`, `NodeResizer`, `isValidConnection`, `onlyRenderVisibleElements`), so the concepts carry over. Underneath, every node and edge has its own signals, and a node component never re-renders."
+  },
+  {
+   "q": "How large a graph can it take?",
+   "a": "The benchmark graph is 500 nodes and 499 edges. A drag frame does a constant number of lookups whatever the graph size (a test compares 20 and 120 nodes). Past what fits on screen, turn on `onlyRenderVisibleElements`."
+  },
+  {
+   "q": "Does it run on iOS and Android?",
+   "a": "Yes, experimentally. `createFlow` and `<Flow>` lower to a native SwiftUI or Compose host with the same instance API, all seven layouts, gestures and the minimap. It is a native view tree, not a WebView. Renderers that depend on CSS stay web-only, and the compiler names each one."
+  },
+  {
+   "q": "What does the layout engine depend on?",
+   "a": "Nothing outside Pyreon. All seven algorithms are pure geometry in the package, split into their own chunk so the first `layout()` call loads them."
+  }
+ ],
+ "sources": [
+  {
+   "claim": "React Flow 12 head-to-head, six ops, one run; drag/pan ratios mostly React Flow re-rendering node wrappers on every store write; neither arm synthesizes pointer events",
+   "path": "00-brief/BENCHMARKS-2026-11-05.md §2 \"Flow — @pyreon/flow vs React Flow 12\""
+  },
+  {
+   "claim": "Bench harness: Pyreon pan writes flow.viewport.set, React Flow arm calls setViewport inside flushSync; both verify the viewport transform each iteration",
+   "path": "examples/benchmark/src/impl/scenario-flow.ts lines 166, 256, 406–425"
+  },
+  {
+   "claim": "Viewport writes create zero new elements and keep node/edge identity",
+   "path": "packages/fundamentals/flow/src/tests/viewport-static-mount.test.tsx (\"creates ZERO new elements during a 30-write pan/zoom burst\"); viewport transform at src/components/flow-component.tsx line 2218"
+  },
+  {
+   "claim": "Custom node factory runs exactly once across selection, data updates and drags",
+   "path": "packages/fundamentals/flow/src/tests/node-reactivity.test.ts lines 37, 114, 159"
+  },
+  {
+   "claim": "An unmoved node's thunks fire 0× and an unmoved edge's geometry recomputes 0× during another node's drag",
+   "path": "packages/fundamentals/flow/src/tests/drag-fanout.test.tsx line 107"
+  },
+  {
+   "claim": "Drag-frame lookups do not scale with graph size (20 vs 120 nodes)",
+   "path": "packages/fundamentals/flow/src/tests/drag-frame-complexity.test.ts line 91"
+  },
+  {
+   "claim": "Seven layout algorithms, code-split, measured sizes, animated (300 ms default, off under reduced motion); options applicability",
+   "path": "packages/fundamentals/flow/README.md \"Auto-layout\"; src/flow.ts lines 1038–1090; ran all seven with bun in .scratch/tools/charts-flow/flow-runtime.ts"
+  },
+  {
+   "claim": "A user drop on a handle adds the edge itself, then fires onConnect",
+   "path": "packages/fundamentals/flow/src/components/flow-component.tsx lines 1843–1852"
+  },
+  {
+   "claim": "connectionRadius, isValidConnection, historyLimit (default 50), snapToObjects, elevateNodesOnSelect, onlyRenderVisibleElements (off by default)",
+   "path": "packages/fundamentals/flow/src/types.ts lines 414, 453, 459, 478, 531, 577–579; README \"Events and history notes\""
+  },
+  {
+   "claim": "fromJSON treats input as untrusted (duplicate ids keep the first, dangling edges dropped, warnings)",
+   "path": "packages/fundamentals/flow/README.md \"Serialization\""
+  },
+  {
+   "claim": "25 --pyreon-flow-* CSS variables; colorMode light/dark/system on <Flow>",
+   "path": "packages/fundamentals/flow/src/styles.ts (25 distinct names); docs/src/content/docs/flow.md \"Theming\" table (25 rows); src/components/flow-component.tsx line 1140"
+  },
+  {
+   "claim": "38 runtime exports on the main entry; /webview exports FlowWebView and buildFlowHostHtml",
+   "path": "packages/fundamentals/flow/src/index.ts, src/webview.ts; counted with .scratch/tools/charts-flow/probe.ts"
+  },
+  {
+   "claim": "Native host: createFlow/<Flow> lower to PyreonFlowState / PyreonFlowView, a native view tree; seven layouts; device suites incl. a 400-node scale scenario; CSS-dependent renderers, ViewportPortal, flowStyles web-only; FlowWebView fallback. Released in 0.53.0 (#3840 precedes the version commit)",
+   "path": "packages/fundamentals/flow/README.md \"Multiplatform\"; docs/src/content/docs/flow.md \"iOS and Android\"; src/manifest.ts multiplatform; git log -- packages/fundamentals/flow"
+  },
+  {
+   "claim": "No third-party dependencies (only @pyreon/* deps and peers)",
+   "path": "packages/fundamentals/flow/package.json"
+  },
+  {
+   "claim": "Nothing on this page is unreleased: the only flow changesets on main are patch fixes plus the WebView chrome/grow change in @pyreon/flow/webview",
+   "path": ".changeset/computed-dispose-no-relink.md, native-silent-compile-failures.md, webview-chrome-and-grow.md"
+  },
+  {
+   "claim": "Pyreon code samples typecheck and compile; isValidConnection rule, layout and toJSON/fromJSON round-trip run under bun",
+   "path": ".scratch/tools/charts-flow/samples/flow/*.tsx (tsc --noEmit clean, transformJSX 0 warnings); flow-runtime.ts output: a->b true, a->t false, a->a false, layered positions 0/230/460, round-trip 3 nodes 2 edges"
+  },
+  {
+   "claim": "React Flow code typechecks against @xyflow/react 12.12.0 + React 19.3; dagre code against @dagrejs/dagre 3.1.3 (types from npm pack, not executed)",
+   "path": ".scratch/tools/charts-flow/rival/flow-*.tsx with rival/tsconfig.json; vendor/dagre, vendor/graphlib"
+  }
+ ]
+}

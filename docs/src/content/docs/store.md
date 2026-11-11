@@ -3,6 +3,10 @@ title: Store
 description: Global state management built on Pyreon's reactivity signals.
 ---
 
+<ProductPitch id="store" />
+
+<LiveDemo id="store" />
+
 `@pyreon/store` provides Pinia-inspired composition-style global state management. Stores are singletons backed by `@pyreon/reactivity` signals, giving you fine-grained reactivity with zero boilerplate. Define your state, computed values, and actions in a setup function, and access them anywhere in your application through a hook.
 
 <PackageBadge name="@pyreon/store" href="/docs/store" />
@@ -1635,3 +1639,11 @@ Register a global plugin that runs when any store is first created.
 | `effect(fn)`    | Run a tracked side effect                                            |
 | `batch(fn)`     | Batch multiple writes into one flush                                 |
 | `Signal` (type) | TypeScript type for signal instances                                 |
+
+<BenchCallout id="store" />
+
+<ComingFrom id="store" />
+
+<InlineSell id="statetree" />
+
+<CrossSell id="store" />

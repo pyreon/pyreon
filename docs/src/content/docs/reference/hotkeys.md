@@ -1,9 +1,7 @@
 ---
-title: "Keyboard Shortcuts — API Reference"
+title: "@pyreon/hotkeys — API Reference"
 description: "Keyboard shortcut management — scope-aware, modifier keys, conflict detection"
 ---
-
-# @pyreon/hotkeys — API Reference
 
 > **Generated** from `hotkeys`'s `src/manifest.ts` — the same source that powers `llms.txt` and MCP `get_api`. Do not edit this page by hand; edit the manifest. For the conceptual guide, see [hotkeys](/docs/hotkeys).
 

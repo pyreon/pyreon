@@ -1,0 +1,453 @@
+{
+ "id": "reactivity",
+ "route": "/products/reactivity",
+ "name": "Reactivity",
+ "package": "@pyreon/reactivity",
+ "category": "core · signals",
+ "hero": {
+  "title": "Delete useMemo, useCallback and every dependency array.",
+  "emberWord": "Delete",
+  "lede": "Signals know who reads them, so derived values and effects keep themselves up to date and a write touches only what depends on it. It is the engine under every Pyreon app, with no dependencies, and it runs on its own in Node, Bun, a worker or a script.",
+  "install": "bun add @pyreon/reactivity",
+  "ctaShort": "Install",
+  "facts": [
+   {
+    "key": "dependencies",
+    "value": "none<small>One optional peer, used only by the native compiler.</small>"
+   },
+   {
+    "key": "effect propagation",
+    "value": "2.0–2.1× Preact Signals<small>V8, two runs, synthetic, author-run.</small>"
+   },
+   {
+    "key": "dependency arrays",
+    "value": "0<small>Dependencies are tracked when a signal is read.</small>"
+   },
+   {
+    "key": "native",
+    "value": "{dot:ok}signal, computed, effect and batch lower to iOS and Android<small>Native targets are experimental.</small>"
+   }
+  ]
+ },
+ "why": {
+  "title": "Less to write, less to get wrong.",
+  "items": [
+   {
+    "title": "Nothing to list",
+    "text": "A computed or effect subscribes to exactly the signals it read on its last run. When a branch stops reading a signal, the dependency is dropped, so there is no array to keep in sync and no stale closure to chase."
+   },
+   {
+    "title": "One write, one update",
+    "text": "`batch()` groups writes and runs each effect once with the final values. A diamond (`a` feeding two computeds that feed one effect) never shows a half-updated state."
+   },
+   {
+    "title": "Cheap where lists are big",
+    "text": "A signal with one subscriber keeps it in an inline slot and allocates no `Set`. `createSelector` re-runs 2 rows when a selection moves, not 10,000."
+   },
+   {
+    "title": "Ask why it ran",
+    "text": "Call `why()` before a write and the console names each signal that changed: `[pyreon:why] \"first\": \"Ada\" → \"Grace\" (1 subscriber)`. `inspectSignal` and `getReactiveTrace` go deeper."
+   }
+  ]
+ },
+ "difference": {
+  "title": "The same cart, with and without dependency arrays.",
+  "before": {
+   "label": "React",
+   "caption": "Three dependency arrays to keep right, and the whole function runs again on every click.",
+   "code": "import { useState, useMemo, useEffect, useCallback } from 'react'\n\nexport function Cart({ price }: { price: number }) {\n  const [qty, setQty] = useState(1)\n  const total = useMemo(() => price * qty, [price, qty])\n  const add = useCallback(() => setQty((n) => n + 1), [])\n\n  useEffect(() => {\n    document.title = `Total: ${total}`\n  }, [total])\n\n  return (\n    <button onClick={add}>\n      {qty} × {price} = {total}\n    </button>\n  )\n}"
+  },
+  "after": {
+   "label": "Pyreon",
+   "caption": "No arrays. The function runs once; a click updates two text nodes and the title.",
+   "code": "import { signal, computed, effect } from '@pyreon/reactivity'\n\nexport function Cart(props: { price: number }) {\n  const qty = signal(1)\n  const total = computed(() => props.price * qty())\n\n  effect(() => {\n    document.title = `Total: ${total()}`\n  })\n\n  return (\n    <button onClick={() => qty.update((n) => n + 1)}>\n      {qty()} × {props.price} = {total()}\n    </button>\n  )\n}"
+  }
+ },
+ "extraSectionsHtml": "<section class=\"p-sec tight\"><div class=\"wrap\"><div class=\"head\"><div class=\"label\">the engine underneath</div><h2>What turns signals into pixels.</h2></div><div class=\"p-inside c3\"><div class=\"card\"><div class=\"in\"><span class=\"pk\">@pyreon/core</span><b>components</b><p>JSX, components, context, For, Show and lifecycle.</p></div></div><div class=\"card\"><div class=\"in\"><span class=\"pk\">@pyreon/compiler</span><b>compiler</b><p>Decides at build time which expressions are live.</p></div></div><div class=\"card\"><div class=\"in\"><span class=\"pk\">@pyreon/runtime-dom</span><b>browser</b><p>Fine-grained DOM updates and hydration.</p></div></div><div class=\"card\"><div class=\"in\"><span class=\"pk\">@pyreon/runtime-server</span><b>server</b><p>Streaming SSR to strings and streams.</p></div></div><div class=\"card\"><div class=\"in\"><span class=\"pk\">@pyreon/sized-map</span><b>internals</b><p>A bounded cache used across the engine.</p></div></div></div></div></section>",
+ "demo": {
+  "title": "Write signals, count the runs.",
+  "text": "Two signals, one computed, one effect. Batching groups writes so the effect runs once.",
+  "component": "DemoReactivity",
+  "reference": "pkg-reactivity.html#demo",
+  "referenceHtml": "<div class=\"p-demo\">\n  <div class=\"card\"><div class=\"in\"><div class=\"meter\">\n    <div id=\"re-m1\"><span>price = signal(<em id=\"re-p\" style=\"font-style:normal;color:var(--ivory)\">100</em>)</span><b id=\"re-cp\">0</b></div>\n    <div id=\"re-m2\"><span>qty = signal(<em id=\"re-q\" style=\"font-style:normal;color:var(--ivory)\">2</em>)</span><b id=\"re-cq\">0</b></div>\n    <div id=\"re-m3\"><span>total = computed · <em id=\"re-t\" style=\"font-style:normal;color:var(--ivory)\">200</em></span><b id=\"re-ct\">1</b></div>\n    <div id=\"re-m4\"><span>effect runs</span><b id=\"re-ce\">1</b></div>\n  </div><p class=\"note\">Big numbers count writes and runs.</p></div></div>\n  <div class=\"ui\"><label>Actions</label><div style=\"display:grid;gap:8px\"><button class=\"sec\" type=\"button\" id=\"re-a\">price.set(price() + 10)</button><button class=\"sec\" type=\"button\" id=\"re-b\">qty.update(n =&gt; n + 1)</button><button class=\"sec\" type=\"button\" id=\"re-c\">batch: both at once</button><button class=\"sec\" type=\"button\" id=\"re-d\">price.set(same value)</button></div><div class=\"hint\" id=\"re-log\" style=\"margin-top:14px\"></div></div>\n</div>",
+  "referenceCss": ".meter em{color:var(--ivory)}",
+  "referenceJs": "(function(){var p=100,q=2,c={p:0,q:0,t:1,e:1},$=function(i){return document.getElementById(i)};function fl(id){var m=$(id);m.classList.remove('flash');void m.offsetWidth;m.classList.add('flash')}\nfunction upd(){$('re-p').textContent=p;$('re-q').textContent=q;$('re-t').textContent=p*q;['p','q','t','e'].forEach(function(k){$('re-c'+k).textContent=c[k]})}\nfunction recompute(){c.t++;c.e++;fl('re-m3');fl('re-m4')}\n$('re-a').onclick=function(){p+=10;c.p++;fl('re-m1');recompute();upd();$('re-log').textContent='1 write → computed 1×, effect 1×'};\n$('re-b').onclick=function(){q+=1;c.q++;fl('re-m2');recompute();upd();$('re-log').textContent='1 write → computed 1×, effect 1×'};\n$('re-c').onclick=function(){p+=10;q+=1;c.p++;c.q++;fl('re-m1');fl('re-m2');recompute();upd();$('re-log').textContent='2 writes in batch() → effect ran once'};\n$('re-d').onclick=function(){c.p++;fl('re-m1');upd();$('re-log').textContent='same value → Object.is equal, nothing re-ran'};upd();})();"
+ },
+ "features": {
+  "title": "Every reactive primitive you reach for.",
+  "items": [
+   {
+    "name": "signal",
+    "text": "with `set`, `update`, `peek` and `trigger` for values mutated in place"
+   },
+   {
+    "name": "computed",
+    "text": "lazy and cached, with optional `equals`"
+   },
+   {
+    "name": "linked",
+    "text": "a writable value that resets when its source changes",
+    "status": "next release"
+   },
+   {
+    "name": "effect and onCleanup,",
+    "text": "plus `renderEffect` for the cheapest DOM bindings"
+   },
+   {
+    "name": "batch and nextTick:",
+    "text": "nested batches flush once, at the outermost exit"
+   },
+   {
+    "name": "watch",
+    "text": "for an explicit source and a `(next, prev)` callback"
+   },
+   {
+    "name": "createSelector",
+    "text": "for O(1) selection in long lists"
+   },
+   {
+    "name": "createStore and reconcile",
+    "text": "for deep reactive objects and patching them from API responses"
+   },
+   {
+    "name": "createResource",
+    "text": "for async data with loading, error and stale-response handling"
+   },
+   {
+    "name": "why, inspectSignal and getReactiveTrace",
+    "text": "to see what changed and what ran"
+   }
+  ]
+ },
+ "api": {
+  "title": "Grouped the way you use them.",
+  "groups": [
+   {
+    "name": "core",
+    "items": [
+     "signal",
+     "computed",
+     "effect",
+     "renderEffect",
+     "batch",
+     "nextTick",
+     "untrack",
+     "watch",
+     "cell"
+    ]
+   },
+   {
+    "name": "structures",
+    "items": [
+     "createStore",
+     "reconcile",
+     "shallowReactive",
+     "markRaw",
+     "isStore",
+     "createResource",
+     "createSelector",
+     "wrapSignal"
+    ]
+   },
+   {
+    "name": "lifetimes",
+    "items": [
+     "effectScope",
+     "onCleanup",
+     "onScopeDispose",
+     "getCurrentScope"
+    ]
+   },
+   {
+    "name": "debugging",
+    "items": [
+     "why",
+     "inspectSignal",
+     "onSignalUpdate",
+     "getReactiveTrace",
+     "getReactiveGraph",
+     "describeReactiveGraph",
+     "setErrorHandler"
+    ]
+   },
+   {
+    "name": "next release",
+    "items": [
+     "linked"
+    ]
+   }
+  ]
+ },
+ "limits": [
+  {
+   "title": "Mutating in place needs trigger()",
+   "text": "Signals compare with `Object.is`, so `set(sameObject)` does nothing. Update immutably, or mutate and call `trigger()`."
+  },
+  {
+   "title": "Read inside a tracking scope",
+   "text": "A signal read in a plain function body subscribes nothing. Read it in an effect, a computed or JSX."
+  },
+  {
+   "title": "A new object every time means a notify every time",
+   "text": "A computed that returns a fresh object or array notifies on each recompute. Pass `equals` when readers should skip identical results."
+  },
+  {
+   "title": "Cheap to update, not the cheapest to create",
+   "text": "Creating a signal costs about 5× what Preact Signals does (63 vs 13 ns on V8). Create them once, not inside hot loops."
+  }
+ ],
+ "related": [
+  {
+   "href": "/products/store",
+   "category": "fundamentals",
+   "name": "Store",
+   "text": "Global stores built on signals.",
+   "package": "@pyreon/store"
+  },
+  {
+   "href": "/products/rx",
+   "category": "fundamentals",
+   "name": "RX",
+   "text": "Filter, sort and group signal data.",
+   "package": "@pyreon/rx"
+  },
+  {
+   "href": "/products/native",
+   "category": "multiplatform",
+   "name": "Native",
+   "text": "The same signals as SwiftUI and Compose state.",
+   "package": "Pyreon Native · PMTC"
+  }
+ ],
+ "end": {
+  "title": "Your components stop re-rendering. You stop wondering why they did.",
+  "cta": "Read the reactivity guide"
+ },
+ "benchmarks": {
+  "rival": "vs Preact Signals and Solid · V8 (Node 26), Pyreon bundled · plus the 10-framework row board",
+  "run": "final pass, two runs",
+  "h": "Fastest where an update spends its time: propagation.",
+  "p": "Pyreon wins the work a real update runs through: effect propagation, batching and the computed diamond. It loses raw signal creation (4.8×), deep unobserved chains (1.42×) and wide fan-out (3–4%), and those rows stay in the table.",
+  "rows": [
+   {
+    "op": "effect propagation (100)",
+    "pyreon": 1407,
+    "rival": 2874,
+    "unit": "ns",
+    "verdict": "win",
+    "label": "2.04–2.13× vs Preact"
+   },
+   {
+    "op": "batch 50 signals",
+    "pyreon": 456,
+    "rival": 888,
+    "unit": "ns",
+    "verdict": "win",
+    "label": "1.94–1.95× vs Preact"
+   },
+   {
+    "op": "computed diamond (100 updates)",
+    "pyreon": 4424,
+    "rival": 5761,
+    "unit": "ns",
+    "verdict": "win",
+    "label": "1.30–1.31× vs Preact"
+   },
+   {
+    "op": "wide fan-out (1 → 100 effects)",
+    "pyreon": 1651,
+    "rival": 1602,
+    "unit": "ns",
+    "verdict": "loss",
+    "label": "Preact 1.03–1.04× ahead"
+   },
+   {
+    "op": "deep chain (depth 50)",
+    "pyreon": 107237,
+    "rival": 75639,
+    "unit": "ns",
+    "verdict": "loss",
+    "label": "Preact 1.42–1.43× ahead"
+   },
+   {
+    "op": "signal create + read + write",
+    "pyreon": 63,
+    "rival": 13,
+    "unit": "ns",
+    "verdict": "loss",
+    "label": "Preact 4.8× ahead"
+   },
+   {
+    "op": "create 10,000 rows (vs React 19)",
+    "pyreon": 72.64,
+    "rival": 192.01,
+    "unit": "ms",
+    "verdict": "split",
+    "label": "2.6× vs React 19; vs the fastest rivals a split: tie in one run, 1.02× in the other"
+   },
+   {
+    "op": "clear 1,000 rows",
+    "pyreon": 0.13,
+    "rival": 0.145,
+    "unit": "ms",
+    "verdict": "win",
+    "label": "1.11–1.12× vs Vue 3.6 Vapor, the fastest rival"
+   }
+  ]
+ },
+ "glyphSvg": "<circle cx=\"60\" cy=\"60\" r=\"18\" fill=\"url(#eg)\"/><circle cx=\"60\" cy=\"60\" r=\"34\" stroke=\"currentColor\" stroke-width=\"8\" fill=\"none\" opacity=\".7\"/><circle cx=\"60\" cy=\"60\" r=\"50\" stroke=\"currentColor\" stroke-width=\"6\" fill=\"none\" opacity=\".3\"/>",
+ "proof": [
+  {
+   "stat": "2.1×",
+   "label": "faster effect propagation than Preact Signals (1,407 vs 2,874 ns, 100 effects)",
+   "source": "BENCHMARKS.md 2026-11-05 §8, V8, final pass, two runs (2.04–2.13×)"
+  },
+  {
+   "stat": "1.95×",
+   "label": "faster batching of 50 signal writes than Preact Signals (456 vs 888 ns)",
+   "source": "BENCHMARKS.md 2026-11-05 §8, V8, two runs (1.94–1.95×)"
+  },
+  {
+   "stat": "2 of 10,000",
+   "label": "row effects re-run when the selection moves, with `createSelector`",
+   "source": "run on main: .scratch/core/parent/r2.ts prints 2"
+  }
+ ],
+ "comingFrom": [
+  {
+   "lib": "React useState",
+   "title": "State you can read right after you write it",
+   "before": "const [count, setCount] = useState(0)\n\nfunction addTwo() {\n  setCount(count + 1)\n  setCount(count + 1) // still the old count: adds 1, not 2\n}",
+   "after": "const count = signal(0)\n\nfunction addTwo() {\n  count.set(count() + 1)\n  count.set(count() + 1) // reads the new value: adds 2\n}",
+   "note": "`count()` reads, `count.set(v)` writes, `count.update(fn)` derives. Calling `count(5)` only reads, so writes are always `.set`."
+  },
+  {
+   "lib": "React useMemo",
+   "title": "Derived values without a dependency list",
+   "before": "const total = useMemo(() => price * qty, [price, qty])",
+   "after": "const total = computed(() => price() * qty())",
+   "note": "A computed is lazy and cached: it recomputes only when read after a dependency changed. If it returns a new object each time, pass `{ equals }` so readers skip identical results."
+  },
+  {
+   "lib": "React useEffect",
+   "title": "Side effects that re-run on their own",
+   "before": "useEffect(() => {\n  const id = setInterval(tick, delay)\n  return () => clearInterval(id)\n}, [delay])",
+   "after": "effect(() => {\n  const id = setInterval(tick, delay())\n  return () => clearInterval(id)\n})",
+   "note": "The effect re-runs when `delay` changes, cleaning up first. Effects run synchronously after a write (or once at the end of a `batch`), and one created inside a component is disposed with it."
+  }
+ ],
+ "recipes": [
+  {
+   "title": "Selection in a 10,000-row list",
+   "text": "A plain `selected() === id` check in every row re-runs all 10,000 rows on each click. `createSelector` keeps a bucket per value and notifies only the row that lost the selection and the one that gained it.",
+   "code": "import { signal, effect, createSelector } from '@pyreon/reactivity'\n\nconst selected = signal(-1)\nconst isSelected = createSelector(() => selected())\n\nlet runs = 0\nfor (let id = 0; id < 10_000; id++) {\n  effect(() => {\n    isSelected(id) // in a real row: class={isSelected(id) ? 'row on' : 'row'}\n    runs++\n  })\n}\n\nruns = 0\nselected.set(42)\nselected.set(7)\nconsole.log(runs) // 3: one row for the first pick, then two for the move"
+  },
+  {
+   "title": "Search that never shows a stale answer",
+   "text": "`createResource` refetches when its source changes and ignores any response that arrives after a newer request started, so a slow reply to \"p\" can't overwrite the answer to \"py\".",
+   "code": "import { signal, createResource } from '@pyreon/reactivity'\n\nconst query = signal('')\nconst results = createResource(\n  () => query(),\n  (q) => fetch(`/api/search?q=${encodeURIComponent(q)}`).then((r) => r.json()),\n)\n\nquery.set('p')  // slow request\nquery.set('py') // fast request\n// results.data() ends up holding the answer to 'py', whichever reply lands last\n// results.loading() and results.error() are signals too"
+  },
+  {
+   "title": "A choice that resets when its options change",
+   "text": "`linked()` follows a source like a computed but can be overwritten like a signal. Keep the user's pick while it is still offered; fall back to the first option when it is not.",
+   "status": "next release",
+   "code": "import { signal, linked } from '@pyreon/reactivity'\n\nconst sizes = signal(['S', 'M', 'L'])\nconst size = linked(sizes, (opts, prev): string =>\n  prev && opts.includes(prev.value) ? prev.value : (opts[0] ?? ''),\n)\n\nsize.set('L')\nconsole.log(size()) // 'L'\nsizes.set(['M', 'L', 'XL'])\nconsole.log(size()) // 'L' (still offered, kept)\nsizes.set(['XS', 'S'])\nconsole.log(size()) // 'XS' (gone, reset)"
+  }
+ ],
+ "faq": [
+  {
+   "q": "Can I use it without the rest of Pyreon?",
+   "a": "Yes. It has no dependencies and no DOM code: `bun add @pyreon/reactivity` and use it in Node, Bun, a worker or a CLI. Pyreon's components, router, forms, queries and stores all build on it."
+  },
+  {
+   "q": "Are effects synchronous?",
+   "a": "Yes. A write runs the effects that depend on it before `set()` returns, unless you are inside `batch()`, which runs them once at the end. `await nextTick()` waits for the DOM after a write."
+  },
+  {
+   "q": "How does it compare with Preact Signals and Solid?",
+   "a": "Same model, measured: about 2.1× Preact on effect propagation, 1.95× on batching and 1.3× on a computed diamond (V8, two runs). It loses signal creation (4.8×), deep unobserved chains (1.42×) and wide fan-out by 1.03×. Solid is behind on every row except creation."
+  },
+  {
+   "q": "Why `count()` and not `count.value`?",
+   "a": "A signal is a function, so reading it is a call and passing it around passes the live value. There are no proxies unless you ask for one with `createStore`."
+  },
+  {
+   "q": "Does it work in the iOS and Android builds?",
+   "a": "Yes, on the experimental native targets: `signal` and `computed` compile to SwiftUI and Compose state through PMTC, `effect` re-runs when what it read changes, and `batch` lowers too. `linked()`, coming in the next release, has no native lowering yet, and the compiler warns by name when it meets one."
+  }
+ ],
+ "sources": [
+  {
+   "claim": "V8 reactivity rows (effect 1,407 vs 2,874; batch 456 vs 888; diamond 4,424 vs 5,761; fan-out, chain, create losses)",
+   "path": "00-brief/BENCHMARKS-2026-11-05.md §8 (final pass, two runs)"
+  },
+  {
+   "claim": "Create 10,000 rows 72.64 vs React 192.01 ms; clear 130 vs Vapor 145 µs; create 10,000 vs fastest rivals split",
+   "path": "00-brief/BENCHMARKS-2026-11-05.md §1"
+  },
+  {
+   "claim": "No runtime dependencies; one optional peer (@pyreon/native-compiler)",
+   "path": "packages/core/reactivity/package.json (no dependencies; peerDependenciesMeta optional)"
+  },
+  {
+   "claim": "Dynamic tracking drops a branch that stops reading (4 runs in the sample)",
+   "path": ".scratch/core/parent/r1.ts output \"detail effect runs: 4\""
+  },
+  {
+   "claim": "batch runs the effect once (total 200 → 360, 2 runs incl. initial)",
+   "path": ".scratch/core/parent/r1.ts output"
+  },
+  {
+   "claim": "Glitch-free diamond, sync effects",
+   "path": ".scratch/core/parent/r4.ts output [\"2+3\",\"4+6\"]"
+  },
+  {
+   "claim": "Two set(count()+1) calls give 2",
+   "path": ".scratch/core/parent/r4.ts output"
+  },
+  {
+   "claim": "createSelector re-runs 1 row on first select, 2 on a move, of 10,000",
+   "path": ".scratch/core/parent/r2.ts output"
+  },
+  {
+   "claim": "createResource discards a stale slower response",
+   "path": ".scratch/core/parent/r2.ts output [\"py: result\"]; docs reactivity.md \"Stale Request Handling\""
+  },
+  {
+   "claim": "why() takes no argument and logs the next synchronous update with subscriber count",
+   "path": "packages/core/reactivity/src/debug.ts why(); .scratch/core/parent/r2.ts output"
+  },
+  {
+   "claim": "One subscriber kept in an inline slot; Set allocated on the 2nd direct / 3rd tracking subscriber",
+   "path": ".agents/guides/internals/README.md \"Direct subscribers: inline slot _d1 … Tracking subscribers: two inline\""
+  },
+  {
+   "claim": "linked() is main-only (#4238) and has no native lowering yet",
+   "path": "git log @pyreon/reactivity@0.53.0..HEAD (1cd43b5c6); docs reactivity.md \"Linked Signals\" rules"
+  },
+  {
+   "claim": "linked sample output L, L, XS",
+   "path": ".scratch/core/parent/r3.ts"
+  },
+  {
+   "claim": "Effect returning a cleanup runs it on re-run; onCleanup too",
+   "path": ".scratch/core/parent/r4.ts output"
+  },
+  {
+   "claim": "Component runs once; two clicks update text and title",
+   "path": ".scratch/core/parent/Cart.tsx compiled with transformJSX, run in happy-dom (run-cart.ts): component runs 1, \"3 × 5 = 15\", title \"Total: 15\""
+  },
+  {
+   "claim": "React before code typechecks against @types/react 19",
+   "path": ".scratch/core/parent/react/before.tsx (tsc)"
+  },
+  {
+   "claim": "signal/computed/effect/batch lower natively",
+   "path": "docs/src/content/docs/multiplatform.md \"Layer 0 — Reactive core\""
+  },
+  {
+   "claim": "Signal creation 4.8× slower than Preact (63 vs 13 ns V8)",
+   "path": "00-brief/BENCHMARKS-2026-11-05.md §8 and §13 item 7"
+  }
+ ]
+}

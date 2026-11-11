@@ -2247,9 +2247,27 @@ fun computeLayout(cfg: LayoutConfig, measure: (String, Double) -> Double): PlotL
         }
       }
     }
+    var edgeLeft = 0.0
+    var edgeRight = 0.0
+    if (cfg.showXAxis && rotate == 0.0 && (cfg.horizontal == true || cfg.categories.length == 0L)) {
+      val edgeTicks = if (cfg.horizontal == true) makeTicks(cfg.yDomain, 0.0, provisionalW, yCount, cfg.yFormat) else if (cfg.xTime == true) timeTicks(cfg.xDomain, 0.0, provisionalW, xCount, cfg.xFormat) else makeTicks(cfg.xDomain, 0.0, provisionalW, xCount, cfg.xFormat)
+      for (tick in edgeTicks) {
+        val half = (measure(tick.label, cfg.fontSize)).toDouble() / (2.0).toDouble()
+        val overLeft = half - tick.pos + labelGap
+        val overRight = tick.pos + half - provisionalW + labelGap
+        if (half > tick.pos && overLeft > edgeLeft) {
+          edgeLeft = overLeft
+        }
+        if (tick.pos + half > provisionalW && overRight > edgeRight) {
+          edgeRight = overRight
+        }
+      }
+    }
+    val leftG = Math.max(left, edgeLeft)
+    val rightG = Math.max(right, edgeRight)
     val bottom = (if (cfg.showXAxis) cfg.fontSize + labelGap + slantH + tickLen else 0.0) + xTitleH
-    val gutters = Gutters(left = left, right = right, top = padTop, bottom = bottom)
-    val plot = PyreonChartRect(x = left, y = padTop, w = Math.max(0.0, cfg.width - left - right), h = Math.max(0.0, cfg.height - padTop - bottom))
+    val gutters = Gutters(left = leftG, right = rightG, top = padTop, bottom = bottom)
+    val plot = PyreonChartRect(x = leftG, y = padTop, w = Math.max(0.0, cfg.width - leftG - rightG), h = Math.max(0.0, cfg.height - padTop - bottom))
     if (cfg.horizontal == true) {
       val yTicks = if (cfg.showYAxis) bandTicksY(cfg.categories, plot) else listOf()
       val xTicks = if (cfg.showXAxis) makeTicks(cfg.yDomain, plot.x, plot.x + plot.w, yCount, cfg.yFormat) else listOf()

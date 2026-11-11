@@ -1,9 +1,7 @@
 ---
-title: "3. Side effects"
+title: "3. Side effects — effect"
 description: "Tutorial chapter 3 — effect() runs a side effect when its tracked signals change. Use it to sync with the outside world."
 ---
-
-# 3. Side effects — `effect`
 
 `computed` derives *values*. When you need to do something with the outside world when a signal changes — log, sync to storage, call an API — use `effect`. It runs once immediately, then re-runs whenever a signal it read changes.
 

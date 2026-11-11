@@ -2,8 +2,6 @@
 title: Architecture & prior art
 ---
 
-# Architecture & prior art
-
 This page states, plainly and without superiority claims, where Pyreon sits
 relative to the frameworks it shares ideas with. The goal is an accurate map,
 not a sales pitch — the same honesty bar applied everywhere else in these

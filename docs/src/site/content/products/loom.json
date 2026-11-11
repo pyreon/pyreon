@@ -1,0 +1,390 @@
+{
+ "id": "loom",
+ "route": "/products/loom",
+ "name": "Loom",
+ "package": "@pyreon/loom",
+ "category": "tools · monorepo health",
+ "hero": {
+  "title": "Find the imports that only work by luck.",
+  "emberWord": "luck",
+  "lede": "Loom reads every package.json and every source import in your workspace, then names the runtime cycles, undeclared imports, version splits and the blast radius of each package. One command fails CI on real errors; another opens the whole graph in your browser.",
+  "install": "npx @pyreon/loom scan .",
+  "ctaShort": "Scan a repo",
+  "facts": [
+   {
+    "key": "reads",
+    "value": "npm, bun, yarn and pnpm workspaces"
+   },
+   {
+    "key": "finding codes",
+    "value": "8<small>each graded error, warning or info</small>"
+   },
+   {
+    "key": "network",
+    "value": "none<small>manifests and source only</small>"
+   },
+   {
+    "key": "our own repo",
+    "value": "148 packages<small>858 internal edges, 0 cycles</small>"
+   }
+  ]
+ },
+ "proof": [
+  {
+   "stat": "858",
+   "label": "internal dependency edges mapped across Pyreon's own 148-package workspace, with 0 runtime cycles and 0 errors",
+   "source": "loom scan . on main (e314cc619), 2026-11-11"
+  },
+  {
+   "stat": "106",
+   "label": "workspace packages downstream of @pyreon/reactivity: its blast radius, counted",
+   "source": "report.graph.reach from the same scan"
+  },
+  {
+   "stat": "374 ms",
+   "label": "warm scan of the whole Pyreon monorepo (overnight run, one run)",
+   "source": "benchmark record 2026-11-05, §11"
+  }
+ ],
+ "why": {
+  "title": "The bugs that hide between package.json files.",
+  "items": [
+   {
+    "title": "Imports that work by luck",
+    "text": "A package imports something its manifest never declares, and it resolves only because a neighbour installed it. Loom calls that `phantom-dep`: an error in a published package, a warning in a private one. Type-only imports are tracked apart, so `import type` from a devDependency is never flagged."
+   },
+   {
+    "title": "Cycles without the noise",
+    "text": "Cycles are computed over runtime edges (`dependencies`, `peerDependencies` and `optionalDependencies`) only. Test utilities that depend on each other through `devDependencies` never show up as circular, so a cycle finding is worth reading."
+   },
+   {
+    "title": "Version drift with context",
+    "text": "Cross-major drift is an error, same-major a warning, a split that a root override already pins is info. Peer ranges count as contracts, and a range like `>=5.0.0 <7.0.0` that contains the others reads as policy, not disagreement."
+   },
+   {
+    "title": "Blast radius, counted",
+    "text": "Every package gets its transitive dependents. In Pyreon's own repo, a change to `@pyreon/reactivity` reaches 106 of 148 packages. Rank the list, gate on it, or hand it to your AI assistant."
+   }
+  ]
+ },
+ "difference": {
+  "title": "Green CI. Three errors.",
+  "before": {
+   "label": "your workspace",
+   "caption": "Everything installs and builds, because hoisting puts a transitive nanoid and the devDependency zod where the imports look for them. On a stricter install, or for a consumer of @acme/app, it breaks.",
+   "code": "// package.json (root)\n{ \"workspaces\": [\"packages/*\"], \"devDependencies\": { \"vite\": \"^7.0.0\" } }\n// packages/app/package.json\n{ \"dependencies\": { \"@acme/auth\": \"workspace:*\", \"date-fns\": \"^2.30.0\" } }\n// packages/auth/package.json\n{ \"dependencies\": { \"@acme/data\": \"workspace:*\", \"date-fns\": \"^3.6.0\" } }\n// packages/data/package.json\n{ \"dependencies\": { \"@acme/auth\": \"workspace:*\" },\n  \"devDependencies\": { \"zod\": \"^3.23.0\" } }\n\n// packages/app/src/index.ts\nimport { nanoid } from 'nanoid'   // declared nowhere: vite → postcss hoists it\n\n// packages/data/src/index.ts\nimport { z } from 'zod'           // a devDependency\n\n// install, build, test: all green"
+  },
+  "after": {
+   "label": "loom scan",
+   "caption": "Real output on that workspace, wrapped to fit, the cycle and zod lines cut short. Exit code 1, so CI stops here.",
+   "code": "$ npx @pyreon/loom scan . --no-write\nloom: 3 workspace package(s), 2 external dep(s), 3 internal edge(s), depth 2, 1 cycle(s).\n\nERROR · 3\n  ✗ cycle — Runtime dependency cycle: @acme/auth → @acme/data → @acme/auth\n  ✗ phantom-dep [nanoid] — `@acme/app` imports `nanoid` in shipping source\n    but never declares it — resolvable only through hoisting luck\n  ✗ version-drift [date-fns] — `date-fns` is declared with 2 different\n    ranges (^2.30.0 · ^3.6.0) — the majors differ, so packages are\n    building against different APIs\n\nWARNING · 1\n  ▲ prod-import-of-dev-dep [zod] — `@acme/data` imports `zod` in shipping\n    source but declares it only in devDependencies\nloom: 3 error(s)                                   # exit code 1"
+  }
+ },
+ "extraSectionsHtml": null,
+ "demo": {
+  "title": "The observatory, live.",
+  "text": "A sample workspace in the observatory. Click a package to see what depends on it, then switch to the matrix, cycles and impact views.",
+  "component": "DemoLoom",
+  "reference": "pkg-loom.html#demo",
+  "referenceHtml": "<div class=\"card\" style=\"overflow:hidden\"><div class=\"in\" style=\"padding:0\"><iframe src=\"Loom.html\" title=\"Loom observatory demo\" style=\"width:100%;height:680px;border:0;display:block;border-radius:21px\"></iframe></div></div>",
+  "referenceCss": "",
+  "referenceJs": ""
+ },
+ "features": {
+  "title": "Dependency analysis as data.",
+  "items": [
+   {
+    "name": "Workspace discovery",
+    "text": "npm, bun and yarn `workspaces` (array and object forms), `pnpm-workspace.yaml`, nested globs like `packages/*/*`, `**` and negations."
+   },
+   {
+    "name": "Runtime and dev edges, apart",
+    "text": "dependencies and peers drive cycles, depth and reach; devDependencies are tracked on their own."
+   },
+   {
+    "name": "8 finding codes",
+    "text": "`version-drift`, `internal-range`, `cycle`, `phantom-dep`, `phantom-type-dep`, `prod-import-of-dev-dep`, `peer-mismatch`, `unused-dep`."
+   },
+   {
+    "name": "Type-aware import scan",
+    "text": "`import type`, `export type` and every import in a `.d.ts` are counted apart from runtime imports."
+   },
+   {
+    "name": "tsconfig paths understood",
+    "text": "aliases like `~/*` or `@app/*` are read from the package and root tsconfig (one relative `extends` hop), so they do not scan as missing packages."
+   },
+   {
+    "name": "Severity follows the audience",
+    "text": "a private package has no consumers, so its phantom import is a warning and its dev-dep import is info."
+   },
+   {
+    "name": "Ignores need a reason",
+    "text": "an `ignore` entry without one is rejected: “an unexplained suppression is a lie waiting to age”. Ignored findings stay in the report as info, reason attached."
+   },
+   {
+    "name": "Adopt it gradually",
+    "text": "`severity` overrides per code, `strict`, and `devPaths` for code that never ships, in `package.json` or `pyreon.config.*`."
+   },
+   {
+    "name": "Observatory and static site",
+    "text": "`loom dev` serves graph, matrix, cycles, impact and manifest views with ⌘K search; `loom build` prerenders one page per view that opens from `file://`."
+   },
+   {
+    "name": "Feeds doctor and your assistant",
+    "text": "`pyreon doctor` runs it as the `dependency-fabric` gate when Loom is installed, and the MCP tool `get_dependency_fabric` serves `loom-report.json` to your AI."
+   }
+  ]
+ },
+ "api": {
+  "title": "Three commands, one report.",
+  "groups": [
+   {
+    "name": "entries",
+    "items": [
+     "@pyreon/loom",
+     "@pyreon/loom/core",
+     "@pyreon/loom/ui",
+     "@pyreon/loom/dev",
+     "@pyreon/loom/cli"
+    ]
+   },
+   {
+    "name": "flags",
+    "items": [
+     "--strict",
+     "--json",
+     "--no-imports",
+     "--no-write",
+     "--port",
+     "--out",
+     "--base"
+    ]
+   },
+   {
+    "name": "@pyreon/loom/core",
+    "items": [
+     "buildReport",
+     "scanWorkspace",
+     "analyzeGraph",
+     "externalUsage",
+     "detectVersionDrift",
+     "detectInternalRange",
+     "detectCycles",
+     "detectPhantoms",
+     "detectUnused",
+     "detectPeerMismatch",
+     "ISSUE_CODES"
+    ]
+   },
+   {
+    "name": "@pyreon/loom/ui · /dev",
+    "items": [
+     "Observatory",
+     "mountObservatory",
+     "startDevServer"
+    ]
+   },
+   {
+    "name": "config (loom key)",
+    "items": [
+     "devPaths",
+     "ignore",
+     "strict",
+     "severity"
+    ]
+   }
+  ]
+ },
+ "limits": [
+  {
+   "title": "Declared truth only",
+   "text": "Loom reads manifests and source, never the lockfile or the registry, so it does not report outdated versions or duplicate installs."
+  },
+  {
+   "title": "A package graph, not a module graph",
+   "text": "Cycles are found between workspace packages from their declared runtime dependencies. For import loops between files inside one package, pair it with a file-level tool."
+  },
+  {
+   "title": "The import scan is lexical",
+   "text": "Comments and template literals are stripped, but a package name in an ordinary string (a code generator emitting imports, say) can read as an import. Ignore it with a reason; this repo does that for its own generator."
+  },
+  {
+   "title": "unused-dep is a lead, not a verdict",
+   "text": "Bins, plugin autoloads and CSS imports load without an import statement. That is why the finding is info: check before you delete."
+  },
+  {
+   "title": "The UI has peers",
+   "text": "`loom scan` needs nothing else. `loom dev` needs `vite` and `@pyreon/vite-plugin`, and `loom build` also `@pyreon/zero`; each names the install when they are missing."
+  }
+ ],
+ "comingFrom": [
+  {
+   "lib": "syncpack + knip",
+   "title": "Two tools, two configs, one scan",
+   "before": "# version drift\nnpx syncpack lint\n\n# undeclared and unused dependencies\nnpx knip",
+   "after": "# drift, cycles, phantom deps, dev deps in\n# shipping code, peer mismatches, unused deps\nnpx @pyreon/loom scan .",
+   "note": "On the same three-package workspace as above: `syncpack lint` flagged the date-fns split and `knip` flagged the undeclared nanoid import. `loom scan` flagged both, plus the @acme/auth ↔ @acme/data cycle and zod imported from devDependencies. knip also finds unused files and exports, which Loom does not."
+  }
+ ],
+ "recipes": [
+  {
+   "title": "Gate CI on the dependency fabric",
+   "text": "One step. It exits 1 on any error finding; `--no-write` skips `loom-report.json` when you only want the verdict.",
+   "code": "# .github/workflows/ci.yml\n- name: Dependency fabric\n  run: npx @pyreon/loom scan . --no-write\n  # exits 1 on any error finding\n  # add --strict to fail on warnings too"
+  },
+  {
+   "title": "Rank packages by blast radius",
+   "text": "The graph behind `loom scan`, as data. On this repo the top of the list is the compiler's seven per-platform binaries (116 dependents each) and `@pyreon/compiler` (115); `@pyreon/reactivity` reaches 106.",
+   "code": "// scripts/blast-radius.ts\nimport { buildReport, loadSharedLoomConfig, mergeLoomSettings, readManifestLoomSection, validateLoomSection } from '@pyreon/loom/core'\n\n// the settings `loom scan` applies: pyreon.config.* merged with the package.json `loom` key\nconst shared = await loadSharedLoomConfig('.')\nconst manifest = validateLoomSection(readManifestLoomSection('.'), 'package.json')\nconst report = buildReport('.', { settings: mergeLoomSettings(shared, manifest) })\n\n// The ten packages whose change reaches the most of the workspace.\nconst top = Object.entries(report.graph.reach)\n  .sort(([, a], [, b]) => b - a)\n  .slice(0, 10)\nfor (const [pkg, dependents] of top) console.log(`${dependents}\\t${pkg}`)\n\nconst errors = report.issues.filter((i) => i.severity === 'error')\nif (errors.length > 0) process.exitCode = 1"
+  },
+  {
+   "title": "Adopt it on an existing repo",
+   "text": "Raise a code to error once it is clean, mark files that never ship but sit outside the test and script folders loom already skips, and wave one finding through with a reason that shows up in every report.",
+   "code": "// package.json (root)\n{\n  \"workspaces\": [\"packages/*\"],\n  \"loom\": {\n    \"devPaths\": [\"src/manifest.ts\", \"**/*.gen.ts\"],\n    \"severity\": { \"prod-import-of-dev-dep\": \"error\" },\n    \"ignore\": [\n      {\n        \"pkg\": \"@acme/app\",\n        \"dep\": \"nanoid\",\n        \"code\": \"phantom-dep\",\n        \"reason\": \"provided by the host app at runtime\"\n      }\n    ]\n  }\n}"
+  }
+ ],
+ "faq": [
+  {
+   "q": "Does it need a config file?",
+   "a": "No. It reads the `workspaces` field of your root package.json, or `pnpm-workspace.yaml`. The `loom` config key is optional."
+  },
+  {
+   "q": "Is it only for Pyreon projects?",
+   "a": "No. `loom scan` reads any npm, bun, yarn or pnpm workspace. The example on this page has no Pyreon package in it."
+  },
+  {
+   "q": "Will it slow CI down?",
+   "a": "A warm scan of the Pyreon monorepo took 374 ms in our overnight benchmark run, and 98.3% of that is the import scan. `--no-imports` skips it if you only want drift, ranges, cycles and peers."
+  },
+  {
+   "q": "What if I run it inside one package by mistake?",
+   "a": "It fails and names the workspace root to scan instead. An empty scan never reads as a pass."
+  },
+  {
+   "q": "Is the report format stable?",
+   "a": "Finding codes are stable identifiers in `loom-report.json`, but the README still says the API and the findings vocabulary may still move. Pin the version you gate on."
+  }
+ ],
+ "related": [
+  {
+   "href": "/products/tooling",
+   "category": "tools",
+   "name": "Tooling",
+   "text": "`pyreon doctor` runs Loom as its dependency-fabric gate.",
+   "package": "@pyreon/cli · lint · devtools · mcp · testing"
+  },
+  {
+   "href": "/products/ai",
+   "category": "tools",
+   "name": "AI and MCP",
+   "text": "Your assistant reads the graph through `get_dependency_fabric`.",
+   "package": "@pyreon/mcp"
+  },
+  {
+   "href": "/products/atlas",
+   "category": "tools",
+   "name": "Atlas",
+   "text": "The same idea for components: catalog and verify them.",
+   "package": "@pyreon/atlas"
+  }
+ ],
+ "end": {
+  "title": "The graph was always there. Now you can read it.",
+  "cta": "Read the Loom guide"
+ },
+ "benchmarks": {
+  "rival": "Pyreon-only (no competitor)",
+  "run": "overnight run, one run, warm cache",
+  "h": "The whole monorepo, scanned in 374 ms.",
+  "p": "A warm `loom scan` of the Pyreon monorepo itself. Almost all of it (98.3%) is reading source imports.",
+  "rows": [
+   {
+    "op": "warm scan of the Pyreon monorepo",
+    "pyreon": 374,
+    "rival": null,
+    "unit": "ms",
+    "verdict": "info",
+    "label": "98.3% import scanning"
+   }
+  ]
+ },
+ "glyphSvg": "<path d=\"M30 12 V108 M90 12 V108 M12 30 H108 M12 90 H108\" stroke=\"currentColor\" stroke-width=\"10\" fill=\"none\" stroke-linecap=\"square\"/><circle cx=\"60\" cy=\"60\" r=\"18\" fill=\"url(#eg)\"/>",
+ "sources": [
+  {
+   "claim": "Pyreon repo: 148 workspace packages, 196 external deps, 858 internal edges, depth 11, 0 cycles, 0 errors, 0 warnings, 278 infos",
+   "path": "node packages/tools/loom/bin/loom.js scan . --no-write in /tmp/wt-site-content (main e314cc619), 2026-11-11"
+  },
+  {
+   "claim": "@pyreon/reactivity reach 106; @pyreon/compiler 115; native compiler binaries 116",
+   "path": "buildReport(\".\").graph.reach, same checkout (.scratch/tools/loom-migrate/recipe-reach.ts output)"
+  },
+  {
+   "claim": "374 ms warm scan, 98.3% import scanning",
+   "path": "00-brief/BENCHMARKS-2026-11-05.md §11; harness scripts/bench/tools/loom.ts (median of 7 warmed rounds by default)"
+  },
+  {
+   "claim": "8 finding codes",
+   "path": "packages/tools/loom/src/core/config.ts ISSUE_CODES; src/core/types.ts IssueCode"
+  },
+  {
+   "claim": "phantom-dep error for published, warning for private; prod-import-of-dev-dep warning/info",
+   "path": "packages/tools/loom/README.md \"What the scan detects\"; src/core/detect.ts detectPhantoms"
+  },
+  {
+   "claim": "cycles use runtime edges only (dependencies, peers, optional); dev edges kept apart",
+   "path": "packages/tools/loom/src/core/graph.ts analyzeGraph"
+  },
+  {
+   "claim": "version-drift: cross-major error, same-major warning, root override info, superset range = policy",
+   "path": "docs/src/content/docs/loom.md table; real finding on this repo: typescript `>=5.0.0 <7.0.0` contains ^6.0.3"
+  },
+  {
+   "claim": "difference after-block output",
+   "path": "fixture built by .scratch/tools/loom-migrate/mkfx.ts, scanned with loom.js scan fx --no-write; exit 1"
+  },
+  {
+   "claim": "ignore without reason rejected, quoted message",
+   "path": "packages/tools/loom/src/core/config.ts validateLoomSection; run on .scratch fixture fx3"
+  },
+  {
+   "claim": "ignored finding downgraded to info with reason appended",
+   "path": "packages/tools/loom/src/core/report.ts lines 64-77; run on fixture fx2"
+  },
+  {
+   "claim": "severity overrides, strict, devPaths in package.json or pyreon.config.*, manifest wins per key",
+   "path": "packages/tools/loom/src/core/config.ts mergeLoomSettings; README Configuration"
+  },
+  {
+   "claim": "scan inside a member package fails and names the root",
+   "path": "packages/tools/loom/src/cli/index.ts emptyWorkspaceMessage; run on fx/packages/app"
+  },
+  {
+   "claim": "pyreon doctor dependency-fabric gate; MCP get_dependency_fabric",
+   "path": "packages/tools/cli/src/doctor/gates/dependency-fabric.ts; packages/tools/mcp/src/index.ts tool get_dependency_fabric, src/loom.ts"
+  },
+  {
+   "claim": "loom dev needs vite + @pyreon/vite-plugin; loom build also @pyreon/zero; scan needs neither",
+   "path": "packages/tools/loom/package.json peerDependenciesMeta (optional); lib/cli.js lazy-imports server/static-site chunks"
+  },
+  {
+   "claim": "loom build: one prerendered page per view, works from file://",
+   "path": "packages/tools/loom/src/manifest.ts loom build; CHANGELOG 0.52.0"
+  },
+  {
+   "claim": "syncpack/knip comparison",
+   "path": "npx syncpack@15.3.3 lint, npx knip@6.45.0 run on .scratch fixture fx: syncpack flagged date-fns ^2.30.0 vs ^3.6.0; knip reported \"Unlisted dependencies: nanoid\"; neither reported the cycle or the zod devDependency import"
+  },
+  {
+   "claim": "README says API and findings vocabulary may still move",
+   "path": "packages/tools/loom/README.md line 5"
+  },
+  {
+   "claim": "Every Loom feature on this page is released (no loom source change since @pyreon/loom@0.53.0 except dependency bumps)",
+   "path": "git log @pyreon/loom@0.53.0..HEAD -- packages/tools/loom"
+  },
+  {
+   "claim": "recipe-reach compiles and runs",
+   "path": "tsc -p .scratch/tools/loom-migrate/tsconfig (strict, exactOptionalPropertyTypes) and bun recipe-reach.ts on the repo"
+  }
+ ]
+}

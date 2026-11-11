@@ -1,0 +1,63 @@
+{
+  "order": [
+    {
+      "id": "components-run-once",
+      "title": "Components run once"
+    },
+    {
+      "id": "one-codebase",
+      "title": "One codebase"
+    },
+    {
+      "id": "ai-ready",
+      "title": "AI-ready"
+    },
+    {
+      "id": "performance",
+      "title": "Performance"
+    },
+    {
+      "id": "full-stack",
+      "title": "Full stack"
+    }
+  ],
+  "template": {
+    "meta": {
+      "title": "{title} · Pyreon"
+    },
+    "index": {
+      "title": "Why Pyreon",
+      "label": "{title} →"
+    },
+    "switcher": "Why Pyreon",
+    "heroLink": {
+      "label": "See the benchmarks",
+      "href": "/benchmarks"
+    },
+    "tryIt": {
+      "label": "try it",
+      "title": "Click it. Count the renders.",
+      "text": "A real Pyreon counter, running in this page. The numbers come from the component and the DOM, not from a script."
+    },
+    "diagram": {
+      "scroll": "Diagram",
+      "handOff": "Diagram of the hand-off, not a capture of this page."
+    },
+    "sections": {
+      "proofCaveat": "synthetic · author-run · Apple M3 Max · record of 2026-11-05",
+      "proofLink": {
+        "label": "Every result, including where we lose →",
+        "href": "/benchmarks"
+      },
+      "diff": "the difference",
+      "code": "code",
+      "steps": "steps",
+      "list": "in detail",
+      "compareStrip": "side by side",
+      "faq": "questions",
+      "links": "links",
+      "noteLink": "source →",
+      "table": "at a glance"
+    }
+  }
+}

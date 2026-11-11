@@ -1,9 +1,7 @@
 ---
-title: "SSR Renderer — API Reference"
+title: "@pyreon/runtime-server — API Reference"
 description: "SSR/SSG VNode→HTML renderer — renderToString, renderToStream (out-of-order Suspense), per-request ALS context/store isolation"
 ---
-
-# @pyreon/runtime-server — API Reference
 
 > **Generated** from `runtime-server`'s `src/manifest.ts` — the same source that powers `llms.txt` and MCP `get_api`. Do not edit this page by hand; edit the manifest. For the conceptual guide, see [runtime-server](/docs/runtime-server).
 

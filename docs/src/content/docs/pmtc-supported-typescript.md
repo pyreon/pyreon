@@ -2,8 +2,6 @@
 title: PMTC Supported TypeScript Surface
 ---
 
-# PMTC Supported TypeScript Surface
-
 The Pyreon Multi-Target Compiler (PMTC) intercepts JSX + TypeScript source in your `.tsx` files and emits Swift (SwiftUI) and Kotlin (Compose). It does **not** compile arbitrary TypeScript — Phase 0 deliberately ships a focused subset that covers the seven canonical patterns the TodoMVC + native-counter examples exercise. This page enumerates exactly what works, what silently drops, what fires a warning, and what's planned.
 
 If you hit a shape this page doesn't list, treat it as undefined behavior — file an issue with the source snippet so the matrix can grow.

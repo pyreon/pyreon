@@ -5,14 +5,14 @@ import { expect, test } from '@playwright/test'
  * create-pyreon-app. Boots the pre-scaffolded `examples/cpa-pw-blog`
  * fixture and exercises:
  *
- *   1. SSR landing renders the post-list (the import.meta.glob loader
- *      ran and produced posts at build time)
+ *   1. SSR landing renders the post-list (the markdown collection compiled
+ *      and `@pyreon/zero-content/blog` listed it)
  *   2. Click into a post → detail page hydrates with the post body
- *   3. /rss.xml endpoint serves valid RSS XML
+ *   3. A tag link opens the tag page listing that tag's posts
  *   4. No console errors on the navigation flow
  *
- * The blog template's `import.meta.glob`-driven post discovery is the
- * piece most likely to silently break under framework changes (Vite
+ * The content-collection discovery (virtual registry + `import.meta.glob`)
+ * is the piece most likely to silently break under framework changes (Vite
  * version bumps, plugin tweaks). Nothing in the build smoke catches a
  * "blog renders empty post-list" regression.
  */
@@ -29,7 +29,7 @@ test.describe('cpa-blog — runtime', () => {
     await expect(page.getByRole('heading', { level: 1 }).first()).toContainText('Blog')
 
     // 3 sample posts ship in the template — at least one should render
-    const posts = page.locator('.post-list li')
+    const posts = page.locator('.pyreon-blog-list li')
     await expect(posts.first()).toBeVisible()
 
     expect(consoleErrors).toEqual([])
@@ -39,8 +39,8 @@ test.describe('cpa-blog — runtime', () => {
     await page.goto('/')
 
     // Grab the first post's title link, then navigate
-    const firstPostLink = page.locator('.post-list li .post-title a').first()
-    const postTitle = await firstPostLink.textContent()
+    const firstPostLink = page.locator('.pyreon-blog-list li .pyreon-blog-card__link').first()
+    const postTitle = await firstPostLink.locator('.pyreon-blog-card__title').textContent()
     expect(postTitle).toBeTruthy()
     await firstPostLink.click()
 
@@ -54,16 +54,12 @@ test.describe('cpa-blog — runtime', () => {
     await expect(page.locator('article').first()).not.toBeEmpty()
   })
 
-  test('/api/rss serves valid RSS XML', async ({ request }) => {
-    // Locks in the dev-server API-route dispatcher fix. Pre-fix, the
-    // virtual `apiRoutes` module was generated but no Vite middleware
-    // consumed it — every API request 404'd. Fix wires `createApiMiddleware`
-    // into `configureServer` ahead of the SSR + 404 middlewares.
-    const response = await request.get('/api/rss')
-    expect(response.status()).toBe(200)
-    expect(response.headers()['content-type'] ?? '').toContain('application/rss+xml')
-    const body = await response.text()
-    expect(body).toContain('<rss version="2.0">')
+  test('a tag link opens the tag page with that tag\'s posts', async ({ page }) => {
+    await page.goto('/blog')
+    await page.locator('a.pyreon-blog-tag[href="/blog/tags/signals"]').first().click()
+    await expect(page).toHaveURL(/\/blog\/tags\/signals$/)
+    await expect(page.getByRole('heading', { level: 1 }).first()).toContainText('#signals')
+    await expect(page.locator('.pyreon-blog-list li').first()).toBeVisible()
   })
 
   test('/api/echo/:path* — catch-all + streaming response', async ({ request }) => {

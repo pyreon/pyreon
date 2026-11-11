@@ -1,4 +1,4 @@
-import { effect, signal, untrack } from '@pyreon/reactivity'
+import { effect, isServer, signal, untrack } from '@pyreon/reactivity'
 import { onHookCleanup } from './lifecycle'
 
 type TimeUnit = 'second' | 'minute' | 'hour' | 'day' | 'week' | 'month' | 'year'
@@ -116,6 +116,14 @@ export function useTimeAgo(
   const resolveDate = typeof date === 'function' ? date : () => date
 
   const result = signal('')
+
+  // Server render: compute the string once and schedule nothing. A refresh
+  // timer here would never be cleared (SSR components never unmount) and
+  // would keep the process alive after the render has finished.
+  if (isServer) {
+    result.set(computeTimeAgo(resolveDate(), formatter))
+    return result
+  }
 
   // Disposed flag prevents timer chain from continuing after cleanup.
   // Without this, the setTimeout callback could fire after the component

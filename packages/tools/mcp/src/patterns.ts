@@ -149,6 +149,20 @@ function extractFirstHeading(body: string): string | null {
   return null
 }
 
+/**
+ * The text served for a pattern. The docs site renders the page title from the
+ * frontmatter `title`, so a pattern file has no `# ` heading of its own; the
+ * served text still starts with exactly one `# <title>`, so a consumer of the
+ * tool output sees the same shape as before. A body that carries its own
+ * top-level heading is left untouched, so the title never doubles.
+ */
+function withTitleHeading(source: string, body: string, title: string): string {
+  if (extractFirstHeading(body) !== null) return source
+  const fm = /^(---\r?\n[\s\S]*?\r?\n---\r?\n)([\s\S]*)$/.exec(source)
+  if (fm === null) return `# ${title}\n\n${source}`
+  return `${fm[1]}\n# ${title}\n\n${fm[2]!.replace(/^\s+/, '')}`
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // Public API
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -182,7 +196,7 @@ export function readPatternsFromDir(patternsDir: string): PatternFile[] {
     patterns.push({
       name,
       path: filePath,
-      body: source,
+      body: withTitleHeading(source, body, title),
       title,
       summary: meta.summary ?? null,
       seeAlso: meta.seeAlso ?? [],

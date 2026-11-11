@@ -4,8 +4,6 @@ summary: "Options-as-function so signal reads track. useMutation with invalidate
 seeAlso: [signal-writes, form-fields]
 ---
 
-# Data fetching — useQuery + useMutation
-
 ## The pattern
 
 Pass query options as a **function** (not an object) so signal reads inside track automatically:

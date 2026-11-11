@@ -3,8 +3,6 @@ title: "Client-Side Routing"
 description: "How to set up routes, navigate, read params and typed search params, guard navigation, and load data with @pyreon/router."
 ---
 
-# Client-Side Routing
-
 `@pyreon/router` is Pyreon's signal-native router: hash + history + SSR modes, context-based, with prefetching, guards, loaders, typed search params, and View Transitions. Route state is reactive — navigating patches only the `<RouterView>` subtree that changed, never the whole tree.
 
 ## When to use it

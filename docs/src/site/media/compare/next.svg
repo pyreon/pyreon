@@ -1,0 +1,66 @@
+<svg xmlns="http://www.w3.org/2000/svg" class="pxa pw-compare-next" viewBox="0 0 960 440" width="960" height="440" role="img" aria-labelledby="pw-compare-next-t pw-compare-next-d" fill="none">
+<title id="pw-compare-next-t">Per-route render modes in Zero and in Next.js</title>
+<desc id="pw-compare-next-d">Both frameworks pick a render mode per route with one export in the route file. SSR: Zero export const renderMode = 'ssr', Next.js export const dynamic = 'force-dynamic'. SSG: renderMode = 'ssg' against dynamic = 'force-static'. ISR: renderMode = 'isr' against revalidate = 60. Zero also has a per-route 'spa' mode, routeRules globs that set modes in one place, and mode: 'auto' (experimental), which infers each route's mode and prints the table at build.</desc>
+<style>
+.pxa{--px-bg:#0A0A0E;--px-card:#111118;--px-raised:#181822;--px-line:#23232E;--px-line2:#2E2E3B;--px-text:#F4EFE6;--px-strong:#FFFCF5;--px-mist:#C9C4B8;--px-fog:#8A8696;--px-hint:#8A8696;--px-dim:#5C5867;--px-accent:#FF5E1A;--px-accent-text:#FF8A4C;--px-warm:#FFC83D;--px-plasma:#FF1F8C;--px-ok:#4ADE80;--px-warn:#FACC15;--px-err:#F87171;--px-link:#22D3EE;--px-violet:#A78BFA;--px-bar:#3A3846;--px-g1:#FF1F8C;--px-g2:#FF5E1A;--px-g3:#FFC83D;--px-glow:rgba(255,94,26,.16)}
+@media (prefers-color-scheme: light){.pxa{--px-bg:#FAF5EB;--px-card:#FFFFFF;--px-raised:#F4EFE6;--px-line:#E6DFD2;--px-line2:#D6CFC2;--px-text:#14141C;--px-strong:#0A0A0E;--px-mist:#45414F;--px-fog:#67637A;--px-hint:#8E8A9A;--px-dim:#B5AFA3;--px-accent:#E84A0F;--px-accent-text:#A8380A;--px-warm:#8A5A00;--px-plasma:#E40C70;--px-ok:#11692F;--px-warn:#8A5A00;--px-err:#B91C1C;--px-link:#0A6E89;--px-violet:#6D28D9;--px-bar:#D9D2C4;--px-g1:#D1106F;--px-g2:#C2410C;--px-g3:#9A6200;--px-glow:rgba(232,74,15,.10)}}
+[data-theme="dark"] .pxa,.pxa[data-theme="dark"]{--px-bg:#0A0A0E;--px-card:#111118;--px-raised:#181822;--px-line:#23232E;--px-line2:#2E2E3B;--px-text:#F4EFE6;--px-strong:#FFFCF5;--px-mist:#C9C4B8;--px-fog:#8A8696;--px-hint:#8A8696;--px-dim:#5C5867;--px-accent:#FF5E1A;--px-accent-text:#FF8A4C;--px-warm:#FFC83D;--px-plasma:#FF1F8C;--px-ok:#4ADE80;--px-warn:#FACC15;--px-err:#F87171;--px-link:#22D3EE;--px-violet:#A78BFA;--px-bar:#3A3846;--px-g1:#FF1F8C;--px-g2:#FF5E1A;--px-g3:#FFC83D;--px-glow:rgba(255,94,26,.16)}
+[data-theme="light"] .pxa,.pxa[data-theme="light"]{--px-bg:#FAF5EB;--px-card:#FFFFFF;--px-raised:#F4EFE6;--px-line:#E6DFD2;--px-line2:#D6CFC2;--px-text:#14141C;--px-strong:#0A0A0E;--px-mist:#45414F;--px-fog:#67637A;--px-hint:#8E8A9A;--px-dim:#B5AFA3;--px-accent:#E84A0F;--px-accent-text:#A8380A;--px-warm:#8A5A00;--px-plasma:#E40C70;--px-ok:#11692F;--px-warn:#8A5A00;--px-err:#B91C1C;--px-link:#0A6E89;--px-violet:#6D28D9;--px-bar:#D9D2C4;--px-g1:#D1106F;--px-g2:#C2410C;--px-g3:#9A6200;--px-glow:rgba(232,74,15,.10)}
+.pw-compare-next{font-family:'Space Grotesk',ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif}
+.pw-compare-next .m{font-family:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,monospace}
+.pw-compare-next .pw-compare-next-rm{opacity:0}
+@media (prefers-reduced-motion: reduce){.pw-compare-next *{animation:none!important;transition:none!important}.pw-compare-next .pw-compare-next-rm{opacity:1}.pw-compare-next .pw-compare-next-am{opacity:0}}
+
+.pw-compare-next .ln{stroke:var(--px-hint);stroke-width:1.5;fill:none}
+.pw-compare-next .dash{stroke:var(--px-hint);stroke-width:1.5;stroke-dasharray:3 5;fill:none}
+.pw-compare-next .bx{fill:var(--px-card);stroke:var(--px-bar);stroke-width:1.5}
+.pw-compare-next .bx2{fill:var(--px-raised);stroke:var(--px-bar);stroke-width:1.5}
+.pw-compare-next .lab{fill:var(--px-fog);font-size:14px;letter-spacing:.04em}
+.pw-compare-next .eb{fill:var(--px-fog);font-size:13px;letter-spacing:.16em}
+.pw-compare-next .val{fill:var(--px-text);font-size:20px;font-weight:500}
+.pw-compare-next .big{fill:var(--px-strong);font-size:24px;font-weight:600;letter-spacing:-.02em}
+.pw-compare-next .code{fill:var(--px-text);font-size:15px}
+.pw-compare-next .kw{fill:var(--px-accent-text)} .pw-compare-next .fn{fill:var(--px-link)} .pw-compare-next .str{fill:var(--px-warm)} .pw-compare-next .ty{fill:var(--px-violet)}
+.pw-compare-next .dim{fill:var(--px-fog)}
+.pw-compare-next .hint{fill:var(--px-hint);font-size:13px}
+.pw-compare-next .ember{stroke:url(#pw-compare-next-egu);stroke-width:2.5;stroke-linecap:round;stroke-dasharray:36 900;fill:none}
+.pw-compare-next .emberS{stroke:url(#pw-compare-next-egu);stroke-width:2.5;stroke-linecap:round;fill:none}
+.pw-compare-next .ring{fill:none;stroke:var(--px-accent);stroke-width:2}
+.pw-compare-next .ok{fill:var(--px-ok)} .pw-compare-next .warm{fill:var(--px-warm)} .pw-compare-next .hot{fill:var(--px-accent)} .pw-compare-next .errF{fill:var(--px-err)}
+.pw-compare-next .okT{fill:var(--px-ok)} .pw-compare-next .warmT{fill:var(--px-warm)} .pw-compare-next .hotT{fill:var(--px-accent-text)} .pw-compare-next .errT{fill:var(--px-err)}
+.pw-compare-next .okS{stroke:var(--px-ok)} .pw-compare-next .errS{stroke:var(--px-err)}
+.pw-compare-next .gfill{fill:url(#pw-compare-next-eg)}
+@media (prefers-reduced-motion: reduce){.pw-compare-next .ember{opacity:0}}
+
+.pw-compare-next .chip{fill:none;stroke:var(--px-fog);stroke-width:1.5}
+.pw-compare-next .mode{fill:var(--px-text);font-size:15px;font-weight:600}
+.pw-compare-next .exp{fill:none;stroke:var(--px-warn);stroke-width:1.2}
+.pw-compare-next .expT{fill:var(--px-warn);font-size:11px;letter-spacing:.1em}
+</style>
+<defs><linearGradient id="pw-compare-next-eg" x1="0" y1="0" x2="1" y2="0"><stop offset="0" style="stop-color:var(--px-g1)"/><stop offset=".55" style="stop-color:var(--px-g2)"/><stop offset="1" style="stop-color:var(--px-g3)"/></linearGradient><linearGradient id="pw-compare-next-egu" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="960" y2="0"><stop offset="0" style="stop-color:var(--px-g1)"/><stop offset=".55" style="stop-color:var(--px-g2)"/><stop offset="1" style="stop-color:var(--px-g3)"/></linearGradient><linearGradient id="pw-compare-next-egv" x1="0" y1="1" x2="0" y2="0"><stop offset="0" style="stop-color:var(--px-g1)"/><stop offset=".55" style="stop-color:var(--px-g2)"/><stop offset="1" style="stop-color:var(--px-g3)"/></linearGradient><linearGradient id="pw-compare-next-egd" x1="0" y1="0" x2="1" y2="1"><stop offset="0" style="stop-color:var(--px-g1)"/><stop offset=".55" style="stop-color:var(--px-g2)"/><stop offset="1" style="stop-color:var(--px-g3)"/></linearGradient></defs>
+
+<text class="m eb" x="24" y="34">ONE EXPORT PER ROUTE · BOTH WAYS</text>
+<text class="m hint" x="24" y="76">mode</text>
+<rect class="bx2" x="200" y="52" width="336" height="44" rx="12"/><text class="m lab" x="216" y="80" style="fill:var(--px-text)">Pyreon Zero · src/routes/*.tsx</text>
+<rect class="bx2" x="548" y="52" width="388" height="44" rx="12"/><text class="m lab" x="564" y="80" style="fill:var(--px-text)">Next.js App Router · page.tsx</text><rect class="chip" x="24" y="124" width="76" height="34" rx="17"/><text class="m mode" x="62" y="147" text-anchor="middle">SSR</text>
+<text class="m hint" x="110" y="146">per request</text>
+<rect class="bx" x="200" y="112" width="336" height="58" rx="12"/>
+<text class="m code" x="216" y="148" font-size="13"><tspan class="kw">export const</tspan> renderMode = <tspan class="str">'ssr'</tspan></text>
+<rect class="bx" x="548" y="112" width="388" height="58" rx="12"/>
+<text class="m code" x="564" y="148" font-size="13"><tspan class="kw">export const</tspan> dynamic = <tspan class="str">'force-dynamic'</tspan></text><rect class="chip" x="24" y="200" width="76" height="34" rx="17"/><text class="m mode" x="62" y="223" text-anchor="middle">SSG</text>
+<text class="m hint" x="110" y="222">at build</text>
+<rect class="bx" x="200" y="188" width="336" height="58" rx="12"/>
+<text class="m code" x="216" y="224" font-size="13"><tspan class="kw">export const</tspan> renderMode = <tspan class="str">'ssg'</tspan></text>
+<rect class="bx" x="548" y="188" width="388" height="58" rx="12"/>
+<text class="m code" x="564" y="224" font-size="13"><tspan class="kw">export const</tspan> dynamic = <tspan class="str">'force-static'</tspan></text><rect class="chip" x="24" y="276" width="76" height="34" rx="17"/><text class="m mode" x="62" y="299" text-anchor="middle">ISR</text>
+<text class="m hint" x="110" y="298">cached</text><text class="m hint" x="110" y="316">revalidated</text>
+<rect class="bx" x="200" y="264" width="336" height="58" rx="12"/>
+<text class="m code" x="216" y="300" font-size="13"><tspan class="kw">export const</tspan> renderMode = <tspan class="str">'isr'</tspan></text>
+<rect class="bx" x="548" y="264" width="388" height="58" rx="12"/>
+<text class="m code" x="564" y="300" font-size="13"><tspan class="kw">export const</tspan> revalidate = <tspan class="str">60</tspan></text>
+<line x1="24" y1="350" x2="936" y2="350" style="stroke:var(--px-line2)" stroke-width="1"/>
+<text class="m lab" x="24" y="380" style="fill:var(--px-text)">Zero also:</text>
+<text class="m code" x="130" y="380" font-size="14">renderMode = <tspan class="str">'spa'</tspan> · routeRules: { <tspan class="str">'/blog/**'</tspan>: … } · mode: <tspan class="str">'auto'</tspan></text>
+<text class="m hint" x="130" y="410">mode: 'auto' infers each route's mode and prints the table</text>
+<rect class="exp" x="618" y="395" width="120" height="22" rx="11"/><text class="m expT" x="678" y="410" text-anchor="middle">EXPERIMENTAL</text>
+</svg>

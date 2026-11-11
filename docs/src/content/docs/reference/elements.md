@@ -1,9 +1,7 @@
 ---
-title: "Base Primitives — API Reference"
+title: "@pyreon/elements — API Reference"
 description: "Five foundational layout primitives — Element, Text, List, Overlay, Portal — plus the useOverlay positioning hook and the Iterator data helper"
 ---
-
-# @pyreon/elements — API Reference
 
 > **Generated** from `elements`'s `src/manifest.ts` — the same source that powers `llms.txt` and MCP `get_api`. Do not edit this page by hand; edit the manifest. For the conceptual guide, see [elements](/docs/elements).
 

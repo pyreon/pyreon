@@ -1,9 +1,7 @@
 ---
-title: "Pyreon-specific Linter — API Reference"
+title: "@pyreon/lint — API Reference"
 description: "Pyreon-specific linter — 133 rules across 25 categories, config files, watch mode, AST cache, CLI + LSP"
 ---
-
-# @pyreon/lint — API Reference
 
 > **Generated** from `lint`'s `src/manifest.ts` — the same source that powers `llms.txt` and MCP `get_api`. Do not edit this page by hand; edit the manifest. For the conceptual guide, see [lint](/docs/lint).
 

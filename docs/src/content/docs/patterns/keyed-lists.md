@@ -4,8 +4,6 @@ summary: "Use <For each={items} by={i => i.id}> — never .map() in JSX, never k
 seeAlso: [signal-writes]
 ---
 
-# Keyed list rendering
-
 ## The pattern
 
 Render dynamic lists with `<For>` from `@pyreon/core`, keyed by a stable identifier via the `by` prop:

@@ -1,0 +1,189 @@
+{
+  "id": "next",
+  "route": "/compare/next",
+  "rival": "Next.js",
+  "rivalMeasured": null,
+  "hook": {
+    "eyebrow": "Pyreon Zero vs Next.js",
+    "title": "File routes, SSR, SSG and ISR. On components that run once.",
+    "lede": "`@pyreon/zero` lets every route pick its render mode with a one-line export or a glob rule, and deploys to Node, Bun, Deno, Vercel, Netlify, Cloudflare or static hosting. Under it is Pyreon: a page component runs once, and only the nodes that read a changed signal update."
+  },
+  "proof": [
+    {
+      "stat": "4",
+      "label": "render modes, chosen per route: `ssr`, `ssg`, `isr`, `spa`, by a route export or a `routeRules` glob",
+      "condition": "capability",
+      "source": "docs/src/content/docs/zero.md (Route Module Exports; Per-route render modes)"
+    },
+    {
+      "stat": "7",
+      "label": "deploy adapters: node, bun, deno, static, vercel, cloudflare, netlify, auto-detected on the three hosted platforms",
+      "condition": "capability",
+      "source": "docs/src/content/docs/zero.md line 131"
+    },
+    {
+      "stat": "9 stacks",
+      "label": "on one harness and the same app, Zero and Next.js 16 App Router among them: SSR throughput, TTFB, first-load JS, hydration. No result is published yet, so we claim none.",
+      "condition": "suite exists; no published result",
+      "source": "00-brief/BENCHMARKS-2026-11-05.md line 517; examples/stacks-bench/README.md"
+    }
+  ],
+  "table": {
+    "title": "Zero and Next.js, line by line.",
+    "note": "Next.js is a meta-framework, so it is compared with `@pyreon/zero`, Pyreon's. There is no published head-to-head between the two yet; this table compares what each one does. For framework numbers (Pyreon against the React that Next runs on), see /compare/react.",
+    "rows": [
+      {
+        "topic": "Render mode per route",
+        "pyreon": "`export const renderMode = 'ssr' | 'ssg' | 'isr' | 'spa'`, `routeRules` globs, and `mode: 'auto'` (experimental), which infers each route's mode and prints the result at build.",
+        "rival": "Static, dynamic and ISR per route through route segment config and the data APIs a page uses.",
+        "verdict": "tie",
+        "source": "docs/src/content/docs/zero.md (lines 381, 511–536)"
+      },
+      {
+        "topic": "Server-only data",
+        "pyreon": "A `.server.ts` sibling exports `serverLoader`; it never enters the client bundle, and a client navigation fetches the whole route chain in one request.",
+        "rival": "React Server Components and server functions.",
+        "verdict": "different",
+        "source": "docs/src/content/docs/zero.md (Server Loaders, lines 630–658)"
+      },
+      {
+        "topic": "Server actions",
+        "pyreon": "A route's `action` export with `defineAction`, submitted by `<Form>` and read with `useSubmission`.",
+        "rival": "Server Actions.",
+        "verdict": "tie",
+        "source": "docs/src/content/docs/zero.md line 1051"
+      },
+      {
+        "topic": "Streaming SSR",
+        "pyreon": "Opt-in: `ssr: { mode: 'stream' }`. Buffered by default.",
+        "rival": "Streams by default with Suspense.",
+        "verdict": "tie",
+        "source": "docs/src/content/docs/zero.md line 151"
+      },
+      {
+        "topic": "Hosting",
+        "pyreon": "Seven adapters; on Vercel, Netlify and Cloudflare builds the adapter is picked from the environment.",
+        "rival": "`next start` on Node, static export, and first-class on Vercel; other hosts through their own integrations.",
+        "verdict": "different",
+        "source": "docs/src/content/docs/zero.md line 131"
+      },
+      {
+        "topic": "Component model",
+        "pyreon": "Pyreon: components run once, signals update single nodes.",
+        "rival": "React: components re-render; memoisation controls the cost.",
+        "verdict": "different",
+        "source": "docs/src/content/docs/migrating-from-react.md"
+      },
+      {
+        "topic": "Performance",
+        "pyreon": "Not compared yet. `examples/stacks-bench` measures Zero, Next.js 16 App Router and seven other stacks on the same app; run it yourself.",
+        "rival": "Same: no published result.",
+        "verdict": "different",
+        "source": "00-brief/BENCHMARKS-2026-11-05.md line 517"
+      },
+      {
+        "topic": "Native apps from the same components",
+        "pyreon": "PMTC compiles the same `.tsx` to SwiftUI and Jetpack Compose (experimental).",
+        "rival": "Web only; a React Native app is a separate codebase.",
+        "verdict": "pyreon",
+        "source": "docs/src/content/docs/multiplatform.md; 00-brief/facts.md (status labels)"
+      },
+      {
+        "topic": "Ecosystem and maturity",
+        "pyreon": "Pre-1.0.",
+        "rival": "Years in production, a large plugin and hosting ecosystem, and Vercel behind it.",
+        "verdict": "rival",
+        "source": "00-brief/facts.md (things not to claim)"
+      }
+    ]
+  },
+  "code": {
+    "title": "One server-rendered page, cached and revalidated.",
+    "caption": "A user page that loads on the server and is cached with stale-while-revalidate. Next.js does it in a server component; Zero splits the server-only loader into a sibling file that the client bundle never imports.",
+    "rival": {
+      "label": "Next.js App Router",
+      "file": "app/users/[id]/page.tsx",
+      "code": "// app/users/[id]/page.tsx\nimport { getUser } from '@/lib/users'\n\nexport const revalidate = 60\n\nexport default async function UserPage({\n  params,\n}: {\n  params: Promise<{ id: string }>\n}) {\n  const { id } = await params\n  const user = await getUser(id)\n  return <h1>{user.name}</h1>\n}"
+    },
+    "pyreon": {
+      "label": "Pyreon Zero",
+      "file": "src/routes/users/[id].tsx + [id].server.ts",
+      "code": "// src/routes/users/[id].server.ts (server only, never in the client bundle)\nimport type { LoaderContext } from '@pyreon/router'\nimport { getUser } from '../../lib/users'\n\nexport async function serverLoader({ params }: LoaderContext) {\n  return getUser(params.id!)\n}\n\n// src/routes/users/[id].tsx\nimport { useLoaderData } from '@pyreon/router'\n\nexport const renderMode = 'isr' // stale-while-revalidate, 60 s by default\n\nexport default function UserPage() {\n  const user = useLoaderData<{ name: string }>()\n  return <h1>{user.name}</h1>\n}"
+    },
+    "checked": "Zero side: the page and an equivalent loader typecheck against the repo; `serverLoader`, `renderMode = 'isr'` (60 s default) and `useLoaderData<T>()` are as documented in zero.md and `packages/core/router/src/loader.ts`. Next side: App Router conventions (`params` is a Promise since Next 15); not compiled here."
+  },
+  "deletes": {
+    "title": "What you stop writing.",
+    "items": [
+      {
+        "what": "`useMemo`, `useCallback`, dependency arrays",
+        "instead": "Nothing: pages are Pyreon components and run once."
+      },
+      {
+        "what": "`'use client'` boundaries",
+        "instead": "There are no server components to fence off. Server-only code lives in a `.server.ts` file that the client bundle never imports."
+      }
+    ]
+  },
+  "pickTheOther": {
+    "title": "When to pick Next.js",
+    "items": [
+      "You want React Server Components and the React library catalog behind them.",
+      "You deploy on Vercel and use its platform features end to end.",
+      "Your team ships Next.js today and re-rendering is not what slows the app down.",
+      "You need a meta-framework with years of production use behind it."
+    ]
+  },
+  "migrate": {
+    "title": "A Next.js app is a React app.",
+    "text": "Start with `@pyreon/react-compat` to run your components on Pyreon, then move routes into Zero's file router (`src/routes`).",
+    "href": "/migrate/react",
+    "label": "Migrate from React"
+  },
+  "cta": {
+    "title": "Scaffold a Zero app and pick a mode per route.",
+    "command": "npm create @pyreon/zero@latest",
+    "secondary": {
+      "label": "Run the stacks bench yourself",
+      "href": "https://github.com/pyreon/pyreon/tree/main/examples/stacks-bench"
+    }
+  },
+  "sources": [
+    {
+      "claim": "Render modes ssr/ssg/isr/spa per route, routeRules globs, precedence",
+      "path": "docs/src/content/docs/zero.md lines 130, 381, 511–536"
+    },
+    {
+      "claim": "mode: 'auto' is EXPERIMENTAL and prints the inferred table",
+      "path": "docs/src/content/docs/zero.md line 522; 00-brief/facts.md status labels"
+    },
+    {
+      "claim": "Adapters node, bun, deno, static, vercel, cloudflare, netlify; auto-detected from VERCEL / NETLIFY / CF_PAGES",
+      "path": "docs/src/content/docs/zero.md line 131"
+    },
+    {
+      "claim": "Isomorphic loader vs .server.ts serverLoader; single-fetch on navigation; excluded from client bundle",
+      "path": "docs/src/content/docs/zero.md lines 630–658"
+    },
+    {
+      "claim": "renderMode 'isr' uses the shared SWR cache, default revalidate 60",
+      "path": "docs/src/content/docs/zero.md line 515"
+    },
+    {
+      "claim": "Server actions via defineAction / Form / useSubmission",
+      "path": "docs/src/content/docs/zero.md lines 1051–1060"
+    },
+    {
+      "claim": "Streaming is opt-in ssr: { mode: 'stream' }",
+      "path": "docs/src/content/docs/zero.md line 151"
+    },
+    {
+      "claim": "stacks-bench exists (zero vs Next.js 16 App Router and 7 others), no result published",
+      "path": "00-brief/BENCHMARKS-2026-11-05.md line 517; examples/stacks-bench/README.md line 9"
+    },
+    {
+      "claim": "useLoaderData<T>()",
+      "path": "packages/core/router/src/loader.ts line 27"
+    }
+  ]
+}

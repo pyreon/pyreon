@@ -3,8 +3,6 @@ title: "Testing Pyreon Apps"
 description: "How to test Pyreon apps — @pyreon/testing (render, screen, fireEvent, waitFor, renderHook), reactive-native matchers, happy-dom vs real-browser, and bisect-verifying regression tests."
 ---
 
-# Testing Pyreon Apps
-
 Pyreon ships an official test kit, **`@pyreon/testing`** — a thin adapter over **[`@testing-library/dom`](https://testing-library.com/docs/dom-testing-library/intro)** (the same foundation under the React, Vue, Solid, and Svelte testing libraries), so the entire Testing-Library API works exactly as you already know it. On top of that it adds a Pyreon-aware `render`/`renderHook` and **reactive-native matchers** that read Pyreon's fine-grained reactive graph — assertions no DOM-only testing library can express. It runs on **vitest**.
 
 ```bash

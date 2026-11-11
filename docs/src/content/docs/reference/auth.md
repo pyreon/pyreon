@@ -1,9 +1,7 @@
 ---
-title: "Authentication — API Reference"
+title: "@pyreon/auth — API Reference"
 description: "OIDC sign-in on web, iOS and Android, ID-token verification, sessions, TOTP and passkeys — secure by default"
 ---
-
-# @pyreon/auth — API Reference
 
 > **Generated** from `auth`'s `src/manifest.ts` — the same source that powers `llms.txt` and MCP `get_api`. Do not edit this page by hand; edit the manifest. For the conceptual guide, see [auth](/docs/auth).
 
