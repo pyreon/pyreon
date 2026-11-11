@@ -8,5 +8,82 @@
     "vue",
     "svelte",
     "react-native"
-  ]
+  ],
+  "rivals": [
+    {
+      "id": "react",
+      "rival": "React"
+    },
+    {
+      "id": "next",
+      "rival": "Next.js"
+    },
+    {
+      "id": "solid",
+      "rival": "Solid"
+    },
+    {
+      "id": "vue",
+      "rival": "Vue"
+    },
+    {
+      "id": "svelte",
+      "rival": "Svelte"
+    },
+    {
+      "id": "react-native",
+      "rival": "React Native and Expo"
+    }
+  ],
+  "template": {
+    "meta": {
+      "title": "Pyreon vs {rival}: {title} · Pyreon"
+    },
+    "index": {
+      "title": "Compare Pyreon",
+      "label": "Pyreon vs {rival} →"
+    },
+    "switcher": "Compare with",
+    "proofLink": {
+      "label": "Every result, including where we lose →",
+      "href": "/benchmarks"
+    },
+    "table": {
+      "label": "side by side",
+      "measured": "Measured against {versions}",
+      "method": {
+        "label": "Method and every result →",
+        "href": "/benchmarks"
+      }
+    },
+    "chart": {
+      "measured": {
+        "label": "measured",
+        "title": "The measured rows, drawn.",
+        "scroll": "Pyreon vs {rival}, measured"
+      },
+      "diagram": {
+        "label": "how it works",
+        "title": "The two stacks, drawn.",
+        "scroll": "Pyreon vs {rival}, diagram",
+        "caveat": "Diagram, not a measurement."
+      },
+      "link": {
+        "label": "How we measure →",
+        "href": "/benchmarks"
+      }
+    },
+    "code": {
+      "label": "same component"
+    },
+    "deletes": {
+      "label": "the code you delete",
+      "before": "Stop writing",
+      "after": "Instead",
+      "item": "stop writing"
+    },
+    "migrate": {
+      "eyebrow": "migration"
+    }
+  }
 }

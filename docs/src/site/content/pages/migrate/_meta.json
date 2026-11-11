@@ -26,5 +26,63 @@
       "name": "Svelte",
       "package": "@pyreon/svelte-compat"
     }
-  ]
+  ],
+  "template": {
+    "product": "The Migrate product",
+    "switcher": "Migrate from",
+    "landing": {
+      "meta": {
+        "title": "{title} · Pyreon"
+      },
+      "steps": {
+        "label": "five steps",
+        "title": "From React to Pyreon, without a rewrite.",
+        "caption": "The five steps as a loop: an illustration, not a recording.",
+        "scroll": "The five migration steps"
+      },
+      "tools": {
+        "label": "tools",
+        "how": "how",
+        "limits": "limits"
+      },
+      "layers": {
+        "label": "compat layers",
+        "eyebrow": "from {name}",
+        "name": "{name} →"
+      },
+      "guides": {
+        "label": "guides"
+      }
+    },
+    "layer": {
+      "meta": {
+        "title": "Migrate from {name}: {title} · Pyreon"
+      },
+      "eyebrow": "Migrate from {name} · {package}",
+      "beforeAfter": {
+        "label": "before and after",
+        "title": "The same {name} code, on Pyreon.",
+        "caption": "An illustration of the code on each side, not a recording.",
+        "scroll": "{name} to Pyreon, before and after"
+      },
+      "coverage": {
+        "label": "coverage",
+        "title": "What {package} covers, and what it does not.",
+        "covers": "covers",
+        "doesNotCover": "does not cover"
+      },
+      "setup": {
+        "label": "setup",
+        "title": "Install it, point the config at it.",
+        "scaffold": "or start from a scaffold"
+      },
+      "ports": {
+        "label": "port it"
+      },
+      "docs": {
+        "label": "read more",
+        "title": "The guides behind this page."
+      }
+    }
+  }
 }

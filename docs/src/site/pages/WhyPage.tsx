@@ -1,5 +1,6 @@
 import { island } from '@pyreon/zero'
-import type { WhyPage as Data } from '../content/types-site'
+import { fill } from '../content/fill'
+import type { WhyPage as Data, WhyTemplate } from '../content/types-site'
 import { inlineText } from '../kit/inline'
 import { Section, SectionHead, Wrap } from '../kit/layout'
 import { EndCTA, HookHero } from '../kit/proof'
@@ -8,6 +9,7 @@ import { usePageHead } from '../head'
 import { emberWordOf } from './ember'
 import { RivalSwitcher } from './RivalSwitcher'
 import { SiteSections, type SectionFigure } from './SiteSections'
+import { WideDiagram } from './WideDiagram'
 
 /**
  * `/why/<id>` — one template for the five story pages
@@ -26,7 +28,7 @@ const DemoRunOnce = island(() => import('../demos/DemoRunOnce'), { name: 'DemoRu
  * `why/hydration-adopts.svg` for the hydration story). A diagram sits beside
  * the section that tells its story, or after the first section of a kind.
  */
-type Slot = { file: string; place: 'beside' | 'after'; kind: Data['sections'][number]['kind']; nth?: number; caption?: string }
+type Slot = { file: string; place: 'beside' | 'after'; kind: Data['sections'][number]['kind']; nth?: number; caption?: keyof WhyTemplate['diagram'] }
 export const WHY_DIAGRAMS: Readonly<Record<Data['id'], readonly Slot[]>> = {
   'components-run-once': [{ file: 'why/components-run-once.svg', place: 'beside', kind: 'story' }],
   'one-codebase': [{ file: 'why/one-codebase.svg', place: 'beside', kind: 'story' }],
@@ -38,7 +40,7 @@ export const WHY_DIAGRAMS: Readonly<Record<Data['id'], readonly Slot[]>> = {
       file: 'why/hydration-adopts.svg',
       place: 'beside',
       kind: 'story',
-      caption: 'Diagram of the hand-off, not a capture of this page.',
+      caption: 'handOff',
     },
   ],
 }
@@ -49,9 +51,10 @@ export interface WhyView {
   page: Data
   svgs: Record<string, string>
   order: { id: string; title: string }[]
+  template: WhyTemplate
 }
 
-function figuresFor(page: Data, svgs: Record<string, string>): SectionFigure[] {
+function figuresFor(page: Data, svgs: Record<string, string>, T: WhyTemplate): SectionFigure[] {
   const out: SectionFigure[] = []
   for (const slot of WHY_DIAGRAMS[page.id] ?? []) {
     const svg = svgs[slot.file]
@@ -59,7 +62,16 @@ function figuresFor(page: Data, svgs: Record<string, string>): SectionFigure[] {
     let seen = 0
     const at = page.sections.findIndex((s) => s.kind === slot.kind && seen++ === (slot.nth ?? 0))
     if (at < 0) continue
-    out.push({ at, place: slot.place, node: <Diagram svg={svg} caption={slot.caption} scrollLabel={slot.place === 'after' ? 'Diagram' : undefined} /> })
+    const caption = slot.caption ? T.diagram[slot.caption] : undefined
+    const node =
+      slot.place === 'after' ? (
+        <WideDiagram>
+          <Diagram svg={svg} caption={caption} scrollLabel={T.diagram.scroll} />
+        </WideDiagram>
+      ) : (
+        <Diagram svg={svg} caption={caption} />
+      )
+    out.push({ at, place: slot.place, node })
   }
   if (page.id === 'components-run-once') {
     const at = page.sections.findIndex((s) => s.kind === 'code')
@@ -69,11 +81,7 @@ function figuresFor(page: Data, svgs: Record<string, string>): SectionFigure[] {
         place: 'after',
         node: (
           <>
-            <SectionHead
-              label="try it"
-              title="Click it. Count the renders."
-              text="A real Pyreon counter, running in this page. The numbers come from the component and the DOM, not from a script."
-            />
+            <SectionHead label={T.tryIt.label} title={T.tryIt.title} text={T.tryIt.text} />
             <DemoRunOnce />
           </>
         ),
@@ -85,9 +93,11 @@ function figuresFor(page: Data, svgs: Record<string, string>): SectionFigure[] {
 
 export function WhyPage(props: { view: WhyView }) {
   const d = props.view.page
+  const T = props.view.template
   const title = inlineText(d.hook.title)
+  const end = d.end.cta.href ? { label: d.end.cta.label, href: d.end.cta.href } : undefined
 
-  usePageHead({ path: d.route, title: `${d.share.ogTitle} · Pyreon`, description: inlineText(d.hook.lede) })
+  usePageHead({ path: d.route, title: fill(T.meta.title, { title: d.share.ogTitle }), description: inlineText(d.hook.lede) })
 
   return (
     <>
@@ -97,19 +107,15 @@ export function WhyPage(props: { view: WhyView }) {
         emberWord={emberWordOf(title)}
         lede={d.hook.lede}
         install={d.hook.cta.command}
-        ctas={d.hook.cta.href ? [{ label: d.hook.cta.label, href: d.hook.cta.href }] : [{ label: 'See the benchmarks', href: '/benchmarks' }]}
+        ctas={d.hook.cta.href ? [{ label: d.hook.cta.label, href: d.hook.cta.href }] : [T.heroLink]}
       />
-      <SiteSections sections={d.sections} figures={figuresFor(d, props.view.svgs)} />
+      <SiteSections sections={d.sections} figures={figuresFor(d, props.view.svgs, T)} />
       <Section size="end">
         <Wrap>
-          {d.end.cta.command ? (
-            <EndCTA title={d.end.title} install={d.end.cta.command} primary={d.end.cta.href ? { label: d.end.cta.label, href: d.end.cta.href } : undefined} />
-          ) : (
-            <EndCTA title={d.end.title} install="npm create @pyreon/zero@latest" primary={d.end.cta.href ? { label: d.end.cta.label, href: d.end.cta.href } : undefined} />
-          )}
+          <EndCTA title={d.end.title} install={d.end.cta.command} primary={end} />
         </Wrap>
       </Section>
-      <RivalSwitcher label="Why Pyreon" current={d.id} items={props.view.order.map((p) => ({ id: p.id, href: `/why/${p.id}`, label: p.title }))} />
+      <RivalSwitcher label={T.switcher} current={d.id} items={props.view.order.map((p) => ({ id: p.id, href: `/why/${p.id}`, label: p.title }))} />
     </>
   )
 }

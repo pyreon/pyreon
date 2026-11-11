@@ -1,5 +1,6 @@
 import { For } from '@pyreon/core'
 import type { CompareMeta } from '../content/pages'
+import { fill } from '../content/fill'
 import { htmlOf } from '../content/pages'
 import type { ComparePage as Data } from '../content/types-site'
 import { el, tone, txt } from '../kit/bases'
@@ -17,6 +18,7 @@ import { font, text } from '../theme'
 import { usePageHead } from '../head'
 import { emberWordOf } from './ember'
 import { RivalSwitcher } from './RivalSwitcher'
+import { WideDiagram } from './WideDiagram'
 
 /**
  * `/compare/<rival>` — one template for the six rival pages
@@ -53,12 +55,14 @@ const Stack = el.config({ name: 'CompareStack' }).attrs({ block: true, contentAl
 export function ComparePage(props: { view: CompareView }) {
   const d = props.view.page
   const meta = props.view.meta
+  const T = meta.template
   const title = inlineText(d.hook.title)
   const measured = d.rivalMeasured !== null
+  const chart = measured ? T.chart.measured : T.chart.diagram
 
   usePageHead({
     path: d.route,
-    title: `Pyreon vs ${d.rival}: ${title} · Pyreon`,
+    title: fill(T.meta.title, { rival: d.rival, title }),
     description: inlineText(d.hook.lede),
   })
 
@@ -79,7 +83,7 @@ export function ComparePage(props: { view: CompareView }) {
           <ProofBand
             items={d.proof.map((p) => ({ stat: p.stat, label: p.label, condition: p.condition }))}
             caveat={meta.caveat}
-            link={{ label: 'Every result, including where we lose →', href: '/benchmarks' }}
+            link={T.proofLink}
           />
         </Wrap>
       </Section>
@@ -88,11 +92,11 @@ export function ComparePage(props: { view: CompareView }) {
       <Reveal>
         <Section size="tight" id="table">
           <Wrap>
-            <SectionHead label="side by side" title={d.table.title} text={d.table.note} />
+            <SectionHead label={T.table.label} title={d.table.title} text={d.table.note} />
             <VerdictLegend rival={d.rival} />
-            <CompareTable rival={d.rival} rows={d.table.rows} caption={measured ? `Measured against ${d.rivalMeasured}` : undefined} />
+            <CompareTable rival={d.rival} rows={d.table.rows} caption={d.rivalMeasured !== null ? fill(T.table.measured, { versions: d.rivalMeasured }) : undefined} />
             <Checked>
-              {meta.caveat} <TextLink href="/benchmarks">Method and every result →</TextLink>
+              {meta.caveat} <TextLink href={T.table.method.href}>{T.table.method.label}</TextLink>
             </Checked>
           </Wrap>
         </Section>
@@ -103,12 +107,11 @@ export function ComparePage(props: { view: CompareView }) {
         <Reveal>
           <Section size="tight" id="chart">
             <Wrap>
-              <SectionHead
-                label={measured ? 'measured' : 'how it works'}
-                title={measured ? `The measured rows, drawn.` : `The two stacks, drawn.`}
-              />
-              <Diagram svg={props.view.svg} scrollLabel={measured ? `Pyreon vs ${d.rival}, measured` : `Pyreon vs ${d.rival}, diagram`} />
-              <CaveatLine text={measured ? `${meta.caveat}` : 'Diagram, not a measurement.'} link={{ label: 'How we measure →', href: '/benchmarks' }} />
+              <SectionHead label={chart.label} title={chart.title} />
+              <WideDiagram>
+                <Diagram svg={props.view.svg} scrollLabel={fill(chart.scroll, { rival: d.rival })} />
+              </WideDiagram>
+              <CaveatLine text={measured ? meta.caveat : T.chart.diagram.caveat} link={T.chart.link} />
             </Wrap>
           </Section>
         </Reveal>
@@ -118,7 +121,7 @@ export function ComparePage(props: { view: CompareView }) {
       <Reveal>
         <Section size="tight" id="code">
           <Wrap>
-            <SectionHead label="same component" title={d.code.title} text={d.code.caption} />
+            <SectionHead label={T.code.label} title={d.code.title} text={d.code.caption} />
             <AutoGrid cols={2} gap={16}>
               <CodeCard label={`${d.code.rival.label} · ${d.code.rival.file}`} code={d.code.rival.code} html={htmlOf(d.code.rival)} rail="del" />
               <CodeCard label={`${d.code.pyreon.label} · ${d.code.pyreon.file}`} code={d.code.pyreon.code} html={htmlOf(d.code.pyreon)} state="hot" rail="ins" />
@@ -133,8 +136,12 @@ export function ComparePage(props: { view: CompareView }) {
         <Reveal>
           <Section size="tight" id="deletes">
             <Wrap>
-              <SectionHead label="the code you delete" title={d.deletes.title} />
-              <CompareStrip beforeName="Stop writing" afterName="Instead" items={d.deletes.items.map((i) => ({ label: 'stop writing', before: i.what, after: i.instead }))} />
+              <SectionHead label={T.deletes.label} title={d.deletes.title} />
+              <CompareStrip
+                beforeName={T.deletes.before}
+                afterName={T.deletes.after}
+                items={d.deletes.items.map((i) => ({ label: T.deletes.item, before: i.what, after: i.instead }))}
+              />
             </Wrap>
           </Section>
         </Reveal>
@@ -145,7 +152,7 @@ export function ComparePage(props: { view: CompareView }) {
         <Wrap>
           <GlowCard state="hot">
             <MigrateRow>
-              <Eyebrow state="accent">migration</Eyebrow>
+              <Eyebrow state="accent">{T.migrate.eyebrow}</Eyebrow>
               <Heading tag="h2" size="card">
                 {d.migrate.title}
               </Heading>
@@ -186,17 +193,11 @@ export function ComparePage(props: { view: CompareView }) {
         </Wrap>
       </Section>
 
-      <RivalSwitcher label="Compare with" current={d.id} items={meta.order.map((id) => ({ id, href: `/compare/${id}`, label: compareLabel(id) }))} />
+      <RivalSwitcher
+        label={T.switcher}
+        current={d.id}
+        items={meta.order.map((id) => ({ id, href: `/compare/${id}`, label: meta.rivals.find((r) => r.id === id)?.rival ?? id }))}
+      />
     </>
   )
 }
-
-const LABELS: Record<string, string> = {
-  react: 'React',
-  next: 'Next.js',
-  solid: 'Solid',
-  vue: 'Vue',
-  svelte: 'Svelte',
-  'react-native': 'React Native',
-}
-const compareLabel = (id: string): string => LABELS[id] ?? id

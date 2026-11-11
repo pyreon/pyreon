@@ -143,6 +143,48 @@ export interface BenchmarksPage {
   harnessBugs: { count: number; title: string; intro: string; items: { title: string; text: string; pr: string }[] }
   reproduce: { title: string; intro: string; command: string; allSuites: string; note: string }   // allSuites holds <pkg>-style params: escape
   krausest: string
+  template: BenchmarksTemplate
+}
+
+/**
+ * Page-template copy (`template` in _benchmarks/_why/_compare/_migrate.json): the headings, labels,
+ * captions and notes the page templates print around the data. `{name}` is a placeholder the template
+ * fills (fill() in the app); every other character is printed as written.
+ */
+/** A section head: the small label, the h2, the lede under it. */
+export interface TemplateHead { label: string; title: string; text: string }
+/** A chart with its table alternative: the chart's scroll label, the disclosure summary, the table caption. */
+export interface TemplateChart { chart: string; table: string; caption: string }
+/** Section ids on /benchmarks, in page order (the jump links). */
+export type BenchJumpId = 'method' | 'row-board' | 'scenarios' | 'scaling' | 'ssr' | 'apps' | 'bundle' | 'reactivity'
+  | 'every-product' | 'losses' | 'withdrawn' | 'harness' | 'reproduce'
+export interface BenchmarksTemplate {
+  meta: { title: string; description: string }
+  hero: { eyebrow: string /* {date} {count} */; title: string; lede: string; statsLabel: string; jumpsLabel: string }
+  jumps: Record<BenchJumpId, string>
+  method: TemplateHead & { guide: { text: string; link: SiteLink } }
+  rows: TemplateHead & TemplateChart & { columns: { op: string; verdict: string }; run: string
+    initial: string                      // the rowBoard operation the static chart shows
+    fastestFirst: string                 // {op} {list}
+    live: { control: string; title: string /* {op} */; pyreon: string; others: string } }
+  scenarios: TemplateHead & { columns: { op: string; pyreon: string; rival: string; verdict: string }; run: string }
+  scaling: TemplateHead & TemplateChart /* caption: {op} */ & { columns: { framework: string; size: string /* {size} */ }; run: string
+    live: { control: string; title: string /* {op} */; note: string /* {op} */ } }
+  ssr: TemplateHead & TemplateChart & { columns: { rows: string; pyreon: string; vue: string; svelte: string; react: string }; run: string }
+  apps: TemplateHead & { run: string
+    forms: TemplateChart & { columns: { op: string; pyreon: string; rivals: string } }
+    todomvc: TemplateChart & { columns: { op: string; pyreon: string; react: string; ratio: string } } }
+  bundle: TemplateHead & TemplateChart & { columns: { framework: string; kb: string }; run: string }
+  reactivity: TemplateHead & { control: string; caption: string /* {engine} */; run: string
+    columns: { test: string; pyreon: string; preact: string; solid: string; verdict: string } }
+  products: TemplateHead & { control: string; filters: { all: string; win: string; loss: string; info: string }
+    shown: string                        // {shown} {total}
+    card: string                         // {name} {headline} {tally}: the card's accessible name
+    tally: Record<Verdict, [one: string, many: string]> }
+  losses: { label: string }
+  withdrawn: TemplateHead & { tag: string }
+  harness: { label: string /* {count} */; pr: string /* {n} */ }
+  reproduce: { label: string; command: string; allSuites: string; competitors: string /* {count} */; more: SiteLink; guide: SiteLink }
 }
 
 // ---------------------------------------------------------------- _products.json
@@ -270,11 +312,25 @@ export interface WhyPage {
   title: string
   hook: { eyebrow: string; title: string; lede: string; cta: Cta }
   sections: SiteSection[]
-  end: { title: string; cta: Cta }
+  end: { title: string; cta: Cta & { command: string } }   // the end CTA is always an install command
   share: { ogTitle: string; ogSub: string }
   sources: Source[]
 }
-export interface WhyFile { pages: WhyPage[] }
+/** The labels SiteSections prints above each section kind (why and project pages). */
+export interface SiteSectionLabels {
+  proofCaveat: string; proofLink: SiteLink; diff: string; code: string; steps: string; list: string
+  compareStrip: string; faq: string; links: string; noteLink: string; table: string
+}
+export interface WhyTemplate {
+  meta: { title: string /* {title} = share.ogTitle */ }
+  index: { title: string; label: string /* {title} */ }   // /why forwards to the first page
+  switcher: string
+  heroLink: SiteLink                    // beside the install command when hook.cta has no href
+  tryIt: TemplateHead                   // the live counter on components-run-once
+  diagram: { scroll: string; handOff: string }
+  sections: SiteSectionLabels
+}
+export interface WhyFile { pages: WhyPage[]; template: WhyTemplate }
 
 export interface ProjectPage {
   id: 'status' | 'releases' | 'community' | 'brand'
@@ -311,7 +367,21 @@ export interface ComparePage {
   cta: CtaBlock
   sources: SourceRef[]
 }
-export interface CompareSite { record: string; caveat: string; order: ComparePage['id'][]; pages: ComparePage[] }
+export interface CompareTemplate {
+  meta: { title: string /* {rival} {title} */ }
+  index: { title: string; label: string /* {rival} */ }  // /compare forwards to the first page
+  switcher: string
+  proofLink: SiteLink
+  table: { label: string; measured: string /* {versions} */; method: SiteLink }
+  chart: {
+    measured: { label: string; title: string; scroll: string /* {rival} */ }
+    diagram: { label: string; title: string; scroll: string /* {rival} */; caveat: string }
+    link: SiteLink }
+  code: { label: string }
+  deletes: { label: string; before: string; after: string; item: string }
+  migrate: { eyebrow: string }
+}
+export interface CompareSite { record: string; caveat: string; order: ComparePage['id'][]; pages: ComparePage[]; template: CompareTemplate }
 
 // ---------------------------------------------------------------- _migrate.json
 export interface MigrateLanding {
@@ -340,4 +410,121 @@ export interface MigrateLayer {
   sources: SourceRef[]
 }
 export interface MigrateGuide { id: 'angular' | 'react-native'; name: string; href: string; text: string; why: string }
-export interface MigrateSite { landing: MigrateLanding; layers: MigrateLayer[]; guides: MigrateGuide[] }
+export interface MigrateTemplate {
+  product: string                       // the link to the Migrate product page
+  switcher: string
+  landing: {
+    meta: { title: string /* {title} */ }
+    steps: { label: string; title: string; caption: string; scroll: string }
+    tools: { label: string; how: string; limits: string }
+    layers: { label: string; eyebrow: string /* {name} */; name: string /* {name} */ }
+    guides: { label: string }
+  }
+  layer: {
+    meta: { title: string /* {name} {title} */ }
+    eyebrow: string                     // {name} {package}
+    beforeAfter: { label: string; title: string /* {name} */; caption: string; scroll: string /* {name} */ }
+    coverage: { label: string; title: string /* {package} */; covers: string; doesNotCover: string }
+    setup: { label: string; title: string; scaffold: string }
+    ports: { label: string }
+    docs: { label: string; title: string }
+  }
+}
+export interface MigrateSite { landing: MigrateLanding; layers: MigrateLayer[]; guides: MigrateGuide[]; template: MigrateTemplate }
+
+// ---------------------------------------------------------------- blog, showcase, open, discord, newsletter (_channels.json)
+// Workstream b of the site integration. The pages that publish and gather: the blog's index,
+// tag and post pages (the posts themselves are docs/src/content/blog/*.md), the showcase,
+// the live stats page and the two stable links. `{name}` in a string is filled by the page.
+export interface ChannelHero { eyebrow: string; title: string; lede: string; actions: Cta[] }
+export interface ChannelMeta { title: string; description: string }   // <title> and meta description
+
+export interface BlogChannel {
+  route: '/blog'
+  meta: ChannelMeta                     // also the blog name (og:site_name, RSS) and its summary
+  hero: ChannelHero
+  tagsLabel: string                     // accessible name of the tag row
+  allTags: string                       // the "every post" chip
+  latest: string                        // label above the newest post on page 1
+  list: { title: string; text: string } // the rest of the posts
+  empty: { title: string; text: string }
+  tag: { eyebrow: string; title: string; lede: string }   // {tag}, {count}, {posts}
+  page: string                          // "Page {page} of {pages}"
+  newer: string
+  older: string
+  subscribe: { title: string; text: string; links: SiteLink[] }
+  post: {
+    back: string
+    toc: string
+    copyLink: string
+    share: string
+    more: string
+    previous: string
+    next: string
+    related: string
+  }
+}
+
+export interface ShowcaseExample {
+  dir: string                           // under examples/ in the repo
+  title: string
+  summary: string
+  highlights: string[]                  // @pyreon/<name>, each a dependency of the example (unit-tested)
+  run: string                           // one command from the repo root, after the setup command
+  open: string                          // where it serves
+  note?: string
+  liveDemo?: string                     // a static build served from pyreon.dev
+  alsoSource?: { label: string; dir: string }[]
+}
+export interface ShowcaseChannel {
+  route: '/showcase'
+  meta: ChannelMeta
+  hero: ChannelHero
+  setup: { title: string; text: string; command: string }
+  featured: {
+    label: string; title: string; text: string
+    example: ShowcaseExample
+    captures: { file: string; label: string }[]   // files in assets/manifest.json (slot showcase-card)
+  }
+  more: { label: string; title: string; text: string; items: ShowcaseExample[] }
+  submit: { label: string; title: string; text: string; cta: Cta }
+}
+
+export type OpenStatId =
+  | 'commits' | 'mergedPrs' | 'releases' | 'publishedPackages' | 'testFiles' | 'lintRules' | 'mcpTools' | 'docPages'
+  | 'stars' | 'forks' | 'contributors' | 'openIssues' | 'closedIssues'
+export interface OpenTile {
+  stat: OpenStatId
+  label: string
+  href?: string
+  hint?: string                         // {latestTag} {latestDate} {browserTestFiles} {lintCategories}
+}
+export interface OpenChannel {
+  route: '/open'
+  meta: ChannelMeta
+  hero: ChannelHero
+  updated: string                       // "Last updated" before the build time
+  unavailable: string                   // shown instead of a number that could not be fetched
+  work: { label: string; title: string; text: string; tiles: OpenTile[]; note: string; noteLink: SiteLink }
+  downloads: { label: string; title: string; text: string; monthly: string; chart: string; chartMissing: string }
+  community: { label: string; title: string; text: string; tiles: OpenTile[]; actions: Cta[] }
+  benchmarks: { label: string; title: string; text: string; links: { label: string; href: string; text: string }[] }
+}
+
+export interface StableLinkChannel {
+  route: '/discord' | '/newsletter'
+  destination: string                   // "the Pyreon Discord"
+  meta: ChannelMeta
+  hero: ChannelHero
+  feed?: { title: string; text: string; url: string; note: string }
+  sections: SiteSection[]
+  redirect: { title: string; text: string; cta: string }   // {destination}
+}
+
+export interface ChannelsFile {
+  blog: BlogChannel
+  showcase: ShowcaseChannel
+  open: OpenChannel
+  discord: StableLinkChannel
+  newsletter: StableLinkChannel
+}

@@ -1,6 +1,7 @@
 import type { VNodeChild } from '@pyreon/core'
 import { For, Show } from '@pyreon/core'
-import { htmlOf } from '../content/pages'
+import { htmlOf, type WhyMeta } from '../content/pages'
+import whyMeta from '../content/pages/why/_meta.json'
 import type { SiteSection } from '../content/types-site'
 import { el, tone, txt } from '../kit/bases'
 import { Faq } from '../kit/blocks'
@@ -20,6 +21,11 @@ import { BrandSection, isBrandSection } from './BrandSections'
  * exhaustive, so a new kind in the schema fails the typecheck here rather
  * than rendering nothing. Every string goes through the inline grammar.
  *
+ * The label above each kind (and the proof band's caveat and link) is the
+ * content's `template.sections` in `_why.json`, shared with the project pages.
+ * This renders on the server only (static pages), so the import costs no
+ * client bytes.
+ *
  * `figures` places page-specific extras (the diagram from the asset set, a
  * live island) beside or after a given section: `beside` puts a diagram next
  * to a `story` section's prose from 992px; `after` adds a full-width block.
@@ -38,7 +44,7 @@ const Caption = txt
 
 const Stack = el.config({ name: 'SiteSectionStack' }).attrs({ block: true, contentAlignX: 'block', gap: 16 })
 
-const proofCaveat = 'synthetic · author-run · Apple M3 Max · record of 2026-11-05'
+const L = (whyMeta as unknown as WhyMeta).template.sections
 
 function Body(props: { s: SiteSection }): VNodeChild {
   const s = props.s
@@ -48,14 +54,14 @@ function Body(props: { s: SiteSection }): VNodeChild {
         <ProofBand
           title={s.title}
           items={s.stats.map((p) => ({ stat: p.stat, label: p.label, condition: p.condition }))}
-          caveat={s.note ?? proofCaveat}
-          link={{ label: 'Every result, including where we lose →', href: '/benchmarks' }}
+          caveat={s.note ?? L.proofCaveat}
+          link={L.proofLink}
         />
       )
     case 'diff':
       return (
         <>
-          <SectionHead label="the difference" title={s.title} />
+          <SectionHead label={L.diff} title={s.title} />
           <AutoGrid cols={2} gap={16}>
             <CodeCard label={s.before.label} code={s.before.code} html={htmlOf(s.before)} rail="del" />
             <CodeCard label={s.after.label} code={s.after.code} html={htmlOf(s.after)} state="hot" rail="ins" />
@@ -66,7 +72,7 @@ function Body(props: { s: SiteSection }): VNodeChild {
     case 'code':
       return (
         <>
-          <SectionHead label="code" title={s.title} text={s.text} />
+          <SectionHead label={L.code} title={s.title} text={s.text} />
           <AutoGrid cols={Math.min(2, s.blocks.length)} gap={16}>
             <For each={s.blocks} by={(b) => b.label}>
               {(b) => <CodeCard label={b.label} code={b.code} html={htmlOf(b)} />}
@@ -89,14 +95,14 @@ function Body(props: { s: SiteSection }): VNodeChild {
     case 'steps':
       return (
         <>
-          <SectionHead label="steps" title={s.title} />
+          <SectionHead label={L.steps} title={s.title} />
           <StepList items={s.items.map((i) => ({ ...i, codeHtml: htmlOf(i) }))} />
         </>
       )
     case 'list':
       return (
         <>
-          <SectionHead label="in detail" title={s.title} text={s.text} />
+          <SectionHead label={L.list} title={s.title} text={s.text} />
           <ItemCards items={s.items.map((i) => ({ ...i, codeHtml: htmlOf(i) }))} />
         </>
       )
@@ -105,30 +111,30 @@ function Body(props: { s: SiteSection }): VNodeChild {
     case 'compare-strip':
       return (
         <>
-          <SectionHead label="side by side" title={s.title} />
+          <SectionHead label={L.compareStrip} title={s.title} />
           <CompareStrip items={s.items} />
         </>
       )
     case 'faq':
       return (
         <>
-          <SectionHead label="questions" title={s.title} />
+          <SectionHead label={L.faq} title={s.title} />
           <Faq items={s.items} />
         </>
       )
     case 'links':
       return (
         <>
-          <SectionHead label="links" title={s.title} />
+          <SectionHead label={L.links} title={s.title} />
           <LinkCards items={s.items} />
         </>
       )
     case 'note':
-      return <CaveatLine text={s.text} link={s.href ? { label: 'source →', href: s.href } : undefined} />
+      return <CaveatLine text={s.text} link={s.href ? { label: L.noteLink, href: s.href } : undefined} />
     case 'table':
       return (
         <>
-          <SectionHead label="at a glance" title={s.title} />
+          <SectionHead label={L.table} title={s.title} />
           <DataTable
             columns={s.columns}
             rows={s.rows.map((r) => ({ key: r[0] ?? '', cells: r.map((c) => ({ content: renderInline(c) })) }))}

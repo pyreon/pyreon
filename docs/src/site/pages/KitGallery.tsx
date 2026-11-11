@@ -24,6 +24,8 @@ import { color, font, type ColorKey } from '../theme'
 
 // The gallery's interactive specimens: one island (the page is static).
 const KitLiveIsland = island(() => import('./KitGalleryLive'), { name: 'KitGalleryLive', hydrate: 'visible', prefetch: 'idle' })
+// The forced-theme panels' button Pills (a button outside an island does nothing on a static page).
+const KitScopePillsIsland = island(() => import('./KitScopePills'), { name: 'KitScopePills', hydrate: 'visible' })
 const HERO_MEDIA = (HOME.sections.find((s) => s.kind === 'hero') as HomeHero).visual.media
 
 const FORM = form as unknown as ProductData
@@ -83,8 +85,7 @@ function Scope(props: { mode: 'dark' | 'light' }) {
         </Heading>
         <Lede size="card">{renderInline('Every token from `theme.ts` resolves through one CSS variable per mode pair.')}</Lede>
         <Row>
-          <Pill variant="solid">Solid</Pill>
-          <Pill>Ghost</Pill>
+          <KitScopePillsIsland mode={props.mode} />
           <VerdictChip verdict="win" />
           <VerdictChip verdict="tie" />
           <VerdictChip verdict="loss" />

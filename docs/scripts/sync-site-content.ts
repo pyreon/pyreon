@@ -103,19 +103,31 @@ const pagesById = (family: string, pages: Json[]) => {
   for (const page of pages) write(`${family}/${String(page.id)}.json`, page)
 }
 
+// A family's `template` (the headings and labels its page template prints)
+// goes into `_meta.json`, which every page of the family loads.
 const why = read('_why.json')
 pagesById('why', why.pages as Json[])
-write('why/_meta.json', { order: (why.pages as Json[]).map((p) => ({ id: p.id, title: p.title })) })
+write('why/_meta.json', { order: (why.pages as Json[]).map((p) => ({ id: p.id, title: p.title })), template: why.template })
 
 const compare = read('_compare.json')
 pagesById('compare', compare.pages as Json[])
-write('compare/_meta.json', { record: compare.record, caveat: compare.caveat, order: compare.order })
+write('compare/_meta.json', {
+  record: compare.record,
+  caveat: compare.caveat,
+  order: compare.order,
+  rivals: (compare.pages as Json[]).map((p) => ({ id: p.id, rival: p.rival })),
+  template: compare.template,
+})
 
 const migrate = read('_migrate.json')
 pagesById('migrate', migrate.layers as Json[])
 write('migrate/_landing.json', migrate.landing)
 write('migrate/_guides.json', migrate.guides)
-write('migrate/_meta.json', { productHref: (migrate.landing as Json).productHref, order: (migrate.layers as Json[]).map((p) => ({ id: p.id, name: p.name, package: p.package })) })
+write('migrate/_meta.json', {
+  productHref: (migrate.landing as Json).productHref,
+  order: (migrate.layers as Json[]).map((p) => ({ id: p.id, name: p.name, package: p.package })),
+  template: migrate.template,
+})
 
 const project = read('_project.json')
 reset('project')
@@ -123,6 +135,24 @@ for (const id of ['status', 'releases', 'community', 'brand']) write(`project/${
 
 write('benchmarks.json', read('_benchmarks.json'))
 write('_sitemap.json', read('_sitemap.json'))
+
+// The same typecheck twin as `_home.json` gets, for each family's whole
+// source file: a field its schema does not know fails `bun run typecheck`.
+const FAMILIES: readonly { file: string; type: string }[] = [
+  { file: '_why.json', type: 'WhyFile' },
+  { file: '_compare.json', type: 'CompareSite' },
+  { file: '_migrate.json', type: 'MigrateSite' },
+  { file: '_benchmarks.json', type: 'BenchmarksPage' },
+]
+for (const { file, type } of FAMILIES) {
+  writeFileSync(
+    join(out, file.replace(/^_/, '').replace(/\.json$/, '.check.ts')),
+    `// Written by scripts/sync-site-content.ts from content/${file}. Do not edit: re-run the sync.\n` +
+      `// Typecheck only (never imported): fails when ${file} does not match ${type}.\n` +
+      `import type { ${type} } from '../types-site'\n\n` +
+      `export const checked = ${JSON.stringify(read(file), null, 2)} satisfies ${type}\n`,
+  )
+}
 
 process.stdout.write(`Synced ${written} page file(s) under src/site/content/pages/.\n`)
 

@@ -5,9 +5,11 @@ import type {
   MigrateGuide,
   MigrateLanding,
   MigrateLayer,
+  MigrateTemplate,
   ProjectPage,
   Sitemap,
   WhyPage,
+  WhyTemplate,
 } from './types-site'
 
 /**
@@ -53,18 +55,21 @@ export const loadCompare = compare.load
 export const loadMigrateLayer = migrate.load
 export const loadProject = project.load
 
-export type CompareMeta = Omit<CompareSite, 'pages'>
+/** The family's shared fields: the record, the page order, each page's rival and the template copy. */
+export type CompareMeta = Omit<CompareSite, 'pages'> & { rivals: { id: string; rival: string }[] }
 export const loadCompareMeta = async (): Promise<CompareMeta> =>
   (await import('./pages/compare/_meta.json')).default as CompareMeta
 
 export interface WhyMeta {
   order: { id: string; title: string }[]
+  template: WhyTemplate
 }
 export const loadWhyMeta = async (): Promise<WhyMeta> => (await import('./pages/why/_meta.json')).default as WhyMeta
 
 export interface MigrateMeta {
   productHref: string
   order: { id: string; name: string; package: string }[]
+  template: MigrateTemplate
 }
 export const loadMigrateMeta = async (): Promise<MigrateMeta> => (await import('./pages/migrate/_meta.json')).default as MigrateMeta
 
@@ -84,3 +89,4 @@ export function htmlOf(obj: object): string | undefined {
   const html = (obj as { codeHtml?: unknown }).codeHtml
   return typeof html === 'string' ? html : undefined
 }
+

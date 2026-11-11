@@ -1,14 +1,18 @@
 import { ColorModeProvider, For } from '@pyreon/core'
+// This module IS the lazy chunk: LiveChart.tsx loads it with import() only when a chart is drawn.
+// pyreon-lint-disable-next-line pyreon/no-eager-import
 import { Axis, Bar, Chart, ChartThemeProvider, Legend, Line, Scale, Tooltip } from '@pyreon/charts'
 import type { ChartTheme } from '@pyreon/charts'
 import { computed, signal } from '@pyreon/reactivity'
-import type { BenchmarksPage, Verdict } from '../../content/types-site'
+import { fill } from '../../content/fill'
+import type { BenchmarksPage, BenchmarksTemplate, Verdict } from '../../content/types-site'
 import { colorMode } from '../../color-mode'
 import { color, font, palette, verdict as verdictTokens } from '../../theme'
 import { el, tone, txt } from '../../kit/bases'
 import { VerdictChip } from '../../kit/bench'
+import { KitScope } from '../../kit/scope'
 import { ToggleChips } from '../../kit/toggles'
-import { formatMs, formatUs, scalingRows, sortedRowBoard } from './model'
+import { formatAxisMs, formatUs, scalingRows, sortedRowBoard } from './model'
 
 /**
  * The live `@pyreon/charts` views of the row board and the scaling data,
@@ -44,13 +48,16 @@ const SCALING_THEME = {
   light: { ...side('light'), palette: [ember.light, verdictTokens.tie.light, color.mist.light] },
 }
 
+/** The kit's theme (`KitScope`: the island hydrates as its own root) and the chart theme for the site's colour mode. */
 function Themed(props: { theme: { dark: Partial<ChartTheme>; light: Partial<ChartTheme> }; children?: unknown }) {
   return (
-    <ColorModeProvider mode={() => colorMode()}>
-      <ChartThemeProvider dark={props.theme.dark} light={props.theme.light}>
-        {props.children as never}
-      </ChartThemeProvider>
-    </ColorModeProvider>
+    <KitScope>
+      <ColorModeProvider mode={() => colorMode()}>
+        <ChartThemeProvider dark={props.theme.dark} light={props.theme.light}>
+          {props.children as never}
+        </ChartThemeProvider>
+      </ColorModeProvider>
+    </KitScope>
   )
 }
 
@@ -74,7 +81,9 @@ export function RowBoardChart(props: {
   rowBoard: BenchmarksPage['rowBoard']
   rowVerdicts: BenchmarksPage['rowVerdicts']
   initial: string
+  copy: BenchmarksTemplate['rows']['live']
 }) {
+  const c = props.copy
   const ops = Object.keys(props.rowBoard)
   const op = signal(ops.includes(props.initial) ? props.initial : (ops[0] ?? ''))
   const rows = computed<RowDatum[]>(() =>
@@ -88,20 +97,22 @@ export function RowBoardChart(props: {
   return (
     <Themed theme={ROWS_THEME}>
       <Stack>
-        <ToggleChips label="Operation" options={ops.map((o) => ({ value: o, label: o }))} value={() => op()} onChange={(v) => op.set(v)} />
+        <ToggleChips label={c.control} options={ops.map((o) => ({ value: o, label: o }))} value={() => op()} onChange={(v) => op.set(v)} />
         <Chart<RowDatum>
           data={() => rows()}
           x="name"
           by="name"
           horizontal
           height={380}
-          title={`Row board, ${op()}: milliseconds, lower is better`}
+          title={fill(c.title, { op: op() })}
           showTitle={false}
-          format={(v: number) => formatMs(v)}
         >
-          <Bar<RowDatum> y="pyreon" stack label="Pyreon" />
-          <Bar<RowDatum> y="others" stack label="Other frameworks" />
-          <Axis y format={(v: number) => (v >= 10 ? `${Math.round(v)} ms` : formatMs(v))} />
+          <Bar<RowDatum> y="pyreon" stack label={c.pyreon} />
+          <Bar<RowDatum> y="others" stack label={c.others} />
+          {/* One formatter for the value axis, the tooltip and the
+              description: every tick in ms ("0 ms", never "0 µs"). The end
+              labels stay on the canvas since pyreon/pyreon#4421. */}
+          <Axis y format={(v: number) => formatAxisMs(v)} />
           <Tooltip />
         </Chart>
         <Note>
@@ -115,19 +126,20 @@ export function RowBoardChart(props: {
 
 const SERIES = ['Pyreon', 'Octane', 'Solid'] as const
 
-export function ScalingChart(props: { scaling: BenchmarksPage['scaling'] }) {
+export function ScalingChart(props: { scaling: BenchmarksPage['scaling']; copy: BenchmarksTemplate['scaling']['live'] }) {
+  const c = props.copy
   const ops = (['select', 'partial update', 'swap'] as const).filter((k) => k in props.scaling)
   const op = signal<(typeof ops)[number]>(ops[0] ?? 'select')
   const rows = computed(() => scalingRows(props.scaling.sizes, props.scaling[op()]))
   return (
     <Themed theme={SCALING_THEME}>
       <Stack>
-        <ToggleChips label="Operation" options={ops.map((o) => ({ value: o, label: o }))} value={() => op()} onChange={(v) => op.set(v)} />
+        <ToggleChips label={c.control} options={ops.map((o) => ({ value: o, label: o }))} value={() => op()} onChange={(v) => op.set(v)} />
         <Chart<Record<string, string | number>>
           data={() => rows()}
           x="size"
           height={340}
-          title={`${op()}: µs per operation by row count, log scale`}
+          title={fill(c.title, { op: op() })}
           showTitle={false}
           format={(v: number) => formatUs(v)}
         >
@@ -140,7 +152,7 @@ export function ScalingChart(props: { scaling: BenchmarksPage['scaling'] }) {
           <Tooltip />
         </Chart>
         <Note>
-          <Live>{() => `${op()} · log scale · µs per op · one run`}</Live>
+          <Live>{() => fill(c.note, { op: op() })}</Live>
         </Note>
       </Stack>
     </Themed>

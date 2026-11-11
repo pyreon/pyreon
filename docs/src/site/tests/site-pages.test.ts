@@ -3,8 +3,12 @@ import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { shareImage } from '../kit/assets'
 import { langOf } from '../../../vite-plugins/site-pages-content'
-import { BENCH_SVGS } from '../pages/benchmarks/BenchmarksPage'
+import { fill } from '../content/fill'
+import type { BenchmarksPage } from '../content/types-site'
+import { BENCH_SECTIONS, BENCH_SVGS } from '../pages/benchmarks/BenchmarksPage'
+import { benchmarkProducts } from '../pages/benchmarks/products'
 import {
+  formatAxisMs,
   formatMs,
   formatUs,
   matchesFilter,
@@ -122,6 +126,9 @@ describe('langOf (build-time highlighting)', () => {
   })
 })
 
+const BENCH = json('benchmarks.json') as BenchmarksPage
+const WORDS = BENCH.template.products.tally
+
 describe('benchmarks model', () => {
   it('sorts the row board fastest first and keeps names aligned', () => {
     expect(sortedRowBoard(['A', 'B', 'C'], [3, 1, 2])).toEqual([
@@ -145,6 +152,13 @@ describe('benchmarks model', () => {
       { size: '1,000 rows', Pyreon: 2, Solid: 4 },
     ])
   })
+  it('labels a millisecond axis in milliseconds, zero included', () => {
+    expect(formatAxisMs(0)).toBe('0 ms')
+    expect(formatAxisMs(0.2)).toBe('0.2 ms')
+    expect(formatAxisMs(50)).toBe('50 ms')
+    expect(formatAxisMs(1250)).toBe('1,250 ms')
+    for (const v of [0, 0.05, 0.4, 2, 120, 300]) expect(formatAxisMs(v)).not.toContain('µs')
+  })
   const row = (verdict: string) => ({ op: verdict + Math.random(), pyreon: 1, rival: 2, unit: 'ms' as const, verdict: verdict as 'win', label: '' })
   const product = (id: string, verdicts: string[] | null) => ({
     id,
@@ -156,7 +170,7 @@ describe('benchmarks model', () => {
     expect(s.counts).toEqual({ win: 2, tie: 0, split: 0, loss: 1, info: 1 })
     expect(s.href).toBe('/products/form#benchmarks')
     expect([s.wins, s.losses, s.infoOnly]).toEqual([true, true, false])
-    expect(tally(s.counts)).toBe('2 wins · 1 loss · 1 measurement')
+    expect(tally(s.counts, WORDS)).toBe('2 wins · 1 loss · 1 measurement')
     expect(summarizeProduct(product('none', null))).toBeNull()
     expect(summarizeProduct(product('empty', []))).toBeNull()
   })
@@ -173,6 +187,62 @@ describe('benchmarks model', () => {
   it('extracts pull request numbers', () => {
     expect(prNumbers('#2878, #2864')).toEqual([2878, 2864])
     expect(prNumbers('none')).toEqual([])
+  })
+})
+
+describe('/benchmarks content', () => {
+  const products = resolve(__dirname, '../content/products')
+  const withData = readdirSync(products)
+    .filter((f) => f.endsWith('.json') && !f.startsWith('_'))
+    .filter((f) => {
+      const b = JSON.parse(readFileSync(resolve(products, f), 'utf8')).benchmarks as { rows?: unknown[] } | null | undefined
+      return !!b && Array.isArray(b.rows) && b.rows.length > 0
+    })
+    .map((f) => f.slice(0, -5))
+    .sort()
+
+  it('"every product" lists every product content file with benchmark data', async () => {
+    // Read from the files on disk, not from the loader: a product dropped by
+    // the derivation (or a hand list creeping back) fails here.
+    expect(withData.length).toBeGreaterThan(20)
+    const cards = await benchmarkProducts()
+    expect(cards.map((c) => c.id).sort()).toEqual(withData)
+    for (const c of cards) expect(c.href).toBe(`/products/${c.id}#benchmarks`)
+  })
+
+  it('every /benchmarks#anchor in the content is a section id on the page', () => {
+    const content = resolve(__dirname, '../content')
+    const files = [
+      ...readdirSync(content).filter((f) => f.endsWith('.json')).map((f) => resolve(content, f)),
+      ...readdirSync(products).filter((f) => f.endsWith('.json')).map((f) => resolve(products, f)),
+      ...['why', 'compare', 'migrate', 'project'].flatMap((d) => readdirSync(resolve(pages, d)).map((f) => resolve(pages, d, f))),
+    ]
+    const anchors = new Set<string>()
+    for (const f of files) for (const m of readFileSync(f, 'utf8').matchAll(/\/benchmarks#([a-z0-9-]+)/g)) anchors.add(m[1]!)
+    expect(anchors.size).toBeGreaterThan(0)
+    for (const a of anchors) expect(BENCH_SECTIONS, a).toContain(a)
+  })
+
+  it('the headline is not a loss, and every loss stays on the page', () => {
+    expect(BENCH.template.hero.title).toBe('Every result, on the table.')
+    expect(BENCH.template.hero.title.toLowerCase()).not.toMatch(/loss|lose/)
+    expect(BENCH.template.meta.title.toLowerCase()).not.toMatch(/loss|lose/)
+    expect(BENCH.losses.length).toBeGreaterThan(0)
+    expect(BENCH.withdrawn.length).toBeGreaterThan(0)
+  })
+
+  it('has a jump label for every section and opens the row board on a real operation', () => {
+    expect(Object.keys(BENCH.template.jumps).sort()).toEqual([...BENCH_SECTIONS].sort())
+    expect(BENCH.rowBoard[BENCH.template.rows.initial]).toBeDefined()
+  })
+})
+
+describe('fill (template copy)', () => {
+  it('fills every placeholder and refuses a missing one', () => {
+    expect(fill('{shown} of {total} products', { shown: 3, total: 40 })).toBe('3 of 40 products')
+    expect(fill('no placeholders', {})).toBe('no placeholders')
+    expect(fill('{dot:ok} kept', {})).toBe('{dot:ok} kept')
+    expect(() => fill('{missing}', {})).toThrow(/\{missing\}/)
   })
 })
 

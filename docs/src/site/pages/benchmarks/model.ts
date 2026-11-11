@@ -26,6 +26,16 @@ export function formatMs(ms: number): string {
   return `${ms.toFixed(1)} ms`
 }
 
+/**
+ * A tick on a millisecond axis: one unit for every tick, so the zero tick
+ * reads "0 ms" beside "200 ms" (never "0 µs"), and sub-millisecond ticks keep
+ * the unit too ("0.2 ms").
+ */
+export function formatAxisMs(ms: number): string {
+  if (ms === 0) return '0 ms'
+  return `${Number(ms.toPrecision(3)).toLocaleString('en')} ms`
+}
+
 /** µs per op, as the scaling data stores it. */
 export function formatUs(us: number): string {
   if (us >= 1000) return `${(us / 1000).toLocaleString('en', { maximumFractionDigits: 2 })} ms`
@@ -61,19 +71,14 @@ export interface ProductBenchSummary {
   infoOnly: boolean
 }
 
-const PLURAL: Record<Verdict, [string, string]> = {
-  win: ['win', 'wins'],
-  tie: ['tie', 'ties'],
-  split: ['split', 'splits'],
-  loss: ['loss', 'losses'],
-  info: ['measurement', 'measurements'],
-}
+/** The singular and plural word for each verdict (`template.products.tally` in the content). */
+export type TallyWords = Readonly<Record<Verdict, readonly [one: string, many: string]>>
 
 /** "6 wins · 1 tie · 1 loss": every verdict with a count, in a fixed order. */
-export function tally(counts: Readonly<Record<Verdict, number>>): string {
+export function tally(counts: Readonly<Record<Verdict, number>>, words: TallyWords): string {
   return (['win', 'tie', 'split', 'loss', 'info'] as const)
     .filter((v) => counts[v] > 0)
-    .map((v) => `${counts[v]} ${PLURAL[v][counts[v] === 1 ? 0 : 1]}`)
+    .map((v) => `${counts[v]} ${words[v][counts[v] === 1 ? 0 : 1]}`)
     .join(' · ')
 }
 
