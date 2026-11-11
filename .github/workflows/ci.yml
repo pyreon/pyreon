@@ -229,7 +229,9 @@ jobs:
             echo "bun.lock differs from the base — this PR saves its own node_modules entry."
           fi
       - name: Save node_modules (lockfile key)
-        if: steps.nm-restore.outputs.cache-hit != 'true' && (github.event_name != 'pull_request' || steps.lock-diff.outputs.changed == 'true')
+        # Never from a merge group: its queue ref is deleted after the group
+        # settles, so a ~400 MB entry scoped to it could only evict others.
+        if: steps.nm-restore.outputs.cache-hit != 'true' && (github.event_name == 'push' || steps.lock-diff.outputs.changed == 'true')
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
@@ -1689,13 +1691,20 @@ jobs:
       # warnings + summary; pushes to main still enforce the full set. The
       # PR checkout is the merge commit, so its first parent IS the base it
       # was merged against — one extra level of history is all it needs.
+      # A merge-queue group is judged the same way against the commit it was
+      # built on (`merge_group.base_sha`): the queue must not freeze on an
+      # advisory main already carries, which is the four-day class above.
       - name: Reject high-severity dependency advisories
         env:
-          IS_PR: ${{ github.event_name == 'pull_request' }}
+          EVENT: ${{ github.event_name }}
+          MG_BASE: ${{ github.event.merge_group.base_sha }}
         run: |
-          if [ "$IS_PR" = "true" ]; then
+          if [ "$EVENT" = "pull_request" ]; then
             git fetch --no-tags --quiet --depth=2 origin "$GITHUB_REF"
             bun scripts/audit-new-advisories.ts --level high --base HEAD^1
+          elif [ "$EVENT" = "merge_group" ]; then
+            git fetch --no-tags --quiet --depth=1 origin "$MG_BASE"
+            bun scripts/audit-new-advisories.ts --level high --base "$MG_BASE"
           else
             bun scripts/audit-new-advisories.ts --level high
           fi
