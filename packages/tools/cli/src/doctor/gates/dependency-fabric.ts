@@ -22,6 +22,7 @@
  * it was never measured for. That is the same rule the multiplatform-tier gate
  * follows: an empty scan is a SKIP, never a clean pass.
  */
+import { stripAnsi } from '@pyreon/ansi'
 import { execFileSync } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { createRequire } from 'node:module'
@@ -50,15 +51,34 @@ interface LoomReport {
 }
 
 /**
- * The first line loom wrote to stderr when a scan exits non-zero, else the
+ * The problem loom wrote to stderr when a scan exits non-zero, else the
  * process error's own first line. Loom names the problem on stderr; the error
  * message is only ever "Command failed: node …/loom.js scan …".
+ *
+ * Two shapes, because the project's installed loom may be older or newer
+ * than this doctor: a single `loom: <problem>` line, or the shared theme's
+ * finding block (`✗ loom scan · <problem>`, wrapped at the terminal width
+ * with 3-space continuation lines, then `fix:`). The block's message lines
+ * are joined back into one reason, without the symbol and source.
  */
 export function loomFailureReason(err: unknown): string {
   const stderr = (err as { stderr?: unknown })?.stderr
-  const text = typeof stderr === 'string' ? stderr : Buffer.isBuffer(stderr) ? stderr.toString('utf8') : ''
-  const line = text.split('\n').find((l) => l.trim() !== '')
-  if (line) return line.trim()
+  const text = stripAnsi(typeof stderr === 'string' ? stderr : Buffer.isBuffer(stderr) ? stderr.toString('utf8') : '')
+  const lines = text.split('\n')
+  const first = lines.findIndex((l) => l.trim() !== '')
+  if (first !== -1) {
+    const head = (lines[first] ?? '').trim()
+    // The message may start on the next line when its first word (a long
+    // path) does not fit after the source.
+    const themed = /^(?:✗|x) loom(?: [a-z]+)? (?:·|-)(?: (.*))?$/.exec(head)
+    if (!themed) return head
+    const parts = themed[1] ? [themed[1]] : []
+    for (const l of lines.slice(first + 1)) {
+      if (!/^ {3}\S/.test(l) || /^ {3}(?:fix:|↳|->) /.test(l)) break
+      parts.push(l.trim())
+    }
+    return parts.join(' ')
+  }
   return `${(err as Error)?.message ?? String(err)}`.split('\n')[0] ?? ''
 }
 
