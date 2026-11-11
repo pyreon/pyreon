@@ -2,6 +2,12 @@ import { sanitizeHref, sanitizeImageSrc, sanitizeXmlColor } from '../sanitize'
 import type { DocNode, DocumentRenderer, RenderOptions, TableColumn } from '../types'
 import { getTextContent, imagePlaceholderText, warnUnknownNodeType } from '../nodes'
 
+/** `{ hyperlink }` for an allowed href, nothing for a rejected one (see the link case). */
+function hyperlinkFor(href: unknown): { hyperlink?: { url: string } } {
+  const url = sanitizeHref(href as string)
+  return url ? { hyperlink: { url } } : {}
+}
+
 /**
  * PPTX renderer — lazy-loads pptxgenjs on first use.
  * Each `<Page>` becomes a slide. Document nodes map to PPTX elements.
@@ -245,7 +251,10 @@ function processNode(node: DocNode, ctx: SlideContext): void {
         fontSize: 13,
         color: '4F46E5',
         underline: { style: 'sng' },
-        hyperlink: { url: sanitizeHref(p.href as string) },
+        // A rejected href renders the label without a hyperlink; pptxgenjs
+        // THROWS on an empty url ("hyperlink requires either url or slide"),
+        // so a rejected link used to fail the whole render (#4365).
+        ...hyperlinkFor(p.href),
       })
       ctx.y += 0.5
       break
@@ -264,7 +273,7 @@ function processNode(node: DocNode, ctx: SlideContext): void {
           color: sanitizeXmlColor((p.background as string) ?? '#4f46e5'),
         },
         align: 'center',
-        hyperlink: { url: sanitizeHref(p.href as string) },
+        ...hyperlinkFor(p.href),
       })
       ctx.y += 0.6
       break

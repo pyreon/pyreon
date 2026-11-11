@@ -495,6 +495,23 @@ function BadgeNode(props: NodeComponentProps<GridNodeData>) {
   )
 }
 
+// A <Flow> fills its parent, so it needs a parent with a real height. Without
+// one the canvas measures 0 tall and `onlyRenderVisibleElements` falls back to
+// rendering every node. `styled` carries the height to the web as CSS and to
+// iOS and Android as a frame modifier, with no `<Flow style>` native warning.
+//
+// The task flow shows a real graph (custom node, custom edge, MiniMap), which
+// the device suites measure by geometry, so it gets room for all of it. The
+// 400-node scale screen is kept SHORT on purpose: the culled count is bounded
+// by the frame (the 200px culling margin dominates), and the web e2e and both
+// device lanes hold it to at most 40 mounted nodes.
+const FlowFrame = styled(Stack)`
+  height: 360px;
+`
+const FlowScaleFrame = styled(Stack)`
+  height: 160px;
+`
+
 function FlowScreen() {
   const navigate = useNavigate()
   // Flow-native device proof: `createFlow` lowers to PyreonFlowState on both
@@ -637,11 +654,13 @@ function FlowScreen() {
           Back
         </Button>
       </Inline>
+      <FlowFrame>
       <Flow instance={flow} nodeTypes={{ badge: BadgeNode }} edgeTypes={{ wire: WireEdge }} ariaLabel="Task flow">
         <Background variant="dots" />
         <Controls />
         <MiniMap />
       </Flow>
+      </FlowFrame>
     </Stack>
   )
 }
@@ -717,9 +736,11 @@ function FlowScaleScreen() {
           Back
         </Button>
       </Inline>
+      <FlowScaleFrame>
       <Flow instance={flow} nodeTypes={{ grid: GridNode }} ariaLabel="Scale flow">
         <Background variant="dots" />
       </Flow>
+      </FlowScaleFrame>
     </Stack>
   )
 }

@@ -1,7 +1,7 @@
 import { autoPanVelocity } from '../auto-pan'
 import { flowNodeZ, orderEdges } from '../z-order'
 import { For, createUniqueId, isClient, onUnmount, provide, useProvidedColorMode, type VNodeChild, cx } from '@pyreon/core'
-import { batch, computed, effect, signal } from '@pyreon/reactivity'
+import { batch, computed, effect, isServer, signal } from '@pyreon/reactivity'
 import {
   getEdgePath,
   getEffectiveDimensions,
@@ -29,6 +29,40 @@ import type {
   ModifierKey,
 } from '../types'
 import { MarkerType, Position } from '../types'
+
+/**
+ * Visually hidden, still read by screen readers: the keyboard instructions and
+ * the live region. INLINE, not only in `flowStyles`: `flowStyles` is optional
+ * (hover / animation / dark-mode states), but these must never be visible, so
+ * a flow without the stylesheet painted the instructions over the canvas.
+ */
+const A11Y_HIDDEN_STYLE =
+  'position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0'
+
+// One "flowStyles is not loaded" warning per page, not per <Flow>. A single
+// flag, not a collection: nothing to evict.
+let warnedMissingFlowStyles = false
+
+/** Dev-only: warn once if a mounted canvas does not see `flowStyles`' marker variable. */
+function checkFlowStylesLoaded(el: Element): void {
+  // Called from the container ref callback, so client-only by construction.
+  queueMicrotask(() => {
+    if (warnedMissingFlowStyles || !el.isConnected || isServer) return
+    const marker = window.getComputedStyle(el).getPropertyValue('--pyreon-flow-styles')
+    if (marker.trim() !== '') return
+    warnedMissingFlowStyles = true
+    if (process.env.NODE_ENV !== 'production') console.warn(
+      '[Pyreon] <Flow>: the `flowStyles` stylesheet is not loaded, so node hover/selection states, ' +
+        'animated edges, focus rings and the dark colour mode are missing. Inject it once at app start: ' +
+        "`import { flowStyles } from '@pyreon/flow'` and add it to a <style> element (see the flow docs).",
+    )
+  })
+}
+
+/** @internal — test helper: re-arm the once-per-page warning. */
+export function _resetFlowStylesWarning(): void {
+  warnedMissingFlowStyles = false
+}
 
 /** Resolve the flow-level default end marker: undefined → built-in arrowhead;
  *  null → arrowless by default; otherwise the configured spec. */
@@ -2033,6 +2067,7 @@ export function Flow(props: FlowComponentProps): VNodeChild {
       return
     }
     if (layers) el.appendChild(layers.toolbars)
+    if (process.env.NODE_ENV !== 'production') checkFlowStylesLoaded(el)
     // `lostpointercapture` has no JSX event prop in @pyreon/core's DOM types;
     // the IDL handler property is the listener-free equivalent (replaced, not
     // accumulated, on a re-ref; dies with the element).
@@ -2163,18 +2198,19 @@ export function Flow(props: FlowComponentProps): VNodeChild {
       }}
     >
       {keyboardA11y && (
-        <div id={nodeDescId} class="pyreon-flow-a11y-hidden">
+        <div id={nodeDescId} class="pyreon-flow-a11y-hidden" style={A11Y_HIDDEN_STYLE}>
           Press Enter or Space to select the node. Use the arrow keys to move a selected node,
           hold Shift for larger steps. Delete removes the selection, Escape clears it.
         </div>
       )}
       {keyboardA11y && (
-        <div id={edgeDescId} class="pyreon-flow-a11y-hidden">
+        <div id={edgeDescId} class="pyreon-flow-a11y-hidden" style={A11Y_HIDDEN_STYLE}>
           Press Enter or Space to select the edge. Delete removes the selection.
         </div>
       )}
       <div
         class="pyreon-flow-a11y-hidden pyreon-flow-a11y-live"
+        style={A11Y_HIDDEN_STYLE}
         role="status"
         aria-live="polite"
         aria-atomic="true"

@@ -1,5 +1,5 @@
 import { onUnmount } from '@pyreon/core'
-import { effect } from '@pyreon/reactivity'
+import { effect, isServer } from '@pyreon/reactivity'
 
 export type UseInterval = (
   callback: () => void,
@@ -24,6 +24,10 @@ export type UseInterval = (
  * useInterval(() => tick(), () => running() ? 1000 : null)
  */
 export const useInterval: UseInterval = (callback, delay) => {
+  // Server render: a permanent interval would never be cleared (SSR components
+  // never unmount) and would keep the process alive. Schedule nothing.
+  if (isServer) return
+
   let intervalId: ReturnType<typeof setInterval> | null = null
 
   const stop = () => {

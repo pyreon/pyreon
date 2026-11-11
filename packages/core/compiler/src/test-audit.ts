@@ -313,10 +313,24 @@ function countMockVNodeLiterals(source: string): number {
   while (true) {
     m = pattern.exec(masked)
     if (m === null) break
-    if (!isLiteralInsideTypeGuardCall(masked, m.index)) count++
+    if (!isLiteralInsideTypeGuardCall(masked, m.index) && !isTypeDeclarationBody(masked, m.index)) count++
   }
   pattern.lastIndex = 0
   return count
+}
+
+/**
+ * True when the `{` at `braceIndex` opens the body of an `interface X { … }` or
+ * of a `type X = { … }`. Those name a SHAPE; they are not a value standing in
+ * for a render, so a `type` / `props` / `children` member list there is not a
+ * mock (a test that types its own tree walker declares exactly that).
+ */
+function isTypeDeclarationBody(source: string, braceIndex: number): boolean {
+  const head = source.slice(Math.max(0, braceIndex - 160), braceIndex)
+  return (
+    /\binterface\s+\w+(?:<[^>{]*>)?(?:\s+extends\s+[^{]+)?\s*$/.test(head) ||
+    /\btype\s+\w+(?:<[^>{]*>)?\s*=\s*$/.test(head)
+  )
 }
 
 /**

@@ -138,8 +138,14 @@ function renderNode(node: DocNode, opts?: RenderOptions): string {
       })}>${renderChildren(node.children, opts)}</p>`
     }
 
-    case 'link':
-      return `<a href="${escapeHtml(sanitizeHref(p.href as string))}"${styleStr({ color: sanitizeColor(p.color as string | undefined), ...rs })}>${renderChildren(node.children, opts)}</a>`
+    case 'link': {
+      // A rejected href (`sanitizeHref` returns '') renders the label only: an empty link target reloads / opens nothing useful (#4365).
+      const href = sanitizeHref(p.href as string)
+      const style = styleStr({ color: sanitizeColor(p.color as string | undefined), ...rs })
+      return href
+        ? `<a href="${escapeHtml(href)}"${style}>${renderChildren(node.children, opts)}</a>`
+        : `<span${style}>${renderChildren(node.children, opts)}</span>`
+    }
 
     case 'image': {
       const alignStyle =
@@ -249,7 +255,12 @@ function renderNode(node: DocNode, opts?: RenderOptions): string {
       const pad = padStr((p.padding ?? [12, 24]) as [number, number]) ?? '12px 24px'
       const align = styleStr({ textAlign: (p.align as string) ?? 'left' })
       const extra = styleDecls(rs)
-      return `<div${align}><a href="${escapeHtml(sanitizeHref(p.href as string))}" style="display:inline-block;background:${bg};color:${color};padding:${pad};border-radius:${radius}px;text-decoration:none;font-weight:bold${extra ? `;${extra}` : ''}">${renderChildren(node.children, opts)}</a></div>`
+      const href = sanitizeHref(p.href as string)
+      const btnStyle = `display:inline-block;background:${bg};color:${color};padding:${pad};border-radius:${radius}px;text-decoration:none;font-weight:bold${extra ? `;${extra}` : ''}`
+      // Rejected href → the button's look without a link (see `link`).
+      return href
+        ? `<div${align}><a href="${escapeHtml(href)}" style="${btnStyle}">${renderChildren(node.children, opts)}</a></div>`
+        : `<div${align}><span style="${btnStyle}">${renderChildren(node.children, opts)}</span></div>`
     }
 
     case 'quote': {
