@@ -71,7 +71,7 @@ export default defineManifest({
       signature:
         '(props: { columns?: ValueType; size?: ValueType; gap?: ValueType; gutter?: ValueType; padding?: ValueType; contentAlignX?: ContentAlignX; colCss?: ExtraStyles; colComponent?: ComponentFn; rowCss?: ExtraStyles; rowComponent?: ComponentFn; width?: ContainerWidth; component?: ComponentFn; css?: ExtraStyles }) => VNodeChild',
       summary:
-        'Outermost grid boundary. Renders a centered flex column (`width: 100%`, auto horizontal margins) with a responsive `max-width` resolved from the `width` prop → `theme.grid.container` → `theme.coolgrid.container`, and provides the grid config (`columns`, `size`, `gap`, `padding`, `gutter`, `colCss`/`colComponent`, `rowCss`/`rowComponent`, `contentAlignX`) to descendant Row / Col via context. `ValueType` = `number | number[] | { [breakpoint]: number }` (responsive); `width` also accepts a function that receives the theme-resolved container-width record and returns the final `ContainerWidth`. `columns` defaults to the theme value (12 in the default theme).',
+        'Outermost grid boundary. Renders a centered flex column (`width: 100%`, auto horizontal margins) with a responsive `max-width` resolved from the `width` prop → `theme.grid.container` → `theme.coolgrid.container` → the coolgrid default widths (only when the theme has no breakpoints of its own), and provides the grid config (`columns`, `size`, `gap`, `padding`, `gutter`, `colCss`/`colComponent`, `rowCss`/`rowComponent`, `contentAlignX`) to descendant Row / Col via context. `ValueType` = `number | number[] | { [breakpoint]: number }` (responsive); `width` also accepts a function that receives the theme-resolved container-width record and returns the final `ContainerWidth`. `columns` defaults to the theme value, else 12. A theme with no `breakpoints` renders against the coolgrid default xs–xl breakpoints, so `<PyreonUI theme={appTheme}>` works without any grid keys.',
       example: `import { Container, Row, Col } from '@pyreon/coolgrid'
 
 <Container columns={12} gap={16} gutter={24} padding={16} width={{ xs: '100%', lg: 1140 }}>
@@ -144,7 +144,7 @@ export default defineManifest({
       mistakes: [
         'Setting a non-default `columns` on a Row instead of the Container — it works for that Row only, but the visual cascade gets hard to reason about; keep `columns` at Container level',
         "Expecting `gutter` to be horizontal container padding — `gutter` feeds the Row's VERTICAL margins (`spacingY = gutter − gap/2`); the Container itself only sets a responsive max-width + auto horizontal centering",
-        'Rendering without a theme context — grid defaults (`columns`, container widths) resolve from `theme.grid.*` / `theme.coolgrid.*`, so mount `<PyreonUI>` (or coolgrid `Provider`) above the Container',
+        'Expecting a custom breakpoint scale to pick up the default container widths — they are keyed xs–xl, so a theme with its own `breakpoints` but no `grid.container` gets no max-width; add `grid.container` keyed by your breakpoint names',
         "Using CSS keyword values for `contentAlignX` ('space-between') — the accepted keys are camelCase: 'spaceAround' / 'spaceBetween' / 'spaceEvenly' (plus 'center' / 'left' / 'right')",
       ],
       seeAlso: ['Row', 'Col', 'Provider', 'theme'],

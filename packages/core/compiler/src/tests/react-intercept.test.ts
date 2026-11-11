@@ -224,8 +224,8 @@ describe('detectReactPatterns', () => {
     const diags = detectReactPatterns(code)
     const d = diags.find((d) => d.code === 'use-ref-box')
     expect(d).toBeDefined()
-    expect(d!.message).toContain('signal')
-    expect(d!.suggested).toContain('signal(0)')
+    expect(d!.message).toContain('{ current }')
+    expect(d!.suggested).toBe('{ current: 0 }')
     expect(d!.fixable).toBe(true)
   })
 
@@ -235,7 +235,8 @@ describe('detectReactPatterns', () => {
     const d = diags.find((d) => d.code === 'use-reducer')
     expect(d).toBeDefined()
     expect(d!.message).toContain('signal')
-    expect(d!.fixable).toBe(false)
+    // migrateReactCode converts the `const [state, dispatch] = useReducer(…)` shape.
+    expect(d!.fixable).toBe(true)
   })
 
   test('detects memo() wrapper', () => {
@@ -510,11 +511,14 @@ describe('migrateReactCode', () => {
     expect(result.code).not.toContain('useRef')
   })
 
-  test('rewrites useRef(value) to signal(value)', () => {
+  test('rewrites useRef(value) to a plain { current } box (a signal would break .current)', () => {
     const code = `const prevCount = useRef(0)`
     const result = migrateReactCode(code)
-    expect(result.code).toContain('signal(0)')
+    expect(result.code).toContain('prevCount = { current: 0 }')
     expect(result.code).not.toContain('useRef')
+    expect(migrateReactCode(`const n = useRef<number>(0)`).code).toContain(
+      'n = ({ current: 0 } as { current: number })',
+    )
   })
 
   test('rewrites useRef(undefined) to createRef()', () => {
@@ -541,14 +545,15 @@ describe('migrateReactCode', () => {
     const code = `const Input = forwardRef((props, ref) => <input ref={ref} />)`
     const result = migrateReactCode(code)
     expect(result.code).not.toContain('forwardRef')
-    expect(result.code).toContain('(props, ref) =>')
+    // The ref arrives as a normal prop.
+    expect(result.code).toContain('const Input = (props) => <input ref={props.ref} />')
   })
 
   test('removes React.forwardRef() wrapper', () => {
     const code = `const Input = React.forwardRef((props, ref) => <input ref={ref} />)`
     const result = migrateReactCode(code)
     expect(result.code).not.toContain('forwardRef')
-    expect(result.code).toContain('(props, ref) =>')
+    expect(result.code).toContain('const Input = (props) => <input ref={props.ref} />')
   })
 
   test('rewrites className to class', () => {
@@ -571,10 +576,11 @@ describe('migrateReactCode', () => {
     expect(result.code).toContain('onInput')
   })
 
-  test('rewrites onChange to onInput on select', () => {
-    const code = `const el = <select onChange={handleChange} />`
-    const result = migrateReactCode(code)
-    expect(result.code).toContain('onInput')
+  test('keeps onChange on select and checkbox (change fires on commit there, as in React)', () => {
+    expect(migrateReactCode(`const el = <select onChange={handleChange} />`).code).toContain('onChange')
+    expect(
+      migrateReactCode(`const el = <input type="checkbox" onChange={handleChange} />`).code,
+    ).toContain('onChange')
   })
 
   test('rewrites React imports to Pyreon imports', () => {
@@ -587,11 +593,10 @@ const doubled = useMemo(() => count * 2, [count])`
     expect(result.code).toContain('@pyreon/reactivity')
   })
 
-  test('rewrites dangerouslySetInnerHTML to innerHTML', () => {
+  test('keeps dangerouslySetInnerHTML (raw, as in React; innerHTML is sanitized and throws in SSR)', () => {
     const code = `const el = <div dangerouslySetInnerHTML={{ __html: htmlString }} />`
     const result = migrateReactCode(code)
-    expect(result.code).toContain('innerHTML={htmlString}')
-    expect(result.code).not.toContain('dangerouslySetInnerHTML')
+    expect(result.code).toBe(code)
   })
 
   test('returns change descriptions', () => {
@@ -624,13 +629,22 @@ const doubled = useMemo(() => count * 2, [count])`
     expect(result.code).toContain(`import { computed, signal } from "@pyreon/reactivity"`)
   })
 
-  test('rewrites react-dom/client import specifiers', () => {
+  test('rewrites createRoot(el).render(app) to mount(app, el)', () => {
     const code = `import { createRoot } from "react-dom/client"
-createRoot(document.getElementById("root"))`
+createRoot(document.getElementById("root")).render(<App />)`
     const result = migrateReactCode(code)
     expect(result.code).not.toContain('react-dom')
-    expect(result.code).toContain('@pyreon/runtime-dom')
-    expect(result.code).toContain('mount')
+    expect(result.code).toContain('import { mount } from "@pyreon/runtime-dom"')
+    expect(result.code).toContain('mount(<App />, document.getElementById("root"))')
+  })
+
+  test('keeps a createRoot() it cannot convert, with its import and a manual note', () => {
+    const code = `import { createRoot } from "react-dom/client"
+const root = createRoot(document.getElementById("root"))`
+    const result = migrateReactCode(code)
+    expect(result.code).toContain('import { createRoot } from "react-dom/client"')
+    expect(result.manual).toHaveLength(1)
+    expect(result.manual[0]!.line).toBe(2)
   })
 
   test('migrates full React component', () => {
@@ -1053,7 +1067,7 @@ describe('migrateReactCode — edge cases for branch coverage', () => {
         return <div>{ref.current}</div>
       }
     `)
-    expect(result.code).toContain('signal(42)')
+    expect(result.code).toContain('ref = { current: 42 }')
   })
 
   test('migrates useMemo', () => {
@@ -1117,7 +1131,7 @@ describe('migrateReactCode — edge cases for branch coverage', () => {
         return <div dangerouslySetInnerHTML={{ __html: '<b>bold</b>' }} />
       }
     `)
-    expect(result.code).toContain('innerHTML')
+    expect(result.code).toContain('dangerouslySetInnerHTML')
   })
 
   test('migrates className on JSX elements', () => {

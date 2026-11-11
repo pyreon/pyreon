@@ -363,17 +363,26 @@ Convert React code to idiomatic Pyreon in one pass. Reports per-edit changes so 
 
 | From (React) | To (Pyreon) |
 | ------------ | ----------- |
-| `useState(x)` | `signal(x)` (read `count()`, write `count.set(x)`) |
-| `useEffect(() => fn, [deps])` | `effect(() => fn)` (deps auto-tracked) |
-| `useEffect(() => fn, [])` | `onMount(() => fn)` (run-once) |
-| `useMemo(() => x, [deps])` | `computed(() => x)` |
-| `useCallback(fn, [deps])` | plain `fn` (no wrapper — components run once) |
+| `const [count, setCount] = useState(x)` | `const count = signal(x)`; every read becomes `count()`, `setCount(v)` becomes `count.set(v)`, `setCount(c => …)` becomes `count.update(c => …)` |
+| `useState(() => init)` | `signal(init)` (the lazy initializer runs once) |
+| `const [s, dispatch] = useReducer(reducer, init)` | `const s = signal(init), dispatch = (action) => s.update((state) => reducer(state, action))` |
+| `useEffect(() => fn, [deps])` | `effect(() => fn)` (dependencies tracked from the signals it reads; an effect that reads a DOM ref starts in `onMount`) |
+| `useEffect(() => fn, [])` | `onMount(() => fn)` (run once, cleanup kept) |
+| `useMemo(() => x, [deps])` | `computed(() => x)`; reads of the result become `value()` |
+| `useCallback(fn, [deps])` | plain `fn` (components run once) |
+| `memo(Comp)` / `forwardRef((props, ref) => …)` | `Comp` / `(props) => …` with `ref` read as `props.ref` |
 | `useRef(null)` | `createRef()` from `@pyreon/core` |
-| `useRef(value)` | `signal(value)` |
-| `className` | `class` |
-| `htmlFor` | `for` |
-| `onChange` (on inputs) | `onInput` |
+| `useRef(value)` | `{ current: value }` (a plain mutable box, as in React) |
+| a body-level `const` derived from state | `computed(() => …)` (the body runs once) |
+| a `return` that reads state outside JSX | `return () => (…)` |
+| `className` / `htmlFor` | `class` / `for` |
+| `onChange` on a text `<input>` / `<textarea>` | `onInput` |
+| `createRoot(el).render(app)` | `mount(app, el)` |
+| `<Fragment>` | `<>` |
+| `Link` / `NavLink` / `Outlet` | `RouterLink` / `RouterView` |
 | React imports | Pyreon imports |
+
+`dangerouslySetInnerHTML` is left as is: Pyreon supports it with React's raw semantics, while `innerHTML` is the sanitized path. Anything the tool cannot convert safely is left in place, keeps its React import, and is listed under **Remaining issues** with the reason. Examples are a state read at setup level, `useId`, `Context.Provider`, or a `forwardRef` with destructured props. The list also includes whatever `validate` still finds in the output.
 
 **Parameters:**
 
@@ -392,8 +401,9 @@ Convert React code to idiomatic Pyreon in one pass. Reports per-edit changes so 
 
 :::warning{title="Common mistakes"}
 - **It doesn't cover every React feature.** Class components, Concurrent React APIs, Suspense boundaries, and React-specific libs (react-router, redux) are *not* auto-rewritten — the result flags remaining issues but won't migrate them.
-- **`useEffect(fn, [deps])` → `effect(fn)` drops the deps array.** Pyreon effects auto-track via signal *reads* — verify your effect reads the same signals the React deps array listed.
-- **The output is correct but mechanical.** Pair with `get_pattern` afterward to apply Pyreon-native shapes (`<Show when={() => …}>` over ternaries, `<For>` over `.map()`).
+- **`useEffect(fn, [deps])` → `effect(fn)` drops the deps array.** Pyreon effects track every signal they *read*. When the effect reads state its deps array did not list, the tool says so under Remaining issues; use `.peek()` for a read that must not re-run the effect.
+- **Read "Remaining issues" before applying the output.** Those lines were not converted and still behave like React.
+- **The output updates, but it is mechanical.** Pair with `get_pattern` afterward to apply Pyreon-native shapes (`<Show when={() => …}>` over ternaries, `<For>` over `.map()`).
 - **Idempotent** against already-migrated code — re-running it on a mostly-Pyreon file costs only the parse pass.
 :::
 

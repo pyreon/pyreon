@@ -1,6 +1,7 @@
 import { config } from '@pyreon/ui-core'
 import type { MakeItResponsiveStyles } from '@pyreon/unistyle'
-import { extendCss, makeItResponsive, value } from '@pyreon/unistyle'
+import { extendCss, value } from '@pyreon/unistyle'
+import { makeGridResponsive } from '../defaults'
 import type { StyledTypes } from '../types'
 
 const { styled, css, component } = config
@@ -28,7 +29,7 @@ export default styled(component, { layer: 'elements' })`
   margin-right: auto;
   margin-left: auto;
 
-  ${makeItResponsive({
+  ${makeGridResponsive({
     key: '$coolgrid',
     styles,
     css,

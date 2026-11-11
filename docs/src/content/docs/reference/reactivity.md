@@ -29,7 +29,7 @@ See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multipla
 - watch(source, callback) — explicit reactive watcher
 - createSelector() — O(1) equality selector for keyed lists
 - cell&lt;T&gt;() — lighter alternative to signal() for direct subscribe()
-- createStore() / reconcile() / isStore() — deeply reactive proxy stores + structural diff
+- createStore() / reconcile() / isStore() / snapshot() — deeply reactive proxy stores, structural diff, plain deep copy
 - effectScope() / getCurrentScope() — scope-based lifecycle management
 - untrack() — read without subscribing
 - onSignalUpdate() / inspectSignal() / why() / getReactiveTrace() — debug instrumentation
@@ -105,6 +105,7 @@ effect(() => {
 | [`isStore`](#isstore-function) | function | Type guard — returns `true` if the value is a `createStore` proxy (recognized via an internal symbol marker). |
 | [`shallowReactive`](#shallowreactive-function) | function | Create a SHALLOW reactive store — only top-level mutations trigger updates. |
 | [`markRaw`](#markraw-function) | function | Mark an object as RAW — `createStore` and `shallowReactive` will return it unwrapped. |
+| [`snapshot`](#snapshot-function) | function | A plain, non-reactive deep copy of a store (or of any value holding stores) — for logging, `JSON.stringify`, `structured |
 | [`untrack`](#untrack-function) | function | Execute a function reading signals WITHOUT subscribing to them. |
 | [`effectScope`](#effectscope-function) | function | Create an `EffectScope` — a container that auto-tracks effects/computeds created inside `scope.runInScope(fn)` and dispo |
 | [`onScopeDispose`](#onscopedispose-function) | function | Register a callback to run when the current `EffectScope` stops. |
@@ -803,6 +804,35 @@ store.editor.someMethod()           // works — class methods see real receiver
 - Using markRaw on plain data objects to "skip" deep wrap — for that, use `shallowReactive`. markRaw is for class instances and externally-managed shapes
 
 **See also:** `createStore` · `shallowReactive`
+
+---
+
+### `snapshot` `function`
+
+```ts
+<T>(value: T) => T
+```
+
+A plain, non-reactive deep copy of a store (or of any value holding stores) — for logging, `JSON.stringify`, `structuredClone`, `postMessage`, undo history or a form's initial values. Reads the raw targets, so it tracks nothing and creates no per-property signals. Copies plain objects and arrays at every depth and unwraps every store proxy it meets (including one assigned into another store); keeps class instances, `Map`, `Set`, `Date` and `markRaw` objects by reference, unwrapped. Shared references and cycles are preserved. The equivalent of Svelte `$state.snapshot`.
+
+**Example**
+
+```tsx
+import { createStore, snapshot } from '@pyreon/reactivity'
+
+const store = createStore({ user: { name: 'Ann' }, tags: ['a'] })
+const copy = snapshot(store)   // { user: { name: 'Ann' }, tags: ['a'] }, no proxies
+structuredClone(copy)          // works — structuredClone(store) throws on the Proxy
+store.user.name = 'Bob'        // copy.user.name is still 'Ann'
+```
+
+**Common mistakes**
+
+- Calling `structuredClone(store)` or `postMessage(store)` directly — a Proxy cannot be cloned; pass `snapshot(store)`
+- Expecting class instances / `Map` / `Set` / `Date` inside the store to be copied — they are kept by reference; copy them yourself if the snapshot must not share them
+- Using `snapshot` to read inside an effect and expecting a re-run on change — it tracks nothing by design; read the store fields directly to subscribe
+
+**See also:** `createStore` · `markRaw` · `reconcile`
 
 ---
 

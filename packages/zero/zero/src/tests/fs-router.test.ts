@@ -17,6 +17,7 @@ import {
   parseFileRoutes,
   warnIsrAuthRisk,
 } from '../fs-router'
+import { ROUTE_GATE_TAG, routeGateId } from '../route-gate'
 import type { FileRoute, RouteFileExports } from '../types'
 
 // ─── filePathToUrlPath ───────────────────────────────────────────────────────
@@ -518,6 +519,58 @@ describe('generateMiddlewareModule', () => {
     const code = generateMiddlewareModule(['(app)/_layout.tsx', '(app)/dashboard.tsx', 'public.tsx'], mwTmp)
     expect(code).toContain('patterns: ["/dashboard"]')
     expect(code).not.toContain('"/public"')
+  })
+
+  // The not-found chain of a guarded folder renders its layout without any
+  // page matching: the gate finds the layout by a tag on its RECORD. Both
+  // generated modules must agree on that tag.
+  it('tags a guarded layout record with the gate id its middleware entry carries', () => {
+    mkdirSync(join(mwTmp, 'admin'), { recursive: true })
+    writeRouteWithMiddleware('admin/_layout.tsx')
+    writeRouteWithoutMiddleware('admin/index.tsx')
+    writeRouteWithoutMiddleware('_layout.tsx')
+    const files = ['_layout.tsx', 'admin/_layout.tsx', 'admin/index.tsx']
+    const gate = routeGateId('admin/_layout.tsx')
+    const mw = generateMiddlewareModule(files, mwTmp)
+    expect(mw).toContain(`gate: "${gate}"`)
+    const routesCode = generateRouteModule(files, mwTmp)
+    expect(routesCode).toContain(`[Symbol.for("${ROUTE_GATE_TAG}")]: "${gate}"`)
+    // `clean()` copies records with for…in, which skips symbol keys.
+    expect(routesCode).toContain(`if (g !== undefined) c[Symbol.for("${ROUTE_GATE_TAG}")] = g`)
+    // Only the guarded layout is tagged, and the id is not the file path.
+    expect(routesCode.match(/\]: "g[0-9a-z]+"/g)).toHaveLength(1)
+    expect(gate).not.toContain('admin')
+  })
+
+  it('keeps a guarded layout with no page under it, for its not-found chain', () => {
+    mkdirSync(join(mwTmp, 'vault'), { recursive: true })
+    writeRouteWithMiddleware('vault/_layout.tsx')
+    writeRouteWithoutMiddleware('vault/_404.tsx')
+    writeRouteWithoutMiddleware('index.tsx')
+    const code = generateMiddlewareModule(['vault/_layout.tsx', 'vault/_404.tsx', 'index.tsx'], mwTmp)
+    expect(code).toContain(`patterns: [], gate: "${routeGateId('vault/_layout.tsx')}"`)
+  })
+
+  // An action is gated as the page that declares it; one declared outside a
+  // page module has no entry, and the request gate refuses it.
+  it('maps each action id to the URL pattern of the page that declares it', () => {
+    mkdirSync(join(mwTmp, 'admin'), { recursive: true })
+    writeRouteWithoutMiddleware('admin/[id].tsx')
+    writeRouteWithoutMiddleware('admin/index.tsx')
+    writeRouteWithoutMiddleware('admin/_layout.tsx')
+    const actions = new Map([
+      ['a_page', join(mwTmp, 'admin/index.tsx')],
+      ['a_dynamic_server', join(mwTmp, 'admin/[id].server.ts')],
+      ['a_layout', join(mwTmp, 'admin/_layout.tsx')],
+      ['a_shared', join(dirname(mwTmp), 'features/shared.ts')],
+    ])
+    const code = generateMiddlewareModule(['admin/[id].tsx', 'admin/index.tsx', 'admin/_layout.tsx'], mwTmp, actions)
+    expect(code).toContain('import { _registerActionRoutes } from "@pyreon/zero/actions"')
+    expect(code).toContain('"a_page": "/admin"')
+    expect(code).toContain('"a_dynamic_server": "/admin/:id"')
+    expect(code).not.toContain('a_layout')
+    expect(code).not.toContain('a_shared')
+    expect(generateMiddlewareModule(['admin/index.tsx'], mwTmp, new Map())).not.toContain('_registerActionRoutes')
   })
 
   it('emits outer layouts before inner ones, and both before the page', () => {

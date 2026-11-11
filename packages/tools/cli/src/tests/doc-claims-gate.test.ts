@@ -530,3 +530,53 @@ describe('doc page count', () => {
     })
   })
 })
+
+describe('canonical primitive count', () => {
+  /** The compiler's `CANONICAL_PRIMITIVES` Set with the given members. */
+  const canonical = (...names: string[]): string =>
+    `export const CANONICAL_PRIMITIVES = new Set([\n${names.map((n) => `  '${n}',`).join('\n')}\n])\n`
+
+  /**
+   * The shape that shipped: the primitives page's body said "22 canonical
+   * primitives" (a checked phrase) while its frontmatter said "21 primitives
+   * plus Transition…" — no "canonical", so no anchor matched it, and it stayed
+   * 21 after `<Select>` made the set 22. multiplatform.md's "all N canonical
+   * primitives" was likewise outside the "the N canonical primitives" anchor.
+   */
+  const pages = (frontmatter: number, body: number): Record<string, string> => ({
+    'packages/native/compiler/src/canonical-primitives.ts': canonical('Stack', 'Text', 'Select'),
+    'docs/src/content/docs/primitives.md':
+      `---\ndescription: 'The vocabulary — ${frontmatter} primitives plus Transition.'\n---\n\nThe first groups are the **${body} canonical primitives**.\n`,
+    'docs/src/content/docs/multiplatform.md': `Web runtime — all ${body} canonical primitives plus Transition.\n`,
+  })
+
+  const driftIn = (r: GateResult, relPath: string): Finding[] =>
+    forCheck(r, 'canonical-primitive-count').filter(
+      (f) => f.code.endsWith('-drift') && f.location?.relPath === relPath,
+    )
+
+  it('checks a count phrased without "canonical" (the primitives page frontmatter)', () => {
+    build(pages(2, 3))
+    return run().then((r) => {
+      const drift = driftIn(r, 'docs/src/content/docs/primitives.md')
+      expect(drift.length).toBe(1)
+      expect(drift[0]?.message).toContain('claims 2')
+      expect(drift[0]?.message).toContain('actual 3')
+    })
+  })
+
+  it('checks "all N canonical primitives" in multiplatform.md', () => {
+    build(pages(3, 2))
+    return run().then((r) => {
+      expect(driftIn(r, 'docs/src/content/docs/multiplatform.md').length).toBe(1)
+    })
+  })
+
+  it('stays quiet when every phrasing carries the real count', () => {
+    build(pages(3, 3))
+    return run().then((r) => {
+      expect(driftIn(r, 'docs/src/content/docs/primitives.md')).toEqual([])
+      expect(driftIn(r, 'docs/src/content/docs/multiplatform.md')).toEqual([])
+    })
+  })
+})

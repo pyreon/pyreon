@@ -184,10 +184,14 @@ describe('runDocClaimsGate', () => {
     // 45 with the create-zero lint prompt ("Include @pyreon/lint? (N
     // Pyreon-specific rules)"), which shipped 59 against a real 133.
     //
-    // 48 with the detector-code sites in the compiler manifest and README
-    // (#4304): the Pyreon count there had rotted to 16 against a real 20,
-    // and the React count (19) is now quoted and gated too.
-    expect(result.meta.scanned).toBe(48)
+    // 49 with BOTH sets of sites: the detector-code sites in the compiler
+    // manifest and README (#4304: the Pyreon count there had rotted to 16
+    // against a real 20, and the React count (19) is now quoted and gated
+    // too), and two more canonical-primitive sites (primitives/src/index.ts
+    // and the multiplatform agent guide), once the anchors stopped requiring
+    // one exact phrase: the primitives page frontmatter said "21 primitives"
+    // against a real 22 while the gate passed.
+    expect(result.meta.scanned).toBe(49)
     // The real repo must be drift-free — this gate runs in CI; if a
     // count claim drifts, EVERY PR's doctor run fails until it's fixed.
     const errs = result.findings.filter((f) => f.severity === 'error')

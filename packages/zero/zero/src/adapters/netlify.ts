@@ -1,6 +1,6 @@
 import type { Adapter, AdapterBuildOptions, AdapterRevalidateResult } from '../types'
 import { assetUrlPrefix } from './cache-headers'
-import { NETLIFY_ADAPTER_OUTPUT } from './contract'
+import { NETLIFY_ADAPTER_OUTPUT, ADAPTER_RESERVED_OUTPUTS } from './contract'
 import { patternToRegex } from './deploy-targets'
 import { EDGE_HANDLER_BODY, EDGE_INIT_FILE, renderEdgeInit } from './edge-wrapper'
 import { materialize, stageClientThenServer } from './stage'
@@ -57,6 +57,7 @@ export function netlifyAdapter(adapterOptions: NetlifyAdapterOptions = {}): Adap
   const defaultEdge = adapterOptions.edge === true
   return {
     name: 'netlify',
+    reservedOutputs: ADAPTER_RESERVED_OUTPUTS.netlify,
     capabilities: { edgeRoutes: true, edgeOnly: defaultEdge, nodeRoutes: true, schedules: true },
     async build(options: AdapterBuildOptions) {
       if (options.kind === 'ssg') {

@@ -84,6 +84,8 @@ describe('sessionMiddleware', () => {
     expect(c).toMatch(/Secure/)
     expect(c).toMatch(/SameSite=Lax/)
     expect(c).toMatch(/Path=\//)
+    // Documented 7-day default (zero.md "Defaults").
+    expect(c).toMatch(/Max-Age=604800(;|$)/)
     const local = ctxFor('http://localhost:3000/')
     await sessionMiddleware({ secret: SECRET })(local)
     await getSession(local).set('a', 1)
@@ -118,6 +120,14 @@ describe('sessionMiddleware', () => {
     await sessionMiddleware({ secret: SECRET })(ctx)
     expect(ctx.headers.get('cache-control')).toBeNull()
     getSession(ctx).get('userId')
+    expect(ctx.headers.get('cache-control')).toBe('private, no-store')
+    expect(ctx.headers.get('vary')).toBe('Cookie')
+  })
+
+  it('a write without a read still marks the response private', async () => {
+    const ctx = ctxFor('https://x.test/')
+    await sessionMiddleware({ secret: SECRET })(ctx)
+    await getSession(ctx).set('userId', 'u1')
     expect(ctx.headers.get('cache-control')).toBe('private, no-store')
     expect(ctx.headers.get('vary')).toBe('Cookie')
   })

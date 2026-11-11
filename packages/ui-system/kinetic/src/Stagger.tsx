@@ -4,10 +4,8 @@ import { readLive, readLiveValue } from './live-prop'
 import { showAccessorFrom } from './show-accessor'
 import Transition from './Transition'
 import type { CSSProperties, StaggerProps, TransitionCallbacks } from './types'
-import { cloneVNode, resolveChildren } from './utils'
-
-const isVNode = (child: unknown): child is VNode =>
-  child != null && typeof child === 'object' && 'type' in (child as object)
+import { childProps, flattenChildren } from './child-shape'
+import { cloneVNode } from './utils'
 
 const Stagger = (props: StaggerProps): VNode | null => {
   const [own, transitionProps] = splitProps(props, [
@@ -39,8 +37,9 @@ const Stagger = (props: StaggerProps): VNode | null => {
   // Unwrap the compiler's `() => x` accessor wrap — see `resolveChildren`
   // jsdoc. Parallel to the `StaggerRenderer` fix (internal kinetic-mode
   // renderer) — same iteration shape, same fix.
-  const resolved = resolveChildren(own.children)
-  const childArray = (Array.isArray(resolved) ? resolved : [resolved]).filter(isVNode)
+  // `flattenChildren` also keeps compiled static markup (`_tpl` items), which a
+  // `'type' in child` filter dropped — see StaggerRenderer.
+  const childArray = flattenChildren(own.children)
   const count = childArray.length
 
   return (
@@ -67,7 +66,7 @@ const Stagger = (props: StaggerProps): VNode | null => {
         return h(
           Transition,
           mergeProps(transitionProps as Record<string, unknown>, {
-            key: (child as VNode & { key?: string | number }).key ?? index,
+            key: (child as { key?: string | number | null }).key ?? index,
             show: showAcc,
             appear,
             timeout: () => timeout() + maxDelay,
@@ -80,9 +79,9 @@ const Stagger = (props: StaggerProps): VNode | null => {
                 ? () => readLive<TransitionCallbacks['onAfterLeave']>(own, 'onAfterLeave')?.()
                 : undefined,
           }),
-          cloneVNode(child, {
+          cloneVNode(child as VNode, {
               style: {
-                ...((child.props as Record<string, unknown>)?.style as CSSProperties | undefined),
+                ...(childProps(child).style as CSSProperties | undefined),
                 '--stagger-index': index,
                 '--stagger-interval': `${interval}ms`,
                 // Stable delay sources — survive the `transition` shorthand

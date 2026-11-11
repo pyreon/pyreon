@@ -1,4 +1,4 @@
-import { disabledState, el, focusRing } from '../../factory'
+import { disabledState, el, focusRing, tones, toneText } from '../../factory'
 
 const Chip = el
   .config({ name: 'Chip' })
@@ -6,8 +6,11 @@ const Chip = el
     contentDirection: 'inline',
     contentAlignX: 'left',
     contentAlignY: 'center', alignY: 'center', gap: 1 })
-  .theme((t) => ({
+  .theme((t, m) => ({
     fontWeight: t.fontWeight.medium,
+    // Sets its own text tone: a state paints the chip's surface, so inheriting
+    // the page's text colour would put dark text on a dark chip (and back).
+    color: tones(t, m).text,
     whiteSpace: 'nowrap',
     cursor: 'pointer',
     transition: t.transition.fast,
@@ -15,31 +18,31 @@ const Chip = el
     focus: focusRing(t),
     disabled: { ...disabledState(), pointerEvents: 'none' },
   }))
-  .states((t) => ({
+  .states((t, m) => ({
     primary: {
       backgroundColor: t.color.system.primary[100],
-      color: t.color.system.primary[700],
+      color: toneText(t, m, 'primary'),
       hover: {
         backgroundColor: t.color.system.primary[200],
       },
     },
     secondary: {
       backgroundColor: t.color.system.base[100],
-      color: t.color.system.base[700],
+      color: tones(t, m).textMuted,
       hover: {
         backgroundColor: t.color.system.base[200],
       },
     },
     success: {
       backgroundColor: t.color.system.success[100],
-      color: t.color.system.success[700],
+      color: toneText(t, m, 'success'),
       hover: {
         backgroundColor: t.color.system.success[200],
       },
     },
     error: {
       backgroundColor: t.color.system.error[100],
-      color: t.color.system.error[700],
+      color: toneText(t, m, 'error'),
       hover: {
         backgroundColor: t.color.system.error[200],
       },

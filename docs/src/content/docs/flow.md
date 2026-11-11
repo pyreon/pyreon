@@ -650,7 +650,14 @@ await flow.layout('box')
 await flow.layout('rectpacking')
 ```
 
-`flow.layout(algorithm?, options?)` defaults to `'layered'`. It returns a `Promise<void>` and (unless `animate: false`) interpolates node positions over `animationDuration` with an ease-out cubic.
+`flow.layout(algorithm?, options?)` defaults to `'layered'`. Unless `animate: false`, it interpolates node positions over `animationDuration` (default 300 ms) with an ease-out cubic. It returns a `Promise<void>` that resolves once the layout is **applied and visible**: after the last animation frame has written the final positions (or right after the jump with `animate: false`, under reduced motion, or where there are no animation frames, such as SSR). So code after the `await` sees the laid-out graph:
+
+```ts
+await flow.layout('layered')
+flow.fitView() // fits the final positions, not the pre-layout ones
+```
+
+A later `layout()` call (or `flow.dispose()`) supersedes one still running: the earlier promise resolves at that point, and its positions are not applied over the newer layout. Pass `{ animate: false }` to apply the result at once. Animation frames pause in a background tab, so an animated layout started there resolves when the tab is visible again.
 
 `flow.layout()` feeds ELK each node's **effective dimensions** (explicit → measured DOM size → default, see [Measured node dimensions](#measured-node-dimensions)) — content-sized custom nodes are laid out at their real rendered size, so spacing is correct instead of assuming 150×40 boxes. The standalone `computeLayout(nodes, edges, algorithm?, options?)` export has no DOM access and uses explicit-or-default sizes; set `width`/`height` on the nodes you pass it for precise headless layout.
 
