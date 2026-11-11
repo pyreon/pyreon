@@ -1000,6 +1000,13 @@ export interface RouteMiddlewareEntry {
    * runs once per request if ANY of them match. `pattern` is then the first.
    */
   patterns?: string[]
+  /**
+   * Generated for a `_layout` middleware: the id the routes module tags on
+   * that layout's RECORD. The request gate also runs this entry when the
+   * router's resolved chain contains the record — a URL under the layout
+   * that matches no page still renders the layout (its not-found chain).
+   */
+  gate?: string
   middleware: Middleware | Middleware[]
 }
 

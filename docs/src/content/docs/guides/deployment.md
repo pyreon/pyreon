@@ -57,6 +57,8 @@ node dist/index.js      # the emitted server serves SSR + static assets, hydrate
 
 The build copies the production template (`dist/server/template.html`, with hashed asset refs) so the served pages hydrate. Assets under the build's `assetsDir` get a 1-year immutable cache.
 
+**Set `ORIGIN` in production** (`ORIGIN=https://example.com node dist/index.js`; the Bun and Deno runners read it too). Without it the self-hosted runners take the request's origin from the client's `Host` header, and anything on the server that resolves against that origin follows the client: a relative `fetch('/api/…')` during SSR under `@pyreon/http`'s `runWithRequest`, a loader that builds `new URL('/api', ctx.url)`, or the server-action origin check. A request with `Host: 127.0.0.1:6379` would make such a fetch hit an internal service and render its answer back. With `ORIGIN` set, `Host` and `X-Forwarded-Proto` no longer shape the request URL; an invalid value stops the server at startup. Vercel, Netlify and Cloudflare route by host before your code runs, so they do not need it.
+
 ## Caching, headers, env
 
 - **CDN adapters** scope a 1-year `immutable` rule to `<base><assetsDir>/*` (your hashed chunks).

@@ -7,7 +7,7 @@ import type { RouteRecord } from '@pyreon/router'
 import { redirect } from '@pyreon/router'
 import type { Middleware } from '@pyreon/server'
 import { afterEach, describe, expect, it } from 'vitest'
-import { _defineActionWithId, _resetActions, DEFAULT_ACTION_BODY_LIMIT, fail, Form, useSubmission } from '../actions'
+import { _defineActionWithId, _registerActionRoutes, _resetActions, DEFAULT_ACTION_BODY_LIMIT, fail, Form, useSubmission } from '../actions'
 import { createServer } from '../entry-server'
 import type { RouteMiddlewareEntry } from '../types'
 
@@ -348,6 +348,9 @@ describe('middleware runs once per no-JS post', () => {
       ctx.locals.user = 'ada'
       ctx.headers.set('x-frame-options', 'DENY')
     }
+    // The action is declared on /new (what the build-time map records for a
+    // page module); with route middleware present an undeclared one is 403.
+    _registerActionRoutes({ action_test_create: '/new' })
     const { useRequestLocals } = await import('@pyreon/server')
     const routes = routesFor(action).map((r) =>
       r.path === '/new'
