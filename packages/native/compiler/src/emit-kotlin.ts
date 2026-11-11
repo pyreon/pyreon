@@ -8837,8 +8837,11 @@ function emitKotlinPress(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: nu
   // The detector is direction-locked (only claims horizontally-dominant
   // drags), so taps still reach `.clickable` and vertical scrolls pass
   // through. Deltas ACCUMULATE across the gesture (`onHorizontalDrag`
-  // fires per-move); the ±40f end-total threshold matches the SwiftUI
-  // emit and the web polyfill. The detector loop lives for the
+  // fires per-move); the end-total threshold is 40 DP, converted with the
+  // scope's density (`40.dp.toPx()` — `PointerInputScope` is a `Density`),
+  // because drag deltas are PIXELS: a raw `40f` fired at ~13 dp on a 3x
+  // screen, three times as easily as SwiftUI's 40 pt (#4364). 40 dp matches
+  // the SwiftUI emit's 40 pt and the web polyfill's 40 CSS px. The detector loop lives for the
   // composable's lifetime, so `onDragStart` must reset the accumulator
   // per gesture. Handlers are `() -> Unit` lambdas from
   // `emitKotlinAction` — invoked via the stdlib non-extension `run(block)`.
@@ -8852,14 +8855,14 @@ function emitKotlinPress(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: nu
   if (onSwipeLeft || onSwipeRight) {
     const branches: string[] = []
     if (onSwipeLeft) {
-      branches.push(`if (dragTotal < -40f) run(${emitKotlinAction(onSwipeLeft.handler, indent)})`)
+      branches.push(`if (dragTotal < -swipeThreshold) run(${emitKotlinAction(onSwipeLeft.handler, indent)})`)
     }
     if (onSwipeRight) {
       branches.push(
-        `${onSwipeLeft ? 'else ' : ''}if (dragTotal > 40f) run(${emitKotlinAction(onSwipeRight.handler, indent)})`,
+        `${onSwipeLeft ? 'else ' : ''}if (dragTotal > swipeThreshold) run(${emitKotlinAction(onSwipeRight.handler, indent)})`,
       )
     }
-    swipeInput = `.pointerInput(Unit) { var dragTotal = 0f; detectHorizontalDragGestures(onDragStart = { dragTotal = 0f }, onDragEnd = { ${branches.join(' ')} }, onHorizontalDrag = { _, amount -> dragTotal += amount }) }`
+    swipeInput = `.pointerInput(Unit) { val swipeThreshold = 40.dp.toPx(); var dragTotal = 0f; detectHorizontalDragGestures(onDragStart = { dragTotal = 0f }, onDragEnd = { ${branches.join(' ')} }, onHorizontalDrag = { _, amount -> dragTotal += amount }) }`
   }
   const gestures = `${clickable}${swipeInput}`
   const modifier = layoutModifier !== '' ? `${layoutModifier}${gestures}` : `Modifier${gestures}`

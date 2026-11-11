@@ -553,6 +553,9 @@ class AwaitPointerEventScope {
   suspend fun drag(pointerId: PointerId, onDrag: (PointerInputChange) -> Unit): Boolean = true
 }
 class PointerInputScope {
+  // The real PointerInputScope is a Density: dp -> px inside the block (the
+  // swipe threshold is 40.dp.toPx()).
+  fun Dp.toPx(): Float = value
   // awaitEachGesture — one block per gesture, receiver AwaitPointerEventScope.
   @Suppress("UNUSED_PARAMETER", "RedundantSuspendModifier")
   suspend fun awaitEachGesture(block: suspend AwaitPointerEventScope.() -> Unit) {}
