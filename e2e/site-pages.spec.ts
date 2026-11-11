@@ -28,14 +28,28 @@ const sitemap = JSON.parse(readFileSync(resolve(__dirname, '../docs/src/site/con
 }
 const familyRoutes = sitemap.sections.flatMap((s) => s.pages).filter((p) => FAMILY.test(p.route) && !p.route.includes('*') && !p.route.includes('<'))
 
+/**
+ * Counts SERVER-RENDERED elements removed after load: an island that throws
+ * its server HTML away and mounts afresh shows up here. Elements a client
+ * component creates and later replaces (a live chart's own nodes) do not.
+ */
 async function trackRemovals(page: Page): Promise<void> {
   await page.addInitScript(() => {
-    const w = window as unknown as { __removed: number }
+    const w = window as unknown as { __removed: number; __removedWhat: string[] }
     w.__removed = 0
+    w.__removedWhat = []
+    const server = new WeakSet<Node>()
+    document.addEventListener('DOMContentLoaded', () => {
+      for (const el of document.querySelectorAll('body *')) server.add(el)
+    })
     new MutationObserver((list) => {
       for (const m of list) {
         if ((m.target as Element).closest?.('head')) continue
-        for (const n of m.removedNodes) if (n.nodeType === 1) w.__removed++
+        for (const n of m.removedNodes) {
+          if (n.nodeType !== 1 || !server.has(n)) continue
+          w.__removed++
+          w.__removedWhat.push(`${(n as Element).tagName} in ${(m.target as Element).closest?.('pyreon-island')?.getAttribute('data-component') ?? 'page'}`)
+        }
       }
     }).observe(document, { childList: true, subtree: true })
   })
@@ -87,7 +101,9 @@ test.describe('build output', () => {
     for (const route of ['/benchmarks', '/compare/vue', '/why/ai-ready', '/migrate/svelte', '/status']) {
       const html = readFileSync(resolve(dist, `${route.slice(1)}/index.html`), 'utf8')
       expect(html, route).toContain(`<link rel="canonical" href="https://pyreon.dev${route}"`)
-      expect(html, route).toMatch(/<meta property="og:image" content="https:\/\/pyreon\.dev\/assets\/og\/[^"]+\.png"/)
+      const og = html.match(/<meta property="og:image" content="https:\/\/pyreon\.dev(\/media\/og\/[^"]+\.png)"/)
+      expect(og, route).not.toBeNull()
+      expect(existsSync(resolve(dist, og![1]!.slice(1))), `${route}: ${og![1]}`).toBe(true)
       expect((html.match(/<h1[\s>]/g) ?? []).length, `${route} has one h1`).toBe(1)
     }
   })
@@ -105,7 +121,7 @@ test.describe('hydration', () => {
       await scrollThrough(page)
       await page.waitForTimeout(600)
       expect(errors).toEqual([])
-      expect(await page.evaluate(() => (window as unknown as { __removed: number }).__removed)).toBe(0)
+      expect(await page.evaluate(() => (window as unknown as { __removedWhat: string[] }).__removedWhat)).toEqual([])
     })
   }
 })
