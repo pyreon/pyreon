@@ -288,13 +288,24 @@ func pyreonWebViewMayDeliver(isMainFrame: Bool, origin: String?, allowedOrigin: 
 
 /// A `src` that names a BUNDLED file: a relative path with no `..` segment,
 /// no scheme and no backslash. nil when it would escape the bundle directory.
+/// A C0 control or DEL anywhere, or a space at either end, is refused too: the
+/// Android host loads the name as a URL, whose parser deletes tab/CR/LF and
+/// trims trailing controls and spaces (`.\t./x` → `../x`, #52). This host
+/// resolves a file path and was not affected (device-checked), but both hosts
+/// apply one rule.
 func pyreonWebViewAssetName(_ src: String) -> String? {
     guard !src.isEmpty, !src.hasPrefix("/"), !src.contains("\\"), !src.contains(":") else { return nil }
     let decoded = src.removingPercentEncoding ?? src
+    if _pyreonWebViewParserRewrites(src) || _pyreonWebViewParserRewrites(decoded) { return nil }
     let segments = decoded.split(separator: "/", omittingEmptySubsequences: false)
     if segments.contains(where: { $0 == ".." || $0 == "." || $0.isEmpty }) { return nil }
     if decoded.contains("\\") || decoded.contains(":") { return nil }
     return src
+}
+
+/// Whether a URL parser would delete or trim part of `s` (see `pyreonWebViewAssetName`).
+private func _pyreonWebViewParserRewrites(_ s: String) -> Bool {
+    s.unicodeScalars.contains { $0.value < 0x20 || $0.value == 0x7F } || s.hasPrefix(" ") || s.hasSuffix(" ")
 }
 
 /// A `src` that names a remote page: `http(s)` only, with a host.
