@@ -99,6 +99,26 @@ const theme = {
     base: 'all .15s ease-in-out',
     slow: 'all .3s ease-in-out',
   },
+  /**
+   * Colour roles. Every pair a component draws text with is a pair of keys
+   * here, and every pair passes WCAG AA (4.5:1) in both modes — locked by
+   * `tests/contrast.test.ts`:
+   *
+   * - `base` — the solid fill (buttons, active pagination item, pills).
+   * - `contrast` — text and glyphs ON `base` and ON `hover`. Never assume
+   *   white: white on a mid-tone fill (blue-500, emerald-500, an orange brand
+   *   colour) is below 4.5:1.
+   * - `hover` — the solid fill of a hovered `base` fill. A solid colour, not an
+   *   opacity step: `[800]` is composited over the page, so it is lighter on a
+   *   light page and darker on a dark one, and no single `contrast` passes on
+   *   both.
+   * - `text` / `textDark` — text in this colour on the page and on this
+   *   colour's tints (`50`–`200`): `text` in light mode, `textDark` in dark
+   *   mode (the page is `light.base` / `dark.base`). Components read
+   *   `mode(text, textDark)`. The opacity steps (`700`, `800`) are fills, not
+   *   text colours: as text they are 1.8–2.7:1.
+   * - `50`–`900` — the colour at that opacity, for tints, borders and rings.
+   */
   color: {
     system: {
       transparent: 'transparent',
@@ -116,6 +136,7 @@ const theme = {
         50: 'rgba(255,255,255, 0.05)',
       },
       dark: {
+        contrast: '#ffffff',
         base: 'rgba(15, 23, 42, 1)',
         900: 'rgba(15, 23, 42, 0.9)',
         800: 'rgba(15, 23, 42, 0.8)',
@@ -143,6 +164,9 @@ const theme = {
       },
       primary: {
         text: '#1e40af',
+        textDark: '#93c5fd',
+        contrast: '#0f172a',
+        hover: '#60a5fa',
         base: 'rgba(59, 130, 246, 1)',
         900: 'rgba(59, 130, 246, 0.9)',
         800: 'rgba(59, 130, 246, 0.8)',
@@ -157,6 +181,9 @@ const theme = {
       },
       success: {
         text: '#065f46',
+        textDark: '#6ee7b7',
+        contrast: '#0f172a',
+        hover: '#34d399',
         base: 'rgba(16, 185, 129, 1)',
         900: 'rgba(16, 185, 129, 0.9)',
         800: 'rgba(16, 185, 129, 0.8)',
@@ -171,6 +198,9 @@ const theme = {
       },
       info: {
         text: '#0c4a6e',
+        textDark: '#7dd3fc',
+        contrast: '#0f172a',
+        hover: '#38bdf8',
         base: 'rgba(14, 165, 233, 1)',
         900: 'rgba(14, 165, 233, 0.9)',
         800: 'rgba(14, 165, 233, 0.8)',
@@ -185,6 +215,9 @@ const theme = {
       },
       error: {
         text: '#991b1b',
+        textDark: '#fca5a5',
+        contrast: '#0f172a',
+        hover: '#f87171',
         base: 'rgba(239, 68, 68, 1)',
         900: 'rgba(239, 68, 68, 0.9)',
         800: 'rgba(239, 68, 68, 0.8)',
@@ -199,6 +232,9 @@ const theme = {
       },
       warning: {
         text: '#92400e',
+        textDark: '#fcd34d',
+        contrast: '#0f172a',
+        hover: '#fbbf24',
         base: 'rgba(245, 158, 11, 1)',
         900: 'rgba(245, 158, 11, 0.9)',
         800: 'rgba(245, 158, 11, 0.8)',
@@ -215,6 +251,19 @@ const theme = {
   },
 } as const
 
-export type Theme = typeof theme
+/** Widens the `as const` literals to their primitive types, keeping the shape. */
+type Widen<T> = T extends string
+  ? string
+  : T extends number
+    ? number
+    : T extends object
+      ? { readonly [K in keyof T]: Widen<T[K]> }
+      : T
+
+/**
+ * The theme contract: the shape of the default theme with its values widened,
+ * so another theme with the same keys (for example `brandTheme`) is a `Theme`.
+ */
+export type Theme = Widen<typeof theme>
 
 export default theme

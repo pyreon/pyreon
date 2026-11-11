@@ -47,12 +47,12 @@ export const Step = el
   .states((t) => ({
     active: {
       backgroundColor: t.color.system.primary.base,
-      color: t.color.system.light.base,
+      color: t.color.system.primary.contrast,
       borderRadius: t.borderRadius.pill,
     },
     completed: {
       backgroundColor: t.color.system.success.base,
-      color: t.color.system.light.base,
+      color: t.color.system.success.contrast,
       borderRadius: t.borderRadius.pill,
     },
     default: {

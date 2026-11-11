@@ -100,6 +100,7 @@ Opt-in. With the flag off, output is identical to classic mode.
 ## @pyreon/ui-components
 
 - Three bases: `el` (Element, layout), `txt` (Text, typography), `list` (List, flowing content). `factory.ts` re-exports `el` / `txt` / `list` / `rs`.
+- Text on a coloured fill reads the fill's `contrast` (`solidFill(t, tone)` in `bases/fragments.ts`: `base` / `contrast` / `hover`), never `light.base`: white on blue-500 is 3.68:1 and on the brand's ember 3.06:1. Text in a tone reads `tintText(t, m, tone)` = `m(text, textDark)`; the opacity steps (`[700]`, `[800]`) are not text colours. A hover fill is the solid `hover` key, not `[800]`, which composites lighter or darker with the page. Locked by `ui-theme`'s `tests/contrast.test.ts` (token pairs) and `text-on-fill-contrast.browser.test.tsx` (computed colours, both themes, both modes).
 - Layout in `.attrs()` (`tag`, `direction`, `alignX`, `alignY`, `gap`, `block`); CSS and pseudo-states in `.theme()` (`hover` / `focus` / `active` / `disabled` → `:hover` / `:focus-visible` / `:active` / `:disabled`).
 - `:hover` styles are unconditional; only `cursor: pointer` depends on `onClick` / `href`.
 - CSS property names follow unistyle (`borderWidthTop`, not `borderTopWidth`).

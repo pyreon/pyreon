@@ -1,4 +1,4 @@
-import { disabledState, el, focusRing, focusRingTone } from '../../factory'
+import { disabledState, el, focusRing, focusRingTone, solidFill, tintText } from '../../factory'
 
 const ActionIcon = el
   .config({ name: 'ActionIcon' })
@@ -23,13 +23,7 @@ const ActionIcon = el
     disabled: { ...disabledState(), pointerEvents: 'none' },
   }))
   .states((t) => ({
-    primary: {
-      backgroundColor: t.color.system.primary.base,
-      color: t.color.system.light.base,
-      hover: {
-        backgroundColor: t.color.system.primary[800],
-      },
-    },
+    primary: solidFill(t, 'primary'),
     secondary: {
       backgroundColor: t.color.system.base[100],
       color: t.color.system.base[700],
@@ -38,11 +32,7 @@ const ActionIcon = el
       },
     },
     danger: {
-      backgroundColor: t.color.system.error.base,
-      color: t.color.system.light.base,
-      hover: {
-        backgroundColor: t.color.system.error[800],
-      },
+      ...solidFill(t, 'error'),
       focus: focusRingTone(t, 'error'),
     },
   }))
@@ -53,19 +43,19 @@ const ActionIcon = el
     large: { width: '42px', height: '42px', fontSize: t.fontSize.medium },
     xLarge: { width: '48px', height: '48px', fontSize: t.fontSize.large },
   }))
-  .variants((t) => ({
+  .variants((t, m) => ({
     filled: {},
     outline: {
       backgroundColor: t.color.system.transparent,
       borderColor: t.color.system.primary.base,
-      color: t.color.system.primary.text,
+      color: tintText(t, m, 'primary'),
       hover: {
         backgroundColor: t.color.system.primary[50],
       },
     },
     subtle: {
       backgroundColor: t.color.system.primary[50],
-      color: t.color.system.primary.text,
+      color: tintText(t, m, 'primary'),
       hover: {
         backgroundColor: t.color.system.primary[100],
       },

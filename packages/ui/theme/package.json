@@ -40,7 +40,11 @@
     "@pyreon/unistyle": "workspace:^"
   },
   "devDependencies": {
+    "@pyreon/charts": "workspace:^",
+    "@pyreon/document": "workspace:^",
+    "@pyreon/flow": "workspace:^",
     "@pyreon/test-utils": "workspace:^",
+    "@pyreon/toast": "workspace:^",
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/typescript": "workspace:^",
     "@pyreon/vitest-config": "workspace:*",

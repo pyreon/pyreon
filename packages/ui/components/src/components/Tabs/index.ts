@@ -1,4 +1,5 @@
-import { disabledState, el, focusRing } from '../../factory'
+import { makeItResponsive, styles } from '@pyreon/unistyle'
+import { disabledState, el, focusRing, tintText } from '../../factory'
 import { TabsBase, TabBase, TabListBase, TabPanelBase } from '@pyreon/ui-primitives'
 
 const Tabs = el.config({ name: 'Tabs', component: TabsBase })
@@ -35,7 +36,11 @@ export const TabList = el.config({ name: 'TabList', component: TabListBase }).th
 }))
 
 export const Tab = el.config({ name: 'Tab', component: TabBase })
-  .theme((t) => ({
+  .theme((t, m) => ({
+    // The base renders a <button>: without these the UA's grey fill and
+    // outset border show on every tab.
+    backgroundColor: 'transparent',
+    borderWidth: 0,
     color: t.color.system.base[500],
     fontSize: t.fontSize.small,
     fontWeight: t.fontWeight.medium,
@@ -53,9 +58,11 @@ export const Tab = el.config({ name: 'Tab', component: TabBase })
       color: t.color.system.base[700],
     },
     focus: { ...focusRing(t), borderRadius: t.borderRadius.small },
+    // The selected look. `active` alone compiles to `:active` (pointer held
+    // down); the `.styles()` below also applies it to the selected tab.
     active: {
       borderColorBottom: t.color.system.primary.base,
-      color: t.color.system.primary.text,
+      color: tintText(t, m, 'primary'),
     },
     disabled: { ...disabledState(), pointerEvents: 'none' },
   }))
@@ -77,10 +84,23 @@ export const Tab = el.config({ name: 'Tab', component: TabBase })
       borderRadius: t.borderRadius.base,
       active: {
         backgroundColor: t.color.system.primary.base,
-        color: t.color.system.light.base,
+        color: t.color.system.primary.contrast,
       },
     },
   }))
+  // TabBase marks the selected tab with `aria-selected="true"` and owns that
+  // state itself (it is never a prop of this component), so the selected look
+  // is keyed on the attribute. Without it the selected tab looked exactly like
+  // the others.
+  .styles(
+    (css) => css`
+      ${({ $rocketstyle }: { $rocketstyle: { active: Record<string, unknown> } }) => css`
+        &[aria-selected='true'] {
+          ${makeItResponsive({ theme: $rocketstyle.active, styles, css })};
+        }
+      `}
+    `,
+  )
 
 export const TabPanel = el.config({ name: 'TabPanel', component: TabPanelBase }).theme((t) => ({
   paddingTop: t.spacing.small,
