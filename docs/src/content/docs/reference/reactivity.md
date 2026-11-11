@@ -29,7 +29,7 @@ See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multipla
 - watch(source, callback) — explicit reactive watcher
 - createSelector() — O(1) equality selector for keyed lists
 - cell&lt;T&gt;() — lighter alternative to signal() for direct subscribe()
-- createStore() / reconcile() / isStore() — deeply reactive proxy stores + structural diff
+- createStore() / reconcile() / isStore() / snapshot() — deeply reactive proxy stores, structural diff, plain deep copy
 - effectScope() / getCurrentScope() — scope-based lifecycle management
 - untrack() — read without subscribing
 - onSignalUpdate() / inspectSignal() / why() / getReactiveTrace() — debug instrumentation
@@ -105,6 +105,7 @@ effect(() => {
 | [`isStore`](#isstore-function) | function | Type guard — returns `true` if the value is a `createStore` proxy (recognized via an internal symbol marker). |
 | [`shallowReactive`](#shallowreactive-function) | function | Create a SHALLOW reactive store — only top-level mutations trigger updates. |
 | [`markRaw`](#markraw-function) | function | Mark an object as RAW — `createStore` and `shallowReactive` will return it unwrapped. |
+| [`snapshot`](#snapshot-function) | function | A plain, non-reactive deep copy of a store (or of any value holding stores) — for logging, `JSON.stringify`, `structured |
 | [`untrack`](#untrack-function) | function | Execute a function reading signals WITHOUT subscribing to them. |
 | [`effectScope`](#effectscope-function) | function | Create an `EffectScope` — a container that auto-tracks effects/computeds created inside `scope.runInScope(fn)` and dispo |
 | [`onScopeDispose`](#onscopedispose-function) | function | Register a callback to run when the current `EffectScope` stops. |
@@ -805,6 +806,35 @@ store.editor.someMethod()           // works — class methods see real receiver
 
 ---
 
+### `snapshot` `function`
+
+```ts
+<T>(value: T) => T
+```
+
+A plain, non-reactive deep copy of a store (or of any value holding stores) — for logging, `JSON.stringify`, `structuredClone`, `postMessage`, undo history or a form's initial values. Reads the raw targets, so it tracks nothing and creates no per-property signals. Copies plain objects and arrays at every depth and unwraps every store proxy it meets (including one assigned into another store); keeps class instances, `Map`, `Set`, `Date` and `markRaw` objects by reference, unwrapped. Shared references and cycles are preserved. The equivalent of Svelte `$state.snapshot`.
+
+**Example**
+
+```tsx
+import { createStore, snapshot } from '@pyreon/reactivity'
+
+const store = createStore({ user: { name: 'Ann' }, tags: ['a'] })
+const copy = snapshot(store)   // { user: { name: 'Ann' }, tags: ['a'] }, no proxies
+structuredClone(copy)          // works — structuredClone(store) throws on the Proxy
+store.user.name = 'Bob'        // copy.user.name is still 'Ann'
+```
+
+**Common mistakes**
+
+- Calling `structuredClone(store)` or `postMessage(store)` directly — a Proxy cannot be cloned; pass `snapshot(store)`
+- Expecting class instances / `Map` / `Set` / `Date` inside the store to be copied — they are kept by reference; copy them yourself if the snapshot must not share them
+- Using `snapshot` to read inside an effect and expecting a re-run on change — it tracks nothing by design; read the store fields directly to subscribe
+
+**See also:** `createStore` · `markRaw` · `reconcile`
+
+---
+
 ### `untrack` `function`
 
 ```ts
@@ -1144,7 +1174,7 @@ deactivateReactiveDevtools() // → registry cleared
 getReactiveGraph(): { nodes: ReactiveNode[]; edges: { from: number; to: number }[] }  ·  getReactiveFires(): { id: number; ts: number }[]
 ```
 
-Fresh snapshot of the live reactive graph + a bounded recent-fire timeline, for the reactive-devtools tabs. `getReactiveGraph()` returns every tracked node (`{ id, kind: "signal"|"derived"|"effect", name, value, subscribers, fires, lastFire }`) plus dependency edges recomputed on demand from the real subscriber `_s` Sets (source → subscriber: signal→derived, derived→effect) — always consistent with the framework’s actual subscription state, no incremental drift. `getReactiveFires()` returns a fixed-size ring buffer of recent fires (`{ id, ts }`, oldest → newest) powering the Effects/Profiler tabs. Both require `activateReactiveDevtools()` first and return empty otherwise. Names come from `signal(v, { name })` / the vite-plugin dev auto-naming; anonymous computeds/effects get a synthetic `derived#id` / `effect#id`.
+Fresh snapshot of the live reactive graph + a bounded recent-fire timeline, for the reactive-devtools tabs. `getReactiveGraph()` returns every tracked node (`{ id, kind: "signal"|"derived"|"effect", name, value, subscribers, fires, lastFire, loc?, binding?, target?, key? }`) plus dependency edges recomputed on demand from the real subscriber slots, both the tracked `_s1`/`_s` pair and the `direct()` `_d1`/`_d` pair (source → subscriber: signal→derived, derived→effect, signal→DOM binding). Every live DOM binding (compiled `_bindText` / `_bindDirect` / `_bind` / `renderEffect`, `createSelector().subscribe` row bindings, h()-path props and children, `<For>` / `<Show>` boundaries) is an `effect` node with `binding` set to what it writes (`text`, `attr`, `class`, `style`, `prop`, `child`, `list`, or `dom` when a compiled updater assigns the DOM without a setter) and a name like `aria-busy on <div>`; its mount run counts as fire 1 and each re-run as another — always consistent with the framework’s actual subscription state, no incremental drift. `getReactiveFires()` returns a fixed-size ring buffer of recent fires (`{ id, ts }`, oldest → newest) powering the Effects/Profiler tabs. Both require `activateReactiveDevtools()` first and return empty otherwise. Names come from `signal(v, { name })` / the vite-plugin dev auto-naming; anonymous computeds/effects get a synthetic `derived#id` / `effect#id`.
 
 **Example**
 
@@ -1176,7 +1206,7 @@ getReactiveFires() // → [{ id, ts }, …]  (bounded, chronological)
 describeReactiveGraph(graph?: ReactiveGraph): GraphDescription  ·  formatGraphDescription(desc): string
 ```
 
-Auto-generated BEHAVIORAL description of the reactive graph — what a change to each signal actually DOES, in English, plus health insights only the graph shape can surface. No framework generates behavioral (not API) docs from the reactive graph; Pyreon can because it holds the precise graph. Returns `{ summary, nodes, insights }`: each `nodes[]` entry has an English `behavior` one-liner (a signal describes its downstream fan-out — 'changing it re-derives N values and runs M effects'; a computed/effect describes what it reacts to — 'recomputes when qty, price change'). `insights` flags behavioral smells: `orphan-signal` (nothing depends on it — dead reactivity), `high-fanout` (a change re-runs many effects — a hot signal), `deep-chain` (end of a long dependency chain). Pure over `getReactiveGraph()`; dev/test only. Pairs with `getUpdateCause` — this describes the whole graph, that explains one update.
+Auto-generated BEHAVIORAL description of the reactive graph — what a change to each signal actually DOES, in English, plus health insights only the graph shape can surface. No framework generates behavioral (not API) docs from the reactive graph; Pyreon can because it holds the precise graph. Returns `{ summary, nodes, insights }`: each `nodes[]` entry has an English `behavior` one-liner (a signal describes its downstream fan-out — 'changing it re-derives N values, runs M effects and updates K DOM bindings'; a computed/effect describes what it reacts to — 'recomputes when qty, price change'). `summary` is `{ signals, derived, effects, bindings, edges }`, where `effects` excludes DOM bindings. `insights` flags behavioral smells: `orphan-signal` (nothing depends on it, counting DOM bindings — dead reactivity), `high-fanout` (a change re-runs many effects, not counting DOM bindings — a hot signal), `deep-chain` (end of a long dependency chain). Pure over `getReactiveGraph()`; dev/test only. Pairs with `getUpdateCause` — this describes the whole graph, that explains one update.
 
 **Example**
 
@@ -1342,7 +1372,7 @@ console.log(formatReactiveCoverage(report))
 () => ReactiveCoverageReport
 ```
 
-Snapshot the current Reactive Coverage session into a `ReactiveCoverageReport` — `{ total, covered, uncovered, percent, byKind, entries, uncoveredEntries }`, where each entry is `{ id, kind, name, fires, subscribers, covered, reason, loc }`. A node is covered when its reactive behaviour actually fired: signals when they changed (`fires ≥ 1`), effects/derived when they RE-ran past their mount run (`fires ≥ 2`). The `ran-once` reason flags the interesting bucket — a mounted effect/computed whose reactive re-run was never triggered. Call any number of times while the session is active.
+Snapshot the current Reactive Coverage session into a `ReactiveCoverageReport` — `{ total, covered, uncovered, percent, byKind, bindings, entries, uncoveredEntries }`, where each entry is `{ id, kind, name, fires, subscribers, covered, reason, loc }` plus `binding` / `target` / `key` for a DOM binding. Every live DOM binding is an effect (mount run = fire 1), so it reads `ran-once` until a source changes and `covered` after; `bindings` totals them. A dead binding (its first run read no signal) is not counted. A node is covered when its reactive behaviour actually fired: signals when they changed (`fires ≥ 1`), effects/derived when they RE-ran past their mount run (`fires ≥ 2`). The `ran-once` reason flags the interesting bucket — a mounted effect/computed whose reactive re-run was never triggered. Call any number of times while the session is active.
 
 **Example**
 

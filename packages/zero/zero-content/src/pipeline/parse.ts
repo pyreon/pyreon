@@ -171,6 +171,13 @@ export interface CompileResult {
    * the author sees a clickable file location.
    */
   warnings: string[]
+  /**
+   * Code-fence languages in this file that the highlighter did not have
+   * loaded (rendered as plain text), deduplicated, in first-seen order.
+   * The Vite plugin warns once per language per build (#4257). Empty
+   * when highlighting is disabled.
+   */
+  unknownLangs: string[]
 }
 
 export interface CompileOptions {
@@ -276,6 +283,7 @@ export async function compileMarkdown(
   //    the compiled `.tsx`.
   const componentRefs = new Set<string>()
   const hoistedEsm: string[] = []
+  const unknownLangs = new Set<string>()
   const emitOpts: EmitOptions = {
     mdxEsmHoist: (esm) => hoistedEsm.push(esm),
     mdxComponentRef: (name) => componentRefs.add(name),
@@ -296,7 +304,8 @@ export async function compileMarkdown(
     })(),
   }
   if (options.highlight !== false) {
-    emitOpts.highlight = (code, lang) => highlightCode(code, lang, options.highlighter)
+    emitOpts.highlight = (code, lang) =>
+      highlightCode(code, lang, options.highlighter, (l) => unknownLangs.add(l))
   }
   if (options.resolveInternalLink !== undefined) {
     emitOpts.resolveInternalLink = options.resolveInternalLink
@@ -353,6 +362,7 @@ export async function compileMarkdown(
     componentRefs: componentRefList,
     hoistedEsm: [...hoistedEsm],
     warnings: compileWarnings,
+    unknownLangs: [...unknownLangs],
   }
 }
 

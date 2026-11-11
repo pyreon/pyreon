@@ -1,5 +1,5 @@
 import { PinInputBase } from '@pyreon/ui-primitives'
-import { disabledState, el, focusRingTone } from '../../factory'
+import { disabledState, el, focusRingTone, tones } from '../../factory'
 
 /**
  * PinInput — a segmented one-time-code / PIN entry that delegates ALL behavior
@@ -71,17 +71,17 @@ export default PinInput
 export const PinInputCell = el
   .config({ name: 'PinInputCell' })
   .attrs({ tag: 'input' })
-  .theme((t) => ({
+  .theme((t, m) => ({
     width: '40px',
     height: '40px',
     textAlign: 'center',
     fontSize: t.fontSize.medium,
     borderWidth: t.borderWidth.base,
     borderStyle: t.borderStyle.base,
-    borderColor: t.color.system.base[300],
+    borderColor: tones(t, m).border,
     borderRadius: t.borderRadius.base,
-    backgroundColor: t.color.system.light.base,
-    color: t.color.system.dark[800],
+    backgroundColor: tones(t, m).surface,
+    color: tones(t, m).text,
     outline: 'none',
     transition: t.transition.fast,
     focus: { ...focusRingTone(t, 'primary'), borderColor: t.color.system.primary.base },

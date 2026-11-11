@@ -1,5 +1,5 @@
 import type { Adapter, AdapterBuildOptions, AdapterRevalidateResult } from '../types'
-import { BUN_ADAPTER_OUTPUT } from './contract'
+import { BUN_ADAPTER_OUTPUT, ADAPTER_RESERVED_OUTPUTS } from './contract'
 import { SCHEDULER_RUNTIME, serializeJobs } from './cron'
 import { REQUEST_RUNTIME } from './request-runtime'
 import { stageClientThenServer } from './stage'
@@ -27,6 +27,7 @@ export interface BunAdapterOptions {
 export function bunAdapter(adapterOptions: BunAdapterOptions = {}): Adapter {
   return {
     name: 'bun',
+    reservedOutputs: ADAPTER_RESERVED_OUTPUTS.bun,
     capabilities: { schedules: adapterOptions.scheduler === true },
     async build(options: AdapterBuildOptions) {
       if (options.kind === 'ssg') {
@@ -91,6 +92,11 @@ const PORT = process.env.PORT ? Number(process.env.PORT) : ${port}
 // \`__pyreonIsHiddenPath\`: hidden files (\`/.vite/manifest.json\`, \`/.env\`)
 // are never served as static files; only \`/.well-known/\` is public.
 ${REQUEST_RUNTIME}
+// \`ORIGIN\` (e.g. "https://example.com") fixes the request URL's origin:
+// without it Bun builds the URL from the client's \`Host\` header, and SSR
+// code that resolves against the request origin (a relative fetch,
+// \`new URL(p, ctx.url)\`) follows the client to any host it names.
+const FIXED_ORIGIN = __pyreonFixedOrigin(process.env.ORIGIN)
 Bun.serve({
   port: PORT,
   // Bun defaults to \`development: true\` unless NODE_ENV says otherwise, and
@@ -98,7 +104,24 @@ Bun.serve({
   // to the client. A production runner is never a development server.
   development: false,
   async fetch(req, server) {
-    const url = new URL(req.url)
+    // A \`Host\` header Bun cannot build a URL from (\`a/b\`, \`x?y\`) leaves
+    // \`req.url\` relative: answer 400 instead of throwing a 500.
+    let url
+    try {
+      url = new URL(req.url)
+    } catch {
+      return new Response("Bad Request", { status: 400 })
+    }
+    // Read before any rebuild: \`requestIP\` only knows the original Request.
+    const remoteAddress = server.requestIP(req)?.address
+    if (FIXED_ORIGIN !== null) {
+      const fixed = __pyreonRequestUrl(url.pathname + url.search, FIXED_ORIGIN)
+      if (fixed === null) return new Response("Bad Request", { status: 400 })
+      if (fixed.href !== url.href) {
+        req = new Request(fixed.href, req)
+        url = fixed
+      }
+    }
 
     // Try static files first (GET only).
     //
@@ -192,7 +215,7 @@ Bun.serve({
     // Fall through to SSR handler. The client's socket address rides on the
     // Request (read by @pyreon/server as ctx.locals.remoteAddress) for rate
     // limiting and logging — never a header, which a client could forge.
-    req[Symbol.for("pyreon.remoteAddress")] = server.requestIP(req)?.address
+    req[Symbol.for("pyreon.remoteAddress")] = remoteAddress
     try {
       return await handler(req)
     } catch (err) {

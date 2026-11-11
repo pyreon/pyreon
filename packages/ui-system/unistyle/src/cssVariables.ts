@@ -160,8 +160,10 @@ const optionsSignature = (
  * Not tokenized (kept raw in `vars`): excluded top-level keys
  * (`breakpoints` / `rootSize` — `@media` queries cannot read `var()`),
  * arrays, functions, booleans, `null`/`undefined`, empty strings and
- * non-finite numbers. Note CSS also forbids `var()` inside `url(…)`, so
- * never tokenize values destined for `backgroundImage`.
+ * non-finite numbers. CSS cannot resolve `var()` inside `url(…)`, and
+ * `backgroundImage` passes a `var()` through verbatim, so a var leaf used for
+ * `backgroundImage` must hold a complete image (`url(/a.png)`, a gradient),
+ * not a bare path.
  *
  * Pure — performs no injection; pass `css` to your style sink
  * (`createGlobalStyle`, `sheet.injectRules`, a `<style>` tag).

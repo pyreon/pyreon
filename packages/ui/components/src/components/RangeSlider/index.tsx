@@ -6,7 +6,7 @@ import {
   type RangeSliderBaseProps,
   type RangeSliderState,
 } from '@pyreon/ui-primitives'
-import { el } from '../../factory'
+import { el, tones } from '../../factory'
 
 /**
  * ELEMENT-FIRST COMPOSITION (rollout #3): batteries-included dual-thumb
@@ -43,24 +43,24 @@ const RangeRoot = el
 const RangeTrack = el
   .config({ name: 'RangeTrack' })
   .attrs({ tag: 'div', block: true })
-  .theme((t) => ({
+  .theme((t, m) => ({
     position: 'relative',
     height: 4,
     borderRadius: t.borderRadius.pill,
-    backgroundColor: t.color.system.base[200],
+    backgroundColor: tones(t, m).border,
     cursor: 'pointer',
   }))
 
 const RangeThumb = el
   .config({ name: 'RangeThumb' })
   .attrs({ tag: 'span' })
-  .theme((t) => ({
+  .theme((t, m) => ({
     position: 'absolute',
     top: '50%',
     width: 16,
     height: 16,
     borderRadius: t.borderRadius.pill,
-    backgroundColor: t.color.system.light.base,
+    backgroundColor: tones(t, m).surface,
     borderWidth: 2,
     borderStyle: 'solid',
     borderColor: t.color.system.primary.base,

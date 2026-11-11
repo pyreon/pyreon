@@ -703,13 +703,13 @@ const sibling = Def?.create()
 
 ### Tree Traversal
 
-A model instance gets a **tree parent** when it's written into another model's state — as a field value, an **array element**, or a plain-object value. Parent tracking runs on the initial value *and* every subsequent write, so array-held children (the headline `todos: Todo[]` shape) are tracked the same way field-nested children are.
+A model instance gets a **tree parent** when it's written into another model's state — as a field value, an **array element**, or a plain-object value. Parent tracking runs on the initial value *and* every subsequent write, so array-held children (the headline `todos: arrayOf(Todo)` shape) are tracked the same way field-nested children are.
 
 ```ts
-import { getParent, getRoot, getPath, isRoot, hasParent } from '@pyreon/state-tree'
+import { arrayOf, getParent, getRoot, getPath, isRoot, hasParent } from '@pyreon/state-tree'
 
 const Todo = model({ state: { title: '', done: false } })
-const TodoList = model({ state: { todos: [] as ReturnType<typeof Todo.create>[] } })
+const TodoList = model({ state: { todos: arrayOf(Todo) } })
   .actions((self) => ({
     add: (title: string) => self.todos.update((l) => [...l, Todo.create({ title, done: false })]),
   }))
@@ -720,17 +720,50 @@ const todo = list.todos()[0]
 
 getParent(todo) // → list   (array children get a parent, not just field-nested ones)
 getRoot(todo)   // → list   (walks to the top of the tree)
-getPath(todo)   // "/todos" (JSON-pointer path from the root)
+getPath(todo)   // "/todos/0" (JSON-pointer path from the root, with the index)
 isRoot(list)    // true
 hasParent(todo) // true
 ```
 
 - `getParent(node)` — the instance `node` is attached under, or `undefined` for a root.
 - `getRoot(node)` — walk parents to the top (returns `node` itself if it's a root).
-- `getPath(node)` — path from the root built from each ancestor's parent-key (`""` for a root).
+- `getPath(node)` — JSON-pointer path from the root, including the index / key of array and map children (`""` for a root). It is the same path the node's patches carry.
 - `isRoot(node)` / `hasParent(node)` — booleans.
 
-All throw on a non-model-instance. **v1 notes:** `getPath` carries the field key (`/todos`), not the array index (`/todos/0`); a node removed from an array keeps its last parent until GC (parent is set on write, not diffed on removal); auto-attachment is one container level deep.
+All throw on a non-model-instance. **Notes:** a node removed from an array keeps its last parent until GC (parent is set on write, not diffed on removal); auto-attachment is one container level deep.
+
+### Arrays and Maps of Models
+
+Declare a field that holds model instances with **`arrayOf(Model)`** (an array) or **`mapOf(Model)`** (a string-keyed object). The field is an ordinary signal holding `Model[]` / `Record<string, Model>`; declaring the element model is what makes the children first-class:
+
+- `create()` turns element snapshots into instances (live instances are kept as they are).
+- A write inside a child emits a patch addressed by index or key — `/todos/1/done`, `/byId/u1/name` — and adding or removing elements emits a `/todos` replace whose value is the element **snapshots**, never live instances.
+- `applySnapshot` and `applyPatch` reconcile by index / key: existing instances are updated in place, extra elements are created with `Model.create()`, missing ones are dropped.
+
+So patches and snapshots round-trip — for undo/redo, and into a fresh instance in another process:
+
+```ts
+import { applyPatch, arrayOf, getSnapshot, model, onPatch, type Patch } from '@pyreon/state-tree'
+
+const Todo = model({ state: { title: '', done: false } }).actions((self) => ({
+  toggle: () => self.done.update((d) => !d),
+}))
+const TodoList = model({ state: { todos: arrayOf(Todo) } }).actions((self) => ({
+  add: (title: string) => self.todos.update((l) => [...l, Todo.create({ title })]),
+}))
+
+const list = TodoList.create()
+const log: Patch[] = []
+onPatch(list, (p) => log.push(p))
+list.add('one')            // { op: 'replace', path: '/todos', value: [{ title: 'one', done: false }] }
+list.todos()[0]!.toggle()  // { op: 'replace', path: '/todos/0/done', value: true }
+
+const replica = TodoList.create()
+applyPatch(replica, JSON.parse(JSON.stringify(log)))
+getSnapshot(replica)       // { todos: [{ title: 'one', done: true }] } — with real Todo instances
+```
+
+A plain default (`todos: [] as Todo[]`) still holds instances, and its children still get indexed paths and snapshot patch values, but it carries no element type: restoring data into an empty field writes plain objects (a later `/todos/0/…` patch then throws), and a dev warning names the field. When the elements present all share one model, that model is used to grow or shrink the list.
 
 ### References & Identifiers
 
@@ -739,15 +772,15 @@ Normalized, by-id references — store a model's id, resolve to the live node on
 Declare a model's **identifier** with `identifier()` (the field a reference resolves against), then `reference(TargetModel)` for a field that points at it:
 
 ```ts
-import { model, identifier, reference, resolveIdentifier, getSnapshot } from '@pyreon/state-tree'
+import { arrayOf, model, identifier, reference, resolveIdentifier, getSnapshot } from '@pyreon/state-tree'
 
 const User = model({ state: { id: identifier(), name: '' } })
 const Post = model({ state: { id: identifier(), title: '', author: reference(User) } })
 
 const Store = model({
   state: {
-    users: [] as ReturnType<typeof User.create>[],
-    posts: [] as ReturnType<typeof Post.create>[],
+    users: arrayOf(User),
+    posts: arrayOf(Post),
   },
 }).actions((self) => ({
   addUser: (id: string, name: string) => self.users.update((l) => [...l, User.create({ id, name })]),
@@ -768,7 +801,7 @@ getSnapshot(post).author // "u1" — references serialize as the id, not the nod
 ```
 
 - **`identifier(default?)`** — plain-mode field marker declaring the id field. Schema mode names it instead: `model({ schema, identifier: 'id' })`.
-- **`reference(Type)`** — a field storing the target's id, resolving to the node on read. Accessor: `()` resolves, `.set(node | id)`, `.id()`, `.setId(id)`, `.peek()`. Serializes/restores as the id.
+- **`reference(Type)`** — a field storing the target's id, resolving to the node on read. Accessor: `()` resolves, `.set(node | id)`, `.id()`, `.setId(id)`, `.peek()`. Serializes/restores as the id, and a change emits a `replace` patch carrying the new id.
 - **`resolveIdentifier(root, Type, id)`** — find a node of `Type` with the given id in `root`'s subtree (also useful directly).
 
 Resolution goes through `getRoot(node)`, so the referencing node and its target must share a root (typically both held by a store). An unresolved reference returns `undefined`. The target type must declare an `identifier()`. Resolution is O(n) over the tree per read in v1 (a root-scoped id-index is a planned optimization).
@@ -1607,7 +1640,7 @@ Subscribe to state mutations as JSON patches. Returns an unsubscribe function. T
 
 ### `applyPatch(instance, patch)`
 
-Apply one or more JSON patches to a model instance. Accepts a single `Patch` or an array of `Patch` objects (batched). Only `"replace"` operations are supported. Paths use JSON pointer format. Throws if the argument is not a model instance.
+Apply one or more JSON patches to a model instance. Accepts a single `Patch` or an array of `Patch` objects (batched). Only `"replace"` operations are supported. Paths use JSON pointer format and walk into array / map elements (`/todos/1/done`). Values are restored the same way `applySnapshot` restores them. Throws if the argument is not a model instance.
 
 ### `addMiddleware(instance, middleware)`
 
@@ -1627,7 +1660,11 @@ Lifecycle helpers — described in the `destroy` / `clone` sections above.
 
 ### `getParent(node)` / `hasParent(node)` / `isRoot(node)` / `getRoot(node)` / `getPath(node)`
 
-Tree navigation for field-nested models. `getParent` returns `undefined` for a root; `getPath` returns a JSON-pointer-style path from the root.
+Tree navigation for nested models and array / map children. `getParent` returns `undefined` for a root; `getPath` returns the JSON-pointer path from the root, including element indices and keys.
+
+### `arrayOf(Model)` / `mapOf(Model)`
+
+Declare a plain-mode field as an array or string-keyed map of `Model` instances, so `create`, `applySnapshot` and `applyPatch` recreate its elements from snapshots. See [Arrays and Maps of Models](#arrays-and-maps-of-models).
 
 ### `identifier(default?)` / `reference(Type)` / `resolveIdentifier(root, Type, id)`
 
@@ -1659,6 +1696,8 @@ Destroy all hook singletons.
 | `DeepPartial`     | Recursive partial used by `deepPatch`                             |
 | `LifecycleHandlers` | Return type of the `.lifecycle()` factory                       |
 | `ReferenceField`  | Field type produced by `reference(Type)`                          |
+| `ModelArray` / `ModelMap` | Field value types produced by `arrayOf(Model)` / `mapOf(Model)` |
+| `SnapshotIn`      | What `.create()` accepts: a snapshot, with live instances allowed in `arrayOf` / `mapOf` fields |
 
 ## Error Handling
 

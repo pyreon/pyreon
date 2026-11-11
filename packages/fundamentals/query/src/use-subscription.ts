@@ -13,29 +13,29 @@ export interface UseSubscriptionOptions {
   /** WebSocket URL — can be a signal for reactive URLs */
   url: string | (() => string)
   /** WebSocket sub-protocols */
-  protocols?: string | string[]
+  protocols?: string | string[] | undefined
   /** Called when a message is received — use queryClient to invalidate or update cache */
   onMessage: (event: MessageEvent, queryClient: QueryClient) => void
   /** Called when the connection opens */
-  onOpen?: (event: Event) => void
+  onOpen?: ((event: Event) => void) | undefined
   /** Called when the connection closes */
-  onClose?: (event: CloseEvent) => void
+  onClose?: ((event: CloseEvent) => void) | undefined
   /** Called when a connection error occurs */
-  onError?: (event: Event) => void
+  onError?: ((event: Event) => void) | undefined
   /** Whether to automatically reconnect — default: true */
-  reconnect?: boolean
+  reconnect?: boolean | undefined
   /** Initial reconnect delay in ms — doubles on each retry (jittered), default: 1000 */
-  reconnectDelay?: number
+  reconnectDelay?: number | undefined
   /** Ceiling for the reconnect delay in ms — default: 30000 */
-  maxReconnectDelay?: number
+  maxReconnectDelay?: number | undefined
   /**
    * Maximum reconnect attempts — default: 10, 0 = unlimited. When they run
    * out, `status()` becomes `'failed'`; a browser `online` event (or
    * `reconnect()`) starts over.
    */
-  maxReconnectAttempts?: number
+  maxReconnectAttempts?: number | undefined
   /** Whether the subscription is enabled — default: true */
-  enabled?: boolean | (() => boolean)
+  enabled?: boolean | (() => boolean) | undefined
 }
 
 export interface UseSubscriptionResult {

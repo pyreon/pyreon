@@ -24,6 +24,16 @@
  *     `=== 1` computed once but never recomputed (`ran-once`), `=== 0` never
  *     read (`never-ran`).
  *
+ * DOM bindings are effects. Every live binding a compiled template or the
+ * runtime creates — `_bind`, `renderEffect`, and the `direct()` updaters behind
+ * `_bindText` / `_bindDirect` — is an `effect` node whose mount run counts as
+ * fire 1, so a binding is `ran-once` until one of its sources changes and
+ * `covered` after. Entries carry `binding` (what it writes: `text`, `attr`,
+ * `class`, …), `target` (the element's tag) and `key` (the attribute or
+ * property) when known, and `report.bindings` totals them. A dead binding (its
+ * first run read no signal, so nothing can ever re-run it) is not a reactive
+ * edge and is not counted.
+ *
  * ── Requires dev/test mode ───────────────────────────────────────────────────
  * The reactive registry is always-on in `__DEV__` and tree-shaken in
  * production, so coverage only measures when `NODE_ENV !== 'production'`. In a
@@ -36,6 +46,7 @@ import {
   activateReactiveDevtools,
   deactivateReactiveDevtools,
   getReactiveGraph,
+  type ReactiveBindingKind,
   type ReactiveNode,
   type ReactiveNodeKind,
   type SourceLocation,
@@ -58,6 +69,12 @@ export interface ReactiveCoverageEntry {
   covered: boolean
   reason: ReactiveCoverageReason
   loc?: SourceLocation
+  /** Set when the node is a DOM binding: what it writes. */
+  binding?: ReactiveBindingKind
+  /** Tag of the element a DOM binding writes to, when known. */
+  target?: string
+  /** Attribute or property name a DOM binding writes, when known. */
+  key?: string
 }
 
 /** Per-kind totals. */
@@ -74,6 +91,8 @@ export interface ReactiveCoverageReport {
   /** `covered / total × 100`, rounded to 1 decimal. `100` when `total === 0`. */
   percent: number
   byKind: Record<ReactiveNodeKind, ReactiveKindStat>
+  /** The DOM bindings among the effects (a subset of `byKind.effect`). */
+  bindings: ReactiveKindStat
   /** Every node, in registration order. */
   entries: ReactiveCoverageEntry[]
   /** Convenience view — the subset with `covered === false`. */
@@ -113,6 +132,7 @@ export function computeReactiveCoverage(nodes: readonly ReactiveNode[]): Reactiv
   const entries: ReactiveCoverageEntry[] = []
   const uncoveredEntries: ReactiveCoverageEntry[] = []
   const byKind = EMPTY_KIND_STATS()
+  const bindings: ReactiveKindStat = { total: 0, covered: 0 }
   let covered = 0
 
   for (const node of nodes) {
@@ -126,6 +146,13 @@ export function computeReactiveCoverage(nodes: readonly ReactiveNode[]): Reactiv
       covered: verdict.covered,
       reason: verdict.reason,
       ...(node.loc ? { loc: node.loc } : {}),
+    }
+    if (node.binding !== undefined) {
+      entry.binding = node.binding
+      if (node.target !== undefined) entry.target = node.target
+      if (node.key !== undefined) entry.key = node.key
+      bindings.total++
+      if (verdict.covered) bindings.covered++
     }
     entries.push(entry)
     byKind[node.kind].total++
@@ -145,6 +172,7 @@ export function computeReactiveCoverage(nodes: readonly ReactiveNode[]): Reactiv
     uncovered: total - covered,
     percent,
     byKind,
+    bindings,
     entries,
     uncoveredEntries,
   }
@@ -187,7 +215,11 @@ export function formatReactiveCoverage(
   lines.push(
     `  signals ${byKind.signal.covered}/${byKind.signal.total}` +
       `   derived ${byKind.derived.covered}/${byKind.derived.total}` +
-      `   effects ${byKind.effect.covered}/${byKind.effect.total}`,
+      `   effects ${byKind.effect.covered}/${byKind.effect.total}` +
+      // Guarded: a report built by hand (older callers, fixtures) may lack it.
+      (report.bindings !== undefined && report.bindings.total > 0
+        ? ` (DOM bindings ${report.bindings.covered}/${report.bindings.total})`
+        : ''),
   )
 
   const limit = opts.limit ?? 50

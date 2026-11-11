@@ -1,7 +1,8 @@
 import type { Signal } from '@pyreon/reactivity'
 import { batch, wrapSignal } from '@pyreon/reactivity'
 import { instanceMeta, isModelInstance } from './registry'
-import { applySnapshot } from './snapshot'
+import { restoreField, serializeValue } from './snapshot'
+import { unescapeSegment } from './tree'
 import type { Patch, PatchListener } from './types'
 
 /** Property names that must never be used as patch path segments. */
@@ -40,33 +41,15 @@ export function trackedSignal<T>(
         // Skip patch emission when no one is listening — avoids object
         // allocation and (for nested instances) a full recursive snapshot.
         if (!hasListeners || hasListeners()) {
-          // For model instances, emit the snapshot rather than the live object
-          // so patches are always plain JSON-serializable values.
-          const patchValue = isModelInstance(newValue)
-            ? snapshotValue(newValue as object)
-            : newValue
-          emitPatch({ op: 'replace', path, value: patchValue })
+          // Emit serialized data, never live instances: a model value becomes
+          // its snapshot, and so does every instance an array / plain object
+          // holds (`todos: Todo[]`) — a live instance serializes to `{}`, so a
+          // patch sent over the wire or stored for undo lost the data.
+          emitPatch({ op: 'replace', path, value: serializeValue(newValue) })
         }
       }
     },
   })
-}
-
-/** Shallow snapshot helper (avoids importing snapshot.ts to prevent circular deps). */
-function snapshotValue(instance: object): Record<string, unknown> {
-  const meta = instanceMeta.get(instance)
-  // Defensive: `snapshotValue` is only called on values that already passed
-  // `isModelInstance`, so `meta` is always present here.
-  /* v8 ignore next */
-  if (!meta) return instance as Record<string, unknown>
-  const out: Record<string, unknown> = {}
-  for (const key of meta.stateKeys) {
-    const sig = (instance as Record<string, Signal<unknown>>)[key]
-    if (!sig) continue
-    const val = sig.peek()
-    out[key] = isModelInstance(val) ? snapshotValue(val as object) : val
-  }
-  return out
 }
 
 // ─── onPatch ──────────────────────────────────────────────────────────────────
@@ -91,12 +74,52 @@ export function onPatch(instance: object, listener: PatchListener): () => void {
 
 // ─── applyPatch ─────────────────────────────────────────────────────────────
 
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  if (value === null || typeof value !== 'object') return false
+  const proto = Object.getPrototypeOf(value)
+  return proto === Object.prototype || proto === null
+}
+
+/** One intermediate step of an `applyPatch` path walk. */
+function step(target: unknown, segment: string, path: string): unknown {
+  if (isModelInstance(target)) {
+    const meta = instanceMeta.get(target as object)!
+    if (!meta.stateKeys.includes(segment)) {
+      throw new Error(`[Pyreon] state-tree applyPatch: unknown state key "${segment}"`)
+    }
+    if (meta.referenceKeys?.has(segment)) {
+      throw new Error(
+        `[Pyreon] state-tree applyPatch: "${segment}" is a reference field — a patch cannot ` +
+          'walk through it (the target is owned elsewhere in the tree; patch it at its own path).',
+      )
+    }
+    const value = (target as Record<string, Signal<unknown>>)[segment]!.peek()
+    if (value === null || typeof value !== 'object') {
+      throw new Error(
+        `[Pyreon] state-tree applyPatch: "${segment}" is not a nested model instance or container`,
+      )
+    }
+    return value
+  }
+  if (Array.isArray(target)) {
+    if (/^(0|[1-9]\d*)$/.test(segment) && Number(segment) < target.length) {
+      return target[Number(segment)]
+    }
+    throw new Error(`[Pyreon] state-tree applyPatch: no element at index "${segment}" in "${path}"`)
+  }
+  if (isPlainObject(target) && Object.hasOwn(target, segment)) return target[segment]
+  throw new Error(`[Pyreon] state-tree applyPatch: no entry "${segment}" in "${path}"`)
+}
+
 /**
  * Apply a JSON patch (or array of patches) to a model instance.
  * Only "replace" operations are supported (matching the patches emitted by `onPatch`).
  *
- * Paths use JSON pointer format: `"/count"` for top-level, `"/profile/name"` for nested.
- * Nested model instances are resolved automatically.
+ * Paths use JSON pointer format: `"/count"` for top-level, `"/profile/name"` for
+ * a nested model, `"/todos/1/done"` for an element of an array / map field.
+ * A value is restored the same way `applySnapshot` restores it: a snapshot
+ * into a model field reconciles into the live instance, an `arrayOf` /
+ * `mapOf` field recreates its elements, a `reference` field stores the id.
  *
  * @example
  * applyPatch(counter, { op: "replace", path: "/count", value: 10 })
@@ -117,70 +140,46 @@ export function applyPatch(instance: object, patch: Patch | Patch[]): void {
         throw new Error(`[Pyreon] state-tree applyPatch: unsupported op "${p.op}"`)
       }
 
-      const segments = p.path.split('/').filter(Boolean)
+      // JSON-pointer segments (RFC 6901 `~0` / `~1` unescaped).
+      const segments = p.path.split('/').filter(Boolean).map(unescapeSegment)
       if (segments.length === 0) {
         throw new Error('[Pyreon] state-tree applyPatch: empty path')
       }
 
-      // Walk to the target instance for nested paths
-      let target: object = instance
+      // Walk to the model instance that owns the last segment. A step goes
+      // through a model's state field (`/profile`) or into a container's
+      // element by index / key (`/todos/1`) — the paths `onPatch` emits.
+      let target: unknown = instance
       for (let i = 0; i < segments.length - 1; i++) {
         const segment = segments[i]!
         if (RESERVED_KEYS.has(segment)) {
           throw new Error(`[Pyreon] state-tree applyPatch: reserved property name "${segment}"`)
         }
-        const meta = instanceMeta.get(target)
-        // Defensive guard for a nested patch path that walks through a
-        // non-model value — only reachable with a deliberately malformed
-        // nested-plain-object state shape the normal model API doesn't build.
-        /* v8 ignore next 2 */
-        if (!meta)
-          throw new Error(`[Pyreon] state-tree applyPatch: not a model instance at "${segment}"`)
-        const sig = (target as Record<string, Signal<unknown>>)[segment]
-        if (!sig || typeof sig.peek !== 'function') {
-          throw new Error(`[Pyreon] state-tree applyPatch: unknown state key "${segment}"`)
-        }
-        const nested = sig.peek()
-        if (!nested || typeof nested !== 'object' || !isModelInstance(nested)) {
-          throw new Error(
-            `[Pyreon] state-tree applyPatch: "${segment}" is not a nested model instance`,
-          )
-        }
-        target = nested as object
+        target = step(target, segment, p.path)
       }
 
       const lastKey = segments[segments.length - 1]!
       if (RESERVED_KEYS.has(lastKey)) {
         throw new Error(`[Pyreon] state-tree applyPatch: reserved property name "${lastKey}"`)
       }
-      const meta = instanceMeta.get(target)
-      if (!meta) throw new Error('[Pyreon] state-tree applyPatch: not a model instance')
+      const meta = isModelInstance(target) ? instanceMeta.get(target as object) : undefined
+      if (!meta) {
+        throw new Error(
+          isPlainObject(target)
+            ? `[Pyreon] state-tree applyPatch: "${p.path}" reached a plain object, not a model ` +
+                'instance. If the field holds model instances, declare it with `arrayOf(Model)` / ' +
+                '`mapOf(Model)` so snapshots and patches recreate its elements.'
+            : `[Pyreon] state-tree applyPatch: "${p.path}" does not end at a model state field — ` +
+                "patch an element's fields (`/todos/1/title`) or replace the whole field (`/todos`).",
+        )
+      }
       if (!meta.stateKeys.includes(lastKey)) {
         throw new Error(`[Pyreon] state-tree applyPatch: unknown state key "${lastKey}"`)
       }
-
-      const sig = (target as Record<string, Signal<unknown>>)[lastKey]
-      /* v8 ignore next -- defensive: a validated state key always resolves to a settable signal (unknown keys throw above) */
-      if (sig && typeof sig.set === 'function') {
-        const current = sig.peek()
-        // A model-typed field's patch carries a SNAPSHOT (`trackedSignal` emits
-        // plain JSON for a model value, so patches are serializable). Writing
-        // that snapshot straight into the signal replaced the live instance with
-        // a plain object — every replay (undo/redo, time-travel, sync) then broke
-        // on `self.profile().name is not a function`. Reconcile it into the
-        // existing instance instead; a live instance value still replaces.
-        if (
-          isModelInstance(current) &&
-          p.value !== null &&
-          typeof p.value === 'object' &&
-          !Array.isArray(p.value) &&
-          !isModelInstance(p.value)
-        ) {
-          applySnapshot(current as object, p.value as Record<string, unknown>)
-        } else {
-          sig.set(p.value)
-        }
-      }
+      // One write rule with applySnapshot: a model field reconciles its
+      // snapshot into the live instance, an arrayOf / mapOf field recreates
+      // its elements from their snapshots, a reference field stores the id.
+      restoreField(target as object, meta, lastKey, p.value)
     }
   })
 }

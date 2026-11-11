@@ -60,7 +60,7 @@ A popstate/hashchange handler that only sets `currentPath` skips loaders (loader
 
 ### A wrapper that spreads consumer props, then sets its own handler
 
-`h('a', { ...rest, onClick: handleClick })` silently overwrites the consumer's `onClick`. Fixing one prop (`class`) and leaving the others is not a fix; the class is every prop the wrapper also sets. Destructure the consumer's handler and compose, user first; the internal handler bails on `e.defaultPrevented`, so a consumer `preventDefault()` suppresses navigation. A test that mocks the wrapper encodes what the author believes it does and can hide this. Reference: `packages/core/router/src/components.tsx` (`composedClick`/`composedMouseEnter`/`composedFocus`) + `tests/link-dx.test.ts`.
+`h('a', { ...rest, onClick: handleClick })` silently overwrites the consumer's `onClick`. Fixing one prop (`class`) and leaving the others is not a fix; the class is every prop the wrapper also sets. Destructure the consumer's handler and compose, user first; the internal handler bails on `e.defaultPrevented`, so a consumer `preventDefault()` suppresses navigation. A test that mocks the wrapper encodes what the author believes it does and can hide this. Reference: `packages/core/router/src/components.tsx` (`composedClick`/`composedMouseEnter`/`composedFocus`) + `tests/link-dx.test.ts`. `ref` is a member of the same class: `mergeProps(htmlProps, { ref: internalRef })` replaces the consumer's ref, so a callback ref is never called (kinetic's scroll-reveal `useIntersection(() => node)` never saw an element). Merge the consumer's ref into the internal one, read when the element attaches. Reference: `packages/ui-system/kinetic/src/utils.ts` (`consumerRef`) + `src/__tests__/consumer-ref.test.tsx`.
 
 ---
 
@@ -409,6 +409,12 @@ Libraries are compiled by any bundler (Vite, Webpack, Rolldown, esbuild, Rollup,
 ### Early prod-return in a public dev-only reader keeps its machinery
 
 Tree-shaking runs before the minifier removes unreachable code, so module-level machinery referenced in the dead tail survives. Wrap the body instead: `if (process.env.NODE_ENV !== 'production') { … } return empty` folds to `if (false)` and is dropped at parse time with its references. The early return is fine when the tail references only locals or already-retained exports. Module-level `new FinalizationRegistry(cb)`-style consts also need `/* @__PURE__ */`. Reference: `packages/core/reactivity/src/reactive-devtools.ts:getReactiveGraph`; test `reactive-devtools-treeshake.test.ts`.
+
+---
+
+### A dev-only helper FUNCTION keeps its external imports in the production bundle
+
+`if (process.env.NODE_ENV !== 'production') return devTwin(...)` drops `devTwin` as dead code, but esbuild still emits the `import { _rdLabelBinding } from "@pyreon/reactivity"` its body referenced, so the shipped module names the devtools helpers (and a package-entry measurement counts them). Inline the dev code in the `if` block instead. The same applies to an exported dev helper of a package entry: wrap its body in the dev block (see the entry above), or the entry keeps the machinery it references. Reference: `_bindDirect` in `packages/core/runtime-dom/src/template.ts`; test `reactive-graph-treeshake.test.ts` (asserts the helper names are absent from each production module and present in development).
 
 ---
 

@@ -25,6 +25,9 @@ import {
 } from '@pyreon/core'
 import {
   _noopDispose,
+  _rdDropBinding,
+  _rdLabelBinding,
+  batch,
   effectScope,
   getContextOwner,
   renderEffect,
@@ -168,15 +171,15 @@ export function mountChild(
     // fires inside mountFor's effect. User-written `each={() => fn()}` still
     // works — props.each is then the function itself.
     const props = vnode.props as unknown as ForProps<unknown>
-    const initialEach = props.each as unknown
-    const source: () => unknown[] =
+    const initialEach = props.each
+    const source: () => readonly unknown[] =
       typeof initialEach === 'function'
-        ? (initialEach as () => unknown[])
-        : (() => props.each as unknown as unknown[])
+        ? initialEach
+        : () => props.each as readonly unknown[]
     const prevDepth = _elementDepth
     _elementDepth = 0
     const cleanup = mountFor(
-      source as () => unknown[],
+      source,
       props.by,
       props.children,
       parent,
@@ -663,10 +666,31 @@ function mountComponent(
     let cancelled = false
     output
       .then((resolved) => {
-        if (cancelled || !placeholder.parentNode) return
+        // The placeholder's LIVE parent, not the one captured at setup: while
+        // another load keeps an enclosing `<Suspense>` pending, its content
+        // (placeholder included) sits in an off-screen fragment.
+        const liveParent = placeholder.parentNode
+        if (cancelled || liveParent === null) return
         try {
           if (resolved != null) {
-            resolvedCleanup = mountChild(resolved as VNodeChild, parent, placeholder)
+            // The resolved subtree mounts in a microtask, outside both the
+            // owner and the batch every other mount runs in, so re-enter both:
+            //  - the owner: this component's scope, so descendants'
+            //    `useContext()` reach the ancestors' providers AND anything
+            //    this component `provide()`d before its first await — the
+            //    owner the synchronous path gives `mountChild` (#4377);
+            //  - a batch: an effect-driven mount (`<Show>`, a route swap)
+            //    already runs inside the effect flush, so what it notifies
+            //    applies AFTER it finishes. Without one, a still-loading
+            //    `lazy()` in the subtree registers with the enclosing
+            //    `<Suspense>`, which moves its content off-screen
+            //    SYNCHRONOUSLY — taking `placeholder` out of `liveParent` halfway
+            //    through this mount (`insertBefore` NotFoundError, empty page).
+            batch(() => {
+              resolvedCleanup = runWithContextOwner(scope, () =>
+                mountChild(resolved as VNodeChild, liveParent, placeholder),
+              )
+            })
           }
         } catch (err) {
           const handled = propagateError(err, hooks) || dispatchToErrorBoundary(err)
@@ -685,12 +709,18 @@ function mountComponent(
 
     if (process.env.NODE_ENV !== 'production') _mountingStack!.pop()
 
+    // Restore the parent owner NOW, as the synchronous path does once its
+    // subtree is mounted: this component's siblings must not resolve context
+    // through its scope. (Restoring it in the unmount closure instead left the
+    // owner pointing here for the rest of the parent's mount, and clobbered
+    // whatever owner was current when the component later unmounted.)
+    setContextOwner(prevOwner)
+
     return () => {
       cancelled = true
       resolvedCleanup()
       if (placeholder.parentNode) placeholder.parentNode.removeChild(placeholder)
       scope.stop()
-      setContextOwner(prevOwner)
     }
   }
 
@@ -918,6 +948,10 @@ export function bindPolymorphicText(
 ): Cleanup {
   const core = createPolyTextCore(text, parentAtSetup, getContextOwner())
   const dispose = renderEffect(() => core.apply(child()))
+  // Dev: a text binding at its caller (the compiled template, for the emitted
+  // `bindPolymorphicText(() => expr, text, el)`).
+  if (process.env.NODE_ENV !== 'production')
+    _rdLabelBinding(dispose, 'text', text, undefined, 1)
   // Dead binding whose value was text: nothing re-runs it and the core holds
   // no subtree, so there is nothing to tear down. A first value that mounted a
   // subtree keeps the core's disposer (it removes that subtree).
@@ -1050,15 +1084,20 @@ function mountAccessorChild(
     }
   })
   if (firstRunError !== FIRST_RUN_OK) {
+    if (process.env.NODE_ENV !== 'production') _rdDropBinding(disposeEffect)
     disposeEffect()
     throw firstRunError
   }
   if (handoff !== null) {
     // Drop the dispatcher's first-run subscriptions — the machinery's own
-    // effect owns the binding from here.
+    // effect owns the binding from here. Dev: and its graph node — the
+    // machinery's effect is the binding's node.
+    if (process.env.NODE_ENV !== 'production') _rdDropBinding(disposeEffect)
     disposeEffect()
     return handoff
   }
+  // Dev: this dispatcher is a text binding; its creation site is this file.
+  if (process.env.NODE_ENV !== 'production') _rdLabelBinding(disposeEffect, 'text', text, undefined, null)
   // Textish — this dispatcher IS the binding (bindPolymorphicText's shape).
   if (depthAtEntry > 0) {
     // Dead (tracked nothing): the core is in text mode and can never leave it,

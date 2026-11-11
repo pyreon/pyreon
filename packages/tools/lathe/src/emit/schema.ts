@@ -9,7 +9,7 @@
 
 import { deferredTargets, modelDependencies, modelIndex, stronglyConnected, topoSortModels } from '../core/graph'
 import type { IrBigIntType, IrDocument, IrField, IrLiteral, IrNumberType, IrStringType, IrType } from '../core/ir'
-import { propKey, typeIdent } from '../core/naming'
+import { isWindowsDeviceName, propKey, typeIdent } from '../core/naming'
 import { collectRefNames, usesBigInt } from '../core/walk'
 import { dialectOf, type ValidatorName } from './validator'
 import { fieldDoc, modelDoc } from './jsdoc'
@@ -87,12 +87,16 @@ export function tsType(
       return files && type.format === 'binary' ? 'Blob' : 'string'
     case 'enum':
       return enumTs(type.values, widenEnums, native)
+    // Native: the cross-target aliases the native compiler reads as native types. `number` carries no int/float
+    // distinction, so a decoded `number` field would otherwise be an integer natively and a fractional value would fail
+    // the whole decode. The spec says which it is: `integer` → `Int` (64-bit on both targets), `number` → `Double`.
+    // The native module declares both aliases (`type Int = number`), so the web reads them as plain `number`.
     case 'number':
-      return 'number'
+      return native ? (type.integer ? 'Int' : 'Double') : 'number'
     // Native decodes into typed structs and PMTC has no bigint: the native
     // schema keeps `number().int()` (see `schemaExpr`), so its type must too.
     case 'bigint':
-      return native ? 'number' : 'bigint'
+      return native ? 'Int' : 'bigint'
     case 'boolean':
       return 'boolean'
     case 'null':
@@ -647,7 +651,7 @@ export function schemaModules(doc: IrDocument): { modules: SchemaModule[]; modul
   for (const g of groups) {
     let base = g.base
     // Windows reserves these device names regardless of extension.
-    if (/^(con|prn|aux|nul|com\d|lpt\d)$/i.test(base)) base = `${base}_`
+    if (isWindowsDeviceName(base)) base = `${base}_`
     let name = base
     for (let i = 2; used.has(name.toLowerCase()); i++) name = `${base}_${i}`
     used.add(name.toLowerCase())

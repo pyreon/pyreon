@@ -44,6 +44,15 @@ describe('<FlowWebView>', () => {
     expect('onMessage' in (vnode.props as object)).toBe(false)
   })
 
+  it('forwards `grow` as a live getter, and omits it when unset', () => {
+    const props: { graph: typeof graph; grow?: boolean } = { graph, grow: true }
+    const vnode = FlowWebView(props)
+    expect((vnode.props as { grow?: boolean }).grow).toBe(true)
+    props.grow = false
+    expect((vnode.props as { grow?: boolean }).grow).toBe(false)
+    expect('grow' in (FlowWebView({ graph }).props as object)).toBe(false)
+  })
+
   it('unwraps an accessor graph', () => {
     const vnode = FlowWebView({ graph: () => graph })
     expect((vnode.props as { data: unknown }).data).toEqual(graph)

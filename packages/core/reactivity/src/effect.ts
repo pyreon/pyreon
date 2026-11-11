@@ -1,4 +1,12 @@
-import { _captureCallerLocation, _rdRecordFire, _rdRegister } from './reactive-devtools'
+import {
+  _captureCallerLocation,
+  _rdCloseBindingFrame,
+  _rdOpenBindingFrame,
+  _rdRecordFire,
+  _rdRegister,
+  _rdRegisterBinding,
+  _rdTagHandle,
+} from './reactive-devtools'
 import { getCurrentScope } from './scope'
 import {
   exactDeps,
@@ -477,11 +485,13 @@ export function _bind(fn: () => void): () => void {
       ? () => {
           /* v8 ignore next */
           if (disposed) return
+          if (process.env.NODE_ENV !== 'production') _rdRecordFire(run)
           cap.restore(snapshot, fn)
         }
       : () => {
           /* v8 ignore next */
           if (disposed) return
+          if (process.env.NODE_ENV !== 'production') _rdRecordFire(run)
           fn()
         }
 
@@ -489,16 +499,27 @@ export function _bind(fn: () => void): () => void {
   // intentionally call `fn` directly (not `run`) here — the synchronous
   // mount stack is already intact at this point, so restoring the captured
   // snapshot would just push the same frames again redundantly.
+  // Dev: the first run is bracketed by the binding-label frame, so the DOM
+  // setter it calls (`_setAttr(el, 'aria-busy', …)`) names the binding.
+  if (process.env.NODE_ENV !== 'production') _rdOpenBindingFrame()
   const collected = deps
   try {
     runCollect(run, collected, fn)
   } finally {
     deps = exactDeps(collected)
+    if (process.env.NODE_ENV !== 'production') _rdCloseBindingFrame()
   }
 
   // Dead binding: the first run subscribed to nothing, so nothing can ever
   // re-run it. Drop the disposer and the scope entry (see `_noopDispose`).
   if (deps.length === 0) return _noopDispose
+
+  // Dev: a LIVE binding is a reactive-graph node. skipFrames=1 skips `_bind`,
+  // so the location is the compiled template that emitted the call. `_bind` is
+  // only ever compiler-emitted for a DOM write, so it is a binding even when
+  // its updater assigns the DOM without a setter (`dom`).
+  if (process.env.NODE_ENV !== 'production')
+    _rdRegisterBinding(run, _captureCallerLocation(1), 'dom')
 
   const dispose = () => {
     if (disposed) return
@@ -511,6 +532,7 @@ export function _bind(fn: () => void): () => void {
       deps.length = 0
     }
   }
+  if (process.env.NODE_ENV !== 'production') _rdTagHandle(dispose, run)
 
   // Auto-register with scope so template bindings are disposed during teardown
   getCurrentScope()?.add(dispose)
@@ -570,21 +592,35 @@ export function renderEffect(fn: () => void): () => void {
         deps = exactDeps(collected)
       }
     } else {
+      if (process.env.NODE_ENV !== 'production') _rdRecordFire(run)
       // Re-run: VERIFY the previous dep list positionally (zero Set ops in
       // the steady state) instead of the old cleanup-all + re-track pair.
       runVerify(run, deps, trackedFn)
     }
   }
 
-  if (process.env.NODE_ENV !== 'production')
-    // skipFrames=1: skip the `effect()` / `renderEffect()` frame, capture the user's call site.
-    _rdRegister(run, 'effect', null, run, undefined, _captureCallerLocation(1))
-
+  // Dev: bracket the first run with the binding-label frame (the DOM setter it
+  // calls names the binding), and register only a LIVE binding — after the
+  // run, once its deps are known. Registering before the run (as this did)
+  // left every dead binding in the graph as a never-fired node, and coverage
+  // reported each as "created but never executed".
+  // One body for both builds: the dev calls fold away, leaving the bare
+  // `run()`. No try/finally: Bun's minifier keeps an emptied `finally {}`, so
+  // the production output would change. If the first run throws (the error
+  // propagates out of the mount anyway) the dev frame stays open; that is
+  // harmless — every later frame saves and restores around it, and only setter
+  // writes made outside any binding could land in it, which nothing reads.
+  if (process.env.NODE_ENV !== 'production') _rdOpenBindingFrame()
   run()
+  if (process.env.NODE_ENV !== 'production') _rdCloseBindingFrame()
 
   // Dead binding (see `_noopDispose`): no dependency was
   // tracked on the first run, so no signal can ever schedule `run` again.
   if (deps.length === 0) return _noopDispose
+
+  // skipFrames=1: skip the `renderEffect()` frame, capture the caller's site.
+  if (process.env.NODE_ENV !== 'production')
+    _rdRegisterBinding(run, _captureCallerLocation(1))
 
   const dispose = () => {
     if (disposed) return
@@ -597,6 +633,7 @@ export function renderEffect(fn: () => void): () => void {
       deps.length = 0
     }
   }
+  if (process.env.NODE_ENV !== 'production') _rdTagHandle(dispose, run)
 
   // Auto-register with scope so render effects are disposed during teardown
   getCurrentScope()?.add(dispose)

@@ -6,9 +6,9 @@ import { useQueryClient } from './query-client'
 
 export interface UseMutationStateOptions<TResult = MutationState> {
   /** Narrow which mutations to read (status, mutationKey, predicate). */
-  filters?: MutationFilters
+  filters?: MutationFilters | undefined
   /** Map each matched mutation to a value. Defaults to `mutation.state`. */
-  select?: (mutation: Mutation) => TResult
+  select?: ((mutation: Mutation) => TResult) | undefined
 }
 
 /**

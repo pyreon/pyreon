@@ -72,6 +72,7 @@ OpenAPI 3.x in; `@pyreon/validate` schemas, `@pyreon/http` endpoints, `@pyreon/q
 - YAML 1.2 core through the `yaml` package: anchors and merge keys resolve; duplicate keys, multi-document streams, custom tags and non-JSON values are refused with a line number.
 - Anything the IR cannot represent becomes a `note` with a stable code and JSON pointer.
 - Output is deterministic; an unchanged spec regenerates byte-identically.
+- A spec is untrusted input. Every local `$ref` goes through ONE check (`localRefEscape` in `input/bundle.ts`, called from `collectDocuments*`): it must lie inside the root spec's directory (realpath'd when the caller passes `realpath`; `refRoot` widens it). Every remote read goes through `refOriginPolicy` in `cli/pull.ts`: own origin only, redirects followed by hand and re-checked, `refOrigins` / `--ref-origin` to widen. `bundle()` has a node budget (1M + 10 per input node). Emitted file stems pass `isWindowsDeviceName` (`core/naming.ts`). New readers or file-name sources must route through these, not add their own.
 
 ### Output layout
 

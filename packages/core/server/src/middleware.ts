@@ -38,7 +38,35 @@ export interface MiddlewareContext {
   headers: Headers
   /** Arbitrary per-request data shared between middleware and components */
   locals: Record<string, unknown>
+  /**
+   * Report an error your middleware CAUGHT and handled (so the handler never
+   * sees it) to the server's `onError` hook — e.g. an API route that turns a
+   * database failure into a 503. `createHandler` always sets it; it is
+   * optional only so hand-built contexts (tests) need not.
+   */
+  reportError?: (error: unknown, phase: ServerErrorPhase) => void
 }
+
+/**
+ * Where on the server an error happened:
+ * - `'middleware'` — a middleware or API route threw
+ * - `'render'` — SSR (string mode, or before a stream started) failed
+ * - `'stream'` — a streamed render failed after the response started
+ * - `'action'` — a server action handler threw (reported by `@pyreon/zero`)
+ * - `'reported'` — a middleware called `ctx.reportError` with no better phase
+ */
+export type ServerErrorPhase = 'middleware' | 'render' | 'stream' | 'action' | 'reported'
+
+/** What `onError` receives alongside the error. */
+export interface ServerErrorInfo {
+  /** The request being handled. */
+  request: Request
+  /** Where it failed — see {@link ServerErrorPhase}. */
+  phase: ServerErrorPhase
+}
+
+/** The `onError` hook of `createHandler` / zero's `createServer`. */
+export type ServerErrorHandler = (error: unknown, info: ServerErrorInfo) => void | Promise<void>
 
 /**
  * Middleware function. Return a Response to short-circuit, or void to continue.

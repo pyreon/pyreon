@@ -1662,6 +1662,8 @@ public func pyreonNumberString(_ v: Int) -> String { "" }
 // pyreonInt — a whole-valued Double stored into an Int field, without Int(_:)'s trap
 // on NaN / ±Infinity (PyreonNumber.swift). Mirrors the real signature.
 public func pyreonInt(_ v: Double) -> Int { 0 }
+// pyreonRound — JS \`Math.round\` (PyreonNumber.swift). Mirrors the real signature.
+public func pyreonRound(_ x: Double) -> Double { 0 }
 // pyreonParseInt / pyreonParseFloat / pyreonToNumber — the ECMAScript text→number algorithms
 // (PyreonNumber.swift). Mirrors the real signatures.
 public func pyreonParseInt(_ text: String, _ radix: Int? = nil) -> Int? { nil }

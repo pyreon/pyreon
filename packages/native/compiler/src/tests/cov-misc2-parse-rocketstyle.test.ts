@@ -127,9 +127,15 @@ describe('parse-rocketstyle — the dimension-call argument', () => {
   })
 
   it('reads a value key that is a string literal or a NUMERIC literal', () => {
-    const src = `const A = el.sizes((t) => ({ 'x-small': { padding: 1 }, 900: { padding: 2 } }))`
+    const src = `const A = el.sizes((t) => ({ small: { padding: 1 }, 'large': { padding: 1 }, 900: { padding: 2 } }))`
     // NOTE `Object.keys` puts integer-like keys first — sort for a stable compare.
-    expect(Object.keys(shape(src).size ?? {}).sort()).toEqual(['900', 'x-small'])
+    expect(Object.keys(shape(src).size ?? {}).sort()).toEqual(['900', 'large', 'small'])
+  })
+
+  it('skips a value key that is not an identifier — it becomes a Swift/Kotlin enum case', () => {
+    const src = `const A = el.sizes((t) => ({ 'x-small': { padding: 1 }, 'a"); pwn(); ("': { padding: 1 }, ok: { padding: 2 } }))`
+    expect(Object.keys(shape(src).size ?? {})).toEqual(['ok'])
+    expect(warns(src)).toContain('it becomes a Swift/Kotlin enum case')
   })
 
   it('skips a spread and a computed key among the dimension values', () => {

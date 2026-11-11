@@ -1,4 +1,5 @@
 import { effect } from './effect'
+import { _rdSelectorUpdater } from './reactive-devtools'
 import { type SubscriberHost, trackSubscriber } from './tracking'
 
 /**
@@ -329,6 +330,10 @@ export function createSelector<T>(source: () => T): Selector<T> {
   // deps arrays, zero tracking-frame pushes. The matching unsubscribe is one
   // field write and no map operation.
   selector.subscribe = (value: T, updater: (matches: boolean) => void): (() => void) => {
+    // Dev: store an instrumented wrapper so the per-row updater is a
+    // reactive-graph node with an edge from the source effect (this channel
+    // bypasses every subscriber slot). Folds away in production.
+    if (process.env.NODE_ENV !== 'production') updater = _rdSelectorUpdater(updater, sourceEffect)
     if (disposed) {
       // Selector is disposed — call updater once with the stale-last value,
       // then return a no-op dispose. Matches the documented contract that

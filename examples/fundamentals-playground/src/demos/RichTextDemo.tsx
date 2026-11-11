@@ -138,7 +138,9 @@ export function RichTextDemo() {
 
         <RichText
           instance={editor}
-          style="border: 1px solid #333; border-radius: 8px; min-height: 200px; padding: 12px; background: #1e1e1e"
+          // A dark box needs its own text colour: @pyreon/rich-text inherits colour
+          // (like ProseMirror), so it took the page's near-black text.
+          style="border: 1px solid #333; border-radius: 8px; min-height: 200px; padding: 12px; background: #1e1e1e; color: #d4d4d4; caret-color: #d4d4d4"
         />
 
         {/* Status bar */}

@@ -314,10 +314,12 @@ describe('.regex() — only patterns that port identically lower', () => {
     expect(has(schemaWith(`.regex(/(?<n>a)/)`), 'uses lookbehind, a named group')).toBe(true)
   })
 
-  it('a pattern carrying the Swift raw-string terminator is declined', () => {
-    // `"#` closes the `#"…"#` literal the emitter writes, so the pattern cannot
-    // be embedded at all.
-    expect(has(schemaWith(`.regex(/a"#b/)`), 'contains `"#`')).toBe(true)
+  it('a pattern carrying `"#` lowers — the emitter quotes it as an ordinary string', () => {
+    // It used to be declined because the emitter wrote a `#"…"#` raw string,
+    // which `"#` closes. The pattern now goes through `swiftStr`.
+    const src = schemaWith(`.regex(/a"#b/)`)
+    expect(warnings(src)).toEqual([])
+    expect(run(src).code).toContain('range(of: "a\\"#b"')
   })
 })
 

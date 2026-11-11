@@ -18,6 +18,7 @@
 // that would require a real type checker. It covers the shapes the
 // emitter actually emits, which is a fixed-and-growing surface.
 
+import { isDoubleLiteralValue } from './number-literal'
 import { DATE_RUNTIME_RESULTS } from './date-lowering'
 import { exprHasOptionalLink, exprReferencesIdent, isReReadableExpr } from './expr-utils'
 import { childStatementLists } from './throw-lowering'
@@ -1444,7 +1445,7 @@ export function inferTypeValue(expr: ExprIR, ctx: InferenceCtx): TypeIR {
         // makes that claim reach the emitted TYPES and not just the digits.
         // Outside the 32-bit range is Double too: Kotlin's Int cannot hold it
         // (an epoch-ms timestamp), and JavaScript has one number type.
-        return expr.float === true || !Number.isInteger(expr.value) || Math.abs(expr.value) > 2147483647
+        return expr.float === true || isDoubleLiteralValue(expr.value)
           ? { kind: 'number', float: true }
           : { kind: 'number' }
       }

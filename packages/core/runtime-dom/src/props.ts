@@ -1,7 +1,7 @@
 import type { ClassValue, Props } from '@pyreon/core'
 import { cx, isElementEventHandlerAttr, isSafeImageDataUri, isUnsafeUrl, normalizeStyleValue, toKebabCase, isUrlAttr } from '@pyreon/core'
 
-import { batch, renderEffect } from '@pyreon/reactivity'
+import { _rdLabelBinding, _rdNoteTarget, batch, renderEffect } from '@pyreon/reactivity'
 import { DELEGATED_EVENTS, delegatedPropName } from './delegate'
 
 type Cleanup = () => void
@@ -105,6 +105,8 @@ export function applyProps(el: Element, props: Props, skipKey?: string): Cleanup
         if (typeof value === 'function') value = (value as () => unknown)()
         applyStaticProp(el, key, value)
       })
+      // Dev: the setter named this binding; drop the creation site (this file).
+      if (process.env.NODE_ENV !== 'production') _rdLabelBinding(c, null, null, undefined, null)
     } else {
       c = applyProp(el, key, props[key])
     }
@@ -195,6 +197,7 @@ export function bindSpread(el: Element, getProps: () => Props): Cleanup {
     inner?.()
     inner = applyPropsWithRef(el, getProps())
   })
+  if (process.env.NODE_ENV !== 'production') _rdLabelBinding(stop, 'attr', el, '...spread', null)
   return () => {
     stop()
     inner?.()
@@ -218,9 +221,12 @@ export function bindSpread(el: Element, getProps: () => Props): Cleanup {
 export function applySelectValueProp(el: Element, props: Props): Cleanup | null {
   const descriptor = Object.getOwnPropertyDescriptor(props, 'value')
   if (descriptor?.get) {
-    return renderEffect(() =>
+    const d = renderEffect(() =>
       applyStaticProp(el, 'value', (props as Record<string, unknown>).value),
     )
+    // Dev: the setter names the binding; drop the creation site (this file).
+    if (process.env.NODE_ENV !== 'production') _rdLabelBinding(d, null, null, undefined, null)
+    return d
   }
   return applyProp(el, 'value', props.value)
 }
@@ -404,6 +410,7 @@ export function _markAdoptedHtmlEl(el: Element): void {
  * as before.
  */
 export function applyDangerousHtml(el: Element, value: unknown): void {
+  if (process.env.NODE_ENV !== 'production') _rdNoteTarget(el, 'prop', 'innerHTML')
   if (_adoptedHtmlEls.has(el)) {
     // Hydration adoption: the server children ARE the parse of __html.
     _adoptedHtmlEls.delete(el)
@@ -414,6 +421,12 @@ export function applyDangerousHtml(el: Element, value: unknown): void {
 }
 
 function applyStaticProp(el: Element, key: string, value: unknown): void {
+  if (process.env.NODE_ENV !== 'production')
+    _rdNoteTarget(
+      el,
+      key === 'class' || key === 'className' ? 'class' : key === 'style' ? 'style' : key === 'innerHTML' || key === 'dangerouslySetInnerHTML' ? 'prop' : 'attr',
+      key,
+    )
   if (process.env.NODE_ENV !== 'production' && typeof value === 'function') {
     // Defensive: function values must be unwrapped via `renderEffect` before
     // reaching here. Seeing one means a new special-case branch upstream skipped
@@ -464,7 +477,7 @@ export function applyProp(el: Element, key: string, value: unknown): Cleanup | n
   // renderEffect rather than effect since mountElement's cleanup array owns the
   // lifecycle.
   if (typeof value === 'function') {
-    return renderEffect(() => {
+    const d = renderEffect(() => {
       // The accessor's RESULT can itself be an accessor. The compiler inlines a
       // prop-derived function-valued const at its use site, so
       // `const tabIndexFor = () => …` passed as `tabIndex={tabIndexFor}` on a
@@ -477,6 +490,9 @@ export function applyProp(el: Element, key: string, value: unknown): Cleanup | n
       if (typeof resolved === 'function') resolved = (resolved as () => unknown)()
       applyStaticProp(el, key, resolved)
     })
+    // Dev: the setter names the binding; drop the creation site (this file).
+    if (process.env.NODE_ENV !== 'production') _rdLabelBinding(d, null, null, undefined, null)
+    return d
   }
 
   applyStaticProp(el, key, value)
@@ -542,6 +558,7 @@ export function applyStyleOnce(el: HTMLElement, value: unknown): void {
  * number→px + stale-key removal; null → clear).
  */
 export function applyStyleProp(el: HTMLElement, value: unknown): void {
+  if (process.env.NODE_ENV !== 'production') _rdNoteTarget(el, 'style')
   if (typeof value === 'string') {
     // Skip-if-equal: reactive style effects re-run with unchanged output, and
     // an unconditional cssText assign is a full parse + style invalidation
@@ -625,6 +642,7 @@ export function applyStyleProp(el: HTMLElement, value: unknown): void {
 // is a read-only `SVGAnimatedString`) — which is why flow edges rendered nothing
 // once `_tpl` gave them the correct SVG namespace.
 export function applyClassProp(el: Element, value: unknown): void {
+  if (process.env.NODE_ENV !== 'production') _rdNoteTarget(el, 'class')
   const resolved = (typeof value === 'string' ? value : cx(value as ClassValue)) || ''
   // Skip-if-equal: reactive class effects re-run with unchanged output, and
   // hydration-adoption's initial run writes the value the SSR attr already
@@ -763,6 +781,7 @@ function applyMediaMutedProp(el: Element, value: unknown): void {
 }
 
 export function applyAttrProp(el: Element, key: string, value: unknown): void {
+  if (process.env.NODE_ENV !== 'production') _rdNoteTarget(el, 'attr', key)
   // Event-handler NAMES first — BEFORE the accessor resolution below, which is
   // the load-bearing ordering. `_setAttr` is the compiled sink for every generic
   // dynamic attribute, and a lowercase handler name reaches it (the compiler's
@@ -838,6 +857,7 @@ const DEFAULT_VALUE_INIT = Symbol('pyreon.defaultValueInit')
  * function prop as an accessor; this mirrors it.
  */
 export function applyDomProp(el: Element, key: string, value: unknown): void {
+  if (process.env.NODE_ENV !== 'production') _rdNoteTarget(el, 'prop', key)
   if (typeof value === 'function') value = (value as () => unknown)()
   if (key === 'value' && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA')) {
     applyValueProp(el, value)
@@ -858,6 +878,9 @@ export function applyDomProp(el: Element, key: string, value: unknown): void {
 export function applyDomPropStatic(el: Element, key: string, value: unknown): void {
   if (typeof value === 'function') {
     const read = value as () => unknown
+    // Not relabelled: `applyDomProp` names the binding (`prop`), and taking the
+    // disposer just to move its creation site off this file would add a
+    // variable to the production build. Its `loc` therefore points here.
     renderEffect(() => applyDomProp(el, key, read()))
     return
   }
@@ -895,6 +918,7 @@ export function applyDomPropStatic(el: Element, key: string, value: unknown): vo
  * identically on both, so matching them is the industry-normal behaviour.
  */
 export function applyValueProp(el: Element, value: unknown): void {
+  if (process.env.NODE_ENV !== 'production') _rdNoteTarget(el, 'prop', 'value')
   const node = el as HTMLInputElement
   // A function is an ACCESSOR, exactly as on the h() path (`applyProp`'s
   // function branch). A named binding — `value={getValue}`, a function-valued

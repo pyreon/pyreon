@@ -85,6 +85,35 @@ describe('diagnoseError (browser-safe error catalog)', () => {
     expect(r!.fix).toContain('defineAsyncComponent')
   })
 
+  it('diagnoses a compat jsx-runtime shipped without jsxDEV, and runtime-dom/transition without TransitionGroup (#4283)', () => {
+    // The exact browser message from the issue (Vite dev on the published 0.53.0 packages).
+    const dev = diagnoseError(
+      "The requested module '/node_modules/@pyreon/react-compat/lib/jsx-runtime.js?v=713f229b' does not provide an export named 'jsxDEV'",
+    )
+    expect(dev?.cause).toContain('jsxDEV')
+    expect(dev?.cause).toContain('compat')
+    expect(dev?.fix).toContain('0.53.0')
+    // The bundler's word order for the same missing export.
+    const build = diagnoseError('"jsxDEV" is not exported by "node_modules/@pyreon/react-compat/lib/jsx-runtime.js"')
+    expect(build?.cause).toContain('jsxDEV')
+
+    const tg = diagnoseError(
+      '"TransitionGroup" is not exported by "node_modules/@pyreon/runtime-dom/lib/transition-entry.js", imported by "src/App.tsx".',
+    )
+    expect(tg?.cause).toContain('TransitionGroup')
+    expect(tg?.fixCode).toContain("from '@pyreon/runtime-dom'")
+  })
+
+  it('diagnoses the React migrator refusing two overlapping rewrites (#4287)', () => {
+    // The exact message `migrateReactCode` throws (react-intercept.ts, applyRange).
+    const r = diagnoseError(
+      'Error: [Pyreon] migrateReactCode: two rewrites overlap at offset 412. Please report this input at https://github.com/pyreon/pyreon/issues.',
+    )
+    expect(r?.cause).toContain('offset 412')
+    expect(r?.cause).toContain('nothing was changed')
+    expect(r?.fix).toContain('by hand')
+  })
+
   it('diagnoses a failed code-split chunk (the residual of deferred lazy hydration)', () => {
     // The messages Chromium, Firefox and Safari throw for a failed dynamic import.
     for (const msg of [

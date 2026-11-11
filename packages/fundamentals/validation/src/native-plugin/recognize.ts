@@ -130,14 +130,9 @@ function tryPortableRegexLiteral(
     )
     return null
   }
-  // The emitters embed the source in a Swift raw string and a Kotlin string;
-  // a pattern containing the raw-string terminator cannot be embedded safely.
-  if (re.pattern.includes('"#')) {
-    ctx.report(
-      `${fieldLabel}: .regex() pattern contains \`"#\`, which cannot be embedded in the emitted Swift raw string — the field is NOT validated on device.`,
-    )
-    return null
-  }
+  // No character is refused here: both emitters embed the source through the
+  // central quoters (`swiftStr` / `kotlinStr`), which escape every character
+  // that could end the literal or start an interpolation.
   return { source: re.pattern, ignoreCase: flags.includes('i') }
 }
 

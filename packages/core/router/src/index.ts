@@ -117,6 +117,7 @@ export type {
   AfterEachHook,
   Blocker,
   BlockerFn,
+  BlockerOptions,
   ExtractParams,
   LazyComponent,
   LoaderContext,
