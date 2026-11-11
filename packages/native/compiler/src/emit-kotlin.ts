@@ -9,6 +9,7 @@ import { GESTURE_EVENT_NAMES, GESTURE_EVENTS } from './gesture-events'
 import { effectReadCandidates, effectTriggerPaths, isComponentStateName } from './effect-deps'
 import {
   computeThrowingFunctions,
+  anonymousCatchBinder,
   containsAwait,
   ERROR_MESSAGE_FN,
   ERROR_STRING_FN,
@@ -2947,7 +2948,7 @@ function emitKotlinStatement(s: StatementIR, indent: number, ctx: KotlinCtx): st
       )
       let out = `try {\n${bodyLines}\n${pad}}`
       if (caught) {
-        const binder = s.catchParam !== undefined ? kotlinIdent(s.catchParam) : 'pyreonCaught'
+        const binder = s.catchParam !== undefined ? kotlinIdent(s.catchParam) : anonymousCatchBinder(s.catchBody)
         // A catch-all inside a coroutine must not swallow its cancellation, or a disposed composition's work keeps
         // running. Only a body that suspends can be cancelled there.
         const cancel = containsAwait(s.body)

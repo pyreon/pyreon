@@ -1,6 +1,7 @@
 import { HEAD_ATTR as ATTR, type HeadContextValue } from './context'
 import { isElementEventHandlerAttr } from '@pyreon/core'
 import { isHeadAttrSafe } from './attr-guard'
+import { applyTitleTemplate } from './title'
 
 /** Tracks managed elements by key — avoids querySelectorAll on every sync */
 const managedElements = new Map<string, Element>()
@@ -125,15 +126,6 @@ function patchAttrs(el: Element, props: Record<string, string>): void {
     if (!isHeadAttrSafe(k, v, el.tagName.toLowerCase(), (n) => isElementEventHandlerAttr(el, n))) continue
     if (el.getAttribute(k) !== v) el.setAttribute(k, v)
   }
-}
-
-function applyTitleTemplate(
-  title: string,
-  template: string | ((t: string) => string) | undefined,
-): string {
-  if (!template) return title
-  if (typeof template === 'function') return template(title)
-  return template.replace(/%s/g, title)
 }
 
 /** Sync pyreon-managed attributes on <html> or <body>. */

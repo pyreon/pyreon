@@ -84,6 +84,68 @@ describe('timer calls lower to PyreonTimers', () => {
   }, 180_000)
 })
 
+// A timer started in the component BODY. The web runs the body once, so each of these starts ONE timer. Emitted as a
+// body value, it ran on every SwiftUI \`body\` evaluation / recomposition (a new timer each time, no warning), and Swift
+// inlined the const into \`clearInterval(id)\` as \`PyreonTimers.clear(PyreonTimers.setInterval(…))\`: a fresh timer,
+// cleared at once, while the running one kept going.
+const bodyTimers = `import { signal } from '@pyreon/reactivity'
+import { Stack, Text, Button } from '@pyreon/primitives'
+export function App() {
+  const n = signal(0)
+  const id = setInterval(() => n.set(n() + 1), 1000)
+  let t = setTimeout(() => n.set(0), 500)
+  setInterval(() => n.set(5), 2000)
+  const stop = () => { try { n.set(1) } finally { clearInterval(id); clearTimeout(t) } }
+  return (<Stack><Text>{String(n())}</Text><Button onPress={stop}>Stop</Button></Stack>)
+}`
+
+describe('a timer started in the component body starts once, at mount', () => {
+  it('Swift: the id is state assigned in .onAppear; nothing starts a timer in body; clear reads the state', () => {
+    const { code, warnings } = emit(bodyTimers, 'swift')
+    expect(code).toContain('@State private var id: Int = 0')
+    expect(code).toContain('id = PyreonTimers.setInterval(1000, { n = n + 1 })')
+    expect(code).toContain('t = PyreonTimers.setTimeout(500, { n = 0 })')
+    expect(code).toContain('PyreonTimers.clear(id)')
+    expect(code).not.toContain('PyreonTimers.clear(PyreonTimers')
+    const body = code.slice(code.indexOf('var body: some View'))
+    // Every timer start in `body` sits inside an `.onAppear` closure.
+    expect(body.split('.onAppear').length - 1).toBe(3)
+    expect(body.slice(0, body.indexOf('.onAppear'))).not.toContain('PyreonTimers.set')
+    expect(warnings).toEqual([])
+  })
+
+  it('Kotlin: the id is remembered state assigned in a LaunchedEffect(Unit)', () => {
+    const { code, warnings } = emit(bodyTimers, 'kotlin')
+    expect(code).toContain('var id by remember { mutableStateOf(0L) }')
+    expect(code).toMatch(/LaunchedEffect\(Unit\) \{\n\s*id = PyreonTimers\.setInterval\(1000L\)/)
+    expect(code).toMatch(/LaunchedEffect\(Unit\) \{\n\s*PyreonTimers\.setInterval\(2000L\)/)
+    expect(code).not.toMatch(/val (id|t) = PyreonTimers/)
+    expect(warnings).toEqual([])
+  })
+
+  it('a timer nested in a body value has no single mount shape and is named', () => {
+    const src = bodyTimers.replace('const stop =', 'const both = [setTimeout(() => n.set(9), 1)]\n  const stop =')
+    for (const target of ['swift', 'kotlin'] as const) {
+      expect(emit(src, target).warnings.join('\n')).toContain('`both` starts a timer')
+    }
+  })
+
+  it.runIf(isSwiftcAvailable())('swiftc type-checks it (stubs)', () => {
+    const r = validateSwiftWithStubs(emit(bodyTimers, 'swift').code)
+    expect(r.ok, r.ok ? '' : r.error).toBe(true)
+  }, 180_000)
+
+  it.runIf(isSwiftUIAvailable())('swiftc type-checks it (real SDK)', () => {
+    const r = validateSwiftTypecheck(emit(bodyTimers, 'swift').code)
+    expect(r.ok, r.ok ? '' : r.error).toBe(true)
+  }, 180_000)
+
+  it.runIf(isKotlincAvailable())('kotlinc compiles it', () => {
+    const r = validateKotlin(emit(bodyTimers, 'kotlin').code)
+    expect(r.ok, r.ok ? '' : r.error).toBe(true)
+  }, 180_000)
+})
+
 // ── Behaviour: both runtimes run one scenario and print the web's sequence ──────────────────────────────────────
 //
 // t=0: A = timeout 80ms, B = timeout 80ms (same delay: FIFO, A first), C = timeout 20ms cleared immediately,

@@ -13,7 +13,7 @@
 ## Build options (`@pyreon/vite-plugin`)
 
 - The chainable `s.` API does not tree-shake (prototype methods). `pyreon({ optimizeValidators: true })` rewrites module-level `const X = s.<chain>` to the `@pyreon/validate/mini` form at build time (parity-locked).
-- `pyreon({ compileValidators: true })` inlines a monomorphic verdict for `.is()`. It is currently about 2× slower than the default runtime `.is()`, which has its own verdict JIT.
+- `pyreon({ compileValidators: true })` attaches an ahead-of-time verdict for `.is()`. `.is()` uses it only when the runtime verdict JIT does not serve the schema (`configure({ jit: false })`, a CSP without `'unsafe-eval'`, or a refused shape): with the JIT on, the runtime verdict is about 2× faster, so it takes precedence.
 - Both cover statically analyzable chains (primitives, common checks, object/array/optional); other chains stay on the full runtime.
 
 ## JIT
@@ -26,8 +26,9 @@
   - A DU root compiles to a discriminant `switch` with member bodies inlined.
   - All-inline-primitive objects build their stripped clone as one object literal.
   - A fully inline tree is branded `_jitPure`; `parse`/`~standard.validate` reuse a per-schema context, and `parse` is installed as an own property closing over the compiled function.
+- `parse()` on a `_jitPure` OBJECT or ARRAY root runs a third emission first, PARSE-FAST (`tryCompileJitFast`): no ctx parameter, builds the output value, returns the module-level `JIT_FAIL` sentinel at the first failure site. The installed own `parse` re-runs the full validator only on failure, to build the issues. Same pass and same staleness contract as the other two; locked against the interpreter by `jit-fast-differential.test.ts` (a false accept would be a wrong answer, a false FAIL only costs a re-run).
 - `.is()` uses a separate verdict-only emission (`tryCompileJitCheck`): every failure is `return false`, no output or issue is built, and the function takes only the input. Shapes it cannot express (a `_runInto` fallback, or a check with neither an inline condition nor a `_pred`) are refused and `.is()` keeps the parse path.
-- The verdict function is built in the same pass as `_compiled`, not lazily. A chained method mutates a schema in place and invalidates only that schema, not its ancestors; two artifacts built at different times go stale differently, and `.is()` would disagree with `.parse().ok`. `.is()` reads one field on the hot path.
+- The verdict function is built in the same pass as `_compiled`, not lazily. A chained method mutates a schema in place and invalidates only that schema, not its ancestors; two artifacts built at different times go stale differently, and `.is()` would disagree with `.parse().ok`. Once compiled, the verdict function is installed as the schema's OWN `is` (deleted by `_invalidateCompile` with the other artifacts), so the hot path has no seam at all.
 - Locked by the JIT↔interpreter differential fuzz suites in `src/tests/` (`jit-differential`, `jit-async-differential`, `jit-du-differential`, `jit-partial-inline-differential`, `jit-check-differential`). `jit-check-differential.test.ts` asserts `is(x) === parse(x).ok`, counts how many schemas the verdict emitter actually served (so a refusal cannot make it compare parse with itself), and covers the shared-child staleness case. `format-registry-routing.test.ts` checks the resolver switches to the `/server` validator on install.
 
 ## Performance standings
