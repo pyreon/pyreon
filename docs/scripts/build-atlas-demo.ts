@@ -14,7 +14,7 @@
  * (`./`), so the site works wherever docs/public is served.
  */
 import { spawnSync } from 'node:child_process'
-import { cpSync, mkdtempSync, rmSync } from 'node:fs'
+import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 
@@ -38,4 +38,17 @@ rmSync(target, { recursive: true, force: true })
 // Everything except atlas build's own "this directory is mine" marker.
 cpSync(out, target, { recursive: true, filter: (src) => !src.endsWith('.atlas-build-output') })
 rmSync(tmp, { recursive: true, force: true })
+
+// No third-party requests from pyreon.dev: atlas build links Google Fonts
+// (preconnects, the stylesheet and its <noscript> copy). Drop them; the
+// workbench's font stacks fall back to system fonts.
+const index = join(target, 'index.html')
+const html = readFileSync(index, 'utf8')
+const stripped = html
+  .replace(/<noscript>\s*<link[^>]*fonts\.googleapis\.com[^>]*>\s*<\/noscript>\s*/g, '')
+  .replace(/<link[^>]*fonts\.(googleapis|gstatic)\.com[^>]*>\s*/g, '')
+if (/fonts\.(googleapis|gstatic)\.com/.test(stripped)) {
+  throw new Error('[Pyreon] build-atlas-demo: a Google Fonts reference survived; update the strip patterns for the new atlas build output.')
+}
+writeFileSync(index, stripped)
 process.stdout.write(`atlas demo → ${target}\n`)
