@@ -1,7 +1,7 @@
 import { For } from '@pyreon/core'
 import { radius } from '../theme'
 import { el, tone } from '../kit/bases'
-import { HEROES_B } from './_asset-b.generated'
+import { HEROES_B, SHARE_B } from './_asset-b.generated'
 
 /**
  * Hero visuals for the app-building-blocks and visual-and-tools product
@@ -30,6 +30,11 @@ export type HeroAsset =
 
 export function heroAsset(id: string): HeroAsset | undefined {
   return HEROES_B[id]
+}
+
+/** Root-relative path of the page's 1200×630 share image, when this slice has one for it. */
+export function shareImage(id: string): string | undefined {
+  return SHARE_B[id]
 }
 
 const Frame = el

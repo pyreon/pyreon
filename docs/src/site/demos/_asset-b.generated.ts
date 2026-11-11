@@ -681,3 +681,27 @@ export const HEROES_B: Readonly<Record<string, HeroAsset>> = {
     "light": "/assets/products/migrate/hero.light.svg"
   }
 }
+
+/** Share image (1200×630) per page. */
+export const SHARE_B: Readonly<Record<string, string>> = {
+  "feature": "/assets/og/products/feature.png",
+  "i18n": "/assets/og/products/i18n.png",
+  "permissions": "/assets/og/products/permissions.png",
+  "urlstate": "/assets/og/products/urlstate.png",
+  "hotkeys": "/assets/og/products/hotkeys.png",
+  "rx": "/assets/og/products/rx.png",
+  "dnd": "/assets/og/products/dnd.png",
+  "toast": "/assets/og/products/toast.png",
+  "table": "/assets/og/products/table.png",
+  "virtual": "/assets/og/products/virtual.png",
+  "charts": "/assets/og/products/charts.png",
+  "editor": "/assets/og/products/editor.png",
+  "flow": "/assets/og/products/flow.png",
+  "document": "/assets/og/products/document.png",
+  "atlas": "/assets/og/products/atlas.png",
+  "lathe": "/assets/og/products/lathe.png",
+  "loom": "/assets/og/products/loom.png",
+  "tooling": "/assets/og/products/tooling.png",
+  "ai": "/assets/og/products/ai.png",
+  "migrate": "/assets/og/products/migrate.png"
+}

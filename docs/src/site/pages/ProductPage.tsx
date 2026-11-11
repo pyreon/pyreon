@@ -2,7 +2,7 @@ import { For, Show } from '@pyreon/core'
 import { useHead } from '@pyreon/head'
 import { EXTRA_SECTIONS } from '../content/extra-sections'
 import { EXTRA_SECTIONS_MORE } from '../content/extra-sections.more'
-import { ProductHeroVisual } from '../demos/_asset-b'
+import { ProductHeroVisual, shareImage } from '../demos/_asset-b'
 import type { ExtraSection, ProductData } from '../content/model'
 import { DEMOS } from '../demos/registry'
 import { PRODUCTS, productHref } from '../nav'
@@ -130,13 +130,29 @@ export function ProductPage(props: { data: ProductData }) {
   const extra = d.extraSections ?? EXTRA_SECTIONS[d.id] ?? EXTRA_SECTIONS_MORE[d.id] ?? []
   const docsHref = `/docs/${d.id}`
 
+  const url = `https://pyreon.dev${d.route}`
+  const share = shareImage(d.id)
   useHead({
     title: `${d.name} — ${inlineText(d.hero.title)} · Pyreon`,
     meta: [
       { name: 'description', content: inlineText(d.hero.lede) },
+      { property: 'og:type', content: 'website' },
+      { property: 'og:url', content: url },
       { property: 'og:title', content: `${d.name} · Pyreon` },
       { property: 'og:description', content: inlineText(d.hero.lede) },
+      { name: 'twitter:card', content: share ? 'summary_large_image' : 'summary' },
+      { name: 'twitter:title', content: `${d.name} · Pyreon` },
+      { name: 'twitter:description', content: inlineText(d.hero.lede) },
+      ...(share
+        ? [
+            { property: 'og:image', content: `https://pyreon.dev${share}` },
+            { property: 'og:image:width', content: '1200' },
+            { property: 'og:image:height', content: '630' },
+            { name: 'twitter:image', content: `https://pyreon.dev${share}` },
+          ]
+        : []),
     ],
+    link: [{ rel: 'canonical', href: url }],
   })
 
   return (
