@@ -4,10 +4,9 @@
  * layout (and runs its loader) for any unknown `/vault/*` URL.
  */
 import { h } from '@pyreon/core'
-import type { Middleware } from '@pyreon/server'
 import { RouterView } from '@pyreon/router'
 
-export const middleware: Middleware = (ctx) => {
+export const middleware = (ctx: { req: Request }) => {
   if (ctx.req.headers.get('x-demo-auth') !== 'let-me-in') {
     return new Response('Unauthorized', { status: 401 })
   }
