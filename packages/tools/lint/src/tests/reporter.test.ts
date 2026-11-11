@@ -153,3 +153,100 @@ describe('reporter — formatCompact', () => {
     expect(formatCompact(empty)).toBe('')
   })
 })
+
+describe('reporter — formatText shape (shared @pyreon/ansi theme)', () => {
+  const ESC = String.fromCharCode(27)
+  const show = (s: string) => s.split(ESC).join('␛')
+  const shaped: LintResult = {
+    files: [
+      {
+        filePath: '/repo/src/routes/inbox.tsx',
+        diagnostics: [
+          {
+            ruleId: 'pyreon/no-missing-for-by',
+            severity: 'warn',
+            message: '<For> needs a `by` key so rows survive reorder',
+            loc: { line: 42, column: 7 },
+            span: span(0, 1),
+            fix: { span: span(0, 1), replacement: 'x' },
+          },
+          {
+            ruleId: 'pyreon/no-signal-call-write',
+            severity: 'error',
+            message: 'signal(v) only reads. Write with draft.set(v)',
+            loc: { line: 58, column: 12 },
+            span: span(2, 3),
+            fix: { span: span(2, 3), replacement: 'y' },
+          },
+        ],
+      },
+      {
+        filePath: '/repo/src/components/Avatar.tsx',
+        diagnostics: [
+          { ruleId: 'pyreon/require-img-alt', severity: 'warn', message: '<img> needs alt text', loc: { line: 9, column: 5 }, span: span(0, 1) },
+        ],
+      },
+      { filePath: '/repo/src/clean.ts', diagnostics: [] },
+    ],
+    totalErrors: 1,
+    totalWarnings: 2,
+    totalInfos: 0,
+    configDiagnostics: [],
+  }
+
+  for (const level of [0, 1, 2] as const) {
+    for (const theme of ['dark', 'light'] as const) {
+      it(`level ${level} · ${theme}`, () => {
+        expect(show(formatText(shaped, { cwd: '/repo', elapsedMs: 380, color: level, theme, unicode: true }))).toMatchSnapshot()
+      })
+    }
+  }
+
+  it('ascii fallback', () => {
+    expect(formatText(shaped, { cwd: '/repo', elapsedMs: 1400, color: 0, unicode: false })).toMatchSnapshot()
+  })
+
+  const plain = { color: 0, unicode: true } as const
+
+  it('shows paths relative to cwd, absolute outside it', () => {
+    const text = formatText(shaped, { cwd: '/repo', ...plain })
+    expect(text).toContain('\nsrc/routes/inbox.tsx\n')
+    expect(formatText(shaped, { cwd: '/elsewhere', ...plain })).toContain('/repo/src/routes/inbox.tsx')
+  })
+
+  it('wraps a long message at 100 columns and keeps the rule id', () => {
+    const long: LintResult = {
+      ...empty,
+      totalErrors: 1,
+      files: [
+        {
+          filePath: '/repo/a.ts',
+          diagnostics: [
+            { ruleId: 'pyreon/long', severity: 'error', message: 'word '.repeat(60).trim(), loc: { line: 1, column: 1 }, span: span(0, 1) },
+          ],
+        },
+      ],
+    }
+    const text = formatText(long, { cwd: '/repo', ...plain })
+    for (const line of text.split('\n')) expect(line.length).toBeLessThanOrEqual(100)
+    expect(text).toContain('pyreon/long')
+    // Continuation lines hang under the message column.
+    expect(text.split('\n')[3]?.startsWith(' '.repeat(16))).toBe(true)
+  })
+
+  it('advertises fixable diagnostics only when --fix did not run', () => {
+    expect(formatText(shaped, { ...plain })).toContain('2 fixable with --fix')
+    expect(formatText(shaped, { ...plain, fixApplied: true })).not.toContain('fixable')
+  })
+
+  it('a clean CLI run ends with a verdict; a clean library call prints nothing', () => {
+    expect(formatText(empty, { ...plain, elapsedMs: 12 })).toBe('✓ no problems · 0 files · 12 ms')
+    expect(formatText(empty, { ...plain })).toBe('')
+  })
+
+  it('renders config diagnostics, which used to be dropped from text output', () => {
+    const text = formatText({ ...empty, configDiagnostics: [{ ruleId: 'pyreon/x', severity: 'warn', message: 'bad options' }] }, { ...plain })
+    expect(text).toContain('lint config')
+    expect(text).toContain('warning  bad options  pyreon/x')
+  })
+})

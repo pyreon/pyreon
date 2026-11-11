@@ -14,8 +14,11 @@
  */
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { bold, colorEnabled, cyan, gray, green, yellow } from '@pyreon/ansi'
+import { term } from '@pyreon/ansi'
 import cliPkg from '../package.json' with { type: 'json' }
+
+const { bold, gray, info: cyan, ok: green, warn: yellow } = term
+const colorEnabled = term.color
 
 export interface InstalledPyreonPkg {
   name: string

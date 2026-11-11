@@ -137,7 +137,7 @@ Run the full production build — **exactly `vite build`, run once**. The `zero(
 3. **SSG** (`mode: 'ssg'`, plus hybrid static-first routes in server modes): prerendered per-route HTML into `dist/`.
 4. **Deploy adapter** (Vercel / Netlify / Cloudflare / Node / Bun / static): platform artefacts staged into the same `dist/` tree — e.g. the node adapter emits `dist/index.js` + a clean `dist/client/` copy of the client assets, Vercel emits `dist/.vercel/output/`, Cloudflare emits `dist/_worker.js` + `_routes.json`.
 
-On success it prints `Build completed in <N>ms`. On failure it logs `Build failed: <message>` and exits with code `1` — including when an **explicitly configured** adapter's build step fails (an auto-selected adapter failure is reported but doesn't fail the build; the server bundle itself is still usable).
+On success the last thing printed is the build summary's verdict line (`✓ built in 1.5 s · 82 assets · …`; Vite's own `✓ built in …` when `zero({ buildSummary: false })`). On failure it logs `[Pyreon] Build failed:` with the error and exits with code `1` — including when an **explicitly configured** adapter's build step fails (an auto-selected adapter failure is reported but doesn't fail the build; the server bundle itself is still usable).
 
 ```bash
 zero build                 # mode + adapter resolved from vite.config.ts

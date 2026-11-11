@@ -544,6 +544,6 @@ describe('the footer totals', () => {
     const out = renderText(report({
       gates: [gate(), gate({ gate: 'b', meta: { elapsedMs: 1, skipped: true } })],
     }))
-    expect(out).toContain('1 gates')
+    expect(out).toContain('· 1 gate ·')
   })
 })
