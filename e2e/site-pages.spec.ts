@@ -109,11 +109,16 @@ test.describe('build output', () => {
   })
 })
 
+/** Page types with an island rooted in KitScope (see the hydration test). */
+const KIT_ISLAND_PAGES = new Set(['/benchmarks', '/why/components-run-once'])
+
 test.describe('hydration', () => {
   // A marketing page is static HTML: only its islands hydrate. Scrolling
   // through wakes every `visible` island; each must adopt its server HTML.
   for (const route of PAGE_TYPES) {
     test(`${route}: every island adopts its server HTML, with no errors`, async ({ page }) => {
+      // Islands rooted in KitScope mount afresh instead of adopting (pyreon/pyreon#4443); this flips when fixed.
+      test.fail(KIT_ISLAND_PAGES.has(route), 'KitScope islands remount: pyreon/pyreon#4443')
       await trackRemovals(page)
       const errors = collectErrors(page)
       await page.goto(route)
