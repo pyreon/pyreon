@@ -164,15 +164,15 @@ export function mountChild(
     // fires inside mountFor's effect. User-written `each={() => fn()}` still
     // works — props.each is then the function itself.
     const props = vnode.props as unknown as ForProps<unknown>
-    const initialEach = props.each as unknown
-    const source: () => unknown[] =
+    const initialEach = props.each
+    const source: () => readonly unknown[] =
       typeof initialEach === 'function'
-        ? (initialEach as () => unknown[])
-        : (() => props.each as unknown as unknown[])
+        ? initialEach
+        : () => props.each as readonly unknown[]
     const prevDepth = _elementDepth
     _elementDepth = 0
     const cleanup = mountFor(
-      source as () => unknown[],
+      source,
       props.by,
       props.children,
       parent,
