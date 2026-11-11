@@ -499,3 +499,15 @@ describe('diagnoseError — JSON script body given the script-code escape', () =
     )
   })
 })
+
+describe('diagnoseError — signal method passed by reference', () => {
+  const message =
+    '"count.set" is passed by reference, so it runs without its signal and throws: signal methods read "this". Pass an arrow instead: onInput={(v) => count.set(v)}.'
+
+  it('explains the detached-method throw and names the arrow fix', () => {
+    const result = diagnoseError(message)
+    expect(result?.cause).toContain('count.set')
+    expect(result?.fix).toContain('(v) => sig.set(v)')
+    expect(result?.fixCode).toBe('count.set(value)')
+  })
+})
