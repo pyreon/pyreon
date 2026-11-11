@@ -5,7 +5,11 @@ description: React-compatible hook API that runs on Pyreon's fine-grained reacti
 
 `@pyreon/react-compat` lets you write familiar React-style code -- hooks, `createRoot`, `lazy`, `memo`, portals -- while running on Pyreon's signal-based reactive engine under the hood. It is designed as a migration path: swap your imports and keep your component code. It runs the **value + re-render model** -- `useState` returns the value directly (not a getter), the component body re-runs on state change, hooks are positional, and `useEffect` / `useMemo` / `useCallback` honor their deps arrays -- so most React code behaves identically, including hooks-rules ordering and stale-closure semantics.
 
-<PackageBadge name="@pyreon/react-compat" href="/docs/react-compat" status="stable" />
+<PackageBadge name="@pyreon/react-compat" href="/docs/react-compat" status="beta" />
+
+:::note
+The compat layer is at **near-full public-API parity** with React, not complete parity, and Pyreon is pre-1.0. Check the differences and unsupported APIs on this page before migrating a large app.
+:::
 
 ## Installation
 
