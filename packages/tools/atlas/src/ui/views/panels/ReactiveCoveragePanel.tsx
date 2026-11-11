@@ -76,6 +76,7 @@ const NODE_STATE: Record<CoverageRow['reason'], 'ok' | 'warn' | 'danger' | 'unkn
 function LiveRefresh(props: { model: WorkbenchModel; refresh: () => void }): null {
   const e = effect(() => {
     props.model.renderTick()
+    props.model.previewMounts()
     props.model.selId()
     untrack(props.refresh)
   })
@@ -213,8 +214,9 @@ export const render: AddonPanelRender = (model) => {
 
       <Show when={() => available && rows() !== null && !mounted()}>
         <C.ActionsEmpty data-testid="coverage-no-mount">
-          The preview has not mounted during this recording, so none of its
-          bindings were seen. Open the Canvas view and press Record again.
+          Waiting for the preview to mount in this recording — its bindings
+          are counted from their first run. If the component is not on
+          screen, open the Canvas view.
         </C.ActionsEmpty>
       </Show>
 

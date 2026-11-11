@@ -289,6 +289,13 @@ export interface WorkbenchModel {
    * workbench around it — see `PreviewScope`. Read it when sampling coverage.
    */
   previewScope: () => PreviewScope
+  /**
+   * Bumped (a microtask after) each time the preview finishes mounting, in a
+   * development build — when a fresh `previewScope()` is worth reading. The
+   * DOM observer behind `renderTick` attaches only after a re-mount's own
+   * writes, so it cannot say this.
+   */
+  previewMounts: Signal<number>
   /** `ref` for the search `<input>` — attach in the top bar so ⌘K can focus it. */
   searchRef: (el: HTMLInputElement | null) => void
   /** Focus the search input (⌘K) via the captured ref — no DOM query. */
@@ -838,12 +845,11 @@ export function createModel(
   const keySet = computed(() => Object.keys(vals()).join('\u0000'), { equals: (a, b) => a === b })
   let live: { id: string; epoch: number; args: LiveArgs } | null = null
   // Re-mount trigger for the keys `render` read while rendering. The watcher
-  // that bumps it subscribes to those keys AFTER the component mounted, so on
-  // an edit the component's own bindings are notified first and update in
-  // place (their fire is real and counted), and only then is the preview
-  // rebuilt. Subscribed before them, it would dispose the bindings before
-  // they ran, and every binding of such a key would read "never updated".
-  // The watcher is Atlas's own node, so coverage ignores it.
+  // bumps it from inside its own run, so the re-mount is queued behind the
+  // component's bindings of the same key: they update in place first (their
+  // fire is real and counted — locked by binding-rows-live.test.ts), and only
+  // then is the preview rebuilt. The watcher is Atlas's own node, so coverage
+  // ignores it.
   const remountBump = signal(0)
   let remountWatch: Effect | null = null
   const watchRemount = (args: LiveArgs, keys: readonly string[]): Effect | null => {
@@ -907,6 +913,9 @@ export function createModel(
       remountWatch = watchRemount(args, readWhileRendering)
       const end = probe()
       if (start === undefined || end === undefined) return
+      // Deferred: this runs inside the mount, and a reader of the scope
+      // should see the subtree settled, not write state mid-mount.
+      queueMicrotask(() => previewMounts.set(previewMounts.peek() + 1))
       scope = {
         component: entry.id,
         // Bounded: a remount key edited all session long keeps the latest
@@ -928,7 +937,13 @@ export function createModel(
       h(MountMark, { at: done }),
     )
   }
-  const restartPreview = () => mountEpoch.set(mountEpoch.peek() + 1)
+  const previewMounts = signal(0)
+  // The scope is cleared NOW, not when the re-mount lands: until then it
+  // would describe the mount the new recording cannot see.
+  const restartPreview = () => {
+    scope = emptyScope(scope.component)
+    mountEpoch.set(mountEpoch.peek() + 1)
+  }
   let themeCells: {
     epoch: number
     theme: Computed<ThemeTokens>
@@ -1210,7 +1225,7 @@ export function createModel(
     wrapped: catalog.wrapped === true,
     viewports, backgrounds, locales, roles, viewportPreset, backgroundPreset, dir,
     brand, theme, sel, vals, visibleGroups, tree, browseIds, collapsed, isCollapsed, toggleGroup, noResults, matchCount, activeScenario, renderTick, a11y, previewEmpty,
-    setValue, selectScenario, runPlay, reset, logAction, clearActions, search, searchHits, preview, previewAs, restartPreview, previewScope, previewTheme, searchRef, focusSearch, previewRef,
+    setValue, selectScenario, runPlay, reset, logAction, clearActions, search, searchHits, preview, previewAs, restartPreview, previewScope, previewTheme, previewMounts, searchRef, focusSearch, previewRef,
     searchOpen, sidebarW, panelFrac, grid, compact, drawerOpen, embed, toggleTheme, syncTheme,
   }
 }

@@ -144,6 +144,18 @@ describe('a key the catalog render reads itself re-mounts the preview', () => {
 })
 
 describe('restartPreview', () => {
+  it('clears the scope at once, and announces the next settled mount', async () => {
+    const { m } = setup(catalog())
+    await Promise.resolve()
+    const mounts = m.previewMounts()
+    const [old] = m.previewScope().mounts
+    m.restartPreview()
+    // The old mount is outside the new recording: never reported again.
+    expect(m.previewScope().mounts).not.toContainEqual(old)
+    await Promise.resolve()
+    expect(m.previewMounts()).toBe(mounts + 1)
+  })
+
   it('re-mounts with fresh values, so a recording that starts after the mount still sees the component', () => {
     const cat = catalog()
     const m = createModel(cat, {})
