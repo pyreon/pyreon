@@ -32,8 +32,8 @@ const LIGHT = cssVars(tokens(false))
 const MONO = "'JetBrains Mono','SF Mono',ui-monospace,monospace"
 
 export const GLOBAL_CSS = `
-:root{${LIGHT}color-scheme:light}
-@media (prefers-color-scheme: dark){:root:not([data-lm-theme=light]){${DARK}color-scheme:dark}}
+:root{${DARK}color-scheme:dark}
+@media (prefers-color-scheme: light){:root:not([data-lm-theme=dark]){${LIGHT}color-scheme:light}}
 [data-lm-theme=dark]{${DARK}color-scheme:dark}
 [data-lm-theme=light]{${LIGHT}color-scheme:light}
 @keyframes lm-in{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}

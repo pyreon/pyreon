@@ -24,7 +24,7 @@ export default defineManifest({
     'tsconfig `paths` aware: `~/*`, `@app/*` and other internal aliases are read from the package + root tsconfig (JSONC, one `extends` hop) so they never scan as phantom packages',
     'Lexical import scan that strips comments + template-literal contents and validates specifier grammar — recipe catalogs carrying whole import lines as strings never false-positive',
     'Red exit contract: `loom scan` fails CI on error findings (`--strict` includes warnings); `loom-report.json` is the machine surface with stable codes + per-finding evidence',
-    'The observatory (`loom dev`): layered graph, adjacency matrix, cycle cards, blast-radius ranking, manifest table + detail panel, ⌘K, keyboard nav, dark/light — on the public Pyreon UI stack; vite + @pyreon/vite-plugin optional peers',
+    'The observatory (`loom dev`): layered graph, adjacency matrix, cycle cards, blast-radius ranking, manifest table + detail panel, ⌘K, keyboard nav, dark/light following the shared `pyreon-theme` preference — on the public Pyreon UI stack; vite + @pyreon/vite-plugin optional peers',
   ],
   longExample: `$ loom scan .
 loom: 142 workspace package(s), 147 external dep(s), 681 internal edge(s), depth 8, 0 cycle(s).

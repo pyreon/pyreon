@@ -191,15 +191,43 @@ test('manifest table: header columns line up with the row cells', async ({ page 
 
 test('theme follows the OS, and a toggled choice survives a reload', async ({ page }) => {
   await page.emulateMedia({ colorScheme: 'light' })
-  await page.evaluate(() => localStorage.removeItem('loom:theme'))
+  await page.evaluate(() => {
+    localStorage.removeItem('pyreon-theme')
+    localStorage.removeItem('loom:theme')
+  })
   await page.reload()
   const shell = page.getByTestId('loom-shell')
   await expect(shell).toHaveAttribute('data-lm-theme', 'light')
+  expect(await page.evaluate(() => getComputedStyle(document.body).backgroundColor)).toBe('rgb(250, 245, 235)')
   await page.getByTestId('dark-toggle').click()
   await expect(shell).toHaveAttribute('data-lm-theme', 'dark')
+  // The choice is written to the SHARED key every Pyreon UI reads.
+  expect(await page.evaluate(() => localStorage.getItem('pyreon-theme'))).toBe('dark')
   await page.reload()
   await expect(page.getByTestId('loom-shell')).toHaveAttribute('data-lm-theme', 'dark')
-  expect(await page.evaluate(() => getComputedStyle(document.body).backgroundColor)).toBe('rgb(15, 15, 20)')
+  expect(await page.evaluate(() => getComputedStyle(document.body).backgroundColor)).toBe('rgb(10, 10, 14)')
+})
+
+test('the shared pyreon-theme preference is applied before first paint', async ({ page }) => {
+  await page.emulateMedia({ colorScheme: 'dark' })
+  await page.evaluate(() => localStorage.setItem('pyreon-theme', 'light'))
+  // Read the root at DOMContentLoaded — before the module bundle runs.
+  const early = page.waitForEvent('domcontentloaded').then(() =>
+    page.evaluate(() => document.documentElement.getAttribute('data-lm-theme')),
+  )
+  await page.reload()
+  expect(await early).toBe('light')
+})
+
+test('another tab choosing a theme applies live', async ({ page, context }) => {
+  await page.evaluate(() => localStorage.setItem('pyreon-theme', 'dark'))
+  await page.reload()
+  await expect(page.getByTestId('loom-shell')).toHaveAttribute('data-lm-theme', 'dark')
+  const other = await context.newPage()
+  await other.goto(page.url())
+  await other.evaluate(() => localStorage.setItem('pyreon-theme', 'light'))
+  await expect(page.getByTestId('loom-shell')).toHaveAttribute('data-lm-theme', 'light')
+  await other.close()
 })
 
 test('the selection is carried in the URL hash and restored on load', async ({ page }) => {

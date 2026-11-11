@@ -93,7 +93,7 @@ export const FONTS_HREF =
  * site data is blocked).
  */
 export const THEME_BOOT =
-  "try{var t=localStorage.getItem('loom:theme');if(t==='dark'||t==='light')document.documentElement.setAttribute('data-lm-theme',t)}catch(e){}"
+  "try{var t=localStorage.getItem('pyreon-theme');if(t!=='dark'&&t!=='light')t=localStorage.getItem('loom:theme');if(t==='dark'||t==='light')document.documentElement.setAttribute('data-lm-theme',t)}catch(e){}"
 
 function devHtml(title: string): string {
   return [

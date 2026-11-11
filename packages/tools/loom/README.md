@@ -72,6 +72,6 @@ with the list of real ones rather than quietly doing nothing.
 
 ## The observatory (`loom dev`)
 
-Five views over the same report: the layered **graph** (columns by resolution depth, cycle edges dashed red, hover-dimming), the **adjacency matrix**, **cycles** as actionable loop cards, **impact** (transitive dependents, ranked), and the **manifest** table. Plus a detail panel per package (metrics, depends-on / required-by, findings, resolution path), search (⌘K), keyboard navigation, and dark/light theming. Built entirely on the public Pyreon UI stack (rocketstyle on elements bases).
+Five views over the same report: the layered **graph** (columns by resolution depth, cycle edges dashed red, hover-dimming), the **adjacency matrix**, **cycles** as actionable loop cards, **impact** (transitive dependents, ranked), and the **manifest** table. Plus a detail panel per package (metrics, depends-on / required-by, findings, resolution path), search (⌘K), keyboard navigation, and dark/light theming that follows the shared Pyreon preference (`localStorage['pyreon-theme']`, else `prefers-color-scheme`; applied before first paint, synced across tabs, with the pyreon.dev palette at 4.5:1 text contrast in both modes). Built entirely on the public Pyreon UI stack (rocketstyle on elements bases).
 
 Vite + `@pyreon/vite-plugin` are optional peers: `loom scan` runs without them; `loom dev` names the install when missing.

@@ -16,7 +16,7 @@ import type { LoomReport } from '../core/types'
 import * as C from './chrome'
 import { ensureGlobalStyles } from './global-css'
 import { createModel, shortName, type ObservatoryModel, type ViewId } from './model'
-import { hashForSel, MOBILE_QUERY, readPrefs, writeThemePref } from './prefs'
+import { hashForSel, MOBILE_QUERY, readPrefs, THEME_KEY, writeThemePref } from './prefs'
 import { tokens } from './theme'
 import { GraphView } from './views/GraphView'
 import { SearchDialog } from './views/SearchDialog'
@@ -99,6 +99,14 @@ export function Observatory(props: {
     const offDark = m.dark.subscribe(() =>
       root.setAttribute('data-lm-theme', m.dark() ? 'dark' : 'light'),
     )
+    // The theme is the SHARED Pyreon preference: another tab (the docs,
+    // Atlas) choosing light or dark applies here too, live.
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === THEME_KEY && (e.newValue === 'dark' || e.newValue === 'light')) {
+        m.dark.set(e.newValue === 'dark')
+      }
+    }
+    window.addEventListener('storage', onStorage)
     // Selection → URL hash (replace, not push: arrowing through 50 packages
     // must not leave 50 history entries), and keep the sidebar row on screen
     // when the selection moves by keyboard or ⌘K.
@@ -118,6 +126,7 @@ export function Observatory(props: {
     const offView = m.view.subscribe(() => canvasEl?.scrollTo(0, 0))
     return () => {
       offDark()
+      window.removeEventListener('storage', onStorage)
       offSel()
       offView()
     }
