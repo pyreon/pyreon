@@ -256,6 +256,12 @@ Setting `input.value`/`textarea.value` as a property never creates the content a
 
 ---
 
+### [FIXED, 2026-11] A string-template hole that BUILDS JSX renders it when the hole is evaluated, not where h() would.
+
+`ssrTemplate` kept an expression child it could not lower (`{xs.map(x => <Row/>)}`, `{c ? <Comp/> : null}`) as generated text inside `_esc(...)`/`_escSole(...)`. An `_ssr(...)` argument evaluates at the call site, so a module-level `const frag = <ul>{xs.map(x => <Row/>)}</ul>` rendered `Row` before any provider ran (context defaults; the client then hydrates against different markup), and the walker never saw that JSX, so a `.map` item holding a component (`<li><Link/></li>`) went through `jsx()`/`h()` per element. Rule: an expression hole that contains JSX is either PRESERVED (`_esc(`/`_escSole(` around the untouched range, re-walked so its own roots template — only when `sliceExpr` returns the source verbatim) or, when it must stay generated, makes the whole call `_ssrDeferred`. Code: `compiler/src/jsx.ts:ssrSerializeExprChild` (+ `native/src/lib.rs`). Tests: `runtime-dom/src/tests/ssr-template-differential.test.tsx` (MODULE-CONST expression-hole cases), `compiler/src/tests/ssr-lowering-bails.test.ts`, parity in `native-equivalence.test.ts`.
+
+---
+
 ### Lean SSR attr helper chosen by attribute name drops branches the name cannot decide
 
 `ssrTemplate` routes dynamic attrs to `_ssrAttr` (= `renderProp`) or lean `_ssrAttrGen`/`_ssrAttrUrl` by name. The lean helpers must resolve function values first (a bare identifier holding an accessor otherwise serializes its source, e.g. `d="() =&gt; …"`), and before the URL guard. `<textarea value>` bails to the `h()` path, since `_ssrAttrGen` never sees the tag. A fast path selected on one dimension must still cover every oracle branch that dimension cannot exclude; prefer bailing to the proven path. A differential test is only as strong as its input matrix — cover one input per oracle branch. Code: `packages/core/runtime-server/src/index.ts:_ssrAttrGen`/`_ssrAttrUrl`, `compiler/src/jsx.ts:ssrSerializeAttr` (+ `native/src/lib.rs`). Tests: `runtime-dom/src/tests/ssr-template-differential.test.tsx`, `runtime-server/src/tests/ssr-template.test.ts`.
