@@ -1,0 +1,24 @@
+{
+  "order": [
+    {
+      "id": "components-run-once",
+      "title": "Components run once"
+    },
+    {
+      "id": "one-codebase",
+      "title": "One codebase"
+    },
+    {
+      "id": "ai-ready",
+      "title": "AI-ready"
+    },
+    {
+      "id": "performance",
+      "title": "Performance"
+    },
+    {
+      "id": "full-stack",
+      "title": "Full stack"
+    }
+  ]
+}

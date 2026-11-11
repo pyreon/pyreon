@@ -9,6 +9,10 @@ the wins, the statistical ties, **and the losses**. The same honesty bar applies
 here as everywhere else in these docs: an inflated benchmark is worse than a slow
 framework.
 
+For the same record as charts you can switch between, product by product, see
+[the benchmarks page](/benchmarks). This guide carries the full tables, the
+method and every command to reproduce them.
+
 **How to read this page.** The numbers come from two runs made on
 **2026-11-05** on an Apple M3 Max (darwin/arm64, bun 1.4.0, node 26.1.0,
 Chromium 156 via Playwright 1.64), against the competitor packages installed at

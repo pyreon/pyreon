@@ -10,6 +10,7 @@ import { definePlaywrightConfig } from '@pyreon/playwright-config'
  *   - 404 page renders for an unknown URL
  *   - APICard / PropTable rendering on router.md
  *   - the marketing shell (site-shell.spec.ts)
+ *   - the story / compare / migrate / benchmarks / project pages (site-pages.spec.ts)
  *
  * Booted on port 5191. A dev server's fallback can hide missing generated
  * routes, and its cold-import reloads can discard example state mid-test.
@@ -23,6 +24,8 @@ export default definePlaywrightConfig({
     { name: 'site-shell', testMatch: /site-shell\.spec\.ts$/, port: 5191 },
     // The homepage and the static-page architecture (JS budget, sitemap, 404).
     { name: 'site-home', testMatch: /site-home\.spec\.ts$/, port: 5191 },
+    // Story, compare, migrate, benchmarks and project pages (routes, widths, switchers, contrast).
+    { name: 'site-pages', testMatch: /site-pages\.spec\.ts$/, port: 5191 },
   ],
   webServer: [
     {

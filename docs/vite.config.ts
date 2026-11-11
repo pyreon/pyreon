@@ -9,6 +9,8 @@ import lastUpdated from './vite-plugins/last-updated'
 import legacyCssLayer from './vite-plugins/legacy-css-layer'
 import openStats from './vite-plugins/open-stats'
 import productContent from './vite-plugins/product-content'
+import sitePagesContent from './vite-plugins/site-pages-content'
+import siteReleases from './vite-plugins/site-releases'
 import publishLlmsTxt from './vite-plugins/publish-llms-txt'
 import staticPages from './vite-plugins/static-pages'
 import { SITE_LINKS } from './src/site-links'
@@ -42,6 +44,8 @@ export default defineConfig({
     legacyCssLayer(),
     // Product content JSON → Shiki-highlighted code at build time.
     productContent(),
+    // Story / compare / migrate / project content JSON → highlighted code at build time.
+    sitePagesContent(),
     // The custom pyreon-syntax Shiki themes mirror the brand handoff §3/§6.7
     // tokens (`--syn-*` in tokens.css). VitePress applied them via its
     // `markdown.theme: { light, dark }` config — same surface here, only
@@ -93,6 +97,9 @@ export default defineConfig({
     // virtual:pyreon-open-stats — GitHub / npm / repo numbers for /open,
     // fetched once per build; a failed source renders as "unavailable".
     openStats(),
+    // virtual:pyreon-site-releases — released versions (CHANGELOG.md) and the
+    // unreleased changesets on main, read once per build for /releases.
+    siteReleases(),
     // /llms.txt + /llms-full.txt — the repo-root files `bun run gen-docs`
     // generates from the package manifests (see the plugin).
     publishLlmsTxt(),
@@ -106,9 +113,15 @@ export default defineConfig({
         trailingSlash: 'never',
         // A stable link that forwards (/discord, /newsletter once switched on)
         // is a redirect, not a page worth indexing.
-        exclude: Object.entries(SITE_LINKS)
-          .filter(([, target]) => target !== null)
-          .map(([key]) => `/${key}`),
+        // /why and /compare are redirects to their first page (sitemap
+        // decision "merge"), not pages.
+        exclude: [
+          ...Object.entries(SITE_LINKS)
+            .filter(([, target]) => target !== null)
+            .map(([key]) => `/${key}`),
+          '/why',
+          '/compare',
+        ],
       },
       // Everything is crawlable; the sitemap is the list above.
       robots: { rules: [{ userAgent: '*', allow: ['/'] }], sitemap: 'https://pyreon.dev/sitemap.xml' },
