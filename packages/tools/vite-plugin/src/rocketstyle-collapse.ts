@@ -122,8 +122,19 @@ export function deriveCollapse(
   }
 }
 
+function errorText(err: unknown): string {
+  return err instanceof Error ? err.message : String(err)
+}
+
 export interface CollapseResolver {
   resolve(input: ResolveInput): Promise<ResolvedCollapse | null>
+  /**
+   * A ready-to-print `[Pyreon]` warning when NO site can collapse — the
+   * server failed to start, or a module every site needs
+   * (`@pyreon/runtime-server`, `@pyreon/core`, `@pyreon/styler`, the
+   * provider, the theme) failed to load — or null while healthy.
+   */
+  unavailable(): string | null
   dispose(): Promise<void>
 }
 
@@ -151,7 +162,15 @@ export async function createCollapseResolver(projectRoot: string): Promise<Colla
   // That's a legitimate dual-load — scope the opt-out across the entire
   // server lifecycle since every `load(spec)` below also touches the
   // dual graph.
-  let server: ViteDevServer | null = await withSilent(() => createServer(inline))
+  // A failure to start is recorded, not thrown: every site then bails, and
+  // `unavailable()` says why (an opted-in collapse must not no-op silently).
+  let unavailableReason: string | null = null
+  let server: ViteDevServer | null = null
+  try {
+    server = await withSilent(() => createServer(inline))
+  } catch (err) {
+    unavailableReason = errorText(err)
+  }
 
   // Resolved-bundle cache — identical input must hit the same result
   // without a second double-render (deterministic by construction).
@@ -175,9 +194,7 @@ export async function createCollapseResolver(projectRoot: string): Promise<Colla
     // from @pyreon/reactivity scopes the sentinel opt-out via a refcount
     // (race-safe under concurrency; the prior env-var dance leaked `silent`
     // permanently when N opt-out scopes overlapped — see withSilent JSDoc).
-    return withSilent(
-      () => server!.ssrLoadModule(spec) as Promise<Record<string, unknown>>,
-    )
+    return withSilent(() => server!.ssrLoadModule(spec) as Promise<Record<string, unknown>>)
   }
 
   /**
@@ -211,13 +228,27 @@ export async function createCollapseResolver(projectRoot: string): Promise<Colla
     // buffer. The chain serialization already guarantees ordering for
     // in-flight calls; a cache hit is observably free either way.
     if (cache.has(ck)) return cache.get(ck) ?? null
+    if (!server || unavailableReason !== null) return null
+    // The modules every site needs. A failure here is a CONFIGURATION
+    // problem (e.g. `@pyreon/runtime-server` not resolvable from the app),
+    // not a per-site bail: every site would silently keep its normal mount.
+    // Record it so the plugin can say so once (`unavailable()`).
+    let rs: Record<string, unknown>
+    let core: Record<string, unknown>
+    let styler: Record<string, unknown>
+    let prov: Record<string, unknown>
+    let thm: Record<string, unknown>
     try {
-      if (!server) return null
-      const rs = await load('@pyreon/runtime-server')
-      const core = await load('@pyreon/core')
-      const styler = await load('@pyreon/styler')
-      const prov = await load(input.config.provider.source)
-      const thm = await load(input.config.theme.source)
+      rs = await load('@pyreon/runtime-server')
+      core = await load('@pyreon/core')
+      styler = await load('@pyreon/styler')
+      prov = await load(input.config.provider.source)
+      thm = await load(input.config.theme.source)
+    } catch (err) {
+      unavailableReason ??= errorText(err)
+      return null
+    }
+    try {
       const comp = await load(input.component.source)
       const renderToString = rs.renderToString as (n: unknown) => Promise<string>
       const h = core.h as (t: unknown, p: unknown, ...c: unknown[]) => unknown
@@ -289,6 +320,11 @@ export async function createCollapseResolver(projectRoot: string): Promise<Colla
       )
       resolveChain = next
       return next
+    },
+    unavailable() {
+      return unavailableReason === null
+        ? null
+        : `[Pyreon] collapse is OFF for this build: ${unavailableReason}. Make \`@pyreon/runtime-server\`, \`@pyreon/core\`, \`@pyreon/styler\` and the configured provider/theme resolvable from the app, or remove the \`collapse\` option.`
     },
     async dispose() {
       const s = server

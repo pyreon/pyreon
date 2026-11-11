@@ -497,22 +497,30 @@ const page = () => search().page`,
       signature:
         'notFound(message?: string) => never · NotFoundBoundary(props: { fallback: ComponentFn | VNodeChild; children?: VNodeChild }) => VNodeChild',
       summary:
-        "The Next.js-style 404 pair. `notFound()` THROWS a branded Error (message defaults to 'Not Found') from inside a loader or component; `isNotFoundError` detects the brand (`Symbol.for('pyreon.notFound')`, realm-shared). `NotFoundBoundary` wraps the core `ErrorBoundary`: it renders `children` normally, and when a `notFound()` is thrown in its subtree it renders `fallback` (invoked as a component with `{ error, reset }` when its arity is <= 1, else returned as a plain VNodeChild). It RE-THROWS any non-notFound error so real errors still propagate to an outer error boundary.",
-      example: `async function loadUser(params: { id: string }) {
-  const user = await fetchUser(params.id)
-  if (!user) notFound()          // throws — code below is unreachable
-  return user
-}
+        "The Next.js-style 404 pair. `notFound()` THROWS a branded Error (message defaults to 'Not Found'); `isNotFoundError` detects the brand (`Symbol.for('pyreon.notFound')`, realm-shared). Thrown from a LOADER (`loader` / `serverLoader`) it is flow control, like `redirect()`: the route enters the router's not-found state — `currentRoute()` resolves to the same `notFoundComponent` / `_404.tsx` chain an unmatched URL gets (inside its layouts, `isNotFound: true`, URL/params/query kept), SSR answers HTTP 404 in string and stream mode (404 with an empty chain when no `notFoundComponent` exists), the loader-data blob carries a marker so the hydrating client resolves the same chain, the data endpoint answers `{ notFound: true }`, a client navigation lands on the same page, `onError` is not called, and the next navigation leaves the state. Thrown from a COMPONENT it is caught by the nearest `NotFoundBoundary`, which wraps the core `ErrorBoundary` wraps the core `ErrorBoundary`: it renders `children` normally, and when a `notFound()` is thrown in its subtree it renders `fallback` (invoked as a component with `{ error, reset }` when its arity is <= 1, else returned as a plain VNodeChild). It RE-THROWS any non-notFound error so real errors still propagate to an outer error boundary.",
+      example: `// Loader: renders the route tree's notFoundComponent / _404.tsx (SSR: HTTP 404)
+const routes = [{
+  path: '/', component: Layout, notFoundComponent: NotFoundPage,
+  children: [{
+    path: 'user/:id', component: UserPage,
+    loader: async ({ params }) => {
+      const user = await fetchUser(params.id)
+      if (!user) notFound()          // throws — code below is unreachable
+      return user
+    },
+  }],
+}]
 
+// Component: caught by the nearest NotFoundBoundary
 const app = (
   <NotFoundBoundary fallback={() => <h1>404 — not found</h1>}>
-    <RouterView />
+    <Widget />
   </NotFoundBoundary>
 )`,
       mistakes: [
         'Expecting code after `notFound()` to run — it THROWS (`=> never`) and never returns, so a guard-then-continue pattern does not work (everything after it is unreachable).',
         'Using `NotFoundBoundary` as a general error boundary — it ONLY handles `notFound()` throws; every other error is RE-THROWN to the nearest outer `ErrorBoundary`.',
-        'Confusing `notFound()` with the route-record `notFoundComponent` / fs-router `_404.tsx` — those are the route-level no-match fallback; `notFound()` drives the `NotFoundBoundary` in the rendered subtree (a different mechanism).',
+        'Wrapping `RouterView` in a `NotFoundBoundary` to catch a LOADER\'s `notFound()` — a loader\'s `notFound()` never reaches a boundary; it renders the route tree\'s `notFoundComponent` / `_404.tsx` chain (HTTP 404 under SSR). `NotFoundBoundary` is for `notFound()` thrown while a component renders.',
       ],
       seeAlso: ['redirect', 'RouterView'],
     },

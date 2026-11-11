@@ -8,7 +8,7 @@ process.env.NODE_ENV = 'production'
 import { z } from 'zod'
 import * as v from 'valibot'
 import { type } from 'arktype'
-import { s } from '../src/v1'
+import { s } from '../src/index'
 import { cpus as benchCpus, loadavg as benchLoadavg } from 'node:os'
 
 // Runtime banner — which ENGINE produced these numbers (bun = JavaScriptCore,

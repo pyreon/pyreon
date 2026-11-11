@@ -231,6 +231,49 @@ test.describe("SSR node deploy artifact", () => {
     expect(sentinel).toBe("alive");
   });
 
+  test("a loader notFound() answers 404 with _404 in the layout, and hydrates onto the SAME nodes", async ({
+    page,
+  }) => {
+    // `/posts/:id` matches; its loader throws notFound() for an unknown id.
+    const resp = await page.request.get("/posts/9999");
+    expect(resp.status()).toBe(404);
+    const html = await resp.text();
+    expect(html).toContain('data-testid="not-found-page"');
+    expect(html).toContain('data-testid="nav-home"'); // inside the layout
+    expect(html).toContain('"__pyreonNotFound":true'); // hydration marker
+
+    // Hydration must resolve the same not-found chain the server rendered:
+    // capture the server's node before the (deferred) client entry runs,
+    // then check the hydrated page still shows THAT node.
+    await page.addInitScript(() => {
+      document.addEventListener("readystatechange", () => {
+        if (document.readyState === "interactive") {
+          (window as never as Record<string, unknown>).__serverNotFound =
+            document.querySelector('[data-testid="not-found-page"]');
+        }
+      });
+    });
+    const errors: string[] = [];
+    page.on("pageerror", (e) => errors.push(e.message));
+    page.on("console", (m) => {
+      if (m.type() === "error" || /mismatch/i.test(m.text())) errors.push(m.text());
+    });
+    await page.goto("/posts/9999");
+    await page.waitForLoadState("networkidle");
+    await expect(page.getByTestId("not-found-page")).toBeVisible();
+    await expect(page.getByTestId("post-page")).toHaveCount(0);
+    const sameNode = await page.evaluate(
+      () =>
+        (window as never as Record<string, unknown>).__serverNotFound != null &&
+        document.querySelector('[data-testid="not-found-page"]') ===
+          (window as never as Record<string, unknown>).__serverNotFound,
+    );
+    expect(sameNode, "the hydrated page must adopt the server's not-found node").toBe(true);
+    // 404 responses log nothing to the console (the 404 document request
+    // itself is reported by Chromium as a failed resource load).
+    expect(errors.filter((e) => !/status of 404/.test(e))).toEqual([]);
+  });
+
   test("hydrates + client-side navigation works (assets load + run)", async ({
     page,
   }) => {

@@ -153,7 +153,7 @@ const page = `<!DOCTYPE html>
 
 `renderWithHead` (subpath `@pyreon/head/ssr`) creates its own `HeadContext`, runs `renderToString` from `@pyreon/runtime-server`, then serializes the resolved tags. `htmlAttrs` / `bodyAttrs` are space-prefixed strings ready to splice into the opening tags.
 
-**XSS hardening**: inline script/style/noscript bodies are not HTML-escaped (would break the content), but `</script>` / `</style>` / `</noscript>` and `<!--` are rewritten (`<\/script>` etc.) so user content cannot break out of the wrapping tag.
+**XSS hardening**: inline script/style/noscript bodies are not HTML-escaped (would break the content), but they cannot break out of the wrapping tag. A JSON data block (`application/ld+json`, `speculationrules`, `importmap`, any `+json` / `/json` type) has every `<` written as `\u003C` (via `escapeJsonForScript` from `@pyreon/core`), so it still `JSON.parse`s; script code, CSS and noscript get `</script>` / `</style>` / `</noscript>` and `<!--` rewritten (`<\/script>`, `<\!--`). A `%s` title template inserts the title literally — `$&`, `$'` and the like in a title are not replacement patterns.
 
 ## Subpath exports
 

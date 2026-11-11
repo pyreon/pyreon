@@ -250,6 +250,27 @@ export function containsAwait(n: unknown): boolean {
   return Object.values(n).some(containsAwait)
 }
 
+/**
+ * The name Kotlin binds the error of a `catch` the source wrote without a binding (`catch { … }`) to. Kotlin's catch
+ * clause must name its parameter, and a fixed name shadows any user identifier of that name inside the body: a signal
+ * called `pyreonCaught` assigned there became an assignment to the immutable exception ("'val' cannot be reassigned").
+ * So the name is the first `pyreonCaught`, `pyreonCaught2`, … that occurs NOWHERE in the catch body — every string in
+ * its IR counts, which is conservative (a string literal can only push the suffix up) and needs no per-kind walker.
+ * (Swift needs no name: `catch _` binds nothing, where a bare `catch` would bind the implicit `error`.)
+ */
+export function anonymousCatchBinder(catchBody: unknown): string {
+  const used = new Set<string>()
+  const visit = (n: unknown): void => {
+    if (typeof n === 'string') used.add(n)
+    else if (Array.isArray(n)) n.forEach(visit)
+    else if (n !== null && typeof n === 'object') Object.values(n).forEach(visit)
+  }
+  visit(catchBody)
+  let name = 'pyreonCaught'
+  for (let i = 2; used.has(name); i++) name = `pyreonCaught${i}`
+  return name
+}
+
 /** The warning for a throw / throwing call that nothing catches in a closure that cannot throw. */
 export function uncaughtThrowWarning(what: string): string {
   return (

@@ -49,6 +49,28 @@ function compilerExportSubpath(name: string): 'analyze' | 'audits' | 'validate' 
 
 export const ERROR_PATTERNS: ErrorPattern[] = [
   {
+    // A loader's notFound() answered HTTP 500: on router versions
+    // before the loader-not-found fix, every path that ran loaders (SSR
+    // preload, the /_pyreon/data endpoint) treated the branded error like any
+    // other loader failure.
+    pattern:
+      /SSR render failed[^\n]*\bNot Found\b|data endpoint returned HTTP 500|notFound\(\)[^\n]*\b(?:500|Internal Server Error)\b/i,
+    diagnose: () => ({
+      cause:
+        "A route `loader` / `serverLoader` threw `notFound()`. On router versions before the loader-not-found fix, SSR treated it like any loader failure (`[Pyreon] SSR render failed … Error: Not Found`, HTTP 500), the `/_pyreon/data` endpoint answered 500 (`[Pyreon Router] data endpoint returned HTTP 500` on client navigation), and an isomorphic loader's `notFound()` went to `onError` and rendered the page with `undefined` data.",
+      fix: 'Upgrade the router package (and zero, for the data endpoint). A loader\'s `notFound()` now puts the route in the not-found state: it renders the nearest `notFoundComponent` / `_404.tsx` inside its layouts, SSR answers HTTP 404 (string and stream), the data endpoint answers `{ notFound: true }`, and the hydrating client resolves the same page. Add a `_404.tsx` (or `notFoundComponent`) for a styled page; without one the response is still a 404. Remove any middleware that worked around the 500.',
+      fixCode: `// routes/_404.tsx — rendered inside _layout.tsx for unmatched URLs AND loader notFound()
+export default function NotFound() { return <h1>Not found</h1> }
+
+// routes/items/[id].server.ts — notFound is exported by the router package
+export async function serverLoader({ params }) {
+  const item = await db.items.find(params.id)
+  if (!item) notFound()   // -> HTTP 404 with _404.tsx, not a 500
+  return item
+}`,
+    }),
+  },
+  {
     pattern: /\b([A-Za-z_$][\w$]*)\([^)]*\)\??\.(set|update|peek|trigger) is not a function/,
     diagnose: (m) => ({
       cause: `A signal method is called on its value: \`${m[1]}().${m[2]}\`.`,
@@ -298,6 +320,25 @@ try { load() } catch (err) { return <p>{err.message}</p> }`,
       fix: 'Return a plain projection of the fields the route actually renders, rather than the ORM object. That is worth doing regardless of this error: everything a loader returns is embedded in the HTML and shipped to every visitor, so returning a whole row also ships columns the page never displays. If you need the nested shape, select it explicitly (Prisma `select`, a Mongo projection) or map it yourself — a custom `replacer` is not an option, because the framework owns this serialization.',
       fixCode:
         '// throws — `post.author.posts` points back at `post`\n// export const loader = () => db.post.findUnique({ where: { id }, include: { author: true } })\n\n// returns a plain projection: no cycle, and no columns the page never renders\nexport const loader = async () => {\n  const post = await db.post.findUnique({\n    where: { id },\n    select: { id: true, title: true, body: true, author: { select: { id: true, name: true } } },\n  })\n  return { post }\n}',
+    }),
+  },
+  {
+    // `JSON.parse` of an inline JSON `<script>` body (JSON-LD, import map,
+    // speculation rules, a `type="application/json"` state block) that was
+    // given the script-CODE escape `<\!--` / `<\/`. `\!` is an identity escape
+    // in JS but not a JSON escape, so the block stops parsing: the browser
+    // drops an import map / speculation rules with a console error, crawlers
+    // drop the structured data, and an app reading its own state block throws
+    // this. Pyreon's head serializer shipped that rewrite for JSON types
+    // before `escapeJsonForScript`. Engine wordings: V8, Firefox, JavaScriptCore.
+    pattern:
+      /Bad escaped character in JSON|JSON\.parse: bad escaped character|JSON Parse error: Invalid escape character/i,
+    diagnose: () => ({
+      cause:
+        'JSON text contains a backslash escape JSON does not define. When the text is the body of an inline `<script>` (JSON-LD, `importmap`, `speculationrules`, `type="application/json"`), the usual source is the script-CODE escape: `</script` → `<\\/script` is harmless, but `<!--` → `<\\!--` produces `\\!`, which is an identity escape in JavaScript and INVALID in JSON. The whole block then fails to parse — browsers ignore an import map or speculation rules with a console error, search engines silently drop the structured data, and code that reads the block back with `JSON.parse` throws. The Pyreon head serializer applied that rewrite to JSON-typed scripts in earlier versions whenever the data contained `<!--`.',
+      fix: "Escape JSON by what reads it back: every `<` as `\\u003C` (plus U+2028/U+2029), which is a valid JSON escape and still prevents `</script>` and `<!--<script` from forming. Use `escapeJsonForScript` from `@pyreon/core` for any hand-built JSON `<script>` body, and upgrade Pyreon so `useHead({ script: [{ type: 'application/ld+json', children }] })` and `jsonLd()` take that path. If the JSON did not come from a `<script>` body, look for a hand-written backslash before a character other than `\" \\ / b f n r t u`.",
+      fixCode:
+        "import { escapeJsonForScript } from '@pyreon/core'\n\n// breaks JSON.parse when data contains '<!--' (\\! is not a JSON escape)\n// const body = JSON.stringify(data).replace(/<\\//g, '<\\\\/').replace(/<!--/g, '<\\\\!--')\n\nconst body = escapeJsonForScript(JSON.stringify(data)) // every '<' → '\\u003C'\nconst tag = `<script type=\"application/ld+json\">${body}</script>`",
     }),
   },
   {

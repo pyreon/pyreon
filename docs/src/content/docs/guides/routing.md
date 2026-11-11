@@ -80,7 +80,7 @@ function Logout() {
 
 - **Loaders** — `loader: ({ params, request }) => fetchData(params.id)`; read with `useLoaderData()`. `loaderKey` controls cache identity; `gcTime` controls expiry; `router.invalidateLoader(key?)` clears it.
 - **Redirect from a loader** — `throw redirect('/login')` runs BEFORE the layout renders (SSR returns a real 302/307; CSR replaces). Use this for auth gates instead of an `onMount` push.
-- **404** — `throw notFound()` triggers the nearest `NotFoundBoundary`.
+- **404** — `notFound()` in a loader renders the nearest `notFoundComponent` / `_404.tsx` (HTTP 404 under SSR); in a component it triggers the nearest `NotFoundBoundary`.
 - **Pending / error** — `pendingComponent` (with `pendingMs` / `pendingMinMs`) shows while a loader runs; `errorComponent` catches render errors.
 - **Guards** — global `beforeEach` / `afterEach`, per-route `beforeEnter` / `beforeLeave`; return a path string to redirect or `false` to cancel.
 

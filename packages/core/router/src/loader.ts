@@ -1,6 +1,7 @@
 import type { Context } from '@pyreon/core'
 import { createContext, useContext } from '@pyreon/core'
 import type { RouterInstance } from './types'
+import { isNotFoundError } from './not-found'
 
 // Dev-mode gate + counter sink. See packages/internals/perf-harness for contract.
 const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number) => void }
@@ -75,16 +76,31 @@ export async function prefetchLoaderData(
         // `_loaderInflight`) — the exact double-fetch prefetching exists
         // to avoid. Loader errors (incl. thrown `redirect()`) propagate
         // to the caller exactly as before.
-        const data = await router._executeLoader(r, {
-          params: route.params,
-          query: route.query,
-          signal: ac.signal,
-          ...(request ? { request } : {}),
-        })
+        let data: unknown
+        try {
+          data = await router._executeLoader(r, {
+            params: route.params,
+            query: route.query,
+            signal: ac.signal,
+            ...(request ? { request } : {}),
+          })
+        } catch (err) {
+          // `notFound()` → the path's not-found state (see `router.preload`),
+          // not a rejection. A navigation's commit overwrites it.
+          if (!isNotFoundError(err)) throw err
+          router._loaderNotFound?.set(route.path)
+          return
+        }
         router._loaderData.set(r, data)
       }),
   )
 }
+
+/**
+ * Key in the serialized loader-data blob marking a page whose loader threw
+ * `notFound()`. Route paths always start with `/`, so it cannot collide.
+ */
+const LOADER_NOT_FOUND_KEY = '__pyreonNotFound'
 
 /**
  * Serialize loader data to a JSON-safe plain object for embedding in SSR HTML.
@@ -108,7 +124,14 @@ export function serializeLoaderData(router: RouterInstance): Record<string, unkn
   // `hydrateLoaderData` counts occurrences while walking the SAME matched
   // chain in the SAME order, so the suffixes line up deterministically.
   const result: Record<string, unknown> = {}
-  const matched = router.currentRoute().matched
+  const current = router.currentRoute()
+  const matched = current.matched
+  // The server rendered the loader-not-found chain: tell the client so it
+  // starts in the same state (otherwise it would resolve the real route and
+  // the hydration would mismatch).
+  if (current.isNotFound === true && router._loaderNotFound?.peek() === current.path) {
+    result[LOADER_NOT_FOUND_KEY] = true
+  }
   const seen = new Map<string, number>()
   for (const record of matched) {
     if (!router._loaderData.has(record)) continue
@@ -345,7 +368,11 @@ export function hydrateLoaderData(
   serialized: Record<string, unknown>,
 ): void {
   if (!serialized || typeof serialized !== 'object') return
-  const route = router._resolve(router.currentRoute().path)
+  // Server rendered the loader-not-found chain → enter the same state BEFORE
+  // resolving, so the walk below (and the first render) uses that chain.
+  const notFound = serialized[LOADER_NOT_FOUND_KEY] === true && router._loaderNotFound !== undefined
+  if (notFound) router._loaderNotFound.set(router.currentRoute().path)
+  const route = notFound ? router.currentRoute() : router._resolve(router.currentRoute().path)
   // Mirror serializeLoaderData's collision-aware keys: first record at a
   // path reads the bare key, subsequent same-path records read
   // `path#<occurrence>` (falling back to the bare key for blobs written by

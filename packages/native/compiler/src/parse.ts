@@ -2938,6 +2938,35 @@ function tryComponentFromTopLevel(node: AnyNode, ctx: ParseCtx): ComponentIR | n
           )
         }
         const decl = tryDeclFromVarDeclarator(declarator, ctx)
+        // `const id = setInterval(fn, ms)` (or `setTimeout`, `const` or `let`) in the component body. The web runs the
+        // body once, so this starts ONE timer. Emitted as a body value it ran on every SwiftUI `body` evaluation /
+        // recomposition, starting a new timer each time, and Swift's const inlining turned a later `clearInterval(id)`
+        // into `PyreonTimers.clear(PyreonTimers.setInterval(…))` — a fresh timer, cleared at once. It lowers instead to
+        // what it means: state holding the id, assigned once when the view mounts. Reads of `id` stay bare identifiers
+        // (the same signal-backed shape as a closure-reassigned `let` below).
+        if (decl !== null && decl.kind === 'value' && isTimerStart(decl.expr)) {
+          ctx.staticExprs?.delete(decl.name)
+          decls.push(
+            {
+              kind: 'signal',
+              name: decl.name,
+              type: inferTypeFromInitial(decl.expr),
+              initial: { kind: 'literal', value: 0 },
+            },
+            {
+              kind: 'on-mount',
+              body: [
+                { kind: 'assign', target: { kind: 'identifier', name: decl.name }, op: '=', value: decl.expr },
+              ],
+            },
+          )
+          continue
+        }
+        // A timer started anywhere else in a body value (`const ids = [setTimeout(f, 1)]`, `const t = on ?
+        // setInterval(f, 9) : 0`) would equally restart on every evaluation, and has no single mount-time shape: name it.
+        if (decl !== null && decl.kind === 'value' && containsRenderTimeTimer(decl.expr)) {
+          droppedStmtWarnings.push(renderTimeTimerWarning(name, decl.name))
+        }
         // A plain `let` that a CLOSURE reassigns is component state in everything but name. As a value-const it
         // emits an immutable `let`/`val` (Swift: not in scope of the helper func; Kotlin: "val cannot be reassigned"),
         // so it becomes the signal-backed `@State`/`mutableStateOf` it behaves as — reads stay bare identifiers.
@@ -3047,6 +3076,14 @@ function tryComponentFromTopLevel(node: AnyNode, ctx: ParseCtx): ComponentIR | n
       ) {
         const effect = effectDecls(call.arguments[0] as AnyNode, decls, ctx, true)
         decls.push(...effect)
+      } else if (
+        call?.type === 'CallExpression' &&
+        call.callee?.type === 'Identifier' &&
+        (call.callee.name === 'setTimeout' || call.callee.name === 'setInterval')
+      ) {
+        // A bare `setInterval(fn, ms)` / `setTimeout(fn, ms)` statement starts one timer when the body runs once on the
+        // web: the mount-time lowering of the `const id = setInterval(…)` arm above, with nothing to hold the id.
+        decls.push({ kind: 'on-mount', body: [{ kind: 'expr', expr: parseExpr(call, ctx) }] })
       } else if (call?.type === 'CallExpression') {
         // A bare CALL statement (`effect(...)`, a stray side-effecting
         // call) has no native lowering — dropped + NAMED warning, so the
@@ -3482,6 +3519,29 @@ function mapNestedStatementLists(st: StatementIR, f: (list: StatementIR[]) => St
     default:
       return st
   }
+}
+
+/** `setTimeout(…)` / `setInterval(…)` — a call that STARTS a timer (the emitters lower it to `PyreonTimers`). */
+function isTimerStart(e: ExprIR): boolean {
+  return (
+    e.kind === 'call' &&
+    e.callee.kind === 'identifier' &&
+    (e.callee.name === 'setTimeout' || e.callee.name === 'setInterval')
+  )
+}
+
+/** Does `n` start a timer when it is EVALUATED — a timer call outside every closure (an arrow runs later, if ever)? */
+function containsRenderTimeTimer(n: unknown): boolean {
+  if (Array.isArray(n)) return n.some(containsRenderTimeTimer)
+  if (n === null || typeof n !== 'object') return false
+  const node = n as { kind?: unknown }
+  if (node.kind === 'arrow') return false
+  if (typeof node.kind === 'string' && isTimerStart(n as ExprIR)) return true
+  return Object.values(n).some(containsRenderTimeTimer)
+}
+
+function renderTimeTimerWarning(component: string, binding: string): string {
+  return `Component ${component}: \`${binding}\` starts a timer (setTimeout / setInterval) while the component body is evaluated. Natively the body is re-evaluated on every render, so a new timer would start each time. Start it in onMount(() => { … }) or a handler, or write it as its own \`const id = setInterval(fn, ms)\` statement, which lowers to a single mount-time timer.`
 }
 
 /**

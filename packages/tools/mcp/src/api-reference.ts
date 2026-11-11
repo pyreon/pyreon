@@ -1242,6 +1242,17 @@ if (isClient) {
 - Using \`isClient\` to gate DOM access inside a component body when \`onMount\`/\`effect\` would do — those never run during SSR at all, which is simpler and doesn't need the guard`,
   },
 
+  'core/escapeJsonForScript': {
+    signature: '(json: string) => string',
+    example: `import { escapeJsonForScript } from '@pyreon/core'
+
+const tag = \`<script type="application/ld+json">\${escapeJsonForScript(JSON.stringify(data))}</script>\``,
+    notes: `Neutralise JSON TEXT for the body of an inline \`<script>\`: every \`<\` becomes \`\\u003C\` (so \`</script\`, \`<!--\` and \`<script\` cannot form) and U+2028/U+2029 are escaped. Every escape is a valid JSON escape, so the block still \`JSON.parse\`s to an identical value — unlike the \`<\\/\` / \`<\\!--\` rewrite, where \`\\!\` is not a JSON escape. The one recipe \`@pyreon/head\` uses for JSON data blocks (JSON-LD, speculation rules, import maps) and \`@pyreon/zero\`'s \`jsonLd()\` uses. For a JSON block or response only: an executable \`window.X=…\` assignment also needs the \`__proto__\`-key handling of \`@pyreon/router\`'s loader-data serializer, and script CODE must not take it (\`\\u003C\` outside a string breaks \`<\` operators).`,
+    mistakes: `- Interpolating a bare \`JSON.stringify\` into a \`<script>\` — a string value containing \`</script>\` or \`<!--<script>\` breaks out of the element
+- Escaping with \`<\\/\` and \`<\\!--\` inside a JSON block — \`\\!\` is not a JSON escape, so the block no longer parses and its data is dropped
+- Passing JavaScript SOURCE instead of JSON text — \`\\u003C\` outside a string literal is a syntax error`,
+  },
+
   'core/defineComponent': {
     signature: '<P>(fn: ComponentFn<P>) => ComponentFn<P>',
     example: `const Button = defineComponent((props: { label: string }) => <button>{props.label}</button>)
@@ -2190,21 +2201,29 @@ const page = () => search().page`,
 
   'router/notFound / NotFoundBoundary': {
     signature: 'notFound(message?: string) => never · NotFoundBoundary(props: { fallback: ComponentFn | VNodeChild; children?: VNodeChild }) => VNodeChild',
-    example: `async function loadUser(params: { id: string }) {
-  const user = await fetchUser(params.id)
-  if (!user) notFound()          // throws — code below is unreachable
-  return user
-}
+    example: `// Loader: renders the route tree's notFoundComponent / _404.tsx (SSR: HTTP 404)
+const routes = [{
+  path: '/', component: Layout, notFoundComponent: NotFoundPage,
+  children: [{
+    path: 'user/:id', component: UserPage,
+    loader: async ({ params }) => {
+      const user = await fetchUser(params.id)
+      if (!user) notFound()          // throws — code below is unreachable
+      return user
+    },
+  }],
+}]
 
+// Component: caught by the nearest NotFoundBoundary
 const app = (
   <NotFoundBoundary fallback={() => <h1>404 — not found</h1>}>
-    <RouterView />
+    <Widget />
   </NotFoundBoundary>
 )`,
-    notes: `The Next.js-style 404 pair. \`notFound()\` THROWS a branded Error (message defaults to 'Not Found') from inside a loader or component; \`isNotFoundError\` detects the brand (\`Symbol.for('pyreon.notFound')\`, realm-shared). \`NotFoundBoundary\` wraps the core \`ErrorBoundary\`: it renders \`children\` normally, and when a \`notFound()\` is thrown in its subtree it renders \`fallback\` (invoked as a component with \`{ error, reset }\` when its arity is <= 1, else returned as a plain VNodeChild). It RE-THROWS any non-notFound error so real errors still propagate to an outer error boundary. See also: redirect, RouterView.`,
+    notes: `The Next.js-style 404 pair. \`notFound()\` THROWS a branded Error (message defaults to 'Not Found'); \`isNotFoundError\` detects the brand (\`Symbol.for('pyreon.notFound')\`, realm-shared). Thrown from a LOADER (\`loader\` / \`serverLoader\`) it is flow control, like \`redirect()\`: the route enters the router's not-found state — \`currentRoute()\` resolves to the same \`notFoundComponent\` / \`_404.tsx\` chain an unmatched URL gets (inside its layouts, \`isNotFound: true\`, URL/params/query kept), SSR answers HTTP 404 in string and stream mode (404 with an empty chain when no \`notFoundComponent\` exists), the loader-data blob carries a marker so the hydrating client resolves the same chain, the data endpoint answers \`{ notFound: true }\`, a client navigation lands on the same page, \`onError\` is not called, and the next navigation leaves the state. Thrown from a COMPONENT it is caught by the nearest \`NotFoundBoundary\`, which wraps the core \`ErrorBoundary\` wraps the core \`ErrorBoundary\`: it renders \`children\` normally, and when a \`notFound()\` is thrown in its subtree it renders \`fallback\` (invoked as a component with \`{ error, reset }\` when its arity is <= 1, else returned as a plain VNodeChild). It RE-THROWS any non-notFound error so real errors still propagate to an outer error boundary. See also: redirect, RouterView.`,
     mistakes: `- Expecting code after \`notFound()\` to run — it THROWS (\`=> never\`) and never returns, so a guard-then-continue pattern does not work (everything after it is unreachable).
 - Using \`NotFoundBoundary\` as a general error boundary — it ONLY handles \`notFound()\` throws; every other error is RE-THROWN to the nearest outer \`ErrorBoundary\`.
-- Confusing \`notFound()\` with the route-record \`notFoundComponent\` / fs-router \`_404.tsx\` — those are the route-level no-match fallback; \`notFound()\` drives the \`NotFoundBoundary\` in the rendered subtree (a different mechanism).`,
+- Wrapping \`RouterView\` in a \`NotFoundBoundary\` to catch a LOADER's \`notFound()\` — a loader's \`notFound()\` never reaches a boundary; it renders the route tree's \`notFoundComponent\` / \`_404.tsx\` chain (HTTP 404 under SSR). \`NotFoundBoundary\` is for \`notFound()\` thrown while a component renders.`,
   },
 
   'router/lazy': {
@@ -2796,22 +2815,23 @@ const { store, patch, subscribe, reset } = useCounter()
 store.count()       // 0
 store.increment()   // reactive update
 patch({ count: 42 })`,
-    notes: `Define a composition-style store. The setup function runs once per store ID — inside a store-OWNED effect scope, so \`computed()\`/\`effect()\` created in setup belong to the STORE (disposed by \`dispose()\`), never to the component whose mount happened to create the store first (a component unmount cannot freeze a singleton's computeds). Setup returns an object whose signals become tracked state and whose functions become interceptable actions. Returns a hook function that produces a StoreApi with \`.store\` (user state/actions), \`.patch()\`, \`.subscribe()\`, \`.onAction()\`, \`.reset()\`, and \`.dispose()\`. Stores are singletons — calling the hook twice with the same ID returns the same instance; redefining an ID from a DIFFERENT setup function dev-warns once (the existing instance wins). See also: StoreApi, addStorePlugin, resetStore, defineStore (schema mode).`,
+    notes: `Define a composition-style store. The setup function runs once per store ID — inside a store-OWNED effect scope, so \`computed()\`/\`effect()\` created in setup belong to the STORE (disposed by \`dispose()\`), never to the component whose mount happened to create the store first (a component unmount cannot freeze a singleton's computeds). Setup returns an object whose signals become tracked state and whose functions become interceptable actions. Returns a hook function that produces a StoreApi with \`.store\` (user state/actions), \`.patch()\`, \`.subscribe()\`, \`.onAction()\`, \`.reset()\`, and \`.dispose()\`. Stores are singletons — calling the hook twice with the same ID returns the same instance; redefining an ID from a DIFFERENT setup function dev-warns once (the existing instance wins). See also: StoreApi, addStorePlugin, resetStore, defineSchemaStore.`,
     mistakes: `- Calling \`useCounter()\` expecting a new instance — stores are singletons by ID. The setup runs once; the registry returns the same \`StoreApi\` for every later call with that ID until \`resetStore(id)\` / \`resetAllStores()\`
 - Reading \`store.count\` without calling it — signals are functions; use \`store.count()\` to read
 - Calling \`store.count.set()\` for multi-field updates instead of \`patch()\` — separate \`.set()\` calls each notify subscribers; \`patch()\` batches them into ONE \`type: "patch"\` mutation
 - Forgetting \`dispose()\` / \`resetAllStores()\` in tests — the store persists in the global registry across test cases, leaking state into the next test. Put \`afterEach(() => resetAllStores())\` in setup
 - Returning a non-signal, non-function value from \`setup\` (a plain object/array) and expecting it to be reactive — only signals become tracked state. Classification is duck-typed: signals = \`.set\` + \`.peek\`, computeds = \`.dispose\` (and not a signal), everything-else-callable = action. A plain object is none of these and is passed through inert
 - Mutating state by reassigning \`store.count\` — it is a frozen accessor; write via \`store.increment()\` (an action) or \`patch({ count })\`. Direct property assignment is silently ineffective
+- Passing a schema config (\`{ schema, initial }\`) to \`defineStore\` — schema-validated stores are \`defineSchemaStore(id, config)\`. \`defineStore\` takes a setup function only (dev builds throw with this pointer)
 - Registering an \`addStorePlugin\` AFTER the store was first created and expecting it to apply — plugins run only at creation time. The already-created store never sees it (see \`addStorePlugin\` mistakes)
 - Defining the same id twice with different setups (or editing a store module under HMR) and expecting the new setup to apply — the registry returns the FIRST instance; the second definition dev-warns once per id and is otherwise inert until \`resetStore(id)\` or a full reload
 - Expecting persisted state to need a middleware — return \`useStorage()\` (from \`@pyreon/storage\`) signals from setup instead; a StorageSignal IS a signal, so it classifies as state and \`patch\`/\`reset\`/\`subscribe\`/\`dehydrateStores\` all flow through it (cross-tab sync included)`,
   },
 
-  'store/defineStore (schema mode)': {
+  'store/defineSchemaStore': {
     signature: '<S, U extends Record<string, unknown> = {}>(id: string, config: SchemaStoreConfig<S, U>) => () => SchemaStoreApi<SignalsOf<InferSchema<S>> & U>',
     example: `import { zodSchema } from '@pyreon/validation'
-import { defineStore, computed } from '@pyreon/store'
+import { computed, defineSchemaStore } from '@pyreon/store'
 import { z } from 'zod'
 
 const UserSchema = zodSchema(z.object({
@@ -2819,7 +2839,7 @@ const UserSchema = zodSchema(z.object({
   age: z.number(),
 }))
 
-const useUser = defineStore('user', {
+const useUser = defineSchemaStore('user', {
   schema: UserSchema,
   initial: { name: '', age: 0 },
   setup: ({ state }) => ({
@@ -2835,7 +2855,7 @@ u.store.greet()                             // computed
 u.set({ name: 'Alice', age: 30 })           // validates + replaces
 u.patch({ age: 31 })                        // validates merged + writes only changed
 u.store.age.set(-1)                         // direct write — bypasses validation`,
-    notes: 'Schema-driven `defineStore` overload. Accepts a `TypedSchemaAdapter` (from `@pyreon/validation` — Tier A.1) OR a Standard Schema-compliant schema (Tier A.2, e.g. raw zod 3.24+ / valibot 1.0+ / arktype 2.0+ / Effect Schema) plus an `initial` state. Field types are inferred from the schema — zero manual annotations. Returns a hook whose `store` exposes per-field signals at the top level alongside any setup-returned actions/computeds. `set` (full replace) and `patch` (partial merge) validate every write through the schema; direct signal writes (`store.field.set(v)`) bypass validation by design as an escape hatch for hot paths. The PARSED initial is written to signals — zod `.default()` / `.transform()` work correctly. Async validators are rejected at `defineStore`-time. For libraries without Standard Schema support (yup, joi, ajv, io-ts, etc.), users author a 5-10 line adapter (Tier B) matching the `_infer` + `parse` shape. See also: SchemaStoreApi, SchemaStoreConfig, SchemaStoreContext, StoreApi.',
+    notes: `Define a schema-validated store (a separate export from \`defineStore\`, so a plain store's bundle never carries the validation bridge). Accepts a \`TypedSchemaAdapter\` (from \`@pyreon/validation\` — Tier A.1) OR a Standard Schema-compliant schema (Tier A.2, e.g. raw zod 3.24+ / valibot 1.0+ / arktype 2.0+ / Effect Schema) plus an \`initial\` state. Field types are inferred from the schema — zero manual annotations. Returns a hook whose \`store\` exposes per-field signals at the top level alongside any setup-returned actions/computeds. \`set\` (full replace) and \`patch\` (partial merge) validate every write through the schema; direct signal writes (\`store.field.set(v)\`) bypass validation by design as an escape hatch for hot paths. The PARSED initial is written to signals — zod \`.default()\` / \`.transform()\` work correctly. Async validators are rejected at \`defineSchemaStore\`-time. For libraries without Standard Schema support (yup, joi, ajv, io-ts, etc.), users author a 5-10 line adapter (Tier B) matching the \`_infer\` + \`parse\` shape. See also: SchemaStoreApi, SchemaStoreConfig, SchemaStoreContext, StoreApi.`,
     mistakes: `- **Direct signal writes bypass validation.** \`store.fieldName.set(v)\` writes directly to the underlying signal — the schema is NOT consulted. Intentional escape hatch for hot paths, but easy to hit by accident. Use \`.set(full)\` or \`.patch(partial)\` for guaranteed validation
 - **Top-level fields only get signals.** Nested objects (e.g. \`prefs: { theme: "light" }\`) remain as VALUES inside the parent signal. To mutate a nested field: \`patch({ prefs: { ...store.prefs(), theme: "dark" } })\`. Recursive signal-ization is NOT supported — would require library-specific schema introspection
 - **Async validators are unsupported.** If the schema validator returns a Promise, \`defineStore\` throws at definition-time. Use \`@pyreon/form\` for async refinements, or validate manually before calling \`.set()\`
@@ -2853,7 +2873,7 @@ u.set({ name: 'Alice', prefs: { theme: 'dark' } })   // full replace, validated
 u.patch({ name: 'Bob' })                              // shallow per-field replace, validated
 u.deepPatch({ prefs: { theme: 'dark' } })             // deep-merge nested objects, validated
 u.update('items', items => items.filter(x => x.id !== 1))  // transform single field, validated`,
-    notes: 'Return type of the schema-driven `defineStore` overload — STRICTLY TYPED from the schema. Two type params: `TRaw` = the schema-inferred field VALUES (`InferSchema<S>`), and `TStore` = the `.store` shape (per-field `Signal`s + setup-returned actions/computeds). Extends `StoreApi<TStore>` with four validated mutation methods, every one checked against the real field types at compile time (no manual annotations, no casts): `set(next: TRaw)` REPLACES the whole state atomically; `patch(partial: Partial<TRaw>)` SHALLOW-merges top-level fields; `deepPatch(partial: DeepPartial<TRaw>)` recursively merges nested plain objects while REPLACING arrays / class instances / primitives; `update(key, current => next)` transforms a single field via callback whose value is typed `TRaw[K]` (covers add / remove / map / filter / object-key-delete in one method). `state` is the typed field-value snapshot `TRaw`. All four validate the merged result against the schema and throw on failure (or invoke `onValidationError` if configured). Escape hatches (unvalidated by design): the FUNCTIONAL `patch(fn)` form and direct signal writes (`store.field.set(v)`). See also: defineStore (schema mode), DeepPartial, StoreApi.',
+    notes: 'Return type of the schema-driven `defineStore` overload — STRICTLY TYPED from the schema. Two type params: `TRaw` = the schema-inferred field VALUES (`InferSchema<S>`), and `TStore` = the `.store` shape (per-field `Signal`s + setup-returned actions/computeds). Extends `StoreApi<TStore>` with four validated mutation methods, every one checked against the real field types at compile time (no manual annotations, no casts): `set(next: TRaw)` REPLACES the whole state atomically; `patch(partial: Partial<TRaw>)` SHALLOW-merges top-level fields; `deepPatch(partial: DeepPartial<TRaw>)` recursively merges nested plain objects while REPLACING arrays / class instances / primitives; `update(key, current => next)` transforms a single field via callback whose value is typed `TRaw[K]` (covers add / remove / map / filter / object-key-delete in one method). `state` is the typed field-value snapshot `TRaw`. All four validate the merged result against the schema and throw on failure (or invoke `onValidationError` if configured). Escape hatches (unvalidated by design): the FUNCTIONAL `patch(fn)` form and direct signal writes (`store.field.set(v)`). See also: defineSchemaStore, DeepPartial, StoreApi.',
     mistakes: `- Passing the wrong shape to \`set\` — it requires the FULL state matching the schema. Use \`patch\` / \`deepPatch\` for partial updates
 - Expecting \`set\` to silently merge — it REPLACES. Use \`patch\` (shallow) or \`deepPatch\` (recursive) to merge with current state
 - Using \`patch({ prefs: { theme: "dark" } })\` expecting other \`prefs\` keys to survive — \`patch\` is SHALLOW, the whole \`prefs\` object is replaced. Use \`deepPatch\` for nested-object merging
@@ -2878,7 +2898,7 @@ deepPatch({ prefs: { theme: 'dark', density: 'compact' } })  // full nested obje
 
   'store/SchemaStoreConfig': {
     signature: 'interface SchemaStoreConfig<S, U> { schema: S; initial: InferSchema<S>; setup?: (ctx: SchemaStoreContext<InferSchema<S>>) => U; onValidationError?: (issues: SchemaIssue[], op: "set" | "patch" | "init") => void }',
-    example: `defineStore('user', {
+    example: `defineSchemaStore('user', {
   schema: zodSchema(z.object({ name: z.string(), age: z.number() })),
   initial: { name: '', age: 0 },
   setup: ({ state, set, patch, reset }) => ({
@@ -2886,7 +2906,7 @@ deepPatch({ prefs: { theme: 'dark', density: 'compact' } })  // full nested obje
   }),
   onValidationError: (issues, op) => toast.error(\`\${op}: \${issues.length} errors\`),
 })`,
-    notes: 'Config object passed as the 2nd arg of the schema-mode `defineStore` overload. `schema` accepts either a Pyreon `TypedSchemaAdapter` (from `@pyreon/validation`) or a Standard Schema-compliant instance — duck-typed at runtime. `initial` is validated once at definition time; the parsed (coerced) value is written to signals. `setup` (optional) runs once at store-creation; it receives the per-field signals + validated mutation helpers. `onValidationError`, if provided, replaces the default throw-on-invalid behavior — useful for non-fatal UX (e.g. show a toast instead of crashing the render). See also: defineStore (schema mode), SchemaStoreContext.',
+    notes: 'Config object passed as the 2nd arg of the schema-mode `defineStore` overload. `schema` accepts either a Pyreon `TypedSchemaAdapter` (from `@pyreon/validation`) or a Standard Schema-compliant instance — duck-typed at runtime. `initial` is validated once at definition time; the parsed (coerced) value is written to signals. `setup` (optional) runs once at store-creation; it receives the per-field signals + validated mutation helpers. `onValidationError`, if provided, replaces the default throw-on-invalid behavior — useful for non-fatal UX (e.g. show a toast instead of crashing the render). See also: defineSchemaStore, SchemaStoreContext.',
     mistakes: `- \`schema\` must carry the type-inference brand — pass \`zodSchema(z.object(...))\`, not \`z.object(...)\` directly (for the Tier A.1 path). For Tier A.2 (Standard Schema), pass the raw schema — auto-detected via \`~standard\`
 - \`initial\` is REQUIRED and is type-checked against \`InferSchema<S>\`. A bad shape is a TypeScript error
 - \`setup\`-returned keys MUST NOT collide with schema field names — defineStore throws at construction`,
@@ -2894,7 +2914,7 @@ deepPatch({ prefs: { theme: 'dark', density: 'compact' } })  // full nested obje
 
   'store/SchemaStoreContext': {
     signature: 'interface SchemaStoreContext<T> { state: SignalsOf<T>; set: (next: T) => void; patch: (partial: Partial<T>) => void; reset: () => void }',
-    example: `defineStore('counter', {
+    example: `defineSchemaStore('counter', {
   schema: zodSchema(z.object({ count: z.number().nonnegative() })),
   initial: { count: 0 },
   setup: ({ state, patch }) => ({
@@ -2902,7 +2922,7 @@ deepPatch({ prefs: { theme: 'dark', density: 'compact' } })  // full nested obje
     dec: () => state.count.update(n => n - 1),         // BYPASSES validation — can go negative
   }),
 })`,
-    notes: 'Argument passed to the schema-mode `setup` function. `state` is the per-field signals map (`state.name` is `Signal<string>` etc.). `set` / `patch` / `reset` are validated mutation helpers — calling them from inside setup actions is the canonical way to write validated state. See also: defineStore (schema mode), SchemaStoreConfig.',
+    notes: 'Argument passed to the schema-mode `setup` function. `state` is the per-field signals map (`state.name` is `Signal<string>` etc.). `set` / `patch` / `reset` are validated mutation helpers — calling them from inside setup actions is the canonical way to write validated state. See also: defineSchemaStore, SchemaStoreConfig.',
     mistakes: `- \`state.x.set(v)\` skips validation — for guaranteed validation, call \`set\`/\`patch\` from the context
 - \`state\` contains SIGNALS, not values. Read via \`state.x()\`; assign via \`set\`/\`patch\` or direct \`state.x.set()\``,
   },
@@ -3033,7 +3053,7 @@ function callAction<K extends keyof CartActions>(name: K, ...args: Parameters<Ca
 
   'store/signal': {
     signature: 're-exported verbatim from @pyreon/reactivity: signal, computed, effect, batch',
-    example: `import { defineStore, signal, computed, batch } from '@pyreon/store'
+    example: `import { defineStore, signal, computed, batch, defineSchemaStore } from '@pyreon/store'
 
 export const useCounter = defineStore('counter', () => {
   const count = signal(0)
