@@ -1,5 +1,5 @@
 import { useHead, type MetaTag } from '@pyreon/head'
-import { SITE_ORIGIN } from '../blog/posts'
+import { SITE_ORIGIN } from '../blog/site'
 
 export interface PageHead {
   /** Root-relative path, e.g. `/open`. */

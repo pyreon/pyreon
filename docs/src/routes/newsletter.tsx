@@ -1,5 +1,5 @@
 import { RouterLink } from '@pyreon/router'
-import { SITE_ORIGIN } from '../blog/posts'
+import { SITE_ORIGIN } from '../blog/site'
 import { StableLinkPage } from '../components/StableLinkPage'
 import { resolveSiteLink } from '../site-links'
 
