@@ -189,8 +189,8 @@ describe('when something is wrong with the project', () => {
     // The config was optional; the site is not.
     expect(result.components).toBe(1)
     // …and with no config title to take, the default stands.
-    expect(result.title).toBe('atlas')
-    expect(readFileSync(join(root, 'dist', 'index.html'), 'utf8')).toContain('<title>atlas</title>')
+    expect(result.title).toBe('Atlas')
+    expect(readFileSync(join(root, 'dist', 'index.html'), 'utf8')).toContain('<title>Atlas</title>')
   }, 300_000)
 
   it('REFUSES to emit a site with no components', async () => {

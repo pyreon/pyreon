@@ -1,20 +1,13 @@
 import { txt } from '../../kit'
 
-export const Kbd = txt
-  .attrs({
-    tag: 'span',
-  })
-  .theme((t) => ({
-    position: 'absolute',
-    right: '12px',
-    top: '50%',
-    transform: 'translateY(-50%)',
-    fontFamily: t.font.mono,
-    fontSize: t.size.label,
-    padding: '1px 8px',
-    borderRadius: t.radius.chip,
-    color: t.faint,
-    border: t.hairline,
-    // A keyboard shortcut is noise on a touch screen.
-    extendCss: '@media (pointer:coarse){display:none;}',
-  }))
+/** A keyboard shortcut hint. Noise on a touch screen, so hidden there. */
+export const Kbd = txt.attrs({ tag: 'kbd' }).theme((t) => ({
+  fontFamily: t.font.mono,
+  fontSize: t.size.label,
+  padding: '1px 5px',
+  borderRadius: '5px',
+  border: `1px solid ${t.border2}`,
+  color: t.muted,
+  background: t.surface2,
+  extendCss: '@media (pointer:coarse){display:none;}',
+}))

@@ -35,6 +35,12 @@ export interface UrlState {
   query?: string
   /** The Roles panel's active role. */
   role?: string
+  /**
+   * `?embed` — the workbench is a GUEST in another page (an iframe on a
+   * product page or in docs). It keeps the flag across its own URL rewrites,
+   * so a reload inside the frame stays embedded.
+   */
+  embed?: boolean
 }
 
 /**
@@ -175,7 +181,7 @@ export function editedArgs(
  * whose first viewport is `kiosk` opens on `kiosk`, and writing `?viewport=kiosk`
  * into every one of its links would say nothing.
  */
-export type UrlDefaults = Omit<UrlState, 'c' | 'args'>
+export type UrlDefaults = Omit<UrlState, 'c' | 'args' | 'embed'>
 
 /** The workbench's own opening state, independent of any project preset. */
 export const SHIPPED_DEFAULTS: Required<UrlDefaults> = {
@@ -205,6 +211,7 @@ export function serializeUrlState(state: UrlState, defaults: UrlDefaults = {}): 
   const put = (key: keyof UrlDefaults, value: string | undefined) => {
     if (value && value !== d[key]) params.set(key, value)
   }
+  if (state.embed) params.set('embed', '1')
   if (state.c) params.set('c', state.c)
   put('p', state.p)
   put('viewport', state.viewport)
@@ -235,6 +242,8 @@ export function parseUrlState(query: string): UrlState {
   const params = new URLSearchParams(query.startsWith('?') ? query.slice(1) : query)
   const state: UrlState = {}
 
+  // A bare `?embed` (no value) is the documented form; `embed=0` opts out.
+  if (params.has('embed') && params.get('embed') !== '0') state.embed = true
   const c = params.get('c')
   if (c) state.c = c
   const p = params.get('p')

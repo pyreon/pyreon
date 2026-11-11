@@ -11,30 +11,12 @@ import { onMount } from '@pyreon/core'
 import { getAddonPanels, sealAddonPanels } from '../../panels'
 import { panelApplies } from '../../panel-applicability'
 import { registerBuiltinPanels } from './registerBuiltinPanels'
-import { registerReactiveCoveragePanel } from './ReactiveCoveragePanel'
-import { registerPerfPanel } from './PerfPanel'
-import { registerPermissionsPanel } from './PermissionsPanel'
-import { registerQueryPanel } from './QueryPanel'
-import { registerLensPanel } from './LensPanel'
-import { registerSchemaPanel } from './SchemaPanel'
-import { registerUpdateCausePanel } from './UpdateCausePanel'
 
-// Registering at module scope keeps the built-ins available to anything that
-// imports the view, including tests that render it directly. `sealAddonPanels`
-// inside makes it idempotent.
+// Registering at module scope keeps the panels available to anything that
+// imports the view, including tests that render it directly.
 registerBuiltinPanels()
-// Registered THROUGH the seam rather than moved into it — the first panel that
-// proves a non-built-in can contribute UI.
-registerReactiveCoveragePanel()
-registerUpdateCausePanel()
-registerPerfPanel()
-registerPermissionsPanel()
-registerQueryPanel()
-registerSchemaPanel()
-registerLensPanel()
-// Seal AFTER every ship-with-Atlas panel is registered — sealing inside
-// `registerBuiltinPanels` would have baselined only the four built-ins, so
-// `resetAddonPanels()` would silently drop the Reactivity tab.
+// Seal AFTER every ship-with-Atlas panel is registered, so
+// `resetAddonPanels()` restores all thirteen, never a subset.
 sealAddonPanels()
 
 export function AddonPanel(props: { model: WorkbenchModel }) {
@@ -99,12 +81,10 @@ export function AddonPanel(props: { model: WorkbenchModel }) {
   }
 
   return (
-    <C.AddonPanel
-      style={() => (m.compact() ? 'width:100%;flex:1;border-left:none' : `width:${m.panelW()}px`)}
-    >
+    <C.AddonPanel data-testid="addon-panel" aria-label="Panels">
       <C.AddonTabs
         role="tablist"
-        aria-label="Addon panels"
+        aria-label="Panels"
         data-testid="addon-tabs"
         ref={(el: HTMLElement | null) => {
           strip = el

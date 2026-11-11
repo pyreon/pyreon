@@ -1,66 +1,77 @@
 /**
- * Top bar view — brand, view segment, the ⌘K search TRIGGER (the dialog is the
- * real surface), and the profile menu (brand themes + appearance moved here
- * out of the bar, per the "configure in a profile menu" direction).
+ * Top bar view — the catalog toggle (compact only), brand, the view tabs, the
+ * ⌘K search TRIGGER (the dialog is the real surface) and the theme toggle.
+ *
+ * The theme toggle writes the SHARED `pyreon-theme` preference, so the docs,
+ * Loom and Atlas agree. It is hidden in `?embed` — the host owns the theme.
  */
 import { Show } from '@pyreon/core'
-import { useEventListener } from '@pyreon/hooks'
-import { signal } from '@pyreon/reactivity'
 import * as C from '../../components'
 import type { WorkbenchModel } from '../../model'
-import { THEMES } from '../../theme'
+import { CatalogIcon, PyreonMark, SearchIcon, ThemeIcon } from '../icons/Icons'
 
-export function TopBar(props: { model: WorkbenchModel }) {
+const VIEWS = [
+  ['canvas', 'Canvas'],
+  ['docs', 'Docs'],
+  ['lab', 'Lab'],
+] as const
+
+export function TopBar(props: {
+  model: WorkbenchModel
+  /** The catalog toggle's element, so closing the drawer can return focus. */
+  drawerToggleRef?: (el: HTMLElement | null) => void
+}) {
   const m = props.model
-  const menuOpen = signal(false)
-  // Escape closes the menu (the invisible backdrop already handles click-away).
-  useEventListener('keydown', (e: KeyboardEvent) => {
-    if (e.key === 'Escape' && menuOpen()) menuOpen.set(false)
-  })
+
+  // WAI-ARIA tabs: ←/→ move between the views (wrapping), Home/End jump.
+  // Activation follows focus — switching a view is cheap and reversible.
+  const tabEls: HTMLElement[] = []
+  const onTabKey = (e: KeyboardEvent) => {
+    const keys = ['ArrowLeft', 'ArrowRight', 'Home', 'End']
+    if (!keys.includes(e.key)) return
+    e.preventDefault()
+    const i = VIEWS.findIndex(([id]) => id === m.view())
+    const n = VIEWS.length
+    const next =
+      e.key === 'Home' ? 0 : e.key === 'End' ? n - 1 : (i + (e.key === 'ArrowRight' ? 1 : -1) + n) % n
+    m.view.set(VIEWS[next]![0])
+    tabEls[next]?.focus()
+  }
 
   return (
     <C.TopBar>
-      {/* Compact: ONE row — a drawer button in place of the brand, a smaller
-          view segment, an icon-only search. The desktop bar wrapped to three
-          rows (163px) at phone width. */}
-      <Show
-        when={() => m.compact()}
-        fallback={
-          <C.BrandRow>
-            <C.BrandMark>
-              <C.BrandGlyph />
-            </C.BrandMark>
-            <C.Col>
-              <C.BrandText>{m.title}</C.BrandText>
-              {m.subtitle ? <C.BrandSub>{m.subtitle}</C.BrandSub> : null}
-            </C.Col>
-          </C.BrandRow>
-        }
-      >
+      <Show when={() => m.compact()}>
         <C.IconButton
           data-testid="toggle-drawer"
-          aria-label="Browse components"
+          aria-label="Show catalog"
+          aria-controls="atlas-catalog-drawer"
           aria-expanded={() => (m.drawerOpen() ? 'true' : 'false')}
+          ref={(el: HTMLElement | null) => props.drawerToggleRef?.(el)}
           onClick={() => m.drawerOpen.set(!m.drawerOpen())}
         >
-          ☰
+          <CatalogIcon />
         </C.IconButton>
       </Show>
 
-      <C.Segment role="tablist" aria-label="View">
-        {(
-          [
-            ['canvas', 'Canvas'],
-            ['docs', 'Docs'],
-            ['lab', 'Theme Lab'],
-          ] as const
-        ).map(([id, label]) => (
+      <C.BrandRow>
+        <C.BrandMark>
+          <PyreonMark />
+        </C.BrandMark>
+        <C.BrandText data-testid="brand-title">{m.title}</C.BrandText>
+        {m.subtitle ? <C.BrandSub>{m.subtitle}</C.BrandSub> : null}
+      </C.BrandRow>
+
+      <C.Segment role="tablist" aria-label="View" onKeyDown={onTabKey}>
+        {VIEWS.map(([id, label], i) => (
           <C.SegBtn
             role="tab"
             data-testid={`view-${id}`}
+            ref={(el: HTMLElement | null) => {
+              if (el) tabEls[i] = el
+            }}
+            tabIndex={() => (m.view() === id ? 0 : -1)}
             aria-selected={() => (m.view() === id ? 'true' : 'false')}
             state={() => (m.view() === id ? 'active' : 'idle')}
-            size={() => (m.compact() ? 'small' : 'normal')}
             onClick={() => m.view.set(id)}
           >
             {label}
@@ -68,71 +79,30 @@ export function TopBar(props: { model: WorkbenchModel }) {
         ))}
       </C.Segment>
 
-      <C.SearchWrap>
-        <Show when={() => !m.compact()}>
-          <C.SearchTrigger data-testid="search-trigger" onClick={() => m.searchOpen.set(true)}>
-            <C.SearchIcon aria-hidden="true">⌕</C.SearchIcon>
-            <C.SearchTriggerText>Search components…</C.SearchTriggerText>
-            <C.Kbd>⌘K</C.Kbd>
-          </C.SearchTrigger>
-        </Show>
-      </C.SearchWrap>
+      <C.Spacer />
 
-      <C.RightRow>
-        <Show when={() => m.compact()}>
-          <C.IconButton
-            data-testid="search-trigger"
-            aria-label="Search components"
-            onClick={() => m.searchOpen.set(true)}
-          >
-            ⌕
-          </C.IconButton>
-        </Show>
-        <C.ProfileWrap>
-          <C.Avatar
-            data-testid="profile-btn"
-            aria-label="Workspace settings"
-            aria-haspopup="menu"
-            aria-expanded={() => (menuOpen() ? 'true' : 'false')}
-            onClick={() => menuOpen.set(!menuOpen())}
-          >
-            DS
-          </C.Avatar>
-          <Show when={() => menuOpen()}>
-            <C.MenuBackdrop onClick={() => menuOpen.set(false)} />
-            <C.ProfileMenu data-testid="profile-menu">
-              <C.MenuLabel>Theme</C.MenuLabel>
-              {THEMES.map((t) => (
-                <C.MenuItem
-                  state={() => (m.brandId() === t.id ? 'active' : 'idle')}
-                  onClick={() => m.brandId.set(t.id)}
-                >
-                  {/* Contrast is monochrome — its accent flips per mode — so
-                      the dot shows BOTH halves rather than a near-black dot
-                      that disappeared on the dark menu. */}
-                  <C.MenuSwatch
-                    css={
-                      t.id === 'contrast'
-                        ? 'background:linear-gradient(135deg,#141824 50%,#e6e7ec 50%);'
-                        : `background:${t.accent};`
-                    }
-                  />
-                  <C.MenuItemText>{t.name}</C.MenuItemText>
-                  <Show when={() => m.brandId() === t.id}>
-                    <C.MenuCheck>✓</C.MenuCheck>
-                  </Show>
-                </C.MenuItem>
-              ))}
-              <C.MenuDivider />
-              <C.MenuLabel>Appearance</C.MenuLabel>
-              <C.MenuItem title="Toggle theme" onClick={() => m.dark.set(!m.dark())}>
-                <C.MenuItemText>{() => (m.dark() ? 'Dark mode' : 'Light mode')}</C.MenuItemText>
-                <C.MenuCheck>{() => (m.dark() ? '☾' : '☀')}</C.MenuCheck>
-              </C.MenuItem>
-            </C.ProfileMenu>
-          </Show>
-        </C.ProfileWrap>
-      </C.RightRow>
+      <C.SearchTrigger
+        data-testid="search-trigger"
+        aria-label="Search components"
+        aria-keyshortcuts="Meta+K Control+K"
+        onClick={() => m.searchOpen.set(true)}
+      >
+        <SearchIcon />
+        <C.SearchTriggerText>Search</C.SearchTriggerText>
+        <C.Kbd>⌘K</C.Kbd>
+      </C.SearchTrigger>
+
+      {m.embed ? null : (
+        <C.IconButton
+          data-testid="theme-toggle"
+          data-atlas-theme-toggle=""
+          aria-label="Toggle light and dark theme"
+          title={() => (m.dark() ? 'Switch to light' : 'Switch to dark')}
+          onClick={m.toggleTheme}
+        >
+          <ThemeIcon />
+        </C.IconButton>
+      )}
     </C.TopBar>
   )
 }

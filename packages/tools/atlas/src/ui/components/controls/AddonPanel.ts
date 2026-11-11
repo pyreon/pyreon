@@ -1,5 +1,6 @@
 import { el } from '../../kit'
 
+/** The panels region (`.at-panel`): a 38px tab strip over the scrolling body. */
 export const AddonPanel = el
   .attrs({
     tag: 'section',
@@ -7,9 +8,8 @@ export const AddonPanel = el
     contentAlignX: 'block',
   })
   .theme((t) => ({
-    width: '352px',
-    flex: 'none',
+    flex: '1',
     minHeight: '0',
-    borderLeft: t.hairline,
+    minWidth: '0',
     background: t.surface,
   }))

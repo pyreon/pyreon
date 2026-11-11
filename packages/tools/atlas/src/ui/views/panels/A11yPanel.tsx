@@ -10,6 +10,7 @@ import { AXE_IDLE, runAxe, type AxeReport } from '../../axe'
 import * as C from '../../components'
 import type { WorkbenchModel } from '../../model'
 import type { AddonPanelDef } from '../../panels'
+import { PREVIEW_COLORS } from '../../theme'
 import { tab } from './shared'
 
 /**
@@ -21,7 +22,7 @@ import { tab } from './shared'
 function highlightSubject(m: WorkbenchModel, on: boolean): void {
   const subject = previewSubject(m.previewElement()) as HTMLElement | null
   if (!subject) return
-  subject.style.outline = on ? '2px solid #ff2d55' : ''
+  subject.style.outline = on ? `2px solid ${PREVIEW_COLORS.highlight}` : ''
   subject.style.outlineOffset = on ? '2px' : ''
 }
 
@@ -42,7 +43,7 @@ export const a11yPanel: AddonPanelDef = {
       const el = selector ? (surface?.querySelector(selector) as HTMLElement | null) : null
       const subject = el ?? (previewSubject(surface) as HTMLElement | null)
       if (!subject) return
-      subject.style.outline = on ? '2px solid #ff2d55' : ''
+      subject.style.outline = on ? `2px solid ${PREVIEW_COLORS.highlight}` : ''
       subject.style.outlineOffset = on ? '2px' : ''
     }
     return (
@@ -53,22 +54,26 @@ export const a11yPanel: AddonPanelDef = {
             labelled; "not determined" appears only when there is one (its dot
             used to render with an empty label beside it). */}
         <C.A11ySummary data-testid="a11y-summary">
+          <C.A11yStat data-testid="a11y-violations">
+            <C.StatNum state={() => (summary().violations > 0 ? 'danger' : 'ok')}>
+              {() => String(summary().violations)}
+            </C.StatNum>
+            <C.StatLabel>{() => (summary().violations === 1 ? 'violation' : 'violations')}</C.StatLabel>
+          </C.A11yStat>
           <C.A11yStat data-testid="a11y-passing">
-            <C.A11yDot state="ok" />
-            {() => `${summary().passes} passing`}
+            <C.StatNum>{() => String(summary().passes)}</C.StatNum>
+            <C.StatLabel>passing</C.StatLabel>
           </C.A11yStat>
           <C.A11yStat data-testid="a11y-warnings">
-            <C.A11yDot state="warn" />
-            {() => plural(summary().warns, 'warning')}
-          </C.A11yStat>
-          <C.A11yStat data-testid="a11y-violations">
-            <C.A11yDot state="danger" />
-            {() => plural(summary().violations, 'violation')}
+            <C.StatNum state={() => (summary().warns > 0 ? 'warn' : 'plain')}>
+              {() => String(summary().warns)}
+            </C.StatNum>
+            <C.StatLabel>{() => (summary().warns === 1 ? 'needs review' : 'need review')}</C.StatLabel>
           </C.A11yStat>
           <Show when={() => summary().unknowns > 0}>
             <C.A11yStat data-testid="a11y-unknowns">
-              <C.A11yDot state="unknown" />
-              {() => `${summary().unknowns} not determined`}
+              <C.StatNum>{() => String(summary().unknowns)}</C.StatNum>
+              <C.StatLabel>not determined</C.StatLabel>
             </C.A11yStat>
           </Show>
           <C.A11yStat data-testid="a11y-scope">

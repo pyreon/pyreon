@@ -5,16 +5,15 @@ export const A11yDot = el
     tag: 'span',
   })
   .theme((t) => ({
-    width: '9px',
-    height: '9px',
+    width: '7px',
+    height: '7px',
+    flex: 'none',
     borderRadius: t.radius.round,
     background: t.ok,
   }))
-  .states(
-    (t) => ({
-      ok: { backgroundColor: t.ok },
-      warn: { backgroundColor: t.warn },
-      danger: { backgroundColor: t.danger },
-      unknown: { backgroundColor: t.faint },
-    }),
-  )
+  .states((t) => ({
+    ok: { backgroundColor: t.ok },
+    warn: { backgroundColor: t.warn },
+    danger: { backgroundColor: t.danger },
+    unknown: { backgroundColor: t.faint },
+  }))

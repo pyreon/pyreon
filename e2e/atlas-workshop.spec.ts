@@ -121,19 +121,21 @@ test.describe('Atlas workshop — real-Chromium e2e', () => {
     const page = await open(browser, errors)
 
     const emberBtn = await bg(page, PREVIEW_BTN)
-    // Brand themes moved into the profile menu (avatar, top-right).
-    await page.getByTestId('profile-btn').click()
-    await page.getByRole('button', { name: 'Aurora', exact: true }).click()
+    // The preview brand lives in Addons; it restyles the PREVIEW only.
+    const shellBefore = await bg(page, '[data-testid="atlas-shell"]')
+    await page.getByTestId('addon-tab-addons').click()
+    await page.getByTestId('brand-aurora').click()
     await expect.poll(() => bg(page, PREVIEW_BTN)).not.toBe(emberBtn)
+    expect(await bg(page, '[data-testid="atlas-shell"]')).toBe(shellBefore)
 
-    const shellDark = await bg(page, '[data-testid="atlas-shell"]')
-    await page.getByTitle('Toggle theme').click()
-    await expect.poll(() => bg(page, '[data-testid="atlas-shell"]')).not.toBe(shellDark)
+    // The theme toggle flips the chrome (and the preview's mode).
+    await page.getByTestId('theme-toggle').click()
+    await expect.poll(() => bg(page, '[data-testid="atlas-shell"]')).not.toBe(shellBefore)
 
     expect(errors).toEqual([])
   })
 
-  test('views switch: Canvas ↔ Docs ↔ Theme Lab', async ({ browser }) => {
+  test('views switch: Canvas ↔ Docs ↔ Lab', async ({ browser }) => {
     const errors: string[] = []
     const page = await open(browser, errors)
 
@@ -141,7 +143,7 @@ test.describe('Atlas workshop — real-Chromium e2e', () => {
     await expect(page.getByTestId('props-table')).toBeVisible()
     await expect(page.getByText('label', { exact: true })).toBeVisible()
 
-    await page.getByRole('tab', { name: 'Theme Lab', exact: true }).click()
+    await page.getByRole('tab', { name: 'Lab', exact: true }).click()
     const grid = page.getByTestId('lab-grid')
     await expect(grid).toBeVisible()
     // 4 brands × light/dark = 8 tiles, each with its own themed preview button.
@@ -170,7 +172,7 @@ test.describe('Atlas workshop — real-Chromium e2e', () => {
     await expect(dialog.getByRole('button', { name: /Badge/ })).toBeVisible()
     await expect(dialog.getByRole('button', { name: /^Button/ })).toHaveCount(0)
     await dialog.getByRole('button', { name: /Badge/ }).click()
-    await expect(page.getByTestId('canvas-name')).toHaveText('Badge')
+    await expect(page.getByTestId('canvas')).toHaveAttribute('aria-label', 'Badge preview')
 
     expect(errors).toEqual([])
   })
@@ -187,7 +189,7 @@ test.describe('Atlas workshop — real-Chromium e2e', () => {
     // rather than pretending the option is unique to one component.
     await expect(dialog.getByText('variant · soft').first()).toBeVisible()
     await page.keyboard.press('Enter')
-    await expect(page.getByTestId('canvas-name')).toHaveText('Badge')
+    await expect(page.getByTestId('canvas')).toHaveAttribute('aria-label', 'Badge preview')
   })
 
   test('rocketstyle dimensions apply: active-tab highlight, variant flip, zoom scale', async ({
@@ -205,12 +207,12 @@ test.describe('Atlas workshop — real-Chromium e2e', () => {
       return {
         differ: canvas.className !== b('Docs').className,
         canvasBg: getComputedStyle(canvas).backgroundColor,
-        canvasWeight: getComputedStyle(canvas).fontWeight, // base styling must survive the dimension merge
+        canvasHeight: getComputedStyle(canvas).height, // base styling must survive the dimension merge
       }
     })
     expect(tabs.differ).toBe(true)
     expect(tabs.canvasBg).not.toBe('rgba(0, 0, 0, 0)')
-    expect(tabs.canvasWeight).toBe('600')
+    expect(tabs.canvasHeight).toBe('30px')
 
     // (b) variant control flips the demo button (`.variants()` dimension).
     const solid = await bg(page, PREVIEW_BTN)
@@ -218,11 +220,12 @@ test.describe('Atlas workshop — real-Chromium e2e', () => {
     await expect.poll(() => bg(page, PREVIEW_BTN)).toBe('rgba(0, 0, 0, 0)')
     expect(solid).not.toBe('rgba(0, 0, 0, 0)')
 
-    // (c) zoom + scales the preview surface (`.sizes()` dimension). Poll the
-    // transform — there's a `transition: transform .12s` so it settles a frame
-    // after the label flips to 125%.
-    await page.getByRole('button', { name: 'Zoom in', exact: true }).click()
-    await expect(page.getByTestId('zoom-label')).toHaveText('125%')
+    // (c) zoom scales the preview surface (`.sizes()` dimension). Poll the
+    // transform — there's a transition, so it settles a frame after the
+    // Canvas panel's 125% option is pressed.
+    await page.getByTestId('addon-tab-canvas').click()
+    await page.getByTestId('zoom-125').click()
+    await expect(page.getByTestId('zoom-125')).toHaveAttribute('aria-pressed', 'true')
     await expect
       .poll(() =>
         page.evaluate(
@@ -250,7 +253,7 @@ test.describe('Atlas workshop — canvas addons', () => {
     // narrower than its nominal size — asserting the nominal number without
     // the room for it would be testing the cap, not the preset.
     await page.setViewportSize({ width: 1700, height: 900 })
-    await page.getByTestId('addon-tab-canvas').click()
+    await page.getByTestId('addon-tab-addons').click()
 
     const frame = page.getByTestId('canvas-frame')
     const width = async () => Math.round((await frame.boundingBox())!.width)
@@ -269,7 +272,7 @@ test.describe('Atlas workshop — canvas addons', () => {
   test('a viewport wider than the stage is CAPPED, never overflowing it', async ({ browser }) => {
     const page = await open(browser)
     await page.setViewportSize({ width: 1100, height: 800 })
-    await page.getByTestId('addon-tab-canvas').click()
+    await page.getByTestId('addon-tab-addons').click()
 
     await page.getByTestId('viewport-desktop').click() // 1280px nominal
     const frame = await page.getByTestId('canvas-frame').boundingBox()
@@ -283,7 +286,7 @@ test.describe('Atlas workshop — canvas addons', () => {
 
   test('background presets repaint the preview surface', async ({ browser }) => {
     const page = await open(browser)
-    await page.getByTestId('addon-tab-canvas').click()
+    await page.getByTestId('addon-tab-addons').click()
 
     const surface = page.getByTestId('canvas-preview')
     const bg = () => surface.evaluate((el) => getComputedStyle(el).backgroundColor)
@@ -301,7 +304,7 @@ test.describe('Atlas workshop — canvas addons', () => {
 
   test('outline toggle outlines every element inside the preview only', async ({ browser }) => {
     const page = await open(browser)
-    await page.getByTestId('addon-tab-canvas').click()
+    await page.getByTestId('addon-tab-addons').click()
 
     const inner = page.getByTestId('canvas-preview').locator('button').first()
     const outlineOf = () => inner.evaluate((el) => getComputedStyle(el).outlineStyle)
@@ -312,7 +315,7 @@ test.describe('Atlas workshop — canvas addons', () => {
 
     // chrome outside the preview must stay untouched
     const chromeOutline = await page
-      .getByTestId('addon-tab-canvas')
+      .getByTestId('addon-tab-addons')
       .evaluate((el) => getComputedStyle(el).outlineStyle)
     expect(chromeOutline).toBe('none')
 
@@ -322,7 +325,7 @@ test.describe('Atlas workshop — canvas addons', () => {
 
   test('pseudo-state forcing applies the component REAL hover styling', async ({ browser }) => {
     const page = await open(browser)
-    await page.getByTestId('addon-tab-canvas').click()
+    await page.getByTestId('addon-tab-addons').click()
 
     const btn = page.getByTestId('canvas-preview').locator('button').first()
     // Read the property the demo Button's `hover` theme block actually sets.
@@ -347,7 +350,7 @@ test.describe('Atlas workshop — canvas addons', () => {
 
   test('forcing `disabled` applies the disabled block', async ({ browser }) => {
     const page = await open(browser)
-    await page.getByTestId('addon-tab-canvas').click()
+    await page.getByTestId('addon-tab-addons').click()
 
     const btn = page.getByTestId('canvas-preview').locator('button').first()
     const opacity = () => btn.evaluate((el) => Number(getComputedStyle(el).opacity))
@@ -388,7 +391,7 @@ test('A11y panel reports the REAL rendered element, not fabricated passes', asyn
 
 test('Locale addon flips writing direction on the preview (RTL layout test)', async ({ browser }) => {
   const page = await open(browser)
-  await page.getByTestId('addon-tab-canvas').click()
+  await page.getByTestId('addon-tab-addons').click()
 
   const preview = page.getByTestId('canvas-preview')
   const dir = () => preview.evaluate((el) => el.getAttribute('dir'))
@@ -450,7 +453,7 @@ test.describe('Reactivity panel — reactive coverage', () => {
     await page.getByTestId('addon-tab-reactivity').click()
     await page.getByTestId('coverage-toggle').click()
 
-    await page.getByTestId('addon-tab-canvas').click()
+    await page.getByTestId('addon-tab-addons').click()
     await page.getByTestId('viewport-tablet').click()
     await page.getByTestId('addon-tab-reactivity').click()
     await page.getByTestId('coverage-toggle').click()
@@ -478,7 +481,7 @@ test.describe('Why panel — causal chains', () => {
     await expect(page.getByTestId('why-unavailable')).toHaveCount(0)
 
     // Cause real reactivity, then refresh the candidate list.
-    await page.getByTestId('addon-tab-canvas').click()
+    await page.getByTestId('addon-tab-addons').click()
     await page.getByTestId('viewport-tablet').click()
     await page.getByTestId('background-dark').click().catch(() => {})
     await page.getByTestId('addon-tab-why').click()
@@ -505,7 +508,7 @@ test('pseudo-locale expands and accents every rendered string', async ({ browser
   const before = ((await preview.textContent()) ?? '').trim()
   expect(before.length, 'preview should render text to stress').toBeGreaterThan(0)
 
-  await page.getByTestId('addon-tab-canvas').click()
+  await page.getByTestId('addon-tab-addons').click()
   await page.getByTestId('pseudo-locale-toggle').click()
 
   const after = ((await preview.textContent()) ?? '').trim()
@@ -552,7 +555,9 @@ test('perf panel records framework work for a real interaction', async ({ browse
  */
 test('a hand-catalog play script runs against the live preview, steps logged to Actions', async ({ browser }) => {
   const page = await open(browser, [])
-  // Button carries the authored 'Click storm' scenario with a ▶.
+  // Button carries the authored 'Click storm' scenario; choosing its tab in
+  // the scenario strip shows the ▶.
+  await page.getByTestId('scenario-button--play-demo').click()
   await page.getByTestId('play-button--play-demo').click()
   await page.getByRole('tab', { name: 'Actions', exact: true }).click()
   // Each play STEP lands in the Actions ring, then the three clicks the script

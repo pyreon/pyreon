@@ -47,7 +47,7 @@ const STATE: Record<CoverageRow['reason'], 'ok' | 'warn' | 'danger' | 'unknown'>
 export function registerReactiveCoveragePanel(): void {
   registerAddonPanel({
     id: 'reactivity',
-    title: 'Reactivity',
+    title: 'Reactive coverage',
     hint: 'Which reactive edges never fired',
     render: (model) => {
       const m = model as WorkbenchModel

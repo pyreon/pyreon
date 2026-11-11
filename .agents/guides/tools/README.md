@@ -40,6 +40,10 @@ Derives a verified, machine-readable component catalog from source. You write no
 
 ### Workbench and static build
 
+- The app shell (`src/ui/Workbench.tsx`): top bar → catalog | scenario strip → canvas → panels. Panel tab order IS registration order (`views/panels/registerBuiltinPanels.ts`); ids are stable (`p=why`, `p=data`, `p=reactivity` in links) even where titles read "Update cause", "Query", "Reactive coverage". Below 860px (`COMPACT_QUERY` in `model.ts`) the catalog is a modal drawer.
+- Colours live ONLY in `src/ui/theme.ts`: `CHROME_PALETTES` (chrome, dark + light, emitted as `--atlas-*` custom properties keyed on `:root[data-theme]`), `tokens(brand, dark)` (preview brands, rendered inside the preview's own `<PyreonUI>`), `PREVIEW_COLORS` (preview tools). A component never carries a raw hex. Text roles pass 4.5:1 in both modes — `tests/theme-contrast.test.ts` computes it, `e2e/atlas-shell.spec.ts` audits the rendered page at 320/390/768/1024/1440.
+- The mode is the shared `pyreon-theme` preference (else the OS), applied before first paint by `themeBootScript()` in the dev/build shells. `?dark=` in a link overrides it and is written to the URL only when it differs from the preference. `?embed` = guest mode: no theme toggle, no storage writes, the flag survives URL rewrites.
+- unistyle DROPS an unmapped theme key and wraps `backgroundImage` in `url()` — gradients and `font-variant-numeric` go in `extendCss`.
 - `atlas dev` re-derives the catalog when a scanned file changes (debounced; a failed rescan keeps the previous catalog). The canvas opens on `Default` with all its args; a link carries only edits.
 - `atlas build` bakes the node-answered panels (Docs source, Reactivity Lens) into each page, so a serverless deploy keeps real verdicts. An uncomputable answer bakes its reason.
 - `e2e/atlas-ui-components.spec.ts` builds the real ui-components library and checks every page.

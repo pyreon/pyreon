@@ -10,5 +10,5 @@ export const LabTile = el
     borderRadius: t.radius.modal,
     overflow: 'hidden',
     border: t.hairline,
-    boxShadow: '0 8px 24px -18px rgba(15,18,30,.4)',
+    boxShadow: `0 8px 24px -18px ${t.shadow}`,
   }))
