@@ -331,7 +331,7 @@ Add the generated file to `.gitignore` — it's build output. `RouteParams<'/pos
 typed as `{ id: string }`. Off by default (no surprise file writes); until codegen runs,
 `href` stays `string`, so existing code never breaks.
 
-```gitignore title=".gitignore"
+```text title=".gitignore"
 src/pyreon-routes.d.ts
 ```
 

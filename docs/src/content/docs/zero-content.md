@@ -122,7 +122,9 @@ const count = signal(0)
 ```
 ````
 
-The shared highlighter is initialized once per build (grammars + themes are expensive to load). The default language set covers `typescript`, `tsx`, `javascript`, `jsx`, `json`, `jsonc`, `bash`, `shell`, `html`, `css`, `scss`, `markdown`, `mdx`, `yaml`, `toml`, `diff`, and `text`. An unknown language falls back to `text` rather than throwing.
+The shared highlighter is initialized once per build (grammars + themes are expensive to load). The default language set covers `typescript`, `tsx`, `javascript`, `jsx`, `json`, `jsonc`, `bash`, `shell`, `html`, `css`, `scss`, `markdown`, `mdx`, `yaml`, `toml`, `diff`, `swift`, `kotlin`, `xml`, `svelte`, `vue`, `nginx`, `ini` and `dockerfile`, plus Shiki's aliases for them (`ts`, `js`, `sh`, `zsh`, `md`, `yml`, `kt`, …). `text`, `txt`, `plaintext` or no language render as plain text.
+
+A fence that names a language outside the loaded set still renders (as plain text), and the build prints one `[Pyreon] Code fence language "…" is not loaded` warning per language. Add the language to `highlighter.langs` (any grammar Shiki bundles works), or use `text` if Shiki has no grammar for it.
 
 #### Custom themes
 
@@ -131,7 +133,8 @@ The shared highlighter is initialized once per build (grammars + themes are expe
 content({
   highlighter: {
     themes: { light: pyreonLight, dark: pyreonDark },
-    langs: ['typescript', 'rust', 'python'],
+    // Added to the default set above, not a replacement for it.
+    langs: ['rust', 'python'],
   },
 })
 ```
