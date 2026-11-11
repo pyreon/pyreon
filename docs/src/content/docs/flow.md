@@ -1159,7 +1159,7 @@ style.textContent = flowStyles
 document.head.appendChild(style)
 ```
 
-It provides: the `animated` edge dash animation, node drag/selected shadows, handle + resizer hover scaling and colors, `<Controls>` button hover/active backgrounds, minimap hover opacity, and the toolbar enter animation. Everything renders fine without it — the graph just loses those hover/animation flourishes.
+It provides: the `animated` edge dash animation, node drag/selected shadows, handle + resizer hover scaling and colors, `<Controls>` button hover/active backgrounds, minimap hover opacity, the toolbar enter animation, the `:focus-visible` rings and the dark colour mode's variables. Without it the graph still renders and stays accessible (the screen-reader-only keyboard instructions and live region are hidden by inline styles, not by this sheet), but loses those states; in development `<Flow>` logs a one-time `[Pyreon]` warning when the sheet is not loaded.
 
 ## Edge Path Utilities
 
