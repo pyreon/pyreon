@@ -725,11 +725,11 @@ export function _rdCloseBindingFrame(): BindingTarget | null {
  * open binding frame and only once per frame (the first write names the
  * binding). Called from `@pyreon/runtime-dom` behind its dev gate.
  */
-export function _rdNoteTarget(el: object | null, kind: ReactiveBindingKind, key?: string): void {
+export function _rdNoteTarget(el: object | string | null, kind: ReactiveBindingKind, key?: string): void {
   if (process.env.NODE_ENV !== 'production') {
     if (_bf.depth === 0 || _bf.kind !== null) return
     _bf.kind = kind
-    _bf.target = tagOf(el as { localName?: string } | null)
+    _bf.target = typeof el === 'string' ? el : tagOf(el as { localName?: string } | null)
     _bf.key = key
   }
 }
@@ -967,6 +967,35 @@ export function _rdDropBinding(handle: object): void {
     _byId.delete(id)
     const node = rec.ref.deref()
     if (node !== undefined) _retained.delete(node)
+  }
+}
+
+/**
+ * @internal — name the element of every `kind` binding subscribed to
+ * `source`, once that element exists. For a binding created before its element
+ * (the styler's class binding, whose first run happens before the ref
+ * attaches, and whose tag may be a component rather than a DOM tag), the
+ * first-run frame cannot see the element. The caller reports it when it
+ * attaches, through the source the binding reads, so it never has to hold the
+ * binding's disposer in a production variable. Only bindings already of `kind`
+ * are touched, so another subscriber of the same source is left alone.
+ */
+export function _rdLabelSubscribers(source: object, kind: ReactiveBindingKind, el: object | null): void {
+  if (process.env.NODE_ENV !== 'production') {
+    const host = source as Partial<SubscriberHostLike>
+    const tier2 = host._s ?? null
+    const subs: (() => void)[] = []
+    if (host._s1) subs.push(host._s1)
+    if (tier2 !== null) {
+      if (typeof tier2 === 'function') subs.push(tier2)
+      else for (const f of tier2) subs.push(f)
+    }
+    const tag = tagOf(el as { localName?: string } | null)
+    for (const sub of subs) {
+      const id = resolveSubId(sub)
+      const rec = id === undefined ? undefined : _byId.get(id)
+      if (rec !== undefined && rec.binding === kind) rec.target = tag
+    }
   }
 }
 
