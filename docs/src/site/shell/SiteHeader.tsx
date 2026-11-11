@@ -1,13 +1,13 @@
-import { For, onMount, Show } from '@pyreon/core'
-import { useClickOutside, useEventListener, useFocusTrap, useScrollLock } from '@pyreon/hooks'
-import { effect, signal, watch } from '@pyreon/reactivity'
+import { For, onMount, onUnmount, Show } from '@pyreon/core'
+import { useClickOutside, useEventListener, useFocusTrap, useMediaQuery, useScrollLock } from '@pyreon/hooks'
+import { isServer, signal, watch } from '@pyreon/reactivity'
 import { useRoute } from '@pyreon/router'
 import { colorMode, toggleColorMode } from '../color-mode'
 import { Glyph } from '../kit/cards'
 import { Pill } from '../kit/controls'
 import { useLinkClick } from '../kit/link'
 import { BAR_LINKS, ICON_LINKS, isCurrent, MOBILE, PRODUCTS_LABEL, productIdOf, productName, START, THEME_LABEL, WHY_MENU } from '../nav'
-import { layout } from '../theme'
+import { navMedia } from '../theme'
 import { ProductsPanel, WhyPanel } from './MegaMenu'
 import { MobileSheet } from './MobileSheet'
 import {
@@ -94,7 +94,7 @@ export function SiteHeader() {
 
   const scroll = useScrollLock()
   const setBehindInert = (inert: boolean) => {
-    if (typeof document === 'undefined') return
+    if (isServer) return
     for (const node of document.querySelectorAll<HTMLElement>(BEHIND_SHEET)) node.inert = inert
   }
   const closeSheet = (refocus = false) => {
@@ -105,24 +105,23 @@ export function SiteHeader() {
 
   // The sheet's side effects in one place, so every close path (Escape,
   // link, resize, route change) restores the page the same way.
-  onMount(() => {
-    const fx = effect(() => {
-      const open = sheetOpen()
-      setBehindInert(open)
-      if (open) scroll.lock()
-      else scroll.unlock()
-    })
-    return () => {
-      fx.dispose()
-      setBehindInert(false)
-      scroll.unlock()
-    }
+  watch(sheetOpen, (open) => {
+    setBehindInert(open)
+    if (open) scroll.lock()
+    else scroll.unlock()
+  })
+  onUnmount(() => {
+    setBehindInert(false)
+    scroll.unlock()
   })
 
-  useFocusTrap(() => headerEl, {
-    active: () => sheetOpen(),
-    initialFocus: () => document.querySelector<HTMLElement>(`#${SHEET_ID} a`),
-  })
+  useFocusTrap(() => headerEl, { active: () => sheetOpen() })
+
+  const openSheet = () => {
+    sheetOpen.set(true)
+    // The sheet un-hides in this same flush; move focus once it can take it.
+    requestAnimationFrame(() => document.querySelector<HTMLElement>(`#${SHEET_ID} a`)?.focus())
+  }
   useClickOutside(() => navEl, () => closeMenu())
 
   useEventListener('keydown', (e) => {
@@ -135,10 +134,9 @@ export function SiteHeader() {
       closeSheet(true)
     }
   })
-  useEventListener('resize', () => {
-    if (window.innerWidth >= layout.navCollapse) closeSheet()
-    else closeMenu()
-  })
+  // Crossing the 960px collapse closes whichever navigation is going away.
+  const expanded = useMediaQuery(navMedia.expanded.replace('@media ', ''))
+  watch(expanded, (wide) => (wide ? closeSheet() : closeMenu()))
 
   // A navigation (including back/forward) closes everything.
   onMount(() =>
@@ -286,7 +284,7 @@ export function SiteHeader() {
           aria-expanded={sheetOpen() ? 'true' : 'false'}
           aria-controls={SHEET_ID}
           aria-label={sheetOpen() ? MOBILE.close : MOBILE.open}
-          onClick={() => sheetOpen.set(!sheetOpen.peek())}
+          onClick={() => (sheetOpen.peek() ? closeSheet() : openSheet())}
           data-testid="menu-button"
         >
           <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">

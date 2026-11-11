@@ -86,6 +86,8 @@ function Meter(props: MeterItem) {
     return n === 0 ? ('idle' as const) : n % 2 ? ('a' as const) : ('b' as const)
   })
   return (
+    // The compiler wraps this read in _rp(), so the row re-styles on each change.
+    // pyreon-lint-disable-next-line pyreon/no-signal-in-props
     <MeterRow state={state()}>
       <span>{props.label}</span>
       <MeterValue>{() => String(props.value())}</MeterValue>

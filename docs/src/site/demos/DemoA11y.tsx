@@ -11,7 +11,7 @@ type Entry = { id: number; text: string; politeness: 'polite' | 'assertive' }
 
 const Log = el
   .config({ name: 'A11yLog' })
-  .attrs({ tag: 'ol', block: true, gap: 6 })
+  .attrs({ tag: 'ol', block: true, gap: 6, contentAlignY: 'top' })
   .theme((_t, m) => ({
     listStyle: 'none',
     margin: 0,
@@ -34,6 +34,9 @@ const Level = txt
 
 const Row = el.config({ name: 'A11yRow' }).attrs({ block: true, contentDirection: 'inline', gap: 8 }).theme(() => ({ flexWrap: 'wrap' }))
 const Box = el.config({ name: 'A11yBox' }).attrs({ block: true, gap: 12 }).theme(() => ({ position: 'relative' }))
+
+/** SkipLink merges a style object over its reveal styles: keep it inside the demo box. */
+const SKIP_LINK_STYLE = { position: 'absolute' }
 
 const ACTIONS: { label: string; say: string; politeness?: 'assertive' }[] = [
   { label: 'Save', say: 'Settings saved' },
@@ -61,7 +64,7 @@ export default function DemoA11y() {
     <DemoGrid>
       <DemoSurface>
         <Box>
-          <SkipLink href="#a11y-demo-main" style={{ position: 'absolute' }}>
+          <SkipLink href="#a11y-demo-main" style={SKIP_LINK_STYLE}>
             Skip to content
           </SkipLink>
           <Row id="a11y-demo-main">

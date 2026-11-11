@@ -1,4 +1,5 @@
-import { signal } from '@pyreon/reactivity'
+import { useMediaQuery } from '@pyreon/hooks'
+import { isClient, signal, watch } from '@pyreon/reactivity'
 
 /**
  * The site's dark/light preference: one store shared by the marketing shell's
@@ -42,14 +43,13 @@ export function resolveInitialMode(input: {
   return input.prefersLight ? 'light' : 'dark'
 }
 
-const isBrowser = typeof document !== 'undefined'
-
 function readAttribute(): ColorMode {
-  if (!isBrowser) return 'dark'
+  if (!isClient) return 'dark'
   return document.documentElement.getAttribute(MODE_ATTRIBUTE) === 'light' ? 'light' : 'dark'
 }
 
 function readStored(): ColorMode | null {
+  if (!isClient) return null
   try {
     const s = localStorage.getItem(STORAGE_KEY)
     return s === 'light' || s === 'dark' ? s : null
@@ -62,24 +62,30 @@ function readStored(): ColorMode | null {
 export const colorMode = signal<ColorMode>(readAttribute())
 
 /**
- * Follow the OS while the visitor has not chosen. One listener for the page's
- * lifetime, installed once when this module first loads in a browser.
+ * Follow the OS while the visitor has not chosen. Call once, from the root
+ * layout: `useMediaQuery` owns the listener and removes it on unmount.
  */
-if (isBrowser && typeof window.matchMedia === 'function') {
-  window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', (e) => {
+export function useFollowSystemMode(): void {
+  const prefersLight = useMediaQuery('(prefers-color-scheme: light)')
+  watch(prefersLight, (light) => {
     if (readStored() !== null) return
-    colorMode.set(e.matches ? 'light' : 'dark')
+    applyMode(light ? 'light' : 'dark')
   })
 }
 
-export function setColorMode(next: ColorMode): void {
+function applyMode(next: ColorMode): void {
   colorMode.set(next)
-  if (!isBrowser) return
+  if (!isClient) return
   // The root <PyreonUI> writes the attribute too (in an effect); writing it
   // here keeps the docs pages, whose CSS reads [data-theme] directly, in step
   // on the same frame.
   document.documentElement.setAttribute(MODE_ATTRIBUTE, next)
   document.documentElement.style.colorScheme = next
+}
+
+export function setColorMode(next: ColorMode): void {
+  applyMode(next)
+  if (!isClient) return
   try {
     localStorage.setItem(STORAGE_KEY, next)
   } catch {

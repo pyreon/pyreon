@@ -1,6 +1,5 @@
 import { useForm } from '@pyreon/form'
-import { effect, signal } from '@pyreon/reactivity'
-import { onMount } from '@pyreon/core'
+import { signal, watch } from '@pyreon/reactivity'
 import { DemoSurface } from '../kit/cards'
 import { DemoGrid, DemoPanel, Meters, PaperButton, PaperError, PaperField, PaperHint, PaperLabel } from '../kit/demo'
 
@@ -34,6 +33,8 @@ export default function DemoForm() {
         if (!v) return undefined
         if (!EMAIL_RE.test(v)) return 'Enter a valid email address'
         requests.update((n) => n + 1)
+        // A fake network: the delay IS the demo (slow, out-of-order answers).
+        // pyreon-lint-disable-next-line pyreon/no-raw-setinterval
         await new Promise((r) => setTimeout(r, 400 + Math.random() * 700))
         // The form keeps only the newest run; count the ones it will drop.
         if (latestEmail !== v) stale.update((n) => n + 1)
@@ -46,27 +47,19 @@ export default function DemoForm() {
     },
   })
 
-  // One effect per field, reading only that field's signals.
-  onMount(() => {
-    let firstE = true
-    let firstP = true
-    const e = effect(() => {
-      latestEmail = form.fields.email.value()
-      form.fields.email.error()
-      if (firstE) firstE = false
-      else emailUpdates.update((n) => n + 1)
-    })
-    const p = effect(() => {
-      form.fields.password.value()
-      form.fields.password.error()
-      if (firstP) firstP = false
-      else passwordUpdates.update((n) => n + 1)
-    })
-    return () => {
-      e.dispose()
-      p.dispose()
-    }
-  })
+  // One watcher per field, reading only that field's signals: the counter
+  // moves only when that field's value or error actually changed.
+  watch(
+    () => [form.fields.email.value(), form.fields.email.error()] as const,
+    ([v]) => {
+      latestEmail = v
+      emailUpdates.update((n) => n + 1)
+    },
+  )
+  watch(
+    () => [form.fields.password.value(), form.fields.password.error()] as const,
+    () => passwordUpdates.update((n) => n + 1),
+  )
 
   const submit = async (ev: Event) => {
     result.set('')

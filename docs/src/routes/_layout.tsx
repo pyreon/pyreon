@@ -3,7 +3,7 @@ import { useHead } from '@pyreon/head'
 import { RouterView, useRoute } from '@pyreon/router'
 import { PyreonUI } from '@pyreon/ui-core'
 import { BLOG_FEED, BLOG_TITLE, SITE_ORIGIN } from '../blog/site'
-import { colorMode } from '../site/color-mode'
+import { colorMode, useFollowSystemMode } from '../site/color-mode'
 import { siteTheme } from '../site/theme'
 
 const DEFAULT_TITLE = 'Pyreon — the signal-based UI framework'
@@ -25,6 +25,7 @@ const DEFAULT_IMAGE_ALT = 'Pyreon — the signal-based UI framework. Signals in.
  */
 export function layout() {
   const route = useRoute()
+  useFollowSystemMode()
 
   // Site-wide head defaults. They live here, not as static tags in
   // index.html, because @pyreon/head dedupes by key with the innermost

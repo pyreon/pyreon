@@ -70,8 +70,8 @@ const ItemLink = el
   .config({ name: 'NavPanelItem' })
   .attrs<LinkAttrs>({ tag: 'a', block: true, contentDirection: 'inline', contentAlignY: 'top', gap: 8 })
   .theme((_t, m) => ({
-    paddingTop: 8,
-    paddingBottom: 8,
+    paddingTop: 6,
+    paddingBottom: 6,
     paddingLeft: 8,
     paddingRight: 8,
     borderRadius: radius.control,
@@ -97,10 +97,10 @@ const ItemSub = txt
   .attrs({ tag: 'span' })
   .theme((_t, m) => ({
     display: 'block',
-    marginTop: 2,
+    marginTop: 1,
     fontFamily: font.sans,
     fontSize: text.mono.size,
-    lineHeight: 1.4,
+    lineHeight: 1.35,
     color: tone(m, 'fog'),
   }))
 

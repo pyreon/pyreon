@@ -8,7 +8,9 @@ import { font, layout, navMedia, radius, text, weight, z } from '../theme'
 
 const Sheet = el
   .config({ name: 'MobileSheet' })
-  .attrs({ tag: 'nav', block: true })
+  // contentAlignY 'top': Element centres content by default, and a centred
+  // column taller than the screen overflows upwards where it cannot scroll.
+  .attrs({ tag: 'nav', block: true, contentAlignX: 'block', contentAlignY: 'top' })
   .theme((_t, m) => ({
     position: 'fixed',
     top: 0,

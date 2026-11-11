@@ -53,6 +53,9 @@ export const Bar = el
   .attrs({ block: true, contentDirection: 'inline', contentAlignY: 'center', gap: { xs: 8, lg: 24 } })
   .theme((_t, m) => ({
     position: 'relative',
+    // Above the mobile sheet (a sibling in the header), so the bar and its
+    // close button stay on top while the sheet is open.
+    zIndex: z.panel,
     pointerEvents: 'auto',
     maxWidth: layout.navMaxWidth,
     marginLeft: 'auto',
@@ -94,7 +97,8 @@ export const Wordmark = txt
 export const PrimaryNav = el
   .config({ name: 'SitePrimaryNav' })
   .attrs({ tag: 'nav', contentDirection: 'inline', contentAlignY: 'center', gap: 22 })
-  .theme(() => ({ ...hideBelowNav, height: '100%' }))
+  // position: static so the menu panels are placed against the bar, not the nav.
+  .theme(() => ({ ...hideBelowNav, height: '100%', position: 'static' }))
 
 export const NavLinkText = el
   .config({ name: 'SiteNavLink' })

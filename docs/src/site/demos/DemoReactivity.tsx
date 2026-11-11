@@ -1,4 +1,3 @@
-import { onMount } from '@pyreon/core'
 import { batch, computed, effect, signal } from '@pyreon/reactivity'
 import { DemoSurface } from '../kit/cards'
 import { DemoGrid, DemoPanel, Meters, PaperButton, PaperHint, PaperLabel } from '../kit/demo'
@@ -24,21 +23,22 @@ export default function DemoReactivity() {
     return price() * qty()
   })
 
-  onMount(() => {
-    const fx = effect(() => {
-      total()
-      effectRuns.update((n) => n + 1)
-    })
-    return () => fx.dispose()
+  // A real effect, created at setup like any other; it counts its own runs.
+  effect(() => {
+    total()
+    effectRuns.update((n) => n + 1)
   })
 
   const run = (label: string, fn: () => void) => {
     const c0 = computedRuns.peek()
     const e0 = effectRuns.peek()
     fn()
-    const c = computedRuns.peek() - c0
-    const e = effectRuns.peek() - e0
-    log.set(c === 0 && e === 0 ? `${label} → nothing re-ran` : `${label} → computed ${c}×, effect ${e}×`)
+    // Effects flush after the write settles; read the counts once they have.
+    void Promise.resolve().then(() => {
+      const c = computedRuns.peek() - c0
+      const e = effectRuns.peek() - e0
+      log.set(c === 0 && e === 0 ? `${label} → nothing re-ran` : `${label} → computed ${c}×, effect ${e}×`)
+    })
   }
 
   return (

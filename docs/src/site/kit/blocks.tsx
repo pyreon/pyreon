@@ -230,7 +230,7 @@ export function ApiGroups(props: { groups: readonly { name: string; items: reado
 
 const LimitBox = el
   .config({ name: 'LimitNote' })
-  .attrs({ block: true, gap: 4 })
+  .attrs({ block: true, gap: 4, contentAlignY: 'top' })
   .theme((_t, m) => ({
     height: '100%',
     paddingTop: 18,
