@@ -51,9 +51,9 @@ import { computed, effect } from '@pyreon/reactivity'
 test('computed recomputes exactly once per change', () => {
   const qty = signal(1)
   const total = computed(() => qty() * 10)
-  total() // materialize
+  total() // materialize (the first computation counts)
   qty.set(2)
-  expectSignal(total).toHaveRecomputedTimes(1)  // no thrash
+  expectSignal(total).toHaveRecomputedTimes(2)  // first computation + one recompute, no thrash
 })
 
 test('effect re-runs only when its dep changes', () => {
@@ -118,9 +118,9 @@ rerender(3) // updates the props signal; the hook re-reads it only if it reads p
       summary:
         "Assert how many times a signal/computed fired, by reading its node's `fires` count from Pyreon's reactive graph (`getReactiveGraph()`). Catches over-computation / thrash a DOM assertion cannot see. Synchronous; dev/test build only.",
       example: `const total = computed(() => qty() * price())
-total()          // materialize
+total()          // materialize (the first computation counts)
 qty.set(2)
-expectSignal(total).toHaveRecomputedTimes(1)`,
+expectSignal(total).toHaveRecomputedTimes(2)`,
       mistakes: [
         '`toHaveChangedTimes` and `toHaveRecomputedTimes` are the SAME check (both assert `fires === n`) — they differ only in the error wording. There is no semantic distinction at runtime; pick whichever reads clearer.',
         'Passing a non-reactive value — the target must be a signal/computed (a reactive-graph node); anything else throws `[Pyreon] expectSignal: target is not a reactive node`.',

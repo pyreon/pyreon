@@ -27,7 +27,7 @@ bun add -d @pyreon/lint
 | Setting | Default | Description |
 |---|---|---|
 | `pyreonLint.enable` | `true` | Enable/disable diagnostics |
-| `pyreonLint.preset` | `"recommended"` | Lint preset (recommended, strict, app, lib) |
+| `pyreonLint.preset` | `"recommended"` | Lint preset (recommended, strict, app, lib, best-practices) |
 
 ## How it works
 
@@ -59,6 +59,8 @@ formatter keeps.
 The server reads the nearest `.pyreonlintrc.json` for each file, and picks up
 edits to it without a restart.
 
-## Rules
+## 140 rules
 
-Run `pyreon-lint --list` for the live list, grouped, with severities.
+140 rules across 26 categories, the same set the `pyreon-lint` CLI runs. The
+full list, with what each rule catches, is on the
+[lint docs page](https://pyreon.dev/docs/lint).

@@ -24,14 +24,14 @@
       "types": "./lib/types/index.d.ts"
     },
     "./transition": {
-      "bun": "./src/transition-entry.ts",
-      "import": "./lib/transition-entry.js",
-      "types": "./lib/types/transition-entry.d.ts"
+      "bun": "./src/transition.ts",
+      "import": "./lib/transition.js",
+      "types": "./lib/types/transition.d.ts"
     },
     "./keep-alive": {
-      "bun": "./src/keep-alive-entry.ts",
-      "import": "./lib/keep-alive-entry.js",
-      "types": "./lib/types/keep-alive-entry.d.ts"
+      "bun": "./src/keep-alive.ts",
+      "import": "./lib/keep-alive.js",
+      "types": "./lib/types/keep-alive.d.ts"
     },
     "./sanitizer": {
       "bun": "./src/sanitizer.ts",

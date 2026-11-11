@@ -52,7 +52,7 @@ The scaffold pins the Android Gradle plugin, Kotlin, Compose and SDK levels it i
 Because the `node_modules` layout depends on hoisting and the package manager, let `pyreon-native wire` resolve it. It links the runtimes into `ios/PyreonPackages/` and stages any co-located feature Swift into `ios/PyreonNative/`:
 
 ```bash
-npx pyreon-native wire --app=. --ios-out=ios
+npx @pyreon/native-cli wire --app=. --ios-out=ios
 ```
 
 Reference the links by their fixed paths. With XcodeGen:
@@ -90,8 +90,8 @@ PMTC is a Node CLI that emits `.swift` files. Run it (and `wire`) from a script 
 set -euo pipefail
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 mkdir -p "${PROJECT_DIR}/ios/generated"
-npx pyreon-native wire --app="${PROJECT_DIR}" --ios-out="${PROJECT_DIR}/ios"
-npx pyreon-native build --target=ios --source="${PROJECT_DIR}/src" --out="${PROJECT_DIR}/ios/generated"
+npx @pyreon/native-cli wire --app="${PROJECT_DIR}" --ios-out="${PROJECT_DIR}/ios"
+npx @pyreon/native-cli build --target=ios --source="${PROJECT_DIR}/src" --out="${PROJECT_DIR}/ios/generated"
 ```
 
 Pass `--app` explicitly: Xcode runs build phases with the working directory set to `ios/`, which has no `package.json`. Add the script as a **Build Phase → Run Script** before Compile Sources (with XcodeGen, a `preBuildScripts` entry), so every build re-emits before compiling. A `.tsx` that imports `@pyreon/runtime-dom` (a web entry) is skipped, not compiled.
@@ -154,7 +154,7 @@ init({ navigate: (to) => router.push(to) })
 `pyreon-native wire` resolves the source roots (the base runtime, the router, and every co-located feature `native/kotlin/` directory your dependencies contribute, in dependency order) and writes them to a file:
 
 ```bash
-npx pyreon-native wire --app=. --android-out=android/app/pyreon-native.srcdirs
+npx @pyreon/native-cli wire --app=. --android-out=android/app/pyreon-native.srcdirs
 ```
 
 `app/build.gradle.kts` reads that list at configure time:
@@ -189,8 +189,8 @@ set -euo pipefail
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 OUT="${PROJECT_DIR}/android/app/src/main/kotlin/com/example/myapp/generated"
 mkdir -p "${OUT}"
-npx pyreon-native build --target=android --source="${PROJECT_DIR}/src" --out="${OUT}" --kotlin-package=com.example.myapp.generated
-npx pyreon-native wire --app="${PROJECT_DIR}" --android-out="${PROJECT_DIR}/android/app/pyreon-native.srcdirs"
+npx @pyreon/native-cli build --target=android --source="${PROJECT_DIR}/src" --out="${OUT}" --kotlin-package=com.example.myapp.generated
+npx @pyreon/native-cli wire --app="${PROJECT_DIR}" --android-out="${PROJECT_DIR}/android/app/pyreon-native.srcdirs"
 ```
 
 Without `--kotlin-package` the emit lands in Kotlin's root package and an import such as `com.example.myapp.generated.App` does not resolve. Run the script before Gradle configures the project — the scaffold runs it from `npm run build:android` — so the `srcdirs` file exists at configure time.
@@ -337,7 +337,7 @@ npm install
 npm run dev                 # starts the Vite dev server
 ```
 
-For a quick check that does not touch Xcode or Gradle, `npx pyreon-native check --source=src` runs the compiler for both targets in memory and reports what does not lower.
+For a quick check that does not touch Xcode or Gradle, `npx @pyreon/native-cli check --source=src` runs the compiler for both targets in memory and reports what does not lower.
 
 If any of the three fail with errors about un-emitted shapes, check [`pmtc-supported-typescript.md`](./pmtc-supported-typescript.md) — the catalogue lists every silent-drop pattern and how to refactor around it.
 

@@ -119,7 +119,7 @@ describe('MCP server — validate tool over real JSON-RPC transport', () => {
       expect(text).toMatchInlineSnapshot(`
         "Found 1 issue:
 
-        1. **on-click-undefined** (line 1)
+        1. **on-click-undefined** (line 1, column 9)
            \`onClick={undefined}\` explicitly passes undefined as a listener. Pyreon's runtime guards against this, but the cleanest pattern is to omit the attribute entirely or use a conditional: \`onClick={condition ? handler : undefined}\`.
            Current: \`onClick={undefined}\`
            Fix: \`/* omit onClick when the handler is not defined */\`
@@ -142,8 +142,8 @@ describe('MCP server — validate tool over real JSON-RPC transport', () => {
       `
       const text = await callValidate(client, code)
 
-      // Extract "(line N)" tokens and assert monotonically non-decreasing.
-      const lines = [...text.matchAll(/\(line (\d+)\)/g)].map((m) => Number(m[1]))
+      // Extract "(line N, column C)" tokens and assert monotonically non-decreasing.
+      const lines = [...text.matchAll(/\(line (\d+), column \d+\)/g)].map((m) => Number(m[1]))
       expect(lines.length).toBeGreaterThan(1)
       for (let i = 1; i < lines.length; i++) {
         expect(lines[i]).toBeGreaterThanOrEqual(lines[i - 1]!)

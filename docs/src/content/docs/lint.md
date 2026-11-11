@@ -1130,7 +1130,7 @@ The server also advertises `textDocumentSync: full` and `inlayHintProvider: true
 ```yaml
 # .github/workflows/lint.yml
 - name: Pyreon lint
-  run: bunx pyreon-lint --preset strict --quiet
+  run: bunx @pyreon/lint --preset strict --quiet
 ```
 
 `--preset strict` promotes every warning to an error so the job fails on any deviation; `--quiet` keeps the output to errors only. The `--format json` output (`{ files, totalErrors, totalWarnings, totalInfos, configDiagnostics }`) feeds dashboards and custom gates. For a ratcheted burn-down (counts may only decrease), pair the JSON output with a baseline file.
